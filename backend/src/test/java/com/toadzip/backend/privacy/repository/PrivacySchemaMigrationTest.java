@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.toadzip.backend.global.config.PostgresTestDatabases;
 import com.toadzip.backend.privacy.configuration.PrivacyMigrationConfiguration;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -448,8 +449,7 @@ class PrivacySchemaMigrationTest {
         }
 
         private static String url(String database) {
-            String port = System.getenv().getOrDefault("TEST_POSTGRES_PORT", "55432");
-            return "jdbc:postgresql://127.0.0.1:" + port + "/" + database;
+            return PostgresTestDatabases.primaryUrl(database);
         }
 
         @Override

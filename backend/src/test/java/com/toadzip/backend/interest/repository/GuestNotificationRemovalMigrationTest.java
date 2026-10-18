@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.toadzip.backend.global.config.PostgresTestDatabases;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
@@ -87,7 +88,6 @@ class GuestNotificationRemovalMigrationTest {
     }
 
     private String url(String database) {
-        return "jdbc:postgresql://127.0.0.1:"
-                + System.getenv().getOrDefault("TEST_POSTGRES_PORT", "55432") + "/" + database;
+        return PostgresTestDatabases.primaryUrl(database);
     }
 }

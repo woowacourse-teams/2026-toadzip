@@ -37,8 +37,12 @@ Red → Green → Refactor 순서와 완료 증거는 [development-cycle.md](dev
 - 같은 설정의 컨텍스트는 재사용한다. `@MockitoBean`, 프로필, 테스트 속성, `@Import`가 달라지면 별도 컨텍스트가 된다.
   테스트 클래스 수만을 기준으로 JVM을 재시작하지 않는다.
 - 전체 검사는 하나의 테스트 JVM에서 순차 실행하고, Spring의 기본 컨텍스트 캐시 한도 안에서 재사용한다.
+- `PostgresTestDatabases`가 JVM당 PostgreSQL 17 컨테이너 두 개(기본 DB·공유 DB)를 한 번만 기동한다.
+  Spring 컨텍스트가 닫혀도 컨테이너는 유지하며, JVM 종료 후 Testcontainers의 Ryuk이 정리한다.
+- 테스트 리소스의 `META-INF/spring.factories`에 등록한 `PostgresTestDatabaseInitializer`가 `test` 프로필에
+  실제 컨테이너의 호스트·임의 포트·계정을 주입한다. 스키마별 초기화보다 먼저 실행되며 YAML 파일을 수정하지 않는다.
+  직접 JDBC/Flyway를 쓰는 테스트도 `PostgresTestDatabases`의 URL을 사용한다.
 - 테스트 JPA는 `ddl-auto=create`로 기동 시 테이블을 생성한다. 컨텍스트 종료 시에는 공유 테이블을 삭제하지 않는다.
-  DB 전체 정리는 `compose.test.yaml`의 테스트 컨테이너 종료가 담당한다.
 - 테스트 간 데이터 격리는 기존 롤백·명시적 정리를 유지한다. 검증할 실제 트랜잭션 경계를 mock이나 자동 롤백으로 대체하지 않는다.
 
 ## 오류와 회귀
@@ -51,9 +55,11 @@ Red → Green → Refactor 순서와 완료 증거는 [development-cycle.md](dev
 ## 실행 순서
 
 ```text
-테스트 PostgreSQL 기동 → 가까운 테스트 → 기능 테스트 묶음 → Gradle check → 테스트 PostgreSQL 정리
+Docker 실행 → 가까운 테스트 → 기능 테스트 묶음 → ./gradlew --rerun-tasks check
 ```
 
-통합 테스트 전후의 PostgreSQL 기동과 정리는 루트 `compose.test.yaml`을 사용한다.
+IDE와 Gradle 모두 Testcontainers가 DB 기동·준비 대기·정리를 담당한다. 단위 테스트만 실행하면 컨테이너를 띄우지 않는다.
+처음 실행할 때는 의존성과 Docker 이미지 다운로드 시간이 추가된다. CI도 같은 실행 경로를 사용한다.
+`compose.test.yaml`은 수동 DB 검증용으로 남기며, 자동 테스트는 해당 DB나 고정 포트에 연결하지 않는다.
 
 환경 때문에 실행하지 못한 검사는 실패와 구분해 미검증으로 보고한다.

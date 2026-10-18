@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.toadzip.backend.global.config.PostgresTestDatabases;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
 import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecordService;
@@ -669,8 +670,7 @@ class LocalProfileSchemaPersistenceTest {
     }
 
     private String sharedTestDatabaseUrl() {
-        return "jdbc:postgresql://127.0.0.1:" + testPort("TEST_SHARED_POSTGRES_PORT", "55433")
-                + "/toadzip_shared_test";
+        return PostgresTestDatabases.sharedUrl();
     }
 
     private int migrationCount() throws Exception {
@@ -690,10 +690,6 @@ class LocalProfileSchemaPersistenceTest {
     }
 
     private String primaryTestDatabaseUrl(String databaseName) {
-        return "jdbc:postgresql://127.0.0.1:" + testPort("TEST_POSTGRES_PORT", "55432") + "/" + databaseName;
-    }
-
-    private String testPort(String environmentVariable, String defaultPort) {
-        return System.getenv().getOrDefault(environmentVariable, defaultPort);
+        return PostgresTestDatabases.primaryUrl(databaseName);
     }
 }
