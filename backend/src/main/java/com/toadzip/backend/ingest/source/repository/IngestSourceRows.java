@@ -25,7 +25,14 @@ public final class IngestSourceRows {
             case MYHOME_COMPLEX -> myHomeComplex();
             case MYHOME_ANNOUNCEMENT -> myHomeAnnouncement();
             case LH_LEASE_CATALOG -> """
-                    SELECT r.id, r.id::text AS source_key, r.complex_label AS name,
+                    SELECT r.id,
+                           'lh-lease:' || encode(sha256(convert_to(jsonb_build_array(
+                               r.area_name, r.supply_type_name, r.complex_label, r.exclusive_area
+                           )::text, 'UTF8')), 'hex') || ':' || row_number() OVER (
+                               PARTITION BY r.area_name, r.supply_type_name, r.complex_label, r.exclusive_area
+                               ORDER BY r.source_order, r.id
+                           ) AS source_key,
+                           r.complex_label AS name,
                            NULL::text AS original_url, r.collected_at, NULL::timestamptz AS updated_at,
                            row_to_json(r)::text AS raw_payload
                     FROM lh_lease_catalog_source_rows r

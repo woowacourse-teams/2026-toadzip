@@ -22,6 +22,8 @@ import { PrivacyBoundary, PrivacyMenu, PrivacyPolicyPage, PrivacySettingsPage } 
 import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
 import { PublicNotificationLayout } from './notifications/PublicNotificationLayout'
 import { LandingPage } from './landing/LandingPage'
+import { ComplexCoveragePage } from './admin/documents/ComplexCoveragePage'
+import { QualityQueuePage } from './admin/quality/QualityQueuePage'
 
 function LandingEntry() {
   const { search, hash } = useLocation()
@@ -71,11 +73,13 @@ function AdminRoutes() {
         <Route path="login" element={<LoginPage />} />
         <Route element={<RequireAdmin />}>
           <Route element={<AdminLayout />}>
-            <Route index element={<Navigate to="complexes" replace />} />
+            <Route index element={<Navigate to="quality" replace />} />
             <Route path="ingest" element={<AdminHome />} />
             <Route path="ingest-v2" element={<AnnouncementRegistrationV2Page />} />
             <Route path="complexes/:id?" element={<ManagementWorkspace resource="complexes" />} />
             <Route path="announcements/:id?" element={<ManagementWorkspace resource="announcements" />} />
+            <Route path="complex-coverage" element={<ComplexCoveragePage />} />
+            <Route path="quality" element={<QualityQueuePage />} />
             <Route path="users" element={<UserListPage />} />
             <Route path="users/:id" element={<UserDetailPage />} />
             <Route path="notification-subscriptions" element={<NotificationManagementPage />} />

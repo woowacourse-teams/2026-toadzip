@@ -374,6 +374,7 @@ public class LhAnnouncementEnrichmentWriter {
     private void deleteOtherLhTargets(List<SupplyTarget> storedTargets, String retainedIdentifier) {
         List<SupplyTarget> previousTargets = storedTargets.stream()
                 .filter(target -> isLhSource(target.getSourceSupplyTargetIdentifier()))
+                .filter(target -> !target.isAdminModified())
                 .filter(target -> !retainedIdentifier.equals(target.getSourceSupplyTargetIdentifier()))
                 .toList();
         supplyTargetRepository.deleteAll(previousTargets);
@@ -386,6 +387,13 @@ public class LhAnnouncementEnrichmentWriter {
             String previousSourceIdentifier,
             List<SupplyTarget> storedTargets
     ) {
+        var reviewed = storedTargets.stream()
+                .filter(SupplyTarget::isAdminModified)
+                .filter(target -> isLhSource(target.getSourceSupplyTargetIdentifier()))
+                .findFirst();
+        if (reviewed.isPresent()) {
+            return new SupplyTargetWriteResult(reviewed.get().getSourceSupplyTargetIdentifier(), 0, 0);
+        }
         String identifier = source.sourceIdentifier() + ":TARGET";
         if (!hasCompleteAmount(source)) {
             String retainedIdentifier = existingAmountTargetIdentifier(
@@ -497,6 +505,7 @@ public class LhAnnouncementEnrichmentWriter {
         for (List<SupplyTarget> storedTargets : targetsByRow.values()) {
             List<SupplyTarget> stale = storedTargets.stream()
                     .filter(target -> lhSourceForAnyPan(target.getSourceSupplyTargetIdentifier(), replacedPanIds))
+                    .filter(target -> !target.isAdminModified())
                     .filter(target -> !retained.contains(target.getSourceSupplyTargetIdentifier()))
                     .toList();
             supplyTargetRepository.deleteAll(stale);

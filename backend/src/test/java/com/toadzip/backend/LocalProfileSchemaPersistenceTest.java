@@ -70,6 +70,40 @@ import tools.jackson.databind.json.JsonMapper;
 class LocalProfileSchemaPersistenceTest {
 
     @Test
+    void 최신_기존_DB에도_공급대상_수정_보호_마이그레이션을_순서대로_적용한다() throws Exception {
+        String databaseName = "toadzip_supply_protection_" + UUID.randomUUID().toString().replace("-", "");
+        String jdbcUrl = primaryTestDatabaseUrl(databaseName);
+        createDatabase(databaseName);
+        try {
+            Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("classpath:db/migration").target("20261016.04").load().migrate();
+            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test")) {
+                assertEquals(0, countColumn(connection, "supply_targets", "admin_modified"));
+            }
+
+            var flyway = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("classpath:db/migration").target("20261016.05").load();
+            assertEquals(1, flyway.migrate().migrationsExecuted);
+            assertEquals(0, flyway.migrate().migrationsExecuted);
+            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
+                    Statement statement = connection.createStatement();
+                    ResultSet column = statement.executeQuery("""
+                            SELECT column_default, is_nullable
+                            FROM information_schema.columns
+                            WHERE table_schema = 'public' AND table_name = 'supply_targets'
+                                AND column_name = 'admin_modified'
+                            """)) {
+                assertTrue(column.next());
+                assertEquals("false", column.getString("column_default"));
+                assertEquals("NO", column.getString("is_nullable"));
+            }
+        }
+        finally {
+            dropDatabase(databaseName);
+        }
+    }
+
+    @Test
     void develop_DB에_SH_수집을_추가해도_기존_단건_등록_이력과_제약을_보존한다() throws Exception {
         String databaseName = "toadzip_sh_upgrade_" + UUID.randomUUID().toString().replace("-", "");
         String jdbcUrl = primaryTestDatabaseUrl(databaseName);
@@ -89,7 +123,10 @@ class LocalProfileSchemaPersistenceTest {
 
             var flyway = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
                     .locations("classpath:db/migration").load();
-            assertEquals(9, flyway.migrate().migrationsExecuted);
+            assertEquals(migrationCount() - Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("classpath:db/migration").load().info().applied().length,
+                    flyway.migrate().migrationsExecuted);
+
             assertEquals(0, flyway.migrate().migrationsExecuted);
             try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
                     Statement statement = connection.createStatement()) {
@@ -151,6 +188,7 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertEquals(1, countColumn(connection, "sh_announcement_source", "body_text")),
+                        () -> assertEquals(1, countColumn(connection, "supply_targets", "admin_modified")),
                         () -> assertTrue(history.next()),
                         () -> assertEquals(migrationCount(), history.getInt(1)),
                         () -> assertEquals(1, countColumn(connection,

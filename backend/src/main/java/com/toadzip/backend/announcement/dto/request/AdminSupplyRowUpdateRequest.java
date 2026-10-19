@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.dto.request;
 
 import jakarta.validation.Valid;
+import com.toadzip.backend.admin.dto.AdminDocumentEvidence;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -9,7 +10,8 @@ import jakarta.validation.constraints.Size;
 
 public record AdminSupplyRowUpdateRequest(@NotNull @PositiveOrZero Long version,
         @Positive Long housingComplexId, @Positive Long housingTypeId,
-        @NotNull @Valid SupplyData supplyRow) {
+        @NotNull @Valid SupplyData supplyRow,
+        @Valid AdminDocumentEvidence documentEvidence) {
     public record SupplyData(@NotBlank @Size(max = 255) String sourceComplexName,
             @NotBlank @Size(max = 255) String sourceHousingTypeName,
             @NotBlank @Size(max = 255) String supplyPnu,

@@ -56,11 +56,18 @@ public class SupplyTarget {
     @Column(length = 50)
     private String lhAmountPreservedReason;
 
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminModified;
+
     public void markLhAmountPreserved() {
         markLhAmountPreserved("LH_AMOUNT_NOT_PROVIDED");
     }
 
     public void markLhAmountPreserved(String reason) {
+        if (adminModified) {
+            return;
+        }
         if (sourceSupplyTargetIdentifier != null && sourceSupplyTargetIdentifier.startsWith("LH:")
                 && rentalDeposit != null && monthlyRent != null) {
             lhAmountPreservedReason = reason;
@@ -153,6 +160,9 @@ public class SupplyTarget {
             BigDecimal monthlyRent,
             int displayOrder
     ) {
+        if (adminModified || supplyRow.getAnnouncement().isAdminDeleted()) {
+            return false;
+        }
         SupplyTarget incoming = createFromSource(
                 supplyRow, sourceSupplyTargetIdentifier, target, supplyRank,
                 supplyHouseholdCount, rentalDeposit, monthlyRent, displayOrder
@@ -174,6 +184,22 @@ public class SupplyTarget {
         this.monthlyRent = incoming.monthlyRent;
         this.displayOrder = incoming.displayOrder;
         return true;
+    }
+
+    public void reviseByAdmin(String target, String supplyRank, Integer supplyHouseholdCount, Integer reserveCount,
+            BigDecimal rentalDeposit, BigDecimal monthlyRent, BigDecimal convertedDeposit, String applicationCondition) {
+        SupplyTarget incoming = create(supplyRow, target, supplyRank, supplyHouseholdCount, reserveCount,
+                rentalDeposit, monthlyRent, convertedDeposit, applicationCondition, displayOrder);
+        this.target = incoming.target;
+        this.supplyRank = incoming.supplyRank;
+        this.supplyHouseholdCount = incoming.supplyHouseholdCount;
+        this.reserveCount = incoming.reserveCount;
+        this.rentalDeposit = incoming.rentalDeposit;
+        this.monthlyRent = incoming.monthlyRent;
+        this.convertedDeposit = incoming.convertedDeposit;
+        this.applicationCondition = incoming.applicationCondition;
+        lhAmountPreservedReason = null;
+        adminModified = true;
     }
 
     private void validateRequired(Object value, String fieldName) {

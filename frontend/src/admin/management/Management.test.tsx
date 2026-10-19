@@ -57,7 +57,7 @@ it('삭제는 영향 확인 후 요청하고 복구 동선을 제공한다',asyn
   render(<MemoryRouter initialEntries={['/admin/complexes/7']}><Routes><Route path="/admin/complexes/:id" element={<ManagementDetail resource="complexes" />} /></Routes></MemoryRouter>)
   fireEvent.click(await screen.findByRole('button',{name:'삭제'}))
   expect(screen.getByRole('alertdialog',{name:'삭제 확인'})).toHaveTextContent('연결 공고 0건')
-  expect(mocks.requestManagementApi).not.toHaveBeenCalled()
+  expect(mocks.requestManagementApi.mock.calls.filter(([, method]) => method !== 'GET')).toEqual([])
   mocks.getManagementDetail.mockResolvedValue({...fixture(),summary:{...summary,deleted:true},data:{...fixture().data,version:3}})
   fireEvent.click(screen.getByRole('button',{name:'휴지통으로 이동'}))
   expect(await screen.findByRole('button',{name:'복구'})).toBeVisible()
