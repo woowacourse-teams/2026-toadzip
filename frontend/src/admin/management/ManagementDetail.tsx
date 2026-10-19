@@ -24,7 +24,7 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
   const [sourceMatchesOpen, setSourceMatchesOpen] = useState(false)
   const {id: routeId = ''} = useParams()
   const id = detailId ?? routeId
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const candidate = params.get('returnTo') ?? ''
   const back = candidate === `/admin/${resource}` || candidate.startsWith(`/admin/${resource}?`) ? candidate : `/admin/${resource}`
   const [value, setValue] = useState<ManagementDetailData | null>(null)
@@ -42,7 +42,15 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
   const [notice, setNotice] = useState('')
   const [attempt, setAttempt] = useState(0)
   const requestedSection = params.get('section') ?? ''
-  const [section, setSection] = useState(['info', 'verification', 'schedules', 'relations', 'history', ...(resource === 'announcements' ? ['documents', 'json'] : [])].includes(requestedSection) ? requestedSection : 'info')
+  const sectionKeys = ['info', 'verification', 'schedules', 'relations', 'history', ...(resource === 'announcements' ? ['documents', 'json'] : [])]
+  const knownSection = sectionKeys.includes(requestedSection)
+  const [section, setSection] = useState(knownSection ? requestedSection : 'info')
+  // 주소의 섹션이 바뀌면(뒤로 가기·작업 링크) 해당 탭을 연다. 탭 이동은 아래 openSection이 주소에도 남긴다.
+  useEffect(() => { if (knownSection) setSection(requestedSection) }, [knownSection, requestedSection])
+  function openSection(key: string) {
+    setSection(key); setDirty(false)
+    setParams(current => { const next = new URLSearchParams(current); next.set('section', key); return next }, { replace: true })
+  }
   const formRef = useRef<HTMLFormElement>(null)
   const sections = resource === 'complexes' ? complexSections : announcementSections
   useEffect(() => { onBusyChange?.(busy || verificationBusy || extendedBusy) }, [busy, verificationBusy, extendedBusy, onBusyChange])
@@ -81,7 +89,7 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
         {resource === 'complexes' ? <p>연결 공고 {value.announcements.length}건 · 주택형 {value.housingTypes.length}건. 휴지통에 없는 연결 공고가 있으면 삭제할 수 없습니다.</p> : <p>연결 공급정보 {value.supplyRows.length}건은 함께 보존됩니다.</p>}
         <div className="admin-inline"><button disabled={busy} className="admin-danger" onClick={() => void trash()}>{busy ? '처리 중…' : value.summary.deleted ? '복구 확인' : '휴지통으로 이동'}</button><button disabled={busy} onClick={() => setConfirmation(false)}>취소</button></div></section> : null}
       {!editing || embedded ? <nav className="admin-section-tabs" aria-label="상세 섹션">{[['info','기본정보'], ['verification', '데이터 검증'], ...(resource === 'announcements' ? [['documents', '공고문·첨부파일'], ['json', 'JSON으로 갱신']] : []), ...(embedded && resource === 'announcements' ? [['schedules', '접수 일정']] : []), ['relations',resource === 'complexes' ? '주택형·연결 공고' : '공급정보·단지 연결'], ['history','출처·수정 이력']].map(([key,label]) =>
-        <button data-admin-navigation={section !== key || undefined} disabled={busy || verificationBusy || extendedBusy} key={key} type="button" aria-pressed={section === key} onClick={() => {if (section !== key) {setSection(key);setDirty(false)}}}>{label}</button>)}</nav> : null}
+        <button data-admin-navigation={section !== key || undefined} disabled={busy || verificationBusy || extendedBusy} key={key} type="button" aria-pressed={section === key} onClick={() => {if (section !== key) openSection(key)}}>{label}</button>)}</nav> : null}
       <div className="management-detail-content" role="region" aria-label={`${resource === 'complexes' ? '단지' : '공고'} 상세 내용`} tabIndex={0}>
       {section === 'documents' && resource === 'announcements' ? <AnnouncementDocuments key={id} id={id} detail={value} /> : null}
       {section === 'json' && resource === 'announcements' ? value.summary.deleted ? <p>휴지통의 공고는 복구한 뒤 갱신하세요.</p> : <AnnouncementJsonCorrectionPanel key={id} id={id}
