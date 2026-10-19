@@ -46,6 +46,9 @@ class QualityComparisonIntegrationTest {
     @Autowired private EntityManager entities;
     @Autowired private com.toadzip.backend.admin.quality.repository.QualityComparisonRepository comparisons;
     @Autowired private com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures sourceRows;
+    @Autowired private com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures catalogRows;
+    @Autowired private com.toadzip.backend.ingest.source.repository.IngestSourceQueryRepository rawSources;
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
     @MockitoBean private IngestExecutionOwnershipService ownership;
 
     @BeforeEach
@@ -150,6 +153,135 @@ class QualityComparisonIntegrationTest {
             }
         }
         return count;
+    }
+
+    @Test
+    void LH_카탈로그를_같은_내용으로_재수집하면_단지와_주택형의_연결과_확인_기록이_유지된다() throws Exception {
+        var type = type();
+        long id = type.getHousingComplex().getId();
+        String target = "type:" + type.getId();
+        catalogRow("카탈로그 연결 단지", "10000000");
+        catalogRow("다른 카탈로그 단지", "20000000");
+        String key = catalogKey();
+        var before = detail(id, target);
+        mvc.perform(post(root(id) + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "target", target, "snapshotToken", before.get("snapshotToken").asText(),
+                        "category", "LH_LEASE_CATALOG", "sourceKey", key, "evidenceNote", "주택형 원천 확인"))))
+                .andExpect(status().isOk());
+        String basicPath = "/api/admin/housing-complexes/" + id + "/verification/comparison";
+        var basic = json.readTree(mvc.perform(get(basicPath).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+        mvc.perform(post(basicPath + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "snapshotToken", basic.get("snapshotToken").asText(), "category", "LH_LEASE_CATALOG",
+                        "sourceKey", key, "evidenceNote", "단지 원천 확인")))).andExpect(status().isOk());
+        var linked = detail(id, target);
+        mvc.perform(post(root(id) + "/checks").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "target", target, "snapshotToken", linked.get("snapshotToken").asText(),
+                        "evidenceNote", "재수집 전 원천 확인")))).andExpect(status().isOk());
+        long previousId = linked.at("/sources/0/rows/0/id").asLong();
+
+        // 실제 저장기처럼 전부 삭제·삽입하되 응답 순서와 수집 시각도 바꾼다.
+        catalogRows.deleteAll();
+        catalogRow("다른 카탈로그 단지", "20000000");
+        catalogRow("카탈로그 연결 단지", "10000000");
+        entities.createNativeQuery("UPDATE lh_lease_catalog_source_rows SET collected_at = CURRENT_TIMESTAMP")
+                .executeUpdate();
+
+        var recollected = detail(id, target);
+        assertThat(catalogKey()).isEqualTo(key);
+        assertThat(recollected.at("/sources/0/rows").size()).isEqualTo(1);
+        assertThat(recollected.at("/sources/0/rows/0/id").asLong()).isNotEqualTo(previousId);
+        var base = json.readTree(mvc.perform(get(basicPath).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+        assertThat(base.at("/sources/0/data/raw/deposit_text").asText()).isEqualTo("10000000");
+        assertThat(sourceChanges(id)).isZero();
+
+        entities.createNativeQuery("UPDATE lh_lease_catalog_source_rows SET deposit_text = '11000000' "
+                + "WHERE complex_label = '카탈로그 연결 단지'").executeUpdate();
+        assertThat(catalogKey()).isEqualTo(key);
+        assertThat(sourceChanges(id)).isEqualTo(1);
+        catalogRows.deleteAll();
+        assertThat(detail(id, target).at("/sources/0/rows").isEmpty()).isTrue();
+        assertThat(sourceChanges(id)).isEqualTo(1);
+    }
+
+    @Test
+    void 기존_숫자키와_중복행의_연결을_이관하고_확인_근거와_다른_분류는_보존한다() throws Exception {
+        var type = type();
+        long id = type.getHousingComplex().getId();
+        String target = "type:" + type.getId();
+        var category = com.toadzip.backend.ingest.source.dto.IngestSourceCategory.LH_LEASE_CATALOG;
+        var resource = com.toadzip.backend.admin.quality.domain.QualityResource.COMPLEX;
+        long first = catalogRow("카탈로그 연결 단지", "10000000");
+        long second = catalogRow("카탈로그 연결 단지", "20000000");
+        var expected = new java.util.ArrayList<Map<String, Object>>();
+        for (long rowId : java.util.List.of(first, second)) {
+            String key = rawSources.findById(category, rowId).orElseThrow().sourceKey();
+            assertThat(key).startsWith("lh-lease:");
+            entities.createNativeQuery("""
+                    INSERT INTO complex_comparison_links
+                    (housing_complex_id, category, source_key, evidence_note, actor, linked_at)
+                    VALUES (:id, 'LH_LEASE_CATALOG', :key, '기존 단지 근거', 'original-admin', CURRENT_TIMESTAMP)
+                    """).setParameter("id", id).setParameter("key", Long.toString(rowId)).executeUpdate();
+            comparisons.link(resource, id, target, category, Long.toString(rowId), "기존 주택형 근거", "original-admin");
+            expected.add(Map.of("category", category.name(), "sourceKey", key,
+                    "rows", json.readTree(comparisons.fingerprint(category, key))));
+        }
+        var legacy = json.valueToTree(expected).deepCopy();
+        ((tools.jackson.databind.node.ObjectNode) legacy.get(0)).put("sourceKey", Long.toString(first));
+        ((tools.jackson.databind.node.ObjectNode) legacy.get(1)).put("sourceKey", Long.toString(second));
+        comparisons.check(resource, id, target, json.writeValueAsString(legacy), "{}", "기존 확인 근거", "original-admin");
+        comparisons.link(resource, id, target,
+                com.toadzip.backend.ingest.source.dto.IngestSourceCategory.MYHOME_COMPLEX,
+                Long.toString(first), "다른 분류", "original-admin");
+        comparisons.link(resource, id, target, category, "9223372036854775807", "이미 소실된 원천", "original-admin");
+
+        for (int run = 0; run < 2; run++) {
+            jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+                org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection,
+                        new org.springframework.core.io.ClassPathResource(
+                                "db/migration/V20261019_01__stable_lh_lease_comparison_keys.sql"));
+                return null;
+            });
+        }
+
+        var keys = expected.stream().map(item -> (String) item.get("sourceKey")).toList();
+        assertThat(keys).doesNotHaveDuplicates();
+        assertThat(jdbc.queryForList("SELECT source_key FROM complex_comparison_links WHERE housing_complex_id = ?",
+                String.class, id)).containsExactlyInAnyOrderElementsOf(keys);
+        var links = comparisons.links(resource, id, target);
+        assertThat(links.stream().filter(link -> link.category() == category).map(link -> link.sourceKey()).toList())
+                .containsExactlyInAnyOrder(keys.get(0), keys.get(1), "9223372036854775807");
+        assertThat(links.stream().filter(link -> link.category()
+                == com.toadzip.backend.ingest.source.dto.IngestSourceCategory.MYHOME_COMPLEX).findFirst().orElseThrow()
+                .sourceKey()).isEqualTo(Long.toString(first));
+        assertThat(json.readTree(jdbc.queryForObject("SELECT evidence::text FROM admin_comparison_checks "
+                + "WHERE resource_id = ? AND target = ?", String.class, id, target))).isEqualTo(json.valueToTree(expected));
+        assertThat(jdbc.queryForObject("SELECT evidence_note || ':' || actor FROM admin_comparison_checks "
+                + "WHERE resource_id = ? AND target = ?", String.class, id, target))
+                .isEqualTo("기존 확인 근거:original-admin");
+        catalogRows.deleteAll();
+        catalogRow("카탈로그 연결 단지", "10000000");
+        catalogRow("카탈로그 연결 단지", "20000000");
+        assertThat(sourceChanges(id)).isZero();
+    }
+
+    private long catalogRow(String name, String deposit) {
+        var row = new com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource(0,
+                new com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.projection.LhCatalogSourceSnapshot(
+                        "서울 중구", "행복주택", name, "120", "26.12", "10", deposit, "100000"));
+        row.markCollectedAt(java.time.Instant.parse("2026-10-15T00:00:00Z"));
+        return catalogRows.save(row).getId();
+    }
+
+    private String catalogKey() throws Exception {
+        var response = mvc.perform(get("/api/admin/ingest/sources").param("category", "LH_LEASE_CATALOG")
+                .param("keyword", "카탈로그 연결 단지").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return json.readTree(response).at("/data/items/0/sourceKey").asText();
     }
 
     @Test
