@@ -66,6 +66,6 @@ export function OfficialSourceWorkflow({ onImport, disabled }: { onImport: (list
     {busy ? <button onClick={() => { request.current?.abort(); setBusy(false); setNotice('가져오기를 중지했습니다. 불완전한 목록은 전달하지 않았습니다.') }}>가져오기 중지</button> : null}
     {busy ? <p role="status">요청을 처리하는 중…</p> : null}{error ? <p role="alert">{error}</p> : null}{notice ? <p role="status">{notice}</p> : null}
     {page ? <><p>전체 검색 {page.totalElements}행 중 현재 페이지 {page.items.length}행 · {provider} 자료 {candidates.length}행</p><ul>{candidates.map(row => <li key={`${row.id}:${row.sourceKey}`}>{String(row.raw.hsmp_nm ?? row.raw.complex_name ?? row.name)} · {String(row.raw.rn_adres ?? row.raw.address ?? '주소 미제공')}</li>)}</ul><p className={styles.hint}>전체 가져오기는 페이지 간 중복을 제거하고 변경 여부를 다시 확인합니다. 최대 250쪽이며 초과·중지·오류는 완료로 처리하지 않습니다.</p><div className={styles.links}><button disabled={disabled || busy || page.page === 0} onClick={() => void fetchPage(page.page - 1)}>이전 저장 자료</button><button disabled={disabled || busy || !page.hasNext} onClick={() => void fetchPage(page.page + 1)}>다음 저장 자료</button><button disabled={disabled || busy || !candidates.length} onClick={importPage}>이 페이지를 대조 목록으로 가져오기</button></div></> : null}
-    <p className={styles.hint}>주소가 없는 LH 임대 단지도 가져올 수 있습니다. 다른 기관 홈페이지의 목록은 CSV·표 붙여넣기로 조사하고, 주소를 보완해 다시 대조하세요. 공고 홈페이지 수집은 <Link to="/admin/ingest-v2">공고 수집·검토</Link>에서 지원합니다.</p>
+    <p className={styles.hint}>주소가 없는 LH 임대 단지도 가져올 수 있습니다. 다른 기관 홈페이지의 목록은 CSV·표 붙여넣기로 조사하고, 주소를 보완해 다시 대조하세요. 공고 홈페이지 수집은 <Link to="/admin/ingest">수집·정제</Link>에서 지원합니다.</p>
   </details>
 }

@@ -113,7 +113,7 @@ export function AnnouncementRegistrationV2Page() {
   }
   const disabled = initializing || processing || pipelineBusy
   return <section className={`admin-registration-page ${workspaceStyles.page}`}>
-    <header className="admin-registration-heading"><h1>공고 수집·검토</h1></header>
+    <header className="admin-registration-heading"><h1>수집·정제</h1><p>공고·단지를 수집하고 실행 결과와 실패 항목을 확인합니다. 공고 URL이나 ID로 한 건만 등록할 수도 있습니다.</p></header>
     <div role="tablist" aria-label="수집 대상" className={workspaceStyles.tabs}>
       {(['announcement', 'complex'] as const).map(value => <button key={value} type="button" role="tab"
         id={`ingest-tab-${value}`} aria-selected={domain === value} aria-controls="ingest-domain-panel"

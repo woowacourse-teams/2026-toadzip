@@ -70,6 +70,7 @@ export function DataPipelineControl({ domain, externalBusy = false, onBusyChange
   const [pipelineStates, setPipelineStates] = useState(initialPipelineStates)
   const [stopping, setStopping] = useState<Partial<Record<DataPipelineType, boolean>>>({})
   const [pendingCollection, setPendingCollection] = useState<CollectionType | null>(null)
+  const [qualityOpen, setQualityOpen] = useState(false)
   const pollTimers = useRef<Partial<Record<DataPipelineType, number>>>({})
   const stateGenerations = useRef<Record<DataPipelineType, number>>({
     COMPLEX_COLLECTION: 0,
@@ -385,6 +386,12 @@ export function DataPipelineControl({ domain, externalBusy = false, onBusyChange
       {!compact && domain !== 'complex' && <LhAnnouncementQualityPanel collectionExecution={latestCollectionExecution(
         pipelineStates.ANNOUNCEMENT_SYNC.execution, pipelineStates.ANNOUNCEMENT_COLLECTION.execution,
       )} />}
+      {compact && domain !== 'complex' && <details className={workflow.additional} onToggle={event => setQualityOpen(event.currentTarget.open)}>
+        <summary>LH 데이터 품질·공급 감소 보류 확인</summary>
+        {qualityOpen && <LhAnnouncementQualityPanel collectionExecution={latestCollectionExecution(
+          pipelineStates.ANNOUNCEMENT_SYNC.execution, pipelineStates.ANNOUNCEMENT_COLLECTION.execution,
+        )} />}
+      </details>}
     </section>
   )
 }

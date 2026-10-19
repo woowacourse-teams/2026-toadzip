@@ -5,6 +5,8 @@ import { SupplyRowDraft } from './SupplyRowDraft'
 import { blankRow, type CorrectionRow } from './supplyCorrectionApi'
 import { getManagementDetail, getManagementPage } from '../management/api'
 import type { ManagementDetailData } from '../management/managementContract'
+import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
+vi.mock('../ingest/supplyMatchingApi', () => ({ getMatchingHousingTypes: vi.fn() }))
 vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(), getManagementDetail: vi.fn(), getManagementPage: vi.fn() }))
 const summary = { id: 7, name: '새 단지', subtitle: '서울', provider: 'LH', rental: 'HAPPY_HOUSING', deleted: false, modified: false, reviewRequired: false, updatedAt: null }
 const detail: ManagementDetailData = { summary, sourceIdentifier: 'source', data: { address: { pnu: '1114010100100010000' } }, housingTypes: [{ id: 9, name: '26', exclusiveArea: 26.5195, householdCount: null }], announcements: [], supplyRows: [], schedules: [], scheduleReviewed: false }
@@ -14,6 +16,7 @@ function Editor() {
 }
 beforeEach(() => {
   vi.resetAllMocks(); vi.mocked(getManagementDetail).mockResolvedValue(detail)
+  vi.mocked(getMatchingHousingTypes).mockResolvedValue([{ id: 9, name: '26', exclusiveArea: 26.5195, supplyArea: 40, householdCount: 200 }])
   vi.mocked(getManagementPage).mockResolvedValue({ page: 0, hasNext: false, totalElements: 1, totalPages: 1, items: [summary] })
 })
 it('다른 단지를 선택하면 이전 주택형을 해제하고 확인된 단지 지번을 사용한다', async () => {
@@ -23,6 +26,9 @@ it('다른 단지를 선택하면 이전 주택형을 해제하고 확인된 단
   await screen.findByRole('option', { name: '26 · 전용 26.5195㎡ · #9' })
   expect(screen.getByLabelText('공통 주택형')).toHaveValue('')
   expect(screen.getByLabelText('공급 PNU')).toHaveValue('1114010100100010000')
+  fireEvent.change(screen.getByLabelText('공통 주택형'), { target: { value: '9' } })
+  expect(screen.getByRole('region', { name: '연결 후보 비교' })).toHaveTextContent('26.5195')
+  expect(screen.getByRole('table', { name: '공고 입력값과 선택한 공통 주택형' })).toHaveTextContent('26A')
   fireEvent.change(screen.getByLabelText('공통 주택형'), { target: { value: 'new' } })
   expect(screen.getByLabelText('새 공통 주택형 이름')).toHaveValue('26A')
 })

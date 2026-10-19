@@ -501,6 +501,7 @@ public class LhAnnouncementEnrichmentWriter {
             List<AnnouncementSchedule> storedSchedules, Set<String> retained, Set<String> replacedPanIds
     ) {
         return storedSchedules.stream()
+                .filter(schedule -> !schedule.isAdminModified())
                 .filter(schedule -> lhSourceForAnyPan(schedule.getSourceScheduleIdentifier(), replacedPanIds))
                 .filter(schedule -> !retained.contains(schedule.getSourceScheduleIdentifier()))
                 .toList();
@@ -510,6 +511,7 @@ public class LhAnnouncementEnrichmentWriter {
             List<AnnouncementAttachment> storedAttachments, Set<String> retained, Set<String> replacedPanIds
     ) {
         return storedAttachments.stream()
+                .filter(attachment -> !attachment.isAdminModified())
                 .filter(attachment -> lhSourceForAnyPan(attachment.getSourceAttachmentIdentifier(), replacedPanIds))
                 .filter(attachment -> !retained.contains(attachment.getSourceAttachmentIdentifier()))
                 .toList();

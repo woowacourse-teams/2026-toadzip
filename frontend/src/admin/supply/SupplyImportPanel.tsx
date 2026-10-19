@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { SupplyImportGuide } from './SupplyImportGuide'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import type { CorrectionRow } from './supplyCorrectionApi'
 import { mergeSupplyImport, parseSupplyImport, type ImportedSupply } from './supplyImport'
@@ -9,8 +10,7 @@ export function SupplyImportPanel({ rows, disabled, onMerge, onDirtyChange }: { 
   useEffect(() => { onDirtyChange(text.length > 0); return () => onDirtyChange(false) }, [text, onDirtyChange])
   return <details className={styles.row}><summary>구조화한 공급정보를 변경안으로 가져오기</summary><fieldset className={styles.rowBody} disabled={disabled}><legend className={styles.srOnly}>공급정보 가져오기</legend>
     <p>공식 자료에서 작성한 행마다 기존 공급행 또는 새 행을 직접 선택하세요. 생략한 값·행·조건은 유지하며, 가져온 뒤 일반 변경 미리보기와 근거 확인을 거칩니다.</p>
-    <details><summary>입력 형식과 단위</summary><pre>{JSON.stringify({ areaUnit: 'm2', moneyUnit: 'KRW', rows: [{ typeName: '26A', exclusiveArea: 26.4673, householdCount: null, targets: [{ target: '일반', householdCount: 0, deposit: '10000000', rent: null }] }] }, null, 2)}</pre>
-      <p>면적은 ㎡, 금액은 원 단위 숫자 문자열입니다. null은 미확인으로 변경하며, 항목 생략은 기존값 유지입니다. 조건에 기존 id를 지정하면 해당 조건만 수정하고, id가 없으면 새 조건을 추가합니다. 이름만으로 자동 대응하지 않습니다.</p></details>
+    <SupplyImportGuide rows={rows} />
     <label>공급정보 JSON<textarea rows={7} value={text} onChange={event => { setText(event.target.value); setInput(null); setError('') }} /></label>
     <button type="button" disabled={!text.trim()} onClick={() => { try { const value = parseSupplyImport(text); setInput(value); setDestinations(value.rows.map(() => '')); setError('') } catch (cause) { setError(cause instanceof Error ? cause.message : '입력 형식을 확인하세요.') } }}>입력행 확인</button>
     {input && <><ol>{input.rows.map((row, index) => <li key={index}><label>입력 {index + 1}의 적용 대상<select value={destinations[index]} onChange={event => setDestinations(current => current.map((value, i) => i === index ? event.target.value : value))}>

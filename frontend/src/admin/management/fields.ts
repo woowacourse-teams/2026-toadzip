@@ -1,5 +1,6 @@
 import { type JsonValue, type ManagementValues } from './managementContract'
 export const labels: Record<string, string> = {
+  UPDATE_FROM_JSON: 'JSON으로 공고 갱신',
   CORRECT_SUPPLY: '공급정보 일괄 보정', REVIEW_SUPPLY: '공급정보 범위 검토',
   SAVE_SUPPLY_MATCH: '원천 매칭 선택 저장', RELEASE_SUPPLY_MATCH: '원천 매칭 선택 해제',
   SPLIT_SUPPLY: '원천별 공급행 나누기', PROCESS_FEEDBACK: '사용자 의견 처리',

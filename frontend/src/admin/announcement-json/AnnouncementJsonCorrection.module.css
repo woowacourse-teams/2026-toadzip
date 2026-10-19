@@ -1,0 +1,17 @@
+.panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--ds-space-5); min-width: 0; }
+.panel header, .input { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--ds-space-3); min-width: 0; }
+.input > * { min-width: 0; }
+.panel header p { overflow-wrap: anywhere; }
+.panel fieldset { min-width: 0; }
+.input { padding: var(--ds-space-4); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); }
+.input label { display: grid; gap: var(--ds-space-2); min-width: 0; }
+.input input:not([type=checkbox]), .input select, .input textarea { box-sizing: border-box; width: 100%; min-width: 0; padding: var(--ds-space-2); font: inherit; }
+.input textarea { resize: vertical; }
+.input button { justify-self: start; }
+.input details { padding-block: var(--ds-space-3); border-bottom: 1px solid var(--ds-color-divider); }
+.input summary { cursor: pointer; overflow-wrap: anywhere; }
+.tableScroll { overflow-x: auto; min-width: 0; }
+.tableScroll table { width: 100%; border-collapse: collapse; }
+.tableScroll th, .tableScroll td { padding: var(--ds-space-3); text-align: left; vertical-align: top; border-bottom: 1px solid var(--ds-color-divider); overflow-wrap: anywhere; }
+.tableScroll small { display: block; color: var(--ds-color-muted); }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-3); }

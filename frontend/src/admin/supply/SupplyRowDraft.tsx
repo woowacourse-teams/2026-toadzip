@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { labels } from '../management/fields'
 import { ComplexPicker } from '../management/ComplexPicker'
 import { getManagementDetail } from '../management/api'
-import type { ManagementHousingType } from '../management/managementContract'
+import { isRecord, type ManagementDetailData } from '../management/managementContract'
+import { getMatchingHousingTypes, type MatchingHousingType } from '../ingest/supplyMatchingApi'
 import { blankTarget, type CorrectionRow } from './supplyCorrectionApi'
 import { SupplyTargetDraft } from './SupplyTargetDraft'
 import styles from './SupplyCorrection.module.css'
@@ -10,32 +12,36 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last 
   value: CorrectionRow; onChange: (value: CorrectionRow) => void; onRemove: () => void;
   onMove: (delta: number) => void; first: boolean; last: boolean
 }) {
-  const [types, setTypes] = useState<ManagementHousingType[]>([])
+  const [types, setTypes] = useState<MatchingHousingType[]>([])
+  const [candidateComplex, setCandidateComplex] = useState<ManagementDetailData | null>(null)
   const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
   const [lookup, setLookup] = useState(false)
   const request = useRef<AbortController | null>(null)
   const complexId = value.housingComplexId
+  const selectedType = value.newHousingType ?? types.find(type => type.id === value.housingTypeId)
+  const address = candidateComplex?.data.address
+  const candidatePnu = isRecord(address) && typeof address.pnu === 'string' ? address.pnu : null
   useEffect(() => {
-    if (!complexId || !lookup) return
+    if (!complexId || !lookup || candidateComplex?.summary.id === complexId) return
     const controller = new AbortController(); request.current = controller; setLoading(true); setError('')
-    void getManagementDetail('complexes', String(complexId), controller.signal).then(result => {
-      if (!controller.signal.aborted) setTypes(result.housingTypes)
+    void Promise.all([getManagementDetail('complexes', String(complexId), controller.signal), getMatchingHousingTypes(complexId, controller.signal)]).then(([detail, candidates]) => {
+      if (!controller.signal.aborted) { setTypes(candidates); setCandidateComplex(detail) }
     }).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '주택형을 조회하지 못했습니다.') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [complexId, lookup])
+  }, [complexId, lookup, candidateComplex])
   function field<K extends keyof CorrectionRow>(key: K, next: CorrectionRow[K]) { onChange({ ...value, [key]: next }) }
   async function chooseComplex(id: number, name: string) {
     request.current?.abort(); const controller = new AbortController(); request.current = controller
     setLoading(true); setError('')
     try {
-      const detail = await getManagementDetail('complexes', String(id), controller.signal)
+      const [detail, candidates] = await Promise.all([getManagementDetail('complexes', String(id), controller.signal), getMatchingHousingTypes(id, controller.signal)])
       if (controller.signal.aborted) return
       const address = detail.data.address
       const pnu = address && typeof address === 'object' && !Array.isArray(address) ? address.pnu : null
       onChange({ ...value, housingComplexId: id, housingComplexName: name, housingTypeId: null, newHousingType: null,
         complexName: value.complexName || name, pnu: typeof pnu === 'string' ? pnu : value.pnu })
-      setTypes(detail.housingTypes); setLookup(true)
+      setTypes(candidates); setCandidateComplex(detail); setLookup(true)
     } catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '단지를 조회하지 못했습니다.') }
     finally { if (!controller.signal.aborted) setLoading(false) }
   }
@@ -63,6 +69,17 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last 
           <label>새 공통 공급면적 (㎡)<input type="number" min="0" step="0.0001" value={value.newHousingType.supplyArea ?? ''} onChange={event => field('newHousingType', { ...value.newHousingType!, supplyArea: event.target.value === '' ? null : Number(event.target.value) })} /></label>
           <p>공통 주택형 생성과 이 행의 연결을 함께 적용합니다. 기존 공통 주택형은 변경하지 않습니다.</p>
         </div>}
+        {lookup && candidateComplex && <section aria-label="연결 후보 비교">
+          <p>선택 단지: {candidateComplex.summary.name} · {candidateComplex.summary.subtitle} · {labels[candidateComplex.summary.rental] ?? candidateComplex.summary.rental}</p>
+          <p>공고 공급 주소 식별자: {value.pnu || '미확인'} / 단지 주소 식별자: {candidatePnu ?? '미확인'}</p>
+          {selectedType && <div className="admin-table-scroll"><table className="admin-table"><caption>공고 입력값과 선택한 공통 주택형</caption>
+            <thead><tr><th scope="col">비교 항목</th><th scope="col">공고 입력값</th><th scope="col">선택한 공통 주택형</th></tr></thead><tbody>
+              <tr><th scope="row">주택형명</th><td>{value.typeName}</td><td>{selectedType.name}</td></tr>
+              <tr><th scope="row">전용면적 (㎡)</th><td>{value.exclusiveArea ?? '미확인'}</td><td>{selectedType.exclusiveArea}</td></tr>
+              <tr><th scope="row">공급면적 (㎡)</th><td>{value.supplyArea ?? '미확인'}</td><td>{selectedType.supplyArea ?? '미확인'}</td></tr>
+            </tbody></table></div>}
+          <p>이름·주소·면적은 비교 근거입니다. 같은 이름도 별개 주택형일 수 있으므로 공식 원문으로 대응을 확인하세요. 공고 모집수와 주택형 전체 세대수는 다른 범위입니다.</p>
+        </section>}
       </fieldset>
       {error && <p role="alert">{error}</p>}
       {value.groupId && <p>공통 모집수 {value.sharedHouseholdCount ?? '미확정'}세대는 묶음에 한 번만 보관합니다. 단지·공통 모집수 변경은 위의 ‘원천별 공급행 보정’에서 처리하세요.</p>}

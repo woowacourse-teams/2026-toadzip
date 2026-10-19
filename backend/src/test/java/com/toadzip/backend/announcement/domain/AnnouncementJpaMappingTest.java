@@ -100,14 +100,14 @@ class AnnouncementJpaMappingTest {
                 "AnnouncementSchedule",
                 Set.of(
                         "id", "announcement", "scheduleType", "name", "startAt", "endAt", "displayOrder",
-                        "sourceScheduleIdentifier", "complexName"
+                        "sourceScheduleIdentifier", "complexName", "adminModified"
                 )
         );
         assertEntityAttributes(
                 "AnnouncementAttachment",
                 Set.of(
                         "id", "announcement", "fileName", "fileType", "fileUrl", "displayOrder",
-                        "sourceAttachmentIdentifier"
+                        "sourceAttachmentIdentifier", "adminModified"
                 )
         );
         assertEmbeddableAttributes(

@@ -266,10 +266,12 @@ public class MyHomeAnnouncementMappingWriter {
 
     private void deleteLhEnrichment(Announcement announcement) {
         List<AnnouncementSchedule> schedules = scheduleRepository.findAllByAnnouncement(announcement).stream()
+                .filter(schedule -> !schedule.isAdminModified())
                 .filter(schedule -> isLhSource(schedule.getSourceScheduleIdentifier()))
                 .toList();
         scheduleRepository.deleteAll(schedules);
         List<AnnouncementAttachment> attachments = attachmentRepository.findAllByAnnouncement(announcement).stream()
+                .filter(attachment -> !attachment.isAdminModified())
                 .filter(attachment -> isLhSource(attachment.getSourceAttachmentIdentifier()))
                 .toList();
         attachmentRepository.deleteAll(attachments);

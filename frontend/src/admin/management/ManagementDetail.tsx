@@ -18,6 +18,7 @@ import { AddressPicker } from '../registration/AddressPicker'
 import { AnnouncementDocuments } from './AnnouncementDocuments'
 import { ComplexComparisonEditor } from './ComplexComparisonEditor'
 import { QualityComparisonPanel } from '../quality/QualityComparisonPanel'
+import { AnnouncementJsonCorrectionPanel } from '../announcement-json/AnnouncementJsonCorrectionPanel'
 
 export function ManagementDetail({resource, embedded = false, detailId, onChanged, onBusyChange}: {resource:ManagementResource; embedded?: boolean; detailId?: string; onChanged?: () => void; onBusyChange?: (busy: boolean) => void}) {
   const [sourceMatchesOpen, setSourceMatchesOpen] = useState(false)
@@ -41,7 +42,7 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
   const [notice, setNotice] = useState('')
   const [attempt, setAttempt] = useState(0)
   const requestedSection = params.get('section') ?? ''
-  const [section, setSection] = useState(['info', 'verification', 'schedules', 'relations', 'history', ...(resource === 'announcements' ? ['documents'] : [])].includes(requestedSection) ? requestedSection : 'info')
+  const [section, setSection] = useState(['info', 'verification', 'schedules', 'relations', 'history', ...(resource === 'announcements' ? ['documents', 'json'] : [])].includes(requestedSection) ? requestedSection : 'info')
   const formRef = useRef<HTMLFormElement>(null)
   const sections = resource === 'complexes' ? complexSections : announcementSections
   useEffect(() => { onBusyChange?.(busy || verificationBusy || extendedBusy) }, [busy, verificationBusy, extendedBusy, onBusyChange])
@@ -71,18 +72,21 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
     {notice ? <p className="registration-success" role="status">{notice}</p> : null}
     {value ? <><header className="management-heading"><div>{embedded ? <h2>{value.summary.name}</h2> : <h1>{value.summary.name}</h1>}<div className="management-summary-meta"><p>{value.summary.subtitle}</p><ManagementStatus summary={value.summary} />
       {resource === 'complexes' && section !== 'verification' && value.summary.complex?.verificationStatus ? <ComplexVerificationBadge status={value.summary.complex.verificationStatus} count={value.summary.complex.reviewedFieldCount} /> : null}</div></div>
-      {!editing || embedded ? <div className="admin-inline">{!value.summary.deleted && !editing ? <button type="button" data-admin-navigation disabled={busy || verificationBusy} className="admin-primary" onClick={() => {setEditing(true);setSection('info');setError('');setNotice('')}}>수정</button> : null}
-        <button type="button" data-admin-navigation disabled={busy || verificationBusy || dirty} className={value.summary.deleted ? '' : 'admin-danger'} onClick={() => setConfirmation(true)}>{value.summary.deleted ? '복구' : '삭제'}</button></div> : null}</header>
+      {!editing || embedded ? <div className="admin-inline">{!value.summary.deleted && !editing ? <button type="button" data-admin-navigation disabled={busy || verificationBusy || extendedBusy} className="admin-primary" onClick={() => {setEditing(true);setSection('info');setError('');setNotice('')}}>수정</button> : null}
+        <button type="button" data-admin-navigation disabled={busy || verificationBusy || extendedBusy || dirty} className={value.summary.deleted ? '' : 'admin-danger'} onClick={() => setConfirmation(true)}>{value.summary.deleted ? '복구' : '삭제'}</button></div> : null}</header>
       {value.summary.reviewRequired ? <p className="admin-warning">수집 원천과 관리자 수정값이 다릅니다. 공식 원문을 확인한 뒤 필요한 내용을 수정해 주세요. 저장한 관리자 값은 자동 정제로 덮어쓰지 않습니다.</p> : null}
       {confirmation ? <section className="admin-confirm" role="alertdialog" aria-label={value.summary.deleted ? '복구 확인' : '삭제 확인'}>
         <h2>{value.summary.deleted ? '복구할까요?' : '휴지통으로 이동할까요?'}</h2><p><strong>{value.summary.name}</strong></p>
         <p>{value.summary.deleted ? '다시 서비스 조회 대상이 됩니다.' : '서비스 검색·상세에서 제외됩니다. 원천과 수정 이력은 유지되며 다시 복구할 수 있습니다.'}</p>
         {resource === 'complexes' ? <p>연결 공고 {value.announcements.length}건 · 주택형 {value.housingTypes.length}건. 휴지통에 없는 연결 공고가 있으면 삭제할 수 없습니다.</p> : <p>연결 공급정보 {value.supplyRows.length}건은 함께 보존됩니다.</p>}
         <div className="admin-inline"><button disabled={busy} className="admin-danger" onClick={() => void trash()}>{busy ? '처리 중…' : value.summary.deleted ? '복구 확인' : '휴지통으로 이동'}</button><button disabled={busy} onClick={() => setConfirmation(false)}>취소</button></div></section> : null}
-      {!editing || embedded ? <nav className="admin-section-tabs" aria-label="상세 섹션">{[['info','기본정보'], ['verification', '데이터 검증'], ...(resource === 'announcements' ? [['documents', '공고문·첨부파일']] : []), ...(embedded && resource === 'announcements' ? [['schedules', '접수 일정']] : []), ['relations',resource === 'complexes' ? '주택형·연결 공고' : '공급정보·단지 연결'], ['history','출처·수정 이력']].map(([key,label]) =>
-        <button data-admin-navigation={section !== key || undefined} disabled={busy || verificationBusy} key={key} type="button" aria-pressed={section === key} onClick={() => {if (section !== key) {setSection(key);setDirty(false)}}}>{label}</button>)}</nav> : null}
+      {!editing || embedded ? <nav className="admin-section-tabs" aria-label="상세 섹션">{[['info','기본정보'], ['verification', '데이터 검증'], ...(resource === 'announcements' ? [['documents', '공고문·첨부파일'], ['json', 'JSON으로 갱신']] : []), ...(embedded && resource === 'announcements' ? [['schedules', '접수 일정']] : []), ['relations',resource === 'complexes' ? '주택형·연결 공고' : '공급정보·단지 연결'], ['history','출처·수정 이력']].map(([key,label]) =>
+        <button data-admin-navigation={section !== key || undefined} disabled={busy || verificationBusy || extendedBusy} key={key} type="button" aria-pressed={section === key} onClick={() => {if (section !== key) {setSection(key);setDirty(false)}}}>{label}</button>)}</nav> : null}
       <div className="management-detail-content" role="region" aria-label={`${resource === 'complexes' ? '단지' : '공고'} 상세 내용`} tabIndex={0}>
       {section === 'documents' && resource === 'announcements' ? <AnnouncementDocuments key={id} id={id} detail={value} /> : null}
+      {section === 'json' && resource === 'announcements' ? value.summary.deleted ? <p>휴지통의 공고는 복구한 뒤 갱신하세요.</p> : <AnnouncementJsonCorrectionPanel key={id} id={id}
+        onBusyChange={setExtendedBusy} onDirtyChange={setExtendedDirty}
+        onChanged={() => { void getManagementDetail(resource, id).then(saved).catch(cause => setError(String(cause))) }} /> : null}
       {section === 'verification' && (!editing || embedded) && resource === 'complexes' ? <>
         {reviewDirty ? <p className="admin-warning">작성 중인 검토 기록을 저장하거나 취소한 뒤 값을 수정할 수 있습니다.</p> : null}
         <fieldset className="admin-verification-group" disabled={reviewDirty || extendedDirty}>

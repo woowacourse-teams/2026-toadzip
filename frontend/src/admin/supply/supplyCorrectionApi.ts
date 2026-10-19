@@ -49,7 +49,7 @@ function row(value: unknown): CorrectionRow {
     || !area(value.newHousingType.supplyArea))) invalid()
   return { ...value, targets: value.targets.map(target) } as CorrectionRow
 }
-function workspace(value: unknown): SupplyWorkspace {
+export function parseSupplyWorkspace(value: unknown): SupplyWorkspace {
   if (!isRecord(value) || typeof value.snapshotToken !== 'string' || !count(value.version)
     || !Array.isArray(value.rows) || !Array.isArray(value.sources)) invalid()
   for (const source of value.sources) {
@@ -61,7 +61,7 @@ function workspace(value: unknown): SupplyWorkspace {
 }
 const path = (id: string) => `/api/admin/announcements/${encodeURIComponent(id)}/supply-corrections`
 export async function loadSupplyWorkspace(id: string, signal?: AbortSignal): Promise<SupplyWorkspace> {
-  return workspace(await requestManagementApi(path(id), 'GET', undefined, signal))
+  return parseSupplyWorkspace(await requestManagementApi(path(id), 'GET', undefined, signal))
 }
 export async function previewSupply(id: string, input: SupplyCorrectionInput): Promise<SupplyPreview> {
   return parseSupplyPreview(await requestManagementApi(`${path(id)}/preview`, 'POST', input))
@@ -74,7 +74,7 @@ export function parseSupplyPreview(value: unknown): SupplyPreview {
 export async function applySupply(id: string, correction: SupplyCorrectionInput, confirmationToken: string): Promise<SupplyApplied> {
   const value = await requestManagementApi(path(id), 'POST', { correction, confirmationToken })
   if (!isRecord(value) || !count(value.changeId) || typeof value.alreadyApplied !== 'boolean') invalid()
-  return { changeId: value.changeId, alreadyApplied: value.alreadyApplied, workspace: workspace(value.workspace) }
+  return { changeId: value.changeId, alreadyApplied: value.alreadyApplied, workspace: parseSupplyWorkspace(value.workspace) }
 }
 export function blankTarget(order: number): CorrectionTarget {
   return { id: null, key: crypto.randomUUID(), excluded: false, protectedValues: false, displayOrder: order,

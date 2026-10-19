@@ -5,7 +5,6 @@ import { Link, Navigate, Route, Routes, matchRoutes, useLocation } from 'react-r
 import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
 import { LocationDataPage } from './admin/ingest/LocationDataPage'
 import { ManagementWorkspace } from './admin/management/ManagementWorkspace'
-import { AdminHome } from './admin/auth/AdminHome'
 import { AdminLayout } from './admin/auth/AdminLayout'
 import { LoginPage } from './admin/auth/LoginPage'
 import { RequireAdmin } from './admin/auth/RequireAdmin'
@@ -68,6 +67,11 @@ function LegacyLoginRedirect() {
   return <Navigate to={{ pathname: '/explore', search: `?${params}`, hash }} replace />
 }
 
+function LegacyIngestRedirect() {
+  const { search, hash } = useLocation()
+  return <Navigate to={{ pathname: '/admin/ingest', search, hash }} replace />
+}
+
 function AdminRoutes() {
   return (
     <AdminAuthProvider>
@@ -77,8 +81,8 @@ function AdminRoutes() {
           <Route element={<AdminLayout />}>
             <Route index element={<Navigate to="operations" replace />} />
             <Route path="operations" element={<OperationsHome />} />
-            <Route path="ingest" element={<AdminHome />} />
-            <Route path="ingest-v2" element={<AnnouncementRegistrationV2Page />} />
+            <Route path="ingest" element={<AnnouncementRegistrationV2Page />} />
+            <Route path="ingest-v2" element={<LegacyIngestRedirect />} />
             <Route path="complexes/:id?" element={<ManagementWorkspace resource="complexes" />} />
             <Route path="announcements/:id?" element={<ManagementWorkspace resource="announcements" />} />
             <Route path="complex-coverage" element={<ComplexCoveragePage />} />

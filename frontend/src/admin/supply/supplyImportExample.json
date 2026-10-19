@@ -1,0 +1,28 @@
+{
+  "areaUnit": "m2",
+  "moneyUnit": "KRW",
+  "rows": [
+    {
+      "complexName": "두꺼비 행복주택",
+      "typeName": "36A",
+      "pnu": "1114010100100010000",
+      "category": "NEW_SUPPLY",
+      "moveInMonth": "2027-03",
+      "householdCount": 20,
+      "exclusiveArea": 36.5,
+      "supplyArea": null,
+      "targets": [
+        {
+          "target": "청년",
+          "supplyRank": "1순위",
+          "householdCount": 10,
+          "reserveCount": 5,
+          "deposit": "10000000",
+          "rent": "200000",
+          "convertedDeposit": null,
+          "condition": "공고문 참조"
+        }
+      ]
+    }
+  ]
+}

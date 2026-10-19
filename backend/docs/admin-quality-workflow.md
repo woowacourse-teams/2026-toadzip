@@ -7,7 +7,8 @@
 
 ## 검토 목록
 
-- `GET /api/admin/quality/queue`: `resource`, `reason`, `keyword`, `page`, `size` 필터.
+- `GET /api/admin/quality/queue`: `resource`, `reason`, `keyword`, `sourceIdentifier`, `announcementId`, `complexId`, `provider`, `applicationStatus`, `page`, `size` 필터.
+- 원천 식별자는 정확히 일치하는 마이홈 식별자 또는 LH PAN ID다. 단지 ID는 해당 단지 및 제외되지 않은 공급행으로 연결된 공고를 찾는다. 모집상태는 확인한 일정을 우선하고 취소공고를 구분한다.
 - 전체 DB에서 필터링·정렬한 뒤 페이지를 반환한다. 휴지통은 제외한다.
 - 사유: 정보 누락, 수집값 불일치, 확인값 변경, 미검토, 보류, 원천 변경·소실.
 - 0·false는 누락이 아니다. 공고의 미확인 접수 일정과 단지·주택형 연결 누락도 표시한다.
@@ -60,3 +61,13 @@ PDF 업로드·보관과 공유 초안 API는 제공하지 않는다. 로컬 폴
 - 주요 검증: `SupplyCorrectionIntegrationTest`, `AnnouncementSupplyMatchingIntegrationTest`, `SupplySourceOwnershipMigrationTest`, `LocalProfileSchemaPersistenceTest`.
 
 조건부 자동 되돌리기, 전체 보호 해제와 원천값 채택, 일반적인 공급행 합치기·조건 이동 API는 아직 없다.
+
+## 공고 전체 JSON 선택 갱신
+
+- GET `/api/admin/announcements/{id}/json-corrections`: 공고 상세·공급 작업실·일반 일정과 전체 `snapshotToken`을 반환한다.
+- POST `/preview`: `{snapshotToken, document, fields, schedules, attachments, correction}`. `document`는 신규 등록과 같은 `admin-announcement-import/v1`이다. `fields`에는 적용할 기본정보·접수처 필드명을, 일정·첨부에는 `{inputIndex, existingId}`를 넣는다. `existingId: null`은 추가이며 기존 ID는 현재 공고 소속이어야 한다. `correction`은 기존 공급 보정 요청 계약이다.
+- POST: `{request, confirmationToken}`. 관리자 인증·CSRF·수집 소유권과 공고 잠금 아래 동일 미리보기를 재검증하고 모든 변경과 `UPDATE_FROM_JSON` 이력을 한 트랜잭션으로 저장한다.
+- 미확인·null 기본값과 확인되지 않은 일정·첨부는 선택 적용을 거절한다. 선택하지 않은 값과 하위 항목은 유지하며 생략으로 삭제하지 않는다. 기존 ID·원천 식별자·확인된 접수 일정은 유지한다. 신규 알림은 만들지 않는다.
+- 전체 스냅샷과 미리보기 토큰에 공급 보정의 후보 검증 토큰까지 포함한다. 동시 변경·이미 적용한 요청은 409다. 저장 응답이 불분명하면 최신 작업실을 조회한 뒤 다시 비교하며 자동 재적용하지 않는다.
+- 일반 일정·첨부의 `admin_modified`는 `V20261019_09`에서 추가한다. 관리자 보정 행은 이후 원천값 덮어쓰기와 오래된 원천 행 정리에서 보호한다.
+- 입력 형식과 운영 절차: [공고 JSON 가져오기](../../docs/ADMIN_ANNOUNCEMENT_IMPORT.md). 주요 검증: `AnnouncementJsonCorrectionIntegrationTest`, `AnnouncementJsonCorrectionRollbackIntegrationTest`, `AnnouncementChildProtectionMigrationTest`, `VerifiedAnnouncementEnrichmentIntegrationTest`.

@@ -170,7 +170,7 @@ it('저장 중 편집을 닫은 뒤 도착한 등록 응답은 편집 화면을 
 
 it('추가 화면도 조회 표를 유지하고 JSON 및 직접 입력을 제공한다', async () => {
   renderPage('/admin/announcements/new?keyword=행복')
-  expect(await screen.findByRole('table')).toBeVisible()
+  expect(await screen.findByRole('table', { name: '정제 공고 목록' })).toBeVisible()
   expect(screen.getByRole('heading', { name: '공고 관리', level: 1 })).toBeVisible()
   const editor = screen.getByRole('region', { name: '공고 추가' })
   expect(within(editor).getByRole('heading', { name: 'JSON 가져오기' })).toBeVisible()

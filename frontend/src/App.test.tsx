@@ -181,6 +181,14 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: '수집·정제', level: 1 })).toBeVisible()
   })
 
+  it('기존 수집 v2 주소의 단지 탭을 통합 수집 화면으로 연결한다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
+    render(<MemoryRouter initialEntries={['/admin/ingest-v2?domain=complex']}><App /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: '수집·정제', level: 1 })).toBeVisible()
+    expect(screen.getByRole('tab', { name: '단지' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByRole('link', { name: '공고 수집·검토' })).not.toBeInTheDocument()
+  })
+
   it('공고 입력 URL로 직접 들어와도 지정한 방식만 연다', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
     render(<MemoryRouter initialEntries={['/admin/announcements/new?mode=direct']}><App /></MemoryRouter>)

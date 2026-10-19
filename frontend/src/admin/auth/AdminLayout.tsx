@@ -7,7 +7,7 @@ import { FailureReturnLink } from '../ingest/FailureReturnLink'
 
 const workLinks = [['/admin/operations', '운영 홈', 'review'], ['/admin/quality', '검토할 데이터', 'review'], ['/admin/complexes', '단지 관리', 'building'],
   ['/admin/announcements', '공고 관리', 'document'], ['/admin/complex-coverage', '단지 누락 대조', 'search']] as const
-const sourceLinks = [['/admin/ingest', '수집·정제'], ['/admin/ingest-v2', '공고 수집·검토'],
+const sourceLinks = [['/admin/ingest', '수집·정제'],
   ['/admin/sources', '원천 데이터'], ['/admin/failures', '실패·검토 항목'], ['/admin/locations', '주소 데이터']] as const
 const memberLinks = [['/admin/users', '회원 관리'], ['/admin/notification-subscriptions', '알림 신청 관리'], ['/admin/notification-deliveries', '알림 발송 기록'], ['/admin/feedback', '사용자 의견']] as const
 function MenuIcon({ kind }: { kind: string }) {

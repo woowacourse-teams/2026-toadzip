@@ -40,6 +40,10 @@
 .queueFilters .searchField { flex:1; min-width:190px; }
 .queueFilters input,.queueFilters select { min-height:44px; font-size:13px; }
 .queueFilters button { min-height:44px; }
+.detailedFilters { flex-basis:100%; font-size:var(--ds-text-caption); color:var(--ds-color-muted); }
+.detailedFilters summary { cursor:pointer; padding-block:var(--ds-space-2); }
+.detailedFilters>div { display:flex; flex-wrap:wrap; gap:var(--ds-space-3); margin-block:var(--ds-space-3); }
+.detailedFilters>div>label { flex:1 1 160px; }
 .resultHeading { display:flex!important; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:22px 24px; }
 .resultHeading h2 { font-size:15px; }
 .resultHeading h2 span { margin-left:8px; color:var(--ds-color-action); font-variant-numeric:tabular-nums; }

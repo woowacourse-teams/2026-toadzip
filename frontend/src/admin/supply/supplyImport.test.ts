@@ -17,3 +17,11 @@ it('단위 누락과 중복 대응 및 다른 행의 조건 ID를 거절한다',
 it.each([0, -1, 1.5])('유효하지 않은 조건 ID %s를 새 조건으로 처리하지 않는다', id => {
   expect(() => mergeSupplyImport([row], { rows: [{ targets: [{ id }] }] }, ['row:1'])).toThrow('ID가 잘못')
 })
+
+it('화면의 전체 예제를 새 공급행으로 가져오며 금액과 미확인 면적을 보존한다', async () => {
+  const { default: example } = await import('./supplyImportExample.json')
+  const result = mergeSupplyImport([], parseSupplyImport(JSON.stringify(example)), ['new'])
+  expect(result).toHaveLength(1)
+  expect(result[0]).toMatchObject({ complexName: '두꺼비 행복주택', typeName: '36A', areaOverride: true, supplyArea: null,
+    targets: [{ deposit: '10000000', rent: '200000', convertedDeposit: null }] })
+})

@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice(assignableTypes = {AdminHousingComplexManagementController.class,
         com.toadzip.backend.feedback.controller.AdminFeedbackController.class,
         AdminAnnouncementManagementController.class,
+        com.toadzip.backend.announcement.controller.AnnouncementJsonCorrectionController.class,
         com.toadzip.backend.announcement.controller.SupplyCorrectionController.class, AdminComplexComparisonController.class,
         com.toadzip.backend.admin.quality.controller.QualityComparisonController.class})
 public class AdminManagementValidationAdvice {
