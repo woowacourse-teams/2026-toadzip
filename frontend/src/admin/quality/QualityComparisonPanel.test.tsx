@@ -39,3 +39,12 @@ it('충돌하면 수정값과 근거를 보존하고 추가 저장을 막는다'
   expect(screen.getByLabelText('수정·원천 확인 근거')).toHaveValue('보존할 근거')
   expect(screen.getByRole('button', { name: '선택 수정 저장 · 1개' })).toBeDisabled()
 })
+
+it('공고의 공급행을 고를 때 연결·행 추가·일괄 보정 경로를 안내한다', async () => {
+  const announcement: ManagementDetailData = { ...detail, housingTypes: [], supplyRows: [{ id: 4, housingComplexId: 1, housingComplexName: '한스빌아파트', housingTypeId: null, modified: false, data: { sourceComplexName: '한스빌', sourceHousingTypeName: '아파트' } }] }
+  mocks.load.mockResolvedValue({ ...snapshot, target: 'basic', detail: announcement, sources: [] })
+  render(<MemoryRouter><QualityComparisonPanel resource="announcements" id="7" detail={announcement} onChanged={changed} onBusyChange={vi.fn()} /></MemoryRouter>)
+  expect(screen.queryByText(/‘공급정보·단지 연결’ 탭/)).not.toBeInTheDocument()
+  fireEvent.change(await screen.findByLabelText('비교·수정 대상'), { target: { value: 'row:4' } })
+  expect(screen.getByText(/‘공급정보·단지 연결’ 탭/)).toBeVisible()
+})

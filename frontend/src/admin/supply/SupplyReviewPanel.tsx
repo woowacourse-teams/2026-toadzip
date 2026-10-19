@@ -9,14 +9,19 @@ import styles from './SupplyCorrection.module.css'
 
 const metadata = new Set(['id', 'source_id', 'collected_at', 'source_order', 'collection_record_id', 'consecutive_miss_count', 'last_seen_run_id', 'last_seen_at'])
 const statusLabels: Record<string, string> = { VERIFIED: '선택 범위 검토 완료', ON_HOLD: '판단 보류', STALE: '재검토 필요' }
-export function SupplyReviewPanel({ id, workspace, sourceUrl, disabled, onBusyChange, onDirtyChange }: {
+export type ReviewEvidence = { note: string; sourceUrl: string; sourcePage: string | null }
+export function SupplyReviewPanel({ id, workspace, sourceUrl, disabled, onBusyChange, onDirtyChange, evidence = null, onReviewed }: {
   id: string; workspace: SupplyWorkspace; sourceUrl: string; disabled: boolean; onBusyChange: (value: boolean) => void; onDirtyChange?: (value: boolean) => void
+  /** 방금 적용한 보정의 근거. 검토 폼의 기본값으로 쓰며 미저장 입력으로 보지 않는다. */
+  evidence?: ReviewEvidence | null; onReviewed?: () => void
 }) {
+  const [baseline, setBaseline] = useState(() => evidence
+    ? { note: evidence.note, url: evidence.sourceUrl, page: evidence.sourcePage ?? '' } : { note: '', url: sourceUrl, page: '' })
   const [overview, setOverview] = useState<SupplyReviewOverview | null>(null)
   const [target, setTarget] = useState(''); const [fields, setFields] = useState<string[]>([])
   const [scopes, setScopes] = useState<ReviewSourceScope[]>([])
   const [outcome, setOutcome] = useState<'VERIFIED' | 'ON_HOLD'>('VERIFIED')
-  const [note, setNote] = useState(''); const [url, setUrl] = useState(sourceUrl); const [page, setPage] = useState('')
+  const [note, setNote] = useState(baseline.note); const [url, setUrl] = useState(baseline.url); const [page, setPage] = useState(baseline.page)
   const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [notice, setNotice] = useState('')
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
@@ -26,9 +31,9 @@ export function SupplyReviewPanel({ id, workspace, sourceUrl, disabled, onBusyCh
     return () => controller.abort()
   }, [id, workspace.snapshotToken, attempt])
   useEffect(() => {
-    onDirtyChange?.(!!note || !!page || url !== sourceUrl)
+    onDirtyChange?.(note !== baseline.note || page !== baseline.page || url !== baseline.url)
     return () => onDirtyChange?.(false)
-  }, [note, page, url, sourceUrl, onDirtyChange])
+  }, [note, page, url, baseline, onDirtyChange])
   function targetName(key: string) {
     for (const row of workspace.rows) {
       if (row.key === key) return `${row.complexName} · ${row.typeName}`
@@ -42,7 +47,8 @@ export function SupplyReviewPanel({ id, workspace, sourceUrl, disabled, onBusyCh
     try {
       setOverview(await saveSupplyReview(id, { snapshotToken: workspace.snapshotToken, target, fields, outcome,
         note: note.trim(), sourceUrl: url.trim(), sourcePage: page.trim() || null, sources: scopes }))
-      setNotice('선택한 범위의 검토 기록을 저장했습니다. 다른 항목의 검토 상태는 확정하지 않습니다.'); setNote(''); setPage(''); setUrl(sourceUrl)
+      setNotice('선택한 범위의 검토 기록을 저장했습니다. 다른 항목의 검토 상태는 확정하지 않습니다.')
+      setBaseline({ note: '', url: sourceUrl, page: '' }); setNote(''); setPage(''); setUrl(sourceUrl); onReviewed?.()
     } catch (cause) { setError(cause instanceof Error ? cause.message : '검토 기록을 저장하지 못했습니다.') }
     finally { setBusy(false); onBusyChange(false) }
   }
@@ -53,8 +59,9 @@ export function SupplyReviewPanel({ id, workspace, sourceUrl, disabled, onBusyCh
       return [...current.filter(item => item !== scope), ...(selected.length ? [{ category, sourceKey, fields: selected }] : [])]
     })
   }
-  return <details className={`${styles.row} ${styles.review}`}><summary>저장된 공급정보 검토·보류</summary>
+  return <details className={`${styles.row} ${styles.review}`} open={!!evidence || undefined}><summary>저장된 공급정보 검토·보류</summary>
     <p>저장 결과와 공식 자료를 확인한 항목만 기록하세요. 같은 행·조건의 새 기록은 선택한 범위의 최신 판단이 되고, 이전 기록은 아래 이력에 남습니다.</p>
+    {evidence && baseline.note === evidence.note && <p className={styles.hint}>방금 적용한 보정의 근거를 채웠습니다. 실제로 확인한 행·항목만 골라 기록하세요.</p>}
     {disabled && <p>먼저 작성한 보정을 적용하고 저장 결과를 확인하세요.</p>}
     {error && <p role="alert">{error} <button type="button" onClick={() => setAttempt(value => value + 1)}>기록 다시 조회</button></p>}
     {notice && <p role="status">{notice}</p>}

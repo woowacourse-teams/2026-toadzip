@@ -5,12 +5,14 @@ import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import { forgetApply, pendingApply, rememberApply } from './supplyApplyRecovery'
 import { SupplyImportPanel } from './SupplyImportPanel'
-import { SupplyReviewPanel } from './SupplyReviewPanel'
+import { SupplyReviewPanel, type ReviewEvidence } from './SupplyReviewPanel'
 import { SupplyRowDraft } from './SupplyRowDraft'
 import { SupplyCorrectionPreview } from './SupplyCorrectionPreview'
 import { rebaseCorrection, resolveConflict, type CorrectionConflict } from './rebaseCorrection'
 import { applySupply, blankRow, loadSupplyWorkspace, previewSupply, type CorrectionRow, type SupplyCorrectionInput, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
 import styles from './SupplyCorrection.module.css'
+
+const steps = ['변경안 작성', '미리보기로 변경 전후 확인', '일괄 적용', '확인한 범위 검토 기록', '공개 화면 확인'] as const
 
 export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChange, onDirtyChange }: {
   id: string; sourceUrl: string; onChanged: () => void; onBusyChange: (value: boolean) => void; onDirtyChange: (value: boolean) => void
@@ -26,7 +28,10 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
   const [importDirty, setImportDirty] = useState(false)
   const [reviewDirty, setReviewDirty] = useState(false)
   const [appliedWarnings, setAppliedWarnings] = useState<string[]>([])
+  const [applied, setApplied] = useState<{ changeId: number; evidence: ReviewEvidence } | null>(null)
+  const [reviewed, setReviewed] = useState(false)
   const rowsDirty = workspace !== null && JSON.stringify(rows) !== JSON.stringify(workspace.rows)
+  const step = reviewed && !rowsDirty ? 4 : preview ? 2 : rowsDirty ? 1 : applied ? 3 : 0
   const blockerId = useId()
   const previewBlocker = stale ? '저장값이 바뀌었습니다. ‘입력을 유지하고 최신값 비교’로 내 입력과 최신값을 맞춘 뒤 다시 미리보기 하세요.'
     : conflicts.length > 0 ? `겹치는 변경 ${conflicts.length}개에서 사용할 값을 먼저 고르세요.`
@@ -68,6 +73,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
       const result = await applySupply(id, preview.input, preview.result.confirmationToken)
       forgetApply(id)
       setWorkspace(result.workspace); setRows(result.workspace.rows); setAppliedWarnings(preview.result.warnings); setPreview(null)
+      setApplied({ changeId: result.changeId, evidence: { note: preview.input.reason, sourceUrl: preview.input.sourceUrl, sourcePage: preview.input.sourcePage } }); setReviewed(false)
       setReason(''); setPage(''); setStale(false); setUncertain(false); onChanged()
       setNotice(result.alreadyApplied ? '이미 적용한 작업입니다. 현재 저장값을 불러왔습니다.' : '보정을 저장했습니다. 공개 결과와 남은 항목을 확인하세요.')
     } catch (cause) {
@@ -92,16 +98,26 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
   }
   if (!workspace) return <div>{error ? <p role="alert">{error} <button type="button" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></p> : <p role="status">공급정보와 원천을 불러오는 중…</p>}</div>
   return <section className={styles.workspace} aria-label="공급정보 보정 작업실">
-    <p>필요한 행을 펼쳐 변경안을 작성하세요. 행·대상·연결·새 주택형을 확인한 뒤 한 번에 적용합니다.</p>
-    <details className={styles.sources}><summary>비교 근거: 저장된 원천 {workspace.sources.length}개</summary>
-      {workspace.sources.length === 0 && <p>연결된 원천이 없습니다. 공식 자료를 직접 확인하고 아래에 근거를 기록하세요.</p>}
-      {workspace.sources.map((source, index) => <details key={`${source.category}:${source.sourceKey}:${index}`}><summary>{source.category} · {source.sourceKey}</summary>
-        {!source.rows.length && <p>현재 원천을 찾을 수 없습니다.</p>}{source.rows.map((item, index) => <div key={index}><p>수집 시각: {item.collectedAt ? new Date(item.collectedAt).toLocaleString('ko-KR') : '알 수 없음'}</p><StoredDataTable data={item.raw} label={`수집 원천 ${index + 1}`} /></div>)}</details>)}
-    </details>
-    {(workspace.sourceWarnings?.length ?? 0) > 0 && <section aria-label="원천 재확인"><h3>원천 재확인</h3><ul>{workspace.sourceWarnings?.map(warning => <li key={warning}>{warning}</li>)}</ul></section>}
+    <p>문제가 있는 행을 펼쳐 변경안을 작성하세요. 행·대상·연결·새 주택형을 미리보기로 확인한 뒤 한 번에 적용합니다.</p>
+    <ol className={styles.steps} aria-label="보정 진행 단계">{steps.map((label, index) => <li key={label} aria-current={index === step ? 'step' : undefined} data-done={index < step || undefined}>{index === steps.length - 1
+      ? <Link to={`/explore?announcementId=${id}`} target="_blank" rel="noreferrer">{label} ↗</Link> : label}</li>)}</ol>
+    <details className={styles.paths}><summary>다른 수정 경로와 차이</summary><ul>
+      <li>‘데이터 검증’: 원천과 값을 하나씩 비교해 바로 저장합니다. 공고 기본정보와 개별 값 확인에 씁니다.</li>
+      <li>‘JSON으로 갱신’: 공고문에서 추출한 JSON으로 기본정보·일정·첨부·공급정보를 한 번에 비교해 고릅니다.</li>
+      <li>이 화면: 연결 변경, 공급행 추가·제외·순서, 여러 행 일괄 보정과 범위별 검토 기록을 처리합니다.</li>
+    </ul></details>
     {notice && <p role="status">{notice}</p>}
     {appliedWarnings.length > 0 && <details open><summary>남은 확인 항목 {appliedWarnings.length}개</summary><ul>{appliedWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>}
     <SupplyImportPanel onDirtyChange={setImportDirty} rows={rows} disabled={busy || uncertain} onMerge={next => edit(() => next)} />
+    <div className={styles.compose}>
+    <aside className={styles.reference} aria-label="비교 근거">
+      <details className={styles.sources} open={workspace.sources.length > 0 || undefined}><summary>비교 근거: 저장된 원천 {workspace.sources.length}개</summary>
+        {workspace.sources.length === 0 && <p>연결된 원천이 없습니다. 공식 자료를 직접 확인하고 근거를 기록하세요.</p>}
+        {workspace.sources.map((source, index) => <details key={`${source.category}:${source.sourceKey}:${index}`} open={workspace.sources.length === 1 || undefined}><summary>{source.category} · {source.sourceKey}</summary>
+          {!source.rows.length && <p>현재 원천을 찾을 수 없습니다.</p>}{source.rows.map((item, index) => <div key={index}><p>수집 시각: {item.collectedAt ? new Date(item.collectedAt).toLocaleString('ko-KR') : '알 수 없음'}</p><StoredDataTable data={item.raw} label={`수집 원천 ${index + 1}`} /></div>)}</details>)}
+      </details>
+      {(workspace.sourceWarnings?.length ?? 0) > 0 && <section aria-label="원천 재확인"><h3>원천 재확인</h3><ul>{workspace.sourceWarnings?.map(warning => <li key={warning}>{warning}</li>)}</ul></section>}
+    </aside>
     <form onSubmit={event => { event.preventDefault(); void inspect() }}>
       <fieldset disabled={busy || uncertain} className={styles.editor}><legend className={styles.srOnly}>공고별 공급정보 변경안</legend>
         {rows.map((row, index) => <SupplyRowDraft key={row.key} value={row} first={index === 0} last={index === rows.length - 1}
@@ -125,10 +141,12 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
         {previewBlocker && <p id={blockerId} className={styles.hint}>{previewBlocker}</p>}
       </fieldset>
     </form>
+    </div>
     {error && <p role="alert" className="registration-error">{error}</p>}
     {preview && <><SupplyCorrectionPreview value={preview.result} /><button type="button" className="admin-primary" disabled={busy || stale} onClick={() => void apply()}>{busy ? '적용 중…' : uncertain ? '같은 작업으로 적용 결과 확인' : '확인한 보정 일괄 적용'}</button></>}
-    <SupplyReviewPanel id={id} workspace={workspace} sourceUrl={sourceUrl} disabled={rowsDirty || busy || uncertain} onBusyChange={setBusy} onDirtyChange={setReviewDirty} />
+    <SupplyReviewPanel key={applied ? `applied:${applied.changeId}` : 'review'} id={id} workspace={workspace} sourceUrl={sourceUrl} disabled={rowsDirty || busy || uncertain}
+      onBusyChange={setBusy} onDirtyChange={setReviewDirty} evidence={applied?.evidence ?? null} onReviewed={() => setReviewed(true)} />
     <nav className={styles.actions} aria-label="보정 결과 확인"><Link to={`/explore?announcementId=${id}`} target="_blank" rel="noreferrer">사용자 공고 화면 확인 ↗</Link>
-      <p>검토는 위의 ‘저장된 공급정보 검토·보류’에서 기록하고, 보정 근거는 ‘출처·수정 이력’에서 확인하세요.</p></nav>
+      <p>저장한 보정이 공개 상세에 반영됐는지 확인하세요. 보정 근거와 변경 전후는 ‘출처·수정 이력’에 남습니다.</p></nav>
   </section>
 }

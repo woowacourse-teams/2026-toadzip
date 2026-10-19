@@ -26,3 +26,20 @@ it('저장 전 보정안으로는 검토 완료를 기록할 수 없다', async 
   expect(screen.getByLabelText('검토할 행·조건')).toBeDisabled()
   expect(screen.getByRole('button', { name: '선택 범위 검토 기록' })).toBeDisabled()
 })
+it('방금 적용한 보정의 근거로 검토 폼을 펼쳐 채우고 미저장 입력으로 보지 않는다', async () => {
+  const dirty = vi.fn(); const reviewed = vi.fn()
+  render(<SupplyReviewPanel id="21" workspace={{ snapshotToken: 'snapshot', version: 1, sources: [], rows: [{ ...blankRow(0), id: 1, key: 'row:1', typeName: '26A', complexName: '한스빌' }] }}
+    sourceUrl="https://example.com/notice.pdf" disabled={false} onBusyChange={vi.fn()} onDirtyChange={dirty} onReviewed={reviewed}
+    evidence={{ note: '공식 공고의 A형 확인', sourceUrl: 'https://example.com/correction.pdf', sourcePage: '12쪽' }} />)
+  expect(await screen.findByLabelText('확인 근거·보류 사유')).toHaveValue('공식 공고의 A형 확인')
+  expect(screen.getByLabelText('검토 근거 URL')).toHaveValue('https://example.com/correction.pdf')
+  expect(screen.getByLabelText('검토 페이지·표 위치')).toHaveValue('12쪽')
+  expect(screen.getByText(/방금 적용한 보정의 근거를 채웠습니다/)).toBeVisible()
+  expect(dirty).toHaveBeenLastCalledWith(false)
+  fireEvent.change(screen.getByLabelText('검토할 행·조건'), { target: { value: 'row:1' } })
+  fireEvent.click(screen.getByRole('checkbox', { name: '금회 모집수 (세대)' }))
+  fireEvent.click(screen.getByRole('button', { name: '선택 범위 검토 기록' }))
+  await waitFor(() => expect(reviewed).toHaveBeenCalledOnce())
+  expect(saveSupplyReview).toHaveBeenCalledWith('21', expect.objectContaining({ note: '공식 공고의 A형 확인', sourceUrl: 'https://example.com/correction.pdf', sourcePage: '12쪽' }))
+  expect(dirty).toHaveBeenLastCalledWith(false)
+})

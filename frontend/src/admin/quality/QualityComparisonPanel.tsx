@@ -75,6 +75,7 @@ export function QualityComparisonPanel({ resource, id, detail, onChanged, onBusy
   return <section className={styles.panel} aria-label={resource === 'complexes' ? '주택형 원천 비교' : '공고·공급정보 원천 비교'}>
     <header className={styles.heading}><div><h2>{resource === 'complexes' ? '주택형 원천 비교·수정' : '공고·공급정보 원천 비교·수정'}</h2><p>원천의 단위와 적용 대상을 확인하고 필요한 값만 수정하세요.</p></div><button disabled={busy || loading} onClick={() => { if (!dirty || window.confirm('미저장 입력을 버리고 다시 조회할까요?')) setAttempt(value => value + 1) }}>비교 다시 조회</button></header>
     <label>비교·수정 대상<select value={selection} disabled={busy || loading} onChange={event => { if (!dirty || window.confirm('작성한 내용을 버리고 대상을 바꿀까요?')) { setSelection(event.target.value); setResults(null) } }}>{choices.map(choice => <option key={choice.key} value={choice.key}>{choice.label}</option>)}</select></label>
+    {resource === 'announcements' && /^(row|target):/.test(selection) ? <p className={styles.hint}>여기서는 원천과 값을 하나씩 비교해 저장합니다. 단지·주택형 연결 변경, 공급행 추가·제외·순서 변경, 여러 행 일괄 보정과 검토 기록은 ‘공급정보·단지 연결’ 탭에서 미리보기 후 적용하세요.</p> : null}
     {loading ? <p role="status">DB 원천을 불러오는 중…</p> : null}{error ? <p role="alert" className="registration-error">{error}</p> : null}{notice ? <p role="status" className="registration-success">{notice}</p> : null}
     {snapshot && target ? <fieldset disabled={busy || conflict || detail.summary.deleted} className="admin-verification-group">
       <details className={styles.connections}><summary>원천 검색·연결 · {snapshot.sources.length}개</summary>

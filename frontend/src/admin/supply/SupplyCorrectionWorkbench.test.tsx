@@ -6,7 +6,8 @@ import { ManagementError } from '../management/api'
 import { SupplyCorrectionWorkbench } from './SupplyCorrectionWorkbench'
 import { applySupply, loadSupplyWorkspace, previewSupply, type CorrectionRow, type SupplyPreview } from './supplyCorrectionApi'
 
-vi.mock('./SupplyReviewPanel', () => ({ SupplyReviewPanel: () => null }))
+vi.mock('./SupplyReviewPanel', () => ({ SupplyReviewPanel: ({ evidence, onReviewed }: { evidence: { note: string; sourceUrl: string; sourcePage: string | null } | null; onReviewed: () => void }) =>
+  <div data-testid="review-panel">{evidence ? `${evidence.note}|${evidence.sourceUrl}|${evidence.sourcePage ?? ''}` : ''}<button type="button" onClick={onReviewed}>모의 검토 기록</button></div> }))
 vi.mock('./supplyCorrectionApi', async original => ({ ...await original<typeof import('./supplyCorrectionApi')>(), loadSupplyWorkspace: vi.fn(), previewSupply: vi.fn(), applySupply: vi.fn() }))
 const row: CorrectionRow = {
   id: 1, key: 'row:1', housingComplexId: 7, housingComplexName: '한스빌', housingTypeId: 8, newHousingType: null,
@@ -146,4 +147,29 @@ it('변경 미리보기를 쓸 수 없는 이유를 버튼 설명으로 알려 �
   fireEvent.click(button)
   await waitFor(() => expect(button).toHaveAccessibleDescription(/최신값 비교/))
   expect(button).toBeDisabled()
+})
+it('작성부터 공개 확인까지 현재 단계를 보여 주고 적용한 근거를 검토 기록으로 넘긴다', async () => {
+  await setup()
+  const current = () => screen.getByRole('list', { name: '보정 진행 단계' }).querySelector('[aria-current="step"]')
+  expect(current()).toHaveTextContent('변경안 작성')
+  fireEvent.change(screen.getByLabelText('공고의 주택형명'), { target: { value: '26A' } })
+  expect(current()).toHaveTextContent('미리보기')
+  fireEvent.change(screen.getByLabelText('보정 이유'), { target: { value: '공식 공고의 A형 확인' } })
+  fireEvent.change(screen.getByLabelText('페이지·표 위치 (알 때만)'), { target: { value: '12쪽 표 3' } })
+  fireEvent.click(screen.getByRole('button', { name: '변경 미리보기' }))
+  await screen.findByRole('region', { name: '공급정보 변경 미리보기' })
+  expect(current()).toHaveTextContent('일괄 적용')
+  expect(screen.getByTestId('review-panel')).toHaveTextContent(/^모의/)
+  fireEvent.click(screen.getByRole('button', { name: '확인한 보정 일괄 적용' }))
+  await screen.findByText('보정을 저장했습니다. 공개 결과와 남은 항목을 확인하세요.')
+  expect(current()).toHaveTextContent('검토 기록')
+  expect(screen.getByTestId('review-panel')).toHaveTextContent('공식 공고의 A형 확인|https://example.com/notice.pdf|12쪽 표 3')
+  fireEvent.click(screen.getByRole('button', { name: '모의 검토 기록' }))
+  expect(current()).toHaveTextContent('공개 화면 확인')
+})
+it('원천 비교를 편집 영역 옆 보조 영역에 두고 원천이 있으면 펼친다', async () => {
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...structuredClone(workspace), sources: [{ category: 'MYHOME_ANNOUNCEMENT', sourceKey: '21395', rows: [{ collectedAt: null, raw: { name: '한스빌' } }] }] })
+  await setup()
+  const aside = screen.getByRole('complementary', { name: '비교 근거' })
+  expect(aside.querySelector('details')).toHaveAttribute('open')
 })
