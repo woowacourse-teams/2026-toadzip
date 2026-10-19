@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Link } from 'react-router'
 import { ManagementError } from '../management/api'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
@@ -27,6 +27,10 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
   const [reviewDirty, setReviewDirty] = useState(false)
   const [appliedWarnings, setAppliedWarnings] = useState<string[]>([])
   const rowsDirty = workspace !== null && JSON.stringify(rows) !== JSON.stringify(workspace.rows)
+  const blockerId = useId()
+  const previewBlocker = stale ? '저장값이 바뀌었습니다. ‘입력을 유지하고 최신값 비교’로 내 입력과 최신값을 맞춘 뒤 다시 미리보기 하세요.'
+    : conflicts.length > 0 ? `겹치는 변경 ${conflicts.length}개에서 사용할 값을 먼저 고르세요.`
+      : !rowsDirty ? '아직 바꾼 공급정보가 없습니다. 행을 펼쳐 값·연결을 수정하거나 공급행을 추가·제외하세요. 수정 없이 확인만 했다면 아래 검토·보류에 기록하세요.' : ''
   const dirty = rowsDirty || reviewDirty || importDirty || uncertain || reason.length > 0 || page.length > 0 || url !== sourceUrl
   useUnsavedChanges(dirty)
   useEffect(() => { onBusyChange(busy); return () => onBusyChange(false) }, [busy, onBusyChange])
@@ -116,8 +120,9 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
           <button type="button" onClick={() => { setRows(current => resolveConflict(current, conflict, false)); setConflicts(current => current.filter((_, i) => i !== index)) }}>{conflict.field === '__missing' ? '이 항목 입력 버리기' : '현재 저장값 사용'}</button>
           <button type="button" onClick={() => { setRows(current => resolveConflict(current, conflict, true)); setConflicts(current => current.filter((_, i) => i !== index)) }}>{conflict.field === '__missing' ? '새 항목으로 입력 복사' : '내 입력 사용'}</button>
         </div>)}</section>}
-        <div className={styles.actions}><button className="admin-primary" type="submit" disabled={!rowsDirty || conflicts.length > 0 || stale}>변경 미리보기</button>
+        <div className={styles.actions}><button className="admin-primary" type="submit" disabled={!!previewBlocker} aria-describedby={previewBlocker ? blockerId : undefined}>변경 미리보기</button>
           <button type="button" onClick={() => void refreshKeepingDraft()}>입력을 유지하고 최신값 비교</button></div>
+        {previewBlocker && <p id={blockerId} className={styles.hint}>{previewBlocker}</p>}
       </fieldset>
     </form>
     {error && <p role="alert" className="registration-error">{error}</p>}

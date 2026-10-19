@@ -85,3 +85,22 @@ it('식별자·기관·모집상태 검색을 적용하고 상세 복귀 주소�
   expect(screen.getByLabelText('원천 식별자')).toHaveValue('')
   expect(screen.getByLabelText('공급기관')).toHaveValue('')
 })
+
+it('공고의 빠진 항목마다 해당 탭으로 연결하고 대표 링크는 공급 연결 문제를 먼저 연다', async () => {
+  mocks.requestManagementApi.mockResolvedValue({ items: [{ resource: 'ANNOUNCEMENT', id: 1, name: '한스빌 공고', reasons: ['MISSING'],
+    missingFields: ['확인된 접수 일정', '단지·주택형 연결'], updatedAt: null }], page: 0, totalElements: 1, totalPages: 1, hasNext: false })
+  render(<MemoryRouter><QualityQueuePage /></MemoryRouter>)
+  const section = (name: string) => new URL(screen.getByRole('link', { name }).getAttribute('href')!, 'http://localhost').searchParams.get('section')
+  await screen.findByRole('link', { name: '한스빌 공고 비교·검토' })
+  expect(section('한스빌 공고 비교·검토')).toBe('relations')
+  expect(section('확인된 접수 일정 확인')).toBe('schedules')
+  expect(section('단지·주택형 연결 확인')).toBe('relations')
+})
+
+it('공급 검토 보류·변경만 있는 공고는 공급정보 탭으로 연다', async () => {
+  mocks.requestManagementApi.mockResolvedValue({ items: [{ resource: 'ANNOUNCEMENT', id: 2, name: '보류 공고', reasons: ['ON_HOLD'],
+    missingFields: [], updatedAt: null }], page: 0, totalElements: 1, totalPages: 1, hasNext: false })
+  render(<MemoryRouter><QualityQueuePage /></MemoryRouter>)
+  const link = await screen.findByRole('link', { name: '보류 공고 비교·검토' })
+  expect(new URL(link.getAttribute('href')!, 'http://localhost').searchParams.get('section')).toBe('relations')
+})

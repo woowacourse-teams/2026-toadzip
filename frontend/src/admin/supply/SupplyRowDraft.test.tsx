@@ -43,3 +43,12 @@ it('새 단지 조회가 실패하면 기존 연결과 작성한 값을 유지�
   expect(screen.getByLabelText('공고의 주택형명')).toHaveValue('작성한 26B')
   expect(screen.getByText(/현재 선택: 기존 단지/)).toBeVisible()
 })
+it('연결이 빠진 행은 접힌 요약에 문제를 표시하고 처음부터 펼친다', () => {
+  const unlinked: CorrectionRow = { ...blankRow(0), id: 3, housingComplexId: 1, housingComplexName: '한스빌', housingTypeId: null, complexName: '익산한스빌', typeName: '아파트' }
+  const { container, rerender } = render(<SupplyRowDraft value={unlinked} onChange={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} first last />)
+  expect(container.querySelector('summary')).toHaveTextContent('주택형 미연결')
+  expect(container.querySelector('details')).toHaveAttribute('open')
+  rerender(<SupplyRowDraft key="linked" value={{ ...unlinked, housingTypeId: 9 }} onChange={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} first last />)
+  expect(container.querySelector('summary')).not.toHaveTextContent('미연결')
+  expect(container.querySelector('details')).not.toHaveAttribute('open')
+})

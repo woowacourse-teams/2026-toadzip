@@ -25,3 +25,19 @@ export async function getQualityQueue(params: URLSearchParams, signal: AbortSign
   }
   return result as QualityPage
 }
+
+const announcementFieldSections: Record<string, string> = {
+  '단지·주택형 연결': 'relations', '공급정보': 'relations', '확인된 접수 일정': 'schedules',
+}
+const sectionOrder = ['relations', 'schedules', 'verification']
+
+/** 빠진 항목을 고칠 상세 탭. 공고의 공급 검토 보류·변경도 공급정보 탭에서 처리한다. */
+export function fieldSection(resource: QualityItem['resource'], field: string): string {
+  return resource === 'ANNOUNCEMENT' ? announcementFieldSections[field] ?? 'verification' : 'verification'
+}
+
+export function landingSection(item: QualityItem): string {
+  const sections = item.missingFields.map(field => fieldSection(item.resource, field))
+  if (item.resource === 'ANNOUNCEMENT' && item.reasons.some(reason => reason === 'ON_HOLD' || reason === 'STALE')) sections.push('relations')
+  return sectionOrder.find(section => sections.includes(section)) ?? 'verification'
+}

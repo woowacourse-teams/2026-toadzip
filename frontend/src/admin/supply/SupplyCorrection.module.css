@@ -30,3 +30,6 @@
 
 .review > :not(summary) { margin-inline: var(--ds-space-4); }
 .review table { min-width: 0; }
+.issues { display: inline-flex; flex-wrap: wrap; gap: var(--ds-space-2); margin-left: var(--ds-space-2); vertical-align: middle; }
+.issues span { padding: 2px var(--ds-space-2); border-radius: var(--ds-radius-control); color: var(--ds-color-status-upcoming); background: var(--ds-color-status-upcoming-surface); font-size: var(--ds-text-caption); font-weight: normal; }
+.hint { color: var(--ds-color-label); font-size: var(--ds-text-caption); }

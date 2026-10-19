@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { Button } from '../../design-system/components/Button'
-import { getQualityQueue, qualityReasons, type QualityPage } from './qualityQueueApi'
+import { fieldSection, getQualityQueue, landingSection, qualityReasons, type QualityPage } from './qualityQueueApi'
 import { workDetailUrl } from '../shared/workNavigation'
 import styles from './QualityWorkspace.module.css'
 
@@ -68,12 +68,14 @@ export function QualityQueuePage() {
             ? '방금 확인한 대상을 목록에 표시했습니다. 남은 검토 항목을 확인하세요.'
             : '방금 확인한 대상은 현재 목록에 없습니다. 저장·재조회로 순서나 조건이 바뀔 수 있으므로, 상세의 검토 결과를 확인하세요.'}</p>}
           {result.items.length === 0 ? <div className={styles.empty}><strong>현재 조건에 검토할 대상이 없습니다.</strong><p>검색어와 검토 사유를 바꾸거나 단지·공고 관리에서 직접 찾아보세요.</p></div> : <ul className={`${styles.results} ${styles.queueRows}`}>
-            {result.items.map(item => <li key={`${item.resource}:${item.id}`} className={styles.queueRow} data-returned={`${item.resource}:${item.id}` === params.get('focus') || undefined}>
+            {result.items.map(item => { const origin = `/admin/quality?${new URLSearchParams({ ...Object.fromEntries(params), focus: `${item.resource}:${item.id}` })}`
+              return <li key={`${item.resource}:${item.id}`} className={styles.queueRow} data-returned={`${item.resource}:${item.id}` === params.get('focus') || undefined}>
               <span className={styles.resourceType} data-resource={item.resource}>{item.resource === 'COMPLEX' ? '단지' : '공고'}</span>
-              <div className={styles.rowMain}><h3>{item.name}</h3>{item.missingFields.length ? <p>확인할 항목 · <strong>{item.missingFields.join(', ')}</strong></p> : <p>기존 확인 내용과 현재 원천을 대조해 주세요.</p>}
+              <div className={styles.rowMain}><h3>{item.name}</h3>{item.missingFields.length ? <p className={styles.missingFields}>확인할 항목 · {item.missingFields.map(field => <Link key={field} aria-label={`${field} 확인`}
+                to={workDetailUrl(item.resource, item.id, origin, fieldSection(item.resource, field))}>{field}</Link>)}</p> : <p>기존 확인 내용과 현재 원천을 대조해 주세요.</p>}
                 <div className={styles.badges}>{item.reasons.map(reason => <span key={reason} data-reason={reason}>{qualityReasons[reason]}</span>)}</div></div>
-              <div className={styles.rowEnd}>{item.updatedAt ? <small>최근 수정 {new Date(item.updatedAt).toLocaleDateString('ko-KR')}</small> : <small>확인 대기</small>}<Link className={styles.reviewLink} aria-label={`${item.name} 비교·검토`} to={workDetailUrl(item.resource, item.id, `/admin/quality?${new URLSearchParams({ ...Object.fromEntries(params), focus: `${item.resource}:${item.id}` })}`)}>비교·검토 <span aria-hidden="true">→</span></Link></div>
-            </li>)}
+              <div className={styles.rowEnd}>{item.updatedAt ? <small>최근 수정 {new Date(item.updatedAt).toLocaleDateString('ko-KR')}</small> : <small>확인 대기</small>}<Link className={styles.reviewLink} aria-label={`${item.name} 비교·검토`} to={workDetailUrl(item.resource, item.id, origin, landingSection(item))}>비교·검토 <span aria-hidden="true">→</span></Link></div>
+            </li> })}
           </ul>}
           <nav className={`${styles.links} ${styles.queuePagination}`} aria-label="검토 목록 페이지"><span role="status">총 {result.totalElements.toLocaleString('ko-KR')}개 · {result.page + 1}페이지</span><div><button disabled={result.page === 0} onClick={() => filter('page', String(result.page - 1))}>이전</button><button disabled={!result.hasNext} onClick={() => filter('page', String(result.page + 1))}>다음</button></div></nav>
         </> : null}

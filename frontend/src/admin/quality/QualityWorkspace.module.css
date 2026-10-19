@@ -57,6 +57,8 @@
 .rowMain h3 { font-size:15px; font-weight:700; overflow-wrap:anywhere; }
 .rowMain p { color:var(--ds-color-muted); font-size:12px; }
 .rowMain p strong { font-weight:500; }
+.rowMain .missingFields { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; }
+.rowMain .missingFields a { color:var(--ds-color-action); font-weight:500; text-decoration:underline; text-underline-offset:2px; }
 .rowMain .badges { gap:6px; }
 .rowMain .badges span { font-size:10px; padding:3px 7px; background:var(--ds-color-surface-subtle); color:var(--ds-color-label); }
 .rowMain .badges span[data-reason=SOURCE_CHANGED],.rowMain .badges span[data-reason=STALE] { color:var(--ds-color-status-upcoming); background:var(--ds-color-status-upcoming-surface); }

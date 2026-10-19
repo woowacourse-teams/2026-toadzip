@@ -8,6 +8,12 @@ import { blankTarget, type CorrectionRow } from './supplyCorrectionApi'
 import { SupplyTargetDraft } from './SupplyTargetDraft'
 import styles from './SupplyCorrection.module.css'
 
+/** 공개 결과에 남는 행에서 단지·주택형 연결이 빠진 항목. 검토 대기열의 ‘단지·주택형 연결’과 같은 기준이다. */
+function linkIssues(row: CorrectionRow): string[] {
+  if (row.excluded) return []
+  return [...(row.housingComplexId ? [] : ['단지 미연결']), ...(row.housingTypeId || row.newHousingType ? [] : ['주택형 미연결'])]
+}
+
 export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last }: {
   value: CorrectionRow; onChange: (value: CorrectionRow) => void; onRemove: () => void;
   onMove: (delta: number) => void; first: boolean; last: boolean
@@ -46,8 +52,10 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last 
     finally { if (!controller.signal.aborted) setLoading(false) }
   }
   useEffect(() => () => request.current?.abort(), [])
-  return <details className={styles.row} open={!value.id}>
+  const issues = linkIssues(value)
+  return <details className={styles.row} open={!value.id || issues.length > 0}>
     <summary>{value.complexName || '새 공급행'} · {value.typeName || '주택형 미입력'}{value.excluded ? ' · 제외 예정' : ''}
+      {issues.length > 0 && <span className={styles.issues}>{issues.map(issue => <span key={issue}>{issue}</span>)}</span>}
       <small>{value.protectedValues ? '보정 보호 중' : '자동 갱신 대상'} · 대상 {value.targets.length}개</small></summary>
     <fieldset className={styles.rowBody} disabled={loading}><legend className={styles.srOnly}>공급행 보정</legend>
       <div className={styles.actions}><button type="button" disabled={first} onClick={() => onMove(-1)}>위로</button><button type="button" disabled={last} onClick={() => onMove(1)}>아래로</button>
