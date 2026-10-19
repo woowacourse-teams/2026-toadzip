@@ -11,6 +11,7 @@ vi.mock('./FolderExchangePanel', () => ({ FolderExchangePanel: ({ onResult }: { 
 vi.mock('./reviewDraftStore', () => work)
 const recovery = vi.hoisted(() => ({ readRecoveryInputs: vi.fn(), saveRecoveryInput: vi.fn() }))
 vi.mock('./reviewBrowserStore', () => recovery)
+vi.mock('../../public-housing/components/PdfDocumentPreview', () => ({ default: () => <div>공식 PDF 원문</div> }))
 vi.mock('./pdfExtraction', async original => ({ ...await original<typeof import('./pdfExtraction')>(), openPdf: mocks.openPdf }))
 vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(), requestManagementApi: mocks.requestManagementApi }))
 const detail: ManagementDetailData = {
@@ -165,6 +166,9 @@ it('텍스트 없는 페이지를 OCR 처리하고 인식 점수와 원문 대�
   await setup()
   fireEvent.click(screen.getByRole('button', { name: '텍스트 없는 선택 페이지 OCR · 최대 5쪽' }))
   expect(await screen.findByText(/OCR 추정 텍스트 · 인식 점수 72/)).toBeVisible()
+  expect(screen.getByText(/인식 점수는 정확성을 보장하지 않습니다/)).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'PDF 원문과 숫자 대조' }))
+  expect(await screen.findByText('공식 PDF 원문')).toBeVisible()
   expect(work.ocr).toHaveBeenCalledWith('1', expect.any(AbortSignal), expect.any(Function))
   expect(mocks.requestManagementApi).not.toHaveBeenCalled()
 })

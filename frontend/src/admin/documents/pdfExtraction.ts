@@ -1,4 +1,5 @@
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
+import { ocrRenderScale } from './pdfOcrLayout'
 
 export type PdfTextItem = { str: string; x: number; y: number; width: number; height: number; endOfLine: boolean }
 export type ExtractedPage = { page: number; text: string; items: PdfTextItem[]; requiresOcr: boolean; method?: 'ocr'; confidence?: number }
@@ -120,7 +121,7 @@ export async function openPdf(file: File, signal: AbortSignal): Promise<PdfSessi
               progress(`${missing.page}쪽 OCR 준비 중…`)
               const page = await pdf.getPage(missing.page)
               const original = page.getViewport({ scale: 1 })
-              const scale = Math.min(2, Math.sqrt(16000000 / (original.width * original.height)))
+              const scale = ocrRenderScale(original.width, original.height)
               const viewport = page.getViewport({ scale })
               const canvas = document.createElement('canvas')
               canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height)

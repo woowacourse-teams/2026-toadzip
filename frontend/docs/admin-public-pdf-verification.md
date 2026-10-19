@@ -22,3 +22,15 @@ node frontend/scripts/verify-admin-public-pdfs.mjs .local/<검증폴더>/lh-2022
 브라우저 검증에서는 같은 공식 표 PDF를 공유 초안으로 복원해 표·텍스트를 확인한다.
 OCR 경로는 실제 표 페이지를 이미지 전용 PDF로 변환한 파생본으로 검사하며, 원본이 스캔 문서였다고 표시하지 않는다.
 OCR 인식 점수·숫자·단위는 별도로 기록하고 원문을 사람이 대조한다. 모든 기관·스캔 품질·표 구조를 보증하는 검사는 아니다.
+
+## 이미지 표의 OCR 회귀 확인
+
+같은 GH 표의 텍스트 없는 이미지 전용 PDF를 준비한 뒤 실행한다. 언어 모델은 `npm run build`가 준비한 로컬 OCR 자산을 사용하며 외부로 PDF를 보내지 않는다.
+
+```powershell
+node frontend/scripts/verify-admin-table-ocr.mjs .local/<검증폴더>/gh-rent-table.pdf .local/<검증폴더>/gh-table-image-only.pdf
+```
+
+이 도구는 원본 해시와 이미지 PDF의 텍스트 층 부재를 확인한다. 기존 144dpi 단일 문단 인식과 제품의 최대 400dpi 영역별 인식을 비교한다. 원본 표의 임대시세·보증금·월임대료 10행을 기준으로 금액 문자열과 행별 배치를 검사한다. 두 방식은 각각 새 worker에서 실행한다.
+
+Tesseract의 [해상도와 영역 구분 지침](https://tesseract-ocr.github.io/tessdoc/ImproveQuality.html)을 참고한다. 제품은 여러 영역을 인식하는 모드와 글자 좌표를 사용한다. 좌표는 읽는 순서를 복원하는 데만 쓰며 표의 의미나 금액을 추정하지 않는다. 인식 점수는 숫자의 정확도를 보증하지 않는다.

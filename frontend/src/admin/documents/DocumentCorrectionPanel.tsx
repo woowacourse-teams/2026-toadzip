@@ -302,10 +302,10 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
         <p>선택한 {extracted.pages.length}쪽 · 텍스트 {extracted.pages.reduce((sum, page) => sum + page.text.length, 0).toLocaleString()}자</p>
         {extracted.pages.map((page, index) => <details key={page.page} open={index === 0}><summary>{page.page}쪽 {page.requiresOcr ? '· OCR 필요' : '· 추출 텍스트'}</summary>
           {page.requiresOcr ? <p className={styles.warning}>읽을 수 있는 텍스트가 없습니다. 아래 OCR 처리로 읽거나 원문을 직접 확인하세요.</p>
-            : <>{page.method === 'ocr' ? <p className={styles.warning}>OCR 추정 텍스트 · 인식 점수 {Math.round(page.confidence ?? 0)}. 오인식이 있을 수 있으므로 숫자·단위·각주를 반드시 원문과 대조하세요.</p> : null}<pre className={styles.text}>{page.text}</pre></>}</details>)}
+            : <>{page.method === 'ocr' ? <p className={styles.warning}>OCR 추정 텍스트 · 인식 점수 {Math.round(page.confidence ?? 0)}. 인식 점수는 정확성을 보장하지 않습니다. 숫자·단위·각주를 반드시 원문과 대조하세요.</p> : null}<pre className={styles.text}>{page.text}</pre></>}</details>)}
         {extracted.pages.some(page => page.requiresOcr) && session?.ocr ? <button disabled={Boolean(busy)} onClick={() => void runOcr()}>텍스트 없는 선택 페이지 OCR · 최대 5쪽</button> : null}
         <p className={styles.hint}>표의 열·단위·각주는 원문과 함께 확인하세요. 파일이 바뀌면 새로 선택해 다시 추출합니다.</p>
-        <button type="button" onClick={() => setPreview(value => !value)} aria-expanded={preview}>{preview ? '원문 접기' : 'PDF 원문 보기'}</button>
+        <button type="button" onClick={() => setPreview(value => !value)} aria-expanded={preview}>{preview ? '원문 접기' : extracted.pages.some(page => page.method === 'ocr') ? 'PDF 원문과 숫자 대조' : 'PDF 원문 보기'}</button>
       </section>
       <section className={`${styles.card} ${styles.draftEditor}`} hidden={phase !== 'draft'}><header className={styles.cardHeading}><div><span className={styles.eyebrow}>수정안 작성</span><h3>수정안을 작성하세요</h3><p>왼쪽 자료에서 확인한 값과 근거를 입력하세요.</p></div></header>
         <div className={styles.modeSwitch} aria-label="수정안 작성 방식"><button type="button" aria-pressed={method === 'manual'} disabled={workspaceBusy || conflict || detail.summary.deleted} onClick={() => setMethod('manual')}>직접 입력</button><button type="button" aria-pressed={method === 'agent'} disabled={workspaceBusy || conflict || detail.summary.deleted} onClick={() => setMethod('agent')}>에이전트 결과 가져오기</button></div>
