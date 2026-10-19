@@ -72,7 +72,10 @@ class AnnouncementJpaMappingTest {
                         "totalSupplyHouseholdCount",
                         "lhSourceSupplyRowIdentifier",
                         "lhTotalSupplyHouseholdCountOwned",
-                        "lhTotalSupplyHouseholdCountEnriched", "adminModified"
+                        "lhTotalSupplyHouseholdCountEnriched", "adminModified",
+                        "supplyGroup", "confirmedTargetFingerprint", "adminExcluded", "areaOverride",
+                        "announcementExclusiveArea", "announcementSupplyArea", "targetCountsComparable",
+                        "myhomeSourceRowIdentifier"
                 )
         );
         assertEntityAttributes(
@@ -90,7 +93,7 @@ class AnnouncementJpaMappingTest {
                         "applicationCondition",
                         "displayOrder",
                         "sourceSupplyTargetIdentifier",
-                        "lhAmountPreservedReason", "adminModified"
+                        "lhAmountPreservedReason", "adminModified", "adminExcluded"
                 )
         );
         assertEntityAttributes(

@@ -13,6 +13,7 @@ import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -24,22 +25,74 @@ import tools.jackson.databind.ObjectMapper;
 public class IngestFailureReviewQueryRepository {
 
     private static final TypeReference<Map<String, Object>> METADATA_TYPE = new TypeReference<>() {};
+    // 원천 키 계산을 실패 행마다 반복하지 않도록 필요한 원천 이름을 한 번 조회해 공유한다.
     private static final String PAGE_SQL = """
             WITH latest_collection_failures AS (
                 SELECT DISTINCT ON (source, request_description) *
                 FROM external_data_collection_failures
+                WHERE CAST(:failureId AS bigint) IS NULL OR id = :failureId
                 ORDER BY source, request_description, id DESC
-            ), failures AS (%s), filtered AS (
+            ), failures AS (%s), scoped_failures AS MATERIALIZED (
                 SELECT * FROM failures
-                WHERE domain_value = :domain AND (:category = 'all' OR category = :category)
+                WHERE (:domain = 'all' OR domain_value = :domain)
+                    AND (:category = 'all' OR category = :category)
                     AND (:status = 'ALL' OR status = :status)
+                    AND (CAST(:executionId AS uuid) IS NULL OR last_execution_id = :executionId)
+                    AND (CAST(:failureId AS bigint) IS NULL OR id = :failureId)
+            ), complex_sources AS MATERIALIZED (
+                SELECT DISTINCT ON (source.source_key) source.source_key, source.name
+                FROM (%s) source
+                WHERE source.source_key IN (
+                    SELECT source_key FROM scoped_failures WHERE category = 'complex'
+                )
+                ORDER BY source.source_key, source.collected_at DESC NULLS LAST, source.id DESC
+            ), announcement_sources AS MATERIALIZED (
+                SELECT DISTINCT ON (source.source_key) source.source_key, source.name
+                FROM (%s) source
+                WHERE source.source_key IN (
+                    SELECT source_key FROM scoped_failures WHERE category IN ('announcement', 'enrichment')
+                )
+                ORDER BY source.source_key, (source.raw_payload::jsonb ->> 'active')::boolean DESC NULLS LAST,
+                         source.collected_at DESC NULLS LAST, source.id DESC
+            ), named_failures AS (
+                SELECT failure.*, COALESCE(complex_source.name, announcement_source.name) AS source_name
+                FROM scoped_failures failure
+                LEFT JOIN complex_sources complex_source ON failure.category = 'complex'
+                    AND complex_source.source_key = failure.source_key
+                LEFT JOIN announcement_sources announcement_source
+                    ON failure.category IN ('announcement', 'enrichment')
+                    AND announcement_source.source_key = failure.source_key
+            ), filtered AS (
+                SELECT failure.* FROM named_failures failure
+                WHERE :keyword = '' OR source_name ILIKE :pattern ESCAPE '!'
+                    OR target_name ILIKE :pattern ESCAPE '!'
+                    OR source_key ILIKE :pattern ESCAPE '!'
+                    OR source_complex_identifier ILIKE :pattern ESCAPE '!'
+                    OR source_announcement_identifier ILIKE :pattern ESCAPE '!'
+                    OR metadata::jsonb ->> 'panId' ILIKE :pattern ESCAPE '!'
+                    OR EXISTS (
+                        SELECT 1 FROM housing_complexes complex
+                        LEFT JOIN myhome_complex_links link
+                            ON link.source_complex_identifier = failure.source_complex_identifier
+                        WHERE failure.category = 'complex'
+                            AND (complex.id = link.housing_complex_id
+                                OR (link.housing_complex_id IS NULL
+                                    AND complex.source_complex_identifier = failure.source_complex_identifier))
+                            AND complex.name ILIKE :pattern ESCAPE '!'
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM announcements announcement
+                        WHERE failure.category IN ('announcement', 'enrichment')
+                            AND announcement.source_announcement_identifier = failure.source_announcement_identifier
+                            AND announcement.name ILIKE :pattern ESCAPE '!'
+                    )
             ), page_failures AS (
                 SELECT * FROM filtered
                 ORDER BY last_occurred_at DESC, id DESC, category ASC
                 LIMIT :size OFFSET :offset
             )
             SELECT totals.total_elements, failure.*,
-                COALESCE(complex_source.name, announcement_source.name,
+                COALESCE(failure.source_name,
                          complex.name, announcement.name, failure.target_name) AS target_name_value,
                 COALESCE(complex.id, announcement.id) AS product_id,
                 COALESCE(complex.name, announcement.name) AS product_name,
@@ -53,9 +106,9 @@ public class IngestFailureReviewQueryRepository {
                 END AS housing_type_count,
                 CASE WHEN announcement.id IS NOT NULL THEN
                     (SELECT COUNT(DISTINCT housing_complex_id) FROM supply_rows
-                     WHERE announcement_id = announcement.id) END AS linked_complex_count,
+                     WHERE admin_excluded = false AND announcement_id = announcement.id) END AS linked_complex_count,
                 CASE WHEN announcement.id IS NOT NULL THEN
-                    (SELECT COUNT(*) FROM supply_rows WHERE announcement_id = announcement.id) END AS supply_row_count,
+                    (SELECT COUNT(*) FROM supply_rows WHERE admin_excluded = false AND announcement_id = announcement.id) END AS supply_row_count,
                 CASE WHEN announcement.id IS NOT NULL THEN
                     (SELECT COUNT(*) FROM announcement_application_schedules WHERE announcement_id = announcement.id)
                 END AS application_schedule_count,
@@ -98,17 +151,6 @@ public class IngestFailureReviewQueryRepository {
                 AND NULLIF(BTRIM(failure.source_announcement_identifier), '') IS NOT NULL
                 AND announcement.source_announcement_identifier = failure.source_announcement_identifier
             LEFT JOIN LATERAL (
-                SELECT source.name FROM (%s) source
-                WHERE failure.category = 'complex' AND source.source_key = failure.source_key
-                ORDER BY source.collected_at DESC NULLS LAST, source.id DESC LIMIT 1
-            ) complex_source ON TRUE
-            LEFT JOIN LATERAL (
-                SELECT source.name FROM (%s) source
-                WHERE failure.category IN ('announcement', 'enrichment') AND source.source_key = failure.source_key
-                ORDER BY (source.raw_payload::jsonb ->> 'active')::boolean DESC NULLS LAST,
-                         source.collected_at DESC NULLS LAST, source.id DESC LIMIT 1
-            ) announcement_source ON TRUE
-            LEFT JOIN LATERAL (
                 SELECT EXISTS(SELECT 1 FROM announcements next_announcement
                     WHERE next_announcement.previous_announcement_id = announcement.id
                         AND next_announcement.admin_deleted = FALSE) AS exists_value
@@ -125,18 +167,35 @@ public class IngestFailureReviewQueryRepository {
     }
 
     public IngestFailureReviewPageResponse findReviews(
-            String domain, String category, String status, int page, int size
+            String domain, String category, String status, int page, int size, String keyword, UUID executionId
+    ) {
+        return query(domain, category, status, page, size, keyword.strip(), executionId, null);
+    }
+
+    public Optional<Item> findReview(String category, long id) {
+        return query("all", category, "ALL", 0, 1, "", null, id).items().stream().findFirst();
+    }
+
+    private IngestFailureReviewPageResponse query(
+            String domain, String category, String status, int page, int size,
+            String keyword, UUID executionId, Long failureId
     ) {
         List<ReviewRow> rows = jdbc.sql(PAGE_SQL.formatted(failureUnion(),
                         IngestSourceRows.query(IngestSourceCategory.MYHOME_COMPLEX),
                         IngestSourceRows.query(IngestSourceCategory.MYHOME_ANNOUNCEMENT)))
                 .param("domain", domain).param("category", category).param("status", status)
+                .param("keyword", keyword).param("pattern", searchPattern(keyword))
+                .param("executionId", executionId).param("failureId", failureId)
                 .param("size", size).param("offset", (long) page * size)
                 .query((row, index) -> reviewRow(row)).list();
         long total = rows.getFirst().total();
         List<Item> items = rows.stream().map(ReviewRow::item).filter(item -> item != null).toList();
         long totalPages = (total + size - 1) / size;
         return new IngestFailureReviewPageResponse(items, page, total, totalPages, (long) page + 1 < totalPages);
+    }
+
+    private String searchPattern(String keyword) {
+        return "%" + keyword.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
     }
 
     private String failureUnion() {

@@ -3,10 +3,10 @@ import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AnnouncementSupplyMatchingForm } from './AnnouncementSupplyMatchingForm'
 import { getManagementDetail } from '../management/api'
-import { getSupplyMatches, searchMatchingComplexes, getMatchingHousingTypes, refineSupplyMatches } from './supplyMatchingApi'
+import { getSupplyMatches, searchMatchingComplexes, getMatchingHousingTypes, refineSupplyMatches, releaseSupplyMatch } from './supplyMatchingApi'
 
 vi.mock('./supplyMatchingApi', () => ({ getSupplyMatches: vi.fn(), searchMatchingComplexes: vi.fn(),
-  getMatchingHousingTypes: vi.fn(), refineSupplyMatches: vi.fn() }))
+  getMatchingHousingTypes: vi.fn(), refineSupplyMatches: vi.fn(), releaseSupplyMatch: vi.fn() }))
 vi.mock('../management/api', () => ({ getManagementDetail: vi.fn() }))
 
 const row = { rowIdentifier: '21395:1', token: 'version', sourceComplexName: '익산한스빌',
@@ -41,7 +41,8 @@ describe('선택 적용 후 공고 정제', () => {
   })
 
   it('주택형을 선택해 바로 정제하고 완료 후 공고 관리 링크를 보여준다', async () => {
-    renderForm()
+    const onApplied=vi.fn(), onBusy=vi.fn()
+    render(<MemoryRouter><AnnouncementSupplyMatchingForm identifier="21395" onApplied={onApplied} onBusy={onBusy}/></MemoryRouter>)
     expect(await screen.findByText('26A,B')).toBeVisible()
     await screen.findByRole('option', { name: /26 · 전용/ })
     fireEvent.change(screen.getByLabelText('매칭 주택형'), { target: { value: '10' } })
@@ -50,6 +51,8 @@ describe('선택 적용 후 공고 정제', () => {
     await waitFor(() => expect(refineSupplyMatches).toHaveBeenCalledWith('21395',
       [{ rowIdentifier: '21395:1', token: 'version', complexId: 1, housingTypeId: 10 }]))
     expect(await screen.findByRole('status')).toHaveTextContent('정제·저장을 완료했습니다')
+    expect(onApplied).toHaveBeenCalledOnce()
+    expect(onBusy.mock.calls).toEqual([[true],[false]])
     expect(screen.getByRole('link', { name: '공고 관리로 이동' })).toHaveAttribute('href', '/admin/announcements')
     expect(screen.queryByRole('button', { name: '등록 재시도' })).not.toBeInTheDocument()
   })
@@ -150,5 +153,55 @@ describe('선택 적용 후 공고 정제', () => {
     renderForm()
     expect(await screen.findByRole('alert')).toHaveTextContent('원천 조회 실패')
     expect(screen.queryByRole('button', { name: '선택 적용·정제 실행' })).not.toBeInTheDocument()
+  })
+
+  it('다음 정제에 사용할 선택은 주택형과 근거를 확인한 뒤 함께 저장한다', async () => {
+    vi.mocked(getMatchingHousingTypes).mockResolvedValue([
+      { id: 10, name: '26', exclusiveArea: 26.4673, supplyArea: null, householdCount: 43, token: 'type-10' },
+      { id: 11, name: '26', exclusiveArea: 26.5195, supplyArea: null, householdCount: 486, token: 'type-11' },
+    ])
+    renderForm()
+    await screen.findByRole('option', { name: /486세대/ })
+    fireEvent.change(screen.getByLabelText('매칭 주택형'), { target: { value: '11' } })
+    fireEvent.click(screen.getByLabelText('이 선택을 저장해 다음 정제에도 사용'))
+    fireEvent.click(screen.getByRole('button', { name: '선택 저장·정제 실행' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('공식 출처 URL과 확인 근거')
+    expect(refineSupplyMatches).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('공식 출처 URL'), { target: { value: 'https://example.com/official.pdf' } })
+    fireEvent.change(screen.getByLabelText('확인 근거'), { target: { value: '3쪽의 면적과 486세대 주택형을 대조함' } })
+    fireEvent.click(screen.getByRole('button', { name: '선택 저장·정제 실행' }))
+    await waitFor(() => expect(refineSupplyMatches).toHaveBeenCalledExactlyOnceWith('21395',
+      [{ rowIdentifier: '21395:1', token: 'version', complexId: 1, housingTypeId: 11, targetToken: 'type-11' }],
+      { remember: true, sourceUrl: 'https://example.com/official.pdf', reason: '3쪽의 면적과 486세대 주택형을 대조함' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('다음 정제에서도')
+  })
+
+  it('주택형을 직접 지정하지 않은 선택은 영구 저장하지 않는다', async () => {
+    renderForm()
+    await screen.findByRole('option', { name: /26 · 전용/ })
+    fireEvent.click(screen.getByLabelText('이 선택을 저장해 다음 정제에도 사용'))
+    fireEvent.change(screen.getByLabelText('공식 출처 URL'), { target: { value: 'https://example.com/official' } })
+    fireEvent.change(screen.getByLabelText('확인 근거'), { target: { value: '원문 확인' } })
+    fireEvent.click(screen.getByRole('button', { name: '선택 저장·정제 실행' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('주택형을 명시적으로 선택')
+    expect(refineSupplyMatches).not.toHaveBeenCalled()
+  })
+
+  it('저장한 선택의 재확인 사유와 근거를 보여주고 이유와 확인 후 해제한다', async () => {
+    vi.mocked(getSupplyMatches).mockResolvedValue([{ ...row, savedMatch: { complexId: 1, housingTypeId: 10,
+      sourceUrl: 'https://example.com/official', reason: '3쪽 대조', actor: 'admin',
+      updatedAt: '2026-10-18T09:00:00Z', reviewRequired: true } }])
+    vi.mocked(releaseSupplyMatch).mockResolvedValue([row])
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderForm()
+    expect(await screen.findByText('저장한 매칭 재확인 필요')).toBeVisible()
+    expect(screen.getByRole('link', { name: '저장한 공식 근거 보기' })).toHaveAttribute('href', 'https://example.com/official')
+    fireEvent.click(screen.getByRole('button', { name: '저장한 선택 해제' }))
+    expect(releaseSupplyMatch).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('확인 근거'), { target: { value: '원천 변경으로 기존 판단 해제' } })
+    fireEvent.click(screen.getByRole('button', { name: '저장한 선택 해제' }))
+    await waitFor(() => expect(releaseSupplyMatch).toHaveBeenCalledOnce())
+    expect(confirm).toHaveBeenCalledOnce()
+    confirm.mockRestore()
   })
 })

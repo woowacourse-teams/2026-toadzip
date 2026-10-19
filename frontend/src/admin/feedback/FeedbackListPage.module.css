@@ -53,3 +53,11 @@
   .page .content { padding: var(--ds-space-4); }
   .pagination { padding: 0 var(--ds-space-4) var(--ds-space-4); }
 }
+
+.processing { margin-top: var(--ds-space-4); }
+.processing fieldset { display: grid; gap: var(--ds-space-3); border: 0; padding: 0; min-width: 0; }
+.processingFields { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--ds-space-3); }
+.processing label { display: grid; gap: var(--ds-space-2); }
+.processing textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.processing button { justify-self: start; }
+.filters { flex-wrap: wrap; }

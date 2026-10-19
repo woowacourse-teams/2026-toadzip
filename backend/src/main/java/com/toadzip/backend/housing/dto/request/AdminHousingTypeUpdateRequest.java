@@ -14,4 +14,10 @@ public record AdminHousingTypeUpdateRequest(
         @NotBlank @Size(max = 255) String name,
         @NotNull @PositiveOrZero @Digits(integer = 6, fraction = 4) BigDecimal exclusiveArea,
         @PositiveOrZero Integer householdCount,
-        @Valid AdminDocumentEvidence documentEvidence) { }
+        @Valid AdminDocumentEvidence documentEvidence,
+        @Size(max = 64) String impactToken) {
+    public AdminHousingTypeUpdateRequest(Long version, String name, BigDecimal exclusiveArea, Integer householdCount,
+            AdminDocumentEvidence documentEvidence) {
+        this(version, name, exclusiveArea, householdCount, documentEvidence, null);
+    }
+}

@@ -5,6 +5,7 @@ import { DataPipelineApiError, isExternalDataCollectionReport, refreshLhAnnounce
 import { pipelineStatusLabels } from './pipelineLabels'
 import type { FailureDomain } from './failureReviewApi'
 import styles from './IngestFailurePanel.module.css'
+import { FailureRetryButton } from './FailureRetryButton'
 
 export function FailureReviewPage() {
   const [params, setParams] = useSearchParams()
@@ -102,6 +103,7 @@ export function FailureReviewPage() {
     setParams(currentParams => {
       currentParams.set('domain', next)
       currentParams.delete('category'); currentParams.delete('page'); currentParams.delete('executionId')
+      currentParams.delete('failure'); currentParams.delete('result')
       return currentParams
     })
   }
@@ -127,15 +129,15 @@ export function FailureReviewPage() {
       <div className={styles.workflow}>
         <Link to={`/admin/${domain === 'complex' ? 'complexes' : 'announcements'}?review=true`}>원천 변경 검토</Link>
         <Link to={`/admin/ingest#${domain === 'complex' ? 'complex' : 'announcement'}-pipelines`}>API 키 입력·원천 수집</Link>
-        <button type="button" disabled={busy} onClick={() => void retry()}>{label} 정제 다시 실행</button>
+        <FailureRetryButton key={domain} label={label} disabled={busy} onRetry={() => void retry()}/>
       </div>
       <p className={styles.hint}>{label} 전체를 다시 정제합니다. 문제가 사라지면 해결됨으로, 재발하면 미해결로 표시됩니다.</p>
       {runMessage ? <p role="status" className={styles.runMessage}>{runMessage}</p> : null}
       {runNotice ? <p role="status">{runNotice}</p> : null}
       {error ? <p role="alert">{error}</p> : null}
       {domain === 'announcement' ? (
-        <section className="admin-detail-section">
-          <h2>공고별 LH 원천 강제 재조회</h2>
+        <details className="admin-detail-section">
+          <summary>공고 ID로 LH 원천 직접 재조회</summary>
           <p>마이홈 공고 ID에 연결된 LH 요청을 조회합니다. 오래된 종료 공고 제외를 우회하며, 빈 응답 보호와 공급행 감소 승인 규칙은 유지합니다.</p>
           <form onSubmit={(event) => void refreshAnnouncement(event)}>
             <label>마이홈 공고 ID<input required value={pblancId} disabled={busy} onChange={(event) => setPblancId(event.target.value)} /></label>
@@ -145,7 +147,7 @@ export function FailureReviewPage() {
             <button disabled={busy || !pblancId.trim()} type="submit">{refreshing ? '처리 중…' : '공고 원천 강제 재조회'}</button>
           </form>
           <Link to="/admin/ingest">공급 감소 승인·수집 결과 확인</Link>
-        </section>
+        </details>
       ) : null}
       <IngestFailurePanel domain={domain} executionId={params.get('executionId')} refreshToken={refresh}
         onRetry={() => void retry()} retryDisabled={busy} runMessage={runMessage} runError={error} />

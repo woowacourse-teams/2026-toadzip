@@ -3,12 +3,13 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { BrandLink } from '../../BrandLink'
 import { useAdminAuth } from './useAdminAuth'
 import styles from './AdminLayout.module.css'
+import { FailureReturnLink } from '../ingest/FailureReturnLink'
 
-const workLinks = [['/admin/quality', '검토할 데이터', 'review'], ['/admin/complexes', '단지 관리', 'building'],
+const workLinks = [['/admin/operations', '운영 홈', 'review'], ['/admin/quality', '검토할 데이터', 'review'], ['/admin/complexes', '단지 관리', 'building'],
   ['/admin/announcements', '공고 관리', 'document'], ['/admin/complex-coverage', '단지 누락 대조', 'search']] as const
 const sourceLinks = [['/admin/ingest', '수집·정제'], ['/admin/ingest-v2', '공고 수집·검토'],
   ['/admin/sources', '원천 데이터'], ['/admin/failures', '실패·검토 항목'], ['/admin/locations', '주소 데이터']] as const
-const memberLinks = [['/admin/users', '회원 관리'], ['/admin/notification-subscriptions', '알림 신청 관리'], ['/admin/feedback', '사용자 의견']] as const
+const memberLinks = [['/admin/users', '회원 관리'], ['/admin/notification-subscriptions', '알림 신청 관리'], ['/admin/notification-deliveries', '알림 발송 기록'], ['/admin/feedback', '사용자 의견']] as const
 function MenuIcon({ kind }: { kind: string }) {
   const path = kind === 'building' ? 'M4 21V3h12v18M16 9h4v12M8 7h4M8 11h4M8 15h4M8 21v-3h4v3'
     : kind === 'document' ? 'M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7'
@@ -77,6 +78,7 @@ export function AdminLayout() {
         <div className={styles.navFoot}>공공주택 복덕방<br /><span>데이터 운영 공간</span></div>
       </nav>
       <main className="admin-content" id="admin-main">
+        <FailureReturnLink />
         <Outlet />
       </main>
     </div>

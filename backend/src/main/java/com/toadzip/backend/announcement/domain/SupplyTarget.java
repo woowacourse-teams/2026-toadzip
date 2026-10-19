@@ -60,6 +60,17 @@ public class SupplyTarget {
     @org.hibernate.annotations.ColumnDefault("false")
     private boolean adminModified;
 
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminExcluded;
+
+    public void correctPresentation(boolean excluded, int order) {
+        validateNonNegative(order, "표시 순서");
+        adminExcluded = excluded;
+        displayOrder = order;
+        adminModified = true;
+    }
+
     public void markLhAmountPreserved() {
         markLhAmountPreserved("LH_AMOUNT_NOT_PROVIDED");
     }

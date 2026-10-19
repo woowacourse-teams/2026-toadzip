@@ -2,10 +2,10 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { FailureReviewPage } from './FailureReviewPage'
-import { getFailureReviews, type FailureReview } from './failureReviewApi'
+import { getFailureReview, getFailureReviews, type FailureReview } from './failureReviewApi'
 import { getDataPipelineStatus, refreshLhAnnouncement, startDataPipeline } from './api'
 
-vi.mock('./failureReviewApi', () => ({ getFailureReviews: vi.fn() }))
+vi.mock('./failureReviewApi', () => ({ getFailureReviews: vi.fn(), getFailureReview: vi.fn() }))
 vi.mock('./api', async (original) => ({ ...(await original<typeof import('./api')>()),
   getIngestFailures: vi.fn().mockResolvedValue([]), getDataPipelineStatus: vi.fn(),
   startDataPipeline: vi.fn(), refreshLhAnnouncement: vi.fn(),
@@ -23,6 +23,7 @@ const row: FailureReview = {
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(getFailureReview).mockResolvedValue(row)
   reviews.mockResolvedValue({items:[row],page:0,totalElements:41,totalPages:3,hasNext:true})
   vi.mocked(getDataPipelineStatus).mockResolvedValue({status:'IDLE'} as Awaited<ReturnType<typeof getDataPipelineStatus>>)
   Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value:function(this:HTMLDialogElement){this.setAttribute('open','')}})
@@ -42,7 +43,8 @@ it('실패와 별도로 현재 등록 데이터와 사용자 화면 조건을 �
   render(<MemoryRouter><FailureReviewPage /></MemoryRouter>)
   fireEvent.click(await screen.findByRole('button',{name:'확인·처리: 두꺼비 단지'}))
   const link=screen.getByRole('link',{name:'단지 확인·수정'})
-  expect(link).toHaveAttribute('href','/admin/complexes/42')
+  expect(new URL(link.getAttribute('href')!, 'https://test.invalid').pathname).toBe('/admin/complexes/42')
+  expect(new URL(link.getAttribute('href')!, 'https://test.invalid').searchParams.get('failureReturnTo')).toContain('failure=complex%3A7')
   expect(screen.getByRole('link',{name:'사용자 상세 보기'})).toHaveAttribute('href','/?complexId=42')
   expect(within(screen.getByRole('dialog')).getByText('주택형 0개')).toBeVisible()
   expect(screen.getByText(/주택형 정보를 제공할 수 없습니다/)).toBeVisible()
@@ -62,6 +64,8 @@ it('재처리가 끝나면 오류 목록을 다시 조회하고 해결 기록을
     .mockResolvedValue({...running,status:'COMPLETED'})
   render(<MemoryRouter><FailureReviewPage /></MemoryRouter>)
   fireEvent.click(await screen.findByRole('button',{name:'단지 정제 다시 실행'}))
+  expect(startDataPipeline).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button',{name:'전체 단지 정제 실행'}))
   await waitFor(() => expect(startDataPipeline).toHaveBeenCalledWith('COMPLEX_REFINEMENT'))
   await waitFor(() => expect(reviews.mock.calls.length).toBeGreaterThan(1),{timeout:3000})
   fireEvent.change(screen.getByRole('combobox',{name:'처리 상태'}),{target:{value:'RESOLVED'}})
@@ -75,6 +79,8 @@ it('새 실행으로 상태가 바뀌면 이전 실행의 완료로 표시하지
     .mockResolvedValue({...running,executionId:'run-8'})
   render(<MemoryRouter><FailureReviewPage /></MemoryRouter>)
   fireEvent.click(await screen.findByRole('button',{name:'단지 정제 다시 실행'}))
+  expect(startDataPipeline).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button',{name:'전체 단지 정제 실행'}))
   expect(await screen.findByText('실행 기록이 바뀌어 최신 정제 상태를 표시합니다.', {}, {timeout:3000})).toBeVisible()
   expect(screen.queryByText(/단지 정제: 선택된 작업 완료/)).not.toBeInTheDocument()
   expect(getDataPipelineStatus).toHaveBeenLastCalledWith('COMPLEX_REFINEMENT')
@@ -90,6 +96,7 @@ it.each([['COMPLETED','완료'],['FAILED','실패']] as const)(
     render(<MemoryRouter><FailureReviewPage /></MemoryRouter>)
     await waitFor(() => expect(getDataPipelineStatus).toHaveBeenCalledWith('COMPLEX_REFINEMENT'))
     fireEvent.click(screen.getByRole('button',{name:'단지 정제 다시 실행'}))
+    fireEvent.click(screen.getByRole('button',{name:'전체 단지 정제 실행'}))
     expect(startDataPipeline).toHaveBeenCalledWith('COMPLEX_REFINEMENT')
     expect(screen.getByRole('button',{name:'단지 정제 다시 실행'})).toBeDisabled()
     await act(() => started.resolve({ status, executionId:'new-run', type:'COMPLEX_REFINEMENT' } as Awaited<ReturnType<typeof startDataPipeline>>))
@@ -126,6 +133,7 @@ describe('실패 요청 재처리', () => {
       rateLimitedRequestCount: 0, selectionFailedRequestCount: 0, storedRowCount: 3, externalApiCallCount: 1,
       successfulRequestCount: 1, failedRequestCount: 0, skippedRequestCount: 0 })
     render(<MemoryRouter initialEntries={['/admin/ingest/failures?domain=announcement']}><FailureReviewPage /></MemoryRouter>)
+    fireEvent.click(screen.getByText('공고 ID로 LH 원천 직접 재조회'))
     fireEvent.change(screen.getByLabelText('마이홈 공고 ID'), { target: { value: ' myhome-1 ' } })
     fireEvent.change(screen.getByLabelText('재조회 원천'), { target: { value: source } })
     fireEvent.click(screen.getByRole('button', { name: '공고 원천 강제 재조회' }))
@@ -139,6 +147,7 @@ describe('실패 요청 재처리', () => {
       rateLimitedRequestCount: 0, selectionFailedRequestCount: 0, storedRowCount: 0, externalApiCallCount: 0,
       successfulRequestCount: 0, failedRequestCount: 0, skippedRequestCount: 0 })
     render(<MemoryRouter initialEntries={['/admin/ingest/failures?domain=announcement']}><FailureReviewPage /></MemoryRouter>)
+    fireEvent.click(screen.getByText('공고 ID로 LH 원천 직접 재조회'))
     fireEvent.change(screen.getByLabelText('마이홈 공고 ID'), { target: { value: 'missing' } })
     fireEvent.click(screen.getByRole('button', { name: '공고 원천 강제 재조회' }))
     expect(await screen.findByText(/재조회할 LH 요청이 없습니다/)).toHaveAttribute('role', 'status')
@@ -147,6 +156,7 @@ describe('실패 요청 재처리', () => {
   it('재조회 실패를 표시하고 다시 요청할 수 있다', async () => {
     vi.mocked(refreshLhAnnouncement).mockRejectedValue(new Error('공급행 누락으로 기존 원천을 보존했습니다.'))
     render(<MemoryRouter initialEntries={['/admin/ingest/failures?domain=announcement']}><FailureReviewPage /></MemoryRouter>)
+    fireEvent.click(screen.getByText('공고 ID로 LH 원천 직접 재조회'))
     fireEvent.change(screen.getByLabelText('마이홈 공고 ID'), { target: { value: 'myhome-1' } })
     fireEvent.click(screen.getByRole('button', { name: '공고 원천 강제 재조회' }))
     expect((await screen.findAllByRole('alert'))[0]).toHaveTextContent('공급행 누락')

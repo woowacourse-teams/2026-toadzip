@@ -19,16 +19,19 @@ public final class MyHomeAnnouncementSupplyRowGroups {
     ) {
         String generatedIdentifierPrefix = announcementIdentifier + ":LH:";
         List<SupplyRow> orderedRows = rows.stream()
+                .filter(row -> row.getSupplyGroup() == null)
                 .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
                 .toList();
         Map<String, List<SupplyRow>> groups = new LinkedHashMap<>();
-        String myHomeSourceIdentifier = null;
         for (SupplyRow row : orderedRows) {
-            if (!row.getSourceSupplyRowIdentifier().startsWith(generatedIdentifierPrefix)) {
-                myHomeSourceIdentifier = row.getSourceSupplyRowIdentifier();
+            String owner = row.getMyhomeSourceRowIdentifier();
+            String identifier = row.getSourceSupplyRowIdentifier();
+            if (owner == null && !identifier.startsWith(generatedIdentifierPrefix)
+                    && !identifier.startsWith("MANUAL:") && !identifier.startsWith("ADMIN:")) {
+                owner = identifier;
             }
-            if (myHomeSourceIdentifier != null) {
-                groups.computeIfAbsent(myHomeSourceIdentifier, ignored -> new ArrayList<>()).add(row);
+            if (owner != null) {
+                groups.computeIfAbsent(owner, ignored -> new ArrayList<>()).add(row);
             }
         }
         return groups;

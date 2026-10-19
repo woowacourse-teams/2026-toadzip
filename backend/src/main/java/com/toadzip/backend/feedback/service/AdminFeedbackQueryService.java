@@ -2,6 +2,7 @@ package com.toadzip.backend.feedback.service;
 
 import com.toadzip.backend.admin.dto.AdminPage;
 import com.toadzip.backend.feedback.domain.Feedback;
+import com.toadzip.backend.feedback.domain.FeedbackStatus;
 import com.toadzip.backend.feedback.dto.FeedbackSummary;
 import com.toadzip.backend.feedback.repository.FeedbackRepository;
 import java.util.List;
@@ -23,20 +24,20 @@ public class AdminFeedbackQueryService {
         this.repository = repository;
     }
 
-    public AdminPage<FeedbackSummary> search(String keyword, int page, int size) {
+    public AdminPage<FeedbackSummary> search(String keyword, FeedbackStatus status, String assignee, int page, int size) {
         String searchPattern = pattern(keyword);
-        long total = repository.countMatching(searchPattern);
+        long total = repository.countMatching(searchPattern, status, assignee);
         int totalPages = Math.toIntExact((total + size - 1) / size);
-        List<FeedbackSummary> items = items(searchPattern, page, size, total);
+        List<FeedbackSummary> items = items(searchPattern, status, assignee, page, size, total);
         return new AdminPage<>(items, page, (long) page + 1 < totalPages, total, totalPages);
     }
 
-    private List<FeedbackSummary> items(String searchPattern, int page, int size, long total) {
+    private List<FeedbackSummary> items(String searchPattern, FeedbackStatus status, String assignee, int page, int size, long total) {
         if ((long) page * size >= total) {
             return List.of();
         }
         Sort sort = Sort.by(Sort.Direction.DESC, "createdAt", "id");
-        List<Feedback> result = repository.search(searchPattern, PageRequest.of(page, size, sort));
+        List<Feedback> result = repository.search(searchPattern, status, assignee, PageRequest.of(page, size, sort));
         return result.stream().map(FeedbackSummary::from).toList();
     }
 

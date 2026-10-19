@@ -1,3 +1,4 @@
+import { SupplyCorrectionHistory } from '../supply/SupplyCorrectionHistory'
 import { useEffect, useState } from 'react'
 import { sourceCategories, isSourceCategory } from '../ingest/sourceApi'
 import { getManagementHistory } from './api'
@@ -23,7 +24,7 @@ export function ChangeHistory({ resource, id, version }: {resource:ManagementRes
   return <section><h2>수정 이력</h2>{error ? <div role="alert">{error}<button onClick={() => setAttempt(v => v+1)}>다시 불러오기</button></div> : null}
     {busy ? <p role="status">이력을 불러오는 중…</p> : !error && !items.length ? <p>아직 관리자 변경 이력이 없습니다.</p> : null}
     {!busy && !error ? items.map(item => <details key={item.id} className="admin-change"><summary>{labels[item.action] ?? item.action} · {item.actor} · {new Date(item.occurredAt).toLocaleString('ko-KR')}</summary>
-      <ChangedValues before={readValue(item.beforeValue)} after={readValue(item.afterValue)} />
+      {item.action === 'CORRECT_SUPPLY' ? <SupplyCorrectionHistory before={readValue(item.beforeValue)} after={readValue(item.afterValue)} /> : <ChangedValues before={readValue(item.beforeValue)} after={readValue(item.afterValue)} />}
       <details className="admin-history-record"><summary>전체 기록 보기</summary><div className="admin-change-values"><div><StoredDataTable data={readValue(item.beforeValue)} label="변경 전" readable /></div><div><StoredDataTable data={readValue(item.afterValue)} label="변경 후" readable /></div></div></details></details>) : null}
     <div className="admin-pagination"><button disabled={page === 0 || busy} onClick={() => setPage(v => v-1)}>이전 이력</button><span>{page+1} 페이지</span><button disabled={items.length < 20 || busy} onClick={() => setPage(v => v+1)}>다음 이력</button></div></section>
 }

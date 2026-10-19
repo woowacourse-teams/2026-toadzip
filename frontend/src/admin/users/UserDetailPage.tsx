@@ -39,6 +39,7 @@ export function UserDetailPage() {
       <tr><th scope="row">로그인 방식</th><td>{providerLabels[data.provider]}</td></tr>
       <tr><th scope="row">가입일</th><td><time dateTime={data.createdAt}>{joinedAt(data.createdAt)}</time></td></tr>
     </tbody></table> : null}
-    {data ? <NotificationSubscriptions key={id} userId={id} /> : null}
+    {data ? <><p><Link to={`/admin/notification-deliveries?userId=${id}`}>이 회원의 알림 발송·열람 기록 확인 →</Link></p>
+    <NotificationSubscriptions key={id} userId={id} /></> : null}
   </section>
 }

@@ -2,6 +2,8 @@ package com.toadzip.backend.feedback.controller;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -127,6 +129,50 @@ class AdminFeedbackControllerIntegrationTest {
     void 검색어_길이를_제한한다() throws Exception {
         mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("keyword", "가".repeat(201)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 처리결과를_기록하고_상태로_검색하며_오래된_수정을_거절한다() throws Exception {
+        long id = feedback("연결 오류", "2026-10-07T10:00:00Z");
+        String body = """
+                {"version":0,"status":"DONE","assignee":"","note":"공고 연결을 수정하고 공개 결과 확인",
+                 "relatedResource":"","relatedId":null}
+                """;
+        mockMvc.perform(put(ENDPOINT + "/" + id).with(user("operator").roles("ADMIN")).with(csrf())
+                        .contentType("application/json").content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("DONE"))
+                .andExpect(jsonPath("$.data.version").value(1)).andExpect(jsonPath("$.data.actor").value("operator"));
+        mockMvc.perform(get(ENDPOINT).with(user("operator").roles("ADMIN")).param("status", "DONE"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1));
+        mockMvc.perform(get(ENDPOINT).with(user("operator").roles("ADMIN")).param("status", "OPEN"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(0));
+        mockMvc.perform(put(ENDPOINT + "/" + id).with(user("operator").roles("ADMIN")).with(csrf())
+                        .contentType("application/json").content(body)).andExpect(status().isConflict());
+        org.assertj.core.api.Assertions.assertThat(jdbc.sql("SELECT count(*) FROM admin_data_changes "
+                + "WHERE resource_type='FEEDBACK' AND resource_id=:id").param("id", id)
+                .query(Long.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void 완료나_보류에는_결과와_이유가_필요하고_실패는_상태를_바꾸지_않는다() throws Exception {
+        long id = feedback("처리할 의견", "2026-10-07T10:00:00Z");
+        for (String state : java.util.List.of("DONE", "ON_HOLD")) {
+            mockMvc.perform(put(ENDPOINT + "/" + id).with(user("operator").roles("ADMIN")).with(csrf())
+                            .contentType("application/json").content("""
+                                    {"version":0,"status":"%s","assignee":"","note":"", "relatedResource":""}
+                                    """.formatted(state))).andExpect(status().isBadRequest());
+        }
+        mockMvc.perform(get(ENDPOINT + "/" + id).with(user("operator").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("OPEN"));
+    }
+
+    @Test
+    void 의견_처리_쓰기에도_CSRF를_적용한다() throws Exception {
+        long id = feedback("처리할 의견", "2026-10-07T10:00:00Z");
+        mockMvc.perform(put(ENDPOINT + "/" + id).with(user("operator").roles("ADMIN"))
+                        .contentType("application/json").content("""
+                                {"version":0,"status":"IN_PROGRESS","assignee":"","note":"확인 중", "relatedResource":""}
+                                """)).andExpect(status().isForbidden());
     }
 
     private long feedback(String content, String createdAt) {

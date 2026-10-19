@@ -19,6 +19,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.YearMonth;
+import java.math.BigDecimal;
 import java.util.Objects;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -39,8 +40,21 @@ public class SupplyRow {
     @org.hibernate.annotations.ColumnDefault("false")
     private boolean adminModified;
 
+    private String myhomeSourceRowIdentifier;
+
+    public void recordMyHomeSource(String sourceIdentifier) {
+        if (sourceIdentifier == null || sourceIdentifier.isBlank()) {
+            throw new IllegalArgumentException("마이홈 원천행 식별자가 필요합니다.");
+        }
+        myhomeSourceRowIdentifier = sourceIdentifier;
+    }
+
     public void reviseByAdmin(HousingComplex complex, HousingType type, String complexName,
             String typeName, String pnu, YearMonth moveInMonth, SupplyCategory category, Integer count) {
+        if (supplyGroup != null && (count != null || complex == null || housingComplex == null
+                || !complex.getId().equals(housingComplex.getId()))) {
+            throw new IllegalArgumentException("공통 모집수와 단지는 원천별 공급행 보정에서 함께 변경해 주세요.");
+        }
         SupplyRow incoming = create(announcement, complex, type, sourceSupplyRowIdentifier, displayOrder,
                 complexName, typeName, pnu, moveInMonth, category, null, count);
         housingComplex = incoming.housingComplex;
@@ -59,6 +73,55 @@ public class SupplyRow {
         adminModified = true;
     }
 
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminExcluded;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean areaOverride;
+
+    @Column(precision = 10, scale = 4)
+    private BigDecimal announcementExclusiveArea;
+
+    @Column(precision = 10, scale = 4)
+    private BigDecimal announcementSupplyArea;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean targetCountsComparable;
+
+    public void confirmTargetCountScope(boolean comparable) {
+        targetCountsComparable = comparable;
+    }
+
+    public void correctPresentation(boolean excluded, int order, boolean overrideArea,
+            BigDecimal exclusiveArea, BigDecimal supplyArea) {
+        validateNonNegative(order, "표시 순서");
+        if ((exclusiveArea != null && exclusiveArea.signum() < 0)
+                || (supplyArea != null && supplyArea.signum() < 0)) {
+            throw new IllegalArgumentException("면적은 음수일 수 없습니다.");
+        }
+        adminExcluded = excluded;
+        displayOrder = order;
+        areaOverride = overrideArea;
+        announcementExclusiveArea = exclusiveArea;
+        announcementSupplyArea = supplyArea;
+        adminModified = true;
+    }
+
+    public BigDecimal effectiveExclusiveArea() {
+        if (areaOverride) { return announcementExclusiveArea; }
+        if (housingType == null) { return null; }
+        return housingType.getExclusiveArea();
+    }
+
+    public BigDecimal effectiveSupplyArea() {
+        if (areaOverride) { return announcementSupplyArea; }
+        if (housingType == null) { return null; }
+        return housingType.getSupplyArea();
+    }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -101,6 +164,23 @@ public class SupplyRow {
     private String matchingFailureReason;
 
     private Integer totalSupplyHouseholdCount;
+
+    @ManyToOne(fetch = LAZY)
+    @JoinColumn(name = "supply_group_id")
+    private SupplyRowGroup supplyGroup;
+
+    @Column(length = 64)
+    private String confirmedTargetFingerprint;
+
+    public void protectInGroup(SupplyRowGroup group, String targetFingerprint) {
+        if (!announcement.getId().equals(group.getAnnouncement().getId())) {
+            throw new IllegalArgumentException("공고가 다른 공급행을 묶을 수 없습니다.");
+        }
+        supplyGroup = group;
+        confirmedTargetFingerprint = targetFingerprint;
+        totalSupplyHouseholdCount = null;
+        adminModified = true;
+    }
 
     private String lhSourceSupplyRowIdentifier;
 
@@ -192,7 +272,7 @@ public class SupplyRow {
             return false;
         }
         if (adminModified) {
-            return updateDisplayOrder(displayOrder);
+            return false;
         }
         boolean releasesLhEnrichment = announcement.getProvider() != null
                 && announcement.getProvider() != AgencyCode.LH;
@@ -229,7 +309,10 @@ public class SupplyRow {
         return true;
     }
 
-    private boolean updateDisplayOrder(int displayOrder) {
+    public boolean updateDisplayOrder(int displayOrder) {
+        if (adminModified) {
+            return false;
+        }
         validateNonNegative(displayOrder, "표시 순서");
         if (this.displayOrder == displayOrder) {
             return false;

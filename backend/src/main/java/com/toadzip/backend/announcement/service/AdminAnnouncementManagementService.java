@@ -108,6 +108,7 @@ public class AdminAnnouncementManagementService {
                 request.reserveCount(), request.rentalDeposit(), request.monthlyRent(), request.convertedDeposit(),
                 request.applicationCondition());
         target.getSupplyRow().protectConditionsByAdmin();
+        validateCounts(announcement);
         announcement.recordAdminSupplyChange();
         announcements.flush();
         changes.save(new AdminDataChange("ANNOUNCEMENT", id, "UPDATE_SUPPLY_TARGET", actor, before,
@@ -174,8 +175,9 @@ public class AdminAnnouncementManagementService {
         row.reviseByAdmin(complex, type, values.sourceComplexName(), values.sourceHousingTypeName(),
                 values.supplyPnu(), values.expectedMoveInMonth(), values.supplyCategory(),
                 values.totalSupplyHouseholdCount());
+        validateCounts(announcement);
         var linkedComplexIds = rows.findAllByAnnouncement(announcement).stream()
-                .filter(value -> value.getHousingComplex() != null)
+                .filter(value -> !value.isAdminExcluded() && value.getHousingComplex() != null)
                 .map(value -> value.getHousingComplex().getId()).collect(java.util.stream.Collectors.toSet());
         if (schedules.findAllByAnnouncementIdIn(List.of(id)).stream().anyMatch(schedule ->
                 schedule.getHousingComplex() != null && !linkedComplexIds.contains(schedule.getHousingComplex().getId()))) {
@@ -216,6 +218,28 @@ public class AdminAnnouncementManagementService {
         find(id);
         return changes.findByResourceTypeAndResourceIdOrderByIdDesc("ANNOUNCEMENT", id, PageRequest.of(page, 20))
                 .stream().map(AdminChangeResponse::from).toList();
+    }
+
+    private void validateCounts(Announcement announcement) {
+        long total = 0;
+        var groups = new java.util.HashSet<Long>();
+        for (var row : rows.findAllByAnnouncement(announcement)) {
+            if (row.isAdminExcluded()) { continue; }
+            Integer count = row.getTotalSupplyHouseholdCount();
+            if (row.getSupplyGroup() != null) {
+                count = null;
+                if (groups.add(row.getSupplyGroup().getId())) { count = row.getSupplyGroup().getSharedHouseholdCount(); }
+            }
+            if (count != null) { total += count; }
+            if (!row.isTargetCountsComparable() || row.getTotalSupplyHouseholdCount() == null) { continue; }
+            long targetCount = targets.findAllBySupplyRow(row).stream().filter(target -> !target.isAdminExcluded())
+                    .map(SupplyTarget::getSupplyHouseholdCount).filter(java.util.Objects::nonNull)
+                    .mapToLong(Integer::longValue).sum();
+            if (targetCount > row.getTotalSupplyHouseholdCount()) {
+                throw new IllegalArgumentException("같은 범위로 확인한 대상별 모집수 합계가 행 모집수를 초과합니다.");
+            }
+        }
+        if (total > Integer.MAX_VALUE) { throw new IllegalArgumentException("공고 모집수 합계가 허용 범위를 초과합니다."); }
     }
 
     private Long scheduleComplexId(AnnouncementApplicationSchedule schedule) {
@@ -273,9 +297,14 @@ public class AdminAnnouncementManagementService {
             complexId = row.getHousingComplex().getId(); complexName = row.getHousingComplex().getName();
         }
         if (row.getHousingType() != null) { typeId = row.getHousingType().getId(); }
+        com.toadzip.backend.announcement.dto.response.SupplyRowResponse.SharedRecruitment shared = null;
+        if (row.getSupplyGroup() != null) {
+            shared = new com.toadzip.backend.announcement.dto.response.SupplyRowResponse.SharedRecruitment(
+                    row.getSupplyGroup().getId(), row.getSupplyGroup().getSharedHouseholdCount());
+        }
         return new AdminAnnouncementDetail.SupplyRowItem(row.getId(), complexId, complexName, typeId,
                 row.isAdminModified(), new SupplyRowRequest(row.getSourceComplexName(), row.getSourceHousingTypeName(),
                         row.getSupplyPnu(), row.getExpectedMoveInMonth(), row.getSupplyCategory(),
-                        row.getTotalSupplyHouseholdCount()));
+                        row.getTotalSupplyHouseholdCount()), shared);
     }
 }

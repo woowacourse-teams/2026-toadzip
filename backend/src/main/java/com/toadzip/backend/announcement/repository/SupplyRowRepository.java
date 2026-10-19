@@ -27,6 +27,7 @@ public interface SupplyRowRepository extends JpaRepository<SupplyRow, Long> {
             FROM SupplyRow supplyRow
             LEFT JOIN FETCH supplyRow.housingComplex
             LEFT JOIN FETCH supplyRow.housingType
+            LEFT JOIN FETCH supplyRow.supplyGroup
             WHERE supplyRow.announcement.id IN :announcementIds
             ORDER BY supplyRow.announcement.id ASC, supplyRow.displayOrder ASC, supplyRow.id ASC
             """)

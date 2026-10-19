@@ -9,7 +9,8 @@ import { EditFields } from './EditFields'
 import { ComplexRelationsEditor } from './ComplexRelationsEditor'
 import { ManagementStatus } from './ManagementStatus'
 import { ChangeHistory } from './ChangeHistory'
-import { SupplyEditor } from './SupplyEditor'
+import { SupplyCorrectionWorkbench } from '../supply/SupplyCorrectionWorkbench'
+import { AnnouncementSupplyMatchingForm } from '../ingest/AnnouncementSupplyMatchingForm'
 import { SourceUrl } from '../shared/SourceUrl'
 import { ComplexVerificationPanel } from './ComplexVerificationPanel'
 import { ComplexVerificationBadge } from './ComplexVerificationBadge'
@@ -20,6 +21,7 @@ import { QualityComparisonPanel } from '../quality/QualityComparisonPanel'
 import { ReviewTaskPanel } from '../quality/ReviewTaskPanel'
 
 export function ManagementDetail({resource, embedded = false, detailId, onChanged, onBusyChange}: {resource:ManagementResource; embedded?: boolean; detailId?: string; onChanged?: () => void; onBusyChange?: (busy: boolean) => void}) {
+  const [sourceMatchesOpen, setSourceMatchesOpen] = useState(false)
   const {id: routeId = ''} = useParams()
   const id = detailId ?? routeId
   const [params] = useSearchParams()
@@ -126,7 +128,14 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
         <div className="admin-save-bar"><button className="admin-primary" disabled={busy}>{busy ? '저장 중…' : '변경사항 저장'}</button><button type="button" disabled={busy} onClick={() => {if(!dirty || window.confirm('변경사항을 버릴까요?')) {if (embedded) setAttempt(current => current + 1); else setEditing(false);setDirty(false);setError('')}}}>{embedded ? '변경 취소' : '취소'}</button></div></form> : null}
       {embedded && section === 'schedules' && resource === 'announcements' ? <ScheduleEditor key={String(value.data.version)} value={value} id={id} onSaved={saved} onBusyChange={setBusy} /> : null}
       {section === 'relations' ? resource === 'complexes' ? <ComplexRelationsEditor value={value} id={id} onSaved={saved} onBusyChange={setBusy} /> : <><h2>공급정보·단지 연결</h2>{value.supplyRows.length === 0 ? <p>등록된 공급정보가 없습니다.</p> : null}
-          {value.supplyRows.map(row => <SupplyEditor key={`${row.id}-${value.data.version}`} row={row} announcementId={id} version={Number(value.data.version)} deleted={value.summary.deleted} onSaved={saved} onBusyChange={setBusy} />)}</> : null}
+          {value.supplyRows.some(row => row.sharedRecruitment) && <details onToggle={event => setSourceMatchesOpen(event.currentTarget.open)}>
+            <summary>원천별 공급행 보정</summary>
+            {sourceMatchesOpen && <AnnouncementSupplyMatchingForm identifier={value.sourceIdentifier} disabled={busy || value.summary.deleted}
+              onBusy={setBusy} onApplied={() => { void getManagementDetail(resource, id).then(saved).catch(cause => setError(String(cause))) }} />}
+          </details>}
+          {!value.summary.deleted && <SupplyCorrectionWorkbench key={id} id={id} sourceUrl={String(value.data.originalUrl ?? '')}
+            onChanged={() => { void getManagementDetail(resource, id).then(saved).catch(cause => setError(String(cause))) }}
+            onBusyChange={setExtendedBusy} onDirtyChange={setExtendedDirty} />}</> : null}
       {section === 'history' ? <><h2>출처</h2><dl className="admin-data-grid"><div><dt>공식 원문 URL</dt><dd><SourceUrl url={value.data.originalUrl} /></dd></div><div><dt>원천 식별자</dt><dd>{value.sourceIdentifier || '기록 없음'}</dd></div></dl><p>관리자 최종 변경: {value.summary.updatedAt ? new Date(value.summary.updatedAt).toLocaleString('ko-KR') : '변경 이력 없음'}</p>
         <ChangeHistory resource={resource} id={id} version={Number(value.data.version)} /></> : null}
       </div>

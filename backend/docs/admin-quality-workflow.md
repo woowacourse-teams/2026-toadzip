@@ -58,3 +58,22 @@
 - 과거 DB 버전의 초안도 보관할 수 있다. 복원은 원본 해시 확인·재추출·수정안 재검증을 거치며 확인 체크는 복원하지 않는다.
 - `V20261016_03`은 테이블만 추가한다. 기존 등록값은 변경하지 않으며 이전 앱 버전과 공존한다.
 - `SharedReviewDraftIntegrationTest`: 공유·revision 충돌·관리자·CSRF·다른 대상 원본 차단.
+
+## 공급정보 일괄 보정과 범위 검토
+
+- `/api/admin/announcements/{id}/supply-corrections`: GET 현재 공급행·대상·원천·소실 경고와 snapshotToken.
+- POST `/preview`: 전체 행·하위 조건 변경안과 UUID 작업 번호, 근거·이유를 검증하여 변경 전후와 confirmationToken 반환. 저장하지 않는다.
+- POST: `{correction, confirmationToken}`. 공고 잠금과 수집 소유권 아래 전체 보정·새 주택형·보호·이력을 한 트랜잭션으로 저장한다.
+- 기존 행·조건 ID를 생략해 삭제할 수 없다. 제외·복원으로 이력을 유지하고 일정의 단지 참조를 검증한다.
+- 동일 작업 UUID·동일 요청은 기존 changeId와 현재 workspace를 반환한다. 같은 UUID의 다른 요청은 409다.
+- 원천·현재값·후보의 변경은 오래된 미리보기를 거절한다. 현재 미연결·미확정 상태는 경고이며 검토 완료로 변경하지 않는다.
+- 금액은 원 단위 18자리 이하 정수 문자열, 수량은 음수가 아닌 정수 또는 null이다. 합계 검증은 명시적으로 동일 범위를 확인한 행에만 적용한다.
+- 공통 모집 묶음은 기존 원천별 보정 계약을 사용한다. 묶음 합계를 개별 행에 복제하지 않는다.
+- 새 주택형·행·조건과 수정·제외·순서는 관리자 보호를 적용한다. 공개 조회·검색·현재 모집조건에서 제외 상태를 반영한다. 신규 알림을 생성하지 않는다.
+- POST `/reviews`: snapshotToken, `row:{id}` 또는 `target:{id}`, 확인 필드·선택 원천 필드·근거·VERIFIED/ON_HOLD를 기록한다.
+- GET `/reviews`: 최근 100개 기록, 선택 범위의 확인값·현재값·원천 차이·현재 판단을 반환한다. 확인 범위 밖의 변경과 수집 메타데이터 변경은 검토 무효 사유가 아니다.
+- 공통 주택형의 GET `/api/admin/housing-complexes/{id}/housing-types/{typeId}/impact`는 영향 공고·행과 토큰을 반환한다. 공통 면적 수정은 검토한 공고의 면적 보호 여부를 검사한다.
+- `V20261019_05`는 의견 처리, `_06`은 공급 보정·제외·공고별 면적, `_07`은 범위 검토, `_08`은 마이홈 원천 대응을 저장한다. `_08`은 업그레이드 당시 LH 확장행의 원천을 고정해 이후 표시순서와 원천 대응을 분리한다.
+- 주요 검증: `SupplyCorrectionIntegrationTest`, `AnnouncementSupplyMatchingIntegrationTest`, `SupplySourceOwnershipMigrationTest`, `LocalProfileSchemaPersistenceTest`.
+
+조건부 자동 되돌리기, 전체 보호 해제와 원천값 채택, 일반적인 공급행 합치기·조건 이동 API는 아직 없다.

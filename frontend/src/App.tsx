@@ -17,6 +17,8 @@ import { UserListPage } from './admin/users/UserListPage'
 import { UserDetailPage } from './admin/users/UserDetailPage'
 import { NotificationManagementPage } from './admin/notifications/NotificationSubscriptions'
 import { FeedbackPage } from './feedback/FeedbackPage'
+import { NotificationDeliveriesPage } from './admin/notifications/NotificationDeliveriesPage'
+import { OperationsHome } from './admin/operations/OperationsHome'
 import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
 import { PrivacyBoundary, PrivacyMenu, PrivacyPolicyPage, PrivacySettingsPage } from './privacy/Privacy'
 import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
@@ -73,7 +75,8 @@ function AdminRoutes() {
         <Route path="login" element={<LoginPage />} />
         <Route element={<RequireAdmin />}>
           <Route element={<AdminLayout />}>
-            <Route index element={<Navigate to="quality" replace />} />
+            <Route index element={<Navigate to="operations" replace />} />
+            <Route path="operations" element={<OperationsHome />} />
             <Route path="ingest" element={<AdminHome />} />
             <Route path="ingest-v2" element={<AnnouncementRegistrationV2Page />} />
             <Route path="complexes/:id?" element={<ManagementWorkspace resource="complexes" />} />
@@ -82,6 +85,7 @@ function AdminRoutes() {
             <Route path="quality" element={<QualityQueuePage />} />
             <Route path="users" element={<UserListPage />} />
             <Route path="users/:id" element={<UserDetailPage />} />
+            <Route path="notification-deliveries" element={<NotificationDeliveriesPage />} />
             <Route path="notification-subscriptions" element={<NotificationManagementPage />} />
             <Route path="feedback" element={<FeedbackListPage />} />
             <Route path="failures" element={<FailureReviewPage />} />

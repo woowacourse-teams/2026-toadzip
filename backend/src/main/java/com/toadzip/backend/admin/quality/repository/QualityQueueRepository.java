@@ -1,6 +1,8 @@
 package com.toadzip.backend.admin.quality.repository;
 
 import com.toadzip.backend.admin.dto.AdminPage;
+import com.toadzip.backend.announcement.repository.SupplySourceQueryRepository;
+import com.toadzip.backend.announcement.repository.SupplyReviewSql;
 import com.toadzip.backend.admin.quality.dto.QualityQueueItem;
 import com.toadzip.backend.housing.repository.ComplexVerificationSql;
 import java.sql.ResultSet;
@@ -46,17 +48,28 @@ public class QualityQueueRepository {
               array_remove(ARRAY[
                 CASE WHEN NULLIF(c.original_url, '') IS NULL THEN '공식 원문 URL' END,
                 CASE WHEN NOT c.application_schedule_reviewed THEN '확인된 접수 일정' END,
-                CASE WHEN NOT EXISTS (SELECT 1 FROM supply_rows r WHERE r.announcement_id = c.id)
+                CASE WHEN NOT EXISTS (SELECT 1 FROM supply_rows r WHERE NOT r.admin_excluded AND r.announcement_id = c.id)
                   THEN '공급정보' END,
-                CASE WHEN EXISTS (SELECT 1 FROM supply_rows r WHERE r.announcement_id = c.id
+                CASE WHEN EXISTS (SELECT 1 FROM supply_rows r WHERE NOT r.admin_excluded AND r.announcement_id = c.id
                   AND (r.housing_complex_id IS NULL OR r.housing_type_id IS NULL)) THEN '단지·주택형 연결' END
               ], NULL) missing_fields,
-              array_remove(ARRAY[CASE WHEN c.source_review_required THEN 'SOURCE_MISMATCH' END], NULL) review_reasons
+              array_remove(ARRAY[CASE WHEN c.source_review_required THEN 'SOURCE_MISMATCH' END,
+                CASE WHEN EXISTS (SELECT 1 FROM supply_rows r WHERE r.announcement_id = c.id AND
+            """ + SupplySourceQueryRepository.MISSING + """
+                ) THEN 'SOURCE_CHANGED' END], NULL) review_reasons
             FROM announcements c WHERE NOT c.admin_deleted
+            """;
+    private static final String SUPPLY_REVIEW_REASONS = """
+            (SELECT COALESCE(array_agg(DISTINCT status), ARRAY[]::text[]) FROM (
+            """ + SupplyReviewSql.EVALUATED + """
+            ) supply_reviews WHERE source.resource = 'ANNOUNCEMENT' AND announcement_id = source.id
+              AND latest AND status IN ('ON_HOLD', 'STALE'))
             """;
     private static final String FROM = """
              FROM (
-              SELECT source.*, review_reasons || CASE WHEN cardinality(missing_fields) > 0
+              SELECT source.*, review_reasons ||
+            """ + SUPPLY_REVIEW_REASONS + """
+                || CASE WHEN cardinality(missing_fields) > 0
                 THEN ARRAY['MISSING'] ELSE ARRAY[]::text[] END || CASE WHEN
             """ + SOURCE_CHANGED + """
                 THEN ARRAY['SOURCE_CHANGED'] ELSE ARRAY[]::text[] END reasons

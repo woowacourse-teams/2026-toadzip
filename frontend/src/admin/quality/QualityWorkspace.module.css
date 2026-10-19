@@ -87,3 +87,5 @@
 .workspace.queueWorkspace .workTabs button[aria-pressed=true] { border-bottom-color:var(--ds-color-action); color:var(--ds-color-action); }
 .queueWorkspace .shortcutBar button[aria-pressed] { min-height:34px; padding:7px 11px; background:var(--ds-color-surface-subtle); color:var(--ds-color-muted); border:1px solid transparent; border-radius:7px; font-size:12px; }
 .queueWorkspace .shortcutBar button[aria-pressed=true] { background:var(--ds-color-action-soft); color:var(--ds-color-action); }
+
+.queueRow[data-returned] { background: var(--ds-color-surface-subtle); box-shadow: inset 3px 0 var(--ds-color-action); }

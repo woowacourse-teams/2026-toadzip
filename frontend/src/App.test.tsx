@@ -1,3 +1,7 @@
+vi.mock('./admin/notifications/deliveryApi', async original => ({ ...await original<typeof import('./admin/notifications/deliveryApi')>(), listDeliveries: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })) }))
+vi.mock('./admin/feedback/api', async original => ({ ...await original<typeof import('./admin/feedback/api')>(), listFeedback: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })) }))
+vi.mock('./admin/quality/reviewTaskApi', async original => ({ ...await original<typeof import('./admin/quality/reviewTaskApi')>(), reviewTaskPage: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })) }))
+vi.mock('./admin/ingest/failureReviewApi', async original => ({ ...await original<typeof import('./admin/ingest/failureReviewApi')>(), getFailureReviews: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })) }))
 vi.mock('./admin/management/api', async importOriginal => ({
   ...(await importOriginal<typeof import('./admin/management/api')>()),
   getManagementPage: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })),
@@ -150,13 +154,13 @@ describe('App', () => {
     fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password1' } })
     fireEvent.click(screen.getByRole('button', { name: '로그인' }))
 
-    expect(await screen.findByRole('heading', { name: '검토할 데이터', level: 1 })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '운영 홈', level: 1 })).toBeVisible()
   })
 
   it('관리자 메뉴를 이동하면 해당 업무만 표시하고 뒤로 돌아와도 실행 상태를 조회한다', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
     render(<MemoryRouter initialEntries={['/admin']}><App /></MemoryRouter>)
-    expect(await screen.findByRole('heading', { name: '검토할 데이터', level: 1 })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '운영 홈', level: 1 })).toBeVisible()
     expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
     fireEvent.click(within(screen.getByRole('navigation', { name: '관리자 메뉴' })).getByRole('link', { name: '단지 관리' }))
     fireEvent.click(screen.getByRole('link', { name: '단지 추가' }))
@@ -204,7 +208,7 @@ describe('App', () => {
       expect(await screen.findByText('로그인 실패')).toBeVisible()
       fireEvent.click(screen.getByRole('button', { name: '로그인' }))
     }
-    expect(await screen.findByRole('heading', { name: '검토할 데이터', level: 1 })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '운영 홈', level: 1 })).toBeVisible()
     await act(async () => restoring.resolve(jsonResponse({ loginIdentifier: 'stale-admin', role: 'ADMIN' })))
     expect(screen.getByText('current-admin')).toBeVisible()
     expect(screen.queryByText('stale-admin')).not.toBeInTheDocument()

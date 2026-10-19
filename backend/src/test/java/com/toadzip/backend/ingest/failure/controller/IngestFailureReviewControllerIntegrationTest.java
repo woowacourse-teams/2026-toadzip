@@ -85,6 +85,14 @@ class IngestFailureReviewControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].targetName").value("최신 원천명"))
                 .andExpect(jsonPath("$.data.items[0].productLinkStatus").value("NOT_FOUND"));
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("domain", domain)
+                        .param("keyword", "  최신 원천명  "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(1));
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("domain", domain)
+                        .param("keyword", "과거 비활성명"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(0));
     }
 
     @Test
@@ -358,6 +366,93 @@ class IngestFailureReviewControllerIntegrationTest {
     void 관리자_권한이_없으면_실패와_제품_정보를_조회할_수_없다() throws Exception {
         mockMvc.perform(get(ENDPOINT).with(user(privacyPermissionMemberId()).roles("USER")).param("domain", "complex"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void 검색과_마지막_발생_실행_필터를_페이지와_전체_건수에_함께_적용한다() throws Exception {
+        UUID execution = UUID.randomUUID();
+        complex("hans", "한스빌 아파트", false);
+        complex("other", "다른 단지", false);
+        stageFailure("myhome_complex_mapping_failures", "hans-key", "source_complex_identifier", "hans",
+                "GEOCODING_ERROR");
+        stageFailure("myhome_complex_mapping_failures", "other-key", "source_complex_identifier", "other",
+                "GEOCODING_ERROR");
+        jdbc.sql("UPDATE myhome_complex_mapping_failures SET last_execution_id = :id WHERE source_key = 'hans-key'")
+                .param("id", execution).update();
+        jdbc.sql("UPDATE myhome_complex_mapping_failures SET first_execution_id = :id WHERE source_key = 'other-key'")
+                .param("id", execution).update();
+
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("domain", "complex")
+                        .param("keyword", "한스빌").param("executionId", execution.toString()).param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.items[0].sourceKey").value("hans-key"));
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("domain", "complex")
+                        .param("executionId", execution.toString()))
+                .andExpect(jsonPath("$.data.totalElements").value(1));
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("domain", "complex")
+                        .param("keyword", "other-key"))
+                .andExpect(jsonPath("$.data.totalElements").value(1));
+    }
+
+    @Test
+    void 검색어의_와일드카드는_문자로_검색한다() throws Exception {
+        complex("literal", "100%_단지", false);
+        complex("other", "다른 단지", false);
+        stageFailure("myhome_complex_mapping_failures", "literal", "source_complex_identifier", "literal",
+                "GEOCODING_ERROR");
+        stageFailure("myhome_complex_mapping_failures", "other", "source_complex_identifier", "other",
+                "GEOCODING_ERROR");
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("domain", "complex")
+                        .param("keyword", "%_"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(1));
+    }
+
+    @Test
+    void 해결된_오류를_목록_필터와_무관하게_다시_조회한다() throws Exception {
+        stageFailure("myhome_complex_mapping_failures", "key", "source_complex_identifier", "missing",
+                "GEOCODING_ERROR");
+        long id = jdbc.sql("SELECT id FROM myhome_complex_mapping_failures WHERE source_key = 'key'")
+                .query(Long.class).single();
+        jdbc.sql("UPDATE myhome_complex_mapping_failures SET status = 'RESOLVED', last_resolved_at = CURRENT_TIMESTAMP")
+                .update();
+        mockMvc.perform(get(ENDPOINT + "/complex/" + id).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(id))
+                .andExpect(jsonPath("$.data.status").value("RESOLVED"));
+        mockMvc.perform(get(ENDPOINT + "/complex/9223372036854775807").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get(ENDPOINT + "/complex/" + id).with(user(privacyPermissionMemberId()).roles("USER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void 동일한_요청의_새_기록이_생겨도_선택한_수집_오류를_조회한다() throws Exception {
+        collectionFailure("MYHOME_COMPLEX", "RESOLVED");
+        long id = jdbc.sql("SELECT id FROM external_data_collection_failures").query(Long.class).single();
+        collectionFailure("MYHOME_COMPLEX", "PENDING");
+        mockMvc.perform(get(ENDPOINT + "/collection/" + id).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(id))
+                .andExpect(jsonPath("$.data.status").value("RESOLVED"));
+    }
+
+    @Test
+    void 검색어_길이와_실행_ID_형식을_검증한다() throws Exception {
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
+                        .param("domain", "complex").param("keyword", "가".repeat(201)))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
+                        .param("domain", "complex").param("executionId", "invalid-id"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"all,1", "unknown,1", "complex,0", "complex,-1"})
+    void 잘못된_상세_주소를_거부한다(String category, String id) throws Exception {
+        mockMvc.perform(get(ENDPOINT + "/" + category + "/" + id).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isBadRequest());
     }
 
     private void collectionFailure(String source, String status) {

@@ -4,9 +4,9 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { FeedbackListPage } from './FeedbackListPage'
 import { listFeedback, type FeedbackPage } from './api'
 
-vi.mock('./api', () => ({ listFeedback: vi.fn() }))
+vi.mock('./api', async original => ({ ...await original<typeof import('./api')>(), listFeedback: vi.fn() }))
 beforeEach(() => { vi.mocked(listFeedback).mockReset() })
-const entry = { id: 7, content: '지도에서 단지를 찾기 어려워요.\n검색을 개선해 주세요.', createdAt: '2026-10-07T01:00:00Z' }
+const entry = { version: 0, status: 'OPEN' as const, assignee: '', note: '', relatedResource: '' as const, relatedId: null, actor: null, processedAt: null, id: 7, content: '지도에서 단지를 찾기 어려워요.\n검색을 개선해 주세요.', createdAt: '2026-10-07T01:00:00Z' }
 const page = (content = entry.content): FeedbackPage => ({ items: [{ ...entry, content }], page: 0, hasNext: false, totalElements: 1, totalPages: 1 })
 function setup(path = '/admin/feedback') { render(<MemoryRouter initialEntries={[path]}><FeedbackListPage /></MemoryRouter>) }
 

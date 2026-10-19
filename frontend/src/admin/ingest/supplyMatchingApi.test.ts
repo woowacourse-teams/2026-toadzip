@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { requestManagementApi } from '../management/api'
-import { getSupplyMatches, searchMatchingComplexes, getMatchingHousingTypes, refineSupplyMatches } from './supplyMatchingApi'
+import { getSupplyMatches, searchMatchingComplexes, getMatchingHousingTypes, refineSupplyMatches, releaseSupplyMatch } from './supplyMatchingApi'
 
 vi.mock('../management/api', () => ({ requestManagementApi: vi.fn() }))
 describe('선택 적용 정제 API 계약', () => {
@@ -39,5 +39,28 @@ describe('선택 적용 정제 API 계약', () => {
     await searchMatchingComplexes('한스빌 & 26')
     expect(requestManagementApi).toHaveBeenCalledWith('/api/admin/ingest/announcement-supply-matches/complexes?query=%ED%95%9C%EC%8A%A4%EB%B9%8C+%26+26',
       'GET', undefined, undefined)
+  })
+  it('기억할 선택의 근거와 후보 토큰을 기존 정제 API에 함께 보낸다', async () => {
+    vi.mocked(requestManagementApi).mockResolvedValue({ createdAnnouncementCount: 1, updatedAnnouncementCount: 0,
+      failedSourceRowCount: 0 })
+    const rows = [{ rowIdentifier: '21395:1', token: 'row', complexId: 1, housingTypeId: 10, targetToken: 'type' }]
+    const evidence = { remember: true as const, sourceUrl: 'https://example.com/official', reason: '3쪽 확인' }
+    await refineSupplyMatches('21395', rows, evidence)
+    expect(requestManagementApi).toHaveBeenCalledWith(expect.stringContaining('/21395/refine'), 'POST', { rows, ...evidence })
+  })
+  it('잘못된 저장 매칭의 근거 URL을 화면에 전달하지 않는다', async () => {
+    vi.mocked(requestManagementApi).mockResolvedValue([{ rowIdentifier: '21395:1', token: 'row', sourceComplexName: '단지',
+      sourceHousingTypeName: '26', pnu: '123', exclusiveArea: null, supplyArea: null, complexId: 1, housingTypeId: 10,
+      failure: null, savedMatch: { complexId: 1, housingTypeId: 10, sourceUrl: 'javascript:alert(1)', reason: '3쪽',
+        actor: 'admin', updatedAt: '2026-10-18T00:00:00Z', reviewRequired: false } }])
+    await expect(getSupplyMatches('21395')).rejects.toThrow('저장한 매칭 응답')
+  })
+  it('선택 해제는 조회 토큰과 사유를 전달하고 최신 매칭 목록을 반환한다', async () => {
+    vi.mocked(requestManagementApi).mockResolvedValue([])
+    const row = { rowIdentifier: '21395:1', token: 'row', sourceComplexName: '단지', sourceHousingTypeName: '26',
+      pnu: '123', exclusiveArea: null, supplyArea: null, complexId: 1, housingTypeId: 10, failure: null }
+    expect(await releaseSupplyMatch('21395', row, '재검토')).toEqual([])
+    expect(requestManagementApi).toHaveBeenCalledWith(expect.stringContaining('/21395/release'), 'POST',
+      { rowIdentifier: '21395:1', token: 'row', reason: '재검토' })
   })
 })

@@ -369,6 +369,10 @@ export interface RawAnnouncementSupplyTarget {
 }
 
 export interface RawAnnouncementSupplyRow {
+  readonly corrected?: boolean
+  readonly exclusiveArea?: number | null
+  readonly supplyArea?: number | null
+  readonly sharedRecruitment?: { readonly id: number; readonly householdCount: number | null } | null
   readonly supplyRowId: number
   readonly sourceComplexName: string | null
   readonly sourceHousingTypeName: string | null
@@ -461,6 +465,10 @@ export interface AnnouncementSupplyTarget {
 }
 
 export interface AnnouncementSupplyRow {
+  readonly corrected?: boolean
+  readonly exclusiveArea?: number | null
+  readonly supplyArea?: number | null
+  readonly sharedRecruitment?: { readonly id: number; readonly householdCount: number | null } | null
   readonly supplyRowId: string
   readonly sourceComplexName: string | null
   readonly sourceHousingTypeName: string | null

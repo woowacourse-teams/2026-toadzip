@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest'
+import { blankRow } from '../supply/supplyCorrectionApi'
 import { ChangeHistory } from './ChangeHistory'
 import { getManagementHistory } from './api'
 
@@ -75,4 +76,19 @@ it('객체가 아닌 저장 이력도 값을 그대로 표시한다', async () =
   fireEvent.click(screen.getByText('전체 기록 보기'))
   expect(screen.getByRole('table', { name: '변경 전' })).toHaveTextContent('기존 이력 텍스트')
   expect(screen.getByRole('table', { name: '변경 후' })).toHaveTextContent('값 없음 (null)')
+})
+
+it('공급정보 일괄 보정 이력은 원천 전체 대신 바뀐 값과 공식 근거를 먼저 보여준다', async () => {
+  const previous = { ...blankRow(0), id: 1, key: 'row:1', complexName: '한스빌', typeName: '26', householdCount: 10 }
+  vi.mocked(getManagementHistory).mockResolvedValue([{ id: 4, action: 'CORRECT_SUPPLY', actor: '운영자', occurredAt: '2026-10-19T00:00:00Z',
+    beforeValue: JSON.stringify({ rows: [previous] }),
+    afterValue: JSON.stringify({ rows: [{ ...previous, householdCount: null }], reason: '모집수 미확정', sourceUrl: 'https://example.com/notice.pdf', sourcePage: '3쪽', operationId: '작업번호', sources: [{ raw: '긴 원천 자료' }] }),
+  }])
+  render(<ChangeHistory resource="announcements" id="7" version={2} />)
+  fireEvent.click(await screen.findByText(/공급정보 일괄 보정 · 운영자/))
+  const record = screen.getByRole('region', { name: '저장한 공급정보 보정' })
+  expect(within(record).getByRole('heading', { name: '저장한 변경 1개' })).toBeVisible()
+  expect(record).toHaveTextContent('모집수 미확정')
+  expect(within(record).getByRole('link', { name: '공식 근거 ↗' })).toHaveAttribute('href', 'https://example.com/notice.pdf')
+  expect(within(record).getByRole('table', { name: '보정 작업' })).not.toBeVisible()
 })

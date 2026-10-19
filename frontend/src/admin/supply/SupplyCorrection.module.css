@@ -1,0 +1,32 @@
+.workspace { min-width: 0; display: grid; gap: var(--ds-space-4); }
+.workspace p { line-height: 1.7; overflow-wrap: anywhere; }
+.editor { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: var(--ds-space-4); }
+.row { border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); }
+.row > summary { padding: var(--ds-space-4); cursor: pointer; font-weight: var(--ds-weight-strong); overflow-wrap: anywhere; }
+.row > summary small { display: block; margin-top: var(--ds-space-2); color: var(--ds-color-label); font-weight: normal; }
+.rowBody { padding: 0 var(--ds-space-4) var(--ds-space-4); display: grid; gap: var(--ds-space-4); min-width: 0; }
+.row > .rowBody { border: 0; margin: 0; }
+.rowBody fieldset, .evidence { min-width: 0; padding: var(--ds-space-4); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); display: grid; gap: var(--ds-space-3); }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: var(--ds-space-3); }
+.workspace label { display: grid; gap: var(--ds-space-2); font-size: var(--ds-text-body); }
+.workspace input:not([type=checkbox]), .workspace select, .workspace textarea { min-width: 0; width: 100%; box-sizing: border-box; min-height: var(--ds-control-height-md); border: 1px solid var(--ds-color-table-line); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-text); padding: var(--ds-space-2) var(--ds-space-3); font: inherit; }
+.workspace textarea { resize: vertical; }
+.workspace input:disabled { color: var(--ds-color-muted); background: var(--ds-color-surface-subtle); }
+.workspace .check { display: flex; align-items: start; line-height: 1.6; }
+.check input { margin-top: .3em; }
+.actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ds-space-3); }
+.target { background: var(--ds-color-surface-subtle); }
+.sources { padding: var(--ds-space-3); border: 1px solid var(--ds-color-divider); }
+.sources summary { cursor: pointer; padding: var(--ds-space-2) 0; overflow-wrap: anywhere; }
+.preview { border-top: 2px solid var(--ds-color-action); padding-top: var(--ds-space-4); }
+.tableScroll { overflow: auto; border: 1px solid var(--ds-color-divider); }
+.tableScroll table { width: 100%; border-collapse: collapse; min-width: 32rem; }
+.tableScroll th, .tableScroll td { text-align: left; padding: var(--ds-space-3); border-bottom: 1px solid var(--ds-color-divider); overflow-wrap: anywhere; max-width: 18rem; }
+.tableScroll thead { background: var(--ds-color-surface-subtle); }
+.conflict { border-left: 3px solid var(--ds-color-deadline); padding: var(--ds-space-3); }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.workspace :is(input,select,textarea,button,summary,a):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
+@media (max-width: 600px) { .workspace input, .workspace select, .workspace textarea { font-size: 16px; } .rowBody { padding-inline: var(--ds-space-3); } }
+
+.review > :not(summary) { margin-inline: var(--ds-space-4); }
+.review table { min-width: 0; }

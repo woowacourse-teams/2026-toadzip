@@ -70,6 +70,34 @@ import tools.jackson.databind.json.JsonMapper;
 class LocalProfileSchemaPersistenceTest {
 
     @Test
+    void develop_DB에_수동_매칭_결정_저장소를_추가해도_기존_이력이_유지된다() throws Exception {
+        String databaseName = "toadzip_supply_match_" + UUID.randomUUID().toString().replace("-", "");
+        String jdbcUrl = primaryTestDatabaseUrl(databaseName);
+        createDatabase(databaseName);
+        try {
+            Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("classpath:db/migration").target("20261019.01").load().migrate();
+            int previousCount;
+            try (var connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test")) {
+                previousCount = countAllRows(connection, "flyway_schema_history");
+            }
+            var upgrade = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("classpath:db/migration").load();
+            int pendingMigrations = upgrade.info().pending().length;
+            assertEquals(pendingMigrations, upgrade.migrate().migrationsExecuted);
+            try (var connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test")) {
+                assertEquals(previousCount + pendingMigrations, countAllRows(connection, "flyway_schema_history"));
+                assertEquals(1, countColumn(connection, "announcement_supply_match_decisions", "source_fingerprint"));
+                assertEquals(1, countColumn(connection, "supply_row_groups", "shared_household_count"));
+            }
+            assertEquals(0, upgrade.migrate().migrationsExecuted);
+        }
+        finally {
+            dropDatabase(databaseName);
+        }
+    }
+
+    @Test
     void 최신_기존_DB에도_공급대상_수정_보호_마이그레이션을_순서대로_적용한다() throws Exception {
         String databaseName = "toadzip_supply_protection_" + UUID.randomUUID().toString().replace("-", "");
         String jdbcUrl = primaryTestDatabaseUrl(databaseName);

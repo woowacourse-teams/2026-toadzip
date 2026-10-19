@@ -6,6 +6,7 @@ import { ManagementDetail } from './ManagementDetail'
 import { ComplexPicker } from './ComplexPicker'
 import { ManagementError } from './api'
 import { type ManagementDetailData } from './managementContract'
+import { FailureReturnLink } from '../ingest/FailureReturnLink'
 const mocks = vi.hoisted(() => ({getManagementPage:vi.fn(),getManagementDetail:vi.fn(),requestManagementApi:vi.fn(),getManagementHistory:vi.fn()}))
 vi.mock('./api',async original => ({...(await original<typeof import('./api')>()),...mocks}))
 const summary = {id:7,name:'두꺼비 단지',subtitle:'서울 중구 세종대로',provider:'LH',rental:'HAPPY_HOUSING',deleted:false,modified:false,reviewRequired:false,updatedAt:null}
@@ -21,6 +22,19 @@ it('검색 조건을 URL로 보존하고 상세에서 목록으로 돌아간다'
   fireEvent.click(screen.getByRole('link',{name:'← 목록으로'}))
   expect(await screen.findByLabelText('단지명·주소')).toHaveValue('두꺼비')
   expect(screen.getByLabelText('기관')).toHaveValue('LH')
+})
+it('단지 후보를 다시 검색하거나 초기화해도 오류 처리 복귀 경로를 보존한다', async () => {
+  const back='/admin/failures?domain=announcement&keyword=한스빌&failure=announcement:7'
+  render(<MemoryRouter initialEntries={['/admin/complexes?failureReturnTo='+encodeURIComponent(back)]}>
+    <FailureReturnLink/><ManagementList resource="complexes" embedded/></MemoryRouter>)
+  await screen.findByRole('table')
+  fireEvent.change(screen.getByLabelText('단지명·주소'),{target:{value:'한스빌'}})
+  fireEvent.click(screen.getByRole('button',{name:'검색'}))
+  await waitFor(() => expect(mocks.getManagementPage.mock.lastCall?.[1].get('keyword')).toBe('한스빌'))
+  expect(screen.getByRole('link',{name:'오류 처리로 돌아가 결과 확인'})).toHaveAttribute('href',back)
+  fireEvent.click(screen.getByRole('button',{name:'초기화'}))
+  await waitFor(() => expect(mocks.getManagementPage.mock.lastCall?.[1].has('keyword')).toBe(false))
+  expect(screen.getByRole('link',{name:'오류 처리로 돌아가 결과 확인'})).toHaveAttribute('href',back)
 })
 it('수정 충돌이면 입력값을 유지하고 새로 조회할 수 있다',async () => {
   mocks.requestManagementApi.mockRejectedValue(new ManagementError('다른 작업에서 변경했습니다.',409))
