@@ -133,6 +133,7 @@ class QualityComparisonIntegrationTest {
         assertThat(sourceChanges(id)).isZero();
         entities.createNativeQuery("UPDATE myhome_complex_source_rows SET hshld_co = 321").executeUpdate();
         assertThat(sourceChanges(id)).isEqualTo(1);
+        assertThat(sourceChangeOrigins(id)).containsExactly("COMPARISON_CHECK");
         mvc.perform(put(root(id)).with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("target", target,
                         "snapshotToken", linked.get("snapshotToken").asText(), "values", Map.of("name", "덮어쓰기"),
@@ -140,6 +141,19 @@ class QualityComparisonIntegrationTest {
         entities.createNativeQuery("DELETE FROM myhome_complex_source_rows").executeUpdate();
         assertThat(sourceChanges(id)).isEqualTo(1);
         assertThat(types.findById(type.getId()).orElseThrow().getName()).isEqualTo("26A");
+    }
+
+    private java.util.List<String> sourceChangeOrigins(long id) throws Exception {
+        String response = mvc.perform(get("/api/admin/quality/queue").param("resource", "COMPLEX")
+                .param("reason", "SOURCE_CHANGED").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var origins = new java.util.ArrayList<String>();
+        for (var item : json.readTree(response).at("/data/items")) {
+            if (item.get("id").asLong() == id) {
+                item.get("sourceChanges").forEach(origin -> origins.add(origin.asText()));
+            }
+        }
+        return origins;
     }
 
     private long sourceChanges(long id) throws Exception {

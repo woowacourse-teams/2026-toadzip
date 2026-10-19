@@ -5,8 +5,10 @@ export const qualityReasons: Record<string, string> = {
   MISSING: '정보 누락', SOURCE_MISMATCH: '수집값 불일치', STALE: '확인값 변경',
   UNREVIEWED: '아직 미검토', ON_HOLD: '검토 보류', SOURCE_CHANGED: '원천 변경·소실',
 }
+/** 원천 변경·소실의 출처. 데이터 검증에서 확인한 원천의 변경과 공급행 원천의 소실을 구분한다. */
+export type SourceChange = 'COMPARISON_CHECK' | 'SUPPLY_SOURCE'
 export type QualityItem = { resource: 'COMPLEX' | 'ANNOUNCEMENT'; id: number; name: string;
-  reasons: string[]; missingFields: string[]; updatedAt: string | null }
+  reasons: string[]; missingFields: string[]; sourceChanges: SourceChange[]; updatedAt: string | null }
 export type QualityPage = { items: QualityItem[]; page: number; totalElements: number; totalPages: number; hasNext: boolean }
 
 export async function getQualityQueue(params: URLSearchParams, signal: AbortSignal): Promise<QualityPage> {
@@ -19,6 +21,7 @@ export async function getQualityQueue(params: URLSearchParams, signal: AbortSign
       || !Number.isSafeInteger(item.id) || Number(item.id) < 1 || typeof item.name !== 'string'
       || !Array.isArray(item.reasons) || !item.reasons.every(reason => typeof reason === 'string' && reason in qualityReasons)
       || !Array.isArray(item.missingFields) || !item.missingFields.every(field => typeof field === 'string')
+      || !Array.isArray(item.sourceChanges) || !item.sourceChanges.every(origin => origin === 'COMPARISON_CHECK' || origin === 'SUPPLY_SOURCE')
       || !(item.updatedAt === null || typeof item.updatedAt === 'string' && Number.isFinite(Date.parse(item.updatedAt)))) {
       throw new Error('검토 항목 응답을 확인해 주세요.')
     }
@@ -39,5 +42,7 @@ export function fieldSection(resource: QualityItem['resource'], field: string): 
 export function landingSection(item: QualityItem): string {
   const sections = item.missingFields.map(field => fieldSection(item.resource, field))
   if (item.resource === 'ANNOUNCEMENT' && item.reasons.some(reason => reason === 'ON_HOLD' || reason === 'STALE')) sections.push('relations')
+  if (item.sourceChanges.includes('SUPPLY_SOURCE')) sections.push('relations')
+  if (item.sourceChanges.includes('COMPARISON_CHECK')) sections.push('verification')
   return sectionOrder.find(section => sections.includes(section)) ?? 'verification'
 }

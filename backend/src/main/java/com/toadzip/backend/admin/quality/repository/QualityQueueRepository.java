@@ -73,17 +73,25 @@ public class QualityQueueRepository {
             ) supply_reviews WHERE source.resource = 'ANNOUNCEMENT' AND announcement_id = source.id
               AND latest AND status IN ('ON_HOLD', 'STALE'))
             """;
+    // SOURCE_CHANGED의 출처: 데이터 검증에서 확인한 원천의 변경(COMPARISON_CHECK)과 공급행 원천 소실(SUPPLY_SOURCE).
     private static final String FROM = """
              FROM (
-              SELECT source.*, review_reasons ||
-            """ + SUPPLY_REVIEW_REASONS + """
-                || CASE WHEN cardinality(missing_fields) > 0
-                THEN ARRAY['MISSING'] ELSE ARRAY[]::text[] END || CASE WHEN
-            """ + SOURCE_CHANGED + """
-                THEN ARRAY['SOURCE_CHANGED'] ELSE ARRAY[]::text[] END reasons
+              SELECT staged.*, review_reasons || supply_review_reasons
+                || CASE WHEN cardinality(missing_fields) > 0 THEN ARRAY['MISSING'] ELSE ARRAY[]::text[] END
+                || CASE WHEN comparison_changed THEN ARRAY['SOURCE_CHANGED'] ELSE ARRAY[]::text[] END reasons,
+                CASE WHEN comparison_changed THEN ARRAY['COMPARISON_CHECK'] ELSE ARRAY[]::text[] END
+                || CASE WHEN 'SOURCE_CHANGED' = ANY(review_reasons) THEN ARRAY['SUPPLY_SOURCE'] ELSE ARRAY[]::text[] END
+                  source_changes
               FROM (
+               SELECT source.*,
+            """ + SUPPLY_REVIEW_REASONS + """
+                 supply_review_reasons,
+            """ + SOURCE_CHANGED + """
+                 comparison_changed
+               FROM (
             """ + COMPLEX + " UNION ALL " + ANNOUNCEMENT + """
-              ) source
+               ) source
+              ) staged
              ) queue WHERE cardinality(reasons) > 0
                AND (:resource = '' OR resource = :resource)
                AND (:reason = '' OR :reason = ANY(reasons))
@@ -144,6 +152,7 @@ public class QualityQueueRepository {
         }
         return new QualityQueueItem(row.getString("resource"), row.getLong("id"), row.getString("name"),
                 Arrays.asList((String[]) row.getArray("reasons").getArray()),
-                Arrays.asList((String[]) row.getArray("missing_fields").getArray()), instant);
+                Arrays.asList((String[]) row.getArray("missing_fields").getArray()),
+                Arrays.asList((String[]) row.getArray("source_changes").getArray()), instant);
     }
 }

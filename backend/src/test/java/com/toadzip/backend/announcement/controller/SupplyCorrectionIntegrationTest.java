@@ -307,7 +307,8 @@ class SupplyCorrectionIntegrationTest {
                         org.hamcrest.Matchers.containsString("원천이 없거나 비활성")));
         mvc.perform(get("/api/admin/quality/queue").param("resource", "ANNOUNCEMENT")
                 .param("reason", "SOURCE_CHANGED").with(user("admin").roles("ADMIN")))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].id").value(id));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].id").value(id))
+                .andExpect(jsonPath("$.data.items[0].sourceChanges").value(org.hamcrest.Matchers.contains("SUPPLY_SOURCE")));
         assertThat(rows.findById(row.getId())).isPresent();
     }
 

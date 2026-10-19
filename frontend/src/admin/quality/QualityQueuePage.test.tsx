@@ -34,7 +34,7 @@ it('이전 담당 업무 주소로 들어와도 검토 목록을 조회하고 �
 
 it('검토 사유와 빠진 항목을 보여주고 비교 화면으로 바로 연결한다', async () => {
   mocks.requestManagementApi.mockResolvedValue({ items: [{ resource: 'COMPLEX', id: 7, name: '검토 단지',
-    reasons: ['MISSING', 'STALE'], missingFields: ['준공일'], updatedAt: null }], page: 0,
+    reasons: ['MISSING', 'STALE'], missingFields: ['준공일'], sourceChanges: [], updatedAt: null }], page: 0,
     totalElements: 1, totalPages: 1, hasNext: false })
   render(<MemoryRouter><QualityQueuePage /></MemoryRouter>)
   const reviewLink = await screen.findByRole('link', { name: '검토 단지 비교·검토' })
@@ -57,7 +57,7 @@ it('조회 실패를 빈 결과로 표시하지 않고 재시도를 제공한다
 })
 
 it('검토 상세에 검색조건과 현재 페이지를 전달한다', async () => {
-  mocks.requestManagementApi.mockResolvedValue({ items: [{ resource: 'ANNOUNCEMENT', id: 9, name: '한스빌', reasons: ['MISSING'], missingFields: [], updatedAt: null }], page: 2, totalElements: 41, totalPages: 3, hasNext: false })
+  mocks.requestManagementApi.mockResolvedValue({ items: [{ resource: 'ANNOUNCEMENT', id: 9, name: '한스빌', reasons: ['MISSING'], missingFields: [], sourceChanges: [], updatedAt: null }], page: 2, totalElements: 41, totalPages: 3, hasNext: false })
   render(<MemoryRouter initialEntries={['/admin/quality?keyword=한스빌&reason=MISSING&page=2']}><QualityQueuePage /></MemoryRouter>)
   const link = await screen.findByRole('link', { name: '한스빌 비교·검토' })
   const target = new URL(link.getAttribute('href')!, 'http://localhost')
@@ -68,7 +68,7 @@ it('검토 상세에 검색조건과 현재 페이지를 전달한다', async ()
 })
 
 it('식별자·기관·모집상태 검색을 적용하고 상세 복귀 주소와 뒤로가기에 보존한다', async () => {
-  mocks.requestManagementApi.mockResolvedValue({ items: [{ resource: 'ANNOUNCEMENT', id: 9, name: '한스빌', reasons: ['MISSING'], missingFields: [], updatedAt: null }], page: 0, totalElements: 1, totalPages: 1, hasNext: false })
+  mocks.requestManagementApi.mockResolvedValue({ items: [{ resource: 'ANNOUNCEMENT', id: 9, name: '한스빌', reasons: ['MISSING'], missingFields: [], sourceChanges: [], updatedAt: null }], page: 0, totalElements: 1, totalPages: 1, hasNext: false })
   render(<MemoryRouter initialEntries={['/admin/quality?keyword=한스빌']}><BackButton /><QualityQueuePage /></MemoryRouter>)
   fireEvent.click(screen.getByText('식별자·기관·모집상태로 좁히기', { selector: 'summary' }))
   fireEvent.change(screen.getByLabelText('원천 식별자'), { target: { value: '21395' } })
@@ -88,7 +88,7 @@ it('식별자·기관·모집상태 검색을 적용하고 상세 복귀 주소�
 
 it('공고의 빠진 항목마다 해당 탭으로 연결하고 대표 링크는 공급 연결 문제를 먼저 연다', async () => {
   mocks.requestManagementApi.mockResolvedValue({ items: [{ resource: 'ANNOUNCEMENT', id: 1, name: '한스빌 공고', reasons: ['MISSING'],
-    missingFields: ['확인된 접수 일정', '단지·주택형 연결'], updatedAt: null }], page: 0, totalElements: 1, totalPages: 1, hasNext: false })
+    missingFields: ['확인된 접수 일정', '단지·주택형 연결'], sourceChanges: [], updatedAt: null }], page: 0, totalElements: 1, totalPages: 1, hasNext: false })
   render(<MemoryRouter><QualityQueuePage /></MemoryRouter>)
   const section = (name: string) => new URL(screen.getByRole('link', { name }).getAttribute('href')!, 'http://localhost').searchParams.get('section')
   await screen.findByRole('link', { name: '한스빌 공고 비교·검토' })
@@ -99,8 +99,19 @@ it('공고의 빠진 항목마다 해당 탭으로 연결하고 대표 링크는
 
 it('공급 검토 보류·변경만 있는 공고는 공급정보 탭으로 연다', async () => {
   mocks.requestManagementApi.mockResolvedValue({ items: [{ resource: 'ANNOUNCEMENT', id: 2, name: '보류 공고', reasons: ['ON_HOLD'],
-    missingFields: [], updatedAt: null }], page: 0, totalElements: 1, totalPages: 1, hasNext: false })
+    missingFields: [], sourceChanges: [], updatedAt: null }], page: 0, totalElements: 1, totalPages: 1, hasNext: false })
   render(<MemoryRouter><QualityQueuePage /></MemoryRouter>)
   const link = await screen.findByRole('link', { name: '보류 공고 비교·검토' })
   expect(new URL(link.getAttribute('href')!, 'http://localhost').searchParams.get('section')).toBe('relations')
+})
+
+it('원천 변경 사유는 출처에 따라 공급정보 또는 데이터 검증 탭으로 연다', async () => {
+  mocks.requestManagementApi.mockResolvedValue({ items: [
+    { resource: 'ANNOUNCEMENT', id: 3, name: '공급 원천 소실 공고', reasons: ['SOURCE_CHANGED'], missingFields: [], sourceChanges: ['SUPPLY_SOURCE'], updatedAt: null },
+    { resource: 'ANNOUNCEMENT', id: 4, name: '확인 원천 변경 공고', reasons: ['SOURCE_CHANGED'], missingFields: [], sourceChanges: ['COMPARISON_CHECK'], updatedAt: null },
+  ], page: 0, totalElements: 2, totalPages: 1, hasNext: false })
+  render(<MemoryRouter><QualityQueuePage /></MemoryRouter>)
+  const section = async (name: string) => new URL((await screen.findByRole('link', { name })).getAttribute('href')!, 'http://localhost').searchParams.get('section')
+  expect(await section('공급 원천 소실 공고 비교·검토')).toBe('relations')
+  expect(await section('확인 원천 변경 공고 비교·검토')).toBe('verification')
 })
