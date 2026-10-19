@@ -119,6 +119,29 @@ class AdminManagementIntegrationTest {
     }
 
     @Test
+    void 공고_상세는_연결된_첨부파일을_표시순서로_반환한다() throws Exception {
+        long id = createAnnouncement(createComplex());
+        var announcement = entityManager.find(com.toadzip.backend.announcement.domain.Announcement.class, id);
+        entityManager.persist(com.toadzip.backend.announcement.domain.AnnouncementAttachment.create(
+                announcement, "참고.pdf", com.toadzip.backend.announcement.domain.AttachmentType.REFERENCE,
+                "https://example.com/reference.pdf", 1));
+        entityManager.persist(com.toadzip.backend.announcement.domain.AnnouncementAttachment.create(
+                announcement, "공고문.pdf", com.toadzip.backend.announcement.domain.AttachmentType.ANNOUNCEMENT,
+                "https://example.com/notice.pdf", 0));
+        entityManager.flush();
+
+        mvc.perform(get("/api/admin/announcements/" + id).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.attachments[0].attachmentId").isNumber())
+                .andExpect(jsonPath("$.data.attachments[0].fileName").value("공고문.pdf"))
+                .andExpect(jsonPath("$.data.attachments[0].fileType").value("ANNOUNCEMENT"))
+                .andExpect(jsonPath("$.data.attachments[0].fileUrl").value("https://example.com/notice.pdf"))
+                .andExpect(jsonPath("$.data.attachments[1].fileName").value("참고.pdf"));
+        mvc.perform(get("/api/admin/announcements/" + id).with(user(memberId()).roles("USER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void 단지_상세의_연결공고에도_같은_기본항목을_반환한다() throws Exception {
         long complexId = createComplex();
         long announcementId = createAnnouncement(complexId);

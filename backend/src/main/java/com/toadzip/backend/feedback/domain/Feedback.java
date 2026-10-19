@@ -28,9 +28,6 @@ public class Feedback {
     @Column(nullable = false, columnDefinition = "varchar(30) default 'OPEN'")
     private FeedbackStatus status = FeedbackStatus.OPEN;
 
-    @Column(nullable = false, columnDefinition = "varchar(255) default ''")
-    private String assignee = "";
-
     @Column(nullable = false, columnDefinition = "text default ''")
     private String note = "";
 
@@ -69,7 +66,7 @@ public class Feedback {
     public Instant getCreatedAt() {
         return createdAt;
     }
-    public void process(FeedbackStatus nextStatus, String nextAssignee, String result,
+    public void process(FeedbackStatus nextStatus, String result,
             String resource, Long resourceId, String operator, Instant now) {
         if ((nextStatus == FeedbackStatus.DONE || nextStatus == FeedbackStatus.ON_HOLD) && result.isBlank()) {
             throw new IllegalArgumentException("완료 결과 또는 보류 이유를 입력해 주세요.");
@@ -78,7 +75,6 @@ public class Feedback {
             throw new IllegalArgumentException("관련 대상의 종류와 ID를 함께 입력해 주세요.");
         }
         status = nextStatus;
-        assignee = nextAssignee;
         note = result;
         relatedResource = resource;
         relatedId = resourceId;
@@ -88,7 +84,6 @@ public class Feedback {
 
     public long getVersion() { return version; }
     public FeedbackStatus getStatus() { return status; }
-    public String getAssignee() { return assignee; }
     public String getNote() { return note; }
     public String getRelatedResource() { return relatedResource; }
     public Long getRelatedId() { return relatedId; }

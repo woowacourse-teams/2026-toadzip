@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { getFailureReviews } from '../ingest/failureReviewApi'
 import { getQualityQueue } from '../quality/qualityQueueApi'
-import { reviewTaskPage } from '../quality/reviewTaskApi'
 import { listFeedback } from '../feedback/api'
 import { listDeliveries } from '../notifications/deliveryApi'
 import styles from './OperationsHome.module.css'
@@ -11,8 +10,7 @@ const work = [
   { title: '단지 수집·정제 실패', href: '/admin/failures?domain=complex&status=PENDING', description: '원천 수집, 주소·좌표와 주택형 정제 실패를 복구합니다.', load: (signal: AbortSignal) => getFailureReviews('complex', 'all', 'PENDING', 0, signal) },
   { title: '공고 수집·정제 실패', href: '/admin/failures?domain=announcement&status=PENDING', description: '공고 수집, 단지 연결과 공급정보 보강 실패를 복구합니다.', load: (signal: AbortSignal) => getFailureReviews('announcement', 'all', 'PENDING', 0, signal) },
   { title: '검토할 데이터', href: '/admin/quality', description: '누락·원천 변경·불일치를 공식 근거와 비교합니다.', load: (signal: AbortSignal) => getQualityQueue(new URLSearchParams({ size: '1' }), signal) },
-  { title: '내 담당 알림', href: '/admin/quality?view=tasks&taskAlerts=true', description: '기한이 지났거나 확인한 원천이 바뀐 내 업무를 확인합니다.', load: (signal: AbortSignal) => reviewTaskPage(new URLSearchParams({ size: '1' }), true, signal) },
-  { title: '새 사용자 의견', href: '/admin/feedback?status=OPEN', description: '의견을 조사하고 담당자·진행 상태·처리 결과를 남깁니다.', load: (signal: AbortSignal) => listFeedback(new URLSearchParams({ status: 'OPEN', size: '1' }), signal) },
+  { title: '새 사용자 의견', href: '/admin/feedback?status=OPEN', description: '의견을 조사하고 처리 상태·결과·처리자를 확인합니다.', load: (signal: AbortSignal) => listFeedback(new URLSearchParams({ status: 'OPEN', size: '1' }), signal) },
   { title: '알림 발송 실패', href: '/admin/notification-deliveries?status=FAILED', description: '발송 실패 원인을 회원의 알림 신청과 함께 확인합니다.', load: (signal: AbortSignal) => listDeliveries(new URLSearchParams({ status: 'FAILED', size: '1' }), signal) },
 ]
 type Count = { value: number; error?: never } | { error: string; value?: never }

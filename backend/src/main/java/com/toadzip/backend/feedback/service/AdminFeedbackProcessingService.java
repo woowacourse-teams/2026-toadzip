@@ -3,7 +3,6 @@ package com.toadzip.backend.feedback.service;
 import com.toadzip.backend.admin.domain.AdminDataChange;
 import com.toadzip.backend.admin.dto.AdminChangeResponse;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
-import com.toadzip.backend.admin.repository.AdminAccountRepository;
 import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.feedback.dto.FeedbackProcessingRequest;
@@ -27,7 +26,6 @@ import tools.jackson.databind.ObjectMapper;
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminFeedbackProcessingService {
     private final FeedbackRepository feedbacks;
-    private final AdminAccountRepository accounts;
     private final HousingComplexRepository complexes;
     private final AnnouncementRepository announcements;
     private final AdminDataChangeRepository changes;
@@ -52,12 +50,9 @@ public class AdminFeedbackProcessingService {
         if (feedback.getVersion() != request.version()) {
             throw new AdminDataConflictException("다른 관리자가 처리 내용을 변경했습니다. 입력을 보관하고 최신 의견을 확인하세요.");
         }
-        if (!request.assignee().isBlank() && accounts.findByLoginIdentifier(request.assignee()).isEmpty()) {
-            throw new IllegalArgumentException("실제 관리자 계정을 담당자로 선택해 주세요.");
-        }
         verifyRelated(request);
         var before = FeedbackSummary.from(feedback);
-        feedback.process(request.status(), request.assignee().strip(), request.note().strip(),
+        feedback.process(request.status(), request.note().strip(),
                 request.relatedResource(), request.relatedId(), actor, clock.instant());
         feedbacks.flush();
         var after = FeedbackSummary.from(feedback);

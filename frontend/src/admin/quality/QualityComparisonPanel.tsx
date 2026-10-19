@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../../design-system/components/Button'
-import { reviewTarget, targetChoices, type ReviewField } from '../documents/documentReview'
+import { reviewTarget, targetChoices, type ReviewField } from './reviewTargets'
 import { getSourceData, sourceCategories, type SourceCategory, type SourcePage } from '../ingest/sourceApi'
 import { ManagementError, requestManagementApi } from '../management/api'
 import { display, labels, valueAt } from '../management/fields'

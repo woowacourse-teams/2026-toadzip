@@ -21,6 +21,8 @@ import com.toadzip.backend.announcement.dto.request.VerifiedApplicationSchedules
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest.ReceptionPlaceUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest.SupplyRowRequest;
 import com.toadzip.backend.announcement.dto.response.AdminAnnouncementDetail;
+import com.toadzip.backend.announcement.dto.response.AnnouncementAttachmentResponse;
+import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
@@ -48,11 +50,12 @@ public class AdminAnnouncementManagementService {
     private final ObjectMapper json;
     private final AnnouncementApplicationScheduleRepository schedules;
     private final SupplyTargetRepository targets;
+    private final AnnouncementAttachmentRepository attachments;
 
     public AdminAnnouncementManagementService(AnnouncementRepository announcements, SupplyRowRepository rows,
             HousingComplexRepository complexes, HousingTypeRepository types,
             AdminDataChangeRepository changes, ObjectMapper json, AnnouncementApplicationScheduleRepository schedules,
-            SupplyTargetRepository targets) {
+            SupplyTargetRepository targets, AnnouncementAttachmentRepository attachments) {
         this.announcements = announcements;
         this.rows = rows;
         this.complexes = complexes;
@@ -61,6 +64,7 @@ public class AdminAnnouncementManagementService {
         this.json = json;
         this.schedules = schedules;
         this.targets = targets;
+        this.attachments = attachments;
     }
 
     public AdminPage<AdminDataSummary> search(AdminSearch search, long complexId) {
@@ -86,7 +90,10 @@ public class AdminAnnouncementManagementService {
                                 scheduleComplexId(schedule), schedule.getSupplyRank(), schedule.getState(),
                                 schedule.getCondition(), schedule.getStartDate(), schedule.getEndDate(),
                                 schedule.getStartTime(), schedule.getEndTime(), schedule.getSourceUrl(),
-                                schedule.getSourcePage())).toList(), conditions.stream().map(this::targetData).toList());
+                                schedule.getSourcePage())).toList(), conditions.stream().map(this::targetData).toList(),
+                attachments.findAllByAnnouncementIdIn(List.of(id)).stream().map(attachment ->
+                        new AnnouncementAttachmentResponse(attachment.getId(), attachment.getFileName(),
+                                attachment.getFileType(), attachment.getFileUrl())).toList());
     }
 
     @Transactional

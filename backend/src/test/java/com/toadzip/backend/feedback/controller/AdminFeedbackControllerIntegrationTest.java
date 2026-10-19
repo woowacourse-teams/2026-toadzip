@@ -132,16 +132,17 @@ class AdminFeedbackControllerIntegrationTest {
     }
 
     @Test
-    void 처리결과를_기록하고_상태로_검색하며_오래된_수정을_거절한다() throws Exception {
+    void 인증된_처리자와_결과를_기록하고_상태로_검색하며_오래된_수정을_거절한다() throws Exception {
         long id = feedback("연결 오류", "2026-10-07T10:00:00Z");
         String body = """
-                {"version":0,"status":"DONE","assignee":"","note":"공고 연결을 수정하고 공개 결과 확인",
+                {"version":0,"status":"DONE","note":"공고 연결을 수정하고 공개 결과 확인",
                  "relatedResource":"","relatedId":null}
                 """;
         mockMvc.perform(put(ENDPOINT + "/" + id).with(user("operator").roles("ADMIN")).with(csrf())
                         .contentType("application/json").content(body))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("DONE"))
-                .andExpect(jsonPath("$.data.version").value(1)).andExpect(jsonPath("$.data.actor").value("operator"));
+                .andExpect(jsonPath("$.data.version").value(1)).andExpect(jsonPath("$.data.actor").value("operator"))
+                .andExpect(jsonPath("$.data.processedAt").isNotEmpty());
         mockMvc.perform(get(ENDPOINT).with(user("operator").roles("ADMIN")).param("status", "DONE"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1));
         mockMvc.perform(get(ENDPOINT).with(user("operator").roles("ADMIN")).param("status", "OPEN"))
@@ -159,7 +160,7 @@ class AdminFeedbackControllerIntegrationTest {
         for (String state : java.util.List.of("DONE", "ON_HOLD")) {
             mockMvc.perform(put(ENDPOINT + "/" + id).with(user("operator").roles("ADMIN")).with(csrf())
                             .contentType("application/json").content("""
-                                    {"version":0,"status":"%s","assignee":"","note":"", "relatedResource":""}
+                                    {"version":0,"status":"%s","note":"", "relatedResource":""}
                                     """.formatted(state))).andExpect(status().isBadRequest());
         }
         mockMvc.perform(get(ENDPOINT + "/" + id).with(user("operator").roles("ADMIN")))
@@ -171,7 +172,7 @@ class AdminFeedbackControllerIntegrationTest {
         long id = feedback("처리할 의견", "2026-10-07T10:00:00Z");
         mockMvc.perform(put(ENDPOINT + "/" + id).with(user("operator").roles("ADMIN"))
                         .contentType("application/json").content("""
-                                {"version":0,"status":"IN_PROGRESS","assignee":"","note":"확인 중", "relatedResource":""}
+                                {"version":0,"status":"IN_PROGRESS","note":"확인 중", "relatedResource":""}
                                 """)).andExpect(status().isForbidden());
     }
 

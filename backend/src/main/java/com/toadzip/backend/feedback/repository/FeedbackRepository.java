@@ -14,17 +14,13 @@ public interface FeedbackRepository extends JpaRepository<Feedback, Long> {
             SELECT feedback FROM Feedback feedback
             WHERE LOWER(feedback.content.value) LIKE :pattern ESCAPE '!'
                 AND (:status IS NULL OR feedback.status = :status)
-                AND (:assignee = '' OR feedback.assignee = :assignee)
             """)
-    List<Feedback> search(@Param("pattern") String pattern, @Param("status") FeedbackStatus status,
-            @Param("assignee") String assignee, Pageable pageable);
+    List<Feedback> search(@Param("pattern") String pattern, @Param("status") FeedbackStatus status, Pageable pageable);
 
     @Query("""
             SELECT COUNT(feedback) FROM Feedback feedback
             WHERE LOWER(feedback.content.value) LIKE :pattern ESCAPE '!'
                 AND (:status IS NULL OR feedback.status = :status)
-                AND (:assignee = '' OR feedback.assignee = :assignee)
             """)
-    long countMatching(@Param("pattern") String pattern, @Param("status") FeedbackStatus status,
-            @Param("assignee") String assignee);
+    long countMatching(@Param("pattern") String pattern, @Param("status") FeedbackStatus status);
 }

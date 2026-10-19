@@ -39,11 +39,10 @@ public class AdminFeedbackController {
     public ApiResponse<AdminPage<FeedbackSummary>> search(
             @RequestParam(defaultValue = "") @Size(max = 200) String keyword,
             @RequestParam(required = false) FeedbackStatus status,
-            @RequestParam(defaultValue = "") @Size(max = 255) String assignee,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
-        return new ApiResponse<>(service.search(keyword.strip(), status, assignee, page, size));
+        return new ApiResponse<>(service.search(keyword.strip(), status, page, size));
     }
     @GetMapping("/{id}")
     public ApiResponse<FeedbackSummary> find(@PathVariable long id) {

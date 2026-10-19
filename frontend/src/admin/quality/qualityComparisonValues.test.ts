@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import type { ReviewField } from '../documents/documentReview'
+import type { ReviewField } from './reviewTargets'
 import type { QualitySource } from './qualityComparisonApi'
 import { qualitySourceValue } from './qualityComparisonValues'
 

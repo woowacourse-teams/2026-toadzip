@@ -2,9 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import { compareOfficialComplex, parseOfficialList, type CoverageResult, type OfficialComplexList } from './complexCoverage'
-import { downloadText } from './documentReview'
 import { SourceUrl } from '../shared/SourceUrl'
-import styles from './DocumentReview.module.css'
+import styles from './ComplexCoverage.module.css'
 import { OfficialSourceWorkflow } from '../quality/OfficialSourceWorkflow'
 import { parseOfficialCsv } from './officialListCsv'
 
@@ -84,4 +83,10 @@ export function ComplexCoveragePage() {
       {!busy && !visible.length ? <p className={styles.empty}>이 분류에 해당하는 단지가 없습니다.</p> : null}
     </section> : <div className={styles.empty}><strong>목록을 입력하면 대조 결과가 여기에 표시됩니다.</strong><p>미등록 후보와 이름·주소가 비슷한 후보를 구분해서 확인할 수 있습니다.</p></div>}
   </section>
+}
+
+function downloadText(text: string, fileName: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json;charset=utf-8' }))
+  const link = document.createElement('a'); link.href = url; link.download = fileName; link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

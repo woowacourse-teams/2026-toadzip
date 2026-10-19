@@ -4,7 +4,6 @@ import { expect, it, vi } from 'vitest'
 import { OperationsHome } from './OperationsHome'
 vi.mock('../ingest/failureReviewApi', () => ({ getFailureReviews: vi.fn().mockResolvedValue({ totalElements: 3 }) }))
 vi.mock('../quality/qualityQueueApi', () => ({ getQualityQueue: vi.fn().mockRejectedValue(new Error('조회 연결 실패')) }))
-vi.mock('../quality/reviewTaskApi', () => ({ reviewTaskPage: vi.fn().mockResolvedValue({ totalElements: 2 }) }))
 vi.mock('../feedback/api', () => ({ listFeedback: vi.fn().mockResolvedValue({ totalElements: 0 }) }))
 vi.mock('../notifications/deliveryApi', () => ({ listDeliveries: vi.fn().mockResolvedValue({ totalElements: 1 }) }))
 it('한 집계 실패가 다른 업무를 가리지 않고 미확인 건수를 0으로 표시하지 않는다', async () => {

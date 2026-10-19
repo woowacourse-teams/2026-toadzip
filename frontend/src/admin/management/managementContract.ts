@@ -61,6 +61,7 @@ export type ManagementSupplyRow = {
 }
 
 export type ManagementDetailData = {
+  attachments?: { attachmentId: number; fileName: string; fileType: string; fileUrl: string }[]
   summary: ManagementSummary
   sourceIdentifier: string
   data: ManagementValues
@@ -162,6 +163,12 @@ export function parseManagementDetail(value: unknown): ManagementDetailData {
     && Number.isSafeInteger(item.id) && Number.isSafeInteger(item.supplyRowId) && isManagementValues(item.data))) {
     throw new Error('공급대상 응답이 올바르지 않습니다.')
   }
+  const attachments = value.attachments === undefined ? [] : value.attachments
+  if (!Array.isArray(attachments) || !attachments.every(item => isRecord(item)
+    && isCount(item.attachmentId) && item.attachmentId > 0 && typeof item.fileName === 'string'
+    && typeof item.fileType === 'string' && typeof item.fileUrl === 'string')) {
+    throw new Error('공고 첨부파일 응답이 올바르지 않습니다.')
+  }
 
   return {
     summary: value.summary,
@@ -170,6 +177,8 @@ export function parseManagementDetail(value: unknown): ManagementDetailData {
     housingTypes,
     announcements,
     supplyRows,
+    ...(value.attachments === undefined ? {} : { attachments: attachments.map(item => ({ attachmentId: Number(item.attachmentId), fileName: String(item.fileName),
+      fileType: String(item.fileType), fileUrl: String(item.fileUrl) })) }),
     ...(value.supplyTargets === undefined ? {} : {
       supplyTargets: supplyTargets.map(item => ({ id: Number(item.id), supplyRowId: Number(item.supplyRowId), data: item.data as ManagementValues })),
     }),

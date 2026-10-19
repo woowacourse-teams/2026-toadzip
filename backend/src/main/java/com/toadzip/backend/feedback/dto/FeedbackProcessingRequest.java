@@ -8,5 +8,5 @@ import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 public record FeedbackProcessingRequest(@NotNull @PositiveOrZero Long version, @NotNull FeedbackStatus status,
-        @NotNull @Size(max = 255) String assignee, @NotNull @Size(max = 5000) String note,
+        @NotNull @Size(max = 5000) String note,
         @NotNull @Pattern(regexp = "|COMPLEX|ANNOUNCEMENT") String relatedResource, @Positive Long relatedId) { }

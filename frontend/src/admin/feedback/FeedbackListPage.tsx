@@ -57,7 +57,7 @@ export function FeedbackListPage() {
   function move(next: number) { setParams(current => { current.set('page', String(next)); return current }) }
 
   return <section className={styles.page}>
-    <header className={styles.heading}><h1>사용자 의견</h1><p>접수된 의견을 확인하고 담당자와 처리 결과를 기록합니다.</p></header>
+    <header className={styles.heading}><h1>사용자 의견</h1><p>접수된 의견을 확인하고 처리 상태와 결과를 기록합니다.</p></header>
     <form data-admin-navigation key={search} className={styles.filters} aria-label="사용자 의견 검색" onSubmit={event => {
       event.preventDefault()
       const values = new FormData(event.currentTarget)
@@ -96,7 +96,8 @@ export function FeedbackListPage() {
             <details><summary>전체 내용 보기<svg className={styles.chevron} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m5 7.5 5 5 5-5" /></svg></summary><div role="region" aria-label={`의견 ${entry.id} 전체 내용`}>
               <p className={styles.content}>{entry.content}</p>
             </div></details>
-            <p>{feedbackStates[entry.status ?? 'OPEN']} · {entry.assignee || '미배정'}{entry.note ? ` · ${entry.note}` : ''}</p>
+            <p>{feedbackStates[entry.status ?? 'OPEN']}{entry.note ? ` · ${entry.note}` : ''}</p>
+            {entry.processedAt && <p className={styles.meta}>최근 처리: {entry.actor} · <time dateTime={entry.processedAt}>{receivedAt.format(new Date(entry.processedAt))}</time></p>}
             <button type="button" data-admin-navigation aria-expanded={selected === entry.id} onClick={() => setSelected(selected === entry.id ? null : entry.id)}>의견 처리</button>
             {selected === entry.id ? <FeedbackProcessingPanel key={entry.id} entry={entry} onSaved={updated => setLoaded(current => current ? { ...current, data: { ...current.data, items: current.data.items.map(item => item.id === updated.id ? updated : item) } } : current)} /> : null}
           </article></li>)}

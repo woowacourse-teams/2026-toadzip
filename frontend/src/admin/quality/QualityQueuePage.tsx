@@ -3,13 +3,11 @@ import { Link, useSearchParams } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import { getQualityQueue, qualityReasons, type QualityPage } from './qualityQueueApi'
 import { workDetailUrl } from '../shared/workNavigation'
-import { ReviewTaskBoard } from './ReviewTaskBoard'
 import styles from './QualityWorkspace.module.css'
 
 const shortcuts = [['', '모든 검토 대상'], ['SOURCE_CHANGED', '원천이 바뀐 데이터'], ['MISSING', '정보가 빠진 데이터'], ['ON_HOLD', '보류한 데이터']] as const
 export function QualityQueuePage() {
   const [params, setParams] = useSearchParams()
-  const tasks = params.get('view') === 'tasks'
   const [result, setResult] = useState<QualityPage | null>(null)
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
@@ -18,7 +16,6 @@ export function QualityQueuePage() {
   const queryKeyword = params.get('keyword') ?? ''
   useEffect(() => { setKeyword(queryKeyword) }, [queryKeyword])
   useEffect(() => {
-    if (tasks) return
     const controller = new AbortController()
     const query = new URLSearchParams(params); query.delete('view'); query.delete('focus'); ['taskMine', 'taskState', 'taskOverdue', 'taskAlerts', 'taskPage'].forEach(key => query.delete(key))
     setLoading(true); setError(''); setResult(null)
@@ -27,7 +24,7 @@ export function QualityQueuePage() {
     }).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '목록을 조회하지 못했습니다.') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [params, attempt, tasks])
+  }, [params, attempt])
   function filter(key: string, value: string) {
     const next = new URLSearchParams(params); next.delete('page'); next.delete('focus')
     if (value) next.set(key, value); else next.delete(key)
@@ -37,9 +34,7 @@ export function QualityQueuePage() {
     <header className={styles.pageHeading}><div><p className={styles.eyebrow}>데이터 검토 작업실</p><h1>검토할 데이터</h1>
       <p>확인이 필요한 대상을 고르고, 공식 근거와 비교해 필요한 항목만 수정하세요.</p></div>
       <Link className={styles.secondaryLink} to="/admin/complex-coverage">등록되지 않은 단지 찾기 <span aria-hidden="true">↗</span></Link></header>
-    <nav className={styles.workTabs} aria-label="검토 작업 선택"><button type="button" aria-pressed={!tasks} onClick={() => filter('view', '')}>검토 대상</button><button type="button" aria-pressed={tasks} onClick={() => filter('view', 'tasks')}>내 담당 업무</button></nav>
-    {tasks ? <ReviewTaskBoard expanded /> : <>
-      <div className={styles.queueIntro}><div><span className={styles.stepNumber}>01</span><div><h2>확인할 대상을 선택하세요</h2><p>목록은 원천 변경과 불일치가 있는 대상을 우선 표시합니다.</p></div></div><details><summary>처음 사용하는 관리자라면</summary><ol><li>대상 오른쪽의 ‘비교·검토’를 엽니다.</li><li>현재 등록값과 공식 원천을 비교합니다.</li><li>근거를 확인한 항목만 수정하고 저장합니다.</li></ol><p>PDF에만 정보가 있다면 상세의 ‘PDF로 보완’을 이용하세요. 원천 변경 감지는 원천 확인 기록 이후부터 시작합니다.</p></details></div>
+      <div className={styles.queueIntro}><div><span className={styles.stepNumber}>01</span><div><h2>확인할 대상을 선택하세요</h2><p>목록은 원천 변경과 불일치가 있는 대상을 우선 표시합니다.</p></div></div><details><summary>처음 사용하는 관리자라면</summary><ol><li>대상 오른쪽의 ‘비교·검토’를 엽니다.</li><li>현재 등록값과 공식 원천을 비교합니다.</li><li>근거를 확인한 항목만 수정하고 저장합니다.</li></ol><p>공고문은 상세의 ‘공고문·첨부파일’에서 확인하세요. 원천 변경 감지는 원천 확인 기록 이후부터 시작합니다.</p></details></div>
       <div className={styles.queueSurface}>
         <div className={styles.shortcutBar} aria-label="빠른 검토 조건">{shortcuts.map(([reason, label]) => <button key={reason} type="button" aria-pressed={(params.get('reason') ?? '') === reason} onClick={() => filter('reason', reason)}>{label}</button>)}</div>
         <form className={`${styles.filters} ${styles.queueFilters}`} aria-label="검토 대상 검색" onSubmit={event => { event.preventDefault(); filter('keyword', keyword.trim()) }}>
@@ -66,6 +61,5 @@ export function QualityQueuePage() {
         </> : null}
       </div>
       <footer className={styles.queueFoot}><p>다른 작업이 필요한가요?</p><nav aria-label="데이터 품질 작업"><Link to="/admin/complexes">단지 관리</Link><Link to="/admin/announcements">공고 관리</Link><Link to="/admin/ingest">수집 실행·결과</Link></nav></footer>
-    </>}
   </section>
 }

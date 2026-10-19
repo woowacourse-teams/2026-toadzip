@@ -14,10 +14,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
         com.toadzip.backend.feedback.controller.AdminFeedbackController.class,
         AdminAnnouncementManagementController.class,
         com.toadzip.backend.announcement.controller.SupplyCorrectionController.class, AdminComplexComparisonController.class,
-        com.toadzip.backend.admin.quality.controller.QualityComparisonController.class,
-        com.toadzip.backend.admin.quality.controller.ReviewDocumentController.class,
-        com.toadzip.backend.admin.quality.controller.SharedReviewDraftController.class,
-        com.toadzip.backend.admin.quality.controller.ReviewTaskController.class})
+        com.toadzip.backend.admin.quality.controller.QualityComparisonController.class})
 public class AdminManagementValidationAdvice {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> invalid(IllegalArgumentException exception) {

@@ -4,9 +4,9 @@ import { isRecord } from '../management/managementContract'
 export const feedbackStates = { OPEN: '접수', IN_PROGRESS: '처리 중', ON_HOLD: '보류', DONE: '처리 완료' } as const
 export type FeedbackState = keyof typeof feedbackStates
 export type FeedbackEntry = { id: number; content: string; createdAt: string; version: number; status: FeedbackState;
-  assignee: string; note: string; relatedResource: '' | 'COMPLEX' | 'ANNOUNCEMENT'; relatedId: number | null;
+  note: string; relatedResource: '' | 'COMPLEX' | 'ANNOUNCEMENT'; relatedId: number | null;
   actor: string | null; processedAt: string | null }
-export type FeedbackInput = { version: number; status: FeedbackState; assignee: string; note: string;
+export type FeedbackInput = { version: number; status: FeedbackState; note: string;
   relatedResource: '' | 'COMPLEX' | 'ANNOUNCEMENT'; relatedId: number | null }
 
 export type FeedbackPage = { items: FeedbackEntry[]; page: number; hasNext: boolean; totalElements: number; totalPages: number }
@@ -31,7 +31,7 @@ function parseEntry(value: unknown): FeedbackEntry {
     throw new Error('사용자 의견 응답이 올바르지 않습니다.')
   }
   if (!isCount(value.version) || typeof value.status !== 'string' || !Object.hasOwn(feedbackStates, value.status)
-    || typeof value.assignee !== 'string' || typeof value.note !== 'string'
+    || typeof value.note !== 'string'
     || !['', 'COMPLEX', 'ANNOUNCEMENT'].includes(String(value.relatedResource))
     || !(value.relatedId === null || isCount(value.relatedId) && value.relatedId > 0)
     || !(value.actor === null || typeof value.actor === 'string')

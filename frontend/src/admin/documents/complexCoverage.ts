@@ -1,6 +1,5 @@
 import { getManagementPage } from '../management/api'
 import { isRecord, type ManagementSummary } from '../management/managementContract'
-import { safeDocumentUrl } from './documentReview'
 
 export type OfficialComplex = { name: string; roadAddress: string; sourceIdentifier?: string }
 export type OfficialComplexList = { sourceUrl: string; asOf: string; agencyCode: string; complexes: OfficialComplex[] }
@@ -69,4 +68,10 @@ export async function compareOfficialComplex(list: OfficialComplexList, entry: O
     if (signal.aborted) throw signal.reason
     return { entry, status: 'ERROR', candidates: [], reason: cause instanceof Error ? cause.message : '조회하지 못했습니다.' }
   }
+}
+
+function safeDocumentUrl(value: string): string | null {
+  if (!value.trim() || value.length > 2048 || /\s/.test(value)) return null
+  try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : null }
+  catch { return null }
 }
