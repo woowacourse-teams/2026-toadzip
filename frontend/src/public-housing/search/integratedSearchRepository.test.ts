@@ -56,7 +56,7 @@ describe('integratedSearchRepository', () => {
 
     await expect(createIntegratedSearchRepository(fetcher).search(
       '서울역', false, 0, new AbortController().signal, 'SUBWAY_STATION',
-    )).rejects.toThrow('위치 검색을 사용할 수 없습니다.')
+    )).rejects.toThrow('위치 검색을 사용할 수 없어요.')
   })
 
   it('유형이 섞이거나 좌표가 손상된 외부 결과는 거부한다', async () => {

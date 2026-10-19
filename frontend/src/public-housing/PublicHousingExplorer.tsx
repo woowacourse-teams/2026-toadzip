@@ -247,7 +247,8 @@ export function PublicHousingExplorer({
     })
     setCameraRequestId(current => current + 1)
   }, [])
-  const { cancel: cancelCurrentLocation, locate: locateCurrentPosition, state: currentLocationState } =
+  const { cancel: cancelCurrentLocation, locate: locateCurrentPosition,
+    position: currentPosition, state: currentLocationState } =
     useCurrentLocation(welcomeReady && autoLocationAllowed, applyCurrentLocation)
   const [detailCameraRevision, setDetailCameraRevision] = useState(0)
   const [selectedSearchComplex, setSelectedSearchComplex] =
@@ -255,11 +256,6 @@ export function PublicHousingExplorer({
   const [integratedSearchActive, setIntegratedSearchActive] = useState(false)
   const [searchRevision, setSearchRevision] = useState(0)
   const pendingListTriggerFocusRef = useRef<ResultList | null>(null)
-  useLayoutEffect(() => {
-    if (pendingListTriggerFocusRef.current === null) return
-    focusListTrigger(pendingListTriggerFocusRef.current)
-    pendingListTriggerFocusRef.current = null
-  }, [searchRevision])
   useLayoutEffect(() => {
     const overlay = searchOverlayRef.current
     const explorer = overlay?.closest<HTMLElement>('.housing-explorer')
@@ -288,6 +284,11 @@ export function PublicHousingExplorer({
     (initialDetail.kind === 'complex' || initialDetail.kind === 'announcement')
       && window.matchMedia?.('(max-width: 1023px)').matches ? 'collapsed' : 'auto'
   ))
+  useLayoutEffect(() => {
+    if (pendingListTriggerFocusRef.current === null) return
+    focusListTrigger(pendingListTriggerFocusRef.current)
+    pendingListTriggerFocusRef.current = null
+  }, [searchRevision, listPanelMode])
   const mobileDetailListModeRef = useRef<typeof listPanelMode | null>(
     listPanelMode === 'collapsed' ? 'auto' : null,
   )
@@ -997,10 +998,13 @@ export function PublicHousingExplorer({
     setCameraRequestId((current) => current + 1)
   }, [complexDetail, detailCameraRevision, selectedSearchComplex])
 
+  // 필터를 바꾸면 같은 화면의 마커를 다시 거르는 것이므로, 남는 마커는 그대로 두고 새 마커도 등장 효과 없이 바꾼다.
+  const [animateMarkerEntry, setAnimateMarkerEntry] = useState(true)
   const previousMapFiltersKeyRef = useRef(complexFiltersKey)
   useEffect(() => {
     if (previousMapFiltersKeyRef.current === complexFiltersKey) return
     previousMapFiltersKeyRef.current = complexFiltersKey
+    setAnimateMarkerEntry(false)
     if (viewportTimerRef.current !== null) {
       window.clearTimeout(viewportTimerRef.current)
       viewportTimerRef.current = null
@@ -1080,6 +1084,9 @@ export function PublicHousingExplorer({
       && previous.zoom === nextViewport.zoom
       && !transitionWaitingForIdleRef.current) {
       return
+    }
+    if (previous !== null) {
+      setAnimateMarkerEntry(true)
     }
     if (viewportRef.current !== null) {
       viewportRevisionRef.current += 1
@@ -1243,6 +1250,7 @@ export function PublicHousingExplorer({
   const naverMapProps: NaverMapProps = aggregateMapResult !== null
     ? {
         aggregateMarkers: aggregateMapResult.nodes,
+        animateMarkerEntry,
         cameraRequestId,
         cameraTarget: mapCameraTarget,
         dataBusy: serverMapState.status === 'loading',
@@ -1254,6 +1262,7 @@ export function PublicHousingExplorer({
         transitioning: clusterTransitioning,
       }
     : {
+        animateMarkerEntry,
         cameraRequestId,
         cameraTarget: mapCameraTarget,
         dataBusy: serverMapState.status === 'loading',
@@ -1293,8 +1302,8 @@ export function PublicHousingExplorer({
 
   function collapseResults() {
     mobileDetailListModeRef.current = null
+    pendingListTriggerFocusRef.current = activeResultTab
     setListPanelMode('collapsed')
-    focusListTrigger(activeResultTab)
   }
 
   return (
@@ -1312,17 +1321,6 @@ export function PublicHousingExplorer({
       )}
       <nav className="housing-navigation" aria-label="주요 메뉴">
         <div className="housing-results__tabs">
-          {mobile && <button id="mobile-complex-list-trigger" type="button" aria-controls="complex-results-panel"
-            aria-expanded={showListPage && activeResultTab === 'complexes'}
-            className={activeResultTab === 'complexes' && !integratedSearchActive ? 'is-active' : undefined}
-            onClick={() => {
-              if (showListPage && activeResultTab === 'complexes') collapseResults()
-              else { prepareListEntry('navigation'); selectResultTab('complexes') }
-              if (!boundaryRegionCode) searchOverlayRef.current?.querySelector('input')?.focus()
-            }}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M4 21V4h10v17M14 10h6v11M2 21h20M7 8h4M7 12h4M7 16h4M17 14v3" /></svg>
-            <span>단지</span>
-          </button>}
           <button id="announcement-list-trigger" type="button"
             aria-controls="announcement-results-panel"
             aria-expanded={showListPage && activeResultTab === 'announcements'}
@@ -1334,7 +1332,7 @@ export function PublicHousingExplorer({
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M5 2h10l4 4v16H5ZM14 2v6h5M8 12h8M8 16h8" /></svg>
             <span aria-hidden="true">공고</span><span className="visually-hidden">공고 목록</span>
           </button>
-          {!mobile && <button id="recent-list-trigger" type="button" aria-label="최근 본 단지" aria-controls="recent-results-panel"
+          <button id="recent-list-trigger" type="button" aria-label="최근 본 단지" aria-controls="recent-results-panel"
             aria-expanded={showListPage && activeResultTab === 'recent'}
             className={showListPage && activeResultTab === 'recent' ? 'is-active' : undefined}
             onClick={() => {
@@ -1344,8 +1342,8 @@ export function PublicHousingExplorer({
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
               <circle cx="12" cy="12" r="9" /><path d="M12 6v6l4 2" />
             </svg>
-            <span className="housing-navigation__multiline-label">최근 본<br />단지</span>
-          </button>}
+            <span className="housing-navigation__multiline-label">최근 본<span className="housing-navigation__label-break" /> 단지</span>
+          </button>
         </div>
       </nav>
       <div className="housing-browse-panel">
@@ -1539,7 +1537,7 @@ export function PublicHousingExplorer({
           />
         </div>
         <div className="housing-map-base" inert={streetView.active} aria-hidden={streetView.active || undefined}>
-          <NaverMap {...naverMapProps} regionBoundary={boundaryState.boundary} />
+          <NaverMap {...naverMapProps} currentLocation={currentPosition} regionBoundary={boundaryState.boundary} />
           <CurrentLocationControl state={currentLocationState} onLocate={requestCurrentLocation} />
           <div className="housing-map-feedback" hidden={streetView.active}><HousingMapRequestFeedback errorMessage={serverMapState.errorMessage}
             onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'map_results' }); return retryServerMap() }} status={serverMapState.status} /></div>
@@ -1657,7 +1655,7 @@ function AnnouncementResultContent({
   if (state.status === 'idle') {
     return (
       <div className="housing-results__state" role="status">
-        <strong>공고 목록을 준비하고 있습니다.</strong>
+        <strong>공고 목록을 준비하고 있어요.</strong>
       </div>
     )
   }
@@ -1665,8 +1663,8 @@ function AnnouncementResultContent({
   if (state.status === 'loading' && state.items.length === 0) {
     return (
       <div className="housing-results__state" role="status">
-        <strong>공고를 불러오고 있습니다.</strong>
-        <span>현재 제공되는 최신 공고를 확인하고 있습니다.</span>
+        <strong>공고를 불러오고 있어요.</strong>
+        <span>현재 제공되는 최신 공고를 확인하고 있어요.</span>
       </div>
     )
   }
@@ -1674,7 +1672,7 @@ function AnnouncementResultContent({
   if (state.status === 'error' && state.items.length === 0) {
     return (
       <div className="housing-results__state housing-results__state--error" role="alert">
-        <strong>공고 목록을 불러오지 못했습니다.</strong>
+        <strong>공고 목록을 불러오지 못했어요.</strong>
         <span>{state.errorMessage}</span>
         <button type="button" onClick={onRetry}>다시 시도</button>
       </div>
@@ -1684,8 +1682,8 @@ function AnnouncementResultContent({
   if (state.status === 'ready' && state.items.length === 0) {
     return (
       <div className="housing-results__state" role="status">
-        <strong>현재 확인되는 공고가 없습니다.</strong>
-        <span>새 공고가 등록되면 이 목록에서 확인할 수 있습니다.</span>
+        <strong>현재 확인되는 공고가 없어요.</strong>
+        <span>새 공고가 등록되면 이 목록에서 확인할 수 있어요.</span>
       </div>
     )
   }
@@ -1808,7 +1806,7 @@ function HousingMapRequestFeedback({
   }
   return (
     <div className="housing-results__inline-error" role="alert">
-      <strong>지도 정보를 불러오지 못했습니다.</strong>
+      <strong>지도 정보를 불러오지 못했어요.</strong>
       <span>{errorMessage}</span>
       <button type="button" onClick={onRetry}>지도 다시 시도</button>
     </div>
@@ -1825,7 +1823,7 @@ function ComplexRequestFeedback({
   if (state.status === 'error') {
     return (
       <div className="housing-results__inline-error" role="alert">
-        <strong>단지 목록을 불러오지 못했습니다.</strong>
+        <strong>단지 목록을 불러오지 못했어요.</strong>
         <span>{state.errorMessage}</span>
         <button type="button" onClick={onRetry}>다시 시도</button>
       </div>
@@ -1846,15 +1844,15 @@ function ComplexRequestFeedback({
 
 function complexRequestStatusMessage(state: ComplexResultsState) {
   if (state.status === 'idle') {
-    return '지역 단지 목록을 준비하고 있습니다.'
+    return '지역 단지 목록을 준비하고 있어요.'
   }
   if (state.status === 'loading') {
     return state.items.length === 0
-      ? '단지 목록을 불러오고 있습니다.'
-      : '기존 결과를 유지하면서 새 지역을 확인하고 있습니다.'
+      ? '단지 목록을 불러오고 있어요.'
+      : '기존 결과를 유지하면서 새 지역을 확인하고 있어요.'
   }
   if (state.status === 'loading-more') {
-    return '단지 목록을 추가로 불러오고 있습니다.'
+    return '단지 목록을 추가로 불러오고 있어요.'
   }
   const total = state.hasNext ? '더 보기 가능' : `전체 ${state.items.length.toLocaleString('ko-KR')}곳`
   return `단지 목록 갱신 완료, ${total}, 현재 ${state.items.length.toLocaleString('ko-KR')}곳 표시`
@@ -1880,8 +1878,8 @@ function ComplexResultContent({
   if (state.status === 'idle' || (state.status === 'loading' && state.items.length === 0)) {
     return (
       <div className="housing-results__state">
-        <strong>단지를 불러오고 있습니다.</strong>
-        <span>검색한 지역의 단지를 확인하고 있습니다.</span>
+        <strong>단지를 불러오고 있어요.</strong>
+        <span>검색한 지역의 단지를 확인하고 있어요.</span>
       </div>
     )
   }
@@ -1893,7 +1891,7 @@ function ComplexResultContent({
   if (state.status === 'ready' && state.items.length === 0) {
     return (
       <div className="housing-results__state">
-        <strong>이 지역에서 확인되는 단지가 없습니다.</strong>
+        <strong>이 지역에서 확인되는 단지가 없어요.</strong>
         <span>다른 지역을 검색하거나 검색 조건을 변경해 주세요.</span>
       </div>
     )
@@ -2296,7 +2294,7 @@ function focusComplexCard(card: HTMLElement | undefined) {
 }
 
 function focusListTrigger(kind: ResultList) {
-  const trigger = document.getElementById(kind === 'recent' ? 'recent-list-trigger' : kind === 'complexes' ? 'region-complex-list-trigger' : 'announcement-list-trigger') ?? (kind === 'complexes' ? document.getElementById('mobile-complex-list-trigger') : null)
+  const trigger = document.getElementById(kind === 'recent' ? 'recent-list-trigger' : kind === 'complexes' ? 'region-complex-list-trigger' : 'announcement-list-trigger')
   const target = isAvailableFocusTarget(trigger) ? trigger
     : document.querySelector<HTMLInputElement>('.housing-search-overlay input[type="search"]')
   target?.focus({ preventScroll: true })

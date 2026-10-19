@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MapCenter } from '../navigation/mapLocation.ts'
 
+type CurrentLocationErrorReason = 'permission-denied' | 'unavailable' | 'failed'
+
 export type CurrentLocationState =
   | { readonly kind: 'idle' | 'loading' | 'located' }
-  | { readonly kind: 'error'; readonly message: string }
+  | { readonly kind: 'error'; readonly reason: CurrentLocationErrorReason; readonly message: string }
 
 const UNAVAILABLE_MESSAGE = '이 환경에서는 위치를 사용할 수 없어요. 지역을 검색해 주세요.'
 const FAILED_MESSAGE = '현재 위치를 확인하지 못했어요. 다시 시도하거나 지역을 검색해 주세요.'
@@ -14,6 +16,7 @@ export function useCurrentLocation(
   onLocated: (center: MapCenter) => void,
 ) {
   const [state, setState] = useState<CurrentLocationState>({ kind: 'idle' })
+  const [position, setPosition] = useState<MapCenter | null>(null)
   const onLocatedRef = useRef(onLocated)
   onLocatedRef.current = onLocated
   const automaticStarted = useRef(false)
@@ -31,13 +34,14 @@ export function useCurrentLocation(
     automaticStarted.current = true
     if (pending.current) return
     const revision = ++requestRevision.current
-    const fail = (message: string) => {
+    const fail = (reason: CurrentLocationErrorReason, message: string) => {
       if (revision !== requestRevision.current) return
       pending.current = false
-      setState({ kind: 'error', message })
+      if (reason === 'permission-denied') setPosition(null)
+      setState({ kind: 'error', reason, message })
     }
     if (!navigator.geolocation || window.isSecureContext === false) {
-      fail(UNAVAILABLE_MESSAGE)
+      fail('unavailable', UNAVAILABLE_MESSAGE)
       return
     }
     pending.current = true
@@ -48,17 +52,19 @@ export function useCurrentLocation(
         const { latitude, longitude } = position.coords
         if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
           || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
-          fail(FAILED_MESSAGE)
+          fail('failed', FAILED_MESSAGE)
           return
         }
         pending.current = false
+        setPosition({ latitude, longitude })
         setState({ kind: 'located' })
         onLocatedRef.current({ latitude, longitude })
       }, error => {
-        fail(error.code === 1 ? DENIED_MESSAGE : FAILED_MESSAGE)
+        if (error.code === 1) fail('permission-denied', DENIED_MESSAGE)
+        else fail('failed', FAILED_MESSAGE)
       }, { enableHighAccuracy: false, maximumAge: 0, timeout: 8_000 })
     } catch {
-      fail(FAILED_MESSAGE)
+      fail('failed', FAILED_MESSAGE)
     }
   }, [])
 
@@ -79,5 +85,5 @@ export function useCurrentLocation(
     pending.current = false
   }, [])
 
-  return { cancel, locate, state }
+  return { cancel, locate, position, state }
 }

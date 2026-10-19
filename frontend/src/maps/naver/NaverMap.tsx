@@ -1,6 +1,7 @@
 import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import styles from './NaverMap.module.css'
+import { createCurrentLocationMarker } from './currentLocationMarker.ts'
 import {
   cameraCoordinatesChanged,
   cameraZoomChanged,
@@ -57,28 +58,28 @@ interface FailureContent {
 
 const FAILURE_CONTENT: Record<MapFailureReason, FailureContent> = {
   configuration: {
-    title: '지도 설정이 준비되지 않았습니다.',
+    title: '지도 설정이 준비되지 않았어요.',
     description: '현재 환경의 NAVER Maps Client ID를 확인해 주세요.',
     retryable: false,
   },
   authentication: {
-    title: '지도 인증에 실패했습니다.',
+    title: '지도 인증에 실패했어요.',
     description:
       'Client ID와 현재 주소의 Web 서비스 URL 설정을 확인한 후 새로고침해 주세요.',
     retryable: false,
   },
   network: {
-    title: '지도를 불러오지 못했습니다.',
+    title: '지도를 불러오지 못했어요.',
     description: '네트워크 연결을 확인한 뒤 다시 시도해 주세요.',
     retryable: true,
   },
   'invalid-sdk': {
-    title: '지도 SDK를 초기화하지 못했습니다.',
+    title: '지도 SDK를 초기화하지 못했어요.',
     description: '잠시 후 다시 시도해 주세요.',
     retryable: true,
   },
   initialization: {
-    title: '지도를 표시하지 못했습니다.',
+    title: '지도를 표시하지 못했어요.',
     description: '잠시 후 다시 시도해 주세요.',
     retryable: true,
   },
@@ -113,7 +114,7 @@ function MapLoading() {
     <div className="map-state-layer">
       <div className="map-state-card" role="status" aria-live="polite">
         <span className="map-loading-indicator" aria-hidden="true" />
-        <strong>지도를 불러오고 있습니다.</strong>
+        <strong>지도를 불러오고 있어요.</strong>
         <span>잠시만 기다려 주세요.</span>
       </div>
     </div>
@@ -148,8 +149,10 @@ function MapUnavailable({ onRetry, reason }: MapUnavailableProps) {
 
 export default function NaverMap({
   aggregateMarkers = [],
+  animateMarkerEntry = true,
   cameraRequestId,
   cameraTarget,
+  currentLocation,
   dataBusy = false,
   markers = [],
   onAggregateMarkerSelect,
@@ -173,6 +176,16 @@ export default function NaverMap({
   const cameraRequestIdRef = useRef(cameraRequestId)
   cameraRequestIdRef.current = cameraRequestId
   const createdMarkersRef = useRef<CreatedMarker[]>([])
+  const currentLocationMarkerRef = useRef<naver.maps.Marker | null>(null)
+  const clearCurrentLocationMarker = useCallback(() => {
+    const marker = currentLocationMarkerRef.current
+    currentLocationMarkerRef.current = null
+    try {
+      marker?.setMap(null)
+    } catch {
+      // Authentication failure may already have invalidated the SDK overlay.
+    }
+  }, [])
   const boundaryOverlaysRef = useRef<naver.maps.OverlayView[]>([])
   const appliedMarkerContentKeyRef = useRef<string | null>(null)
   const aggregateMarkersRef = useRef(aggregateMarkers)
@@ -183,6 +196,8 @@ export default function NaverMap({
   representationRef.current = representation
   const dataBusyRef = useRef(dataBusy)
   dataBusyRef.current = dataBusy
+  const animateMarkerEntryRef = useRef(animateMarkerEntry)
+  animateMarkerEntryRef.current = animateMarkerEntry
   const transitioningRef = useRef(transitioning)
   const transitionInterruptedRef = useRef(false)
   const wasTransitioning = transitioningRef.current
@@ -210,6 +225,8 @@ export default function NaverMap({
   const [initializedAttempt, setInitializedAttempt] = useState<number | null>(null)
   const [status, setStatus] = useState<MapStatus>({ kind: 'loading' })
   const cameraLatitude = cameraTarget?.latitude
+  const currentLocationLatitude = currentLocation?.latitude
+  const currentLocationLongitude = currentLocation?.longitude
   const cameraLongitude = cameraTarget?.longitude
   const cameraOffsetX = cameraTarget?.screenOffset?.x
   const cameraOffsetY = cameraTarget?.screenOffset?.y
@@ -311,6 +328,7 @@ export default function NaverMap({
       window.clearTimeout(markerFocusTimerRef.current)
       markerFocusTimerRef.current = undefined
       clearMarkers(createdMarkersRef.current)
+      clearCurrentLocationMarker()
       clearBoundaryOverlays(boundaryOverlaysRef.current)
       createdMarkersRef.current = []
       appliedMarkerContentKeyRef.current = null
@@ -454,6 +472,7 @@ export default function NaverMap({
       removeIdleListener()
       removeTransitionInterruptListeners()
       clearMarkers(createdMarkersRef.current)
+      clearCurrentLocationMarker()
       clearBoundaryOverlays(boundaryOverlaysRef.current)
       createdMarkersRef.current = []
       appliedMarkerContentKeyRef.current = null
@@ -465,7 +484,26 @@ export default function NaverMap({
       appliedCameraRequestIdRef.current = undefined
       destroyMapSafely(mapInstance)
     }
-  }, [attempt, handleUserInteraction])
+  }, [attempt, clearCurrentLocationMarker, handleUserInteraction])
+
+  useEffect(() => {
+    const map = mapInstanceRef.current
+    const maps = mapsRef.current
+    if (!map || !maps || status.kind !== 'ready' || initializedAttempt !== attempt
+      || currentLocationLatitude === undefined || currentLocationLongitude === undefined
+      || !isValidCameraTarget(currentLocationLatitude, currentLocationLongitude, undefined)) {
+      clearCurrentLocationMarker()
+      return
+    }
+
+    const position = new maps.LatLng(currentLocationLatitude, currentLocationLongitude)
+    if (currentLocationMarkerRef.current) {
+      currentLocationMarkerRef.current.setPosition(position)
+    } else {
+      currentLocationMarkerRef.current = createCurrentLocationMarker(maps, map, position)
+    }
+  }, [attempt, clearCurrentLocationMarker, currentLocationLatitude, currentLocationLongitude,
+    initializedAttempt, status.kind])
 
   useEffect(() => {
     const mapInstance = mapInstanceRef.current
@@ -500,7 +538,8 @@ export default function NaverMap({
       representationRef.current,
     )
     const previousMarkers = createdMarkersRef.current
-    const animateNewMarkers = appliedMarkerContentKeyRef.current !== markerContentKey
+    const animateNewMarkers = animateMarkerEntryRef.current
+      && appliedMarkerContentKeyRef.current !== markerContentKey
     appliedMarkerContentKeyRef.current = markerContentKey
     const previousFocus = readMarkerFocus(previousMarkers)
     window.clearTimeout(markerFocusTimerRef.current)

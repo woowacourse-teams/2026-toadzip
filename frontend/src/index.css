@@ -6,6 +6,9 @@
   background: var(--ds-color-page);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  /* 한글 문장이 단어 중간에서 끊기지 않게 하고, 넘치는 긴 문자열만 줄바꿈한다. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
   --brand: var(--ds-color-brand);
   --brand-dark: var(--ds-color-action);
   --border: var(--ds-color-border-base);
@@ -350,7 +353,7 @@ a {
 }
 
 .housing-results__count {
-  color: var(--ds-color-action);
+  color: var(--ds-color-text);
   font-size: 14px;
   font-weight: 500;
 }
@@ -593,7 +596,7 @@ a {
 }
 
 .housing-results__more svg { width: 14px; height: 14px; }
-.housing-results__progress { color: var(--ds-color-action); font-variant-numeric: tabular-nums; }
+.housing-results__progress { color: var(--ds-color-text); font-variant-numeric: tabular-nums; }
 .housing-results__more:hover:not(:disabled) { background: var(--ds-color-action-soft); }
 .housing-results__more:focus-visible { outline: 2px solid var(--focus); outline-offset: -3px; }
 
@@ -824,9 +827,14 @@ a {
   flex-direction: column;
 }
 
+/* 패널 자체로 옮긴 포커스는 화면 낭독기용이라 테두리를 그리지 않는다. */
+.housing-detail-state:focus {
+  outline: none;
+}
+
 .housing-detail-state > header {
   display: flex;
-  min-height: 70px;
+  min-height: 56px;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -834,24 +842,8 @@ a {
   border-bottom: 1px solid #e1e4e8;
 }
 
-.housing-detail-state > header div {
-  min-width: 0;
-  flex: 1;
-}
-
-.housing-detail-state > header span {
-  display: block;
-  color: var(--brand-dark);
-  font-size: 10px;
-  font-weight: 800;
-}
-
-.housing-detail-state > header strong {
-  display: block;
-  margin-top: 3px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.housing-detail-state > header > :last-child {
+  margin-left: auto;
 }
 
 .housing-detail-state > header button {
@@ -908,7 +900,6 @@ a {
   font-weight: 700;
 }
 
-.housing-detail-state:focus-visible,
 .housing-detail-state button:focus-visible {
   outline: 4px solid var(--focus);
   outline-offset: 2px;
@@ -947,7 +938,7 @@ a {
   padding: 0;
   border: 0;
   background: transparent;
-  font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Noto Sans KR", sans-serif;
+  font-family: var(--ds-font-family-ui);
   text-align: left;
   cursor: pointer;
 }
@@ -2316,10 +2307,15 @@ button {
   position: absolute; z-index: 410; bottom: 22px; left: 6px;
   width: calc(var(--explorer-rail-width) - 12px);
 }
-/* Preserve the feedback entry point inside the narrow navigation rail. */
+/* 레일 아래쪽 항목(정보·의견 보내기·로그인 재확인)은 모두 '아이콘 + 짧은 회색 글자'로 맞춘다. */
 .service-rail-account .service-feedback-link {
-  width: 100%; padding: 8px 2px; justify-content: center; text-align: center;
-  white-space: normal; word-break: keep-all; font-size: 10px;
+  width: 100%; min-height: 0; padding: 8px 4px; flex-direction: column; justify-content: center; gap: 6px;
+  color: var(--ds-color-label); text-align: center; white-space: normal; word-break: keep-all;
+  font-size: 11px; font-weight: 600; line-height: 1.3;
+}
+.service-rail-account .service-feedback-link::before {
+  content: ""; width: 24px; height: 24px; flex: none; background: currentcolor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 5h16v11H9l-5 4z' fill='none' stroke='black' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain;
 }
 .service-rail-account .service-user-control { margin: 0; flex-direction: column; gap: 8px; }
 .service-rail-account .service-login-link {
@@ -2349,9 +2345,10 @@ button {
 }
 .housing-navigation .housing-results__tabs svg { width: 20px; height: 20px; }
 .housing-navigation__multiline-label { white-space: nowrap; line-height: 1.4; }
+.housing-navigation__label-break { display: block; }
 .housing-navigation .housing-results__tabs { display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; }
 .housing-navigation .housing-results__tabs button.is-active {
-  border-color: var(--ds-color-action); background: var(--ds-color-action-soft); color: var(--ds-color-action);
+  border-color: var(--ds-color-brand); background: var(--ds-color-action-soft); color: var(--ds-color-text);
 }
 .housing-search-overlay {
   position: absolute; z-index: 350; top: var(--explorer-top, 20px); left: 20px;
@@ -2418,7 +2415,21 @@ button {
   .app-shell .housing-explorer:has(#announcement-results-panel:not([hidden]) #announcement-search-filter-panel) { display: block; }
   .app-shell .housing-explorer:not(.has-detail):has(.housing-results__browse:not([hidden]) #announcement-results-panel:not([hidden]) #announcement-search-filter-panel) .housing-map-workspace { display: flex; visibility: visible; }
 }
-.service-rail-account .service-session-retry { width: 100%; padding: 10px 4px; font-size: 12px; word-break: keep-all; }
+.service-rail-account .service-session-retry {
+  position: relative; display: flex; width: 100%; padding: 8px 4px; flex-direction: column; align-items: center; gap: 6px;
+  border: 0; background: transparent; color: var(--ds-color-label);
+  font-size: 11px; font-weight: 600; line-height: 1.3; word-break: keep-all;
+}
+.service-rail-account .service-session-retry::before {
+  content: ""; width: 24px; height: 24px; background: currentcolor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke='black' stroke-width='1.6'%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3Cpath d='M4 22v-2a8 8 0 0 1 16 0v2'/%3E%3C/g%3E%3C/svg%3E") center / contain;
+}
+/* 로그인 확인 실패는 사람 아이콘 위 빨간 점으로만 알린다. */
+.service-rail-account .service-session-retry::after {
+  content: ""; position: absolute; top: 7px; left: calc(50% + 6px); width: 8px; height: 8px;
+  border: 2px solid var(--ds-color-surface); border-radius: 50%; background: var(--ds-color-deadline);
+}
+.service-rail-account .service-session-retry:hover { background: var(--ds-color-action-soft); }
 .service-account-menu { width: 100%; }
 .service-account-menu summary { cursor: pointer; list-style: none; font-size: 12px; white-space: nowrap; }
 .service-account-menu summary::-webkit-details-marker { display: none; }
@@ -2478,6 +2489,7 @@ button {
   border-bottom: 1px solid var(--ds-color-divider);
 }
 .housing-results__page-header h2 { margin: 0; font-size: var(--ds-text-section); font-weight: 700; }
+.housing-results__sheet-top { flex-shrink: 0; }
 .housing-results__collapse {
   display: grid; place-items: center; width: 32px; height: 32px;
   padding: 0; border: 0; border-radius: 6px; background: transparent;
@@ -2494,8 +2506,9 @@ button {
   color: var(--ds-color-action); background: var(--ds-color-surface); cursor: pointer;
 }
 /* Slide the page over a stable map viewport; resizing the GL canvas repaints and queries on every frame. */
+/* 필터 줄은 목록·상세를 열고 닫아도 검색창 오른쪽 같은 자리에 둔다. */
 .app-shell .has-results-page .housing-map-filter {
-  top: var(--explorer-top); left: calc(var(--explorer-search-width) + 3 * var(--explorer-gutter)); right: var(--explorer-gutter);
+  top: var(--explorer-top); left: calc(var(--explorer-search-width) + 2 * var(--explorer-gutter)); right: var(--explorer-gutter);
 }
 @media (min-width: 768px) {
   .app-shell .housing-explorer .housing-detail-layer {
@@ -2510,13 +2523,11 @@ button {
   }
 }
 @media (min-width: 1024px) {
+  /* 목록 옆 두 번째 열의 상세는 필터 줄 아래에서 시작해 필터 줄과 겹치지 않는다(2단 구성). */
   .app-shell .housing-explorer.has-results-page .housing-detail-layer {
-    top: var(--explorer-top);
+    top: calc(var(--explorer-top) + 64px);
     left: calc(var(--explorer-search-width) + 2 * var(--explorer-gutter) + var(--explorer-panel-gap));
     width: min(var(--explorer-search-width), calc(100% - var(--explorer-search-width) - 3 * var(--explorer-gutter) - var(--explorer-panel-gap)));
-  }
-  .app-shell .housing-explorer.has-results-page.has-detail .housing-map-filter {
-    left: calc(2 * var(--explorer-search-width) + 2 * var(--explorer-gutter) + 2 * var(--explorer-panel-gap));
   }
 }
 .app-shell .has-results-page.is-searching .housing-search-overlay { flex: 1 1 0; padding-bottom: 0; }
@@ -2553,8 +2564,17 @@ button {
 
 /* Mobile lists float over the stable map; details use the browser's modal layer. */
 @media (max-width: 767px) {
+  :root {
+    --explorer-nav-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    --explorer-footer-height: calc(72px + var(--explorer-nav-bottom));
+  }
   .app-shell {
-    --explorer-footer-height: calc(64px + env(safe-area-inset-bottom));
+    --explorer-nav-inset: max(12px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+    --explorer-nav-item-width: calc((100vw - 2 * var(--explorer-nav-inset)) / 3);
+    --explorer-map-control-right: max(12px, env(safe-area-inset-right, 0px));
+    --explorer-map-control-bottom: 12px;
+    --explorer-map-control-size: 48px;
+    --explorer-map-control-gap: 8px;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) var(--explorer-footer-height);
   }
@@ -2568,27 +2588,39 @@ button {
   .service-rail-account,
   .housing-navigation {
     position: fixed; z-index: 610; top: auto;
-    bottom: env(safe-area-inset-bottom); height: 64px;
+    bottom: var(--explorer-nav-bottom); height: 64px;
   }
   .service-rail-brand { display: none; }
-  .service-rail-account { left: calc(200% / 3); width: calc(100% / 3); display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; padding-inline: 0; }
+  .service-rail-account { left: auto; right: var(--explorer-nav-inset); width: var(--explorer-nav-item-width); display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; padding-inline: 4px; }
   .service-rail-account .service-login-link { min-height: 56px; padding: 4px; gap: 4px; align-items: center; justify-content: center; text-align: center; }
   .service-account-menu__panel { left: auto; right: 4px; bottom: calc(100% + 8px); }
-  .housing-navigation { left: 0; width: calc(200% / 3); justify-content: center; }
-  .housing-navigation .housing-results__tabs { flex-direction: row; gap: 0; }
-  .housing-navigation .housing-results__tabs button { width: 50%; min-height: 56px; padding: 4px; gap: 4px; margin-inline: 0; }
+  .housing-navigation { left: var(--explorer-nav-inset); width: calc(2 * var(--explorer-nav-item-width)); justify-content: center; }
+  .housing-navigation .housing-results__tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding-inline: 4px; }
+  .housing-navigation .housing-results__tabs button { width: 100%; min-height: 56px; padding: 4px; gap: 4px; margin-inline: 0; font-size: 11px; }
   .housing-navigation__multiline-label { line-height: 1.2; }
+  .housing-navigation__label-break { display: none; }
+  .app-shell .housing-browse-panel .housing-search-overlay {
+    padding-top: calc(20px + env(safe-area-inset-top, 0px));
+    padding-left: max(10px, env(safe-area-inset-left, 0px));
+    padding-right: max(10px, env(safe-area-inset-right, 0px));
+  }
+  .housing-search-overlay .integrated-search__input input { font-size: max(16px, 1rem); }
   .app-shell .housing-browse-panel {
     z-index: 450;
     clip-path: none;
   }
   .app-shell .housing-browse-panel::before { display: none; }
+  .housing-browse-panel:has(.housing-results[aria-hidden="false"][data-search-covered="true"]) .housing-search-overlay,
+  .housing-explorer:has(.housing-results[aria-hidden="false"][data-search-covered="true"]) .housing-map-filter {
+    visibility: hidden;
+  }
   .app-shell .housing-browse-panel .housing-results {
-    --sheet-max-height: calc(100dvh - var(--explorer-footer-height) - max(80px, var(--explorer-search-bottom, 72px) + 12px));
+    --sheet-max-height: calc(100dvh - var(--explorer-footer-height) - max(8px, env(safe-area-inset-top, 0px)));
     position: fixed;
+    z-index: 400;
     inset: auto 0 var(--explorer-footer-height);
     width: 100%;
-    height: min(50dvh, var(--sheet-max-height));
+    height: min(var(--sheet-height, 50dvh), var(--sheet-max-height));
     max-height: var(--sheet-max-height);
     margin: 0;
     padding-bottom: 0;
@@ -2600,10 +2632,6 @@ button {
     transform: translateY(0);
     transition: height 220ms ease-out, transform 220ms ease-out, visibility 0s;
   }
-  .app-shell .housing-browse-panel .housing-results[data-snap="0"] {
-    height: 76px;
-  }
-  .app-shell .housing-browse-panel .housing-results[data-snap="2"] { height: var(--sheet-max-height); }
   .app-shell .housing-browse-panel .housing-results[data-dragging="true"] {
     height: var(--sheet-drag-height);
     transition: none;
@@ -2614,7 +2642,7 @@ button {
   }
   .housing-results__sheet-handle {
     display: grid;
-    flex: 0 0 28px;
+    height: 28px;
     place-items: center;
     touch-action: none;
     user-select: none;
@@ -2622,10 +2650,9 @@ button {
   }
   .housing-results__sheet-handle span { width: 40px; height: 4px; border-radius: 99px; background: #b9bec4; }
   .housing-results__sheet-handle:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: -3px; }
-  .housing-results__content[aria-hidden="true"] { visibility: hidden; }
+  .housing-results__sheet-top { touch-action: none; user-select: none; cursor: ns-resize; }
   .housing-results__collapse { width: 44px; height: 44px; }
   .housing-results__collapse svg { transform: rotate(-90deg); }
-  .housing-results[data-snap="0"] .housing-results__collapse svg { transform: rotate(90deg); }
   .app-shell .has-results-page .housing-search-overlay .integrated-search__input {
     box-shadow: 0 3px 14px rgb(20 35 25 / 12%);
   }
@@ -2669,8 +2696,8 @@ button {
 .service-notification-inbox:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
 .service-notification-management { display: block; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; padding: 10px 0; color: var(--ds-color-action); white-space: nowrap; }
 @media (max-width: 767px) {
-  .app-shell:has(.service-notification-inbox) .housing-navigation { width: 50%; }
-  .service-rail-account:has(.service-notification-inbox) { left: 50%; width: 50%; }
+  .app-shell:has(.service-notification-inbox) .housing-navigation { width: calc((100vw - 2 * var(--explorer-nav-inset)) / 2); }
+  .service-rail-account:has(.service-notification-inbox) { left: auto; width: calc((100vw - 2 * var(--explorer-nav-inset)) / 2); }
   .service-rail-account > .service-feedback-link { display: none; }
   .service-rail-account .service-user-control:has(.service-notification-inbox) { flex-direction: row; gap: 0; }
   .service-rail-account .service-user-control[data-session="signed-in"] > :is(.service-notification-inbox, .service-login-link) { box-sizing: border-box; flex: 0 0 50%; width: 50%; min-width: 0; height: 56px; }

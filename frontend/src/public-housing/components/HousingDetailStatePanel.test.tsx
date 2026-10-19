@@ -3,16 +3,17 @@ import { describe, expect, it, vi } from 'vitest'
 import { HousingDetailStatePanel } from './HousingDetailStatePanel.tsx'
 
 describe.each([
-  { kind: 'complex' as const, label: '단지', missing: '단지를 찾을 수 없습니다.' },
-  { kind: 'announcement' as const, label: '공고', missing: '공고를 찾을 수 없습니다.' },
+  { kind: 'complex' as const, label: '단지', missing: '단지를 찾을 수 없어요.' },
+  { kind: 'announcement' as const, label: '공고', missing: '공고를 찾을 수 없어요.' },
 ])('$label 상세 상태 패널', ({ kind, label, missing }) => {
   const props = { kind, id: '17', errorMessage: null, onClose: vi.fn(), onRetry: vi.fn() }
 
-  it('로딩을 알리고 제목에 포커스하며 재시도는 표시하지 않는다', () => {
+  it('로딩을 알리고 패널에 포커스하며 임시 제목과 재시도는 표시하지 않는다', () => {
     render(<HousingDetailStatePanel {...props} status="loading" />)
     expect(screen.getByRole('complementary', { name: `${label} 상세 정보` })).toHaveFocus()
-    expect(screen.getByRole('status')).toHaveTextContent(`${label} 상세를 불러오고 있습니다.`)
+    expect(screen.getByRole('status')).toHaveTextContent(`${label} 상세를 불러오고 있어요.`)
     expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument()
+    expect(screen.queryByText(`${label} 17`)).not.toBeInTheDocument()
   })
 
   it('존재하지 않는 상세에는 오류 설명만 제공한다', () => {

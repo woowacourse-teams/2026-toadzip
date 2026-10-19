@@ -13,7 +13,7 @@ import {
 
 const COMPLEX_COMMON_FILTERS = {
   agencyCodes: ['LH', 'GH'],
-  applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING', 'CLOSED'],
+  applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'],
   recruitmentTypes: ['NEW', 'WAITLIST'],
   regionCode: '11',
   rentalTypes: ['NATIONAL_RENTAL', 'HAPPY_HOUSING'],
@@ -28,6 +28,16 @@ const ANNOUNCEMENT_FILTERS = {
 } as const satisfies AnnouncementSearchFilters
 
 describe('검색 필터 URL namespace', () => {
+  it.each(['BEFORE_APPLICATION', 'APPLYING'])('이전 단지 %s 단독 URL은 모집중 두 상태로 복원하고 공고 조건을 유지한다', (status) => {
+    const search = new URLSearchParams(`complexApplicationStatuses=${status}&complexAgencyCodes=LH&announcementApplicationStatuses=${status}`)
+    expect(parseComplexSearchFilters(search)).toEqual({ applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'], agencyCodes: ['LH'] })
+    expect(parseAnnouncementSearchFilters(search)).toEqual({ applicationStatuses: [status] })
+  })
+
+  it('이전 마감 단지 URL은 숨은 상태 조건을 남기지 않는다', () => {
+    expect(parseComplexSearchFilters(new URLSearchParams('complexApplicationStatuses=CLOSED&complexRegionCode=11'))).toEqual({ regionCode: '11' })
+  })
+
   it('단지와 공고 필터를 분리하고 기존 지도와 상세 query를 보존한다', () => {
     const current = new URLSearchParams(
       'mapLat=37.56661&mapLng=126.97839&mapZoom=14.00&complexId=17&announcementId=42',
@@ -75,7 +85,6 @@ describe('검색 필터 URL namespace', () => {
     expect(complexSearch.getAll('complexApplicationStatuses')).toEqual([
       'BEFORE_APPLICATION',
       'APPLYING',
-      'CLOSED',
     ])
     expect(complexSearch.getAll('complexAgencyCodes')).toEqual(['LH', 'GH'])
     expect(complexSearch.getAll('complexRecruitmentTypes')).toEqual([
@@ -120,9 +129,7 @@ describe('검색 필터 URL namespace', () => {
       agencyCodes: ['LH'],
       regionCode: '11',
     })
-    expect(parseComplexSearchFilters(search)).toEqual({
-      applicationStatuses: ['CLOSED'],
-    })
+    expect(parseComplexSearchFilters(search)).toEqual({})
     expect(parseAnnouncementSearchFilters(
       new URLSearchParams('announcementApplicationStatuses=CLOSED'),
     )).toEqual({})

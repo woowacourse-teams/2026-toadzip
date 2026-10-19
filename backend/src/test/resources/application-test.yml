@@ -2,22 +2,19 @@ spring:
   flyway:
     enabled: false
   datasource:
-    url: jdbc:postgresql://127.0.0.1:${TEST_POSTGRES_PORT:55432}/toadzip_test
-    username: toadzip_test
-    password: toadzip_test
+    # 접속 정보는 PostgresTestDatabaseInitializer가 실행 중인 컨테이너에서 주입한다.
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 4
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      # Cached contexts share this schema; evicting one must not drop tables used by another.
+      # Testcontainers owns cleanup of the disposable test databases after the JVM exits.
+      ddl-auto: create
   main:
     web-application-type: none
 
 app:
   datasource:
     shared:
-      url: jdbc:postgresql://127.0.0.1:${TEST_SHARED_POSTGRES_PORT:55433}/toadzip_shared_test
-      username: toadzip_shared_test
-      password: toadzip_shared_test
       driver-class-name: org.postgresql.Driver

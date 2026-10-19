@@ -12,7 +12,7 @@ export function announcementFiltersFromForm(data: FormData): AnnouncementSearchF
   return {
     ...topicDraftFromForm('region', data),
     ...topicDraftFromForm('rentalType', data),
-    ...topicDraftFromForm('applicationStatus', data),
+    ...optionalValues('applicationStatuses', formValues<ApplicationStatusFilter>(data, 'applicationStatuses')),
     ...topicDraftFromForm('agency', data),
     ...topicDraftFromForm('recruitmentType', data),
   }
@@ -28,8 +28,6 @@ export function topicDraftFromForm(topic: FilterTopic, data: FormData) {
     }
     case 'rentalType':
       return optionalValues('rentalTypes', formValues<RentalTypeFilter>(data, 'rentalTypes'))
-    case 'applicationStatus':
-      return optionalValues('applicationStatuses', formValues<ApplicationStatusFilter>(data, 'applicationStatuses'))
     case 'agency':
       return optionalValues('agencyCodes', formValues<AgencyCodeFilter>(data, 'agencyCodes'))
     case 'recruitmentType':
@@ -80,7 +78,7 @@ export function topicRangeError(topic: FilterTopic, draft: ComplexSearchFilters)
     && draft.builtYearFrom != null
     && draft.builtYearTo != null
     && draft.builtYearFrom > draft.builtYearTo
-    ? '최소 준공년도는 최대 준공년도보다 클 수 없습니다.'
+    ? '최소 준공년도는 최대 준공년도보다 클 수 없어요.'
     : null
 }
 

@@ -1279,6 +1279,58 @@ class LhAnnouncementExternalCollectionServiceTest {
         assertThat(result.externalApiCallCount()).isOne();
     }
 
+    @ParameterizedTest
+    @CsvSource({"32,true", "256,true", "501,true", "32,false", "501,false"})
+    void 배치에_걸친_요청도_실행마다_한_번_조회하고_모든_공고를_연결한다(int count, boolean sharedRequest) {
+        for (int index = 0; index < count; index++) {
+            String panId = "100";
+            if (!sharedRequest) {
+                panId = Integer.toString(100 + index);
+            }
+            announcementSource("announcement-" + index, panId);
+        }
+        when(myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(anyLong(), any()))
+                .thenAnswer(invocation -> {
+                    long cursor = invocation.getArgument(0);
+                    Pageable pageable = invocation.getArgument(1);
+                    return storedSources.stream().filter(source -> source.getId() > cursor)
+                            .limit(pageable.getPageSize()).toList();
+                });
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(any(), any(), any())).thenReturn(1);
+        int requestCount = count;
+        if (sharedRequest) {
+            requestCount = 1;
+        }
+
+        for (int execution = 1; execution <= 2; execution++) {
+            ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+            assertThat(result.failedRequestCount()).isZero();
+            assertThat(result.externalApiCallCount()).isEqualTo(requestCount);
+            assertThat(result.successfulRequestCount()).isEqualTo(requestCount);
+            assertThat(result.storedRowCount()).isEqualTo(requestCount);
+        }
+
+        verify(externalRepository, times(requestCount * 2)).fetchDetail(any());
+        verify(sourceStore, times(requestCount * 2)).replaceDetails(any(), any(), any());
+        ArgumentCaptor<String> completed = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> linked = ArgumentCaptor.forClass(String.class);
+        verify(progressStore, times(requestCount * 2)).complete(
+                eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), completed.capture(), any(), any());
+        verify(progressStore, times((count - requestCount) * 2)).link(
+                eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), linked.capture(), any(), any());
+        List<String> allLinks = new ArrayList<>(completed.getAllValues());
+        allLinks.addAll(linked.getAllValues());
+        List<String> expectedLinks = new ArrayList<>();
+        for (MyHomeAnnouncementSource source : storedSources) {
+            expectedLinks.add(source.getPblancId());
+            expectedLinks.add(source.getPblancId());
+        }
+        assertThat(allLinks).containsExactlyInAnyOrderElementsOf(expectedLinks);
+        verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+    }
+
     @Test
     void 공유_요청_조회가_실패하면_공고별_기존_연결을_갱신하지_않는다() {
         source(announcementSource("announcement-100"), announcementSource("announcement-101"));

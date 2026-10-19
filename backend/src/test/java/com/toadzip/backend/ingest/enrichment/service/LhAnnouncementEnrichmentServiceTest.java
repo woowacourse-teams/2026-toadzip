@@ -95,6 +95,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -197,6 +198,9 @@ class LhAnnouncementEnrichmentServiceTest {
     private EntityManager entityManager;
 
     @Autowired
+    private TransactionTemplate transactionTemplate;
+
+    @Autowired
     private AnnouncementQueryService announcementQueryService;
 
     @ParameterizedTest
@@ -246,22 +250,21 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     private void cleanUp() {
-        fixtures.clear();
-        jdbc.sql("DELETE FROM verified_lh_supply_replacements").update();
-        supplyTargetRepository.deleteAll();
-        supplyRowRepository.deleteAll();
-        scheduleRepository.deleteAll();
-        attachmentRepository.deleteAll();
-        announcementRepository.deleteAll();
-        housingTypeRepository.deleteAll();
-        housingComplexRepository.deleteAll();
-        enrichmentFailureRepository.deleteAll();
-        detailSourceRepository.deleteAll();
-        supplySourceRepository.deleteAll();
-        mappingFailureRepository.deleteAll();
-        myHomeSourceRepository.deleteAll();
-        linkRepository.deleteAll();
-        externalFailureRepository.deleteAll();
+        transactionTemplate.executeWithoutResult(status -> {
+            // 원천 행과 수집 연결은 fixtures.clear()에서 함께 정리한다.
+            fixtures.clear();
+            jdbc.sql("DELETE FROM verified_lh_supply_replacements").update();
+            supplyTargetRepository.deleteAllInBatch();
+            supplyRowRepository.deleteAllInBatch();
+            scheduleRepository.deleteAllInBatch();
+            attachmentRepository.deleteAllInBatch();
+            announcementRepository.deleteAllInBatch();
+            housingTypeRepository.deleteAllInBatch();
+            housingComplexRepository.deleteAllInBatch();
+            enrichmentFailureRepository.deleteAllInBatch();
+            mappingFailureRepository.deleteAllInBatch();
+            externalFailureRepository.deleteAllInBatch();
+        });
     }
 
     @ParameterizedTest

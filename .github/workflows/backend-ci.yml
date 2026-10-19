@@ -13,25 +13,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Test Flyway migration guard
+        run: python3 -B tests/ci/test_flyway_migrations.py
+      - name: Check Flyway migrations
+        env:
+          # Compare the PR merge result with its develop base; deployments only check duplicates.
+          MIGRATION_BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.base.sha || github.sha }}
+        run: python3 scripts/check-flyway-migrations.py --base-ref "$MIGRATION_BASE_REF"
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "25"
-      - name: Start test PostgreSQL
-        run: >-
-          docker compose --project-name toadzip-test --file compose.test.yaml
-          up --detach --wait --wait-timeout 60 --force-recreate db db-shared
-      - name: Verify backend against PostgreSQL
+      - name: Verify backend with Testcontainers
         working-directory: backend
         run: ./gradlew --rerun-tasks check
-      - name: Show PostgreSQL logs on failure
+      - name: Upload test reports on failure
         if: failure()
-        run: >-
-          docker compose --project-name toadzip-test --file compose.test.yaml
-          logs --no-color db db-shared
-      - name: Stop test PostgreSQL
-        if: always()
-        run: >-
-          docker compose --project-name toadzip-test --file compose.test.yaml
-          down --volumes --remove-orphans
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: |
+            backend/build/reports/tests/test/
+            backend/build/test-results/test/

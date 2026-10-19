@@ -110,21 +110,17 @@ PR을 병합할 때는 Create a merge commit을 사용한다. Merge commit 제�
 
 ## 테스트 및 검증
 
-PR을 생성하기 전에 변경 사항과 관련된 테스트를 실행한다. 백엔드 코드를 변경한 경우 다음 명령어로 전체 테스트를 실행한다.
+PR을 생성하기 전에 변경 사항과 관련된 테스트를 실행한다. 백엔드 코드를 변경한 경우 Docker를 실행한 상태에서
+다음 명령어로 전체 테스트를 실행한다. Testcontainers가 테스트용 PostgreSQL을 자동으로 기동하고 정리한다.
 
 ```bash
-docker compose --project-name toadzip-test --file compose.test.yaml \
-  up --detach --wait --wait-timeout 60 --force-recreate db db-shared
-
 cd backend
 ./gradlew --rerun-tasks check
 cd ..
-
-docker compose --project-name toadzip-test --file compose.test.yaml \
-  down --volumes --remove-orphans
 ```
 
-Gradle 검사가 실패해도 마지막 정리 명령을 실행한다.
+IDE에서도 Docker가 실행 중이면 테스트를 바로 실행할 수 있다. DB 컨테이너를 수동으로 띄울 필요는 없다.
+접속 정보와 DB 격리 기준은 [테스트 전략](backend/docs/testing.md)을 따른다.
 
 기능이나 API 동작을 변경한 경우 관련 시나리오를 직접 확인한다. 실행한 테스트와 검증 결과는 PR 템플릿의 `검증 결과`에 작성한다. 검증하지 못한 항목이 있다면 그 사유를 함께 작성한다.
 

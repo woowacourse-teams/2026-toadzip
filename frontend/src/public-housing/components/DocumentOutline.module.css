@@ -120,7 +120,7 @@
 
 .item[aria-current='location'] {
   background: var(--ds-color-action-selected);
-  color: var(--ds-color-action);
+  color: var(--ds-color-text);
   font-weight: 700;
 }
 

@@ -18,7 +18,7 @@ async function setup(current = unknown, userId = '101', hasInterests = true, per
   const register = vi.fn(async () => ({ deviceId: 'device', enabled: true, bindingVersion: '1' }))
   const client = createPushClient(userId, sdk, { current: async () => current, register, disable: vi.fn() })
   await client.start(current)
-  const ui = <InterestContext.Provider value={{ userId, mode: 'member', blocked: false, clearingAll: false, batchError: '', requested: new Map(), targets: hasInterests ? [{ type: 'REGION', id: '1', name: '마포구' }] : [], clearAll: vi.fn(), resetSession: vi.fn(), refreshStatus: vi.fn(), request: vi.fn(), expose: vi.fn() }}>
+  const ui = <InterestContext.Provider value={{ userId, mode: 'member', retrying: false, blocked: false, clearingAll: false, batchError: '', requested: new Map(), targets: hasInterests ? [{ type: 'REGION', id: '1', name: '마포구' }] : [], clearAll: vi.fn(), resetSession: vi.fn(), refreshStatus: vi.fn(), request: vi.fn(), expose: vi.fn() }}>
     <NotificationPushContext.Provider value={{ client, current, error: '', retry: vi.fn() }}><NotificationPushOnboarding /></NotificationPushContext.Provider>
   </InterestContext.Provider>
   return { ...render(ui), client, requestPermission, register }

@@ -3,6 +3,7 @@ package com.toadzip.backend.notification.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.toadzip.backend.global.config.PostgresTestDatabases;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -91,7 +92,6 @@ class NotificationSchemaIntegrationTest {
     }
 
     private static String url(String database) {
-        return "jdbc:postgresql://127.0.0.1:" + System.getenv().getOrDefault("TEST_POSTGRES_PORT", "55432")
-                + "/" + database;
+        return PostgresTestDatabases.primaryUrl(database);
     }
 }

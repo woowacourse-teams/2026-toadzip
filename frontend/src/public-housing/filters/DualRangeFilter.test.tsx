@@ -585,7 +585,7 @@ describe('DualRangeFilter', () => {
     )
   })
 
-  it('빠른 선택의 가로 스크롤과 44px 터치 영역 및 키보드 포커스를 유지한다', () => {
+  it('빠른 선택을 숨김 스크롤 없이 줄바꿈하고 44px 터치 영역 및 키보드 포커스를 유지한다', () => {
     const filterStyles = readFileSync(
       resolve(
         process.cwd(),
@@ -594,9 +594,9 @@ describe('DualRangeFilter', () => {
       'utf8',
     )
 
-    expect(filterStyles).toMatch(
-      /\.presets\s*\{[\s\S]*?flex-wrap:\s*nowrap;[\s\S]*?overflow-x:\s*auto;[\s\S]*?overflow-y:\s*hidden;/,
-    )
+    const presetsRule = filterStyles.match(/\.presets\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(presetsRule).toMatch(/flex-wrap:\s*wrap;/)
+    expect(presetsRule).not.toMatch(/overflow-x:\s*auto;/)
     expect(filterStyles).toMatch(
       /\.preset\s*\{[\s\S]*?flex:\s*0 0 auto;[\s\S]*?min-width:\s*44px;[\s\S]*?min-height:\s*44px;[\s\S]*?white-space:\s*nowrap;/,
     )

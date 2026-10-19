@@ -3,6 +3,7 @@ import type { DataPipelineExecution, DataPipelineType } from './api'
 import { DataPipelineProgress, PipelineReport } from './DataPipelineProgress'
 import { pipelineLabels, pipelineStatusLabels } from './pipelineLabels'
 import { StoredDataTable } from '../shared/StoredDataTable'
+import { PipelineNextActions } from './PipelineNextActions'
 
 export type PipelineViewState = {
   execution: DataPipelineExecution
@@ -71,17 +72,7 @@ export function PipelineResult({ type, state, collectionExecution, stopping, onS
       {includesCollection && execution.status.startsWith('COMPLETED') ? (
         <p className="ingest-meta">완료는 선택된 수집 대상을 처리한 결과입니다. 모든 {type.startsWith('COMPLEX_') ? '단지' : '공고'}의 최신 상태를 보장하지 않습니다.</p>
       ) : null}
-      {needsManualRefinement(execution) ? (
-        <div className="data-pipeline-warning">
-          <p>자동 정제가 실행되지 않았습니다. 수집 결과를 확인한 뒤 저장된 원천으로 정제할 수 있습니다.</p>
-          <p className="ingest-meta">정제는 현재 저장된 원천 전체를 사용합니다. 이전 수집의 원천이 포함될 수 있습니다.</p>
-          {onRefine ? (
-            <button type="button" disabled={recoveryDisabled} onClick={onRefine}>
-              저장된 원천으로 {type.startsWith('COMPLEX_') ? '단지' : '공고'} 정제 실행
-            </button>
-          ) : <a href="#data-pipeline-title">상단에서 정제 단독 실행</a>}
-        </div>
-      ) : null}
+      <PipelineNextActions execution={execution} onRefine={onRefine} disabled={recoveryDisabled} />
       <details className="pipeline-details"><summary>단계별 결과·기술 상세</summary>
       {execution.completedSteps.length > 0 ? (
         <ol className="data-pipeline-steps">
@@ -163,13 +154,6 @@ function summarizeCollectionReports(execution: DataPipelineExecution): Record<st
     }
   }
   return Object.keys(totals).length ? totals : null
-}
-
-function needsManualRefinement(execution: DataPipelineExecution): boolean {
-  if (!execution.type.endsWith('_SYNC') || !['FAILED', 'STOPPED', 'COMPLETED_WITH_SKIPS'].includes(execution.status)) return false
-  const refinementIndex = execution.type === 'COMPLEX_SYNC' ? 3 : 5
-  return execution.currentStepIndex < refinementIndex
-    && !(execution.completedStepResults ?? []).some((step) => step.step.startsWith('MAP_') || step.step.startsWith('ENRICH_'))
 }
 
 function runningMessage(execution: DataPipelineExecution): string {

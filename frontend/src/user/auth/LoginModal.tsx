@@ -79,7 +79,7 @@ export function LoginModal({ loginFailed, sessionError, onClose, returnFocusRef,
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
               <circle cx="12" cy="12" r="9" /><path d="M12 7v6m0 3v1" />
             </svg>
-            <strong>{loginFailed ? '로그인을 완료하지 못했습니다.' : '로그인 상태를 확인하지 못했습니다.'}</strong>
+            <strong>{loginFailed ? '로그인을 완료하지 못했어요.' : '로그인 상태를 확인하지 못했어요.'}</strong>
             {loginFailed && <p>인증이 취소되었거나 로그인 요청이 만료되었을 수 있어요.</p>}
             <p>아래 버튼을 눌러 다시 시도해 주세요.</p>
           </div>

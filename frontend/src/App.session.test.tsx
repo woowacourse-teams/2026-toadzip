@@ -120,7 +120,7 @@ it('비회원 확인 후 재조회가 실패해도 예전 회원 메뉴를 다�
   await screen.findByRole('button', { name: '로그인' })
   interest.loadStatus.mockRejectedValueOnce(new Error('network'))
   fireEvent.focus(window)
-  await screen.findByRole('alert')
+  await screen.findByRole('button', { name: '로그인 상태 다시 확인' })
   expect(screen.queryByRole('button', { name: '알림 보관함' })).not.toBeInTheDocument()
 })
 

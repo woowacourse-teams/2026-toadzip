@@ -97,7 +97,7 @@ function PdfPreview({ url, name, telemetry }: { readonly url: string; readonly n
         <button type="button" aria-label="검색 닫기" onClick={hideSearch}>닫기</button>
       </div>
     </div>}
-    {error && <p role="alert" className={styles.error}>PDF를 표시하지 못했습니다. 다운로드해서 확인해 주세요.</p>}
+    {error && <p role="alert" className={styles.error}>PDF를 표시하지 못했어요. 다운로드해서 확인해 주세요.</p>}
     <div className={styles.viewport}>
       <div ref={containerRef} className={`${styles.scroll} ${scrollbarStyles.scrollbar}`} role="region" aria-label={`${name} 문서`} tabIndex={0}>
         <div ref={viewerRef} className="pdfViewer" />

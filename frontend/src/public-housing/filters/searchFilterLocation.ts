@@ -4,6 +4,8 @@ import type {
   SharedSearchFilters,
 } from '../api/publicHousingRepository.ts'
 
+import { RECRUITING_APPLICATION_STATUSES } from './complexFilterTopics.ts'
+
 import {
   AGENCY_OPTIONS,
   ANNOUNCEMENT_STATUS_OPTIONS,
@@ -45,7 +47,8 @@ const ANNOUNCEMENT_KEYS = [
 export function parseComplexSearchFilters(
   search: URLSearchParams,
 ): ComplexSearchFilters {
-  const shared = parseSharedFilters(search, 'complex')
+  const { applicationStatuses, ...shared } = parseSharedFilters(search, 'complex')
+  const recruiting = RECRUITING_APPLICATION_STATUSES.some((status) => applicationStatuses?.includes(status))
   const [minDeposit, maxDeposit] = validRange(
     nonNegativeInteger(search.get('complexMinDeposit')),
     nonNegativeInteger(search.get('complexMaxDeposit')),
@@ -65,6 +68,7 @@ export function parseComplexSearchFilters(
 
   return {
     ...shared,
+    ...(recruiting ? { applicationStatuses: RECRUITING_APPLICATION_STATUSES } : {}),
     ...optionalNumber('minDeposit', minDeposit),
     ...optionalNumber('maxDeposit', maxDeposit),
     ...optionalNumber('minMonthlyRent', minMonthlyRent),

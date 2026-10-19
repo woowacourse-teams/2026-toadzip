@@ -2,8 +2,11 @@
   font-family: var(--ds-font-family-ui);
   line-height: var(--ds-line-height-body);
 }
+/* 공고 상세의 다른 섹션처럼 흰 블록으로 둔다. */
 .accordion {
-  border-top: 1px solid var(--ds-color-divider);
+  padding: 0 var(--ds-space-5);
+  border-radius: 16px;
+  background: var(--ds-color-surface);
 }
 .accordion h3 {
   margin: 0;

@@ -1,6 +1,7 @@
 import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
 import { createSearchMeasurement, type SearchMeasurement } from '../analytics/searchMeasurement'
-import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { AnnouncementStatusBadge } from '../components/AnnouncementStatusBadge.tsx'
 import { DetailCloseButton } from '../components/DetailPrimitives.tsx'
 import {
   integratedSearchRepository,
@@ -46,6 +47,17 @@ export function IntegratedSearch({
   const inputLabel = '지역, 지하철역, 단지, 공고 검색'
   const measurement = useMemo(() => createSearchMeasurement('main_search', normalizedQuery, searchTypes), [normalizedQuery])
   const activeSearch = useRef<SearchMeasurement | null>(null)
+  const [emptyTypes, setEmptyTypes] = useState<ReadonlySet<SearchType>>(() => new Set())
+  const changeEmpty = useCallback((type: SearchType, empty: boolean) => {
+    setEmptyTypes((current) => {
+      if (current.has(type) === empty) return current
+      const next = new Set(current)
+      if (empty) next.add(type)
+      else next.delete(type)
+      return next
+    })
+  }, [])
+  const emptyLabels = searchTypes.filter((type) => emptyTypes.has(type)).map(typeLabel)
   useEffect(() => {
     if (active) activeSearch.current = measurement
     else if (activeSearch.current) {
@@ -104,9 +116,9 @@ export function IntegratedSearch({
         {selectionControl}
         {active && (
           <div className={styles.header}>
-            <h2>검색결과</h2>
+            <h2>검색 결과</h2>
             <DetailCloseButton
-              label="검색결과 닫기"
+              label="검색 결과 닫기"
               onClose={() => {
                 setQuery('')
                 inputRef.current?.focus({ preventScroll: true })
@@ -129,11 +141,19 @@ export function IntegratedSearch({
                   inputRef.current?.focus({ preventScroll: true })
                   onSelect(item)
                 }}
+                onEmptyChange={changeEmpty}
                 query={normalizedQuery}
                 repository={repository}
                 type={type}
               />
             ))}
+            {emptyLabels.length > 0 && (
+              <p className={`${styles.message} ${styles.emptySummary}`} role="status">
+                {emptyLabels.length === searchTypes.length
+                  ? '검색 결과가 없어요.'
+                  : `${emptyLabels.join('·')} 검색 결과가 없어요.`}
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -142,12 +162,15 @@ export function IntegratedSearch({
 }
 
 export function SearchGroup({
+  onEmptyChange,
   onSelect,
   query,
   repository,
   type,
   measurement: suppliedMeasurement,
 }: {
+  /** 지정하면 결과가 없는 그룹을 숨기고 부모가 한 줄로 모아 안내한다. */
+  readonly onEmptyChange?: (type: SearchType, empty: boolean) => void
   readonly onSelect: (item: SearchResultItem) => void
   readonly query: string
   readonly repository: IntegratedSearchRepository
@@ -202,7 +225,7 @@ export function SearchGroup({
             else captureProductEvent('search_more_failed', { ...measurement.properties, result_type: type.toLowerCase(), request_id: requestId, page })
             setState((current) => ({
               ...current,
-              error: `${label} 검색 결과를 불러오지 못했습니다.`,
+              error: `${label} 검색 결과를 불러오지 못했어요.`,
               kind: 'error',
             }))
           }
@@ -213,6 +236,13 @@ export function SearchGroup({
       controller.abort()
     }
   }, [label, page, query, repository, retryRevision, type, measurement])
+
+  const empty = state.kind === 'ready' && state.items.length === 0
+  useEffect(() => {
+    onEmptyChange?.(type, empty)
+  }, [empty, onEmptyChange, type])
+  // 상태와 요청은 유지한 채 빈 그룹만 화면에서 뺀다.
+  if (empty && onEmptyChange) return null
 
   return (
     <section className={styles.group} aria-labelledby={headingId} aria-busy={state.kind === 'loading'}>
@@ -234,10 +264,14 @@ export function SearchGroup({
                   onSelect(item)
                 }}
               >
+                {item.applicationStatus && (
+                  <span className={styles.status}>
+                    <AnnouncementStatusBadge label={statusLabel(item.applicationStatus)} tone={statusTone(item.applicationStatus)} countdown={null} />
+                  </span>
+                )}
                 <strong>{item.title}</strong>
                 {item.subtitle && <span>{item.subtitle}</span>}
-                {item.publishedAt && <time dateTime={item.publishedAt}>{item.publishedAt}</time>}
-                {item.applicationStatus && <span>{statusLabel(item.applicationStatus)}</span>}
+                {item.publishedAt && <time dateTime={item.publishedAt}>{formatPublishedDate(item.publishedAt)}</time>}
                 {unavailable && <span className={styles.unavailable}>위치 정보 준비 중</span>}
               </button>
               {item.type === 'REGION' && item.regionCode && (
@@ -253,11 +287,11 @@ export function SearchGroup({
       </ul>
       {state.kind === 'loading' && (
         <p className={styles.message} role="status">
-          {label} {page === 0 ? '검색 중입니다.' : '결과를 더 불러오는 중입니다.'}
+          {label} {page === 0 ? '검색 중이에요.' : '결과를 더 불러오는 중이에요.'}
         </p>
       )}
       {state.kind === 'ready' && state.items.length === 0 && (
-        <p className={styles.message} role="status">{label} 검색 결과가 없습니다.</p>
+        <p className={styles.message} role="status">{label} 검색 결과가 없어요.</p>
       )}
       {state.kind === 'error' && (
         <div className="integrated-search__partial-error" role="alert">
@@ -313,11 +347,24 @@ function typeLabel(type: SearchType) {
   return { ANNOUNCEMENT: '공고', COMPLEX: '단지', REGION: '지역', SUBWAY_STATION: '지하철역' }[type]
 }
 
+function formatPublishedDate(value: string) {
+  return value.slice(0, 10).replaceAll('-', '.')
+}
+
+function statusTone(status: string) {
+  return ({
+    APPLYING: 'applying',
+    BEFORE_APPLICATION: 'upcoming',
+    CANCELLED: 'cancelled',
+    CLOSED: 'closed',
+  } as const)[status] ?? 'unknown'
+}
+
 function statusLabel(status: string) {
   return {
-    APPLYING: '접수 중',
+    APPLYING: '접수중',
     BEFORE_APPLICATION: '공고중',
-    CANCELLED: '취소',
-    CLOSED: '접수 종료',
+    CANCELLED: '공고취소',
+    CLOSED: '접수마감',
   }[status] ?? status
 }

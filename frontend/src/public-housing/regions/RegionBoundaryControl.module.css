@@ -17,7 +17,7 @@
 .name {
   min-width: 0;
   padding: 0;
-  color: var(--ds-color-action);
+  color: var(--ds-color-text);
   text-align: left;
   text-decoration: underline;
   text-underline-offset: 3px;

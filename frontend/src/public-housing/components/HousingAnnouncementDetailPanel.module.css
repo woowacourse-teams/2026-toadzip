@@ -70,8 +70,12 @@
 }
 
 .headerContext > span[data-publication='changed'] {
-  color: var(--ds-color-text);
-  font-weight: 500;
+  padding: 2px var(--ds-space-2);
+  border-radius: var(--ds-status-badge-radius);
+  background: color-mix(in srgb, var(--ds-color-deadline) 12%, var(--ds-color-surface));
+  color: color-mix(in srgb, var(--ds-color-deadline) 78%, #000);
+  font-size: var(--ds-text-caption);
+  font-weight: 700;
 }
 
 .headerMain h2 {
@@ -118,18 +122,26 @@
   font-weight: 700;
 }
 
+/* 섹션을 전체 폭으로 채우고 각 섹션의 위쪽 구분선으로 나눈다. */
 .sectionGroup {
+  display: flex;
   min-width: 0;
+  flex-direction: column;
+  gap: 0;
 }
 
 .scroll {
-  --detail-content-inset: var(--ds-space-5);
+  --detail-content-inset: var(--ds-space-4);
+  display: flex;
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
-  padding: 0 var(--detail-content-inset) var(--ds-space-2);
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   background: var(--ds-color-surface);
   overscroll-behavior: contain;
   scrollbar-color: #d5d7dc transparent;
@@ -145,28 +157,41 @@
   white-space: nowrap;
 }
 
+.summaryBlock {
+  padding: var(--ds-space-4);
+  border-radius: 0;
+  background: var(--ds-color-surface);
+}
+
 .intro {
   display: grid;
   gap: var(--ds-space-1);
-  padding: var(--ds-space-4) 0;
 }
 
 .notificationAction {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  padding-bottom: var(--ds-space-4);
+  padding-top: var(--ds-space-4);
 }
 
+/* 단지 상세의 행동 버튼과 같은 높이·테두리·글자를 쓴다. 행동이 하나라 전체 폭을 차지한다. */
 .notificationAction > button {
   width: 100%;
   min-width: 0;
-  min-height: var(--ds-control-height-md);
-  gap: var(--ds-space-2);
-  padding: var(--ds-space-2) var(--ds-space-4);
-  border-radius: var(--ds-radius-control);
-  font-size: var(--ds-text-body);
-  font-weight: 500;
+  min-height: 48px;
+  gap: 6px;
+  padding: 0 var(--ds-space-3);
+  border: 1px solid var(--ds-color-border-base);
+  border-radius: 10px;
+  color: var(--ds-color-text);
+  font-family: inherit;
+  font-size: var(--ds-text-control-lg);
+  font-weight: 600;
   line-height: var(--ds-line-height-body);
+}
+
+.notificationAction > button:hover:not(:disabled) {
+  background: var(--ds-color-control-hover);
 }
 
 .notificationAction > button svg {
@@ -190,6 +215,10 @@
   color: var(--ds-color-label);
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.intro p.introMeta {
+  display: block;
 }
 
 .intro strong[data-agency='LH'] {
@@ -237,9 +266,10 @@
 }
 
 .reason {
-  margin-inline: calc(-1 * var(--detail-content-inset));
-  padding: var(--ds-space-4) var(--detail-content-inset);
-  border-top: 8px solid var(--ds-color-section-divider);
+  padding: var(--ds-space-4);
+  border-top: 6px solid var(--ds-color-section-divider);
+  border-radius: 0;
+  background: var(--ds-color-surface);
   color: var(--ds-color-text);
 }
 
@@ -338,7 +368,6 @@
 
 .receptionList a,
 .attachmentList a,
-.complexHeading button,
 .housingTypeHeading button {
   display: inline-flex;
   min-height: 36px;
@@ -361,195 +390,169 @@
   white-space: nowrap;
 }
 
-.complexList,
-.housingTypes {
-  display: grid;
-  gap: var(--ds-space-4);
-}
 
-.complexCard {
-  min-width: 0;
-}
-
-.complexCard + .complexCard,
 .housingTypeCard + .housingTypeCard {
   padding-top: var(--ds-space-4);
   border-top: 1px solid var(--detail-line);
 }
 
-.complexSummary {
-  display: grid;
-  min-width: 0;
-  align-items: center;
-  gap: var(--ds-space-3);
-  margin-top: var(--ds-space-2);
-  grid-template-columns: 92px minmax(0, 1fr);
+/* 공급 주택형: 단지마다 이름 한 줄과 주택형 표 하나. 한눈에 훑는 용도라 표로 둔다. */
+.supplyComplex + .supplyComplex {
+  margin-top: var(--ds-space-5);
+  padding-top: var(--ds-space-4);
+  border-top: 1px solid var(--ds-color-divider);
 }
 
-.complexSummary[data-has-image='false'] {
-  display: block;
-}
-
-.complexImage {
-  display: grid;
-  min-height: 100px;
-  overflow: hidden;
-  border-radius: 6px;
-  background: var(--ds-color-surface-subtle);
-  color: var(--detail-muted);
-  font-size: var(--ds-text-caption);
-  line-height: var(--ds-line-height-caption);
-  text-align: center;
-  place-items: center;
-}
-
-.complexImage img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.complexBody {
-  min-width: 0;
-}
-
-.complexHeading {
+.supplyComplexHead {
   display: flex;
   min-width: 0;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--ds-space-2);
-  flex-wrap: wrap;
+  gap: var(--ds-space-3);
+  margin-bottom: var(--ds-space-2);
 }
 
-.complexHeading > div {
+.supplyComplexHead > div {
   display: flex;
   min-width: 0;
-  align-items: center;
-  gap: var(--ds-space-2);
+  align-items: baseline;
   flex-wrap: wrap;
+  gap: 2px var(--ds-space-2);
 }
 
-.complexHeading strong {
+.supplyComplexHead strong {
   min-width: 0;
-  color: var(--ds-color-text);
-  font-size: var(--ds-text-body);
-  line-height: var(--ds-line-height-body);
+  font-size: 16px;
   font-weight: 700;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
-.complexHeading span {
-  flex: 0 0 auto;
+.supplyComplexHead > div > span {
   color: var(--ds-color-label);
   font-size: var(--ds-text-caption);
-  line-height: var(--ds-line-height-caption);
+}
+
+/* 단지 상세로 가는 버튼: 평 전환과 같은 흰 바탕 테두리 버튼. */
+.complexDetailButton {
+  display: inline-flex;
+  flex: none;
+  min-height: 36px;
+  align-items: center;
+  padding: 0 14px;
+  border: 1px solid var(--ds-color-divider);
+  border-radius: 8px;
+  background: var(--ds-color-surface);
+  color: var(--ds-color-label);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--ds-text-caption);
+  font-weight: 700;
+}
+
+.complexDetailButton:hover {
+  background: var(--ds-color-control-hover);
+}
+
+.complexDetailButton:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+}
+
+/* 회색 머리줄, 가로선만, 가운데 정렬. 금액은 보증금 굵게·월 임대료 아래 작은 글자. */
+.supplyTable table {
+  border-block: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.supplyTable :is(th, td) {
+  padding: var(--ds-space-3) 4px;
+  border-left: 0;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.supplyTable thead th {
+  padding-block: var(--ds-space-2);
+  background: var(--ds-color-table-heading);
+  color: var(--ds-color-label);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.supplyTable tbody th > strong,
+.supplyTable td > strong {
+  display: block;
+  color: var(--ds-color-text);
+  font-weight: 700;
+}
+
+.supplyTable tbody th > span,
+.supplyTable td > span {
+  display: block;
+  color: var(--ds-color-muted);
+  font-size: 12px;
   font-weight: 400;
 }
 
-.complexHeading button,
+.supplyTable td > span[data-missing='true'] {
+  color: var(--ds-color-muted);
+}
+
+.supplyNote {
+  margin: var(--ds-space-2) 0 0;
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+}
+
+.supplyDetails {
+  margin-top: var(--ds-space-1);
+}
+
+.supplyDetails > summary {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  color: var(--ds-color-label);
+  cursor: pointer;
+  font-size: var(--ds-text-caption);
+  font-weight: 600;
+  list-style: none;
+}
+
+.supplyDetails > summary::-webkit-details-marker {
+  display: none;
+}
+
+.supplyDetails > summary::after {
+  content: "›";
+  margin-left: 4px;
+  transition: transform 150ms ease-out;
+}
+
+.supplyDetails[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.supplyDetails[open] > summary {
+  margin-bottom: var(--ds-space-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .supplyDetails > summary::after { transition: none; }
+}
+
+
 .housingTypeHeading button {
   flex: 0 0 auto;
 }
 
-.complexBody > p {
-  margin: 0;
-  color: var(--ds-color-label);
-  font-size: var(--ds-text-caption);
-  line-height: var(--ds-line-height-caption);
-  overflow-wrap: anywhere;
-}
-
-.complexCounts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ds-space-3);
-  margin-top: var(--ds-space-2);
-  color: var(--detail-muted);
-  font-size: var(--ds-text-caption);
-  line-height: var(--ds-line-height-caption);
-}
-
-.complexCounts b {
-  color: var(--ds-color-label);
-  font-weight: 500;
-}
-
-.complexRanges {
-  margin-top: var(--ds-space-3);
-}
-
-.housingTypeGroup {
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--detail-line);
-  border-radius: var(--ds-radius-control);
-  background: var(--ds-color-surface);
-}
-
-.complexTabs {
-  display: flex;
-  overflow-x: auto;
-  border-bottom: 1px solid var(--detail-line);
-  background: var(--ds-color-surface-subtle);
-  scrollbar-width: thin;
-}
-
-.complexTabs button {
-  display: flex;
-  min-width: 0;
-  max-width: 100%;
-  min-height: 44px;
-  flex: 1 0 200px;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ds-space-2);
-  padding: var(--ds-space-2) var(--ds-space-3);
-  border: 0;
-  background: transparent;
-  color: var(--ds-color-label);
-  cursor: pointer;
-  font-size: var(--ds-text-body);
-  line-height: var(--ds-line-height-body);
-  font-weight: 500;
-}
-
-.complexTabs button + button {
-  border-left: 1px solid var(--detail-line);
-}
-
-.complexTabs button:focus-visible {
-  outline-offset: -3px;
-}
-
-.complexTabs button span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.complexTabs button b {
-  flex: 0 0 auto;
-  font-size: var(--ds-text-caption);
-  line-height: var(--ds-line-height-caption);
-  font-weight: 400;
-}
-
-.complexTabs button[aria-selected='true'] {
-  border: 1px solid var(--ds-color-brand);
-  background: var(--ds-color-brand);
-  color: var(--ds-color-on-brand);
-  font-weight: 700;
-}
-
-.housingTypes {
-  padding: var(--ds-space-4);
-}
 
 .housingTypeCard {
   min-width: 0;
 }
+
 
 .housingTypeHeading {
   display: flex;
@@ -776,7 +779,6 @@
   text-align: center;
 }
 
-.complexHeading button:hover,
 .housingTypeHeading button:hover,
 .receptionList a:hover,
 .attachmentList a:hover {
@@ -795,14 +797,6 @@
 }
 
 @container housing-announcement-detail (max-width: 420px) {
-  .complexSummary {
-    grid-template-columns: 82px minmax(0, 1fr);
-  }
-
-  .complexHeading {
-    align-items: flex-start;
-  }
-
   .documents {
     align-items: stretch;
     grid-template-columns: minmax(0, 1fr);
@@ -824,10 +818,6 @@
     display: none;
   }
 
-  .scroll {
-    --detail-content-inset: var(--ds-space-4);
-  }
-
   .sectionNav a {
     padding-inline: var(--ds-space-2);
   }
@@ -840,18 +830,6 @@
     align-items: flex-start;
     justify-content: center;
     flex-direction: column;
-  }
-
-  .complexSummary {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .complexImage {
-    min-height: 132px;
-  }
-
-  .housingTypes {
-    padding: var(--ds-space-3);
   }
 
   .housingTypeHeading {

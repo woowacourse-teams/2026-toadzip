@@ -39,15 +39,18 @@ describe('현재 위치 확인', () => {
       enableHighAccuracy: false, maximumAge: 0, timeout: 8_000,
     })
     expect(result.current.state.kind).toBe('loading')
+    expect(result.current.position).toBeNull()
     act(() => succeed(position()))
     expect(onLocated).toHaveBeenCalledExactlyOnceWith({ latitude: 37.5, longitude: 127 })
     expect(result.current.state.kind).toBe('located')
+    expect(result.current.position).toEqual({ latitude: 37.5, longitude: 127 })
     rerender()
     expect(getCurrentPosition).toHaveBeenCalledOnce()
   })
 
   it('자동 시작을 기다리고 수동 요청은 중복 실행하지 않는다', () => {
     const { result } = renderHook(() => useCurrentLocation(false, vi.fn()))
+    expect(result.current.position).toBeNull()
     expect(getCurrentPosition).not.toHaveBeenCalled()
     act(() => { result.current.locate(); result.current.locate() })
     expect(getCurrentPosition).toHaveBeenCalledOnce()
@@ -74,8 +77,37 @@ describe('현재 위치 확인', () => {
     act(() => { oldSuccess(position(35, 129)); oldFailure?.(error(1)) })
     expect(onLocated).not.toHaveBeenCalled()
     expect(result.current.state.kind).toBe('loading')
+    expect(result.current.position).toBeNull()
     act(() => succeed(position()))
     expect(onLocated).toHaveBeenCalledExactlyOnceWith({ latitude: 37.5, longitude: 127 })
+    expect(result.current.position).toEqual({ latitude: 37.5, longitude: 127 })
+  })
+
+  it('사용자가 지도를 움직이거나 위치 확인이 일시 실패해도 마지막 위치를 유지한다', () => {
+    const { result } = renderHook(() => useCurrentLocation(false, vi.fn()))
+    act(() => result.current.locate())
+    act(() => succeed(position()))
+    act(() => result.current.cancel())
+    expect(result.current.position).toEqual({ latitude: 37.5, longitude: 127 })
+    act(() => result.current.locate())
+    act(() => fail?.(error(2)))
+    expect(result.current.position).toEqual({ latitude: 37.5, longitude: 127 })
+  })
+
+  it('취소한 요청의 거부는 무시하고 현재 요청에서 권한이 거부되면 마지막 위치를 지운다', () => {
+    const { result } = renderHook(() => useCurrentLocation(false, vi.fn()))
+    act(() => result.current.locate())
+    act(() => succeed(position()))
+    act(() => result.current.locate())
+    const oldFailure = fail
+    act(() => result.current.cancel())
+    act(() => result.current.locate())
+    act(() => oldFailure?.(error(1)))
+    expect(result.current.position).toEqual({ latitude: 37.5, longitude: 127 })
+    expect(result.current.state.kind).toBe('loading')
+    act(() => fail?.(error(1)))
+    expect(result.current.position).toBeNull()
+    expect(result.current.state).toMatchObject({ kind: 'error', reason: 'permission-denied' })
   })
 
   it('화면을 닫은 후 위치 결과를 적용하지 않는다', () => {
@@ -92,7 +124,7 @@ describe('현재 위치 확인', () => {
     const { result } = renderHook(() => useCurrentLocation(false, onLocated))
     act(() => result.current.locate())
     act(() => fail?.(error(code)))
-    expect(result.current.state).toEqual({ kind: 'error', message: expect.stringContaining(
+    expect(result.current.state).toEqual({ kind: 'error', reason: code === 1 ? 'permission-denied' : 'failed', message: expect.stringContaining(
       code === 1 ? '차단' : '확인하지 못했어요',
     ) })
     expect(onLocated).not.toHaveBeenCalled()
@@ -115,7 +147,7 @@ describe('현재 위치 확인', () => {
     vi.stubGlobal('navigator', {})
     const { result } = renderHook(() => useCurrentLocation(false, vi.fn()))
     act(() => result.current.locate())
-    expect(result.current.state).toEqual({ kind: 'error', message: expect.stringContaining('지역을 검색') })
+    expect(result.current.state).toEqual({ kind: 'error', reason: 'unavailable', message: expect.stringContaining('지역을 검색') })
     expect(getCurrentPosition).not.toHaveBeenCalled()
   })
 

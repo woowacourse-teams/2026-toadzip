@@ -64,7 +64,7 @@ it.each(['/login?login=failed', '/?login=failed'])(
   '%s로 실패하면 메인 화면 위 모달에서 재시도할 수 있다', async (path) => {
     render(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>)
     const dialog = await screen.findByRole('dialog', { name: '로그인' })
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('로그인을 완료하지 못했습니다.')
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('로그인을 완료하지 못했어요.')
     expect(within(dialog).getByRole('link', { name: 'Google로 로그인' })).toBeVisible()
     expect(screen.getByRole('link', { name: '공공주택 복덕방 홈' })).toBeVisible()
   },

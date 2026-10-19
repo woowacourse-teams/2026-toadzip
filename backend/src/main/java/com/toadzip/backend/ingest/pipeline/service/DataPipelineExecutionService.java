@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
+import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecoveryService;
 import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
@@ -46,6 +47,7 @@ public class DataPipelineExecutionService {
     private final DataPipelineExecutionLock executionLock;
     private final DataPipelineExecutionRepository executionRepository;
     private final DataPipelineExecutionStateService executionStateService;
+    private final SourceCollectionRecoveryService collectionRecovery;
     private final Executor executor;
     private final ScheduledExecutorService heartbeatExecutor;
     private final Clock clock;
@@ -56,6 +58,7 @@ public class DataPipelineExecutionService {
             DataPipelineExecutionLock executionLock,
             DataPipelineExecutionRepository executionRepository,
             DataPipelineExecutionStateService executionStateService,
+            SourceCollectionRecoveryService collectionRecovery,
             @Qualifier("dataPipelineExecutor") Executor executor,
             @Qualifier("dataPipelineHeartbeatExecutor") ScheduledExecutorService heartbeatExecutor,
             Clock clock,
@@ -65,6 +68,7 @@ public class DataPipelineExecutionService {
         this.executionLock = executionLock;
         this.executionRepository = executionRepository;
         this.executionStateService = executionStateService;
+        this.collectionRecovery = collectionRecovery;
         this.executor = executor;
         this.heartbeatExecutor = heartbeatExecutor;
         this.clock = clock;
@@ -127,6 +131,7 @@ public class DataPipelineExecutionService {
                     INTERRUPTED_FAILURE_MESSAGE
             );
             recoverTerminalCollections(startedAt);
+            collectionRecovery.recoverUnlinkedCollections();
             execution = createExecution(executionId, type, targetIdentifier, startedAt);
         }
         catch (RuntimeException exception) {
@@ -365,18 +370,23 @@ public class DataPipelineExecutionService {
     }
 
     private void recoverInterruptedExecutions() {
-        if (executionLock.isHeld()) {
+        var recoveryLease = executionLock.tryAcquire();
+        if (recoveryLease.isEmpty()) {
             return;
         }
-        Instant now = Instant.now(clock);
-        try {
-            executionStateService.recoverInterruptedBefore(
-                    now.minus(EXECUTION_LEASE_TIMEOUT), now, INTERRUPTED_FAILURE_MESSAGE);
+        try (var lease = recoveryLease.orElseThrow()) {
+            lease.verifyHeld();
+            collectionRecovery.recoverUnlinkedCollections();
+            Instant now = Instant.now(clock);
+            try {
+                executionStateService.recoverInterruptedBefore(
+                        now.minus(EXECUTION_LEASE_TIMEOUT), now, INTERRUPTED_FAILURE_MESSAGE);
+            }
+            catch (RuntimeException exception) {
+                log.error("중단된 데이터 파이프라인 실행을 복구하지 못했습니다.", exception);
+            }
+            recoverTerminalCollections(now);
         }
-        catch (RuntimeException exception) {
-            log.error("중단된 데이터 파이프라인 실행을 복구하지 못했습니다.", exception);
-        }
-        recoverTerminalCollections(now);
     }
 
     private void recoverTerminalCollections(Instant now) {

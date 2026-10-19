@@ -35,7 +35,7 @@
 | [SERVICE_OVERVIEW.md](SERVICE_OVERVIEW.md) | 서비스 목적, 핵심 기능과 용어를 설명합니다. |
 | [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) | 기여·Git 규칙과 에이전트의 작업 지침을 안내합니다. |
 | [compose.yaml](compose.yaml) | 백엔드·프론트엔드·로그 수집기의 기본 실행 구성을 정의합니다. |
-| [compose.local.yaml](compose.local.yaml), [compose.test.yaml](compose.test.yaml) | 로컬 개발 환경과 테스트용 PostgreSQL 구성을 정의합니다. |
+| [compose.local.yaml](compose.local.yaml), [compose.test.yaml](compose.test.yaml) | 로컬 개발 환경과 수동 DB 검증용 PostgreSQL 구성을 정의합니다. 자동 테스트는 Testcontainers를 사용합니다. |
 | [compose.monitoring.yaml](compose.monitoring.yaml) | 로그·메트릭 수집과 모니터링 화면을 실행합니다. |
 | [compose.https.yaml](compose.https.yaml), [compose.certbot.yaml](compose.certbot.yaml) | HTTPS 서비스와 인증서 발급·갱신 구성을 정의합니다. |
 | [.env.example](.env.example) | 환경 변수의 이름과 설정 예시를 제공합니다. |

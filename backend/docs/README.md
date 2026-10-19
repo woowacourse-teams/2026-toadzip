@@ -24,17 +24,15 @@
 | DB 변경 | [persistence.md](persistence.md), [ingest-branch-db-upgrade.md](ingest-branch-db-upgrade.md) | 모델·트랜잭션, 기존 ingest 작업 DB 통합 업그레이드 |
 | Flyway 최초 적용 | [flyway-adoption.md](flyway-adoption.md) | 기존 DB baseline과 새 DB 생성 경로 |
 | ingest 처음 읽기 | [ingest-maintenance.md](ingest-maintenance.md) | 시작할 두 파일, 단계별 서비스와 수집 흐름 |
-| ingest 전체 흐름·실행 제어 | [ingest-flow-review.md](ingest-flow-review.md), [data-pipeline-execution.md](data-pipeline-execution.md), [pipeline-operator-controls.md](pipeline-operator-controls.md) | 수집·정제 경계, 통합 실행과 수동 복구 |
-| ingest 실제 API 검증 | [ingest-live-verification.md](ingest-live-verification.md) | 격리 DB 실행 증거, 실응답 수정과 남은 데이터 품질 |
+| ingest 실행 제어 | [data-pipeline-execution.md](data-pipeline-execution.md), [pipeline-operator-controls.md](pipeline-operator-controls.md) | 통합·독립 실행, 상태·중지와 수동 복구 |
 | 관리자 데이터 파이프라인 | [data-pipeline-execution.md](data-pipeline-execution.md) | 실행 상태와 스키마 배포 |
 | 관리자 회원 알림 | [admin-notification-management.md](admin-notification-management.md) | 신청자 식별, 상태·대상 필터와 읽기 전용 조회 |
 | 마이홈 단지 통합 | [myhome-complex-linking.md](myhome-complex-linking.md) | 원천 연결, 확인된 통합, 재정제와 복구 |
 | 관리자 단지 검증 | [complex-verification.md](complex-verification.md) | 원천 비교, 항목별 검토 기록, 재검토 상태와 목록 필터 |
 | 관리자 데이터 검토 | [admin-quality-workflow.md](admin-quality-workflow.md) | 검토 대상 목록, 공고·주택형 비교, PDF 원본과 재수집 대비 확인 |
-| 수집·정제 코드 리뷰 | [ingest-review-2026-09-26.md](ingest-review-2026-09-26.md) | 9월 28일 재검토: 해결 상태, 원천 선택 결함, 책임·성능·죽은 코드와 개선 순서 |
-| 공고 수집 성능 | [announcement-collection-performance.md](announcement-collection-performance.md) | 페이지 크기, LH 동시성, 실측과 메트릭 |
-| LH 공고 연결·복구 | [lh-announcement-link-resolution.md](lh-announcement-link-resolution.md) | 매핑·보강의 성공 연결 기준과 원천 초기화 |
-| LH 수집 정확성·운영 | [lh-announcement-correctness-audit.md](lh-announcement-correctness-audit.md), [lh-announcement-quality-operations.md](lh-announcement-quality-operations.md) | 검증 한계, 품질 지표와 확인된 공급 감소 승인 |
+| 공고 수집 동시성·계측 | [announcement-collection-performance.md](announcement-collection-performance.md) | 페이지 크기, LH 동시성·장애 차단과 운영 메트릭 |
+| LH 공고 연결·복구 | [lh-announcement-link-resolution.md](lh-announcement-link-resolution.md) | 매핑·보강의 성공 연결 기준과 원천 보존·전환 |
+| LH 수집 품질 운영 | [lh-announcement-quality-operations.md](lh-announcement-quality-operations.md) | 품질 지표와 확인된 공급 감소 승인 |
 | 공고 원천 수명주기 | [announcement-source-lifecycle.md](announcement-source-lifecycle.md) | 미조회 정책과 스키마 배포 |
 | 테스트 | [testing.md](testing.md) | 테스트 범위와 대역 기준 |
 | 보안 변경 | [security.md](security.md) | 인증, 인가, 개인정보, 비밀 |

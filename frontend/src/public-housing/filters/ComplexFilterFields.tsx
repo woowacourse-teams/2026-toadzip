@@ -2,7 +2,7 @@ import type { PublicHousingRegionRepository } from '../api/publicHousingRegionRe
 import type { ComplexSearchFilters } from '../api/publicHousingRepository.ts'
 import { formatHousingMoney } from '../presentation/housingMoney.ts'
 import { DualRangeFilter, type DualRangeFilterPreset } from './DualRangeFilter.tsx'
-import { AGENCY_OPTIONS, APPLICATION_STATUS_OPTIONS, RECRUITMENT_TYPE_OPTIONS, RENTAL_TYPE_OPTIONS } from './searchFilterOptions.ts'
+import { AGENCY_OPTIONS, RECRUITMENT_TYPE_OPTIONS, RENTAL_TYPE_OPTIONS } from './searchFilterOptions.ts'
 import { DETAIL_FILTER_TOPICS, TOPICS, type FilterTopic } from './complexFilterTopics.ts'
 import { formatArea, formatAreaTick, formatDepositTick, formatMonthlyRentTick } from './complexFilterPresentation.ts'
 import { RegionFilterFields } from './RegionFilterFields.tsx'
@@ -89,7 +89,7 @@ export function ComplexFilterFields({
         <RegionFilterFields
           initialRegionCode={filters.regionCode ?? ''}
           messageId="complex-region-load-error"
-          loadingMessage="시·군·구를 불러오는 중입니다."
+          loadingMessage="시·군·구를 불러오는 중이에요."
           styles={{
             regionFields: styles.regionFields,
             field: styles.field,
@@ -99,9 +99,7 @@ export function ComplexFilterFields({
         />
       )
     case 'rentalType':
-      return <ChoiceGroup label="임대유형" name="rentalTypes" values={filters.rentalTypes} options={RENTAL_TYPE_OPTIONS} />
-    case 'applicationStatus':
-      return <ChoiceGroup label="모집상태" name="applicationStatuses" values={filters.applicationStatuses} options={APPLICATION_STATUS_OPTIONS} />
+      return <ChoiceGroup label="임대유형" name="rentalTypes" values={filters.rentalTypes} options={RENTAL_TYPE_OPTIONS} appearance="grid" />
     case 'agency':
       return <ChoiceGroup label="공급기관" name="agencyCodes" values={filters.agencyCodes} options={AGENCY_OPTIONS} />
     case 'recruitmentType':
@@ -178,17 +176,20 @@ function ChoiceGroup({
   name,
   options,
   values = [],
+  appearance = 'pill',
 }: {
   readonly label: string
   readonly name: string
   readonly options: readonly (readonly [string, string])[]
   readonly values?: readonly string[]
+  /** grid: 임대유형처럼 칸을 맞춘 회색 칸, pill: 나머지 선택지는 알약 칩 */
+  readonly appearance?: 'grid' | 'pill'
 }) {
   const selected = new Set(values)
   return (
     <fieldset className={styles.choiceGroup}>
       <legend>{label}</legend>
-      <div className={styles.choices}>
+      <div className={styles.choices} data-appearance={appearance}>
         {options.map(([value, optionLabel]) => (
           <label key={value} className={styles.choice}>
             <input
@@ -197,10 +198,7 @@ function ChoiceGroup({
               value={value}
               defaultChecked={selected.has(value)}
             />
-            <span>
-              <span className={styles.choiceCheck} aria-hidden="true">✓</span>
-              {optionLabel}
-            </span>
+            <span>{optionLabel}</span>
           </label>
         ))}
       </div>
