@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { SupplyReviewPanel } from './SupplyReviewPanel'
-import { blankRow } from './supplyCorrectionApi'
+import { blankRow, blankTarget } from './supplyCorrectionApi'
 import { loadSupplyReviews, saveSupplyReview } from './supplyReviewApi'
 vi.mock('./supplyReviewApi', async original => ({ ...await original<typeof import('./supplyReviewApi')>(), loadSupplyReviews: vi.fn(), saveSupplyReview: vi.fn() }))
 const overview = { values: { 'row:1': { householdCount: 10, names: { typeName: '26A' } } }, records: [] }
@@ -42,4 +42,31 @@ it('방금 적용한 보정의 근거로 검토 폼을 펼쳐 채우고 미저�
   await waitFor(() => expect(reviewed).toHaveBeenCalledOnce())
   expect(saveSupplyReview).toHaveBeenCalledWith('21', expect.objectContaining({ note: '공식 공고의 A형 확인', sourceUrl: 'https://example.com/correction.pdf', sourcePage: '12쪽' }))
   expect(dirty).toHaveBeenLastCalledWith(false)
+})
+it('방금 바꾼 항목을 순서대로 선택하고 확인 항목은 자동으로 체크하지 않는다', async () => {
+  const many = { values: { 'row:1': { householdCount: 10 }, 'target:2': { rent: '200000' }, 'row:3': { householdCount: 5 } }, records: [] }
+  vi.mocked(loadSupplyReviews).mockResolvedValue(many); vi.mocked(saveSupplyReview).mockResolvedValue(many)
+  const reviewed = vi.fn()
+  render(<SupplyReviewPanel id="21" workspace={{ snapshotToken: 'snapshot', version: 1, sources: [], rows: [
+    { ...blankRow(0), id: 1, key: 'row:1', typeName: '26A', complexName: '한스빌', targets: [{ ...blankTarget(0), id: 2, key: 'target:2', target: '일반' }] },
+    { ...blankRow(1), id: 3, key: 'row:3', typeName: '36', complexName: '한스빌' }] }}
+    sourceUrl="https://example.com/notice.pdf" disabled={false} onBusyChange={vi.fn()} onReviewed={reviewed}
+    evidence={{ note: '공식 공고 확인', sourceUrl: 'https://example.com/notice.pdf', sourcePage: null }} pending={['row:1', 'target:2']} />)
+  const select = await screen.findByLabelText('검토할 행·조건')
+  await waitFor(() => expect(select).toHaveValue('row:1'))
+  expect(screen.getByRole('group', { name: '방금 바꾼 항목 2개' })).toBeInTheDocument()
+  expect(screen.getByText('방금 바꾼 항목 2개가 남았습니다.')).toBeVisible()
+  expect(screen.getByRole('checkbox', { name: '금회 모집수 (세대)' })).not.toBeChecked()
+  fireEvent.click(screen.getByRole('checkbox', { name: '금회 모집수 (세대)' }))
+  fireEvent.click(screen.getByRole('button', { name: '선택 범위 검토 기록' }))
+  await waitFor(() => expect(select).toHaveValue('target:2'))
+  expect(saveSupplyReview).toHaveBeenLastCalledWith('21', expect.objectContaining({ target: 'row:1', fields: ['householdCount'] }))
+  expect(screen.getByLabelText('확인 근거·보류 사유')).toHaveValue('공식 공고 확인')
+  expect(screen.getByText('방금 바꾼 항목 1개가 남았습니다.')).toBeVisible()
+  expect(reviewed).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('checkbox', { name: '월세 (원)' }))
+  fireEvent.click(screen.getByRole('button', { name: '선택 범위 검토 기록' }))
+  await waitFor(() => expect(reviewed).toHaveBeenCalledOnce())
+  expect(select).toHaveValue('')
+  expect(screen.getByLabelText('확인 근거·보류 사유')).toHaveValue('')
 })

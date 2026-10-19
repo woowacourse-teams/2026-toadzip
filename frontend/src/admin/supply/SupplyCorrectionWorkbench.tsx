@@ -6,6 +6,7 @@ import { StoredDataTable } from '../shared/StoredDataTable'
 import { forgetApply, pendingApply, rememberApply } from './supplyApplyRecovery'
 import { SupplyImportPanel } from './SupplyImportPanel'
 import { SupplyReviewPanel, type ReviewEvidence } from './SupplyReviewPanel'
+import { changedReviewTargets } from './changedReviewTargets'
 import { SupplyRowDraft } from './SupplyRowDraft'
 import { SupplyCorrectionPreview } from './SupplyCorrectionPreview'
 import { rebaseCorrection, resolveConflict, type CorrectionConflict } from './rebaseCorrection'
@@ -28,7 +29,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
   const [importDirty, setImportDirty] = useState(false)
   const [reviewDirty, setReviewDirty] = useState(false)
   const [appliedWarnings, setAppliedWarnings] = useState<string[]>([])
-  const [applied, setApplied] = useState<{ changeId: number; evidence: ReviewEvidence } | null>(null)
+  const [applied, setApplied] = useState<{ changeId: number; evidence: ReviewEvidence; changed: string[] } | null>(null)
   const [reviewed, setReviewed] = useState(false)
   const rowsDirty = workspace !== null && JSON.stringify(rows) !== JSON.stringify(workspace.rows)
   const step = reviewed && !rowsDirty ? 4 : preview ? 2 : rowsDirty ? 1 : applied ? 3 : 0
@@ -72,8 +73,9 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     try {
       const result = await applySupply(id, preview.input, preview.result.confirmationToken)
       forgetApply(id)
+      const changed = changedReviewTargets(preview.result.before, result.workspace.rows)
       setWorkspace(result.workspace); setRows(result.workspace.rows); setAppliedWarnings(preview.result.warnings); setPreview(null)
-      setApplied({ changeId: result.changeId, evidence: { note: preview.input.reason, sourceUrl: preview.input.sourceUrl, sourcePage: preview.input.sourcePage } }); setReviewed(false)
+      setApplied({ changeId: result.changeId, changed, evidence: { note: preview.input.reason, sourceUrl: preview.input.sourceUrl, sourcePage: preview.input.sourcePage } }); setReviewed(false)
       setReason(''); setPage(''); setStale(false); setUncertain(false); onChanged()
       setNotice(result.alreadyApplied ? '이미 적용한 작업입니다. 현재 저장값을 불러왔습니다.' : '보정을 저장했습니다. 공개 결과와 남은 항목을 확인하세요.')
     } catch (cause) {
@@ -101,6 +103,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     <p>문제가 있는 행을 펼쳐 변경안을 작성하세요. 행·대상·연결·새 주택형을 미리보기로 확인한 뒤 한 번에 적용합니다.</p>
     <ol className={styles.steps} aria-label="보정 진행 단계">{steps.map((label, index) => <li key={label} aria-current={index === step ? 'step' : undefined} data-done={index < step || undefined}>{index === steps.length - 1
       ? <Link to={`/explore?announcementId=${id}`} target="_blank" rel="noreferrer">{label} ↗</Link> : label}</li>)}</ol>
+    <p className={styles.hint}>단계는 이 화면에서 진행 중인 보정 작업 기준입니다. 새로고침하면 처음부터 표시하며, 저장된 행의 검토 상태는 검토·보류 기록에서 확인하세요.</p>
     <details className={styles.paths}><summary>다른 수정 경로와 차이</summary><ul>
       <li>‘데이터 검증’: 원천과 값을 하나씩 비교해 바로 저장합니다. 공고 기본정보와 개별 값 확인에 씁니다.</li>
       <li>‘JSON으로 갱신’: 공고문에서 추출한 JSON으로 기본정보·일정·첨부·공급정보를 한 번에 비교해 고릅니다.</li>
@@ -145,7 +148,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     {error && <p role="alert" className="registration-error">{error}</p>}
     {preview && <><SupplyCorrectionPreview value={preview.result} /><button type="button" className="admin-primary" disabled={busy || stale} onClick={() => void apply()}>{busy ? '적용 중…' : uncertain ? '같은 작업으로 적용 결과 확인' : '확인한 보정 일괄 적용'}</button></>}
     <SupplyReviewPanel key={applied ? `applied:${applied.changeId}` : 'review'} id={id} workspace={workspace} sourceUrl={sourceUrl} disabled={rowsDirty || busy || uncertain}
-      onBusyChange={setBusy} onDirtyChange={setReviewDirty} evidence={applied?.evidence ?? null} onReviewed={() => setReviewed(true)} />
+      onBusyChange={setBusy} onDirtyChange={setReviewDirty} evidence={applied?.evidence ?? null} pending={applied?.changed ?? []} onReviewed={() => setReviewed(true)} />
     <nav className={styles.actions} aria-label="보정 결과 확인"><Link to={`/explore?announcementId=${id}`} target="_blank" rel="noreferrer">사용자 공고 화면 확인 ↗</Link>
       <p>저장한 보정이 공개 상세에 반영됐는지 확인하세요. 보정 근거와 변경 전후는 ‘출처·수정 이력’에 남습니다.</p></nav>
   </section>

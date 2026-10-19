@@ -10,11 +10,16 @@ import styles from './SupplyCorrection.module.css'
 const metadata = new Set(['id', 'source_id', 'collected_at', 'source_order', 'collection_record_id', 'consecutive_miss_count', 'last_seen_run_id', 'last_seen_at'])
 const statusLabels: Record<string, string> = { VERIFIED: '선택 범위 검토 완료', ON_HOLD: '판단 보류', STALE: '재검토 필요' }
 export type ReviewEvidence = { note: string; sourceUrl: string; sourcePage: string | null }
-export function SupplyReviewPanel({ id, workspace, sourceUrl, disabled, onBusyChange, onDirtyChange, evidence = null, onReviewed }: {
+export function SupplyReviewPanel({ id, workspace, sourceUrl, disabled, onBusyChange, onDirtyChange, evidence = null, pending = [], onReviewed }: {
   id: string; workspace: SupplyWorkspace; sourceUrl: string; disabled: boolean; onBusyChange: (value: boolean) => void; onDirtyChange?: (value: boolean) => void
   /** 방금 적용한 보정의 근거. 검토 폼의 기본값으로 쓰며 미저장 입력으로 보지 않는다. */
-  evidence?: ReviewEvidence | null; onReviewed?: () => void
+  evidence?: ReviewEvidence | null
+  /** 방금 적용한 보정이 바꾼 행·조건 키. 순서대로 대상으로 고르며, 확인한 항목은 사람이 직접 체크한다. */
+  pending?: string[]
+  /** 바뀐 항목을 모두 기록했거나, 바뀐 항목 없이 기록을 저장했을 때 호출한다. */
+  onReviewed?: () => void
 }) {
+  const [remaining, setRemaining] = useState(pending)
   const [baseline, setBaseline] = useState(() => evidence
     ? { note: evidence.note, url: evidence.sourceUrl, page: evidence.sourcePage ?? '' } : { note: '', url: sourceUrl, page: '' })
   const [overview, setOverview] = useState<SupplyReviewOverview | null>(null)
@@ -24,6 +29,9 @@ export function SupplyReviewPanel({ id, workspace, sourceUrl, disabled, onBusyCh
   const [note, setNote] = useState(baseline.note); const [url, setUrl] = useState(baseline.url); const [page, setPage] = useState(baseline.page)
   const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [notice, setNotice] = useState('')
   const [attempt, setAttempt] = useState(0)
+  const queue = overview ? remaining.filter(key => key in overview.values) : []
+  const firstPending = queue[0] ?? ''
+  useEffect(() => { if (firstPending) setTarget(current => current || firstPending) }, [firstPending])
   useEffect(() => {
     const controller = new AbortController()
     void loadSupplyReviews(id, controller.signal).then(value => { if (!controller.signal.aborted) { setOverview(value); setError('') } })
@@ -45,9 +53,18 @@ export function SupplyReviewPanel({ id, workspace, sourceUrl, disabled, onBusyCh
   async function submit() {
     setBusy(true); onBusyChange(true); setError(''); setNotice('')
     try {
-      setOverview(await saveSupplyReview(id, { snapshotToken: workspace.snapshotToken, target, fields, outcome,
-        note: note.trim(), sourceUrl: url.trim(), sourcePage: page.trim() || null, sources: scopes }))
+      const saved = await saveSupplyReview(id, { snapshotToken: workspace.snapshotToken, target, fields, outcome,
+        note: note.trim(), sourceUrl: url.trim(), sourcePage: page.trim() || null, sources: scopes })
+      const next = remaining.filter(key => key !== target); const nextQueue = next.filter(key => key in saved.values)
+      setOverview(saved); setRemaining(next)
+      if (nextQueue.length) {
+        // 같은 보정의 다음 바뀐 항목으로 넘어간다. 근거는 유지하고 확인 항목은 다시 고르게 한다.
+        setTarget(nextQueue[0]); setFields([]); setScopes([])
+        setNotice('선택한 범위의 검토 기록을 저장했습니다. 다음 바뀐 항목에서 실제로 확인한 항목을 고르세요.')
+        return
+      }
       setNotice('선택한 범위의 검토 기록을 저장했습니다. 다른 항목의 검토 상태는 확정하지 않습니다.')
+      if (queue.length) { setTarget(''); setFields([]); setScopes([]) }
       setBaseline({ note: '', url: sourceUrl, page: '' }); setNote(''); setPage(''); setUrl(sourceUrl); onReviewed?.()
     } catch (cause) { setError(cause instanceof Error ? cause.message : '검토 기록을 저장하지 못했습니다.') }
     finally { setBusy(false); onBusyChange(false) }
@@ -68,7 +85,10 @@ export function SupplyReviewPanel({ id, workspace, sourceUrl, disabled, onBusyCh
     {overview && <form onSubmit={event => { event.preventDefault(); void submit() }}><fieldset disabled={disabled || busy} className={styles.editor}>
       <legend>확인 범위와 근거</legend>
       <label>검토할 행·조건<select required value={target} onChange={event => { setTarget(event.target.value); setFields([]); setScopes([]) }}><option value="">대상 선택</option>
-        {Object.keys(overview.values).map(key => <option key={key} value={key}>{targetName(key)}</option>)}</select></label>
+        {queue.length ? <><optgroup label={`방금 바꾼 항목 ${queue.length}개`}>{queue.map(key => <option key={key} value={key}>{targetName(key)}</option>)}</optgroup>
+          {Object.keys(overview.values).some(key => !queue.includes(key)) && <optgroup label="다른 행·조건">{Object.keys(overview.values).filter(key => !queue.includes(key)).map(key => <option key={key} value={key}>{targetName(key)}</option>)}</optgroup>}</>
+          : Object.keys(overview.values).map(key => <option key={key} value={key}>{targetName(key)}</option>)}</select></label>
+      {queue.length > 0 && <p className={styles.hint}>방금 바꾼 항목 {queue.length}개가 남았습니다.</p>}
       {target && overview.values[target] && <fieldset><legend>실제로 확인한 항목</legend>{Object.keys(overview.values[target]).map(field => <label key={field}>
         <input type="checkbox" checked={fields.includes(field)} onChange={event => setFields(current => event.target.checked ? [...current, field] : current.filter(item => item !== field))} />{reviewFieldLabels[field] ?? field}
       </label>)}<StoredDataTable data={Object.fromEntries(fields.map(field => [reviewFieldLabels[field] ?? field, overview.values[target][field]]))} label="선택 범위의 저장값" /></fieldset>}
