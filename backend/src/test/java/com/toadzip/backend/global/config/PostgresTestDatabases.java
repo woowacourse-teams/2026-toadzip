@@ -41,7 +41,8 @@ public final class PostgresTestDatabases {
                 .withDatabaseName(databaseName)
                 .withUsername(databaseName)
                 .withPassword(databaseName)
-                .withCommand("postgres", "-c", "max_connections=300")
+                // Small test fixtures spend more time compiling queries than executing them with JIT.
+                .withCommand("postgres", "-c", "max_connections=300", "-c", "jit=off")
                 .withTmpFs(Map.of("/var/lib/postgresql/data", "rw"));
     }
 
