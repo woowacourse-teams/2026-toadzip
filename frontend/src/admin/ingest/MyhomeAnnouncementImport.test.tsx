@@ -1,10 +1,7 @@
-import type { ComponentProps } from 'react'
-import type { DataPipelineControl } from './DataPipelineControl'
-import { PipelineExecutionSteps } from './PipelineExecutionSteps'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AnnouncementRegistrationV2Page } from './AnnouncementRegistrationV2Page'
+import { MyhomeAnnouncementImport } from './MyhomeAnnouncementImport'
 import { getDataPipelineExecution, getDataPipelineStatus, startAnnouncementRegistration,
   startAnnouncementRegistrationUrl } from './api'
 import type { DataPipelineExecution } from './api'
@@ -14,13 +11,6 @@ vi.mock('./api', () => ({
   getDataPipelineStatus: vi.fn(),
   startAnnouncementRegistration: vi.fn(),
   startAnnouncementRegistrationUrl: vi.fn(),
-}))
-vi.mock('./DataPipelineControl', () => ({
-  DataPipelineControl: ({ domain, registration }: NonNullable<ComponentProps<typeof DataPipelineControl>>) => <div>
-    수집 실행
-    {domain === 'announcement' && <>{registration?.action}{registration?.form}
-      {registration?.execution && <PipelineExecutionSteps execution={registration.execution} />}</>}
-  </div>,
 }))
 const url = 'https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21026'
 vi.mock('./PipelineHistory', () => ({ PipelineHistory: () => <div>실행 이력</div> }))
@@ -41,9 +31,8 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers() })
 
 async function openForm() {
-  render(<MemoryRouter><AnnouncementRegistrationV2Page /></MemoryRouter>)
-  await waitFor(() => expect(screen.getByRole('button', { name: '공고 등록하기' })).toBeEnabled())
-  fireEvent.click(screen.getByRole('button', { name: '공고 등록하기' }))
+  render(<MemoryRouter><MyhomeAnnouncementImport /></MemoryRouter>)
+  await waitFor(() => expect(screen.getByRole('button', { name: '등록 실행' })).toBeEnabled())
 }
 
 describe('공고 단건 등록 v2', () => {
@@ -55,15 +44,6 @@ describe('공고 단건 등록 v2', () => {
     expect(screen.queryByLabelText('마이홈 공고 ID')).not.toBeInTheDocument()
   })
 
-  it('공고가 기본 탭이고 단지 탭에서는 공고 등록 폼을 숨긴다', async () => {
-    await openForm()
-    expect(screen.getByRole('tab', { name: '공고' })).toHaveAttribute('aria-selected', 'true')
-    fireEvent.click(screen.getByRole('tab', { name: '단지' }))
-    expect(screen.getByRole('tab', { name: '단지' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.queryByRole('form', { name: '공고 단건 등록' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('tab', { name: '공고' }))
-    expect(screen.getByLabelText('마이홈 공고 URL')).toBeVisible()
-  })
   it('빈 값은 제출하지 않으며 API 키 입력을 요구하지 않는다', async () => {
     await openForm()
     fireEvent.change(screen.getByLabelText('마이홈 공고 URL'), { target: { value: ' ' } })
@@ -158,11 +138,11 @@ describe('공고 단건 등록 v2', () => {
   })
 
   it('새로고침 후에도 진행 중인 실행을 복구한다', async () => {
-    vi.mocked(getDataPipelineStatus).mockResolvedValue(execution('RUNNING'))
-    render(<MemoryRouter><AnnouncementRegistrationV2Page /></MemoryRouter>)
+    vi.mocked(getDataPipelineStatus).mockImplementation(async type => ({ ...execution(type === 'ANNOUNCEMENT_REGISTRATION' ? 'RUNNING' : 'IDLE'), type }))
+    render(<MemoryRouter><MyhomeAnnouncementImport /></MemoryRouter>)
     await waitFor(() => expect(screen.getByRole('article', { name: '현재 작업 단계' })).toBeVisible())
-    expect(screen.getByRole('button', { name: '공고 등록하기' })).toBeDisabled()
-    expect(screen.queryByLabelText('마이홈 공고 URL')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '등록 처리 중…' })).toBeDisabled()
+    expect(screen.getByLabelText('마이홈 공고 URL')).toBeDisabled()
     expect(startAnnouncementRegistrationUrl).not.toHaveBeenCalled()
   })
 })

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { DataPipelineExecution, DataPipelineType } from './api'
 import { DataPipelineProgress, PipelineReport } from './DataPipelineProgress'
@@ -50,12 +50,12 @@ function stepState(execution: DataPipelineExecution, step: Step): keyof typeof s
   if (execution.status === 'FAILED' && execution.failure?.stepName === name) return 'failed'
   if (execution.currentStepName === name && execution.status === 'RUNNING') return 'running'
   if (execution.currentStepName === name && execution.status === 'STOPPED') return 'stopped'
-  return execution.status === 'RUNNING' ? 'waiting' : 'unexecuted'
+  return execution.status === 'RUNNING' || execution.status === 'IDLE' ? 'waiting' : 'unexecuted'
 }
 
-export function PipelineExecutionSteps({ execution, onStop, stopping = false, onRefine, recoveryDisabled }: {
+export function PipelineExecutionSteps({ execution, onStop, stopping = false, onRefine, recoveryDisabled, focused = false, pending = false, children }: {
   execution: DataPipelineExecution; onStop?: () => void; stopping?: boolean
-  onRefine?: () => void; recoveryDisabled?: boolean
+  onRefine?: () => void; recoveryDisabled?: boolean; focused?: boolean; pending?: boolean; children?: ReactNode
 }) {
   const [selected, setSelected] = useState<Step | null>(null)
   const [matchingOpen, setMatchingOpen] = useState(false)
@@ -70,13 +70,14 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
   const category = selected?.startsWith('COLLECT_') ? 'collection' : selected === 'ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS'
     ? 'household' : selected === 'ENRICH_LH_ANNOUNCEMENTS' ? 'enrichment' : domain
 
-  return <article className={styles.execution} aria-label="현재 작업 단계">
+  return <article className={`${styles.execution} ${focused ? styles.focused : ''}`} aria-label="현재 작업 단계">
     <header className={styles.heading}><h3>{label}</h3>
-      <span className={`pipeline-badge pipeline-${execution.status.toLowerCase()}`}>{pipelineStatusLabels[execution.status]}</span>
+      <span className={`pipeline-badge pipeline-${execution.status.toLowerCase()}`}>{pending ? '접수 확인 중' : execution.status === 'IDLE' && focused ? '실행 준비' : pipelineStatusLabels[execution.status]}</span>
     </header>
-    <p className="ingest-meta">시작: {formatTime(execution.startedAt)} · 종료: {formatTime(execution.finishedAt)}</p>
+    {execution.status !== 'IDLE' && <p className="ingest-meta">시작: {formatTime(execution.startedAt)} · 종료: {formatTime(execution.finishedAt)}</p>}
+    <div className={styles.body}>
     <ol className={styles.steps} aria-label="실행 단계">
-      {sequences[execution.type].map(step => {
+      {sequences[execution.type].map((step, index) => {
         const state = stepState(execution, step)
         const name = execution.type === 'ANNOUNCEMENT_REGISTRATION' ? ({
           COLLECT_MYHOME_ANNOUNCEMENTS: '마이홈 원천 확보', COLLECT_LH_ANNOUNCEMENT_SUPPLIES: 'LH 공급 수집',
@@ -86,12 +87,15 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
         return <li key={step} className={styles[state]}>
           <button type="button" aria-pressed={selected === step} aria-label={`${name} ${notApplicable ? '해당 없음' : states[state][1]}`}
             aria-current={state === 'running' ? 'step' : undefined} onClick={() => setSelected(step)}>
-            <span className={styles.marker} aria-hidden="true">{states[state][0]}</span>
+            <span className={styles.marker} aria-hidden="true">{focused ? index + 1 : states[state][0]}</span>
             <span>{name}</span><small>{notApplicable ? '해당 없음' : states[state][1]}</small>
           </button>
         </li>
       })}
     </ol>
+    <div className={styles.content}>
+    {children}
+    {focused && execution.status === 'RUNNING' && <h4>{execution.currentStepName ?? '첫 단계 준비 중'}</h4>}
     {execution.status === 'RUNNING' && <DataPipelineProgress execution={execution} label={label} />}
     {execution.failure && <p role="alert" className="form-error">{execution.failure.message}</p>}
     {execution.type === 'ANNOUNCEMENT_REGISTRATION' && execution.status === 'FAILED'
@@ -102,7 +106,7 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
       </div>}
     {execution.status === 'RUNNING' && onStop && <button type="button" disabled={stopping || execution.stopRequested || !execution.executionId}
       onClick={onStop}>{stopping || execution.stopRequested ? '중지 요청 중…' : `${label} 실행 중지`}</button>}
-    {execution.stopRequested && execution.status === 'RUNNING' && <p role="status">현재 처리가 끝나면 중지합니다.</p>}
+    {execution.stopRequested && execution.status === 'RUNNING' && <p role="status">현재 처리가 끝나면 중지합니다. 이미 저장한 데이터는 유지됩니다.</p>}
     <PipelineNextActions execution={execution} onRefine={onRefine} disabled={recoveryDisabled} />
     {execution.status !== 'IDLE' && execution.status !== 'RUNNING' && execution.type !== 'ANNOUNCEMENT_REGISTRATION'
       && <p><Link to={`/admin/failures?domain=${domain}&category=all&executionId=${encodeURIComponent(execution.executionId ?? '')}`}>
@@ -119,6 +123,8 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
     {execution.type === 'ANNOUNCEMENT_REGISTRATION' && execution.status.startsWith('COMPLETED')
       && <p role="status">공고 {execution.targetAnnouncementIdentifier} 등록이 완료되었습니다.{' '}
         <Link to="/admin/announcements">공고 관리로 이동</Link></p>}
+    </div>
+    </div>
   </article>
 }
 

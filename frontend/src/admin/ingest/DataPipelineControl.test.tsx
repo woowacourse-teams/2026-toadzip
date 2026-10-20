@@ -42,16 +42,62 @@ beforeEach(() => {
 })
 
 describe('DataPipelineControl', () => {
+  it('마이홈 접수 대기에는 진행 중으로 표시하지 않고 응답 뒤 실제 단계를 연다', async () => {
+    const accepted = deferred<DataPipelineExecution>()
+    apiMocks.startDataPipeline.mockReturnValue(accepted.promise)
+    render(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: '마이홈 다건 갱신' }))
+    const key = screen.getByLabelText('공공데이터포털 API 키')
+    expect(key).toHaveFocus()
+    fireEvent.change(key, { target: { value: '  fixture-key  ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'API 키 보기' }))
+    expect(key).toHaveAttribute('type', 'text')
+    fireEvent.click(screen.getByRole('button', { name: '마이홈 다건 갱신 시작' }))
+    expect(screen.getByRole('status')).toHaveTextContent('실행 접수를 확인')
+    expect(screen.queryByRole('button', { name: /실행 중지/ })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('공공데이터포털 API 키')).not.toBeInTheDocument()
+    expect(apiMocks.startDataPipeline).toHaveBeenCalledExactlyOnceWith('ANNOUNCEMENT_SYNC', 'fixture-key')
+    await act(async () => accepted.resolve(execution('ANNOUNCEMENT_SYNC', 'RUNNING', { currentStepName: '마이홈 공고 수집' })))
+    expect(screen.getByRole('button', { name: '마이홈 다건 갱신 실행 중지' })).toBeEnabled()
+  })
+
+  it('개요로 돌아온 뒤 상태 조회가 이어져도 작업 화면으로 강제 이동하지 않는다', async () => {
+    vi.useFakeTimers()
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
+      execution(type, type === 'ANNOUNCEMENT_SYNC' ? 'RUNNING' : 'IDLE')))
+    const view = render(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
+    try {
+      await act(async () => {})
+      fireEvent.click(screen.getByRole('button', { name: '공고 수집 개요로 돌아가기' }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
+      expect(screen.queryByRole('article', { name: '현재 작업 단계' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '마이홈 다건 갱신' })).toBeDisabled()
+      fireEvent.click(screen.getByRole('button', { name: '실행 결과 보기' }))
+      expect(screen.getByRole('button', { name: '마이홈 다건 갱신 실행 중지' })).toBeVisible()
+    } finally { view.unmount(); vi.useRealTimers() }
+  })
+
+  it('공고 단건 등록도 공통 실행 잠금에 포함하고 해당 관리 화면으로 안내한다', async () => {
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
+      execution(type, type === 'ANNOUNCEMENT_REGISTRATION' ? 'RUNNING' : 'IDLE')))
+    render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+    await act(async () => {})
+    expect(screen.getByRole('button', { name: '단지 수집' })).toBeDisabled()
+    expect(screen.getByRole('link', { name: '실행 중인 작업 보기' })).toHaveAttribute('href', '/admin/announcements/new?mode=myhome')
+  })
+
   it('v2 공고 화면에서 SH 수집을 키 없이 실행하고 한 단계 결과를 표시한다', async () => {
     apiMocks.startDataPipeline.mockResolvedValue(execution('SH_ANNOUNCEMENT_COLLECTION', 'COMPLETED'))
     render(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
     await act(async () => {})
     expect(screen.queryByText('아직 실행하지 않았습니다.')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'SH 공고 수집·정제' }))
+    fireEvent.click(screen.getByRole('button', { name: 'SH 공고 수집' }))
     expect(apiMocks.startDataPipeline).toHaveBeenCalledWith('SH_ANNOUNCEMENT_COLLECTION')
     const result = await screen.findByRole('article', { name: '현재 작업 단계' })
     expect(within(result).getByRole('list', { name: '실행 단계' }).children).toHaveLength(1)
-    await waitFor(() => expect(screen.getByRole('button', { name: 'SH 공고 수집·정제' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: '공고 수집 개요로 돌아가기' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'SH 공고 수집' })).toBeEnabled())
   })
 
   it('v2 단지 화면은 수집·좌표·정제 순서를 안내하고 통합 실행은 추가 작업에 둔다', async () => {
@@ -72,10 +118,10 @@ describe('DataPipelineControl', () => {
   it('공고 갱신을 기본으로 제공하고 수집·정제 단독 실행은 펼쳐서 선택한다', async () => {
     render(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
     await act(async () => {})
-    expect(screen.getByRole('button', { name: '공고 갱신' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '마이홈 다건 갱신' })).toBeVisible()
     expect(screen.getByRole('button', { name: '공고 수집' })).not.toBeVisible()
     expect(screen.getByRole('button', { name: '공고 정제' })).not.toBeVisible()
-    fireEvent.click(screen.getByText('공고 추가 작업'))
+    fireEvent.click(screen.getByText('수집·정제 따로 실행'))
     expect(screen.getByRole('button', { name: '공고 수집' })).toBeVisible()
     expect(screen.getByRole('button', { name: '공고 정제' })).toBeVisible()
     expect(apiMocks.startDataPipeline).not.toHaveBeenCalled()
@@ -87,8 +133,9 @@ describe('DataPipelineControl', () => {
     render(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
     await screen.findByRole('article', { name: '현재 작업 단계' })
     expect(screen.getAllByRole('article', { name: '현재 작업 단계' })).toHaveLength(1)
-    expect(screen.getByRole('button', { name: '공고 수집·정제 실행 중지' })).toBeVisible()
-    expect(screen.getByRole('button', { name: '공고 정제' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '마이홈 다건 갱신 실행 중지' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '공고 수집 개요로 돌아가기' }))
+    expect(screen.getByRole('button', { name: '마이홈 다건 갱신' })).toBeDisabled()
     expect(apiMocks.getLhAnnouncementQuality).not.toHaveBeenCalled()
   })
 
@@ -100,6 +147,7 @@ describe('DataPipelineControl', () => {
     fireEvent.click(screen.getByRole('button', { name: '단지 정제' }))
     await screen.findByRole('article', { name: '현재 작업 단계' })
     expect(screen.getByRole('article', { name: '현재 작업 단계' })).toHaveTextContent('단지 정제')
+    fireEvent.click(screen.getByRole('button', { name: '단지 수집 개요로 돌아가기' }))
     await waitFor(() => expect(screen.getByRole('button', { name: '단지 수집' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
     fireEvent.change(screen.getByLabelText('공공데이터포털 API 키'), { target: { value: 'fixture-key' } })
@@ -117,10 +165,10 @@ describe('DataPipelineControl', () => {
     view.rerender(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
     expect(screen.queryByRole('article', { name: '현재 작업 단계' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '단지 정제' })).toBeDisabled()
-    expect(screen.getByRole('status')).toHaveTextContent('다른 탭')
+    expect(screen.getByRole('status')).toHaveTextContent('한 번에 한 작업')
     view.rerender(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
     const stopLabel = runningType === 'SH_ANNOUNCEMENT_COLLECTION'
-      ? 'SH 공고 수집·정제 실행 중지' : '공고 수집·정제 실행 중지'
+      ? 'SH 공고 수집 실행 중지' : '마이홈 다건 갱신 실행 중지'
     expect(screen.getByRole('button', { name: stopLabel })).toBeVisible()
   })
   it('최초 상태 조회가 실패해도 재조회하여 기존 실행과 중지 버튼을 복원한다', async () => {
@@ -149,22 +197,22 @@ describe('DataPipelineControl', () => {
     }
   })
 
-  it('SH 공고 수집·정제는 키 입력 없이 별도로 실행한다', async () => {
+  it('SH 공고 수집는 키 입력 없이 별도로 실행한다', async () => {
     apiMocks.startDataPipeline.mockResolvedValue(execution('SH_ANNOUNCEMENT_COLLECTION', 'COMPLETED'))
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: 'SH 공고 수집·정제' }))
+    fireEvent.click(screen.getByRole('button', { name: 'SH 공고 수집' }))
     expect(apiMocks.startDataPipeline).toHaveBeenCalledWith('SH_ANNOUNCEMENT_COLLECTION')
     expect(screen.queryByLabelText('공공데이터포털 API 키')).not.toBeInTheDocument()
-    await waitFor(() => expect(screen.getByRole('button', { name: 'SH 공고 수집·정제' })).toBeEnabled())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'SH 공고 수집' })).toBeEnabled())
   })
 
   it.each([
     ['단지 수집', 'COMPLEX_COLLECTION'], ['공고 수집', 'ANNOUNCEMENT_COLLECTION'],
-    ['단지 수집·정제', 'COMPLEX_SYNC'], ['공고 수집·정제', 'ANNOUNCEMENT_SYNC'],
+    ['단지 수집·정제', 'COMPLEX_SYNC'], ['마이홈 다건 갱신', 'ANNOUNCEMENT_SYNC'],
   ] as const)('%s는 매 실행마다 키를 입력받고 공백을 제거해 전송한다', async (label, type) => {
     apiMocks.startDataPipeline.mockResolvedValue(execution(type, 'COMPLETED'))
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: type === 'ANNOUNCEMENT_SYNC' ? '공고 갱신' : label }))
+    fireEvent.click(screen.getByRole('button', { name: type === 'ANNOUNCEMENT_SYNC' ? '마이홈 다건 갱신' : label }))
     const input = screen.getByLabelText('공공데이터포털 API 키')
     expect(input).toHaveAttribute('type', 'password')
     expect(input).toHaveAttribute('autocomplete', 'off')
@@ -175,8 +223,8 @@ describe('DataPipelineControl', () => {
     fireEvent.click(screen.getByRole('button', { name: `${label} 시작` }))
     expect(apiMocks.startDataPipeline).toHaveBeenCalledWith(type, 'fixture-execution-key')
     expect(screen.queryByLabelText('공공데이터포털 API 키')).not.toBeInTheDocument()
-    await waitFor(() => expect(screen.getByRole('button', { name: type === 'ANNOUNCEMENT_SYNC' ? '공고 갱신' : label })).toBeEnabled())
-    fireEvent.click(screen.getByRole('button', { name: type === 'ANNOUNCEMENT_SYNC' ? '공고 갱신' : label }))
+    await waitFor(() => expect(screen.getByRole('button', { name: type === 'ANNOUNCEMENT_SYNC' ? '마이홈 다건 갱신' : label })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: type === 'ANNOUNCEMENT_SYNC' ? '마이홈 다건 갱신' : label }))
     expect(screen.getByLabelText('공공데이터포털 API 키')).toHaveValue('')
   })
 
@@ -407,14 +455,14 @@ describe('DataPipelineControl', () => {
 
   it('시작 응답과 상태 조회를 모두 잃으면 실행 잠금을 유지하며 재조회한다', async () => {
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
-    await waitFor(() => expect(apiMocks.getDataPipelineStatus).toHaveBeenCalledTimes(7))
+    await waitFor(() => expect(apiMocks.getDataPipelineStatus).toHaveBeenCalledTimes(8))
     apiMocks.startDataPipeline.mockRejectedValue(new Error('네트워크 연결이 끊겼습니다.'))
     apiMocks.getDataPipelineStatus.mockRejectedValue(new Error('상태를 조회하지 못했습니다.'))
 
     startCollection('단지 수집')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('네트워크 연결이 끊겼습니다.')
-    expect(screen.getByRole('button', { name: '단지 수집 실행 중…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '단지 수집' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '공고 정제' })).toBeDisabled()
   })
 
@@ -535,9 +583,9 @@ describe('DataPipelineControl', () => {
     }))
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
-    fireEvent.click(screen.getByRole('button', { name: '공고 갱신' }))
+    fireEvent.click(screen.getByRole('button', { name: '마이홈 다건 갱신' }))
     fireEvent.change(screen.getByLabelText('공공데이터포털 API 키'), { target: { value: 'fixture-service-key' } })
-    fireEvent.click(screen.getByRole('button', { name: '공고 수집·정제 시작' }))
+    fireEvent.click(screen.getByRole('button', { name: '마이홈 다건 갱신 시작' }))
 
     expect(await screen.findByRole('status')).toHaveTextContent('5/6 · 마이홈 공고 정제 실행 중')
     expect(apiMocks.startDataPipeline).toHaveBeenCalledExactlyOnceWith('ANNOUNCEMENT_SYNC', 'fixture-service-key')
@@ -573,9 +621,9 @@ describe('DataPipelineControl', () => {
         .mockResolvedValueOnce(execution('ANNOUNCEMENT_REFINEMENT', 'RUNNING'))
       render(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
       await act(async () => {})
-      fireEvent.click(screen.getByRole('button', { name: '공고 갱신' }))
+      fireEvent.click(screen.getByRole('button', { name: '마이홈 다건 갱신' }))
       fireEvent.change(screen.getByLabelText('공공데이터포털 API 키'), { target: { value: 'fixture-key' } })
-      fireEvent.click(screen.getByRole('button', { name: '공고 수집·정제 시작' }))
+      fireEvent.click(screen.getByRole('button', { name: '마이홈 다건 갱신 시작' }))
       const recover = await screen.findByRole('button', { name: '저장된 원천으로 공고 정제 실행' })
       expect(apiMocks.startDataPipeline).toHaveBeenCalledTimes(1)
       expect(screen.getByText(/정제는 현재 저장된 원천 전체/)).toBeVisible()
@@ -584,7 +632,8 @@ describe('DataPipelineControl', () => {
       await screen.findByRole('button', { name: '공고 정제 실행 중지' })
       expect(apiMocks.startDataPipeline).toHaveBeenLastCalledWith('ANNOUNCEMENT_REFINEMENT')
       expect(apiMocks.startDataPipeline).toHaveBeenCalledTimes(2)
-      expect(screen.getByRole('button', { name: '공고 갱신' })).toBeDisabled()
+      fireEvent.click(screen.getByRole('button', { name: '공고 수집 개요로 돌아가기' }))
+      expect(screen.getByRole('button', { name: '마이홈 다건 갱신' })).toBeDisabled()
     },
   )
 
@@ -604,7 +653,7 @@ describe('DataPipelineControl', () => {
     await act(async () => {})
     fireEvent.click(screen.getByRole('button', { name: '단지 정제' }))
     expect(await screen.findByRole('link', { name: '단지 저장 결과 확인' })).toHaveAttribute('href', '/admin/complexes')
-    expect(screen.getByRole('link', { name: '다음: 공고 갱신' })).toHaveAttribute('href', '/admin/ingest-v2?domain=announcement')
+    expect(screen.getByRole('link', { name: '다음: 공고 갱신' })).toHaveAttribute('href', '/admin/ingest/announcements')
     expect(screen.getByText(/기존 공고의 단지 연결을 다시 시도/)).toBeVisible()
   })
 
@@ -629,14 +678,14 @@ describe('DataPipelineControl', () => {
     ))
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
-    expect(await screen.findByRole('link', { name: '공고 수집·정제 수집 실패 요청 보기' })).toHaveAttribute('href', expect.stringContaining('category=collection'))
-    expect(screen.getByRole('link', { name: '공고 수집·정제 정제 실패 행 보기' })).toHaveAttribute('href', expect.stringContaining('category=announcement'))
-    expect(screen.getByRole('link', { name: '공고 수집·정제 보강 실패 행 보기' })).toHaveAttribute('href', expect.stringContaining('category=enrichment'))
+    expect(await screen.findByRole('link', { name: '마이홈 다건 갱신 수집 실패 요청 보기' })).toHaveAttribute('href', expect.stringContaining('category=collection'))
+    expect(screen.getByRole('link', { name: '마이홈 다건 갱신 정제 실패 행 보기' })).toHaveAttribute('href', expect.stringContaining('category=announcement'))
+    expect(screen.getByRole('link', { name: '마이홈 다건 갱신 보강 실패 행 보기' })).toHaveAttribute('href', expect.stringContaining('category=enrichment'))
   })
 
   it.each([
     ['COMPLEX_COLLECTION', '단지 수집', 'complex'], ['ANNOUNCEMENT_COLLECTION', '공고 수집', 'announcement'],
-    ['COMPLEX_SYNC', '단지 수집·정제', 'complex'], ['ANNOUNCEMENT_SYNC', '공고 수집·정제', 'announcement'],
+    ['COMPLEX_SYNC', '단지 수집·정제', 'complex'], ['ANNOUNCEMENT_SYNC', '마이홈 다건 갱신', 'announcement'],
   ] as const)('%s의 실패 링크는 해당 도메인 탭으로 연결한다', async (selected, label, domain) => {
     apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
       execution(type, type === selected ? 'FAILED' : 'IDLE'),
@@ -699,7 +748,7 @@ describe('DataPipelineControl', () => {
     ))
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
-    const summary = await screen.findByRole('group', { name: '공고 수집·정제 결과 요약' })
+    const summary = await screen.findByRole('group', { name: '마이홈 다건 갱신 결과 요약' })
     expect(summary).toHaveTextContent(/API 호출\s*5/)
     expect(summary).toHaveTextContent(/저장한 행\s*5/)
     expect(summary).toHaveTextContent(/실패 요청\s*1/)

@@ -1,5 +1,5 @@
 import { FailureReviewPage } from './admin/ingest/FailureReviewPage'
-import { AnnouncementRegistrationV2Page } from './admin/ingest/AnnouncementRegistrationV2Page'
+import { IngestPage } from './admin/ingest/IngestPage'
 import { SourceDataPage } from './admin/ingest/SourceDataPage'
 import { Link, Navigate, Route, Routes, matchRoutes, useLocation } from 'react-router'
 import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
@@ -69,7 +69,10 @@ function LegacyLoginRedirect() {
 
 function LegacyIngestRedirect() {
   const { search, hash } = useLocation()
-  return <Navigate to={{ pathname: '/admin/ingest', search, hash }} replace />
+  const params = new URLSearchParams(search)
+  const domain = params.get('domain') === 'complex' ? 'complexes' : 'announcements'
+  params.delete('domain')
+  return <Navigate to={{ pathname: `/admin/ingest/${domain}`, search: params.toString(), hash }} replace />
 }
 
 function AdminRoutes() {
@@ -81,7 +84,9 @@ function AdminRoutes() {
           <Route element={<AdminLayout />}>
             <Route index element={<Navigate to="operations" replace />} />
             <Route path="operations" element={<OperationsHome />} />
-            <Route path="ingest" element={<AnnouncementRegistrationV2Page />} />
+            <Route path="ingest" element={<LegacyIngestRedirect />} />
+            <Route path="ingest/announcements" element={<IngestPage domain="announcement" />} />
+            <Route path="ingest/complexes" element={<IngestPage domain="complex" />} />
             <Route path="ingest-v2" element={<LegacyIngestRedirect />} />
             <Route path="complexes/:id?" element={<ManagementWorkspace resource="complexes" />} />
             <Route path="announcements/:id?" element={<ManagementWorkspace resource="announcements" />} />

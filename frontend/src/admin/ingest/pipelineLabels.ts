@@ -6,9 +6,9 @@ export const pipelineLabels: Record<DataPipelineType, string> = {
   ANNOUNCEMENT_COLLECTION: '공고 수집',
   ANNOUNCEMENT_REFINEMENT: '공고 정제',
   COMPLEX_SYNC: '단지 수집·정제',
-  ANNOUNCEMENT_SYNC: '공고 수집·정제',
+  ANNOUNCEMENT_SYNC: '마이홈 다건 갱신',
   ANNOUNCEMENT_REGISTRATION: '공고 단건 등록',
-  SH_ANNOUNCEMENT_COLLECTION: 'SH 공고 수집·정제',
+  SH_ANNOUNCEMENT_COLLECTION: 'SH 공고 수집',
 }
 
 import type { DataPipelineExecution } from './api'
