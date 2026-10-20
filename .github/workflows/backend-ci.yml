@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: backend-ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   backend:
     name: Backend Check
@@ -27,14 +31,21 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/develop' && github.ref != 'refs/heads/main' }}
       - name: Verify backend with Testcontainers
         working-directory: backend
-        run: ./gradlew --rerun-tasks check
-      - name: Upload test reports on failure
-        if: failure()
+        # Reuse compilation outputs, but execute every test against fresh databases.
+        run: ./gradlew test --rerun check --build-cache --profile
+      - name: Upload verification reports
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: backend-test-reports
+          retention-days: 7
           path: |
             backend/build/reports/tests/test/
             backend/build/test-results/test/
+            backend/build/reports/profile/

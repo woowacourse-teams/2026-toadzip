@@ -18,7 +18,7 @@
 ```text
 1. 변경한 테스트 또는 가장 가까운 Gradle task
 2. 영향 기능 테스트 묶음
-3. Docker 실행 상태에서 ./gradlew --rerun-tasks check (Testcontainers가 PostgreSQL 자동 준비)
+3. Docker 실행 상태에서 ./gradlew test --rerun check --build-cache (Testcontainers가 PostgreSQL 자동 준비)
 4. 테스트 JVM 종료 후 DB 컨테이너 자동 정리 확인
 5. 존재하는 계층 의존성 검사 또는 수동 구조 검토
 6. git diff --check와 최종 diff 리뷰
