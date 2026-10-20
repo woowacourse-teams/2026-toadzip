@@ -67,15 +67,18 @@ it('펼친 행에 대응하는 원천값을 보여 주고, 원천이 없거나 �
   const stored: CorrectionRow = { ...blankRow(0), id: 3, key: 'row:3', housingComplexId: 1, housingComplexName: '한스빌', housingTypeId: 9, complexName: '익산한스빌', typeName: '아파트' }
   const props = { onChange: vi.fn(), onRemove: vi.fn(), onMove: vi.fn(), first: true, last: true }
   const { rerender } = render(<SupplyRowDraft key="found" value={stored} {...props}
-    source={{ category: 'MYHOME_ANNOUNCEMENT', sourceKey: '12:manual-21395:1', found: { category: 'MYHOME_ANNOUNCEMENT', sourceKey: '12:manual-21395:1', rows: [{ collectedAt: null, raw: { hshld_co: '170' } }] } }} />)
+    sources={[{ category: 'MYHOME_ANNOUNCEMENT', sourceKey: '12:manual-21395:1', found: { category: 'MYHOME_ANNOUNCEMENT', sourceKey: '12:manual-21395:1', rows: [{ collectedAt: null, raw: { hshld_co: '170' } }] } },
+      { category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: 'PAN-77:hash-a:1', found: { category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: 'PAN-77:hash-a:1', rows: [{ collectedAt: null, raw: { supplied_unit_count: '10' } }] } }]} />)
   fireEvent.click(screen.getByText(/익산한스빌 · 아파트/))
   const region = screen.getByRole('region', { name: '대응 원천' })
   expect(region).toHaveTextContent('12:manual-21395:1')
   expect(region).toHaveTextContent('170')
-  rerender(<SupplyRowDraft key="lost" value={stored} {...props} source={{ category: 'MYHOME_ANNOUNCEMENT', sourceKey: '12:manual-21395:1', found: null }} />)
+  expect(region).toHaveTextContent('PAN-77:hash-a:1')
+  expect(region).toHaveTextContent('10')
+  rerender(<SupplyRowDraft key="lost" value={stored} {...props} sources={[{ category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: 'LH:PAN-77:SUPPLY:9', found: null }]} />)
   fireEvent.click(screen.getByText(/익산한스빌 · 아파트/))
   expect(screen.getByRole('region', { name: '대응 원천' })).toHaveTextContent('지금 원천 목록에서 찾을 수 없습니다')
   rerender(<SupplyRowDraft key="none" value={stored} {...props} />)
   fireEvent.click(screen.getByText(/익산한스빌 · 아파트/))
-  expect(screen.getByRole('region', { name: '대응 원천' })).toHaveTextContent('기록된 마이홈 원천이 없습니다')
+  expect(screen.getByRole('region', { name: '대응 원천' })).toHaveTextContent('대응하는 원천을 정할 수 없습니다')
 })

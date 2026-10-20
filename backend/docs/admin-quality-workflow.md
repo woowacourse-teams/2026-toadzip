@@ -47,7 +47,10 @@ PDF 업로드·보관과 공유 초안 API는 제공하지 않는다. 로컬 폴
 ## 공급정보 일괄 보정과 범위 검토
 
 - `/api/admin/announcements/{id}/supply-corrections`: GET 현재 공급행·대상·원천·소실 경고와 snapshotToken.
-- GET의 `rowSources`는 공급행이 기록한 원천행 `{rowKey, category, sourceKey}`다. 현재는 마이홈 원천행만 제공하며, 원천이 없는 행(직접 추가 등)은 목록에 없다. 응답 전용이며 보정 요청에는 포함하지 않는다.
+- GET의 `rowSources`는 공급행이 기록한 원천행 `{rowKey, category, sourceKey}`이며 한 행에 여러 개일 수 있다. 응답 전용이며 보정 요청에는 포함하지 않는다.
+  - 마이홈(`MYHOME_ANNOUNCEMENT`)은 공급행이 기록한 원천 키를 그대로 준다.
+  - LH(`LH_ANNOUNCEMENT_SUPPLY`)는 공급행이 `LH:{panId}:SUPPLY:{순번}`만 기록하므로, 원천 키 `{panId}:{요청 해시}:{순번}` 중 공고 번호와 순번이 같은 것이 하나일 때 그 키를 준다. 없으면 기록값을 그대로 줘서 찾을 수 없음을 알리고, 여러 개면 추정하지 않고 생략한다.
+  - 원천 식별자가 없는 행(직접 추가 등)은 목록에 없다.
 - POST `/preview`: 전체 행·하위 조건 변경안과 UUID 작업 번호, 근거·이유를 검증하여 변경 전후와 confirmationToken 반환. 저장하지 않는다.
 - POST: `{correction, confirmationToken}`. 공고 잠금과 수집 소유권 아래 전체 보정·새 주택형·보호·이력을 한 트랜잭션으로 저장한다.
 - 기존 행·조건 ID를 생략해 삭제할 수 없다. 제외·복원으로 이력을 유지하고 일정의 단지 참조를 검증한다.

@@ -177,10 +177,13 @@ it('원천 비교를 편집 영역 옆 보조 영역에 두고 원천이 있으�
 })
 it('응답의 행별 원천을 해당 공급행 안에 연결한다', async () => {
   vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...structuredClone(workspace),
-    sources: [{ category: 'MYHOME_ANNOUNCEMENT', sourceKey: '12:manual-21395:1', rows: [{ collectedAt: null, raw: { hshld_co: '170' } }] }],
-    rowSources: [{ rowKey: 'row:1', category: 'MYHOME_ANNOUNCEMENT', sourceKey: '12:manual-21395:1' }] })
+    sources: [{ category: 'MYHOME_ANNOUNCEMENT', sourceKey: '12:manual-21395:1', rows: [{ collectedAt: null, raw: { hshld_co: '170' } }] },
+      { category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: 'PAN-77:hash-a:1', rows: [{ collectedAt: null, raw: { supplied_unit_count: '10' } }] }],
+    rowSources: [{ rowKey: 'row:1', category: 'MYHOME_ANNOUNCEMENT', sourceKey: '12:manual-21395:1' },
+      { rowKey: 'row:1', category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: 'PAN-77:hash-a:1' }] })
   await setup()
   const region = screen.getByRole('region', { name: '대응 원천' })
   expect(region).toHaveTextContent('12:manual-21395:1')
   expect(region).toHaveTextContent('170')
+  expect(region).toHaveTextContent('PAN-77:hash-a:1')
 })

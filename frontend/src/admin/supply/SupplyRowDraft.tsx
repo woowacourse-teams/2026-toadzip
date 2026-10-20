@@ -15,11 +15,11 @@ function linkIssues(row: CorrectionRow): string[] {
   return [...(row.housingComplexId ? [] : ['단지 미연결']), ...(row.housingTypeId || row.newHousingType ? [] : ['주택형 미연결'])]
 }
 
-export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last, source }: {
+export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last, sources = [] }: {
   value: CorrectionRow; onChange: (value: CorrectionRow) => void; onRemove: () => void;
   onMove: (delta: number) => void; first: boolean; last: boolean
-  /** 이 행이 기록한 원천행과 작업실 원천 목록에서 찾은 값. 기록이 없으면 생략한다. */
-  source?: { category: string; sourceKey: string; found: CorrectionSource | null }
+  /** 이 행이 기록한 원천행(마이홈·LH)과 작업실 원천 목록에서 찾은 값. */
+  sources?: { category: string; sourceKey: string; found: CorrectionSource | null }[]
 }) {
   const [types, setTypes] = useState<MatchingHousingType[]>([])
   const [candidateComplex, setCandidateComplex] = useState<ManagementDetailData | null>(null)
@@ -69,11 +69,11 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
           : <button type="button" onClick={onRemove}>추가한 행 지우기</button>}</div>
       {value.excluded && <p>적용하면 이 행과 하위 조건이 공개 결과에서 제외됩니다. 기록을 보존하며 다시 복구할 수 있습니다.</p>}
       {value.id && <section className={styles.rowSource} aria-label="대응 원천">
-        {!source ? <p>이 행에 기록된 마이홈 원천이 없습니다. 직접 추가했거나 다른 원천에서 만든 행입니다. 공식 자료로 확인하세요.</p>
-          : source.found?.rows.length ? <details><summary>대응 원천 · {source.category} · {source.sourceKey}</summary>
+        {!sources.length && <p>이 행에 대응하는 원천을 정할 수 없습니다. 직접 추가했거나 원천 식별자가 없는 행, 또는 같은 순번의 LH 원천이 여러 개인 행입니다. 공식 자료로 확인하세요.</p>}
+        {sources.map(source => source.found?.rows.length ? <details key={`${source.category}:${source.sourceKey}`}><summary>대응 원천 · {source.category} · {source.sourceKey}</summary>
             {source.found.rows.map((item, index) => <div key={index}><p>수집 시각: {item.collectedAt ? new Date(item.collectedAt).toLocaleString('ko-KR') : '알 수 없음'}</p>
-              <StoredDataTable data={item.raw} label={`대응 원천 ${index + 1}`} /></div>)}</details>
-          : <p>기록된 원천 {source.sourceKey}을 지금 원천 목록에서 찾을 수 없습니다. 보정값은 유지되며 공식 자료를 직접 확인하세요.</p>}
+              <StoredDataTable data={item.raw} label={`${source.category} 원천 ${index + 1}`} /></div>)}</details>
+          : <p key={`${source.category}:${source.sourceKey}`}>기록된 원천 {source.sourceKey}을 지금 원천 목록에서 찾을 수 없습니다. 보정값은 유지되며 공식 자료를 직접 확인하세요.</p>)}
       </section>}
       <fieldset disabled={loading}><legend>연결할 단지·공통 주택형</legend>
         <p>현재 선택: {value.housingComplexName || '단지 미연결'} · {value.newHousingType ? '새 주택형 생성 예정' : value.housingTypeId ? `주택형 #${value.housingTypeId}` : '주택형 미연결'}</p>

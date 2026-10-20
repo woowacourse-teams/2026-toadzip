@@ -10,6 +10,7 @@ import com.toadzip.backend.announcement.domain.SupplyCorrectionRecord;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
+import com.toadzip.backend.admin.quality.dto.QualityComparison;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.Row;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.Target;
@@ -70,13 +71,39 @@ public class SupplyCorrectionService {
         var currentRows = stored.stream()
                 .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
                 .map(this::rowData).sorted(Comparator.comparingInt(Row::displayOrder).thenComparing(Row::key)).toList();
-        var rowSources = stored.stream().filter(row -> row.getMyhomeSourceRowIdentifier() != null)
+        var rowSources = stored.stream()
                 .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
-                .map(row -> new SupplyCorrection.RowSource("row:" + row.getId(),
-                        IngestSourceCategory.MYHOME_ANNOUNCEMENT.name(), row.getMyhomeSourceRowIdentifier()))
-                .toList();
+                .flatMap(row -> rowSources(row, comparison.sources()).stream()).toList();
         return new SupplyCorrection.Workspace(hash(List.of(comparison.snapshotToken(), currentRows)),
                 announcement.getVersion(), currentRows, comparison.sources(), sourceStatus.missingWarnings(id), rowSources);
+    }
+
+    /**
+     * 공급행이 기록한 원천행. 마이홈은 원천 키를 그대로 기록한다. LH는 "LH:{panId}:SUPPLY:{순번}"만 기록하므로
+     * 원천 키 "{panId}:{요청 해시}:{순번}" 중 공고 번호와 순번이 같은 것이 하나일 때만 대응한다.
+     * 맞는 원천이 없으면 기록값을 그대로 돌려 찾을 수 없음을 알리고, 여러 개면 추정하지 않는다.
+     */
+    private List<SupplyCorrection.RowSource> rowSources(SupplyRow row, List<QualityComparison.Source> sources) {
+        var result = new ArrayList<SupplyCorrection.RowSource>();
+        String key = "row:" + row.getId();
+        if (row.getMyhomeSourceRowIdentifier() != null) {
+            result.add(new SupplyCorrection.RowSource(key, IngestSourceCategory.MYHOME_ANNOUNCEMENT.name(),
+                    row.getMyhomeSourceRowIdentifier()));
+        }
+        String recorded = row.getLhSourceSupplyRowIdentifier();
+        String[] parts = recorded == null ? new String[0] : recorded.split(":");
+        if (parts.length == 4 && parts[0].equals("LH") && parts[2].equals("SUPPLY")) {
+            var candidates = sources.stream()
+                    .filter(source -> source.category() == IngestSourceCategory.LH_ANNOUNCEMENT_SUPPLY)
+                    .map(QualityComparison.Source::sourceKey)
+                    .filter(sourceKey -> sourceKey.startsWith(parts[1] + ":") && sourceKey.endsWith(":" + parts[3]))
+                    .distinct().toList();
+            if (candidates.size() <= 1) {
+                result.add(new SupplyCorrection.RowSource(key, IngestSourceCategory.LH_ANNOUNCEMENT_SUPPLY.name(),
+                        candidates.isEmpty() ? recorded : candidates.getFirst()));
+            }
+        }
+        return result;
     }
 
     public SupplyCorrection.Preview preview(long id, SupplyCorrection.Request request) {

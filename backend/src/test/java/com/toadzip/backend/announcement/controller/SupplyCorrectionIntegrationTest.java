@@ -44,6 +44,7 @@ class SupplyCorrectionIntegrationTest {
     @Autowired private EntityManager entities;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private SupplyRowRepository rows;
+    @Autowired private com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementSupplySourceFixtures lhSupplies;
     @MockitoBean private IngestExecutionOwnershipService ownership;
 
     @BeforeEach
@@ -308,6 +309,47 @@ class SupplyCorrectionIntegrationTest {
                 .andExpect(jsonPath("$.data.rowSources[0].rowKey").value("row:" + row.getId()))
                 .andExpect(jsonPath("$.data.rowSources[0].category").value("MYHOME_ANNOUNCEMENT"))
                 .andExpect(jsonPath("$.data.rowSources[0].sourceKey").value("12:source-key:1"));
+    }
+
+    @Test
+    void 작업실은_LH_공급행을_공고번호와_순번이_유일하게_맞는_LH_공급_원천에만_대응한다() throws Exception {
+        var row = fixture();
+        row.recordMyHomeSource("12:myhome-key:1");
+        entities.flush();
+        long id = row.getAnnouncement().getId();
+        jdbc.update("UPDATE announcements SET lh_pan_id = 'PAN-77' WHERE id = ?", id);
+        jdbc.update("UPDATE supply_rows SET lh_source_supply_row_identifier = 'LH:PAN-77:SUPPLY:1' WHERE id = ?", row.getId());
+        entities.clear();
+        lhSupplies.save(lhSupply("hash-a", 0));
+        lhSupplies.save(lhSupply("hash-a", 1));
+        mvc.perform(get(root(id)).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rowSources.length()").value(2))
+                .andExpect(jsonPath("$.data.rowSources[0].category").value("MYHOME_ANNOUNCEMENT"))
+                .andExpect(jsonPath("$.data.rowSources[1].rowKey").value("row:" + row.getId()))
+                .andExpect(jsonPath("$.data.rowSources[1].category").value("LH_ANNOUNCEMENT_SUPPLY"))
+                .andExpect(jsonPath("$.data.rowSources[1].sourceKey").value("PAN-77:hash-a:1"));
+
+        lhSupplies.save(lhSupply("hash-b", 0));
+        lhSupplies.save(lhSupply("hash-b", 1));
+        mvc.perform(get(root(id)).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rowSources.length()").value(1))
+                .andExpect(jsonPath("$.data.rowSources[0].category").value("MYHOME_ANNOUNCEMENT"));
+
+        jdbc.update("UPDATE supply_rows SET lh_source_supply_row_identifier = 'LH:PAN-77:SUPPLY:9' WHERE id = ?", row.getId());
+        entities.clear();
+        mvc.perform(get(root(id)).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rowSources[1].category").value("LH_ANNOUNCEMENT_SUPPLY"))
+                .andExpect(jsonPath("$.data.rowSources[1].sourceKey").value("LH:PAN-77:SUPPLY:9"));
+    }
+
+    private com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource lhSupply(String hash, int order) {
+        return com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource.read(null, order, "PAN-77", hash,
+                java.time.Instant.parse("2026-10-18T00:00:00Z"),
+                new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot(
+                        "한스빌", "26", "26.4673", null, "300", "10", "1000000", "200000"));
     }
 
     @Test
