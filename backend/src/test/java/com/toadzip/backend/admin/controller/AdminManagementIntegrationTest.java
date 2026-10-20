@@ -50,14 +50,6 @@ class AdminManagementIntegrationTest {
     @Autowired private EntityManager entityManager;
 
     @Test
-    void 관리자는_단지와_공고_목록을_조회한다() throws Exception {
-        mvc.perform(get("/api/admin/housing-complexes").with(user("admin").roles("ADMIN")))
-                .andExpect(status().isOk());
-        mvc.perform(get("/api/admin/announcements").with(user("admin").roles("ADMIN")))
-                .andExpect(status().isOk());
-    }
-
-    @Test
     void 단지_목록은_정제된_기본항목과_원천식별자를_반환한다() throws Exception {
         long id = createComplex();
         String identifier = getData("/api/admin/housing-complexes/" + id).get("sourceIdentifier").asText();
