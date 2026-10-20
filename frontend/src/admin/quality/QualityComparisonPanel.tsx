@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import { reviewTarget, targetChoices, type ReviewField } from './reviewTargets'
 import { getSourceData, sourceCategories, type SourceCategory, type SourcePage } from '../ingest/sourceApi'
@@ -15,6 +16,7 @@ type Props = { resource: ManagementResource; id: string; detail: ManagementDetai
 export function QualityComparisonPanel({ resource, id, detail, onChanged, onBusyChange, onDirtyChange }: Props) {
   const choices = targetChoices(resource, detail).filter(choice => resource !== 'complexes' || choice.key.startsWith('type:'))
   const [selection, setSelection] = useState(choices[0]?.key ?? '')
+  const [params] = useSearchParams()
   const [snapshot, setSnapshot] = useState<QualityComparison | null>(null)
   const [draft, setDraft] = useState<ManagementValues>({})
   const [note, setNote] = useState('')
@@ -71,11 +73,14 @@ export function QualityComparisonPanel({ resource, id, detail, onChanged, onBusy
     try { const next = await getSourceData(category, keyword, page, controller.signal); if (!controller.signal.aborted) setResults(next) }
     catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '원천을 검색하지 못했습니다.') }
   }
+  // 공고의 공급행·임대조건 값은 미리보기·일괄 적용·범위 검토를 거치도록 공급정보 탭에서만 고친다. 여기서는 원천 비교와 원천 확인 기록만 한다.
+  const supplyReadOnly = resource === 'announcements' && /^(row|target):/.test(selection)
+  const relationsSearch = new URLSearchParams(params); relationsSearch.set('section', 'relations')
   if (!choices.length) return <p>비교할 주택형이 없습니다. 주택형을 등록하거나 수집·정제 결과를 확인하세요.</p>
   return <section className={styles.panel} aria-label={resource === 'complexes' ? '주택형 원천 비교' : '공고·공급정보 원천 비교'}>
     <header className={styles.heading}><div><h2>{resource === 'complexes' ? '주택형 원천 비교·수정' : '공고·공급정보 원천 비교·수정'}</h2><p>원천의 단위와 적용 대상을 확인하고 필요한 값만 수정하세요.</p></div><button disabled={busy || loading} onClick={() => { if (!dirty || window.confirm('미저장 입력을 버리고 다시 조회할까요?')) setAttempt(value => value + 1) }}>비교 다시 조회</button></header>
     <label>비교·수정 대상<select value={selection} disabled={busy || loading} onChange={event => { if (!dirty || window.confirm('작성한 내용을 버리고 대상을 바꿀까요?')) { setSelection(event.target.value); setResults(null) } }}>{choices.map(choice => <option key={choice.key} value={choice.key}>{choice.label}</option>)}</select></label>
-    {resource === 'announcements' && /^(row|target):/.test(selection) ? <p className={styles.hint}>여기서는 원천과 값을 하나씩 비교해 저장합니다. 단지·주택형 연결 변경, 공급행 추가·제외·순서 변경, 여러 행 일괄 보정과 검토 기록은 ‘공급정보·단지 연결’ 탭에서 미리보기 후 적용하세요.</p> : null}
+    {supplyReadOnly ? <p className={styles.hint}>공급행·임대조건 값은 미리보기와 범위 검토를 거치도록 <Link to={`?${relationsSearch}`}>공급정보·단지 연결 탭에서 수정</Link>합니다. 여기서는 원천과 비교하고, 확인한 원천을 기록해 재수집으로 바뀌면 검토 대상에 다시 표시되게 합니다.</p> : null}
     {loading ? <p role="status">DB 원천을 불러오는 중…</p> : null}{error ? <p role="alert" className="registration-error">{error}</p> : null}{notice ? <p role="status" className="registration-success">{notice}</p> : null}
     {snapshot && target ? <fieldset disabled={busy || conflict || detail.summary.deleted} className="admin-verification-group">
       <details className={styles.connections}><summary>원천 검색·연결 · {snapshot.sources.length}개</summary>
@@ -85,18 +90,18 @@ export function QualityComparisonPanel({ resource, id, detail, onChanged, onBusy
         <div className={styles.search}><label>원천 분류<select value={category} onChange={event => { searchRequest.current?.abort(); setCategory(event.target.value as SourceCategory); setResults(null) }}>{Object.entries(sourceCategories).filter(([key]) => resource === 'complexes' ? ['MYHOME_COMPLEX', 'LH_LEASE_CATALOG'].includes(key) : !['MYHOME_COMPLEX', 'LH_LEASE_CATALOG'].includes(key)).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><label>원천 이름·식별자<input value={keyword} maxLength={200} onChange={event => { searchRequest.current?.abort(); setKeyword(event.target.value); setResults(null) }} /></label><button onClick={() => void search()}>원천 검색</button></div>
         {results ? <><p>검색 결과 {results.totalElements}건</p>{results.items.map(row => <article key={row.id}><strong>{row.name}</strong><details><summary>연결 전 원천 확인</summary><pre>{JSON.stringify(row.raw, null, 2)}</pre></details><button disabled={changed.length > 0 || !linkNote.trim() || snapshot.sources.some(source => source.category === category && source.sourceKey === row.sourceKey)} onClick={() => void mutate('link', { category, sourceKey: row.sourceKey })}>이 자료 연결</button></article>)}<div className={styles.pagination}><button disabled={results.page === 0} onClick={() => void search(results.page - 1)}>이전 원천</button><button disabled={!results.hasNext} onClick={() => void search(results.page + 1)}>다음 원천</button></div></> : null}
       </details>
-      <div className={styles.filters}><button aria-pressed={!differentOnly} onClick={() => setDifferentOnly(false)}>모든 항목</button><button aria-pressed={differentOnly} onClick={() => setDifferentOnly(true)}>다른 값만</button><span>수정 중 {changed.length}개</span></div>
-      <div className={styles.table}><div className={styles.columns}><span>항목·단위</span><span>현재 등록값</span><span>DB 원천값</span><span>수정할 값</span></div>
+      <div className={styles.filters}><button aria-pressed={!differentOnly} onClick={() => setDifferentOnly(false)}>모든 항목</button><button aria-pressed={differentOnly} onClick={() => setDifferentOnly(true)}>다른 값만</button>{!supplyReadOnly && <span>수정 중 {changed.length}개</span>}</div>
+      <div className={styles.table} data-read-only={supplyReadOnly || undefined}><div className={styles.columns}><span>항목·단위</span><span>현재 등록값</span><span>DB 원천값</span>{!supplyReadOnly && <span>수정할 값</span>}</div>
         {target.fields.filter(field => !differentOnly || snapshot.sources.some(source => source.rows.some(row => { const value = qualitySourceValue(field, source, row.raw).value; return value !== undefined && String(value) !== String(valueAt(target.current, field.name)) }))).map(field => <article key={field.name} className={styles.row} aria-label={`${field.label} 비교`}>
           <div><strong>{field.label}</strong><small>{field.unit} · {field.scope}</small></div><div>{display(valueAt(target.current, field.name))}</div>
-          <div>{snapshot.sources.length ? snapshot.sources.map((source, index) => <div key={`${source.category}:${source.sourceKey}:${index}`}><small>원천 {index + 1} · {sourceCategories[source.category]}</small>{source.rows.length ? source.rows.map(row => { const sourceValue = qualitySourceValue(field, source, row.raw); return <div key={row.id}><p>{sourceValue.raw}</p>{sourceValue.value !== undefined ? <button onClick={() => setDraft(current => writeComparisonValue(current, field, String(sourceValue.value)))}>이 원천값 사용</button> : null}</div> }) : <p>현재 원천 없음 · 재수집 또는 연결 확인 필요</p>}</div>) : <p>연결된 원천 없음</p>}</div>
-          <QualityFieldInput field={field} draft={draft} onChange={value => setDraft(current => writeComparisonValue(current, field, value === null ? '' : String(value)))} />
+          <div>{snapshot.sources.length ? snapshot.sources.map((source, index) => <div key={`${source.category}:${source.sourceKey}:${index}`}><small>원천 {index + 1} · {sourceCategories[source.category]}</small>{source.rows.length ? source.rows.map(row => { const sourceValue = qualitySourceValue(field, source, row.raw); return <div key={row.id}><p>{sourceValue.raw}</p>{sourceValue.value !== undefined && !supplyReadOnly ? <button onClick={() => setDraft(current => writeComparisonValue(current, field, String(sourceValue.value)))}>이 원천값 사용</button> : null}</div> }) : <p>현재 원천 없음 · 재수집 또는 연결 확인 필요</p>}</div>) : <p>연결된 원천 없음</p>}</div>
+          {!supplyReadOnly && <QualityFieldInput field={field} draft={draft} onChange={value => setDraft(current => writeComparisonValue(current, field, value === null ? '' : String(value)))} />}
         </article>)}
       </div>
       {changed.length ? <section className={styles.preview}><h3>저장할 변경 {changed.length}개</h3><ul>{changed.map(field => <li key={field.name}>{field.label}: {display(valueAt(target.current, field.name))} → {display(valueAt(draft, field.name))}</li>)}</ul></section> : null}
-      <label>수정·원천 확인 근거<textarea value={note} rows={3} maxLength={2000} onChange={event => setNote(event.target.value)} /></label>
+      <label>{supplyReadOnly ? '원천 확인 근거' : '수정·원천 확인 근거'}<textarea value={note} rows={3} maxLength={2000} onChange={event => setNote(event.target.value)} /></label>
       <p className={styles.hint}>금액은 원천의 단위·최소/전체 금액·공급대상을 확인한 뒤 원 단위로 직접 입력하세요. 원천 확인 기록은 값의 정확성을 자동으로 인증하지 않습니다.</p>
-      <div className={styles.saveActions}><Button disabled={!changed.length || !note.trim()} onClick={() => void mutate('save')}>선택 수정 저장 · {changed.length}개</Button><button disabled={changed.length > 0 || !note.trim() || !snapshot.sources.length} onClick={() => void mutate('check')}>현재 원천 확인 기록</button><button disabled={!dirty} onClick={() => { if (window.confirm('작성한 변경과 메모를 취소할까요?')) { setDraft(structuredClone(target.current)); setNote(''); setLinkNote('') } }}>수정 취소</button></div>
+      <div className={styles.saveActions}>{!supplyReadOnly && <Button disabled={!changed.length || !note.trim()} onClick={() => void mutate('save')}>선택 수정 저장 · {changed.length}개</Button>}<button disabled={changed.length > 0 || !note.trim() || !snapshot.sources.length} onClick={() => void mutate('check')}>현재 원천 확인 기록</button><button disabled={!dirty} onClick={() => { if (window.confirm('작성한 변경과 메모를 취소할까요?')) { setDraft(structuredClone(target.current)); setNote(''); setLinkNote('') } }}>수정 취소</button></div>
     </fieldset> : null}
   </section>
 }
