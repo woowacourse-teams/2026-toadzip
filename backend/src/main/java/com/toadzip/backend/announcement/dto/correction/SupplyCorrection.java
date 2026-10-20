@@ -19,7 +19,10 @@ import java.util.UUID;
 public final class SupplyCorrection {
     private SupplyCorrection() { }
 
-    public record Workspace(String snapshotToken, long version, List<Row> rows, List<Source> sources, List<String> sourceWarnings) { }
+    public record Workspace(String snapshotToken, long version, List<Row> rows, List<Source> sources, List<String> sourceWarnings,
+            List<RowSource> rowSources) { }
+    /** 공급행이 기록한 원천행. 작업실의 sources에서 같은 분류·키의 원천을 찾아 행 옆에 보여준다. */
+    public record RowSource(String rowKey, String category, String sourceKey) { }
     public record Preview(String confirmationToken, List<Row> before, List<Row> after, List<String> warnings) { }
     public record Applied(long changeId, boolean alreadyApplied, Workspace workspace) { }
     public record Request(

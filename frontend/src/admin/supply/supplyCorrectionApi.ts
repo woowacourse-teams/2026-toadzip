@@ -15,7 +15,9 @@ export type CorrectionRow = {
   exclusiveArea: number | null; supplyArea: number | null; targets: CorrectionTarget[]; targetCountsComparable: boolean;
 }
 export type CorrectionSource = { category: string; sourceKey: string; rows: { collectedAt?: string | null; raw: unknown }[] }
-export type SupplyWorkspace = { snapshotToken: string; version: number; rows: CorrectionRow[]; sources: CorrectionSource[]; sourceWarnings?: string[] }
+/** 공급행이 기록한 원천행. sources에서 같은 분류·키의 원천을 찾는다. */
+export type RowSource = { rowKey: string; category: string; sourceKey: string }
+export type SupplyWorkspace = { snapshotToken: string; version: number; rows: CorrectionRow[]; sources: CorrectionSource[]; sourceWarnings?: string[]; rowSources?: RowSource[] }
 export type SupplyCorrectionInput = { operationId: string; snapshotToken: string; reason: string; sourceUrl: string; sourcePage: string | null; rows: CorrectionRow[] }
 export type SupplyPreview = { confirmationToken: string; before: CorrectionRow[]; after: CorrectionRow[]; warnings: string[] }
 export type SupplyApplied = { changeId: number; alreadyApplied: boolean; workspace: SupplyWorkspace }
@@ -57,7 +59,10 @@ export function parseSupplyWorkspace(value: unknown): SupplyWorkspace {
       || !Array.isArray(source.rows) || !source.rows.every(item => isRecord(item) && 'raw' in item)) invalid()
   }
   if (value.sourceWarnings !== undefined && (!Array.isArray(value.sourceWarnings) || !value.sourceWarnings.every(item => typeof item === 'string'))) invalid()
-  return { sourceWarnings: (value.sourceWarnings ?? []) as string[], snapshotToken: value.snapshotToken, version: value.version, rows: value.rows.map(row), sources: value.sources as CorrectionSource[] }
+  if (value.rowSources !== undefined && (!Array.isArray(value.rowSources) || !value.rowSources.every(item => isRecord(item)
+    && typeof item.rowKey === 'string' && typeof item.category === 'string' && typeof item.sourceKey === 'string'))) invalid()
+  return { sourceWarnings: (value.sourceWarnings ?? []) as string[], rowSources: (value.rowSources ?? []) as RowSource[], snapshotToken: value.snapshotToken,
+    version: value.version, rows: value.rows.map(row), sources: value.sources as CorrectionSource[] }
 }
 const path = (id: string) => `/api/admin/announcements/${encodeURIComponent(id)}/supply-corrections`
 export async function loadSupplyWorkspace(id: string, signal?: AbortSignal): Promise<SupplyWorkspace> {

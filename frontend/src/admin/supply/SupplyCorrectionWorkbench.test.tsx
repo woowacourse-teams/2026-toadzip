@@ -175,3 +175,12 @@ it('원천 비교를 편집 영역 옆 보조 영역에 두고 원천이 있으�
   const aside = screen.getByRole('complementary', { name: '비교 근거' })
   expect(aside.querySelector('details')).toHaveAttribute('open')
 })
+it('응답의 행별 원천을 해당 공급행 안에 연결한다', async () => {
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...structuredClone(workspace),
+    sources: [{ category: 'MYHOME_ANNOUNCEMENT', sourceKey: '12:manual-21395:1', rows: [{ collectedAt: null, raw: { hshld_co: '170' } }] }],
+    rowSources: [{ rowKey: 'row:1', category: 'MYHOME_ANNOUNCEMENT', sourceKey: '12:manual-21395:1' }] })
+  await setup()
+  const region = screen.getByRole('region', { name: '대응 원천' })
+  expect(region).toHaveTextContent('12:manual-21395:1')
+  expect(region).toHaveTextContent('170')
+})

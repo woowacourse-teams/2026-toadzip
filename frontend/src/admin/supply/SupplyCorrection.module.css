@@ -52,3 +52,5 @@
 }
 .steps a { color: inherit; }
 .issues span[data-tone=note] { color: var(--ds-color-label); background: var(--ds-color-surface-subtle); }
+.rowSource { display: grid; gap: var(--ds-space-2); padding: var(--ds-space-3); border-left: 3px solid var(--ds-color-divider); background: var(--ds-color-surface-subtle); }
+.rowSource summary { cursor: pointer; font-size: var(--ds-text-caption); color: var(--ds-color-label); overflow-wrap: anywhere; }

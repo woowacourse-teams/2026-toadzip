@@ -56,6 +56,11 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     }).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '공급정보를 불러오지 못했습니다.') })
     return () => controller.abort()
   }, [id, attempt])
+  function rowSource(key: string) {
+    const recorded = workspace?.rowSources?.find(item => item.rowKey === key)
+    if (!recorded) return undefined
+    return { ...recorded, found: workspace?.sources.find(item => item.category === recorded.category && item.sourceKey === recorded.sourceKey) ?? null }
+  }
   function edit(update: (rows: CorrectionRow[]) => CorrectionRow[]) { setRows(update); setPreview(null); setNotice('') }
   async function inspect() {
     if (!workspace || conflicts.length) return
@@ -123,7 +128,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     </aside>
     <form onSubmit={event => { event.preventDefault(); void inspect() }}>
       <fieldset disabled={busy || uncertain} className={styles.editor}><legend className={styles.srOnly}>공고별 공급정보 변경안</legend>
-        {rows.map((row, index) => <SupplyRowDraft key={row.key} value={row} first={index === 0} last={index === rows.length - 1}
+        {rows.map((row, index) => <SupplyRowDraft key={row.key} value={row} first={index === 0} last={index === rows.length - 1} source={rowSource(row.key)}
           onChange={next => edit(current => current.map(item => item.key === next.key ? next : item))}
           onRemove={() => edit(current => current.filter(item => item.key !== row.key))}
           onMove={delta => edit(current => { const next = [...current]; [next[index], next[index + delta]] = [next[index + delta], next[index]]; return next.map((item, order) => ({ ...item, displayOrder: order })) })} />)}

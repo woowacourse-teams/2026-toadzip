@@ -63,3 +63,19 @@ it('공개할 임대조건이 없는 행은 요약에 표시하되 연결 문제
   rerender(<SupplyRowDraft key="with-target" value={{ ...excludedOnly, targets: [{ ...excludedOnly.targets[0], excluded: false }] }} onChange={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} first last />)
   expect(container.querySelector('summary')).not.toHaveTextContent('임대조건 없음')
 })
+it('펼친 행에 대응하는 원천값을 보여 주고, 원천이 없거나 사라진 경우를 구분한다', () => {
+  const stored: CorrectionRow = { ...blankRow(0), id: 3, key: 'row:3', housingComplexId: 1, housingComplexName: '한스빌', housingTypeId: 9, complexName: '익산한스빌', typeName: '아파트' }
+  const props = { onChange: vi.fn(), onRemove: vi.fn(), onMove: vi.fn(), first: true, last: true }
+  const { rerender } = render(<SupplyRowDraft key="found" value={stored} {...props}
+    source={{ category: 'MYHOME_ANNOUNCEMENT', sourceKey: '12:manual-21395:1', found: { category: 'MYHOME_ANNOUNCEMENT', sourceKey: '12:manual-21395:1', rows: [{ collectedAt: null, raw: { hshld_co: '170' } }] } }} />)
+  fireEvent.click(screen.getByText(/익산한스빌 · 아파트/))
+  const region = screen.getByRole('region', { name: '대응 원천' })
+  expect(region).toHaveTextContent('12:manual-21395:1')
+  expect(region).toHaveTextContent('170')
+  rerender(<SupplyRowDraft key="lost" value={stored} {...props} source={{ category: 'MYHOME_ANNOUNCEMENT', sourceKey: '12:manual-21395:1', found: null }} />)
+  fireEvent.click(screen.getByText(/익산한스빌 · 아파트/))
+  expect(screen.getByRole('region', { name: '대응 원천' })).toHaveTextContent('지금 원천 목록에서 찾을 수 없습니다')
+  rerender(<SupplyRowDraft key="none" value={stored} {...props} />)
+  fireEvent.click(screen.getByText(/익산한스빌 · 아파트/))
+  expect(screen.getByRole('region', { name: '대응 원천' })).toHaveTextContent('기록된 마이홈 원천이 없습니다')
+})

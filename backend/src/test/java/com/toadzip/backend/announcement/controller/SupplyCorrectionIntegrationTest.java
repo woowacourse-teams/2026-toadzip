@@ -295,6 +295,22 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
+    void 작업실은_마이홈_원천이_기록된_공급행에만_대응하는_원천_키를_준다() throws Exception {
+        var row = fixture();
+        long id = row.getAnnouncement().getId();
+        mvc.perform(get(root(id)).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.rowSources").isEmpty());
+        row.recordMyHomeSource("12:source-key:1");
+        entities.flush();
+        mvc.perform(get(root(id)).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rowSources.length()").value(1))
+                .andExpect(jsonPath("$.data.rowSources[0].rowKey").value("row:" + row.getId()))
+                .andExpect(jsonPath("$.data.rowSources[0].category").value("MYHOME_ANNOUNCEMENT"))
+                .andExpect(jsonPath("$.data.rowSources[0].sourceKey").value("12:source-key:1"));
+    }
+
+    @Test
     void 원천이_사라진_보정행은_보존하고_작업실과_검토목록에_재확인을_표시한다() throws Exception {
         var row = fixture();
         row.recordMyHomeSource("missing-source-key");

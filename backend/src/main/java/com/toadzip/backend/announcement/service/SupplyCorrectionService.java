@@ -10,6 +10,7 @@ import com.toadzip.backend.announcement.domain.SupplyCorrectionRecord;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
+import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.Row;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.Target;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
@@ -65,11 +66,17 @@ public class SupplyCorrectionService {
     public SupplyCorrection.Workspace workspace(long id) {
         var announcement = find(id);
         var comparison = comparisons.detail(QualityResource.ANNOUNCEMENT, id, "basic");
-        var currentRows = rows.findAllByAnnouncement(announcement).stream()
+        var stored = rows.findAllByAnnouncement(announcement);
+        var currentRows = stored.stream()
                 .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
                 .map(this::rowData).sorted(Comparator.comparingInt(Row::displayOrder).thenComparing(Row::key)).toList();
+        var rowSources = stored.stream().filter(row -> row.getMyhomeSourceRowIdentifier() != null)
+                .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
+                .map(row -> new SupplyCorrection.RowSource("row:" + row.getId(),
+                        IngestSourceCategory.MYHOME_ANNOUNCEMENT.name(), row.getMyhomeSourceRowIdentifier()))
+                .toList();
         return new SupplyCorrection.Workspace(hash(List.of(comparison.snapshotToken(), currentRows)),
-                announcement.getVersion(), currentRows, comparison.sources(), sourceStatus.missingWarnings(id));
+                announcement.getVersion(), currentRows, comparison.sources(), sourceStatus.missingWarnings(id), rowSources);
     }
 
     public SupplyCorrection.Preview preview(long id, SupplyCorrection.Request request) {
