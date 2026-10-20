@@ -53,9 +53,12 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last 
   }
   useEffect(() => () => request.current?.abort(), [])
   const issues = linkIssues(value)
+  // 마이홈 매핑은 공급대상을 만들지 않으므로 흔한 상태다. 알리기만 하고 행을 펼치지는 않는다.
+  const withoutTargets = !value.excluded && value.targets.every(target => target.excluded)
   return <details className={styles.row} open={!value.id || issues.length > 0}>
     <summary>{value.complexName || '새 공급행'} · {value.typeName || '주택형 미입력'}{value.excluded ? ' · 제외 예정' : ''}
-      {issues.length > 0 && <span className={styles.issues}>{issues.map(issue => <span key={issue}>{issue}</span>)}</span>}
+      {(issues.length > 0 || withoutTargets) && <span className={styles.issues}>{issues.map(issue => <span key={issue}>{issue}</span>)}
+        {withoutTargets && <span data-tone="note">임대조건 없음</span>}</span>}
       <small>{value.protectedValues ? '보정 보호 중' : '자동 갱신 대상'} · 대상 {value.targets.length}개</small></summary>
     <fieldset className={styles.rowBody} disabled={loading}><legend className={styles.srOnly}>공급행 보정</legend>
       <div className={styles.actions}><button type="button" disabled={first} onClick={() => onMove(-1)}>위로</button><button type="button" disabled={last} onClick={() => onMove(1)}>아래로</button>

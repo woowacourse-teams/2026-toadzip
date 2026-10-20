@@ -51,3 +51,4 @@
   .reference { grid-area: reference; position: sticky; top: var(--ds-space-4); max-height: calc(100vh - var(--ds-space-7)); overflow: auto; }
 }
 .steps a { color: inherit; }
+.issues span[data-tone=note] { color: var(--ds-color-label); background: var(--ds-color-surface-subtle); }

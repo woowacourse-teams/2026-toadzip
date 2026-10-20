@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useState } from 'react'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { SupplyRowDraft } from './SupplyRowDraft'
-import { blankRow, type CorrectionRow } from './supplyCorrectionApi'
+import { blankRow, blankTarget, type CorrectionRow } from './supplyCorrectionApi'
 import { getManagementDetail, getManagementPage } from '../management/api'
 import type { ManagementDetailData } from '../management/managementContract'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
@@ -51,4 +51,15 @@ it('연결이 빠진 행은 접힌 요약에 문제를 표시하고 처음부터
   rerender(<SupplyRowDraft key="linked" value={{ ...unlinked, housingTypeId: 9 }} onChange={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} first last />)
   expect(container.querySelector('summary')).not.toHaveTextContent('미연결')
   expect(container.querySelector('details')).not.toHaveAttribute('open')
+})
+it('공개할 임대조건이 없는 행은 요약에 표시하되 연결 문제처럼 펼치지 않는다', () => {
+  const linked: CorrectionRow = { ...blankRow(0), id: 3, housingComplexId: 1, housingComplexName: '한스빌', housingTypeId: 9, complexName: '익산한스빌', typeName: '아파트' }
+  const { container, rerender } = render(<SupplyRowDraft value={linked} onChange={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} first last />)
+  expect(container.querySelector('summary')).toHaveTextContent('임대조건 없음')
+  expect(container.querySelector('details')).not.toHaveAttribute('open')
+  const excludedOnly = { ...linked, targets: [{ ...blankTarget(0), id: 4, key: 'target:4', target: '일반', excluded: true }] }
+  rerender(<SupplyRowDraft key="excluded-target" value={excludedOnly} onChange={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} first last />)
+  expect(container.querySelector('summary')).toHaveTextContent('임대조건 없음')
+  rerender(<SupplyRowDraft key="with-target" value={{ ...excludedOnly, targets: [{ ...excludedOnly.targets[0], excluded: false }] }} onChange={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} first last />)
+  expect(container.querySelector('summary')).not.toHaveTextContent('임대조건 없음')
 })
