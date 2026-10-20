@@ -7,6 +7,7 @@ import static com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappin
 import static com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason.GEOCODING_ERROR;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.toadzip.backend.global.config.ClockConfig;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
@@ -28,11 +29,19 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
-@SpringBootTest
+@DataJpaTest(showSql = false)
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import({ExternalDataFailureStore.class, MyHomeAnnouncementMappingFailureStore.class,
+        MyHomeComplexMappingFailureStore.class, LhAnnouncementEnrichmentFailureStore.class, ClockConfig.class})
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 @ActiveProfiles("test")
 class IngestFailureLifecycleIntegrationTest {
 

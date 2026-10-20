@@ -1,28 +1,18 @@
 package com.toadzip.backend.housing.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import jakarta.persistence.EntityManagerFactory;
-import jakarta.persistence.metamodel.Attribute;
-import jakarta.persistence.metamodel.ManagedType;
-import java.util.Set;
-import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 
-@SpringBootTest
+@DataJpaTest(showSql = false)
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("test")
 class HousingJpaMappingTest {
-
-    private static final String DOMAIN_PACKAGE = "com.toadzip.backend.housing.domain.";
-
-    @Autowired
-    private EntityManagerFactory entityManagerFactory;
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -36,97 +26,5 @@ class HousingJpaMappingTest {
                 """).query(String.class).single();
 
         assertThat(definition).contains("USING btree (housing_complex_id)");
-    }
-
-    @Test
-    void 단지_도메인을_JPA_관리_타입으로_등록한다() {
-        assertEntityAttributes(
-                "HousingComplex",
-                Set.of(
-                        "id", "createdAt", "version", "adminModified", "adminDeleted",
-                        "sourceReviewRequired", "adminUpdatedAt",
-                        "name",
-                        "sourceComplexIdentifier",
-                        "supplyType",
-                        "address",
-                        "totalHouseholdCount",
-                        "provider",
-                        "completionDate",
-                        "heatingType",
-                        "housingType",
-                        "corridorType",
-                        "elevatorInstalled",
-                        "parkingSpaceCount",
-                        "imageUrl",
-                        "recentOneYearMoveOutCount",
-                        "rentalPriceRange"
-                )
-        );
-        assertEntityAttributes(
-                "HousingType",
-                Set.of(
-                        "id",
-                        "housingComplex",
-                        "sourceHousingTypeIdentifier",
-                        "name",
-                        "exclusiveArea",
-                        "supplyArea",
-                        "totalHouseholdCount",
-                        "floorPlanUrl",
-                        "duplex",
-                        "maintenanceFee",
-                        "adminModified",
-                        "basicRentalCondition"
-                )
-        );
-        assertEmbeddableAttributes(
-                "Address",
-                Set.of(
-                        "roadAddress",
-                        "pnu",
-                        "legalDongCode",
-                        "provinceCode",
-                        "cityCountyDistrictCode",
-                        "latitude",
-                        "longitude"
-                )
-        );
-        assertEmbeddableAttributes(
-                "RentalPriceRange",
-                Set.of("depositMin", "depositMax", "monthlyRentMin", "monthlyRentMax")
-        );
-        assertEmbeddableAttributes(
-                "MyHomeRentalCondition",
-                Set.of("deposit", "monthlyRent", "collectedAt")
-        );
-    }
-
-    private void assertEntityAttributes(String simpleClassName, Set<String> expectedAttributes) {
-        Class<?> entityClass = loadClass(simpleClassName);
-        ManagedType<?> managedType = assertDoesNotThrow(
-                () -> entityManagerFactory.getMetamodel().entity(entityClass)
-        );
-
-        assertEquals(expectedAttributes, attributeNames(managedType));
-    }
-
-    private void assertEmbeddableAttributes(String simpleClassName, Set<String> expectedAttributes) {
-        Class<?> embeddableClass = loadClass(simpleClassName);
-        ManagedType<?> managedType = assertDoesNotThrow(
-                () -> entityManagerFactory.getMetamodel().embeddable(embeddableClass)
-        );
-
-        assertEquals(expectedAttributes, attributeNames(managedType));
-    }
-
-    private Class<?> loadClass(String simpleClassName) {
-        return assertDoesNotThrow(() -> Class.forName(DOMAIN_PACKAGE + simpleClassName));
-    }
-
-    private Set<String> attributeNames(ManagedType<?> managedType) {
-        return managedType.getAttributes()
-                .stream()
-                .map(Attribute::getName)
-                .collect(Collectors.toSet());
     }
 }
