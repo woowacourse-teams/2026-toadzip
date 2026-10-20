@@ -65,3 +65,6 @@
   .saveActions { align-items: stretch; flex-direction: column-reverse; }
   .connections, .address { padding: var(--ds-space-3); }
 }
+@container (min-width: 821px) {
+  .table[data-read-only] .columns, .table[data-read-only] .row { grid-template-columns: minmax(100px, .75fr) minmax(100px, 1fr) minmax(150px, 1.4fr); }
+}

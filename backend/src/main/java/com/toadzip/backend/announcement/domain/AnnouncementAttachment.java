@@ -47,6 +47,10 @@ public class AnnouncementAttachment {
 
     private String sourceAttachmentIdentifier;
 
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminModified;
+
     private AnnouncementAttachment(
             Announcement announcement,
             String fileName,
@@ -90,6 +94,7 @@ public class AnnouncementAttachment {
     }
 
     public boolean updateFromSource(String fileName, AttachmentType fileType, String fileUrl, int displayOrder) {
+        if (adminModified) { return false; }
         AnnouncementAttachment incoming = create(announcement, fileName, fileType, fileUrl, displayOrder);
         if (this.fileName.equals(incoming.fileName)
                 && this.fileType == incoming.fileType
@@ -112,6 +117,14 @@ public class AnnouncementAttachment {
             int displayOrder
     ) {
         return create(announcement, fileName, AttachmentType.fromStoredValue(fileType), fileUrl, displayOrder);
+    }
+
+    public void reviseByAdmin(String name, AttachmentType type, String url) {
+        AnnouncementAttachment incoming = create(announcement, name, type, url, displayOrder);
+        this.fileName = incoming.fileName;
+        this.fileType = incoming.fileType;
+        this.fileUrl = incoming.fileUrl;
+        adminModified = true;
     }
 
     private void validateRequired(Object value, String fieldName) {

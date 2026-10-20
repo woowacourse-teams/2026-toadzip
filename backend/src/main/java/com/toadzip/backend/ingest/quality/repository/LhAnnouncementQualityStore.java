@@ -161,7 +161,7 @@ public class LhAnnouncementQualityStore {
 
     private Map<String, Long> preservedAmountReasons(Set<String> currentSourceKeys) {
         Map<String, Long> reasons = new LinkedHashMap<>();
-        // MyHomeAnnouncementSupplyRowGroups와 같은 display_order, id 순서로 확장 행의 원천을 찾는다.
+        // 표시 순서와 독립적으로 보관한 원천 소유 관계를 사용한다.
         String currentSources = currentSourceKeys.isEmpty() ? "NULL" : ":currentSourceKeys";
         var query = jdbc.sql("""
                 WITH current_sources AS (
@@ -189,13 +189,10 @@ public class LhAnnouncementQualityStore {
                     JOIN supply_rows row ON row.id = target.supply_row_id
                     JOIN announcements announcement ON announcement.id = row.announcement_id
                     LEFT JOIN LATERAL (
-                        SELECT root.source_supply_row_identifier AS source_key
-                        FROM supply_rows root
-                        WHERE root.announcement_id = row.announcement_id
-                          AND NOT starts_with(root.source_supply_row_identifier,
-                                              announcement.source_announcement_identifier || ':LH:')
-                          AND (root.display_order, root.id) <= (row.display_order, row.id)
-                        ORDER BY root.display_order DESC, root.id DESC LIMIT 1
+                        SELECT COALESCE(row.myhome_source_row_identifier,
+                          CASE WHEN NOT starts_with(row.source_supply_row_identifier,
+                              announcement.source_announcement_identifier || ':LH:')
+                            THEN row.source_supply_row_identifier END) AS source_key
                     ) source_group ON true
                     WHERE announcement.provider = 'LH' AND NOT announcement.admin_deleted
                       AND target.source_supply_target_identifier LIKE 'LH:%%'

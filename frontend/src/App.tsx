@@ -1,11 +1,10 @@
 import { FailureReviewPage } from './admin/ingest/FailureReviewPage'
-import { AnnouncementRegistrationV2Page } from './admin/ingest/AnnouncementRegistrationV2Page'
+import { IngestPage } from './admin/ingest/IngestPage'
 import { SourceDataPage } from './admin/ingest/SourceDataPage'
 import { Link, Navigate, Route, Routes, matchRoutes, useLocation } from 'react-router'
 import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
 import { LocationDataPage } from './admin/ingest/LocationDataPage'
 import { ManagementWorkspace } from './admin/management/ManagementWorkspace'
-import { AdminHome } from './admin/auth/AdminHome'
 import { AdminLayout } from './admin/auth/AdminLayout'
 import { LoginPage } from './admin/auth/LoginPage'
 import { RequireAdmin } from './admin/auth/RequireAdmin'
@@ -17,6 +16,8 @@ import { UserListPage } from './admin/users/UserListPage'
 import { UserDetailPage } from './admin/users/UserDetailPage'
 import { NotificationManagementPage } from './admin/notifications/NotificationSubscriptions'
 import { FeedbackPage } from './feedback/FeedbackPage'
+import { NotificationDeliveriesPage } from './admin/notifications/NotificationDeliveriesPage'
+import { OperationsHome } from './admin/operations/OperationsHome'
 import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
 import { PrivacyBoundary, PrivacyMenu, PrivacyPolicyPage, PrivacySettingsPage } from './privacy/Privacy'
 import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
@@ -66,6 +67,14 @@ function LegacyLoginRedirect() {
   return <Navigate to={{ pathname: '/explore', search: `?${params}`, hash }} replace />
 }
 
+function LegacyIngestRedirect() {
+  const { search, hash } = useLocation()
+  const params = new URLSearchParams(search)
+  const domain = params.get('domain') === 'complex' ? 'complexes' : 'announcements'
+  params.delete('domain')
+  return <Navigate to={{ pathname: `/admin/ingest/${domain}`, search: params.toString(), hash }} replace />
+}
+
 function AdminRoutes() {
   return (
     <AdminAuthProvider>
@@ -73,15 +82,19 @@ function AdminRoutes() {
         <Route path="login" element={<LoginPage />} />
         <Route element={<RequireAdmin />}>
           <Route element={<AdminLayout />}>
-            <Route index element={<Navigate to="quality" replace />} />
-            <Route path="ingest" element={<AdminHome />} />
-            <Route path="ingest-v2" element={<AnnouncementRegistrationV2Page />} />
+            <Route index element={<Navigate to="operations" replace />} />
+            <Route path="operations" element={<OperationsHome />} />
+            <Route path="ingest" element={<LegacyIngestRedirect />} />
+            <Route path="ingest/announcements" element={<IngestPage domain="announcement" />} />
+            <Route path="ingest/complexes" element={<IngestPage domain="complex" />} />
+            <Route path="ingest-v2" element={<LegacyIngestRedirect />} />
             <Route path="complexes/:id?" element={<ManagementWorkspace resource="complexes" />} />
             <Route path="announcements/:id?" element={<ManagementWorkspace resource="announcements" />} />
             <Route path="complex-coverage" element={<ComplexCoveragePage />} />
             <Route path="quality" element={<QualityQueuePage />} />
             <Route path="users" element={<UserListPage />} />
             <Route path="users/:id" element={<UserDetailPage />} />
+            <Route path="notification-deliveries" element={<NotificationDeliveriesPage />} />
             <Route path="notification-subscriptions" element={<NotificationManagementPage />} />
             <Route path="feedback" element={<FeedbackListPage />} />
             <Route path="failures" element={<FailureReviewPage />} />

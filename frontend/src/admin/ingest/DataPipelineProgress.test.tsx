@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { DataPipelineExecution } from './api'
 
@@ -15,6 +15,7 @@ it('진행 중인 단계를 완료로 세지 않고 실제 종료된 단계로 �
   }} />)
   expect(screen.getByText('단계 처리 2/4')).toBeVisible()
   expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByText('실행 정보'))
   expect(screen.getByText('42회')).toBeVisible()
 })
 
@@ -25,6 +26,7 @@ it('도입 전 실행의 없는 요청 횟수를 0회로 단정하지 않는다'
     completedSteps: [], skippedSteps: [], partiallyFailedSteps: [], failure: null,
     externalRequestCount: 0, lastProgressAt: null,
   }} />)
+  fireEvent.click(screen.getByText('실행 정보'))
   expect(screen.getByText('외부 요청 횟수 기록이 없습니다.')).toBeVisible()
   expect(screen.queryByText('0회')).not.toBeInTheDocument()
 })
@@ -54,7 +56,7 @@ it('처리가 지연되거나 중지를 요청한 실행에는 예상 시간을 
   const { rerender } = render(<DataPipelineProgress label="단지 수집" execution={running} />)
   expect(screen.getByText('응답 지연 · 재계산 대기')).toBeVisible()
   rerender(<DataPipelineProgress label="단지 수집" execution={{ ...running, stopRequested: true }} />)
-  expect(screen.queryByText('예상 남은 시간')).not.toBeInTheDocument()
+  expect(screen.queryByText('현재 단계 예상 남은 시간')).not.toBeInTheDocument()
 })
 
 it('전체 대상 수를 모를 때는 가짜 비율이나 예상 시간을 만들지 않는다', () => {

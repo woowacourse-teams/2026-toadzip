@@ -1,4 +1,4 @@
-import type { ReviewField } from '../documents/documentReview'
+import type { ReviewField } from './reviewTargets'
 import type { JsonValue } from '../management/managementContract'
 import type { QualitySource } from './qualityComparisonApi'
 

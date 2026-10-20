@@ -20,6 +20,7 @@ import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureStore;
+import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
@@ -61,6 +62,9 @@ public class MyHomeAnnouncementMappingWriter {
     private final LhAnnouncementEnrichmentWriter enrichmentWriter;
 
     private final MyHomeAnnouncementMappingFailureStore failureStore;
+    private final AnnouncementSupplyMatchDecisionRepository matchDecisions;
+    private final com.toadzip.backend.announcement.repository.SupplyRowGroupRepository supplyGroups;
+    private final AnnouncementSupplySplitWriter splitWriter;
 
     /** 신규 공고·공급행·LH 보강을 하나의 트랜잭션으로 저장한다. */
     @Transactional
@@ -81,13 +85,24 @@ public class MyHomeAnnouncementMappingWriter {
         return writeRegistration(resolved, previous, selections);
     }
 
+    @Transactional
+    public MyHomeAnnouncementWriteResult writeSplit(ResolvedAnnouncement resolved, Announcement previous,
+            AnnouncementSupplySplitWriter.SplitPlan plan) {
+        return writeRegistration(resolved, previous, Map.of(), plan);
+    }
+
     /** 단건 등록은 LH 보강을 재검증하고 실패 시 전체 저장을 되돌린다. */
     private MyHomeAnnouncementWriteResult writeRegistration(ResolvedAnnouncement resolved, Announcement previous,
             Map<String, MyHomeSupplyMatchResult> selections) {
+        return writeRegistration(resolved, previous, selections, null);
+    }
+
+    private MyHomeAnnouncementWriteResult writeRegistration(ResolvedAnnouncement resolved, Announcement previous,
+            Map<String, MyHomeSupplyMatchResult> selections, AnnouncementSupplySplitWriter.SplitPlan plan) {
         IngestExecutionScope.verifyHeld();
         IngestExecutionScope.checkStopRequested();
         String identifier = resolved.data().sourceAnnouncementIdentifier();
-        MyHomeAnnouncementWriteResult result = writeResolved(resolved, previous, selections);
+        MyHomeAnnouncementWriteResult result = writeResolved(resolved, previous, selections, plan);
         if (!result.failures().isEmpty()) {
             MyHomeSupplyMatchingFailureData failure = result.failures().getFirst();
             throw new MyHomeAnnouncementMappingRejectedException(
@@ -128,6 +143,12 @@ public class MyHomeAnnouncementMappingWriter {
 
     private MyHomeAnnouncementWriteResult writeResolved(ResolvedAnnouncement resolved,
             Announcement previousAnnouncement, Map<String, MyHomeSupplyMatchResult> selections) {
+        return writeResolved(resolved, previousAnnouncement, selections, null);
+    }
+
+    private MyHomeAnnouncementWriteResult writeResolved(ResolvedAnnouncement resolved,
+            Announcement previousAnnouncement, Map<String, MyHomeSupplyMatchResult> selections,
+            AnnouncementSupplySplitWriter.SplitPlan plan) {
         MyHomeAnnouncementMappingData data = resolved.data();
         AnnouncementWriteResult announcementResult = writeAnnouncement(data, previousAnnouncement);
         if (announcementResult.announcement().getProvider() != data.provider()) {
@@ -137,6 +158,9 @@ public class MyHomeAnnouncementMappingWriter {
         }
         if (announcementResult.releasedLhOwnership()) {
             deleteLhEnrichment(announcementResult.announcement());
+        }
+        if (plan != null) {
+            splitWriter.apply(announcementResult.announcement(), plan);
         }
         SupplyRowsWriteResult supplyRowsResult = writeSupplyRows(
                 announcementResult.announcement(),
@@ -242,10 +266,12 @@ public class MyHomeAnnouncementMappingWriter {
 
     private void deleteLhEnrichment(Announcement announcement) {
         List<AnnouncementSchedule> schedules = scheduleRepository.findAllByAnnouncement(announcement).stream()
+                .filter(schedule -> !schedule.isAdminModified())
                 .filter(schedule -> isLhSource(schedule.getSourceScheduleIdentifier()))
                 .toList();
         scheduleRepository.deleteAll(schedules);
         List<AnnouncementAttachment> attachments = attachmentRepository.findAllByAnnouncement(announcement).stream()
+                .filter(attachment -> !attachment.isAdminModified())
                 .filter(attachment -> isLhSource(attachment.getSourceAttachmentIdentifier()))
                 .toList();
         attachmentRepository.deleteAll(attachments);
@@ -287,6 +313,12 @@ public class MyHomeAnnouncementMappingWriter {
         int displayOrder = 1;
         Set<Long> changedHousingTypeRowIds = new HashSet<>();
         List<MyHomeSupplyMatchingFailureData> failures = new ArrayList<>();
+        for (var data : rows) {
+            var existing = storedRows.get(data.sourceSupplyRowIdentifier());
+            if (existing != null && !historicalSourceKeys.contains(data.source().getSourceKey())) {
+                existing.recordMyHomeSource(data.source().getSourceKey());
+            }
+        }
         Map<String, List<SupplyRow>> storedGroups = MyHomeAnnouncementSupplyRowGroups.byMyHomeSource(
                 announcement.getSourceAnnouncementIdentifier(), storedRows.values()
         );
@@ -294,7 +326,32 @@ public class MyHomeAnnouncementMappingWriter {
                 .filter(row -> !historicalSourceKeys.contains(row.source().getSourceKey()))
                 .map(MyHomeSupplyRowMappingData::sourceSupplyRowIdentifier)
                 .collect(Collectors.toSet());
+        var groups = supplyGroups.findAllByAnnouncement(announcement).stream()
+                .collect(Collectors.toMap(group -> group.getSourceRowIdentifier(), Function.identity()));
+        Set<Long> preservedGroups = new HashSet<>();
         for (MyHomeSupplyRowMappingData data : rows) {
+            var group = groups.get(data.source().getSourceKey());
+            if (group != null) {
+                if (!preservedGroups.add(group.getId())) {
+                    continue;
+                }
+                var members = storedRows.values().stream().filter(row -> row.getSupplyGroup() != null
+                        && row.getSupplyGroup().getId().equals(group.getId()))
+                        .sorted(java.util.Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
+                        .toList();
+                if (splitWriter.reviewRequired(group, data.source(), members)) {
+                    group.requireReview();
+                    failures.add(new MyHomeSupplyMatchingFailureData(data.source(),
+                            MyHomeAnnouncementMappingFailureReason.MANUAL_MATCH_REVIEW_REQUIRED,
+                            "보정한 공급행의 원천 또는 연결 대상이 변경되었습니다. 기존 보정은 유지하며 다시 확인해야 합니다."));
+                }
+                for (SupplyRow member : members) {
+                    member.updateDisplayOrder(displayOrder++);
+                    storedRows.remove(member.getSourceSupplyRowIdentifier());
+                    unchanged++;
+                }
+                continue;
+            }
             List<SupplyRow> storedGroup = storedGroups.get(data.sourceSupplyRowIdentifier());
             boolean historical = historicalSourceKeys.contains(data.source().getSourceKey());
             boolean preserveLhRows = preserveExistingLhResolvedRows
@@ -327,8 +384,19 @@ public class MyHomeAnnouncementMappingWriter {
             if (match.failure() != null) {
                 failures.add(match.failure());
             }
+            if (stored != null && match.failure() != null
+                    && match.failure().reason() == MyHomeAnnouncementMappingFailureReason.MANUAL_MATCH_REVIEW_REQUIRED) {
+                // 재확인 전에는 마지막 정상 연결과 모집조건을 유지한다.
+                if (stored.updateDisplayOrder(displayOrder++)) {
+                    updated++;
+                    continue;
+                }
+                unchanged++;
+                continue;
+            }
             if (stored == null) {
                 SupplyRow createdRow = createSupplyRow(announcement, data, match, displayOrder++);
+                createdRow.recordMyHomeSource(data.source().getSourceKey());
                 applyLhResolution(createdRow, data, match);
                 supplyRowRepository.save(createdRow);
                 created++;
@@ -367,7 +435,26 @@ public class MyHomeAnnouncementMappingWriter {
             }
             unchanged++;
         }
-        List<SupplyRow> staleRows = storedRows.values().stream().filter(row -> !row.isAdminModified()).toList();
+        List<SupplyRow> staleRows = new ArrayList<>();
+        for (SupplyRow stored : storedRows.values()) {
+            if (stored.getSupplyGroup() != null) {
+                stored.getSupplyGroup().requireReview();
+                stored.updateDisplayOrder(displayOrder++);
+                unchanged++;
+                continue;
+            }
+            if (!stored.isAdminModified()
+                    && matchDecisions.findByRowIdentifier(stored.getSourceSupplyRowIdentifier()).isEmpty()) {
+                staleRows.add(stored);
+                continue;
+            }
+            // 원천에서 사라진 수동 연결은 유지하되 현재 원천행 뒤에 배치한다.
+            if (stored.updateDisplayOrder(displayOrder++)) {
+                updated++;
+                continue;
+            }
+            unchanged++;
+        }
         deleteStaleRows(staleRows);
         return new SupplyRowsWriteResult(
                 created, updated, unchanged, staleRows.size(), failures, changedHousingTypeRowIds

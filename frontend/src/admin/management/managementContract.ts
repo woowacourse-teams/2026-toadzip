@@ -51,6 +51,7 @@ export type ManagementHousingType = {
 }
 
 export type ManagementSupplyRow = {
+  sharedRecruitment?: { id: number; householdCount: number | null } | null
   id: number
   housingComplexId: number | null
   housingComplexName: string | null
@@ -60,6 +61,7 @@ export type ManagementSupplyRow = {
 }
 
 export type ManagementDetailData = {
+  attachments?: { attachmentId: number; fileName: string; fileType: string; fileUrl: string }[]
   summary: ManagementSummary
   sourceIdentifier: string
   data: ManagementValues
@@ -86,6 +88,14 @@ export type ManagementChange = {
   occurredAt: string
   beforeValue: string
   afterValue: string
+}
+
+function parseSharedRecruitment(value: unknown): { id: number; householdCount: number | null } {
+  if (!isRecord(value) || typeof value.id !== 'number' || !Number.isSafeInteger(value.id) || value.id <= 0
+    || !isNullableNumber(value.householdCount) || (value.householdCount != null && (!Number.isSafeInteger(value.householdCount) || value.householdCount < 0))) {
+    throw new Error('공통 모집수 응답이 올바르지 않습니다.')
+  }
+  return { id: value.id, householdCount: value.householdCount }
 }
 
 export function parseManagementPage(value: unknown): ManagementPage {
@@ -133,6 +143,7 @@ export function parseManagementDetail(value: unknown): ManagementDetailData {
         throw new Error('공급정보 응답이 올바르지 않습니다.')
       }
       supplyRows.push({
+        ...(item.sharedRecruitment != null ? { sharedRecruitment: parseSharedRecruitment(item.sharedRecruitment) } : {}),
         id: item.id, data: item.data, modified: item.modified, housingComplexId: item.housingComplexId,
         housingTypeId: item.housingTypeId, housingComplexName: item.housingComplexName,
       })
@@ -152,6 +163,12 @@ export function parseManagementDetail(value: unknown): ManagementDetailData {
     && Number.isSafeInteger(item.id) && Number.isSafeInteger(item.supplyRowId) && isManagementValues(item.data))) {
     throw new Error('공급대상 응답이 올바르지 않습니다.')
   }
+  const attachments = value.attachments === undefined ? [] : value.attachments
+  if (!Array.isArray(attachments) || !attachments.every(item => isRecord(item)
+    && isCount(item.attachmentId) && item.attachmentId > 0 && typeof item.fileName === 'string'
+    && typeof item.fileType === 'string' && typeof item.fileUrl === 'string')) {
+    throw new Error('공고 첨부파일 응답이 올바르지 않습니다.')
+  }
 
   return {
     summary: value.summary,
@@ -160,6 +177,8 @@ export function parseManagementDetail(value: unknown): ManagementDetailData {
     housingTypes,
     announcements,
     supplyRows,
+    ...(value.attachments === undefined ? {} : { attachments: attachments.map(item => ({ attachmentId: Number(item.attachmentId), fileName: String(item.fileName),
+      fileType: String(item.fileType), fileUrl: String(item.fileUrl) })) }),
     ...(value.supplyTargets === undefined ? {} : {
       supplyTargets: supplyTargets.map(item => ({ id: Number(item.id), supplyRowId: Number(item.supplyRowId), data: item.data as ManagementValues })),
     }),

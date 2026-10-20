@@ -132,6 +132,23 @@ class AdminAnnouncementImportIntegrationTest {
     }
 
     @Test
+    void 공고_JSON에_선택_면적이_있으면_공통_주택형과_분리해_공급행에_보관한다() throws Exception {
+        HousingComplex complex = housingComplexRepository.save(createHousingComplex());
+        ObjectNode document = (ObjectNode) objectMapper.readTree(importJson());
+        ((ObjectNode) document.path("supplyRows").get(0))
+                .put("exclusiveArea", 36.5).put("supplyArea", 49.8);
+
+        mockMvc.perform(post(ENDPOINT).with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(registrationJson(document.toString(),
+                        "[{\"supplyRowIndex\":0,\"housingComplexId\":%d}]".formatted(complex.getId()))))
+                .andExpect(status().isCreated());
+
+        var stored = supplyRowRepository.findAll().getFirst();
+        assertEquals(0, stored.getAnnouncementExclusiveArea().compareTo(new BigDecimal("36.5")));
+        assertEquals(0, stored.getAnnouncementSupplyArea().compareTo(new BigDecimal("49.8")));
+    }
+
+    @Test
     void 같은_JSON을_다시_등록하면_409로_차단한다() throws Exception {
         HousingComplex complex = housingComplexRepository.save(createHousingComplex());
         String request = registrationJson(complex.getId());

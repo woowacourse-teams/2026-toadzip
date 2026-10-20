@@ -54,6 +54,10 @@ public class AnnouncementSchedule {
 
     private String complexName;
 
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminModified;
+
     private AnnouncementSchedule(
             Announcement announcement,
             ScheduleType scheduleType,
@@ -125,6 +129,7 @@ public class AnnouncementSchedule {
             int displayOrder,
             String complexName
     ) {
+        if (adminModified) { return false; }
         AnnouncementSchedule incoming = create(announcement, scheduleType, name, startAt, endAt, displayOrder);
         incoming.complexName = normalizeComplexName(complexName);
         if (this.scheduleType == incoming.scheduleType
@@ -160,6 +165,15 @@ public class AnnouncementSchedule {
             int displayOrder
     ) {
         return create(announcement, ScheduleType.fromStoredValue(scheduleType), name, startAt, endAt, displayOrder);
+    }
+
+    public void reviseByAdmin(ScheduleType type, String name, LocalDateTime startAt, LocalDateTime endAt) {
+        AnnouncementSchedule incoming = create(announcement, type, name, startAt, endAt, displayOrder);
+        this.scheduleType = incoming.scheduleType;
+        this.name = incoming.name;
+        this.startAt = incoming.startAt;
+        this.endAt = incoming.endAt;
+        adminModified = true;
     }
 
     private void validateRequired(Object value, String fieldName) {

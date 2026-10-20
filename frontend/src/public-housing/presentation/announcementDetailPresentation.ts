@@ -72,17 +72,20 @@ export function groupAnnouncementSupplyRows(
       throw new Error('공급 행 그룹에는 한 개 이상의 행이 필요합니다.')
     }
     const complex = first.complex
+    const sharedCounts = new Map(groupedRows.flatMap(row => row.sharedRecruitment ? [row.sharedRecruitment] : [])
+      .map(group => [group.id, group.householdCount]))
     return {
       address: complex?.address ?? null,
       complexId: complex?.complexId ?? null,
       key,
-      name: complex?.name
+      name: (first.corrected ? first.sourceComplexName : complex?.name)
         ?? first.sourceComplexName
         ?? MISSING_DATA_LABEL,
       overviewImageUrl: complex?.overviewImageUrl ?? null,
       rows: groupedRows,
       supplyHouseholdCount: sumNullable(
-        groupedRows.map((row) => row.totalSupplyHouseholdCount),
+        [...sharedCounts.values(), ...groupedRows.filter(row => !row.sharedRecruitment)
+          .map(row => row.totalSupplyHouseholdCount)],
       ),
       totalHouseholdCount: complex?.totalHouseholdCount ?? null,
     }
@@ -130,6 +133,9 @@ function toSupplyRow(
   row: AnnouncementSupplyRow,
 ): HousingAnnouncementDetailSupplyRow {
   return {
+    ...(row.corrected !== undefined ? { corrected: row.corrected } : {}),
+    ...('exclusiveArea' in row ? { exclusiveArea: row.exclusiveArea, supplyArea: row.supplyArea } : {}),
+    ...(row.sharedRecruitment ? { sharedRecruitment: row.sharedRecruitment } : {}),
     complex: row.complex,
     housingType: row.housingType,
     occupancyExpectedYearMonth: row.occupancyExpectedYearMonth,

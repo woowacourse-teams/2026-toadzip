@@ -203,7 +203,7 @@ public class AdminAnnouncementImportRegistrationService {
         List<SupplyRow> rows = new ArrayList<>();
         for (int index = 0; index < request.supplyRows().size(); index++) {
             SupplyRowRequest row = request.supplyRows().get(index);
-            rows.add(SupplyRow.create(
+            var supplyRow = SupplyRow.create(
                     announcement,
                     selectedComplexes.get(index),
                     null,
@@ -216,7 +216,11 @@ public class AdminAnnouncementImportRegistrationService {
                     row.supplyCategory(),
                     null,
                     row.totalSupplyHouseholdCount()
-            ));
+            );
+            if (row.exclusiveArea() != null || row.supplyArea() != null) {
+                supplyRow.correctPresentation(false, index, true, row.exclusiveArea(), row.supplyArea());
+            }
+            rows.add(supplyRow);
         }
         return supplyRowRepository.saveAll(rows);
     }

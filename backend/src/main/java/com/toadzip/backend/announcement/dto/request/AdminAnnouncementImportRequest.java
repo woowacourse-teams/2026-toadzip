@@ -84,8 +84,18 @@ public record AdminAnnouncementImportRequest(
             @NotNull(message = "필수 값입니다.") @PositiveOrZero(message = "0 이상이어야 합니다.")
             Integer totalSupplyHouseholdCount,
             @NotNull(message = "필수 값입니다.") @Size(max = 100, message = "100개 이하여야 합니다.")
-            List<@NotNull(message = "필수 값입니다.") @Valid SupplyTargetRequest> targets
+            List<@NotNull(message = "필수 값입니다.") @Valid SupplyTargetRequest> targets,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+            @PositiveOrZero @Digits(integer = 6, fraction = 4) BigDecimal exclusiveArea,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+            @PositiveOrZero @Digits(integer = 6, fraction = 4) BigDecimal supplyArea
     ) implements RejectUnknownJsonFields {
+        public SupplyRowRequest(ComplexReferenceRequest complexReference, String sourceHousingTypeName,
+                YearMonth expectedMoveInMonth, SupplyCategory supplyCategory, Integer totalSupplyHouseholdCount,
+                List<SupplyTargetRequest> targets) {
+            this(complexReference, sourceHousingTypeName, expectedMoveInMonth, supplyCategory,
+                    totalSupplyHouseholdCount, targets, null, null);
+        }
     }
 
     public record ComplexReferenceRequest(

@@ -37,6 +37,8 @@ export function ManagementList({ resource, embedded = false, compact = false, re
     return () => controller.abort()
   }, [resource, search, query, filters])
   function updateFilters(next: URLSearchParams) {
+    const failureReturnTo = activeParams.get('failureReturnTo')
+    if (failureReturnTo) next.set('failureReturnTo', failureReturnTo)
     if (embedded && params.has('mode')) for (const key of ['mode', 'complexId']) {
       if (params.has(key)) next.set(key, params.get(key) ?? '')
     }
@@ -54,7 +56,7 @@ export function ManagementList({ resource, embedded = false, compact = false, re
       <label className={styles.search}>{title === '단지' ? '단지명·주소' : '공고명'}<input name="keyword" defaultValue={activeParams.get('keyword') ?? ''} maxLength={200} placeholder={`${title} 검색`} /></label>
       <label>지역<select name="region" defaultValue={activeParams.get('region') ?? ''}><option value="">전체 지역</option>{provinces.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label>기관<select name="provider" defaultValue={activeParams.get('provider') ?? ''}><option value="">전체 기관</option>{['LH','SH','GH','ETC'].map(value => <option key={value}>{value}</option>)}</select></label>
-      <div className={styles.actions}><button className="admin-primary" type="submit">검색</button><button data-admin-navigation type="button" onClick={() => setParams(embedded && params.has('mode') ? { mode: params.get('mode') ?? 'direct', ...(params.has('complexId') ? { complexId: params.get('complexId') ?? '' } : {}) } : {})}>초기화</button></div>
+      <div className={styles.actions}><button className="admin-primary" type="submit">검색</button><button data-admin-navigation type="button" onClick={() => updateFilters(new URLSearchParams())}>초기화</button></div>
       <details className={styles.moreFilters} open={activeParams.get('deleted') === 'true' || activeParams.has('rental') || activeParams.has('review') || activeParams.has('verification') || undefined}><summary>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M4 7h16M4 17h16" /><circle cx="9" cy="7" r="2" fill="var(--ds-color-surface)" /><circle cx="15" cy="17" r="2" fill="var(--ds-color-surface)" /></svg>
         <span>추가 필터{activeParams.get('deleted') === 'true' ? ' · 휴지통' : ''}</span>

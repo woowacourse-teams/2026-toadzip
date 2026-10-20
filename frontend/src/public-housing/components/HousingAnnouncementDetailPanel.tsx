@@ -72,6 +72,10 @@ export interface HousingAnnouncementDetailAttachment {
 }
 
 export interface HousingAnnouncementDetailSupplyRow {
+  readonly exclusiveArea?: number | null
+  readonly supplyArea?: number | null
+  readonly corrected?: boolean
+  readonly sharedRecruitment?: { readonly id: number; readonly householdCount: number | null } | null
   readonly supplyRowId: string
   readonly sourceComplexName: string | null
   readonly sourceHousingTypeName: string | null
@@ -693,8 +697,8 @@ function SupplyTableRow({ areaUnit, row, showOccupancy }: {
         <strong>{housingTypeLabel(row)}</strong>
         <span>{[row.supplyTypeLabel, occupancy].filter(Boolean).join(' · ')}</span>
       </th>
-      <td>{formatArea(row.housingType?.exclusiveArea ?? null, areaUnit)}</td>
-      <td>{formatNullableCount(row.totalSupplyHouseholdCount, '')}</td>
+      <td>{formatArea(row.exclusiveArea === undefined ? row.housingType?.exclusiveArea ?? null : row.exclusiveArea, areaUnit)}</td>
+      <td>{row.sharedRecruitment ? <span aria-label="개별 모집수 미확정, 단지 공통 합계에 포함">미확정</span> : formatNullableCount(row.totalSupplyHouseholdCount, '')}</td>
       <td>
         {hasMoney ? (
           <>
@@ -708,6 +712,7 @@ function SupplyTableRow({ areaUnit, row, showOccupancy }: {
 }
 
 function housingTypeLabel(row: HousingAnnouncementDetailSupplyRow) {
+  if ((row.corrected || row.sharedRecruitment) && row.sourceHousingTypeName) return row.sourceHousingTypeName
   return row.housingType?.name ?? row.sourceHousingTypeName ?? MISSING_DATA_LABEL
 }
 
@@ -752,9 +757,9 @@ function HousingTypeCard({
       </div>
       <div role="group" aria-label={`${complexName} ${housingTypeName} 공급 정보`}>
         <DetailFacts appearance="list">
-          <DetailFact term="전용면적" value={formatArea(row.housingType?.exclusiveArea ?? null, areaUnit)} />
-          <DetailFact term="공급면적" value={formatArea(row.housingType?.supplyArea ?? null, areaUnit)} />
-          <DetailFact term="공급 세대수" value={formatNullableCount(row.totalSupplyHouseholdCount, '세대')} />
+          <DetailFact term="전용면적" value={formatArea(row.exclusiveArea === undefined ? row.housingType?.exclusiveArea ?? null : row.exclusiveArea, areaUnit)} />
+          <DetailFact term="공급면적" value={formatArea(row.supplyArea === undefined ? row.housingType?.supplyArea ?? null : row.supplyArea, areaUnit)} />
+          <DetailFact term="공급 세대수" value={row.sharedRecruitment ? '공통 합계 · 개별 미확정' : formatNullableCount(row.totalSupplyHouseholdCount, '세대')} />
           <DetailFact term="입주 예정" value={formatYearMonth(row.occupancyExpectedYearMonth)} />
         </DetailFacts>
       </div>

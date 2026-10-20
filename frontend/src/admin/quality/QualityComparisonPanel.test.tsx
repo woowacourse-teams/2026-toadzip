@@ -39,3 +39,26 @@ it('충돌하면 수정값과 근거를 보존하고 추가 저장을 막는다'
   expect(screen.getByLabelText('수정·원천 확인 근거')).toHaveValue('보존할 근거')
   expect(screen.getByRole('button', { name: '선택 수정 저장 · 1개' })).toBeDisabled()
 })
+
+it('공고의 공급행은 원천 비교와 원천 확인만 남기고 값 수정은 공급정보 탭으로 보낸다', async () => {
+  const announcement: ManagementDetailData = { ...detail, housingTypes: [], supplyRows: [{ id: 4, housingComplexId: 1, housingComplexName: '한스빌아파트', housingTypeId: null, modified: false, data: { sourceComplexName: '한스빌', sourceHousingTypeName: '아파트', supplyHouseholdCount: 170 } }] }
+  const rowSnapshot = { ...snapshot, target: 'row:4', detail: announcement, sources: [{ category: 'MYHOME_ANNOUNCEMENT', sourceKey: 'key', automatic: true, evidenceNote: '', rows: [{ id: 9, name: '한스빌', collectedAt: null, raw: { hshld_co: '170' } }] }] }
+  mocks.load.mockResolvedValue({ ...rowSnapshot, target: 'basic' })
+  render(<MemoryRouter initialEntries={['/admin/announcements/7?section=verification&provider=LH']}><QualityComparisonPanel resource="announcements" id="7" detail={announcement} onChanged={changed} onBusyChange={vi.fn()} /></MemoryRouter>)
+  expect(await screen.findByRole('button', { name: /선택 수정 저장/ })).toBeInTheDocument()
+  mocks.load.mockResolvedValue(rowSnapshot)
+  fireEvent.change(screen.getByLabelText('비교·수정 대상'), { target: { value: 'row:4' } })
+  await waitFor(() => expect(screen.queryByRole('button', { name: /선택 수정 저장/ })).not.toBeInTheDocument())
+  expect(screen.queryByRole('button', { name: '이 원천값 사용' })).not.toBeInTheDocument()
+  expect(screen.queryByLabelText(/수정$/)).not.toBeInTheDocument()
+  const link = screen.getByRole('link', { name: '공급정보·단지 연결 탭에서 수정' })
+  const target = new URL(link.getAttribute('href')!, 'http://localhost')
+  expect(target.searchParams.get('section')).toBe('relations')
+  expect(target.searchParams.get('provider')).toBe('LH')
+  mocks.request.mockResolvedValue(rowSnapshot)
+  fireEvent.change(screen.getByLabelText('원천 확인 근거'), { target: { value: '공고문 3쪽과 원천 일치' } })
+  fireEvent.click(screen.getByRole('button', { name: '현재 원천 확인 기록' }))
+  await waitFor(() => expect(mocks.request).toHaveBeenCalledWith('/api/admin/quality/ANNOUNCEMENT/7/comparison/checks', 'POST',
+    expect.objectContaining({ target: 'row:4', evidenceNote: '공고문 3쪽과 원천 일치' }), expect.any(AbortSignal)))
+  expect(await screen.findByText(/현재 원천 확인을 기록했습니다/)).toBeVisible()
+})

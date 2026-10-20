@@ -72,7 +72,10 @@ class AnnouncementJpaMappingTest {
                         "totalSupplyHouseholdCount",
                         "lhSourceSupplyRowIdentifier",
                         "lhTotalSupplyHouseholdCountOwned",
-                        "lhTotalSupplyHouseholdCountEnriched", "adminModified"
+                        "lhTotalSupplyHouseholdCountEnriched", "adminModified",
+                        "supplyGroup", "confirmedTargetFingerprint", "adminExcluded", "areaOverride",
+                        "announcementExclusiveArea", "announcementSupplyArea", "targetCountsComparable",
+                        "myhomeSourceRowIdentifier"
                 )
         );
         assertEntityAttributes(
@@ -90,21 +93,21 @@ class AnnouncementJpaMappingTest {
                         "applicationCondition",
                         "displayOrder",
                         "sourceSupplyTargetIdentifier",
-                        "lhAmountPreservedReason", "adminModified"
+                        "lhAmountPreservedReason", "adminModified", "adminExcluded"
                 )
         );
         assertEntityAttributes(
                 "AnnouncementSchedule",
                 Set.of(
                         "id", "announcement", "scheduleType", "name", "startAt", "endAt", "displayOrder",
-                        "sourceScheduleIdentifier", "complexName"
+                        "sourceScheduleIdentifier", "complexName", "adminModified"
                 )
         );
         assertEntityAttributes(
                 "AnnouncementAttachment",
                 Set.of(
                         "id", "announcement", "fileName", "fileType", "fileUrl", "displayOrder",
-                        "sourceAttachmentIdentifier"
+                        "sourceAttachmentIdentifier", "adminModified"
                 )
         );
         assertEmbeddableAttributes(

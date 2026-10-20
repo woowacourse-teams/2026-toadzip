@@ -570,6 +570,7 @@ class AnnouncementControllerTest {
                       "occupancyExpectedYearMonth": "2027-03",
                       "supplyType": "NEW",
                       "totalSupplyHouseholdCount": 5,
+                      "exclusiveArea": null, "supplyArea": null, "corrected": false,
                       "targets": [{
                         "supplyTargetId": 401,
                         "target": "청년",
@@ -590,6 +591,7 @@ class AnnouncementControllerTest {
                       "occupancyExpectedYearMonth": null,
                       "supplyType": "RESUPPLY",
                       "totalSupplyHouseholdCount": null,
+                      "exclusiveArea": null, "supplyArea": null, "corrected": false,
                       "targets": []
                     }],
                     "competition": {"actualRate": 2.5000, "predictedRate": null},

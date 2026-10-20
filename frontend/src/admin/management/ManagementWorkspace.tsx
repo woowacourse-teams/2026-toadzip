@@ -6,6 +6,7 @@ import type { ManagementResource } from './managementContract'
 import { ManagementDetail } from './ManagementDetail'
 import { ManagementList } from './ManagementList'
 import { managementListParams, managementUrl } from './managementNavigation'
+import { workReturnTo } from '../shared/workNavigation'
 import styles from './ManagementWorkspace.module.css'
 
 export function ManagementWorkspace({ resource }: { resource: ManagementResource }) {
@@ -21,7 +22,7 @@ export function ManagementWorkspace({ resource }: { resource: ManagementResource
   const listParams = managementListParams(params, resource)
   const editorSession = useMemo(() => ({ resource, id }), [resource, id])
   const currentEditor = useRef<{ session: typeof editorSession; listParams: URLSearchParams } | null>(null)
-  const back = managementUrl(resource, listParams)
+  const back = workReturnTo(params) ?? managementUrl(resource, listParams)
   const title = resource === 'complexes' ? '단지' : '공고'
 
   useEffect(() => {

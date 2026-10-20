@@ -3,7 +3,7 @@ import type { ServerResponse } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { loadEnv, type Plugin } from 'vite'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 const LOCAL_PUBLIC_HOUSING_MOCK_FILE = fileURLToPath(
   new URL('../.codex/local-context/public-housing-mock.json', import.meta.url),
@@ -38,6 +38,7 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     test: {
+      exclude: [...configDefaults.exclude, '**/.claude/worktrees/**'],
       environment: 'jsdom',
       setupFiles: './src/test/setup.ts',
     },

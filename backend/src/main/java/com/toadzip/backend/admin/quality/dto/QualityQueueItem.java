@@ -4,4 +4,4 @@ import java.time.Instant;
 import java.util.List;
 
 public record QualityQueueItem(String resource, long id, String name, List<String> reasons,
-        List<String> missingFields, Instant updatedAt) { }
+        List<String> missingFields, List<String> sourceChanges, Instant updatedAt) { }

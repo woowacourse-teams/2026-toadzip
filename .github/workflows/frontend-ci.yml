@@ -27,7 +27,5 @@ jobs:
         run: npm ci
       - name: Verify notification deployment configuration
         run: python3 ../tests/deployment/test_notification_environment.py
-      - name: Verify admin review folder exchange
-        run: node --test ../tests/admin-review/exchange.test.mjs
       - name: Check frontend
         run: npm run check

@@ -369,22 +369,26 @@ public class Announcement {
         adminUpdatedAt = java.time.Instant.now();
     }
 
-    public void reviseByAdmin(Announcement incoming) {
+    public void validateAdminRevision(Announcement incoming) {
         if (adminDeleted) {
             throw new IllegalArgumentException("휴지통에서 복구한 뒤 수정해 주세요.");
         }
         if (lhPanIdReviewed && incoming.provider != provider) {
             throw new IllegalArgumentException("원천 확인된 공고의 공급기관은 변경할 수 없습니다.");
         }
+        if (applicationScheduleReviewed && (!applicationStartDate.equals(incoming.applicationStartDate)
+                || !applicationEndDate.equals(incoming.applicationEndDate))) {
+            throw new IllegalArgumentException("검증된 접수 일정은 일정 관리에서 수정해 주세요.");
+        }
+    }
+
+    public void reviseByAdmin(Announcement incoming) {
+        validateAdminRevision(incoming);
         name = incoming.name;
         supplyType = incoming.supplyType;
         recruitmentType = incoming.recruitmentType;
         provider = incoming.provider;
         postedDate = incoming.postedDate;
-        if (applicationScheduleReviewed && (!applicationStartDate.equals(incoming.applicationStartDate)
-                || !applicationEndDate.equals(incoming.applicationEndDate))) {
-            throw new IllegalArgumentException("검증된 접수 일정은 일정 관리에서 수정해 주세요.");
-        }
         applicationStartDate = incoming.applicationStartDate;
         applicationEndDate = incoming.applicationEndDate;
         winnerAnnouncementDate = incoming.winnerAnnouncementDate;

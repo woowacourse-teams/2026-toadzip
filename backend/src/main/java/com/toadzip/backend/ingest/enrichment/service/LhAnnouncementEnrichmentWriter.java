@@ -240,8 +240,10 @@ public class LhAnnouncementEnrichmentWriter {
             Set<String> sourceKeysExcludedFromLhEnrichment,
             boolean verifiedEmptySupply
     ) {
-        List<SupplyRow> rows = enrichmentRows(announcement, sourceKeysExcludedFromLhEnrichment);
-        if (data.supplies().isEmpty()) {
+        List<SupplyRow> allRows = enrichmentRows(announcement, sourceKeysExcludedFromLhEnrichment);
+        List<SupplyRow> rows = allRows.stream().filter(row -> row.getSupplyGroup() == null).toList();
+        var supplies = data.supplies().stream().filter(source -> !protectedSupply(allRows, source)).toList();
+        if (supplies.isEmpty()) {
             if (!changedHousingTypeRowIds.isEmpty()) {
                 throw missingAmountForChangedHousingType();
             }
@@ -255,9 +257,25 @@ public class LhAnnouncementEnrichmentWriter {
             }
             return new SupplyWriteResult(0, 0, 0, List.of());
         }
-        SupplyMatches matches = matchSupplies(rows, data.supplies());
+        SupplyMatches matches = matchSupplies(rows, supplies);
         requireAmountsForChangedHousingTypes(changedHousingTypeRowIds, matches);
         return writeMatchedSupplies(rows, matches, data.panId());
+    }
+
+    private boolean protectedSupply(List<SupplyRow> rows, LhSupplyData source) {
+        if (rows.stream().noneMatch(row -> row.getSupplyGroup() != null)) {
+            return false;
+        }
+        var matched = supplyMatcher.match(rows, source);
+        if (matched.row() != null) {
+            return matched.row().getSupplyGroup() != null;
+        }
+        var complexRows = rows.stream().filter(row ->
+                com.toadzip.backend.ingest.domain.SupplyNameNormalizer.sameComplex(
+                        row.getSourceComplexName(), source.complexName())
+                || row.getHousingComplex() != null && com.toadzip.backend.ingest.domain.SupplyNameNormalizer.sameComplex(
+                        row.getHousingComplex().getName(), source.complexName())).toList();
+        return !complexRows.isEmpty() && complexRows.stream().allMatch(row -> row.getSupplyGroup() != null);
     }
 
     private void requireAmountsForChangedHousingTypes(
@@ -483,6 +501,7 @@ public class LhAnnouncementEnrichmentWriter {
             List<AnnouncementSchedule> storedSchedules, Set<String> retained, Set<String> replacedPanIds
     ) {
         return storedSchedules.stream()
+                .filter(schedule -> !schedule.isAdminModified())
                 .filter(schedule -> lhSourceForAnyPan(schedule.getSourceScheduleIdentifier(), replacedPanIds))
                 .filter(schedule -> !retained.contains(schedule.getSourceScheduleIdentifier()))
                 .toList();
@@ -492,6 +511,7 @@ public class LhAnnouncementEnrichmentWriter {
             List<AnnouncementAttachment> storedAttachments, Set<String> retained, Set<String> replacedPanIds
     ) {
         return storedAttachments.stream()
+                .filter(attachment -> !attachment.isAdminModified())
                 .filter(attachment -> lhSourceForAnyPan(attachment.getSourceAttachmentIdentifier(), replacedPanIds))
                 .filter(attachment -> !retained.contains(attachment.getSourceAttachmentIdentifier()))
                 .toList();

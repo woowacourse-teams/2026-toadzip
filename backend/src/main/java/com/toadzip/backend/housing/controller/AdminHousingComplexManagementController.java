@@ -36,11 +36,14 @@ public class AdminHousingComplexManagementController {
     private final AdminHousingComplexManagementService service;
     private final IngestExecutionOwnershipService ownership;
     private final ComplexVerificationService verification;
+    private final com.toadzip.backend.housing.service.HousingTypeImpactService typeImpacts;
     public AdminHousingComplexManagementController(AdminHousingComplexManagementService service,
-            IngestExecutionOwnershipService ownership, ComplexVerificationService verification) {
+            IngestExecutionOwnershipService ownership, ComplexVerificationService verification,
+            com.toadzip.backend.housing.service.HousingTypeImpactService typeImpacts) {
         this.service = service;
         this.ownership = ownership;
         this.verification = verification;
+        this.typeImpacts = typeImpacts;
     }
 
     @GetMapping
@@ -82,6 +85,12 @@ public class AdminHousingComplexManagementController {
             service.trash(id, version, false, principal.getName());
             return ResponseEntity.noContent().build();
         }
+    }
+
+    @GetMapping("/{id}/housing-types/{typeId}/impact")
+    public ApiResponse<com.toadzip.backend.housing.dto.response.HousingTypeImpact> typeImpact(
+            @PathVariable long id, @PathVariable long typeId) {
+        return new ApiResponse<>(typeImpacts.detail(id, typeId));
     }
 
     @PutMapping("/{id}/housing-types/{typeId}")

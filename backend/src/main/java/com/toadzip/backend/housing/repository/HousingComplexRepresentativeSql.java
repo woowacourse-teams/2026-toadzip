@@ -25,7 +25,7 @@ final class HousingComplexRepresentativeSql {
                        announcement.application_end_date
                 FROM supply_rows supply_row
                 JOIN latest_leaf announcement ON announcement.id = supply_row.announcement_id
-                WHERE supply_row.housing_complex_id IS NOT NULL
+                WHERE supply_row.admin_excluded = false AND supply_row.housing_complex_id IS NOT NULL
                 ORDER BY supply_row.housing_complex_id, announcement.posted_date DESC, announcement.id DESC
             )
             """;

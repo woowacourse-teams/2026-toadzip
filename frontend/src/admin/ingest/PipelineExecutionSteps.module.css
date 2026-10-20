@@ -17,3 +17,20 @@
 .steps .stopped { color: var(--ds-color-text); }
 .steps .waiting, .steps .unexecuted { color: var(--ds-color-muted); }
 .detail { padding: var(--ds-space-4); border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); }
+
+.content { min-width: 0; }
+.focused .heading h3 { margin: 0; }
+.focused .body { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr); gap: var(--ds-space-6); margin-top: var(--ds-space-4); }
+.focused .steps { display: flex; flex-direction: column; overflow: visible; padding: 0; gap: var(--ds-space-2); }
+.focused .steps li { min-width: 0; flex: none; text-align: left; }
+.focused .steps li::after { display: none; }
+.execution.focused .steps button[aria-pressed] { border: 0; background: transparent; color: inherit; flex-direction: row; text-align: left; padding: var(--ds-space-3); border-radius: var(--ds-radius-control); }
+.focused .steps small { margin-left: auto; white-space: nowrap; }
+.focused .marker { width: 24px; height: 24px; flex-shrink: 0; font-size: var(--ds-text-caption); }
+.focused .running { background: var(--ds-color-action-soft); }
+.focused .content { border-left: 1px solid var(--ds-color-divider); padding-left: var(--ds-space-6); }
+.focused .content > h4 { margin: 0 0 var(--ds-space-4); font-size: var(--ds-text-section); }
+@media (max-width: 900px) {
+  .focused .body { grid-template-columns: minmax(0, 1fr); }
+  .focused .content { grid-row: 1; border-left: 0; border-top: 0; padding: 0 0 var(--ds-space-4); border-bottom: 1px solid var(--ds-color-divider); }
+}

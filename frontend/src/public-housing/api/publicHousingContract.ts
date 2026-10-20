@@ -376,6 +376,9 @@ function decodeAnnouncementSupplyRow(
   const row = recordAt(value, path)
 
   return {
+    ...(Object.hasOwn(row, 'corrected') ? { corrected: booleanAt(row.corrected, `${path}.corrected`) } : {}),
+    ...(Object.hasOwn(row, 'exclusiveArea') ? { exclusiveArea: nullableFiniteNumberAt(row.exclusiveArea, `${path}.exclusiveArea`), supplyArea: nullableFiniteNumberAt(row.supplyArea, `${path}.supplyArea`) } : {}),
+    ...(row.sharedRecruitment != null ? { sharedRecruitment: decodeSharedRecruitment(row.sharedRecruitment, `${path}.sharedRecruitment`) } : {}),
     supplyRowId: positiveSafeIntegerAt(
       recordField(row, 'supplyRowId', path),
       `${path}.supplyRowId`,
@@ -413,6 +416,12 @@ function decodeAnnouncementSupplyRow(
       `${path}.targets`,
     ),
   }
+}
+
+function decodeSharedRecruitment(value: unknown, path: string): NonNullable<RawAnnouncementSupplyRow['sharedRecruitment']> {
+  const group = recordAt(value, path)
+  return { id: positiveSafeIntegerAt(recordField(group, 'id', path), `${path}.id`),
+    householdCount: nullableSafeIntegerAt(recordField(group, 'householdCount', path), `${path}.householdCount`) }
 }
 
 function decodeNullableAnnouncementSupplyComplex(

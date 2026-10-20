@@ -43,7 +43,9 @@
           "convertedDeposit": null,
           "applicationCondition": "공고문 참조"
         }
-      ]
+      ],
+      "exclusiveArea": 36.5,
+      "supplyArea": 49.8
     }
   ],
   "schedules": [

@@ -69,3 +69,7 @@
 .actions button {
   min-height: var(--ds-control-height-md);
 }
+
+.keyInput { display: flex; gap: var(--ds-space-2); }
+.keyInput input { min-width: 0; }
+.keyInput button { flex-shrink: 0; }

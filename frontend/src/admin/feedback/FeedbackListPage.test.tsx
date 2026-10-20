@@ -4,9 +4,9 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { FeedbackListPage } from './FeedbackListPage'
 import { listFeedback, type FeedbackPage } from './api'
 
-vi.mock('./api', () => ({ listFeedback: vi.fn() }))
+vi.mock('./api', async original => ({ ...await original<typeof import('./api')>(), listFeedback: vi.fn() }))
 beforeEach(() => { vi.mocked(listFeedback).mockReset() })
-const entry = { id: 7, content: '지도에서 단지를 찾기 어려워요.\n검색을 개선해 주세요.', createdAt: '2026-10-07T01:00:00Z' }
+const entry = { version: 0, status: 'OPEN' as const, note: '', relatedResource: '' as const, relatedId: null, actor: null, processedAt: null, id: 7, content: '지도에서 단지를 찾기 어려워요.\n검색을 개선해 주세요.', createdAt: '2026-10-07T01:00:00Z' }
 const page = (content = entry.content): FeedbackPage => ({ items: [{ ...entry, content }], page: 0, hasNext: false, totalElements: 1, totalPages: 1 })
 function setup(path = '/admin/feedback') { render(<MemoryRouter initialEntries={[path]}><FeedbackListPage /></MemoryRouter>) }
 
@@ -32,6 +32,13 @@ it('본문 검색 시 첫 페이지로 이동하고 초기화한다', async () =
   await screen.findByRole('heading', { name: '의견 #7' })
   fireEvent.click(screen.getByRole('button', { name: '초기화' }))
   await waitFor(() => expect(listFeedback).toHaveBeenLastCalledWith(new URLSearchParams({ page: '0', size: '20' }), expect.any(AbortSignal)))
+})
+
+it('처리한 의견은 목록에서 실제 처리자와 처리 시각을 확인한다', async () => {
+  vi.mocked(listFeedback).mockResolvedValue({ ...page(), items: [{ ...entry, status: 'DONE',
+    note: '공고 보정 후 확인', actor: 'operator', processedAt: '2026-10-19T01:00:00Z' }] })
+  setup()
+  expect(await screen.findByText(/최근 처리: operator/)).toHaveTextContent('2026. 10. 19. 10:00')
 })
 
 it('다음 페이지를 조회한다', async () => {

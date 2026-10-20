@@ -192,6 +192,9 @@ function toAnnouncementSupplyRow(
   raw: RawAnnouncementSupplyRow,
 ): AnnouncementSupplyRow {
   return {
+    ...(raw.corrected !== undefined ? { corrected: raw.corrected } : {}),
+    ...('exclusiveArea' in raw ? { exclusiveArea: raw.exclusiveArea, supplyArea: raw.supplyArea } : {}),
+    ...(raw.sharedRecruitment ? { sharedRecruitment: raw.sharedRecruitment } : {}),
     supplyRowId: canonicalId(raw.supplyRowId),
     sourceComplexName: raw.sourceComplexName,
     sourceHousingTypeName: raw.sourceHousingTypeName,

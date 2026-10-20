@@ -295,6 +295,7 @@ public class AnnouncementSearchRepository {
         supplyRowQuery.select(supplyRow.get("id"))
                 .where(
                         criteriaBuilder.equal(supplyRow.get("announcement"), announcement),
+                        criteriaBuilder.isFalse(supplyRow.get("adminExcluded")),
                         criteriaBuilder.isNotNull(supplyRow.get("housingComplex")),
                         regionPredicate(criteriaBuilder, housingComplex, condition.regionCodes())
                 );

@@ -170,7 +170,7 @@ it('저장 중 편집을 닫은 뒤 도착한 등록 응답은 편집 화면을 
 
 it('추가 화면도 조회 표를 유지하고 JSON 및 직접 입력을 제공한다', async () => {
   renderPage('/admin/announcements/new?keyword=행복')
-  expect(await screen.findByRole('table')).toBeVisible()
+  expect(await screen.findByRole('table', { name: '정제 공고 목록' })).toBeVisible()
   expect(screen.getByRole('heading', { name: '공고 관리', level: 1 })).toBeVisible()
   const editor = screen.getByRole('region', { name: '공고 추가' })
   expect(within(editor).getByRole('heading', { name: 'JSON 가져오기' })).toBeVisible()
@@ -222,4 +222,12 @@ it('상세는 읽기 화면으로 열고 수정 버튼을 눌렀을 때만 편�
   expect(screen.queryByRole('button', { name: '변경사항 저장' })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: /^수정$/ }))
   expect(screen.getByLabelText('이름')).toHaveValue(summary.name)
+})
+
+it('검토 목록에서 들어온 상세는 원래 검토 조건으로 돌아간다', async () => {
+  const origin = '/admin/quality?keyword=두꺼비&reason=MISSING&page=2'
+  renderPage(`/admin/complexes/7?workReturnTo=${encodeURIComponent(origin)}`, false)
+  await screen.findByRole('button', { name: /^수정$/ })
+  expect(screen.getByRole('link', { name: '← 목록으로 돌아가기' })).toHaveAttribute('href', new URL(origin, 'https://local.invalid').pathname + new URL(origin, 'https://local.invalid').search)
+  expect(screen.getByRole('link', { name: '편집 닫기' })).toHaveAttribute('href', new URL(origin, 'https://local.invalid').pathname + new URL(origin, 'https://local.invalid').search)
 })
