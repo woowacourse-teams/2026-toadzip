@@ -6,10 +6,11 @@ import type { PdfFocus } from '../../public-housing/components/PdfDocumentPrevie
 import { applyJsonUpdate, loadJsonWorkspace, previewJsonUpdate, type JsonWorkspace } from '../announcement-json/api'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
 import type { CorrectionRow, SupplyCorrectionInput } from '../supply/supplyCorrectionApi'
-import { ManagementError } from '../management/api'
+import { getManagementDetail, ManagementError } from '../management/api'
+import { labels } from '../management/fields'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import { readExtraction, type Evidence } from './extraction'
-import { checkAnnouncement, type HousingCandidates } from './matching'
+import { checkAnnouncement, type ComplexLabels, type HousingCandidates } from './matching'
 import { applicableCells, assembleReview, cellMatches, createReview, housingNameCandidates, pendingItems, pendingSchedule, rebaseReview, remapSchedule, shown, type HousingNameCandidate, type Review, type ReviewFilter, type ReviewSection, type ScheduleReview } from './review'
 import { ReviewCells } from './ReviewCells'
 import { ReviewSupply } from './ReviewSupply'
@@ -27,6 +28,20 @@ async function candidates(workspace: JsonWorkspace, signal?: AbortSignal): Promi
   const ids = [...new Set(workspace.supply.rows.map(row => row.housingComplexId).filter(id => id !== null))]
   return Object.fromEntries(await Promise.all(ids.map(async id => [id, await getMatchingHousingTypes(id, signal)])))
 }
+/** 기준 단지는 원천 공급행이 아니라 단지 도메인(단지명 + 임대유형)으로 보여준다. 조회에 실패하면 공급행의 연결 단지명만 쓴다. */
+async function complexLabels(workspace: JsonWorkspace, signal?: AbortSignal): Promise<ComplexLabels> {
+  const linked = new Map(workspace.supply.rows.flatMap(row => row.housingComplexId === null ? [] : [[row.housingComplexId, row.housingComplexName] as const]))
+  return Object.fromEntries(await Promise.all([...linked].map(async ([id, fallback]) => {
+    try {
+      const { data } = await getManagementDetail('complexes', String(id), signal)
+      const rental = typeof data.rentalType === 'string' ? labels[data.rentalType] ?? data.rentalType : null
+      return [id, [typeof data.name === 'string' ? data.name : fallback ?? `단지 #${id}`, rental].filter(Boolean).join(' · ')]
+    } catch (cause) {
+      if (signal?.aborted) throw cause
+      return [id, fallback ?? `단지 #${id}`]
+    }
+  })))
+}
 export function PdfCorrectionPage() {
   const { id = '' } = useParams()
   return <PdfCorrectionWorkspace key={id} id={id} />
@@ -38,7 +53,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   const [params] = useSearchParams()
   // The draft is the baseline for PDF matching, including unsaved manual rows.
   const [initialRows] = useState(supplyDraft?.rows)
-  const [workspace, setWorkspace] = useState<JsonWorkspace | null>(null), [housing, setHousing] = useState<HousingCandidates>({})
+  const [workspace, setWorkspace] = useState<JsonWorkspace | null>(null), [housing, setHousing] = useState<HousingCandidates>({}), [complexes, setComplexes] = useState<ComplexLabels>({})
   const [phase, setPhase] = useState<Phase>('prepare'), [section, setSection] = useState<ReviewSection>('supply')
   const [text, setText] = useState(''), [review, setReview] = useState<Review | null>(null)
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false), [attempt, setAttempt] = useState(0)
@@ -67,8 +82,8 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     if (!/^[1-9]\d*$/.test(id)) { setError('올바른 공고 주소가 아닙니다.'); return }
     void loadJsonWorkspace(id, controller.signal).then(async value => {
       if (initialRows) value = { ...value, supply: { ...value.supply, rows: initialRows } }
-      const next = await candidates(value, controller.signal)
-      if (!controller.signal.aborted) { setWorkspace(value); setHousing(next); setSourceUrl(String(value.detail.data.originalUrl ?? '')); setAttachmentId(String(value.detail.attachments?.find(item => /\.pdf(?:$|[?\s])/i.test(item.fileName))?.attachmentId ?? '')) }
+      const [next, names] = await Promise.all([candidates(value, controller.signal), complexLabels(value, controller.signal)])
+      if (!controller.signal.aborted) { setWorkspace(value); setHousing(next); setComplexes(names); setSourceUrl(String(value.detail.data.originalUrl ?? '')); setAttachmentId(String(value.detail.attachments?.find(item => /\.pdf(?:$|[?\s])/i.test(item.fileName))?.attachmentId ?? '')) }
     }).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '공고를 불러오지 못했습니다.') })
     return () => controller.abort()
   }, [id, attempt, initialRows])
@@ -132,9 +147,9 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   async function reload() {
     setBusy(true); setError('')
     try {
-      const latest = await loadJsonWorkspace(id), nextHousing = await candidates(latest)
+      const latest = await loadJsonWorkspace(id), [nextHousing, names] = await Promise.all([candidates(latest), complexLabels(latest)])
       if (review) setReview(rebaseReview(review, latest, nextHousing))
-      setWorkspace(latest); setHousing(nextHousing); setBlocked(false); setUncertain(false); setPhase('review')
+      setWorkspace(latest); setHousing(nextHousing); setComplexes(names); setBlocked(false); setUncertain(false); setPhase('review')
       setNotice('최신 저장값을 불러왔습니다. 수동 입력은 유지했습니다. 달라진 기존 값과 선택 항목을 비교한 뒤 다시 적용하세요.')
     } catch (cause) { setError(cause instanceof Error ? cause.message : '최신값을 불러오지 못했습니다.') }
     finally { setBusy(false) }
@@ -164,7 +179,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
           <div className={styles.filters} role="group" aria-label="검토 항목 필터">{filterLabels.map(([key, label]) => <Button data-design-system key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}{key !== 'all' && ` ${key === 'pending' ? pending.length : counts[key]}`}</Button>)}</div>
         </div>
         <fieldset disabled={busy || blocked} className={styles.reviewFields}>
-          {section === 'supply' && <ReviewSupply review={review} workspace={workspace} housing={housing} filter={filter} empty={empty} onChange={change} onEvidence={evidence} />}
+          {section === 'supply' && <ReviewSupply review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} />}
           {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.schedules.map((schedule, index) => scheduleMatches(schedule) && <section className={styles.supplyBlock} key={index} data-review-id={`schedule:${index}`} tabIndex={-1}><header><h3>{shown(schedule.cells.find(cell => cell.field === 'name')?.value)}</h3><label><input type="checkbox" checked={schedule.include} onChange={event => updateSchedule(index, { include: event.target.checked, reviewed: true })} />일정 {index + 1} 적용</label></header>
             {pendingSchedule(schedule) && <div className={styles.pending}><p><strong>확인 필요</strong> {schedule.proposal.reason}</p><div className={styles.actions}><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: true, reviewed: true })}>{`일정 ${index + 1} 적용`}</Button><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: false, reviewed: true })}>{`일정 ${index + 1} 적용 안 함`}</Button></div></div>}
             <p>{pendingSchedule(schedule) ? '' : schedule.proposal.reason || (schedule.proposal.existingIds.length ? '기존 일정 갱신' : '새 일정 추가')}{schedule.proposal.existingIds.map(existingId => { const event = workspace.events.find(item => item.id === existingId); return <small className={styles.scheduleBefore} key={existingId}>#{existingId} · {event?.complexName ?? '공고 전체'} · {shown(event?.data.name)} · {shown(event?.data.startAt)} ~ {shown(event?.data.endAt)}</small> })}</p>

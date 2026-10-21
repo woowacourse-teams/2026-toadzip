@@ -13,7 +13,7 @@ vi.mock('../../public-housing/api/announcementAttachments', () => ({ loadAnnounc
 vi.mock('../../public-housing/components/PdfDocumentPreview', () => ({ default: ({ focus }: { focus: { page: number; query: string } | null }) => <p>PDF {focus?.page ?? 1}쪽 · 강조 {focus?.query || '없음'}</p> }))
 vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(),
   getManagementPage: async () => ({ items: [{ id: 7, name: '검색 단지', subtitle: '주소 확인' }] }),
-  getManagementDetail: async () => ({ data: { address: { pnu: '1114010100100010000' } } }) }))
+  getManagementDetail: async () => ({ data: { name: '익산한스빌', rentalType: 'NATIONAL_RENTAL', address: { pnu: '1114010100100010000' } } }) }))
 const base = scenario('hansville').workspace
 const workspace = { ...base, detail: { ...base.detail, data: { ...base.detail.data, name: '익산한스빌 국민임대주택 예비입주자 자격완화 모집 공고(2026.10.08)', postedDate: '2026-10-08' }, attachments: [{ attachmentId: 68, fileName: '공고문.pdf', fileType: 'ANNOUNCEMENT', fileUrl: 'https://example.com/notice.pdf' }] } }
 beforeEach(() => {
@@ -181,6 +181,16 @@ it('확인 필요 항목을 세고 하단 버튼으로 다음 항목에 이동�
   expect(screen.getByText('확인 필요 없음')).toBeVisible()
   fireEvent.click(within(screen.getByRole('group', { name: '검토 항목 필터' })).getByRole('button', { name: '전체' }))
   expect(screen.getByRole('checkbox', { name: '일정 2 적용' })).not.toBeChecked()
+})
+
+it('기준 단지는 원천 공급행이 아니라 단지명·임대유형으로 한 번씩 보여준다', async () => {
+  const [first] = workspace.supply.rows
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, rows: [first, { ...first, id: 91, key: 'row:91', typeName: '42.1900', displayOrder: 1 }] } })
+  await open()
+  fireEvent.change(screen.getByRole('combobox', { name: '공급행 1 저장할 위치' }), { target: { value: 'new' } })
+  const anchor = screen.getByRole('combobox', { name: '공급행 1 기준 단지' })
+  expect(within(anchor).getAllByRole('option').map(option => option.textContent)).toEqual(['다른 단지 찾기', '익산한스빌 · 국민임대'])
+  expect(anchor).toHaveValue(first.key)
 })
 
 it('다른 공고의 응답이면 공고명·공고일이 다르다고 알리고 검토 화면에도 남긴다', async () => {

@@ -5,6 +5,8 @@ import type { CorrectionRow } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, text, type Extraction } from './extraction'
 
 export type HousingCandidates = Record<number, MatchingHousingType[]>
+/** 단지 ID별 표시 이름(단지명 · 임대유형) */
+export type ComplexLabels = Record<number, string>
 export type RowProposal = {
   destination: string
   anchorKey: string
