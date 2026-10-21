@@ -108,7 +108,7 @@ it('편집 패널에서 검토를 저장하면 탭과 목록 필터를 유지하
   await waitFor(() => expect(api.getManagementPage).toHaveBeenCalledTimes(2))
   expect(api.getManagementPage.mock.lastCall?.[1].get('provider')).toBe('LH')
   expect(screen.getByRole('button', { name: '데이터 검증' })).toHaveAttribute('aria-pressed', 'true')
-  expect(screen.getByRole('link', { name: summary.name }).closest('th')).toHaveTextContent('확인 완료 · 1/6항목')
+  expect(screen.getByRole('link', { name: summary.name }).closest('tr')).toHaveTextContent('확인 완료 · 1/6항목')
   const reviewDetails = screen.getByText('확인 범위·검토 기록').closest('details')!
   if (!reviewDetails.hasAttribute('open')) fireEvent.click(screen.getByText('확인 범위·검토 기록'))
   const panel = await screen.findByRole('region', { name: '단지 데이터 검증' })
