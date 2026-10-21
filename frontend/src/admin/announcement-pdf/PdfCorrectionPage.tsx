@@ -10,7 +10,7 @@ import { ManagementError } from '../management/api'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import { readExtraction, type Evidence } from './extraction'
 import { checkAnnouncement, type HousingCandidates } from './matching'
-import { applicableCells, assembleReview, cellMatches, createReview, pendingItems, pendingSchedule, rebaseReview, remapSchedule, shown, type Review, type ReviewFilter, type ReviewSection, type ScheduleReview } from './review'
+import { applicableCells, assembleReview, cellMatches, createReview, housingNameCandidates, pendingItems, pendingSchedule, rebaseReview, remapSchedule, shown, type HousingNameCandidate, type Review, type ReviewFilter, type ReviewSection, type ScheduleReview } from './review'
 import { ReviewCells } from './ReviewCells'
 import { ReviewSupply } from './ReviewSupply'
 import { RequestPreparation } from './RequestPreparation'
@@ -47,6 +47,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   const [pdf, setPdf] = useState<{ url: string; name: string } | null>(null), [pdfError, setPdfError] = useState('')
   const [focus, setFocus] = useState<PdfFocus | null>(null), [mobileView, setMobileView] = useState<'pdf' | 'review'>('review')
   const [reason, setReason] = useState(''), [sourceUrl, setSourceUrl] = useState(''), [sourcePage, setSourcePage] = useState('')
+  const [renames, setRenames] = useState<HousingNameCandidate[]>([])
   const [filter, setFilter] = useState<ReviewFilter>('all'), [jump, setJump] = useState<{ id: string; nonce: number } | null>(null)
   const heading = useRef<HTMLHeadingElement>(null)
   const reviewPane = useRef<HTMLDivElement>(null)
@@ -55,6 +56,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   const checks = useMemo(() => parsed.ok && workspace ? checkAnnouncement(parsed.value, workspace.detail.data) : [], [parsed, workspace])
   const backParams = new URLSearchParams(params); backParams.delete('failureCount')
   const supplyParams = new URLSearchParams(backParams); supplyParams.set('section', 'relations')
+  const historyParams = new URLSearchParams(backParams); historyParams.set('section', 'history')
   const back = `/admin/announcements/${id}${backParams.size ? `?${backParams}` : ''}`
   const rawFailureReturn = params.get('failureReturnTo'), failureReturn = rawFailureReturn && /^\/admin\/failures(?:\?|$)/.test(rawFailureReturn) ? rawFailureReturn : null
   const failureCount = Number(params.get('failureCount'))
@@ -118,7 +120,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       const checked = await previewJsonUpdate(id, input)
       saving = true
       const latest = await applyJsonUpdate(id, input, checked.confirmationToken)
-      setWorkspace(latest); setPhase('result'); setText(''); setBlocked(false); setUncertain(false)
+      setRenames(housingNameCandidates(review)); setWorkspace(latest); setPhase('result'); setText(''); setBlocked(false); setUncertain(false)
     } catch (cause) {
       const rejected = cause instanceof ManagementError && cause.status >= 400 && cause.status < 500
       const uncertainSave = saving && !rejected
@@ -175,6 +177,8 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       <footer className={styles.footer}><div><strong>{applicableCells(review).filter(cell => cell.selected && !cell.locked).length}개 값 반영</strong><span>선택하지 않은 값은 유지합니다.</span></div>{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`확인 필요 ${pending.length}개 남음 ↓`}</Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}<div className={styles.actions}><Button data-design-system className={styles.secondaryButton} disabled={busy || blocked} onClick={() => { if (window.confirm('검토 입력을 초기화하고 응답 준비로 돌아갈까요?')) { setPhase('prepare'); setReview(null) } }}>응답 다시 준비</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
       {phase === 'review' && !supplyDraft && <details className={styles.reason} open={reasonProblem ? true : undefined}><summary>적용 근거 확인{reasonProblem ? ' · 필수 입력 필요' : ''}</summary>{reasonProblem && <p role="status" className={styles.error}>{reasonProblem}</p>}<label>보정 이유<textarea value={reason} maxLength={2000} disabled={busy || blocked} onChange={event => { setReason(event.target.value) }} /></label><label>공식 근거 URL<input value={sourceUrl} maxLength={2048} disabled={busy || blocked} onChange={event => { setSourceUrl(event.target.value) }} /></label><label>근거 쪽<input value={sourcePage} maxLength={100} disabled={busy || blocked} onChange={event => { setSourcePage(event.target.value) }} /></label></details>}
     </>}
-    {phase === 'result' && <section className={styles.result}><h2>공고 보정을 적용했습니다.</h2><p>선택한 변경을 저장했습니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.</p><p>보정 저장은 공고 전체 검토 완료와 다릅니다.{failureReturn ? ` ${Number.isSafeInteger(failureCount) && failureCount > 0 ? `이 공고의 오류 ${failureCount}건은` : '연결된 오류는'} 다음 정제 때 다시 판정됩니다.` : ''}</p><div className={styles.actions}><Link to={`/?announcementId=${id}`} target="_blank" rel="noreferrer">공개 공고 확인</Link><Link to={`/admin/announcements/${id}?${supplyParams}`}>저장된 공급정보 확인</Link>{failureReturn && <Link to={failureReturn}>실패 검토로 돌아가기</Link>}</div></section>}
+    {phase === 'result' && <section className={styles.result}><h2>공고 보정을 적용했습니다.</h2><p>선택한 변경을 저장했습니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.</p><p>보정 저장은 공고 전체 검토 완료와 다릅니다.{failureReturn ? ` ${Number.isSafeInteger(failureCount) && failureCount > 0 ? `이 공고의 오류 ${failureCount}건은` : '연결된 오류는'} 다음 정제 때 다시 판정됩니다.` : ''}</p><div className={styles.actions}><Link to={`/?announcementId=${id}`} target="_blank" rel="noreferrer">공개 공고 확인</Link><Link to={`/admin/announcements/${id}?${supplyParams}`}>저장된 공급정보 확인</Link><Link to={`/admin/announcements/${id}?${historyParams}`}>출처·수정 이력 보기</Link>{failureReturn && <Link to={failureReturn}>실패 검토로 돌아가기</Link>}</div>
+      {renames.length > 0 && <section className={styles.renames} aria-labelledby="housing-name-title"><h3 id="housing-name-title">단지 주택형 이름 후보</h3><p className={styles.hint}>연결한 단지 주택형의 이름이 이번 공고 표기와 다릅니다. 이 화면은 저장하지 않으며, 바꾸려면 단지 상세에서 따로 수정하세요. 관리자가 수정한 주택형은 이후 재수집으로 이름·면적·세대수가 갱신되지 않습니다.</p><ul>{renames.map(item => <li key={item.id}>#{item.id} 「{item.current}」 → 공고 표기 「{item.pdf}」</li>)}</ul></section>}
+    </section>}
   </section>
 }
