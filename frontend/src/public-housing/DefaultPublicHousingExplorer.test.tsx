@@ -151,13 +151,11 @@ describe('LocalPublicHousingExplorer', () => {
     await screen.findByRole('searchbox', { name: '지역, 지하철역, 단지, 공고 검색' })
     fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
     const detailFilter = screen.getByRole('region', { name: '지역 필터' })
-    fireEvent.change(within(detailFilter).getByLabelText('시·도'), {
-      target: { value: '11' },
-    })
+    fireEvent.click(within(detailFilter).getByRole('radio', { name: '서울' }))
 
-    const districtSelect = await within(detailFilter).findByLabelText('시·군·구')
-    expect(await within(districtSelect).findByRole('option', { name: '중구' }))
-      .toHaveValue('11140')
+    const district = within(detailFilter).getByRole('group', { name: '시·군·구 선택' })
+    expect(await within(district).findByRole('radio', { name: '중구' }))
+      .toHaveAttribute('value', '11140')
     expect(screen.queryByText('세부 지역을 불러오지 못했습니다.'))
       .not.toBeInTheDocument()
   })

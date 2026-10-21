@@ -1,6 +1,6 @@
 import { StrictMode, useEffect } from 'react'
 import { act, render, renderHook, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { HousingMapRepository } from '../api/housingMapRepository.ts'
 import type {
   HousingMapAggregateResult,
@@ -33,6 +33,8 @@ const individualResult: HousingMapIndividualResult = {
 }
 
 describe('useHousingMapResults', () => {
+  afterEach(() => vi.restoreAllMocks())
+
   it('최초 요청에는 직전 단계가 없고 다음 요청에는 마지막 확정 단계를 사용한다', async () => {
     const repository = createRepository()
     repository.findMap
@@ -94,6 +96,139 @@ describe('useHousingMapResults', () => {
 
     expect(result.current.state.applied?.result).toBe(individualResult)
   })
+
+  it('다른 영역 조회를 마친 뒤 돌아오면 이전 결과를 로딩 없이 즉시 재사용한다', async () => {
+    const repository = createRepository()
+    const otherResult = { ...aggregateResult, nodes: [] }
+    repository.findMap.mockResolvedValueOnce(aggregateResult).mockResolvedValueOnce(otherResult)
+    const { result } = renderHook(() => useHousingMapResults(repository))
+    const first = viewport(8)
+    const second = { ...first, bounds: { ...bounds, southWestLng: 126.7 } }
+
+    await act(async () => { result.current.request(first) })
+    await act(async () => { result.current.request(second) })
+    expect(result.current.state.applied?.result).toBe(otherResult)
+
+    act(() => { expect(result.current.request(first)).toBe('applied') })
+
+    expect(result.current.state.status).toBe('ready')
+    expect(result.current.state.applied).toEqual({ query: { bounds, zoom: 8 }, result: aggregateResult })
+    expect(result.current.state.applied?.result).toBe(aggregateResult)
+    expect(repository.findMap).toHaveBeenCalledTimes(2)
+  })
+
+  it('필터별 결과를 구분하고 이전 필터로 돌아오면 해당 결과를 재사용한다', async () => {
+    const repository = createRepository()
+    const filteredResult = { ...aggregateResult, nodes: [] }
+    repository.findMap.mockResolvedValueOnce(aggregateResult).mockResolvedValueOnce(filteredResult)
+    const { result } = renderHook(() => useHousingMapResults(repository))
+
+    await act(async () => { result.current.request(viewport(8)) })
+    await act(async () => { result.current.request(viewport(8), { minDeposit: 100000000 }) })
+    expect(result.current.state.applied?.result).toBe(filteredResult)
+    act(() => { expect(result.current.request(viewport(8))).toBe('applied') })
+
+    expect(result.current.state.applied?.result).toBe(aggregateResult)
+    expect(repository.findMap).toHaveBeenCalledTimes(2)
+  })
+
+  it('줌이나 직전 집계 단계가 다르면 조회하고 이미 확인한 단계 전환만 재사용한다', async () => {
+    const repository = createRepository()
+    repository.findMap.mockResolvedValueOnce(aggregateResult)
+      .mockResolvedValueOnce(individualResult)
+      .mockResolvedValueOnce(aggregateResult)
+    const { result } = renderHook(() => useHousingMapResults(repository))
+
+    await act(async () => { result.current.request(viewport(8)) })
+    await act(async () => { result.current.request(viewport(14)) })
+    // A different previous stage may change the result at a zoom boundary.
+    await act(async () => { expect(result.current.request(viewport(8))).toBe('started') })
+    expect(repository.findMap).toHaveBeenLastCalledWith(
+      { bounds, zoom: 8, previousResolvedStage: 4 }, expect.any(AbortSignal),
+    )
+    act(() => { expect(result.current.request(viewport(14))).toBe('applied') })
+    expect(result.current.state.applied?.result).toBe(individualResult)
+    act(() => { expect(result.current.request(viewport(8))).toBe('applied') })
+    expect(result.current.state.applied?.result).toBe(aggregateResult)
+    expect(repository.findMap).toHaveBeenCalledTimes(3)
+  })
+
+  it('저장된 영역으로 복귀하면 진행 중인 요청을 취소하고 늦은 응답을 캐시에 넣지 않는다', async () => {
+    const pending = deferred<HousingMapAggregateResult>()
+    const repository = createRepository()
+    const otherResult = { ...aggregateResult, nodes: [] }
+    repository.findMap.mockResolvedValueOnce(aggregateResult)
+      .mockResolvedValueOnce(otherResult)
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce(otherResult)
+    const { result } = renderHook(() => useHousingMapResults(repository))
+
+    await act(async () => { result.current.request(viewport(8)) })
+    await act(async () => { result.current.request(viewport(9)) })
+    act(() => result.current.request(viewport(10)))
+    const pendingSignal = repository.findMap.mock.calls[2]?.[1]
+    act(() => { expect(result.current.request(viewport(8))).toBe('applied') })
+    expect(pendingSignal.aborted).toBe(true)
+    await act(() => pending.resolve(otherResult))
+    expect(result.current.state.applied?.result).toBe(aggregateResult)
+    await act(async () => { expect(result.current.request(viewport(10))).toBe('started') })
+    expect(repository.findMap).toHaveBeenCalledTimes(4)
+  })
+
+  it('재사용해도 최초 수신 시각부터 5분이 지나면 이전 결과를 유지하며 다시 조회한다', async () => {
+    let now = 1000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const refreshed = deferred<HousingMapAggregateResult>()
+    const updatedResult = { ...aggregateResult, nodes: [] }
+    const repository = createRepository()
+    repository.findMap.mockResolvedValueOnce(aggregateResult).mockReturnValueOnce(refreshed.promise)
+    const { result } = renderHook(() => useHousingMapResults(repository))
+
+    await act(async () => { result.current.request(viewport(8)) })
+    now += 4 * 60 * 1000
+    act(() => { expect(result.current.request(viewport(8))).toBe('applied') })
+    now += 60 * 1000
+    act(() => { expect(result.current.request(viewport(8))).toBe('started') })
+    expect(result.current.state.status).toBe('loading')
+    expect(result.current.state.applied?.result).toBe(aggregateResult)
+    await act(() => refreshed.resolve(updatedResult))
+    expect(result.current.state.status).toBe('ready')
+    expect(result.current.state.applied?.result).toBe(updatedResult)
+  })
+
+  it('최근 사용한 20개 결과만 남기고 밀려난 영역은 다시 조회한다', async () => {
+    const repository = createRepository()
+    repository.findMap.mockResolvedValue(aggregateResult)
+    const { result } = renderHook(() => useHousingMapResults(repository))
+    const views = Array.from({ length: 21 }, (_, index) => ({
+      ...viewport(8), bounds: { ...bounds, southWestLng: 126.8 - index * 0.01 },
+    }))
+    for (const view of views.slice(0, 20)) {
+      await act(async () => { result.current.request(view) })
+    }
+    act(() => { expect(result.current.request(views[0])).toBe('applied') })
+    await act(async () => { result.current.request(views[20]) })
+    act(() => { expect(result.current.request(views[0])).toBe('applied') })
+    await act(async () => { expect(result.current.request(views[1])).toBe('started') })
+
+    expect(repository.findMap).toHaveBeenCalledTimes(22)
+  })
+
+  it.each(['policyVersion', 'regionDatasetVersion'] as const)(
+    '%s가 바뀐 응답을 받으면 이전 버전의 결과는 재사용하지 않는다', async (version) => {
+      const repository = createRepository()
+      const updatedResult = { ...aggregateResult, [version]: 'new-version' }
+      repository.findMap.mockResolvedValueOnce(aggregateResult).mockResolvedValue(updatedResult)
+      const { result } = renderHook(() => useHousingMapResults(repository))
+
+      await act(async () => { result.current.request(viewport(8)) })
+      await act(async () => { result.current.request(viewport(9)) })
+      await act(async () => { expect(result.current.request(viewport(8))).toBe('started') })
+
+      expect(result.current.state.applied?.result).toBe(updatedResult)
+      expect(repository.findMap).toHaveBeenCalledTimes(3)
+    },
+  )
 
   it('적용된 영역으로 복귀하면 다른 영역의 pending 요청을 취소한다', async () => {
     const pending = deferred<HousingMapIndividualResult>()

@@ -1,4 +1,5 @@
 .root {
+  container: complex-filters / inline-size;
   position: relative;
   width: 100%;
   min-width: 0;
@@ -22,13 +23,13 @@
   pointer-events: auto;
 }
 
-/* 필터 칩은 왼쪽에서 따로 넘기고, 모집중 토글은 줄 오른쪽 끝에 고정한다. */
+/* 실제 버튼 너비만큼 묶어 오른쪽에 정렬하고, 버튼 사이 간격은 유지한다. */
 .toolbar {
   position: relative;
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  width: max-content;
   max-width: 100%;
   margin-inline-start: auto;
   margin-top: 1px;
@@ -37,29 +38,32 @@
 }
 
 .scroller {
+  position: relative;
   box-sizing: border-box;
   width: 100%;
-  padding: 5px;
+  max-width: 100%;
   min-width: 0;
-  flex: 1 1 auto;
-  overflow-x: auto;
-  overflow-y: hidden;
-  /* 넘치는 필터는 화살표로 이동한다. 칩 글자는 끌어도 선택되지 않게 한다. */
-  scrollbar-width: none;
-  user-select: none;
-  overscroll-behavior-inline: contain;
+  padding: 5px;
 }
 
-.scroller::-webkit-scrollbar {
-  display: none;
-}
-
-/* 시작 위치는 컴포넌트가 처음 잰 값으로 고정한다(margin-inline-start 인라인 스타일). */
 .primaryFilters {
   display: flex;
-  width: max-content;
+  justify-content: flex-start;
   gap: 8px;
-  padding-inline-end: 44px;
+}
+
+.primaryFilters .trigger {
+  flex-shrink: 0;
+}
+
+.primaryFilters .trigger[data-topic='region'] {
+  min-width: 0;
+  max-width: 118px;
+}
+
+.primaryFilters .trigger[data-topic='price'][data-active='true'] {
+  min-width: 120px;
+  flex-shrink: 1;
 }
 
 .trigger {
@@ -140,7 +144,6 @@
 .triggerText {
   min-width: 0;
   display: block;
-  max-width: 132px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -516,8 +519,8 @@
 }
 
 .mobileToolbar {
-  flex-direction: row;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: stretch;
   pointer-events: none;
   width: 100%;
   gap: 6px;
@@ -525,17 +528,16 @@
 }
 
 .mobileScroller {
+  box-sizing: border-box;
   width: 100%;
   pointer-events: auto;
   padding: 6px 4px 5px;
   display: flex;
+  justify-content: flex-start;
   min-width: 0;
   flex: 1 1 auto;
   gap: 4px;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scrollbar-width: none;
-  mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+  overflow: visible;
 }
 
 .mobileScroller::-webkit-scrollbar {
@@ -564,7 +566,15 @@
 .mobileTrigger {
   position: relative;
   gap: 4px;
+}
+
+.mobileTrigger[data-topic='region'] {
   max-width: 104px;
+}
+
+.mobileTrigger[data-topic='price'][data-active='true'] {
+  min-width: 100px;
+  flex-shrink: 1;
 }
 
 .mobileTrigger::after {
@@ -581,8 +591,11 @@
 }
 
 .mobileTrigger span {
+  min-width: 0;
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mobileTrigger[data-active='true'],
@@ -780,129 +793,62 @@
 
 .scrollArea {
   position: relative;
-  margin-inline: 20px;
   min-width: 0;
   flex: 1 1 auto;
-}
-
-/* 흰 원형 화살표로 중간 필터를 덮고, 행 끝 여백으로 마지막 필터를 보호한다. */
-.scrollArrow {
-  position: absolute;
-  z-index: 2;
-  top: 5px;
-  display: grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  padding: 0;
-  border: 1px solid var(--ds-color-divider);
-  border-radius: 50%;
-  background: var(--ds-color-surface);
-  box-shadow: 0 2px 8px rgb(32 33 36 / 16%);
-  color: var(--ds-color-text);
-  cursor: pointer;
-  pointer-events: auto;
-}
-
-.scrollArrow[data-direction='start'] {
-  left: -20px;
-}
-
-.scrollArrow[data-direction='end'] {
-  right: -20px;
-}
-
-.scrollArrow:disabled {
-  visibility: hidden;
-}
-
-.scrollArrow svg {
-  width: 18px;
-  height: 18px;
-}
-
-.scrollArrow:hover {
-  background: var(--ds-color-control-hover);
+  width: 100%;
 }
 
 .recruitingRow {
   display: flex;
   flex: none;
   justify-content: flex-end;
-  padding-top: 0;
+  padding: 0 5px;
   pointer-events: none;
 }
 
 .mobileToolbar .recruitingRow {
-  padding-top: 6px;
+  padding-top: 0;
   padding-right: 4px;
 }
 
-/* 모집중 토글: 글자와 스위치를 담은 알약. 켜짐은 aria-pressed와 스위치 위치·색으로 함께 전달한다. */
+/* 지도 확대·축소와 같은 크기의 네모 버튼으로 모집중 상태를 표시한다. */
 .trigger.recruitingToggle,
 .mobileTrigger.recruitingToggle {
+  width: var(--ds-icon-control-lg);
+  height: var(--ds-icon-control-lg);
   max-width: none;
-  gap: 8px;
-  padding-inline: 14px 10px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 0;
+  border-radius: var(--ds-radius-icon-control);
+  font-size: var(--ds-text-caption);
   font-weight: var(--ds-weight-strong);
   pointer-events: auto;
 }
 
-.mobileTrigger.recruitingToggle {
-  gap: 6px;
-  padding-inline: 10px 8px;
-}
-
-/* 켜짐은 다른 선택된 칩과 같은 모양(연한 초록 바탕·초록 테두리·먹색 글자)으로 맞춘다. */
-.recruitingToggle[aria-pressed='true'] {
+.recruitingToggle[aria-checked='true'] {
   border-color: var(--ds-color-brand);
   background: var(--ds-color-action-selected);
-  color: var(--ds-color-text);
-}
-
-.recruitingSwitch {
-  position: relative;
-  flex: none;
-  width: 32px;
-  height: 18px;
-  border-radius: 999px;
-  background: var(--ds-color-muted);
-  transition: background-color 150ms ease-out;
-}
-
-.recruitingSwitch > span {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--ds-color-surface);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 20%);
-  transition: transform 150ms ease-out;
-}
-
-.recruitingToggle[aria-pressed='true'] .recruitingSwitch {
-  background: var(--ds-color-brand);
-}
-
-.recruitingToggle[aria-pressed='true'] .recruitingSwitch > span {
-  transform: translateX(14px);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .recruitingSwitch,
-  .recruitingSwitch > span {
-    transition: none;
-  }
 }
 
 @media (forced-colors: active) {
-  .recruitingSwitch {
-    border: 1px solid CanvasText;
-  }
-
-  .recruitingToggle[aria-pressed='true'] .recruitingSwitch {
+  .recruitingToggle[aria-checked='true'] {
     background: Highlight;
+    color: HighlightText;
   }
+}
+
+/* 상세 패널이 열려 남은 지도 폭이 줄어도 전체와 모집중은 항상 보인다. */
+@container complex-filters (max-width: 740px) {
+  .trigger[data-topic='exclusiveArea'], .mobileTrigger[data-topic='exclusiveArea'] { display: none; }
+}
+@container complex-filters (max-width: 600px) {
+  .trigger[data-topic='price'], .mobileTrigger[data-topic='price'] { display: none; }
+}
+@container complex-filters (max-width: 470px) {
+  .trigger[data-topic='rentalType'], .mobileTrigger[data-topic='rentalType'] { display: none; }
+}
+@container complex-filters (max-width: 350px) {
+  .trigger[data-topic='region'], .mobileTrigger[data-topic='region'] { display: none; }
 }
