@@ -18,8 +18,9 @@ export type CorrectionSource = { category: string; sourceKey: string; rows: { co
 /** 공급행이 기록한 원천행. sources에서 같은 분류·키의 원천을 찾는다. */
 export type RowSource = { rowKey: string; category: string; sourceKey: string }
 export type SupplyWorkspace = { snapshotToken: string; version: number; rows: CorrectionRow[]; sources: CorrectionSource[]; sourceWarnings?: string[]; rowSources?: RowSource[] }
-export type SupplyCorrectionInput = { operationId: string; snapshotToken: string; reason: string; sourceUrl: string; sourcePage: string | null; rows: CorrectionRow[] }
-export type SupplyPreview = { confirmationToken: string; before: CorrectionRow[]; after: CorrectionRow[]; warnings: string[] }
+export type NewSupplyGroup = { sourceRowId: number; rowKeys: string[]; sharedHouseholdCount: number }
+export type SupplyCorrectionInput = { operationId: string; snapshotToken: string; reason: string; sourceUrl: string; sourcePage: string | null; rows: CorrectionRow[]; newGroups?: NewSupplyGroup[] }
+export type SupplyPreview = { confirmationToken: string; before: CorrectionRow[]; after: CorrectionRow[]; warnings: string[]; newGroups?: NewSupplyGroup[] }
 export type SupplyApplied = { changeId: number; alreadyApplied: boolean; workspace: SupplyWorkspace }
 const count = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 const nullableId = (value: unknown) => value === null || count(value) && value > 0
@@ -74,7 +75,10 @@ export async function previewSupply(id: string, input: SupplyCorrectionInput): P
 export function parseSupplyPreview(value: unknown): SupplyPreview {
   if (!isRecord(value) || typeof value.confirmationToken !== 'string' || !Array.isArray(value.before)
     || !Array.isArray(value.after) || !Array.isArray(value.warnings) || !value.warnings.every(item => typeof item === 'string')) invalid()
-  return { confirmationToken: value.confirmationToken, before: value.before.map(row), after: value.after.map(row), warnings: value.warnings }
+  if (value.newGroups !== undefined && (!Array.isArray(value.newGroups) || !value.newGroups.every(group => isRecord(group)
+    && count(group.sourceRowId) && group.sourceRowId > 0 && count(group.sharedHouseholdCount) && Array.isArray(group.rowKeys)
+    && group.rowKeys.length >= 2 && group.rowKeys.every(key => typeof key === 'string')))) invalid()
+  return { ...(value.newGroups === undefined ? {} : { newGroups: value.newGroups as NewSupplyGroup[] }), confirmationToken: value.confirmationToken, before: value.before.map(row), after: value.after.map(row), warnings: value.warnings }
 }
 export async function applySupply(id: string, correction: SupplyCorrectionInput, confirmationToken: string): Promise<SupplyApplied> {
   const value = await requestManagementApi(path(id), 'POST', { correction, confirmationToken })
