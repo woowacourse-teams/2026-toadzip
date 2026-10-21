@@ -12,6 +12,8 @@ it('한스빌의 공통 모집수는 묶음에 한 번만 넣고 기존 공급�
   expect(request.correction.rows).toHaveLength(2)
   expect(request.correction.rows.map(row => row.householdCount)).toEqual([null, null])
   expect(request.correction.rows[0].id).toBe(90)
+  // 수집 행 순서가 1부터 시작해도 새 행은 그 뒤에 둔다.
+  expect(request.correction.rows.map(row => row.displayOrder)).toEqual([workspace.supply.rows[0].displayOrder, workspace.supply.rows[0].displayOrder + 1])
   expect(request.correction.newGroups).toEqual([{ sourceRowId: 90, rowKeys: request.correction.rows.map(row => row.key), sharedHouseholdCount: 170 }])
   expect(request.correction.rows[0].targets[0].deposit).toBe('4076000')
   expect(request.document.announcement.name).toBe('기존 공고')
