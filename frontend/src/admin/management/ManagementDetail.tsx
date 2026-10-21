@@ -19,7 +19,6 @@ import { AnnouncementDocuments } from './AnnouncementDocuments'
 import { ComplexComparisonEditor } from './ComplexComparisonEditor'
 import { QualityComparisonPanel } from '../quality/QualityComparisonPanel'
 import { AnnouncementDetailNavigation } from './AnnouncementDetailNavigation'
-import { AnnouncementJsonCorrectionPanel } from '../announcement-json/AnnouncementJsonCorrectionPanel'
 
 export function ManagementDetail({resource, embedded = false, detailId, onChanged, onBusyChange}: {resource:ManagementResource; embedded?: boolean; detailId?: string; onChanged?: () => void; onBusyChange?: (busy: boolean) => void}) {
   const [sourceMatchesOpen, setSourceMatchesOpen] = useState(false)
@@ -43,11 +42,21 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
   const [notice, setNotice] = useState('')
   const [attempt, setAttempt] = useState(0)
   const requestedSection = params.get('section') ?? ''
-  const sectionKeys = ['info', 'verification', 'schedules', 'relations', 'history', ...(resource === 'announcements' ? ['documents', 'json'] : [])]
-  const knownSection = sectionKeys.includes(requestedSection)
-  const [section, setSection] = useState(knownSection ? requestedSection : 'info')
+  const resolvedSection = resource === 'announcements' && requestedSection === 'verification' ? 'history' : requestedSection
+  const sectionKeys = ['info', 'schedules', 'relations', 'history', ...(resource === 'announcements' ? ['documents'] : ['verification'])]
+  const knownSection = sectionKeys.includes(resolvedSection)
+  const [section, setSection] = useState(knownSection ? resolvedSection : 'info')
   // 주소의 섹션이 바뀌면(뒤로 가기·작업 링크) 해당 탭을 연다. 탭 이동은 아래 openSection이 주소에도 남긴다.
-  useEffect(() => { if (knownSection) setSection(requestedSection) }, [knownSection, requestedSection])
+  useEffect(() => { setSection(knownSection ? resolvedSection : 'info') }, [knownSection, resolvedSection])
+  useEffect(() => {
+    if (resource !== 'announcements' || !['verification', 'json'].includes(requestedSection)) return
+    setParams(current => {
+      const next = new URLSearchParams(current)
+      next.set('section', requestedSection === 'verification' ? 'history' : 'info')
+      if (requestedSection === 'verification') next.set('comparison', 'source')
+      return next
+    }, { replace: true })
+  }, [resource, requestedSection, setParams])
   function openSection(key: string) {
     setSection(key); setDirty(false)
     setParams(current => { const next = new URLSearchParams(current); next.set('section', key); return next }, { replace: true })
@@ -93,9 +102,6 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
         <button data-admin-navigation={section !== key || undefined} disabled={busy || verificationBusy || extendedBusy} key={key} type="button" aria-pressed={section === key} onClick={() => {if (section !== key) openSection(key)}}>{label}</button>)}</nav> : null}
       <div className="management-detail-content" role="region" aria-label={`${resource === 'complexes' ? '단지' : '공고'} 상세 내용`} tabIndex={0}>
       {section === 'documents' && resource === 'announcements' ? <AnnouncementDocuments key={id} id={id} detail={value} /> : null}
-      {section === 'json' && resource === 'announcements' ? value.summary.deleted ? <p>휴지통의 공고는 복구한 뒤 갱신하세요.</p> : <AnnouncementJsonCorrectionPanel key={id} id={id}
-        onBusyChange={setExtendedBusy} onDirtyChange={setExtendedDirty}
-        onChanged={() => { void getManagementDetail(resource, id).then(saved).catch(cause => setError(String(cause))) }} /> : null}
       {section === 'verification' && (!editing || embedded) && resource === 'complexes' ? <>
         {reviewDirty ? <p className="admin-warning">작성 중인 검토 기록을 저장하거나 취소한 뒤 값을 수정할 수 있습니다.</p> : null}
         <fieldset className="admin-verification-group" disabled={reviewDirty || extendedDirty}>
@@ -112,8 +118,6 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
           <QualityComparisonPanel key={`${resource}:${id}`} resource={resource} id={id} detail={value} onDirtyChange={setExtendedDirty} onBusyChange={setExtendedBusy}
             onChanged={() => { setAttempt(current => current + 1); onChanged?.() }} />
         </fieldset></details> : null}</> : null}
-      {section === 'verification' && resource === 'announcements' ? <QualityComparisonPanel key={`${resource}:${id}`} resource={resource} id={id} detail={value} onDirtyChange={setExtendedDirty} onBusyChange={setExtendedBusy}
-        onChanged={() => { setAttempt(current => current + 1); onChanged?.() }} /> : null}
       {section === 'info' && !editing ? <>{sections.map(group => <section className="admin-detail-section" key={group.title}><h2>{group.title}</h2>
         <dl className={`admin-data-grid${group.fields.some(field => field.name === 'address.roadAddress') ? ' admin-location-grid' : ''}`}>{group.fields.map(field => <div key={field.name}><dt>{field.label}</dt><dd>{field.type === 'url'
           ? <SourceUrl url={valueAt(value.data,field.name)} /> : display(valueAt(value.data,field.name))}</dd></div>)}</dl></section>)}</> : null}
@@ -146,6 +150,10 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
             onChanged={() => { void getManagementDetail(resource, id).then(saved).catch(cause => setError(String(cause))) }}
             onBusyChange={setExtendedBusy} onDirtyChange={setExtendedDirty} />}</> : null}
       {section === 'history' ? <><h2>출처</h2><dl className="admin-data-grid"><div><dt>공식 원문 URL</dt><dd><SourceUrl url={value.data.originalUrl} /></dd></div><div><dt>원천 식별자</dt><dd>{value.sourceIdentifier || '기록 없음'}</dd></div></dl><p>관리자 최종 변경: {value.summary.updatedAt ? new Date(value.summary.updatedAt).toLocaleString('ko-KR') : '변경 이력 없음'}</p>
+        {resource === 'announcements' && <details className="admin-verification-review" open={params.get('comparison') === 'source' || requestedSection === 'verification' || undefined}><summary>수집 원천과 비교</summary>
+          <QualityComparisonPanel key={`${resource}:${id}`} resource={resource} id={id} detail={value} onDirtyChange={setExtendedDirty} onBusyChange={setExtendedBusy}
+            onChanged={() => { setAttempt(current => current + 1); onChanged?.() }} />
+        </details>}
         <ChangeHistory resource={resource} id={id} version={Number(value.data.version)} /></> : null}
       </div>
     </> : null}
