@@ -72,6 +72,7 @@ public final class PostgresAdvisoryLock {
             long lockKey
     ) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setQueryTimeout(5);
             statement.setLong(1, lockKey);
             try (ResultSet result = statement.executeQuery()) {
                 return result.next() && result.getBoolean(1);
