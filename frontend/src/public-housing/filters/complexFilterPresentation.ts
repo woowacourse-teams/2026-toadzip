@@ -1,5 +1,5 @@
 import type { ComplexSearchFilters } from '../api/publicHousingRepository.ts'
-import { provinceNameForRegionCode } from '../model/publicHousingRegion.ts'
+import { findCatalogRegion, provinceNameForRegionCode } from '../model/publicHousingRegion.ts'
 import { formatHousingMoney } from '../presentation/housingMoney.ts'
 import { AGENCY_OPTIONS, RECRUITMENT_TYPE_OPTIONS, RENTAL_TYPE_OPTIONS } from './searchFilterOptions.ts'
 import type { FilterTopic } from './complexFilterTopics.ts'
@@ -13,11 +13,9 @@ export function topicSummary(
     case 'region': {
       if (!filters.regionCode) return null
       const name = provinceNameForRegionCode(filters.regionCode)
-      const label = name === null
-        ? filters.regionCode
-        : filters.regionCode.length === 5
-          ? resolvedRegionName ?? `${name} ${filters.regionCode}`
-          : name
+      const label = filters.regionCode.length === 2
+        ? name ?? '지역 선택됨'
+        : resolvedRegionName ?? findCatalogRegion(filters.regionCode)?.displayName ?? '지역 선택됨'
       return compactRegionLabel(label)
     }
     case 'rentalType':
@@ -128,8 +126,10 @@ export function formatArea(value: number) {
   return `${compact(value / 3.3)}평`
 }
 
+export const AREA_SLIDER_MAXIMUM = 198
+
 export function formatAreaTick(value: number) {
-  return value === 132 ? '40평+' : value === 0 ? '0' : formatArea(value)
+  return value === AREA_SLIDER_MAXIMUM ? `${formatArea(value)} 이상` : value === 0 ? '0' : formatArea(value)
 }
 
 function compact(value: number) {

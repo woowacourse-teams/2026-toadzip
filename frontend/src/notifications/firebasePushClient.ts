@@ -8,7 +8,7 @@ export interface PushSdk {
 }
 export interface PushState { readonly status: 'loading' | 'off' | 'on' | 'busy' | 'error'; readonly message: string }
 export interface PushClient {
-  start(initialState?: PushDeviceState): Promise<void>; refresh(): Promise<void>; enable(): Promise<void>; disable(): Promise<void>; afterLogout(): Promise<void>
+  start(initialState?: PushDeviceState): Promise<void>; refresh(): Promise<void>; invalidateRefresh(): void; enable(): Promise<void>; disable(): Promise<void>; afterLogout(): Promise<void>
   subscribe(listener: () => void): () => void; getSnapshot(): PushState
   subscribeRefresh(listener: () => void): () => void; dispose(): void
 }
@@ -20,6 +20,7 @@ export function createPushClient(userId: string, sdk: PushSdk, repository: PushD
   let disposed = false
   let generation = 0
   let refreshSequence = 0
+  let refreshing: { version: number; binding: string | null; sequence: number; promise: Promise<void> } | null = null
   let writes: Promise<void> = Promise.resolve()
   let completionMessage = ''
   let registrationDone: ((ok: boolean) => void) | null = null
@@ -70,13 +71,13 @@ export function createPushClient(userId: string, sdk: PushSdk, repository: PushD
         if (active) await registerDevice(restoring ? '이 기기에서 알림을 다시 받아요.' : '')
       } catch { if (!disposed) registrationError() }
     },
-    async refresh() {
-      if (disposed || state.status === 'loading' || state.status === 'busy') return
-      const sequence = ++refreshSequence
+    refresh() {
+      if (disposed || state.status === 'loading' || state.status === 'busy') return Promise.resolve()
       const version = generation
       const binding = bindingVersion
-      try {
-        const current = await repository.current(controller.signal)
+      if (refreshing?.version === version && refreshing.binding === binding) return refreshing.promise
+      const sequence = ++refreshSequence
+      const request = repository.current(controller.signal).then(current => {
         if (disposed || sequence !== refreshSequence || generation !== version || binding !== bindingVersion) return
         if (current.bindingVersion !== bindingVersion) { bindingSnapshot++; stop() }
         bindingVersion = current.bindingVersion
@@ -87,12 +88,15 @@ export function createPushClient(userId: string, sdk: PushSdk, repository: PushD
         if (state.status !== (enabled ? 'on' : 'off')) {
           publish({ status: enabled ? 'on' : 'off', message: enabled ? '' : '이 기기의 알림이 꺼져 있어요.' })
         }
-      } catch {
+      }).catch(() => {
         if (!disposed && sequence === refreshSequence && generation === version) {
           publish({ status: 'error', message: '기기 설정을 다시 확인하지 못했어요. 다시 시도해 주세요.' })
         }
-      }
+      }).finally(() => { if (refreshing?.sequence === sequence) refreshing = null })
+      refreshing = { version, binding, sequence, promise: request }
+      return request
     },
+    invalidateRefresh() { refreshSequence++; refreshing = null },
     async enable() {
       if (disposed || state.status === 'loading' || state.status === 'busy' || state.status === 'on') return
       // Invoke before the first await so the browser still has the button's user activation.

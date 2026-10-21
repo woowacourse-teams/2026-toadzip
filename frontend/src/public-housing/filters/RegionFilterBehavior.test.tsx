@@ -30,11 +30,11 @@ describe.each([
     const onApply = vi.fn()
     renderPanel({ onApply, regionRepository: { search } })
     fireEvent.click(screen.getByRole('button', { name: open }))
-    fireEvent.change(screen.getByLabelText('시·도'), { target: { value: '11' } })
-    expect(screen.getByRole('status')).toHaveTextContent(kind === 'announcement'
+    selectProvince('11')
+    expect(screen.getByText(kind === 'announcement'
       ? '시·군·구 목록을 불러오는 중이에요.'
-      : '시·군·구를 불러오는 중이에요.')
-    fireEvent.change(screen.getByLabelText('시·도'), { target: { value: '41' } })
+      : '지역을 불러오고 있어요.')).toBeVisible()
+    selectProvince('41')
     expect(search.mock.calls[0][1].aborted).toBe(true)
     await act(async () => second.resolve(GYEONGGI_REGIONS))
     await act(async () => {
@@ -42,10 +42,10 @@ describe.each([
       else first.reject(new Error('old request failed'))
     })
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
-    expect(screen.getByRole('option', { name: '수원시' })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: '강남구' })).not.toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('시·군·구'), { target: { value: '41110' } })
+    expect(screen.queryByText(/불러오.*중|불러오고 있어요/)).not.toBeInTheDocument()
+    expect(screen.getByRole(optionRole, { name: '수원시' })).toBeInTheDocument()
+    expect(screen.queryByRole(optionRole, { name: '강남구' })).not.toBeInTheDocument()
+    selectDistrict('41110', '수원시')
     if (kind === 'announcement') expect(onApply).not.toHaveBeenCalled()
     if (kind === 'announcement') fireEvent.click(screen.getByRole('button', { name: apply }))
     expect(onApply).toHaveBeenLastCalledWith({ regionCode: '41110' })
@@ -57,35 +57,47 @@ describe.each([
     const onApply = vi.fn()
     renderPanel({ onApply, regionRepository: { search } })
     fireEvent.click(screen.getByRole('button', { name: open }))
-    fireEvent.change(screen.getByLabelText('시·도'), { target: { value: '11' } })
-    await screen.findByRole('option', { name: '강남구' })
-    fireEvent.change(screen.getByLabelText('시·군·구'), { target: { value: '11680' } })
-    fireEvent.change(screen.getByLabelText('시·도'), { target: { value: '41' } })
-    await screen.findByRole('option', { name: '수원시' })
-    expect(screen.getByLabelText('시·군·구')).toHaveValue('')
-    expect(screen.queryByRole('option', { name: '강남구' })).not.toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('시·도'), { target: { value: '' } })
-    expect(screen.getByLabelText('시·군·구')).toBeDisabled()
-    expect(within(screen.getByLabelText('시·군·구')).getAllByRole('option')).toHaveLength(1)
+    selectProvince('11')
+    await screen.findByRole(optionRole, { name: '강남구' })
+    selectDistrict('11680', '강남구')
+    selectProvince('41')
+    await screen.findByRole(optionRole, { name: '수원시' })
+    if (kind === 'announcement') expect(screen.getByLabelText('시·군·구')).toHaveValue('')
+    else expect(screen.getByRole('radio', { name: '경기 전체' })).toBeChecked()
+    expect(screen.queryByRole(optionRole, { name: '강남구' })).not.toBeInTheDocument()
+    selectProvince('')
+    if (kind === 'announcement') {
+      expect(screen.getByLabelText('시·군·구')).toBeDisabled()
+      expect(within(screen.getByLabelText('시·군·구')).getAllByRole('option')).toHaveLength(1)
+    } else {
+      expect(screen.getByRole('button', { name: '시·군·구 선택' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: '읍·면·동 선택' })).toBeDisabled()
+    }
     if (kind === 'announcement') fireEvent.click(screen.getByRole('button', { name: apply }))
     expect(onApply).toHaveBeenLastCalledWith({})
   })
 
-  it('조회 실패에도 공유 URL의 시군구를 보존하고 시도만 선택해서 적용할 수 있다', async () => {
+  it.each([['41135', '성남시 분당구'], ['41102', '지역 선택됨']])('조회 실패에도 공유 URL의 %s 조건은 보존하고 지역 코드 대신 이름이나 선택 상태를 보인다', async (regionCode, label) => {
     const search = vi.fn<PublicHousingRegionRepository['search']>()
       .mockRejectedValue(new Error('offline'))
     const onApply = vi.fn()
-    renderPanel({ filters: { regionCode: '41135' }, onApply, regionRepository: { search } })
+    renderPanel({ filters: { regionCode }, onApply, regionRepository: { search } })
     fireEvent.click(screen.getByRole('button', { name: open }))
     const alert = await screen.findByRole('alert')
-    const district = screen.getByLabelText('시·군·구')
-    expect(district).toHaveValue('41135')
-    expect(district).toHaveAttribute('aria-describedby', alert.id)
-    expect(screen.getByRole('option', { name: '선택 지역 (41135)' })).toBeInTheDocument()
+    if (kind === 'announcement') {
+      const district = screen.getByLabelText('시·군·구')
+      expect(district).toHaveValue(regionCode)
+      expect(district).toHaveAttribute('aria-describedby', alert.id)
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: '시·군·구 선택' }))
+      expect(screen.getByRole('group', { name: '시·군·구 선택' })).toHaveAttribute('aria-describedby', alert.id)
+      expect(screen.getByRole('radio', { name: label })).toBeChecked()
+    }
+    expect(screen.getByRole(optionRole, { name: label })).toBeInTheDocument()
     if (kind === 'announcement') fireEvent.click(screen.getByRole('button', { name: apply }))
-    if (kind === 'announcement') expect(onApply).toHaveBeenLastCalledWith({ regionCode: '41135' })
+    if (kind === 'announcement') expect(onApply).toHaveBeenLastCalledWith({ regionCode })
     else expect(onApply).not.toHaveBeenCalled()
-    fireEvent.change(screen.getByLabelText('시·군·구'), { target: { value: '' } })
+    selectDistrict('', '경기 전체')
     if (kind === 'announcement') fireEvent.click(screen.getByRole('button', { name: apply }))
     expect(onApply).toHaveBeenLastCalledWith({ regionCode: '41' })
     await act(async () => {})
@@ -99,18 +111,38 @@ describe.each([
     const onApply = vi.fn()
     renderPanel({ onApply, regionRepository: { search } })
     fireEvent.click(screen.getByRole('button', { name: open }))
-    fireEvent.change(screen.getByLabelText('시·도'), { target: { value: '11' } })
+    selectProvince('11')
     fireEvent.click(screen.getByRole('button', { name: close }))
     expect(search.mock.calls[0][1].aborted).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: open }))
-    fireEvent.change(screen.getByLabelText('시·도'), { target: { value: '41' } })
-    await screen.findByRole('option', { name: '수원시' })
+    selectProvince('41')
+    await screen.findByRole(optionRole, { name: '수원시' })
     await act(async () => pending.resolve(SEOUL_REGIONS))
-    expect(screen.queryByRole('option', { name: '강남구' })).not.toBeInTheDocument()
-    expect(screen.getByLabelText('시·도')).toHaveValue('41')
+    expect(screen.queryByRole(optionRole, { name: '강남구' })).not.toBeInTheDocument()
+    if (kind === 'announcement') expect(screen.getByLabelText('시·도')).toHaveValue('41')
+    else expect(screen.getByRole('button', { name: '시·도 선택' })).toHaveTextContent('경기')
     if (kind === 'announcement') expect(onApply).not.toHaveBeenCalled()
     else expect(onApply).toHaveBeenLastCalledWith({ regionCode: '41' })
   })
+
+  const optionRole = kind === 'announcement' ? 'option' : 'radio'
+
+  function selectProvince(code: string) {
+    if (kind === 'announcement') {
+      fireEvent.change(screen.getByLabelText('시·도'), { target: { value: code } })
+      return
+    }
+    const name = code === '11' ? '서울' : code === '41' ? '경기' : '전체'
+    if (!screen.queryByRole('radio', { name })) {
+      fireEvent.click(screen.getByRole('button', { name: '시·도 선택' }))
+    }
+    fireEvent.click(screen.getByRole('radio', { name }))
+  }
+
+  function selectDistrict(code: string, name: string) {
+    if (kind === 'announcement') fireEvent.change(screen.getByLabelText('시·군·구'), { target: { value: code } })
+    else fireEvent.click(screen.getByRole('radio', { name }))
+  }
 
   function renderPanel({ filters = {}, onApply, regionRepository }: {
     readonly filters?: ComplexSearchFilters
@@ -161,10 +193,11 @@ it.each(['announcement', 'complex'] as const)('%s 폼은 표시된 조건만 반
     : <AppliedComplexFilters initialFilters={filters} onApply={onApply} regionRepository={regionRepository} />)
   fireEvent.click(screen.getByRole('button', { name: kind === 'announcement'
     ? '공고 필터 열기' : '모바일 지역 필터 열기' }))
-  await screen.findByRole('option', { name: '수원시' })
+  if (kind === 'complex') fireEvent.click(screen.getByRole('button', { name: '시·군·구 선택' }))
+  await screen.findByRole(kind === 'announcement' ? 'option' : 'radio', { name: '수원시' })
   expect(onApply).not.toHaveBeenCalled()
   if (kind === 'announcement') fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
-  else fireEvent.change(screen.getByLabelText('시·군·구'), { target: { value: '' } })
+  else fireEvent.click(screen.getByRole('radio', { name: '경기 전체' }))
   expect(onApply).toHaveBeenCalledExactlyOnceWith(kind === 'complex' ? { ...filters, regionCode: '41' } : {
     regionCode: '41110',
     rentalTypes: ['HAPPY_HOUSING', 'NATIONAL_RENTAL'],

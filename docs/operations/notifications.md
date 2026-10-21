@@ -158,6 +158,10 @@ delivery만 끄면 알림함과 폴링은 유지된다. publisher off 기간은 
 90일 지난 완료 이벤트 payload도 참조가 없어질 때 지우며 event key는 tombstone으로 유지한다.
 진행 중인 작업은 자동 삭제하지 않는다. 장기 대기 원인은 아래 지표와 SQL로 확인한다.
 
+대기열 통계는 진행·실패 상태만 부분 인덱스로 읽으며 완료 이력은 집계 입력에서 제외한다.
+스냅샷 정리는 payload가 남은 완료 이벤트의 만료 인덱스와 알림의 event_id 인덱스를 사용한다.
+인덱스 최초 생성의 잠금 대기 5초·실행 30초를 넘으면 마이그레이션이 롤백되고 앱 기동이 실패한다.
+
 - `notification.queue.pending{queue=outbox|delivery}`, `notification.queue.failed`, `notification.queue.delay.seconds`: 1분 간격 집계.
 - `notification.push.result{result=ACCEPTED|RETRYABLE|INVALID_REGISTRATION|PERMANENT_FAILURE|EXCEPTION}`, `notification.push.duration`.
 - [읽기 전용 진단 SQL](../queries/notification-delivery-status.sql)은 개수·지연·오류 분류만 반환한다. FID·쿠키는 로그에 남기지 않는다.

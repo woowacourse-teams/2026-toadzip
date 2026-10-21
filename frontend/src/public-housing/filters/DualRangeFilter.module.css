@@ -282,13 +282,16 @@
   margin-left: 0;
 }
 
-.tick:last-child {
-  text-align: right;
-  transform: translateX(-100%);
+/* 면적은 빠른 선택과 눈금의 상한을 같은 기준으로 읽을 수 있게 표시한다. */
+.filter:has([name='minExclusiveArea']) .label,
+.filter:has([name='minExclusiveArea']) .output,
+.filter:has([name='minExclusiveArea']) .preset {
+  font-size: max(1rem, var(--ds-text-body));
 }
 
-.tick:last-child::before {
-  margin-right: 0;
+.filter:has([name='minExclusiveArea']) .tick {
+  color: var(--ds-color-label);
+  font-size: max(0.875rem, var(--ds-text-body));
 }
 
 @media (prefers-reduced-motion: reduce) {

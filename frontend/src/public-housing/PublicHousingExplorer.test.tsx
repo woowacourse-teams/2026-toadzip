@@ -812,6 +812,29 @@ describe('PublicHousingExplorer', () => {
     )
   })
 
+  it('다른 영역을 본 뒤 돌아오면 저장된 마커를 재조회와 등장 효과 없이 복원한다', async () => {
+    const first = aggregateMapResult()
+    const second = { ...first, nodes: first.nodes.map((node) => ({ ...node, uniqueComplexCount: 7 })) }
+    const mapRepository = createMapRepository(first)
+    mapRepository.findMap.mockResolvedValueOnce(first).mockResolvedValueOnce(second)
+    renderExplorer(createRepository(), '/', undefined, undefined, mapRepository)
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    await screen.findByRole('button', { name: '서울 0곳 지역 마커 선택' })
+    fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
+    await screen.findByRole('button', { name: '서울 7곳 지역 마커 선택' })
+
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+
+    await screen.findByRole('button', { name: '서울 0곳 지역 마커 선택' })
+    expect(mapRepository.findMap).toHaveBeenCalledTimes(2)
+    const map = screen.getByRole('region', { name: '공공임대주택 지도' })
+    expect(map).toHaveAttribute('aria-busy', 'false')
+    expect(map).toHaveAttribute('data-animate-marker-entry', 'false')
+    fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
+    await screen.findByRole('button', { name: '서울 7곳 지역 마커 선택' })
+    expect(mapRepository.findMap).toHaveBeenCalledTimes(2)
+  })
+
   it('지역 마커 이동 중 바꾼 필터는 최종 idle 영역에만 요청한다', async () => {
     const repository = createRepository()
     const mapRepository = createMapRepository(aggregateMapResult())
@@ -1253,16 +1276,13 @@ describe('PublicHousingExplorer', () => {
     expect(within(complexFilter).getAllByRole('button').map(
       (button) => button.getAttribute('aria-label'),
     )).toEqual([
-      '전체 필터 열기',
       '지역 필터 열기',
       '임대유형 필터 열기',
       '가격 필터 열기',
       '전용면적 필터 열기',
-      '준공년도 필터 열기',
-      '공급기관 필터 열기',
-      '모집유형 필터 열기',
-      '모집중',
+      '전체 필터 열기',
     ])
+    expect(within(complexFilter).getByRole('switch', { name: '모집중', checked: false })).toBeVisible()
     expect(screen.queryByRole('complementary', { name: '공공임대주택 검색 결과' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '공고 목록' }))
@@ -1292,26 +1312,33 @@ describe('PublicHousingExplorer', () => {
     expect(within(panel).queryByRole('checkbox', { name: '행복주택' })).not.toBeInTheDocument()
   })
 
-  it('모집중 토글을 URL과 지도·단지 목록에 적용하고 뒤로·앞으로 복원한다', async () => {
+  it('모집중 스위치를 URL과 지도·단지 목록에 적용하고 뒤로·앞으로 복원한다', async () => {
     const repository = createRepository()
+    repository.findMap.mockResolvedValueOnce(individualMapResult())
+      .mockResolvedValue(individualMapResult([mapComplexFor(18, '모집중 단지')]))
     renderSearchedExplorer(repository, '/?complexAgencyCodes=LH&announcementApplicationStatuses=APPLYING')
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
-    await waitFor(() => expect(repository.findMap).toHaveBeenCalled())
-    const toggle = within(screen.getByRole('toolbar', { name: '단지 검색 필터' })).getByRole('button', { name: '모집중', pressed: false })
+    await screen.findByRole('button', { name: '서울가람 행복주택 지도 마커 선택' })
+    const toggle = within(screen.getByRole('toolbar', { name: '단지 검색 필터' })).getByRole('switch', { name: '모집중', checked: false })
     fireEvent.click(toggle)
     const filters = { agencyCodes: ['LH'], applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] }
     await waitFor(() => expect(repository.findMap).toHaveBeenLastCalledWith(expect.objectContaining({ filters }), expect.any(AbortSignal)))
+    await screen.findByRole('button', { name: '모집중 단지 지도 마커 선택' })
     expect(repository.findComplexPage).toHaveBeenLastCalledWith(null, null, 20, expect.any(AbortSignal), { ...filters, regionCode: '11' })
     expect(new URLSearchParams(screen.getByTestId('location-search').textContent ?? '').getAll('complexApplicationStatuses')).toEqual(['BEFORE_APPLICATION', 'APPLYING'])
     expect(currentSearch().announcementApplicationStatuses).toBe('APPLYING')
     fireEvent.click(toggle)
-    await waitFor(() => expect(repository.findMap).toHaveBeenLastCalledWith(expect.objectContaining({ filters: { agencyCodes: ['LH'] } }), expect.any(AbortSignal)))
+    await screen.findByRole('button', { name: '서울가람 행복주택 지도 마커 선택' })
+    expect(repository.findMap).toHaveBeenCalledTimes(2)
+    expect(repository.findComplexPage).toHaveBeenLastCalledWith(null, null, 20, expect.any(AbortSignal), { agencyCodes: ['LH'], regionCode: '11' })
     expect(currentSearch().complexApplicationStatuses).toBeUndefined()
     fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' }))
-    await waitFor(() => expect(toggle).toHaveAttribute('aria-pressed', 'true'))
-    await waitFor(() => expect(repository.findMap).toHaveBeenLastCalledWith(expect.objectContaining({ filters }), expect.any(AbortSignal)))
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'))
+    await screen.findByRole('button', { name: '모집중 단지 지도 마커 선택' })
     fireEvent.click(screen.getByRole('button', { name: '브라우저 앞으로' }))
-    await waitFor(() => expect(toggle).toHaveAttribute('aria-pressed', 'false'))
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'false'))
+    await screen.findByRole('button', { name: '서울가람 행복주택 지도 마커 선택' })
+    expect(repository.findMap).toHaveBeenCalledTimes(2)
     expect(currentSearch().announcementApplicationStatuses).toBe('APPLYING')
   })
 
@@ -1383,11 +1410,12 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     await waitFor(() => expect(repository.findMap).toHaveBeenCalled())
     await waitFor(() => expect(repository.findMap).toHaveBeenCalledOnce())
-    expect(within(screen.getByRole('toolbar', { name: '단지 검색 필터' })).getByRole('button', { name: '모집중', pressed: true })).toBeVisible()
-    for (const [topic, option] of [['공급기관', 'LH'], ['모집유형', '신규 모집']]) {
-      fireEvent.click(screen.getByRole('button', { name: `${topic} 필터 열기` }))
+    expect(within(screen.getByRole('toolbar', { name: '단지 검색 필터' })).getByRole('switch', { name: '모집중', checked: true })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '전체 필터 열기' }))
+    for (const option of ['LH', '신규 모집']) {
       fireEvent.click(screen.getByRole('checkbox', { name: option }))
     }
+    fireEvent.click(screen.getByRole('button', { name: '전체 필터 닫기' }))
     const filters = {
       regionCode: '41', rentalTypes: ['NATIONAL_RENTAL'], applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'],
       agencyCodes: ['LH'], recruitmentTypes: ['NEW'], builtYearFrom: 2015, builtYearTo: 2026,
@@ -1428,12 +1456,13 @@ describe('PublicHousingExplorer', () => {
     const detailFilter = screen.getByRole('region', {
       name: '지역 필터',
     })
-    expect(within(detailFilter).getByLabelText('시·도')).toHaveValue('41')
+    expect(within(detailFilter).getByRole('radio', { name: '경기' })).toBeChecked()
+    fireEvent.click(within(detailFilter).getByRole('button', { name: '시·군·구 선택' }))
     await waitFor(() => {
-      expect(within(detailFilter).getByLabelText('시·군·구'))
-        .toHaveValue('41135')
+      expect(within(detailFilter).getByRole('radio', { name: '성남시 분당구' }))
+        .toBeChecked()
     })
-    fireEvent.click(screen.getByRole('button', { name: '공급기관 필터 열기' }))
+    fireEvent.click(screen.getByRole('button', { name: '전체 필터 열기' }))
     expect(screen.getByRole('checkbox', { name: 'LH' })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: 'GH' })).toBeChecked()
 
@@ -1658,7 +1687,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
     expect(within(screen.getByRole('region', {
       name: '지역 필터',
-    })).getByLabelText('시·도')).toHaveValue('')
+    })).getByRole('radio', { name: '전체' })).toBeChecked()
     fireEvent.keyDown(document, { key: 'Escape' })
     fireEvent.click(screen.getByRole('button', { name: '공고 목록' }))
     expect(within(announcementFilter).getByLabelText('시·도'))
@@ -3434,9 +3463,9 @@ function analyticsCalls(name: string) {
 function applyProvinceFilter(provinceCode: string) {
   fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
   const detailFilter = screen.getByRole('region', { name: '지역 필터' })
-  fireEvent.change(within(detailFilter).getByLabelText('시·도'), {
-    target: { value: provinceCode },
-  })
+  fireEvent.click(within(detailFilter).getByRole('radio', {
+    name: provinceCode === '41' ? '경기' : provinceCode === '11' ? '서울' : '전체',
+  }))
   fireEvent.keyDown(document, { key: 'Escape' })
 }
 
@@ -3551,6 +3580,7 @@ function LocationSearch() {
 
 function FakeNaverMap({
   aggregateMarkers = [],
+  animateMarkerEntry = true,
   regionBoundary,
   cameraTarget,
   cameraRequestId,
@@ -3592,6 +3622,7 @@ function FakeNaverMap({
       className="map-surface"
       aria-label="공공임대주택 지도"
       aria-busy={dataBusy}
+      data-animate-marker-entry={String(animateMarkerEntry)}
       data-transitioning={String(transitioning)}
     >
       <output>카메라 {currentCamera.latitude},{currentCamera.longitude}</output>

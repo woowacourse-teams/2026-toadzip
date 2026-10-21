@@ -232,15 +232,23 @@ export function HousingAnnouncementDetailPanel({
         <div id={`${sectionId}-housing`} className={styles.sectionGroup}
           role="region" aria-label="주택형 영역" tabIndex={-1}
           ref={(node) => { sectionRefs.current.housing = node }}>
-          <SupplyOverview
+          <ComplexComparison
             areaUnit={areaUnit}
             onToggleAreaUnit={toggleAreaUnit}
             groups={groups}
+            rentalTypeLabel={detail.rentalTypeLabel}
             supplyComplexCount={detail.supplyComplexCount}
             supplyHouseholdCount={detail.supplyHouseholdCount}
             onOpenComplex={onOpenComplex}
-            onOpenFloorPlan={setFloorPlan}
           />
+          {groups.length > 0 && (
+            <HousingTypeComparison
+              areaUnit={areaUnit}
+              onToggleAreaUnit={toggleAreaUnit}
+              groups={groups}
+              onOpenFloorPlan={setFloorPlan}
+            />
+          )}
           <AttachmentList key={detail.announcementId} announcementId={detail.announcementId} attachments={detail.attachments} />
         </div>
       </div>
@@ -566,157 +574,161 @@ function ReceptionPlaces({
   )
 }
 
-/**
- * 공고의 단지·주택형은 자세히 읽기보다 한눈에 훑는 정보다.
- * 단지마다 이름 한 줄과 주택형 표 하나로 보여 주고, 평면도·대상별 조건은 접어 둔다.
- */
-function SupplyOverview({
+function ComplexComparison({
   areaUnit,
   onToggleAreaUnit,
   groups,
+  rentalTypeLabel,
   supplyComplexCount,
   supplyHouseholdCount,
   onOpenComplex,
-  onOpenFloorPlan,
 }: {
   areaUnit: AreaUnit
   onToggleAreaUnit: () => void
   groups: readonly HousingAnnouncementSupplyComplexGroup[]
+  rentalTypeLabel: string
   supplyComplexCount: number
   supplyHouseholdCount: number | null
   onOpenComplex?: (complexId: string) => void
-  onOpenFloorPlan: (selection: FloorPlanSelection) => void
 }) {
   return (
     <DetailSection appearance="block"
-      title="공급 주택형"
+      title="단지 비교"
       actions={groups.length > 0 ? <AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} /> : undefined}
       aside={`${formatNullableCount(supplyComplexCount, '개 단지')} · ${supplyHouseholdSummary(supplyHouseholdCount)}`}
     >
       {groups.length === 0 && <EmptyState>단지 정보: {MISSING_DATA_LABEL}</EmptyState>}
-      {groups.map((group) => (
-        <SupplyComplexTable
-          key={group.key}
-          areaUnit={areaUnit}
-          group={group}
-          onOpenComplex={onOpenComplex}
-          onOpenFloorPlan={onOpenFloorPlan}
-        />
-      ))}
+      <div className={styles.complexList}>
+        {groups.map((group) => (
+          <ComplexCard
+            areaUnit={areaUnit}
+            key={group.key}
+            group={group}
+            rentalTypeLabel={rentalTypeLabel}
+            onOpenComplex={onOpenComplex}
+          />
+        ))}
+      </div>
     </DetailSection>
   )
 }
 
-function SupplyComplexTable({
+function ComplexCard({
   areaUnit,
   group,
+  rentalTypeLabel,
   onOpenComplex,
-  onOpenFloorPlan,
 }: {
   areaUnit: AreaUnit
   group: HousingAnnouncementSupplyComplexGroup
+  rentalTypeLabel: string
   onOpenComplex?: (complexId: string) => void
-  onOpenFloorPlan: (selection: FloorPlanSelection) => void
 }) {
-  const complexId = group.complexId
-  // 입주 예정이 모든 주택형에 같으면 표 아래 한 줄로, 다르면 주택형마다 보여 준다.
-  const occupancies = new Set(group.rows.map((row) => row.occupancyExpectedYearMonth))
-  const sharedOccupancy = occupancies.size === 1 ? group.rows[0]?.occupancyExpectedYearMonth ?? null : null
+  const imageUrl = toHttpUrl(group.overviewImageUrl)
+  const depositRange = moneyRange(group.rows, 'deposit')
+  const monthlyRentRange = moneyRange(group.rows, 'monthlyRent')
+
+  function openComplex() {
+    if (!group.complexId || !onOpenComplex) {
+      return
+    }
+    onOpenComplex(group.complexId)
+  }
+
   return (
-    <section className={styles.supplyComplex} aria-label={group.name}>
-      {/* 단지 이름 옆에 세대수를 두고, 단지 상세로 가는 길은 오른쪽 버튼으로 분명하게 보여 준다. */}
-      <header className={styles.supplyComplexHead}>
+    <article className={styles.complexCard} aria-label={`${group.name} 단지 비교`}>
+      <header className={styles.complexHeading}>
         <div>
           <strong>{group.name}</strong>
-          <span>{supplyHouseholdSummary(group.supplyHouseholdCount)}</span>
+          <span>{rentalTypeLabel}</span>
         </div>
-        {complexId && onOpenComplex && (
+        {group.complexId && onOpenComplex && (
           <button
-            className={styles.complexDetailButton}
             type="button"
-            data-detail-return-focus={`complex:${complexId}`}
+            data-detail-return-focus={`complex:${group.complexId}`}
             aria-label={`${group.name} 단지 상세 보기`}
-            onClick={() => onOpenComplex(complexId)}
+            onClick={openComplex}
           >
             단지 상세
           </button>
         )}
       </header>
-      <div className={styles.supplyTable}>
-        <DetailTable caption={`${group.name} 주택형별 공급`}>
-          <colgroup>
-            <col style={{ width: '34%' }} />
-            <col style={{ width: '20%' }} />
-            <col style={{ width: '14%' }} />
-            <col style={{ width: '32%' }} />
-          </colgroup>
-          <thead>
-            <tr>
-              <th scope="col">주택형</th>
-              <th scope="col">전용</th>
-              <th scope="col">세대</th>
-              <th scope="col">보증금<br />월 임대료</th>
-            </tr>
-          </thead>
-          <tbody>
-            {group.rows.map((row) => (
-              <SupplyTableRow key={row.supplyRowId} areaUnit={areaUnit} row={row} showOccupancy={occupancies.size > 1} />
-            ))}
-          </tbody>
-        </DetailTable>
+      <div className={styles.complexSummary} data-has-image={imageUrl !== null}>
+        {imageUrl && (
+          <div className={styles.complexImage}>
+            <img src={imageUrl} alt={`${group.name} 단지 조감도`} loading="lazy" />
+          </div>
+        )}
+        <div className={styles.complexBody}>
+          <p>{group.address ?? `주소: ${MISSING_DATA_LABEL}`}</p>
+          <div className={styles.complexCounts}>
+            <span>총 <b>{formatNullableCount(group.totalHouseholdCount, '세대')}</b></span>
+            <span>공급 <b>{formatNullableCount(group.supplyHouseholdCount, '세대')}</b></span>
+          </div>
+        </div>
       </div>
-      {sharedOccupancy && <p className={styles.supplyNote}>입주 예정 {formatYearMonth(sharedOccupancy)}</p>}
-      <details className={styles.supplyDetails}>
-        <summary>평면도·대상별 조건</summary>
-        {group.rows.map((row) => (
-          <HousingTypeCard
-            areaUnit={areaUnit}
-            key={row.supplyRowId}
-            complexName={group.name}
-            row={row}
-            onOpenFloorPlan={onOpenFloorPlan}
+      <div className={styles.complexRanges}>
+        <DetailFacts>
+          <DetailFact term="전용면적" value={areaRange(group.rows, areaUnit)} wide />
+          <DetailFact
+            term="보증금"
+            value={depositRange}
+            wide={depositRange.includes(' – ')}
+            emphasis={group.rows.some((row) => row.targets.some((target) => Number.isFinite(target.deposit)))}
           />
-        ))}
-      </details>
-    </section>
+          <DetailFact
+            term="월 임대료"
+            value={monthlyRentRange}
+            wide={monthlyRentRange.includes(' – ')}
+            emphasis={group.rows.some((row) => row.targets.some((target) => Number.isFinite(target.monthlyRent)))}
+          />
+        </DetailFacts>
+      </div>
+    </article>
   )
 }
 
-function SupplyTableRow({ areaUnit, row, showOccupancy }: {
+function HousingTypeComparison({
+  areaUnit,
+  onToggleAreaUnit,
+  groups,
+  onOpenFloorPlan,
+}: {
   areaUnit: AreaUnit
-  row: HousingAnnouncementDetailSupplyRow
-  showOccupancy: boolean
+  onToggleAreaUnit: () => void
+  groups: readonly HousingAnnouncementSupplyComplexGroup[]
+  onOpenFloorPlan: (selection: FloorPlanSelection) => void
 }) {
-  const deposit = moneyRange([row], 'deposit')
-  const monthlyRent = moneyRange([row], 'monthlyRent')
-  const hasMoney = deposit !== MISSING_DATA_LABEL || monthlyRent !== MISSING_DATA_LABEL
-  const occupancy = showOccupancy && row.occupancyExpectedYearMonth ? `${formatYearMonth(row.occupancyExpectedYearMonth)} 입주` : null
   return (
-    <tr>
-      <th scope="row">
-        <strong>{housingTypeLabel(row)}</strong>
-        <span>{[row.supplyTypeLabel, occupancy].filter(Boolean).join(' · ')}</span>
-      </th>
-      <td>{formatArea(row.exclusiveArea === undefined ? row.housingType?.exclusiveArea ?? null : row.exclusiveArea, areaUnit)}</td>
-      <td>{row.sharedRecruitment ? <span aria-label="개별 모집수 미확정, 단지 공통 합계에 포함">미확정</span> : formatNullableCount(row.totalSupplyHouseholdCount, '')}</td>
-      <td>
-        {hasMoney ? (
-          <>
-            <strong data-emphasis={deposit !== MISSING_DATA_LABEL || undefined}>{deposit}</strong>
-            <span>{monthlyRent}</span>
-          </>
-        ) : <span data-missing="true">{MISSING_DATA_LABEL}</span>}
-      </td>
-    </tr>
+    <DetailSection appearance="block"
+      title="주택형 비교"
+      actions={<AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} />}
+    >
+      <div className={styles.housingTypeGroups}>
+        {groups.map((group) => (
+          <section key={group.key} className={styles.housingTypeGroup} aria-label={`${group.name} 주택형 비교`}>
+            <header className={styles.housingTypeGroupHeading}>
+              <h4>{group.name}</h4>
+              <span>{supplyHouseholdSummary(group.supplyHouseholdCount)}</span>
+            </header>
+            <div className={styles.housingTypes}>
+              {group.rows.map((row) => (
+                <HousingTypeCard
+                  areaUnit={areaUnit}
+                  key={row.supplyRowId}
+                  complexName={group.name}
+                  row={row}
+                  onOpenFloorPlan={onOpenFloorPlan}
+                />
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </DetailSection>
   )
 }
 
-function housingTypeLabel(row: HousingAnnouncementDetailSupplyRow) {
-  if ((row.corrected || row.sharedRecruitment) && row.sourceHousingTypeName) return row.sourceHousingTypeName
-  return row.housingType?.name ?? row.sourceHousingTypeName ?? MISSING_DATA_LABEL
-}
-
-/** 접어 둔 주택형 상세: 평면도, 공급면적·입주 예정과 대상별 조건. */
 function HousingTypeCard({
   areaUnit,
   complexName,
@@ -728,6 +740,7 @@ function HousingTypeCard({
   row: HousingAnnouncementDetailSupplyRow
   onOpenFloorPlan: (selection: FloorPlanSelection) => void
 }) {
+  const idPrefix = useId()
   const housingTypeName = housingTypeLabel(row)
   const twoDimensionalUrl = toHttpUrl(row.housingType?.floorPlanImageUrl ?? null)
   const threeDimensionalUrl = toHttpUrl(row.housingType?.floorPlan3dImageUrl ?? null)
@@ -755,20 +768,41 @@ function HousingTypeCard({
           </button>
         )}
       </div>
-      <div role="group" aria-label={`${complexName} ${housingTypeName} 공급 정보`}>
-        <DetailFacts appearance="list">
-          <DetailFact term="전용면적" value={formatArea(row.exclusiveArea === undefined ? row.housingType?.exclusiveArea ?? null : row.exclusiveArea, areaUnit)} />
-          <DetailFact term="공급면적" value={formatArea(row.supplyArea === undefined ? row.housingType?.supplyArea ?? null : row.supplyArea, areaUnit)} />
-          <DetailFact term="공급 세대수" value={row.sharedRecruitment ? '공통 합계 · 개별 미확정' : formatNullableCount(row.totalSupplyHouseholdCount, '세대')} />
-          <DetailFact term="입주 예정" value={formatYearMonth(row.occupancyExpectedYearMonth)} />
-        </DetailFacts>
-      </div>
+      <DetailTable caption={`${complexName} ${housingTypeName} 공급 정보`}>
+        <colgroup>
+          <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
+          <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
+        </colgroup>
+        <tbody>
+          <tr>
+            <th id={`${idPrefix}-kind`} scope="row">공급 구분</th>
+            <td headers={`${idPrefix}-kind`}>{row.supplyTypeLabel}</td>
+            <th id={`${idPrefix}-area`} scope="row">전용면적</th>
+            <td headers={`${idPrefix}-area`}>{formatArea(row.exclusiveArea === undefined ? row.housingType?.exclusiveArea ?? null : row.exclusiveArea, areaUnit)}</td>
+          </tr>
+          <tr>
+            <th id={`${idPrefix}-count`} scope="row">공급 세대수</th>
+            <td headers={`${idPrefix}-count`}>{row.sharedRecruitment ? '공통 합계 · 개별 미확정' : formatNullableCount(row.totalSupplyHouseholdCount, '세대')}</td>
+            <th id={`${idPrefix}-occupancy`} scope="row">입주 예정</th>
+            <td headers={`${idPrefix}-occupancy`}>{formatYearMonth(row.occupancyExpectedYearMonth)}</td>
+          </tr>
+          {(row.supplyArea !== undefined || row.housingType?.supplyArea != null) && (
+            <tr>
+              <th id={`${idPrefix}-supply-area`} scope="row">공급면적</th>
+              <td headers={`${idPrefix}-supply-area`} colSpan={3}>
+                {formatArea(row.supplyArea === undefined ? row.housingType?.supplyArea ?? null : row.supplyArea, areaUnit)}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </DetailTable>
       <SupplyTargets targets={row.targets} />
     </article>
   )
 }
 
 function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget[] }) {
+  const idPrefix = useId()
   const visibleTargets = targets.filter((target) => (
     [target.target, target.priority, target.applicationCondition].some(hasText)
     || [target.supplyHouseholdCount, target.waitlistCount, target.deposit, target.monthlyRent].some(Number.isFinite)
@@ -776,27 +810,55 @@ function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget
   if (visibleTargets.length === 0) return null
   return (
     <ul className={styles.targetList} aria-label="대상별 공급 조건">
-      {visibleTargets.map((target) => (
+      {visibleTargets.map((target, index) => (
         <li key={target.supplyTargetId}>
           <header className={styles.targetHeading}>
             <strong>{target.target ?? MISSING_DATA_LABEL}</strong>
             {hasText(target.priority) && <span>{target.priority}</span>}
           </header>
-          <div role="group" aria-label={`${target.target ?? MISSING_DATA_LABEL} 공급 조건`}>
-            <DetailFacts appearance="list">
-              <DetailFact term="공급 세대수" value={formatNullableCount(target.supplyHouseholdCount, '세대')} />
-              <DetailFact term="모집 예비자 수" value={formatNullableCount(target.waitlistCount, '명')} />
-              <DetailFact term="보증금" value={formatHousingMoneyReadable(target.deposit)} emphasis={Number.isFinite(target.deposit)} />
-              <DetailFact term="월 임대료" value={formatHousingMoneyReadable(target.monthlyRent)} emphasis={Number.isFinite(target.monthlyRent)} />
+          <DetailTable caption={`${target.target ?? MISSING_DATA_LABEL} 공급 조건`}>
+            <colgroup>
+              <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
+              <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
+            </colgroup>
+            <tbody>
+              <tr>
+                <th id={`${idPrefix}-${index}-count`} scope="row">공급 세대수</th>
+                <td headers={`${idPrefix}-${index}-count`} data-numeric="true">
+                  {formatNullableCount(target.supplyHouseholdCount, '세대')}
+                </td>
+                <th id={`${idPrefix}-${index}-waitlist`} scope="row">모집 예비자 수</th>
+                <td headers={`${idPrefix}-${index}-waitlist`} data-numeric="true">
+                  {formatNullableCount(target.waitlistCount, '명')}
+                </td>
+              </tr>
+              <tr>
+                <th id={`${idPrefix}-${index}-deposit`} scope="row">보증금</th>
+                <td headers={`${idPrefix}-${index}-deposit`} data-emphasis={Number.isFinite(target.deposit) || undefined} data-numeric="true">
+                  {formatHousingMoneyReadable(target.deposit)}
+                </td>
+                <th id={`${idPrefix}-${index}-rent`} scope="row">월 임대료</th>
+                <td headers={`${idPrefix}-${index}-rent`} data-emphasis={Number.isFinite(target.monthlyRent) || undefined} data-numeric="true">
+                  {formatHousingMoneyReadable(target.monthlyRent)}
+                </td>
+              </tr>
               {hasText(target.applicationCondition) && (
-                <DetailFact term="신청 조건" value={target.applicationCondition} wide />
+                <tr>
+                  <th id={`${idPrefix}-${index}-condition`} scope="row">신청 조건</th>
+                  <td headers={`${idPrefix}-${index}-condition`} colSpan={3}>{target.applicationCondition}</td>
+                </tr>
               )}
-            </DetailFacts>
-          </div>
+            </tbody>
+          </DetailTable>
         </li>
       ))}
     </ul>
   )
+}
+
+function housingTypeLabel(row: HousingAnnouncementDetailSupplyRow) {
+  if ((row.corrected || row.sharedRecruitment) && row.sourceHousingTypeName) return row.sourceHousingTypeName
+  return row.housingType?.name ?? row.sourceHousingTypeName ?? MISSING_DATA_LABEL
 }
 
 function DocumentActions({ detail, onOpenAttachments }: {
@@ -993,6 +1055,13 @@ function formatNullableCount(value: number | null, unit: string) {
 
 function supplyHouseholdSummary(value: number | null) {
   return value === null ? `공급 세대수: ${MISSING_DATA_LABEL}` : formatNullableCount(value, '세대')
+}
+
+function areaRange(rows: readonly HousingAnnouncementDetailSupplyRow[], unit: AreaUnit) {
+  const values = rows
+    .map((row) => row.exclusiveArea === undefined ? row.housingType?.exclusiveArea ?? null : row.exclusiveArea)
+    .filter((value): value is number => value !== null && Number.isFinite(value))
+  return numericRange(values, (value) => formatArea(value, unit))
 }
 
 function moneyRange(

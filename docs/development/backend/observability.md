@@ -26,6 +26,19 @@ HTTP 요청과 DB 연결풀·GC를 먼저 비교하고, 요청 표의 traceId로
 기존 연결·읽기 timeout을 유지하며 검색어·인증정보·응답 본문은 메트릭 라벨과 실패 로그에서 제외한다.
 외부 실패 로그의 `failure`는 configuration·upstream_http·timeout·io·invalid_response를 구분한다.
 
+## DB 통신 제한과 복구
+
+기본 DB와 공유 DB 모두 연결풀 대기는 5초, 연결 검증은 2초로 제한한다.
+PostgreSQL JDBC의 TCP 연결은 5초, 로그인은 10초, 소켓 읽기는 기본 120초로 제한하고
+TCP keepalive를 활성화한다. 요청의 연결풀 대기 종료가 JDBC 연결 생성 작업까지 취소하지 않으므로
+드라이버 제한시간도 두 DataSource에 각각 적용한다.
+
+`DB_SOCKET_TIMEOUT_SECONDS`로 두 DB의 읽기 제한을 함께 조절할 수 있다.
+이 제한은 네트워크 무응답뿐 아니라 오래 응답하지 않는 쿼리·COPY 완료 대기에도 적용된다.
+긴 수집 작업이 제한을 넘는다면 실제 SQL 지연을 확인한 뒤 값을 조정한다.
+로컬 복구 테스트는 JDBC 인증 응답과 사용 중 쿼리 응답을 각각 끊었다가 복원하여,
+같은 Hikari 풀에서 다시 조회되고 사용 중 연결 수가 0으로 돌아오는지 확인한다.
+
 ## 트레이스
 
 ```text

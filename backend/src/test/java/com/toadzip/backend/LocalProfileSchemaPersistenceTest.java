@@ -335,7 +335,8 @@ class LocalProfileSchemaPersistenceTest {
         try (Stream<Path> migrations = Files.list(Path.of("src/main/resources/db/migration"))) {
             for (Path migration : migrations.toList()) {
                 String migrationName = migration.getFileName().toString();
-                if (developMigrations.contains(migrationName) || migrationName.compareTo("V20260930_02") >= 0) {
+                if (migrationName.startsWith("R__") || developMigrations.contains(migrationName)
+                        || migrationName.compareTo("V20260930_02") >= 0) {
                     continue;
                 }
                 Files.copy(migration, branchMigrations.resolve(migration.getFileName()));
@@ -740,7 +741,11 @@ class LocalProfileSchemaPersistenceTest {
     }
 
     private int migrationCount() throws Exception {
-        return versionedMigrations().size();
+        try (Stream<Path> migrations = Files.list(Path.of("src/main/resources/db/migration"))) {
+            return Math.toIntExact(migrations.map(path -> path.getFileName().toString())
+                    .filter(name -> name.endsWith(".sql") && (name.startsWith("V") || name.startsWith("R__")))
+                    .count());
+        }
     }
 
     private String versionedMigrationHistory() throws Exception {

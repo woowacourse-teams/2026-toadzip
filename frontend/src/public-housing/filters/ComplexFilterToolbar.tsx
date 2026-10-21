@@ -76,12 +76,6 @@ export function ComplexFilterToolbar({
   const desktopResetFocusPendingRef = useRef(false)
   const previousFiltersSignatureRef = useRef(filtersSignature)
   const quickAppliedSignatureRef = useRef<string | null>(null)
-  const scrollerRef = useRef<HTMLDivElement>(null)
-  const primaryFiltersRef = useRef<HTMLDivElement>(null)
-  // 칩 줄의 시작 위치는 처음 놓인 자리(오른쪽 정렬로 계산)에 고정하고, 창 크기가 바뀔 때만 다시 잰다.
-  // 필터를 골라 칩 글자가 길어져도 '전체' 칩과 패널이 밀리지 않고 줄은 오른쪽으로 넘친다.
-  const [rowStart, setRowStart] = useState(0)
-  const [scrollEdges, setScrollEdges] = useState({ start: false, end: false })
   const mobileFormRef = useRef<HTMLFormElement>(null)
   const mobileSheetRef = useRef<HTMLElement>(null)
   const measurement = useFilterMeasurement('complex', mobileSheetOpen ? mobileInitialTopic : openTopic,
@@ -167,7 +161,10 @@ export function ComplexFilterToolbar({
       setMobileInitialTopic(null)
       setErrorMessage(null)
       window.requestAnimationFrame(() => {
-        triggerRefs.current[desktopTopic]?.focus()
+        const trigger = triggerRefs.current[desktopTopic]
+        const visibleTrigger = trigger && window.getComputedStyle(trigger).display !== 'none'
+          ? trigger : triggerRefs.current.all
+        visibleTrigger?.focus()
       })
     }
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -248,54 +245,34 @@ export function ComplexFilterToolbar({
   }, [filtersSignature, mobileSheetOpen])
 
   useLayoutEffect(() => {
-    const scroller = scrollerRef.current
-    const row = primaryFiltersRef.current
-    if (scroller === null || row === null) return
-    const measureStart = () => {
-      setRowStart(Math.max(0, Math.floor(scroller.clientWidth - row.getBoundingClientRect().width) - 11))
+    const root = rootRef.current
+    if (!root) return
+    const keepVisibleFocus = () => {
+      const trigger = triggerRefs.current[rovingTopic]
+      if (trigger && window.getComputedStyle(trigger).display === 'none') {
+        setRovingTopic('all')
+        if (document.activeElement === trigger) triggerRefs.current.all?.focus()
+      }
+      const openTrigger = openTopic === null ? null : triggerRefs.current[openTopic]
+      if (openTrigger && window.getComputedStyle(openTrigger).display === 'none') {
+        const focusInPopover = desktopFormRef.current?.contains(document.activeElement)
+        setOpenTopic(null)
+        setErrorMessage(null)
+        if (focusInPopover) triggerRefs.current.all?.focus()
+      }
     }
-    measureStart()
-    window.addEventListener('resize', measureStart)
-    return () => window.removeEventListener('resize', measureStart)
-  }, [])
-
-  useLayoutEffect(() => {
-    const scroller = scrollerRef.current
-    if (scroller === null) return
-    const updateEdges = () => {
-      const start = scroller.scrollLeft > 1
-      const end = scroller.scrollLeft + scroller.clientWidth < scroller.scrollWidth - 1
-      setScrollEdges((current) => current.start === start && current.end === end ? current : { start, end })
-    }
-    updateEdges()
-    scroller.addEventListener('scroll', updateEdges, { passive: true })
-    window.addEventListener('resize', updateEdges)
-    // 목록·상세 패널처럼 창 크기 말고 다른 이유로 폭이 바뀌어도 넘침을 다시 잰다.
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateEdges)
-    observer?.observe(scroller)
-    if (scroller.firstElementChild) observer?.observe(scroller.firstElementChild)
-    return () => {
-      scroller.removeEventListener('scroll', updateEdges)
-      window.removeEventListener('resize', updateEdges)
-      observer?.disconnect()
-    }
-  }, [filtersSignature, rowStart, resolvedRegionSummary])
-
-  function scrollFilters(direction: 1 | -1) {
-    const scroller = scrollerRef.current
-    if (scroller === null) return
-    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    scroller.scrollBy({ left: direction * scroller.clientWidth * 0.6, behavior: reducedMotion ? 'auto' : 'smooth' })
-  }
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(keepVisibleFocus)
+    observer?.observe(root)
+    return () => observer?.disconnect()
+  }, [openTopic, rovingTopic])
 
   useLayoutEffect(() => {
     if (openTopic === null) {
       return
     }
     const root = rootRef.current
-    const scroller = scrollerRef.current
     const trigger = triggerRefs.current[openTopic]
-    if (root === null || scroller === null || trigger === undefined) {
+    if (root === null || trigger === undefined) {
       return
     }
 
@@ -323,17 +300,19 @@ export function ComplexFilterToolbar({
     }
 
     updateAnchor()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateAnchor)
+    observer?.observe(root)
     window.addEventListener('resize', updateAnchor)
-    scroller.addEventListener('scroll', updateAnchor, { passive: true })
     return () => {
       window.removeEventListener('resize', updateAnchor)
-      scroller.removeEventListener('scroll', updateAnchor)
+      observer?.disconnect()
     }
-  }, [filtersSignature, openTopic, resolvedRegionSummary])
+    // 선택값으로 버튼이 이동해도 열린 창은 유지하고, 다시 열 때 위치를 맞춘다.
+  }, [openTopic])
 
   useEffect(() => {
     const regionCode = filters.regionCode
-    if (regionCode?.length !== 5) {
+    if (regionCode?.length !== 5 && regionCode?.length !== 10) {
       return
     }
     const provinceName = provinceNameForRegionCode(regionCode)
@@ -365,22 +344,26 @@ export function ComplexFilterToolbar({
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
       return
     }
-    const currentIndex = DESKTOP_PRIMARY_TOPICS.findIndex(
+    const visibleTopics = DESKTOP_PRIMARY_TOPICS.filter(([topic]) => {
+      const trigger = triggerRefs.current[topic]
+      return trigger && window.getComputedStyle(trigger).display !== 'none'
+    })
+    const currentIndex = visibleTopics.findIndex(
       ([topic]) => triggerRefs.current[topic] === event.target,
     )
     if (currentIndex < 0) {
       return
     }
     event.preventDefault()
-    const lastIndex = DESKTOP_PRIMARY_TOPICS.length - 1
+    const lastIndex = visibleTopics.length - 1
     const nextIndex = event.key === 'Home'
       ? 0
       : event.key === 'End'
         ? lastIndex
         : event.key === 'ArrowRight'
-          ? (currentIndex + 1) % DESKTOP_PRIMARY_TOPICS.length
-          : (currentIndex - 1 + DESKTOP_PRIMARY_TOPICS.length) % DESKTOP_PRIMARY_TOPICS.length
-    const nextTopic = DESKTOP_PRIMARY_TOPICS[nextIndex][0]
+          ? (currentIndex + 1) % visibleTopics.length
+          : (currentIndex - 1 + visibleTopics.length) % visibleTopics.length
+    const nextTopic = visibleTopics[nextIndex][0]
     setRovingTopic(nextTopic)
     triggerRefs.current[nextTopic]?.focus()
   }
@@ -420,6 +403,10 @@ export function ComplexFilterToolbar({
   function applyQuickFilter(rangeValues: Readonly<Record<string, number | null>> = {}) {
     if (openTopic === null || openTopic === 'all') return
     applyImmediateTopic(desktopFormRef.current, openTopic, rangeValues)
+  }
+
+  function resetRegionDescendants(regionCode: string) {
+    applyImmediately(replaceTopic(filters, 'region', regionCode ? { regionCode } : {}))
   }
 
   function changeFilter(event: FormEvent<HTMLFormElement>) {
@@ -483,7 +470,7 @@ export function ComplexFilterToolbar({
   const appliedFilterCount = Number(recruiting) + TOPICS.filter(([topic]) => topicSummary(filters, topic, resolvedRegionName) !== null).length
   const filterCountDescriptionId = appliedFilterCount > 0 ? 'complex-applied-filter-count' : undefined
 
-  function recruitingToggle(mobile: boolean) {
+  function recruitingSwitch(mobile: boolean) {
     return (
       <button
         key="recruiting"
@@ -494,8 +481,8 @@ export function ComplexFilterToolbar({
         className={`${mobile ? styles.mobileTrigger : styles.trigger} ${styles.recruitingToggle}`}
         type="button"
         aria-label="모집중"
-        aria-pressed={recruiting}
-        data-active={recruiting}
+        role="switch"
+        aria-checked={recruiting}
         tabIndex={mobile ? undefined : rovingTopic === 'recruiting' ? 0 : -1}
         onFocus={mobile ? undefined : () => setRovingTopic('recruiting')}
         onClick={() => {
@@ -510,7 +497,6 @@ export function ComplexFilterToolbar({
         }}
       >
         <span>모집중</span>
-        <span className={styles.recruitingSwitch} aria-hidden="true"><span /></span>
       </button>
     )
   }
@@ -530,8 +516,8 @@ export function ComplexFilterToolbar({
           onKeyDown={moveToolbarFocus}
         >
           <div className={styles.scrollArea}>
-          <div ref={scrollerRef} className={styles.scroller}>
-            <div ref={primaryFiltersRef} className={styles.primaryFilters} style={{ marginInlineStart: rowStart }}>
+          <div className={styles.scroller}>
+            <div className={styles.primaryFilters}>
               {DESKTOP_PRIMARY_TOPICS.map(([topic, label]) => {
                 if (topic === 'recruiting') return null
                 const expanded = topic === openTopic
@@ -552,6 +538,7 @@ export function ComplexFilterToolbar({
                         }
                       }}
                       className={styles.trigger}
+                      data-topic={topic}
                       type="button"
                       title={summary ?? label}
                       tabIndex={rovingTopic === topic ? 0 : -1}
@@ -599,20 +586,8 @@ export function ComplexFilterToolbar({
               })}
             </div>
           </div>
-          {(scrollEdges.start || scrollEdges.end) && (
-            <button type="button" className={styles.scrollArrow} data-direction="start" disabled={!scrollEdges.start}
-              aria-label="앞쪽 필터 보기" onClick={() => scrollFilters(-1)}>
-              <ChevronIcon direction="start" />
-            </button>
-          )}
-          {(scrollEdges.start || scrollEdges.end) && (
-            <button type="button" className={styles.scrollArrow} data-direction="end" disabled={!scrollEdges.end}
-              aria-label="뒤쪽 필터 더 보기" onClick={() => scrollFilters(1)}>
-              <ChevronIcon direction="end" />
-            </button>
-          )}
           </div>
-          <div className={styles.recruitingRow}>{recruitingToggle(false)}</div>
+          <div className={styles.recruitingRow}>{recruitingSwitch(false)}</div>
         </div>
 
         {openTopic !== null && openLabel !== null && headingId !== undefined && (
@@ -670,9 +645,10 @@ export function ComplexFilterToolbar({
               <div className={styles.fields}>
                 {openTopic === 'all'
                   ? <AllFilterFields filters={allInitialFilters} regionRepository={regionRepository}
+                    onRegionReset={resetRegionDescendants}
                     onRangeChange={(topic, values) => applyImmediateTopic(desktopFormRef.current, topic, values)} />
                   : <ComplexFilterFields filters={filters} regionRepository={regionRepository}
-                    topic={openTopic} onRangeChange={applyQuickFilter} />}
+                    topic={openTopic} onRangeChange={applyQuickFilter} onRegionReset={resetRegionDescendants} />}
               </div>
               {errorMessage !== null && (
                 <p className={styles.error} role="alert">{errorMessage}</p>
@@ -695,6 +671,7 @@ export function ComplexFilterToolbar({
             <button
               key={topic}
               className={styles.mobileTrigger}
+              data-topic={topic}
               type="button"
               title={summary ?? label}
               aria-controls="mobile-complex-filter-sheet"
@@ -713,7 +690,7 @@ export function ComplexFilterToolbar({
           )
         })}
         </div>
-        <div className={styles.recruitingRow}>{recruitingToggle(true)}</div>
+        <div className={styles.recruitingRow}>{recruitingSwitch(true)}</div>
       </div>
 
       {mobileSheetOpen && createPortal(
@@ -787,6 +764,7 @@ export function ComplexFilterToolbar({
                       filters={mobileDraftFilters}
                       regionRepository={regionRepository}
                       topic={topic}
+                      onRegionReset={resetRegionDescendants}
                       onRangeChange={values => applyImmediateTopic(mobileFormRef.current, topic, values)}
                     />
                   </section>
@@ -821,12 +799,4 @@ function focusableElements(container: HTMLElement) {
   return [...container.querySelectorAll<HTMLElement>(
     'button:not([disabled]), select:not([disabled]), input:not([type="hidden"]):not([disabled]), [tabindex]:not([tabindex="-1"])',
   )].filter((element) => !element.hasAttribute('hidden'))
-}
-
-function ChevronIcon({ direction }: { readonly direction: 'start' | 'end' }) {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d={direction === 'end' ? 'm9 5 7 7-7 7' : 'm15 5-7 7 7 7'} />
-    </svg>
-  )
 }

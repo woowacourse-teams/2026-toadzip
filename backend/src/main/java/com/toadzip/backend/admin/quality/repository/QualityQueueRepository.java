@@ -9,7 +9,9 @@ import com.toadzip.backend.announcement.repository.ApplicationScheduleSql;
 import com.toadzip.backend.housing.repository.ComplexVerificationSql;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.time.LocalDate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -74,37 +76,40 @@ public class QualityQueueRepository {
               AND latest AND status IN ('ON_HOLD', 'STALE'))
             """;
     // SOURCE_CHANGED의 출처: 데이터 검증에서 확인한 원천의 변경(COMPARISON_CHECK)과 공급행 원천 소실(SUPPLY_SOURCE).
-    private static final String FROM = """
-             FROM (
+    private static final String WITH_QUEUE = """
+            WITH source AS MATERIALIZED (
+              SELECT * FROM (
+            """ + COMPLEX + " UNION ALL " + ANNOUNCEMENT + """
+              ) source
+              WHERE (:resource = '' OR resource = :resource)
+                AND lower(name) LIKE :keyword ESCAPE '!'
+                AND (:sourceIdentifier = '' OR source_identifier = :sourceIdentifier
+                  OR alternate_source_identifier = :sourceIdentifier)
+                AND (CAST(:announcementId AS bigint) IS NULL OR resource = 'ANNOUNCEMENT' AND id = :announcementId)
+                AND (CAST(:complexId AS bigint) IS NULL OR resource = 'COMPLEX' AND id = :complexId
+                  OR resource = 'ANNOUNCEMENT' AND EXISTS (SELECT 1 FROM supply_rows linked
+                    WHERE linked.announcement_id = source.id AND NOT linked.admin_excluded
+                      AND linked.housing_complex_id = :complexId))
+                AND (:provider = '' OR provider IN (:provider, :providerLegacy))
+                AND (:applicationStatus = '' OR resource = 'ANNOUNCEMENT' AND application_status = :applicationStatus)
+            ), staged AS MATERIALIZED (
+              SELECT source.*,
+            """ + SUPPLY_REVIEW_REASONS + """
+                supply_review_reasons,
+            """ + SOURCE_CHANGED + """
+                comparison_changed
+              FROM source
+            ), queue AS MATERIALIZED (
               SELECT staged.*, review_reasons || supply_review_reasons
                 || CASE WHEN cardinality(missing_fields) > 0 THEN ARRAY['MISSING'] ELSE ARRAY[]::text[] END
                 || CASE WHEN comparison_changed THEN ARRAY['SOURCE_CHANGED'] ELSE ARRAY[]::text[] END reasons,
                 CASE WHEN comparison_changed THEN ARRAY['COMPARISON_CHECK'] ELSE ARRAY[]::text[] END
                 || CASE WHEN 'SOURCE_CHANGED' = ANY(review_reasons) THEN ARRAY['SUPPLY_SOURCE'] ELSE ARRAY[]::text[] END
                   source_changes
-              FROM (
-               SELECT source.*,
-            """ + SUPPLY_REVIEW_REASONS + """
-                 supply_review_reasons,
-            """ + SOURCE_CHANGED + """
-                 comparison_changed
-               FROM (
-            """ + COMPLEX + " UNION ALL " + ANNOUNCEMENT + """
-               ) source
-              ) staged
-             ) queue WHERE cardinality(reasons) > 0
-               AND (:resource = '' OR resource = :resource)
-               AND (:reason = '' OR :reason = ANY(reasons))
-               AND lower(name) LIKE :keyword ESCAPE '!'
-               AND (:sourceIdentifier = '' OR source_identifier = :sourceIdentifier
-                 OR alternate_source_identifier = :sourceIdentifier)
-               AND (CAST(:announcementId AS bigint) IS NULL OR resource = 'ANNOUNCEMENT' AND id = :announcementId)
-               AND (CAST(:complexId AS bigint) IS NULL OR resource = 'COMPLEX' AND id = :complexId
-                 OR resource = 'ANNOUNCEMENT' AND EXISTS (SELECT 1 FROM supply_rows linked
-                   WHERE linked.announcement_id = queue.id AND NOT linked.admin_excluded
-                     AND linked.housing_complex_id = :complexId))
-               AND (:provider = '' OR provider IN (:provider, :providerLegacy))
-               AND (:applicationStatus = '' OR resource = 'ANNOUNCEMENT' AND application_status = :applicationStatus)
+              FROM staged
+            ), matches AS MATERIALIZED (
+              SELECT * FROM queue WHERE cardinality(reasons) > 0 AND (:reason = '' OR :reason = ANY(reasons))
+            )
             """;
     private final JdbcClient jdbc;
 
@@ -115,15 +120,35 @@ public class QualityQueueRepository {
     public AdminPage<QualityQueueItem> search(QualityQueueFilter filter, LocalDate today, int page, int size) {
         String pattern = "%" + filter.keyword().toLowerCase(java.util.Locale.ROOT)
                 .replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
-        long count = statement("SELECT count(*)" + FROM, filter, pattern, today).query(Long.class).single();
-        var items = statement("SELECT *" + FROM + """
+        return statement(WITH_QUEUE + """
+                SELECT page.*, total.total_elements FROM (SELECT count(*) total_elements FROM matches) total
+                LEFT JOIN LATERAL (
+                 SELECT * FROM matches
                  ORDER BY CASE WHEN 'SOURCE_CHANGED' = ANY(reasons) OR 'STALE' = ANY(reasons) THEN 0
                    WHEN 'SOURCE_MISMATCH' = ANY(reasons) THEN 1
                    WHEN 'MISSING' = ANY(reasons) THEN 2 ELSE 3 END,
                  cardinality(missing_fields) DESC, admin_updated_at DESC NULLS LAST, resource, id DESC
                  LIMIT :size OFFSET :offset
+                ) page ON true
+                ORDER BY CASE WHEN 'SOURCE_CHANGED' = ANY(page.reasons) OR 'STALE' = ANY(page.reasons) THEN 0
+                  WHEN 'SOURCE_MISMATCH' = ANY(page.reasons) THEN 1
+                  WHEN 'MISSING' = ANY(page.reasons) THEN 2 ELSE 3 END,
+                cardinality(page.missing_fields) DESC, page.admin_updated_at DESC NULLS LAST, page.resource, page.id DESC
                 """, filter, pattern, today).param("size", size).param("offset", (long) page * size)
-                .query((row, index) -> item(row)).list();
+                .query(result -> {
+                    return page(result, page, size);
+                });
+    }
+
+    private AdminPage<QualityQueueItem> page(ResultSet result, int page, int size) throws SQLException {
+        List<QualityQueueItem> items = new ArrayList<>();
+        long count = 0;
+        while (result.next()) {
+            count = result.getLong("total_elements");
+            if (result.getObject("id") != null) {
+                items.add(item(result));
+            }
+        }
         return new AdminPage<>(items, page, ((long) page + 1) * size < count, count,
                 Math.toIntExact((count + size - 1) / size));
     }
