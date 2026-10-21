@@ -7,11 +7,11 @@ import { isRecord } from '../management/managementContract'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
 import { type Evidence } from './extraction'
 import { cellMatches, createRowReview, pendingRow, pendingTarget, preserveCellChoice, remapTarget, shown, type Review, type ReviewFilter, type RowReview, type TargetReview } from './review'
-import type { HousingCandidates } from './matching'
+import type { ComplexLabels, HousingCandidates } from './matching'
 import { ReviewCells } from './ReviewCells'
 import styles from './PdfCorrection.module.css'
 
-export function ReviewSupply({ review, workspace, housing, filter, empty, onChange, onEvidence }: { review: Review; workspace: JsonWorkspace; housing: HousingCandidates; filter: ReviewFilter; empty: string; onChange: (review: Review) => void; onEvidence: (evidence: Evidence) => void }) {
+export function ReviewSupply({ review, workspace, housing, complexes, filter, empty, onChange, onEvidence }: { review: Review; workspace: JsonWorkspace; housing: HousingCandidates; complexes: ComplexLabels; filter: ReviewFilter; empty: string; onChange: (review: Review) => void; onEvidence: (evidence: Evidence) => void }) {
   function update(index: number, next: RowReview) { onChange({ ...review, rows: review.rows.map((row, at) => at === index ? next : row) }) }
   function mapping(index: number, destination: string, anchorKey: string) {
     const old = review.rows[index], anchor = workspace.supply.rows.find(row => row.key === anchorKey)
@@ -21,6 +21,13 @@ export function ReviewSupply({ review, workspace, housing, filter, empty, onChan
     const retain = (cell: typeof next.cells[number]) => { const previous = oldCells.find(item => item.path === cell.path); return preserveCellChoice(cell, previous) }
     next.cells = next.cells.map(retain); next.targets = next.targets.map(target => ({ ...target, cells: target.cells.map(retain) }))
     update(index, { ...next, include: old.include, reviewed: true })
+  }
+  // 같은 단지의 공급행은 하나의 기준 단지로 묶는다. 값은 그 단지의 첫 공급행이며 PNU·공급 구분을 가져온다.
+  const linked = workspace.supply.rows.filter(item => !item.excluded && item.housingComplexId !== null)
+  const anchors = linked.filter((item, at) => linked.findIndex(other => other.housingComplexId === item.housingComplexId) === at)
+  const anchorFor = (key: string) => {
+    const complexId = workspace.supply.rows.find(item => item.key === key)?.housingComplexId
+    return anchors.find(item => item.housingComplexId === complexId)?.key ?? ''
   }
   return <>
     <div className={styles.sectionHeading}><div><h2>공급정보</h2><p>기존 값과 PDF에서 가져온 값을 비교하고, 반영할 항목을 고르세요.</p></div></div>
@@ -35,7 +42,7 @@ export function ReviewSupply({ review, workspace, housing, filter, empty, onChan
           <div className={styles.mapping}>
             <label>공급행 {index + 1} 저장할 위치<select value={row.proposal.destination} onChange={event => mapping(index, event.target.value, event.target.value === 'new' ? row.proposal.anchorKey : event.target.value)}><option value="">수정할 기존 항목을 선택하세요</option>{workspace.supply.rows.filter(item => !item.excluded).map(item => <option key={item.key} value={item.key}>{item.complexName} · {item.typeName} (#{item.id}) 수정</option>)}<option value="new">새 공급정보로 추가</option></select></label>
             {row.proposal.destination === 'new' && <div>
-              {workspace.supply.rows.length > 0 && <label>공급행 {index + 1} 기준 단지<select value={row.proposal.anchorKey} onChange={event => mapping(index, 'new', event.target.value)}><option value="">다른 단지 찾기</option>{workspace.supply.rows.filter(item => !item.excluded).map(item => <option key={item.key} value={item.key}>{item.complexName} · {item.typeName}</option>)}</select></label>}
+              {anchors.length > 0 && <label>공급행 {index + 1} 기준 단지<select value={anchorFor(row.proposal.anchorKey)} onChange={event => mapping(index, 'new', event.target.value)}><option value="">다른 단지 찾기</option>{anchors.map(item => <option key={item.key} value={item.key}>{complexes[item.housingComplexId!] ?? item.housingComplexName ?? `단지 #${item.housingComplexId}`}</option>)}</select></label>}
               {!row.proposal.anchorKey && <NewSupplyComplex row={row} index={index} onChange={next => update(index, next)} />}
             </div>}
           </div>
