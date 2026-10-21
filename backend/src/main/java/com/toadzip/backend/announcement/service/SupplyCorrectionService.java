@@ -64,6 +64,7 @@ public class SupplyCorrectionService {
     private final SupplyCorrectionRecordRepository corrections;
     private final AdminDataChangeRepository changes;
     private final QualityComparisonService comparisons;
+    private final SupplyCorrectionGroups groupCorrections;
     private final AnnouncementSupplyMatchingService supplyMatching;
     private final ObjectMapper json;
 
@@ -111,13 +112,15 @@ public class SupplyCorrectionService {
 
     public SupplyCorrection.Preview preview(long id, SupplyCorrection.Request request) {
         var before = checked(id, request.snapshotToken());
-        var planned = plan(find(id), before.rows(), request.rows());
-        var warnings = validateSchedulesAndCounts(id, planned);
-        if (same(before.rows(), planned)) {
+        var announcement = find(id);
+        var planned = plan(announcement, before.rows(), request.rows());
+        var groupPlans = groupCorrections.plan(announcement, planned, request.newGroups());
+        var warnings = validateSchedulesAndCounts(id, planned, request.newGroups());
+        if (groupPlans.isEmpty() && same(before.rows(), planned)) {
             throw new IllegalArgumentException("변경한 공급정보가 없습니다.");
         }
-        return new SupplyCorrection.Preview(hash(List.of(request, planned, candidateValues(planned))),
-                before.rows(), planned, warnings);
+        return new SupplyCorrection.Preview(hash(List.of(request, planned, candidateValues(planned), groupPlans)),
+                before.rows(), planned, warnings, request.newGroups());
     }
 
     @Transactional
@@ -138,14 +141,19 @@ public class SupplyCorrectionService {
         }
         var stored = rows.findAllByAnnouncement(announcement).stream()
                 .collect(Collectors.toMap(SupplyRow::getId, Function.identity()));
+        var groupPlans = groupCorrections.plan(announcement, preview.after(), request.correction().newGroups());
+        Map<String, SupplyRow> written = new LinkedHashMap<>();
         var beforeById = preview.before().stream().collect(Collectors.toMap(Row::id, Function.identity()));
         for (var row : preview.after()) {
+            var saved = stored.get(row.id());
             if (row.id() == null || !same(beforeById.get(row.id()), row)) {
-                writeRow(announcement, stored.get(row.id()), row, request.correction());
+                saved = writeRow(announcement, saved, row, request.correction());
             }
+            written.put(row.key(), saved);
         }
+        groupCorrections.apply(announcement, groupPlans, written, request.correction(), actor);
         supplyMatching.rememberCorrectedLinks(announcement.getSourceAnnouncementIdentifier(),
-                changedLinks(preview, beforeById, stored), request.correction().sourceUrl(),
+                changedLinks(preview, beforeById, written), request.correction().sourceUrl(),
                 request.correction().reason(), actor);
         announcement.recordAdminSupplyChange();
         announcements.flush();
@@ -166,11 +174,11 @@ public class SupplyCorrectionService {
 
     /** 기존 행 중 주택형 연결이 바뀐 행. 연결은 정제의 저장 매칭이 소유하므로 원천행 식별자로 넘긴다. */
     private Map<String, HousingType> changedLinks(SupplyCorrection.Preview preview, Map<Long, Row> beforeById,
-            Map<Long, SupplyRow> stored) {
+            Map<String, SupplyRow> written) {
         Map<String, HousingType> links = new HashMap<>();
         for (var row : preview.after()) {
             if (row.id() == null || row.groupId() != null) { continue; }
-            var saved = stored.get(row.id());
+            var saved = written.get(row.key());
             Long typeId = saved.getHousingType() == null ? null : saved.getHousingType().getId();
             if (!Objects.equals(beforeById.get(row.id()).housingTypeId(), typeId)) {
                 links.put(saved.getSourceSupplyRowIdentifier(), saved.getHousingType());
@@ -267,14 +275,14 @@ public class SupplyCorrectionService {
         return result.stream().sorted(Comparator.comparingInt(Target::displayOrder).thenComparing(Target::key)).toList();
     }
 
-    private List<String> validateSchedulesAndCounts(long id, List<Row> planned) {
+    private List<String> validateSchedulesAndCounts(long id, List<Row> planned, List<SupplyCorrection.NewGroup> newGroups) {
         var linked = planned.stream().filter(row -> !row.excluded()).map(Row::housingComplexId)
                 .filter(Objects::nonNull).collect(Collectors.toSet());
         if (schedules.findAllByAnnouncementIdIn(List.of(id)).stream().anyMatch(schedule ->
                 schedule.getHousingComplex() != null && !linked.contains(schedule.getHousingComplex().getId()))) {
             throw new AdminDataConflictException("제외·연결 변경할 단지에 접수 일정이 있습니다. 일정 적용 단지를 먼저 수정하세요.");
         }
-        long totalCount = 0;
+        long totalCount = newGroups.stream().mapToLong(SupplyCorrection.NewGroup::sharedHouseholdCount).sum();
         Set<Long> countedGroups = new HashSet<>();
         for (var row : planned) {
             if (row.excluded()) { continue; }
@@ -309,7 +317,7 @@ public class SupplyCorrectionService {
         return List.copyOf(warnings);
     }
 
-    private void writeRow(Announcement announcement, SupplyRow stored, Row input, SupplyCorrection.Request request) {
+    private SupplyRow writeRow(Announcement announcement, SupplyRow stored, Row input, SupplyCorrection.Request request) {
         var complex = complex(input.housingComplexId());
         var type = type(input, complex, "MANUAL:" + request.operationId() + ":" + input.key());
         if (input.newHousingType() != null) { types.save(type); }
@@ -337,6 +345,7 @@ public class SupplyCorrectionService {
                     target.deposit(), target.rent(), target.convertedDeposit(), target.condition());
             condition.correctPresentation(target.excluded(), target.displayOrder());
         }
+        return stored;
     }
 
     private HousingComplex complex(Long id) {
