@@ -16,7 +16,7 @@ it('원천 비교 수정은 변경값과 당시 원천 근거를 분리해 표�
     ] } }),
   }])
   render(<ChangeHistory resource="complexes" id="7" version={2} />)
-  fireEvent.click(await screen.findByText(/원천 비교 후 수정 · 운영자/))
+  fireEvent.click(await screen.findByRole('button', { name: /원천 비교 후 수정 · 운영자/ }))
   expect(screen.getByRole('table', { name: '수정한 항목' })).not.toHaveTextContent('comparisonEvidence')
   const evidence = screen.getByRole('region', { name: '확인한 DB 원천 근거' })
   expect(evidence).toHaveTextContent('단지 전체 범위 확인')
@@ -32,7 +32,7 @@ it('공고 이력은 바뀐 값만 보여주고 전체 기록을 나열하지 �
     afterValue: '{"name":"새 이름","originalUrl":"https://example.com/notice"}',
   }])
   const { container } = render(<ChangeHistory resource="announcements" id="7" version={2} />)
-  fireEvent.click(await screen.findByText(/정보 수정 · 운영자/))
+  fireEvent.click(await screen.findByRole('button', { name: /정보 수정 · 운영자/ }))
   expect(screen.getByRole('table', { name: '수정한 항목' })).toHaveTextContent('새 이름')
   expect(screen.queryByText('전체 기록 보기')).not.toBeInTheDocument()
   expect(container.querySelector('pre')).toBeNull()
@@ -45,7 +45,7 @@ it('단지 이력은 전체 기록을 경로·값 표로 펼쳐 볼 수 있다',
     afterValue: '{"name":"새 이름","originalUrl":"https://example.com/notice"}',
   }])
   render(<ChangeHistory resource="complexes" id="7" version={2} />)
-  fireEvent.click(await screen.findByText(/정보 수정 · 운영자/))
+  fireEvent.click(await screen.findByRole('button', { name: /정보 수정 · 운영자/ }))
   fireEvent.click(screen.getByText('전체 기록 보기'))
   const before = screen.getByRole('table', { name: '변경 전' })
   expect(within(before).getByRole('row', { name: 'supplyRows[0].amount 0' })).toBeVisible()
@@ -60,7 +60,7 @@ it('바뀐 값만 먼저 보여주고 PDF 근거를 읽기 쉬운 이름으로 �
       documentEvidence: { note: '원문 확인', citations: [{ field: 'totalHouseholdCount', page: 1, quote: '총 120세대' }] } }),
   }])
   render(<ChangeHistory resource="complexes" id="7" version={2} />)
-  fireEvent.click(await screen.findByText(/정보 수정 · 운영자/))
+  fireEvent.click(await screen.findByRole('button', { name: /정보 수정 · 운영자/ }))
   const changes = screen.getByRole('table', { name: '수정한 항목' })
   expect(changes).toHaveTextContent('전체 세대수')
   expect(changes).toHaveTextContent('80')
@@ -80,7 +80,7 @@ it('객체가 아닌 저장 이력도 값을 그대로 표시한다', async () =
     beforeValue: '기존 이력 텍스트', afterValue: 'null',
   }])
   render(<ChangeHistory resource="complexes" id="7" version={2} />)
-  fireEvent.click(await screen.findByText(/정보 수정 · 운영자/))
+  fireEvent.click(await screen.findByRole('button', { name: /정보 수정 · 운영자/ }))
   fireEvent.click(screen.getByText('전체 기록 보기'))
   expect(screen.getByRole('table', { name: '변경 전' })).toHaveTextContent('기존 이력 텍스트')
   expect(screen.getByRole('table', { name: '변경 후' })).toHaveTextContent('값 없음 (null)')
@@ -93,7 +93,7 @@ it('공급정보 일괄 보정 이력은 원천 전체 대신 바뀐 값과 공�
     afterValue: JSON.stringify({ rows: [{ ...previous, householdCount: null }], reason: '모집수 미확정', sourceUrl: 'https://example.com/notice.pdf', sourcePage: '3쪽', operationId: '작업번호', sources: [{ raw: '긴 원천 자료' }] }),
   }])
   render(<ChangeHistory resource="announcements" id="7" version={2} />)
-  fireEvent.click(await screen.findByText(/공급정보 일괄 보정 · 운영자/))
+  fireEvent.click(await screen.findByRole('button', { name: /공급정보 일괄 보정 · 운영자/ }))
   const record = screen.getByRole('region', { name: '저장한 공급정보 보정' })
   expect(within(record).getByRole('heading', { name: '저장한 변경 1개' })).toBeVisible()
   expect(record).toHaveTextContent('모집수 미확정')
@@ -111,7 +111,7 @@ it('PDF 보정 이력은 한 건에 원천 주택형명·접수처·일정 변�
       events: [{ ...event, data: { ...event.data, name: '현장 신청접수', startAt: '2026-10-28T09:00:00' } }] }),
   }])
   render(<ChangeHistory resource="announcements" id="47" version={3} />)
-  fireEvent.click(await screen.findByText(/PDF로 공고 보정 · 운영자/))
+  fireEvent.click(await screen.findByRole('button', { name: /PDF로 공고 보정 · 운영자/ }))
   const supply = screen.getByRole('region', { name: '저장한 공급정보 보정' })
   expect(within(supply).getByRole('row', { name: /원천 주택형명 37.1300 26/ })).toBeInTheDocument()
   const other = screen.getByRole('region', { name: '저장한 기본정보·일정 보정' })
@@ -128,7 +128,7 @@ it('PDF 보정 이력은 공급행 변경이 없으면 빈 표를 두지 않고 
       events: [{ id: 258, complexName: null, data: { scheduleType: 'DOCUMENT_SUBMISSION', name: '현장 신청 시 서류제출', startAt: '2026-10-21T10:00:00', endAt: '2026-10-22T16:00:00' } }] }),
   }])
   render(<ChangeHistory resource="announcements" id="29" version={4} />)
-  fireEvent.click(await screen.findByText(/PDF로 공고 보정 · 운영자/))
+  fireEvent.click(await screen.findByRole('button', { name: /PDF로 공고 보정 · 운영자/ }))
   const supply = screen.getByRole('region', { name: '저장한 공급정보 보정' })
   expect(within(supply).getByRole('heading', { name: '공급행 변경 없음' })).toBeVisible()
   expect(within(supply).queryByRole('region', { name: '변경 전후 비교' })).not.toBeInTheDocument()
@@ -143,7 +143,7 @@ it('이전 JSON 갱신 이력도 변수명 대신 화면 이름으로 바뀐 값
       detail: { summary: { modified: true }, data: { version: 3, receptionPlace: { name: '주민센터', contact: '1600-1004' } } }, events: [] }),
   }])
   render(<ChangeHistory resource="announcements" id="47" version={3} />)
-  fireEvent.click(await screen.findByText(/JSON으로 공고 갱신 · root/))
+  fireEvent.click(await screen.findByRole('button', { name: /JSON으로 공고 갱신 · root/ }))
   const other = screen.getByRole('region', { name: '저장한 기본정보·일정 보정' })
   expect(within(other).getAllByRole('row').slice(1).map(row => row.textContent)).toEqual(['접수처접수처명행정복지센터주민센터', '접수처연락처미확인1600-1004'])
   expect(screen.getByRole('row', { name: /원천 주택형명 37.1300 26/ })).toBeInTheDocument()
