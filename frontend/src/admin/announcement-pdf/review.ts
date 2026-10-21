@@ -6,7 +6,7 @@ import { defaultTargetDestinations, proposeRows, proposeSchedules, type HousingC
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
 export type CellState = 'unresolved' | 'notApplicable' | 'invalid' | 'confirm' | 'same' | 'changed' | 'new'
 export type ValueMode = 'keep' | 'extracted' | 'manual'
-export type Cell = { path: string; field: string; label: string; kind: Kind; before: unknown; value: unknown; selected: boolean; edited: boolean; mode: ValueMode; input?: string; manualInput?: string; extracted: { value: unknown; state: CellState; note: string }; locked: boolean; note: string; state: CellState; evidence: Evidence | null }
+export type Cell = { path: string; field: string; label: string; kind: Kind; before: unknown; value: unknown; selected: boolean; edited: boolean; reviewed: boolean; mode: ValueMode; input?: string; manualInput?: string; extracted: { value: unknown; state: CellState; note: string }; locked: boolean; note: string; state: CellState; evidence: Evidence | null }
 type FieldSpec = [field: string, label: string, kind: Kind, target?: string]
 export const rowFields: FieldSpec[] = [['sourceHousingTypeName', '공고 주택형명', 'text', 'typeName'], ['exclusiveArea', '전용면적 (㎡)', 'area'], ['supplyArea', '공급면적 (㎡)', 'area'], ['totalSupplyHouseholdCount', '모집수', 'count', 'householdCount'], ['expectedMoveInMonth', '입주 예정월', 'month', 'moveInMonth'], ['housingTypeId', '연결 주택형', 'housingType']]
 export const targetFields: FieldSpec[] = [['target', '공급 대상', 'text'], ['supplyRank', '공급 순위', 'text'], ['supplyHouseholdCount', '대상별 모집수', 'count', 'householdCount'], ['reserveCount', '예비자 수', 'count'], ['rentalDeposit', '보증금 (원)', 'money', 'deposit'], ['monthlyRent', '월 임대료 (원)', 'money', 'rent'], ['convertedDeposit', '전환보증금 (원)', 'money'], ['applicationCondition', '신청 조건', 'text', 'condition']]
@@ -14,8 +14,8 @@ export const scheduleFields: FieldSpec[] = [['scheduleType', '일정 유형', 's
 const metadataFields: FieldSpec[] = [['postedDate', '공고일', 'date'], ['applicationStartDate', '접수 시작일', 'date'], ['applicationEndDate', '접수 종료일', 'date'], ['winnerAnnouncementDate', '당첨자 발표일', 'date']]
 const receptionFields: FieldSpec[] = [['name', '접수처명', 'text'], ['method', '접수 방식', 'method'], ['address', '접수처 주소', 'text'], ['contact', '연락처', 'text'], ['url', '접수처 URL', 'url']]
 export type TargetReview = { destination: string; cells: Cell[] }
-export type RowReview = { proposal: RowProposal; include: boolean; key: string; cells: Cell[]; targets: TargetReview[] }
-export type ScheduleReview = { proposal: ScheduleProposal; include: boolean; cells: Cell[] }
+export type RowReview = { proposal: RowProposal; include: boolean; reviewed: boolean; key: string; cells: Cell[]; targets: TargetReview[] }
+export type ScheduleReview = { proposal: ScheduleProposal; include: boolean; reviewed: boolean; cells: Cell[] }
 export type Review = { extraction: Extraction; rows: RowReview[]; schedules: ScheduleReview[]; metadata: Cell[]; reception: Cell[] }
 export const cellStates: Record<Cell['state'], string> = { confirm: '확인 필요', unresolved: '미확인 · 현재값 유지', notApplicable: '해당 없음', invalid: '형식 확인 필요', same: '같음', changed: '변경', new: '추가' }
 export function shown(value: unknown) { return value === null || value === undefined || value === '' ? '미확인' : String(value) }
@@ -55,25 +55,25 @@ function cells(extraction: Extraction, prefix: string, specs: FieldSpec[], sourc
     if (['changed', 'new'].includes(state) && (!evidence || moreDetailed)) state = 'confirm'
     const note = unused?.reason ?? missing?.reason ?? (moreDetailed ? '현재값이 더 자세합니다.' : !evidence ? '이 항목의 PDF 근거를 직접 확인하세요.' : '')
     const selected = state === 'changed' || state === 'new'
-    return { path, field, label, kind, before: previous, value, selected, edited: false, mode: selected ? 'extracted' : 'keep', extracted: { value, state, note }, locked: false, note, state, evidence }
+    return { path, field, label, kind, before: previous, value, selected, edited: false, reviewed: false, mode: selected ? 'extracted' : 'keep', extracted: { value, state, note }, locked: false, note, state, evidence }
   })
 }
 export function editCell(cell: Cell, input: string): Cell {
   const value = input === '' ? null : cell.kind === 'area' || cell.kind === 'count' || cell.kind === 'housingType' ? Number(input) : input
   const state = value === null && cell.kind !== 'housingType' ? 'unresolved' : !validCellValue(cell.kind, value) ? 'invalid' : JSON.stringify(value) === JSON.stringify(cell.before) ? 'same' : cell.before === null ? 'new' : 'changed'
-  return { ...cell, input, manualInput: input, value, state, mode: 'manual', selected: state === 'changed' || state === 'new', edited: true, note: '' }
+  return { ...cell, input, manualInput: input, value, state, mode: 'manual', selected: state === 'changed' || state === 'new', edited: true, reviewed: true, note: '' }
 }
 export function chooseCellValue(cell: Cell, mode: ValueMode): Cell {
   if (cell.locked) return cell
-  if (mode === 'keep') return { ...cell, ...cell.extracted, mode, selected: false, edited: false, input: undefined }
+  if (mode === 'keep') return { ...cell, ...cell.extracted, mode, selected: false, edited: false, reviewed: true, input: undefined }
   if (mode === 'manual') return editCell(cell, cell.manualInput ?? String(cell.value ?? ''))
   const original = cell.extracted
-  return { ...cell, ...original, mode, input: undefined, edited: false, selected: validCellValue(cell.kind, original.value) && !['unresolved', 'notApplicable', 'invalid'].includes(original.state) }
+  return { ...cell, ...original, mode, input: undefined, edited: false, reviewed: true, selected: validCellValue(cell.kind, original.value) && !['unresolved', 'notApplicable', 'invalid'].includes(original.state) }
 }
 export function preserveCellChoice(fresh: Cell, previous?: Cell): Cell {
   if (!previous) return fresh
   const updated = chooseCellValue({ ...fresh, manualInput: previous.manualInput }, previous.mode)
-  return { ...updated, selected: !fresh.locked && updated.selected }
+  return { ...updated, reviewed: previous.reviewed, selected: !fresh.locked && updated.selected }
 }
 export function createRowReview(extraction: Extraction, index: number, proposal: RowProposal, workspace: JsonWorkspace): RowReview {
   const source = extraction.supplyRows[index], current = workspace.supply.rows.find(row => row.key === proposal.destination)
@@ -83,7 +83,7 @@ export function createRowReview(extraction: Extraction, index: number, proposal:
     const count = rowCells.find(cell => cell.field === 'totalSupplyHouseholdCount')!
     count.locked = true; count.selected = false; count.mode = 'keep'; count.note = '공통 모집수는 묶음에 한 번만 기록합니다.'
   }
-  return { proposal, include: true, key: current?.key ?? crypto.randomUUID(), cells: rowCells,
+  return { proposal, include: true, reviewed: false, key: current?.key ?? crypto.randomUUID(), cells: rowCells,
     targets: source.targets.map((target, at) => ({ destination: targets[at], cells: cells(extraction, `supplyRows[${index}].targets[${at}]`, targetFields, target,
       current?.targets.find(item => (item.id ? String(item.id) : item.key) === targets[at]) as unknown as JsonObject) })) }
 }
@@ -94,7 +94,7 @@ export function createReview(extraction: Extraction, workspace: JsonWorkspace, h
     rows: proposeRows(extraction, workspace.supply.rows, housing).map((proposal, index) => createRowReview(extraction, index, proposal, workspace)),
     schedules: proposeSchedules(extraction, workspace.events).map((proposal, index) => {
       const values = cells(extraction, `schedules[${index}]`, scheduleFields, extraction.schedules[index], workspace.events.find(event => event.id === proposal.existingIds[0])?.data)
-      return { proposal, cells: values, include: !proposal.needsConfirmation && values.every(cell => validCellValue(cell.kind, cell.value) && !['notApplicable', 'unresolved'].includes(cell.state)) }
+      return { proposal, cells: values, reviewed: false, include: !proposal.needsConfirmation && values.every(cell => validCellValue(cell.kind, cell.value) && !['notApplicable', 'unresolved'].includes(cell.state)) }
     }) }
 }
 function applyCells(target: JsonObject, values: Cell[], specs: FieldSpec[]) {
@@ -105,6 +105,36 @@ function applyCells(target: JsonObject, values: Cell[], specs: FieldSpec[]) {
     const spec = specs.find(([field]) => field === cell.field)!
     target[spec[3] ?? spec[0]] = cell.value
   }
+}
+export type ReviewSection = 'supply' | 'schedule' | 'reception'
+export type ReviewFilter = 'all' | 'pending' | 'changed' | 'new'
+export type PendingItem = { id: string; section: ReviewSection }
+/** 사람이 아직 판단하지 않은 확인 필요·형식 오류 값. 직접 입력값은 형식이 맞을 때까지 남는다. */
+export function pendingCell(cell: Cell) {
+  return !cell.locked && (cell.mode === 'manual' ? cell.state === 'invalid' : !cell.reviewed && ['confirm', 'invalid'].includes(cell.extracted.state))
+}
+/** 필터는 추출 당시 상태로 고정해 값을 고르는 동안 항목이 사라지지 않게 한다. */
+export function cellMatches(cell: Cell, filter: ReviewFilter) {
+  return filter === 'all' || (filter === 'pending' ? pendingCell(cell) : cell.extracted.state === filter)
+}
+export function pendingRow(row: RowReview) { return row.include && (!row.proposal.destination || row.proposal.needsConfirmation && !row.reviewed) }
+export function pendingTarget(target: TargetReview) { return !target.destination || target.destination !== 'exclude' && target.cells.some(pendingCell) }
+export function pendingSchedule(schedule: ScheduleReview) { return schedule.proposal.needsConfirmation && !schedule.reviewed }
+/** 화면에 보이는 순서(공급정보 → 일정 → 접수처·기본정보)로 남은 확인 항목을 돌려준다. */
+export function pendingItems(review: Review): PendingItem[] {
+  const items: PendingItem[] = []
+  review.rows.forEach((row, index) => {
+    if (!row.include) return
+    if (pendingRow(row)) items.push({ id: `row:${index}`, section: 'supply' })
+    row.cells.filter(pendingCell).forEach(cell => items.push({ id: `cell:${cell.path}`, section: 'supply' }))
+    row.targets.forEach((target, at) => { if (pendingTarget(target)) items.push({ id: `target:${index}:${at}`, section: 'supply' }) })
+  })
+  review.schedules.forEach((schedule, index) => {
+    if (pendingSchedule(schedule)) items.push({ id: `schedule:${index}`, section: 'schedule' })
+    if (schedule.include) schedule.cells.filter(pendingCell).forEach(cell => items.push({ id: `cell:${cell.path}`, section: 'schedule' }))
+  })
+  for (const cell of [...review.reception, ...review.metadata].filter(pendingCell)) items.push({ id: `cell:${cell.path}`, section: 'reception' })
+  return items
 }
 export function allCells(review: Review) { return [...review.metadata, ...review.reception, ...review.rows.flatMap(row => [...row.cells, ...row.targets.flatMap(target => target.cells)]), ...review.schedules.flatMap(schedule => schedule.cells)] }
 export function applicableCells(review: Review) {
@@ -222,7 +252,7 @@ export function rebaseReview(previous: Review, workspace: JsonWorkspace, housing
       const candidates = housing[anchor?.housingComplexId ?? old.proposal.newComplex?.id ?? 0] ?? old.proposal.candidates ?? []
       row = createRowReview(next.extraction, index, { ...old.proposal, candidates, housingTypeId: candidates.some(type => type.id === old.proposal.housingTypeId) ? old.proposal.housingTypeId : null }, workspace)
     }
-    row.include = old.include; row.cells = row.cells.map(retain)
+    row.include = old.include; row.reviewed = old.reviewed; row.cells = row.cells.map(retain)
     next.rows[index] = row
     row.targets = row.targets.map((target, at) => {
       const choice = old.targets[at].destination
@@ -234,7 +264,7 @@ export function rebaseReview(previous: Review, workspace: JsonWorkspace, housing
   next.schedules = next.schedules.map((schedule, index) => {
     const old = previous.schedules[index]
     schedule = remapSchedule(next, index, old.proposal.existingIds.filter(id => workspace.events.some(event => event.id === id)), workspace)
-    return { ...schedule, include: old.include, cells: schedule.cells.map(retain) }
+    return { ...schedule, include: old.include, reviewed: old.reviewed, cells: schedule.cells.map(retain) }
   })
   return next
 }

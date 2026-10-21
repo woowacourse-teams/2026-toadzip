@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { scenario } from './fixtures/workspace'
 import { blankTarget } from '../supply/supplyCorrectionApi'
-import { assembleReview, applicableCells, chooseCellValue, createReview, editCell, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
+import { assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
 
 
 const evidence = { reason: '공고문과 대조', sourceUrl: 'https://example.com/notice', sourcePage: '4' }
@@ -187,4 +187,17 @@ it('수동으로 작성 중인 행과 조건도 PDF 대응에 사용하여 중�
   expect(result).toHaveLength(1)
   expect(result[0].targets).toHaveLength(imported.targets.length)
   expect(result[0].targets[0].key).toBe('draft-target-0')
+})
+
+it('확인 필요 항목은 화면 순서로 모으고 사람이 고르거나 대응을 확인하면 사라진다', () => {
+  const { review, workspace, housing } = scenario('gongju')
+  expect(pendingItems(review).map(item => item.id)).toEqual(['row:0', 'target:0:0', 'target:0:1', 'schedule:2'])
+  review.rows[0].reviewed = true
+  review.rows[0].targets[0].cells = review.rows[0].targets[0].cells.map(cell => pendingCell(cell) ? chooseCellValue(cell, 'keep') : cell)
+  review.schedules[2].reviewed = true
+  expect(pendingItems(review).map(item => item.id)).toEqual(['target:0:1'])
+  const deposit = review.rows[0].targets[0].cells.find(cell => cell.field === 'rentalDeposit')!
+  expect(pendingCell(editCell(deposit, '1,000'))).toBe(true)
+  expect(pendingCell(editCell(deposit, '1000'))).toBe(false)
+  expect(rebaseReview(review, workspace, housing).rows[0].reviewed).toBe(true)
 })
