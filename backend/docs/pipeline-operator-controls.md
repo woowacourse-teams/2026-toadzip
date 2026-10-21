@@ -99,11 +99,21 @@ API 기준 경로는 `/api/admin/ingest/announcement-supply-matches`다.
 |---|---|
 | `GET /{identifier}` | 현재 공급행의 `token`과 선택적 `savedMatch`(대상 ID, 근거, 작업자·시각, 재확인 여부) 반환 |
 | `GET /complexes/{complexId}/housing-types` | 후보의 면적, nullable `householdCount`, 현재 대상의 `token` 반환 |
-| `POST /{identifier}/refine` | 기존 `rows`에 선택적 `remember`, `sourceUrl`, `reason` 추가. `remember=true`이면 각 행의 `housingTypeId`와 후보의 `targetToken` 필수 |
+| `POST /{identifier}/refine` | 기존 `rows`에 선택적 `remember`, `sourceUrl`, `reason`, `splits` 추가. `remember=true`이면 각 행의 `housingTypeId`와 후보의 `targetToken` 필수 |
 | `POST /{identifier}/release` | `rowIdentifier`, 최신 행 `token`, `reason`을 받아 선택을 해제하고 최신 공급행 목록 반환 |
 
 두 POST는 관리자 세션·CSRF와 기존 전역 수집·정제 쓰기 잠금을 사용한다. 작업자는 서버 세션으로 결정한다.
 조회 뒤 원천·저장 선택·후보가 바뀌면 409로 거절하므로 최신 자료를 다시 비교한다.
+
+`refine`의 `rows`에는 연결을 바꿀 원천행만 보낸다. 보내지 않은 행은 저장한 매칭과 자동 매칭으로
+정제하며, `remember`는 보낸 행의 선택만 기억한다. 저장 후 공고의 모든 원천행이 매칭되어야 하므로
+보내지 않은 행이 매칭되지 않으면 전체를 거절한다. 조회 뒤 추가된 원천행도 같은 기준으로 판정한다.
+분할 보정 그룹에 속한 원천행은 `rows`로 선택할 수 없고, 다른 행의 선택은 그룹을 그대로 유지한다.
+
+`splits`는 `split` 요청과 같은 `rowIdentifier`, `token`, `rows`를 원천행마다 받는다.
+연결과 분할을 같은 트랜잭션에서 저장하므로 한 공고의 일부 행은 연결하고 다른 행은 나눌 수 있다.
+`splits`가 있으면 `remember`와 관계없이 `sourceUrl`과 `reason`이 필요하다.
+같은 원천행을 연결과 분할에 함께 넣거나 두 번 나눌 수 없다. 이력은 `SAVE_SUPPLY_MATCH`와 `SPLIT_SUPPLY`를 남긴다.
 공고 한 건의 선택 저장, 정제·LH 보강과 `SAVE_SUPPLY_MATCH` 이력은 같은 트랜잭션으로 처리한다.
 중간 실패 시 모두 롤백하며 해제도 `RELEASE_SUPPLY_MATCH` 이력을 남긴다.
 

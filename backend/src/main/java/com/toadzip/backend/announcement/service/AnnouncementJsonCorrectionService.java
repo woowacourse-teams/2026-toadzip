@@ -112,7 +112,8 @@ public class AnnouncementJsonCorrectionService {
         var metadata = metadata(before.detail().data(), request, fieldChanges);
         find(id).validateAdminRevision(incoming(find(id), metadata));
         SupplyCorrection.Preview supply = null;
-        if (!hash(before.supply().rows()).equals(hash(request.correction().rows()))) {
+        if (!request.correction().newGroups().isEmpty()
+                || !hash(before.supply().rows()).equals(hash(request.correction().rows()))) {
             supply = supplies.preview(id, request.correction());
         }
         if (supply == null && !before.supply().snapshotToken().equals(request.correction().snapshotToken())) {

@@ -23,7 +23,12 @@ public final class SupplyCorrection {
             List<RowSource> rowSources) { }
     /** 공급행이 기록한 원천행. 작업실의 sources에서 같은 분류·키의 원천을 찾아 행 옆에 보여준다. */
     public record RowSource(String rowKey, String category, String sourceKey) { }
-    public record Preview(String confirmationToken, List<Row> before, List<Row> after, List<String> warnings) { }
+    public record Preview(String confirmationToken, List<Row> before, List<Row> after, List<String> warnings,
+            List<NewGroup> newGroups) {
+        public Preview(String confirmationToken, List<Row> before, List<Row> after, List<String> warnings) {
+            this(confirmationToken, before, after, warnings, List.of());
+        }
+    }
     public record Applied(long changeId, boolean alreadyApplied, Workspace workspace) { }
     public record Request(
             @NotNull UUID operationId,
@@ -31,7 +36,19 @@ public final class SupplyCorrection {
             @NotBlank @Size(max = 2000) String reason,
             @NotBlank @Size(max = 2048) @Pattern(regexp = "^https?://[^\\s]+$") String sourceUrl,
             @Size(max = 100) String sourcePage,
-            @NotNull @Size(max = 500) List<@NotNull @Valid Row> rows) { }
+            @NotNull @Size(max = 500) List<@NotNull @Valid Row> rows,
+            @Size(max = 250) List<@NotNull @Valid NewGroup> newGroups) {
+        public Request {
+            if (newGroups == null) { newGroups = List.of(); }
+        }
+        public Request(UUID operationId, String snapshotToken, String reason, String sourceUrl,
+                String sourcePage, List<Row> rows) {
+            this(operationId, snapshotToken, reason, sourceUrl, sourcePage, rows, List.of());
+        }
+    }
+    public record NewGroup(@Positive long sourceRowId,
+            @NotNull @Size(min = 2, max = 50) List<@NotBlank @Size(max = 64) String> rowKeys,
+            @NotNull @PositiveOrZero Integer sharedHouseholdCount) { }
     public record Apply(@NotNull @Valid Request correction,
             @NotBlank @Size(max = 64) String confirmationToken) { }
 
