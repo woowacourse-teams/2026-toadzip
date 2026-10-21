@@ -28,6 +28,7 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
   const [location, setLocation] = useState<PdfLocation>({ pageNumber: 1, top: Infinity })
   const runtime = useRef<{ viewer: PDFViewer; events: EventBus; linkService: PDFLinkService } | null>(null)
   const queryRef = useRef('')
+  const searchPageRef = useRef<number | null>(null)
   const scaleRef = useRef('page-width')
 
   useEffect(() => {
@@ -48,7 +49,18 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
       const events = new EventBus()
       const linkService = new PDFLinkService({ eventBus: events, externalLinkTarget: LinkTarget.BLANK,
         externalLinkRel: 'noopener noreferrer', ignoreDestinationZoom: true })
-      const findController = new PDFFindController({ eventBus: events, linkService })
+      // Restrict evidence highlighting to its stated page. A normal find may
+      // otherwise navigate to the same number on an unrelated page.
+      class EvidenceFindController extends PDFFindController {
+        override scrollMatchIntoView(options: Parameters<InstanceType<typeof PDFFindController>['scrollMatchIntoView']>[0]) {
+          if (searchPageRef.current === null) super.scrollMatchIntoView(options)
+        }
+        override match(query: string | string[], content: string, pageIndex: number) {
+          if (searchPageRef.current !== null && pageIndex + 1 !== searchPageRef.current) return []
+          return super.match(query, content, pageIndex)
+        }
+      }
+      const findController = new EvidenceFindController({ eventBus: events, linkService })
       // 6.3.289 supports abortSignal at runtime; its generated options type omits it.
       const options = { container, viewer: element, eventBus: events, linkService, findController,
         abortSignal: lifecycle.signal, annotationMode: AnnotationMode.ENABLE, maxCanvasPixels: 16_000_000 }
@@ -117,7 +129,8 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
     }
   }, [url, containerRef, viewerRef, telemetry])
 
-  const search = useCallback((query: string, again = false, previous = false) => {
+  const search = useCallback((query: string, again = false, previous = false, pageNumber: number | null = null) => {
+    searchPageRef.current = pageNumber
     queryRef.current = query
     if (!query) setResult(emptyResult)
     runtime.current?.events.dispatch('find', {
@@ -133,6 +146,11 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
     scaleRef.current = value
     if (runtime.current) runtime.current.viewer.currentScaleValue = value
   }, [])
+  const goToPage = useCallback((pageNumber: number) => {
+    const current = runtime.current
+    if (!current || !Number.isFinite(pageNumber)) return
+    current.viewer.currentPageNumber = Math.min(Math.max(1, Math.trunc(pageNumber)), current.viewer.pagesCount)
+  }, [])
   const navigateOutline = useCallback((id: string) => {
     const entry = outline.find((item) => item.id === id)
     const current = runtime.current
@@ -142,5 +160,5 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
     }).catch(() => {})
   }, [outline, containerRef])
   const activeOutlineId = activePdfOutlineId(outline, location)
-  return { page, pages, ready, error, result, search, closeSearch, setScale, outline, activeOutlineId, navigateOutline }
+  return { page, pages, ready, error, result, search, closeSearch, setScale, goToPage, outline, activeOutlineId, navigateOutline }
 }

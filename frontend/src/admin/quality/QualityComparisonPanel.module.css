@@ -1,0 +1,16 @@
+.panel { --comparison-row-gap: var(--ds-space-4); }
+.panel > header { margin-top: 0; }
+:global(.admin-content) .panel > fieldset:global(.admin-verification-group) { border: 0; padding: 0; margin: 0; background: transparent; min-width: 0; }
+.panel article { font-variant-numeric: tabular-nums; }
+.panel article small { color: var(--ds-color-muted-base); }
+.panel article p { margin-block: var(--ds-space-2); overflow-wrap: anywhere; }
+.status { display: block; width: fit-content; margin-top: var(--ds-space-2); color: var(--ds-color-muted-base); font-size: var(--ds-text-caption); }
+.status[data-status='different'] { color: var(--ds-color-deadline); font-weight: var(--ds-weight-strong); }
+.status[data-status='manual'] { color: var(--ds-color-text); font-weight: var(--ds-weight-strong); }
+.panel .noValue { color: var(--ds-color-muted-base); font-size: var(--ds-text-caption); }
+.panel .unavailable { margin-top: var(--ds-space-3); font-size: var(--ds-text-caption); color: var(--ds-color-muted-base); }
+.panel .unavailable summary { font-weight: 400; }
+.empty { margin: 0; padding: var(--ds-space-5); color: var(--ds-color-muted-base); line-height: var(--ds-line-height-body); }
+@container (max-width: 500px) {
+  .panel article { grid-template-columns: minmax(0, 1fr); }
+}
