@@ -149,7 +149,7 @@ describe('ComplexFilterToolbar', () => {
     expect(appliedFilters()).toEqual({ agencyCodes: ['LH'], maxDeposit: 0 })
   })
 
-  it.each(['desktop', 'mobile'])('%s 모집중은 필터 칩 다음 줄 끝에서 이름만 표시하고 켜짐 상태를 전환한다', (mode) => {
+  it.each(['desktop', 'mobile'])('%s 모집중은 이름만 표시하고 켜짐 상태를 전환한다', (mode) => {
     render(<StatefulToolbar initialFilters={{}} />)
     const toolbar = screen.getByRole('toolbar', { name: mode === 'desktop' ? '단지 검색 필터' : '모바일 단지 검색 필터' })
     const toggle = within(toolbar).getByRole('switch', { name: '모집중', checked: false })
@@ -162,7 +162,7 @@ describe('ComplexFilterToolbar', () => {
 
     const css = readFileSync(resolve(process.cwd(), 'src/public-housing/filters/ComplexFilterToolbar.module.css'), 'utf8')
     expect(css).toMatch(/\.toolbar \{[^}]*flex-direction: column;/)
-    expect(css).toMatch(/\.mobileToolbar \{[^}]*flex-direction: column;/)
+    expect(css).toMatch(/\.mobileToolbar \{[^}]*flex-direction: row;/)
     expect(css).toMatch(/\.recruitingRow \{[^}]*flex: none;/)
   })
 
@@ -533,11 +533,15 @@ describe('ComplexFilterToolbar', () => {
     expect(screen.getByRole('button', { name: '전체 필터 열기' })).toHaveAttribute('aria-expanded', 'false')
   })
 
-  it('필터 바에는 전체 해제 버튼 없이 전체를 마지막으로 표시한다', () => {
+  it('전체 필터는 데스크톱에서는 마지막, 모바일에서는 맨 왼쪽에 표시한다', () => {
     renderToolbar()
-    for (const name of ['단지 검색 필터', '모바일 단지 검색 필터']) {
-      const toolbar = screen.getByRole('toolbar', { name })
-      expect(within(toolbar).getAllByRole('button').at(-1)).toHaveTextContent('전체')
+    const desktop = screen.getByRole('toolbar', { name: '단지 검색 필터' })
+    expect(within(desktop).getAllByRole('button').at(-1)).toHaveAccessibleName('전체 필터 열기')
+    const mobile = screen.getByRole('toolbar', { name: '모바일 단지 검색 필터' })
+    expect(within(mobile).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual([
+      '모바일 전체 필터 열기', '모바일 지역 필터 열기', '모바일 임대유형 필터 열기', '모바일 가격 필터 열기', '모바일 전용면적 필터 열기',
+    ])
+    for (const toolbar of [desktop, mobile]) {
       expect(within(toolbar).queryByRole('button', { name: /초기화|전체 해제/ })).not.toBeInTheDocument()
     }
   })

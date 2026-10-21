@@ -43,7 +43,10 @@
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  padding: 5px;
+  padding: 8px 5px 5px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
 }
 
 .primaryFilters {
@@ -54,16 +57,6 @@
 
 .primaryFilters .trigger {
   flex-shrink: 0;
-}
-
-.primaryFilters .trigger[data-topic='region'] {
-  min-width: 0;
-  max-width: 118px;
-}
-
-.primaryFilters .trigger[data-topic='price'][data-active='true'] {
-  min-width: 120px;
-  flex-shrink: 1;
 }
 
 .trigger {
@@ -145,8 +138,6 @@
 .triggerText {
   min-width: 0;
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -472,16 +463,16 @@
 
 .reset {
   display: inline-flex;
-  min-height: 28px;
+  min-height: 32px;
   align-items: center;
   justify-content: center;
   justify-self: start;
-  gap: 3px;
-  padding: 0 6px;
+  gap: 4px;
+  padding: 0 8px;
   border: 1px solid #dadce0;
   background: var(--ds-color-surface);
   color: #555b65;
-  font-size: 10px;
+  font-size: var(--ds-text-caption);
   line-height: 1.4;
   white-space: nowrap;
   font-weight: 500;
@@ -489,8 +480,8 @@
 
 .reset svg,
 .mobileReset svg {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   flex: 0 0 auto;
 }
 
@@ -524,8 +515,8 @@
 }
 
 .mobileToolbar {
-  flex-direction: column;
-  align-items: stretch;
+  flex-direction: row;
+  align-items: flex-start;
   pointer-events: none;
   width: 100%;
   gap: 6px;
@@ -536,13 +527,16 @@
   box-sizing: border-box;
   width: 100%;
   pointer-events: auto;
-  padding: 6px 4px 5px;
+  padding: 8px 4px 5px;
   display: flex;
   justify-content: flex-start;
   min-width: 0;
   flex: 1 1 auto;
   gap: 4px;
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
 }
 
 .mobileScroller::-webkit-scrollbar {
@@ -573,15 +567,6 @@
   gap: 4px;
 }
 
-.mobileTrigger[data-topic='region'] {
-  max-width: 104px;
-}
-
-.mobileTrigger[data-topic='price'][data-active='true'] {
-  min-width: 100px;
-  flex-shrink: 1;
-}
-
 .mobileTrigger::after {
   /* Keep a 44px touch target around the compact chip. */
   position: absolute;
@@ -596,10 +581,7 @@
 }
 
 .mobileTrigger span:not(.filterCount) {
-  min-width: 0;
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -678,7 +660,7 @@
   border: 0;
   background: transparent;
   color: #555b65;
-  font-size: 10px;
+  font-size: var(--ds-text-caption);
   line-height: 1.4;
   white-space: nowrap;
   font-weight: 500;
@@ -686,10 +668,10 @@
 
 .mobileResetContent {
   display: inline-flex;
-  height: 28px;
+  height: 32px;
   align-items: center;
-  gap: 3px;
-  padding: 0 6px;
+  gap: 4px;
+  padding: 0 8px;
   border: 1px solid #dadce0;
   border-radius: 6px;
   background: var(--ds-color-surface);
@@ -812,7 +794,7 @@
 }
 
 .mobileToolbar .recruitingRow {
-  padding-top: 0;
+  padding-top: 3px;
   padding-right: 4px;
 }
 
@@ -844,16 +826,16 @@
   }
 }
 
-/* 상세 패널이 열려 남은 지도 폭이 줄어도 전체와 모집중은 항상 보인다. */
+/* 데스크톱의 좁은 지도에서는 주요 필터를 전체 패널에서 제공한다. 모바일은 칩을 스크롤한다. */
 @container complex-filters (max-width: 740px) {
-  .trigger[data-topic='exclusiveArea'], .mobileTrigger[data-topic='exclusiveArea'] { display: none; }
+  .trigger[data-topic='exclusiveArea'] { display: none; }
 }
 @container complex-filters (max-width: 600px) {
-  .trigger[data-topic='price'], .mobileTrigger[data-topic='price'] { display: none; }
+  .trigger[data-topic='price'] { display: none; }
 }
 @container complex-filters (max-width: 470px) {
-  .trigger[data-topic='rentalType'], .mobileTrigger[data-topic='rentalType'] { display: none; }
+  .trigger[data-topic='rentalType'] { display: none; }
 }
 @container complex-filters (max-width: 350px) {
-  .trigger[data-topic='region'], .mobileTrigger[data-topic='region'] { display: none; }
+  .trigger[data-topic='region'] { display: none; }
 }
