@@ -25,7 +25,6 @@ import { PrivacyBoundary, PrivacyMenu, PrivacyPolicyPage, PrivacySettingsPage } 
 import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
 import { PublicNotificationLayout } from './notifications/PublicNotificationLayout'
 import { LandingPage } from './landing/LandingPage'
-import { ComplexCoveragePage } from './admin/documents/ComplexCoveragePage'
 import { QualityQueuePage } from './admin/quality/QualityQueuePage'
 import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { useMobileViewport } from './public-housing/components/useMobileViewport'
@@ -117,7 +116,7 @@ function AdminRoutes() {
             <Route path="complexes/:id?" element={<ManagementWorkspace resource="complexes" />} />
             <Route path="announcements/:id/pdf-correction" element={<PdfCorrectionPage />} />
             <Route path="announcements/:id?" element={<ManagementWorkspace resource="announcements" />} />
-            <Route path="complex-coverage" element={<ComplexCoveragePage />} />
+            <Route path="complex-coverage" element={<Navigate to="/admin/complexes" replace />} />
             <Route path="quality" element={<QualityQueuePage />} />
             <Route path="users" element={<UserListPage />} />
             <Route path="users/:id" element={<UserDetailPage />} />

@@ -32,8 +32,7 @@ export function QualityQueuePage() {
   }
   return <section className={`${styles.workspace} ${styles.queueWorkspace}`}>
     <header className={styles.pageHeading}><div><p className={styles.eyebrow}>데이터 검토 작업실</p><h1>검토할 데이터</h1>
-      <p>확인이 필요한 대상을 고르고, 공식 근거와 비교해 필요한 항목만 수정하세요.</p></div>
-      <Link className={styles.secondaryLink} to="/admin/complex-coverage">등록되지 않은 단지 찾기 <span aria-hidden="true">↗</span></Link></header>
+      <p>확인이 필요한 대상을 고르고, 공식 근거와 비교해 필요한 항목만 수정하세요.</p></div></header>
       <div className={styles.queueIntro}><div><span className={styles.stepNumber}>01</span><div><h2>확인할 대상을 선택하세요</h2><p>목록은 원천 변경과 불일치가 있는 대상을 우선 표시합니다.</p></div></div><details><summary>처음 사용하는 관리자라면</summary><ol><li>대상 오른쪽의 ‘비교·검토’를 엽니다.</li><li>현재 등록값과 공식 원천을 비교합니다.</li><li>근거를 확인한 항목만 수정하고 저장합니다.</li></ol><p>공고문은 상세의 ‘공고문·첨부파일’에서 확인하세요. 원천 변경 감지는 원천 확인 기록 이후부터 시작합니다.</p></details></div>
       <div className={styles.queueSurface}>
         <div className={styles.shortcutBar} aria-label="빠른 검토 조건">{shortcuts.map(([reason, label]) => <button key={reason} type="button" aria-pressed={(params.get('reason') ?? '') === reason} onClick={() => filter('reason', reason)}>{label}</button>)}</div>
