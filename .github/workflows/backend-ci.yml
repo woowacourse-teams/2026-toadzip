@@ -6,19 +6,29 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: backend-ci-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  backend:
-    name: Backend Check
+  changes:
+    name: Backend Scope
     runs-on: ubuntu-24.04
+    outputs:
+      backend: ${{ github.event_name != 'pull_request' || steps.filter.outputs.backend == 'true' }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - name: Detect changed paths
+        if: github.event_name == 'pull_request'
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: .github/ci-paths.yml
+          predicate-quantifier: some-with-excludes
       - name: Test Flyway migration guard
         run: python3 -B tests/ci/test_flyway_migrations.py
       - name: Check Flyway migrations
@@ -26,6 +36,19 @@ jobs:
           # Compare the PR merge result with its develop base; deployments only check duplicates.
           MIGRATION_BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.base.sha || github.sha }}
         run: python3 scripts/check-flyway-migrations.py --base-ref "$MIGRATION_BASE_REF"
+
+  backend:
+    name: Backend Tests (${{ matrix.shard }})
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [ingest, application]
+    steps:
+      - uses: actions/checkout@v7
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
@@ -34,18 +57,40 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
         with:
-          cache-read-only: ${{ github.ref != 'refs/heads/develop' && github.ref != 'refs/heads/main' }}
+          # Both shards compile all sources. Only one saves the shared cache on base branches.
+          # Keep the backend job ID so existing caches remain preferred restore candidates.
+          cache-read-only: ${{ matrix.shard != 'application' || (github.ref != 'refs/heads/develop' && github.ref != 'refs/heads/main') }}
       - name: Verify backend with Testcontainers
         working-directory: backend
         # Reuse compilation outputs, but execute every test against fresh databases.
-        run: ./gradlew test --rerun check --build-cache --profile
+        run: ./gradlew test --rerun check --build-cache --profile -PtestShard=${{ matrix.shard }}
       - name: Upload verification reports
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v6
         with:
-          name: backend-test-reports
+          name: backend-test-reports-${{ matrix.shard }}
           retention-days: 7
           path: |
             backend/build/reports/tests/test/
             backend/build/test-results/test/
             backend/build/reports/profile/
+
+  backend-check:
+    name: Backend Check
+    needs: [changes, backend]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require all selected tests to pass
+        env:
+          SCOPE_RESULT: ${{ needs.changes.result }}
+          RUN_BACKEND: ${{ needs.changes.outputs.backend }}
+          TEST_RESULT: ${{ needs.backend.result }}
+        run: |
+          test "$SCOPE_RESULT" = success
+          if [ "$RUN_BACKEND" = true ]; then
+            test "$TEST_RESULT" = success
+          else
+            test "$RUN_BACKEND" = false
+            test "$TEST_RESULT" = skipped
+          fi
