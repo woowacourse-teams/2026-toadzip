@@ -89,6 +89,10 @@ export function blankTarget(order: number): CorrectionTarget {
   return { id: null, key: crypto.randomUUID(), excluded: false, protectedValues: false, displayOrder: order,
     target: '', supplyRank: null, householdCount: null, reserveCount: null, deposit: null, rent: null, convertedDeposit: null, condition: null }
 }
+/** 새 공급행은 기존 행 뒤에 둔다. 수집 행의 순서가 1부터 시작해도 겹치지 않게 최댓값 다음 번호를 쓴다. */
+export function nextDisplayOrder(rows: CorrectionRow[]) {
+  return rows.reduce((next, row) => Math.max(next, row.displayOrder + 1), rows.length)
+}
 export function blankRow(order: number): CorrectionRow {
   return { id: null, key: crypto.randomUUID(), housingComplexId: null, housingComplexName: null, housingTypeId: null,
     newHousingType: null, groupId: null, sharedHouseholdCount: null, protectedValues: false, excluded: false,

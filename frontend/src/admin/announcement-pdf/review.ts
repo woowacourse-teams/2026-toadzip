@@ -1,5 +1,5 @@
 import type { ExtractedAnnouncement, JsonObject, JsonUpdateInput, JsonWorkspace } from '../announcement-json/api'
-import { blankRow, blankTarget, type CorrectionRow, type CorrectionTarget, type NewSupplyGroup } from '../supply/supplyCorrectionApi'
+import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type NewSupplyGroup } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, type Evidence, type Extraction } from './extraction'
 import { defaultTargetDestinations, normalizedName, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
 
@@ -164,7 +164,7 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
     if (existing && taken.has(existing.key)) throw new Error('같은 기존 공급행을 두 번 갱신할 수 없습니다.')
     if (existing) taken.add(existing.key)
     const complex = entry.proposal.newComplex
-    const row: CorrectionRow = existing ?? { ...blankRow(rows.length), key: entry.key,
+    const row: CorrectionRow = existing ?? { ...blankRow(nextDisplayOrder(rows)), key: entry.key,
       complexName: review.extraction.supplyRows[index].complexName || anchor?.complexName || complex!.name,
       pnu: anchor?.pnu ?? complex!.pnu, category: anchor?.category ?? complex!.category,
       housingComplexId: anchor ? anchor.housingComplexId : complex!.id, housingComplexName: anchor ? anchor.housingComplexName : complex!.name }
