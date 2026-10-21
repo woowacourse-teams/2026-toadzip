@@ -32,7 +32,10 @@ export const DETAIL_FILTER_TOPICS = [
   ['recruitmentType', '모집유형'],
 ] as const satisfies readonly (readonly [FilterTopic, string])[]
 
-export const MOBILE_PRIMARY_TOPICS = DESKTOP_PRIMARY_TOPICS
+export const MOBILE_PRIMARY_TOPICS = [
+  ['all', '전체'], ['region', '지역'], ['rentalType', '임대유형'],
+  ['price', '가격'], ['exclusiveArea', '전용면적'], ['recruiting', '모집중'],
+] as const satisfies readonly (readonly [ToolbarTopic, string])[]
 export const MOBILE_SHEET_TOPICS = TOPICS
 
 export const POPOVER_WIDTHS = {
