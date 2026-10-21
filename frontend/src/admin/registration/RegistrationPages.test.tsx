@@ -31,6 +31,13 @@ beforeEach(() => {
 })
 
 describe('분리된 단지·공고 등록 흐름', () => {
+  it('기존 JSON 입력 주소도 직접 입력을 열고 독립 JSON 입력은 제공하지 않는다', () => {
+    renderPages('/admin/announcements?mode=json')
+    expect(screen.getByRole('heading', { name: '직접 입력' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'JSON 가져오기' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('공고 JSON')).not.toBeInTheDocument()
+  })
+
   it('공고 직접 입력은 단지 확인 전 저장을 막고 다른 업무 폼은 표시하지 않는다', () => {
     renderPages('/admin/announcements?mode=direct')
     expect(screen.getByRole('heading', { name: '직접 입력' })).toBeVisible()
