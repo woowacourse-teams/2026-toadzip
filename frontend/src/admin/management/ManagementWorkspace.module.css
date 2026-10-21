@@ -207,3 +207,10 @@
 .heading[data-detail=true] :global(.admin-primary) { background:var(--ds-color-surface); color:var(--ds-color-label); border-color:var(--ds-color-divider); box-shadow:none; min-height:34px; font-size:12px; }
 @media(max-width:700px) { .withEditor .editor :global(.admin-section-tabs) { flex-wrap:nowrap; overflow-x:auto; } .withEditor .editor :global(.admin-section-tabs) button { flex:none; white-space:nowrap; } }
 .workspace .heading[data-detail=true] h1 { font-size:14px; color:var(--ds-color-muted); letter-spacing:0; }
+
+/* 공고 제목과 작업 버튼을 분리해 긴 이름도 작업 영역을 밀어내지 않는다. */
+.withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading) { gap:var(--ds-space-4); flex-wrap:wrap; padding:var(--ds-space-5) var(--ds-space-6); }
+.withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading) > div:first-child { flex:1 1 420px; min-width:0; }
+.withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading) h2 { font-size:clamp(19px, 1.8vw, 24px); line-height:1.5; word-break:keep-all; overflow-wrap:anywhere; margin-bottom:var(--ds-space-2); }
+.withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading .admin-inline) { flex-shrink:0; align-self:flex-start; flex-wrap:wrap; }
+@media(max-width:700px) { .withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading) { padding:var(--ds-space-4); } }

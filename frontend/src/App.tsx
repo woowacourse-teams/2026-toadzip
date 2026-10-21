@@ -1,3 +1,4 @@
+import { PdfCorrectionPage } from './admin/announcement-pdf/PdfCorrectionPage'
 import { FailureReviewPage } from './admin/ingest/FailureReviewPage'
 import { IngestPage } from './admin/ingest/IngestPage'
 import { SourceDataPage } from './admin/ingest/SourceDataPage'
@@ -89,6 +90,7 @@ function AdminRoutes() {
             <Route path="ingest/complexes" element={<IngestPage domain="complex" />} />
             <Route path="ingest-v2" element={<LegacyIngestRedirect />} />
             <Route path="complexes/:id?" element={<ManagementWorkspace resource="complexes" />} />
+            <Route path="announcements/:id/pdf-correction" element={<PdfCorrectionPage />} />
             <Route path="announcements/:id?" element={<ManagementWorkspace resource="announcements" />} />
             <Route path="complex-coverage" element={<ComplexCoveragePage />} />
             <Route path="quality" element={<QualityQueuePage />} />

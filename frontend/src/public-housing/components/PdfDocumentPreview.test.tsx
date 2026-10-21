@@ -4,7 +4,7 @@ import PdfDocumentPreview from './PdfDocumentPreview.tsx'
 
 const sdk = vi.hoisted(() => ({
   getDocument: vi.fn(), destroy: vi.fn(), reset: vi.fn(), localizeDestroy: vi.fn(),
-  dispatch: vi.fn(), options: vi.fn(), scale: vi.fn(), navigate: vi.fn(), outline: vi.fn(),
+  match: vi.fn((..._args: unknown[]) => [{ index: 0, length: 3 }]), page: vi.fn(), dispatch: vi.fn(), options: vi.fn(), scale: vi.fn(), navigate: vi.fn(), outline: vi.fn(),
 }))
 vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({
   AnnotationMode: { ENABLE: 1 }, GlobalWorkerOptions: {}, version: '6.3.289', getDocument: sdk.getDocument,
@@ -26,12 +26,14 @@ vi.mock('pdfjs-dist/legacy/web/pdf_viewer.mjs', () => {
     EventBus, ScrollMode: { VERTICAL: 0 }, LinkTarget: { BLANK: 2 },
     FindState: { FOUND: 0, NOT_FOUND: 1, WRAPPED: 2, PENDING: 3 },
     PDFLinkService: class { setViewer() {} setDocument() {} goToDestination = sdk.navigate },
-    PDFFindController: class {},
+    PDFFindController: class { match(...args: unknown[]) { return sdk.match(...args) } },
     PDFViewer: class {
       l10n = { destroy: sdk.localizeDestroy }
       pagesPromise = Promise.resolve()
       readonly options: { eventBus: EventBus; abortSignal: AbortSignal }
       constructor(options: { eventBus: EventBus; abortSignal: AbortSignal }) { this.options = options; sdk.options(options) }
+      pagesCount = 32
+      set currentPageNumber(value: number) { sdk.page(value) }
       set currentScaleValue(value: string) { sdk.scale(value) }
       setDocument(document: { numPages: number } | null) {
         sdk.reset(document)
@@ -284,4 +286,22 @@ it('문서 준비 전과 뷰어 제거 후에는 검색 단축키를 가로채�
   const after = new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true })
   fireEvent(screen.getByRole('button', { name: '파일 목록' }), after)
   expect(after.defaultPrevented).toBe(false)
+})
+
+it('근거의 지정 쪽만 강조하고 숫자가 다른 쪽에 있어도 이동하거나 입력 포커스를 뺏지 않는다', async () => {
+  const { rerender } = render(<div><input aria-label="보정값" /><PdfDocumentPreview url="blob:notice" name="공고문.pdf" focus={{page:4,query:'170',nonce:1}} /></div>)
+  const field = screen.getByRole('textbox', { name: '보정값' }); field.focus()
+  await ready()
+  await waitFor(() => expect(sdk.page).toHaveBeenLastCalledWith(4))
+  expect(field).toHaveFocus()
+  expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+  const controller = sdk.options.mock.lastCall![0].findController
+  expect(controller.match('170', '170', 4)).toEqual([])
+  expect(controller.match('170', '170', 3)).toEqual([{ index: 0, length: 3 }])
+  rerender(<div><input aria-label="보정값" /><PdfDocumentPreview url="blob:notice" name="공고문.pdf" focus={{page:9,query:'',nonce:2}} /></div>)
+  expect(sdk.page).toHaveBeenLastCalledWith(9)
+  expect(sdk.dispatch).toHaveBeenLastCalledWith('find', expect.objectContaining({query:''}))
+  fireEvent.click(screen.getByRole('button', { name: '문서 검색' }))
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: '170' } })
+  expect(controller.match('170', '170', 4)).toEqual([{ index: 0, length: 3 }])
 })
