@@ -45,10 +45,10 @@ function supplyDifferences(before: CorrectionRow[], after: CorrectionRow[], labe
 }
 export function SupplyCorrectionPreview({ value, historical = false }: { value: SupplyPreview; historical?: boolean }) {
   const changes = supplyDifferences(value.before, value.after, historical ? historicalRowLabels : rowLabels)
-  return <section className={styles.preview} aria-label="공급정보 변경 미리보기"><h3>{historical ? '저장한 변경' : '적용할 변경'} {changes.length}개</h3>
+  return <section className={styles.preview} aria-label="공급정보 변경 미리보기"><h3>{changes.length ? `${historical ? '저장한 변경' : '적용할 변경'} ${changes.length}개` : '공급행 변경 없음'}</h3>
     {!historical && <p>이 공고의 공급행·대상 조건에 적용합니다. 새 주택형을 선택한 경우 공통 주택형 생성도 함께 처리합니다.</p>}
-    <div className={styles.tableScroll} tabIndex={0} role="region" aria-label="변경 전후 비교"><table><thead><tr><th>대상</th><th>항목</th><th>{historical ? '변경 전' : '현재'}</th><th>{historical ? '변경 후' : '적용 후'}</th></tr></thead>
-      <tbody>{changes.map((change, index) => <tr key={index}><th scope="row">{change.scope}</th><td>{change.field}</td><td>{change.before}</td><td>{change.after}</td></tr>)}</tbody></table></div>
+    {changes.length > 0 && <div className={styles.tableScroll} tabIndex={0} role="region" aria-label="변경 전후 비교"><table><thead><tr><th>대상</th><th>항목</th><th>{historical ? '변경 전' : '현재'}</th><th>{historical ? '변경 후' : '적용 후'}</th></tr></thead>
+      <tbody>{changes.map((change, index) => <tr key={index}><th scope="row">{change.scope}</th><td>{change.field}</td><td>{change.before}</td><td>{change.after}</td></tr>)}</tbody></table></div>}
     {value.warnings.length > 0 && <section><h4>저장 후에도 확인할 항목</h4><ul>{value.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></section>}
     {!historical && <p>저장 성공은 관리자 검토 완료와 별개입니다. 공개 결과와 남은 항목을 확인한 후 검토 결과를 기록하세요.</p>}
   </section>
