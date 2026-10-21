@@ -73,7 +73,6 @@
 .workspace :is(button, input, select, textarea) { font-size: var(--ds-text-body); }
 .workspace :is(button, a):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
 .workspace :global(.admin-primary) { min-height: 42px; border-radius: var(--ds-radius-control); background: var(--ds-color-action); border-color: var(--ds-color-action); color: var(--ds-color-surface); box-shadow: 0 2px 3px rgb(0 60 30 / 8%); }
-.workspace :global(.admin-primary):hover:not(:disabled) { background: color-mix(in srgb, var(--ds-color-action) 85%, black); }
 .workspace button:not(:global(.admin-primary)):not([data-design-system]) { border-color: var(--ds-color-border-base); border-radius: var(--ds-radius-control); color: var(--ds-color-label); }
 .workspace button:not(:global(.admin-primary)):not([data-design-system]):hover:not(:disabled) { background: var(--ds-color-surface-subtle); color: var(--ds-color-text); }
 .workspace :is(input:not([type="checkbox"]), select, textarea) { box-sizing: border-box; min-height: 42px; border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); padding: 9px 12px; color: var(--ds-color-text); background: var(--ds-color-surface); font-weight: 400; transition: border-color .15s; }

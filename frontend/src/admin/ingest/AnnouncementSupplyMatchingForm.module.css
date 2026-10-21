@@ -37,7 +37,6 @@
 .workspace .secondary { min-height: 36px; padding: var(--ds-space-2) var(--ds-space-3); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-label); cursor: pointer; }
 .workspace .secondary:hover { background: var(--ds-color-surface-subtle); }
 .workspace .primary { min-height: var(--ds-control-height-md); padding: 0 var(--ds-space-4); border: 0; border-radius: var(--ds-radius-control); background: var(--ds-color-brand); color: var(--ds-color-on-brand); }
-.workspace .primary:hover:not(:disabled) { background: var(--ds-color-brand-hover); }
 .workspace button:disabled { cursor: not-allowed; }
 .secondary:disabled, .textButton:disabled { opacity: .55; }
 .workspace button:focus-visible, .workspace input:focus-visible, .workspace select:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
