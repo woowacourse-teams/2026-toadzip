@@ -2,13 +2,9 @@ import { useState } from 'react'
 import { Button } from '../../design-system/components/Button'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 import type { Evidence } from './extraction'
-import { cellMatches, cellStates, chooseCellValue, editCell, pendingCell, shown, validCellValue, type Cell, type ReviewFilter, type ValueMode } from './review'
+import { cellMatches, cellStates, choices, chooseCellValue, editCell, pendingCell, shown, validCellValue, type Cell, type ReviewFilter, type ValueMode } from './review'
 import styles from './PdfCorrection.module.css'
 
-const choices = {
-  method: [['ONLINE', '온라인'], ['VISIT', '방문'], ['MAIL', '우편'], ['ETC', '기타']],
-  scheduleType: [['APPLICATION', '접수'], ['DOCUMENT_SUBMISSION', '서류 제출'], ['WINNER_ANNOUNCEMENT', '당첨자 발표'], ['CONTRACT', '계약'], ['MOVE_IN', '입주'], ['ETC', '기타']],
-}
 const modes: [ValueMode, string, string][] = [['keep', '기존 값', '기존 값 사용'], ['extracted', '보정 값', '보정된 값 사용'], ['manual', '직접 수정', '직접 수정']]
 
 export function ReviewCells({ cells, scope, housingTypes = [], filter = 'all', onChange, onEvidence }: { cells: Cell[]; scope: string; housingTypes?: MatchingHousingType[]; filter?: ReviewFilter; onChange: (cells: Cell[]) => void; onEvidence: (evidence: Evidence) => void }) {

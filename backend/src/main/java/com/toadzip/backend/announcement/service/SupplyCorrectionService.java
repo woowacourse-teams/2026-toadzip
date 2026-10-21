@@ -46,6 +46,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
@@ -135,6 +136,48 @@ public class SupplyCorrectionService {
             }
             return new SupplyCorrection.Applied(applied.getChangeId(), true, workspace(id));
         }
+        var written = write(announcement, id, request, actor);
+        var change = changes.saveAndFlush(new AdminDataChange("ANNOUNCEMENT", id, "CORRECT_SUPPLY", actor,
+                json.writeValueAsString(Map.of("rows", written.before())),
+                json.writeValueAsString(audit(written.after(), request.correction()))));
+        recordOperation(id, request, change.getId(), announcement.getVersion());
+        return new SupplyCorrection.Applied(change.getId(), false, written.after());
+    }
+
+    /**
+     * 다른 보정 이력 한 건에 공급행 변경을 포함할 때 공급행만 저장한다.
+     * 호출자는 같은 트랜잭션에서 이력을 남긴 뒤 {@link #recordOperation}으로 작업 번호를 그 이력에 연결한다.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Written writeWithoutHistory(long id, SupplyCorrection.Apply request, String actor) {
+        var announcement = announcements.findByIdForUpdate(id).orElseThrow(AnnouncementNotFoundException::new);
+        if (corrections.findByOperationId(request.correction().operationId()).isPresent()) {
+            throw new AdminDataConflictException("이미 적용한 공급정보 보정 작업입니다. 최신값을 다시 확인하세요.");
+        }
+        return write(announcement, id, request, actor);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordOperation(long id, SupplyCorrection.Apply request, long changeId, long announcementVersion) {
+        corrections.save(new SupplyCorrectionRecord(request.correction().operationId(), id, hash(request),
+                changeId, announcementVersion));
+    }
+
+    /** 공급행 보정 이력의 변경 후 값. 다른 보정 이력에 포함할 때도 같은 필드를 남긴다. */
+    public Map<String, Object> audit(SupplyCorrection.Workspace after, SupplyCorrection.Request correction) {
+        var audit = new LinkedHashMap<String, Object>();
+        audit.put("rows", after.rows());
+        audit.put("reason", correction.reason().strip());
+        audit.put("sourceUrl", correction.sourceUrl());
+        audit.put("sourcePage", correction.sourcePage());
+        audit.put("operationId", correction.operationId());
+        audit.put("sources", after.sources());
+        return audit;
+    }
+
+    public record Written(List<Row> before, SupplyCorrection.Workspace after) { }
+
+    private Written write(Announcement announcement, long id, SupplyCorrection.Apply request, String actor) {
         var preview = preview(id, request.correction());
         if (!preview.confirmationToken().equals(request.confirmationToken())) {
             throw new AdminDataConflictException("미리보기 이후 선택한 단지·주택형 또는 변경안이 바뀌었습니다. 다시 확인하세요.");
@@ -157,19 +200,7 @@ public class SupplyCorrectionService {
                 request.correction().reason(), actor);
         announcement.recordAdminSupplyChange();
         announcements.flush();
-        var after = workspace(id);
-        var audit = new LinkedHashMap<String, Object>();
-        audit.put("rows", after.rows());
-        audit.put("reason", request.correction().reason().strip());
-        audit.put("sourceUrl", request.correction().sourceUrl());
-        audit.put("sourcePage", request.correction().sourcePage());
-        audit.put("operationId", request.correction().operationId());
-        audit.put("sources", after.sources());
-        var change = changes.saveAndFlush(new AdminDataChange("ANNOUNCEMENT", id, "CORRECT_SUPPLY", actor,
-                json.writeValueAsString(Map.of("rows", preview.before())), json.writeValueAsString(audit)));
-        corrections.save(new SupplyCorrectionRecord(request.correction().operationId(), id, requestHash,
-                change.getId(), announcement.getVersion()));
-        return new SupplyCorrection.Applied(change.getId(), false, after);
+        return new Written(preview.before(), workspace(id));
     }
 
     /** 기존 행 중 주택형 연결이 바뀐 행. 연결은 정제의 저장 매칭이 소유하므로 원천행 식별자로 넘긴다. */
