@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import fixtures from './fixtures/scenarios.json'
-import { blankRow } from '../supply/supplyCorrectionApi'
+import { blankRow, blankTarget } from '../supply/supplyCorrectionApi'
 import { readExtraction } from './extraction'
-import { proposeRows, proposeSchedules } from './matching'
+import { defaultTargetDestinations, proposeRows, proposeSchedules } from './matching'
 
 function scenario(name: keyof typeof fixtures) {
   const fixture = fixtures[name]
@@ -18,6 +18,13 @@ function scenario(name: keyof typeof fixtures) {
 }
 
 describe('공고 보정 대응 제안', () => {
+  it('공급대상명은 주택형처럼 형을 생략하지 않고 미저장 조건도 정확히 대응한다', () => {
+    const row = blankRow(0)
+    row.targets = [{ ...blankTarget(0), key: 'draft-target', target: '가형', supplyRank: '1순위' }]
+    expect(defaultTargetDestinations({ targets: [{ target: '가', supplyRank: '1순위' }] }, row)).toEqual(['new'])
+    expect(defaultTargetDestinations({ targets: [{ target: '가 형', supplyRank: '1 순위' }] }, row)).toEqual(['draft-target'])
+  })
+
   it('한스빌의 한 행을 두 행으로 제안하고 서로 다른 면적의 주택형을 연결한다', () => {
     const { extraction, rows, housing } = scenario('hansville')
     expect(proposeRows(extraction, rows, housing)).toMatchObject([
