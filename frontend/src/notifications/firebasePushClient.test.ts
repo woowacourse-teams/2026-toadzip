@@ -181,3 +181,19 @@ it('원격 해제 조회 뒤 늦게 도착한 등록 성공이 최신 버전을 
   expect(client.getSnapshot().status).toBe('on')
   client.dispose()
 })
+
+it('기기를 끈 뒤에는 대기 중인 이전 조회를 재사용하지 않고 새 바인딩을 확인한다', async () => {
+  const { client, repository } = setup()
+  await client.start(); await client.enable()
+  let finish!: (state: Awaited<ReturnType<PushDeviceRepository['current']>>) => void
+  vi.mocked(repository.current).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const old = client.refresh()
+  await client.disable()
+  vi.mocked(repository.current).mockResolvedValue({ deviceId: 'device', enabled: false, bindingVersion: '2' })
+  await client.refresh()
+  expect(repository.current).toHaveBeenCalledTimes(3)
+  finish({ deviceId: 'device', enabled: true, bindingVersion: '1' })
+  await old
+  expect(client.getSnapshot().status).toBe('off')
+  client.dispose()
+})
