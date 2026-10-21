@@ -1369,6 +1369,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     await waitFor(() => expect(repository.findMap).toHaveBeenCalled())
     await screen.findByRole('heading', { name: '서울가람 행복주택' })
+    vi.useFakeTimers()
 
     fireEvent.click(screen.getByRole('button', { name: '가격 필터 열기' }))
     fireEvent.change(screen.getByRole('slider', {
@@ -1378,10 +1379,11 @@ describe('PublicHousingExplorer', () => {
       name: '임대보증금 최댓값',
     }), { target: { value: '200000000' } })
 
-    await waitFor(() => {
-      expect(repository.findMap).toHaveBeenCalledTimes(3)
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(3)
-    })
+    await act(async () => vi.advanceTimersByTimeAsync(99))
+    expect(repository.findMap).toHaveBeenCalledOnce()
+    expect(repository.findComplexPage).toHaveBeenCalledTimes(3)
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(repository.findMap).toHaveBeenCalledTimes(2)
     expect(repository.findMap).toHaveBeenLastCalledWith(
       expect.objectContaining({
         bounds: INITIAL_BOUNDS,
@@ -1611,6 +1613,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     await waitFor(() => expect(repository.findMap).toHaveBeenCalled())
     await screen.findByRole('heading', { name: '서울가람 행복주택' })
+    vi.useFakeTimers()
     fireEvent.click(screen.getByRole('button', { name: '가격 필터 열기' }))
     const minimum = screen.getByRole('slider', {
       name: '임대보증금 최솟값',
@@ -1626,10 +1629,11 @@ describe('PublicHousingExplorer', () => {
       name: '임대보증금 선택 범위',
     })).toHaveTextContent('1억~1억')
 
-    await waitFor(() => {
-      expect(repository.findMap).toHaveBeenCalledTimes(2)
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(3)
-    })
+    await act(async () => vi.advanceTimersByTimeAsync(99))
+    expect(repository.findMap).toHaveBeenCalledOnce()
+    expect(repository.findComplexPage).toHaveBeenCalledTimes(3)
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(repository.findMap).toHaveBeenCalledTimes(2)
     expect(repository.findMap).toHaveBeenLastCalledWith(
       expect.objectContaining({
         bounds: INITIAL_BOUNDS,
