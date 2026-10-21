@@ -127,3 +127,7 @@ IDE에서도 Docker가 실행 중이면 테스트를 바로 실행할 수 있다
 ## 코드 컨벤션
 
 백엔드 코드는 [Backend Code Convention](backend/CODE_CONVENTION.md)을 따른다.
+
+## 문서 작성
+
+문서를 추가·수정할 때는 [문서 작성·관리 규칙](docs/development/documentation.md)에 따라 배치와 README 형식, 중복·링크·실행 조건을 확인한다.
