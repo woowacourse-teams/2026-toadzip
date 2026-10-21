@@ -67,6 +67,12 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
     return failureReturnUrl(path, `/admin/failures?${next}`)
   }
   const [matchingOpen, setMatchingOpen] = useState(false)
+  const pdfGroups = new Map<number, FailureReview[]>()
+  for (const row of matching?.items ?? []) {
+    if (!canCorrectPdf(row)) continue
+    const announcementId = row.product!.id
+    pdfGroups.set(announcementId, [...pdfGroups.get(announcementId) ?? [], row])
+  }
   useEffect(() => { setMatchingOpen(false); setActionBusy(false) }, [selectionKey])
 
   useEffect(() => {
@@ -151,6 +157,10 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
     {!validQuery ? <p role="alert">조회 조건이 올바르지 않습니다. <button type="button" onClick={() => setParams({domain})}>조회 조건 초기화</button></p> : null}
     {error ? <p role="alert">{error} <button type="button" onClick={() => setRevision(value => value + 1)}>다시 조회</button></p> : null}
     <div className={styles.results} aria-busy={pending}>
+      {!pending && !error && pdfGroups.size > 0 && <section className={styles.pdfGroups} aria-label="PDF로 보정할 공고">
+        <h3>이 페이지의 주택형 대응 오류</h3><p>같은 공고의 오류를 묶었습니다. PDF 보정 후 정제를 다시 실행해 해결 여부를 확인하세요.</p>
+        {[...pdfGroups.entries()].map(([announcementId, rows]) => <div key={announcementId}><strong>{rows[0].product!.name}</strong><Link to={follow(`/admin/announcements/${announcementId}/pdf-correction?failureCount=${rows.length}`, rows[0])}>PDF로 보정 · {rows.length}건</Link></div>)}
+      </section>}
       <div className={styles.summary}>
         <span>{matching ? `총 ${matching.totalElements.toLocaleString()}건` : '오류 목록 조회'}
           {matching && executionId ? ' · 실행 필터 적용' : ''}</span>
@@ -199,6 +209,7 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
         </section>
         <section className={styles.detailSection}><h3>2. 필요한 조치</h3><div className={styles.workflow}>
           {selected.product ? <Link to={follow(`/admin/${selected.product.resourceType}/${selected.product.id}`)}>{label} 확인·수정</Link> : null}
+          {canCorrectPdf(selected) && !actionDisabled && <Link to={follow(`/admin/announcements/${selected.product!.id}/pdf-correction`)}>PDF로 보정</Link>}
           <RecoveryLinks row={selected} follow={follow}/>
           {selected.category === 'collection' ? <Link to={follow(`/admin/ingest#${domain === 'complex' ? 'complex' : 'announcement'}-pipelines`)}>API 키 입력·원천 수집</Link>
             : selected.status === 'PENDING' && onRetry ? <FailureRetryButton label={label} disabled={actionDisabled}
@@ -235,6 +246,12 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
       </div> : null}
     </dialog>
   </section>
+}
+
+function canCorrectPdf(row: FailureReview) {
+  return (row.category === 'announcement' || row.category === 'enrichment') && row.status === 'PENDING'
+    && ['AMBIGUOUS_HOUSING_TYPE', 'HOUSING_TYPE_NOT_FOUND'].includes(row.reason)
+    && row.product?.resourceType === 'announcements' && !row.product.deleted
 }
 
 function RecoveryLinks({row, follow}: {row:FailureReview; follow: (path: string) => string}) {
