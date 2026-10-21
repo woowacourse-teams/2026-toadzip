@@ -1,3 +1,4 @@
+import { isRecord } from '../management/managementContract'
 import type { JsonObject, JsonWorkspace } from '../announcement-json/api'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 import type { CorrectionRow } from '../supply/supplyCorrectionApi'
@@ -13,6 +14,7 @@ export type RowProposal = {
   reason: string
   needsConfirmation: boolean
   sharedIndex: number | null
+  newComplex?: { id: number; name: string; pnu: string; category: CorrectionRow['category'] }
 }
 export type ScheduleProposal = { existingIds: number[]; needsConfirmation: boolean; reason: string }
 
@@ -61,7 +63,7 @@ export function proposeRows(extraction: Extraction, current: CorrectionRow[], ho
     const chosen = byName.length === 1 ? byName[0] : byArea.length === 1 ? byArea[0] : available.length === 1 ? available[0] : undefined
     if (chosen) used.add(chosen.key)
     const anchor = chosen ?? (complexId === null ? undefined : related[0])
-    const destination = chosen?.key ?? (anchor && available.length === 0 ? 'new' : '')
+    const destination = chosen?.key ?? (!current.length || anchor && available.length === 0 ? 'new' : '')
     const changedName = !!chosen && normalizedName(chosen.typeName) !== normalizedName(row.typeName)
     return {
       destination, anchorKey: anchor?.key ?? '', complexId, housingTypeId: housingTypeId ?? chosen?.housingTypeId ?? null, candidates: allTypes,
@@ -100,5 +102,19 @@ export function proposeSchedules(extraction: Extraction, events: JsonWorkspace['
       reason: ambiguous ? '같은 단지에 겹치는 일정이 여러 개입니다. 기존 일정 대응을 선택해 주세요.'
         : weakEvidence ? '근거 문구에 날짜·시각이 없습니다.' : matches.length > 0 && !exact.length
           ? '기존 일정과 기간이 일부 다릅니다.' : chosen.length > 1 ? `단지별 기존 일정 ${chosen.length}건에 반영` : '' }
+  })
+}
+
+/** 이름·순위가 유일하게 대응할 때만 기존 조건을 갱신한다. 미저장 조건도 key로 대응한다. */
+export function defaultTargetDestinations(input: JsonObject, row: CorrectionRow | undefined) {
+  const normalize = (value: unknown) => typeof value === 'string' ? value.normalize('NFKC').replace(/\s+/g, '').toLowerCase() : ''
+  const targets = Array.isArray(input.targets) ? input.targets : []
+  return targets.map((value: unknown) => {
+    if (!isRecord(value) || !normalize(value.target)) return ''
+    if (!row) return 'new'
+    const matches = row.targets.filter(target => !target.excluded && normalize(target.target) === normalize(value.target)
+      && normalize(target.supplyRank) === normalize(value.supplyRank))
+    if (matches.length === 1) return matches[0].id ? String(matches[0].id) : matches[0].key
+    return matches.length === 0 ? 'new' : ''
   })
 }

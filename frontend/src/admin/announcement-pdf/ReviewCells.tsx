@@ -1,31 +1,56 @@
 import { useState } from 'react'
 import { Button } from '../../design-system/components/Button'
+import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 import type { Evidence } from './extraction'
-import { cellStates, editCell, shown, type Cell } from './review'
+import { cellStates, chooseCellValue, editCell, shown, validCellValue, type Cell, type ValueMode } from './review'
 import styles from './PdfCorrection.module.css'
 
 const choices = {
   method: [['ONLINE', '온라인'], ['VISIT', '방문'], ['MAIL', '우편'], ['ETC', '기타']],
   scheduleType: [['APPLICATION', '접수'], ['DOCUMENT_SUBMISSION', '서류 제출'], ['WINNER_ANNOUNCEMENT', '당첨자 발표'], ['CONTRACT', '계약'], ['MOVE_IN', '입주'], ['ETC', '기타']],
 }
-export function ReviewCells({ cells, scope, onChange, onEvidence }: { cells: Cell[]; scope: string; onChange: (cells: Cell[]) => void; onEvidence: (evidence: Evidence) => void }) {
+const modes: [ValueMode, string, string][] = [['keep', '기존 값', '기존 값 사용'], ['extracted', '보정 값', '보정된 값 사용'], ['manual', '직접 수정', '직접 수정']]
+
+export function ReviewCells({ cells, scope, housingTypes = [], onChange, onEvidence }: { cells: Cell[]; scope: string; housingTypes?: MatchingHousingType[]; onChange: (cells: Cell[]) => void; onEvidence: (evidence: Evidence) => void }) {
   const [all, setAll] = useState(false)
-  const quiet = cells.filter(cell => cell.state === 'same' || cell.state === 'notApplicable')
+  const quiet = cells.filter(cell => cell.mode !== 'manual' && (cell.state === 'same' || cell.state === 'notApplicable'))
   function update(path: string, next: Cell) { onChange(cells.map(cell => cell.path === path ? next : cell)) }
+  function display(cell: Cell, value: unknown) {
+    if (cell.kind === 'housingType') {
+      const type = housingTypes.find(item => item.id === value)
+      return value == null ? '미연결' : type ? `${type.name} · ${type.exclusiveArea}㎡${type.householdCount != null ? ` · ${type.householdCount}세대` : ''}` : `#${String(value)}`
+    }
+    if (cell.kind === 'method' || cell.kind === 'scheduleType') return choices[cell.kind].find(([key]) => key === value)?.[1] ?? shown(value)
+    return shown(value)
+  }
+  function manualField(cell: Cell) {
+    const change = (value: string) => update(cell.path, editCell(cell, value))
+    const value = cell.input ?? String(cell.value ?? '')
+    return <label className={styles.manualField}><span className={styles.srOnly}>{scope} {cell.label} 수정</span>{cell.kind === 'housingType'
+      ? <select value={value} aria-invalid={cell.state === 'invalid' || undefined} onChange={event => change(event.target.value)}><option value="">주택형 미연결</option>{housingTypes.map(type => <option key={type.id} value={type.id}>{display(cell, type.id)}</option>)}</select>
+      : cell.kind === 'method' || cell.kind === 'scheduleType'
+        ? <select value={value} onChange={event => change(event.target.value)}><option value="">미확인</option>{choices[cell.kind].map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
+        : cell.field === 'applicationCondition' ? <textarea rows={3} value={value} aria-invalid={cell.state === 'invalid' || undefined} onChange={event => change(event.target.value)} />
+          : <input type={cell.kind === 'date' ? 'date' : cell.kind === 'datetime' ? 'datetime-local' : cell.kind === 'month' ? 'month' : 'text'} inputMode={cell.kind === 'money' || cell.kind === 'count' ? 'numeric' : cell.kind === 'area' ? 'decimal' : undefined}
+            value={value} aria-invalid={cell.state === 'invalid' || undefined} onChange={event => change(event.target.value)} />}</label>
+  }
   return <div className={styles.cells}>
-    <div className={styles.cellHead}><span>적용 · 항목</span><span>현재값</span><span>PDF 추출값 · 수정</span><span>상태 · 근거</span></div>
-    {cells.filter(cell => all || !quiet.includes(cell)).map(cell => <div key={cell.path} className={styles.cell} data-state={cell.state}>
-      <label><input type="checkbox" aria-label={`${scope} ${cell.label} 적용`} checked={cell.selected} disabled={cell.locked || ['invalid', 'unresolved', 'notApplicable'].includes(cell.state)}
-        onChange={event => update(cell.path, { ...cell, selected: event.target.checked })} />{cell.label}</label>
-      <div className={styles.before}><span className={styles.mobileLabel}>현재값</span>{shown(cell.before)}</div>
-      <label><span className={styles.srOnly}>{scope} {cell.label} 수정</span>{cell.kind === 'method' || cell.kind === 'scheduleType'
-        ? <select value={String(cell.value ?? '')} disabled={cell.locked} onChange={event => update(cell.path, editCell(cell, event.target.value))}><option value="">미확인</option>{choices[cell.kind].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-        : cell.field === 'applicationCondition' ? <textarea rows={4} value={String(cell.value ?? '')} disabled={cell.locked} aria-invalid={cell.state === 'invalid' || undefined} onChange={event => update(cell.path, editCell(cell, event.target.value))} /> : <input type={cell.kind === 'date' ? 'date' : cell.kind === 'datetime' ? 'datetime-local' : cell.kind === 'month' ? 'month' : 'text'}
-          inputMode={cell.kind === 'money' || cell.kind === 'count' ? 'numeric' : cell.kind === 'area' ? 'decimal' : undefined}
-          value={cell.input ?? String(cell.value ?? '')} disabled={cell.locked} aria-invalid={cell.state === 'invalid' || undefined}
-          onChange={event => update(cell.path, editCell(cell, event.target.value))} />}</label>
-      <div className={styles.cellStatus}><span>{cell.locked ? '현재값 유지' : cellStates[cell.state]}</span>{cell.note && <small>{cell.note}</small>}{cell.evidence && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence(cell.evidence!)} title={cell.evidence.quote}>{cell.evidence.page}쪽 근거</Button>}</div>
-    </div>)}
+    <div className={styles.cellHead}><span>항목</span><span>기존 값</span><span>보정된 값</span><span>반영할 값</span><span>PDF</span></div>
+    {cells.filter(cell => all || !quiet.includes(cell)).map(cell => {
+      const canUseExtracted = validCellValue(cell.kind, cell.extracted.value) && !['invalid', 'unresolved', 'notApplicable'].includes(cell.extracted.state)
+      return <div key={cell.path} className={styles.cell} data-state={cell.state}>
+        <div className={styles.cellLabel}><strong>{cell.label}</strong><small>{cellStates[cell.state]}</small></div>
+        <div className={styles.before}><span className={styles.mobileLabel}>기존 값</span>{display(cell, cell.before)}</div>
+        <div className={styles.extracted}><span className={styles.mobileLabel}>보정된 값</span>{display(cell, cell.extracted.value)}</div>
+        <div className={styles.cellResult}>{cell.locked ? <span>{cell.note || '기존 값 유지'}</span> : <>
+          <div role="group" aria-label={`${scope} ${cell.label} 반영 방법`} className={styles.valueChoices}>{modes.map(([mode, label, name]) => <Button data-design-system key={mode} aria-label={name} aria-pressed={cell.mode === mode} disabled={mode === 'extracted' && !canUseExtracted}
+            onClick={() => update(cell.path, chooseCellValue(cell, mode))}>{mode === 'keep' && cell.before == null ? '추가 안 함' : label}</Button>)}</div>
+          {cell.mode === 'manual' ? manualField(cell) : <strong className={styles.resultValue}>{cell.mode === 'keep' && cell.before == null ? '추가 안 함' : display(cell, cell.mode === 'keep' ? cell.before : cell.value)}</strong>}
+          {cell.note && <small>{cell.note}</small>}
+        </>}</div>
+        <div className={styles.cellEvidence}>{cell.evidence && <Button data-design-system className={styles.evidenceButton} aria-label={`PDF ${cell.evidence.page}쪽 보기`} onClick={() => onEvidence(cell.evidence!)} title={cell.evidence.quote}>p.{cell.evidence.page}</Button>}</div>
+      </div>
+    })}
     {quiet.length > 0 && <Button data-design-system className={styles.quietButton} aria-expanded={all} onClick={() => setAll(value => !value)}>{all ? '같음·해당 없음 접기' : `같음·해당 없음 ${quiet.length}개 보기`}</Button>}
   </div>
 }

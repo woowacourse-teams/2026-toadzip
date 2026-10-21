@@ -15,9 +15,10 @@ function linkIssues(row: CorrectionRow): string[] {
   return [...(row.housingComplexId ? [] : ['단지 미연결']), ...(row.housingTypeId || row.newHousingType ? [] : ['주택형 미연결'])]
 }
 
-export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last, sources = [] }: {
+export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last, sources = [], inline = false, sharedCount }: {
   value: CorrectionRow; onChange: (value: CorrectionRow) => void; onRemove: () => void;
   onMove: (delta: number) => void; first: boolean; last: boolean
+  inline?: boolean; sharedCount?: number
   /** 이 행이 기록한 원천행(마이홈·LH)과 작업실 원천 목록에서 찾은 값. */
   sources?: { category: string; sourceKey: string; found: CorrectionSource | null }[]
 }) {
@@ -58,7 +59,7 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
   const issues = linkIssues(value)
   // 마이홈 매핑은 공급대상을 만들지 않으므로 흔한 상태다. 알리기만 하고 행을 펼치지는 않는다.
   const withoutTargets = !value.excluded && value.targets.every(target => target.excluded)
-  return <details className={styles.row} open={!value.id || issues.length > 0}>
+  return <details className={styles.row} data-inline={inline || undefined} open={inline || !value.id || issues.length > 0}>
     <summary>{value.complexName || '새 공급행'} · {value.typeName || '주택형 미입력'}{value.excluded ? ' · 제외 예정' : ''}
       {(issues.length > 0 || withoutTargets) && <span className={styles.issues}>{issues.map(issue => <span key={issue}>{issue}</span>)}
         {withoutTargets && <span data-tone="note">임대조건 없음</span>}</span>}
@@ -68,7 +69,7 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
         {value.id ? <button type="button" onClick={() => field('excluded', !value.excluded)}>{value.excluded ? '공급행 복구' : '공급행 제외'}</button>
           : <button type="button" onClick={onRemove}>추가한 행 지우기</button>}</div>
       {value.excluded && <p>적용하면 이 행과 하위 조건이 공개 결과에서 제외됩니다. 기록을 보존하며 다시 복구할 수 있습니다.</p>}
-      {value.id && <section className={styles.rowSource} aria-label="대응 원천">
+      {value.id && !inline && <section className={styles.rowSource} aria-label="대응 원천">
         {!sources.length && <p>이 행에 대응하는 원천을 정할 수 없습니다. 직접 추가했거나 원천 식별자가 없는 행, 또는 같은 순번의 LH 원천이 여러 개인 행입니다. 공식 자료로 확인하세요.</p>}
         {sources.map(source => source.found?.rows.length ? <details key={`${source.category}:${source.sourceKey}`}><summary>대응 원천 · {source.category} · {source.sourceKey}</summary>
             {source.found.rows.map((item, index) => <div key={index}><p>수집 시각: {item.collectedAt ? new Date(item.collectedAt).toLocaleString('ko-KR') : '알 수 없음'}</p>
@@ -103,14 +104,14 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
         </section>}
       </fieldset>
       {error && <p role="alert">{error}</p>}
-      {value.groupId && <p>공통 모집수 {value.sharedHouseholdCount ?? '미확정'}세대는 묶음에 한 번만 보관합니다. 단지·공통 모집수 변경은 위의 ‘원천별 공급행 보정’에서 처리하세요.</p>}
+      {(value.groupId || sharedCount !== undefined) && <p>공통 모집수 {sharedCount ?? value.sharedHouseholdCount ?? '미확정'}세대는 묶음에 한 번만 보관합니다. 단지·공통 모집수 변경은 위의 ‘원천별 공급행 보정’에서 처리하세요.</p>}
       <fieldset><legend>이 공고에만 적용할 공급정보</legend><div className={styles.fields}>
         <label>공고의 단지명<input required maxLength={255} value={value.complexName} onChange={event => field('complexName', event.target.value)} /></label>
         <label>공고의 주택형명<input required maxLength={255} value={value.typeName} onChange={event => field('typeName', event.target.value)} /></label>
         <label>공급 PNU<input required maxLength={255} value={value.pnu} onChange={event => field('pnu', event.target.value)} /></label>
         <label>공급 구분<select value={value.category} onChange={event => field('category', event.target.value as CorrectionRow['category'])}><option value="NEW_SUPPLY">신규 공급</option><option value="RESUPPLY">재공급</option></select></label>
         <label>입주 예정 연월<input type="month" value={value.moveInMonth ?? ''} onChange={event => field('moveInMonth', event.target.value || null)} /></label>
-        <label>금회 모집수 (세대)<input type="number" min="0" step="1" disabled={!!value.groupId} value={value.householdCount ?? ''} onChange={event => field('householdCount', event.target.value === '' ? null : Number(event.target.value))} /></label>
+        <label>금회 모집수 (세대)<input type="number" min="0" step="1" disabled={!!value.groupId || sharedCount !== undefined} value={value.householdCount ?? ''} onChange={event => field('householdCount', event.target.value === '' ? null : Number(event.target.value))} /></label>
       </div><p>빈 수량·금액은 미확인, 숫자 0은 확인된 0입니다. 전체 세대수는 변경하지 않습니다.</p>
       <label className={styles.check}><input type="checkbox" checked={value.areaOverride} onChange={event => field('areaOverride', event.target.checked)} />이 공고의 면적을 별도로 보정·보호</label>
       <div className={styles.fields}>{(['exclusiveArea', 'supplyArea'] as const).map(key => <label key={key}>{key === 'exclusiveArea' ? '공고별 전용면적 (㎡)' : '공고별 공급면적 (㎡)'}<input type="number" min="0" step="0.0001" disabled={!value.areaOverride} value={value[key] ?? ''} onChange={event => field(key, event.target.value === '' ? null : Number(event.target.value))} /></label>)}</div>

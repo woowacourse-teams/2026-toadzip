@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { scenario } from './fixtures/workspace'
 import { blankTarget } from '../supply/supplyCorrectionApi'
-import { assembleReview, applicableCells, editCell, rebaseReview, remapSchedule, validCellValue } from './review'
+import { assembleReview, applicableCells, chooseCellValue, createReview, editCell, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
 
 
 const evidence = { reason: '공고문과 대조', sourceUrl: 'https://example.com/notice', sourcePage: '4' }
@@ -43,11 +43,12 @@ it('공주옥룡1의 미확인 공급면적은 현재값을 유지하고 수동 
   expect(request.document.schedules.every(schedule => schedule.startAt !== null)).toBe(true)
 })
 
-it('행 대응·블록 확인과 공통 모집 묶음 일부 제외를 검증한다', () => {
+it('저장 위치 누락과 공통 모집 묶음 일부 제외를 검증한다', () => {
   const { review, workspace } = scenario('hansville')
-  review.rows[0].blockConfirmed = false
-  expect(() => assembleReview(review, workspace, evidence)).toThrow('블록을 확인')
-  review.rows[0].blockConfirmed = true; review.rows[1].include = false
+  const destination = review.rows[0].proposal.destination
+  review.rows[0].proposal.destination = ''
+  expect(() => assembleReview(review, workspace, evidence)).toThrow('기존 공급정보를 선택')
+  review.rows[0].proposal.destination = destination; review.rows[1].include = false
   expect(() => assembleReview(review, workspace, evidence)).toThrow('모든 행을 함께')
 })
 
@@ -75,22 +76,115 @@ it('제외한 행과 조건의 값은 선택 수에 포함하지 않고 현재 �
   expect(applicableCells(review)).not.toContain(review.rows[0].targets[0].cells[0])
   expect(assembleReview(review, workspace, evidence).correction.rows[0].targets).toEqual([])
 })
-it('409 뒤 최신값을 비교하면서 수동 입력·제외·대응을 유지하고 재확인을 요구한다', () => {
-  const { review, workspace } = scenario('hansville')
+it('409 뒤 최신값을 비교하면서 수동 입력·제외·저장 위치를 유지한다', () => {
+  const { review, workspace, housing } = scenario('hansville')
   review.rows[0].cells[0] = editCell(review.rows[0].cells[0], '26A 수동')
-  review.rows[0].cells[1].selected = false
+  review.rows[0].cells[1] = chooseCellValue(review.rows[0].cells[1], 'keep')
   review.rows[0].targets[0].destination = 'exclude'
   workspace.supply.rows[0].typeName = '새 저장값'
-  const rebased = rebaseReview(review, workspace, {})
+  const rebased = rebaseReview(review, workspace, housing)
   expect(rebased.rows[0].cells[0]).toMatchObject({ value: '26A 수동', before: '새 저장값', selected: true })
   expect(rebased.rows[0].cells[1].selected).toBe(false)
   expect(rebased.rows[0].targets[0].destination).toBe('exclude')
-  expect(rebased.rows[0].blockConfirmed).toBe(false)
-  expect(() => assembleReview(rebased, workspace, evidence)).toThrow('확인')
+  expect(assembleReview(rebased, workspace, evidence).correction.rows[0].typeName).toBe('26A 수동')
 })
 it('일정 대응을 새 일정으로 바꾸면 현재값도 다시 계산한다', () => {
   const { review, workspace } = scenario('gwangju')
   const next = remapSchedule(review, 0, [], workspace)
   expect(next.cells.every(cell => cell.before === null)).toBe(true)
-  expect(next.confirmed).toBe(false)
+  expect(next.proposal.existingIds).toEqual([])
+})
+
+it('기존 일정 연결이나 날짜 근거가 불명확한 일정은 기본 반영하지 않는다', () => {
+  const { review, workspace, housing } = scenario('gwangju')
+  const initial = createReview(review.extraction, workspace, housing)
+  const uncertain = initial.schedules.filter(schedule => schedule.proposal.needsConfirmation)
+  expect(uncertain.length).toBeGreaterThan(0)
+  expect(uncertain.every(schedule => !schedule.include)).toBe(true)
+})
+
+it('기존 값·보정 값·직접 입력을 바꿔도 원래 추출값과 수동 초안을 유지한다', () => {
+  const { review } = scenario('hansville')
+  const original = review.rows[0].cells[0]
+  const edited = editCell(chooseCellValue(original, 'manual'), '26A 관리자 수정')
+  const kept = chooseCellValue(edited, 'keep')
+  expect(kept.selected).toBe(false)
+  const extracted = chooseCellValue(kept, 'extracted')
+  expect(extracted).toMatchObject({ value: '26A', selected: true, mode: 'extracted' })
+  expect(extracted.extracted.value).toBe('26A')
+  expect(chooseCellValue(extracted, 'manual')).toMatchObject({ value: '26A 관리자 수정', mode: 'manual' })
+})
+it('직접 입력 형식 오류는 저장하지 않고 기존 값 사용으로 되돌릴 수 있다', () => {
+  const { review, workspace } = scenario('hansville')
+  const row = review.rows[0], index = row.cells.findIndex(cell => cell.field === 'exclusiveArea')
+  row.cells[index] = editCell(row.cells[index], '숫자 아님')
+  expect(() => assembleReview(review, workspace, evidence)).toThrow('직접 입력값을 확인')
+  row.cells[index] = chooseCellValue(row.cells[index], 'keep')
+  expect(assembleReview(review, workspace, evidence).correction.rows[0].exclusiveArea).toBe(workspace.supply.rows[0].exclusiveArea)
+})
+it('조건의 저장 위치를 바꿔도 직접 입력 후 선택한 기존 값 유지가 풀리지 않는다', () => {
+  const { review, workspace } = scenario('hansville')
+  const target = review.rows[0].targets[0], index = target.cells.findIndex(cell => cell.field === 'rentalDeposit')
+  target.cells[index] = chooseCellValue(editCell(target.cells[index], '9999999'), 'keep')
+  const next = remapTarget(review, 0, 0, 'new', workspace)
+  expect(next.cells[index]).toMatchObject({ mode: 'keep', selected: false, manualInput: '9999999' })
+})
+it('연결 주택형도 기존 값을 유지하거나 보정값을 선택해 저장한다', () => {
+  const { review, workspace } = scenario('gwangju')
+  const row = review.rows[0], index = row.cells.findIndex(cell => cell.field === 'housingTypeId')
+  const existing = workspace.supply.rows.find(item => item.key === row.proposal.destination)!
+  row.cells[index] = chooseCellValue(row.cells[index], 'keep')
+  expect(assembleReview(review, workspace, evidence).correction.rows.find(item => item.key === existing.key)?.housingTypeId).toBe(existing.housingTypeId)
+  row.cells[index] = chooseCellValue(row.cells[index], 'extracted')
+  expect(assembleReview(review, workspace, evidence).correction.rows.find(item => item.key === existing.key)?.housingTypeId).toBe(row.cells[index].extracted.value)
+})
+it('수동 값이 기존 값과 같았어도 재조회 후 달라진 기존 값에 덮어쓰지 않는다', () => {
+  const { review, workspace, housing } = scenario('gwangju')
+  const row = review.rows[0], existing = workspace.supply.rows.find(item => item.key === row.proposal.destination)!
+  existing.typeName = '관리자 값'
+  row.cells[0] = editCell({ ...row.cells[0], before: '관리자 값' }, '관리자 값')
+  expect(row.cells[0].selected).toBe(false)
+  existing.typeName = '서버 최신값'
+  const rebased = rebaseReview(review, workspace, housing)
+  expect(rebased.rows[0].cells[0]).toMatchObject({ mode: 'manual', value: '관리자 값', selected: true })
+  expect(assembleReview(rebased, workspace, evidence).correction.rows.find(item => item.key === existing.key)?.typeName).toBe('관리자 값')
+})
+it('직접 수정에서 주택형 미연결을 선택하면 기존 연결을 해제한다', () => {
+  const { review, workspace } = scenario('gwangju')
+  const row = review.rows[0], existing = workspace.supply.rows.find(item => item.key === row.proposal.destination)!
+  existing.housingTypeId = row.proposal.candidates[0].id
+  const index = row.cells.findIndex(cell => cell.field === 'housingTypeId')
+  row.cells[index] = editCell({ ...row.cells[index], before: existing.housingTypeId }, '')
+  expect(row.cells[index]).toMatchObject({ mode: 'manual', value: null, selected: true })
+  expect(assembleReview(review, workspace, evidence).correction.rows.find(item => item.key === existing.key)?.housingTypeId).toBeNull()
+})
+
+
+it('공급행이 없는 공고는 검색해 선택한 단지를 기준으로 첫 공급행을 만든다', () => {
+  const { review: seed, workspace, housing } = scenario('hansville')
+  workspace.supply.rows = []
+  const extraction = { ...seed.extraction, supplyRows: seed.extraction.supplyRows.slice(0, 1), sharedCounts: [] }
+  const review = createReview(extraction, workspace, housing)
+  expect(review.rows[0].proposal.destination).toBe('new')
+  expect(() => assembleReview(review, workspace, evidence)).toThrow('기존 단지')
+  review.rows[0].proposal.newComplex = { id: 7, name: '선택 단지', pnu: '1114010100100010000', category: 'RESUPPLY' }
+  const result = assembleReview(review, workspace, evidence)
+  expect(result.correction.rows).toEqual([expect.objectContaining({ id: null, housingComplexId: 7, housingComplexName: '선택 단지', pnu: '1114010100100010000', category: 'RESUPPLY', typeName: '26A', targets: expect.any(Array) })])
+  expect(workspace.supply.rows).toEqual([])
+})
+it('수동으로 작성 중인 행과 조건도 PDF 대응에 사용하여 중복 추가하지 않는다', () => {
+  const { review: seed, workspace, housing } = scenario('hansville')
+  const extraction = { ...seed.extraction, supplyRows: seed.extraction.supplyRows.slice(0, 1), sharedCounts: [] }
+  const imported = assembleReview(seed, workspace, evidence).correction.rows[0]
+  imported.id = null; imported.key = 'draft-row'; imported.groupId = null
+  imported.targets = imported.targets.map((target, index) => ({ ...target, id: null, key: `draft-target-${index}`, condition: '관리자가 쓴 조건' }))
+  workspace.supply.rows = [imported]
+  const review = createReview(extraction, workspace, housing)
+  expect(review.rows[0].proposal.destination).toBe('draft-row')
+  expect(review.rows[0].targets[0].destination).toBe('draft-target-0')
+  review.rows[0].targets[0] = remapTarget(review, 0, 0, 'draft-target-0', workspace)
+  const result = assembleReview(review, workspace, evidence).correction.rows
+  expect(result).toHaveLength(1)
+  expect(result[0].targets).toHaveLength(imported.targets.length)
+  expect(result[0].targets[0].key).toBe('draft-target-0')
 })
