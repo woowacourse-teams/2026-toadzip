@@ -10,6 +10,8 @@ export function workReturnTo(params: URLSearchParams): string | null {
 }
 
 export function workDetailUrl(resource: 'COMPLEX' | 'ANNOUNCEMENT', id: number, origin: string, section = 'verification') {
-  const search = new URLSearchParams({ section, workReturnTo: origin })
+  const comparison = resource === 'ANNOUNCEMENT' && section === 'verification'
+  const search = new URLSearchParams({ section: comparison ? 'history' : section, workReturnTo: origin })
+  if (comparison) search.set('comparison', 'source')
   return `/admin/${resource === 'COMPLEX' ? 'complexes' : 'announcements'}/${id}?${search}`
 }
