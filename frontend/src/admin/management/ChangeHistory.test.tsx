@@ -92,3 +92,22 @@ it('공급정보 일괄 보정 이력은 원천 전체 대신 바뀐 값과 공�
   expect(within(record).getByRole('link', { name: '공식 근거 ↗' })).toHaveAttribute('href', 'https://example.com/notice.pdf')
   expect(within(record).getByRole('table', { name: '보정 작업' })).not.toBeVisible()
 })
+
+it('PDF 보정 이력은 한 건에 원천 주택형명·접수처·일정 변경을 읽을 수 있게 보여준다', async () => {
+  const previous = { ...blankRow(0), id: 164, key: 'row:164', complexName: '사천벌리1', typeName: '37.1300' }
+  const event = { id: 82, complexName: null, data: { scheduleType: 'APPLICATION', name: '접수', startAt: '2026-10-28T00:00:00', endAt: '2026-10-30T00:00:00' } }
+  vi.mocked(getManagementHistory).mockResolvedValue([{ id: 5, action: 'CORRECT_FROM_PDF', actor: '운영자', occurredAt: '2026-10-22T00:00:00Z',
+    beforeValue: JSON.stringify({ rows: [previous], detail: { data: { receptionPlace: { method: 'VISIT', contact: null } } }, events: [event] }),
+    afterValue: JSON.stringify({ rows: [{ ...previous, typeName: '26' }], reason: '공고문 PDF와 대조', sourceUrl: 'https://example.com/notice', operationId: '작업번호', sources: [],
+      detail: { data: { receptionPlace: { method: 'VISIT', contact: '1600-1004' } } },
+      events: [{ ...event, data: { ...event.data, name: '현장 신청접수', startAt: '2026-10-28T09:00:00' } }] }),
+  }])
+  render(<ChangeHistory resource="announcements" id="47" version={3} />)
+  fireEvent.click(await screen.findByText(/PDF로 공고 보정 · 운영자/))
+  const supply = screen.getByRole('region', { name: '저장한 공급정보 보정' })
+  expect(within(supply).getByRole('row', { name: /원천 주택형명 37.1300 26/ })).toBeInTheDocument()
+  const other = screen.getByRole('region', { name: '저장한 기본정보·일정 보정' })
+  expect(within(other).getByRole('heading', { name: '기본정보·접수처·일정 3개' })).toBeVisible()
+  expect(within(other).getByRole('row', { name: /접수처 연락처 .* 1600-1004/ })).toBeInTheDocument()
+  expect(within(other).getByRole('row', { name: '일정 #82 일정명 접수 현장 신청접수' })).toBeInTheDocument()
+})

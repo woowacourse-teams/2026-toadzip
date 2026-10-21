@@ -21,14 +21,16 @@ function text(value: unknown) {
   }
   return display(value as string | number | null | undefined)
 }
-function supplyDifferences(before: CorrectionRow[], after: CorrectionRow[]) {
+// 이력에서는 수집 원천에서 온 주택형명이 바뀌었음을 드러낸다.
+const historicalRowLabels: Partial<Record<keyof CorrectionRow, string>> = { ...rowLabels, typeName: '원천 주택형명' }
+function supplyDifferences(before: CorrectionRow[], after: CorrectionRow[], labels = rowLabels) {
   const changes: { scope: string; field: string; before: string; after: string }[] = []
   for (const next of after) {
     const previous = before.find(row => row.id !== null && row.id === next.id)
     const scope = `${next.complexName} · ${next.typeName}`
     if (!previous) changes.push({ scope, field: '공급행', before: '없음', after: '새 행 추가' })
-    for (const key of Object.keys(rowLabels) as (keyof CorrectionRow)[]) {
-      if (JSON.stringify(previous?.[key]) !== JSON.stringify(next[key])) changes.push({ scope, field: rowLabels[key]!, before: previous ? text(previous[key]) : '없음', after: text(next[key]) })
+    for (const key of Object.keys(labels) as (keyof CorrectionRow)[]) {
+      if (JSON.stringify(previous?.[key]) !== JSON.stringify(next[key])) changes.push({ scope, field: labels[key]!, before: previous ? text(previous[key]) : '없음', after: text(next[key]) })
     }
     for (const target of next.targets) {
       const old = previous?.targets.find(item => item.id !== null && item.id === target.id)
@@ -42,7 +44,7 @@ function supplyDifferences(before: CorrectionRow[], after: CorrectionRow[]) {
   return changes
 }
 export function SupplyCorrectionPreview({ value, historical = false }: { value: SupplyPreview; historical?: boolean }) {
-  const changes = supplyDifferences(value.before, value.after)
+  const changes = supplyDifferences(value.before, value.after, historical ? historicalRowLabels : rowLabels)
   return <section className={styles.preview} aria-label="공급정보 변경 미리보기"><h3>{historical ? '저장한 변경' : '적용할 변경'} {changes.length}개</h3>
     {!historical && <p>이 공고의 공급행·대상 조건에 적용합니다. 새 주택형을 선택한 경우 공통 주택형 생성도 함께 처리합니다.</p>}
     <div className={styles.tableScroll} tabIndex={0} role="region" aria-label="변경 전후 비교"><table><thead><tr><th>대상</th><th>항목</th><th>{historical ? '변경 전' : '현재'}</th><th>{historical ? '변경 후' : '적용 후'}</th></tr></thead>

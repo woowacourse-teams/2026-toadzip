@@ -11,13 +11,18 @@ type FieldSpec = [field: string, label: string, kind: Kind, target?: string]
 export const rowFields: FieldSpec[] = [['sourceHousingTypeName', '공고 주택형명', 'text', 'typeName'], ['exclusiveArea', '전용면적 (㎡)', 'area'], ['supplyArea', '공급면적 (㎡)', 'area'], ['totalSupplyHouseholdCount', '모집수', 'count', 'householdCount'], ['expectedMoveInMonth', '입주 예정월', 'month', 'moveInMonth'], ['housingTypeId', '연결 주택형', 'housingType']]
 export const targetFields: FieldSpec[] = [['target', '공급 대상', 'text'], ['supplyRank', '공급 순위', 'text'], ['supplyHouseholdCount', '대상별 모집수', 'count', 'householdCount'], ['reserveCount', '예비자 수', 'count'], ['rentalDeposit', '보증금 (원)', 'money', 'deposit'], ['monthlyRent', '월 임대료 (원)', 'money', 'rent'], ['convertedDeposit', '전환보증금 (원)', 'money'], ['applicationCondition', '신청 조건', 'text', 'condition']]
 export const scheduleFields: FieldSpec[] = [['scheduleType', '일정 유형', 'scheduleType'], ['name', '일정명', 'text'], ['startAt', '시작 일시', 'datetime'], ['endAt', '종료 일시', 'datetime']]
-const metadataFields: FieldSpec[] = [['postedDate', '공고일', 'date'], ['applicationStartDate', '접수 시작일', 'date'], ['applicationEndDate', '접수 종료일', 'date'], ['winnerAnnouncementDate', '당첨자 발표일', 'date']]
-const receptionFields: FieldSpec[] = [['name', '접수처명', 'text'], ['method', '접수 방식', 'method'], ['address', '접수처 주소', 'text'], ['contact', '연락처', 'text'], ['url', '접수처 URL', 'url']]
+export const metadataFields: FieldSpec[] = [['postedDate', '공고일', 'date'], ['applicationStartDate', '접수 시작일', 'date'], ['applicationEndDate', '접수 종료일', 'date'], ['winnerAnnouncementDate', '당첨자 발표일', 'date']]
+export const receptionFields: FieldSpec[] = [['name', '접수처명', 'text'], ['method', '접수 방식', 'method'], ['address', '접수처 주소', 'text'], ['contact', '연락처', 'text'], ['url', '접수처 URL', 'url']]
 export type TargetReview = { destination: string; cells: Cell[] }
 export type RowReview = { proposal: RowProposal; include: boolean; reviewed: boolean; key: string; cells: Cell[]; targets: TargetReview[] }
 export type ScheduleReview = { proposal: ScheduleProposal; include: boolean; reviewed: boolean; cells: Cell[] }
 export type Review = { extraction: Extraction; rows: RowReview[]; schedules: ScheduleReview[]; metadata: Cell[]; reception: Cell[] }
 export const cellStates: Record<Cell['state'], string> = { confirm: '확인 필요', unresolved: '미확인 · 현재값 유지', notApplicable: '해당 없음', invalid: '형식 확인 필요', same: '같음', changed: '변경', new: '추가' }
+/** 접수 방식·일정 유형의 화면 표기 */
+export const choices = {
+  method: [['ONLINE', '온라인'], ['VISIT', '방문'], ['MAIL', '우편'], ['ETC', '기타']],
+  scheduleType: [['APPLICATION', '접수'], ['DOCUMENT_SUBMISSION', '서류 제출'], ['WINNER_ANNOUNCEMENT', '당첨자 발표'], ['CONTRACT', '계약'], ['MOVE_IN', '입주'], ['ETC', '기타']],
+}
 export function shown(value: unknown) { return value === null || value === undefined || value === '' ? '미확인' : String(value) }
 
 function normalized(kind: Kind, value: unknown): unknown {
