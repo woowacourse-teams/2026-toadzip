@@ -307,6 +307,24 @@ describe('모바일 공고 필터 즉시 적용', () => {
     expect(onApply).not.toHaveBeenCalled()
   })
 
+  it('연속 선택의 이전 적용이 늦게 도착해도 최신 선택과 포커스를 유지한다', () => {
+    const onApply = vi.fn()
+    const { rerender } = renderFilter({ onApply })
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'LH' }))
+    const sh = screen.getByRole('checkbox', { name: 'SH' })
+    sh.focus()
+    fireEvent.click(sh)
+
+    rerender(<AnnouncementFilterPanel filters={onApply.mock.calls[0][0]} onApply={onApply} />)
+    expect(screen.getByRole('checkbox', { name: 'SH' })).toBe(sh)
+    expect(sh).toBeChecked()
+    expect(sh).toHaveFocus()
+    rerender(<AnnouncementFilterPanel filters={onApply.mock.calls[1][0]} onApply={onApply} />)
+    expect(sh).toHaveFocus()
+    expect(sh).toBeChecked()
+  })
+
   it('즉시 적용 뒤 외부 탐색으로 최초 조건에 돌아와도 체크와 지역을 복원한다', () => {
     const onApply = vi.fn()
     const regionRepository = { search: vi.fn().mockResolvedValue([]) }

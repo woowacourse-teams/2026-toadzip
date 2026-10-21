@@ -1010,9 +1010,13 @@ export function PublicHousingExplorer({
       viewportTimerRef.current = null
     }
     if (viewport !== null && !(clusterTransitionRef.current && transitionWaitingForIdleRef.current)) {
-      requestServerMap(viewport, complexFilters)
+      cancelServerMapRequest()
+      viewportTimerRef.current = window.setTimeout(() => {
+        viewportTimerRef.current = null
+        requestServerMap(viewport, complexFilters)
+      }, 100)
     }
-  }, [complexFiltersKey, complexFilters, viewport, requestServerMap])
+  }, [complexFiltersKey, complexFilters, viewport, requestServerMap, cancelServerMapRequest])
 
   const finishClusterTransition = useCallback(() => {
     clusterTransitionRef.current = false

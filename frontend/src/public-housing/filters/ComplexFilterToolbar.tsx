@@ -75,7 +75,7 @@ export function ComplexFilterToolbar({
   const desktopResetRef = useRef<HTMLButtonElement>(null)
   const desktopResetFocusPendingRef = useRef(false)
   const previousFiltersSignatureRef = useRef(filtersSignature)
-  const quickAppliedSignatureRef = useRef<string | null>(null)
+  const pendingAppliedFiltersRef = useRef<ComplexSearchFilters[]>([])
   const mobileFormRef = useRef<HTMLFormElement>(null)
   const mobileSheetRef = useRef<HTMLElement>(null)
   const measurement = useFilterMeasurement('complex', mobileSheetOpen ? mobileInitialTopic : openTopic,
@@ -85,7 +85,6 @@ export function ComplexFilterToolbar({
   const mobileResetRef = useRef<HTMLButtonElement>(null)
   const mobileResetFocusPendingRef = useRef(false)
   const mobileTriggerRef = useRef<HTMLButtonElement | null>(null)
-  const mobileOpenedFiltersSignatureRef = useRef(filtersSignature)
   const triggerRefs = useRef<
     Partial<Record<ToolbarTopic, HTMLButtonElement>>
   >({})
@@ -93,12 +92,25 @@ export function ComplexFilterToolbar({
   useEffect(() => {
     if (previousFiltersSignatureRef.current === filtersSignature) return
     previousFiltersSignatureRef.current = filtersSignature
-    if (quickAppliedSignatureRef.current !== filtersSignature) {
+    const appliedIndex = pendingAppliedFiltersRef.current.findIndex(
+      pending => searchFiltersSignature(pending) === filtersSignature,
+    )
+    if (appliedIndex >= 0) {
+      pendingAppliedFiltersRef.current.splice(0, appliedIndex + 1)
+      return
+    }
+    pendingAppliedFiltersRef.current = []
+    if (openTopic !== null) {
       setOpenTopic(null)
       setErrorMessage(null)
     }
-    quickAppliedSignatureRef.current = null
-  }, [filtersSignature, openTopic])
+    if (mobileSheetOpen) {
+      setMobileSheetOpen(false)
+      setMobileInitialTopic(null)
+      setErrorMessage(null)
+      mobileTriggerRef.current?.focus()
+    }
+  }, [filtersSignature, openTopic, mobileSheetOpen])
 
   useEffect(() => {
     if (openTopic === null) {
@@ -230,20 +242,6 @@ export function ComplexFilterToolbar({
     desktopResetRef.current?.focus()
   }, [allFormRevision])
 
-  useEffect(() => {
-    if (
-      !mobileSheetOpen
-      || mobileOpenedFiltersSignatureRef.current === filtersSignature
-    ) {
-      return
-    }
-    const opener = mobileTriggerRef.current
-    setMobileSheetOpen(false)
-    setMobileInitialTopic(null)
-    setErrorMessage(null)
-    opener?.focus()
-  }, [filtersSignature, mobileSheetOpen])
-
   useLayoutEffect(() => {
     const root = rootRef.current
     if (!root) return
@@ -373,7 +371,6 @@ export function ComplexFilterToolbar({
     trigger: HTMLButtonElement,
   ) {
     mobileTriggerRef.current = trigger
-    mobileOpenedFiltersSignatureRef.current = filtersSignature
     setOpenTopic(null)
     setErrorMessage(null)
     setMobileDraftFilters(filters)
@@ -406,7 +403,7 @@ export function ComplexFilterToolbar({
   }
 
   function resetRegionDescendants(regionCode: string) {
-    applyImmediately(replaceTopic(filters, 'region', regionCode ? { regionCode } : {}))
+    applyImmediately(replaceTopic(latestAppliedFilters(), 'region', regionCode ? { regionCode } : {}))
   }
 
   function changeFilter(event: FormEvent<HTMLFormElement>) {
@@ -436,15 +433,19 @@ export function ComplexFilterToolbar({
     const allOpen = openTopic === 'all' || (mobileSheetOpen && mobileInitialTopic === 'all')
     setErrorMessage(allOpen ? topicRangeError('builtYear', topicDraftFromForm('builtYear', data)) : rangeError)
     if (rangeError !== null) return
-    applyImmediately(replaceTopic(filters, topic, draft))
+    applyImmediately(replaceTopic(latestAppliedFilters(), topic, draft))
+  }
+
+  function latestAppliedFilters() {
+    return pendingAppliedFiltersRef.current.at(-1) ?? filters
   }
 
   function applyImmediately(next: ComplexSearchFilters, mode: 'immediate' | 'reset' = 'immediate') {
     measurement.apply(next, mode)
     const nextSignature = searchFiltersSignature(next)
-    if (nextSignature === filtersSignature) return
-    quickAppliedSignatureRef.current = nextSignature
-    if (mobileSheetOpen) mobileOpenedFiltersSignatureRef.current = nextSignature
+    if (nextSignature === searchFiltersSignature(latestAppliedFilters())) return
+    // Router transitions can commit an earlier edit after the next interaction.
+    pendingAppliedFiltersRef.current.push(next)
     onApply(next)
   }
 

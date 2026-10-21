@@ -33,7 +33,7 @@ export function AnnouncementFilterPanel({
   const [open, setOpen] = useState(false)
   const [formFilters, setFormFilters] = useState(filters)
   const [formRevision, setFormRevision] = useState(0)
-  const immediateSignatureRef = useRef<string | null>(null)
+  const pendingSignaturesRef = useRef<string[]>([])
   const rootRef = useRef<HTMLElement>(null)
   const measurement = useFilterMeasurement('announcement', open ? 'all' : null, mobile ? 'mobile' : 'desktop', rootRef, filters)
   const formRef = useRef<HTMLFormElement>(null)
@@ -50,11 +50,12 @@ export function AnnouncementFilterPanel({
   useEffect(() => {
     if (previousFiltersKeyRef.current === filtersKey) return
     previousFiltersKeyRef.current = filtersKey
-    if (immediateSignatureRef.current === filtersKey) {
-      immediateSignatureRef.current = null
+    const appliedIndex = pendingSignaturesRef.current.indexOf(filtersKey)
+    if (appliedIndex >= 0) {
+      pendingSignaturesRef.current.splice(0, appliedIndex + 1)
       return
     }
-    immediateSignatureRef.current = null
+    pendingSignaturesRef.current = []
     setFormFilters(filters)
     // History can return to the initial defaults while the live inputs have changed.
     setFormRevision((revision) => revision + 1)
@@ -92,8 +93,8 @@ export function AnnouncementFilterPanel({
     if (target.name === 'provinceCode' || target.name === 'districtCode') data.set('neighborhoodCode', '')
     const next = announcementFiltersFromForm(data)
     const nextSignature = searchFiltersSignature(next)
-    if (nextSignature === filtersKey) return
-    immediateSignatureRef.current = nextSignature
+    if (nextSignature === (pendingSignaturesRef.current.at(-1) ?? filtersKey)) return
+    pendingSignaturesRef.current.push(nextSignature)
     measurement.apply(next, 'immediate')
     onApply(next)
   }
@@ -101,7 +102,7 @@ export function AnnouncementFilterPanel({
   function reset() {
     measurement.reset('all', 'applied')
     measurement.apply({}, 'reset')
-    immediateSignatureRef.current = null
+    pendingSignaturesRef.current.push(searchFiltersSignature({}))
     formRef.current?.reset()
     setFormFilters({})
     closeRef.current?.focus()
