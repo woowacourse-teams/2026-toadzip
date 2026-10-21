@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { PdfCorrectionPage } from './PdfCorrectionPage'
+import { PdfCorrectionPage, PdfCorrectionWorkspace } from './PdfCorrectionPage'
 import { scenario } from './fixtures/workspace'
 import fixtures from './fixtures/scenarios.json'
 import type { JsonUpdateInput } from '../announcement-json/api'
@@ -10,123 +10,188 @@ const api = vi.hoisted(() => ({ loadJsonWorkspace: vi.fn(), previewJsonUpdate: v
 vi.mock('../announcement-json/api', () => api)
 vi.mock('../ingest/supplyMatchingApi', () => ({ getMatchingHousingTypes: async (id: number) => fixtures.hansville.complexes.find(item => item.id === id)?.housingTypes ?? [] }))
 vi.mock('../../public-housing/api/announcementAttachments', () => ({ loadAnnouncementAttachment: async () => new Blob(), attachmentErrorMessage: () => 'PDF 열기 실패' }))
-vi.mock('../../public-housing/components/PdfDocumentPreview', () => ({ default: ({ focus }: { focus: { page: number } | null }) => <p>PDF {focus?.page ?? 1}쪽</p> }))
-const workspace = scenario('hansville').workspace
+vi.mock('../../public-housing/components/PdfDocumentPreview', () => ({ default: ({ focus }: { focus: { page: number; query: string } | null }) => <p>PDF {focus?.page ?? 1}쪽 · 강조 {focus?.query || '없음'}</p> }))
+vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(),
+  getManagementPage: async () => ({ items: [{ id: 7, name: '검색 단지', subtitle: '주소 확인' }] }),
+  getManagementDetail: async () => ({ data: { address: { pnu: '1114010100100010000' } } }) }))
+const base = scenario('hansville').workspace
+const workspace = { ...base, detail: { ...base.detail, attachments: [{ attachmentId: 68, fileName: '공고문.pdf', fileType: 'ANNOUNCEMENT', fileUrl: 'https://example.com/notice.pdf' }] } }
 beforeEach(() => {
   vi.clearAllMocks()
   vi.stubGlobal('URL', class extends URL { static createObjectURL = () => 'blob:pdf'; static revokeObjectURL = vi.fn() })
   api.loadJsonWorkspace.mockResolvedValue(workspace)
   api.applyJsonUpdate.mockResolvedValue(workspace)
-  api.previewJsonUpdate.mockImplementation(async (_id: string, input: JsonUpdateInput) => ({ confirmationToken: 'confirmed', fields: [], schedules: [], attachments: [], warnings: [], supply: { before: workspace.supply.rows, after: input.correction.rows, warnings: [], newGroups: input.correction.newGroups } }))
+  api.previewJsonUpdate.mockResolvedValue({ confirmationToken: 'confirmed' })
 })
 afterEach(() => vi.unstubAllGlobals())
-async function open(text = JSON.stringify(fixtures.hansville.extraction)) {
+function renderPage() {
   render(<MemoryRouter initialEntries={['/admin/announcements/29/pdf-correction?failureReturnTo=%2Fadmin%2Ffailures%3Fdomain%3Dannouncement&section=verification']}><Routes><Route path="/admin/announcements/:id/pdf-correction" element={<PdfCorrectionPage />} /></Routes></MemoryRouter>)
-  fireEvent.change(await screen.findByRole('textbox', { name: '추출 응답' }), { target: { value: text } })
-  fireEvent.change(screen.getByLabelText('내 컴퓨터에서 PDF 선택'), { target: { files: [new File(['pdf'], '공고문.pdf', { type: 'application/pdf' })] } })
+}
+async function open(text = JSON.stringify(fixtures.hansville.extraction)) {
+  renderPage()
+  fireEvent.change(await screen.findByRole('textbox', { name: 'ChatGPT 응답' }), { target: { value: text } })
   await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
   fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
   await screen.findByRole('heading', { name: '공급정보' })
 }
-function confirmSupply() {
-  for (const index of [1, 2]) {
-    fireEvent.click(screen.getByRole('checkbox', { name: `공급행 ${index}의 행 대응을 확인함` }))
-    fireEvent.click(screen.getByRole('checkbox', { name: `공급행 ${index} 임대조건을 PDF와 대조함` }))
-  }
+function manual(scope: string, label: string) {
+  fireEvent.click(within(screen.getByRole('group', { name: `${scope} ${label} 반영 방법` })).getByRole('button', { name: '직접 수정' }))
 }
-function confirmSchedules() {
-  fireEvent.click(screen.getByRole('button', { name: '일정' }))
-  for (const checkbox of screen.getAllByRole('checkbox', { name: /의 대응과 날짜·시각 근거를 확인함/ })) if (!(checkbox as HTMLInputElement).checked) fireEvent.click(checkbox)
-  fireEvent.click(screen.getByRole('button', { name: '공급정보' }))
-}
-async function preview() {
-  await open(); confirmSupply(); confirmSchedules()
-  fireEvent.click(screen.getByRole('button', { name: '변경 미리보기' }))
-  await screen.findByRole('heading', { name: '적용할 변경' })
-}
-it('분할 행·공통 모집수를 미리 확인하고 명시적으로 적용한 뒤에만 저장한다', async () => {
-  await preview()
+it('추가 확인 체크나 미리보기 화면 없이 서버 검증을 마친 같은 보정안만 한 번 저장한다', async () => {
+  let finish!: (value: { confirmationToken: string }) => void
+  api.previewJsonUpdate.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+  await open()
+  expect(screen.queryByRole('checkbox', { name: /확인함|대조함/ })).not.toBeInTheDocument()
   expect(api.applyJsonUpdate).not.toHaveBeenCalled()
-  expect(api.previewJsonUpdate).toHaveBeenCalledWith('29', expect.objectContaining({ correction: expect.objectContaining({ newGroups: [expect.objectContaining({ sourceRowId: 90, sharedHouseholdCount: 170 })] }) }))
-  expect(screen.getByText(/공통 모집수 170세대/)).toBeVisible()
-  expect(screen.getByRole('heading', { name: '적용하지 않는 항목' })).toBeVisible()
-  expect(screen.getAllByText('보증금 (원)').length).toBeGreaterThan(0)
-  fireEvent.click(screen.getByRole('button', { name: '확인한 변경 적용' }))
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  expect(screen.getByRole('button', { name: '적용 중…' })).toBeDisabled()
+  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
+  const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
+  expect(input.correction.newGroups).toEqual([expect.objectContaining({ sourceRowId: 90, sharedHouseholdCount: 170 })])
+  await act(async () => finish({ confirmationToken: 'confirmed' }))
   await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })
-  expect(api.applyJsonUpdate).toHaveBeenCalledOnce()
+  expect(api.applyJsonUpdate).toHaveBeenCalledExactlyOnceWith('29', input, 'confirmed')
+  expect(screen.queryByRole('heading', { name: '적용할 변경' })).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: '실패 검토로 돌아가기' })).toHaveAttribute('href', '/admin/failures?domain=announcement')
   expect(screen.getByRole('link', { name: '저장된 공급정보 확인' }).getAttribute('href')).toContain('section=relations')
-  expect(screen.getByRole('link', { name: '저장된 공급정보 확인' }).getAttribute('href')).not.toContain('section=verification')
 })
-it('행 대응과 PDF 블록 확인 전에는 미리보기 요청을 보내지 않는다', async () => {
+it('저장할 위치가 없는 공급정보는 오류를 알리고 서버에 보내지 않는다', async () => {
   await open()
-  fireEvent.click(screen.getByRole('button', { name: '변경 미리보기' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent('행 대응과 임대조건 블록을 확인')
+  fireEvent.change(screen.getByRole('combobox', { name: '공급행 1 저장할 위치' }), { target: { value: '' } })
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('기존 공급정보를 선택')
   expect(api.previewJsonUpdate).not.toHaveBeenCalled()
+  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
 })
-it('형식 오류는 바로 표시하고 셀 수정·PDF 근거 이동·조건 제외를 제공한다', async () => {
+it('형식 오류와 셀 수정·조건 제외를 제공하고 PDF 쪽 이동은 강조 없이 한다', async () => {
   await open()
   const row = screen.getByRole('region', { name: '공급행 1 검토' })
   fireEvent.click(within(row).getByRole('button', { name: '조건 1 대조·수정' }))
+  manual('공급행 1 조건 1', '보증금 (원)')
   const input = screen.getByRole('textbox', { name: '공급행 1 조건 1 보증금 (원) 수정' })
   fireEvent.change(input, { target: { value: '4,076,000' } })
   expect(input).toHaveAttribute('aria-invalid', 'true')
-  expect(screen.getByRole('checkbox', { name: '공급행 1 조건 1 보증금 (원) 적용' })).toBeDisabled()
+  expect(within(screen.getByRole('group', { name: '공급행 1 조건 1 보증금 (원) 반영 방법' })).getByRole('button', { name: '직접 수정' })).toHaveAttribute('aria-pressed', 'true')
   fireEvent.change(input, { target: { value: '4076000' } })
   const details = screen.getByRole('region', { name: '공급행 1 조건 1 수정' })
-  fireEvent.click(within(details).getAllByRole('button', { name: '5쪽 근거' })[0])
-  expect(await screen.findByText('PDF 5쪽')).toBeVisible()
+  fireEvent.click(within(details).getAllByRole('button', { name: 'PDF 5쪽 보기' })[0])
+  expect(await screen.findByText('PDF 5쪽 · 강조 없음')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '검토표 보기' }))
-  fireEvent.change(screen.getByRole('combobox', { name: '공급행 1 조건 1 적용 대상' }), { target: { value: 'exclude' } })
+  fireEvent.change(screen.getByRole('combobox', { name: '공급행 1 조건 1 저장 방법' }), { target: { value: 'exclude' } })
   expect(screen.getByText('이 조건은 적용하지 않습니다. 저장된 기존 조건은 유지합니다.')).toBeVisible()
 })
-it('409 뒤 선택과 수동 입력을 보존하고 행 대응을 다시 확인한다', async () => {
-  api.previewJsonUpdate.mockRejectedValue(new ManagementError('현재값이 변경되었습니다.', 409))
-  await open(); confirmSupply(); confirmSchedules()
+it.each(['preview', 'apply'])('%s의 409는 저장을 반복하지 않고 최신값을 조회해 수동 입력을 보존한다', async stage => {
+  const failed = stage === 'preview' ? api.previewJsonUpdate : api.applyJsonUpdate
+  failed.mockRejectedValueOnce(new ManagementError('현재값이 변경되었습니다.', 409))
+  await open()
+  manual('공급행 1', '공고 주택형명')
   fireEvent.change(screen.getByRole('textbox', { name: '공급행 1 공고 주택형명 수정' }), { target: { value: '26A 수동 보정' } })
-  fireEvent.click(screen.getByRole('checkbox', { name: '공급행 1 임대조건을 PDF와 대조함' }))
-  fireEvent.click(screen.getByRole('button', { name: '변경 미리보기' }))
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
   const reload = await screen.findByRole('button', { name: '입력을 유지하고 최신값 비교' })
-  expect(screen.getByRole('button', { name: '변경 미리보기' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeDisabled()
+  if (stage === 'preview') expect(api.applyJsonUpdate).not.toHaveBeenCalled()
   fireEvent.click(reload)
   await screen.findByRole('status')
   expect(screen.getByRole('textbox', { name: '공급행 1 공고 주택형명 수정' })).toHaveValue('26A 수동 보정')
-  expect(screen.getByRole('checkbox', { name: '공급행 1의 행 대응을 확인함' })).not.toBeChecked()
+  expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeEnabled()
 })
 it('저장 응답을 잃으면 자동 재적용하지 않고 최신값 확인을 요구한다', async () => {
   api.applyJsonUpdate.mockRejectedValue(new TypeError('network'))
-  await preview()
-  fireEvent.click(screen.getByRole('button', { name: '확인한 변경 적용' }))
+  await open()
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('저장 응답을 받지 못했습니다.')
-  expect(screen.getByRole('button', { name: '변경 미리보기' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeDisabled()
   expect(api.applyJsonUpdate).toHaveBeenCalledOnce()
   expect(screen.getByRole('button', { name: '입력을 유지하고 최신값 비교' })).toBeEnabled()
 })
+it('저장 전 검증 요청 실패는 저장 응답 유실과 구분하고 재시도할 수 있다', async () => {
+  api.previewJsonUpdate.mockRejectedValue(new TypeError('연결 실패'))
+  await open()
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('연결 실패')
+  expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeEnabled()
+  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
+})
+it('등록된 PDF를 자동 선택하고 다운로드와 프롬프트를 보여준다', async () => {
+  renderPage()
+  expect(await screen.findByLabelText('프롬프트 내용')).toHaveTextContent('첨부한 공식 공고문 PDF에서')
+  const download = await screen.findByRole('link', { name: 'PDF 다운로드' })
+  expect(download).toHaveAttribute('download', '공고문.pdf')
+  expect(screen.getByRole('combobox', { name: '공고문 PDF' })).toHaveAccessibleDescription('공고문.pdf')
+  expect(document.querySelector('input[type=file]')).toBeNull()
+})
+it('등록된 PDF가 없으면 준비와 검토를 막고 등록 위치를 알린다', async () => {
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, detail: { ...workspace.detail, attachments: [] } })
+  renderPage()
+  expect(await screen.findByText('등록된 PDF가 없습니다.')).toBeVisible()
+  expect(screen.getByRole('button', { name: 'PDF 받고 프롬프트 복사해 ChatGPT 열기' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeDisabled()
+})
 it('깨진 응답은 검토를 시작하지 못하며 내용을 유지한다', async () => {
-  render(<MemoryRouter initialEntries={['/admin/announcements/29/pdf-correction']}><Routes><Route path="/admin/announcements/:id/pdf-correction" element={<PdfCorrectionPage />} /></Routes></MemoryRouter>)
-  const field = await screen.findByRole('textbox', { name: '추출 응답' })
+  renderPage()
+  const field = await screen.findByRole('textbox', { name: 'ChatGPT 응답' })
   fireEvent.change(field, { target: { value: '{broken}' } })
   expect(screen.getByRole('alert')).toBeVisible()
   expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeDisabled()
   expect(field).toHaveValue('{broken}')
 })
-
-it('PDF 보기 중 미리보기를 요청하면 변경 목록을 표시하고 제목에 포커스를 둔다', async () => {
-  await open(); confirmSupply(); confirmSchedules()
-  fireEvent.click(screen.getByRole('button', { name: 'PDF 보기' }))
-  fireEvent.click(screen.getByRole('button', { name: '변경 미리보기' }))
-  const heading = await screen.findByRole('heading', { name: '적용할 변경' })
-  expect(heading).toBeVisible()
-  await waitFor(() => expect(heading).toHaveFocus())
-})
-it('원문 URL이 없는 공고는 필요한 근거 입력을 펼치고 진행 불가 이유를 알려준다', async () => {
+it('원문 URL이 없으면 근거 입력을 펼쳐 안내한다', async () => {
   api.loadJsonWorkspace.mockResolvedValue({ ...workspace, detail: { ...workspace.detail, data: { ...workspace.detail.data, originalUrl: null } } })
   await open()
   expect(screen.getByRole('status')).toHaveTextContent('공식 근거 URL에 올바른 http 또는 https 주소를 입력하세요.')
-  const input = screen.getByRole('textbox', { name: '공식 근거 URL' })
-  expect(input).toBeVisible()
-  expect(screen.getByRole('button', { name: '변경 미리보기' })).toBeDisabled()
-  fireEvent.change(input, { target: { value: 'https://example.com/official-notice' } })
-  expect(screen.queryByRole('status')).not.toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '변경 미리보기' })).toBeEnabled()
+  expect(screen.getByRole('textbox', { name: '공식 근거 URL' })).toBeVisible()
+  expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeDisabled()
+  fireEvent.change(screen.getByRole('textbox', { name: '공식 근거 URL' }), { target: { value: 'https://example.com/official-notice' } })
+  expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeEnabled()
+})
+
+it('붙여넣는 즉시 오류 또는 추출 수를 보여주고 검토 버튼으로만 다음 단계로 간다', async () => {
+  renderPage()
+  const response = await screen.findByRole('textbox', { name: 'ChatGPT 응답' })
+  fireEvent.change(response, { target: { value: '{broken}' } })
+  expect(screen.getByRole('alert')).toHaveTextContent('JSON')
+  fireEvent.change(response, { target: { value: JSON.stringify(fixtures.hansville.extraction) } })
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(screen.getByText(/공급행 2개 · 임대조건 2개 · 일정 3개/)).toBeVisible()
+  expect(screen.queryByText(/형식 복구/)).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
+  expect(screen.queryByRole('heading', { name: '공급정보' })).not.toBeInTheDocument()
+})
+
+
+it('공급정보의 PDF 채우기는 작성 중인 행을 기준으로 대조하고 저장 없이 편집표에 돌려준다', async () => {
+  const onFill = vi.fn()
+  const draft = structuredClone(workspace.supply.rows)
+  draft[0].moveInMonth = '2027-03'
+  render(<MemoryRouter><PdfCorrectionWorkspace id="29" supplyDraft={{ rows: draft, onFill, onCancel: vi.fn() }} /></MemoryRouter>)
+  fireEvent.change(await screen.findByLabelText('ChatGPT 응답'), { target: { value: JSON.stringify(fixtures.hansville.extraction) } })
+  await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
+  fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
+  expect(screen.queryByRole('navigation', { name: 'PDF 보정 영역' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '공급정보 편집표에 채우기' }))
+  await waitFor(() => expect(onFill).toHaveBeenCalledOnce())
+  expect(onFill.mock.calls[0][0].rows[0]).toMatchObject({ id: draft[0].id, moveInMonth: '2027-03' })
+  expect(onFill.mock.calls[0][0].newGroups).toHaveLength(1)
+  expect(api.previewJsonUpdate).not.toHaveBeenCalled()
+  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
+})
+
+it('빈 공고의 PDF 추출값은 단지를 검색해 선택한 뒤 첫 공급행으로 채운다', async () => {
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, rows: [] } })
+  const onFill = vi.fn()
+  render(<MemoryRouter><PdfCorrectionWorkspace id="29" supplyDraft={{ rows: [], onFill, onCancel: vi.fn() }} /></MemoryRouter>)
+  const extraction = structuredClone(fixtures.hansville.extraction)
+  extraction.data.supplyRows = extraction.data.supplyRows.slice(0, 1)
+  extraction.sharedCounts = []
+  fireEvent.change(await screen.findByLabelText('ChatGPT 응답'), { target: { value: JSON.stringify(extraction) } })
+  await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
+  fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
+  fireEvent.click(screen.getByRole('button', { name: '단지 검색' }))
+  fireEvent.click(await screen.findByRole('button', { name: '선택: 검색 단지' }))
+  expect(await screen.findByLabelText('공급행 1 소재지 PNU')).toHaveValue('1114010100100010000')
+  fireEvent.change(screen.getByLabelText('공급행 1 공급 구분'), { target: { value: 'NEW_SUPPLY' } })
+  fireEvent.click(screen.getByRole('button', { name: '공급정보 편집표에 채우기' }))
+  await waitFor(() => expect(onFill).toHaveBeenCalledOnce())
+  expect(onFill.mock.calls[0][0].rows).toEqual([expect.objectContaining({ id: null, housingComplexId: 7, category: 'NEW_SUPPLY', typeName: '26A' })])
+  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
 })

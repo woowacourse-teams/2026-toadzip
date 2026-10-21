@@ -140,7 +140,7 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
           <EditFields fields={group.fields} data={value.data} errors={errors} scheduleReviewed={value.scheduleReviewed} /></fieldset>)}
         <div className="admin-save-bar"><button className="admin-primary" disabled={busy}>{busy ? '저장 중…' : '변경사항 저장'}</button><button type="button" disabled={busy} onClick={() => {if(!dirty || window.confirm('변경사항을 버릴까요?')) {if (embedded) setAttempt(current => current + 1); else setEditing(false);setDirty(false);setError('')}}}>{embedded ? '변경 취소' : '취소'}</button></div></form> : null}
       {section === 'schedules' && resource === 'announcements' ? <ScheduleEditor key={String(value.data.version)} value={value} id={id} onSaved={saved} onBusyChange={setBusy} /> : null}
-      {section === 'relations' ? resource === 'complexes' ? <ComplexRelationsEditor value={value} id={id} onSaved={saved} onBusyChange={setBusy} /> : <><h2>공급정보·단지 연결</h2>{value.supplyRows.length === 0 ? <p>등록된 공급정보가 없습니다.</p> : null}
+      {section === 'relations' ? resource === 'complexes' ? <ComplexRelationsEditor value={value} id={id} onSaved={saved} onBusyChange={setBusy} /> : <><h2>공급정보·단지 연결</h2>
           {value.supplyRows.some(row => row.sharedRecruitment) && <details onToggle={event => setSourceMatchesOpen(event.currentTarget.open)}>
             <summary>원천별 공급행 보정</summary>
             {sourceMatchesOpen && <AnnouncementSupplyMatchingForm identifier={value.sourceIdentifier} disabled={busy || value.summary.deleted}

@@ -2,7 +2,7 @@ import fixtures from './scenarios.json'
 import type { JsonWorkspace } from '../../announcement-json/api'
 import { blankRow } from '../../supply/supplyCorrectionApi'
 import { readExtraction } from '../extraction'
-import { createReview } from '../review'
+import { createReview, validCellValue } from '../review'
 
 export function scenario(name: keyof typeof fixtures) {
   const fixture = fixtures[name], extracted = readExtraction(JSON.stringify(fixture.extraction))
@@ -18,7 +18,6 @@ export function scenario(name: keyof typeof fixtures) {
       sourceIdentifier: 'current-source', supplyRows: [], housingTypes: [], announcements: [], schedules: [], scheduleReviewed: false } }
   const housing = Object.fromEntries(fixture.complexes.map(complex => [complex.id, complex.housingTypes]))
   const review = createReview(extracted.value, workspace, housing)
-  review.rows.forEach(row => { row.confirmed = true; row.blockConfirmed = true })
-  review.schedules.forEach(schedule => { schedule.confirmed = true })
-  return { review, workspace }
+  review.schedules.forEach(schedule => { schedule.include = schedule.cells.every(cell => validCellValue(cell.kind, cell.value) && !['notApplicable', 'unresolved'].includes(cell.state)) })
+  return { review, workspace, housing }
 }
