@@ -21,6 +21,22 @@ export type ScheduleProposal = { existingIds: number[]; needsConfirmation: boole
 export function normalizedName(value: unknown) {
   return (text(value) ?? '').normalize('NFKC').toLowerCase().replace(/형|[\s·,]/g, '')
 }
+/** 수집된 공고명에는 공고일·"공고" 표기가 붙어 있어 날짜·공고·기호를 지우고 포함 관계로 비교한다. */
+function titleKey(value: unknown) {
+  return (text(value) ?? '').normalize('NFKC').replace(/\d{4}\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}\s*일?/g, '')
+    .replace(/공고문?|[\s\p{P}\p{S}]/gu, '').toLowerCase()
+}
+export type AnnouncementCheck = { label: '공고명' | '공고일'; pdf: string | null; current: string | null; matches: boolean | null }
+/** 붙여넣은 응답이 지금 공고의 PDF에서 나온 것인지 공고명·공고일로 확인한다. 어느 한쪽 값이 없으면 판단하지 않는다. */
+export function checkAnnouncement(extraction: Extraction, current: JsonObject): AnnouncementCheck[] {
+  const pdfName = text(extraction.announcement.name), currentName = text(current.name)
+  const pdfKey = titleKey(pdfName), currentKey = titleKey(currentName)
+  const pdfDate = text(extraction.announcement.postedDate), currentDate = text(current.postedDate)
+  return [
+    { label: '공고명', pdf: pdfName, current: currentName, matches: pdfKey && currentKey ? pdfKey.includes(currentKey) || currentKey.includes(pdfKey) : null },
+    { label: '공고일', pdf: pdfDate, current: currentDate, matches: pdfDate && currentDate ? pdfDate.slice(0, 10) === currentDate.slice(0, 10) : null },
+  ]
+}
 export function sameComplex(left: unknown, right: unknown) {
   const a = normalizedName(left), b = normalizedName(right)
   return !!a && !!b && (a.includes(b) || b.includes(a))

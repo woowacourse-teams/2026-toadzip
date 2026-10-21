@@ -15,7 +15,7 @@ vi.mock('../management/api', async original => ({ ...await original<typeof impor
   getManagementPage: async () => ({ items: [{ id: 7, name: '검색 단지', subtitle: '주소 확인' }] }),
   getManagementDetail: async () => ({ data: { address: { pnu: '1114010100100010000' } } }) }))
 const base = scenario('hansville').workspace
-const workspace = { ...base, detail: { ...base.detail, attachments: [{ attachmentId: 68, fileName: '공고문.pdf', fileType: 'ANNOUNCEMENT', fileUrl: 'https://example.com/notice.pdf' }] } }
+const workspace = { ...base, detail: { ...base.detail, data: { ...base.detail.data, name: '익산한스빌 국민임대주택 예비입주자 자격완화 모집 공고(2026.10.08)', postedDate: '2026-10-08' }, attachments: [{ attachmentId: 68, fileName: '공고문.pdf', fileType: 'ANNOUNCEMENT', fileUrl: 'https://example.com/notice.pdf' }] } }
 beforeEach(() => {
   vi.clearAllMocks()
   vi.stubGlobal('URL', class extends URL { static createObjectURL = () => 'blob:pdf'; static revokeObjectURL = vi.fn() })
@@ -152,12 +152,20 @@ it('붙여넣는 즉시 오류 또는 추출 수를 보여주고 검토 버튼�
   expect(screen.getByRole('alert')).toHaveTextContent('JSON')
   fireEvent.change(response, { target: { value: JSON.stringify(fixtures.hansville.extraction) } })
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-  expect(screen.getByText(/공급행 2개 · 임대조건 2개 · 일정 3개/)).toBeVisible()
+  expect(screen.getByText(/공급행 2개 · 임대조건 2개 · 일정 3개 · 미확인 \d+개 · 공고명 일치 · 공고일 일치/)).toBeVisible()
   expect(screen.queryByText(/형식 복구/)).not.toBeInTheDocument()
   await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
   expect(screen.queryByRole('heading', { name: '공급정보' })).not.toBeInTheDocument()
 })
 
+it('다른 공고의 응답이면 공고명·공고일이 다르다고 알리고 검토 화면에도 남긴다', async () => {
+  renderPage()
+  fireEvent.change(await screen.findByRole('textbox', { name: 'ChatGPT 응답' }), { target: { value: JSON.stringify(fixtures.gwangju.extraction) } })
+  expect(await screen.findByRole('alert')).toHaveTextContent('현재 공고와 다른 PDF의 응답일 수 있습니다 · 공고명 다름(PDF 광주첨단 H-1,2,3BL 행복주택 예비입주자 모집) · 공고일 다름(PDF 2026-10-15)')
+  await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
+  fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
+  expect(await screen.findByText(/이 공고의 PDF로 받은 응답인지 확인하세요/)).toBeVisible()
+})
 
 it('공급정보의 PDF 채우기는 작성 중인 행을 기준으로 대조하고 저장 없이 편집표에 돌려준다', async () => {
   const onFill = vi.fn()
