@@ -9,7 +9,7 @@ import type { CorrectionRow, SupplyCorrectionInput } from '../supply/supplyCorre
 import { ManagementError } from '../management/api'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import { readExtraction, type Evidence } from './extraction'
-import type { HousingCandidates } from './matching'
+import { checkAnnouncement, type HousingCandidates } from './matching'
 import { applicableCells, assembleReview, createReview, rebaseReview, remapSchedule, shown, type Review } from './review'
 import { ReviewCells } from './ReviewCells'
 import { ReviewSupply } from './ReviewSupply'
@@ -50,6 +50,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   const reviewPane = useRef<HTMLDivElement>(null)
   const reasonProblem = !reason.trim() ? '보정 이유를 입력하세요.' : !validEvidenceUrl(sourceUrl.trim()) ? '공식 근거 URL에 올바른 http 또는 https 주소를 입력하세요.' : ''
   const parsed = useMemo(() => readExtraction(text), [text])
+  const checks = useMemo(() => parsed.ok && workspace ? checkAnnouncement(parsed.value, workspace.detail.data) : [], [parsed, workspace])
   const backParams = new URLSearchParams(params); backParams.delete('failureCount')
   const supplyParams = new URLSearchParams(backParams); supplyParams.set('section', 'relations')
   const back = `/admin/announcements/${id}${backParams.size ? `?${backParams}` : ''}`
@@ -129,9 +130,10 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     {supplyDraft ? <header className={styles.heading}><div><h2>PDF로 공급정보 채우기</h2><p>PDF와 대조한 공급정보를 편집표에 채웁니다. 저장 전까지 등록값은 유지됩니다.</p></div><Button data-design-system className={styles.secondaryButton} onClick={() => { if (!text.trim() || window.confirm('PDF 검토를 취소하고 편집표로 돌아갈까요?')) supplyDraft.onCancel() }}>편집표로 돌아가기</Button></header> : <header className={styles.heading}><div><Link to={back}>공고 상세로 돌아가기</Link><h1 ref={heading} tabIndex={-1}>PDF로 공고 보정</h1><p>#{id} · {workspace.detail.summary.name}</p></div><ol aria-label="보정 진행"><li aria-current={phase === 'prepare' ? 'step' : undefined}>요청 준비</li><li aria-current={phase === 'review' ? 'step' : undefined}>비교·보정</li><li aria-current={phase === 'result' ? 'step' : undefined}>적용 결과</li></ol></header>}
     {error && <div role="alert" className={styles.error}><p>{error}</p>{blocked && <Button data-design-system onClick={() => void reload()} disabled={busy}>입력을 유지하고 최신값 비교</Button>}</div>}
     {notice && <p role="status" className={styles.notice}>{notice}</p>}
-    {phase === 'prepare' && <RequestPreparation attachments={workspace.detail.attachments?.filter(item => /\.pdf(?:$|[?\s])/i.test(item.fileName)) ?? []} attachmentId={attachmentId} onAttachment={value => { if (value !== attachmentId) { setPdf(null); setAttachmentId(value) } }} pdf={pdf} pdfError={pdfError} text={text} onText={setText} parsed={parsed} onReview={start} />}
+    {phase === 'prepare' && <RequestPreparation attachments={workspace.detail.attachments?.filter(item => /\.pdf(?:$|[?\s])/i.test(item.fileName)) ?? []} attachmentId={attachmentId} onAttachment={value => { if (value !== attachmentId) { setPdf(null); setAttachmentId(value) } }} pdf={pdf} pdfError={pdfError} text={text} onText={setText} parsed={parsed} checks={checks} onReview={start} />}
     {active && review && <><div className={styles.mobileSwitch}><Button data-design-system aria-pressed={mobileView === 'pdf'} onClick={() => setMobileView('pdf')}>PDF 보기</Button><Button data-design-system aria-pressed={mobileView === 'review'} onClick={() => setMobileView('review')}>검토표 보기</Button></div><div className={styles.workbench}>{pdfPane}
       <div ref={reviewPane} className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="review">
+        {checks.some(check => check.matches === false) && <p className={styles.error}>PDF의 {checks.filter(check => check.matches === false).map(check => `${check.label}(${check.pdf})`).join('·')}이 현재 공고와 다릅니다. 이 공고의 PDF로 받은 응답인지 확인하세요.</p>}
         {!supplyDraft && <nav className={styles.sections} aria-label="PDF 보정 영역">{([['supply', '공급정보'], ['schedule', '일정'], ['reception', '접수처·기본정보']] as const).map(([key, label]) => <Button data-design-system key={key} aria-pressed={section === key} onClick={() => setSection(key)}>{label}</Button>)}</nav>}
         <fieldset disabled={busy || blocked} className={styles.reviewFields}>
           {section === 'supply' && <ReviewSupply review={review} workspace={workspace} housing={housing} onChange={change} onEvidence={evidence} />}
