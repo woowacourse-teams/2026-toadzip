@@ -59,6 +59,20 @@
 .admin-confirm h2 {font-size:18px;}
 .admin-change {padding:16px 0;border-bottom:1px solid #dbe5e1;}
 .admin-change summary,.pipeline-details summary {cursor:pointer;font-size:14px;font-weight:600;line-height:1.6;}
+.admin-change-table th[scope=row] {font-weight:600;}
+.admin-change-table>tbody>tr:not(.admin-change-detail)>td:last-child {text-align:right;white-space:nowrap;}
+.admin-content .admin-change-table>tbody>tr:not(.admin-change-detail)>td:last-child button {min-height:36px;padding:7px 12px;font-size:13px;}
+.admin-change-table {table-layout:fixed;width:100%;}
+.admin-change-table>thead>tr>th:nth-child(1) {width:38%;}
+.admin-change-table>thead>tr>th:nth-child(2) {width:18%;}
+.admin-change-table>thead>tr>th:nth-child(3) {width:28%;}
+.admin-change-table>thead>tr>th:nth-child(4) {width:16%;}
+.admin-change-table .admin-change-detail>td {background:#f7faf8;padding:16px 20px 24px;white-space:normal;overflow-wrap:anywhere;}
+/* 상세 안의 변경 표는 대상·항목·전·후 폭을 고정해 좁은 화면에서도 글자가 한 줄씩 끊기지 않게 한다. */
+.admin-change-table .admin-change-detail table {table-layout:fixed;width:100%;min-width:0;}
+.admin-change-table .admin-change-detail table :is(th,td) {white-space:normal;overflow-wrap:anywhere;word-break:keep-all;max-width:none;text-align:left;}
+.admin-change-table .admin-change-detail table tr>:nth-child(1) {width:34%;}
+.admin-change-table .admin-change-detail table tr>:nth-child(2) {width:22%;}
 .admin-history-summary {display:grid;gap:16px;margin-top:16px;}
 .admin-history-summary caption {text-align:left;padding:12px 16px;font-weight:700;}
 .admin-history-summary .admin-table {table-layout:fixed;}
