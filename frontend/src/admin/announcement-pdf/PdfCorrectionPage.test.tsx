@@ -54,6 +54,8 @@ it('추가 확인 체크나 미리보기 화면 없이 서버 검증을 마친 �
   expect(screen.queryByRole('heading', { name: '적용할 변경' })).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: '실패 검토로 돌아가기' })).toHaveAttribute('href', '/admin/failures?domain=announcement')
   expect(screen.getByRole('link', { name: '저장된 공급정보 확인' }).getAttribute('href')).toContain('section=relations')
+  expect(screen.getByRole('link', { name: '출처·수정 이력 보기' }).getAttribute('href')).toContain('section=history')
+  expect(within(screen.getByRole('region', { name: '단지 주택형 이름 후보' })).getAllByRole('listitem').map(item => item.textContent)).toEqual(['#10353 「26」 → 공고 표기 「26A」', '#10352 「26」 → 공고 표기 「26B」'])
 })
 it('저장할 위치가 없는 공급정보는 오류를 알리고 서버에 보내지 않는다', async () => {
   await open()
