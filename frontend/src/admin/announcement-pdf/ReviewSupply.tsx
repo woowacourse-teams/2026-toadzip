@@ -6,7 +6,7 @@ import { getManagementDetail } from '../management/api'
 import { isRecord } from '../management/managementContract'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
 import { type Evidence } from './extraction'
-import { cellMatches, createRowReview, pendingRow, pendingTarget, preserveCellChoice, remapTarget, shown, type Review, type ReviewFilter, type RowReview, type TargetReview } from './review'
+import { cellMatches, createRowReview, pdfOrderChanges, pendingRow, pendingTarget, preserveCellChoice, remapTarget, shown, type Review, type ReviewFilter, type RowReview, type TargetReview } from './review'
 import type { ComplexLabels, HousingCandidates } from './matching'
 import { ReviewCells } from './ReviewCells'
 import styles from './PdfCorrection.module.css'
@@ -31,6 +31,7 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
   }
   return <>
     <div className={styles.sectionHeading}><div><h2>공급정보</h2><p>기존 값과 PDF에서 가져온 값을 비교하고, 반영할 항목을 고르세요.</p></div></div>
+    {filter === 'all' && review.rows.filter(row => row.include).length > 1 && pdfOrderChanges(review, workspace) && <p className={styles.notice}>저장하면 공급행을 PDF 공급 표 순서({review.rows.flatMap((row, index) => row.include ? [review.extraction.supplyRows[index].typeName ?? `공급행 ${index + 1}`] : []).join(' → ')})로 표시합니다. PDF에 없는 기존 공급행은 그 뒤에 원래 순서대로 둡니다.</p>}
     {filter === 'all' && review.extraction.sharedCounts.map((group, index) => <div className={styles.shared} key={index}><strong>공통 모집 {group.count}세대</strong><span>{group.paths.map(path => review.extraction.supplyRows[Number(/\[(\d+)\]/.exec(path)?.[1])]?.typeName).join(' · ')} 전체의 모집수입니다. 각 행에 나누거나 중복 기입하지 않습니다.</span>{group.page && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence({ page: group.page!, quote: group.quote, path: group.paths[0] })}>PDF {group.page}쪽 보기</Button>}</div>)}
     {review.rows.map((row, index) => {
       const source = review.extraction.supplyRows[index], current = workspace.supply.rows.find(item => item.key === row.proposal.destination)

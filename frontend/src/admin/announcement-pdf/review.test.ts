@@ -203,3 +203,20 @@ it('확인 필요 항목은 화면 순서로 모으고 사람이 고르거나 �
   expect(pendingCell(editCell(deposit, '1000'))).toBe(false)
   expect(rebaseReview(review, workspace, housing).rows[0].reviewed).toBe(true)
 })
+
+it('PDF 공급 표 순서와 기존 표시 순서가 다르면 PDF 순서로 다시 매기고 PDF에 없는 행은 뒤에 둔다', () => {
+  const { review, workspace } = scenario('gwangju')
+  const extra = { ...workspace.supply.rows[0], id: 999, key: 'row:999', displayOrder: -1, typeName: 'PDF에 없는 행' }
+  workspace.supply.rows.push(extra)
+  const rows = assembleReview(review, workspace, evidence).correction.rows
+  const order = [...rows].sort((left, right) => left.displayOrder - right.displayOrder).map(row => row.key)
+  expect(order).toEqual([...review.rows.map(row => row.key), 'row:999'])
+  expect(order.indexOf('row:27')).toBeLessThan(order.indexOf('row:26'))
+  expect(new Set(rows.map(row => row.displayOrder)).size).toBe(rows.length)
+})
+
+it('이미 PDF 순서와 같으면 표시 순서를 바꾸지 않는다', () => {
+  const { review, workspace } = scenario('hansville')
+  const rows = assembleReview(review, workspace, evidence).correction.rows
+  expect(rows.map(row => row.displayOrder)).toEqual([workspace.supply.rows[0].displayOrder, workspace.supply.rows[0].displayOrder + 1])
+})
