@@ -208,11 +208,12 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
     if (original.length !== 1 || group.count === null || current.some(row => row.housingTypeId === null)) throw new Error('새 공통 모집 묶음은 기존 한 행과 서로 다른 주택형에 연결한 새 행으로 구성하세요.')
     newGroups.push({ sourceRowId: original[0].id!, rowKeys: current.map(row => row.key), sharedHouseholdCount: group.count })
   }
+  const ordered = applyPdfOrder(review, rows)
   const announcement: JsonObject = Object.fromEntries(['name', 'rentalType', 'recruitmentType', 'agencyCode', ...metadataFields.map(([field]) => field)].map(field => [field, workspace.detail.data[field] ?? null]))
   applyCells(announcement, review.metadata, metadataFields)
   const reception = { ...((workspace.detail.data.receptionPlace ?? {}) as JsonObject) }
   applyCells(reception, review.reception, receptionFields)
-  const document: ExtractedAnnouncement = { schemaVersion: 'admin-announcement-import/v1', source: { originalUrl: workspace.detail.data.originalUrl, sourceDocumentId: workspace.detail.sourceIdentifier, extractedAt: new Date().toISOString() }, announcement, receptionPlace: reception, supplyRows: rows.filter(row => review.rows.some(entry => entry.include && entry.key === row.key)).map(row => ({
+  const document: ExtractedAnnouncement = { schemaVersion: 'admin-announcement-import/v1', source: { originalUrl: workspace.detail.data.originalUrl, sourceDocumentId: workspace.detail.sourceIdentifier, extractedAt: new Date().toISOString() }, announcement, receptionPlace: reception, supplyRows: ordered.filter(row => review.rows.some(entry => entry.include && entry.key === row.key)).map(row => ({
     complexReference: { sourceComplexName: row.complexName, pnu: row.pnu }, sourceHousingTypeName: row.typeName,
     expectedMoveInMonth: row.moveInMonth, supplyCategory: row.category, totalSupplyHouseholdCount: row.householdCount,
     exclusiveArea: row.exclusiveArea, supplyArea: row.supplyArea, targets: row.targets.filter(target => !target.excluded).map(target => ({
@@ -235,7 +236,30 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
     }
   }
   const fields = [...review.metadata.filter(cell => cell.selected && !cell.locked).map(cell => cell.field), ...review.reception.filter(cell => cell.selected).map(cell => `receptionPlace.${cell.field}`)]
-  return { snapshotToken: workspace.snapshotToken, document, fields, schedules, attachments: [], correction: { operationId: crypto.randomUUID(), snapshotToken: workspace.supply.snapshotToken, rows, newGroups, ...evidence } }
+  return { snapshotToken: workspace.snapshotToken, document, fields, schedules, attachments: [], correction: { operationId: crypto.randomUUID(), snapshotToken: workspace.supply.snapshotToken, rows: ordered, newGroups, ...evidence } }
+}
+
+// 서버와 같은 기준(표시 순서 → 작업 키)으로 현재 화면 순서를 만든다.
+function byDisplayOrder(left: CorrectionRow, right: CorrectionRow) {
+  return left.displayOrder - right.displayOrder || (left.key < right.key ? -1 : left.key > right.key ? 1 : 0)
+}
+/**
+ * PDF 공급 표 순서대로 적용하는 공급행을 앞에 두고, PDF에 없는 기존 행은 원래 순서대로 뒤에 둔다.
+ * 순서가 이미 같고 겹치는 번호가 없으면 같은 배열을 돌려줘 불필요한 행 변경을 만들지 않는다.
+ */
+export function applyPdfOrder(review: Review, rows: CorrectionRow[]): CorrectionRow[] {
+  const current = [...rows].sort(byDisplayOrder)
+  const pdf = review.rows.filter(entry => entry.include).flatMap(entry => current.filter(row => row.key === entry.key))
+  const desired = [...pdf, ...current.filter(row => !pdf.includes(row))]
+  const unique = new Set(rows.map(row => row.displayOrder)).size === rows.length
+  if (unique && desired.every((row, at) => row === current[at])) return rows
+  return rows.map(row => ({ ...row, displayOrder: desired.indexOf(row) }))
+}
+/** 저장하면 공급행 순서가 바뀌는지 미리 알려준다. 새 행은 저장할 때처럼 기존 행 뒤에 둔다. */
+export function pdfOrderChanges(review: Review, workspace: JsonWorkspace) {
+  const rows = [...workspace.supply.rows]
+  for (const entry of review.rows) if (entry.include && entry.proposal.destination === 'new') rows.push({ ...blankRow(nextDisplayOrder(rows)), key: entry.key })
+  return applyPdfOrder(review, rows) !== rows
 }
 
 export function remapTarget(review: Review, rowIndex: number, targetIndex: number, destination: string, workspace: JsonWorkspace): TargetReview {
