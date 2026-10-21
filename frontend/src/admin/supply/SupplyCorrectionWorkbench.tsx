@@ -8,7 +8,7 @@ import { SupplyReviewPanel, type ReviewEvidence } from './SupplyReviewPanel'
 import { changedReviewTargets } from './changedReviewTargets'
 import { SupplyRowDraft } from './SupplyRowDraft'
 import { rebaseCorrection, resolveConflict, type CorrectionConflict } from './rebaseCorrection'
-import { applySupply, blankRow, loadSupplyWorkspace, previewSupply, type CorrectionRow, type SupplyCorrectionInput, type NewSupplyGroup, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
+import { applySupply, blankRow, loadSupplyWorkspace, nextDisplayOrder, previewSupply, type CorrectionRow, type SupplyCorrectionInput, type NewSupplyGroup, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
 import styles from './SupplyCorrection.module.css'
 
 
@@ -107,7 +107,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     setExpanded(null); setPdfOpen(false); setNotice('PDF에서 확인한 값을 편집표에 채웠습니다. 필요한 항목을 수정하고 저장하세요.')
   } }} />
   function addRow() {
-    const row = blankRow(rows.length)
+    const row = blankRow(nextDisplayOrder(rows))
     edit(current => [...current, row]); setExpanded(row.key)
   }
   return <section className={styles.workspace} aria-label="공급정보 편집">
