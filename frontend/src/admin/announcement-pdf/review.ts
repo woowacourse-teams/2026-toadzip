@@ -1,7 +1,7 @@
 import type { ExtractedAnnouncement, JsonObject, JsonUpdateInput, JsonWorkspace } from '../announcement-json/api'
 import { blankRow, blankTarget, type CorrectionRow, type CorrectionTarget, type NewSupplyGroup } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, type Evidence, type Extraction } from './extraction'
-import { defaultTargetDestinations, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
+import { defaultTargetDestinations, normalizedName, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
 
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
 export type CellState = 'unresolved' | 'notApplicable' | 'invalid' | 'confirm' | 'same' | 'changed' | 'new'
@@ -135,6 +135,17 @@ export function pendingItems(review: Review): PendingItem[] {
   })
   for (const cell of [...review.reception, ...review.metadata].filter(pendingCell)) items.push({ id: `cell:${cell.path}`, section: 'reception' })
   return items
+}
+export type HousingNameCandidate = { id: number; current: string; pdf: string }
+/** 연결한 단지 주택형의 이름이 공고 표기와 다르면 단지 보정 후보로 돌려준다. 저장하지 않고 결과 화면에 표시만 한다. */
+export function housingNameCandidates(review: Review): HousingNameCandidate[] {
+  const candidates: HousingNameCandidate[] = []
+  review.rows.forEach((row, index) => {
+    const cell = row.cells.find(item => item.field === 'housingTypeId'), pdf = review.extraction.supplyRows[index].typeName
+    const type = row.proposal.candidates.find(item => item.id === (cell?.selected ? cell.value : cell?.before))
+    if (row.include && type && pdf && normalizedName(type.name) !== normalizedName(pdf) && !candidates.some(item => item.id === type.id)) candidates.push({ id: type.id, current: type.name, pdf })
+  })
+  return candidates
 }
 export function allCells(review: Review) { return [...review.metadata, ...review.reception, ...review.rows.flatMap(row => [...row.cells, ...row.targets.flatMap(target => target.cells)]), ...review.schedules.flatMap(schedule => schedule.cells)] }
 export function applicableCells(review: Review) {
