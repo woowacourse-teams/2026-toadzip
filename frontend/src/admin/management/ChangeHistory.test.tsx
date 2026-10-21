@@ -25,7 +25,7 @@ it('원천 비교 수정은 변경값과 당시 원천 근거를 분리해 표�
   expect(within(evidence).getByRole('table')).toHaveTextContent('120')
 })
 
-it('변경 전후 값을 경로·값 표로 표시하고 원문 URL을 연결한다', async () => {
+it('공고 이력은 바뀐 값만 보여주고 전체 기록을 나열하지 않는다', async () => {
   vi.mocked(getManagementHistory).mockResolvedValue([{
     id: 1, action: 'UPDATE', actor: '운영자', occurredAt: '2026-10-01T00:00:00Z',
     beforeValue: '{"name":"기존 이름","supplyRows":[{"amount":0,"enabled":false}]}',
@@ -34,14 +34,22 @@ it('변경 전후 값을 경로·값 표로 표시하고 원문 URL을 연결한
   const { container } = render(<ChangeHistory resource="announcements" id="7" version={2} />)
   fireEvent.click(await screen.findByText(/정보 수정 · 운영자/))
   expect(screen.getByRole('table', { name: '수정한 항목' })).toHaveTextContent('새 이름')
+  expect(screen.queryByText('전체 기록 보기')).not.toBeInTheDocument()
+  expect(container.querySelector('pre')).toBeNull()
+})
+
+it('단지 이력은 전체 기록을 경로·값 표로 펼쳐 볼 수 있다', async () => {
+  vi.mocked(getManagementHistory).mockResolvedValue([{
+    id: 1, action: 'UPDATE', actor: '운영자', occurredAt: '2026-10-01T00:00:00Z',
+    beforeValue: '{"name":"기존 이름","supplyRows":[{"amount":0,"enabled":false}]}',
+    afterValue: '{"name":"새 이름","originalUrl":"https://example.com/notice"}',
+  }])
+  render(<ChangeHistory resource="complexes" id="7" version={2} />)
+  fireEvent.click(await screen.findByText(/정보 수정 · 운영자/))
   fireEvent.click(screen.getByText('전체 기록 보기'))
   const before = screen.getByRole('table', { name: '변경 전' })
-  expect(before).toHaveTextContent('기존 이름')
   expect(within(before).getByRole('row', { name: 'supplyRows[0].amount 0' })).toBeVisible()
-  expect(within(before).getByRole('row', { name: 'supplyRows[0].enabled false' })).toBeVisible()
-  expect(screen.getByRole('table', { name: '변경 후' })).toHaveTextContent('새 이름')
   expect(within(screen.getByRole('table', { name: '변경 후' })).getByRole('link', { name: 'https://example.com/notice' })).toBeVisible()
-  expect(container.querySelector('pre')).toBeNull()
 })
 
 it('바뀐 값만 먼저 보여주고 PDF 근거를 읽기 쉬운 이름으로 표시한다', async () => {
@@ -125,4 +133,19 @@ it('PDF 보정 이력은 공급행 변경이 없으면 빈 표를 두지 않고 
   expect(within(supply).getByRole('heading', { name: '공급행 변경 없음' })).toBeVisible()
   expect(within(supply).queryByRole('region', { name: '변경 전후 비교' })).not.toBeInTheDocument()
   expect(screen.getByRole('row', { name: '일정 #258 (추가) 일정 유형 없음 서류 제출' })).toBeInTheDocument()
+})
+
+it('이전 JSON 갱신 이력도 변수명 대신 화면 이름으로 바뀐 값만 보여준다', async () => {
+  const previous = { ...blankRow(0), id: 164, key: 'row:164', complexName: '사천벌리1', typeName: '37.1300' }
+  vi.mocked(getManagementHistory).mockResolvedValue([{ id: 2, action: 'UPDATE_FROM_JSON', actor: 'root', occurredAt: '2026-10-22T00:00:00Z',
+    beforeValue: JSON.stringify({ rows: [previous], detail: { summary: { modified: false }, data: { version: 1, receptionPlace: { name: '행정복지센터', contact: null } } }, events: [] }),
+    afterValue: JSON.stringify({ rows: [{ ...previous, typeName: '26', protectedValues: true }], reason: 'PDF 대조', sourceUrl: 'https://example.com/notice', operationId: '작업', sources: [],
+      detail: { summary: { modified: true }, data: { version: 3, receptionPlace: { name: '주민센터', contact: '1600-1004' } } }, events: [] }),
+  }])
+  render(<ChangeHistory resource="announcements" id="47" version={3} />)
+  fireEvent.click(await screen.findByText(/JSON으로 공고 갱신 · root/))
+  const other = screen.getByRole('region', { name: '저장한 기본정보·일정 보정' })
+  expect(within(other).getAllByRole('row').slice(1).map(row => row.textContent)).toEqual(['접수처접수처명행정복지센터주민센터', '접수처연락처미확인1600-1004'])
+  expect(screen.getByRole('row', { name: /원천 주택형명 37.1300 26/ })).toBeInTheDocument()
+  expect(screen.queryByText(/detail\.summary|rows\[0\]/)).not.toBeInTheDocument()
 })
