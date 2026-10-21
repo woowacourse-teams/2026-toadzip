@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button } from '../../design-system/components/Button'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 import type { Evidence } from './extraction'
-import { cellStates, chooseCellValue, editCell, shown, validCellValue, type Cell, type ValueMode } from './review'
+import { cellMatches, cellStates, chooseCellValue, editCell, pendingCell, shown, validCellValue, type Cell, type ReviewFilter, type ValueMode } from './review'
 import styles from './PdfCorrection.module.css'
 
 const choices = {
@@ -11,9 +11,10 @@ const choices = {
 }
 const modes: [ValueMode, string, string][] = [['keep', '기존 값', '기존 값 사용'], ['extracted', '보정 값', '보정된 값 사용'], ['manual', '직접 수정', '직접 수정']]
 
-export function ReviewCells({ cells, scope, housingTypes = [], onChange, onEvidence }: { cells: Cell[]; scope: string; housingTypes?: MatchingHousingType[]; onChange: (cells: Cell[]) => void; onEvidence: (evidence: Evidence) => void }) {
+export function ReviewCells({ cells, scope, housingTypes = [], filter = 'all', onChange, onEvidence }: { cells: Cell[]; scope: string; housingTypes?: MatchingHousingType[]; filter?: ReviewFilter; onChange: (cells: Cell[]) => void; onEvidence: (evidence: Evidence) => void }) {
   const [all, setAll] = useState(false)
-  const quiet = cells.filter(cell => cell.mode !== 'manual' && (cell.state === 'same' || cell.state === 'notApplicable'))
+  const quiet = filter === 'all' ? cells.filter(cell => cell.mode !== 'manual' && (cell.state === 'same' || cell.state === 'notApplicable')) : []
+  const visible = cells.filter(cell => cellMatches(cell, filter) && (all || !quiet.includes(cell)))
   function update(path: string, next: Cell) { onChange(cells.map(cell => cell.path === path ? next : cell)) }
   function display(cell: Cell, value: unknown) {
     if (cell.kind === 'housingType') {
@@ -34,12 +35,13 @@ export function ReviewCells({ cells, scope, housingTypes = [], onChange, onEvide
           : <input type={cell.kind === 'date' ? 'date' : cell.kind === 'datetime' ? 'datetime-local' : cell.kind === 'month' ? 'month' : 'text'} inputMode={cell.kind === 'money' || cell.kind === 'count' ? 'numeric' : cell.kind === 'area' ? 'decimal' : undefined}
             value={value} aria-invalid={cell.state === 'invalid' || undefined} onChange={event => change(event.target.value)} />}</label>
   }
+  if (!visible.length && !quiet.length) return null
   return <div className={styles.cells}>
     <div className={styles.cellHead}><span>항목</span><span>기존 값</span><span>보정된 값</span><span>반영할 값</span><span>PDF</span></div>
-    {cells.filter(cell => all || !quiet.includes(cell)).map(cell => {
+    {visible.map(cell => {
       const canUseExtracted = validCellValue(cell.kind, cell.extracted.value) && !['invalid', 'unresolved', 'notApplicable'].includes(cell.extracted.state)
-      return <div key={cell.path} className={styles.cell} data-state={cell.state}>
-        <div className={styles.cellLabel}><strong>{cell.label}</strong><small>{cellStates[cell.state]}</small></div>
+      return <div key={cell.path} className={styles.cell} data-state={cell.state} data-pending={pendingCell(cell) || undefined} data-review-id={`cell:${cell.path}`} tabIndex={-1}>
+        <div className={styles.cellLabel}><strong>{cell.label}</strong><small>{pendingCell(cell) && cell.mode !== 'manual' ? `${cellStates[cell.extracted.state]} · 선택 전` : cellStates[cell.state]}</small></div>
         <div className={styles.before}><span className={styles.mobileLabel}>기존 값</span>{display(cell, cell.before)}</div>
         <div className={styles.extracted}><span className={styles.mobileLabel}>보정된 값</span>{display(cell, cell.extracted.value)}</div>
         <div className={styles.cellResult}>{cell.locked ? <span>{cell.note || '기존 값 유지'}</span> : <>

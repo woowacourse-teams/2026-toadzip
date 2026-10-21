@@ -10,7 +10,7 @@ import { ManagementError } from '../management/api'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import { readExtraction, type Evidence } from './extraction'
 import { checkAnnouncement, type HousingCandidates } from './matching'
-import { applicableCells, assembleReview, createReview, rebaseReview, remapSchedule, shown, type Review } from './review'
+import { applicableCells, assembleReview, cellMatches, createReview, pendingItems, pendingSchedule, rebaseReview, remapSchedule, shown, type Review, type ReviewFilter, type ReviewSection, type ScheduleReview } from './review'
 import { ReviewCells } from './ReviewCells'
 import { ReviewSupply } from './ReviewSupply'
 import { RequestPreparation } from './RequestPreparation'
@@ -18,7 +18,8 @@ import styles from './PdfCorrection.module.css'
 
 const PdfDocumentPreview = lazy(() => import('../../public-housing/components/PdfDocumentPreview'))
 type Phase = 'prepare' | 'review' | 'result'
-type Section = 'supply' | 'schedule' | 'reception'
+const sectionLabels: [ReviewSection, string][] = [['supply', '공급정보'], ['schedule', '일정'], ['reception', '접수처·기본정보']]
+const filterLabels: [ReviewFilter, string][] = [['all', '전체'], ['pending', '확인 필요'], ['changed', '변경'], ['new', '추가']]
 function validEvidenceUrl(value: string) {
   try { return ['http:', 'https:'].includes(new URL(value).protocol) && !/\s/.test(value) } catch { return false }
 }
@@ -38,7 +39,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   // The draft is the baseline for PDF matching, including unsaved manual rows.
   const [initialRows] = useState(supplyDraft?.rows)
   const [workspace, setWorkspace] = useState<JsonWorkspace | null>(null), [housing, setHousing] = useState<HousingCandidates>({})
-  const [phase, setPhase] = useState<Phase>('prepare'), [section, setSection] = useState<Section>('supply')
+  const [phase, setPhase] = useState<Phase>('prepare'), [section, setSection] = useState<ReviewSection>('supply')
   const [text, setText] = useState(''), [review, setReview] = useState<Review | null>(null)
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false), [attempt, setAttempt] = useState(0)
   const [blocked, setBlocked] = useState(false), [uncertain, setUncertain] = useState(false)
@@ -46,6 +47,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   const [pdf, setPdf] = useState<{ url: string; name: string } | null>(null), [pdfError, setPdfError] = useState('')
   const [focus, setFocus] = useState<PdfFocus | null>(null), [mobileView, setMobileView] = useState<'pdf' | 'review'>('review')
   const [reason, setReason] = useState(''), [sourceUrl, setSourceUrl] = useState(''), [sourcePage, setSourcePage] = useState('')
+  const [filter, setFilter] = useState<ReviewFilter>('all'), [jump, setJump] = useState<{ id: string; nonce: number } | null>(null)
   const heading = useRef<HTMLHeadingElement>(null)
   const reviewPane = useRef<HTMLDivElement>(null)
   const reasonProblem = !reason.trim() ? '보정 이유를 입력하세요.' : !validEvidenceUrl(sourceUrl.trim()) ? '공식 근거 URL에 올바른 http 또는 https 주소를 입력하세요.' : ''
@@ -84,6 +86,18 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     heading.current?.focus()
     if (reviewPane.current) reviewPane.current.scrollTop = 0
   }, [phase])
+  useEffect(() => {
+    if (!jump) return
+    const target = reviewPane.current?.querySelector<HTMLElement>(`[data-review-id="${CSS.escape(jump.id)}"]`)
+    target?.scrollIntoView({ block: 'center' }); target?.focus({ preventScroll: true })
+  }, [jump])
+  function nextPending() {
+    if (!review) return
+    const [item] = pendingItems(review)
+    if (!item) return
+    if (filter !== 'pending') setFilter('all')
+    setSection(item.section); setMobileView('review'); setJump(previous => ({ id: item.id, nonce: (previous?.nonce ?? 0) + 1 }))
+  }
   function evidence(item: Evidence) { setFocus(previous => ({ page: item.page, query: '', nonce: (previous?.nonce ?? 0) + 1 })); setMobileView('pdf') }
   function change(next: Review) { setReview(next); setError('') }
   function start() {
@@ -92,7 +106,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     const next = createReview(extraction, workspace, housing)
     setReview(next); setReason(`${pdf.name} · 프롬프트 v3로 추출 후 PDF와 대조`)
     setSourcePage([...new Set(parsed.value.evidence.map(item => item.page))].sort((a, b) => a - b).join(', ').slice(0, 100))
-    setPhase('review'); setError(''); setNotice('')
+    setPhase('review'); setSection('supply'); setFilter('all'); setError(''); setNotice('')
   }
   async function apply() {
     if (!review || !workspace || blocked || busy || !supplyDraft && reasonProblem) return
@@ -125,6 +139,15 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   }
   if (!workspace) return <section className={styles.page}><h1>PDF로 공고 보정</h1>{error ? <div role="alert"><p>{error}</p><Button onClick={() => setAttempt(value => value + 1)}>다시 불러오기</Button></div> : <p role="status">공고와 연결 주택형을 불러오는 중…</p>}</section>
   if (workspace.detail.summary.deleted) return <section className={styles.page}><h1>휴지통의 공고입니다.</h1><p>공고를 복구한 뒤 보정하세요.</p><Link to={back}>공고 상세로 돌아가기</Link></section>
+  const pending = review ? pendingItems(review) : []
+  const counts = { changed: 0, new: 0 }
+  if (review) for (const cell of applicableCells(review)) if (cell.extracted.state === 'changed' || cell.extracted.state === 'new') counts[cell.extracted.state] += 1
+  const empty = `이 영역에는 ‘${filterLabels.find(([key]) => key === filter)?.[1]}’ 항목이 없습니다.`
+  const visibleIn = (cells: Review['metadata']) => filter === 'all' || cells.some(cell => cellMatches(cell, filter))
+  const scheduleMatches = (schedule: ScheduleReview) => filter === 'all' || filter === 'pending' && pendingSchedule(schedule) || schedule.include && visibleIn(schedule.cells)
+  function updateSchedule(index: number, patch: Partial<ScheduleReview>) {
+    if (review) change({ ...review, schedules: review.schedules.map((item, at) => at === index ? { ...item, ...patch } : item) })
+  }
   const pdfPane = <section className={styles.pdfPane} aria-label="PDF 근거" hidden={active && mobileView !== 'pdf'} data-pane="pdf"><header><strong>{pdf?.name ?? '공고문 PDF'}</strong></header>{pdf ? <Suspense fallback={<p role="status">PDF 뷰어를 불러오는 중…</p>}><PdfDocumentPreview url={pdf.url} name={pdf.name} focus={focus} /></Suspense> : <p role={pdfError ? 'alert' : 'status'}>{pdfError || 'PDF를 선택하세요.'}</p>}</section>
   return <section className={styles.page} data-focused={active} data-embedded={!!supplyDraft}>
     {supplyDraft ? <header className={styles.heading}><div><h2>PDF로 공급정보 채우기</h2><p>PDF와 대조한 공급정보를 편집표에 채웁니다. 저장 전까지 등록값은 유지됩니다.</p></div><Button data-design-system className={styles.secondaryButton} onClick={() => { if (!text.trim() || window.confirm('PDF 검토를 취소하고 편집표로 돌아갈까요?')) supplyDraft.onCancel() }}>편집표로 돌아가기</Button></header> : <header className={styles.heading}><div><Link to={back}>공고 상세로 돌아가기</Link><h1 ref={heading} tabIndex={-1}>PDF로 공고 보정</h1><p>#{id} · {workspace.detail.summary.name}</p></div><ol aria-label="보정 진행"><li aria-current={phase === 'prepare' ? 'step' : undefined}>요청 준비</li><li aria-current={phase === 'review' ? 'step' : undefined}>비교·보정</li><li aria-current={phase === 'result' ? 'step' : undefined}>적용 결과</li></ol></header>}
@@ -134,18 +157,22 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     {active && review && <><div className={styles.mobileSwitch}><Button data-design-system aria-pressed={mobileView === 'pdf'} onClick={() => setMobileView('pdf')}>PDF 보기</Button><Button data-design-system aria-pressed={mobileView === 'review'} onClick={() => setMobileView('review')}>검토표 보기</Button></div><div className={styles.workbench}>{pdfPane}
       <div ref={reviewPane} className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="review">
         {checks.some(check => check.matches === false) && <p className={styles.error}>PDF의 {checks.filter(check => check.matches === false).map(check => `${check.label}(${check.pdf})`).join('·')}이 현재 공고와 다릅니다. 이 공고의 PDF로 받은 응답인지 확인하세요.</p>}
-        {!supplyDraft && <nav className={styles.sections} aria-label="PDF 보정 영역">{([['supply', '공급정보'], ['schedule', '일정'], ['reception', '접수처·기본정보']] as const).map(([key, label]) => <Button data-design-system key={key} aria-pressed={section === key} onClick={() => setSection(key)}>{label}</Button>)}</nav>}
+        <div className={styles.reviewTop}>
+          {!supplyDraft && <nav className={styles.sections} aria-label="PDF 보정 영역">{sectionLabels.map(([key, label]) => { const count = pending.filter(item => item.section === key).length; return <Button data-design-system key={key} aria-label={count > 0 ? `${label} · 확인 ${count}` : undefined} aria-pressed={section === key} onClick={() => setSection(key)}>{label}{count > 0 && <span className={styles.sectionCount}>{` · 확인 ${count}`}</span>}</Button> })}</nav>}
+          <div className={styles.filters} role="group" aria-label="검토 항목 필터">{filterLabels.map(([key, label]) => <Button data-design-system key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}{key !== 'all' && ` ${key === 'pending' ? pending.length : counts[key]}`}</Button>)}</div>
+        </div>
         <fieldset disabled={busy || blocked} className={styles.reviewFields}>
-          {section === 'supply' && <ReviewSupply review={review} workspace={workspace} housing={housing} onChange={change} onEvidence={evidence} />}
-          {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.schedules.map((schedule, index) => <section className={styles.supplyBlock} key={index}><header><h3>{shown(schedule.cells.find(cell => cell.field === 'name')?.value)}</h3><label><input type="checkbox" checked={schedule.include} onChange={event => change({ ...review, schedules: review.schedules.map((item, at) => at === index ? { ...item, include: event.target.checked } : item) })} />일정 {index + 1} 적용</label></header>
-            <p>{schedule.proposal.reason || (schedule.proposal.existingIds.length ? '기존 일정 갱신' : '새 일정 추가')}{schedule.proposal.existingIds.map(existingId => { const event = workspace.events.find(item => item.id === existingId); return <small className={styles.scheduleBefore} key={existingId}>#{existingId} · {event?.complexName ?? '공고 전체'} · {shown(event?.data.name)} · {shown(event?.data.startAt)} ~ {shown(event?.data.endAt)}</small> })}</p>
-            {schedule.include && <><fieldset><legend>일정 {index + 1}에서 수정할 기존 일정</legend>{workspace.events.filter(event => event.data.scheduleType === schedule.cells.find(cell => cell.field === 'scheduleType')?.value).map(event => <label key={event.id}><input type="checkbox" checked={schedule.proposal.existingIds.includes(event.id)} onChange={changeEvent => change({ ...review, schedules: review.schedules.map((item, at) => at === index ? remapSchedule(review, index, changeEvent.target.checked ? [...item.proposal.existingIds, event.id] : item.proposal.existingIds.filter(value => value !== event.id), workspace) : item) })} />#{event.id} · {event.complexName ?? '공고 전체'} · {shown(event.data.name)}</label>)}<p className={styles.hint}>선택한 기존 일정이 없으면 새 일정으로 추가합니다.</p></fieldset>
-              <ReviewCells cells={schedule.cells} scope={`일정 ${index + 1}`} onChange={cells => change({ ...review, schedules: review.schedules.map((item, at) => at === index ? { ...item, cells } : item) })} onEvidence={evidence} /></>}
-          </section>)}</>}
-          {section === 'reception' && <><h2>접수처·기본정보</h2><p>임대유형·모집유형·기관·공고명은 현재값을 유지합니다. 접수처는 한 곳만 저장할 수 있으므로 온라인·현장 병행 여부를 확인하세요.</p><h3>접수처</h3><ReviewCells cells={review.reception} scope="접수처" onChange={reception => change({ ...review, reception })} onEvidence={evidence} /><h3>공고 기본 일정</h3><ReviewCells cells={review.metadata} scope="기본정보" onChange={metadata => change({ ...review, metadata })} onEvidence={evidence} /></>}
+          {section === 'supply' && <ReviewSupply review={review} workspace={workspace} housing={housing} filter={filter} empty={empty} onChange={change} onEvidence={evidence} />}
+          {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.schedules.map((schedule, index) => scheduleMatches(schedule) && <section className={styles.supplyBlock} key={index} data-review-id={`schedule:${index}`} tabIndex={-1}><header><h3>{shown(schedule.cells.find(cell => cell.field === 'name')?.value)}</h3><label><input type="checkbox" checked={schedule.include} onChange={event => updateSchedule(index, { include: event.target.checked, reviewed: true })} />일정 {index + 1} 적용</label></header>
+            {pendingSchedule(schedule) && <div className={styles.pending}><p><strong>확인 필요</strong> {schedule.proposal.reason}</p><div className={styles.actions}><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: true, reviewed: true })}>{`일정 ${index + 1} 적용`}</Button><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: false, reviewed: true })}>{`일정 ${index + 1} 적용 안 함`}</Button></div></div>}
+            <p>{pendingSchedule(schedule) ? '' : schedule.proposal.reason || (schedule.proposal.existingIds.length ? '기존 일정 갱신' : '새 일정 추가')}{schedule.proposal.existingIds.map(existingId => { const event = workspace.events.find(item => item.id === existingId); return <small className={styles.scheduleBefore} key={existingId}>#{existingId} · {event?.complexName ?? '공고 전체'} · {shown(event?.data.name)} · {shown(event?.data.startAt)} ~ {shown(event?.data.endAt)}</small> })}</p>
+            {schedule.include && <><fieldset><legend>일정 {index + 1}에서 수정할 기존 일정</legend>{workspace.events.filter(event => event.data.scheduleType === schedule.cells.find(cell => cell.field === 'scheduleType')?.value).map(event => <label key={event.id}><input type="checkbox" checked={schedule.proposal.existingIds.includes(event.id)} onChange={changeEvent => change({ ...review, schedules: review.schedules.map((item, at) => at === index ? { ...remapSchedule(review, index, changeEvent.target.checked ? [...item.proposal.existingIds, event.id] : item.proposal.existingIds.filter(value => value !== event.id), workspace), reviewed: true } : item) })} />#{event.id} · {event.complexName ?? '공고 전체'} · {shown(event.data.name)}</label>)}<p className={styles.hint}>선택한 기존 일정이 없으면 새 일정으로 추가합니다.</p></fieldset>
+              <ReviewCells cells={schedule.cells} scope={`일정 ${index + 1}`} filter={filter} onChange={cells => updateSchedule(index, { cells })} onEvidence={evidence} /></>}
+          </section>)}{!review.schedules.some(scheduleMatches) && <p className={styles.hint}>{empty}</p>}</>}
+          {section === 'reception' && <><h2>접수처·기본정보</h2><p>임대유형·모집유형·기관·공고명은 현재값을 유지합니다. 접수처는 한 곳만 저장할 수 있으므로 온라인·현장 병행 여부를 확인하세요.</p>{visibleIn(review.reception) && <h3>접수처</h3>}<ReviewCells cells={review.reception} scope="접수처" filter={filter} onChange={reception => change({ ...review, reception })} onEvidence={evidence} />{visibleIn(review.metadata) && <h3>공고 기본 일정</h3>}<ReviewCells cells={review.metadata} scope="기본정보" filter={filter} onChange={metadata => change({ ...review, metadata })} onEvidence={evidence} />{!visibleIn(review.reception) && !visibleIn(review.metadata) && <p className={styles.hint}>{empty}</p>}</>}
         </fieldset>
       </div></div>
-      <footer className={styles.footer}><div><strong>{applicableCells(review).filter(cell => cell.selected && !cell.locked).length}개 값 반영</strong><span>선택하지 않은 값은 유지합니다.</span></div><div className={styles.actions}><Button data-design-system className={styles.secondaryButton} disabled={busy || blocked} onClick={() => { if (window.confirm('검토 입력을 초기화하고 응답 준비로 돌아갈까요?')) { setPhase('prepare'); setReview(null) } }}>응답 다시 준비</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
+      <footer className={styles.footer}><div><strong>{applicableCells(review).filter(cell => cell.selected && !cell.locked).length}개 값 반영</strong><span>선택하지 않은 값은 유지합니다.</span></div>{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`확인 필요 ${pending.length}개 남음 ↓`}</Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}<div className={styles.actions}><Button data-design-system className={styles.secondaryButton} disabled={busy || blocked} onClick={() => { if (window.confirm('검토 입력을 초기화하고 응답 준비로 돌아갈까요?')) { setPhase('prepare'); setReview(null) } }}>응답 다시 준비</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
       {phase === 'review' && !supplyDraft && <details className={styles.reason} open={reasonProblem ? true : undefined}><summary>적용 근거 확인{reasonProblem ? ' · 필수 입력 필요' : ''}</summary>{reasonProblem && <p role="status" className={styles.error}>{reasonProblem}</p>}<label>보정 이유<textarea value={reason} maxLength={2000} disabled={busy || blocked} onChange={event => { setReason(event.target.value) }} /></label><label>공식 근거 URL<input value={sourceUrl} maxLength={2048} disabled={busy || blocked} onChange={event => { setSourceUrl(event.target.value) }} /></label><label>근거 쪽<input value={sourcePage} maxLength={100} disabled={busy || blocked} onChange={event => { setSourcePage(event.target.value) }} /></label></details>}
     </>}
     {phase === 'result' && <section className={styles.result}><h2>공고 보정을 적용했습니다.</h2><p>선택한 변경을 저장했습니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.</p><p>보정 저장은 공고 전체 검토 완료와 다릅니다.{failureReturn ? ` ${Number.isSafeInteger(failureCount) && failureCount > 0 ? `이 공고의 오류 ${failureCount}건은` : '연결된 오류는'} 다음 정제 때 다시 판정됩니다.` : ''}</p><div className={styles.actions}><Link to={`/?announcementId=${id}`} target="_blank" rel="noreferrer">공개 공고 확인</Link><Link to={`/admin/announcements/${id}?${supplyParams}`}>저장된 공급정보 확인</Link>{failureReturn && <Link to={failureReturn}>실패 검토로 돌아가기</Link>}</div></section>}
