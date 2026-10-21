@@ -473,6 +473,42 @@ describe('ComplexFilterToolbar', () => {
     expect(onApply).toHaveBeenCalledOnce()
   })
 
+  it.each([
+    ['desktop', '가격', '임대보증금 최솟값', '10000000', '20000000'],
+    ['mobile', '가격', '임대보증금 최솟값', '10000000', '20000000'],
+    ['desktop', '전용면적', '전용면적 최솟값', '33', '66'],
+    ['mobile', '전용면적', '전용면적 최솟값', '33', '66'],
+  ])('%s %s 연속 변경의 이전 적용이 늦게 도착해도 필터를 닫지 않는다', (mode, topic, label, first, second) => {
+    const onApply = vi.fn()
+    const { rerender } = renderToolbar({ onApply })
+    fireEvent.click(screen.getByRole('button', { name: `${mode === 'mobile' ? '모바일 ' : ''}${topic} 필터 열기` }))
+    const slider = screen.getByRole('slider', { name: label })
+    fireEvent.change(slider, { target: { value: first } })
+    fireEvent.change(slider, { target: { value: second } })
+
+    rerender(<ComplexFilterToolbar filters={onApply.mock.calls[0][0]} onApply={onApply} />)
+    expect(screen.getByRole('slider', { name: label })).toBe(slider)
+    expect(slider).toHaveValue(second)
+    rerender(<ComplexFilterToolbar filters={onApply.mock.calls[1][0]} onApply={onApply} />)
+    expect(screen.getByRole('slider', { name: label })).toBe(slider)
+    // Once acknowledged, a history visit to an earlier value is external again.
+    rerender(<ComplexFilterToolbar filters={onApply.mock.calls[0][0]} onApply={onApply} />)
+    expect(screen.queryByRole('slider', { name: label })).not.toBeInTheDocument()
+  })
+
+  it.each(['desktop', 'mobile'])('%s 전체 필터의 적용 대기 중 다른 조건을 바꿔도 앞선 선택을 보존한다', (mode) => {
+    const onApply = vi.fn()
+    const { rerender } = renderToolbar({ onApply })
+    fireEvent.click(screen.getByRole('button', { name: `${mode === 'mobile' ? '모바일 ' : ''}전체 필터 열기` }))
+    fireEvent.change(screen.getByRole('slider', { name: '임대보증금 최솟값' }), { target: { value: '10000000' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'LH' }))
+    expect(onApply).toHaveBeenLastCalledWith({ minDeposit: 10000000, agencyCodes: ['LH'] })
+    // A transition may skip the intermediate commit altogether.
+    rerender(<ComplexFilterToolbar filters={onApply.mock.calls[1][0]} onApply={onApply} />)
+    expect(screen.getByRole('checkbox', { name: 'LH' })).toBeChecked()
+    expect(screen.getByRole('slider', { name: '임대보증금 최솟값' })).toHaveValue('10000000')
+  })
+
   it('외부 탐색으로 조건이 바뀌면 이전 기본 필터 입력을 닫고 새 조건을 표시한다', () => {
     const onApply = vi.fn()
     const { rerender } = renderToolbar({ filters: { minDeposit: 100_000_000 }, onApply })

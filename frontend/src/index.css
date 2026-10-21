@@ -2407,7 +2407,7 @@ button {
   .housing-search-overlay { left: 10px; width: calc(100% - 20px); }
   .housing-search-overlay .integrated-search__input { height: 48px; padding-inline: 12px; }
   .housing-search-overlay .integrated-search__input input { font-size: var(--ds-text-body); }
-  .app-shell .housing-map-filter { top: calc(var(--explorer-search-bottom, 60px) + 10px); left: 10px; right: 10px; }
+  .app-shell .housing-map-filter { top: calc(var(--explorer-search-bottom, 60px) + 2px); left: 10px; right: 10px; }
   .app-shell .housing-results, .app-shell .housing-detail-layer { left: 10px; bottom: 10px; width: calc(100% - 20px); }
   .app-shell .housing-explorer.has-detail .map-region { display: block; visibility: visible; }
   .app-shell .housing-explorer.has-detail .housing-map-credits { display: block; visibility: visible; }
@@ -2549,7 +2549,7 @@ button {
   .app-shell .housing-browse-panel .housing-search-overlay { padding: 12px 10px 0; }
   .app-shell .housing-browse-panel .housing-results { margin-top: 64px; }
   .app-shell .has-results-page .housing-map-filter {
-    z-index: 400; top: calc(var(--explorer-search-bottom, 60px) + 10px); left: 10px; right: 10px;
+    z-index: 400; top: calc(var(--explorer-search-bottom, 60px) + 2px); left: 10px; right: 10px;
   }
   .app-shell .has-results-page .housing-map-filter:has([aria-expanded="true"]) { z-index: 500; }
   .app-shell .has-results-page.is-searching .housing-map-filter { visibility: hidden; }

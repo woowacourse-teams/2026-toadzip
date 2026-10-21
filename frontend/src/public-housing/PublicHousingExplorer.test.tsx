@@ -1042,6 +1042,7 @@ describe('PublicHousingExplorer', () => {
       null, null, 20, expect.any(AbortSignal), { regionCode: '11', minDeposit: 100000000 },
     )
     expect(screen.getByRole('article', { name: '서울가람 행복주택' })).toBeVisible()
+    await waitFor(() => expect(repository.findMap).toHaveBeenCalledTimes(2))
     await act(async () => pendingMap.reject(new Error('지도 조회 실패')))
     expect(await screen.findByText('지도 조회 실패')).toBeVisible()
     expect(screen.getByRole('article', { name: '서울가람 행복주택' })).toBeVisible()
@@ -1582,6 +1583,28 @@ describe('PublicHousingExplorer', () => {
     )
   })
 
+  it('빠른 필터 변경은 마지막 변경 100ms 뒤 지도에 한 번만 조회한다', async () => {
+    const repository = createRepository()
+    renderSearchedExplorer(repository)
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    await waitFor(() => expect(repository.findMap).toHaveBeenCalledOnce())
+    await screen.findByRole('heading', { name: '서울가람 행복주택' })
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: '가격 필터 열기' }))
+    const slider = screen.getByRole('slider', { name: '임대보증금 최솟값' })
+    fireEvent.change(slider, { target: { value: '10000000' } })
+    await act(async () => vi.advanceTimersByTimeAsync(50))
+    fireEvent.change(slider, { target: { value: '20000000' } })
+    await act(async () => vi.advanceTimersByTimeAsync(99))
+    expect(repository.findMap).toHaveBeenCalledOnce()
+    expect(slider).toHaveValue('20000000')
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(repository.findMap).toHaveBeenCalledTimes(2)
+    expect(repository.findMap).toHaveBeenLastCalledWith(
+      expect.objectContaining({ filters: { minDeposit: 20000000 } }), expect.any(AbortSignal),
+    )
+  })
+
   it('단지 범위 손잡이는 서로 교차하지 않도록 상대 값에 맞춘다', async () => {
     const repository = createRepository()
     renderSearchedExplorer(repository)
@@ -1604,7 +1627,7 @@ describe('PublicHousingExplorer', () => {
     })).toHaveTextContent('1억~1억')
 
     await waitFor(() => {
-      expect(repository.findMap).toHaveBeenCalledTimes(3)
+      expect(repository.findMap).toHaveBeenCalledTimes(2)
       expect(repository.findComplexPage).toHaveBeenCalledTimes(3)
     })
     expect(repository.findMap).toHaveBeenLastCalledWith(

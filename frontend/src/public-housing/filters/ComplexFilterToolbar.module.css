@@ -136,7 +136,8 @@
   background: var(--ds-color-brand);
   color: var(--ds-color-on-brand);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
   pointer-events: none;
 }
@@ -203,6 +204,10 @@
     'actions';
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto auto;
+}
+
+.popover[data-topic='price'] .form {
+  max-height: 540px;
 }
 
 .popoverHeader {
@@ -590,7 +595,7 @@
   height: 16px;
 }
 
-.mobileTrigger span {
+.mobileTrigger span:not(.filterCount) {
   min-width: 0;
   display: block;
   overflow: hidden;
