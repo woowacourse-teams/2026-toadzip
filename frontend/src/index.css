@@ -2148,7 +2148,7 @@ button {
   font-weight: 700;
 }
 
-.registration-submit:hover:not(:disabled) {
+.registration-submit:hover:not(:disabled):not(:where(.admin-layout *)) {
   background: var(--brand-dark);
   color: #ffffff;
 }
