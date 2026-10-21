@@ -11,11 +11,15 @@ import scrollbarStyles from './DocumentScrollbar.module.css'
 // Keep the SDK's :root variables and generic annotation styles inside this viewer.
 const scopedViewerStyles = `@scope (.${styles.document}) { ${pdfViewerStyles.replaceAll(':root', ':scope')} }`
 
-export default function PdfDocumentPreview(props: { readonly url: string; readonly name: string; readonly telemetry?: DocumentPreviewTelemetry }) {
+/** 외부에서 근거 위치를 지정한다. nonce가 바뀔 때마다 해당 쪽으로 이동하고 query를 강조한다. */
+export type PdfFocus = { readonly page: number; readonly query: string; readonly nonce: number }
+type PdfPreviewProps = { readonly url: string; readonly name: string; readonly telemetry?: DocumentPreviewTelemetry; readonly focus?: PdfFocus | null }
+
+export default function PdfDocumentPreview(props: PdfPreviewProps) {
   return <PdfPreview key={props.url} {...props} />
 }
 
-function PdfPreview({ url, name, telemetry }: { readonly url: string; readonly name: string; readonly telemetry?: DocumentPreviewTelemetry }) {
+function PdfPreview({ url, name, telemetry, focus }: PdfPreviewProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<HTMLDivElement>(null)
@@ -25,7 +29,14 @@ function PdfPreview({ url, name, telemetry }: { readonly url: string; readonly n
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [scale, setScale] = useState('page-width')
-  const { page, pages, ready, error, result, search, closeSearch, setScale: applyScale, outline, activeOutlineId, navigateOutline } = usePdfViewer(url, containerRef, viewerRef, telemetry)
+  const { page, pages, ready, error, result, search, closeSearch, setScale: applyScale, goToPage, outline, activeOutlineId, navigateOutline } = usePdfViewer(url, containerRef, viewerRef, telemetry)
+
+  useEffect(() => {
+    if (!ready || !focus) return
+    // Keep keyboard focus in the review and highlight only on the evidence page.
+    goToPage(focus.page)
+    search(focus.query, false, false, focus.page)
+  }, [ready, focus, goToPage, search])
 
   const openSearch = useCallback(() => {
     telemetry?.action('search_open')
