@@ -68,3 +68,8 @@
   .table td:last-child button { padding: var(--ds-space-2); min-width: 0; }
   .workflow { gap: var(--ds-space-3); }
 }
+.pdfGroups { padding:var(--ds-space-4); border:1px solid var(--ds-color-divider); background:var(--ds-color-surface); margin-bottom:var(--ds-space-4); }
+.pdfGroups h3 { margin:0; font-size:var(--ds-text-body); }
+.pdfGroups p { font-size:var(--ds-text-caption); color:var(--ds-color-muted-base); }
+.pdfGroups > div { display:flex; flex-wrap:wrap; justify-content:space-between; gap:var(--ds-space-3); padding-block:var(--ds-space-3); border-top:1px solid var(--ds-color-divider); }
+.pdfGroups a { white-space:nowrap; color:var(--ds-color-action); text-underline-offset:3px; }
