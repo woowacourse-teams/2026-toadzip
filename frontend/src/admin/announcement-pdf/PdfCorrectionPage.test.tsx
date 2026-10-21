@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, onTestFinished, vi } from 'vitest'
 import { PdfCorrectionPage, PdfCorrectionWorkspace } from './PdfCorrectionPage'
 import { scenario } from './fixtures/workspace'
 import fixtures from './fixtures/scenarios.json'
@@ -156,6 +156,29 @@ it('붙여넣는 즉시 오류 또는 추출 수를 보여주고 검토 버튼�
   expect(screen.queryByText(/형식 복구/)).not.toBeInTheDocument()
   await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
   expect(screen.queryByRole('heading', { name: '공급정보' })).not.toBeInTheDocument()
+})
+
+it('확인 필요 항목을 세고 하단 버튼으로 다음 항목에 이동하며 상태로 거른다', async () => {
+  const scroll = vi.fn()
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scroll })
+  onTestFinished(() => { delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView })
+  await open()
+  expect(screen.getByRole('button', { name: '일정 · 확인 1' })).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '확인 필요 3개 남음 ↓' }))
+  expect(screen.getByRole('region', { name: '공급행 1 검토' })).toHaveFocus()
+  expect(scroll).toHaveBeenCalledWith({ block: 'center' })
+  fireEvent.click(screen.getByRole('button', { name: '공급행 1 대응 확인' }))
+  fireEvent.click(within(screen.getByRole('group', { name: '검토 항목 필터' })).getByRole('button', { name: '확인 필요 2' }))
+  expect(screen.queryByRole('region', { name: '공급행 1 검토' })).not.toBeInTheDocument()
+  expect(screen.getByRole('region', { name: '공급행 2 검토' })).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '공급행 2 대응 확인' }))
+  expect(screen.getByText('이 영역에는 ‘확인 필요’ 항목이 없습니다.')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '확인 필요 1개 남음 ↓' }))
+  expect(screen.getByRole('heading', { name: '일정' })).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '일정 2 적용 안 함' }))
+  expect(screen.getByText('확인 필요 없음')).toBeVisible()
+  fireEvent.click(within(screen.getByRole('group', { name: '검토 항목 필터' })).getByRole('button', { name: '전체' }))
+  expect(screen.getByRole('checkbox', { name: '일정 2 적용' })).not.toBeChecked()
 })
 
 it('다른 공고의 응답이면 공고명·공고일이 다르다고 알리고 검토 화면에도 남긴다', async () => {
