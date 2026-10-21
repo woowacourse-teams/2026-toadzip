@@ -2,6 +2,7 @@ package com.toadzip.backend.notification.service;
 
 import com.toadzip.backend.notification.configuration.NotificationProperties;
 import com.toadzip.backend.notification.domain.NotificationAudienceSnapshot;
+import com.toadzip.backend.notification.domain.ScheduleReminder;
 import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import com.toadzip.backend.notification.repository.NotificationScheduleRepository;
 import java.time.Instant;
@@ -19,8 +20,13 @@ public class NotificationScheduleService {
 
     @Transactional
     public int publishDue(Instant now) {
+        var reminders = schedules.due(now);
+        var existingKeys = outbox.existingEventKeys(reminders.stream().map(ScheduleReminder::key).toList());
         int count = 0;
-        for (var reminder : schedules.due(now)) {
+        for (var reminder : reminders) {
+            if (existingKeys.contains(reminder.key())) {
+                continue;
+            }
             if (properties.activationAt() != null && reminder.dueAt().isBefore(properties.activationAt())) {
                 continue;
             }
