@@ -24,31 +24,19 @@
 | [tests/](tests/README.md) | Flyway 검사와 배포 설정·모니터링 구성의 테스트를 관리합니다. |
 | `.local/` | 개인 메모·계획·실험·검증 자료를 보관하는 Git 제외 폴더입니다. 사용 기준은 [기여 규칙](CONTRIBUTING.md#로컬-작업-자료)을 따릅니다. |
 | [tmp/](tmp/README.md) | 기존 로고 비교 시안과 이전 자산의 보관 위치를 안내합니다. 새 개인 작업 자료는 `.local/`에 둡니다. |
-| [.github/](.github/README.md) | GitHub Actions 워크플로와 이슈·PR 템플릿을 관리합니다. |
+| [.github/](.github/) | GitHub Actions 워크플로와 이슈·PR 템플릿을 관리합니다. |
 | [.codex/](.codex/) | 코드 탐색·설계 검토·리뷰를 맡는 에이전트 역할 설정을 관리합니다. |
-
-### 루트의 주요 파일
-
-| 파일 | 역할 |
-| --- | --- |
-| [SERVICE_OVERVIEW.md](SERVICE_OVERVIEW.md) | 서비스 목적, 핵심 기능과 용어를 설명합니다. |
-| [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) | 기여·Git 규칙과 에이전트의 작업 지침을 안내합니다. |
-| [compose.yaml](compose.yaml) | 백엔드·프론트엔드·로그 수집기의 기본 실행 구성을 정의합니다. |
-| [compose.local.yaml](compose.local.yaml), [compose.test.yaml](compose.test.yaml) | 로컬 개발 환경과 수동 DB 검증용 PostgreSQL 구성을 정의합니다. 자동 테스트는 Testcontainers를 사용합니다. |
-| [compose.monitoring.yaml](compose.monitoring.yaml) | 로그·메트릭 수집과 모니터링 화면을 실행합니다. |
-| [compose.https.yaml](compose.https.yaml), [compose.certbot.yaml](compose.certbot.yaml) | HTTPS 서비스와 인증서 발급·갱신 구성을 정의합니다. |
-| [.env.example](.env.example) | 환경 변수의 이름과 설정 예시를 제공합니다. |
-| [.editorconfig](.editorconfig), [.gitattributes](.gitattributes), [.gitignore](.gitignore) | 편집 형식, Git 파일 속성과 추적 제외 대상을 정의합니다. |
 
 ---
 
-## 📚 문서
+## 📚 문서 안내
 
-- [전체 문서 목차와 배치 기준](docs/README.md)
-- [개발 환경 설정 및 실행](docs/SETUP.md)
-- [통합 검색 API](docs/INTEGRATED_SEARCH.md)
-- [기여 가이드](CONTRIBUTING.md)
-- [백엔드 코드 컨벤션](backend/CODE_CONVENTION.md)
+| 문서 | 다루는 내용 |
+|---|---|
+| [서비스 소개](SERVICE_OVERVIEW.md) | 해결할 문제·핵심 용어·사용자 흐름 |
+| [공용 문서](docs/README.md) | 환경 설정·개발 기준·기능·운영 문서의 시작점 |
+| [기여 가이드](CONTRIBUTING.md) | 이슈·브랜치·커밋·PR과 검증 절차 |
+| [AI 작업 지침](AGENTS.md) | 작업 범위·안전·문서 탐색과 완료 판단 |
 
 ---
 

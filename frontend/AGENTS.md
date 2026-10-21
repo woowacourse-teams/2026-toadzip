@@ -10,10 +10,10 @@
 
 1. 제품 목적과 용어는 루트 [SERVICE_OVERVIEW.md](../SERVICE_OVERVIEW.md)에서 확인한다.
 2. 설치와 실행 명령은 [README.md](README.md)에서 확인한다.
-3. 기술 역할과 구현 경계는 [development-standards.md](docs/development-standards.md)를 따른다.
-4. UI·스타일 작업은 [design-system.md](docs/design-system.md)에서 토큰과 기존 컴포넌트를 먼저 확인한다. 디자인 기준은 사용자용 공고·단지 검색 화면이며 관리자 페이지 디자인은 참고하지 않는다.
+3. 기술 역할과 구현 경계는 [development-standards.md](../docs/development/frontend/standards.md)를 따른다.
+4. UI·스타일 작업은 [design-system.md](../docs/development/frontend/design-system.md)에서 토큰과 기존 컴포넌트를 먼저 확인한다. 디자인 기준은 사용자용 공고·단지 검색 화면이며 관리자 페이지 디자인은 참고하지 않는다.
 5. 변경할 코드, 가장 가까운 테스트와 실제 설정 파일을 함께 읽는다.
-6. 완료 전 [quality-gates.md](docs/quality-gates.md)의 검증과 보고 기준을 따른다.
+6. 완료 전 [quality-gates.md](../docs/development/frontend/testing.md)의 검증과 보고 기준을 따른다.
 7. 이슈, 브랜치, 커밋과 PR은 루트 [CONTRIBUTING.md](../CONTRIBUTING.md)를 따른다.
 
 ## 작업별 라우팅

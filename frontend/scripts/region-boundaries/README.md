@@ -20,7 +20,7 @@ GEOS `make_valid` 결과가 Polygon/MultiPolygon이고 bbox가 같고 경계의 
 
 같은 버전의 산출물이 달라지면 덮어쓰지 않고 실패한다. 원본/가공 규칙 변경 시 `VERSION`의 스냅샷 또는 가공 버전을 새로 정하고 기존 버전 파일은 유지한다. 재실행은 파일 내용이 같은지 확인하므로 결정성을 검증한다. 버전 인덱스만 새 산출물을 가리키도록 바뀐다.
 
-전체 증거와 제한은 [지역 경계 데이터](../../docs/region-boundaries.md)에 있다. 원저작자: 국토교통부/K-Geo플랫폼, VWorld 법정구역정보. 라이선스: [CC BY 2.0 KR](https://creativecommons.org/licenses/by/2.0/kr/).
+전체 증거와 제한은 [지역 경계 데이터](../../../docs/features/search/region-boundaries.md)에 있다. 원저작자: 국토교통부/K-Geo플랫폼, VWorld 법정구역정보. 라이선스: [CC BY 2.0 KR](https://creativecommons.org/licenses/by/2.0/kr/).
 
 GEOS의 topology 보존 옵션에도 극소 해안 도형에서 잘못된 도형이 나올 수 있다. 단순화 결과가 유효하지 않거나 polygon/hole 개수가 달라지면 해당 지역 전체를 원본 정밀도로 유지하고 `simplificationFallback`에 기록한다.
 

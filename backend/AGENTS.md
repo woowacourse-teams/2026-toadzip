@@ -8,12 +8,12 @@
 
 ## 읽기 순서
 
-1. [docs/README.md](docs/README.md)에서 작업에 필요한 문서를 찾는다.
+1. [공용 문서 목차](../docs/README.md)에서 작업에 필요한 문서를 찾는다.
 2. 제품 맥락은 루트 [SERVICE_OVERVIEW.md](../SERVICE_OVERVIEW.md)에서 확인한다.
-3. 구현은 [docs/development-cycle.md](docs/development-cycle.md)의 작은 검증 루프를 따른다.
-4. 구조 변경은 [docs/architecture.md](docs/architecture.md)와 [docs/layer-boundaries.md](docs/layer-boundaries.md)를 읽는다.
+3. 구현은 [개발 흐름](../docs/development/backend/testing.md#개발-흐름)의 작은 검증 루프를 따른다.
+4. 구조 변경은 [아키텍처·계층 경계](../docs/development/backend/architecture.md)를 읽는다.
 5. Java 규칙은 [CODE_CONVENTION.md](CODE_CONVENTION.md), Git 작업은 루트 [CONTRIBUTING.md](../CONTRIBUTING.md)를 따른다.
-6. 완료 전 [docs/quality-gates.md](docs/quality-gates.md)의 증거를 새로 확인한다.
+6. 완료 전 [검증 기준](../docs/development/backend/testing.md#게이트)의 증거를 새로 확인한다.
 
 ## 절대 경계
 
