@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import fixtures from './fixtures/scenarios.json'
 import { blankRow, blankTarget } from '../supply/supplyCorrectionApi'
 import { readExtraction } from './extraction'
-import { defaultTargetDestinations, proposeRows, proposeSchedules } from './matching'
+import { checkAnnouncement, defaultTargetDestinations, proposeRows, proposeSchedules } from './matching'
 
 function scenario(name: keyof typeof fixtures) {
   const fixture = fixtures[name]
@@ -18,6 +18,13 @@ function scenario(name: keyof typeof fixtures) {
 }
 
 describe('공고 보정 대응 제안', () => {
+  it('수집 공고명의 공고일·공고 표기를 무시하고 PDF 공고명·공고일이 현재 공고와 같은지 확인한다', () => {
+    const { extraction } = scenario('hansville')
+    expect(checkAnnouncement(extraction, { name: '익산한스빌 국민임대주택 예비입주자 자격완화 모집 공고(2026.10.08)', postedDate: '2026-10-08' }).map(check => check.matches)).toEqual([true, true])
+    expect(checkAnnouncement(extraction, { name: '광주첨단 H-1,2,3BL 행복주택 예비입주자 모집공고', postedDate: '2026-10-15' }).map(check => check.matches)).toEqual([false, false])
+    expect(checkAnnouncement({ ...extraction, announcement: {} }, { name: '익산한스빌', postedDate: null }).map(check => check.matches)).toEqual([null, null])
+  })
+
   it('공급대상명은 주택형처럼 형을 생략하지 않고 미저장 조건도 정확히 대응한다', () => {
     const row = blankRow(0)
     row.targets = [{ ...blankTarget(0), key: 'draft-target', target: '가형', supplyRank: '1순위' }]

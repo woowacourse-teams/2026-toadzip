@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button } from '../../design-system/components/Button'
 import type { JsonWorkspace } from '../announcement-json/api'
 import type { readExtraction } from './extraction'
+import type { AnnouncementCheck } from './matching'
 import { PdfFilePicker } from './PdfFilePicker'
 import prompt from './announcementUpdatePrompt.v3.txt?raw'
 import styles from './PdfCorrection.module.css'
@@ -15,12 +16,15 @@ type Props = {
   text: string
   onText: (text: string) => void
   parsed: ReturnType<typeof readExtraction>
+  checks: AnnouncementCheck[]
   onReview: () => void
 }
 
-export function RequestPreparation({ attachments, attachmentId, onAttachment, pdf, pdfError, text, onText, parsed, onReview }: Props) {
+export function RequestPreparation({ attachments, attachmentId, onAttachment, pdf, pdfError, text, onText, parsed, checks, onReview }: Props) {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const mismatched = checks.some(check => check.matches === false)
+  const identity = checks.map(check => check.matches === null ? `${check.label} 확인 불가` : check.matches ? `${check.label} 일치` : `${check.label} 다름(PDF ${check.pdf})`).join(' · ')
 
   async function copyPrompt() {
     setMessage(''); setError('')
@@ -66,7 +70,7 @@ export function RequestPreparation({ attachments, attachmentId, onAttachment, pd
     <section aria-labelledby="pdf-response-title">
       <header><h2 id="pdf-response-title">응답 가져오기</h2><p>ChatGPT가 답하면 전체 내용을 그대로 붙여넣으세요.</p></header>
       <section className={`${styles.promptPanel} ${styles.responsePanel}`}><header><label htmlFor="chatgpt-response">ChatGPT 응답</label></header><textarea id="chatgpt-response" value={text} spellCheck={false} placeholder="JSON 응답 전체를 붙여넣으세요." onChange={event => onText(event.target.value)} /></section>
-      <div className={styles.prepareFeedback}>{text.trim() && <div role={parsed.ok ? 'status' : 'alert'} className={parsed.ok ? `${styles.notice} ${styles.parseSuccess}` : `${styles.error} ${styles.parseError}`}>{parsed.ok ? <p>공급행 {parsed.value.supplyRows.length}개 · 임대조건 {parsed.value.supplyRows.reduce((count, row) => count + row.targets.length, 0)}개 · 일정 {parsed.value.schedules.length}개 · 미확인 {parsed.value.unresolved.length}개</p> : <p title={parsed.error}>{parsed.error}</p>}</div>}</div>
+      <div className={styles.prepareFeedback}>{text.trim() && <div role={parsed.ok && !mismatched ? 'status' : 'alert'} className={parsed.ok && !mismatched ? `${styles.notice} ${styles.parseSuccess}` : `${styles.error} ${styles.parseError}`}>{parsed.ok ? <p title={identity}>{mismatched ? `현재 공고와 다른 PDF의 응답일 수 있습니다 · ${identity}` : `공급행 ${parsed.value.supplyRows.length}개 · 임대조건 ${parsed.value.supplyRows.reduce((count, row) => count + row.targets.length, 0)}개 · 일정 ${parsed.value.schedules.length}개 · 미확인 ${parsed.value.unresolved.length}개 · ${identity}`}</p> : <p title={parsed.error}>{parsed.error}</p>}</div>}</div>
       <footer className={styles.prepareAction}><p className={styles.hint}>가져온 값은 다음 화면에서 기존 값과 비교하고 고칠 수 있습니다.</p><Button data-design-system disabled={!parsed.ok || !pdf} onClick={onReview}>응답 검토하기</Button></footer>
     </section>
   </div>
