@@ -51,12 +51,28 @@ public final class AnnouncementSupplyMatching {
             Integer householdCount, String token) {
     }
 
-    public record RefineRequest(@NotNull @Size(min = 1, max = 1000) List<@NotNull @Valid Request> rows,
-            Boolean remember, @Size(max = 2048) String sourceUrl, @Size(max = 2000) String reason) {
+    /**
+     * 보낸 원천행만 선택대로 정제하고 나머지 행은 자동 정제한다. splits는 같은 트랜잭션에서 원천행을
+     * 여러 공급행으로 나눈다. 저장 후 공고의 모든 원천행이 매칭되어야 한다.
+     */
+    public record RefineRequest(@NotNull @Size(max = 1000) List<@NotNull @Valid Request> rows,
+            Boolean remember, @Size(max = 2048) String sourceUrl, @Size(max = 2000) String reason,
+            @Size(max = 50) List<@NotNull @Valid SplitPlanRequest> splits) {
         public boolean rememberSelection() {
             return Boolean.TRUE.equals(remember);
         }
+
+        public List<SplitPlanRequest> splitPlans() {
+            if (splits == null) {
+                return List.of();
+            }
+            return splits;
+        }
     }
+
+    public record SplitPlanRequest(@NotBlank @Size(max = 500) String rowIdentifier,
+            @NotBlank @Size(max = 64) String token,
+            @NotNull @Size(min = 2, max = 50) List<@NotNull @Valid SplitSelection> rows) { }
 
     public record ReleaseRequest(@NotBlank @Size(max = 500) String rowIdentifier,
             @NotBlank @Size(max = 64) String token, @NotBlank @Size(max = 2000) String reason) {

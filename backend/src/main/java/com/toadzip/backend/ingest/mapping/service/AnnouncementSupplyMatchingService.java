@@ -22,6 +22,7 @@ import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SavedMa
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SplitGroup;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SplitRequest;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SplitRow;
+import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SplitSelection;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
@@ -123,23 +124,32 @@ public class AnnouncementSupplyMatchingService {
     public MyHomeAnnouncementMappingReport refine(String identifier, RefineRequest request, String actor) {
         // POST 인터셉터가 트랜잭션 종료까지 전역 수집 잠금을 유지한다. 외부 API는 호출하지 않는다.
         IngestExecutionScope.verifyHeld();
-        if (request.rememberSelection()) {
+        if (request.rows().isEmpty() && request.splitPlans().isEmpty()) {
+            throw new InvalidIngestRequestException("연결하거나 나눌 공급행을 선택해 주세요.");
+        }
+        if (request.rememberSelection() || !request.splitPlans().isEmpty()) {
             validateEvidence(request);
         }
         var current = resolved(identifier);
         var sourceRows = current.data().supplyRows();
-        if (sourceRows.stream().anyMatch(row ->
-                groups.findBySourceRowIdentifier(row.source().getSourceKey()).isPresent())) {
-            throw new AdminDataConflictException("복수 공급행 보정은 보정 공급행 확인·수정에서 처리해 주세요.");
-        }
-        if (request.rows().size() != sourceRows.size()) {
-            throw new AdminDataConflictException("공급행 구성이 변경되었습니다. 다시 조회해 주세요.");
+        var plans = request.splitPlans().stream().map(plan -> splitPlan(
+                splitSource(current, plan.rowIdentifier(), plan.token()), plan.rows(),
+                request.sourceUrl(), request.reason(), actor)).toList();
+        if (plans.stream().map(plan -> plan.source().sourceSupplyRowIdentifier()).distinct().count() != plans.size()) {
+            throw new InvalidIngestRequestException("같은 원천행을 두 번 나눌 수 없습니다.");
         }
         var selections = new LinkedHashMap<String, MyHomeSupplyMatchResult>();
         for (var selection : request.rows()) {
             var data = sourceRows.stream().filter(row -> row.sourceSupplyRowIdentifier()
                     .equals(selection.rowIdentifier())).findFirst()
                     .orElseThrow(() -> new InvalidIngestRequestException("해당 공고의 공급행이 아닙니다."));
+            if (groups.findBySourceRowIdentifier(data.source().getSourceKey()).isPresent()) {
+                throw new AdminDataConflictException("복수 공급행 보정은 보정 공급행 확인·수정에서 처리해 주세요.");
+            }
+            if (plans.stream().anyMatch(plan -> plan.source().sourceSupplyRowIdentifier()
+                    .equals(selection.rowIdentifier()))) {
+                throw new InvalidIngestRequestException("같은 공급행을 연결과 분할에 함께 선택할 수 없습니다.");
+            }
             if (!token(data).equals(selection.token())) {
                 throw new AdminDataConflictException("원천이 변경되었습니다. 다시 조회해 주세요.");
             }
@@ -163,17 +173,27 @@ public class AnnouncementSupplyMatchingService {
         if (existing != null && existing.isAdminModified() && existing.getProvider() != current.data().provider()) {
             throw new InvalidIngestRequestException("관리자가 변경한 공고 기관이 원천과 다릅니다. 공고 관리에서 확인해 주세요.");
         }
+        if (existing != null && !plans.isEmpty() && existing.getProvider() != current.data().provider()) {
+            throw new AdminDataConflictException("공고 기관이 원천과 다릅니다. 공고 관리에서 확인해 주세요.");
+        }
         var previous = announcements.findBySourceAnnouncementIdentifier(
                 current.data().previousSourceAnnouncementIdentifier()).orElse(null);
         if (current.data().previousSourceAnnouncementIdentifier() != null && previous == null) {
             throw new InvalidIngestRequestException("이전 공고를 먼저 등록해 주세요.");
         }
+        String rowsBefore = null;
+        if (!plans.isEmpty()) {
+            rowsBefore = json.writeValueAsString(rows(identifier));
+        }
         try {
-            var report = writer.writeSelected(current, previous, selections).report();
+            var report = writer.writeSelected(current, previous, selections, plans).report();
+            var announcement = announcements.findBySourceAnnouncementIdentifier(identifier).orElseThrow();
             if (request.rememberSelection()) {
-                var announcement = announcements.findBySourceAnnouncementIdentifier(identifier).orElseThrow();
                 for (var data : sourceRows) {
                     var match = selections.get(data.sourceSupplyRowIdentifier());
+                    if (match == null) {
+                        continue;
+                    }
                     var decision = decisions.findByRowIdentifier(data.sourceSupplyRowIdentifier())
                             .orElseGet(() -> new AnnouncementSupplyMatchDecision(data.sourceSupplyRowIdentifier()));
                     String before = json.writeValueAsString(savedMatch(data, false));
@@ -185,6 +205,11 @@ public class AnnouncementSupplyMatchingService {
                             before, json.writeValueAsString(Map.of("rowIdentifier", data.sourceSupplyRowIdentifier(),
                                     "decision", savedMatch(data, false)))));
                 }
+            }
+            if (!plans.isEmpty()) {
+                productRows.flush();
+                changes.save(new AdminDataChange("ANNOUNCEMENT", announcement.getId(), "SPLIT_SUPPLY", actor,
+                        rowsBefore, json.writeValueAsString(rows(identifier))));
             }
             return report;
         }
@@ -275,34 +300,12 @@ public class AnnouncementSupplyMatchingService {
         IngestExecutionScope.verifyHeld();
         validateEvidence(request.sourceUrl(), request.reason());
         var current = resolved(identifier);
-        var data = current.data().supplyRows().stream()
-                .filter(value -> value.sourceSupplyRowIdentifier().equals(request.rowIdentifier())).findFirst()
-                .orElseThrow(() -> new InvalidIngestRequestException("해당 공고의 원천행이 아닙니다."));
-        if (!token(data).equals(request.token())) {
-            throw new AdminDataConflictException("원천 또는 보정이 변경되었습니다. 다시 조회해 주세요.");
-        }
+        var data = splitSource(current, request.rowIdentifier(), request.token());
         var existing = announcements.findBySourceAnnouncementIdentifierForUpdate(identifier).orElse(null);
         if (existing != null && (existing.isAdminDeleted() || existing.getProvider() != current.data().provider())) {
             throw new AdminDataConflictException("삭제 상태 또는 공고 기관이 원천과 다릅니다. 공고 관리에서 확인해 주세요.");
         }
-        if (request.rows().stream().map(value -> value.complexId()).distinct().count() != 1
-                || request.rows().stream().map(value -> value.name().strip().toLowerCase(java.util.Locale.ROOT))
-                        .distinct().count() != request.rows().size()
-                || request.rows().stream().map(value -> value.housingTypeId())
-                        .distinct().count() != request.rows().size()) {
-            throw new InvalidIngestRequestException("같은 단지의 서로 다른 주택형과 중복되지 않는 공고 주택형명을 선택해 주세요.");
-        }
-        var selections = request.rows().stream().map(selection -> {
-            var match = matcher.matchSelected(data, selection.complexId(), selection.housingTypeId());
-            if (match.failure() != null) {
-                throw new InvalidIngestRequestException(match.failureDetail());
-            }
-            String target = fingerprints.target(match.housingType());
-            if (!target.equals(selection.targetToken())) {
-                throw new AdminDataConflictException("주택형 후보가 변경되었습니다. 다시 확인해 주세요.");
-            }
-            return new AnnouncementSupplySplitWriter.SplitTarget(selection.id(), selection.name(), match, target);
-        }).toList();
+        var plan = splitPlan(data, request.rows(), request.sourceUrl(), request.reason(), actor);
         var previous = announcements.findBySourceAnnouncementIdentifier(
                 current.data().previousSourceAnnouncementIdentifier())
                 .orElse(null);
@@ -311,8 +314,7 @@ public class AnnouncementSupplyMatchingService {
         }
         String before = json.writeValueAsString(rows(identifier));
         try {
-            writer.writeSplit(current, previous, new AnnouncementSupplySplitWriter.SplitPlan(
-                    data, selections, request.sourceUrl(), request.reason(), actor));
+            writer.writeSplit(current, previous, plan);
         } catch (MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException exception) {
             throw new InvalidIngestRequestException("정제 실패: " + exception.getMessage());
         }
@@ -323,6 +325,39 @@ public class AnnouncementSupplyMatchingService {
         changes.save(new AdminDataChange("ANNOUNCEMENT", announcement.getId(), "SPLIT_SUPPLY", actor,
                 before, json.writeValueAsString(result)));
         return result;
+    }
+
+    private MyHomeSupplyRowMappingData splitSource(MyHomeAnnouncementSupplyRowResolver.ResolvedAnnouncement current,
+            String rowIdentifier, String token) {
+        var data = current.data().supplyRows().stream()
+                .filter(value -> value.sourceSupplyRowIdentifier().equals(rowIdentifier)).findFirst()
+                .orElseThrow(() -> new InvalidIngestRequestException("해당 공고의 원천행이 아닙니다."));
+        if (!token(data).equals(token)) {
+            throw new AdminDataConflictException("원천 또는 보정이 변경되었습니다. 다시 조회해 주세요.");
+        }
+        return data;
+    }
+
+    private AnnouncementSupplySplitWriter.SplitPlan splitPlan(MyHomeSupplyRowMappingData data,
+            List<SplitSelection> rows, String sourceUrl, String reason, String actor) {
+        if (rows.stream().map(SplitSelection::complexId).distinct().count() != 1
+                || rows.stream().map(value -> value.name().strip().toLowerCase(java.util.Locale.ROOT))
+                        .distinct().count() != rows.size()
+                || rows.stream().map(SplitSelection::housingTypeId).distinct().count() != rows.size()) {
+            throw new InvalidIngestRequestException("같은 단지의 서로 다른 주택형과 중복되지 않는 공고 주택형명을 선택해 주세요.");
+        }
+        var targets = rows.stream().map(selection -> {
+            var match = matcher.matchSelected(data, selection.complexId(), selection.housingTypeId());
+            if (match.failure() != null) {
+                throw new InvalidIngestRequestException(match.failureDetail());
+            }
+            String target = fingerprints.target(match.housingType());
+            if (!target.equals(selection.targetToken())) {
+                throw new AdminDataConflictException("주택형 후보가 변경되었습니다. 다시 확인해 주세요.");
+            }
+            return new AnnouncementSupplySplitWriter.SplitTarget(selection.id(), selection.name(), match, target);
+        }).toList();
+        return new AnnouncementSupplySplitWriter.SplitPlan(data, targets, sourceUrl, reason, actor);
     }
 
     @Transactional
