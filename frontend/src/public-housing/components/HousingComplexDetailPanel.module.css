@@ -298,74 +298,32 @@
   background: var(--ds-color-brand-strong);
 }
 
-/* 주택형별 임대조건: 한 줄에 주택형 하나·조건 하나. 줄 사이 선 하나만 둔다. */
-.rentList {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-variant-numeric: tabular-nums;
+/* 주택형과 공급 대상별 임대조건을 행으로 비교한다. */
+.comparison th,
+.comparison td { padding-inline: 5px; }
+
+.comparison tbody th { vertical-align: middle; }
+
+.comparison thead th:first-child,
+.comparison tbody th[scope='rowgroup'] {
+  position: sticky;
+  z-index: 1;
+  left: 0;
+  background: var(--ds-color-table-heading);
 }
 
-.rentList > li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--ds-space-3);
-  padding-block: var(--ds-space-4);
+.comparison thead th:first-child {
+  z-index: 2;
 }
 
-.rentList > li:first-child {
-  padding-top: var(--ds-space-1);
-}
-
-.rentList > li + li {
-  border-top: 1px solid var(--ds-color-divider);
-}
-
-.rentType {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.rentType > strong {
-  font-size: 17px;
-  font-weight: 700;
-  line-height: 1.3;
-}
-
-.rentType > span {
+.conditionTarget {
+  display: block;
+  margin-top: 2px;
   color: var(--ds-color-label);
-  font-size: var(--ds-text-caption);
-  line-height: var(--ds-line-height-caption);
+  font-size: inherit;
+  font-weight: 400;
+  line-height: inherit;
   overflow-wrap: anywhere;
-}
-
-.rentMoney {
-  display: grid;
-  grid-template-columns: auto auto;
-  justify-content: end;
-  align-items: baseline;
-  gap: 2px var(--ds-space-3);
-  margin: 0;
-  text-align: right;
-}
-
-.rentMoney dt {
-  color: var(--ds-color-label);
-  font-size: var(--ds-text-caption);
-}
-
-/* 보증금만 굵게 두고 월 임대료는 보통 굵기로 둬 두 숫자가 경쟁하지 않게 한다. */
-.rentMoney dd {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.rentMoney dd[data-emphasis='true'] {
-  font-weight: 700;
 }
 
 .missingValue {
@@ -390,20 +348,22 @@
 .housingTypeTabs {
   display: flex;
   min-width: 0;
-  flex-wrap: wrap;
-  gap: var(--ds-space-3);
-  border-bottom: 1px solid var(--ds-color-divider);
+  overflow-x: auto;
+  gap: var(--ds-space-1);
+  overscroll-behavior-x: contain;
+  scrollbar-color: #c7cbd1 transparent;
+  scrollbar-width: thin;
 }
 
 .housingTypeTab {
   min-width: 72px;
   min-height: 44px;
   flex: 0 0 auto;
-  padding: var(--ds-space-2) var(--ds-space-1);
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: var(--ds-color-surface);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: var(--ds-color-surface-subtle);
   color: var(--ds-color-label);
   font: inherit;
   font-weight: 500;
@@ -412,9 +372,10 @@
 }
 
 .housingTypeTab[aria-selected='true'] {
-  border-bottom-color: var(--ds-color-brand);
-  color: var(--ds-color-text);
-  font-weight: 600;
+  border-color: var(--ds-color-brand);
+  background: var(--ds-color-brand);
+  color: var(--ds-color-on-brand);
+  font-weight: 700;
 }
 
 .housingTypeTab:hover:not([aria-selected='true']) {
@@ -423,7 +384,15 @@
 
 .housingTypePanel {
   min-width: 0;
-  padding-top: var(--ds-space-4);
+  padding: var(--ds-space-4) var(--ds-space-3);
+  border: 3px solid var(--ds-color-action);
+  border-radius: 0 10px 10px 10px;
+  background: var(--ds-color-surface);
+}
+
+.housingTypePanel > dl dt,
+.housingTypePanel > dl dd {
+  font-weight: 700;
 }
 
 .housingTypePanel > h4,

@@ -368,6 +368,7 @@
 
 .receptionList a,
 .attachmentList a,
+.complexHeading button,
 .housingTypeHeading button {
   display: inline-flex;
   min-height: 36px;
@@ -391,163 +392,159 @@
 }
 
 
+.complexList,
+.housingTypeGroups,
+.housingTypes {
+  display: grid;
+  gap: var(--ds-space-4);
+}
+
+.complexCard {
+  min-width: 0;
+}
+
+.complexCard + .complexCard,
 .housingTypeCard + .housingTypeCard {
   padding-top: var(--ds-space-4);
   border-top: 1px solid var(--detail-line);
 }
 
-/* 공급 주택형: 단지마다 이름 한 줄과 주택형 표 하나. 한눈에 훑는 용도라 표로 둔다. */
-.supplyComplex + .supplyComplex {
-  margin-top: var(--ds-space-5);
-  padding-top: var(--ds-space-4);
-  border-top: 1px solid var(--ds-color-divider);
+.complexSummary {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  gap: var(--ds-space-3);
+  margin-top: var(--ds-space-2);
+  grid-template-columns: 92px minmax(0, 1fr);
 }
 
-.supplyComplexHead {
+.complexSummary[data-has-image='false'] {
+  display: block;
+}
+
+.complexImage {
+  display: grid;
+  min-height: 100px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--ds-color-surface-subtle);
+  color: var(--detail-muted);
+  font-size: var(--ds-text-caption);
+  line-height: var(--ds-line-height-caption);
+  text-align: center;
+  place-items: center;
+}
+
+.complexImage img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.complexBody {
+  min-width: 0;
+}
+
+.complexHeading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  flex-wrap: wrap;
+}
+
+.complexHeading > div {
   display: flex;
   min-width: 0;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--ds-space-3);
-  margin-bottom: var(--ds-space-2);
-}
-
-.supplyComplexHead > div {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
+  gap: var(--ds-space-2);
   flex-wrap: wrap;
-  gap: 2px var(--ds-space-2);
 }
 
-.supplyComplexHead strong {
+.complexHeading strong {
   min-width: 0;
-  font-size: 16px;
+  color: var(--ds-color-text);
+  font-size: var(--ds-text-body);
+  line-height: var(--ds-line-height-body);
   font-weight: 700;
-  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
-.supplyComplexHead > div > span {
+.complexHeading span {
+  flex: 0 0 auto;
   color: var(--ds-color-label);
   font-size: var(--ds-text-caption);
-}
-
-/* 단지 상세로 가는 버튼: 평 전환과 같은 흰 바탕 테두리 버튼. */
-.complexDetailButton {
-  display: inline-flex;
-  flex: none;
-  min-height: 36px;
-  align-items: center;
-  padding: 0 14px;
-  border: 1px solid var(--ds-color-divider);
-  border-radius: 8px;
-  background: var(--ds-color-surface);
-  color: var(--ds-color-label);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--ds-text-caption);
-  font-weight: 700;
-}
-
-.complexDetailButton:hover {
-  background: var(--ds-color-control-hover);
-}
-
-.complexDetailButton:focus-visible {
-  outline: 2px solid var(--ds-color-action);
-  outline-offset: 2px;
-}
-
-/* 회색 머리줄, 가로선만, 가운데 정렬. 금액은 보증금 굵게·월 임대료 아래 작은 글자. */
-.supplyTable table {
-  border-block: 0;
-  font-variant-numeric: tabular-nums;
-}
-
-.supplyTable :is(th, td) {
-  padding: var(--ds-space-3) 4px;
-  border-left: 0;
-  text-align: center;
-  vertical-align: middle;
-}
-
-.supplyTable thead th {
-  padding-block: var(--ds-space-2);
-  background: var(--ds-color-table-heading);
-  color: var(--ds-color-label);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.35;
-}
-
-.supplyTable tbody th > strong,
-.supplyTable td > strong {
-  display: block;
-  color: var(--ds-color-text);
-  font-weight: 700;
-}
-
-.supplyTable tbody th > span,
-.supplyTable td > span {
-  display: block;
-  color: var(--ds-color-muted);
-  font-size: 12px;
+  line-height: var(--ds-line-height-caption);
   font-weight: 400;
 }
 
-.supplyTable td > span[data-missing='true'] {
-  color: var(--ds-color-muted);
-}
-
-.supplyNote {
-  margin: var(--ds-space-2) 0 0;
-  color: var(--ds-color-label);
-  font-size: var(--ds-text-caption);
-}
-
-.supplyDetails {
-  margin-top: var(--ds-space-1);
-}
-
-.supplyDetails > summary {
-  display: inline-flex;
-  min-height: 36px;
-  align-items: center;
-  color: var(--ds-color-label);
-  cursor: pointer;
-  font-size: var(--ds-text-caption);
-  font-weight: 600;
-  list-style: none;
-}
-
-.supplyDetails > summary::-webkit-details-marker {
-  display: none;
-}
-
-.supplyDetails > summary::after {
-  content: "›";
-  margin-left: 4px;
-  transition: transform 150ms ease-out;
-}
-
-.supplyDetails[open] > summary::after {
-  transform: rotate(90deg);
-}
-
-.supplyDetails[open] > summary {
-  margin-bottom: var(--ds-space-3);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .supplyDetails > summary::after { transition: none; }
-}
-
-
+.complexHeading button,
 .housingTypeHeading button {
   flex: 0 0 auto;
 }
 
+.complexBody > p {
+  margin: 0;
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+  line-height: var(--ds-line-height-caption);
+  overflow-wrap: anywhere;
+}
+
+.complexCounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-3);
+  margin-top: var(--ds-space-2);
+  color: var(--detail-muted);
+  font-size: var(--ds-text-caption);
+  line-height: var(--ds-line-height-caption);
+}
+
+.complexCounts b {
+  color: var(--ds-color-label);
+  font-weight: 500;
+}
+
+.complexRanges {
+  margin-top: var(--ds-space-3);
+}
+
+.housingTypeGroup {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--detail-line);
+  border-radius: var(--ds-radius-control);
+  background: var(--ds-color-surface);
+}
+
+.housingTypeGroupHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-3);
+  background: var(--ds-color-brand);
+  color: var(--ds-color-on-brand);
+  overflow-wrap: anywhere;
+}
+
+.housingTypeGroupHeading h4 {
+  min-width: 0;
+  margin: 0;
+  font: inherit;
+  font-weight: 700;
+}
+
+.housingTypeGroupHeading span {
+  flex: none;
+  max-width: 50%;
+}
+
+.housingTypes {
+  padding: var(--ds-space-4);
+}
 
 .housingTypeCard {
   min-width: 0;
@@ -859,3 +856,8 @@
 }
 
 .documents nav button { cursor: pointer; }
+
+.complexHeading button:focus-visible { outline: 2px solid var(--ds-color-action); }
+.housingTypeCard table { border-block: 1px solid var(--ds-color-table-line); }
+.housingTypeCard th { background: var(--ds-color-table-heading); font-weight: 600; }
+.housingTypeCard :is(th, td) + :is(th, td) { border-left: 1px solid var(--ds-color-table-line); }

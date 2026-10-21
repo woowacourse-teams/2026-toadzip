@@ -56,11 +56,21 @@ interface RequestCandidate {
   readonly signature: string
 }
 
+// Keep recent views during exploration without retaining old counts indefinitely.
+const RESULT_CACHE_LIMIT = 20
+const RESULT_CACHE_TTL_MS = 5 * 60 * 1000
+
+interface CachedResult {
+  readonly applied: AppliedHousingMapResult
+  readonly expiresAt: number
+  readonly signatures: readonly string[]
+}
+
 export function useHousingMapResults(
   repository: HousingMapRepository,
 ) {
   const [state, setState] = useState<HousingMapResultsState>(INITIAL_STATE)
-  const appliedSignatureRef = useRef<string | null>(null)
+  const resultCacheRef = useRef<CachedResult[]>([])
   const failedRequestRef = useRef<RequestCandidate | null>(null)
   const pendingRequestRef = useRef<PendingRequest | null>(null)
   const requestRevisionRef = useRef(0)
@@ -99,13 +109,27 @@ export function useHousingMapResults(
       return
     }
     pendingRequestRef.current = null
-    appliedSignatureRef.current = requestSignature(
-      candidate.baseSignature,
-      result.resolvedStage,
-    )
+    const applied = { query: candidate.query, result }
+    // The response stage becomes the next request's previous stage. Preserve
+    // both keys, without sharing results across unobserved stage transitions.
+    const signatures = [
+      candidate.signature,
+      requestSignature(candidate.baseSignature, result.resolvedStage),
+    ]
+    const now = Date.now()
+    resultCacheRef.current = [{
+      applied,
+      expiresAt: now + RESULT_CACHE_TTL_MS,
+      signatures,
+    }, ...resultCacheRef.current.filter((cached) =>
+      cached.expiresAt > now
+      && cached.applied.result.policyVersion === result.policyVersion
+      && cached.applied.result.regionDatasetVersion === result.regionDatasetVersion
+      && !cached.signatures.some((signature) => signatures.includes(signature)),
+    )].slice(0, RESULT_CACHE_LIMIT)
     resolvedStageRef.current = result.resolvedStage
     setState({
-      applied: { query: candidate.query, result },
+      applied,
       errorMessage: null,
       status: 'ready',
     })
@@ -149,17 +173,22 @@ export function useHousingMapResults(
     if (pendingRequestRef.current?.signature === candidate.signature) {
       return 'pending' as const
     }
-    if (restoreAppliedResult(candidate.signature)) {
+    if (restoreCachedResult(candidate.signature)) {
       return 'applied' as const
     }
     startRequest(candidate)
     return 'started'
   }, [startRequest])
 
-  function restoreAppliedResult(signature: string) {
-    if (appliedSignatureRef.current !== signature) {
+  function restoreCachedResult(signature: string) {
+    const index = resultCacheRef.current.findIndex((cached) =>
+      cached.expiresAt > Date.now() && cached.signatures.includes(signature),
+    )
+    if (index < 0) {
       return false
     }
+    const [cached] = resultCacheRef.current.splice(index, 1)
+    resultCacheRef.current.unshift(cached)
     const pendingRequest = pendingRequestRef.current
     if (pendingRequest !== null) {
       requestRevisionRef.current += 1
@@ -167,11 +196,12 @@ export function useHousingMapResults(
       pendingRequestRef.current = null
     }
     failedRequestRef.current = null
-    setState((current) => ({
-      ...current,
+    resolvedStageRef.current = cached.applied.result.resolvedStage
+    setState({
+      applied: cached.applied,
       errorMessage: null,
       status: 'ready',
-    }))
+    })
     return true
   }
 

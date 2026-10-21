@@ -153,9 +153,9 @@ describe('HousingComplexDetailPanel', () => {
         },
       })),
     }))
-    const comparison = within(panel).getByRole('list', { name: '주택형별 임대조건 비교' })
-    const firstRow = within(comparison).getAllByText('기본 임대조건')[0]!.closest('li')!
-    expect(within(firstRow).getByText('36A', { selector: 'strong' })).toBeInTheDocument()
+    const comparison = within(panel).getByRole('table', { name: '주택형별 임대조건 비교' })
+    const firstRow = within(comparison).getByRole('rowheader', { name: '36A' }).closest('tr')!
+    expect(within(firstRow).getByText('기본 임대조건')).toBeInTheDocument()
     expect(within(firstRow).getByText('4,200만원')).toBeInTheDocument()
     expect(within(firstRow).getByText('18만 5,500원')).toBeInTheDocument()
     const firstPanel = within(panel).getByRole('tabpanel', { name: '36A' })
@@ -177,16 +177,18 @@ describe('HousingComplexDetailPanel', () => {
       basicRentalCondition: { deposit: 42_000_000, monthlyRent: 185_500, source: 'MYHOME', sourceUrl: null, collectedAt: null },
       currentSupplyConditions: [{ target: '청년', deposit: null, monthlyRent: 200_000, convertibleDeposit: null }],
     }] }))
-    const table = within(panel).getByRole('list', { name: '주택형별 임대조건 비교' })
-    const basicRow = within(table).getByText('기본 임대조건').closest('li')!
+    const table = within(panel).getByRole('table', { name: '주택형별 임대조건 비교' })
+    const basicRow = within(table).getByText('기본 임대조건').closest('tr')!
     expect(within(basicRow).getByText('4,200만원')).toBeInTheDocument()
     expect(within(basicRow).getByText('18만 5,500원')).toBeInTheDocument()
-    const currentRow = within(table).getByText('청년').closest('li')!
+    const currentRow = within(table).getByText('청년').closest('tr')!
     expect(within(currentRow).getByText('현재 공급')).toBeInTheDocument()
-    expect(within(currentRow).getByText('공고문 확인')).toBeInTheDocument()
+    expect(within(currentRow).getByRole('cell', { name: '공고문 확인' })).toBeInTheDocument()
     expect(within(currentRow).getByText('20만원')).toBeInTheDocument()
-    expect(within(table).getAllByText('36A', { selector: 'strong' })).toHaveLength(2)
-    expect(within(panel).getByRole('group', { name: '36A 청년 현재 공급 조건' })).not.toHaveTextContent('4,200만원')
+    expect(within(table).getByRole('rowheader', { name: '36A' })).toHaveAttribute('rowspan', '2')
+    expect(within(panel).getByRole('table', { name: '36A 청년 현재 공급 조건' })).not.toHaveTextContent('4,200만원')
+    expect(within(within(panel).getByRole('table', { name: '36A 청년 현재 공급 조건' }))
+      .getAllByRole('cell', { name: '공고문 확인' })).toHaveLength(2)
   })
 
   it.each([null, 'javascript:alert(1)'])('출처 주소 %s는 링크로 만들지 않고 잘못된 수집일은 표시하지 않는다', (sourceUrl) => {
@@ -437,17 +439,26 @@ describe('HousingComplexDetailPanel', () => {
     expect(within(housingType).getAllByText('0원')).toHaveLength(3)
   })
 
-  it('대상별 공급 조건을 표 대신 이름/값 목록으로 표시한다', () => {
+  it('대상별 공급 조건을 항목·금액 두 쌍의 4열 표로 표시한다', () => {
     const { panel } = renderPanel()
-    const group = within(panel).getByRole('group', { name: '36A 청년 현재 공급 조건' })
+    const table = within(panel).getByRole('table', { name: '36A 청년 현재 공급 조건' })
 
-    expect(within(group).queryByRole('table')).not.toBeInTheDocument()
-    expect(group.querySelector('dl')).toHaveAttribute('data-appearance', 'list')
-    expect(factValue(group, '임대보증금').getByText('5,000만원')).toBeInTheDocument()
-    expect(factValue(group, '월 임대료').getByText('20만원')).toBeInTheDocument()
-    expect(factValue(group, '전환 가능 보증금').getByText('공고문 확인')).toBeInTheDocument()
-    expect(within(group).getByText('5,000만원').parentElement).toHaveAttribute('data-emphasis', 'true')
-    expect(within(group).getByText('전환 가능 보증금').parentElement).not.toHaveAttribute('data-emphasis')
+    expect(within(table).queryByRole('columnheader')).not.toBeInTheDocument()
+    expect(within(table).getAllByRole('rowheader')).toHaveLength(3)
+    expect(within(table).getByRole('rowheader', { name: '임대보증금' }))
+      .toHaveAttribute('scope', 'row')
+    expect(within(table).getByRole('row', { name: '임대보증금 5,000만원 월 임대료 20만원' }))
+      .toBeInTheDocument()
+    expect(within(table).getByRole('cell', { name: '5,000만원' }))
+      .toHaveAttribute('headers', within(table).getByRole('rowheader', { name: '임대보증금' }).id)
+    expect(within(table).getByRole('cell', { name: '20만원' }))
+      .toHaveAttribute('headers', within(table).getByRole('rowheader', { name: '월 임대료' }).id)
+    expect(within(table).getByRole('row', { name: '전환 가능 보증금 공고문 확인' }))
+      .toBeInTheDocument()
+    expect(within(table).getByRole('cell', { name: '5,000만원' }))
+      .toHaveAttribute('data-emphasis', 'true')
+    expect(within(table).getByRole('cell', { name: '공고문 확인' }))
+      .not.toHaveAttribute('data-emphasis')
   })
 
   it('금액을 원 단위 전체 금액으로 표시한다', () => {
@@ -463,17 +474,17 @@ describe('HousingComplexDetailPanel', () => {
         }],
       }],
     }))
-    const group = within(panel).getByRole('group', { name: '36A 청년 현재 공급 조건' })
+    const table = within(panel).getByRole('table', { name: '36A 청년 현재 공급 조건' })
 
-    expect(factValue(group, '임대보증금').getByText('1억 8,000만원')).toBeInTheDocument()
-    expect(factValue(group, '월 임대료').getByText('20만 5,500원')).toBeInTheDocument()
-    expect(factValue(group, '전환 가능 보증금').getByText('1,800만원')).toBeInTheDocument()
+    expect(within(table).getByRole('cell', { name: '1억 8,000만원' })).toBeInTheDocument()
+    expect(within(table).getByRole('cell', { name: '20만 5,500원' })).toBeInTheDocument()
+    expect(within(table).getByRole('cell', { name: '1,800만원' })).toBeInTheDocument()
     expect(factValue(panel, '관리비').getByText('12만 3,456원')).toBeInTheDocument()
   })
 
   it('비교표는 읽기 전용으로 두고 주택형 정보의 독립 탭으로 상세를 바꾼다', () => {
     const { panel } = renderPanel()
-    const table = within(panel).getByRole('list', { name: '주택형별 임대조건 비교' })
+    const table = within(panel).getByRole('table', { name: '주택형별 임대조건 비교' })
     const information = section(panel, '주택형 정보')
     const tabs = within(information).getByRole('tablist', { name: '주택형 선택' })
     const firstTab = within(tabs).getByRole('tab', { name: '36A' })
@@ -481,7 +492,7 @@ describe('HousingComplexDetailPanel', () => {
     const firstPanel = within(information).getByRole('tabpanel', { name: '36A' })
 
     expect(within(table).queryByRole('button')).not.toBeInTheDocument()
-    expect(within(table).getByText('36A', { selector: 'strong' })).toBeInTheDocument()
+    expect(within(table).getByRole('rowheader', { name: '36A' })).toBeInTheDocument()
     expect(firstTab).toHaveAttribute('aria-selected', 'true')
     expect(firstTab).toHaveAttribute('tabindex', '0')
     expect(secondTab).toHaveAttribute('aria-selected', 'false')
@@ -499,6 +510,8 @@ describe('HousingComplexDetailPanel', () => {
     expect(firstTab).toHaveAttribute('tabindex', '-1')
     expect(secondTab).toHaveAttribute('aria-controls', secondPanel.id)
     expect(secondPanel).toHaveAttribute('aria-labelledby', secondTab.id)
+    expect(factValue(secondPanel, '기본 보증금').getByText('공고문 확인')).toBeInTheDocument()
+    expect(factValue(secondPanel, '기본 월 임대료').getByText('공고문 확인')).toBeInTheDocument()
     expect(within(information).queryByRole('tabpanel', { name: '36A' })).not.toBeInTheDocument()
     expect(within(table).queryByRole('button')).not.toBeInTheDocument()
     expect(table.querySelector('[data-selected]')).toBeNull()
@@ -528,7 +541,7 @@ describe('HousingComplexDetailPanel', () => {
     }
   })
 
-  it('여러 줄의 주택형 탭에서 Home·End로 이동하면 포커스된 탭을 상세 스크롤 안에 드러낸다', () => {
+  it('화면 밖의 주택형 탭으로 Home·End 이동하면 탭 줄과 상세 스크롤 안에 드러낸다', () => {
     const { panel } = renderPanel(detailWith({
       housingTypes: [...BASE_DETAIL.housingTypes, { ...BASE_DETAIL.housingTypes[1], housingTypeId: '103', name: '59C' }],
     }))
@@ -538,9 +551,10 @@ describe('HousingComplexDetailPanel', () => {
     const lastTab = within(tabs).getByRole('tab', { name: '59C' })
     content.scrollTop = 320
     vi.spyOn(content, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 100, 300, 400))
-    vi.spyOn(firstTab, 'getBoundingClientRect').mockImplementation(() => new DOMRect(100, 420 - content.scrollTop, 80, 44))
+    vi.spyOn(tabs, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 100, 300, 44))
+    vi.spyOn(firstTab, 'getBoundingClientRect').mockImplementation(() => new DOMRect(100 - tabs.scrollLeft, 420 - content.scrollTop, 80, 44))
     vi.spyOn(lastTab, 'getBoundingClientRect').mockImplementation(() => new DOMRect(
-      100, 900 - content.scrollTop, 80, 44,
+      500 - tabs.scrollLeft, 900 - content.scrollTop, 80, 44,
     ))
     const focus = vi.spyOn(lastTab, 'focus')
 
@@ -550,11 +564,13 @@ describe('HousingComplexDetailPanel', () => {
     expect(focus).toHaveBeenCalledWith({ preventScroll: true })
     expect(lastTab.getBoundingClientRect().bottom).toBe(content.getBoundingClientRect().bottom)
     expect(content.scrollTop).toBe(444)
+    expect(tabs.scrollLeft).toBe(180)
 
     fireEvent.keyDown(lastTab, { key: 'Home' })
     expect(firstTab).toHaveFocus()
     expect(firstTab.getBoundingClientRect().top).toBe(content.getBoundingClientRect().top)
     expect(content.scrollTop).toBe(320)
+    expect(tabs.scrollLeft).toBe(0)
   })
 
   it('상세를 처음 열면 화면 아래의 선택 주택형으로 자동 스크롤하지 않는다', () => {
@@ -587,7 +603,7 @@ describe('HousingComplexDetailPanel', () => {
     expect(screen.getByRole('tabpanel', { name: '36A' })).toBeVisible()
   })
 
-  it('3열 비교표의 각 행 첫 칸에 주택형을 두고 대상별 보증금·월세 쌍을 섞지 않으며 조건 없는 주택형도 선택할 수 있다', () => {
+  it('4열 비교표에 대상별 보증금·월세 쌍을 섞지 않고 표시하며 조건 없는 주택형도 선택할 수 있다', () => {
     const { panel } = renderPanel(detailWith({
       housingTypes: [{
         ...BASE_DETAIL.housingTypes[0],
@@ -597,22 +613,18 @@ describe('HousingComplexDetailPanel', () => {
         ],
       }, BASE_DETAIL.housingTypes[1]],
     }))
-    const table = within(panel).getByRole('list', { name: '주택형별 임대조건 비교' })
-    expect(within(within(table).getAllByRole('listitem')[0]!).getAllByRole('term').map((term) => term.textContent))
-      .toEqual(['보증금', '월 임대료'])
-    const youngRow = within(table).getByText('청년').closest('li')!
+    const table = within(panel).getByRole('table', { name: '주택형별 임대조건 비교' })
+    expect(within(table).getAllByRole('columnheader')).toHaveLength(4)
+    const youngRow = within(table).getByText('청년').closest('tr')!
     expect(within(youngRow).getByText('5,000만원')).toBeInTheDocument()
     expect(within(youngRow).getByText('20만원')).toBeInTheDocument()
-    const studentRow = within(table).getByText('대학생').closest('li')!
+    const studentRow = within(table).getByText('대학생').closest('tr')!
     expect(within(studentRow).getByText('4,000만원')).toBeInTheDocument()
     expect(within(studentRow).getByText('22만원')).toBeInTheDocument()
-    expect(within(youngRow).getByText('36A', { selector: 'strong' })).toBeInTheDocument()
-    expect(within(youngRow).queryByText('현재 공급')).not.toBeInTheDocument()
-    expect(within(studentRow).getByText('36A', { selector: 'strong' })).toBeInTheDocument()
-    expect(within(table).getAllByText('36A', { selector: 'strong' })).toHaveLength(2)
+    expect(within(table).getByRole('rowheader', { name: '36A' })).toHaveAttribute('rowspan', '2')
     expect(within(table).queryByRole('button')).not.toBeInTheDocument()
-    const missingRow = within(table).getByText('44B', { selector: 'strong' }).closest('li')!
-    expect(within(missingRow).getAllByText('공고문 확인')).toHaveLength(2)
+    const missingRow = within(table).getByRole('rowheader', { name: '44B' }).closest('tr')!
+    expect(within(missingRow).getAllByRole('cell', { name: '공고문 확인' })).toHaveLength(2)
     fireEvent.click(within(panel).getByRole('tab', { name: '44B' }))
     expect(within(panel).getByRole('tabpanel', { name: '44B' })).toBeInTheDocument()
   })
@@ -768,7 +780,7 @@ describe('HousingComplexDetailPanel', () => {
     expect(within(basicFacts as HTMLElement).getByText('공급기관').tagName).toBe('DT')
     const announcementFacts = within(panel).getByText('접수 시작').closest('dl')
     expect(announcementFacts).toHaveAttribute('data-appearance', 'list')
-    expect(within(panel).getByRole('list', { name: '주택형별 임대조건 비교' })).toBeInTheDocument()
+    expect(within(panel).getByRole('table', { name: '주택형별 임대조건 비교' })).toBeInTheDocument()
   })
 
   it('좁은 화면의 항목표·공급표와 키보드 focus-visible 규칙을 스타일에 고정한다', () => {

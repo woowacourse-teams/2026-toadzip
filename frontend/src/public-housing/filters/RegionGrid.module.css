@@ -1,0 +1,23 @@
+.root { min-width: 0; }
+.path { display: flex; border-bottom: 1px solid var(--ds-color-divider); gap: 4px; padding-bottom: 12px; margin-bottom: 14px; }
+.path button { flex: 1; min-width: 0; border: 0; border-radius: 6px; background: transparent; padding: 10px 6px; color: var(--ds-color-label); font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.path button[aria-pressed='true'] { background: var(--ds-color-action-soft); color: var(--ds-color-action); font-weight: 700; }
+.path button:disabled { color: var(--ds-color-label); opacity: .55; cursor: not-allowed; }
+.path button:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: -2px; }
+.back { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; margin: -6px 0 8px; padding: 0 8px 0 2px; border: 0; border-radius: 6px; background: transparent; color: var(--ds-color-label); font-size: 13px; font-weight: 500; cursor: pointer; }
+.back svg { width: 18px; height: 18px; }
+.back:hover { background: var(--ds-color-surface-subtle); color: var(--ds-color-text); }
+.back:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: -2px; }
+@media (max-width: 767px) { .back { min-height: 44px; } }
+.group { border: 0; margin: 0; padding: 0; min-width: 0; }
+.group legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.option { position: relative; min-width: 0; cursor: pointer; }
+.option input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.option span { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 4px; border-radius: 6px; font-size: 14px; color: var(--ds-color-label); text-align: center; word-break: keep-all; }
+.option:hover span { background: var(--ds-color-surface-subtle); }
+.option input:checked + span { background: var(--ds-color-action-soft); color: var(--ds-color-action); font-weight: 700; }
+.option input:focus-visible + span { outline: 2px solid var(--ds-color-action); outline-offset: -2px; }
+.message, .error { font-size: 13px; line-height: 1.6; margin: 14px 0 0; color: var(--ds-color-label); }
+.error { color: var(--ds-color-deadline); }
+.selectionStatus { margin: 0 0 14px; padding: 9px 12px; background: var(--ds-color-surface-subtle); color: var(--ds-color-label); border-radius: 6px; font-size: 13px; line-height: 1.5; }

@@ -1106,6 +1106,9 @@ export function PublicHousingExplorer({
         transitionWaitingForIdleRef.current = false
       }
       const outcome = requestServerMap(nextViewport, complexFilters)
+      if (outcome === 'applied') {
+        setAnimateMarkerEntry(false)
+      }
       if (clusterTransitionRef.current && (outcome === 'applied' || outcome === 'ignored')) {
         finishClusterTransition()
       }

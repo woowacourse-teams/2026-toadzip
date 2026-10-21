@@ -22,7 +22,8 @@ export const TOPICS = [
 ] as const satisfies readonly (readonly [FilterTopic, string])[]
 export const DESKTOP_TOPICS = [['all', '전체'], ...TOPICS] as const
 export const DESKTOP_PRIMARY_TOPICS = [
-  ...DESKTOP_TOPICS, ['recruiting', '모집중'],
+  ['region', '지역'], ['rentalType', '임대유형'],
+  ['price', '가격'], ['exclusiveArea', '전용면적'], ['all', '전체'], ['recruiting', '모집중'],
 ] as const satisfies readonly (readonly [ToolbarTopic, string])[]
 
 export const DETAIL_FILTER_TOPICS = [
@@ -35,13 +36,13 @@ export const MOBILE_PRIMARY_TOPICS = DESKTOP_PRIMARY_TOPICS
 export const MOBILE_SHEET_TOPICS = TOPICS
 
 export const POPOVER_WIDTHS = {
-  all: 420,
+  all: 320,
   region: 320,
   rentalType: 320,
   agency: 320,
   recruitmentType: 320,
-  price: 420,
-  exclusiveArea: 380,
+  price: 320,
+  exclusiveArea: 320,
   builtYear: 320,
 } as const satisfies Record<DesktopFilterTopic, number>
 

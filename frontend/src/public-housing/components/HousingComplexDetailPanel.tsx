@@ -2,7 +2,6 @@ import { captureProductEvent } from '../../analytics/productAnalytics'
 import { detailVisitId, useDetailScrollAnalytics } from './detailAnalytics'
 import { toHttpUrl } from '../presentation/httpUrl.ts'
 import {
-  Fragment,
   type KeyboardEvent,
   type ReactNode,
   useEffect,
@@ -15,6 +14,7 @@ import {
   DetailFact,
   DetailFacts,
   DetailSection,
+  DetailTable,
 } from './DetailPrimitives'
 import { formatHousingMoneyReadable } from '../presentation/housingMoney'
 import { MISSING_DATA_LABEL } from '../presentation/missingData'
@@ -238,38 +238,51 @@ export function HousingComplexDetailPanel({
           <>
             <DetailSection appearance="block" title="주택형별 임대조건"
               actions={<AreaUnitToggle unit={areaUnit} onToggle={toggleAreaUnit} />}>
-              {/* 한 줄에 주택형 하나·조건 하나. 왼쪽은 주택형, 오른쪽은 보증금·월 임대료를 위아래로 둔다. */}
-              <ul className={styles.rentList} aria-label="주택형별 임대조건 비교">
-                {detail.housingTypes.flatMap((housingType) => {
-                  const area = formatArea(housingType.exclusiveArea, areaUnit, '')
-                  const hasBasic = housingType.basicRentalCondition !== null
-                  return rentalComparisonConditions(housingType).map((condition, conditionIndex) => {
-                    const parts = [area, ...comparisonConditionParts(condition, hasBasic)].filter(Boolean)
+              <div className={styles.comparison}>
+                <DetailTable caption="주택형별 임대조건 비교" minWidth={520}>
+                  <colgroup>
+                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '28%' }} />
+                    <col style={{ width: '27%' }} />
+                    <col style={{ width: '27%' }} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th scope="col">주택형</th>
+                      <th scope="col">전용면적<span className={styles.conditionTarget}>조건 / 공급 대상</span></th>
+                      <th scope="col">보증금</th>
+                      <th scope="col">월 임대료</th>
+                    </tr>
+                  </thead>
+                  {detail.housingTypes.map((housingType) => {
+                    const conditions = rentalComparisonConditions(housingType)
                     return (
-                      <li key={`${housingType.housingTypeId}-${conditionIndex}`}>
-                        <div className={styles.rentType}>
-                          <strong>{housingTypeName(housingType)}</strong>
-                          {parts.length > 0 && (
-                            <span>
-                              {parts.map((part, index) => (
-                                <Fragment key={part}>{index > 0 && ' · '}<span>{part}</span></Fragment>
-                              ))}
-                            </span>
-                          )}
-                        </div>
-                        <dl className={styles.rentMoney}>
-                          <dt>보증금</dt>
-                          <dd data-emphasis={Number.isFinite(condition?.deposit) || undefined}>
-                            <DetailMoney value={condition?.deposit ?? null} />
-                          </dd>
-                          <dt>월 임대료</dt>
-                          <dd><DetailMoney value={condition?.monthlyRent ?? null} /></dd>
-                        </dl>
-                      </li>
+                      <tbody key={housingType.housingTypeId}>
+                        {conditions.map((condition, conditionIndex) => (
+                          <tr key={conditionIndex}>
+                            {conditionIndex === 0 && (
+                              <th scope="rowgroup" rowSpan={conditions.length}>
+                                {housingTypeName(housingType)}
+                              </th>
+                            )}
+                            <td>
+                              {formatArea(housingType.exclusiveArea, areaUnit, '')}
+                              <span className={styles.conditionTarget}>{condition?.label ?? ''}</span>
+                              {condition?.target && <span className={styles.conditionTarget}>{condition.target}</span>}
+                            </td>
+                            <td data-numeric data-emphasis={Number.isFinite(condition?.deposit) || undefined}>
+                              <DetailMoney value={condition?.deposit} />
+                            </td>
+                            <td data-numeric data-emphasis={Number.isFinite(condition?.monthlyRent) || undefined}>
+                              <DetailMoney value={condition?.monthlyRent} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
                     )
-                  })
-                })}
-              </ul>
+                  })}
+                </DetailTable>
+              </div>
             </DetailSection>
             <DetailSection appearance="block" title="주택형 정보">
               <div
@@ -526,7 +539,7 @@ function HousingTypePanel({
         <h4>선택 주택형 상세</h4>
         <AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} />
       </div>
-      <DetailFacts columns={2} appearance="list">
+      <DetailFacts columns={2}>
         <DetailFact term="주택형" value={name} />
         <DetailFact term="전용 면적" value={formatArea(housingType.exclusiveArea, areaUnit, '')} />
         <DetailFact term="공급 면적" value={formatArea(housingType.supplyArea, areaUnit, '')} />
@@ -546,7 +559,7 @@ function HousingTypePanel({
           {housingType.currentSupplyConditions.map((condition, index) => (
             <li key={`${condition.target ?? 'unknown'}-${index}`}>
               <strong>{condition.target ?? ''}</strong>
-              <SupplyConditionFacts housingTypeName={name} condition={condition} />
+              <SupplyConditionTable housingTypeName={name} condition={condition} />
             </li>
           ))}
         </ul>
@@ -564,7 +577,7 @@ function BasicRentalCondition({ condition }: { condition: ComplexBasicRentalCond
   return (
     <>
       <h4>기본 임대조건</h4>
-      <DetailFacts columns={2} appearance="list">
+      <DetailFacts columns={1}>
         <DetailFact term="기본 보증금" value={formatDetailMoney(condition?.deposit ?? null)} emphasis={Number.isFinite(condition?.deposit)} />
         <DetailFact term="기본 월 임대료" value={formatDetailMoney(condition?.monthlyRent ?? null)} emphasis={Number.isFinite(condition?.monthlyRent)} />
       </DetailFacts>
@@ -581,20 +594,6 @@ function BasicRentalCondition({ condition }: { condition: ComplexBasicRentalCond
   )
 }
 
-/**
- * 기본 임대조건 행은 조건 이름을, 현재 공급 행은 공급 대상을 보여 준다.
- * 같은 주택형에 기본 임대조건 행이 함께 있으면 현재 공급임을 함께 밝혀 두 행을 구분한다.
- */
-function comparisonConditionParts(
-  condition: ReturnType<typeof rentalComparisonConditions>[number],
-  hasBasic: boolean,
-): readonly string[] {
-  if (condition === null) return []
-  if (condition.label !== '현재 공급') return [condition.label]
-  if (condition.target === null) return [condition.label]
-  return hasBasic ? [condition.label, condition.target] : [condition.target]
-}
-
 function rentalComparisonConditions(housingType: HousingComplexDetailHousingType) {
   const basic = housingType.basicRentalCondition
   const conditions = [
@@ -606,26 +605,46 @@ function rentalComparisonConditions(housingType: HousingComplexDetailHousingType
   return conditions.length > 0 ? conditions : [null]
 }
 
-function SupplyConditionFacts({
+function SupplyConditionTable({
   housingTypeName,
   condition,
 }: {
   housingTypeName: string
   condition: HousingComplexDetailSupplyCondition
 }) {
+  const id = useId()
   return (
-    <div role="group" aria-label={`${housingTypeName} ${condition.target ?? ''} 현재 공급 조건`}>
-      <DetailFacts columns={2} appearance="list">
-        <DetailFact term="임대보증금" value={formatDetailMoney(condition.deposit)} emphasis={Number.isFinite(condition.deposit)} />
-        <DetailFact term="월 임대료" value={formatDetailMoney(condition.monthlyRent)} emphasis={Number.isFinite(condition.monthlyRent)} />
-        <DetailFact
-          term="전환 가능 보증금"
-          value={formatDetailMoney(condition.convertibleDeposit)}
-          emphasis={Number.isFinite(condition.convertibleDeposit)}
-          wide
-        />
-      </DetailFacts>
-    </div>
+    <DetailTable caption={`${housingTypeName} ${condition.target ?? ''} 현재 공급 조건`}>
+      <colgroup>
+        <col style={{ width: '22%' }} />
+        <col style={{ width: '28%' }} />
+        <col style={{ width: '22%' }} />
+        <col style={{ width: '28%' }} />
+      </colgroup>
+      <tbody>
+        <tr>
+          <th id={`${id}-deposit`} scope="row">임대보증금</th>
+          <td headers={`${id}-deposit`} data-numeric data-emphasis={Number.isFinite(condition.deposit) || undefined}>
+            <DetailMoney value={condition.deposit} />
+          </td>
+          <th id={`${id}-rent`} scope="row">월 임대료</th>
+          <td headers={`${id}-rent`} data-numeric data-emphasis={Number.isFinite(condition.monthlyRent) || undefined}>
+            <DetailMoney value={condition.monthlyRent} />
+          </td>
+        </tr>
+        <tr>
+          <th id={`${id}-convertible`} scope="row">전환 가능 보증금</th>
+          <td
+            headers={`${id}-convertible`}
+            colSpan={3}
+            data-numeric
+            data-emphasis={Number.isFinite(condition.convertibleDeposit) || undefined}
+          >
+            <DetailMoney value={condition.convertibleDeposit} />
+          </td>
+        </tr>
+      </tbody>
+    </DetailTable>
   )
 }
 
@@ -633,6 +652,12 @@ function revealTab(scrollContainer: HTMLDivElement | null, tab: HTMLButtonElemen
   if (!scrollContainer || !tab) return
   const viewport = scrollContainer.getBoundingClientRect()
   const choice = tab.getBoundingClientRect()
+  const tabList = tab.parentElement
+  if (tabList) {
+    const bounds = tabList.getBoundingClientRect()
+    if (choice.left < bounds.left) tabList.scrollLeft += choice.left - bounds.left
+    else if (choice.right > bounds.right) tabList.scrollLeft += choice.right - bounds.right
+  }
   if (choice.top < viewport.top) {
     scrollContainer.scrollTop += choice.top - viewport.top
   } else if (choice.bottom > viewport.bottom) {

@@ -82,7 +82,7 @@ it.each(['desktop', 'mobile'])('%s 전체 패널을 그대로 닫으면 외부 �
 it.each(['desktop', 'mobile'])('%s 모집중 토글은 상태 변경을 해당 화면의 독립 선택으로 수집한다', (layout) => {
   render(<Toolbar />)
   const toolbar = screen.getByRole('toolbar', { name: layout === 'mobile' ? '모바일 단지 검색 필터' : '단지 검색 필터' })
-  fireEvent.click(within(toolbar).getByRole('button', { name: '모집중' }))
+  fireEvent.click(within(toolbar).getByRole('switch', { name: '모집중' }))
   expect(capture).toHaveBeenCalledWith('apply_filter', expect.objectContaining({
     topic: 'applicationStatus', layout, changed_fields: ['status'], methods_used: ['choice'], apply_mode: 'immediate',
   }))
@@ -93,7 +93,7 @@ it('모집중 클릭은 열려 있던 다른 필터 편집에 귀속하지 않�
   render(<Toolbar />)
   fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 열기' }))
   const opened = capture.mock.calls.find(([event]) => event === 'filter_opened')?.[1]
-  fireEvent.click(within(screen.getByRole('toolbar', { name: '단지 검색 필터' })).getByRole('button', { name: '모집중' }))
+  fireEvent.click(within(screen.getByRole('toolbar', { name: '단지 검색 필터' })).getByRole('switch', { name: '모집중' }))
   expect(capture).toHaveBeenCalledWith('apply_filter', expect.objectContaining({
     topic: 'applicationStatus', layout: 'desktop', changed_fields: ['status'],
   }))

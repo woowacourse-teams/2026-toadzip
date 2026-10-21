@@ -1304,7 +1304,6 @@ a {
 
 .housing-map-aggregate:disabled {
   cursor: wait;
-  opacity: 0.58;
 }
 
 .housing-viewport-action button:focus-visible,
