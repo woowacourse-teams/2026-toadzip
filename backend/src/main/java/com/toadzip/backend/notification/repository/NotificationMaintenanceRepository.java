@@ -51,11 +51,13 @@ public class NotificationMaintenanceRepository {
                     count(*) FILTER(WHERE status='FAILED') AS failed,
                     COALESCE(GREATEST(EXTRACT(EPOCH FROM (? - min(occurred_at)
                         FILTER(WHERE status='PENDING'))),0),0) AS delay FROM notification_outbox_events
+                WHERE status IN ('PENDING','FAILED')
                 UNION ALL
                 SELECT 'delivery',count(*) FILTER(WHERE status IN ('PENDING','RETRY','SENDING')),
                     count(*) FILTER(WHERE status='FAILED'),
                     COALESCE(GREATEST(EXTRACT(EPOCH FROM (? - min(next_attempt_at)
                         FILTER(WHERE status IN ('PENDING','RETRY','SENDING')))),0),0) FROM notification_deliveries
+                WHERE status IN ('PENDING','RETRY','SENDING','FAILED')
                 """, (row, number) -> new QueueStatistics(row.getString("queue"), row.getLong("pending"),
                 row.getLong("failed"), row.getLong("delay")), Timestamp.from(now), Timestamp.from(now));
     }
