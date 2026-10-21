@@ -30,7 +30,7 @@ export function QualityComparisonPanel({ resource, id, detail, onChanged, onBusy
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(false)
   const [conflict, setConflict] = useState(false)
-  const [filter, setFilter] = useState<'all' | 'different' | 'manual'>('all')
+  const [filter, setFilter] = useState<'all' | 'different' | 'manual'>(resource === 'announcements' ? 'different' : 'all')
   const [attempt, setAttempt] = useState(0)
   const request = useRef<AbortController | null>(null)
   const searchRequest = useRef<AbortController | null>(null)
@@ -74,16 +74,16 @@ export function QualityComparisonPanel({ resource, id, detail, onChanged, onBusy
     try { const next = await getSourceData(category, keyword, page, controller.signal); if (!controller.signal.aborted) setResults(next) }
     catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '원천을 검색하지 못했습니다.') }
   }
-  // 공고의 공급행·임대조건 값은 미리보기·일괄 적용·범위 검토를 거치도록 공급정보 탭에서만 고친다. 여기서는 원천 비교와 원천 확인 기록만 한다.
-  const supplyReadOnly = resource === 'announcements' && /^(row|target):/.test(selection)
-  const relationsSearch = new URLSearchParams(params); relationsSearch.set('section', 'relations')
+  // 공고 보정은 전용 편집 화면에서 처리하고, 이력에서는 수집값과 확인 기록만 다룬다.
+  const readOnly = resource === 'announcements'
+  const editSearch = new URLSearchParams(params); editSearch.delete('comparison'); editSearch.set('section', /^(row|target):/.test(selection) ? 'relations' : 'info')
   const fields = target?.fields.map(field => ({ field, status: qualityComparisonStatus(field, snapshot?.sources ?? [], valueAt(target.current, field.name)) })) ?? []
   const visibleFields = fields.filter(item => filter === 'all' || item.status === filter)
   if (!choices.length) return <p>비교할 주택형이 없습니다. 주택형을 등록하거나 수집·정제 결과를 확인하세요.</p>
   return <section className={`${styles.panel} ${layout.panel}`} aria-label={resource === 'complexes' ? '주택형 원천 비교' : '공고·공급정보 원천 비교'}>
     <header className={styles.heading}><div><h2>{resource === 'complexes' ? '주택형 원천 비교·수정' : '수집 원천과 비교'}</h2><p>현재 등록값과 수집한 자료를 대조합니다. 원천값이 같아도 공고문 전체를 확인했다는 뜻은 아닙니다.</p></div><button disabled={busy || loading} onClick={() => { if (!dirty || window.confirm('미저장 입력을 버리고 다시 조회할까요?')) setAttempt(value => value + 1) }}>비교 다시 조회</button></header>
     <label>비교 대상<select value={selection} disabled={busy || loading} onChange={event => { if (!dirty || window.confirm('작성한 내용을 버리고 대상을 바꿀까요?')) { setSelection(event.target.value); setResults(null) } }}>{choices.map(choice => <option key={choice.key} value={choice.key}>{choice.label}</option>)}</select></label>
-    {supplyReadOnly ? <p className={styles.hint}>공급행·임대조건 값은 미리보기와 범위 검토를 거치도록 <Link to={`?${relationsSearch}`}>공급정보·단지 연결 탭에서 수정</Link>합니다. 여기서는 원천과 비교하고, 확인한 원천을 기록해 재수집으로 바뀌면 검토 대상에 다시 표시되게 합니다.</p> : null}
+    {readOnly ? <p className={styles.hint}>수집 자료와 다른 값을 먼저 표시합니다. 값은 <Link to={`?${editSearch}`}>{/^(row|target):/.test(selection) ? '공급정보·단지 연결 탭에서 수정' : '기본정보에서 수정'}</Link>하거나 상단의 PDF 보정을 이용하세요.</p> : null}
     {loading ? <p role="status">DB 원천을 불러오는 중…</p> : null}{error ? <p role="alert" className="registration-error">{error}</p> : null}{notice ? <p role="status" className="registration-success">{notice}</p> : null}
     {snapshot && target ? <fieldset disabled={busy || conflict || detail.summary.deleted} className="admin-verification-group">
       <details className={styles.connections}><summary>원천 검색·연결 · {snapshot.sources.length}개</summary>
@@ -97,22 +97,22 @@ export function QualityComparisonPanel({ resource, id, detail, onChanged, onBusy
         <button aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>모든 항목 · {fields.length}</button>
         <button aria-pressed={filter === 'different'} onClick={() => setFilter('different')}>다른 값만 · {fields.filter(item => item.status === 'different').length}</button>
         <button aria-pressed={filter === 'manual'} onClick={() => setFilter('manual')}>직접 대조 · {fields.filter(item => item.status === 'manual').length}</button>
-        {!supplyReadOnly && <span>수정 중 {changed.length}개</span>}
+        {!readOnly && <span>수정 중 {changed.length}개</span>}
       </div>
-      <div className={styles.table} data-read-only={supplyReadOnly || undefined}><div className={styles.columns}><span>항목·단위</span><span>현재 등록값</span><span>수집 원천값</span>{!supplyReadOnly && <span>수정할 값</span>}</div>
+      <div className={styles.table} data-read-only={readOnly || undefined}><div className={styles.columns}><span>항목·단위</span><span>현재 등록값</span><span>수집 원천값</span>{!readOnly && <span>수정할 값</span>}</div>
         {visibleFields.map(({ field, status }) => <article key={field.name} className={styles.row} aria-label={`${field.label} 비교`}>
           <div className={styles.field}><strong>{field.label}</strong><small>{field.unit !== '없음' ? `${field.unit} · ` : ''}{field.scope}</small><span className={layout.status} data-status={status}>{statusLabels[status]}</span></div>
           <div className={styles.current}><small className={styles.mobileLabel}>현재 등록값</small>{display(valueAt(target.current, field.name))}</div>
-          <div className={styles.source}><small className={styles.mobileLabel}>수집 원천값</small><SourceValues field={field} sources={snapshot.sources} readOnly={supplyReadOnly}
+          <div className={styles.source}><small className={styles.mobileLabel}>수집 원천값</small><SourceValues field={field} sources={snapshot.sources} readOnly={readOnly}
             onUse={value => setDraft(current => writeComparisonValue(current, field, String(value)))} /></div>
-          {!supplyReadOnly && <div className={styles.edit}><QualityFieldInput field={field} draft={draft} onChange={value => setDraft(current => writeComparisonValue(current, field, value === null ? '' : String(value)))} /></div>}
+          {!readOnly && <div className={styles.edit}><QualityFieldInput field={field} draft={draft} onChange={value => setDraft(current => writeComparisonValue(current, field, value === null ? '' : String(value)))} /></div>}
         </article>)}
         {!visibleFields.length ? <p className={layout.empty}>{filter === 'different' ? '자동으로 비교할 수 있는 항목 중 다른 값이 없습니다. 비교 불가·직접 대조 항목은 별도로 확인하세요.' : '직접 대조할 원천값이 없습니다.'}</p> : null}
       </div>
       {changed.length ? <section className={styles.preview}><h3>저장할 변경 {changed.length}개</h3><ul>{changed.map(field => <li key={field.name}>{field.label}: {display(valueAt(target.current, field.name))} → {display(valueAt(draft, field.name))}</li>)}</ul></section> : null}
-      <label>{supplyReadOnly ? '원천 확인 근거' : '수정·원천 확인 근거'}<textarea value={note} rows={3} maxLength={2000} onChange={event => setNote(event.target.value)} /></label>
-      <p className={styles.hint}>금액은 원천의 단위·최소/전체 금액·공급대상을 확인한 뒤 원 단위로 직접 입력하세요. 현재 원천 확인 기록은 다음 수집의 변경을 찾는 기준입니다. 값 수정이나 공고 전체의 검토 완료를 의미하지 않습니다.</p>
-      <div className={styles.saveActions}>{!supplyReadOnly && <Button disabled={!changed.length || !note.trim()} onClick={() => void mutate('save')}>선택 수정 저장 · {changed.length}개</Button>}<button disabled={changed.length > 0 || !note.trim() || !snapshot.sources.length} onClick={() => void mutate('check')}>현재 원천 확인 기록</button><button disabled={!dirty} onClick={() => { if (window.confirm('작성한 변경과 메모를 취소할까요?')) { setDraft(structuredClone(target.current)); setNote(''); setLinkNote('') } }}>수정 취소</button></div>
+      <label>{readOnly ? '원천 확인 근거' : '수정·원천 확인 근거'}<textarea value={note} rows={3} maxLength={2000} onChange={event => setNote(event.target.value)} /></label>
+      <p className={styles.hint}>{!readOnly && '금액은 원천의 단위·최소/전체 금액·공급대상을 확인한 뒤 원 단위로 직접 입력하세요. '}현재 원천 확인 기록은 다음 수집의 변경을 찾는 기준입니다. 값 수정이나 공고 전체의 검토 완료를 의미하지 않습니다.</p>
+      <div className={styles.saveActions}>{!readOnly && <Button disabled={!changed.length || !note.trim()} onClick={() => void mutate('save')}>선택 수정 저장 · {changed.length}개</Button>}<button disabled={changed.length > 0 || !note.trim() || !snapshot.sources.length} onClick={() => void mutate('check')}>현재 원천 확인 기록</button><button disabled={!dirty} onClick={() => { if (window.confirm('작성한 변경과 메모를 취소할까요?')) { setDraft(structuredClone(target.current)); setNote(''); setLinkNote('') } }}>{readOnly ? '입력 취소' : '수정 취소'}</button></div>
     </fieldset> : null}
   </section>
 }
