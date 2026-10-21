@@ -111,3 +111,18 @@ it('PDF 보정 이력은 한 건에 원천 주택형명·접수처·일정 변�
   expect(within(other).getByRole('row', { name: /접수처 연락처 .* 1600-1004/ })).toBeInTheDocument()
   expect(within(other).getByRole('row', { name: '일정 #82 일정명 접수 현장 신청접수' })).toBeInTheDocument()
 })
+
+it('PDF 보정 이력은 공급행 변경이 없으면 빈 표를 두지 않고 새 일정의 이전 값은 없음으로 보여준다', async () => {
+  const row = { ...blankRow(0), id: 90, key: 'row:90', complexName: '익산한스빌', typeName: '26A' }
+  vi.mocked(getManagementHistory).mockResolvedValue([{ id: 6, action: 'CORRECT_FROM_PDF', actor: '운영자', occurredAt: '2026-10-22T00:00:00Z',
+    beforeValue: JSON.stringify({ rows: [row], detail: { data: {} }, events: [] }),
+    afterValue: JSON.stringify({ rows: [row], reason: '공고문 PDF와 대조', sources: [], detail: { data: {} },
+      events: [{ id: 258, complexName: null, data: { scheduleType: 'DOCUMENT_SUBMISSION', name: '현장 신청 시 서류제출', startAt: '2026-10-21T10:00:00', endAt: '2026-10-22T16:00:00' } }] }),
+  }])
+  render(<ChangeHistory resource="announcements" id="29" version={4} />)
+  fireEvent.click(await screen.findByText(/PDF로 공고 보정 · 운영자/))
+  const supply = screen.getByRole('region', { name: '저장한 공급정보 보정' })
+  expect(within(supply).getByRole('heading', { name: '공급행 변경 없음' })).toBeVisible()
+  expect(within(supply).queryByRole('region', { name: '변경 전후 비교' })).not.toBeInTheDocument()
+  expect(screen.getByRole('row', { name: '일정 #258 (추가) 일정 유형 없음 서류 제출' })).toBeInTheDocument()
+})
