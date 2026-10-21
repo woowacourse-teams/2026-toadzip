@@ -53,6 +53,8 @@ Android의 작은 badge는 OS가 단색 마스크로 표시하므로 최종 색�
 
 정정·삭제·대체된 공고는 현재 가용성을 다시 확인한다. 일정 내용의 해시로 중복을 막으므로 같은 일정을
 새 DB ID로 저장해도 중복 발행하지 않는다. 발행 뒤 일정이 변경·삭제되면 생성 및 발송 직전에 제외한다.
+매분 확인할 때 이미 생성된 이벤트 키를 500개씩 조회하여 해당 일정의 구독자 조회와 중복 INSERT를 생략한다.
+동시 실행의 최종 중복 방지는 기존 `ON CONFLICT(event_key) DO NOTHING`이 유지한다.
 구독자가 없는 일정은 아웃박스에 넣지 않는다. 9시 이후 새로 신청한 회원에게 과거 알림을 소급하지 않는다.
 `NOTIFICATION_ACTIVATION_AT` 이전 예정 알림도 제외한다. publisher와 materializer가 모두 켜져 있어야 한다.
 
@@ -161,6 +163,10 @@ delivery만 끄면 알림함과 폴링은 유지된다. publisher off 기간은 
 10분마다 각각 최대 500건씩 정리한다. 참조하는 발송이 남아 있으면 보관함 물리 삭제를 기다린다.
 90일 지난 완료 이벤트 payload도 참조가 없어질 때 지우며 event key는 tombstone으로 유지한다.
 진행 중인 작업은 자동 삭제하지 않는다. 장기 대기 원인은 아래 지표와 SQL로 확인한다.
+
+대기열 통계는 진행·실패 상태만 부분 인덱스로 읽으며 완료 이력은 집계 입력에서 제외한다.
+스냅샷 정리는 payload가 남은 완료 이벤트의 만료 인덱스와 알림의 event_id 인덱스를 사용한다.
+인덱스 최초 생성의 잠금 대기 5초·실행 30초를 넘으면 마이그레이션이 롤백되고 앱 기동이 실패한다.
 
 - `notification.queue.pending{queue=outbox|delivery}`, `notification.queue.failed`, `notification.queue.delay.seconds`: 1분 간격 집계.
 - `notification.push.result{result=ACCEPTED|RETRYABLE|INVALID_REGISTRATION|PERMANENT_FAILURE|EXCEPTION}`, `notification.push.duration`.

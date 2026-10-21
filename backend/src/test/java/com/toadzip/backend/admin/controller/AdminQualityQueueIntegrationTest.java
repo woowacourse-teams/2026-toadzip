@@ -91,6 +91,52 @@ class AdminQualityQueueIntegrationTest {
     }
 
     @Test
+    void 검토_사유_우선순위로_정렬하고_사유_필터와_페이지를_함께_적용한다() throws Exception {
+        var fixture = new NotificationFixtures(entities, jdbc);
+        var unreviewed = fixture.complex("11140", "1114010100");
+        var missing = fixture.complex("11140", "1114010100");
+        var mismatch = fixture.complex("11140", "1114010100");
+        String keyword = "정렬확인-" + UUID.randomUUID();
+        for (var complex : java.util.List.of(unreviewed, missing, mismatch)) {
+            jdbc.update("UPDATE housing_complexes SET name=? WHERE id=?", keyword, complex.getId());
+        }
+        jdbc.update("UPDATE housing_complexes SET completion_date=NULL WHERE id=?", missing.getId());
+        jdbc.update("UPDATE housing_complexes SET source_review_required=true WHERE id=?", mismatch.getId());
+
+        var first = read(Map.of("keyword", keyword, "size", "2"));
+        assertThat(first.path("totalElements").asLong()).isEqualTo(3);
+        assertThat(first.path("hasNext").asBoolean()).isTrue();
+        assertThat(first.path("items").get(0).path("id").asLong()).isEqualTo(mismatch.getId());
+        assertThat(first.path("items").get(1).path("id").asLong()).isEqualTo(missing.getId());
+        var second = read(Map.of("keyword", keyword, "size", "2", "page", "1"));
+        assertThat(second.path("items").get(0).path("id").asLong()).isEqualTo(unreviewed.getId());
+        var filtered = read(Map.of("keyword", keyword, "reason", "SOURCE_MISMATCH"));
+        assertThat(filtered.path("totalElements").asLong()).isEqualTo(1);
+        assertThat(filtered.path("items").get(0).path("id").asLong()).isEqualTo(mismatch.getId());
+    }
+
+    @Test
+    void 빈_페이지에서도_전체_건수를_보존하고_실제_빈_결과는_0건으로_반환한다() throws Exception {
+        String name = "페이지확인-" + UUID.randomUUID();
+        complexes.saveAndFlush(HousingComplex.create(name, "manual:" + UUID.randomUUID(),
+                "HAPPY_HOUSING", Address.create("서울특별시 중구 세종대로 110", "1114010300100010000",
+                        "1114010300", "11", "11140", new BigDecimal("37.5665"), new BigDecimal("126.978")),
+                0, "LH", null, null, null, null, null, 0, null, null));
+
+        var first = read(Map.of("keyword", name, "page", "0", "size", "1"));
+        assertThat(first.path("totalElements").asLong()).isEqualTo(1);
+        assertThat(first.path("items").size()).isEqualTo(1);
+        var beyondLast = read(Map.of("keyword", name, "page", "1", "size", "1"));
+        assertThat(beyondLast.path("totalElements").asLong()).isEqualTo(1);
+        assertThat(beyondLast.path("items").size()).isZero();
+        assertThat(beyondLast.path("hasNext").asBoolean()).isFalse();
+        var empty = read(Map.of("keyword", "없는대상-" + UUID.randomUUID(), "page", "0", "size", "1"));
+        assertThat(empty.path("totalElements").asLong()).isZero();
+        assertThat(empty.path("totalPages").asInt()).isZero();
+        assertThat(empty.path("items").size()).isZero();
+    }
+
+    @Test
     void 누락_항목과_미검토_사유를_표시하고_휴지통과_검색_밖의_대상은_제외한다() throws Exception {
         String name = "검토목록-" + UUID.randomUUID();
         var complex = complexes.saveAndFlush(HousingComplex.create(name, "manual:" + UUID.randomUUID(),

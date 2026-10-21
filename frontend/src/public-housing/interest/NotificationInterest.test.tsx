@@ -42,6 +42,53 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
+it('초기 조회와 복귀 이벤트가 겹쳐도 같은 상태 조회는 한 번만 보내고 완료 후 다시 갱신한다', async () => {
+  const pending = deferred<NotificationSubscriptionStatus>()
+  const repo = repository()
+  repo.loadStatus.mockReturnValueOnce(pending.promise)
+  render(example(repo))
+  fireEvent.focus(window)
+  fireEvent(document, new Event('visibilitychange'))
+  fireEvent.focus(window)
+  expect(repo.loadStatus).toHaveBeenCalledTimes(1)
+  await act(async () => pending.resolve(member))
+  await act(async () => fireEvent.focus(window))
+  expect(repo.loadStatus).toHaveBeenCalledTimes(2)
+})
+
+it('숨김과 오프라인 복귀 이벤트는 조회하지 않고 온라인 복귀 때 다시 확인한다', async () => {
+  const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+  const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
+  const repo = repository()
+  render(example(repo))
+  await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+  hidden.mockReturnValue(true)
+  fireEvent.focus(window)
+  fireEvent(document, new Event('visibilitychange'))
+  hidden.mockReturnValue(false)
+  online.mockReturnValue(false)
+  fireEvent.focus(window)
+  fireEvent(document, new Event('visibilitychange'))
+  expect(repo.loadStatus).toHaveBeenCalledTimes(1)
+  online.mockReturnValue(true)
+  await act(async () => fireEvent.online(window))
+  expect(repo.loadStatus).toHaveBeenCalledTimes(2)
+})
+
+it('탭을 떠나기 전 조회가 대기 중이어도 복귀 후 새 세션을 조회하고 이전 응답을 무시한다', async () => {
+  const pending = deferred<NotificationSubscriptionStatus>()
+  const repo = repository(guest)
+  repo.loadStatus.mockReturnValueOnce(pending.promise)
+  render(example(repo))
+  fireEvent.blur(window)
+  await act(async () => fireEvent.focus(window))
+  expect(repo.loadStatus).toHaveBeenCalledTimes(2)
+  expect(setProductAuthState).toHaveBeenLastCalledWith('guest')
+  await act(async () => pending.resolve({ ...member, targets: [{ targetType: 'COMPLEX', targetId: '1' }] }))
+  expect(setProductAuthState).toHaveBeenLastCalledWith('guest')
+  expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
+})
+
 it('비회원은 이전 브라우저 설정을 무시하고 로그인 안내를 닫으면 포커스를 복원한다', async () => {
   localStorage.setItem('toadzip.notification-interest.requested:COMPLEX:1', '1')
   const repo = repository(guest)

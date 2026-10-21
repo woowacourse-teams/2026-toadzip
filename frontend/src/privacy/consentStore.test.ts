@@ -14,6 +14,7 @@ beforeEach(() => {
   localStorage.clear()
   sessionStorage.clear()
   Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+  Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
   Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: vi.fn(async (_name: string, callback: () => unknown) => callback()) } })
 })
 
@@ -117,6 +118,122 @@ it('storage 쓰기 실패는 인증을 막지 않고 BroadcastChannel로 다른 
   } finally { cleanFirst(); cleanSecond(); vi.unstubAllGlobals() }
 })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
+it('동의 확인 중 겹친 탭 복귀 이벤트와 주기 요청은 같은 조회를 사용한다', async () => {
+  vi.useFakeTimers()
+  const { store, api } = setup(context('MEMBER', 'GRANTED', 1))
+  const response = deferred<ConsentContext>(); api.context.mockReturnValueOnce(response.promise)
+  const cleanup = store.start()
+  try {
+    window.dispatchEvent(new Event('focus'))
+    window.dispatchEvent(new Event('pageshow'))
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(api.context).toHaveBeenCalledOnce()
+    response.resolve(context('MEMBER', 'GRANTED', 1))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.allowed()).toBe(true)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(api.context).toHaveBeenCalledTimes(2)
+  } finally { cleanup() }
+})
+
+it('숨긴 탭의 자동 확인은 보내지 않고 복귀할 때 서버를 확인한다', async () => {
+  vi.useFakeTimers()
+  Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+  const { store, api } = setup(context('MEMBER', 'GRANTED', 1))
+  const cleanup = store.start()
+  try {
+    window.dispatchEvent(new Event('focus'))
+    window.dispatchEvent(new Event('pageshow'))
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(api.context).not.toHaveBeenCalled()
+    expect(store.allowed()).toBe(false)
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(api.context).toHaveBeenCalledOnce()
+    expect(store.allowed()).toBe(true)
+  } finally { cleanup() }
+})
+
+it('오프라인 자동 조회는 보내지 않고 온라인 복귀 시 한 번 확인한다', async () => {
+  vi.useFakeTimers()
+  Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+  const { store, api } = setup(context('MEMBER', 'GRANTED', 1))
+  const cleanup = store.start()
+  try {
+    window.dispatchEvent(new Event('focus'))
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(api.context).not.toHaveBeenCalled()
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+    window.dispatchEvent(new Event('online'))
+    window.dispatchEvent(new Event('focus'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(api.context).toHaveBeenCalledOnce()
+    expect(store.allowed()).toBe(true)
+  } finally { cleanup() }
+})
+
+it('숨기기 전에 시작한 조회를 복귀 후의 새 인증 확인으로 재사용하지 않는다', async () => {
+  vi.useFakeTimers()
+  const { store, api } = setup(context('MEMBER', 'GRANTED', 1))
+  const oldResponse = deferred<ConsentContext>(); api.context.mockReturnValueOnce(oldResponse.promise)
+  const cleanup = store.start()
+  try {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+    const freshResponse = deferred<ConsentContext>(); api.context.mockReturnValueOnce(freshResponse.promise)
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(api.context).toHaveBeenCalledTimes(2)
+    oldResponse.resolve(context('MEMBER', 'GRANTED', 1))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.allowed()).toBe(false)
+    freshResponse.resolve(context('MEMBER', 'DENIED', 2))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.getSnapshot().context?.consent.decision).toBe('DENIED')
+    expect(store.allowed()).toBe(false)
+  } finally { cleanup() }
+})
+
+it('BFCache 복귀는 진행 중이던 과거 조회 대신 새 서버 상태를 확인한다', async () => {
+  vi.useFakeTimers()
+  const { store, api } = setup(context('MEMBER', 'GRANTED', 1))
+  const oldResponse = deferred<ConsentContext>(); api.context.mockReturnValueOnce(oldResponse.promise)
+  const cleanup = store.start()
+  try {
+    const freshResponse = deferred<ConsentContext>(); api.context.mockReturnValueOnce(freshResponse.promise)
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+    expect(api.context).toHaveBeenCalledTimes(2)
+    oldResponse.resolve(context('MEMBER', 'GRANTED', 1))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.allowed()).toBe(false)
+    freshResponse.resolve(context('MEMBER', 'DENIED', 2))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.getSnapshot().context?.consent.decision).toBe('DENIED')
+  } finally { cleanup() }
+})
+
+it('자동 확인 중 계정이 바뀌면 이전 요청과 합치지 않고 새 계정을 확인한다', async () => {
+  vi.useFakeTimers()
+  const { store, api } = setup(context('MEMBER', 'GRANTED', 1))
+  const oldResponse = deferred<ConsentContext>(); api.context.mockReturnValueOnce(oldResponse.promise)
+  const cleanup = store.start()
+  try {
+    const freshResponse = deferred<ConsentContext>(); api.context.mockReturnValueOnce(freshResponse.promise)
+    localStorage.setItem('toadzip.privacy.auth-changed', 'new-account')
+    window.dispatchEvent(new StorageEvent('storage', { key: 'toadzip.privacy.auth-changed' }))
+    expect(api.context).toHaveBeenCalledTimes(2)
+    oldResponse.resolve(context('MEMBER', 'GRANTED', 1))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.allowed()).toBe(false)
+    freshResponse.resolve(context('GUEST', 'DENIED', 2))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.getSnapshot().context?.subject.kind).toBe('GUEST')
+    expect(store.allowed()).toBe(false)
+  } finally { cleanup() }
+})
+
 it('새 이벤트가 없어도 확인 유효기간 정각에 SDK 중지와 상태 변경을 통지한다', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
   const { store } = setup(context('MEMBER', 'GRANTED', 1))

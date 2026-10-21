@@ -90,6 +90,7 @@ export function NotificationInterestProvider({ children, repository = notificati
   const batchInFlight = useRef(false)
   const batchController = useRef<AbortController | null>(null)
   const requestVersion = useRef(0)
+  const statusRequest = useRef<{ version: number; preserveBatchRetries: boolean; promise: Promise<boolean> } | null>(null)
   const trigger = useRef<HTMLButtonElement | null>(null)
   const restoreFocus = useRef(false)
   const exposed = useRef(new Set<string>())
@@ -97,11 +98,13 @@ export function NotificationInterestProvider({ children, repository = notificati
 
   const reconcileStatus = useCallback((preserveBatchRetries = false): Promise<boolean> => {
     if (inFlight.current) return Promise.resolve(false)
+    if (statusRequest.current?.version === requestVersion.current
+      && statusRequest.current.preserveBatchRetries === preserveBatchRetries) return statusRequest.current.promise
     const version = ++requestVersion.current
-    const statusRequest = repository.loadStatus
+    const response = repository.loadStatus
       ? repository.loadStatus()
       : loadUser().then((user) => ({ guest: !user, userId: user ? String(user.id) : undefined, settingsRevision: 0, targets: [] }))
-    return statusRequest.then((status) => {
+    const request = response.then((status) => {
       if (version !== requestVersion.current) return false
       const member = status && !status.guest
       const nextMemberId = status?.userId
@@ -136,7 +139,11 @@ export function NotificationInterestProvider({ children, repository = notificati
     }).catch(() => {
       if (version === requestVersion.current) { setUserId(null); setMode('error'); setTargets([]); setProductAuthState('unknown') }
       return false
+    }).finally(() => {
+      if (statusRequest.current?.version === version) statusRequest.current = null
     })
+    statusRequest.current = { version, preserveBatchRetries, promise: request }
+    return request
   }, [loadUser, repository])
   const refreshStatus = useCallback(() => { void reconcileStatus() }, [reconcileStatus])
   // 상태를 못 불러온 채 알림 받기를 누르면 먼저 다시 불러오고, 성공하면 누른 요청을 이어서 처리한다.
@@ -173,19 +180,30 @@ export function NotificationInterestProvider({ children, repository = notificati
       setTargets([]); setMode('loading'); setProductAuthState('unknown')
       setMessage('전체 해제가 중단되었어요. 남은 알림 설정을 확인해 주세요.')
     }
+    const leave = () => {
+      if (statusRequest.current?.version === version.current) version.current++
+      interruptBatch()
+    }
+    const refreshVisibleStatus = () => {
+      if (!document.hidden && navigator.onLine !== false) refreshStatus()
+    }
     const visibilityChanged = () => {
-      if (document.hidden) interruptBatch()
-      else refreshStatus()
+      if (document.hidden) leave()
+      else refreshVisibleStatus()
     }
     resetSession()
-    window.addEventListener('focus', refreshStatus)
-    window.addEventListener('blur', interruptBatch)
+    window.addEventListener('focus', refreshVisibleStatus)
+    window.addEventListener('online', refreshVisibleStatus)
+    window.addEventListener('offline', leave)
+    window.addEventListener('blur', leave)
     document.addEventListener('visibilitychange', visibilityChanged)
     return () => {
       version.current++
       batchController.current?.abort()
-      window.removeEventListener('focus', refreshStatus)
-      window.removeEventListener('blur', interruptBatch)
+      window.removeEventListener('focus', refreshVisibleStatus)
+      window.removeEventListener('online', refreshVisibleStatus)
+      window.removeEventListener('offline', leave)
+      window.removeEventListener('blur', leave)
       document.removeEventListener('visibilitychange', visibilityChanged)
     }
   }, [refreshStatus, resetSession])

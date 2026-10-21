@@ -7,7 +7,11 @@ import com.toadzip.backend.notification.domain.NotificationAudienceSnapshot;
 import com.toadzip.backend.notification.domain.PendingNotificationEvent;
 import java.sql.Timestamp;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import tools.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
@@ -20,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 @RequiredArgsConstructor
 public class NotificationOutboxRepository {
+    private static final int EVENT_KEY_BATCH_SIZE = 500;
     private final JdbcTemplate jdbc;
     private final NotificationProperties properties;
     private final Clock clock;
@@ -55,6 +60,18 @@ public class NotificationOutboxRepository {
                 VALUES(?,?,?,?,'PENDING',0,?,0,?) ON CONFLICT(event_key) DO NOTHING
                 """, reminder.key(), reminder.announcementId(), "schedule:" + reminder.announcementId(),
                 Timestamp.from(reminder.dueAt()), Timestamp.from(reminder.dueAt()), json.writeValueAsString(snapshot)) == 1;
+    }
+
+    public Set<String> existingEventKeys(List<String> eventKeys) {
+        Set<String> existing = new HashSet<>();
+        for (int offset = 0; offset < eventKeys.size(); offset += EVENT_KEY_BATCH_SIZE) {
+            var batch = eventKeys.subList(offset, Math.min(offset + EVENT_KEY_BATCH_SIZE, eventKeys.size()));
+            String placeholders = String.join(",", Collections.nCopies(batch.size(), "?"));
+            existing.addAll(jdbc.queryForList(
+                    "SELECT event_key FROM notification_outbox_events WHERE event_key IN (" + placeholders + ")",
+                    String.class, batch.toArray()));
+        }
+        return existing;
     }
 
     public Optional<PendingNotificationEvent> claimNext(Instant now) {
