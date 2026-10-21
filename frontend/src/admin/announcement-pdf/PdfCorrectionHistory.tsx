@@ -3,7 +3,7 @@ import { isRecord, type JsonValue } from '../management/managementContract'
 import { SupplyCorrectionHistory } from '../supply/SupplyCorrectionHistory'
 import { choices, metadataFields, receptionFields, scheduleFields } from './review'
 
-type Change = { scope: string; label: string; before: unknown; after: unknown }
+type Change = { scope: string; label: string; before: unknown; after: unknown; added?: boolean }
 const optionLabels = Object.fromEntries([...choices.method, ...choices.scheduleType])
 function value(raw: unknown) {
   return typeof raw === 'string' && optionLabels[raw] ? optionLabels[raw] : display(raw as JsonValue | undefined)
@@ -26,7 +26,7 @@ export function PdfCorrectionHistory({ before, after }: { before: unknown; after
     ...events(after.events).flatMap(event => {
       const old = oldEvents.find(item => item.id === event.id)
       const scope = `일정 #${String(event.id)}${typeof event.complexName === 'string' ? ` · ${event.complexName}` : ''}${old ? '' : ' (추가)'}`
-      return differences(scope, scheduleFields, record(old?.data), record(event.data))
+      return differences(scope, scheduleFields, record(old?.data), record(event.data)).map(change => ({ ...change, added: !old }))
     }),
   ]
   return <>
@@ -34,7 +34,7 @@ export function PdfCorrectionHistory({ before, after }: { before: unknown; after
     <section aria-label="저장한 기본정보·일정 보정">
       <h3>기본정보·접수처·일정 {changes.length}개</h3>
       {changes.length > 0 && <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th scope="col">대상</th><th scope="col">항목</th><th scope="col">변경 전</th><th scope="col">변경 후</th></tr></thead>
-        <tbody>{changes.map((change, index) => <tr key={index}><th scope="row">{change.scope}</th><td>{change.label}</td><td>{value(change.before)}</td><td>{value(change.after)}</td></tr>)}</tbody></table></div>}
+        <tbody>{changes.map((change, index) => <tr key={index}><th scope="row">{change.scope}</th><td>{change.label}</td><td>{change.added ? '없음' : value(change.before)}</td><td>{value(change.after)}</td></tr>)}</tbody></table></div>}
     </section>
   </>
 }
