@@ -49,4 +49,16 @@ tasks.named('test') {
 	// Tests share PostgreSQL schemas, so keep execution sequential and reuse cached contexts.
 	maxParallelForks = 1
 	maxHeapSize = '2g'
+
+	// Each CI shard has its own JVM and Testcontainers databases. Local test runs remain complete.
+	def shard = providers.gradleProperty('testShard').orNull
+	def ingestTests = ['com/toadzip/backend/ingest/**',
+		'com/toadzip/backend/LocalProfileSchemaPersistenceTest*.class']
+	if (shard == 'ingest') {
+		include ingestTests
+	} else if (shard == 'application') {
+		exclude ingestTests
+	} else if (shard != null) {
+		throw new GradleException('testShard must be ingest or application; omit it to run all tests.')
+	}
 }
