@@ -26,7 +26,7 @@ import {
 import { useLocation, useNavigate, useNavigationType } from 'react-router'
 import { useStreetView, type StreetViewController } from '../street-view/useStreetView'
 import { StreetViewPanel } from '../street-view/StreetViewPanel'
-import { useMobileViewport } from './components/useMobileViewport'
+import { isMobileViewport, useMobileViewport } from './components/useMobileViewport'
 import { type DetailEntryPoint, trackEvent } from '../analytics/googleAnalytics.ts'
 import { trackAppliedFilters, useHousingAnalytics } from '../analytics/useHousingAnalytics.ts'
 import NaverMap, {
@@ -282,7 +282,7 @@ export function PublicHousingExplorer({
   const [announcementListRequested, setAnnouncementListRequested] = useState(false)
   const [listPanelMode, setListPanelMode] = useState<'auto' | 'open' | 'collapsed'>(() => (
     (initialDetail.kind === 'complex' || initialDetail.kind === 'announcement')
-      && window.matchMedia?.('(max-width: 1023px)').matches ? 'collapsed' : 'auto'
+      && (isMobileViewport() || window.matchMedia?.('(max-width: 1023px)').matches) ? 'collapsed' : 'auto'
   ))
   useLayoutEffect(() => {
     if (pendingListTriggerFocusRef.current === null) return
@@ -787,7 +787,7 @@ export function PublicHousingExplorer({
   const openDetail = useCallback((kind: ResultTab, id: string, entryPoint: DetailEntryPoint) => {
     cancelCurrentLocation()
     closeStreetView('TARGET_CHANGED', false)
-    if (window.matchMedia?.('(max-width: 1023px)').matches) {
+    if (isMobileViewport() || window.matchMedia?.('(max-width: 1023px)').matches) {
       mobileDetailListModeRef.current ??= listPanelMode
       setListPanelMode('collapsed')
     }
@@ -2084,7 +2084,7 @@ function boundaryScreenPadding(workspace: HTMLElement | null, includeMobileResul
 }
 
 function detailScreenOffset(workspace: HTMLElement | null) {
-  if (window.innerWidth < 768) {
+  if (isMobileViewport()) {
     return undefined
   }
   const map = workspace?.querySelector('.map-surface')?.getBoundingClientRect()

@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { type ComponentProps, useState } from 'react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ComplexSearchFilters } from '../api/publicHousingRepository.ts'
 import { ComplexFilterToolbar } from './ComplexFilterToolbar.tsx'
 
@@ -42,6 +42,8 @@ const BASE_FILTERS: ComplexSearchFilters = {
   builtYearFrom: 2019,
   builtYearTo: 2024,
 }
+
+afterEach(() => vi.unstubAllGlobals())
 
 describe('ComplexFilterToolbar', () => {
 
@@ -1187,6 +1189,44 @@ describe('ComplexFilterToolbar', () => {
     expect(document.documentElement.style.overflow).toBe('')
     expect(document.body.style.overflow).toBe('')
     Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView')
+  })
+
+  it('터치 화면에서 회전하거나 키보드로 높이가 바뀌어도 열린 필터와 포커스를 유지한다', () => {
+    const innerWidth = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(390)
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === '(hover: none) and (pointer: coarse)' || window.innerWidth <= 767,
+    } as MediaQueryList))
+    renderToolbar()
+    fireEvent.click(screen.getByRole('button', { name: '모바일 전체 필터 열기' }))
+    const sheet = screen.getByRole('dialog', { name: '전체 필터' })
+    const close = screen.getByRole('button', { name: '단지 필터 닫기' })
+    expect(close).toHaveFocus()
+    innerWidth.mockReturnValue(844)
+    fireEvent(window, new Event('resize'))
+    fireEvent(window, new Event('resize'))
+    expect(screen.getByRole('dialog', { name: '전체 필터' })).toBe(sheet)
+    expect(close).toHaveFocus()
+    expect(document.body.style.overflow).toBe('hidden')
+    innerWidth.mockRestore()
+  })
+
+  it('화면 크기가 같아도 터치에서 마우스 정책으로 바뀌면 숨겨진 필터와 스크롤 잠금을 정리한다', async () => {
+    let touch = true
+    let inputChanged: (() => void) | undefined
+    vi.stubGlobal('innerWidth', 1024)
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      get matches() { return query === '(hover: none) and (pointer: coarse)' && touch },
+      addEventListener: (_: string, callback: () => void) => { inputChanged = callback },
+      removeEventListener: () => { inputChanged = undefined },
+    }))
+    renderToolbar()
+    fireEvent.click(screen.getByRole('button', { name: '모바일 전체 필터 열기' }))
+    expect(screen.getByRole('dialog', { name: '전체 필터' })).toBeInTheDocument()
+    act(() => { touch = false; inputChanged?.() })
+    expect(screen.queryByRole('dialog', { name: '전체 필터' })).not.toBeInTheDocument()
+    expect(document.body.style.overflow).toBe('')
+    await waitFor(() => expect(screen.getByRole('button', { name: '전체 필터 열기' })).toHaveFocus())
+    expect(inputChanged).toBeUndefined()
   })
 
   it('모바일 시트가 열린 채 데스크톱 너비가 되면 숨은 dialog를 종료한다', () => {

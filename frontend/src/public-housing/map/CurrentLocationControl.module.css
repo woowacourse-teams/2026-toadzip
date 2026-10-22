@@ -98,7 +98,7 @@
 .guidance li + li { margin-top: var(--ds-space-2); }
 .guidance .note { color: var(--ds-color-label); font-size: var(--ds-text-caption); }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .control {
     top: auto;
     right: var(--explorer-map-control-right);
