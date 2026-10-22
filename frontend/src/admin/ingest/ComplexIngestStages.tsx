@@ -64,7 +64,7 @@ export function ComplexIngestStages({ states, disabled, startingType, stopping, 
   }
   return <div className={styles.stages}>
     <div className={styles.tabs} role="tablist" aria-label="단지 수집 단계">
-      {steps.map((step, index) => <button key={step.id} type="button" role="tab" id={`${tabId}-${index}`}
+      {steps.map((step, index) => <button data-design-system key={step.id} type="button" role="tab" id={`${tabId}-${index}`}
         ref={element => { tabs.current[index] = element }} aria-selected={selected === index}
         aria-controls={step.id} aria-label={step.label} tabIndex={selected === index ? 0 : -1}
         aria-describedby={isRunning(index) ? `${tabId}-${index}-status` : undefined}

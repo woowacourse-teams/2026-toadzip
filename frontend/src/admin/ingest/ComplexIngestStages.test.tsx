@@ -176,7 +176,6 @@ it('새 실행을 접수할 때 과거 통합 실행의 결과를 이번 결과�
   select('3 정제·저장')
   const refinement = screen.getByRole('tabpanel')
   expect(within(refinement).getByText('999')).toBeVisible()
-  select('3 정제·저장')
   fireEvent.click(screen.getByRole('button', { name: '단지 정제·저장 실행' }))
   expect(within(refinement).queryByText('999')).not.toBeInTheDocument()
   expect(within(refinement).getByText(/실행 접수를 확인/)).toBeVisible()
