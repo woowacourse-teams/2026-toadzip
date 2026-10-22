@@ -9,9 +9,9 @@
 .layout :global(.admin-header-account)>span { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ds-color-muted); }
 .layout :global(.admin-header) button { min-height:36px; padding:7px 12px; border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); background:var(--ds-color-surface); color:var(--ds-color-label); font:inherit; font-size:12px; cursor:pointer; }
 .layout :global(.admin-navigation) { position:sticky; top:0; align-self:start; box-sizing:border-box; min-height:calc(100dvh - 72px); max-height:100dvh; overflow-y:auto; gap:28px; padding:28px 16px 20px; border-right:1px solid var(--ds-color-divider); border-bottom:0; background:var(--ds-color-surface); }
-.navIntro { padding:0 14px 22px; border-bottom:1px solid var(--ds-color-divider); }
-.navMark { display:block; font-size:17px; font-weight:750; letter-spacing:-.04em; }
-.navIntro p { margin:8px 0 0; color:var(--ds-color-muted); font-size:12px; line-height:1.8; }
+.collapseButton { display:flex; align-items:center; justify-content:center; gap:8px; min-height:36px; border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); background:var(--ds-color-surface); color:var(--ds-color-label); cursor:pointer; }
+.collapseButton>span:first-child { font-size:24px; line-height:1; }
+.layout :global(.admin-navigation) svg { flex:none; }
 .layout :global(.admin-nav-group) { display:flex; flex-direction:column; gap:6px; }
 .layout :global(.admin-nav-group)>span { padding:0 14px 8px; font-size:11px; color:var(--ds-color-muted); font-weight:600; letter-spacing:0; }
 .layout :global(.admin-navigation) a { display:flex; align-items:center; gap:12px; padding:13px 14px; border-radius:8px; color:var(--ds-color-label); font-size:14px; font-weight:500; white-space:normal; text-decoration:none; }
@@ -38,6 +38,17 @@
 .layout :global(.admin-content) :global(.admin-warning) { border-color:var(--ds-color-status-upcoming-surface); font-size:13px; }
 .layout :is(a,button,input,select,textarea,summary):focus-visible { outline:2px solid var(--ds-color-action); outline-offset:3px; }
 .layout .menuButton { display:none; align-items:center; gap:7px; }
+@media(min-width:761px) {
+ .layout[data-collapsed=true] { grid-template-columns:76px minmax(0,1fr); }
+ .layout[data-collapsed=true] :global(.admin-navigation) { gap:12px; padding:16px 10px; overflow:visible; max-height:none; }
+ .layout[data-collapsed=true] :is(.collapseLabel,.navFoot), .layout[data-collapsed=true] :global(.admin-nav-group)>span, .layout[data-collapsed=true] .navTools>summary { display:none; }
+ .layout[data-collapsed=true] :global(.admin-navigation) a { position:relative; justify-content:center; padding:12px; }
+ .layout[data-collapsed=true] .menuLabel { display:none; position:absolute; z-index:20; left:calc(100% + 8px); padding:8px 12px; border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); background:var(--ds-color-text); color:var(--ds-color-surface); white-space:nowrap; box-shadow:0 4px 12px #0002; }
+ .layout[data-collapsed=true] a:is(:hover,:focus-visible) .menuLabel { display:block; }
+ .layout[data-collapsed=true] .navTools { border-top:1px solid var(--ds-color-divider); padding-top:12px; }
+ .layout[data-collapsed=true] .navTools :global(.admin-nav-group) { margin:0; }
+ .layout[data-collapsed=true] :global(.admin-navigation) a[aria-current=page] { box-shadow:inset 3px 0 var(--ds-color-action); }
+}
 @media(max-width:1100px) { .layout[class] { grid-template-columns:210px minmax(0,1fr); } .layout :global(.admin-content) { padding:28px 24px 48px; } .location>span,.location b { display:none; } .layout :global(.admin-brand) { width:155px; } }
 @media(max-width:760px) {
  .layout[class] { display:block; }
@@ -48,7 +59,7 @@
  .layout .menuButton { display:inline-flex; }
  .layout :global(.admin-navigation) { display:none; position:static; min-height:0; max-height:none; gap:20px; padding:20px 16px; border:0; border-bottom:1px solid var(--ds-color-divider); }
  .layout :global(.admin-navigation)[data-open=true] { display:flex; }
- .navIntro,.navFoot { display:none; }
+ .collapseButton,.navFoot { display:none; }
  .layout :global(.admin-nav-group)>span { display:block; }
  .layout :global(.admin-content) { padding:24px 16px 48px; }
  .layout :global(.admin-content) h1 { font-size:25px; }
