@@ -1296,16 +1296,16 @@ describe('PublicHousingExplorer', () => {
     })).toBeVisible()
   })
 
-  it('공고 조회 건수와 필터를 함께 표시하고 필터를 펼쳐도 건수를 유지한다', () => {
+  it('공고 조회 건수와 필터를 함께 표시하고 필터를 펼쳐도 건수를 유지한다', async () => {
     renderExplorer(createRepository())
     fireEvent.click(screen.getByRole('button', { name: '공고 목록' }))
 
     const panel = screen.getByRole('region', { name: '공고 목록' })
     const toolbar = within(panel).getByRole('group', { name: '공고 목록 도구' })
-    expect(within(toolbar).getByText('조회 결과')).toBeVisible()
+    expect(await within(toolbar).findByLabelText('전체 공고 1건')).toHaveTextContent('전체 1건')
     fireEvent.click(within(toolbar).getByRole('button', { name: '공고 필터 열기' }))
 
-    expect(within(toolbar).getByText('조회 결과')).toBeVisible()
+    expect(await within(toolbar).findByLabelText('전체 공고 1건')).toHaveTextContent('전체 1건')
     const collapse = within(toolbar).getByRole('button', { name: '공고 필터 접기' })
     expect(collapse).toHaveAttribute('aria-expanded', 'true')
     fireEvent.click(collapse)
@@ -2903,6 +2903,114 @@ describe('PublicHousingExplorer', () => {
     expect(screen.queryByLabelText('단지 상세 정보')).not.toBeInTheDocument()
   })
 
+  describe('공고 목록 자동 추가 조회', () => {
+    afterEach(() => vi.unstubAllGlobals())
+
+    it('목록 끝에서 20개씩 한 번만 요청하고 기존 목록과 스크롤을 유지한다', async () => {
+      const observers = installAnnouncementIntersectionObserver()
+      let resolveNext!: (page: AnnouncementPage) => void
+      const next = new Promise<AnnouncementPage>((resolve) => { resolveNext = resolve })
+      const repository = createRepository()
+      repository.findAnnouncementPage
+        .mockResolvedValueOnce(announcementBatch(1, 20, 'next-20', 60))
+        .mockReturnValueOnce(next)
+        .mockResolvedValueOnce(announcementBatch(41, 20, null, 60))
+      renderExplorer(repository)
+      fireEvent.click(screen.getByRole('button', { name: '공고 목록' }))
+      const panel = screen.getByRole('region', { name: '공고 목록' })
+      await within(panel).findByRole('heading', { name: '자동 조회 공고 20' })
+      expect(within(panel).queryByRole('button', { name: '공고 더 보기' })).not.toBeInTheDocument()
+      const observer = observers.find((entry) => panel.contains(entry.root))
+      expect(observer).toBeDefined()
+      const scroll = observer!.root as HTMLElement
+      scroll.scrollTop = 1200
+      act(() => observer!.notify(false))
+      expect(repository.findAnnouncementPage).toHaveBeenCalledTimes(1)
+      act(() => { observer!.notify(true); observer!.notify(true) })
+      expect(repository.findAnnouncementPage).toHaveBeenCalledTimes(2)
+      expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(
+        'next-20', 20, expect.any(AbortSignal),
+        { applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
+      )
+      expect(within(panel).getByText('다음 공고를 불러오고 있어요.')).toBeVisible()
+      await act(async () => resolveNext(announcementBatch(21, 20, 'next-40', 60)))
+      expect(within(panel).getAllByRole('listitem')).toHaveLength(40)
+      expect(scroll.scrollTop).toBe(1200)
+      expect(within(panel).getByLabelText('전체 공고 60건')).toHaveTextContent('전체 60건')
+      const nextObserver = observers.findLast((entry) => panel.contains(entry.root))!
+      await act(async () => nextObserver.notify(true))
+      expect(within(panel).getAllByRole('listitem')).toHaveLength(60)
+      expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(
+        'next-40', 20, expect.any(AbortSignal),
+        { applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
+      )
+      expect(within(panel).getByText('모든 공고를 확인했어요.')).toBeVisible()
+      act(() => nextObserver.notify(true))
+      expect(repository.findAnnouncementPage).toHaveBeenCalledTimes(3)
+    })
+
+    it('추가 조회 실패는 목록 끝에서 재시도하며 자동 재요청을 반복하지 않는다', async () => {
+      const observers = installAnnouncementIntersectionObserver()
+      const repository = createRepository()
+      repository.findAnnouncementPage
+        .mockResolvedValueOnce(announcementBatch(1, 20, 'next-20', 21))
+        .mockRejectedValueOnce(new Error('연결 실패'))
+        .mockResolvedValueOnce(announcementBatch(21, 1, null, 21))
+      renderExplorer(repository)
+      fireEvent.click(screen.getByRole('button', { name: '공고 목록' }))
+      const panel = screen.getByRole('region', { name: '공고 목록' })
+      await within(panel).findByRole('heading', { name: '자동 조회 공고 20' })
+      const observer = observers.find((entry) => panel.contains(entry.root))
+      expect(observer).toBeDefined()
+      await act(async () => observer!.notify(true))
+      const retry = within(panel).getByRole('button', { name: '다시 시도' })
+      const lastCard = within(panel).getByRole('heading', { name: '자동 조회 공고 20' })
+      expect(lastCard.compareDocumentPosition(retry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      act(() => observer!.notify(true))
+      expect(repository.findAnnouncementPage).toHaveBeenCalledTimes(2)
+      expect(within(panel).getAllByRole('listitem')).toHaveLength(20)
+      fireEvent.click(retry)
+      await within(panel).findByRole('heading', { name: '자동 조회 공고 21' })
+      expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(
+        'next-20', 20, expect.any(AbortSignal),
+        { applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
+      )
+    })
+
+    it('접힌 목록의 늦은 교차 알림으로 요청하지 않고 다시 열면 이어서 조회한다', async () => {
+      const observers = installAnnouncementIntersectionObserver()
+      const repository = createRepository()
+      repository.findAnnouncementPage
+        .mockResolvedValueOnce(announcementBatch(1, 20, 'next-20', 21))
+        .mockResolvedValueOnce(announcementBatch(21, 1, null, 21))
+      renderExplorer(repository)
+      fireEvent.click(screen.getByRole('button', { name: '공고 목록' }))
+      const panel = screen.getByRole('region', { name: '공고 목록' })
+      await within(panel).findByRole('heading', { name: '자동 조회 공고 20' })
+      const observer = observers.find((entry) => panel.contains(entry.root))
+      expect(observer).toBeDefined()
+      fireEvent.click(screen.getByRole('button', { name: '목록 접기' }))
+      act(() => observer!.notify(true))
+      expect(repository.findAnnouncementPage).toHaveBeenCalledTimes(1)
+      fireEvent.click(screen.getByRole('button', { name: '공고 목록' }))
+      const reopened = observers.findLast((entry) => panel.contains(entry.root))!
+      await act(async () => reopened.notify(true))
+      expect(within(panel).getByRole('heading', { name: '자동 조회 공고 21' })).toBeVisible()
+    })
+  })
+
+  it('공고 목록은 필터된 전체 건수만 보여준다', async () => {
+    const repository = createRepository()
+    repository.findAnnouncementPage.mockResolvedValueOnce({
+      ...announcementPage(), totalCount: 1234, hasNext: true, nextCursor: 'next',
+    })
+    renderExplorer(repository)
+    fireEvent.click(screen.getByRole('button', { name: '공고 목록' }))
+    expect(await screen.findByLabelText('전체 공고 1,234건')).toBeVisible()
+    expect(screen.getByLabelText('전체 공고 1,234건'))
+      .toHaveTextContent('전체 1,234건')
+  })
+
   it('공고 탭을 처음 열 때 지도와 분리된 공고 cursor 목록을 불러와 유지한다', async () => {
     const repository = createRepository()
     renderSearchedExplorer(repository)
@@ -2918,7 +3026,8 @@ describe('PublicHousingExplorer', () => {
     })
     expect(announcementHeading).toBeVisible()
     expect(announcementTab).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByText('1건')).toBeVisible()
+    expect(screen.getByLabelText('전체 공고 1건'))
+      .toHaveTextContent('전체 1건')
     expect(screen.getByText('공급 75세대')).toBeVisible()
     expect(screen.queryByText('공급 단지')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /입주자 모집 공고 상세 보기/ }))
@@ -4333,3 +4442,26 @@ describe('PublicHousingExplorer 지도 영역 거리뷰', () => {
     expectCurrentSearch({ complexId: '18' })
   })
 })
+
+function installAnnouncementIntersectionObserver() {
+  const observers: Array<{ root: Element; notify: (isIntersecting: boolean) => void }> = []
+  vi.stubGlobal('IntersectionObserver', class {
+    constructor(callback: (entries: Array<{ isIntersecting: boolean }>) => void, options?: IntersectionObserverInit) {
+      if (options?.root instanceof Element) {
+        observers.push({ root: options.root, notify: (isIntersecting) => callback([{ isIntersecting }]) })
+      }
+    }
+    observe() {}
+    disconnect() {}
+  })
+  return observers
+}
+
+function announcementBatch(start: number, size: number, nextCursor: string | null, totalCount: number): AnnouncementPage {
+  const items = Array.from({ length: size }, (_, index) => {
+    const raw = { ...announcementListItem().raw, announcementId: start + index, title: `자동 조회 공고 ${start + index}` }
+    return { ...raw, announcementId: String(raw.announcementId), raw }
+  })
+  const raw = { items: items.map((item) => item.raw), hasNext: nextCursor !== null, nextCursor, totalCount }
+  return { ...raw, items, raw }
+}

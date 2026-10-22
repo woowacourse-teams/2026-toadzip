@@ -200,12 +200,12 @@ function announcementPageResponse(
   const items = snapshot.announcementListItems.filter((item) => (
     announcementMatchesFilters(snapshot, item, url)
   ))
-  return successResponse(page(
+  return successResponse({ totalCount: items.length, ...page(
     items,
     cursor.offset,
     pageSize(url),
     ANNOUNCEMENT_CURSOR_PREFIX,
-  ))
+  ) })
 }
 
 function complexDetailResponse(

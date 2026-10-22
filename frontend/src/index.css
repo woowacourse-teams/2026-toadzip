@@ -358,6 +358,11 @@ a {
   font-weight: 500;
 }
 
+.housing-results__total-count {
+  color: var(--ds-color-action);
+  font-weight: var(--ds-weight-strong);
+}
+
 .housing-results__list-header {
   display: flex;
   flex: 0 0 auto;
@@ -489,6 +494,14 @@ a {
   overflow-y: auto;
   overscroll-behavior: contain;
   flex: 1;
+}
+
+.housing-results__list-end {
+  min-height: var(--ds-control-height-md);
+  padding-block: var(--ds-space-4);
+  color: var(--ds-color-muted);
+  font-size: var(--ds-text-caption);
+  text-align: center;
 }
 
 .housing-results__list {
