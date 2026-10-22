@@ -1,4 +1,18 @@
-.layout[class] { display:grid; grid-template-columns:236px minmax(0,1fr); grid-template-rows:72px 1fr; min-height:100dvh; background:var(--ds-color-surface-subtle); color:var(--ds-color-text); font-family:var(--ds-font-family-base); }
+.layout[class] {
+ /* 관리자 작업공간 전용 저채도 녹색 팔레트 */
+ --ds-color-brand:#526d5b;
+ --ds-color-brand-strong:#425d4b;
+ --ds-color-brand-hover:var(--ds-color-brand-strong);
+ --ds-color-brand-tint:#d3ded5;
+ --ds-color-on-brand:#ffffff;
+ --ds-color-action:#42614d;
+ --ds-color-action-soft:#f1f5f1;
+ --ds-color-action-selected:#e2ebe4;
+ --brand:var(--ds-color-brand);
+ --brand-dark:var(--ds-color-action);
+ --focus:var(--ds-color-action);
+ display:grid; grid-template-columns:236px minmax(0,1fr); grid-template-rows:72px 1fr; min-height:100dvh; background:var(--ds-color-surface-subtle); color:var(--ds-color-text); font-family:var(--ds-font-family-base);
+}
 .layout :global(.admin-header) { display:flex; flex-direction:row; gap:28px; padding:16px 28px; min-height:0; background:var(--ds-color-surface); border-bottom:1px solid var(--ds-color-divider); }
 .layout :global(.admin-brand) { width:180px; flex:none; }
 .layout :global(.admin-brand-context) { font-size:13px; font-weight:650; color:var(--ds-color-label); }
