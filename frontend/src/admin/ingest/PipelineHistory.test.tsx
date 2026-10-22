@@ -11,6 +11,31 @@ const getHistory = vi.mocked(getPipelineHistory)
 beforeEach(() => getHistory.mockReset())
 
 describe('데이터 실행 이력', () => {
+  it('단지 이력은 아이콘으로 페이지 이동·새로고침·상세 닫기를 제공한다', async () => {
+    const first = Array.from({ length: 20 }, (_, index) => execution({ executionId: `run-${index}` }))
+    getHistory.mockResolvedValueOnce(first).mockResolvedValueOnce([execution()]).mockResolvedValueOnce(first).mockResolvedValueOnce(first)
+    render(<MemoryRouter><PipelineHistory domain="complex" compact readOnlyComplex /></MemoryRouter>)
+    fireEvent.click((await screen.findAllByRole('button', { name: /상세 보기/ }))[0])
+    const close = screen.getByRole('button', { name: '닫기' })
+    expect(close).toHaveTextContent(/^$/)
+    fireEvent.click(close)
+    expect(screen.queryByRole('region', { name: '선택한 실행 상세' })).not.toBeInTheDocument()
+    for (const label of ['새로고침', '이전', '다음']) {
+      const button = screen.getByRole('button', { name: label })
+      expect(button).toHaveTextContent(/^$/)
+      expect(button.querySelector('svg')).not.toBeNull()
+    }
+    expect(screen.getByRole('button', { name: '이전' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: '다음' }))
+    await screen.findByRole('button', { name: /상세 보기/ })
+    expect(screen.getByText('2 페이지')).toBeVisible()
+    expect(screen.getByRole('button', { name: '다음' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: '이전' }))
+    await screen.findAllByRole('button', { name: /상세 보기/ })
+    fireEvent.click(screen.getByRole('button', { name: '새로고침' }))
+    await screen.findAllByRole('button', { name: /상세 보기/ })
+    expect(getHistory.mock.calls).toEqual([[0, 'complex'], [1, 'complex'], [0, 'complex'], [0, 'complex']])
+  })
   it('단지 조회 전용 상세는 실행·수정 기능 없이 정제에 해당하는 오류 종류만 제공한다', async () => {
     getHistory.mockResolvedValue([execution({ type: 'COMPLEX_REFINEMENT' })])
     render(<MemoryRouter><PipelineHistory domain="complex" compact readOnlyComplex /></MemoryRouter>)

@@ -4,6 +4,7 @@ import { PipelineResult } from './PipelineResult'
 import { PipelineExecutionSteps } from './PipelineExecutionSteps'
 import { pipelineLabels as labels, pipelineStatusLabels } from './pipelineLabels'
 import { ComplexExecutionResult } from './ComplexExecutionResult'
+import { ComplexIconButton } from './ComplexIconButton'
 export function PipelineHistory({ domain, compact = false, readOnlyComplex = false }: { domain?: 'complex' | 'announcement'; compact?: boolean; readOnlyComplex?: boolean } = {}) {
   const [page, setPage] = useState(0)
   const [items, setItems] = useState<DataPipelineExecution[]>([])
@@ -34,9 +35,9 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
           <h2 id="pipeline-history-title">실행 이력</h2>
           <p>최근 실행 20건씩 확인할 수 있습니다.</p>
         </div>
-        <button type="button" disabled={busy} onClick={() => setAttempt((value) => value + 1)}>
+        {readOnlyComplex ? <ComplexIconButton icon="refresh" label="새로고침" disabled={busy} onClick={() => setAttempt(value => value + 1)} /> : <button type="button" disabled={busy} onClick={() => setAttempt((value) => value + 1)}>
           새로고침
-        </button>
+        </button>}
       </header>
       {busy ? <p role="status">이력을 불러오는 중…</p> : null}
       {error ? <p role="alert" className="pipeline-history-error">{error}</p> : null}
@@ -66,14 +67,17 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
       ) : null}
       {(page > 0 || items.length > 0) ? (
         <nav className="admin-pagination pipeline-history-pagination" aria-label="실행 이력 페이지">
-          <button type="button" disabled={busy || page === 0} onClick={() => setPage((value) => value - 1)}>이전</button>
+          {readOnlyComplex ? <ComplexIconButton icon="previous" label="이전" disabled={busy || page === 0} onClick={() => setPage(value => value - 1)} />
+            : <button type="button" disabled={busy || page === 0} onClick={() => setPage((value) => value - 1)}>이전</button>}
           <span aria-live="polite">{page + 1} 페이지</span>
-          <button type="button" disabled={busy || items.length < 20} onClick={() => setPage((value) => value + 1)}>다음</button>
+          {readOnlyComplex ? <ComplexIconButton icon="next" label="다음" disabled={busy || items.length < 20} onClick={() => setPage(value => value + 1)} />
+            : <button type="button" disabled={busy || items.length < 20} onClick={() => setPage((value) => value + 1)}>다음</button>}
         </nav>
       ) : null}
       {selected ? (
         <section className="pipeline-history-detail" aria-label="선택한 실행 상세">
-          <header><h3>선택한 실행 상세</h3><button type="button" onClick={() => setSelected(null)}>닫기</button></header>
+          <header><h3>선택한 실행 상세</h3>{readOnlyComplex ? <ComplexIconButton icon="close" label="닫기" onClick={() => setSelected(null)} />
+            : <button type="button" onClick={() => setSelected(null)}>닫기</button>}</header>
           <p>선택 시점의 실행 기록입니다. 실행 중인 작업의 최신 상태와 중지는 상단에서 확인해 주세요.</p>
           {readOnlyComplex ? <ComplexExecutionResult key={selected.executionId} execution={selected} />
             : compact ? <PipelineExecutionSteps key={selected.executionId} execution={selected} />

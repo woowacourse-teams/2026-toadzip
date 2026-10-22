@@ -30,7 +30,9 @@
 .summaryTime>span { font-size:11px; color:var(--ds-color-muted); }
 .summaryTime time { font-size:13px; color:var(--ds-color-label); line-height:1.6; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
 .errorToggle[class] { display:inline-flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:12px; padding:12px 18px; border:1px solid var(--ds-color-action); }
-.disclosureHint { font-size:12px; font-weight:500; }
+.iconButton[class][data-design-system] { flex:none; width:40px; height:40px; min-width:40px; padding:0; border:0; border-radius:50%; background:transparent; }
+.iconButton[class]:hover:not(:disabled), .iconButton[class]:focus-visible { background:var(--ds-color-action-selected); }
+.resultHeading { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
 .disclosureChevron { flex:none; }
 .errorToggle[aria-expanded=true] .disclosureChevron { transform:rotate(180deg); }
 .errorPanel:not([hidden]) { margin-top:12px; padding:20px; border:1px solid color-mix(in srgb,var(--ds-color-action) 20%,var(--ds-color-divider)); border-radius:10px; background:var(--ds-color-action-soft); }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getFailureReviews, type FailureReview, type FailureReviewPageData } from './failureReviewApi'
 import { collectionCause, failureTarget } from './failurePresentation'
 import styles from './ComplexIngest.module.css'
+import { ComplexIconButton } from './ComplexIconButton'
 
 type Mode = 'collection' | 'complex' | 'household' | 'coordinates'
 const labels: Record<Mode, string> = { collection: '수집 오류', complex: '단지 정제 오류', household: '세대수 보강 오류', coordinates: '좌표 문제' }
@@ -65,9 +66,9 @@ export function ComplexRunErrors({ executionId, phase }: { executionId: string; 
       <p>{data.totalElements ? `${labels[mode]} ${data.totalElements.toLocaleString('ko-KR')}건` : `이 실행에 기록된 ${labels[mode]}가 없습니다.`}</p>
       <ul className={styles.errorList}>{data.items.map(row => <ErrorItem key={`${row.category}-${row.id}`} row={row} />)}</ul>
       {mode !== 'coordinates' && data.totalPages > 1 && <nav className={styles.errorTools} aria-label="오류 페이지">
-        <button type="button" disabled={page === 0} onClick={() => setPage(value => value - 1)}>이전</button>
+        <ComplexIconButton icon="previous" label="이전" disabled={page === 0} onClick={() => setPage(value => value - 1)} />
         <span>{page + 1} / {data.totalPages} 페이지</span>
-        <button type="button" disabled={!data.hasNext} onClick={() => setPage(value => value + 1)}>다음</button>
+        <ComplexIconButton icon="next" label="다음" disabled={!data.hasNext} onClick={() => setPage(value => value + 1)} />
       </nav>}
     </>}
   </section>

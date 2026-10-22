@@ -3,6 +3,7 @@ import { PipelineHistory } from './PipelineHistory'
 import styles from './IngestWorkspace.module.css'
 import { useRef, useState } from 'react'
 import complexStyles from './ComplexIngest.module.css'
+import { ComplexIconButton } from './ComplexIconButton'
 
 export function IngestPage({ domain }: { domain: 'complex' | 'announcement' }) {
   const dialog = useRef<HTMLDialogElement>(null)
@@ -17,7 +18,7 @@ export function IngestPage({ domain }: { domain: 'complex' | 'announcement' }) {
     <DataPipelineControl key={`control-${domain}`} domain={domain} compact />
     {domain === 'complex' ? <dialog ref={dialog} className={complexStyles.historyDialog} aria-labelledby="complex-history-title"
       onClose={() => setHistoryOpen(false)}>
-      <header><h2 id="complex-history-title">실행 이력</h2><button type="button" onClick={() => dialog.current?.close()}>이력 닫기</button></header>
+      <header><h2 id="complex-history-title">실행 이력</h2><ComplexIconButton icon="close" label="이력 닫기" onClick={() => dialog.current?.close()} /></header>
       {historyOpen && <PipelineHistory domain="complex" compact readOnlyComplex />}
     </dialog> : <PipelineHistory key={`history-${domain}`} domain={domain} compact />}
   </section>

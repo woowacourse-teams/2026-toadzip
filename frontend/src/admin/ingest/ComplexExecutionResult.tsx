@@ -52,7 +52,7 @@ export function ComplexExecutionResult({ execution, phase, pending = false, stop
     {settled && execution.executionId && <>
       <Button data-design-system className={styles.errorToggle} aria-label="결과 오류 조회"
         aria-expanded={errorsOpen} aria-controls={errorsId} onClick={() => setErrorsOpen(value => !value)}>
-        결과 오류 조회 <span className={styles.disclosureHint} aria-hidden="true">{errorsOpen ? '접기' : '아래로 펼치기'}</span>
+        결과 오류 조회
         <svg className={styles.disclosureChevron} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
       </Button>
       <div id={errorsId} role="region" aria-label="결과 오류" hidden={!errorsOpen} className={styles.errorPanel}>
