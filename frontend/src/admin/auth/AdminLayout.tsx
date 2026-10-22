@@ -84,8 +84,12 @@ export function AdminLayout() {
       <nav id={menuId} className="admin-navigation" aria-label="관리자 메뉴" data-open={menuOpen}
         onKeyDown={event => { if (event.key === 'Escape' && menuOpen) { setMenuOpen(false); menuButton.current?.focus() } }}>
         <button type="button" className={styles.collapseButton} aria-label={collapsed ? '메뉴 펼치기' : '메뉴 접기'}
+          title={collapsed ? '메뉴 펼치기' : '메뉴 접기'}
           aria-expanded={!collapsed} aria-controls={menuId} onClick={() => setCollapsed(value => !value)}>
-          <span aria-hidden="true">{collapsed ? '»' : '«'}</span><span className={styles.collapseLabel}>메뉴 접기</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" />
+            <path d={collapsed ? 'm13 9 3 3-3 3' : 'm16 9-3 3 3 3'} />
+          </svg>
         </button>
         <div className="admin-nav-group"><span>매일 하는 작업</span>
           {workLinks.map(([path, label, icon]) => <NavLink key={path} to={path} aria-label={label}><MenuIcon kind={icon} /><span className={styles.menuLabel}>{label}</span></NavLink>)}

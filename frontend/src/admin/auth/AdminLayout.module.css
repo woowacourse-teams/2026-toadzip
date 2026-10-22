@@ -9,8 +9,8 @@
 .layout :global(.admin-header-account)>span { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ds-color-muted); }
 .layout :global(.admin-header) button { min-height:36px; padding:7px 12px; border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); background:var(--ds-color-surface); color:var(--ds-color-label); font:inherit; font-size:12px; cursor:pointer; }
 .layout :global(.admin-navigation) { position:sticky; top:0; align-self:start; box-sizing:border-box; min-height:calc(100dvh - 72px); max-height:100dvh; overflow-y:auto; gap:28px; padding:28px 16px 20px; border-right:1px solid var(--ds-color-divider); border-bottom:0; background:var(--ds-color-surface); }
-.collapseButton { display:flex; align-items:center; justify-content:center; gap:8px; min-height:36px; border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); background:var(--ds-color-surface); color:var(--ds-color-label); cursor:pointer; }
-.collapseButton>span:first-child { font-size:24px; line-height:1; }
+.collapseButton { display:flex; align-items:center; justify-content:center; align-self:flex-end; width:36px; height:36px; padding:0; border:0; border-radius:var(--ds-radius-control); background:transparent; color:var(--ds-color-muted); cursor:pointer; }
+.collapseButton:hover { background:var(--ds-color-surface-subtle); color:var(--ds-color-text); }
 .layout :global(.admin-navigation) svg { flex:none; }
 .layout :global(.admin-nav-group) { display:flex; flex-direction:column; gap:6px; }
 .layout :global(.admin-nav-group)>span { padding:0 14px 8px; font-size:11px; color:var(--ds-color-muted); font-weight:600; letter-spacing:0; }
@@ -41,7 +41,8 @@
 @media(min-width:761px) {
  .layout[data-collapsed=true] { grid-template-columns:76px minmax(0,1fr); }
  .layout[data-collapsed=true] :global(.admin-navigation) { gap:12px; padding:16px 10px; overflow:visible; max-height:none; }
- .layout[data-collapsed=true] :is(.collapseLabel,.navFoot), .layout[data-collapsed=true] :global(.admin-nav-group)>span, .layout[data-collapsed=true] .navTools>summary { display:none; }
+ .layout[data-collapsed=true] .collapseButton { align-self:center; }
+ .layout[data-collapsed=true] .navFoot, .layout[data-collapsed=true] :global(.admin-nav-group)>span, .layout[data-collapsed=true] .navTools>summary { display:none; }
  .layout[data-collapsed=true] :global(.admin-navigation) a { position:relative; justify-content:center; padding:12px; }
  .layout[data-collapsed=true] .menuLabel { display:none; position:absolute; z-index:20; left:calc(100% + 8px); padding:8px 12px; border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); background:var(--ds-color-text); color:var(--ds-color-surface); white-space:nowrap; box-shadow:0 4px 12px #0002; }
  .layout[data-collapsed=true] a:is(:hover,:focus-visible) .menuLabel { display:block; }
