@@ -11,11 +11,12 @@ export function HousingDetailOverlay({ label, mobile, onClose, children }: {
   useLayoutEffect(() => {
     const element = page.current
     if (!mobile || !element) return
+    const boundary = element.closest<HTMLElement>('[data-mobile-detail-sheet]') ?? element
     // Keep the map mounted; portalled attachment dialogs stay outside these branches.
     const root = element.closest('.app-shell') ?? element.closest('.housing-explorer')
     const background = new Map<HTMLElement, { inert: boolean; hidden: string | null }>()
     function isolateBackground() {
-      for (let branch: HTMLElement | null = element; root && branch && branch !== root; branch = branch.parentElement) {
+      for (let branch: HTMLElement | null = boundary; root && branch && branch !== root; branch = branch.parentElement) {
         for (const sibling of branch.parentElement?.children ?? []) {
           if (sibling === branch || !(sibling instanceof HTMLElement) || background.has(sibling)) continue
           background.set(sibling, { inert: sibling.inert, hidden: sibling.getAttribute('aria-hidden') })
@@ -26,7 +27,7 @@ export function HousingDetailOverlay({ label, mobile, onClose, children }: {
     }
     isolateBackground()
     const observer = new MutationObserver(isolateBackground)
-    for (let branch: HTMLElement | null = element; root && branch && branch !== root; branch = branch.parentElement) {
+    for (let branch: HTMLElement | null = boundary; root && branch && branch !== root; branch = branch.parentElement) {
       if (branch.parentElement) observer.observe(branch.parentElement, { childList: true })
     }
     return () => {

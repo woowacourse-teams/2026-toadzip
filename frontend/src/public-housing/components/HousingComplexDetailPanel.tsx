@@ -87,6 +87,7 @@ export interface HousingComplexDetailPanelProps {
   readonly detail: HousingComplexDetailData
   readonly onClose: () => void
   readonly backButton?: ReactNode
+  readonly headerActions?: ReactNode
   readonly onOpenAnnouncement?: (announcementId: string) => void
   readonly streetView?: StreetViewController
   readonly onEscape?: () => void
@@ -104,6 +105,7 @@ export function HousingComplexDetailPanel({
   onClose,
   onOpenAnnouncement,
   backButton,
+  headerActions,
   streetView,
   onEscape,
   preview = false,
@@ -206,6 +208,7 @@ export function HousingComplexDetailPanel({
         <div className={styles.headerMain}>
           <h2 ref={headingRef} id={titleId} tabIndex={-1}>{detail.name}</h2>
         </div>
+        {headerActions}
         <DetailCloseButton label={preview ? '단지 요약 닫기' : '단지 상세 닫기'} onClose={onClose} />
       </header>
 

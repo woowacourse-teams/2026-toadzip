@@ -348,8 +348,9 @@ export function PublicHousingExplorer({
     [detailLocationSearch],
   )
   const recentPreview = readRecentComplexPreview(location.state)
-  const showingComplexSummary = mobile && recentPreview !== null && !recentPreview.expanded
+  const showingRecentComplex = mobile && recentPreview !== null
     && detailLocation.kind === 'complex' && detailLocation.complexId === recentPreview.complexId
+  const showingComplexSummary = showingRecentComplex && !recentPreview.expanded
   useLayoutEffect(() => {
     if (!mobile || (detailLocation.kind !== 'complex' && detailLocation.kind !== 'announcement')) return
     mobileDetailListModeRef.current ??= listPanelMode
@@ -1405,8 +1406,27 @@ export function PublicHousingExplorer({
     setListPanelMode('collapsed')
   }
 
+  const complexDetailLayer = <ComplexDetailLayer
+    mobile={mobile}
+    streetView={streetViewSupported && !mobile ? streetView : undefined}
+    state={complexDetail}
+    onClose={closeDetail}
+    backTarget={detailReturnFocusStack.at(-1)}
+    onBack={returnToDetail}
+    onBackToSummary={mobile && recentPreview?.expanded && recentPreview.complexId === complexDetail.complexId
+      && detailReturnFocusStack.length === 0 ? returnToComplexSummary : undefined}
+    onOpenAnnouncement={(id) => openAnnouncementDetail(id, 'detail')}
+    onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'detail' }); setDetailRetryRevision((current) => current + 1) }}
+  />
+
   return (
     <div className={`housing-explorer${hasDetail ? ' has-detail' : ''}${showResultPage ? ' has-results-page' : ''}${integratedSearchActive ? ' is-searching' : ''}${streetView.active ? ' has-street-view' : ''}`}
+      onPointerDownCapture={(event) => { event.currentTarget.dataset.focusInput = 'pointer' }}
+      onKeyDownCapture={(event) => {
+        if (!event.altKey && !event.ctrlKey && !event.metaKey && !['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) {
+          event.currentTarget.dataset.focusInput = 'keyboard'
+        }
+      }}
       onKeyDown={(event) => {
         if (event.key !== 'Escape' || event.defaultPrevented || !streetView.active) return
         const dialog = event.target instanceof HTMLElement ? event.target.closest('dialog') : null
@@ -1639,25 +1659,17 @@ export function PublicHousingExplorer({
             <a className="housing-map-credits" href="/map-data-credits.html" target="_blank" rel="noreferrer">저작권</a>
           )}
         </div>
-        {showingComplexSummary ? <HousingComplexSummarySheet
+        {showingRecentComplex ? <HousingComplexSummarySheet
+          key={recentPreview.complexId}
+          expanded={recentPreview.expanded}
+          onBackToSummary={returnToComplexSummary}
           recent={recentComplexes.find((recent) => recent.complexId === recentPreview?.complexId)}
           detail={complexDetail.detail}
           status={complexDetail.status}
           onExpand={expandComplexSummary}
           onClose={closeDetail}
           onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'detail' }); setDetailRetryRevision((current) => current + 1) }}
-        /> : <ComplexDetailLayer
-          mobile={mobile}
-          streetView={streetViewSupported && !mobile ? streetView : undefined}
-          state={complexDetail}
-          onClose={closeDetail}
-          backTarget={detailReturnFocusStack.at(-1)}
-          onBack={returnToDetail}
-          onBackToSummary={mobile && recentPreview?.expanded && recentPreview.complexId === complexDetail.complexId
-            && detailReturnFocusStack.length === 0 ? returnToComplexSummary : undefined}
-          onOpenAnnouncement={(id) => openAnnouncementDetail(id, 'detail')}
-          onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'detail' }); setDetailRetryRevision((current) => current + 1) }}
-        />}
+        >{complexDetailLayer}</HousingComplexSummarySheet> : complexDetailLayer}
         <AnnouncementDetailLayer
           mobile={mobile}
           state={announcementDetail}
