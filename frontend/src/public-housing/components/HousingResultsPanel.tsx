@@ -1,5 +1,5 @@
 import { captureProductEvent } from '../../analytics/productAnalytics'
-import { useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
 import { useMobileViewport } from './useMobileViewport'
 
 const HALF_HEIGHT = 50
@@ -15,7 +15,18 @@ interface Props {
 export function HousingResultsPanel({ visible, title, onCollapse, children }: Props) {
   const mobile = useMobileViewport()
   const panel = useRef<HTMLElement>(null)
-  const [heightPercent, setHeightPercent] = useState(HALF_HEIGHT)
+  const [viewport, setViewport] = useState(readViewport)
+  const compact = mobile && viewport.landscape && viewport.short
+  const heightMode = viewport.landscape ? 'landscape' : 'portrait'
+  const [heightsByMode, setHeightsByMode] = useState<{ portrait: number; landscape: number | null }>({ portrait: HALF_HEIGHT, landscape: null })
+  const heightPercent = heightsByMode[heightMode] ?? (compact ? 100 : HALF_HEIGHT)
+  const setHeightPercent = (height: number) => setHeightsByMode(previous => ({ ...previous, [heightMode]: height }))
+
+  useEffect(() => {
+    const update = () => setViewport(readViewport())
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
   const [dragHeight, setDragHeight] = useState<number | null>(null)
   const [searchCovered, setSearchCovered] = useState(false)
   const resetOnOpen = useRef(false)
@@ -24,13 +35,12 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
   useLayoutEffect(() => {
     if (visible && resetOnOpen.current) {
       resetOnOpen.current = false
-      setHeightPercent(HALF_HEIGHT)
+      setHeightsByMode(previous => ({ ...previous, [heightMode]: compact ? 100 : HALF_HEIGHT }))
     }
-    if (!visible || !mobile) {
-      drag.current = null
-      setDragHeight(null)
-    }
-  }, [visible, mobile])
+    // A drag started before rotation has coordinates from the previous layout.
+    drag.current = null
+    setDragHeight(null)
+  }, [visible, mobile, compact, heightMode])
 
   useLayoutEffect(() => {
     const search = panel.current?.parentElement?.querySelector('.housing-search-overlay')
@@ -154,4 +164,9 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
       </div>
     </aside>
   )
+}
+
+// Matches the compact mobile CSS query; resize also covers the on-screen keyboard.
+function readViewport() {
+  return { landscape: window.innerWidth > window.innerHeight, short: window.innerHeight <= 500 }
 }

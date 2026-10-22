@@ -1,3 +1,4 @@
+import { isMobileViewport } from '../components/useMobileViewport'
 import { useFilterMeasurement } from '../analytics/useFilterMeasurement'
 import { createPortal } from 'react-dom'
 import { IconButton } from '../../design-system/components/IconButton'
@@ -164,7 +165,7 @@ export function ComplexFilterToolbar({
       opener?.focus()
     }
     const closeAtDesktopBreakpoint = () => {
-      if (window.innerWidth <= 767) {
+      if (isMobileViewport()) {
         return
       }
       measurement.reason('breakpoint')
@@ -204,6 +205,8 @@ export function ComplexFilterToolbar({
       }
     }
 
+    const touchInput = window.matchMedia?.('(hover: none) and (pointer: coarse)')
+    touchInput?.addEventListener?.('change', closeAtDesktopBreakpoint)
     document.addEventListener('keydown', handleKeyDown, true)
     window.addEventListener('resize', closeAtDesktopBreakpoint)
     html.style.overflow = 'hidden'
@@ -221,6 +224,7 @@ export function ComplexFilterToolbar({
       }
     }
     return () => {
+      touchInput?.removeEventListener?.('change', closeAtDesktopBreakpoint)
       document.removeEventListener('keydown', handleKeyDown, true)
       window.removeEventListener('resize', closeAtDesktopBreakpoint)
       html.style.overflow = previousHtmlOverflow

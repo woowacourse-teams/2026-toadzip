@@ -88,6 +88,6 @@
   outline-offset: 2px;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .zoomControls { display: none; }
 }

@@ -401,7 +401,7 @@
   width: 100%;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .panel {
     max-height: 100%;
   }
@@ -434,7 +434,7 @@
   }
 }
 
-@media (max-width: 767px) and (max-height: 500px) {
+@media (max-width: 767px) and (max-height: 500px), (hover: none) and (pointer: coarse) and (max-height: 500px) {
   .form {
     overflow-y: auto;
     overscroll-behavior: contain;
