@@ -114,7 +114,26 @@ public class MyHomeAnnouncementSupplyRowResolver {
             }
             matched.computeIfAbsent(sourceRow, ignored -> new ArrayList<>()).add(lhSupply);
         }
+        if (matched.isEmpty() && sourceRows.size() == 1 && sameTotal(sourceRows.getFirst(), lhSupplies)) {
+            // 단지명 표기가 달라도(아산읍내 ↔ 아산읍내1 영구임대아파트) 원천이 한 행뿐이고 모집수 합계가 같으면 같은 공급이다.
+            matched.put(sourceRows.getFirst(), new ArrayList<>(lhSupplies));
+        }
         return matched;
+    }
+
+    private boolean sameTotal(MyHomeSupplyRowMappingData sourceRow, List<LhAnnouncementSupplySource> lhSupplies) {
+        if (sourceRow.totalSupplyHouseholdCount() == null) {
+            return false;
+        }
+        long total = 0;
+        for (LhAnnouncementSupplySource lhSupply : lhSupplies) {
+            Integer count = nonNegativeInteger(lhSupply.getSuppliedUnitCount());
+            if (count == null) {
+                return false;
+            }
+            total += count;
+        }
+        return total == sourceRow.totalSupplyHouseholdCount();
     }
 
     private MyHomeSupplyRowMappingData uniqueSourceRow(
