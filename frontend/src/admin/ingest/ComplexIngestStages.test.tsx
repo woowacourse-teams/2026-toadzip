@@ -2,10 +2,10 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { DataPipelineControl } from './DataPipelineControl'
-import { getDataPipelineStatus, startDataPipeline, stopDataPipeline, type DataPipelineExecution, type DataPipelineType } from './api'
+import { getDataPipelineStatus, startDataPipeline, stopDataPipeline, type DataPipelineExecution, type DataPipelineType, type LocationSummaryImportReport, uploadLocationSummary } from './api'
 
 vi.mock('./api', async original => ({ ...await original<typeof import('./api')>(),
-  getDataPipelineStatus: vi.fn(), startDataPipeline: vi.fn(), stopDataPipeline: vi.fn(),
+  getDataPipelineStatus: vi.fn(), startDataPipeline: vi.fn(), stopDataPipeline: vi.fn(), uploadLocationSummary: vi.fn(),
 }))
 beforeEach(() => {
   vi.resetAllMocks()
@@ -17,44 +17,98 @@ function execution(type: DataPipelineType, extra: Partial<DataPipelineExecution>
 }
 async function show() {
   const view = render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
-  await waitFor(() => expect(screen.getByRole('button', { name: '단지 정제·저장 실행' })).toBeEnabled())
+  await waitFor(() => expect(screen.getByRole('button', { name: '단지 원천 수집 실행' })).toBeEnabled())
   return view
 }
 function assertStages() {
-  for (const name of ['단지 원천 수집', '주소에 맞는 좌표 적재', '단지 정제·저장']) expect(screen.getByRole('region', { name })).toBeVisible()
+  expect(screen.getAllByRole('tab')).toHaveLength(3)
+  expect(screen.getAllByRole('tabpanel', { hidden: true })).toHaveLength(3)
+  expect(screen.getAllByRole('tabpanel')).toHaveLength(1)
 }
-it('세 단계와 각 기능의 실행 버튼 하나를 유지하고 통합 실행 진입점을 제거한다', async () => {
+function select(name: string) {
+  fireEvent.click(screen.getByRole('tab', { name }))
+}
+it('가로 탭에 선택한 단계만 표시하고 각 실행 버튼은 한 곳에 둔다', async () => {
   await show()
   assertStages()
-  expect(screen.getAllByRole('button', { name: '단지 원천 수집 실행' })).toHaveLength(1)
-  expect(screen.getAllByRole('button', { name: '단지 정제·저장 실행' })).toHaveLength(1)
-  expect(screen.getAllByRole('button', { name: '좌표 데이터 업로드' })).toHaveLength(1)
+  expect(screen.getByRole('tab', { name: '1 원천 수집' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getAllByRole('button', { name: '단지 원천 수집 실행', hidden: true })).toHaveLength(1)
+  expect(screen.getAllByRole('button', { name: '단지 정제·저장 실행', hidden: true })).toHaveLength(1)
+  expect(screen.getAllByRole('button', { name: '좌표 데이터 업로드', hidden: true })).toHaveLength(1)
   expect(screen.queryByRole('button', { name: '단지 수집·정제' })).not.toBeInTheDocument()
-  const upload = screen.getByRole('region', { name: '주소에 맞는 좌표 적재' })
-  expect(within(upload).queryByRole('button', { name: /정제/ })).not.toBeInTheDocument()
+  select('2 좌표 적재')
+  expect(within(screen.getByRole('tabpanel')).queryByRole('button', { name: /정제/ })).not.toBeInTheDocument()
+  select('3 정제·저장')
   expect(screen.getByText(/현재 저장된 단지 원본 전체/)).toBeVisible()
 })
-it('키 안내를 클릭·키보드로 열고 수집 접수 후에도 세 단계를 유지하며 키를 비운다', async () => {
+it('키를 입력받지 않고 서버 설정으로 수집을 접수하며 탭을 유지한다', async () => {
   let resolve: (value: DataPipelineExecution) => void = () => {}
   vi.mocked(startDataPipeline).mockReturnValue(new Promise(complete => { resolve = complete }))
   await show()
-  const info = screen.getByRole('button', { name: '공공데이터포털 API 키 안내' })
-  expect(info).toHaveAttribute('aria-expanded', 'false')
-  fireEvent.click(info)
-  expect(screen.getByText(/입력한 키는 이번 실행에만/)).toBeVisible()
-  fireEvent.keyDown(info, { key: 'Escape' })
-  expect(info).toHaveAttribute('aria-expanded', 'false')
-  const input = screen.getByLabelText('공공데이터포털 API 키')
-  fireEvent.change(input, { target: { value: ' fixture-key ' } })
+  expect(screen.queryByLabelText('공공데이터포털 API 키')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /API 키/ })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '단지 원천 수집 실행' }))
   assertStages()
-  expect(input).toHaveValue('')
-  expect(startDataPipeline).toHaveBeenCalledExactlyOnceWith('COMPLEX_COLLECTION', 'fixture-key')
-  expect(screen.getByRole('button', { name: '단지 정제·저장 실행' })).toBeDisabled()
+  expect(startDataPipeline).toHaveBeenCalledExactlyOnceWith('COMPLEX_COLLECTION')
   expect(screen.getByText(/실행 접수를 확인/)).toBeVisible()
+  select('3 정제·저장')
+  expect(screen.getByRole('button', { name: '단지 정제·저장 실행' })).toBeDisabled()
   await act(async () => resolve(execution('COMPLEX_COLLECTION', { executionId: 'collect-1', status: 'RUNNING', currentStepName: '마이홈 단지 수집' })))
-  assertStages()
+  select('1 원천 수집')
   expect(screen.getByRole('button', { name: '실행 중지' })).toBeVisible()
+})
+it('방향키·Home·End로 탭을 선택하고 포커스를 옮긴다', async () => {
+  await show()
+  const first = screen.getByRole('tab', { name: '1 원천 수집' })
+  first.focus()
+  fireEvent.keyDown(first, { key: 'ArrowRight' })
+  const second = screen.getByRole('tab', { name: '2 좌표 적재' })
+  expect(second).toHaveFocus()
+  expect(second).toHaveAttribute('aria-selected', 'true')
+  fireEvent.keyDown(second, { key: 'End' })
+  const third = screen.getByRole('tab', { name: '3 정제·저장' })
+  expect(third).toHaveFocus()
+  fireEvent.keyDown(third, { key: 'ArrowRight' })
+  expect(first).toHaveFocus()
+  fireEvent.keyDown(first, { key: 'ArrowLeft' })
+  expect(third).toHaveFocus()
+  fireEvent.keyDown(third, { key: 'Home' })
+  expect(first).toHaveFocus()
+})
+it('탭을 바꿔도 선택한 ZIP과 업로드 결과를 유지하며 안내로 3단계를 연다', async () => {
+  let resolve: (value: LocationSummaryImportReport) => void = () => {}
+  vi.mocked(uploadLocationSummary).mockReturnValue(new Promise(complete => { resolve = complete }))
+  await show()
+  select('2 좌표 적재')
+  const input = screen.getByLabelText('위치정보요약DB 월 전체분 ZIP')
+  const zip = new File(['fixture'], 'summary.zip', { type: 'application/zip' })
+  fireEvent.change(input, { target: { files: [zip] } })
+  select('1 원천 수집')
+  select('2 좌표 적재')
+  fireEvent.click(screen.getByRole('button', { name: '좌표 데이터 업로드' }))
+  select('1 원천 수집')
+  expect(screen.getByRole('button', { name: '단지 원천 수집 실행' })).toBeDisabled()
+  expect(screen.getByRole('tab', { name: '2 좌표 적재' })).toHaveAccessibleDescription('진행 중')
+  select('3 정제·저장')
+  expect(screen.getByRole('button', { name: '단지 정제·저장 실행' })).toBeDisabled()
+  select('2 좌표 적재')
+  expect(screen.getByText(/좌표 파일을 처리하고 있습니다/)).toBeVisible()
+  await act(async () => resolve({ sourceFileName: 'summary.zip', textFileCount: 1, scannedRowCount: 4,
+    storedLocationCount: 2, replacedRowCount: 0, invalidatedMappingCandidateCount: 0, provinceCodes: ['11'],
+    targetRoadAddressCount: 3, matchedRoadAddressCount: 2, unmatchedRoadAddressCount: 1 }))
+  await screen.findByText('좌표 적재 완료')
+  expect(uploadLocationSummary).toHaveBeenCalledExactlyOnceWith(zip)
+  expect(startDataPipeline).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('link', { name: '3단계에서 단지 정제·저장' }))
+  expect(screen.getByRole('tab', { name: '3 정제·저장' })).toHaveAttribute('aria-selected', 'true')
+  select('2 좌표 적재')
+  expect(screen.getByText('좌표 적재 완료')).toBeVisible()
+})
+it('직접 연결된 3단계를 열되 정제를 자동 실행하지 않는다', async () => {
+  render(<MemoryRouter initialEntries={['/admin/ingest/complexes#complex-refinement']}><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+  await waitFor(() => expect(screen.getByRole('button', { name: '단지 정제·저장 실행' })).toBeEnabled())
+  expect(screen.getByRole('tab', { name: '3 정제·저장' })).toHaveAttribute('aria-selected', 'true')
+  expect(startDataPipeline).not.toHaveBeenCalled()
 })
 it('재진입 시 진행 중 수집과 마지막 정제 결과를 복구하고 단위를 유지한다', async () => {
   vi.mocked(getDataPipelineStatus).mockImplementation(async type => execution(type, type === 'COMPLEX_COLLECTION'
@@ -65,7 +119,9 @@ it('재진입 시 진행 중 수집과 마지막 정제 결과를 복구하고 �
   await screen.findByRole('button', { name: '실행 중지' })
   assertStages()
   expect(screen.getByText(/20 \/ 250 개 지역/)).toBeVisible()
-  expect(within(screen.getByRole('region', { name: '단지 정제·저장' })).getByText('완료')).toBeVisible()
+  select('3 정제·저장')
+  expect(within(screen.getByRole('tabpanel')).getByText('완료')).toBeVisible()
+  select('2 좌표 적재')
   expect(screen.getByLabelText('위치정보요약DB 월 전체분 ZIP')).toBeDisabled()
 })
 it('정제만 실행하고 그 결과를 같은 영역에 남긴다', async () => {
@@ -73,6 +129,7 @@ it('정제만 실행하고 그 결과를 같은 영역에 남긴다', async () =
     completedStepResults: [{ step: 'MAP_MYHOME_COMPLEXES', stepName: '마이홈 단지 정제', report: { createdComplexCount: 4, updatedComplexCount: 7, failedSourceCount: 2 } }],
   }))
   await show()
+  select('3 정제·저장')
   fireEvent.click(screen.getByRole('button', { name: '단지 정제·저장 실행' }))
   await screen.findByText('일부 실패')
   assertStages()
@@ -87,6 +144,7 @@ it('시작 응답 유실은 서버 상태로 복구하며 중지 요청도 해�
   vi.mocked(getDataPipelineStatus).mockImplementation(async type => execution(type, type === 'COMPLEX_REFINEMENT'
     ? { executionId: 'refine-1', status: 'RUNNING', currentStepName: '마이홈 단지 정제' } : {}))
   vi.mocked(stopDataPipeline).mockResolvedValue(execution('COMPLEX_REFINEMENT', { executionId: 'refine-1', status: 'STOPPED' }))
+  select('3 정제·저장')
   fireEvent.click(screen.getByRole('button', { name: '단지 정제·저장 실행' }))
   fireEvent.click(await screen.findByRole('button', { name: '실행 중지' }))
   await screen.findByText('중지됨')
@@ -98,9 +156,14 @@ it('기존 통합 실행도 복구하되 중지 버튼은 현재 처리 중인 �
     ? { executionId: 'legacy-sync', status: 'RUNNING', currentStepName: '마이홈 단지 정제', totalStepCount: 4,
       completedSteps: ['마이홈 단지 수집', 'LH 임대 카탈로그 수집'] } : {}))
   render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+  await waitFor(() => expect(screen.getByText('진행 중')).toBeVisible())
+  expect(within(screen.getByRole('tab', { name: '3 정제·저장' })).getByText('진행 중')).toBeVisible()
+  expect(within(screen.getByRole('tab', { name: '1 원천 수집' })).queryByText('진행 중')).not.toBeInTheDocument()
+  select('3 정제·저장')
   await screen.findByRole('button', { name: '실행 중지' })
   expect(screen.getAllByRole('button', { name: '실행 중지' })).toHaveLength(1)
-  expect(within(screen.getByRole('region', { name: '단지 원천 수집' })).queryByRole('button', { name: '실행 중지' })).not.toBeInTheDocument()
+  select('1 원천 수집')
+  expect(screen.queryByRole('button', { name: '실행 중지' })).not.toBeInTheDocument()
   assertStages()
 })
 it('새 실행을 접수할 때 과거 통합 실행의 결과를 이번 결과로 표시하지 않는다', async () => {
@@ -110,8 +173,10 @@ it('새 실행을 접수할 때 과거 통합 실행의 결과를 이번 결과�
   let resolve: (value: DataPipelineExecution) => void = () => {}
   vi.mocked(startDataPipeline).mockReturnValue(new Promise(complete => { resolve = complete }))
   await show()
-  const refinement = screen.getByRole('region', { name: '단지 정제·저장' })
+  select('3 정제·저장')
+  const refinement = screen.getByRole('tabpanel')
   expect(within(refinement).getByText('999')).toBeVisible()
+  select('3 정제·저장')
   fireEvent.click(screen.getByRole('button', { name: '단지 정제·저장 실행' }))
   expect(within(refinement).queryByText('999')).not.toBeInTheDocument()
   expect(within(refinement).getByText(/실행 접수를 확인/)).toBeVisible()

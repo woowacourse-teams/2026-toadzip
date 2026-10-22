@@ -46,7 +46,7 @@ it('좌표 행 수와 구별한 주소 수 세 개만 보여 주며 정제를 �
   expect(screen.getByText('좌표를 찾은 주소').nextSibling).toHaveTextContent('3,400개')
   expect(screen.getByText('좌표를 찾지 못한 주소').nextSibling).toHaveTextContent('100개')
   expect(screen.queryByText('저장한 좌표 행')).not.toBeInTheDocument()
-  expect(screen.getByRole('link', { name: '아래 3단계에서 단지 정제·저장' })).toHaveAttribute('href', '#complex-refinement')
+  expect(screen.getByRole('link', { name: '3단계에서 단지 정제·저장' })).toHaveAttribute('href', '/#complex-refinement')
   expect(screen.getByText(/결과의 ‘좌표 문제’/)).toBeVisible()
   expect(screen.queryByRole('button', { name: /정제/ })).not.toBeInTheDocument()
   expect(startDataPipeline).not.toHaveBeenCalled()

@@ -61,7 +61,7 @@ export function LocationSummaryUpload({ embedded = false, disabled = false, onBu
         <ResultItem label="좌표를 찾지 못한 주소" value={report.unmatchedRoadAddressCount} />
       </dl>
       {report.unmatchedRoadAddressCount > 0 && <p>좌표를 찾지 못한 주소가 {report.unmatchedRoadAddressCount.toLocaleString('ko-KR')}개 있습니다.{' '}
-        {embedded ? <a href="#complex-refinement">아래 3단계에서 단지 정제·저장</a> : <Link to="/admin/ingest/complexes#complex-refinement">단지 수집 화면의 3단계에서 단지 정제·저장</Link>}
+        {embedded ? <Link to="#complex-refinement">3단계에서 단지 정제·저장</Link> : <Link to="/admin/ingest/complexes#complex-refinement">단지 수집 화면의 3단계에서 단지 정제·저장</Link>}
         을 실행한 뒤, 결과의 ‘좌표 문제’에서 대상과 사유를 확인하세요.</p>}
     </div>}
     {!embedded && <p><Link to="/admin/ingest/complexes#complex-refinement">단지 수집 3단계에서 단지 정제·저장</Link></p>}
