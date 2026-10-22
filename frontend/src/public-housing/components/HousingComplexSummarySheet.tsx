@@ -84,7 +84,7 @@ export function HousingComplexSummarySheet({ recent, detail, status, onExpand, o
               ? ` 현재 모집 공고 ${detail.currentAnnouncements.length}건. ${detail.currentAnnouncements[0].title ?? ''}`
               : ' 현재 연결된 모집 공고가 없습니다.'}
           </p>
-          <HousingComplexDetailPanel detail={toHousingComplexDetailData(detail)} preview onClose={onClose} />
+          <HousingComplexDetailPanel detail={toHousingComplexDetailData(detail)} mobile preview onClose={onClose} />
         </>
       : <>
     <header className={styles.header}>

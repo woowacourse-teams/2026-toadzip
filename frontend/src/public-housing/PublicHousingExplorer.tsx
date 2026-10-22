@@ -1689,6 +1689,7 @@ function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backT
     <HousingDetailOverlay label="단지 상세" mobile={mobile} onClose={onClose}>
       {state.status === 'ready' && state.detail
         ? <HousingComplexDetailPanel
+            mobile={mobile}
             streetView={streetView}
             onEscape={streetView?.active ? () => streetView.close('USER_CLOSED', true, 'escape') : undefined}
             backButton={backButton}

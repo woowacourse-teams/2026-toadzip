@@ -38,6 +38,8 @@ it('별도 이동 버튼이나 설명 없이 실제 상세 앞부분을 같은 �
   expect(screen.queryByText('위로 올려 상세 정보를 확인하세요')).not.toBeInTheDocument()
   expect(summary.querySelector('[data-preview]')).toBeInTheDocument()
   const contents = summary.querySelector('[data-preview]')?.textContent ?? ''
+  expect(contents.indexOf('서울가람 행복주택')).toBeLessThan(contents.indexOf('LH'))
+  expect(contents.indexOf('LH')).toBeLessThan(contents.indexOf('서울특별시 중구 세종대로 110'))
   expect(contents.indexOf('서울가람 행복주택')).toBeLessThan(contents.indexOf('서울특별시 중구 세종대로 110'))
   expect(contents.indexOf('서울특별시 중구 세종대로 110')).toBeLessThan(contents.indexOf('현재 모집 공고'))
   expect(contents.indexOf('현재 모집 공고')).toBeLessThan(contents.indexOf('단지 기본 정보'))

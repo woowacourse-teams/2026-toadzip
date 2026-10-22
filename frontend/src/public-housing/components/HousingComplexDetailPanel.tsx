@@ -91,6 +91,7 @@ export interface HousingComplexDetailPanelProps {
   readonly streetView?: StreetViewController
   readonly onEscape?: () => void
   readonly preview?: boolean
+  readonly mobile?: boolean
 }
 
 interface HousingTypeSelection {
@@ -106,6 +107,7 @@ export function HousingComplexDetailPanel({
   streetView,
   onEscape,
   preview = false,
+  mobile = false,
 }: HousingComplexDetailPanelProps) {
   const scrollAnalytics = useDetailScrollAnalytics('COMPLEX', detail.complexId)
   const { areaUnit, toggleAreaUnit } = useAreaUnit()
@@ -133,6 +135,15 @@ export function HousingComplexDetailPanel({
     : validOverviewImage === null ? [] : [validOverviewImage]
   const agencyCode = detail.agencyCode?.trim().toUpperCase() || null
   const titleId = `complex-detail-title-${detail.complexId}`
+  const identityType = <p className={styles.identityType}>
+    {(agencyCode || detail.agencyName) && (
+      <strong data-agency={agencyCode} title={detail.agencyName}>{agencyCode ?? detail.agencyName}</strong>
+    )}
+    <span>{detail.rentalTypeLabel}</span>
+  </p>
+  const images = coverImages.length > 0
+    ? <ComplexImages name={detail.name} urls={coverImages} overview={usesOverviewAsCover} />
+    : null
 
   useEffect(() => {
     if (!preview) headingRef.current?.focus({ preventScroll: true })
@@ -185,19 +196,14 @@ export function HousingComplexDetailPanel({
     <aside
       className={styles.panel}
       data-preview={preview || undefined}
+      data-mobile={mobile || undefined}
       aria-label={`${detail.name} 단지 상세 정보`}
       onKeyDown={handlePanelKeyDown}
     >
-      {/* 공고 상세와 같은 머리: 분류 칩 줄, 제목, 닫기. 단지명은 머리에만 둔다. */}
+      {/* 단지명만 고정하고 공급기관·주소는 본문과 함께 스크롤한다. */}
       <header className={styles.header}>
         {backButton}
         <div className={styles.headerMain}>
-          <p className={styles.identityType}>
-            {(agencyCode || detail.agencyName) && (
-              <strong data-agency={agencyCode} title={detail.agencyName}>{agencyCode ?? detail.agencyName}</strong>
-            )}
-            <span>{detail.rentalTypeLabel}</span>
-          </p>
           <h2 ref={headingRef} id={titleId} tabIndex={-1}>{detail.name}</h2>
         </div>
         <DetailCloseButton label={preview ? '단지 요약 닫기' : '단지 상세 닫기'} onClose={onClose} />
@@ -214,14 +220,10 @@ export function HousingComplexDetailPanel({
         aria-hidden={preview || undefined}
       >
         <section className={styles.identity} aria-labelledby={titleId}>
-          {coverImages.length > 0 && (
-            <ComplexImages
-              name={detail.name}
-              urls={coverImages}
-              overview={usesOverviewAsCover}
-            />
-          )}
+          {!mobile && images}
+          {identityType}
           <p className={styles.address}>{displayAddress(detail)}</p>
+          {mobile && images}
           {/* 단지 단위 행동(알림·거리뷰)은 같은 모양·높이의 보조 버튼 한 쌍으로 둔다. */}
           <div className={styles.identityActions}>
             <NotificationInterestButton
