@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { getFailureReviews, type FailureReview, type FailureReviewPageData } from './failureReviewApi'
 import { collectionCause, failureTarget } from './failurePresentation'
 import styles from './ComplexIngest.module.css'
 import { ComplexIconButton } from './ComplexIconButton'
+import { ComplexStageHelp } from './ComplexStageHelp'
+import { IconButton } from '../../design-system/components/IconButton'
 
 type Mode = 'collection' | 'complex' | 'household' | 'coordinates'
 const labels: Record<Mode, string> = { collection: '수집 오류', complex: '단지 정제 오류', household: '세대수 보강 오류', coordinates: '좌표 문제' }
@@ -20,6 +22,7 @@ export function ComplexRunErrors({ executionId, phase }: { executionId: string; 
   const [page, setPage] = useState(0)
   const [keyword, setKeyword] = useState('')
   const [attempt, setAttempt] = useState(0)
+  const searchId = useId()
   const [loaded, setLoaded] = useState<{ query: string; data: FailureReviewPageData } | null>(null)
   const [error, setError] = useState<{ query: string; message: string } | null>(null)
   const query = JSON.stringify([executionId, mode, page, keyword, attempt])
@@ -50,16 +53,23 @@ export function ComplexRunErrors({ executionId, phase }: { executionId: string; 
   }, [executionId, mode, page, keyword, query])
 
   return <section className={styles.errors} aria-label="이번 실행의 오류">
+    <div className={`${styles.helpLabel} ${styles.errorHeading}`}><h3>결과 오류</h3>
+      <ComplexStageHelp stage="결과 오류 조회">선택한 실행에서 마지막으로 발생한 오류의 현재 기록입니다. 실행 완료가 개별 오류의 해결을 뜻하지는 않습니다.</ComplexStageHelp>
+    </div>
     <div className={styles.errorTools}>
       <label>오류 종류<select value={mode} onChange={event => { setMode(event.target.value as Mode); setPage(0) }}>
         {modes.map(value => <option key={value} value={value}>{labels[value]}</option>)}
       </select></label>
-      <form onSubmit={event => { event.preventDefault(); setPage(0); setKeyword(String(new FormData(event.currentTarget).get('keyword') ?? '').trim()) }}>
-        <label>대상 검색<input name="keyword" maxLength={200} placeholder="이름 또는 원천 식별자" /></label><button type="submit">검색</button>
+      <form role="search" aria-label="오류 대상 검색" className={styles.searchForm} onSubmit={event => { event.preventDefault(); setPage(0); setKeyword(String(new FormData(event.currentTarget).get('keyword') ?? '').trim()) }}>
+        <label htmlFor={searchId}>대상 검색</label><div className={styles.searchField}>
+          <input id={searchId} className={styles.searchInput} type="search" name="keyword" maxLength={200} placeholder="이름 또는 원천 식별자 검색" />
+          <IconButton data-design-system type="submit" label="검색" title="검색" className={styles.searchButton}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
+          </IconButton>
+        </div>
       </form>
       <button type="button" disabled={busy} onClick={() => setAttempt(value => value + 1)}>다시 조회</button>
     </div>
-    <p className={styles.muted}>선택한 실행에서 마지막으로 발생한 오류의 현재 기록입니다. 실행 완료가 개별 오류의 해결을 뜻하지는 않습니다.</p>
     {busy && <p role="status">{mode === 'coordinates' ? '정제 오류 전체에서 좌표 문제를 확인하고 있습니다…' : '오류를 조회하고 있습니다…'}</p>}
     {message && <p role="alert" className="form-error">오류 조회 실패: {message}</p>}
     {data && <>
