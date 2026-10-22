@@ -7,6 +7,7 @@ import { ComplexExecutionResult, ComplexExecutionSummary } from './ComplexExecut
 import { LocationSummaryUpload } from './LocationSummaryUpload'
 import { pipelineStepDefinitions, pipelineStepSequences } from './pipelineSteps'
 import styles from './ComplexIngest.module.css'
+import { ComplexStageHelp } from './ComplexStageHelp'
 
 export function ComplexIngestStages({ states, disabled, startingType, stopping, onStart, onStop, onRefresh, onUploadBusy }: {
   states: Record<DataPipelineType, PipelineViewState>; disabled: boolean; startingType: DataPipelineType | null
@@ -74,19 +75,21 @@ export function ComplexIngestStages({ states, disabled, startingType, stopping, 
       </button>)}
     </div>
     <section className={styles.stage} id="complex-collection" role="tabpanel" hidden={selected !== 0} aria-labelledby={`${tabId}-0`}>
-      <header><div className={styles.stageTitle}><span className={styles.number}>1</span><h2 id="complex-collection-title">단지 원천 수집</h2></div>
+      <header><div className={styles.stageTitle}><span className={styles.number}>1</span><h2 id="complex-collection-title">단지 원천 수집</h2>
+        <ComplexStageHelp stage="단지 원천 수집">마이홈 단지와 LH 임대 카탈로그를 수집해 원본을 저장합니다.</ComplexStageHelp></div>
         <ComplexExecutionSummary execution={latest('COMPLEX_COLLECTION')} pending={startingType === 'COMPLEX_COLLECTION'} /></header>
       <Button data-design-system className={styles.collectionButton} disabled={disabled} onClick={() => onStart('COMPLEX_COLLECTION')}>단지 원천 수집 실행</Button>
       {result('COMPLEX_COLLECTION')}
     </section>
     <section className={styles.stage} id="complex-location" role="tabpanel" hidden={selected !== 1} aria-labelledby={`${tabId}-1`}>
-      <header><div className={styles.stageTitle}><span className={styles.number}>2</span><h2 id="complex-location-title">주소에 맞는 좌표 적재</h2></div></header>
+      <header><div className={styles.stageTitle}><span className={styles.number}>2</span><h2 id="complex-location-title">주소에 맞는 좌표 적재</h2>
+        <ComplexStageHelp stage="주소에 맞는 좌표 적재">위치정보요약DB 월 전체분 ZIP을 업로드해 저장된 단지 원본의 주소에 맞는 좌표를 준비합니다.</ComplexStageHelp></div></header>
       <LocationSummaryUpload embedded disabled={disabled} onBusyChange={busy => { setUploading(busy); onUploadBusy(busy) }} />
     </section>
     <section className={styles.stage} id="complex-refinement" role="tabpanel" hidden={selected !== 2} aria-labelledby={`${tabId}-2`}>
-      <header><div className={styles.stageTitle}><span className={styles.number}>3</span><h2 id="complex-refinement-title">단지 정제·저장</h2></div>
+      <header><div className={styles.stageTitle}><span className={styles.number}>3</span><h2 id="complex-refinement-title">단지 정제·저장</h2>
+        <ComplexStageHelp stage="단지 정제·저장">현재 저장된 단지 원본 전체를 단지·주택형으로 정제해 저장합니다.</ComplexStageHelp></div>
         <ComplexExecutionSummary execution={latest('COMPLEX_REFINEMENT')} pending={startingType === 'COMPLEX_REFINEMENT'} /></header>
-      <p className={styles.muted}>현재 저장된 단지 원본 전체를 단지·주택형으로 정제해 저장합니다.</p>
       <Button data-design-system disabled={disabled} onClick={() => onStart('COMPLEX_REFINEMENT')}>단지 정제·저장 실행</Button>
       {result('COMPLEX_REFINEMENT')}
     </section>

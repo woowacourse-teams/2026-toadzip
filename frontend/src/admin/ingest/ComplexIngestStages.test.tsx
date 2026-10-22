@@ -51,7 +51,37 @@ it('가로 탭에 선택한 단계만 표시하고 각 실행 버튼은 한 곳�
   select('2 좌표 적재')
   expect(within(screen.getByRole('tabpanel')).queryByRole('button', { name: /정제/ })).not.toBeInTheDocument()
   select('3 정제·저장')
-  expect(screen.getByText(/현재 저장된 단지 원본 전체/)).toBeVisible()
+  expect(screen.queryByText(/현재 저장된 단지 원본 전체/)).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '단지 정제·저장 안내' }))
+  expect(screen.getByRole('tooltip')).toHaveTextContent('현재 저장된 단지 원본 전체를 단지·주택형으로 정제해 저장합니다.')
+})
+it('세 단계의 안내를 호버·포커스·클릭으로 열고 Escape나 영역 이탈로 닫으며 실행하지 않는다', async () => {
+  await show()
+  for (const [tab, stage, text] of [
+    ['1 원천 수집', '단지 원천 수집', '마이홈 단지와 LH 임대 카탈로그를 수집해 원본을 저장합니다.'],
+    ['2 좌표 적재', '주소에 맞는 좌표 적재', '위치정보요약DB 월 전체분 ZIP을 업로드해 저장된 단지 원본의 주소에 맞는 좌표를 준비합니다.'],
+    ['3 정제·저장', '단지 정제·저장', '현재 저장된 단지 원본 전체를 단지·주택형으로 정제해 저장합니다.'],
+  ]) {
+    select(tab)
+    const button = screen.getByRole('button', { name: `${stage} 안내` })
+    const wrapper = button.parentElement!
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    fireEvent.mouseEnter(wrapper)
+    expect(screen.getByRole('tooltip')).toHaveTextContent(text)
+    expect(button).toHaveAttribute('aria-describedby', screen.getByRole('tooltip').id)
+    fireEvent.mouseLeave(wrapper)
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    act(() => button.focus())
+    expect(screen.getByRole('tooltip')).toHaveTextContent(text)
+    fireEvent.keyDown(button, { key: 'Escape' })
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    fireEvent.click(button)
+    expect(screen.getByRole('tooltip')).toBeVisible()
+    act(() => button.blur())
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  }
+  expect(startDataPipeline).not.toHaveBeenCalled()
+  expect(uploadLocationSummary).not.toHaveBeenCalled()
 })
 it('키를 입력받지 않고 서버 설정으로 수집을 접수하며 탭을 유지한다', async () => {
   let resolve: (value: DataPipelineExecution) => void = () => {}
