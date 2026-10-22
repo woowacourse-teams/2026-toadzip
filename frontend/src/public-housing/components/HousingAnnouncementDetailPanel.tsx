@@ -156,6 +156,11 @@ export function HousingAnnouncementDetailPanel({
   )
   const [floorPlan, setFloorPlan] = useState<FloorPlanSelection | null>(null)
   const [attachmentAnnouncementId, setAttachmentAnnouncementId] = useState<string | null>(null)
+  const announcementFiles = detail.attachments.filter((attachment) =>
+    attachment.fileTypeLabel.includes('공고문') && hasAttachmentUrl(attachment))
+  const primaryAttachment = announcementFiles.find((attachment) => /\.pdf$/i.test(attachment.fileName?.trim() ?? ''))
+    ?? announcementFiles.find((attachment) => /\.hwpx?$/i.test(attachment.fileName?.trim() ?? ''))
+    ?? announcementFiles[0]
   const title = detail.title ?? MISSING_DATA_LABEL
   const titleId = `announcement-detail-title-${detail.announcementId}`
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -255,9 +260,10 @@ export function HousingAnnouncementDetailPanel({
         </div>
       </div>
 
-      <DocumentActions detail={detail} onOpenAttachments={() => setAttachmentAnnouncementId(detail.announcementId)} />
-      {attachmentAnnouncementId === detail.announcementId && (
-        <AttachmentDialog key={detail.announcementId} announcementId={detail.announcementId} attachments={detail.attachments}
+      <DocumentActions detail={detail} hasAnnouncementFile={primaryAttachment !== undefined}
+        onOpenAttachments={() => setAttachmentAnnouncementId(detail.announcementId)} />
+      {attachmentAnnouncementId === detail.announcementId && primaryAttachment && (
+        <AttachmentDialog key={detail.announcementId} announcementId={detail.announcementId} attachments={[primaryAttachment]}
           onClose={() => setAttachmentAnnouncementId(null)} />
       )}
       {floorPlan && (
@@ -1036,21 +1042,21 @@ function housingTypeLabel(row: HousingAnnouncementDetailSupplyRow) {
   return row.housingType?.name ?? row.sourceHousingTypeName ?? MISSING_DATA_LABEL
 }
 
-function DocumentActions({ detail, onOpenAttachments }: {
+function DocumentActions({ detail, hasAnnouncementFile, onOpenAttachments }: {
   detail: HousingAnnouncementDetailData
+  hasAnnouncementFile: boolean
   onOpenAttachments: () => void
 }) {
   const sourceUrl = toHttpUrl(detail.documentLinkUrl)
-  const hasFiles = detail.attachments.some(hasAttachmentUrl)
   return (
     <footer className={styles.documents}>
       <nav aria-label="공고문 바로가기">
-        <button type="button" disabled={!hasFiles} onClick={onOpenAttachments}>공고문 보기</button>
+        <button type="button" disabled={!hasAnnouncementFile} onClick={onOpenAttachments}>공고문 보기</button>
         {sourceUrl && <a href={sourceUrl} target="_blank" rel="noreferrer" onClick={(event) => {
           captureProductEvent('announcement_source_clicked', { announcement_id: detail.announcementId,
             detail_visit_id: detailVisitId(event.currentTarget) })
-        }}>공고 원문</a>}
-        {!sourceUrl && <DisabledLink>공고 원문</DisabledLink>}
+        }}>공고 사이트로 이동</a>}
+        {!sourceUrl && <DisabledLink>공고 사이트로 이동</DisabledLink>}
       </nav>
     </footer>
   )

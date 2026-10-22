@@ -63,6 +63,19 @@
   font-size: var(--ds-text-body);
   font-weight: 500;
 }
+.attachmentActions {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(2, var(--ds-icon-control-lg));
+  gap: var(--ds-space-1);
+}
+.iconDownloadAction {
+  display: contents;
+}
+.iconDownloadAction small {
+  grid-column: 1 / -1;
+  max-width: calc(2 * var(--ds-icon-control-lg) + var(--ds-space-1));
+}
 .dialog {
   width: min(1000px, calc(100% - 48px));
   max-width: none;
