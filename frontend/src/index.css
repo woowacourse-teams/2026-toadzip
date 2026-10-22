@@ -927,13 +927,13 @@ a {
   --marker-border: #333333;
   --marker-background: #333333;
   --marker-text: #ffffff;
-  --marker-expanded-width: max(150px, var(--marker-width, 92px));
+  --marker-expanded-width: max(136px, var(--marker-width, 76px));
   --marker-motion-duration: 150ms;
   --marker-motion-easing: cubic-bezier(0.2, 0.7, 0.3, 1);
   position: relative;
   display: block;
   flex: none;
-  width: var(--marker-width, 92px);
+  width: var(--marker-width, 76px);
   height: 54px;
   padding: 0;
   border: 0;
@@ -962,7 +962,7 @@ a {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  clip-path: inset(calc(100% - 52px) calc(100% - var(--marker-width, 92px) + 2px) 0 0 round 5px);
+  clip-path: inset(calc(100% - 52px) calc(100% - var(--marker-width, 76px) + 2px) 0 0 round 5px);
   pointer-events: auto;
 }
 
@@ -972,7 +972,7 @@ a {
   left: -1px;
   z-index: -1;
   box-sizing: border-box;
-  width: var(--marker-width, 92px);
+  width: var(--marker-width, 76px);
   height: 54px;
   border: 1px solid var(--marker-border);
   border-radius: 6px;
@@ -1014,7 +1014,7 @@ a {
   left: 0;
   box-sizing: border-box;
   display: block;
-  width: calc(var(--marker-width, 92px) - 2px);
+  width: calc(var(--marker-width, 76px) - 2px);
   padding-inline: 5px;
   border-radius: 5px 5px 0 0;
   background: var(--marker-background);
@@ -1030,7 +1030,7 @@ a {
   height: 16px;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .housing-map-marker__name {
@@ -1078,7 +1078,7 @@ a {
 
 .housing-map-marker__row {
   display: grid;
-  width: calc(var(--marker-width, 92px) - 12px);
+  width: calc(var(--marker-width, 76px) - 12px);
   grid-template-columns: 11px minmax(0, 1fr);
   align-items: baseline;
   column-gap: 4px;
@@ -1149,6 +1149,7 @@ a {
 
 .housing-map-marker__title,
 .housing-map-marker__detail-content {
+  display: block;
   min-height: 0;
   width: calc(var(--marker-expanded-width) - 12px);
   overflow: hidden;
@@ -1158,8 +1159,8 @@ a {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 800;
   line-height: 15px;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -1169,6 +1170,8 @@ a {
   display: block;
   font-size: 11px;
   line-height: 15px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .housing-map-marker__summary-row {
