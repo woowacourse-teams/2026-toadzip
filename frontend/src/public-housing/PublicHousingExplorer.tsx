@@ -341,6 +341,11 @@ export function PublicHousingExplorer({
     () => parseDetailLocation(new URLSearchParams(detailLocationSearch)),
     [detailLocationSearch],
   )
+  useLayoutEffect(() => {
+    if (!mobile || (detailLocation.kind !== 'complex' && detailLocation.kind !== 'announcement')) return
+    mobileDetailListModeRef.current ??= listPanelMode
+    setListPanelMode('collapsed')
+  }, [mobile, detailLocation, listPanelMode])
   const streetView = useStreetView({
     target: detailLocation.kind === 'complex' && complexDetail.status === 'ready'
       && detailLocation.complexId === complexDetail.complexId && complexDetail.detail

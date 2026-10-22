@@ -7,6 +7,7 @@ import { useProductDetailAnalytics } from './useProductDetailAnalytics'
 import { captureProductEvent } from '../../analytics/productAnalytics'
 import { ProductAnalyticsBoundary } from '../../analytics/ProductAnalyticsBoundary'
 import type { AnalyticsStopReason } from '../../privacy/consentStore'
+import { HousingDetailOverlay } from '../components/HousingDetailOverlay'
 
 const consent = vi.hoisted(() => ({ allowed: true, listeners: new Set<() => void>(),
   stopListeners: new Set<(reason: AnalyticsStopReason) => void>(),
@@ -36,11 +37,12 @@ vi.mock('../../analytics/productAnalytics', () => ({
 }))
 const capture = vi.mocked(captureProductEvent)
 const rectangle = { x: 10, y: 10, top: 10, left: 10, bottom: 300, right: 400, width: 390, height: 290, toJSON: () => ({}) }
-function Probe({ location, ready }: { location: DetailLocationResult; ready: string | null }) {
+function Probe({ location, ready, mobile }: { location: DetailLocationResult; ready: string | null; mobile?: boolean }) {
   useProductDetailAnalytics({ detailLocation: location,
     readyComplexId: location.kind === 'complex' ? ready : null,
     readyAnnouncementId: location.kind === 'announcement' ? ready : null })
   if (location.kind !== 'complex' && location.kind !== 'announcement') return null
+  if (mobile !== undefined) return <HousingDetailOverlay mobile={mobile} label={location.kind === 'complex' ? '단지 상세' : '공고 상세'} onClose={() => {}}><h2>상세</h2></HousingDetailOverlay>
   return <dialog open className="housing-detail-layer" aria-label={location.kind === 'complex' ? '단지 상세' : '공고 상세'}><h2>상세</h2></dialog>
 }
 const wrap = ({ children }: { children: React.ReactNode }) => <StrictMode><MemoryRouter initialEntries={['/explore']}>{children}</MemoryRouter></StrictMode>
@@ -62,6 +64,19 @@ function collected(name: string) {
 async function setConsent(allowed: boolean) {
   await act(async () => { consent.allowed = allowed; consent.listeners.forEach(listener => listener()) })
 }
+
+it('모바일 상세 페이지도 방문 ID를 부여하고 데스크톱 전환 시 중복 집계하지 않는다', async () => {
+  const view = render(<Probe location={{ kind: 'complex', complexId: '12' }} ready="12" mobile />, { wrapper: wrap })
+  await waitFor(() => expect(collected('view_complex')).toHaveLength(1))
+  const page = document.querySelector<HTMLElement>('.housing-detail-layer')
+  expect(page?.getAttribute('role')).toBe('region')
+  const visit = page?.dataset.detailVisitId
+  expect(visit).toBeTruthy()
+  view.rerender(<Probe location={{ kind: 'complex', complexId: '12' }} ready="12" mobile={false} />)
+  await act(async () => {})
+  expect(collected('view_complex')).toHaveLength(1)
+  expect(page?.dataset.detailVisitId).toBe(visit)
+})
 
 function notifyStop(reason: AnalyticsStopReason) {
   consent.allowed = false

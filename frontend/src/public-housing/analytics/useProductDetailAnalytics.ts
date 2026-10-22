@@ -53,8 +53,8 @@ export function useProductDetailAnalytics({ detailLocation, readyComplexId, read
     function measure() {
       if (cancelled || id === null) return
       const dialog = document.querySelector<HTMLElement>(kind === 'complex'
-        ? 'dialog.housing-detail-layer[aria-label="단지 상세"]'
-        : 'dialog.housing-detail-layer[aria-label="공고 상세"]')
+        ? '.housing-detail-layer[aria-label^="단지 상세"]'
+        : '.housing-detail-layer[aria-label^="공고 상세"]')
       if (dialog) dialog.dataset.detailVisitId = current.id
       if (!allowed || !ready || current.sent || !dialog || !isForegroundElement(dialog)) return
       current.sent = captureProductEvent(kind === 'complex' ? 'view_complex' : 'view_announcement', {

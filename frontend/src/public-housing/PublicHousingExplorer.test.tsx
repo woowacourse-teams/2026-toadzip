@@ -614,7 +614,7 @@ describe('PublicHousingExplorer', () => {
     }
   })
 
-  it('모바일 상세는 독립 모달이고 닫으면 이전 하단 목록 높이와 스크롤을 복원한다', async () => {
+  it('모바일 상세는 페이지이고 닫으면 이전 하단 목록 높이와 스크롤을 복원한다', async () => {
     vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 767px)' || query === '(max-width: 1023px)' }))
     try {
       renderSearchedExplorer(createRepository())
@@ -626,10 +626,9 @@ describe('PublicHousingExplorer', () => {
       opener.focus()
       fireEvent.click(opener)
       await screen.findByRole('region', { name: '서울가람 행복주택 단지 상세 내용' })
-      const modal = screen.getByRole('dialog', { name: '단지 상세' })
-      expect(modal).toBeInstanceOf(HTMLDialogElement)
-      expect(modal).toHaveAttribute('aria-modal', 'true')
-      expect(modal).toHaveAttribute('open')
+      expect(screen.getByRole('region', { name: '단지 상세 페이지' })).toBeVisible()
+      expect(screen.queryByRole('dialog', { name: '단지 상세' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('navigation', { name: '주요 메뉴' })).not.toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
       expect(screen.getByRole('slider', { name: '목록 높이' })).toHaveAttribute('aria-valuetext', '크게 펼침')
       expect(scroll.scrollTop).toBe(230)
@@ -649,9 +648,10 @@ describe('PublicHousingExplorer', () => {
       }
       const detail = await screen.findByRole('region', { name: '서울가람 행복주택 단지 상세 내용' })
       expect(screen.queryByRole('region', { name: '단지 목록' })).not.toBeInTheDocument()
-      fireEvent.click(screen.getByRole('button', { name: /단지 목록 보기$/ }))
+      expect(screen.getByRole('region', { name: '단지 상세 페이지' })).toContainElement(detail)
+      expect(screen.queryByRole('button', { name: /단지 목록 보기$/ })).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
       expect(screen.getByRole('region', { name: '단지 목록' })).toBeVisible()
-      expect(screen.getByRole('region', { name: '서울가람 행복주택 단지 상세 내용' })).toBe(detail)
     } finally {
       vi.unstubAllGlobals()
     }
