@@ -20,6 +20,34 @@ import {
 import { NotificationInterestProvider } from '../interest/NotificationInterest'
 
 describe('HousingAnnouncementDetailPanel', () => {
+  it.each([
+    { label: 'PDF 우선', fileTypeLabel: '공고문', pdfUrl: 'https://example.com/notice.pdf', expected: '대표.PDF' },
+    { label: '정정공고문', fileTypeLabel: '정정공고문', pdfUrl: 'https://example.com/notice.pdf', expected: '대표.PDF' },
+    { label: 'PDF 주소 누락', fileTypeLabel: '공고문', pdfUrl: null, expected: '대표.hwpx' },
+  ])('$label: 공고문 보기는 참고자료 대신 대표 공고문을 바로 연다', ({ fileTypeLabel, pdfUrl, expected }) => {
+    render(<HousingAnnouncementDetailPanel detail={detail({ attachments: [
+      { attachmentId: 'ref', fileName: '참고자료.pdf', fileTypeLabel: '참고자료', fileUrl: 'https://example.com/reference.pdf' },
+      { attachmentId: 'hwp', fileName: '대표.hwpx', fileTypeLabel, fileUrl: 'https://example.com/notice.hwpx' },
+      { attachmentId: 'pdf', fileName: '대표.PDF', fileTypeLabel, fileUrl: pdfUrl },
+    ] })} onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: '공고문 보기' }))
+    const dialog = screen.getByRole('dialog', { name: '첨부파일' })
+    expect(within(dialog).getByText(expected)).toBeVisible()
+    expect(within(dialog).queryByRole('list', { name: '확인할 첨부파일' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: '파일 목록' })).not.toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: '첨부파일 닫기' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('참고자료만 있으면 공고문 보기를 비활성화하고 첨부파일에서는 열 수 있다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({ attachments: [
+      { attachmentId: 'ref', fileName: '참고자료.pdf', fileTypeLabel: '참고자료', fileUrl: 'https://example.com/reference.pdf' },
+    ] })} onClose={vi.fn()} />)
+    expect(screen.getByRole('button', { name: '공고문 보기' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: '첨부파일 1개' }))
+    expect(screen.getByRole('button', { name: '참고자료.pdf 보기' })).toBeEnabled()
+  })
+
   beforeEach(() => localStorage.removeItem('toadzip.area-unit'))
   it('공고에서 정정한 주택형명·면적을 우선하고 공통 모집 인원을 개별 세대수로 표시하지 않는다', () => {
     render(<HousingAnnouncementDetailPanel detail={detail({ supplyRows: [supplyRow({
@@ -541,7 +569,7 @@ describe('HousingAnnouncementDetailPanel', () => {
     await waitFor(() => {
       expect(within(panel).getByRole('button', { name: '공고문 보기' })).toBeEnabled()
     })
-    expect(within(panel).getByRole('link', { name: '공고 원문' }))
+    expect(within(panel).getByRole('link', { name: '공고 사이트로 이동' }))
       .toHaveAttribute('href', 'https://example.com/notice')
   })
 
@@ -875,9 +903,9 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(footer!).queryByText(/연결됨|링크 없음/)).not.toBeInTheDocument()
     expect(within(panel).queryByText('공고문 확인 · 공고문 확인')).not.toBeInTheDocument()
     expect(within(panel).queryByRole('link', { name: '첨부파일' })).not.toBeInTheDocument()
-    expect(within(panel).queryByRole('link', { name: '공고 원문' })).not.toBeInTheDocument()
+    expect(within(panel).queryByRole('link', { name: '공고 사이트로 이동' })).not.toBeInTheDocument()
     expect(within(panel).getByRole('button', { name: '공고문 보기' })).toBeDisabled()
-    expect(within(panel).getByText('공고 원문', { selector: '[aria-disabled="true"]' }))
+    expect(within(panel).getByText('공고 사이트로 이동', { selector: '[aria-disabled="true"]' }))
       .toBeVisible()
   })
 
@@ -903,7 +931,7 @@ describe('HousingAnnouncementDetailPanel', () => {
 
     expect(screen.getByRole('button', { name: '공고문 보기' })).toBeEnabled()
     const navigation = screen.getByRole('navigation', { name: '공고문 바로가기' })
-    expect(navigation.parentElement).toHaveTextContent(/^공고문 보기공고 원문$/)
+    expect(navigation.parentElement).toHaveTextContent(/^공고문 보기공고 사이트로 이동$/)
     expect(screen.queryByText(/연결됨/)).not.toBeInTheDocument()
   })
 

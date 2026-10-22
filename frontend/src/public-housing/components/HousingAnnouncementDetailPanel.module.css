@@ -835,6 +835,7 @@
   text-decoration: none;
   text-align: center;
   white-space: normal;
+  word-break: keep-all;
 }
 
 .documents nav a:last-child,
