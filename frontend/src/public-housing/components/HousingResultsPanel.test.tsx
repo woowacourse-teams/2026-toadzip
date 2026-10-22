@@ -52,12 +52,12 @@ function DismissiblePanel() {
   </>
 }
 
-it('목록을 아래로 드래그하면 닫히고 재열면 절반 높이에서 내용을 보여준다', () => {
+it('목록을 15% 아래까지 내리면 닫히고 재열면 절반 높이에서 내용을 보여준다', () => {
   render(<DismissiblePanel />)
   const handle = screen.getByRole('slider', { name: '목록 높이' })
   fireEvent.pointerDown(handle, { clientY: 600, button: 0, pointerId: 1 })
-  fireEvent.pointerMove(handle, { clientY: 660, pointerId: 1 })
-  fireEvent.pointerUp(handle, { clientY: 660, pointerId: 1 })
+  fireEvent.pointerMove(handle, { clientY: 900, pointerId: 1 })
+  fireEvent.pointerUp(handle, { clientY: 900, pointerId: 1 })
   expect(screen.queryByRole('slider')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '공고 열기' }))
   expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '절반 펼침')
@@ -89,9 +89,14 @@ it('제목 영역에서도 드래그해 펼칠 수 있고 키보드로 최대 �
   expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '크게 펼침')
 })
 
-it('절반 높이 목록은 아래 방향키로 완전히 닫을 수 있다', () => {
+it('아래 방향키로 절반에서 25%까지 줄인 뒤 한 번 더 내리면 닫힌다', () => {
   render(<DismissiblePanel />)
   const handle = screen.getByRole('slider', { name: '목록 높이' })
+  for (const height of ['40', '30', '25']) {
+    fireEvent.keyDown(handle, { key: 'ArrowDown' })
+    expect(handle).toHaveAttribute('aria-valuenow', height)
+    expect(screen.getByRole('button', { name: '공고 상세 보기' })).toBeVisible()
+  }
   fireEvent.keyDown(handle, { key: 'ArrowDown' })
   expect(screen.queryByRole('slider')).not.toBeInTheDocument()
 })
@@ -104,8 +109,8 @@ it('손잡이를 위로 쓸어 크게 펼치고 길게 아래로 끌면 완전�
   fireEvent.pointerUp(handle, { clientY: 0, pointerId: 1 })
   expect(handle).toHaveAttribute('aria-valuetext', '크게 펼침')
   fireEvent.pointerDown(handle, { clientY: 100, button: 0, pointerId: 2 })
-  fireEvent.pointerMove(handle, { clientY: 750, pointerId: 2 })
-  fireEvent.pointerUp(handle, { clientY: 750, pointerId: 2 })
+  fireEvent.pointerMove(handle, { clientY: 800, pointerId: 2 })
+  fireEvent.pointerUp(handle, { clientY: 800, pointerId: 2 })
   expect(screen.queryByRole('slider')).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: '공고 상세 보기' })).not.toBeInTheDocument()
 })
@@ -167,7 +172,7 @@ it('절반보다 높게 끌면 놓은 62.5% 높이를 유지한다', () => {
   expect(handle).toHaveAttribute('aria-valuenow', '75')
 })
 
-it.each([40, 200, 380])('절반에서 %ipx 내리면 튕기지 않고 완전히 닫힌다', (distance) => {
+it.each([280, 300, 380])('절반에서 %ipx 내려 15% 이하가 되면 완전히 닫힌다', (distance) => {
   render(<DismissiblePanel />)
   const handle = screen.getByRole('slider', { name: '목록 높이' })
   fireEvent.pointerDown(handle, { clientY: 400, button: 0, pointerId: 1 })
@@ -179,6 +184,37 @@ it.each([40, 200, 380])('절반에서 %ipx 내리면 튕기지 않고 완전히 
   expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '절반 펼침')
 })
 
+
+it.each([
+  [40, '45'], [200, '25'], [240, '25'], [279, '25'],
+])('절반에서 %ipx 내려도 닫히지 않고 %s%% 높이를 유지한다', (distance, expectedHeight) => {
+  render(<DismissiblePanel />)
+  const handle = screen.getByRole('slider', { name: '목록 높이' })
+  const detail = screen.getByRole('button', { name: '공고 상세 보기' })
+  const content = detail.parentElement
+  if (!content) throw new Error('목록 내용이 없습니다')
+  content.scrollTop = 160
+  fireEvent.pointerDown(handle, { clientY: 400, button: 0, pointerId: 1 })
+  fireEvent.pointerMove(handle, { clientY: 400 + distance, pointerId: 1 })
+  fireEvent.pointerUp(handle, { clientY: 400 + distance, pointerId: 1 })
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuenow', expectedHeight)
+  expect(screen.getByRole('button', { name: '공고 상세 보기' })).toBe(detail)
+  expect(content.scrollTop).toBe(160)
+})
+
+it('25%에서 살짝 내리면 유지하고 다시 올려 원하는 높이로 펼칠 수 있다', () => {
+  render(<DismissiblePanel />)
+  const handle = screen.getByRole('slider', { name: '목록 높이' })
+  fireEvent.pointerDown(handle, { clientY: 400, button: 0, pointerId: 1 })
+  fireEvent.pointerUp(handle, { clientY: 600, pointerId: 1 })
+  expect(handle).toHaveAttribute('aria-valuenow', '25')
+  fireEvent.pointerDown(handle, { clientY: 600, button: 0, pointerId: 2 })
+  fireEvent.pointerUp(handle, { clientY: 620, pointerId: 2 })
+  expect(handle).toHaveAttribute('aria-valuenow', '25')
+  fireEvent.pointerDown(handle, { clientY: 600, button: 0, pointerId: 3 })
+  fireEvent.pointerUp(handle, { clientY: 500, pointerId: 3 })
+  expect(handle).toHaveAttribute('aria-valuenow', '37.5')
+})
 
 it('드래그가 아닌 접기 버튼도 손잡이까지 완전히 숨긴다', () => {
   render(<DismissiblePanel />)
