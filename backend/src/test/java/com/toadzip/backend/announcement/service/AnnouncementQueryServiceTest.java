@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementSort;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
@@ -214,7 +215,7 @@ class AnnouncementQueryServiceTest {
                 withId(createSupplyRow(beforeApplication, null, null, "known-zero", 0, 0))
         );
         when(announcementSearchRepository.findLatestLeaves(
-                any(AnnouncementSearchCondition.class), isNull(), isNull(), eq(21)
+                any(AnnouncementSearchCondition.class), isNull(), isNull(), eq(21), eq(AnnouncementSort.LATEST)
         )).thenReturn(List.of(correction, applying, beforeApplication, closed));
         when(supplyRowRepository.findAllByAnnouncementIdIn(List.of(
                 correction.getId(), applying.getId(), beforeApplication.getId(), closed.getId()
@@ -331,10 +332,11 @@ class AnnouncementQueryServiceTest {
                 0L
         ));
         when(announcementSearchRepository.findLatestLeaves(
-                any(AnnouncementSearchCondition.class), isNull(), isNull(), eq(2)
+                any(AnnouncementSearchCondition.class), isNull(), isNull(), eq(2), eq(AnnouncementSort.LATEST)
         )).thenReturn(List.of(second, first));
         when(announcementSearchRepository.findLatestLeaves(
-                any(AnnouncementSearchCondition.class), eq(second.getPostedDate()), eq(second.getId()), eq(2)
+                any(AnnouncementSearchCondition.class), eq(second.getPostedDate()), eq(second.getId()), eq(2),
+                eq(AnnouncementSort.LATEST)
         )).thenReturn(List.of(first));
 
         AnnouncementListResponse firstPage = announcementQueryService.getAnnouncements(noFilters(), null, 1);
@@ -440,7 +442,7 @@ class AnnouncementQueryServiceTest {
                 org.mockito.ArgumentMatchers.any(AnnouncementSearchCondition.class),
                 org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.eq(2)
+                org.mockito.ArgumentMatchers.eq(2), eq(AnnouncementSort.LATEST)
         )).thenReturn(List.of(first, second));
         when(announcementResponseMapper.toListItemResponses(
                 org.mockito.ArgumentMatchers.anyList(),
@@ -469,7 +471,7 @@ class AnnouncementQueryServiceTest {
                 conditionCaptor.capture(),
                 org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.eq(2)
+                org.mockito.ArgumentMatchers.eq(2), eq(AnnouncementSort.LATEST)
         );
         verify(announcementResponseMapper).toListItemResponses(
                 org.mockito.ArgumentMatchers.eq(List.of(first)),

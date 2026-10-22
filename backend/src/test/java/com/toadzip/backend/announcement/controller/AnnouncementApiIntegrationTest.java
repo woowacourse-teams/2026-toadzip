@@ -714,6 +714,56 @@ class AnnouncementApiIntegrationTest {
     }
 
     @Test
+    void 공고일_오름차순은_같은날_ID까지_정렬하고_방향이_다른_커서를_거부한다() throws Exception {
+        Announcement old = persist(deadlineAnnouncement("ascending-old", 1, 9, 10));
+        Announcement sameDay = persist(deadlineAnnouncement("ascending-same", 1, 9, 10));
+        Announcement recent = persist(deadlineAnnouncement("ascending-recent", 2, 9, 15));
+        entityManager.flush();
+        entityManager.clear();
+
+        MvcResult first = mockMvc.perform(get("/api/v1/announcements")
+                        .param("keyword", "ascending-").param("sort", "LATEST_ASC").param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(old.getId())).andReturn();
+        String cursor = objectMapper.readTree(first.getResponse().getContentAsString())
+                .path("data").path("nextCursor").asText();
+        mockMvc.perform(get("/api/v1/announcements")
+                        .param("keyword", "ascending-").param("sort", "LATEST_ASC").param("cursor", cursor))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(sameDay.getId()))
+                .andExpect(jsonPath("$.data.items[1].announcementId").value(recent.getId()))
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+        mockMvc.perform(get("/api/v1/announcements").param("sort", "LATEST").param("cursor", cursor))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 마감일_내림차순은_접수중_우선을_유지하고_날짜와_동률의_순서를_뒤집는다() throws Exception {
+        Announcement soon = persist(deadlineAnnouncement("descending-soon", 1, 9, 10));
+        Announcement sameDay = persist(deadlineAnnouncement("descending-same", 2, 9, 10));
+        Announcement later = persist(deadlineAnnouncement("descending-later", 3, 9, 15));
+        Announcement upcoming = persist(deadlineAnnouncement("descending-upcoming", 4, 11, 12));
+        entityManager.flush();
+        entityManager.clear();
+
+        MvcResult first = mockMvc.perform(get("/api/v1/announcements")
+                        .param("keyword", "descending-").param("sort", "DEADLINE_DESC").param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(later.getId()))
+                .andExpect(jsonPath("$.data.items[1].announcementId").value(soon.getId())).andReturn();
+        String cursor = objectMapper.readTree(first.getResponse().getContentAsString())
+                .path("data").path("nextCursor").asText();
+        mockMvc.perform(get("/api/v1/announcements")
+                        .param("keyword", "descending-").param("sort", "DEADLINE_DESC").param("cursor", cursor))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(sameDay.getId()))
+                .andExpect(jsonPath("$.data.items[1].announcementId").value(upcoming.getId()))
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+        mockMvc.perform(get("/api/v1/announcements").param("sort", "DEADLINE").param("cursor", cursor))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void 알수없는_공고정렬은_거부한다() throws Exception {
         mockMvc.perform(get("/api/v1/announcements").param("sort", "UNKNOWN"))
                 .andExpect(status().isBadRequest());

@@ -28,7 +28,7 @@ const ANNOUNCEMENT_FILTERS = {
 } as const satisfies AnnouncementSearchFilters
 
 describe('검색 필터 URL namespace', () => {
-  it.each(['LATEST', 'DEADLINE'] as const)('공고 정렬 %s를 지역 조건과 함께 URL로 복원하고 저장한다', (sort) => {
+  it.each(['LATEST', 'LATEST_ASC', 'DEADLINE', 'DEADLINE_DESC'] as const)('공고 정렬 %s를 지역 조건과 함께 URL로 복원하고 저장한다', (sort) => {
     const search = new URLSearchParams(`announcementSort=${sort}&announcementRegionCode=11`)
     const filters = parseAnnouncementSearchFilters(search)
     expect(filters).toEqual({ sort, regionCode: '11' })

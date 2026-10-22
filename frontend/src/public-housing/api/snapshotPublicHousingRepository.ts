@@ -210,7 +210,8 @@ function announcementPageResponse(
 }
 
 function compareAnnouncements(left: RawAnnouncementListItem, right: RawAnnouncementListItem, sort: string | null) {
-  if (sort === 'DEADLINE') {
+  const direction = sort === 'LATEST_ASC' || sort === 'DEADLINE_DESC' ? -1 : 1
+  if (sort === 'DEADLINE' || sort === 'DEADLINE_DESC') {
     const priority = (item: RawAnnouncementListItem) => ({ APPLYING: 0, CONDITIONAL: 1, BEFORE_APPLICATION: 2 }[item.applicationStatus ?? ''] ?? 3)
     const difference = priority(left) - priority(right)
     if (difference !== 0) return difference
@@ -219,11 +220,11 @@ function compareAnnouncements(left: RawAnnouncementListItem, right: RawAnnouncem
         item.applicationStatus === 'BEFORE_APPLICATION' ? item.applicationStartAt : item.applicationEndAt
       ) ?? '9999-12-31'
       const dateDifference = date(left).localeCompare(date(right))
-      if (dateDifference !== 0) return dateDifference
+      if (dateDifference !== 0) return dateDifference * direction
     }
   }
-  return (right.publishedAt ?? '').localeCompare(left.publishedAt ?? '')
-    || Number(BigInt(right.announcementId) - BigInt(left.announcementId))
+  return ((right.publishedAt ?? '').localeCompare(left.publishedAt ?? '')
+    || Number(BigInt(right.announcementId) - BigInt(left.announcementId))) * direction
 }
 
 function complexDetailResponse(

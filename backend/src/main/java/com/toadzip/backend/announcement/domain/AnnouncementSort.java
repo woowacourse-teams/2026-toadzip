@@ -2,5 +2,7 @@ package com.toadzip.backend.announcement.domain;
 
 public enum AnnouncementSort {
     LATEST,
-    DEADLINE
+    LATEST_ASC,
+    DEADLINE,
+    DEADLINE_DESC
 }

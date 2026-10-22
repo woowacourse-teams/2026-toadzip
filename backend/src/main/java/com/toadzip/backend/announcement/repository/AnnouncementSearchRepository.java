@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.repository;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementSort;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
@@ -14,6 +15,7 @@ import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Path;
+import jakarta.persistence.criteria.Order;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
@@ -42,6 +44,12 @@ public class AnnouncementSearchRepository {
             Long cursorId,
             int limit
     ) {
+        return findLatestLeaves(condition, cursorPostedDate, cursorId, limit, AnnouncementSort.LATEST);
+    }
+
+    public List<Announcement> findLatestLeaves(AnnouncementSearchCondition condition, LocalDate cursorPostedDate,
+            Long cursorId, int limit, AnnouncementSort sort) {
+        boolean ascending = sort == AnnouncementSort.LATEST_ASC;
         HibernateCriteriaBuilder criteriaBuilder = (HibernateCriteriaBuilder) entityManager.getCriteriaBuilder();
         CriteriaQuery<Announcement> query = criteriaBuilder.createQuery(Announcement.class);
         Root<Announcement> announcement = query.from(Announcement.class);
@@ -50,13 +58,13 @@ public class AnnouncementSearchRepository {
         addVisibilityPredicates(criteriaBuilder, query, announcement, predicates);
         addDirectFilterPredicates(criteriaBuilder, announcement, condition, predicates);
         addDerivedFilterPredicates(criteriaBuilder, query, announcement, condition, predicates);
-        addCursorPredicate(criteriaBuilder, announcement, cursorPostedDate, cursorId, predicates);
+        addCursorPredicate(criteriaBuilder, announcement, cursorPostedDate, cursorId, predicates, ascending);
 
         query.select(announcement)
                 .where(predicates.toArray(Predicate[]::new))
                 .orderBy(
-                        criteriaBuilder.desc(announcement.get("postedDate")),
-                        criteriaBuilder.desc(announcement.get("id"))
+                        sortOrder(criteriaBuilder, announcement.get("postedDate"), ascending),
+                        sortOrder(criteriaBuilder, announcement.get("id"), ascending)
                 );
 
         return entityManager.createQuery(query)
@@ -66,8 +74,9 @@ public class AnnouncementSearchRepository {
 
     public List<AnnouncementDeadlineRow> findDeadlineLeaves(
             AnnouncementSearchCondition condition, Integer cursorPriority, LocalDate cursorSortDate,
-            LocalDate cursorPostedDate, Long cursorId, int limit
+            LocalDate cursorPostedDate, Long cursorId, int limit, AnnouncementSort sort
     ) {
+        boolean ascending = sort == AnnouncementSort.DEADLINE;
         HibernateCriteriaBuilder builder = (HibernateCriteriaBuilder) entityManager.getCriteriaBuilder();
         CriteriaQuery<Tuple> query = builder.createTupleQuery();
         Root<Announcement> announcement = query.from(Announcement.class);
@@ -77,19 +86,21 @@ public class AnnouncementSearchRepository {
         addDerivedFilterPredicates(builder, query, announcement, condition, predicates);
         DeadlineExpressions order = deadlineExpressions(builder, query, announcement, condition);
         if (cursorPriority != null) {
-            Predicate laterPublication = builder.or(builder.lessThan(announcement.get("postedDate"), cursorPostedDate),
+            Predicate laterPublication = builder.or(afterCursor(builder,
+                    announcement.get("postedDate"), cursorPostedDate, !ascending),
                     builder.and(builder.equal(announcement.get("postedDate"), cursorPostedDate),
-                            builder.lessThan(announcement.get("id"), cursorId)));
+                            afterCursor(builder, announcement.get("id"), cursorId, !ascending)));
             predicates.add(builder.or(builder.greaterThan(order.priority(), cursorPriority),
                     builder.and(builder.equal(order.priority(), cursorPriority),
-                            builder.greaterThan(order.date(), cursorSortDate)),
+                            afterCursor(builder, order.date(), cursorSortDate, ascending)),
                     builder.and(builder.equal(order.priority(), cursorPriority),
                             builder.equal(order.date(), cursorSortDate), laterPublication)));
         }
         query.multiselect(announcement, order.priority(), order.date())
                 .where(predicates.toArray(Predicate[]::new))
-                .orderBy(builder.asc(order.priority()), builder.asc(order.date()),
-                        builder.desc(announcement.get("postedDate")), builder.desc(announcement.get("id")));
+                .orderBy(builder.asc(order.priority()), sortOrder(builder, order.date(), ascending),
+                        sortOrder(builder, announcement.get("postedDate"), !ascending),
+                        sortOrder(builder, announcement.get("id"), !ascending));
         return entityManager.createQuery(query).setMaxResults(limit).getResultList().stream()
                 .map(row -> new AnnouncementDeadlineRow(row.get(0, Announcement.class),
                         row.get(1, Integer.class), row.get(2, LocalDate.class)))
@@ -218,17 +229,33 @@ public class AnnouncementSearchRepository {
             Root<Announcement> announcement,
             LocalDate cursorPostedDate,
             Long cursorId,
-            List<Predicate> predicates
+            List<Predicate> predicates,
+            boolean ascending
     ) {
         if (cursorPostedDate != null && cursorId != null) {
             predicates.add(criteriaBuilder.or(
-                    criteriaBuilder.lessThan(announcement.get("postedDate"), cursorPostedDate),
+                    afterCursor(criteriaBuilder, announcement.get("postedDate"), cursorPostedDate, ascending),
                     criteriaBuilder.and(
                             criteriaBuilder.equal(announcement.get("postedDate"), cursorPostedDate),
-                            criteriaBuilder.lessThan(announcement.get("id"), cursorId)
+                            afterCursor(criteriaBuilder, announcement.get("id"), cursorId, ascending)
                     )
             ));
         }
+    }
+
+    private Order sortOrder(HibernateCriteriaBuilder builder, Expression<?> expression, boolean ascending) {
+        if (ascending) {
+            return builder.asc(expression);
+        }
+        return builder.desc(expression);
+    }
+
+    private <T extends Comparable<? super T>> Predicate afterCursor(HibernateCriteriaBuilder builder,
+            Expression<T> expression, T value, boolean ascending) {
+        if (ascending) {
+            return builder.greaterThan(expression, value);
+        }
+        return builder.lessThan(expression, value);
     }
 
     private void addDerivedFilterPredicates(

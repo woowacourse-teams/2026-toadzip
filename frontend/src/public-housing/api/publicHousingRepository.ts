@@ -69,7 +69,7 @@ export interface ComplexSearchFilters extends SharedSearchFilters {
 }
 
 export interface AnnouncementSearchFilters extends SharedSearchFilters {
-  readonly sort?: 'DEADLINE' | 'LATEST'
+  readonly sort?: 'DEADLINE' | 'DEADLINE_DESC' | 'LATEST' | 'LATEST_ASC'
 }
 export interface PublicHousingRepository {
   findComplexPage(

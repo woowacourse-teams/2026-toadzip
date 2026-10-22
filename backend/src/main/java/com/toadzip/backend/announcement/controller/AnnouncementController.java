@@ -32,6 +32,12 @@ public class AnnouncementController {
             @RequestParam(name = "size", defaultValue = "20") int size,
             @RequestParam(name = "sort", defaultValue = "LATEST") AnnouncementSort sort
     ) {
+        if (sort == AnnouncementSort.LATEST_ASC) {
+            return new ApiResponse<>(announcementQueryService.getAnnouncements(request, cursor, size, sort));
+        }
+        if (sort == AnnouncementSort.DEADLINE_DESC) {
+            return new ApiResponse<>(announcementQueryService.getAnnouncementsByDeadline(request, cursor, size, sort));
+        }
         if (sort == AnnouncementSort.DEADLINE) {
             return new ApiResponse<>(announcementQueryService.getAnnouncementsByDeadline(request, cursor, size));
         }

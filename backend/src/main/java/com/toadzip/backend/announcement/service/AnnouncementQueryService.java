@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.service;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementSort;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
@@ -80,20 +81,30 @@ public class AnnouncementQueryService {
     }
 
     public AnnouncementListResponse getAnnouncements(AnnouncementSearchRequest request, String cursor, int size) {
+        return getAnnouncements(request, cursor, size, AnnouncementSort.LATEST);
+    }
+
+    public AnnouncementListResponse getAnnouncements(AnnouncementSearchRequest request, String cursor, int size,
+            AnnouncementSort sort) {
         validateSize(size);
         LocalDate today = currentSeoulDate();
         AnnouncementSearchCondition condition = searchCondition(request, today);
-        AnnouncementCursorCodec.AnnouncementCursor decodedCursor = decodeCursor(cursor);
+        AnnouncementCursorCodec.AnnouncementCursor decodedCursor = decodeCursor(cursor, sort);
         List<Announcement> fetchedAnnouncements = announcementSearchRepository.findLatestLeaves(
-                condition, cursorPostedDate(decodedCursor), cursorId(decodedCursor), size + 1
+                condition, cursorPostedDate(decodedCursor), cursorId(decodedCursor), size + 1, sort
         );
         boolean hasNext = fetchedAnnouncements.size() > size;
         List<Announcement> announcements = fetchedAnnouncements.stream().limit(size).toList();
         return new AnnouncementListResponse(listItems(announcements, condition, today),
-                nextCursor(announcements, hasNext), hasNext);
+                nextCursor(announcements, hasNext, sort), hasNext);
     }
 
     public AnnouncementListResponse getAnnouncementsByDeadline(AnnouncementSearchRequest request, String cursor, int size) {
+        return getAnnouncementsByDeadline(request, cursor, size, AnnouncementSort.DEADLINE);
+    }
+
+    public AnnouncementListResponse getAnnouncementsByDeadline(AnnouncementSearchRequest request, String cursor,
+            int size, AnnouncementSort sort) {
         validateSize(size);
         LocalDate today = currentSeoulDate();
         Integer priority = null;
@@ -101,7 +112,7 @@ public class AnnouncementQueryService {
         LocalDate postedDate = null;
         Long id = null;
         if (cursor != null) {
-            AnnouncementCursorCodec.DeadlineCursor position = announcementCursorCodec.decodeDeadline(cursor);
+            AnnouncementCursorCodec.DeadlineCursor position = announcementCursorCodec.decodeDeadline(cursor, sort);
             today = position.asOf();
             priority = position.priority();
             sortDate = position.sortDate();
@@ -110,14 +121,14 @@ public class AnnouncementQueryService {
         }
         AnnouncementSearchCondition condition = searchCondition(request, today);
         List<AnnouncementDeadlineRow> rows = announcementSearchRepository.findDeadlineLeaves(
-                condition, priority, sortDate, postedDate, id, size + 1);
+                condition, priority, sortDate, postedDate, id, size + 1, sort);
         boolean hasNext = rows.size() > size;
         List<AnnouncementDeadlineRow> page = rows.stream().limit(size).toList();
         String nextCursor = null;
         if (hasNext) {
             AnnouncementDeadlineRow last = page.getLast();
             nextCursor = announcementCursorCodec.encodeDeadline(today, last.priority(), last.sortDate(),
-                    last.announcement().getPostedDate(), last.announcement().getId());
+                    last.announcement().getPostedDate(), last.announcement().getId(), sort);
         }
         return new AnnouncementListResponse(listItems(page.stream().map(AnnouncementDeadlineRow::announcement).toList(),
                 condition, today), nextCursor, hasNext);
@@ -250,11 +261,11 @@ public class AnnouncementQueryService {
         return Set.copyOf(values);
     }
 
-    private AnnouncementCursorCodec.AnnouncementCursor decodeCursor(String cursor) {
+    private AnnouncementCursorCodec.AnnouncementCursor decodeCursor(String cursor, AnnouncementSort sort) {
         if (cursor == null) {
             return null;
         }
-        return announcementCursorCodec.decode(cursor);
+        return announcementCursorCodec.decode(cursor, sort);
     }
 
     private LocalDate cursorPostedDate(AnnouncementCursorCodec.AnnouncementCursor cursor) {
@@ -271,12 +282,12 @@ public class AnnouncementQueryService {
         return cursor.id();
     }
 
-    private String nextCursor(List<Announcement> announcements, boolean hasNext) {
+    private String nextCursor(List<Announcement> announcements, boolean hasNext, AnnouncementSort sort) {
         if (!hasNext) {
             return null;
         }
         Announcement lastAnnouncement = announcements.getLast();
-        return announcementCursorCodec.encode(lastAnnouncement.getPostedDate(), lastAnnouncement.getId());
+        return announcementCursorCodec.encode(lastAnnouncement.getPostedDate(), lastAnnouncement.getId(), sort);
     }
 
     private List<Long> announcementIds(List<Announcement> announcements) {

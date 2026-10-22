@@ -86,6 +86,10 @@
   flex: 0 0 auto;
 }
 
+.sortArrow[data-direction='descending'] {
+  transform: rotate(180deg);
+}
+
 .sort[aria-pressed='true'] {
   border-color: var(--ds-color-brand);
   background: var(--ds-color-action-selected);

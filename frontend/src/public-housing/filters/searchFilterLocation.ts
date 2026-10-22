@@ -87,7 +87,7 @@ export function parseAnnouncementSearchFilters(
   const sort = search.get('announcementSort')
   return {
     ...parseSharedFilters(search, 'announcement'),
-    ...(sort === 'DEADLINE' || sort === 'LATEST' ? { sort } : {}),
+    ...(sort === 'DEADLINE' || sort === 'DEADLINE_DESC' || sort === 'LATEST' || sort === 'LATEST_ASC' ? { sort } : {}),
   }
 }
 
