@@ -48,11 +48,13 @@
 .housingTypeTab:focus-visible,
 .housingTypePanel:focus-visible,
 .announcementAction:focus-visible,
-.headerMain h2:focus-visible,
 .scroll:focus-visible {
   outline: 3px solid var(--ds-color-action);
   outline-offset: -3px;
 }
+
+/* 제목 자동 포커스를 유지하되 비조작 요소에 테두리를 남기지 않는다. */
+.headerMain h2:focus { outline: none; }
 
 /* 스크롤바 영역도 흰 바탕을 유지하고 섹션의 위쪽 구분선만 회색으로 둔다. */
 .scroll {
@@ -385,7 +387,7 @@
 .housingTypePanel {
   min-width: 0;
   padding: var(--ds-space-4) var(--ds-space-3);
-  border: 3px solid var(--ds-color-action);
+  border: 1px solid var(--ds-color-divider);
   border-radius: 0 10px 10px 10px;
   background: var(--ds-color-surface);
 }

@@ -783,10 +783,14 @@
   color: var(--ds-color-text);
 }
 
-.panel :is(button, a, [tabindex]):focus-visible {
+.panel :is(button, a, [tabindex='0']):focus-visible {
   outline: 2px solid var(--detail-accent);
   outline-offset: 2px;
 }
+
+/* 자동 포커스 대상은 낭독기 위치만 옮긴다. 조작 요소의 키보드 테두리는 유지한다. */
+.headerMain h2:focus,
+.sectionGroup:focus { outline: none; }
 
 .scroll:focus-visible,
 .sectionNav a:focus-visible {

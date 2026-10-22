@@ -10,6 +10,9 @@
 }
 .accordion h3 {
   margin: 0;
+  font-size: var(--ds-text-title);
+  font-weight: 700;
+  line-height: var(--ds-line-height-title);
 }
 .accordion h3 button {
   display: flex;

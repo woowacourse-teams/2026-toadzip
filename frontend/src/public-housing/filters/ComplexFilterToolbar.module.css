@@ -171,9 +171,10 @@
   position: absolute;
   z-index: 2;
   top: var(--popover-top);
-  left: var(--popover-left);
+  /* 좁은 지도 영역에서도 폼은 최소 읽기 폭을 확보하고 왼쪽으로 펼친다. */
+  left: min(var(--popover-left), calc(100% - min(280px, calc(100vw - 40px))));
   display: flex;
-  width: var(--popover-width);
+  width: max(var(--popover-width), min(280px, calc(100vw - 40px)));
   max-height: calc(100% - var(--popover-top));
   overflow: clip;
   border: 1px solid var(--ds-color-divider);

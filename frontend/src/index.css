@@ -2396,7 +2396,7 @@ button {
 }
 .app-shell .has-results-page .housing-detail-layer {
   left: calc(var(--explorer-search-width) + 2 * var(--explorer-gutter) + var(--explorer-panel-gap));
-  width: min(var(--explorer-search-width), calc(100% - var(--explorer-search-width) - 3 * var(--explorer-gutter) - var(--explorer-panel-gap)));
+  width: min(var(--explorer-detail-width), calc(100% - var(--explorer-search-width) - 3 * var(--explorer-gutter) - var(--explorer-panel-gap)));
 }
 
 .housing-map-feedback { position: absolute; z-index: 190; right: 20px; bottom: 60px; max-width: min(360px, calc(100% - 40px)); }
@@ -2513,23 +2513,29 @@ button {
   top: var(--explorer-top); left: calc(var(--explorer-search-width) + 2 * var(--explorer-gutter)); right: var(--explorer-gutter);
 }
 @media (min-width: 768px) {
+  .app-shell .housing-explorer {
+    --explorer-detail-width: calc(var(--explorer-search-width) + var(--explorer-gutter) - var(--list-start-inset));
+  }
   .app-shell .housing-explorer .housing-detail-layer {
     z-index: 360;
     top: var(--explorer-panel-top);
     left: var(--list-start-inset);
     width: min(
-      calc(var(--explorer-search-width) + var(--explorer-gutter) - var(--list-start-inset)),
+      var(--explorer-detail-width),
       calc(100% - var(--explorer-gutter) - var(--list-start-inset))
     );
     visibility: visible;
   }
 }
 @media (min-width: 1024px) {
-  /* 목록 옆 두 번째 열의 상세는 필터 줄 아래에서 시작해 필터 줄과 겹치지 않는다(2단 구성). */
+  /* 목록 옆 상세는 하단을 고정하고 검색창 상단까지 높이를 늘린다. */
   .app-shell .housing-explorer.has-results-page .housing-detail-layer {
-    top: calc(var(--explorer-top) + 64px);
+    top: var(--explorer-top);
     left: calc(var(--explorer-search-width) + 2 * var(--explorer-gutter) + var(--explorer-panel-gap));
-    width: min(var(--explorer-search-width), calc(100% - var(--explorer-search-width) - 3 * var(--explorer-gutter) - var(--explorer-panel-gap)));
+    width: min(var(--explorer-detail-width), calc(100% - var(--explorer-search-width) - 3 * var(--explorer-gutter) - var(--explorer-panel-gap)));
+  }
+  .app-shell .housing-explorer.has-results-page.has-detail .housing-map-filter {
+    left: calc(var(--explorer-search-width) + var(--explorer-detail-width) + 2 * var(--explorer-gutter) + 2 * var(--explorer-panel-gap));
   }
 }
 .app-shell .has-results-page.is-searching .housing-search-overlay { flex: 1 1 0; padding-bottom: 0; }
