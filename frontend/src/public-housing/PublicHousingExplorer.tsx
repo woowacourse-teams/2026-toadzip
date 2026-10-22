@@ -318,6 +318,7 @@ export function PublicHousingExplorer({
   const [detailRetryRevision, setDetailRetryRevision] = useState(0)
   const complexResultsScrollRef = useRef<HTMLDivElement | null>(null)
   const announcementResultsScrollRef = useRef<HTMLDivElement | null>(null)
+  const announcementListEndRef = useRef<HTMLDivElement | null>(null)
   const previousDetailKindRef = useRef<ResultTab | null>(null)
   const complexDetailOpenerRef = useRef<HTMLElement | null>(null)
   const complexDetailOpenerIdRef = useRef<string | null>(null)
@@ -524,6 +525,34 @@ export function PublicHousingExplorer({
     announcementFiltersKey,
   )
   const updateAnnouncementViewCount = announcementResults.updateViewCount
+  const loadMoreAnnouncements = announcementResults.loadMore
+
+  useEffect(() => {
+    if (
+      !showListPage
+      || activeResultTab !== 'announcements'
+      || announcementResults.state.status !== 'ready'
+      || !announcementResults.state.hasNext
+      || !announcementResults.state.nextCursor
+      || typeof IntersectionObserver === 'undefined'
+    ) return
+    const root = announcementResultsScrollRef.current
+    const end = announcementListEndRef.current
+    if (!root || !end) return
+
+    let active = true
+    const observer = new IntersectionObserver((entries) => {
+      if (active && entries.some((entry) => entry.isIntersecting)) {
+        loadMoreAnnouncements()
+      }
+    }, { root })
+    observer.observe(end)
+    return () => {
+      active = false
+      observer.disconnect()
+    }
+  }, [activeResultTab, loadMoreAnnouncements, announcementResults.state.hasNext,
+    announcementResults.state.nextCursor, announcementResults.state.status, showListPage])
 
   useEffect(() => {
     setRecentComplexes((current) => enrichRecentComplexes(current, complexResults.items.map((item) => ({
@@ -1289,7 +1318,7 @@ export function PublicHousingExplorer({
     : null
   const resultSummary = (
     <>
-      <span>조회 결과</span>
+      {activeResultTab !== 'announcements' && <span>조회 결과</span>}
       <span
         className="housing-results__count"
         aria-label={resultCount.accessibleLabel}
@@ -1515,20 +1544,15 @@ export function PublicHousingExplorer({
                     }}
                     onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'announcement_list' }); announcementResults.retry() }}
                   />
+                  {announcementResults.state.items.length > 0 && announcementResults.state.status !== 'error' && (
+                    <div ref={announcementListEndRef} className="housing-results__list-end" role="status" aria-atomic="true">
+                      {announcementResults.state.status === 'loading-more'
+                        ? '다음 공고를 불러오고 있어요.'
+                        : !announcementResults.state.hasNext ? '모든 공고를 확인했어요.' : null}
+                    </div>
+                  )}
                 </div>
               </div>
-              {announcementResults.state.hasNext && (
-                <button
-                  className="housing-results__more"
-                  type="button"
-                  onClick={announcementResults.loadMore}
-                  disabled={announcementResults.state.status === 'loading-more'}
-                >
-                  {announcementResults.state.status === 'loading-more'
-                    ? '불러오는 중'
-                    : '공고 더 보기'}
-                </button>
-              )}
             </div>
           </div>
         </HousingResultsPanel>
@@ -1697,12 +1721,6 @@ function AnnouncementResultContent({
 
   return (
     <>
-      {state.status === 'error' && (
-        <div className="housing-results__inline-error" role="alert">
-          <span>{state.errorMessage}</span>
-          <button type="button" onClick={onRetry}>다시 시도</button>
-        </div>
-      )}
       <ul className="housing-results__list">
         {state.items.map((announcement) => (
           <li key={announcement.announcementId}>
@@ -1715,6 +1733,12 @@ function AnnouncementResultContent({
           </li>
         ))}
       </ul>
+      {state.status === 'error' && (
+        <div className="housing-results__inline-error" role="alert">
+          <span>{state.errorMessage}</span>
+          <button type="button" onClick={onRetry}>다시 시도</button>
+        </div>
+      )}
     </>
   )
 }
@@ -1748,11 +1772,20 @@ function resultCountLabel(
     }
   }
   if (activeTab === 'announcements') {
-    const count = announcements.items.length
-    const suffix = announcements.hasNext ? '건 이상' : '건'
+    if (announcements.totalCount !== null) {
+      const total = announcements.totalCount.toLocaleString('ko-KR')
+      return {
+        accessibleLabel: `전체 공고 ${total}건`,
+        visibleLabel: (
+          <>
+            전체 <strong className="housing-results__total-count">{total}건</strong>
+          </>
+        ),
+      }
+    }
     return {
-      accessibleLabel: `현재 불러온 공고 ${count}${suffix}`,
-      visibleLabel: `${count}${suffix}`,
+      accessibleLabel: '공고 전체 건수 확인 불가',
+      visibleLabel: '전체 건수 확인 불가',
     }
   }
   if (complexes.status === 'idle' || (

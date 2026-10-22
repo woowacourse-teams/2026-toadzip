@@ -258,7 +258,8 @@ class AnnouncementApiIntegrationTest {
 
         mockMvc.perform(get("/api/v1/announcements"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items.length()").value(0));
+                .andExpect(jsonPath("$.data.items.length()").value(0))
+                .andExpect(jsonPath("$.data.totalCount").value(0));
     }
 
     @Test
@@ -310,6 +311,7 @@ class AnnouncementApiIntegrationTest {
         entityManager.clear();
         mockMvc.perform(get("/api/v1/announcements").param("regionCode", "1114010100"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(1))
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].announcementId").value(included.getId()));
     }
@@ -601,6 +603,7 @@ class AnnouncementApiIntegrationTest {
 
         MvcResult firstPage = mockMvc.perform(cursorSearchRequest().param("size", "2"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(3))
                 .andExpect(jsonPath("$.data.hasNext").value(true))
                 .andExpect(jsonPath("$.data.nextCursor").isNotEmpty())
                 .andReturn();
@@ -611,6 +614,7 @@ class AnnouncementApiIntegrationTest {
                         .param("size", "2")
                         .param("cursor", nextCursor))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(3))
                 .andExpect(jsonPath("$.data.hasNext").value(false))
                 .andExpect(jsonPath("$.data.nextCursor").value(nullValue()))
                 .andReturn();
@@ -667,6 +671,7 @@ class AnnouncementApiIntegrationTest {
         MvcResult first = mockMvc.perform(get("/api/v1/announcements")
                         .param("keyword", "order-").param("sort", "DEADLINE").param("size", "2"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(6))
                 .andExpect(jsonPath("$.data.items[0].announcementId").value(sameDayNew.getId()))
                 .andExpect(jsonPath("$.data.items[1].announcementId").value(soon.getId()))
                 .andExpect(jsonPath("$.data.hasNext").value(true)).andReturn();
@@ -676,6 +681,7 @@ class AnnouncementApiIntegrationTest {
                         .param("keyword", "order-").param("sort", "DEADLINE")
                         .param("size", "2").param("cursor", cursor))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(6))
                 .andExpect(jsonPath("$.data.items[0].announcementId").value(later.getId()))
                 .andExpect(jsonPath("$.data.items[1].announcementId").value(upcoming.getId()));
         mockMvc.perform(get("/api/v1/announcements").param("sort", "LATEST").param("cursor", cursor))
@@ -704,12 +710,14 @@ class AnnouncementApiIntegrationTest {
         mockMvc.perform(get("/api/v1/announcements").param("keyword", "schedule-order-")
                         .param("sort", "DEADLINE").param("regionCode", "11140"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(2))
                 .andExpect(jsonPath("$.data.items[0].announcementId").value(reviewed.getId()))
                 .andExpect(jsonPath("$.data.items[0].applicationStartAt").value("2026-08-09"))
                 .andExpect(jsonPath("$.data.items[0].applicationEndAt").value("2026-08-10"));
         mockMvc.perform(get("/api/v1/announcements").param("keyword", "schedule-order-")
                         .param("sort", "DEADLINE").param("regionCode", "29110"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(2))
                 .andExpect(jsonPath("$.data.items[0].announcementId").value(legacy.getId()));
     }
 
@@ -724,12 +732,14 @@ class AnnouncementApiIntegrationTest {
         MvcResult first = mockMvc.perform(get("/api/v1/announcements")
                         .param("keyword", "ascending-").param("sort", "LATEST_ASC").param("size", "1"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(3))
                 .andExpect(jsonPath("$.data.items[0].announcementId").value(old.getId())).andReturn();
         String cursor = objectMapper.readTree(first.getResponse().getContentAsString())
                 .path("data").path("nextCursor").asText();
         mockMvc.perform(get("/api/v1/announcements")
                         .param("keyword", "ascending-").param("sort", "LATEST_ASC").param("cursor", cursor))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(3))
                 .andExpect(jsonPath("$.data.items[0].announcementId").value(sameDay.getId()))
                 .andExpect(jsonPath("$.data.items[1].announcementId").value(recent.getId()))
                 .andExpect(jsonPath("$.data.hasNext").value(false));
@@ -749,6 +759,7 @@ class AnnouncementApiIntegrationTest {
         MvcResult first = mockMvc.perform(get("/api/v1/announcements")
                         .param("keyword", "descending-").param("sort", "DEADLINE_DESC").param("size", "2"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(4))
                 .andExpect(jsonPath("$.data.items[0].announcementId").value(later.getId()))
                 .andExpect(jsonPath("$.data.items[1].announcementId").value(soon.getId())).andReturn();
         String cursor = objectMapper.readTree(first.getResponse().getContentAsString())
@@ -756,6 +767,7 @@ class AnnouncementApiIntegrationTest {
         mockMvc.perform(get("/api/v1/announcements")
                         .param("keyword", "descending-").param("sort", "DEADLINE_DESC").param("cursor", cursor))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(4))
                 .andExpect(jsonPath("$.data.items[0].announcementId").value(sameDay.getId()))
                 .andExpect(jsonPath("$.data.items[1].announcementId").value(upcoming.getId()))
                 .andExpect(jsonPath("$.data.hasNext").value(false));

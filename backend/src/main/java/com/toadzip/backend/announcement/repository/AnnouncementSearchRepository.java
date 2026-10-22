@@ -53,11 +53,7 @@ public class AnnouncementSearchRepository {
         HibernateCriteriaBuilder criteriaBuilder = (HibernateCriteriaBuilder) entityManager.getCriteriaBuilder();
         CriteriaQuery<Announcement> query = criteriaBuilder.createQuery(Announcement.class);
         Root<Announcement> announcement = query.from(Announcement.class);
-        List<Predicate> predicates = new ArrayList<>();
-
-        addVisibilityPredicates(criteriaBuilder, query, announcement, predicates);
-        addDirectFilterPredicates(criteriaBuilder, announcement, condition, predicates);
-        addDerivedFilterPredicates(criteriaBuilder, query, announcement, condition, predicates);
+        List<Predicate> predicates = searchPredicates(criteriaBuilder, query, announcement, condition);
         addCursorPredicate(criteriaBuilder, announcement, cursorPostedDate, cursorId, predicates, ascending);
 
         query.select(announcement)
@@ -80,10 +76,7 @@ public class AnnouncementSearchRepository {
         HibernateCriteriaBuilder builder = (HibernateCriteriaBuilder) entityManager.getCriteriaBuilder();
         CriteriaQuery<Tuple> query = builder.createTupleQuery();
         Root<Announcement> announcement = query.from(Announcement.class);
-        List<Predicate> predicates = new ArrayList<>();
-        addVisibilityPredicates(builder, query, announcement, predicates);
-        addDirectFilterPredicates(builder, announcement, condition, predicates);
-        addDerivedFilterPredicates(builder, query, announcement, condition, predicates);
+        List<Predicate> predicates = searchPredicates(builder, query, announcement, condition);
         DeadlineExpressions order = deadlineExpressions(builder, query, announcement, condition);
         if (cursorPriority != null) {
             Predicate laterPublication = builder.or(afterCursor(builder,
@@ -162,6 +155,28 @@ public class AnnouncementSearchRepository {
     }
 
     private record DeadlineExpressions(Expression<Integer> priority, Expression<LocalDate> date) {
+    }
+
+    public long countLatestLeaves(AnnouncementSearchCondition condition) {
+        HibernateCriteriaBuilder criteriaBuilder = (HibernateCriteriaBuilder) entityManager.getCriteriaBuilder();
+        CriteriaQuery<Long> query = criteriaBuilder.createQuery(Long.class);
+        Root<Announcement> announcement = query.from(Announcement.class);
+        List<Predicate> predicates = searchPredicates(criteriaBuilder, query, announcement, condition);
+        query.select(criteriaBuilder.count(announcement)).where(predicates.toArray(Predicate[]::new));
+        return entityManager.createQuery(query).getSingleResult();
+    }
+
+    private List<Predicate> searchPredicates(
+            HibernateCriteriaBuilder criteriaBuilder,
+            CriteriaQuery<?> query,
+            Root<Announcement> announcement,
+            AnnouncementSearchCondition condition
+    ) {
+        List<Predicate> predicates = new ArrayList<>();
+        addVisibilityPredicates(criteriaBuilder, query, announcement, predicates);
+        addDirectFilterPredicates(criteriaBuilder, announcement, condition, predicates);
+        addDerivedFilterPredicates(criteriaBuilder, query, announcement, condition, predicates);
+        return predicates;
     }
 
     private void addVisibilityPredicates(

@@ -201,12 +201,12 @@ function announcementPageResponse(
   const items = snapshot.announcementListItems.filter((item) => (
     announcementMatchesFilters(snapshot, item, url)
   )).sort((left, right) => compareAnnouncements(left, right, url.searchParams.get('sort')))
-  return successResponse(page(
+  return successResponse({ totalCount: items.length, ...page(
     items,
     cursor.offset,
     pageSize(url),
     cursorPrefix,
-  ))
+  ) })
 }
 
 function compareAnnouncements(left: RawAnnouncementListItem, right: RawAnnouncementListItem, sort: string | null) {

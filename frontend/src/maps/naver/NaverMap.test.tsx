@@ -2087,7 +2087,7 @@ describe('NaverMap', () => {
       '보1천~월23만~',
     )
     expect(fakeSdk.markerConstructor.mock.calls[0]?.[0]).toMatchObject({
-      icon: { anchor: { x: 16, y: 58 }, size: { width: 92, height: 58 } },
+      icon: { anchor: { x: 16, y: 58 }, size: { width: 76, height: 58 } },
     })
   })
 

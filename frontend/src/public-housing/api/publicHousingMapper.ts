@@ -44,6 +44,7 @@ export function toComplexPage(raw: RawComplexPage): ComplexPage {
 
 export function toAnnouncementPage(raw: RawAnnouncementPage): AnnouncementPage {
   return {
+    totalCount: raw.totalCount ?? null,
     items: raw.items.map(toAnnouncementListItem),
     nextCursor: raw.nextCursor,
     hasNext: raw.hasNext,

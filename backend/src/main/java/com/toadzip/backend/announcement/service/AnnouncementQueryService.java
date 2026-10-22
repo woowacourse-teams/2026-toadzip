@@ -95,8 +95,9 @@ public class AnnouncementQueryService {
         );
         boolean hasNext = fetchedAnnouncements.size() > size;
         List<Announcement> announcements = fetchedAnnouncements.stream().limit(size).toList();
+        long totalCount = announcementSearchRepository.countLatestLeaves(condition);
         return new AnnouncementListResponse(listItems(announcements, condition, today),
-                nextCursor(announcements, hasNext, sort), hasNext);
+                nextCursor(announcements, hasNext, sort), hasNext, totalCount);
     }
 
     public AnnouncementListResponse getAnnouncementsByDeadline(AnnouncementSearchRequest request, String cursor, int size) {
@@ -130,8 +131,9 @@ public class AnnouncementQueryService {
             nextCursor = announcementCursorCodec.encodeDeadline(today, last.priority(), last.sortDate(),
                     last.announcement().getPostedDate(), last.announcement().getId(), sort);
         }
+        long totalCount = announcementSearchRepository.countLatestLeaves(condition);
         return new AnnouncementListResponse(listItems(page.stream().map(AnnouncementDeadlineRow::announcement).toList(),
-                condition, today), nextCursor, hasNext);
+                condition, today), nextCursor, hasNext, totalCount);
     }
 
     private List<AnnouncementListItemResponse> listItems(List<Announcement> announcements,

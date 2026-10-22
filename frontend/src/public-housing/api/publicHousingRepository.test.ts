@@ -315,6 +315,7 @@ describe('공공주택 HTTP repository', () => {
           items: [ANNOUNCEMENT_ITEM],
           nextCursor: 'next+/cursor',
           hasNext: true,
+          totalCount: 1234,
         },
       }),
     )
@@ -339,6 +340,7 @@ describe('공공주택 HTTP repository', () => {
       expect.objectContaining({ signal: controller.signal }),
     )
     expect(page).toMatchObject({
+      totalCount: 1234,
       nextCursor: 'next+/cursor',
       hasNext: true,
       items: [
@@ -963,12 +965,25 @@ describe('공공주택 응답 계약', () => {
     )
   })
 
+  it('공고 목록의 전체 건수를 보존하고 이전 API의 미제공 값은 null로 둔다', () => {
+    const page = { items: [], nextCursor: null, hasNext: false }
+    expect(decodeAnnouncementPageEnvelope({ data: { ...page, totalCount: 0 } }).totalCount).toBe(0)
+    expect(decodeAnnouncementPageEnvelope({ data: { ...page, totalCount: 1234 } }).totalCount).toBe(1234)
+    expect(decodeAnnouncementPageEnvelope({ data: page }).totalCount).toBeNull()
+  })
+
+  it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1, '20'])('잘못된 전체 공고 수 %s를 거절한다', (totalCount) => {
+    expect(() => decodeAnnouncementPageEnvelope({ data: {
+      items: [], nextCursor: null, hasNext: false, totalCount,
+    } })).toThrow(PublicHousingContractError)
+  })
+
   it('공고 목록의 빈 배열, null과 false를 빈 성공으로 보존한다', () => {
     const decoded = decodeAnnouncementPageEnvelope({
       data: { items: [], nextCursor: null, hasNext: false },
     })
 
-    expect(decoded).toEqual({ items: [], nextCursor: null, hasNext: false })
+    expect(decoded).toEqual({ items: [], nextCursor: null, hasNext: false, totalCount: null })
   })
 
   it('공고 ID가 safe positive integer가 아니면 계약 오류로 거절한다', () => {

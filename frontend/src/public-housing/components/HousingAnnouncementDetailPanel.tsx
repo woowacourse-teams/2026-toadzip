@@ -3,6 +3,7 @@ import { detailVisitId, useDetailScrollAnalytics } from './detailAnalytics'
 import { toHttpUrl } from '../presentation/httpUrl.ts'
 import {
   type KeyboardEvent,
+  type PointerEvent,
   type RefObject,
   type ReactNode,
   useCallback,
@@ -243,6 +244,7 @@ export function HousingAnnouncementDetailPanel({
           />
           {groups.length > 0 && (
             <HousingTypeComparison
+              key={`housing-types:${detail.announcementId}`}
               areaUnit={areaUnit}
               onToggleAreaUnit={toggleAreaUnit}
               groups={groups}
@@ -642,16 +644,6 @@ function ComplexCard({
           <strong>{group.name}</strong>
           <span>{rentalTypeLabel}</span>
         </div>
-        {group.complexId && onOpenComplex && (
-          <button
-            type="button"
-            data-detail-return-focus={`complex:${group.complexId}`}
-            aria-label={`${group.name} 단지 상세 보기`}
-            onClick={openComplex}
-          >
-            단지 상세
-          </button>
-        )}
       </header>
       <div className={styles.complexSummary} data-has-image={imageUrl !== null}>
         {imageUrl && (
@@ -684,6 +676,17 @@ function ComplexCard({
           />
         </DetailFacts>
       </div>
+      {group.complexId && onOpenComplex && (
+        <button
+          className={styles.complexDetailButton}
+          type="button"
+          data-detail-return-focus={`complex:${group.complexId}`}
+          aria-label={`${group.name} 단지 상세 보기`}
+          onClick={openComplex}
+        >
+          단지 상세 보기 <span aria-hidden="true">→</span>
+        </button>
+      )}
     </article>
   )
 }
@@ -699,33 +702,200 @@ function HousingTypeComparison({
   groups: readonly HousingAnnouncementSupplyComplexGroup[]
   onOpenFloorPlan: (selection: FloorPlanSelection) => void
 }) {
+  const id = useId()
+  const [selectedKey, setSelectedKey] = useState(groups[0]?.key)
+  const tabListRef = useRef<HTMLDivElement>(null)
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const [scrollEdges, setScrollEdges] = useState({ left: false, right: false })
+  const [dragging, setDragging] = useState(false)
+  const dragRef = useRef<{ pointerId: number; x: number; scrollLeft: number; moved: boolean } | null>(null)
+  const suppressClickRef = useRef(false)
+  const updateScrollEdges = useCallback(() => {
+    const list = tabListRef.current
+    if (!list) return
+    const left = list.scrollLeft > 1
+    const right = list.scrollLeft + list.clientWidth < list.scrollWidth - 1
+    setScrollEdges((previous) => previous.left === left && previous.right === right ? previous : { left, right })
+  }, [])
+
+  useEffect(() => {
+    const list = tabListRef.current
+    if (!list) return
+    updateScrollEdges()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(updateScrollEdges)
+    observer.observe(list)
+    tabRefs.current.forEach((tab) => { if (tab) observer.observe(tab) })
+    return () => observer.disconnect()
+  }, [groups, updateScrollEdges])
+
+  const selectedIndex = Math.max(0, groups.findIndex((group) => group.key === selectedKey))
+  const selectedGroup = groups[selectedIndex]
+
+  useEffect(() => {
+    const list = tabListRef.current
+    const tab = tabRefs.current[selectedIndex]
+    if (!list || !tab) return
+    // Only scroll the horizontal strip; keep the detail panel's vertical position.
+    const listBounds = list.getBoundingClientRect()
+    const tabBounds = tab.getBoundingClientRect()
+    if (tabBounds.left < listBounds.left) list.scrollLeft -= listBounds.left - tabBounds.left
+    else if (tabBounds.right > listBounds.right) list.scrollLeft += tabBounds.right - listBounds.right
+    updateScrollEdges()
+  }, [selectedIndex, updateScrollEdges])
+
+  function startTabDrag(event: PointerEvent<HTMLDivElement>) {
+    suppressClickRef.current = false
+    const list = event.currentTarget
+    if (event.pointerType !== 'mouse' || event.button !== 0 || list.scrollWidth <= list.clientWidth) return
+    dragRef.current = { pointerId: event.pointerId, x: event.clientX, scrollLeft: list.scrollLeft, moved: false }
+  }
+
+  function moveTabDrag(event: PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    if ((event.buttons & 1) === 0) {
+      endTabDrag(event, true)
+      return
+    }
+    const distance = event.clientX - drag.x
+    if (!drag.moved && Math.abs(distance) < 6) return
+    if (!drag.moved) {
+      drag.moved = true
+      suppressClickRef.current = true
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+      setDragging(true)
+    }
+    event.preventDefault()
+    event.currentTarget.scrollLeft = drag.scrollLeft - distance
+    updateScrollEdges()
+  }
+
+  function endTabDrag(event: PointerEvent<HTMLDivElement>, cancelled = false) {
+    if (dragRef.current?.pointerId !== event.pointerId) return
+    dragRef.current = null
+    setDragging(false)
+    if (cancelled) suppressClickRef.current = false
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+
+  function selectGroup(index: number, focus = false) {
+    const group = groups[index]
+    if (!group) return
+    setSelectedKey(group.key)
+    if (focus) tabRefs.current[index]?.focus({ preventScroll: true })
+  }
+
+  function handleTabKey(event: KeyboardEvent<HTMLButtonElement>) {
+    let index: number
+    if (event.key === 'ArrowRight') index = (selectedIndex + 1) % groups.length
+    else if (event.key === 'ArrowLeft') index = (selectedIndex - 1 + groups.length) % groups.length
+    else if (event.key === 'Home') index = 0
+    else if (event.key === 'End') index = groups.length - 1
+    else return
+    event.preventDefault()
+    selectGroup(index, true)
+  }
+
+  if (!selectedGroup) return null
   return (
     <DetailSection appearance="block"
       title="주택형 비교"
       actions={<AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} />}
     >
-      <div className={styles.housingTypeGroups}>
-        {groups.map((group) => (
-          <section key={group.key} className={styles.housingTypeGroup} aria-label={`${group.name} 주택형 비교`}>
+      {groups.length > 1 && (
+        <div className={styles.complexTabsFrame} data-scroll-left={scrollEdges.left} data-scroll-right={scrollEdges.right}>
+          <div className={styles.complexTabs} role="tablist" aria-label="주택형 비교 단지 선택" ref={tabListRef}
+            data-dragging={dragging || undefined} onScroll={updateScrollEdges}
+            onPointerDown={startTabDrag} onPointerMove={moveTabDrag}
+            onPointerUp={(event) => endTabDrag(event)} onPointerCancel={(event) => endTabDrag(event, true)}
+            onLostPointerCapture={(event) => endTabDrag(event)}
+            onClickCapture={(event) => {
+              if (!suppressClickRef.current || event.detail === 0) return
+              suppressClickRef.current = false
+              event.preventDefault()
+              event.stopPropagation()
+            }}>
+            {groups.map((group, index) => (
+              <button key={group.key} type="button" role="tab" id={`${id}-tab-${index}`}
+                className={styles.complexTab} ref={(node) => { tabRefs.current[index] = node }}
+                aria-selected={index === selectedIndex} aria-controls={`${id}-panel-${index}`}
+                tabIndex={index === selectedIndex ? 0 : -1}
+                onClick={() => selectGroup(index)} onKeyDown={handleTabKey}>
+                <strong>{group.name}</strong>
+                <span>{supplyHouseholdSummary(group.supplyHouseholdCount)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {groups.map((group, index) => (
+        <section key={group.key} id={`${id}-panel-${index}`} className={styles.housingTypeGroup}
+          role={groups.length > 1 ? 'tabpanel' : 'region'} hidden={index !== selectedIndex}
+          aria-labelledby={groups.length > 1 ? `${id}-tab-${index}` : undefined}
+          aria-label={groups.length === 1 ? `${group.name} 주택형 비교` : undefined}
+          tabIndex={groups.length > 1 ? 0 : undefined}>
+          {groups.length === 1 && (
             <header className={styles.housingTypeGroupHeading}>
               <h4>{group.name}</h4>
               <span>{supplyHouseholdSummary(group.supplyHouseholdCount)}</span>
             </header>
-            <div className={styles.housingTypes}>
-              {group.rows.map((row) => (
-                <HousingTypeCard
-                  areaUnit={areaUnit}
-                  key={row.supplyRowId}
-                  complexName={group.name}
-                  row={row}
-                  onOpenFloorPlan={onOpenFloorPlan}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+          )}
+          {index === selectedIndex && <HousingTypeSelection key={group.key} group={group}
+            areaUnit={areaUnit} onOpenFloorPlan={onOpenFloorPlan} />}
+        </section>
+      ))}
     </DetailSection>
+  )
+}
+
+function HousingTypeSelection({ group, areaUnit, onOpenFloorPlan }: {
+  group: HousingAnnouncementSupplyComplexGroup
+  areaUnit: AreaUnit
+  onOpenFloorPlan: (selection: FloorPlanSelection) => void
+}) {
+  const [selectedId, setSelectedId] = useState(group.rows[0]?.supplyRowId)
+  const selected = group.rows.find((row) => row.supplyRowId === selectedId) ?? group.rows[0]
+  const id = useId()
+  if (!selected) return null
+  return (
+    <div className={styles.housingTypes}>
+      {group.rows.length > 1 && (
+        <div>
+          <p className={styles.housingTypeHint} id={`${id}-hint`}>
+            주택형 {group.rows.length}개 · 선택하면 아래에 상세가 표시돼요
+          </p>
+          <div className={styles.housingTypeSummaryScroll} role="region"
+            aria-label={`${group.name} 주택형 요약 목록`} tabIndex={group.rows.length > 5 ? 0 : undefined}>
+            <table className={styles.housingTypeSummary} aria-label={`${group.name} 주택형 요약`}
+              aria-describedby={`${id}-hint`}>
+              <thead><tr><th scope="col">주택형</th><th scope="col">전용면적</th><th scope="col">공급세대</th></tr></thead>
+              <tbody>
+                {group.rows.map((row) => (
+                  <tr key={row.supplyRowId} data-selected={row.supplyRowId === selected.supplyRowId}>
+                    <td>
+                      <button type="button" aria-label={`${housingTypeLabel(row)} 주택형 선택`}
+                        aria-pressed={row.supplyRowId === selected.supplyRowId}
+                        aria-controls={`${id}-selected`} onClick={() => setSelectedId(row.supplyRowId)}>
+                        <strong>{housingTypeLabel(row)}</strong>
+                        <span>{row.supplyTypeLabel}</span>
+                      </button>
+                    </td>
+                    <td>{formatArea(row.exclusiveArea === undefined ? row.housingType?.exclusiveArea ?? null : row.exclusiveArea, areaUnit)}</td>
+                    <td>{row.sharedRecruitment ? '공통 모집' : formatNullableCount(row.totalSupplyHouseholdCount, '세대')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      <div id={`${id}-selected`}>
+        {group.rows.length > 1 && <h4 className={styles.selectedHousingTypeTitle}>선택 주택형 상세</h4>}
+        <HousingTypeCard areaUnit={areaUnit} complexName={group.name} row={selected}
+          onOpenFloorPlan={onOpenFloorPlan} />
+      </div>
+    </div>
   )
 }
 
@@ -783,7 +953,7 @@ function HousingTypeCard({
           <tr>
             <th id={`${idPrefix}-count`} scope="row">공급 세대수</th>
             <td headers={`${idPrefix}-count`}>{row.sharedRecruitment ? '공통 합계 · 개별 미확정' : formatNullableCount(row.totalSupplyHouseholdCount, '세대')}</td>
-            <th id={`${idPrefix}-occupancy`} scope="row">입주 예정</th>
+            <th id={`${idPrefix}-occupancy`} scope="row">최초 입주 연월</th>
             <td headers={`${idPrefix}-occupancy`}>{formatYearMonth(row.occupancyExpectedYearMonth)}</td>
           </tr>
           {(row.supplyArea !== undefined || row.housingType?.supplyArea != null) && (
@@ -796,6 +966,11 @@ function HousingTypeCard({
           )}
         </tbody>
       </DetailTable>
+      {row.occupancyExpectedYearMonth && (
+        <p className={styles.occupancyNote}>
+          최초 입주 연월은 원문 기준이며, 이번 모집의 입주 일정과 다를 수 있어요.
+        </p>
+      )}
       <SupplyTargets targets={row.targets} />
     </article>
   )

@@ -49,6 +49,9 @@ describe('local public housing snapshot repository', () => {
     expect(farthest.items.map((item) => item.announcementId)).toEqual(['302'])
     const farthestNext = await repository.findAnnouncementPage(farthest.nextCursor, 2, signal, { sort: 'DEADLINE_DESC' })
     expect(farthestNext.items.map((item) => item.announcementId)).toEqual(['303', '301'])
+    for (const page of [first, second, latest, oldest, oldestNext, farthest, farthestNext]) {
+      expect(page.totalCount).toBe(3)
+    }
     await expect(repository.findAnnouncementPage(oldest.nextCursor, 1, signal, { sort: 'LATEST' }))
       .rejects.toMatchObject({ code: 'INVALID_CURSOR' })
     await expect(repository.findAnnouncementPage(farthest.nextCursor, 1, signal, { sort: 'DEADLINE' }))

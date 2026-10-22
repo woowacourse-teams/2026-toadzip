@@ -41,7 +41,7 @@ export function markerWidth(marker: NaverMapComplexMarker) {
   const amountWidths = [marker.deposit, marker.monthlyRent].map((amount) => (
     amount === null ? 0 : amount.digits.length * 7.5 + amount.unit.length * 12 + 32
   ))
-  return Math.ceil(Math.max(92, ...amountWidths))
+  return Math.ceil(Math.max(76, ...amountWidths))
 }
 
 function markerAriaLabel(marker: NaverMapComplexMarker) {

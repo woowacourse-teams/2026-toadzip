@@ -5,7 +5,8 @@ import java.util.List;
 public record AnnouncementListResponse(
         List<AnnouncementListItemResponse> items,
         String nextCursor,
-        boolean hasNext
+        boolean hasNext,
+        long totalCount
 ) {
 
     public AnnouncementListResponse {
