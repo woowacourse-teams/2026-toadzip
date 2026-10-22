@@ -3,7 +3,7 @@ import type { ComplexSearchFilters } from '../api/publicHousingRepository.ts'
 import { formatHousingMoney } from '../presentation/housingMoney.ts'
 import { DualRangeFilter, type DualRangeFilterPreset } from './DualRangeFilter.tsx'
 import { AGENCY_OPTIONS, RECRUITMENT_TYPE_OPTIONS, RENTAL_TYPE_OPTIONS } from './searchFilterOptions.ts'
-import { DETAIL_FILTER_TOPICS, TOPICS, type FilterTopic } from './complexFilterTopics.ts'
+import { ALL_FILTER_TOPICS, DETAIL_FILTER_TOPICS, type FilterTopic } from './complexFilterTopics.ts'
 import { AREA_SLIDER_MAXIMUM, formatArea, formatAreaTick, formatDepositTick, formatMonthlyRentTick } from './complexFilterPresentation.ts'
 import { RegionFilterFields } from './RegionFilterFields.tsx'
 import styles from './ComplexFilterToolbar.module.css'
@@ -65,7 +65,7 @@ export function AllFilterFields({ filters, regionRepository, onRangeChange, onRe
 }) {
   return (
     <div className={styles.detailFields}>
-      {TOPICS.map(([topic, label]) => (
+      {ALL_FILTER_TOPICS.map(([topic, label]) => (
         <section className={styles.detailTopic} key={topic}>
           {(topic === 'region' || topic === 'price') && <h3>{label}</h3>}
           <ComplexFilterFields filters={filters} regionRepository={regionRepository} topic={topic}
@@ -110,7 +110,7 @@ export function ComplexFilterFields({
     case 'rentalType':
       return <ChoiceGroup label="임대유형" name="rentalTypes" values={filters.rentalTypes} options={RENTAL_TYPE_OPTIONS} appearance="grid" />
     case 'agency':
-      return <ChoiceGroup label="공급기관" name="agencyCodes" values={filters.agencyCodes} options={AGENCY_OPTIONS} />
+      return <ChoiceGroup label="공급기관" name="agencyCodes" values={filters.agencyCodes} options={AGENCY_OPTIONS} appearance="grid" />
     case 'recruitmentType':
       return <ChoiceGroup label="모집유형" name="recruitmentTypes" values={filters.recruitmentTypes} options={RECRUITMENT_TYPE_OPTIONS} />
     case 'price':

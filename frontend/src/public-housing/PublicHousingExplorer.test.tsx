@@ -1409,15 +1409,14 @@ describe('PublicHousingExplorer', () => {
   it('개별 필터 적용값을 URL과 지도·지역 목록·다음 페이지에 전달한다', async () => {
     const repository = createRepository()
     repository.findComplexPage.mockResolvedValue(complexPageWithNext())
-    renderSearchedExplorer(repository, '/?complexRegionCode=41&complexRentalTypes=NATIONAL_RENTAL&complexApplicationStatuses=APPLYING&complexMinDeposit=100000000&complexMaxDeposit=300000000&complexMinMonthlyRent=100000&complexMaxMonthlyRent=500000&complexMinExclusiveArea=33&complexMaxExclusiveArea=66&complexBuiltYearFrom=2015&complexBuiltYearTo=2026')
+    renderSearchedExplorer(repository, '/?complexRegionCode=41&complexRentalTypes=NATIONAL_RENTAL&complexApplicationStatuses=APPLYING&complexMinDeposit=100000000&complexMaxDeposit=300000000&complexMinMonthlyRent=100000&complexMaxMonthlyRent=500000&complexMinExclusiveArea=33&complexMaxExclusiveArea=66&complexBuiltYearFrom=2015&complexBuiltYearTo=2026&complexRecruitmentTypes=NEW')
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     await waitFor(() => expect(repository.findMap).toHaveBeenCalled())
     await waitFor(() => expect(repository.findMap).toHaveBeenCalledOnce())
     expect(within(screen.getByRole('toolbar', { name: '단지 검색 필터' })).getByRole('switch', { name: '모집중', checked: true })).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '전체 필터 열기' }))
-    for (const option of ['LH', '신규 모집']) {
-      fireEvent.click(screen.getByRole('checkbox', { name: option }))
-    }
+    expect(screen.queryByRole('group', { name: '모집유형' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'LH' }))
     fireEvent.click(screen.getByRole('button', { name: '전체 필터 닫기' }))
     const filters = {
       regionCode: '41', rentalTypes: ['NATIONAL_RENTAL'], applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'],

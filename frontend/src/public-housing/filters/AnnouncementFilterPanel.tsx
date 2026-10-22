@@ -277,7 +277,7 @@ function FilterCheckboxGroup({
   label,
   name,
   options,
-  appearance = 'pill',
+  appearance = 'grid',
 }: {
   /** grid: 임대유형처럼 칸을 맞춘 회색 칸, pill: 나머지 선택지는 알약 칩 */
   readonly appearance?: 'grid' | 'pill'
