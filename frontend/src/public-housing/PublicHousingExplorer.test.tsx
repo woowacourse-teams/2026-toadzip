@@ -2949,6 +2949,37 @@ describe('PublicHousingExplorer', () => {
       expect(repository.findAnnouncementPage).toHaveBeenCalledTimes(3)
     })
 
+    it('정렬을 바꾸면 기존 목록과 커서를 초기화하고 새 정렬로 20개씩 이어서 조회한다', async () => {
+      const observers = installAnnouncementIntersectionObserver()
+      const repository = createRepository()
+      repository.findAnnouncementPage
+        .mockResolvedValueOnce(announcementBatch(1, 20, 'deadline-20', 40))
+        .mockResolvedValueOnce(announcementBatch(101, 20, 'latest-20', 40))
+        .mockResolvedValueOnce(announcementBatch(121, 20, null, 40))
+      renderExplorer(repository)
+      fireEvent.click(screen.getByRole('button', { name: '공고 목록' }))
+      const panel = screen.getByRole('region', { name: '공고 목록' })
+      await within(panel).findByRole('heading', { name: '자동 조회 공고 20' })
+      const oldObserver = observers.findLast((entry) => panel.contains(entry.root))!
+      fireEvent.click(within(panel).getByRole('button', { name: '최신순' }))
+      await within(panel).findByRole('heading', { name: '자동 조회 공고 120' })
+      expect(within(panel).queryByRole('heading', { name: '자동 조회 공고 1' })).not.toBeInTheDocument()
+      expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(
+        null, 20, expect.any(AbortSignal),
+        { applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'], sort: 'LATEST' },
+      )
+      act(() => oldObserver.notify(true))
+      expect(repository.findAnnouncementPage).toHaveBeenCalledTimes(2)
+      const currentObserver = observers.findLast((entry) => panel.contains(entry.root))!
+      await act(async () => currentObserver.notify(true))
+      expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(
+        'latest-20', 20, expect.any(AbortSignal),
+        { applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'], sort: 'LATEST' },
+      )
+      expect(within(panel).getAllByRole('listitem')).toHaveLength(40)
+      expect(within(panel).getByLabelText('전체 공고 40건')).toHaveTextContent('전체 40건')
+    })
+
     it('추가 조회 실패는 목록 끝에서 재시도하며 자동 재요청을 반복하지 않는다', async () => {
       const observers = installAnnouncementIntersectionObserver()
       const repository = createRepository()
