@@ -15,6 +15,7 @@ export function ComplexIngestStages({ states, disabled, startingType, stopping, 
   const combined = states.COMPLEX_SYNC.execution
   function latest(type: 'COMPLEX_COLLECTION' | 'COMPLEX_REFINEMENT'): DataPipelineExecution {
     const own = states[type].execution
+    if (startingType === type) return own
     return combined.status === 'RUNNING' || (Date.parse(combined.startedAt ?? '') || 0) > (Date.parse(own.startedAt ?? '') || 0)
       ? combined : own
   }

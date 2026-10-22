@@ -103,3 +103,17 @@ it('기존 통합 실행도 복구하되 중지 버튼은 현재 처리 중인 �
   expect(within(screen.getByRole('region', { name: '단지 원천 수집' })).queryByRole('button', { name: '실행 중지' })).not.toBeInTheDocument()
   assertStages()
 })
+it('새 실행을 접수할 때 과거 통합 실행의 결과를 이번 결과로 표시하지 않는다', async () => {
+  vi.mocked(getDataPipelineStatus).mockImplementation(async type => execution(type, type === 'COMPLEX_SYNC'
+    ? { executionId: 'old-sync', status: 'COMPLETED', startedAt: '2026-10-21T00:00:00Z', totalStepCount: 4,
+      completedStepResults: [{ step: 'MAP_MYHOME_COMPLEXES', stepName: '마이홈 단지 정제', report: { createdComplexCount: 999 } }] } : {}))
+  let resolve: (value: DataPipelineExecution) => void = () => {}
+  vi.mocked(startDataPipeline).mockReturnValue(new Promise(complete => { resolve = complete }))
+  await show()
+  const refinement = screen.getByRole('region', { name: '단지 정제·저장' })
+  expect(within(refinement).getByText('999')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '단지 정제·저장 실행' }))
+  expect(within(refinement).queryByText('999')).not.toBeInTheDocument()
+  expect(within(refinement).getByText(/실행 접수를 확인/)).toBeVisible()
+  await act(async () => resolve(execution('COMPLEX_REFINEMENT', { executionId: 'new-refine', status: 'COMPLETED', startedAt: '2026-10-22T00:00:00Z' })))
+})
