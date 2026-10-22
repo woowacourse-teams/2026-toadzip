@@ -127,6 +127,28 @@ class LhAnnouncementSupplyMatcherTest {
                 .isEqualTo(LhAnnouncementEnrichmentFailureReason.AMBIGUOUS_HOUSING_TYPE);
     }
 
+    // 로컬 DB #45 아산읍내: 정제가 LH 행으로 나눈 공급행인데 단지명 표기가 셋 다 달라 보강이 거절됐다.
+    @Test
+    void 정제가_붙인_LH_원천_식별자가_같으면_단지명_표기가_달라도_매칭한다() {
+        SupplyRow row = row("아산읍내", "26");
+        when(row.getLhSourceSupplyRowIdentifier()).thenReturn("lh-supply-row");
+
+        LhSupplyMatchResult result = matcher.match(List.of(row), source("아산읍내1 영구임대아파트", "26"));
+
+        assertThat(result.row()).isSameAs(row);
+        assertThat(result.failure()).isNull();
+    }
+
+    @Test
+    void LH_원천_식별자가_같아도_주택형이_다르면_매칭하지_않는다() {
+        SupplyRow row = row("아산읍내", "26");
+        when(row.getLhSourceSupplyRowIdentifier()).thenReturn("lh-supply-row");
+
+        LhSupplyMatchResult result = matcher.match(List.of(row), source("아산읍내1 영구임대아파트", "31"));
+
+        assertThat(result.row()).isNull();
+    }
+
     private SupplyRow row(String complexName, String housingTypeName) {
         SupplyRow row = mock(SupplyRow.class);
         when(row.getSourceComplexName()).thenReturn(complexName);
