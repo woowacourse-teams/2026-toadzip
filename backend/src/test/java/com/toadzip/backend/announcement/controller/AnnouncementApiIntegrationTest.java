@@ -256,7 +256,8 @@ class AnnouncementApiIntegrationTest {
 
         mockMvc.perform(get("/api/v1/announcements"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items.length()").value(0));
+                .andExpect(jsonPath("$.data.items.length()").value(0))
+                .andExpect(jsonPath("$.data.totalCount").value(0));
     }
 
     @Test
@@ -308,6 +309,7 @@ class AnnouncementApiIntegrationTest {
         entityManager.clear();
         mockMvc.perform(get("/api/v1/announcements").param("regionCode", "1114010100"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(1))
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].announcementId").value(included.getId()));
     }
@@ -599,6 +601,7 @@ class AnnouncementApiIntegrationTest {
 
         MvcResult firstPage = mockMvc.perform(cursorSearchRequest().param("size", "2"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(3))
                 .andExpect(jsonPath("$.data.hasNext").value(true))
                 .andExpect(jsonPath("$.data.nextCursor").isNotEmpty())
                 .andReturn();
@@ -609,6 +612,7 @@ class AnnouncementApiIntegrationTest {
                         .param("size", "2")
                         .param("cursor", nextCursor))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(3))
                 .andExpect(jsonPath("$.data.hasNext").value(false))
                 .andExpect(jsonPath("$.data.nextCursor").value(nullValue()))
                 .andReturn();

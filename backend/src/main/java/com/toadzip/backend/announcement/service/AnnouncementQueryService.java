@@ -98,7 +98,8 @@ public class AnnouncementQueryService {
                         .toList(),
                 today
         );
-        return new AnnouncementListResponse(items, nextCursor(announcements, hasNext), hasNext);
+        long totalCount = announcementSearchRepository.countLatestLeaves(condition);
+        return new AnnouncementListResponse(items, nextCursor(announcements, hasNext), hasNext, totalCount);
     }
 
     public AnnouncementDetailResponse getAnnouncement(long announcementId) {

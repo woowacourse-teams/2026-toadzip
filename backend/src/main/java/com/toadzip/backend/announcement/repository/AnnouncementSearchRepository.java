@@ -43,11 +43,7 @@ public class AnnouncementSearchRepository {
         HibernateCriteriaBuilder criteriaBuilder = (HibernateCriteriaBuilder) entityManager.getCriteriaBuilder();
         CriteriaQuery<Announcement> query = criteriaBuilder.createQuery(Announcement.class);
         Root<Announcement> announcement = query.from(Announcement.class);
-        List<Predicate> predicates = new ArrayList<>();
-
-        addVisibilityPredicates(criteriaBuilder, query, announcement, predicates);
-        addDirectFilterPredicates(criteriaBuilder, announcement, condition, predicates);
-        addDerivedFilterPredicates(criteriaBuilder, query, announcement, condition, predicates);
+        List<Predicate> predicates = searchPredicates(criteriaBuilder, query, announcement, condition);
         addCursorPredicate(criteriaBuilder, announcement, cursorPostedDate, cursorId, predicates);
 
         query.select(announcement)
@@ -62,9 +58,31 @@ public class AnnouncementSearchRepository {
                 .getResultList();
     }
 
+    public long countLatestLeaves(AnnouncementSearchCondition condition) {
+        HibernateCriteriaBuilder criteriaBuilder = (HibernateCriteriaBuilder) entityManager.getCriteriaBuilder();
+        CriteriaQuery<Long> query = criteriaBuilder.createQuery(Long.class);
+        Root<Announcement> announcement = query.from(Announcement.class);
+        List<Predicate> predicates = searchPredicates(criteriaBuilder, query, announcement, condition);
+        query.select(criteriaBuilder.count(announcement)).where(predicates.toArray(Predicate[]::new));
+        return entityManager.createQuery(query).getSingleResult();
+    }
+
+    private List<Predicate> searchPredicates(
+            HibernateCriteriaBuilder criteriaBuilder,
+            CriteriaQuery<?> query,
+            Root<Announcement> announcement,
+            AnnouncementSearchCondition condition
+    ) {
+        List<Predicate> predicates = new ArrayList<>();
+        addVisibilityPredicates(criteriaBuilder, query, announcement, predicates);
+        addDirectFilterPredicates(criteriaBuilder, announcement, condition, predicates);
+        addDerivedFilterPredicates(criteriaBuilder, query, announcement, condition, predicates);
+        return predicates;
+    }
+
     private void addVisibilityPredicates(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             List<Predicate> predicates
     ) {
@@ -142,7 +160,7 @@ public class AnnouncementSearchRepository {
 
     private void addDerivedFilterPredicates(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             List<Predicate> predicates
@@ -154,7 +172,7 @@ public class AnnouncementSearchRepository {
 
     private void addApplicationStatusPredicate(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             List<Predicate> predicates
@@ -181,7 +199,7 @@ public class AnnouncementSearchRepository {
 
     private Predicate applicationStatusPredicate(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             ApplicationStatus applicationStatus,
@@ -220,7 +238,7 @@ public class AnnouncementSearchRepository {
 
     private void addApplicationPeriodPredicates(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             List<Predicate> predicates
@@ -247,7 +265,7 @@ public class AnnouncementSearchRepository {
     }
 
     private Predicate scheduleExists(
-            HibernateCriteriaBuilder builder, CriteriaQuery<Announcement> query,
+            HibernateCriteriaBuilder builder, CriteriaQuery<?> query,
             Root<Announcement> announcement, AnnouncementSearchCondition condition,
             ApplicationScheduleState state, LocalDate from, LocalDate to, boolean startsAfter
     ) {
@@ -280,7 +298,7 @@ public class AnnouncementSearchRepository {
 
     private void addRegionPredicate(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             List<Predicate> predicates
