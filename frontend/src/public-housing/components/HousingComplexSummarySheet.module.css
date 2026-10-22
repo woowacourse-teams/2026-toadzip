@@ -1,0 +1,45 @@
+.sheet {
+  position: fixed;
+  z-index: 460;
+  inset: auto 0 var(--explorer-footer-height, calc(64px + env(safe-area-inset-bottom)));
+  display: flex;
+  flex-direction: column;
+  height: 45dvh;
+  max-height: calc(100dvh - var(--explorer-footer-height, calc(64px + env(safe-area-inset-bottom))) - 176px);
+  overflow: hidden;
+  box-sizing: border-box;
+  padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
+  touch-action: none;
+  border: 1px solid var(--ds-color-divider);
+  border-bottom: 0;
+  border-radius: 20px 20px 0 0;
+  background: var(--ds-color-surface);
+  box-shadow: 0 -4px 24px rgb(20 35 25 / 16%);
+  color: var(--ds-color-text);
+  font-family: var(--ds-font-family-ui);
+  outline: none;
+}
+.handle {
+  display: grid;
+  flex: 0 0 32px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 20px 20px 0 0;
+  background: transparent;
+  place-items: center;
+  touch-action: none;
+  cursor: ns-resize;
+}
+.handle span { width: 40px; height: 4px; border-radius: 99px; background: #b9bec4; }
+.handle:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: -3px; }
+.header { display: flex; align-items: flex-start; gap: var(--ds-space-3); padding: 0 var(--ds-space-3) 0 var(--ds-space-5); }
+.header h2 { flex: 1; min-width: 0; margin: 4px 0 8px; font-size: var(--ds-text-title); line-height: 1.4; overflow-wrap: anywhere; }
+.content { min-height: 0; overflow: auto; padding: 0 var(--ds-space-5) var(--ds-space-3); overscroll-behavior: contain; touch-action: pan-y; }
+.metadata { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-2); margin: 0; font-size: var(--ds-text-body); }
+.metadata strong[data-agency="LH"] { color: var(--ds-color-agency-lh); }
+.metadata strong[data-agency="SH"] { color: var(--ds-color-agency-sh); }
+.address, .status { margin: var(--ds-space-2) 0 0; color: var(--ds-color-muted); font-size: var(--ds-text-caption); line-height: 1.5; }
+.status p { margin: 0; }
+.status button { min-height: 44px; border: 0; padding-inline: 0; background: transparent; color: var(--ds-color-action); text-decoration: underline; cursor: pointer; }
+.accessibleDescription { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

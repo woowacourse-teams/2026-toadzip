@@ -18,6 +18,23 @@
   container: housing-complex-detail / inline-size;
 }
 
+.panel[data-preview] {
+  flex: 0 0 auto;
+  height: auto;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.panel[data-preview] .header { padding-top: 0; }
+.panel[data-preview] .scroll {
+  flex: 0 0 auto;
+  overflow: visible;
+  scrollbar-gutter: auto;
+  pointer-events: none;
+}
+
 .header {
   display: flex;
   flex: 0 0 auto;

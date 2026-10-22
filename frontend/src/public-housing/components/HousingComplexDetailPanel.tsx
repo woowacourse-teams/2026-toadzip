@@ -90,6 +90,7 @@ export interface HousingComplexDetailPanelProps {
   readonly onOpenAnnouncement?: (announcementId: string) => void
   readonly streetView?: StreetViewController
   readonly onEscape?: () => void
+  readonly preview?: boolean
 }
 
 interface HousingTypeSelection {
@@ -104,6 +105,7 @@ export function HousingComplexDetailPanel({
   backButton,
   streetView,
   onEscape,
+  preview = false,
 }: HousingComplexDetailPanelProps) {
   const scrollAnalytics = useDetailScrollAnalytics('COMPLEX', detail.complexId)
   const { areaUnit, toggleAreaUnit } = useAreaUnit()
@@ -133,8 +135,8 @@ export function HousingComplexDetailPanel({
   const titleId = `complex-detail-title-${detail.complexId}`
 
   useEffect(() => {
-    headingRef.current?.focus({ preventScroll: true })
-  }, [detail.complexId])
+    if (!preview) headingRef.current?.focus({ preventScroll: true })
+  }, [detail.complexId, preview])
 
   useEffect(() => {
     const activeTab = activeHousingTypeId === undefined ? undefined : choiceRefs.current.get(activeHousingTypeId)
@@ -182,6 +184,7 @@ export function HousingComplexDetailPanel({
   return (
     <aside
       className={styles.panel}
+      data-preview={preview || undefined}
       aria-label={`${detail.name} 단지 상세 정보`}
       onKeyDown={handlePanelKeyDown}
     >
@@ -197,16 +200,18 @@ export function HousingComplexDetailPanel({
           </p>
           <h2 ref={headingRef} id={titleId} tabIndex={-1}>{detail.name}</h2>
         </div>
-        <DetailCloseButton label="단지 상세 닫기" onClose={onClose} />
+        <DetailCloseButton label={preview ? '단지 요약 닫기' : '단지 상세 닫기'} onClose={onClose} />
       </header>
 
       <div
         ref={scrollRef}
         className={styles.scroll}
-        {...scrollAnalytics}
-        role="region"
-        aria-label={`${detail.name} 단지 상세 내용`}
-        tabIndex={0}
+        {...(preview ? {} : scrollAnalytics)}
+        role={preview ? undefined : 'region'}
+        aria-label={preview ? undefined : `${detail.name} 단지 상세 내용`}
+        tabIndex={preview ? undefined : 0}
+        inert={preview || undefined}
+        aria-hidden={preview || undefined}
       >
         <section className={styles.identity} aria-labelledby={titleId}>
           {coverImages.length > 0 && (

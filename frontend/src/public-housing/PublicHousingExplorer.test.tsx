@@ -2519,6 +2519,7 @@ describe('PublicHousingExplorer', () => {
       const opener = await within(recent).findByRole('button', { name: /서울가람 행복주택/ })
       opener.focus()
       fireEvent.click(opener)
+      if (breakpoint === 767) fireEvent.click(await screen.findByRole('button', { name: '단지 상세 펼치기' }))
       await screen.findByRole('region', { name: /상세 내용$/ })
       expect(toggle).toHaveAttribute('aria-expanded', 'false')
       fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
@@ -2528,6 +2529,148 @@ describe('PublicHousingExplorer', () => {
     } finally {
       vi.unstubAllGlobals()
     }
+  })
+
+  it('모바일 최근 본 단지는 지도와 요약을 먼저 보여주고 상세 뒤로가기로 같은 선택을 유지한다', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }))
+    vi.stubGlobal('innerWidth', 390)
+    const original = HTMLElement.prototype.getBoundingClientRect
+    let mapHeight = 780
+    let summaryTop = 500
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains('map-surface')) return new DOMRect(0, 0, 390, mapHeight)
+      if (this.hasAttribute('data-complex-summary')) return new DOMRect(0, summaryTop, 390, 280)
+      if (this.classList.contains('housing-search-overlay')) return new DOMRect(10, 12, 370, 58)
+      if (this.getAttribute('role') === 'toolbar') return new DOMRect(10, 80, 370, 40)
+      return original.call(this)
+    })
+    localStorage.setItem('toadzip.recent-complexes.v1', JSON.stringify([
+      { complexId: '17', name: '서울가람 행복주택', address: '서울특별시 중구 세종대로 110', agencyCode: 'LH', rentalType: 'HAPPY_HOUSING' },
+    ]))
+    try {
+      const repository = createRepository()
+      renderExplorer(repository)
+      fireEvent.click(screen.getByRole('button', { name: '최근 본 단지' }))
+      const opener = within(screen.getByRole('region', { name: '최근 본 단지' })).getByRole('button', { name: /서울가람 행복주택/ })
+      opener.focus()
+      fireEvent.click(opener)
+      const summary = await screen.findByRole('region', { name: '단지 요약' })
+      expect(summary).toHaveTextContent('서울가람 행복주택')
+      expect(summary).toHaveTextContent('LH')
+      const marker = await screen.findByRole('button', { name: '서울가람 행복주택 지도 마커 선택' })
+      expect(marker).toHaveAttribute('data-selected', 'true')
+      expect(screen.getByText('카메라 37.5,126.9')).toBeVisible()
+      expect(JSON.parse(screen.getByTestId('map-camera-offset').textContent ?? '{}')).toEqual({ x: 0, y: -51 })
+      expect(screen.queryByRole('region', { name: '단지 상세 페이지' })).not.toBeInTheDocument()
+      expect(trackEvent).not.toHaveBeenCalledWith('view_complex', expect.anything())
+      fireEvent.click(within(summary).getByRole('button', { name: '단지 상세 펼치기' }))
+      expect(await screen.findByRole('region', { name: '단지 상세 페이지' })).toBeVisible()
+      expect(screen.queryByRole('region', { name: '공공임대주택 지도' })).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: '단지 요약으로 돌아가기' }))
+      expect(screen.getByRole('region', { name: '단지 요약' })).toBeVisible()
+      expect(marker).toHaveAttribute('data-selected', 'true')
+      expect(repository.findComplexDetail).toHaveBeenCalledTimes(1)
+      mapHeight = 500
+      summaryTop = 300
+      fireEvent(window, new Event('resize'))
+      await waitFor(() => expect(JSON.parse(screen.getByTestId('map-camera-offset').textContent ?? '{}')).toEqual({ x: 0, y: -11 }))
+      fireEvent.click(screen.getByRole('button', { name: '단지 요약 닫기' }))
+      expect(screen.getByRole('region', { name: '최근 본 단지' })).toBeVisible()
+      await waitFor(() => expect(opener).toHaveFocus())
+    } finally { vi.unstubAllGlobals() }
+  })
+
+  it('모바일 요약을 펼친 후 브라우저 뒤로·앞으로가 요약과 상세를 복원한다', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }))
+    localStorage.setItem('toadzip.recent-complexes.v1', JSON.stringify([{ complexId: '17', name: '서울가람 행복주택', address: null }]))
+    try {
+      const repository = createRepository()
+      renderExplorer(repository)
+      fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+      await waitFor(() => expect(repository.findMap).toHaveBeenCalled())
+      fireEvent.click(screen.getByRole('button', { name: '최근 본 단지' }))
+      fireEvent.click(within(screen.getByRole('region', { name: '최근 본 단지' })).getByRole('button', { name: /서울가람/ }))
+      fireEvent.click(await screen.findByRole('button', { name: '단지 상세 펼치기' }))
+      await screen.findByRole('region', { name: /상세 내용$/ })
+      fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' }))
+      expect(screen.getByRole('region', { name: '단지 요약' })).toBeVisible()
+      expect(currentSearch()).toMatchObject({ complexId: '17' })
+      fireEvent.click(screen.getByRole('button', { name: '브라우저 앞으로' }))
+      expect(screen.getByRole('region', { name: '단지 상세 페이지' })).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
+      expect(screen.getByRole('region', { name: '최근 본 단지' })).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' }))
+      expect(screen.getByRole('region', { name: '단지 요약' })).toBeVisible()
+      expect(screen.queryByRole('region', { name: '최근 본 단지' })).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: '단지 상세 펼치기' }))
+      await screen.findByRole('region', { name: '단지 상세 페이지' })
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
+        fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' }))
+      })
+      expect(screen.getByRole('region', { name: '단지 요약' })).toBeVisible()
+      expect(screen.getByRole('button', { name: '서울가람 행복주택 지도 마커 선택' })).toHaveAttribute('data-selected', 'true')
+    } finally { vi.unstubAllGlobals() }
+  })
+
+  it('모바일 최근 본 요약은 조회 오류에도 닫기와 재시도를 제공한다', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }))
+    localStorage.setItem('toadzip.recent-complexes.v1', JSON.stringify([{ complexId: '17', name: '서울가람 행복주택', address: null }]))
+    try {
+      const repository = createRepository()
+      repository.findComplexDetail.mockRejectedValueOnce(new Error('network unavailable'))
+      renderExplorer(repository)
+      fireEvent.click(screen.getByRole('button', { name: '최근 본 단지' }))
+      fireEvent.click(within(screen.getByRole('region', { name: '최근 본 단지' })).getByRole('button', { name: /서울가람/ }))
+      const summary = await screen.findByRole('region', { name: '단지 요약' })
+      expect(await within(summary).findByRole('alert')).toBeVisible()
+      expect(within(summary).getByRole('button', { name: '단지 요약 닫기' })).toBeEnabled()
+      fireEvent.click(within(summary).getByRole('button', { name: '다시 시도' }))
+      await waitFor(() => expect(within(summary).queryByRole('alert')).not.toBeInTheDocument())
+      expect(await screen.findByRole('button', { name: '서울가람 행복주택 지도 마커 선택' })).toHaveAttribute('data-selected', 'true')
+    } finally { vi.unstubAllGlobals() }
+  })
+
+  it('최근 본 요약은 다른 단지 상세를 거쳐 화면 크기가 바뀌어도 원래 단지와 지도 위치로 돌아간다', async () => {
+    let mobile = true
+    const listeners = new Set<() => void>()
+    vi.stubGlobal('matchMedia', () => ({ get matches() { return mobile },
+      addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_: string, listener: () => void) => listeners.delete(listener),
+    }))
+    localStorage.setItem('toadzip.recent-complexes.v1', JSON.stringify([{ complexId: '17', name: '서울가람 행복주택', address: null }]))
+    try {
+      const repository = createRepository()
+      repository.findComplexDetail.mockImplementation(async (id: string) => id === '18' ? {
+        ...complexDetail(), complexId: '18', name: '다른 단지',
+        address: { ...complexDetail().address, latitude: 35.2, longitude: 129.1 },
+      } : complexDetail())
+      const announcement = announcementDetail()
+      repository.findAnnouncementDetail.mockResolvedValue({ ...announcement,
+        supplyRows: announcement.supplyRows.map((row) => ({ ...row, complex: { ...row.complex, complexId: '18', name: '다른 단지' } })),
+      })
+      renderExplorer(repository)
+      fireEvent.click(screen.getByRole('button', { name: '최근 본 단지' }))
+      fireEvent.click(within(screen.getByRole('region', { name: '최근 본 단지' })).getByRole('button', { name: /서울가람/ }))
+      fireEvent.click(await screen.findByRole('button', { name: '단지 상세 펼치기' }))
+      const openAnnouncement = await screen.findByRole('button', { name: '성남 청년 행복주택 입주자 모집 공고 상세 보기' })
+      openAnnouncement.focus()
+      fireEvent.click(openAnnouncement)
+      const openOther = await screen.findByRole('button', { name: '다른 단지 단지 상세 보기' })
+      openOther.focus()
+      fireEvent.click(openOther)
+      await screen.findByRole('region', { name: '다른 단지 단지 상세 내용' })
+      expect(screen.getByText('카메라 35.2,129.1')).toBeInTheDocument()
+      act(() => { mobile = false; listeners.forEach((listener) => listener()) })
+      fireEvent.click(screen.getByRole('button', { name: '← 공고로 돌아가기' }))
+      await screen.findByRole('region', { name: /공고 상세 내용$/ })
+      act(() => { mobile = true; listeners.forEach((listener) => listener()) })
+      fireEvent.click(screen.getByRole('button', { name: '← 단지로 돌아가기' }))
+      await screen.findByRole('region', { name: '서울가람 행복주택 단지 상세 내용' })
+      fireEvent.click(screen.getByRole('button', { name: '단지 요약으로 돌아가기' }))
+      expect(screen.getByRole('region', { name: '단지 요약' })).toHaveTextContent('서울가람 행복주택')
+      expect(screen.getByText('카메라 37.5,126.9')).toBeVisible()
+    } finally { vi.unstubAllGlobals() }
   })
 
   it('단지 상세 응답 대기 중 사용자가 이동한 지도는 응답 도착 후에도 유지한다', async () => {
