@@ -8,6 +8,15 @@ import { ComplexIconButton } from './ComplexIconButton'
 export function IngestPage({ domain }: { domain: 'complex' | 'announcement' }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const backdropPressed = useRef(false)
+  function closeHistory() {
+    dialog.current?.close()
+    setHistoryOpen(false)
+  }
+  function outsideDialog(element: HTMLDialogElement, x: number, y: number) {
+    const bounds = element.getBoundingClientRect()
+    return x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom
+  }
   return <section className={`admin-registration-page ${styles.page}`}>
     <header className={`admin-registration-heading ${domain === 'complex' ? complexStyles.pageHeading : ''}`}>
       <h1>{domain === 'complex' ? '단지 수집' : '공고 수집'}</h1>
@@ -17,8 +26,14 @@ export function IngestPage({ domain }: { domain: 'complex' | 'announcement' }) {
     </header>
     <DataPipelineControl key={`control-${domain}`} domain={domain} compact />
     {domain === 'complex' ? <dialog ref={dialog} className={complexStyles.historyDialog} aria-labelledby="complex-history-title"
-      onClose={() => setHistoryOpen(false)}>
-      <header><h2 id="complex-history-title">실행 이력</h2><ComplexIconButton icon="close" label="이력 닫기" onClick={() => dialog.current?.close()} /></header>
+      onClose={() => { setHistoryOpen(false); backdropPressed.current = false }}
+      onPointerDown={event => { backdropPressed.current = event.target === event.currentTarget && outsideDialog(event.currentTarget, event.clientX, event.clientY) }}
+      onPointerCancel={() => { backdropPressed.current = false }}
+      onClick={event => {
+        if (backdropPressed.current && event.target === event.currentTarget && outsideDialog(event.currentTarget, event.clientX, event.clientY)) closeHistory()
+        backdropPressed.current = false
+      }}>
+      <header><h2 id="complex-history-title">실행 이력</h2><ComplexIconButton icon="close" label="이력 닫기" onClick={closeHistory} /></header>
       {historyOpen && <PipelineHistory domain="complex" compact readOnlyComplex />}
     </dialog> : <PipelineHistory key={`history-${domain}`} domain={domain} compact />}
   </section>

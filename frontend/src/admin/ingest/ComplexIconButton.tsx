@@ -4,7 +4,7 @@ import styles from './ComplexIngest.module.css'
 type Icon = 'close' | 'refresh' | 'previous' | 'next'
 const paths: Record<Icon, string> = {
   close: 'm6 6 12 12M6 18 18 6',
-  refresh: 'M20 7v5h-5M4 17v-5h5M6.1 6.1A8 8 0 0 1 20 12M4 12a8 8 0 0 0 13.9 5.9',
+  refresh: 'M20 7v5h-5M19.1 8.3a8 8 0 1 0 .4 6.7',
   previous: 'm15 6-6 6 6 6',
   next: 'm9 6 6 6-6 6',
 }
