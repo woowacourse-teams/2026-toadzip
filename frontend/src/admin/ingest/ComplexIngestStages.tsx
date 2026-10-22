@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import type { DataPipelineExecution, DataPipelineType } from './api'
 import type { PipelineViewState } from './PipelineResult'
-import { ComplexExecutionResult } from './ComplexExecutionResult'
+import { ComplexExecutionResult, ComplexExecutionSummary } from './ComplexExecutionResult'
 import { LocationSummaryUpload } from './LocationSummaryUpload'
 import { pipelineStepDefinitions, pipelineStepSequences } from './pipelineSteps'
 import styles from './ComplexIngest.module.css'
@@ -54,7 +54,7 @@ export function ComplexIngestStages({ states, disabled, startingType, stopping, 
   function result(type: 'COMPLEX_COLLECTION' | 'COMPLEX_REFINEMENT') {
     const execution = latest(type)
     return <>
-      <ComplexExecutionResult key={`${execution.executionId}-${type}`} execution={execution}
+      <ComplexExecutionResult key={`${execution.executionId}-${type}`} execution={execution} showSummary={false}
         phase={type === 'COMPLEX_COLLECTION' ? 'collection' : 'refinement'} pending={startingType === type}
         stopping={stopping[execution.type]} onStop={() => onStop(execution.type)} />
       {[type, 'COMPLEX_SYNC' as const].map(value => states[value].requestError && <div role="alert" className={styles.notice} key={value}>
@@ -74,16 +74,18 @@ export function ComplexIngestStages({ states, disabled, startingType, stopping, 
       </button>)}
     </div>
     <section className={styles.stage} id="complex-collection" role="tabpanel" hidden={selected !== 0} aria-labelledby={`${tabId}-0`}>
-      <header><span className={styles.number}>1</span><h2 id="complex-collection-title">단지 원천 수집</h2></header>
+      <header><div className={styles.stageTitle}><span className={styles.number}>1</span><h2 id="complex-collection-title">단지 원천 수집</h2></div>
+        <ComplexExecutionSummary execution={latest('COMPLEX_COLLECTION')} pending={startingType === 'COMPLEX_COLLECTION'} /></header>
       <Button data-design-system className={styles.collectionButton} disabled={disabled} onClick={() => onStart('COMPLEX_COLLECTION')}>단지 원천 수집 실행</Button>
       {result('COMPLEX_COLLECTION')}
     </section>
     <section className={styles.stage} id="complex-location" role="tabpanel" hidden={selected !== 1} aria-labelledby={`${tabId}-1`}>
-      <header><span className={styles.number}>2</span><h2 id="complex-location-title">주소에 맞는 좌표 적재</h2></header>
+      <header><div className={styles.stageTitle}><span className={styles.number}>2</span><h2 id="complex-location-title">주소에 맞는 좌표 적재</h2></div></header>
       <LocationSummaryUpload embedded disabled={disabled} onBusyChange={busy => { setUploading(busy); onUploadBusy(busy) }} />
     </section>
     <section className={styles.stage} id="complex-refinement" role="tabpanel" hidden={selected !== 2} aria-labelledby={`${tabId}-2`}>
-      <header><span className={styles.number}>3</span><h2 id="complex-refinement-title">단지 정제·저장</h2></header>
+      <header><div className={styles.stageTitle}><span className={styles.number}>3</span><h2 id="complex-refinement-title">단지 정제·저장</h2></div>
+        <ComplexExecutionSummary execution={latest('COMPLEX_REFINEMENT')} pending={startingType === 'COMPLEX_REFINEMENT'} /></header>
       <p className={styles.muted}>현재 저장된 단지 원본 전체를 단지·주택형으로 정제해 저장합니다.</p>
       <Button data-design-system disabled={disabled} onClick={() => onStart('COMPLEX_REFINEMENT')}>단지 정제·저장 실행</Button>
       {result('COMPLEX_REFINEMENT')}

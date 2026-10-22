@@ -28,6 +28,18 @@ function assertStages() {
 function select(name: string) {
   fireEvent.click(screen.getByRole('tab', { name }))
 }
+it('마지막 실행 상태와 종료 시각을 단계 제목 옆에 한 번만 묶어 표시한다', async () => {
+  vi.mocked(getDataPipelineStatus).mockImplementation(async type => execution(type, type === 'COMPLEX_COLLECTION'
+    ? { executionId: 'collect-1', status: 'COMPLETED', startedAt: '2026-10-22T00:00:00Z', finishedAt: '2026-10-22T01:06:00Z' } : {}))
+  await show()
+  const panel = screen.getByRole('tabpanel')
+  const heading = within(panel).getByRole('heading', { name: '단지 원천 수집' }).closest('header')!
+  const summary = within(heading).getByRole('group', { name: '실행 상태' })
+  expect(summary).toHaveTextContent('완료')
+  expect(summary).toHaveTextContent('종료 시각')
+  expect(summary.querySelector('time')).toHaveAttribute('dateTime', '2026-10-22T01:06:00Z')
+  expect(within(panel).getAllByRole('group', { name: '실행 상태' })).toHaveLength(1)
+})
 it('가로 탭에 선택한 단계만 표시하고 각 실행 버튼은 한 곳에 둔다', async () => {
   await show()
   assertStages()
@@ -179,5 +191,6 @@ it('새 실행을 접수할 때 과거 통합 실행의 결과를 이번 결과�
   fireEvent.click(screen.getByRole('button', { name: '단지 정제·저장 실행' }))
   expect(within(refinement).queryByText('999')).not.toBeInTheDocument()
   expect(within(refinement).getByText(/실행 접수를 확인/)).toBeVisible()
+  expect(within(refinement).queryByRole('group', { name: '실행 상태' })).not.toBeInTheDocument()
   await act(async () => resolve(execution('COMPLEX_REFINEMENT', { executionId: 'new-refine', status: 'COMPLETED', startedAt: '2026-10-22T00:00:00Z' })))
 })

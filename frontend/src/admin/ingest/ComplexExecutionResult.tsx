@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
+import { Button } from '../../design-system/components/Button'
 import type { DataPipelineExecution } from './api'
 import { PipelineReport } from './DataPipelineProgress'
 import { pipelineStepDefinitions, pipelineStepSequences, pipelineStepState } from './pipelineSteps'
@@ -8,10 +9,11 @@ import styles from './ComplexIngest.module.css'
 
 const stateLabels = { waiting: '대기', running: '진행', success: '완료', partial: '일부 실패', failed: '실패', skipped: '건너뜀', stopped: '중지', unexecuted: '미실행' }
 
-export function ComplexExecutionResult({ execution, phase, pending = false, stopping = false, onStop }: {
-  execution: DataPipelineExecution; phase?: 'collection' | 'refinement'; pending?: boolean; stopping?: boolean; onStop?: () => void
+export function ComplexExecutionResult({ execution, phase, pending = false, stopping = false, onStop, showSummary = true }: {
+  execution: DataPipelineExecution; phase?: 'collection' | 'refinement'; pending?: boolean; stopping?: boolean; onStop?: () => void; showSummary?: boolean
 }) {
   const [errorsOpen, setErrorsOpen] = useState(false)
+  const errorsId = useId()
   const steps = pipelineStepSequences[execution.type].filter(step => !phase
     || (phase === 'collection' ? step.startsWith('COLLECT_') : !step.startsWith('COLLECT_')))
   const work = execution.workProgress
@@ -22,10 +24,7 @@ export function ComplexExecutionResult({ execution, phase, pending = false, stop
     || steps.some(step => pipelineStepDefinitions[step] === execution.currentStepName)
     || (!execution.currentStepName && phase === 'collection')
   return <div className={styles.result} aria-label="실행 결과">
-    {execution.status !== 'IDLE' && <div className={styles.resultHeading}>
-      <strong className={`pipeline-badge pipeline-${execution.status.toLowerCase()}`}>{pipelineStatusLabels[execution.status]}</strong>
-      {execution.startedAt && <time dateTime={execution.startedAt}>{new Date(execution.startedAt).toLocaleString('ko-KR')}</time>}
-    </div>}
+    {showSummary && <ComplexExecutionSummary execution={execution} pending={pending} />}
     {pending && <p role="status">실행 접수를 확인하고 있습니다. 확인 전에는 다시 실행할 수 없습니다.</p>}
     <ol className={styles.tasks} aria-label="실행 단계">
       {steps.map(step => {
@@ -51,8 +50,28 @@ export function ComplexExecutionResult({ execution, phase, pending = false, stop
       onClick={onStop}>{stopping || execution.stopRequested ? '중지 요청 중…' : '실행 중지'}</button>}
     {execution.stopRequested && execution.status === 'RUNNING' && <p role="status">현재 처리가 끝나면 중지합니다. 이미 저장한 데이터는 유지됩니다.</p>}
     {settled && execution.executionId && <>
-      <button type="button" aria-expanded={errorsOpen} onClick={() => setErrorsOpen(value => !value)}>결과 오류 조회</button>
-      {errorsOpen && <ComplexRunErrors key={`${execution.executionId}-${errorPhase}`} executionId={execution.executionId} phase={errorPhase} />}
+      <Button data-design-system className={styles.errorToggle} aria-label="결과 오류 조회"
+        aria-expanded={errorsOpen} aria-controls={errorsId} onClick={() => setErrorsOpen(value => !value)}>
+        결과 오류 조회 <span className={styles.disclosureHint} aria-hidden="true">{errorsOpen ? '접기' : '아래로 펼치기'}</span>
+        <svg className={styles.disclosureChevron} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+      </Button>
+      <div id={errorsId} role="region" aria-label="결과 오류" hidden={!errorsOpen} className={styles.errorPanel}>
+        {errorsOpen && <ComplexRunErrors key={`${execution.executionId}-${errorPhase}`} executionId={execution.executionId} phase={errorPhase} />}
+      </div>
     </>}
+  </div>
+}
+
+export function ComplexExecutionSummary({ execution, pending = false }: { execution: DataPipelineExecution; pending?: boolean }) {
+  if (pending || execution.status === 'IDLE') return null
+  const timestamp = execution.finishedAt ?? execution.startedAt
+  return <div className={styles.executionSummary} role="group" aria-label="실행 상태">
+    <strong className={`pipeline-badge pipeline-${execution.status.toLowerCase()}`}>{pipelineStatusLabels[execution.status]}</strong>
+    {timestamp && <div className={styles.summaryTime}>
+      <span>{execution.finishedAt ? '종료 시각' : '시작 시각'}</span>
+      <time dateTime={timestamp}>{new Date(timestamp).toLocaleString('ko-KR', {
+        year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
+      })}</time>
+    </div>}
   </div>
 }
