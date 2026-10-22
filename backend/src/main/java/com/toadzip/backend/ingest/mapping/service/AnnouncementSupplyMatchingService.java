@@ -7,6 +7,7 @@ import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowGroupRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
@@ -190,6 +191,52 @@ public class AnnouncementSupplyMatchingService {
         catch (MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException exception) {
             throw new InvalidIngestRequestException("정제 실패: " + exception.getMessage());
         }
+    }
+
+    /**
+     * 공고 보정에서 바꾼 공급행 연결을 원천행별 저장 매칭으로 남긴다. 재정제는 자동 매칭보다 이 매칭을 먼저 쓴다.
+     * 원천에 없는 행과 분할 보정 행은 대상이 아니다. 연결을 지운 행은 저장 매칭도 해제한다.
+     * 원천을 해석할 수 없거나 원천과 공급유형이 다른 단지라 정제가 쓸 수 없는 연결은 저장하지 않는다.
+     */
+    @Transactional
+    public void rememberCorrectedLinks(String identifier, Map<String, HousingType> links, String sourceUrl,
+            String reason, String actor) {
+        if (identifier == null || links.isEmpty()) {
+            return;
+        }
+        var current = sources.findAllByPblancIdOrderByIdAsc(identifier);
+        if (current.isEmpty()) {
+            return;
+        }
+        List<MyHomeSupplyRowMappingData> sourceRows;
+        try {
+            sourceRows = resolver.resolve(mapper.map(current)).data().supplyRows();
+        }
+        catch (MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException exception) {
+            return;
+        }
+        for (var data : sourceRows) {
+            String rowIdentifier = data.sourceSupplyRowIdentifier();
+            if (!links.containsKey(rowIdentifier)
+                    || groups.findBySourceRowIdentifier(data.source().getSourceKey()).isPresent()) {
+                continue;
+            }
+            var saved = decisions.findByRowIdentifier(rowIdentifier);
+            var type = links.get(rowIdentifier);
+            if (type == null) {
+                saved.ifPresent(decisions::delete);
+                continue;
+            }
+            var match = matcher.matchSelected(data, type.getHousingComplex().getId(), type.getId());
+            if (match.failure() != null) {
+                continue;
+            }
+            var decision = saved.orElseGet(() -> new AnnouncementSupplyMatchDecision(rowIdentifier));
+            decision.confirm(match.complex().getId(), type.getId(), fingerprints.source(data),
+                    fingerprints.target(type), sourceUrl.strip(), reason.strip(), actor);
+            decisions.save(decision);
+        }
+        decisions.flush();
     }
 
     private String token(MyHomeSupplyRowMappingData data) {

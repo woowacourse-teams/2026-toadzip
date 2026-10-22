@@ -375,12 +375,6 @@ public class MyHomeAnnouncementMappingWriter {
             if (match == null) {
                 match = supplyMatcher.match(data);
             }
-            if (stored != null && stored.isAdminModified()
-                    && selections.containsKey(data.sourceSupplyRowIdentifier())) {
-                throw new MyHomeAnnouncementMappingRejectedException(
-                        MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
-                        "관리자가 수정한 공급행입니다. 기존 공고 관리 화면에서 연결을 수정해 주세요.");
-            }
             if (match.failure() != null) {
                 failures.add(match.failure());
             }
@@ -426,6 +420,12 @@ public class MyHomeAnnouncementMappingWriter {
                     data.totalSupplyHouseholdCount()
             );
             changed |= applyLhResolution(stored, data, match);
+            // 관리자 보정은 표기값만 보호한다. 연결은 저장한 매칭이나 이번 선택이 있을 때 그 값을 따른다.
+            if (stored.isAdminModified() && match.failure() == null
+                    && (selections.containsKey(data.sourceSupplyRowIdentifier())
+                    || matchDecisions.findByRowIdentifier(data.sourceSupplyRowIdentifier()).isPresent())) {
+                changed |= stored.relinkByAdminMatch(match.complex(), match.housingType());
+            }
             if (!Objects.equals(previousHousingTypeId, housingTypeId(stored))) {
                 changedHousingTypeRowIds.add(stored.getId());
             }

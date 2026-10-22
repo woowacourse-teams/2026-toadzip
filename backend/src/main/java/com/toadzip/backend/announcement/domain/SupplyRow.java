@@ -73,6 +73,29 @@ public class SupplyRow {
         adminModified = true;
     }
 
+    /** 관리자가 고친 표기값은 그대로 두고, 저장한 매칭이나 관리자 선택의 단지·주택형으로 연결만 바꾼다. */
+    public boolean relinkByAdminMatch(HousingComplex complex, HousingType type) {
+        if (announcement.isAdminDeleted() || supplyGroup != null) {
+            return false;
+        }
+        if (Objects.equals(idOf(housingComplex), idOf(complex)) && Objects.equals(idOf(housingType), idOf(type))
+                && matchingFailureReason == null) {
+            return false;
+        }
+        housingComplex = complex;
+        housingType = type;
+        matchingFailureReason = null;
+        return true;
+    }
+
+    private static Long idOf(HousingComplex complex) {
+        return complex == null ? null : complex.getId();
+    }
+
+    private static Long idOf(HousingType type) {
+        return type == null ? null : type.getId();
+    }
+
 
     @Column(nullable = false)
     @org.hibernate.annotations.ColumnDefault("false")

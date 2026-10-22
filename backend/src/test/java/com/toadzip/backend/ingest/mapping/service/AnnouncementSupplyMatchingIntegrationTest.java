@@ -508,15 +508,19 @@ class AnnouncementSupplyMatchingIntegrationTest {
     }
 
     @Test
-    void 관리자가_수정한_공급행은_덮어쓰지_않는다() throws Exception {
+    void 관리자가_수정한_공급행도_선택한_연결은_반영하고_표기값은_덮어쓰지_않는다() throws Exception {
         var requests = List.of(request(matching.rows(TARGET).getFirst(), complex.getId(), type.getId()));
         refine(TARGET, requests).andExpect(status().isOk());
-        jdbc.sql("UPDATE supply_rows SET admin_modified = true").update();
-        jdbc.sql("UPDATE myhome_announcement_source_rows SET pblanc_nm = '변경된 공고명'").update();
+        jdbc.sql("""
+                UPDATE supply_rows SET admin_modified = true, source_housing_type_name = '26A',
+                    housing_type_id = NULL
+                """).update();
         var current = List.of(request(matching.rows(TARGET).getFirst(), complex.getId(), type.getId()));
-        refine(TARGET, current).andExpect(status().isBadRequest());
-        assertThat(supplies.findAll().getFirst().getHousingType().getId()).isEqualTo(type.getId());
-        assertThat(announcements.findAll().getFirst().getName()).isEqualTo("국민임대 입주자 모집공고");
+        refine(TARGET, current).andExpect(status().isOk());
+        assertThat(supplies.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getHousingType().getId()).isEqualTo(type.getId());
+            assertThat(row.getSourceHousingTypeName()).isEqualTo("26A");
+        });
     }
 
     @Test
@@ -711,6 +715,67 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(preserved.getHousingType().getId()).isEqualTo(type.getId());
         assertThat(preserved.isTargetCountsComparable()).isTrue();
         assertThat(supplies.count()).isEqualTo(2);
+    }
+
+    @Test
+    @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
+    @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
+            executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD)
+    void PDF_보정으로_연결한_공급행은_재정제에서_매칭_실패로_다시_남지_않는다() throws Exception {
+        mapping.mapAll();
+        assertThat(pendingFailureReasons()).containsExactly("AMBIGUOUS_HOUSING_TYPE");
+        long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
+
+        correctFromPdf(announcementId, type);
+        assertThat(jdbc.sql("SELECT housing_type_id, reason FROM announcement_supply_match_decisions")
+                .query((rs, rowNum) -> List.of(rs.getLong(1), rs.getString(2))).list())
+                .containsExactly(List.of(type.getId(), "공고문 PDF 4쪽에서 주택형 확인"));
+        mapping.mapAll();
+
+        assertThat(supplies.findAll()).singleElement()
+                .satisfies(row -> assertThat(row.getHousingType().getId()).isEqualTo(type.getId()));
+        assertThat(pendingFailureReasons()).isEmpty();
+    }
+
+    private List<String> pendingFailureReasons() {
+        return jdbc.sql("""
+                SELECT reason FROM myhome_announcement_mapping_failures
+                WHERE source_announcement_identifier = ? AND status = 'PENDING'
+                """).param(TARGET).query(String.class).list();
+    }
+
+    /** 관리자 화면의 PDF 보정과 같은 경로로 공급행의 주택형 연결만 바꾼다. */
+    private void correctFromPdf(long announcementId, HousingType housingType) throws Exception {
+        var state = json.readTree(mvc.perform(get("/api/admin/announcements/" + announcementId + "/json-corrections")
+                .with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString()).get("data");
+        var request = json.createObjectNode();
+        request.put("snapshotToken", state.path("snapshotToken").asText());
+        request.set("document", json.readTree(java.nio.file.Files.readString(
+                java.nio.file.Path.of("../docs/fixtures/announcement-import-v1-valid.json"))));
+        request.putArray("fields");
+        request.putArray("schedules");
+        request.putArray("attachments");
+        var correction = request.putObject("correction");
+        correction.put("operationId", java.util.UUID.randomUUID().toString());
+        correction.put("snapshotToken", state.path("supply").path("snapshotToken").asText());
+        correction.put("reason", "공고문 PDF 4쪽에서 주택형 확인");
+        correction.put("sourceUrl", "https://example.com/official.pdf");
+        correction.putNull("sourcePage");
+        correction.set("rows", state.path("supply").path("rows").deepCopy());
+        ((tools.jackson.databind.node.ObjectNode) correction.get("rows").get(0))
+                .put("housingComplexId", complex.getId()).put("housingTypeId", housingType.getId());
+        var preview = json.readTree(mvc.perform(post("/api/admin/announcements/" + announcementId
+                        + "/json-corrections/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(request.toString()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+        var body = json.createObjectNode();
+        body.set("request", request);
+        body.put("confirmationToken", preview.path("confirmationToken").asText());
+        mvc.perform(post("/api/admin/announcements/" + announcementId + "/json-corrections")
+                        .with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body.toString()))
+                .andExpect(status().isOk());
     }
 
     @Test
