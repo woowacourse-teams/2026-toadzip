@@ -953,7 +953,7 @@ function HousingTypeCard({
           <tr>
             <th id={`${idPrefix}-count`} scope="row">공급 세대수</th>
             <td headers={`${idPrefix}-count`}>{row.sharedRecruitment ? '공통 합계 · 개별 미확정' : formatNullableCount(row.totalSupplyHouseholdCount, '세대')}</td>
-            <th id={`${idPrefix}-occupancy`} scope="row">단지 입주월</th>
+            <th id={`${idPrefix}-occupancy`} scope="row">최초 입주 연월</th>
             <td headers={`${idPrefix}-occupancy`}>{formatYearMonth(row.occupancyExpectedYearMonth)}</td>
           </tr>
           {(row.supplyArea !== undefined || row.housingType?.supplyArea != null) && (
@@ -968,7 +968,7 @@ function HousingTypeCard({
       </DetailTable>
       {row.occupancyExpectedYearMonth && (
         <p className={styles.occupancyNote}>
-          단지 입주월은 원문 기준이며, 이번 모집의 입주 일정과 다를 수 있어요.
+          최초 입주 연월은 원문 기준이며, 이번 모집의 입주 일정과 다를 수 있어요.
         </p>
       )}
       <SupplyTargets targets={row.targets} />

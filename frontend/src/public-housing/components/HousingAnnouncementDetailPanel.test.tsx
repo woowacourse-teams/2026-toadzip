@@ -39,10 +39,10 @@ describe('HousingAnnouncementDetailPanel', () => {
       occupancyExpectedYearMonth: '2006-12', supplyTypeLabel: '재공급',
     })] })} onClose={vi.fn()} />)
     const table = screen.getByRole('table', { name: '새솔마을 36A 공급 정보' })
-    expect(within(table).getByRole('rowheader', { name: '단지 입주월' })).toBeVisible()
+    expect(within(table).getByRole('rowheader', { name: '최초 입주 연월' })).toBeVisible()
     expect(within(table).getByRole('cell', { name: '2006.12' })).toBeVisible()
     expect(within(table).queryByRole('rowheader', { name: /입주 예정|준공/ })).not.toBeInTheDocument()
-    expect(screen.getByText('단지 입주월은 원문 기준이며, 이번 모집의 입주 일정과 다를 수 있어요.')).toBeVisible()
+    expect(screen.getByText('최초 입주 연월은 원문 기준이며, 이번 모집의 입주 일정과 다를 수 있어요.')).toBeVisible()
   })
 
   it('공고 면적이 명시적으로 누락되면 단지 기본 면적으로 채우지 않는다', () => {
@@ -918,7 +918,7 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(housingRows[0]!).getAllByRole('cell')).toHaveLength(2)
     expect(within(housingType).getByRole('rowheader', { name: '공급 구분' }))
       .toHaveAttribute('scope', 'row')
-    expect(within(housingType).getByRole('rowheader', { name: '단지 입주월' })).toBeVisible()
+    expect(within(housingType).getByRole('rowheader', { name: '최초 입주 연월' })).toBeVisible()
     expect(within(housingType).getByRole('cell', { name: '신규공급' }))
       .toHaveAttribute('headers', within(housingType).getByRole('rowheader', { name: '공급 구분' }).id)
 
