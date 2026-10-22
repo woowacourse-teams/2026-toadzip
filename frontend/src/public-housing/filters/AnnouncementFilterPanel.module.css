@@ -67,13 +67,33 @@
 }
 
 .sort {
-  appearance: none;
-  -webkit-appearance: none;
-  padding-right: 26px;
-  background-image: url("./filter-select-chevron.svg");
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-  background-size: 12px 12px;
+  gap: 2px;
+  padding-inline: 6px;
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+  white-space: nowrap;
+}
+
+.sortOptions {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+}
+
+.sortArrow {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+}
+
+.sort[aria-pressed='true'] {
+  border-color: var(--ds-color-brand);
+  background: var(--ds-color-action-selected);
+  color: var(--ds-color-text);
+}
+
+.sort[aria-pressed='true'] .sortArrow {
+  color: var(--ds-color-action);
 }
 
 .toggle.toggleActive {
@@ -394,7 +414,8 @@
     min-height: 44px;
   }
 
-  .toggle::before {
+  .toggle::before,
+  .sort::before {
     position: absolute;
     inset: -8px 0;
     content: "";
@@ -428,7 +449,8 @@
 }
 
 @media (forced-colors: active) {
-  .choice input:checked + span {
+  .choice input:checked + span,
+  .sort[aria-pressed='true'] {
     outline: 2px solid Highlight;
     outline-offset: -3px;
   }
@@ -439,8 +461,7 @@
 }
 
 @media (forced-colors: active) {
-  .field select,
-  .sort {
+  .field select {
     appearance: auto;
     -webkit-appearance: auto;
     padding-right: 12px;
