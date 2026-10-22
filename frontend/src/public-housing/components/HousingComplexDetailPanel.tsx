@@ -27,7 +27,7 @@ import { NotificationInterestButton } from '../interest/NotificationInterest'
 import { StreetViewEntry } from '../../street-view/StreetViewEntry'
 import type { StreetViewController } from '../../street-view/useStreetView'
 import type { ComplexBasicRentalCondition } from '../model/publicHousing'
-import { formatRentalConditionCollectedDate } from '../presentation/complexDetailPresentation'
+import { formatRentalConditionCollectedDate, housingTypeLabels } from '../presentation/complexDetailPresentation'
 
 export interface HousingComplexDetailSupplyCondition {
   readonly target: string | null
@@ -107,6 +107,7 @@ export function HousingComplexDetailPanel({
 }: HousingComplexDetailPanelProps) {
   const scrollAnalytics = useDetailScrollAnalytics('COMPLEX', detail.complexId)
   const { areaUnit, toggleAreaUnit } = useAreaUnit()
+  const typeLabels = housingTypeLabels(detail.housingTypes, areaUnit)
   const initialHousingTypeId = detail.housingTypes[0]?.housingTypeId ?? null
   const [selection, setSelection] = useState<HousingTypeSelection>({
     complexId: detail.complexId,
@@ -262,7 +263,7 @@ export function HousingComplexDetailPanel({
                           <tr key={conditionIndex}>
                             {conditionIndex === 0 && (
                               <th scope="rowgroup" rowSpan={conditions.length}>
-                                {housingTypeName(housingType)}
+                                {typeLabels.get(housingType.housingTypeId)}
                               </th>
                             )}
                             <td>
@@ -308,7 +309,7 @@ export function HousingComplexDetailPanel({
                       onFocus={() => revealHousingType(housingType.housingTypeId)}
                       onKeyDown={(event) => handleHousingTypeKeyDown(event, index)}
                     >
-                      {housingTypeName(housingType)}
+                      {typeLabels.get(housingType.housingTypeId)}
                     </button>
                   )
                 })}
@@ -326,7 +327,7 @@ export function HousingComplexDetailPanel({
                     tabIndex={0}
                     hidden={!selected}
                   >
-                    {selected && <HousingTypePanel housingType={housingType} areaUnit={areaUnit} onToggleAreaUnit={toggleAreaUnit} />}
+                    {selected && <HousingTypePanel housingType={housingType} name={typeLabels.get(housingType.housingTypeId) ?? ''} areaUnit={areaUnit} onToggleAreaUnit={toggleAreaUnit} />}
                   </div>
                 )
               })}
@@ -512,15 +513,16 @@ function BasicInformation({ detail }: { detail: HousingComplexDetailData }) {
 
 function HousingTypePanel({
   housingType,
+  name,
   areaUnit,
   onToggleAreaUnit,
 }: {
   housingType: HousingComplexDetailHousingType
+  name: string
   areaUnit: AreaUnit
   onToggleAreaUnit: () => void
 }) {
   const floorPlanImages = floorPlanUrls(housingType)
-  const name = housingTypeName(housingType)
 
   return (
     <>
@@ -540,7 +542,8 @@ function HousingTypePanel({
         <AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} />
       </div>
       <DetailFacts columns={2}>
-        <DetailFact term="주택형" value={name} />
+        {/* 바로 옆에 면적을 표시하므로 구분 라벨이 아닌 원래 이름을 쓴다. */}
+        <DetailFact term="주택형" value={housingType.name ?? ''} />
         <DetailFact term="전용 면적" value={formatArea(housingType.exclusiveArea, areaUnit, '')} />
         <DetailFact term="공급 면적" value={formatArea(housingType.supplyArea, areaUnit, '')} />
         <DetailFact term="복층여부" value={duplexLabel(housingType.isDuplex)} />
@@ -701,10 +704,6 @@ function floorPlanUrls(housingType: HousingComplexDetailHousingType) {
     { label: '평면도', url: toHttpUrl(housingType.floorPlanImageUrl) },
     { label: '3D 평면도', url: toHttpUrl(housingType.floorPlan3dImageUrl) },
   ].filter((image): image is { label: string; url: string } => image.url !== null)
-}
-
-function housingTypeName(housingType: HousingComplexDetailHousingType) {
-  return housingType.name ?? ''
 }
 
 function isSafeHttpUrl(value: string) {

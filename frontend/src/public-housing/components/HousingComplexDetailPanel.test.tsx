@@ -220,6 +220,21 @@ describe('HousingComplexDetailPanel', () => {
     expect(within(panel).getByText('5,000만원')).toBeVisible()
   })
 
+  it('이름이 같은 주택형은 탭과 비교표에서 면적을 붙여 구분한다', () => {
+    const base = BASE_DETAIL.housingTypes[1]
+    const { panel } = renderPanel(detailWith({ housingTypes: [
+      { ...base, housingTypeId: '1', name: '26', exclusiveArea: 26.37, supplyArea: 38.54 },
+      { ...base, housingTypeId: '2', name: '26', exclusiveArea: 26.37, supplyArea: 39.93 },
+      { ...base, housingTypeId: '3', name: '31', exclusiveArea: 31.32, supplyArea: 45.34 },
+    ] }))
+
+    expect(within(panel).getAllByRole('tab').map((tab) => tab.textContent))
+      .toEqual(['26 · 공급 38.54㎡', '26 · 공급 39.93㎡', '31'])
+    expect(within(section(panel, '주택형별 임대조건')).getByRole('rowheader', { name: '26 · 공급 39.93㎡' }))
+      .toBeInTheDocument()
+    expect(factValue(section(panel, '주택형 정보'), '주택형').getByText('26')).toBeInTheDocument()
+  })
+
   it('회원 단지 알림 클릭은 단지 ID를 저장하고 신청 완료를 안내한다', async () => {
     localStorage.clear()
     const record = vi.fn<NotificationInterestRepository['record']>().mockImplementation(async event => ({ ...event, outcome: 'ACTIVATED', occurredAt: '2026-10-09T00:00:00Z', settingsRevision: 1, currentTarget: { active: true, expiresAt: '2027-04-07T00:00:00Z', noticeVersion: 'notification-2026-10-09-v1', requestedAt: '2026-10-09T00:00:00Z' } }))
