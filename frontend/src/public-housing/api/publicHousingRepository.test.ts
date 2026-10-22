@@ -333,6 +333,7 @@ describe('공공주택 HTTP repository', () => {
     expect(Object.fromEntries(url.searchParams)).toEqual({
       size: '20',
       cursor: 'opaque+/cursor',
+      sort: 'DEADLINE',
     })
     expect(requestInit).toEqual(
       expect.objectContaining({ signal: controller.signal }),

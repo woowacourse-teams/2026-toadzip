@@ -35,7 +35,16 @@
   white-space: nowrap;
 }
 
-.toggle {
+.toolbarControls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--ds-space-2);
+  margin-left: auto;
+}
+
+.toggle,
+.sort {
   position: relative;
   display: inline-flex;
   min-height: 28px;
@@ -48,11 +57,47 @@
   background: var(--ds-color-surface);
   color: var(--ds-color-text);
   font: inherit;
+  cursor: pointer;
 }
 
-.toggle:hover {
+.toggle:hover,
+.sort:hover {
   border-color: var(--ds-color-action);
-  background: var(--ds-color-action-soft);
+  background-color: var(--ds-color-action-soft);
+}
+
+.sort {
+  gap: 2px;
+  padding-inline: 6px;
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+  white-space: nowrap;
+}
+
+.sortOptions {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+}
+
+.sortArrow {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+}
+
+.sortArrow[data-direction='descending'] {
+  transform: rotate(180deg);
+}
+
+.sort[aria-pressed='true'] {
+  border-color: var(--ds-color-brand);
+  background: var(--ds-color-action-selected);
+  color: var(--ds-color-text);
+}
+
+.sort[aria-pressed='true'] .sortArrow {
+  color: var(--ds-color-action);
 }
 
 .toggle.toggleActive {
@@ -149,7 +194,8 @@
   background: var(--ds-color-control-hover);
 }
 
-.panel button:focus-visible {
+.panel button:focus-visible,
+.sort:focus-visible {
   outline: 2px solid var(--ds-color-action);
   outline-offset: 2px;
 }
@@ -372,7 +418,8 @@
     min-height: 44px;
   }
 
-  .toggle::before {
+  .toggle::before,
+  .sort::before {
     position: absolute;
     inset: -8px 0;
     content: "";
@@ -406,7 +453,8 @@
 }
 
 @media (forced-colors: active) {
-  .choice input:checked + span {
+  .choice input:checked + span,
+  .sort[aria-pressed='true'] {
     outline: 2px solid Highlight;
     outline-offset: -3px;
   }

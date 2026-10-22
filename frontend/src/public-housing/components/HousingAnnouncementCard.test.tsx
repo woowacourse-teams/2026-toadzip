@@ -56,6 +56,18 @@ function requiredRow(card: HTMLElement, row: string) {
 }
 
 describe('HousingAnnouncementCard', () => {
+  it('서울 날짜 기준 오늘 게시된 공고에 오늘 공고를 표시한다', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-21T15:30:00Z'))
+    try {
+      const { rerender } = render(<HousingAnnouncementCard announcement={{ ...BASE_ANNOUNCEMENT, publishedAt: '2026-10-22' }} />)
+      expect(screen.getByText('오늘 공고')).toBeVisible()
+      rerender(<HousingAnnouncementCard announcement={{ ...BASE_ANNOUNCEMENT, publishedAt: '2026-10-21' }} />)
+      expect(screen.queryByText('오늘 공고')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it('상태와 기관부터 제목, 지역·유형, 접수기간, 공급·조회 순으로 표시한다', () => {
     const { card } = renderCard()
     const status = requiredRow(card, 'status')

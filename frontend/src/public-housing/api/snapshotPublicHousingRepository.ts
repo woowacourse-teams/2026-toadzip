@@ -189,9 +189,10 @@ function announcementPageResponse(
   snapshot: PublicHousingSnapshotV1,
   url: URL,
 ): Response {
+  const cursorPrefix = `${ANNOUNCEMENT_CURSOR_PREFIX}${url.searchParams.get('sort') ?? 'LATEST'}:`
   const cursor = cursorOffset(
     url.searchParams.get('cursor'),
-    ANNOUNCEMENT_CURSOR_PREFIX,
+    cursorPrefix,
   )
   if (!cursor.valid) {
     return invalidCursorResponse()
@@ -199,13 +200,31 @@ function announcementPageResponse(
 
   const items = snapshot.announcementListItems.filter((item) => (
     announcementMatchesFilters(snapshot, item, url)
-  ))
+  )).sort((left, right) => compareAnnouncements(left, right, url.searchParams.get('sort')))
   return successResponse(page(
     items,
     cursor.offset,
     pageSize(url),
-    ANNOUNCEMENT_CURSOR_PREFIX,
+    cursorPrefix,
   ))
+}
+
+function compareAnnouncements(left: RawAnnouncementListItem, right: RawAnnouncementListItem, sort: string | null) {
+  const direction = sort === 'LATEST_ASC' || sort === 'DEADLINE_DESC' ? -1 : 1
+  if (sort === 'DEADLINE' || sort === 'DEADLINE_DESC') {
+    const priority = (item: RawAnnouncementListItem) => ({ APPLYING: 0, CONDITIONAL: 1, BEFORE_APPLICATION: 2 }[item.applicationStatus ?? ''] ?? 3)
+    const difference = priority(left) - priority(right)
+    if (difference !== 0) return difference
+    if (priority(left) < 3) {
+      const date = (item: RawAnnouncementListItem) => (
+        item.applicationStatus === 'BEFORE_APPLICATION' ? item.applicationStartAt : item.applicationEndAt
+      ) ?? '9999-12-31'
+      const dateDifference = date(left).localeCompare(date(right))
+      if (dateDifference !== 0) return dateDifference * direction
+    }
+  }
+  return ((right.publishedAt ?? '').localeCompare(left.publishedAt ?? '')
+    || Number(BigInt(right.announcementId) - BigInt(left.announcementId))) * direction
 }
 
 function complexDetailResponse(
