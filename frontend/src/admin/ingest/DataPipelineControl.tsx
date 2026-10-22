@@ -16,6 +16,7 @@ import { PipelineExecutionSteps } from './PipelineExecutionSteps'
 import { Button } from '../../design-system/components/Button'
 import styles from './CollectionStartForm.module.css'
 import workflow from './PipelineWorkflow.module.css'
+import { ComplexIngestStages } from './ComplexIngestStages'
 
 type DataPipelineType = SharedDataPipelineType
 
@@ -73,6 +74,7 @@ export function DataPipelineControl({ domain, compact = false }: {
   const starting = useRef<DataPipelineType | null>(null)
   const [checking, setChecking] = useState(true)
   const [qualityOpen, setQualityOpen] = useState(false)
+  const [uploadBusy, setUploadBusy] = useState(false)
   const pollTimers = useRef<Partial<Record<DataPipelineType, number>>>({})
   const stateGenerations = useRef<Record<DataPipelineType, number>>({
     COMPLEX_COLLECTION: 0,
@@ -94,7 +96,7 @@ export function DataPipelineControl({ domain, compact = false }: {
   )
   const internalRunning = Object.values(pipelineStates)
     .some((state) => state.execution.status === 'RUNNING')
-  const isAnyPipelineRunning = internalRunning || startingType !== null || (compact && checking)
+  const isAnyPipelineRunning = internalRunning || startingType !== null || uploadBusy || (compact && checking)
 
   useEffect(() => { setPendingCollection(null) }, [domain])
 
@@ -284,6 +286,16 @@ export function DataPipelineControl({ domain, compact = false }: {
     <Link to={runningElsewhere === 'ANNOUNCEMENT_REGISTRATION' ? '/admin/announcements/new?mode=myhome'
       : `/admin/ingest/${domain === 'complex' ? 'announcements' : 'complexes'}`}>실행 중인 작업 보기</Link>
   </p> : null
+  if (domain === 'complex') return <section aria-label="단지 수집 작업">
+    {lockNotice}
+    {checking && <p role="status">진행 중인 작업과 마지막 결과를 확인하고 있습니다…</p>}
+    {pipelineTypes.filter(type => !visibleTypes.includes(type)).map(type => pipelineStates[type].requestError && <p role="alert" key={type}>
+      {pipelineLabels[type]} 상태 확인 실패: {pipelineStates[type].requestError}
+    </p>)}
+    <ComplexIngestStages states={pipelineStates} disabled={isAnyPipelineRunning} startingType={startingType} stopping={stopping}
+      onStart={(type, key) => void execute(type, key)} onStop={type => void stop(type)}
+      onRefresh={type => void refresh(type, true)} onUploadBusy={setUploadBusy} />
+  </section>
   function recent(types: readonly DataPipelineType[]) {
     const latest = [...types].map(type => pipelineStates[type].execution)
       .filter(run => run.status !== 'IDLE').sort((a, b) => (Date.parse(b.startedAt ?? '') || 0) - (Date.parse(a.startedAt ?? '') || 0))[0]
@@ -300,11 +312,11 @@ export function DataPipelineControl({ domain, compact = false }: {
     {lockNotice}
     {activeType ? <>
       <button type="button" className={workflow.back} onClick={() => { setPendingCollection(null); setSelectedType(null) }}>
-        {domain === 'complex' ? '단지 수집' : '공고 수집'} 개요로 돌아가기
+        공고 수집 개요로 돌아가기
       </button>
       <PipelineExecutionSteps focused pending={startingType === activeType} key={activeType} execution={pendingCollection ? idleExecution(pendingCollection) : pipelineStates[activeType].execution}
         stopping={stopping[activeType]} onStop={() => void stop(activeType)} recoveryDisabled={isAnyPipelineRunning}
-        onRefine={() => handleRun(domain === 'complex' ? 'COMPLEX_REFINEMENT' : 'ANNOUNCEMENT_REFINEMENT')}>
+        onRefine={() => handleRun('ANNOUNCEMENT_REFINEMENT')}>
         {pendingCollection ? <CollectionStartForm key={pendingCollection} type={pendingCollection}
           onCancel={() => { setPendingCollection(null); setSelectedType(null) }}
           onStart={serviceKey => { const type = pendingCollection; setPendingCollection(null); void execute(type, serviceKey) }} />
@@ -318,7 +330,7 @@ export function DataPipelineControl({ domain, compact = false }: {
       </div>}
       {pipelineStates[activeType].execution.status === 'RUNNING' && <p className="ingest-meta">다른 화면으로 이동해도 실행은 계속됩니다. 다시 들어오면 진행 상태를 확인할 수 있습니다.</p>}
     </> : <>
-      {domain === 'announcement' ? <>
+      <>
         <div className={workflow.sources}>
           <section aria-labelledby="myhome-source" className={workflow.source}>
             <header><h2 id="myhome-source">마이홈</h2><span>LH 정보 보강 포함</span></header>
@@ -345,19 +357,7 @@ export function DataPipelineControl({ domain, compact = false }: {
           {qualityOpen && <LhAnnouncementQualityPanel collectionExecution={latestCollectionExecution(
             pipelineStates.ANNOUNCEMENT_SYNC.execution, pipelineStates.ANNOUNCEMENT_COLLECTION.execution)} />}
         </details>
-      </> : <>
-        <h2>단지 데이터</h2>
-        {recent(pipelineGroups[0].types)}
-        <ol className={workflow.preparation} aria-label="단지 준비 순서">
-          <li><strong>1. 단지 원천 수집</strong><p>마이홈 단지와 LH 임대 카탈로그를 가져옵니다.</p>
-            <Button data-design-system disabled={isAnyPipelineRunning} onClick={() => handleRun('COMPLEX_COLLECTION')}>단지 수집</Button></li>
-          <li><strong>2. 주소에 맞는 좌표 적재</strong><p>새 주소의 좌표가 필요하면 ZIP을 업로드합니다.</p><Link to="/admin/locations">위치정보 ZIP 업로드</Link></li>
-          <li><strong>3. 단지 정제·저장</strong><p>저장 원천 전체를 단지·주택형으로 정제합니다.</p>
-            <button type="button" disabled={isAnyPipelineRunning} onClick={() => handleRun('COMPLEX_REFINEMENT')}>단지 정제</button></li>
-        </ol>
-        <details className={workflow.additional}><summary>단지 추가 작업</summary><p>좌표가 준비되었다면 수집과 정제를 이어서 실행할 수 있습니다.</p>
-          <button type="button" disabled={isAnyPipelineRunning} onClick={() => handleRun('COMPLEX_SYNC')}>단지 수집·정제</button></details>
-      </>}
+      </>
       {visibleTypes.map(type => pipelineStates[type].requestError && <p key={type} role="alert" className="form-error">
         {pipelineLabels[type]}: {pipelineStates[type].requestError}</p>)}
     </>}
@@ -437,7 +437,7 @@ export function DataPipelineControl({ domain, compact = false }: {
             </div>
           </section>
         ))}
-        {domain !== 'complex' && <section aria-labelledby="sh-pipelines" className="data-pipeline-group">
+        {<section aria-labelledby="sh-pipelines" className="data-pipeline-group">
           <div className="data-pipeline-group-heading">
             <div>
               <h3 id="sh-pipelines">SH 공고 원천</h3>
@@ -463,7 +463,7 @@ export function DataPipelineControl({ domain, compact = false }: {
           </div>
         </section>}
       </div>
-      {!compact && domain !== 'complex' && <LhAnnouncementQualityPanel collectionExecution={latestCollectionExecution(
+      {!compact && <LhAnnouncementQualityPanel collectionExecution={latestCollectionExecution(
         pipelineStates.ANNOUNCEMENT_SYNC.execution, pipelineStates.ANNOUNCEMENT_COLLECTION.execution,
       )} />}
     </section>
