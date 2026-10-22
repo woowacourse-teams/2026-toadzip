@@ -12,9 +12,9 @@ import org.springframework.stereotype.Component;
 class LhAnnouncementSupplyMatcher {
 
     LhSupplyMatchResult match(List<SupplyRow> rows, LhSupplyData source) {
+        // 정제가 이 LH 행으로 직접 만든 공급행이면 단지명 표기가 달라도 같은 단지다(아산읍내 ↔ 아산읍내1 영구임대아파트).
         for (SupplyRow row : rows) {
             if (source.sourceIdentifier().equals(row.getLhSourceSupplyRowIdentifier())
-                    && matchesComplex(row, source)
                     && matchesHousingType(row, source)) {
                 return LhSupplyMatchResult.matched(row);
             }
