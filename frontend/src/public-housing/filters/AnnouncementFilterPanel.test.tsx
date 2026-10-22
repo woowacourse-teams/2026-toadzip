@@ -37,7 +37,7 @@ const GYEONGGI_REGIONS = [
 ] as const
 
 describe('AnnouncementFilterPanel', () => {
-  it('두 정렬 버튼에 선택 상태와 방향을 알리고 적용된 지역을 유지한다', () => {
+  it('기본 마감임박순에서 최신순만 양방향으로 전환하고 적용된 지역을 유지한다', () => {
     const onApply = vi.fn()
     function SortedFilters() {
       const [filters, setFilters] = useState<ComponentProps<typeof AnnouncementFilterPanel>['filters']>({ regionCode: '11' })
@@ -45,30 +45,19 @@ describe('AnnouncementFilterPanel', () => {
     }
     render(<SortedFilters />)
     const sorting = within(screen.getByRole('group', { name: '공고 정렬' }))
-    const deadline = sorting.getByRole('button', { name: '마감순' })
     const latest = sorting.getByRole('button', { name: '최신순' })
-    expect(deadline).toHaveAttribute('aria-pressed', 'true')
+    expect(sorting.getAllByRole('button')).toHaveLength(1)
     expect(latest).toHaveAttribute('aria-pressed', 'false')
-    expect(deadline).toHaveAccessibleDescription(/오름차순/)
-    expect(latest).toHaveAccessibleDescription(/내림차순/)
+    expect(latest).toHaveAccessibleDescription(/마감임박순/)
     fireEvent.click(latest)
     expect(onApply).toHaveBeenLastCalledWith({ regionCode: '11', sort: 'LATEST' })
     expect(latest).toHaveAttribute('aria-pressed', 'true')
-    expect(deadline).toHaveAttribute('aria-pressed', 'false')
+    expect(latest).toHaveAccessibleDescription(/내림차순/)
     fireEvent.click(latest)
     expect(onApply).toHaveBeenLastCalledWith({ regionCode: '11', sort: 'LATEST_ASC' })
     expect(latest).toHaveAccessibleDescription(/오름차순/)
     fireEvent.click(latest)
     expect(onApply).toHaveBeenLastCalledWith({ regionCode: '11', sort: 'LATEST' })
-    fireEvent.click(deadline)
-    expect(onApply).toHaveBeenLastCalledWith({ regionCode: '11', sort: 'DEADLINE' })
-    expect(deadline).toHaveAttribute('aria-pressed', 'true')
-    expect(latest).toHaveAttribute('aria-pressed', 'false')
-    fireEvent.click(deadline)
-    expect(onApply).toHaveBeenLastCalledWith({ regionCode: '11', sort: 'DEADLINE_DESC' })
-    expect(deadline).toHaveAccessibleDescription(/내림차순/)
-    fireEvent.click(deadline)
-    expect(onApply).toHaveBeenLastCalledWith({ regionCode: '11', sort: 'DEADLINE' })
   })
 
   it('정렬을 바꿔도 편집 중인 필터를 보존하고 적용과 초기화 뒤에도 정렬을 유지한다', () => {

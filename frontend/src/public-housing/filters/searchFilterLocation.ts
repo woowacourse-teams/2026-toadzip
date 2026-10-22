@@ -84,10 +84,11 @@ export function parseComplexSearchFilters(
 export function parseAnnouncementSearchFilters(
   search: URLSearchParams,
 ): AnnouncementSearchFilters {
-  const sort = search.get('announcementSort')
+  const value = search.get('announcementSort')
+  const sort = value === 'DEADLINE_DESC' ? 'DEADLINE' : value
   return {
     ...parseSharedFilters(search, 'announcement'),
-    ...(sort === 'DEADLINE' || sort === 'DEADLINE_DESC' || sort === 'LATEST' || sort === 'LATEST_ASC' ? { sort } : {}),
+    ...(sort === 'DEADLINE' || sort === 'LATEST' || sort === 'LATEST_ASC' ? { sort } : {}),
   }
 }
 

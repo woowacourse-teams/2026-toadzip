@@ -86,6 +86,15 @@ public class AnnouncementQueryService {
 
     public AnnouncementListResponse getAnnouncements(AnnouncementSearchRequest request, String cursor, int size,
             AnnouncementSort sort) {
+        // In-flight requests using the old cursor finish with their original ID tie order.
+        if (cursor != null && announcementCursorCodec.isLegacyLatestCursor(cursor, sort)) {
+            return getLegacyAnnouncements(request, cursor, size, sort);
+        }
+        return getSortedAnnouncements(request, cursor, size, sort);
+    }
+
+    private AnnouncementListResponse getLegacyAnnouncements(AnnouncementSearchRequest request, String cursor, int size,
+            AnnouncementSort sort) {
         validateSize(size);
         LocalDate today = currentSeoulDate();
         AnnouncementSearchCondition condition = searchCondition(request, today);
@@ -106,6 +115,11 @@ public class AnnouncementQueryService {
 
     public AnnouncementListResponse getAnnouncementsByDeadline(AnnouncementSearchRequest request, String cursor,
             int size, AnnouncementSort sort) {
+        return getSortedAnnouncements(request, cursor, size, sort);
+    }
+
+    private AnnouncementListResponse getSortedAnnouncements(AnnouncementSearchRequest request, String cursor,
+            int size, AnnouncementSort sort) {
         validateSize(size);
         LocalDate today = currentSeoulDate();
         Integer priority = null;
@@ -121,7 +135,7 @@ public class AnnouncementQueryService {
             id = position.id();
         }
         AnnouncementSearchCondition condition = searchCondition(request, today);
-        List<AnnouncementDeadlineRow> rows = announcementSearchRepository.findDeadlineLeaves(
+        List<AnnouncementDeadlineRow> rows = announcementSearchRepository.findSortedLeaves(
                 condition, priority, sortDate, postedDate, id, size + 1, sort);
         boolean hasNext = rows.size() > size;
         List<AnnouncementDeadlineRow> page = rows.stream().limit(size).toList();

@@ -211,20 +211,20 @@ function announcementPageResponse(
 
 function compareAnnouncements(left: RawAnnouncementListItem, right: RawAnnouncementListItem, sort: string | null) {
   const direction = sort === 'LATEST_ASC' || sort === 'DEADLINE_DESC' ? -1 : 1
-  if (sort === 'DEADLINE' || sort === 'DEADLINE_DESC') {
-    const priority = (item: RawAnnouncementListItem) => ({ APPLYING: 0, CONDITIONAL: 1, BEFORE_APPLICATION: 2 }[item.applicationStatus ?? ''] ?? 3)
-    const difference = priority(left) - priority(right)
-    if (difference !== 0) return difference
-    if (priority(left) < 3) {
-      const date = (item: RawAnnouncementListItem) => (
-        item.applicationStatus === 'BEFORE_APPLICATION' ? item.applicationStartAt : item.applicationEndAt
-      ) ?? '9999-12-31'
-      const dateDifference = date(left).localeCompare(date(right))
-      if (dateDifference !== 0) return dateDifference * direction
-    }
+  const byDeadline = sort === 'DEADLINE' || sort === 'DEADLINE_DESC'
+  const publicationDifference = (right.publishedAt ?? '').localeCompare(left.publishedAt ?? '') * direction
+  if (!byDeadline && publicationDifference !== 0) return publicationDifference
+  const priority = (item: RawAnnouncementListItem) => ({ APPLYING: 0, CONDITIONAL: 1, BEFORE_APPLICATION: 2 }[item.applicationStatus ?? ''] ?? 3)
+  const difference = priority(left) - priority(right)
+  if (difference !== 0) return difference
+  if (priority(left) < 3) {
+    const date = (item: RawAnnouncementListItem) => (
+      item.applicationStatus === 'BEFORE_APPLICATION' ? item.applicationStartAt : item.applicationEndAt
+    ) ?? '9999-12-31'
+    const dateDifference = date(left).localeCompare(date(right))
+    if (dateDifference !== 0) return dateDifference * (byDeadline ? direction : 1)
   }
-  return ((right.publishedAt ?? '').localeCompare(left.publishedAt ?? '')
-    || Number(BigInt(right.announcementId) - BigInt(left.announcementId))) * direction
+  return publicationDifference || Number(BigInt(right.announcementId) - BigInt(left.announcementId)) * direction
 }
 
 function complexDetailResponse(

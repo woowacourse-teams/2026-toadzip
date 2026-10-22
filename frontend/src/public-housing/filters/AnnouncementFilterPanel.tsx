@@ -44,7 +44,7 @@ export function AnnouncementFilterPanel({
   const summaryId = `${panelId}-summary`
   const sortDescriptionId = `${panelId}-sort-description`
   const sort = filters.sort ?? 'DEADLINE'
-  const deadlineSelected = sort === 'DEADLINE' || sort === 'DEADLINE_DESC'
+  const latestSelected = sort === 'LATEST' || sort === 'LATEST_ASC'
   const appliedCount = appliedFilterCount(filters)
   const filtersKey = searchFiltersSignature(filters)
   const formKey = `${formRevision}:${searchFiltersSignature(formFilters)}`
@@ -117,10 +117,8 @@ export function AnnouncementFilterPanel({
     return filters.sort ? { ...next, sort: filters.sort } : next
   }
 
-  function changeSort(value: 'DEADLINE' | 'LATEST') {
-    const nextSort = value === 'DEADLINE'
-      ? (sort === 'DEADLINE' ? 'DEADLINE_DESC' : 'DEADLINE')
-      : (sort === 'LATEST' ? 'LATEST_ASC' : 'LATEST')
+  function changeSort() {
+    const nextSort = sort === 'LATEST' ? 'LATEST_ASC' : 'LATEST'
     const next: AnnouncementSearchFilters = { ...filters, sort: nextSort }
     // A sort change must not discard the desktop filter form's unapplied inputs.
     pendingSignaturesRef.current.push(searchFiltersSignature(next))
@@ -133,17 +131,8 @@ export function AnnouncementFilterPanel({
         {resultSummary && <div className={styles.resultSummary}>{resultSummary}</div>}
         <div className={styles.toolbarControls}>
           <div className={styles.sortOptions} role="group" aria-label="공고 정렬">
-            <button className={styles.sort} type="button" aria-pressed={deadlineSelected}
-              aria-describedby={`${sortDescriptionId}-deadline`} onClick={() => changeSort('DEADLINE')}>
-              마감순
-              <svg className={styles.sortArrow} data-direction={sort === 'DEADLINE_DESC' ? 'descending' : 'ascending'}
-                viewBox="0 0 16 16" fill="none" stroke="currentColor"
-                strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-                <path d="M8 13V3m-4 4 4-4 4 4" />
-              </svg>
-            </button>
-            <button className={styles.sort} type="button" aria-pressed={!deadlineSelected}
-              aria-describedby={`${sortDescriptionId}-latest`} onClick={() => changeSort('LATEST')}>
+            <button className={styles.sort} type="button" aria-pressed={latestSelected}
+              aria-describedby={sortDescriptionId} onClick={changeSort}>
               최신순
               <svg className={styles.sortArrow} data-direction={sort === 'LATEST_ASC' ? 'ascending' : 'descending'}
                 viewBox="0 0 16 16" fill="none" stroke="currentColor"
@@ -151,15 +140,11 @@ export function AnnouncementFilterPanel({
                 <path d="M8 13V3m-4 4 4-4 4 4" />
               </svg>
             </button>
-            <span id={`${sortDescriptionId}-deadline`} className={styles.visuallyHidden}>
-              {sort === 'DEADLINE_DESC'
-                ? '마감일 내림차순으로, 마감이 먼 공고부터 보여드려요. 접수 예정은 그 뒤에 시작일 내림차순으로 보여드려요.'
-                : '마감일 오름차순으로, 마감이 가까운 공고부터 보여드려요. 접수 예정은 그 뒤에 시작일 오름차순으로 보여드려요.'}
-            </span>
-            <span id={`${sortDescriptionId}-latest`} className={styles.visuallyHidden}>
-              {sort === 'LATEST_ASC'
-                ? '공고일 오름차순으로, 오래된 공고부터 보여드려요.'
-                : '공고일 내림차순으로, 최근에 올라온 공고부터 보여드려요.'}
+            <span id={sortDescriptionId} className={styles.visuallyHidden}>
+              {!latestSelected ? '현재 마감임박순이에요. 누르면 최신순으로 변경돼요.'
+                : sort === 'LATEST_ASC'
+                  ? '공고일 오름차순으로, 오래된 공고부터 보여드려요. 같은 날짜는 마감임박순이에요.'
+                  : '공고일 내림차순으로, 최근에 올라온 공고부터 보여드려요. 같은 날짜는 마감임박순이에요.'}
             </span>
           </div>
           <button
