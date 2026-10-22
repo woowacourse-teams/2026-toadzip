@@ -76,3 +76,9 @@ PDF 업로드·보관과 공유 초안 API는 제공하지 않는다. 로컬 폴
 - 전체 스냅샷과 미리보기 토큰에 공급 보정의 후보 검증 토큰까지 포함한다. 동시 변경·이미 적용한 요청은 409다. 저장 응답이 불분명하면 최신 작업실을 조회한 뒤 다시 비교하며 자동 재적용하지 않는다.
 - 일반 일정·첨부의 `admin_modified`는 `V20261019_09`에서 추가한다. 관리자 보정 행은 이후 원천값 덮어쓰기와 오래된 원천 행 정리에서 보호한다.
 - 입력 형식과 운영 절차: [공고 JSON 가져오기](../../docs/ADMIN_ANNOUNCEMENT_IMPORT.md). 주요 검증: `AnnouncementJsonCorrectionIntegrationTest`, `AnnouncementJsonCorrectionRollbackIntegrationTest`, `AnnouncementChildProtectionMigrationTest`, `VerifiedAnnouncementEnrichmentIntegrationTest`.
+
+## 공급행 보정 후 재정제
+
+원천행이 있는 공급행의 주택형 연결을 바꾸면 저장 매칭을 함께 남기므로 다음 정제에서 그 연결을 사용한다.
+연결을 지우면 저장 매칭도 해제한다. 표기값 보호와 제외 조건은
+[공급행의 수동 연결 저장](pipeline-operator-controls.md#공급행의-수동-연결-저장)을 따른다.
