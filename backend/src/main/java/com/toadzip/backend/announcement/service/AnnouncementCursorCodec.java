@@ -50,7 +50,8 @@ public class AnnouncementCursorCodec {
         if (priority < 0 || priority > 3) {
             throw invalidCursor();
         }
-        String payload = version(sort) + "|" + asOf + "|" + priority + "|" + sortDate + "|" + postedDate + "|" + id;
+        String payload = orderedVersion(sort) + "|" + asOf + "|" + priority + "|" + sortDate
+                + "|" + postedDate + "|" + id;
         return encodePayload(payload.getBytes(StandardCharsets.UTF_8));
     }
 
@@ -60,7 +61,7 @@ public class AnnouncementCursorCodec {
 
     public DeadlineCursor decodeDeadline(String encodedCursor, AnnouncementSort sort) {
         String[] parts = decodePayload(encodedCursor).split("\\|", -1);
-        if (parts.length != 6 || !version(sort).equals(parts[0]) || !parts[2].matches("[0-3]")
+        if (parts.length != 6 || !orderedVersion(sort).equals(parts[0]) || !parts[2].matches("[0-3]")
                 || !DATE_PATTERN.matcher(parts[1]).matches() || !DATE_PATTERN.matcher(parts[3]).matches()
                 || !DATE_PATTERN.matcher(parts[4]).matches() || !POSITIVE_ID_PATTERN.matcher(parts[5]).matches()) {
             throw invalidCursor();
@@ -92,6 +93,19 @@ public class AnnouncementCursorCodec {
         return switch (sort) {
             case LATEST -> "v1";
             case LATEST_ASC -> "v1-asc";
+            case DEADLINE -> "v2";
+            case DEADLINE_DESC -> "v2-desc";
+        };
+    }
+
+    public boolean isLegacyLatestCursor(String cursor, AnnouncementSort sort) {
+        return decodePayload(cursor).startsWith(version(sort) + "|");
+    }
+
+    private String orderedVersion(AnnouncementSort sort) {
+        return switch (sort) {
+            case LATEST -> "v3";
+            case LATEST_ASC -> "v3-asc";
             case DEADLINE -> "v2";
             case DEADLINE_DESC -> "v2-desc";
         };

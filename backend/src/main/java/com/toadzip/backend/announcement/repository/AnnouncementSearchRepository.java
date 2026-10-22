@@ -68,17 +68,30 @@ public class AnnouncementSearchRepository {
                 .getResultList();
     }
 
-    public List<AnnouncementDeadlineRow> findDeadlineLeaves(
+    public List<AnnouncementDeadlineRow> findSortedLeaves(
             AnnouncementSearchCondition condition, Integer cursorPriority, LocalDate cursorSortDate,
             LocalDate cursorPostedDate, Long cursorId, int limit, AnnouncementSort sort
     ) {
-        boolean ascending = sort == AnnouncementSort.DEADLINE;
+        boolean byPublication = sort == AnnouncementSort.LATEST || sort == AnnouncementSort.LATEST_ASC;
+        boolean ascending = sort != AnnouncementSort.DEADLINE_DESC;
+        boolean publicationAscending = sort == AnnouncementSort.LATEST_ASC || sort == AnnouncementSort.DEADLINE_DESC;
         HibernateCriteriaBuilder builder = (HibernateCriteriaBuilder) entityManager.getCriteriaBuilder();
         CriteriaQuery<Tuple> query = builder.createTupleQuery();
         Root<Announcement> announcement = query.from(Announcement.class);
         List<Predicate> predicates = searchPredicates(builder, query, announcement, condition);
         DeadlineExpressions order = deadlineExpressions(builder, query, announcement, condition);
-        if (cursorPriority != null) {
+        if (cursorPriority != null && byPublication) {
+            Predicate laterDeadline = builder.or(builder.greaterThan(order.priority(), cursorPriority),
+                    builder.and(builder.equal(order.priority(), cursorPriority),
+                            builder.greaterThan(order.date(), cursorSortDate)),
+                    builder.and(builder.equal(order.priority(), cursorPriority),
+                            builder.equal(order.date(), cursorSortDate),
+                            afterCursor(builder, announcement.get("id"), cursorId, publicationAscending)));
+            predicates.add(builder.or(afterCursor(builder, announcement.get("postedDate"),
+                            cursorPostedDate, publicationAscending),
+                    builder.and(builder.equal(announcement.get("postedDate"), cursorPostedDate), laterDeadline)));
+        }
+        if (cursorPriority != null && !byPublication) {
             Predicate laterPublication = builder.or(afterCursor(builder,
                     announcement.get("postedDate"), cursorPostedDate, !ascending),
                     builder.and(builder.equal(announcement.get("postedDate"), cursorPostedDate),
@@ -89,11 +102,19 @@ public class AnnouncementSearchRepository {
                     builder.and(builder.equal(order.priority(), cursorPriority),
                             builder.equal(order.date(), cursorSortDate), laterPublication)));
         }
+        List<Order> orders = new ArrayList<>();
+        if (byPublication) {
+            orders.add(sortOrder(builder, announcement.get("postedDate"), publicationAscending));
+        }
+        orders.add(builder.asc(order.priority()));
+        orders.add(sortOrder(builder, order.date(), ascending));
+        if (!byPublication) {
+            orders.add(sortOrder(builder, announcement.get("postedDate"), publicationAscending));
+        }
+        orders.add(sortOrder(builder, announcement.get("id"), publicationAscending));
         query.multiselect(announcement, order.priority(), order.date())
                 .where(predicates.toArray(Predicate[]::new))
-                .orderBy(builder.asc(order.priority()), sortOrder(builder, order.date(), ascending),
-                        sortOrder(builder, announcement.get("postedDate"), !ascending),
-                        sortOrder(builder, announcement.get("id"), !ascending));
+                .orderBy(orders);
         return entityManager.createQuery(query).setMaxResults(limit).getResultList().stream()
                 .map(row -> new AnnouncementDeadlineRow(row.get(0, Announcement.class),
                         row.get(1, Integer.class), row.get(2, LocalDate.class)))

@@ -22,6 +22,22 @@ const BOUNDS = {
 }
 
 describe('local public housing snapshot repository', () => {
+  it.each(['LATEST', 'LATEST_ASC'] as const)('최신순 %s의 같은 게시일은 페이지를 넘어도 마감임박순이다', async (sort) => {
+    const base = MINIMAL_PUBLIC_HOUSING_SNAPSHOT
+    const { repository } = createSnapshotPublicHousingRepositories({ ...base, announcementListItems: [
+      { ...base.announcementListItems[0], announcementId: 301, publishedAt: '2026-08-01', applicationStatus: 'APPLYING', applicationEndAt: '2026-08-20' },
+      { ...base.announcementListItems[0], announcementId: 302, publishedAt: '2026-08-01', applicationStatus: 'APPLYING', applicationEndAt: '2026-08-10' },
+      { ...base.announcementListItems[0], announcementId: 303, publishedAt: '2026-08-01', applicationStatus: 'BEFORE_APPLICATION', applicationStartAt: '2026-08-11', applicationEndAt: '2026-08-12' },
+      { ...base.announcementListItems[0], announcementId: 304, publishedAt: '2026-08-02', applicationStatus: 'APPLYING', applicationEndAt: '2026-08-15' },
+    ] })
+    const signal = new AbortController().signal
+    const first = await repository.findAnnouncementPage(null, 2, signal, { sort })
+    const second = await repository.findAnnouncementPage(first.nextCursor, 2, signal, { sort })
+    expect([...first.items, ...second.items].map((item) => item.announcementId))
+      .toEqual(sort === 'LATEST' ? ['304', '302', '301', '303'] : ['302', '301', '303', '304'])
+    expect(first.hasNext).toBe(true)
+    expect(second.hasNext).toBe(false)
+  })
   it('마감순과 최신순을 전체 데이터에 적용한 뒤 페이지를 나눈다', async () => {
     const base = MINIMAL_PUBLIC_HOUSING_SNAPSHOT.announcementListItems[0]!
     const { repository } = createSnapshotPublicHousingRepositories({

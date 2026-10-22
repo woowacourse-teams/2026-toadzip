@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementCursorException;
+import com.toadzip.backend.announcement.domain.AnnouncementSort;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.Base64;
@@ -14,10 +15,27 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class AnnouncementCursorCodecTest {
 
     private final AnnouncementCursorCodec cursorCodec = new AnnouncementCursorCodec();
+
+    @ParameterizedTest
+    @EnumSource(AnnouncementSort.class)
+    void 전체_정렬_커서는_기준일과_마감_동률_키를_보존하고_다른_방향은_거부한다(AnnouncementSort sort) {
+        LocalDate asOf = LocalDate.of(2026, 8, 10);
+        LocalDate deadline = LocalDate.of(2026, 8, 12);
+        LocalDate posted = LocalDate.of(2026, 8, 1);
+        String cursor = cursorCodec.encodeDeadline(asOf, 1, deadline, posted, 42L, sort);
+        assertEquals(new AnnouncementCursorCodec.DeadlineCursor(asOf, 1, deadline, posted, 42L),
+                cursorCodec.decodeDeadline(cursor, sort));
+        for (AnnouncementSort other : AnnouncementSort.values()) {
+            if (other != sort) {
+                assertThrows(InvalidAnnouncementCursorException.class, () -> cursorCodec.decodeDeadline(cursor, other));
+            }
+        }
+    }
 
     @Test
     void 날짜와_ID를_버전이_포함된_URL_안전_커서로_인코딩한다() {
