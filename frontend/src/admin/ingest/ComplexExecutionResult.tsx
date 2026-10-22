@@ -9,8 +9,8 @@ import styles from './ComplexIngest.module.css'
 
 const stateLabels = { waiting: '대기', running: '진행', success: '완료', partial: '일부 실패', failed: '실패', skipped: '건너뜀', stopped: '중지', unexecuted: '미실행' }
 
-export function ComplexExecutionResult({ execution, phase, pending = false, stopping = false, onStop, showSummary = true }: {
-  execution: DataPipelineExecution; phase?: 'collection' | 'refinement'; pending?: boolean; stopping?: boolean; onStop?: () => void; showSummary?: boolean
+export function ComplexExecutionResult({ execution, phase, pending = false, stopping = false, onStop, showSummary = true, showErrors = true }: {
+  execution: DataPipelineExecution; phase?: 'collection' | 'refinement'; pending?: boolean; stopping?: boolean; onStop?: () => void; showSummary?: boolean; showErrors?: boolean
 }) {
   const [errorsOpen, setErrorsOpen] = useState(false)
   const errorsId = useId()
@@ -49,7 +49,7 @@ export function ComplexExecutionResult({ execution, phase, pending = false, stop
     {execution.status === 'RUNNING' && activePhase && onStop && <button type="button" disabled={stopping || execution.stopRequested || !execution.executionId}
       onClick={onStop}>{stopping || execution.stopRequested ? '중지 요청 중…' : '실행 중지'}</button>}
     {execution.stopRequested && execution.status === 'RUNNING' && <p role="status">현재 처리가 끝나면 중지합니다. 이미 저장한 데이터는 유지됩니다.</p>}
-    {settled && execution.executionId && <>
+    {showErrors && settled && execution.executionId && <>
       <Button data-design-system className={styles.errorToggle} aria-label="결과 오류 조회"
         aria-expanded={errorsOpen} aria-controls={errorsId} onClick={() => setErrorsOpen(value => !value)}>
         결과 오류 조회
