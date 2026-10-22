@@ -426,7 +426,8 @@ public class MyHomeAnnouncementMappingWriter {
                     || matchDecisions.findByRowIdentifier(data.sourceSupplyRowIdentifier()).isPresent())) {
                 changed |= stored.relinkByAdminMatch(match.complex(), match.housingType());
             }
-            if (!Objects.equals(previousHousingTypeId, housingTypeId(stored))) {
+            // 이전 주택형의 금액이 새 주택형에 남지 않게 보호한다. 미연결이던 행은 이어질 이전 금액이 없다.
+            if (previousHousingTypeId != null && !Objects.equals(previousHousingTypeId, housingTypeId(stored))) {
                 changedHousingTypeRowIds.add(stored.getId());
             }
             if (changed) {

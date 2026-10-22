@@ -2393,6 +2393,34 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(qualityService.snapshot().preservedAmountTargetCount()).isZero();
     }
 
+    // 로컬 DB #45 아산읍내: LH 금액이 "공고문 참조"인 미연결 행이 연결될 때 공고 변경 전체가 롤백됐다.
+    @Test
+    void 미연결이던_공급행은_LH_금액이_없어도_새_주택형_연결을_저장한다() {
+        saveComplex();
+        HousingComplex complex = housingComplexRepository.findAll().getFirst();
+        HousingType linkedType = housingTypeRepository.findAllByHousingComplex(complex).getFirst();
+        HousingType duplicate = housingTypeRepository.save(HousingType.createFromMyHome(
+                complex, "source-housing-type-id:duplicate", "46A",
+                new BigDecimal("46.8000"), new BigDecimal("67.0000")
+        ));
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("공고문 참조", "공고문 참조");
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        assertThat(announcementRepository.findAll()).singleElement()
+                .satisfies(announcement -> assertThat(announcement.getLhPanId()).isEqualTo(PAN_ID));
+        assertThat(supplyRowRepository.findAll()).singleElement()
+                .satisfies(row -> assertThat(row.getHousingType()).isNull());
+
+        housingTypeRepository.delete(duplicate);
+
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(supplyRowRepository.findAll()).singleElement()
+                .satisfies(row -> assertThat(row.getHousingType().getId()).isEqualTo(linkedType.getId()));
+        assertThat(supplyTargetRepository.findAll()).isEmpty();
+    }
+
     @Test
     void 새_주택형과_금액은_공고_매핑에서_함께_반영한다() {
         saveComplex();
