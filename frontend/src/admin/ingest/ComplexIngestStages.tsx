@@ -73,10 +73,9 @@ export function ComplexIngestStages({ states, disabled, startingType, stopping, 
         {isRunning(index) && <span id={`${tabId}-${index}-status`} className={styles.running}>진행 중</span>}
       </button>)}
     </div>
-    <p className={styles.sequence}>저장된 원본·좌표가 있다면 필요한 단계만 다시 실행할 수 있습니다.</p>
     <section className={styles.stage} id="complex-collection" role="tabpanel" hidden={selected !== 0} aria-labelledby={`${tabId}-0`}>
       <header><span className={styles.number}>1</span><h2 id="complex-collection-title">단지 원천 수집</h2></header>
-      <Button data-design-system disabled={disabled} onClick={() => onStart('COMPLEX_COLLECTION')}>단지 원천 수집 실행</Button>
+      <Button data-design-system className={styles.collectionButton} disabled={disabled} onClick={() => onStart('COMPLEX_COLLECTION')}>단지 원천 수집 실행</Button>
       {result('COMPLEX_COLLECTION')}
     </section>
     <section className={styles.stage} id="complex-location" role="tabpanel" hidden={selected !== 1} aria-labelledby={`${tabId}-1`}>

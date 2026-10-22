@@ -42,7 +42,7 @@ export function LocationSummaryUpload({ embedded = false, disabled = false, onBu
 
   return <section aria-label="좌표 ZIP 업로드" className={embedded ? undefined : 'registration-card location-summary-card'}>
     {!embedded && <h2>주소에 맞는 좌표 적재</h2>}
-    <form className="location-summary-form" onSubmit={event => void submit(event)}>
+    <form className={embedded ? styles.uploadForm : 'location-summary-form'} onSubmit={event => void submit(event)}>
       <label className="location-summary-file">위치정보요약DB 월 전체분 ZIP
         <input accept=".zip,application/zip" type="file" disabled={disabled || uploading}
           onChange={event => { setFile(event.target.files?.[0] ?? null); setReport(null); setError(null) }} />
