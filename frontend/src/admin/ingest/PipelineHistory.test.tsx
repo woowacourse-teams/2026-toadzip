@@ -5,11 +5,22 @@ import { getPipelineHistory, type DataPipelineExecution } from './api'
 import { PipelineHistory } from './PipelineHistory'
 
 vi.mock('./api', () => ({ getPipelineHistory: vi.fn() }))
+vi.mock('./failureReviewApi', () => ({ getFailureReviews: vi.fn().mockResolvedValue({ items: [], page: 0, totalElements: 0, totalPages: 0, hasNext: false }) }))
 const getHistory = vi.mocked(getPipelineHistory)
 
 beforeEach(() => getHistory.mockReset())
 
 describe('데이터 실행 이력', () => {
+  it('단지 조회 전용 상세는 실행·수정 기능 없이 정제에 해당하는 오류 종류만 제공한다', async () => {
+    getHistory.mockResolvedValue([execution({ type: 'COMPLEX_REFINEMENT' })])
+    render(<MemoryRouter><PipelineHistory domain="complex" compact readOnlyComplex /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /상세 보기/ }))
+    fireEvent.click(screen.getByRole('button', { name: '결과 오류 조회' }))
+    expect(screen.getByRole('combobox', { name: '오류 종류' })).toHaveValue('complex')
+    expect(screen.queryByRole('option', { name: '수집 오류' })).not.toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '좌표 문제' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /실행 중지|정제 실행|수정|보정/ })).not.toBeInTheDocument()
+  })
   it('v2 이력 상세에도 같은 단계 표시를 쓰며 진행 중 이력에서 중지하지 않는다', async () => {
     getHistory.mockResolvedValue([execution({ status: 'RUNNING', currentStepName: '마이홈 단지 수집' })])
     render(<MemoryRouter><PipelineHistory domain="complex" compact /></MemoryRouter>)

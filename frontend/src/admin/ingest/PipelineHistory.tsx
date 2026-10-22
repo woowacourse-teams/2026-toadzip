@@ -3,7 +3,8 @@ import { getPipelineHistory, type DataPipelineExecution } from './api'
 import { PipelineResult } from './PipelineResult'
 import { PipelineExecutionSteps } from './PipelineExecutionSteps'
 import { pipelineLabels as labels, pipelineStatusLabels } from './pipelineLabels'
-export function PipelineHistory({ domain, compact = false }: { domain?: 'complex' | 'announcement'; compact?: boolean } = {}) {
+import { ComplexExecutionResult } from './ComplexExecutionResult'
+export function PipelineHistory({ domain, compact = false, readOnlyComplex = false }: { domain?: 'complex' | 'announcement'; compact?: boolean; readOnlyComplex?: boolean } = {}) {
   const [page, setPage] = useState(0)
   const [items, setItems] = useState<DataPipelineExecution[]>([])
   const [selected, setSelected] = useState<DataPipelineExecution | null>(null)
@@ -74,7 +75,8 @@ export function PipelineHistory({ domain, compact = false }: { domain?: 'complex
         <section className="pipeline-history-detail" aria-label="선택한 실행 상세">
           <header><h3>선택한 실행 상세</h3><button type="button" onClick={() => setSelected(null)}>닫기</button></header>
           <p>선택 시점의 실행 기록입니다. 실행 중인 작업의 최신 상태와 중지는 상단에서 확인해 주세요.</p>
-          {compact ? <PipelineExecutionSteps key={selected.executionId} execution={selected} />
+          {readOnlyComplex ? <ComplexExecutionResult key={selected.executionId} execution={selected} />
+            : compact ? <PipelineExecutionSteps key={selected.executionId} execution={selected} />
             : <PipelineResult type={selected.type} state={{ execution: selected, requestError: null, errorResponse: null }}
               stopping={true} onStop={() => {}} />}
         </section>
