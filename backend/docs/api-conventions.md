@@ -25,13 +25,6 @@ HTTP → Request DTO 검증 → Controller → Service → Domain / Repository �
 - 비동기 처리는 접수와 완료를 구분한다.
 - 원문 출처와 시각은 응답에서 의미가 섞이지 않게 분리한다.
 
-## 공고 목록 집계
-
-`GET /api/v1/announcements`는 `items`, `nextCursor`, `hasNext`, `totalCount`를 반환한다.
-`totalCount`는 커서·페이지 크기를 제외하고 목록과 같은 검색 조건에 맞는 공개 최신 공고 수다.
-취소 체인, 삭제 공고, 이전 정정본 제외 규칙과 지역·접수 상태 등 모든 필터를 목록과 공유한다.
-페이지를 넘겨도 남은 공고 수가 아니라 해당 검색 전체 수를 반환한다.
-
 ## 오류 응답
 
 오류 응답 구조, 검증 실패, 예외 소유권과 Advice 우선순위는
