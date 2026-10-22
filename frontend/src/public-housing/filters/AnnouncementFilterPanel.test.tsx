@@ -37,6 +37,37 @@ const GYEONGGI_REGIONS = [
 ] as const
 
 describe('AnnouncementFilterPanel', () => {
+  it('조회 도구에서 마감순과 최신순을 선택하고 적용된 지역을 유지한다', () => {
+    const onApply = vi.fn()
+    renderFilter({ filters: { regionCode: '11' }, onApply })
+    const tools = within(screen.getByRole('group', { name: '공고 목록 도구' }))
+    const sort = tools.getByRole('combobox', { name: '공고 정렬' })
+    expect(sort).toHaveValue('DEADLINE')
+    expect(within(sort).getAllByRole('option').map((option) => option.textContent)).toEqual(['마감순', '최신순'])
+    fireEvent.change(sort, { target: { value: 'LATEST' } })
+    expect(onApply).toHaveBeenLastCalledWith({ regionCode: '11', sort: 'LATEST' })
+    expect(screen.queryByRole('button', { name: '접수 마감' })).not.toBeInTheDocument()
+  })
+
+  it('정렬을 바꿔도 편집 중인 필터를 보존하고 적용과 초기화 뒤에도 정렬을 유지한다', () => {
+    const onApply = vi.fn()
+    function SortedFilters() {
+      const [filters, setFilters] = useState<ComponentProps<typeof AnnouncementFilterPanel>['filters']>({})
+      return <AnnouncementFilterPanel filters={filters} onApply={(next) => { onApply(next); setFilters(next) }} />
+    }
+    render(<SortedFilters />)
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'LH' }))
+    fireEvent.change(screen.getByRole('combobox', { name: '공고 정렬' }), { target: { value: 'LATEST' } })
+    expect(screen.getByRole('checkbox', { name: 'LH' })).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
+    expect(onApply).toHaveBeenLastCalledWith({ agencyCodes: ['LH'], sort: 'LATEST' })
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }))
+    expect(onApply).toHaveBeenLastCalledWith({ sort: 'LATEST' })
+    expect(screen.getByRole('checkbox', { name: 'LH' })).not.toBeChecked()
+    expect(screen.getByRole('combobox', { name: '공고 정렬' })).toHaveValue('LATEST')
+  })
+
   it('적용과 초기화로 입력 폼이 교체되어도 패널 안에 포커스를 유지하고 Escape로 되돌린다', () => {
     function AppliedFilters() {
       const [filters, setFilters] = useState<ComponentProps<typeof AnnouncementFilterPanel>['filters']>({})
@@ -266,6 +297,16 @@ describe('모바일 공고 필터 즉시 적용', () => {
   function applied() {
     return JSON.parse(screen.getByTestId('applied-announcement-filters').textContent ?? '{}')
   }
+
+  it('모바일 즉시 적용과 초기화는 선택한 정렬을 유지한다', () => {
+    render(<AppliedFilters initialFilters={{ sort: 'LATEST' }} />)
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'LH' }))
+    expect(applied()).toEqual({ agencyCodes: ['LH'], sort: 'LATEST' })
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }))
+    expect(applied()).toEqual({ sort: 'LATEST' })
+    expect(screen.getByRole('combobox', { name: '공고 정렬' })).toHaveValue('LATEST')
+  })
 
   it('선택 즉시 적용하며 입력 DOM·포커스·패널을 유지하고 초기화도 즉시 반영한다', () => {
     render(<AppliedFilters />)

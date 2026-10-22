@@ -30,6 +30,28 @@ public class AnnouncementCursorCodec {
         return new AnnouncementCursor(postedDate, id);
     }
 
+    public String encodeDeadline(LocalDate asOf, int priority, LocalDate sortDate, LocalDate postedDate, long id) {
+        validateCursorValues(asOf, id);
+        validateCursorValues(sortDate, id);
+        validateCursorValues(postedDate, id);
+        if (priority < 0 || priority > 3) {
+            throw invalidCursor();
+        }
+        String payload = "v2|" + asOf + "|" + priority + "|" + sortDate + "|" + postedDate + "|" + id;
+        return encodePayload(payload.getBytes(StandardCharsets.UTF_8));
+    }
+
+    public DeadlineCursor decodeDeadline(String encodedCursor) {
+        String[] parts = decodePayload(encodedCursor).split("\\|", -1);
+        if (parts.length != 6 || !"v2".equals(parts[0]) || !parts[2].matches("[0-3]")
+                || !DATE_PATTERN.matcher(parts[1]).matches() || !DATE_PATTERN.matcher(parts[3]).matches()
+                || !DATE_PATTERN.matcher(parts[4]).matches() || !POSITIVE_ID_PATTERN.matcher(parts[5]).matches()) {
+            throw invalidCursor();
+        }
+        return new DeadlineCursor(parseDate(parts[1]), Integer.parseInt(parts[2]),
+                parseDate(parts[3]), parseDate(parts[4]), parseId(parts[5]));
+    }
+
     private String decodePayload(String encodedCursor) {
         if (encodedCursor == null || encodedCursor.isBlank() || encodedCursor.contains("=")) {
             throw invalidCursor();
@@ -85,5 +107,8 @@ public class AnnouncementCursorCodec {
     }
 
     public record AnnouncementCursor(LocalDate postedDate, long id) {
+    }
+
+    public record DeadlineCursor(LocalDate asOf, int priority, LocalDate sortDate, LocalDate postedDate, long id) {
     }
 }

@@ -22,6 +22,26 @@ const BOUNDS = {
 }
 
 describe('local public housing snapshot repository', () => {
+  it('마감순과 최신순을 전체 데이터에 적용한 뒤 페이지를 나눈다', async () => {
+    const base = MINIMAL_PUBLIC_HOUSING_SNAPSHOT.announcementListItems[0]!
+    const { repository } = createSnapshotPublicHousingRepositories({
+      ...MINIMAL_PUBLIC_HOUSING_SNAPSHOT,
+      announcementListItems: [
+        { ...base, announcementId: 301, publishedAt: '2026-08-10', applicationStatus: 'BEFORE_APPLICATION', applicationStartAt: '2026-08-12', applicationEndAt: '2026-08-13' },
+        { ...base, announcementId: 302, publishedAt: '2026-08-09', applicationStatus: 'APPLYING', applicationEndAt: '2026-08-20' },
+        { ...base, announcementId: 303, publishedAt: '2026-08-08', applicationStatus: 'APPLYING', applicationEndAt: '2026-08-11' },
+      ],
+    })
+    const signal = new AbortController().signal
+    const first = await repository.findAnnouncementPage(null, 1, signal)
+    expect(first.items.map((item) => item.announcementId)).toEqual(['303'])
+    const second = await repository.findAnnouncementPage(first.nextCursor, 1, signal)
+    expect(second.items.map((item) => item.announcementId)).toEqual(['302'])
+    await expect(repository.findAnnouncementPage(first.nextCursor, 1, signal, { sort: 'LATEST' }))
+      .rejects.toMatchObject({ code: 'INVALID_CURSOR' })
+    const latest = await repository.findAnnouncementPage(null, 1, signal, { sort: 'LATEST' })
+    expect(latest.items.map((item) => item.announcementId)).toEqual(['301'])
+  })
   afterEach(() => {
     vi.restoreAllMocks()
   })

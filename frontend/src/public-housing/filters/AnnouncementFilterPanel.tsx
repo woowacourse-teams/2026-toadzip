@@ -42,6 +42,7 @@ export function AnnouncementFilterPanel({
   const restoreFocusRef = useRef(false)
   const panelId = 'announcement-search-filter-panel'
   const summaryId = `${panelId}-summary`
+  const sortDescriptionId = `${panelId}-sort-description`
   const appliedCount = appliedFilterCount(filters)
   const filtersKey = searchFiltersSignature(filters)
   const formKey = `${formRevision}:${searchFiltersSignature(formFilters)}`
@@ -79,7 +80,7 @@ export function AnnouncementFilterPanel({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (mobile) return
-    const nextFilters = announcementFiltersFromForm(new FormData(event.currentTarget))
+    const nextFilters = preserveSort(announcementFiltersFromForm(new FormData(event.currentTarget)))
     measurement.apply(nextFilters, 'submit')
     onApply(nextFilters)
   }
@@ -91,7 +92,7 @@ export function AnnouncementFilterPanel({
     // Descendant region controls reset after this bubbling change handler.
     if (target.name === 'provinceCode') data.set('districtCode', '')
     if (target.name === 'provinceCode' || target.name === 'districtCode') data.set('neighborhoodCode', '')
-    const next = announcementFiltersFromForm(data)
+    const next = preserveSort(announcementFiltersFromForm(data))
     const nextSignature = searchFiltersSignature(next)
     if (nextSignature === (pendingSignaturesRef.current.at(-1) ?? filtersKey)) return
     pendingSignaturesRef.current.push(nextSignature)
@@ -100,44 +101,68 @@ export function AnnouncementFilterPanel({
   }
 
   function reset() {
+    const next = preserveSort({})
     measurement.reset('all', 'applied')
-    measurement.apply({}, 'reset')
-    pendingSignaturesRef.current.push(searchFiltersSignature({}))
+    measurement.apply(next, 'reset')
+    pendingSignaturesRef.current.push(searchFiltersSignature(next))
     formRef.current?.reset()
-    setFormFilters({})
+    setFormFilters(next)
     closeRef.current?.focus()
-    onApply({})
+    onApply(next)
+  }
+
+  function preserveSort(next: AnnouncementSearchFilters): AnnouncementSearchFilters {
+    return filters.sort ? { ...next, sort: filters.sort } : next
+  }
+
+  function changeSort(value: string) {
+    const next: AnnouncementSearchFilters = { ...filters, sort: value === 'LATEST' ? 'LATEST' : 'DEADLINE' }
+    // A sort change must not discard the desktop filter form's unapplied inputs.
+    pendingSignaturesRef.current.push(searchFiltersSignature(next))
+    onApply(next)
   }
 
   return (
     <section ref={rootRef} className={styles.panel} aria-label="공고 검색 필터">
       <div className={styles.toolbar} role="group" aria-label="공고 목록 도구">
         {resultSummary && <div className={styles.resultSummary}>{resultSummary}</div>}
-        <button
-          ref={toggleRef}
-          className={`${styles.toggle} ${appliedCount > 0 ? styles.toggleActive : ''}`}
-          type="button"
-          aria-label={`공고 필터 ${open ? '접기' : '열기'}`}
-          aria-controls={panelId}
-          aria-describedby={summaryId}
-          aria-expanded={open}
-          onClick={() => {
-            if (open) close('toggle')
-            else {
-              setFormFilters(filters)
-              setOpen(true)
-            }
-          }}
-        >
-          <span>공고 필터</span>
-          {appliedCount > 0 && <span className={styles.count} aria-hidden="true">{appliedCount}</span>}
-          <span id={summaryId} className={styles.visuallyHidden}>
-            {appliedCount > 0 ? `${appliedCount}개 적용` : '조건 선택'}
+        <div className={styles.toolbarControls}>
+          <select className={styles.sort} aria-label="공고 정렬" aria-describedby={sortDescriptionId}
+            value={filters.sort ?? 'DEADLINE'} onChange={(event) => changeSort(event.target.value)}>
+            <option value="DEADLINE">마감순</option>
+            <option value="LATEST">최신순</option>
+          </select>
+          <span id={sortDescriptionId} className={styles.visuallyHidden}>
+            {filters.sort === 'LATEST'
+              ? '공고일이 최신인 순으로 보여드려요.'
+              : '접수 중인 공고는 마감이 가까운 순으로, 접수 예정 공고는 시작이 가까운 순으로 보여드려요.'}
           </span>
-          <svg className={styles.chevron} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
-            <path d="m3 6 5 5 5-5" />
-          </svg>
-        </button>
+          <button
+            ref={toggleRef}
+            className={`${styles.toggle} ${appliedCount > 0 ? styles.toggleActive : ''}`}
+            type="button"
+            aria-label={`공고 필터 ${open ? '접기' : '열기'}`}
+            aria-controls={panelId}
+            aria-describedby={summaryId}
+            aria-expanded={open}
+            onClick={() => {
+              if (open) close('toggle')
+              else {
+                setFormFilters(filters)
+                setOpen(true)
+              }
+            }}
+          >
+            <span>공고 필터</span>
+            {appliedCount > 0 && <span className={styles.count} aria-hidden="true">{appliedCount}</span>}
+            <span id={summaryId} className={styles.visuallyHidden}>
+              {appliedCount > 0 ? `${appliedCount}개 적용` : '조건 선택'}
+            </span>
+            <svg className={styles.chevron} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+              <path d="m3 6 5 5 5-5" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {open && (

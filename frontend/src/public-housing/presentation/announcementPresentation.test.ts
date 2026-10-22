@@ -26,6 +26,7 @@ describe('toHousingAnnouncementCardData', () => {
     expect(result).toEqual({
       agencyLabel: 'LH',
       announcementId: '201',
+      publishedAt: '2026-08-20',
       applicationEndAt: '2026-08-30',
       applicationStartAt: '2026-08-28',
       applicationStatus: 'APPLYING',

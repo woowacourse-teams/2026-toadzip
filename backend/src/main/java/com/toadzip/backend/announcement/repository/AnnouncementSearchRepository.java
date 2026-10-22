@@ -9,6 +9,8 @@ import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.global.persistence.LegacyStoredValue;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.Tuple;
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Path;
@@ -62,9 +64,98 @@ public class AnnouncementSearchRepository {
                 .getResultList();
     }
 
+    public List<AnnouncementDeadlineRow> findDeadlineLeaves(
+            AnnouncementSearchCondition condition, Integer cursorPriority, LocalDate cursorSortDate,
+            LocalDate cursorPostedDate, Long cursorId, int limit
+    ) {
+        HibernateCriteriaBuilder builder = (HibernateCriteriaBuilder) entityManager.getCriteriaBuilder();
+        CriteriaQuery<Tuple> query = builder.createTupleQuery();
+        Root<Announcement> announcement = query.from(Announcement.class);
+        List<Predicate> predicates = new ArrayList<>();
+        addVisibilityPredicates(builder, query, announcement, predicates);
+        addDirectFilterPredicates(builder, announcement, condition, predicates);
+        addDerivedFilterPredicates(builder, query, announcement, condition, predicates);
+        DeadlineExpressions order = deadlineExpressions(builder, query, announcement, condition);
+        if (cursorPriority != null) {
+            Predicate laterPublication = builder.or(builder.lessThan(announcement.get("postedDate"), cursorPostedDate),
+                    builder.and(builder.equal(announcement.get("postedDate"), cursorPostedDate),
+                            builder.lessThan(announcement.get("id"), cursorId)));
+            predicates.add(builder.or(builder.greaterThan(order.priority(), cursorPriority),
+                    builder.and(builder.equal(order.priority(), cursorPriority),
+                            builder.greaterThan(order.date(), cursorSortDate)),
+                    builder.and(builder.equal(order.priority(), cursorPriority),
+                            builder.equal(order.date(), cursorSortDate), laterPublication)));
+        }
+        query.multiselect(announcement, order.priority(), order.date())
+                .where(predicates.toArray(Predicate[]::new))
+                .orderBy(builder.asc(order.priority()), builder.asc(order.date()),
+                        builder.desc(announcement.get("postedDate")), builder.desc(announcement.get("id")));
+        return entityManager.createQuery(query).setMaxResults(limit).getResultList().stream()
+                .map(row -> new AnnouncementDeadlineRow(row.get(0, Announcement.class),
+                        row.get(1, Integer.class), row.get(2, LocalDate.class)))
+                .toList();
+    }
+
+    private DeadlineExpressions deadlineExpressions(HibernateCriteriaBuilder builder, CriteriaQuery<?> query,
+            Root<Announcement> announcement, AnnouncementSearchCondition condition) {
+        LocalDate today = condition.today();
+        Expression<LocalDate> confirmedEnd = minimumScheduleDate(builder, query, announcement, condition,
+                ApplicationScheduleState.CONFIRMED, false);
+        Expression<LocalDate> currentEnd = minimumScheduleDate(builder, query, announcement, condition, null, false);
+        Expression<LocalDate> futureStart = minimumScheduleDate(builder, query, announcement, condition, null, true);
+        Predicate reviewed = builder.isTrue(announcement.get("applicationScheduleReviewed"));
+        Predicate upcoming = builder.greaterThan(announcement.get("applicationStartDate"), today);
+        Predicate active = builder.greaterThanOrEqualTo(announcement.get("applicationEndDate"), today);
+        Expression<Integer> reviewedPriority = builder.<Integer>selectCase()
+                .when(builder.isNotNull(confirmedEnd), 0).when(builder.isNotNull(currentEnd), 1)
+                .when(builder.isNotNull(futureStart), 2).otherwise(3);
+        Expression<Integer> legacyPriority = builder.<Integer>selectCase()
+                .when(upcoming, 2).when(active, 0).otherwise(3);
+        Expression<LocalDate> reviewedDate = builder.<LocalDate>coalesce()
+                .value(confirmedEnd).value(currentEnd).value(futureStart).value(today);
+        Expression<LocalDate> legacyDate = builder.<LocalDate>selectCase()
+                .when(upcoming, announcement.<LocalDate>get("applicationStartDate"))
+                .when(active, announcement.<LocalDate>get("applicationEndDate")).otherwise(today);
+        return new DeadlineExpressions(builder.<Integer>selectCase().when(reviewed, reviewedPriority)
+                .otherwise(legacyPriority), builder.<LocalDate>selectCase().when(reviewed, reviewedDate)
+                .otherwise(legacyDate));
+    }
+
+    private Expression<LocalDate> minimumScheduleDate(HibernateCriteriaBuilder builder, CriteriaQuery<?> query,
+            Root<Announcement> announcement, AnnouncementSearchCondition condition,
+            ApplicationScheduleState state, boolean future) {
+        Subquery<LocalDate> subquery = query.subquery(LocalDate.class);
+        Root<AnnouncementApplicationSchedule> schedule = subquery.from(AnnouncementApplicationSchedule.class);
+        List<Predicate> predicates = new ArrayList<>();
+        predicates.add(builder.equal(schedule.get("announcement"), announcement));
+        String field = "endDate";
+        if (future) {
+            field = "startDate";
+            predicates.add(builder.greaterThan(schedule.get("startDate"), condition.today()));
+        }
+        if (!future) {
+            predicates.add(builder.lessThanOrEqualTo(schedule.get("startDate"), condition.today()));
+            predicates.add(builder.greaterThanOrEqualTo(schedule.get("endDate"), condition.today()));
+        }
+        if (state != null) {
+            predicates.add(builder.equal(schedule.get("state"), state));
+        }
+        if (hasValues(condition.regionCodes())) {
+            Join<AnnouncementApplicationSchedule, HousingComplex> complex = schedule.join(
+                    "housingComplex", jakarta.persistence.criteria.JoinType.LEFT);
+            predicates.add(builder.or(builder.isNull(schedule.get("housingComplex")),
+                    regionPredicate(builder, complex, condition.regionCodes())));
+        }
+        subquery.select(builder.least(schedule.<LocalDate>get(field))).where(predicates.toArray(Predicate[]::new));
+        return subquery;
+    }
+
+    private record DeadlineExpressions(Expression<Integer> priority, Expression<LocalDate> date) {
+    }
+
     private void addVisibilityPredicates(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             List<Predicate> predicates
     ) {
@@ -142,7 +233,7 @@ public class AnnouncementSearchRepository {
 
     private void addDerivedFilterPredicates(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             List<Predicate> predicates
@@ -154,7 +245,7 @@ public class AnnouncementSearchRepository {
 
     private void addApplicationStatusPredicate(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             List<Predicate> predicates
@@ -181,7 +272,7 @@ public class AnnouncementSearchRepository {
 
     private Predicate applicationStatusPredicate(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             ApplicationStatus applicationStatus,
@@ -220,7 +311,7 @@ public class AnnouncementSearchRepository {
 
     private void addApplicationPeriodPredicates(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             List<Predicate> predicates
@@ -247,7 +338,7 @@ public class AnnouncementSearchRepository {
     }
 
     private Predicate scheduleExists(
-            HibernateCriteriaBuilder builder, CriteriaQuery<Announcement> query,
+            HibernateCriteriaBuilder builder, CriteriaQuery<?> query,
             Root<Announcement> announcement, AnnouncementSearchCondition condition,
             ApplicationScheduleState state, LocalDate from, LocalDate to, boolean startsAfter
     ) {
@@ -280,7 +371,7 @@ public class AnnouncementSearchRepository {
 
     private void addRegionPredicate(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             List<Predicate> predicates

@@ -68,7 +68,9 @@ export interface ComplexSearchFilters extends SharedSearchFilters {
   readonly minMonthlyRent?: number | null
 }
 
-export type AnnouncementSearchFilters = SharedSearchFilters
+export interface AnnouncementSearchFilters extends SharedSearchFilters {
+  readonly sort?: 'DEADLINE' | 'LATEST'
+}
 export interface PublicHousingRepository {
   findComplexPage(
     bounds: MapBounds | null,
@@ -145,7 +147,7 @@ export function createHttpPublicHousingRepository(
 
     async findAnnouncementPage(cursor, size, signal, filters = {}) {
       validatePageSize(size)
-      const search = new URLSearchParams({ size: String(size) })
+      const search = new URLSearchParams({ size: String(size), sort: filters.sort ?? 'DEADLINE' })
       appendSharedFilters(search, filters)
       if (cursor !== null) {
         search.set('cursor', cursor)

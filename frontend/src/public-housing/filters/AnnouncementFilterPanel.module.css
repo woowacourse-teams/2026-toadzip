@@ -35,7 +35,16 @@
   white-space: nowrap;
 }
 
-.toggle {
+.toolbarControls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--ds-space-2);
+  margin-left: auto;
+}
+
+.toggle,
+.sort {
   position: relative;
   display: inline-flex;
   min-height: 28px;
@@ -48,11 +57,23 @@
   background: var(--ds-color-surface);
   color: var(--ds-color-text);
   font: inherit;
+  cursor: pointer;
 }
 
-.toggle:hover {
+.toggle:hover,
+.sort:hover {
   border-color: var(--ds-color-action);
-  background: var(--ds-color-action-soft);
+  background-color: var(--ds-color-action-soft);
+}
+
+.sort {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 26px;
+  background-image: url("./filter-select-chevron.svg");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 12px 12px;
 }
 
 .toggle.toggleActive {
@@ -149,7 +170,8 @@
   background: var(--ds-color-control-hover);
 }
 
-.panel button:focus-visible {
+.panel button:focus-visible,
+.sort:focus-visible {
   outline: 2px solid var(--ds-color-action);
   outline-offset: 2px;
 }
@@ -417,7 +439,8 @@
 }
 
 @media (forced-colors: active) {
-  .field select {
+  .field select,
+  .sort {
     appearance: auto;
     -webkit-appearance: auto;
     padding-right: 12px;
