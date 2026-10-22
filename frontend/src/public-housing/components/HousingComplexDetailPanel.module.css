@@ -18,10 +18,42 @@
   container: housing-complex-detail / inline-size;
 }
 
+.panel[data-preview] {
+  flex: 0 0 auto;
+  height: auto;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.panel[data-preview] .header { padding-top: 0; }
+.panel[data-preview] .scroll {
+  flex: 0 0 auto;
+  overflow: visible;
+  scrollbar-gutter: auto;
+  pointer-events: none;
+}
+
+.panel[data-mobile] .header {
+  padding-block: var(--ds-space-2);
+}
+
+.panel[data-mobile] .imageGallery {
+  margin-block: var(--ds-space-4) 0;
+}
+
+.panel[data-preview][data-mobile] .header {
+  padding-block: 0 var(--ds-space-2);
+  border-bottom: 0;
+}
+
+.panel[data-preview][data-mobile] .identity { padding-top: 0; }
+
 .header {
   display: flex;
   flex: 0 0 auto;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--ds-space-3);
   padding: var(--ds-space-4) var(--ds-space-5);
@@ -35,7 +67,7 @@
 }
 
 .headerMain h2 {
-  margin: var(--ds-space-2) 0 0;
+  margin: 0;
   color: var(--ds-color-text);
   font-size: var(--ds-text-title);
   font-weight: 700;
@@ -112,7 +144,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin: 0;
+  margin: 0 0 var(--ds-space-2);
   color: var(--ds-color-label);
   font-size: var(--ds-text-caption);
   font-weight: 500;

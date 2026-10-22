@@ -1,5 +1,5 @@
 import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
-import { COMPLEX_MARKER_ANCHOR_X, createComplexMarkerButton, markerWidth } from './complexMarkerButton.ts'
+import { COMPLEX_MARKER_ANCHOR_X, COMPLEX_MARKER_HEIGHT, createComplexMarkerButton, markerWidth } from './complexMarkerButton.ts'
 import { renderedMarkerContentKey, renderedMarkerId, type RenderedMarker } from './markerData.ts'
 import type {
   NaverMapAggregateMarker,
@@ -66,7 +66,7 @@ export function createMarker({
     ? aggregateMarkerButton(marker.marker)
     : createComplexMarkerButton(marker.marker)
   const width = isAggregate ? 92 : markerWidth(marker.marker)
-  const height = isAggregate ? 52 : 58
+  const height = isAggregate ? 52 : COMPLEX_MARKER_HEIGHT
   const title = isAggregate
     ? aggregateMarkerTitle(marker.marker)
     : undefined

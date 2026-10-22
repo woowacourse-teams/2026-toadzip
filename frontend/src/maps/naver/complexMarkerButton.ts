@@ -3,6 +3,7 @@ import { MISSING_DATA_LABEL } from '../../public-housing/presentation/missingDat
 import type { NaverMapComplexMarker } from './naverMapTypes.ts'
 
 export const COMPLEX_MARKER_ANCHOR_X = 16
+export const COMPLEX_MARKER_HEIGHT = 58
 
 /** SDK 연결 없이도 서비스와 같은 마커 표시를 재사용한다. */
 export function createComplexMarkerButton(marker: NaverMapComplexMarker): HTMLButtonElement {
