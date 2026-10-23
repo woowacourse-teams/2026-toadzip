@@ -86,3 +86,58 @@ it('짧은 드래그와 취소는 펼치지 않고 방향키로 펼칠 수 있�
   fireEvent.keyDown(handle, { key: 'ArrowUp' })
   expect(expand).toHaveBeenCalledOnce()
 })
+
+it('아래로 끌면 단지명만 남기고 접으며 위로 끌면 미리보기를 복원한다', () => {
+  const { expand, close, handle } = renderSummary()
+  fireEvent.pointerDown(handle, { clientY: 500, pointerId: 1, button: 0 })
+  fireEvent.pointerMove(handle, { clientY: 650, pointerId: 1 })
+  fireEvent.pointerUp(handle, { clientY: 650, pointerId: 1 })
+  fireEvent.click(handle)
+  expect(screen.getByRole('heading', { name: '가람' })).toBeVisible()
+  expect(screen.queryByRole('button', { name: '단지 상세 펼치기' })).not.toBeInTheDocument()
+  expect(close).not.toHaveBeenCalled()
+  expect(expand).not.toHaveBeenCalled()
+  const foldedHandle = screen.getByRole('button', { name: '단지 미리보기 펼치기' })
+  fireEvent.pointerDown(foldedHandle, { clientY: 650, pointerId: 2, button: 0 })
+  fireEvent.pointerMove(foldedHandle, { clientY: 500, pointerId: 2 })
+  fireEvent.pointerUp(foldedHandle, { clientY: 500, pointerId: 2 })
+  expect(screen.getByRole('button', { name: '단지 상세 펼치기' })).toBeVisible()
+  expect(expand).not.toHaveBeenCalled()
+})
+
+it('아래 방향 드래그 취소와 다른 포인터는 미리보기를 접지 않는다', () => {
+  const { handle } = renderSummary()
+  fireEvent.pointerDown(handle, { clientY: 500, pointerId: 1, button: 0 })
+  fireEvent.pointerMove(handle, { clientY: 700, pointerId: 2 })
+  fireEvent.pointerUp(handle, { clientY: 700, pointerId: 2 })
+  fireEvent.pointerCancel(handle, { pointerId: 1 })
+  expect(screen.getByRole('button', { name: '단지 상세 펼치기' })).toBeVisible()
+})
+
+it('접기 버튼과 방향키로 미리보기를 접고 다시 펼칠 수 있다', () => {
+  const { close, handle } = renderSummary()
+  fireEvent.click(screen.getByRole('button', { name: '단지 미리보기 접기' }))
+  expect(screen.queryByRole('button', { name: '단지 상세 펼치기' })).not.toBeInTheDocument()
+  fireEvent.keyDown(handle, { key: 'ArrowUp' })
+  expect(screen.getByRole('button', { name: '단지 상세 펼치기' })).toBeVisible()
+  fireEvent.keyDown(handle, { key: 'ArrowDown' })
+  expect(screen.queryByRole('button', { name: '단지 상세 펼치기' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '단지 요약 닫기' }))
+  expect(close).toHaveBeenCalledOnce()
+})
+
+it('확대한 상세를 아래로 끌면 닫지 않고 미리보기로 돌아간다', () => {
+  const back = vi.fn()
+  const close = vi.fn()
+  render(<HousingComplexSummarySheet recent={undefined} detail={null} status="ready" expanded
+    onExpand={() => {}} onBackToSummary={back} onClose={close} onRetry={() => {}}>
+    <p>선택한 단지의 상세 내용</p>
+  </HousingComplexSummarySheet>)
+  const handle = screen.getByRole('button', { name: '단지 미리보기로 접기' })
+  fireEvent.pointerDown(handle, { clientY: 20, pointerId: 1, button: 0 })
+  fireEvent.pointerMove(handle, { clientY: 180, pointerId: 1 })
+  fireEvent.pointerUp(handle, { clientY: 180, pointerId: 1 })
+  fireEvent.click(handle)
+  expect(back).toHaveBeenCalledOnce()
+  expect(close).not.toHaveBeenCalled()
+})

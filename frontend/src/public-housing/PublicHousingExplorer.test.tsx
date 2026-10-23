@@ -2562,11 +2562,18 @@ describe('PublicHousingExplorer', () => {
       expect(JSON.parse(screen.getByTestId('map-camera-offset').textContent ?? '{}')).toEqual({ x: 0, y: -51 })
       expect(screen.queryByRole('region', { name: '단지 상세 페이지' })).not.toBeInTheDocument()
       expect(trackEvent).not.toHaveBeenCalledWith('view_complex', expect.anything())
+      fireEvent.click(within(summary).getByRole('button', { name: '단지 미리보기 접기' }))
+      expect(summary).toHaveAttribute('data-collapsed', 'true')
+      expect(marker).toHaveAttribute('data-selected', 'true')
+      fireEvent.click(within(summary).getByRole('button', { name: '단지 미리보기 펼치기' }))
       fireEvent.click(within(summary).getByRole('button', { name: '단지 상세 펼치기' }))
       expect(await screen.findByRole('region', { name: '단지 상세 페이지' })).toBeVisible()
+      expect(summary).toContainElement(screen.getByRole('region', { name: '단지 상세 페이지' }))
+      expect(screen.getByRole('button', { name: '단지 미리보기로 접기' }).closest('[inert]')).toBeNull()
       expect(screen.queryByRole('region', { name: '공공임대주택 지도' })).not.toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: '단지 요약으로 돌아가기' }))
       expect(screen.getByRole('region', { name: '단지 요약' })).toBeVisible()
+      expect(screen.getByRole('region', { name: '단지 요약' })).toBe(summary)
       expect(marker).toHaveAttribute('data-selected', 'true')
       expect(repository.findComplexDetail).toHaveBeenCalledTimes(1)
       mapHeight = 500
@@ -2577,6 +2584,24 @@ describe('PublicHousingExplorer', () => {
       expect(screen.getByRole('region', { name: '최근 본 단지' })).toBeVisible()
       await waitFor(() => expect(opener).toHaveFocus())
     } finally { vi.unstubAllGlobals() }
+  })
+
+  it('포인터로 상세를 닫아도 복귀 포커스를 유지하며 키보드를 쓰면 포커스 표시를 복원한다', async () => {
+    renderExplorer(createRepository())
+    fireEvent.click(screen.getByRole('button', { name: '공고 목록' }))
+    const opener = await screen.findByRole('button', { name: '성남 청년 행복주택 입주자 모집 공고 상세 보기' })
+    const explorer = opener.closest('.housing-explorer')!
+    fireEvent.keyDown(opener, { key: 'Enter' })
+    opener.focus()
+    fireEvent.click(opener)
+    await screen.findByRole('region', { name: '성남 청년 행복주택 입주자 모집 공고 상세 내용' })
+    const close = screen.getByRole('button', { name: '공고 상세 닫기' })
+    fireEvent.pointerDown(close)
+    fireEvent.click(close)
+    await waitFor(() => expect(opener).toHaveFocus())
+    expect(explorer).toHaveAttribute('data-focus-input', 'pointer')
+    fireEvent.keyDown(opener, { key: 'Tab' })
+    expect(explorer).toHaveAttribute('data-focus-input', 'keyboard')
   })
 
   it('모바일 요약을 펼친 후 브라우저 뒤로·앞으로가 요약과 상세를 복원한다', async () => {
