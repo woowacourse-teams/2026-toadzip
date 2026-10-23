@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -179,6 +180,58 @@ class MyHomeAnnouncementSupplyRowResolverTest {
         ));
 
         assertThat(result).extracting(MyHomeSupplyRowMappingData::sourceHousingTypeName).containsExactly("아파트");
+    }
+
+    // 로컬 DB #41 전주평화1·4(공고 19585): 1단지는 단지명으로 잇고, 4단지는 LH 표기가 달라 남은 한 행끼리 모집수로 잇는다.
+    @Test
+    void 단지명으로_잇고_남은_원천_한_행은_남은_LH_공급행과_모집수가_같으면_잇는다() {
+        var result = resolveSources(List.of(new Source("평화주공1단지", 450), new Source("평화주공4단지", 300)), List.of(
+                lhSupply(0, "전주평화4 영구임대주택", "39.6011", "26.37", "38.9756", "300"),
+                lhSupply(1, "전주평화주공1단지", "39.8800", "26.37", "39.85", "450")
+        ));
+
+        assertThat(result).extracting(MyHomeSupplyRowMappingData::sourceComplexName, MyHomeSupplyRowMappingData::sourceHousingTypeName,
+                MyHomeSupplyRowMappingData::resolvedLhSourceIdentifier).containsExactly(
+                tuple("평화주공1단지", "39.8800", "LH:pan-id:SUPPLY:1"),
+                tuple("평화주공4단지", "39.6011", "LH:pan-id:SUPPLY:0"));
+    }
+
+    @Test
+    void 남은_원천이_둘_이상이거나_남은_모집수가_다르면_추정해_잇지_않는다() {
+        var twoLeft = resolveSources(List.of(new Source("평화주공4단지", 300), new Source("평화주공5단지", 300)), List.of(
+                lhSupply(0, "전주평화4 영구임대주택", "39.6011", "26.37", "38.9756", "300")
+        ));
+        var differentCount = resolveSources(List.of(new Source("평화주공1단지", 450), new Source("평화주공4단지", 300)), List.of(
+                lhSupply(0, "전주평화4 영구임대주택", "39.6011", "26.37", "38.9756", "299"),
+                lhSupply(1, "전주평화주공1단지", "39.8800", "26.37", "39.85", "450")
+        ));
+
+        assertThat(twoLeft).extracting(MyHomeSupplyRowMappingData::resolvedLhSourceIdentifier).containsOnlyNulls();
+        assertThat(differentCount).extracting(MyHomeSupplyRowMappingData::resolvedLhSourceIdentifier)
+                .containsExactly("LH:pan-id:SUPPLY:1", null);
+    }
+
+    private record Source(String complexName, int householdCount) { }
+
+    private List<MyHomeSupplyRowMappingData> resolveSources(List<Source> sources,
+            List<LhAnnouncementSupplySource> lhSupplies) {
+        List<MyHomeAnnouncementSource> mocks = new java.util.ArrayList<>();
+        List<MyHomeSupplyRowMappingData> rows = new java.util.ArrayList<>();
+        for (int index = 0; index < sources.size(); index++) {
+            MyHomeAnnouncementSource source = mock(MyHomeAnnouncementSource.class);
+            when(source.isActive()).thenReturn(true);
+            mocks.add(source);
+            rows.add(new MyHomeSupplyRowMappingData(source, "myhome-row-" + index, sources.get(index).complexName(),
+                    "아파트", "4420011000102060000", "PERMANENT_RENTAL", SupplyCategory.NEW_SUPPLY,
+                    sources.get(index).householdCount(), null, null, null, null));
+        }
+        LhAnnouncementRequest request = new LhAnnouncementRequest("pan-id", "03", "06", "07", "062");
+        when(linkResolver.resolveFirstLinked(mocks))
+                .thenReturn(new LhAnnouncementLinkResolver.LinkedSource(mocks.getFirst(), request));
+        when(supplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
+                "pan-id", LhAnnouncementQuery.requestHashOf(request.requestDescription())))
+                .thenReturn(lhSupplies);
+        return resolver.resolve(data(rows)).data().supplyRows();
     }
 
     private List<MyHomeSupplyRowMappingData> resolveSingleSource(

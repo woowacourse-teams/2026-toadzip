@@ -114,9 +114,15 @@ public class MyHomeAnnouncementSupplyRowResolver {
             }
             matched.computeIfAbsent(sourceRow, ignored -> new ArrayList<>()).add(lhSupply);
         }
-        if (matched.isEmpty() && sourceRows.size() == 1 && sameTotal(sourceRows.getFirst(), lhSupplies)) {
-            // 단지명 표기가 달라도(아산읍내 ↔ 아산읍내1 영구임대아파트) 원천이 한 행뿐이고 모집수 합계가 같으면 같은 공급이다.
-            matched.put(sourceRows.getFirst(), new ArrayList<>(lhSupplies));
+        // 단지명으로 잇고 남은 원천이 한 행뿐이고 남은 LH 공급행의 모집수 합계가 같으면 같은 공급이다.
+        // 표기만 다른 경우(아산읍내 ↔ 아산읍내1 영구임대아파트, 평화주공4단지 ↔ 전주평화4 영구임대주택)를 잇는다.
+        List<MyHomeSupplyRowMappingData> remainingRows = sourceRows.stream()
+                .filter(row -> !matched.containsKey(row)).toList();
+        List<LhAnnouncementSupplySource> remainingSupplies = lhSupplies.stream()
+                .filter(supply -> matched.values().stream().noneMatch(list -> list.contains(supply))).toList();
+        if (remainingRows.size() == 1 && !remainingSupplies.isEmpty()
+                && sameTotal(remainingRows.getFirst(), remainingSupplies)) {
+            matched.put(remainingRows.getFirst(), new ArrayList<>(remainingSupplies));
         }
         return matched;
     }
