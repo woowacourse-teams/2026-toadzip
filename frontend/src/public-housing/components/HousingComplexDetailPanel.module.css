@@ -360,12 +360,6 @@
   overflow-wrap: anywhere;
 }
 
-.missingValue {
-  color: var(--ds-color-muted);
-  font-size: var(--ds-text-caption);
-  font-weight: 400;
-}
-
 .rentalConditionSource {
   margin: var(--ds-space-2) 0 var(--ds-space-4);
   color: var(--ds-color-muted);

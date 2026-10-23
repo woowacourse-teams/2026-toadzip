@@ -2,7 +2,6 @@ import { useEffect, useId, useRef, useState, type PointerEvent, type ReactNode }
 import { IconButton } from '../../design-system/components/IconButton'
 import type { ComplexDetail } from '../model/publicHousing'
 import type { RecentComplex } from '../navigation/recentComplexes'
-import { MISSING_DATA_LABEL } from '../presentation/missingData'
 import { rentalTypeLabel } from '../presentation/rentalTypeLabel'
 import { toHousingComplexDetailData } from '../presentation/complexDetailPresentation'
 import { HousingComplexDetailPanel } from './HousingComplexDetailPanel'
@@ -34,8 +33,8 @@ export function HousingComplexSummarySheet({ recent, detail, status, onExpand, o
   const [collapsed, setCollapsed] = useState(false)
   const name = detail?.name ?? recent?.name ?? '선택한 단지'
   const agencyCode = (detail?.agency?.code ?? recent?.agencyCode)?.trim().toUpperCase()
-  const agency = agencyCode || detail?.agency?.name || recent?.agencyName || MISSING_DATA_LABEL
-  const rental = rentalTypeLabel(detail?.rentalType ?? recent?.rentalType ?? null) ?? MISSING_DATA_LABEL
+  const agency = agencyCode || detail?.agency?.name || recent?.agencyName || ''
+  const rental = rentalTypeLabel(detail?.rentalType ?? recent?.rentalType ?? null) ?? ''
   const address = detail?.address?.roadAddress ?? recent?.address
 
   useEffect(() => {
@@ -144,7 +143,7 @@ export function HousingComplexSummarySheet({ recent, detail, status, onExpand, o
         {ready ? <>
           <p id={descriptionId} className={styles.accessibleDescription}>
             {agency} {rental}.
-            {address ?? MISSING_DATA_LABEL}.
+            {address ?? ''}.
             {detail.currentAnnouncements.length > 0
               ? ` 현재 모집 공고 ${detail.currentAnnouncements.length}건. ${detail.currentAnnouncements[0].title ?? ''}`
               : ' 현재 연결된 모집 공고가 없습니다.'}
