@@ -4,6 +4,7 @@ import { setReplaySensitive } from '../../analytics/productAnalytics'
 import { PrivacyLinks } from '../../privacy/Privacy'
 import { getCurrentUser } from './api'
 import { LoginContent } from './LoginContent'
+import { LoginBrand } from './LoginBrand'
 import { clearLoginReturn, readLoginReturn, rememberLoginReturn, safeLoginReturn } from './loginReturn'
 import styles from './LoginPage.module.css'
 
@@ -34,21 +35,18 @@ export function LoginPage() {
   const cancelUrl = new URL(returnTo, window.location.origin)
   cancelUrl.searchParams.delete('inbox')
   return <main className={`${styles.page} ph-no-capture`} aria-labelledby={titleId}>
-    <Link className={styles.back} to={cancelUrl.pathname + cancelUrl.search + cancelUrl.hash} replace onClick={clearLoginReturn}>
-      <span aria-hidden="true">← </span>지도로 돌아가기
-    </Link>
-    <div className={styles.welcome}>
-      <img className={styles.logo} src="/brand/logo-bok.png" alt="공공주택 복덕방" width="1220" height="478" />
-      <p className={styles.greeting}>집 찾는 여정,<br />복덕방과 <strong>함께.</strong></p>
-      <p className={styles.introduction}>나에게 맞는 공공주택을 찾는 첫걸음.</p>
+    <header className={styles.header}>
+      <Link className={styles.back} aria-label="지도로 돌아가기" to={cancelUrl.pathname + cancelUrl.search + cancelUrl.hash} replace onClick={clearLoginReturn}>
+        <span aria-hidden="true">←</span>
+      </Link>
+      <h1 id={titleId}>로그인</h1>
+    </header>
+    <div className={styles.content}>
+      <LoginBrand descriptionId={descriptionId} />
+      <LoginContent page loginFailed={loginFailed} sessionError={sessionError} titleId={titleId}
+        descriptionId={descriptionId} alertRef={alertRef} providerRef={providerRef}
+        onBeginLogin={() => rememberLoginReturn(returnTo, true)} />
     </div>
-    <div className={styles.sheet}>
-      <div className={styles.content}>
-        <LoginContent page loginFailed={loginFailed} sessionError={sessionError} titleId={titleId}
-          descriptionId={descriptionId} alertRef={alertRef} providerRef={providerRef}
-          onBeginLogin={() => rememberLoginReturn(returnTo, true)} />
-      </div>
-      <footer className={styles.footer}><PrivacyLinks /></footer>
-    </div>
+    <footer className={styles.footer}><PrivacyLinks /></footer>
   </main>
 }

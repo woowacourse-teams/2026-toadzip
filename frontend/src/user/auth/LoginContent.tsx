@@ -4,6 +4,7 @@ import { usePrivacyNotices } from '../../privacy/usePrivacy'
 import { consentStore } from '../../privacy/consentStore'
 import { captureProductEvent } from '../../analytics/productAnalytics'
 import { socialLoginUrl } from './api'
+import { LoginBrand } from './LoginBrand'
 import styles from './LoginModal.module.css'
 
 interface Props {
@@ -22,11 +23,10 @@ export function LoginContent({ loginFailed, sessionError, titleId, descriptionId
   const { notices, error: noticeError, retry: retryNotice } = usePrivacyNotices()
   const policyVersion = notices.find(notice => notice.key === 'PRIVACY_POLICY')?.version
   return <>
-        <header className={styles.header}>
-          <span className={styles.brand}>공공주택 복덕방</span>
-          {page ? <h1 id={titleId}>로그인</h1> : <h2 id={titleId}>로그인</h2>}
-          <p id={descriptionId}>사용 중인 계정으로 간편하게 시작하세요.</p>
-        </header>
+        {!page && <>
+          <header className={styles.header}><h2 id={titleId}>로그인</h2></header>
+          <LoginBrand descriptionId={descriptionId} />
+        </>}
         {(loginFailed || sessionError) && (
           <div ref={alertRef} className={styles.alert} role="alert" tabIndex={-1}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
