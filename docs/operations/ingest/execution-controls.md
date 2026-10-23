@@ -108,6 +108,30 @@ API 기준 경로는 `/api/admin/ingest/announcement-supply-matches`다.
 공고 한 건의 선택 저장, 정제·LH 보강과 `SAVE_SUPPLY_MATCH` 이력은 같은 트랜잭션으로 처리한다.
 중간 실패 시 모두 롤백하며 해제도 `RELEASE_SUPPLY_MATCH` 이력을 남긴다.
 
+## LH 공급 원본 연결
+
+LH 보강 오류 상세의 `LH 공급 원본 연결`에서 LH 공급 원본 행과 현재 마이홈 원천행을 비교한다.
+단지명 표기가 달라 자동으로 붙지 않는 LH 행을 고르고 연결할 마이홈 원천행, 공식 출처 URL, 확인 근거를 입력해 저장한다.
+각 LH 행에는 자동 연결·저장 연결 사용 중·재확인 필요·연결 없음 상태를 표시한다. 연결 규칙은
+[LH 공고 연결의 관리자가 저장한 LH 공급 연결](../../features/ingest/lh-linking.md#관리자가-저장한-lh-공급-연결)을 따른다.
+
+- 저장·해제는 다음 정제와 LH 보강부터 반영한다. 이미 등록한 공급행은 바로 바꾸지 않으므로 저장 후 공고 정제를 다시 실행한다.
+- 연결이 없어 정제가 롤백되어 공고가 아직 없더라도 저장할 수 있다.
+- 복수 공급행으로 보정한 마이홈 원천행은 연결 대상이 아니다.
+- 해제에는 이유가 필요하다. 해제한 LH 행은 다음 정제부터 단지명 자동 연결 규칙을 다시 사용한다.
+
+API 기준 경로는 `/api/admin/ingest/announcement-supply-matches/{identifier}/lh-links`다.
+
+| 요청 | 계약 |
+|---|---|
+| `GET` | 조회 `token`, 현재 마이홈 원천행(`splitCorrected` 포함), LH 공급행별 현재 연결 원천행(`linkedRowIdentifier`)과 선택적 `savedLink`(근거, 작업자·시각, 재확인 여부) 반환 |
+| `POST` | `token`, `myhomeRowIdentifier`, `lhRowIdentifiers`(1~200), `sourceUrl`, `reason`을 받아 LH 행마다 연결을 저장·갱신하고 최신 조회 결과 반환 |
+| `POST /release` | `token`, `lhRowIdentifier`, `reason`을 받아 저장 연결을 삭제하고 최신 조회 결과 반환 |
+
+두 POST는 관리자 세션·CSRF와 기존 전역 수집·정제 쓰기 잠금을 사용한다. 조회 뒤 어느 원천이나 저장 연결이
+바뀌면 409로 거절한다. 공고가 없을 수 있어 이력은 `admin_data_changes`에 `LH_SUPPLY_LINK` 자원(연결 ID)으로
+`SAVE_LH_SUPPLY_LINK`·`RELEASE_LH_SUPPLY_LINK`를 남기며, 값에 공고 ID와 LH 행 식별자를 함께 기록한다.
+
 ## 한 원천에서 복수 공급행 보정
 
 마이홈 공고 API의 원천 한 행이 제품의 주택형 공급행 한 개를 뜻하지는 않는다.
@@ -148,6 +172,11 @@ API 기준 경로는 `/api/admin/ingest/announcement-supply-matches`다.
 - `V20261019_04__supply_row_groups.sql`은 원천별 공통 모집수·보정 근거와 공급행의 그룹 참조를 추가한다.
   기존 공급행은 그룹 없이 유지한다. 그룹에 속한 행에 개별 모집수를 중복 저장하는 것은 DB 제약으로 거절한다.
   구버전 서버에는 이 보정의 재정제 보호가 없으므로 보정 생성 이후 구버전 정제 작업을 실행하지 않는다.
+
+- `V20261024_01__lh_supply_row_links.sql`은 관리자가 저장한 LH 공급 연결 테이블을 만든다.
+  `V20261024_02__lh_supply_link_review_reason.sql`은 LH 보강 오류 사유 제약에
+  `LH_SUPPLY_LINK_REVIEW_REQUIRED`를 추가한다. 새 사유가 기록된 뒤에는 구버전 서버로 즉시 되돌리지 않는다.
+  구버전 서버는 저장 연결을 읽지 않으므로 연결 저장 이후 구버전 정제를 실행하면 해당 LH 행이 다시 단지 미발견으로 남는다.
 
 - `V20261019_02__announcement_supply_match_decisions.sql`은 원천 공급행별 수동 연결·근거를 보관한다.
   대상 삭제 시 참조를 NULL로 바꿔 재확인 대상으로 남긴다.

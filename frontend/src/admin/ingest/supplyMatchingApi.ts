@@ -119,3 +119,61 @@ export async function releaseSupplyMatch(identifier: string, row: SupplyMatch, r
   return parseMatches(await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/release`, 'POST',
     { rowIdentifier: row.rowIdentifier, token: row.token, reason }))
 }
+
+export type LhSupplyLinkView = { token: string; myhomeRows: LhLinkMyHomeRow[]; lhRows: LhLinkSupplyRow[] }
+export type LhLinkMyHomeRow = { rowIdentifier: string; complexName: string | null; housingTypeName: string | null
+  supplyHouseholdCount: number | null; splitCorrected: boolean }
+export type LhLinkSupplyRow = { rowIdentifier: string; complexLabel: string | null; typeName: string | null
+  exclusiveArea: string | null; supplyArea: string | null; suppliedUnitCount: string | null
+  linkedRowIdentifier: string | null; savedLink: SavedLhSupplyLink | null }
+export type SavedLhSupplyLink = { myhomeRowIdentifier: string; sourceUrl: string; reason: string; actor: string
+  updatedAt: string; reviewRequired: boolean }
+
+function nullableText(value: unknown): value is string | null { return value === null || typeof value === 'string' }
+
+export async function getLhSupplyLinks(identifier: string, signal?: AbortSignal): Promise<LhSupplyLinkView> {
+  return parseLhSupplyLinks(await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/lh-links`, 'GET',
+    undefined, signal))
+}
+
+export async function saveLhSupplyLinks(identifier: string, view: LhSupplyLinkView, myhomeRowIdentifier: string,
+  lhRowIdentifiers: string[], sourceUrl: string, reason: string): Promise<LhSupplyLinkView> {
+  return parseLhSupplyLinks(await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/lh-links`, 'POST',
+    { token: view.token, myhomeRowIdentifier, lhRowIdentifiers, sourceUrl, reason }))
+}
+
+export async function releaseLhSupplyLink(identifier: string, view: LhSupplyLinkView, lhRowIdentifier: string,
+  reason: string): Promise<LhSupplyLinkView> {
+  return parseLhSupplyLinks(await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/lh-links/release`,
+    'POST', { token: view.token, lhRowIdentifier, reason }))
+}
+
+function parseLhSupplyLinks(value: unknown): LhSupplyLinkView {
+  const invalid = () => new Error('LH 공급 연결 응답이 올바르지 않습니다.')
+  if (!isRecord(value) || typeof value.token !== 'string' || !Array.isArray(value.myhomeRows)
+    || !Array.isArray(value.lhRows)) throw invalid()
+  const myhomeRows = value.myhomeRows.map(row => {
+    if (!isRecord(row) || typeof row.rowIdentifier !== 'string' || !nullableText(row.complexName)
+      || !nullableText(row.housingTypeName) || typeof row.splitCorrected !== 'boolean') throw invalid()
+    return { rowIdentifier: row.rowIdentifier, complexName: row.complexName, housingTypeName: row.housingTypeName,
+      supplyHouseholdCount: parseCount(row.supplyHouseholdCount), splitCorrected: row.splitCorrected }
+  })
+  const lhRows = value.lhRows.map(row => {
+    if (!isRecord(row) || typeof row.rowIdentifier !== 'string' || !nullableText(row.complexLabel)
+      || !nullableText(row.typeName) || !nullableText(row.exclusiveArea) || !nullableText(row.supplyArea)
+      || !nullableText(row.suppliedUnitCount) || !nullableText(row.linkedRowIdentifier)) throw invalid()
+    return { rowIdentifier: row.rowIdentifier, complexLabel: row.complexLabel, typeName: row.typeName,
+      exclusiveArea: row.exclusiveArea, supplyArea: row.supplyArea, suppliedUnitCount: row.suppliedUnitCount,
+      linkedRowIdentifier: row.linkedRowIdentifier, savedLink: parseSavedLhLink(row.savedLink, invalid) }
+  })
+  return { token: value.token, myhomeRows, lhRows }
+}
+
+function parseSavedLhLink(value: unknown, invalid: () => Error): SavedLhSupplyLink | null {
+  if (value === null) return null
+  if (!isRecord(value) || typeof value.myhomeRowIdentifier !== 'string' || typeof value.sourceUrl !== 'string'
+    || !/^https?:\/\//i.test(value.sourceUrl) || typeof value.reason !== 'string' || typeof value.actor !== 'string'
+    || typeof value.updatedAt !== 'string' || typeof value.reviewRequired !== 'boolean') throw invalid()
+  return { myhomeRowIdentifier: value.myhomeRowIdentifier, sourceUrl: value.sourceUrl, reason: value.reason,
+    actor: value.actor, updatedAt: value.updatedAt, reviewRequired: value.reviewRequired }
+}

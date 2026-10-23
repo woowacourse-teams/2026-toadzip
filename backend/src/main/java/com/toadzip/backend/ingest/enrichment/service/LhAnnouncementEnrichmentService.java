@@ -32,6 +32,7 @@ import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningExcept
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
+import com.toadzip.backend.ingest.mapping.service.LhSupplyRowLinks;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import java.time.Clock;
@@ -65,6 +66,7 @@ public class LhAnnouncementEnrichmentService {
     private final LhAnnouncementEnrichmentWriter writer;
     private final LhAnnouncementLinkResolver linkResolver;
     private final MyHomeAnnouncementCommonValuesMapper commonValuesMapper;
+    private final LhSupplyRowLinks supplyLinks;
     private final Clock clock;
 
     public LhAnnouncementEnrichmentReport enrichAll() {
@@ -179,7 +181,8 @@ public class LhAnnouncementEnrichmentService {
         List<LhAnnouncementSupplySource> supplies = supplySourceRepository
                 .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
         try {
-            LhAnnouncementEnrichmentData data = mapper.map(panId, details, supplies);
+            LhAnnouncementEnrichmentData data = mapper.map(panId, details, supplies).withSupplyLinks(supplyLinks
+                    .states(source.getPblancId(), MyHomeAnnouncementCurrentSources.select(sources), supplies));
             if (mappingIncomplete && announcement.getLhPanId() != null) {
                 return reject(source, panId, LhAnnouncementEnrichmentFailureReason.INVALID_VALUE,
                         "마이홈 공고 매핑 실패가 남아 LH 보강을 보류했습니다.", failures, occurredAt);

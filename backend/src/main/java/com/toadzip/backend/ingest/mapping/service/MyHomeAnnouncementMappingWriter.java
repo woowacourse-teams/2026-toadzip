@@ -117,7 +117,7 @@ public class MyHomeAnnouncementMappingWriter {
                     .orElseThrow();
             try {
                 enrichmentWriter.writeAfterMapping(announcement, resolved.request(), resolved.supplies(),
-                        Set.of(), resolved.sourceKeysExcludedFromLhEnrichment());
+                        Set.of(), resolved.sourceKeysExcludedFromLhEnrichment(), resolved.supplyLinks());
             }
             catch (LhAnnouncementEnrichmentRejectedException exception) {
                 throw new MyHomeAnnouncementMappingRejectedException(
@@ -197,7 +197,8 @@ public class MyHomeAnnouncementMappingWriter {
         try {
             enrichmentWriter.writeAfterMapping(
                     announcement, resolved.request(), resolved.supplies(),
-                    supplyRowsResult.changedHousingTypeRowIds(), resolved.sourceKeysExcludedFromLhEnrichment()
+                    supplyRowsResult.changedHousingTypeRowIds(), resolved.sourceKeysExcludedFromLhEnrichment(),
+                    resolved.supplyLinks()
             );
         }
         catch (LhAnnouncementEnrichmentRejectedException exception) {

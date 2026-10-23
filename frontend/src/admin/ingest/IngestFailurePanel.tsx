@@ -7,6 +7,7 @@ import { ListPagination } from '../management/ListPagination'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import styles from './IngestFailurePanel.module.css'
 import { AnnouncementSupplyMatchingForm } from './AnnouncementSupplyMatchingForm'
+import { LhSupplyLinkEditor } from './LhSupplyLinkEditor'
 import { failureReturnUrl } from './failureNavigation'
 import { FailureRetryButton } from './FailureRetryButton'
 import { FailureSourceRecovery } from './FailureSourceRecovery'
@@ -67,7 +68,8 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
     return failureReturnUrl(path, `/admin/failures?${next}`)
   }
   const [matchingOpen, setMatchingOpen] = useState(false)
-  useEffect(() => { setMatchingOpen(false); setActionBusy(false) }, [selectionKey])
+  const [lhLinkOpen, setLhLinkOpen] = useState(false)
+  useEffect(() => { setMatchingOpen(false); setLhLinkOpen(false); setActionBusy(false) }, [selectionKey])
 
   useEffect(() => {
     if (!validQuery) return
@@ -211,11 +213,15 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
           <FailureSourceRecovery key={selectionKey} row={selected} disabled={actionDisabled}
             onProcessed={() => setRevision(value => value + 1)} onBusy={setActionBusy}/>
         {(selected.category === 'announcement' || selected.category === 'enrichment') && typeof selected.raw.sourceAnnouncementIdentifier === 'string'
-          && (/COMPLEX|HOUSING_TYPE|MANUAL_MATCH/.test(selected.reason) || selected.detail.includes('수동 매칭')) && <section>
+          && (/COMPLEX|HOUSING_TYPE|MANUAL_MATCH|LH_SUPPLY_LINK/.test(selected.reason) || selected.detail.includes('수동 매칭')) && <section>
             <button type="button" aria-expanded={matchingOpen} disabled={actionDisabled}
               onClick={() => setMatchingOpen(value => !value)}>단지·주택형 매칭</button>
+            {selected.category === 'enrichment' && <button type="button" aria-expanded={lhLinkOpen} disabled={actionDisabled}
+              onClick={() => setLhLinkOpen(value => !value)}>LH 공급 원본 연결</button>}
             {matchingOpen && <AnnouncementSupplyMatchingForm identifier={selected.raw.sourceAnnouncementIdentifier}
               disabled={retryDisabled || detailPending || Boolean(detailError)} onApplied={processed} onBusy={setActionBusy} />}
+            {selected.category === 'enrichment' && lhLinkOpen && <LhSupplyLinkEditor identifier={selected.raw.sourceAnnouncementIdentifier}
+              disabled={retryDisabled || detailPending || Boolean(detailError)} onBusy={setActionBusy} />}
           </section>}
         </section>
         <section className={styles.detailSection} aria-labelledby="failure-result-title">
@@ -299,6 +305,7 @@ function reasonLabel(row:FailureReview) {
     LH_COLLECTION_REQUEST_UNSUPPORTED:'지원하지 않는 LH 수집 요청', PAN_ID_NOT_FOUND:'LH 공고 번호 누락',
     HOUSING_TYPE_NOT_FOUND:'연결할 주택형을 찾지 못함', AMBIGUOUS_HOUSING_TYPE:'일치하는 주택형이 여러 개',
     MANUAL_MATCH_REVIEW_REQUIRED:'저장한 매칭의 원천·주택형 재확인 필요',
+    LH_SUPPLY_LINK_REVIEW_REQUIRED:'저장한 LH 공급 연결의 원천 재확인 필요',
     LH_DETAIL_SOURCE_NOT_FOUND:'LH 상세 원천 없음',
     LH_SUPPLY_SOURCE_NOT_FOUND:'LH 공급 원천 없음', UNSUPPORTED_SUPPLY_TYPE:'지원하지 않는 공급 유형',
   }
