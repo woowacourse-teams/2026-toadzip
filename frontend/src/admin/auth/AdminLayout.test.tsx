@@ -18,6 +18,7 @@ function setup() {
 it('매일 하는 작업은 바로 보이고 수집 도구는 펼쳐서 찾을 수 있다', () => {
   setup()
   expect(screen.getByRole('link', { name: '검토할 데이터' })).toBeVisible()
+  expect(screen.getByRole('link', { name: '실패·검토 항목' })).toBeVisible()
   expect(screen.getByRole('link', { name: '원천 데이터' })).not.toBeVisible()
   fireEvent.click(screen.getByText('수집·원천 도구'))
   expect(screen.getByRole('link', { name: '원천 데이터' })).toBeVisible()
