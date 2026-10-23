@@ -11,6 +11,12 @@ import type { ComplexLabels, HousingCandidates } from './matching'
 import { ReviewCells } from './ReviewCells'
 import styles from './PdfCorrection.module.css'
 
+// 표기 변경을 반영할 때만 공개 화면에 보일 이름을 미리 알려 준다.
+function shownTypeName(row: RowReview) {
+  const cell = row.cells.find(item => item.field === 'sourceHousingTypeName')
+  return cell?.selected && typeof cell.value === 'string' ? cell.value : null
+}
+
 export function ReviewSupply({ review, workspace, housing, complexes, filter, empty, onChange, onEvidence }: { review: Review; workspace: JsonWorkspace; housing: HousingCandidates; complexes: ComplexLabels; filter: ReviewFilter; empty: string; onChange: (review: Review) => void; onEvidence: (evidence: Evidence) => void }) {
   function update(index: number, next: RowReview) { onChange({ ...review, rows: review.rows.map((row, at) => at === index ? next : row) }) }
   function mapping(index: number, destination: string, anchorKey: string) {
@@ -48,6 +54,7 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
             </div>}
           </div>
           <p className={styles.hint}>{row.proposal.reason}{source.values.constructedHouseholdCount != null ? ` · PDF 건설호수 ${String(source.values.constructedHouseholdCount)}세대` : ''}</p>
+          {typeof shownTypeName(row) === 'string' && <p className={styles.hint}>{`저장하면 이 공고의 공개 화면에 '${String(shownTypeName(row))}'(으)로 표시됩니다. 다른 공고와 단지 주택형 이름은 바뀌지 않습니다.`}</p>}
           <ReviewCells housingTypes={row.proposal.candidates} cells={row.cells} scope={`공급행 ${index + 1}`} filter={filter} onChange={cells => update(index, { ...row, cells })} onEvidence={onEvidence} />
           <TargetBlock review={review} index={index} workspace={workspace} filter={filter} update={next => update(index, next)} onEvidence={onEvidence} />
         </>}

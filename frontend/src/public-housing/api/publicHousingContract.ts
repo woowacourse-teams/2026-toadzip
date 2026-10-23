@@ -386,6 +386,7 @@ function decodeAnnouncementSupplyRow(
 
   return {
     ...(Object.hasOwn(row, 'corrected') ? { corrected: booleanAt(row.corrected, `${path}.corrected`) } : {}),
+    ...(Object.hasOwn(row, 'displayHousingTypeName') ? { displayHousingTypeName: nullableStringAt(row.displayHousingTypeName, `${path}.displayHousingTypeName`) } : {}),
     ...(Object.hasOwn(row, 'exclusiveArea') ? { exclusiveArea: nullableFiniteNumberAt(row.exclusiveArea, `${path}.exclusiveArea`), supplyArea: nullableFiniteNumberAt(row.supplyArea, `${path}.supplyArea`) } : {}),
     ...(row.sharedRecruitment != null ? { sharedRecruitment: decodeSharedRecruitment(row.sharedRecruitment, `${path}.sharedRecruitment`) } : {}),
     supplyRowId: positiveSafeIntegerAt(

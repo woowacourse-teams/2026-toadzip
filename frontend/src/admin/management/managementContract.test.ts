@@ -8,7 +8,8 @@ const summary = {
 const housingType = { id: 1, name: '36A', exclusiveArea: 36.5, householdCount: null }
 const supplyRow = {
   id: 9, housingComplexId: null, housingComplexName: null, housingTypeId: null,
-  modified: false, data: { sourceComplexName: '미연결 단지', totalSupplyHouseholdCount: 0 },
+  modified: false, sourceComplexName: '미연결 단지', sourceHousingTypeName: '아파트',
+  data: { announcementHousingTypeName: null, totalSupplyHouseholdCount: 0 },
 }
 
 function detail() {

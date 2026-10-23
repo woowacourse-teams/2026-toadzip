@@ -41,7 +41,7 @@ it('충돌하면 수정값과 근거를 보존하고 추가 저장을 막는다'
 })
 
 it('공고 기본정보와 공급행은 다른 원천값부터 비교하고 확인 기록만 저장한다', async () => {
-  const announcement: ManagementDetailData = { ...detail, housingTypes: [], supplyRows: [{ id: 4, housingComplexId: 1, housingComplexName: '한스빌아파트', housingTypeId: null, modified: false, data: { sourceComplexName: '한스빌', sourceHousingTypeName: '아파트', supplyHouseholdCount: 170 } }] }
+  const announcement: ManagementDetailData = { ...detail, housingTypes: [], supplyRows: [{ id: 4, housingComplexId: 1, housingComplexName: '한스빌아파트', housingTypeId: null, modified: false, sourceComplexName: '한스빌', sourceHousingTypeName: '아파트', data: { announcementHousingTypeName: '아파트', supplyHouseholdCount: 170 } }] }
   const rowSnapshot = { ...snapshot, target: 'row:4', detail: announcement, sources: [{ category: 'MYHOME_ANNOUNCEMENT', sourceKey: 'key', automatic: true, evidenceNote: '', rows: [{ id: 9, name: '한스빌', collectedAt: null, raw: { hshld_co: '170' } }] }] }
   mocks.load.mockResolvedValue({ ...rowSnapshot, target: 'basic' })
   render(<MemoryRouter initialEntries={['/admin/announcements/7?section=verification&provider=LH']}><QualityComparisonPanel resource="announcements" id="7" detail={announcement} onChanged={changed} onBusyChange={vi.fn()} /></MemoryRouter>)
