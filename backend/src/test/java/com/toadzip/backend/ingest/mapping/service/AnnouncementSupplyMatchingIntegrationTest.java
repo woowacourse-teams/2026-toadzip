@@ -838,6 +838,56 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(pendingFailureReasons()).isEmpty();
     }
 
+    @Test
+    @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
+    @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
+            executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD)
+    void 선택_없이_다시_정제하면_PDF_보정의_저장_매칭으로_이_공고만_정제하고_실패를_해결한다() throws Exception {
+        mapping.mapAll();
+        long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
+        correctFromPdf(announcementId, type);
+        assertThat(pendingFailureReasons()).containsExactly("AMBIGUOUS_HOUSING_TYPE");
+
+        rerun(TARGET).andExpect(status().isOk());
+
+        assertThat(pendingFailureReasons()).isEmpty();
+        assertThat(supplies.findAll()).singleElement()
+                .satisfies(row -> assertThat(row.getHousingType().getId()).isEqualTo(type.getId()));
+    }
+
+    @Test
+    void 다시_정제가_거절되면_아무것도_저장하지_않고_실패_기록도_바꾸지_않는다() throws Exception {
+        mapping.mapAll();
+        var before = supplies.findAll().getFirst();
+
+        rerun(TARGET).andExpect(status().isBadRequest())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("정제 실패: 공급행 매칭 실패")));
+
+        assertThat(pendingFailureReasons()).containsExactly("AMBIGUOUS_HOUSING_TYPE");
+        assertThat(supplies.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getId()).isEqualTo(before.getId());
+            assertThat(row.getHousingType()).isNull();
+        });
+    }
+
+    @Test
+    void 원천이_없는_공고는_다시_정제할_수_없다() throws Exception {
+        rerun("no-source-announcement").andExpect(status().isBadRequest())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.message").value("공고 원천이 없습니다. 먼저 공고를 수집해 주세요."));
+    }
+
+    @Test
+    void 다시_정제는_관리자와_CSRF를_요구한다() throws Exception {
+        mvc.perform(post(PATH + "/" + TARGET + "/rerun").with(csrf())).andExpect(status().isUnauthorized());
+        mvc.perform(post(PATH + "/" + TARGET + "/rerun").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+        assertThat(announcements.count()).isZero();
+    }
+
+    private ResultActions rerun(String identifier) throws Exception {
+        return mvc.perform(post(PATH + "/" + identifier + "/rerun").with(user("admin").roles("ADMIN")).with(csrf()));
+    }
+
     private List<String> pendingFailureReasons() {
         return jdbc.sql("""
                 SELECT reason FROM myhome_announcement_mapping_failures
