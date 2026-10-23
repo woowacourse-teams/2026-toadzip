@@ -71,10 +71,13 @@ class SupplyCorrectionIntegrationTest {
         apply(id, request, preview).andExpect(status().isOk());
         entities.flush(); entities.clear();
         var saved = rows.findById(row.getId()).orElseThrow();
-        assertThat(saved.getSourceHousingTypeName()).isEqualTo("26A");
+        assertThat(saved.getSourceHousingTypeName()).isEqualTo("26");
+        assertThat(saved.getAnnouncementHousingTypeName()).isEqualTo("26A");
         assertThat(saved.getTotalSupplyHouseholdCount()).isNull();
         assertThat(saved.getHousingType().getExclusiveArea()).isEqualByComparingTo("26.4673");
         mvc.perform(get("/api/v1/announcements/" + id)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.supplyRows[0].sourceHousingTypeName").value("26"))
+                .andExpect(jsonPath("$.data.supplyRows[0].displayHousingTypeName").value("26A"))
                 .andExpect(jsonPath("$.data.supplyRows[0].exclusiveArea").value(26.5195))
                 .andExpect(jsonPath("$.data.supplyRows[0].totalSupplyHouseholdCount").isEmpty())
                 .andExpect(jsonPath("$.data.supplyRows[0].targets[0].monthlyRent").value(0));
