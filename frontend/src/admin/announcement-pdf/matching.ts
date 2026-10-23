@@ -25,17 +25,27 @@ export function normalizedName(value: unknown) {
 }
 /** 수집된 공고명에는 공고일·"공고" 표기가 붙어 있어 날짜·공고·기호를 지우고 포함 관계로 비교한다. */
 function titleKey(value: unknown) {
-  return (text(value) ?? '').normalize('NFKC').replace(/\d{4}\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}\s*일?/g, '')
-    .replace(/공고문?|[\s\p{P}\p{S}]/gu, '').toLowerCase()
+  return titleWords(value).join('')
+}
+// 괄호 위치나 어순이 달라도 같은 공고인지 보려고 단어 단위로 나눈다(전주시(전주평화1,전주평화4) 영구임대 ↔ 전주시 영구임대 (전주평화1, 전주평화4)).
+function titleWords(value: unknown) {
+  return (text(value) ?? '').normalize('NFKC').replace(/\d{4}\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}\s*일?\.?/g, ' ')
+    .replace(/공고일|공고문?/g, ' ').split(/[\s\p{P}\p{S}]+/u).map(word => word.toLowerCase()).filter(Boolean)
+}
+function sameTitle(pdf: unknown, current: unknown) {
+  const pdfKey = titleKey(pdf), currentKey = titleKey(current)
+  if (pdfKey.includes(currentKey) || currentKey.includes(pdfKey)) return true
+  const pdfWords = new Set(titleWords(pdf)), currentWords = new Set(titleWords(current))
+  const within = (small: Set<string>, large: Set<string>) => [...small].every(word => large.has(word))
+  return within(pdfWords, currentWords) || within(currentWords, pdfWords)
 }
 export type AnnouncementCheck = { label: '공고명' | '공고일'; pdf: string | null; current: string | null; matches: boolean | null }
 /** 붙여넣은 응답이 지금 공고의 PDF에서 나온 것인지 공고명·공고일로 확인한다. 어느 한쪽 값이 없으면 판단하지 않는다. */
 export function checkAnnouncement(extraction: Extraction, current: JsonObject): AnnouncementCheck[] {
   const pdfName = text(extraction.announcement.name), currentName = text(current.name)
-  const pdfKey = titleKey(pdfName), currentKey = titleKey(currentName)
   const pdfDate = text(extraction.announcement.postedDate), currentDate = text(current.postedDate)
   return [
-    { label: '공고명', pdf: pdfName, current: currentName, matches: pdfKey && currentKey ? pdfKey.includes(currentKey) || currentKey.includes(pdfKey) : null },
+    { label: '공고명', pdf: pdfName, current: currentName, matches: titleKey(pdfName) && titleKey(currentName) ? sameTitle(pdfName, currentName) : null },
     { label: '공고일', pdf: pdfDate, current: currentDate, matches: pdfDate && currentDate ? pdfDate.slice(0, 10) === currentDate.slice(0, 10) : null },
   ]
 }
