@@ -258,3 +258,10 @@
     transition: none;
   }
 }
+.newAnnouncement {
+  display: inline-block;
+  margin-bottom: var(--ds-space-1);
+  color: var(--ds-color-action);
+  font-size: var(--ds-text-caption);
+  font-weight: 700;
+}

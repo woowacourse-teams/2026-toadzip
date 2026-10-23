@@ -28,6 +28,25 @@ const ANNOUNCEMENT_FILTERS = {
 } as const satisfies AnnouncementSearchFilters
 
 describe('검색 필터 URL namespace', () => {
+  it.each(['LATEST', 'LATEST_ASC', 'DEADLINE'] as const)('공고 정렬 %s를 지역 조건과 함께 URL로 복원하고 저장한다', (sort) => {
+    const search = new URLSearchParams(`announcementSort=${sort}&announcementRegionCode=11`)
+    const filters = parseAnnouncementSearchFilters(search)
+    expect(filters).toEqual({ sort, regionCode: '11' })
+    const written = setAnnouncementSearchFilters(new URLSearchParams('announcementId=42&mapZoom=14'), filters)
+    expect(written.get('announcementSort')).toBe(sort)
+    expect(written.get('announcementId')).toBe('42')
+    expect(written.get('mapZoom')).toBe('14')
+  })
+
+  it('알 수 없는 공고 정렬은 기본값을 쓰도록 무시한다', () => {
+    expect(parseAnnouncementSearchFilters(new URLSearchParams('announcementSort=UNKNOWN'))).toEqual({})
+  })
+
+  it('이전 마감 내림차순 주소는 마감임박순으로 복원한다', () => {
+    expect(parseAnnouncementSearchFilters(new URLSearchParams('announcementSort=DEADLINE_DESC&announcementRegionCode=11')))
+      .toEqual({ sort: 'DEADLINE', regionCode: '11' })
+  })
+
   it.each(['BEFORE_APPLICATION', 'APPLYING'])('이전 단지 %s 단독 URL은 모집중 두 상태로 복원하고 공고 조건을 유지한다', (status) => {
     const search = new URLSearchParams(`complexApplicationStatuses=${status}&complexAgencyCodes=LH&announcementApplicationStatuses=${status}`)
     expect(parseComplexSearchFilters(search)).toEqual({ applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'], agencyCodes: ['LH'] })

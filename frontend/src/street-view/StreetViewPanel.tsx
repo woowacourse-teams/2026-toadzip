@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef } from 'react'
+import { isMobileViewport } from '../public-housing/components/useMobileViewport'
 import { StreetViewFrame } from './StreetViewFrame'
 import type { StreetViewController } from './useStreetView'
 import styles from './StreetView.module.css'
@@ -79,8 +80,4 @@ export function StreetViewPanel({ controller }: { readonly controller: StreetVie
         && <span role="status">출입구 위치 표시를 불러오지 못했어요. 거리뷰는 계속 둘러볼 수 있어요.</span>}
     </footer>
   </div>
-}
-
-function isMobileViewport(): boolean {
-  return window.matchMedia?.('(max-width: 767px)').matches ?? false
 }

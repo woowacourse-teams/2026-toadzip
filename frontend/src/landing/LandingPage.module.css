@@ -189,7 +189,7 @@
 }
 
 @media (min-width: 1600px) { .heroScreen { width: 800px; } }
-@media (min-width: 768px) and (max-height: 540px) {
+@media (min-width: 768px) and (not ((hover: none) and (pointer: coarse))) and (max-height: 540px) {
   .stepNavigation { gap: 12px; }
   .stepNavigation a { font-size: 11px; }
   .stepNavigation span { display: none; }
@@ -207,7 +207,7 @@
   .stepNavigation a { font-size: 11px; }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .page { --landing-header-height: 68px; --landing-mobile-gutter: clamp(20px, 5vw, 28px); }
   .header { padding: 0 var(--landing-mobile-gutter); gap: 16px; }
   .brand :global(.brand-name) { font-size: 15px; }
@@ -249,12 +249,12 @@
   .footer p { width: 100%; order: 3; font-size: 11px; }
 }
 
-@media (min-width: 768px) and (max-height: 700px) {
+@media (min-width: 768px) and (not ((hover: none) and (pointer: coarse))) and (max-height: 700px) {
   .hero { padding-top: 32px; }
   .heroScreen { width: min(620px, calc((100svh - var(--landing-header-height) - 210px) * 16 / 9)); }
 }
 
-@media (max-width: 767px) and (max-height: 740px) {
+@media (max-width: 767px) and (max-height: 740px), (hover: none) and (pointer: coarse) and (max-height: 740px) {
   .hero { padding-top: 20px; padding-bottom: 72px; }
   .eyebrow { margin-bottom: 12px !important; }
   .description { margin: 16px 0 18px !important; line-height: 1.65; }

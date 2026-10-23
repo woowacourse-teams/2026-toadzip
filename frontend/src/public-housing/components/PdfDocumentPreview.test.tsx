@@ -54,7 +54,13 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
-async function ready() { await screen.findByText('1 / 32 페이지') }
+async function ready() {
+  // Flush the SDK import, state updates and shortcut effect before sending input.
+  // Page-count text can appear before React has installed the ready-state listener.
+  await act(async () => { await vi.dynamicImportSettled() })
+  expect(screen.getByText('1 / 32 페이지')).toBeVisible()
+  expect(screen.getByRole('button', { name: '문서 검색' })).toBeEnabled()
+}
 function eventBus() {
   return sdk.options.mock.calls.at(-1)![0].eventBus as { dispatch: (name: string, event: unknown) => void }
 }

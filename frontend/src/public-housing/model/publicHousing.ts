@@ -261,6 +261,7 @@ export interface RawAnnouncementListItem {
 }
 
 export interface RawAnnouncementPage {
+  readonly totalCount?: number | null
   readonly items: readonly RawAnnouncementListItem[]
   readonly nextCursor: string | null
   readonly hasNext: boolean
@@ -289,6 +290,7 @@ export interface AnnouncementListItem {
 }
 
 export interface AnnouncementPage {
+  readonly totalCount?: number | null
   readonly items: readonly AnnouncementListItem[]
   readonly nextCursor: string | null
   readonly hasNext: boolean

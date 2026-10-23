@@ -97,6 +97,22 @@ function renderPanel(detail: HousingComplexDetailData = BASE_DETAIL) {
   return { ...result, onClose, onOpenAnnouncement, panel }
 }
 
+it('모바일은 단지명만 고정 헤더에 두고 공급기관과 주소를 스크롤 본문 앞에 표시한다', () => {
+  render(<HousingComplexDetailPanel detail={{ ...BASE_DETAIL, agencyCode: 'LH' }} mobile onClose={() => {}} />)
+  const title = screen.getByRole('heading', { name: BASE_DETAIL.name })
+  const header = title.closest('header')!
+  const content = screen.getByRole('region', { name: `${BASE_DETAIL.name} 단지 상세 내용` })
+  expect(header).toHaveTextContent(BASE_DETAIL.name)
+  expect(within(header).queryByText('LH')).not.toBeInTheDocument()
+  expect(within(header).queryByText('행복주택')).not.toBeInTheDocument()
+  expect(content).not.toContainElement(title)
+  const agency = within(content).getByText('LH')
+  const address = within(content).getByText(BASE_DETAIL.roadAddress!)
+  expect(title.compareDocumentPosition(agency) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(agency.compareDocumentPosition(address) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(address.compareDocumentPosition(within(content).getAllByRole('img')[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+})
+
 function detailWith(
   changes: Partial<HousingComplexDetailData>,
 ): HousingComplexDetailData {
@@ -123,7 +139,7 @@ function factValue(container: HTMLElement, term: string) {
 describe('HousingComplexDetailPanel', () => {
   beforeEach(() => localStorage.removeItem('toadzip.area-unit'))
 
-  it('공고 상세와 같은 머리에 분류 칩·단지명·닫기를 두고 본문에는 단지명을 반복하지 않는다', () => {
+  it('데스크톱도 단지명만 헤더에 두고 공급기관·주택 유형은 주소와 함께 본문에 표시한다', () => {
     const { panel } = renderPanel()
     const header = panel.querySelector('header')
     if (!header) throw new Error('상세 헤더 없음')
@@ -131,11 +147,16 @@ describe('HousingComplexDetailPanel', () => {
     const content = within(panel).getByRole('region', { name: `${BASE_DETAIL.name} 단지 상세 내용` })
 
     expect(heading).toHaveFocus()
-    expect(within(header).getByText(BASE_DETAIL.agencyName)).toBeVisible()
-    expect(within(header).getByText(BASE_DETAIL.rentalTypeLabel)).toBeVisible()
+    expect(within(header).queryByText(BASE_DETAIL.agencyName)).not.toBeInTheDocument()
+    expect(within(header).queryByText(BASE_DETAIL.rentalTypeLabel)).not.toBeInTheDocument()
     expect(within(header).getByRole('button', { name: '단지 상세 닫기' })).toBeVisible()
     expect(within(content).queryByText(BASE_DETAIL.name)).not.toBeInTheDocument()
-    expect(within(content).getByRole('region', { name: BASE_DETAIL.name })).toHaveTextContent('서울특별시 중구 세종대로 110')
+    const identity = within(content).getByRole('region', { name: BASE_DETAIL.name })
+    expect(within(identity).getByText(BASE_DETAIL.agencyName)).toBeVisible()
+    expect(within(identity).getByText(BASE_DETAIL.rentalTypeLabel)).toBeVisible()
+    const address = within(identity).getByText('서울특별시 중구 세종대로 110')
+    expect(within(identity).getByText(BASE_DETAIL.rentalTypeLabel).compareDocumentPosition(address)
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('공고가 없어도 주택형 기본 보증금과 월 임대료 및 출처를 표시하고 탭 전환에 맞춰 바꾼다', () => {
@@ -255,10 +276,9 @@ describe('HousingComplexDetailPanel', () => {
     ['LH', '한국토지주택공사'],
     ['SH', '서울주택도시공사'],
     ['GH', '경기주택도시공사'],
-  ])('상세 머리에 %s 약어를 표시하고 기본 정보에는 기관명을 유지한다', (agencyCode, agencyName) => {
+  ])('주소 섹션에 %s 약어를 표시하고 기본 정보에는 기관명을 유지한다', (agencyCode, agencyName) => {
     render(<HousingComplexDetailPanel detail={{ ...BASE_DETAIL, agencyCode, agencyName }} onClose={vi.fn()} />)
-    const summary = screen.getByRole('complementary').querySelector('header')
-    if (!summary) throw new Error('상세 헤더 없음')
+    const summary = screen.getByRole('region', { name: BASE_DETAIL.name })
     expect(within(summary).getByText(agencyCode)).toBeVisible()
     expect(within(summary).queryByText(agencyName)).not.toBeInTheDocument()
     expect(screen.getByText(agencyName)).toBeVisible()

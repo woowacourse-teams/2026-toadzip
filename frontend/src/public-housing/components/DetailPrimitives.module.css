@@ -22,7 +22,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--ds-space-3);
-  margin-bottom: var(--ds-space-3);
+  margin-bottom: var(--ds-space-4);
 }
 
 .sectionHeading > div {
@@ -32,7 +32,7 @@
 .sectionHeading h3 {
   margin: 0;
   color: var(--ds-color-text);
-  font-size: var(--ds-text-section);
+  font-size: var(--ds-text-title);
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: var(--ds-line-height-title);
