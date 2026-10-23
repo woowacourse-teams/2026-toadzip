@@ -387,7 +387,13 @@ public class SupplyRow {
             Integer resolvedTotalSupplyHouseholdCount,
             Integer lhSuppliedHouseholdCount
     ) {
-        if (adminModified || announcement.isAdminDeleted()) {
+        if (announcement.isAdminDeleted()) {
+            return false;
+        }
+        if (adminModified) {
+            // 관리자 보정 행도 LH 원본과의 연결은 정제가 기록해야 보강이 단지명을 다시 비교하지 않는다.
+            // 관리자가 정한 모집수는 유지하고, 연결 기록만으로는 정제 중 LH 재보강을 일으키지 않는다.
+            lhSourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
             return false;
         }
         boolean sourceChanged = !Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier);
