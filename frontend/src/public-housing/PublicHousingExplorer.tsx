@@ -1,3 +1,4 @@
+import { useExplorerReturn } from './navigation/ExplorerReturnContext'
 import { useListMeasurement } from './analytics/useListMeasurement'
 import { captureProductEvent } from '../analytics/productAnalytics'
 import { useProductDetailAnalytics } from './analytics/useProductDetailAnalytics'
@@ -214,6 +215,15 @@ export function PublicHousingExplorer({
     },
   )
   const [viewport, setViewport] = useState<ViewportSnapshot | null>(null)
+  const explorerReturn = useExplorerReturn()
+  useEffect(() => {
+    if (!explorerReturn) return
+    const params = new URLSearchParams(location.search)
+    params.set('mapLat', String(viewport?.center.latitude ?? mapCameraTarget.latitude))
+    params.set('mapLng', String(viewport?.center.longitude ?? mapCameraTarget.longitude))
+    params.set('mapZoom', String(viewport?.zoom ?? mapCameraTarget.zoom))
+    explorerReturn.current = location.pathname + '?' + params.toString() + location.hash
+  }, [explorerReturn, location.pathname, location.search, location.hash, viewport, mapCameraTarget])
   const viewportRef = useRef<ViewportSnapshot | null>(null)
   const viewportRevisionRef = useRef(0)
   const viewportTimerRef = useRef<number | null>(null)
@@ -420,6 +430,7 @@ export function PublicHousingExplorer({
   const handledBoundaryCodeRef = useRef<string | null>(null)
   const boundaryRestoreRevisionRef = useRef(0)
   const pendingBoundaryCameraRef = useRef<{ code: string; zoom: number } | null>(null)
+  const explicitCameraBoundaryRef = useRef<string | null>(null)
   const boundaryState = useRegionBoundary(boundaryMetadata?.regionCode ?? null, boundaryRepository)
   const selectedBoundarySearchItem = selectedSearchRegion
     && (selectedSearchRegion.regionCode ?? selectedSearchRegion.id) === boundaryRegionCode
@@ -433,6 +444,7 @@ export function PublicHousingExplorer({
   }, [locateCurrentPosition])
 
   const focusBoundary = useCallback((code: string) => {
+    explicitCameraBoundaryRef.current = null
     cancelCurrentLocation()
     const metadata = findRegionBoundaryMetadata(code)
     const item = boundarySelectionRef.current
@@ -467,6 +479,10 @@ export function PublicHousingExplorer({
       return
     }
     handledBoundaryCodeRef.current = boundaryRegionCode
+    if (mobile && mapLocation.kind === 'valid') {
+      explicitCameraBoundaryRef.current = boundaryRegionCode
+      return
+    }
     if (boundaryRegionCode !== null) {
       focusBoundary(boundaryRegionCode)
     }
@@ -488,7 +504,7 @@ export function PublicHousingExplorer({
         if (item) {
           boundarySelectionRef.current = item
           setSelectedSearchRegion(item)
-          if (revision === boundaryRestoreRevisionRef.current) focusBoundary(boundaryRegionCode)
+          if (revision === boundaryRestoreRevisionRef.current && explicitCameraBoundaryRef.current !== boundaryRegionCode) focusBoundary(boundaryRegionCode)
           return
         }
         if (!response.hasNext) return
@@ -602,6 +618,14 @@ export function PublicHousingExplorer({
     }))))
   }, [complexResults.items])
 
+  useLayoutEffect(() => {
+    if (mobile && mapLocation.kind === 'valid') {
+      explicitCameraBoundaryRef.current = boundaryRegionCode
+      setMapCameraTarget({ ...mapLocation.center, zoom: mapLocation.zoom })
+      setCameraRequestId(current => current + 1)
+    }
+  }, [mapLocation, mobile, boundaryRegionCode])
+
   useEffect(() => {
     if (mapLocation.kind === 'absent') {
       return
@@ -619,7 +643,9 @@ export function PublicHousingExplorer({
     location.pathname,
     location.search,
     location.state,
-    mapLocation.kind,
+    mapLocation,
+    mobile,
+    boundaryRegionCode,
     navigate,
   ])
 
