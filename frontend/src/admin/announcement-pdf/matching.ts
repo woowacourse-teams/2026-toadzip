@@ -57,32 +57,50 @@ function equalArea(left: unknown, right: unknown) {
   return typeof left === 'number' && typeof right === 'number' && Math.abs(left - right) < 0.00005
 }
 
+/** PDF 행의 전용면적 → 건설호수 → 공급면적 → 이름 순서로 단지 주택형 후보를 좁힌다. */
+export function pickHousingType(extraction: Extraction, index: number, allTypes: MatchingHousingType[]) {
+  const row = extraction.supplyRows[index]
+  let candidates = allTypes.filter(type => equalArea(type.exclusiveArea, row.values.exclusiveArea))
+  if (!candidates.length && row.values.exclusiveArea == null) {
+    candidates = allTypes.filter(type => normalizedName(type.name) === normalizedName(row.typeName))
+  }
+  let reason = candidates.length ? `전용면적 ${String(row.values.exclusiveArea ?? '')}㎡` : '전용면적에 맞는 주택형을 확인해 주세요.'
+  if (candidates.length > 1 && typeof row.values.constructedHouseholdCount === 'number') {
+    const byCount = candidates.filter(type => type.householdCount === row.values.constructedHouseholdCount)
+    if (byCount.length) { candidates = byCount; reason += ` · 건설호수 ${row.values.constructedHouseholdCount}세대` }
+  }
+  if (candidates.length > 1 && !noteFor(extraction.unresolved, `supplyRows[${index}].supplyArea`)) {
+    const byArea = candidates.filter(type => equalArea(type.supplyArea, row.values.supplyArea))
+    if (byArea.length) { candidates = byArea; reason += ' · 공급면적 일치' }
+  }
+  if (candidates.length > 1) {
+    const byName = candidates.filter(type => normalizedName(type.name) === normalizedName(row.typeName))
+    if (byName.length) candidates = byName
+  }
+  const housingTypeId = candidates.length === 1 ? candidates[0].id : null
+  return { housingTypeId, reason: housingTypeId === null ? `${reason} · 주택형을 하나로 특정하지 못했습니다.` : reason }
+}
+
+// 공고문과 수집 원천의 단지명 표기가 다를 때(전주평화1단지 ↔ 평화주공1단지) 이번 모집수가 유일하게 같은 기존 행을 제안한다.
+function sameRecruitment(row: Extraction['supplyRows'][number], current: CorrectionRow[]) {
+  const count = row.values.totalSupplyHouseholdCount
+  if (typeof count !== 'number') return []
+  const matched = current.filter(item => !item.excluded && item.groupId === null && item.householdCount === count)
+  return matched.length === 1 ? matched : []
+}
+
 export function proposeRows(extraction: Extraction, current: CorrectionRow[], housing: HousingCandidates): RowProposal[] {
   const used = new Set<string>()
   return extraction.supplyRows.map((row, index) => {
-    const related = current.filter(item => !item.excluded && (sameComplex(row.complexName, item.complexName)
+    const byComplexName = current.filter(item => !item.excluded && (sameComplex(row.complexName, item.complexName)
       || sameComplex(row.complexName, item.housingComplexName)))
+    const byRecruitment = byComplexName.length ? [] : sameRecruitment(row, current)
+    const related = byComplexName.length ? byComplexName : byRecruitment
     const complexIds = [...new Set(related.map(item => item.housingComplexId).filter(id => id !== null))]
     const complexId = complexIds.length === 1 ? complexIds[0] : null
     const allTypes = complexId === null ? [] : housing[complexId] ?? []
-    let candidates = allTypes.filter(type => equalArea(type.exclusiveArea, row.values.exclusiveArea))
-    if (!candidates.length && row.values.exclusiveArea == null) {
-      candidates = allTypes.filter(type => normalizedName(type.name) === normalizedName(row.typeName))
-    }
-    let reason = candidates.length ? `전용면적 ${String(row.values.exclusiveArea ?? '')}㎡` : '전용면적에 맞는 주택형을 확인해 주세요.'
-    if (candidates.length > 1 && typeof row.values.constructedHouseholdCount === 'number') {
-      const byCount = candidates.filter(type => type.householdCount === row.values.constructedHouseholdCount)
-      if (byCount.length) { candidates = byCount; reason += ` · 건설호수 ${row.values.constructedHouseholdCount}세대` }
-    }
-    if (candidates.length > 1 && !noteFor(extraction.unresolved, `supplyRows[${index}].supplyArea`)) {
-      const byArea = candidates.filter(type => equalArea(type.supplyArea, row.values.supplyArea))
-      if (byArea.length) { candidates = byArea; reason += ' · 공급면적 일치' }
-    }
-    if (candidates.length > 1) {
-      const byName = candidates.filter(type => normalizedName(type.name) === normalizedName(row.typeName))
-      if (byName.length) candidates = byName
-    }
-    const housingTypeId = candidates.length === 1 ? candidates[0].id : null
+    const picked = pickHousingType(extraction, index, allTypes)
+    const housingTypeId = picked.housingTypeId
     const available = related.filter(item => !used.has(item.key))
     const byName = available.filter(item => normalizedName(item.typeName) === normalizedName(row.typeName))
     const byArea = available.filter(item => equalArea(item.exclusiveArea, row.values.exclusiveArea)
@@ -93,11 +111,11 @@ export function proposeRows(extraction: Extraction, current: CorrectionRow[], ho
     const anchor = chosen ?? (complexId === null ? undefined : related[0])
     const destination = chosen?.key ?? (!current.length || anchor && available.length === 0 ? 'new' : '')
     const changedName = !!chosen && normalizedName(chosen.typeName) !== normalizedName(row.typeName)
+    const recruitmentNote = byRecruitment.length ? `단지명 표기가 달라 이번 모집수 ${String(row.values.totalSupplyHouseholdCount)}세대가 같은 기존 행을 제안했습니다. · ` : ''
     return {
       destination, anchorKey: anchor?.key ?? '', complexId, housingTypeId: housingTypeId ?? chosen?.housingTypeId ?? null, candidates: allTypes,
-      reason: complexId === null ? '단지를 하나로 특정하지 못했습니다.' : housingTypeId === null
-        ? `${reason} · 주택형을 하나로 특정하지 못했습니다.` : reason,
-      needsConfirmation: !chosen || changedName || housingTypeId === null || sharedIndex >= 0 && chosen.groupId === null,
+      reason: complexId === null ? '단지를 하나로 특정하지 못했습니다.' : recruitmentNote + picked.reason,
+      needsConfirmation: !chosen || changedName || housingTypeId === null || byRecruitment.length > 0 || sharedIndex >= 0 && chosen.groupId === null,
       sharedIndex: sharedIndex < 0 ? null : sharedIndex,
     }
   })
