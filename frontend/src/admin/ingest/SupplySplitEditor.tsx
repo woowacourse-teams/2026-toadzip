@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { housingTypeLabel } from './housingTypeLabel'
 import { getMatchingHousingTypes, splitSupplyRow, type SupplyMatch, type MatchingHousingType } from './supplyMatchingApi'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import styles from './AnnouncementSupplyMatchingForm.module.css'
@@ -87,8 +88,7 @@ export function SupplySplitEditor({ identifier, row, complexId, disabled, onBusy
         <label>연결 주택형 {index + 1}<select value={draft.housingTypeId} disabled={complexId === null}
           onChange={event => setDrafts(values => values.map(value => value.key === draft.key ? { ...value, housingTypeId: event.target.value } : value))}>
           <option value="">주택형 선택</option>
-          {types.map(type => <option key={type.id} value={type.id}>{type.name} · 전용 {type.exclusiveArea}㎡
-            {type.supplyArea == null ? '' : ` · 공급 ${type.supplyArea}㎡`}</option>)}
+          {types.map(type => <option key={type.id} value={type.id}>{housingTypeLabel(type, types)}</option>)}
         </select></label>
         <span>개별 모집수 미확정</span>
         {!draft.id && drafts.length > 2 && <button type="button" onClick={() => { setDrafts(values => values.filter(value => value.key !== draft.key)); setDirty(true) }}>행 삭제</button>}

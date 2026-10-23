@@ -2,6 +2,7 @@ import type { ExtractedAnnouncement, JsonObject, JsonUpdateInput, JsonWorkspace 
 import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type NewSupplyGroup } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, type Evidence, type Extraction } from './extraction'
 import { defaultTargetDestinations, normalizedName, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
+import { housingTypeLabel } from '../ingest/housingTypeLabel'
 
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
 export type CellState = 'unresolved' | 'notApplicable' | 'invalid' | 'confirm' | 'same' | 'changed' | 'new'
@@ -181,7 +182,7 @@ export function changeValue(change: PendingChange, value: unknown) {
   if (change.cell.kind === 'housingType') {
     if (value == null) return '미연결'
     const type = change.candidates.find(item => item.id === value)
-    return type ? `${type.name} · ${type.exclusiveArea}㎡` : `#${String(value)}`
+    return type ? housingTypeLabel(type, change.candidates) : `#${String(value)}`
   }
   if (change.cell.kind === 'method' || change.cell.kind === 'scheduleType') return choices[change.cell.kind].find(([key]) => key === value)?.[1] ?? shown(value)
   return shown(value)

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Button } from '../../design-system/components/Button'
+import { housingTypeLabel } from '../ingest/housingTypeLabel'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 import type { Evidence } from './extraction'
 import { cellMatches, cellStates, choices, chooseCellValue, editCell, pendingCell, shown, validCellValue, type Cell, type ReviewFilter, type ValueMode } from './review'
@@ -15,7 +16,7 @@ export function ReviewCells({ cells, scope, housingTypes = [], filter = 'all', o
   function display(cell: Cell, value: unknown) {
     if (cell.kind === 'housingType') {
       const type = housingTypes.find(item => item.id === value)
-      return value == null ? '미연결' : type ? `${type.name} · ${type.exclusiveArea}㎡${type.householdCount != null ? ` · ${type.householdCount}세대` : ''}` : `#${String(value)}`
+      return value == null ? '미연결' : type ? housingTypeLabel(type, housingTypes) : `#${String(value)}`
     }
     if (cell.kind === 'method' || cell.kind === 'scheduleType') return choices[cell.kind].find(([key]) => key === value)?.[1] ?? shown(value)
     return shown(value)
