@@ -37,11 +37,18 @@ export function LoginPage() {
     <Link className={styles.back} to={cancelUrl.pathname + cancelUrl.search + cancelUrl.hash} replace onClick={clearLoginReturn}>
       <span aria-hidden="true">← </span>지도로 돌아가기
     </Link>
-    <div className={styles.content}>
-      <LoginContent page loginFailed={loginFailed} sessionError={sessionError} titleId={titleId}
-        descriptionId={descriptionId} alertRef={alertRef} providerRef={providerRef}
-        onBeginLogin={() => rememberLoginReturn(returnTo, true)} />
+    <div className={styles.welcome}>
+      <img className={styles.logo} src="/brand/logo-bok.png" alt="공공주택 복덕방" width="1220" height="478" />
+      <p className={styles.greeting}>집 찾는 여정,<br />복덕방과 <strong>함께.</strong></p>
+      <p className={styles.introduction}>나에게 맞는 공공주택을 찾는 첫걸음.</p>
     </div>
-    <footer className={styles.footer}><PrivacyLinks /></footer>
+    <div className={styles.sheet}>
+      <div className={styles.content}>
+        <LoginContent page loginFailed={loginFailed} sessionError={sessionError} titleId={titleId}
+          descriptionId={descriptionId} alertRef={alertRef} providerRef={providerRef}
+          onBeginLogin={() => rememberLoginReturn(returnTo, true)} />
+      </div>
+      <footer className={styles.footer}><PrivacyLinks /></footer>
+    </div>
   </main>
 }
