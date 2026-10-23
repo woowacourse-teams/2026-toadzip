@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.collection.history.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.toadzip.backend.global.config.PostgresTestDatabases;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
@@ -205,7 +206,6 @@ class DiscardCollectedSourcesMigrationTest {
     }
 
     private String url(String database) {
-        String port = System.getenv().getOrDefault("TEST_POSTGRES_PORT", "55432");
-        return "jdbc:postgresql://127.0.0.1:" + port + "/" + database;
+        return PostgresTestDatabases.primaryUrl(database);
     }
 }

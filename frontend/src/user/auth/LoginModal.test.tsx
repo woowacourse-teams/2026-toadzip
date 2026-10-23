@@ -45,6 +45,7 @@ it('정책 조회 중에도 기존 로그인 URL과 정책 링크를 바로 제�
   vi.spyOn(privacyApi, 'notices').mockReturnValue(new Promise(() => {}))
   renderLogin()
   expectLegacyLoginLinks()
+  expect(screen.getByRole('dialog', { name: '로그인' })).toHaveAccessibleDescription(/관심있는 공고의\s*새 소식을 받아보세요\./)
   expect(screen.getByRole('link', { name: '카카오톡으로 로그인' })).toHaveFocus()
 })
 
@@ -73,7 +74,7 @@ it.each(['/?login=failed', '/?login=failed&reason=privacy-notice'])('%s 복귀�
   vi.spyOn(privacyApi, 'notices').mockReturnValue(new Promise(() => {}))
   renderLogin(path)
   const alert = screen.getByRole('alert')
-  expect(alert).toHaveTextContent('로그인을 완료하지 못했습니다.')
+  expect(alert).toHaveTextContent('로그인을 완료하지 못했어요.')
   expect(alert).toHaveTextContent('인증이 취소되었거나 로그인 요청이 만료되었을 수 있어요.')
   expect(alert).toHaveTextContent('아래 버튼을 눌러 다시 시도해 주세요.')
   expect(alert).toHaveFocus()

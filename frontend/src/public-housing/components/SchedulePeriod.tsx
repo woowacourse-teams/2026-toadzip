@@ -7,6 +7,7 @@ interface Props {
   readonly hideMidnight?: boolean
 }
 
+/** 원문에 있는 전체 날짜와 시각을 시작·종료 열로 표시한다. */
 export function SchedulePeriod({ startAt, endAt, hideMidnight = false }: Props) {
   const hasEnd = endAt !== null && startAt !== endAt
   return <dl className={styles.period} data-range={hasEnd || undefined}>

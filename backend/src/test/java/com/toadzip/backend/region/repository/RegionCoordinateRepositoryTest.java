@@ -20,7 +20,7 @@ class RegionCoordinateRepositoryTest {
     void setUp() {
         var zoomRepository = new CsvMapClusteringZoomPolicyRepository(
                 classpath("map-clustering/stage-transitions.csv")
-        );
+        , new ClassPathResource("map-clustering/stage-transitions-mobile.csv"));
         var regionRepository = new CsvMapClusteringRegionPolicyRepository(
                 classpath("map-clustering/groups.csv"),
                 classpath("map-clustering/memberships.csv"),

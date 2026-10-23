@@ -3,6 +3,7 @@ import { detailVisitId, useDetailScrollAnalytics } from './detailAnalytics'
 import { toHttpUrl } from '../presentation/httpUrl.ts'
 import {
   type KeyboardEvent,
+  type PointerEvent,
   type RefObject,
   type ReactNode,
   useCallback,
@@ -16,8 +17,8 @@ import {
   DetailCloseButton,
   DetailFact,
   DetailFacts,
-  DetailSection,
   DetailTable,
+  DetailSection,
 } from './DetailPrimitives.tsx'
 import { AttachmentDialog, AttachmentList } from './AnnouncementAttachments.tsx'
 import { hasAttachmentUrl } from '../api/announcementAttachments.ts'
@@ -35,13 +36,14 @@ import {
 } from '../presentation/announcementDetailPresentation.ts'
 import { MISSING_DATA_LABEL } from '../presentation/missingData'
 import { formatHousingArea as formatArea, type AreaUnit } from '../presentation/housingArea'
+import { useAreaUnit } from '../presentation/useAreaUnit'
 import { AreaUnitToggle } from './AreaUnitToggle'
 import { formatPhoneNumber } from '../presentation/phoneNumber'
 import { groupAnnouncementSchedules } from '../presentation/announcementSchedulePresentation'
 import { ScheduleGroupCard } from './ScheduleGroupCard'
 import { SchedulePeriod } from './SchedulePeriod'
 import scheduleStyles from './ScheduleGroups.module.css'
-import { formatHousingMoneyWon } from '../presentation/housingMoney'
+import { formatHousingMoneyReadable } from '../presentation/housingMoney'
 import styles from './HousingAnnouncementDetailPanel.module.css'
 import { NotificationInterestButton } from '../interest/NotificationInterest'
 
@@ -71,6 +73,10 @@ export interface HousingAnnouncementDetailAttachment {
 }
 
 export interface HousingAnnouncementDetailSupplyRow {
+  readonly exclusiveArea?: number | null
+  readonly supplyArea?: number | null
+  readonly corrected?: boolean
+  readonly sharedRecruitment?: { readonly id: number; readonly householdCount: number | null } | null
   readonly supplyRowId: string
   readonly sourceComplexName: string | null
   readonly sourceHousingTypeName: string | null
@@ -118,11 +124,6 @@ export interface HousingAnnouncementDetailPanelProps {
   readonly onOpenComplex?: (complexId: string) => void
 }
 
-interface ComplexSelection {
-  readonly announcementId: string
-  readonly groupKey: string | null
-}
-
 interface FloorPlanSelection {
   readonly complexName: string
   readonly housingTypeName: string
@@ -145,8 +146,7 @@ export function HousingAnnouncementDetailPanel({
   backButton,
 }: HousingAnnouncementDetailPanelProps) {
   const scrollAnalytics = useDetailScrollAnalytics('ANNOUNCEMENT', detail.announcementId)
-  const [areaUnit, setAreaUnit] = useState<AreaUnit>('sqm')
-  const toggleAreaUnit = () => setAreaUnit((unit) => unit === 'sqm' ? 'pyeong' : 'sqm')
+  const { areaUnit, toggleAreaUnit } = useAreaUnit()
   const sectionId = useId()
   const { scrollRef, sectionRefs, activeSection, trackSection, scrollToSection } =
     useAnnouncementSections(detail.announcementId)
@@ -154,33 +154,20 @@ export function HousingAnnouncementDetailPanel({
     () => groupAnnouncementSupplyRows(detail.supplyRows),
     [detail.supplyRows],
   )
-  const firstGroupKey = groups[0]?.key ?? null
-  const [selection, setSelection] = useState<ComplexSelection>({
-    announcementId: detail.announcementId,
-    groupKey: firstGroupKey,
-  })
   const [floorPlan, setFloorPlan] = useState<FloorPlanSelection | null>(null)
   const [attachmentAnnouncementId, setAttachmentAnnouncementId] = useState<string | null>(null)
-  const selectedGroupKey = selection.announcementId === detail.announcementId
-    ? selection.groupKey
-    : firstGroupKey
-  const selectedGroup = groups.find((group) => group.key === selectedGroupKey)
-    ?? groups[0]
+  const announcementFiles = detail.attachments.filter((attachment) =>
+    attachment.fileTypeLabel.includes('공고문') && hasAttachmentUrl(attachment))
+  const primaryAttachment = announcementFiles.find((attachment) => /\.pdf$/i.test(attachment.fileName?.trim() ?? ''))
+    ?? announcementFiles.find((attachment) => /\.hwpx?$/i.test(attachment.fileName?.trim() ?? ''))
+    ?? announcementFiles[0]
   const title = detail.title ?? MISSING_DATA_LABEL
   const titleId = `announcement-detail-title-${detail.announcementId}`
   const headingRef = useRef<HTMLHeadingElement>(null)
-  const tabRefs = useRef(new Map<string, HTMLButtonElement>())
 
   useEffect(() => {
     headingRef.current?.focus({ preventScroll: true })
   }, [detail.announcementId])
-
-  function selectGroup(group: HousingAnnouncementSupplyComplexGroup) {
-    setSelection({
-      announcementId: detail.announcementId,
-      groupKey: group.key,
-    })
-  }
 
   function handlePanelKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.key !== 'Escape') {
@@ -188,23 +175,6 @@ export function HousingAnnouncementDetailPanel({
     }
     event.stopPropagation()
     onClose()
-  }
-
-  function handleGroupKeyDown(
-    event: KeyboardEvent<HTMLButtonElement>,
-    index: number,
-  ) {
-    const nextIndex = tabIndexForKey(event.key, index, groups.length)
-    if (nextIndex === null) {
-      return
-    }
-    const nextGroup = groups[nextIndex]
-    if (!nextGroup) {
-      return
-    }
-    event.preventDefault()
-    selectGroup(nextGroup)
-    tabRefs.current.get(nextGroup.key)?.focus()
   }
 
   return (
@@ -247,12 +217,14 @@ export function HousingAnnouncementDetailPanel({
         <div id={`${sectionId}-summary`} className={styles.sectionGroup}
           role="region" aria-label="요약 영역" tabIndex={-1}
           ref={(node) => { sectionRefs.current.summary = node }}>
-          <NoticeIntro detail={detail} groups={groups} />
-          <div className={styles.notificationAction}>
-            <NotificationInterestButton
-              target={{ type: 'ANNOUNCEMENT', id: detail.announcementId, name: title }}
-              source="ANNOUNCEMENT_DETAIL"
-            />
+          <div className={styles.summaryBlock}>
+            <NoticeIntro detail={detail} groups={groups} />
+            <div className={styles.notificationAction}>
+              <NotificationInterestButton
+                target={{ type: 'ANNOUNCEMENT', id: detail.announcementId, name: title }}
+                source="ANNOUNCEMENT_DETAIL"
+              />
+            </div>
           </div>
           <CoreInformation detail={detail} />
           <ReasonNotice detail={detail} />
@@ -275,15 +247,12 @@ export function HousingAnnouncementDetailPanel({
             supplyHouseholdCount={detail.supplyHouseholdCount}
             onOpenComplex={onOpenComplex}
           />
-          {selectedGroup && (
+          {groups.length > 0 && (
             <HousingTypeComparison
+              key={`housing-types:${detail.announcementId}`}
               areaUnit={areaUnit}
               onToggleAreaUnit={toggleAreaUnit}
               groups={groups}
-              selectedGroup={selectedGroup}
-              tabRefs={tabRefs.current}
-              onSelectGroup={selectGroup}
-              onGroupKeyDown={handleGroupKeyDown}
               onOpenFloorPlan={setFloorPlan}
             />
           )}
@@ -291,9 +260,10 @@ export function HousingAnnouncementDetailPanel({
         </div>
       </div>
 
-      <DocumentActions detail={detail} onOpenAttachments={() => setAttachmentAnnouncementId(detail.announcementId)} />
-      {attachmentAnnouncementId === detail.announcementId && (
-        <AttachmentDialog key={detail.announcementId} announcementId={detail.announcementId} attachments={detail.attachments}
+      <DocumentActions detail={detail} hasAnnouncementFile={primaryAttachment !== undefined}
+        onOpenAttachments={() => setAttachmentAnnouncementId(detail.announcementId)} />
+      {attachmentAnnouncementId === detail.announcementId && primaryAttachment && (
+        <AttachmentDialog key={detail.announcementId} announcementId={detail.announcementId} attachments={[primaryAttachment]}
           onClose={() => setAttachmentAnnouncementId(null)} />
       )}
       {floorPlan && (
@@ -408,10 +378,9 @@ function StickyHeader({
             && deadlineLabel(detail) !== detail.rentalTypeLabel && (
             <span aria-label={deadlineAccessibleLabel(detail)}>{deadlineLabel(detail)}</span>
           )}
-          {detail.publicationTypeLabel !== '원공고'
-            && detail.publicationTypeLabel !== statusLabel
-            && detail.publicationTypeLabel !== detail.rentalTypeLabel && (
-            <span data-publication="changed">{detail.publicationTypeLabel}</span>
+          {/* 원공고는 표시하지 않고, 정정·취소 공고만 빨간 딱지로 알린다. */}
+          {publicationBadge(detail.publicationTypeLabel) && (
+            <span data-publication="changed">{publicationBadge(detail.publicationTypeLabel)}</span>
           )}
         </div>
         <h2 ref={headingRef} id={titleId} tabIndex={-1} title={title}>{title}</h2>
@@ -435,7 +404,7 @@ function NoticeIntro({
   const missingAgencyAndRegion = agency === MISSING_DATA_LABEL && region === MISSING_DATA_LABEL
   return (
     <section className={styles.intro} aria-label="공고 요약">
-      <p>
+      <p className={styles.introMeta}>
         {missingAgencyAndRegion ? (
           <>
             <span className={styles.visuallyHidden}>공사·지역 </span>
@@ -444,7 +413,7 @@ function NoticeIntro({
         ) : (
           <>
             <strong data-agency={detail.agencyCode}>{agency}</strong>
-            <span aria-hidden="true">·</span>
+            <span aria-hidden="true">{'\u00a0·\u00a0'}</span>
             <b>{region}</b>
           </>
         )}
@@ -463,8 +432,8 @@ function NoticeIntro({
 function CoreInformation({ detail }: { detail: HousingAnnouncementDetailData }) {
   const audiences = detail.targets.map((target) => target.trim()).filter(Boolean)
   return (
-    <DetailSection title="공고 핵심 정보">
-      <DetailFacts>
+    <DetailSection appearance="block" title="공고 핵심 정보">
+      <DetailFacts appearance="list">
         <DetailFact term="접수 시작" value={formatDate(detail.applicationStartAt)} />
         <DetailFact term="접수 마감" value={formatDate(detail.applicationEndAt)} />
         <DetailFact term="공급 단지" value={formatNullableCount(detail.supplyComplexCount, '개 단지')} />
@@ -521,7 +490,7 @@ function ScheduleSection({ detail, groups }: {
 
   return (
     <>
-      <DetailSection title="접수 일정">
+      <DetailSection appearance="block" title="접수 일정">
         {hasVerifiedSchedules && <ApplicationScheduleGroups schedules={applicationSchedules} complexes={groups} />}
         {!hasApplicationSchedule && !hasApplicationFallback && <EmptyState>{MISSING_DATA_LABEL}</EmptyState>}
         {!hasVerifiedSchedules && receptionSchedules.length > 0 && (
@@ -530,7 +499,7 @@ function ScheduleSection({ detail, groups }: {
         )}
       </DetailSection>
       {followUpSchedules.length > 0 && (
-        <DetailSection title="후속 일정">
+        <DetailSection appearance="block" title="후속 일정">
           <AnnouncementScheduleGroups schedules={followUpSchedules} caption="후속 일정" />
         </DetailSection>
       )}
@@ -586,7 +555,7 @@ function ReceptionPlaces({
     return null
   }
   return (
-    <DetailSection title="접수 방법">
+    <DetailSection appearance="block" title="접수 방법">
       <ul className={styles.receptionList}>
         {places.map((place, index) => {
           const url = toHttpUrl(place.url)
@@ -600,7 +569,7 @@ function ReceptionPlaces({
                 {url && <ExternalLink href={url}>접수처 열기</ExternalLink>}
               </div>
               {(hasText(place.address) || hasText(place.phoneNumber)) && (
-                <DetailFacts>
+                <DetailFacts appearance="list">
                   {hasText(place.address) && <DetailFact term="주소" value={place.address} wide />}
                   {hasText(place.phoneNumber) && <DetailFact term="문의" value={formatPhoneNumber(place.phoneNumber) ?? MISSING_DATA_LABEL} wide />}
                 </DetailFacts>
@@ -631,7 +600,7 @@ function ComplexComparison({
   onOpenComplex?: (complexId: string) => void
 }) {
   return (
-    <DetailSection
+    <DetailSection appearance="block"
       title="단지 비교"
       actions={groups.length > 0 ? <AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} /> : undefined}
       aside={`${formatNullableCount(supplyComplexCount, '개 단지')} · ${supplyHouseholdSummary(supplyHouseholdCount)}`}
@@ -681,16 +650,6 @@ function ComplexCard({
           <strong>{group.name}</strong>
           <span>{rentalTypeLabel}</span>
         </div>
-        {group.complexId && onOpenComplex && (
-          <button
-            type="button"
-            data-detail-return-focus={`complex:${group.complexId}`}
-            aria-label={`${group.name} 단지 상세 보기`}
-            onClick={openComplex}
-          >
-            단지 상세
-          </button>
-        )}
       </header>
       <div className={styles.complexSummary} data-has-image={imageUrl !== null}>
         {imageUrl && (
@@ -723,6 +682,17 @@ function ComplexCard({
           />
         </DetailFacts>
       </div>
+      {group.complexId && onOpenComplex && (
+        <button
+          className={styles.complexDetailButton}
+          type="button"
+          data-detail-return-focus={`complex:${group.complexId}`}
+          aria-label={`${group.name} 단지 상세 보기`}
+          onClick={openComplex}
+        >
+          단지 상세 보기 <span aria-hidden="true">→</span>
+        </button>
+      )}
     </article>
   )
 }
@@ -731,71 +701,207 @@ function HousingTypeComparison({
   areaUnit,
   onToggleAreaUnit,
   groups,
-  selectedGroup,
-  tabRefs,
-  onSelectGroup,
-  onGroupKeyDown,
   onOpenFloorPlan,
 }: {
   areaUnit: AreaUnit
   onToggleAreaUnit: () => void
   groups: readonly HousingAnnouncementSupplyComplexGroup[]
-  selectedGroup: HousingAnnouncementSupplyComplexGroup
-  tabRefs: Map<string, HTMLButtonElement>
-  onSelectGroup: (group: HousingAnnouncementSupplyComplexGroup) => void
-  onGroupKeyDown: (event: KeyboardEvent<HTMLButtonElement>, index: number) => void
   onOpenFloorPlan: (selection: FloorPlanSelection) => void
 }) {
-  const idPrefix = useId()
-  const selectedIndex = groups.findIndex((group) => (
-    group.key === selectedGroup.key
-  ))
-  const panelId = `${idPrefix}-housing-types`
+  const id = useId()
+  const [selectedKey, setSelectedKey] = useState(groups[0]?.key)
+  const tabListRef = useRef<HTMLDivElement>(null)
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const [scrollEdges, setScrollEdges] = useState({ left: false, right: false })
+  const [dragging, setDragging] = useState(false)
+  const dragRef = useRef<{ pointerId: number; x: number; scrollLeft: number; moved: boolean } | null>(null)
+  const suppressClickRef = useRef(false)
+  const updateScrollEdges = useCallback(() => {
+    const list = tabListRef.current
+    if (!list) return
+    const left = list.scrollLeft > 1
+    const right = list.scrollLeft + list.clientWidth < list.scrollWidth - 1
+    setScrollEdges((previous) => previous.left === left && previous.right === right ? previous : { left, right })
+  }, [])
+
+  useEffect(() => {
+    const list = tabListRef.current
+    if (!list) return
+    updateScrollEdges()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(updateScrollEdges)
+    observer.observe(list)
+    tabRefs.current.forEach((tab) => { if (tab) observer.observe(tab) })
+    return () => observer.disconnect()
+  }, [groups, updateScrollEdges])
+
+  const selectedIndex = Math.max(0, groups.findIndex((group) => group.key === selectedKey))
+  const selectedGroup = groups[selectedIndex]
+
+  useEffect(() => {
+    const list = tabListRef.current
+    const tab = tabRefs.current[selectedIndex]
+    if (!list || !tab) return
+    // Only scroll the horizontal strip; keep the detail panel's vertical position.
+    const listBounds = list.getBoundingClientRect()
+    const tabBounds = tab.getBoundingClientRect()
+    if (tabBounds.left < listBounds.left) list.scrollLeft -= listBounds.left - tabBounds.left
+    else if (tabBounds.right > listBounds.right) list.scrollLeft += tabBounds.right - listBounds.right
+    updateScrollEdges()
+  }, [selectedIndex, updateScrollEdges])
+
+  function startTabDrag(event: PointerEvent<HTMLDivElement>) {
+    suppressClickRef.current = false
+    const list = event.currentTarget
+    if (event.pointerType !== 'mouse' || event.button !== 0 || list.scrollWidth <= list.clientWidth) return
+    dragRef.current = { pointerId: event.pointerId, x: event.clientX, scrollLeft: list.scrollLeft, moved: false }
+  }
+
+  function moveTabDrag(event: PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    if ((event.buttons & 1) === 0) {
+      endTabDrag(event, true)
+      return
+    }
+    const distance = event.clientX - drag.x
+    if (!drag.moved && Math.abs(distance) < 6) return
+    if (!drag.moved) {
+      drag.moved = true
+      suppressClickRef.current = true
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+      setDragging(true)
+    }
+    event.preventDefault()
+    event.currentTarget.scrollLeft = drag.scrollLeft - distance
+    updateScrollEdges()
+  }
+
+  function endTabDrag(event: PointerEvent<HTMLDivElement>, cancelled = false) {
+    if (dragRef.current?.pointerId !== event.pointerId) return
+    dragRef.current = null
+    setDragging(false)
+    if (cancelled) suppressClickRef.current = false
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+
+  function selectGroup(index: number, focus = false) {
+    const group = groups[index]
+    if (!group) return
+    setSelectedKey(group.key)
+    if (focus) tabRefs.current[index]?.focus({ preventScroll: true })
+  }
+
+  function handleTabKey(event: KeyboardEvent<HTMLButtonElement>) {
+    let index: number
+    if (event.key === 'ArrowRight') index = (selectedIndex + 1) % groups.length
+    else if (event.key === 'ArrowLeft') index = (selectedIndex - 1 + groups.length) % groups.length
+    else if (event.key === 'Home') index = 0
+    else if (event.key === 'End') index = groups.length - 1
+    else return
+    event.preventDefault()
+    selectGroup(index, true)
+  }
+
+  if (!selectedGroup) return null
   return (
-    <DetailSection
+    <DetailSection appearance="block"
       title="주택형 비교"
       actions={<AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} />}
     >
-      <div className={styles.housingTypeGroup}>
-        {groups.length > 0 && (
-          <div className={styles.complexTabs} role="tablist" aria-label="주택형을 볼 단지 선택">
+      {groups.length > 1 && (
+        <div className={styles.complexTabsFrame} data-scroll-left={scrollEdges.left} data-scroll-right={scrollEdges.right}>
+          <div className={styles.complexTabs} role="tablist" aria-label="주택형 비교 단지 선택" ref={tabListRef}
+            data-dragging={dragging || undefined} onScroll={updateScrollEdges}
+            onPointerDown={startTabDrag} onPointerMove={moveTabDrag}
+            onPointerUp={(event) => endTabDrag(event)} onPointerCancel={(event) => endTabDrag(event, true)}
+            onLostPointerCapture={(event) => endTabDrag(event)}
+            onClickCapture={(event) => {
+              if (!suppressClickRef.current || event.detail === 0) return
+              suppressClickRef.current = false
+              event.preventDefault()
+              event.stopPropagation()
+            }}>
             {groups.map((group, index) => (
-              <button
-                key={group.key}
-                ref={(node) => setTabRef(tabRefs, group.key, node)}
-                id={`${idPrefix}-complex-tab-${index}`}
-                type="button"
-                role="tab"
-                aria-controls={panelId}
-                aria-selected={group.key === selectedGroup.key}
-                tabIndex={group.key === selectedGroup.key ? 0 : -1}
-                onClick={() => onSelectGroup(group)}
-                onKeyDown={(event) => onGroupKeyDown(event, index)}
-              >
-                <span>{group.name}</span>
-                <b>{supplyHouseholdSummary(group.supplyHouseholdCount)}</b>
+              <button key={group.key} type="button" role="tab" id={`${id}-tab-${index}`}
+                className={styles.complexTab} ref={(node) => { tabRefs.current[index] = node }}
+                aria-selected={index === selectedIndex} aria-controls={`${id}-panel-${index}`}
+                tabIndex={index === selectedIndex ? 0 : -1}
+                onClick={() => selectGroup(index)} onKeyDown={handleTabKey}>
+                <strong>{group.name}</strong>
+                <span>{supplyHouseholdSummary(group.supplyHouseholdCount)}</span>
               </button>
             ))}
           </div>
-        )}
-        <div
-          className={styles.housingTypes}
-          id={panelId}
-          role="tabpanel"
-          aria-labelledby={`${idPrefix}-complex-tab-${selectedIndex}`}
-        >
-          {selectedGroup.rows.map((row) => (
-            <HousingTypeCard
-              areaUnit={areaUnit}
-              key={row.supplyRowId}
-              complexName={selectedGroup.name}
-              row={row}
-              onOpenFloorPlan={onOpenFloorPlan}
-            />
-          ))}
         </div>
-      </div>
+      )}
+      {groups.map((group, index) => (
+        <section key={group.key} id={`${id}-panel-${index}`} className={styles.housingTypeGroup}
+          role={groups.length > 1 ? 'tabpanel' : 'region'} hidden={index !== selectedIndex}
+          aria-labelledby={groups.length > 1 ? `${id}-tab-${index}` : undefined}
+          aria-label={groups.length === 1 ? `${group.name} 주택형 비교` : undefined}
+          tabIndex={groups.length > 1 ? 0 : undefined}>
+          {groups.length === 1 && (
+            <header className={styles.housingTypeGroupHeading}>
+              <h4>{group.name}</h4>
+              <span>{supplyHouseholdSummary(group.supplyHouseholdCount)}</span>
+            </header>
+          )}
+          {index === selectedIndex && <HousingTypeSelection key={group.key} group={group}
+            areaUnit={areaUnit} onOpenFloorPlan={onOpenFloorPlan} />}
+        </section>
+      ))}
     </DetailSection>
+  )
+}
+
+function HousingTypeSelection({ group, areaUnit, onOpenFloorPlan }: {
+  group: HousingAnnouncementSupplyComplexGroup
+  areaUnit: AreaUnit
+  onOpenFloorPlan: (selection: FloorPlanSelection) => void
+}) {
+  const [selectedId, setSelectedId] = useState(group.rows[0]?.supplyRowId)
+  const selected = group.rows.find((row) => row.supplyRowId === selectedId) ?? group.rows[0]
+  const id = useId()
+  if (!selected) return null
+  return (
+    <div className={styles.housingTypes}>
+      {group.rows.length > 1 && (
+        <div>
+          <p className={styles.housingTypeHint} id={`${id}-hint`}>
+            주택형 {group.rows.length}개 · 선택하면 아래에 상세가 표시돼요
+          </p>
+          <div className={styles.housingTypeSummaryScroll} role="region"
+            aria-label={`${group.name} 주택형 요약 목록`} tabIndex={group.rows.length > 5 ? 0 : undefined}>
+            <table className={styles.housingTypeSummary} aria-label={`${group.name} 주택형 요약`}
+              aria-describedby={`${id}-hint`}>
+              <thead><tr><th scope="col">주택형</th><th scope="col">전용면적</th><th scope="col">공급세대</th></tr></thead>
+              <tbody>
+                {group.rows.map((row) => (
+                  <tr key={row.supplyRowId} data-selected={row.supplyRowId === selected.supplyRowId}>
+                    <td>
+                      <button type="button" aria-label={`${housingTypeLabel(row)} 주택형 선택`}
+                        aria-pressed={row.supplyRowId === selected.supplyRowId}
+                        aria-controls={`${id}-selected`} onClick={() => setSelectedId(row.supplyRowId)}>
+                        <strong>{housingTypeLabel(row)}</strong>
+                        <span>{row.supplyTypeLabel}</span>
+                      </button>
+                    </td>
+                    <td>{formatArea(row.exclusiveArea === undefined ? row.housingType?.exclusiveArea ?? null : row.exclusiveArea, areaUnit)}</td>
+                    <td>{row.sharedRecruitment ? '공통 모집' : formatNullableCount(row.totalSupplyHouseholdCount, '세대')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      <div id={`${id}-selected`}>
+        {group.rows.length > 1 && <h4 className={styles.selectedHousingTypeTitle}>선택 주택형 상세</h4>}
+        <HousingTypeCard areaUnit={areaUnit} complexName={group.name} row={selected}
+          onOpenFloorPlan={onOpenFloorPlan} />
+      </div>
+    </div>
   )
 }
 
@@ -811,9 +917,7 @@ function HousingTypeCard({
   onOpenFloorPlan: (selection: FloorPlanSelection) => void
 }) {
   const idPrefix = useId()
-  const housingTypeName = row.housingType?.name
-    ?? row.sourceHousingTypeName
-    ?? MISSING_DATA_LABEL
+  const housingTypeName = housingTypeLabel(row)
   const twoDimensionalUrl = toHttpUrl(row.housingType?.floorPlanImageUrl ?? null)
   const threeDimensionalUrl = toHttpUrl(row.housingType?.floorPlan3dImageUrl ?? null)
   const hasFloorPlan = twoDimensionalUrl !== null || threeDimensionalUrl !== null
@@ -850,16 +954,29 @@ function HousingTypeCard({
             <th id={`${idPrefix}-kind`} scope="row">공급 구분</th>
             <td headers={`${idPrefix}-kind`}>{row.supplyTypeLabel}</td>
             <th id={`${idPrefix}-area`} scope="row">전용면적</th>
-            <td headers={`${idPrefix}-area`}>{formatArea(row.housingType?.exclusiveArea ?? null, areaUnit)}</td>
+            <td headers={`${idPrefix}-area`}>{formatArea(row.exclusiveArea === undefined ? row.housingType?.exclusiveArea ?? null : row.exclusiveArea, areaUnit)}</td>
           </tr>
           <tr>
             <th id={`${idPrefix}-count`} scope="row">공급 세대수</th>
-            <td headers={`${idPrefix}-count`}>{formatNullableCount(row.totalSupplyHouseholdCount, '세대')}</td>
-            <th id={`${idPrefix}-occupancy`} scope="row">입주 예정</th>
+            <td headers={`${idPrefix}-count`}>{row.sharedRecruitment ? '공통 합계 · 개별 미확정' : formatNullableCount(row.totalSupplyHouseholdCount, '세대')}</td>
+            <th id={`${idPrefix}-occupancy`} scope="row">최초 입주 연월</th>
             <td headers={`${idPrefix}-occupancy`}>{formatYearMonth(row.occupancyExpectedYearMonth)}</td>
           </tr>
+          {(row.supplyArea !== undefined || row.housingType?.supplyArea != null) && (
+            <tr>
+              <th id={`${idPrefix}-supply-area`} scope="row">공급면적</th>
+              <td headers={`${idPrefix}-supply-area`} colSpan={3}>
+                {formatArea(row.supplyArea === undefined ? row.housingType?.supplyArea ?? null : row.supplyArea, areaUnit)}
+              </td>
+            </tr>
+          )}
         </tbody>
       </DetailTable>
+      {row.occupancyExpectedYearMonth && (
+        <p className={styles.occupancyNote}>
+          최초 입주 연월은 원문 기준이며, 이번 모집의 입주 일정과 다를 수 있어요.
+        </p>
+      )}
       <SupplyTargets targets={row.targets} />
     </article>
   )
@@ -899,11 +1016,11 @@ function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget
               <tr>
                 <th id={`${idPrefix}-${index}-deposit`} scope="row">보증금</th>
                 <td headers={`${idPrefix}-${index}-deposit`} data-emphasis={Number.isFinite(target.deposit) || undefined} data-numeric="true">
-                  {formatHousingMoneyWon(target.deposit)}
+                  {formatHousingMoneyReadable(target.deposit)}
                 </td>
                 <th id={`${idPrefix}-${index}-rent`} scope="row">월 임대료</th>
                 <td headers={`${idPrefix}-${index}-rent`} data-emphasis={Number.isFinite(target.monthlyRent) || undefined} data-numeric="true">
-                  {formatHousingMoneyWon(target.monthlyRent)}
+                  {formatHousingMoneyReadable(target.monthlyRent)}
                 </td>
               </tr>
               {hasText(target.applicationCondition) && (
@@ -920,21 +1037,26 @@ function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget
   )
 }
 
-function DocumentActions({ detail, onOpenAttachments }: {
+function housingTypeLabel(row: HousingAnnouncementDetailSupplyRow) {
+  if ((row.corrected || row.sharedRecruitment) && row.sourceHousingTypeName) return row.sourceHousingTypeName
+  return row.housingType?.name ?? row.sourceHousingTypeName ?? MISSING_DATA_LABEL
+}
+
+function DocumentActions({ detail, hasAnnouncementFile, onOpenAttachments }: {
   detail: HousingAnnouncementDetailData
+  hasAnnouncementFile: boolean
   onOpenAttachments: () => void
 }) {
   const sourceUrl = toHttpUrl(detail.documentLinkUrl)
-  const hasFiles = detail.attachments.some(hasAttachmentUrl)
   return (
     <footer className={styles.documents}>
       <nav aria-label="공고문 바로가기">
-        <button type="button" disabled={!hasFiles} onClick={onOpenAttachments}>공고문 보기</button>
+        <button type="button" disabled={!hasAnnouncementFile} onClick={onOpenAttachments}>공고문 보기</button>
         {sourceUrl && <a href={sourceUrl} target="_blank" rel="noreferrer" onClick={(event) => {
           captureProductEvent('announcement_source_clicked', { announcement_id: detail.announcementId,
             detail_visit_id: detailVisitId(event.currentTarget) })
-        }}>공고 원문</a>}
-        {!sourceUrl && <DisabledLink>공고 원문</DisabledLink>}
+        }}>공고 사이트로 이동</a>}
+        {!sourceUrl && <DisabledLink>공고 사이트로 이동</DisabledLink>}
       </nav>
     </footer>
   )
@@ -1118,7 +1240,7 @@ function supplyHouseholdSummary(value: number | null) {
 
 function areaRange(rows: readonly HousingAnnouncementDetailSupplyRow[], unit: AreaUnit) {
   const values = rows
-    .map((row) => row.housingType?.exclusiveArea ?? null)
+    .map((row) => row.exclusiveArea === undefined ? row.housingType?.exclusiveArea ?? null : row.exclusiveArea)
     .filter((value): value is number => value !== null && Number.isFinite(value))
   return numericRange(values, (value) => formatArea(value, unit))
 }
@@ -1130,7 +1252,7 @@ function moneyRange(
   const values = rows.flatMap((row) => row.targets)
     .map((target) => target[key])
     .filter((value): value is number => value !== null)
-  return numericRange(values, formatHousingMoneyWon)
+  return numericRange(values, formatHousingMoneyReadable)
 }
 
 function numericRange(
@@ -1146,34 +1268,6 @@ function numericRange(
     return format(minimum)
   }
   return `${format(minimum)} – ${format(maximum)}`
-}
-
-function tabIndexForKey(key: string, currentIndex: number, length: number) {
-  if (key === 'Home') {
-    return 0
-  }
-  if (key === 'End') {
-    return length - 1
-  }
-  if (key === 'ArrowRight') {
-    return (currentIndex + 1) % length
-  }
-  if (key === 'ArrowLeft') {
-    return (currentIndex - 1 + length) % length
-  }
-  return null
-}
-
-function setTabRef(
-  refs: Map<string, HTMLButtonElement>,
-  key: string,
-  node: HTMLButtonElement | null,
-) {
-  if (node) {
-    refs.set(key, node)
-    return
-  }
-  refs.delete(key)
 }
 
 function handleDialogKeyDown(
@@ -1209,6 +1303,12 @@ function handleDialogKeyDown(
   if (wrapsForward) {
     first?.focus()
   }
+}
+
+function publicationBadge(label: string) {
+  if (label === '정정공고') return '정정'
+  if (label === '취소공고') return '취소'
+  return null
 }
 
 function safeId(value: string) {

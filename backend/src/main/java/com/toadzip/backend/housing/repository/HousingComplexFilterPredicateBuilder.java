@@ -79,7 +79,7 @@ final class HousingComplexFilterPredicateBuilder {
                 FROM supply_rows cancelled_supply_row
                 JOIN announcements cancelled_announcement
                   ON cancelled_announcement.id = cancelled_supply_row.announcement_id
-                WHERE cancelled_supply_row.housing_complex_id = housing_complex.id
+                WHERE cancelled_supply_row.admin_excluded = false AND cancelled_supply_row.housing_complex_id = housing_complex.id
                   AND cancelled_announcement.admin_deleted = false
                   AND cancelled_announcement.status IN ('CANCELLATION', '취소공고')
                   AND NOT EXISTS (

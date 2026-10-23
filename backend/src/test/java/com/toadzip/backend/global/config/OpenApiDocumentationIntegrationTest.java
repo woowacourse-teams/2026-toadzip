@@ -1,5 +1,6 @@
 package com.toadzip.backend.global.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -13,10 +14,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.ActiveProfiles;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -50,10 +54,40 @@ class OpenApiDocumentationIntegrationTest {
 
     private static final Set<String> LIST_ONLY_PARAMETERS = Set.of("sort", "cursor", "size");
 
-    private static final Set<String> V2_MAP_ONLY_PARAMETERS = Set.of("zoom", "previousResolvedStage");
+    private static final Set<String> V2_MAP_ONLY_PARAMETERS =
+            Set.of("zoom", "previousResolvedStage", "clusteringProfile");
 
     @LocalServerPort
     private int port;
+
+    @Test
+    void 거리뷰_경로_입력_enum_오류와_응답을_명세한다() throws Exception {
+        HttpResponse<String> response = TestHttpClient.get(port, "/v3/api-docs");
+        assertEquals(200, response.statusCode());
+        JsonNode document = JsonMapper.builder().build().readTree(response.body());
+        JsonNode paths = document.path("paths");
+        JsonNode publicGet = paths.path("/api/v1/complexes/{complexId}/street-view").path("get");
+        assertThat(publicGet.path("responses").has("200")).isTrue();
+        assertThat(publicGet.path("responses").has("404")).isTrue();
+        assertThat(publicGet.path("responses").has("503")).isTrue();
+        JsonNode policy = paths.path("/api/admin/street-view-policy");
+        assertThat(policy.has("get")).isTrue();
+        assertThat(policy.path("put").path("responses").has("409")).isTrue();
+        assertThat(paths.path("/api/admin/street-view-policy/changes").has("get")).isTrue();
+        JsonNode event = paths.path("/api/v1/street-view/events").path("post");
+        for (String code : List.of("204", "400", "403", "404", "409", "413", "415", "429", "503")) {
+            assertThat(event.path("responses").has(code)).as(code).isTrue();
+        }
+        assertThat(event.path("responses").path("204").has("content")).isFalse();
+        assertThat(event.path("responses").path("413").path("content").path("application/json").path("schema")
+                .path("$ref").asText()).endsWith("/ErrorResponse");
+        JsonNode schema = document.path("components").path("schemas").path("StreetViewEventRequest");
+        assertThat(StreamSupport.stream(schema.path("required").spliterator(), false).map(JsonNode::asText).toList())
+                .contains("attemptId", "complexId", "policyRevision", "type", "phase", "durationMs");
+        assertThat(StreamSupport.stream(schema.path("properties").path("type").path("enum").spliterator(), false)
+                .map(JsonNode::asText).toList()).containsExactly("STARTED", "READY", "FAILED", "CANCELLED");
+        assertThat(schema.path("properties").path("durationMs").path("maximum").asLong()).isEqualTo(600000);
+    }
 
     @Test
     void 로컬_프로필은_헬스_체크_API가_포함된_OpenAPI_문서를_제공한다() throws Exception {
@@ -145,7 +179,8 @@ class OpenApiDocumentationIntegrationTest {
         List<Map<String, Object>> v2MapParameters = parameters(response.body(), "/api/v2/complexes/map");
         assertAll(
                 () -> assertExactQueryParameters(listParameters, expectedListParameters),
-                () -> assertExactQueryParameters(v2MapParameters, expectedV2MapParameters)
+                () -> assertExactQueryParameters(v2MapParameters, expectedV2MapParameters),
+                () -> assertOptionalQueryParameter(response.body(), "/api/v2/complexes/map", "clusteringProfile")
         );
     }
 

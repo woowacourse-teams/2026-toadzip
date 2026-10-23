@@ -56,7 +56,7 @@ public class NotificationAudienceRepository {
         List<ComplexTarget> complexes = jdbc.query("""
                 SELECT DISTINCT c.id,c.province_code,c.city_county_district_code,c.legal_dong_code
                 FROM supply_rows s JOIN housing_complexes c ON c.id=s.housing_complex_id
-                WHERE s.announcement_id=? AND NOT c.admin_deleted ORDER BY c.id LIMIT ?
+                WHERE s.admin_excluded = false AND s.announcement_id=? AND NOT c.admin_deleted ORDER BY c.id LIMIT ?
                 """, (row, number) -> new ComplexTarget(row.getLong("id"), row.getString("province_code"),
                 row.getString("city_county_district_code"), row.getString("legal_dong_code")),
                 announcementId, MAX_COMPLEXES + 1);

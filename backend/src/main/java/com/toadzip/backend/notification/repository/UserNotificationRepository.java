@@ -80,7 +80,7 @@ public class UserNotificationRepository {
                         AND NOT EXISTS(SELECT 1 FROM announcements successor
                             WHERE successor.previous_announcement_id=a.id AND NOT successor.admin_deleted)
                         AND EXISTS(SELECT 1 FROM supply_rows s JOIN housing_complexes c ON c.id=s.housing_complex_id
-                            WHERE s.announcement_id=a.id AND NOT c.admin_deleted)) AS target_available
+                            WHERE s.admin_excluded = false AND s.announcement_id=a.id AND NOT c.admin_deleted)) AS target_available
                 FROM boundary LEFT JOIN page ON true ORDER BY page.created_at DESC,page.id DESC
                 """.formatted(cursorPredicate), parameters, (row, number) -> {
                     Item item = null;

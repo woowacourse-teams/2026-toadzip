@@ -1,4 +1,5 @@
 .root {
+  container: complex-filters / inline-size;
   position: relative;
   width: 100%;
   min-width: 0;
@@ -16,41 +17,54 @@
   pointer-events: none;
 }
 
-.desktopFilters .toolbar,
+.desktopFilters .scroller,
+.desktopFilters .recruitingToggle,
 .desktopFilters .popover {
   pointer-events: auto;
 }
 
+/* 실제 버튼 너비만큼 묶어 오른쪽에 정렬하고, 버튼 사이 간격은 유지한다. */
 .toolbar {
+  position: relative;
   display: flex;
-  width: fit-content;
+  flex-direction: column;
+  align-items: stretch;
+  width: max-content;
   max-width: 100%;
   margin-inline-start: auto;
-  padding: 3px;
+  margin-top: 1px;
+  padding: 0;
   gap: 8px;
 }
 
 .scroller {
-  padding-top: 6px;
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
-  flex: 1 1 auto;
+  padding: 8px 5px 5px;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: thin;
   overscroll-behavior-inline: contain;
 }
 
 .primaryFilters {
   display: flex;
-  width: max-content;
+  justify-content: flex-start;
   gap: 8px;
+}
+
+.primaryFilters .trigger {
+  flex-shrink: 0;
 }
 
 .trigger {
   position: relative;
   display: inline-flex;
   width: auto;
-  height: calc(var(--ds-space-5) * 2);
+  height: 40px;
+  box-sizing: border-box;
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;
@@ -78,9 +92,9 @@
 
 .trigger[data-active='true'],
 .trigger[aria-expanded='true'] {
-  border-color: var(--ds-color-action);
+  border-color: var(--ds-color-brand);
   background: var(--ds-color-action-selected);
-  color: var(--ds-color-action);
+  color: var(--ds-color-text);
 }
 
 .detailTrigger {
@@ -102,29 +116,28 @@
 
 .filterCount {
   position: absolute;
-  top: -5px;
-  right: -2px;
+  top: -8px;
+  right: -4px;
   display: inline-flex;
-  min-width: 18px;
-  height: 18px;
+  min-width: 22px;
+  height: 22px;
   align-items: center;
   justify-content: center;
-  padding: 0 3px;
+  padding: 0 5px;
   border: 2px solid var(--ds-color-surface);
   border-radius: 999px;
-  background: var(--ds-color-action);
-  color: var(--ds-color-surface);
-  font-size: 10px;
+  background: var(--ds-color-brand);
+  color: var(--ds-color-on-brand);
+  font-size: 12px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
   pointer-events: none;
 }
 
 .triggerText {
+  min-width: 0;
   display: block;
-  max-width: 132px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -158,9 +171,10 @@
   position: absolute;
   z-index: 2;
   top: var(--popover-top);
-  left: var(--popover-left);
+  /* 좁은 지도 영역에서도 폼은 최소 읽기 폭을 확보하고 왼쪽으로 펼친다. */
+  left: min(var(--popover-left), calc(100% - min(280px, calc(100vw - 40px))));
   display: flex;
-  width: var(--popover-width);
+  width: max(var(--popover-width), min(280px, calc(100vw - 40px)));
   max-height: calc(100% - var(--popover-top));
   overflow: clip;
   border: 1px solid var(--ds-color-divider);
@@ -184,19 +198,28 @@
   grid-template-rows: auto minmax(0, 1fr) auto auto;
 }
 
-.popoverHeader {
+.popover[data-topic='price'] .form {
+  max-height: 540px;
+}
+
+.popoverHeader,
+.mobileSheetHeader {
   display: grid;
   min-width: 0;
   min-height: 64px;
-  padding: 8px 16px;
+  padding: 8px 20px;
   border-bottom: 1px solid var(--ds-color-divider);
-  grid-area: heading;
-  grid-template-columns: 76px minmax(0, 1fr) 76px;
+  grid-template-columns: var(--ds-icon-control-md) minmax(0, 1fr) var(--ds-icon-control-md);
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 
-.popoverHeading {
+.popoverHeader {
+  grid-area: heading;
+}
+
+.popoverHeading,
+.mobileSheetHeader h2 {
   min-width: 0;
   margin: 0;
   color: var(--ds-color-text);
@@ -295,23 +318,51 @@
   overflow-wrap: anywhere;
 }
 
+
+/*
+ * 선택지 두 가지 모양(체크 표시 없음).
+ * grid(임대유형): 회색 칸, 고르면 흰 바탕·먹색 테두리·굵은 글자.
+ * pill(그 외): 흰 알약, 고르면 먹색 2px 테두리·굵은 글자.
+ */
+.choices[data-appearance='pill'] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.choices[data-appearance='pill'] .choice {
+  width: auto;
+}
+
+.choices[data-appearance='pill'] .choice > span {
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: var(--ds-text-caption);
+  border-color: var(--ds-color-table-line);
+  border-radius: 999px;
+  background: var(--ds-color-surface);
+  color: var(--ds-color-text);
+}
+
 .choice:hover > span {
-  background: var(--ds-color-action-soft);
+  background: color-mix(in srgb, var(--ds-color-control-hover) 70%, var(--ds-color-divider));
+}
+
+.choices[data-appearance='pill'] .choice:hover > span {
+  border-color: var(--ds-color-muted);
+  background: var(--ds-color-surface);
 }
 
 .choice input:checked + span {
-  border-color: var(--ds-color-action);
-  background: var(--ds-color-action-soft);
-  color: var(--ds-color-action);
+  border-color: var(--ds-color-text);
+  background: var(--ds-color-surface);
+  box-shadow: inset 0 0 0 0.5px var(--ds-color-text);
+  color: var(--ds-color-text);
+  font-weight: 700;
 }
 
-.choiceCheck {
-  display: none;
-  margin-right: 4px;
-}
-
-.choice input:checked + span .choiceCheck {
-  display: inline;
+.choices[data-appearance='pill'] .choice input:checked + span {
+  box-shadow: inset 0 0 0 1px var(--ds-color-text);
 }
 
 .choice input:focus-visible + span {
@@ -412,45 +463,16 @@
   background: var(--ds-color-surface);
 }
 
-.reset {
-  border-radius: 6px;
-}
-
-.reset {
-  display: inline-flex;
-  min-height: 28px;
-  align-items: center;
-  justify-content: center;
+.reset,
+.mobileReset {
+  --ds-icon-size: 20px;
+  --ds-color-text: var(--ds-color-label);
   justify-self: start;
-  gap: 3px;
-  padding: 0 6px;
-  border: 1px solid #dadce0;
-  background: var(--ds-color-surface);
-  color: #555b65;
-  font-size: 10px;
-  line-height: 1.4;
-  white-space: nowrap;
-  font-weight: 500;
 }
 
-.reset svg,
-.mobileReset svg {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 auto;
-}
-
-.close {
+.close,
+.mobileClose {
   justify-self: end;
-}
-
-.reset:hover {
-  background: var(--ds-color-control-hover);
-}
-
-.reset:focus-visible {
-  outline: 2px solid var(--ds-color-action);
-  outline-offset: 2px;
 }
 
 .field select:focus-visible,
@@ -470,18 +492,26 @@
 }
 
 .mobileToolbar {
+  flex-direction: row;
+  align-items: flex-start;
+  pointer-events: none;
   width: 100%;
   gap: 6px;
   padding: 2px;
 }
 
 .mobileScroller {
-  padding-top: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  pointer-events: auto;
+  padding: 8px 4px 5px;
   display: flex;
+  justify-content: flex-start;
   min-width: 0;
   flex: 1 1 auto;
-  gap: 6px;
+  gap: 4px;
   overflow-x: auto;
+  overflow-y: hidden;
   overscroll-behavior-inline: contain;
   scrollbar-width: none;
 }
@@ -493,47 +523,56 @@
 .mobileTrigger,
 .mobileAllTrigger {
   display: inline-flex;
-  min-width: 0;
-  height: 44px;
+  min-width: 44px;
+  height: 34px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  padding: 0 12px;
+  padding: 0 10px;
   border: 1px solid #e1e3e7;
   border-radius: 999px;
   background: var(--ds-color-surface);
   box-shadow: 0 2px 6px rgb(32 33 36 / 8%);
   color: var(--ds-color-text);
   font-size: var(--ds-text-caption);
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .mobileTrigger {
   position: relative;
-  gap: 6px;
-  max-width: 104px;
+  gap: 4px;
 }
 
-.mobileTrigger span {
-  overflow: hidden;
-  text-overflow: ellipsis;
+.mobileTrigger::after {
+  /* Keep a 44px touch target around the compact chip. */
+  position: absolute;
+  inset: -5px 0;
+  border-radius: inherit;
+  content: '';
+}
+
+.mobileTrigger .detailIcon {
+  width: 16px;
+  height: 16px;
+}
+
+.mobileTrigger span:not(.filterCount) {
+  display: block;
+  white-space: nowrap;
 }
 
 .mobileTrigger[data-active='true'],
 .mobileAllTrigger[data-active='true'],
 .mobileTrigger[aria-expanded='true'],
 .mobileAllTrigger[aria-expanded='true'] {
-  border-color: var(--ds-color-action);
+  border-color: var(--ds-color-brand);
   background: var(--ds-color-action-selected);
-  color: var(--ds-color-action);
+  color: var(--ds-color-text);
 }
 
 .mobileTrigger:focus-visible,
-.mobileAllTrigger:focus-visible,
-.mobileReset:focus-visible,
-.mobileClose:focus-visible,
-.mobileApply:focus-visible {
+.mobileAllTrigger:focus-visible {
   outline: 3px solid var(--ds-color-action);
   outline-offset: 1px;
 }
@@ -560,66 +599,16 @@
   display: grid;
   max-height: min(86dvh, 720px);
   overflow: clip;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .mobileSheetHeader {
-  display: grid;
-  min-height: 64px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--ds-color-divider);
-  grid-template-columns: 76px minmax(0, 1fr) 76px;
-  align-items: center;
-  gap: 4px;
-}
-
-.mobileSheetHeader h2 {
-  margin: 0;
-  color: var(--ds-color-text);
-  font-size: var(--ds-text-title);
-  font-weight: 700;
-  line-height: 1.4;
-  text-align: center;
-}
-
-.mobileReset {
-  min-width: 44px;
-  min-height: 44px;
-  border-radius: 6px;
-}
-
-.mobileReset {
-  display: inline-flex;
-  align-items: center;
-  justify-self: start;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #555b65;
-  font-size: 10px;
-  line-height: 1.4;
-  white-space: nowrap;
-  font-weight: 500;
-}
-
-.mobileResetContent {
-  display: inline-flex;
-  height: 28px;
-  align-items: center;
-  gap: 3px;
-  padding: 0 6px;
-  border: 1px solid #dadce0;
-  border-radius: 6px;
-  background: var(--ds-color-surface);
-}
-
-.mobileClose {
-  justify-self: end;
+  grid-template-columns: var(--ds-icon-control-lg) minmax(0, 1fr) var(--ds-icon-control-lg);
 }
 
 .mobileSheetBody {
   min-height: 0;
-  padding: 0 18px 20px;
+  padding: 0 20px max(20px, env(safe-area-inset-bottom, 0px));
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior-y: contain;
@@ -632,6 +621,7 @@
 }
 
 .mobileTopic:last-of-type {
+  padding-bottom: 0;
   border-bottom: 0;
 }
 
@@ -652,17 +642,7 @@
   font-size: var(--ds-text-caption);
 }
 
-.mobileFooter {
-  padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--ds-color-divider);
-  background: var(--ds-color-surface);
-}
-
-.mobileApply {
-  width: 100%;
-}
-
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .desktopFilters {
     display: none;
   }
@@ -714,12 +694,64 @@
   }
 }
 
-.popoverHeader[data-all='false'],
-.mobileSheetHeader[data-all='false'] {
-  grid-template-columns: minmax(0, 1fr) auto;
+.scrollArea {
+  position: relative;
+  min-width: 0;
+  flex: 1 1 auto;
+  width: 100%;
 }
 
-.popoverHeader[data-all='false'] h2,
-.mobileSheetHeader[data-all='false'] h2 {
-  text-align: left;
+.recruitingRow {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  padding: 0 5px;
+  pointer-events: none;
+}
+
+.mobileToolbar .recruitingRow {
+  padding-top: 3px;
+  padding-right: 4px;
+}
+
+/* 지도 확대·축소와 같은 크기의 네모 버튼으로 모집중 상태를 표시한다. */
+.trigger.recruitingToggle,
+.mobileTrigger.recruitingToggle {
+  width: var(--ds-icon-control-lg);
+  height: var(--ds-icon-control-lg);
+  max-width: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 0;
+  border-radius: var(--ds-radius-icon-control);
+  font-size: var(--ds-text-caption);
+  font-weight: var(--ds-weight-strong);
+  pointer-events: auto;
+}
+
+.recruitingToggle[aria-checked='true'] {
+  border-color: var(--ds-color-brand);
+  background: var(--ds-color-action-selected);
+}
+
+@media (forced-colors: active) {
+  .recruitingToggle[aria-checked='true'] {
+    background: Highlight;
+    color: HighlightText;
+  }
+}
+
+/* 데스크톱의 좁은 지도에서는 주요 필터를 전체 패널에서 제공한다. 모바일은 칩을 스크롤한다. */
+@container complex-filters (max-width: 740px) {
+  .trigger[data-topic='exclusiveArea'] { display: none; }
+}
+@container complex-filters (max-width: 600px) {
+  .trigger[data-topic='price'] { display: none; }
+}
+@container complex-filters (max-width: 470px) {
+  .trigger[data-topic='rentalType'] { display: none; }
+}
+@container complex-filters (max-width: 350px) {
+  .trigger[data-topic='region'] { display: none; }
 }

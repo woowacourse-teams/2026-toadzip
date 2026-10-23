@@ -86,7 +86,7 @@ describe('public housing region HTTP repository', () => {
       new AbortController().signal,
     )).rejects.toMatchObject({
       name: 'PublicHousingRegionHttpError',
-      message: '지역 정보를 불러오지 못했습니다.',
+      message: '지역 정보를 불러오지 못했어요.',
       status: 503,
       code: null,
       traceId: null,
@@ -107,7 +107,7 @@ describe('public housing region HTTP repository', () => {
       new AbortController().signal,
     )).rejects.toMatchObject({
       name: 'PublicHousingRegionHttpError',
-      message: '지역 정보를 불러오지 못했습니다.',
+      message: '지역 정보를 불러오지 못했어요.',
       status: 422,
       code: null,
       traceId: null,

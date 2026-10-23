@@ -16,8 +16,9 @@ import {
   DetailSection,
   DetailTable,
 } from './DetailPrimitives'
-import { formatHousingMoneyWon } from '../presentation/housingMoney'
+import { formatHousingMoneyReadable } from '../presentation/housingMoney'
 import { formatHousingArea as formatArea, type AreaUnit } from '../presentation/housingArea'
+import { useAreaUnit } from '../presentation/useAreaUnit'
 import { AreaUnitToggle } from './AreaUnitToggle'
 import { AnnouncementStatusBadge } from './AnnouncementStatusBadge'
 import styles from './HousingComplexDetailPanel.module.css'
@@ -85,9 +86,12 @@ export interface HousingComplexDetailPanelProps {
   readonly detail: HousingComplexDetailData
   readonly onClose: () => void
   readonly backButton?: ReactNode
+  readonly headerActions?: ReactNode
   readonly onOpenAnnouncement?: (announcementId: string) => void
   readonly streetView?: StreetViewController
   readonly onEscape?: () => void
+  readonly preview?: boolean
+  readonly mobile?: boolean
 }
 
 interface HousingTypeSelection {
@@ -100,12 +104,14 @@ export function HousingComplexDetailPanel({
   onClose,
   onOpenAnnouncement,
   backButton,
+  headerActions,
   streetView,
   onEscape,
+  preview = false,
+  mobile = false,
 }: HousingComplexDetailPanelProps) {
   const scrollAnalytics = useDetailScrollAnalytics('COMPLEX', detail.complexId)
-  const [areaUnit, setAreaUnit] = useState<AreaUnit>('sqm')
-  const toggleAreaUnit = () => setAreaUnit((unit) => unit === 'sqm' ? 'pyeong' : 'sqm')
+  const { areaUnit, toggleAreaUnit } = useAreaUnit()
   const initialHousingTypeId = detail.housingTypes[0]?.housingTypeId ?? null
   const [selection, setSelection] = useState<HousingTypeSelection>({
     complexId: detail.complexId,
@@ -119,7 +125,7 @@ export function HousingComplexDetailPanel({
   ) ?? detail.housingTypes[0]
   const activeHousingTypeId = selectedHousingType?.housingTypeId
   const choiceRefs = useRef(new Map<string, HTMLButtonElement>())
-  const tabListRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const housingTypeIdPrefix = useId()
   const headingRef = useRef<HTMLHeadingElement>(null)
   const validImages = detail.images.filter(isSafeHttpUrl)
@@ -130,14 +136,24 @@ export function HousingComplexDetailPanel({
     : validOverviewImage === null ? [] : [validOverviewImage]
   const agencyCode = detail.agencyCode?.trim().toUpperCase() || null
   const titleId = `complex-detail-title-${detail.complexId}`
+  const identityType = <p className={styles.identityType}>
+    {(agencyCode || detail.agencyName) && (
+      <strong data-agency={agencyCode} title={detail.agencyName}>{agencyCode ?? detail.agencyName}</strong>
+    )}
+    <span>{detail.rentalTypeLabel}</span>
+  </p>
+  const images = coverImages.length > 0
+    ? <ComplexImages name={detail.name} urls={coverImages} overview={usesOverviewAsCover} />
+    : null
 
   useEffect(() => {
-    headingRef.current?.focus({ preventScroll: true })
-  }, [detail.complexId])
+    if (!preview) headingRef.current?.focus({ preventScroll: true })
+  }, [detail.complexId, preview])
 
   useEffect(() => {
-    if (activeHousingTypeId !== undefined) {
-      revealTab(tabListRef.current, choiceRefs.current.get(activeHousingTypeId))
+    const activeTab = activeHousingTypeId === undefined ? undefined : choiceRefs.current.get(activeHousingTypeId)
+    if (activeTab === document.activeElement) {
+      revealTab(scrollRef.current, activeTab)
     }
   }, [detail.complexId, activeHousingTypeId])
 
@@ -151,7 +167,7 @@ export function HousingComplexDetailPanel({
   }
 
   function revealHousingType(housingTypeId: string) {
-    revealTab(tabListRef.current, choiceRefs.current.get(housingTypeId))
+    revealTab(scrollRef.current, choiceRefs.current.get(housingTypeId))
   }
 
   function handleHousingTypeKeyDown(
@@ -180,52 +196,43 @@ export function HousingComplexDetailPanel({
   return (
     <aside
       className={styles.panel}
+      data-preview={preview || undefined}
+      data-mobile={mobile || undefined}
       aria-label={`${detail.name} 단지 상세 정보`}
       onKeyDown={handlePanelKeyDown}
     >
+      {/* 단지명만 고정하고 공급기관·주소는 본문과 함께 스크롤한다. */}
       <header className={styles.header}>
         {backButton}
-        <strong className={styles.headerTitle} title={detail.name}>{detail.name}</strong>
-        <DetailCloseButton label="단지 상세 닫기" onClose={onClose} />
+        <div className={styles.headerMain}>
+          <h2 ref={headingRef} id={titleId} tabIndex={-1}>{detail.name}</h2>
+        </div>
+        {headerActions}
+        <DetailCloseButton label={preview ? '단지 요약 닫기' : '단지 상세 닫기'} onClose={onClose} />
       </header>
 
       <div
+        ref={scrollRef}
         className={styles.scroll}
-        {...scrollAnalytics}
-        role="region"
-        aria-label={`${detail.name} 단지 상세 내용`}
-        tabIndex={0}
+        {...(preview ? {} : scrollAnalytics)}
+        role={preview ? undefined : 'region'}
+        aria-label={preview ? undefined : `${detail.name} 단지 상세 내용`}
+        tabIndex={preview ? undefined : 0}
+        inert={preview || undefined}
+        aria-hidden={preview || undefined}
       >
-        {coverImages.length > 0 && (
-          <ComplexImages
-            name={detail.name}
-            urls={coverImages}
-            overview={usesOverviewAsCover}
-          />
-        )}
-
         <section className={styles.identity} aria-labelledby={titleId}>
-          <div className={styles.identityHeading}>
-            <h2 ref={headingRef} id={titleId} tabIndex={-1}>{detail.name}</h2>
-            <p className={styles.identityType}>
-              <strong data-agency={agencyCode} title={detail.agencyName}>{agencyCode ?? detail.agencyName}</strong>
-              {(agencyCode || detail.agencyName) && detail.rentalTypeLabel && <span aria-hidden="true">·</span>}
-              <span>{detail.rentalTypeLabel}</span>
-            </p>
-          </div>
-          <div className={styles.addressRow}>
-            <p className={styles.address}>{displayAddress(detail)}</p>
-            {streetView && <StreetViewEntry controller={streetView} name={detail.name} />}
-          </div>
-          <div className={styles.notificationCallout}>
-            <div className={styles.notificationCopy}>
-              <strong>단지 알림</strong>
-              <span>이 단지의 새 모집 공고가 올라오면 알려드려요.</span>
-            </div>
+          {!mobile && images}
+          {identityType}
+          <p className={styles.address}>{displayAddress(detail)}</p>
+          {mobile && images}
+          {/* 단지 단위 행동(알림·거리뷰)은 같은 모양·높이의 보조 버튼 한 쌍으로 둔다. */}
+          <div className={styles.identityActions}>
             <NotificationInterestButton
               target={{ type: 'COMPLEX', id: detail.complexId, name: detail.name }}
               source="COMPLEX_DETAIL"
             />
+            {streetView && <StreetViewEntry controller={streetView} name={detail.name} appearance="action" />}
           </div>
         </section>
 
@@ -238,7 +245,7 @@ export function HousingComplexDetailPanel({
 
         {selectedHousingType && (
           <>
-            <DetailSection title="주택형별 임대조건"
+            <DetailSection appearance="block" title="주택형별 임대조건"
               actions={<AreaUnitToggle unit={areaUnit} onToggle={toggleAreaUnit} />}>
               <div className={styles.comparison}>
                 <DetailTable caption="주택형별 임대조건 비교" minWidth={520}>
@@ -273,10 +280,10 @@ export function HousingComplexDetailPanel({
                               {condition?.target && <span className={styles.conditionTarget}>{condition.target}</span>}
                             </td>
                             <td data-numeric data-emphasis={Number.isFinite(condition?.deposit) || undefined}>
-                              {formatDetailMoney(condition?.deposit ?? null)}
+                              <DetailMoney value={condition?.deposit} />
                             </td>
                             <td data-numeric data-emphasis={Number.isFinite(condition?.monthlyRent) || undefined}>
-                              {formatDetailMoney(condition?.monthlyRent ?? null)}
+                              <DetailMoney value={condition?.monthlyRent} />
                             </td>
                           </tr>
                         ))}
@@ -286,9 +293,8 @@ export function HousingComplexDetailPanel({
                 </DetailTable>
               </div>
             </DetailSection>
-            <DetailSection title="주택형 정보">
+            <DetailSection appearance="block" title="주택형 정보">
               <div
-                ref={tabListRef}
                 className={styles.housingTypeTabs}
                 role="tablist"
                 aria-label="주택형 선택"
@@ -338,7 +344,7 @@ export function HousingComplexDetailPanel({
         )}
 
         {validOverviewImage && !usesOverviewAsCover && (
-          <DetailSection title="단지 조감도">
+          <DetailSection appearance="block" title="단지 조감도">
             <img
               className={styles.overviewImage}
               src={validOverviewImage}
@@ -390,10 +396,14 @@ function CurrentAnnouncements({
 }) {
   return (
     <DetailSection
+      appearance="block"
       title="현재 모집 공고"
     >
       {announcements.length === 0 && (
-        <p className={styles.empty}>현재 연결된 모집 공고가 없습니다.</p>
+        <>
+          <p className={styles.empty}>지금 모집 중인 공고가 없어요.</p>
+          <p className={styles.emptyHint}>알림을 켜 두면 새 공고가 올라올 때 알려드려요.</p>
+        </>
       )}
       {announcements.length > 0 && (
         <ul className={styles.announcementList}>
@@ -437,6 +447,8 @@ function AnnouncementCard({
             tone={applicationStatusTone(announcement.applicationStatus)}
             countdown={null}
           />
+          {/* 원공고는 따로 표시하지 않고, 정정공고만 빨간 딱지로 알린다. */}
+          {announcement.publicationTypeLabel === '정정공고' && <span className={styles.correctionBadge}>정정</span>}
           {announcementDDay(announcement) && <p className={styles.announcementDeadline} data-tone={deadlineTone}>
             {announcement.applicationStatus !== 'BEFORE_APPLICATION' && (
               <span className={styles.visuallyHidden}>마감까지 </span>
@@ -445,20 +457,19 @@ function AnnouncementCard({
           </p>}
         </div>
         <h4>{title}</h4>
-        {announcement.publicationTypeLabel && <small>{announcement.publicationTypeLabel}</small>}
       </header>
       <div className={styles.announcementBody}>
-        <DetailFacts columns={2}>
-          <DetailFact term="접수 시작" value={displayDate(announcement.applicationStartAt)} />
-          <DetailFact term="접수 종료" value={displayDate(announcement.applicationEndAt)} />
+        <DetailFacts columns={2} appearance="list">
+          <DetailFact missingLabel="" term="접수 시작" value={displayDate(announcement.applicationStartAt)} />
+          <DetailFact missingLabel="" term="접수 마감" value={displayDate(announcement.applicationEndAt)} />
           {announcement.actualCompetitionRate !== null && (
-            <DetailFact
+            <DetailFact missingLabel=""
               term="실제 경쟁률"
               value={`${formatNumber(announcement.actualCompetitionRate)} : 1`}
             />
           )}
           {announcement.targets.length > 0 && (
-            <DetailFact term="공고 대상" value={announcement.targets.join(' · ')} wide />
+            <DetailFact missingLabel="" term="공고 대상" value={announcement.targets.join(' · ')} wide />
           )}
         </DetailFacts>
         {onOpenAnnouncement && (
@@ -480,25 +491,26 @@ function AnnouncementCard({
 function BasicInformation({ detail }: { detail: HousingComplexDetailData }) {
   return (
     <DetailSection
+      appearance="block"
       title="단지 기본 정보"
     >
-      <DetailFacts columns={2}>
-        <DetailFact term="공급기관" value={detail.agencyName} />
-        <DetailFact term="임대종류" value={detail.rentalTypeLabel} />
-        <DetailFact term="준공일자" value={displayDate(detail.completionDate)} />
-        <DetailFact term="건물형태" value={detail.buildingTypeLabel} />
-        <DetailFact term="엘리베이터" value={availability(detail.hasElevator)} />
-        <DetailFact term="난방종류" value={detail.heatingTypeLabel} />
-        <DetailFact term="복도유형" value={detail.corridorTypeLabel} />
-        <DetailFact
+      <DetailFacts columns={2} appearance="list">
+        <DetailFact missingLabel="" term="공급기관" value={detail.agencyName} />
+        <DetailFact missingLabel="" term="임대종류" value={detail.rentalTypeLabel} />
+        <DetailFact missingLabel="" term="준공일자" value={displayDate(detail.completionDate)} />
+        <DetailFact missingLabel="" term="건물형태" value={detail.buildingTypeLabel} />
+        <DetailFact missingLabel="" term="엘리베이터" value={availability(detail.hasElevator)} />
+        <DetailFact missingLabel="" term="난방종류" value={detail.heatingTypeLabel} />
+        <DetailFact missingLabel="" term="복도유형" value={detail.corridorTypeLabel} />
+        <DetailFact missingLabel=""
           term="1년 퇴거 세대수"
           value={formatNullableCount(detail.moveOutCountLastYear, '세대')}
         />
-        <DetailFact
+        <DetailFact missingLabel=""
           term="총세대수"
           value={formatNullableCount(detail.totalHouseholdCount, '세대')}
         />
-        <DetailFact
+        <DetailFact missingLabel=""
           term="총주차대수(세대당)"
           value={parkingSummary(detail.totalParkingCount, detail.totalHouseholdCount)}
         />
@@ -537,11 +549,11 @@ function HousingTypePanel({
         <AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} />
       </div>
       <DetailFacts columns={2}>
-        <DetailFact term="주택형" value={name} />
-        <DetailFact term="전용 면적" value={formatArea(housingType.exclusiveArea, areaUnit, '')} />
-        <DetailFact term="공급 면적" value={formatArea(housingType.supplyArea, areaUnit, '')} />
-        <DetailFact term="복층여부" value={duplexLabel(housingType.isDuplex)} />
-        <DetailFact
+        <DetailFact missingLabel="" term="주택형" value={name} />
+        <DetailFact missingLabel="" term="전용 면적" value={formatArea(housingType.exclusiveArea, areaUnit, '')} />
+        <DetailFact missingLabel="" term="공급 면적" value={formatArea(housingType.supplyArea, areaUnit, '')} />
+        <DetailFact missingLabel="" term="복층여부" value={duplexLabel(housingType.isDuplex)} />
+        <DetailFact missingLabel=""
           term="관리비"
           value={formatDetailMoney(housingType.maintenanceFee)}
           emphasis={Number.isFinite(housingType.maintenanceFee)}
@@ -575,8 +587,8 @@ function BasicRentalCondition({ condition }: { condition: ComplexBasicRentalCond
     <>
       <h4>기본 임대조건</h4>
       <DetailFacts columns={1}>
-        <DetailFact term="기본 보증금" value={formatDetailMoney(condition?.deposit ?? null)} emphasis={Number.isFinite(condition?.deposit)} />
-        <DetailFact term="기본 월 임대료" value={formatDetailMoney(condition?.monthlyRent ?? null)} emphasis={Number.isFinite(condition?.monthlyRent)} />
+        <DetailFact missingLabel="" term="기본 보증금" value={formatDetailMoney(condition?.deposit ?? null)} emphasis={Number.isFinite(condition?.deposit)} />
+        <DetailFact missingLabel="" term="기본 월 임대료" value={formatDetailMoney(condition?.monthlyRent ?? null)} emphasis={Number.isFinite(condition?.monthlyRent)} />
       </DetailFacts>
       {(sourceLabel || collectedDateLabel) && (
         <p className={styles.rentalConditionSource}>
@@ -622,11 +634,11 @@ function SupplyConditionTable({
         <tr>
           <th id={`${id}-deposit`} scope="row">임대보증금</th>
           <td headers={`${id}-deposit`} data-numeric data-emphasis={Number.isFinite(condition.deposit) || undefined}>
-            {formatDetailMoney(condition.deposit)}
+            <DetailMoney value={condition.deposit} />
           </td>
           <th id={`${id}-rent`} scope="row">월 임대료</th>
           <td headers={`${id}-rent`} data-numeric data-emphasis={Number.isFinite(condition.monthlyRent) || undefined}>
-            {formatDetailMoney(condition.monthlyRent)}
+            <DetailMoney value={condition.monthlyRent} />
           </td>
         </tr>
         <tr>
@@ -637,7 +649,7 @@ function SupplyConditionTable({
             data-numeric
             data-emphasis={Number.isFinite(condition.convertibleDeposit) || undefined}
           >
-            {formatDetailMoney(condition.convertibleDeposit)}
+            <DetailMoney value={condition.convertibleDeposit} />
           </td>
         </tr>
       </tbody>
@@ -645,14 +657,20 @@ function SupplyConditionTable({
   )
 }
 
-function revealTab(tabList: HTMLDivElement | null, tab: HTMLButtonElement | undefined) {
-  if (!tabList || !tab) return
-  const viewport = tabList.getBoundingClientRect()
+function revealTab(scrollContainer: HTMLDivElement | null, tab: HTMLButtonElement | undefined) {
+  if (!scrollContainer || !tab) return
+  const viewport = scrollContainer.getBoundingClientRect()
   const choice = tab.getBoundingClientRect()
-  if (choice.left < viewport.left) {
-    tabList.scrollLeft += choice.left - viewport.left
-  } else if (choice.right > viewport.right) {
-    tabList.scrollLeft += choice.right - viewport.right
+  const tabList = tab.parentElement
+  if (tabList) {
+    const bounds = tabList.getBoundingClientRect()
+    if (choice.left < bounds.left) tabList.scrollLeft += choice.left - bounds.left
+    else if (choice.right > bounds.right) tabList.scrollLeft += choice.right - bounds.right
+  }
+  if (choice.top < viewport.top) {
+    scrollContainer.scrollTop += choice.top - viewport.top
+  } else if (choice.bottom > viewport.bottom) {
+    scrollContainer.scrollTop += choice.bottom - viewport.bottom
   }
 }
 
@@ -807,6 +825,12 @@ function isUrgent(announcement: HousingComplexDetailAnnouncement) {
     && announcement.dDay <= 3
 }
 
+/** 단지의 누락된 금액은 빈칸으로 유지한다. */
+function DetailMoney({ value }: { readonly value: number | null | undefined }) {
+  return <>{formatDetailMoney(value)}</>
+}
+
+/** 단지 상세 금액은 억·만 단위로 읽는 순서대로 표시하고 버리지 않는다. */
 function formatDetailMoney(value: number | null | undefined) {
-  return value == null || !Number.isFinite(value) || value < 0 ? '' : formatHousingMoneyWon(value)
+  return value == null || !Number.isFinite(value) || value < 0 ? '' : formatHousingMoneyReadable(value)
 }

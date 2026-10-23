@@ -1,0 +1,44 @@
+.preparation {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ds-space-4);
+  margin: var(--ds-space-4) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.preparation li {
+  min-width: 0;
+  padding: var(--ds-space-4);
+  border: 1px solid var(--ds-color-border-base);
+  border-radius: var(--ds-radius-control);
+}
+
+.preparation p { color: var(--ds-color-muted); }
+.additional { margin-block: var(--ds-space-4); }
+.additional summary { cursor: pointer; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-3); }
+.additional .actions { margin-top: var(--ds-space-3); }
+.nextActions { margin-block: var(--ds-space-4); padding-block: var(--ds-space-3); border-top: 1px solid var(--ds-color-border-base); }
+.nextActions > a { display: inline-block; margin-bottom: var(--ds-space-2); }
+
+@media (max-width: 640px) {
+  .preparation { grid-template-columns: 1fr; }
+}
+
+.workspace { min-width: 0; }
+.sources { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-space-6); }
+.source { min-width: 0; }
+.source + .source { border-left: 1px solid var(--ds-color-divider); padding-left: var(--ds-space-6); }
+.source header { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--ds-space-3); }
+.source header h2 { margin: 0; }
+.source header span, .source p { color: var(--ds-color-label); line-height: var(--ds-line-height-body); }
+.recent { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-2); min-height: var(--ds-control-height-md); margin-block: var(--ds-space-4); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; }
+.recent > span:last-of-type { color: var(--ds-color-muted); }
+.registrationLink { padding-block: var(--ds-space-4); border-bottom: 1px solid var(--ds-color-divider); }
+.notice { padding: var(--ds-space-4); background: var(--ds-color-surface-subtle); line-height: var(--ds-line-height-body); }
+.back { margin-bottom: var(--ds-space-3); }
+@media (max-width: 900px) {
+  .sources { grid-template-columns: minmax(0, 1fr); }
+  .source + .source { border-left: 0; border-top: 1px solid var(--ds-color-divider); padding: var(--ds-space-5) 0 0; }
+}

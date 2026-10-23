@@ -1,0 +1,7 @@
+User-agent: *
+Disallow: /admin
+Disallow: /login
+Disallow: /mypage
+Disallow: /notifications
+Disallow: /privacy/settings
+Allow: /

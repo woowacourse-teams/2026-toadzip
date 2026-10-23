@@ -23,7 +23,7 @@ export async function getStreetViewConfiguration(
   signal?: AbortSignal,
 ): Promise<StreetViewConfiguration> {
   if (!Number.isSafeInteger(complexId) || complexId <= 0) {
-    throw new StreetViewApiError('단지 정보를 확인할 수 없습니다.')
+    throw new StreetViewApiError('단지 정보를 확인할 수 없어요.')
   }
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(new DOMException('Configuration timed out', 'TimeoutError')), CONFIGURATION_TIMEOUT_MS)
@@ -35,21 +35,21 @@ export async function getStreetViewConfiguration(
     })
     if (!response.ok) {
       const error = await decodeHttpErrorBody(response)
-      throw new StreetViewApiError('거리뷰 이용 정보를 불러오지 못했습니다. 다시 확인해 주세요.', response.status, error.code, error.traceId)
+      throw new StreetViewApiError('거리뷰 이용 정보를 불러오지 못했어요. 다시 확인해 주세요.', response.status, error.code, error.traceId)
     }
     const body: unknown = await response.json()
     boundedSignal.throwIfAborted()
     if (!isRecord(body) || !isConfiguration(body.data)) {
-      throw new StreetViewApiError('거리뷰 이용 정보를 확인할 수 없습니다. 다시 확인해 주세요.')
+      throw new StreetViewApiError('거리뷰 이용 정보를 확인할 수 없어요. 다시 확인해 주세요.')
     }
     return body.data
   } catch (error) {
     signal?.throwIfAborted()
     if (controller.signal.aborted) {
-      throw new StreetViewApiError('거리뷰 이용 정보 확인 시간이 초과되었습니다. 다시 확인해 주세요.')
+      throw new StreetViewApiError('거리뷰 이용 정보 확인 시간이 초과되었어요. 다시 확인해 주세요.')
     }
     if (error instanceof StreetViewApiError) throw error
-    throw new StreetViewApiError('거리뷰 이용 정보를 불러오지 못했습니다. 다시 확인해 주세요.')
+    throw new StreetViewApiError('거리뷰 이용 정보를 불러오지 못했어요. 다시 확인해 주세요.')
   } finally {
     window.clearTimeout(timeout)
   }

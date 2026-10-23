@@ -13,11 +13,17 @@ import java.util.List;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.jdbc.test.autoconfigure.JdbcTest;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
-@SpringBootTest
+@JdbcTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 @ActiveProfiles("test")
 class LhAnnouncementLinkFailureMigrationTest {
 
@@ -43,6 +49,10 @@ class LhAnnouncementLinkFailureMigrationTest {
                 }
                 ScriptUtils.executeSqlScript(connection, MigrationSqlSection.resource(MIGRATION));
                 ScriptUtils.executeSqlScript(connection, MigrationSqlSection.resource(MIGRATION));
+                var manualMatchReasons = new ClassPathResource(
+                        "db/migration/V20261019_03__manual_supply_match_review_reason.sql");
+                ScriptUtils.executeSqlScript(connection, manualMatchReasons);
+                ScriptUtils.executeSqlScript(connection, manualMatchReasons);
                 assertLegacyFailure(statement, "myhome_announcement_mapping_failures");
                 assertLegacyFailure(statement, "lh_announcement_enrichment_failures");
                 for (MyHomeAnnouncementMappingFailureReason reason : MyHomeAnnouncementMappingFailureReason.values()) {

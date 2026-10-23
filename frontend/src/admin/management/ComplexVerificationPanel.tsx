@@ -18,6 +18,8 @@ import { useUnsavedChanges } from './useUnsavedChanges'
 import styles from './ComplexVerification.module.css'
 
 type Props = {
+  reviewOnly?: boolean
+  onDirtyChange?: (dirty: boolean) => void
   id: string
   version: number
   deleted: boolean
@@ -25,7 +27,7 @@ type Props = {
   onReviewed: () => void
   onBusyChange: (busy: boolean) => void
 }
-export function ComplexVerificationPanel({ id, version, deleted, announcements, onReviewed, onBusyChange }: Props) {
+export function ComplexVerificationPanel({ id, version, deleted, announcements, onReviewed, onBusyChange, reviewOnly = false, onDirtyChange }: Props) {
   const [value, setValue] = useState<ComplexVerification | null>(null)
   const [error, setError] = useState('')
   const [conflict, setConflict] = useState(false)
@@ -41,6 +43,7 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
   const [notice, setNotice] = useState('')
   const session = useRef<AbortController | null>(null)
   useUnsavedChanges(dirty)
+  useEffect(() => { onDirtyChange?.(dirty); return () => onDirtyChange?.(false) }, [dirty, onDirtyChange])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -103,16 +106,16 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
       <div className={styles.tools}>
         <a href="https://m.myhome.go.kr/hws/mbl/sch/selectCurrentSearchView.do" target="_blank" rel="noreferrer">마이홈 공식 검색 ↗</a>
         <a href={mapUrl(value.currentValues.LOCATION.join(','))} target="_blank" rel="noreferrer">저장 좌표 보기 ↗</a>
-        {sourceIds.length > 1 ? <label className={styles.sourceFilter}>비교 원천<select value={source} onChange={event => setSource(event.target.value)}>
+        {!reviewOnly && sourceIds.length > 1 ? <label className={styles.sourceFilter}>비교 원천<select value={source} onChange={event => setSource(event.target.value)}>
             <option value="">전체 원천 · {sourceIds.length}개</option>
             {sourceIds.map((identifier, index) => <option key={identifier} value={identifier}>원천 {index + 1} · 마이홈 단지 {identifier.split(':')[0]}</option>)}
           </select></label> : null}
       </div>
       <form onSubmit={event => void save(event)} className={styles.reviewForm}>
-        {!value.sources.length ? <p className={styles.empty}>연결된 수집 원천이 없습니다. 공식 자료와 지도를 직접 확인해 주세요.</p> : null}
+        {!reviewOnly && !value.sources.length ? <p className={styles.empty}>연결된 수집 원천이 없습니다. 공식 자료와 지도를 직접 확인해 주세요.</p> : null}
         <fieldset className={styles.comparison} disabled={busy || deleted}>
           <legend className={styles.srOnly}>직접 확인한 항목 선택</legend>
-          <div className={styles.columnHead} aria-hidden="true"><span>확인 항목</span><span>현재 등록값</span><span>수집 원천값</span></div>
+          {!reviewOnly ? <div className={styles.columnHead} aria-hidden="true"><span>확인 항목</span><span>현재 등록값</span><span>수집 원천값</span></div> : null}
           {verificationFields.map(field => {
             const comparable = field !== 'LOCATION' && sources.length > 0
             const missing = comparable && sources.some(row => sourceText(field, row) === null
@@ -138,7 +141,7 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
                   setFields(current => event.target.checked ? [...current, field] : current.filter(item => item !== field))
                   setDirty(true)
                 }} /><span>{verificationFieldLabels[field]}</span></label>
-                {comparison ? <span className={styles.result} data-tone={comparable && !missing ? 'different' : 'neutral'}>{comparison}</span> : null}
+                {!reviewOnly && comparison ? <span className={styles.result} data-tone={comparable && !missing ? 'different' : 'neutral'}>{comparison}</span> : null}
               </div>
               <div className={styles.current}><span className={styles.mobileLabel}>현재 등록값</span>
                 <strong>{currentText(field, value.currentValues)}</strong>
@@ -147,19 +150,19 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
                 {changed ? <small className={styles.changed}>지난 확인: {currentText(field, latest?.checkedValues ?? {})}
                   {field === 'ADDRESS' ? ` · PNU ${latest?.checkedValues.ADDRESS?.pnu}` : ''}</small> : null}
               </div>
-              <div className={styles.source}><span className={styles.mobileLabel}>수집 원천값</span>
+              {!reviewOnly ? <div className={styles.source}><span className={styles.mobileLabel}>수집 원천값</span>
                 {field === 'LOCATION' ? <span className={styles.muted}>좌표 원천 없음</span>
                   : !entries.length ? <span className={styles.muted}>미확인</span>
                     : entries.map(entry => <div key={JSON.stringify([entry.text, entry.pnu])}>
                       <span>{entry.text ?? '미확인'}</span>
                       {sourceIds.length > 1 && entries.length > 1 ? <small>{entry.identifiers.map(identifier => `원천 ${sourceIds.indexOf(identifier) + 1}`).join(' · ')}</small> : null}
                     </div>)}
-              </div>
+              </div> : null}
             </div>
           })}
         </fieldset>
         <p className={styles.hint}>직접 확인한 항목만 선택하세요. 원천과의 일치 여부는 참고용입니다.</p>
-        <details className={styles.references}><summary>참고 자료 <span>원천 {sourceIds.length}개 · 공고 {announcements.length}개</span></summary>
+        {!reviewOnly ? <details className={styles.references}><summary>참고 자료 <span>원천 {sourceIds.length}개 · 공고 {announcements.length}개</span></summary>
           <p className={styles.hint}>세대수는 단지 전체·공급유형·모집 범위를 구분해 확인하세요. 여러 원천의 세대수는 합산하지 않습니다.</p>
           <p className={styles.hint}>현재 주소 식별정보 (PNU) {value.currentValues.ADDRESS.pnu}</p>
           <ul>{sourceIds.map(identifier => {
@@ -175,7 +178,12 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
             return <li key={announcement.id}><Link to={`/admin/announcements/${announcement.id}`}>{announcement.name}</Link>
               {url ? <a href={url} target="_blank" rel="noreferrer">공식 원문 ↗</a> : <span>원문 URL 미등록</span>}</li>
           })}</ul> : null}
-        </details>
+        </details> : <div className={styles.references}><p className={styles.hint}>비교 원천은 위의 원천 검색·연결 영역에서 확인하세요. 연결 공고의 공식 원문도 함께 확인한 뒤 기록하세요.</p>
+          {announcements.length ? <ul>{announcements.map(announcement => {
+            const url = safeEvidenceUrl(announcement.announcement?.originalUrl)
+            return <li key={announcement.id}><Link to={`/admin/announcements/${announcement.id}`}>{announcement.name}</Link>
+              {url ? <a href={url} target="_blank" rel="noreferrer">공식 원문 ↗</a> : <span>원문 URL 미등록</span>}</li>
+          })}</ul> : null}</div>}
         <section className={styles.record} aria-labelledby="complex-review-heading">
           <h3 id="complex-review-heading">검토 기록</h3>
           {deleted ? <p className={styles.hint}>휴지통에서 복구한 뒤 검토를 기록할 수 있습니다.</p> : null}
@@ -196,6 +204,9 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
             </details>
           </fieldset>
           <div className={styles.saveBar}><p>{fields.length}개 항목 선택</p>
+            {reviewOnly && dirty ? <button type="button" disabled={busy} onClick={() => {
+              if (window.confirm('작성한 검토 기록을 취소할까요?')) { setFields([]); setNote(''); setEvidenceUrl(''); setDirty(false) }
+            }}>검토 작성 취소</button> : null}
             <Button data-design-system type="submit" disabled={busy || deleted || !fields.length || !note.trim() || conflict}>{busy ? '저장 중…' : '검토 저장'}</Button>
           </div>
         </section>

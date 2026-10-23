@@ -72,6 +72,20 @@ describe('toHousingAnnouncementDetailData', () => {
 })
 
 describe('groupAnnouncementSupplyRows', () => {
+  it('A/B가 공유하는 모집170은 단지 합계에 한 번만 더하고 각 행에는 미확정을 유지한다', () => {
+    const source = announcementDetail()
+    const original = source.supplyRows[0]!
+    const detail = announcementDetail({ supplyRows: ['26A', '26B'].map((name, index) => ({
+      ...original, supplyRowId: String(index + 1), sourceHousingTypeName: name,
+      totalSupplyHouseholdCount: null, sharedRecruitment: { id: 7, householdCount: 170 },
+    })) })
+    const data = toHousingAnnouncementDetailData(detail)
+    const groups = groupAnnouncementSupplyRows(data.supplyRows)
+    expect(groups).toHaveLength(1)
+    expect(groups[0]?.supplyHouseholdCount).toBe(170)
+    expect(data.supplyRows.map(row => row.totalSupplyHouseholdCount)).toEqual([null, null])
+    expect(data.supplyRows.map(row => row.sourceHousingTypeName)).toEqual(['26A', '26B'])
+  })
   it('같은 단지의 행을 묶고 0을 유지하며 공급 세대수를 합산한다', () => {
     const data = toHousingAnnouncementDetailData(announcementDetail())
     const secondRow = {

@@ -4,6 +4,8 @@ import type {
   SharedSearchFilters,
 } from '../api/publicHousingRepository.ts'
 
+import { RECRUITING_APPLICATION_STATUSES } from './complexFilterTopics.ts'
+
 import {
   AGENCY_OPTIONS,
   ANNOUNCEMENT_STATUS_OPTIONS,
@@ -35,6 +37,7 @@ const COMPLEX_KEYS = [
 ] as const
 
 const ANNOUNCEMENT_KEYS = [
+  'announcementSort',
   'announcementRegionCode',
   'announcementRentalTypes',
   'announcementApplicationStatuses',
@@ -45,7 +48,8 @@ const ANNOUNCEMENT_KEYS = [
 export function parseComplexSearchFilters(
   search: URLSearchParams,
 ): ComplexSearchFilters {
-  const shared = parseSharedFilters(search, 'complex')
+  const { applicationStatuses, ...shared } = parseSharedFilters(search, 'complex')
+  const recruiting = RECRUITING_APPLICATION_STATUSES.some((status) => applicationStatuses?.includes(status))
   const [minDeposit, maxDeposit] = validRange(
     nonNegativeInteger(search.get('complexMinDeposit')),
     nonNegativeInteger(search.get('complexMaxDeposit')),
@@ -65,6 +69,7 @@ export function parseComplexSearchFilters(
 
   return {
     ...shared,
+    ...(recruiting ? { applicationStatuses: RECRUITING_APPLICATION_STATUSES } : {}),
     ...optionalNumber('minDeposit', minDeposit),
     ...optionalNumber('maxDeposit', maxDeposit),
     ...optionalNumber('minMonthlyRent', minMonthlyRent),
@@ -79,7 +84,12 @@ export function parseComplexSearchFilters(
 export function parseAnnouncementSearchFilters(
   search: URLSearchParams,
 ): AnnouncementSearchFilters {
-  return parseSharedFilters(search, 'announcement')
+  const value = search.get('announcementSort')
+  const sort = value === 'DEADLINE_DESC' ? 'DEADLINE' : value
+  return {
+    ...parseSharedFilters(search, 'announcement'),
+    ...(sort === 'DEADLINE' || sort === 'LATEST' || sort === 'LATEST_ASC' ? { sort } : {}),
+  }
 }
 
 export function setComplexSearchFilters(
@@ -107,11 +117,13 @@ export function setAnnouncementSearchFilters(
   const next = new URLSearchParams(current)
   ANNOUNCEMENT_KEYS.forEach((key) => next.delete(key))
   appendSharedFilters(next, 'announcement', filters)
+  if (filters.sort) next.set('announcementSort', filters.sort)
   return next
 }
 
-export function searchFiltersSignature(filters: ComplexSearchFilters) {
+export function searchFiltersSignature(filters: ComplexSearchFilters & AnnouncementSearchFilters) {
   return JSON.stringify([
+    filters.sort ?? null,
     filters.regionCode ?? null,
     filters.rentalTypes ?? [],
     filters.applicationStatuses ?? [],

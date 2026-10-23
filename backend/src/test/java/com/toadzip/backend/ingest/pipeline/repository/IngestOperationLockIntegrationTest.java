@@ -9,17 +9,31 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.jdbc.test.autoconfigure.JdbcTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
-@SpringBootTest
+@JdbcTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 @ActiveProfiles("test")
 class IngestOperationLockIntegrationTest {
 
     @Autowired
+    private DataSource dataSource;
+
     private IngestOperationLock executionLock;
+
+    @BeforeEach
+    void setUp() {
+        executionLock = new IngestOperationLock(dataSource);
+    }
 
     @Test
     void 같은_작업은_거절하고_독립된_작업은_같은_빈에서도_동시에_실행한다() throws Exception {

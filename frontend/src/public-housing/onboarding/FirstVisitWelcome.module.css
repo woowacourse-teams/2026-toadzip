@@ -128,7 +128,7 @@
 }
 .places button:hover { border-color: var(--ds-color-action); background: var(--ds-color-action-soft); }
 .places strong { display: flex; justify-content: space-between; gap: var(--ds-space-1); font-size: var(--ds-text-body); }
-.places strong span { color: var(--ds-color-action); }
+.places strong span { color: var(--ds-color-text); }
 .places button > span { color: var(--ds-color-label); font-size: var(--ds-text-caption); }
 
 @media (max-width: 480px), (max-height: 480px) {

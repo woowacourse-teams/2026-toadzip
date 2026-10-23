@@ -2,9 +2,9 @@ import type { PublicHousingRegionRepository } from '../api/publicHousingRegionRe
 import type { ComplexSearchFilters } from '../api/publicHousingRepository.ts'
 import { formatHousingMoney } from '../presentation/housingMoney.ts'
 import { DualRangeFilter, type DualRangeFilterPreset } from './DualRangeFilter.tsx'
-import { AGENCY_OPTIONS, APPLICATION_STATUS_OPTIONS, RECRUITMENT_TYPE_OPTIONS, RENTAL_TYPE_OPTIONS } from './searchFilterOptions.ts'
-import { DETAIL_FILTER_TOPICS, TOPICS, type FilterTopic } from './complexFilterTopics.ts'
-import { formatArea, formatAreaTick, formatDepositTick, formatMonthlyRentTick } from './complexFilterPresentation.ts'
+import { AGENCY_OPTIONS, RECRUITMENT_TYPE_OPTIONS, RENTAL_TYPE_OPTIONS } from './searchFilterOptions.ts'
+import { ALL_FILTER_TOPICS, DETAIL_FILTER_TOPICS, type FilterTopic } from './complexFilterTopics.ts'
+import { AREA_SLIDER_MAXIMUM, formatArea, formatAreaTick, formatDepositTick, formatMonthlyRentTick } from './complexFilterPresentation.ts'
 import { RegionFilterFields } from './RegionFilterFields.tsx'
 import styles from './ComplexFilterToolbar.module.css'
 
@@ -28,7 +28,10 @@ const AREA_PRESETS = [
   { label: '10평 미만', minimum: null, maximum: 29.7 },
   { label: '10평대', minimum: 33, maximum: 62.7 },
   { label: '20평대', minimum: 66, maximum: 95.7 },
-  { label: '30평 이상', minimum: 99, maximum: null },
+  { label: '30평대', minimum: 99, maximum: 128.7 },
+  { label: '40평대', minimum: 132, maximum: 161.7 },
+  { label: '50평대', minimum: 165, maximum: 194.7 },
+  { label: `${formatArea(AREA_SLIDER_MAXIMUM)} 이상`, minimum: AREA_SLIDER_MAXIMUM, maximum: null },
 ] as const satisfies readonly DualRangeFilterPreset[]
 
 export function DetailFilterFields({
@@ -54,17 +57,19 @@ export function DetailFilterFields({
   )
 }
 
-export function AllFilterFields({ filters, regionRepository, onRangeChange }: {
+export function AllFilterFields({ filters, regionRepository, onRangeChange, onRegionReset }: {
   readonly filters: ComplexSearchFilters
   readonly regionRepository: PublicHousingRegionRepository
   readonly onRangeChange: (topic: FilterTopic, values: Readonly<Record<string, number | null>>) => void
+  readonly onRegionReset: (regionCode: string) => void
 }) {
   return (
     <div className={styles.detailFields}>
-      {TOPICS.map(([topic, label]) => (
+      {ALL_FILTER_TOPICS.map(([topic, label]) => (
         <section className={styles.detailTopic} key={topic}>
           {(topic === 'region' || topic === 'price') && <h3>{label}</h3>}
           <ComplexFilterFields filters={filters} regionRepository={regionRepository} topic={topic}
+            onRegionReset={onRegionReset}
             onRangeChange={(values) => onRangeChange(topic, values)} />
         </section>
       ))}
@@ -77,19 +82,23 @@ export function ComplexFilterFields({
   regionRepository,
   topic,
   onRangeChange,
+  onRegionReset,
 }: {
   readonly filters: ComplexSearchFilters
   readonly regionRepository: PublicHousingRegionRepository
   readonly topic: FilterTopic
   readonly onRangeChange?: (values: Readonly<Record<string, number | null>>) => void
+  readonly onRegionReset?: (regionCode: string) => void
 }) {
   switch (topic) {
     case 'region':
       return (
         <RegionFilterFields
+          grid
+          onRegionReset={onRegionReset}
           initialRegionCode={filters.regionCode ?? ''}
           messageId="complex-region-load-error"
-          loadingMessage="시·군·구를 불러오는 중입니다."
+          loadingMessage="시·군·구를 불러오는 중이에요."
           styles={{
             regionFields: styles.regionFields,
             field: styles.field,
@@ -99,11 +108,9 @@ export function ComplexFilterFields({
         />
       )
     case 'rentalType':
-      return <ChoiceGroup label="임대유형" name="rentalTypes" values={filters.rentalTypes} options={RENTAL_TYPE_OPTIONS} />
-    case 'applicationStatus':
-      return <ChoiceGroup label="모집상태" name="applicationStatuses" values={filters.applicationStatuses} options={APPLICATION_STATUS_OPTIONS} />
+      return <ChoiceGroup label="임대유형" name="rentalTypes" values={filters.rentalTypes} options={RENTAL_TYPE_OPTIONS} appearance="grid" />
     case 'agency':
-      return <ChoiceGroup label="공급기관" name="agencyCodes" values={filters.agencyCodes} options={AGENCY_OPTIONS} />
+      return <ChoiceGroup label="공급기관" name="agencyCodes" values={filters.agencyCodes} options={AGENCY_OPTIONS} appearance="grid" />
     case 'recruitmentType':
       return <ChoiceGroup label="모집유형" name="recruitmentTypes" values={filters.recruitmentTypes} options={RECRUITMENT_TYPE_OPTIONS} />
     case 'price':
@@ -154,9 +161,9 @@ export function ComplexFilterFields({
           maximumName="maxExclusiveArea"
           minimumName="minExclusiveArea"
           minimum={0}
-          maximum={132}
+          maximum={AREA_SLIDER_MAXIMUM}
           step={3.3}
-          majorStep={33}
+          majorStep={66}
           initialMinimum={filters.minExclusiveArea ?? null}
           initialMaximum={filters.maxExclusiveArea ?? null}
           formatValue={formatArea}
@@ -178,17 +185,20 @@ function ChoiceGroup({
   name,
   options,
   values = [],
+  appearance = 'pill',
 }: {
   readonly label: string
   readonly name: string
   readonly options: readonly (readonly [string, string])[]
   readonly values?: readonly string[]
+  /** grid: 임대유형처럼 칸을 맞춘 회색 칸, pill: 나머지 선택지는 알약 칩 */
+  readonly appearance?: 'grid' | 'pill'
 }) {
   const selected = new Set(values)
   return (
     <fieldset className={styles.choiceGroup}>
       <legend>{label}</legend>
-      <div className={styles.choices}>
+      <div className={styles.choices} data-appearance={appearance}>
         {options.map(([value, optionLabel]) => (
           <label key={value} className={styles.choice}>
             <input
@@ -197,10 +207,7 @@ function ChoiceGroup({
               value={value}
               defaultChecked={selected.has(value)}
             />
-            <span>
-              <span className={styles.choiceCheck} aria-hidden="true">✓</span>
-              {optionLabel}
-            </span>
+            <span>{optionLabel}</span>
           </label>
         ))}
       </div>

@@ -128,6 +128,13 @@ final class ComplexSummarySqlBuilder {
         return pageQuery(query.sql(), parameters, sortSpec(sort), cursor);
     }
 
+    ComplexSummarySqlQuery buildCountQuery(HousingComplexSearchCondition condition) {
+        FilteredSummaryQuery query = filteredQuery(condition,
+                BASE_SUMMARY_QUERY + boundsPredicate(condition.bounds()));
+        return new ComplexSummarySqlQuery(
+                "SELECT COUNT(*) FROM (" + query.sql() + ") matching_complexes", query.parameters());
+    }
+
     private static String summaryQuery(String complexTable, String areaRangeJoin) {
         return SUMMARY_QUERY.formatted(
                 ApplicationScheduleSql.status("representative", "housing_complex.id"),

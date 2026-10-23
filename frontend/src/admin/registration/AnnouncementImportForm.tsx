@@ -10,6 +10,7 @@ import { RegistrationError } from './RegistrationFields'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import { SourceUrl } from '../shared/SourceUrl'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
+import { AnnouncementImportGuide } from './AnnouncementImportGuide'
 
 export function AnnouncementImportForm({
   onSubmittingChange,
@@ -159,6 +160,7 @@ export function AnnouncementImportForm({
     <section className="registration-card" aria-labelledby="announcement-import-title">
       <h2 id="announcement-import-title">JSON 가져오기</h2>
       <p>공고 JSON을 붙여넣거나 .json 파일을 선택하고, 검증 결과와 단지 연결을 확인한 뒤 등록합니다.</p>
+      <AnnouncementImportGuide />
       <label htmlFor="announcement-import-file">공고 JSON 파일</label>
       <input
         id="announcement-import-file"

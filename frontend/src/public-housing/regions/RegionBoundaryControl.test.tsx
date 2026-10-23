@@ -17,6 +17,17 @@ function props() {
 }
 
 describe('RegionBoundaryControl', () => {
+  it('모바일은 목록 재열기와 지역 이동·선택 해제를 바로 노출한다', () => {
+    const callbacks = props()
+    render(<RegionBoundaryControl {...callbacks} presentation="mobile-collapsed" />)
+    fireEvent.click(screen.getByRole('button', { name: '경기도 수원시 장안구 단지 목록 보기' }))
+    expect(callbacks.onOpenList).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: '선택 지역으로 이동' }))
+    expect(callbacks.onRecenter).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: '선택 해제' }))
+    expect(callbacks.onClear).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: '지역 관리' })).not.toBeInTheDocument()
+  })
   it('보이는 문구와 접근 가능한 이름이 일치하며 두 조작은 독립적으로 동작한다', () => {
     const callbacks = props()
     render(<RegionBoundaryControl {...callbacks} />)
@@ -45,7 +56,7 @@ describe('RegionBoundaryControl', () => {
     const callbacks = props()
     render(<RegionBoundaryControl {...callbacks} status="error" />)
     const alert = screen.getByRole('alert')
-    expect(alert).toHaveTextContent('지역 경계를 불러오지 못했습니다.')
+    expect(alert).toHaveTextContent('지역 경계를 불러오지 못했어요.')
     fireEvent.click(within(alert).getByRole('button', { name: '경계 다시 시도' }))
     expect(callbacks.onRetry).toHaveBeenCalledOnce()
     expect(callbacks.onRecenter).not.toHaveBeenCalled()
@@ -54,9 +65,9 @@ describe('RegionBoundaryControl', () => {
   it('로딩과 미지원 안내를 유지하고 좌표 없는 미지원 지역의 다시 보기는 비활성화한다', () => {
     const callbacks = props()
     const { rerender } = render(<RegionBoundaryControl {...callbacks} status="loading" />)
-    expect(screen.getByRole('status')).toHaveTextContent('지역 경계를 불러오는 중입니다.')
+    expect(screen.getByRole('status')).toHaveTextContent('지역 경계를 불러오는 중이에요.')
     rerender(<RegionBoundaryControl {...callbacks} supported={false} canRecenter={false} status="idle" />)
-    expect(screen.getByRole('status')).toHaveTextContent('이 지역은 경계 정보를 제공하지 않습니다.')
+    expect(screen.getByRole('status')).toHaveTextContent('이 지역은 경계 정보를 제공하지 않아요.')
     expect(screen.getByRole('button', { name: '해당 지역으로 이동' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '경계 지우기' })).toBeEnabled()
   })

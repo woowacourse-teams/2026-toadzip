@@ -16,6 +16,9 @@ Desktop.ini
 # Personal local workspace (never commit)
 /.local/
 
+# Existing temporary workspace (keep local files)
+/tmp/
+
 # Local agent planning artifacts (never commit)
 /docs/superpowers/plans/
 /docs/superpowers/specs/
@@ -39,5 +42,6 @@ hs_err_pid*
 frontend/public/pdfjs-*/
 
 frontend/public/rhwp-*/
+frontend/public/ocr-*/
 
 frontend/.worker-dev/

@@ -1,6 +1,7 @@
 package com.toadzip.backend.housing.service;
 
 import com.toadzip.backend.admin.domain.AdminDataChange;
+import com.toadzip.backend.admin.dto.AdminDocumentEvidence;
 import com.toadzip.backend.admin.dto.AdminChangeResponse;
 import com.toadzip.backend.admin.dto.AdminDataSummary;
 import com.toadzip.backend.admin.dto.AdminPage;
@@ -40,10 +41,11 @@ public class AdminHousingComplexManagementService {
     private final RegionCodeResolver regions;
     private final ObjectMapper json;
     private final HousingComplexReviewRepository reviews;
+    private final HousingTypeImpactService typeImpacts;
 
     public AdminHousingComplexManagementService(HousingComplexRepository complexes, HousingTypeRepository types,
             SupplyRowRepository rows, AdminDataChangeRepository changes, RegionCodeResolver regions,
-            ObjectMapper json, HousingComplexReviewRepository reviews) {
+            ObjectMapper json, HousingComplexReviewRepository reviews, HousingTypeImpactService typeImpacts) {
         this.complexes = complexes;
         this.types = types;
         this.rows = rows;
@@ -51,6 +53,7 @@ public class AdminHousingComplexManagementService {
         this.regions = regions;
         this.json = json;
         this.reviews = reviews;
+        this.typeImpacts = typeImpacts;
     }
 
     public AdminPage<AdminDataSummary> search(AdminSearch search) {
@@ -112,7 +115,8 @@ public class AdminHousingComplexManagementService {
                 request.overviewImageUrl(), request.moveOutCountLastYear());
         complex.reviseByAdmin(incoming);
         complexes.flush();
-        record(complex, "UPDATE", actor, before);
+        changes.save(new AdminDataChange("COMPLEX", id, "UPDATE", actor, before,
+                auditedData(data(complex), request.documentEvidence())));
         return detail(id);
     }
 
@@ -146,12 +150,14 @@ public class AdminHousingComplexManagementService {
         if (type.getHousingComplex().getId() != id) {
             throw new AdminDataConflictException("이 단지에 속한 주택형만 수정할 수 있습니다.");
         }
+        typeImpacts.check(id, typeId, request.impactToken(),
+                type.getExclusiveArea() == null || type.getExclusiveArea().compareTo(request.exclusiveArea()) != 0);
         String before = json.writeValueAsString(housingTypeData(type));
         type.reviseByAdmin(request.name(), request.exclusiveArea(), request.householdCount());
         complex.noteHousingTypeRevisionByAdmin();
         complexes.flush();
         changes.save(new AdminDataChange("COMPLEX", id, "UPDATE_HOUSING_TYPE", actor, before,
-                json.writeValueAsString(housingTypeData(type))));
+                auditedData(housingTypeData(type), request.documentEvidence())));
         return detail(id);
     }
 
@@ -176,9 +182,12 @@ public class AdminHousingComplexManagementService {
         }
     }
 
-    private void record(HousingComplex complex, String action, String actor, String before) {
-        changes.save(new AdminDataChange("COMPLEX", complex.getId(), action, actor, before,
-                json.writeValueAsString(data(complex))));
+    private String auditedData(Object data, AdminDocumentEvidence evidence) {
+        var result = (tools.jackson.databind.node.ObjectNode) json.valueToTree(data);
+        if (evidence != null) {
+            result.set("documentEvidence", json.valueToTree(evidence));
+        }
+        return json.writeValueAsString(result);
     }
 
     private AdminDataSummary summary(HousingComplex complex) {

@@ -1,3 +1,4 @@
+import { MyhomeAnnouncementImport } from '../ingest/MyhomeAnnouncementImport'
 import { ComplexPicker } from '../management/ComplexPicker'
 import { getManagementDetail } from '../management/api'
 import { useEffect, useRef, useState } from 'react'
@@ -10,6 +11,7 @@ import { HousingComplexRegistrationForm } from './HousingComplexRegistrationForm
 export function AnnouncementRegistrationPage({ embedded = false, onCreated }: { embedded?: boolean; onCreated?: (id: number) => void }) {
   const [params, setParams] = useSearchParams()
   const direct = params.get('mode') === 'direct'
+  const myhome = params.get('mode') === 'myhome'
   const complexId = params.get('complexId') ?? ''
   const [submitting, setSubmitting] = useState(false)
 
@@ -20,10 +22,11 @@ export function AnnouncementRegistrationPage({ embedded = false, onCreated }: { 
   return <section className="admin-registration-page">
     {!embedded ? <header className="admin-registration-heading"><Link to="/admin/announcements">← 공고 목록</Link><h1>공고 등록</h1></header> : null}
     <div className="admin-mode-switch" aria-label="공고 입력 방식">
-      <button data-admin-navigation={direct || undefined} type="button" aria-pressed={!direct} disabled={submitting} onClick={() => { if (direct) selectMode('json') }}>JSON 가져오기</button>
+      <button data-admin-navigation={direct || myhome || undefined} type="button" aria-pressed={!direct && !myhome} disabled={submitting} onClick={() => { if (direct || myhome) selectMode('json') }}>JSON 가져오기</button>
       <button data-admin-navigation={!direct || undefined} type="button" aria-pressed={direct} disabled={submitting} onClick={() => { if (!direct) selectMode('direct') }}>직접 입력</button>
+      <button data-admin-navigation={!myhome || undefined} type="button" aria-pressed={myhome} disabled={submitting} onClick={() => { if (!myhome) selectMode('myhome') }}>마이홈에서 가져오기</button>
     </div>
-    {direct ? <DirectAnnouncement complexId={complexId} submitting={submitting}
+    {myhome ? <MyhomeAnnouncementImport onSubmittingChange={setSubmitting} /> : direct ? <DirectAnnouncement complexId={complexId} submitting={submitting}
       onCreated={onCreated} onSubmittingChange={setSubmitting} onSelect={(id) => setParams(current => { current.set('mode', 'direct'); current.set('complexId', id); return current })} />
       : <AnnouncementImportForm onCreated={onCreated} onSubmittingChange={setSubmitting} />}
   </section>

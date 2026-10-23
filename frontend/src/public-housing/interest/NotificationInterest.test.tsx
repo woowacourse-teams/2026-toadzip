@@ -42,6 +42,53 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
+it('초기 조회와 복귀 이벤트가 겹쳐도 같은 상태 조회는 한 번만 보내고 완료 후 다시 갱신한다', async () => {
+  const pending = deferred<NotificationSubscriptionStatus>()
+  const repo = repository()
+  repo.loadStatus.mockReturnValueOnce(pending.promise)
+  render(example(repo))
+  fireEvent.focus(window)
+  fireEvent(document, new Event('visibilitychange'))
+  fireEvent.focus(window)
+  expect(repo.loadStatus).toHaveBeenCalledTimes(1)
+  await act(async () => pending.resolve(member))
+  await act(async () => fireEvent.focus(window))
+  expect(repo.loadStatus).toHaveBeenCalledTimes(2)
+})
+
+it('숨김과 오프라인 복귀 이벤트는 조회하지 않고 온라인 복귀 때 다시 확인한다', async () => {
+  const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+  const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
+  const repo = repository()
+  render(example(repo))
+  await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+  hidden.mockReturnValue(true)
+  fireEvent.focus(window)
+  fireEvent(document, new Event('visibilitychange'))
+  hidden.mockReturnValue(false)
+  online.mockReturnValue(false)
+  fireEvent.focus(window)
+  fireEvent(document, new Event('visibilitychange'))
+  expect(repo.loadStatus).toHaveBeenCalledTimes(1)
+  online.mockReturnValue(true)
+  await act(async () => fireEvent.online(window))
+  expect(repo.loadStatus).toHaveBeenCalledTimes(2)
+})
+
+it('탭을 떠나기 전 조회가 대기 중이어도 복귀 후 새 세션을 조회하고 이전 응답을 무시한다', async () => {
+  const pending = deferred<NotificationSubscriptionStatus>()
+  const repo = repository(guest)
+  repo.loadStatus.mockReturnValueOnce(pending.promise)
+  render(example(repo))
+  fireEvent.blur(window)
+  await act(async () => fireEvent.focus(window))
+  expect(repo.loadStatus).toHaveBeenCalledTimes(2)
+  expect(setProductAuthState).toHaveBeenLastCalledWith('guest')
+  await act(async () => pending.resolve({ ...member, targets: [{ targetType: 'COMPLEX', targetId: '1' }] }))
+  expect(setProductAuthState).toHaveBeenLastCalledWith('guest')
+  expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
+})
+
 it('비회원은 이전 브라우저 설정을 무시하고 로그인 안내를 닫으면 포커스를 복원한다', async () => {
   localStorage.setItem('toadzip.notification-interest.requested:COMPLEX:1', '1')
   const repo = repository(guest)
@@ -155,14 +202,48 @@ it('창으로 돌아오면 서버에서 변경된 설정을 반영한다', async
   expect(await screen.findByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
 })
 
-it('조회 실패는 빈 목록 성공으로 처리하지 않고 재시도한다', async () => {
+it('조회 실패는 빈 목록 성공으로 처리하지 않고, 알림 받기를 누르면 다시 불러와 이어서 신청한다', async () => {
   const repo = repository()
   repo.loadStatus.mockRejectedValueOnce(new Error('network'))
   render(example(repo))
-  expect(await screen.findByRole('alert')).toHaveTextContent('알림 상태를 불러오지 못했어요.')
-  expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeDisabled()
-  fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
-  await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+  const button = await screen.findByRole('button', { name: '서울 단지 알림 받기' })
+  await waitFor(() => expect(button).toBeEnabled())
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(repo.loadStatus).toHaveBeenCalledTimes(1)
+
+  fireEvent.click(button)
+  await waitFor(() => expect(repo.loadStatus).toHaveBeenCalledTimes(2))
+  expect(await screen.findByRole('dialog')).toBeVisible()
+})
+
+it('조회 실패 뒤 알림 받기로 복구한 기존 구독은 유지하고 다시 취소를 눌러야 해제한다', async () => {
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+  repo.loadStatus.mockRejectedValueOnce(new Error('network'))
+  render(example(repo))
+  const button = await screen.findByRole('button', { name: '서울 단지 알림 받기' })
+  await waitFor(() => expect(button).toBeEnabled())
+
+  fireEvent.click(button)
+  expect(await screen.findByText('이미 알림을 받고 있어요.')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
+  expect(repo.record).not.toHaveBeenCalled()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+  await click('서울 단지 알림 취소')
+  await waitFor(() => expect(repo.record).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'CANCELLED' })))
+})
+
+it('다시 불러오기도 실패하면 짧은 안내만 보이고 버튼은 그대로 둔다', async () => {
+  const repo = repository()
+  repo.loadStatus.mockRejectedValueOnce(new Error('network')).mockRejectedValueOnce(new Error('network'))
+  render(example(repo))
+  const button = await screen.findByRole('button', { name: '서울 단지 알림 받기' })
+  await waitFor(() => expect(button).toBeEnabled())
+
+  fireEvent.click(button)
+  expect(await screen.findByText('알림 상태를 불러오지 못했어요. 잠시 후 다시 눌러 주세요.')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
 it('저장 중 창 포커스가 돌아와도 저장 응답을 버리거나 중복 요청하지 않는다', async () => {
@@ -562,3 +643,4 @@ it('신청 응답을 기다리는 동안 저장 상태를 보여 주고 성공�
   expect(screen.getByRole('dialog', { name: '알림 신청을 완료했어요' })).toBeVisible()
   expect(screen.getByRole('status')).toHaveTextContent('서울 단지')
 })
+

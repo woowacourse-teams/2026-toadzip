@@ -2,6 +2,10 @@ package com.toadzip.backend.notification.service;
 
 import static com.toadzip.backend.notification.NotificationFixtures.NOW;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
@@ -10,9 +14,12 @@ import com.toadzip.backend.notification.NotificationFixtures;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.stream.IntStream;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.notification.repository.NotificationScheduleRepository;
+import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import com.toadzip.backend.notification.repository.UserNotificationRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +27,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
@@ -28,7 +36,8 @@ import org.springframework.transaction.annotation.Transactional;
 class NotificationScheduleIntegrationTest {
     @Autowired private NotificationScheduleService schedules;
     @Autowired private NotificationMaterializationService materialization;
-    @Autowired private NotificationScheduleRepository scheduleRepository;
+    @MockitoSpyBean private NotificationScheduleRepository scheduleRepository;
+    @MockitoSpyBean private NotificationOutboxRepository outbox;
     @Autowired private UserNotificationRepository inbox;
     @Autowired private EntityManager entities;
     @Autowired private JdbcTemplate jdbc;
@@ -163,6 +172,56 @@ class NotificationScheduleIntegrationTest {
         jdbc.update("UPDATE notification_subscriptions SET active=false WHERE user_id=63001");
         assertThat(schedules.publishDue(NOW)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox_events", Long.class)).isZero();
+    }
+
+    @Test
+    void 이미_생성한_일정은_매분_구독자_조회와_중복_삽입을_반복하지_않는다() {
+        schedule(ScheduleType.CONTRACT);
+        assertThat(schedules.publishDue(NOW)).isOne();
+        clearInvocations(scheduleRepository, outbox);
+
+        assertThat(schedules.publishDue(NOW.plusSeconds(60))).isZero();
+
+        verify(scheduleRepository, never()).hasSubscribers(any(), any());
+        verify(outbox, never()).appendSchedule(any(), any());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox_events", Long.class)).isOne();
+    }
+
+    @Test
+    void 생성한_일정의_시각이_변경되면_새_알림을_생성한다() {
+        schedule(ScheduleType.CONTRACT);
+        assertThat(schedules.publishDue(NOW)).isOne();
+        jdbc.update("UPDATE announcement_schedules SET end_at='2026-10-14 18:00:00' WHERE announcement_id=?",
+                announcement.getId());
+
+        assertThat(schedules.publishDue(NOW.plusSeconds(60))).isOne();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox_events", Long.class)).isEqualTo(2);
+    }
+
+    @Test
+    void 수신자가_없어_생성하지_않은_일정은_구독_복구_후_다시_판단한다() {
+        schedule(ScheduleType.CONTRACT);
+        jdbc.update("UPDATE notification_subscriptions SET active=false WHERE user_id=63001");
+        assertThat(schedules.publishDue(NOW)).isZero();
+        jdbc.update("UPDATE notification_subscriptions SET active=true WHERE user_id=63001");
+
+        assertThat(schedules.publishDue(NOW.plusSeconds(60))).isOne();
+    }
+
+    @Test
+    void 이벤트_키_조회는_묶음_경계와_정리된_이벤트를_포함하고_없는_키는_제외한다() {
+        jdbc.update("""
+                INSERT INTO notification_outbox_events
+                    (event_key,announcement_id,source_identifier,occurred_at,status,attempts,
+                     next_attempt_at,recipient_cursor)
+                SELECT 'SCHEDULE_REMINDER:test-' || n,?,'schedule:test',?,'COMPLETED',0,?,0
+                FROM generate_series(0,1000) n
+                """, announcement.getId(), java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW));
+        var keys = IntStream.range(0, 1002).mapToObj(index -> "SCHEDULE_REMINDER:test-" + index).toList();
+
+        assertThat(outbox.existingEventKeys(keys)).hasSize(1001)
+                .contains(keys.get(499), keys.get(500), keys.get(1000)).doesNotContain(keys.get(1001));
+        assertThat(outbox.existingEventKeys(List.of())).isEmpty();
     }
 
     private void schedule(ScheduleType type) {

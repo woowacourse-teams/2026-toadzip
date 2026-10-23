@@ -60,13 +60,13 @@ describe('getStreetViewConfiguration', () => {
     { data: { ...configuration, initialization: { ...initialization, fov: 0 } } },
   ])('잘못된 외부 응답을 실행 가능한 설정으로 취급하지 않는다: %j', async body => {
     vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(Response.json(body)))
-    await expect(getStreetViewConfiguration(2647)).rejects.toThrow('거리뷰 이용 정보를 확인할 수 없습니다.')
+    await expect(getStreetViewConfiguration(2647)).rejects.toThrow('거리뷰 이용 정보를 확인할 수 없어요.')
   })
 
   it.each([0, -1, 1.5, Number.NaN])('유효하지 않은 요청 ID %s는 네트워크 요청을 하지 않는다', async complexId => {
     const fetcher = vi.fn<typeof fetch>()
     vi.stubGlobal('fetch', fetcher)
-    await expect(getStreetViewConfiguration(complexId)).rejects.toThrow('단지 정보를 확인할 수 없습니다.')
+    await expect(getStreetViewConfiguration(complexId)).rejects.toThrow('단지 정보를 확인할 수 없어요.')
     expect(fetcher).not.toHaveBeenCalled()
   })
 
@@ -86,9 +86,9 @@ describe('getStreetViewConfiguration', () => {
 
   it('네트워크 또는 JSON 해석 실패를 화면에서 안내할 수 있는 오류로 반환한다', async () => {
     vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new TypeError('offline')))
-    await expect(getStreetViewConfiguration(2647)).rejects.toThrow('거리뷰 이용 정보를 불러오지 못했습니다.')
+    await expect(getStreetViewConfiguration(2647)).rejects.toThrow('거리뷰 이용 정보를 불러오지 못했어요.')
     vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(new Response('not-json')))
-    await expect(getStreetViewConfiguration(2647)).rejects.toThrow('거리뷰 이용 정보를 불러오지 못했습니다.')
+    await expect(getStreetViewConfiguration(2647)).rejects.toThrow('거리뷰 이용 정보를 불러오지 못했어요.')
   })
 
   it('10초를 초과한 조회를 취소하고 재시도 가능한 오류를 반환한다', async () => {
@@ -98,7 +98,7 @@ describe('getStreetViewConfiguration', () => {
       requestSignal = options?.signal ?? null
       requestSignal?.addEventListener('abort', () => reject(requestSignal?.reason), { once: true })
     })))
-    const result = expect(getStreetViewConfiguration(2647)).rejects.toThrow('확인 시간이 초과되었습니다.')
+    const result = expect(getStreetViewConfiguration(2647)).rejects.toThrow('확인 시간이 초과되었어요.')
     await vi.advanceTimersByTimeAsync(10_000)
     await result
     expect(requestSignal).toHaveProperty('aborted', true)

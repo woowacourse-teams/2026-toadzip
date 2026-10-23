@@ -32,14 +32,22 @@ export function NotificationPushProvider({ children }: { readonly children: Reac
   useEffect(() => {
     const client = state.userId === userId ? state.client : null
     if (!client) return
-    const refresh = () => { if (document.visibilityState === 'visible') void client.refresh() }
+    const refresh = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine !== false) void client.refresh()
+    }
+    const leave = () => client.invalidateRefresh()
+    const visibilityChanged = () => { if (document.hidden) leave(); else refresh() }
     window.addEventListener('focus', refresh)
     window.addEventListener('online', refresh)
-    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('blur', leave)
+    window.addEventListener('offline', leave)
+    document.addEventListener('visibilitychange', visibilityChanged)
     return () => {
       window.removeEventListener('focus', refresh)
       window.removeEventListener('online', refresh)
-      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('blur', leave)
+      window.removeEventListener('offline', leave)
+      document.removeEventListener('visibilitychange', visibilityChanged)
     }
   }, [state.client, state.userId, userId])
   return <NotificationPushContext.Provider value={{ current: state.userId === userId ? state.current : null, client: state.userId === userId ? state.client : null, error: state.userId === userId ? state.error : '', retry: () => { setState({ userId, client: null, current: null, error: '' }); setRetry(value => value + 1) } }}>{children}</NotificationPushContext.Provider>

@@ -85,4 +85,41 @@ class VerifiedAnnouncementEnrichmentIntegrationTest {
                 LocalDate.of(2026, 9, 21), LocalDate.of(2026, 12, 31), LocalDate.of(2026, 12, 31),
                 "https://apply.lh.or.kr/notice", null, 0L, null));
     }
+
+    @Test
+    void JSON으로_보정한_일정과_첨부는_원천에서_변경되거나_사라져도_유지한다() {
+        var announcement = announcement("json-children");
+        String pan = "json-pan";
+        var start = java.time.LocalDateTime.of(2026, 10, 20, 9, 0);
+        var end = start.plusDays(1);
+        var event = com.toadzip.backend.announcement.domain.AnnouncementSchedule.createFromSource(
+                announcement, "LH:" + pan + ":event", com.toadzip.backend.announcement.domain.ScheduleType.APPLICATION,
+                "접수", start, end, 0);
+        var attachment = com.toadzip.backend.announcement.domain.AnnouncementAttachment.createFromSource(
+                announcement, "LH:" + pan + ":file", "공고.pdf",
+                com.toadzip.backend.announcement.domain.AttachmentType.ANNOUNCEMENT, "https://example.com/old.pdf", 0);
+        event.reviseByAdmin(event.getScheduleType(), "공식 확인 접수", start, end);
+        attachment.reviseByAdmin("공식 확인.pdf", attachment.getFileType(), "https://example.com/confirmed.pdf");
+        entityManager.persist(event); entityManager.persist(attachment); entityManager.flush();
+        writer.write(announcement, new LhAnnouncementEnrichmentData(pan, null, null,
+                List.of(new LhAnnouncementEnrichmentMapper.LhScheduleData("LH:" + pan + ":event",
+                        event.getScheduleType(), "자동 변경 접수", start.plusDays(1), end.plusDays(1), null)),
+                List.of(new LhAnnouncementEnrichmentMapper.LhAttachmentData("LH:" + pan + ":file",
+                        "자동 변경.pdf", attachment.getFileType(), "https://example.com/changed.pdf")), List.of()),
+                Set.of(), Set.of());
+        entityManager.flush();
+        assertThat(event.getName()).isEqualTo("공식 확인 접수");
+        assertThat(attachment.getFileName()).isEqualTo("공식 확인.pdf");
+        writer.write(announcement, new LhAnnouncementEnrichmentData(pan, null, null,
+                List.of(new LhAnnouncementEnrichmentMapper.LhScheduleData("LH:" + pan + ":replacement",
+                        event.getScheduleType(), "다른 접수", start, end, null)),
+                List.of(new LhAnnouncementEnrichmentMapper.LhAttachmentData("LH:" + pan + ":replacement",
+                        "다른 자료.pdf", attachment.getFileType(), "https://example.com/other.pdf")), List.of()),
+                Set.of(), Set.of());
+        entityManager.flush(); entityManager.clear();
+        assertThat(entityManager.find(com.toadzip.backend.announcement.domain.AnnouncementSchedule.class,
+                event.getId()).getName()).isEqualTo("공식 확인 접수");
+        assertThat(entityManager.find(com.toadzip.backend.announcement.domain.AnnouncementAttachment.class,
+                attachment.getId()).getFileName()).isEqualTo("공식 확인.pdf");
+    }
 }

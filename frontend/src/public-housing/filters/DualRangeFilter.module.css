@@ -38,7 +38,7 @@
 .output {
   min-width: 0;
   margin-left: auto;
-  color: var(--ds-color-action);
+  color: var(--ds-color-text);
   font-size: var(--ds-text-body);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
@@ -47,25 +47,23 @@
   white-space: nowrap;
 }
 
+/* 가로 스크롤로 숨기지 않고 모든 구간을 한눈에 보이게 줄바꿈한다. */
 .presets {
   display: flex;
-  flex-wrap: nowrap;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 0 6px;
   margin-top: 8px;
   padding: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  scrollbar-width: thin;
 }
 
+/* 누르는 영역은 44px로 두고, 보이는 알약은 32px로 낮게 둔다. */
 .preset {
   position: relative;
   isolation: isolate;
   flex: 0 0 auto;
   min-width: 44px;
   min-height: 44px;
-  padding: 0 7px;
+  padding: 0 12px;
   border: 0;
   background: transparent;
   color: var(--ds-color-muted);
@@ -82,26 +80,29 @@
   right: 0;
   left: 0;
   z-index: -1;
-  height: 40px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: var(--ds-color-control-hover);
+  height: 32px;
+  border: 1px solid var(--ds-color-table-line);
+  border-radius: 999px;
+  background: var(--ds-color-surface);
   content: '';
   transform: translateY(-50%);
   pointer-events: none;
 }
 
+/* 빠른 선택도 그 외 선택지와 같은 알약: 고르면 먹색 2px 테두리·굵은 글자. */
 .preset:hover::before {
-  border-color: var(--ds-color-action);
+  border-color: var(--ds-color-muted);
 }
 
 .preset[aria-pressed='true']::before {
-  border-color: var(--ds-color-action);
-  background: var(--ds-color-action-soft);
+  border-color: var(--ds-color-text);
+  background: var(--ds-color-surface);
+  box-shadow: inset 0 0 0 1px var(--ds-color-text);
 }
 
 .preset[aria-pressed='true'] {
-  color: var(--ds-color-action);
+  color: var(--ds-color-text);
+  font-weight: 700;
 }
 
 .preset:focus-visible {
@@ -115,6 +116,8 @@
 
 .slider {
   position: relative;
+  cursor: grab;
+  touch-action: none;
   height: 44px;
   margin-top: 8px;
 }
@@ -139,7 +142,7 @@
   left: var(--range-start);
   right: calc(100% - var(--range-end));
   border-radius: inherit;
-  background: var(--ds-color-action);
+  background: var(--ds-color-brand);
 }
 
 .rangeInput {
@@ -172,10 +175,6 @@
   z-index: 3;
 }
 
-.minimumOnTop {
-  z-index: 4;
-}
-
 .rangeInput::-webkit-slider-runnable-track {
   height: 6px;
   border: 0;
@@ -195,8 +194,7 @@
     var(--ds-color-action) 10px 12px,
     transparent 13px
   );
-  cursor: grab;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .rangeInput::-moz-range-track {
@@ -220,8 +218,7 @@
     var(--ds-color-action) 10px 12px,
     transparent 13px
   );
-  cursor: grab;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .rangeInput:focus-visible::-webkit-slider-thumb {
@@ -234,17 +231,13 @@
   outline-offset: -7px;
 }
 
-.rangeInput:active::-webkit-slider-thumb {
-  cursor: grabbing;
-}
-
-.rangeInput:active::-moz-range-thumb {
+.slider:active {
   cursor: grabbing;
 }
 
 .ticks {
   position: relative;
-  height: 26px;
+  height: 30px;
   margin: 0 22px;
   padding: 0;
   list-style: none;
@@ -253,8 +246,8 @@
 .tick {
   position: absolute;
   top: 0;
-  color: var(--ds-color-muted);
-  font-size: 10px;
+  color: var(--ds-color-label);
+  font-size: max(0.875rem, var(--ds-text-body));
   font-variant-numeric: tabular-nums;
   font-weight: 500;
   line-height: 1.35;
@@ -281,13 +274,11 @@
   margin-left: 0;
 }
 
-.tick:last-child {
-  text-align: right;
-  transform: translateX(-100%);
-}
-
-.tick:last-child::before {
-  margin-right: 0;
+/* 면적은 빠른 선택과 눈금의 상한을 같은 기준으로 읽을 수 있게 표시한다. */
+.filter:has([name='minExclusiveArea']) .label,
+.filter:has([name='minExclusiveArea']) .output,
+.filter:has([name='minExclusiveArea']) .preset {
+  font-size: max(1rem, var(--ds-text-body));
 }
 
 @media (prefers-reduced-motion: reduce) {

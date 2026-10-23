@@ -68,7 +68,9 @@ export interface ComplexSearchFilters extends SharedSearchFilters {
   readonly minMonthlyRent?: number | null
 }
 
-export type AnnouncementSearchFilters = SharedSearchFilters
+export interface AnnouncementSearchFilters extends SharedSearchFilters {
+  readonly sort?: 'DEADLINE' | 'DEADLINE_DESC' | 'LATEST' | 'LATEST_ASC'
+}
 export interface PublicHousingRepository {
   findComplexPage(
     bounds: MapBounds | null,
@@ -99,7 +101,7 @@ export class PublicHousingHttpError extends Error {
   readonly traceId: string | null
 
   constructor(status: number, body: HttpErrorBody) {
-    super(body.message ?? '공공주택 정보를 불러오지 못했습니다.')
+    super(body.message ?? '공공주택 정보를 불러오지 못했어요.')
     this.name = 'PublicHousingHttpError'
     this.status = status
     this.code = body.code
@@ -145,7 +147,7 @@ export function createHttpPublicHousingRepository(
 
     async findAnnouncementPage(cursor, size, signal, filters = {}) {
       validatePageSize(size)
-      const search = new URLSearchParams({ size: String(size) })
+      const search = new URLSearchParams({ size: String(size), sort: filters.sort ?? 'DEADLINE' })
       appendSharedFilters(search, filters)
       if (cursor !== null) {
         search.set('cursor', cursor)

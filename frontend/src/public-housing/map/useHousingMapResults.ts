@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type {
   ComplexSearchFilters,
 } from '../api/publicHousingRepository.ts'
 import type {
   HousingMapQuery,
   HousingMapRepository,
+  MapClusteringProfile,
 } from '../api/housingMapRepository.ts'
 import {
   hasSearchFilters,
@@ -56,15 +57,38 @@ interface RequestCandidate {
   readonly signature: string
 }
 
+// Keep recent views during exploration without retaining old counts indefinitely.
+const RESULT_CACHE_LIMIT = 20
+const RESULT_CACHE_TTL_MS = 5 * 60 * 1000
+
+interface CachedResult {
+  readonly applied: AppliedHousingMapResult
+  readonly expiresAt: number
+  readonly signatures: readonly string[]
+}
+
 export function useHousingMapResults(
   repository: HousingMapRepository,
+  profile: MapClusteringProfile = 'DEFAULT',
 ) {
   const [state, setState] = useState<HousingMapResultsState>(INITIAL_STATE)
-  const appliedSignatureRef = useRef<string | null>(null)
+  const resultCacheRef = useRef<CachedResult[]>([])
   const failedRequestRef = useRef<RequestCandidate | null>(null)
   const pendingRequestRef = useRef<PendingRequest | null>(null)
   const requestRevisionRef = useRef(0)
   const resolvedStageRef = useRef<HousingMapResult['resolvedStage'] | null>(null)
+  const profileRef = useRef(profile)
+  useLayoutEffect(() => {
+    if (profileRef.current === profile) return
+    profileRef.current = profile
+    pendingRequestRef.current?.controller.abort()
+    pendingRequestRef.current = null
+    requestRevisionRef.current += 1
+    resolvedStageRef.current = null
+    failedRequestRef.current = null
+    resultCacheRef.current = []
+    setState(INITIAL_STATE)
+  }, [profile])
 
   const startRequest = useCallback((candidate: RequestCandidate) => {
     pendingRequestRef.current?.controller.abort()
@@ -99,13 +123,27 @@ export function useHousingMapResults(
       return
     }
     pendingRequestRef.current = null
-    appliedSignatureRef.current = requestSignature(
-      candidate.baseSignature,
-      result.resolvedStage,
-    )
+    const applied = { query: candidate.query, result }
+    // The response stage becomes the next request's previous stage. Preserve
+    // both keys, without sharing results across unobserved stage transitions.
+    const signatures = [
+      candidate.signature,
+      requestSignature(candidate.baseSignature, result.resolvedStage),
+    ]
+    const now = Date.now()
+    resultCacheRef.current = [{
+      applied,
+      expiresAt: now + RESULT_CACHE_TTL_MS,
+      signatures,
+    }, ...resultCacheRef.current.filter((cached) =>
+      cached.expiresAt > now
+      && cached.applied.result.policyVersion === result.policyVersion
+      && cached.applied.result.regionDatasetVersion === result.regionDatasetVersion
+      && !cached.signatures.some((signature) => signatures.includes(signature)),
+    )].slice(0, RESULT_CACHE_LIMIT)
     resolvedStageRef.current = result.resolvedStage
     setState({
-      applied: { query: candidate.query, result },
+      applied,
       errorMessage: null,
       status: 'ready',
     })
@@ -138,10 +176,12 @@ export function useHousingMapResults(
     viewport: ViewportSnapshot,
     filters: ComplexSearchFilters = {},
   ): HousingMapRequestOutcome => {
+    if (profileRef.current !== profile) return 'ignored'
     const candidate = requestCandidate(
       viewport,
       filters,
       resolvedStageRef.current,
+      profile,
     )
     if (candidate === null) {
       return 'ignored' as const
@@ -149,17 +189,22 @@ export function useHousingMapResults(
     if (pendingRequestRef.current?.signature === candidate.signature) {
       return 'pending' as const
     }
-    if (restoreAppliedResult(candidate.signature)) {
+    if (restoreCachedResult(candidate.signature)) {
       return 'applied' as const
     }
     startRequest(candidate)
     return 'started'
-  }, [startRequest])
+  }, [startRequest, profile])
 
-  function restoreAppliedResult(signature: string) {
-    if (appliedSignatureRef.current !== signature) {
+  function restoreCachedResult(signature: string) {
+    const index = resultCacheRef.current.findIndex((cached) =>
+      cached.expiresAt > Date.now() && cached.signatures.includes(signature),
+    )
+    if (index < 0) {
       return false
     }
+    const [cached] = resultCacheRef.current.splice(index, 1)
+    resultCacheRef.current.unshift(cached)
     const pendingRequest = pendingRequestRef.current
     if (pendingRequest !== null) {
       requestRevisionRef.current += 1
@@ -167,11 +212,12 @@ export function useHousingMapResults(
       pendingRequestRef.current = null
     }
     failedRequestRef.current = null
-    setState((current) => ({
-      ...current,
+    resolvedStageRef.current = cached.applied.result.resolvedStage
+    setState({
+      applied: cached.applied,
       errorMessage: null,
       status: 'ready',
-    }))
+    })
     return true
   }
 
@@ -214,6 +260,7 @@ function requestCandidate(
   viewport: ViewportSnapshot,
   filters: ComplexSearchFilters,
   previousResolvedStage: HousingMapResult['resolvedStage'] | null,
+  profile: MapClusteringProfile,
 ): RequestCandidate | null {
   const decision = evaluateServerMapRequest(viewport)
   if (!decision.allowed) {
@@ -221,6 +268,7 @@ function requestCandidate(
   }
   const filtersSignature = searchFiltersSignature(filters)
   const baseSignature = [
+    profile,
     decision.boundsSignature,
     viewport.zoom,
     filtersSignature,
@@ -228,6 +276,7 @@ function requestCandidate(
   const query = {
     bounds: viewport.bounds,
     zoom: viewport.zoom,
+    ...(profile === 'MOBILE' ? { clusteringProfile: profile } : {}),
     ...(previousResolvedStage === null ? {} : { previousResolvedStage }),
     ...(hasSearchFilters(filters) ? { filters } : {}),
   }
@@ -246,7 +295,7 @@ function requestErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
     return error.message
   }
-  return '지도 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'
+  return '지도 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.'
 }
 
 function isAbortError(error: unknown) {

@@ -28,6 +28,15 @@
   background: var(--ds-color-control-hover);
 }
 
+.filled {
+  background: var(--ds-color-brand);
+  color: var(--ds-color-on-brand);
+}
+
+.filled:hover:not(:disabled) {
+  background: var(--ds-color-brand-hover);
+}
+
 .root:focus-visible {
   outline: 2px solid var(--ds-color-action);
   outline-offset: 2px;

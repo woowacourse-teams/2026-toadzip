@@ -1,8 +1,13 @@
+import { SupplyCorrectionHistory } from '../supply/SupplyCorrectionHistory'
 import { useEffect, useState } from 'react'
+import { sourceCategories, isSourceCategory } from '../ingest/sourceApi'
 import { getManagementHistory } from './api'
 import type { ManagementChange, ManagementResource } from './managementContract'
 import { labels } from './fields'
 import { StoredDataTable } from '../shared/StoredDataTable'
+import { storedFieldLabel } from '../shared/storedFieldLabels'
+import { storedDataRows, storedDataValue } from '../shared/storedDataPresentation'
+import { isRecord } from './managementContract'
 export function ChangeHistory({ resource, id, version }: {resource:ManagementResource;id:string;version:number}) {
   const [items, setItems] = useState<ManagementChange[]>([])
   const [page, setPage] = useState(0)
@@ -19,7 +24,34 @@ export function ChangeHistory({ resource, id, version }: {resource:ManagementRes
   return <section><h2>수정 이력</h2>{error ? <div role="alert">{error}<button onClick={() => setAttempt(v => v+1)}>다시 불러오기</button></div> : null}
     {busy ? <p role="status">이력을 불러오는 중…</p> : !error && !items.length ? <p>아직 관리자 변경 이력이 없습니다.</p> : null}
     {!busy && !error ? items.map(item => <details key={item.id} className="admin-change"><summary>{labels[item.action] ?? item.action} · {item.actor} · {new Date(item.occurredAt).toLocaleString('ko-KR')}</summary>
-      <div className="admin-change-values"><div><StoredDataTable data={readValue(item.beforeValue)} label="변경 전" /></div><div><StoredDataTable data={readValue(item.afterValue)} label="변경 후" /></div></div></details>) : null}
+      {item.action === 'CORRECT_SUPPLY' ? <SupplyCorrectionHistory before={readValue(item.beforeValue)} after={readValue(item.afterValue)} /> : <ChangedValues before={readValue(item.beforeValue)} after={readValue(item.afterValue)} />}
+      <details className="admin-history-record"><summary>전체 기록 보기</summary><div className="admin-change-values"><div><StoredDataTable data={readValue(item.beforeValue)} label="변경 전" readable /></div><div><StoredDataTable data={readValue(item.afterValue)} label="변경 후" readable /></div></div></details></details>) : null}
     <div className="admin-pagination"><button disabled={page === 0 || busy} onClick={() => setPage(v => v-1)}>이전 이력</button><span>{page+1} 페이지</span><button disabled={items.length < 20 || busy} onClick={() => setPage(v => v+1)}>다음 이력</button></div></section>
 }
 function readValue(text:string): unknown { try { return JSON.parse(text) as unknown } catch { return text } }
+function ChangedValues({ before, after }: { before: unknown; after: unknown }) {
+  const previous = new Map(storedDataRows(before).map(row => [row.path, row.value]))
+  const next = new Map(storedDataRows(after).map(row => [row.path, row.value]))
+  const paths = [...new Set([...previous.keys(), ...next.keys()])].filter(path => path !== 'version' && !path.startsWith('documentEvidence') && !path.startsWith('comparisonEvidence')
+    && (previous.has(path) !== next.has(path) || JSON.stringify(previous.get(path)) !== JSON.stringify(next.get(path))))
+  return <div className="admin-history-summary">
+    {paths.length ? <div className="admin-table-scroll"><table className="admin-table"><caption>수정한 항목</caption><thead><tr><th scope="col">항목</th><th scope="col">변경 전</th><th scope="col">변경 후</th></tr></thead><tbody>{paths.map(path => <tr key={path}><th scope="row">{storedFieldLabel(path)}</th><td>{storedDataValue(path, previous.get(path))}</td><td>{storedDataValue(path, next.get(path))}</td></tr>)}</tbody></table></div> : <p>비교할 값의 차이가 없습니다. 전체 기록에서 내용을 확인하세요.</p>}
+    {isRecord(after) && isRecord(after.documentEvidence) ? <StoredDataTable data={after.documentEvidence} label="확인한 PDF 근거" readable /> : null}
+    {isRecord(after) && isRecord(after.comparisonEvidence) ? <ComparisonEvidence value={after.comparisonEvidence} /> : null}
+  </div>
+}
+
+function ComparisonEvidence({ value }: { value: Record<string, unknown> }) {
+  const sources = Array.isArray(value.sources) ? value.sources.filter(isRecord) : []
+  return <section aria-label="확인한 DB 원천 근거"><h3>확인한 DB 원천 근거</h3>
+    {typeof value.note === 'string' ? <p>{value.note}</p> : null}
+    {typeof value.target === 'string' ? <p>확인 대상: {value.target === 'basic' ? '기본정보' : value.target.replace('type:', '주택형 #').replace('row:', '공급행 #').replace('target:', '공급대상 #')}</p> : null}
+    {!sources.length ? <p>연결한 DB 원천 없이 공식 자료를 직접 확인해 수정했습니다.</p> : <ul>{sources.map((source, index) => {
+      const rows = isRecord(source.data) ? [source.data] : Array.isArray(source.rows) ? source.rows.filter(isRecord) : []
+      const category = typeof source.category === 'string' && isSourceCategory(source.category) ? sourceCategories[source.category] : 'DB 원천'
+      return <li key={index}><strong>{category} · {rows.length && typeof rows[0].name === 'string' ? rows[0].name : '현재 원천 없음'}</strong>
+        {rows.map((row, rowIndex) => <div key={rowIndex}>{typeof row.collectedAt === 'string' ? <p>수집 시각 {new Date(row.collectedAt).toLocaleString('ko-KR')}</p> : null}
+          <details><summary>수정 당시 원천 값{rows.length > 1 ? ` · ${rowIndex + 1}` : ''}</summary><StoredDataTable data={row.raw} label={`수정 근거 원천 ${index + 1}-${rowIndex + 1}`} /></details></div>)}</li>
+    })}</ul>}
+  </section>
+}

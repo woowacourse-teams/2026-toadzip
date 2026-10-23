@@ -1,8 +1,15 @@
+vi.mock('./admin/notifications/deliveryApi', async original => ({ ...await original<typeof import('./admin/notifications/deliveryApi')>(), listDeliveries: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })) }))
+vi.mock('./admin/feedback/api', async original => ({ ...await original<typeof import('./admin/feedback/api')>(), listFeedback: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })) }))
+vi.mock('./admin/ingest/failureReviewApi', async original => ({ ...await original<typeof import('./admin/ingest/failureReviewApi')>(), getFailureReviews: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })) }))
 vi.mock('./admin/management/api', async importOriginal => ({
   ...(await importOriginal<typeof import('./admin/management/api')>()),
   getManagementPage: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })),
 }))
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+vi.mock('./admin/quality/qualityQueueApi', async importOriginal => ({
+  ...(await importOriginal<typeof import('./admin/quality/qualityQueueApi')>()),
+  getQualityQueue: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })),
+}))
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -63,7 +70,7 @@ describe('App', () => {
       screen.getByRole('region', { name: '공공임대주택 지도' }),
     ).toBeVisible()
     expect(screen.getByRole('alert')).toHaveTextContent(
-      '지도 설정이 준비되지 않았습니다.',
+      '지도 설정이 준비되지 않았어요.',
     )
   })
 
@@ -92,7 +99,7 @@ describe('App', () => {
     )
 
     expect(
-      screen.getByRole('heading', { name: '페이지를 찾을 수 없습니다.' }),
+      screen.getByRole('heading', { name: '페이지를 찾을 수 없어요.' }),
     ).toBeVisible()
     const brand = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
     expect(brand.querySelector('.brand-name')).not.toBeInTheDocument()
@@ -146,15 +153,15 @@ describe('App', () => {
     fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password1' } })
     fireEvent.click(screen.getByRole('button', { name: '로그인' }))
 
-    expect(await screen.findByRole('heading', { name: '단지 관리', level: 1 })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '운영 홈', level: 1 })).toBeVisible()
   })
 
   it('관리자 메뉴를 이동하면 해당 업무만 표시하고 뒤로 돌아와도 실행 상태를 조회한다', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
     render(<MemoryRouter initialEntries={['/admin']}><App /></MemoryRouter>)
-    expect(await screen.findByRole('heading', { name: '단지 관리', level: 1 })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '운영 홈', level: 1 })).toBeVisible()
     expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('link', { name: '단지 관리' }))
+    fireEvent.click(within(screen.getByRole('navigation', { name: '관리자 메뉴' })).getByRole('link', { name: '단지 관리' }))
     fireEvent.click(screen.getByRole('link', { name: '단지 추가' }))
     expect(screen.getByRole('heading', { name: '단지 관리',level:1 })).toBeVisible()
     expect(screen.getByRole('region', { name: '단지 추가' })).toBeVisible()
@@ -166,11 +173,30 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '직접 입력' }))
     expect(screen.getByRole('heading', { name: '직접 입력' })).toBeVisible()
     expect(screen.queryByRole('heading', { name: 'JSON 가져오기' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('수집·원천 도구', { selector: 'summary' }))
     fireEvent.click(screen.getByRole('link', { name: '주소 데이터' }))
     expect(screen.getByRole('heading', { name: '주소 데이터', level: 1 })).toBeVisible()
     expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('link', { name: '수집·정제' }))
-    expect(screen.getByRole('heading', { name: '수집·정제', level: 1 })).toBeVisible()
+    fireEvent.click(screen.getByRole('link', { name: '공고 수집' }))
+    expect(screen.getByRole('heading', { name: '공고 수집', level: 1 })).toBeVisible()
+  })
+
+  it('기존 수집 v2 주소의 단지 탭을 통합 수집 화면으로 연결한다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
+    render(<MemoryRouter initialEntries={['/admin/ingest-v2?domain=complex']}><App /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: '단지 수집', level: 1 })).toBeVisible()
+    expect(screen.queryByRole('tablist', { name: '수집 대상' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '단지 수집' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.queryByRole('link', { name: '공고 수집·검토' })).not.toBeInTheDocument()
+  })
+
+  it('공고 관리에서 마이홈 단건 등록으로 진입한다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
+    render(<MemoryRouter initialEntries={['/admin/announcements/new']}><App /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: '마이홈에서 가져오기' }))
+    expect(screen.getByRole('heading', { name: '마이홈에서 공고 가져오기' })).toBeVisible()
+    expect(screen.getByLabelText('마이홈 공고 URL')).toBeVisible()
+    expect(screen.queryByRole('heading', { name: 'JSON 가져오기' })).not.toBeInTheDocument()
   })
 
   it('공고 입력 URL로 직접 들어와도 지정한 방식만 연다', async () => {
@@ -199,7 +225,7 @@ describe('App', () => {
       expect(await screen.findByText('로그인 실패')).toBeVisible()
       fireEvent.click(screen.getByRole('button', { name: '로그인' }))
     }
-    expect(await screen.findByRole('heading', { name: '단지 관리', level: 1 })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '운영 홈', level: 1 })).toBeVisible()
     await act(async () => restoring.resolve(jsonResponse({ loginIdentifier: 'stale-admin', role: 'ADMIN' })))
     expect(screen.getByText('current-admin')).toBeVisible()
     expect(screen.queryByText('stale-admin')).not.toBeInTheDocument()

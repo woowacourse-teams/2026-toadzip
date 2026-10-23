@@ -2,32 +2,32 @@ package com.toadzip.backend.ingest.collection.history.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
 import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.repository.LhLeaseCatalogSourceReader;
+import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceReader;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
-import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
-@SpringBootTest
+@DataJpaTest(showSql = false)
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import({MyHomeAnnouncementSourceReader.class, LhAnnouncementQuerySourceReader.class,
+        LhAnnouncementSupplySourceReader.class, LhAnnouncementDetailSourceReader.class})
 @ActiveProfiles("test")
 @Transactional
 class SourceProjectionIntegrationTest {
 
     @Autowired private JdbcTemplate jdbc;
-    @Autowired private MyHomeComplexSourceReader complexes;
     @Autowired private MyHomeAnnouncementSourceReader announcements;
-    @Autowired private LhLeaseCatalogSourceReader leases;
-    @Autowired private LhAnnouncementCatalogSourceReader catalogs;
     @Autowired private LhAnnouncementSupplySourceReader supplies;
     @Autowired private LhAnnouncementDetailSourceReader details;
 
@@ -52,6 +52,7 @@ class SourceProjectionIntegrationTest {
         });
         assertThat(announcements.findByIdGreaterThanOrderByIdAsc(0L, PageRequest.of(0, 100)))
                 .filteredOn(row -> "PROJECTION-A".equals(row.getPblancId()))
+                .hasSize(2)
                 .allSatisfy(row -> assertThat(row.getPblancNm()).isEqualTo("새 공고"));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM myhome_announcement_source_rows WHERE source_id = ?",
                 Integer.class, parent)).isEqualTo(2);

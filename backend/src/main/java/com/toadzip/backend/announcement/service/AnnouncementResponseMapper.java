@@ -117,6 +117,7 @@ final class AnnouncementResponseMapper {
     private Map<Long, List<SupplyRow>> groupRowsByAnnouncementId(List<SupplyRow> supplyRows) {
         Map<Long, List<SupplyRow>> rowsByAnnouncementId = new LinkedHashMap<>();
         for (SupplyRow supplyRow : supplyRows) {
+            if (supplyRow.isAdminExcluded()) { continue; }
             rowsByAnnouncementId.computeIfAbsent(
                     supplyRow.getAnnouncement().getId(),
                     ignored -> new ArrayList<>()
@@ -128,6 +129,7 @@ final class AnnouncementResponseMapper {
     private Map<Long, List<SupplyTarget>> groupTargetsBySupplyRowId(List<SupplyTarget> supplyTargets) {
         Map<Long, List<SupplyTarget>> targetsBySupplyRowId = new HashMap<>();
         for (SupplyTarget supplyTarget : supplyTargets) {
+            if (supplyTarget.isAdminExcluded() || supplyTarget.getSupplyRow().isAdminExcluded()) { continue; }
             targetsBySupplyRowId.computeIfAbsent(
                     supplyTarget.getSupplyRow().getId(),
                     ignored -> new ArrayList<>()
@@ -143,6 +145,13 @@ final class AnnouncementResponseMapper {
             LocalDate today
     ) {
         ListAggregate aggregate = aggregateRows(supplyRows);
+        LocalDate start = announcement.getApplicationStartDate();
+        LocalDate end = announcement.getApplicationEndDate();
+        if (announcement.isApplicationScheduleReviewed()) {
+            var displaySchedule = applicationStatusCalculator.displaySchedule(applicationSchedules, today);
+            start = displaySchedule.map(AnnouncementApplicationSchedule::getStartDate).orElse(null);
+            end = displaySchedule.map(AnnouncementApplicationSchedule::getEndDate).orElse(null);
+        }
         return new AnnouncementListItemResponse(
                 announcement.getId(),
                 announcement.getStatus(),
@@ -152,8 +161,8 @@ final class AnnouncementResponseMapper {
                 announcement.getName(),
                 aggregate.regionNames(),
                 announcement.getPostedDate(),
-                announcement.getApplicationStartDate(),
-                announcement.getApplicationEndDate(),
+                start,
+                end,
                 applicationStatusCalculator.calculateDDay(announcement, applicationSchedules, today),
                 announcement.getViewCount(),
                 aggregate.supplyComplexCount(),
@@ -234,6 +243,7 @@ final class AnnouncementResponseMapper {
         List<SupplyRowResponse> responses = new ArrayList<>();
         Set<String> targets = new LinkedHashSet<>();
         for (SupplyRow supplyRow : supplyRows) {
+            if (supplyRow.isAdminExcluded()) { continue; }
             List<SupplyTarget> rowTargets = targetsBySupplyRowId.getOrDefault(supplyRow.getId(), List.of());
             List<SupplyTargetResponse> targetResponses = rowTargets.stream()
                     .map(this::supplyTargetResponse)
@@ -257,8 +267,18 @@ final class AnnouncementResponseMapper {
                 supplyRow.getExpectedMoveInMonth(),
                 supplyRow.getSupplyCategory().toSupplyType(),
                 supplyRow.getTotalSupplyHouseholdCount(),
-                targetResponses
+                targetResponses,
+                sharedRecruitment(supplyRow),
+                supplyRow.effectiveExclusiveArea(), supplyRow.effectiveSupplyArea(), supplyRow.isAdminModified()
         );
+    }
+
+    private SupplyRowResponse.SharedRecruitment sharedRecruitment(SupplyRow row) {
+        if (row.getSupplyGroup() == null) {
+            return null;
+        }
+        var group = row.getSupplyGroup();
+        return new SupplyRowResponse.SharedRecruitment(group.getId(), group.getSharedHouseholdCount());
     }
 
     private SupplyComplexResponse supplyComplexResponse(HousingComplex housingComplex) {
@@ -314,10 +334,19 @@ final class AnnouncementResponseMapper {
         Set<Long> complexIds = new HashSet<>();
         Integer supplyHouseholdCount = null;
         String thumbnailImageUrl = null;
+        Set<Long> countedGroups = new HashSet<>();
         for (SupplyRow supplyRow : supplyRows) {
+            if (supplyRow.isAdminExcluded()) { continue; }
+            Integer count = supplyRow.getTotalSupplyHouseholdCount();
+            if (supplyRow.getSupplyGroup() != null) {
+                count = null;
+                if (countedGroups.add(supplyRow.getSupplyGroup().getId())) {
+                    count = supplyRow.getSupplyGroup().getSharedHouseholdCount();
+                }
+            }
             supplyHouseholdCount = addHouseholdCount(
                     supplyHouseholdCount,
-                    supplyRow.getTotalSupplyHouseholdCount()
+                    count
             );
             HousingComplex housingComplex = supplyRow.getHousingComplex();
             if (housingComplex == null) {

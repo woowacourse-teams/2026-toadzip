@@ -1,14 +1,8 @@
-import { announcementSections, complexSections, supplyFields } from '../management/fields'
+import { fieldLabels, storedFieldLabel } from './storedFieldLabels'
 import { storedDataRows, storedDataValue } from './storedDataPresentation'
 import styles from './StoredDataTable.module.css'
 
-const fieldLabels = new Map<string, string>([
-  ...complexSections.flatMap(section => section.fields),
-  ...announcementSections.flatMap(section => section.fields),
-  ...supplyFields,
-].map(field => [field.name, field.label]))
-
-export function StoredDataTable({ data, label }: { data: unknown; label: string }) {
+export function StoredDataTable({ data, label, readable = false }: { data: unknown; label: string; readable?: boolean }) {
   const rows = storedDataRows(data)
   return (
     <div className={styles.scroll} tabIndex={0} role="region" aria-label={`${label} 가로 스크롤`}>
@@ -19,8 +13,8 @@ export function StoredDataTable({ data, label }: { data: unknown; label: string 
           const normalizedPath = path.replace(/\[\d+\]/g, '')
           const fieldLabel = fieldLabels.get(normalizedPath) ?? fieldLabels.get(normalizedPath.split('.').at(-1) ?? '')
           return <tr key={`${path}-${index}`}>
-            <th scope="row">{fieldLabel ? <span className={styles.fieldLabel}>{fieldLabel}</span> : null}<span>{path}</span></th>
-            <td>{storedDataValue(path, value)}</td>
+            <th scope="row">{readable ? storedFieldLabel(path) : <>{fieldLabel ? <span className={styles.fieldLabel}>{fieldLabel}</span> : null}<span>{path}</span></>}</th>
+            <td>{readable && path.endsWith('.field') && typeof value === 'string' ? storedFieldLabel(value) : storedDataValue(path, value)}</td>
           </tr>
         })}</tbody>
       </table>

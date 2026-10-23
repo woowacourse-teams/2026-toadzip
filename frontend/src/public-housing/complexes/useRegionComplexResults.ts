@@ -64,7 +64,7 @@ export function useRegionComplexResults(
         })]
         return { key, state: {
           errorMessage: null, hasNext: page.hasNext, items, nextCursor: page.nextCursor,
-          status: 'ready', totalCount: page.hasNext ? null : items.length,
+          status: 'ready', totalCount: page.totalCount ?? (page.hasNext ? current.state.totalCount : items.length),
         } }
       })
       requestRef.current = null

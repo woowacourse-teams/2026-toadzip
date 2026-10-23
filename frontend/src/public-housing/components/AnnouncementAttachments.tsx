@@ -3,6 +3,7 @@ import { useDocumentPreviewTelemetry } from './documentAnalytics'
 import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Button } from '../../design-system/components/Button.tsx'
+import { IconButton } from '../../design-system/components/IconButton.tsx'
 import { attachmentErrorMessage, hasAttachmentUrl, loadAnnouncementAttachment } from '../api/announcementAttachments.ts'
 import type { HousingAnnouncementDetailAttachment } from './HousingAnnouncementDetailPanel.tsx'
 import { DetailCloseButton } from './DetailPrimitives.tsx'
@@ -23,6 +24,8 @@ interface AttachmentsProps {
 
 export function AttachmentList({ announcementId, attachments }: AttachmentsProps) {
   const [expanded, setExpanded] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const selected = attachments.find((attachment) => attachment.attachmentId === selectedId)
   const titleId = useId()
   const listId = useId()
   if (attachments.length === 0) return null
@@ -38,17 +41,32 @@ export function AttachmentList({ announcementId, attachments }: AttachmentsProps
         {expanded && <ul className={styles.downloadList}>
           {attachments.map((attachment) => <li key={attachment.attachmentId}>
             <div><small>{attachment.fileTypeLabel}</small><strong>{attachment.fileName ?? '이름 없는 파일'}</strong></div>
-            <DownloadButton announcementId={announcementId} attachment={attachment} />
+            <div className={styles.attachmentActions}>
+              <IconButton size="lg" variant="filled" label={`${attachment.fileName ?? '첨부파일'} 보기`} title="보기"
+                disabled={!hasAttachmentUrl(attachment)} onClick={() => setSelectedId(attachment.attachmentId)}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                  <path d="M12 22H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8l6 6v4M14 2v6h6" />
+                  <circle cx="16" cy="17" r="3" />
+                  <path d="m18.5 19.5 2.5 2.5" />
+                </svg>
+              </IconButton>
+              <DownloadButton announcementId={announcementId} attachment={attachment} iconOnly />
+            </div>
           </li>)}
         </ul>}
       </div>
+      {selected && <AttachmentDialog key={selected.attachmentId} announcementId={announcementId}
+        attachments={[selected]} initialSelectionMethod="manual" onClose={() => setSelectedId(null)} />}
     </section>
   )
 }
 
-export function AttachmentDialog({ announcementId, attachments, onClose }: AttachmentsProps & { readonly onClose: () => void }) {
+export function AttachmentDialog({ announcementId, attachments, onClose, initialSelectionMethod = 'automatic' }: AttachmentsProps & {
+  readonly onClose: () => void
+  readonly initialSelectionMethod?: 'automatic' | 'manual'
+}) {
   const [dialogId] = useState(createAnalyticsId)
-  const [automaticSelection] = useState(() => attachments.length === 1 ? attachments[0]?.attachmentId : undefined)
+  const [initialSelection] = useState(() => attachments.length === 1 ? attachments[0]?.attachmentId : undefined)
   const [selectedId, setSelectedId] = useState(attachments.length === 1 ? attachments[0]?.attachmentId : undefined)
   const selected = attachments.find((attachment) => attachment.attachmentId === selectedId)
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -58,15 +76,15 @@ export function AttachmentDialog({ announcementId, attachments, onClose }: Attac
     const trigger = document.activeElement
     const dialog = dialogRef.current
     dialog?.showModal()
-    if (automaticSelection) captureProductEvent('document_attachment_selected', {
-      announcement_id: announcementId, attachment_id: automaticSelection,
-      selection_method: 'automatic', document_dialog_id: dialogId,
+    if (initialSelection) captureProductEvent('document_attachment_selected', {
+      announcement_id: announcementId, attachment_id: initialSelection,
+      selection_method: initialSelectionMethod, document_dialog_id: dialogId,
     }, { dedupeKey: `attachment-selection:${dialogId}` })
     return () => {
       dialog?.close()
       if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus({ preventScroll: true })
     }
-  }, [announcementId, automaticSelection, dialogId])
+  }, [announcementId, initialSelection, initialSelectionMethod, dialogId])
 
   return createPortal(
     <dialog ref={dialogRef} className={`${styles.dialog} ph-no-capture`} aria-labelledby={titleId}
@@ -97,7 +115,7 @@ export function AttachmentDialog({ announcementId, attachments, onClose }: Attac
           }}>
             <span className={styles.fileIcon} aria-hidden="true">▤</span>
             <span><small>{attachment.fileTypeLabel}</small><strong>{attachment.fileName ?? '이름 없는 파일'}</strong>
-              {!hasAttachmentUrl(attachment) && <small>파일을 사용할 수 없습니다.</small>}</span>
+              {!hasAttachmentUrl(attachment) && <small>파일을 사용할 수 없어요.</small>}</span>
             <span aria-hidden="true">›</span>
           </button>
         </li>)}
@@ -175,15 +193,15 @@ function AttachmentPreview({ announcementId, attachment, onLoad, documentOpenId 
     setAttempt((current) => current + 1)
   }
 
-  if (!hasAttachmentUrl(attachment)) return <p className={styles.message}>파일을 사용할 수 없습니다. 공고 원문에서 확인해 주세요.</p>
-  if (unsupported) return <p className={styles.message}>이 파일은 미리보기를 지원하지 않습니다. 다운로드해서 확인해 주세요.</p>
+  if (!hasAttachmentUrl(attachment)) return <p className={styles.message}>파일을 사용할 수 없어요. 공고 원문에서 확인해 주세요.</p>
+  if (unsupported) return <p className={styles.message}>이 파일은 미리보기를 지원하지 않아요. 다운로드해서 확인해 주세요.</p>
   if (state.type === 'loading') return <p role="status" className={styles.message}>{hwp ? '한글 문서를 불러오는 중…' : 'PDF를 불러오는 중…'}</p>
   if (state.type === 'error') return <div className={styles.message}>
     <p role="alert">{state.message}</p>
     <button type="button" onClick={retry}>다시 시도</button>
   </div>
   return <div className={styles.preview}>
-    {hwp ? <p className={styles.viewerHint}>원본과 글꼴·페이지 나눔이 다를 수 있습니다. 정확한 서식은 다운로드해서 확인해 주세요.</p> : <p className={styles.viewerHint}>미리보기가 표시되지 않으면 <a href={state.url} target="_blank" rel="noreferrer">PDF 새 창에서 보기</a>를 이용해 주세요.</p>}
+    {hwp ? <p className={styles.viewerHint}>원본과 글꼴·페이지 나눔이 다를 수 있어요. 정확한 서식은 다운로드해서 확인해 주세요.</p> : <p className={styles.viewerHint}>미리보기가 표시되지 않으면 <a href={state.url} target="_blank" rel="noreferrer">PDF 새 창에서 보기</a>를 이용해 주세요.</p>}
     <PdfPreviewBoundary key={state.url} onFailure={() => telemetry.failed('viewer_failed')} label={hwp ? '한글' : 'PDF'}>
       <Suspense fallback={<p role="status" className={styles.message}>{hwp ? '한글 뷰어를 준비하는 중…' : 'PDF 뷰어를 준비하는 중…'}</p>}>
         {hwp ? <HwpDocumentPreview telemetry={telemetry} onRetry={retry} url={state.url} name={attachment.fileName ?? '첨부파일'} />
@@ -193,7 +211,8 @@ function AttachmentPreview({ announcementId, attachment, onLoad, documentOpenId 
   </div>
 }
 
-function DownloadButton({ announcementId, attachment, originalBlob }: {
+function DownloadButton({ announcementId, attachment, originalBlob, iconOnly = false }: {
+  readonly iconOnly?: boolean
   readonly originalBlob?: Blob | null
   readonly announcementId: string
   readonly attachment: HousingAnnouncementDetailAttachment
@@ -231,11 +250,17 @@ function DownloadButton({ announcementId, attachment, originalBlob }: {
     }
   }
 
-  return <div className={styles.downloadAction}>
-    <Button disabled={pending || !hasAttachmentUrl(attachment)}
+  return <div className={iconOnly ? styles.iconDownloadAction : styles.downloadAction}>
+    {iconOnly ? <IconButton size="lg" variant="filled" disabled={pending || !hasAttachmentUrl(attachment)}
+      label={`${attachment.fileName ?? '첨부파일'} 다운로드`} title={pending ? '다운로드 준비 중…' : '다운로드'}
+      aria-busy={pending} onClick={() => void download()}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+        <path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5" />
+      </svg>
+    </IconButton> : <Button disabled={pending || !hasAttachmentUrl(attachment)}
       aria-label={`${attachment.fileName ?? '첨부파일'} 다운로드`} onClick={() => void download()}>
       {pending ? '준비 중…' : '다운로드'}
-    </Button>
+    </Button>}
     {error && <small role="alert">{error}</small>}
   </div>
 }

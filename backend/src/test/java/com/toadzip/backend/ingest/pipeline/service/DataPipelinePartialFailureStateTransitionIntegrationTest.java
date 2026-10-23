@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecoveryService;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
@@ -332,6 +333,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 executionLock,
                 executionRepository,
                 executionStateService,
+                mock(SourceCollectionRecoveryService.class),
                 Runnable::run,
                 heartbeatExecutor,
                 Clock.fixed(STARTED_AT, ZoneOffset.UTC),

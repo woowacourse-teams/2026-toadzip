@@ -2,11 +2,17 @@
   font-family: var(--ds-font-family-ui);
   line-height: var(--ds-line-height-body);
 }
+/* 공고 상세의 다른 섹션처럼 흰 블록으로 둔다. */
 .accordion {
-  border-top: 1px solid var(--ds-color-divider);
+  padding: 0 var(--ds-space-5);
+  border-radius: 16px;
+  background: var(--ds-color-surface);
 }
 .accordion h3 {
   margin: 0;
+  font-size: var(--ds-text-title);
+  font-weight: 700;
+  line-height: var(--ds-line-height-title);
 }
 .accordion h3 button {
   display: flex;
@@ -56,6 +62,19 @@
   margin-top: var(--ds-space-1);
   font-size: var(--ds-text-body);
   font-weight: 500;
+}
+.attachmentActions {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(2, var(--ds-icon-control-lg));
+  gap: var(--ds-space-1);
+}
+.iconDownloadAction {
+  display: contents;
+}
+.iconDownloadAction small {
+  grid-column: 1 / -1;
+  max-width: calc(2 * var(--ds-icon-control-lg) + var(--ds-space-1));
 }
 .dialog {
   width: min(1000px, calc(100% - 48px));

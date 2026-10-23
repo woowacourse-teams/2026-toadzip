@@ -5,6 +5,7 @@ import styles from './HousingAnnouncementCard.module.css'
 export interface HousingAnnouncementCardData {
   readonly announcementId: string
   readonly title: string | null
+  readonly publishedAt?: string | null
   readonly regionNames: readonly string[]
   readonly agencyLabel: string | null
   readonly rentalTypeLabel: string | null
@@ -49,6 +50,9 @@ export function HousingAnnouncementCard({
     ? `${title}, ${status.accessibleLabel}`
     : `${title}, ${status.statusLabel}, ${status.accessibleLabel}`
   const urgent = isUrgent(announcement)
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date())
   const className = [styles.card, selected ? styles.selected : '']
     .filter(Boolean)
     .join(' ')
@@ -82,6 +86,7 @@ export function HousingAnnouncementCard({
         </header>
 
         <header className={styles.titleRow} data-summary-row="title">
+          {announcement.publishedAt === today && <span className={styles.newAnnouncement}>오늘 공고</span>}
           <h3>{title}</h3>
         </header>
 

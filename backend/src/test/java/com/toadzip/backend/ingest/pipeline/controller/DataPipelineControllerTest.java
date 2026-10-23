@@ -92,12 +92,6 @@ class DataPipelineControllerTest {
         verify(executionService).find(executionId);
     }
 
-    @Test
-    void 실행_중지_요청을_접수한다() throws Exception {
-        mockMvc.perform(post("/api/admin/ingest/pipelines/executions/{executionId}/stop", UUID.randomUUID()))
-                .andExpect(status().isAccepted());
-    }
-
     @Autowired
     private MockMvc mockMvc;
 

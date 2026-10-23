@@ -1,0 +1,220 @@
+{
+  "caseId": "myhome-21395-hansville",
+  "observedOn": "2026-10-18",
+  "announcement": {
+    "sourceUrl": "https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21395",
+    "sourceIdentifier": "21395",
+    "name": "익산한스빌 국민임대주택 예비입주자 자격완화 모집 공고",
+    "provider": "LH",
+    "rentalType": "NATIONAL_RENTAL",
+    "complexName": "익산한스빌",
+    "roadAddress": "전북특별자치도 익산시 목천로 30-14",
+    "postedDate": "2026-10-08",
+    "applicationStartDate": "2026-10-21",
+    "applicationEndDate": "2026-10-22",
+    "winnerAnnouncementDate": "2026-12-17",
+    "linkedOfficialUrl": "https://apply.lh.or.kr/lhapply/apply/wt/wrtanc/selectWrtancInfo.do?panId=2015122300020893&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07&mi=1026",
+    "documentFileName": "익산한스빌국민임대주택예비입주자자격완화모집공고문(2026.10.08).pdf",
+    "supplyRows": [
+      {
+        "housingTypeName": "26A,B",
+        "exclusiveArea": 26.5195,
+        "reportedRecruitmentCount": 170,
+        "priorityCount": 0,
+        "generalCount": 170,
+        "depositWon": "4076000",
+        "monthlyRentWon": "72820",
+        "contractDepositWon": "203800",
+        "interimDepositWon": "0",
+        "balanceDepositWon": "3872200"
+      }
+    ]
+  },
+  "complex": {
+    "sourceUrl": "https://www.myhome.go.kr/hws/portal/sch/selectRentalHouseInfoDetail.do?hsmpSn=30700120&suplyTy=02&atchFileId=FLE00004952&rthousSe=D",
+    "sourceIdentifier": "30700120",
+    "name": "한스빌아파트",
+    "roadAddress": "전북특별자치도 익산시 목천로 30-14",
+    "completionDate": "2000-12-01",
+    "totalHouseholdCount": 529,
+    "providerLabel": "LH전북",
+    "buildingTypeLabel": "아파트",
+    "corridorTypeLabel": "복도식",
+    "heatingTypeLabel": "개별가스난방",
+    "elevatorLabel": "전체동 설치",
+    "parkingCount": 535,
+    "housingTypes": [
+      {
+        "name": "26",
+        "exclusiveAreaDisplayed": 26.46,
+        "commonAreaDisplayed": 14.1,
+        "householdCount": null,
+        "depositWon": "3920000",
+        "monthlyRentWon": "70020",
+        "convertedDepositWon": "2000000"
+      },
+      {
+        "name": "26",
+        "exclusiveAreaDisplayed": 26.51,
+        "commonAreaDisplayed": 14.12,
+        "householdCount": null,
+        "depositWon": "3920000",
+        "monthlyRentWon": "70020",
+        "convertedDepositWon": "2000000"
+      }
+    ]
+  },
+  "reproduction": {
+    "testOnlyCoordinates": {
+      "latitude": 0,
+      "longitude": 0
+    },
+    "matchingSource": "MYHOME_ANNOUNCEMENT",
+    "matchingExclusiveArea": null,
+    "matchingSupplyArea": null,
+    "expectedFailureReason": "AMBIGUOUS_HOUSING_TYPE",
+    "mappingConfirmed": false,
+    "notes": [
+      "api 항목은 사용자가 승인한 실제 API 응답의 한스빌 행을 값 변경 없이 보관한다. 인증키는 포함하지 않는다.",
+      "announcement와 complex의 기존 요약은 포털 페이지 표시값이다. 공고 API houseTyNm은 아파트이고 26A,B는 포털 표시값이므로 API 원천값으로 대체하지 않는다.",
+      "단지 API는 두 타입의 정밀 면적과 PNU를 제공한다. 포털 표시 두 자리 면적과 별도로 보존한다.",
+      "단지 2행은 주택형 원천 2개이며 hshldCo 529는 각 타입의 세대수가 아닌 단지 전체 세대수다.",
+      "공고 API는 pblancId 21395, houseSn 1의 단지 단위 한 행이다. API에 A/B별 면적과 개별 모집호수는 없다.",
+      "제품에서 A/B를 각각 다루려면 원천 1행에서 여러 공급행으로 이어지는 보정이 필요하다. 둘 중 하나를 선택하는 것으로 전체 복구를 완료하지 않는다.",
+      "공고의 모집호수 170을 A/B 각각에 복제하거나 임의 배분하지 않는다. 원문으로 개별 수량 또는 공유 모집 단위를 확인해야 한다.",
+      "공용면적을 전체 공급면적으로 대체하거나 최근 단지 기본임대조건으로 공고 조건을 덮어쓰지 않는다.",
+      "타입별 세대수는 이 API에 없다. 과거 개발 UI의 43/486과 혼용하지 않는다.",
+      "현재 MyHomeAnnouncementSourceMapper는 마이홈 공고만으로 면적을 채우지 않는다. LH 공급 보강이 없는 재현은 매칭 면적 null이다.",
+      "테스트의 제품 ID와 좌표 0,0, 빈 LH 보강 응답은 합성값이다. API PNU와 정밀 면적은 실제 값이다.",
+      "기존 단일 후보 선택 테스트는 저장 기능의 회귀 검증일 뿐 실제 A/B 전체 공급의 보정 완료를 의미하지 않는다."
+    ],
+    "matchingSourceHousingTypeName": "아파트"
+  },
+  "api": {
+    "complex": {
+      "receivedAt": "2026-10-18T23:56:02.220218+09:00",
+      "endpoint": "https://apis.data.go.kr/1613000/HWSPR04/rentalHouseGwList",
+      "requestParameters": {
+        "brtcCode": "52",
+        "signguCode": "140",
+        "numOfRows": 1000
+      },
+      "pages": [
+        {
+          "pageNo": 1,
+          "httpStatus": 200,
+          "resultCode": "00",
+          "totalCount": 309,
+          "returnedRowCount": 309
+        }
+      ],
+      "selection": "Exact source ID or a source name containing 한스빌; item fields are unmodified",
+      "items": [
+        {
+          "hsmpSn": 30700120,
+          "insttNm": "LH전북",
+          "brtcCode": "52",
+          "brtcNm": "전북특별자치도",
+          "signguCode": "140",
+          "signguNm": "익산시",
+          "hsmpNm": "한스빌아파트",
+          "rnAdres": "전북특별자치도 익산시 목천로 30-14",
+          "pnu": "5214011700113760001",
+          "competDe": "20001201",
+          "hshldCo": 529,
+          "suplyTyNm": "국민임대",
+          "styleNm": "26",
+          "suplyPrvuseAr": 26.4673,
+          "suplyCmnuseAr": 14.1013,
+          "houseTyNm": "아파트",
+          "heatMthdDetailNm": "개별가스난방",
+          "buldStleNm": "복도식",
+          "elvtrInstlAtNm": "전체동 설치",
+          "parkngCo": 535,
+          "bassRentGtn": 3920000,
+          "bassMtRntchrg": 70020,
+          "bassCnvrsGtnLmt": 2000000
+        },
+        {
+          "hsmpSn": 30700120,
+          "insttNm": "LH전북",
+          "brtcCode": "52",
+          "brtcNm": "전북특별자치도",
+          "signguCode": "140",
+          "signguNm": "익산시",
+          "hsmpNm": "한스빌아파트",
+          "rnAdres": "전북특별자치도 익산시 목천로 30-14",
+          "pnu": "5214011700113760001",
+          "competDe": "20001201",
+          "hshldCo": 529,
+          "suplyTyNm": "국민임대",
+          "styleNm": "26",
+          "suplyPrvuseAr": 26.5195,
+          "suplyCmnuseAr": 14.1291,
+          "houseTyNm": "아파트",
+          "heatMthdDetailNm": "개별가스난방",
+          "buldStleNm": "복도식",
+          "elvtrInstlAtNm": "전체동 설치",
+          "parkngCo": 535,
+          "bassRentGtn": 3920000,
+          "bassMtRntchrg": 70020,
+          "bassCnvrsGtnLmt": 2000000
+        }
+      ]
+    },
+    "announcement": {
+      "receivedAt": "2026-10-18T23:56:03.009162+09:00",
+      "endpoint": "https://apis.data.go.kr/1613000/HWSPR02/rsdtRcritNtcList",
+      "requestParameters": {
+        "suplyTy": "02",
+        "numOfRows": 1000
+      },
+      "pages": [
+        {
+          "pageNo": 1,
+          "httpStatus": 200,
+          "resultCode": "00",
+          "totalCount": 37,
+          "returnedRowCount": 37
+        }
+      ],
+      "selection": "Exact source ID or a source name containing 한스빌; item fields are unmodified",
+      "items": [
+        {
+          "pblancId": "21395",
+          "houseSn": 1,
+          "sttusNm": "일반공고",
+          "pblancNm": "익산한스빌 국민임대주택 예비입주자 자격완화 모집 공고",
+          "suplyInsttNm": "LH",
+          "houseTyNm": "아파트",
+          "suplyTyNm": "국민임대",
+          "beforePblancId": "",
+          "rcritPblancDe": "20261008",
+          "przwnerPresnatnDe": "20261217",
+          "suplyHoCo": "",
+          "refrnc": "LH 콜센터 : 1600-1004 (평일 : 09:00 ~ 18:00)",
+          "url": "https://apply.lh.or.kr/lhapply/apply/wt/wrtanc/selectWrtancInfo.do?panId=2015122300020893&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07&mi=1026",
+          "pcUrl": "https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21395&houseSn=1",
+          "mobileUrl": "https://m.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21395&houseSn=1",
+          "hsmpNm": "익산한스빌",
+          "brtcNm": "전북특별자치도",
+          "signguNm": "익산시",
+          "fullAdres": "전북특별자치도 익산시 목천로 30-14 ",
+          "rnCodeNm": "목천로",
+          "refrnLegaldongNm": "",
+          "pnu": "5214011700113760001",
+          "heatMthdNm": "개별난방",
+          "totHshldCo": "",
+          "sumSuplyCo": 170,
+          "rentGtn": 4076000,
+          "enty": 203800,
+          "prtpay": 0,
+          "surlus": 3872200,
+          "mtRntchrg": 72820,
+          "beginDe": "20261021",
+          "endDe": "20261022"
+        }
+      ]
+    }
+  }
+}

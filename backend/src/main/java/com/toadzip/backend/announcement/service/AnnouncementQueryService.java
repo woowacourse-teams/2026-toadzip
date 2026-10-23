@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.service;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementSort;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
@@ -20,6 +21,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchCondition;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementDeadlineRow;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
@@ -79,17 +81,79 @@ public class AnnouncementQueryService {
     }
 
     public AnnouncementListResponse getAnnouncements(AnnouncementSearchRequest request, String cursor, int size) {
+        return getAnnouncements(request, cursor, size, AnnouncementSort.LATEST);
+    }
+
+    public AnnouncementListResponse getAnnouncements(AnnouncementSearchRequest request, String cursor, int size,
+            AnnouncementSort sort) {
+        // In-flight requests using the old cursor finish with their original ID tie order.
+        if (cursor != null && announcementCursorCodec.isLegacyLatestCursor(cursor, sort)) {
+            return getLegacyAnnouncements(request, cursor, size, sort);
+        }
+        return getSortedAnnouncements(request, cursor, size, sort);
+    }
+
+    private AnnouncementListResponse getLegacyAnnouncements(AnnouncementSearchRequest request, String cursor, int size,
+            AnnouncementSort sort) {
         validateSize(size);
         LocalDate today = currentSeoulDate();
         AnnouncementSearchCondition condition = searchCondition(request, today);
-        AnnouncementCursorCodec.AnnouncementCursor decodedCursor = decodeCursor(cursor);
+        AnnouncementCursorCodec.AnnouncementCursor decodedCursor = decodeCursor(cursor, sort);
         List<Announcement> fetchedAnnouncements = announcementSearchRepository.findLatestLeaves(
-                condition, cursorPostedDate(decodedCursor), cursorId(decodedCursor), size + 1
+                condition, cursorPostedDate(decodedCursor), cursorId(decodedCursor), size + 1, sort
         );
         boolean hasNext = fetchedAnnouncements.size() > size;
         List<Announcement> announcements = fetchedAnnouncements.stream().limit(size).toList();
+        long totalCount = announcementSearchRepository.countLatestLeaves(condition);
+        return new AnnouncementListResponse(listItems(announcements, condition, today),
+                nextCursor(announcements, hasNext, sort), hasNext, totalCount);
+    }
+
+    public AnnouncementListResponse getAnnouncementsByDeadline(AnnouncementSearchRequest request, String cursor, int size) {
+        return getAnnouncementsByDeadline(request, cursor, size, AnnouncementSort.DEADLINE);
+    }
+
+    public AnnouncementListResponse getAnnouncementsByDeadline(AnnouncementSearchRequest request, String cursor,
+            int size, AnnouncementSort sort) {
+        return getSortedAnnouncements(request, cursor, size, sort);
+    }
+
+    private AnnouncementListResponse getSortedAnnouncements(AnnouncementSearchRequest request, String cursor,
+            int size, AnnouncementSort sort) {
+        validateSize(size);
+        LocalDate today = currentSeoulDate();
+        Integer priority = null;
+        LocalDate sortDate = null;
+        LocalDate postedDate = null;
+        Long id = null;
+        if (cursor != null) {
+            AnnouncementCursorCodec.DeadlineCursor position = announcementCursorCodec.decodeDeadline(cursor, sort);
+            today = position.asOf();
+            priority = position.priority();
+            sortDate = position.sortDate();
+            postedDate = position.postedDate();
+            id = position.id();
+        }
+        AnnouncementSearchCondition condition = searchCondition(request, today);
+        List<AnnouncementDeadlineRow> rows = announcementSearchRepository.findSortedLeaves(
+                condition, priority, sortDate, postedDate, id, size + 1, sort);
+        boolean hasNext = rows.size() > size;
+        List<AnnouncementDeadlineRow> page = rows.stream().limit(size).toList();
+        String nextCursor = null;
+        if (hasNext) {
+            AnnouncementDeadlineRow last = page.getLast();
+            nextCursor = announcementCursorCodec.encodeDeadline(today, last.priority(), last.sortDate(),
+                    last.announcement().getPostedDate(), last.announcement().getId(), sort);
+        }
+        long totalCount = announcementSearchRepository.countLatestLeaves(condition);
+        return new AnnouncementListResponse(listItems(page.stream().map(AnnouncementDeadlineRow::announcement).toList(),
+                condition, today), nextCursor, hasNext, totalCount);
+    }
+
+    private List<AnnouncementListItemResponse> listItems(List<Announcement> announcements,
+            AnnouncementSearchCondition condition, LocalDate today) {
         List<SupplyRow> supplyRows = findSupplyRows(announcementIds(announcements));
-        List<AnnouncementListItemResponse> items = announcementResponseMapper.toListItemResponses(
+        return announcementResponseMapper.toListItemResponses(
                 announcements,
                 supplyRows,
                 applicationScheduleRepository.findAllByAnnouncementIdIn(announcementIds(announcements)).stream()
@@ -98,7 +162,6 @@ public class AnnouncementQueryService {
                         .toList(),
                 today
         );
-        return new AnnouncementListResponse(items, nextCursor(announcements, hasNext), hasNext);
     }
 
     public AnnouncementDetailResponse getAnnouncement(long announcementId) {
@@ -214,11 +277,11 @@ public class AnnouncementQueryService {
         return Set.copyOf(values);
     }
 
-    private AnnouncementCursorCodec.AnnouncementCursor decodeCursor(String cursor) {
+    private AnnouncementCursorCodec.AnnouncementCursor decodeCursor(String cursor, AnnouncementSort sort) {
         if (cursor == null) {
             return null;
         }
-        return announcementCursorCodec.decode(cursor);
+        return announcementCursorCodec.decode(cursor, sort);
     }
 
     private LocalDate cursorPostedDate(AnnouncementCursorCodec.AnnouncementCursor cursor) {
@@ -235,12 +298,12 @@ public class AnnouncementQueryService {
         return cursor.id();
     }
 
-    private String nextCursor(List<Announcement> announcements, boolean hasNext) {
+    private String nextCursor(List<Announcement> announcements, boolean hasNext, AnnouncementSort sort) {
         if (!hasNext) {
             return null;
         }
         Announcement lastAnnouncement = announcements.getLast();
-        return announcementCursorCodec.encode(lastAnnouncement.getPostedDate(), lastAnnouncement.getId());
+        return announcementCursorCodec.encode(lastAnnouncement.getPostedDate(), lastAnnouncement.getId(), sort);
     }
 
     private List<Long> announcementIds(List<Announcement> announcements) {

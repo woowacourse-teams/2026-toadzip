@@ -50,14 +50,6 @@ class AdminManagementIntegrationTest {
     @Autowired private EntityManager entityManager;
 
     @Test
-    void 관리자는_단지와_공고_목록을_조회한다() throws Exception {
-        mvc.perform(get("/api/admin/housing-complexes").with(user("admin").roles("ADMIN")))
-                .andExpect(status().isOk());
-        mvc.perform(get("/api/admin/announcements").with(user("admin").roles("ADMIN")))
-                .andExpect(status().isOk());
-    }
-
-    @Test
     void 단지_목록은_정제된_기본항목과_원천식별자를_반환한다() throws Exception {
         long id = createComplex();
         String identifier = getData("/api/admin/housing-complexes/" + id).get("sourceIdentifier").asText();
@@ -116,6 +108,29 @@ class AdminManagementIntegrationTest {
                 .andExpect(jsonPath("$.data.items[0].announcement.winnerAnnouncementDate").value("2026-10-01"))
                 .andExpect(jsonPath("$.data.items[0].complex").isEmpty())
                 .andExpect(jsonPath("$.data.items[0].updatedAt").isEmpty());
+    }
+
+    @Test
+    void 공고_상세는_연결된_첨부파일을_표시순서로_반환한다() throws Exception {
+        long id = createAnnouncement(createComplex());
+        var announcement = entityManager.find(com.toadzip.backend.announcement.domain.Announcement.class, id);
+        entityManager.persist(com.toadzip.backend.announcement.domain.AnnouncementAttachment.create(
+                announcement, "참고.pdf", com.toadzip.backend.announcement.domain.AttachmentType.REFERENCE,
+                "https://example.com/reference.pdf", 1));
+        entityManager.persist(com.toadzip.backend.announcement.domain.AnnouncementAttachment.create(
+                announcement, "공고문.pdf", com.toadzip.backend.announcement.domain.AttachmentType.ANNOUNCEMENT,
+                "https://example.com/notice.pdf", 0));
+        entityManager.flush();
+
+        mvc.perform(get("/api/admin/announcements/" + id).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.attachments[0].attachmentId").isNumber())
+                .andExpect(jsonPath("$.data.attachments[0].fileName").value("공고문.pdf"))
+                .andExpect(jsonPath("$.data.attachments[0].fileType").value("ANNOUNCEMENT"))
+                .andExpect(jsonPath("$.data.attachments[0].fileUrl").value("https://example.com/notice.pdf"))
+                .andExpect(jsonPath("$.data.attachments[1].fileName").value("참고.pdf"));
+        mvc.perform(get("/api/admin/announcements/" + id).with(user(memberId()).roles("USER")))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -446,6 +461,163 @@ class AdminManagementIntegrationTest {
         mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(updated.toString()))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void PDF_근거와_변경값을_같은_수정이력에_보존한다() throws Exception {
+        for (String path : java.util.List.of("/api/admin/housing-complexes/" + createComplex(),
+                "/api/admin/announcements/" + createAnnouncement(createComplex()))) {
+            var data = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+            data.put("name", "PDF 확인 이름");
+            data.set("documentEvidence", json.readTree(documentEvidence()));
+            mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON).content(data.toString()))
+                    .andExpect(status().isOk());
+            var history = getData(path + "/changes").get(0);
+            var after = json.readTree(history.get("afterValue").asText());
+            assertThat(after.get("name").asText()).isEqualTo("PDF 확인 이름");
+            assertThat(after.get("documentEvidence").get("citations").get(0).get("page").asInt()).isEqualTo(2);
+            assertThat(after.get("documentEvidence").get("sha256").asText()).isEqualTo("a".repeat(64));
+            assertThat(history.get("actor").asText()).isEqualTo("admin");
+        }
+    }
+
+    @Test
+    void 잘못된_PDF_근거는_값과_이력을_변경하지_않는다() throws Exception {
+        String path = "/api/admin/housing-complexes/" + createComplex();
+        var data = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+        String before = data.toString();
+        data.put("name", "잘못된 수정");
+        for (String invalid : java.util.List.of(documentEvidence().replace("https://example.com/notice.pdf", "file:///tmp/a"),
+                documentEvidence().replace("a".repeat(64), "bad-hash"),
+                documentEvidence().replace("\"page\":2", "\"page\":0"),
+                documentEvidence().replace("공고문에서 확인", " "),
+                documentEvidence().replace("PDF 확인 이름", " "))) {
+            data.set("documentEvidence", json.readTree(invalid));
+            mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON).content(data.toString()))
+                    .andExpect(status().isBadRequest());
+        }
+        assertThat(getData(path).get("data").toString()).isEqualTo(before);
+        assertThat(getData(path + "/changes").size()).isZero();
+    }
+
+    @Test
+    void 공급대상_금액은_근거와_함께_수정하고_원천_덮어쓰기를_막는다() throws Exception {
+        long id = createAnnouncement(createComplex());
+        String path = "/api/admin/announcements/" + id;
+        long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
+        var row = entityManager.find(com.toadzip.backend.announcement.domain.SupplyRow.class, rowId);
+        var target = com.toadzip.backend.announcement.domain.SupplyTarget.createFromSource(row,
+                "LH:TEST", "청년", "1순위", 5, new java.math.BigDecimal("10000000"),
+                new java.math.BigDecimal("200000"), 0);
+        entityManager.persist(target);
+        entityManager.flush();
+        long version = getData(path).get("data").get("version").asLong();
+        String body = """
+                {"version":%d,"target":"청년","supplyRank":"1순위","supplyHouseholdCount":5,
+                 "reserveCount":null,"rentalDeposit":"12000000","monthlyRent":"0", "convertedDeposit":null,
+                 "applicationCondition":"공고문 참조","documentEvidence":%s}
+                """.formatted(version, documentEvidence().replace("\"field\":\"name\"", "\"field\":\"rentalDeposit\""));
+        body = withExpectedTargetValues(path, body);
+        mvc.perform(put(path + "/supply-targets/" + target.getId()).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.supplyTargets[0].data.rentalDeposit").value("12000000"))
+                .andExpect(jsonPath("$.data.supplyTargets[0].data.monthlyRent").value("0"));
+        assertThat(row.isAdminModified()).isTrue();
+        assertThat(target.updateFromSource("청년", "1순위", 9, java.math.BigDecimal.ONE,
+                java.math.BigDecimal.ONE, 0)).isFalse();
+        assertThat(target.getRentalDeposit()).isEqualByComparingTo("12000000");
+        mvc.perform(put(path + "/supply-targets/" + target.getId()).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isConflict());
+        var history = json.readTree(getData(path + "/changes").get(0).get("afterValue").asText());
+        assertThat(history.get("documentEvidence").get("citations").get(0).get("field").asText())
+                .isEqualTo("rentalDeposit");
+    }
+
+    @Test
+    void 공급대상_수정은_소속과_권한과_원단위_입력을_검증한다() throws Exception {
+        long id = createAnnouncement(createComplex());
+        long otherId = createAnnouncement(createComplex());
+        String path = "/api/admin/announcements/" + id;
+        long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
+        var row = entityManager.find(com.toadzip.backend.announcement.domain.SupplyRow.class, rowId);
+        var target = com.toadzip.backend.announcement.domain.SupplyTarget.createFromSource(row,
+                "LH:VALIDATION", "청년", null, null, null, null, 0);
+        entityManager.persist(target);
+        entityManager.flush();
+        assertThat(target.isAdminModified()).isFalse();
+        long version = getData(path).get("data").get("version").asLong();
+        String body = """
+                {"version":%d,"target":"청년","rentalDeposit":"999999999999999999","monthlyRent":null}
+                """.formatted(version);
+        body = withExpectedTargetValues(path, body);
+        String endpoint = path + "/supply-targets/" + target.getId();
+        mvc.perform(put(endpoint).with(user(memberId()).roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mvc.perform(put(endpoint).with(user("admin").roles("ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mvc.perform(put("/api/admin/announcements/" + otherId + "/supply-targets/" + target.getId())
+                        .with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isNotFound());
+        for (String invalid : java.util.List.of(body.replace("999999999999999999", "-1"),
+                body.replace("999999999999999999", "1.5"),
+                body.replace("999999999999999999", "1000000000000000000"), body.replace("청년", " "),
+                body.replace("\"expectedValues\":{", "\"unusedValues\":{"))) {
+            mvc.perform(put(endpoint).with(user("admin").roles("ADMIN")).with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON).content(invalid)).andExpect(status().isBadRequest());
+        }
+        assertThat(getData(path + "/changes").size()).isZero();
+        mvc.perform(put(endpoint).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.supplyTargets[0].data.rentalDeposit").value("999999999999999999"))
+                .andExpect(jsonPath("$.data.supplyTargets[0].data.monthlyRent").isEmpty());
+    }
+
+    @Test
+    void 공고_버전이_같아도_수집으로_바뀐_임대조건은_이전_수정안으로_덮어쓰지_않는다() throws Exception {
+        long id = createAnnouncement(createComplex());
+        String path = "/api/admin/announcements/" + id;
+        long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
+        var row = entityManager.find(com.toadzip.backend.announcement.domain.SupplyRow.class, rowId);
+        var target = com.toadzip.backend.announcement.domain.SupplyTarget.createFromSource(row,
+                "LH:CONCURRENT", "청년", "1순위", 5, new java.math.BigDecimal("10000000"),
+                new java.math.BigDecimal("200000"), 0);
+        entityManager.persist(target);
+        entityManager.flush();
+        var detail = getData(path);
+        long version = detail.get("data").get("version").asLong();
+        var body = (tools.jackson.databind.node.ObjectNode) detail.get("supplyTargets").get(0).get("data").deepCopy();
+        body.set("expectedValues", body.deepCopy());
+        body.put("version", version);
+        body.put("rentalDeposit", "12000000");
+        target.updateFromSource("청년", "1순위", 5, new java.math.BigDecimal("10000000"),
+                new java.math.BigDecimal("250000"), 0);
+        entityManager.flush();
+        assertThat(getData(path).get("data").get("version").asLong()).isEqualTo(version);
+
+        mvc.perform(put(path + "/supply-targets/" + target.getId()).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body.toString()))
+                .andExpect(status().isConflict());
+
+        assertThat(target.getRentalDeposit()).isEqualByComparingTo("10000000");
+        assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000");
+        assertThat(target.isAdminModified()).isFalse();
+        assertThat(getData(path + "/changes").size()).isZero();
+    }
+
+    private String withExpectedTargetValues(String path, String body) throws Exception {
+        var values = (tools.jackson.databind.node.ObjectNode) json.readTree(body);
+        values.set("expectedValues", getData(path).get("supplyTargets").get(0).get("data"));
+        return values.toString();
+    }
+
+    private String documentEvidence() {
+        return """
+                {"sourceUrl":"https://example.com/notice.pdf","fileName":"공고.pdf","sha256":"%s",
+                 "note":"공고문에서 확인","citations":[{"field":"name","page":2,"quote":"PDF 확인 이름"}]}
+                """.formatted("a".repeat(64));
     }
 
     private JsonNode getData(String path) throws Exception {

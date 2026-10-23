@@ -15,11 +15,26 @@ function show(value: DataPipelineExecution, onStop?: () => void) {
 }
 
 describe('v2 공통 단계 표시', () => {
+  it('실행 콜백이 없는 수집 실패 이력에서도 전체 원천 정제 화면으로 이동한다', () => {
+    show(execution({ type: 'ANNOUNCEMENT_SYNC', status: 'FAILED', currentStepIndex: 0 }))
+    expect(screen.getByRole('link', { name: '공고 정제 화면으로 이동' })).toHaveAttribute('href',
+      '/admin/failures?domain=announcement&category=all&executionId=run-1')
+    expect(screen.getByText(/정제는 현재 저장된 원천 전체/)).toBeVisible()
+  })
+
+  it.each(['COMPLEX_SYNC', 'ANNOUNCEMENT_SYNC', 'COMPLEX_REFINEMENT', 'ANNOUNCEMENT_REFINEMENT'] as const)(
+    '%s 완료 경고는 종료 단계 인덱스와 관계없이 보강을 포함한 전체 실패 목록으로 연결한다', type => {
+      show(execution({ type, status: 'COMPLETED_WARNINGS', currentStepIndex: 0 }))
+      expect(screen.getByRole('link', { name: '실패 내역 확인' })).toHaveAttribute('href',
+        `/admin/failures?domain=${type.startsWith('COMPLEX_') ? 'complex' : 'announcement'}&category=all&executionId=run-1`)
+    },
+  )
+
   it('SH 수집은 한 단계의 진행 상태와 중지 버튼을 표시한다', () => {
     show(execution({ type: 'SH_ANNOUNCEMENT_COLLECTION', currentStepName: 'SH 공고 원천 수집', totalStepCount: 1 }), vi.fn())
     expect(screen.getByRole('list', { name: '실행 단계' }).children).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'SH 공고 원천 수집 진행' })).toHaveAttribute('aria-current', 'step')
-    expect(screen.getByRole('button', { name: 'SH 공고 수집·정제 실행 중지' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'SH 공고 수집 실행 중지' })).toBeVisible()
   })
   it('단건 정제 매칭 실패에 수동 매칭 진입 버튼을 제공한다', () => {
     show(execution({ status: 'FAILED', targetAnnouncementIdentifier: '21395',

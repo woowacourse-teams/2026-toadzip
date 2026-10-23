@@ -91,12 +91,12 @@ public class ComplexDetailQueryRepository {
                    supply_target.converted_deposit AS convertible_deposit
             FROM current_leaf announcement
             JOIN supply_rows supply_row
-              ON supply_row.announcement_id = announcement.id
+              ON supply_row.announcement_id = announcement.id AND supply_row.admin_excluded = false
              AND supply_row.housing_complex_id = :complexId
             JOIN housing_types housing_type
               ON housing_type.id = supply_row.housing_type_id
              AND housing_type.housing_complex_id = :complexId
-            JOIN supply_targets supply_target ON supply_target.supply_row_id = supply_row.id
+            JOIN supply_targets supply_target ON supply_target.supply_row_id = supply_row.id AND supply_target.admin_excluded = false
             ORDER BY announcement.posted_date DESC,
                      announcement.id DESC,
                      supply_row.display_order,
@@ -118,7 +118,7 @@ public class ComplexDetailQueryRepository {
             WHERE EXISTS (
                 SELECT 1
                 FROM supply_rows supply_row
-                WHERE supply_row.announcement_id = announcement.id
+                WHERE supply_row.admin_excluded = false AND supply_row.announcement_id = announcement.id
                   AND supply_row.housing_complex_id = :complexId
             )
             ORDER BY announcement.posted_date DESC, announcement.id DESC
@@ -144,9 +144,9 @@ public class ComplexDetailQueryRepository {
                        ) AS target_rank
                 FROM current_leaf announcement
                 JOIN supply_rows supply_row
-                  ON supply_row.announcement_id = announcement.id
+                  ON supply_row.announcement_id = announcement.id AND supply_row.admin_excluded = false
                  AND supply_row.housing_complex_id = :complexId
-                JOIN supply_targets supply_target ON supply_target.supply_row_id = supply_row.id
+                JOIN supply_targets supply_target ON supply_target.supply_row_id = supply_row.id AND supply_target.admin_excluded = false
             )
             SELECT announcement_id,
                    supply_row_id,

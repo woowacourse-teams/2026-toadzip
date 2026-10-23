@@ -374,7 +374,7 @@ class AnnouncementControllerTest {
                 null,
                 List.of()
         );
-        return new AnnouncementListResponse(List.of(item), null, false);
+        return new AnnouncementListResponse(List.of(item), null, false, 1);
     }
 
     private AnnouncementDetailResponse detailResponse() {
@@ -498,7 +498,8 @@ class AnnouncementControllerTest {
                       "applicationSchedules": []
                     }],
                     "nextCursor": null,
-                    "hasNext": false
+                    "hasNext": false,
+                    "totalCount": 1
                   }
                 }
                 """;
@@ -570,6 +571,7 @@ class AnnouncementControllerTest {
                       "occupancyExpectedYearMonth": "2027-03",
                       "supplyType": "NEW",
                       "totalSupplyHouseholdCount": 5,
+                      "exclusiveArea": null, "supplyArea": null, "corrected": false,
                       "targets": [{
                         "supplyTargetId": 401,
                         "target": "청년",
@@ -590,6 +592,7 @@ class AnnouncementControllerTest {
                       "occupancyExpectedYearMonth": null,
                       "supplyType": "RESUPPLY",
                       "totalSupplyHouseholdCount": null,
+                      "exclusiveArea": null, "supplyArea": null, "corrected": false,
                       "targets": []
                     }],
                     "competition": {"actualRate": 2.5000, "predictedRate": null},

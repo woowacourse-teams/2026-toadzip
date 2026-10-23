@@ -30,7 +30,7 @@
 .brand :global(.brand-logo) { width: 36px; height: 36px; }
 .brand :global(.brand-name) { font-size: 17px; font-weight: 750; letter-spacing: -.04em; }
 .navigation { display: flex; align-items: center; gap: 32px; font-size: 14px; font-weight: 600; }
-.navigation > a:not(.start):hover { color: var(--ds-color-action); }
+.navigation > a:not(.start):hover { color: var(--ds-color-text); }
 .page .start {
   display: inline-flex;
   align-items: center;
@@ -39,20 +39,20 @@
   min-height: 56px;
   padding: 0 25px;
   border-radius: var(--ds-radius-control);
-  background: var(--ds-color-action);
-  color: var(--ds-color-surface);
+  background: var(--ds-color-brand);
+  color: var(--ds-color-on-brand);
   font-size: 17px;
   font-weight: var(--ds-weight-strong);
   white-space: nowrap;
   transition: background 180ms, translate 180ms, scale 180ms;
 }
-.page .start:focus-visible { background: color-mix(in srgb, var(--ds-color-action) 85%, var(--ds-color-on-brand)); }
+.page .start:focus-visible { background: var(--ds-color-brand-strong); }
 .page .start:active { translate: 0 2px; scale: .98; }
 .start span { display: inline-block; font-size: 23px; font-weight: 400; transition: transform 220ms cubic-bezier(.2,.7,.2,1); }
 .page .start:focus-visible span { transform: translate(3px, -3px); }
 .page .start:active span { transform: translate(1px, -1px); }
 @media (hover: hover) and (pointer: fine) {
-  .page .start:hover { background: color-mix(in srgb, var(--ds-color-action) 85%, var(--ds-color-on-brand)); translate: 0 -2px; }
+  .page .start:hover { background: var(--ds-color-brand-strong); translate: 0 -2px; }
   .page .start:hover span { transform: translate(4px, -4px); }
   .page .start:active { translate: 0 2px; scale: .98; }
   .page .start:active span { transform: translate(1px, -1px); }
@@ -80,7 +80,7 @@
 .hero h1 { font-size: clamp(42px, 4.55vw, 62px); font-weight: 780; line-height: 1.22; letter-spacing: -.065em; }
 .heroLine { display: block; overflow: hidden; padding-bottom: .08em; margin-bottom: -.08em; }
 .heroLine > span { display: block; }
-.heroAccent { color: var(--ds-color-action); }
+.heroAccent { color: var(--ds-color-text); background: linear-gradient(transparent 64%, var(--ds-color-brand-tint) 64%); box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .description { margin: 26px 0 33px !important; color: var(--ds-color-label); font-size: 17px; line-height: 1.8; letter-spacing: -.035em; word-break: keep-all; }
 .heroVisual { position: relative; min-width: 0; padding-left: 24px; perspective: 1200px; }
 .heroOrbit {
@@ -145,7 +145,7 @@
 .screenAttribution { display: flex; justify-content: space-between; gap: 8px; padding: 10px 5px 3px; color: var(--ds-color-label); font-size: 10px; line-height: 1.4; }
 .stepNavigation { display: flex; justify-content: center; gap: 22px; margin-top: 26px; }
 .stepNavigation a { display: flex; align-items: center; gap: 7px; min-height: 44px; font-size: 13px; color: var(--ds-color-label); border-bottom: 2px solid transparent; }
-.stepNavigation a[aria-current] { color: var(--ds-color-action); border-color: var(--ds-color-action); font-weight: 700; }
+.stepNavigation a[aria-current] { color: var(--ds-color-text); border-color: var(--ds-color-brand); font-weight: 700; }
 .stepNavigation span { font-size: 11px; font-variant-numeric: tabular-nums; }
 .mobileScreen { display: none; }
 .screenNote { color: var(--ds-color-label); font-size: 12px; text-align: right; line-height: 1.6; }
@@ -189,7 +189,7 @@
 }
 
 @media (min-width: 1600px) { .heroScreen { width: 800px; } }
-@media (min-width: 768px) and (max-height: 540px) {
+@media (min-width: 768px) and (not ((hover: none) and (pointer: coarse))) and (max-height: 540px) {
   .stepNavigation { gap: 12px; }
   .stepNavigation a { font-size: 11px; }
   .stepNavigation span { display: none; }
@@ -207,7 +207,7 @@
   .stepNavigation a { font-size: 11px; }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .page { --landing-header-height: 68px; --landing-mobile-gutter: clamp(20px, 5vw, 28px); }
   .header { padding: 0 var(--landing-mobile-gutter); gap: 16px; }
   .brand :global(.brand-name) { font-size: 15px; }
@@ -249,12 +249,12 @@
   .footer p { width: 100%; order: 3; font-size: 11px; }
 }
 
-@media (min-width: 768px) and (max-height: 700px) {
+@media (min-width: 768px) and (not ((hover: none) and (pointer: coarse))) and (max-height: 700px) {
   .hero { padding-top: 32px; }
   .heroScreen { width: min(620px, calc((100svh - var(--landing-header-height) - 210px) * 16 / 9)); }
 }
 
-@media (max-width: 767px) and (max-height: 740px) {
+@media (max-width: 767px) and (max-height: 740px), (hover: none) and (pointer: coarse) and (max-height: 740px) {
   .hero { padding-top: 20px; padding-bottom: 72px; }
   .eyebrow { margin-bottom: 12px !important; }
   .description { margin: 16px 0 18px !important; line-height: 1.65; }

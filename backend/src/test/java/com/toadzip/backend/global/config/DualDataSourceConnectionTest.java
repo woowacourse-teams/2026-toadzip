@@ -30,8 +30,11 @@ class DualDataSourceConnectionTest {
                 Connection sharedConnection = sharedDataSource.getConnection()) {
             assertAll(
                     () -> assertNotSame(primaryDataSource, sharedDataSource),
+                    () -> assertEquals(PostgresTestDatabases.primaryUrl("toadzip_test"),
+                            primaryConnection.getMetaData().getURL()),
                     () -> assertEquals("PostgreSQL", primaryConnection.getMetaData().getDatabaseProductName()),
                     () -> assertEquals("toadzip_test", primaryConnection.getCatalog()),
+                    () -> assertEquals(PostgresTestDatabases.sharedUrl(), sharedConnection.getMetaData().getURL()),
                     () -> assertEquals("PostgreSQL", sharedConnection.getMetaData().getDatabaseProductName()),
                     () -> assertEquals("toadzip_shared_test", sharedConnection.getCatalog())
             );

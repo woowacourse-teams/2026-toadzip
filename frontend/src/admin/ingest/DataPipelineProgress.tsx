@@ -18,7 +18,7 @@ export function DataPipelineProgress({ execution, label }: { execution: DataPipe
   const started = execution.startedAt ? Date.parse(execution.startedAt) : NaN
   const end = execution.finishedAt ? Date.parse(execution.finishedAt) : now
   const seconds = Math.max(0, Math.floor((end - started) / 1_000))
-  const isCollection = execution.type.endsWith('_COLLECTION')
+  const isCollection = execution.type.endsWith('_COLLECTION') || execution.type.endsWith('_SYNC')
   const hasRequestCount = execution.status === 'RUNNING' || execution.lastProgressAt
     || (execution.externalRequestCount ?? 0) > 0
   const work = execution.workProgress
@@ -35,14 +35,16 @@ export function DataPipelineProgress({ execution, label }: { execution: DataPipe
         </span></div>
         {work.totalCount > 0 ? <progress aria-label={`${label} 수집 대상 진행률`}
           value={Math.min(work.completedCount, work.totalCount)} max={work.totalCount} /> : null}
-        {active ? <div className="pipeline-eta"><span>예상 남은 시간</span><strong>{remainingTime(work, now)}</strong></div> : null}
-        <p className="ingest-meta">위 수집 범위의 실제 처리 속도로 추정합니다. 이후 작업·재시도에 따라 전체 종료 시각은 달라집니다.</p>
-      </> : active && isCollection ? <p className="pipeline-eta">예상 남은 시간 · 수집 대상 확인 중</p> : null}
+        {active ? <div className="pipeline-eta"><span>현재 단계 예상 남은 시간</span><strong>{remainingTime(work, now)}</strong></div> : null}
+        <p className="ingest-meta">현재 처리 범위의 속도로 추정한 시간입니다. 이후 단계와 재시도 시간은 포함하지 않습니다.</p>
+      </> : active && isCollection ? <p className="pipeline-eta">현재 단계 예상 남은 시간 · 수집 대상 확인 중</p> : null}
+      {execution.lastProgressAt ? <p className="ingest-meta">최근 활동 {new Date(execution.lastProgressAt).toLocaleTimeString('ko-KR', { hour12: false })}</p> : null}
+      <details><summary>실행 정보</summary>
       {isCollection && hasRequestCount ? <p>외부 요청 처리 <strong>{(execution.externalRequestCount ?? 0).toLocaleString()}회</strong> <small>(실패·재시도 포함)</small></p> : null}
       {isCollection && !hasRequestCount ? <p className="ingest-meta">외부 요청 횟수 기록이 없습니다.</p> : null}
       {execution.lastRequestDescription ? <p className="pipeline-request"><span>최근 요청</span>{execution.lastRequestDescription}</p> : null}
-      {execution.lastProgressAt ? <p className="ingest-meta">최근 활동 {new Date(execution.lastProgressAt).toLocaleTimeString('ko-KR', { hour12: false })}</p> : null}
-      {execution.executionId ? <details><summary>실행 정보</summary><code>{execution.executionId}</code></details> : null}
+      {execution.executionId ? <code>{execution.executionId}</code> : null}
+      </details>
     </div>
   )
 }

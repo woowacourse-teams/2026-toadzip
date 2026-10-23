@@ -56,13 +56,13 @@ public class InternalSearchRepository {
                            SELECT STRING_AGG(DISTINCT complex.road_address, ' ')
                            FROM supply_rows supply_row
                            JOIN housing_complexes complex ON complex.id = supply_row.housing_complex_id
-                           WHERE supply_row.announcement_id = announcement.id
+                           WHERE supply_row.admin_excluded = false AND supply_row.announcement_id = announcement.id
                        ), '') AS region_names,
                        (
                            SELECT complex.latitude
                            FROM supply_rows supply_row
                            JOIN housing_complexes complex ON complex.id = supply_row.housing_complex_id
-                           WHERE supply_row.announcement_id = announcement.id
+                           WHERE supply_row.admin_excluded = false AND supply_row.announcement_id = announcement.id
                              AND complex.latitude IS NOT NULL
                              AND complex.longitude IS NOT NULL
                            ORDER BY supply_row.display_order, complex.id
@@ -72,7 +72,7 @@ public class InternalSearchRepository {
                            SELECT complex.longitude
                            FROM supply_rows supply_row
                            JOIN housing_complexes complex ON complex.id = supply_row.housing_complex_id
-                           WHERE supply_row.announcement_id = announcement.id
+                           WHERE supply_row.admin_excluded = false AND supply_row.announcement_id = announcement.id
                              AND complex.latitude IS NOT NULL
                              AND complex.longitude IS NOT NULL
                            ORDER BY supply_row.display_order, complex.id
@@ -173,7 +173,7 @@ public class InternalSearchRepository {
                              SELECT 1 FROM supply_rows matched_row
                              JOIN housing_complexes matched_complex
                                ON matched_complex.id = matched_row.housing_complex_id
-                             WHERE matched_row.announcement_id = announcement.id
+                             WHERE matched_row.admin_excluded = false AND matched_row.announcement_id = announcement.id
                                AND LOWER(matched_complex.road_address) LIKE :%s ESCAPE '\\'
                          )
                      )
@@ -266,7 +266,7 @@ public class InternalSearchRepository {
     private String statusAnnouncementStart() {
         return "SELECT 1 FROM supply_rows supply_row JOIN announcements announcement"
                 + " ON announcement.id = supply_row.announcement_id"
-                + " WHERE supply_row.housing_complex_id = complex.id AND " + LATEST_LEAF;
+                + " WHERE supply_row.admin_excluded = false AND supply_row.housing_complex_id = complex.id AND " + LATEST_LEAF;
     }
 
     private String complexStatus(ApplicationStatus status) {
@@ -333,13 +333,13 @@ public class InternalSearchRepository {
                 .append(" OR LOWER(").append(PROVIDER_NAME).append(") = :exactQuery")
                 .append(" OR EXISTS (SELECT 1 FROM supply_rows exact_row")
                 .append(" JOIN housing_complexes exact_complex ON exact_complex.id = exact_row.housing_complex_id")
-                .append(" WHERE exact_row.announcement_id = announcement.id")
+                .append(" WHERE exact_row.admin_excluded = false AND exact_row.announcement_id = announcement.id")
                 .append(" AND LOWER(exact_complex.road_address) = :exactQuery) THEN 0")
                 .append(" WHEN LOWER(announcement.name) LIKE :prefixQuery ESCAPE '\\'")
                 .append(" OR LOWER(").append(PROVIDER_NAME).append(") LIKE :prefixQuery ESCAPE '\\'")
                 .append(" OR EXISTS (SELECT 1 FROM supply_rows prefix_row")
                 .append(" JOIN housing_complexes prefix_complex ON prefix_complex.id = prefix_row.housing_complex_id")
-                .append(" WHERE prefix_row.announcement_id = announcement.id")
+                .append(" WHERE prefix_row.admin_excluded = false AND prefix_row.announcement_id = announcement.id")
                 .append(" AND LOWER(prefix_complex.road_address) LIKE :prefixQuery ESCAPE '\\') THEN 1")
                 .append(" ELSE 2 END");
     }

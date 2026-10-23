@@ -3,11 +3,13 @@ package com.toadzip.backend.ingest.mapping.controller;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ComplexOption;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.HousingTypeOption;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.RefineRequest;
+import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ReleaseRequest;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Row;
 import com.toadzip.backend.ingest.mapping.service.AnnouncementSupplyMatchingService;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.security.Principal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,8 +32,21 @@ public class AnnouncementSupplyMatchingController {
 
     @PostMapping("/{identifier}/refine")
     public MyHomeAnnouncementMappingReport refine(@PathVariable String identifier,
-            @Valid @RequestBody RefineRequest request) {
-        return matching.refine(identifier, request);
+            @Valid @RequestBody RefineRequest request, Principal principal) {
+        return matching.refine(identifier, request, principal.getName());
+    }
+
+    @PostMapping("/{identifier}/release")
+    public List<Row> release(@PathVariable String identifier,
+            @Valid @RequestBody ReleaseRequest request, Principal principal) {
+        return matching.release(identifier, request, principal.getName());
+    }
+
+    @PostMapping("/{identifier}/split")
+    public List<Row> split(@PathVariable String identifier,
+            @Valid @RequestBody com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SplitRequest request,
+            Principal principal) {
+        return matching.split(identifier, request, principal.getName());
     }
 
     @GetMapping("/complexes")

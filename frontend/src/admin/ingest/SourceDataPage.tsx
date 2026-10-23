@@ -6,6 +6,7 @@ import { storedDataRows, storedDataValue } from '../shared/storedDataPresentatio
 import { getSourceData, isSourceCategory, sourceCategories, type SourceCategory, type SourcePage } from './sourceApi'
 import { sourceFieldLabel, sourcePresentation } from './sourcePresentation'
 import styles from './SourceDataPage.module.css'
+import { failureReturnUrl } from './failureNavigation'
 
 export function SourceDataPage() {
   const [params, setParams] = useSearchParams()
@@ -81,20 +82,24 @@ export function SourceDataPage() {
     <div id="source-panel" role="tabpanel" aria-labelledby={category ? `source-tab-${category}` : undefined}>
     {metadata ? <div className={styles.sourceInfo}>
       <p><strong>{metadata.provider}</strong><a href={metadata.documentationUrl} target="_blank" rel="noreferrer">{category === 'SH_ANNOUNCEMENT' ? '공식 게시판' : 'API 설명·키 발급'}</a>
-        <Link to="/admin/ingest">{category === 'SH_ANNOUNCEMENT' ? '키 없이 SH 공고 수집' : 'API 키 입력하고 수집'}</Link></p>
+        <Link to={params.get('failureReturnTo') ? failureReturnUrl('/admin/ingest', params.get('failureReturnTo')!) : '/admin/ingest'}>{category === 'SH_ANNOUNCEMENT' ? '키 없이 SH 공고 수집' : 'API 키 입력하고 수집'}</Link></p>
       {result?.items[0] ? <p><span>{category === 'SH_ANNOUNCEMENT' ? '수집 목록 URL' : '수집 API URL'}</span><SourceUrl url={result.items[0].sourceUrl} /></p> : null}
     </div> : null}
     <form key={search} className="management-filters" onSubmit={event => {
       event.preventDefault()
       const values = new FormData(event.currentTarget)
       const next = new URLSearchParams({ category: category ?? 'MYHOME_COMPLEX' })
+      const failureReturnTo = params.get('failureReturnTo')
+      if (failureReturnTo) next.set('failureReturnTo', failureReturnTo)
       const text = String(values.get('keyword') ?? '').trim()
       if (text) next.set('keyword', text)
       setParams(next)
     }}>
       <label className="management-search">이름·원천 식별자<input name="keyword" defaultValue={keyword} maxLength={200} placeholder="단지명, 공고명 또는 식별자 검색" /></label>
       <button type="submit" className="admin-primary">조회</button>
-      <button type="button" onClick={() => setParams({ category: category ?? 'MYHOME_COMPLEX' })}>검색 초기화</button>
+      <button type="button" onClick={() => setParams(current => {
+        current.set('category', category ?? 'MYHOME_COMPLEX'); current.delete('keyword'); current.delete('page'); return current
+      })}>검색 초기화</button>
     </form>
     {!validQuery ? <div role="alert" className="registration-error"><p>조회 주소의 분류, 검색어 또는 페이지 번호가 올바르지 않습니다. 검색 초기화 후 다시 조회해 주세요.</p></div> : null}
     {validQuery && error ? <div role="alert" className="registration-error"><p>{error}</p><button type="button" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></div> : null}

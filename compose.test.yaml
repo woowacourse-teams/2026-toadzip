@@ -1,3 +1,4 @@
+# 수동 DB 검증용. 자동 테스트는 Testcontainers가 별도 컨테이너를 기동한다.
 services:
   db:
     image: postgres:17-alpine

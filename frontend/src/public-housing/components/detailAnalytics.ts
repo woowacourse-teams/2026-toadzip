@@ -2,7 +2,7 @@ import { useRef, useState, type KeyboardEvent, type UIEvent } from 'react'
 import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
 
 export function detailVisitId(element: HTMLElement | null) {
-  return element?.closest<HTMLDialogElement>('dialog.housing-detail-layer')?.dataset.detailVisitId
+  return element?.closest<HTMLElement>('.housing-detail-layer')?.dataset.detailVisitId
 }
 
 export function useDetailScrollAnalytics(targetType: 'COMPLEX' | 'ANNOUNCEMENT', targetId: string) {

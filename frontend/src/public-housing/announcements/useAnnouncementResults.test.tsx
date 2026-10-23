@@ -13,6 +13,65 @@ import type {
 import { useAnnouncementResults } from './useAnnouncementResults.ts'
 
 describe('useAnnouncementResults', () => {
+  it('렌더 전에 연속으로 도착한 추가 조회 요청을 중복 실행하지 않는다', async () => {
+    const next = deferred<AnnouncementPage>()
+    const repository = createRepository()
+    repository.findAnnouncementPage.mockResolvedValueOnce(announcementPage(['101'], 'next', true))
+      .mockReturnValue(next.promise)
+    const { result } = renderHook(() => useAnnouncementResults(repository, true))
+    await waitFor(() => expect(result.current.state.status).toBe('ready'))
+    act(() => { result.current.loadMore(); result.current.loadMore() })
+    expect(repository.findAnnouncementPage).toHaveBeenCalledTimes(2)
+    await act(async () => next.resolve(announcementPage(['102'], null, false)))
+    expect(result.current.state.items.map((item) => item.announcementId)).toEqual(['101', '102'])
+  })
+
+  it('페이지를 추가해도 전체 건수를 유지하고 필터 변경 시 이전 집계를 지운다', async () => {
+    const nextFilter = deferred<AnnouncementPage>()
+    const repository = createRepository()
+    repository.findAnnouncementPage
+      .mockResolvedValueOnce({ ...announcementPage(['101'], 'next', true), totalCount: 30 })
+      .mockResolvedValueOnce({ ...announcementPage(['102'], 'more', true), totalCount: 30 })
+      .mockReturnValueOnce(nextFilter.promise)
+    const { result, rerender } = renderHook(({ regionCode }) =>
+      useAnnouncementResults(repository, true, { regionCode }), { initialProps: { regionCode: '11' } })
+    await waitFor(() => expect(result.current.state.status).toBe('ready'))
+    expect(result.current.state.totalCount).toBe(30)
+    act(() => result.current.loadMore())
+    await waitFor(() => expect(result.current.state.items).toHaveLength(2))
+    expect(result.current.state.totalCount).toBe(30)
+    rerender({ regionCode: '41' })
+    expect(result.current.state.totalCount).toBeNull()
+    await act(async () => nextFilter.resolve({ ...announcementPage([], null, false), totalCount: 0 }))
+    expect(result.current.state.totalCount).toBe(0)
+  })
+
+  it('필터 변경 전의 늦은 응답이 새 전체 건수를 덮어쓰지 않는다', async () => {
+    const previous = deferred<AnnouncementPage>()
+    const repository = createRepository()
+    repository.findAnnouncementPage.mockReturnValueOnce(previous.promise)
+      .mockResolvedValueOnce({ ...announcementPage(['201'], null, false), totalCount: 1 })
+    const { result, rerender } = renderHook(({ regionCode }) =>
+      useAnnouncementResults(repository, true, { regionCode }), { initialProps: { regionCode: '11' } })
+    rerender({ regionCode: '41' })
+    await waitFor(() => expect(result.current.state.totalCount).toBe(1))
+    await act(async () => previous.resolve({ ...announcementPage(['101'], 'next', true), totalCount: 100 }))
+    expect(result.current.state.totalCount).toBe(1)
+    expect(result.current.state.items[0]?.announcementId).toBe('201')
+  })
+
+  it('이전 API의 전체 수는 모든 페이지를 받은 경우에만 중복 없이 계산한다', async () => {
+    const repository = createRepository()
+    repository.findAnnouncementPage.mockResolvedValueOnce(announcementPage(['101'], 'next', true))
+      .mockResolvedValueOnce(announcementPage(['101', '102'], null, false))
+    const { result } = renderHook(() => useAnnouncementResults(repository, true))
+    await waitFor(() => expect(result.current.state.status).toBe('ready'))
+    expect(result.current.state.totalCount).toBeNull()
+    act(() => result.current.loadMore())
+    await waitFor(() => expect(result.current.state.items).toHaveLength(2))
+    expect(result.current.state.totalCount).toBe(2)
+  })
+
   it('상세에서 확인한 조회수를 목록에 반영하고 늦은 페이지 응답으로 되돌리지 않는다', async () => {
     const pending = deferred<AnnouncementPage>()
     const repository = createRepository()

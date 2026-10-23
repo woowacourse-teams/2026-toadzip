@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.service;
 
 import com.toadzip.backend.admin.domain.AdminDataChange;
+import com.toadzip.backend.admin.dto.AdminDocumentEvidence;
 import com.toadzip.backend.admin.dto.AdminChangeResponse;
 import com.toadzip.backend.admin.dto.AdminDataSummary;
 import com.toadzip.backend.admin.dto.AdminPage;
@@ -12,20 +13,26 @@ import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminSupplyRowUpdateRequest;
+import com.toadzip.backend.announcement.dto.request.AdminSupplyTargetUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.VerifiedApplicationSchedulesRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest.ReceptionPlaceUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest.SupplyRowRequest;
 import com.toadzip.backend.announcement.dto.response.AdminAnnouncementDetail;
+import com.toadzip.backend.announcement.dto.response.AnnouncementAttachmentResponse;
+import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import java.math.BigDecimal;
 import java.util.List;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -42,10 +49,13 @@ public class AdminAnnouncementManagementService {
     private final AdminDataChangeRepository changes;
     private final ObjectMapper json;
     private final AnnouncementApplicationScheduleRepository schedules;
+    private final SupplyTargetRepository targets;
+    private final AnnouncementAttachmentRepository attachments;
 
     public AdminAnnouncementManagementService(AnnouncementRepository announcements, SupplyRowRepository rows,
             HousingComplexRepository complexes, HousingTypeRepository types,
-            AdminDataChangeRepository changes, ObjectMapper json, AnnouncementApplicationScheduleRepository schedules) {
+            AdminDataChangeRepository changes, ObjectMapper json, AnnouncementApplicationScheduleRepository schedules,
+            SupplyTargetRepository targets, AnnouncementAttachmentRepository attachments) {
         this.announcements = announcements;
         this.rows = rows;
         this.complexes = complexes;
@@ -53,6 +63,8 @@ public class AdminAnnouncementManagementService {
         this.changes = changes;
         this.json = json;
         this.schedules = schedules;
+        this.targets = targets;
+        this.attachments = attachments;
     }
 
     public AdminPage<AdminDataSummary> search(AdminSearch search, long complexId) {
@@ -65,15 +77,64 @@ public class AdminAnnouncementManagementService {
 
     public AdminAnnouncementDetail detail(long id) {
         var announcement = find(id);
+        var supplies = rows.findAllByAnnouncement(announcement);
+        List<SupplyTarget> conditions = List.of();
+        if (!supplies.isEmpty()) {
+            conditions = targets.findAllBySupplyRowIdIn(supplies.stream().map(SupplyRow::getId).toList());
+        }
         return new AdminAnnouncementDetail(summary(announcement), announcement.getSourceAnnouncementIdentifier(),
                 data(announcement), announcement.isApplicationScheduleReviewed(),
-                rows.findAllByAnnouncement(announcement).stream().map(this::rowData).toList(),
+                supplies.stream().map(this::rowData).toList(),
                 schedules.findAllByAnnouncementIdIn(List.of(id)).stream().map(schedule ->
                         new VerifiedApplicationSchedulesRequest.Schedule(
                                 scheduleComplexId(schedule), schedule.getSupplyRank(), schedule.getState(),
                                 schedule.getCondition(), schedule.getStartDate(), schedule.getEndDate(),
                                 schedule.getStartTime(), schedule.getEndTime(), schedule.getSourceUrl(),
-                                schedule.getSourcePage())).toList());
+                                schedule.getSourcePage())).toList(), conditions.stream().map(this::targetData).toList(),
+                attachments.findAllByAnnouncementIdIn(List.of(id)).stream().map(attachment ->
+                        new AnnouncementAttachmentResponse(attachment.getId(), attachment.getFileName(),
+                                attachment.getFileType(), attachment.getFileUrl())).toList());
+    }
+
+    @Transactional
+    public AdminAnnouncementDetail updateTarget(long id, long targetId,
+            AdminSupplyTargetUpdateRequest request, String actor) {
+        var announcement = announcements.findByIdForUpdate(id).orElseThrow(AnnouncementNotFoundException::new);
+        checkVersion(announcement, request.version());
+        if (announcement.isAdminDeleted()) {
+            throw new AdminDataConflictException("공고를 복구한 뒤 수정해 주세요.");
+        }
+        var target = targets.findById(targetId)
+                .filter(value -> value.getSupplyRow().getAnnouncement().getId().equals(id))
+                .orElseThrow(AnnouncementNotFoundException::new);
+        if (!targetData(target).data().equals(request.expectedValues())) {
+            throw new AdminDataConflictException("임대조건이 변경되었습니다. 새로 조회한 뒤 다시 확인해 주세요.");
+        }
+        String before = json.writeValueAsString(targetData(target));
+        target.reviseByAdmin(request.target(), request.supplyRank(), request.supplyHouseholdCount(),
+                request.reserveCount(), request.rentalDeposit(), request.monthlyRent(), request.convertedDeposit(),
+                request.applicationCondition());
+        target.getSupplyRow().protectConditionsByAdmin();
+        validateCounts(announcement);
+        announcement.recordAdminSupplyChange();
+        announcements.flush();
+        changes.save(new AdminDataChange("ANNOUNCEMENT", id, "UPDATE_SUPPLY_TARGET", actor, before,
+                auditedData(targetData(target), request.documentEvidence())));
+        return detail(id);
+    }
+
+    private AdminAnnouncementDetail.SupplyTargetItem targetData(SupplyTarget target) {
+        return new AdminAnnouncementDetail.SupplyTargetItem(target.getId(), target.getSupplyRow().getId(),
+                new AdminAnnouncementDetail.SupplyTargetData(target.getTarget(), target.getSupplyRank(),
+                        target.getSupplyHouseholdCount(), target.getReserveCount(), money(target.getRentalDeposit()),
+                        money(target.getMonthlyRent()), money(target.getConvertedDeposit()), target.getApplicationCondition()));
+    }
+
+    private String money(BigDecimal value) {
+        if (value == null) {
+            return null;
+        }
+        return value.stripTrailingZeros().toPlainString();
     }
 
     @Transactional
@@ -93,7 +154,7 @@ public class AdminAnnouncementManagementService {
         announcement.reviseByAdmin(incoming);
         announcements.flush();
         changes.save(new AdminDataChange("ANNOUNCEMENT", id, "UPDATE", actor, before,
-                json.writeValueAsString(data(announcement))));
+                auditedData(data(announcement), request.documentEvidence())));
         return detail(id);
     }
 
@@ -121,8 +182,9 @@ public class AdminAnnouncementManagementService {
         row.reviseByAdmin(complex, type, values.sourceComplexName(), values.sourceHousingTypeName(),
                 values.supplyPnu(), values.expectedMoveInMonth(), values.supplyCategory(),
                 values.totalSupplyHouseholdCount());
+        validateCounts(announcement);
         var linkedComplexIds = rows.findAllByAnnouncement(announcement).stream()
-                .filter(value -> value.getHousingComplex() != null)
+                .filter(value -> !value.isAdminExcluded() && value.getHousingComplex() != null)
                 .map(value -> value.getHousingComplex().getId()).collect(java.util.stream.Collectors.toSet());
         if (schedules.findAllByAnnouncementIdIn(List.of(id)).stream().anyMatch(schedule ->
                 schedule.getHousingComplex() != null && !linkedComplexIds.contains(schedule.getHousingComplex().getId()))) {
@@ -131,7 +193,7 @@ public class AdminAnnouncementManagementService {
         announcement.recordAdminSupplyChange();
         announcements.flush();
         changes.save(new AdminDataChange("ANNOUNCEMENT", id, "UPDATE_SUPPLY", actor, before,
-                json.writeValueAsString(rowData(row))));
+                auditedData(rowData(row), request.documentEvidence())));
         return detail(id);
     }
 
@@ -165,9 +227,39 @@ public class AdminAnnouncementManagementService {
                 .stream().map(AdminChangeResponse::from).toList();
     }
 
+    private void validateCounts(Announcement announcement) {
+        long total = 0;
+        var groups = new java.util.HashSet<Long>();
+        for (var row : rows.findAllByAnnouncement(announcement)) {
+            if (row.isAdminExcluded()) { continue; }
+            Integer count = row.getTotalSupplyHouseholdCount();
+            if (row.getSupplyGroup() != null) {
+                count = null;
+                if (groups.add(row.getSupplyGroup().getId())) { count = row.getSupplyGroup().getSharedHouseholdCount(); }
+            }
+            if (count != null) { total += count; }
+            if (!row.isTargetCountsComparable() || row.getTotalSupplyHouseholdCount() == null) { continue; }
+            long targetCount = targets.findAllBySupplyRow(row).stream().filter(target -> !target.isAdminExcluded())
+                    .map(SupplyTarget::getSupplyHouseholdCount).filter(java.util.Objects::nonNull)
+                    .mapToLong(Integer::longValue).sum();
+            if (targetCount > row.getTotalSupplyHouseholdCount()) {
+                throw new IllegalArgumentException("같은 범위로 확인한 대상별 모집수 합계가 행 모집수를 초과합니다.");
+            }
+        }
+        if (total > Integer.MAX_VALUE) { throw new IllegalArgumentException("공고 모집수 합계가 허용 범위를 초과합니다."); }
+    }
+
     private Long scheduleComplexId(AnnouncementApplicationSchedule schedule) {
         if (schedule.getHousingComplex() == null) { return null; }
         return schedule.getHousingComplex().getId();
+    }
+
+    private String auditedData(Object data, AdminDocumentEvidence evidence) {
+        var result = (tools.jackson.databind.node.ObjectNode) json.valueToTree(data);
+        if (evidence != null) {
+            result.set("documentEvidence", json.valueToTree(evidence));
+        }
+        return json.writeValueAsString(result);
     }
 
     private Announcement find(long id) {
@@ -212,9 +304,14 @@ public class AdminAnnouncementManagementService {
             complexId = row.getHousingComplex().getId(); complexName = row.getHousingComplex().getName();
         }
         if (row.getHousingType() != null) { typeId = row.getHousingType().getId(); }
+        com.toadzip.backend.announcement.dto.response.SupplyRowResponse.SharedRecruitment shared = null;
+        if (row.getSupplyGroup() != null) {
+            shared = new com.toadzip.backend.announcement.dto.response.SupplyRowResponse.SharedRecruitment(
+                    row.getSupplyGroup().getId(), row.getSupplyGroup().getSharedHouseholdCount());
+        }
         return new AdminAnnouncementDetail.SupplyRowItem(row.getId(), complexId, complexName, typeId,
                 row.isAdminModified(), new SupplyRowRequest(row.getSourceComplexName(), row.getSourceHousingTypeName(),
                         row.getSupplyPnu(), row.getExpectedMoveInMonth(), row.getSupplyCategory(),
-                        row.getTotalSupplyHouseholdCount()));
+                        row.getTotalSupplyHouseholdCount()), shared);
     }
 }

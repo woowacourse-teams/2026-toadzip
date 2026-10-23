@@ -1,7 +1,7 @@
 import type { ComplexSearchFilters } from '../api/publicHousingRepository.ts'
-import { provinceNameForRegionCode } from '../model/publicHousingRegion.ts'
+import { findCatalogRegion, provinceNameForRegionCode } from '../model/publicHousingRegion.ts'
 import { formatHousingMoney } from '../presentation/housingMoney.ts'
-import { AGENCY_OPTIONS, APPLICATION_STATUS_OPTIONS, RECRUITMENT_TYPE_OPTIONS, RENTAL_TYPE_OPTIONS } from './searchFilterOptions.ts'
+import { AGENCY_OPTIONS, RECRUITMENT_TYPE_OPTIONS, RENTAL_TYPE_OPTIONS } from './searchFilterOptions.ts'
 import type { FilterTopic } from './complexFilterTopics.ts'
 
 export function topicSummary(
@@ -13,17 +13,13 @@ export function topicSummary(
     case 'region': {
       if (!filters.regionCode) return null
       const name = provinceNameForRegionCode(filters.regionCode)
-      const label = name === null
-        ? filters.regionCode
-        : filters.regionCode.length === 5
-          ? resolvedRegionName ?? `${name} ${filters.regionCode}`
-          : name
+      const label = filters.regionCode.length === 2
+        ? name ?? '지역 선택됨'
+        : resolvedRegionName ?? findCatalogRegion(filters.regionCode)?.displayName ?? '지역 선택됨'
       return compactRegionLabel(label)
     }
     case 'rentalType':
       return optionsSummary(filters.rentalTypes, RENTAL_TYPE_OPTIONS)
-    case 'applicationStatus':
-      return optionsSummary(filters.applicationStatuses, APPLICATION_STATUS_OPTIONS)
     case 'agency':
       return optionsSummary(filters.agencyCodes, AGENCY_OPTIONS)
     case 'recruitmentType':
@@ -120,16 +116,20 @@ export function formatDepositTick(value: number) {
   return value === 500_000_000 ? '5억+' : value === 0 ? '0' : formatHousingMoney(value)
 }
 
+// 좁은 눈금에서 글자가 겹치지 않도록 보증금 눈금(1억, 5억+)처럼 '원'을 생략한다.
 export function formatMonthlyRentTick(value: number) {
-  return value === 600_000 ? '60만원+' : value === 0 ? '0' : formatHousingMoney(value)
+  if (value === 0) return '0'
+  return `${value / 10_000}만${value === 600_000 ? '+' : ''}`
 }
 
 export function formatArea(value: number) {
   return `${compact(value / 3.3)}평`
 }
 
+export const AREA_SLIDER_MAXIMUM = 198
+
 export function formatAreaTick(value: number) {
-  return value === 132 ? '40평+' : value === 0 ? '0' : formatArea(value)
+  return value === AREA_SLIDER_MAXIMUM ? `${formatArea(value)} 이상` : value === 0 ? '0' : formatArea(value)
 }
 
 function compact(value: number) {

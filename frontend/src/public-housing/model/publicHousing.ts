@@ -35,6 +35,7 @@ export interface RawComplexListItem {
 }
 
 export interface RawComplexPage {
+  readonly totalCount?: number | null
   readonly items: readonly RawComplexListItem[]
   readonly nextCursor: string | null
   readonly hasNext: boolean
@@ -86,6 +87,7 @@ export interface ComplexListItem {
 }
 
 export interface ComplexPage {
+  readonly totalCount?: number | null
   readonly items: readonly ComplexListItem[]
   readonly nextCursor: string | null
   readonly hasNext: boolean
@@ -261,6 +263,7 @@ export interface RawAnnouncementListItem {
 }
 
 export interface RawAnnouncementPage {
+  readonly totalCount?: number | null
   readonly items: readonly RawAnnouncementListItem[]
   readonly nextCursor: string | null
   readonly hasNext: boolean
@@ -289,6 +292,7 @@ export interface AnnouncementListItem {
 }
 
 export interface AnnouncementPage {
+  readonly totalCount?: number | null
   readonly items: readonly AnnouncementListItem[]
   readonly nextCursor: string | null
   readonly hasNext: boolean
@@ -369,6 +373,10 @@ export interface RawAnnouncementSupplyTarget {
 }
 
 export interface RawAnnouncementSupplyRow {
+  readonly corrected?: boolean
+  readonly exclusiveArea?: number | null
+  readonly supplyArea?: number | null
+  readonly sharedRecruitment?: { readonly id: number; readonly householdCount: number | null } | null
   readonly supplyRowId: number
   readonly sourceComplexName: string | null
   readonly sourceHousingTypeName: string | null
@@ -461,6 +469,10 @@ export interface AnnouncementSupplyTarget {
 }
 
 export interface AnnouncementSupplyRow {
+  readonly corrected?: boolean
+  readonly exclusiveArea?: number | null
+  readonly supplyArea?: number | null
+  readonly sharedRecruitment?: { readonly id: number; readonly householdCount: number | null } | null
   readonly supplyRowId: string
   readonly sourceComplexName: string | null
   readonly sourceHousingTypeName: string | null

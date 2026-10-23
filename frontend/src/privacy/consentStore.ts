@@ -358,33 +358,50 @@ export class ConsentStore {
     finally { if (epoch === this.epoch) this.update({ saving: false }) }
   }
   start = () => {
+    let refreshing: { epoch: number; sequence: number } | null = null
+    const refresh = () => {
+      if (document.hidden || navigator.onLine === false) return
+      if (refreshing?.epoch === this.epoch && refreshing.sequence === this.sequence) return
+      const request = this.refresh()
+      const current = { epoch: this.epoch, sequence: this.sequence }
+      refreshing = current
+      void request.finally(() => { if (refreshing === current) refreshing = null })
+    }
     try {
       this.authChannel = new BroadcastChannel('toadzip.privacy.auth')
       this.authChannel.onmessage = (event: MessageEvent<unknown>) => {
         if (!record(event.data) || typeof event.data.id !== 'string' || typeof event.data.expiresAt !== 'number' || !Number.isFinite(event.data.expiresAt)) return
         if (event.data.expiresAt > Date.now()) this.authPending.set(event.data.id, event.data.expiresAt)
         else this.authPending.delete(event.data.id)
-        this.transition(); void this.refresh()
+        this.transition(); refresh()
       }
     } catch { /* Storage events remain the primary cross-tab signal. */ }
     if (!this.started) { this.started = true; this.settleAuthTransition(this.returningOAuth()) }
-    void this.refresh()
-    const interval = window.setInterval(() => { if (!document.hidden) void this.refresh() }, 30_000)
-    const focus = () => { this.stop(); void this.refresh() }
+    refresh()
+    const interval = window.setInterval(refresh, 30_000)
+    const focus = () => { this.stop(); refresh() }
     const offline = () => { this.sequence++; this.stop(); this.update({ loading: false, error: '오프라인 상태예요. 분석을 중지했어요. 연결되면 다시 확인합니다.' }) }
-    const visibility = () => { this.stop(); if (!document.hidden) void this.refresh() }
-    const pageshow = () => { this.settleAuthTransition(this.returningOAuth()); void this.refresh() }
+    const visibility = () => { this.stop(); if (document.hidden) this.sequence++; else refresh() }
+    const pageshow = (event: PageTransitionEvent) => {
+      const operation = this.returningOAuth()
+      if (operation) this.settleAuthTransition(operation)
+      else {
+        if (event.persisted) this.sequence++
+        this.stop()
+      }
+      refresh()
+    }
     const storage = (event: StorageEvent) => {
       if (event.key === AUTH_CHANGE_KEY || event.key?.startsWith(AUTH_PENDING_PREFIX)) {
         if (event.key.startsWith(AUTH_PENDING_PREFIX) && event.newValue === null) this.authPending.delete(event.key.slice(AUTH_PENDING_PREFIX.length))
-        this.transition(); void this.refresh(); return
+        this.transition(); refresh(); return
       }
       if (event.key === null || event.key === CHANGE_KEY || event.key === RESELECT_BEFORE_KEY || event.key.startsWith(STOP_PREFIX)) {
         if (event.key === null) this.stops.clear()
         else if (event.key.startsWith(STOP_PREFIX)) this.stops.delete(event.key.slice(STOP_PREFIX.length))
         const current = this.state.context
         const reset = event.key === null || (current !== null && this.requiresReset(current))
-        this.stop(reset ? 'reset' : 'pause'); void this.refresh()
+        this.sequence++; this.stop(reset ? 'reset' : 'pause'); refresh()
       }
     }
     window.addEventListener('focus', focus); window.addEventListener('online', focus); window.addEventListener('offline', offline)

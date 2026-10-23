@@ -32,7 +32,7 @@ it('web viewer 사전 로딩 실패를 lazy 캐시에 전파하지 않고 기존
   await waitFor(() => expect(sdk.attempted).toHaveBeenCalled())
   expect(screen.getByRole('status')).toHaveTextContent('PDF를 불러오는 중')
   await act(async () => { resolve(original) })
-  expect(await screen.findByRole('alert')).toHaveTextContent('PDF를 표시하지 못했습니다')
+  expect(await screen.findByRole('alert')).toHaveTextContent('PDF를 표시하지 못했어요')
   // The real preview still mounted; only its per-document SDK operation failed.
   expect(screen.getByRole('region', { name: '원본.pdf 문서' })).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '원본.pdf 다운로드' }))
