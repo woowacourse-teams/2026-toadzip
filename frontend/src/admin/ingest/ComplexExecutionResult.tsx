@@ -19,6 +19,10 @@ export function ComplexExecutionResult({ execution, phase, pending = false, stop
     || (phase === 'collection' ? step.startsWith('COLLECT_') : !step.startsWith('COLLECT_')))
   const work = execution.workProgress
   const settled = execution.status !== 'IDLE' && execution.status !== 'RUNNING'
+  const errorNotice = pending ? '실행 접수를 확인하고 있습니다. 실행이 끝나거나 중지되면 이번 실행의 오류를 조회할 수 있습니다.'
+    : execution.status === 'IDLE' ? '아직 실행 기록이 없습니다. 이 단계의 작업을 실행한 뒤 오류를 확인할 수 있습니다.'
+    : !settled ? '실행 중입니다. 실행이 끝나거나 중지되면 이번 실행의 오류를 조회할 수 있습니다.'
+    : !execution.executionId ? '실행 기록을 확인하지 못했습니다. 상태를 다시 확인해 주세요.' : null
   const errorPhase = phase ?? (execution.type === 'COMPLEX_COLLECTION' ? 'collection'
     : execution.type === 'COMPLEX_REFINEMENT' ? 'refinement' : undefined)
   const activePhase = execution.type !== 'COMPLEX_SYNC' || !phase
@@ -50,14 +54,15 @@ export function ComplexExecutionResult({ execution, phase, pending = false, stop
       label={stopping || execution.stopRequested ? '중지 요청 중…' : '실행 중지'} title="실행 중지 · 현재 처리 후 종료"
       disabled={stopping || execution.stopRequested || !execution.executionId} onClick={onStop} />}
     {execution.stopRequested && execution.status === 'RUNNING' && <p role="status">현재 처리가 끝나면 중지합니다. 이미 저장한 데이터는 유지됩니다.</p>}
-    {showErrors && settled && execution.executionId && <>
+    {showErrors && <>
       <Button data-design-system className={styles.errorToggle} aria-label="결과 오류 조회"
         aria-expanded={errorsOpen} aria-controls={errorsId} onClick={() => setErrorsOpen(value => !value)}>
         결과 오류 조회
         <svg className={styles.disclosureChevron} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
       </Button>
       <div id={errorsId} role="region" aria-label="결과 오류" hidden={!errorsOpen} className={styles.errorPanel}>
-        {errorsOpen && <ComplexRunErrors key={`${execution.executionId}-${errorPhase}`} executionId={execution.executionId} phase={errorPhase} />}
+        {errorsOpen && errorNotice && <p role={!pending && settled && !execution.executionId ? 'alert' : 'status'}>{errorNotice}</p>}
+        {errorsOpen && !errorNotice && execution.executionId && <ComplexRunErrors key={`${execution.executionId}-${errorPhase}`} executionId={execution.executionId} phase={errorPhase} />}
       </div>
     </>}
   </div>

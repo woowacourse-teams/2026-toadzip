@@ -63,3 +63,48 @@ it.each([
   expect(within(screen.getByRole('list', { name: '실행 단계' })).getByText(label)).toHaveAttribute('data-tone', tone)
   expect(screen.queryByRole('button', { name: '실행 중지' })).not.toBeInTheDocument()
 })
+
+
+it.each(['COMPLEX_COLLECTION', 'COMPLEX_REFINEMENT'] as const)('%s는 실행 전에도 오류 조회를 열 수 있고 실행 기록 없음은 오류 없음과 구별한다', type => {
+  render(<ComplexExecutionResult execution={{ ...execution, type, executionId: null, status: 'IDLE', completedSteps: [] }} />)
+  const button = screen.getByRole('button', { name: '결과 오류 조회' })
+  expect(button).toBeVisible()
+  fireEvent.click(button)
+  expect(screen.getByRole('region', { name: '결과 오류' })).toHaveTextContent('아직 실행 기록이 없습니다.')
+  expect(screen.queryByText('수집 오류 내역')).not.toBeInTheDocument()
+  expect(screen.queryByText(/오류가 없습니다/)).not.toBeInTheDocument()
+})
+
+it.each([
+  ['RUNNING', false, '실행 중입니다.'],
+  ['COMPLETED', true, '실행 접수를 확인하고 있습니다.'],
+] as const)('%s 접수 중=%s에는 오류 조회 버튼을 유지하되 과거 결과를 새 결과처럼 조회하지 않는다', (status, pending, message) => {
+  render(<ComplexExecutionResult execution={{ ...execution, status }} pending={pending} />)
+  fireEvent.click(screen.getByRole('button', { name: '결과 오류 조회' }))
+  expect(screen.getByRole('region', { name: '결과 오류' })).toHaveTextContent(message)
+  expect(screen.queryByText('수집 오류 내역')).not.toBeInTheDocument()
+})
+
+it('중지 전부터 오류 조회 버튼을 유지하고 열린 패널에서 중지 결과를 조회할 수 있다', () => {
+  const view = render(<ComplexExecutionResult execution={{ ...execution, status: 'RUNNING' }} />)
+  const button = screen.getByRole('button', { name: '결과 오류 조회' })
+  fireEvent.click(button)
+  expect(screen.queryByText('수집 오류 내역')).not.toBeInTheDocument()
+  view.rerender(<ComplexExecutionResult execution={{ ...execution, status: 'STOPPED' }} />)
+  expect(screen.getByRole('button', { name: '결과 오류 조회' })).toBe(button)
+  expect(button).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByRole('region', { name: '결과 오류' })).toHaveTextContent('수집 오류 내역')
+})
+
+it('이력에서는 오류 조회 진입점을 표시하지 않는다', () => {
+  render(<ComplexExecutionResult execution={execution} showErrors={false} />)
+  expect(screen.queryByRole('button', { name: '결과 오류 조회' })).not.toBeInTheDocument()
+})
+
+
+it('실행 ID를 확인하지 못한 결과는 오류 없음 대신 조회 불가로 표시한다', () => {
+  render(<ComplexExecutionResult execution={{ ...execution, executionId: null }} />)
+  fireEvent.click(screen.getByRole('button', { name: '결과 오류 조회' }))
+  expect(screen.getByRole('alert')).toHaveTextContent('실행 기록을 확인하지 못했습니다.')
+  expect(screen.queryByText('수집 오류 내역')).not.toBeInTheDocument()
+})
