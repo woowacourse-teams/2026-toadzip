@@ -81,7 +81,8 @@ class HousingComplexMapQueryTest {
         service = new HousingMapQueryService(
                 new HousingComplexSearchRequestNormalizer(regionCodeResolver, CLOCK),
                 new CsvMapClusteringZoomPolicyRepository(
-                        new ClassPathResource("map-clustering/stage-transitions.csv")
+                        new ClassPathResource("map-clustering/stage-transitions.csv"),
+                        new ClassPathResource("map-clustering/stage-transitions-mobile.csv")
                 ),
                 new HousingMapResponseFactory(
                         mock(MapClusteringAggregateNodeQuery.class), repository, summaryMapper

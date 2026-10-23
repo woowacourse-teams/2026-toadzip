@@ -54,7 +54,8 @@ class OpenApiDocumentationIntegrationTest {
 
     private static final Set<String> LIST_ONLY_PARAMETERS = Set.of("sort", "cursor", "size");
 
-    private static final Set<String> V2_MAP_ONLY_PARAMETERS = Set.of("zoom", "previousResolvedStage");
+    private static final Set<String> V2_MAP_ONLY_PARAMETERS =
+            Set.of("zoom", "previousResolvedStage", "clusteringProfile");
 
     @LocalServerPort
     private int port;
@@ -178,7 +179,8 @@ class OpenApiDocumentationIntegrationTest {
         List<Map<String, Object>> v2MapParameters = parameters(response.body(), "/api/v2/complexes/map");
         assertAll(
                 () -> assertExactQueryParameters(listParameters, expectedListParameters),
-                () -> assertExactQueryParameters(v2MapParameters, expectedV2MapParameters)
+                () -> assertExactQueryParameters(v2MapParameters, expectedV2MapParameters),
+                () -> assertOptionalQueryParameter(response.body(), "/api/v2/complexes/map", "clusteringProfile")
         );
     }
 

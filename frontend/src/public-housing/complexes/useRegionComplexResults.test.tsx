@@ -75,7 +75,7 @@ describe('useRegionComplexResults', () => {
     repository.findComplexPage
       .mockResolvedValueOnce({ ...page, hasNext: true, nextCursor: 'page-2' })
       .mockRejectedValueOnce(new Error('일시 오류'))
-      .mockResolvedValueOnce({ ...page, items: [...page.items, last, last] })
+      .mockResolvedValueOnce({ ...page, totalCount: 2, items: [...page.items, last, last] })
     const { result } = renderHook(() => useRegionComplexResults(repository, '11', {}))
     await waitFor(() => expect(result.current.state.status).toBe('ready'))
     act(() => { result.current.loadMore(); result.current.loadMore() })

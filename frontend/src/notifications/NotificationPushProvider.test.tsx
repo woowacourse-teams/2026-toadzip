@@ -33,13 +33,12 @@ it('일반 iPhone은 SDK를 준비하지 않고도 현재 기기 여부를 조�
 })
 it('열려 있던 기기로 돌아오면 원격 해제를 반영하고 SDK를 다시 등록하지 않는다', async () => {
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
-  const events = vi.spyOn(window, 'addEventListener')
   sdk()
   vi.spyOn(pushDeviceRepository, 'current').mockResolvedValue(initial)
   const register = vi.spyOn(pushDeviceRepository, 'register').mockResolvedValue(initial)
-  render(<App />)
+  // 상태 표시뿐 아니라 복귀 이벤트를 등록하는 effect까지 완료한 뒤 이벤트를 보낸다.
+  await act(async () => { render(<App />) })
   await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('on'))
-  await waitFor(() => expect(events).toHaveBeenCalledWith('focus', expect.any(Function)))
   vi.mocked(pushDeviceRepository.current).mockResolvedValue({ ...initial, bindingVersion: '2', enabled: false })
   await act(async () => { fireEvent.focus(window) })
   expect(pushDeviceRepository.current).toHaveBeenCalledTimes(2)
@@ -64,7 +63,7 @@ it('겹친 복귀 이벤트의 기기 조회를 한 번으로 합치고 실패 �
   sdk()
   const current = vi.spyOn(pushDeviceRepository, 'current').mockResolvedValue(initial)
   vi.spyOn(pushDeviceRepository, 'register').mockResolvedValue(initial)
-  render(<App />)
+  await act(async () => { render(<App />) })
   await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('on'))
   let reject!: (reason: Error) => void
   current.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail }))
@@ -85,7 +84,7 @@ it('오프라인과 숨겨진 탭에서는 기기 자동 조회를 보내지 않
   sdk()
   const current = vi.spyOn(pushDeviceRepository, 'current').mockResolvedValue(initial)
   vi.spyOn(pushDeviceRepository, 'register').mockResolvedValue(initial)
-  render(<App />)
+  await act(async () => { render(<App />) })
   await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('on'))
   online.mockReturnValue(false)
   fireEvent.focus(window)
@@ -105,7 +104,7 @@ it('화면을 떠나기 전 조회가 늦어져도 복귀 후 최신 기기 상�
   sdk()
   const current = vi.spyOn(pushDeviceRepository, 'current').mockResolvedValue(initial)
   vi.spyOn(pushDeviceRepository, 'register').mockResolvedValue(initial)
-  render(<App />)
+  await act(async () => { render(<App />) })
   await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('on'))
   let finish!: (state: PushDeviceState) => void
   current.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))

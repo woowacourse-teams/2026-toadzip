@@ -72,7 +72,7 @@
 }
 .feedback p { margin: 0; font-size: 0.875rem; }
 /* 모바일 하단 내비게이션, 지도 출처 표기와 오른쪽 지도 컨트롤 열을 가리지 않는다. */
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .feedback {
     right: calc(var(--explorer-map-control-right, 12px) + var(--explorer-map-control-size, 48px) + var(--ds-space-2));
     bottom: calc(var(--explorer-footer-height, 84px) + var(--ds-space-7));

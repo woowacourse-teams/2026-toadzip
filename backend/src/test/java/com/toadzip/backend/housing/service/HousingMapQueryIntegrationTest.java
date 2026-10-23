@@ -2,6 +2,9 @@ package com.toadzip.backend.housing.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -23,15 +26,39 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
-@SpringBootTest
+@SpringBootTest(properties = "spring.main.web-application-type=servlet")
+@AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 @Transactional
 class HousingMapQueryIntegrationTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Test
+    void 모바일은_줌_12에서_개별_단지를_표시하고_기존_요청은_집계를_유지한다() throws Exception {
+        mockMvc.perform(get("/api/v2/complexes/map")
+                        .param("southWestLat", "37.0").param("southWestLng", "126.0")
+                        .param("northEastLat", "38.0").param("northEastLng", "128.0")
+                        .param("zoom", "12.00").param("previousResolvedStage", "3")
+                        .param("clusteringProfile", "MOBILE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.resolvedStage").value(4))
+                .andExpect(jsonPath("$.data.policyVersion").value("2026-10-23-mobile-v1"));
+        mockMvc.perform(get("/api/v2/complexes/map")
+                        .param("southWestLat", "37.0").param("southWestLng", "126.0")
+                        .param("northEastLat", "38.0").param("northEastLng", "128.0")
+                        .param("zoom", "12.00").param("previousResolvedStage", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.resolvedStage").value(3));
+    }
 
     @Autowired
     private EntityManager entityManager;

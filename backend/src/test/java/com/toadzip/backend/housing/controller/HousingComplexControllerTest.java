@@ -96,7 +96,8 @@ class HousingComplexControllerTest {
                         .param("southWestLng", "126.8")
                         .param("northEastLat", "37.6")
                         .param("northEastLng", "127.1"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(24));
 
         ArgumentCaptor<HousingComplexSearchRequest> requestCaptor =
                 ArgumentCaptor.forClass(HousingComplexSearchRequest.class);
@@ -209,7 +210,8 @@ class HousingComplexControllerTest {
                         .param("northEastLng", "127.100000"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.keys()", containsInAnyOrder("data")))
-                .andExpect(jsonPath("$.data.keys()", containsInAnyOrder("items", "nextCursor", "hasNext")))
+                .andExpect(jsonPath("$.data.keys()", containsInAnyOrder(
+                        "items", "nextCursor", "hasNext", "totalCount")))
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].keys()", containsInAnyOrder(
                         "complexId",
@@ -555,7 +557,8 @@ class HousingComplexControllerTest {
                         )
                 )),
                 "next-cursor",
-                true
+                true,
+                24L
         );
     }
 

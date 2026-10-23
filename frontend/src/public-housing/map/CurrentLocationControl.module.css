@@ -98,11 +98,11 @@
 .guidance li + li { margin-top: var(--ds-space-2); }
 .guidance .note { color: var(--ds-color-label); font-size: var(--ds-text-caption); }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .control {
     top: auto;
     right: var(--explorer-map-control-right);
-    bottom: calc(var(--explorer-map-control-bottom) + var(--explorer-map-control-size) + var(--explorer-map-control-gap));
+    bottom: var(--explorer-map-control-bottom);
     width: var(--explorer-map-control-size);
     height: var(--explorer-map-control-size);
     border-radius: 10px;

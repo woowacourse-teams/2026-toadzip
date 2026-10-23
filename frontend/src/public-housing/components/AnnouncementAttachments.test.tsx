@@ -1,8 +1,14 @@
+import { captureProductEvent } from '../../analytics/productAnalytics'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AttachmentDialog, AttachmentList } from './AnnouncementAttachments.tsx'
 import { loadAnnouncementAttachment } from '../api/announcementAttachments.ts'
 import type { HousingAnnouncementDetailAttachment } from './HousingAnnouncementDetailPanel.tsx'
+
+vi.mock('../../analytics/productAnalytics', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../analytics/productAnalytics')>(),
+  captureProductEvent: vi.fn(),
+}))
 
 vi.mock('./PdfDocumentPreview.tsx', () => ({
   default: ({ name, url }: { name: string; url: string }) => {
@@ -30,6 +36,7 @@ const pdf: HousingAnnouncementDetailAttachment = {
 const reference = { ...pdf, attachmentId: '2', fileName: '참고자료.pdf', fileTypeLabel: '참고자료' }
 
 beforeEach(() => {
+  vi.mocked(captureProductEvent).mockClear()
   vi.mocked(loadAnnouncementAttachment).mockResolvedValue(new Blob(['%PDF-1.7'], { type: 'application/pdf' }))
   // jsdom does not implement native dialog or object URLs; real behavior is checked in the browser.
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value() {} })
@@ -54,6 +61,9 @@ describe('첨부파일', () => {
     document.body.append(trigger)
     trigger.focus()
     const { unmount } = render(<AttachmentDialog announcementId="201" attachments={[pdf]} onClose={vi.fn()} />)
+    expect(captureProductEvent).toHaveBeenCalledWith('document_attachment_selected', expect.objectContaining({
+      announcement_id: '201', attachment_id: '1', selection_method: 'automatic',
+    }), expect.any(Object))
     expect(screen.getByRole('status')).toHaveTextContent('PDF를 불러오는 중')
     expect(await screen.findByTitle('모집공고.pdf 미리보기')).toHaveAttribute('data-url', 'blob:preview')
     const signal = vi.mocked(loadAnnouncementAttachment).mock.calls[0]![3]
@@ -128,6 +138,67 @@ describe('첨부파일', () => {
     expect(anchor.href).toBe('blob:preview')
     fireEvent.click(toggle)
     expect(within(screen.getByRole('region', { name: '첨부파일 1개' })).queryByRole('button', { name: /다운로드/ })).not.toBeInTheDocument()
+  })
+
+  it('목록의 보기 아이콘은 해당 파일을 바로 열고 닫으면 포커스를 돌려준다', async () => {
+    render(<AttachmentList announcementId="201" attachments={[pdf, reference]} />)
+    fireEvent.click(screen.getByRole('button', { name: '첨부파일 2개' }))
+    const preview = screen.getByRole('button', { name: '참고자료.pdf 보기' })
+    const download = screen.getByRole('button', { name: '참고자료.pdf 다운로드' })
+    expect(preview).toHaveAttribute('title', '보기')
+    expect(download).toHaveAttribute('title', '다운로드')
+    expect(preview.textContent).toBe('')
+    expect(download.textContent).toBe('')
+    preview.focus()
+    fireEvent.click(preview)
+    const dialog = screen.getByRole('dialog', { name: '첨부파일' })
+    expect(await within(dialog).findByTitle('참고자료.pdf 미리보기')).toBeVisible()
+    const selectionEvents = vi.mocked(captureProductEvent).mock.calls.filter(([name]) => name === 'document_attachment_selected')
+    expect(selectionEvents).toHaveLength(1)
+    expect(selectionEvents[0]?.[1]).toMatchObject({
+      announcement_id: '201', attachment_id: '2', selection_method: 'manual',
+    })
+    expect(within(dialog).queryByRole('button', { name: '파일 목록' })).not.toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: '첨부파일 닫기' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(preview).toHaveFocus()
+  })
+
+  it('주소가 없는 파일은 보기와 다운로드를 모두 비활성화한다', () => {
+    render(<AttachmentList announcementId="201" attachments={[{ ...pdf, fileUrl: null }]} />)
+    fireEvent.click(screen.getByRole('button', { name: '첨부파일 1개' }))
+    expect(screen.getByRole('button', { name: '모집공고.pdf 보기' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '모집공고.pdf 다운로드' })).toBeDisabled()
+  })
+
+  it('미지원 파일도 보기에서 모달 안내를 제공하고 자동으로 다운로드하지 않는다', () => {
+    vi.mocked(loadAnnouncementAttachment).mockClear()
+    render(<AttachmentList announcementId="201" attachments={[{ ...pdf, fileName: '신청서.zip' }]} />)
+    fireEvent.click(screen.getByRole('button', { name: '첨부파일 1개' }))
+    fireEvent.click(screen.getByRole('button', { name: '신청서.zip 보기' }))
+    const dialog = screen.getByRole('dialog', { name: '첨부파일' })
+    expect(within(dialog).getByText(/이 파일은 미리보기를 지원하지 않아요/)).toBeVisible()
+    expect(within(dialog).getByRole('button', { name: '신청서.zip 다운로드' })).toBeEnabled()
+    expect(loadAnnouncementAttachment).not.toHaveBeenCalled()
+  })
+
+  it('다운로드 아이콘은 준비 중 중복 요청을 막고 실패하면 재시도할 수 있다', async () => {
+    let reject!: (error: Error) => void
+    vi.mocked(loadAnnouncementAttachment).mockReturnValueOnce(new Promise((_resolve, fail) => { reject = fail }))
+    render(<AttachmentList announcementId="201" attachments={[pdf]} />)
+    fireEvent.click(screen.getByRole('button', { name: '첨부파일 1개' }))
+    const download = screen.getByRole('button', { name: '모집공고.pdf 다운로드' })
+    fireEvent.click(download)
+    expect(download).toBeDisabled()
+    expect(download).toHaveAttribute('aria-busy', 'true')
+    await act(async () => { reject(new Error('offline')) })
+    expect(screen.getByRole('alert')).toHaveTextContent('첨부파일을 불러오지 못했어요')
+    expect(download).toBeEnabled()
+    expect(download).toHaveAttribute('aria-busy', 'false')
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    fireEvent.click(download)
+    await waitFor(() => expect(click).toHaveBeenCalledOnce())
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
 

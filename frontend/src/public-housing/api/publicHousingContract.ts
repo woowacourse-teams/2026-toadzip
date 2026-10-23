@@ -46,8 +46,13 @@ export function decodeAnnouncementPageEnvelope(
   const envelope = recordAt(value, '$')
   const data = recordAt(recordField(envelope, 'data', '$'), '$.data')
   const items = arrayAt(recordField(data, 'items', '$.data'), '$.data.items')
+  const totalCount = data.totalCount == null ? null : safeIntegerAt(data.totalCount, '$.data.totalCount')
+  if (totalCount !== null && totalCount < 0) {
+    throw new PublicHousingContractError('$.data.totalCount')
+  }
 
   return {
+    totalCount,
     items: items.map((item, index) =>
       decodeAnnouncementListItem(item, `$.data.items[${index}]`),
     ),
@@ -95,7 +100,11 @@ function decodeComplexPage(value: unknown, path: string): RawComplexPage {
   const response = recordAt(value, path)
   const items = arrayAt(recordField(response, 'items', path), `${path}.items`)
 
+  const totalCount = response.totalCount == null ? null : safeIntegerAt(response.totalCount, `${path}.totalCount`)
+  if (totalCount !== null && totalCount < 0) throw new PublicHousingContractError(`${path}.totalCount`)
+
   return {
+    totalCount,
     items: items.map((item, index) =>
       decodeComplexListItem(item, `${path}.items[${index}]`),
     ),

@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementSort;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
@@ -38,6 +39,7 @@ import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestExce
 import com.toadzip.backend.announcement.exception.InvalidRegionCodeException;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementDeadlineRow;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchCondition;
@@ -213,9 +215,10 @@ class AnnouncementQueryServiceTest {
                 withId(createSupplyRow(applying, null, null, "all-null", 0, null)),
                 withId(createSupplyRow(beforeApplication, null, null, "known-zero", 0, 0))
         );
-        when(announcementSearchRepository.findLatestLeaves(
-                any(AnnouncementSearchCondition.class), isNull(), isNull(), eq(21)
-        )).thenReturn(List.of(correction, applying, beforeApplication, closed));
+        when(announcementSearchRepository.findSortedLeaves(
+                any(AnnouncementSearchCondition.class), isNull(), isNull(), isNull(), isNull(),
+                eq(21), eq(AnnouncementSort.LATEST)
+        )).thenReturn(sortedRows(List.of(correction, applying, beforeApplication, closed)));
         when(supplyRowRepository.findAllByAnnouncementIdIn(List.of(
                 correction.getId(), applying.getId(), beforeApplication.getId(), closed.getId()
         ))).thenReturn(supplyRows);
@@ -330,12 +333,14 @@ class AnnouncementQueryServiceTest {
                 null,
                 0L
         ));
-        when(announcementSearchRepository.findLatestLeaves(
-                any(AnnouncementSearchCondition.class), isNull(), isNull(), eq(2)
-        )).thenReturn(List.of(second, first));
-        when(announcementSearchRepository.findLatestLeaves(
-                any(AnnouncementSearchCondition.class), eq(second.getPostedDate()), eq(second.getId()), eq(2)
-        )).thenReturn(List.of(first));
+        when(announcementSearchRepository.findSortedLeaves(
+                any(AnnouncementSearchCondition.class), isNull(), isNull(), isNull(), isNull(),
+                eq(2), eq(AnnouncementSort.LATEST)
+        )).thenReturn(sortedRows(List.of(second, first)));
+        when(announcementSearchRepository.findSortedLeaves(
+                any(AnnouncementSearchCondition.class), eq(0), eq(second.getApplicationEndDate()),
+                eq(second.getPostedDate()), eq(second.getId()), eq(2), eq(AnnouncementSort.LATEST)
+        )).thenReturn(sortedRows(List.of(first)));
 
         AnnouncementListResponse firstPage = announcementQueryService.getAnnouncements(noFilters(), null, 1);
         AnnouncementListResponse secondPage = announcementQueryService.getAnnouncements(
@@ -345,7 +350,8 @@ class AnnouncementQueryServiceTest {
         assertTrue(firstPage.hasNext());
         assertEquals(second.getId(), firstPage.items().getFirst().announcementId());
         assertEquals(
-                announcementCursorCodec.encode(second.getPostedDate(), second.getId()),
+                announcementCursorCodec.encodeDeadline(LocalDate.of(2026, 8, 10), 0, second.getApplicationEndDate(),
+                        second.getPostedDate(), second.getId(), AnnouncementSort.LATEST),
                 firstPage.nextCursor()
         );
         assertFalse(secondPage.hasNext());
@@ -436,12 +442,14 @@ class AnnouncementQueryServiceTest {
         RegionCodeResolver regionCodeResolver = mock(RegionCodeResolver.class);
         AnnouncementResponseMapper announcementResponseMapper = mock(AnnouncementResponseMapper.class);
         when(regionCodeResolver.filterCodes("11140")).thenReturn(Optional.of(Set.of("11140", "11000")));
-        when(announcementSearchRepository.findLatestLeaves(
+        when(announcementSearchRepository.findSortedLeaves(
                 org.mockito.ArgumentMatchers.any(AnnouncementSearchCondition.class),
                 org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.eq(2)
-        )).thenReturn(List.of(first, second));
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(2), eq(AnnouncementSort.LATEST)
+        )).thenReturn(sortedRows(List.of(first, second)));
         when(announcementResponseMapper.toListItemResponses(
                 org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.anyList(),
@@ -465,11 +473,13 @@ class AnnouncementQueryServiceTest {
                 AnnouncementSearchCondition.class
         );
         ArgumentCaptor<LocalDate> mapperTodayCaptor = ArgumentCaptor.forClass(LocalDate.class);
-        verify(announcementSearchRepository).findLatestLeaves(
+        verify(announcementSearchRepository).findSortedLeaves(
                 conditionCaptor.capture(),
                 org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.eq(2)
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(2), eq(AnnouncementSort.LATEST)
         );
         verify(announcementResponseMapper).toListItemResponses(
                 org.mockito.ArgumentMatchers.eq(List.of(first)),
@@ -484,7 +494,41 @@ class AnnouncementQueryServiceTest {
         assertEquals(LocalDate.of(2026, 8, 10), condition.today());
         assertEquals(condition.today(), mapperTodayCaptor.getValue());
         assertTrue(response.hasNext());
-        assertEquals(announcementCursorCodec.encode(first.getPostedDate(), first.getId()), response.nextCursor());
+        assertEquals(announcementCursorCodec.encodeDeadline(LocalDate.of(2026, 8, 10), 0, first.getApplicationEndDate(),
+                first.getPostedDate(), first.getId(), AnnouncementSort.LATEST), response.nextCursor());
+    }
+
+    private List<AnnouncementDeadlineRow> sortedRows(List<Announcement> announcements) {
+        return announcements.stream().map(announcement ->
+                new AnnouncementDeadlineRow(announcement, 0, announcement.getApplicationEndDate())).toList();
+    }
+
+    @Test
+    void 최신순_다음_페이지는_날짜가_바뀌어도_첫_페이지의_기준일로_마감과_총건수를_계산한다() {
+        LocalDate asOf = LocalDate.of(2026, 8, 9);
+        LocalDate deadline = LocalDate.of(2026, 8, 11);
+        LocalDate posted = LocalDate.of(2026, 8, 5);
+        Announcement first = withId(createAnnouncement("first", null, null, AnnouncementPublicationType.ORIGINAL,
+                posted, asOf, deadline, null, null, 0L));
+        Announcement second = withId(createAnnouncement("second", null, null, AnnouncementPublicationType.ORIGINAL,
+                posted, asOf, deadline, null, null, 0L));
+        String cursor = announcementCursorCodec.encodeDeadline(asOf, 0, deadline, posted,
+                999L, AnnouncementSort.LATEST);
+        when(announcementSearchRepository.findSortedLeaves(any(AnnouncementSearchCondition.class), eq(0), eq(deadline),
+                eq(posted), eq(999L), eq(2), eq(AnnouncementSort.LATEST)))
+                .thenReturn(sortedRows(List.of(first, second)));
+        when(announcementSearchRepository.countLatestLeaves(any(AnnouncementSearchCondition.class))).thenReturn(3L);
+
+        AnnouncementListResponse response = announcementQueryService.getAnnouncements(noFilters(), cursor, 1);
+
+        ArgumentCaptor<AnnouncementSearchCondition> condition = ArgumentCaptor.forClass(
+                AnnouncementSearchCondition.class);
+        verify(announcementSearchRepository).countLatestLeaves(condition.capture());
+        assertEquals(asOf, condition.getValue().today());
+        assertEquals(3L, response.totalCount());
+        assertEquals(2, response.items().getFirst().dDay());
+        assertEquals(asOf, announcementCursorCodec.decodeDeadline(response.nextCursor(),
+                AnnouncementSort.LATEST).asOf());
     }
 
     @Test

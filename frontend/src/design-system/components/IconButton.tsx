@@ -7,11 +7,13 @@ export type IconButtonProps = Omit<
 > & {
   readonly label: string
   readonly size?: 'md' | 'lg'
+  readonly variant?: 'plain' | 'filled'
 }
 
 export function IconButton({
   label,
   size = 'md',
+  variant = 'plain',
   type = 'button',
   className,
   ...props
@@ -21,7 +23,7 @@ export function IconButton({
       {...props}
       type={type}
       aria-label={label}
-      className={[styles.root, styles[size], className].filter(Boolean).join(' ')}
+      className={[styles.root, styles[size], styles[variant], className].filter(Boolean).join(' ')}
     />
   )
 }

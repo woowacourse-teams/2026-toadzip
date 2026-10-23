@@ -4,6 +4,7 @@ import { privacyApi, type NoticeDocument } from './api'
 import { consentStore } from './consentStore'
 import styles from './Privacy.module.css'
 import { usePrivacyConsent, usePrivacyNotices } from './usePrivacy'
+import { useMobileViewport } from '../public-housing/components/useMobileViewport'
 
 export function PrivacyBoundary() {
   const { pathname } = useLocation()
@@ -18,6 +19,7 @@ export function PrivacyBoundary() {
   return <aside className={styles.floating} aria-label="이용 정보 수집 선택"><AnalyticsChoice /></aside>
 }
 export function AnalyticsChoice({ settings = false }: { readonly settings?: boolean }) {
+  const mobile = useMobileViewport()
   const state = usePrivacyConsent()
   const { notices } = usePrivacyNotices()
   const [details, setDetails] = useState<NoticeDocument | null>(null)
@@ -50,13 +52,22 @@ export function AnalyticsChoice({ settings = false }: { readonly settings?: bool
     </div>
     {state.error && <div className={styles.error} role="alert"><p>{state.error}</p><button type="button" disabled={state.saving} onClick={() => void consentStore.retry()}>다시 확인</button></div>}
     {state.saving && <p className={styles.small} role="status">선택을 저장하고 있어요.</p>}
-    <p className={styles.footer}>정보 메뉴에서 언제든 변경할 수 있어요.</p>
+    <p className={styles.footer}>{mobile ? '로그인 화면 또는 마이 메뉴에서 언제든 변경할 수 있어요.' : '정보 메뉴에서 언제든 변경할 수 있어요.'}</p>
   </section>
 }
 export function PrivacyMenu() {
+  const mobile = useMobileViewport()
+  if (mobile) return null
   return <details className={styles.menu}><summary aria-label="정보"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="12" r="9" /><path d="M12 10v7m0-11v1" /></svg><span>정보</span></summary>
     <nav aria-label="정보 및 개인정보 설정"><Link to="/privacy">개인정보처리방침</Link><Link to="/privacy/settings">분석 설정</Link><a href="mailto:toadzip.official@gmail.com">개인정보 문의·삭제 요청</a></nav>
   </details>
+}
+export function PrivacyLinks() {
+  return <nav className={styles.links} aria-label="정보 및 개인정보 설정">
+    <Link to="/privacy">개인정보처리방침</Link>
+    <Link to="/privacy/settings">분석 설정</Link>
+    <a href="mailto:toadzip.official@gmail.com">개인정보 문의·삭제 요청</a>
+  </nav>
 }
 export function PrivacySettingsPage() {
   return <main className={styles.page}><Link to="/explore">← 지도로 돌아가기</Link><h1>분석 설정</h1><AnalyticsChoice settings /><p className={styles.small}>로그인 중에는 회원 계정의 선택을 적용해요. 로그아웃하면 이 브라우저의 비회원 선택을 적용합니다.</p><Link to="/privacy">개인정보처리방침</Link></main>

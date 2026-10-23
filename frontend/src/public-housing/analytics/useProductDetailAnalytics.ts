@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigationType } from 'react-router'
 import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
+import type { MarkerHoverAttribution } from '../../analytics/markerHoverAnalytics'
 import { useAnalyticsConsent } from '../../analytics/useAnalyticsConsent'
 import { consentStore } from '../../privacy/consentStore'
 import type { DetailEntryPoint } from '../../analytics/googleAnalytics'
 import type { DetailLocationResult } from '../navigation/detailLocation'
 
-interface Visit { key: string | null; id: string; entry: DetailEntryPoint; sent: boolean }
+interface Visit { key: string | null; id: string; entry: DetailEntryPoint; sent: boolean; hover?: MarkerHoverAttribution }
 
 /** Data loaded behind another dialog is not an active visit until the user can see it. */
 export function useProductDetailAnalytics({ detailLocation, readyComplexId, readyAnnouncementId }: {
@@ -21,7 +22,7 @@ export function useProductDetailAnalytics({ detailLocation, readyComplexId, read
     : kind === 'announcement' ? detailLocation.announcementId : null
   const key = id === null ? null : `${kind}:${id}`
   const visit = useRef<Visit | null>(null)
-  const pending = useRef<{ key: string; entry: DetailEntryPoint; id: string } | null>(null)
+  const pending = useRef<{ key: string; entry: DetailEntryPoint; id: string; hover?: MarkerHoverAttribution } | null>(null)
   const [resetVersion, setResetVersion] = useState(0)
 
   useEffect(() => consentStore.onStop(reason => {
@@ -29,6 +30,7 @@ export function useProductDetailAnalytics({ detailLocation, readyComplexId, read
     if (visit.current) {
       visit.current.id = createAnalyticsId()
       visit.current.sent = false
+      visit.current.hover = undefined
     }
     pending.current = null
     // Reset and authentication changes discard queued views. Reobserve the
@@ -43,6 +45,7 @@ export function useProductDetailAnalytics({ detailLocation, readyComplexId, read
         key, id: prepared?.id ?? createAnalyticsId(),
         entry: prepared?.entry ?? (visit.current !== null && navigationType === 'POP' ? 'history' : 'direct'),
         sent: false,
+        hover: prepared?.hover,
       }
     }
     pending.current = null
@@ -53,11 +56,12 @@ export function useProductDetailAnalytics({ detailLocation, readyComplexId, read
     function measure() {
       if (cancelled || id === null) return
       const dialog = document.querySelector<HTMLElement>(kind === 'complex'
-        ? 'dialog.housing-detail-layer[aria-label="단지 상세"]'
-        : 'dialog.housing-detail-layer[aria-label="공고 상세"]')
+        ? '.housing-detail-layer[aria-label^="단지 상세"]'
+        : '.housing-detail-layer[aria-label^="공고 상세"]')
       if (dialog) dialog.dataset.detailVisitId = current.id
       if (!allowed || !ready || current.sent || !dialog || !isForegroundElement(dialog)) return
       current.sent = captureProductEvent(kind === 'complex' ? 'view_complex' : 'view_announcement', {
+        ...current.hover,
         [kind === 'complex' ? 'complex_id' : 'announcement_id']: id,
         detail_visit_id: current.id, entry_point: current.entry,
       }, { dedupeKey: `detail:${current.id}` })
@@ -76,11 +80,15 @@ export function useProductDetailAnalytics({ detailLocation, readyComplexId, read
     }
   }, [allowed, id, key, kind, navigationType, readyAnnouncementId, readyComplexId, resetVersion])
 
-  const prepare = useCallback((detailKind: 'complex' | 'announcement', detailId: string, entry: DetailEntryPoint) => {
+  const prepare = useCallback((detailKind: 'complex' | 'announcement', detailId: string, entry: DetailEntryPoint,
+    hover?: MarkerHoverAttribution) => {
     const target = `${detailKind}:${detailId}`
     const visitId = target === key ? visit.current?.id ?? createAnalyticsId() : createAnalyticsId()
-    pending.current = target === key ? null : { key: target, entry, id: visitId }
+    // Each request describes its own action; an existing visit retains its original attribution.
+    const attribution = detailKind === 'complex' && entry === 'map' && hover?.complex_id === detailId ? { ...hover } : undefined
+    pending.current = target === key ? null : { key: target, entry, id: visitId, hover: attribution }
     captureProductEvent('detail_open_requested', {
+      ...attribution,
       target_type: detailKind, [detailKind === 'complex' ? 'complex_id' : 'announcement_id']: detailId,
       detail_visit_id: visitId, entry_point: entry,
     })

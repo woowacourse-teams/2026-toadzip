@@ -29,6 +29,7 @@ export function DetailSection({ title, description, aside, actions, children, ap
 }
 
 interface DetailFactProps {
+  readonly missingLabel?: string
   readonly term: string
   readonly value: string
   readonly wide?: boolean
@@ -72,12 +73,11 @@ export function DetailTable({ caption, children, minWidth }: DetailTableProps) {
 }
 
 /** dl 안에서 사용한다. 값의 단위·빈 값·도메인 계산은 호출자가 결정한다. */
-export function DetailFact({ term, value, wide = false, emphasis = false }: DetailFactProps) {
+export function DetailFact({ term, value, wide = false, emphasis = false, missingLabel = MISSING_DATA_LABEL }: DetailFactProps) {
   return (
     <div className={styles.fact} data-wide={wide || undefined} data-emphasis={emphasis || undefined}>
       <dt>{term}</dt>
-      {/* 목록에서 빈 값은 이름만 떠 보이므로 흐린 결측 문구로 채운다. */}
-      <dd>{value === '' ? <span className={styles.missingValue}>{MISSING_DATA_LABEL}</span> : value}</dd>
+      <dd>{value === '' && missingLabel ? <span className={styles.missingValue}>{missingLabel}</span> : value}</dd>
     </div>
   )
 }

@@ -132,7 +132,8 @@ class HousingMapResponseFactoryTest {
 
     private static com.toadzip.backend.housing.domain.MapClusteringZoomPolicy zoomPolicy() {
         return new CsvMapClusteringZoomPolicyRepository(
-                new ClassPathResource("map-clustering/stage-transitions.csv")
+                new ClassPathResource("map-clustering/stage-transitions.csv"),
+                new ClassPathResource("map-clustering/stage-transitions-mobile.csv")
         ).current();
     }
 

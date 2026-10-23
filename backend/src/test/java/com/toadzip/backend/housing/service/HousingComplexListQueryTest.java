@@ -106,6 +106,7 @@ class HousingComplexListQueryTest {
     @Test
     void 지역만_지정하면_지도_좌표_없이_지역_전체_목록을_조회한다() {
         when(repository.findPage(any(), any(), any(), eq(21))).thenReturn(List.of());
+        when(repository.count(any())).thenReturn(24L);
         HousingComplexSearchRequest request = request(
                 null, "11", null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null
@@ -119,6 +120,8 @@ class HousingComplexListQueryTest {
         assertNull(captor.getValue().bounds());
         assertEquals(Set.of("11110", "11140"), captor.getValue().filters().regionCodes());
         assertTrue(response.items().isEmpty());
+        assertEquals(24L, response.totalCount());
+        verify(repository).count(captor.getValue());
     }
 
     @Test

@@ -1,5 +1,7 @@
+import { useExplorerReturn } from './navigation/ExplorerReturnContext'
 import { useListMeasurement } from './analytics/useListMeasurement'
 import { captureProductEvent } from '../analytics/productAnalytics'
+import { useMarkerHoverAnalytics, type MarkerHoverAttribution } from '../analytics/markerHoverAnalytics'
 import { useProductDetailAnalytics } from './analytics/useProductDetailAnalytics'
 import { findCatalogRegion } from './model/publicHousingRegion'
 import { rentalTypeLabel } from './presentation/rentalTypeLabel.ts'
@@ -26,7 +28,8 @@ import {
 import { useLocation, useNavigate, useNavigationType } from 'react-router'
 import { useStreetView, type StreetViewController } from '../street-view/useStreetView'
 import { StreetViewPanel } from '../street-view/StreetViewPanel'
-import { useMobileViewport } from './components/useMobileViewport'
+import { isMobileViewport, useMobileViewport } from './components/useMobileViewport'
+import { COMPLEX_MARKER_HEIGHT } from '../maps/naver/complexMarkerButton'
 import { type DetailEntryPoint, trackEvent } from '../analytics/googleAnalytics.ts'
 import { trackAppliedFilters, useHousingAnalytics } from '../analytics/useHousingAnalytics.ts'
 import NaverMap, {
@@ -59,6 +62,8 @@ import {
 import { HousingComplexDetailPanel } from './components/HousingComplexDetailPanel.tsx'
 import { HousingResultsPanel } from './components/HousingResultsPanel.tsx'
 import { HousingDetailOverlay } from './components/HousingDetailOverlay.tsx'
+import { HousingComplexSummarySheet } from './components/HousingComplexSummarySheet.tsx'
+import { readRecentComplexPreview, withRecentComplexPreview } from './navigation/mobileDetailHistory.ts'
 import { ComplexFilterToolbar } from './filters/ComplexFilterToolbar.tsx'
 import { AnnouncementFilterPanel } from './filters/AnnouncementFilterPanel.tsx'
 import {
@@ -188,6 +193,7 @@ export function PublicHousingExplorer({
   streetViewSupported = true,
 }: PublicHousingExplorerProps) {
   const location = useLocation()
+  const markerHoverAnalytics = useMarkerHoverAnalytics()
   const navigate = useNavigate()
   const navigationType = useNavigationType()
   const mobile = useMobileViewport()
@@ -211,6 +217,15 @@ export function PublicHousingExplorer({
     },
   )
   const [viewport, setViewport] = useState<ViewportSnapshot | null>(null)
+  const explorerReturn = useExplorerReturn()
+  useEffect(() => {
+    if (!explorerReturn) return
+    const params = new URLSearchParams(location.search)
+    params.set('mapLat', String(viewport?.center.latitude ?? mapCameraTarget.latitude))
+    params.set('mapLng', String(viewport?.center.longitude ?? mapCameraTarget.longitude))
+    params.set('mapZoom', String(viewport?.zoom ?? mapCameraTarget.zoom))
+    explorerReturn.current = location.pathname + '?' + params.toString() + location.hash
+  }, [explorerReturn, location.pathname, location.search, location.hash, viewport, mapCameraTarget])
   const viewportRef = useRef<ViewportSnapshot | null>(null)
   const viewportRevisionRef = useRef(0)
   const viewportTimerRef = useRef<number | null>(null)
@@ -278,11 +293,11 @@ export function PublicHousingExplorer({
     }
   }, [])
   const [activeResultTab, setActiveResultTab] =
-    useState<ResultList>('complexes')
+    useState<ResultList>(() => mobile && readRecentComplexPreview(location.state) ? 'recent' : 'complexes')
   const [announcementListRequested, setAnnouncementListRequested] = useState(false)
   const [listPanelMode, setListPanelMode] = useState<'auto' | 'open' | 'collapsed'>(() => (
     (initialDetail.kind === 'complex' || initialDetail.kind === 'announcement')
-      && window.matchMedia?.('(max-width: 1023px)').matches ? 'collapsed' : 'auto'
+      && (isMobileViewport() || window.matchMedia?.('(max-width: 1023px)').matches) ? 'collapsed' : 'auto'
   ))
   useLayoutEffect(() => {
     if (pendingListTriggerFocusRef.current === null) return
@@ -297,13 +312,15 @@ export function PublicHousingExplorer({
     request: requestServerMap,
     retry: retryServerMap,
     state: serverMapState,
-  } = useHousingMapResults(mapRepository)
+  } = useHousingMapResults(mapRepository, mobile ? 'MOBILE' : 'DEFAULT')
   const clusterTransitionRef = useRef(false)
   const transitionWaitingForIdleRef = useRef(false)
   const activeResultTabRef = useRef<ResultList>(activeResultTab)
   activeResultTabRef.current = activeResultTab
   const locationSearchRef = useRef(location.search)
   locationSearchRef.current = location.search
+  const locationStateRef = useRef(location.state)
+  locationStateRef.current = location.state
   const [selectedComplexId, setSelectedComplexId] = useState<string | null>(
     null,
   )
@@ -318,6 +335,8 @@ export function PublicHousingExplorer({
   const [detailRetryRevision, setDetailRetryRevision] = useState(0)
   const complexResultsScrollRef = useRef<HTMLDivElement | null>(null)
   const announcementResultsScrollRef = useRef<HTMLDivElement | null>(null)
+  const complexListEndRef = useRef<HTMLDivElement>(null)
+  const announcementListEndRef = useRef<HTMLDivElement | null>(null)
   const previousDetailKindRef = useRef<ResultTab | null>(null)
   const complexDetailOpenerRef = useRef<HTMLElement | null>(null)
   const complexDetailOpenerIdRef = useRef<string | null>(null)
@@ -341,6 +360,22 @@ export function PublicHousingExplorer({
     () => parseDetailLocation(new URLSearchParams(detailLocationSearch)),
     [detailLocationSearch],
   )
+  const recentPreview = readRecentComplexPreview(location.state)
+  const showingRecentComplex = mobile && recentPreview !== null
+    && detailLocation.kind === 'complex' && detailLocation.complexId === recentPreview.complexId
+  const showingComplexSummary = showingRecentComplex && !recentPreview.expanded
+  useLayoutEffect(() => {
+    if (!mobile || (detailLocation.kind !== 'complex' && detailLocation.kind !== 'announcement')) return
+    mobileDetailListModeRef.current ??= listPanelMode
+    setListPanelMode('collapsed')
+  }, [mobile, detailLocation, listPanelMode])
+  useLayoutEffect(() => {
+    if (showingComplexSummary && detailLocation.kind === 'complex') {
+      setActiveResultTab('recent')
+      setSelectedComplexId(detailLocation.complexId)
+      pendingDetailCameraRef.current ??= { id: detailLocation.complexId, revision: viewportRevisionRef.current }
+    }
+  }, [detailLocation, showingComplexSummary])
   const streetView = useStreetView({
     target: detailLocation.kind === 'complex' && complexDetail.status === 'ready'
       && detailLocation.complexId === complexDetail.complexId && complexDetail.detail
@@ -370,7 +405,7 @@ export function PublicHousingExplorer({
   }, [closeStreetView, cancelCurrentLocation])
   const prepareDetailVisit = useHousingAnalytics({
     detailLocation,
-    readyComplexId: complexDetail.status === 'ready'
+    readyComplexId: !showingComplexSummary && complexDetail.status === 'ready'
       && complexDetail.detail?.complexId === complexDetail.complexId
       ? complexDetail.complexId : null,
     readyAnnouncementId: announcementDetail.status === 'ready'
@@ -379,7 +414,7 @@ export function PublicHousingExplorer({
   })
   const { prepare: prepareProductDetail, action: trackDetailAction } = useProductDetailAnalytics({
     detailLocation,
-    readyComplexId: complexDetail.status === 'ready'
+    readyComplexId: !showingComplexSummary && complexDetail.status === 'ready'
       && complexDetail.detail?.complexId === complexDetail.complexId
       ? complexDetail.complexId : null,
     readyAnnouncementId: announcementDetail.status === 'ready'
@@ -397,6 +432,7 @@ export function PublicHousingExplorer({
   const handledBoundaryCodeRef = useRef<string | null>(null)
   const boundaryRestoreRevisionRef = useRef(0)
   const pendingBoundaryCameraRef = useRef<{ code: string; zoom: number } | null>(null)
+  const explicitCameraBoundaryRef = useRef<string | null>(null)
   const boundaryState = useRegionBoundary(boundaryMetadata?.regionCode ?? null, boundaryRepository)
   const selectedBoundarySearchItem = selectedSearchRegion
     && (selectedSearchRegion.regionCode ?? selectedSearchRegion.id) === boundaryRegionCode
@@ -410,10 +446,12 @@ export function PublicHousingExplorer({
   }, [locateCurrentPosition])
 
   const focusBoundary = useCallback((code: string) => {
+    explicitCameraBoundaryRef.current = null
     cancelCurrentLocation()
     const metadata = findRegionBoundaryMetadata(code)
     const item = boundarySelectionRef.current
-    const zoom = pendingBoundaryCameraRef.current?.zoom ?? REGION_FOCUS_ZOOM
+    const regionFocusZoom = isMobileViewport() ? 12.1 : REGION_FOCUS_ZOOM
+    const zoom = pendingBoundaryCameraRef.current?.zoom ?? regionFocusZoom
     pendingBoundaryCameraRef.current = null
     pendingDetailCameraRef.current = null
     const selectedPoint = item && (item.regionCode ?? item.id) === code
@@ -427,7 +465,7 @@ export function PublicHousingExplorer({
       setMapCameraTarget({
         latitude,
         longitude,
-        zoom: code.length === 2 ? 11 : code.length === 10 ? 14 : Math.max(REGION_FOCUS_ZOOM, zoom),
+        zoom: code.length === 2 ? 11 : code.length === 10 ? 14 : Math.max(regionFocusZoom, zoom),
         screenOffset: { x: (padding.left - padding.right) / 2, y: (padding.top - padding.bottom) / 2 },
       })
       setCameraRequestId((current) => current + 1)
@@ -443,6 +481,10 @@ export function PublicHousingExplorer({
       return
     }
     handledBoundaryCodeRef.current = boundaryRegionCode
+    if (mobile && mapLocation.kind === 'valid') {
+      explicitCameraBoundaryRef.current = boundaryRegionCode
+      return
+    }
     if (boundaryRegionCode !== null) {
       focusBoundary(boundaryRegionCode)
     }
@@ -464,7 +506,7 @@ export function PublicHousingExplorer({
         if (item) {
           boundarySelectionRef.current = item
           setSelectedSearchRegion(item)
-          if (revision === boundaryRestoreRevisionRef.current) focusBoundary(boundaryRegionCode)
+          if (revision === boundaryRestoreRevisionRef.current && explicitCameraBoundaryRef.current !== boundaryRegionCode) focusBoundary(boundaryRegionCode)
           return
         }
         if (!response.hasNext) return
@@ -524,6 +566,50 @@ export function PublicHousingExplorer({
     announcementFiltersKey,
   )
   const updateAnnouncementViewCount = announcementResults.updateViewCount
+  const loadMoreAnnouncements = announcementResults.loadMore
+
+  useEffect(() => {
+    if (!mobile || !showListPage || activeResultTab !== 'complexes'
+      || complexResults.status !== 'ready' || !complexResults.hasNext || !complexResults.nextCursor
+      || typeof IntersectionObserver === 'undefined') return
+    const root = complexResultsScrollRef.current
+    const end = complexListEndRef.current
+    if (!root || !end) return
+    let active = true
+    const observer = new IntersectionObserver(entries => {
+      if (active && entries.some(entry => entry.isIntersecting)) loadMore()
+    }, { root })
+    observer.observe(end)
+    return () => { active = false; observer.disconnect() }
+  }, [mobile, showListPage, activeResultTab, complexResults.status, complexResults.hasNext,
+    complexResults.nextCursor, loadMore])
+
+  useEffect(() => {
+    if (
+      !showListPage
+      || activeResultTab !== 'announcements'
+      || announcementResults.state.status !== 'ready'
+      || !announcementResults.state.hasNext
+      || !announcementResults.state.nextCursor
+      || typeof IntersectionObserver === 'undefined'
+    ) return
+    const root = announcementResultsScrollRef.current
+    const end = announcementListEndRef.current
+    if (!root || !end) return
+
+    let active = true
+    const observer = new IntersectionObserver((entries) => {
+      if (active && entries.some((entry) => entry.isIntersecting)) {
+        loadMoreAnnouncements()
+      }
+    }, { root })
+    observer.observe(end)
+    return () => {
+      active = false
+      observer.disconnect()
+    }
+  }, [activeResultTab, loadMoreAnnouncements, announcementResults.state.hasNext,
+    announcementResults.state.nextCursor, announcementResults.state.status, showListPage])
 
   useEffect(() => {
     setRecentComplexes((current) => enrichRecentComplexes(current, complexResults.items.map((item) => ({
@@ -533,6 +619,14 @@ export function PublicHousingExplorer({
       rentalType: item.rentalType,
     }))))
   }, [complexResults.items])
+
+  useLayoutEffect(() => {
+    if (mobile && mapLocation.kind === 'valid') {
+      explicitCameraBoundaryRef.current = boundaryRegionCode
+      setMapCameraTarget({ ...mapLocation.center, zoom: mapLocation.zoom })
+      setCameraRequestId(current => current + 1)
+    }
+  }, [mapLocation, mobile, boundaryRegionCode])
 
   useEffect(() => {
     if (mapLocation.kind === 'absent') {
@@ -551,7 +645,9 @@ export function PublicHousingExplorer({
     location.pathname,
     location.search,
     location.state,
-    mapLocation.kind,
+    mapLocation,
+    mobile,
+    boundaryRegionCode,
     navigate,
   ])
 
@@ -618,7 +714,7 @@ export function PublicHousingExplorer({
         hash: location.hash,
         pathname: location.pathname,
         search: toSearchString(nextSearch),
-      }, { replace: true, state: location.state })
+      }, { replace: true, state: locationStateRef.current })
       return
     }
 
@@ -717,7 +813,6 @@ export function PublicHousingExplorer({
     detailRetryRevision,
     location.hash,
     location.pathname,
-    location.state,
     navigate,
     repository,
     updateAnnouncementViewCount,
@@ -784,10 +879,10 @@ export function PublicHousingExplorer({
     return () => window.clearTimeout(timeout)
   }, [announcementDetail, complexDetail, detailLocation])
 
-  const openDetail = useCallback((kind: ResultTab, id: string, entryPoint: DetailEntryPoint) => {
+  const openDetail = useCallback((kind: ResultTab, id: string, entryPoint: DetailEntryPoint, hover?: MarkerHoverAttribution) => {
     cancelCurrentLocation()
     closeStreetView('TARGET_CHANGED', false)
-    if (window.matchMedia?.('(max-width: 1023px)').matches) {
+    if (isMobileViewport() || window.matchMedia?.('(max-width: 1023px)').matches) {
       mobileDetailListModeRef.current ??= listPanelMode
       setListPanelMode('collapsed')
     }
@@ -818,14 +913,17 @@ export function PublicHousingExplorer({
     }
     const currentKind = detailResultTab(detailLocation)
     const replace = currentKind === kind
-    const internalState = replace
+    const detailState = replace
       ? location.state
       : withDetailHistoryState(location.state, returnFocus)
+    const internalState = withRecentComplexPreview(detailState,
+      mobile && entryPoint === 'recent' && kind === 'complexes' ? { complexId: id, expanded: false }
+        : entryPoint === 'detail' ? readRecentComplexPreview(location.state) : null)
     const nextSearch = kind === 'complexes'
       ? setComplexIdQuery(currentSearch, id)
       : setAnnouncementIdQuery(currentSearch, id)
     prepareDetailVisit(kind === 'complexes' ? 'complex' : 'announcement', id, entryPoint)
-    prepareProductDetail(kind === 'complexes' ? 'complex' : 'announcement', id, entryPoint)
+    prepareProductDetail(kind === 'complexes' ? 'complex' : 'announcement', id, entryPoint, hover)
     navigate({
       hash: location.hash,
       pathname: location.pathname,
@@ -844,6 +942,7 @@ export function PublicHousingExplorer({
     prepareDetailVisit,
     prepareProductDetail,
     listPanelMode,
+    mobile,
     closeStreetView,
     cancelCurrentLocation,
   ])
@@ -902,10 +1001,10 @@ export function PublicHousingExplorer({
     openDetail('complexes', complexId, entryPoint)
   }, [openDetail])
 
-  const openComplexMarker = useCallback((complexId: string) => {
+  const openComplexMarker = useCallback((complexId: string, hover?: MarkerHoverAttribution) => {
     pendingDetailCameraRef.current = null
     captureProductEvent('map_marker_selected', { marker_type: 'complex', complex_id: complexId })
-    openDetail('complexes', complexId, 'map')
+    openDetail('complexes', complexId, 'map', hover)
   }, [openDetail])
 
   const openAnnouncementDetail = useCallback((announcementId: string, entryPoint: DetailEntryPoint = 'list') => {
@@ -929,7 +1028,7 @@ export function PublicHousingExplorer({
       hash: location.hash,
       pathname: location.pathname,
       search: toSearchString(nextSearch),
-    }, { replace: true, state: clearDetailHistoryState(location.state) })
+    }, { replace: true, state: withRecentComplexPreview(clearDetailHistoryState(location.state), null) })
   }, [
     location.hash,
     location.pathname,
@@ -943,6 +1042,7 @@ export function PublicHousingExplorer({
   const selectResultTab = useCallback((tab: ResultList) => {
     closeStreetView('USER_CLOSED', false)
     mobileDetailListModeRef.current = null
+    if (showingComplexSummary) closeDetail()
     setListPanelMode('open')
     if (integratedSearchActive) {
       pendingListTriggerFocusRef.current = tab
@@ -951,7 +1051,7 @@ export function PublicHousingExplorer({
     setIntegratedSearchActive(false)
     if (tab === 'announcements') setAnnouncementListRequested(true)
     setActiveResultTab(tab)
-  }, [integratedSearchActive, closeStreetView])
+  }, [integratedSearchActive, closeStreetView, showingComplexSummary, closeDetail])
 
   const returnToDetail = useCallback(() => {
     trackDetailAction('detail_back_used')
@@ -973,6 +1073,45 @@ export function PublicHousingExplorer({
     })
   }, [detailReturnFocusStack, location, navigate, prepareDetailVisit, prepareProductDetail, closeStreetView, trackDetailAction])
 
+  function expandComplexSummary() {
+    if (!recentPreview || !showingComplexSummary) return
+    navigate({ pathname: location.pathname, hash: location.hash, search: location.search }, {
+      state: withRecentComplexPreview(location.state, { ...recentPreview, expanded: true }),
+    })
+  }
+
+  function returnToComplexSummary() {
+    if (!recentPreview) return
+    trackDetailAction('detail_back_used')
+    navigate({ pathname: location.pathname, hash: location.hash, search: location.search }, {
+      replace: true,
+      state: withRecentComplexPreview(location.state, { ...recentPreview, expanded: false }),
+    })
+  }
+
+  useEffect(() => {
+    if (!showingComplexSummary || detailLocation.kind !== 'complex') return
+    let frame = 0
+    const reposition = () => {
+      window.cancelAnimationFrame(frame)
+      const revision = viewportRevisionRef.current
+      frame = window.requestAnimationFrame(() => {
+        // Let the map's ResizeObserver update the SDK projection before applying the offset.
+        frame = window.requestAnimationFrame(() => {
+          if (!isMobileViewport() || revision !== viewportRevisionRef.current) return
+          pendingDetailCameraRef.current = { id: detailLocation.complexId, revision }
+          setDetailCameraRevision((current) => current + 1)
+        })
+      })
+    }
+    reposition()
+    window.addEventListener('resize', reposition)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('resize', reposition)
+    }
+  }, [detailLocation, showingComplexSummary])
+
   useLayoutEffect(() => {
     const pending = pendingDetailCameraRef.current
     if (!pending || pending.id !== complexDetail.complexId) {
@@ -992,18 +1131,19 @@ export function PublicHousingExplorer({
     pendingDetailCameraRef.current = null
     setMapCameraTarget({
       ...target,
-      zoom: Math.max(COMPLEX_FOCUS_ZOOM, viewportRef.current?.zoom ?? COMPLEX_FOCUS_ZOOM),
+      zoom: Math.max(isMobileViewport() ? 12.2 : COMPLEX_FOCUS_ZOOM, viewportRef.current?.zoom ?? 0),
       screenOffset: detailScreenOffset(mapWorkspaceRef.current),
     })
     setCameraRequestId((current) => current + 1)
-  }, [complexDetail, detailCameraRevision, selectedSearchComplex])
+  }, [complexDetail, detailCameraRevision, selectedSearchComplex, showingComplexSummary])
 
   // 필터를 바꾸면 같은 화면의 마커를 다시 거르는 것이므로, 남는 마커는 그대로 두고 새 마커도 등장 효과 없이 바꾼다.
   const [animateMarkerEntry, setAnimateMarkerEntry] = useState(true)
-  const previousMapFiltersKeyRef = useRef(complexFiltersKey)
-  useEffect(() => {
-    if (previousMapFiltersKeyRef.current === complexFiltersKey) return
-    previousMapFiltersKeyRef.current = complexFiltersKey
+  const mapRequestContextKey = `${mobile ? 'MOBILE' : 'DEFAULT'}|${complexFiltersKey}`
+  const previousMapFiltersKeyRef = useRef(mapRequestContextKey)
+  useLayoutEffect(() => {
+    if (previousMapFiltersKeyRef.current === mapRequestContextKey) return
+    previousMapFiltersKeyRef.current = mapRequestContextKey
     setAnimateMarkerEntry(false)
     if (viewportTimerRef.current !== null) {
       window.clearTimeout(viewportTimerRef.current)
@@ -1016,7 +1156,7 @@ export function PublicHousingExplorer({
         requestServerMap(viewport, complexFilters)
       }, 100)
     }
-  }, [complexFiltersKey, complexFilters, viewport, requestServerMap, cancelServerMapRequest])
+  }, [mapRequestContextKey, complexFilters, viewport, requestServerMap, cancelServerMapRequest])
 
   const finishClusterTransition = useCallback(() => {
     clusterTransitionRef.current = false
@@ -1256,6 +1396,7 @@ export function PublicHousingExplorer({
   })
   const naverMapProps: NaverMapProps = aggregateMapResult !== null
     ? {
+        markerHoverAnalytics,
         aggregateMarkers: aggregateMapResult.nodes,
         animateMarkerEntry,
         cameraRequestId,
@@ -1269,6 +1410,7 @@ export function PublicHousingExplorer({
         transitioning: clusterTransitioning,
       }
     : {
+        markerHoverAnalytics,
         animateMarkerEntry,
         cameraRequestId,
         cameraTarget: mapCameraTarget,
@@ -1284,12 +1426,30 @@ export function PublicHousingExplorer({
       }
   const hasDetail = complexDetail.status !== 'closed'
     || announcementDetail.status !== 'closed'
+  const selectedRegionName = findRegionBoundaryName(boundaryRegionCode ?? '') ?? selectedBoundarySearchItem?.title ?? '선택한 지역'
+  const mobileRegionTitle = <span className="housing-results__region-title">
+    <span title={selectedRegionName}>{selectedRegionName.split(' ').at(-1)}</span>
+    <span>{complexResults.totalCount === null ? ' · 단지 목록' : ` · 단지 ${complexResults.totalCount.toLocaleString('ko-KR')}개`}</span>
+  </span>
+  const regionControl = (presentation: 'desktop' | 'mobile-header' | 'mobile-collapsed') => boundaryRegionCode !== null && (
+              <RegionBoundaryControl presentation={presentation}
+                listExpanded={showListPage && activeResultTab === 'complexes'}
+                onOpenList={() => { prepareListEntry('region_label'); selectResultTab('complexes') }}
+                name={findRegionBoundaryName(boundaryRegionCode) ?? selectedBoundarySearchItem?.title ?? `지역 ${boundaryRegionCode}`}
+                status={boundaryState.status}
+                supported={boundaryMetadata !== null}
+                canRecenter={boundaryMetadata !== null || (selectedBoundarySearchItem?.latitude != null && selectedBoundarySearchItem?.longitude != null)}
+                onRecenter={() => { captureProductEvent('region_boundary_action', { operation: 'recenter' }); focusBoundary(boundaryRegionCode) }}
+                onClear={() => { captureProductEvent('region_boundary_action', { operation: 'clear' }); changeBoundarySelection(null) }}
+                onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_boundary' }); boundaryState.retry() }}
+              />
+  )
   const selectedAnnouncementId = detailLocation.kind === 'announcement'
     ? detailLocation.announcementId
     : null
   const resultSummary = (
     <>
-      <span>조회 결과</span>
+      {activeResultTab !== 'announcements' && <span>조회 결과</span>}
       <span
         className="housing-results__count"
         aria-label={resultCount.accessibleLabel}
@@ -1313,8 +1473,27 @@ export function PublicHousingExplorer({
     setListPanelMode('collapsed')
   }
 
+  const complexDetailLayer = <ComplexDetailLayer
+    mobile={mobile}
+    streetView={streetViewSupported && !mobile ? streetView : undefined}
+    state={complexDetail}
+    onClose={closeDetail}
+    backTarget={detailReturnFocusStack.at(-1)}
+    onBack={returnToDetail}
+    onBackToSummary={mobile && recentPreview?.expanded && recentPreview.complexId === complexDetail.complexId
+      && detailReturnFocusStack.length === 0 ? returnToComplexSummary : undefined}
+    onOpenAnnouncement={(id) => openAnnouncementDetail(id, 'detail')}
+    onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'detail' }); setDetailRetryRevision((current) => current + 1) }}
+  />
+
   return (
     <div className={`housing-explorer${hasDetail ? ' has-detail' : ''}${showResultPage ? ' has-results-page' : ''}${integratedSearchActive ? ' is-searching' : ''}${streetView.active ? ' has-street-view' : ''}`}
+      onPointerDownCapture={(event) => { event.currentTarget.dataset.focusInput = 'pointer' }}
+      onKeyDownCapture={(event) => {
+        if (!event.altKey && !event.ctrlKey && !event.metaKey && !['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) {
+          event.currentTarget.dataset.focusInput = 'keyboard'
+        }
+      }}
       onKeyDown={(event) => {
         if (event.key !== 'Escape' || event.defaultPrevented || !streetView.active) return
         const dialog = event.target instanceof HTMLElement ? event.target.closest('dialog') : null
@@ -1360,23 +1539,13 @@ export function PublicHousingExplorer({
             onActiveChange={handleSearchActiveChange}
             onSelect={handleIntegratedSearchSelect}
             repository={searchRepository}
-            selectionControl={boundaryRegionCode !== null && (
-              <RegionBoundaryControl
-                listExpanded={showListPage && activeResultTab === 'complexes'}
-                onOpenList={() => { prepareListEntry('region_label'); selectResultTab('complexes') }}
-                name={findRegionBoundaryName(boundaryRegionCode) ?? selectedBoundarySearchItem?.title ?? `지역 ${boundaryRegionCode}`}
-                status={boundaryState.status}
-                supported={boundaryMetadata !== null}
-                canRecenter={boundaryMetadata !== null || (selectedBoundarySearchItem?.latitude != null && selectedBoundarySearchItem?.longitude != null)}
-                onRecenter={() => { captureProductEvent('region_boundary_action', { operation: 'recenter' }); focusBoundary(boundaryRegionCode) }}
-                onClear={() => { captureProductEvent('region_boundary_action', { operation: 'clear' }); changeBoundarySelection(null) }}
-                onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_boundary' }); boundaryState.retry() }}
-              />
-            )}
+            selectionControl={!mobile && regionControl('desktop')}
           />
         </div>
         <HousingResultsPanel visible={showListPage} onCollapse={collapseResults}
-          title={activeResultTab === 'recent' ? '최근 본 단지' : activeResultTab === 'complexes' ? '단지 목록' : '공고 목록'}>
+          initialMobileHeightPercent={activeResultTab === 'complexes' ? 25 : 50}
+          headerActions={mobile && activeResultTab === 'complexes' ? regionControl('mobile-header') : undefined}
+          title={mobile && activeResultTab === 'complexes' ? mobileRegionTitle : activeResultTab === 'recent' ? '최근 본 단지' : activeResultTab === 'complexes' ? '단지 목록' : '공고 목록'}>
           <div className="housing-results__browse">
 
             <div
@@ -1386,7 +1555,7 @@ export function PublicHousingExplorer({
               aria-label="단지 목록"
               hidden={activeResultTab !== 'complexes'}
             >
-              {activeResultTab === 'complexes' && boundaryRegionCode !== null && <>
+              {!mobile && activeResultTab === 'complexes' && boundaryRegionCode !== null && <>
                 <p className="housing-results__region-notice">
                   <strong>{findRegionBoundaryName(boundaryRegionCode ?? '') ?? selectedBoundarySearchItem?.title ?? '검색한 지역'}</strong>
                   내 단지만 표시합니다. 지도에는 현재 화면에 보이는 단지도 함께 표시됩니다.
@@ -1396,7 +1565,7 @@ export function PublicHousingExplorer({
               <div
                 ref={complexResultsScrollRef}
                 className="housing-results__scroll"
-                aria-busy={complexResults.status === 'loading'}
+                aria-busy={complexResults.status === 'loading' || complexResults.status === 'loading-more'}
               >
                 {boundaryRegionCode === null && (
                   <div className="housing-results__empty-region">
@@ -1405,7 +1574,7 @@ export function PublicHousingExplorer({
                     <button type="button" onClick={() => searchOverlayRef.current?.querySelector<HTMLInputElement>('input[type="search"]')?.focus()}>지역 검색하기</button>
                   </div>
                 )}
-                {boundaryRegionCode !== null && <ComplexRequestFeedback state={complexResults} onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_complex_list' }); retryComplexResults() }} />}
+                {boundaryRegionCode !== null && (!mobile || complexResults.items.length === 0) && <ComplexRequestFeedback state={complexResults} onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_complex_list' }); retryComplexResults() }} />}
                 {boundaryRegionCode !== null && <ComplexResultContent
                   state={complexResults}
                   selectedComplexId={selectedComplexId}
@@ -1417,9 +1586,17 @@ export function PublicHousingExplorer({
                     setComplexCardRef(complexCardRefsRef.current, complexId, node)
                   }}
                 />}
+                {mobile && complexResults.items.length > 0 && <>
+                  {complexResults.status === 'error'
+                    ? <ComplexRequestFeedback state={complexResults} onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_complex_list' }); retryComplexResults() }} />
+                    : <div ref={complexListEndRef} className="housing-results__list-end" role="status" aria-atomic="true">
+                      {complexResults.status === 'loading-more' ? '다음 단지를 불러오고 있어요.'
+                        : !complexResults.hasNext ? '모든 단지를 확인했어요.' : null}
+                    </div>}
+                </>}
               </div>
 
-              {complexResults.hasNext
+              {!mobile && complexResults.hasNext
                 && (complexResults.status === 'ready'
                   || complexResults.status === 'loading-more') && (
                 <button
@@ -1515,24 +1692,21 @@ export function PublicHousingExplorer({
                     }}
                     onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'announcement_list' }); announcementResults.retry() }}
                   />
+                  {announcementResults.state.items.length > 0 && announcementResults.state.status !== 'error' && (
+                    <div ref={announcementListEndRef} className="housing-results__list-end" role="status" aria-atomic="true">
+                      {announcementResults.state.status === 'loading-more'
+                        ? '다음 공고를 불러오고 있어요.'
+                        : !announcementResults.state.hasNext ? '모든 공고를 확인했어요.' : null}
+                    </div>
+                  )}
                 </div>
               </div>
-              {announcementResults.state.hasNext && (
-                <button
-                  className="housing-results__more"
-                  type="button"
-                  onClick={announcementResults.loadMore}
-                  disabled={announcementResults.state.status === 'loading-more'}
-                >
-                  {announcementResults.state.status === 'loading-more'
-                    ? '불러오는 중'
-                    : '공고 더 보기'}
-                </button>
-              )}
             </div>
           </div>
         </HousingResultsPanel>
       </div>
+
+      {mobile && !showListPage && !hasDetail && !integratedSearchActive && !streetView.active && regionControl('mobile-collapsed')}
 
       <main ref={mapWorkspaceRef} className="housing-map-workspace">
         <div className="housing-map-filter" hidden={streetView.active} inert={streetView.active}>
@@ -1552,16 +1726,17 @@ export function PublicHousingExplorer({
             <a className="housing-map-credits" href="/map-data-credits.html" target="_blank" rel="noreferrer">저작권</a>
           )}
         </div>
-        <ComplexDetailLayer
-          mobile={mobile}
-          streetView={streetViewSupported && !mobile ? streetView : undefined}
-          state={complexDetail}
+        {showingRecentComplex ? <HousingComplexSummarySheet
+          key={recentPreview.complexId}
+          expanded={recentPreview.expanded}
+          onBackToSummary={returnToComplexSummary}
+          recent={recentComplexes.find((recent) => recent.complexId === recentPreview?.complexId)}
+          detail={complexDetail.detail}
+          status={complexDetail.status}
+          onExpand={expandComplexSummary}
           onClose={closeDetail}
-          backTarget={detailReturnFocusStack.at(-1)}
-          onBack={returnToDetail}
-          onOpenAnnouncement={(id) => openAnnouncementDetail(id, 'detail')}
           onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'detail' }); setDetailRetryRevision((current) => current + 1) }}
-        />
+        >{complexDetailLayer}</HousingComplexSummarySheet> : complexDetailLayer}
         <AnnouncementDetailLayer
           mobile={mobile}
           state={announcementDetail}
@@ -1596,27 +1771,34 @@ function DetailBackButton({ backTarget, onBack }: DetailBackProps) {
   )
 }
 
-function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backTarget, onBack, streetView, mobile }: {
+function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backTarget, onBack, streetView, mobile, onBackToSummary }: {
   state: ComplexDetailState
   mobile: boolean
   streetView?: StreetViewController
   onClose: () => void
   onOpenAnnouncement: (announcementId: string) => void
   onRetry: () => void
+  onBackToSummary?: () => void
 } & DetailBackProps) {
   if (state.status === 'closed') {
     return null
   }
+  const backButton = onBackToSummary
+    ? <button type="button" className="housing-detail-back" onClick={onBackToSummary} aria-label="단지 요약으로 돌아가기">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m14 5-7 7 7 7" /></svg>
+      </button>
+    : <DetailBackButton backTarget={backTarget} onBack={onBack} />
   return (
     <HousingDetailOverlay label="단지 상세" mobile={mobile} onClose={onClose}>
       {state.status === 'ready' && state.detail
         ? <HousingComplexDetailPanel
+            mobile={mobile}
             streetView={streetView}
             onEscape={streetView?.active ? () => streetView.close('USER_CLOSED', true, 'escape') : undefined}
-            backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
+            backButton={backButton}
             detail={toHousingComplexDetailData(state.detail)}
             onClose={onClose} onOpenAnnouncement={onOpenAnnouncement} />
-        : <HousingDetailStatePanel kind="complex" id={state.complexId} backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
+        : <HousingDetailStatePanel kind="complex" id={state.complexId} backButton={backButton}
             status={state.status} errorMessage={state.errorMessage}
             onClose={onClose} onRetry={onRetry} />}
     </HousingDetailOverlay>
@@ -1697,12 +1879,6 @@ function AnnouncementResultContent({
 
   return (
     <>
-      {state.status === 'error' && (
-        <div className="housing-results__inline-error" role="alert">
-          <span>{state.errorMessage}</span>
-          <button type="button" onClick={onRetry}>다시 시도</button>
-        </div>
-      )}
       <ul className="housing-results__list">
         {state.items.map((announcement) => (
           <li key={announcement.announcementId}>
@@ -1715,6 +1891,12 @@ function AnnouncementResultContent({
           </li>
         ))}
       </ul>
+      {state.status === 'error' && (
+        <div className="housing-results__inline-error" role="alert">
+          <span>{state.errorMessage}</span>
+          <button type="button" onClick={onRetry}>다시 시도</button>
+        </div>
+      )}
     </>
   )
 }
@@ -1748,11 +1930,20 @@ function resultCountLabel(
     }
   }
   if (activeTab === 'announcements') {
-    const count = announcements.items.length
-    const suffix = announcements.hasNext ? '건 이상' : '건'
+    if (announcements.totalCount !== null) {
+      const total = announcements.totalCount.toLocaleString('ko-KR')
+      return {
+        accessibleLabel: `전체 공고 ${total}건`,
+        visibleLabel: (
+          <>
+            전체 <strong className="housing-results__total-count">{total}건</strong>
+          </>
+        ),
+      }
+    }
     return {
-      accessibleLabel: `현재 불러온 공고 ${count}${suffix}`,
-      visibleLabel: `${count}${suffix}`,
+      accessibleLabel: '공고 전체 건수 확인 불가',
+      visibleLabel: '전체 건수 확인 불가',
     }
   }
   if (complexes.status === 'idle' || (
@@ -2084,8 +2275,17 @@ function boundaryScreenPadding(workspace: HTMLElement | null, includeMobileResul
 }
 
 function detailScreenOffset(workspace: HTMLElement | null) {
-  if (window.innerWidth < 768) {
-    return undefined
+  if (isMobileViewport()) {
+    const map = workspace?.querySelector('.map-surface')?.getBoundingClientRect()
+    const summary = workspace?.querySelector('[data-complex-summary]')?.getBoundingClientRect()
+    if (!map || !summary || map.height <= 0 || summary.height <= 0) return undefined
+    const controls = workspace?.closest('.housing-explorer')?.querySelectorAll('.housing-search-overlay, .housing-map-filter [role="toolbar"]') ?? []
+    let top = map.top + 24
+    for (const control of controls) top = Math.max(top, control.getBoundingClientRect().bottom + 16)
+    const bottom = Math.min(map.bottom - 24, summary.top - 16)
+    if (bottom <= top) return undefined
+    // The SDK anchors the marker at its bottom; center the visible card, not its tip.
+    return { x: 0, y: (top + bottom + COMPLEX_MARKER_HEIGHT) / 2 - (map.top + map.height / 2) }
   }
   const map = workspace?.querySelector('.map-surface')?.getBoundingClientRect()
   const panel = workspace?.querySelector('.housing-detail-layer')?.getBoundingClientRect()

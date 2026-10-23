@@ -2164,6 +2164,7 @@ class ComplexSummaryQueryRepositoryTest {
 
         assertAll(
                 () -> assertEquals(expected, Set.copyOf(mapIds)),
+                () -> assertEquals(expectedIds.size(), repository.count(condition)),
                 () -> assertEquals(expectedIds.size(), mapIds.size()),
                 () -> assertEquals(expected, Set.copyOf(listIds)),
                 () -> assertEquals(expectedIds.size(), listIds.size()),

@@ -179,7 +179,8 @@ class CsvMapClusteringRegionPolicyRepositoryTest {
 
     private static CsvMapClusteringRegionPolicyRepository productionRepository() {
         CsvMapClusteringZoomPolicyRepository zoomRepository = new CsvMapClusteringZoomPolicyRepository(
-                new ClassPathResource("map-clustering/stage-transitions.csv")
+                new ClassPathResource("map-clustering/stage-transitions.csv"),
+                new ClassPathResource("map-clustering/stage-transitions-mobile.csv")
         );
         return new CsvMapClusteringRegionPolicyRepository(
                 new ClassPathResource("map-clustering/groups.csv"),
@@ -288,7 +289,7 @@ class CsvMapClusteringRegionPolicyRepositoryTest {
                 new MapClusteringPolicyVersion(policyVersion, regionDatasetVersion),
                 transitions()
         );
-        return () -> policy;
+        return profile -> policy;
     }
 
     private static List<MapClusteringTransition> transitions() {

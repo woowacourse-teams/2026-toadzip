@@ -42,6 +42,9 @@ export function AnnouncementFilterPanel({
   const restoreFocusRef = useRef(false)
   const panelId = 'announcement-search-filter-panel'
   const summaryId = `${panelId}-summary`
+  const sortDescriptionId = `${panelId}-sort-description`
+  const sort = filters.sort ?? 'DEADLINE'
+  const latestSelected = sort === 'LATEST' || sort === 'LATEST_ASC'
   const appliedCount = appliedFilterCount(filters)
   const filtersKey = searchFiltersSignature(filters)
   const formKey = `${formRevision}:${searchFiltersSignature(formFilters)}`
@@ -79,7 +82,7 @@ export function AnnouncementFilterPanel({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (mobile) return
-    const nextFilters = announcementFiltersFromForm(new FormData(event.currentTarget))
+    const nextFilters = preserveSort(announcementFiltersFromForm(new FormData(event.currentTarget)))
     measurement.apply(nextFilters, 'submit')
     onApply(nextFilters)
   }
@@ -91,7 +94,7 @@ export function AnnouncementFilterPanel({
     // Descendant region controls reset after this bubbling change handler.
     if (target.name === 'provinceCode') data.set('districtCode', '')
     if (target.name === 'provinceCode' || target.name === 'districtCode') data.set('neighborhoodCode', '')
-    const next = announcementFiltersFromForm(data)
+    const next = preserveSort(announcementFiltersFromForm(data))
     const nextSignature = searchFiltersSignature(next)
     if (nextSignature === (pendingSignaturesRef.current.at(-1) ?? filtersKey)) return
     pendingSignaturesRef.current.push(nextSignature)
@@ -100,44 +103,76 @@ export function AnnouncementFilterPanel({
   }
 
   function reset() {
+    const next = preserveSort({})
     measurement.reset('all', 'applied')
-    measurement.apply({}, 'reset')
-    pendingSignaturesRef.current.push(searchFiltersSignature({}))
+    measurement.apply(next, 'reset')
+    pendingSignaturesRef.current.push(searchFiltersSignature(next))
     formRef.current?.reset()
-    setFormFilters({})
+    setFormFilters(next)
     closeRef.current?.focus()
-    onApply({})
+    onApply(next)
+  }
+
+  function preserveSort(next: AnnouncementSearchFilters): AnnouncementSearchFilters {
+    return filters.sort ? { ...next, sort: filters.sort } : next
+  }
+
+  function changeSort() {
+    const nextSort = sort === 'LATEST' ? 'LATEST_ASC' : 'LATEST'
+    const next: AnnouncementSearchFilters = { ...filters, sort: nextSort }
+    // A sort change must not discard the desktop filter form's unapplied inputs.
+    pendingSignaturesRef.current.push(searchFiltersSignature(next))
+    onApply(next)
   }
 
   return (
     <section ref={rootRef} className={styles.panel} aria-label="공고 검색 필터">
       <div className={styles.toolbar} role="group" aria-label="공고 목록 도구">
         {resultSummary && <div className={styles.resultSummary}>{resultSummary}</div>}
-        <button
-          ref={toggleRef}
-          className={`${styles.toggle} ${appliedCount > 0 ? styles.toggleActive : ''}`}
-          type="button"
-          aria-label={`공고 필터 ${open ? '접기' : '열기'}`}
-          aria-controls={panelId}
-          aria-describedby={summaryId}
-          aria-expanded={open}
-          onClick={() => {
-            if (open) close('toggle')
-            else {
-              setFormFilters(filters)
-              setOpen(true)
-            }
-          }}
-        >
-          <span>공고 필터</span>
-          {appliedCount > 0 && <span className={styles.count} aria-hidden="true">{appliedCount}</span>}
-          <span id={summaryId} className={styles.visuallyHidden}>
-            {appliedCount > 0 ? `${appliedCount}개 적용` : '조건 선택'}
-          </span>
-          <svg className={styles.chevron} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
-            <path d="m3 6 5 5 5-5" />
-          </svg>
-        </button>
+        <div className={styles.toolbarControls}>
+          <div className={styles.sortOptions} role="group" aria-label="공고 정렬">
+            <button className={styles.sort} type="button" aria-pressed={latestSelected}
+              aria-describedby={sortDescriptionId} onClick={changeSort}>
+              최신순
+              <svg className={styles.sortArrow} data-direction={sort === 'LATEST_ASC' ? 'ascending' : 'descending'}
+                viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                <path d="M8 13V3m-4 4 4-4 4 4" />
+              </svg>
+            </button>
+            <span id={sortDescriptionId} className={styles.visuallyHidden}>
+              {!latestSelected ? '현재 마감임박순이에요. 누르면 최신순으로 변경돼요.'
+                : sort === 'LATEST_ASC'
+                  ? '공고일 오름차순으로, 오래된 공고부터 보여드려요. 같은 날짜는 마감임박순이에요.'
+                  : '공고일 내림차순으로, 최근에 올라온 공고부터 보여드려요. 같은 날짜는 마감임박순이에요.'}
+            </span>
+          </div>
+          <button
+            ref={toggleRef}
+            className={`${styles.toggle} ${appliedCount > 0 ? styles.toggleActive : ''}`}
+            type="button"
+            aria-label={`공고 필터 ${open ? '접기' : '열기'}`}
+            aria-controls={panelId}
+            aria-describedby={summaryId}
+            aria-expanded={open}
+            onClick={() => {
+              if (open) close('toggle')
+              else {
+                setFormFilters(filters)
+                setOpen(true)
+              }
+            }}
+          >
+            <span>공고 필터</span>
+            {appliedCount > 0 && <span className={styles.count} aria-hidden="true">{appliedCount}</span>}
+            <span id={summaryId} className={styles.visuallyHidden}>
+              {appliedCount > 0 ? `${appliedCount}개 적용` : '조건 선택'}
+            </span>
+            <svg className={styles.chevron} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+              <path d="m3 6 5 5 5-5" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {open && (
@@ -227,7 +262,7 @@ function FilterCheckboxGroup({
   label,
   name,
   options,
-  appearance = 'pill',
+  appearance = 'grid',
 }: {
   /** grid: 임대유형처럼 칸을 맞춘 회색 칸, pill: 나머지 선택지는 알약 칩 */
   readonly appearance?: 'grid' | 'pill'

@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.housing.domain.AgencyCode;
+import com.toadzip.backend.housing.domain.MapClusteringProfile;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.dto.request.HousingComplexSearchRequest;
 import com.toadzip.backend.housing.dto.response.AgencyResponse;
@@ -50,8 +51,15 @@ class HousingMapControllerTest {
     private HousingMapQueryService queryService;
 
     @Test
+    void 알_수_없는_클러스터링_프로필은_거부한다() throws Exception {
+        mockMvc.perform(validRequest("12.00", "3").param("clusteringProfile", "UNKNOWN"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void v2_지도_요청과_서버가_결정한_집계_node를_전달한다() throws Exception {
-        when(queryService.getMap(any(), eq(decimal("10.10")), eq(2))).thenReturn(response());
+        when(queryService.getMap(any(), eq(decimal("10.10")), eq(2), eq(MapClusteringProfile.DEFAULT)))
+                .thenReturn(response());
 
         mockMvc.perform(get("/api/v2/complexes/map")
                         .param("regionCode", "41")
@@ -76,14 +84,16 @@ class HousingMapControllerTest {
 
         ArgumentCaptor<HousingComplexSearchRequest> requestCaptor =
                 ArgumentCaptor.forClass(HousingComplexSearchRequest.class);
-        verify(queryService).getMap(requestCaptor.capture(), eq(decimal("10.10")), eq(2));
+        verify(queryService).getMap(
+                requestCaptor.capture(), eq(decimal("10.10")), eq(2), eq(MapClusteringProfile.DEFAULT)
+        );
         assertEquals("41", requestCaptor.getValue().regionCode());
         assertEquals(decimal("37.0"), requestCaptor.getValue().southWestLat());
     }
 
     @Test
     void 개별_node의_기존_지도_필드를_전달한다() throws Exception {
-        when(queryService.getMap(any(), eq(decimal("14.00")), eq(3)))
+        when(queryService.getMap(any(), eq(decimal("14.00")), eq(3), eq(MapClusteringProfile.DEFAULT)))
                 .thenReturn(individualResponse());
 
         mockMvc.perform(validRequest("14.00", "3"))
@@ -132,7 +142,7 @@ class HousingMapControllerTest {
 
     @Test
     void 지도의_검색_필터와_경계를_Service에_전달한다() throws Exception {
-        when(queryService.getMap(any(HousingComplexSearchRequest.class), eq(decimal("14.00")), eq(null)))
+        when(queryService.getMap(any(HousingComplexSearchRequest.class), eq(decimal("14.00")), eq(null), eq(MapClusteringProfile.DEFAULT)))
                 .thenReturn(individualResponse());
 
         mockMvc.perform(get("/api/v2/complexes/map").param("zoom", "14.00")
@@ -159,13 +169,13 @@ class HousingMapControllerTest {
 
         ArgumentCaptor<HousingComplexSearchRequest> requestCaptor =
                 ArgumentCaptor.forClass(HousingComplexSearchRequest.class);
-        verify(queryService).getMap(requestCaptor.capture(), eq(decimal("14.00")), eq(null));
+        verify(queryService).getMap(requestCaptor.capture(), eq(decimal("14.00")), eq(null), eq(MapClusteringProfile.DEFAULT));
         assertBoundSearchRequest(requestCaptor.getValue());
     }
 
     @Test
     void 좌표_하나를_생략하면_INVALID_MAP_BOUNDS를_반환한다() throws Exception {
-        when(queryService.getMap(any(HousingComplexSearchRequest.class), eq(decimal("14.00")), eq(null)))
+        when(queryService.getMap(any(HousingComplexSearchRequest.class), eq(decimal("14.00")), eq(null), eq(MapClusteringProfile.DEFAULT)))
                 .thenThrow(new InvalidMapBoundsException());
 
         mockMvc.perform(get("/api/v2/complexes/map").param("zoom", "14.00")
@@ -182,7 +192,7 @@ class HousingMapControllerTest {
 
     @Test
     void 네_지도_경계를_모두_생략하면_INVALID_MAP_BOUNDS를_반환한다() throws Exception {
-        when(queryService.getMap(any(HousingComplexSearchRequest.class), eq(decimal("14.00")), eq(null)))
+        when(queryService.getMap(any(HousingComplexSearchRequest.class), eq(decimal("14.00")), eq(null), eq(MapClusteringProfile.DEFAULT)))
                 .thenThrow(new InvalidMapBoundsException());
 
         mockMvc.perform(get("/api/v2/complexes/map").param("zoom", "14.00"))
@@ -196,7 +206,7 @@ class HousingMapControllerTest {
 
     @Test
     void 뒤집힌_지도_경계는_INVALID_MAP_BOUNDS를_반환한다() throws Exception {
-        when(queryService.getMap(any(HousingComplexSearchRequest.class), eq(decimal("14.00")), eq(null)))
+        when(queryService.getMap(any(HousingComplexSearchRequest.class), eq(decimal("14.00")), eq(null), eq(MapClusteringProfile.DEFAULT)))
                 .thenThrow(new InvalidMapBoundsException());
 
         mockMvc.perform(get("/api/v2/complexes/map").param("zoom", "14.00")
@@ -214,7 +224,7 @@ class HousingMapControllerTest {
 
     @Test
     void 동일한_지도_경계는_INVALID_MAP_BOUNDS를_반환한다() throws Exception {
-        when(queryService.getMap(any(HousingComplexSearchRequest.class), eq(decimal("14.00")), eq(null)))
+        when(queryService.getMap(any(HousingComplexSearchRequest.class), eq(decimal("14.00")), eq(null), eq(MapClusteringProfile.DEFAULT)))
                 .thenThrow(new InvalidMapBoundsException());
 
         mockMvc.perform(get("/api/v2/complexes/map").param("zoom", "14.00")
@@ -232,7 +242,7 @@ class HousingMapControllerTest {
 
     @Test
     void 허용_범위를_벗어난_지도_경계는_INVALID_MAP_BOUNDS를_반환한다() throws Exception {
-        when(queryService.getMap(any(HousingComplexSearchRequest.class), eq(decimal("14.00")), eq(null)))
+        when(queryService.getMap(any(HousingComplexSearchRequest.class), eq(decimal("14.00")), eq(null), eq(MapClusteringProfile.DEFAULT)))
                 .thenThrow(new InvalidMapBoundsException());
 
         mockMvc.perform(get("/api/v2/complexes/map").param("zoom", "14.00")
@@ -267,7 +277,7 @@ class HousingMapControllerTest {
 
     @Test
     void 음수_zoom은_INVALID_REQUEST를_반환한다() throws Exception {
-        when(queryService.getMap(any(), eq(decimal("-0.01")), eq(2)))
+        when(queryService.getMap(any(), eq(decimal("-0.01")), eq(2), eq(MapClusteringProfile.DEFAULT)))
                 .thenThrow(new InvalidComplexRequestException());
 
         mockMvc.perform(validRequest("-0.01", "2"))

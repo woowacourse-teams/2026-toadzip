@@ -2,6 +2,7 @@ package com.toadzip.backend.housing.service;
 
 import com.toadzip.backend.housing.domain.MapBounds;
 import com.toadzip.backend.housing.domain.MapClusteringStage;
+import com.toadzip.backend.housing.domain.MapClusteringProfile;
 import com.toadzip.backend.housing.domain.MapClusteringZoomPolicy;
 import com.toadzip.backend.housing.dto.request.HousingComplexSearchRequest;
 import com.toadzip.backend.housing.dto.response.HousingMapResponse;
@@ -35,9 +36,19 @@ public class HousingMapQueryService {
             BigDecimal zoom,
             Integer previousResolvedStage
     ) {
+        return getMap(request, zoom, previousResolvedStage, MapClusteringProfile.DEFAULT);
+    }
+
+    @Transactional(readOnly = true)
+    public HousingMapResponse getMap(
+            HousingComplexSearchRequest request,
+            BigDecimal zoom,
+            Integer previousResolvedStage,
+            MapClusteringProfile profile
+    ) {
         MapBounds bounds = requestNormalizer.normalizeBounds(request);
         HousingComplexFilterCondition filters = requestNormalizer.normalizeFilters(request);
-        MapClusteringZoomPolicy zoomPolicy = zoomPolicyRepository.current();
+        MapClusteringZoomPolicy zoomPolicy = zoomPolicyRepository.current(profile);
         MapClusteringStage stage = resolveStage(zoomPolicy, zoom, previousResolvedStage);
         HousingMapNodeResult result = responseFactory.create(stage, bounds, filters, zoomPolicy);
         return response(stage, zoomPolicy, result);

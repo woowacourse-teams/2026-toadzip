@@ -35,6 +35,11 @@ public class ComplexSummaryQueryRepository {
         return execute(query);
     }
 
+    public long count(HousingComplexSearchCondition condition) {
+        ComplexSummarySqlQuery query = sqlBuilder.buildCountQuery(condition);
+        return jdbcClient.sql(query.sql()).params(query.parameters()).query(Long.class).single();
+    }
+
     private ComplexSummaryRow mapRow(ResultSet resultSet, int rowNumber) throws SQLException {
         return new ComplexSummaryRow(
                 resultSet.getLong("complex_id"),
