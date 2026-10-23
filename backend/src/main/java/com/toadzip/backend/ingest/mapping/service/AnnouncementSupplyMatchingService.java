@@ -71,7 +71,7 @@ public class AnnouncementSupplyMatchingService {
                 boolean review = splitWriter.reviewRequired(group, data.source(), members);
                 var split = new SplitGroup(group.getId(), group.getSharedHouseholdCount(), group.getSourceUrl(),
                         group.getReason(), group.getActor(), group.getUpdatedAt(), review,
-                        members.stream().map(row -> new SplitRow(row.getId(), row.getSourceHousingTypeName(),
+                        members.stream().map(row -> new SplitRow(row.getId(), row.displayHousingTypeName(),
                                 complexId(row), typeId(row))).toList());
                 Long groupComplexId = null;
                 if (!members.isEmpty()) {

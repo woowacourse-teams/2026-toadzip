@@ -254,8 +254,10 @@ public class SupplyCorrectionService {
                 || !Objects.equals(old.housingComplexId(), row.housingComplexId()) || row.householdCount() != null)) {
             throw new IllegalArgumentException("공통 모집수와 묶음 단지는 원천별 공급행 보정에서 함께 변경하세요.");
         }
+        // 기존 행의 원천 단지명은 정제가 소유하므로 요청 값과 관계없이 저장값을 유지한다.
+        String complexName = old == null ? row.complexName() : old.complexName();
         var transientRow = SupplyRow.create(announcement, complex, type, "PREVIEW:" + row.key(), row.displayOrder(),
-                row.complexName(), row.typeName(), row.pnu(), row.moveInMonth(), row.category(), null, row.householdCount());
+                complexName, row.typeName(), row.pnu(), row.moveInMonth(), row.category(), null, row.householdCount());
         var plannedTargets = planTargets(transientRow, old, row.targets());
         BigDecimal exclusiveArea = row.exclusiveArea();
         BigDecimal supplyArea = row.supplyArea();
@@ -266,7 +268,7 @@ public class SupplyCorrectionService {
         boolean modified = old == null || old.protectedValues();
         var result = new Row(row.id(), row.key(), row.housingComplexId(), complexName(complex), row.housingTypeId(),
                 row.newHousingType(), row.groupId(), row.sharedHouseholdCount(), modified, row.excluded(), row.displayOrder(),
-                row.complexName(), row.typeName(), row.pnu(), row.moveInMonth(), row.category(), row.householdCount(),
+                complexName, row.typeName(), row.pnu(), row.moveInMonth(), row.category(), row.householdCount(),
                 row.areaOverride(), decimal(exclusiveArea), decimal(supplyArea), plannedTargets, row.targetCountsComparable());
         if (old != null && !same(old, result) && !modified) {
             return new Row(result.id(), result.key(), result.housingComplexId(), result.housingComplexName(),
@@ -353,11 +355,12 @@ public class SupplyCorrectionService {
         var type = type(input, complex, "MANUAL:" + request.operationId() + ":" + input.key());
         if (input.newHousingType() != null) { types.save(type); }
         if (stored == null) {
+            // 원천이 없는 직접 추가 행은 처음 입력한 표기를 원천 이름으로 남긴다.
             stored = rows.save(SupplyRow.create(announcement, complex, type,
                     "MANUAL:" + request.operationId() + ":" + input.key(), input.displayOrder(), input.complexName(),
                     input.typeName(), input.pnu(), input.moveInMonth(), input.category(), null, input.householdCount()));
         }
-        stored.reviseByAdmin(complex, type, input.complexName(), input.typeName(), input.pnu(), input.moveInMonth(),
+        stored.reviseByAdmin(complex, type, input.typeName(), input.pnu(), input.moveInMonth(),
                 input.category(), input.householdCount());
         stored.correctPresentation(input.excluded(), input.displayOrder(), input.areaOverride(),
                 input.exclusiveArea(), input.supplyArea());
@@ -427,7 +430,7 @@ public class SupplyCorrectionService {
         if (row.getSupplyGroup() != null) { groupId = row.getSupplyGroup().getId(); shared = row.getSupplyGroup().getSharedHouseholdCount(); }
         return new Row(row.getId(), "row:" + row.getId(), complexId, complexName(row.getHousingComplex()), typeId, null,
                 groupId, shared, row.isAdminModified(), row.isAdminExcluded(), row.getDisplayOrder(),
-                row.getSourceComplexName(), row.getSourceHousingTypeName(), row.getSupplyPnu(), row.getExpectedMoveInMonth(),
+                row.getSourceComplexName(), row.displayHousingTypeName(), row.getSupplyPnu(), row.getExpectedMoveInMonth(),
                 row.getSupplyCategory(), row.getTotalSupplyHouseholdCount(), row.isAreaOverride(),
                 decimal(row.effectiveExclusiveArea()), decimal(row.effectiveSupplyArea()),
                 targets.findAllBySupplyRow(row).stream().sorted(Comparator.comparingInt(SupplyTarget::getDisplayOrder)

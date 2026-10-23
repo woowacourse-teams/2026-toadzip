@@ -269,7 +269,8 @@ final class AnnouncementResponseMapper {
                 supplyRow.getTotalSupplyHouseholdCount(),
                 targetResponses,
                 sharedRecruitment(supplyRow),
-                supplyRow.effectiveExclusiveArea(), supplyRow.effectiveSupplyArea(), supplyRow.isAdminModified()
+                supplyRow.effectiveExclusiveArea(), supplyRow.effectiveSupplyArea(), supplyRow.isAdminModified(),
+                supplyRow.displayHousingTypeName()
         );
     }
 

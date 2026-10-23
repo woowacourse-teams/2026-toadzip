@@ -1171,11 +1171,14 @@ class LhAnnouncementEnrichmentServiceTest {
         SupplyRow expanded = supplyRowRepository.findBySourceSupplyRowIdentifier("21026:LH:100:1").orElseThrow();
         Long expandedTargetId = supplyTargetRepository.findAllBySupplyRow(expanded).getFirst().getId();
         if (adminModifiedExpanded) {
-            expanded.reviseByAdmin(
-                    expanded.getHousingComplex(), expanded.getHousingType(), "동삼2", "관리자 확인 59B",
-                    PNU, YearMonth.of(2027, 1), SupplyCategory.RESUPPLY, 7
-            );
-            supplyRowRepository.save(expanded);
+            // 운영의 관리자 수정처럼 트랜잭션 안에서 연결 주택형 이름과 비교한다.
+            transactionTemplate.executeWithoutResult(status -> {
+                SupplyRow managed = supplyRowRepository.findById(expanded.getId()).orElseThrow();
+                managed.reviseByAdmin(
+                        managed.getHousingComplex(), managed.getHousingType(), "관리자 확인 59B",
+                        PNU, YearMonth.of(2027, 1), SupplyCategory.RESUPPLY, 7
+                );
+            });
         }
         historical.markMissed();
         historical.markMissed();
@@ -1228,7 +1231,7 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(expandedTarget.getMonthlyRent()).isEqualByComparingTo(expectedExpandedRent);
         if (adminModifiedExpanded) {
             SupplyRow preserved = supplyRowRepository.findById(expanded.getId()).orElseThrow();
-            assertThat(preserved.getSourceHousingTypeName()).isEqualTo("관리자 확인 59B");
+            assertThat(preserved.getAnnouncementHousingTypeName()).isEqualTo("관리자 확인 59B");
             assertThat(preserved.getExpectedMoveInMonth()).isEqualTo(YearMonth.of(2027, 1));
             assertThat(preserved.getSupplyCategory()).isEqualTo(SupplyCategory.RESUPPLY);
             assertThat(preserved.getTotalSupplyHouseholdCount()).isEqualTo(7);
