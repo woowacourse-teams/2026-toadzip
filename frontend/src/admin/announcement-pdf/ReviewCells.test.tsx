@@ -49,3 +49,11 @@ it('묶음에서 관리하는 모집수에는 불필요한 입력칸이나 값 �
   expect(screen.queryByRole('group')).not.toBeInTheDocument()
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
 })
+
+it('현재값이 비어 있으면 기존 값 선택을 비워 두기나 미연결 유지로 표시한다', () => {
+  const row = scenario('hansville').review.rows[0]
+  const type = { ...row.cells.find(item => item.field === 'housingTypeId')!, before: null, mode: 'keep' as const, selected: false }
+  renderCell(type)
+  expect(screen.getByRole('button', { name: '기존 값 사용' })).toHaveTextContent('미연결 유지')
+  expect(screen.queryByText('추가 안 함')).not.toBeInTheDocument()
+})
