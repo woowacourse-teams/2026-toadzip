@@ -34,14 +34,14 @@ async function setup(edit = true) {
   return onChanged
 }
 function editAndSave() {
-  fireEvent.change(screen.getByLabelText('공고의 주택형명'), { target: { value: '26A' } })
+  fireEvent.change(screen.getByLabelText('이 공고의 주택형 표기'), { target: { value: '26A' } })
   fireEvent.change(screen.getByLabelText('보정 이유'), { target: { value: '공식 공고의 A형 확인' } })
   fireEvent.click(screen.getByRole('button', { name: '공급정보 저장' }))
 }
 it('표를 먼저 보여주고 필요한 행만 펼친다. 별도 JSON 입력과 5단계는 없다', async () => {
   await setup(false)
   expect(screen.getByRole('table', { name: '공급정보 표' })).toHaveTextContent('한스빌')
-  expect(screen.queryByLabelText('공고의 주택형명')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('이 공고의 주택형 표기')).not.toBeInTheDocument()
   expect(screen.queryByText(/구조화한 공급정보|보정 진행 단계/)).not.toBeInTheDocument()
   expect(screen.queryByRole('textbox', { name: /JSON/ })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'PDF로 채우기' })).toBeEnabled()
@@ -73,7 +73,7 @@ it('공급행이 없는 공고에 첫 행과 임대조건을 직접 작성해 �
   expect(screen.getByText('등록된 공급정보가 없습니다.')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '직접 추가' }))
   fireEvent.change(screen.getByLabelText('공고의 단지명'), { target: { value: '첫 단지' } })
-  fireEvent.change(screen.getByLabelText('공고의 주택형명'), { target: { value: '46A' } })
+  fireEvent.change(screen.getByLabelText('이 공고의 주택형 표기'), { target: { value: '46A' } })
   fireEvent.change(screen.getByLabelText('공급 PNU'), { target: { value: '1114010100100010000' } })
   fireEvent.click(screen.getByRole('button', { name: '공급대상 추가' }))
   fireEvent.change(screen.getByLabelText('공급대상'), { target: { value: '일반' } })
@@ -88,7 +88,7 @@ it('검증 오류에서는 저장하지 않고 입력을 보존한다', async ()
   await setup(); editAndSave()
   expect(await screen.findByRole('alert')).toHaveTextContent('잘못된 주택형 소속')
   expect(applySupply).not.toHaveBeenCalled()
-  expect(screen.getByLabelText('공고의 주택형명')).toHaveValue('26A')
+  expect(screen.getByLabelText('이 공고의 주택형 표기')).toHaveValue('26A')
 })
 it('동시 수정은 최신값을 가져와 겹친 필드만 선택하게 한다', async () => {
   vi.mocked(applySupply).mockRejectedValue(new ManagementError('원천이 변경됨', 409))
@@ -99,7 +99,7 @@ it('동시 수정은 최신값을 가져와 겹친 필드만 선택하게 한다
   await screen.findByText('겹치는 변경을 선택하세요')
   expect(screen.getByRole('button', { name: '공급정보 저장' })).toBeDisabled()
   fireEvent.click(screen.getByRole('button', { name: '내 입력 사용' }))
-  expect(screen.getByLabelText('공고의 주택형명')).toHaveValue('26A')
+  expect(screen.getByLabelText('이 공고의 주택형 표기')).toHaveValue('26A')
   expect(screen.getByLabelText('금회 모집수 (세대)')).toHaveValue(20)
 })
 it('응답 유실은 입력을 잠그고 동일한 작업 ID로 재확인한다', async () => {

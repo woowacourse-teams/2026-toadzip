@@ -8,7 +8,7 @@ export type CellState = 'unresolved' | 'notApplicable' | 'invalid' | 'confirm' |
 export type ValueMode = 'keep' | 'extracted' | 'manual'
 export type Cell = { path: string; field: string; label: string; kind: Kind; before: unknown; value: unknown; selected: boolean; edited: boolean; reviewed: boolean; mode: ValueMode; input?: string; manualInput?: string; extracted: { value: unknown; state: CellState; note: string }; locked: boolean; note: string; state: CellState; evidence: Evidence | null }
 type FieldSpec = [field: string, label: string, kind: Kind, target?: string]
-export const rowFields: FieldSpec[] = [['sourceHousingTypeName', '공고 주택형명', 'text', 'typeName'], ['exclusiveArea', '전용면적 (㎡)', 'area'], ['supplyArea', '공급면적 (㎡)', 'area'], ['totalSupplyHouseholdCount', '모집수', 'count', 'householdCount'], ['expectedMoveInMonth', '입주 예정월', 'month', 'moveInMonth'], ['housingTypeId', '연결 주택형', 'housingType']]
+export const rowFields: FieldSpec[] = [['sourceHousingTypeName', '이 공고의 주택형 표기', 'text', 'typeName'], ['exclusiveArea', '전용면적 (㎡)', 'area'], ['supplyArea', '공급면적 (㎡)', 'area'], ['totalSupplyHouseholdCount', '모집수', 'count', 'householdCount'], ['expectedMoveInMonth', '입주 예정월', 'month', 'moveInMonth'], ['housingTypeId', '연결 주택형', 'housingType']]
 export const targetFields: FieldSpec[] = [['target', '공급 대상', 'text'], ['supplyRank', '공급 순위', 'text'], ['supplyHouseholdCount', '대상별 모집수', 'count', 'householdCount'], ['reserveCount', '예비자 수', 'count'], ['rentalDeposit', '보증금 (원)', 'money', 'deposit'], ['monthlyRent', '월 임대료 (원)', 'money', 'rent'], ['convertedDeposit', '전환보증금 (원)', 'money'], ['applicationCondition', '신청 조건', 'text', 'condition']]
 export const scheduleFields: FieldSpec[] = [['scheduleType', '일정 유형', 'scheduleType'], ['name', '일정명', 'text'], ['startAt', '시작 일시', 'datetime'], ['endAt', '종료 일시', 'datetime']]
 export const metadataFields: FieldSpec[] = [['postedDate', '공고일', 'date'], ['applicationStartDate', '접수 시작일', 'date'], ['applicationEndDate', '접수 종료일', 'date'], ['winnerAnnouncementDate', '당첨자 발표일', 'date']]
@@ -54,11 +54,12 @@ function cells(extraction: Extraction, prefix: string, specs: FieldSpec[], sourc
   return specs.map(([field, label, kind, target = field]) => {
     const path = `${prefix}.${field}`, value = normalized(kind, source[field]), previous = normalized(kind, before[target])
     const missing = noteFor(extraction.unresolved, path), unused = noteFor(extraction.notApplicable, path)
-    let state: Cell['state'] = unused ? 'notApplicable' : missing || value === null ? 'unresolved' : !validCellValue(kind, value) ? 'invalid' : JSON.stringify(value) === JSON.stringify(previous) ? 'same' : previous === null ? 'new' : 'changed'
+    const areaOnly = field === 'sourceHousingTypeName' && areaOnlyTypeName(value)
+    let state: Cell['state'] = unused || areaOnly ? 'notApplicable' : missing || value === null ? 'unresolved' : !validCellValue(kind, value) ? 'invalid' : JSON.stringify(value) === JSON.stringify(previous) ? 'same' : previous === null ? 'new' : 'changed'
     const evidence = evidenceFor(extraction.evidence, path)
     const moreDetailed = typeof previous === 'string' && typeof value === 'string' && previous.length > value.length && previous.includes(value) && prefix === 'receptionPlace'
     if (['changed', 'new'].includes(state) && (!evidence || moreDetailed)) state = 'confirm'
-    const note = unused?.reason ?? missing?.reason ?? (moreDetailed ? '현재값이 더 자세합니다.' : !evidence ? '이 항목의 PDF 근거를 직접 확인하세요.' : '')
+    const note = unused?.reason ?? (areaOnly ? '면적만 적힌 값이라 주택형 표기로 쓰지 않습니다.' : undefined) ?? missing?.reason ?? (moreDetailed ? '현재값이 더 자세합니다.' : !evidence ? '이 항목의 PDF 근거를 직접 확인하세요.' : '')
     const selected = state === 'changed' || state === 'new'
     return { path, field, label, kind, before: previous, value, selected, edited: false, reviewed: false, mode: selected ? 'extracted' : 'keep', extracted: { value, state, note }, locked: false, note, state, evidence }
   })
@@ -141,6 +142,10 @@ export function pendingItems(review: Review): PendingItem[] {
   for (const cell of [...review.reception, ...review.metadata].filter(pendingCell)) items.push({ id: `cell:${cell.path}`, section: 'reception' })
   return items
 }
+/** ChatGPT가 주택형명 대신 면적(26.37, 26.37㎡)을 넣은 경우다. 표기로 쓰면 공개 화면에 면적만 보인다. */
+export function areaOnlyTypeName(value: unknown) {
+  return typeof value === 'string' && /^\d+(\.\d+)?\s*(㎡|m2)?$/.test(value.trim())
+}
 export type HousingNameCandidate = { id: number; current: string; pdf: string }
 /** 연결한 단지 주택형의 이름이 공고 표기와 다르면 단지 보정 후보로 돌려준다. 저장하지 않고 결과 화면에 표시만 한다. */
 export function housingNameCandidates(review: Review): HousingNameCandidate[] {
@@ -148,7 +153,7 @@ export function housingNameCandidates(review: Review): HousingNameCandidate[] {
   review.rows.forEach((row, index) => {
     const cell = row.cells.find(item => item.field === 'housingTypeId'), pdf = review.extraction.supplyRows[index].typeName
     const type = row.proposal.candidates.find(item => item.id === (cell?.selected ? cell.value : cell?.before))
-    if (row.include && type && pdf && normalizedName(type.name) !== normalizedName(pdf) && !candidates.some(item => item.id === type.id)) candidates.push({ id: type.id, current: type.name, pdf })
+    if (row.include && type && pdf && !areaOnlyTypeName(pdf) && normalizedName(type.name) !== normalizedName(pdf) && !candidates.some(item => item.id === type.id)) candidates.push({ id: type.id, current: type.name, pdf })
   })
   return candidates
 }
@@ -175,6 +180,8 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
       housingComplexId: anchor ? anchor.housingComplexId : complex!.id, housingComplexName: anchor ? anchor.housingComplexName : complex!.name }
     if (!row.pnu.trim()) throw new Error(`공급행 ${index + 1}의 소재지 PNU를 확인하세요.`)
     applyCells(row as unknown as JsonObject, entry.cells, rowFields)
+    // 공고에 주택형 표기가 없으면 새 행은 연결한 단지 주택형 이름으로 표시한다.
+    if (!row.typeName.trim()) row.typeName = entry.proposal.candidates.find(type => type.id === row.housingTypeId)?.name ?? ''
     if (entry.cells.some(cell => cell.field === 'housingTypeId' && cell.selected && cell.value !== null) && !entry.proposal.candidates.some(type => type.id === row.housingTypeId)) throw new Error('연결 주택형이 선택한 단지에 없습니다. 주택형을 다시 선택하세요.')
     if (entry.cells.some(cell => ['exclusiveArea', 'supplyArea'].includes(cell.field) && cell.selected)) row.areaOverride = true
     if (entry.proposal.sharedIndex !== null) row.householdCount = null

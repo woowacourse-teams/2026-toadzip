@@ -373,6 +373,7 @@ export interface RawAnnouncementSupplyTarget {
 }
 
 export interface RawAnnouncementSupplyRow {
+  readonly displayHousingTypeName?: string | null
   readonly corrected?: boolean
   readonly exclusiveArea?: number | null
   readonly supplyArea?: number | null
@@ -469,6 +470,7 @@ export interface AnnouncementSupplyTarget {
 }
 
 export interface AnnouncementSupplyRow {
+  readonly displayHousingTypeName?: string | null
   readonly corrected?: boolean
   readonly exclusiveArea?: number | null
   readonly supplyArea?: number | null

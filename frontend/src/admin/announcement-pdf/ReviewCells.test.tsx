@@ -22,7 +22,7 @@ it('기본은 값을 비교하고 직접 수정을 선택할 때만 입력칸을
   fireEvent.click(screen.getByRole('button', { name: '기존 값 사용' }))
   expect(changed.mock.lastCall?.[0]).toMatchObject({ selected: false, mode: 'keep' })
   fireEvent.click(screen.getByRole('button', { name: '직접 수정' }))
-  const field = screen.getByRole('textbox', { name: '공급정보 공고 주택형명 수정' })
+  const field = screen.getByRole('textbox', { name: '공급정보 이 공고의 주택형 표기 수정' })
   fireEvent.change(field, { target: { value: '26A 관리자 보정' } })
   fireEvent.click(screen.getByRole('button', { name: '보정된 값 사용' }))
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument()

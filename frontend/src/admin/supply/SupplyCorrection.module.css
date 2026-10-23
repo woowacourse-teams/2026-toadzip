@@ -7,6 +7,7 @@
 .rowBody { padding: 0 var(--ds-space-4) var(--ds-space-4); display: grid; gap: var(--ds-space-4); min-width: 0; }
 .row > .rowBody { border: 0; margin: 0; }
 .rowBody fieldset, .evidence { min-width: 0; padding: var(--ds-space-4); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); display: grid; gap: var(--ds-space-3); }
+.sourceName { margin: 0; color: var(--ds-color-muted); font-size: var(--ds-text-caption); }
 .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: var(--ds-space-3); }
 .workspace label { display: grid; gap: var(--ds-space-2); font-size: var(--ds-text-body); }
 .workspace input:not([type=checkbox]), .workspace select, .workspace textarea { min-width: 0; width: 100%; box-sizing: border-box; min-height: var(--ds-control-height-md); border: 1px solid var(--ds-color-table-line); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-text); padding: var(--ds-space-2) var(--ds-space-3); font: inherit; }

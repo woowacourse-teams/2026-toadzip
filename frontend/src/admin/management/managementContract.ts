@@ -57,6 +57,9 @@ export type ManagementSupplyRow = {
   housingComplexName: string | null
   housingTypeId: number | null
   modified: boolean
+  // 정제가 소유하는 원천 표기다. 관리자는 data의 공고 표시명만 수정한다.
+  sourceComplexName: string
+  sourceHousingTypeName: string
   data: ManagementValues
 }
 
@@ -139,13 +142,15 @@ export function parseManagementDetail(value: unknown): ManagementDetailData {
       if (!isRecord(item) || typeof item.id !== 'number' || !isManagementValues(item.data)
         || typeof item.modified !== 'boolean' || !isNullableNumber(item.housingComplexId)
         || !isNullableNumber(item.housingTypeId)
-        || (item.housingComplexName !== null && typeof item.housingComplexName !== 'string')) {
+        || (item.housingComplexName !== null && typeof item.housingComplexName !== 'string')
+        || typeof item.sourceComplexName !== 'string' || typeof item.sourceHousingTypeName !== 'string') {
         throw new Error('공급정보 응답이 올바르지 않습니다.')
       }
       supplyRows.push({
         ...(item.sharedRecruitment != null ? { sharedRecruitment: parseSharedRecruitment(item.sharedRecruitment) } : {}),
         id: item.id, data: item.data, modified: item.modified, housingComplexId: item.housingComplexId,
         housingTypeId: item.housingTypeId, housingComplexName: item.housingComplexName,
+        sourceComplexName: item.sourceComplexName, sourceHousingTypeName: item.sourceHousingTypeName,
       })
     }
   }

@@ -51,7 +51,7 @@ describe('HousingAnnouncementDetailPanel', () => {
   beforeEach(() => localStorage.removeItem('toadzip.area-unit'))
   it('공고에서 정정한 주택형명·면적을 우선하고 공통 모집 인원을 개별 세대수로 표시하지 않는다', () => {
     render(<HousingAnnouncementDetailPanel detail={detail({ supplyRows: [supplyRow({
-      sourceHousingTypeName: '36형 정정', exclusiveArea: 37.5, supplyArea: 52,
+      displayHousingTypeName: '36형 정정', exclusiveArea: 37.5, supplyArea: 52,
       sharedRecruitment: { id: 1, householdCount: 12 },
     })] })} onClose={vi.fn()} />)
     const table = screen.getByRole('table', { name: '새솔마을 36형 정정 공급 정보' })
