@@ -43,8 +43,8 @@ export function ReviewCells({ cells, scope, housingTypes = [], filter = 'all', o
         <div className={styles.extracted}><span className={styles.mobileLabel}>보정된 값</span>{display(cell, cell.extracted.value)}</div>
         <div className={styles.cellResult}>{cell.locked ? <span>{cell.note || '기존 값 유지'}</span> : <>
           <div role="group" aria-label={`${scope} ${cell.label} 반영 방법`} className={styles.valueChoices}>{modes.map(([mode, label, name]) => <Button data-design-system key={mode} aria-label={name} aria-pressed={cell.mode === mode} disabled={mode === 'extracted' && !canUseExtracted}
-            onClick={() => update(cell.path, chooseCellValue(cell, mode))}>{mode === 'keep' && cell.before == null ? '추가 안 함' : label}</Button>)}</div>
-          {cell.mode === 'manual' ? manualField(cell) : <strong className={styles.resultValue}>{cell.mode === 'keep' && cell.before == null ? '추가 안 함' : display(cell, cell.mode === 'keep' ? cell.before : cell.value)}</strong>}
+            onClick={() => update(cell.path, chooseCellValue(cell, mode))}>{mode === 'keep' && cell.before == null ? emptyKeepLabel(cell) : label}</Button>)}</div>
+          {cell.mode === 'manual' ? manualField(cell) : <strong className={styles.resultValue}>{cell.mode === 'keep' && cell.before == null ? emptyKeepResult(cell) : display(cell, cell.mode === 'keep' ? cell.before : cell.value)}</strong>}
           {cell.note && <small>{cell.note}</small>}
         </>}</div>
         <div className={styles.cellEvidence}>{cell.evidence && <Button data-design-system className={styles.evidenceButton} aria-label={`PDF ${cell.evidence.page}쪽 보기`} onClick={() => onEvidence(cell.evidence!)} title={cell.evidence.quote}>p.{cell.evidence.page}</Button>}</div>
@@ -53,3 +53,7 @@ export function ReviewCells({ cells, scope, housingTypes = [], filter = 'all', o
     {quiet.length > 0 && <Button data-design-system className={styles.quietButton} aria-expanded={all} onClick={() => setAll(value => !value)}>{all ? '같음·해당 없음 접기' : `같음·해당 없음 ${quiet.length}개 보기`}</Button>}
   </div>
 }
+
+// 현재값이 비어 있을 때 '기존 값'을 고르면 새 값을 넣지 않고 비워 둔다는 뜻이다. 기존 행에도 맞도록 '추가'라는 말을 쓰지 않는다.
+function emptyKeepLabel(cell: Cell) { return cell.kind === 'housingType' ? '미연결 유지' : '비워 두기' }
+function emptyKeepResult(cell: Cell) { return cell.kind === 'housingType' ? '미연결' : '비어 있음' }
