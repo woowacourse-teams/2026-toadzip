@@ -145,6 +145,13 @@ final class AnnouncementResponseMapper {
             LocalDate today
     ) {
         ListAggregate aggregate = aggregateRows(supplyRows);
+        LocalDate start = announcement.getApplicationStartDate();
+        LocalDate end = announcement.getApplicationEndDate();
+        if (announcement.isApplicationScheduleReviewed()) {
+            var displaySchedule = applicationStatusCalculator.displaySchedule(applicationSchedules, today);
+            start = displaySchedule.map(AnnouncementApplicationSchedule::getStartDate).orElse(null);
+            end = displaySchedule.map(AnnouncementApplicationSchedule::getEndDate).orElse(null);
+        }
         return new AnnouncementListItemResponse(
                 announcement.getId(),
                 announcement.getStatus(),
@@ -154,8 +161,8 @@ final class AnnouncementResponseMapper {
                 announcement.getName(),
                 aggregate.regionNames(),
                 announcement.getPostedDate(),
-                announcement.getApplicationStartDate(),
-                announcement.getApplicationEndDate(),
+                start,
+                end,
                 applicationStatusCalculator.calculateDDay(announcement, applicationSchedules, today),
                 announcement.getViewCount(),
                 aggregate.supplyComplexCount(),

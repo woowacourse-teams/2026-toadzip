@@ -3,7 +3,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   DualRangeFilter,
   type DualRangeFilterPreset,
@@ -25,11 +25,13 @@ function renderFilter({
   initialMaximum = null,
   presets = PRESETS,
   preserveInitialValuesUntilChange = false,
+  onChange,
 }: {
   readonly initialMinimum?: number | null
   readonly initialMaximum?: number | null
   readonly presets?: readonly DualRangeFilterPreset[]
   readonly preserveInitialValuesUntilChange?: boolean
+  readonly onChange?: (minimum: number | null, maximum: number | null) => void
 } = {}) {
   const result = render(
     <form aria-label="검색 조건">
@@ -47,6 +49,7 @@ function renderFilter({
         formatTick={(value) => `${value}`}
         presets={presets}
         preserveInitialValuesUntilChange={preserveInitialValuesUntilChange}
+        onChange={onChange}
       />
       <button type="reset">초기화</button>
     </form>,
@@ -73,6 +76,7 @@ function renderFilter({
 
   return {
     ...result,
+    slider: minimumInput.parentElement as HTMLDivElement,
     form,
     hiddenMaximum,
     hiddenMinimum,
@@ -605,28 +609,105 @@ describe('DualRangeFilter', () => {
     )
   })
 
-  it('두 값이 domain maximum에서 겹치면 최솟값 손잡이를 위로 올린다', () => {
-    const { minimumInput } = renderFilter({
-      initialMinimum: 20,
-      initialMaximum: null,
+  it.each([
+    ['오른쪽 근접', 90, 100, -84, 60, 100],
+    ['왼쪽 근접', 0, 10, 84, 0, 40],
+    ['중간 근접 왼쪽', 40, 50, -56, 20, 50],
+    ['중간 근접 오른쪽', 40, 50, 56, 40, 70],
+    ['오른쪽 완전 겹침', 100, 100, -84, 70, 100],
+    ['왼쪽 완전 겹침', 0, 0, 84, 0, 30],
+    ['중간 완전 겹침 왼쪽', 50, 50, -56, 30, 50],
+    ['중간 완전 겹침 오른쪽', 50, 50, 56, 50, 70],
+  ])('%s에서는 겹친 손잡이를 드래그 방향대로 벌리고 완료 시 한 번 적용한다', (
+    _label, initialMinimum, initialMaximum, delta, expectedMinimum, expectedMaximum,
+  ) => {
+    const onChange = vi.fn()
+    const { minimumInput, maximumInput, hiddenMinimum, hiddenMaximum, slider, form } = renderFilter({
+      initialMinimum, initialMaximum, onChange,
     })
+    vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 324, 44))
+    const changed = vi.fn()
+    form.addEventListener('toadzip:filter-range-changed', changed)
+    const startX = 22 + (initialMinimum + initialMaximum) / 2 * 2.8
+    firePointer(slider, 'pointerdown', startX)
+    expect(minimumInput).toHaveValue(String(initialMinimum))
+    expect(maximumInput).toHaveValue(String(initialMaximum))
 
-    fireEvent.change(minimumInput, { target: { value: '100' } })
+    firePointer(slider, 'pointermove', startX + delta)
+    expect(minimumInput).toHaveValue(String(expectedMinimum))
+    expect(maximumInput).toHaveValue(String(expectedMaximum))
+    expect(onChange).not.toHaveBeenCalled()
+    expect(changed).not.toHaveBeenCalled()
 
-    expect(minimumInput.className).toMatch(/minimumOnTop/)
-
-    const filterStyles = readFileSync(
-      resolve(
-        process.cwd(),
-        'src/public-housing/filters/DualRangeFilter.module.css',
-      ),
-      'utf8',
+    firePointer(slider, 'pointerup', startX + delta)
+    firePointer(slider, 'lostpointercapture', startX + delta)
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(
+      expectedMinimum === 0 ? null : expectedMinimum,
+      expectedMaximum === 100 ? null : expectedMaximum,
     )
-    expect(filterStyles).toMatch(
-      /\.minimumOnTop\s*\{[\s\S]*?z-index:\s*4;/,
-    )
+    expect(hiddenMinimum).toHaveValue(expectedMinimum === 0 ? '' : String(expectedMinimum))
+    expect(hiddenMaximum).toHaveValue(expectedMaximum === 100 ? '' : String(expectedMaximum))
+    expect(changed).toHaveBeenCalledTimes(1)
+  })
 
-    fireEvent.change(minimumInput, { target: { value: '90' } })
-    expect(minimumInput.className).not.toMatch(/minimumOnTop/)
+  it.each([
+    [100, 3, -84, 70, 100],
+    [0, -3, 84, 0, 30],
+    [50, 1, -56, 30, 50],
+  ])('끝값이나 작은 떨림으로 움직이지 못해도 반대 방향으로 이어 끌 수 있다 (%s)', (
+    initial, jitter, delta, expectedMinimum, expectedMaximum,
+  ) => {
+    const { minimumInput, maximumInput, slider } = renderFilter({ initialMinimum: initial, initialMaximum: initial })
+    vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 324, 44))
+    const startX = 22 + initial * 2.8
+    firePointer(slider, 'pointerdown', startX)
+    firePointer(slider, 'pointermove', startX + jitter)
+    firePointer(slider, 'pointermove', startX + delta)
+    firePointer(slider, 'pointerup', startX + delta)
+    expect(minimumInput).toHaveValue(String(expectedMinimum))
+    expect(maximumInput).toHaveValue(String(expectedMaximum))
+  })
+
+  it('한 손잡이를 끌다가 시작 위치로 돌아오면 원래 값도 복원한다', () => {
+    const { minimumInput, slider } = renderFilter({ initialMinimum: 20, initialMaximum: 80 })
+    vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 324, 44))
+    firePointer(slider, 'pointerdown', 78)
+    firePointer(slider, 'pointermove', 134)
+    expect(minimumInput).toHaveValue('40')
+    firePointer(slider, 'pointermove', 78)
+    firePointer(slider, 'pointerup', 78)
+    expect(minimumInput).toHaveValue('20')
+  })
+
+  it('겹친 손잡이를 누르기만 하거나 다른 포인터가 움직여도 범위를 바꾸지 않는다', () => {
+    const onChange = vi.fn()
+    const { minimumInput, maximumInput, slider } = renderFilter({ initialMinimum: 50, initialMaximum: 50, onChange })
+    vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 324, 44))
+    firePointer(slider, 'pointerdown', 162)
+    firePointer(slider, 'pointermove', 50, 2)
+    firePointer(slider, 'pointerup', 162)
+    expect(minimumInput).toHaveValue('50')
+    expect(maximumInput).toHaveValue('50')
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('트랙 클릭과 손잡이 밖까지 이어진 드래그도 범위를 넘기지 않고 취소 시 한 번 적용한다', () => {
+    const onChange = vi.fn()
+    const { minimumInput, maximumInput, slider } = renderFilter({ initialMinimum: 20, initialMaximum: 80, onChange })
+    vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 324, 44))
+    firePointer(slider, 'pointerdown', 22)
+    expect(minimumInput).toHaveValue('0')
+    firePointer(slider, 'pointermove', 400)
+    expect(minimumInput).toHaveValue('80')
+    expect(maximumInput).toHaveValue('80')
+    firePointer(slider, 'pointercancel', 400)
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(80, 80)
   })
 })
+
+function firePointer(target: Element, type: string, clientX: number, pointerId = 1) {
+  // jsdom에는 PointerEvent가 없어 좌표와 포인터 ID를 가진 이벤트를 보낸다.
+  const event = new MouseEvent(type, { bubbles: true, clientX, button: 0 })
+  Object.defineProperty(event, 'pointerId', { value: pointerId })
+  fireEvent(target, event)
+}

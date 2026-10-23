@@ -7,6 +7,7 @@ import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import java.util.List;
 import java.util.Comparator;
+import java.util.Optional;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import org.springframework.stereotype.Component;
@@ -51,9 +52,31 @@ final class AnnouncementApplicationStatusCalculator {
                     .orElse(null);
         }
         return schedules.stream().filter(schedule -> schedule.getState() == ApplicationScheduleState.CONFIRMED)
-                .filter(schedule -> !schedule.getEndDate().isBefore(today))
+                .filter(schedule -> schedule.includes(today))
                 .map(AnnouncementApplicationSchedule::getEndDate).min(LocalDate::compareTo)
                 .map(end -> Math.toIntExact(ChronoUnit.DAYS.between(today, end))).orElse(null);
+    }
+
+    Optional<AnnouncementApplicationSchedule> displaySchedule(List<AnnouncementApplicationSchedule> schedules,
+            LocalDate today) {
+        Optional<AnnouncementApplicationSchedule> current = schedules.stream().filter(schedule -> schedule.includes(today))
+                .min(Comparator.comparing((AnnouncementApplicationSchedule schedule) ->
+                                schedule.getState() != ApplicationScheduleState.CONFIRMED)
+                        .thenComparing(AnnouncementApplicationSchedule::getEndDate)
+                        .thenComparing(AnnouncementApplicationSchedule::getStartDate));
+        if (current.isPresent()) {
+            return current;
+        }
+        Optional<AnnouncementApplicationSchedule> future = schedules.stream()
+                .filter(schedule -> schedule.getStartDate().isAfter(today))
+                .min(Comparator.comparing(AnnouncementApplicationSchedule::getStartDate)
+                        .thenComparing(schedule -> schedule.getState() != ApplicationScheduleState.CONFIRMED)
+                        .thenComparing(AnnouncementApplicationSchedule::getEndDate));
+        if (future.isPresent()) {
+            return future;
+        }
+        return schedules.stream().max(Comparator.comparing(AnnouncementApplicationSchedule::getEndDate)
+                .thenComparing(AnnouncementApplicationSchedule::getStartDate));
     }
 
     ApplicationStatus calculateApplicationStatus(Announcement announcement, LocalDate today) {

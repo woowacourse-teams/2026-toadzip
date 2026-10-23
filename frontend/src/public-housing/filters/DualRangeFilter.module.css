@@ -116,6 +116,8 @@
 
 .slider {
   position: relative;
+  cursor: grab;
+  touch-action: none;
   height: 44px;
   margin-top: 8px;
 }
@@ -173,10 +175,6 @@
   z-index: 3;
 }
 
-.minimumOnTop {
-  z-index: 4;
-}
-
 .rangeInput::-webkit-slider-runnable-track {
   height: 6px;
   border: 0;
@@ -196,8 +194,7 @@
     var(--ds-color-action) 10px 12px,
     transparent 13px
   );
-  cursor: grab;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .rangeInput::-moz-range-track {
@@ -221,8 +218,7 @@
     var(--ds-color-action) 10px 12px,
     transparent 13px
   );
-  cursor: grab;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .rangeInput:focus-visible::-webkit-slider-thumb {
@@ -235,17 +231,13 @@
   outline-offset: -7px;
 }
 
-.rangeInput:active::-webkit-slider-thumb {
-  cursor: grabbing;
-}
-
-.rangeInput:active::-moz-range-thumb {
+.slider:active {
   cursor: grabbing;
 }
 
 .ticks {
   position: relative;
-  height: 26px;
+  height: 30px;
   margin: 0 22px;
   padding: 0;
   list-style: none;
@@ -254,8 +246,8 @@
 .tick {
   position: absolute;
   top: 0;
-  color: var(--ds-color-muted);
-  font-size: 10px;
+  color: var(--ds-color-label);
+  font-size: max(0.875rem, var(--ds-text-body));
   font-variant-numeric: tabular-nums;
   font-weight: 500;
   line-height: 1.35;
@@ -287,11 +279,6 @@
 .filter:has([name='minExclusiveArea']) .output,
 .filter:has([name='minExclusiveArea']) .preset {
   font-size: max(1rem, var(--ds-text-body));
-}
-
-.filter:has([name='minExclusiveArea']) .tick {
-  color: var(--ds-color-label);
-  font-size: max(0.875rem, var(--ds-text-body));
 }
 
 @media (prefers-reduced-motion: reduce) {

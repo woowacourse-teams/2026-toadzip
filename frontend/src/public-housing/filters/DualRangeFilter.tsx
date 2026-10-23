@@ -1,4 +1,4 @@
-import { type CSSProperties, type InputHTMLAttributes, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, type InputHTMLAttributes, type PointerEvent, useEffect, useRef, useState } from 'react'
 import styles from './DualRangeFilter.module.css'
 
 const RANGE_TOUCH_TARGET_SIZE = 44
@@ -44,6 +44,16 @@ export function DualRangeFilter({
 }: DualRangeFilterProps) {
   validateDomain(minimum, maximum, step, majorStep)
   const fieldsetRef = useRef<HTMLFieldSetElement>(null)
+  const minimumInputRef = useRef<HTMLInputElement>(null)
+  const maximumInputRef = useRef<HTMLInputElement>(null)
+  const dragRef = useRef<{
+    pointerId: number
+    startX: number
+    trackWidth: number
+    minimum: number
+    maximum: number
+    handle: 'minimum' | 'maximum' | null
+  } | null>(null)
   const analyticsInteractingRef = useRef(false)
   const analyticsChangedRef = useRef(false)
   function emitRangeChange(method: 'slider' | 'preset', presetId?: string) {
@@ -148,6 +158,74 @@ export function DualRangeFilter({
     if (pending !== null) onChange?.(...pending)
   }
 
+  function movePointer(event: PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current
+    if (drag === null || event.pointerId !== drag.pointerId) return
+    const delta = event.clientX - drag.startX
+    // 겹친 터치 영역에서는 실제 값이 바뀌는 드래그 방향으로 손잡이를 고른다.
+    if (drag.handle === null && delta === 0) return
+    const handle = drag.handle ?? (delta < 0 ? 'minimum' : 'maximum')
+    const nextValue = normalizeValue(
+      (handle === 'minimum' ? drag.minimum : drag.maximum)
+        + delta / drag.trackWidth * (maximum - minimum),
+      minimum, maximum, step,
+    )
+    const nextMinimum = handle === 'minimum' ? Math.min(nextValue, drag.maximum) : drag.minimum
+    const nextMaximum = handle === 'maximum' ? Math.max(nextValue, drag.minimum) : drag.maximum
+    if (nextMinimum === selectedMinimum && nextMaximum === selectedMaximum) return
+    if (drag.handle === null) {
+      drag.handle = handle
+      const inputRef = handle === 'minimum' ? minimumInputRef : maximumInputRef
+      inputRef.current?.focus()
+      interactingRef.current = true
+      analyticsInteractingRef.current = true
+    }
+    changeRange(nextMinimum, nextMaximum, handle === 'minimum', handle === 'maximum')
+    sliderChanged()
+  }
+
+  function startPointer(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || dragRef.current !== null) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const trackWidth = rect.width - RANGE_TOUCH_TARGET_SIZE
+    if (trackWidth <= 0) return
+    event.preventDefault()
+    const start = rect.left + RANGE_TOUCH_TARGET_SIZE / 2
+    const minimumX = start + startPercentage / 100 * trackWidth
+    const maximumX = start + endPercentage / 100 * trackWidth
+    const minimumDistance = Math.abs(event.clientX - minimumX)
+    const maximumDistance = Math.abs(event.clientX - maximumX)
+    const overlaps = Math.max(minimumDistance, maximumDistance) <= RANGE_TOUCH_TARGET_SIZE / 2
+    const handle = overlaps ? null : minimumDistance < maximumDistance ? 'minimum' : 'maximum'
+    if (handle !== null) {
+      const inputRef = handle === 'minimum' ? minimumInputRef : maximumInputRef
+      inputRef.current?.focus()
+    }
+    interactingRef.current = true
+    analyticsInteractingRef.current = true
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      trackWidth,
+      minimum: selectedMinimum,
+      maximum: selectedMaximum,
+      handle,
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    // 손잡이 밖의 트랙을 누르면 가까운 손잡이를 그 위치로 옮긴다.
+    if (Math.min(minimumDistance, maximumDistance) > RANGE_TOUCH_TARGET_SIZE / 2) {
+      dragRef.current.startX = handle === 'minimum' ? minimumX : maximumX
+      movePointer(event)
+    }
+  }
+
+  function finishPointer(event: PointerEvent<HTMLDivElement>) {
+    if (dragRef.current === null || event.pointerId !== dragRef.current.pointerId) return
+    dragRef.current = null
+    finishAnalyticsInteraction()
+    finishInteraction()
+  }
+
   const interactionEvents: InputHTMLAttributes<HTMLInputElement> = onChange ? {
     onPointerDown: (event) => {
       interactingRef.current = true
@@ -224,15 +302,17 @@ export function DualRangeFilter({
         </div>
       )}
 
-      <div className={styles.slider}>
+      <div className={styles.slider}
+        onPointerDown={startPointer} onPointerMove={movePointer}
+        onPointerUp={finishPointer} onPointerCancel={finishPointer}
+        onLostPointerCapture={finishPointer}>
         <div className={styles.track} aria-hidden="true">
           <span className={styles.selectedTrack} />
         </div>
         <input
           {...interactionEvents}
-          className={`${styles.rangeInput} ${styles.minimumInput}${
-            selectedMinimum === maximum ? ` ${styles.minimumOnTop}` : ''
-          }`}
+          ref={minimumInputRef}
+          className={`${styles.rangeInput} ${styles.minimumInput}`}
           type="range"
           aria-label={`${legend} 최솟값`}
           aria-valuetext={formatValue(selectedMinimum)}
@@ -255,6 +335,7 @@ export function DualRangeFilter({
         />
         <input
           {...interactionEvents}
+          ref={maximumInputRef}
           className={`${styles.rangeInput} ${styles.maximumInput}`}
           type="range"
           aria-label={`${legend} 최댓값`}

@@ -60,12 +60,11 @@
   단위 테스트에서 저장소 반환값을 지정한 것은 SQL의 정렬·필터 검증을 대신하지 않는다.
 - `@SpringBootTest`는 여러 계층의 실제 연결이나 애플리케이션 설정 자체를 검증할 때 선택한다.
   JPA는 `@DataJpaTest`, JDBC는 `@JdbcTest`, HTTP 계약·권한은 실제 보안 설정을 가져온 `@WebMvcTest`를 검토한다.
-- 실제 커밋·롤백이나 여러 연결의 경합을 검증하는 slice 테스트는 자동 테스트 트랜잭션을 끈다.
-  기존 명시적 정리와 실제 서비스의 트랜잭션 경계를 유지한다.
+- 실제 커밋·롤백이나 여러 연결의 경합을 검증하는 slice 테스트는 자동 테스트 트랜잭션을 끈다. 기존 명시적 정리와 실제 서비스의 트랜잭션 경계를 유지한다.
 
 ## Spring 컨텍스트 재사용
 
-- 하나의 테스트 JVM에서 순차 실행한다. 클래스 수를 기준으로 JVM을 재시작하거나 기본 캐시 한도 32를 늘리지 않는다.
+- 각 테스트 작업은 하나의 JVM에서 순차 실행한다. 클래스 수를 기준으로 JVM을 재시작하거나 기본 캐시 한도 32를 늘리지 않는다.
 - 같은 검증 환경은 프로필·속성·`@Import`·mock 구성을 맞춘다. 기본 JPA 테스트는 `showSql = false`로 SQL 출력을 끈다.
   같은 빈을 대체하는 `@MockitoBean`·`@MockitoSpyBean`은 필드명·qualifier도 맞춘다. 이 차이도 캐시 키에 반영된다.
 - 실제 보안 필터, Clock 기준 시각, 기능 플래그, 독립 스키마가 다르면 별도 설정을 유지한다. 공유를 위해 mock을 늘리지 않는다.
@@ -111,6 +110,8 @@ LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_TEST_CONTEXT_CACHE=DEBUG \
 - IDE·Gradle·CI 모두 Testcontainers가 DB를 준비·정리한다. 첫 실행의 다운로드 비용을 구분하며, 단위 테스트는 DB를 띄우지 않는다.
 - `compose.test.yaml`은 수동 검증용이다. 자동 테스트는 해당 DB나 고정 포트에 연결하지 않는다.
 - `test --rerun`은 테스트만 새로 실행하고 컴파일 캐시는 유지한다. CI의 테스트·프로파일 결과로 같은 조건의 실행 시간을 비교한다.
+- CI는 `-PtestShard=ingest`와 `-PtestShard=application`을 독립 러너·JVM·DB에서 병렬 실행한다. `ingest`는 수집 패키지와 `LocalProfileSchemaPersistenceTest`, `application`은 나머지 전체다.
+- 옵션을 생략하면 전체를 실행하고, 새 테스트는 패키지에 따라 자동 포함된다. 분할 기준 변경 시 전체 실행과 두 분할의 테스트 목록을 비교해 누락·중복을 확인한다.
 - 환경 때문에 실행하지 못한 검사는 실패와 구분해 미검증으로 보고한다.
 
 - 존재하는 검사를 삭제하거나 완화해 통과시키지 않는다.

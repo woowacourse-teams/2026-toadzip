@@ -368,7 +368,6 @@
 
 .receptionList a,
 .attachmentList a,
-.complexHeading button,
 .housingTypeHeading button {
   display: inline-flex;
   min-height: 36px;
@@ -393,7 +392,6 @@
 
 
 .complexList,
-.housingTypeGroups,
 .housingTypes {
   display: grid;
   gap: var(--ds-space-4);
@@ -401,12 +399,34 @@
 
 .complexCard {
   min-width: 0;
+  padding: var(--ds-space-3);
+  border: 1px solid var(--detail-line);
+  border-radius: 10px;
+  background: var(--ds-color-surface);
 }
 
-.complexCard + .complexCard,
-.housingTypeCard + .housingTypeCard {
-  padding-top: var(--ds-space-4);
-  border-top: 1px solid var(--detail-line);
+.complexDetailButton {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  margin-top: var(--ds-space-3);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border: 1px solid color-mix(in srgb, var(--ds-color-action) 65%, var(--detail-line));
+  border-radius: 6px;
+  background: var(--ds-color-surface);
+  box-shadow: 0 1px 2px rgb(32 33 36 / 6%);
+  color: var(--ds-color-action);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.complexDetailButton:hover {
+  border-color: var(--ds-color-action);
+  background: var(--ds-color-surface-subtle);
 }
 
 .complexSummary {
@@ -479,7 +499,6 @@
   font-weight: 400;
 }
 
-.complexHeading button,
 .housingTypeHeading button {
   flex: 0 0 auto;
 }
@@ -519,14 +538,16 @@
   background: var(--ds-color-surface);
 }
 
+.housingTypeGroup[hidden] { display: none; }
+
 .housingTypeGroupHeading {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--ds-space-2);
   padding: var(--ds-space-3);
-  background: var(--ds-color-brand);
-  color: var(--ds-color-on-brand);
+  background: var(--ds-color-surface-subtle);
+  color: var(--ds-color-text);
   overflow-wrap: anywhere;
 }
 
@@ -545,6 +566,135 @@
 .housingTypes {
   padding: var(--ds-space-4);
 }
+
+.complexTabsFrame { position: relative; min-width: 0; }
+.complexTabsFrame::before,
+.complexTabsFrame::after {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  width: 16px;
+  pointer-events: none;
+  opacity: 0;
+  content: '';
+}
+.complexTabsFrame::before {
+  left: 0;
+  background: linear-gradient(to right, color-mix(in srgb, var(--ds-color-label) 22%, transparent), transparent);
+}
+.complexTabsFrame::after {
+  right: 0;
+  background: linear-gradient(to left, color-mix(in srgb, var(--ds-color-label) 22%, transparent), transparent);
+}
+.complexTabsFrame[data-scroll-left='true']::before,
+.complexTabsFrame[data-scroll-right='true']::after { opacity: 1; }
+
+.complexTabs {
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+  gap: var(--ds-space-1);
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  user-select: none;
+  cursor: grab;
+}
+.complexTabs::-webkit-scrollbar { display: none; }
+.complexTab {
+  display: flex;
+  width: max-content;
+  min-width: 112px;
+  max-width: calc(100% - 32px);
+  min-height: 52px;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: var(--ds-color-surface-subtle);
+  color: var(--ds-color-label);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+.complexTab strong { width: 100%; line-height: 1.35; overflow-wrap: anywhere; }
+.complexTab span { font-size: var(--ds-text-caption); }
+.complexTab[aria-selected='true'] {
+  border-color: var(--ds-color-brand);
+  background: var(--ds-color-brand);
+  color: var(--ds-color-on-brand);
+}
+.complexTab:hover:not([aria-selected='true']) { background: var(--ds-color-action-soft); }
+.complexTabs[data-dragging='true'],
+.complexTabs[data-dragging='true'] .complexTab { cursor: grabbing; }
+.panel .complexTab:focus-visible { outline-offset: -3px; }
+.complexTabsFrame ~ .housingTypeGroup { border-radius: 0 10px 10px 10px; }
+
+.housingTypeHint {
+  margin: 0 0 var(--ds-space-2);
+  color: var(--detail-muted);
+  font-size: var(--ds-text-caption);
+  line-height: var(--ds-line-height-caption);
+}
+.housingTypeSummaryScroll {
+  max-height: 270px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  border: 1px solid var(--detail-line);
+  border-radius: 6px;
+  scrollbar-width: thin;
+}
+.housingTypeSummary {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-size: var(--ds-text-caption);
+  line-height: var(--ds-line-height-caption);
+}
+.housingTypeSummary th {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  padding: var(--ds-space-2) var(--ds-space-1);
+  background: var(--ds-color-surface-subtle);
+  color: var(--ds-color-label);
+  font-weight: 500;
+}
+.housingTypeSummary td {
+  border-top: 1px solid var(--detail-line);
+  padding: var(--ds-space-1);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.housingTypeSummary td:first-child { padding: 0; }
+.housingTypeSummary button {
+  display: flex;
+  width: 100%;
+  min-height: 52px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  border: 0;
+  padding: var(--ds-space-2);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.housingTypeSummary button > span { color: var(--detail-muted); }
+.housingTypeSummary tr[data-selected='true'] { background: var(--ds-color-action-soft); }
+.housingTypeSummary strong { font-weight: 500; }
+.housingTypeSummary tr[data-selected='true'] strong { color: var(--ds-color-action); font-weight: 700; }
+.housingTypeSummary button:hover { background: var(--ds-color-action-soft); }
+.panel .housingTypeSummary button:focus-visible { outline-offset: -2px; }
+.selectedHousingTypeTitle { margin: 0 0 var(--ds-space-3); font-size: var(--ds-text-body); }
 
 .housingTypeCard {
   min-width: 0;
@@ -685,6 +835,7 @@
   text-decoration: none;
   text-align: center;
   white-space: normal;
+  word-break: keep-all;
 }
 
 .documents nav a:last-child,
@@ -783,10 +934,14 @@
   color: var(--ds-color-text);
 }
 
-.panel :is(button, a, [tabindex]):focus-visible {
+.panel :is(button, a, [tabindex='0']):focus-visible {
   outline: 2px solid var(--detail-accent);
   outline-offset: 2px;
 }
+
+/* 자동 포커스 대상은 낭독기 위치만 옮긴다. 조작 요소의 키보드 테두리는 유지한다. */
+.headerMain h2:focus,
+.sectionGroup:focus { outline: none; }
 
 .scroll:focus-visible,
 .sectionNav a:focus-visible {
@@ -857,7 +1012,13 @@
 
 .documents nav button { cursor: pointer; }
 
-.complexHeading button:focus-visible { outline: 2px solid var(--ds-color-action); }
 .housingTypeCard table { border-block: 1px solid var(--ds-color-table-line); }
 .housingTypeCard th { background: var(--ds-color-table-heading); font-weight: 600; }
 .housingTypeCard :is(th, td) + :is(th, td) { border-left: 1px solid var(--ds-color-table-line); }
+
+.occupancyNote {
+  margin: var(--ds-space-2) 0 0;
+  color: var(--ds-color-muted);
+  font-size: var(--ds-text-caption);
+  line-height: var(--ds-line-height-caption);
+}

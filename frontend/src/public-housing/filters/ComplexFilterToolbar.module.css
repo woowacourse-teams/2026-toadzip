@@ -43,7 +43,10 @@
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  padding: 5px;
+  padding: 8px 5px 5px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
 }
 
 .primaryFilters {
@@ -54,16 +57,6 @@
 
 .primaryFilters .trigger {
   flex-shrink: 0;
-}
-
-.primaryFilters .trigger[data-topic='region'] {
-  min-width: 0;
-  max-width: 118px;
-}
-
-.primaryFilters .trigger[data-topic='price'][data-active='true'] {
-  min-width: 120px;
-  flex-shrink: 1;
 }
 
 .trigger {
@@ -136,7 +129,8 @@
   background: var(--ds-color-brand);
   color: var(--ds-color-on-brand);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
   pointer-events: none;
 }
@@ -144,8 +138,6 @@
 .triggerText {
   min-width: 0;
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -179,9 +171,10 @@
   position: absolute;
   z-index: 2;
   top: var(--popover-top);
-  left: var(--popover-left);
+  /* 좁은 지도 영역에서도 폼은 최소 읽기 폭을 확보하고 왼쪽으로 펼친다. */
+  left: min(var(--popover-left), calc(100% - min(280px, calc(100vw - 40px))));
   display: flex;
-  width: var(--popover-width);
+  width: max(var(--popover-width), min(280px, calc(100vw - 40px)));
   max-height: calc(100% - var(--popover-top));
   overflow: clip;
   border: 1px solid var(--ds-color-divider);
@@ -205,19 +198,28 @@
   grid-template-rows: auto minmax(0, 1fr) auto auto;
 }
 
-.popoverHeader {
+.popover[data-topic='price'] .form {
+  max-height: 540px;
+}
+
+.popoverHeader,
+.mobileSheetHeader {
   display: grid;
   min-width: 0;
   min-height: 64px;
-  padding: 8px 16px;
+  padding: 8px 20px;
   border-bottom: 1px solid var(--ds-color-divider);
-  grid-area: heading;
-  grid-template-columns: 76px minmax(0, 1fr) 76px;
+  grid-template-columns: var(--ds-icon-control-md) minmax(0, 1fr) var(--ds-icon-control-md);
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 
-.popoverHeading {
+.popoverHeader {
+  grid-area: heading;
+}
+
+.popoverHeading,
+.mobileSheetHeader h2 {
   min-width: 0;
   margin: 0;
   color: var(--ds-color-text);
@@ -461,45 +463,16 @@
   background: var(--ds-color-surface);
 }
 
-.reset {
-  border-radius: 6px;
-}
-
-.reset {
-  display: inline-flex;
-  min-height: 28px;
-  align-items: center;
-  justify-content: center;
+.reset,
+.mobileReset {
+  --ds-icon-size: 20px;
+  --ds-color-text: var(--ds-color-label);
   justify-self: start;
-  gap: 3px;
-  padding: 0 6px;
-  border: 1px solid #dadce0;
-  background: var(--ds-color-surface);
-  color: #555b65;
-  font-size: 10px;
-  line-height: 1.4;
-  white-space: nowrap;
-  font-weight: 500;
 }
 
-.reset svg,
-.mobileReset svg {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 auto;
-}
-
-.close {
+.close,
+.mobileClose {
   justify-self: end;
-}
-
-.reset:hover {
-  background: var(--ds-color-control-hover);
-}
-
-.reset:focus-visible {
-  outline: 2px solid var(--ds-color-action);
-  outline-offset: 2px;
 }
 
 .field select:focus-visible,
@@ -519,8 +492,8 @@
 }
 
 .mobileToolbar {
-  flex-direction: column;
-  align-items: stretch;
+  flex-direction: row;
+  align-items: flex-start;
   pointer-events: none;
   width: 100%;
   gap: 6px;
@@ -531,13 +504,16 @@
   box-sizing: border-box;
   width: 100%;
   pointer-events: auto;
-  padding: 6px 4px 5px;
+  padding: 8px 4px 5px;
   display: flex;
   justify-content: flex-start;
   min-width: 0;
   flex: 1 1 auto;
   gap: 4px;
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
 }
 
 .mobileScroller::-webkit-scrollbar {
@@ -568,15 +544,6 @@
   gap: 4px;
 }
 
-.mobileTrigger[data-topic='region'] {
-  max-width: 104px;
-}
-
-.mobileTrigger[data-topic='price'][data-active='true'] {
-  min-width: 100px;
-  flex-shrink: 1;
-}
-
 .mobileTrigger::after {
   /* Keep a 44px touch target around the compact chip. */
   position: absolute;
@@ -590,11 +557,8 @@
   height: 16px;
 }
 
-.mobileTrigger span {
-  min-width: 0;
+.mobileTrigger span:not(.filterCount) {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -608,9 +572,7 @@
 }
 
 .mobileTrigger:focus-visible,
-.mobileAllTrigger:focus-visible,
-.mobileReset:focus-visible,
-.mobileClose:focus-visible {
+.mobileAllTrigger:focus-visible {
   outline: 3px solid var(--ds-color-action);
   outline-offset: 1px;
 }
@@ -641,62 +603,12 @@
 }
 
 .mobileSheetHeader {
-  display: grid;
-  min-height: 64px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--ds-color-divider);
-  grid-template-columns: 76px minmax(0, 1fr) 76px;
-  align-items: center;
-  gap: 4px;
-}
-
-.mobileSheetHeader h2 {
-  margin: 0;
-  color: var(--ds-color-text);
-  font-size: var(--ds-text-title);
-  font-weight: 700;
-  line-height: 1.4;
-  text-align: center;
-}
-
-.mobileReset {
-  min-width: 44px;
-  min-height: 44px;
-  border-radius: 6px;
-}
-
-.mobileReset {
-  display: inline-flex;
-  align-items: center;
-  justify-self: start;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #555b65;
-  font-size: 10px;
-  line-height: 1.4;
-  white-space: nowrap;
-  font-weight: 500;
-}
-
-.mobileResetContent {
-  display: inline-flex;
-  height: 28px;
-  align-items: center;
-  gap: 3px;
-  padding: 0 6px;
-  border: 1px solid #dadce0;
-  border-radius: 6px;
-  background: var(--ds-color-surface);
-}
-
-.mobileClose {
-  justify-self: end;
+  grid-template-columns: var(--ds-icon-control-lg) minmax(0, 1fr) var(--ds-icon-control-lg);
 }
 
 .mobileSheetBody {
   min-height: 0;
-  padding: 0 18px max(20px, env(safe-area-inset-bottom, 0px));
+  padding: 0 20px max(20px, env(safe-area-inset-bottom, 0px));
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior-y: contain;
@@ -709,6 +621,7 @@
 }
 
 .mobileTopic:last-of-type {
+  padding-bottom: 0;
   border-bottom: 0;
 }
 
@@ -729,7 +642,7 @@
   font-size: var(--ds-text-caption);
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .desktopFilters {
     display: none;
   }
@@ -781,16 +694,6 @@
   }
 }
 
-.popoverHeader[data-all='false'],
-.mobileSheetHeader[data-all='false'] {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.popoverHeader[data-all='false'] h2,
-.mobileSheetHeader[data-all='false'] h2 {
-  text-align: left;
-}
-
 .scrollArea {
   position: relative;
   min-width: 0;
@@ -807,7 +710,7 @@
 }
 
 .mobileToolbar .recruitingRow {
-  padding-top: 0;
+  padding-top: 3px;
   padding-right: 4px;
 }
 
@@ -839,16 +742,16 @@
   }
 }
 
-/* 상세 패널이 열려 남은 지도 폭이 줄어도 전체와 모집중은 항상 보인다. */
+/* 데스크톱의 좁은 지도에서는 주요 필터를 전체 패널에서 제공한다. 모바일은 칩을 스크롤한다. */
 @container complex-filters (max-width: 740px) {
-  .trigger[data-topic='exclusiveArea'], .mobileTrigger[data-topic='exclusiveArea'] { display: none; }
+  .trigger[data-topic='exclusiveArea'] { display: none; }
 }
 @container complex-filters (max-width: 600px) {
-  .trigger[data-topic='price'], .mobileTrigger[data-topic='price'] { display: none; }
+  .trigger[data-topic='price'] { display: none; }
 }
 @container complex-filters (max-width: 470px) {
-  .trigger[data-topic='rentalType'], .mobileTrigger[data-topic='rentalType'] { display: none; }
+  .trigger[data-topic='rentalType'] { display: none; }
 }
 @container complex-filters (max-width: 350px) {
-  .trigger[data-topic='region'], .mobileTrigger[data-topic='region'] { display: none; }
+  .trigger[data-topic='region'] { display: none; }
 }

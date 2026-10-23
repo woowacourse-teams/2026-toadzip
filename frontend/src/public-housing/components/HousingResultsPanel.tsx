@@ -1,8 +1,10 @@
 import { captureProductEvent } from '../../analytics/productAnalytics'
-import { useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
 import { useMobileViewport } from './useMobileViewport'
 
 const HALF_HEIGHT = 50
+const MIN_HEIGHT = 25
+const DISMISS_HEIGHT = 15
 const DRAG_THRESHOLD = 12
 
 interface Props {
@@ -15,22 +17,32 @@ interface Props {
 export function HousingResultsPanel({ visible, title, onCollapse, children }: Props) {
   const mobile = useMobileViewport()
   const panel = useRef<HTMLElement>(null)
-  const [heightPercent, setHeightPercent] = useState(HALF_HEIGHT)
+  const [viewport, setViewport] = useState(readViewport)
+  const compact = mobile && viewport.landscape && viewport.short
+  const heightMode = viewport.landscape ? 'landscape' : 'portrait'
+  const [heightsByMode, setHeightsByMode] = useState<{ portrait: number; landscape: number | null }>({ portrait: HALF_HEIGHT, landscape: null })
+  const heightPercent = heightsByMode[heightMode] ?? (compact ? 100 : HALF_HEIGHT)
+  const setHeightPercent = (height: number) => setHeightsByMode(previous => ({ ...previous, [heightMode]: height }))
+
+  useEffect(() => {
+    const update = () => setViewport(readViewport())
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
   const [dragHeight, setDragHeight] = useState<number | null>(null)
   const [searchCovered, setSearchCovered] = useState(false)
   const resetOnOpen = useRef(false)
-  const drag = useRef<{ pointerId: number; y: number; height: number; half: number; max: number } | null>(null)
+  const drag = useRef<{ pointerId: number; y: number; height: number; min: number; dismiss: number; max: number } | null>(null)
 
   useLayoutEffect(() => {
     if (visible && resetOnOpen.current) {
       resetOnOpen.current = false
-      setHeightPercent(HALF_HEIGHT)
+      setHeightsByMode(previous => ({ ...previous, [heightMode]: compact ? 100 : HALF_HEIGHT }))
     }
-    if (!visible || !mobile) {
-      drag.current = null
-      setDragHeight(null)
-    }
-  }, [visible, mobile])
+    // A drag started before rotation has coordinates from the previous layout.
+    drag.current = null
+    setDragHeight(null)
+  }, [visible, mobile, compact, heightMode])
 
   useLayoutEffect(() => {
     const search = panel.current?.parentElement?.querySelector('.housing-search-overlay')
@@ -60,7 +72,13 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
     const style = getComputedStyle(panel.current)
     const bottom = Number.parseFloat(style.bottom) || 0
     const max = Number.parseFloat(style.maxHeight) || window.innerHeight - bottom - 8
-    return { height: panel.current.getBoundingClientRect().height, half: Math.min(window.innerHeight / 2, max), max }
+    const min = Math.min(window.innerHeight * MIN_HEIGHT / 100, max)
+    return {
+      height: panel.current.getBoundingClientRect().height,
+      min,
+      dismiss: min * DISMISS_HEIGHT / MIN_HEIGHT,
+      max,
+    }
   }
 
   function changeHeight(next: number, method: 'drag' | 'keyboard') {
@@ -101,12 +119,12 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
     const delta = current.y - event.clientY
     if (cancelled || Math.abs(delta) < DRAG_THRESHOLD) return
     const height = Math.max(0, Math.min(current.max, current.height + delta))
-    if (height < current.half) {
+    if (height <= current.dismiss) {
       // Close from the release height instead of jumping back up first.
       setHeightPercent(height / window.innerHeight * 100)
       dismiss()
     } else {
-      changeHeight(height >= current.max ? 100 : height / window.innerHeight * 100, 'drag')
+      changeHeight(height >= current.max ? 100 : Math.max(current.min, height) / window.innerHeight * 100, 'drag')
     }
   }
 
@@ -135,8 +153,8 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
               const heights = readHeights()
               if (!heights) return
               const next = heights.height + window.innerHeight * (event.key === 'ArrowUp' ? 0.1 : -0.1)
-              if (next < heights.half) dismiss()
-              else changeHeight(next >= heights.max ? 100 : next / window.innerHeight * 100, 'keyboard')
+              if (next <= heights.dismiss) dismiss()
+              else changeHeight(next >= heights.max ? 100 : Math.max(heights.min, next) / window.innerHeight * 100, 'keyboard')
             } else changeHeight(heightPercent === 100 ? HALF_HEIGHT : 100, 'keyboard')
           }}><span aria-hidden="true" /></div>}
         <header className="housing-results__page-header">
@@ -154,4 +172,9 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
       </div>
     </aside>
   )
+}
+
+// Matches the compact mobile CSS query; resize also covers the on-screen keyboard.
+function readViewport() {
+  return { landscape: window.innerWidth > window.innerHeight, short: window.innerHeight <= 500 }
 }

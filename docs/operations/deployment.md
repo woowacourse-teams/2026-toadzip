@@ -19,6 +19,23 @@
 실제 프로젝트 절대 경로를 등록한다. Runner 설치 폴더가 아니라 `.git`·Compose 파일이 있는 경로다.
 경로가 틀리면 Git 명령부터 실패한다. 변수나 로그에 실제 인증정보를 넣지 않는다.
 
+## CI 실행 범위
+
+- PR은 `dorny/paths-filter`로 변경된 영역만 검증한다. 설명 문서만 바뀌면 무거운 검증을 생략한다.
+  루트 설정, `.github/`, `scripts/`, `tests/`의 실행 파일과 공통 테스트 자료 `docs/fixtures/` 변경은 양쪽 검증을 실행한다.
+  백엔드의 지도 대표 좌표 CSV도 프론트엔드 일치 검사에서 읽으므로 양쪽을 검증한다.
+  [ci-paths.yml](../../.github/ci-paths.yml)의 제외 규칙은 `some-with-excludes` 방식으로 평가한다. 소스 디렉터리 안의 Markdown 리소스는 제외하지 않는다.
+- [백엔드 CI](../../.github/workflows/backend-ci.yml)는 Flyway 검사와 백엔드 테스트 두 분할을 실행하고 `Backend Check`로 결과를 모은다.
+  [프론트 CI](../../.github/workflows/frontend-ci.yml)는 린트·테스트·빌드와 알림 배포 설정을 `Frontend Check`로 검사한다.
+  경로 감지가 실패하거나 필요한 테스트가 실패·취소되면 통과하지 않는다.
+  백엔드는 두 분할이 모두 성공해야 통과하며, 변경이 없어서 분할을 생략한 경우만 성공으로 처리한다.
+- `develop`·`main` 배포에서 재사용 워크플로를 호출하면 경로 필터 없이 전체를 검증한다.
+  호출하는 워크플로에도 `contents: read`, `pull-requests: read` 권한이 필요하다.
+- Gradle 캐시는 PR에서 읽기 전용이며, `develop`·`main`의 `application` 분할만 저장한다. 두 분할 모두 전체 소스를 컴파일한다.
+  `Set up Gradle` 로그의 복원 결과와 `compileJava`·`compileTestJava`의 `FROM-CACHE`를 확인한다. `test --rerun`으로 테스트는 매번 실행한다.
+- 백엔드 보고서는 `backend-test-reports-ingest`와 `backend-test-reports-application` 아티팩트에 각각 저장된다.
+  로컬 분할 실행 방법은 [백엔드 테스트 전략](../development/backend/testing.md#실행-순서)을 따른다.
+
 ## 서버에서 실행하는 작업
 
 워크플로는 해당 브랜치로 전환한 뒤 `git pull --ff-only`로 가져오고 다음 명령을 실행한다.

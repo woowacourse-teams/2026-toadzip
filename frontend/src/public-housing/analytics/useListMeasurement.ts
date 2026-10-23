@@ -14,7 +14,7 @@ export function useListMeasurement(visible: boolean, type: 'region_complex' | 'a
     let inputUntil = 0
     function measure() {
       if (cancelled || !panel) return
-      const detail = document.querySelector<HTMLElement>('dialog.housing-detail-layer[open]')?.dataset.detailVisitId ?? null
+      const detail = document.querySelector<HTMLElement>('.housing-detail-layer:not(dialog), dialog.housing-detail-layer[open]')?.dataset.detailVisitId ?? null
       if (detail !== null && detail !== lastDetail.current) resumeAfterDetail.current = true
       lastDetail.current = detail
       const content = panel.querySelector<HTMLElement>('#housing-list-content')

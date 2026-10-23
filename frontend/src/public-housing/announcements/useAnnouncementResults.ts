@@ -18,6 +18,7 @@ export type AnnouncementRequestStatus =
   | 'error'
 
 export interface AnnouncementResultsState {
+  readonly totalCount: number | null
   readonly errorMessage: string | null
   readonly hasNext: boolean
   readonly items: readonly AnnouncementListItem[]
@@ -31,6 +32,7 @@ const INITIAL_STATE: AnnouncementResultsState = {
   items: [],
   nextCursor: null,
   status: 'idle',
+  totalCount: null,
 }
 
 export function useAnnouncementResults(
@@ -93,6 +95,7 @@ export function useAnnouncementResults(
       items: [],
       nextCursor: null,
       status: 'loading',
+      totalCount: null,
     }))
 
     const request = repository.findAnnouncementPage(
@@ -114,6 +117,7 @@ export function useAnnouncementResults(
           errorMessage: null,
           hasNext: page.hasNext,
           items: mergeViewCounts(page.items),
+          totalCount: page.totalCount ?? (page.hasNext ? null : page.items.length),
           nextCursor: page.nextCursor,
           status: 'ready',
         })
@@ -139,11 +143,13 @@ export function useAnnouncementResults(
       || !state.hasNext
       || !state.nextCursor
       || state.status === 'loading-more'
+      || firstPageAbortRef.current !== null
+      || paginationAbortRef.current !== null
+      || requestedFiltersKeyRef.current !== filtersKey
     ) {
       return
     }
 
-    paginationAbortRef.current?.abort()
     const controller = new AbortController()
     const revision = requestRevisionRef.current
     paginationAbortRef.current = controller
@@ -172,13 +178,17 @@ export function useAnnouncementResults(
         }
         const previousIds = new Set(state.items.map(item => item.announcementId))
         captureProductEvent('list_more_succeeded', { ...measurement, appended_count: page.items.filter(item => !previousIds.has(item.announcementId)).length })
-        setState((current) => ({
-          errorMessage: null,
-          hasNext: page.hasNext,
-          items: mergeViewCounts(appendUniqueAnnouncements(current.items, page.items)),
-          nextCursor: page.nextCursor,
-          status: 'ready',
-        }))
+        setState((current) => {
+          const items = mergeViewCounts(appendUniqueAnnouncements(current.items, page.items))
+          return {
+            errorMessage: null,
+            hasNext: page.hasNext,
+            items,
+            totalCount: page.totalCount ?? (page.hasNext ? current.totalCount : items.length),
+            nextCursor: page.nextCursor,
+            status: 'ready',
+          }
+        })
       })
       .catch((error: unknown) => {
         if (paginationAbortRef.current === controller) {
@@ -194,7 +204,7 @@ export function useAnnouncementResults(
           status: 'error',
         }))
       })
-  }, [enabled, filters, mergeViewCounts, repository, state])
+  }, [enabled, filters, filtersKey, mergeViewCounts, repository, state])
 
   useEffect(() => {
     if (!enabled) {

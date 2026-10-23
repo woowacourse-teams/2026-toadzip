@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.controller;
 
 import com.toadzip.backend.announcement.dto.request.AnnouncementSearchRequest;
+import com.toadzip.backend.announcement.domain.AnnouncementSort;
 import com.toadzip.backend.announcement.dto.response.AnnouncementDetailResponse;
 import com.toadzip.backend.announcement.dto.response.AnnouncementListResponse;
 import com.toadzip.backend.announcement.service.AnnouncementQueryService;
@@ -28,9 +29,25 @@ public class AnnouncementController {
     public ApiResponse<AnnouncementListResponse> getAnnouncements(
             @Valid @ModelAttribute AnnouncementSearchRequest request,
             @RequestParam(name = "cursor", required = false) String cursor,
-            @RequestParam(name = "size", defaultValue = "20") int size
+            @RequestParam(name = "size", defaultValue = "20") int size,
+            @RequestParam(name = "sort", defaultValue = "LATEST") AnnouncementSort sort
     ) {
+        if (sort == AnnouncementSort.LATEST_ASC) {
+            return new ApiResponse<>(announcementQueryService.getAnnouncements(request, cursor, size, sort));
+        }
+        if (sort == AnnouncementSort.DEADLINE_DESC) {
+            return new ApiResponse<>(announcementQueryService.getAnnouncementsByDeadline(request, cursor, size, sort));
+        }
+        if (sort == AnnouncementSort.DEADLINE) {
+            return new ApiResponse<>(announcementQueryService.getAnnouncementsByDeadline(request, cursor, size));
+        }
         return new ApiResponse<>(announcementQueryService.getAnnouncements(request, cursor, size));
+    }
+
+    public ApiResponse<AnnouncementListResponse> getAnnouncements(
+            AnnouncementSearchRequest request, String cursor, int size
+    ) {
+        return getAnnouncements(request, cursor, size, AnnouncementSort.LATEST);
     }
 
     @GetMapping("/{announcementId}")

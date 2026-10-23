@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 # 배포 중에 작업이 끊기지 않도록 설정
 concurrency:
