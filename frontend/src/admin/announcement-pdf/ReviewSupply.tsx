@@ -7,7 +7,7 @@ import { isRecord } from '../management/managementContract'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
 import { type Evidence } from './extraction'
 import { cellMatches, createRowReview, pdfOrderChanges, pendingRow, pendingTarget, preserveCellChoice, remapTarget, shown, type Review, type ReviewFilter, type RowReview, type TargetReview } from './review'
-import type { ComplexLabels, HousingCandidates } from './matching'
+import { pickHousingType, type ComplexLabels, type HousingCandidates } from './matching'
 import { ReviewCells } from './ReviewCells'
 import styles from './PdfCorrection.module.css'
 
@@ -21,7 +21,12 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
   function update(index: number, next: RowReview) { onChange({ ...review, rows: review.rows.map((row, at) => at === index ? next : row) }) }
   function mapping(index: number, destination: string, anchorKey: string) {
     const old = review.rows[index], anchor = workspace.supply.rows.find(row => row.key === anchorKey)
-    const proposal = { ...old.proposal, destination, anchorKey, newComplex: undefined, complexId: anchor?.housingComplexId ?? null, housingTypeId: null, candidates: housing[anchor?.housingComplexId ?? 0] ?? [], needsConfirmation: true }
+    const candidates = housing[anchor?.housingComplexId ?? 0] ?? []
+    // 직접 고른 위치에 맞춰 주택형 후보와 안내를 다시 계산한다. 처음 제안의 실패 문구를 남기지 않는다.
+    const picked = pickHousingType(review.extraction, index, candidates)
+    const proposal = { ...old.proposal, destination, anchorKey, newComplex: undefined, complexId: anchor?.housingComplexId ?? null,
+      housingTypeId: picked.housingTypeId, candidates, needsConfirmation: true,
+      reason: anchor ? `저장 위치를 직접 선택했습니다. · ${picked.reason}` : old.proposal.reason }
     const next = createRowReview(review.extraction, index, proposal, workspace)
     const oldCells = [...old.cells, ...old.targets.flatMap(target => target.cells)]
     const retain = (cell: typeof next.cells[number]) => { const previous = oldCells.find(item => item.path === cell.path); return preserveCellChoice(cell, previous) }

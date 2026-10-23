@@ -82,4 +82,17 @@ describe('공고 보정 대응 제안', () => {
     const { extraction, events } = scenario('hansville')
     expect(proposeSchedules(extraction, events)[1]).toMatchObject({ existingIds: [], needsConfirmation: true })
   })
+
+  it('단지명 표기가 달라도 이번 모집수가 유일하게 같은 기존 행을 확인 필요로 제안한다', () => {
+    const { extraction, rows, housing } = scenario('gongju')
+    const source = extraction.supplyRows[0]
+    const renamed = { ...extraction, supplyRows: [{ ...source, complexName: '표기가 다른 단지', values: { ...source.values, totalSupplyHouseholdCount: 450 } }] }
+    const current = rows.map((row, at) => ({ ...row, householdCount: at === 0 ? 450 : 999 }))
+    const [proposal] = proposeRows(renamed, current, housing)
+    expect(proposal).toMatchObject({ destination: current[0].key, needsConfirmation: true })
+    expect(proposal.reason).toContain('이번 모집수 450세대가 같은 기존 행')
+    const twins = [current[0], { ...current[0], id: 9999, key: 'row:9999' }]
+    expect(proposeRows(renamed, twins, housing)[0].reason).toBe('단지를 하나로 특정하지 못했습니다.')
+  })
 })
+
