@@ -122,3 +122,9 @@
  .uploadInput, .uploadResult, .nextAction { padding:20px 16px; }
  .historyDialog { padding:16px; }
 }
+
+.executionActions { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
+.stopButton[class] { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid color-mix(in srgb,var(--ds-color-deadline) 45%,var(--ds-color-divider)); background:var(--ds-color-surface); color:color-mix(in srgb,var(--ds-color-deadline) 70%,var(--ds-color-text)); }
+.stopButton[class]:hover:not(:disabled) { background:color-mix(in srgb,var(--ds-color-deadline) 8%,var(--ds-color-surface)); }
+.stopButton[class] svg { flex:none; }
+.stopNotice { flex-basis:100%; margin:0; color:var(--ds-color-label); font-size:13px; }

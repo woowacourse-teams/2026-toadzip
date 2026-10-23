@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
-import { ComplexExecutionResult } from './ComplexExecutionResult'
+import { ComplexExecutionResult, ComplexExecutionStop } from './ComplexExecutionResult'
 import type { DataPipelineExecution } from './api'
 
 vi.mock('./ComplexRunErrors', () => ({ ComplexRunErrors: () => <p>수집 오류 내역</p> }))
@@ -29,21 +29,21 @@ it('오류 조회 버튼의 펼침 상태와 연결된 하단 영역을 표시�
 })
 
 it.each([
-  ['COMPLEX_COLLECTION', '마이홈 단지 수집'],
-  ['COMPLEX_REFINEMENT', '마이홈 단지 정제'],
-] as const)('%s 진행 표시와 중지 아이콘은 같은 동작을 제공하며 중지 접수 후 잠긴다', (type, step) => {
+  ['COMPLEX_COLLECTION', '마이홈 단지 수집', '수집 중지'],
+  ['COMPLEX_REFINEMENT', '마이홈 단지 정제', '정제 중지'],
+] as const)('%s 상태와 중지 문구를 구분하며 중지 접수 후 잠긴다', (type, step, label) => {
   const onStop = vi.fn()
   const running: DataPipelineExecution = { ...execution, type, status: 'RUNNING', completedSteps: [], currentStepName: step }
-  const view = render(<ComplexExecutionResult execution={running} onStop={onStop} />)
+  const view = render(<><ComplexExecutionResult execution={running} /><ComplexExecutionStop execution={running} label={label} onStop={onStop} /></>)
   expect(within(screen.getByRole('group', { name: '실행 상태' })).getByText('진행 중')).toBeVisible()
   expect(within(screen.getByRole('list', { name: '실행 단계' })).getByText('진행 중')).toBeVisible()
-  const stop = screen.getByRole('button', { name: '실행 중지' })
-  expect(stop).toHaveTextContent(/^$/)
+  const stop = screen.getByRole('button', { name: label })
+  expect(stop).toHaveTextContent(label)
   expect(stop.querySelector('svg')).not.toBeNull()
-  expect(stop).toHaveAttribute('title', '실행 중지 · 현재 처리 후 종료')
+  expect(stop).toHaveAttribute('title', `${label} · 현재 처리 후 종료`)
   fireEvent.click(stop)
   expect(onStop).toHaveBeenCalledOnce()
-  view.rerender(<ComplexExecutionResult execution={{ ...running, stopRequested: true }} onStop={onStop} />)
+  view.rerender(<><ComplexExecutionResult execution={{ ...running, stopRequested: true }} /><ComplexExecutionStop execution={{ ...running, stopRequested: true }} label={label} onStop={onStop} /></>)
   expect(screen.getByRole('button', { name: '중지 요청 중…' })).toBeDisabled()
   expect(within(screen.getByRole('group', { name: '실행 상태' })).getByText('중지 요청 중')).toBeVisible()
   expect(screen.getByText(/현재 처리가 끝나면 중지/)).toBeVisible()
@@ -61,7 +61,6 @@ it.each([
   render(<ComplexExecutionResult execution={value} />)
   expect(within(screen.getByRole('group', { name: '실행 상태' })).getByText(label)).toHaveAttribute('data-tone', tone)
   expect(within(screen.getByRole('list', { name: '실행 단계' })).getByText(label)).toHaveAttribute('data-tone', tone)
-  expect(screen.queryByRole('button', { name: '실행 중지' })).not.toBeInTheDocument()
 })
 
 

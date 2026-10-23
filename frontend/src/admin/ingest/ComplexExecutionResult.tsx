@@ -4,14 +4,13 @@ import type { DataPipelineExecution } from './api'
 import { PipelineReport } from './DataPipelineProgress'
 import { pipelineStepDefinitions, pipelineStepSequences, pipelineStepState } from './pipelineSteps'
 import { ComplexStatusBadge, type ComplexStatus } from './ComplexStatusBadge'
-import { ComplexIconButton } from './ComplexIconButton'
 import { ComplexRunErrors } from './ComplexRunErrors'
 import styles from './ComplexIngest.module.css'
 
 const stepStatuses = { waiting: 'waiting', running: 'running', success: 'completed', partial: 'partial', failed: 'failed', skipped: 'skipped', stopped: 'stopped', unexecuted: 'unexecuted' } as const satisfies Record<string, ComplexStatus>
 
-export function ComplexExecutionResult({ execution, phase, pending = false, stopping = false, onStop, showSummary = true, showErrors = true }: {
-  execution: DataPipelineExecution; phase?: 'collection' | 'refinement'; pending?: boolean; stopping?: boolean; onStop?: () => void; showSummary?: boolean; showErrors?: boolean
+export function ComplexExecutionResult({ execution, phase, pending = false, stopping = false, showSummary = true, showErrors = true }: {
+  execution: DataPipelineExecution; phase?: 'collection' | 'refinement'; pending?: boolean; stopping?: boolean; showSummary?: boolean; showErrors?: boolean
 }) {
   const [errorsOpen, setErrorsOpen] = useState(false)
   const errorsId = useId()
@@ -25,9 +24,6 @@ export function ComplexExecutionResult({ execution, phase, pending = false, stop
     : !execution.executionId ? '실행 기록을 확인하지 못했습니다. 상태를 다시 확인해 주세요.' : null
   const errorPhase = phase ?? (execution.type === 'COMPLEX_COLLECTION' ? 'collection'
     : execution.type === 'COMPLEX_REFINEMENT' ? 'refinement' : undefined)
-  const activePhase = execution.type !== 'COMPLEX_SYNC' || !phase
-    || steps.some(step => pipelineStepDefinitions[step] === execution.currentStepName)
-    || (!execution.currentStepName && phase === 'collection')
   return <div className={styles.result} aria-label="실행 결과">
     {showSummary && <ComplexExecutionSummary execution={execution} pending={pending} stopping={stopping} />}
     {pending && <div className={styles.runNotice} role="status"><ComplexStatusBadge status="pending" /><p>실행 접수를 확인하고 있습니다. 확인 전에는 다시 실행할 수 없습니다.</p></div>}
@@ -50,10 +46,6 @@ export function ComplexExecutionResult({ execution, phase, pending = false, stop
       })}
     </ol>
     {execution.failure && <p className="form-error" role="alert">{execution.failure.message}</p>}
-    {execution.status === 'RUNNING' && activePhase && onStop && <ComplexIconButton icon="pause"
-      label={stopping || execution.stopRequested ? '중지 요청 중…' : '실행 중지'} title="실행 중지 · 현재 처리 후 종료"
-      disabled={stopping || execution.stopRequested || !execution.executionId} onClick={onStop} />}
-    {execution.stopRequested && execution.status === 'RUNNING' && <p role="status">현재 처리가 끝나면 중지합니다. 이미 저장한 데이터는 유지됩니다.</p>}
     {showErrors && <>
       <Button data-design-system className={styles.errorToggle} aria-label="결과 오류 조회"
         aria-expanded={errorsOpen} aria-controls={errorsId} onClick={() => setErrorsOpen(value => !value)}>
@@ -80,4 +72,19 @@ export function ComplexExecutionSummary({ execution, pending = false, stopping =
       })}</time>
     </div>}
   </div>
+}
+
+
+export function ComplexExecutionStop({ execution, stopping = false, label, onStop }: {
+  execution: DataPipelineExecution; stopping?: boolean; label: '수집 중지' | '정제 중지'; onStop: () => void
+}) {
+  if (execution.status !== 'RUNNING') return null
+  return <>
+    <Button data-design-system className={styles.stopButton} title={`${label} · 현재 처리 후 종료`}
+      disabled={stopping || execution.stopRequested || !execution.executionId} onClick={onStop}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+      {stopping || execution.stopRequested ? '중지 요청 중…' : label}
+    </Button>
+    {execution.stopRequested && <p className={styles.stopNotice} role="status">현재 처리가 끝나면 중지합니다. 이미 저장한 데이터는 유지됩니다.</p>}
+  </>
 }

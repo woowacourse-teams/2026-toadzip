@@ -10,8 +10,8 @@ const statuses = {
   failed: ['실패', 'danger', 'm7 7 10 10M7 17 17 7'],
   skipped: ['건너뜀', 'neutral', 'M5 12h14'],
   withSkips: ['일부 건너뜀', 'warning', 'M5 12h14'],
-  stopped: ['중지됨', 'neutral', 'M8 5v14M16 5v14'],
-  stopping: ['중지 요청 중', 'warning', 'M8 5v14M16 5v14'],
+  stopped: ['중지됨', 'neutral', 'M7 7h10v10H7z'],
+  stopping: ['중지 요청 중', 'warning', 'M7 7h10v10H7z'],
   unexecuted: ['미실행', 'neutral', 'M5 12h14'],
 } as const
 export type ComplexStatus = keyof typeof statuses

@@ -97,7 +97,7 @@ it('키를 입력받지 않고 서버 설정으로 수집을 접수하며 탭을
   expect(screen.getByRole('button', { name: '단지 정제·저장 실행' })).toBeDisabled()
   await act(async () => resolve(execution('COMPLEX_COLLECTION', { executionId: 'collect-1', status: 'RUNNING', currentStepName: '마이홈 단지 수집' })))
   select('1 원천 수집')
-  expect(screen.getByRole('button', { name: '실행 중지' })).toBeVisible()
+  expect(screen.getByRole('button', { name: '수집 중지' })).toBeVisible()
 })
 it('방향키·Home·End로 탭을 선택하고 포커스를 옮긴다', async () => {
   await show()
@@ -158,7 +158,7 @@ it('재진입 시 진행 중 수집과 마지막 정제 결과를 복구하고 �
       label: '마이홈 지역', unit: '개 지역', completedCount: 20, totalCount: 250, startedAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:01:00Z',
     } } : type === 'COMPLEX_REFINEMENT' ? { executionId: 'refine-1', status: 'COMPLETED' } : {}))
   render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
-  await screen.findByRole('button', { name: '실행 중지' })
+  await screen.findByRole('button', { name: '수집 중지' })
   assertStages()
   expect(screen.getByText(/20 \/ 250 개 지역/)).toBeVisible()
   select('3 정제·저장')
@@ -188,7 +188,7 @@ it('시작 응답 유실은 서버 상태로 복구하며 중지 요청도 해�
   vi.mocked(stopDataPipeline).mockResolvedValue(execution('COMPLEX_REFINEMENT', { executionId: 'refine-1', status: 'STOPPED' }))
   select('3 정제·저장')
   fireEvent.click(screen.getByRole('button', { name: '단지 정제·저장 실행' }))
-  fireEvent.click(await screen.findByRole('button', { name: '실행 중지' }))
+  fireEvent.click(await screen.findByRole('button', { name: '정제 중지' }))
   await screen.findByText('중지됨')
   expect(stopDataPipeline).toHaveBeenCalledExactlyOnceWith('refine-1')
   view.unmount()
@@ -202,10 +202,10 @@ it('기존 통합 실행도 복구하되 중지 버튼은 현재 처리 중인 �
   expect(within(screen.getByRole('tab', { name: '3 정제·저장' })).getByText('진행 중')).toBeVisible()
   expect(within(screen.getByRole('tab', { name: '1 원천 수집' })).queryByText('진행 중')).not.toBeInTheDocument()
   select('3 정제·저장')
-  await screen.findByRole('button', { name: '실행 중지' })
-  expect(screen.getAllByRole('button', { name: '실행 중지' })).toHaveLength(1)
+  await screen.findByRole('button', { name: '정제 중지' })
+  expect(screen.getAllByRole('button', { name: '정제 중지' })).toHaveLength(1)
   select('1 원천 수집')
-  expect(screen.queryByRole('button', { name: '실행 중지' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '정제 중지' })).not.toBeInTheDocument()
   assertStages()
 })
 it('새 실행을 접수할 때 과거 통합 실행의 결과를 이번 결과로 표시하지 않는다', async () => {
@@ -223,4 +223,32 @@ it('새 실행을 접수할 때 과거 통합 실행의 결과를 이번 결과�
   expect(within(refinement).getByText(/실행 접수를 확인/)).toBeVisible()
   expect(within(refinement).queryByRole('group', { name: '실행 상태' })).not.toBeInTheDocument()
   await act(async () => resolve(execution('COMPLEX_REFINEMENT', { executionId: 'new-refine', status: 'COMPLETED', startedAt: '2026-10-22T00:00:00Z' })))
+})
+
+
+it.each([
+  ['COMPLEX_COLLECTION', '1 원천 수집', '단지 원천 수집', '수집 중지', '마이홈 단지 수집'],
+  ['COMPLEX_REFINEMENT', '3 정제·저장', '단지 정제·저장', '정제 중지', '마이홈 단지 정제'],
+] as const)('%s의 중지 버튼은 실행 버튼 옆에 하나만 두고 요청 중에는 다시 누를 수 없다', async (type, tab, stage, label, step) => {
+  const running = execution(type, { executionId: 'active-run', status: 'RUNNING', currentStepName: step })
+  vi.mocked(getDataPipelineStatus).mockImplementation(async value => value === type ? running : execution(value))
+  let finishStop: (value: DataPipelineExecution) => void = () => {}
+  vi.mocked(stopDataPipeline).mockReturnValue(new Promise(resolve => { finishStop = resolve }))
+  const view = render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+  await waitFor(() => expect(within(screen.getByRole('tab', { name: tab })).getByText('진행 중')).toBeVisible())
+  select(tab)
+  const actions = screen.getByRole('group', { name: `${stage} 실행 제어` })
+  const start = within(actions).getByRole('button', { name: `${stage} 실행` })
+  const stop = within(actions).getByRole('button', { name: label })
+  expect(start).toBeDisabled()
+  expect(start.nextElementSibling).toBe(stop)
+  expect(screen.getAllByRole('button', { name: label })).toHaveLength(1)
+  fireEvent.click(stop)
+  expect(within(actions).getByRole('button', { name: '중지 요청 중…' })).toBeDisabled()
+  fireEvent.click(stop)
+  expect(stopDataPipeline).toHaveBeenCalledExactlyOnceWith('active-run')
+  await act(async () => finishStop({ ...running, status: 'STOPPED', stopRequested: true }))
+  expect(within(actions).queryByRole('button', { name: label })).not.toBeInTheDocument()
+  expect(start).toBeEnabled()
+  view.unmount()
 })
