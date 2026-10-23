@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { scenario } from './fixtures/workspace'
 import { blankTarget } from '../supply/supplyCorrectionApi'
-import { areaOnlyTypeName, changeValue, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
+import { areaOnlyTypeName, changeValue, destinationLabel, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
 
 
 const evidence = { reason: '공고문과 대조', sourceUrl: 'https://example.com/notice', sourcePage: '4' }
@@ -242,4 +242,11 @@ it('저장 전 변경 목록은 실제로 바뀌는 값만 영역별로 모으�
   review.metadata[start] = { ...review.metadata[start], selected: false }
   changes = pendingChanges(review)
   expect(changes.some(change => change.cell.field === 'applicationStartDate')).toBe(false)
+})
+
+it('저장 위치 선택지는 연결 단지·표시 이름·모집수·전용면적으로 구분한다', () => {
+  const { workspace } = scenario('gongju')
+  const row = { ...workspace.supply.rows[0], housingComplexName: '평화주공1단지', typeName: '26', householdCount: 450, exclusiveArea: 26.37 }
+  expect(destinationLabel(row)).toBe(`평화주공1단지 · 26 · 모집 450세대 · 전용 26.37㎡ (#${String(row.id)}) 수정`)
+  expect(destinationLabel({ ...row, householdCount: null, groupId: 3, exclusiveArea: null })).toContain('공통 모집 · 면적 미확인')
 })

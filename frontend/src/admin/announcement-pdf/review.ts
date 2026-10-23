@@ -187,6 +187,13 @@ export function changeValue(change: PendingChange, value: unknown) {
   if (change.cell.kind === 'method' || change.cell.kind === 'scheduleType') return choices[change.cell.kind].find(([key]) => key === value)?.[1] ?? shown(value)
   return shown(value)
 }
+// 저장 위치는 원천 표기만으로 고르기 어려워 연결 단지·표시 이름·모집수·전용면적을 함께 보여 준다.
+export function destinationLabel(row: CorrectionRow) {
+  const count = row.householdCount != null ? `모집 ${row.householdCount}세대` : row.groupId !== null ? '공통 모집' : '모집수 미확인'
+  const area = row.exclusiveArea != null ? `전용 ${row.exclusiveArea}㎡` : '면적 미확인'
+  return `${row.housingComplexName ?? row.complexName} · ${row.typeName} · ${count} · ${area} (#${String(row.id)}) 수정`
+}
+
 export function applicableCells(review: Review) {
   return [...review.metadata, ...review.reception,
     ...review.rows.filter(row => row.include).flatMap(row => [...row.cells, ...row.targets.filter(target => target.destination !== 'exclude').flatMap(target => target.cells)]),
