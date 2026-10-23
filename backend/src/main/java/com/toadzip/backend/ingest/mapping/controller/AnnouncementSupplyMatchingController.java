@@ -36,6 +36,11 @@ public class AnnouncementSupplyMatchingController {
         return matching.refine(identifier, request, principal.getName());
     }
 
+    @PostMapping("/{identifier}/rerun")
+    public MyHomeAnnouncementMappingReport rerun(@PathVariable String identifier) {
+        return matching.rerun(identifier);
+    }
+
     @PostMapping("/{identifier}/release")
     public List<Row> release(@PathVariable String identifier,
             @Valid @RequestBody ReleaseRequest request, Principal principal) {

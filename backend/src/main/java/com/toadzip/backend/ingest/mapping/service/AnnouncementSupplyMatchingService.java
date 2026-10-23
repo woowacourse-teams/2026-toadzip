@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.mapping.service;
 import com.toadzip.backend.admin.domain.AdminDataChange;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
+import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowGroupRepository;
@@ -166,21 +167,7 @@ public class AnnouncementSupplyMatchingService {
                 throw new AdminDataConflictException("연결할 주택형을 명시적으로 선택하고 최신 정보로 확인해 주세요.");
             }
         }
-        var existing = announcements.findBySourceAnnouncementIdentifierForUpdate(identifier).orElse(null);
-        if (existing != null && existing.isAdminDeleted()) {
-            throw new InvalidIngestRequestException("삭제된 공고입니다. 공고 관리에서 먼저 복구해 주세요.");
-        }
-        if (existing != null && existing.isAdminModified() && existing.getProvider() != current.data().provider()) {
-            throw new InvalidIngestRequestException("관리자가 변경한 공고 기관이 원천과 다릅니다. 공고 관리에서 확인해 주세요.");
-        }
-        if (existing != null && !plans.isEmpty() && existing.getProvider() != current.data().provider()) {
-            throw new AdminDataConflictException("공고 기관이 원천과 다릅니다. 공고 관리에서 확인해 주세요.");
-        }
-        var previous = announcements.findBySourceAnnouncementIdentifier(
-                current.data().previousSourceAnnouncementIdentifier()).orElse(null);
-        if (current.data().previousSourceAnnouncementIdentifier() != null && previous == null) {
-            throw new InvalidIngestRequestException("이전 공고를 먼저 등록해 주세요.");
-        }
+        var previous = writablePrevious(identifier, current, !plans.isEmpty());
         String rowsBefore = null;
         if (!plans.isEmpty()) {
             rowsBefore = json.writeValueAsString(rows(identifier));
@@ -216,6 +203,45 @@ public class AnnouncementSupplyMatchingService {
         catch (MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException exception) {
             throw new InvalidIngestRequestException("정제 실패: " + exception.getMessage());
         }
+    }
+
+    /**
+     * 선택 없이 저장한 매칭과 자동 매칭으로 이 공고만 다시 정제한다. 보정 결과 화면에서 오류가 풀렸는지 바로 확인하는 용도다.
+     * 단건 정제라 매칭이나 LH 보강이 하나라도 실패하면 전체를 되돌리고, 실패 기록은 바꾸지 않는다.
+     */
+    @Transactional
+    public MyHomeAnnouncementMappingReport rerun(String identifier) {
+        // POST 인터셉터가 트랜잭션 종료까지 전역 수집 잠금을 유지한다. 외부 API는 호출하지 않는다.
+        IngestExecutionScope.verifyHeld();
+        var current = resolved(identifier);
+        var previous = writablePrevious(identifier, current, false);
+        try {
+            return writer.writeSelected(current, previous, Map.of(), List.of()).report();
+        }
+        catch (MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException exception) {
+            throw new InvalidIngestRequestException("정제 실패: " + exception.getMessage());
+        }
+    }
+
+    // 정제로 덮어쓸 수 있는 공고인지 확인하고, 연결할 이전 공고를 돌려준다.
+    private Announcement writablePrevious(String identifier,
+            MyHomeAnnouncementSupplyRowResolver.ResolvedAnnouncement current, boolean splitting) {
+        var existing = announcements.findBySourceAnnouncementIdentifierForUpdate(identifier).orElse(null);
+        if (existing != null && existing.isAdminDeleted()) {
+            throw new InvalidIngestRequestException("삭제된 공고입니다. 공고 관리에서 먼저 복구해 주세요.");
+        }
+        if (existing != null && existing.isAdminModified() && existing.getProvider() != current.data().provider()) {
+            throw new InvalidIngestRequestException("관리자가 변경한 공고 기관이 원천과 다릅니다. 공고 관리에서 확인해 주세요.");
+        }
+        if (existing != null && splitting && existing.getProvider() != current.data().provider()) {
+            throw new AdminDataConflictException("공고 기관이 원천과 다릅니다. 공고 관리에서 확인해 주세요.");
+        }
+        var previous = announcements.findBySourceAnnouncementIdentifier(
+                current.data().previousSourceAnnouncementIdentifier()).orElse(null);
+        if (current.data().previousSourceAnnouncementIdentifier() != null && previous == null) {
+            throw new InvalidIngestRequestException("이전 공고를 먼저 등록해 주세요.");
+        }
+        return previous;
     }
 
     /**
