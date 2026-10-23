@@ -19,7 +19,6 @@ import com.toadzip.backend.announcement.dto.request.AdminSupplyRowUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminSupplyTargetUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.VerifiedApplicationSchedulesRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest.ReceptionPlaceUpdateRequest;
-import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest.SupplyRowRequest;
 import com.toadzip.backend.announcement.dto.response.AdminAnnouncementDetail;
 import com.toadzip.backend.announcement.dto.response.AnnouncementAttachmentResponse;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
@@ -179,7 +178,7 @@ public class AdminAnnouncementManagementService {
             }
         }
         var values = request.supplyRow();
-        row.reviseByAdmin(complex, type, values.sourceComplexName(), values.sourceHousingTypeName(),
+        row.reviseByAdmin(complex, type, values.announcementHousingTypeName(),
                 values.supplyPnu(), values.expectedMoveInMonth(), values.supplyCategory(),
                 values.totalSupplyHouseholdCount());
         validateCounts(announcement);
@@ -310,7 +309,8 @@ public class AdminAnnouncementManagementService {
                     row.getSupplyGroup().getId(), row.getSupplyGroup().getSharedHouseholdCount());
         }
         return new AdminAnnouncementDetail.SupplyRowItem(row.getId(), complexId, complexName, typeId,
-                row.isAdminModified(), new SupplyRowRequest(row.getSourceComplexName(), row.getSourceHousingTypeName(),
+                row.isAdminModified(), row.getSourceComplexName(), row.getSourceHousingTypeName(),
+                new AdminSupplyRowUpdateRequest.SupplyData(row.displayHousingTypeName(),
                         row.getSupplyPnu(), row.getExpectedMoveInMonth(), row.getSupplyCategory(),
                         row.getTotalSupplyHouseholdCount()), shared);
     }

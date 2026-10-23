@@ -107,7 +107,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         enrichment.enrichAll();
         mapping.mapAll();
         assertThat(supplies.findAll()).extracting(value -> value.getId()).containsExactlyInAnyOrderElementsOf(ids);
-        assertThat(supplies.findAll()).extracting(value -> value.getSourceHousingTypeName())
+        assertThat(supplies.findAll()).extracting(value -> value.getAnnouncementHousingTypeName())
                 .containsExactlyInAnyOrder("26A", "26B");
         assertThat(supplies.findAll()).allSatisfy(row -> assertThat(row.getTotalSupplyHouseholdCount()).isNull());
         var detail = query.getAnnouncement(announcement.getId());
@@ -267,7 +267,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         mapping.mapAll();
         mapping.mapAll();
         assertThat(supplies.findAll()).extracting(value -> value.getId()).containsExactlyInAnyOrderElementsOf(ids);
-        assertThat(supplies.findAll()).extracting(value -> value.getSourceHousingTypeName())
+        assertThat(supplies.findAll()).extracting(value -> value.getAnnouncementHousingTypeName())
                 .containsExactlyInAnyOrder("26A", "26B");
     }
 
@@ -436,7 +436,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 "reason", "공고문 4쪽의 26A·26B 면적과 다른 행의 주택형 확인")).andExpect(status().isOk());
 
         assertThat(supplies.findAll()).filteredOn(row -> row.getSupplyGroup() != null)
-                .extracting(row -> row.getSourceHousingTypeName() + ":" + row.getHousingType().getId())
+                .extracting(row -> row.getAnnouncementHousingTypeName() + ":" + row.getHousingType().getId())
                 .containsExactlyInAnyOrder("26A:" + type.getId(), "26B:" + second.getId());
         assertThat(matching.rows(TARGET).getLast().housingTypeId()).isEqualTo(type.getId());
         assertThat(jdbc.sql("SELECT action FROM admin_data_changes ORDER BY id").query(String.class).list())
@@ -590,14 +590,15 @@ class AnnouncementSupplyMatchingIntegrationTest {
         var requests = List.of(request(matching.rows(TARGET).getFirst(), complex.getId(), type.getId()));
         refine(TARGET, requests).andExpect(status().isOk());
         jdbc.sql("""
-                UPDATE supply_rows SET admin_modified = true, source_housing_type_name = '26A',
+                UPDATE supply_rows SET admin_modified = true, announcement_housing_type_name = '26A',
                     housing_type_id = NULL
                 """).update();
         var current = List.of(request(matching.rows(TARGET).getFirst(), complex.getId(), type.getId()));
         refine(TARGET, current).andExpect(status().isOk());
         assertThat(supplies.findAll()).singleElement().satisfies(row -> {
             assertThat(row.getHousingType().getId()).isEqualTo(type.getId());
-            assertThat(row.getSourceHousingTypeName()).isEqualTo("26A");
+            assertThat(row.getAnnouncementHousingTypeName()).isEqualTo("26A");
+            assertThat(row.getSourceHousingTypeName()).isEqualTo("26A,B");
         });
     }
 
