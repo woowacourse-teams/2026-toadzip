@@ -266,9 +266,9 @@ class AdminManagementIntegrationTest {
                 supply.get("id").asLong());
         var announcement = row.getAnnouncement();
         assertThat(announcement.enrichFromLh("new-pan", "수집 이유", null)).isFalse();
-        // 재정제는 원천 이름만 갱신하고 관리자가 정한 값은 유지한다.
+        // 재정제는 원천 이름만 갱신하고 관리자가 정한 값은 유지한다. 이름 갱신은 공고 변경으로 세지 않는다.
         assertThat(row.updateFromMyHome(null, null, 0, "원천 단지", "주택형", "111",
-                com.toadzip.backend.announcement.domain.SupplyCategory.NEW_SUPPLY, null, 99)).isTrue();
+                com.toadzip.backend.announcement.domain.SupplyCategory.NEW_SUPPLY, null, 99)).isFalse();
         assertThat(row.getSourceHousingTypeName()).isEqualTo("주택형");
         assertThat(row.getAnnouncementHousingTypeName()).isEqualTo("공고 표기 59A(신혼부부)");
         assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(17);

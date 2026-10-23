@@ -54,7 +54,8 @@ class SupplyRowDisplayNameTest {
         boolean updated = row.updateFromMyHome(null, null, 3, "전주평화1단지", "아파트", "2222020200200020000",
                 SupplyCategory.NEW_SUPPLY, "매칭 실패", 450);
 
-        assertThat(updated).isTrue();
+        // 원천 이름은 바꾸지만 공고 값 변경으로 세지 않아 정제 중 LH 재보강을 일으키지 않는다.
+        assertThat(updated).isFalse();
         assertThat(row.getSourceComplexName()).isEqualTo("전주평화1단지");
         assertThat(row.getSourceHousingTypeName()).isEqualTo("아파트");
         assertThat(row.getAnnouncementHousingTypeName()).isEqualTo("26.37");
@@ -63,17 +64,6 @@ class SupplyRowDisplayNameTest {
         assertThat(row.getSupplyCategory()).isEqualTo(SupplyCategory.RESUPPLY);
         assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(7);
         assertThat(row.getMatchingFailureReason()).isNull();
-    }
-
-    @Test
-    void 관리자_수정_행의_원천_이름이_같으면_갱신하지_않는다() {
-        SupplyRow row = supplyRow(type("26"));
-        row.reviseByAdmin(null, type("26"), "26A", PNU, null, SupplyCategory.NEW_SUPPLY, 20);
-
-        boolean updated = row.updateFromMyHome(null, null, 3, "평화주공1단지", "39.8800", PNU,
-                SupplyCategory.NEW_SUPPLY, null, 20);
-
-        assertThat(updated).isFalse();
     }
 
     private static HousingType type(String name) {
