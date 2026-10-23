@@ -59,8 +59,10 @@ function cells(extraction: Extraction, prefix: string, specs: FieldSpec[], sourc
     let state: Cell['state'] = unused || areaOnly ? 'notApplicable' : missing || value === null ? 'unresolved' : !validCellValue(kind, value) ? 'invalid' : JSON.stringify(value) === JSON.stringify(previous) ? 'same' : previous === null ? 'new' : 'changed'
     const evidence = evidenceFor(extraction.evidence, path)
     const moreDetailed = typeof previous === 'string' && typeof value === 'string' && previous.length > value.length && previous.includes(value) && prefix === 'receptionPlace'
-    if (['changed', 'new'].includes(state) && (!evidence || moreDetailed)) state = 'confirm'
-    const note = unused?.reason ?? (areaOnly ? '면적만 적힌 값이라 주택형 표기로 쓰지 않습니다.' : undefined) ?? missing?.reason ?? (moreDetailed ? '현재값이 더 자세합니다.' : !evidence ? '이 항목의 PDF 근거를 직접 확인하세요.' : '')
+    const foreign = kind === 'text' ? foreignCharacters(value) : ''
+    if (['changed', 'new'].includes(state) && (!evidence || moreDetailed || foreign)) state = 'confirm'
+    const note = unused?.reason ?? (areaOnly ? '면적만 적힌 값이라 주택형 표기로 쓰지 않습니다.' : undefined)
+      ?? (foreign && ['confirm'].includes(state) ? `한자·외국 문자(${foreign})가 섞여 있습니다. 원문과 대조해 직접 수정하세요.` : undefined) ?? missing?.reason ?? (moreDetailed ? '현재값이 더 자세합니다.' : !evidence ? '이 항목의 PDF 근거를 직접 확인하세요.' : '')
     const selected = state === 'changed' || state === 'new'
     return { path, field, label, kind, before: previous, value, selected, edited: false, reviewed: false, mode: selected ? 'extracted' : 'keep', extracted: { value, state, note }, locked: false, note, state, evidence }
   })
@@ -142,6 +144,13 @@ export function pendingItems(review: Review): PendingItem[] {
   })
   for (const cell of [...review.reception, ...review.metadata].filter(pendingCell)) items.push({ id: `cell:${cell.path}`, section: 'reception' })
   return items
+}
+/** 추출 응답의 한글 문장에 섞인 한자·가나·키릴 문자를 찾는다(生계 ↔ 생계). 보정 값으로 그대로 저장하지 않게 한다. */
+export function foreignCharacters(value: unknown) {
+  if (typeof value !== 'string') return ''
+  // 공고문이 실제로 쓰는 한자(청년 소득無·有, 관외·관내)는 오타로 보지 않는다.
+  return [...new Set(value.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Cyrillic}]/gu) ?? [])]
+    .filter(character => !'無有外內'.includes(character)).join('')
 }
 /** ChatGPT가 주택형명 대신 면적(26.37, 26.37㎡)을 넣은 경우다. 표기로 쓰면 공개 화면에 면적만 보인다. */
 export function areaOnlyTypeName(value: unknown) {
