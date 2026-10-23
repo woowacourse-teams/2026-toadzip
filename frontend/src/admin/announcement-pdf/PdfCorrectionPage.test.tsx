@@ -238,3 +238,13 @@ it('빈 공고의 PDF 추출값은 단지를 검색해 선택한 뒤 첫 공급�
   expect(onFill.mock.calls[0][0].rows).toEqual([expect.objectContaining({ id: null, housingComplexId: 7, category: 'NEW_SUPPLY', typeName: '26A' })])
   expect(api.applyJsonUpdate).not.toHaveBeenCalled()
 })
+
+it('실패 검토에서 열면 고칠 공급행과 오류 사유를 먼저 보여 준다', async () => {
+  const [first] = workspace.supply.rows
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, rowSources: [{ rowKey: first.key, category: 'MYHOME_ANNOUNCEMENT', sourceKey: '5:213951:1' }] } })
+  render(<MemoryRouter initialEntries={['/admin/announcements/29/pdf-correction?failureCount=2&failureRow=AMBIGUOUS_HOUSING_TYPE%7C5%3A213951%3A1&failureRow=HOUSING_TYPE_NOT_FOUND%7C9%3A9%3A9&failureReturnTo=%2Fadmin%2Ffailures']}><Routes><Route path="/admin/announcements/:id/pdf-correction" element={<PdfCorrectionPage />} /></Routes></MemoryRouter>)
+  const note = await screen.findByRole('note', { name: '고칠 오류' })
+  expect(note).toHaveTextContent(`(#${String(first.id)}): 같은 면적의 주택형이 여러 개라 하나로 정하지 못했습니다`)
+  expect(note).toHaveTextContent('원천 공급행 9:9:9: 맞는 주택형을 찾지 못했습니다')
+  expect(screen.getByRole('link', { name: '공고 상세로 돌아가기' }).getAttribute('href')).not.toContain('failureRow')
+})

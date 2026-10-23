@@ -69,12 +69,13 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   const reasonProblem = !reason.trim() ? '보정 이유를 입력하세요.' : !validEvidenceUrl(sourceUrl.trim()) ? '공식 근거 URL에 올바른 http 또는 https 주소를 입력하세요.' : ''
   const parsed = useMemo(() => readExtraction(text), [text])
   const checks = useMemo(() => parsed.ok && workspace ? checkAnnouncement(parsed.value, workspace.detail.data) : [], [parsed, workspace])
-  const backParams = new URLSearchParams(params); backParams.delete('failureCount')
+  const backParams = new URLSearchParams(params); backParams.delete('failureCount'); backParams.delete('failureRow')
   const supplyParams = new URLSearchParams(backParams); supplyParams.set('section', 'relations')
   const historyParams = new URLSearchParams(backParams); historyParams.set('section', 'history')
   const back = `/admin/announcements/${id}${backParams.size ? `?${backParams}` : ''}`
   const rawFailureReturn = params.get('failureReturnTo'), failureReturn = rawFailureReturn && /^\/admin\/failures(?:\?|$)/.test(rawFailureReturn) ? rawFailureReturn : null
   const failureCount = Number(params.get('failureCount'))
+  const failureRows = params.getAll('failureRow')
   const active = phase === 'review'
   useUnsavedChanges(phase !== 'result' && Boolean(text.trim() || uncertain))
   useEffect(() => {
@@ -168,7 +169,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   }
   const pdfPane = <section className={styles.pdfPane} aria-label="PDF 근거" hidden={active && mobileView !== 'pdf'} data-pane="pdf"><header><strong>{pdf?.name ?? '공고문 PDF'}</strong></header>{pdf ? <Suspense fallback={<p role="status">PDF 뷰어를 불러오는 중…</p>}><PdfDocumentPreview url={pdf.url} name={pdf.name} focus={focus} /></Suspense> : <p role={pdfError ? 'alert' : 'status'}>{pdfError || 'PDF를 선택하세요.'}</p>}</section>
   return <section className={styles.page} data-focused={active} data-embedded={!!supplyDraft}>
-    {supplyDraft ? <header className={styles.heading}><div><h2>PDF로 공급정보 채우기</h2><p>PDF와 대조한 공급정보를 편집표에 채웁니다. 저장 전까지 등록값은 유지됩니다.</p></div><Button data-design-system className={styles.secondaryButton} onClick={() => { if (!text.trim() || window.confirm('PDF 검토를 취소하고 편집표로 돌아갈까요?')) supplyDraft.onCancel() }}>편집표로 돌아가기</Button></header> : <header className={styles.heading}><div><Link to={back}>공고 상세로 돌아가기</Link><h1 ref={heading} tabIndex={-1}>PDF로 공고 보정</h1><p>#{id} · {workspace.detail.summary.name}</p></div><ol aria-label="보정 진행"><li aria-current={phase === 'prepare' ? 'step' : undefined}>요청 준비</li><li aria-current={phase === 'review' ? 'step' : undefined}>비교·보정</li><li aria-current={phase === 'result' ? 'step' : undefined}>적용 결과</li></ol></header>}
+    {supplyDraft ? <header className={styles.heading}><div><h2>PDF로 공급정보 채우기</h2><p>PDF와 대조한 공급정보를 편집표에 채웁니다. 저장 전까지 등록값은 유지됩니다.</p></div><Button data-design-system className={styles.secondaryButton} onClick={() => { if (!text.trim() || window.confirm('PDF 검토를 취소하고 편집표로 돌아갈까요?')) supplyDraft.onCancel() }}>편집표로 돌아가기</Button></header> : <header className={styles.heading}><div><Link to={back}>공고 상세로 돌아가기</Link><h1 ref={heading} tabIndex={-1}>PDF로 공고 보정</h1><p>#{id} · {workspace.detail.summary.name}</p>{phase !== 'result' && <FailureTargets rows={failureRows} workspace={workspace} />}</div><ol aria-label="보정 진행"><li aria-current={phase === 'prepare' ? 'step' : undefined}>요청 준비</li><li aria-current={phase === 'review' ? 'step' : undefined}>비교·보정</li><li aria-current={phase === 'result' ? 'step' : undefined}>적용 결과</li></ol></header>}
     {error && <div role="alert" className={styles.error}><p>{error}</p>{blocked && <Button data-design-system onClick={() => void reload()} disabled={busy}>입력을 유지하고 최신값 비교</Button>}</div>}
     {notice && <p role="status" className={styles.notice}>{notice}</p>}
     {phase === 'prepare' && <RequestPreparation attachments={workspace.detail.attachments?.filter(item => /\.pdf(?:$|[?\s])/i.test(item.fileName)) ?? []} attachmentId={attachmentId} onAttachment={value => { if (value !== attachmentId) { setPdf(null); setAttachmentId(value) } }} pdf={pdf} pdfError={pdfError} text={text} onText={setText} parsed={parsed} checks={checks} onReview={start} />}
@@ -212,4 +213,20 @@ function ChangeList({ changes }: { changes: PendingChange[] }) {
     <div className={styles.changeTable} role="region" aria-label="반영할 변경 목록" tabIndex={0}><table><thead><tr><th scope="col">영역</th><th scope="col">대상</th><th scope="col">항목</th><th scope="col">현재</th><th scope="col">저장 후</th></tr></thead>
       <tbody>{changes.map(change => <tr key={change.cell.path}><td>{change.section}</td><td>{change.scope}</td><th scope="row">{change.cell.label}</th><td>{changeValue(change, change.cell.before)}</td><td>{changeValue(change, change.cell.value)}</td></tr>)}</tbody></table></div>
   </details>
+}
+
+const failureReasons: Record<string, string> = {
+  AMBIGUOUS_HOUSING_TYPE: '같은 면적의 주택형이 여러 개라 하나로 정하지 못했습니다',
+  HOUSING_TYPE_NOT_FOUND: '맞는 주택형을 찾지 못했습니다',
+}
+// 실패 검토에서 들어오면 어떤 공급행의 무엇을 고치러 왔는지 먼저 보여 준다.
+function FailureTargets({ rows, workspace }: { rows: string[]; workspace: JsonWorkspace }) {
+  if (!rows.length) return null
+  const sources = workspace.supply.rowSources ?? []
+  return <div className={styles.failureTargets} role="note" aria-label="고칠 오류"><strong>실패 검토에서 연 오류</strong><ul>{rows.map(value => {
+    const [reason = '', sourceKey = ''] = value.split('|')
+    const rowKey = sources.find(source => source.sourceKey === sourceKey)?.rowKey
+    const row = workspace.supply.rows.find(item => item.key === rowKey)
+    return <li key={value}>{row ? `${row.housingComplexName ?? row.complexName} · ${row.typeName} (#${String(row.id)})` : `원천 공급행 ${sourceKey}`}: {failureReasons[reason] ?? reason}. 이 행의 연결 주택형을 정하면 다음 정제에서 다시 판정합니다.</li>
+  })}</ul></div>
 }
