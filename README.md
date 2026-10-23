@@ -23,7 +23,7 @@
 | [scripts/](scripts/README.md) | Flyway 마이그레이션 검사, HTTPS·DB 점검과 운영 보조 스크립트를 관리합니다. |
 | [tests/](tests/README.md) | Flyway 검사와 배포 설정·모니터링 구성의 테스트를 관리합니다. |
 | `.local/` | 개인 메모·계획·실험·검증 자료를 보관하는 Git 제외 폴더입니다. 사용 기준은 [기여 규칙](CONTRIBUTING.md#로컬-작업-자료)을 따릅니다. |
-| [.github/](.github/) | GitHub Actions 워크플로와 이슈·PR 템플릿을 관리합니다. |
+| [.github/](.github/GUIDE.md) | GitHub Actions 워크플로와 이슈·PR 템플릿을 관리합니다. |
 | [.codex/](.codex/) | 코드 탐색·설계 검토·리뷰를 맡는 에이전트 역할 설정을 관리합니다. |
 
 ---

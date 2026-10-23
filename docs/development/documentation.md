@@ -24,7 +24,7 @@
 문서 폴더마다 `README.md`를 두고 제목, 폴더 목적과 문서 안내를 작성한다.
 문서는 읽는 목적을 분명히 하고 일률적인 줄 수 제한 대신 필요한 계약·제약·검증 방법의 보존을 우선한다.
 
-`.github/`에는 README를 만들지 않는다. GitHub은 이 위치의 README를 루트보다 먼저 저장소 메인에 표시하므로, 서비스 소개는 루트 README로 유지한다. 협업 규칙은 [기여 가이드](../../CONTRIBUTING.md), CI/CD와 서버 배포 안내는 [배포 운영](../operations/deployment.md)에서 확인한다.
+`.github/`의 폴더 안내는 [GUIDE.md](../../.github/GUIDE.md)에 작성하고 README는 만들지 않는다. GitHub은 이 위치의 README를 루트보다 먼저 저장소 메인에 표시하므로, 서비스 소개는 루트 README로 유지한다. 협업 규칙은 [기여 가이드](../../CONTRIBUTING.md), CI/CD와 서버 배포 안내는 [배포 운영](../operations/deployment.md)에서 확인한다.
 
 | 구성 | 작성 기준 |
 |---|---|
