@@ -1,4 +1,5 @@
 import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
+import { observeMarkerHovers } from './markerHoverTracking'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import styles from './NaverMap.module.css'
 import { createCurrentLocationMarker } from './currentLocationMarker.ts'
@@ -155,6 +156,7 @@ export default function NaverMap({
   currentLocation,
   dataBusy = false,
   markers = [],
+  markerHoverAnalytics,
   onAggregateMarkerSelect,
   onMarkerHighlight,
   onMarkerSelect,
@@ -166,6 +168,8 @@ export default function NaverMap({
   transitioning = false,
 }: NaverMapProps) {
   const interactionId = useRef(createAnalyticsId())
+  const markerHoverAnalyticsRef = useRef(markerHoverAnalytics)
+  markerHoverAnalyticsRef.current = markerHoverAnalytics
   const zoomSource = useRef<'button' | 'other_user' | 'programmatic' | 'unknown'>('unknown')
   const previousZoom = useRef<number | null>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
@@ -241,6 +245,11 @@ export default function NaverMap({
   const cameraPaddingBottom = cameraTarget?.boundsPadding?.bottom
   const cameraPaddingLeft = cameraTarget?.boundsPadding?.left
   const markerContentKey = createMarkerContentKey(aggregateMarkers, markers, representation)
+
+  useEffect(() => {
+    if (!markerHoverAnalytics || !mapContainerRef.current) return
+    return observeMarkerHovers(mapContainerRef.current, markerHoverAnalytics)
+  }, [markerHoverAnalytics])
 
   useEffect(() => {
     onAggregateMarkerSelectRef.current = onAggregateMarkerSelect
@@ -582,11 +591,13 @@ export default function NaverMap({
           onAggregateMarkerSelectRef.current?.(aggregateMarker)
         },
         previewScopeId: () => interactionId.current,
+        hoverAttribution: complexId => markerHoverAnalyticsRef.current?.attribution(complexId),
         onMarkerHighlight: (complexId) => {
           onMarkerHighlightRef.current?.(complexId)
         },
-        onMarkerSelect: (complexId) => {
-          onMarkerSelectRef.current?.(complexId)
+        onMarkerSelect: (complexId, hover) => {
+          if (hover) onMarkerSelectRef.current?.(complexId, hover)
+          else onMarkerSelectRef.current?.(complexId)
         },
       })
     })

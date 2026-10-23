@@ -1,5 +1,6 @@
 import { useListMeasurement } from './analytics/useListMeasurement'
 import { captureProductEvent } from '../analytics/productAnalytics'
+import { useMarkerHoverAnalytics, type MarkerHoverAttribution } from '../analytics/markerHoverAnalytics'
 import { useProductDetailAnalytics } from './analytics/useProductDetailAnalytics'
 import { findCatalogRegion } from './model/publicHousingRegion'
 import { rentalTypeLabel } from './presentation/rentalTypeLabel.ts'
@@ -191,6 +192,7 @@ export function PublicHousingExplorer({
   streetViewSupported = true,
 }: PublicHousingExplorerProps) {
   const location = useLocation()
+  const markerHoverAnalytics = useMarkerHoverAnalytics()
   const navigate = useNavigate()
   const navigationType = useNavigationType()
   const mobile = useMobileViewport()
@@ -833,7 +835,7 @@ export function PublicHousingExplorer({
     return () => window.clearTimeout(timeout)
   }, [announcementDetail, complexDetail, detailLocation])
 
-  const openDetail = useCallback((kind: ResultTab, id: string, entryPoint: DetailEntryPoint) => {
+  const openDetail = useCallback((kind: ResultTab, id: string, entryPoint: DetailEntryPoint, hover?: MarkerHoverAttribution) => {
     cancelCurrentLocation()
     closeStreetView('TARGET_CHANGED', false)
     if (isMobileViewport() || window.matchMedia?.('(max-width: 1023px)').matches) {
@@ -877,7 +879,7 @@ export function PublicHousingExplorer({
       ? setComplexIdQuery(currentSearch, id)
       : setAnnouncementIdQuery(currentSearch, id)
     prepareDetailVisit(kind === 'complexes' ? 'complex' : 'announcement', id, entryPoint)
-    prepareProductDetail(kind === 'complexes' ? 'complex' : 'announcement', id, entryPoint)
+    prepareProductDetail(kind === 'complexes' ? 'complex' : 'announcement', id, entryPoint, hover)
     navigate({
       hash: location.hash,
       pathname: location.pathname,
@@ -955,10 +957,10 @@ export function PublicHousingExplorer({
     openDetail('complexes', complexId, entryPoint)
   }, [openDetail])
 
-  const openComplexMarker = useCallback((complexId: string) => {
+  const openComplexMarker = useCallback((complexId: string, hover?: MarkerHoverAttribution) => {
     pendingDetailCameraRef.current = null
     captureProductEvent('map_marker_selected', { marker_type: 'complex', complex_id: complexId })
-    openDetail('complexes', complexId, 'map')
+    openDetail('complexes', complexId, 'map', hover)
   }, [openDetail])
 
   const openAnnouncementDetail = useCallback((announcementId: string, entryPoint: DetailEntryPoint = 'list') => {
@@ -1349,6 +1351,7 @@ export function PublicHousingExplorer({
   })
   const naverMapProps: NaverMapProps = aggregateMapResult !== null
     ? {
+        markerHoverAnalytics,
         aggregateMarkers: aggregateMapResult.nodes,
         animateMarkerEntry,
         cameraRequestId,
@@ -1362,6 +1365,7 @@ export function PublicHousingExplorer({
         transitioning: clusterTransitioning,
       }
     : {
+        markerHoverAnalytics,
         animateMarkerEntry,
         cameraRequestId,
         cameraTarget: mapCameraTarget,

@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MapMarkerPresentation } from '../../public-housing/presentation/mapMarkerPresentation.ts'
 import type { RegionBoundary } from '../../public-housing/regions/regionBoundary.ts'
+import type { MarkerHoverAnalytics, MarkerHoverAttribution } from '../../analytics/markerHoverAnalytics'
 import NaverMap, {
   type NaverMapAggregateMarker,
   type NaverMapMarker,
@@ -2814,6 +2815,29 @@ describe('NaverMap', () => {
     await act(async () => deferred.resolve(fakeSdk.maps))
 
     expect(fakeSdk.mapConstructor).not.toHaveBeenCalled()
+  })
+
+  it('마우스 클릭에만 현재 호버를 연결하고 선택 갱신 시 마커와 연결을 유지한다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn() }))
+    const hover: MarkerHoverAttribution = { complex_id: '101', exploration_id: crypto.randomUUID(),
+      hover_id: crypto.randomUUID(), measurement_version: 'marker_hover_v1' }
+    const attribution = vi.fn(() => hover)
+    const analytics: MarkerHoverAnalytics = { attribution, available: vi.fn(() => false),
+      begin: vi.fn(() => null), end: vi.fn(), connect: () => () => {}, subscribe: () => () => {} }
+    const onSelect = vi.fn()
+    const marker = { ...markerPresentation, id: '101', latitude: 37.5, longitude: 127, name: '호버 단지' }
+    const view = render(<NaverMap representation="INDIVIDUAL" markers={[marker]} markerHoverAnalytics={analytics} onMarkerSelect={onSelect} />)
+    const button = await screen.findByRole('button', { name: /^호버 단지,/ })
+    fireEvent.click(button, { detail: 1 })
+    expect(onSelect).toHaveBeenLastCalledWith('101', hover)
+    view.rerender(<NaverMap representation="INDIVIDUAL" markers={[{ ...marker, selected: true }]}
+      markerHoverAnalytics={analytics} onMarkerSelect={onSelect} />)
+    expect(screen.getByRole('button', { name: /^호버 단지,/ })).toBe(button)
+    expect(analytics.end).not.toHaveBeenCalled()
+    fireEvent.click(button, { detail: 0 })
+    expect(onSelect).toHaveBeenLastCalledWith('101')
   })
 
   it('StrictMode 재실행에서도 생성한 지도를 한 번 해제한다', async () => {
