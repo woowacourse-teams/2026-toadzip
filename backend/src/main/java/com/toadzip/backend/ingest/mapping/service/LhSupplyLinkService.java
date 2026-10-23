@@ -1,0 +1,170 @@
+package com.toadzip.backend.ingest.mapping.service;
+
+import com.toadzip.backend.admin.domain.AdminDataChange;
+import com.toadzip.backend.admin.exception.AdminDataConflictException;
+import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
+import com.toadzip.backend.announcement.repository.SupplyRowGroupRepository;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
+import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.mapping.domain.LhSupplyRowLink;
+import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.LhRow;
+import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.MyHomeRow;
+import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.ReleaseRequest;
+import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.SaveRequest;
+import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.SavedLink;
+import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.View;
+import com.toadzip.backend.ingest.mapping.repository.LhSupplyRowLinkRepository;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
+
+/**
+ * 단지명 표기가 달라 자동으로 붙지 않는 LH 공급 원본 행을 관리자가 마이홈 원천행에 연결·해제한다.
+ * 저장·해제는 다음 정제와 LH 보강부터 반영되며 이미 만든 공급행은 바로 바꾸지 않는다.
+ */
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class LhSupplyLinkService {
+    // 연결 실패로 정제가 롤백되면 공고가 아직 없을 수 있어 이력은 연결 단위로 남긴다.
+    private static final String RESOURCE = "LH_SUPPLY_LINK";
+
+    private final MyHomeAnnouncementSourceReader sources;
+    private final MyHomeAnnouncementSourceMapper mapper;
+    private final MyHomeAnnouncementSupplyRowResolver resolver;
+    private final LhSupplyRowLinks links;
+    private final LhSupplyRowLinkRepository repository;
+    private final SupplyRowGroupRepository groups;
+    private final AdminDataChangeRepository changes;
+    private final ObjectMapper json;
+
+    public View view(String identifier) {
+        var context = context(identifier);
+        var myhomeRows = context.currentSources().stream().map(source -> new MyHomeRow(source.getSourceKey(),
+                source.getHsmpNm(), source.getHouseTyNm(), source.getSumSuplyCo(),
+                groups.findBySourceRowIdentifier(source.getSourceKey()).isPresent())).toList();
+        var lhRows = context.supplies().stream().map(supply -> lhRow(context, supply)).toList();
+        return new View(context.token(), myhomeRows, lhRows);
+    }
+
+    @Transactional
+    public View save(String identifier, SaveRequest request, String actor) {
+        // POST 인터셉터가 트랜잭션 종료까지 전역 수집 잠금을 유지한다.
+        IngestExecutionScope.verifyHeld();
+        SupplyMatchingEvidence.validate(request.sourceUrl(), request.reason());
+        var context = verifiedContext(identifier, request.token());
+        var myhome = context.currentSources().stream()
+                .filter(source -> source.getSourceKey().equals(request.myhomeRowIdentifier())).findFirst()
+                .orElseThrow(() -> new InvalidIngestRequestException("해당 공고의 현재 마이홈 원천행이 아닙니다."));
+        if (groups.findBySourceRowIdentifier(myhome.getSourceKey()).isPresent()) {
+            throw new AdminDataConflictException("복수 공급행으로 보정한 원천행은 LH 공급 연결 대상이 아닙니다.");
+        }
+        if (request.lhRowIdentifiers().stream().distinct().count() != request.lhRowIdentifiers().size()) {
+            throw new InvalidIngestRequestException("같은 LH 공급행을 중복 선택할 수 없습니다.");
+        }
+        for (String lhRowIdentifier : request.lhRowIdentifiers()) {
+            var supply = context.supply(lhRowIdentifier)
+                    .orElseThrow(() -> new InvalidIngestRequestException("해당 공고의 LH 공급 원본 행이 아닙니다."));
+            var link = repository.findBySourceAnnouncementIdentifierAndLhSupplyRowIdentifier(identifier,
+                    lhRowIdentifier).orElseGet(() -> new LhSupplyRowLink(identifier, lhRowIdentifier));
+            String before = json.writeValueAsString(savedLink(link, false));
+            link.confirm(myhome.getSourceKey(), links.lhFingerprint(supply), links.myHomeFingerprint(myhome),
+                    request.sourceUrl().strip(), request.reason().strip(), actor);
+            repository.saveAndFlush(link);
+            changes.save(new AdminDataChange(RESOURCE, link.getId(), "SAVE_LH_SUPPLY_LINK", actor, before,
+                    json.writeValueAsString(Map.of("announcementIdentifier", identifier,
+                            "lhRowIdentifier", lhRowIdentifier, "link", savedLink(link, false)))));
+        }
+        return view(identifier);
+    }
+
+    @Transactional
+    public View release(String identifier, ReleaseRequest request, String actor) {
+        IngestExecutionScope.verifyHeld();
+        var context = verifiedContext(identifier, request.token());
+        var state = context.states().get(request.lhRowIdentifier());
+        if (state == null) {
+            throw new AdminDataConflictException("저장한 LH 공급 연결이 없습니다. 다시 조회해 주세요.");
+        }
+        long linkId = state.link().getId();
+        String before = json.writeValueAsString(Map.of("announcementIdentifier", identifier,
+                "lhRowIdentifier", request.lhRowIdentifier(), "link", savedLink(state.link(), !state.valid())));
+        repository.delete(state.link());
+        repository.flush();
+        changes.save(new AdminDataChange(RESOURCE, linkId, "RELEASE_LH_SUPPLY_LINK", actor, before,
+                json.writeValueAsString(Map.of("announcementIdentifier", identifier,
+                        "lhRowIdentifier", request.lhRowIdentifier(), "reason", request.reason().strip()))));
+        return view(identifier);
+    }
+
+    private LhRow lhRow(Context context, LhAnnouncementSupplySource supply) {
+        String identifier = LhSupplyRowLinks.identifier(supply);
+        var state = context.states().get(identifier);
+        SavedLink saved = null;
+        if (state != null) {
+            saved = savedLink(state.link(), !state.valid());
+        }
+        return new LhRow(identifier, supply.getComplexLabel(), supply.getTypeName(), supply.getExclusiveArea(),
+                supply.getSupplyArea(), supply.getSuppliedUnitCount(), context.linkedRows().get(identifier), saved);
+    }
+
+    private SavedLink savedLink(LhSupplyRowLink link, boolean reviewRequired) {
+        if (link.getMyhomeSourceRowIdentifier() == null) {
+            return null;
+        }
+        return new SavedLink(link.getMyhomeSourceRowIdentifier(), link.getSourceUrl(), link.getReason(),
+                link.getActor(), link.getUpdatedAt(), reviewRequired);
+    }
+
+    private Context verifiedContext(String identifier, String token) {
+        var context = context(identifier);
+        if (!context.token().equals(token)) {
+            throw new AdminDataConflictException("원천 또는 저장한 연결이 변경되었습니다. 다시 조회해 주세요.");
+        }
+        return context;
+    }
+
+    private Context context(String identifier) {
+        if (identifier == null || identifier.isBlank() || identifier.length() > 100) {
+            throw new InvalidIngestRequestException("공고 ID가 올바르지 않습니다.");
+        }
+        var current = sources.findAllByPblancIdOrderByIdAsc(identifier);
+        if (current.isEmpty()) {
+            throw new InvalidIngestRequestException("공고 원천이 없습니다. 먼저 공고를 수집해 주세요.");
+        }
+        MyHomeAnnouncementSupplyRowResolver.ResolvedAnnouncement resolved;
+        try {
+            resolved = resolver.resolve(mapper.map(current));
+        }
+        catch (MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException exception) {
+            throw new InvalidIngestRequestException(exception.getMessage());
+        }
+        if (resolved.supplies().isEmpty()) {
+            throw new InvalidIngestRequestException("연결할 LH 공급 원본이 없는 공고입니다.");
+        }
+        var currentSources = MyHomeAnnouncementCurrentSources.select(current);
+        var linkedRows = new HashMap<String, String>();
+        resolved.data().supplyRows().stream().filter(row -> row.resolvedLhSourceIdentifier() != null)
+                .forEach(row -> linkedRows.put(row.resolvedLhSourceIdentifier(), row.source().getSourceKey()));
+        return new Context(currentSources, resolved.supplies(), resolved.supplyLinks(), linkedRows,
+                links.token(currentSources, resolved.supplies(), resolved.supplyLinks()));
+    }
+
+    private record Context(List<MyHomeAnnouncementSource> currentSources, List<LhAnnouncementSupplySource> supplies,
+            Map<String, LhSupplyRowLinks.State> states, Map<String, String> linkedRows, String token) {
+
+        Optional<LhAnnouncementSupplySource> supply(String identifier) {
+            return supplies.stream().filter(value -> LhSupplyRowLinks.identifier(value).equals(identifier))
+                    .findFirst();
+        }
+    }
+}

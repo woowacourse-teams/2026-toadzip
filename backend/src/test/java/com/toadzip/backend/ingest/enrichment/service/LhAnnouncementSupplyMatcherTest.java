@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LinkedMyHomeRow;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementSupplyMatcher.LhSupplyMatchResult;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -147,6 +148,31 @@ class LhAnnouncementSupplyMatcherTest {
         LhSupplyMatchResult result = matcher.match(List.of(row), source("아산읍내1 영구임대아파트", "31"));
 
         assertThat(result.row()).isNull();
+    }
+
+    @Test
+    void 저장한_연결이_있으면_단지명이_달라도_그_마이홈_원천행의_공급행과_매칭한다() {
+        SupplyRow other = row("전주평화4 영구임대주택", "26");
+        SupplyRow linked = row("평화주공4단지", "26");
+        when(linked.getMyhomeSourceRowIdentifier()).thenReturn("myhome-row");
+        var source = source("전주평화4 영구임대주택", "26").withLinkedRow(new LinkedMyHomeRow("myhome-row", false));
+
+        LhSupplyMatchResult result = matcher.match(List.of(other, linked), source);
+
+        assertThat(result.row()).isSameAs(linked);
+    }
+
+    @Test
+    void 원천이_바뀐_저장_연결은_자동_매칭하지_않고_재확인을_요구한다() {
+        SupplyRow row = row("전주평화4 영구임대주택", "26");
+        when(row.getLhSourceSupplyRowIdentifier()).thenReturn("lh-supply-row");
+        var source = source("전주평화4 영구임대주택", "26").withLinkedRow(new LinkedMyHomeRow("myhome-row", true));
+
+        LhSupplyMatchResult result = matcher.match(List.of(row), source);
+
+        assertThat(result.row()).isNull();
+        assertThat(result.failure().reason())
+                .isEqualTo(LhAnnouncementEnrichmentFailureReason.LH_SUPPLY_LINK_REVIEW_REQUIRED);
     }
 
     private SupplyRow row(String complexName, String housingTypeName) {
