@@ -1,3 +1,4 @@
+import { useExplorerReturn } from './navigation/ExplorerReturnContext'
 import { useListMeasurement } from './analytics/useListMeasurement'
 import { captureProductEvent } from '../analytics/productAnalytics'
 import { useMarkerHoverAnalytics, type MarkerHoverAttribution } from '../analytics/markerHoverAnalytics'
@@ -216,6 +217,15 @@ export function PublicHousingExplorer({
     },
   )
   const [viewport, setViewport] = useState<ViewportSnapshot | null>(null)
+  const explorerReturn = useExplorerReturn()
+  useEffect(() => {
+    if (!explorerReturn) return
+    const params = new URLSearchParams(location.search)
+    params.set('mapLat', String(viewport?.center.latitude ?? mapCameraTarget.latitude))
+    params.set('mapLng', String(viewport?.center.longitude ?? mapCameraTarget.longitude))
+    params.set('mapZoom', String(viewport?.zoom ?? mapCameraTarget.zoom))
+    explorerReturn.current = location.pathname + '?' + params.toString() + location.hash
+  }, [explorerReturn, location.pathname, location.search, location.hash, viewport, mapCameraTarget])
   const viewportRef = useRef<ViewportSnapshot | null>(null)
   const viewportRevisionRef = useRef(0)
   const viewportTimerRef = useRef<number | null>(null)
@@ -302,7 +312,7 @@ export function PublicHousingExplorer({
     request: requestServerMap,
     retry: retryServerMap,
     state: serverMapState,
-  } = useHousingMapResults(mapRepository)
+  } = useHousingMapResults(mapRepository, mobile ? 'MOBILE' : 'DEFAULT')
   const clusterTransitionRef = useRef(false)
   const transitionWaitingForIdleRef = useRef(false)
   const activeResultTabRef = useRef<ResultList>(activeResultTab)
@@ -325,6 +335,7 @@ export function PublicHousingExplorer({
   const [detailRetryRevision, setDetailRetryRevision] = useState(0)
   const complexResultsScrollRef = useRef<HTMLDivElement | null>(null)
   const announcementResultsScrollRef = useRef<HTMLDivElement | null>(null)
+  const complexListEndRef = useRef<HTMLDivElement>(null)
   const announcementListEndRef = useRef<HTMLDivElement | null>(null)
   const previousDetailKindRef = useRef<ResultTab | null>(null)
   const complexDetailOpenerRef = useRef<HTMLElement | null>(null)
@@ -421,6 +432,7 @@ export function PublicHousingExplorer({
   const handledBoundaryCodeRef = useRef<string | null>(null)
   const boundaryRestoreRevisionRef = useRef(0)
   const pendingBoundaryCameraRef = useRef<{ code: string; zoom: number } | null>(null)
+  const explicitCameraBoundaryRef = useRef<string | null>(null)
   const boundaryState = useRegionBoundary(boundaryMetadata?.regionCode ?? null, boundaryRepository)
   const selectedBoundarySearchItem = selectedSearchRegion
     && (selectedSearchRegion.regionCode ?? selectedSearchRegion.id) === boundaryRegionCode
@@ -434,10 +446,12 @@ export function PublicHousingExplorer({
   }, [locateCurrentPosition])
 
   const focusBoundary = useCallback((code: string) => {
+    explicitCameraBoundaryRef.current = null
     cancelCurrentLocation()
     const metadata = findRegionBoundaryMetadata(code)
     const item = boundarySelectionRef.current
-    const zoom = pendingBoundaryCameraRef.current?.zoom ?? REGION_FOCUS_ZOOM
+    const regionFocusZoom = isMobileViewport() ? 12.1 : REGION_FOCUS_ZOOM
+    const zoom = pendingBoundaryCameraRef.current?.zoom ?? regionFocusZoom
     pendingBoundaryCameraRef.current = null
     pendingDetailCameraRef.current = null
     const selectedPoint = item && (item.regionCode ?? item.id) === code
@@ -451,7 +465,7 @@ export function PublicHousingExplorer({
       setMapCameraTarget({
         latitude,
         longitude,
-        zoom: code.length === 2 ? 11 : code.length === 10 ? 14 : Math.max(REGION_FOCUS_ZOOM, zoom),
+        zoom: code.length === 2 ? 11 : code.length === 10 ? 14 : Math.max(regionFocusZoom, zoom),
         screenOffset: { x: (padding.left - padding.right) / 2, y: (padding.top - padding.bottom) / 2 },
       })
       setCameraRequestId((current) => current + 1)
@@ -467,6 +481,10 @@ export function PublicHousingExplorer({
       return
     }
     handledBoundaryCodeRef.current = boundaryRegionCode
+    if (mobile && mapLocation.kind === 'valid') {
+      explicitCameraBoundaryRef.current = boundaryRegionCode
+      return
+    }
     if (boundaryRegionCode !== null) {
       focusBoundary(boundaryRegionCode)
     }
@@ -488,7 +506,7 @@ export function PublicHousingExplorer({
         if (item) {
           boundarySelectionRef.current = item
           setSelectedSearchRegion(item)
-          if (revision === boundaryRestoreRevisionRef.current) focusBoundary(boundaryRegionCode)
+          if (revision === boundaryRestoreRevisionRef.current && explicitCameraBoundaryRef.current !== boundaryRegionCode) focusBoundary(boundaryRegionCode)
           return
         }
         if (!response.hasNext) return
@@ -551,6 +569,22 @@ export function PublicHousingExplorer({
   const loadMoreAnnouncements = announcementResults.loadMore
 
   useEffect(() => {
+    if (!mobile || !showListPage || activeResultTab !== 'complexes'
+      || complexResults.status !== 'ready' || !complexResults.hasNext || !complexResults.nextCursor
+      || typeof IntersectionObserver === 'undefined') return
+    const root = complexResultsScrollRef.current
+    const end = complexListEndRef.current
+    if (!root || !end) return
+    let active = true
+    const observer = new IntersectionObserver(entries => {
+      if (active && entries.some(entry => entry.isIntersecting)) loadMore()
+    }, { root })
+    observer.observe(end)
+    return () => { active = false; observer.disconnect() }
+  }, [mobile, showListPage, activeResultTab, complexResults.status, complexResults.hasNext,
+    complexResults.nextCursor, loadMore])
+
+  useEffect(() => {
     if (
       !showListPage
       || activeResultTab !== 'announcements'
@@ -586,6 +620,14 @@ export function PublicHousingExplorer({
     }))))
   }, [complexResults.items])
 
+  useLayoutEffect(() => {
+    if (mobile && mapLocation.kind === 'valid') {
+      explicitCameraBoundaryRef.current = boundaryRegionCode
+      setMapCameraTarget({ ...mapLocation.center, zoom: mapLocation.zoom })
+      setCameraRequestId(current => current + 1)
+    }
+  }, [mapLocation, mobile, boundaryRegionCode])
+
   useEffect(() => {
     if (mapLocation.kind === 'absent') {
       return
@@ -603,7 +645,9 @@ export function PublicHousingExplorer({
     location.pathname,
     location.search,
     location.state,
-    mapLocation.kind,
+    mapLocation,
+    mobile,
+    boundaryRegionCode,
     navigate,
   ])
 
@@ -1087,7 +1131,7 @@ export function PublicHousingExplorer({
     pendingDetailCameraRef.current = null
     setMapCameraTarget({
       ...target,
-      zoom: Math.max(COMPLEX_FOCUS_ZOOM, viewportRef.current?.zoom ?? COMPLEX_FOCUS_ZOOM),
+      zoom: Math.max(isMobileViewport() ? 12.2 : COMPLEX_FOCUS_ZOOM, viewportRef.current?.zoom ?? 0),
       screenOffset: detailScreenOffset(mapWorkspaceRef.current),
     })
     setCameraRequestId((current) => current + 1)
@@ -1095,10 +1139,11 @@ export function PublicHousingExplorer({
 
   // 필터를 바꾸면 같은 화면의 마커를 다시 거르는 것이므로, 남는 마커는 그대로 두고 새 마커도 등장 효과 없이 바꾼다.
   const [animateMarkerEntry, setAnimateMarkerEntry] = useState(true)
-  const previousMapFiltersKeyRef = useRef(complexFiltersKey)
-  useEffect(() => {
-    if (previousMapFiltersKeyRef.current === complexFiltersKey) return
-    previousMapFiltersKeyRef.current = complexFiltersKey
+  const mapRequestContextKey = `${mobile ? 'MOBILE' : 'DEFAULT'}|${complexFiltersKey}`
+  const previousMapFiltersKeyRef = useRef(mapRequestContextKey)
+  useLayoutEffect(() => {
+    if (previousMapFiltersKeyRef.current === mapRequestContextKey) return
+    previousMapFiltersKeyRef.current = mapRequestContextKey
     setAnimateMarkerEntry(false)
     if (viewportTimerRef.current !== null) {
       window.clearTimeout(viewportTimerRef.current)
@@ -1111,7 +1156,7 @@ export function PublicHousingExplorer({
         requestServerMap(viewport, complexFilters)
       }, 100)
     }
-  }, [complexFiltersKey, complexFilters, viewport, requestServerMap, cancelServerMapRequest])
+  }, [mapRequestContextKey, complexFilters, viewport, requestServerMap, cancelServerMapRequest])
 
   const finishClusterTransition = useCallback(() => {
     clusterTransitionRef.current = false
@@ -1381,6 +1426,24 @@ export function PublicHousingExplorer({
       }
   const hasDetail = complexDetail.status !== 'closed'
     || announcementDetail.status !== 'closed'
+  const selectedRegionName = findRegionBoundaryName(boundaryRegionCode ?? '') ?? selectedBoundarySearchItem?.title ?? '선택한 지역'
+  const mobileRegionTitle = <span className="housing-results__region-title">
+    <span title={selectedRegionName}>{selectedRegionName.split(' ').at(-1)}</span>
+    <span>{complexResults.totalCount === null ? ' · 단지 목록' : ` · 단지 ${complexResults.totalCount.toLocaleString('ko-KR')}개`}</span>
+  </span>
+  const regionControl = (presentation: 'desktop' | 'mobile-header' | 'mobile-collapsed') => boundaryRegionCode !== null && (
+              <RegionBoundaryControl presentation={presentation}
+                listExpanded={showListPage && activeResultTab === 'complexes'}
+                onOpenList={() => { prepareListEntry('region_label'); selectResultTab('complexes') }}
+                name={findRegionBoundaryName(boundaryRegionCode) ?? selectedBoundarySearchItem?.title ?? `지역 ${boundaryRegionCode}`}
+                status={boundaryState.status}
+                supported={boundaryMetadata !== null}
+                canRecenter={boundaryMetadata !== null || (selectedBoundarySearchItem?.latitude != null && selectedBoundarySearchItem?.longitude != null)}
+                onRecenter={() => { captureProductEvent('region_boundary_action', { operation: 'recenter' }); focusBoundary(boundaryRegionCode) }}
+                onClear={() => { captureProductEvent('region_boundary_action', { operation: 'clear' }); changeBoundarySelection(null) }}
+                onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_boundary' }); boundaryState.retry() }}
+              />
+  )
   const selectedAnnouncementId = detailLocation.kind === 'announcement'
     ? detailLocation.announcementId
     : null
@@ -1476,23 +1539,13 @@ export function PublicHousingExplorer({
             onActiveChange={handleSearchActiveChange}
             onSelect={handleIntegratedSearchSelect}
             repository={searchRepository}
-            selectionControl={boundaryRegionCode !== null && (
-              <RegionBoundaryControl
-                listExpanded={showListPage && activeResultTab === 'complexes'}
-                onOpenList={() => { prepareListEntry('region_label'); selectResultTab('complexes') }}
-                name={findRegionBoundaryName(boundaryRegionCode) ?? selectedBoundarySearchItem?.title ?? `지역 ${boundaryRegionCode}`}
-                status={boundaryState.status}
-                supported={boundaryMetadata !== null}
-                canRecenter={boundaryMetadata !== null || (selectedBoundarySearchItem?.latitude != null && selectedBoundarySearchItem?.longitude != null)}
-                onRecenter={() => { captureProductEvent('region_boundary_action', { operation: 'recenter' }); focusBoundary(boundaryRegionCode) }}
-                onClear={() => { captureProductEvent('region_boundary_action', { operation: 'clear' }); changeBoundarySelection(null) }}
-                onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_boundary' }); boundaryState.retry() }}
-              />
-            )}
+            selectionControl={!mobile && regionControl('desktop')}
           />
         </div>
         <HousingResultsPanel visible={showListPage} onCollapse={collapseResults}
-          title={activeResultTab === 'recent' ? '최근 본 단지' : activeResultTab === 'complexes' ? '단지 목록' : '공고 목록'}>
+          initialMobileHeightPercent={activeResultTab === 'complexes' ? 25 : 50}
+          headerActions={mobile && activeResultTab === 'complexes' ? regionControl('mobile-header') : undefined}
+          title={mobile && activeResultTab === 'complexes' ? mobileRegionTitle : activeResultTab === 'recent' ? '최근 본 단지' : activeResultTab === 'complexes' ? '단지 목록' : '공고 목록'}>
           <div className="housing-results__browse">
 
             <div
@@ -1502,7 +1555,7 @@ export function PublicHousingExplorer({
               aria-label="단지 목록"
               hidden={activeResultTab !== 'complexes'}
             >
-              {activeResultTab === 'complexes' && boundaryRegionCode !== null && <>
+              {!mobile && activeResultTab === 'complexes' && boundaryRegionCode !== null && <>
                 <p className="housing-results__region-notice">
                   <strong>{findRegionBoundaryName(boundaryRegionCode ?? '') ?? selectedBoundarySearchItem?.title ?? '검색한 지역'}</strong>
                   내 단지만 표시합니다. 지도에는 현재 화면에 보이는 단지도 함께 표시됩니다.
@@ -1512,7 +1565,7 @@ export function PublicHousingExplorer({
               <div
                 ref={complexResultsScrollRef}
                 className="housing-results__scroll"
-                aria-busy={complexResults.status === 'loading'}
+                aria-busy={complexResults.status === 'loading' || complexResults.status === 'loading-more'}
               >
                 {boundaryRegionCode === null && (
                   <div className="housing-results__empty-region">
@@ -1521,7 +1574,7 @@ export function PublicHousingExplorer({
                     <button type="button" onClick={() => searchOverlayRef.current?.querySelector<HTMLInputElement>('input[type="search"]')?.focus()}>지역 검색하기</button>
                   </div>
                 )}
-                {boundaryRegionCode !== null && <ComplexRequestFeedback state={complexResults} onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_complex_list' }); retryComplexResults() }} />}
+                {boundaryRegionCode !== null && (!mobile || complexResults.items.length === 0) && <ComplexRequestFeedback state={complexResults} onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_complex_list' }); retryComplexResults() }} />}
                 {boundaryRegionCode !== null && <ComplexResultContent
                   state={complexResults}
                   selectedComplexId={selectedComplexId}
@@ -1533,9 +1586,17 @@ export function PublicHousingExplorer({
                     setComplexCardRef(complexCardRefsRef.current, complexId, node)
                   }}
                 />}
+                {mobile && complexResults.items.length > 0 && <>
+                  {complexResults.status === 'error'
+                    ? <ComplexRequestFeedback state={complexResults} onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_complex_list' }); retryComplexResults() }} />
+                    : <div ref={complexListEndRef} className="housing-results__list-end" role="status" aria-atomic="true">
+                      {complexResults.status === 'loading-more' ? '다음 단지를 불러오고 있어요.'
+                        : !complexResults.hasNext ? '모든 단지를 확인했어요.' : null}
+                    </div>}
+                </>}
               </div>
 
-              {complexResults.hasNext
+              {!mobile && complexResults.hasNext
                 && (complexResults.status === 'ready'
                   || complexResults.status === 'loading-more') && (
                 <button
@@ -1644,6 +1705,8 @@ export function PublicHousingExplorer({
           </div>
         </HousingResultsPanel>
       </div>
+
+      {mobile && !showListPage && !hasDetail && !integratedSearchActive && !streetView.active && regionControl('mobile-collapsed')}
 
       <main ref={mapWorkspaceRef} className="housing-map-workspace">
         <div className="housing-map-filter" hidden={streetView.active} inert={streetView.active}>

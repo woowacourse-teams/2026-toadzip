@@ -1516,6 +1516,61 @@ describe('NaverMap', () => {
     )
   })
 
+  it('모바일에서 이전 마커의 focus가 남아도 마지막 터치 마커만 최상단에 표시한다', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })))
+    const fakeSdk = createFakeSdk()
+    const onHighlight = vi.fn()
+    const markers = ['a', 'b'].map(id => ({ ...markerPresentation, id,
+      latitude: 37.6, longitude: 127, name: id }))
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    render(<NaverMap representation="INDIVIDUAL" markers={markers} onMarkerHighlight={onHighlight} />)
+    await waitFor(() => expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2))
+    const a = createdMarkerButton(fakeSdk, 0)
+    const b = createdMarkerButton(fakeSdk, 1)
+    act(() => a.focus())
+    fireEvent.mouseEnter(a)
+    fireEvent.pointerDown(b, { pointerType: 'touch' })
+    expect(onHighlight).toHaveBeenLastCalledWith('b')
+    expect(fakeSdk.markerInstances[0].setZIndex).toHaveBeenLastCalledWith(10)
+    expect(fakeSdk.markerInstances[1].setZIndex).toHaveBeenLastCalledWith(40)
+    fireEvent.mouseLeave(a)
+    act(() => a.blur())
+    expect(onHighlight).toHaveBeenLastCalledWith('b')
+  })
+
+  it.each(['touch', 'pen'])('호버 수집이 연결되어도 모바일 %s 선택은 최상단 표시를 유지하고 호버 정보를 붙이지 않는다', async pointerType => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const hover: MarkerHoverAttribution = { complex_id: 'b', exploration_id: crypto.randomUUID(),
+      hover_id: crypto.randomUUID(), measurement_version: 'marker_hover_v1' }
+    const attribution = vi.fn(() => hover)
+    const analytics: MarkerHoverAnalytics = { attribution, available: vi.fn(() => false),
+      begin: vi.fn(() => null), end: vi.fn(), connect: () => () => {}, subscribe: () => () => {} }
+    const onSelect = vi.fn()
+    const onHighlight = vi.fn()
+    const markers = ['a', 'b'].map(id => ({ ...markerPresentation, id,
+      latitude: 37.6, longitude: 127, name: id }))
+    render(<NaverMap representation="INDIVIDUAL" markers={markers} markerHoverAnalytics={analytics}
+      onMarkerSelect={onSelect} onMarkerHighlight={onHighlight} />)
+    await waitFor(() => expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2))
+    const a = createdMarkerButton(fakeSdk, 0)
+    const b = createdMarkerButton(fakeSdk, 1)
+    act(() => a.focus())
+    fireEvent.mouseEnter(a)
+    fireEvent.pointerDown(b, { pointerType })
+    const click = new MouseEvent('click', { bubbles: true, detail: 1 })
+    Object.defineProperty(click, 'pointerType', { value: pointerType })
+    fireEvent(b, click)
+    expect(onSelect).toHaveBeenLastCalledWith('b')
+    expect(attribution).not.toHaveBeenCalled()
+    expect(fakeSdk.markerInstances[0].setZIndex).toHaveBeenLastCalledWith(10)
+    expect(fakeSdk.markerInstances[1].setZIndex).toHaveBeenLastCalledWith(40)
+    fireEvent.mouseLeave(a)
+    act(() => a.blur())
+    expect(onHighlight).toHaveBeenLastCalledWith('b')
+  })
+
   it('개별 marker hover와 focus를 카드에 전달하고 강조만 바뀌면 DOM을 유지한다', async () => {
     const fakeSdk = createFakeSdk()
     const onMarkerHighlight = vi.fn()

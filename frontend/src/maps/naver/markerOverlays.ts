@@ -1,5 +1,6 @@
 import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
 import type { MarkerHoverAttribution } from '../../analytics/markerHoverAnalytics'
+import { isMobileViewport } from '../../public-housing/components/useMobileViewport'
 import { COMPLEX_MARKER_ANCHOR_X, COMPLEX_MARKER_HEIGHT, createComplexMarkerButton, markerWidth } from './complexMarkerButton.ts'
 import { renderedMarkerContentKey, renderedMarkerId, type RenderedMarker } from './markerData.ts'
 import type {
@@ -39,6 +40,7 @@ export function updateAggregateMarkerAvailability(
 }
 
 interface CreateMarkerOptions {
+  readonly interactionGroup?: MarkerInteractionGroup
   readonly hoverAttribution?: (complexId: string) => MarkerHoverAttribution | undefined
   readonly previewScopeId?: () => string
   readonly enterDelay?: number
@@ -53,6 +55,7 @@ interface CreateMarkerOptions {
 }
 
 export function createMarker({
+  interactionGroup,
   hoverAttribution,
   enterDelay,
   previewScopeId,
@@ -101,7 +104,7 @@ export function createMarker({
         : button.classList.contains('is-selected') ? 30
           : button.classList.contains('is-highlighted') ? 20 : 10)
       onMarkerHighlight?.(complexId)
-    }, controller.signal, previewScopeId)
+    }, controller.signal, previewScopeId, interactionGroup)
     : () => false
   return {
     button,
@@ -191,18 +194,24 @@ function aggregateMarkerTitle(marker: NaverMapAggregateMarker) {
   return `${marker.groupLabel} ${marker.uniqueComplexCount}곳`
 }
 
+export interface MarkerInteractionGroup {
+  deactivate: (() => void) | null
+}
+
 function bindMarkerHighlight(
   button: HTMLButtonElement,
   complexId: string,
   onHighlight: (complexId: string | null) => void,
   signal: AbortSignal,
   previewScopeId: (() => string) | undefined,
+  interactionGroup?: MarkerInteractionGroup,
 ) {
   let focused = false
   let pointerInside = false
   let directFocus = false
   let keyboardAt = -Infinity
   let previewTimer: number | null = null
+  let highlighted = false
   const fallbackScope = createAnalyticsId()
   document.addEventListener('keydown', event => { if (event.key === 'Tab') keyboardAt = performance.now() }, { capture: true, signal })
   const clearPreview = () => { if (previewTimer !== null) window.clearTimeout(previewTimer); previewTimer = null }
@@ -218,10 +227,36 @@ function bindMarkerHighlight(
     }, 500)
   }
   const updateHighlight = () => {
-    onHighlight(focused || pointerInside ? complexId : null)
+    const next = focused || pointerInside
+    if (next !== highlighted) {
+      highlighted = next
+      button.classList.toggle('is-previewing', next)
+      onHighlight(next ? complexId : null)
+    }
     updatePreview()
   }
+  const deactivate = () => {
+    focused = false
+    pointerInside = false
+    directFocus = false
+    updateHighlight()
+  }
+  const claim = () => {
+    if (!interactionGroup || !isMobileViewport()) return
+    if (interactionGroup.deactivate !== deactivate) interactionGroup.deactivate?.()
+    interactionGroup.deactivate = deactivate
+  }
+  signal.addEventListener('abort', () => {
+    if (interactionGroup?.deactivate === deactivate) interactionGroup.deactivate = null
+  }, { once: true })
+  button.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return
+    claim()
+    pointerInside = true
+    updateHighlight()
+  }, { signal })
   button.addEventListener('mouseenter', () => {
+    claim()
     pointerInside = true
     updateHighlight()
   }, { signal })
@@ -230,6 +265,7 @@ function bindMarkerHighlight(
     updateHighlight()
   }, { signal })
   button.addEventListener('focus', () => {
+    claim()
     focused = true
     directFocus = performance.now() - keyboardAt < 100
     updateHighlight()

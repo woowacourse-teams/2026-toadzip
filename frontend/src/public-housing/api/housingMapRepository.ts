@@ -13,8 +13,10 @@ import {
 } from './publicHousingRepository.ts'
 
 const HOUSING_MAP_PATH = '/api/v2/complexes/map'
+export type MapClusteringProfile = 'DEFAULT' | 'MOBILE'
 
 export interface HousingMapQuery {
+  readonly clusteringProfile?: MapClusteringProfile
   readonly bounds: MapBounds
   readonly zoom: number
   readonly previousResolvedStage?: HousingMapStage | null
@@ -54,6 +56,7 @@ function mapSearchParams(query: HousingMapQuery): URLSearchParams {
   validatePreviousStage(query.previousResolvedStage)
   const search = createComplexSearchParams(query.bounds, query.filters)
   search.set('zoom', String(query.zoom))
+  if (query.clusteringProfile) search.set('clusteringProfile', query.clusteringProfile)
   if (query.previousResolvedStage !== null
     && query.previousResolvedStage !== undefined) {
     search.set('previousResolvedStage', String(query.previousResolvedStage))

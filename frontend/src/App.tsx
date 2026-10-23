@@ -1,7 +1,8 @@
+import { useEffect, useRef, useState } from 'react'
 import { FailureReviewPage } from './admin/ingest/FailureReviewPage'
 import { IngestPage } from './admin/ingest/IngestPage'
 import { SourceDataPage } from './admin/ingest/SourceDataPage'
-import { Link, Navigate, Route, Routes, matchRoutes, useLocation } from 'react-router'
+import { Link, Navigate, Route, Routes, matchRoutes, useLocation, useNavigationType } from 'react-router'
 import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
 import { LocationDataPage } from './admin/ingest/LocationDataPage'
 import { ManagementWorkspace } from './admin/management/ManagementWorkspace'
@@ -25,6 +26,10 @@ import { PublicNotificationLayout } from './notifications/PublicNotificationLayo
 import { LandingPage } from './landing/LandingPage'
 import { ComplexCoveragePage } from './admin/documents/ComplexCoveragePage'
 import { QualityQueuePage } from './admin/quality/QualityQueuePage'
+import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
+import { useMobileViewport } from './public-housing/components/useMobileViewport'
+import { clearLoginReturn, loginReturnForBack, safeLoginReturn } from './user/auth/loginReturn'
+import { ExplorerReturnContext } from './public-housing/navigation/ExplorerReturnContext'
 
 function LandingEntry() {
   const { search, hash } = useLocation()
@@ -40,12 +45,24 @@ function LandingEntry() {
 }
 
 function Home() {
+  const location = useLocation()
+  const navigationType = useNavigationType()
+  const [backReturn] = useState(() => navigationType === 'POP'
+    ? { key: location.key, url: loginReturnForBack(location.pathname + location.search + location.hash) }
+    : null)
+  const returnUrl = useRef<string | null>(null)
+  useEffect(() => { if (backReturn?.url) clearLoginReturn() }, [backReturn])
+  if (backReturn?.url && backReturn.key === location.key) {
+    return <Navigate to={backReturn.url} replace state={location.state} />
+  }
   return (
+    <ExplorerReturnContext value={returnUrl}>
       <div className="app-shell">
         <div className="service-rail-brand"><BrandLink /></div>
         <div className="service-rail-account"><PrivacyMenu /><Link className="service-feedback-link" to="/feedback">의견 보내기</Link><NotificationInterestSessionControl presentation="rail" /></div>
         <main className="map-main"><DefaultPublicHousingExplorer showWelcome={false} /></main>
       </div>
+    </ExplorerReturnContext>
   )
 }
 
@@ -62,7 +79,15 @@ function NotFound() {
 
 function LegacyLoginRedirect() {
   const { search, hash } = useLocation()
+  const mobile = useMobileViewport()
   const params = new URLSearchParams(search)
+  if (mobile) return <UserLoginPage />
+  const returnTo = params.get('returnTo')
+  if (returnTo) {
+    const target = new URL(safeLoginReturn(returnTo), window.location.origin)
+    target.searchParams.set('login', params.get('login') === 'failed' ? 'failed' : 'required')
+    return <Navigate to={target.pathname + target.search + target.hash} replace />
+  }
   params.set('login', params.get('login') === 'failed' ? 'failed' : 'required')
   return <Navigate to={{ pathname: '/explore', search: `?${params}`, hash }} replace />
 }

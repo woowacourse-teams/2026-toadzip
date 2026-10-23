@@ -26,6 +26,7 @@ import {
   sameRenderedMarkers,
   updateAggregateMarkerAvailability,
   type CreatedMarker,
+  type MarkerInteractionGroup,
 } from './markerOverlays.ts'
 import type { NaverMapCameraTarget, NaverMapProps } from './naverMapTypes.ts'
 import { clearBoundaryOverlays, createRegionBoundaryOverlay } from './regionBoundaryOverlay.ts'
@@ -168,6 +169,7 @@ export default function NaverMap({
   transitioning = false,
 }: NaverMapProps) {
   const interactionId = useRef(createAnalyticsId())
+  const markerInteractionGroup = useRef<MarkerInteractionGroup>({ deactivate: null })
   const markerHoverAnalyticsRef = useRef(markerHoverAnalytics)
   markerHoverAnalyticsRef.current = markerHoverAnalytics
   const zoomSource = useRef<'button' | 'other_user' | 'programmatic' | 'unknown'>('unknown')
@@ -580,6 +582,7 @@ export default function NaverMap({
         ? Math.min(enteringMarkerCount++ * 10, 40)
         : undefined
       return createMarker({
+        interactionGroup: markerInteractionGroup.current,
         enterDelay,
         mapInstance,
         maps,

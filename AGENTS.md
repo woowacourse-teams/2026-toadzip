@@ -1,22 +1,30 @@
 # 저장소 에이전트 지도
 
-## 공통 맥락
+## 공통 안전 규칙
 
 - 모든 작업 전에 [SERVICE_OVERVIEW.md](SERVICE_OVERVIEW.md)에서 서비스 목적과 핵심 용어를 확인한다.
-- 기존 사용자 변경을 보존하고 요청 범위 밖의 파일을 수정하지 않는다.
+- 기존 사용자 변경을 보존하고 요청 범위 밖의 파일을 수정하지 않는다. 관련 없는 의존성 갱신과 생성 산출물을 작업에 섞지 않는다.
 - 개인 메모, 작업 계획·진행 기록, 실험용 코드와 로컬 검증 자료는 저장소 루트의 `.local/`에 보관한다. 필요한 하위 폴더만 만들고, 팀 공유 문서와 재현 가능한 테스트·도구는 관련 프로젝트 경로에 둔다.
 - `.local/`, `docs/superpowers/plans/`와 `docs/superpowers/specs/`는 로컬 작업 자료다. 하위 파일을 절대 커밋하거나 강제로 stage하지 않는다. 스킬의 계획·설계 커밋 지침보다 이 규칙을 우선한다.
 - 기존 개인 자료를 임의로 이동하거나 삭제하지 않는다. 자동 정리 작업도 `.local/`의 자료를 임의로 삭제하지 않는다.
-- 파괴적 작업, 외부 쓰기, 비밀 접근은 권한과 정확한 대상을 먼저 확인한다.
+- 파괴적 작업, 외부 쓰기, 비밀 접근은 권한과 정확한 대상을 먼저 확인한다. 실제 인증정보를 코드, 문서와 테스트에 기록하지 않는다.
+- 테스트, 정적 검사와 보안 게이트를 약화해 통과시키지 않는다. 문서와 설정이 다르면 실제 설정을 확인하되, 품질·보안 기준과 충돌하면 원인과 의도를 먼저 확인한다.
 
-## 작업별 지침
+## 문서 탐색
 
-- 백엔드 작업은 [backend/AGENTS.md](backend/AGENTS.md)를 추가로 따른다.
-- 백엔드 코드 컨벤션의 원본은 [backend/CODE_CONVENTION.md](backend/CODE_CONVENTION.md)다.
-- 프론트엔드 작업은 [frontend/AGENTS.md](frontend/AGENTS.md)를 추가로 따른다.
-- 저장소 기여와 Git 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)를 따른다.
+- 기술 문서는 사람과 AI가 함께 [공용 문서 목차](docs/README.md)에서 찾는다. 환경 준비는 `setup`, 구현·검증은 `development`, 기능 정책은 `features`, 배포·복구는 `operations`를 따른다.
+- 백엔드 작업은 [backend/AGENTS.md](backend/AGENTS.md), 프론트엔드 작업은 [frontend/AGENTS.md](frontend/AGENTS.md)를 추가로 따른다.
+- 백엔드 코드 컨벤션 원본은 [backend/CODE_CONVENTION.md](backend/CODE_CONVENTION.md), 기여와 Git 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)다.
+- AGENTS에는 작업 제한과 문서 탐색 경로를 두고 기술 규칙은 원본 문서에 한 번만 작성한다.
+- 문서 작성·수정은 [문서 작성·관리 규칙](docs/development/documentation.md)을 따른다.
+
+## 작업과 완료 판단
+
+- 시작할 때 사용자에게 달라지는 결과, 범위·제약과 완료 조건을 정하고 관련 코드·테스트·설정·문서 근거를 확인한다. 사실과 추론을 구분한다.
+- 한 번에 하나의 관찰 가능한 동작을 완성하고 현재 요구에 필요하지 않은 계층, 옵션, 추상화, 전역 상태와 의존성을 추가하지 않는다.
+- 변경 영역의 개발 흐름과 검증 기준을 따른다. 최종 작업 트리에서 얻은 실행 결과로 완료를 판단하고 변경 내용, 검증 결과, 미검증 이유와 잔여 위험을 보고한다. 고정된 보고 양식은 요구하지 않는다.
 
 ## 저장소 공통 설정
 
-- Codex 역할은 `.codex/agents/`에 둔다.
-- GitHub 검증은 `.github/workflows/`의 백엔드·프론트엔드 CI에서 실행한다.
+- Codex 역할의 실행 원본은 [.codex/agents/](.codex/agents/)다. 역할과 위임 제한은 [백엔드 협업 지침](backend/AGENTS.md#읽기-전용-협업)을 따른다.
+- GitHub 검증은 [.github/workflows/](.github/workflows/)의 백엔드·프론트엔드 CI에서 실행한다.

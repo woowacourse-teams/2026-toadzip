@@ -177,12 +177,12 @@ function complexPageResponse(
     (bounds === null || visibleIds.has(item.complexId))
     && complexMatchesFilters(snapshot, item, url)
   ))
-  return successResponse(page(
+  return successResponse({ totalCount: items.length, ...page(
     items,
     cursor.offset,
     pageSize(url),
     COMPLEX_CURSOR_PREFIX,
-  ))
+  ) })
 }
 
 function announcementPageResponse(

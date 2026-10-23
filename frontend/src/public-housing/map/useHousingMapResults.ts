@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type {
   ComplexSearchFilters,
 } from '../api/publicHousingRepository.ts'
 import type {
   HousingMapQuery,
   HousingMapRepository,
+  MapClusteringProfile,
 } from '../api/housingMapRepository.ts'
 import {
   hasSearchFilters,
@@ -68,6 +69,7 @@ interface CachedResult {
 
 export function useHousingMapResults(
   repository: HousingMapRepository,
+  profile: MapClusteringProfile = 'DEFAULT',
 ) {
   const [state, setState] = useState<HousingMapResultsState>(INITIAL_STATE)
   const resultCacheRef = useRef<CachedResult[]>([])
@@ -75,6 +77,18 @@ export function useHousingMapResults(
   const pendingRequestRef = useRef<PendingRequest | null>(null)
   const requestRevisionRef = useRef(0)
   const resolvedStageRef = useRef<HousingMapResult['resolvedStage'] | null>(null)
+  const profileRef = useRef(profile)
+  useLayoutEffect(() => {
+    if (profileRef.current === profile) return
+    profileRef.current = profile
+    pendingRequestRef.current?.controller.abort()
+    pendingRequestRef.current = null
+    requestRevisionRef.current += 1
+    resolvedStageRef.current = null
+    failedRequestRef.current = null
+    resultCacheRef.current = []
+    setState(INITIAL_STATE)
+  }, [profile])
 
   const startRequest = useCallback((candidate: RequestCandidate) => {
     pendingRequestRef.current?.controller.abort()
@@ -162,10 +176,12 @@ export function useHousingMapResults(
     viewport: ViewportSnapshot,
     filters: ComplexSearchFilters = {},
   ): HousingMapRequestOutcome => {
+    if (profileRef.current !== profile) return 'ignored'
     const candidate = requestCandidate(
       viewport,
       filters,
       resolvedStageRef.current,
+      profile,
     )
     if (candidate === null) {
       return 'ignored' as const
@@ -178,7 +194,7 @@ export function useHousingMapResults(
     }
     startRequest(candidate)
     return 'started'
-  }, [startRequest])
+  }, [startRequest, profile])
 
   function restoreCachedResult(signature: string) {
     const index = resultCacheRef.current.findIndex((cached) =>
@@ -244,6 +260,7 @@ function requestCandidate(
   viewport: ViewportSnapshot,
   filters: ComplexSearchFilters,
   previousResolvedStage: HousingMapResult['resolvedStage'] | null,
+  profile: MapClusteringProfile,
 ): RequestCandidate | null {
   const decision = evaluateServerMapRequest(viewport)
   if (!decision.allowed) {
@@ -251,6 +268,7 @@ function requestCandidate(
   }
   const filtersSignature = searchFiltersSignature(filters)
   const baseSignature = [
+    profile,
     decision.boundsSignature,
     viewport.zoom,
     filtersSignature,
@@ -258,6 +276,7 @@ function requestCandidate(
   const query = {
     bounds: viewport.bounds,
     zoom: viewport.zoom,
+    ...(profile === 'MOBILE' ? { clusteringProfile: profile } : {}),
     ...(previousResolvedStage === null ? {} : { previousResolvedStage }),
     ...(hasSearchFilters(filters) ? { filters } : {}),
   }
