@@ -21,6 +21,10 @@ function text(value: unknown) {
   }
   return display(value as string | number | null | undefined)
 }
+// 새로 추가한 행·조건은 실제로 입력한 값만 보여 준다. 기본값(미확인·아니오)과 대상 이름에 이미 나온 항목은 변경으로 세지 않는다.
+function newValueWorthShowing(key: string, value: unknown, shownInScope: string[]) {
+  return !shownInScope.includes(key) && value !== null && value !== undefined && value !== '' && value !== false
+}
 function supplyDifferences(before: CorrectionRow[], after: CorrectionRow[], labels = rowLabels) {
   const changes: { scope: string; field: string; before: string; after: string }[] = []
   for (const next of after) {
@@ -28,6 +32,7 @@ function supplyDifferences(before: CorrectionRow[], after: CorrectionRow[], labe
     const scope = `${next.complexName} · ${next.typeName}`
     if (!previous) changes.push({ scope, field: '공급행', before: '없음', after: '새 행 추가' })
     for (const key of Object.keys(labels) as (keyof CorrectionRow)[]) {
+      if (!previous && !newValueWorthShowing(key, next[key], ['complexName', 'typeName', 'displayOrder'])) continue
       if (JSON.stringify(previous?.[key]) !== JSON.stringify(next[key])) changes.push({ scope, field: labels[key]!, before: previous ? text(previous[key]) : '없음', after: text(next[key]) })
     }
     for (const target of next.targets) {
@@ -35,6 +40,7 @@ function supplyDifferences(before: CorrectionRow[], after: CorrectionRow[], labe
       const targetScope = `${scope} / ${target.target}`
       if (!old) changes.push({ scope: targetScope, field: '공급대상', before: '없음', after: '새 대상 추가' })
       for (const key of Object.keys(targetLabels) as (keyof CorrectionTarget)[]) {
+        if (!old && !newValueWorthShowing(key, target[key], ['target'])) continue
         if (JSON.stringify(old?.[key]) !== JSON.stringify(target[key])) changes.push({ scope: targetScope, field: targetLabels[key]!, before: old ? text(old[key]) : '없음', after: text(target[key]) })
       }
     }
