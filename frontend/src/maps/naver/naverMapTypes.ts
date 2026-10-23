@@ -2,6 +2,7 @@ import type { ViewportSnapshot } from '../../public-housing/map/viewportPolicy.t
 import type { MapBounds } from '../../public-housing/model/publicHousing.ts'
 import type { MapMarkerPresentation } from '../../public-housing/presentation/mapMarkerPresentation.ts'
 import type { RegionBoundary } from '../../public-housing/regions/regionBoundary.ts'
+import type { MarkerHoverAnalytics, MarkerHoverAttribution } from '../../analytics/markerHoverAnalytics'
 
 export interface NaverMapComplexMarker extends MapMarkerPresentation {
   id: string
@@ -42,6 +43,7 @@ export interface NaverMapCameraTarget {
 }
 
 interface NaverMapCommonProps {
+  markerHoverAnalytics?: MarkerHoverAnalytics
   cameraRequestId?: number
   cameraTarget?: NaverMapCameraTarget
   currentLocation?: { readonly latitude: number; readonly longitude: number } | null
@@ -49,7 +51,7 @@ interface NaverMapCommonProps {
   /** false면 새로 나타나는 마커도 등장 효과 없이 바로 바꾼다(필터 변경처럼 같은 화면을 다시 거를 때). */
   animateMarkerEntry?: boolean
   onMarkerHighlight?: (complexId: string | null) => void
-  onMarkerSelect?: (complexId: string) => void
+  onMarkerSelect?: (complexId: string, hover?: MarkerHoverAttribution) => void
   onTransitionInterrupt?: () => void
   onUserInteraction?: () => void
   onViewportChange?: (viewport: ViewportSnapshot) => void

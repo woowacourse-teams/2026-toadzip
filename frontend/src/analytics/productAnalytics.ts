@@ -12,6 +12,7 @@ const EXCLUSION_KEY = 'toadzip.analytics.disabled'
 const DEDUPLICATION_KEY = 'toadzip.posthog.sent-actions.v1'
 const MAX_PENDING = 100
 const CORE_EVENT_NAMES = new Set(['view_complex', 'view_announcement', 'notification_preregistration_completed'])
+const MARKER_HOVER_EVENT_NAMES = new Set(['map_marker_hover_available', 'map_marker_hover_ended'])
 const CORE_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const CORE_RETRY_DELAY_MS = 30_000
 const MAX_DEDUPLICATION_KEYS = 1000
@@ -23,6 +24,9 @@ export type CaptureOptions = { dedupeKey?: string; authState?: AuthState; pageNa
 type PendingEvent = { name: string; properties: SafeProperties; timestamp: Date }
 type CoreEvent = PendingEvent & { uuid: string; dedupeKey?: string; expiresAt: number; state: 'queued' | 'in_flight' }
 const corePending = new Map<string, CoreEvent>()
+// Raw hovers must never consume the capacity reserved for core product outcomes.
+const markerHoverPending = new Map<string, CoreEvent>()
+const reliableQueues = [corePending, markerHoverPending]
 let corePermissionGeneration = 0
 let coreRetryTimer: ReturnType<typeof setTimeout> | undefined
 let instance: PostHog | undefined
@@ -155,8 +159,9 @@ export function sanitizeCapture(event: CaptureResult | null): CaptureResult | nu
   properties.$current_url = `${window.location.origin}/`
   // Manual pageviews can wait for the SDK while another allowed route opens.
   // Keep only the allowlisted pathname captured at entry, never a raw URL.
-  const pathname = event.event === '$pageview' && PUBLIC_PATHS.has(event.properties.$pathname)
-    ? event.properties.$pathname : window.location.pathname
+  const pathname = MARKER_HOVER_EVENT_NAMES.has(event.event) ? '/explore'
+    : event.event === '$pageview' && PUBLIC_PATHS.has(event.properties.$pathname)
+      ? event.properties.$pathname : window.location.pathname
   properties.$pathname = PUBLIC_PATHS.has(pathname) ? pathname : '/'
   properties.$referrer = safeAnalyticsUrl(document.referrer)
   properties.$host = window.location.host
@@ -304,10 +309,10 @@ function stopCollection(reason: AnalyticsStopReason = 'reset'): void {
   clearTimeout(coreRetryTimer)
   coreRetryTimer = undefined
   if (reason === 'pause') {
-    for (const event of corePending.values()) event.state = 'queued'
+    for (const queue of reliableQueues) for (const event of queue.values()) event.state = 'queued'
   } else {
     corePermissionGeneration++
-    corePending.clear()
+    for (const queue of reliableQueues) queue.clear()
   }
   generation++
   pending = []
@@ -346,42 +351,43 @@ function preparedEvent(name: string, properties: ProductProperties, options: Cap
 
 function pruneCoreEvents(): void {
   const now = Date.now()
-  for (const [id, event] of corePending) if (event.expiresAt <= now) corePending.delete(id)
+  for (const queue of reliableQueues) for (const [id, event] of queue) if (event.expiresAt <= now) queue.delete(id)
 }
 
 function scheduleCoreRetry(): void {
-  if (coreRetryTimer || corePending.size === 0) return
+  if (coreRetryTimer || reliableQueues.every(queue => queue.size === 0)) return
   coreRetryTimer = setTimeout(() => {
     coreRetryTimer = undefined
     pruneCoreEvents()
     if (collectionAllowed()) { initialize(); flushCoreEvents() }
-    if (corePending.size > 0) scheduleCoreRetry()
+    if (reliableQueues.some(queue => queue.size > 0)) scheduleCoreRetry()
   }, CORE_RETRY_DELAY_MS)
 }
 
 function acknowledgeCoreEvent(eventId: string, statusCode: number): void {
-  const event = corePending.get(eventId)
-  if (!event) return
+  const queue = reliableQueues.find(queue => queue.has(eventId))
+  const event = queue?.get(eventId)
+  if (!event || !queue) return
   if (statusCode >= 200 && statusCode < 300) {
-    corePending.delete(eventId)
+    queue.delete(eventId)
     // This is transport acceptance, not a guarantee of final warehouse ingestion.
     if (event.dedupeKey) {
       try { remember(event.dedupeKey) } catch { /* The in-memory dedupe remains valid. */ }
     }
   } else if (statusCode >= 400 && statusCode < 500 && statusCode !== 408 && statusCode !== 429) {
-    corePending.delete(eventId)
+    queue.delete(eventId)
   } else {
     // The SDK owns retries until its final callback. Never race its retry queue.
     event.state = 'queued'
     scheduleCoreRetry()
   }
-  if (corePending.size === 0) { clearTimeout(coreRetryTimer); coreRetryTimer = undefined }
+  if (reliableQueues.every(queue => queue.size === 0)) { clearTimeout(coreRetryTimer); coreRetryTimer = undefined }
 }
 
 function flushCoreEvents(): void {
   pruneCoreEvents()
   if (!instance || !collectionAllowed()) return
-  for (const event of corePending.values()) {
+  for (const queue of reliableQueues) for (const event of queue.values()) {
     if (!collectionAllowed()) return
     if (event.state !== 'queued') continue
     event.state = 'in_flight'
@@ -393,13 +399,13 @@ function flushCoreEvents(): void {
   scheduleCoreRetry()
 }
 
-function queueCoreEvent(event: PendingEvent, options: CaptureOptions): boolean {
+function queueCoreEvent(event: PendingEvent, options: CaptureOptions, queue = corePending): boolean {
   pruneCoreEvents()
   const eventId = String(event.properties.event_id)
-  if (corePending.has(eventId) || (options.dedupeKey && (hasBeenSent(options.dedupeKey)
-    || [...corePending.values()].some(pendingEvent => pendingEvent.dedupeKey === options.dedupeKey)))) return false
-  if (corePending.size >= MAX_PENDING) return false
-  corePending.set(eventId, { ...event, uuid: eventId, dedupeKey: options.dedupeKey,
+  if (queue.has(eventId) || (options.dedupeKey && (hasBeenSent(options.dedupeKey)
+    || [...queue.values()].some(pendingEvent => pendingEvent.dedupeKey === options.dedupeKey)))) return false
+  if (queue.size >= MAX_PENDING) return false
+  queue.set(eventId, { ...event, uuid: eventId, dedupeKey: options.dedupeKey,
     expiresAt: Date.now() + CORE_MAX_AGE_MS, state: 'queued' })
   if (collectionAllowed()) { initialize(); flushCoreEvents() }
   else scheduleCoreRetry()
@@ -423,6 +429,7 @@ function captureEvent(name: string, properties: ProductProperties, options: Capt
     if (!configuration() || !collectionAllowed()) return false
     const event = preparedEvent(name, properties, options)
     if (CORE_EVENT_NAMES.has(name)) return queueCoreEvent(event, options)
+    if (MARKER_HOVER_EVENT_NAMES.has(name)) return queueCoreEvent(event, options, markerHoverPending)
     if (options.dedupeKey && hasBeenSent(options.dedupeKey)) return false
     if (!instance && pending.length >= MAX_PENDING) return false
     if (instance) send(event)
@@ -430,6 +437,37 @@ function captureEvent(name: string, properties: ProductProperties, options: Capt
     if (options.dedupeKey) remember(options.dedupeKey)
     return true
   } catch { return false }
+}
+
+export interface PreparedMarkerHoverCompletion {
+  readonly isCurrent: () => boolean
+  readonly complete: (properties: ProductProperties) => boolean
+}
+
+/** Only a hover begun with permission may finish while that same permission is paused. */
+export function prepareMarkerHoverCompletion(): PreparedMarkerHoverCompletion | null {
+  if (browserIdentity && !identityCurrent()) { refreshIdentity(); return null }
+  const config = configuration()
+  if (!config || !collectionAllowed()) return null
+  const expected = corePermissionGeneration
+  const expiresAt = Date.now() + CORE_MAX_AGE_MS
+  const originalAuthState = authState
+  let eventId: string | undefined
+  const isCurrent = () => {
+    if (browserIdentity && !identityCurrent()) { refreshIdentity(); return false }
+    const current = configuration()
+    return expected === corePermissionGeneration && Date.now() < expiresAt
+      && current?.key === config.key && current.environment === config.environment
+      && !browserExcluded() && PUBLIC_PATHS.has(window.location.pathname)
+  }
+  return { isCurrent, complete: properties => {
+    try {
+      if (!isCurrent()) return false
+      eventId ??= createAnalyticsId()
+      const options: CaptureOptions = { dedupeKey: `marker-hover:${eventId}`, authState: originalAuthState, pageName: 'explorer' }
+      return queueCoreEvent(preparedEvent('map_marker_hover_ended', { ...properties, event_id: eventId }, options), options, markerHoverPending)
+    } catch { return false }
+  } }
 }
 
 /** Create once per original business action, and reuse for idempotent action retries. */

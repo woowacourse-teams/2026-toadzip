@@ -1,4 +1,5 @@
 import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
+import type { MarkerHoverAttribution } from '../../analytics/markerHoverAnalytics'
 import { isMobileViewport } from '../../public-housing/components/useMobileViewport'
 import { COMPLEX_MARKER_ANCHOR_X, COMPLEX_MARKER_HEIGHT, createComplexMarkerButton, markerWidth } from './complexMarkerButton.ts'
 import { renderedMarkerContentKey, renderedMarkerId, type RenderedMarker } from './markerData.ts'
@@ -40,6 +41,7 @@ export function updateAggregateMarkerAvailability(
 
 interface CreateMarkerOptions {
   readonly interactionGroup?: MarkerInteractionGroup
+  readonly hoverAttribution?: (complexId: string) => MarkerHoverAttribution | undefined
   readonly previewScopeId?: () => string
   readonly enterDelay?: number
   readonly mapInstance: naver.maps.Map
@@ -49,11 +51,12 @@ interface CreateMarkerOptions {
     marker: NaverMapAggregateMarker,
   ) => void
   readonly onMarkerHighlight: ((complexId: string | null) => void) | undefined
-  readonly onMarkerSelect: ((complexId: string) => void) | undefined
+  readonly onMarkerSelect: ((complexId: string, hover?: MarkerHoverAttribution) => void) | undefined
 }
 
 export function createMarker({
   interactionGroup,
+  hoverAttribution,
   enterDelay,
   previewScopeId,
   mapInstance,
@@ -73,11 +76,14 @@ export function createMarker({
   const title = isAggregate
     ? aggregateMarkerTitle(marker.marker)
     : undefined
-  bindMarkerActivation(button, () => {
+  bindMarkerActivation(button, (event) => {
     if (marker.kind === 'aggregate') {
       onAggregateMarkerSelect(marker.marker)
     } else {
-      onMarkerSelect?.(marker.marker.id)
+      const mouse = 'pointerType' in event ? event.pointerType === 'mouse' : event.detail > 0
+      const hover = mouse ? hoverAttribution?.(marker.marker.id) : undefined
+      if (hover) onMarkerSelect?.(marker.marker.id, hover)
+      else onMarkerSelect?.(marker.marker.id)
     }
   }, controller.signal)
   const overlay = new maps.Marker({
@@ -142,13 +148,13 @@ function createMarkerContent(
 
 function bindMarkerActivation(
   button: HTMLButtonElement,
-  onSelect: () => void,
+  onSelect: (event: MouseEvent) => void,
   signal: AbortSignal,
 ) {
   // Native keyboard clicks have no pointer coordinates for the SDK to process.
   button.addEventListener('click', (event) => {
     event.stopImmediatePropagation()
-    onSelect()
+    onSelect(event)
   }, { capture: true, signal })
   const keepKeyboardOnMarker = (event: KeyboardEvent) => {
     // Preserve native Enter/Space activation and keep both phases off the map.
