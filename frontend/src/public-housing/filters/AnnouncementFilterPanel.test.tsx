@@ -37,6 +37,49 @@ const GYEONGGI_REGIONS = [
 ] as const
 
 describe('AnnouncementFilterPanel', () => {
+  it('기본 마감임박순에서 최신순만 양방향으로 전환하고 적용된 지역을 유지한다', () => {
+    const onApply = vi.fn()
+    function SortedFilters() {
+      const [filters, setFilters] = useState<ComponentProps<typeof AnnouncementFilterPanel>['filters']>({ regionCode: '11' })
+      return <AnnouncementFilterPanel filters={filters} onApply={(next) => { onApply(next); setFilters(next) }} />
+    }
+    render(<SortedFilters />)
+    const sorting = within(screen.getByRole('group', { name: '공고 정렬' }))
+    const latest = sorting.getByRole('button', { name: '최신순' })
+    expect(sorting.getAllByRole('button')).toHaveLength(1)
+    expect(latest).toHaveAttribute('aria-pressed', 'false')
+    expect(latest).toHaveAccessibleDescription(/마감임박순/)
+    fireEvent.click(latest)
+    expect(onApply).toHaveBeenLastCalledWith({ regionCode: '11', sort: 'LATEST' })
+    expect(latest).toHaveAttribute('aria-pressed', 'true')
+    expect(latest).toHaveAccessibleDescription(/내림차순/)
+    fireEvent.click(latest)
+    expect(onApply).toHaveBeenLastCalledWith({ regionCode: '11', sort: 'LATEST_ASC' })
+    expect(latest).toHaveAccessibleDescription(/오름차순/)
+    fireEvent.click(latest)
+    expect(onApply).toHaveBeenLastCalledWith({ regionCode: '11', sort: 'LATEST' })
+  })
+
+  it('정렬을 바꿔도 편집 중인 필터를 보존하고 적용과 초기화 뒤에도 정렬을 유지한다', () => {
+    const onApply = vi.fn()
+    function SortedFilters() {
+      const [filters, setFilters] = useState<ComponentProps<typeof AnnouncementFilterPanel>['filters']>({})
+      return <AnnouncementFilterPanel filters={filters} onApply={(next) => { onApply(next); setFilters(next) }} />
+    }
+    render(<SortedFilters />)
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'LH' }))
+    fireEvent.click(screen.getByRole('button', { name: '최신순' }))
+    fireEvent.click(screen.getByRole('button', { name: '최신순' }))
+    expect(screen.getByRole('checkbox', { name: 'LH' })).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
+    expect(onApply).toHaveBeenLastCalledWith({ agencyCodes: ['LH'], sort: 'LATEST_ASC' })
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }))
+    expect(onApply).toHaveBeenLastCalledWith({ sort: 'LATEST_ASC' })
+    expect(screen.getByRole('checkbox', { name: 'LH' })).not.toBeChecked()
+    expect(screen.getByRole('button', { name: '최신순' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
   it('적용과 초기화로 입력 폼이 교체되어도 패널 안에 포커스를 유지하고 Escape로 되돌린다', () => {
     function AppliedFilters() {
       const [filters, setFilters] = useState<ComponentProps<typeof AnnouncementFilterPanel>['filters']>({})
@@ -266,6 +309,16 @@ describe('모바일 공고 필터 즉시 적용', () => {
   function applied() {
     return JSON.parse(screen.getByTestId('applied-announcement-filters').textContent ?? '{}')
   }
+
+  it('모바일 즉시 적용과 초기화는 선택한 정렬을 유지한다', () => {
+    render(<AppliedFilters initialFilters={{ sort: 'LATEST' }} />)
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'LH' }))
+    expect(applied()).toEqual({ agencyCodes: ['LH'], sort: 'LATEST' })
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }))
+    expect(applied()).toEqual({ sort: 'LATEST' })
+    expect(screen.getByRole('button', { name: '최신순' })).toHaveAttribute('aria-pressed', 'true')
+  })
 
   it('선택 즉시 적용하며 입력 DOM·포커스·패널을 유지하고 초기화도 즉시 반영한다', () => {
     render(<AppliedFilters />)

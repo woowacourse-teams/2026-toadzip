@@ -10,6 +10,7 @@ export function toHousingAnnouncementCardData(
       ?? announcement.agency?.name
       ?? null,
     announcementId: announcement.announcementId,
+    publishedAt: announcement.publishedAt,
     applicationEndAt: announcement.applicationEndAt,
     applicationStartAt: announcement.applicationStartAt,
     applicationStatus: announcement.applicationStatus,

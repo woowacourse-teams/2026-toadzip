@@ -95,7 +95,8 @@ public class HousingComplexQueryService {
         return new HousingComplexListResponse(
                 summaryMapper.toListItems(page, filters.today()),
                 nextCursor(page, hasNext, normalizedSort),
-                hasNext
+                hasNext,
+                repository.count(condition)
         );
     }
 

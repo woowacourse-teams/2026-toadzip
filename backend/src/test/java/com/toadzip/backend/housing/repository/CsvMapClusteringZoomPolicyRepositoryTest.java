@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.toadzip.backend.housing.domain.MapClusteringStage;
+import com.toadzip.backend.housing.domain.MapClusteringProfile;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -16,6 +17,25 @@ class CsvMapClusteringZoomPolicyRepositoryTest {
 
     private static final String HEADER = "policyVersion,regionDatasetVersion,fromStage,toStage,"
             + "boundaryZoom,hysteresis,expansionZoom";
+
+    @ParameterizedTest
+    @CsvSource({
+            "11.79, INDIVIDUAL, BASIC_REGION",
+            "11.80, INDIVIDUAL, INDIVIDUAL",
+            "11.99, BASIC_REGION, BASIC_REGION",
+            "12.00, BASIC_REGION, INDIVIDUAL",
+            "11.89, , BASIC_REGION",
+            "11.90, , INDIVIDUAL"
+    })
+    void 모바일_정책은_조금_더_낮은_줌에서_개별_단지를_표시한다(
+            String zoom, MapClusteringStage previous, MapClusteringStage expected
+    ) {
+        var policy = repository(validCsv()).current(MapClusteringProfile.MOBILE);
+
+        assertEquals(expected, policy.resolveStage(new BigDecimal(zoom), previous));
+        assertEquals(new BigDecimal("12.10"), policy.expansionZoom(MapClusteringStage.BASIC_REGION).orElseThrow());
+        assertEquals("2026-10-23-mobile-v1", policy.policyVersion());
+    }
 
     @Test
     void CSV에서_버전과_단계_전환_정책을_읽는다() {
@@ -32,7 +52,8 @@ class CsvMapClusteringZoomPolicyRepositoryTest {
     @Test
     void 배포용_정책_CSV를_읽는다() {
         CsvMapClusteringZoomPolicyRepository repository = new CsvMapClusteringZoomPolicyRepository(
-                new ClassPathResource("map-clustering/stage-transitions.csv")
+                new ClassPathResource("map-clustering/stage-transitions.csv"),
+                new ClassPathResource("map-clustering/stage-transitions-mobile.csv")
         );
 
         assertEquals("2026-10-07-v2", repository.current().policyVersion());
@@ -52,7 +73,8 @@ class CsvMapClusteringZoomPolicyRepositoryTest {
             String zoom, MapClusteringStage previous, MapClusteringStage expected
     ) {
         var policy = new CsvMapClusteringZoomPolicyRepository(
-                new ClassPathResource("map-clustering/stage-transitions.csv")
+                new ClassPathResource("map-clustering/stage-transitions.csv"),
+                new ClassPathResource("map-clustering/stage-transitions-mobile.csv")
         ).current();
 
         assertEquals(expected, policy.resolveStage(new BigDecimal(zoom), previous));
@@ -61,7 +83,8 @@ class CsvMapClusteringZoomPolicyRepositoryTest {
     @Test
     void 지역_클릭은_12_6에서_개별_단지로_전환한다() {
         var policy = new CsvMapClusteringZoomPolicyRepository(
-                new ClassPathResource("map-clustering/stage-transitions.csv")
+                new ClassPathResource("map-clustering/stage-transitions.csv"),
+                new ClassPathResource("map-clustering/stage-transitions-mobile.csv")
         ).current();
 
         BigDecimal zoom = policy.expansionZoom(MapClusteringStage.BASIC_REGION).orElseThrow();
@@ -120,7 +143,10 @@ class CsvMapClusteringZoomPolicyRepositoryTest {
     }
 
     private static CsvMapClusteringZoomPolicyRepository repository(String csv) {
-        return new CsvMapClusteringZoomPolicyRepository(new ByteArrayResource(csv.getBytes()));
+        return new CsvMapClusteringZoomPolicyRepository(
+                new ByteArrayResource(csv.getBytes()),
+                new ClassPathResource("map-clustering/stage-transitions-mobile.csv")
+        );
     }
 
     private static String validCsv() {

@@ -6,6 +6,7 @@ export const PRODUCT_EVENTS = [
   'search_more_requested', 'search_more_succeeded', 'search_more_failed', 'search_closed', 'region_selected',
   'list_opened', 'list_closed', 'list_scrolled', 'list_more_requested', 'list_more_succeeded', 'list_more_failed',
   'results_panel_snap_changed', 'map_marker_previewed', 'map_marker_selected', 'map_panned',
+  'map_marker_hover_available', 'map_marker_hover_ended',
   'map_zoom_button_clicked', 'map_zoomed', 'region_boundary_action',
   'filter_opened', 'filter_closed', 'filter_value_changed', 'filter_reset_clicked', 'apply_filter',
   'exploration_retry_clicked', 'detail_open_requested', 'detail_scrolled', 'housing_type_selected',
@@ -31,6 +32,7 @@ export type SafeProperties = Record<string, string | number | boolean | string[]
 const PUBLIC_IDS = new Set(['complex_id', 'announcement_id', 'housing_type_id', 'attachment_id', 'target_id', 'result_id', 'region_code'])
 const CORRELATION_IDS = new Set([
   'event_id', 'detail_visit_id', 'list_view_id', 'search_id', 'filter_edit_id', 'document_open_id',
+  'exploration_id', 'hover_id',
   // These IDs are analytics-only. Notification command/receipt IDs are excluded
   // because the business ledger associates them with member accounts.
   'street_view_open_id', 'attempt_id', 'exposure_id',
@@ -52,7 +54,7 @@ const TOKENS = new Set([
   'filter_target', 'apply_mode', 'operation', 'target_type', 'outcome', 'provider', 'previous_auth_state',
   'next_auth_state', 'view_state', 'marker_status', 'alignment_status', 'document_type', 'format',
   'selection_method', 'close_reason', 'snap', 'previous_snap', 'next_snap', 'status',
-  'completion_source',
+  'completion_source', 'measurement_version',
   'marker_type', 'from_snap', 'to_snap',
 ])
 const TOKEN_LISTS = new Set(['changed_fields', 'methods_used', 'filter_types'])
@@ -77,7 +79,7 @@ export function sanitizeProductProperties(input: ProductProperties): SafePropert
         output[key] = [...new Set(values)]
       }
     }
-    if (key === 'occurred_at' && typeof value === 'string' && /^\d{4}-\d\d-\d\dT[\d:.]+(?:Z|[+-]\d\d:\d\d)$/.test(value) && Number.isFinite(Date.parse(value))) {
+    if ((key === 'occurred_at' || key === 'hover_started_at') && typeof value === 'string' && /^\d{4}-\d\d-\d\dT[\d:.]+(?:Z|[+-]\d\d:\d\d)$/.test(value) && Number.isFinite(Date.parse(value))) {
       output[key] = value
     }
   }

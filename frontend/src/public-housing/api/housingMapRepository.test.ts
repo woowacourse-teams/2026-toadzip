@@ -33,6 +33,14 @@ const FILTERS = {
 } as const
 
 describe('지도 v2 HTTP repository', () => {
+  it('모바일 정책을 실제 zoom과 함께 서버에 전달한다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(aggregateResponse())
+    const repository = createRepository(fetchMock)
+    await repository.findMap({ bounds: BOUNDS, zoom: 12, clusteringProfile: 'MOBILE' }, new AbortController().signal)
+    const search = new URL(String(fetchMock.mock.calls[0]?.[0])).searchParams
+    expect(search.get('clusteringProfile')).toBe('MOBILE')
+    expect(search.get('zoom')).toBe('12')
+  })
   it('bounds, zoom, 직전 단계, 필터와 AbortSignal로 조회한다', async () => {
     const fetchMock = vi.fn().mockResolvedValue(aggregateResponse())
     const repository = createRepository(fetchMock)

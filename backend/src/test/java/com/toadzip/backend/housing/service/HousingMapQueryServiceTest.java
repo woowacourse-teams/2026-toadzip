@@ -45,7 +45,8 @@ class HousingMapQueryServiceTest {
                 new HousingComplexSearchRequestNormalizer((province, district) -> java.util.Optional.empty(), CLOCK);
         CsvMapClusteringZoomPolicyRepository zoomRepository =
                 new CsvMapClusteringZoomPolicyRepository(
-                        new ClassPathResource("map-clustering/stage-transitions.csv")
+                        new ClassPathResource("map-clustering/stage-transitions.csv"),
+                        new ClassPathResource("map-clustering/stage-transitions-mobile.csv")
                 );
         service = new HousingMapQueryService(normalizer, zoomRepository, responseFactory);
     }

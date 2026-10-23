@@ -20,6 +20,17 @@ class AnnouncementApplicationStatusCalculatorTest {
             new AnnouncementApplicationStatusCalculator();
 
     @Test
+    void 진행중_일정의_Dday는_아직_시작하지_않은_일정으로_앞당기지_않는다() {
+        Announcement announcement = announcement(AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 20));
+        when(announcement.isApplicationScheduleReviewed()).thenReturn(true);
+        List<AnnouncementApplicationSchedule> schedules = List.of(
+                schedule(announcement, ApplicationScheduleState.CONFIRMED, 1, 20),
+                schedule(announcement, ApplicationScheduleState.CONFIRMED, 11, 12));
+        assertEquals(10, calculator.calculateDDay(announcement, schedules, LocalDate.of(2026, 8, 10)));
+    }
+
+    @Test
     void 검토된_접수일정_사이에는_다음_접수_시작일까지_계산한다() {
         Announcement announcement = announcement(AnnouncementPublicationType.ORIGINAL,
                 LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 20));

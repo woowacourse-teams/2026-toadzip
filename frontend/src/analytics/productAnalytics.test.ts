@@ -64,6 +64,21 @@ function captured(properties: Record<string, unknown>, event = 'view_complex'): 
 }
 
 describe('PostHog privacy and identity boundary', () => {
+  it('allowlists only bounded hover IDs, timestamps and neutral measurement properties', async () => {
+    const analytics = await initialized()
+    const properties = { exploration_id: crypto.randomUUID(), hover_id: crypto.randomUUID(), complex_id: '17',
+      measurement_version: 'marker_hover_v1', hover_started_at: '2026-10-23T01:00:00.000Z', duration_ms: 11000,
+      reason: 'pointer_leave' }
+    const output = analytics.sanitizeCapture(captured({ ...properties, complex_name: 'private', meaningful_use: true }, 'map_marker_hover_ended'))
+    expect(output?.properties).toMatchObject(properties)
+    expect(output?.properties).not.toHaveProperty('meaningful_use')
+    expect(output?.properties).not.toHaveProperty('complex_name')
+    const invalid = analytics.sanitizeCapture(captured({
+      exploration_id: 'not-a-uuid', hover_id: 'private', hover_started_at: 'not-a-date',
+      duration_ms: Infinity, measurement_version: 'raw text', reason: 'private text',
+    }, 'map_marker_hover_ended'))
+    for (const key of Object.keys(properties).filter(key => key !== 'complex_id')) expect(invalid?.properties).not.toHaveProperty(key)
+  })
   it.each([
     ['subway_station', 'naver-subway:테스트역:테스트 주소:37.123:127.456'],
     ['region', 'naver-region:테스트 지역'],

@@ -12,6 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
+import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
@@ -31,6 +33,7 @@ import com.toadzip.backend.housing.domain.RentalType;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -38,8 +41,11 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -256,7 +262,8 @@ class AnnouncementApiIntegrationTest {
 
         mockMvc.perform(get("/api/v1/announcements"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items.length()").value(0));
+                .andExpect(jsonPath("$.data.items.length()").value(0))
+                .andExpect(jsonPath("$.data.totalCount").value(0));
     }
 
     @Test
@@ -308,6 +315,7 @@ class AnnouncementApiIntegrationTest {
         entityManager.clear();
         mockMvc.perform(get("/api/v1/announcements").param("regionCode", "1114010100"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(1))
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].announcementId").value(included.getId()));
     }
@@ -599,6 +607,7 @@ class AnnouncementApiIntegrationTest {
 
         MvcResult firstPage = mockMvc.perform(cursorSearchRequest().param("size", "2"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(3))
                 .andExpect(jsonPath("$.data.hasNext").value(true))
                 .andExpect(jsonPath("$.data.nextCursor").isNotEmpty())
                 .andReturn();
@@ -609,6 +618,7 @@ class AnnouncementApiIntegrationTest {
                         .param("size", "2")
                         .param("cursor", nextCursor))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(3))
                 .andExpect(jsonPath("$.data.hasNext").value(false))
                 .andExpect(jsonPath("$.data.nextCursor").value(nullValue()))
                 .andReturn();
@@ -649,6 +659,202 @@ class AnnouncementApiIntegrationTest {
                 mockMvc.perform(get("/api/v1/announcements").param("regionCode", "99999")),
                 "INVALID_REGION_CODE"
         );
+    }
+
+    @Test
+    void 마감순은_접수중_마감일과_예정_시작일_순으로_페이지를_이어준다() throws Exception {
+        Announcement soon = persist(deadlineAnnouncement("order-soon", 1, 9, 10));
+        Announcement sameDayNew = persist(deadlineAnnouncement("order-same", 2, 9, 10));
+        Announcement later = persist(deadlineAnnouncement("order-later", 3, 9, 15));
+        Announcement upcoming = persist(deadlineAnnouncement("order-upcoming", 4, 11, 12));
+        persist(deadlineAnnouncement("order-upcoming-later", 5, 12, 13));
+        persist(deadlineAnnouncement("order-closed", 6, 7, 9));
+        entityManager.flush();
+        entityManager.clear();
+
+        MvcResult first = mockMvc.perform(get("/api/v1/announcements")
+                        .param("keyword", "order-").param("sort", "DEADLINE").param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(6))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(sameDayNew.getId()))
+                .andExpect(jsonPath("$.data.items[1].announcementId").value(soon.getId()))
+                .andExpect(jsonPath("$.data.hasNext").value(true)).andReturn();
+        String cursor = objectMapper.readTree(first.getResponse().getContentAsString())
+                .path("data").path("nextCursor").asText();
+        mockMvc.perform(get("/api/v1/announcements")
+                        .param("keyword", "order-").param("sort", "DEADLINE")
+                        .param("size", "2").param("cursor", cursor))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(6))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(later.getId()))
+                .andExpect(jsonPath("$.data.items[1].announcementId").value(upcoming.getId()));
+        mockMvc.perform(get("/api/v1/announcements").param("sort", "LATEST").param("cursor", cursor))
+                .andExpect(status().isBadRequest());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"DEADLINE", "LATEST", "LATEST_ASC"})
+    void 마감임박순은_선택지역의_현재_확정접수_종료일을_쓰고_카드에도_같은_기간을_보여준다(String sort) throws Exception {
+        HousingComplex seoul = persist(createHousingComplex("deadline-seoul", "11140"));
+        HousingComplex other = persist(createHousingComplex("deadline-other", "29110"));
+        Announcement reviewed = persist(deadlineAnnouncement("schedule-order-reviewed", 1, 1, 30));
+        reviewed.confirmApplicationPeriod(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 30));
+        persist(AnnouncementApplicationSchedule.verified(reviewed, seoul, "1순위",
+                ApplicationScheduleState.CONFIRMED, null, LocalDate.of(2026, 8, 9), LocalDate.of(2026, 8, 10),
+                null, null, "https://example.com/schedule", 1));
+        persist(AnnouncementApplicationSchedule.verified(reviewed, other, "1순위",
+                ApplicationScheduleState.CONFIRMED, null, LocalDate.of(2026, 8, 9), LocalDate.of(2026, 8, 20),
+                null, null, "https://example.com/schedule", 2));
+        Announcement legacy = persist(deadlineAnnouncement("schedule-order-legacy", 1, 9, 15));
+        persistSearchSupplyRows(seoul, reviewed, legacy);
+        persist(createSupplyRow(reviewed, other, null, "reviewed-other", 1, 1, null));
+        persist(createSupplyRow(legacy, other, null, "legacy-other", 1, 1, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/announcements").param("keyword", "schedule-order-")
+                        .param("sort", sort).param("regionCode", "11140"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(2))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(reviewed.getId()))
+                .andExpect(jsonPath("$.data.items[0].applicationStartAt").value("2026-08-09"))
+                .andExpect(jsonPath("$.data.items[0].applicationEndAt").value("2026-08-10"));
+        mockMvc.perform(get("/api/v1/announcements").param("keyword", "schedule-order-")
+                        .param("sort", sort).param("regionCode", "29110"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(2))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(legacy.getId()));
+    }
+
+    @Test
+    void 공고일_오름차순은_같은날_ID까지_정렬하고_방향이_다른_커서를_거부한다() throws Exception {
+        Announcement old = persist(deadlineAnnouncement("ascending-old", 1, 9, 10));
+        Announcement sameDay = persist(deadlineAnnouncement("ascending-same", 1, 9, 10));
+        Announcement recent = persist(deadlineAnnouncement("ascending-recent", 2, 9, 15));
+        entityManager.flush();
+        entityManager.clear();
+
+        MvcResult first = mockMvc.perform(get("/api/v1/announcements")
+                        .param("keyword", "ascending-").param("sort", "LATEST_ASC").param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(3))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(old.getId())).andReturn();
+        String cursor = objectMapper.readTree(first.getResponse().getContentAsString())
+                .path("data").path("nextCursor").asText();
+        mockMvc.perform(get("/api/v1/announcements")
+                        .param("keyword", "ascending-").param("sort", "LATEST_ASC").param("cursor", cursor))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(3))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(sameDay.getId()))
+                .andExpect(jsonPath("$.data.items[1].announcementId").value(recent.getId()))
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+        mockMvc.perform(get("/api/v1/announcements").param("sort", "LATEST").param("cursor", cursor))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 마감일_내림차순은_접수중_우선을_유지하고_날짜와_동률의_순서를_뒤집는다() throws Exception {
+        Announcement soon = persist(deadlineAnnouncement("descending-soon", 1, 9, 10));
+        Announcement sameDay = persist(deadlineAnnouncement("descending-same", 2, 9, 10));
+        Announcement later = persist(deadlineAnnouncement("descending-later", 3, 9, 15));
+        Announcement upcoming = persist(deadlineAnnouncement("descending-upcoming", 4, 11, 12));
+        entityManager.flush();
+        entityManager.clear();
+
+        MvcResult first = mockMvc.perform(get("/api/v1/announcements")
+                        .param("keyword", "descending-").param("sort", "DEADLINE_DESC").param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(4))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(later.getId()))
+                .andExpect(jsonPath("$.data.items[1].announcementId").value(soon.getId())).andReturn();
+        String cursor = objectMapper.readTree(first.getResponse().getContentAsString())
+                .path("data").path("nextCursor").asText();
+        mockMvc.perform(get("/api/v1/announcements")
+                        .param("keyword", "descending-").param("sort", "DEADLINE_DESC").param("cursor", cursor))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(4))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(sameDay.getId()))
+                .andExpect(jsonPath("$.data.items[1].announcementId").value(upcoming.getId()))
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+        mockMvc.perform(get("/api/v1/announcements").param("sort", "DEADLINE").param("cursor", cursor))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 알수없는_공고정렬은_거부한다() throws Exception {
+        mockMvc.perform(get("/api/v1/announcements").param("sort", "UNKNOWN"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"LATEST", "LATEST_ASC"})
+    void 최신순의_같은_게시일은_방향과_무관하게_마감임박순으로_페이지를_이어준다(String sort) throws Exception {
+        Announcement later = persist(deadlineAnnouncement("latest-tie-later", 1, 9, 20));
+        Announcement soon = persist(deadlineAnnouncement("latest-tie-soon", 1, 9, 10));
+        Announcement sameDeadline = persist(deadlineAnnouncement("latest-tie-same", 1, 9, 10));
+        Announcement upcoming = persist(deadlineAnnouncement("latest-tie-upcoming", 1, 11, 12));
+        Announcement recent = persist(deadlineAnnouncement("latest-tie-recent", 2, 9, 15));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<Long> expected = List.of(recent.getId(), sameDeadline.getId(), soon.getId(),
+                later.getId(), upcoming.getId());
+        if (sort.equals("LATEST_ASC")) {
+            expected = List.of(soon.getId(), sameDeadline.getId(), later.getId(), upcoming.getId(), recent.getId());
+        }
+        String cursor = null;
+        List<Long> actual = new ArrayList<>();
+        for (int index = 0; index < expected.size(); index++) {
+            MockHttpServletRequestBuilder request = get("/api/v1/announcements")
+                    .param("keyword", "latest-tie-").param("sort", sort).param("size", "1");
+            if (cursor != null) {
+                request.param("cursor", cursor);
+            }
+            JsonNode data = objectMapper.readTree(mockMvc.perform(request).andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString()).path("data");
+            actual.add(data.path("items").get(0).path("announcementId").asLong());
+            assertEquals(index < expected.size() - 1, data.path("hasNext").asBoolean());
+            cursor = data.path("nextCursor").asText();
+        }
+        assertEquals(expected, actual);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"LATEST", "LATEST_ASC"})
+    void 이전_최신순_커서의_조회는_기존_ID_순서로_이어서_반환한다(String sort) throws Exception {
+        Announcement later = persist(deadlineAnnouncement("legacy-order-later", 1, 9, 20));
+        Announcement soon = persist(deadlineAnnouncement("legacy-order-soon", 1, 9, 10));
+        Announcement upcoming = persist(deadlineAnnouncement("legacy-order-upcoming", 1, 11, 12));
+        entityManager.flush();
+        entityManager.clear();
+        String version = "v1";
+        long anchor = upcoming.getId();
+        List<Long> expected = List.of(soon.getId(), later.getId());
+        if (sort.equals("LATEST_ASC")) {
+            version = "v1-asc";
+            anchor = later.getId();
+            expected = List.of(soon.getId(), upcoming.getId());
+        }
+        String cursor = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                (version + "|2026-08-01|" + anchor).getBytes(StandardCharsets.UTF_8));
+        List<Long> actual = new ArrayList<>();
+        for (int index = 0; index < expected.size(); index++) {
+            JsonNode data = objectMapper.readTree(mockMvc.perform(get("/api/v1/announcements")
+                            .param("keyword", "legacy-order-").param("sort", sort).param("size", "1")
+                            .param("cursor", cursor)).andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString()).path("data");
+            actual.add(data.path("items").get(0).path("announcementId").asLong());
+            assertEquals(index == 0, data.path("hasNext").asBoolean());
+            cursor = data.path("nextCursor").asText();
+        }
+        assertEquals(expected, actual);
+    }
+
+    private Announcement deadlineAnnouncement(String name, int postedDay, int startDay, int endDay) {
+        return createSearchAnnouncement(name, name, null, null, AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING, RecruitmentType.NEW, AgencyCode.LH,
+                LocalDate.of(2026, 8, postedDay), LocalDate.of(2026, 8, startDay),
+                LocalDate.of(2026, 8, endDay));
     }
 
     private Announcement createAnnouncement(

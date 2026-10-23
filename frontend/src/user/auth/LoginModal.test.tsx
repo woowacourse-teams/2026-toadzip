@@ -45,6 +45,7 @@ it('정책 조회 중에도 기존 로그인 URL과 정책 링크를 바로 제�
   vi.spyOn(privacyApi, 'notices').mockReturnValue(new Promise(() => {}))
   renderLogin()
   expectLegacyLoginLinks()
+  expect(screen.getByRole('dialog', { name: '로그인' })).toHaveAccessibleDescription(/관심있는 공고의\s*새 소식을 받아보세요\./)
   expect(screen.getByRole('link', { name: '카카오톡으로 로그인' })).toHaveFocus()
 })
 

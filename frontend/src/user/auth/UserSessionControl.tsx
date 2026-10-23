@@ -6,6 +6,9 @@ import { getCurrentUser, logoutUser } from './api'
 import { LoginModal } from './LoginModal'
 import { MemberMenuModal } from './MemberMenuModal'
 import { useMobileViewport } from '../../public-housing/components/useMobileViewport'
+import { PrivacyLinks } from '../../privacy/Privacy'
+import { clearLoginReturn, loginPageUrl, readLoginReturn, rememberLoginReturn } from './loginReturn'
+import { useExplorerReturn } from '../../public-housing/navigation/ExplorerReturnContext'
 
 type SessionState = 'loading' | 'guest' | 'signed-in' | 'error'
 
@@ -18,8 +21,9 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
   const [memberView, setMemberView] = useState<'inbox' | 'settings' | 'account' | null>(null)
   const memberTrigger = useRef<HTMLButtonElement>(null)
   const mobile = useMobileViewport()
+  const explorerReturn = useExplorerReturn()
   const [searchParams] = useSearchParams()
-  const { hash } = useLocation()
+  const { pathname, search, hash } = useLocation()
   const navigate = useNavigate()
   const loginButtonRef = useRef<HTMLButtonElement>(null)
   const inboxRequested = searchParams.get('inbox') === 'open'
@@ -35,9 +39,25 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
   }, [session])
 
   useEffect(() => {
-    if (session !== 'signed-in' || !loginRequested) return
-    void navigate({ search: remainingSearch, hash }, { replace: true })
+    if (session !== 'signed-in') return
+    const returnTo = readLoginReturn(true)
+    if (returnTo) {
+      clearLoginReturn()
+      void navigate(returnTo, { replace: true })
+    } else if (loginRequested) {
+      void navigate({ search: remainingSearch, hash }, { replace: true })
+    }
   }, [session, loginRequested, remainingSearch, hash, navigate])
+
+  useEffect(() => {
+    if (!mobile || !(isLoginOpen || loginRequested || inboxRequested)
+      || (session !== 'guest' && session !== 'error')) return
+    const returnTo = loginResult === 'failed'
+      ? readLoginReturn(true) ?? explorerReturn?.current ?? pathname + search + hash
+      : explorerReturn?.current ?? pathname + search + hash
+    rememberLoginReturn(returnTo)
+    void navigate(loginPageUrl(returnTo, loginResult === 'failed'), { replace: !isLoginOpen })
+  }, [mobile, isLoginOpen, loginRequested, inboxRequested, session, loginResult, pathname, search, hash, navigate, explorerReturn])
 
   useEffect(() => {
     if (sessionOverride !== undefined) return
@@ -103,6 +123,7 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
       setMemberView('settings')
     }}>알림 관리</button>
     <Link className="service-account-feedback" to="/feedback">제보/의견 보내기</Link>
+    {mobile && <PrivacyLinks />}
     <span className="service-login-status"><span aria-hidden="true" />로그인됨</span>
     <button className="service-logout-button" type="button" disabled={isLoggingOut}
       onClick={() => void handleLogout()}>
@@ -117,7 +138,7 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
       )}
       {session === 'guest' && (
         <button ref={loginButtonRef} className="service-login-link" type="button"
-          aria-haspopup="dialog" onClick={() => { setReplaySensitive('login_modal', true); setIsLoginOpen(true) }}>로그인</button>
+          aria-haspopup={mobile ? undefined : 'dialog'} onClick={() => { if (!mobile) setReplaySensitive('login_modal', true); setIsLoginOpen(true) }}>로그인</button>
       )}
       {session === 'error' && (
         <button ref={loginButtonRef} className="service-session-retry" type="button" aria-label="로그인 상태 다시 확인" onClick={() => void retrySessionCheck()}>
@@ -144,7 +165,7 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
         {logoutError && <p role="alert">로그아웃하지 못했어요. 다시 시도해 주세요.</p>}
       </MemberMenuModal>}
       {logoutError && <span className="service-user-error" role="alert">로그아웃 실패</span>}
-      {(isLoginOpen || loginRequested || inboxRequested) && (session === 'guest' || session === 'error') && (
+      {!mobile && (isLoginOpen || loginRequested || inboxRequested) && (session === 'guest' || session === 'error') && (
         <LoginModal entryPoint={isLoginOpen ? 'button' : loginResult === 'failed' ? 'failed_return' : 'required_redirect'} loginFailed={loginResult === 'failed'} sessionError={session === 'error'}
           onClose={closeLogin} returnFocusRef={loginButtonRef} />
       )}
