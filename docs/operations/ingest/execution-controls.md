@@ -102,6 +102,7 @@ API 기준 경로는 `/api/admin/ingest/announcement-supply-matches`다.
 | `GET /complexes/{complexId}/housing-types` | 후보의 면적, nullable `householdCount`, 현재 대상의 `token` 반환 |
 | `POST /{identifier}/refine` | 기존 `rows`에 선택적 `remember`, `sourceUrl`, `reason`, `splits` 추가. `remember=true`이면 각 행의 `housingTypeId`와 후보의 `targetToken` 필수 |
 | `POST /{identifier}/release` | `rowIdentifier`, 최신 행 `token`, `reason`을 받아 선택을 해제하고 최신 공급행 목록 반환 |
+| `POST /{identifier}/rerun` | 본문 없음. 선택 없이 저장한 매칭·자동 매칭으로 이 공고만 다시 정제하고 결과 건수를 반환한다. 매칭이나 LH 보강이 하나라도 실패하면 400으로 전체를 되돌리며 실패 기록은 바꾸지 않는다. 원천이 없는 공고도 400이다. 기존 `refine`은 빈 선택을 계속 거절한다. |
 
 두 POST는 관리자 세션·CSRF와 기존 전역 수집·정제 쓰기 잠금을 사용한다. 작업자는 서버 세션으로 결정한다.
 조회 뒤 원천·저장 선택·후보가 바뀌면 409로 거절하므로 최신 자료를 다시 비교한다.
