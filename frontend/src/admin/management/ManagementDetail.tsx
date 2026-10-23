@@ -149,7 +149,7 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
           {!value.summary.deleted && <SupplyCorrectionWorkbench key={id} id={id} sourceUrl={String(value.data.originalUrl ?? '')}
             onChanged={() => { void getManagementDetail(resource, id).then(saved).catch(cause => setError(String(cause))) }}
             onBusyChange={setExtendedBusy} onDirtyChange={setExtendedDirty} />}</> : null}
-      {section === 'history' ? <><h2>출처</h2><dl className="admin-data-grid"><div><dt>공식 원문 URL</dt><dd><SourceUrl url={value.data.originalUrl} /></dd></div><div><dt>원천 식별자</dt><dd>{value.sourceIdentifier || '기록 없음'}</dd></div></dl><p>관리자 최종 변경: {value.summary.updatedAt ? new Date(value.summary.updatedAt).toLocaleString('ko-KR') : '변경 이력 없음'}</p>
+      {section === 'history' ? <><h2>출처</h2><dl className="admin-data-grid"><div className="admin-data-wide"><dt>공식 원문 URL</dt><dd><SourceUrl url={value.data.originalUrl} /></dd></div><div><dt>원천 식별자</dt><dd>{value.sourceIdentifier || '기록 없음'}</dd></div></dl><p>관리자 최종 변경: {value.summary.updatedAt ? new Date(value.summary.updatedAt).toLocaleString('ko-KR') : '변경 이력 없음'}</p>
         {resource === 'announcements' && <details className="admin-verification-review" open={params.get('comparison') === 'source' || requestedSection === 'verification' || undefined}><summary>수집 원천과 비교</summary>
           <QualityComparisonPanel key={`${resource}:${id}`} resource={resource} id={id} detail={value} onDirtyChange={setExtendedDirty} onBusyChange={setExtendedBusy}
             onChanged={() => { setAttempt(current => current + 1); onChanged?.() }} />

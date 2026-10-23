@@ -158,7 +158,7 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
     {error ? <p role="alert">{error} <button type="button" onClick={() => setRevision(value => value + 1)}>다시 조회</button></p> : null}
     <div className={styles.results} aria-busy={pending}>
       {!pending && !error && pdfGroups.size > 0 && <section className={styles.pdfGroups} aria-label="PDF로 보정할 공고">
-        <h3>이 페이지의 주택형 대응 오류</h3><p>같은 공고의 오류를 묶었습니다. PDF 보정 후 정제를 다시 실행해 해결 여부를 확인하세요.</p>
+        <h3>이 페이지의 주택형 대응 오류</h3><p>같은 공고의 주택형 대응 오류를 묶었습니다. PDF 보정 후 정제를 다시 실행하면 이 오류 때문에 보류된 LH 보강도 함께 다시 판정됩니다.</p>
         {[...pdfGroups.entries()].map(([announcementId, rows]) => <div key={announcementId}><strong>{rows[0].product!.name}</strong><Link to={follow(`/admin/announcements/${announcementId}/pdf-correction?${pdfFailureParams(rows)}`, rows[0])}>PDF로 보정 · {rows.length}건</Link></div>)}
       </section>}
       <div className={styles.summary}>
@@ -334,7 +334,9 @@ function nextAction(row:FailureReview) {
   if (row.category === 'collection') return collectionCause(row).action
   if (row.reason === 'MANUAL_MATCH_REVIEW_REQUIRED') return '저장한 매칭의 근거와 현재 원천·주택형을 다시 비교하세요. 연결을 다시 선택해 근거와 함께 저장하거나 저장한 선택을 해제할 수 있습니다.'
   if (/GEOCODING/.test(row.reason)) return '단지 주소와 좌표 원천을 확인하세요. 좌표 ZIP을 업로드해도 일치하는 주소나 좌표가 없으면 별도 확인이 필요합니다.'
-  if (/HOUSING_TYPE/.test(row.reason)) return '단지의 주택형과 원천의 면적·공급 유형을 비교한 뒤 정제하세요.'
+  if (/HOUSING_TYPE/.test(row.reason)) return row.product?.resourceType === 'announcements'
+    ? '공고문으로 확인하려면 위의 PDF로 보정을 사용하세요. 단지 주택형과 원천의 면적·공급 유형을 비교해도 됩니다. 고친 뒤 정제하세요.'
+    : '단지의 주택형과 원천의 면적·공급 유형을 비교한 뒤 정제하세요.'
   if (/COMPLEX/.test(row.reason)) return '단지 등록·주소·공급 유형과 원천 연결을 확인한 뒤 정제하세요.'
   if (/PREVIOUS|CYCLIC/.test(row.reason)) return '이전·후속 공고 연결을 확인한 뒤 정제하세요.'
   if (/LH_.*SOURCE|LH_COLLECTION/.test(row.reason)) return '연결된 LH 원천을 다시 수집한 뒤 정제하세요.'
