@@ -30,6 +30,7 @@
 [공급행]
 - 공급행은 공고문 공급 표의 (단지, 주택형) 한 행입니다.
 - complexReference.sourceComplexName은 공고문의 단지명, sourceHousingTypeName은 공고문의 주택형 표기를 그대로 쓰세요.
+- 공고문에 주택형 표기 없이 면적만 있으면 sourceHousingTypeName은 null로 두세요. 면적(예: 26.37)을 주택형 표기로 쓰지 마세요.
 - 대학생·청년·신혼부부 같은 공급대상은 주택형명에 넣지 말고 targets로 나누세요. 같은 공급대상이 소득 구간으로 나뉘면 target에 구간까지 쓰세요(예: "청년 소득(×)").
 - 공급대상 구분이 없으면 target을 "일반"으로 쓰세요.
 - totalSupplyHouseholdCount는 이번에 모집하는 호수(예비자 모집이면 모집할 예비자수)입니다. 건설호수·대기 중인 예비자수와 구분하세요.

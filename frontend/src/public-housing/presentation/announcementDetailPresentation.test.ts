@@ -111,6 +111,13 @@ describe('groupAnnouncementSupplyRows', () => {
 
     expect(groupAnnouncementSupplyRows([row])[0]?.supplyHouseholdCount).toBeNull()
   })
+
+  it('관리자가 보정한 공급행도 단지명은 연결된 단지 이름으로 보여 준다', () => {
+    const data = toHousingAnnouncementDetailData(announcementDetail())
+    const row = { ...data.supplyRows[0]!, corrected: true, sourceComplexName: '공고 표기 새솔' }
+
+    expect(groupAnnouncementSupplyRows([row])[0]?.name).toBe('새솔마을')
+  })
 })
 
 function announcementDetail(

@@ -86,15 +86,15 @@ it.each(['preview', 'apply'])('%s의 409는 저장을 반복하지 않고 최신
   const failed = stage === 'preview' ? api.previewJsonUpdate : api.applyJsonUpdate
   failed.mockRejectedValueOnce(new ManagementError('현재값이 변경되었습니다.', 409))
   await open()
-  manual('공급행 1', '공고 주택형명')
-  fireEvent.change(screen.getByRole('textbox', { name: '공급행 1 공고 주택형명 수정' }), { target: { value: '26A 수동 보정' } })
+  manual('공급행 1', '이 공고의 주택형 표기')
+  fireEvent.change(screen.getByRole('textbox', { name: '공급행 1 이 공고의 주택형 표기 수정' }), { target: { value: '26A 수동 보정' } })
   fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
   const reload = await screen.findByRole('button', { name: '입력을 유지하고 최신값 비교' })
   expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeDisabled()
   if (stage === 'preview') expect(api.applyJsonUpdate).not.toHaveBeenCalled()
   fireEvent.click(reload)
   await screen.findByRole('status')
-  expect(screen.getByRole('textbox', { name: '공급행 1 공고 주택형명 수정' })).toHaveValue('26A 수동 보정')
+  expect(screen.getByRole('textbox', { name: '공급행 1 이 공고의 주택형 표기 수정' })).toHaveValue('26A 수동 보정')
   expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeEnabled()
 })
 it('저장 응답을 잃으면 자동 재적용하지 않고 최신값 확인을 요구한다', async () => {

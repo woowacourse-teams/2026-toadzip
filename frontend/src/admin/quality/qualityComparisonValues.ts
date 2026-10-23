@@ -6,11 +6,11 @@ const fields: Record<string, Record<string, string>> = {
   MYHOME_COMPLEX: { name: 'style_nm', exclusiveArea: 'suply_prvuse_ar' },
   LH_LEASE_CATALOG: { exclusiveArea: 'exclusive_area', householdCount: 'total_unit_count' },
   MYHOME_ANNOUNCEMENT: { name: 'pblanc_nm', postedDate: 'rcrit_pblanc_de', applicationStartDate: 'begin_de',
-    applicationEndDate: 'end_de', winnerAnnouncementDate: 'przwner_presnatn_de', sourceComplexName: 'hsmp_nm',
-    sourceHousingTypeName: 'house_ty_nm', supplyPnu: 'pnu', totalSupplyHouseholdCount: 'sum_suply_co',
+    applicationEndDate: 'end_de', winnerAnnouncementDate: 'przwner_presnatn_de',
+    supplyPnu: 'pnu', totalSupplyHouseholdCount: 'sum_suply_co',
     rentalDeposit: 'rent_gtn', monthlyRent: 'mt_rntchrg' },
   LH_ANNOUNCEMENT_CATALOG: { name: 'PAN_NM' },
-  LH_ANNOUNCEMENT_SUPPLY: { sourceComplexName: 'complex_label', sourceHousingTypeName: 'type_name',
+  LH_ANNOUNCEMENT_SUPPLY: {
     exclusiveArea: 'exclusive_area', supplyHouseholdCount: 'supplied_unit_count', rentalDeposit: 'deposit_text', monthlyRent: 'monthly_rent_text' },
   SH_ANNOUNCEMENT: { name: 'title' },
 }

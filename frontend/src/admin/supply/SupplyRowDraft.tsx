@@ -106,8 +106,14 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
       {error && <p role="alert">{error}</p>}
       {(value.groupId || sharedCount !== undefined) && <p>공통 모집수 {sharedCount ?? value.sharedHouseholdCount ?? '미확정'}세대는 묶음에 한 번만 보관합니다. 단지·공통 모집수 변경은 위의 ‘원천별 공급행 보정’에서 처리하세요.</p>}
       <fieldset><legend>이 공고에만 적용할 공급정보</legend><div className={styles.fields}>
-        <label>공고의 단지명<input required maxLength={255} value={value.complexName} onChange={event => field('complexName', event.target.value)} /></label>
-        <label>공고의 주택형명<input required maxLength={255} value={value.typeName} onChange={event => field('typeName', event.target.value)} /></label>
+        {/* 기존 행의 원천 단지명은 정제가 관리한다. 원천이 없는 새 행만 처음 표기를 입력한다. */}
+        {value.id ? <p className={styles.sourceName}>수집 원문 단지명: {value.complexName}</p>
+          : <label>공고의 단지명<input required maxLength={255} value={value.complexName} onChange={event => field('complexName', event.target.value)} /></label>}
+        <label>이 공고의 주택형 표기<input required maxLength={255} value={value.typeName} aria-describedby={`${value.key}-type-name`} onChange={event => field('typeName', event.target.value)} /></label>
+        <p id={`${value.key}-type-name`} className={styles.sourceName}>
+          공개 화면에 이 표기로 보이며 이 공고에만 적용됩니다. 연결한 단지 주택형 이름과 같으면 단지 이름을 따라갑니다.
+          {value.housingComplexId ? <> 단지 주택형 이름 자체가 틀렸다면 <a href={`/admin/complexes/${value.housingComplexId}?section=relations`} target="_blank" rel="noreferrer">단지 주택형 이름 고치기 →</a></> : null}
+        </p>
         <label>공급 PNU<input required maxLength={255} value={value.pnu} onChange={event => field('pnu', event.target.value)} /></label>
         <label>공급 구분<select value={value.category} onChange={event => field('category', event.target.value as CorrectionRow['category'])}><option value="NEW_SUPPLY">신규 공급</option><option value="RESUPPLY">재공급</option></select></label>
         <label>입주 예정 연월<input type="month" value={value.moveInMonth ?? ''} onChange={event => field('moveInMonth', event.target.value || null)} /></label>
