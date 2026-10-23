@@ -121,7 +121,8 @@ public class MyHomeAnnouncementMappingWriter {
             }
             catch (LhAnnouncementEnrichmentRejectedException exception) {
                 throw new MyHomeAnnouncementMappingRejectedException(
-                        MyHomeAnnouncementMappingFailureReason.INVALID_VALUE, "LH 보강 실패: " + exception.getMessage());
+                        MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
+                        "LH 보강 실패: " + exception.reason() + " - " + exception.getMessage());
             }
         }
         failureStore.reconcileForAnnouncement(

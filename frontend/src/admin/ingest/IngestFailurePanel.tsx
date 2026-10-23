@@ -213,14 +213,14 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
           <FailureSourceRecovery key={selectionKey} row={selected} disabled={actionDisabled}
             onProcessed={() => setRevision(value => value + 1)} onBusy={setActionBusy}/>
         {(selected.category === 'announcement' || selected.category === 'enrichment') && typeof selected.raw.sourceAnnouncementIdentifier === 'string'
-          && (/COMPLEX|HOUSING_TYPE|MANUAL_MATCH|LH_SUPPLY_LINK/.test(selected.reason) || selected.detail.includes('수동 매칭')) && <section>
+          && supplyMatchingFailure(selected) && <section>
             <button type="button" aria-expanded={matchingOpen} disabled={actionDisabled}
               onClick={() => setMatchingOpen(value => !value)}>단지·주택형 매칭</button>
-            {selected.category === 'enrichment' && <button type="button" aria-expanded={lhLinkOpen} disabled={actionDisabled}
+            {lhLinkFailure(selected) && <button type="button" aria-expanded={lhLinkOpen} disabled={actionDisabled}
               onClick={() => setLhLinkOpen(value => !value)}>LH 공급 원본 연결</button>}
             {matchingOpen && <AnnouncementSupplyMatchingForm identifier={selected.raw.sourceAnnouncementIdentifier}
               disabled={retryDisabled || detailPending || Boolean(detailError)} onApplied={processed} onBusy={setActionBusy} />}
-            {selected.category === 'enrichment' && lhLinkOpen && <LhSupplyLinkEditor identifier={selected.raw.sourceAnnouncementIdentifier}
+            {lhLinkFailure(selected) && lhLinkOpen && <LhSupplyLinkEditor identifier={selected.raw.sourceAnnouncementIdentifier}
               disabled={retryDisabled || detailPending || Boolean(detailError)} onBusy={setActionBusy} />}
           </section>}
         </section>
@@ -292,6 +292,19 @@ function statusLabel(status:string) { return status === 'RESOLVED' ? '해결됨'
 function formatTime(value:string) {
   const date=new Date(value)
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false})
+}
+// 정제 직후 LH 보강이 실패하면 공고 정제 오류(INVALID_VALUE)에 "LH 보강 실패: {사유} - …"로 남는다.
+function lhEnrichmentReason(row:FailureReview) {
+  return /^LH 보강 실패: ([A-Z_]+) - /.exec(row.detail)?.[1] ?? null
+}
+function supplyMatchingFailure(row:FailureReview) {
+  const matching = /COMPLEX|HOUSING_TYPE|MANUAL_MATCH|LH_SUPPLY_LINK/
+  return matching.test(row.reason) || matching.test(lhEnrichmentReason(row) ?? '') || row.detail.includes('수동 매칭')
+}
+function lhLinkFailure(row:FailureReview) {
+  const complex = /^(COMPLEX_NOT_FOUND|AMBIGUOUS_COMPLEX|LH_SUPPLY_LINK_REVIEW_REQUIRED)$/
+  if (row.category === 'enrichment') return complex.test(row.reason)
+  return row.category === 'announcement' && complex.test(lhEnrichmentReason(row) ?? '')
 }
 function reasonLabel(row:FailureReview) {
   if (row.category === 'collection') return collectionCause(row).title

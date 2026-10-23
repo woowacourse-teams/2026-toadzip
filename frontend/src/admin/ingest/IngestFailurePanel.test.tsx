@@ -262,3 +262,22 @@ it('단계가 바뀌면 이전 행을 숨기고 취소한 응답을 버린다', 
   await act(async()=>complete(page([{...row,target:'취소된 보강 응답'}])))
   expect(screen.queryByText('취소된 보강 응답')).not.toBeInTheDocument()
 })
+
+it('정제 직후 LH 보강이 단지를 찾지 못한 공고 정제 오류에서 매칭과 LH 공급 원본 연결을 연다', async () => {
+  fetchFailures.mockResolvedValue(page([{...row, reason:'INVALID_VALUE', raw:{sourceAnnouncementIdentifier:'21391'},
+    detail:'LH 보강 실패: COMPLEX_NOT_FOUND - LH 공급 원본과 일치하는 기존 공급 단지가 없습니다.'}]))
+  render(<IngestFailurePanel initialCategory="announcement" executionId={null} />, {wrapper:MemoryRouter})
+  fireEvent.click(await screen.findByRole('button',{name:`확인·처리: ${row.target}`}))
+  const dialog=within(screen.getByRole('dialog'))
+  expect(dialog.getByRole('button',{name:'단지·주택형 매칭'})).toBeVisible()
+  expect(dialog.getByRole('button',{name:'LH 공급 원본 연결'})).toBeVisible()
+})
+
+it('마이홈 원천의 단지 미발견에는 LH 공급 원본 연결을 제공하지 않는다', async () => {
+  fetchFailures.mockResolvedValue(page([{...row, raw:{sourceAnnouncementIdentifier:'21391'}}]))
+  render(<IngestFailurePanel initialCategory="announcement" executionId={null} />, {wrapper:MemoryRouter})
+  fireEvent.click(await screen.findByRole('button',{name:`확인·처리: ${row.target}`}))
+  const dialog=within(screen.getByRole('dialog'))
+  expect(dialog.getByRole('button',{name:'단지·주택형 매칭'})).toBeVisible()
+  expect(dialog.queryByRole('button',{name:'LH 공급 원본 연결'})).not.toBeInTheDocument()
+})

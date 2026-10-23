@@ -29,6 +29,7 @@ describe('LH 공급 원본 연결', () => {
 
     expect(await screen.findByText('연결된 마이홈 원천행 없음')).toBeVisible()
     expect(screen.getByText(/자동 연결 → 평화주공1단지/)).toBeVisible()
+    expect(screen.getByText(/재확인 필요 0개 · 연결 없음 1개/)).toBeVisible()
     expect(screen.getByRole('option', { name: /평화주공5단지.*연결할 수 없음/ })).toBeDisabled()
   })
 
@@ -41,11 +42,14 @@ describe('LH 공급 원본 연결', () => {
     fireEvent.change(screen.getByLabelText('공식 출처 URL'), { target: { value: 'https://apply.lh.or.kr/notice' } })
     fireEvent.change(screen.getByLabelText('확인 근거'), { target: { value: '공고문 3쪽' } })
 
-    fireEvent.click(screen.getByRole('button', { name: '선택한 LH 행 연결 저장' }))
+    fireEvent.click(screen.getByRole('button', { name: '선택한 LH 행 1개 연결 저장' }))
 
     await waitFor(() => expect(saveLhSupplyLinks).toHaveBeenCalledWith('19585', view, 'myhome-4',
       ['LH:pan:SUPPLY:0'], 'https://apply.lh.or.kr/notice', '공고문 3쪽'))
     expect(await screen.findByText(/저장한 연결 사용 중 → 평화주공4단지/)).toBeVisible()
+    // 저장 결과는 저장 버튼 바로 아래에 보여 준다.
+    const footer = screen.getByRole('button', { name: '선택한 LH 행 0개 연결 저장' }).closest('footer')
+    expect(footer?.nextElementSibling).toHaveTextContent('공고 정제 다시 실행으로 반영해 주세요')
   })
 
   it('근거 없이 저장하지 않는다', async () => {
@@ -53,25 +57,45 @@ describe('LH 공급 원본 연결', () => {
     fireEvent.click(await screen.findByRole('checkbox', { name: /전주평화4 영구임대주택/ }))
     fireEvent.change(screen.getByLabelText('마이홈 원천행'), { target: { value: 'myhome-4' } })
 
-    fireEvent.click(screen.getByRole('button', { name: '선택한 LH 행 연결 저장' }))
+    fireEvent.click(screen.getByRole('button', { name: '선택한 LH 행 1개 연결 저장' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('공식 출처 URL과 확인 근거')
     expect(saveLhSupplyLinks).not.toHaveBeenCalled()
   })
 
-  it('재확인이 필요한 연결을 표시하고 이유와 함께 해제한다', async () => {
+  it('재확인이 필요한 행을 먼저 보여 주고 이전 연결로 다시 저장할 준비를 한다', async () => {
     const stale = { ...unlinked, savedLink: { ...saved, reviewRequired: true } }
-    vi.mocked(getLhSupplyLinks).mockResolvedValue({ ...view, lhRows: [stale] })
-    vi.mocked(releaseLhSupplyLink).mockResolvedValue({ ...view, lhRows: [unlinked] })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(getLhSupplyLinks).mockResolvedValue({ ...view, lhRows: [automatic, stale] })
     render(<LhSupplyLinkEditor identifier="19585" />)
-    expect(await screen.findByText(/저장한 연결 재확인 필요/)).toBeVisible()
-    fireEvent.change(screen.getByLabelText('확인 근거'), { target: { value: '다른 단지로 잘못 연결함' } })
+
+    expect(await screen.findByText(/재확인 필요 1개 · 연결 없음 0개/)).toBeVisible()
+    const checkboxes = screen.getAllByRole('checkbox')
+    expect(checkboxes[0]).toHaveAccessibleName(/전주평화4 영구임대주택/)
+    expect(screen.getByText(/이전 연결 → 평화주공4단지/)).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '이 연결 다시 확인해 저장' }))
+
+    expect(checkboxes[0]).toBeChecked()
+    expect(screen.getByLabelText('마이홈 원천행')).toHaveValue('myhome-4')
+    expect(screen.getByLabelText('공식 출처 URL')).toHaveValue('https://apply.lh.or.kr/notice')
+    expect(screen.getByLabelText('확인 근거')).toHaveValue('')
+  })
+
+  it('해제는 저장 근거와 별도로 받은 해제 이유로 요청하고 결과를 그 행에 보여 준다', async () => {
+    const linked = { ...unlinked, linkedRowIdentifier: 'myhome-4', savedLink: saved }
+    vi.mocked(getLhSupplyLinks).mockResolvedValue({ ...view, lhRows: [linked] })
+    vi.mocked(releaseLhSupplyLink).mockResolvedValue({ ...view, lhRows: [unlinked] })
+    render(<LhSupplyLinkEditor identifier="19585" />)
+    fireEvent.change(await screen.findByLabelText('확인 근거'), { target: { value: '저장할 때 쓰려던 근거' } })
 
     fireEvent.click(screen.getByRole('button', { name: '저장한 연결 해제' }))
+    fireEvent.click(screen.getByRole('button', { name: '해제' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('해제할 이유')
+    fireEvent.change(screen.getByLabelText('해제 이유'), { target: { value: '다른 단지로 잘못 연결함' } })
+    fireEvent.click(screen.getByRole('button', { name: '해제' }))
 
     await waitFor(() => expect(releaseLhSupplyLink).toHaveBeenCalledWith('19585',
-      { ...view, lhRows: [stale] }, 'LH:pan:SUPPLY:0', '다른 단지로 잘못 연결함'))
-    expect(await screen.findByText('연결된 마이홈 원천행 없음')).toBeVisible()
+      { ...view, lhRows: [linked] }, 'LH:pan:SUPPLY:0', '다른 단지로 잘못 연결함'))
+    const notice = await screen.findByText(/LH 공급 연결을 해제했습니다/)
+    expect(notice.closest('fieldset')).toHaveTextContent('전주평화4 영구임대주택')
   })
 })
