@@ -47,6 +47,27 @@ class SupplyRowDisplayNameTest {
     }
 
     @Test
+    void 표기를_두지_않던_행은_보이던_이름을_그대로_보내면_새_연결의_이름을_따른다() {
+        SupplyRow row = SupplyRow.create(new Announcement(), null, null, "5:196771:1", 1, "김제검산1", "아파트",
+                PNU, null, SupplyCategory.NEW_SUPPLY, null, 211);
+
+        row.reviseByAdmin(null, type("26"), "아파트", PNU, null, SupplyCategory.NEW_SUPPLY, 211);
+
+        assertThat(row.getAnnouncementHousingTypeName()).isNull();
+        assertThat(row.displayHousingTypeName()).isEqualTo("26");
+    }
+
+    @Test
+    void 이미_둔_공고_표기는_연결이_바뀌어도_유지한다() {
+        SupplyRow row = supplyRow(type("26"));
+        row.reviseByAdmin(null, type("26"), "26형 고령자", PNU, null, SupplyCategory.NEW_SUPPLY, 20);
+
+        row.reviseByAdmin(null, type("31"), "26형 고령자", PNU, null, SupplyCategory.NEW_SUPPLY, 20);
+
+        assertThat(row.getAnnouncementHousingTypeName()).isEqualTo("26형 고령자");
+    }
+
+    @Test
     void 관리자_수정_행도_정제가_원천_이름은_갱신하고_관리자_값은_보호한다() {
         SupplyRow row = supplyRow(type("26"));
         row.reviseByAdmin(null, type("26"), "26.37", PNU, YearMonth.of(2027, 1), SupplyCategory.RESUPPLY, 7);
