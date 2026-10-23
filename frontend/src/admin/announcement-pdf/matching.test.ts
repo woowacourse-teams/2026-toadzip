@@ -25,6 +25,14 @@ describe('공고 보정 대응 제안', () => {
     expect(checkAnnouncement({ ...extraction, announcement: {} }, { name: '익산한스빌', postedDate: null }).map(check => check.matches)).toEqual([null, null])
   })
 
+  it('괄호 위치와 어순이 달라도 같은 단어로 된 공고명은 같은 공고로 본다', () => {
+    const { extraction } = scenario('hansville')
+    const jeonju = { ...extraction, announcement: { ...extraction.announcement, name: '전주시 영구임대주택 (전주평화1, 전주평화4) 예비입주자 모집' } }
+    const current = { name: '전주시(전주평화1,전주평화4) 영구임대주택 예비입주자 모집 공고(공고일:2026.02.10.)' }
+    expect(checkAnnouncement(jeonju, current)[0].matches).toBe(true)
+    expect(checkAnnouncement(jeonju, { name: '전주시(전주평화1,전주평화5) 영구임대주택 예비입주자 모집 공고' })[0].matches).toBe(false)
+  })
+
   it('공급대상명은 주택형처럼 형을 생략하지 않고 미저장 조건도 정확히 대응한다', () => {
     const row = blankRow(0)
     row.targets = [{ ...blankTarget(0), key: 'draft-target', target: '가형', supplyRank: '1순위' }]
