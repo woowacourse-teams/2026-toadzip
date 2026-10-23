@@ -31,6 +31,9 @@ describe('공고 보정 대응 제안', () => {
     const current = { name: '전주시(전주평화1,전주평화4) 영구임대주택 예비입주자 모집 공고(공고일:2026.02.10.)' }
     expect(checkAnnouncement(jeonju, current)[0].matches).toBe(true)
     expect(checkAnnouncement(jeonju, { name: '전주시(전주평화1,전주평화5) 영구임대주택 예비입주자 모집 공고' })[0].matches).toBe(false)
+    const gimje = { ...extraction, announcement: { ...extraction.announcement, name: '김제검산1 영구임대주택 예비입주자 모집' } }
+    expect(checkAnnouncement(gimje, { name: '김제검산1단지 영구임대주택 예비입주자 모집 공고(상시모집)' })[0].matches).toBe(true)
+    expect(checkAnnouncement(gimje, { name: '김제검산10단지 영구임대주택 예비입주자 모집 공고' })[0].matches).toBe(false)
   })
 
   it('공급대상명은 주택형처럼 형을 생략하지 않고 미저장 조건도 정확히 대응한다', () => {

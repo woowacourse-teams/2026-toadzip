@@ -32,11 +32,16 @@ function titleWords(value: unknown) {
   return (text(value) ?? '').normalize('NFKC').replace(/\d{4}\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}\s*일?\.?/g, ' ')
     .replace(/공고일|공고문?/g, ' ').split(/[\s\p{P}\p{S}]+/u).map(word => word.toLowerCase()).filter(Boolean)
 }
+// 단지명 뒤의 단지·아파트 같은 표기만 다르면 같은 단어로 본다(김제검산1 ↔ 김제검산1단지). 숫자가 이어지면 다른 단지다.
+function sameTitleWord(left: string, right: string) {
+  const [short, long] = left.length <= right.length ? [left, right] : [right, left]
+  return short === long || long.startsWith(short) && /^(단지|아파트|주공|지구)$/.test(long.slice(short.length))
+}
 function sameTitle(pdf: unknown, current: unknown) {
   const pdfKey = titleKey(pdf), currentKey = titleKey(current)
   if (pdfKey.includes(currentKey) || currentKey.includes(pdfKey)) return true
   const pdfWords = new Set(titleWords(pdf)), currentWords = new Set(titleWords(current))
-  const within = (small: Set<string>, large: Set<string>) => [...small].every(word => large.has(word))
+  const within = (small: Set<string>, large: Set<string>) => [...small].every(word => [...large].some(other => sameTitleWord(word, other)))
   return within(pdfWords, currentWords) || within(currentWords, pdfWords)
 }
 export type AnnouncementCheck = { label: '공고명' | '공고일'; pdf: string | null; current: string | null; matches: boolean | null }
