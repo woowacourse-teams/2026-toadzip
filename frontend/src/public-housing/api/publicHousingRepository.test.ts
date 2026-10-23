@@ -1100,12 +1100,21 @@ describe('공공주택 응답 계약', () => {
     } })).toThrowError(expect.objectContaining({ path: '$.data.housingTypes[0].basicRentalCondition.monthlyRent' }))
   })
 
+  it.each([0, 24])('단지 총 개수 %s를 보존한다', totalCount => {
+    expect(decodeComplexPageEnvelope({ data: { items: [], nextCursor: null, hasNext: false, totalCount } }).totalCount).toBe(totalCount)
+  })
+
+  it.each([-1, 1.5, '24', Number.MAX_SAFE_INTEGER + 1])('잘못된 단지 총 개수 %s를 거절한다', totalCount => {
+    expect(() => decodeComplexPageEnvelope({ data: { items: [], nextCursor: null, hasNext: false, totalCount } }))
+      .toThrowError(expect.objectContaining({ path: '$.data.totalCount' }))
+  })
+
   it('빈 배열, null과 false를 빈 성공 응답으로 보존한다', () => {
     const decoded = decodeComplexPageEnvelope({
       data: { items: [], nextCursor: null, hasNext: false },
     })
 
-    expect(decoded).toEqual({ items: [], nextCursor: null, hasNext: false })
+    expect(decoded).toEqual({ items: [], nextCursor: null, hasNext: false, totalCount: null })
   })
 
   it('표시 속성의 명시적인 null을 추정값으로 바꾸지 않는다', () => {

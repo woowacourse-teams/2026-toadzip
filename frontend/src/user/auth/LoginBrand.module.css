@@ -1,0 +1,6 @@
+.brand { padding-bottom: 12px; text-align: left; }
+.brandLockup { display: flex; align-items: center; gap: 8px; }
+.brand img { display: block; }
+.brandName { margin: 0; color: var(--ds-color-action); font-size: 18px; font-weight: 600; line-height: 1.4; letter-spacing: -.02em; }
+.value { margin: 28px 0 0; font-size: clamp(26px, 7.2vw, 30px); line-height: 1.5; letter-spacing: -.035em; word-break: keep-all; }
+.value strong { font-weight: 600; }

@@ -2,6 +2,7 @@ package com.toadzip.backend.housing.controller;
 
 import com.toadzip.backend.global.response.ApiResponse;
 import com.toadzip.backend.housing.dto.request.HousingComplexSearchRequest;
+import com.toadzip.backend.housing.domain.MapClusteringProfile;
 import com.toadzip.backend.housing.dto.response.HousingMapResponse;
 import com.toadzip.backend.housing.service.HousingMapQueryService;
 import jakarta.validation.Valid;
@@ -27,8 +28,9 @@ public class HousingMapController {
     public ApiResponse<HousingMapResponse> getMap(
             @Valid @ParameterObject @ModelAttribute HousingComplexSearchRequest request,
             @RequestParam BigDecimal zoom,
-            @RequestParam(required = false) Integer previousResolvedStage
+            @RequestParam(required = false) Integer previousResolvedStage,
+            @RequestParam(defaultValue = "DEFAULT") MapClusteringProfile clusteringProfile
     ) {
-        return new ApiResponse<>(queryService.getMap(request, zoom, previousResolvedStage));
+        return new ApiResponse<>(queryService.getMap(request, zoom, previousResolvedStage, clusteringProfile));
     }
 }

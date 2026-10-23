@@ -1208,12 +1208,12 @@ a {
 .housing-map-marker__agency[data-agency='SH'] { color: var(--ds-color-agency-sh); }
 .housing-map-marker__agency[data-agency='GH'] { color: var(--ds-color-agency-gh); }
 
-.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__content {
+.housing-map-marker:is(.is-previewing, .is-highlighted) .housing-map-marker__content {
   clip-path: inset(0 0 0 0 round 5px);
   transition: clip-path var(--marker-motion-duration) var(--marker-motion-easing);
 }
 
-.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__surface {
+.housing-map-marker:is(.is-previewing, .is-highlighted) .housing-map-marker__surface {
   width: calc(100% + 2px);
   height: calc(100% + 2px);
   box-shadow: 0 4px 12px rgb(18 37 47 / 18%);
@@ -1223,20 +1223,20 @@ a {
     box-shadow var(--marker-motion-duration) var(--marker-motion-easing);
 }
 
-.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__top {
+.housing-map-marker:is(.is-previewing, .is-highlighted) .housing-map-marker__top {
   visibility: visible;
 }
 
-.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__compact {
+.housing-map-marker:is(.is-previewing, .is-highlighted) .housing-map-marker__compact {
   visibility: hidden;
 }
 
-.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__title-reveal,
-.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__details {
+.housing-map-marker:is(.is-previewing, .is-highlighted) .housing-map-marker__title-reveal,
+.housing-map-marker:is(.is-previewing, .is-highlighted) .housing-map-marker__details {
   visibility: visible;
 }
 
-.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__row {
+.housing-map-marker:is(.is-previewing, .is-highlighted) .housing-map-marker__row {
   width: 100%;
 }
 
@@ -2586,7 +2586,7 @@ button {
 /* Mobile lists float over the stable map; details use the browser's modal layer. */
 @media (max-width: 767px), (hover: none) and (pointer: coarse) {
   :root {
-    --explorer-nav-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    --explorer-nav-bottom: max(4px, env(safe-area-inset-bottom, 0px));
     --explorer-footer-height: calc(72px + var(--explorer-nav-bottom));
   }
   .app-shell {
@@ -2783,4 +2783,11 @@ button {
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
   }
+}
+
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
+  .housing-results__page-header h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ds-text-body); }
+  .housing-results__region-title { display: flex; align-items: center; }
+  .housing-results__region-title > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .housing-results__region-title > :last-child { flex-shrink: 0; white-space: pre; }
 }

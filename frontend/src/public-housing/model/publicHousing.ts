@@ -35,6 +35,7 @@ export interface RawComplexListItem {
 }
 
 export interface RawComplexPage {
+  readonly totalCount?: number | null
   readonly items: readonly RawComplexListItem[]
   readonly nextCursor: string | null
   readonly hasNext: boolean
@@ -86,6 +87,7 @@ export interface ComplexListItem {
 }
 
 export interface ComplexPage {
+  readonly totalCount?: number | null
   readonly items: readonly ComplexListItem[]
   readonly nextCursor: string | null
   readonly hasNext: boolean

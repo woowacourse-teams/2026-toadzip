@@ -27,6 +27,9 @@
 .menu nav { position: absolute; left: calc(100% + 12px); bottom: 0; z-index: 3600; width: 212px; padding: 8px; border: 1px solid var(--ds-color-divider); border-radius: 12px; background: var(--ds-color-surface); box-shadow: 0 6px 24px rgb(0 0 0 / 12%); }
 .menu a { display: block; padding: 12px; color: var(--ds-color-text); text-decoration: none; font-size: 13px; }
 .menu a:hover { background: var(--ds-color-action-soft); }
+.links { display: flex; flex-wrap: wrap; justify-content: center; column-gap: 16px; font-family: var(--ds-font-family-ui); }
+.links a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ds-color-label); font-size: 12px; text-underline-offset: 3px; }
+.links a:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
 .page { max-width: 800px; margin: 0 auto; padding: 32px 24px 80px; color: var(--ds-color-text); font-family: var(--ds-font-family-ui); }
 .page > .card { max-width: 400px; }
 .page h1 { font-size: 24px; margin: 28px 0; }

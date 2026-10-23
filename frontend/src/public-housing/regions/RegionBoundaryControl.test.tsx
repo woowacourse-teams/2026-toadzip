@@ -17,6 +17,17 @@ function props() {
 }
 
 describe('RegionBoundaryControl', () => {
+  it('모바일은 목록 재열기와 지역 이동·선택 해제를 바로 노출한다', () => {
+    const callbacks = props()
+    render(<RegionBoundaryControl {...callbacks} presentation="mobile-collapsed" />)
+    fireEvent.click(screen.getByRole('button', { name: '경기도 수원시 장안구 단지 목록 보기' }))
+    expect(callbacks.onOpenList).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: '선택 지역으로 이동' }))
+    expect(callbacks.onRecenter).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: '선택 해제' }))
+    expect(callbacks.onClear).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: '지역 관리' })).not.toBeInTheDocument()
+  })
   it('보이는 문구와 접근 가능한 이름이 일치하며 두 조작은 독립적으로 동작한다', () => {
     const callbacks = props()
     render(<RegionBoundaryControl {...callbacks} />)

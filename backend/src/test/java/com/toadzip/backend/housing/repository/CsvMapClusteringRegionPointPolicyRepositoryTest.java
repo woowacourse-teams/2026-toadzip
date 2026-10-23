@@ -93,7 +93,10 @@ class CsvMapClusteringRegionPointPolicyRepositoryTest {
     @Test
     void 배포용_CSV는_지역_정책의_257개_group을_모두_포함한다() {
         CsvMapClusteringZoomPolicyRepository zoomRepository =
-                new CsvMapClusteringZoomPolicyRepository(classpath("map-clustering/stage-transitions.csv"));
+                new CsvMapClusteringZoomPolicyRepository(
+                        classpath("map-clustering/stage-transitions.csv"),
+                        classpath("map-clustering/stage-transitions-mobile.csv")
+                );
         CsvMapClusteringRegionPolicyRepository regionRepository = new CsvMapClusteringRegionPolicyRepository(
                 classpath("map-clustering/groups.csv"),
                 classpath("map-clustering/memberships.csv"),

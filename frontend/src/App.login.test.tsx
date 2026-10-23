@@ -1,5 +1,7 @@
+import type { NaverMapProps } from './maps/naver/NaverMap'
+import { rememberLoginReturn } from './user/auth/loginReturn'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter, useLocation } from 'react-router'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import App from './App'
 
@@ -8,9 +10,12 @@ vi.mock('./public-housing/interest/notificationInterestRepository', async (impor
   return { ...original, notificationInterestRepository: original.createNotificationInterestRepository((...args) => globalThis.fetch(...args)) }
 })
 
+vi.mock('./maps/naver/NaverMap', () => ({ default: ({ cameraTarget }: NaverMapProps) => <output aria-label="지도 카메라">{JSON.stringify(cameraTarget)}</output> }))
+
 function LocationDisplay() {
+  const navigate = useNavigate()
   const location = useLocation()
-  return <output aria-label="현재 주소">{location.pathname}{location.search}{location.hash}</output>
+  return <><button onClick={() => navigate(-1)}>브라우저 뒤로</button><output aria-label="현재 주소">{location.pathname}{location.search}{location.hash}</output></>
 }
 
 beforeEach(() => {
@@ -20,9 +25,31 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  sessionStorage.clear()
   localStorage.clear()
   vi.unstubAllEnvs()
   vi.unstubAllGlobals()
+})
+
+it('모바일 로그인은 정보 링크가 있는 페이지를 열고 뒤로 가면 지도 조건을 복원한다', async () => {
+  vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+  render(<MemoryRouter initialEntries={['/explore?mapLat=37.5&mapLng=127&mapZoom=12#map']}><App /><LocationDisplay /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: '로그인' }))
+  expect(await screen.findByRole('heading', { name: '로그인', level: 1 })).toBeVisible()
+  expect(screen.queryByRole('dialog', { name: '로그인' })).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: '분석 설정' })).toHaveAttribute('href', '/privacy/settings')
+  const loginUrl = new URL(screen.getByLabelText('현재 주소').textContent!, window.location.origin)
+  expect(loginUrl.pathname).toBe('/login')
+  expect(loginUrl.searchParams.get('returnTo')).toBe('/explore?mapLat=37.5&mapLng=127&mapZoom=12#map')
+  fireEvent.click(screen.getByRole('link', { name: '지도로 돌아가기' }))
+  await waitFor(() => expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/explore#map'))
+})
+
+it('모바일 실패 콜백은 로그인 페이지에서 재시도할 수 있다', async () => {
+  vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+  render(<MemoryRouter initialEntries={['/explore?login=failed']}><App /></MemoryRouter>)
+  expect(await screen.findByRole('heading', { name: '로그인', level: 1 })).toBeVisible()
+  expect(screen.getByText('로그인을 완료하지 못했어요.')).toBeVisible()
 })
 
 it('기존 로그인 주소에 접근하면 메인 화면에서 로그인 모달을 연다', async () => {
@@ -82,4 +109,37 @@ vi.mock('./privacy/usePrivacy', async (importOriginal) => {
   const original = await importOriginal<typeof import('./privacy/usePrivacy')>()
   const notices = [{ key: 'PRIVACY_POLICY', version: 'privacy-2026-10-09-v1' }, { key: 'NOTIFICATION_NOTICE', version: 'notification-2026-10-09-v1' }]
   return { ...original, usePrivacyNotices: () => ({ notices, error: false, retry: vi.fn() }) }
+})
+
+function mobileViewport() {
+  vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+}
+function expectSavedCamera() {
+  const camera = JSON.parse(screen.getByLabelText('지도 카메라').textContent!)
+  expect(camera).toMatchObject({ latitude: 37.58, longitude: 126.88, zoom: 15 })
+}
+it('리뷰 회귀: 지역이 선택되어도 로그인 취소는 저장한 지도 카메라를 유지한다', async () => {
+  mobileViewport()
+  render(<MemoryRouter initialEntries={['/explore?boundaryRegionCode=11440&mapLat=37.58&mapLng=126.88&mapZoom=15']}><App /><LocationDisplay /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: '로그인' }))
+  await screen.findByRole('heading', { name: '로그인', level: 1 })
+  fireEvent.click(screen.getByRole('link', { name: '지도로 돌아가기' }))
+  await waitFor(expectSavedCamera)
+})
+it('리뷰 회귀: 모바일 로그인에서 브라우저 뒤로 가도 지도 카메라를 복원한다', async () => {
+  mobileViewport()
+  render(<MemoryRouter initialEntries={['/explore?mapLat=37.58&mapLng=126.88&mapZoom=15']}><App /><LocationDisplay /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: '로그인' }))
+  await screen.findByRole('heading', { name: '로그인', level: 1 })
+  fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' }))
+  await waitFor(expectSavedCamera)
+})
+it('리뷰 회귀: OAuth 성공 후 이미 열린 지도에도 저장한 위치와 선택 지역을 적용한다', async () => {
+  mobileViewport()
+  rememberLoginReturn('/explore?boundaryRegionCode=11440&mapLat=37.58&mapLng=126.88&mapZoom=15', true)
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.endsWith('/notification-subscriptions/me') ? { userId: '7', settingsRevision: 0, targets: [] } : { id: 7 } })))
+  render(<MemoryRouter initialEntries={['/explore']}><App /><LocationDisplay /></MemoryRouter>)
+  await screen.findByRole('button', { name: '마이' })
+  await waitFor(expectSavedCamera)
+  expect(screen.getByLabelText('현재 주소')).toHaveTextContent('boundaryRegionCode=11440')
 })
