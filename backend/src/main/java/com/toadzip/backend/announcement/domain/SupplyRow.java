@@ -318,7 +318,10 @@ public class SupplyRow {
             return false;
         }
         if (adminModified) {
-            return refreshSourceNames(sourceComplexName, sourceHousingTypeName);
+            // 원천 이름 갱신은 공고 값 변경이 아니므로 변경으로 세지 않는다. 세면 정제 중 LH 재보강이 실행되어
+            // 다른 행의 보강 실패가 이 공고의 정제 전체를 되돌린다.
+            refreshSourceNames(sourceComplexName, sourceHousingTypeName);
+            return false;
         }
         boolean releasesLhEnrichment = announcement.getProvider() != null
                 && announcement.getProvider() != AgencyCode.LH;
@@ -356,15 +359,11 @@ public class SupplyRow {
     }
 
     // 관리자 보정 행도 원천 이름은 원천 값을 따라야 다음 매칭이 관리자 표기 때문에 끊기지 않는다.
-    private boolean refreshSourceNames(String complexName, String typeName) {
+    private void refreshSourceNames(String complexName, String typeName) {
         validateNotBlank(complexName, "원천 단지명");
         validateNotBlank(typeName, "원천 주택형명");
-        if (sourceComplexName.equals(complexName) && sourceHousingTypeName.equals(typeName)) {
-            return false;
-        }
         sourceComplexName = complexName;
         sourceHousingTypeName = typeName;
-        return true;
     }
 
     public boolean updateDisplayOrder(int displayOrder) {
