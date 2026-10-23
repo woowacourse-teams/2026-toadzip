@@ -159,7 +159,7 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
     <div className={styles.results} aria-busy={pending}>
       {!pending && !error && pdfGroups.size > 0 && <section className={styles.pdfGroups} aria-label="PDF로 보정할 공고">
         <h3>이 페이지의 주택형 대응 오류</h3><p>같은 공고의 오류를 묶었습니다. PDF 보정 후 정제를 다시 실행해 해결 여부를 확인하세요.</p>
-        {[...pdfGroups.entries()].map(([announcementId, rows]) => <div key={announcementId}><strong>{rows[0].product!.name}</strong><Link to={follow(`/admin/announcements/${announcementId}/pdf-correction?failureCount=${rows.length}`, rows[0])}>PDF로 보정 · {rows.length}건</Link></div>)}
+        {[...pdfGroups.entries()].map(([announcementId, rows]) => <div key={announcementId}><strong>{rows[0].product!.name}</strong><Link to={follow(`/admin/announcements/${announcementId}/pdf-correction?${pdfFailureParams(rows)}`, rows[0])}>PDF로 보정 · {rows.length}건</Link></div>)}
       </section>}
       <div className={styles.summary}>
         <span>{matching ? `총 ${matching.totalElements.toLocaleString()}건` : '오류 목록 조회'}
@@ -304,6 +304,13 @@ function formatTime(value:string) {
   const date=new Date(value)
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false})
 }
+// PDF 보정 화면이 고칠 공급행을 보여 줄 수 있게 오류마다 사유와 원천 공급행 키를 넘긴다.
+function pdfFailureParams(rows: FailureReview[]) {
+  const params = new URLSearchParams({ failureCount: String(rows.length) })
+  rows.slice(0, 10).forEach(row => params.append('failureRow', `${row.reason}|${row.sourceKey}`))
+  return params.toString()
+}
+
 function reasonLabel(row:FailureReview) {
   if (row.category === 'collection') return collectionCause(row).title
   const labels:Record<string,string> = {

@@ -31,10 +31,10 @@ it('단지 후보를 다시 검색하거나 초기화해도 오류 처리 복귀
   fireEvent.change(screen.getByLabelText('단지명·주소'),{target:{value:'한스빌'}})
   fireEvent.click(screen.getByRole('button',{name:'검색'}))
   await waitFor(() => expect(mocks.getManagementPage.mock.lastCall?.[1].get('keyword')).toBe('한스빌'))
-  expect(screen.getByRole('link',{name:'오류 처리로 돌아가 결과 확인'})).toHaveAttribute('href',back)
+  expect(screen.getByRole('link',{name:'오류 처리 목록으로 돌아가기'})).toHaveAttribute('href',back)
   fireEvent.click(screen.getByRole('button',{name:'초기화'}))
   await waitFor(() => expect(mocks.getManagementPage.mock.lastCall?.[1].has('keyword')).toBe(false))
-  expect(screen.getByRole('link',{name:'오류 처리로 돌아가 결과 확인'})).toHaveAttribute('href',back)
+  expect(screen.getByRole('link',{name:'오류 처리 목록으로 돌아가기'})).toHaveAttribute('href',back)
 })
 it('수정 충돌이면 입력값을 유지하고 새로 조회할 수 있다',async () => {
   mocks.requestManagementApi.mockRejectedValue(new ManagementError('다른 작업에서 변경했습니다.',409))

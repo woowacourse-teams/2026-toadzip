@@ -14,7 +14,7 @@ it.each([false,true])('제품 목록·상세를 거쳐도 선택한 오류와 �
     <Route path="/admin/complexes/:id" element={<FailureReturnLink/>}/>
     <Route path="/admin/failures" element={<h1>오류 확인·처리</h1>}/>
   </Routes></MemoryRouter>)
-  const link=screen.getByRole('link',{name:'오류 처리로 돌아가 결과 확인'})
+  const link=screen.getByRole('link',{name:'오류 처리 목록으로 돌아가기'})
   expect(link).toHaveAttribute('href',returnTo)
   fireEvent.click(link)
   expect(screen.getByRole('heading',{name:'오류 확인·처리'})).toBeVisible()
