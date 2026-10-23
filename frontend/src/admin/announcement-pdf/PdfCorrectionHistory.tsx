@@ -2,12 +2,14 @@ import { display } from '../management/fields'
 import { isRecord, type JsonValue } from '../management/managementContract'
 import { SupplyCorrectionHistory } from '../supply/SupplyCorrectionHistory'
 import { storedFieldLabel } from '../shared/storedFieldLabels'
-import { choices, receptionFields, scheduleFields } from './review'
+import { choices, receptionFields, scheduleFields, shownDateTime } from './review'
 
 type Change = { scope: string; label: string; before: unknown; after: unknown; added?: boolean }
 const optionLabels = Object.fromEntries([...choices.method, ...choices.scheduleType])
 function value(raw: unknown) {
-  return typeof raw === 'string' && optionLabels[raw] ? optionLabels[raw] : display(raw as JsonValue | undefined)
+  if (typeof raw === 'string' && optionLabels[raw]) return optionLabels[raw]
+  if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(raw)) return shownDateTime(raw)
+  return display(raw as JsonValue | undefined)
 }
 function record(raw: unknown) { return isRecord(raw) ? raw : {} }
 function differences(scope: string, specs: readonly (readonly [string, string, ...unknown[]])[], before: Record<string, unknown>, after: Record<string, unknown>): Change[] {

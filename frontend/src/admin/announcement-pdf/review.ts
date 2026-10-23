@@ -24,6 +24,12 @@ export const choices = {
   method: [['ONLINE', '온라인'], ['VISIT', '방문'], ['MAIL', '우편'], ['ETC', '기타']],
   scheduleType: [['APPLICATION', '접수'], ['DOCUMENT_SUBMISSION', '서류 제출'], ['WINNER_ANNOUNCEMENT', '당첨자 발표'], ['CONTRACT', '계약'], ['MOVE_IN', '입주'], ['ETC', '기타']],
 }
+/** 일정 일시는 자정이면 날짜만, 시각이 있으면 시:분까지 보여 준다(2026-06-01T00:00:00 → 2026-06-01). */
+export function shownDateTime(value: unknown) {
+  const match = typeof value === 'string' ? /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::\d{2})?$/.exec(value) : null
+  if (!match) return shown(value)
+  return match[2] === '00' && match[3] === '00' ? match[1] : `${match[1]} ${match[2]}:${match[3]}`
+}
 export function shown(value: unknown) { return value === null || value === undefined || value === '' ? '미확인' : String(value) }
 
 function normalized(kind: Kind, value: unknown): unknown {
@@ -195,6 +201,7 @@ export function changeValue(change: PendingChange, value: unknown) {
     return type ? housingTypeLabel(type, change.candidates) : `#${String(value)}`
   }
   if (change.cell.kind === 'method' || change.cell.kind === 'scheduleType') return choices[change.cell.kind].find(([key]) => key === value)?.[1] ?? shown(value)
+  if (change.cell.kind === 'datetime') return shownDateTime(value)
   return shown(value)
 }
 // 저장 위치는 원천 표기만으로 고르기 어려워 연결 단지·표시 이름·모집수·전용면적을 함께 보여 준다.
