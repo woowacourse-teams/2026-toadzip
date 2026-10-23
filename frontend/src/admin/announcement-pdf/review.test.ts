@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { scenario } from './fixtures/workspace'
 import { blankTarget } from '../supply/supplyCorrectionApi'
-import { areaOnlyTypeName, changeValue, destinationLabel, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
+import { areaOnlyTypeName, changeValue, destinationLabel, foreignCharacters, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
 
 
 const evidence = { reason: '공고문과 대조', sourceUrl: 'https://example.com/notice', sourcePage: '4' }
@@ -249,4 +249,14 @@ it('저장 위치 선택지는 연결 단지·표시 이름·모집수·전용�
   const row = { ...workspace.supply.rows[0], housingComplexName: '평화주공1단지', typeName: '26', householdCount: 450, exclusiveArea: 26.37 }
   expect(destinationLabel(row)).toBe(`평화주공1단지 · 26 · 모집 450세대 · 전용 26.37㎡ (#${String(row.id)}) 수정`)
   expect(destinationLabel({ ...row, householdCount: null, groupId: 3, exclusiveArea: null })).toContain('공통 모집 · 면적 미확인')
+})
+
+it('한글 문장에 섞인 한자는 확인 필요로 표시하고 기본 반영에서 뺀다', () => {
+  expect(['生계·의료급여수급자 등', '일반 등', 'H-1BL 행복주택', '청년 소득無', null].map(foreignCharacters)).toEqual(['生', '', '', '', ''])
+  const { review, workspace, housing } = scenario('gongju')
+  const extraction = structuredClone(review.extraction)
+  extraction.supplyRows[0].targets[0].target = '生계·의료급여수급자 등'
+  const cell = createReview(extraction, workspace, housing).rows[0].targets[0].cells.find(item => item.field === 'target')
+  expect(cell).toMatchObject({ state: 'confirm', selected: false })
+  expect(cell?.note).toContain('한자·외국 문자(生)')
 })
