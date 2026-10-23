@@ -8,20 +8,22 @@ const DISMISS_HEIGHT = 15
 const DRAG_THRESHOLD = 12
 
 interface Props {
+  readonly initialMobileHeightPercent?: 25 | 50
+  readonly headerActions?: ReactNode
   readonly visible: boolean
-  readonly title: string
+  readonly title: ReactNode
   readonly onCollapse: () => void
   readonly children: ReactNode
 }
 
-export function HousingResultsPanel({ visible, title, onCollapse, children }: Props) {
+export function HousingResultsPanel({ visible, title, onCollapse, children, initialMobileHeightPercent = 50, headerActions }: Props) {
   const mobile = useMobileViewport()
   const panel = useRef<HTMLElement>(null)
   const [viewport, setViewport] = useState(readViewport)
   const compact = mobile && viewport.landscape && viewport.short
   const heightMode = viewport.landscape ? 'landscape' : 'portrait'
-  const [heightsByMode, setHeightsByMode] = useState<{ portrait: number; landscape: number | null }>({ portrait: HALF_HEIGHT, landscape: null })
-  const heightPercent = heightsByMode[heightMode] ?? (compact ? 100 : HALF_HEIGHT)
+  const [heightsByMode, setHeightsByMode] = useState<{ portrait: number; landscape: number | null }>({ portrait: initialMobileHeightPercent, landscape: null })
+  const heightPercent = heightsByMode[heightMode] ?? (compact ? 100 : initialMobileHeightPercent)
   const setHeightPercent = (height: number) => setHeightsByMode(previous => ({ ...previous, [heightMode]: height }))
 
   useEffect(() => {
@@ -32,17 +34,19 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
   const [dragHeight, setDragHeight] = useState<number | null>(null)
   const [searchCovered, setSearchCovered] = useState(false)
   const resetOnOpen = useRef(false)
+  const previousInitialHeight = useRef(initialMobileHeightPercent)
   const drag = useRef<{ pointerId: number; y: number; height: number; min: number; dismiss: number; max: number } | null>(null)
 
   useLayoutEffect(() => {
-    if (visible && resetOnOpen.current) {
+    if ((visible && resetOnOpen.current) || previousInitialHeight.current !== initialMobileHeightPercent) {
       resetOnOpen.current = false
-      setHeightsByMode(previous => ({ ...previous, [heightMode]: compact ? 100 : HALF_HEIGHT }))
+      previousInitialHeight.current = initialMobileHeightPercent
+      setHeightsByMode({ portrait: initialMobileHeightPercent, landscape: compact ? 100 : null })
     }
     // A drag started before rotation has coordinates from the previous layout.
     drag.current = null
     setDragHeight(null)
-  }, [visible, mobile, compact, heightMode])
+  }, [visible, mobile, compact, heightMode, initialMobileHeightPercent])
 
   useLayoutEffect(() => {
     const search = panel.current?.parentElement?.querySelector('.housing-search-overlay')
@@ -155,10 +159,11 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
               const next = heights.height + window.innerHeight * (event.key === 'ArrowUp' ? 0.1 : -0.1)
               if (next <= heights.dismiss) dismiss()
               else changeHeight(next >= heights.max ? 100 : Math.max(heights.min, next) / window.innerHeight * 100, 'keyboard')
-            } else changeHeight(heightPercent === 100 ? HALF_HEIGHT : 100, 'keyboard')
+            } else changeHeight(heightPercent === 100 ? initialMobileHeightPercent : 100, 'keyboard')
           }}><span aria-hidden="true" /></div>}
         <header className="housing-results__page-header">
           <h2>{title}</h2>
+          {headerActions}
           <button type="button" className="housing-results__collapse" aria-label="목록 접기"
             aria-controls="housing-list-content" aria-expanded={visible} onClick={dismiss}>
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">

@@ -42,6 +42,23 @@ function renderPanel() {
   </HousingResultsPanel>)
 }
 
+it('지역 목록은 25%로 열고 접었다 다시 열어도 같은 내용과 기본 높이를 보여준다', () => {
+  function RegionPanel() {
+    const [visible, setVisible] = useState(true)
+    return <><button onClick={() => setVisible(true)}>지역 목록 다시 보기</button>
+      <HousingResultsPanel title="수원시 단지" visible={visible} onCollapse={() => setVisible(false)} initialMobileHeightPercent={25}>
+        <button>첫 단지 보기</button>
+      </HousingResultsPanel></>
+  }
+  render(<RegionPanel />)
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuenow', '25')
+  fireEvent.keyDown(screen.getByRole('slider'), { key: 'End' })
+  fireEvent.click(screen.getByRole('button', { name: '목록 접기' }))
+  fireEvent.click(screen.getByRole('button', { name: '지역 목록 다시 보기' }))
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuenow', '25')
+  expect(screen.getByRole('button', { name: '첫 단지 보기' })).toBeVisible()
+})
+
 function DismissiblePanel() {
   const [visible, setVisible] = useState(true)
   return <>

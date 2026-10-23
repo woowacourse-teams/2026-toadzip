@@ -323,6 +323,7 @@ export function PublicHousingExplorer({
   const [detailRetryRevision, setDetailRetryRevision] = useState(0)
   const complexResultsScrollRef = useRef<HTMLDivElement | null>(null)
   const announcementResultsScrollRef = useRef<HTMLDivElement | null>(null)
+  const complexListEndRef = useRef<HTMLDivElement>(null)
   const announcementListEndRef = useRef<HTMLDivElement | null>(null)
   const previousDetailKindRef = useRef<ResultTab | null>(null)
   const complexDetailOpenerRef = useRef<HTMLElement | null>(null)
@@ -548,6 +549,22 @@ export function PublicHousingExplorer({
   )
   const updateAnnouncementViewCount = announcementResults.updateViewCount
   const loadMoreAnnouncements = announcementResults.loadMore
+
+  useEffect(() => {
+    if (!mobile || !showListPage || activeResultTab !== 'complexes'
+      || complexResults.status !== 'ready' || !complexResults.hasNext || !complexResults.nextCursor
+      || typeof IntersectionObserver === 'undefined') return
+    const root = complexResultsScrollRef.current
+    const end = complexListEndRef.current
+    if (!root || !end) return
+    let active = true
+    const observer = new IntersectionObserver(entries => {
+      if (active && entries.some(entry => entry.isIntersecting)) loadMore()
+    }, { root })
+    observer.observe(end)
+    return () => { active = false; observer.disconnect() }
+  }, [mobile, showListPage, activeResultTab, complexResults.status, complexResults.hasNext,
+    complexResults.nextCursor, loadMore])
 
   useEffect(() => {
     if (
@@ -1379,6 +1396,24 @@ export function PublicHousingExplorer({
       }
   const hasDetail = complexDetail.status !== 'closed'
     || announcementDetail.status !== 'closed'
+  const selectedRegionName = findRegionBoundaryName(boundaryRegionCode ?? '') ?? selectedBoundarySearchItem?.title ?? '선택한 지역'
+  const mobileRegionTitle = <span className="housing-results__region-title">
+    <span title={selectedRegionName}>{selectedRegionName.split(' ').at(-1)}</span>
+    <span>{complexResults.totalCount === null ? ' · 단지 목록' : ` · 단지 ${complexResults.totalCount.toLocaleString('ko-KR')}개`}</span>
+  </span>
+  const regionControl = (presentation: 'desktop' | 'mobile-header' | 'mobile-collapsed') => boundaryRegionCode !== null && (
+              <RegionBoundaryControl presentation={presentation}
+                listExpanded={showListPage && activeResultTab === 'complexes'}
+                onOpenList={() => { prepareListEntry('region_label'); selectResultTab('complexes') }}
+                name={findRegionBoundaryName(boundaryRegionCode) ?? selectedBoundarySearchItem?.title ?? `지역 ${boundaryRegionCode}`}
+                status={boundaryState.status}
+                supported={boundaryMetadata !== null}
+                canRecenter={boundaryMetadata !== null || (selectedBoundarySearchItem?.latitude != null && selectedBoundarySearchItem?.longitude != null)}
+                onRecenter={() => { captureProductEvent('region_boundary_action', { operation: 'recenter' }); focusBoundary(boundaryRegionCode) }}
+                onClear={() => { captureProductEvent('region_boundary_action', { operation: 'clear' }); changeBoundarySelection(null) }}
+                onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_boundary' }); boundaryState.retry() }}
+              />
+  )
   const selectedAnnouncementId = detailLocation.kind === 'announcement'
     ? detailLocation.announcementId
     : null
@@ -1474,23 +1509,13 @@ export function PublicHousingExplorer({
             onActiveChange={handleSearchActiveChange}
             onSelect={handleIntegratedSearchSelect}
             repository={searchRepository}
-            selectionControl={boundaryRegionCode !== null && (
-              <RegionBoundaryControl
-                listExpanded={showListPage && activeResultTab === 'complexes'}
-                onOpenList={() => { prepareListEntry('region_label'); selectResultTab('complexes') }}
-                name={findRegionBoundaryName(boundaryRegionCode) ?? selectedBoundarySearchItem?.title ?? `지역 ${boundaryRegionCode}`}
-                status={boundaryState.status}
-                supported={boundaryMetadata !== null}
-                canRecenter={boundaryMetadata !== null || (selectedBoundarySearchItem?.latitude != null && selectedBoundarySearchItem?.longitude != null)}
-                onRecenter={() => { captureProductEvent('region_boundary_action', { operation: 'recenter' }); focusBoundary(boundaryRegionCode) }}
-                onClear={() => { captureProductEvent('region_boundary_action', { operation: 'clear' }); changeBoundarySelection(null) }}
-                onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_boundary' }); boundaryState.retry() }}
-              />
-            )}
+            selectionControl={!mobile && regionControl('desktop')}
           />
         </div>
         <HousingResultsPanel visible={showListPage} onCollapse={collapseResults}
-          title={activeResultTab === 'recent' ? '최근 본 단지' : activeResultTab === 'complexes' ? '단지 목록' : '공고 목록'}>
+          initialMobileHeightPercent={activeResultTab === 'complexes' ? 25 : 50}
+          headerActions={mobile && activeResultTab === 'complexes' ? regionControl('mobile-header') : undefined}
+          title={mobile && activeResultTab === 'complexes' ? mobileRegionTitle : activeResultTab === 'recent' ? '최근 본 단지' : activeResultTab === 'complexes' ? '단지 목록' : '공고 목록'}>
           <div className="housing-results__browse">
 
             <div
@@ -1500,7 +1525,7 @@ export function PublicHousingExplorer({
               aria-label="단지 목록"
               hidden={activeResultTab !== 'complexes'}
             >
-              {activeResultTab === 'complexes' && boundaryRegionCode !== null && <>
+              {!mobile && activeResultTab === 'complexes' && boundaryRegionCode !== null && <>
                 <p className="housing-results__region-notice">
                   <strong>{findRegionBoundaryName(boundaryRegionCode ?? '') ?? selectedBoundarySearchItem?.title ?? '검색한 지역'}</strong>
                   내 단지만 표시합니다. 지도에는 현재 화면에 보이는 단지도 함께 표시됩니다.
@@ -1510,7 +1535,7 @@ export function PublicHousingExplorer({
               <div
                 ref={complexResultsScrollRef}
                 className="housing-results__scroll"
-                aria-busy={complexResults.status === 'loading'}
+                aria-busy={complexResults.status === 'loading' || complexResults.status === 'loading-more'}
               >
                 {boundaryRegionCode === null && (
                   <div className="housing-results__empty-region">
@@ -1519,7 +1544,7 @@ export function PublicHousingExplorer({
                     <button type="button" onClick={() => searchOverlayRef.current?.querySelector<HTMLInputElement>('input[type="search"]')?.focus()}>지역 검색하기</button>
                   </div>
                 )}
-                {boundaryRegionCode !== null && <ComplexRequestFeedback state={complexResults} onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_complex_list' }); retryComplexResults() }} />}
+                {boundaryRegionCode !== null && (!mobile || complexResults.items.length === 0) && <ComplexRequestFeedback state={complexResults} onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_complex_list' }); retryComplexResults() }} />}
                 {boundaryRegionCode !== null && <ComplexResultContent
                   state={complexResults}
                   selectedComplexId={selectedComplexId}
@@ -1531,9 +1556,17 @@ export function PublicHousingExplorer({
                     setComplexCardRef(complexCardRefsRef.current, complexId, node)
                   }}
                 />}
+                {mobile && complexResults.items.length > 0 && <>
+                  {complexResults.status === 'error'
+                    ? <ComplexRequestFeedback state={complexResults} onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_complex_list' }); retryComplexResults() }} />
+                    : <div ref={complexListEndRef} className="housing-results__list-end" role="status" aria-atomic="true">
+                      {complexResults.status === 'loading-more' ? '다음 단지를 불러오고 있어요.'
+                        : !complexResults.hasNext ? '모든 단지를 확인했어요.' : null}
+                    </div>}
+                </>}
               </div>
 
-              {complexResults.hasNext
+              {!mobile && complexResults.hasNext
                 && (complexResults.status === 'ready'
                   || complexResults.status === 'loading-more') && (
                 <button
@@ -1642,6 +1675,8 @@ export function PublicHousingExplorer({
           </div>
         </HousingResultsPanel>
       </div>
+
+      {mobile && !showListPage && !hasDetail && !integratedSearchActive && !streetView.active && regionControl('mobile-collapsed')}
 
       <main ref={mapWorkspaceRef} className="housing-map-workspace">
         <div className="housing-map-filter" hidden={streetView.active} inert={streetView.active}>

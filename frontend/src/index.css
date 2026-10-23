@@ -2784,3 +2784,10 @@ button {
     padding-right: env(safe-area-inset-right, 0px);
   }
 }
+
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
+  .housing-results__page-header h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ds-text-body); }
+  .housing-results__region-title { display: flex; align-items: center; }
+  .housing-results__region-title > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .housing-results__region-title > :last-child { flex-shrink: 0; white-space: pre; }
+}

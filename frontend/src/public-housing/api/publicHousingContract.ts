@@ -100,7 +100,11 @@ function decodeComplexPage(value: unknown, path: string): RawComplexPage {
   const response = recordAt(value, path)
   const items = arrayAt(recordField(response, 'items', path), `${path}.items`)
 
+  const totalCount = response.totalCount == null ? null : safeIntegerAt(response.totalCount, `${path}.totalCount`)
+  if (totalCount !== null && totalCount < 0) throw new PublicHousingContractError(`${path}.totalCount`)
+
   return {
+    totalCount,
     items: items.map((item, index) =>
       decodeComplexListItem(item, `${path}.items[${index}]`),
     ),

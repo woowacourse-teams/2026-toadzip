@@ -35,6 +35,7 @@ import type {
 
 export function toComplexPage(raw: RawComplexPage): ComplexPage {
   return {
+    totalCount: raw.totalCount ?? null,
     items: raw.items.map(toComplexListItem),
     nextCursor: raw.nextCursor,
     hasNext: raw.hasNext,
