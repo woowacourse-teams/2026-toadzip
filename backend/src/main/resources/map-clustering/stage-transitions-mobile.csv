@@ -1,0 +1,5 @@
+policyVersion,regionDatasetVersion,fromStage,toStage,boundaryZoom,hysteresis,expansionZoom
+# Mobile BASIC_REGION: enter 12.00, exit below 11.80, expand to 12.10.
+2026-10-23-mobile-v1,2026-07-01,1,2,7.50,0.20,8.50
+2026-10-23-mobile-v1,2026-07-01,2,3,10.00,0.20,11.00
+2026-10-23-mobile-v1,2026-07-01,3,4,11.90,0.10,12.10

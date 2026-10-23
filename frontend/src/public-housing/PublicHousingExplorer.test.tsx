@@ -2730,6 +2730,26 @@ describe('PublicHousingExplorer', () => {
     expect(screen.queryByText('로컬 mock')).not.toBeInTheDocument()
   })
 
+  it.each(['ready', 'pending'])('리뷰 회귀: %s 상태에서 프로필이 바뀌면 현재 영역을 새 정책으로 다시 조회한다', async phase => {
+    let mobile = false
+    const listeners = new Set<() => void>()
+    vi.stubGlobal('matchMedia', () => ({ get matches() { return mobile },
+      addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_: string, listener: () => void) => listeners.delete(listener),
+    }))
+    try {
+      const repository = createRepository()
+      renderExplorer(repository)
+      fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+      if (phase === 'ready') await waitFor(() => expect(repository.findMap).toHaveBeenCalledOnce())
+      repository.findMap.mockClear()
+      act(() => { mobile = true; listeners.forEach(listener => listener()) })
+      await waitFor(() => expect(repository.findMap).toHaveBeenCalled())
+      expect(repository.findMap.mock.calls.every(([query]) => query.clusteringProfile === 'MOBILE')).toBe(true)
+      expect(repository.findMap.mock.calls[0][0].previousResolvedStage).toBeUndefined()
+    } finally { vi.unstubAllGlobals() }
+  })
+
   it('기존 지도 query는 최초 카메라에 한 번 반영하고 URL에서 제거한다', async () => {
     const repository = createRepository()
     renderExplorer(

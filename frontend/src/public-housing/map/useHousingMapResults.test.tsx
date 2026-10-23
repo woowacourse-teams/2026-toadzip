@@ -33,6 +33,18 @@ const individualResult: HousingMapIndividualResult = {
 }
 
 describe('useHousingMapResults', () => {
+  it('정책을 바꾸면 이전 단계와 캐시를 섞지 않고 현재 영역을 새 정책으로 요청한다', async () => {
+    const repository = createRepository()
+    repository.findMap.mockResolvedValue(aggregateResult)
+    const { result, rerender } = renderHook(({ profile }: { profile: 'DEFAULT' | 'MOBILE' }) =>
+      useHousingMapResults(repository, profile), { initialProps: { profile: 'DEFAULT' } })
+    await act(async () => { result.current.request(viewport(12)) })
+    rerender({ profile: 'MOBILE' })
+    await act(async () => { result.current.request(viewport(12)) })
+    expect(repository.findMap).toHaveBeenCalledTimes(2)
+    expect(repository.findMap.mock.calls[1]?.[0]).toMatchObject({ clusteringProfile: 'MOBILE', zoom: 12 })
+    expect(repository.findMap.mock.calls[1]?.[0]).not.toHaveProperty('previousResolvedStage')
+  })
   afterEach(() => vi.restoreAllMocks())
 
   it('최초 요청에는 직전 단계가 없고 다음 요청에는 마지막 확정 단계를 사용한다', async () => {

@@ -300,7 +300,7 @@ export function PublicHousingExplorer({
     request: requestServerMap,
     retry: retryServerMap,
     state: serverMapState,
-  } = useHousingMapResults(mapRepository)
+  } = useHousingMapResults(mapRepository, mobile ? 'MOBILE' : 'DEFAULT')
   const clusterTransitionRef = useRef(false)
   const transitionWaitingForIdleRef = useRef(false)
   const activeResultTabRef = useRef<ResultList>(activeResultTab)
@@ -435,7 +435,8 @@ export function PublicHousingExplorer({
     cancelCurrentLocation()
     const metadata = findRegionBoundaryMetadata(code)
     const item = boundarySelectionRef.current
-    const zoom = pendingBoundaryCameraRef.current?.zoom ?? REGION_FOCUS_ZOOM
+    const regionFocusZoom = isMobileViewport() ? 12.1 : REGION_FOCUS_ZOOM
+    const zoom = pendingBoundaryCameraRef.current?.zoom ?? regionFocusZoom
     pendingBoundaryCameraRef.current = null
     pendingDetailCameraRef.current = null
     const selectedPoint = item && (item.regionCode ?? item.id) === code
@@ -449,7 +450,7 @@ export function PublicHousingExplorer({
       setMapCameraTarget({
         latitude,
         longitude,
-        zoom: code.length === 2 ? 11 : code.length === 10 ? 14 : Math.max(REGION_FOCUS_ZOOM, zoom),
+        zoom: code.length === 2 ? 11 : code.length === 10 ? 14 : Math.max(regionFocusZoom, zoom),
         screenOffset: { x: (padding.left - padding.right) / 2, y: (padding.top - padding.bottom) / 2 },
       })
       setCameraRequestId((current) => current + 1)
@@ -1085,7 +1086,7 @@ export function PublicHousingExplorer({
     pendingDetailCameraRef.current = null
     setMapCameraTarget({
       ...target,
-      zoom: Math.max(COMPLEX_FOCUS_ZOOM, viewportRef.current?.zoom ?? COMPLEX_FOCUS_ZOOM),
+      zoom: Math.max(isMobileViewport() ? 12.2 : COMPLEX_FOCUS_ZOOM, viewportRef.current?.zoom ?? 0),
       screenOffset: detailScreenOffset(mapWorkspaceRef.current),
     })
     setCameraRequestId((current) => current + 1)
@@ -1093,10 +1094,11 @@ export function PublicHousingExplorer({
 
   // 필터를 바꾸면 같은 화면의 마커를 다시 거르는 것이므로, 남는 마커는 그대로 두고 새 마커도 등장 효과 없이 바꾼다.
   const [animateMarkerEntry, setAnimateMarkerEntry] = useState(true)
-  const previousMapFiltersKeyRef = useRef(complexFiltersKey)
-  useEffect(() => {
-    if (previousMapFiltersKeyRef.current === complexFiltersKey) return
-    previousMapFiltersKeyRef.current = complexFiltersKey
+  const mapRequestContextKey = `${mobile ? 'MOBILE' : 'DEFAULT'}|${complexFiltersKey}`
+  const previousMapFiltersKeyRef = useRef(mapRequestContextKey)
+  useLayoutEffect(() => {
+    if (previousMapFiltersKeyRef.current === mapRequestContextKey) return
+    previousMapFiltersKeyRef.current = mapRequestContextKey
     setAnimateMarkerEntry(false)
     if (viewportTimerRef.current !== null) {
       window.clearTimeout(viewportTimerRef.current)
@@ -1109,7 +1111,7 @@ export function PublicHousingExplorer({
         requestServerMap(viewport, complexFilters)
       }, 100)
     }
-  }, [complexFiltersKey, complexFilters, viewport, requestServerMap, cancelServerMapRequest])
+  }, [mapRequestContextKey, complexFilters, viewport, requestServerMap, cancelServerMapRequest])
 
   const finishClusterTransition = useCallback(() => {
     clusterTransitionRef.current = false
