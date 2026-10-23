@@ -3,7 +3,7 @@ import { Button } from '../../design-system/components/Button'
 import { housingTypeLabel } from '../ingest/housingTypeLabel'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 import type { Evidence } from './extraction'
-import { cellMatches, cellStates, choices, chooseCellValue, editCell, pendingCell, shown, validCellValue, type Cell, type ReviewFilter, type ValueMode } from './review'
+import { cellMatches, cellStates, choices, chooseCellValue, editCell, pendingCell, shown, shownDateTime, validCellValue, type Cell, type ReviewFilter, type ValueMode } from './review'
 import styles from './PdfCorrection.module.css'
 
 const modes: [ValueMode, string, string][] = [['keep', '기존 값', '기존 값 사용'], ['extracted', '보정 값', '보정된 값 사용'], ['manual', '직접 수정', '직접 수정']]
@@ -19,6 +19,7 @@ export function ReviewCells({ cells, scope, housingTypes = [], filter = 'all', o
       return value == null ? '미연결' : type ? housingTypeLabel(type, housingTypes) : `#${String(value)}`
     }
     if (cell.kind === 'method' || cell.kind === 'scheduleType') return choices[cell.kind].find(([key]) => key === value)?.[1] ?? shown(value)
+    if (cell.kind === 'datetime') return shownDateTime(value)
     return shown(value)
   }
   function manualField(cell: Cell) {

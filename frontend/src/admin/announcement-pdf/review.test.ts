@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { scenario } from './fixtures/workspace'
 import { blankTarget } from '../supply/supplyCorrectionApi'
-import { areaOnlyTypeName, changeValue, destinationLabel, foreignCharacters, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
+import { areaOnlyTypeName, changeValue, destinationLabel, foreignCharacters, shownDateTime, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
 
 
 const evidence = { reason: '공고문과 대조', sourceUrl: 'https://example.com/notice', sourcePage: '4' }
@@ -259,4 +259,9 @@ it('한글 문장에 섞인 한자는 확인 필요로 표시하고 기본 반�
   const cell = createReview(extraction, workspace, housing).rows[0].targets[0].cells.find(item => item.field === 'target')
   expect(cell).toMatchObject({ state: 'confirm', selected: false })
   expect(cell?.note).toContain('한자·외국 문자(生)')
+})
+
+it('일정 일시는 자정이면 날짜만, 시각이 있으면 시:분까지 보여 준다', () => {
+  expect(['2026-06-01T00:00:00', '2026-06-01T16:00:00', '2026-06-01T09:30', '2026-06-01', null].map(shownDateTime))
+    .toEqual(['2026-06-01', '2026-06-01 16:00', '2026-06-01 09:30', '2026-06-01', '미확인'])
 })
