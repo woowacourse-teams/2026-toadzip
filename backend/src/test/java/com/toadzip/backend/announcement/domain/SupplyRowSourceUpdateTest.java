@@ -98,6 +98,19 @@ class SupplyRowSourceUpdateTest {
         assertThat(supplyRow.isLhTotalSupplyHouseholdCountEnriched()).isTrue();
     }
 
+    @Test
+    void 관리자_보정_행도_LH_원본_연결은_기록하고_관리자가_정한_모집수는_유지한다() {
+        SupplyRow supplyRow = supplyRow("평화주공4단지");
+        supplyRow.protectConditionsByAdmin();
+
+        boolean updated = supplyRow.resolveFromLhSupply("LH:100:SUPPLY:0", 300, 300);
+
+        assertThat(updated).isFalse();
+        assertThat(supplyRow.getLhSourceSupplyRowIdentifier()).isEqualTo("LH:100:SUPPLY:0");
+        assertThat(supplyRow.getTotalSupplyHouseholdCount()).isEqualTo(20);
+        assertThat(supplyRow.isLhTotalSupplyHouseholdCountOwned()).isFalse();
+    }
+
     private SupplyRow supplyRow(String complexName) {
         return SupplyRow.create(
                 new Announcement(),
