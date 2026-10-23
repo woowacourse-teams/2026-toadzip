@@ -2586,7 +2586,7 @@ button {
 /* Mobile lists float over the stable map; details use the browser's modal layer. */
 @media (max-width: 767px), (hover: none) and (pointer: coarse) {
   :root {
-    --explorer-nav-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    --explorer-nav-bottom: max(4px, env(safe-area-inset-bottom, 0px));
     --explorer-footer-height: calc(72px + var(--explorer-nav-bottom));
   }
   .app-shell {
