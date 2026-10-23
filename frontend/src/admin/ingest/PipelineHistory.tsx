@@ -6,6 +6,7 @@ import { pipelineLabels as labels, pipelineStatusLabels } from './pipelineLabels
 import { ComplexExecutionResult } from './ComplexExecutionResult'
 import { ComplexIconButton } from './ComplexIconButton'
 import styles from './ComplexIngest.module.css'
+import { ComplexStatusBadge } from './ComplexStatusBadge'
 export function PipelineHistory({ domain, compact = false, readOnlyComplex = false }: { domain?: 'complex' | 'announcement'; compact?: boolean; readOnlyComplex?: boolean } = {}) {
   const [page, setPage] = useState(0)
   const [items, setItems] = useState<DataPipelineExecution[]>([])
@@ -65,9 +66,9 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
                 <td><time dateTime={item.startedAt ?? undefined}>
                   {item.startedAt ? new Date(item.startedAt).toLocaleString('ko-KR') : '기록 없음'}
                 </time></td>
-                <td><span className={`pipeline-badge pipeline-${item.status.toLowerCase()}`}>
+                <td>{readOnlyComplex ? <ComplexStatusBadge status={item.status === 'RUNNING' && item.stopRequested ? 'stopping' : item.status} /> : <span className={`pipeline-badge pipeline-${item.status.toLowerCase()}`}>
                   {pipelineStatusLabels[item.status]}
-                </span></td>
+                </span>}</td>
                 <td><button type="button" className="pipeline-history-detail-button"
                   aria-expanded={readOnlyComplex ? selected?.executionId === item.executionId : undefined}
                   aria-controls={readOnlyComplex ? detailId : undefined}

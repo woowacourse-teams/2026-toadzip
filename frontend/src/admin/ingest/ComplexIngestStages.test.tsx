@@ -138,13 +138,13 @@ it('탭을 바꿔도 선택한 ZIP과 업로드 결과를 유지하며 안내로
   await act(async () => resolve({ sourceFileName: 'summary.zip', textFileCount: 1, scannedRowCount: 4,
     storedLocationCount: 2, replacedRowCount: 0, invalidatedMappingCandidateCount: 0, provinceCodes: ['11'],
     targetRoadAddressCount: 3, matchedRoadAddressCount: 2, unmatchedRoadAddressCount: 1 }))
-  await screen.findByText('좌표 적재 완료')
+  await screen.findByRole('region', { name: '좌표 적재 결과' })
   expect(uploadLocationSummary).toHaveBeenCalledExactlyOnceWith(zip)
   expect(startDataPipeline).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('link', { name: '3단계에서 단지 정제·저장' }))
   expect(screen.getByRole('tab', { name: '3 정제·저장' })).toHaveAttribute('aria-selected', 'true')
   select('2 좌표 적재')
-  expect(screen.getByText('좌표 적재 완료')).toBeVisible()
+  expect(screen.getByRole('region', { name: '좌표 적재 결과' })).toBeVisible()
 })
 it('직접 연결된 3단계를 열되 정제를 자동 실행하지 않는다', async () => {
   render(<MemoryRouter initialEntries={['/admin/ingest/complexes#complex-refinement']}><DataPipelineControl domain="complex" compact /></MemoryRouter>)
@@ -173,7 +173,7 @@ it('정제만 실행하고 그 결과를 같은 영역에 남긴다', async () =
   await show()
   select('3 정제·저장')
   fireEvent.click(screen.getByRole('button', { name: '단지 정제·저장 실행' }))
-  await screen.findByText('일부 실패')
+  await waitFor(() => expect(within(screen.getByRole('group', { name: '실행 상태' })).getByText('일부 실패')).toBeVisible())
   assertStages()
   expect(startDataPipeline).toHaveBeenCalledExactlyOnceWith('COMPLEX_REFINEMENT')
   expect(screen.getByText('신규 단지').nextSibling).toHaveTextContent('4')
@@ -198,7 +198,7 @@ it('기존 통합 실행도 복구하되 중지 버튼은 현재 처리 중인 �
     ? { executionId: 'legacy-sync', status: 'RUNNING', currentStepName: '마이홈 단지 정제', totalStepCount: 4,
       completedSteps: ['마이홈 단지 수집', 'LH 임대 카탈로그 수집'] } : {}))
   render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
-  await waitFor(() => expect(screen.getByText('진행 중')).toBeVisible())
+  await waitFor(() => expect(within(screen.getByRole('tab', { name: '3 정제·저장' })).getByText('진행 중')).toBeVisible())
   expect(within(screen.getByRole('tab', { name: '3 정제·저장' })).getByText('진행 중')).toBeVisible()
   expect(within(screen.getByRole('tab', { name: '1 원천 수집' })).queryByText('진행 중')).not.toBeInTheDocument()
   select('3 정제·저장')

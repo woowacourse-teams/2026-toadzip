@@ -8,6 +8,7 @@ import { LocationSummaryUpload } from './LocationSummaryUpload'
 import { pipelineStepDefinitions, pipelineStepSequences } from './pipelineSteps'
 import styles from './ComplexIngest.module.css'
 import { ComplexStageHelp } from './ComplexStageHelp'
+import { ComplexStatusBadge } from './ComplexStatusBadge'
 
 export function ComplexIngestStages({ states, disabled, startingType, stopping, onStart, onStop, onRefresh, onUploadBusy }: {
   states: Record<DataPipelineType, PipelineViewState>; disabled: boolean; startingType: DataPipelineType | null
@@ -71,13 +72,13 @@ export function ComplexIngestStages({ states, disabled, startingType, stopping, 
         aria-describedby={isRunning(index) ? `${tabId}-${index}-status` : undefined}
         onClick={() => select(index)} onKeyDown={event => move(event, index)}>
         {step.label}
-        {isRunning(index) && <span id={`${tabId}-${index}-status`} className={styles.running}>진행 중</span>}
+        {isRunning(index) && <ComplexStatusBadge id={`${tabId}-${index}-status`} status="running" />}
       </button>)}
     </div>
     <section className={styles.stage} id="complex-collection" role="tabpanel" hidden={selected !== 0} aria-labelledby={`${tabId}-0`}>
       <header><div className={styles.stageTitle}><span className={styles.number}>1</span><div className={styles.helpLabel}><h2 id="complex-collection-title">단지 원천 수집</h2>
         <ComplexStageHelp stage="단지 원천 수집">마이홈 단지와 LH 임대 카탈로그를 수집해 원본을 저장합니다.</ComplexStageHelp></div></div>
-        <ComplexExecutionSummary execution={latest('COMPLEX_COLLECTION')} pending={startingType === 'COMPLEX_COLLECTION'} /></header>
+        <ComplexExecutionSummary execution={latest('COMPLEX_COLLECTION')} pending={startingType === 'COMPLEX_COLLECTION'} stopping={stopping[latest('COMPLEX_COLLECTION').type]} /></header>
       <Button data-design-system className={styles.collectionButton} disabled={disabled} onClick={() => onStart('COMPLEX_COLLECTION')}>단지 원천 수집 실행</Button>
       {result('COMPLEX_COLLECTION')}
     </section>
@@ -89,7 +90,7 @@ export function ComplexIngestStages({ states, disabled, startingType, stopping, 
     <section className={styles.stage} id="complex-refinement" role="tabpanel" hidden={selected !== 2} aria-labelledby={`${tabId}-2`}>
       <header><div className={styles.stageTitle}><span className={styles.number}>3</span><div className={styles.helpLabel}><h2 id="complex-refinement-title">단지 정제·저장</h2>
         <ComplexStageHelp stage="단지 정제·저장">현재 저장된 단지 원본 전체를 단지·주택형으로 정제해 저장합니다.</ComplexStageHelp></div></div>
-        <ComplexExecutionSummary execution={latest('COMPLEX_REFINEMENT')} pending={startingType === 'COMPLEX_REFINEMENT'} /></header>
+        <ComplexExecutionSummary execution={latest('COMPLEX_REFINEMENT')} pending={startingType === 'COMPLEX_REFINEMENT'} stopping={stopping[latest('COMPLEX_REFINEMENT').type]} /></header>
       <Button data-design-system disabled={disabled} onClick={() => onStart('COMPLEX_REFINEMENT')}>단지 정제·저장 실행</Button>
       {result('COMPLEX_REFINEMENT')}
     </section>
