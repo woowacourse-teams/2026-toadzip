@@ -158,6 +158,34 @@ export function housingNameCandidates(review: Review): HousingNameCandidate[] {
   return candidates
 }
 export function allCells(review: Review) { return [...review.metadata, ...review.reception, ...review.rows.flatMap(row => [...row.cells, ...row.targets.flatMap(target => target.cells)]), ...review.schedules.flatMap(schedule => schedule.cells)] }
+export type PendingChange = { section: '기본정보' | '접수처' | '공급정보' | '일정'; scope: string; cell: Cell; candidates: RowProposal['candidates'] }
+/** 저장하면 실제로 바뀌는 값만 영역별로 모은다. 다른 탭에 있는 변경도 저장 전에 보이게 하려는 목록이다. */
+export function pendingChanges(review: Review): PendingChange[] {
+  const changed = (cell: Cell) => cell.selected && !cell.locked && JSON.stringify(cell.before) !== JSON.stringify(cell.value)
+  const list = (section: PendingChange['section'], scope: string, cells: Cell[], candidates: RowProposal['candidates'] = []) =>
+    cells.filter(changed).map(cell => ({ section, scope, cell, candidates }))
+  return [
+    ...list('기본정보', '공고', review.metadata),
+    ...list('접수처', '접수처', review.reception),
+    ...review.rows.flatMap((row, index) => {
+      if (!row.include) return []
+      const source = review.extraction.supplyRows[index], scope = `공급행 ${index + 1} · ${source.complexName ?? '단지 미확인'} · ${source.typeName ?? '주택형 미확인'}`
+      return [...list('공급정보', scope, row.cells, row.proposal.candidates), ...row.targets.filter(target => target.destination !== 'exclude')
+        .flatMap(target => list('공급정보', `${scope} / ${shown(target.cells.find(cell => cell.field === 'target')?.value)}`, target.cells))]
+    }),
+    ...review.schedules.flatMap((schedule, index) => schedule.include ? list('일정', `일정 ${index + 1} · ${shown(schedule.cells.find(cell => cell.field === 'name')?.value)}`, schedule.cells) : []),
+  ]
+}
+/** 변경 목록에 쓰는 값 표기. 주택형은 후보의 이름과 면적으로 보여 준다. */
+export function changeValue(change: PendingChange, value: unknown) {
+  if (change.cell.kind === 'housingType') {
+    if (value == null) return '미연결'
+    const type = change.candidates.find(item => item.id === value)
+    return type ? `${type.name} · ${type.exclusiveArea}㎡` : `#${String(value)}`
+  }
+  if (change.cell.kind === 'method' || change.cell.kind === 'scheduleType') return choices[change.cell.kind].find(([key]) => key === value)?.[1] ?? shown(value)
+  return shown(value)
+}
 export function applicableCells(review: Review) {
   return [...review.metadata, ...review.reception,
     ...review.rows.filter(row => row.include).flatMap(row => [...row.cells, ...row.targets.filter(target => target.destination !== 'exclude').flatMap(target => target.cells)]),

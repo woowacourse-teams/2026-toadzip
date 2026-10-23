@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { scenario } from './fixtures/workspace'
 import { blankTarget } from '../supply/supplyCorrectionApi'
-import { areaOnlyTypeName, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
+import { areaOnlyTypeName, changeValue, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
 
 
 const evidence = { reason: '공고문과 대조', sourceUrl: 'https://example.com/notice', sourcePage: '4' }
@@ -229,4 +229,17 @@ it('면적만 적힌 주택형 표기는 공고 표기로 제안하지 않는다
   extraction.supplyRows[0].values.sourceHousingTypeName = '26.37'
   const cell = createReview(extraction, workspace, housing).rows[0].cells.find(item => item.field === 'sourceHousingTypeName')
   expect(cell).toMatchObject({ state: 'notApplicable', selected: false, note: '면적만 적힌 값이라 주택형 표기로 쓰지 않습니다.' })
+})
+
+it('저장 전 변경 목록은 실제로 바뀌는 값만 영역별로 모으고 선택을 끄면 뺀다', () => {
+  const { review } = scenario('gongju')
+  const start = review.metadata.findIndex(cell => cell.field === 'applicationStartDate')
+  review.metadata[start] = { ...review.metadata[start], before: '2026-03-03', value: '2026-03-01', selected: true, locked: false }
+  let changes = pendingChanges(review)
+  expect(changes.filter(change => change.section === '기본정보').map(change => [change.cell.label, changeValue(change, change.cell.before), changeValue(change, change.cell.value)]))
+    .toContainEqual(['접수 시작일', '2026-03-03', '2026-03-01'])
+  expect(changes.every(change => JSON.stringify(change.cell.before) !== JSON.stringify(change.cell.value))).toBe(true)
+  review.metadata[start] = { ...review.metadata[start], selected: false }
+  changes = pendingChanges(review)
+  expect(changes.some(change => change.cell.field === 'applicationStartDate')).toBe(false)
 })

@@ -11,7 +11,7 @@ import { labels } from '../management/fields'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import { readExtraction, type Evidence } from './extraction'
 import { checkAnnouncement, type ComplexLabels, type HousingCandidates } from './matching'
-import { applicableCells, assembleReview, cellMatches, createReview, housingNameCandidates, pendingItems, pendingSchedule, rebaseReview, remapSchedule, shown, type HousingNameCandidate, type Review, type ReviewFilter, type ReviewSection, type ScheduleReview } from './review'
+import { applicableCells, assembleReview, cellMatches, changeValue, createReview, housingNameCandidates, pendingChanges, pendingItems, pendingSchedule, rebaseReview, remapSchedule, shown, type HousingNameCandidate, type PendingChange, type Review, type ReviewFilter, type ReviewSection, type ScheduleReview } from './review'
 import { ReviewCells } from './ReviewCells'
 import { ReviewSupply } from './ReviewSupply'
 import { RequestPreparation } from './RequestPreparation'
@@ -157,6 +157,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   if (!workspace) return <section className={styles.page}><h1>PDF로 공고 보정</h1>{error ? <div role="alert"><p>{error}</p><Button onClick={() => setAttempt(value => value + 1)}>다시 불러오기</Button></div> : <p role="status">공고와 연결 주택형을 불러오는 중…</p>}</section>
   if (workspace.detail.summary.deleted) return <section className={styles.page}><h1>휴지통의 공고입니다.</h1><p>공고를 복구한 뒤 보정하세요.</p><Link to={back}>공고 상세로 돌아가기</Link></section>
   const pending = review ? pendingItems(review) : []
+  const changes = review ? pendingChanges(review) : []
   const counts = { changed: 0, new: 0 }
   if (review) for (const cell of applicableCells(review)) if (cell.extracted.state === 'changed' || cell.extracted.state === 'new') counts[cell.extracted.state] += 1
   const empty = `이 영역에는 ‘${filterLabels.find(([key]) => key === filter)?.[1]}’ 항목이 없습니다.`
@@ -189,11 +190,26 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
           {section === 'reception' && <><h2>접수처·기본정보</h2><p>임대유형·모집유형·기관·공고명은 현재값을 유지합니다. 접수처는 한 곳만 저장할 수 있으므로 온라인·현장 병행 여부를 확인하세요.</p>{visibleIn(review.reception) && <h3>접수처</h3>}<ReviewCells cells={review.reception} scope="접수처" filter={filter} onChange={reception => change({ ...review, reception })} onEvidence={evidence} />{visibleIn(review.metadata) && <h3>공고 기본 일정</h3>}<ReviewCells cells={review.metadata} scope="기본정보" filter={filter} onChange={metadata => change({ ...review, metadata })} onEvidence={evidence} />{!visibleIn(review.reception) && !visibleIn(review.metadata) && <p className={styles.hint}>{empty}</p>}</>}
         </fieldset>
       </div></div>
-      <footer className={styles.footer}><div><strong>{applicableCells(review).filter(cell => cell.selected && !cell.locked).length}개 값 반영</strong><span>선택하지 않은 값은 유지합니다.</span></div>{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`확인 필요 ${pending.length}개 남음 ↓`}</Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}<div className={styles.actions}><Button data-design-system className={styles.secondaryButton} disabled={busy || blocked} onClick={() => { if (window.confirm('검토 입력을 초기화하고 응답 준비로 돌아갈까요?')) { setPhase('prepare'); setReview(null) } }}>응답 다시 준비</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
+      <ChangeList changes={changes} />
+      <footer className={styles.footer}><div><strong>{changes.length}개 값 반영</strong><span>{changeSummary(changes)} · 선택하지 않은 값은 유지합니다.</span></div>{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`확인 필요 ${pending.length}개 남음 ↓`}</Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}<div className={styles.actions}><Button data-design-system className={styles.secondaryButton} disabled={busy || blocked} onClick={() => { if (window.confirm('검토 입력을 초기화하고 응답 준비로 돌아갈까요?')) { setPhase('prepare'); setReview(null) } }}>응답 다시 준비</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
       {phase === 'review' && !supplyDraft && <details className={styles.reason} open={reasonProblem ? true : undefined}><summary>적용 근거 확인{reasonProblem ? ' · 필수 입력 필요' : ''}</summary>{reasonProblem && <p role="status" className={styles.error}>{reasonProblem}</p>}<label>보정 이유<textarea value={reason} maxLength={2000} disabled={busy || blocked} onChange={event => { setReason(event.target.value) }} /></label><label>공식 근거 URL<input value={sourceUrl} maxLength={2048} disabled={busy || blocked} onChange={event => { setSourceUrl(event.target.value) }} /></label><label>근거 쪽<input value={sourcePage} maxLength={100} disabled={busy || blocked} onChange={event => { setSourcePage(event.target.value) }} /></label></details>}
     </>}
     {phase === 'result' && <section className={styles.result}><h2>공고 보정을 적용했습니다.</h2><p>선택한 변경을 저장했습니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.</p><p>보정 저장은 공고 전체 검토 완료와 다릅니다.{failureReturn ? ` ${Number.isSafeInteger(failureCount) && failureCount > 0 ? `이 공고의 오류 ${failureCount}건은` : '연결된 오류는'} 다음 정제 때 다시 판정됩니다.` : ''}</p><div className={styles.actions}><Link to={`/?announcementId=${id}`} target="_blank" rel="noreferrer">공개 공고 확인</Link><Link to={`/admin/announcements/${id}?${supplyParams}`}>저장된 공급정보 확인</Link><Link to={`/admin/announcements/${id}?${historyParams}`}>출처·수정 이력 보기</Link>{failureReturn && <Link to={failureReturn}>실패 검토로 돌아가기</Link>}</div>
       {renames.length > 0 && <section className={styles.renames} aria-labelledby="housing-name-title"><h3 id="housing-name-title">단지 주택형 이름 후보</h3><p className={styles.hint}>연결한 단지 주택형의 이름이 이번 공고 표기와 다릅니다. 이 화면은 저장하지 않으며, 바꾸려면 단지 상세에서 따로 수정하세요. 관리자가 수정한 주택형은 이후 재수집으로 이름·면적·세대수가 갱신되지 않습니다.</p><ul>{renames.map(item => <li key={item.id}>#{item.id} 「{item.current}」 → 공고 표기 「{item.pdf}」</li>)}</ul></section>}
     </section>}
   </section>
+}
+
+const changeSections: PendingChange['section'][] = ['기본정보', '접수처', '공급정보', '일정']
+function changeSummary(changes: PendingChange[]) {
+  return changeSections.map(section => `${section} ${changes.filter(change => change.section === section).length}`).join(' · ')
+}
+
+// 다른 탭의 변경도 저장 전에 한 곳에서 확인하도록 영역별 변경 전후를 보여 준다.
+function ChangeList({ changes }: { changes: PendingChange[] }) {
+  if (!changes.length) return null
+  return <details className={styles.changes}><summary>{`반영할 변경 ${changes.length}개 보기 · ${changeSummary(changes)}`}</summary>
+    <div className={styles.changeTable} role="region" aria-label="반영할 변경 목록" tabIndex={0}><table><thead><tr><th scope="col">영역</th><th scope="col">대상</th><th scope="col">항목</th><th scope="col">현재</th><th scope="col">저장 후</th></tr></thead>
+      <tbody>{changes.map(change => <tr key={change.cell.path}><td>{change.section}</td><td>{change.scope}</td><th scope="row">{change.cell.label}</th><td>{changeValue(change, change.cell.before)}</td><td>{changeValue(change, change.cell.value)}</td></tr>)}</tbody></table></div>
+  </details>
 }

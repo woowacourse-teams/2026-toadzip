@@ -124,6 +124,12 @@
 .footer { flex:none; order:3; display:flex; justify-content:space-between; align-items:center; gap:var(--ds-space-4); padding:var(--ds-space-4) 0; border-top:1px solid var(--ds-color-divider); background:var(--ds-color-surface-subtle); }
 .footer > div:first-child { display:flex; flex-direction:column; gap:var(--ds-space-1); font-size:var(--ds-text-caption); }
 .footer span { color:var(--ds-color-muted-base); }
+.changes { order:2; flex:none; padding-block:var(--ds-space-2); font-size:var(--ds-text-caption); }
+.changes summary { cursor:pointer; }
+.changeTable { max-height:220px; overflow:auto; margin-top:var(--ds-space-2); }
+.changeTable table { width:100%; border-collapse:collapse; }
+.changeTable :is(th, td) { padding:var(--ds-space-1) var(--ds-space-2); border-bottom:1px solid var(--ds-color-divider); text-align:left; vertical-align:top; font-weight:inherit; }
+.changeTable thead th { position:sticky; top:0; background:var(--ds-color-surface-subtle); font-weight:600; }
 .reason { order:2; flex:none; padding-block:var(--ds-space-2); max-height:240px; overflow:auto; }
 .reason summary { cursor:pointer; font-size:var(--ds-text-caption); }
 .reason label { margin-block:var(--ds-space-2); }
