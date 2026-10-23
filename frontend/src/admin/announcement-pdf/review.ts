@@ -145,7 +145,8 @@ export function pendingItems(review: Review): PendingItem[] {
 }
 /** ChatGPT가 주택형명 대신 면적(26.37, 26.37㎡)을 넣은 경우다. 표기로 쓰면 공개 화면에 면적만 보인다. */
 export function areaOnlyTypeName(value: unknown) {
-  return typeof value === 'string' && /^\d+(\.\d+)?\s*(㎡|m2)?$/.test(value.trim())
+  // 정수만 있는 표기(26)는 흔한 주택형 이름이라 소수점이나 면적 단위가 있을 때만 면적으로 본다.
+  return typeof value === 'string' && /^\d+(\.\d+\s*(㎡|m2)?|(\.\d+)?\s*(㎡|m2))$/.test(value.trim())
 }
 export type HousingNameCandidate = { id: number; current: string; pdf: string }
 /** 연결한 단지 주택형의 이름이 공고 표기와 다르면 단지 보정 후보로 돌려준다. 저장하지 않고 결과 화면에 표시만 한다. */

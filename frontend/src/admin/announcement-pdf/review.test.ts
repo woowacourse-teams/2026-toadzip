@@ -223,7 +223,7 @@ it('이미 PDF 순서와 같으면 표시 순서를 바꾸지 않는다', () => 
 
 it('면적만 적힌 주택형 표기는 공고 표기로 제안하지 않는다', () => {
   expect(['26.37', '26.37㎡', '39 m2'].map(areaOnlyTypeName)).toEqual([true, true, true])
-  expect(['26A', '26형 고령자(주거약자용)', null].map(areaOnlyTypeName)).toEqual([false, false, false])
+  expect(['26', '26A', '26형 고령자(주거약자용)', null].map(areaOnlyTypeName)).toEqual([false, false, false, false])
   const { review, workspace, housing } = scenario('gongju')
   const extraction = structuredClone(review.extraction)
   extraction.supplyRows[0].values.sourceHousingTypeName = '26.37'

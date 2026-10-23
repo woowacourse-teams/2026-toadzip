@@ -58,9 +58,13 @@ public class SupplyRow {
         }
         SupplyRow incoming = create(announcement, complex, type, sourceSupplyRowIdentifier, displayOrder,
                 sourceComplexName, sourceHousingTypeName, pnu, moveInMonth, category, null, count);
+        // 표기를 따로 두지 않던 행이 화면에 보이던 이름을 그대로 보내면 표기를 바꾼 것이 아니다.
+        // 연결이 함께 바뀌어도 새 주택형 이름을 따라가도록 이전 이름을 공고 표기로 굳히지 않는다.
+        boolean keepsDefault = announcementHousingTypeName == null && displayTypeName != null
+                && displayTypeName.strip().equals(defaultHousingTypeName());
         housingComplex = incoming.housingComplex;
         housingType = incoming.housingType;
-        announcementHousingTypeName = labelDifferentFromDefault(displayTypeName);
+        announcementHousingTypeName = keepsDefault ? null : labelDifferentFromDefault(displayTypeName);
         supplyPnu = incoming.supplyPnu;
         expectedMoveInMonth = incoming.expectedMoveInMonth;
         supplyCategory = incoming.supplyCategory;
