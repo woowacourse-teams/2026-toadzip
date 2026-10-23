@@ -193,3 +193,6 @@
 .page .prepareFeedback .parseError { background:color-mix(in srgb,var(--ds-color-deadline) 6%,var(--ds-color-surface)); border-color:color-mix(in srgb,var(--ds-color-deadline) 25%,var(--ds-color-surface)); }
 
 .page[data-embedded=true][data-focused=true] { height:calc(100dvh - 140px); min-height:600px; }
+
+.failureTargets { margin-top:var(--ds-space-2); padding:var(--ds-space-2) var(--ds-space-3); border-left:3px solid var(--ds-color-action); background:var(--ds-color-surface-subtle); font-size:var(--ds-text-caption); }
+.failureTargets ul { margin:var(--ds-space-1) 0 0; padding-left:var(--ds-space-4); }
