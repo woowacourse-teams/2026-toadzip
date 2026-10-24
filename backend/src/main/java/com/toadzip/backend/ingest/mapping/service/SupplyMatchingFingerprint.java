@@ -41,6 +41,16 @@ public class SupplyMatchingFingerprint {
                 text(source.getEnty()), text(source.getSurlus())));
     }
 
+    /** 공통 모집 묶음의 원천 지문. LH 공급정보로 펼친 행은 마이홈 원천에 그 LH 행의 표기·면적·공급 수를 더한다. */
+    String splitSource(MyHomeSupplyRowMappingData row, boolean expanded) {
+        if (!expanded) {
+            return splitSource(row.source());
+        }
+        return hash(List.of(splitSource(row.source()), row.sourceSupplyRowIdentifier(), text(row.sourceHousingTypeName()),
+                text(row.exclusiveArea()), text(row.supplyArea()), text(row.lhTotalSupplyHouseholdCount()),
+                text(row.resolvedLhSourceIdentifier())));
+    }
+
     String splitReview(String token, com.toadzip.backend.announcement.domain.SupplyRowGroup group) {
         if (group == null) {
             return token;

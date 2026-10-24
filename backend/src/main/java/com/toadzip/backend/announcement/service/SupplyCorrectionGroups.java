@@ -10,6 +10,7 @@ import com.toadzip.backend.announcement.repository.SupplyRowGroupRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
+import com.toadzip.backend.ingest.mapping.service.AnnouncementSupplyMatchingService;
 import com.toadzip.backend.ingest.mapping.service.SupplyMatchingFingerprint;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -30,6 +31,7 @@ class SupplyCorrectionGroups {
     private final SupplyRowGroupRepository groups;
     private final MyHomeAnnouncementSourceReader sources;
     private final SupplyMatchingFingerprint fingerprints;
+    private final AnnouncementSupplyMatchingService supplyMatching;
 
     List<Plan> plan(Announcement announcement, List<Row> planned, List<NewGroup> requested) {
         if (requested.isEmpty()) { return List.of(); }
@@ -44,6 +46,17 @@ class SupplyCorrectionGroups {
         for (var input : requested) {
             var original = stored.stream().filter(row -> row.getId().equals(input.sourceRowId())).findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("분할할 원천 공급행이 이 공고에 없습니다."));
+            // LH 공급정보로 여러 행이 된 원천은 그 LH 행 단위로 묶는다. 마이홈 원천 단위로 묶으면 같은 원천의 다른 행이 사라진다.
+            var expanded = original.getSupplyGroup() == null ? supplyMatching.expandedSplitOrigin(
+                    announcement.getSourceAnnouncementIdentifier(), original.getSourceSupplyRowIdentifier()).orElse(null) : null;
+            if (expanded != null) {
+                if (!usedSources.add(expanded.key()) || groups.findBySourceRowIdentifier(expanded.key()).isPresent()) {
+                    throw new IllegalArgumentException("이미 묶인 원천이거나 중복된 분할입니다.");
+                }
+                validateMembers(input, original, byKey, usedMembers);
+                result.add(new Plan(input, expanded.key(), expanded.fingerprint(), expanded.myHomeSourceKey()));
+                continue;
+            }
             var owners = bySource.entrySet().stream().filter(entry -> entry.getValue().contains(original)).toList();
             if (owners.size() != 1 || owners.getFirst().getValue().size() != 1) {
                 throw new IllegalArgumentException("하나의 원천에 대응하는 단일 공급행만 새 공통 모집 묶음으로 나눌 수 있습니다.");
@@ -55,7 +68,7 @@ class SupplyCorrectionGroups {
             var source = currentSources.stream().filter(value -> value.getSourceKey().equals(sourceKey) && value.isActive())
                     .findFirst().orElseThrow(() -> new IllegalArgumentException("현재 유효한 공고 원천을 확인할 수 없습니다."));
             validateMembers(input, original, byKey, usedMembers);
-            result.add(new Plan(input, sourceKey, fingerprints.splitSource(source)));
+            result.add(new Plan(input, sourceKey, fingerprints.splitSource(source), sourceKey));
         }
         return List.copyOf(result);
     }
@@ -95,10 +108,10 @@ class SupplyCorrectionGroups {
             for (String key : plan.input().rowKeys()) {
                 var member = members.get(key);
                 member.protectInGroup(group, fingerprints.target(member.getHousingType()));
-                member.recordMyHomeSource(plan.sourceKey());
+                member.recordMyHomeSource(plan.myHomeSourceKey());
             }
         }
     }
 
-    record Plan(NewGroup input, String sourceKey, String sourceFingerprint) { }
+    record Plan(NewGroup input, String sourceKey, String sourceFingerprint, String myHomeSourceKey) { }
 }
