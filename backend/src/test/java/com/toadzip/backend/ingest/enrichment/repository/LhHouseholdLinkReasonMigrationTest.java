@@ -7,6 +7,7 @@ import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailure
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,7 +32,7 @@ class LhHouseholdLinkReasonMigrationTest {
     private DataSource dataSource;
 
     @Test
-    void 기존_실패를_보존하며_저장_연결_재확인_사유를_허용하고_알수없는_사유는_거절한다() throws Exception {
+    void 기존_실패를_보존하며_저장_연결과_단지_결정_재확인_사유를_허용하고_알수없는_사유는_거절한다() throws Exception {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE SCHEMA " + SCHEMA);
             statement.execute("SET search_path TO " + SCHEMA);
@@ -39,9 +40,12 @@ class LhHouseholdLinkReasonMigrationTest {
                 statement.execute("CREATE TABLE " + TABLE + " (reason varchar(40) NOT NULL CONSTRAINT "
                         + TABLE + "_reason_check CHECK (reason IN ('INVALID_SOURCE')))");
                 statement.execute("INSERT INTO " + TABLE + " VALUES ('INVALID_SOURCE')");
-                var migration = new ClassPathResource("db/migration/V20261024_04__lh_household_link_review_reason.sql");
-                ScriptUtils.executeSqlScript(connection, migration);
-                ScriptUtils.executeSqlScript(connection, migration);
+                for (String migration : List.of("V20261024_04__lh_household_link_review_reason.sql",
+                        "V20261024_06__lh_household_target_decision_reason.sql")) {
+                    var resource = new ClassPathResource("db/migration/" + migration);
+                    ScriptUtils.executeSqlScript(connection, resource);
+                    ScriptUtils.executeSqlScript(connection, resource);
+                }
 
                 for (LhHouseholdEnrichmentFailureReason reason : LhHouseholdEnrichmentFailureReason.values()) {
                     insertReason(connection, reason.name());
