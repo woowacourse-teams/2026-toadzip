@@ -12,6 +12,13 @@ import org.springframework.stereotype.Component;
 class LhAnnouncementSupplyMatcher {
 
     LhSupplyMatchResult match(List<SupplyRow> rows, LhSupplyData source) {
+        if (source.linkedRow() != null && source.linkedRow().reviewRequired()) {
+            return LhSupplyMatchResult.failure(
+                    source,
+                    LhAnnouncementEnrichmentFailureReason.LH_SUPPLY_LINK_REVIEW_REQUIRED,
+                    "저장한 LH 공급 연결의 원천이 변경되었습니다. 근거를 다시 확인하고 연결을 저장해 주세요."
+            );
+        }
         // 정제가 이 LH 행으로 직접 만든 공급행이면 단지명 표기가 달라도 같은 단지다(아산읍내 ↔ 아산읍내1 영구임대아파트).
         for (SupplyRow row : rows) {
             if (source.sourceIdentifier().equals(row.getLhSourceSupplyRowIdentifier())
@@ -19,9 +26,7 @@ class LhAnnouncementSupplyMatcher {
                 return LhSupplyMatchResult.matched(row);
             }
         }
-        List<SupplyRow> complexMatches = rows.stream()
-                .filter(row -> matchesComplex(row, source))
-                .toList();
+        List<SupplyRow> complexMatches = complexCandidates(rows, source);
         if (complexMatches.isEmpty()) {
             return LhSupplyMatchResult.failure(
                     source,
@@ -54,6 +59,40 @@ class LhAnnouncementSupplyMatcher {
                 LhAnnouncementEnrichmentFailureReason.AMBIGUOUS_COMPLEX,
                 "LH 공급 원본에 일치하는 기존 공급 단지가 여러 개입니다."
         );
+    }
+
+    /** 실패한 LH 행을 관리자가 비교할 수 있도록 실패 사유가 가리키는 공급행 후보를 고른다. */
+    List<SupplyRow> candidates(List<SupplyRow> rows, LhSupplyData source,
+            LhAnnouncementEnrichmentFailureReason reason) {
+        return switch (reason) {
+            // 단지명이 안 맞으면 같은 주택형 공급행을, 주택형이 안 맞으면 같은 단지 공급행을 보여 준다.
+            case COMPLEX_NOT_FOUND -> rows.stream().filter(row -> matchesHousingType(row, source)).toList();
+            case HOUSING_TYPE_NOT_FOUND, AMBIGUOUS_COMPLEX, LH_SUPPLY_LINK_REVIEW_REQUIRED ->
+                    complexCandidates(rows, source.withLinkedRow(reviewTarget(source)));
+            case AMBIGUOUS_HOUSING_TYPE -> complexCandidates(rows, source).stream()
+                    .filter(row -> matchesHousingType(row, source)).toList();
+            default -> List.of();
+        };
+    }
+
+    private LhAnnouncementEnrichmentMapper.LinkedMyHomeRow reviewTarget(LhSupplyData source) {
+        if (source.linkedRow() == null) {
+            return null;
+        }
+        return new LhAnnouncementEnrichmentMapper.LinkedMyHomeRow(source.linkedRow().sourceRowIdentifier(), false);
+    }
+
+    /** 관리자가 저장한 연결은 단지명 대신 그 마이홈 원천행으로 만든 공급행만 후보로 둔다. */
+    private List<SupplyRow> complexCandidates(List<SupplyRow> rows, LhSupplyData source) {
+        if (source.linkedRow() != null) {
+            String linkedRowIdentifier = source.linkedRow().sourceRowIdentifier();
+            return rows.stream()
+                    .filter(row -> linkedRowIdentifier.equals(row.getMyhomeSourceRowIdentifier()))
+                    .toList();
+        }
+        return rows.stream()
+                .filter(row -> matchesComplex(row, source))
+                .toList();
     }
 
     private boolean matchesComplex(SupplyRow row, LhSupplyData source) {
