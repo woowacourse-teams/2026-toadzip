@@ -10,7 +10,7 @@
 - `/admin/ingest/announcements`·`/admin/ingest/complexes`: 공고·단지 실행 요약, 기술 상세와 이력. 기존 `/admin/ingest`·`/admin/ingest-v2`는 새 경로로 이동한다.
 - LH 정확성 지표와 확인된 공급 감소 재조회는 [운영 절차](../../operations/ingest/lh-quality.md)를 따른다.
 - `/admin/failures`: 수집·정제 실패 확인과 전체 작업 재실행. 개별 행 재시도가 아니다.
-- 주소 자동 채우기는 기존 등록 단지의 주소를 검색한다. 외부 주소 검색 서비스는 사용하지 않는다.
+- 단지 등록 화면의 주소 자동 채우기는 기존 등록 단지의 주소를 검색한다.
 
 ## API
 
@@ -31,6 +31,7 @@
 - 공고 수정의 접수처 연락처는 미확인이면 `null`을 유지한다. 접수처명·접수방식·URL 검증과 공고 신규 등록의 연락처 필수 규칙은 유지한다.
 - 기존 `PUT /{id}/application-schedules`는 선택적 `version` 쿼리로 충돌을 확인한다.
 - `/api/admin/ingest/pipelines/history?page=...&size=...`는 실행 이력을 제공한다.
+- `GET /api/admin/addresses?keyword=...`는 주소 후보(최대 5개)의 도로명·지번주소, PNU, 법정동·시도·시군구 코드, 위도·경도를 돌려준다. 좌표가 없는 주소(건물 없는 지번 등)는 위도·경도가 `null`이다. 키는 `JUSO_SEARCH_API_KEY`, `JUSO_COORDINATE_API_KEY`이고, 없거나 외부 API가 실패하면 503 `ADDRESS_LOOKUP_UNAVAILABLE`, 검색어 문제는 400 `INVALID_ADDRESS_KEYWORD`다. 요청은 연결 2초, 응답 3초 제한이며 재시도하지 않는다.
 - 세션 인증과 쓰기 요청의 CSRF 검증을 유지한다. 관리자 CORS는 PUT·DELETE도 허용한다.
 - 이름·주소는 부분 일치, 원천 식별자는 정확한 일치로 검색한다. 장기전세도 조회·수정한다.
 - 목록은 `totalElements`와 `totalPages`를 반환하고 등록 시각 내림차순, 같은 시각은 ID 내림차순으로 정렬한다.
