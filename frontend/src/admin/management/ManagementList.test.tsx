@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { ManagementList } from './ManagementList'
@@ -22,21 +22,35 @@ beforeEach(() => { vi.clearAllMocks(); mocks.getManagementPage.mockResolvedValue
 
 it('단지 표는 핵심 정보만 표시하고 세대수 0과 누락을 구분한다', () => {
   render(<MemoryRouter><ManagementSummaryTable items={[complex, { ...legacy, id: 8, name: '미확인 단지' }]} resource="complexes" returnTo="/admin/complexes?provider=LH" /></MemoryRouter>)
-  expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['단지명', '도로명주소', '공급 기관', '공급 유형', '세대수', '검토 상태', '관리 상태'])
+  expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['단지명', '도로명주소', '공급 기관', '공급 유형', '세대수', '검토 상태', '확인할 상태'])
   expect(screen.getByRole('cell', { name: '0' })).toBeVisible()
   expect(screen.getByRole('cell', { name: '미확인' })).toBeVisible()
   expect(screen.getAllByText('미검토')).toHaveLength(2)
   expect(screen.getByRole('link', { name: '두꺼비 단지' })).toHaveAttribute('href', '/admin/complexes/7?returnTo=%2Fadmin%2Fcomplexes%3Fprovider%3DLH')
   expect(screen.queryByText('MYHOME-7')).not.toBeInTheDocument()
-  expect(screen.getAllByText('등록됨')[0]).toHaveAttribute('title', expect.stringContaining('모집 상태를 뜻하지 않습니다'))
+  expect(screen.queryByText('등록됨')).not.toBeInTheDocument()
+  expect(screen.getAllByLabelText('특이 상태 없음')[0]).toHaveTextContent('—')
 })
 
 it('공고 표는 모집 유형과 접수 기간을 함께 표시한다', () => {
   render(<MemoryRouter><ManagementSummaryTable items={[announcement]} resource="announcements" /></MemoryRouter>)
-  expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['공고명', '공급 기관', '공급 유형', '모집 유형', '게시일', '접수 기간', '관리 상태'])
+  expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['공고명', '공급 기관', '공급 유형', '모집 유형', '공고 구분', '게시일', '접수 기간', '확인할 상태'])
   expect(screen.getByRole('cell', { name: '예비 입주자' })).toBeVisible()
   expect(screen.getByRole('cell', { name: '2026-10-10 ~ 2026-10-15' })).toBeVisible()
   expect(screen.queryByText('LH-7')).not.toBeInTheDocument()
+})
+
+it('정정 공고는 공고 구분 칸에, 확인이 필요한 상태는 상태 칸에 따로 표시한다', () => {
+  render(<MemoryRouter><ManagementSummaryTable resource="announcements" items={[
+    { ...announcement, id: 8, name: '정정 공고', reviewRequired: true, announcement: { ...announcement.announcement!, publicationType: 'CORRECTION' } },
+    { ...announcement, id: 9, name: '평소 공고', announcement: { ...announcement.announcement!, publicationType: 'ORIGINAL' } },
+  ]} /></MemoryRouter>)
+  const [corrected, ordinary] = screen.getAllByRole('row').slice(1)
+  const cells = within(corrected).getAllByRole('cell')
+  expect(cells.find(cell => cell.textContent === '정정공고')).toBeDefined()
+  expect(cells.find(cell => cell.textContent === '원천 변경 확인')).toBeDefined()
+  expect(within(ordinary).getByText('원공고')).toBeVisible()
+  expect(within(ordinary).getByLabelText('특이 상태 없음')).toBeVisible()
 })
 
 it('기존 요약 응답도 상세 연결 표에 표시하고 게시일은 subtitle을 사용한다', () => {

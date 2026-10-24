@@ -7,7 +7,7 @@ import { parseManagementDetail, type ManagementDetailData, type ManagementResour
 import { announcementSections, complexSections, display, formValues, valueAt } from './fields'
 import { EditFields } from './EditFields'
 import { ComplexRelationsEditor } from './ComplexRelationsEditor'
-import { ManagementStatus } from './ManagementStatus'
+import { ManagementStatus, PublicationType } from './ManagementStatus'
 import { ChangeHistory } from './ChangeHistory'
 import { SupplyCorrectionWorkbench } from '../supply/SupplyCorrectionWorkbench'
 import { AnnouncementSupplyMatchingForm } from '../ingest/AnnouncementSupplyMatchingForm'
@@ -88,7 +88,7 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
     {error ? <div className="registration-error" role="alert"><p>{error}</p><button type="button" disabled={busy} onClick={() => {if(!dirty || window.confirm('입력한 내용을 버리고 새로 조회할까요?')) setAttempt(v => v+1)}}>새로 조회</button></div> : null}
     {!value && !error ? <p role="status">상세 정보를 불러오는 중…</p> : null}
     {notice ? <p className="registration-success" role="status">{notice}</p> : null}
-    {value ? <><header className="management-heading"><div>{embedded ? <h2>{value.summary.name}</h2> : <h1>{value.summary.name}</h1>}<div className="management-summary-meta"><p>{value.summary.subtitle}</p><ManagementStatus summary={value.summary} />
+    {value ? <><header className="management-heading"><div>{embedded ? <h2>{value.summary.name}</h2> : <h1>{value.summary.name}</h1>}<div className="management-summary-meta"><p>{value.summary.subtitle}</p>{value.summary.announcement?.publicationType !== 'ORIGINAL' && <PublicationType summary={value.summary} />}<ManagementStatus summary={value.summary} />
       {resource === 'complexes' && section !== 'verification' && value.summary.complex?.verificationStatus ? <ComplexVerificationBadge status={value.summary.complex.verificationStatus} count={value.summary.complex.reviewedFieldCount} /> : null}</div></div>
       {!editing || embedded ? <div className="admin-inline">{resource === 'announcements' && !value.summary.deleted && !editing && <Link className="admin-tonal" to={`/admin/announcements/${id}/pdf-correction?${params}`} aria-disabled={busy || verificationBusy || extendedBusy} onClick={event => { if (busy || verificationBusy || extendedBusy) event.preventDefault() }}>PDF로 보정</Link>}{!value.summary.deleted && !editing ? <button type="button" data-admin-navigation disabled={busy || verificationBusy || extendedBusy} className="admin-tonal" onClick={() => {setEditing(true);setSection('info');setError('');setNotice('')}}>{resource === 'announcements' ? '기본정보 수정' : '수정'}</button> : null}
         <button type="button" data-admin-navigation disabled={busy || verificationBusy || extendedBusy || dirty} className={value.summary.deleted ? '' : 'admin-danger'} onClick={() => setConfirmation(true)}>{value.summary.deleted ? '복구' : '삭제'}</button></div> : null}</header>
