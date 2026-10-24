@@ -218,7 +218,9 @@ it('검색 조건과 페이지를 서버에 전달하고 직접 접근한 오류
   vi.mocked(getFailureReview).mockResolvedValue({...row, status:'RESOLVED'})
   render(<MemoryRouter initialEntries={['/admin/failures?domain=announcement&keyword=한스빌&page=2&failure=announcement:1&result=1']}>
     <IngestFailurePanel domain="announcement" executionId={null}/></MemoryRouter>)
-  expect(await screen.findByRole('heading', {name:'3. 처리 결과 확인'})).toHaveFocus()
+  // 제목이 먼저 보이고 포커스는 상세 조회 뒤 effect에서 옮겨지므로 포커스가 옮겨질 때까지 기다린다.
+  const resultHeading = await screen.findByRole('heading', {name:'3. 처리 결과 확인'})
+  await waitFor(() => expect(resultHeading).toHaveFocus())
   expect(fetchFailures).toHaveBeenCalledWith('announcement','all','PENDING',2,expect.any(AbortSignal),{keyword:'한스빌',executionId:null})
   fireEvent.click(screen.getByRole('button',{name:'닫기'}))
   fireEvent.change(screen.getByLabelText('이름·원천 식별자'), {target:{value:'A-26'}})
