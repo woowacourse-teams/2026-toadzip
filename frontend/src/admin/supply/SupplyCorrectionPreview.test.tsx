@@ -16,3 +16,10 @@ it('이력에서 새로 추가한 조건은 입력한 값만 보여 주고 기�
     '평화주공1단지 · 26 / 가군월 임대료 (원)없음51760',
   ])
 })
+
+it('지운 공급행은 대상 수와 함께 삭제로 보여 준다', () => {
+  const kept = { ...blankRow(0), id: 1, key: 'row:1', complexName: '한스빌', typeName: '26' }
+  const removed = { ...blankRow(1), id: 5, key: 'row:5', complexName: '한스빌', typeName: '36', targets: [blankTarget(0)] }
+  render(<SupplyCorrectionPreview value={{ confirmationToken: '', before: [kept, removed], after: [kept], warnings: [] }} />)
+  expect(within(screen.getByRole('table')).getAllByRole('row').slice(1).map(row => row.textContent)).toEqual(['한스빌 · 36공급행대상 1개삭제'])
+})

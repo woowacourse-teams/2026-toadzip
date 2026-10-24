@@ -89,8 +89,10 @@ public class SupplyCorrectionService {
         var rowSources = stored.stream()
                 .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
                 .flatMap(row -> rowSources(row, comparison.sources()).stream()).toList();
+        var deletable = stored.stream().filter(SupplyCorrectionService::deletable).map(row -> "row:" + row.getId()).sorted().toList();
         var workspace = new SupplyCorrection.Workspace(hash(List.of(comparison.snapshotToken(), currentRows)),
-                announcement.getVersion(), currentRows, comparison.sources(), sourceStatus.missingWarnings(id), rowSources);
+                announcement.getVersion(), currentRows, comparison.sources(), sourceStatus.missingWarnings(id), rowSources,
+                deletable);
         var snapshot = new Snapshot(workspace, comparison, currentRows);
         if (log.isDebugEnabled()) {
             var parts = tokenParts(snapshot);
@@ -132,7 +134,8 @@ public class SupplyCorrectionService {
     public SupplyCorrection.Preview preview(long id, SupplyCorrection.Request request) {
         var before = checked(id, request.snapshotToken());
         var announcement = find(id);
-        var planned = plan(announcement, before.rows(), request.rows());
+        var planned = plan(announcement, before.rows(), request.rows(), Set.copyOf(before.deletableRowKeys()),
+                request.deletedRowKeys());
         var groupPlans = groupCorrections.plan(announcement, planned, request.newGroups());
         var warnings = validateSchedulesAndCounts(id, planned, request.newGroups());
         if (groupPlans.isEmpty() && same(before.rows(), planned)) {
@@ -189,6 +192,7 @@ public class SupplyCorrectionService {
         audit.put("sourceUrl", correction.sourceUrl());
         audit.put("sourcePage", correction.sourcePage());
         audit.put("operationId", correction.operationId());
+        if (!correction.deletedRowKeys().isEmpty()) { audit.put("deletedRowKeys", correction.deletedRowKeys()); }
         audit.put("sources", after.sources());
         return audit;
     }
@@ -216,6 +220,12 @@ public class SupplyCorrectionService {
             written.put(row.key(), saved);
         }
         groupCorrections.apply(announcement, groupPlans, written, request.correction(), actor);
+        for (var key : request.correction().deletedRowKeys()) {
+            var row = preview.before().stream().filter(item -> item.key().equals(key)).findFirst().map(item -> stored.get(item.id()))
+                    .orElseThrow();
+            targets.deleteAll(targets.findAllBySupplyRow(row));
+            rows.delete(row);
+        }
         supplyMatching.rememberCorrectedLinks(announcement.getSourceAnnouncementIdentifier(),
                 changedLinks(preview, beforeById, written), request.correction().sourceUrl(),
                 request.correction().reason(), actor);
@@ -239,9 +249,18 @@ public class SupplyCorrectionService {
         return links;
     }
 
-    private List<Row> plan(Announcement announcement, List<Row> before, List<Row> requested) {
+    private List<Row> plan(Announcement announcement, List<Row> before, List<Row> requested, Set<String> deletable,
+            List<String> deleted) {
         var known = before.stream().collect(Collectors.toMap(Row::id, Function.identity()));
         Set<Long> seen = new HashSet<>();
+        for (var key : deleted) {
+            var row = before.stream().filter(item -> item.key().equals(key)).findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("지울 공급행이 이 공고에 없습니다."));
+            if (!deletable.contains(key)) {
+                throw new IllegalArgumentException("원천에서 온 공급행과 공통 모집 묶음의 행은 지울 수 없습니다. 제외로 표시하세요.");
+            }
+            if (!seen.add(row.id())) { throw new IllegalArgumentException("같은 공급행을 두 번 지울 수 없습니다."); }
+        }
         Set<String> keys = new HashSet<>();
         List<Row> result = new ArrayList<>();
         for (var row : requested) {
@@ -442,6 +461,11 @@ public class SupplyCorrectionService {
             result.add(value);
         }
         return result;
+    }
+
+    /** 원천 없이 관리자가 추가한 행(MANUAL)만 지울 수 있다. 원천행은 다음 정제가 다시 만들므로 제외로만 숨긴다. */
+    private static boolean deletable(SupplyRow row) {
+        return row.getSourceSupplyRowIdentifier().startsWith("MANUAL:") && row.getSupplyGroup() == null;
     }
 
     private Row rowData(SupplyRow row) {

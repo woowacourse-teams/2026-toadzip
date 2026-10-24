@@ -117,6 +117,46 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
+    void 관리자가_추가한_공급행만_지울_수_있고_원천행은_제외만_할_수_있다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId(); var request = request(id);
+        var extra = request.get("rows").get(0).deepCopy();
+        ((ObjectNode) extra).putNull("id").put("key", UUID.randomUUID().toString()).put("typeName", "26B");
+        ((ObjectNode) extra.get("targets").get(0)).putNull("id").put("key", UUID.randomUUID().toString());
+        ((tools.jackson.databind.node.ArrayNode) request.get("rows")).add(extra);
+        apply(id, request, preview(id, request)).andExpect(status().isOk());
+        var manual = rows.findAllByAnnouncement(row.getAnnouncement()).stream()
+                .filter(item -> item.getSourceSupplyRowIdentifier().startsWith("MANUAL:")).findFirst().orElseThrow();
+        String manualKey = "row:" + manual.getId();
+        mvc.perform(get(root(id)).with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.deletableRowKeys.length()").value(1))
+                .andExpect(jsonPath("$.data.deletableRowKeys[0]").value(manualKey));
+
+        var source = withoutRow(request(id), "row:" + row.getId());
+        source.putArray("deletedRowKeys").add("row:" + row.getId());
+        mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType("application/json").content(json.writeValueAsString(source)))
+                .andExpect(status().isBadRequest());
+
+        var delete = withoutRow(request(id), manualKey);
+        delete.putArray("deletedRowKeys").add(manualKey);
+        var preview = preview(id, delete);
+        assertThat(preview.get("after")).hasSize(1);
+        apply(id, delete, preview).andExpect(status().isOk());
+        assertThat(rows.findById(manual.getId())).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM supply_targets WHERE supply_row_id = ?", Long.class,
+                manual.getId())).isZero();
+        assertThat(rows.findById(row.getId())).isPresent();
+    }
+
+    private ObjectNode withoutRow(ObjectNode request, String key) {
+        var rows = (tools.jackson.databind.node.ArrayNode) request.get("rows");
+        for (int index = 0; index < rows.size(); index++) {
+            if (rows.get(index).get("key").asText().equals(key)) { rows.remove(index); break; }
+        }
+        return request;
+    }
+
+    @Test
     void 다른_단지의_주택형과_누락한_기존행을_거절하고_일부만_저장하지_않는다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId(); var request = request(id);
         var other = fixture();
