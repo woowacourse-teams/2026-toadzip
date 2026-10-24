@@ -70,14 +70,15 @@ class AnnouncementSupplySplitWriter {
         var row = members.stream().filter(value -> value.getId().equals(target.id())).findFirst().orElse(null);
         if (row == null) {
             row = SupplyRow.create(announcement, match.complex(), match.housingType(), "ADMIN:" + UUID.randomUUID(),
-                    displayOrder, data.sourceComplexName(), target.name().strip(), data.pnu(), null,
+                    displayOrder, data.sourceComplexName(), data.sourceHousingTypeName(), data.pnu(), null,
                     data.supplyCategory(), null, null);
         }
         if (row.getHousingType() != null && !row.getHousingType().getId().equals(match.housingType().getId())
                 && !targets.findAllBySupplyRow(row).isEmpty()) {
             throw new AdminDataConflictException("대상 조건이 있는 공급행의 주택형은 조건과 함께 검토해 주세요.");
         }
-        row.reviseByAdmin(match.complex(), match.housingType(), data.sourceComplexName(), target.name().strip(),
+        // 나눈 행의 이름은 원천 이름이 아니라 이 공고에서 보여 줄 표기다.
+        row.reviseByAdmin(match.complex(), match.housingType(), target.name(),
                 data.pnu(), row.getExpectedMoveInMonth(), data.supplyCategory(), null);
         row.updateDisplayOrder(displayOrder);
         row.protectInGroup(group, target.targetFingerprint());

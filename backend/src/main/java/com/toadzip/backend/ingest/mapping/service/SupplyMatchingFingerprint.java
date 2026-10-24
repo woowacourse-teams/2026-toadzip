@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
-class SupplyMatchingFingerprint {
+public class SupplyMatchingFingerprint {
     private final ObjectMapper json;
 
     SupplyMatchingFingerprint(ObjectMapper json) {
@@ -27,14 +27,14 @@ class SupplyMatchingFingerprint {
                 text(row.source().getUrl())));
     }
 
-    String target(HousingType type) {
+    public String target(HousingType type) {
         var complex = type.getHousingComplex();
         return hash(List.of(complex.getId(), complex.isAdminDeleted(), complex.getName(),
                 complex.getAddress().getPnu(), complex.getSupplyType(), type.getId(), type.getName(),
                 type.getExclusiveArea(), text(type.getSupplyArea())));
     }
 
-    String splitSource(MyHomeAnnouncementSource source) {
+    public String splitSource(MyHomeAnnouncementSource source) {
         return hash(List.of(source.getSourceKey(), text(source.getHsmpNm()), text(source.getHouseTyNm()),
                 text(source.getPnu()), text(source.getSuplyTyNm()), text(source.getUrl()),
                 text(source.getSumSuplyCo()), text(source.getRentGtn()), text(source.getMtRntchrg()),

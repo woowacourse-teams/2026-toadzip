@@ -115,6 +115,13 @@ export async function refineSupplyMatches(identifier: string, rows: SupplySelect
     || result.failedSourceRowCount !== 0) throw new Error('정제 결과 응답이 올바르지 않습니다. 공고 관리에서 결과를 확인해 주세요.')
 }
 
+/** 선택 없이 저장한 매칭·자동 매칭으로 이 공고만 다시 정제한다. 하나라도 실패하면 서버가 전체를 되돌린다. */
+export async function rerunAnnouncement(identifier: string): Promise<void> {
+  const result = await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/rerun`, 'POST')
+  if (!isRecord(result) || !Number.isSafeInteger(result.updatedAnnouncementCount)
+    || result.failedSourceRowCount !== 0) throw new Error('정제 결과 응답이 올바르지 않습니다. 오류 목록에서 결과를 확인해 주세요.')
+}
+
 export async function releaseSupplyMatch(identifier: string, row: SupplyMatch, reason: string): Promise<SupplyMatch[]> {
   return parseMatches(await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/release`, 'POST',
     { rowIdentifier: row.rowIdentifier, token: row.token, reason }))

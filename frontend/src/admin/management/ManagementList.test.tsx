@@ -22,7 +22,7 @@ beforeEach(() => { vi.clearAllMocks(); mocks.getManagementPage.mockResolvedValue
 
 it('단지 표는 핵심 정보만 표시하고 세대수 0과 누락을 구분한다', () => {
   render(<MemoryRouter><ManagementSummaryTable items={[complex, { ...legacy, id: 8, name: '미확인 단지' }]} resource="complexes" returnTo="/admin/complexes?provider=LH" /></MemoryRouter>)
-  expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['단지명', '도로명주소', '공급 기관', '공급 유형', '세대수', '관리 상태'])
+  expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['단지명', '도로명주소', '공급 기관', '공급 유형', '세대수', '검토 상태', '관리 상태'])
   expect(screen.getByRole('cell', { name: '0' })).toBeVisible()
   expect(screen.getByRole('cell', { name: '미확인' })).toBeVisible()
   expect(screen.getAllByText('미검토')).toHaveLength(2)
@@ -122,7 +122,8 @@ it('검토 필터로 검색하고 페이지 이동과 상세 복귀 링크에 �
   await screen.findByRole('table')
   expect(mocks.getManagementPage.mock.lastCall?.[1].get('verification')).toBe('VERIFIED')
   expect(mocks.getManagementPage.mock.lastCall?.[1].has('page')).toBe(false)
-  expect(screen.getByRole('link', { name: '두꺼비 단지' }).closest('th')).toHaveTextContent('확인 완료 · 2/6항목')
+  expect(screen.getByRole('cell', { name: /확인 완료\s*· 2\/6항목/ })).toBeVisible()
+  expect(screen.getByRole('link', { name: '두꺼비 단지' }).closest('th')).not.toHaveTextContent('확인 완료')
   expect(screen.getByRole('link', { name: '두꺼비 단지' })).toHaveAttribute('href', expect.stringContaining('verification%3DVERIFIED'))
   fireEvent.click(screen.getByRole('button', { name: '다음' }))
   await act(async () => {})
@@ -139,4 +140,17 @@ it('새 요약 데이터는 검증하고 이전 응답의 누락 필드는 호�
     expect(() => parseManagementDetail(detail({ ...legacy, complex: complexValue }))).toThrow('상세 응답이 올바르지 않습니다.')
   }
   expect(() => parseManagementDetail(detail({ ...legacy, announcement: { ...announcement.announcement, applicationStartDate: null } }))).toThrow('상세 응답이 올바르지 않습니다.')
+})
+
+it('현재 페이지 번호를 다시 누르면 같은 조건으로 새로 조회한다', async () => {
+  render(<MemoryRouter initialEntries={['/admin/complexes?provider=LH&page=0']}><ManagementList resource="complexes" /></MemoryRouter>)
+  await screen.findByRole('table')
+  const current = screen.getByRole('button', { name: '1페이지' })
+  expect(current).toBeEnabled()
+  expect(current).toHaveAttribute('aria-current', 'page')
+  fireEvent.click(current)
+  await act(async () => {})
+  expect(mocks.getManagementPage).toHaveBeenCalledTimes(2)
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('provider')).toBe('LH')
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('page')).toBe('0')
 })

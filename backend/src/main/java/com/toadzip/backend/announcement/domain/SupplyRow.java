@@ -49,18 +49,22 @@ public class SupplyRow {
         myhomeSourceRowIdentifier = sourceIdentifier;
     }
 
-    public void reviseByAdmin(HousingComplex complex, HousingType type, String complexName,
-            String typeName, String pnu, YearMonth moveInMonth, SupplyCategory category, Integer count) {
+    /** 원천 단지명·주택형명은 정제가 소유하는 매칭 기준이므로 바꾸지 않고, 표기는 공고 표시명으로만 받는다. */
+    public void reviseByAdmin(HousingComplex complex, HousingType type, String displayTypeName,
+            String pnu, YearMonth moveInMonth, SupplyCategory category, Integer count) {
         if (supplyGroup != null && (count != null || complex == null || housingComplex == null
                 || !complex.getId().equals(housingComplex.getId()))) {
             throw new IllegalArgumentException("공통 모집수와 단지는 원천별 공급행 보정에서 함께 변경해 주세요.");
         }
         SupplyRow incoming = create(announcement, complex, type, sourceSupplyRowIdentifier, displayOrder,
-                complexName, typeName, pnu, moveInMonth, category, null, count);
+                sourceComplexName, sourceHousingTypeName, pnu, moveInMonth, category, null, count);
+        // 표기를 따로 두지 않던 행이 화면에 보이던 이름을 그대로 보내면 표기를 바꾼 것이 아니다.
+        // 연결이 함께 바뀌어도 새 주택형 이름을 따라가도록 이전 이름을 공고 표기로 굳히지 않는다.
+        boolean keepsDefault = announcementHousingTypeName == null && displayTypeName != null
+                && displayTypeName.strip().equals(defaultHousingTypeName());
         housingComplex = incoming.housingComplex;
         housingType = incoming.housingType;
-        sourceComplexName = incoming.sourceComplexName;
-        sourceHousingTypeName = incoming.sourceHousingTypeName;
+        announcementHousingTypeName = keepsDefault ? null : labelDifferentFromDefault(displayTypeName);
         supplyPnu = incoming.supplyPnu;
         expectedMoveInMonth = incoming.expectedMoveInMonth;
         supplyCategory = incoming.supplyCategory;
@@ -145,6 +149,29 @@ public class SupplyRow {
         if (housingType == null) { return null; }
         return housingType.getSupplyArea();
     }
+
+    /** 공개 화면의 주택형 이름은 공고 표시명 → 단지 주택형명 → 원천 주택형명 순서로 정한다. */
+    public String displayHousingTypeName() {
+        if (announcementHousingTypeName != null) { return announcementHousingTypeName; }
+        return defaultHousingTypeName();
+    }
+
+    private String defaultHousingTypeName() {
+        if (housingType != null) { return housingType.getName(); }
+        return sourceHousingTypeName;
+    }
+
+    // 기본 표시와 같은 값을 따로 저장하면 단지 주택형 이름을 고쳐도 이 공고에 반영되지 않는다.
+    private String labelDifferentFromDefault(String label) {
+        if (label == null || label.isBlank()) { return null; }
+        String stripped = label.strip();
+        if (stripped.length() > 255) {
+            throw new IllegalArgumentException("공고 표시명은 255자 이하로 입력해 주세요.");
+        }
+        return stripped.equals(defaultHousingTypeName()) ? null : stripped;
+    }
+
+    private String announcementHousingTypeName;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -295,6 +322,9 @@ public class SupplyRow {
             return false;
         }
         if (adminModified) {
+            // 원천 이름 갱신은 공고 값 변경이 아니므로 변경으로 세지 않는다. 세면 정제 중 LH 재보강이 실행되어
+            // 다른 행의 보강 실패가 이 공고의 정제 전체를 되돌린다.
+            refreshSourceNames(sourceComplexName, sourceHousingTypeName);
             return false;
         }
         boolean releasesLhEnrichment = announcement.getProvider() != null
@@ -330,6 +360,14 @@ public class SupplyRow {
             lhTotalSupplyHouseholdCountEnriched = false;
         }
         return true;
+    }
+
+    // 관리자 보정 행도 원천 이름은 원천 값을 따라야 다음 매칭이 관리자 표기 때문에 끊기지 않는다.
+    private void refreshSourceNames(String complexName, String typeName) {
+        validateNotBlank(complexName, "원천 단지명");
+        validateNotBlank(typeName, "원천 주택형명");
+        sourceComplexName = complexName;
+        sourceHousingTypeName = typeName;
     }
 
     public boolean updateDisplayOrder(int displayOrder) {

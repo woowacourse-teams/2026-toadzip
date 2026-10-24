@@ -67,6 +67,12 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
     return failureReturnUrl(path, `/admin/failures?${next}`)
   }
   const [matchingOpen, setMatchingOpen] = useState(false)
+  const pdfGroups = new Map<number, FailureReview[]>()
+  for (const row of matching?.items ?? []) {
+    if (!canCorrectPdf(row)) continue
+    const announcementId = row.product!.id
+    pdfGroups.set(announcementId, [...pdfGroups.get(announcementId) ?? [], row])
+  }
   useEffect(() => { setMatchingOpen(false); setActionBusy(false) }, [selectionKey])
 
   useEffect(() => {
@@ -151,6 +157,10 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
     {!validQuery ? <p role="alert">조회 조건이 올바르지 않습니다. <button type="button" onClick={() => setParams({domain})}>조회 조건 초기화</button></p> : null}
     {error ? <p role="alert">{error} <button type="button" onClick={() => setRevision(value => value + 1)}>다시 조회</button></p> : null}
     <div className={styles.results} aria-busy={pending}>
+      {!pending && !error && pdfGroups.size > 0 && <section className={styles.pdfGroups} aria-label="PDF로 보정할 공고">
+        <h3>이 페이지의 주택형 대응 오류</h3><p>같은 공고의 주택형 대응 오류를 묶었습니다. PDF 보정 후 정제를 다시 실행하면 이 오류 때문에 보류된 LH 보강도 함께 다시 판정됩니다.</p>
+        {[...pdfGroups.entries()].map(([announcementId, rows]) => <div key={announcementId}><strong>{rows[0].product!.name}</strong><Link to={follow(`/admin/announcements/${announcementId}/pdf-correction?${pdfFailureParams(rows)}`, rows[0])}>PDF로 보정 · {rows.length}건</Link></div>)}
+      </section>}
       <div className={styles.summary}>
         <span>{matching ? `총 ${matching.totalElements.toLocaleString()}건` : '오류 목록 조회'}
           {matching && executionId ? ' · 실행 필터 적용' : ''}</span>
@@ -199,6 +209,7 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
         </section>
         <section className={styles.detailSection}><h3>2. 필요한 조치</h3><div className={styles.workflow}>
           {selected.product ? <Link to={follow(`/admin/${selected.product.resourceType}/${selected.product.id}`)}>{label} 확인·수정</Link> : null}
+          {canCorrectPdf(selected) && !actionDisabled && <Link to={follow(`/admin/announcements/${selected.product!.id}/pdf-correction`)}>PDF로 보정</Link>}
           <RecoveryLinks row={selected} follow={follow}/>
           {selected.category === 'collection' ? <Link to={follow(`/admin/ingest#${domain === 'complex' ? 'complex' : 'announcement'}-pipelines`)}>API 키 입력·원천 수집</Link>
             : selected.status === 'PENDING' && onRetry ? <FailureRetryButton label={label} disabled={actionDisabled}
@@ -235,6 +246,12 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
       </div> : null}
     </dialog>
   </section>
+}
+
+function canCorrectPdf(row: FailureReview) {
+  return (row.category === 'announcement' || row.category === 'enrichment') && row.status === 'PENDING'
+    && ['AMBIGUOUS_HOUSING_TYPE', 'HOUSING_TYPE_NOT_FOUND'].includes(row.reason)
+    && row.product?.resourceType === 'announcements' && !row.product.deleted
 }
 
 function RecoveryLinks({row, follow}: {row:FailureReview; follow: (path: string) => string}) {
@@ -287,6 +304,13 @@ function formatTime(value:string) {
   const date=new Date(value)
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false})
 }
+// PDF 보정 화면이 고칠 공급행을 보여 줄 수 있게 오류마다 사유와 원천 공급행 키를 넘긴다.
+function pdfFailureParams(rows: FailureReview[]) {
+  const params = new URLSearchParams({ failureCount: String(rows.length) })
+  rows.slice(0, 10).forEach(row => params.append('failureRow', `${row.reason}|${row.sourceKey}`))
+  return params.toString()
+}
+
 function reasonLabel(row:FailureReview) {
   if (row.category === 'collection') return collectionCause(row).title
   const labels:Record<string,string> = {
@@ -310,7 +334,9 @@ function nextAction(row:FailureReview) {
   if (row.category === 'collection') return collectionCause(row).action
   if (row.reason === 'MANUAL_MATCH_REVIEW_REQUIRED') return '저장한 매칭의 근거와 현재 원천·주택형을 다시 비교하세요. 연결을 다시 선택해 근거와 함께 저장하거나 저장한 선택을 해제할 수 있습니다.'
   if (/GEOCODING/.test(row.reason)) return '단지 주소와 좌표 원천을 확인하세요. 좌표 ZIP을 업로드해도 일치하는 주소나 좌표가 없으면 별도 확인이 필요합니다.'
-  if (/HOUSING_TYPE/.test(row.reason)) return '단지의 주택형과 원천의 면적·공급 유형을 비교한 뒤 정제하세요.'
+  if (/HOUSING_TYPE/.test(row.reason)) return row.product?.resourceType === 'announcements'
+    ? '공고문으로 확인하려면 위의 PDF로 보정을 사용하세요. 단지 주택형과 원천의 면적·공급 유형을 비교해도 됩니다. 고친 뒤 정제하세요.'
+    : '단지의 주택형과 원천의 면적·공급 유형을 비교한 뒤 정제하세요.'
   if (/COMPLEX/.test(row.reason)) return '단지 등록·주소·공급 유형과 원천 연결을 확인한 뒤 정제하세요.'
   if (/PREVIOUS|CYCLIC/.test(row.reason)) return '이전·후속 공고 연결을 확인한 뒤 정제하세요.'
   if (/LH_.*SOURCE|LH_COLLECTION/.test(row.reason)) return '연결된 LH 원천을 다시 수집한 뒤 정제하세요.'

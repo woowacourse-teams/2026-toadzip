@@ -216,7 +216,9 @@ it('검색 조건과 페이지를 서버에 전달하고 직접 접근한 오류
   vi.mocked(getFailureReview).mockResolvedValue({...row, status:'RESOLVED'})
   render(<MemoryRouter initialEntries={['/admin/failures?domain=announcement&keyword=한스빌&page=2&failure=announcement:1&result=1']}>
     <IngestFailurePanel domain="announcement" executionId={null}/></MemoryRouter>)
-  expect(await screen.findByRole('heading', {name:'3. 처리 결과 확인'})).toHaveFocus()
+  // 제목이 먼저 보이고 포커스는 상세 조회 뒤 effect에서 옮겨지므로 포커스가 옮겨질 때까지 기다린다.
+  const resultHeading = await screen.findByRole('heading', {name:'3. 처리 결과 확인'})
+  await waitFor(() => expect(resultHeading).toHaveFocus())
   expect(fetchFailures).toHaveBeenCalledWith('announcement','all','PENDING',2,expect.any(AbortSignal),{keyword:'한스빌',executionId:null})
   fireEvent.click(screen.getByRole('button',{name:'닫기'}))
   fireEvent.change(screen.getByLabelText('이름·원천 식별자'), {target:{value:'A-26'}})
@@ -261,4 +263,25 @@ it('단계가 바뀌면 이전 행을 숨기고 취소한 응답을 버린다', 
   expect(await screen.findByText('최종 공고')).toBeVisible()
   await act(async()=>complete(page([{...row,target:'취소된 보강 응답'}])))
   expect(screen.queryByText('취소된 보강 응답')).not.toBeInTheDocument()
+})
+
+it('현재 페이지의 같은 공고 주택형 오류를 묶고 원래 필터로 돌아갈 주소를 보존한다', async () => {
+  const product: NonNullable<FailureReview['product']> = { id:29,name:'한스빌',resourceType:'announcements',deleted:false,hasCoordinates:null,
+    housingTypeCount:null,linkedComplexCount:1,supplyRowCount:1,applicationScheduleCount:0,attachmentCount:2,
+    applicationStartDate:null,applicationEndDate:null,applicationScheduleReviewed:false,
+    publicDetailAvailable:true,publicListEligible:true,listExclusionReasons:[] }
+  const eligible = {...row,reason:'AMBIGUOUS_HOUSING_TYPE',productLinkStatus:'EXISTS' as const,product}
+  fetchFailures.mockResolvedValue(page([eligible,{...eligible,id:2,category:'enrichment',reason:'HOUSING_TYPE_NOT_FOUND'},
+    {...eligible,id:3,reason:'COMPLEX_NOT_FOUND'}, {...eligible,id:4,product:{...product,id:40,deleted:true}},
+    {...eligible,id:5,status:'RESOLVED'}, {...eligible,id:6,product:null,productLinkStatus:'NOT_FOUND'}]))
+  render(<MemoryRouter initialEntries={['/admin/failures?domain=announcement&category=all&keyword=한스빌']}><IngestFailurePanel domain="announcement" executionId={null}/></MemoryRouter>)
+  const group = await screen.findByRole('region',{name:'PDF로 보정할 공고'})
+  expect(within(group).getByText('이 페이지의 주택형 대응 오류')).toBeVisible()
+  const link = within(group).getByRole('link',{name:'PDF로 보정 · 2건'})
+  expect(within(group).getAllByRole('link')).toHaveLength(1)
+  const url = new URL(link.getAttribute('href')!, 'http://localhost')
+  expect(url.pathname).toBe('/admin/announcements/29/pdf-correction')
+  const back = new URL(url.searchParams.get('failureReturnTo')!, 'http://localhost')
+  expect(back.searchParams.get('keyword')).toBe('한스빌')
+  expect(back.searchParams.get('failure')).toBe('announcement:1')
 })

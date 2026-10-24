@@ -46,6 +46,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
@@ -64,6 +65,7 @@ public class SupplyCorrectionService {
     private final SupplyCorrectionRecordRepository corrections;
     private final AdminDataChangeRepository changes;
     private final QualityComparisonService comparisons;
+    private final SupplyCorrectionGroups groupCorrections;
     private final AnnouncementSupplyMatchingService supplyMatching;
     private final ObjectMapper json;
 
@@ -111,13 +113,15 @@ public class SupplyCorrectionService {
 
     public SupplyCorrection.Preview preview(long id, SupplyCorrection.Request request) {
         var before = checked(id, request.snapshotToken());
-        var planned = plan(find(id), before.rows(), request.rows());
-        var warnings = validateSchedulesAndCounts(id, planned);
-        if (same(before.rows(), planned)) {
+        var announcement = find(id);
+        var planned = plan(announcement, before.rows(), request.rows());
+        var groupPlans = groupCorrections.plan(announcement, planned, request.newGroups());
+        var warnings = validateSchedulesAndCounts(id, planned, request.newGroups());
+        if (groupPlans.isEmpty() && same(before.rows(), planned)) {
             throw new IllegalArgumentException("변경한 공급정보가 없습니다.");
         }
-        return new SupplyCorrection.Preview(hash(List.of(request, planned, candidateValues(planned))),
-                before.rows(), planned, warnings);
+        return new SupplyCorrection.Preview(hash(List.of(request, planned, candidateValues(planned), groupPlans)),
+                before.rows(), planned, warnings, request.newGroups());
     }
 
     @Transactional
@@ -132,45 +136,80 @@ public class SupplyCorrectionService {
             }
             return new SupplyCorrection.Applied(applied.getChangeId(), true, workspace(id));
         }
+        var written = write(announcement, id, request, actor);
+        var change = changes.saveAndFlush(new AdminDataChange("ANNOUNCEMENT", id, "CORRECT_SUPPLY", actor,
+                json.writeValueAsString(Map.of("rows", written.before())),
+                json.writeValueAsString(audit(written.after(), request.correction()))));
+        recordOperation(id, request, change.getId(), announcement.getVersion());
+        return new SupplyCorrection.Applied(change.getId(), false, written.after());
+    }
+
+    /**
+     * 다른 보정 이력 한 건에 공급행 변경을 포함할 때 공급행만 저장한다.
+     * 호출자는 같은 트랜잭션에서 이력을 남긴 뒤 {@link #recordOperation}으로 작업 번호를 그 이력에 연결한다.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Written writeWithoutHistory(long id, SupplyCorrection.Apply request, String actor) {
+        var announcement = announcements.findByIdForUpdate(id).orElseThrow(AnnouncementNotFoundException::new);
+        if (corrections.findByOperationId(request.correction().operationId()).isPresent()) {
+            throw new AdminDataConflictException("이미 적용한 공급정보 보정 작업입니다. 최신값을 다시 확인하세요.");
+        }
+        return write(announcement, id, request, actor);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordOperation(long id, SupplyCorrection.Apply request, long changeId, long announcementVersion) {
+        corrections.save(new SupplyCorrectionRecord(request.correction().operationId(), id, hash(request),
+                changeId, announcementVersion));
+    }
+
+    /** 공급행 보정 이력의 변경 후 값. 다른 보정 이력에 포함할 때도 같은 필드를 남긴다. */
+    public Map<String, Object> audit(SupplyCorrection.Workspace after, SupplyCorrection.Request correction) {
+        var audit = new LinkedHashMap<String, Object>();
+        audit.put("rows", after.rows());
+        audit.put("reason", correction.reason().strip());
+        audit.put("sourceUrl", correction.sourceUrl());
+        audit.put("sourcePage", correction.sourcePage());
+        audit.put("operationId", correction.operationId());
+        audit.put("sources", after.sources());
+        return audit;
+    }
+
+    public record Written(List<Row> before, SupplyCorrection.Workspace after) { }
+
+    private Written write(Announcement announcement, long id, SupplyCorrection.Apply request, String actor) {
         var preview = preview(id, request.correction());
         if (!preview.confirmationToken().equals(request.confirmationToken())) {
             throw new AdminDataConflictException("미리보기 이후 선택한 단지·주택형 또는 변경안이 바뀌었습니다. 다시 확인하세요.");
         }
         var stored = rows.findAllByAnnouncement(announcement).stream()
                 .collect(Collectors.toMap(SupplyRow::getId, Function.identity()));
+        var groupPlans = groupCorrections.plan(announcement, preview.after(), request.correction().newGroups());
+        Map<String, SupplyRow> written = new LinkedHashMap<>();
         var beforeById = preview.before().stream().collect(Collectors.toMap(Row::id, Function.identity()));
         for (var row : preview.after()) {
+            var saved = stored.get(row.id());
             if (row.id() == null || !same(beforeById.get(row.id()), row)) {
-                writeRow(announcement, stored.get(row.id()), row, request.correction());
+                saved = writeRow(announcement, saved, row, request.correction());
             }
+            written.put(row.key(), saved);
         }
+        groupCorrections.apply(announcement, groupPlans, written, request.correction(), actor);
         supplyMatching.rememberCorrectedLinks(announcement.getSourceAnnouncementIdentifier(),
-                changedLinks(preview, beforeById, stored), request.correction().sourceUrl(),
+                changedLinks(preview, beforeById, written), request.correction().sourceUrl(),
                 request.correction().reason(), actor);
         announcement.recordAdminSupplyChange();
         announcements.flush();
-        var after = workspace(id);
-        var audit = new LinkedHashMap<String, Object>();
-        audit.put("rows", after.rows());
-        audit.put("reason", request.correction().reason().strip());
-        audit.put("sourceUrl", request.correction().sourceUrl());
-        audit.put("sourcePage", request.correction().sourcePage());
-        audit.put("operationId", request.correction().operationId());
-        audit.put("sources", after.sources());
-        var change = changes.saveAndFlush(new AdminDataChange("ANNOUNCEMENT", id, "CORRECT_SUPPLY", actor,
-                json.writeValueAsString(Map.of("rows", preview.before())), json.writeValueAsString(audit)));
-        corrections.save(new SupplyCorrectionRecord(request.correction().operationId(), id, requestHash,
-                change.getId(), announcement.getVersion()));
-        return new SupplyCorrection.Applied(change.getId(), false, after);
+        return new Written(preview.before(), workspace(id));
     }
 
     /** 기존 행 중 주택형 연결이 바뀐 행. 연결은 정제의 저장 매칭이 소유하므로 원천행 식별자로 넘긴다. */
     private Map<String, HousingType> changedLinks(SupplyCorrection.Preview preview, Map<Long, Row> beforeById,
-            Map<Long, SupplyRow> stored) {
+            Map<String, SupplyRow> written) {
         Map<String, HousingType> links = new HashMap<>();
         for (var row : preview.after()) {
             if (row.id() == null || row.groupId() != null) { continue; }
-            var saved = stored.get(row.id());
+            var saved = written.get(row.key());
             Long typeId = saved.getHousingType() == null ? null : saved.getHousingType().getId();
             if (!Objects.equals(beforeById.get(row.id()).housingTypeId(), typeId)) {
                 links.put(saved.getSourceSupplyRowIdentifier(), saved.getHousingType());
@@ -215,8 +254,10 @@ public class SupplyCorrectionService {
                 || !Objects.equals(old.housingComplexId(), row.housingComplexId()) || row.householdCount() != null)) {
             throw new IllegalArgumentException("공통 모집수와 묶음 단지는 원천별 공급행 보정에서 함께 변경하세요.");
         }
+        // 기존 행의 원천 단지명은 정제가 소유하므로 요청 값과 관계없이 저장값을 유지한다.
+        String complexName = old == null ? row.complexName() : old.complexName();
         var transientRow = SupplyRow.create(announcement, complex, type, "PREVIEW:" + row.key(), row.displayOrder(),
-                row.complexName(), row.typeName(), row.pnu(), row.moveInMonth(), row.category(), null, row.householdCount());
+                complexName, row.typeName(), row.pnu(), row.moveInMonth(), row.category(), null, row.householdCount());
         var plannedTargets = planTargets(transientRow, old, row.targets());
         BigDecimal exclusiveArea = row.exclusiveArea();
         BigDecimal supplyArea = row.supplyArea();
@@ -227,7 +268,7 @@ public class SupplyCorrectionService {
         boolean modified = old == null || old.protectedValues();
         var result = new Row(row.id(), row.key(), row.housingComplexId(), complexName(complex), row.housingTypeId(),
                 row.newHousingType(), row.groupId(), row.sharedHouseholdCount(), modified, row.excluded(), row.displayOrder(),
-                row.complexName(), row.typeName(), row.pnu(), row.moveInMonth(), row.category(), row.householdCount(),
+                complexName, row.typeName(), row.pnu(), row.moveInMonth(), row.category(), row.householdCount(),
                 row.areaOverride(), decimal(exclusiveArea), decimal(supplyArea), plannedTargets, row.targetCountsComparable());
         if (old != null && !same(old, result) && !modified) {
             return new Row(result.id(), result.key(), result.housingComplexId(), result.housingComplexName(),
@@ -267,14 +308,14 @@ public class SupplyCorrectionService {
         return result.stream().sorted(Comparator.comparingInt(Target::displayOrder).thenComparing(Target::key)).toList();
     }
 
-    private List<String> validateSchedulesAndCounts(long id, List<Row> planned) {
+    private List<String> validateSchedulesAndCounts(long id, List<Row> planned, List<SupplyCorrection.NewGroup> newGroups) {
         var linked = planned.stream().filter(row -> !row.excluded()).map(Row::housingComplexId)
                 .filter(Objects::nonNull).collect(Collectors.toSet());
         if (schedules.findAllByAnnouncementIdIn(List.of(id)).stream().anyMatch(schedule ->
                 schedule.getHousingComplex() != null && !linked.contains(schedule.getHousingComplex().getId()))) {
             throw new AdminDataConflictException("제외·연결 변경할 단지에 접수 일정이 있습니다. 일정 적용 단지를 먼저 수정하세요.");
         }
-        long totalCount = 0;
+        long totalCount = newGroups.stream().mapToLong(SupplyCorrection.NewGroup::sharedHouseholdCount).sum();
         Set<Long> countedGroups = new HashSet<>();
         for (var row : planned) {
             if (row.excluded()) { continue; }
@@ -309,16 +350,17 @@ public class SupplyCorrectionService {
         return List.copyOf(warnings);
     }
 
-    private void writeRow(Announcement announcement, SupplyRow stored, Row input, SupplyCorrection.Request request) {
+    private SupplyRow writeRow(Announcement announcement, SupplyRow stored, Row input, SupplyCorrection.Request request) {
         var complex = complex(input.housingComplexId());
         var type = type(input, complex, "MANUAL:" + request.operationId() + ":" + input.key());
         if (input.newHousingType() != null) { types.save(type); }
         if (stored == null) {
+            // 원천이 없는 직접 추가 행은 처음 입력한 표기를 원천 이름으로 남긴다.
             stored = rows.save(SupplyRow.create(announcement, complex, type,
                     "MANUAL:" + request.operationId() + ":" + input.key(), input.displayOrder(), input.complexName(),
                     input.typeName(), input.pnu(), input.moveInMonth(), input.category(), null, input.householdCount()));
         }
-        stored.reviseByAdmin(complex, type, input.complexName(), input.typeName(), input.pnu(), input.moveInMonth(),
+        stored.reviseByAdmin(complex, type, input.typeName(), input.pnu(), input.moveInMonth(),
                 input.category(), input.householdCount());
         stored.correctPresentation(input.excluded(), input.displayOrder(), input.areaOverride(),
                 input.exclusiveArea(), input.supplyArea());
@@ -337,6 +379,7 @@ public class SupplyCorrectionService {
                     target.deposit(), target.rent(), target.convertedDeposit(), target.condition());
             condition.correctPresentation(target.excluded(), target.displayOrder());
         }
+        return stored;
     }
 
     private HousingComplex complex(Long id) {
@@ -387,7 +430,7 @@ public class SupplyCorrectionService {
         if (row.getSupplyGroup() != null) { groupId = row.getSupplyGroup().getId(); shared = row.getSupplyGroup().getSharedHouseholdCount(); }
         return new Row(row.getId(), "row:" + row.getId(), complexId, complexName(row.getHousingComplex()), typeId, null,
                 groupId, shared, row.isAdminModified(), row.isAdminExcluded(), row.getDisplayOrder(),
-                row.getSourceComplexName(), row.getSourceHousingTypeName(), row.getSupplyPnu(), row.getExpectedMoveInMonth(),
+                row.getSourceComplexName(), row.displayHousingTypeName(), row.getSupplyPnu(), row.getExpectedMoveInMonth(),
                 row.getSupplyCategory(), row.getTotalSupplyHouseholdCount(), row.isAreaOverride(),
                 decimal(row.effectiveExclusiveArea()), decimal(row.effectiveSupplyArea()),
                 targets.findAllBySupplyRow(row).stream().sorted(Comparator.comparingInt(SupplyTarget::getDisplayOrder)

@@ -1,5 +1,4 @@
 .page { min-width: 0; container-type: inline-size; }
-.verification { margin-top: var(--ds-space-2); }
 :global(.admin-content):has(> .page) { max-width: none; }
 .filters {
   display: grid;
@@ -46,7 +45,7 @@
 .fixedHeight { min-height: 260px; }
 .table { width: 100%; min-width: 900px; border-collapse: separate; border-spacing: 0; table-layout: fixed; text-align: left; font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; color: var(--ds-color-text); }
 .nameColumn { width: var(--name-width); }
-.table th, .table td { box-sizing: border-box; padding: 15px 16px; border-bottom: 1px solid var(--ds-color-divider); line-height: var(--ds-line-height-body); vertical-align: middle; }
+.table th, .table td { box-sizing: border-box; padding: 12px 16px; border-bottom: 1px solid var(--ds-color-divider); line-height: var(--ds-line-height-body); vertical-align: middle; }
 .table thead th { position: sticky; top: 0; z-index: 2; background: var(--ds-color-surface-subtle); color: var(--ds-color-label); font-size: 12px; font-weight: 500; }
 .table th:first-child { position: sticky; left: 0; z-index: 1; border-right: 1px solid var(--ds-color-divider); }
 .table thead th:first-child { z-index: 3; }

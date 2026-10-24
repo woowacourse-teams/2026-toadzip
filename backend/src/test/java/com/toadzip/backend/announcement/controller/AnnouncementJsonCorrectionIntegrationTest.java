@@ -73,6 +73,11 @@ class AnnouncementJsonCorrectionIntegrationTest {
                 java.math.BigDecimal.class, id)).isEqualByComparingTo("36.5");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM announcements", Long.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox_events", Long.class)).isZero();
+        // 공급행·기본정보 변경을 함께 저장해도 이력은 한 건이고, 작업 번호는 그 이력에 연결된다.
+        assertThat(jdbc.queryForList("SELECT action FROM admin_data_changes WHERE resource_id=?", String.class, id))
+                .containsExactly("CORRECT_FROM_PDF");
+        assertThat(jdbc.queryForObject("SELECT change_id FROM admin_supply_corrections WHERE announcement_id=?", Long.class, id))
+                .isEqualTo(jdbc.queryForObject("SELECT id FROM admin_data_changes WHERE resource_id=?", Long.class, id));
         apply(id, request, preview.path("confirmationToken").asText()).andExpect(status().isConflict());
     }
 

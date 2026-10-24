@@ -113,5 +113,5 @@ it('원천 변경 사유는 출처에 따라 공급정보 또는 데이터 검�
   render(<MemoryRouter><QualityQueuePage /></MemoryRouter>)
   const section = async (name: string) => new URL((await screen.findByRole('link', { name })).getAttribute('href')!, 'http://localhost').searchParams.get('section')
   expect(await section('공급 원천 소실 공고 비교·검토')).toBe('relations')
-  expect(await section('확인 원천 변경 공고 비교·검토')).toBe('verification')
+  expect(await section('확인 원천 변경 공고 비교·검토')).toBe('history')
 })
