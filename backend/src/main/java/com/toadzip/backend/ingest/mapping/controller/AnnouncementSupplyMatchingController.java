@@ -55,8 +55,9 @@ public class AnnouncementSupplyMatchingController {
     }
 
     @GetMapping("/complexes")
-    public List<ComplexOption> complexes(@RequestParam String query) {
-        return matching.complexes(query);
+    public List<ComplexOption> complexes(@RequestParam String query,
+            @RequestParam(defaultValue = "") String pnu) {
+        return matching.complexes(query, pnu);
     }
 
     @GetMapping("/complexes/{complexId}/housing-types")

@@ -78,3 +78,9 @@
 .compare th, .compare td { padding: var(--ds-space-2); border: 1px solid var(--ds-color-divider); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 .compare thead th, .compare tbody th { color: var(--ds-color-label); background: var(--ds-color-surface-subtle); font-weight: 600; }
 .differs { color: var(--ds-color-status-upcoming); background: var(--ds-color-status-upcoming-surface); font-weight: 600; }
+
+.settled { display: grid; gap: var(--ds-space-3); }
+.settled summary { cursor: pointer; color: var(--ds-color-label); font-size: var(--ds-text-caption); }
+.match { margin-left: var(--ds-space-2); padding: 0 var(--ds-space-2); border-radius: var(--ds-radius-control); background: var(--ds-color-action-soft); color: var(--ds-color-action); font-size: var(--ds-text-caption); font-style: normal; }
+/* 관리자 공통 버튼의 inline-flex가 후보 카드의 세로 배치를 덮지 않게 한다. */
+.workspace .results .result { display: grid; grid-template-columns: minmax(0, 1fr); }
