@@ -488,6 +488,49 @@ class MyHomeComplexMappingServiceTest {
     }
 
     @Test
+    void 장기전세_다가구주택만_정제와_실패_대상에서_제외하고_아파트_장기전세는_유지한다() {
+        sourceRepository.saveAll(List.of(
+                source(dataWith(
+                        1040L, null, "40.4800", "3.9100", "대구도시개발공사", "아그네스",
+                        "장기전세", null, "개별가스난방", "다가구주택", "혼합식", "미설치"
+                )),
+                source(dataWith(
+                        2000L, "59A", "59.9500", "24.1000", "SH공사", "장기전세 아파트",
+                        "장기전세", "20200101", "지역난방", "아파트", "계단식", "전체동 설치"
+                ))
+        ));
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(service.findFailures(0, 100)).isEmpty();
+        assertThat(complexRepository.findAll())
+                .extracting(complex -> complex.getSourceComplexIdentifier())
+                .containsExactly("2000:LONG_TERM_JEONSE");
+    }
+
+    @Test
+    void 주택형명이_매입임대인_원천은_공급유형과_관계없이_제외한다() {
+        sourceRepository.saveAll(List.of(
+                source(dataWith(
+                        3000L, "매입임대", "40.0000", "5.0000", "성남시", "매입임대주택",
+                        "10년임대", null, null, "다세대주택", null, null
+                )),
+                source(dataWith(
+                        3001L, "59A", "59.9500", "24.1000", "LH경기남부", "10년임대 아파트",
+                        "10년임대", null, null, "아파트", null, null
+                ))
+        ));
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(complexRepository.findAll())
+                .extracting(complex -> complex.getSourceComplexIdentifier())
+                .containsExactly("3001:PUBLIC_RENTAL_10Y");
+    }
+
+    @Test
     void 같은_hsmpSn이라도_공급유형이_다르면_다른_단지로_만든다() {
         sourceRepository.saveAll(List.of(
                 source(dataWith(

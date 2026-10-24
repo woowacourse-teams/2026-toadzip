@@ -99,7 +99,11 @@ public class MyHomeComplexSourceMapper {
 
     public boolean shouldSkip(MyHomeComplexSource source) {
         String supplyType = parser.normalizedText(source.getSuplyTyNm());
-        return "매입임대".equals(supplyType);
+        if ("매입임대".equals(supplyType) || "매입임대".equals(parser.normalizedText(source.getStyleNm()))) {
+            return true;
+        }
+        // 다가구주택 장기전세는 월임대료가 있는 매입형이다. 아파트 장기전세는 건설임대로 유지한다.
+        return "장기전세".equals(supplyType) && "다가구주택".equals(parser.normalizedText(source.getHouseTyNm()));
     }
 
     private MyHomeHousingTypeMappingData housingTypeOf(MyHomeComplexSource source) {
