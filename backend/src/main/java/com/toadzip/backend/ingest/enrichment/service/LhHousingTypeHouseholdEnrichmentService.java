@@ -8,10 +8,12 @@ import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.repository.LhLeaseCatalogSourceReader;
+import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdComplexLink;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdEnrichmentFailureResponse;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
+import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdComplexLinkRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureStore;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHousehold;
@@ -25,6 +27,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -44,6 +47,8 @@ public class LhHousingTypeHouseholdEnrichmentService {
     private final LhHouseholdEnrichmentFailureStore failureStore;
     private final LhHouseholdEnrichmentFailureRepository failureRepository;
     private final Clock clock;
+    private final LhHouseholdComplexLinkRepository linkRepository;
+    private final LhHouseholdComplexLinks links;
 
     @Transactional(readOnly = true)
     public List<LhHouseholdEnrichmentFailureResponse> findFailures(int page, int size) {
@@ -70,6 +75,9 @@ public class LhHousingTypeHouseholdEnrichmentService {
                 sourceMapper.group(sourceRepository.findAllByOrderBySourceOrderAsc());
         List<HousingComplex> complexes = complexRepository.findAll();
         var indexedComplexes = matcher.index(complexes);
+        var complexesById = complexes.stream().collect(Collectors.toMap(HousingComplex::getId, complex -> complex));
+        var savedLinks = linkRepository.findAll().stream()
+                .collect(Collectors.toMap(LhHouseholdComplexLink::getSourceKey, link -> link));
         LhHousingTypeHouseholdEnrichmentReport report =
                 LhHousingTypeHouseholdEnrichmentReport.empty(sourceGroups.size());
         List<MatchedSource> matchedSources = new ArrayList<>();
@@ -78,7 +86,8 @@ public class LhHousingTypeHouseholdEnrichmentService {
         for (Map.Entry<LhHousingTypeHouseholdSourceKey, List<LhCatalogSource>> entry
                 : sourceGroups.entrySet()) {
             Optional<MatchedSource> matchedSource = match(
-                    entry.getKey(), entry.getValue(), indexedComplexes, failures, occurredAt
+                    entry.getKey(), entry.getValue(), indexedComplexes, failures, occurredAt,
+                    savedLinks.get(entry.getKey().failureKey()), complexesById
             );
             if (matchedSource.isEmpty()) {
                 report = report.plus(LhHousingTypeHouseholdEnrichmentReport.failed());
@@ -100,11 +109,17 @@ public class LhHousingTypeHouseholdEnrichmentService {
             List<LhCatalogSource> sources,
             Map<LhHousingTypeHouseholdMatcher.MatchKey, List<HousingComplex>> indexedComplexes,
             List<LhHouseholdEnrichmentFailure> failures,
-            Instant occurredAt
+            Instant occurredAt,
+            LhHouseholdComplexLink savedLink,
+            Map<Long, HousingComplex> complexesById
     ) {
         try {
             LhHousingTypeHouseholdSource source = sourceMapper.map(sources);
+            if (savedLink != null) {
+                return linkedMatch(sourceKey, sources, source, savedLink, complexesById, failures, occurredAt);
+            }
             List<HousingComplex> matches = matcher.findMatches(indexedComplexes, source);
+            int structuralCount = matcher.structuralMatches(indexedComplexes, source).size();
             if (matches.size() != 1) {
                 log.warn(
                         "event=lh_household.match.unresolved result=skipped source=lh_catalog "
@@ -121,7 +136,8 @@ public class LhHousingTypeHouseholdEnrichmentService {
                         sourceKey,
                         sources,
                         reason,
-                        "일치한 단지 수: " + matches.size(),
+                        "공급유형·전체 세대수·지역이 같은 단지 " + structuralCount + "개 중 이름이 맞는 단지 "
+                                + matches.size() + "개",
                         occurredAt
                 ));
                 return Optional.empty();
@@ -145,6 +161,27 @@ public class LhHousingTypeHouseholdEnrichmentService {
             ));
             return Optional.empty();
         }
+    }
+
+    // 관리자가 저장한 연결을 이름 비교보다 먼저 쓴다. 원천이나 단지가 바뀌었으면 자동 매칭으로 대체하지 않는다.
+    private Optional<MatchedSource> linkedMatch(
+            LhHousingTypeHouseholdSourceKey sourceKey,
+            List<LhCatalogSource> sources,
+            LhHousingTypeHouseholdSource source,
+            LhHouseholdComplexLink savedLink,
+            Map<Long, HousingComplex> complexesById,
+            List<LhHouseholdEnrichmentFailure> failures,
+            Instant occurredAt
+    ) {
+        HousingComplex target = links.validTarget(savedLink, source,
+                complexesById.get(savedLink.getHousingComplexId()));
+        if (target == null) {
+            failures.add(failure(sourceKey, sources, LhHouseholdEnrichmentFailureReason.MANUAL_LINK_REVIEW_REQUIRED,
+                    "저장한 단지 연결의 LH 원천 또는 단지가 바뀌었습니다. 다시 확인하고 연결을 저장해 주세요.",
+                    occurredAt));
+            return Optional.empty();
+        }
+        return Optional.of(new MatchedSource(sourceKey, target, source));
     }
 
     private String failureDetail(IllegalArgumentException exception) {
