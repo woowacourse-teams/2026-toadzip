@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { RequestPreparation } from './RequestPreparation'
-import prompt from './announcementUpdatePrompt.v5.txt?raw'
+import prompt from './announcementUpdatePrompt.v6.txt?raw'
 
 const attachments = [{ attachmentId: 1, fileName: '공고문.pdf', fileType: 'ANNOUNCEMENT', fileUrl: 'https://example.com/1.pdf' }]
 function props() {

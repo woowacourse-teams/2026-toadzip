@@ -229,3 +229,4 @@
 .complexDecision header span { font-size:var(--ds-text-caption); color:var(--ds-color-muted); }
 .complexDecision :global(.complex-picker) { margin:0; }
 .decided { margin:0; font-weight:var(--ds-weight-strong); }
+.checks ul { margin:0; padding-left:1.2em; }

@@ -131,7 +131,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     if (review && reviewedWith === `${pdf.url}\n${text}`) { setPhase('review'); setError(''); return }
     const extraction = supplyDraft ? { ...parsed.value, announcement: {}, receptionPlace: {}, schedules: [] } : parsed.value
     const next = createReview(extraction, workspace, housing)
-    setReview(next); setReviewedWith(`${pdf.url}\n${text}`); setReason(`${pdf.name} · 프롬프트 v5로 추출 후 PDF와 대조`)
+    setReview(next); setReviewedWith(`${pdf.url}\n${text}`); setReason(`${pdf.name} · 프롬프트 v6로 추출 후 PDF와 대조`)
     setSourcePage([...new Set(parsed.value.evidence.map(item => item.page))].sort((a, b) => a - b).join(', ').slice(0, 100))
     setPhase('review'); setSection('supply'); setFilter('all'); setError(''); setNotice('')
   }
