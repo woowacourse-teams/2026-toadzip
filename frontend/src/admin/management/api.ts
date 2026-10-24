@@ -19,11 +19,14 @@ export function managementResourcePath(resource: ManagementResource): string {
 export class ManagementError extends Error {
   readonly status: number
   readonly fields: Record<string, string>
+  /** 서버 오류 코드. 409의 `ADMIN_DATA_STALE`은 최신값을 다시 조회하면 이어서 저장할 수 있는 충돌이다. */
+  readonly code: string | null
 
-  constructor(message: string, status: number, fields: Record<string, string> = {}) {
+  constructor(message: string, status: number, fields: Record<string, string> = {}, code: string | null = null) {
     super(message)
     this.status = status
     this.fields = fields
+    this.code = code
   }
 }
 
@@ -66,7 +69,8 @@ export async function requestManagementApi(
     const message = isRecord(result) && typeof result.message === 'string'
       ? result.message
       : '요청을 처리하지 못했습니다. 다시 시도해 주세요.'
-    throw new ManagementError(message, response.status, fields)
+    const code = isRecord(result) && typeof result.code === 'string' ? result.code : null
+    throw new ManagementError(message, response.status, fields, code)
   }
   return isRecord(result) && 'data' in result ? result.data : result
 }
