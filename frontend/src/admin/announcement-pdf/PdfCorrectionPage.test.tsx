@@ -179,7 +179,7 @@ it('확인 필요 항목을 세고 하단 버튼으로 다음 항목에 이동�
   expect(screen.getByRole('button', { name: '일정 · 확인 1' })).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '확인 필요 3개 남음 ↓' }))
   expect(screen.getByRole('region', { name: '공급행 1 검토' })).toHaveFocus()
-  expect(scroll).toHaveBeenCalledWith({ block: 'center' })
+  expect(scroll).toHaveBeenCalledWith({ block: 'start' })
   fireEvent.click(screen.getByRole('button', { name: '공급행 1 대응 확인' }))
   fireEvent.click(within(screen.getByRole('group', { name: '검토 항목 필터' })).getByRole('button', { name: '확인 필요 2' }))
   expect(screen.queryByRole('region', { name: '공급행 1 검토' })).not.toBeInTheDocument()
@@ -290,4 +290,18 @@ it('단지에 맞는 주택형이 없으면 따로 알리고 PDF 형명·면적�
   await waitFor(() => expect(api.previewJsonUpdate).toHaveBeenCalled())
   const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
   expect(input.correction.rows.find(row => row.typeName === '26A')).toMatchObject({ housingTypeId: null, newHousingType: { name: '26A', exclusiveArea: 99.1234 } })
+})
+
+it('적용할 수 없는 값이 있으면 오류를 알리고 그 항목으로 이동한다', async () => {
+  const scroll = vi.fn()
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scroll })
+  onTestFinished(() => { delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView })
+  await open()
+  manual('공급행 1', '이 공고의 주택형 표기')
+  fireEvent.change(screen.getByLabelText('공급행 1 이 공고의 주택형 표기 수정'), { target: { value: '' } })
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  expect(await screen.findByText('이 공고의 주택형 표기의 직접 입력값을 확인하거나 기존 값 사용을 선택하세요.')).toBeVisible()
+  await waitFor(() => expect(document.activeElement?.getAttribute('data-review-id')).toBe('cell:supplyRows[0].sourceHousingTypeName'))
+  expect(scroll).toHaveBeenCalled()
+  expect(api.previewJsonUpdate).not.toHaveBeenCalled()
 })
