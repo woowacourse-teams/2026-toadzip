@@ -15,7 +15,8 @@ export function QualityQueuePage() {
   const [loading, setLoading] = useState(false)
   const queryKeyword = params.get('keyword') ?? ''
   // 단지와 공고는 검토 방법이 달라 한 목록에 섞지 않고 나눠 본다. 기본은 공고다.
-  const resource = params.get('resource') === 'COMPLEX' ? 'COMPLEX' : 'ANNOUNCEMENT'
+  // 다른 관리 화면처럼 단지를 먼저 둔다.
+  const resource = params.get('resource') === 'ANNOUNCEMENT' ? 'ANNOUNCEMENT' : 'COMPLEX'
   useEffect(() => { setKeyword(queryKeyword) }, [queryKeyword])
   useEffect(() => {
     const controller = new AbortController()
@@ -35,7 +36,7 @@ export function QualityQueuePage() {
   return <section className={`${styles.workspace} ${styles.queueWorkspace}`}>
     <header className={styles.pageHeading}><div><h1>검토할 데이터</h1>
       <p>원천 변경과 불일치가 있는 대상을 먼저 보여 줍니다.</p></div></header>
-      <div className={styles.queueIntro}><div className={`${styles.resourceTabs} admin-folder-tabs`} role="group" aria-label="검토 대상">{([['ANNOUNCEMENT', '공고'], ['COMPLEX', '단지']] as const).map(([value, label]) =>
+      <div className={styles.queueIntro}><div className={`${styles.resourceTabs} admin-folder-tabs`} role="group" aria-label="검토 대상">{([['COMPLEX', '단지'], ['ANNOUNCEMENT', '공고']] as const).map(([value, label]) =>
         <button key={value} type="button" aria-pressed={resource === value} onClick={() => filter('resource', value)}>{label}</button>)}</div></div>
       <div className={styles.queueSurface}>
         <div className={styles.shortcutBar} aria-label="빠른 검토 조건">{shortcuts.map(([reason, label]) => <button key={reason} type="button" aria-pressed={(params.get('reason') ?? '') === reason} onClick={() => filter('reason', reason)}>{label}</button>)}</div>
