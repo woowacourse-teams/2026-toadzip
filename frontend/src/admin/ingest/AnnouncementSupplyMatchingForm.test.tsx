@@ -3,10 +3,11 @@ import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AnnouncementSupplyMatchingForm } from './AnnouncementSupplyMatchingForm'
 import { getManagementDetail } from '../management/api'
-import { getSupplyMatches, searchMatchingComplexes, getMatchingHousingTypes, refineSupplyMatches, releaseSupplyMatch, setSupplyExclusion } from './supplyMatchingApi'
+import { getSupplyMatches, searchMatchingComplexes, getMatchingHousingTypes, refineSupplyMatches, releaseSupplyMatch, rerunAnnouncement, setSupplyExclusion } from './supplyMatchingApi'
 
 vi.mock('./supplyMatchingApi', () => ({ getSupplyMatches: vi.fn(), searchMatchingComplexes: vi.fn(),
-  getMatchingHousingTypes: vi.fn(), refineSupplyMatches: vi.fn(), releaseSupplyMatch: vi.fn(), setSupplyExclusion: vi.fn() }))
+  getMatchingHousingTypes: vi.fn(), refineSupplyMatches: vi.fn(), releaseSupplyMatch: vi.fn(), rerunAnnouncement: vi.fn(),
+  setSupplyExclusion: vi.fn() }))
 vi.mock('../management/api', () => ({ getManagementDetail: vi.fn() }))
 
 const row = { rowIdentifier: '21395:1', token: 'version', sourceComplexName: '익산한스빌',
@@ -56,6 +57,31 @@ describe('선택 적용 후 공고 정제', () => {
     expect(onBusy.mock.calls).toEqual([[true],[false]])
     expect(screen.getByRole('link', { name: '공고 관리로 이동' })).toHaveAttribute('href', '/admin/announcements')
     expect(screen.queryByRole('button', { name: '등록 재시도' })).not.toBeInTheDocument()
+  })
+
+  it('바꾼 선택 없이 실행하면 저장한 연결로 이 공고만 다시 정제한다', async () => {
+    vi.mocked(getSupplyMatches).mockResolvedValue([{ ...row, housingTypeId: 10, failure: null }])
+    vi.mocked(rerunAnnouncement).mockResolvedValue(undefined)
+    const onApplied = vi.fn()
+    render(<MemoryRouter><AnnouncementSupplyMatchingForm identifier="21395" onApplied={onApplied} /></MemoryRouter>)
+    await screen.findByRole('option', { name: /26 · 전용/ })
+    fireEvent.click(screen.getByRole('button', { name: '선택 적용·정제 실행' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('저장한 연결로 이 공고를 다시 정제했습니다.')
+    expect(rerunAnnouncement).toHaveBeenCalledExactlyOnceWith('21395')
+    expect(refineSupplyMatches).not.toHaveBeenCalled()
+    expect(onApplied).toHaveBeenCalledOnce()
+  })
+
+  it('다시 정제가 거절되면 사유를 보여 주고 기록된 실패가 보이도록 목록을 새로 고친다', async () => {
+    vi.mocked(getSupplyMatches).mockResolvedValue([{ ...row, housingTypeId: 10, failure: null }])
+    vi.mocked(rerunAnnouncement).mockRejectedValue(new Error('정제 실패: LH 보강 실패: COMPLEX_NOT_FOUND - LH 공급 원본과 일치하는 기존 공급 단지가 없습니다. 저장은 되돌리고 오류 목록에 기록했습니다.'))
+    const onApplied = vi.fn()
+    render(<MemoryRouter><AnnouncementSupplyMatchingForm identifier="21395" onApplied={onApplied} /></MemoryRouter>)
+    await screen.findByRole('option', { name: /26 · 전용/ })
+    fireEvent.click(screen.getByRole('button', { name: '선택 적용·정제 실행' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('저장은 되돌리고 오류 목록에 기록했습니다.')
+    expect(onApplied).toHaveBeenCalledOnce()
+    expect(screen.getByRole('button', { name: '선택 적용·정제 실행' })).toBeEnabled()
   })
 
   it('여러 행의 선택을 모아 요청을 한 번만 보낸다', async () => {
@@ -301,10 +327,10 @@ describe('오류 상세에서 연 실패 행 집중', () => {
     await waitFor(() => expect(setSupplyExclusion).toHaveBeenCalledWith('21391', expect.objectContaining({ rowIdentifier: '21391:14' }),
       true, '공고문 3쪽: 중촌2 44㎡는 등록 단지에 없음'))
 
-    // 남은 실패 행이 없으면 접지 않고 전체를 보여 준다.
+    // 남은 실패 행이 없으면 접지 않고 전체를 보여 준다. 바꾼 선택이 없으므로 저장한 연결로 다시 정제한다.
     expect(await screen.findByText('공개에서 제외됨')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '선택 적용·정제 실행' }))
-    await waitFor(() => expect(refineSupplyMatches).toHaveBeenCalledWith('21391', [
-      { rowIdentifier: '21391:8', token: 'version', complexId: 668, housingTypeId: 5 }]))
+    await waitFor(() => expect(rerunAnnouncement).toHaveBeenCalledExactlyOnceWith('21391'))
+    expect(refineSupplyMatches).not.toHaveBeenCalled()
   })
 })

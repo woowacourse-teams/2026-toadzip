@@ -892,6 +892,53 @@ class AnnouncementSupplyMatchingIntegrationTest {
     }
 
     @Test
+    @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
+    @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
+            executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD)
+    void 다시_정제에서_LH_보강이_거절되면_저장은_되돌리고_전체_정제처럼_LH_보강_실패를_기록한다() throws Exception {
+        var source = sources.findAll().getFirst();
+        ReflectionTestUtils.setField(source, "suplyInsttNm", "LH");
+        ReflectionTestUtils.setField(source, "url", "https://example.com/announcements?panId=manual-lh"
+                + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07");
+        sources.save(source);
+        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
+        lhStorage.replaceDetails(candidate.panId(), candidate.requestDescription(), List.of(new LhAnnouncementDetailSource(
+                0, candidate.panId(), "COMPLEX", "익산한스빌", "익산시 목천로 30-14", null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null)));
+        lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of());
+        for (var target : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
+            progressStore.complete(target, TARGET, candidate.requestDescription(), candidate.panId());
+        }
+        mapping.mapAll();
+        long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
+        correctFromPdf(announcementId, type);
+        assertThat(pendingFailureReasons()).containsExactly("AMBIGUOUS_HOUSING_TYPE");
+        // 군산 공고처럼 공고 등록 뒤 수집한 LH 공급 원본의 단지명 표기가 공고 공급행과 달라 LH 보강에서 단지를 찾지 못한다.
+        lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of(
+                new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource(0, candidate.panId(),
+                        new com.toadzip.backend.ingest.collection.lh.supply.domain.projection.LhAnnouncementSupplySourceSnapshot(
+                                "군산한스빌", "39", "39.9500", null, "717", "100", "공고문 참조", "공고문 참조"))));
+        var before = supplies.findAll().getFirst();
+
+        rerun(TARGET).andExpect(status().isBadRequest())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.message").value(
+                        org.hamcrest.Matchers.allOf(org.hamcrest.Matchers.startsWith("정제 실패: LH 보강 실패: COMPLEX_NOT_FOUND"),
+                                org.hamcrest.Matchers.endsWith("오류 목록에 기록했습니다."))));
+
+        assertThat(pendingFailureReasons()).containsExactly("INVALID_VALUE");
+        assertThat(jdbc.sql("""
+                SELECT detail FROM myhome_announcement_mapping_failures
+                WHERE source_announcement_identifier = ? AND status = 'PENDING'
+                """).param(TARGET).query(String.class).single()).startsWith("LH 보강 실패: COMPLEX_NOT_FOUND - ");
+        assertThat(supplies.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getId()).isEqualTo(before.getId());
+            assertThat(row.getHousingType().getId()).isEqualTo(type.getId());
+            assertThat(row.getLhSourceSupplyRowIdentifier()).isEqualTo(before.getLhSourceSupplyRowIdentifier());
+        });
+    }
+
+    @Test
     void 원천이_없는_공고는_다시_정제할_수_없다() throws Exception {
         rerun("no-source-announcement").andExpect(status().isBadRequest())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.message").value("공고 원천이 없습니다. 먼저 공고를 수집해 주세요."));
