@@ -1,7 +1,8 @@
 .pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--ds-space-4); margin-top: var(--ds-space-4); font-size: var(--ds-text-caption); color: var(--ds-color-label); font-variant-numeric: tabular-nums; }
 .buttons { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-1); }
 .pagination .buttons button { padding: var(--ds-space-2); min-width: 36px; min-height: 40px; background: var(--ds-color-surface); font-size: var(--ds-text-caption); }
-.pagination .buttons button[aria-current="page"] { background: var(--ds-color-action); color: var(--ds-color-surface); border-color: var(--ds-color-action); opacity: 1; }
+/* 관리 화면 공통 버튼 규칙(.workspace button:not(...))보다 앞서야 현재 쪽이 초록 바탕·흰 글씨로 보인다. */
+:global(.admin-layout) :global(.admin-content) .pagination .buttons button[aria-current="page"]:not([data-design-system]) { background: var(--ds-color-action); color: var(--ds-color-surface); border-color: var(--ds-color-action); opacity: 1; }
 .count { white-space: nowrap; }
 .jump { display: flex; align-items: center; gap: var(--ds-space-2); }
 .pagination .jumpLabel { display: flex; flex-direction: row; align-items: center; gap: var(--ds-space-2); font-size: inherit; }

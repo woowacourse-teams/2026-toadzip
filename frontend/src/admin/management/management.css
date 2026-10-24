@@ -10,7 +10,7 @@
 .admin-content button,.admin-content input,.admin-content select,.admin-content textarea {font:inherit;}
 /* 버튼 규칙: 초록 채움(.admin-primary)은 저장·적용처럼 결과를 만드는 행동, 연한 초록(.admin-tonal)은 작업 화면으로 들어가는 주요 행동,
    흰 테두리는 보기 전환·이동, 빨간 글씨(.admin-danger)는 삭제. 높이는 모두 같다. */
-.admin-content button:not([data-design-system]),.admin-primary,.admin-tonal {box-sizing:border-box; min-height:var(--admin-control-height,36px); padding:0 14px; border:1px solid #b6c7c0; border-radius:6px; background:#fff; color:#294b42; cursor:pointer; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:6px; white-space:nowrap;}
+.admin-content button:not([data-design-system]),.admin-primary,.admin-tonal {box-sizing:border-box; min-height:var(--admin-control-height,36px); padding:0 14px; border:1px solid var(--ds-color-border-base); border-radius:var(--ds-radius-control,8px); background:var(--ds-color-surface); color:var(--ds-color-label); cursor:pointer; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:6px; white-space:nowrap;}
 .admin-content button:disabled {opacity:.5;cursor:not-allowed;}
 .admin-content .admin-primary {background:#17685b;color:white;border-color:#17685b;}
 .admin-content .admin-danger {color:#9b3030;border-color:#dba5a5;background:#fff9f8;}
