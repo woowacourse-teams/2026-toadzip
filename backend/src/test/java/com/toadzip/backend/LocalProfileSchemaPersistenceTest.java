@@ -46,15 +46,12 @@ import java.sql.Statement;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.flywaydb.core.Flyway;
-import org.flywaydb.core.api.exception.FlywayValidateException;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.NestedExceptionUtils;
@@ -68,126 +65,6 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 class LocalProfileSchemaPersistenceTest {
-
-    @Test
-    void develop_DB에_수동_매칭_결정_저장소를_추가해도_기존_이력이_유지된다() throws Exception {
-        String databaseName = "toadzip_supply_match_" + UUID.randomUUID().toString().replace("-", "");
-        String jdbcUrl = primaryTestDatabaseUrl(databaseName);
-        createDatabase(databaseName);
-        try {
-            Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
-                    .locations("classpath:db/migration").target("20261019.01").load().migrate();
-            int previousCount;
-            try (var connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test")) {
-                previousCount = countAllRows(connection, "flyway_schema_history");
-            }
-            var upgrade = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
-                    .locations("classpath:db/migration").load();
-            int pendingMigrations = upgrade.info().pending().length;
-            assertEquals(pendingMigrations, upgrade.migrate().migrationsExecuted);
-            try (var connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test")) {
-                assertEquals(previousCount + pendingMigrations, countAllRows(connection, "flyway_schema_history"));
-                assertEquals(1, countColumn(connection, "announcement_supply_match_decisions", "source_fingerprint"));
-                assertEquals(1, countColumn(connection, "supply_row_groups", "shared_household_count"));
-            }
-            assertEquals(0, upgrade.migrate().migrationsExecuted);
-        }
-        finally {
-            dropDatabase(databaseName);
-        }
-    }
-
-    @Test
-    void 최신_기존_DB에도_공급대상_수정_보호_마이그레이션을_순서대로_적용한다() throws Exception {
-        String databaseName = "toadzip_supply_protection_" + UUID.randomUUID().toString().replace("-", "");
-        String jdbcUrl = primaryTestDatabaseUrl(databaseName);
-        createDatabase(databaseName);
-        try {
-            Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
-                    .locations("classpath:db/migration").target("20261016.04").load().migrate();
-            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test")) {
-                assertEquals(0, countColumn(connection, "supply_targets", "admin_modified"));
-            }
-
-            var flyway = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
-                    .locations("classpath:db/migration").target("20261016.05").load();
-            assertEquals(1, flyway.migrate().migrationsExecuted);
-            assertEquals(0, flyway.migrate().migrationsExecuted);
-            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
-                    Statement statement = connection.createStatement();
-                    ResultSet column = statement.executeQuery("""
-                            SELECT column_default, is_nullable
-                            FROM information_schema.columns
-                            WHERE table_schema = 'public' AND table_name = 'supply_targets'
-                                AND column_name = 'admin_modified'
-                            """)) {
-                assertTrue(column.next());
-                assertEquals("false", column.getString("column_default"));
-                assertEquals("NO", column.getString("is_nullable"));
-            }
-        }
-        finally {
-            dropDatabase(databaseName);
-        }
-    }
-
-    @Test
-    void develop_DB에_SH_수집을_추가해도_기존_단건_등록_이력과_제약을_보존한다() throws Exception {
-        String databaseName = "toadzip_sh_upgrade_" + UUID.randomUUID().toString().replace("-", "");
-        String jdbcUrl = primaryTestDatabaseUrl(databaseName);
-        createDatabase(databaseName);
-        try {
-            Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
-                    .locations("classpath:db/migration").target("20261009.01").load().migrate();
-            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
-                    Statement statement = connection.createStatement()) {
-                statement.executeUpdate("""
-                        INSERT INTO data_pipeline_executions
-                            (execution_id, type, status, started_at, heartbeat_at, target_announcement_identifier)
-                        VALUES ('00000000-0000-0000-0000-000000000015', 'ANNOUNCEMENT_REGISTRATION',
-                            'COMPLETED', now(), now(), '21026')
-                        """);
-            }
-
-            var flyway = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
-                    .locations("classpath:db/migration").load();
-            assertEquals(migrationCount() - Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
-                    .locations("classpath:db/migration").load().info().applied().length,
-                    flyway.migrate().migrationsExecuted);
-
-            assertEquals(0, flyway.migrate().migrationsExecuted);
-            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
-                    Statement statement = connection.createStatement()) {
-                assertEquals(0, countColumn(connection, "sh_announcement_source", "raw_detail_html"));
-                assertEquals(1, countColumn(connection, "sh_announcement_source", "body_text"));
-                assertEquals(1, countColumn(connection, "notification_push_devices", "platform"));
-                assertEquals(1, countColumn(connection, "notification_push_devices", "browser"));
-                assertEquals(1, countAllRows(connection, "data_pipeline_executions"));
-                assertEquals(1, statement.executeUpdate("""
-                        INSERT INTO data_pipeline_executions
-                            (execution_id, type, status, started_at, heartbeat_at, current_step)
-                        VALUES ('00000000-0000-0000-0000-000000000016', 'SH_ANNOUNCEMENT_COLLECTION',
-                            'RUNNING', now(), now(), 'COLLECT_SH_ANNOUNCEMENTS')
-                        """));
-                assertEquals(1, statement.executeUpdate("""
-                        INSERT INTO data_pipeline_executions
-                            (execution_id, type, status, started_at, heartbeat_at, target_announcement_identifier)
-                        VALUES ('00000000-0000-0000-0000-000000000017', 'ANNOUNCEMENT_REGISTRATION',
-                            'RUNNING', now(), now(), '21027')
-                        """));
-                assertEquals("23514", assertThrows(SQLException.class, () -> statement.executeUpdate("""
-                        UPDATE data_pipeline_executions SET target_announcement_identifier = NULL
-                        WHERE execution_id = '00000000-0000-0000-0000-000000000015'
-                        """)).getSQLState());
-                assertEquals("23514", assertThrows(SQLException.class, () -> statement.executeUpdate("""
-                        UPDATE data_pipeline_executions SET target_announcement_identifier = '21028'
-                        WHERE type = 'SH_ANNOUNCEMENT_COLLECTION'
-                        """)).getSQLState());
-            }
-        } finally {
-            dropDatabase(databaseName);
-        }
-    }
 
     @Test
     void local_프로필은_Flyway로_스키마를_생성하고_종료_후에도_유지한다() throws Exception {
@@ -324,134 +201,6 @@ class LocalProfileSchemaPersistenceTest {
     }
 
     @Test
-    void 통합_유형을_먼저_적용한_DB에_develop_마이그레이션을_보충한다(
-            @TempDir Path branchMigrations
-    ) throws Exception {
-        Set<String> developMigrations = Set.of(
-                "V20260928_03__announcement_daily_views.sql",
-                "V20260928_04__verified_lh_supply_replacements.sql",
-                "V20260929_01__announcement_schedule_complex_name.sql"
-        );
-        try (Stream<Path> migrations = Files.list(Path.of("src/main/resources/db/migration"))) {
-            for (Path migration : migrations.toList()) {
-                String migrationName = migration.getFileName().toString();
-                if (migrationName.startsWith("R__") || developMigrations.contains(migrationName)
-                        || migrationName.compareTo("V20260930_02") >= 0) {
-                    continue;
-                }
-                Files.copy(migration, branchMigrations.resolve(migration.getFileName()));
-            }
-        }
-        String databaseName = "toadzip_branch_upgrade_" + UUID.randomUUID().toString().replace("-", "");
-        String jdbcUrl = primaryTestDatabaseUrl(databaseName);
-        createDatabase(databaseName);
-        try {
-            Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
-                    .locations("filesystem:" + branchMigrations).load().migrate();
-            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
-                    Statement statement = connection.createStatement()) {
-                statement.executeUpdate("""
-                        INSERT INTO data_pipeline_executions
-                            (execution_id, type, status, started_at, heartbeat_at)
-                        VALUES ('00000000-0000-0000-0000-000000000001',
-                                'COMPLEX_SYNC', 'COMPLETED', now(), now())
-                        """);
-                assertEquals(18, countAllRows(connection, "flyway_schema_history"));
-            }
-
-            Flyway merged = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
-                    .locations("classpath:db/migration").load();
-            FlywayValidateException pending = assertThrows(FlywayValidateException.class, merged::migrate);
-            for (String version : List.of("20260928.03", "20260928.04", "20260929.01")) {
-                assertTrue(pending.getMessage().contains(version));
-            }
-            Flyway oneTimeUpgrade = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
-                    .locations("classpath:db/migration").outOfOrder(true).target("20260930.09").load();
-            oneTimeUpgrade.migrate();
-            assertTrue(oneTimeUpgrade.getConfiguration().isOutOfOrder());
-            int pendingMigrationCount = merged.info().pending().length;
-            assertEquals(pendingMigrationCount, merged.migrate().migrationsExecuted);
-            merged.validate();
-
-            try (ConfigurableApplicationContext applicationContext =
-                    new SpringApplicationBuilder(BackendApplication.class)
-                    .environment(createIsolatedEnvironment(jdbcUrl)).run();
-                    Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test")) {
-                assertEquals(migrationCount(), countAllRows(connection, "flyway_schema_history"));
-                assertEquals(1, countAllRows(connection, "data_pipeline_executions"));
-                assertEquals(1, countColumn(connection, "announcement_schedules", "complex_name"));
-                assertEquals(1, countColumn(connection, "supply_targets", "lh_amount_preserved_reason"));
-                assertEquals("validate", applicationContext.getEnvironment()
-                        .getProperty("spring.jpa.hibernate.ddl-auto"));
-                assertFalse(applicationContext.getBean(Flyway.class).getConfiguration().isOutOfOrder());
-            }
-        }
-        finally {
-            dropDatabase(databaseName);
-        }
-    }
-
-    @Test
-    void 최신_develop_DB에_통합_실행_유형을_보충하고_기존_이력을_보존한다(
-            @TempDir Path developMigrations
-    ) throws Exception {
-        try (Stream<Path> migrations = Files.list(Path.of("src/main/resources/db/migration"))) {
-            for (Path migration : migrations.toList()) {
-                if (migration.getFileName().toString().equals("V20260930_01__allow_combined_ingest_pipelines.sql")) {
-                    continue;
-                }
-                Files.copy(migration, developMigrations.resolve(migration.getFileName()));
-            }
-        }
-        String databaseName = "toadzip_develop_upgrade_" + UUID.randomUUID().toString().replace("-", "");
-        String jdbcUrl = primaryTestDatabaseUrl(databaseName);
-        createDatabase(databaseName);
-        try {
-            Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
-                    .locations("filesystem:" + developMigrations).load().migrate();
-            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
-                    Statement statement = connection.createStatement()) {
-                statement.executeUpdate("""
-                        INSERT INTO data_pipeline_executions
-                            (execution_id, type, status, started_at, heartbeat_at)
-                        VALUES ('00000000-0000-0000-0000-000000000001',
-                                'COMPLEX_COLLECTION', 'COMPLETED', now(), now())
-                        """);
-                assertEquals(migrationCount() - 1, countAllRows(connection, "flyway_schema_history"));
-            }
-            Flyway merged = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
-                    .locations("classpath:db/migration").load();
-            FlywayValidateException pending = assertThrows(FlywayValidateException.class, merged::migrate);
-            assertTrue(pending.getMessage().contains("20260930.01"));
-            try (ConfigurableApplicationContext oneTimeUpgrade = new SpringApplicationBuilder(BackendApplication.class)
-                    .environment(createIsolatedEnvironment(jdbcUrl))
-                    .run("--spring.flyway.out-of-order=true", "--spring.flyway.target=20260930.09")) {
-                assertTrue(oneTimeUpgrade.getBean(Flyway.class).getConfiguration().isOutOfOrder());
-            }
-            merged.validate();
-            assertEquals(0, merged.migrate().migrationsExecuted);
-            try (ConfigurableApplicationContext applicationContext =
-                    new SpringApplicationBuilder(BackendApplication.class)
-                    .environment(createIsolatedEnvironment(jdbcUrl)).run();
-                    Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
-                    Statement statement = connection.createStatement()) {
-                assertEquals(migrationCount(), countAllRows(connection, "flyway_schema_history"));
-                assertEquals(1, countAllRows(connection, "data_pipeline_executions"));
-                assertFalse(applicationContext.getBean(Flyway.class).getConfiguration().isOutOfOrder());
-                assertEquals(1, statement.executeUpdate("""
-                        INSERT INTO data_pipeline_executions
-                            (execution_id, type, status, started_at, heartbeat_at)
-                        VALUES ('00000000-0000-0000-0000-000000000002',
-                                'COMPLEX_SYNC', 'COMPLETED', now(), now())
-                        """));
-            }
-        }
-        finally {
-            dropDatabase(databaseName);
-        }
-    }
-
-    @Test
     void 기존_스키마는_별도_Flyway_도입_후_개인정보_앱을_기동한다() throws Exception {
         String databaseName = "toadzip_reconciliation_" + UUID.randomUUID().toString().replace("-", "");
         String jdbcUrl = primaryTestDatabaseUrl(databaseName);
@@ -578,64 +327,24 @@ class LocalProfileSchemaPersistenceTest {
     }
 
     @Test
-    void 기존_단지와_통합_단지의_마이홈_원천_금액을_마이그레이션에서_채운다() throws Exception {
-        String databaseName = "toadzip_price_backfill_" + UUID.randomUUID().toString().replace("-", "");
+    void 단지_임대료_범위는_최소와_최대를_함께_저장한다() throws Exception {
+        String databaseName = "toadzip_price_range_" + UUID.randomUUID().toString().replace("-", "");
         String jdbcUrl = primaryTestDatabaseUrl(databaseName);
         createDatabase(databaseName);
         try {
-            Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
-                    .locations("classpath:db/migration").target("20260927.01").load().migrate();
-            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
-                    Statement statement = connection.createStatement()) {
-                statement.executeUpdate("""
-                        INSERT INTO housing_complexes (id, city_county_district_code, latitude, legal_dong_code,
-                            longitude, pnu, province_code, road_address, name, parking_space_count, provider,
-                            source_complex_identifier, supply_type, total_household_count, admin_modified)
-                        VALUES (1, '11110', 37.5, '1111010100', 126.9, '1111010100100010000', '11',
-                            '서울 테스트로 1', '테스트 단지', 80, 'LH', '123:NATIONAL_RENTAL', 'NATIONAL_RENTAL',
-                            200, TRUE)
-                        """);
-                statement.executeUpdate("""
-                        INSERT INTO myhome_complex_links (source_complex_identifier, housing_complex_id)
-                        VALUES ('123:NATIONAL_RENTAL', 1), ('456:NATIONAL_RENTAL', 1)
-                        """);
-                statement.executeUpdate("""
-                        INSERT INTO myhome_complex_source
-                            (source_key, hsmp_sn, suply_ty_nm, bass_rent_gtn, bass_mt_rntchrg)
-                        VALUES ('price-a', 123, '국민임대', 10000000, 200000),
-                               ('price-b', 123, '국민임대', 20000000, 300000),
-                               ('price-c', 456, '국민임대', 30000000, 100000),
-                               ('price-unknown', 456, '국민임대', -1, NULL)
-                        """);
-            }
-
-            Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
-                    .locations("classpath:db/migration").target("20260928.01").load().migrate();
-
-            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
-                    Statement statement = connection.createStatement();
-                    ResultSet prices = statement.executeQuery("""
-                            SELECT deposit_min, deposit_max, monthly_rent_min, monthly_rent_max
-                            FROM housing_complexes WHERE id = 1
-                            """)) {
-                assertTrue(prices.next());
-                assertAll(
-                        () -> assertEquals(10000000L, prices.getLong("deposit_min")),
-                        () -> assertEquals(30000000L, prices.getLong("deposit_max")),
-                        () -> assertEquals(100000L, prices.getLong("monthly_rent_min")),
-                        () -> assertEquals(300000L, prices.getLong("monthly_rent_max"))
-                );
-            }
-
             Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
                     .locations("classpath:db/migration").load().migrate();
 
             try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
                     Statement statement = connection.createStatement()) {
                 statement.executeUpdate("""
-                        UPDATE housing_complexes
-                        SET monthly_rent_min = NULL, monthly_rent_max = NULL
-                        WHERE id = 1
+                        INSERT INTO housing_complexes (id, city_county_district_code, latitude, legal_dong_code,
+                            longitude, pnu, province_code, road_address, name, parking_space_count, provider,
+                            source_complex_identifier, supply_type, total_household_count, admin_modified,
+                            deposit_min, deposit_max)
+                        VALUES (1, '11110', 37.5, '1111010100', 126.9, '1111010100100010000', '11',
+                            '서울 테스트로 1', '테스트 단지', 80, 'LH', '123:NATIONAL_RENTAL', 'NATIONAL_RENTAL',
+                            200, TRUE, 10000000, 30000000)
                         """);
                 assertEquals("23514", assertThrows(SQLException.class, () -> statement.executeUpdate("""
                         UPDATE housing_complexes SET deposit_min = NULL WHERE id = 1

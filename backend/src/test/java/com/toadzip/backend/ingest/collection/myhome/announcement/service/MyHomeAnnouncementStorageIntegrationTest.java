@@ -39,8 +39,7 @@ import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import java.sql.Connection;
-import java.sql.DriverManager;
+import com.toadzip.backend.global.config.PostgresTestDatabases;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -51,7 +50,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -69,12 +67,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.env.MapPropertySource;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
@@ -107,7 +103,6 @@ import tools.jackson.databind.json.JsonMapper;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MyHomeAnnouncementStorageIntegrationTest {
 
-    private static final String SCHEMA = "collection_storage_" + UUID.randomUUID().toString().replace("-", "");
     private static final Instant STARTED_AT = Instant.parse("2026-10-04T00:00:00Z");
     private static final Instant COLLECTED_AT = STARTED_AT.plusSeconds(1);
     private static final Instant FINISHED_AT = STARTED_AT.plusSeconds(30);
@@ -170,11 +165,6 @@ class MyHomeAnnouncementStorageIntegrationTest {
     @AfterEach
     void verifyHttpRequests() {
         httpServer.verify();
-    }
-
-    @AfterAll
-    void dropSchema() {
-        jdbc.execute("DROP SCHEMA " + SCHEMA + " CASCADE");
     }
 
     @Test
@@ -1251,32 +1241,9 @@ class MyHomeAnnouncementStorageIntegrationTest {
         @Override
         public void initialize(ConfigurableApplicationContext context) {
             var environment = context.getEnvironment();
-            String url = environment.getRequiredProperty("spring.datasource.url");
-            try (Connection connection = DriverManager.getConnection(url,
-                    environment.getRequiredProperty("spring.datasource.username"),
-                    environment.getRequiredProperty("spring.datasource.password"))) {
-                try (var statement = connection.createStatement()) {
-                    statement.execute("CREATE SCHEMA " + SCHEMA);
-                }
-                connection.setSchema(SCHEMA);
-                ScriptUtils.executeSqlScript(connection,
-                        new ClassPathResource("ingest/compatibility-source-tables.sql"));
-                ScriptUtils.executeSqlScript(connection, new ClassPathResource(
-                        "db/migration/V20261004_01__myhome_announcement_collection_storage.sql"));
-                ScriptUtils.executeSqlScript(connection, new ClassPathResource(
-                        "db/migration/V20260926_01__ingest_execution_ownership.sql"));
-                try (var statement = connection.createStatement()) {
-                    statement.execute(new ClassPathResource(
-                            "db/migration/V20261004_06__source_import_metadata_and_announcement_lifecycle.sql")
-                            .getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
-                }
-            } catch (Exception exception) {
-                throw new IllegalStateException("수집 저장 테스트 스키마를 준비하지 못했습니다.", exception);
-            }
-            environment.getPropertySources().addFirst(new MapPropertySource("collectionStorageSchema", Map.of(
-                    "spring.datasource.url", url + "?currentSchema=" + SCHEMA,
-                    "spring.jpa.properties.hibernate.default_schema", SCHEMA
-            )));
+            String url = PostgresTestDatabases.migratedPrimaryUrl("collection_storage_");
+            environment.getPropertySources().addFirst(new MapPropertySource("collectionStorageSchema",
+                    Map.of("spring.datasource.url", url)));
         }
     }
 }

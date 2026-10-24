@@ -1,6 +1,12 @@
 package com.toadzip.backend.global.config;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Map;
+import java.util.UUID;
+import org.flywaydb.core.Flyway;
 import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
@@ -19,6 +25,23 @@ public final class PostgresTestDatabases {
 
     public static String primaryUrl(String databaseName) {
         return jdbcUrl(PRIMARY, databaseName);
+    }
+
+    /** 운영과 같은 Flyway 마이그레이션을 적용한 새 데이터베이스를 만들고 URL을 반환한다. */
+    public static String migratedPrimaryUrl(String databasePrefix) {
+        String databaseName = databasePrefix + UUID.randomUUID().toString().replace("-", "");
+        try (Connection connection = DriverManager.getConnection(
+                primaryUrl(PRIMARY.getDatabaseName()), PRIMARY.getUsername(), PRIMARY.getPassword());
+                Statement statement = connection.createStatement()) {
+            statement.execute("CREATE DATABASE " + databaseName);
+        }
+        catch (SQLException exception) {
+            throw new IllegalStateException("테스트 데이터베이스를 만들지 못했습니다.", exception);
+        }
+        String url = primaryUrl(databaseName);
+        Flyway.configure().dataSource(url, PRIMARY.getUsername(), PRIMARY.getPassword())
+                .locations("classpath:db/migration").load().migrate();
+        return url;
     }
 
     public static String sharedUrl() {

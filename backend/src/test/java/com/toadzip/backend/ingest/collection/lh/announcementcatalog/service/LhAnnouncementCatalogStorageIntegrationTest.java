@@ -26,8 +26,7 @@ import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import java.sql.Connection;
-import java.sql.DriverManager;
+import com.toadzip.backend.global.config.PostgresTestDatabases;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -39,7 +38,6 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,11 +54,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.env.MapPropertySource;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
@@ -89,7 +85,6 @@ import tools.jackson.databind.json.JsonMapper;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class LhAnnouncementCatalogStorageIntegrationTest {
 
-    private static final String SCHEMA = "announcement_catalog_" + UUID.randomUUID().toString().replace("-", "");
 
     private static final Instant STARTED_AT = Instant.parse("2026-10-04T00:00:00Z");
 
@@ -138,11 +133,6 @@ class LhAnnouncementCatalogStorageIntegrationTest {
     @AfterEach
     void verifyHttp() {
         http.verify();
-    }
-
-    @AfterAll
-    void dropSchema() {
-        jdbc.execute("DROP SCHEMA " + SCHEMA + " CASCADE");
     }
 
     @Test
@@ -401,32 +391,9 @@ class LhAnnouncementCatalogStorageIntegrationTest {
         @Override
         public void initialize(ConfigurableApplicationContext context) {
             var environment = context.getEnvironment();
-            String url = environment.getRequiredProperty("spring.datasource.url");
-            try (Connection connection = DriverManager.getConnection(url,
-                    environment.getRequiredProperty("spring.datasource.username"),
-                    environment.getRequiredProperty("spring.datasource.password"))) {
-                try (var statement = connection.createStatement()) {
-                    statement.execute("CREATE SCHEMA " + SCHEMA);
-                }
-                connection.setSchema(SCHEMA);
-                ScriptUtils.executeSqlScript(connection,
-                        new ClassPathResource("ingest/compatibility-source-tables.sql"));
-                for (String script : List.of("V20261004_01__myhome_announcement_collection_storage.sql",
-                        "V20261004_04__lh_announcement_catalog_collection_storage.sql",
-                        "V20260926_01__ingest_execution_ownership.sql")) {
-                    ScriptUtils.executeSqlScript(connection, new ClassPathResource("db/migration/" + script));
-                }
-                try (var statement = connection.createStatement()) {
-                    statement.execute(new ClassPathResource(
-                            "db/migration/V20261004_06__source_import_metadata_and_announcement_lifecycle.sql")
-                            .getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
-                }
-            } catch (Exception failure) {
-                throw new IllegalStateException("LH 공고 목록 저장 테스트 스키마를 준비하지 못했습니다.", failure);
-            }
-            environment.getPropertySources().addFirst(new MapPropertySource("announcementCatalogSchema", Map.of(
-                    "spring.datasource.url", url + "?currentSchema=" + SCHEMA,
-                    "spring.jpa.properties.hibernate.default_schema", SCHEMA)));
+            String url = PostgresTestDatabases.migratedPrimaryUrl("announcement_catalog_");
+            environment.getPropertySources().addFirst(new MapPropertySource("announcementCatalogSchema",
+                    Map.of("spring.datasource.url", url)));
         }
     }
 }
