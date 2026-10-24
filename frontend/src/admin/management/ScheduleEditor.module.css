@@ -12,6 +12,11 @@
 .more { margin-top: 6px; font-size: var(--admin-text-meta, 13px); }
 .more summary { cursor: pointer; color: var(--ds-color-muted-base); font-weight: 600; }
 .moreFields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 12px; padding-top: 8px; }
+.collected { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--ds-color-divider); }
+.collected h3 { margin: 0; font-size: var(--admin-text-body, 15px); }
+.collected ul { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: var(--admin-text-meta, 13px); }
+.collected .complexes { color: var(--ds-color-muted-base); }
+.collected li strong { display: inline-block; min-width: 64px; color: var(--ds-color-label); }
 @media (max-width: 900px) {
   .dates { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tilde { display: none; }

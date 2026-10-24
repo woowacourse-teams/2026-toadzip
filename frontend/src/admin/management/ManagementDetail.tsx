@@ -128,7 +128,7 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
           setError(cause instanceof Error ? cause.message : '저장하지 못했습니다.');if(cause instanceof ManagementError) setErrors(cause.fields)
         }).finally(() => setBusy(false))
       }}>
-        {value.scheduleReviewed ? <p className="admin-warning">확인된 접수 기간입니다. 세부 접수 일정 관리에서 변경해 주세요.</p> : null}
+        {value.scheduleReviewed ? <p className="admin-warning">확인된 접수 기간입니다. 확정 접수 일정 관리에서 변경해 주세요.</p> : null}
         {sections.map(group => <fieldset disabled={busy} key={group.title}><legend>{group.title}</legend>
           {group.title === '주소·위치' ? <AddressPicker onSelect={address => {
             for (const [key, fieldValue] of Object.entries(address)) {
