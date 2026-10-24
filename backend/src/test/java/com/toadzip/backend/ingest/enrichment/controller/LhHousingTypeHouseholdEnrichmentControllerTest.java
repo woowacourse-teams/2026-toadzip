@@ -6,6 +6,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
+import com.toadzip.backend.ingest.enrichment.service.LhHouseholdComplexLinkService;
+import com.toadzip.backend.ingest.enrichment.service.LhHouseholdTargetDecisionService;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +25,12 @@ class LhHousingTypeHouseholdEnrichmentControllerTest {
 
     @MockitoBean
     private LhHousingTypeHouseholdEnrichmentService enrichmentService;
+
+    @MockitoBean
+    private LhHouseholdComplexLinkService linkService;
+
+    @MockitoBean
+    private LhHouseholdTargetDecisionService decisionService;
 
     @Test
     void LH_카탈로그로_마이홈_주택형별_세대수_보강을_실행한다() throws Exception {
