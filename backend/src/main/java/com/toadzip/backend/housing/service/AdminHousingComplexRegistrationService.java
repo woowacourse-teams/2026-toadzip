@@ -62,14 +62,18 @@ public class AdminHousingComplexRegistrationService {
                 request.totalHouseholdCount(),
                 request.agencyCode().name(),
                 request.completionDate(),
-                request.heatingType().name(),
-                request.buildingType().name(),
-                request.corridorType().name(),
+                name(request.heatingType()),
+                name(request.buildingType()),
+                name(request.corridorType()),
                 request.hasElevator(),
                 request.totalParkingCount(),
                 request.overviewImageUrl(),
                 request.moveOutCountLastYear()
         );
+    }
+
+    private static String name(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     private Address createAddress(AddressRequest request) {

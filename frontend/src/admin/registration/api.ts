@@ -13,14 +13,15 @@ export type HousingComplexCreateRequest = {
     longitude: number
   }
   totalHouseholdCount: number
-  completionDate: string
-  heatingType: string
-  buildingType: string
-  corridorType: string
-  hasElevator: boolean
+  /** 입주 전 신규 단지는 준공일·건물 정보를 아직 모를 수 있다. */
+  completionDate: string | null
+  heatingType: string | null
+  buildingType: string | null
+  corridorType: string | null
+  hasElevator: boolean | null
   totalParkingCount: number
   overviewImageUrl: string | null
-  moveOutCountLastYear: number
+  moveOutCountLastYear: number | null
 }
 
 export type HousingComplexCreateResponse = {
