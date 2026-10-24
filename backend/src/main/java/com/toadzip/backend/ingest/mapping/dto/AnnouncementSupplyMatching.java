@@ -24,7 +24,7 @@ public final class AnnouncementSupplyMatching {
     public record Row(String rowIdentifier, String token, String sourceComplexName, String sourceHousingTypeName,
             String pnu, BigDecimal exclusiveArea, BigDecimal supplyArea,
             Long complexId, Long housingTypeId, String failure, SavedMatch savedMatch,
-            Integer totalSupplyHouseholdCount, SplitGroup splitGroup) {
+            Integer totalSupplyHouseholdCount, SplitGroup splitGroup, boolean excluded) {
     }
 
     public record SavedMatch(Long complexId, Long housingTypeId, String sourceUrl, String reason,
@@ -44,7 +44,11 @@ public final class AnnouncementSupplyMatching {
             @NotNull @Positive Long complexId, @NotNull @Positive Long housingTypeId,
             @NotBlank @Size(max = 64) String targetToken) { }
 
-    public record ComplexOption(long id, String name, String roadAddress, String supplyType) {
+    public record ComplexOption(long id, String name, String roadAddress, String supplyType, String pnu,
+            int totalHouseholdCount, List<HousingTypeArea> housingTypes) {
+    }
+
+    public record HousingTypeArea(long id, String name, BigDecimal exclusiveArea) {
     }
 
     public record HousingTypeOption(long id, String name, BigDecimal exclusiveArea, BigDecimal supplyArea,
@@ -76,5 +80,9 @@ public final class AnnouncementSupplyMatching {
 
     public record ReleaseRequest(@NotBlank @Size(max = 500) String rowIdentifier,
             @NotBlank @Size(max = 64) String token, @NotBlank @Size(max = 2000) String reason) {
+    }
+
+    public record ExclusionRequest(@NotBlank @Size(max = 500) String rowIdentifier,
+            @NotBlank @Size(max = 64) String token, boolean excluded, @NotBlank @Size(max = 2000) String reason) {
     }
 }

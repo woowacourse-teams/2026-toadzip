@@ -109,8 +109,8 @@ function Decision({ failure, row, myhomeRows, lhComplex, onLink, onMatch }: {
     return <div>
       <p className={styles.warning}><strong>판단할 것:</strong> 비교한 공급행({unmatched.map(candidate => candidate.sourceComplexName).join(', ')})에
         단지가 연결되어 있지 않습니다. 마이홈 원천의 단지를 하나로 정하지 못하면 정제가 LH 연결도 기록하지 않으므로,
-        먼저 단지·주택형 매칭에서 단지를 정한 뒤 공고 정제를 다시 실행하세요.</p>
-      <button className={styles.secondary} type="button" onClick={onMatch}>단지·주택형 매칭 열기</button>
+        아래 '여기서 바로 복구'에서 이 공급행의 단지를 정하고 정제하세요.</p>
+      <button className={styles.secondary} type="button" onClick={onMatch}>아래에서 단지 정하기</button>
     </div>
   }
   const resolvedRow = row?.savedLink?.reviewRequired ? null : row?.linkedRowIdentifier

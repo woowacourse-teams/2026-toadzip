@@ -64,7 +64,7 @@ describe('LH 보강 실패 주택형 비교', () => {
 
     expect(await screen.findByText(/단지가 연결되어 있지 않습니다/)).toBeVisible()
     expect(screen.queryByText(/정제 기준으로는 이미/)).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '단지·주택형 매칭 열기' }))
+    fireEvent.click(screen.getByRole('button', { name: '아래에서 단지 정하기' }))
     expect(onMatch).toHaveBeenCalled()
   })
 })

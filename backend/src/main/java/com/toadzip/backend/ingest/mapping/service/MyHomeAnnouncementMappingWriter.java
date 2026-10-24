@@ -380,6 +380,15 @@ public class MyHomeAnnouncementMappingWriter {
             if (match == null) {
                 match = supplyMatcher.match(data);
             }
+            if (stored != null && stored.isAdminExcluded() && match.failure() != null) {
+                // 관리자가 등록 단지에 없다고 제외한 행은 매칭 실패로 남기지 않고 그대로 둔다. LH 보강도 보류하지 않는다.
+                if (stored.updateDisplayOrder(displayOrder++)) {
+                    updated++;
+                    continue;
+                }
+                unchanged++;
+                continue;
+            }
             if (match.failure() != null) {
                 failures.add(match.failure());
             }

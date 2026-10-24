@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -615,9 +616,29 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 단지_검색과_주택형_조회는_해당_단지의_기존_데이터만_반환한다() {
         assertThat(matching.complexes("한스빌")).singleElement()
-                .satisfies(value -> assertThat(value.id()).isEqualTo(complex.getId()));
+                .satisfies(value -> {
+                    assertThat(value.id()).isEqualTo(complex.getId());
+                    assertThat(value.pnu()).isEqualTo(complex.getAddress().getPnu());
+                    assertThat(value.totalHouseholdCount()).isEqualTo(complex.getTotalHouseholdCount());
+                    assertThat(value.housingTypes()).singleElement().satisfies(area -> {
+                        assertThat(area.id()).isEqualTo(type.getId());
+                        assertThat(area.exclusiveArea()).isEqualByComparingTo(type.getExclusiveArea());
+                    });
+                });
         assertThat(matching.housingTypes(complex.getId())).singleElement()
                 .satisfies(value -> assertThat(value.id()).isEqualTo(type.getId()));
+    }
+
+    @Test
+    void 단지_검색에_원천_PNU를_주면_이름이_다른_같은_필지_단지를_먼저_후보로_준다() {
+        var main = complex("중촌주공2단지", "complex-main", PNU, "NATIONAL_RENTAL");
+        complex("한스빌 다른필지", "complex-other", "1111111111111111111", "NATIONAL_RENTAL");
+
+        assertThat(matching.complexes("한스빌", PNU)).extracting(value -> value.id())
+                .containsExactly(complex.getId(), main.getId(), complexes.findBySourceComplexIdentifier("complex-other")
+                        .orElseThrow().getId());
+        assertThat(matching.complexes("한스빌")).extracting(value -> value.id()).doesNotContain(main.getId());
+        assertThatThrownBy(() -> matching.complexes("한스빌", "12a")).hasMessageContaining("PNU");
     }
 
     @Test
@@ -874,6 +895,48 @@ class AnnouncementSupplyMatchingIntegrationTest {
     void 원천이_없는_공고는_다시_정제할_수_없다() throws Exception {
         rerun("no-source-announcement").andExpect(status().isBadRequest())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.message").value("공고 원천이 없습니다. 먼저 공고를 수집해 주세요."));
+    }
+
+    @Test
+    void 등록_단지에_없어_제외한_공급행은_정제_오류로_남기지_않고_되돌리면_다시_오류가_된다() throws Exception {
+        sources.save(source(TARGET, 2, "1111010100100010000"));
+        int failedBefore = mapping.mapAll().failedSourceRowCount();
+        var missing = matching.rows(TARGET).stream().filter(row -> row.rowIdentifier().endsWith(":2")).findFirst().orElseThrow();
+        assertThat(missing.complexId()).isNull();
+
+        exclusion(missing, true, "공고문 2쪽: 이 주택형은 등록 단지에 없음").andExpect(status().isOk());
+        assertThat(matching.rows(TARGET)).filteredOn(Row::excluded).extracting(Row::rowIdentifier)
+                .containsExactly(missing.rowIdentifier());
+        assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(failedBefore - 1);
+        assertThat(pendingFailureReasons()).hasSize(failedBefore - 1);
+        assertThat(supplies.findAll()).filteredOn(row -> row.getSourceSupplyRowIdentifier().equals(missing.rowIdentifier()))
+                .singleElement().satisfies(row -> {
+                    assertThat(row.isAdminExcluded()).isTrue();
+                    assertThat(row.getHousingComplex()).isNull();
+                });
+        assertThat(jdbc.sql("SELECT action FROM admin_data_changes WHERE action = 'EXCLUDE_SUPPLY_ROW'")
+                .query(String.class).list()).hasSize(1);
+
+        exclusion(matching.rows(TARGET).stream().filter(Row::excluded).findFirst().orElseThrow(), false, "다시 확인")
+                .andExpect(status().isOk());
+        assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(failedBefore);
+        assertThat(pendingFailureReasons()).hasSize(failedBefore);
+    }
+
+    @Test
+    void 공급행_제외는_근거와_정제된_공급행을_요구한다() throws Exception {
+        var row = matching.rows(TARGET).getFirst();
+        exclusion(row, true, "근거").andExpect(status().isBadRequest());
+        mapping.mapAll();
+        exclusion(row, true, " ").andExpect(status().isBadRequest());
+        assertThat(supplies.findAll()).noneMatch(value -> value.isAdminExcluded());
+    }
+
+    private ResultActions exclusion(Row row, boolean excluded, String reason) throws Exception {
+        return mvc.perform(post(PATH + "/" + TARGET + "/exclusion").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "rowIdentifier", row.rowIdentifier(), "token", row.token(),
+                        "excluded", excluded, "reason", reason))));
     }
 
     @Test

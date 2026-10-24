@@ -47,6 +47,13 @@ public class AnnouncementSupplyMatchingController {
         return matching.release(identifier, request, principal.getName());
     }
 
+    @PostMapping("/{identifier}/exclusion")
+    public List<Row> exclude(@PathVariable String identifier,
+            @Valid @RequestBody com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ExclusionRequest request,
+            Principal principal) {
+        return matching.exclude(identifier, request, principal.getName());
+    }
+
     @PostMapping("/{identifier}/split")
     public List<Row> split(@PathVariable String identifier,
             @Valid @RequestBody com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SplitRequest request,
@@ -55,8 +62,9 @@ public class AnnouncementSupplyMatchingController {
     }
 
     @GetMapping("/complexes")
-    public List<ComplexOption> complexes(@RequestParam String query) {
-        return matching.complexes(query);
+    public List<ComplexOption> complexes(@RequestParam String query,
+            @RequestParam(defaultValue = "") String pnu) {
+        return matching.complexes(query, pnu);
     }
 
     @GetMapping("/complexes/{complexId}/housing-types")
