@@ -87,7 +87,7 @@ export function FailureReviewPage() {
     : current && current.status !== 'IDLE' ? `${label} 정제: ${pipelineStatusLabels[current.status]} · 처리 결과에 따라 오류 목록을 갱신합니다.` : ''
 
   return <section className={`management-page ${styles.page}`}>
-    <header className="management-heading"><div><h1>오류 확인·처리</h1><p>문제 원인과 현재 서비스 데이터를 함께 확인합니다.</p></div><Link to="/admin/ingest">수집·정제 진행 상황</Link></header>
+    <header className="management-heading"><div><h1>실패·검토 항목</h1><p>문제 원인과 현재 서비스 데이터를 함께 확인합니다.</p></div><Link to="/admin/ingest">수집·정제 진행 상황</Link></header>
     <div className={`${styles.tabs} admin-folder-tabs`} role="tablist" aria-label="문제 대상">
       {(['complex','announcement'] as const).map((value,index,values) => <button key={value} type="button" role="tab"
         id={`failure-tab-${value}`} aria-selected={domain === value} aria-controls="failure-review-panel" tabIndex={domain === value ? 0 : -1}

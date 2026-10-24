@@ -5,14 +5,16 @@ import { useAdminAuth } from './useAdminAuth'
 import styles from './AdminLayout.module.css'
 import { FailureReturnLink } from '../ingest/FailureReturnLink'
 
-const workLinks = [['/admin/operations', '운영 홈', 'review'], ['/admin/quality', '검토할 데이터', 'review'], ['/admin/complexes', '단지 관리', 'building'],
-  ['/admin/announcements', '공고 관리', 'document'], ['/admin/failures', '실패·검토 항목', 'review']] as const
+const workLinks = [['/admin/operations', '운영 홈', 'home'], ['/admin/quality', '검토할 데이터', 'review'], ['/admin/complexes', '단지 관리', 'building'],
+  ['/admin/announcements', '공고 관리', 'document'], ['/admin/failures', '실패·검토 항목', 'alert']] as const
 const sourceLinks = [['/admin/ingest/announcements', '공고 수집'], ['/admin/ingest/complexes', '단지 수집'],
   ['/admin/sources', '원천 데이터'], ['/admin/locations', '주소 데이터']] as const
 const memberLinks = [['/admin/users', '회원 관리'], ['/admin/notification-subscriptions', '알림 신청 관리'], ['/admin/notification-deliveries', '알림 발송 기록'], ['/admin/feedback', '사용자 의견']] as const
 function MenuIcon({ kind }: { kind: string }) {
   const path = kind === 'building' ? 'M4 21V3h12v18M16 9h4v12M8 7h4M8 11h4M8 15h4M8 21v-3h4v3'
     : kind === 'document' ? 'M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7'
+    : kind === 'home' ? 'M3 11l9-7 9 7M5 9.5V20h5v-6h4v6h5V9.5'
+    : kind === 'alert' ? 'M12 3 2 20h20L12 3zM12 10v4M12 17h.01'
     : 'M9 3h6v4H9zM6 5H4v16h16V5h-2M8 13l2 2 5-5M8 18h8'
   return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={path} /></svg>
 }
