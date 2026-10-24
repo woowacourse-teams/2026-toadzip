@@ -42,4 +42,3 @@ it('성공하면 오류가 해결됐다고 알리고 실행 중에는 다시 누
   expect(await screen.findByRole('status')).toHaveTextContent('이 공고의 오류는 해결됨으로 바뀌었습니다.')
   expect(screen.getByRole('link', { name: '오류 목록에서 확인' })).toHaveAttribute('href', '/admin/failures?domain=announcement&keyword=x')
 })
-
