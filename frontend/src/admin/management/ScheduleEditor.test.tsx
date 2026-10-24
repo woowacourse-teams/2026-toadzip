@@ -94,3 +94,22 @@ it('외부 일정의 표시할 수 없는 필드는 실제 입력창과 동일�
     schedules: [{ ...schedule, condition: null, supplyRank: null, startDate: null, startTime: null, sourcePage: null, housingComplexId: null }],
   })
 })
+
+it('공고문 일정 문구를 줄마다 일정으로 채우고 근거 URL·페이지는 모든 일정에 함께 저장한다', async () => {
+  const onSaved = vi.fn()
+  render(<ScheduleEditor value={detail()} id="7" onSaved={onSaved} />)
+  fireEvent.click(screen.getByRole('button', { name: '접수 일정 관리' }))
+  fireEvent.change(screen.getByLabelText('공고문 일정 붙여넣기'), { target: { value: '2026.10.27(화) 10:00 ~ 10.30(금) 17:00\n서류 제출 11.3 ~ 5일' } })
+  fireEvent.click(screen.getByRole('button', { name: '날짜 채우기' }))
+  expect(screen.getByRole('status')).toHaveTextContent('일정 2개의 날짜를 채웠습니다.')
+  const second = within(screen.getByRole('group', { name: '접수 일정 2' }))
+  expect(second.getByLabelText('시작일')).toHaveValue('2026-11-03')
+  expect(second.getByLabelText('종료일')).toHaveValue('2026-11-05')
+  fireEvent.change(screen.getByLabelText('공고문 페이지'), { target: { value: '4' } })
+  fireEvent.click(screen.getByRole('button', { name: '접수 일정 저장' }))
+  await waitFor(() => expect(onSaved).toHaveBeenCalled())
+  const saved = vi.mocked(requestManagementApi).mock.calls[0][2] as { schedules: Record<string, unknown>[] }
+  expect(saved.schedules).toHaveLength(2)
+  expect(saved.schedules[0]).toMatchObject({ startDate: '2026-10-27', startTime: '10:00', endDate: '2026-10-30', endTime: '17:00', sourcePage: 4, supplyRank: '1순위' })
+  expect(saved.schedules[1]).toMatchObject({ startDate: '2026-11-03', endDate: '2026-11-05', sourcePage: 4, sourceUrl: 'https://example.com/notice', supplyRank: null })
+})
