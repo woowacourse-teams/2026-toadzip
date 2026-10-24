@@ -2,6 +2,7 @@ package com.toadzip.backend.announcement.service;
 
 import com.toadzip.backend.admin.domain.AdminDataChange;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
+import com.toadzip.backend.admin.exception.AdminDataStaleException;
 import com.toadzip.backend.admin.quality.domain.QualityResource;
 import com.toadzip.backend.admin.quality.service.QualityComparisonService;
 import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
@@ -43,6 +44,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -50,6 +52,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
@@ -70,6 +73,13 @@ public class SupplyCorrectionService {
     private final ObjectMapper json;
 
     public SupplyCorrection.Workspace workspace(long id) {
+        return snapshot(id).workspace();
+    }
+
+    /** 화면에 주는 토큰과 그 토큰을 만든 값. 충돌 로그에서 어느 쪽이 바뀌었는지 가려낼 때 쓴다. */
+    private record Snapshot(SupplyCorrection.Workspace workspace, QualityComparison comparison, List<Row> rows) { }
+
+    private Snapshot snapshot(long id) {
         var announcement = find(id);
         var comparison = comparisons.detail(QualityResource.ANNOUNCEMENT, id, "basic");
         var stored = rows.findAllByAnnouncement(announcement);
@@ -79,8 +89,16 @@ public class SupplyCorrectionService {
         var rowSources = stored.stream()
                 .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
                 .flatMap(row -> rowSources(row, comparison.sources()).stream()).toList();
-        return new SupplyCorrection.Workspace(hash(List.of(comparison.snapshotToken(), currentRows)),
+        var workspace = new SupplyCorrection.Workspace(hash(List.of(comparison.snapshotToken(), currentRows)),
                 announcement.getVersion(), currentRows, comparison.sources(), sourceStatus.missingWarnings(id), rowSources);
+        var snapshot = new Snapshot(workspace, comparison, currentRows);
+        if (log.isDebugEnabled()) {
+            var parts = tokenParts(snapshot);
+            log.debug("event=announcement.supply_correction.snapshot_loaded announcementId={} version={} snapshotToken={} "
+                    + "comparisonToken={} detailHash={} sourcesHash={} rowsHash={}", id, workspace.version(),
+                    shortToken(workspace.snapshotToken()), parts.get(0), parts.get(1), parts.get(2), parts.get(3));
+        }
+        return snapshot;
     }
 
     /**
@@ -180,7 +198,10 @@ public class SupplyCorrectionService {
     private Written write(Announcement announcement, long id, SupplyCorrection.Apply request, String actor) {
         var preview = preview(id, request.correction());
         if (!preview.confirmationToken().equals(request.confirmationToken())) {
-            throw new AdminDataConflictException("미리보기 이후 선택한 단지·주택형 또는 변경안이 바뀌었습니다. 다시 확인하세요.");
+            log.warn("event=announcement.supply_correction.conflict_detected announcementId={} check=confirmation "
+                    + "requestToken={} currentToken={}", id, shortToken(request.confirmationToken()),
+                    shortToken(preview.confirmationToken()));
+            throw new AdminDataStaleException("미리보기 이후 선택한 단지·주택형 또는 변경안이 바뀌었습니다. 다시 확인하세요.");
         }
         var stored = rows.findAllByAnnouncement(announcement).stream()
                 .collect(Collectors.toMap(SupplyRow::getId, Function.identity()));
@@ -464,14 +485,30 @@ public class SupplyCorrectionService {
     }
 
     private SupplyCorrection.Workspace checked(long id, String token) {
-        var current = workspace(id);
+        var snapshot = snapshot(id);
+        var current = snapshot.workspace();
         if (!current.snapshotToken().equals(token)) {
-            throw new AdminDataConflictException("등록값이나 원천이 바뀌었습니다. 입력을 보관하고 최신 값과 다시 비교하세요.");
+            var parts = tokenParts(snapshot);
+            log.warn("event=announcement.supply_correction.conflict_detected announcementId={} check=snapshot version={} "
+                    + "requestToken={} currentToken={} comparisonToken={} detailHash={} sourcesHash={} rowsHash={}",
+                    id, current.version(), shortToken(token), shortToken(current.snapshotToken()),
+                    parts.get(0), parts.get(1), parts.get(2), parts.get(3));
+            throw new AdminDataStaleException("등록값이나 원천이 바뀌었습니다. 입력을 보관하고 최신 값과 다시 비교하세요.");
         }
         return current;
     }
 
     private boolean same(Object first, Object second) { return json.valueToTree(first).equals(json.valueToTree(second)); }
+
+    /** 토큰을 이루는 공고 상세·비교 원천·공급행의 해시. 원문은 남기지 않는다. */
+    private List<String> tokenParts(Snapshot snapshot) {
+        return List.of(shortToken(snapshot.comparison().snapshotToken()), shortToken(hash(snapshot.comparison().detail())),
+                shortToken(hash(snapshot.comparison().sources())), shortToken(hash(snapshot.rows())));
+    }
+
+    private static String shortToken(String token) {
+        return token == null ? null : token.substring(0, Math.min(12, token.length()));
+    }
 
     private String hash(Object value) {
         try {
