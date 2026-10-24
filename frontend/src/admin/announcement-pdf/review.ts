@@ -1,7 +1,7 @@
 import type { ExtractedAnnouncement, JsonObject, JsonUpdateInput, JsonWorkspace } from '../announcement-json/api'
 import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type NewSupplyGroup } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, type Evidence, type Extraction } from './extraction'
-import { defaultTargetDestinations, normalizedName, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
+import { defaultTargetDestinations, missingHousingType, normalizedName, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
 import { housingTypeLabel } from '../ingest/housingTypeLabel'
 
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
@@ -15,7 +15,9 @@ export const scheduleFields: FieldSpec[] = [['scheduleType', '일정 유형', 's
 export const metadataFields: FieldSpec[] = [['postedDate', '공고일', 'date'], ['applicationStartDate', '접수 시작일', 'date'], ['applicationEndDate', '접수 종료일', 'date'], ['winnerAnnouncementDate', '당첨자 발표일', 'date']]
 export const receptionFields: FieldSpec[] = [['name', '접수처명', 'text'], ['method', '접수 방식', 'method'], ['address', '접수처 주소', 'text'], ['contact', '연락처', 'text'], ['url', '접수처 URL', 'url']]
 export type TargetReview = { destination: string; cells: Cell[] }
-export type RowReview = { proposal: RowProposal; include: boolean; reviewed: boolean; key: string; cells: Cell[]; targets: TargetReview[] }
+export type RowReview = { proposal: RowProposal; include: boolean; reviewed: boolean; key: string; cells: Cell[]; targets: TargetReview[]
+  /** 단지에 맞는 주택형이 없어 PDF 형명·면적으로 새 주택형을 만들기로 고른 경우 */
+  newHousingType?: boolean }
 export type ScheduleReview = { proposal: ScheduleProposal; include: boolean; reviewed: boolean; cells: Cell[] }
 export type Review = { extraction: Extraction; rows: RowReview[]; schedules: ScheduleReview[]; metadata: Cell[]; reception: Cell[] }
 export const cellStates: Record<Cell['state'], string> = { confirm: '확인 필요', unresolved: '미확인 · 현재값 유지', notApplicable: '해당 없음', invalid: '형식 확인 필요', same: '같음', changed: '변경', new: '추가' }
@@ -114,14 +116,24 @@ export function createReview(extraction: Extraction, workspace: JsonWorkspace, h
 }
 function applyCells(target: JsonObject, values: Cell[], specs: FieldSpec[]) {
   const invalid = values.find(cell => !cell.locked && cell.mode === 'manual' && !validCellValue(cell.kind, cell.value))
-  if (invalid) throw new Error(`${invalid.label}의 직접 입력값을 확인하거나 기존 값 사용을 선택하세요.`)
+  if (invalid) throw new ReviewError(`${invalid.label}의 직접 입력값을 확인하거나 기존 값 사용을 선택하세요.`, `cell:${invalid.path}`)
   for (const cell of values.filter(item => item.selected && !item.locked)) {
-    if (!validCellValue(cell.kind, cell.value) || ['notApplicable', 'unresolved'].includes(cell.state)) throw new Error(`${cell.label}의 값과 근거를 확인하세요.`)
+    if (!validCellValue(cell.kind, cell.value) || ['notApplicable', 'unresolved'].includes(cell.state)) throw new ReviewError(`${cell.label}의 값과 근거를 확인하세요.`, `cell:${cell.path}`)
     const spec = specs.find(([field]) => field === cell.field)!
     target[spec[3] ?? spec[0]] = cell.value
   }
 }
 export type ReviewSection = 'supply' | 'schedule' | 'reception'
+/** 적용 전 검증 실패. reviewId는 화면의 data-review-id와 같아 그 항목으로 바로 이동할 수 있다. */
+export class ReviewError extends Error {
+  readonly reviewId?: string
+  constructor(message: string, reviewId?: string) { super(message); this.reviewId = reviewId }
+}
+export function reviewSection(reviewId: string): ReviewSection {
+  if (reviewId.startsWith('schedule:') || reviewId.startsWith('cell:schedules[')) return 'schedule'
+  if (reviewId.startsWith('cell:announcement') || reviewId.startsWith('cell:receptionPlace')) return 'reception'
+  return 'supply'
+}
 export type ReviewFilter = 'all' | 'pending' | 'changed' | 'new'
 export type PendingItem = { id: string; section: ReviewSection }
 /** 사람이 아직 판단하지 않은 확인 필요·형식 오류 값. 직접 입력값은 형식이 맞을 때까지 남는다. */
@@ -217,41 +229,46 @@ export function applicableCells(review: Review) {
     ...review.schedules.filter(schedule => schedule.include).flatMap(schedule => schedule.cells)]
 }
 export function assembleReview(review: Review, workspace: JsonWorkspace, evidence: { reason: string; sourceUrl: string; sourcePage: string | null }): JsonUpdateInput {
-  const rows = structuredClone(workspace.supply.rows), taken = new Set<string>(), newGroups: NewSupplyGroup[] = []
+  const rows = structuredClone(workspace.supply.rows), taken = new Map<string, number>(), newGroups: NewSupplyGroup[] = []
   for (const [index, entry] of review.rows.entries()) {
     if (!entry.include) continue
-    if (!entry.proposal.destination) throw new Error(`공급행 ${index + 1}에서 수정할 기존 공급정보를 선택하거나 새 공급정보로 추가하세요.`)
+    if (!entry.proposal.destination) throw new ReviewError(`공급행 ${index + 1}에서 수정할 기존 공급정보를 선택하거나 새 공급정보로 추가하세요.`, `row:${index}`)
     const anchor = rows.find(row => row.key === entry.proposal.anchorKey)
     const existing = entry.proposal.destination === 'new' ? undefined : rows.find(row => row.key === entry.proposal.destination)
-    if ((!anchor && !entry.proposal.newComplex) || entry.proposal.destination !== 'new' && !existing) throw new Error(`공급행 ${index + 1}의 기존 단지·원천행을 선택하세요.`)
-    if (existing && taken.has(existing.key)) throw new Error('같은 기존 공급행을 두 번 갱신할 수 없습니다.')
-    if (existing) taken.add(existing.key)
+    if ((!anchor && !entry.proposal.newComplex) || entry.proposal.destination !== 'new' && !existing) throw new ReviewError(`공급행 ${index + 1}의 기존 단지·원천행을 선택하세요.`, `row:${index}`)
+    if (existing && taken.has(existing.key)) throw new ReviewError(`공급행 ${taken.get(existing.key)! + 1}과 공급행 ${index + 1}이 같은 기존 공급정보(${existing.complexName} · ${existing.typeName})에 연결돼 있습니다. 한쪽의 저장할 위치를 바꾸세요.`, `row:${index}`)
+    if (existing) taken.set(existing.key, index)
     const complex = entry.proposal.newComplex
     const row: CorrectionRow = existing ?? { ...blankRow(nextDisplayOrder(rows)), key: entry.key,
       complexName: review.extraction.supplyRows[index].complexName || anchor?.complexName || complex!.name,
       pnu: anchor?.pnu ?? complex!.pnu, category: anchor?.category ?? complex!.category,
       housingComplexId: anchor ? anchor.housingComplexId : complex!.id, housingComplexName: anchor ? anchor.housingComplexName : complex!.name }
-    if (!row.pnu.trim()) throw new Error(`공급행 ${index + 1}의 소재지 PNU를 확인하세요.`)
+    if (!row.pnu.trim()) throw new ReviewError(`공급행 ${index + 1}의 소재지 PNU를 확인하세요.`, `row:${index}`)
     applyCells(row as unknown as JsonObject, entry.cells, rowFields)
     // 공고에 주택형 표기가 없으면 새 행은 연결한 단지 주택형 이름으로 표시한다.
     if (!row.typeName.trim()) row.typeName = entry.proposal.candidates.find(type => type.id === row.housingTypeId)?.name ?? ''
-    if (entry.cells.some(cell => cell.field === 'housingTypeId' && cell.selected && cell.value !== null) && !entry.proposal.candidates.some(type => type.id === row.housingTypeId)) throw new Error('연결 주택형이 선택한 단지에 없습니다. 주택형을 다시 선택하세요.')
+    if (entry.newHousingType) {
+      const source = review.extraction.supplyRows[index]
+      const created = missingHousingType(row.housingComplexId, entry.proposal.candidates, row.typeName || source.typeName || '', source.values.exclusiveArea, source.values.supplyArea)
+      if (!created || !created.name) throw new ReviewError(`공급행 ${index + 1}: PDF 형명과 전용면적이 있어야 새 주택형을 추가할 수 있습니다.`, `row:${index}`)
+      row.housingTypeId = null; row.newHousingType = created
+    } else if (entry.cells.some(cell => cell.field === 'housingTypeId' && cell.selected && cell.value !== null) && !entry.proposal.candidates.some(type => type.id === row.housingTypeId)) throw new ReviewError('연결 주택형이 선택한 단지에 없습니다. 주택형을 다시 선택하세요.', `row:${index}`)
     if (entry.cells.some(cell => ['exclusiveArea', 'supplyArea'].includes(cell.field) && cell.selected)) row.areaOverride = true
     if (entry.proposal.sharedIndex !== null) row.householdCount = null
     const selectedTargets = new Set<string>()
     for (const target of entry.targets) {
       if (target.destination === 'exclude') continue
-      if (!target.destination) throw new Error(`${row.typeName}: 수정할 기존 임대조건을 선택하거나 새 임대조건으로 추가하세요.`)
-      if (target.destination !== 'new' && selectedTargets.has(target.destination)) throw new Error('같은 기존 공급대상을 두 번 갱신할 수 없습니다.')
+      if (!target.destination) throw new ReviewError(`${row.typeName}: 수정할 기존 임대조건을 선택하거나 새 임대조건으로 추가하세요.`, `row:${index}`)
+      if (target.destination !== 'new' && selectedTargets.has(target.destination)) throw new ReviewError('같은 기존 공급대상을 두 번 갱신할 수 없습니다.', `row:${index}`)
       selectedTargets.add(target.destination)
       const stored = row.targets.find(item => (item.id ? String(item.id) : item.key) === target.destination)
-      if (target.destination !== 'new' && !stored) throw new Error('선택한 공급대상이 현재 행에 없습니다.')
+      if (target.destination !== 'new' && !stored) throw new ReviewError('선택한 공급대상이 현재 행에 없습니다.', `row:${index}`)
       const next: CorrectionTarget = stored ?? blankTarget(row.targets.length)
       applyCells(next as unknown as JsonObject, target.cells, targetFields)
-      if (!next.target) throw new Error(`${row.typeName}: 새 공급대상의 이름을 확인하세요.`)
+      if (!next.target) throw new ReviewError(`${row.typeName}: 새 공급대상의 이름을 확인하세요.`, `row:${index}`)
       if (!stored) row.targets.push(next)
     }
-    if (!row.typeName) throw new Error('새 공급행의 주택형명을 확인하세요.')
+    if (!row.typeName) throw new ReviewError('새 공급행의 주택형명을 확인하세요.', `row:${index}`)
     if (!existing) rows.push(row)
   }
   for (const [index, group] of review.extraction.sharedCounts.entries()) {
@@ -282,16 +299,17 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
     })),
   })), schedules: [], attachments: [], unresolvedFields: [] }
   const schedules: JsonUpdateInput['schedules'] = [], used = new Set<number>()
-  for (const entry of review.schedules.filter(item => item.include)) {
+  for (const [index, entry] of review.schedules.entries()) {
+    if (!entry.include) continue
     const destinations: (number | null)[] = entry.proposal.existingIds.length ? entry.proposal.existingIds : [null]
     for (const id of destinations) {
-      if (id !== null && used.has(id)) throw new Error('같은 기존 일정을 두 번 갱신할 수 없습니다.')
+      if (id !== null && used.has(id)) throw new ReviewError('같은 기존 일정을 두 번 갱신할 수 없습니다.', `schedule:${index}`)
       if (id !== null) used.add(id)
       const before = workspace.events.find(event => event.id === id)
       const after = Object.fromEntries(scheduleFields.map(([field]) => [field, before?.data[field] ?? null]))
       applyCells(after, entry.cells, scheduleFields)
-      if (entry.cells.some(cell => !validCellValue(cell.kind, after[cell.field]))) throw new Error('일정 유형·이름·시작·종료를 확인하세요. 미확인 일정은 제외하세요.')
-      if (String(after.endAt) < String(after.startAt)) throw new Error('일정 종료가 시작보다 빠릅니다.')
+      if (entry.cells.some(cell => !validCellValue(cell.kind, after[cell.field]))) throw new ReviewError('일정 유형·이름·시작·종료를 확인하세요. 미확인 일정은 제외하세요.', `schedule:${index}`)
+      if (String(after.endAt) < String(after.startAt)) throw new ReviewError('일정 종료가 시작보다 빠릅니다.', `schedule:${index}`)
       schedules.push({ inputIndex: document.schedules.length, existingId: id }); document.schedules.push(after)
     }
   }
@@ -352,7 +370,7 @@ export function rebaseReview(previous: Review, workspace: JsonWorkspace, housing
       const candidates = housing[anchor?.housingComplexId ?? old.proposal.newComplex?.id ?? 0] ?? old.proposal.candidates ?? []
       row = createRowReview(next.extraction, index, { ...old.proposal, candidates, housingTypeId: candidates.some(type => type.id === old.proposal.housingTypeId) ? old.proposal.housingTypeId : null }, workspace)
     }
-    row.include = old.include; row.reviewed = old.reviewed; row.cells = row.cells.map(retain)
+    row.include = old.include; row.reviewed = old.reviewed; row.newHousingType = old.newHousingType; row.cells = row.cells.map(retain)
     next.rows[index] = row
     row.targets = row.targets.map((target, at) => {
       const choice = old.targets[at].destination

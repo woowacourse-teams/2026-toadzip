@@ -11,6 +11,8 @@ type Props = {
   attachments: NonNullable<JsonWorkspace['detail']['attachments']>
   attachmentId: string
   onAttachment: (id: string) => void
+  localPdf: boolean
+  onLocalFile: (file: File) => void
   pdf: { url: string; name: string } | null
   pdfError: string
   text: string
@@ -20,7 +22,7 @@ type Props = {
   onReview: () => void
 }
 
-export function RequestPreparation({ attachments, attachmentId, onAttachment, pdf, pdfError, text, onText, parsed, checks, onReview }: Props) {
+export function RequestPreparation({ attachments, attachmentId, onAttachment, localPdf, onLocalFile, pdf, pdfError, text, onText, parsed, checks, onReview }: Props) {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const mismatched = checks.some(check => check.matches === false)
@@ -41,6 +43,7 @@ export function RequestPreparation({ attachments, attachmentId, onAttachment, pd
       const copied = navigator.clipboard.writeText(prompt)
       window.open('https://chatgpt.com/', '_blank', 'noopener,noreferrer')
       void copied.then(() => {
+        if (localPdf) { setMessage('프롬프트를 복사했습니다. ChatGPT에서 고른 PDF를 첨부하고 프롬프트를 붙여넣으세요.'); return }
         const link = document.createElement('a')
         link.href = pdf.url; link.download = pdf.name
         document.body.append(link); link.click(); link.remove()
@@ -51,13 +54,21 @@ export function RequestPreparation({ attachments, attachmentId, onAttachment, pd
 
   return <div className={styles.prepare}>
     <section aria-labelledby="pdf-request-title">
-      <header><h2 id="pdf-request-title">ChatGPT에 요청하기</h2><p>등록된 PDF와 아래 프롬프트를 사용합니다.</p></header>
+      <header><h2 id="pdf-request-title">ChatGPT에 요청하기</h2><p>공고문 PDF와 아래 프롬프트를 사용합니다.</p></header>
       <div className={styles.sourceFile}>
-        {attachments.length ? <PdfFilePicker files={attachments} value={attachmentId} onChange={onAttachment} />
-          : <strong>등록된 PDF가 없습니다.</strong>}
+        {localPdf && pdf ? <strong title={pdf.name}>내 PC · {pdf.name}</strong>
+          : attachments.length ? <PdfFilePicker files={attachments} value={attachmentId} onChange={onAttachment} />
+          : <strong>연결된 PDF가 없습니다. 원문에서 받은 PDF를 고르세요.</strong>}
+        <div className={styles.sourceActions}>
+          {pdf && !localPdf && <a className={styles.downloadButton} href={pdf.url} download={pdf.name}>PDF 다운로드</a>}
+          {(!attachments.length || localPdf) && <label className={styles.downloadButton}>내 PC에서 PDF 고르기<input type="file" accept="application/pdf,.pdf" className={styles.srOnly} onChange={event => {
+            const file = event.target.files?.[0]; event.target.value = ''
+            if (!file) return
+            if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) { setError('PDF 파일만 고를 수 있습니다.'); return }
+            setError(''); onLocalFile(file)
+          }} /></label>}
+        </div>
         {pdfError && <p role="alert">{pdfError}</p>}
-        {pdf && <a className={styles.downloadButton} href={pdf.url} download={pdf.name}>PDF 다운로드</a>}
-        {!attachments.length && <p className={styles.hint}>공고 상세의 공고문·첨부파일에서 PDF를 먼저 등록하세요.</p>}
       </div>
       <section className={styles.promptPanel} aria-labelledby="extraction-prompt-title">
         <header><h3 id="extraction-prompt-title">추출 프롬프트 <span>v3</span></h3><Button data-design-system className={`${styles.secondaryButton} ${styles.copyButton}`} onClick={() => void copyPrompt()}>{message ? '프롬프트 복사됨' : '프롬프트만 복사'}</Button></header>
@@ -65,7 +76,7 @@ export function RequestPreparation({ attachments, attachmentId, onAttachment, pd
       </section>
       <span role="status" className={styles.srOnly}>{message}</span>
       <div className={styles.prepareError}>{error && <p role="alert" className={styles.error}>{error}</p>}</div>
-      <footer className={styles.prepareAction}><p className={styles.hint}>ChatGPT 새 대화에서 브라우저 다운로드 목록(오른쪽 위 ↓)의 PDF를 입력창으로 끌어 놓고 ⌘V로 프롬프트를 붙여넣으세요.</p><Button data-design-system disabled={!pdf} onClick={prepareChatGpt}>PDF 받고 프롬프트 복사해 ChatGPT 열기</Button></footer>
+      <footer className={styles.prepareAction}><p className={styles.hint}>ChatGPT 새 대화에서 브라우저 다운로드 목록(오른쪽 위 ↓)의 PDF를 입력창으로 끌어 놓고 ⌘V로 프롬프트를 붙여넣으세요.</p><Button data-design-system disabled={!pdf} onClick={prepareChatGpt}>{localPdf ? '프롬프트 복사해 ChatGPT 열기' : 'PDF 받고 프롬프트 복사해 ChatGPT 열기'}</Button></footer>
     </section>
     <section aria-labelledby="pdf-response-title">
       <header><h2 id="pdf-response-title">응답 가져오기</h2><p>ChatGPT가 답하면 전체 내용을 그대로 붙여넣으세요.</p></header>
