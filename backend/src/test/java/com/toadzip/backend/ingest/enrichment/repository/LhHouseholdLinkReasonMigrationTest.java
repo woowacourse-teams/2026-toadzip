@@ -40,8 +40,8 @@ class LhHouseholdLinkReasonMigrationTest {
                 statement.execute("CREATE TABLE " + TABLE + " (reason varchar(40) NOT NULL CONSTRAINT "
                         + TABLE + "_reason_check CHECK (reason IN ('INVALID_SOURCE')))");
                 statement.execute("INSERT INTO " + TABLE + " VALUES ('INVALID_SOURCE')");
-                for (String migration : List.of("V20261024_04__lh_household_link_review_reason.sql",
-                        "V20261024_06__lh_household_target_decision_reason.sql")) {
+                for (String migration : List.of("V20261024_06__lh_household_link_review_reason.sql",
+                        "V20261024_08__lh_household_target_decision_reason.sql")) {
                     var resource = new ClassPathResource("db/migration/" + migration);
                     ScriptUtils.executeSqlScript(connection, resource);
                     ScriptUtils.executeSqlScript(connection, resource);
