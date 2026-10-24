@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.mapping.service;
 
+import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -8,17 +9,24 @@ import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
+import com.toadzip.backend.ingest.mapping.domain.AnnouncementSupplyMatchDecision;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink;
+import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMerge;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
+import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository;
+import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMergeStore;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingRejectedException;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeHousingTypeMappingData;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +46,9 @@ public class MyHomeComplexMappingWriter {
     private final MyHomeComplexLinkRepository linkRepository;
     private final MyHomeComplexSourceReader sourceRepository;
     private final MyHomeComplexSourceMapper sourceMapper;
+    private final MyHomeComplexMergeStore mergeStore;
+    private final AnnouncementSupplyMatchDecisionRepository matchDecisionRepository;
+    private final SupplyMatchingFingerprint fingerprints;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public MyHomeComplexMappingReport write(MyHomeComplexMappingData data, Address address) {
@@ -46,7 +57,7 @@ public class MyHomeComplexMappingWriter {
             throw mergedSourceConflict("확인된 원천 연결이 변경되어 재정제를 보류합니다.");
         }
         rejectChangedVerifiedSupplyType(data.sourceComplexIdentifier());
-        ComplexWriteResult complexResult = upsertComplex(data, address);
+        ComplexWriteResult complexResult = upsertComplex(data, address, link);
         if (link == null) {
             linkRepository.save(MyHomeComplexLink.connect(data.sourceComplexIdentifier(), complexResult.complex()));
         }
@@ -54,6 +65,45 @@ public class MyHomeComplexMappingWriter {
                 complexResult.complex(),
                 data.housingTypes()
         );
+        return new MyHomeComplexMappingReport(
+                complexResult.created(),
+                complexResult.updated(),
+                complexResult.unchanged(),
+                housingTypeResult.created(),
+                housingTypeResult.updated(),
+                housingTypeResult.unchanged(),
+                housingTypeResult.deleted(),
+                0
+        );
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public MyHomeComplexMappingReport writeSplit(
+            List<MyHomeComplexMappingData> members, MyHomeComplexMappingData combined, Address address
+    ) {
+        List<String> identifiers = members.stream().map(MyHomeComplexMappingData::sourceComplexIdentifier).toList();
+        List<MyHomeComplexLink> links = linkRepository.findAllById(identifiers);
+        if (links.stream().anyMatch(link -> link.getMergeId() != null)) {
+            throw mergedSourceConflict("확인된 원천 연결이 변경되어 재정제를 보류합니다.");
+        }
+        identifiers.forEach(this::rejectChangedVerifiedSupplyType);
+        List<Long> complexIds = links.stream().map(link -> link.getHousingComplex().getId())
+                .distinct().sorted().toList();
+        ComplexWriteResult complexResult;
+        if (complexIds.isEmpty()) {
+            complexResult = upsertComplex(combined, address, null);
+        }
+        else {
+            absorbSplitComplexes(complexIds);
+            HousingComplex representative = complexRepository.findById(complexIds.getFirst()).orElseThrow();
+            complexResult = updateComplex(representative, combined, address);
+        }
+        HousingComplex complex = complexResult.complex();
+        List<String> linked = links.stream().map(MyHomeComplexLink::getSourceComplexIdentifier).toList();
+        identifiers.stream().filter(identifier -> !linked.contains(identifier))
+                .forEach(identifier -> linkRepository.save(MyHomeComplexLink.connect(identifier, complex)));
+        HousingTypeWriteResult housingTypeResult = synchronizeHousingTypes(
+                complex, distinctHousingTypes(complex, combined.housingTypes()));
         return new MyHomeComplexMappingReport(
                 complexResult.created(),
                 complexResult.updated(),
@@ -75,8 +125,57 @@ public class MyHomeComplexMappingWriter {
         return writeVerifiedGroup(link);
     }
 
-    private ComplexWriteResult upsertComplex(MyHomeComplexMappingData data, Address address) {
-        HousingComplex complex = complexRepository
+    private void absorbSplitComplexes(List<Long> complexIds) {
+        if (complexIds.size() == 1) {
+            return;
+        }
+        List<HousingComplex> complexes = complexIds.stream()
+                .map(id -> complexRepository.findByIdForUpdate(id).orElseThrow()).toList();
+        if (complexes.stream().anyMatch(complex -> complex.isAdminModified() || complex.isAdminDeleted())) {
+            throw mergedSourceConflict("관리자가 수정했거나 삭제한 단지가 있어 분할 단지 통합을 보류합니다.");
+        }
+        String imageUrl;
+        Integer moveOutCount;
+        try {
+            imageUrl = MyHomeComplexMerge.singleManualValue(complexes, HousingComplex::getImageUrl);
+            moveOutCount = MyHomeComplexMerge.singleManualValue(
+                    complexes, HousingComplex::getRecentOneYearMoveOutCount);
+        }
+        catch (IllegalArgumentException exception) {
+            throw mergedSourceConflict("분할 단지의 수동 입력값이 서로 달라 통합을 보류합니다.");
+        }
+        if (mergeStore.countHouseholdTargetDecisions(complexIds) > 1) {
+            throw mergedSourceConflict("분할 단지마다 LH 세대수 결정이 있어 통합을 보류합니다. 한쪽 결정을 해제해야 합니다.");
+        }
+        HousingComplex representative = complexes.getFirst();
+        List<Long> donorIds = complexIds.subList(1, complexIds.size());
+        List<Long> validDecisions = matchDecisionRepository.findAllByComplexIdIn(donorIds).stream()
+                .filter(this::hasValidTarget).map(AnnouncementSupplyMatchDecision::getId).toList();
+        List<Long> validGroupRows = donorIds.stream().flatMap(id -> supplyRowRepository.findAllByHousingComplexId(id)
+                        .stream())
+                .filter(row -> row.getConfirmedTargetFingerprint() != null && row.getHousingType() != null
+                        && fingerprints.target(row.getHousingType()).equals(row.getConfirmedTargetFingerprint()))
+                .map(SupplyRow::getId).toList();
+        representative.adoptVerifiedMerge(representative.getTotalHouseholdCount(), imageUrl, moveOutCount);
+        mergeStore.absorbSplitComplexes(representative.getId(), donorIds);
+        matchDecisionRepository.findAllById(validDecisions).forEach(decision -> decision.moveToComplex(
+                representative.getId(),
+                fingerprints.target(housingTypeRepository.findById(decision.getHousingTypeId()).orElseThrow())));
+        supplyRowRepository.findAllById(validGroupRows).forEach(row ->
+                row.reconfirmTargetAfterComplexMove(fingerprints.target(row.getHousingType())));
+    }
+
+    private boolean hasValidTarget(AnnouncementSupplyMatchDecision decision) {
+        HousingType type = decision.getHousingTypeId() == null ? null
+                : housingTypeRepository.findById(decision.getHousingTypeId()).orElse(null);
+        return type != null && type.getHousingComplex().getId().equals(decision.getComplexId())
+                && fingerprints.target(type).equals(decision.getTargetFingerprint());
+    }
+
+    private ComplexWriteResult upsertComplex(
+            MyHomeComplexMappingData data, Address address, MyHomeComplexLink link
+    ) {
+        HousingComplex complex = link != null ? link.getHousingComplex() : complexRepository
                 .findBySourceComplexIdentifier(data.sourceComplexIdentifier())
                 .orElse(null);
         if (complex == null) {
@@ -96,6 +195,10 @@ public class MyHomeComplexMappingWriter {
             );
             return new ComplexWriteResult(complexRepository.save(created), 1, 0);
         }
+        return updateComplex(complex, data, address);
+    }
+
+    private ComplexWriteResult updateComplex(HousingComplex complex, MyHomeComplexMappingData data, Address address) {
         complex = complexRepository.findByIdForUpdate(complex.getId()).orElseThrow();
         boolean detailsUpdated = complex.updateFromMyHome(
                 data.name(),
@@ -161,6 +264,25 @@ public class MyHomeComplexMappingWriter {
         if (missingVerifiedSource) {
             throw mergedSourceConflict("확인된 원천의 공급유형이 변경되어 단지 생성과 갱신을 보류합니다.");
         }
+    }
+
+    private List<MyHomeHousingTypeMappingData> distinctHousingTypes(
+            HousingComplex complex, List<MyHomeHousingTypeMappingData> incoming
+    ) {
+        Set<String> stored = housingTypeRepository.findAllByHousingComplex(complex).stream()
+                .map(HousingType::getSourceHousingTypeIdentifier).filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<List<Object>, MyHomeHousingTypeMappingData> distinct = new LinkedHashMap<>();
+        for (MyHomeHousingTypeMappingData type : incoming) {
+            List<Object> key = Arrays.asList(type.name(), type.exclusiveArea().stripTrailingZeros(),
+                    type.supplyArea() == null ? null : type.supplyArea().stripTrailingZeros());
+            MyHomeHousingTypeMappingData chosen = distinct.get(key);
+            if (chosen == null || !stored.contains(chosen.sourceHousingTypeIdentifier())
+                    && stored.contains(type.sourceHousingTypeIdentifier())) {
+                distinct.put(key, type);
+            }
+        }
+        return List.copyOf(distinct.values());
     }
 
     private HousingTypeWriteResult synchronizeHousingTypes(
@@ -266,6 +388,7 @@ public class MyHomeComplexMappingWriter {
         List<HousingType> deletable = stale.stream()
                 .filter(type -> !type.isAdminModified())
                 .filter(type -> !supplyRowRepository.existsByHousingType(type))
+                .filter(type -> !matchDecisionRepository.existsByHousingTypeId(type.getId()))
                 .filter(type -> !preserveSupplementalValues || !type.hasSupplementalInformation())
                 .toList();
         housingTypeRepository.deleteAll(deletable);
