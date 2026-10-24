@@ -25,9 +25,10 @@
 .admin-layout .admin-content :is(button,a).admin-tonal:not([data-design-system]):hover:not(:disabled) {background:var(--ds-color-action-selected);}
 .admin-layout .admin-content :is(button,a).admin-danger:not([data-design-system]) {background:#fff;color:#a33232;border-color:#ecc7c7;}
 .admin-layout .admin-content :is(button,a).admin-danger:not([data-design-system]):hover:not(:disabled) {background:#fff3f3;}
-.management-heading {display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin:20px 0 26px;}
-.management-heading h1 {font-size:28px;line-height:1.3;margin:0 0 12px;overflow-wrap:anywhere;}
-.management-heading p {color:#5b6e66;line-height:1.6;}
+/* 페이지 제목 영역: 모든 관리자 화면이 같은 높이에서 시작하고, 제목 아래 설명은 8px 띄운 본문 크기로 둔다. */
+.management-heading {display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin:0 0 20px;}
+.management-heading h1 {line-height:1.3;margin:0 0 8px;overflow-wrap:anywhere;}
+.management-heading p {margin:0;color:var(--ds-color-muted-base);font-size:var(--admin-text-body,15px);line-height:1.6;}
 .admin-registration-heading h1 {font-size:28px;line-height:1.3;margin:0;overflow-wrap:anywhere;}
 .admin-registration-heading p {color:#5b6e66;line-height:1.6;}
 .management-filters {display:flex;align-items:flex-end;flex-wrap:wrap;gap:14px;padding:22px;background:white;border:1px solid #dbe5e1;border-radius:8px;margin-bottom:24px;}

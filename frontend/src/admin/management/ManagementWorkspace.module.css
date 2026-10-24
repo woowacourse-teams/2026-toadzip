@@ -148,7 +148,8 @@
 .editor :global(.admin-linked-announcement) :global(.admin-save-bar) { margin-inline: -16px; padding-inline: 16px; }
 
 /* Opening a record gives the editor the entire content width; the list stays mounted. */
-.description { margin: -4px 0 12px; font-size: var(--admin-text-body); color: var(--ds-color-muted-base); }
+/* 제목 줄의 아래 여백(12px)과 겹쳐 다른 화면처럼 제목과 8px 간격이 되게 한다. */
+.workspace .description { margin: -4px 0 12px; font-size: var(--admin-text-body); line-height: 1.6; color: var(--ds-color-muted-base); }
 .body.withEditor { display: flex; flex-direction: column; --management-pane-height: auto; }
 .listPane { min-width: 0; width: 100%; order: 0; }
 .withEditor .editor { order: 1; width: 100%; height: auto; overflow: visible; }

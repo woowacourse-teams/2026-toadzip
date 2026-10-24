@@ -29,7 +29,7 @@ it('이전 담당 업무 주소로 들어와도 검토 목록을 조회하고 �
   render(<MemoryRouter initialEntries={['/admin/quality?view=tasks&taskMine=true&taskPage=2']}><QualityQueuePage /></MemoryRouter>)
   expect(await screen.findByText('현재 조건에 검토할 대상이 없습니다.')).toBeVisible()
   expect(screen.getByRole('form', { name: '검토 대상 검색' })).toBeVisible()
-  expect(mocks.requestManagementApi).toHaveBeenCalledWith('/api/admin/quality/queue?resource=ANNOUNCEMENT', 'GET', undefined, expect.any(AbortSignal))
+  expect(mocks.requestManagementApi).toHaveBeenCalledWith('/api/admin/quality/queue?resource=COMPLEX', 'GET', undefined, expect.any(AbortSignal))
 })
 
 it('검토 사유와 빠진 항목을 보여주고 비교 화면으로 바로 연결한다', async () => {
