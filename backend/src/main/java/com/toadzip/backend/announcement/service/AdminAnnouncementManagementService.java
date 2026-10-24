@@ -282,7 +282,8 @@ public class AdminAnnouncementManagementService {
                 new AdminDataSummary.AnnouncementSummary(announcement.getSourceAnnouncementIdentifier(),
                         announcement.getOriginalUrl(), announcement.getRecruitmentType().name(),
                         announcement.getPostedDate(), announcement.getApplicationStartDate(),
-                        announcement.getApplicationEndDate(), announcement.getWinnerAnnouncementDate()));
+                        announcement.getApplicationEndDate(), announcement.getWinnerAnnouncementDate(),
+                        announcement.getStatus().name()));
     }
 
     private AdminAnnouncementUpdateRequest data(Announcement announcement) {

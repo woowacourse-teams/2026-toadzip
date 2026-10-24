@@ -86,6 +86,8 @@ it('동일한 비교값을 전체 검토 완료로 표현하지 않고 비교할
   mocks.load.mockResolvedValue({ ...snapshot, sources: [{ ...snapshot.sources[0], rows: [{ id: 9, name: '단지', collectedAt: null, raw: { exclusive_area: '26.1234' } }] }] })
   show()
   expect(await screen.findByText('비교값 같음')).toBeVisible()
+  const group = screen.getByText(/원천과 비교할 수 없는 항목/).closest('details')!
+  expect(group).not.toHaveAttribute('open')
   fireEvent.click(screen.getByRole('button', { name: /다른 값만/ }))
   expect(screen.getByText(/비교 불가·직접 대조 항목은 별도로 확인/)).toBeVisible()
   expect(screen.getByRole('button', { name: '현재 원천 확인 기록' })).toBeDisabled()
