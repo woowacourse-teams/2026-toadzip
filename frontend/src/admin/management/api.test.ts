@@ -102,12 +102,12 @@ describe('관리 데이터 API', () => {
   )
 
   it('오류 응답의 상태·메시지·필드 오류를 보존하고 잘못된 오류 항목은 제외한다', async () => {
-    mockFetch({ message: '다른 작업에서 변경했습니다.', errors: [
+    mockFetch({ code: 'ADMIN_DATA_STALE', message: '다른 작업에서 변경했습니다.', errors: [
       { field: 'name', reason: '필수 값입니다.' }, { field: 'version', reason: 1 }, null,
     ] }, 409)
     const { requestManagementApi } = await import('./api')
     await expect(requestManagementApi('/api/admin/announcements/7')).rejects.toMatchObject({
-      status: 409, message: '다른 작업에서 변경했습니다.', fields: { name: '필수 값입니다.' },
+      status: 409, code: 'ADMIN_DATA_STALE', message: '다른 작업에서 변경했습니다.', fields: { name: '필수 값입니다.' },
     })
   })
 
@@ -115,7 +115,7 @@ describe('관리 데이터 API', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('gateway unavailable', { status: 502 })))
     const { requestManagementApi } = await import('./api')
     await expect(requestManagementApi('/api/admin/announcements')).rejects.toMatchObject({
-      status: 502, message: '요청을 처리하지 못했습니다. 다시 시도해 주세요.',
+      status: 502, code: null, message: '요청을 처리하지 못했습니다. 다시 시도해 주세요.',
     })
   })
 
