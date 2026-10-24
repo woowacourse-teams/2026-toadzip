@@ -51,3 +51,7 @@ it('로그아웃 실패는 알리고 다시 시도해 로그인 화면으로 이
   fireEvent.click(screen.getByRole('button', { name: '로그아웃' }))
   await waitFor(() => expect(screen.getByRole('heading', { name: '관리자 로그인' })).toBeVisible())
 })
+it('관리자 화면의 로고는 서비스 홈이 아니라 운영 홈으로 연결한다', () => {
+  setup()
+  expect(screen.getByRole('link', { name: '관리자 운영 홈으로' })).toHaveAttribute('href', '/admin/operations')
+})
