@@ -47,3 +47,4 @@
 .row[data-inline] > .rowBody { padding:var(--ds-space-4); }
 .tableScroll td { font-variant-numeric:tabular-nums; }
 .tableScroll tr[data-excluded] > :is(th,td) { color:var(--ds-color-label); }
+.stale { margin: 8px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--ds-color-status-upcoming-surface); color: var(--ds-color-status-upcoming); font-weight: 600; }

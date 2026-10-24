@@ -11,6 +11,8 @@ import { rebaseCorrection, resolveConflict, type CorrectionConflict } from './re
 import { applySupply, blankRow, loadSupplyWorkspace, nextDisplayOrder, previewSupply, type CorrectionRow, type SupplyCorrectionInput, type NewSupplyGroup, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
 import styles from './SupplyCorrection.module.css'
 
+// 다시 조회하면 풀리는 충돌만 '최신값 비교'로 안내한다. 일정 참조 같은 규칙 위반은 서버 문구를 그대로 보여 준다.
+function isStaleConflict(cause: unknown) { return cause instanceof ManagementError && cause.code === 'ADMIN_DATA_STALE' }
 
 export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChange, onDirtyChange }: {
   id: string; sourceUrl: string; onChanged: () => void; onBusyChange: (value: boolean) => void; onDirtyChange: (value: boolean) => void
@@ -31,7 +33,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
   const [applied, setApplied] = useState<{ changeId: number; evidence: ReviewEvidence; changed: string[] } | null>(null)
   const rowsDirty = workspace !== null && (JSON.stringify(rows) !== JSON.stringify(workspace.rows) || newGroups.length > 0 || conflicts.length > 0)
   const blockerId = useId()
-  const previewBlocker = stale ? '저장값이 바뀌었습니다. ‘입력을 유지하고 최신값 비교’로 내 입력과 최신값을 맞춘 뒤 다시 저장하세요.'
+  const previewBlocker = stale ? '저장하는 사이 등록값이나 원천이 바뀌어 저장하지 않았습니다. 내 입력은 그대로 있으니 ‘입력을 유지하고 최신값 비교’로 맞춘 뒤 다시 저장하세요.'
     : conflicts.length > 0 ? `겹치는 변경 ${conflicts.length}개에서 사용할 값을 먼저 고르세요.`
       : !rowsDirty ? '아직 변경한 공급정보가 없습니다.' : ''
   const dirty = rowsDirty || reviewDirty || pdfOpen || uncertain || reason.length > 0 || page.length > 0 || url !== sourceUrl
@@ -64,7 +66,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
       const checked = { input, result }; setPreview(checked); setStale(false)
       await apply(checked)
     }
-    catch (cause) { setError(cause instanceof Error ? cause.message : '공급정보를 확인하지 못했습니다.'); setStale(cause instanceof ManagementError && cause.status === 409) }
+    catch (cause) { setError(cause instanceof Error ? cause.message : '공급정보를 확인하지 못했습니다.'); setStale(isStaleConflict(cause)) }
     finally { setBusy(false) }
   }
   async function apply(checked = preview) {
@@ -86,7 +88,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
       if (rejected) forgetApply(id)
       setUncertain(!rejected)
       setError(rejected ? cause.message : '적용 결과를 확인하지 못했습니다. 중복 생성을 막기 위해 입력을 잠갔습니다. 같은 작업으로 결과를 다시 확인하세요.')
-      setStale(cause instanceof ManagementError && cause.status === 409)
+      setStale(isStaleConflict(cause))
     }
     finally { setBusy(false) }
   }
@@ -125,7 +127,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
             const targets = row.targets.filter(target => !target.excluded)
             const gaps = row.excluded ? ['제외 예정'] : [!row.housingComplexId && '단지 연결', !row.housingTypeId && !row.newHousingType && '주택형 연결', !targets.length && '임대조건 없음'].filter(Boolean)
             return <Fragment key={row.key}><tr data-excluded={row.excluded || undefined}>
-              <th scope="row">{row.complexName || '새 공급행'}</th><td>{row.typeName || '미입력'}</td>
+              <th scope="row" title={row.housingComplexName && row.complexName && row.housingComplexName !== row.complexName ? `공고 표기: ${row.complexName}` : undefined}>{row.housingComplexName || row.complexName || '새 공급행'}</th><td>{row.typeName || '미입력'}</td>
               <td>{group || row.groupId ? `공통 ${group?.sharedHouseholdCount ?? row.sharedHouseholdCount ?? '미확인'}` : row.householdCount ?? '미확인'}</td>
               <td>{targets.length ? `${targets.length}개` : '없음'}</td><td>{gaps.join(' · ') || '—'}</td>
               <td><button type="button" aria-label={`${row.complexName || '새 공급행'} ${row.typeName || ''} 편집`} aria-expanded={expanded === row.key} onClick={() => setExpanded(expanded === row.key ? null : row.key)}>{expanded === row.key ? '닫기' : '편집'}</button></td>
@@ -152,10 +154,11 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
         <div className={styles.actions}><button className="admin-primary" type="submit" disabled={!!previewBlocker} aria-describedby={previewBlocker ? blockerId : undefined}>{busy ? '저장 중…' : '공급정보 저장'}</button>
           {rowsDirty && <button type="button" onClick={() => { if (window.confirm('저장하지 않은 공급정보 변경을 취소할까요?')) { setRows(workspace.rows); setNewGroups([]); setReason(''); setPage(''); setUrl(sourceUrl); setConflicts([]); setPreview(null); setExpanded(null); setNotice('') } }}>변경 취소</button>}
           {stale && <button type="button" onClick={() => void refreshKeepingDraft()}>입력을 유지하고 최신값 비교</button>}</div>
-        {previewBlocker && <p id={blockerId} className={styles.hint}>{previewBlocker}</p>}
+        {previewBlocker && <p id={blockerId} role={stale ? 'alert' : undefined} className={stale ? styles.stale : styles.hint}>{previewBlocker}</p>}
       </fieldset>
     </form>
-    {error && <p role="alert" className="registration-error">{error}</p>}
+    {/* 다시 조회하면 풀리는 충돌은 저장 버튼 아래 안내 하나로만 알린다. */}
+    {error && !stale && <p role="alert" className="registration-error">{error}</p>}
     {uncertain && <button type="button" className="admin-primary" disabled={busy} onClick={() => void apply()}>같은 작업으로 적용 결과 확인</button>}
     {appliedWarnings.length > 0 && <details><summary>저장 후 확인할 항목 {appliedWarnings.length}개</summary><ul>{appliedWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>}
     <SupplyReviewPanel key={applied ? `applied:${applied.changeId}` : 'review'} id={id} workspace={workspace} sourceUrl={sourceUrl} disabled={rowsDirty || busy || uncertain}

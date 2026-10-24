@@ -20,8 +20,11 @@ import java.math.BigDecimal;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -137,8 +140,38 @@ class SupplyCorrectionIntegrationTest {
         var preview = preview(id, request);
         other.getHousingType().reviseByAdmin("바뀐 공통형명", new BigDecimal("29.1234"), null);
         entities.flush();
-        apply(id, request, preview).andExpect(status().isConflict());
+        apply(id, request, preview).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"));
         assertThat(row.getHousingComplex().getId()).isNotEqualTo(other.getHousingComplex().getId());
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void 화면을_연_뒤_저장값이_바뀌면_어느_확인에서_막혔는지_로그에_남긴다(CapturedOutput output) throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId(); var request = request(id);
+        ((ObjectNode) request.get("rows").get(0)).put("typeName", "26A");
+        jdbc.update("UPDATE supply_rows SET source_housing_type_name = '다른 관리자 형명' WHERE id = ?", row.getId());
+        entities.clear();
+        mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType("application/json").content(json.writeValueAsString(request)))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"));
+        assertThat(output).contains("event=announcement.supply_correction.conflict_detected announcementId=" + id
+                + " check=snapshot").contains("requestToken=" + request.get("snapshotToken").asText().substring(0, 12))
+                .contains("rowsHash=");
+    }
+
+    @Test
+    void DB가_공급행을_돌려주는_순서가_달라도_작업실과_PDF보정_토큰은_같다() throws Exception {
+        var first = fixture(); var announcement = first.getAnnouncement(); long id = announcement.getId();
+        entities.persist(SupplyRow.create(announcement, first.getHousingComplex(), first.getHousingType(),
+                UUID.randomUUID().toString(), 1, first.getHousingComplex().getName(), "36", "1114010100100010000", null,
+                SupplyCategory.NEW_SUPPLY, null, 5));
+        entities.flush(); entities.clear();
+        String supplyBefore = request(id).get("snapshotToken").asText(); String pdfBefore = jsonCorrectionToken(id);
+        // 값은 그대로 두고 행의 저장 위치만 옮긴다. 정렬 없이 읽으면 두 공급행이 돌아오는 순서가 바뀐다.
+        jdbc.update("UPDATE supply_rows SET display_order = display_order WHERE id = ?", first.getId());
+        entities.clear();
+        assertThat(request(id).get("snapshotToken").asText()).isEqualTo(supplyBefore);
+        assertThat(jsonCorrectionToken(id)).isEqualTo(pdfBefore);
     }
 
     @Test
@@ -387,7 +420,8 @@ class SupplyCorrectionIntegrationTest {
         ((ObjectNode) request.get("rows").get(0)).put("excluded", true);
         mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType("application/json").content(json.writeValueAsString(request)))
-                .andExpect(status().isConflict());
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_CONFLICT"))
+                .andExpect(jsonPath("$.message").value("제외·연결 변경할 단지에 접수 일정이 있습니다. 일정 적용 단지를 먼저 수정하세요."));
         assertThat(row.isAdminExcluded()).isFalse();
     }
 
@@ -471,7 +505,8 @@ class SupplyCorrectionIntegrationTest {
         var preview = preview(row.getAnnouncement().getId(), request);
         row.getHousingType().reviseByAdmin("변경된 주택형", new BigDecimal("29.1234"), null);
         entities.flush();
-        apply(row.getAnnouncement().getId(), request, preview).andExpect(status().isConflict());
+        apply(row.getAnnouncement().getId(), request, preview).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"));
         assertThat(rows.findAllByAnnouncement(row.getAnnouncement())).hasSize(1);
         assertThat(row.getSupplyGroup()).isNull();
     }
@@ -548,6 +583,12 @@ class SupplyCorrectionIntegrationTest {
         body.put("confirmationToken", preview.get("confirmationToken").asText());
         return mvc.perform(post(root(id)).with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType("application/json").content(json.writeValueAsString(body)));
+    }
+
+    private String jsonCorrectionToken(long id) throws Exception {
+        return json.readTree(mvc.perform(get("/api/admin/announcements/" + id + "/json-corrections")
+                .with(user("admin").roles("ADMIN"))).andExpect(status().isOk()).andReturn().getResponse()
+                .getContentAsString()).get("data").get("snapshotToken").asText();
     }
 
     private String root(long id) { return "/api/admin/announcements/" + id + "/supply-corrections"; }
