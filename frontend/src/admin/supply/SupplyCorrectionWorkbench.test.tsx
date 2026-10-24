@@ -67,6 +67,27 @@ it('제외·복구와 순서 변경은 하위 임대조건을 지우지 않는�
   fireEvent.click(screen.getByRole('button', { name: '한스빌 26 편집' }))
   expect(screen.getByLabelText('보증금 (원)')).toHaveValue('100000000')
 })
+it('관리자가 추가한 저장 행만 삭제할 수 있고, 삭제 예정 행은 요청 행에서 빼고 deletedRowKeys로 보낸다', async () => {
+  const manual = { ...row, id: 5, key: 'row:5', complexName: '한스빌', typeName: '36', targets: [] }
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...workspace, rows: [row, manual], deletableRowKeys: ['row:5'] })
+  vi.mocked(previewSupply).mockResolvedValue({ confirmationToken: 'confirmed', before: [row, manual], after: [row], warnings: [] })
+  vi.mocked(applySupply).mockResolvedValue({ changeId: 3, alreadyApplied: false, workspace: { ...workspace, snapshotToken: 'after', rows: [row], deletableRowKeys: [] } })
+  await setup()
+  // 원천행에는 제외만 있다.
+  expect(screen.getByRole('button', { name: '공급행 제외' })).toBeVisible()
+  expect(screen.queryByRole('button', { name: '공급행 삭제' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '한스빌 36 편집' }))
+  fireEvent.click(screen.getByRole('button', { name: '공급행 삭제' }))
+  expect(screen.getByText('적용하면 관리자가 추가한 이 행과 하위 조건을 지웁니다. 복구할 수 없고 변경 이력에만 남습니다.')).toBeVisible()
+  expect(screen.getByRole('table', { name: '공급정보 표' })).toHaveTextContent('삭제 예정')
+  fireEvent.click(screen.getByRole('button', { name: '삭제 취소' }))
+  expect(screen.getByRole('table', { name: '공급정보 표' })).not.toHaveTextContent('삭제 예정')
+  fireEvent.click(screen.getByRole('button', { name: '공급행 삭제' }))
+  fireEvent.change(screen.getByLabelText('보정 이유'), { target: { value: '중복으로 추가한 행 삭제' } })
+  fireEvent.click(screen.getByRole('button', { name: '공급정보 저장' }))
+  await screen.findByText('공급정보를 저장했습니다.')
+  expect(previewSupply).toHaveBeenCalledWith('21', expect.objectContaining({ rows: [expect.objectContaining({ key: 'row:1' })], deletedRowKeys: ['row:5'] }))
+})
 it('공급행이 없는 공고에 첫 행과 임대조건을 직접 작성해 같은 저장 API로 생성한다', async () => {
   vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...workspace, rows: [] })
   await setup(false)

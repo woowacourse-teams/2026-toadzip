@@ -17,9 +17,10 @@ export type CorrectionRow = {
 export type CorrectionSource = { category: string; sourceKey: string; rows: { collectedAt?: string | null; raw: unknown }[] }
 /** 공급행이 기록한 원천행. sources에서 같은 분류·키의 원천을 찾는다. */
 export type RowSource = { rowKey: string; category: string; sourceKey: string }
-export type SupplyWorkspace = { snapshotToken: string; version: number; rows: CorrectionRow[]; sources: CorrectionSource[]; sourceWarnings?: string[]; rowSources?: RowSource[] }
+/** deletableRowKeys: 지울 수 있는 행(원천 없이 관리자가 추가한 행). 원천행은 제외만 할 수 있다. */
+export type SupplyWorkspace = { snapshotToken: string; version: number; rows: CorrectionRow[]; sources: CorrectionSource[]; sourceWarnings?: string[]; rowSources?: RowSource[]; deletableRowKeys?: string[] }
 export type NewSupplyGroup = { sourceRowId: number; rowKeys: string[]; sharedHouseholdCount: number }
-export type SupplyCorrectionInput = { operationId: string; snapshotToken: string; reason: string; sourceUrl: string; sourcePage: string | null; rows: CorrectionRow[]; newGroups?: NewSupplyGroup[] }
+export type SupplyCorrectionInput = { operationId: string; snapshotToken: string; reason: string; sourceUrl: string; sourcePage: string | null; rows: CorrectionRow[]; newGroups?: NewSupplyGroup[]; deletedRowKeys?: string[] }
 export type SupplyPreview = { confirmationToken: string; before: CorrectionRow[]; after: CorrectionRow[]; warnings: string[]; newGroups?: NewSupplyGroup[] }
 export type SupplyApplied = { changeId: number; alreadyApplied: boolean; workspace: SupplyWorkspace }
 const count = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
@@ -62,7 +63,8 @@ export function parseSupplyWorkspace(value: unknown): SupplyWorkspace {
   if (value.sourceWarnings !== undefined && (!Array.isArray(value.sourceWarnings) || !value.sourceWarnings.every(item => typeof item === 'string'))) invalid()
   if (value.rowSources !== undefined && (!Array.isArray(value.rowSources) || !value.rowSources.every(item => isRecord(item)
     && typeof item.rowKey === 'string' && typeof item.category === 'string' && typeof item.sourceKey === 'string'))) invalid()
-  return { sourceWarnings: (value.sourceWarnings ?? []) as string[], rowSources: (value.rowSources ?? []) as RowSource[], snapshotToken: value.snapshotToken,
+  if (value.deletableRowKeys !== undefined && (!Array.isArray(value.deletableRowKeys) || !value.deletableRowKeys.every(item => typeof item === 'string'))) invalid()
+  return { sourceWarnings: (value.sourceWarnings ?? []) as string[], rowSources: (value.rowSources ?? []) as RowSource[], deletableRowKeys: (value.deletableRowKeys ?? []) as string[], snapshotToken: value.snapshotToken,
     version: value.version, rows: value.rows.map(row), sources: value.sources as CorrectionSource[] }
 }
 const path = (id: string) => `/api/admin/announcements/${encodeURIComponent(id)}/supply-corrections`
