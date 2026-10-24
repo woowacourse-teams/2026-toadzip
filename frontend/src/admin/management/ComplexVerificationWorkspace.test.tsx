@@ -54,6 +54,7 @@ it('검토 링크로 단지를 열면 비교 화면을 표시하고 수정 작�
   show('/admin/complexes/7?section=verification')
   expect(await screen.findByRole('heading', { name: '원천과 비교하고 바로 수정' })).toBeVisible()
   expect(screen.getByRole('button', { name: '데이터 검증' })).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.click(await screen.findByRole('button', { name: '모든 항목' }))
   fireEvent.click(await screen.findByRole('button', { name: '이름 수정' }))
   fireEvent.change(screen.getByLabelText('이름 수정값'), { target: { value: '비교하며 수정 중' } })
   fireEvent.click(screen.getByText('확인 범위·검토 기록'))
