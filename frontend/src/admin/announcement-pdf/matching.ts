@@ -91,7 +91,7 @@ export function pickHousingType(extraction: Extraction, index: number, allTypes:
  * 단지는 정했지만 그 단지에 PDF 전용면적과 같은 주택형이 없으면 PDF 형명·면적을 돌려준다.
  * 이때만 'PDF 형명·면적으로 새 주택형 추가'를 고를 수 있다.
  */
-/** 단지에 연결되지 않은 기존 공급행(최초 입주자 공고처럼 등록 단지가 없던 원천행). PDF 행으로 대체한다. */
+/** 단지에 연결되지 않은 기존 공급행(최초 입주자 공고처럼 등록 단지가 없던 원천행). */
 export function emptyRow(row: CorrectionRow) { return !row.excluded && row.housingComplexId === null && row.groupId === null }
 
 export function missingHousingType(complexId: number | null, candidates: MatchingHousingType[], typeName: string, exclusiveArea: unknown, supplyArea: unknown) {
@@ -109,7 +109,7 @@ function sameRecruitment(row: Extraction['supplyRows'][number], current: Correct
 
 export function proposeRows(extraction: Extraction, all: CorrectionRow[], housing: HousingCandidates): RowProposal[] {
   const used = new Set<string>()
-  // 단지가 연결되지 않은 기존 행은 PDF 행으로 대체하므로 저장 위치로 제안하지 않는다. 관리자가 직접 고를 수는 있다.
+  // 단지가 연결되지 않은 기존 행은 단지를 정한 뒤 LH 원천행 맞추기(sourceAlignment)에서 연결·분할한다. 관리자가 직접 고를 수는 있다.
   const current = all.filter(item => !emptyRow(item))
   return extraction.supplyRows.map((row, index) => {
     const byComplexName = current.filter(item => !item.excluded && (sameComplex(row.complexName, item.complexName)

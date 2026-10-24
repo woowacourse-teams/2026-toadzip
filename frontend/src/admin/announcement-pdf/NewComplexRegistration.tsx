@@ -5,6 +5,8 @@ import { type AddressCandidate, lookupAddresses } from './addressLookupApi'
 import styles from './PdfCorrection.module.css'
 
 type Props = { index: number; defaultName: string; defaultAddress?: string; defaultHouseholds?: number | null; defaultParking?: number | null
+  /** LH 원천행의 PNU. 같은 필지로 등록해야 다음 정제에서 원천행이 이 단지를 찾는다. */
+  defaultPnu?: string
   rentalType: string; agencyCode: string; onCreated: (complex: { id: number; name: string }) => void }
 const PNU = /^\d{19}$/
 
@@ -14,8 +16,8 @@ const PNU = /^\d{19}$/
  * 공고문 단지 개요(주소·세대수·주차대수)를 미리 채우고 그 주소로 바로 검색한다. 후보를 고르면 주소·PNU·좌표가 채워지고,
  * 검색을 쓸 수 없으면 직접 입력한다.
  */
-export function NewComplexRegistration({ index, defaultName, defaultAddress = '', defaultHouseholds = null, defaultParking = null, rentalType, agencyCode, onCreated }: Props) {
-  const [values, setValues] = useState({ name: defaultName, address: defaultAddress, pnu: '', latitude: '', longitude: '',
+export function NewComplexRegistration({ index, defaultName, defaultAddress = '', defaultHouseholds = null, defaultParking = null, defaultPnu = '', rentalType, agencyCode, onCreated }: Props) {
+  const [values, setValues] = useState({ name: defaultName, address: defaultAddress, pnu: defaultPnu, latitude: '', longitude: '',
     households: defaultHouseholds === null ? '' : String(defaultHouseholds), parking: defaultParking === null ? '' : String(defaultParking), completionDate: '' })
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const [keyword, setKeyword] = useState(defaultAddress), [searching, setSearching] = useState(false)
