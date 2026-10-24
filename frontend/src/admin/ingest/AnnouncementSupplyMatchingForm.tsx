@@ -8,8 +8,9 @@ import { getSupplyMatches, searchMatchingComplexes, getMatchingHousingTypes, ref
 import styles from './AnnouncementSupplyMatchingForm.module.css'
 import { SupplySplitEditor } from './SupplySplitEditor'
 
-export function AnnouncementSupplyMatchingForm({ identifier, disabled = false, onApplied, onBusy }: {
-  identifier: string; disabled?: boolean; onApplied?: () => void; onBusy?: (busy: boolean) => void
+/** focusFailed: 오류 상세에서 열 때 실패·재확인 행만 펼치고 이미 연결된 행은 접어 둔다. 정제는 공고 전체 행으로 실행한다. */
+export function AnnouncementSupplyMatchingForm({ identifier, disabled = false, focusFailed = false, onApplied, onBusy }: {
+  identifier: string; disabled?: boolean; focusFailed?: boolean; onApplied?: () => void; onBusy?: (busy: boolean) => void
 }) {
   const [rows, setRows] = useState<SupplyMatch[]>([])
   const [error, setError] = useState('')
@@ -91,6 +92,21 @@ export function AnnouncementSupplyMatchingForm({ identifier, disabled = false, o
     finally { pending.current = false; if (alive.current) { setRefining(false); onBusy?.(false) } }
   }
 
+  const focused = focusFailed && rows.some(needsAction)
+  const editor = (row: SupplyMatch, index: number) => <Fragment key={`${identifier}:${revision}:${row.rowIdentifier}:${row.token}`}>
+    <SupplyMatchEditor row={row} index={index} disabled={disabled || refining || splitBusy || Boolean(splitRow && splitRow !== row.rowIdentifier)} onBusy={busy}
+      onChange={choose} onRelease={() => { void release(row) }}
+      hideType={splitRow === row.rowIdentifier || Boolean(row.splitGroup)}
+      autoSearch={focused && needsAction(row)}
+      onSplit={() => setSplitRow(row.rowIdentifier)} />
+    {splitRow === row.rowIdentifier && <SupplySplitEditor identifier={identifier} row={row}
+      complexId={choices[row.rowIdentifier]?.complexId ?? row.complexId} disabled={disabled || refining}
+      onBusy={value => { setSplitBusy(value); onBusy?.(value) }}
+      onCancel={() => setSplitRow(null)} onSaved={() => { setSplitRow(null); setRevision(value => value + 1); onApplied?.() }} />}
+  </Fragment>
+  const indexed = rows.map((row, index) => ({ row, index }))
+  const settled = indexed.filter(({ row }) => !needsAction(row))
+
   return <section className={styles.workspace} aria-label="공급행 수동 매칭">
     <header className={styles.heading}>
       <div><span className={styles.eyebrow}>공고 {identifier}</span><h4>단지·주택형 연결</h4></div>
@@ -100,18 +116,16 @@ export function AnnouncementSupplyMatchingForm({ identifier, disabled = false, o
     <p className={styles.description}>원천과 주택형의 면적·세대수를 확인해 연결하세요. 근거와 함께 저장하면 다음 정제에서도 같은 연결을 사용합니다.</p>
     {loading && <p role="status">매칭 정보를 불러오는 중…</p>}
     {error && <p role="alert">{error}</p>}
-    {notice && <p className={styles.notice} role="status">{notice} <Link to="/admin/announcements">공고 관리로 이동</Link></p>}
+    {notice && <p className={styles.notice} role="status">{notice} {!focusFailed && <Link to="/admin/announcements">공고 관리로 이동</Link>}</p>}
     {!loading && !error && rows.length === 0 && <p>매칭할 공급행이 없습니다.</p>}
-    {!loading && !notice && rows.map((row, index) => <Fragment key={`${identifier}:${revision}:${row.rowIdentifier}:${row.token}`}>
-      <SupplyMatchEditor row={row} index={index} disabled={disabled || refining || splitBusy || Boolean(splitRow && splitRow !== row.rowIdentifier)} onBusy={busy}
-        onChange={choose} onRelease={() => { void release(row) }}
-        hideType={splitRow === row.rowIdentifier || Boolean(row.splitGroup)}
-        onSplit={() => setSplitRow(row.rowIdentifier)} />
-      {splitRow === row.rowIdentifier && <SupplySplitEditor identifier={identifier} row={row}
-        complexId={choices[row.rowIdentifier]?.complexId ?? row.complexId} disabled={disabled || refining}
-        onBusy={value => { setSplitBusy(value); onBusy?.(value) }}
-        onCancel={() => setSplitRow(null)} onSaved={() => { setSplitRow(null); setRevision(value => value + 1); onApplied?.() }} />}
-    </Fragment>)}
+    {!loading && !notice && (focused ? <>
+      <p className={styles.description}>단지·주택형을 정하지 못한 공급행 {rows.length - settled.length}개입니다. 원천 단지명으로 후보를 미리 찾아 두었습니다.</p>
+      {indexed.filter(({ row }) => needsAction(row)).map(({ row, index }) => editor(row, index))}
+      {settled.length > 0 && <details className={styles.settled}>
+        <summary>이미 연결된 공급행 {settled.length}개 · 그대로 정제에 포함됩니다</summary>
+        {settled.map(({ row, index }) => editor(row, index))}
+      </details>}
+    </> : indexed.map(({ row, index }) => editor(row, index)))}
     {!loading && !notice && !splitRow && !rows.some(row => row.splitGroup) && rows.length > 0 && <fieldset className={styles.evidence} disabled={disabled || refining}>
       <legend>선택 적용 방식과 근거</legend>
       <label className={styles.remember}><input type="checkbox" checked={remember} onChange={event => setRemember(event.target.checked)} />이 선택을 저장해 다음 정제에도 사용</label>
@@ -127,8 +141,8 @@ export function AnnouncementSupplyMatchingForm({ identifier, disabled = false, o
   </section>
 }
 
-function SupplyMatchEditor({ row, index, disabled, onBusy, onChange, onRelease, hideType, onSplit }: {
-  row: SupplyMatch; index: number; disabled: boolean
+function SupplyMatchEditor({ row, index, disabled, onBusy, onChange, onRelease, hideType, autoSearch, onSplit }: {
+  row: SupplyMatch; index: number; disabled: boolean; autoSearch: boolean
   onBusy: (rowIdentifier: string, busy: boolean) => void
   onChange: (rowIdentifier: string, complexId: number | null, housingTypeId: number | null, targetToken?: string) => void
   onRelease: () => void
@@ -148,7 +162,14 @@ function SupplyMatchEditor({ row, index, disabled, onBusy, onChange, onRelease, 
   const [error, setError] = useState('')
   const request = useRef<AbortController | null>(null)
   const selectedType = types.find(value => String(value.id) === housingTypeId)
+  // 원천에서 같은 이름·주소로 나뉜 단지가 많아 PNU가 같은 단지, 그다음 세대수가 큰 본 단지를 위로 올린다.
+  const candidates = [...results].sort((left, right) =>
+    Number(right.pnu === row.pnu) - Number(left.pnu === row.pnu) || right.totalHouseholdCount - left.totalHouseholdCount)
   useEffect(() => () => request.current?.abort(), [])
+  // 오류 상세에서 연 미연결 행은 원천 단지명으로 후보를 바로 보여 줘 검색 버튼을 누르지 않아도 고를 수 있게 한다.
+  useEffect(() => {
+    if (autoSearch && row.complexId === null && row.sourceComplexName.trim()) void find(row.sourceComplexName.trim(), row.pnu)
+  }, [autoSearch, row.rowIdentifier, row.complexId, row.sourceComplexName, row.pnu])
   useEffect(() => {
     onChange(row.rowIdentifier, complexId, housingTypeId === '' ? null : Number(housingTypeId), selectedType?.token)
   }, [row.rowIdentifier, complexId, housingTypeId, selectedType?.token, onChange])
@@ -185,11 +206,14 @@ function SupplyMatchEditor({ row, index, disabled, onBusy, onChange, onRelease, 
   async function search(event: FormEvent) {
     event.preventDefault()
     if (!query.trim() || disabled) return
+    await find(query.trim(), row.pnu)
+  }
+  async function find(keyword: string, pnu: string) {
     request.current?.abort()
     const controller = new AbortController(); request.current = controller
     setSearching(true); setError(''); setResults([])
     try {
-      const found = await searchMatchingComplexes(query.trim(), controller.signal)
+      const found = await searchMatchingComplexes(keyword, controller.signal, pnu)
       if (!controller.signal.aborted) setResults(found)
     } catch (cause) { if (!controller.signal.aborted) setError(message(cause)) }
     finally { if (!controller.signal.aborted) setSearching(false) }
@@ -234,12 +258,14 @@ function SupplyMatchEditor({ row, index, disabled, onBusy, onChange, onRelease, 
         <label>단지 검색<input maxLength={100} value={query} onChange={event => setQuery(event.target.value)} /></label>
         <button className={styles.secondary} type="submit" disabled={searching || !query.trim()}>{searching ? '검색 중…' : '검색'}</button>
       </form>
-      {results.length > 0 && <ul className={styles.results}>{results.map(value => <li key={value.id}>
+      {candidates.length > 0 && <ul className={styles.results}>{candidates.map(value => <li key={value.id}>
         <button className={styles.result} type="button" onClick={() => {
           setComplexId(value.id); setComplexLabel(value.name); setComplexAddress(value.roadAddress)
           setHousingTypeId(''); setError(''); setResults([])
           setSearchOpen(false); request.current = null
-        }}><strong>{value.name}</strong><span>{value.roadAddress} · {value.supplyType}</span></button>
+        }}><strong>{value.name} <small>#{value.id}</small>{row.pnu && value.pnu === row.pnu && <em className={styles.match}>PNU 일치</em>}</strong>
+          <span>{value.roadAddress} · {value.supplyType}</span>
+          <span>{value.totalHouseholdCount.toLocaleString('ko-KR')}세대 · 주택형 {value.housingTypeCount}개 · PNU {value.pnu}</span></button>
       </li>)}</ul>}
       {!searching && !error && request.current && results.length === 0 && <p>검색 결과가 없습니다. 검색은 최대 20건입니다.</p>}
     </>}
@@ -267,5 +293,8 @@ function SupplyMatchEditor({ row, index, disabled, onBusy, onChange, onRelease, 
   </fieldset>
 }
 
+function needsAction(row: SupplyMatch): boolean {
+  return Boolean(row.failure || row.savedMatch?.reviewRequired || row.splitGroup?.reviewRequired)
+}
 function area(value: number | null): string { return value === null ? '미제공' : `${value}㎡` }
 function message(cause: unknown): string { return cause instanceof Error ? cause.message : '매칭을 처리하지 못했습니다.' }

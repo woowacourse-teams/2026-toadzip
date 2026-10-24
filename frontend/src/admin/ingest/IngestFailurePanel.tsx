@@ -6,7 +6,7 @@ import { getFailureReview, getFailureReviews, type FailureDomain, type FailureRe
 import { ListPagination } from '../management/ListPagination'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import styles from './IngestFailurePanel.module.css'
-import { AnnouncementSupplyMatchingForm } from './AnnouncementSupplyMatchingForm'
+import { AnnouncementFailureRecovery, announcementRecoveryId } from './AnnouncementFailureRecovery'
 import { LhSupplyFailureCard, type LhLinkPrefill } from './LhSupplyFailureCard'
 import { LhSupplyLinkEditor } from './LhSupplyLinkEditor'
 import { failureReturnUrl } from './failureNavigation'
@@ -70,7 +70,6 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
     next.set('failure', `${row.category}:${row.id}`)
     return failureReturnUrl(path, `/admin/failures?${next}`)
   }
-  const [matchingOpen, setMatchingOpen] = useState(false)
   const pdfGroups = new Map<number, FailureReview[]>()
   for (const row of matching?.items ?? []) {
     if (!canCorrectPdf(row)) continue
@@ -79,7 +78,7 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
   }
   const [lhLinkOpen, setLhLinkOpen] = useState(false)
   const [lhLinkPrefill, setLhLinkPrefill] = useState<LhLinkPrefill | null>(null)
-  useEffect(() => { setMatchingOpen(false); setLhLinkOpen(false); setLhLinkPrefill(null); setActionBusy(false) }, [selectionKey])
+  useEffect(() => { setLhLinkOpen(false); setLhLinkPrefill(null); setActionBusy(false) }, [selectionKey])
 
   useEffect(() => {
     if (!validQuery) return
@@ -120,6 +119,11 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
     showResult.current = true
     setRevision(value => value + 1)
   }
+  function showRecovery() {
+    const section = document.getElementById(announcementRecoveryId)
+    section?.scrollIntoView?.({block: 'start'})
+    section?.focus()
+  }
   function closeSelection() {
     if (!params.has('failure')) return
     setParams(current => { current.delete('failure'); current.delete('result'); return current }, {replace: true})
@@ -138,6 +142,10 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
   }
   const label = domain === 'complex' ? '단지' : '공고'
   const actionDisabled = retryDisabled || actionBusy || detailPending || Boolean(detailError)
+  // 공고의 단지·주택형 매칭 오류는 상세 안에서 실패 행을 바로 고치고 이 공고만 정제한다. 전체 정제·다른 페이지 이동은 숨긴다.
+  const recoveryIdentifier = selected && (selected.category === 'announcement' || selected.category === 'enrichment')
+    && typeof selected.raw.sourceAnnouncementIdentifier === 'string' && supplyMatchingFailure(selected)
+    ? selected.raw.sourceAnnouncementIdentifier : null
   return <section className={styles.panel} aria-label={`${label} 오류 목록`}>
     <form key={keyword} className={styles.search} onSubmit={event => {
       event.preventDefault()
@@ -214,7 +222,7 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
           {selected.category === 'enrichment' && !selected.raw.panId && <p className={styles.hint}>오류에 LH 공고 번호가 없어 원천 목록 전체로 이동합니다. 마이홈 공고의 원문에서 LH 연결을 먼저 확인하세요.</p>}
           {lhLinkFailure(selected) && typeof selected.raw.sourceAnnouncementIdentifier === 'string'
             && <LhSupplyFailureCard key={selectionKey} identifier={selected.raw.sourceAnnouncementIdentifier}
-              onLink={prefill => { setLhLinkPrefill(prefill); setLhLinkOpen(true) }} onMatch={() => setMatchingOpen(true)} />}
+              onLink={prefill => { setLhLinkPrefill(prefill); setLhLinkOpen(true) }} onMatch={showRecovery} />}
           {selected.category === 'household' && (householdTargetDecision(selected)
             ? <HouseholdTargetDecisionCard key={selectionKey} failureId={selected.id} disabled={actionDisabled} onBusy={setActionBusy} />
             : <HouseholdComplexLinkCard key={selectionKey} failureId={selected.id} disabled={actionDisabled} onBusy={setActionBusy} />)}
@@ -222,12 +230,12 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
         <section className={styles.detailSection}><h3>2. 필요한 조치</h3><div className={styles.workflow}>
           {selected.product ? <Link to={follow(`/admin/${selected.product.resourceType}/${selected.product.id}`)}>{label} 확인·수정</Link> : null}
           {canCorrectPdf(selected) && !actionDisabled && <Link to={follow(`/admin/announcements/${selected.product!.id}/pdf-correction`)}>PDF로 보정</Link>}
-          <RecoveryLinks row={selected} follow={follow}/>
+          <RecoveryLinks row={selected} follow={follow} inlineRecovery={recoveryIdentifier !== null}/>
           {selected.category === 'collection' ? <Link to={follow(`/admin/ingest#${domain === 'complex' ? 'complex' : 'announcement'}-pipelines`)}>API 키 입력·원천 수집</Link>
-            : selected.status === 'PENDING' && onRetry ? <FailureRetryButton label={label} disabled={actionDisabled}
+            : selected.status === 'PENDING' && onRetry && !recoveryIdentifier ? <FailureRetryButton label={label} disabled={actionDisabled}
               onRetry={() => { showResult.current = true; onRetry() }}/> : null}
         </div>
-          {selected.category !== 'collection' && selected.status === 'PENDING' && onRetry ? <p id="failure-retry-scope" className={styles.hint}>
+          {selected.category !== 'collection' && selected.status === 'PENDING' && onRetry && !recoveryIdentifier ? <p id="failure-retry-scope" className={styles.hint}>
             {householdTargetDecision(selected)
               ? '세대수가 다른 묶음이면 위에서 결정을 저장한 뒤 실행해야 반영되며, 결정 없이 실행하면 같은 오류가 남습니다. '
               : '수정한 뒤 이 화면으로 돌아와 정제를 다시 실행하세요. '}
@@ -236,18 +244,17 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
           {selected.category !== 'collection' && runMessage ? <p role="status">{runMessage}</p> : null}{runError ? <p role="alert">{runError}</p> : null}
           <FailureSourceRecovery key={selectionKey} row={selected} disabled={actionDisabled}
             onProcessed={() => setRevision(value => value + 1)} onBusy={setActionBusy}/>
-        {(selected.category === 'announcement' || selected.category === 'enrichment') && typeof selected.raw.sourceAnnouncementIdentifier === 'string'
-          && supplyMatchingFailure(selected) && <section>
-            <button type="button" aria-expanded={matchingOpen} disabled={actionDisabled}
-              onClick={() => setMatchingOpen(value => !value)}>단지·주택형 매칭</button>
-            {lhLinkFailure(selected) && <button type="button" aria-expanded={lhLinkOpen} disabled={actionDisabled}
-              onClick={() => setLhLinkOpen(value => !value)}>LH 공급 원본 연결</button>}
-            {matchingOpen && <AnnouncementSupplyMatchingForm identifier={selected.raw.sourceAnnouncementIdentifier}
-              disabled={retryDisabled || detailPending || Boolean(detailError)} onApplied={processed} onBusy={setActionBusy} />}
-            {lhLinkFailure(selected) && lhLinkOpen && <LhSupplyLinkEditor key={JSON.stringify(lhLinkPrefill)}
-              identifier={selected.raw.sourceAnnouncementIdentifier} initial={lhLinkPrefill}
+        {recoveryIdentifier && <>
+          <AnnouncementFailureRecovery key={selectionKey} identifier={recoveryIdentifier}
+            disabled={retryDisabled || detailPending || Boolean(detailError)} onApplied={processed} onBusy={setActionBusy} />
+          {lhLinkFailure(selected) && <section>
+            <button type="button" aria-expanded={lhLinkOpen} disabled={actionDisabled}
+              onClick={() => setLhLinkOpen(value => !value)}>LH 공급 원본 연결</button>
+            {lhLinkOpen && <LhSupplyLinkEditor key={JSON.stringify(lhLinkPrefill)}
+              identifier={recoveryIdentifier} initial={lhLinkPrefill}
               disabled={retryDisabled || detailPending || Boolean(detailError)} onBusy={setActionBusy} />}
           </section>}
+        </>}
         </section>
         <section className={styles.detailSection} aria-labelledby="failure-result-title">
           <h3 id="failure-result-title" ref={resultHeading} tabIndex={-1}>3. 처리 결과 확인</h3>
@@ -274,7 +281,7 @@ function canCorrectPdf(row: FailureReview) {
     && row.product?.resourceType === 'announcements' && !row.product.deleted
 }
 
-function RecoveryLinks({row, follow}: {row:FailureReview; follow: (path: string) => string}) {
+function RecoveryLinks({row, follow, inlineRecovery}: {row:FailureReview; follow: (path: string) => string; inlineRecovery: boolean}) {
   // 중복 대상 단지는 단지를 이미 찾은 상태라 단지 검색이 필요 없다. 결정은 위 비교 카드에서 한다.
   if (row.category === 'collection' || householdTargetDecision(row)) return null
   const complexName = typeof row.raw.complexName === 'string' ? row.raw.complexName.trim() : ''
@@ -282,7 +289,7 @@ function RecoveryLinks({row, follow}: {row:FailureReview; follow: (path: string)
     || (row.productLinkStatus === 'UNKNOWN' && complexName !== '')
   return <>
     {/GEOCODING/.test(row.reason) ? <Link to={follow('/admin/locations')}>좌표 ZIP 업로드·단지 정제</Link> : null}
-    {needsComplexReview && row.product?.resourceType !== 'complexes' ? <Link
+    {needsComplexReview && !inlineRecovery && row.product?.resourceType !== 'complexes' ? <Link
       to={follow(complexName ? `/admin/complexes?keyword=${encodeURIComponent(complexName)}` : '/admin/complexes')}>
       {complexName ? '단지명으로 후보 검색' : '단지·주택형 확인'}
     </Link> : null}
