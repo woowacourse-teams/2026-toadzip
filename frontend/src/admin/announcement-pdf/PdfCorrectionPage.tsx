@@ -11,7 +11,7 @@ import { labels } from '../management/fields'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import { readExtraction, type Evidence } from './extraction'
 import { checkAnnouncement, type ComplexLabels, type HousingCandidates } from './matching'
-import { applicableCells, assembleReview, cellMatches, changeValue, createReview, housingNameCandidates, pendingChanges, pendingItems, pendingSchedule, rebaseReview, remapSchedule, shown, type HousingNameCandidate, type PendingChange, type Review, type ReviewFilter, type ReviewSection, type ScheduleReview } from './review'
+import { applicableCells, assembleReview, cellMatches, changeValue, createReview, housingNameCandidates, pendingChanges, pendingItems, pendingSchedule, rebaseReview, remapSchedule, ReviewError, reviewSection, shown, type HousingNameCandidate, type PendingChange, type Review, type ReviewFilter, type ReviewSection, type ScheduleReview } from './review'
 import { ReviewCells } from './ReviewCells'
 import { ReviewSupply } from './ReviewSupply'
 import { RerunAnnouncement } from './RerunAnnouncement'
@@ -114,7 +114,8 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   useEffect(() => {
     if (!jump) return
     const target = reviewPane.current?.querySelector<HTMLElement>(`[data-review-id="${CSS.escape(jump.id)}"]`)
-    target?.scrollIntoView({ block: 'center' }); target?.focus({ preventScroll: true })
+    // 행·조건·일정 묶음은 머리(저장할 위치·확인 안내)가 보이도록 위에 맞추고, 값 칸은 가운데에 둔다.
+    target?.scrollIntoView?.({ block: jump.id.startsWith('cell:') ? 'center' : 'start' }); target?.focus({ preventScroll: true })
   }, [jump])
   function nextPending() {
     if (!review) return
@@ -151,6 +152,11 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       setUncertain(uncertainSave); setBlocked(uncertainSave || cause instanceof ManagementError && cause.status === 409)
       setError(uncertainSave ? '저장 응답을 받지 못했습니다. 최신 저장값을 조회해 적용 여부를 확인한 뒤 다시 비교하세요.' : cause instanceof Error ? cause.message : '보정 내용을 적용하지 못했습니다. 다시 시도하세요.')
       setMobileView('review')
+      // 적용 전 검증에 걸리면 문제 항목으로 바로 이동한다.
+      if (cause instanceof ReviewError && cause.reviewId) {
+        const id = cause.reviewId
+        setSection(reviewSection(id)); setFilter('all'); setJump(previous => ({ id, nonce: (previous?.nonce ?? 0) + 1 }))
+      }
     } finally { setBusy(false) }
   }
   async function reload() {
