@@ -161,6 +161,30 @@ public class AdminHousingComplexManagementService {
         return detail(id);
     }
 
+    @Transactional
+    public AdminHousingComplexDetail createHousingType(
+            long id, com.toadzip.backend.housing.dto.request.AdminHousingTypeCreateRequest request, String actor) {
+        var complex = complexes.findByIdForUpdate(id).orElseThrow(AdminHousingComplexNotFoundException::new);
+        checkVersion(complex, request.version());
+        if (complex.isAdminDeleted()) {
+            throw new AdminDataConflictException("휴지통에서 복구한 뒤 주택형을 추가해 주세요.");
+        }
+        String name = request.name().strip();
+        if (types.findAllByHousingComplex(complex).stream().anyMatch(type -> type.getName().equals(name))) {
+            throw new AdminDataConflictException("이 단지에 같은 이름의 주택형이 있습니다.");
+        }
+        // 관리자가 만든 주택형은 수집 원천이 없으므로 원천 식별자를 새로 만들고 관리자 수정으로 표시해 재수집이 덮어쓰지 않게 한다.
+        var type = HousingType.createFromMyHome(complex, "ADMIN_ENTRY-HOUSING-TYPE-" + java.util.UUID.randomUUID(),
+                name, request.exclusiveArea(), request.supplyArea());
+        type.reviseByAdmin(name, request.exclusiveArea(), request.householdCount());
+        types.save(type);
+        complex.noteHousingTypeRevisionByAdmin();
+        complexes.flush();
+        changes.save(new AdminDataChange("COMPLEX", id, "CREATE_HOUSING_TYPE", actor, "{}",
+                auditedData(housingTypeData(type), request.documentEvidence())));
+        return detail(id);
+    }
+
     private AdminHousingComplexDetail.HousingTypeItem housingTypeData(HousingType type) {
         return new AdminHousingComplexDetail.HousingTypeItem(type.getId(), type.getName(),
                 type.getExclusiveArea(), type.getTotalHouseholdCount());

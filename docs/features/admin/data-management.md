@@ -6,7 +6,7 @@
 - `/admin/announcements`: 공고 검색, 단지 연결 조건과 공통 필터.
 - 상세 화면: 기본정보, 연관 데이터, 출처·수정 이력으로 분리한다.
 - 공고 상세에서 공급정보의 단지·주택형 연결과 근거가 있는 접수 일정을 수정한다.
-- 단지 상세의 주택형·연결 공고 탭에서 주택형 이름·전용면적·세대수를 수정하고, 연결 공고의 기본정보·일정·공급정보를 같은 탭에서 편집한다.
+- 단지 상세의 주택형·연결 공고 탭에서 주택형을 추가하거나 이름·전용면적·세대수를 수정하고, 연결 공고의 기본정보·일정·공급정보를 같은 탭에서 편집한다.
 - `/admin/ingest/announcements`·`/admin/ingest/complexes`: 공고·단지 실행 요약, 기술 상세와 이력. 기존 `/admin/ingest`·`/admin/ingest-v2`는 새 경로로 이동한다.
 - LH 정확성 지표와 확인된 공급 감소 재조회는 [운영 절차](../../operations/ingest/lh-quality.md)를 따른다.
 - `/admin/failures`: 수집·정제 실패 확인과 전체 작업 재실행. 개별 행 재시도가 아니다.
@@ -26,6 +26,7 @@
 | `GET /{id}/changes?page=...` | 변경 전후 값·작업자·시각 이력 |
 
 - 공고의 `PUT /{id}/supply-rows/{rowId}`로 공급정보와 연결 대상을 수정한다. `supplyRow`에는 원천 이름 대신 선택적 `announcementHousingTypeName`을 보낸다.
+- 단지의 `POST /{id}/housing-types`는 단지 `version`, `name`, `exclusiveArea`와 선택값 `supplyArea`, `householdCount`로 주택형을 추가한다. 같은 이름은 409로 거절한다.
 - 단지의 `PUT /{id}/housing-types/{typeId}`는 단지 `version`, `name`, `exclusiveArea`, `householdCount`를 받는다. 면적은 소수점 네 자리까지, 세대수는 `null`(미확인)과 0을 구분한다.
 - 공고 수정의 접수처 연락처는 미확인이면 `null`을 유지한다. 접수처명·접수방식·URL 검증과 공고 신규 등록의 연락처 필수 규칙은 유지한다.
 - 기존 `PUT /{id}/application-schedules`는 선택적 `version` 쿼리로 충돌을 확인한다.

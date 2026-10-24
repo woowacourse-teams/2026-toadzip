@@ -93,6 +93,15 @@ public class AdminHousingComplexManagementController {
         return new ApiResponse<>(typeImpacts.detail(id, typeId));
     }
 
+    @PostMapping("/{id}/housing-types")
+    public ApiResponse<AdminHousingComplexDetail> createHousingType(@PathVariable long id,
+            @Valid @RequestBody com.toadzip.backend.housing.dto.request.AdminHousingTypeCreateRequest request,
+            Principal principal) {
+        try (var lease = ownership.acquire()) {
+            return new ApiResponse<>(service.createHousingType(id, request, principal.getName()));
+        }
+    }
+
     @PutMapping("/{id}/housing-types/{typeId}")
     public ApiResponse<AdminHousingComplexDetail> updateHousingType(@PathVariable long id,
             @PathVariable long typeId, @Valid @RequestBody AdminHousingTypeUpdateRequest request,
