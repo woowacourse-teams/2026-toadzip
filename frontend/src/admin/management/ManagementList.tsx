@@ -20,7 +20,7 @@ export function ManagementList({ resource, embedded = false, compact = false, re
   const [bulkNotice, setBulkNotice] = useState('')
   const search = (embedded ? managementListParams(params, resource) : params).toString()
   const activeParams = new URLSearchParams(search)
-  const [moreOpen, setMoreOpen] = useState(() => activeParams.get('deleted') === 'true' || activeParams.has('rental') || activeParams.has('review') || activeParams.has('verification'))
+  const [moreOpen, setMoreOpen] = useState(() => activeParams.has('rental') || activeParams.has('review') || activeParams.has('verification'))
   const filterParams = new URLSearchParams(search)
   filterParams.delete('page')
   filterParams.sort()
@@ -71,6 +71,13 @@ export function ManagementList({ resource, embedded = false, compact = false, re
   return <section className={`management-page ${styles.page}`}>
     {!embedded ? <header className="management-heading"><h1>{title} 관리</h1>
       <Link className="admin-primary" to={`/admin/${resource}/new`}>{title} 추가</Link></header> : null}
+    {/* 휴지통은 추가 필터 안에 숨기지 않고 목록 위 탭으로 둬서 지운 항목을 바로 찾아 복구할 수 있게 한다. */}
+    {!compact && <div className="admin-folder-tabs" role="group" aria-label={`${title} 보관 상태`}>{([['false', '등록 데이터'], ['true', '휴지통']] as const).map(([value, label]) =>
+      <button key={value} type="button" aria-pressed={String(trashView) === value} onClick={() => {
+        const next = new URLSearchParams(activeParams); next.delete('page')
+        if (value === 'true') next.set('deleted', 'true'); else next.delete('deleted')
+        updateFilters(next)
+      }}>{label}</button>)}</div>}
     <form key={search} data-admin-navigation className={styles.filters} onSubmit={event => {
       event.preventDefault(); const values = new FormData(event.currentTarget); const next = new URLSearchParams()
       for (const [key, value] of values) if (String(value).trim()) next.set(key, String(value).trim())
@@ -83,16 +90,16 @@ export function ManagementList({ resource, embedded = false, compact = false, re
       {/* 추가 필터 버튼은 검색 줄에 그대로 두고, 펼친 조건만 아래 줄에 연다. */}
       <button type="button" className={styles.moreToggle} aria-expanded={moreOpen} aria-controls="more-filters" onClick={() => setMoreOpen(value => !value)}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M4 7h16M4 17h16" /><circle cx="9" cy="7" r="2" fill="var(--ds-color-surface)" /><circle cx="15" cy="17" r="2" fill="var(--ds-color-surface)" /></svg>
-        <span>추가 필터{activeParams.get('deleted') === 'true' ? ' · 휴지통' : ''}</span>
+        <span>추가 필터</span>
         <svg className={styles.filterChevron} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
       </button>
       <div id="more-filters" className={styles.morePanel} hidden={!moreOpen}>
         <label>공급 유형<select name="rental" defaultValue={activeParams.get('rental') ?? ''}><option value="">전체 유형</option>{rentals.map(value => <option key={value} value={value}>{labels[value]}</option>)}</select></label>
-        <label>보관 상태<select name="deleted" defaultValue={activeParams.get('deleted') ?? 'false'}><option value="false">등록 데이터</option><option value="true">휴지통</option></select></label>
         {resource === 'complexes' ? <label>검토 상태<select name="verification" defaultValue={activeParams.get('verification') ?? ''}><option value="">전체 상태</option>
           {verificationStatuses.map(status => <option key={status} value={status}>{verificationStatusLabels[status]}</option>)}</select></label> : null}
         <label className={styles.review}><input name="review" type="checkbox" value="true" defaultChecked={activeParams.get('review') === 'true'} />원천 변경 확인 필요</label>
       </div>
+      {trashView && <input type="hidden" name="deleted" value="true" />}
       {managementListParams(params, resource).get('complexId') ? <input type="hidden" name="complexId" value={managementListParams(params, resource).get('complexId') ?? ''} /> : null}
     </form>
     {error ? <div role="alert" className="registration-error"><p>{error}</p><button onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></div> : null}
@@ -104,7 +111,7 @@ export function ManagementList({ resource, embedded = false, compact = false, re
           {bulkNotice && <span role="status">{bulkNotice}</span>}
         </div>}
         <ManagementSummaryTable items={page.items} resource={resource} returnTo={returnTo} inlineSearch={embedded ? search : undefined} compact={compact} fixedHeight
-          selection={compact ? undefined : { ids: checked, disabled: bulkBusy, onChange: setChecked }} />
+          selection={compact ? undefined : { ids: checked, disabled: bulkBusy, onChange: setChecked }} trash={trashView} />
         <ListPagination page={page.page} totalPages={page.totalPages} onMove={move} disabled={pending} guardNavigation={embedded} /></> : null}
     </div>
   </section>
