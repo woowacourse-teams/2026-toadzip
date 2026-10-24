@@ -304,3 +304,11 @@ it('마이홈 원천의 단지 미발견에는 LH 공급 원본 연결을 제공
   expect(dialog.getByRole('button',{name:'단지·주택형 매칭'})).toBeVisible()
   expect(dialog.queryByRole('button',{name:'LH 공급 원본 연결'})).not.toBeInTheDocument()
 })
+
+it('세대수 보강 오류는 목록에서 공급유형과 지역을 함께 보여 준다', async () => {
+  fetchFailures.mockResolvedValue(page([{...row, category:'household', source:'LH_LEASE_CATALOG',
+    target:'대전관저5 천년나무 1단지', raw:{supplyTypeName:'영구임대', areaName:'대전광역시 서구'}}]))
+  render(<IngestFailurePanel initialCategory="household" executionId={null} />, {wrapper:MemoryRouter})
+
+  expect(await screen.findByText(/영구임대 · 대전광역시 서구/)).toBeVisible()
+})
