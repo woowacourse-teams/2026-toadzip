@@ -15,6 +15,8 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHo
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.mapping.domain.AnnouncementSupplyMatchDecision;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ComplexOption;
+import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ExclusionRequest;
+import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.HousingTypeArea;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.HousingTypeOption;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.RefineRequest;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ReleaseRequest;
@@ -61,6 +63,11 @@ public class AnnouncementSupplyMatchingService {
 
     public List<Row> rows(String identifier) {
         var result = new LinkedHashMap<String, Row>();
+        var excluded = announcements.findBySourceAnnouncementIdentifier(identifier)
+                .map(value -> productRows.findAllByAnnouncement(value).stream()
+                        .filter(SupplyRow::isAdminExcluded).map(SupplyRow::getSourceSupplyRowIdentifier)
+                        .collect(java.util.stream.Collectors.toSet()))
+                .orElse(java.util.Set.of());
         for (var data : supplyRows(identifier)) {
             var group = groups.findBySourceRowIdentifier(data.source().getSourceKey()).orElse(null);
             if (group != null) {
@@ -86,7 +93,7 @@ public class AnnouncementSupplyMatchingService {
                         data.sourceComplexName(), data.source().getHouseTyNm(), data.pnu(), null, null,
                         groupComplexId, null,
                         failure,
-                        null, data.source().getSumSuplyCo(), split));
+                        null, data.source().getSumSuplyCo(), split, false));
                 continue;
             }
             var match = matcher.match(data);
@@ -102,7 +109,8 @@ public class AnnouncementSupplyMatchingService {
                     token(data),
                     data.sourceComplexName(), data.sourceHousingTypeName(), data.pnu(),
                     data.exclusiveArea(), data.supplyArea(), complexId, typeId, match.failureDetail(),
-                    savedMatch(data, match.failure() != null), data.source().getSumSuplyCo(), null));
+                    savedMatch(data, match.failure() != null), data.source().getSumSuplyCo(), null,
+                    excluded.contains(data.sourceSupplyRowIdentifier())));
         }
         return List.copyOf(result.values());
     }
@@ -396,6 +404,35 @@ public class AnnouncementSupplyMatchingService {
         return rows(identifier);
     }
 
+    /** 등록 단지에 해당 주택형이 없는 원천 공급행을 근거와 함께 공개에서 빼거나 되돌린다. 다음 정제부터 반영된다. */
+    @Transactional
+    public List<Row> exclude(String identifier, ExclusionRequest request, String actor) {
+        IngestExecutionScope.verifyHeld();
+        var data = supplyRows(identifier).stream()
+                .filter(row -> row.sourceSupplyRowIdentifier().equals(request.rowIdentifier())).findFirst()
+                .orElseThrow(() -> new InvalidIngestRequestException("해당 공고의 공급행이 아닙니다."));
+        if (!token(data).equals(request.token())) {
+            throw new AdminDataConflictException("원천 또는 저장한 선택이 변경되었습니다. 다시 조회해 주세요.");
+        }
+        var announcement = announcements.findBySourceAnnouncementIdentifierForUpdate(identifier)
+                .orElseThrow(() -> new InvalidIngestRequestException("정제된 공고가 없습니다. 공고를 먼저 정제해 주세요."));
+        var row = productRows.findAllByAnnouncement(announcement).stream()
+                .filter(value -> request.rowIdentifier().equals(value.getSourceSupplyRowIdentifier())).findFirst()
+                .orElseThrow(() -> new InvalidIngestRequestException("정제된 공급행이 없습니다. 공고를 먼저 정제해 주세요."));
+        if (row.getSupplyGroup() != null) {
+            throw new InvalidIngestRequestException("여러 공급행으로 나눈 원천은 PDF 보정에서 제외해 주세요.");
+        }
+        boolean before = row.isAdminExcluded();
+        if (row.excludeByAdmin(request.excluded())) {
+            changes.save(new AdminDataChange("ANNOUNCEMENT", announcement.getId(),
+                    request.excluded() ? "EXCLUDE_SUPPLY_ROW" : "INCLUDE_SUPPLY_ROW", actor,
+                    json.writeValueAsString(Map.of("rowIdentifier", request.rowIdentifier(), "excluded", before)),
+                    json.writeValueAsString(Map.of("rowIdentifier", request.rowIdentifier(),
+                            "excluded", request.excluded(), "reason", request.reason().strip()))));
+        }
+        return rows(identifier);
+    }
+
     public List<ComplexOption> complexes(String query) {
         return complexes(query, "");
     }
@@ -419,14 +456,17 @@ public class AnnouncementSupplyMatchingService {
                 false, false, "", PageRequest.of(0, 20)).getContent()
                 .forEach(value -> merged.putIfAbsent(value.getId(), value));
         var found = List.copyOf(merged.values());
-        // 이름·주소가 같은 단지가 원천에서 여러 개로 나뉘어 있어 PNU·세대수·주택형 수로 구분하게 한다.
-        var typeCounts = found.isEmpty() ? Map.<Long, Long>of()
-                : types.countByComplexIds(found.stream().map(value -> value.getId()).toList()).stream()
-                        .collect(java.util.stream.Collectors.toMap(value -> value.getComplexId(), value -> value.getCount()));
+        // 이름·주소가 같은 단지가 원천에서 여러 개로 나뉘어 있어 PNU·세대수와 주택형 면적으로 구분하게 한다.
+        var typesByComplex = found.isEmpty() ? Map.<Long, List<HousingTypeArea>>of()
+                : types.findAllByHousingComplexIdIn(found.stream().map(value -> value.getId()).toList()).stream()
+                        .sorted(Comparator.comparing(com.toadzip.backend.housing.domain.HousingType::getId))
+                        .collect(java.util.stream.Collectors.groupingBy(value -> value.getHousingComplex().getId(),
+                                java.util.stream.Collectors.mapping(value -> new HousingTypeArea(value.getId(),
+                                        value.getName(), value.getExclusiveArea()), java.util.stream.Collectors.toList())));
         return found.stream()
                 .map(value -> new ComplexOption(value.getId(), value.getName(),
                         value.getAddress().getRoadAddress(), value.getSupplyType(), value.getAddress().getPnu(),
-                        value.getTotalHouseholdCount(), typeCounts.getOrDefault(value.getId(), 0L))).toList();
+                        value.getTotalHouseholdCount(), typesByComplex.getOrDefault(value.getId(), List.of()))).toList();
     }
 
     public List<HousingTypeOption> housingTypes(long complexId) {

@@ -8,6 +8,8 @@ export type SupplyMatch = {
   savedMatch?: SavedSupplyMatch | null
   totalSupplyHouseholdCount?: number | null
   splitGroup?: SplitSupplyGroup | null
+  /** 등록 단지에 없어 관리자가 공개에서 뺀 공급행. 정제는 이 행의 매칭 실패를 오류로 남기지 않는다. */
+  excluded?: boolean
 }
 export type SplitSupplyGroup = { id: number; sharedHouseholdCount: number | null; sourceUrl: string; reason: string
   actor: string; updatedAt: string; reviewRequired: boolean
@@ -18,7 +20,7 @@ export type SavedSupplyMatch = { complexId: number | null; housingTypeId: number
 export type MatchEvidence = { remember: true; sourceUrl: string; reason: string }
 export type SupplySelection = { rowIdentifier: string; token: string; complexId: number; housingTypeId: number | null; targetToken?: string }
 export type MatchingComplex = { id: number; name: string; roadAddress: string; supplyType: string
-  pnu: string; totalHouseholdCount: number; housingTypeCount: number }
+  pnu: string; totalHouseholdCount: number; housingTypes: { id: number; name: string; exclusiveArea: number }[] }
 export type MatchingHousingType = { id: number; name: string; exclusiveArea: number; supplyArea: number | null; householdCount?: number | null; token?: string }
 const root = '/api/admin/ingest/announcement-supply-matches'
 function number(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value) }
@@ -45,7 +47,8 @@ function parseMatches(result: unknown): SupplyMatch[] {
       supplyArea: value.supplyArea, complexId: value.complexId, housingTypeId: value.housingTypeId,
       failure: value.failure, ...(value.savedMatch !== undefined ? { savedMatch: parseSavedMatch(value.savedMatch) } : {}),
       ...(value.totalSupplyHouseholdCount !== undefined ? { totalSupplyHouseholdCount: parseCount(value.totalSupplyHouseholdCount) } : {}),
-      ...(value.splitGroup !== undefined ? { splitGroup: parseSplitGroup(value.splitGroup) } : {}) }
+      ...(value.splitGroup !== undefined ? { splitGroup: parseSplitGroup(value.splitGroup) } : {}),
+      ...(typeof value.excluded === 'boolean' ? { excluded: value.excluded } : {}) }
   })
 }
 
@@ -95,9 +98,14 @@ export async function searchMatchingComplexes(query: string, signal?: AbortSigna
   return result.map(value => {
     if (!isRecord(value) || !id(value.id) || typeof value.name !== 'string' || typeof value.roadAddress !== 'string'
       || typeof value.supplyType !== 'string' || typeof value.pnu !== 'string'
-      || !count(value.totalHouseholdCount) || !count(value.housingTypeCount)) throw new Error('단지 검색 응답이 올바르지 않습니다.')
+      || !count(value.totalHouseholdCount) || !Array.isArray(value.housingTypes)) throw new Error('단지 검색 응답이 올바르지 않습니다.')
+    const housingTypes = value.housingTypes.map(type => {
+      if (!isRecord(type) || !id(type.id) || typeof type.name !== 'string' || !number(type.exclusiveArea))
+        throw new Error('단지 검색 응답이 올바르지 않습니다.')
+      return { id: type.id, name: type.name, exclusiveArea: type.exclusiveArea }
+    })
     return { id: value.id, name: value.name, roadAddress: value.roadAddress, supplyType: value.supplyType,
-      pnu: value.pnu, totalHouseholdCount: value.totalHouseholdCount, housingTypeCount: value.housingTypeCount }
+      pnu: value.pnu, totalHouseholdCount: value.totalHouseholdCount, housingTypes }
   })
 }
 
@@ -132,6 +140,11 @@ export async function rerunAnnouncement(identifier: string): Promise<void> {
 export async function releaseSupplyMatch(identifier: string, row: SupplyMatch, reason: string): Promise<SupplyMatch[]> {
   return parseMatches(await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/release`, 'POST',
     { rowIdentifier: row.rowIdentifier, token: row.token, reason }))
+}
+
+export async function setSupplyExclusion(identifier: string, row: SupplyMatch, excluded: boolean, reason: string): Promise<SupplyMatch[]> {
+  return parseMatches(await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/exclusion`, 'POST',
+    { rowIdentifier: row.rowIdentifier, token: row.token, excluded, reason }))
 }
 
 export type LhSupplyLinkView = { token: string; announcement?: LhLinkAnnouncement; myhomeRows: LhLinkMyHomeRow[]
