@@ -126,3 +126,95 @@ export async function releaseSupplyMatch(identifier: string, row: SupplyMatch, r
   return parseMatches(await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/release`, 'POST',
     { rowIdentifier: row.rowIdentifier, token: row.token, reason }))
 }
+
+export type LhSupplyLinkView = { token: string; announcement?: LhLinkAnnouncement; myhomeRows: LhLinkMyHomeRow[]
+  lhRows: LhLinkSupplyRow[]; failures?: LhSupplyMatchFailure[] }
+export type LhLinkAnnouncement = { identifier: string; name: string | null; sourceUrl: string | null; panId: string | null }
+/** 현재 원천과 등록 공급행으로 LH 보강 매칭을 다시 해 본 결과다. */
+export type LhSupplyMatchFailure = { lhRowIdentifier: string; reason: string; detail: string; candidates: LhMatchCandidate[] }
+export type LhMatchCandidate = { supplyRowId: number; myhomeRowIdentifier: string | null; sourceComplexName: string
+  sourceHousingTypeName: string; complexName: string | null; housingTypeName: string | null; lhRowIdentifier: string | null }
+export type LhLinkMyHomeRow = { rowIdentifier: string; complexName: string | null; housingTypeName: string | null
+  supplyHouseholdCount: number | null; splitCorrected: boolean }
+export type LhLinkSupplyRow = { rowIdentifier: string; complexLabel: string | null; typeName: string | null
+  exclusiveArea: string | null; supplyArea: string | null; suppliedUnitCount: string | null
+  linkedRowIdentifier: string | null; savedLink: SavedLhSupplyLink | null }
+export type SavedLhSupplyLink = { myhomeRowIdentifier: string; sourceUrl: string; reason: string; actor: string
+  updatedAt: string; reviewRequired: boolean }
+
+function nullableText(value: unknown): value is string | null { return value === null || typeof value === 'string' }
+
+export async function getLhSupplyLinks(identifier: string, signal?: AbortSignal): Promise<LhSupplyLinkView> {
+  return parseLhSupplyLinks(await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/lh-links`, 'GET',
+    undefined, signal))
+}
+
+export async function saveLhSupplyLinks(identifier: string, view: LhSupplyLinkView, myhomeRowIdentifier: string,
+  lhRowIdentifiers: string[], sourceUrl: string, reason: string): Promise<LhSupplyLinkView> {
+  return parseLhSupplyLinks(await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/lh-links`, 'POST',
+    { token: view.token, myhomeRowIdentifier, lhRowIdentifiers, sourceUrl, reason }))
+}
+
+export async function releaseLhSupplyLink(identifier: string, view: LhSupplyLinkView, lhRowIdentifier: string,
+  reason: string): Promise<LhSupplyLinkView> {
+  return parseLhSupplyLinks(await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/lh-links/release`,
+    'POST', { token: view.token, lhRowIdentifier, reason }))
+}
+
+function parseLhSupplyLinks(value: unknown): LhSupplyLinkView {
+  const invalid = () => new Error('LH 공급 연결 응답이 올바르지 않습니다.')
+  if (!isRecord(value) || typeof value.token !== 'string' || !Array.isArray(value.myhomeRows)
+    || !Array.isArray(value.lhRows)) throw invalid()
+  const myhomeRows = value.myhomeRows.map(row => {
+    if (!isRecord(row) || typeof row.rowIdentifier !== 'string' || !nullableText(row.complexName)
+      || !nullableText(row.housingTypeName) || typeof row.splitCorrected !== 'boolean') throw invalid()
+    return { rowIdentifier: row.rowIdentifier, complexName: row.complexName, housingTypeName: row.housingTypeName,
+      supplyHouseholdCount: parseCount(row.supplyHouseholdCount), splitCorrected: row.splitCorrected }
+  })
+  const lhRows = value.lhRows.map(row => {
+    if (!isRecord(row) || typeof row.rowIdentifier !== 'string' || !nullableText(row.complexLabel)
+      || !nullableText(row.typeName) || !nullableText(row.exclusiveArea) || !nullableText(row.supplyArea)
+      || !nullableText(row.suppliedUnitCount) || !nullableText(row.linkedRowIdentifier)) throw invalid()
+    return { rowIdentifier: row.rowIdentifier, complexLabel: row.complexLabel, typeName: row.typeName,
+      exclusiveArea: row.exclusiveArea, supplyArea: row.supplyArea, suppliedUnitCount: row.suppliedUnitCount,
+      linkedRowIdentifier: row.linkedRowIdentifier, savedLink: parseSavedLhLink(row.savedLink, invalid) }
+  })
+  return { token: value.token, myhomeRows, lhRows,
+    ...(value.announcement !== undefined ? { announcement: parseLhAnnouncement(value.announcement, invalid) } : {}),
+    ...(value.failures !== undefined ? { failures: parseLhFailures(value.failures, invalid) } : {}) }
+}
+
+function parseLhAnnouncement(value: unknown, invalid: () => Error): LhLinkAnnouncement {
+  if (!isRecord(value) || typeof value.identifier !== 'string' || !nullableText(value.name)
+    || !nullableText(value.sourceUrl) || !nullableText(value.panId)) throw invalid()
+  const sourceUrl = value.sourceUrl !== null && /^https?:\/\//i.test(value.sourceUrl) ? value.sourceUrl : null
+  return { identifier: value.identifier, name: value.name, sourceUrl, panId: value.panId }
+}
+
+function parseLhFailures(value: unknown, invalid: () => Error): LhSupplyMatchFailure[] {
+  if (!Array.isArray(value)) throw invalid()
+  return value.map(failure => {
+    if (!isRecord(failure) || typeof failure.lhRowIdentifier !== 'string' || typeof failure.reason !== 'string'
+      || typeof failure.detail !== 'string' || !Array.isArray(failure.candidates)) throw invalid()
+    const candidates = failure.candidates.map(candidate => {
+      if (!isRecord(candidate) || !id(candidate.supplyRowId) || !nullableText(candidate.myhomeRowIdentifier)
+        || typeof candidate.sourceComplexName !== 'string' || typeof candidate.sourceHousingTypeName !== 'string'
+        || !nullableText(candidate.complexName) || !nullableText(candidate.housingTypeName)
+        || !nullableText(candidate.lhRowIdentifier)) throw invalid()
+      return { supplyRowId: candidate.supplyRowId, myhomeRowIdentifier: candidate.myhomeRowIdentifier,
+        sourceComplexName: candidate.sourceComplexName, sourceHousingTypeName: candidate.sourceHousingTypeName,
+        complexName: candidate.complexName, housingTypeName: candidate.housingTypeName,
+        lhRowIdentifier: candidate.lhRowIdentifier }
+    })
+    return { lhRowIdentifier: failure.lhRowIdentifier, reason: failure.reason, detail: failure.detail, candidates }
+  })
+}
+
+function parseSavedLhLink(value: unknown, invalid: () => Error): SavedLhSupplyLink | null {
+  if (value === null) return null
+  if (!isRecord(value) || typeof value.myhomeRowIdentifier !== 'string' || typeof value.sourceUrl !== 'string'
+    || !/^https?:\/\//i.test(value.sourceUrl) || typeof value.reason !== 'string' || typeof value.actor !== 'string'
+    || typeof value.updatedAt !== 'string' || typeof value.reviewRequired !== 'boolean') throw invalid()
+  return { myhomeRowIdentifier: value.myhomeRowIdentifier, sourceUrl: value.sourceUrl, reason: value.reason,
+    actor: value.actor, updatedAt: value.updatedAt, reviewRequired: value.reviewRequired }
+}

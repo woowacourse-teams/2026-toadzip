@@ -7,6 +7,8 @@ import { ListPagination } from '../management/ListPagination'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import styles from './IngestFailurePanel.module.css'
 import { AnnouncementSupplyMatchingForm } from './AnnouncementSupplyMatchingForm'
+import { LhSupplyFailureCard, type LhLinkPrefill } from './LhSupplyFailureCard'
+import { LhSupplyLinkEditor } from './LhSupplyLinkEditor'
 import { failureReturnUrl } from './failureNavigation'
 import { FailureRetryButton } from './FailureRetryButton'
 import { FailureSourceRecovery } from './FailureSourceRecovery'
@@ -73,7 +75,9 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
     const announcementId = row.product!.id
     pdfGroups.set(announcementId, [...pdfGroups.get(announcementId) ?? [], row])
   }
-  useEffect(() => { setMatchingOpen(false); setActionBusy(false) }, [selectionKey])
+  const [lhLinkOpen, setLhLinkOpen] = useState(false)
+  const [lhLinkPrefill, setLhLinkPrefill] = useState<LhLinkPrefill | null>(null)
+  useEffect(() => { setMatchingOpen(false); setLhLinkOpen(false); setLhLinkPrefill(null); setActionBusy(false) }, [selectionKey])
 
   useEffect(() => {
     if (!validQuery) return
@@ -206,6 +210,9 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
             {selected.category === 'enrichment' && <Link to={follow(sourceLocation(selected, true))}>LH 공급 원천 확인</Link>}
           </div>
           {selected.category === 'enrichment' && !selected.raw.panId && <p className={styles.hint}>오류에 LH 공고 번호가 없어 원천 목록 전체로 이동합니다. 마이홈 공고의 원문에서 LH 연결을 먼저 확인하세요.</p>}
+          {lhLinkFailure(selected) && typeof selected.raw.sourceAnnouncementIdentifier === 'string'
+            && <LhSupplyFailureCard key={selectionKey} identifier={selected.raw.sourceAnnouncementIdentifier}
+              onLink={prefill => { setLhLinkPrefill(prefill); setLhLinkOpen(true) }} onMatch={() => setMatchingOpen(true)} />}
         </section>
         <section className={styles.detailSection}><h3>2. 필요한 조치</h3><div className={styles.workflow}>
           {selected.product ? <Link to={follow(`/admin/${selected.product.resourceType}/${selected.product.id}`)}>{label} 확인·수정</Link> : null}
@@ -222,11 +229,16 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
           <FailureSourceRecovery key={selectionKey} row={selected} disabled={actionDisabled}
             onProcessed={() => setRevision(value => value + 1)} onBusy={setActionBusy}/>
         {(selected.category === 'announcement' || selected.category === 'enrichment') && typeof selected.raw.sourceAnnouncementIdentifier === 'string'
-          && (/COMPLEX|HOUSING_TYPE|MANUAL_MATCH/.test(selected.reason) || selected.detail.includes('수동 매칭')) && <section>
+          && supplyMatchingFailure(selected) && <section>
             <button type="button" aria-expanded={matchingOpen} disabled={actionDisabled}
               onClick={() => setMatchingOpen(value => !value)}>단지·주택형 매칭</button>
+            {lhLinkFailure(selected) && <button type="button" aria-expanded={lhLinkOpen} disabled={actionDisabled}
+              onClick={() => setLhLinkOpen(value => !value)}>LH 공급 원본 연결</button>}
             {matchingOpen && <AnnouncementSupplyMatchingForm identifier={selected.raw.sourceAnnouncementIdentifier}
               disabled={retryDisabled || detailPending || Boolean(detailError)} onApplied={processed} onBusy={setActionBusy} />}
+            {lhLinkFailure(selected) && lhLinkOpen && <LhSupplyLinkEditor key={JSON.stringify(lhLinkPrefill)}
+              identifier={selected.raw.sourceAnnouncementIdentifier} initial={lhLinkPrefill}
+              disabled={retryDisabled || detailPending || Boolean(detailError)} onBusy={setActionBusy} />}
           </section>}
         </section>
         <section className={styles.detailSection} aria-labelledby="failure-result-title">
@@ -311,6 +323,19 @@ function pdfFailureParams(rows: FailureReview[]) {
   return params.toString()
 }
 
+// 정제 직후 LH 보강이 실패하면 공고 정제 오류(INVALID_VALUE)에 "LH 보강 실패: {사유} - …"로 남는다.
+function lhEnrichmentReason(row:FailureReview) {
+  return /^LH 보강 실패: ([A-Z_]+) - /.exec(row.detail)?.[1] ?? null
+}
+function supplyMatchingFailure(row:FailureReview) {
+  const matching = /COMPLEX|HOUSING_TYPE|MANUAL_MATCH|LH_SUPPLY_LINK/
+  return matching.test(row.reason) || matching.test(lhEnrichmentReason(row) ?? '') || row.detail.includes('수동 매칭')
+}
+function lhLinkFailure(row:FailureReview) {
+  const complex = /^(COMPLEX_NOT_FOUND|AMBIGUOUS_COMPLEX|LH_SUPPLY_LINK_REVIEW_REQUIRED)$/
+  if (row.category === 'enrichment') return complex.test(row.reason)
+  return row.category === 'announcement' && complex.test(lhEnrichmentReason(row) ?? '')
+}
 function reasonLabel(row:FailureReview) {
   if (row.category === 'collection') return collectionCause(row).title
   const labels:Record<string,string> = {
@@ -323,6 +348,7 @@ function reasonLabel(row:FailureReview) {
     LH_COLLECTION_REQUEST_UNSUPPORTED:'지원하지 않는 LH 수집 요청', PAN_ID_NOT_FOUND:'LH 공고 번호 누락',
     HOUSING_TYPE_NOT_FOUND:'연결할 주택형을 찾지 못함', AMBIGUOUS_HOUSING_TYPE:'일치하는 주택형이 여러 개',
     MANUAL_MATCH_REVIEW_REQUIRED:'저장한 매칭의 원천·주택형 재확인 필요',
+    LH_SUPPLY_LINK_REVIEW_REQUIRED:'저장한 LH 공급 연결의 원천 재확인 필요',
     LH_DETAIL_SOURCE_NOT_FOUND:'LH 상세 원천 없음',
     LH_SUPPLY_SOURCE_NOT_FOUND:'LH 공급 원천 없음', UNSUPPORTED_SUPPLY_TYPE:'지원하지 않는 공급 유형',
   }

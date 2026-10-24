@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LinkedMyHomeRow;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementSupplyMatcher.LhSupplyMatchResult;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -147,6 +148,47 @@ class LhAnnouncementSupplyMatcherTest {
         LhSupplyMatchResult result = matcher.match(List.of(row), source("아산읍내1 영구임대아파트", "31"));
 
         assertThat(result.row()).isNull();
+    }
+
+    @Test
+    void 저장한_연결이_있으면_단지명이_달라도_그_마이홈_원천행의_공급행과_매칭한다() {
+        SupplyRow other = row("전주평화4 영구임대주택", "26");
+        SupplyRow linked = row("평화주공4단지", "26");
+        when(linked.getMyhomeSourceRowIdentifier()).thenReturn("myhome-row");
+        var source = source("전주평화4 영구임대주택", "26").withLinkedRow(new LinkedMyHomeRow("myhome-row", false));
+
+        LhSupplyMatchResult result = matcher.match(List.of(other, linked), source);
+
+        assertThat(result.row()).isSameAs(linked);
+    }
+
+    @Test
+    void 원천이_바뀐_저장_연결은_자동_매칭하지_않고_재확인을_요구한다() {
+        SupplyRow row = row("전주평화4 영구임대주택", "26");
+        when(row.getLhSourceSupplyRowIdentifier()).thenReturn("lh-supply-row");
+        var source = source("전주평화4 영구임대주택", "26").withLinkedRow(new LinkedMyHomeRow("myhome-row", true));
+
+        LhSupplyMatchResult result = matcher.match(List.of(row), source);
+
+        assertThat(result.row()).isNull();
+        assertThat(result.failure().reason())
+                .isEqualTo(LhAnnouncementEnrichmentFailureReason.LH_SUPPLY_LINK_REVIEW_REQUIRED);
+    }
+
+    @Test
+    void 실패한_행의_비교_후보는_단지명이_다르면_같은_주택형_주택형이_다르면_같은_단지의_공급행이다() {
+        SupplyRow sameType = row("대전중촌2", "19A(주거약자용)");
+        SupplyRow sameComplex = row("대전관저5", "26");
+        SupplyRow other = row("대전산내", "39");
+
+        var complexNotFound = matcher.candidates(List.of(sameType, sameComplex, other),
+                source("대전중촌2 증축 영구임대주택(주거복지동)", "19A(주거약자용)"),
+                LhAnnouncementEnrichmentFailureReason.COMPLEX_NOT_FOUND);
+        var typeNotFound = matcher.candidates(List.of(sameType, sameComplex, other),
+                source("대전관저5 영구임대주택", "26D"), LhAnnouncementEnrichmentFailureReason.HOUSING_TYPE_NOT_FOUND);
+
+        assertThat(complexNotFound).containsExactly(sameType);
+        assertThat(typeNotFound).containsExactly(sameComplex);
     }
 
     private SupplyRow row(String complexName, String housingTypeName) {

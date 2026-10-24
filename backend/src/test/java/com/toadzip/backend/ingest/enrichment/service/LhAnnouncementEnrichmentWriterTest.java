@@ -82,7 +82,7 @@ class LhAnnouncementEnrichmentWriterTest {
                 mapper, failureStore, sourceStore
         );
 
-        assertThatThrownBy(() -> writer.writeAfterMapping(announcement, request, List.of(), Set.of(), Set.of()))
+        assertThatThrownBy(() -> writer.writeAfterMapping(announcement, request, List.of(), Set.of(), Set.of(), java.util.Map.of()))
                 .isInstanceOf(DataPipelineStoppedException.class);
 
         org.mockito.Mockito.verifyNoInteractions(failureStore);

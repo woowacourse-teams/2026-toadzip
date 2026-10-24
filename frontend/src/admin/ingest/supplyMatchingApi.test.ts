@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { requestManagementApi } from '../management/api'
-import { getSupplyMatches, searchMatchingComplexes, getMatchingHousingTypes, refineSupplyMatches, releaseSupplyMatch } from './supplyMatchingApi'
+import { getSupplyMatches, searchMatchingComplexes, getMatchingHousingTypes, refineSupplyMatches, releaseSupplyMatch,
+  getLhSupplyLinks, saveLhSupplyLinks } from './supplyMatchingApi'
 
 vi.mock('../management/api', () => ({ requestManagementApi: vi.fn() }))
 describe('선택 적용 정제 API 계약', () => {
@@ -62,5 +63,19 @@ describe('선택 적용 정제 API 계약', () => {
     expect(await releaseSupplyMatch('21395', row, '재검토')).toEqual([])
     expect(requestManagementApi).toHaveBeenCalledWith(expect.stringContaining('/21395/release'), 'POST',
       { rowIdentifier: '21395:1', token: 'row', reason: '재검토' })
+  })
+  it('LH 공급 연결을 조회 토큰과 근거로 저장하고 응답을 검증한다', async () => {
+    const view = { token: 'token', myhomeRows: [{ rowIdentifier: 'myhome-4', complexName: '평화주공4단지',
+      housingTypeName: '아파트', supplyHouseholdCount: 300, splitCorrected: false }],
+    lhRows: [{ rowIdentifier: 'LH:pan:SUPPLY:0', complexLabel: '전주평화4 영구임대주택', typeName: '26',
+      exclusiveArea: '26.37', supplyArea: null, suppliedUnitCount: '12', linkedRowIdentifier: null, savedLink: null }] }
+    vi.mocked(requestManagementApi).mockResolvedValue(view)
+    await saveLhSupplyLinks('19585', view, 'myhome-4', ['LH:pan:SUPPLY:0'], 'https://apply.lh.or.kr', '공고문 3쪽')
+    expect(requestManagementApi).toHaveBeenCalledWith(
+      '/api/admin/ingest/announcement-supply-matches/19585/lh-links', 'POST', { token: 'token',
+        myhomeRowIdentifier: 'myhome-4', lhRowIdentifiers: ['LH:pan:SUPPLY:0'], sourceUrl: 'https://apply.lh.or.kr',
+        reason: '공고문 3쪽' })
+    vi.mocked(requestManagementApi).mockResolvedValue({ token: 'token', myhomeRows: [], lhRows: [{ rowIdentifier: 1 }] })
+    await expect(getLhSupplyLinks('19585')).rejects.toThrow('LH 공급 연결 응답')
   })
 })
