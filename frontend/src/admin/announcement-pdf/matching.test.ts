@@ -98,4 +98,3 @@ describe('공고 보정 대응 제안', () => {
     expect(proposeRows(renamed, twins, housing)[0].reason).toBe('단지를 하나로 특정하지 못했습니다.')
   })
 })
-
