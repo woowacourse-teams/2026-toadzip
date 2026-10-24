@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
@@ -31,6 +32,14 @@ public class MyHomeAnnouncementMappingFailureStore {
                 .findAllBySourceAnnouncementIdentifier(identifier);
         IngestFailureReconciler.reconcile(stored, List.of(), failures, clock.instant(), executionId)
                 .forEach(repository::save);
+    }
+
+    /** 단건 정제가 거절되어 정제 트랜잭션은 되돌려도, 전체 정제와 같은 실패 기록은 별도 트랜잭션으로 남긴다. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void reconcileRejectedAnnouncement(
+            String identifier, List<MyHomeAnnouncementMappingFailure> failures, UUID executionId
+    ) {
+        reconcileForAnnouncement(identifier, failures, executionId);
     }
 
     @Transactional

@@ -13,6 +13,7 @@ import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.domain.AnnouncementSupplyMatchDecision;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ComplexOption;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ExclusionRequest;
@@ -28,19 +29,23 @@ import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SplitRo
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SplitSelection;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
+import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureStore;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchResult;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
+import java.time.Clock;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -60,6 +65,8 @@ public class AnnouncementSupplyMatchingService {
     private final SupplyRowRepository productRows;
     private final SupplyRowGroupRepository groups;
     private final AnnouncementSupplySplitWriter splitWriter;
+    private final MyHomeAnnouncementMappingFailureStore failureStore;
+    private final Clock clock;
 
     public List<Row> rows(String identifier) {
         var result = new LinkedHashMap<String, Row>();
@@ -215,19 +222,37 @@ public class AnnouncementSupplyMatchingService {
 
     /**
      * 선택 없이 저장한 매칭과 자동 매칭으로 이 공고만 다시 정제한다. 보정 결과 화면에서 오류가 풀렸는지 바로 확인하는 용도다.
-     * 단건 정제라 매칭이나 LH 보강이 하나라도 실패하면 전체를 되돌리고, 실패 기록은 바꾸지 않는다.
+     * 단건 정제라 매칭이나 LH 보강이 하나라도 실패하면 전체를 되돌린다. LH 보강 실패만은 전체 정제처럼 실패로 기록해
+     * 고친 매칭 오류는 해결로 바꾸고 다음 원인을 실패 검토에 남긴다. 다른 실패는 기록을 바꾸지 않는다.
      */
     @Transactional
     public MyHomeAnnouncementMappingReport rerun(String identifier) {
         // POST 인터셉터가 트랜잭션 종료까지 전역 수집 잠금을 유지한다. 외부 API는 호출하지 않는다.
         IngestExecutionScope.verifyHeld();
         var current = resolved(identifier);
+        // 거절 뒤 되돌릴 세션에서 다시 조회하면 쓰던 변경이 먼저 반영되므로 기록할 원천행을 미리 읽는다.
+        var currentSources = sources.findAllByPblancIdOrderByIdAsc(identifier);
         var previous = writablePrevious(identifier, current, false);
         try {
             return writer.writeSelected(current, previous, Map.of(), List.of()).report();
         }
+        catch (MyHomeAnnouncementMappingWriter.LhEnrichmentRejectedMappingException exception) {
+            var failures = currentSources.stream().map(source -> MyHomeAnnouncementMappingService.failureOf(
+                    source, exception.reason(), exception.getMessage(), clock.instant())).toList();
+            try {
+                failureStore.reconcileRejectedAnnouncement(identifier, failures,
+                        IngestExecutionContext.currentExecutionId().orElse(null));
+            }
+            catch (RuntimeException recordingFailure) {
+                log.warn("단건 정제의 LH 보강 실패를 기록하지 못했습니다. identifier={}", identifier, recordingFailure);
+                throw new InvalidIngestRequestException("정제 실패: " + exception.getMessage()
+                        + " 저장은 되돌렸지만 오류 목록에는 기록하지 못했습니다.");
+            }
+            throw new InvalidIngestRequestException("정제 실패: " + exception.getMessage()
+                    + " 저장은 되돌리고 오류 목록에 기록했습니다.");
+        }
         catch (MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException exception) {
-            throw new InvalidIngestRequestException("정제 실패: " + exception.getMessage());
+            throw new InvalidIngestRequestException("정제 실패: " + exception.getMessage() + " 오류 목록은 바꾸지 않았습니다.");
         }
     }
 
