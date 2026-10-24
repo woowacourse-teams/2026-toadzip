@@ -15,6 +15,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Objects;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -105,8 +106,8 @@ public class HousingType {
         this.housingComplex = housingComplex;
         this.sourceHousingTypeIdentifier = sourceHousingTypeIdentifier;
         this.name = name;
-        this.exclusiveArea = exclusiveArea;
-        this.supplyArea = supplyArea;
+        this.exclusiveArea = area(exclusiveArea);
+        this.supplyArea = area(supplyArea);
     }
 
     public static HousingType create(
@@ -169,8 +170,8 @@ public class HousingType {
         }
         this.sourceHousingTypeIdentifier = sourceHousingTypeIdentifier;
         this.name = name;
-        this.exclusiveArea = exclusiveArea;
-        this.supplyArea = supplyArea;
+        this.exclusiveArea = area(exclusiveArea);
+        this.supplyArea = area(supplyArea);
         return true;
     }
 
@@ -186,6 +187,14 @@ public class HousingType {
         return true;
     }
 
+    /**
+     * 면적은 DB 열과 같은 소수 넷째 자리로 맞춘다. 새로 만든 주택형의 메모리 값(16.37)과 다시 읽은 값(16.3700)이 달라
+     * 같은 주택형인데도 저장 매칭의 대상 지문이 달라지는 일을 막는다.
+     */
+    private static BigDecimal area(BigDecimal value) {
+        return value == null ? null : value.setScale(4, RoundingMode.HALF_UP);
+    }
+
     public void reviseByAdmin(String name, BigDecimal exclusiveArea, Integer householdCount) {
         validateNotBlank(name, "주택형명");
         validateRequiredAmount(exclusiveArea, "전용면적");
@@ -193,7 +202,7 @@ public class HousingType {
             validateNonNegative(householdCount, "전체 세대수");
         }
         this.name = name;
-        this.exclusiveArea = exclusiveArea;
+        this.exclusiveArea = area(exclusiveArea);
         this.totalHouseholdCount = householdCount;
         this.adminModified = true;
     }
