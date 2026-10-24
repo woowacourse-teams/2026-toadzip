@@ -51,7 +51,7 @@ export function AdminLayout() {
     <div className={`admin-layout ${styles.layout}`}><a className="admin-skip" href="#admin-main">본문으로 건너뛰기</a>
       <header className="admin-header">
         <div className="admin-brand">
-          <BrandLink />
+          <BrandLink to="/admin/operations" label="관리자 운영 홈으로" />
           <span className="admin-brand-context">운영 관리</span>
         </div>
         <div className={styles.location}><span>관리자 작업공간</span><b>/</b><strong>{current?.[1] ?? '데이터 관리'}</strong></div>
