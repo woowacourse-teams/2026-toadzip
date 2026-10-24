@@ -67,8 +67,7 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
   const completed = execution.completedStepResults?.find(item => item.stepName === selectedName)
   const failure = execution.failure?.stepName === selectedName ? execution.failure : null
   const report = partial?.report ?? failure?.serverResponse ?? skipped?.serverResponse ?? completed?.report
-  const category = selected?.startsWith('COLLECT_') ? 'collection' : selected === 'ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS'
-    ? 'household' : selected === 'ENRICH_LH_ANNOUNCEMENTS' ? 'enrichment' : domain
+  const category = selected?.startsWith('COLLECT_') ? 'collection' : selected === 'ENRICH_LH_ANNOUNCEMENTS' ? 'enrichment' : domain
 
   return <article className={`${styles.execution} ${focused ? styles.focused : ''}`} aria-label="현재 작업 단계">
     <header className={styles.heading}><h3>{label}</h3>

@@ -125,8 +125,9 @@ export function PipelineResult({ type, state, collectionExecution, stopping, onS
       {type.endsWith('_SYNC') ? (
         <div>
           <Link className="pipeline-inspect" to={`/admin/failures?domain=${domain}&category=collection&executionId=${execution.executionId ?? ''}`}>{label} 수집 실패 요청 보기</Link>{' · '}
-          <Link className="pipeline-inspect" to={`/admin/failures?domain=${domain}&category=${type === 'COMPLEX_SYNC' ? 'complex' : 'announcement'}&executionId=${execution.executionId ?? ''}`}>{label} 정제 실패 행 보기</Link>{' · '}
-          <Link className="pipeline-inspect" to={`/admin/failures?domain=${domain}&category=${type === 'COMPLEX_SYNC' ? 'household' : 'enrichment'}&executionId=${execution.executionId ?? ''}`}>{label} 보강 실패 행 보기</Link>
+          <Link className="pipeline-inspect" to={`/admin/failures?domain=${domain}&category=${type === 'COMPLEX_SYNC' ? 'complex' : 'announcement'}&executionId=${execution.executionId ?? ''}`}>{label} 정제 실패 행 보기</Link>
+          {/* LH 세대수 보강은 선택 보강이라 실패 검토에 두지 않는다. 공고 LH 보강 실패만 연결한다. */}
+          {type !== 'COMPLEX_SYNC' && <>{' · '}<Link className="pipeline-inspect" to={`/admin/failures?domain=${domain}&category=enrichment&executionId=${execution.executionId ?? ''}`}>{label} 보강 실패 행 보기</Link></>}
         </div>
       ) : (
         <Link className="pipeline-inspect" to={`/admin/failures?domain=${domain}&category=${type === 'COMPLEX_REFINEMENT' ? 'complex' : type === 'ANNOUNCEMENT_REFINEMENT' ? 'announcement' : 'collection'}&executionId=${execution.executionId ?? ''}`}>{label} 실패 행·요청 보기</Link>
