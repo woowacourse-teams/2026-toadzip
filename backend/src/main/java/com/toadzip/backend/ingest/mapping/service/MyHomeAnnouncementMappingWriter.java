@@ -123,9 +123,7 @@ public class MyHomeAnnouncementMappingWriter {
                         Set.of(), resolved.sourceKeysExcludedFromLhEnrichment(), resolved.supplyLinks());
             }
             catch (LhAnnouncementEnrichmentRejectedException exception) {
-                throw new MyHomeAnnouncementMappingRejectedException(
-                        MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
-                        "LH 보강 실패: " + exception.reason() + " - " + exception.getMessage());
+                throw new LhEnrichmentRejectedMappingException(exception);
             }
         }
         failureStore.reconcileForAnnouncement(
@@ -206,10 +204,7 @@ public class MyHomeAnnouncementMappingWriter {
             );
         }
         catch (LhAnnouncementEnrichmentRejectedException exception) {
-            throw new MyHomeAnnouncementMappingRejectedException(
-                    MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
-                    "LH 보강 실패: " + exception.reason() + " - " + exception.getMessage()
-            );
+            throw new LhEnrichmentRejectedMappingException(exception);
         }
     }
 
@@ -647,5 +642,14 @@ public class MyHomeAnnouncementMappingWriter {
             MyHomeAnnouncementMappingFailureReason reason,
             String detail
     ) {
+    }
+
+    /** 전체 정제와 단건 정제가 같은 실패로 기록할 수 있도록 LH 보강 거절을 다른 정제 거절과 구분한다. */
+    static class LhEnrichmentRejectedMappingException extends MyHomeAnnouncementMappingRejectedException {
+
+        LhEnrichmentRejectedMappingException(LhAnnouncementEnrichmentRejectedException cause) {
+            super(MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
+                    "LH 보강 실패: " + cause.reason() + " - " + cause.getMessage());
+        }
     }
 }
