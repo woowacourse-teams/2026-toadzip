@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { rememberApply } from './supplyApplyRecovery'
@@ -129,4 +129,12 @@ it('새로고침해도 응답 유실 작업을 복원하고 새 작업을 만들
   expect(previewSupply).not.toHaveBeenCalled()
   expect(applySupply).toHaveBeenCalledWith('21', input, 'confirmed')
   expect(sessionStorage.getItem('admin:pending-supply-apply:21')).toBeNull()
+})
+
+it('공고 표기가 달라도 연결한 단지 이름으로 보여 같은 단지가 다른 단지처럼 보이지 않는다', async () => {
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...workspace, rows: [row, { ...row, id: 2, key: 'row:2', complexName: '익산 한스빌 국민임대', typeName: '36' }] })
+  render(<MemoryRouter><SupplyCorrectionWorkbench id="21" sourceUrl="https://example.com/notice.pdf" onChanged={vi.fn()} onBusyChange={vi.fn()} onDirtyChange={vi.fn()} /></MemoryRouter>)
+  const table = await screen.findByRole('table', { name: '공급정보 표' })
+  expect(within(table).getAllByRole('rowheader').map(cell => cell.textContent)).toEqual(['한스빌', '한스빌'])
+  expect(within(table).getAllByRole('rowheader')[1]).toHaveAttribute('title', '공고 표기: 익산 한스빌 국민임대')
 })

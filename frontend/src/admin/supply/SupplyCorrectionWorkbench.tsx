@@ -127,7 +127,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
             const targets = row.targets.filter(target => !target.excluded)
             const gaps = row.excluded ? ['제외 예정'] : [!row.housingComplexId && '단지 연결', !row.housingTypeId && !row.newHousingType && '주택형 연결', !targets.length && '임대조건 없음'].filter(Boolean)
             return <Fragment key={row.key}><tr data-excluded={row.excluded || undefined}>
-              <th scope="row">{row.complexName || '새 공급행'}</th><td>{row.typeName || '미입력'}</td>
+              <th scope="row" title={row.housingComplexName && row.complexName && row.housingComplexName !== row.complexName ? `공고 표기: ${row.complexName}` : undefined}>{row.housingComplexName || row.complexName || '새 공급행'}</th><td>{row.typeName || '미입력'}</td>
               <td>{group || row.groupId ? `공통 ${group?.sharedHouseholdCount ?? row.sharedHouseholdCount ?? '미확인'}` : row.householdCount ?? '미확인'}</td>
               <td>{targets.length ? `${targets.length}개` : '없음'}</td><td>{gaps.join(' · ') || '—'}</td>
               <td><button type="button" aria-label={`${row.complexName || '새 공급행'} ${row.typeName || ''} 편집`} aria-expanded={expanded === row.key} onClick={() => setExpanded(expanded === row.key ? null : row.key)}>{expanded === row.key ? '닫기' : '편집'}</button></td>
