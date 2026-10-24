@@ -8,7 +8,10 @@ import styles from './PdfCorrection.module.css'
 
 const modes: [ValueMode, string, string][] = [['keep', '기존 값', '기존 값 사용'], ['extracted', '보정 값', '보정된 값 사용'], ['manual', '직접 수정', '직접 수정']]
 
-export function ReviewCells({ cells, scope, housingTypes = [], filter = 'all', onChange, onEvidence }: { cells: Cell[]; scope: string; housingTypes?: MatchingHousingType[]; filter?: ReviewFilter; onChange: (cells: Cell[]) => void; onEvidence: (evidence: Evidence) => void }) {
+/** 단지에 맞는 주택형이 없을 때 연결 주택형에서 고를 수 있는 'PDF 형명·면적으로 새 주택형 추가' */
+export type NewHousingTypeChoice = { label: string; selected: boolean; onSelect: (selected: true) => void }
+
+export function ReviewCells({ cells, scope, housingTypes = [], newType, filter = 'all', onChange, onEvidence }: { cells: Cell[]; scope: string; housingTypes?: MatchingHousingType[]; newType?: NewHousingTypeChoice; filter?: ReviewFilter; onChange: (cells: Cell[]) => void; onEvidence: (evidence: Evidence) => void }) {
   const [all, setAll] = useState(false)
   const quiet = filter === 'all' ? cells.filter(cell => cell.mode !== 'manual' && (cell.state === 'same' || cell.state === 'notApplicable')) : []
   const visible = cells.filter(cell => cellMatches(cell, filter) && (all || !quiet.includes(cell)))
@@ -24,9 +27,9 @@ export function ReviewCells({ cells, scope, housingTypes = [], filter = 'all', o
   }
   function manualField(cell: Cell) {
     const change = (value: string) => update(cell.path, editCell(cell, value))
-    const value = cell.input ?? String(cell.value ?? '')
+    const value = cell.kind === 'housingType' && newType?.selected ? 'new' : cell.input ?? String(cell.value ?? '')
     return <label className={styles.manualField}><span className={styles.srOnly}>{scope} {cell.label} 수정</span>{cell.kind === 'housingType'
-      ? <select value={value} aria-invalid={cell.state === 'invalid' || undefined} onChange={event => change(event.target.value)}><option value="">주택형 미연결</option>{housingTypes.map(type => <option key={type.id} value={type.id}>{display(cell, type.id)}</option>)}</select>
+      ? <select value={value} aria-invalid={cell.state === 'invalid' || undefined} onChange={event => { if (event.target.value === 'new') newType?.onSelect(true); else change(event.target.value) }}><option value="">주택형 미연결</option>{housingTypes.map(type => <option key={type.id} value={type.id}>{display(cell, type.id)}</option>)}{newType && <option value="new">PDF 형명·면적으로 새 주택형 추가 ({newType.label})</option>}</select>
       : cell.kind === 'method' || cell.kind === 'scheduleType'
         ? <select value={value} onChange={event => change(event.target.value)}><option value="">미확인</option>{choices[cell.kind].map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
         : cell.field === 'applicationCondition' ? <textarea rows={3} value={value} aria-invalid={cell.state === 'invalid' || undefined} onChange={event => change(event.target.value)} />
@@ -45,7 +48,7 @@ export function ReviewCells({ cells, scope, housingTypes = [], filter = 'all', o
         <div className={styles.cellResult}>{cell.locked ? <span>{cell.note || '기존 값 유지'}</span> : <>
           <div role="group" aria-label={`${scope} ${cell.label} 반영 방법`} className={styles.valueChoices}>{modes.map(([mode, label, name]) => <Button data-design-system key={mode} aria-label={name} aria-pressed={cell.mode === mode} disabled={mode === 'extracted' && !canUseExtracted}
             onClick={() => update(cell.path, chooseCellValue(cell, mode))}>{mode === 'keep' && cell.before == null ? emptyKeepLabel(cell) : label}</Button>)}</div>
-          {cell.mode === 'manual' ? manualField(cell) : <strong className={styles.resultValue}>{cell.mode === 'keep' && cell.before == null ? emptyKeepResult(cell) : display(cell, cell.mode === 'keep' ? cell.before : cell.value)}</strong>}
+          {cell.kind === 'housingType' && newType?.selected && cell.mode !== 'manual' ? <strong className={styles.resultValue}>새 주택형 추가 · {newType.label}</strong> : cell.mode === 'manual' ? manualField(cell) : <strong className={styles.resultValue}>{cell.mode === 'keep' && cell.before == null ? emptyKeepResult(cell) : display(cell, cell.mode === 'keep' ? cell.before : cell.value)}</strong>}
           {cell.note && <small>{cell.note}</small>}
         </>}</div>
         <div className={styles.cellEvidence}>{cell.evidence && <Button data-design-system className={styles.evidenceButton} aria-label={`PDF ${cell.evidence.page}쪽 보기`} onClick={() => onEvidence(cell.evidence!)} title={cell.evidence.quote}>p.{cell.evidence.page}</Button>}</div>
