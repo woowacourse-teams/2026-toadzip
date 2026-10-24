@@ -3,6 +3,14 @@ import fixtures from './fixtures/scenarios.json'
 import { evidenceFor, noteFor, pathCovers, readExtraction } from './extraction'
 
 describe('ChatGPT 공고 응답 읽기', () => {
+  it('단지 개요는 이름이 있는 항목만 읽고, 없는 응답(v4)도 그대로 읽는다', () => {
+    const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: Record<string, unknown> }
+    input.data.complexes = [{ sourceComplexName: ' 인천부평 ', address: '인천광역시 부평구 부평동 65-17', totalHouseholdCount: 350, parkingCount: '112대' }, { address: '이름 없음' }]
+    const result = readExtraction(JSON.stringify(input))
+    expect(result.ok && result.value.complexes).toEqual([{ name: '인천부평', address: '인천광역시 부평구 부평동 65-17', totalHouseholdCount: 350, parkingCount: null }])
+    const legacy = readExtraction(JSON.stringify(fixtures.hansville.extraction))
+    expect(legacy.ok && legacy.value.complexes).toEqual([])
+  })
   it.each(Object.entries(fixtures))('%s 실제 응답 형식을 읽는다', (_name, fixture) => {
     const result = readExtraction(JSON.stringify(fixture.extraction))
     expect(result.ok).toBe(true)
@@ -38,7 +46,29 @@ describe('ChatGPT 공고 응답 읽기', () => {
   it('공통 모집수의 행이 없거나 겹치면 거절한다', () => {
     const input = structuredClone(fixtures.hansville.extraction)
     input.sharedCounts[0].paths[1] = 'supplyRows[99].totalSupplyHouseholdCount'
-    expect(readExtraction(JSON.stringify(input))).toMatchObject({ ok: false, error: expect.stringContaining('sharedCounts') })
+    expect(readExtraction(JSON.stringify(input))).toMatchObject({ ok: false, error: 'sharedCounts[0].paths의 supplyRows[99]가 없습니다. 공급행은 2개(0~1번)입니다.' })
+  })
+
+  it.each([
+    ['쪽 번호가 없으면', (item: Record<string, unknown>) => { item.page = null }, 'sharedCounts[0].page는 1 이상의 쪽 번호여야 합니다. 현재 값: null'],
+    ['모집수가 문자열이면', (item: Record<string, unknown>) => { item.count = '170' }, 'sharedCounts[0].count는 0 이상의 정수여야 합니다. 현재 값: "170"'],
+    ['공급행이 하나뿐이면', (item: Record<string, unknown>) => { item.paths = ['supplyRows[0].totalSupplyHouseholdCount'] }, 'sharedCounts[0].paths에는 모집수를 함께 쓰는 공급행이 2개 이상 있어야 합니다.'],
+    ['다른 공급행의 대상을 묶으면', (item: Record<string, unknown>) => { item.paths = ['supplyRows[0].targets[0].supplyHouseholdCount', 'supplyRows[1].targets[0].supplyHouseholdCount'] }, '같은 공급행의 대상끼리만 묶을 수 있습니다.'],
+    ['공급행과 대상을 섞으면', (item: Record<string, unknown>) => { item.paths = ['supplyRows[0].totalSupplyHouseholdCount', 'supplyRows[0].targets[0].supplyHouseholdCount'] }, '공급행 모집수와 대상별 모집수가 섞여 있습니다.'],
+    ['없는 대상을 가리키면', (item: Record<string, unknown>) => { item.paths = ['supplyRows[0].targets[0].supplyHouseholdCount', 'supplyRows[0].targets[5].supplyHouseholdCount'] }, 'supplyRows[0].targets[5]가 없습니다. 이 공급행의 대상은 1개입니다.'],
+  ])('공통 모집수의 %s 어느 항목이 왜 틀렸는지 알린다', (_name, change, message) => {
+    const input = structuredClone(fixtures.hansville.extraction) as unknown as { sharedCounts: Record<string, unknown>[] }
+    change(input.sharedCounts[0])
+    expect(readExtraction(JSON.stringify(input))).toMatchObject({ ok: false, error: expect.stringContaining(message) })
+  })
+
+  it('한 공급행 안의 대상들이 함께 쓰는 모집수(대학생·청년 통합)를 읽는다', () => {
+    const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
+    input.data.supplyRows[0].targets.push({ ...input.data.supplyRows[0].targets[0], target: '청년' })
+    input.sharedCounts = [{ paths: ['supplyRows[0].targets[0].supplyHouseholdCount', 'supplyRows[0].targets[1].supplyHouseholdCount'], count: 39, page: 3, quote: '대학생 청년 39' }]
+    const result = readExtraction(JSON.stringify(input))
+    expect(result).toMatchObject({ ok: true })
+    if (result.ok) expect(result.value.sharedCounts).toEqual([expect.objectContaining({ count: 39, paths: ['supplyRows[0].targets[0].supplyHouseholdCount', 'supplyRows[0].targets[1].supplyHouseholdCount'] })])
   })
 
   it('v1 응답은 새 프롬프트로 다시 요청하도록 안내한다', () => {

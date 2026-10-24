@@ -1,7 +1,7 @@
 import type { ExtractedAnnouncement, JsonObject, JsonUpdateInput, JsonWorkspace } from '../announcement-json/api'
 import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type NewSupplyGroup } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, type Evidence, type Extraction } from './extraction'
-import { defaultTargetDestinations, missingHousingType, normalizedName, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
+import { defaultTargetDestinations, emptyRow, missingHousingType, normalizedName, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
 import { housingTypeLabel } from '../ingest/housingTypeLabel'
 
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
@@ -228,6 +228,17 @@ export function applicableCells(review: Review) {
     ...review.rows.filter(row => row.include).flatMap(row => [...row.cells, ...row.targets.filter(target => target.destination !== 'exclude').flatMap(target => target.cells)]),
     ...review.schedules.filter(schedule => schedule.include).flatMap(schedule => schedule.cells)]
 }
+/** 공통 모집 묶음을 저장할 수 있는지. 기존 공급행이 하나 있고 새 주택형을 만드는 행이 없어야 한다. */
+export function sharedGroupStorable(review: Review, groupIndex: number) {
+  const members = review.rows.filter(row => row.include && row.proposal.sharedIndex === groupIndex)
+  return members.filter(row => row.proposal.destination !== 'new').length === 1 && !members.some(row => row.newHousingType)
+}
+/** 저장하면 제외할 빈 기존 행. PDF 행을 하나 이상 적용하고, 그 행을 저장 위치로 고르지 않은 경우다. */
+export function replacedRows(review: Review, workspace: JsonWorkspace) {
+  const included = review.rows.filter(row => row.include)
+  if (!included.length) return []
+  return workspace.supply.rows.filter(row => emptyRow(row) && !included.some(entry => entry.proposal.destination === row.key))
+}
 export function assembleReview(review: Review, workspace: JsonWorkspace, evidence: { reason: string; sourceUrl: string; sourcePage: string | null }): JsonUpdateInput {
   const rows = structuredClone(workspace.supply.rows), taken = new Map<string, number>(), newGroups: NewSupplyGroup[] = []
   for (const [index, entry] of review.rows.entries()) {
@@ -243,6 +254,10 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
       complexName: review.extraction.supplyRows[index].complexName || anchor?.complexName || complex!.name,
       pnu: anchor?.pnu ?? complex!.pnu, category: anchor?.category ?? complex!.category,
       housingComplexId: anchor ? anchor.housingComplexId : complex!.id, housingComplexName: anchor ? anchor.housingComplexName : complex!.name }
+    if (existing && existing.housingComplexId === null && complex) {
+      row.housingComplexId = complex.id; row.housingComplexName = complex.name
+      if (!row.pnu.trim()) row.pnu = complex.pnu
+    }
     if (!row.pnu.trim()) throw new ReviewError(`공급행 ${index + 1}의 소재지 PNU를 확인하세요.`, `row:${index}`)
     applyCells(row as unknown as JsonObject, entry.cells, rowFields)
     // 공고에 주택형 표기가 없으면 새 행은 연결한 단지 주택형 이름으로 표시한다.
@@ -282,9 +297,12 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
       continue
     }
     const original = current.filter(row => row.id !== null)
+    // 공통 모집 묶음은 기존 원천행 하나를 기준으로만 만들 수 있다. 새 단지·새 주택형만으로 된 묶음은 저장할 곳이 없어 각 행의 모집수를 비워 둔다.
+    if (!sharedGroupStorable(review, index)) continue
     if (original.length !== 1 || group.count === null || current.some(row => row.housingTypeId === null)) throw new Error('새 공통 모집 묶음은 기존 한 행과 서로 다른 주택형에 연결한 새 행으로 구성하세요.')
     newGroups.push({ sourceRowId: original[0].id!, rowKeys: current.map(row => row.key), sharedHouseholdCount: group.count })
   }
+  for (const replaced of replacedRows(review, workspace)) rows.find(row => row.key === replaced.key)!.excluded = true
   const ordered = applyPdfOrder(review, rows)
   const announcement: JsonObject = Object.fromEntries(['name', 'rentalType', 'recruitmentType', 'agencyCode', ...metadataFields.map(([field]) => field)].map(field => [field, workspace.detail.data[field] ?? null]))
   applyCells(announcement, review.metadata, metadataFields)

@@ -27,6 +27,13 @@
 - 한 시점만 있는 일정(예: "16:00 이후" 발표)은 endAt을 startAt과 같게 쓰세요.
 - 시각을 안내하지 않은 일정은 00:00:00으로 쓰세요.
 
+[단지]
+- data.complexes에는 supplyRows에 나온 단지명(sourceComplexName)마다 하나씩 단지 개요를 쓰세요. 관리자가 이 값으로 기존 단지를 찾거나 새 단지를 등록합니다.
+- sourceComplexName은 supplyRows의 complexReference.sourceComplexName과 글자 그대로 같게 쓰세요.
+- address는 공고문의 단지 소재지(위치)입니다. 도로명주소가 있으면 도로명주소를, 없으면 지번 주소를 시·도부터 번지까지 그대로 쓰세요. "일원", "외 N필지"는 빼고 대표 번지 하나만 쓰세요.
+- totalHouseholdCount는 단지 전체 세대수(총 건설호수), parkingCount는 단지 주차대수입니다. 이번 모집호수와 구분하세요.
+- 확인하지 못한 값은 null로 두고 unresolvedFields에 complexes[번호].필드 경로로 적으세요.
+
 [공급행]
 - 공급행은 공고문 공급 표의 (단지, 주택형) 한 행입니다.
 - complexReference.sourceComplexName은 공고문의 단지명, sourceHousingTypeName은 공고문의 주택형 표기를 그대로 쓰세요.
@@ -35,6 +42,9 @@
 - 공급대상 구분이 없으면 target을 "일반"으로 쓰세요.
 - totalSupplyHouseholdCount는 이번에 모집하는 호수(예비자 모집이면 모집할 예비자수)입니다. 건설호수·대기 중인 예비자수와 구분하세요.
 - 여러 공급행이 하나로 묶인 모집수는 각 행에 복제하거나 나누지 마세요. 해당 행의 값은 null로 두고 sharedCounts에 묶인 행의 path와 수를 적으세요.
+- 주택형 표기가 "26A/B/C"처럼 /로 세부 타입을 묶으면 세부 타입마다 공급행을 따로 만드세요(26A, 26B, 26C). 각 행에는 그 세부 타입의 전용·공급면적을 쓰고, targets와 금액은 묶인 행마다 같게 넣으세요.
+- 이렇게 나눈 세부 타입들이 함께 쓰는 모집수는 나누지 말고 각 행의 totalSupplyHouseholdCount를 null로 두고 sharedCounts에 나눈 행들의 path로 묶으세요. 대상별 모집수도 세부 타입들이 함께 쓰므로 각 행에서 null로 두고 notApplicable에 "세부 타입 공통 모집수"라고 적으세요.
+- 한 공급행 안의 여러 대상이 함께 쓰는 모집수(예: 대학생·청년 통합 추첨)는 각 대상의 supplyHouseholdCount를 null로 두고 sharedCounts에 supplyRows[번호].targets[번호].supplyHouseholdCount 경로로 묶으세요. 한 묶음에는 같은 공급행의 대상만 넣으세요.
 - exclusiveArea는 주거전용면적, supplyArea는 주거전용면적 + 주거공용면적입니다. 공고문에 적힌 자릿수 그대로 ㎡ 소수로 쓰세요.
 - constructedHouseholdCount는 공급 표에 적힌 해당 주택형의 건설호수입니다. 단지 전체 건설호수나 모집호수와 구분하고, 주택형별 건설호수가 없으면 null로 두세요.
 - targets의 rentalDeposit은 임대보증금 계, monthlyRent는 월임대료입니다.
@@ -42,7 +52,7 @@
 - 대상별 모집수가 표에 없으면 supplyHouseholdCount는 null로 두고 notApplicable에 적으세요.
 
 [evidence]
-- 값을 채운 data 항목마다 하나 적으세요. 공급행은 행마다 하나, 대상은 대상마다 하나입니다.
+- 값을 채운 data 항목마다 하나 적으세요. 단지는 단지마다 하나, 공급행은 행마다 하나, 대상은 대상마다 하나입니다.
 - page는 PDF 뷰어 기준 1부터 시작하는 쪽 번호입니다.
 - quote는 원문에서 그대로 복사한 40자 이내 문구입니다. 표의 값이면 그 값의 숫자가 들어간 부분을 고르세요.
 
@@ -64,6 +74,9 @@
       "contact": "1600-1004",
       "url": "https://apply.lh.or.kr"
     },
+    "complexes": [
+      { "sourceComplexName": "두꺼비 행복주택", "address": "충청북도 청주시 서원구 두꺼비로 1", "totalHouseholdCount": 350, "parkingCount": 280 }
+    ],
     "supplyRows": [
       {
         "complexReference": { "sourceComplexName": "두꺼비 행복주택" },
@@ -101,6 +114,7 @@
   ],
   "evidence": [
     { "path": "announcement.postedDate", "page": 1, "quote": "모집공고일 : 2026.09.01" },
+    { "path": "complexes[0]", "page": 2, "quote": "위치 : 충청북도 청주시 서원구 두꺼비로 1" },
     { "path": "supplyRows[0]", "page": 3, "quote": "36A 36.5000 13.3000" },
     { "path": "supplyRows[0].targets[0]", "page": 4, "quote": "소득(×) 10,000,000 200,000" }
   ]

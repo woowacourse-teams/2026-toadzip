@@ -4,10 +4,13 @@ import type { JsonObject } from '../announcement-json/api'
 export type ExtractionNote = { path: string; reason: string }
 export type SharedCount = { paths: string[]; count: number | null; page: number | null; quote: string }
 export type Evidence = { path: string; page: number; quote: string }
+/** 공고문 단지 개요. 단지를 찾거나 새로 등록할 때 쓰며, 없거나 형식이 틀리면 비워 둔다. */
+export type ExtractedComplex = { name: string; address: string | null; totalHouseholdCount: number | null; parkingCount: number | null }
 export type ExtractedRow = { complexName: string | null; typeName: string | null; values: JsonObject; targets: JsonObject[] }
 export type Extraction = {
   announcement: JsonObject
   receptionPlace: JsonObject
+  complexes: ExtractedComplex[]
   supplyRows: ExtractedRow[]
   schedules: JsonObject[]
   unresolved: ExtractionNote[]
@@ -75,7 +78,6 @@ function extraction(value: unknown): Extraction | string {
     return 'data.supplyRows와 data.schedules는 객체 배열이어야 합니다.'
   }
   if (data.supplyRows.length > 200 || data.schedules.length > 100) return '공급행은 200개, 일정은 100개까지 읽을 수 있습니다.'
-  const rowCount = data.supplyRows.length
   for (const [key, entries] of [['unresolvedFields', data.unresolvedFields], ['notApplicable', value.notApplicable]] as const) {
     if (!Array.isArray(entries) || entries.length > 1000 || !entries.every(item => isRecord(item)
       && typeof item.path === 'string' && validPath(normalizePath(item.path)) && typeof item.reason === 'string')) {
@@ -86,15 +88,9 @@ function extraction(value: unknown): Extraction | string {
     && typeof item.path === 'string' && validPath(normalizePath(item.path)) && page(item.page) !== null && typeof item.quote === 'string')) {
     return 'evidence의 경로, 쪽 번호(1 이상), 인용문을 확인해 주세요.'
   }
-  if (!Array.isArray(value.sharedCounts) || value.sharedCounts.length > 200 || !value.sharedCounts.every(item => isRecord(item)
-    && Array.isArray(item.paths) && item.paths.length >= 2 && new Set(item.paths).size === item.paths.length
-    && item.paths.every(path => typeof path === 'string' && /^supplyRows\[\d+\]\.totalSupplyHouseholdCount$/.test(normalizePath(path))
-      && Number(/\[(\d+)\]/.exec(path)?.[1]) < rowCount)
-    && typeof item.count === 'number' && Number.isSafeInteger(item.count) && item.count >= 0
-    && page(item.page) !== null && typeof item.quote === 'string')) {
-    return 'sharedCounts의 공급행 경로, 공통 모집수, 근거를 확인해 주세요.'
-  }
-  const sharedPaths = value.sharedCounts.flatMap(item => (item as { paths: string[] }).paths.map(normalizePath))
+  const sharedProblem = sharedCountProblem(value.sharedCounts, data.supplyRows.map(row => Array.isArray(row.targets) ? row.targets.length : 0))
+  if (sharedProblem) return sharedProblem
+  const sharedPaths = (value.sharedCounts as { paths: string[] }[]).flatMap(item => item.paths.map(normalizePath))
   if (new Set(sharedPaths).size !== sharedPaths.length) return '한 공급행을 여러 공통 모집수에 넣을 수 없습니다.'
   const rows: ExtractedRow[] = []
   for (const row of data.supplyRows) {
@@ -105,6 +101,10 @@ function extraction(value: unknown): Extraction | string {
   return {
     announcement: data.announcement,
     receptionPlace: isRecord(data.receptionPlace) ? data.receptionPlace : {},
+    complexes: Array.isArray(data.complexes) ? data.complexes.filter(isRecord).flatMap(item => {
+      const name = text(item.sourceComplexName)
+      return name ? [{ name, address: text(item.address), totalHouseholdCount: count(item.totalHouseholdCount), parkingCount: count(item.parkingCount) }] : []
+    }) : [],
     supplyRows: rows,
     schedules: data.schedules,
     unresolved: notes(data.unresolvedFields),
@@ -125,6 +125,40 @@ function notes(value: unknown): ExtractionNote[] {
   return Array.isArray(value) ? value.filter(isRecord).flatMap(item => typeof item.path === 'string'
     ? [{ path: normalizePath(item.path), reason: text(item.reason) ?? '' }] : []) : []
 }
+/** sharedCounts에서 처음 걸린 항목과 이유를 돌려준다. 값은 고치지 않고 ChatGPT에 다시 요청할 수 있게 위치를 알린다. */
+/**
+ * 공통 모집수는 두 가지다. 여러 공급행이 함께 쓰는 모집수(supplyRows[n].totalSupplyHouseholdCount)와,
+ * 한 공급행 안의 여러 대상이 함께 쓰는 모집수(supplyRows[n].targets[m].supplyHouseholdCount, 예: 대학생·청년 통합 추첨)다.
+ * 한 묶음에는 한 종류만, 대상 묶음은 같은 공급행의 대상만 넣을 수 있다.
+ */
+function sharedCountProblem(items: unknown, targetCounts: number[]): string | null {
+  const rowCount = targetCounts.length
+  if (!Array.isArray(items)) return 'sharedCounts는 목록이어야 합니다. 공통 모집수가 없으면 빈 목록 []로 두세요.'
+  if (items.length > 200) return 'sharedCounts는 200개까지 읽을 수 있습니다.'
+  for (const [index, item] of items.entries()) {
+    const at = `sharedCounts[${index}]`
+    if (!isRecord(item)) return `${at}는 paths·count·page·quote를 가진 객체여야 합니다.`
+    if (!Array.isArray(item.paths) || item.paths.length < 2) return `${at}.paths에는 모집수를 함께 쓰는 공급행이 2개 이상 있어야 합니다.`
+    if (new Set(item.paths).size !== item.paths.length) return `${at}.paths에 같은 공급행이 두 번 들어 있습니다.`
+    const kinds = new Set<string>(), rows = new Set<number>()
+    for (const path of item.paths) {
+      const normalized = typeof path === 'string' ? normalizePath(path) : ''
+      const match = /^supplyRows\[(\d+)\]\.(?:totalSupplyHouseholdCount|targets\[(\d+)\]\.supplyHouseholdCount)$/.exec(normalized)
+      if (!match) return `${at}.paths의 "${String(path)}"는 supplyRows[번호].totalSupplyHouseholdCount 또는 supplyRows[번호].targets[번호].supplyHouseholdCount 형식이어야 합니다.`
+      const row = Number(match[1])
+      if (row >= rowCount) return `${at}.paths의 supplyRows[${row}]가 없습니다. 공급행은 ${rowCount}개(0~${rowCount - 1}번)입니다.`
+      if (match[2] !== undefined && Number(match[2]) >= targetCounts[row]) return `${at}.paths의 supplyRows[${row}].targets[${match[2]}]가 없습니다. 이 공급행의 대상은 ${targetCounts[row]}개입니다.`
+      kinds.add(match[2] === undefined ? 'row' : 'target'); rows.add(row)
+    }
+    if (kinds.size > 1) return `${at}.paths에 공급행 모집수와 대상별 모집수가 섞여 있습니다. 한 묶음에는 한 종류만 넣어 주세요.`
+    if (kinds.has('target') && rows.size > 1) return `${at}.paths의 대상별 모집수는 같은 공급행의 대상끼리만 묶을 수 있습니다.`
+    if (typeof item.count !== 'number' || !Number.isSafeInteger(item.count) || item.count < 0) return `${at}.count는 0 이상의 정수여야 합니다. 현재 값: ${JSON.stringify(item.count) ?? '없음'}`
+    if (page(item.page) === null) return `${at}.page는 1 이상의 쪽 번호여야 합니다. 현재 값: ${JSON.stringify(item.page) ?? '없음'}`
+    if (typeof item.quote !== 'string') return `${at}.quote에는 공고문에서 옮긴 근거 문구가 필요합니다.`
+  }
+  return null
+}
+function count(value: unknown) { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null }
 function page(value: unknown) { return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : null }
 export function text(value: unknown): string | null { return typeof value === 'string' && value.trim() ? value.trim() : null }
 export function normalizePath(path: string) { return path.replace(/\\/g, '').replace(/^\$\.?/, '').replace(/^data\./, '').trim() }

@@ -8,6 +8,10 @@ import type { JsonUpdateInput } from '../announcement-json/api'
 import { ManagementError } from '../management/api'
 const api = vi.hoisted(() => ({ loadJsonWorkspace: vi.fn(), previewJsonUpdate: vi.fn(), applyJsonUpdate: vi.fn() }))
 vi.mock('../announcement-json/api', () => api)
+const registration = vi.hoisted(() => ({ createHousingComplex: vi.fn() }))
+vi.mock('../registration/api', async original => ({ ...await original<typeof import('../registration/api')>(), ...registration }))
+const lookup = vi.hoisted(() => ({ lookupAddresses: vi.fn(async () => []) }))
+vi.mock('./addressLookupApi', () => lookup)
 vi.mock('../ingest/supplyMatchingApi', () => ({ getMatchingHousingTypes: async (id: number) => fixtures.hansville.complexes.find(item => item.id === id)?.housingTypes ?? [] }))
 vi.mock('../../public-housing/api/announcementAttachments', () => ({ loadAnnouncementAttachment: async () => new Blob(), attachmentErrorMessage: () => 'PDF 열기 실패' }))
 vi.mock('../../public-housing/components/PdfDocumentPreview', () => ({ default: ({ focus }: { focus: { page: number; query: string } | null }) => <p>PDF {focus?.page ?? 1}쪽 · 강조 {focus?.query || '없음'}</p> }))
@@ -240,8 +244,8 @@ it('빈 공고의 PDF 추출값은 단지를 검색해 선택한 뒤 첫 공급�
   fireEvent.change(await screen.findByLabelText('ChatGPT 응답'), { target: { value: JSON.stringify(extraction) } })
   await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
   fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
-  fireEvent.click(screen.getByRole('button', { name: '단지 검색' }))
-  fireEvent.click(await screen.findByRole('button', { name: '선택: 검색 단지' }))
+  // PDF 단지명으로 미리 검색한 후보에서 고른다.
+  fireEvent.click(await within(screen.getByRole('region', { name: 'PDF 단지 정하기' })).findByRole('button', { name: '선택: 검색 단지' }))
   expect(await screen.findByLabelText('공급행 1 소재지 PNU')).toHaveValue('1114010100100010000')
   fireEvent.change(screen.getByLabelText('공급행 1 공급 구분'), { target: { value: 'NEW_SUPPLY' } })
   fireEvent.click(screen.getByRole('button', { name: '공급정보 편집표에 채우기' }))
@@ -271,7 +275,7 @@ it('응답 준비로 돌아갔다 와도 같은 응답이면 검토하던 입력
   fireEvent.click(screen.getByRole('button', { name: '응답 준비로 돌아가기' }))
   fireEvent.change(await screen.findByRole('textbox', { name: 'ChatGPT 응답' }), { target: { value: JSON.stringify({ ...fixtures.hansville.extraction }, null, 1) } })
   fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
-  expect(await screen.findByLabelText('보정 이유')).toHaveValue('공고문.pdf · 프롬프트 v3로 추출 후 PDF와 대조')
+  expect(await screen.findByLabelText('보정 이유')).toHaveValue('공고문.pdf · 프롬프트 v5로 추출 후 PDF와 대조')
 })
 
 it('단지에 맞는 주택형이 없으면 따로 알리고 PDF 형명·면적으로 새 주택형을 추가해 저장한다', async () => {
@@ -304,4 +308,73 @@ it('적용할 수 없는 값이 있으면 오류를 알리고 그 항목으로 �
   await waitFor(() => expect(document.activeElement?.getAttribute('data-review-id')).toBe('cell:supplyRows[0].sourceHousingTypeName'))
   expect(scroll).toHaveBeenCalled()
   expect(api.previewJsonUpdate).not.toHaveBeenCalled()
+})
+
+it('대상들이 함께 쓰는 모집수는 안내만 하고 대상별 모집수는 비워 저장한다', async () => {
+  const extraction = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
+  extraction.data.supplyRows[0].targets.push({ ...extraction.data.supplyRows[0].targets[0], target: '청년' })
+  extraction.sharedCounts = [{ paths: ['supplyRows[0].targets[0].supplyHouseholdCount', 'supplyRows[0].targets[1].supplyHouseholdCount'], count: 39, page: 3, quote: '대학생 청년 39' }]
+  await open(JSON.stringify(extraction))
+  expect(screen.getByText('26A에서 일반 · 청년 대상이 함께 쓰는 모집수입니다. 대상별 모집수는 비워 둡니다.')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  await waitFor(() => expect(api.previewJsonUpdate).toHaveBeenCalled())
+  const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
+  expect(input.correction.newGroups ?? []).toEqual([])
+  expect(input.correction.rows.find(row => row.typeName === '26A')?.targets.map(target => target.householdCount)).toEqual([null, null])
+})
+
+it('공고에는 있지만 단지 DB에 없는 단지는 공고문 단지 개요로 한 번 등록해 같은 단지 공급행 전체에 연결한다', async () => {
+  registration.createHousingComplex.mockResolvedValue({ housingComplexId: 7, name: '익산한스빌', roadAddress: '전북특별자치도 익산시 목천동 1' })
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, rows: [] } })
+  const extraction = structuredClone(fixtures.hansville.extraction) as typeof fixtures.hansville.extraction & { data: { complexes?: unknown[] } }
+  extraction.data.supplyRows = extraction.data.supplyRows.slice(0, 2); extraction.sharedCounts = []
+  const name = extraction.data.supplyRows[0].complexReference.sourceComplexName
+  extraction.data.supplyRows[1].complexReference.sourceComplexName = name
+  extraction.data.complexes = [{ sourceComplexName: name, address: '전북특별자치도 익산시 목천동 1', totalHouseholdCount: 350, parkingCount: 200 }]
+  await open(JSON.stringify(extraction))
+  const decision = screen.getByRole('group', { name: `PDF 단지 ${name}` })
+  expect(decision).toHaveTextContent('공급행 2개')
+  fireEvent.click(within(decision).getByRole('button', { name: '찾는 단지가 없으면 새 단지로 등록' }))
+  const form = within(decision).getByRole('group', { name: '공급행 1 새 단지 등록' })
+  expect(within(form).getByLabelText('단지명')).toHaveValue(name)
+  expect(within(form).getByLabelText('주소(도로명 또는 지번)')).toHaveValue('전북특별자치도 익산시 목천동 1')
+  expect(within(form).getByLabelText('전체 세대수')).toHaveValue(350)
+  expect(within(form).getByLabelText('주차대수')).toHaveValue(200)
+  await waitFor(() => expect(lookup.lookupAddresses).toHaveBeenCalledWith('전북특별자치도 익산시 목천동 1', expect.any(AbortSignal)))
+  expect(within(form).getByRole('button', { name: '단지 등록하고 연결' })).toBeDisabled()
+  for (const [label, value] of [['PNU', '4514011100100010000'], ['위도', '35.95'], ['경도', '126.95']]) {
+    fireEvent.change(within(form).getByLabelText(label), { target: { value } })
+  }
+  fireEvent.click(within(form).getByRole('button', { name: '단지 등록하고 연결' }))
+  await waitFor(() => expect(registration.createHousingComplex).toHaveBeenCalledWith(expect.objectContaining({
+    totalHouseholdCount: 350, totalParkingCount: 200, completionDate: null, heatingType: null,
+    address: expect.objectContaining({ pnu: '4514011100100010000', legalDongCode: '4514011100', provinceCode: '45', cityCountyDistrictCode: '45140', latitude: 35.95 }) })))
+  expect(await within(decision).findByText('연결 단지: 익산한스빌 · 같은 단지명의 공급행 2개에 연결했습니다.')).toBeVisible()
+  for (const index of [1, 2]) {
+    const block = within(screen.getByRole('region', { name: `공급행 ${index} 검토` }))
+    expect(block.getByText('선택 단지: 익산한스빌')).toBeVisible()
+    // 새 단지에는 주택형이 없으므로 PDF 형명·면적으로 새 주택형을 추가하도록 미리 고른다.
+    expect(block.getByText(/주택형을 이 단지에 추가합니다/)).toBeVisible()
+  }
+  expect(screen.getByLabelText('공급행 1 공급 구분')).toHaveValue('NEW_SUPPLY')
+})
+
+it('단지가 연결되지 않은 기존 공급행은 PDF 공급행으로 대체하고 저장할 때 제외한다', async () => {
+  registration.createHousingComplex.mockResolvedValue({ housingComplexId: 7, name: '익산한스빌' })
+  const [first] = workspace.supply.rows
+  const empty = { ...first, housingComplexId: null, housingComplexName: null, groupId: null, sharedHouseholdCount: null }
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, rows: [empty] } })
+  const extraction = structuredClone(fixtures.hansville.extraction)
+  extraction.data.supplyRows = extraction.data.supplyRows.slice(0, 1); extraction.sharedCounts = []
+  await open(JSON.stringify(extraction))
+  expect(screen.getByText(/단지가 연결되지 않은 기존 공급행 1개\(.+\)는 저장하면 제외하고 PDF 공급행으로 대체합니다/)).toBeVisible()
+  const block = screen.getByRole('region', { name: '공급행 1 검토' })
+  expect(within(block).getByLabelText('공급행 1 저장할 위치')).toHaveValue('new')
+  fireEvent.click(await within(screen.getByRole('region', { name: 'PDF 단지 정하기' })).findByRole('button', { name: '선택: 검색 단지' }))
+  expect(await within(block).findByText('선택 단지: 검색 단지')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  await waitFor(() => expect(api.previewJsonUpdate).toHaveBeenCalled())
+  const rows = (api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput).correction.rows
+  expect(rows.find(row => row.key === empty.key)).toEqual(expect.objectContaining({ excluded: true }))
+  expect(rows.filter(row => !row.excluded)).toEqual([expect.objectContaining({ id: null, housingComplexId: 7 })])
 })

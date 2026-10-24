@@ -1,12 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Button } from '../../design-system/components/Button'
 import type { JsonWorkspace } from '../announcement-json/api'
-import { ComplexPicker } from '../management/ComplexPicker'
-import { getManagementDetail } from '../management/api'
-import { isRecord } from '../management/managementContract'
-import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
 import { type Evidence } from './extraction'
-import { cellMatches, createRowReview, destinationLabel, editCell, pdfOrderChanges, pendingRow, pendingTarget, preserveCellChoice, remapTarget, shown, type Review, type ReviewFilter, type RowReview, type TargetReview } from './review'
+import { cellMatches, createRowReview, destinationLabel, editCell, sharedGroupStorable, pdfOrderChanges, pendingRow, replacedRows, pendingTarget, preserveCellChoice, remapTarget, shown, type Review, type ReviewFilter, type RowReview, type TargetReview } from './review'
+import { ComplexDecisions } from './ComplexDecision'
 import { missingHousingType, pickHousingType, type ComplexLabels, type HousingCandidates } from './matching'
 import { ReviewCells } from './ReviewCells'
 import styles from './PdfCorrection.module.css'
@@ -40,10 +37,13 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
     const complexId = workspace.supply.rows.find(item => item.key === key)?.housingComplexId
     return anchors.find(item => item.housingComplexId === complexId)?.key ?? ''
   }
+  const replaced = replacedRows(review, workspace)
   return <>
     <div className={styles.sectionHeading}><div><h2>공급정보</h2><p>기존 값과 PDF에서 가져온 값을 비교하고, 반영할 항목을 고르세요.</p></div></div>
     {filter === 'all' && review.rows.filter(row => row.include).length > 1 && pdfOrderChanges(review, workspace) && <p className={styles.notice}>저장하면 공급행을 PDF 공급 표 순서({review.rows.flatMap((row, index) => row.include ? [review.extraction.supplyRows[index].typeName ?? `공급행 ${index + 1}`] : []).join(' → ')})로 표시합니다. PDF에 없는 기존 공급행은 그 뒤에 원래 순서대로 둡니다.</p>}
-    {filter === 'all' && review.extraction.sharedCounts.map((group, index) => <div className={styles.shared} key={index}><strong>공통 모집 {group.count}세대</strong><span>{group.paths.map(path => review.extraction.supplyRows[Number(/\[(\d+)\]/.exec(path)?.[1])]?.typeName).join(' · ')} 전체의 모집수입니다. 각 행에 나누거나 중복 기입하지 않습니다.</span>{group.page && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence({ page: group.page!, quote: group.quote, path: group.paths[0] })}>PDF {group.page}쪽 보기</Button>}</div>)}
+    {filter === 'all' && replaced.length > 0 && <p className={styles.notice}>{`단지가 연결되지 않은 기존 공급행 ${replaced.length}개(${replaced.map(row => row.typeName || '형명 없음').join(' · ')})는 저장하면 제외하고 PDF 공급행으로 대체합니다. 기존 행을 고쳐 쓰려면 공급행의 저장할 위치에서 고르세요.`}</p>}
+    {filter === 'all' && <ComplexDecisions review={review} workspace={workspace} onChange={onChange} />}
+    {filter === 'all' && review.extraction.sharedCounts.map((group, index) => <div className={styles.shared} key={index}><strong>공통 모집 {group.count}세대</strong><span>{sharedLabel(review, group.paths)}{group.paths.every(path => path.endsWith('.totalSupplyHouseholdCount')) && !sharedGroupStorable(review, index) ? ' 기존 공급행 없이 새로 만드는 행끼리는 공통 모집수를 저장할 수 없어 각 행을 비워 둡니다.' : ''}</span>{group.page && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence({ page: group.page!, quote: group.quote, path: group.paths[0] })}>PDF {group.page}쪽 보기</Button>}</div>)}
     {review.rows.map((row, index) => {
       const source = review.extraction.supplyRows[index], current = workspace.supply.rows.find(item => item.key === row.proposal.destination)
       const complexId = current?.housingComplexId ?? workspace.supply.rows.find(item => item.key === row.proposal.anchorKey)?.housingComplexId ?? row.proposal.newComplex?.id ?? row.proposal.complexId
@@ -59,6 +59,8 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
         {!row.include ? <p className={styles.hint}>이 행의 추출값을 제외합니다. 기존 공급정보는 유지합니다.</p> : <>
           <div className={styles.mapping}>
             <label>공급행 {index + 1} 저장할 위치<select value={row.proposal.destination} onChange={event => mapping(index, event.target.value, event.target.value === 'new' ? row.proposal.anchorKey : event.target.value)}><option value="">수정할 기존 항목을 선택하세요</option>{workspace.supply.rows.filter(item => !item.excluded).map(item => <option key={item.key} value={item.key}>{destinationLabel(item)}</option>)}<option value="new">새 공급정보로 추가</option></select></label>
+            {/* 단지에 연결되지 않은 기존 공급행도 위 '단지 정하기'에서 단지를 정한다. */}
+            {current && current.housingComplexId === null && <NewSupplyComplex row={row} index={index} onChange={next => update(index, next)} />}
             {row.proposal.destination === 'new' && <div>
               {anchors.length > 0 && <label>공급행 {index + 1} 기준 단지<select value={anchorFor(row.proposal.anchorKey)} onChange={event => mapping(index, 'new', event.target.value)}><option value="">다른 단지 찾기</option>{anchors.map(item => <option key={item.key} value={item.key}>{complexes[item.housingComplexId!] ?? item.housingComplexName ?? `단지 #${item.housingComplexId}`}</option>)}</select></label>}
               {!row.proposal.anchorKey && <NewSupplyComplex row={row} index={index} onChange={next => update(index, next)} />}
@@ -112,32 +114,24 @@ function TargetBlock({ review, index, workspace, filter, update, onEvidence }: {
   </>
 }
 
+// 단지는 위 '단지 정하기'에서 단지명마다 한 번 정한다. 여기서는 정한 단지와 이 행의 PNU·공급 구분만 확인한다.
 function NewSupplyComplex({ row, index, onChange }: { row: RowReview; index: number; onChange: (row: RowReview) => void }) {
-  const [busy, setBusy] = useState(false), [error, setError] = useState('')
-  const request = useRef<AbortController | null>(null)
-  useEffect(() => () => request.current?.abort(), [])
-  async function choose(id: number, name: string) {
-    request.current?.abort()
-    const controller = new AbortController(); request.current = controller
-    setBusy(true); setError('')
-    try {
-      const [detail, candidates] = await Promise.all([getManagementDetail('complexes', String(id), controller.signal), getMatchingHousingTypes(id, controller.signal)])
-      if (controller.signal.aborted) return
-      const address = detail.data.address
-      const pnu = isRecord(address) && typeof address.pnu === 'string' ? address.pnu : ''
-      onChange({ ...row, proposal: { ...row.proposal, complexId: id, candidates, housingTypeId: null,
-        newComplex: { id, name, pnu, category: row.proposal.newComplex?.category ?? 'RESUPPLY' } },
-        cells: row.cells.map(cell => cell.field === 'housingTypeId' ? { ...cell, value: null, selected: false, mode: 'keep', extracted: { ...cell.extracted, value: null } } : cell) })
-    } catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '단지를 불러오지 못했습니다.') }
-    finally { if (!controller.signal.aborted) setBusy(false) }
-  }
   const selected = row.proposal.newComplex
+  if (!selected) return <p className={styles.hint}>위 단지 정하기에서 이 행의 단지를 정하세요.</p>
   return <section aria-label={`공급행 ${index + 1} 새 단지 연결`}>
-    <ComplexPicker disabled={busy} onSelect={item => void choose(item.id, item.name)} />
-    {error && <p role="alert">{error}</p>}
-    {selected && <><p>선택 단지: {selected.name}</p>
-      <label>공급행 {index + 1} 소재지 PNU<input value={selected.pnu} onChange={event => onChange({ ...row, proposal: { ...row.proposal, newComplex: { ...selected, pnu: event.target.value } } })} /></label>
-      <label>공급행 {index + 1} 공급 구분<select value={selected.category} onChange={event => onChange({ ...row, proposal: { ...row.proposal, newComplex: { ...selected, category: event.target.value as typeof selected.category } } })}><option value="NEW_SUPPLY">신규 공급</option><option value="RESUPPLY">재공급</option></select></label>
-    </>}
+    <p>선택 단지: {selected.name}</p>
+    <label>공급행 {index + 1} 소재지 PNU<input value={selected.pnu} onChange={event => onChange({ ...row, proposal: { ...row.proposal, newComplex: { ...selected, pnu: event.target.value } } })} /></label>
+    <label>공급행 {index + 1} 공급 구분<select value={selected.category} onChange={event => onChange({ ...row, proposal: { ...row.proposal, newComplex: { ...selected, category: event.target.value as typeof selected.category } } })}><option value="NEW_SUPPLY">신규 공급</option><option value="RESUPPLY">재공급</option></select></label>
   </section>
+}
+
+/** 공통 모집수가 묶은 대상을 읽기 쉽게 적는다. 대상별 묶음은 저장할 곳이 없어 각 대상의 모집수를 비워 둔다. */
+function sharedLabel(review: Review, paths: string[]) {
+  const at = paths.map(path => /^supplyRows\[(\d+)\](?:\.targets\[(\d+)\])?/.exec(path)).filter(match => match !== null)
+  const row = review.extraction.supplyRows[Number(at[0]?.[1])]
+  if (at.length && at.every(match => match[2] !== undefined)) {
+    const targets = at.map(match => String(row?.targets[Number(match[2])]?.target ?? `대상 ${Number(match[2]) + 1}`))
+    return `${row?.typeName ?? '공급행'}에서 ${targets.join(' · ')} 대상이 함께 쓰는 모집수입니다. 대상별 모집수는 비워 둡니다.`
+  }
+  return `${at.map(match => review.extraction.supplyRows[Number(match[1])]?.typeName).join(' · ')} 전체의 모집수입니다. 각 행에 나누거나 중복 기입하지 않습니다.`
 }
