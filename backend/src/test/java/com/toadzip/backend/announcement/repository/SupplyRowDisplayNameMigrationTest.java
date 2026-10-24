@@ -44,7 +44,7 @@ class SupplyRowDisplayNameMigrationTest {
                           (5, NULL, '39.8800', true, NULL)
                         """);
                 ScriptUtils.executeSqlScript(connection, new ClassPathResource(
-                        "db/migration/V20261023_01__supply_row_announcement_housing_type_name.sql"));
+                        "db/migration/V20261024_02__supply_row_announcement_housing_type_name.sql"));
 
                 Map<Long, String> labels = new LinkedHashMap<>();
                 try (var values = sql.executeQuery(
