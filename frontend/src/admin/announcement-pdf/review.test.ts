@@ -60,7 +60,7 @@ it('같은 기존 행에 두 번 대응하거나 기존 조건을 임의로 제�
   workspace.supply.rows[0].targets.push(old)
   expect(assembleReview(review, workspace, evidence).correction.rows[0].targets[0]).toEqual(old)
   review.rows[1].proposal.destination = review.rows[0].proposal.destination
-  expect(() => assembleReview(review, workspace, evidence)).toThrow('두 번 갱신')
+  expect(() => assembleReview(review, workspace, evidence)).toThrow(expect.objectContaining({ message: expect.stringContaining('공급행 1과 공급행 2이 같은 기존 공급정보'), reviewId: 'row:1' }))
 })
 
 it('잘못된 금액·날짜·코드는 자동으로 보정하지 않는다', () => {
@@ -172,6 +172,7 @@ it('단지에 맞는 주택형이 없을 때 새 주택형 추가를 고르면 P
   expect(saved.housingTypeId).toBeNull()
   expect(saved.newHousingType).toEqual({ name: saved.typeName, exclusiveArea: 99.1234, supplyArea: 120.5 })
 })
+
 
 it('공급행이 없는 공고는 검색해 선택한 단지를 기준으로 첫 공급행을 만든다', () => {
   const { review: seed, workspace, housing } = scenario('hansville')
