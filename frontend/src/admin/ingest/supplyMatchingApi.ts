@@ -17,13 +17,15 @@ export type SavedSupplyMatch = { complexId: number | null; housingTypeId: number
   reason: string; actor: string; updatedAt: string; reviewRequired: boolean }
 export type MatchEvidence = { remember: true; sourceUrl: string; reason: string }
 export type SupplySelection = { rowIdentifier: string; token: string; complexId: number; housingTypeId: number | null; targetToken?: string }
-export type MatchingComplex = { id: number; name: string; roadAddress: string; supplyType: string }
+export type MatchingComplex = { id: number; name: string; roadAddress: string; supplyType: string
+  pnu: string; totalHouseholdCount: number; housingTypeCount: number }
 export type MatchingHousingType = { id: number; name: string; exclusiveArea: number; supplyArea: number | null; householdCount?: number | null; token?: string }
 const root = '/api/admin/ingest/announcement-supply-matches'
 function number(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value) }
 function id(value: unknown): value is number { return number(value) && Number.isSafeInteger(value) && value > 0 }
 function nullableNumber(value: unknown): value is number | null { return value === null || number(value) }
 function nullableId(value: unknown): value is number | null { return value === null || id(value) }
+function count(value: unknown): value is number { return number(value) && Number.isSafeInteger(value) && value >= 0 }
 
 export async function getSupplyMatches(identifier: string, signal?: AbortSignal): Promise<SupplyMatch[]> {
   const result = await requestManagementApi(`${root}/${encodeURIComponent(identifier)}`, 'GET', undefined, signal)
@@ -84,13 +86,18 @@ function parseSavedMatch(value: unknown): SavedSupplyMatch | null {
     reason: value.reason, actor: value.actor, updatedAt: value.updatedAt, reviewRequired: value.reviewRequired }
 }
 
-export async function searchMatchingComplexes(query: string, signal?: AbortSignal): Promise<MatchingComplex[]> {
-  const result = await requestManagementApi(`${root}/complexes?${new URLSearchParams({ query })}`, 'GET', undefined, signal)
+/** pnu를 주면 이름이 달라도 같은 필지의 단지를 함께 찾는다. */
+export async function searchMatchingComplexes(query: string, signal?: AbortSignal, pnu = ''): Promise<MatchingComplex[]> {
+  const params = new URLSearchParams({ query })
+  if (pnu) params.set('pnu', pnu)
+  const result = await requestManagementApi(`${root}/complexes?${params}`, 'GET', undefined, signal)
   if (!Array.isArray(result)) throw new Error('단지 검색 응답이 올바르지 않습니다.')
   return result.map(value => {
     if (!isRecord(value) || !id(value.id) || typeof value.name !== 'string' || typeof value.roadAddress !== 'string'
-      || typeof value.supplyType !== 'string') throw new Error('단지 검색 응답이 올바르지 않습니다.')
-    return { id: value.id, name: value.name, roadAddress: value.roadAddress, supplyType: value.supplyType }
+      || typeof value.supplyType !== 'string' || typeof value.pnu !== 'string'
+      || !count(value.totalHouseholdCount) || !count(value.housingTypeCount)) throw new Error('단지 검색 응답이 올바르지 않습니다.')
+    return { id: value.id, name: value.name, roadAddress: value.roadAddress, supplyType: value.supplyType,
+      pnu: value.pnu, totalHouseholdCount: value.totalHouseholdCount, housingTypeCount: value.housingTypeCount }
   })
 }
 

@@ -44,7 +44,8 @@ public final class AnnouncementSupplyMatching {
             @NotNull @Positive Long complexId, @NotNull @Positive Long housingTypeId,
             @NotBlank @Size(max = 64) String targetToken) { }
 
-    public record ComplexOption(long id, String name, String roadAddress, String supplyType) {
+    public record ComplexOption(long id, String name, String roadAddress, String supplyType, String pnu,
+            int totalHouseholdCount, long housingTypeCount) {
     }
 
     public record HousingTypeOption(long id, String name, BigDecimal exclusiveArea, BigDecimal supplyArea,

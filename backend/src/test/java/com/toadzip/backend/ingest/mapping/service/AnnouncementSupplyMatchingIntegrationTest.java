@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -615,9 +616,26 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 단지_검색과_주택형_조회는_해당_단지의_기존_데이터만_반환한다() {
         assertThat(matching.complexes("한스빌")).singleElement()
-                .satisfies(value -> assertThat(value.id()).isEqualTo(complex.getId()));
+                .satisfies(value -> {
+                    assertThat(value.id()).isEqualTo(complex.getId());
+                    assertThat(value.pnu()).isEqualTo(complex.getAddress().getPnu());
+                    assertThat(value.totalHouseholdCount()).isEqualTo(complex.getTotalHouseholdCount());
+                    assertThat(value.housingTypeCount()).isEqualTo(1);
+                });
         assertThat(matching.housingTypes(complex.getId())).singleElement()
                 .satisfies(value -> assertThat(value.id()).isEqualTo(type.getId()));
+    }
+
+    @Test
+    void 단지_검색에_원천_PNU를_주면_이름이_다른_같은_필지_단지를_먼저_후보로_준다() {
+        var main = complex("중촌주공2단지", "complex-main", PNU, "NATIONAL_RENTAL");
+        complex("한스빌 다른필지", "complex-other", "1111111111111111111", "NATIONAL_RENTAL");
+
+        assertThat(matching.complexes("한스빌", PNU)).extracting(value -> value.id())
+                .containsExactly(complex.getId(), main.getId(), complexes.findBySourceComplexIdentifier("complex-other")
+                        .orElseThrow().getId());
+        assertThat(matching.complexes("한스빌")).extracting(value -> value.id()).doesNotContain(main.getId());
+        assertThatThrownBy(() -> matching.complexes("한스빌", "12a")).hasMessageContaining("PNU");
     }
 
     @Test

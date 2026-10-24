@@ -397,15 +397,36 @@ public class AnnouncementSupplyMatchingService {
     }
 
     public List<ComplexOption> complexes(String query) {
+        return complexes(query, "");
+    }
+
+    /** 원천 PNU가 오면 이름이 달라도 같은 필지의 단지를 후보에 넣는다. 원천 단지명과 등록 단지명이 다른 본 단지를 놓치지 않기 위해서다. */
+    public List<ComplexOption> complexes(String query, String pnu) {
         if (query == null || query.isBlank() || query.length() > 100) {
             throw new InvalidIngestRequestException("단지 이름 또는 주소를 1~100자로 입력해 주세요.");
         }
+        String parcel = pnu == null ? "" : pnu.strip();
+        if (!parcel.isEmpty() && !parcel.matches("\\d{1,30}")) {
+            throw new InvalidIngestRequestException("PNU는 숫자로 입력해 주세요.");
+        }
         String keyword = query.strip().toLowerCase(java.util.Locale.ROOT)
                 .replace("!", "!!").replace("%", "!%").replace("_", "!_");
-        return complexes.searchAdmin("%" + keyword + "%", query.strip(), "", "", "", "", "",
-                false, false, "", PageRequest.of(0, 20)).stream()
+        var merged = new LinkedHashMap<Long, com.toadzip.backend.housing.domain.HousingComplex>();
+        if (!parcel.isEmpty()) {
+            complexes.findAllByPnu(parcel).forEach(value -> merged.put(value.getId(), value));
+        }
+        complexes.searchAdmin("%" + keyword + "%", query.strip(), "", "", "", "", "",
+                false, false, "", PageRequest.of(0, 20)).getContent()
+                .forEach(value -> merged.putIfAbsent(value.getId(), value));
+        var found = List.copyOf(merged.values());
+        // 이름·주소가 같은 단지가 원천에서 여러 개로 나뉘어 있어 PNU·세대수·주택형 수로 구분하게 한다.
+        var typeCounts = found.isEmpty() ? Map.<Long, Long>of()
+                : types.countByComplexIds(found.stream().map(value -> value.getId()).toList()).stream()
+                        .collect(java.util.stream.Collectors.toMap(value -> value.getComplexId(), value -> value.getCount()));
+        return found.stream()
                 .map(value -> new ComplexOption(value.getId(), value.getName(),
-                        value.getAddress().getRoadAddress(), value.getSupplyType())).toList();
+                        value.getAddress().getRoadAddress(), value.getSupplyType(), value.getAddress().getPnu(),
+                        value.getTotalHouseholdCount(), typeCounts.getOrDefault(value.getId(), 0L))).toList();
     }
 
     public List<HousingTypeOption> housingTypes(long complexId) {

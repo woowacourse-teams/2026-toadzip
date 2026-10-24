@@ -41,6 +41,12 @@ describe('선택 적용 정제 API 계약', () => {
     expect(requestManagementApi).toHaveBeenCalledWith('/api/admin/ingest/announcement-supply-matches/complexes?query=%ED%95%9C%EC%8A%A4%EB%B9%8C+%26+26',
       'GET', undefined, undefined)
   })
+  it('원천 PNU가 있으면 같은 필지 후보를 함께 요청한다', async () => {
+    vi.mocked(requestManagementApi).mockResolvedValue([])
+    await searchMatchingComplexes('대전중촌2', undefined, '3014010400101280001')
+    expect(requestManagementApi).toHaveBeenCalledWith('/api/admin/ingest/announcement-supply-matches/complexes?query=%EB%8C%80%EC%A0%84%EC%A4%91%EC%B4%8C2&pnu=3014010400101280001',
+      'GET', undefined, undefined)
+  })
   it('기억할 선택의 근거와 후보 토큰을 기존 정제 API에 함께 보낸다', async () => {
     vi.mocked(requestManagementApi).mockResolvedValue({ createdAnnouncementCount: 1, updatedAnnouncementCount: 0,
       failedSourceRowCount: 0 })
