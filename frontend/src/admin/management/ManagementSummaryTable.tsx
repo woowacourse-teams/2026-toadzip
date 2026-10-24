@@ -6,7 +6,8 @@ import styles from './ManagementList.module.css'
 import { ComplexVerificationBadge } from './ComplexVerificationBadge'
 
 type Column = { key: string; label: string; width: number; read: (summary: ManagementSummary) => string | number | boolean | null | undefined; kind?: 'number' | 'status' | 'verification' }
-export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight = false, compact = false, inlineSearch, onEdit, editDisabled = false }: { items: ManagementSummary[]; resource: ManagementResource; returnTo?: string; fixedHeight?: boolean; compact?: boolean; inlineSearch?: string; onEdit?: (item: ManagementSummary) => void; editDisabled?: boolean }) {
+export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight = false, compact = false, inlineSearch, onEdit, editDisabled = false, selection }: { items: ManagementSummary[]; resource: ManagementResource; returnTo?: string; fixedHeight?: boolean; compact?: boolean; inlineSearch?: string; onEdit?: (item: ManagementSummary) => void; editDisabled?: boolean
+  selection?: { ids: ReadonlySet<number>; disabled?: boolean; onChange: (ids: Set<number>) => void } }) {
   const selected = useMatch(`/admin/${resource}/:id`)?.params.id
   if (!items.length) return <div className={`admin-empty ${fixedHeight ? styles.fixedHeight : ''}`}><h2>표시할 {resource === 'complexes' ? '단지' : '공고'}가 없습니다.</h2><p>검색 조건을 바꾸거나 새 데이터를 등록해 주세요.</p></div>
   const columns: Column[] = [
@@ -17,11 +18,15 @@ export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight 
     { key: 'deleted·modified·reviewRequired', label: '관리 상태', width: 124, read: () => null, kind: 'status' },
   ]
   const title = resource === 'complexes' ? '단지' : '공고'
+  // 메일 목록처럼 현재 페이지의 행을 골라 한꺼번에 처리한다.
+  const allSelected = Boolean(selection) && items.every(item => selection!.ids.has(item.id))
+  const toggle = (id: number) => { if (!selection) return; const next = new Set(selection.ids); if (next.has(id)) next.delete(id); else next.add(id); selection.onChange(next) }
   return <div className={`${styles.scroll} ${fixedHeight ? styles.fixedHeight : ''} ${compact ? styles.compact : ''}`} role="region" tabIndex={0} aria-label={`정제 ${title} 목록 가로 스크롤`}>
     <table className={styles.table} aria-label={`정제 ${title} 목록`}>
-      <colgroup><col className={styles.nameColumn} />{columns.map(column => <col key={column.key} style={{ width: column.width }} />)}</colgroup>
-      <thead><tr><th scope="col">{title}명</th>{columns.map(column => <th key={column.key} scope="col">{column.label}</th>)}</tr></thead>
-      <tbody>{items.map(item => <tr key={item.id} data-selected={selected === String(item.id) || undefined}>
+      <colgroup>{selection && <col className={styles.checkColumn} />}<col className={styles.nameColumn} />{columns.map(column => <col key={column.key} style={{ width: column.width }} />)}</colgroup>
+      <thead><tr>{selection && <th scope="col" className={styles.check}><input type="checkbox" aria-label="이 페이지 전체 선택" disabled={selection.disabled} checked={allSelected} onChange={() => selection.onChange(allSelected ? new Set() : new Set(items.map(item => item.id)))} /></th>}<th scope="col">{title}명</th>{columns.map(column => <th key={column.key} scope="col">{column.label}</th>)}</tr></thead>
+      <tbody>{items.map(item => <tr key={item.id} data-selected={selected === String(item.id) || undefined} data-checked={selection?.ids.has(item.id) || undefined}>
+        {selection && <td className={styles.check}><input type="checkbox" aria-label={`${item.name} 선택`} disabled={selection.disabled} checked={selection.ids.has(item.id)} onChange={() => toggle(item.id)} /></td>}
         <th scope="row">{onEdit ? <button type="button" data-admin-navigation disabled={editDisabled} className={styles.inlineEdit} aria-label={`${item.name} 수정`} title={item.name} onClick={() => onEdit(item)}>{item.name}</button> : <Link data-management-id={item.id} aria-current={selected === String(item.id) ? 'page' : undefined} title={item.name} to={`/admin/${resource}/${item.id}${inlineSearch !== undefined ? inlineSearch ? `?${inlineSearch}` : '' : returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`}>{item.name}</Link>}
           {compact ? <><span className={styles.rowSubtitle}>{item.subtitle}</span><div className={styles.rowMeta}><span>{labels[item.provider] ?? item.provider}</span><span>{labels[item.rental] ?? item.rental}</span><ManagementStatus summary={item} />{resource === 'complexes' && <ComplexVerificationBadge status={item.complex?.verificationStatus ?? 'UNREVIEWED'} count={item.complex?.reviewedFieldCount} />}</div></> : null}
         </th>
