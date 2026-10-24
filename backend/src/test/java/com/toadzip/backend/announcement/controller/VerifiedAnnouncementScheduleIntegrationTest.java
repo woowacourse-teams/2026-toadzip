@@ -95,6 +95,28 @@ class VerifiedAnnouncementScheduleIntegrationTest {
     }
 
     @Test
+    void 공고문_페이지_없이_공고문_URL만으로_접수_일정을_확정한다() throws Exception {
+        Announcement announcement = announcement("2015122300020681");
+        mvc.perform(put("/api/admin/announcements/{id}/application-schedules", announcement.getId())
+                        .principal(() -> "admin")
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                                {"schedules":[{"state":"CONFIRMED","startDate":"2026-09-14","endDate":"2026-09-16",
+                                   "sourceUrl":"https://apply.lh.or.kr/lhapply/lhFile.do?fileid=68429633"}]}
+                                """))
+                .andExpect(status().isNoContent());
+        mvc.perform(get("/api/v1/announcements/{id}", announcement.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.applicationSchedules[0].sourcePage").isEmpty());
+        mvc.perform(put("/api/admin/announcements/{id}/application-schedules", announcement.getId())
+                        .principal(() -> "admin")
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                                {"schedules":[{"state":"CONFIRMED","startDate":"2026-09-14","endDate":"2026-09-16",
+                                   "sourceUrl":"https://apply.lh.or.kr/lhapply/lhFile.do?fileid=68429633","sourcePage":0}]}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void 일정_사이의_빈날은_접수중이나_기간검색에_포함하지_않고_미확인_시각은_null이다() throws Exception {
         Announcement announcement = announcement("2015122300020681");
         scheduleService.replace(announcement.getId(), new VerifiedApplicationSchedulesRequest(List.of(
