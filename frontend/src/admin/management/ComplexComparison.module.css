@@ -68,3 +68,17 @@
 @container (min-width: 821px) {
   .table[data-read-only] .columns, .table[data-read-only] .row { grid-template-columns: minmax(100px, .75fr) minmax(100px, 1fr) minmax(150px, 1.4fr); }
 }
+
+/* 비교 대상 선택·필터·다시 조회를 한 줄에 둔다. */
+.toolbar { display:flex; align-items:flex-end; flex-wrap:wrap; gap:8px 12px; margin-bottom:8px; }
+.toolbar h2 { flex:1 0 100%; margin:0; }
+.toolbar label { flex:0 1 340px; display:grid; gap:2px; font-size:var(--admin-text-meta,13px); }
+
+/* 원천 비교 구역 정돈: 연결 목록은 상자 대신 한 줄 접힘, 필터는 작은 칩, 근거 입력과 기록 버튼은 한 줄로 둔다. */
+.panel .connections { padding: 0; border: 0; background: transparent; margin-block: 8px; }
+.panel .connections > summary { color: var(--ds-color-muted-base); font-size: var(--admin-text-meta, 13px); }
+.panel .filters { display: flex; align-items: center; gap: 6px; margin-block: 8px; }
+.panel .filters button { min-height: 32px; padding: 0 10px; font-size: var(--admin-text-meta, 13px); }
+.panel .columns, .panel .row { padding: 8px 12px; }
+.panel .table + label, .panel .preview + label { margin-top: 12px; }
+.panel .saveActions { margin-top: 8px; }

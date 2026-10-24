@@ -1624,10 +1624,11 @@ button {
 
 .admin-login-form {
   display: grid;
-  width: min(100%, 360px);
+  /* 가운데 정렬 격자에서는 %가 내용 폭을 따라가므로 화면 폭 기준으로 고정한다. */
+  width: min(360px, calc(100vw - 48px));
   gap: 16px;
   padding: 28px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--ds-color-divider);
   border-radius: 12px;
   background: #ffffff;
   text-align: left;
@@ -1650,11 +1651,34 @@ button {
 
 .admin-login-form input {
   padding: 10px 12px;
-  border: 1px solid #94a3b8;
-  border-radius: 6px;
+  border: 1px solid var(--ds-color-border-base);
+  border-radius: 8px;
 }
 
-.admin-login-form button,
+.admin-login-form input:focus {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 1px;
+  border-color: var(--ds-color-action);
+}
+
+.admin-login-error {
+  min-height: 24px;
+  margin: -8px 0;
+}
+
+/* 관리자 화면의 주 행동 색(초록 채움)과 같은 버튼을 쓴다. */
+.admin-login-form button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  color: #ffffff;
+  background: var(--ds-color-action);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.admin-login-form button:disabled { opacity: .6; cursor: progress; }
+
 .admin-header button {
   padding: 10px 14px;
   border: 0;

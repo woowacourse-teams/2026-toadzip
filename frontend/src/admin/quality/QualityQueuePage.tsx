@@ -14,26 +14,29 @@ export function QualityQueuePage() {
   const [keyword, setKeyword] = useState(params.get('keyword') ?? '')
   const [loading, setLoading] = useState(false)
   const queryKeyword = params.get('keyword') ?? ''
+  // 단지와 공고는 검토 방법이 달라 한 목록에 섞지 않고 나눠 본다. 기본은 공고다.
+  const resource = params.get('resource') === 'COMPLEX' ? 'COMPLEX' : 'ANNOUNCEMENT'
   useEffect(() => { setKeyword(queryKeyword) }, [queryKeyword])
   useEffect(() => {
     const controller = new AbortController()
-    const query = new URLSearchParams(params); query.delete('view'); query.delete('focus'); ['taskMine', 'taskState', 'taskOverdue', 'taskAlerts', 'taskPage'].forEach(key => query.delete(key))
+    const query = new URLSearchParams(params); query.delete('view'); query.delete('focus'); query.set('resource', resource); ['taskMine', 'taskState', 'taskOverdue', 'taskAlerts', 'taskPage'].forEach(key => query.delete(key))
     setLoading(true); setError(''); setResult(null)
     void getQualityQueue(query, controller.signal).then(value => {
       if (!controller.signal.aborted) setResult(value)
     }).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '목록을 조회하지 못했습니다.') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [params, attempt])
+  }, [params, attempt, resource])
   function filter(key: string, value: string) {
     const next = new URLSearchParams(params); next.delete('page'); next.delete('focus')
     if (value) next.set(key, value); else next.delete(key)
     setParams(next)
   }
   return <section className={`${styles.workspace} ${styles.queueWorkspace}`}>
-    <header className={styles.pageHeading}><div><p className={styles.eyebrow}>데이터 검토 작업실</p><h1>검토할 데이터</h1>
-      <p>확인이 필요한 대상을 고르고, 공식 근거와 비교해 필요한 항목만 수정하세요.</p></div></header>
-      <div className={styles.queueIntro}><div><span className={styles.stepNumber}>01</span><div><h2>확인할 대상을 선택하세요</h2><p>목록은 원천 변경과 불일치가 있는 대상을 우선 표시합니다.</p></div></div><details><summary>처음 사용하는 관리자라면</summary><ol><li>대상 오른쪽의 ‘비교·검토’를 엽니다.</li><li>현재 등록값과 공식 원천을 비교합니다.</li><li>근거를 확인한 항목만 수정하고 저장합니다.</li></ol><p>공고문은 상세의 ‘공고문·첨부파일’에서 확인하세요. 원천 변경 감지는 원천 확인 기록 이후부터 시작합니다.</p></details></div>
+    <header className={styles.pageHeading}><div><h1>검토할 데이터</h1>
+      <p>원천 변경과 불일치가 있는 대상을 먼저 보여 줍니다.</p></div></header>
+      <div className={styles.queueIntro}><div className={`${styles.resourceTabs} admin-folder-tabs`} role="group" aria-label="검토 대상">{([['ANNOUNCEMENT', '공고'], ['COMPLEX', '단지']] as const).map(([value, label]) =>
+        <button key={value} type="button" aria-pressed={resource === value} onClick={() => filter('resource', value)}>{label}</button>)}</div><details><summary>처음 사용하는 관리자라면</summary><ol><li>대상 오른쪽의 ‘비교·검토’를 엽니다.</li><li>현재 등록값과 공식 원천을 비교합니다.</li><li>근거를 확인한 항목만 수정하고 저장합니다.</li></ol><p>공고문은 상세의 ‘공고문·첨부파일’에서 확인하세요. 원천 변경 감지는 원천 확인 기록 이후부터 시작합니다.</p></details></div>
       <div className={styles.queueSurface}>
         <div className={styles.shortcutBar} aria-label="빠른 검토 조건">{shortcuts.map(([reason, label]) => <button key={reason} type="button" aria-pressed={(params.get('reason') ?? '') === reason} onClick={() => filter('reason', reason)}>{label}</button>)}</div>
         <form className={`${styles.filters} ${styles.queueFilters}`} aria-label="검토 대상 검색" onSubmit={event => {
@@ -46,8 +49,7 @@ export function QualityQueuePage() {
           }
           setParams(next)
         }}>
-          <label className={styles.searchField}>이름 검색<input value={keyword} maxLength={200} placeholder="단지 또는 공고 이름을 입력하세요" onChange={event => setKeyword(event.target.value)} /></label>
-          <label>대상<select value={params.get('resource') ?? ''} onChange={event => filter('resource', event.target.value)}><option value="">단지·공고 전체</option><option value="COMPLEX">단지</option><option value="ANNOUNCEMENT">공고</option></select></label>
+          <label className={styles.searchField}>이름 검색<input value={keyword} maxLength={200} placeholder={resource === 'COMPLEX' ? '단지 이름을 입력하세요' : '공고 이름을 입력하세요'} onChange={event => setKeyword(event.target.value)} /></label>
           <label>검토 사유<select value={params.get('reason') ?? ''} onChange={event => filter('reason', event.target.value)}><option value="">전체 사유</option>{Object.entries(qualityReasons).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><Button data-design-system type="submit">검색</Button>
           <details className={styles.detailedFilters} open={['sourceIdentifier', 'announcementId', 'complexId', 'provider', 'applicationStatus'].some(key => params.has(key)) || undefined}>
             <summary>식별자·기관·모집상태로 좁히기</summary><div>
@@ -70,10 +72,12 @@ export function QualityQueuePage() {
             {result.items.map(item => { const origin = `/admin/quality?${new URLSearchParams({ ...Object.fromEntries(params), focus: `${item.resource}:${item.id}` })}`
               return <li key={`${item.resource}:${item.id}`} className={styles.queueRow} data-returned={`${item.resource}:${item.id}` === params.get('focus') || undefined}>
               <span className={styles.resourceType} data-resource={item.resource}>{item.resource === 'COMPLEX' ? '단지' : '공고'}</span>
-              <div className={styles.rowMain}><h3>{item.name}</h3>{item.missingFields.length ? <p className={styles.missingFields}>확인할 항목 · {item.missingFields.map(field => <Link key={field} aria-label={`${field} 확인`}
-                to={workDetailUrl(item.resource, item.id, origin, fieldSection(item.resource, field))}>{field}</Link>)}</p> : <p>기존 확인 내용과 현재 원천을 대조해 주세요.</p>}
-                <div className={styles.badges}>{item.reasons.map(reason => <span key={reason} data-reason={reason}>{qualityReasons[reason]}</span>)}</div></div>
-              <div className={styles.rowEnd}>{item.updatedAt ? <small>최근 수정 {new Date(item.updatedAt).toLocaleDateString('ko-KR')}</small> : <small>확인 대기</small>}<Link className={styles.reviewLink} aria-label={`${item.name} 비교·검토`} to={workDetailUrl(item.resource, item.id, origin, landingSection(item))}>비교·검토 <span aria-hidden="true">→</span></Link></div>
+              {/* 이름·사유·빠진 항목을 한 줄에 둔다. 정보 누락 사유는 빠진 항목 목록과 같은 내용이라 따로 표시하지 않는다. */}
+              <div className={styles.rowMain}><h3>{item.name}</h3>
+                <span className={styles.reasons}>{item.reasons.filter(reason => reason !== 'MISSING' || !item.missingFields.length).map(reason => <span key={reason} className={styles.reason} data-reason={reason}>{qualityReasons[reason]}</span>)}</span>
+                {item.missingFields.length ? <p className={styles.missingFields}>빠진 항목 {item.missingFields.map(field => <Link key={field} aria-label={`${field} 확인`}
+                  to={workDetailUrl(item.resource, item.id, origin, fieldSection(item.resource, field))}>{field}</Link>)}</p> : <span />}</div>
+              <div className={styles.rowEnd}>{item.updatedAt ? <small>수정 {new Date(item.updatedAt).toLocaleDateString('ko-KR')}</small> : null}<Link className={styles.reviewLink} aria-label={`${item.name} 비교·검토`} to={workDetailUrl(item.resource, item.id, origin, landingSection(item))}>비교·검토 <span aria-hidden="true">→</span></Link></div>
             </li> })}
           </ul>}
           <nav className={`${styles.links} ${styles.queuePagination}`} aria-label="검토 목록 페이지"><span role="status">총 {result.totalElements.toLocaleString('ko-KR')}개 · {result.page + 1}페이지</span><div><button disabled={result.page === 0} onClick={() => filter('page', String(result.page - 1))}>이전</button><button disabled={!result.hasNext} onClick={() => filter('page', String(result.page + 1))}>다음</button></div></nav>
