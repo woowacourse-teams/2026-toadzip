@@ -19,13 +19,16 @@ it('마이홈 원천이 없는 공고에는 다시 정제를 보여 주지 않�
   expect(screen.queryByRole('button', { name: '이 공고만 다시 정제' })).not.toBeInTheDocument()
 })
 
-it('거절되면 서버 사유와 오류 목록이 바뀌지 않았다는 안내를 보여 준다', async () => {
-  api.rerunAnnouncement.mockImplementation(async () => { throw new Error('정제 실패: LH 보강 실패: COMPLEX_NOT_FOUND - LH 공급 원본과 일치하는 기존 공급 단지가 없습니다.') })
+it('거절되면 서버가 알려 준 기록 여부를 그대로 보여 주고 이 공고의 오류 목록으로 안내한다', async () => {
+  api.rerunAnnouncement.mockImplementation(async () => { throw new Error('정제 실패: LH 보강 실패: COMPLEX_NOT_FOUND - LH 공급 원본과 일치하는 기존 공급 단지가 없습니다. 저장은 되돌리고 오류 목록에 기록했습니다.') })
   renderWith()
   fireEvent.click(screen.getByRole('button', { name: '이 공고만 다시 정제' }))
   const alert = await screen.findByRole('alert')
   expect(alert).toHaveTextContent('정제 실패: LH 보강 실패: COMPLEX_NOT_FOUND')
-  expect(alert).toHaveTextContent('오류 목록은 바뀌지 않았습니다.')
+  expect(alert).toHaveTextContent('저장은 되돌리고 오류 목록에 기록했습니다.')
+  expect(alert).not.toHaveTextContent('오류 목록은 바뀌지 않았습니다.')
+  expect(screen.getByRole('link', { name: '이 공고의 오류 목록 보기' }))
+    .toHaveAttribute('href', `/admin/failures?domain=announcement&keyword=${base.detail.sourceIdentifier}`)
   expect(screen.getByRole('button', { name: '이 공고만 다시 정제' })).toBeEnabled()
 })
 

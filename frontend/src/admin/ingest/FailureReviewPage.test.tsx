@@ -1,14 +1,14 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, expect, it, vi } from 'vitest'
 import { FailureReviewPage } from './FailureReviewPage'
 import { getFailureReview, getFailureReviews, type FailureReview } from './failureReviewApi'
-import { getDataPipelineStatus, refreshLhAnnouncement, startDataPipeline } from './api'
+import { getDataPipelineStatus, startDataPipeline } from './api'
 
 vi.mock('./failureReviewApi', () => ({ getFailureReviews: vi.fn(), getFailureReview: vi.fn() }))
 vi.mock('./api', async (original) => ({ ...(await original<typeof import('./api')>()),
   getIngestFailures: vi.fn().mockResolvedValue([]), getDataPipelineStatus: vi.fn(),
-  startDataPipeline: vi.fn(), refreshLhAnnouncement: vi.fn(),
+  startDataPipeline: vi.fn(),
 }))
 const reviews = vi.mocked(getFailureReviews)
 const row: FailureReview = {
@@ -45,7 +45,9 @@ it('실패와 별도로 현재 등록 데이터와 사용자 화면 조건을 �
   const link=screen.getByRole('link',{name:'단지 확인·수정'})
   expect(new URL(link.getAttribute('href')!, 'https://test.invalid').pathname).toBe('/admin/complexes/42')
   expect(new URL(link.getAttribute('href')!, 'https://test.invalid').searchParams.get('failureReturnTo')).toContain('failure=complex%3A7')
-  expect(screen.getByRole('link',{name:'사용자 상세 보기'})).toHaveAttribute('href','/?complexId=42')
+  expect(screen.getByRole('link',{name:'사용자 상세'})).toHaveAttribute('href','/?complexId=42')
+  // 서비스 데이터 상태는 접어 두고 필요할 때 펼쳐 본다.
+  fireEvent.click(within(screen.getByRole('dialog')).getByText('서비스 데이터·실패 기록 원문'))
   expect(within(screen.getByRole('dialog')).getByText('주택형 0개')).toBeVisible()
   expect(screen.getByText(/주택형 정보를 제공할 수 없습니다/)).toBeVisible()
 })
@@ -127,39 +129,3 @@ it('도메인을 바꾼 뒤 도착한 이전 도메인 상태 응답을 무시�
   expect(screen.getByRole('button',{name:'공고 정제 다시 실행'})).toBeEnabled()
 })
 
-describe('실패 요청 재처리', () => {
-  it.each(['supplies', 'details'] as const)('%s를 공고별로 강제 재조회하고 실제 처리 결과를 표시한다', async (source) => {
-    vi.mocked(refreshLhAnnouncement).mockResolvedValue({ operation: 'LH_ANNOUNCEMENT_SUPPLY',
-      rateLimitedRequestCount: 0, selectionFailedRequestCount: 0, storedRowCount: 3, externalApiCallCount: 1,
-      successfulRequestCount: 1, failedRequestCount: 0, skippedRequestCount: 0 })
-    render(<MemoryRouter initialEntries={['/admin/ingest/failures?domain=announcement']}><FailureReviewPage /></MemoryRouter>)
-    fireEvent.click(screen.getByText('공고 ID로 LH 원천 직접 재조회'))
-    fireEvent.change(screen.getByLabelText('마이홈 공고 ID'), { target: { value: ' myhome-1 ' } })
-    fireEvent.change(screen.getByLabelText('재조회 원천'), { target: { value: source } })
-    fireEvent.click(screen.getByRole('button', { name: '공고 원천 강제 재조회' }))
-    expect(await screen.findByText(/외부 호출 1회 · 성공 요청 1건 · 저장·갱신 3행/)).toHaveAttribute('role', 'status')
-    expect(vi.mocked(refreshLhAnnouncement)).toHaveBeenCalledWith(source, 'myhome-1')
-    expect(vi.mocked(startDataPipeline)).not.toHaveBeenCalled()
-  })
-
-  it('조회 대상이 없으면 수집 성공이라고 표시하지 않는다', async () => {
-    vi.mocked(refreshLhAnnouncement).mockResolvedValue({ operation: 'LH_ANNOUNCEMENT_SUPPLY',
-      rateLimitedRequestCount: 0, selectionFailedRequestCount: 0, storedRowCount: 0, externalApiCallCount: 0,
-      successfulRequestCount: 0, failedRequestCount: 0, skippedRequestCount: 0 })
-    render(<MemoryRouter initialEntries={['/admin/ingest/failures?domain=announcement']}><FailureReviewPage /></MemoryRouter>)
-    fireEvent.click(screen.getByText('공고 ID로 LH 원천 직접 재조회'))
-    fireEvent.change(screen.getByLabelText('마이홈 공고 ID'), { target: { value: 'missing' } })
-    fireEvent.click(screen.getByRole('button', { name: '공고 원천 강제 재조회' }))
-    expect(await screen.findByText(/재조회할 LH 요청이 없습니다/)).toHaveAttribute('role', 'status')
-  })
-
-  it('재조회 실패를 표시하고 다시 요청할 수 있다', async () => {
-    vi.mocked(refreshLhAnnouncement).mockRejectedValue(new Error('공급행 누락으로 기존 원천을 보존했습니다.'))
-    render(<MemoryRouter initialEntries={['/admin/ingest/failures?domain=announcement']}><FailureReviewPage /></MemoryRouter>)
-    fireEvent.click(screen.getByText('공고 ID로 LH 원천 직접 재조회'))
-    fireEvent.change(screen.getByLabelText('마이홈 공고 ID'), { target: { value: 'myhome-1' } })
-    fireEvent.click(screen.getByRole('button', { name: '공고 원천 강제 재조회' }))
-    expect((await screen.findAllByRole('alert'))[0]).toHaveTextContent('공급행 누락')
-    expect(screen.getByRole('button', { name: '공고 원천 강제 재조회' })).toBeEnabled()
-  })
-})
