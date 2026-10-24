@@ -490,7 +490,6 @@ export async function stopDataPipeline(executionId: string): Promise<DataPipelin
 export const failureCategories = {
   collection: { label: '외부 API 수집', path: 'external-data-failures' },
   complex: { label: '단지 정제', path: 'myhome/complex-mappings/failures' },
-  household: { label: 'LH 세대수 보강', path: 'lh/housing-type-households/failures' },
   announcement: { label: '공고 정제', path: 'myhome/announcement-mappings/failures' },
   enrichment: { label: 'LH 공고 보강', path: 'lh/announcement-enrichments/failures' },
 } as const
@@ -511,7 +510,7 @@ export type IngestFailure = {
 export async function getIngestFailures(
   category: FailureCategory, history: boolean, page: number,
 ): Promise<readonly IngestFailure[]> {
-  const needsPageSuffix = !history && category !== 'collection' && category !== 'household'
+  const needsPageSuffix = !history && category !== 'collection'
   const suffix = history ? '/history' : needsPageSuffix ? '/page' : ''
   const response = await fetch(
     `${apiBaseUrl}/api/admin/ingest/${failureCategories[category].path}${suffix}?page=${page}&size=20`,
