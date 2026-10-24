@@ -4,7 +4,7 @@ import type { JsonWorkspace } from '../announcement-json/api'
 import type { readExtraction } from './extraction'
 import type { AnnouncementCheck } from './matching'
 import { PdfFilePicker } from './PdfFilePicker'
-import prompt from './announcementUpdatePrompt.v3.txt?raw'
+import prompt from './announcementUpdatePrompt.v5.txt?raw'
 import styles from './PdfCorrection.module.css'
 
 type Props = {
@@ -71,7 +71,7 @@ export function RequestPreparation({ attachments, attachmentId, onAttachment, lo
         {pdfError && <p role="alert">{pdfError}</p>}
       </div>
       <section className={styles.promptPanel} aria-labelledby="extraction-prompt-title">
-        <header><h3 id="extraction-prompt-title">추출 프롬프트 <span>v3</span></h3><Button data-design-system className={`${styles.secondaryButton} ${styles.copyButton}`} onClick={() => void copyPrompt()}>{message ? '프롬프트 복사됨' : '프롬프트만 복사'}</Button></header>
+        <header><h3 id="extraction-prompt-title">추출 프롬프트 <span>v5</span></h3><Button data-design-system className={`${styles.secondaryButton} ${styles.copyButton}`} onClick={() => void copyPrompt()}>{message ? '프롬프트 복사됨' : '프롬프트만 복사'}</Button></header>
         <pre className={styles.prompt} tabIndex={0} aria-label="프롬프트 내용">{prompt}</pre>
       </section>
       <span role="status" className={styles.srOnly}>{message}</span>
