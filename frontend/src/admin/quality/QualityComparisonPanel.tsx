@@ -78,7 +78,19 @@ export function QualityComparisonPanel({ resource, id, detail, onChanged, onBusy
   const readOnly = resource === 'announcements'
   const editSearch = new URLSearchParams(params); editSearch.delete('comparison'); editSearch.set('section', /^(row|target):/.test(selection) ? 'relations' : 'info')
   const fields = target?.fields.map(field => ({ field, status: qualityComparisonStatus(field, snapshot?.sources ?? [], valueAt(target.current, field.name)) })) ?? []
-  const visibleFields = fields.filter(item => filter === 'all' || item.status === filter)
+  // 원천에 비교할 값이 하나도 없는 항목은 표 아래 한 묶음으로 접어, 비교할 수 있는 항목을 먼저 읽게 한다.
+  const visibleFields = fields.filter(item => filter === 'all' ? item.status !== 'unavailable' : item.status === filter)
+  const unavailableFields = filter === 'all' ? fields.filter(item => item.status === 'unavailable') : []
+  function comparisonRow(field: ReviewField, status: keyof typeof statusLabels) {
+    if (!snapshot || !target) return null
+    return <article key={field.name} className={styles.row} aria-label={`${field.label} 비교`}>
+        <div className={styles.field}><strong title={`${field.unit !== '없음' ? `${field.unit} · ` : ''}${field.scope}`}>{field.label}</strong>{status !== 'unavailable' && <span className={layout.status} data-status={status}>{statusLabels[status]}</span>}</div>
+        <div className={styles.current}><small className={styles.mobileLabel}>현재 등록값</small>{display(valueAt(target.current, field.name))}</div>
+        <div className={styles.source}><small className={styles.mobileLabel}>수집 원천값</small><SourceValues field={field} sources={snapshot.sources} readOnly={readOnly}
+          onUse={value => setDraft(current => writeComparisonValue(current, field, String(value)))} /></div>
+        {!readOnly && <div className={styles.edit}><QualityFieldInput field={field} draft={draft} onChange={value => setDraft(current => writeComparisonValue(current, field, value === null ? '' : String(value)))} /></div>}
+      </article>
+  }
   if (!choices.length) return <p>비교할 주택형이 없습니다. 주택형을 등록하거나 수집·정제 결과를 확인하세요.</p>
   return <section className={`${styles.panel} ${layout.panel}`} aria-label={resource === 'complexes' ? '주택형 원천 비교' : '공고·공급정보 원천 비교'}>
     {/* 공고는 바깥 접힘 제목이 같은 이름이라 제목을 다시 두지 않고, 대상 선택·필터·다시 조회를 한 줄에 둔다. */}
@@ -102,14 +114,10 @@ export function QualityComparisonPanel({ resource, id, detail, onChanged, onBusy
         {!readOnly && <span>수정 중 {changed.length}개</span>}
       </div>
       <div className={styles.table} data-read-only={readOnly || undefined}><div className={styles.columns}><span>항목·단위</span><span>현재 등록값</span><span>수집 원천값</span>{!readOnly && <span>수정할 값</span>}</div>
-        {visibleFields.map(({ field, status }) => <article key={field.name} className={styles.row} aria-label={`${field.label} 비교`}>
-          <div className={styles.field}><strong>{field.label}</strong><small>{field.unit !== '없음' ? `${field.unit} · ` : ''}{field.scope}</small><span className={layout.status} data-status={status}>{statusLabels[status]}</span></div>
-          <div className={styles.current}><small className={styles.mobileLabel}>현재 등록값</small>{display(valueAt(target.current, field.name))}</div>
-          <div className={styles.source}><small className={styles.mobileLabel}>수집 원천값</small><SourceValues field={field} sources={snapshot.sources} readOnly={readOnly}
-            onUse={value => setDraft(current => writeComparisonValue(current, field, String(value)))} /></div>
-          {!readOnly && <div className={styles.edit}><QualityFieldInput field={field} draft={draft} onChange={value => setDraft(current => writeComparisonValue(current, field, value === null ? '' : String(value)))} /></div>}
-        </article>)}
-        {!visibleFields.length ? <p className={layout.empty}>{filter === 'different' ? '자동으로 비교할 수 있는 항목 중 다른 값이 없습니다. 비교 불가·직접 대조 항목은 별도로 확인하세요.' : '직접 대조할 원천값이 없습니다.'}</p> : null}
+        {visibleFields.map(({ field, status }) => comparisonRow(field, status))}
+        {unavailableFields.length > 0 && <details className={layout.unavailableGroup}><summary>원천과 비교할 수 없는 항목 {unavailableFields.length}개 <span>{unavailableFields.map(({ field }) => field.label).join(' · ')}</span></summary>
+          {unavailableFields.map(({ field, status }) => comparisonRow(field, status))}</details>}
+        {!visibleFields.length && !unavailableFields.length ? <p className={layout.empty}>{filter === 'different' ? '자동으로 비교할 수 있는 항목 중 다른 값이 없습니다. 비교 불가·직접 대조 항목은 별도로 확인하세요.' : '직접 대조할 원천값이 없습니다.'}</p> : null}
       </div>
       {changed.length ? <section className={styles.preview}><h3>저장할 변경 {changed.length}개</h3><ul>{changed.map(field => <li key={field.name}>{field.label}: {display(valueAt(target.current, field.name))} → {display(valueAt(draft, field.name))}</li>)}</ul></section> : null}
       <label>{readOnly ? '원천 확인 근거' : '수정·원천 확인 근거'}<textarea value={note} rows={2} maxLength={2000} onChange={event => setNote(event.target.value)} /></label>
@@ -143,9 +151,10 @@ function SourceValues({ field, sources, readOnly, onUse }: { field: ReviewField;
   const missing = rows.filter(row => row.availability === 'missing').length
   const lost = sources.filter(source => !source.rows.length).length
   return <>
-    {available.map(row => <div key={row.key}><small>{row.label}</small><p>{row.raw}</p>{row.value !== undefined && !readOnly ? <button onClick={() => onUse(row.value!)}>이 원천값 사용</button> : null}</div>)}
-    {!available.length && <p className={layout.noValue}>{sources.length ? '비교 가능한 원천값이 없습니다.' : '연결된 원천이 없습니다.'}</p>}
-    {unsupported + missing + lost > 0 ? <details className={layout.unavailable}><summary>비교하지 못한 자료 {unsupported + missing + lost}개</summary>
+    {available.map(row => <div key={row.key} className={layout.sourceValue}><p>{row.raw}</p><small>{row.label}</small>{row.value !== undefined && !readOnly ? <button onClick={() => onUse(row.value!)}>이 원천값 사용</button> : null}</div>)}
+    {/* 비교할 값이 하나도 없으면 이유를 한 줄로만 적는다. */}
+    {!available.length && <p className={layout.noValue}>{!sources.length ? '연결된 원천 없음' : [unsupported && `자동 비교 미지원 ${unsupported}개`, missing && `원천에 값 없음 ${missing}개`, lost && `현재 원천 없음 ${lost}개`].filter(Boolean).join(' · ') || '비교 가능한 원천값 없음'}</p>}
+    {available.length > 0 && unsupported + missing + lost > 0 ? <details className={layout.unavailable}><summary>비교하지 못한 자료 {unsupported + missing + lost}개</summary>
       {unsupported > 0 ? <p>자동 비교 미지원 {unsupported}개 · 원천 전체 확인에서 직접 대조하세요.</p> : null}
       {missing > 0 ? <p>원천에 값 없음 {missing}개 · 등록값을 그대로 유지합니다.</p> : null}
       {lost > 0 ? <p>현재 원천 없음 {lost}개 · 재수집 또는 연결을 확인하세요.</p> : null}
