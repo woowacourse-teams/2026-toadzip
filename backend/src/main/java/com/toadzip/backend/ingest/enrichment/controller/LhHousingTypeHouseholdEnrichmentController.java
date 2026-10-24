@@ -4,8 +4,10 @@ import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.Re
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.SaveRequest;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.View;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdEnrichmentFailureResponse;
+import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdTargetDecisionView;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.service.LhHouseholdComplexLinkService;
+import com.toadzip.backend.ingest.enrichment.service.LhHouseholdTargetDecisionService;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -27,13 +29,16 @@ public class LhHousingTypeHouseholdEnrichmentController {
 
     private final LhHousingTypeHouseholdEnrichmentService enrichmentService;
     private final LhHouseholdComplexLinkService linkService;
+    private final LhHouseholdTargetDecisionService decisionService;
 
     public LhHousingTypeHouseholdEnrichmentController(
             LhHousingTypeHouseholdEnrichmentService enrichmentService,
-            LhHouseholdComplexLinkService linkService
+            LhHouseholdComplexLinkService linkService,
+            LhHouseholdTargetDecisionService decisionService
     ) {
         this.enrichmentService = enrichmentService;
         this.linkService = linkService;
+        this.decisionService = decisionService;
     }
 
     @PostMapping
@@ -72,5 +77,22 @@ public class LhHousingTypeHouseholdEnrichmentController {
     public View releaseComplexLink(@PathVariable long failureId, @Valid @RequestBody ReleaseRequest request,
             Principal principal) {
         return linkService.release(failureId, request, principal.getName());
+    }
+
+    @GetMapping("/failures/{failureId}/target-decision")
+    public LhHouseholdTargetDecisionView targetDecision(@PathVariable long failureId) {
+        return decisionService.view(failureId);
+    }
+
+    @PostMapping("/failures/{failureId}/target-decision")
+    public LhHouseholdTargetDecisionView saveTargetDecision(@PathVariable long failureId,
+            @Valid @RequestBody LhHouseholdTargetDecisionView.SaveRequest request, Principal principal) {
+        return decisionService.save(failureId, request, principal.getName());
+    }
+
+    @PostMapping("/failures/{failureId}/target-decision/release")
+    public LhHouseholdTargetDecisionView releaseTargetDecision(@PathVariable long failureId,
+            @Valid @RequestBody LhHouseholdTargetDecisionView.ReleaseRequest request, Principal principal) {
+        return decisionService.release(failureId, request, principal.getName());
     }
 }

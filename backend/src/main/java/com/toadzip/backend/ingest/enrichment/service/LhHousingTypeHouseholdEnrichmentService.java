@@ -11,11 +11,13 @@ import com.toadzip.backend.ingest.collection.lh.leasecatalog.repository.LhLeaseC
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdComplexLink;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailureReason;
+import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdTargetDecision;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdEnrichmentFailureResponse;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdComplexLinkRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureStore;
+import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdTargetDecisionRepository;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHousehold;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHouseholdSource;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHouseholdSourceKey;
@@ -23,7 +25,7 @@ import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -49,6 +51,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
     private final Clock clock;
     private final LhHouseholdComplexLinkRepository linkRepository;
     private final LhHouseholdComplexLinks links;
+    private final LhHouseholdTargetDecisionRepository decisionRepository;
 
     @Transactional(readOnly = true)
     public List<LhHouseholdEnrichmentFailureResponse> findFailures(int page, int size) {
@@ -71,6 +74,23 @@ public class LhHousingTypeHouseholdEnrichmentService {
 
     @Transactional
     public LhHousingTypeHouseholdEnrichmentReport enrichAll() {
+        List<LhHouseholdEnrichmentFailure> failures = new ArrayList<>();
+        Instant occurredAt = clock.instant();
+        CurrentMatches current = currentMatches(failures, occurredAt);
+        LhHousingTypeHouseholdEnrichmentReport report = current.report();
+        var decisions = decisionRepository.findAll().stream()
+                .collect(Collectors.toMap(LhHouseholdTargetDecision::getHousingComplexId, decision -> decision));
+        report = report.plus(writeUniqueMatches(current.matchedSources(), decisions, failures, occurredAt));
+        failureStore.reconcileAfterRun(
+                failures,
+                IngestExecutionContext.currentExecutionId().orElse(null)
+        );
+        logCompleted(report);
+        return report;
+    }
+
+    /** 현재 원천과 단지로 묶음별 매칭을 계산한다. 매칭하지 못한 묶음은 failures에 담는다. 저장하지 않는다. */
+    CurrentMatches currentMatches(List<LhHouseholdEnrichmentFailure> failures, Instant occurredAt) {
         Map<LhHousingTypeHouseholdSourceKey, List<LhCatalogSource>> sourceGroups =
                 sourceMapper.group(sourceRepository.findAllByOrderBySourceOrderAsc());
         List<HousingComplex> complexes = complexRepository.findAll();
@@ -81,8 +101,6 @@ public class LhHousingTypeHouseholdEnrichmentService {
         LhHousingTypeHouseholdEnrichmentReport report =
                 LhHousingTypeHouseholdEnrichmentReport.empty(sourceGroups.size());
         List<MatchedSource> matchedSources = new ArrayList<>();
-        List<LhHouseholdEnrichmentFailure> failures = new ArrayList<>();
-        Instant occurredAt = clock.instant();
         for (Map.Entry<LhHousingTypeHouseholdSourceKey, List<LhCatalogSource>> entry
                 : sourceGroups.entrySet()) {
             Optional<MatchedSource> matchedSource = match(
@@ -95,13 +113,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
             }
             matchedSources.add(matchedSource.get());
         }
-        report = report.plus(writeUniqueMatches(matchedSources, failures, occurredAt));
-        failureStore.reconcileAfterRun(
-                failures,
-                IngestExecutionContext.currentExecutionId().orElse(null)
-        );
-        logCompleted(report);
-        return report;
+        return new CurrentMatches(matchedSources, report);
     }
 
     private Optional<MatchedSource> match(
@@ -193,32 +205,84 @@ public class LhHousingTypeHouseholdEnrichmentService {
 
     private LhHousingTypeHouseholdEnrichmentReport writeUniqueMatches(
             List<MatchedSource> matchedSources,
+            Map<Long, LhHouseholdTargetDecision> decisions,
             List<LhHouseholdEnrichmentFailure> failures,
             Instant occurredAt
     ) {
-        Map<Long, Integer> sourceGroupCounts = sourceGroupCounts(matchedSources);
+        Map<Long, List<MatchedSource>> groupsByComplex = new LinkedHashMap<>();
+        matchedSources.forEach(matched -> groupsByComplex
+                .computeIfAbsent(matched.complex().getId(), ignored -> new ArrayList<>()).add(matched));
         LhHousingTypeHouseholdEnrichmentReport report =
                 LhHousingTypeHouseholdEnrichmentReport.empty(0);
-        for (MatchedSource matchedSource : matchedSources) {
-            int sourceGroupCount = sourceGroupCounts.get(matchedSource.complex().getId());
-            if (sourceGroupCount > 1) {
-                logDuplicateMatch(matchedSource, sourceGroupCount);
-                failures.add(LhHouseholdEnrichmentFailure.create(
-                        matchedSource.sourceKey().failureKey(),
-                        matchedSource.source().areaName(),
-                        matchedSource.source().supplyTypeName(),
-                        matchedSource.source().complexName(),
-                        LhHouseholdEnrichmentFailureReason.DUPLICATE_TARGET_COMPLEX,
-                        "같은 정제 단지에 연결된 LH 원천 그룹 수: " + sourceGroupCount,
-                        occurredAt
-                ));
-                report = report.plus(LhHousingTypeHouseholdEnrichmentReport.failed());
-                continue;
-            }
-            report = report.plus(write(
-                    matchedSource.complex(),
-                    matchedSource.source().housingTypes()
+        for (List<MatchedSource> group : groupsByComplex.values()) {
+            report = report.plus(writeComplex(group, decisions.get(group.getFirst().complex().getId()), failures,
+                    occurredAt));
+        }
+        return report;
+    }
+
+    // 한 단지에 매칭된 묶음이 하나면 그대로, 관리자 결정이 있으면 그 결정대로, 세대수가 모두 같으면 한 번만 쓴다.
+    private LhHousingTypeHouseholdEnrichmentReport writeComplex(
+            List<MatchedSource> group,
+            LhHouseholdTargetDecision decision,
+            List<LhHouseholdEnrichmentFailure> failures,
+            Instant occurredAt
+    ) {
+        HousingComplex complex = group.getFirst().complex();
+        if (decision != null) {
+            return writeDecided(group, decision, failures, occurredAt);
+        }
+        if (group.size() == 1 || links.identical(group)) {
+            return write(complex, group.getFirst().source().housingTypes());
+        }
+        logDuplicateMatch(group.getFirst(), group.size());
+        return failGroup(group, LhHouseholdEnrichmentFailureReason.DUPLICATE_TARGET_COMPLEX,
+                "같은 정제 단지에 세대수가 서로 다른 LH 원천 묶음 " + group.size() + "개가 연결됩니다.",
+                failures, occurredAt);
+    }
+
+    private LhHousingTypeHouseholdEnrichmentReport writeDecided(
+            List<MatchedSource> group,
+            LhHouseholdTargetDecision decision,
+            List<LhHouseholdEnrichmentFailure> failures,
+            Instant occurredAt
+    ) {
+        HousingComplex complex = group.getFirst().complex();
+        boolean current = links.sourcesFingerprint(group).equals(decision.getSourcesFingerprint())
+                && links.decisionTargetFingerprint(complex, housingTypeRepository.findAllByHousingComplex(complex))
+                        .equals(decision.getTargetFingerprint());
+        if (!current) {
+            return failGroup(group, LhHouseholdEnrichmentFailureReason.TARGET_DECISION_REVIEW_REQUIRED,
+                    "저장한 단지 결정 이후 경쟁하는 LH 원천 묶음이나 단지가 바뀌었습니다. 다시 확인해 주세요.",
+                    failures, occurredAt);
+        }
+        if (decision.getDecision() == LhHouseholdTargetDecision.Decision.SKIP) {
+            return LhHousingTypeHouseholdEnrichmentReport.empty(0);
+        }
+        return group.stream().filter(matched -> matched.sourceKey().failureKey().equals(decision.getChosenSourceKey()))
+                .findFirst().map(matched -> write(complex, matched.source().housingTypes()))
+                .orElseGet(() -> LhHousingTypeHouseholdEnrichmentReport.empty(0));
+    }
+
+    private LhHousingTypeHouseholdEnrichmentReport failGroup(
+            List<MatchedSource> group,
+            LhHouseholdEnrichmentFailureReason reason,
+            String detail,
+            List<LhHouseholdEnrichmentFailure> failures,
+            Instant occurredAt
+    ) {
+        LhHousingTypeHouseholdEnrichmentReport report = LhHousingTypeHouseholdEnrichmentReport.empty(0);
+        for (MatchedSource matchedSource : group) {
+            failures.add(LhHouseholdEnrichmentFailure.create(
+                    matchedSource.sourceKey().failureKey(),
+                    matchedSource.source().areaName(),
+                    matchedSource.source().supplyTypeName(),
+                    matchedSource.source().complexName(),
+                    reason,
+                    detail,
+                    occurredAt
             ));
+            report = report.plus(LhHousingTypeHouseholdEnrichmentReport.failed());
         }
         return report;
     }
@@ -271,13 +335,6 @@ public class LhHousingTypeHouseholdEnrichmentService {
         );
     }
 
-    private Map<Long, Integer> sourceGroupCounts(List<MatchedSource> matchedSources) {
-        Map<Long, Integer> result = new HashMap<>();
-        for (MatchedSource matchedSource : matchedSources) {
-            result.merge(matchedSource.complex().getId(), 1, Integer::sum);
-        }
-        return result;
-    }
 
     private void logDuplicateMatch(MatchedSource matchedSource, int sourceGroupCount) {
         log.warn(
@@ -300,7 +357,10 @@ public class LhHousingTypeHouseholdEnrichmentService {
         );
     }
 
-    private record MatchedSource(
+    record CurrentMatches(List<MatchedSource> matchedSources, LhHousingTypeHouseholdEnrichmentReport report) {
+    }
+
+    record MatchedSource(
             LhHousingTypeHouseholdSourceKey sourceKey,
             HousingComplex complex,
             LhHousingTypeHouseholdSource source
