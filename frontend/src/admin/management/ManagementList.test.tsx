@@ -184,3 +184,17 @@ it('현재 페이지의 행을 골라 한꺼번에 휴지통으로 옮기고 목
   expect(mocks.requestManagementApi).toHaveBeenCalledWith(`/api/admin/housing-complexes/${complex.id}?version=5`, 'DELETE')
   await waitFor(() => expect(mocks.getManagementPage).toHaveBeenCalledTimes(2))
 })
+
+it('휴지통 탭으로 지운 항목을 보고, 검색해도 휴지통 조건을 유지한다', async () => {
+  render(<MemoryRouter initialEntries={['/admin/complexes?keyword=두꺼비&page=2']}><ManagementList resource="complexes" /></MemoryRouter>)
+  await screen.findByRole('link', { name: '두꺼비 단지' })
+  expect(screen.getByRole('button', { name: '등록 데이터' })).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.click(screen.getByRole('button', { name: '휴지통' }))
+  await waitFor(() => expect(mocks.getManagementPage.mock.lastCall?.[1].get('deleted')).toBe('true'))
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('keyword')).toBe('두꺼비')
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('page')).toBeNull()
+  expect(screen.getByRole('button', { name: '휴지통' })).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.click(screen.getByRole('button', { name: '검색' }))
+  await waitFor(() => expect(mocks.getManagementPage.mock.lastCall?.[1].get('deleted')).toBe('true'))
+  expect(screen.queryByLabelText('보관 상태')).not.toBeInTheDocument()
+})
