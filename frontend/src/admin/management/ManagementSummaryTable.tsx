@@ -6,10 +6,10 @@ import styles from './ManagementList.module.css'
 import { ComplexVerificationBadge } from './ComplexVerificationBadge'
 
 type Column = { key: string; label: string; width: number; read: (summary: ManagementSummary) => string | number | boolean | null | undefined; kind?: 'number' | 'status' | 'verification' | 'publication' }
-export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight = false, compact = false, inlineSearch, onEdit, editDisabled = false, selection }: { items: ManagementSummary[]; resource: ManagementResource; returnTo?: string; fixedHeight?: boolean; compact?: boolean; inlineSearch?: string; onEdit?: (item: ManagementSummary) => void; editDisabled?: boolean
-  selection?: { ids: ReadonlySet<number>; disabled?: boolean; onChange: (ids: Set<number>) => void } }) {
+export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight = false, compact = false, inlineSearch, onEdit, editDisabled = false, selection, trash = false }: { items: ManagementSummary[]; resource: ManagementResource; returnTo?: string; fixedHeight?: boolean; compact?: boolean; inlineSearch?: string; onEdit?: (item: ManagementSummary) => void; editDisabled?: boolean
+  selection?: { ids: ReadonlySet<number>; disabled?: boolean; onChange: (ids: Set<number>) => void }; trash?: boolean }) {
   const selected = useMatch(`/admin/${resource}/:id`)?.params.id
-  if (!items.length) return <div className={`admin-empty ${fixedHeight ? styles.fixedHeight : ''}`}><h2>표시할 {resource === 'complexes' ? '단지' : '공고'}가 없습니다.</h2><p>검색 조건을 바꾸거나 새 데이터를 등록해 주세요.</p></div>
+  if (!items.length) return <div className={`admin-empty ${fixedHeight ? styles.fixedHeight : ''}`}>{trash ? <><h2>휴지통이 비어 있습니다.</h2><p>삭제한 {resource === 'complexes' ? '단지' : '공고'}는 여기에서 다시 복구할 수 있습니다.</p></> : <><h2>표시할 {resource === 'complexes' ? '단지' : '공고'}가 없습니다.</h2><p>검색 조건을 바꾸거나 새 데이터를 등록해 주세요.</p></>}</div>
   const columns: Column[] = [
     ...(resource === 'complexes' ? [{ key: 'address.roadAddress', label: '도로명주소', width: 300, read: (item: ManagementSummary) => item.subtitle }] : []),
     { key: 'agencyCode', label: '공급 기관', width: 104, read: item => item.provider },
