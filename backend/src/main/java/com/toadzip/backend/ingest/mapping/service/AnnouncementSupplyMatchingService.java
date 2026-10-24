@@ -38,6 +38,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -75,15 +76,17 @@ public class AnnouncementSupplyMatchingService {
                         .filter(SupplyRow::isAdminExcluded).map(SupplyRow::getSourceSupplyRowIdentifier)
                         .collect(java.util.stream.Collectors.toSet()))
                 .orElse(java.util.Set.of());
-        for (var data : supplyRows(identifier)) {
-            var group = groups.findBySourceRowIdentifier(data.source().getSourceKey()).orElse(null);
+        var supplyRows = supplyRows(identifier);
+        var expanded = SupplyRowGroupOrigins.expandedIn(supplyRows);
+        for (var data : supplyRows) {
+            var group = groups.findBySourceRowIdentifier(SupplyRowGroupOrigins.key(data)).orElse(null);
             if (group != null) {
                 var members = productRows.findAllByAnnouncement(group.getAnnouncement()).stream()
                         .filter(row -> row.getSupplyGroup() != null
                                 && row.getSupplyGroup().getId().equals(group.getId()))
                         .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder))
                         .toList();
-                boolean review = splitWriter.reviewRequired(group, data.source(), members);
+                boolean review = splitWriter.reviewRequired(group, data, expanded.apply(data), members);
                 var split = new SplitGroup(group.getId(), group.getSharedHouseholdCount(), group.getSourceUrl(),
                         group.getReason(), group.getActor(), group.getUpdatedAt(), review,
                         members.stream().map(row -> new SplitRow(row.getId(), row.displayHousingTypeName(),
@@ -96,11 +99,10 @@ public class AnnouncementSupplyMatchingService {
                 if (review) {
                     failure = "보존한 공급행의 원천 또는 주택형이 변경되었습니다. 근거를 다시 확인해 주세요.";
                 }
-                result.putIfAbsent(data.source().getSourceKey(), new Row(data.sourceSupplyRowIdentifier(), token(data),
-                        data.sourceComplexName(), data.source().getHouseTyNm(), data.pnu(), null, null,
-                        groupComplexId, null,
-                        failure,
-                        null, data.source().getSumSuplyCo(), split, false));
+                result.putIfAbsent(SupplyRowGroupOrigins.key(data), new Row(data.sourceSupplyRowIdentifier(), token(data),
+                        data.sourceComplexName(), SupplyRowGroupOrigins.housingTypeName(data, expanded.apply(data)),
+                        data.pnu(), null, null, groupComplexId, null, failure, null,
+                        SupplyRowGroupOrigins.householdCount(data, expanded.apply(data)), split, false));
                 continue;
             }
             var match = matcher.match(data);
@@ -148,9 +150,11 @@ public class AnnouncementSupplyMatchingService {
         }
         var current = resolved(identifier);
         var sourceRows = current.data().supplyRows();
-        var plans = request.splitPlans().stream().map(plan -> splitPlan(
-                splitSource(current, plan.rowIdentifier(), plan.token()), plan.rows(),
-                request.sourceUrl(), request.reason(), actor)).toList();
+        var expanded = SupplyRowGroupOrigins.expandedIn(sourceRows);
+        var plans = request.splitPlans().stream().map(plan -> {
+            var data = splitSource(current, plan.rowIdentifier(), plan.token());
+            return splitPlan(data, plan.rows(), request.sourceUrl(), request.reason(), actor, expanded.apply(data));
+        }).toList();
         if (plans.stream().map(plan -> plan.source().sourceSupplyRowIdentifier()).distinct().count() != plans.size()) {
             throw new InvalidIngestRequestException("같은 원천행을 두 번 나눌 수 없습니다.");
         }
@@ -159,7 +163,7 @@ public class AnnouncementSupplyMatchingService {
             var data = sourceRows.stream().filter(row -> row.sourceSupplyRowIdentifier()
                     .equals(selection.rowIdentifier())).findFirst()
                     .orElseThrow(() -> new InvalidIngestRequestException("해당 공고의 공급행이 아닙니다."));
-            if (groups.findBySourceRowIdentifier(data.source().getSourceKey()).isPresent()) {
+            if (groups.findBySourceRowIdentifier(SupplyRowGroupOrigins.key(data)).isPresent()) {
                 throw new AdminDataConflictException("복수 공급행 보정은 보정 공급행 확인·수정에서 처리해 주세요.");
             }
             if (plans.stream().anyMatch(plan -> plan.source().sourceSupplyRowIdentifier()
@@ -302,7 +306,7 @@ public class AnnouncementSupplyMatchingService {
         for (var data : sourceRows) {
             String rowIdentifier = data.sourceSupplyRowIdentifier();
             if (!links.containsKey(rowIdentifier)
-                    || groups.findBySourceRowIdentifier(data.source().getSourceKey()).isPresent()) {
+                    || groups.findBySourceRowIdentifier(SupplyRowGroupOrigins.key(data)).isPresent()) {
                 continue;
             }
             var saved = decisions.findByRowIdentifier(rowIdentifier);
@@ -326,7 +330,7 @@ public class AnnouncementSupplyMatchingService {
     private String token(MyHomeSupplyRowMappingData data) {
         return fingerprints.splitReview(fingerprints.review(data,
                 decisions.findByRowIdentifier(data.sourceSupplyRowIdentifier()).orElse(null)),
-                groups.findBySourceRowIdentifier(data.source().getSourceKey()).orElse(null));
+                groups.findBySourceRowIdentifier(SupplyRowGroupOrigins.key(data)).orElse(null));
     }
 
     private SavedMatch savedMatch(MyHomeSupplyRowMappingData data, boolean reviewRequired) {
@@ -353,7 +357,8 @@ public class AnnouncementSupplyMatchingService {
         if (existing != null && (existing.isAdminDeleted() || existing.getProvider() != current.data().provider())) {
             throw new AdminDataConflictException("삭제 상태 또는 공고 기관이 원천과 다릅니다. 공고 관리에서 확인해 주세요.");
         }
-        var plan = splitPlan(data, request.rows(), request.sourceUrl(), request.reason(), actor);
+        var plan = splitPlan(data, request.rows(), request.sourceUrl(), request.reason(), actor,
+                SupplyRowGroupOrigins.expandedIn(current.data().supplyRows()).apply(data));
         var previous = announcements.findBySourceAnnouncementIdentifier(
                 current.data().previousSourceAnnouncementIdentifier())
                 .orElse(null);
@@ -387,7 +392,7 @@ public class AnnouncementSupplyMatchingService {
     }
 
     private AnnouncementSupplySplitWriter.SplitPlan splitPlan(MyHomeSupplyRowMappingData data,
-            List<SplitSelection> rows, String sourceUrl, String reason, String actor) {
+            List<SplitSelection> rows, String sourceUrl, String reason, String actor, boolean expanded) {
         if (rows.stream().map(SplitSelection::complexId).distinct().count() != 1
                 || rows.stream().map(value -> value.name().strip().toLowerCase(java.util.Locale.ROOT))
                         .distinct().count() != rows.size()
@@ -405,7 +410,7 @@ public class AnnouncementSupplyMatchingService {
             }
             return new AnnouncementSupplySplitWriter.SplitTarget(selection.id(), selection.name(), match, target);
         }).toList();
-        return new AnnouncementSupplySplitWriter.SplitPlan(data, targets, sourceUrl, reason, actor);
+        return new AnnouncementSupplySplitWriter.SplitPlan(data, targets, sourceUrl, reason, actor, expanded);
     }
 
     @Transactional
@@ -504,6 +509,26 @@ public class AnnouncementSupplyMatchingService {
                         value.getExclusiveArea(), value.getSupplyArea(), value.getTotalHouseholdCount(),
                         fingerprints.target(value))).toList();
     }
+
+    /**
+     * 공급 보정에서 새 공통 모집 묶음을 만들 원천. LH 공급정보로 여러 행이 된 마이홈 원천의 행이면 그 행 단위의 묶음 키와
+     * 원천 지문을 준다. 그렇지 않거나 원천을 읽을 수 없으면 비워 두며, 호출자는 마이홈 원천 단위로 묶는다.
+     */
+    public Optional<SplitOrigin> expandedSplitOrigin(String identifier, String rowIdentifier) {
+        List<MyHomeSupplyRowMappingData> rows;
+        try {
+            rows = supplyRows(identifier);
+        }
+        catch (InvalidIngestRequestException exception) {
+            return Optional.empty();
+        }
+        var expanded = SupplyRowGroupOrigins.expandedIn(rows);
+        return rows.stream().filter(row -> row.sourceSupplyRowIdentifier().equals(rowIdentifier) && expanded.apply(row))
+                .findFirst().map(row -> new SplitOrigin(SupplyRowGroupOrigins.key(row), row.source().getSourceKey(),
+                        fingerprints.splitSource(row, true)));
+    }
+
+    public record SplitOrigin(String key, String myHomeSourceKey, String fingerprint) { }
 
     private List<MyHomeSupplyRowMappingData> supplyRows(String identifier) {
         return resolved(identifier).data().supplyRows();

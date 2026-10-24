@@ -329,8 +329,9 @@ public class MyHomeAnnouncementMappingWriter {
         var groups = supplyGroups.findAllByAnnouncement(announcement).stream()
                 .collect(Collectors.toMap(group -> group.getSourceRowIdentifier(), Function.identity()));
         Set<Long> preservedGroups = new HashSet<>();
+        var expanded = SupplyRowGroupOrigins.expandedIn(rows);
         for (MyHomeSupplyRowMappingData data : rows) {
-            var group = groups.get(data.source().getSourceKey());
+            var group = groups.get(SupplyRowGroupOrigins.key(data));
             if (group != null) {
                 if (!preservedGroups.add(group.getId())) {
                     continue;
@@ -339,7 +340,7 @@ public class MyHomeAnnouncementMappingWriter {
                         && row.getSupplyGroup().getId().equals(group.getId()))
                         .sorted(java.util.Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
                         .toList();
-                if (splitWriter.reviewRequired(group, data.source(), members)) {
+                if (splitWriter.reviewRequired(group, data, expanded.apply(data), members)) {
                     group.requireReview();
                     failures.add(new MyHomeSupplyMatchingFailureData(data.source(),
                             MyHomeAnnouncementMappingFailureReason.MANUAL_MATCH_REVIEW_REQUIRED,
