@@ -407,6 +407,28 @@ class AdminManagementIntegrationTest {
     }
 
     @Test
+    void 관리자는_원천이_없는_단지에_주택형을_추가하고_같은_이름은_거절한다() throws Exception {
+        long id = createComplex();
+        String path = "/api/admin/housing-complexes/" + id;
+        long version = getData(path).get("data").get("version").asLong();
+        String body = """
+                {"version": %d, "name": "16A", "exclusiveArea": 16.37, "supplyArea": 27.6384}
+                """.formatted(version);
+        mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.housingTypes[0].name").value("16A"))
+                .andExpect(jsonPath("$.data.housingTypes[0].exclusiveArea").value(16.37));
+        long next = getData(path).get("data").get("version").asLong();
+        assertThat(next).isGreaterThan(version);
+        mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body.replace(String.valueOf(version), String.valueOf(next))))
+                .andExpect(status().isConflict());
+        mvc.perform(get(path + "/changes").with(user("admin").roles("ADMIN")))
+                .andExpect(jsonPath("$.data[0].action").value("CREATE_HOUSING_TYPE"));
+    }
+
+    @Test
     void 주택형_수정은_소속단지와_권한과_입력값을_검증한다() throws Exception {
         long id = createComplex();
         long otherId = createComplex();
