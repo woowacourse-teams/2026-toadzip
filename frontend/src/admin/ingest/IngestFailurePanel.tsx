@@ -11,6 +11,7 @@ import { failureReturnUrl } from './failureNavigation'
 import { FailureRetryButton } from './FailureRetryButton'
 import { FailureSourceRecovery } from './FailureSourceRecovery'
 import { HouseholdComplexLinkCard } from './HouseholdComplexLinkCard'
+import { HouseholdTargetDecisionCard } from './HouseholdTargetDecisionCard'
 
 type Props = {
   domain?: FailureDomain; initialCategory?: FailureCategory; executionId: string | null; refreshToken?: number
@@ -197,8 +198,9 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
             {selected.category === 'enrichment' && <Link to={follow(sourceLocation(selected, true))}>LH 공급 원천 확인</Link>}
           </div>
           {selected.category === 'enrichment' && !selected.raw.panId && <p className={styles.hint}>오류에 LH 공고 번호가 없어 원천 목록 전체로 이동합니다. 마이홈 공고의 원문에서 LH 연결을 먼저 확인하세요.</p>}
-          {selected.category === 'household' && <HouseholdComplexLinkCard key={selectionKey} failureId={selected.id}
-            disabled={actionDisabled} onBusy={setActionBusy} />}
+          {selected.category === 'household' && (householdTargetDecision(selected)
+            ? <HouseholdTargetDecisionCard key={selectionKey} failureId={selected.id} disabled={actionDisabled} onBusy={setActionBusy} />
+            : <HouseholdComplexLinkCard key={selectionKey} failureId={selected.id} disabled={actionDisabled} onBusy={setActionBusy} />)}
         </section>
         <section className={styles.detailSection}><h3>2. 필요한 조치</h3><div className={styles.workflow}>
           {selected.product ? <Link to={follow(`/admin/${selected.product.resourceType}/${selected.product.id}`)}>{label} 확인·수정</Link> : null}
@@ -208,7 +210,10 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
               onRetry={() => { showResult.current = true; onRetry() }}/> : null}
         </div>
           {selected.category !== 'collection' && selected.status === 'PENDING' && onRetry ? <p id="failure-retry-scope" className={styles.hint}>
-            수정한 뒤 이 화면으로 돌아와 정제를 다시 실행하세요. 현재 저장된 {label} 원천 전체가 대상이며, 다른 오류와 이미 처리한 데이터도 함께 정제합니다.
+            {householdTargetDecision(selected)
+              ? '세대수가 다른 묶음이면 위에서 결정을 저장한 뒤 실행해야 반영되며, 결정 없이 실행하면 같은 오류가 남습니다. '
+              : '수정한 뒤 이 화면으로 돌아와 정제를 다시 실행하세요. '}
+            현재 저장된 {label} 원천 전체가 대상이며, 다른 오류와 이미 처리한 데이터도 함께 정제합니다.
           </p> : null}
           {selected.category !== 'collection' && runMessage ? <p role="status">{runMessage}</p> : null}{runError ? <p role="alert">{runError}</p> : null}
           <FailureSourceRecovery key={selectionKey} row={selected} disabled={actionDisabled}
@@ -241,7 +246,8 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
 }
 
 function RecoveryLinks({row, follow}: {row:FailureReview; follow: (path: string) => string}) {
-  if (row.category === 'collection') return null
+  // 중복 대상 단지는 단지를 이미 찾은 상태라 단지 검색이 필요 없다. 결정은 위 비교 카드에서 한다.
+  if (row.category === 'collection' || householdTargetDecision(row)) return null
   const complexName = typeof row.raw.complexName === 'string' ? row.raw.complexName.trim() : ''
   const needsComplexReview = /COMPLEX|HOUSING_TYPE/.test(row.reason)
     || (row.productLinkStatus === 'UNKNOWN' && complexName !== '')
@@ -303,6 +309,7 @@ function reasonLabel(row:FailureReview) {
     HOUSING_TYPE_NOT_FOUND:'연결할 주택형을 찾지 못함', AMBIGUOUS_HOUSING_TYPE:'일치하는 주택형이 여러 개',
     MANUAL_MATCH_REVIEW_REQUIRED:'저장한 매칭의 원천·주택형 재확인 필요',
     MANUAL_LINK_REVIEW_REQUIRED:'저장한 단지 연결의 원천·단지 재확인 필요',
+    TARGET_DECISION_REVIEW_REQUIRED:'저장한 단지 결정의 원천·단지 재확인 필요',
     LH_DETAIL_SOURCE_NOT_FOUND:'LH 상세 원천 없음',
     LH_SUPPLY_SOURCE_NOT_FOUND:'LH 공급 원천 없음', UNSUPPORTED_SUPPLY_TYPE:'지원하지 않는 공급 유형',
   }
@@ -312,6 +319,9 @@ function nextAction(row:FailureReview) {
   if (row.status === 'RESOLVED') return '해결된 기록입니다. 다시 발생하면 미해결로 표시됩니다.'
   if (row.status === 'SKIPPED') return '건너뛴 사유와 원천 요청 조건을 확인하세요.'
   if (row.category === 'collection') return collectionCause(row).action
+  if (householdTargetDecision(row)) return '같은 단지에 LH 묶음이 여러 개 매칭됐습니다. 아래 비교에서 세대수가 다르면 쓸 묶음을 고르거나 세대수 보강을 하지 않기로 정하세요. 모두 같으면 정제를 다시 실행하면 한 번만 반영됩니다.'
+  if (row.category === 'household' && row.reason === 'MANUAL_LINK_REVIEW_REQUIRED') return '저장한 단지 연결 이후 LH 원천이나 단지가 바뀌었습니다. 아래 비교에서 다시 확인해 저장하거나 연결을 해제하세요.'
+  if (row.category === 'household' && row.reason === 'COMPLEX_NOT_FOUND') return '아래 비교에서 공급유형·전체 세대수·지역이 같은 단지 후보를 확인하세요. 후보가 하나면 확인 후 연결할 수 있고, 없으면 단지 등록이나 세대수를 확인하세요.'
   if (row.reason === 'MANUAL_MATCH_REVIEW_REQUIRED') return '저장한 매칭의 근거와 현재 원천·주택형을 다시 비교하세요. 연결을 다시 선택해 근거와 함께 저장하거나 저장한 선택을 해제할 수 있습니다.'
   if (/GEOCODING/.test(row.reason)) return '단지 주소와 좌표 원천을 확인하세요. 좌표 ZIP을 업로드해도 일치하는 주소나 좌표가 없으면 별도 확인이 필요합니다.'
   if (/HOUSING_TYPE/.test(row.reason)) return '단지의 주택형과 원천의 면적·공급 유형을 비교한 뒤 정제하세요.'
@@ -331,6 +341,9 @@ function sourceLocation(row:FailureReview, supply = false) {
   const params=new URLSearchParams({category})
   if (keyword) params.set('keyword',keyword.slice(0,200))
   return `/admin/sources?${params}`
+}
+function householdTargetDecision(row:FailureReview) {
+  return row.category === 'household' && /^(DUPLICATE_TARGET_COMPLEX|TARGET_DECISION_REVIEW_REQUIRED)$/.test(row.reason)
 }
 function reviewTarget(row:FailureReview) {
   if (row.category === 'collection') return failureTarget(row)
