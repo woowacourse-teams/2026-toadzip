@@ -560,6 +560,17 @@ class MyHomeComplexMergeIntegrationTest {
     }
 
     @Test
+    void 이전할_단지에_검증_기록이_있으면_복구할_수_없으므로_통합을_보류한다() throws Exception {
+        jdbc.sql("""
+                INSERT INTO housing_complex_reviews (housing_complex_id, outcome, checked_values, evidence_note,
+                    actor, reviewed_at) VALUES (?, 'VERIFIED', '{"NAME": "삼산부영"}', '확인', 'admin', now())
+                """).param(ids.getLast()).update();
+
+        expectConflict(ENDPOINT + "/preview", Map.of("complexIds", ids, "lhSourceId", lhId));
+        assertThat(complexes.findAll()).hasSize(3);
+    }
+
+    @Test
     void 관리자가_아니면_근거_조회와_통합을_할_수_없다() throws Exception {
         mvc.perform(get(ENDPOINT + "/candidates")).andExpect(status().isUnauthorized());
         mvc.perform(post(ENDPOINT + "/preview").with(user(privacyPermissionMemberId()).roles("USER")).with(csrf())
@@ -632,8 +643,9 @@ class MyHomeComplexMergeIntegrationTest {
     private MyHomeComplexSource source(
             long id, int count, String name, String area, String common, String supplyType
     ) {
+        // 참고 주소가 원천마다 달라 정제의 분할 단지 자동 묶음에서 빠지고 관리자 확인 통합 대상으로 남는다.
         MyHomeComplexSource source = MyHomeComplexSource.from(new MyHomeComplexSourceSnapshot(
-                id, "한국토지주택공사", "28", "인천광역시", "237", "부평구", NAME, ADDRESS,
+                id, "한국토지주택공사", "28", "인천광역시", "237", "부평구", NAME, ADDRESS + " (" + id + ")",
                 "2823710500105500000", null, count, supplyType, name, new BigDecimal(area),
                 new BigDecimal(common), "아파트", null, null, null, 0, null, null, null));
         source.markCollectedAt(COLLECTED_AT);

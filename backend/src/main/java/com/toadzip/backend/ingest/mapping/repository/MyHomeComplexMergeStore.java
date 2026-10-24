@@ -138,6 +138,45 @@ public class MyHomeComplexMergeStore {
         entityManager.clear();
     }
 
+    public long countAdminRecords(List<Long> ids) {
+        return jdbc.sql("""
+                SELECT (SELECT count(*) FROM announcement_supply_match_decisions WHERE complex_id IN (:ids))
+                    + (SELECT count(*) FROM lh_household_complex_links WHERE housing_complex_id IN (:ids))
+                    + (SELECT count(*) FROM lh_household_target_decisions WHERE housing_complex_id IN (:ids))
+                    + (SELECT count(*) FROM housing_complex_reviews WHERE housing_complex_id IN (:ids))
+                    + (SELECT count(*) FROM complex_comparison_links WHERE housing_complex_id IN (:ids))
+                """).param("ids", ids).query(Long.class).single();
+    }
+
+    public long countHouseholdTargetDecisions(List<Long> ids) {
+        return jdbc.sql("SELECT count(*) FROM lh_household_target_decisions WHERE housing_complex_id IN (:ids)")
+                .param("ids", ids).query(Long.class).single();
+    }
+
+    public void absorbSplitComplexes(long representativeId, List<Long> donorIds) {
+        entityManager.flush();
+        jdbc.sql("""
+                DELETE FROM complex_comparison_links donor
+                WHERE donor.housing_complex_id IN (:donors) AND EXISTS (
+                    SELECT 1 FROM complex_comparison_links kept
+                    WHERE kept.category = donor.category AND kept.source_key = donor.source_key
+                        AND (kept.housing_complex_id = :target
+                            OR kept.housing_complex_id IN (:donors) AND kept.id < donor.id))
+                """).param("target", representativeId).param("donors", donorIds).update();
+        for (String table : List.of("lh_household_complex_links", "lh_household_target_decisions",
+                "housing_complex_reviews", "complex_comparison_links")) {
+            jdbc.sql("UPDATE " + table + " SET housing_complex_id = :target WHERE housing_complex_id IN (:donors)")
+                    .param("target", representativeId).param("donors", donorIds).update();
+        }
+        jdbc.sql("UPDATE announcement_supply_match_decisions SET complex_id = :target WHERE complex_id IN (:donors)")
+                .param("target", representativeId).param("donors", donorIds).update();
+        jdbc.sql("UPDATE myhome_complex_links SET housing_complex_id = :target WHERE housing_complex_id IN (:donors)")
+                .param("target", representativeId).param("donors", donorIds).update();
+        jdbc.sql("UPDATE housing_complex_aliases SET housing_complex_id = :target WHERE housing_complex_id IN (:donors)")
+                .param("target", representativeId).param("donors", donorIds).update();
+        transferAndRemove(representativeId, donorIds, null);
+    }
+
     public void restore(String before, UUID mergeId) {
         String columns = String.join(", ", COMPLEX_COLUMNS);
         String updates = String.join(", ", COMPLEX_COLUMNS.stream()
