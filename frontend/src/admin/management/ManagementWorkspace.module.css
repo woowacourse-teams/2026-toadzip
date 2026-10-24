@@ -7,8 +7,11 @@
   line-height: var(--ds-line-height-body);
 }
 :global(.admin-content):has(> .workspace) { max-width: 1920px; box-sizing: border-box; padding: 28px 32px 36px; }
-.heading { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-4); margin-bottom: var(--ds-space-5); }
-.heading h1 { font-size: 26px; letter-spacing: -.04em; line-height: 1.4; }
+.heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 12px; }
+.heading h1 { margin: 0; font-size: 22px; letter-spacing: -.04em; line-height: 1.4; }
+.headingTitle { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; min-width: 0; }
+.back { display: inline-flex; align-items: center; gap: 4px; font-size: var(--admin-text-body); font-weight: 600; text-decoration: none; }
+.back:hover { text-decoration: underline; text-underline-offset: 4px; }
 .body { display: grid; gap: var(--ds-space-4); align-items: start; min-width: 0; }
 .body > :global(.management-page) > form { margin-bottom: 0; }
 .withEditor { --management-pane-height: max(560px, calc(100dvh - 32px)); grid-template-columns: minmax(300px, .65fr) minmax(560px, 1.35fr); }
@@ -49,19 +52,6 @@
 .withEditor:has(> :global(.management-page) > :global(.registration-error)) > :global(.management-page) > [aria-busy] { grid-row: 3; }
 .withEditor > :global(.management-page) > :global(.registration-error) { grid-row: 2; }
 .editor:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
-.editorHeading {
-  flex: none;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--ds-space-3);
-  padding: 14px 24px;
-  border-bottom: 1px solid var(--ds-color-divider);
-  background: var(--ds-color-surface-subtle);
-}
-.editorHeading strong { font-size: 15px; letter-spacing: -.02em; }
-.editorHeading a { display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: var(--ds-radius-icon-control); font-size: var(--ds-text-caption); color: var(--ds-color-label); text-decoration: none; }
-.editorHeading a:hover { background: var(--ds-color-divider); color: var(--ds-color-text); }
 .editorBody { flex: 1; min-height: 0; overflow: hidden; }
 .editorBody > :global(.management-detail) { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .editor :global(.management-detail-content) { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 24px 0; scrollbar-gutter: stable; }
@@ -72,10 +62,11 @@
 /* Controls are scoped to the complex and announcement workspaces. */
 .workspace :is(button, input, select, textarea) { font-size: var(--ds-text-body); }
 .workspace :is(button, a):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
-.workspace :global(.admin-primary) { min-height: 42px; border-radius: var(--ds-radius-control); background: var(--ds-color-action); border-color: var(--ds-color-action); color: var(--ds-color-surface); box-shadow: 0 2px 3px rgb(0 60 30 / 8%); }
-.workspace button:not(:global(.admin-primary)):not([data-design-system]) { border-color: var(--ds-color-border-base); border-radius: var(--ds-radius-control); color: var(--ds-color-label); }
-.workspace button:not(:global(.admin-primary)):not([data-design-system]):hover:not(:disabled) { background: var(--ds-color-surface-subtle); color: var(--ds-color-text); }
-.workspace :is(input:not([type="checkbox"]), select, textarea) { box-sizing: border-box; min-height: 42px; border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); padding: 9px 12px; color: var(--ds-color-text); background: var(--ds-color-surface); font-weight: 400; transition: border-color .15s; }
+.workspace :global(.admin-primary) { border-radius: var(--ds-radius-control); background: var(--ds-color-action); border-color: var(--ds-color-action); color: var(--ds-color-surface); }
+.workspace :global(.admin-tonal) { border-radius: var(--ds-radius-control); }
+.workspace button:not(:global(.admin-primary)):not(:global(.admin-tonal)):not(:global(.admin-danger)):not([data-design-system]) { border-color: var(--ds-color-border-base); border-radius: var(--ds-radius-control); color: var(--ds-color-label); }
+.workspace button:not(:global(.admin-primary)):not(:global(.admin-tonal)):not(:global(.admin-danger)):not([data-design-system]):hover:not(:disabled) { background: var(--ds-color-surface-subtle); color: var(--ds-color-text); }
+.workspace :is(input:not([type="checkbox"]), select, textarea) { box-sizing: border-box; min-height: var(--admin-control-height, 36px); border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); padding: 6px 10px; color: var(--ds-color-text); background: var(--ds-color-surface); font-weight: 400; transition: border-color .15s; }
 .workspace :is(input, select, textarea):hover:not(:disabled):not(:read-only) { border-color: var(--ds-color-muted); }
 .workspace :is(input, select, textarea):focus { outline: 2px solid var(--ds-color-action); outline-offset: 1px; border-color: var(--ds-color-action); }
 .workspace input:read-only { background: var(--ds-color-surface-subtle); color: var(--ds-color-label); }
@@ -90,8 +81,6 @@
 .editor :global(.management-heading) p { margin: 6px 0 8px; color: var(--ds-color-muted); font-size: var(--ds-text-caption); }
 .editor :global(.management-summary-meta) { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; }
 .editor :global(.management-summary-meta) p { margin: 0; }
-.editor :global(.management-heading) :global(.admin-danger) { flex: none; padding: 5px 10px; min-height: 32px; color: #a33232; background: transparent; border-color: transparent; font-size: 12px; }
-.editor :global(.management-heading) :global(.admin-danger):hover { background: #fff1f1; color: #a33232; }
 .editor :global(.admin-section-tabs) {
   flex: none;
   display: flex;
@@ -120,7 +109,7 @@
 .editor :global(.admin-table) { font-size: 13px; }
 .editor :global(.admin-table) :is(th, td) { padding: 12px; }
 .editor :global(.admin-save-bar) { position: sticky; bottom: 0; z-index: 4; justify-content: flex-end; gap: 8px; margin: 0 -24px; padding: 14px 24px; border: 0; border-top: 1px solid var(--ds-color-divider); border-radius: 0; box-shadow: 0 -6px 16px rgb(30 40 35 / 4%); background: var(--ds-color-surface); }
-.editor :global(.registration-submit) { position: sticky; bottom: 12px; z-index: 4; width: 100%; background: var(--ds-color-action); border-color: var(--ds-color-action); border-radius: var(--ds-radius-control); min-height: 44px; }
+.editor :global(.registration-submit) { position: sticky; bottom: 12px; z-index: 4; width: 100%; background: var(--ds-color-action); border-color: var(--ds-color-action); border-radius: var(--ds-radius-control); min-height: var(--admin-control-height, 36px); }
 .editor :global(.admin-warning) { margin: 0 0 20px; padding: 12px 14px; font-size: 12px; border-color: #ebdba9; background: #fffbef; }
 .editor :global(.admin-mode-switch) { padding: 4px; border-radius: 10px; background: var(--ds-color-surface-subtle); }
 .editor :global(.admin-mode-switch) button { flex: 1; border: 0; background: transparent; }
@@ -138,9 +127,7 @@
 @media (max-width: 700px) {
   :global(.admin-content):has(> .workspace) { padding: 20px 14px; }
   .heading h1 { font-size: 22px; }
-  .heading :global(.admin-primary) { padding: 8px 12px; }
   .editor { border-radius: 12px; }
-  .editorHeading { padding: 12px 16px; }
   .editor :global(.management-detail-content) { padding: 20px 16px 0; }
   .editorBody > :global(.admin-registration-page) { padding: 20px 16px; }
   .editor :global(.registration-grid), .editor :global(.admin-data-grid) { grid-template-columns: minmax(0, 1fr); }
@@ -161,10 +148,8 @@
 .editor :global(.admin-linked-announcement) :global(.admin-save-bar) { margin-inline: -16px; padding-inline: 16px; }
 
 /* Opening a record gives the editor the entire content width; the list stays mounted. */
-.description { margin: -8px 0 24px; font-size: 14px; color: var(--ds-color-muted-base); }
-.contextBar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; }
-.contextBar a { font-size: 13px; text-decoration: none; }
-.contextBar button { padding: 7px 12px; min-height: 36px; font-size: 12px; }
+/* 제목 줄의 아래 여백(12px)과 겹쳐 다른 화면처럼 제목과 8px 간격이 되게 한다. */
+.workspace .description { margin: -4px 0 12px; font-size: var(--admin-text-body); line-height: 1.6; color: var(--ds-color-muted-base); }
 .body.withEditor { display: flex; flex-direction: column; --management-pane-height: auto; }
 .listPane { min-width: 0; width: 100%; order: 0; }
 .withEditor .editor { order: 1; width: 100%; height: auto; overflow: visible; }
@@ -178,38 +163,43 @@
 .withEditor .editor :global(.admin-section-tabs) button[aria-pressed=true] { background: var(--ds-color-surface); border-color: var(--ds-color-border-base); box-shadow: 0 1px 3px rgb(0 0 0 / 4%); color: var(--ds-color-action); }
 .withEditor .editorBody > :global(.admin-registration-page) { height: auto; overflow: visible; }
 .withEditor .editor :global(.admin-change-values) { grid-template-columns: 1fr; }
-@media (max-width: 700px) { .withEditor .editor :global(.management-detail-content) { padding: 18px; } .withEditor .editor :global(.management-heading) { padding: 20px 18px; } .withEditor .editor :global(.management-heading) h2 { font-size: 20px; } .withEditor .editor :global(.admin-section-tabs) { padding: 10px 14px; } .contextBar { flex-wrap: wrap; } }
+@media (max-width: 700px) { .withEditor .editor :global(.management-detail-content) { padding: 18px; } .withEditor .editor :global(.management-heading) { padding: 20px 18px; } .withEditor .editor :global(.management-heading) h2 { font-size: 20px; } .withEditor .editor :global(.admin-section-tabs) { padding: 10px 14px; } }
 /* Read first, choose a focused tool, then edit. */
 .withEditor .editor { box-shadow:none; border-color:var(--ds-color-divider); border-radius:14px; }
-.withEditor .editorHeading { padding:12px 28px; background:var(--ds-color-surface); }
-.withEditor .editorHeading strong { font-size:11px; color:var(--ds-color-muted); font-weight:500; }
-.withEditor .editor :global(.management-heading) { padding:28px; }
-.withEditor .editor :global(.management-heading) h2 { font-size:25px; line-height:1.5; }
-.withEditor .editor :global(.management-summary-meta) { font-size:12px; }
-.withEditor .editor :global(.admin-section-tabs) { gap:24px; padding:0 28px; border-top:1px solid var(--ds-color-divider); border-bottom:1px solid var(--ds-color-divider); background:var(--ds-color-surface); border-radius:0; margin:0; }
-.withEditor .editor :global(.admin-section-tabs) button { padding:16px 0; border:0; border-bottom:3px solid transparent; border-radius:0; font-size:12px; min-height:54px; }
-.withEditor .editor :global(.admin-section-tabs) button[aria-pressed=true] { border:0; border-bottom:3px solid var(--ds-color-action); background:transparent; box-shadow:none; }
-.withEditor .editor :global(.management-detail-content) { padding:28px; }
-.withEditor .editor :global(.admin-detail-section) { border:0; border-bottom:1px solid var(--ds-color-divider); border-radius:0; padding:0 0 28px; margin:0 0 28px; }
-.withEditor .editor :global(.admin-detail-section) h2 { font-size:16px; margin-bottom:22px; }
-.withEditor .editor :global(.admin-data-grid) { grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px; }
-.withEditor .editor :global(.admin-data-grid) dt { font-size:11px; }
-.withEditor .editor :global(.admin-data-grid) dd { font-size:14px; font-weight:500; }
-.withEditor .editor :global(.admin-section-intro) { display:grid; gap:8px; padding:0 0 24px; margin-bottom:24px; border-bottom:1px solid var(--ds-color-divider); }
-.withEditor .editor :global(.admin-section-intro)>span { font-size:11px; color:var(--ds-color-action); font-weight:700; }
-.withEditor .editor :global(.admin-section-intro) h2 { font-size:20px; margin:0; }
-.withEditor .editor :global(.admin-section-intro) p { font-size:13px; color:var(--ds-color-muted); margin:0; }
+/* 탭에 따라 버튼이 빠져도 제목 영역 높이가 바뀌지 않게 최소 높이를 둔다. 버튼은 단지·공고 모두 제목 오른쪽 위에 둔다. */
+.withEditor .editor :global(.management-heading) { box-sizing:border-box; min-height:96px; padding:16px 20px 12px; align-items:flex-start; }
+.withEditor .editor :global(.management-heading) h2 { font-size:22px; line-height:1.4; }
+.withEditor .editor :global(.management-summary-meta) { font-size:var(--admin-text-meta); }
+.withEditor .editor :global(.admin-section-tabs) { gap:20px; padding:0 20px; border-top:1px solid var(--ds-color-divider); border-bottom:1px solid var(--ds-color-divider); background:var(--ds-color-surface); border-radius:0; margin:0; }
+/* 탭은 버튼 기본 테두리·둥근 모서리·그림자를 쓰지 않고 선택 밑줄만 둔다. */
+.workspace .withEditor .editor :global(.admin-section-tabs) button:not([data-design-system]) { padding:0; border:0; border-bottom:3px solid transparent; border-radius:0; background:transparent; box-shadow:none; font-size:var(--admin-text-body); min-height:40px; }
+.workspace .withEditor .editor :global(.admin-section-tabs) button:not([data-design-system])[aria-pressed=true] { border-bottom-color:var(--ds-color-action); color:var(--ds-color-action); }
+.withEditor .editor :global(.management-detail-content) { padding:16px 20px 20px; }
+/* 탭마다 첫 제목 위치가 달라지지 않게 제목의 기본 위쪽 여백을 없애고 간격은 구역이 맡는다. */
+.withEditor .editor :global(.management-detail-content) :is(h2, h3) { margin-top:0; }
+.withEditor .editor :global(.management-detail-content) :is(h2, h3):not(:first-child) { margin-top:16px; }
+.withEditor .editor :global(.management-detail-content) h2 { font-size:var(--admin-text-heading); margin-bottom:10px; line-height:1.4; }
+.withEditor .editor :global(.management-detail-content) :global(.admin-inline) > :is(h2, h3) { margin:0 auto 0 0; }
+/* 버튼이 있는 제목 줄도 다른 탭의 제목과 같은 높이에서 시작하도록 버튼이 더 큰 만큼 위로 올린다. */
+.withEditor .editor :global(.management-detail-content) :global(.admin-inline):has(> :is(h2, h3)) { margin:calc((var(--admin-text-heading) * 1.4 - var(--admin-control-height)) / 2) 0 10px; }
+.withEditor .editor :global(.admin-detail-section) { border:0; border-bottom:1px solid var(--ds-color-divider); border-radius:0; padding:0 0 16px; margin:0 0 16px; }
+.withEditor .editor :global(.admin-data-grid) { grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px 24px; margin-top:0; }
+.withEditor .editor :global(.admin-data-grid) dt { font-size:var(--admin-text-meta); margin-bottom:2px; }
+.withEditor .editor :global(.admin-data-grid) dd { font-size:var(--admin-text-body); font-weight:500; line-height:1.45; }
+/* 긴 원문 URL은 한 줄로 줄여 세 줄을 차지하지 않게 한다. 주소 전체는 링크로 연다. */
+.withEditor .editor :global(.admin-data-grid) dd a { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.withEditor .editor :global(.admin-section-intro) { display:grid; gap:4px; padding:0 0 12px; margin-bottom:16px; border-bottom:1px solid var(--ds-color-divider); }
+.withEditor .editor :global(.admin-section-intro)>span { display:none; }
+.withEditor .editor :global(.admin-section-intro) h2 { margin:0; }
+.withEditor .editor :global(.admin-section-intro) p { font-size:var(--admin-text-meta); color:var(--ds-color-muted); margin:0; }
 @media(max-width:1000px) { .withEditor .editor :global(.admin-data-grid) { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:700px) { .withEditor .editor :global(.admin-data-grid) { grid-template-columns:1fr; } .withEditor .editor :global(.management-heading) { padding:22px 18px; } .withEditor .editor :global(.management-heading) h2 { font-size:20px; } .withEditor .editor :global(.admin-section-tabs) { padding:0 18px; gap:18px; } .withEditor .editor :global(.management-detail-content) { padding:22px 18px; } }
-.heading[data-detail=true] { margin-bottom:16px; }
-.heading[data-detail=true] h1 { font-size:14px; color:var(--ds-color-muted); letter-spacing:0; }
-.heading[data-detail=true] :global(.admin-primary) { background:var(--ds-color-surface); color:var(--ds-color-label); border-color:var(--ds-color-divider); box-shadow:none; min-height:34px; font-size:12px; }
+.workspace .heading[data-detail=true] h1 { font-size:var(--admin-text-body); color:var(--ds-color-muted); letter-spacing:0; }
 @media(max-width:700px) { .withEditor .editor :global(.admin-section-tabs) { flex-wrap:nowrap; overflow-x:auto; } .withEditor .editor :global(.admin-section-tabs) button { flex:none; white-space:nowrap; } }
-.workspace .heading[data-detail=true] h1 { font-size:14px; color:var(--ds-color-muted); letter-spacing:0; }
 
 /* 공고 제목과 작업 버튼을 분리해 긴 이름도 작업 영역을 밀어내지 않는다. */
-.withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading) { gap:var(--ds-space-4); flex-wrap:wrap; padding:var(--ds-space-5) var(--ds-space-6); }
-.withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading) > div:first-child { flex:1 1 420px; min-width:0; }
-.withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading) h2 { font-size:clamp(19px, 1.8vw, 24px); line-height:1.5; word-break:keep-all; overflow-wrap:anywhere; margin-bottom:var(--ds-space-2); }
+.withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading) { gap:var(--ds-space-4); flex-wrap:nowrap; }
+.withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading) > div:first-child { flex:1 1 0; min-width:0; }
+.withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading) h2 { font-size:22px; line-height:1.4; word-break:keep-all; overflow-wrap:anywhere; margin-bottom:var(--ds-space-2); }
 .withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading .admin-inline) { flex-shrink:0; align-self:flex-start; flex-wrap:wrap; }
 @media(max-width:700px) { .withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading) { padding:var(--ds-space-4); } }
