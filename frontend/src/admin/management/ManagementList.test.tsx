@@ -1,11 +1,11 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { ManagementList } from './ManagementList'
 import { ManagementSummaryTable } from './ManagementSummaryTable'
 import { parseManagementDetail, type ManagementPage, type ManagementSummary } from './managementContract'
 
-const mocks = vi.hoisted(() => ({ getManagementPage: vi.fn() }))
+const mocks = vi.hoisted(() => ({ getManagementPage: vi.fn(), getManagementDetail: vi.fn(), requestManagementApi: vi.fn() }))
 vi.mock('./api', async original => ({ ...(await original<typeof import('./api')>()), ...mocks }))
 
 const legacy: ManagementSummary = { id: 7, name: '두꺼비 단지', subtitle: '서울 중구 세종대로 1', provider: 'LH', rental: 'HAPPY_HOUSING', deleted: false, modified: false, reviewRequired: false, updatedAt: null }
@@ -153,4 +153,20 @@ it('현재 페이지 번호를 다시 누르면 같은 조건으로 새로 조�
   expect(mocks.getManagementPage).toHaveBeenCalledTimes(2)
   expect(mocks.getManagementPage.mock.lastCall?.[1].get('provider')).toBe('LH')
   expect(mocks.getManagementPage.mock.lastCall?.[1].get('page')).toBe('0')
+})
+
+it('현재 페이지의 행을 골라 한꺼번에 휴지통으로 옮기고 목록을 다시 불러온다', async () => {
+  mocks.getManagementPage.mockResolvedValue(page(complex))
+  mocks.getManagementDetail.mockResolvedValue({ data: { version: 5 } })
+  mocks.requestManagementApi.mockResolvedValue(null)
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  render(<MemoryRouter initialEntries={['/admin/complexes']}><ManagementList resource="complexes" /></MemoryRouter>)
+  await screen.findByRole('table')
+  expect(screen.getByRole('button', { name: '선택 삭제' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('checkbox', { name: '이 페이지 전체 선택' }))
+  expect(screen.getByText('1개 선택')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '선택 삭제' }))
+  expect(await screen.findByRole('status')).toHaveTextContent('1개를 휴지통으로 이동했습니다.')
+  expect(mocks.requestManagementApi).toHaveBeenCalledWith(`/api/admin/housing-complexes/${complex.id}?version=5`, 'DELETE')
+  await waitFor(() => expect(mocks.getManagementPage).toHaveBeenCalledTimes(2))
 })
