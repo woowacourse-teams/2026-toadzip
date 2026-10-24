@@ -241,6 +241,11 @@ public class SupplyRow {
         adminModified = true;
     }
 
+    /** 원천 분할 단지를 합쳐 같은 주택형의 소속 단지만 바뀐 경우 확인한 대상 지문을 다시 계산한다. */
+    public void reconfirmTargetAfterComplexMove(String targetFingerprint) {
+        confirmedTargetFingerprint = targetFingerprint;
+    }
+
     private String lhSourceSupplyRowIdentifier;
 
     @Column(nullable = false)

@@ -149,6 +149,31 @@ public class MyHomeComplexSourceMapper {
             List<MyHomeHousingTypeMappingData> housingTypes
     ) {
 
+        SplitComplexKey splitKey() {
+            return new SplitComplexKey(name, supplyType, provider, address.pnu(), address.provinceCode(),
+                    address.cityCountyDistrictCode(), new NormalizedRoadAddress(address.sourceRoadAddress()).value(),
+                    completionDate, heatingType, housingType, corridorType, elevatorInstalled, parkingSpaceCount);
+        }
+
+        static MyHomeComplexMappingData combine(List<MyHomeComplexMappingData> members) {
+            MyHomeComplexMappingData first = members.getFirst();
+            return new MyHomeComplexMappingData(
+                    first.sourceComplexIdentifier,
+                    first.name,
+                    first.supplyType,
+                    first.address,
+                    members.stream().mapToInt(MyHomeComplexMappingData::totalHouseholdCount).sum(),
+                    first.provider,
+                    first.completionDate,
+                    first.heatingType,
+                    first.housingType,
+                    first.corridorType,
+                    first.elevatorInstalled,
+                    first.parkingSpaceCount,
+                    members.stream().flatMap(member -> member.housingTypes.stream()).toList()
+            );
+        }
+
         boolean matchesVerifiedProduct(HousingComplex product) {
             return name.equals(product.getName()) && provider.equals(product.getProvider())
                     && supplyType.equals(product.getSupplyType())
@@ -164,6 +189,23 @@ public class MyHomeComplexSourceMapper {
                     && Objects.equals(elevatorInstalled, product.getElevatorInstalled())
                     && parkingSpaceCount == product.getParkingSpaceCount();
         }
+    }
+
+    record SplitComplexKey(
+            String name,
+            String supplyType,
+            String provider,
+            String pnu,
+            String provinceCode,
+            String cityCountyDistrictCode,
+            String roadAddress,
+            LocalDate completionDate,
+            String heatingType,
+            String housingType,
+            String corridorType,
+            Boolean elevatorInstalled,
+            int parkingSpaceCount
+    ) {
     }
 
     record MyHomeAddressMappingData(
