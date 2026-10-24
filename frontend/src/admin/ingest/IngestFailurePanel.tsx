@@ -10,6 +10,7 @@ import { AnnouncementSupplyMatchingForm } from './AnnouncementSupplyMatchingForm
 import { failureReturnUrl } from './failureNavigation'
 import { FailureRetryButton } from './FailureRetryButton'
 import { FailureSourceRecovery } from './FailureSourceRecovery'
+import { HouseholdComplexLinkCard } from './HouseholdComplexLinkCard'
 
 type Props = {
   domain?: FailureDomain; initialCategory?: FailureCategory; executionId: string | null; refreshToken?: number
@@ -196,6 +197,8 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
             {selected.category === 'enrichment' && <Link to={follow(sourceLocation(selected, true))}>LH 공급 원천 확인</Link>}
           </div>
           {selected.category === 'enrichment' && !selected.raw.panId && <p className={styles.hint}>오류에 LH 공고 번호가 없어 원천 목록 전체로 이동합니다. 마이홈 공고의 원문에서 LH 연결을 먼저 확인하세요.</p>}
+          {selected.category === 'household' && <HouseholdComplexLinkCard key={selectionKey} failureId={selected.id}
+            disabled={actionDisabled} onBusy={setActionBusy} />}
         </section>
         <section className={styles.detailSection}><h3>2. 필요한 조치</h3><div className={styles.workflow}>
           {selected.product ? <Link to={follow(`/admin/${selected.product.resourceType}/${selected.product.id}`)}>{label} 확인·수정</Link> : null}
@@ -299,6 +302,7 @@ function reasonLabel(row:FailureReview) {
     LH_COLLECTION_REQUEST_UNSUPPORTED:'지원하지 않는 LH 수집 요청', PAN_ID_NOT_FOUND:'LH 공고 번호 누락',
     HOUSING_TYPE_NOT_FOUND:'연결할 주택형을 찾지 못함', AMBIGUOUS_HOUSING_TYPE:'일치하는 주택형이 여러 개',
     MANUAL_MATCH_REVIEW_REQUIRED:'저장한 매칭의 원천·주택형 재확인 필요',
+    MANUAL_LINK_REVIEW_REQUIRED:'저장한 단지 연결의 원천·단지 재확인 필요',
     LH_DETAIL_SOURCE_NOT_FOUND:'LH 상세 원천 없음',
     LH_SUPPLY_SOURCE_NOT_FOUND:'LH 공급 원천 없음', UNSUPPORTED_SUPPLY_TYPE:'지원하지 않는 공급 유형',
   }
@@ -329,5 +333,11 @@ function sourceLocation(row:FailureReview, supply = false) {
   return `/admin/sources?${params}`
 }
 function reviewTarget(row:FailureReview) {
-  return row.category === 'collection' ? failureTarget(row) : {title:row.target,context:null,source:null}
+  if (row.category === 'collection') return failureTarget(row)
+  // 같은 단지명의 국민임대·영구임대 원천을 목록에서 구분할 수 있게 공급유형과 지역을 함께 보여 준다.
+  if (row.category === 'household') {
+    const context = [row.raw.supplyTypeName, row.raw.areaName].filter(value => typeof value === 'string' && value).join(' · ')
+    return {title:row.target, context:context || null, source:null}
+  }
+  return {title:row.target,context:null,source:null}
 }

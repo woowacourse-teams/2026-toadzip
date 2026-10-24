@@ -262,3 +262,11 @@ it('단계가 바뀌면 이전 행을 숨기고 취소한 응답을 버린다', 
   await act(async()=>complete(page([{...row,target:'취소된 보강 응답'}])))
   expect(screen.queryByText('취소된 보강 응답')).not.toBeInTheDocument()
 })
+
+it('세대수 보강 오류는 목록에서 공급유형과 지역을 함께 보여 준다', async () => {
+  fetchFailures.mockResolvedValue(page([{...row, category:'household', source:'LH_LEASE_CATALOG',
+    target:'대전관저5 천년나무 1단지', raw:{supplyTypeName:'영구임대', areaName:'대전광역시 서구'}}]))
+  render(<IngestFailurePanel initialCategory="household" executionId={null} />, {wrapper:MemoryRouter})
+
+  expect(await screen.findByText(/영구임대 · 대전광역시 서구/)).toBeVisible()
+})
