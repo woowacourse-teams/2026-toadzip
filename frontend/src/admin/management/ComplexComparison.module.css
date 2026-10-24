@@ -82,3 +82,27 @@
 .panel .columns, .panel .row { padding: 8px 12px; }
 .panel .table + label, .panel .preview + label { margin-top: 12px; }
 .panel .saveActions { margin-top: 8px; }
+
+/* 항목마다 한 줄: 같은 값을 낸 원천은 한 칸으로 묶고, 수정 버튼은 오른쪽 끝의 작은 버튼으로 둔다. */
+.panel .columns, .panel .row { grid-template-columns: minmax(96px, .7fr) minmax(100px, 1fr) minmax(150px, 1.6fr) auto; align-items: center; }
+.panel .field { flex-direction: row; align-items: baseline; gap: 6px; }
+.panel .source { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.panel .source > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 6px; }
+.panel .source > div + div { border-top: 0; margin-top: 0; padding-top: 0; }
+.panel .source small { margin-block: 0; }
+.panel .row button { min-height: 28px; padding: 0 10px; font-size: 12px; }
+.panel .edit > button { width: auto; }
+.panel .edit { justify-self: end; }
+.panel .edit:has(label) { justify-self: stretch; min-width: 160px; }
+/* 상세 옆 좁은 칸(약 560px)에서도 한 줄 표를 유지하고, 그보다 좁을 때만 두 줄로 접는다. */
+@container (min-width: 520px) {
+  .panel .columns { display: grid; }
+  .panel .row { grid-template-columns: minmax(80px, .7fr) minmax(90px, 1fr) minmax(130px, 1.6fr) auto; }
+  .panel .field, .panel .edit { grid-column: auto; }
+  .panel .field { justify-content: flex-start; flex-wrap: wrap; }
+  .panel .mobileLabel { display: none; }
+}
+@container (max-width: 519px) {
+  .panel .row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .panel .edit { justify-self: start; }
+}
