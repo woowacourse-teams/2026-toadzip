@@ -142,6 +142,21 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
+    void DB가_공급행을_돌려주는_순서가_달라도_작업실과_PDF보정_토큰은_같다() throws Exception {
+        var first = fixture(); var announcement = first.getAnnouncement(); long id = announcement.getId();
+        entities.persist(SupplyRow.create(announcement, first.getHousingComplex(), first.getHousingType(),
+                UUID.randomUUID().toString(), 1, first.getHousingComplex().getName(), "36", "1114010100100010000", null,
+                SupplyCategory.NEW_SUPPLY, null, 5));
+        entities.flush(); entities.clear();
+        String supplyBefore = request(id).get("snapshotToken").asText(); String pdfBefore = jsonCorrectionToken(id);
+        // 값은 그대로 두고 행의 저장 위치만 옮긴다. 정렬 없이 읽으면 두 공급행이 돌아오는 순서가 바뀐다.
+        jdbc.update("UPDATE supply_rows SET display_order = display_order WHERE id = ?", first.getId());
+        entities.clear();
+        assertThat(request(id).get("snapshotToken").asText()).isEqualTo(supplyBefore);
+        assertThat(jsonCorrectionToken(id)).isEqualTo(pdfBefore);
+    }
+
+    @Test
     void 보정쓰기에는_CSRF가_필요하다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId();
         mvc.perform(post(root(id)).with(user("admin").roles("ADMIN"))
@@ -548,6 +563,12 @@ class SupplyCorrectionIntegrationTest {
         body.put("confirmationToken", preview.get("confirmationToken").asText());
         return mvc.perform(post(root(id)).with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType("application/json").content(json.writeValueAsString(body)));
+    }
+
+    private String jsonCorrectionToken(long id) throws Exception {
+        return json.readTree(mvc.perform(get("/api/admin/announcements/" + id + "/json-corrections")
+                .with(user("admin").roles("ADMIN"))).andExpect(status().isOk()).andReturn().getResponse()
+                .getContentAsString()).get("data").get("snapshotToken").asText();
     }
 
     private String root(long id) { return "/api/admin/announcements/" + id + "/supply-corrections"; }
