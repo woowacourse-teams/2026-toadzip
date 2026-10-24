@@ -9,8 +9,12 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAn
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.enrichment.service.LhSupplyMatchDiagnostics;
 import com.toadzip.backend.ingest.mapping.domain.LhSupplyRowLink;
+import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.Announcement;
+import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.Candidate;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.LhRow;
+import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.MatchFailure;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.MyHomeRow;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.ReleaseRequest;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.SaveRequest;
@@ -22,6 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +51,7 @@ public class LhSupplyLinkService {
     private final SupplyRowGroupRepository groups;
     private final AdminDataChangeRepository changes;
     private final ObjectMapper json;
+    private final LhSupplyMatchDiagnostics diagnostics;
 
     public View view(String identifier) {
         var context = context(identifier);
@@ -53,7 +59,18 @@ public class LhSupplyLinkService {
                 source.getHsmpNm(), source.getHouseTyNm(), source.getSumSuplyCo(),
                 groups.findBySourceRowIdentifier(source.getSourceKey()).isPresent())).toList();
         var lhRows = context.supplies().stream().map(supply -> lhRow(context, supply)).toList();
-        return new View(context.token(), myhomeRows, lhRows);
+        var first = context.currentSources().getFirst();
+        var announcement = new Announcement(identifier, first.getPblancNm(), first.getUrl(), context.panId());
+        var failures = diagnostics.diagnose(identifier, context.panId(), context.supplies(), context.states(),
+                context.excludedSourceKeys()).stream().map(this::failure).toList();
+        return new View(context.token(), announcement, myhomeRows, lhRows, failures);
+    }
+
+    private MatchFailure failure(LhSupplyMatchDiagnostics.Failure failure) {
+        return new MatchFailure(failure.lhRowIdentifier(), failure.reason(), failure.detail(),
+                failure.candidates().stream().map(value -> new Candidate(value.supplyRowId(),
+                        value.myhomeRowIdentifier(), value.sourceComplexName(), value.sourceHousingTypeName(),
+                        value.complexName(), value.housingTypeName(), value.lhRowIdentifier())).toList());
     }
 
     @Transactional
@@ -156,11 +173,13 @@ public class LhSupplyLinkService {
         resolved.data().supplyRows().stream().filter(row -> row.resolvedLhSourceIdentifier() != null)
                 .forEach(row -> linkedRows.put(row.resolvedLhSourceIdentifier(), row.source().getSourceKey()));
         return new Context(currentSources, resolved.supplies(), resolved.supplyLinks(), linkedRows,
-                links.token(currentSources, resolved.supplies(), resolved.supplyLinks()));
+                links.token(currentSources, resolved.supplies(), resolved.supplyLinks()), resolved.request().panId(),
+                resolved.sourceKeysExcludedFromLhEnrichment());
     }
 
     private record Context(List<MyHomeAnnouncementSource> currentSources, List<LhAnnouncementSupplySource> supplies,
-            Map<String, LhSupplyRowLinks.State> states, Map<String, String> linkedRows, String token) {
+            Map<String, LhSupplyRowLinks.State> states, Map<String, String> linkedRows, String token, String panId,
+            Set<String> excludedSourceKeys) {
 
         Optional<LhAnnouncementSupplySource> supply(String identifier) {
             return supplies.stream().filter(value -> LhSupplyRowLinks.identifier(value).equals(identifier))

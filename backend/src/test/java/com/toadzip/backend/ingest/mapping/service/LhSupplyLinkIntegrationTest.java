@@ -105,6 +105,29 @@ class LhSupplyLinkIntegrationTest {
     }
 
     @Test
+    void 조회하면_실패한_LH_행과_비교할_공급행_후보를_현재_데이터로_알려준다() throws Exception {
+        mapping.mapAll();
+
+        var view = view();
+
+        assertThat(view.announcement().name()).isEqualTo("영구임대 입주자 모집공고");
+        assertThat(view.announcement().panId()).isEqualTo(panId);
+        assertThat(view.failures()).singleElement().satisfies(failure -> {
+            assertThat(failure.lhRowIdentifier()).isEqualTo("LH:" + panId + ":SUPPLY:0");
+            assertThat(failure.reason()).isEqualTo("COMPLEX_NOT_FOUND");
+            assertThat(failure.candidates()).singleElement().satisfies(candidate -> {
+                assertThat(candidate.sourceComplexName()).isEqualTo("평화주공4단지");
+                assertThat(candidate.sourceHousingTypeName()).isEqualTo("26");
+                assertThat(candidate.complexName()).isEqualTo("평화주공4단지");
+                assertThat(candidate.myhomeRowIdentifier()).isEqualTo(view.myhomeRows().getFirst().rowIdentifier());
+            });
+        });
+        save(view, "공고문 단지 목록 대조").andExpect(status().isOk());
+        mapping.mapAll();
+        assertThat(view().failures()).isEmpty();
+    }
+
+    @Test
     void 관리자가_연결하면_다음_정제와_LH_보강이_그_원천행으로_공급행을_잇는다() throws Exception {
         var before = view();
         assertThat(before.lhRows()).singleElement().satisfies(row -> {

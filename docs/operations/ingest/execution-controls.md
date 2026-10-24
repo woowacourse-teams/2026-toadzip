@@ -110,6 +110,16 @@ API 기준 경로는 `/api/admin/ingest/announcement-supply-matches`다.
 
 ## LH 공급 원본 연결
 
+LH 보강 실패 오류 상세의 "1. 원인과 근거 확인"에는 실패한 주택형 비교를 표시한다. 공고명·공고 ID·LH 공고 번호와
+공고 원문 링크, 실패한 LH 행의 주택형·전용면적·모집수, 그리고 LH 공급 원본 값과 비교한 공고 공급행 값(단지명·주택형·
+연결 단지)을 나란히 보여 주고 다른 칸을 표시한다. 비교 후보는 단지명이 안 맞으면 같은 주택형 공급행, 주택형이 안 맞으면
+같은 단지 공급행이다. 이 비교는 조회할 때 현재 원천과 등록 공급행으로 보강 매칭을 다시 해 본 결과이며 저장하지 않는다.
+따라서 오류 기록 시점과 다를 수 있다. 비교한 공급행에 단지가 연결되어 있지 않으면 마이홈 단지 매칭이 실패한 상태다.
+이때 정제는 LH 연결도 기록하지 않아 재정제로 풀리지 않으므로 `단지·주택형 매칭`부터 안내한다(예: 공고 21391의 대전중촌2).
+정제 기준으로는 이미 이어지는 LH 행이면 연결 대신 공고 정제 재실행을 안내하고,
+현재 실패가 없으면 이전 정제의 오류임을 알린다. 후보가 있으면 `포함된다면: 이 LH 행을 {단지}에 연결`로 아래 연결 화면을
+해당 LH 행과 마이홈 원천행이 선택된 상태로 연다.
+
 오류 상세의 `LH 공급 원본 연결`에서 LH 공급 원본 행과 현재 마이홈 원천행을 비교한다. 이 버튼은 LH 보강 오류의
 `COMPLEX_NOT_FOUND`·`AMBIGUOUS_COMPLEX`·`LH_SUPPLY_LINK_REVIEW_REQUIRED`와, 정제 직후 보강이 같은 사유로 실패해
 공고 정제 오류(`INVALID_VALUE`, 상세 `LH 보강 실패: {사유} - …`)로 남은 경우에 표시한다.
@@ -127,7 +137,7 @@ API 기준 경로는 `/api/admin/ingest/announcement-supply-matches/{identifier}
 
 | 요청 | 계약 |
 |---|---|
-| `GET` | 조회 `token`, 현재 마이홈 원천행(`splitCorrected` 포함), LH 공급행별 현재 연결 원천행(`linkedRowIdentifier`)과 선택적 `savedLink`(근거, 작업자·시각, 재확인 여부) 반환 |
+| `GET` | 조회 `token`, 공고(`announcement`: 공고명·원문 URL·LH 공고 번호), 현재 마이홈 원천행(`splitCorrected` 포함), LH 공급행별 현재 연결 원천행(`linkedRowIdentifier`)과 선택적 `savedLink`(근거, 작업자·시각, 재확인 여부), 현재 데이터 기준 보강 매칭 실패(`failures`: LH 행, 사유, 비교 후보 공급행) 반환 |
 | `POST` | `token`, `myhomeRowIdentifier`, `lhRowIdentifiers`(1~200), `sourceUrl`, `reason`을 받아 LH 행마다 연결을 저장·갱신하고 최신 조회 결과 반환 |
 | `POST /release` | `token`, `lhRowIdentifier`, `reason`을 받아 저장 연결을 삭제하고 최신 조회 결과 반환 |
 

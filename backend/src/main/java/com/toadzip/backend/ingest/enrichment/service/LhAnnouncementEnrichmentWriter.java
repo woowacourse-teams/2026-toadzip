@@ -297,7 +297,12 @@ public class LhAnnouncementEnrichmentWriter {
     }
 
     private List<SupplyRow> enrichmentRows(Announcement announcement, Set<String> sourceKeysExcludedFromLhEnrichment) {
-        List<SupplyRow> rows = supplyRowRepository.findAllByAnnouncement(announcement);
+        return enrichmentRows(announcement, supplyRowRepository.findAllByAnnouncement(announcement),
+                sourceKeysExcludedFromLhEnrichment);
+    }
+
+    static List<SupplyRow> enrichmentRows(Announcement announcement, List<SupplyRow> rows,
+            Set<String> sourceKeysExcludedFromLhEnrichment) {
         if (sourceKeysExcludedFromLhEnrichment.isEmpty()) {
             return rows;
         }

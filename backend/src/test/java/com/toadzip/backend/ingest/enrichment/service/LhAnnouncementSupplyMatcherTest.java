@@ -175,6 +175,22 @@ class LhAnnouncementSupplyMatcherTest {
                 .isEqualTo(LhAnnouncementEnrichmentFailureReason.LH_SUPPLY_LINK_REVIEW_REQUIRED);
     }
 
+    @Test
+    void 실패한_행의_비교_후보는_단지명이_다르면_같은_주택형_주택형이_다르면_같은_단지의_공급행이다() {
+        SupplyRow sameType = row("대전중촌2", "19A(주거약자용)");
+        SupplyRow sameComplex = row("대전관저5", "26");
+        SupplyRow other = row("대전산내", "39");
+
+        var complexNotFound = matcher.candidates(List.of(sameType, sameComplex, other),
+                source("대전중촌2 증축 영구임대주택(주거복지동)", "19A(주거약자용)"),
+                LhAnnouncementEnrichmentFailureReason.COMPLEX_NOT_FOUND);
+        var typeNotFound = matcher.candidates(List.of(sameType, sameComplex, other),
+                source("대전관저5 영구임대주택", "26D"), LhAnnouncementEnrichmentFailureReason.HOUSING_TYPE_NOT_FOUND);
+
+        assertThat(complexNotFound).containsExactly(sameType);
+        assertThat(typeNotFound).containsExactly(sameComplex);
+    }
+
     private SupplyRow row(String complexName, String housingTypeName) {
         SupplyRow row = mock(SupplyRow.class);
         when(row.getSourceComplexName()).thenReturn(complexName);

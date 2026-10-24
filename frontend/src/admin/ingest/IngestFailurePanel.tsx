@@ -7,6 +7,7 @@ import { ListPagination } from '../management/ListPagination'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import styles from './IngestFailurePanel.module.css'
 import { AnnouncementSupplyMatchingForm } from './AnnouncementSupplyMatchingForm'
+import { LhSupplyFailureCard, type LhLinkPrefill } from './LhSupplyFailureCard'
 import { LhSupplyLinkEditor } from './LhSupplyLinkEditor'
 import { failureReturnUrl } from './failureNavigation'
 import { FailureRetryButton } from './FailureRetryButton'
@@ -69,7 +70,8 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
   }
   const [matchingOpen, setMatchingOpen] = useState(false)
   const [lhLinkOpen, setLhLinkOpen] = useState(false)
-  useEffect(() => { setMatchingOpen(false); setLhLinkOpen(false); setActionBusy(false) }, [selectionKey])
+  const [lhLinkPrefill, setLhLinkPrefill] = useState<LhLinkPrefill | null>(null)
+  useEffect(() => { setMatchingOpen(false); setLhLinkOpen(false); setLhLinkPrefill(null); setActionBusy(false) }, [selectionKey])
 
   useEffect(() => {
     if (!validQuery) return
@@ -198,6 +200,9 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
             {selected.category === 'enrichment' && <Link to={follow(sourceLocation(selected, true))}>LH 공급 원천 확인</Link>}
           </div>
           {selected.category === 'enrichment' && !selected.raw.panId && <p className={styles.hint}>오류에 LH 공고 번호가 없어 원천 목록 전체로 이동합니다. 마이홈 공고의 원문에서 LH 연결을 먼저 확인하세요.</p>}
+          {lhLinkFailure(selected) && typeof selected.raw.sourceAnnouncementIdentifier === 'string'
+            && <LhSupplyFailureCard key={selectionKey} identifier={selected.raw.sourceAnnouncementIdentifier}
+              onLink={prefill => { setLhLinkPrefill(prefill); setLhLinkOpen(true) }} onMatch={() => setMatchingOpen(true)} />}
         </section>
         <section className={styles.detailSection}><h3>2. 필요한 조치</h3><div className={styles.workflow}>
           {selected.product ? <Link to={follow(`/admin/${selected.product.resourceType}/${selected.product.id}`)}>{label} 확인·수정</Link> : null}
@@ -220,7 +225,8 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
               onClick={() => setLhLinkOpen(value => !value)}>LH 공급 원본 연결</button>}
             {matchingOpen && <AnnouncementSupplyMatchingForm identifier={selected.raw.sourceAnnouncementIdentifier}
               disabled={retryDisabled || detailPending || Boolean(detailError)} onApplied={processed} onBusy={setActionBusy} />}
-            {lhLinkFailure(selected) && lhLinkOpen && <LhSupplyLinkEditor identifier={selected.raw.sourceAnnouncementIdentifier}
+            {lhLinkFailure(selected) && lhLinkOpen && <LhSupplyLinkEditor key={JSON.stringify(lhLinkPrefill)}
+              identifier={selected.raw.sourceAnnouncementIdentifier} initial={lhLinkPrefill}
               disabled={retryDisabled || detailPending || Boolean(detailError)} onBusy={setActionBusy} />}
           </section>}
         </section>
