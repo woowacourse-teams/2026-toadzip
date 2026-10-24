@@ -114,7 +114,32 @@ public class MyHomeAnnouncementSupplyRowResolver {
             }
             matched.computeIfAbsent(sourceRow, ignored -> new ArrayList<>()).add(lhSupply);
         }
+        // 단지명으로 잇고 남은 원천이 한 행뿐이고 남은 LH 공급행의 모집수 합계가 같으면 같은 공급이다.
+        // 표기만 다른 경우(아산읍내 ↔ 아산읍내1 영구임대아파트, 평화주공4단지 ↔ 전주평화4 영구임대주택)를 잇는다.
+        List<MyHomeSupplyRowMappingData> remainingRows = sourceRows.stream()
+                .filter(row -> !matched.containsKey(row)).toList();
+        List<LhAnnouncementSupplySource> remainingSupplies = lhSupplies.stream()
+                .filter(supply -> matched.values().stream().noneMatch(list -> list.contains(supply))).toList();
+        if (remainingRows.size() == 1 && !remainingSupplies.isEmpty()
+                && sameTotal(remainingRows.getFirst(), remainingSupplies)) {
+            matched.put(remainingRows.getFirst(), new ArrayList<>(remainingSupplies));
+        }
         return matched;
+    }
+
+    private boolean sameTotal(MyHomeSupplyRowMappingData sourceRow, List<LhAnnouncementSupplySource> lhSupplies) {
+        if (sourceRow.totalSupplyHouseholdCount() == null) {
+            return false;
+        }
+        long total = 0;
+        for (LhAnnouncementSupplySource lhSupply : lhSupplies) {
+            Integer count = nonNegativeInteger(lhSupply.getSuppliedUnitCount());
+            if (count == null) {
+                return false;
+            }
+            total += count;
+        }
+        return total == sourceRow.totalSupplyHouseholdCount();
     }
 
     private MyHomeSupplyRowMappingData uniqueSourceRow(

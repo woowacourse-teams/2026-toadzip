@@ -25,12 +25,14 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.mapping.service.AnnouncementSupplyMatchingService;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -62,6 +64,7 @@ public class SupplyCorrectionService {
     private final SupplyCorrectionRecordRepository corrections;
     private final AdminDataChangeRepository changes;
     private final QualityComparisonService comparisons;
+    private final AnnouncementSupplyMatchingService supplyMatching;
     private final ObjectMapper json;
 
     public SupplyCorrection.Workspace workspace(long id) {
@@ -141,6 +144,9 @@ public class SupplyCorrectionService {
                 writeRow(announcement, stored.get(row.id()), row, request.correction());
             }
         }
+        supplyMatching.rememberCorrectedLinks(announcement.getSourceAnnouncementIdentifier(),
+                changedLinks(preview, beforeById, stored), request.correction().sourceUrl(),
+                request.correction().reason(), actor);
         announcement.recordAdminSupplyChange();
         announcements.flush();
         var after = workspace(id);
@@ -156,6 +162,21 @@ public class SupplyCorrectionService {
         corrections.save(new SupplyCorrectionRecord(request.correction().operationId(), id, requestHash,
                 change.getId(), announcement.getVersion()));
         return new SupplyCorrection.Applied(change.getId(), false, after);
+    }
+
+    /** 기존 행 중 주택형 연결이 바뀐 행. 연결은 정제의 저장 매칭이 소유하므로 원천행 식별자로 넘긴다. */
+    private Map<String, HousingType> changedLinks(SupplyCorrection.Preview preview, Map<Long, Row> beforeById,
+            Map<Long, SupplyRow> stored) {
+        Map<String, HousingType> links = new HashMap<>();
+        for (var row : preview.after()) {
+            if (row.id() == null || row.groupId() != null) { continue; }
+            var saved = stored.get(row.id());
+            Long typeId = saved.getHousingType() == null ? null : saved.getHousingType().getId();
+            if (!Objects.equals(beforeById.get(row.id()).housingTypeId(), typeId)) {
+                links.put(saved.getSourceSupplyRowIdentifier(), saved.getHousingType());
+            }
+        }
+        return links;
     }
 
     private List<Row> plan(Announcement announcement, List<Row> before, List<Row> requested) {

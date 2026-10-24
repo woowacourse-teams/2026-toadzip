@@ -73,6 +73,29 @@ public class SupplyRow {
         adminModified = true;
     }
 
+    /** 관리자가 고친 표기값은 그대로 두고, 저장한 매칭이나 관리자 선택의 단지·주택형으로 연결만 바꾼다. */
+    public boolean relinkByAdminMatch(HousingComplex complex, HousingType type) {
+        if (announcement.isAdminDeleted() || supplyGroup != null) {
+            return false;
+        }
+        if (Objects.equals(idOf(housingComplex), idOf(complex)) && Objects.equals(idOf(housingType), idOf(type))
+                && matchingFailureReason == null) {
+            return false;
+        }
+        housingComplex = complex;
+        housingType = type;
+        matchingFailureReason = null;
+        return true;
+    }
+
+    private static Long idOf(HousingComplex complex) {
+        return complex == null ? null : complex.getId();
+    }
+
+    private static Long idOf(HousingType type) {
+        return type == null ? null : type.getId();
+    }
+
 
     @Column(nullable = false)
     @org.hibernate.annotations.ColumnDefault("false")
@@ -326,7 +349,13 @@ public class SupplyRow {
             Integer resolvedTotalSupplyHouseholdCount,
             Integer lhSuppliedHouseholdCount
     ) {
-        if (adminModified || announcement.isAdminDeleted()) {
+        if (announcement.isAdminDeleted()) {
+            return false;
+        }
+        if (adminModified) {
+            // 관리자 보정 행도 LH 원본과의 연결은 정제가 기록해야 보강이 단지명을 다시 비교하지 않는다.
+            // 관리자가 정한 모집수는 유지하고, 연결 기록만으로는 정제 중 LH 재보강을 일으키지 않는다.
+            lhSourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
             return false;
         }
         boolean sourceChanged = !Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier);
