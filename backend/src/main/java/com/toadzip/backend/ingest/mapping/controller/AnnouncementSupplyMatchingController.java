@@ -47,6 +47,13 @@ public class AnnouncementSupplyMatchingController {
         return matching.release(identifier, request, principal.getName());
     }
 
+    @PostMapping("/{identifier}/exclusion")
+    public List<Row> exclude(@PathVariable String identifier,
+            @Valid @RequestBody com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ExclusionRequest request,
+            Principal principal) {
+        return matching.exclude(identifier, request, principal.getName());
+    }
+
     @PostMapping("/{identifier}/split")
     public List<Row> split(@PathVariable String identifier,
             @Valid @RequestBody com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SplitRequest request,

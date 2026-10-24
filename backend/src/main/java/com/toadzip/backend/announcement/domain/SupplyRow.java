@@ -123,6 +123,15 @@ public class SupplyRow {
         targetCountsComparable = comparable;
     }
 
+    /** 등록 단지에 없는 원천 공급행을 공개에서 빼거나 되돌린다. 정제는 제외된 행의 매칭 실패를 오류로 남기지 않는다. */
+    public boolean excludeByAdmin(boolean excluded) {
+        if (adminExcluded == excluded) {
+            return false;
+        }
+        adminExcluded = excluded;
+        return true;
+    }
+
     public void correctPresentation(boolean excluded, int order, boolean overrideArea,
             BigDecimal exclusiveArea, BigDecimal supplyArea) {
         validateNonNegative(order, "표시 순서");
