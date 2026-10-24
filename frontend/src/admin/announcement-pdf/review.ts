@@ -1,7 +1,7 @@
 import type { ExtractedAnnouncement, JsonObject, JsonUpdateInput, JsonWorkspace } from '../announcement-json/api'
 import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type NewSupplyGroup } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, type Evidence, type Extraction } from './extraction'
-import { defaultTargetDestinations, emptyRow, missingHousingType, normalizedName, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
+import { defaultTargetDestinations, missingHousingType, normalizedName, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
 import { housingTypeLabel } from '../ingest/housingTypeLabel'
 
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
@@ -19,7 +19,9 @@ export type RowReview = { proposal: RowProposal; include: boolean; reviewed: boo
   /** 단지에 맞는 주택형이 없어 PDF 형명·면적으로 새 주택형을 만들기로 고른 경우 */
   newHousingType?: boolean }
 export type ScheduleReview = { proposal: ScheduleProposal; include: boolean; reviewed: boolean; cells: Cell[] }
-export type Review = { extraction: Extraction; rows: RowReview[]; schedules: ScheduleReview[]; metadata: Cell[]; reception: Cell[] }
+export type Review = { extraction: Extraction; rows: RowReview[]; schedules: ScheduleReview[]; metadata: Cell[]; reception: Cell[]
+  /** LH 원천행에 맞추기 전 검토. 단지를 다시 고르면 여기서 다시 맞춘다. */
+  unaligned?: Review }
 export const cellStates: Record<Cell['state'], string> = { confirm: '확인 필요', unresolved: '미확인 · 현재값 유지', notApplicable: '해당 없음', invalid: '형식 확인 필요', same: '같음', changed: '변경', new: '추가' }
 /** 접수 방식·일정 유형의 화면 표기 */
 export const choices = {
@@ -233,12 +235,6 @@ export function sharedGroupStorable(review: Review, groupIndex: number) {
   const members = review.rows.filter(row => row.include && row.proposal.sharedIndex === groupIndex)
   return members.filter(row => row.proposal.destination !== 'new').length === 1 && !members.some(row => row.newHousingType)
 }
-/** 저장하면 제외할 빈 기존 행. PDF 행을 하나 이상 적용하고, 그 행을 저장 위치로 고르지 않은 경우다. */
-export function replacedRows(review: Review, workspace: JsonWorkspace) {
-  const included = review.rows.filter(row => row.include)
-  if (!included.length) return []
-  return workspace.supply.rows.filter(row => emptyRow(row) && !included.some(entry => entry.proposal.destination === row.key))
-}
 export function assembleReview(review: Review, workspace: JsonWorkspace, evidence: { reason: string; sourceUrl: string; sourcePage: string | null }): JsonUpdateInput {
   const rows = structuredClone(workspace.supply.rows), taken = new Map<string, number>(), newGroups: NewSupplyGroup[] = []
   for (const [index, entry] of review.rows.entries()) {
@@ -302,7 +298,6 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
     if (original.length !== 1 || group.count === null || current.some(row => row.housingTypeId === null)) throw new Error('새 공통 모집 묶음은 기존 한 행과 서로 다른 주택형에 연결한 새 행으로 구성하세요.')
     newGroups.push({ sourceRowId: original[0].id!, rowKeys: current.map(row => row.key), sharedHouseholdCount: group.count })
   }
-  for (const replaced of replacedRows(review, workspace)) rows.find(row => row.key === replaced.key)!.excluded = true
   const ordered = applyPdfOrder(review, rows)
   const announcement: JsonObject = Object.fromEntries(['name', 'rentalType', 'recruitmentType', 'agencyCode', ...metadataFields.map(([field]) => field)].map(field => [field, workspace.detail.data[field] ?? null]))
   applyCells(announcement, review.metadata, metadataFields)
