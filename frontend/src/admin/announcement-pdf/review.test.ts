@@ -161,6 +161,17 @@ it('직접 수정에서 주택형 미연결을 선택하면 기존 연결을 해
   expect(assembleReview(review, workspace, evidence).correction.rows.find(item => item.key === existing.key)?.housingTypeId).toBeNull()
 })
 
+it('단지에 맞는 주택형이 없을 때 새 주택형 추가를 고르면 PDF 형명·면적으로 주택형을 만든다', () => {
+  const { review, workspace } = scenario('gwangju')
+  const row = review.rows[0], existing = workspace.supply.rows.find(item => item.key === row.proposal.destination)!
+  const source = review.extraction.supplyRows[0]
+  row.newHousingType = true
+  expect(() => assembleReview(review, workspace, evidence)).toThrow('새 주택형')
+  source.values = { ...source.values, exclusiveArea: 99.1234, supplyArea: 120.5 }
+  const saved = assembleReview(review, workspace, evidence).correction.rows.find(item => item.key === existing.key)!
+  expect(saved.housingTypeId).toBeNull()
+  expect(saved.newHousingType).toEqual({ name: saved.typeName, exclusiveArea: 99.1234, supplyArea: 120.5 })
+})
 
 it('공급행이 없는 공고는 검색해 선택한 단지를 기준으로 첫 공급행을 만든다', () => {
   const { review: seed, workspace, housing } = scenario('hansville')

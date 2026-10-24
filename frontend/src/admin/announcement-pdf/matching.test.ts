@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import fixtures from './fixtures/scenarios.json'
 import { blankRow, blankTarget } from '../supply/supplyCorrectionApi'
 import { readExtraction } from './extraction'
-import { checkAnnouncement, defaultTargetDestinations, proposeRows, proposeSchedules } from './matching'
+import { checkAnnouncement, defaultTargetDestinations, missingHousingType, proposeRows, proposeSchedules } from './matching'
 
 function scenario(name: keyof typeof fixtures) {
   const fixture = fixtures[name]
@@ -97,4 +97,12 @@ describe('공고 보정 대응 제안', () => {
     const twins = [current[0], { ...current[0], id: 9999, key: 'row:9999' }]
     expect(proposeRows(renamed, twins, housing)[0].reason).toBe('단지를 하나로 특정하지 못했습니다.')
   })
+})
+
+it('단지를 정했는데 같은 전용면적 주택형이 없을 때만 새 주택형 후보를 돌려준다', () => {
+  const types = [{ id: 1, name: '26', exclusiveArea: 26.37, supplyArea: null, householdCount: null }]
+  expect(missingHousingType(7, types, ' 39.8500 ', 39.85, 55.2)).toEqual({ name: '39.8500', exclusiveArea: 39.85, supplyArea: 55.2 })
+  expect(missingHousingType(7, types, '26', 26.37, null)).toBeNull()
+  expect(missingHousingType(null, types, '39', 39.85, null)).toBeNull()
+  expect(missingHousingType(7, types, '39', null, null)).toBeNull()
 })

@@ -273,3 +273,21 @@ it('응답 준비로 돌아갔다 와도 같은 응답이면 검토하던 입력
   fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
   expect(await screen.findByLabelText('보정 이유')).toHaveValue('공고문.pdf · 프롬프트 v3로 추출 후 PDF와 대조')
 })
+
+it('단지에 맞는 주택형이 없으면 따로 알리고 PDF 형명·면적으로 새 주택형을 추가해 저장한다', async () => {
+  const extraction = structuredClone(fixtures.hansville.extraction)
+  extraction.data.supplyRows[0].exclusiveArea = 99.1234
+  // 공통 모집 묶음에는 기존 주택형만 넣을 수 있으므로 묶음이 없는 공고로 확인한다.
+  extraction.sharedCounts = []
+  await open(JSON.stringify(extraction))
+  const block = screen.getByRole('region', { name: '공급행 1 검토' })
+  expect(within(block).getByText('맞는 주택형 없음')).toBeVisible()
+  expect(within(block).getByText(/PDF 전용 99.1234㎡ 주택형이 없습니다/)).toBeVisible()
+  fireEvent.click(within(block).getByRole('button', { name: 'PDF 형명·면적으로 새 주택형 추가' }))
+  expect(within(block).getByText(/'26A · 전용 99.1234㎡' 주택형을 이 단지에 추가합니다/)).toBeVisible()
+  expect(within(block).getByRole('combobox', { name: '공급행 1 연결 주택형 수정' })).toHaveValue('new')
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  await waitFor(() => expect(api.previewJsonUpdate).toHaveBeenCalled())
+  const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
+  expect(input.correction.rows.find(row => row.typeName === '26A')).toMatchObject({ housingTypeId: null, newHousingType: { name: '26A', exclusiveArea: 99.1234 } })
+})

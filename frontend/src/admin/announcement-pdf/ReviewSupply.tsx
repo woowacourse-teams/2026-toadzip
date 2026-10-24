@@ -6,8 +6,8 @@ import { getManagementDetail } from '../management/api'
 import { isRecord } from '../management/managementContract'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
 import { type Evidence } from './extraction'
-import { cellMatches, createRowReview, destinationLabel, pdfOrderChanges, pendingRow, pendingTarget, preserveCellChoice, remapTarget, shown, type Review, type ReviewFilter, type RowReview, type TargetReview } from './review'
-import { pickHousingType, type ComplexLabels, type HousingCandidates } from './matching'
+import { cellMatches, createRowReview, destinationLabel, editCell, pdfOrderChanges, pendingRow, pendingTarget, preserveCellChoice, remapTarget, shown, type Review, type ReviewFilter, type RowReview, type TargetReview } from './review'
+import { missingHousingType, pickHousingType, type ComplexLabels, type HousingCandidates } from './matching'
 import { ReviewCells } from './ReviewCells'
 import styles from './PdfCorrection.module.css'
 
@@ -46,6 +46,12 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
     {filter === 'all' && review.extraction.sharedCounts.map((group, index) => <div className={styles.shared} key={index}><strong>공통 모집 {group.count}세대</strong><span>{group.paths.map(path => review.extraction.supplyRows[Number(/\[(\d+)\]/.exec(path)?.[1])]?.typeName).join(' · ')} 전체의 모집수입니다. 각 행에 나누거나 중복 기입하지 않습니다.</span>{group.page && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence({ page: group.page!, quote: group.quote, path: group.paths[0] })}>PDF {group.page}쪽 보기</Button>}</div>)}
     {review.rows.map((row, index) => {
       const source = review.extraction.supplyRows[index], current = workspace.supply.rows.find(item => item.key === row.proposal.destination)
+      const complexId = current?.housingComplexId ?? workspace.supply.rows.find(item => item.key === row.proposal.anchorKey)?.housingComplexId ?? row.proposal.newComplex?.id ?? row.proposal.complexId
+      const missing = row.include ? missingHousingType(complexId, row.proposal.candidates, String(row.cells.find(cell => cell.field === 'sourceHousingTypeName')?.value ?? source.typeName ?? ''), source.values.exclusiveArea, source.values.supplyArea) : null
+      const missingLabel = missing ? `${missing.name || '형명 없음'} · 전용 ${missing.exclusiveArea}㎡` : ''
+      // 새 주택형은 연결 주택형을 직접 수정·미연결로 둔 동안만 유지한다. 다른 주택형이나 기존 값을 고르면 풀린다.
+      const keepsNewType = (cells: typeof row.cells) => cells.some(cell => cell.field === 'housingTypeId' && cell.mode === 'manual' && cell.value === null)
+      const chooseNewType = () => update(index, { ...row, reviewed: true, newHousingType: true, cells: row.cells.map(cell => cell.field === 'housingTypeId' ? editCell(cell, '') : cell) })
       if (!rowMatches(row, filter)) return null
       return <section className={styles.supplyBlock} key={index} aria-label={`공급행 ${index + 1} 검토`} data-review-id={`row:${index}`} tabIndex={-1}>
         <header><div><h3>{source.complexName} · {source.typeName}</h3><p>{row.proposal.destination === 'new' ? '새 공급정보로 추가' : current ? `현재: ${current.complexName} · ${current.typeName}` : '수정할 기존 공급정보를 선택하세요'}</p></div><label><input type="checkbox" checked={row.include} onChange={event => update(index, { ...row, include: event.target.checked, reviewed: true })} />공급행 {index + 1} 적용</label></header>
@@ -60,7 +66,11 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
           </div>
           <p className={styles.hint}>{row.proposal.reason}{source.values.constructedHouseholdCount != null ? ` · PDF 건설호수 ${String(source.values.constructedHouseholdCount)}세대` : ''}</p>
           {typeof shownTypeName(row) === 'string' && <p className={styles.hint}>{`저장하면 이 공고의 공개 화면에 '${String(shownTypeName(row))}'(으)로 표시됩니다. 다른 공고와 단지 주택형 이름은 바뀌지 않습니다.`}</p>}
-          <ReviewCells housingTypes={row.proposal.candidates} cells={row.cells} scope={`공급행 ${index + 1}`} filter={filter} onChange={cells => update(index, { ...row, cells })} onEvidence={onEvidence} />
+          {missing && <div className={styles.pending}><p><strong>맞는 주택형 없음</strong> 연결할 단지에 PDF 전용 {missing.exclusiveArea}㎡ 주택형이 없습니다.{row.newHousingType ? ` 저장하면 '${missingLabel}' 주택형을 이 단지에 추가합니다.` : ''}</p>
+            {!row.newHousingType && <Button data-design-system className={styles.secondaryButton} disabled={!missing.name} onClick={chooseNewType}>PDF 형명·면적으로 새 주택형 추가</Button>}</div>}
+          <ReviewCells housingTypes={row.proposal.candidates} cells={row.cells} scope={`공급행 ${index + 1}`} filter={filter}
+            newType={missing && missing.name ? { label: missingLabel, selected: Boolean(row.newHousingType), onSelect: chooseNewType } : undefined}
+            onChange={cells => update(index, { ...row, cells, newHousingType: Boolean(row.newHousingType && missing && keepsNewType(cells)) })} onEvidence={onEvidence} />
           <TargetBlock review={review} index={index} workspace={workspace} filter={filter} update={next => update(index, next)} onEvidence={onEvidence} />
         </>}
       </section>

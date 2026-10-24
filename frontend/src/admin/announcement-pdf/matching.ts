@@ -69,7 +69,8 @@ export function pickHousingType(extraction: Extraction, index: number, allTypes:
   if (!candidates.length && row.values.exclusiveArea == null) {
     candidates = allTypes.filter(type => normalizedName(type.name) === normalizedName(row.typeName))
   }
-  let reason = candidates.length ? `전용면적 ${String(row.values.exclusiveArea ?? '')}㎡` : '전용면적에 맞는 주택형을 확인해 주세요.'
+  let reason = candidates.length ? `전용면적 ${String(row.values.exclusiveArea ?? '')}㎡`
+    : allTypes.length && typeof row.values.exclusiveArea === 'number' ? `이 단지에 PDF 전용 ${row.values.exclusiveArea}㎡와 맞는 주택형이 없습니다.` : '전용면적에 맞는 주택형을 확인해 주세요.'
   if (candidates.length > 1 && typeof row.values.constructedHouseholdCount === 'number') {
     const byCount = candidates.filter(type => type.householdCount === row.values.constructedHouseholdCount)
     if (byCount.length) { candidates = byCount; reason += ` · 건설호수 ${row.values.constructedHouseholdCount}세대` }
@@ -83,7 +84,16 @@ export function pickHousingType(extraction: Extraction, index: number, allTypes:
     if (byName.length) candidates = byName
   }
   const housingTypeId = candidates.length === 1 ? candidates[0].id : null
-  return { housingTypeId, reason: housingTypeId === null ? `${reason} · 주택형을 하나로 특정하지 못했습니다.` : reason }
+  return { housingTypeId, reason: housingTypeId === null && candidates.length ? `${reason} · 주택형을 하나로 특정하지 못했습니다.` : reason }
+}
+
+/**
+ * 단지는 정했지만 그 단지에 PDF 전용면적과 같은 주택형이 없으면 PDF 형명·면적을 돌려준다.
+ * 이때만 'PDF 형명·면적으로 새 주택형 추가'를 고를 수 있다.
+ */
+export function missingHousingType(complexId: number | null, candidates: MatchingHousingType[], typeName: string, exclusiveArea: unknown, supplyArea: unknown) {
+  if (complexId === null || typeof exclusiveArea !== 'number' || candidates.some(type => equalArea(type.exclusiveArea, exclusiveArea))) return null
+  return { name: typeName.trim(), exclusiveArea, supplyArea: typeof supplyArea === 'number' ? supplyArea : null }
 }
 
 // 공고문과 수집 원천의 단지명 표기가 다를 때(전주평화1단지 ↔ 평화주공1단지) 이번 모집수가 유일하게 같은 기존 행을 제안한다.
