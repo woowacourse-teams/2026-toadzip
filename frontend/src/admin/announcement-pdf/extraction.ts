@@ -17,6 +17,8 @@ export type Extraction = {
   notApplicable: ExtractionNote[]
   sharedCounts: SharedCount[]
   evidence: Evidence[]
+  /** 합계·면적 검산에서 다르게 나온 항목. 저장을 막지 않고 확인할 내용으로 보여 준다. */
+  checks: string[]
 }
 export type ReadResult = { ok: true; value: Extraction; repairs: string[] } | { ok: false; error: string; repairs: string[] }
 
@@ -92,33 +94,127 @@ function extraction(value: unknown): Extraction | string {
   if (sharedProblem) return sharedProblem
   const sharedPaths = (value.sharedCounts as { paths: string[] }[]).flatMap(item => item.paths.map(normalizePath))
   if (new Set(sharedPaths).size !== sharedPaths.length) return '한 공급행을 여러 공통 모집수에 넣을 수 없습니다.'
-  const rows: ExtractedRow[] = []
-  for (const row of data.supplyRows) {
+  for (const [index, row] of data.supplyRows.entries()) {
     if (!Array.isArray(row.targets) || !row.targets.every(isRecord) || row.targets.length > 100) return '공급행마다 targets 객체 배열이 필요합니다.'
-    const reference = isRecord(row.complexReference) ? row.complexReference : {}
-    rows.push({ complexName: text(reference.sourceComplexName), typeName: text(row.sourceHousingTypeName), values: row, targets: row.targets })
+    if (row.subtypes != null && (!Array.isArray(row.subtypes) || !row.subtypes.every(item => isRecord(item) && text(item.name)))) {
+      return `supplyRows[${index}].subtypes는 name이 있는 세부 타입 객체 목록이어야 합니다. 세부 타입이 없으면 빈 목록 []로 두세요.`
+    }
   }
+  const complexes = Array.isArray(data.complexes) ? data.complexes.filter(isRecord).flatMap(item => {
+    const name = text(item.sourceComplexName)
+    return name ? [{ name, address: text(item.address), totalHouseholdCount: count(item.totalHouseholdCount), parkingCount: count(item.parkingCount) }] : []
+  }) : []
+  const parsed = {
+    sharedCounts: (value.sharedCounts as Record<string, unknown>[]).map(item => ({
+      paths: (item.paths as string[]).map(normalizePath), count: count(item.count), page: page(item.page), quote: text(item.quote) ?? '',
+    })),
+    unresolved: notes(data.unresolvedFields), notApplicable: notes(value.notApplicable),
+    evidence: (value.evidence as Record<string, unknown>[]).map(item => ({ path: normalizePath(item.path as string), page: page(item.page)!, quote: text(item.quote) ?? '' })),
+  }
+  const expanded = expandSubtypes(data.supplyRows, parsed)
+  if (expanded.rows.length > 200) return '세부 타입으로 펼친 공급행이 200개를 넘습니다. 한 공고의 응답만 붙여넣어 주세요.'
   return {
     announcement: data.announcement,
     receptionPlace: isRecord(data.receptionPlace) ? data.receptionPlace : {},
-    complexes: Array.isArray(data.complexes) ? data.complexes.filter(isRecord).flatMap(item => {
-      const name = text(item.sourceComplexName)
-      return name ? [{ name, address: text(item.address), totalHouseholdCount: count(item.totalHouseholdCount), parkingCount: count(item.parkingCount) }] : []
-    }) : [],
-    supplyRows: rows,
+    complexes,
+    supplyRows: expanded.rows,
     schedules: data.schedules,
-    unresolved: notes(data.unresolvedFields),
-    notApplicable: notes(value.notApplicable),
-    sharedCounts: Array.isArray(value.sharedCounts) ? value.sharedCounts.filter(isRecord).map(item => ({
-      paths: Array.isArray(item.paths) ? item.paths.filter((path): path is string => typeof path === 'string').map(normalizePath) : [],
-      count: typeof item.count === 'number' && Number.isSafeInteger(item.count) && item.count >= 0 ? item.count : null,
-      page: page(item.page), quote: text(item.quote) ?? '',
-    })) : [],
-    evidence: Array.isArray(value.evidence) ? value.evidence.filter(isRecord).flatMap(item => {
-      const at = page(item.page)
-      return typeof item.path === 'string' && at !== null ? [{ path: normalizePath(item.path), page: at, quote: text(item.quote) ?? '' }] : []
-    }) : [],
+    unresolved: expanded.unresolved,
+    notApplicable: expanded.notApplicable,
+    sharedCounts: expanded.sharedCounts,
+    evidence: expanded.evidence,
+    checks: checks(data.supplyRows, complexes, parsed.sharedCounts),
   }
+}
+
+type Notes = { sharedCounts: SharedCount[]; unresolved: ExtractionNote[]; notApplicable: ExtractionNote[]; evidence: Evidence[] }
+const subtypeCountNote = '세부 타입이 함께 쓰는 모집수라 대상별로 저장하지 않습니다.'
+
+function subtypesOf(row: JsonObject) { return Array.isArray(row.subtypes) ? row.subtypes as JsonObject[] : [] }
+
+/**
+ * "26A/B/C"처럼 세부 타입을 묶은 공급행(subtypes)을 세부 타입마다 한 행으로 펼친다. 대상·금액은 행마다 복사하고,
+ * 묶인 모집수는 펼친 행들의 공통 모집수로 옮긴다. 응답의 행 번호를 쓰는 경로(공통 모집수·메모·근거)는 펼친 행 번호로 바꾼다.
+ * 공급면적은 전용 + 공용으로 계산한다.
+ */
+function expandSubtypes(source: JsonObject[], parsed: Notes): Notes & { rows: ExtractedRow[] } {
+  const rows: ExtractedRow[] = [], at: number[][] = [], notApplicable: ExtractionNote[] = [], generated: SharedCount[] = []
+  const sharedRows = new Set(parsed.sharedCounts.flatMap(group => group.paths.map(path => /^supplyRows\[(\d+)\]\.totalSupplyHouseholdCount$/.exec(path)?.[1]).filter(Boolean).map(Number)))
+  for (const [index, row] of source.entries()) {
+    const reference = isRecord(row.complexReference) ? row.complexReference : {}
+    const targets = row.targets as JsonObject[], subtypes = subtypesOf(row), grouped = subtypes.length > 1
+    const variants: JsonObject[] = subtypes.length ? subtypes.map(subtype => ({ ...row, sourceHousingTypeName: text(subtype.name),
+      exclusiveArea: subtype.exclusiveArea ?? null, commonArea: subtype.commonArea ?? null, supplyArea: subtype.supplyArea ?? null,
+      constructedHouseholdCount: subtype.constructedHouseholdCount ?? (grouped ? null : row.constructedHouseholdCount ?? null),
+      totalSupplyHouseholdCount: grouped ? null : row.totalSupplyHouseholdCount ?? null })) : [row]
+    at[index] = variants.map(variant => {
+      const { subtypes: _subtypes, ...values } = variant
+      const copied = targets.map(target => grouped ? { ...target, supplyHouseholdCount: null } : { ...target })
+      rows.push({ complexName: text(reference.sourceComplexName), typeName: text(values.sourceHousingTypeName), values: { ...values, supplyArea: supplyArea(values) }, targets: copied })
+      if (grouped) notApplicable.push({ path: `supplyRows[${rows.length - 1}].targets[*].supplyHouseholdCount`, reason: subtypeCountNote })
+      return rows.length - 1
+    })
+    const total = count(row.totalSupplyHouseholdCount)
+    if (grouped && total !== null && !sharedRows.has(index)) {
+      const evidence = parsed.evidence.find(item => item.path === `supplyRows[${index}]`)
+      generated.push({ paths: at[index].map(row => `supplyRows[${row}].totalSupplyHouseholdCount`), count: total, page: evidence?.page ?? null, quote: evidence?.quote ?? '' })
+    }
+  }
+  const remap = (path: string) => {
+    const match = /^supplyRows\[(\d+|\*)\](?:\.subtypes\[(\d+|\*)\])?(.*)$/.exec(path)
+    if (!match) return [path]
+    const rest = match[3] === '.commonArea' ? '.supplyArea' : match[3]
+    if (match[1] === '*') return [`supplyRows[*]${rest}`]
+    const targets = at[Number(match[1])] ?? []
+    return (match[2] === undefined || match[2] === '*' ? targets : targets.slice(Number(match[2]), Number(match[2]) + 1)).map(row => `supplyRows[${row}]${rest}`)
+  }
+  const note = (item: ExtractionNote) => remap(item.path).map(path => ({ ...item, path }))
+  // 세부 타입 묶음 안의 대상별 공통 모집수는 대상별로 저장하지 않으므로 버린다.
+  const sharedCounts = parsed.sharedCounts.filter(group => !group.paths.some(path => {
+    const match = /^supplyRows\[(\d+)\]\.targets/.exec(path)
+    return match !== null && subtypesOf(source[Number(match[1])]).length > 1
+  })).map(group => ({ ...group, paths: group.paths.flatMap(remap) })).filter(group => group.paths.length > 1)
+  return { rows, sharedCounts: [...sharedCounts, ...generated], unresolved: parsed.unresolved.flatMap(note),
+    notApplicable: [...parsed.notApplicable.flatMap(note), ...notApplicable], evidence: parsed.evidence.flatMap(item => remap(item.path).map(path => ({ ...item, path }))) }
+}
+
+/** 공급면적 = 주거전용 + 주거공용. 공용면적이 없으면 공고문의 공급면적을 그대로 쓴다. 자릿수는 두 값 중 긴 쪽에 맞춘다. */
+function supplyArea(values: JsonObject) {
+  const exclusive = values.exclusiveArea, common = values.commonArea
+  if (typeof exclusive !== 'number' || typeof common !== 'number') return values.supplyArea ?? null
+  const digits = Math.max(...[exclusive, common].map(value => String(value).split('.')[1]?.length ?? 0))
+  return Number((exclusive + common).toFixed(digits))
+}
+
+/** 모델 실수를 잡는 검산. 응답의 행 기준으로 계산하며, 다르면 검토 화면에 확인할 내용으로 보여 준다. */
+function checks(source: JsonObject[], complexes: ExtractedComplex[], shared: SharedCount[]) {
+  const result: string[] = [], sharedPaths = new Set(shared.flatMap(group => group.paths))
+  const constructed = (row: JsonObject) => count(row.constructedHouseholdCount) ?? (subtypesOf(row).length && subtypesOf(row).every(item => count(item.constructedHouseholdCount) !== null)
+    ? subtypesOf(row).reduce((sum, item) => sum + count(item.constructedHouseholdCount)!, 0) : null)
+  for (const complex of complexes) {
+    const rows = source.filter(row => isRecord(row.complexReference) && text(row.complexReference.sourceComplexName) === complex.name)
+    const counts = rows.map(constructed)
+    if (complex.totalHouseholdCount === null || !rows.length || counts.some(value => value === null)) continue
+    const sum = counts.reduce((total, value) => total! + value!, 0)!
+    if (sum !== complex.totalHouseholdCount) result.push(`${complex.name}: 공급 표 건설호수 합계 ${sum}세대가 단지 전체 세대수 ${complex.totalHouseholdCount}세대와 다릅니다. 공급 표에 없는 주택형이 있는지 확인하세요.`)
+  }
+  for (const [index, row] of source.entries()) {
+    const name = text(row.sourceHousingTypeName) ?? '형명 없음', total = count(row.totalSupplyHouseholdCount)
+    const targets = (row.targets as JsonObject[]).map(target => count(target.supplyHouseholdCount))
+    const sharedTargets = targets.some((_, at) => sharedPaths.has(`supplyRows[${index}].targets[${at}].supplyHouseholdCount`))
+    if (total !== null && targets.length && !sharedTargets && targets.every(value => value !== null)) {
+      const sum = targets.reduce((value, item) => value! + item!, 0)
+      if (sum !== total) result.push(`${name}: 대상별 모집수 합계 ${sum}세대가 모집수 ${total}세대와 다릅니다.`)
+    }
+    for (const area of subtypesOf(row).length ? subtypesOf(row) : [row]) {
+      const given = area.supplyArea
+      const computed = supplyArea({ ...area, supplyArea: null })
+      if (typeof given === 'number' && typeof computed === 'number' && Math.abs(given - computed) > 0.00005) {
+        result.push(`${text(area.name) ?? name}: 공급면적 ${given}㎡가 전용 + 공용 ${computed}㎡와 달라 계산값을 씁니다.`)
+      }
+    }
+  }
+  return result
 }
 
 function notes(value: unknown): ExtractionNote[] {

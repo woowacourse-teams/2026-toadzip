@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import fixtures from './fixtures/scenarios.json'
-import { evidenceFor, noteFor, pathCovers, readExtraction } from './extraction'
+import prompt from './announcementUpdatePrompt.v6.txt?raw'
+import { evidenceFor, noteFor, pathCovers, readExtraction, type Extraction } from './extraction'
 
 describe('ChatGPT 공고 응답 읽기', () => {
   it('단지 개요는 이름이 있는 항목만 읽고, 없는 응답(v4)도 그대로 읽는다', () => {
@@ -87,5 +88,83 @@ describe('ChatGPT 공고 응답 읽기', () => {
     const field = { path: 'supplyRows[0].exclusiveArea', page: 5, quote: '26.5195' }
     expect(evidenceFor([row, field], field.path)).toEqual(field)
     expect(evidenceFor([row, field], 'supplyRows[0].supplyArea')).toEqual(row)
+  })
+
+  it('프롬프트의 응답 예제를 그대로 읽고 세부 타입 행을 펼친다', () => {
+    const result = readExtraction(prompt.slice(prompt.indexOf('[응답 예제]')))
+    if (!result.ok) throw new Error(result.error)
+    expect(result.value.supplyRows.map(row => [row.typeName, row.values.supplyArea])).toEqual([['36A', 49.8], ['26A', 41.47], ['26B', 41.53]])
+    expect(result.value.sharedCounts.map(group => group.count)).toEqual([40, 77])
+    expect(result.value.checks).toEqual([])
+  })
+
+  describe('세부 타입 펼치기와 검산', () => {
+    const target = (name: string, count: number | null) => ({ target: name, supplyRank: null, supplyHouseholdCount: count, reserveCount: null, rentalDeposit: 31994000, monthlyRent: 138640, convertedDeposit: null, applicationCondition: null })
+    const row = (name: string, values: Record<string, unknown>, targets = [target('청년', 10), target('신혼부부', 4)]) => ({
+      complexReference: { sourceComplexName: '인천부평' }, sourceHousingTypeName: name, expectedMoveInMonth: '2027-03', totalSupplyHouseholdCount: null,
+      exclusiveArea: null, commonArea: null, supplyArea: null, constructedHouseholdCount: null, targets, ...values })
+    function read(overrides: Record<string, unknown> = {}) {
+      const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: Record<string, unknown> } & Record<string, unknown>
+      input.data.complexes = [{ sourceComplexName: '인천부평', address: '인천광역시 부평구 부평동 65-17', totalHouseholdCount: 350, parkingCount: 112 }]
+      input.data.supplyRows = [
+        row('16A', { exclusiveArea: 16.37, commonArea: 11.2684, constructedHouseholdCount: 100 }),
+        row('26A/B/C', { totalSupplyHouseholdCount: 77, targets: [target('청년', null), target('신혼부부', null)], subtypes: [
+          { name: '26A', exclusiveArea: 26.37, commonArea: 15.1, constructedHouseholdCount: 50 },
+          { name: '26B', exclusiveArea: 26.41, commonArea: 15.12, constructedHouseholdCount: 50 },
+          { name: '26C', exclusiveArea: 26.5, commonArea: null, supplyArea: 41.7, constructedHouseholdCount: 30 }] }),
+        row('36A', { exclusiveArea: 36.5, commonArea: 13.5, supplyArea: 50, constructedHouseholdCount: 50, totalSupplyHouseholdCount: 15 }),
+      ]
+      input.data.unresolvedFields = [{ path: 'supplyRows[1].subtypes[2].commonArea', reason: '공용면적 표기 없음' }]
+      input.notApplicable = [{ path: 'supplyRows[*].targets[*].supplyRank', reason: '순위 없음' }]
+      input.sharedCounts = [{ paths: ['supplyRows[1].targets[0].supplyHouseholdCount', 'supplyRows[1].targets[1].supplyHouseholdCount'], count: 20, page: 3, quote: '통합 20' }]
+      input.evidence = [{ path: 'supplyRows[1]', page: 3, quote: '26A/B/C 77' }, { path: 'supplyRows[2]', page: 4, quote: '36A 15' }]
+      Object.assign(input, overrides)
+      const result = readExtraction(JSON.stringify(input))
+      if (!result.ok) throw new Error(result.error)
+      return result.value as Extraction
+    }
+
+    it('묶인 세부 타입을 행마다 펼치고 대상·금액을 복사하며 묶인 모집수는 공통 모집수로 옮긴다', () => {
+      const value = read()
+      expect(value.supplyRows.map(item => item.typeName)).toEqual(['16A', '26A', '26B', '26C', '36A'])
+      expect(value.supplyRows.slice(1, 4).map(item => [item.values.exclusiveArea, item.values.totalSupplyHouseholdCount, item.values.subtypes])).toEqual([[26.37, null, undefined], [26.41, null, undefined], [26.5, null, undefined]])
+      expect(value.supplyRows[2].targets.map(item => [item.target, item.rentalDeposit, item.supplyHouseholdCount])).toEqual([['청년', '31994000', null], ['신혼부부', '31994000', null]])
+      expect(value.supplyRows[4].targets.map(item => item.supplyHouseholdCount)).toEqual([10, 4])
+      // 묶음 안의 대상별 공통 모집수는 버리고, 묶인 모집수 77은 펼친 세 행의 공통 모집수가 된다.
+      expect(value.sharedCounts).toEqual([{ paths: ['supplyRows[1].totalSupplyHouseholdCount', 'supplyRows[2].totalSupplyHouseholdCount', 'supplyRows[3].totalSupplyHouseholdCount'], count: 77, page: 3, quote: '26A/B/C 77' }])
+      expect(noteFor(value.notApplicable, 'supplyRows[3].targets[1].supplyHouseholdCount')?.reason).toContain('세부 타입')
+      expect(noteFor(value.notApplicable, 'supplyRows[4].targets[1].supplyHouseholdCount')).toBeNull()
+    })
+
+    it('공급면적은 전용 + 공용으로 계산하고, 응답 행 번호를 쓰는 메모·근거는 펼친 행으로 옮긴다', () => {
+      const value = read()
+      expect(value.supplyRows.map(item => item.values.supplyArea)).toEqual([27.6384, 41.47, 41.53, 41.7, 50])
+      expect(noteFor(value.unresolved, 'supplyRows[3].supplyArea')?.reason).toBe('공용면적 표기 없음')
+      expect(noteFor(value.notApplicable, 'supplyRows[2].targets[0].supplyRank')?.reason).toBe('순위 없음')
+      expect(evidenceFor(value.evidence, 'supplyRows[2].targets[0].rentalDeposit')).toEqual({ path: 'supplyRows[2]', page: 3, quote: '26A/B/C 77' })
+      expect(evidenceFor(value.evidence, 'supplyRows[4].exclusiveArea')?.page).toBe(4)
+    })
+
+    it('여러 공급행 공통 모집수에 묶인 세부 타입 행은 펼친 행 모두를 그 묶음에 넣는다', () => {
+      const value = read({ sharedCounts: [{ paths: ['supplyRows[1].totalSupplyHouseholdCount', 'supplyRows[2].totalSupplyHouseholdCount'], count: 92, page: 3, quote: '26·36 92' }] })
+      expect(value.sharedCounts).toEqual([{ paths: [1, 2, 3, 4].map(index => `supplyRows[${index}].totalSupplyHouseholdCount`), count: 92, page: 3, quote: '26·36 92' }])
+    })
+
+    it('건설호수·대상별 모집수 합계와 공급면적이 맞지 않으면 확인할 내용으로 알린다', () => {
+      expect(read().checks).toEqual([
+        '인천부평: 공급 표 건설호수 합계 280세대가 단지 전체 세대수 350세대와 다릅니다. 공급 표에 없는 주택형이 있는지 확인하세요.',
+        '36A: 대상별 모집수 합계 14세대가 모집수 15세대와 다릅니다.',
+      ])
+      const wrongArea = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: Record<string, unknown>[] } }
+      Object.assign(wrongArea.data.supplyRows[0], { exclusiveArea: 26.37, commonArea: 15.1, supplyArea: 42 })
+      const result = readExtraction(JSON.stringify(wrongArea))
+      expect(result.ok && result.value.checks.some(item => item.includes('공급면적 42㎡가 전용 + 공용 41.47㎡와 달라 계산값을 씁니다.'))).toBe(true)
+    })
+
+    it('세부 타입 목록 형식이 틀리면 그 행 번호로 다시 요청하게 한다', () => {
+      const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: Record<string, unknown>[] } }
+      input.data.supplyRows[0].subtypes = [{ exclusiveArea: 26.37 }]
+      expect(readExtraction(JSON.stringify(input))).toEqual(expect.objectContaining({ ok: false, error: expect.stringContaining('supplyRows[0].subtypes') }))
+    })
   })
 })

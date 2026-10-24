@@ -275,7 +275,7 @@ it('응답 준비로 돌아갔다 와도 같은 응답이면 검토하던 입력
   fireEvent.click(screen.getByRole('button', { name: '응답 준비로 돌아가기' }))
   fireEvent.change(await screen.findByRole('textbox', { name: 'ChatGPT 응답' }), { target: { value: JSON.stringify({ ...fixtures.hansville.extraction }, null, 1) } })
   fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
-  expect(await screen.findByLabelText('보정 이유')).toHaveValue('공고문.pdf · 프롬프트 v5로 추출 후 PDF와 대조')
+  expect(await screen.findByLabelText('보정 이유')).toHaveValue('공고문.pdf · 프롬프트 v6로 추출 후 PDF와 대조')
 })
 
 it('단지에 맞는 주택형이 없으면 따로 알리고 PDF 형명·면적으로 새 주택형을 추가해 저장한다', async () => {
@@ -377,4 +377,11 @@ it('단지가 연결되지 않은 기존 공급행은 PDF 공급행으로 대체
   const rows = (api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput).correction.rows
   expect(rows.find(row => row.key === empty.key)).toEqual(expect.objectContaining({ excluded: true }))
   expect(rows.filter(row => !row.excluded)).toEqual([expect.objectContaining({ id: null, housingComplexId: 7 })])
+})
+
+it('검산에서 맞지 않은 합계를 공급정보 위에 보여 준다', async () => {
+  const extraction = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: Record<string, unknown>[] } }
+  Object.assign(extraction.data.supplyRows[0], { exclusiveArea: 26.37, commonArea: 15.1, supplyArea: 42 })
+  await open(JSON.stringify(extraction))
+  expect(screen.getByRole('note', { name: '검산 결과' })).toHaveTextContent('공급면적 42㎡가 전용 + 공용 41.47㎡와 달라 계산값을 씁니다.')
 })
