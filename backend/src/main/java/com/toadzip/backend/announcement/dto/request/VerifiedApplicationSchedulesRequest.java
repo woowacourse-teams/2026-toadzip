@@ -25,7 +25,7 @@ public record VerifiedApplicationSchedulesRequest(
             LocalTime startTime,
             LocalTime endTime,
             @NotBlank @Size(max = 2000) @Pattern(regexp = "^https?://[^\\s]+$") String sourceUrl,
-            @Positive int sourcePage
+            @Positive Integer sourcePage
     ) {
     }
 }

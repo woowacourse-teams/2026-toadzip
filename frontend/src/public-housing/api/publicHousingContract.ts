@@ -244,7 +244,7 @@ function decodeApplicationSchedule(value: unknown, path: string): RawAnnouncemen
     startTime: nullableTimeAt(schedule.startTime, `${path}.startTime`),
     endTime: nullableTimeAt(schedule.endTime, `${path}.endTime`),
     sourceUrl: stringAt(schedule.sourceUrl, `${path}.sourceUrl`),
-    sourcePage: positiveSafeIntegerAt(schedule.sourcePage, `${path}.sourcePage`),
+    sourcePage: schedule.sourcePage === null || schedule.sourcePage === undefined ? null : positiveSafeIntegerAt(schedule.sourcePage, `${path}.sourcePage`),
   }
 }
 

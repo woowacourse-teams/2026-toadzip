@@ -328,7 +328,8 @@ export interface RawAnnouncementApplicationSchedule {
   readonly startTime: string | null
   readonly endTime: string | null
   readonly sourceUrl: string
-  readonly sourcePage: number
+  /** 공고문 페이지. 관리자가 알 때만 있다. */
+  readonly sourcePage: number | null
 }
 
 export interface AnnouncementApplicationSchedule extends Omit<RawAnnouncementApplicationSchedule, 'scheduleId' | 'housingComplexId'> {

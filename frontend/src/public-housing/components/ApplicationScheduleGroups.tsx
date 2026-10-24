@@ -42,7 +42,7 @@ function ScheduleCard({ schedule }: { schedule: AnnouncementApplicationSchedule 
         endAt={schedule.endTime ? `${schedule.endDate}T${schedule.endTime}` : schedule.endDate}
       />
       {sourceUrl && <a className={styles.source} href={sourceUrl} target="_blank" rel="noreferrer">
-        공고문 {schedule.sourcePage}쪽
+        {schedule.sourcePage ? `공고문 ${schedule.sourcePage}쪽` : '공고문 보기'}
       </a>}
     </li>
   )
@@ -54,7 +54,7 @@ function scheduleSourceUrl(schedule: AnnouncementApplicationSchedule): string | 
     if (url.protocol !== 'https:' && url.protocol !== 'http:') {
       return null
     }
-    url.hash = `page=${schedule.sourcePage}`
+    if (schedule.sourcePage) url.hash = `page=${schedule.sourcePage}`
     return url.href
   } catch {
     return null
