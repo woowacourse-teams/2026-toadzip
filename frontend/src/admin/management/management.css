@@ -42,6 +42,10 @@
 .admin-table td:first-child {min-width:200px;}
 .admin-table td:first-child a {font-weight:650;text-underline-offset:4px;}
 .admin-status,.pipeline-badge {display:inline-block;padding:4px 8px;border-radius:4px;background:#e8f1ec;color:#295b43;font-size:12px;white-space:nowrap;}
+.admin-status-list {display:inline-flex;flex-wrap:wrap;gap:4px;}
+.admin-status[data-tone=review] {background:var(--ds-color-status-upcoming-surface);color:var(--ds-color-status-upcoming);font-weight:600;}
+.admin-status[data-tone=deleted] {background:var(--ds-color-status-neutral-surface);color:var(--ds-color-muted-base);}
+.admin-status-empty {color:var(--ds-color-muted);}
 .pipeline-failed,.pipeline-completed_warnings {background:#fbe9e3;color:#923623;}
 .pipeline-running {background:#e4eff8;color:#24577e;}
 .admin-pagination {display:flex;align-items:center;justify-content:center;gap:20px;margin:24px 0;color:#5a6b61;font-size:14px;}

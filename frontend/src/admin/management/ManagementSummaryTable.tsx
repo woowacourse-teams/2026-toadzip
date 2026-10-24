@@ -1,11 +1,11 @@
 import { Link, useMatch } from 'react-router'
 import type { ManagementResource, ManagementSummary } from './managementContract'
 import { labels } from './fields'
-import { ManagementStatus } from './ManagementStatus'
+import { ManagementStatus, PublicationType } from './ManagementStatus'
 import styles from './ManagementList.module.css'
 import { ComplexVerificationBadge } from './ComplexVerificationBadge'
 
-type Column = { key: string; label: string; width: number; read: (summary: ManagementSummary) => string | number | boolean | null | undefined; kind?: 'number' | 'status' | 'verification' }
+type Column = { key: string; label: string; width: number; read: (summary: ManagementSummary) => string | number | boolean | null | undefined; kind?: 'number' | 'status' | 'verification' | 'publication' }
 export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight = false, compact = false, inlineSearch, onEdit, editDisabled = false, selection }: { items: ManagementSummary[]; resource: ManagementResource; returnTo?: string; fixedHeight?: boolean; compact?: boolean; inlineSearch?: string; onEdit?: (item: ManagementSummary) => void; editDisabled?: boolean
   selection?: { ids: ReadonlySet<number>; disabled?: boolean; onChange: (ids: Set<number>) => void } }) {
   const selected = useMatch(`/admin/${resource}/:id`)?.params.id
@@ -15,7 +15,7 @@ export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight 
     { key: 'agencyCode', label: '공급 기관', width: 104, read: item => item.provider },
     { key: 'rentalType', label: '공급 유형', width: 144, read: item => item.rental },
     ...(resource === 'complexes' ? [...complexColumns, { key: 'verificationStatus', label: '검토 상태', width: 160, read: () => null, kind: 'verification' as const }] : announcementColumns),
-    { key: 'deleted·modified·reviewRequired', label: '관리 상태', width: 124, read: () => null, kind: 'status' },
+    { key: 'deleted·modified·reviewRequired', label: '확인할 상태', width: 170, read: () => null, kind: 'status' },
   ]
   const title = resource === 'complexes' ? '단지' : '공고'
   // 메일 목록처럼 현재 페이지의 행을 골라 한꺼번에 처리한다.
@@ -31,7 +31,7 @@ export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight 
           {compact ? <><span className={styles.rowSubtitle}>{item.subtitle}</span><div className={styles.rowMeta}><span>{labels[item.provider] ?? item.provider}</span><span>{labels[item.rental] ?? item.rental}</span><ManagementStatus summary={item} />{resource === 'complexes' && <ComplexVerificationBadge status={item.complex?.verificationStatus ?? 'UNREVIEWED'} count={item.complex?.reviewedFieldCount} />}</div></> : null}
         </th>
         {columns.map(column => <td key={column.key} data-field={column.key} className={column.kind === 'number' ? styles.number : undefined}>
-          {column.kind === 'status' ? <ManagementStatus summary={item} /> : column.kind === 'verification' ? <ComplexVerificationBadge status={item.complex?.verificationStatus ?? 'UNREVIEWED'} count={item.complex?.reviewedFieldCount} /> : <TextValue value={column.read(item)} />}
+          {column.kind === 'status' ? <ManagementStatus summary={item} placeholder="—" /> : column.kind === 'publication' ? <PublicationType summary={item} /> : column.kind === 'verification' ? <ComplexVerificationBadge status={item.complex?.verificationStatus ?? 'UNREVIEWED'} count={item.complex?.reviewedFieldCount} /> : <TextValue value={column.read(item)} />}
         </td>)}
       </tr>)}</tbody>
     </table>
@@ -42,6 +42,7 @@ const complexColumns: Column[] = [
 ]
 const announcementColumns: Column[] = [
   { key: 'recruitmentType', label: '모집 유형', width: 110, read: item => item.announcement?.recruitmentType },
+  { key: 'publicationType', label: '공고 구분', width: 100, read: () => null, kind: 'publication' },
   { key: 'postedDate', label: '게시일', width: 110, read: item => item.announcement ? item.announcement.postedDate : item.subtitle },
   { key: 'applicationPeriod', label: '접수 기간', width: 205, read: item => item.announcement ? `${item.announcement.applicationStartDate} ~ ${item.announcement.applicationEndDate}` : null },
 ]

@@ -92,7 +92,7 @@ public class AdminHousingComplexManagementService {
                                 announcement.getSourceAnnouncementIdentifier(), announcement.getOriginalUrl(),
                                 announcement.getRecruitmentType().name(), announcement.getPostedDate(),
                                 announcement.getApplicationStartDate(), announcement.getApplicationEndDate(),
-                                announcement.getWinnerAnnouncementDate()))).toList();
+                                announcement.getWinnerAnnouncementDate(), announcement.getStatus().name()))).toList();
         return new AdminHousingComplexDetail(summary(complex), complex.getSourceComplexIdentifier(),
                 data(complex), housingTypes, announcements);
     }
