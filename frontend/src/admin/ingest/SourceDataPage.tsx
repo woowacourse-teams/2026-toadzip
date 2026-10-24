@@ -63,7 +63,7 @@ export function SourceDataPage() {
     <header className="management-heading"><div><h1>원천 데이터</h1>
       <p>원천별 저장 데이터를 한 행씩 비교합니다. 열 제목에 항목 뜻과 원천 키를 함께 표시합니다.</p>
     </div><button type="button" disabled={pending} onClick={() => setAttempt(value => value + 1)}>목록 새로고침</button></header>
-    <div className={styles.tabs} role="tablist" aria-label="원천 분류">
+    <div className={`${styles.tabs} admin-folder-tabs`} role="tablist" aria-label="원천 분류">
       {Object.entries(sourceCategories).map(([value, label], index, entries) => <button key={value} type="button"
         role="tab" id={`source-tab-${value}`} aria-selected={category === value} aria-controls="source-panel"
         tabIndex={category === value || (!category && index === 0) ? 0 : -1}

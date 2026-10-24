@@ -1,4 +1,6 @@
 .layout[class] { display:grid; grid-template-columns:236px minmax(0,1fr); grid-template-rows:72px 1fr; min-height:100dvh; background:var(--ds-color-surface-subtle); color:var(--ds-color-text); font-family:var(--ds-font-family-base); }
+/* 관리자 화면은 작업 도구라 글씨는 키우고 여백은 줄인다. 버튼·입력은 모두 같은 높이를 쓴다. */
+.layout[class] { --admin-text-meta:13px; --admin-text-body:15px; --admin-text-heading:17px; --admin-control-height:36px; --ds-text-body:var(--admin-text-body); --ds-text-caption:var(--admin-text-meta); --ds-control-height-md:var(--admin-control-height); }
 .layout :global(.admin-header) { display:flex; flex-direction:row; gap:28px; padding:16px 28px; min-height:0; background:var(--ds-color-surface); border-bottom:1px solid var(--ds-color-divider); }
 .layout :global(.admin-brand) { width:180px; flex:none; }
 .layout :global(.admin-brand-context) { font-size:13px; font-weight:650; color:var(--ds-color-label); }
@@ -23,7 +25,7 @@
 .navTools :global(.admin-nav-group) a { padding-block:10px; padding-left:26px; font-size:13px; }
 .navFoot { margin-top:auto; padding:24px 14px 0; color:var(--ds-color-label); font-size:12px; line-height:1.8; }
 .navFoot span { color:var(--ds-color-muted); font-size:11px; }
-.layout :global(.admin-content) { box-sizing:border-box; width:100%; max-width:1500px; padding:36px 40px 64px; min-width:0; }
+.layout :global(.admin-content) { box-sizing:border-box; width:100%; max-width:1500px; padding:20px 24px 40px; min-width:0; }
 .layout :global(.admin-content) h1 { font-size:30px; line-height:1.4; font-weight:750; letter-spacing:-.055em; }
 .layout :global(.admin-content) h2 { letter-spacing:-.035em; }
 .layout :global(.admin-content) p { line-height:1.75; }
