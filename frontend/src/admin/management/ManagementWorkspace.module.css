@@ -109,7 +109,7 @@
 .editor :global(.admin-table) { font-size: 13px; }
 .editor :global(.admin-table) :is(th, td) { padding: 12px; }
 .editor :global(.admin-save-bar) { position: sticky; bottom: 0; z-index: 4; justify-content: flex-end; gap: 8px; margin: 0 -24px; padding: 14px 24px; border: 0; border-top: 1px solid var(--ds-color-divider); border-radius: 0; box-shadow: 0 -6px 16px rgb(30 40 35 / 4%); background: var(--ds-color-surface); }
-.editor :global(.registration-submit) { position: sticky; bottom: 12px; z-index: 4; width: 100%; background: var(--ds-color-action); border-color: var(--ds-color-action); border-radius: var(--ds-radius-control); min-height: 44px; }
+.editor :global(.registration-submit) { position: sticky; bottom: 12px; z-index: 4; width: 100%; background: var(--ds-color-action); border-color: var(--ds-color-action); border-radius: var(--ds-radius-control); min-height: var(--admin-control-height, 36px); }
 .editor :global(.admin-warning) { margin: 0 0 20px; padding: 12px 14px; font-size: 12px; border-color: #ebdba9; background: #fffbef; }
 .editor :global(.admin-mode-switch) { padding: 4px; border-radius: 10px; background: var(--ds-color-surface-subtle); }
 .editor :global(.admin-mode-switch) button { flex: 1; border: 0; background: transparent; }

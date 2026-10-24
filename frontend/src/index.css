@@ -2309,7 +2309,7 @@ button {
 .admin-navigation { display: flex; gap: 8px; padding: 14px max(24px, calc((100vw - 1200px) / 2)); border-bottom: 1px solid #d9e3e1; background: #fff; overflow-x: auto; }
 .admin-navigation a { color: #516761; text-decoration: none; padding: 10px 18px; border-radius: 8px; white-space: nowrap; font-weight: 600; }
 .admin-navigation a[aria-current="page"] { color: #fff; background: #17685b; }
-.admin-navigation a:focus-visible { outline: 3px solid #8abfb3; outline-offset: 2px; }
+.admin-navigation a:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: -2px; }
 .admin-mode-switch { display: flex; gap: 8px; }
 .admin-mode-switch button[aria-pressed="true"] { background: #17685b; color: #fff; border-color: #17685b; }
 .pipeline-work-caption { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
