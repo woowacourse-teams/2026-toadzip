@@ -304,3 +304,24 @@ it('마이홈 원천의 단지 미발견에는 LH 공급 원본 연결을 제공
   expect(dialog.getByRole('button',{name:'단지·주택형 매칭'})).toBeVisible()
   expect(dialog.queryByRole('button',{name:'LH 공급 원본 연결'})).not.toBeInTheDocument()
 })
+
+it('세대수 보강 오류는 목록에서 공급유형과 지역을 함께 보여 준다', async () => {
+  fetchFailures.mockResolvedValue(page([{...row, category:'household', source:'LH_LEASE_CATALOG',
+    target:'대전관저5 천년나무 1단지', raw:{supplyTypeName:'영구임대', areaName:'대전광역시 서구'}}]))
+  render(<IngestFailurePanel initialCategory="household" executionId={null} />, {wrapper:MemoryRouter})
+
+  expect(await screen.findByText(/영구임대 · 대전광역시 서구/)).toBeVisible()
+})
+
+it('중복 대상 단지 오류는 결정 안내를 보여 주고 관계없는 단지 검색 조치를 숨긴다', async () => {
+  fetchFailures.mockResolvedValue(page([{...row, category:'household', source:'LH_LEASE_CATALOG', target:'남해평리',
+    reason:'DUPLICATE_TARGET_COMPLEX', detail:'같은 정제 단지에 세대수가 서로 다른 LH 원천 묶음 2개가 연결됩니다.',
+    raw:{complexName:'남해평리', supplyTypeName:'국민임대', areaName:'경상남도 남해군'}}]))
+  render(<IngestFailurePanel initialCategory="household" executionId={null} />, {wrapper:MemoryRouter})
+  fireEvent.click(await screen.findByRole('button',{name:'확인·처리: 남해평리'}))
+  const dialog=within(screen.getByRole('dialog'))
+
+  expect(dialog.getByText(/세대수가 다르면 쓸 묶음을 고르거나 세대수 보강을 하지 않기로 정하세요/)).toBeVisible()
+  expect(dialog.queryByText('단지 등록·주소·공급 유형과 원천 연결을 확인한 뒤 정제하세요.')).not.toBeInTheDocument()
+  expect(dialog.queryByRole('link',{name:'단지명으로 후보 검색'})).not.toBeInTheDocument()
+})
