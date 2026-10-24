@@ -127,7 +127,13 @@ export async function releaseSupplyMatch(identifier: string, row: SupplyMatch, r
     { rowIdentifier: row.rowIdentifier, token: row.token, reason }))
 }
 
-export type LhSupplyLinkView = { token: string; myhomeRows: LhLinkMyHomeRow[]; lhRows: LhLinkSupplyRow[] }
+export type LhSupplyLinkView = { token: string; announcement?: LhLinkAnnouncement; myhomeRows: LhLinkMyHomeRow[]
+  lhRows: LhLinkSupplyRow[]; failures?: LhSupplyMatchFailure[] }
+export type LhLinkAnnouncement = { identifier: string; name: string | null; sourceUrl: string | null; panId: string | null }
+/** 현재 원천과 등록 공급행으로 LH 보강 매칭을 다시 해 본 결과다. */
+export type LhSupplyMatchFailure = { lhRowIdentifier: string; reason: string; detail: string; candidates: LhMatchCandidate[] }
+export type LhMatchCandidate = { supplyRowId: number; myhomeRowIdentifier: string | null; sourceComplexName: string
+  sourceHousingTypeName: string; complexName: string | null; housingTypeName: string | null; lhRowIdentifier: string | null }
 export type LhLinkMyHomeRow = { rowIdentifier: string; complexName: string | null; housingTypeName: string | null
   supplyHouseholdCount: number | null; splitCorrected: boolean }
 export type LhLinkSupplyRow = { rowIdentifier: string; complexLabel: string | null; typeName: string | null
@@ -173,7 +179,35 @@ function parseLhSupplyLinks(value: unknown): LhSupplyLinkView {
       exclusiveArea: row.exclusiveArea, supplyArea: row.supplyArea, suppliedUnitCount: row.suppliedUnitCount,
       linkedRowIdentifier: row.linkedRowIdentifier, savedLink: parseSavedLhLink(row.savedLink, invalid) }
   })
-  return { token: value.token, myhomeRows, lhRows }
+  return { token: value.token, myhomeRows, lhRows,
+    ...(value.announcement !== undefined ? { announcement: parseLhAnnouncement(value.announcement, invalid) } : {}),
+    ...(value.failures !== undefined ? { failures: parseLhFailures(value.failures, invalid) } : {}) }
+}
+
+function parseLhAnnouncement(value: unknown, invalid: () => Error): LhLinkAnnouncement {
+  if (!isRecord(value) || typeof value.identifier !== 'string' || !nullableText(value.name)
+    || !nullableText(value.sourceUrl) || !nullableText(value.panId)) throw invalid()
+  const sourceUrl = value.sourceUrl !== null && /^https?:\/\//i.test(value.sourceUrl) ? value.sourceUrl : null
+  return { identifier: value.identifier, name: value.name, sourceUrl, panId: value.panId }
+}
+
+function parseLhFailures(value: unknown, invalid: () => Error): LhSupplyMatchFailure[] {
+  if (!Array.isArray(value)) throw invalid()
+  return value.map(failure => {
+    if (!isRecord(failure) || typeof failure.lhRowIdentifier !== 'string' || typeof failure.reason !== 'string'
+      || typeof failure.detail !== 'string' || !Array.isArray(failure.candidates)) throw invalid()
+    const candidates = failure.candidates.map(candidate => {
+      if (!isRecord(candidate) || !id(candidate.supplyRowId) || !nullableText(candidate.myhomeRowIdentifier)
+        || typeof candidate.sourceComplexName !== 'string' || typeof candidate.sourceHousingTypeName !== 'string'
+        || !nullableText(candidate.complexName) || !nullableText(candidate.housingTypeName)
+        || !nullableText(candidate.lhRowIdentifier)) throw invalid()
+      return { supplyRowId: candidate.supplyRowId, myhomeRowIdentifier: candidate.myhomeRowIdentifier,
+        sourceComplexName: candidate.sourceComplexName, sourceHousingTypeName: candidate.sourceHousingTypeName,
+        complexName: candidate.complexName, housingTypeName: candidate.housingTypeName,
+        lhRowIdentifier: candidate.lhRowIdentifier }
+    })
+    return { lhRowIdentifier: failure.lhRowIdentifier, reason: failure.reason, detail: failure.detail, candidates }
+  })
 }
 
 function parseSavedLhLink(value: unknown, invalid: () => Error): SavedLhSupplyLink | null {

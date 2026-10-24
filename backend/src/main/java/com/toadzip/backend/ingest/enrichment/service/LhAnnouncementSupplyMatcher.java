@@ -61,6 +61,27 @@ class LhAnnouncementSupplyMatcher {
         );
     }
 
+    /** 실패한 LH 행을 관리자가 비교할 수 있도록 실패 사유가 가리키는 공급행 후보를 고른다. */
+    List<SupplyRow> candidates(List<SupplyRow> rows, LhSupplyData source,
+            LhAnnouncementEnrichmentFailureReason reason) {
+        return switch (reason) {
+            // 단지명이 안 맞으면 같은 주택형 공급행을, 주택형이 안 맞으면 같은 단지 공급행을 보여 준다.
+            case COMPLEX_NOT_FOUND -> rows.stream().filter(row -> matchesHousingType(row, source)).toList();
+            case HOUSING_TYPE_NOT_FOUND, AMBIGUOUS_COMPLEX, LH_SUPPLY_LINK_REVIEW_REQUIRED ->
+                    complexCandidates(rows, source.withLinkedRow(reviewTarget(source)));
+            case AMBIGUOUS_HOUSING_TYPE -> complexCandidates(rows, source).stream()
+                    .filter(row -> matchesHousingType(row, source)).toList();
+            default -> List.of();
+        };
+    }
+
+    private LhAnnouncementEnrichmentMapper.LinkedMyHomeRow reviewTarget(LhSupplyData source) {
+        if (source.linkedRow() == null) {
+            return null;
+        }
+        return new LhAnnouncementEnrichmentMapper.LinkedMyHomeRow(source.linkedRow().sourceRowIdentifier(), false);
+    }
+
     /** 관리자가 저장한 연결은 단지명 대신 그 마이홈 원천행으로 만든 공급행만 후보로 둔다. */
     private List<SupplyRow> complexCandidates(List<SupplyRow> rows, LhSupplyData source) {
         if (source.linkedRow() != null) {
