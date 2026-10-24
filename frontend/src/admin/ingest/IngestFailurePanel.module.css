@@ -1,8 +1,6 @@
 .page, .panel { min-width: 0; }
 :global(.admin-content):has(.page) { max-width: none; }
 .tabs { display: flex; gap: var(--ds-space-2); border-bottom: 1px solid var(--ds-color-divider); margin-bottom: var(--ds-space-4); }
-.page .tabs button { border: 0; border-radius: 0; background: transparent; color: var(--ds-color-label); padding: var(--ds-space-3) var(--ds-space-4); }
-.page .tabs button[aria-selected="true"] { color: var(--ds-color-action); box-shadow: inset 0 -2px var(--ds-color-action); }
 .workflow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-4); }
 .workflow a { text-underline-offset: 3px; }
 .hint { font-size: var(--ds-text-caption); color: var(--ds-color-label); line-height: var(--ds-line-height-body); margin: var(--ds-space-3) 0; }
@@ -78,3 +76,13 @@
 .recovery h4 { margin: 0; font-size: var(--ds-text-body); }
 .recoveryDone { margin: var(--ds-space-3) 0 0; padding: var(--ds-space-3); border-radius: var(--ds-radius-control); background: var(--ds-color-action-soft); font-weight: 600; }
 .recoveryLeft { margin: var(--ds-space-3) 0 0; padding: var(--ds-space-3); border-radius: var(--ds-radius-control); background: var(--ds-color-status-upcoming-surface); color: var(--ds-color-status-upcoming); font-weight: 600; }
+
+/* 내용이 불러와져 높이가 바뀌어도 창이 위아래로 움직이지 않게 위쪽에 고정한다. */
+.dialog[open] { margin: 24px auto auto; }
+.dialogBody { display: grid; gap: 12px; }
+.dialogSummary h3 { margin: 0; font-size: var(--admin-text-heading, 17px); }
+.dialogSummary p { margin: 4px 0 0; }
+.dialogResult { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding-top: 12px; border-top: 1px solid var(--ds-color-divider); }
+.dialogResult p { margin: 0; }
+.dialogResult small { display: inline; margin: 0; }
+.dialog .dialogResult h4 { margin: 0; font-size: var(--admin-text-body, 15px); font-weight: 500; line-height: 1.4; }
