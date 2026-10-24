@@ -197,8 +197,8 @@ API 기준 경로는 `/api/admin/ingest/announcement-supply-matches/{identifier}
   기존 공급행은 그룹 없이 유지한다. 그룹에 속한 행에 개별 모집수를 중복 저장하는 것은 DB 제약으로 거절한다.
   구버전 서버에는 이 보정의 재정제 보호가 없으므로 보정 생성 이후 구버전 정제 작업을 실행하지 않는다.
 
-- `V20261024_01__lh_supply_row_links.sql`은 관리자가 저장한 LH 공급 연결 테이블을 만든다.
-  `V20261024_02__lh_supply_link_review_reason.sql`은 LH 보강 오류 사유 제약에
+- `V20261024_03__lh_supply_row_links.sql`은 관리자가 저장한 LH 공급 연결 테이블을 만든다.
+  `V20261024_04__lh_supply_link_review_reason.sql`은 LH 보강 오류 사유 제약에
   `LH_SUPPLY_LINK_REVIEW_REQUIRED`를 추가한다. 새 사유가 기록된 뒤에는 구버전 서버로 즉시 되돌리지 않는다.
   구버전 서버는 저장 연결을 읽지 않으므로 연결 저장 이후 구버전 정제를 실행하면 해당 LH 행이 다시 단지 미발견으로 남는다.
 

@@ -54,7 +54,7 @@ class LhAnnouncementLinkFailureMigrationTest {
                 ScriptUtils.executeSqlScript(connection, manualMatchReasons);
                 ScriptUtils.executeSqlScript(connection, manualMatchReasons);
                 var supplyLinkReasons = new ClassPathResource(
-                        "db/migration/V20261024_02__lh_supply_link_review_reason.sql");
+                        "db/migration/V20261024_04__lh_supply_link_review_reason.sql");
                 ScriptUtils.executeSqlScript(connection, supplyLinkReasons);
                 ScriptUtils.executeSqlScript(connection, supplyLinkReasons);
                 assertLegacyFailure(statement, "myhome_announcement_mapping_failures");
