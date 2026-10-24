@@ -9,16 +9,17 @@ type Feedback = { at: string; kind: 'notice' | 'error'; text: string }
 const FORM = 'form'
 
 /** 단지명 표기가 달라 자동으로 붙지 않는 LH 공급 원본 행을 마이홈 원천행에 근거와 함께 연결한다. */
-export function LhSupplyLinkEditor({ identifier, disabled = false, onBusy }: {
+export function LhSupplyLinkEditor({ identifier, disabled = false, onBusy, initial }: {
   identifier: string; disabled?: boolean; onBusy?: (busy: boolean) => void
+  initial?: { lhRowIdentifier: string; myhomeRowIdentifier: string } | null
 }) {
   const [view, setView] = useState<LhSupplyLinkView | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [revision, setRevision] = useState(0)
-  const [myhomeRow, setMyhomeRow] = useState('')
-  const [selected, setSelected] = useState<string[]>([])
+  const [myhomeRow, setMyhomeRow] = useState(initial?.myhomeRowIdentifier ?? '')
+  const [selected, setSelected] = useState<string[]>(initial ? [initial.lhRowIdentifier] : [])
   const [sourceUrl, setSourceUrl] = useState('')
   const [reason, setReason] = useState('')
   const [releasing, setReleasing] = useState<string | null>(null)
@@ -30,13 +31,23 @@ export function LhSupplyLinkEditor({ identifier, disabled = false, onBusy }: {
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   useEffect(() => {
     const controller = new AbortController()
-    setLoading(true); setLoadError(''); setView(null); setSelected([]); setReleasing(null)
+    setLoading(true); setLoadError(''); setView(null); setReleasing(null)
     void getLhSupplyLinks(identifier, controller.signal).then(result => {
-      if (!controller.signal.aborted) setView(result)
+      if (!controller.signal.aborted) {
+        setView(result)
+        // 이전 조회의 선택 중 이번 조회에 없는 LH 행은 지운다.
+        setSelected(previous => previous.filter(value => result.lhRows.some(row => row.rowIdentifier === value)))
+      }
     }).catch(cause => { if (!controller.signal.aborted) setLoadError(message(cause)) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [identifier, revision])
+
+  // 실패 카드에서 연결을 시작하면 미리 채운 폼으로 바로 이동한다.
+  const prefilled = Boolean(initial)
+  useEffect(() => {
+    if (view && prefilled) form.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+  }, [view, prefilled])
 
   async function run(at: string, action: (current: LhSupplyLinkView) => Promise<LhSupplyLinkView>, done: string) {
     if (pending.current || disabled || !view) return

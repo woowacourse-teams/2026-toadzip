@@ -10,8 +10,22 @@ public final class LhSupplyLinking {
     private LhSupplyLinking() {
     }
 
-    /** token은 조회 시점의 원천과 저장 연결을 나타낸다. 저장·해제 요청은 이 값으로 동시 변경을 막는다. */
-    public record View(String token, List<MyHomeRow> myhomeRows, List<LhRow> lhRows) {
+    /**
+     * token은 조회 시점의 원천과 저장 연결을 나타낸다. 저장·해제 요청은 이 값으로 동시 변경을 막는다.
+     * failures는 현재 원천과 등록 공급행으로 LH 보강 매칭을 다시 해 본 결과이며 저장된 오류 기록과 시점이 다를 수 있다.
+     */
+    public record View(String token, Announcement announcement, List<MyHomeRow> myhomeRows, List<LhRow> lhRows,
+            List<MatchFailure> failures) {
+    }
+
+    public record Announcement(String identifier, String name, String sourceUrl, String panId) {
+    }
+
+    public record MatchFailure(String lhRowIdentifier, String reason, String detail, List<Candidate> candidates) {
+    }
+
+    public record Candidate(long supplyRowId, String myhomeRowIdentifier, String sourceComplexName,
+            String sourceHousingTypeName, String complexName, String housingTypeName, String lhRowIdentifier) {
     }
 
     public record MyHomeRow(String rowIdentifier, String complexName, String housingTypeName,

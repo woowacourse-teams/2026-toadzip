@@ -98,4 +98,11 @@ describe('LH 공급 원본 연결', () => {
     const notice = await screen.findByText(/LH 공급 연결을 해제했습니다/)
     expect(notice.closest('fieldset')).toHaveTextContent('전주평화4 영구임대주택')
   })
+
+  it('실패 카드에서 시작하면 LH 행과 마이홈 원천행을 미리 선택한다', async () => {
+    render(<LhSupplyLinkEditor identifier="19585" initial={{ lhRowIdentifier: 'LH:pan:SUPPLY:0', myhomeRowIdentifier: 'myhome-4' }} />)
+
+    expect(await screen.findByRole('checkbox', { name: /전주평화4 영구임대주택/ })).toBeChecked()
+    expect(screen.getByLabelText('마이홈 원천행')).toHaveValue('myhome-4')
+  })
 })
