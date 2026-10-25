@@ -43,13 +43,15 @@
 
 ### PDF 자동 추출
 
-- `POST /api/admin/announcements/{id}/pdf-extractions`는 multipart `file`(공고문 PDF)을 받아 PDF 보정 화면이 읽는 추출 JSON을 돌려준다. 저장하지 않으며 DB 트랜잭션을 열지 않는다.
+- `POST /api/admin/announcements/{id}/pdf-extractions`는 multipart `file`(공고문 PDF)을 받아 PDF 보정 화면이 읽는 추출 JSON을 돌려준다. 모델 호출 중에는 DB 트랜잭션을 열지 않는다.
   응답 `data`는 `json`(추출 JSON 문자열), `pages`(모델에 보낸 원본 쪽, 1부터), `totalPages`, `warnings`, `usage`(`promptTokens`·`outputTokens`·`thinkingTokens`, 모르면 `null`)다.
 - 서버는 PDF 쪽 텍스트에서 공급표·임대조건표(값이 함께 있는 쪽)와 그 다음 쪽, 일정·문의처·대상 설명 쪽, 첫 쪽을 고르고 `[별지` 양식은 뺀다. 공급표나 임대조건표를 찾지 못하면 전체 쪽을 보내고 경고한다.
 - 고른 쪽만 남긴 PDF와 [추출 프롬프트](../../../backend/src/main/resources/announcement/pdf-extraction-prompt.txt)를 모델에 보내고, 지원하는 모델이면 [응답 스키마](../../../backend/src/main/resources/announcement/pdf-extraction-schema.json)를 강제한다. 스키마는 Gemini SDK가 읽는 OpenAPI 형식이라 null 허용을 `"type"` 배열이 아니라 `"nullable": true`로 쓴다. 모델이 쓴 첨부 PDF 기준 쪽 번호는 원본 쪽 번호로 바꾼다.
 - 값은 고치지 않고 날짜 형식, 면적만 있는 주택형명, 공용·공급면적 중복, 공고일보다 이른 입주예정월, 대상 표기, 공고 제목과 같은 단지명을 `warnings`로 알린다.
 - 모델은 `AI_CHAT_MODEL`로 고른다. 기본값 `none`은 기능을 끄고 503 `ANNOUNCEMENT_PDF_EXTRACTION_UNAVAILABLE`을 돌려준다. `google-genai`는 `GEMINI_API_KEY`(Gemini Developer API)와 `GEMINI_CHAT_MODEL`(기본 `gemini-3.6-flash`)을 쓰며 생각 수준은 `LOW`다.
 - 읽을 수 없는 PDF는 400 `ANNOUNCEMENT_PDF_INVALID`, 모델 호출 실패·빈 응답·JSON이 아닌 응답은 502 `ANNOUNCEMENT_PDF_EXTRACTION_FAILED`다. 일시 오류만 한 번 다시 시도한다. 추출 소요 시간·쪽 수·토큰 수는 `event=announcement.pdf_extraction.completed` 로그로 남는다.
+- 추출에 성공하면 응답 전체를 `announcement_pdf_extractions`에 공고 ID, PDF 내용의 SHA-256, 파일 이름과 함께 남긴다. PDF 원본은 남기지 않고, 공고 데이터에도 반영하지 않는다. 저장에 실패해도 추출 응답은 그대로 돌려주고 `event=announcement.pdf_extraction.save_failed` 경고 로그를 남긴다. 공고를 지우면 함께 지운다.
+- `GET /api/admin/announcements/{id}/pdf-extractions/latest`는 가장 최근에 저장한 결과를 모델 호출 없이 돌려준다. `data`는 `fileName`, `pdfSha256`(소문자 16진수), `createdAt`, `extraction`(추출 응답과 같은 형식)이며 저장한 결과가 없으면 `null`이다.
 - 자동 테스트는 실제 모델을 부르지 않는다. 실제 호출은 키를 설정한 로컬 서버에서 확인한다.
 
 ## 데이터 규칙
@@ -75,7 +77,7 @@
   SHA-256, 관리자 메모와 `citations`(항목·쪽수·인용)를 받는다. 기존 요청은 근거 없이도 처리한다.
 - 근거는 변경 후 값의 `documentEvidence`로 기존 수정 이력에 같은 트랜잭션으로 저장한다.
   서버는 원문 내용의 진위를 자동 보증하지 않는다. 선택적 문서 근거 계약과 과거 이력은 호환성을 위해 유지한다.
-  화면은 연결된 공고문 보기, 수동·JSON 입력과 [PDF 자동 추출](#pdf-자동-추출)을 제공한다. PDF와 추출 결과는 서버에 보관하지 않는다.
+  화면은 연결된 공고문 보기, 수동·JSON 입력과 [PDF 자동 추출](#pdf-자동-추출)을 제공한다. PDF 원본은 서버에 보관하지 않고, 추출 결과만 다시 불러올 수 있게 남긴다.
 - 공고 상세의 `supplyTargets`는 공급행·대상별 임대조건을 반환한다. 금액은 정밀도를 보존하는 원 단위 정수 문자열이다.
 - `PUT /api/admin/announcements/{id}/supply-targets/{targetId}`는 현재 공고 버전과 공급대상·순위·세대수·예비자수·
   보증금·월임대료·전환보증금·신청조건·선택적 문서 근거를 받아 기존 공급대상 하나를 수정한다.

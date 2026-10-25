@@ -10,7 +10,7 @@ import { getManagementDetail, ManagementError } from '../management/api'
 import { labels } from '../management/fields'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import { readExtraction, type Evidence } from './extraction'
-import { extractAnnouncementPdf, pdfFileProblem, preferredPdf, type ExtractionState } from './extractionApi'
+import { extractAnnouncementPdf, loadLatestExtraction, pdfFileProblem, pdfSha256, preferredPdf, type ExtractionState, type SavedExtraction } from './extractionApi'
 import { checkAnnouncement, type ComplexLabels, type HousingCandidates } from './matching'
 import { applicableCells, assembleReview, cellMatches, changeValue, createReview, housingNameCandidates, pendingChanges, pendingItems, pendingSchedule, rebaseReview, remapSchedule, ReviewError, reviewSection, shown, type HousingNameCandidate, type PendingChange, type Review, type ReviewFilter, type ReviewSection, type ScheduleReview } from './review'
 import { ReviewCells } from './ReviewCells'
@@ -70,6 +70,8 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   const pdf = localPdf ?? attachmentPdf
   const [extraction, setExtraction] = useState<ExtractionState>({ status: 'idle' })
   const extractionRun = useRef<AbortController | null>(null)
+  // 같은 PDF를 다시 추출하는 비용을 아끼려고 서버에 남긴 최근 결과를 불러올 수 있게 한다.
+  const [saved, setSaved] = useState<SavedExtraction | null>(null), [pdfHash, setPdfHash] = useState('')
   const [focus, setFocus] = useState<PdfFocus | null>(null), [mobileView, setMobileView] = useState<'pdf' | 'review'>('review')
   const [reason, setReason] = useState(''), [sourceUrl, setSourceUrl] = useState(''), [sourcePage, setSourcePage] = useState('')
   const [renames, setRenames] = useState<HousingNameCandidate[]>([])
@@ -116,6 +118,22 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   // 추출은 관리자가 버튼을 누를 때만 한다(호출마다 비용이 든다). PDF를 바꾸면 이전 결과와 진행 중인 요청을 버린다.
   useEffect(() => { extractionRun.current?.abort(); setExtraction({ status: 'idle' }); setText('') }, [pdf])
   useEffect(() => () => extractionRun.current?.abort(), [])
+  useEffect(() => {
+    const controller = new AbortController(); setSaved(null)
+    if (!/^[1-9]\d*$/.test(id)) return
+    void loadLatestExtraction(id, controller.signal).then(value => { if (!controller.signal.aborted) setSaved(value) }).catch(() => {})
+    return () => controller.abort()
+  }, [id])
+  useEffect(() => {
+    let current = true; setPdfHash('')
+    if (pdf) void pdfSha256(pdf.file).then(hash => { if (current) setPdfHash(hash) }).catch(() => {})
+    return () => { current = false }
+  }, [pdf])
+  function loadSaved() {
+    if (!saved) return
+    extractionRun.current?.abort()
+    setText(saved.extraction.json); setExtraction({ status: 'done', result: saved.extraction, saved })
+  }
   function extract() {
     if (!pdf) return
     extractionRun.current?.abort()
@@ -124,6 +142,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     void extractAnnouncementPdf(id, pdf.file, pdf.name, controller.signal).then(result => {
       if (controller.signal.aborted) return
       setText(result.json); setExtraction({ status: 'done', result })
+      if (pdfHash) setSaved({ fileName: pdf.name, pdfSha256: pdfHash, createdAt: new Date().toISOString(), extraction: result })
     }).catch(cause => { if (!controller.signal.aborted) setExtraction({ status: 'failed', message: cause instanceof Error ? cause.message : 'PDF에서 값을 추출하지 못했습니다.' }) })
   }
   useEffect(() => {
@@ -219,7 +238,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     {error && <div role="alert" className={styles.error}><p>{error}</p>{blocked && <Button data-design-system onClick={() => void reload()} disabled={busy}>입력을 유지하고 최신값 비교</Button>}</div>}
     {notice && <p role="status" className={styles.notice}>{notice}</p>}
     {phase === 'prepare' && <><div className={styles.mobileSwitch}><Button data-design-system aria-pressed={mobileView === 'pdf'} onClick={() => setMobileView('pdf')}>PDF 보기</Button><Button data-design-system aria-pressed={mobileView === 'review'} onClick={() => setMobileView('review')}>추출 보기</Button></div><div className={styles.workbench}>{pdfPane}
-      <div className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="prepare"><RequestPreparation announcementName={workspace.detail.summary.name} pdf={pdf} extraction={extraction} onExtract={extract} parsed={parsed} checks={checks} /></div>
+      <div className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="prepare"><RequestPreparation announcementName={workspace.detail.summary.name} pdf={pdf} extraction={extraction} onExtract={extract} parsed={parsed} checks={checks} saved={saved} samePdf={Boolean(saved && pdfHash && saved.pdfSha256 === pdfHash)} onLoadSaved={loadSaved} /></div>
     </div><PreparationFooter ready={extraction.status === 'done' && parsed.ok && Boolean(pdf)} onReview={start} /></>}
     {active && review && <><div className={styles.mobileSwitch}><Button data-design-system aria-pressed={mobileView === 'pdf'} onClick={() => setMobileView('pdf')}>PDF 보기</Button><Button data-design-system aria-pressed={mobileView === 'review'} onClick={() => setMobileView('review')}>검토표 보기</Button></div><div className={styles.workbench}>{pdfPane}
       <div ref={reviewPane} className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="review">

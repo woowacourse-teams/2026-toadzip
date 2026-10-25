@@ -14,7 +14,7 @@ const lookup = vi.hoisted(() => ({ lookupAddresses: vi.fn(async () => []) }))
 vi.mock('./addressLookupApi', () => lookup)
 const pdfTypes = vi.hoisted(() => ({ createPdfHousingTypes: vi.fn(async () => {}) }))
 vi.mock('./pdfHousingTypes', () => pdfTypes)
-const extractor = vi.hoisted(() => ({ extractAnnouncementPdf: vi.fn() }))
+const extractor = vi.hoisted(() => ({ extractAnnouncementPdf: vi.fn(), loadLatestExtraction: vi.fn() }))
 vi.mock('./extractionApi', async original => ({ ...await original<typeof import('./extractionApi')>(), ...extractor }))
 const matchingTypes = vi.hoisted(() => ({ getMatchingHousingTypes: vi.fn() }))
 vi.mock('../ingest/supplyMatchingApi', () => matchingTypes)
@@ -33,7 +33,14 @@ beforeEach(() => {
   api.applyJsonUpdate.mockResolvedValue(workspace)
   api.previewJsonUpdate.mockResolvedValue({ confirmationToken: 'confirmed' })
   extracts(JSON.stringify(fixtures.hansville.extraction))
+  extractor.loadLatestExtraction.mockResolvedValue(null)
 })
+/** 빈 Blob(첨부 PDF 목)의 SHA-256 */
+const EMPTY_PDF_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+function savedResult(pdfSha256: string) {
+  return { fileName: '지난 공고문.pdf', pdfSha256, createdAt: '2026-10-25T03:00:00Z',
+    extraction: { json: JSON.stringify(fixtures.hansville.extraction), pages: [1, 2], totalPages: 3, warnings: [], usage: { promptTokens: 100, outputTokens: 50, thinkingTokens: null } } }
+}
 /** 서버 추출 API가 돌려줄 JSON을 정한다. 실제 모델은 부르지 않는다. */
 function extracts(json: string) {
   extractor.extractAnnouncementPdf.mockResolvedValue({ json, pages: [1, 2], totalPages: 3, warnings: [], usage: { promptTokens: 100, outputTokens: 50, thinkingTokens: null } })
@@ -188,6 +195,29 @@ it('준비 단계의 PDF 영역에 PDF를 끌어다 놓으면 그 PDF로 바꾼�
   fireEvent.click(screen.getByRole('button', { name: '추출 보기' }))
   await startExtraction()
   await waitFor(() => expect(extractor.extractAnnouncementPdf).toHaveBeenCalledWith('29', file, '끌어온 공고문.pdf', expect.any(AbortSignal)))
+})
+it('같은 PDF로 저장한 이전 결과가 있으면 모델을 부르지 않고 불러와 검토한다', async () => {
+  extractor.loadLatestExtraction.mockResolvedValue(savedResult(EMPTY_PDF_SHA256))
+  renderPage()
+  expect(await screen.findByText(/지금 PDF와 같은 파일입니다/)).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '이전 결과 불러오기' }))
+  expect(screen.getByText(/지난 공고문\.pdf에서 추출해 저장한 결과를 불러왔습니다/)).toBeVisible()
+  await review(false)
+  await screen.findByRole('heading', { name: '공급정보' })
+  expect(extractor.extractAnnouncementPdf).not.toHaveBeenCalled()
+})
+it('이전 결과가 다른 PDF에서 나왔으면 그렇다고 알린다', async () => {
+  extractor.loadLatestExtraction.mockResolvedValue(savedResult('0'.repeat(64)))
+  renderPage()
+  expect(await screen.findByText(/지금 고른 PDF와 다른 파일에서 추출했습니다/)).toBeVisible()
+  expect(screen.getByRole('button', { name: '이전 결과 불러오기' })).toBeEnabled()
+})
+it('이전 결과를 불러오지 못해도 추출은 할 수 있다', async () => {
+  extractor.loadLatestExtraction.mockRejectedValue(new ManagementError('요청을 처리하지 못했습니다.', 500))
+  renderPage()
+  await startExtraction()
+  expect(await screen.findByText(/공급행 2개 · 임대조건 2개 · 일정 3개/)).toBeVisible()
+  expect(screen.queryByRole('button', { name: '이전 결과 불러오기' })).not.toBeInTheDocument()
 })
 it('추출에 실패하면 이유를 알리고 다시 추출하면 검토를 이어 간다', async () => {
   extractor.extractAnnouncementPdf.mockRejectedValueOnce(new ManagementError('AI 모델 호출에 실패했습니다.', 502))

@@ -10,7 +10,7 @@ const json = JSON.stringify(fixtures.hansville.extraction)
 const done: ExtractionState = { status: 'done', result: { json, pages: [1, 2, 10], totalPages: 35, warnings: ['supplyRows[0].targets[0].target: 표기 규칙 위반(「가」군)'], usage: { promptTokens: 7291, outputTokens: 1766, thinkingTokens: null } } }
 function props(extraction: ExtractionState = done) {
   return { announcementName: '익산한스빌 예비입주자 모집', pdf: { url: 'blob:notice', name: '공고문.pdf' }, extraction, onExtract: vi.fn(),
-    parsed: readExtraction(extraction.status === 'done' ? json : ''), checks: [] }
+    parsed: readExtraction(extraction.status === 'done' ? json : ''), checks: [], saved: null, samePdf: false, onLoadSaved: vi.fn() }
 }
 function sourceProps() {
   return { attachments, attachmentId: '1', onAttachment: vi.fn(), localPdf: false, onLocalFile: vi.fn(), pdf: { url: 'blob:notice', name: '공고문.pdf' }, pdfError: '' }
