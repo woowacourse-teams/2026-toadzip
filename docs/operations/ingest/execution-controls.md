@@ -156,6 +156,13 @@ LH 보강 실패 오류 상세의 "1. 원인과 근거 확인"에는 실패한 �
 [LH 공고 연결의 관리자가 저장한 LH 공급 연결](../../features/ingest/lh-linking.md#관리자가-저장한-lh-공급-연결)을 따른다.
 
 - 저장·해제는 다음 정제와 LH 보강부터 반영한다. 이미 등록한 공급행은 바로 바꾸지 않으므로 저장 후 공고 정제를 다시 실행한다.
+- 저장·해제로 어떤 마이홈 원천행에 붙는 LH 행 구성이 바뀌면, 다음 정제가 그 원천행을 LH 주택형별로 다시 펼쳐 저장 매칭의 원천 지문이
+  반드시 어긋난다. 그래서 같은 트랜잭션에서 그 원천행과 펼친 행(`{공고}:LH:{LH 공고}:{순번}`)의 저장 매칭을 해제하고
+  `RELEASE_SUPPLY_MATCH` 이력을 연결 자원으로 남긴다. 응답의 `releasedSupplyMatches`가 해제한 행 식별자다. 구성이 같으면 유지한다.
+  해제한 행의 주택형은 다시 정제한 뒤 PDF 보정에서 확인한다.
+- LH 공급 원본이 있는 공고는 LH 연결 펼침이 행 분할을 맡는다. PDF 보정은 LH 행이 모두 공급행에 붙을 때까지 새 공급행을 추가하지 않고
+  펼쳐진 행을 고친다. 이전에 PDF 보정으로 직접 추가한 행과 LH 펼침 행이 같은 단지에 함께 있으면 화면에 `LH 원본과 중복 가능`으로 표시하며,
+  자동으로 지우지 않는다. 같은 주택형이면 관리자가 공급정보 보정에서 직접 추가한 행을 지운다.
 - 연결이 없어 정제가 롤백되어 공고가 아직 없더라도 저장할 수 있다.
 - 복수 공급행으로 보정한 마이홈 원천행은 연결 대상이 아니다.
 - 해제는 해당 LH 행에서 저장 근거와 별도의 해제 이유를 입력해야 한다. 해제한 LH 행은 다음 정제부터 단지명 자동 연결 규칙을 다시 사용한다.
@@ -164,7 +171,7 @@ API 기준 경로는 `/api/admin/ingest/announcement-supply-matches/{identifier}
 
 | 요청 | 계약 |
 |---|---|
-| `GET` | 조회 `token`, 공고(`announcement`: 공고명·원문 URL·LH 공고 번호), 현재 마이홈 원천행(`splitCorrected` 포함), LH 공급행별 현재 연결 원천행(`linkedRowIdentifier`)과 선택적 `savedLink`(근거, 작업자·시각, 재확인 여부), 현재 데이터 기준 보강 매칭 실패(`failures`: LH 행, 사유, 비교 후보 공급행) 반환 |
+| `GET` | 조회 `token`, 공고(`announcement`: 공고명·원문 URL·LH 공고 번호), 현재 마이홈 원천행(`splitCorrected` 포함), LH 공급행별 현재 연결 원천행(`linkedRowIdentifier`)과 선택적 `savedLink`(근거, 작업자·시각, 재확인 여부), 현재 데이터 기준 보강 매칭 실패(`failures`: LH 행, 사유, 비교 후보 공급행), 빈 `releasedSupplyMatches` 반환 |
 | `POST` | `token`, `myhomeRowIdentifier`, `lhRowIdentifiers`(1~200), `sourceUrl`, `reason`을 받아 LH 행마다 연결을 저장·갱신하고 최신 조회 결과 반환 |
 | `POST /release` | `token`, `lhRowIdentifier`, `reason`을 받아 저장 연결을 삭제하고 최신 조회 결과 반환 |
 

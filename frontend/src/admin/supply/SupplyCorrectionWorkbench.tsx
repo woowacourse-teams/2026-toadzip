@@ -9,6 +9,7 @@ import { changedReviewTargets } from './changedReviewTargets'
 import { SupplyRowDraft } from './SupplyRowDraft'
 import { rebaseCorrection, resolveConflict, type CorrectionConflict } from './rebaseCorrection'
 import { applySupply, blankRow, loadSupplyWorkspace, nextDisplayOrder, previewSupply, type CorrectionRow, type SupplyCorrectionInput, type NewSupplyGroup, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
+import { possibleLhDuplicates, unattachedLhNotice, unattachedLhRows } from './lhSupplyOwnership'
 import styles from './SupplyCorrection.module.css'
 
 // 다시 조회하면 풀리는 충돌만 '최신값 비교'로 안내한다. 일정 참조 같은 규칙 위반은 서버 문구를 그대로 보여 준다.
@@ -112,6 +113,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     edit(() => input.rows); setNewGroups(input.newGroups ?? []); setReason(input.reason); setUrl(input.sourceUrl); setPage(input.sourcePage ?? '')
     setExpanded(null); setPdfOpen(false); setNotice('PDF에서 확인한 값을 편집표에 채웠습니다. 필요한 항목을 수정하고 저장하세요.')
   } }} />
+  const lhLocked = unattachedLhRows(workspace).length > 0, duplicateKeys = new Set(possibleLhDuplicates(workspace).map(row => row.key))
   function addRow() {
     const row = blankRow(nextDisplayOrder(rows))
     edit(current => [...current, row]); setExpanded(row.key)
@@ -119,9 +121,10 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
   return <section className={styles.workspace} aria-label="공급정보 편집">
     <div className={styles.toolbar}><p>단지·주택형별 모집수와 임대조건을 확인하고 채우세요.</p><div className={styles.actions}>
       <button type="button" disabled={busy || uncertain || newGroups.length > 0} onClick={() => setPdfOpen(true)}>PDF로 채우기</button>
-      <button type="button" disabled={busy || uncertain} onClick={addRow}>직접 추가</button>
+      <button type="button" disabled={busy || uncertain || lhLocked} onClick={addRow}>직접 추가</button>
     </div></div>
     {notice && <p role="status">{notice}</p>}
+    {lhLocked && <p role="note">{unattachedLhNotice(workspace)}</p>}
     <form onSubmit={event => { event.preventDefault(); void inspect() }}>
       <fieldset disabled={busy || uncertain} className={styles.editor}><legend className={styles.srOnly}>공고별 공급정보 편집</legend>
         <div className={styles.tableScroll}><table aria-label="공급정보 표"><thead><tr><th scope="col">단지</th><th scope="col">주택형</th><th scope="col">모집수</th><th scope="col">임대조건</th><th scope="col">확인할 항목</th><th scope="col">편집</th></tr></thead><tbody>
@@ -131,7 +134,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
             const targets = row.targets.filter(target => !target.excluded)
             const deletable = workspace.deletableRowKeys?.includes(row.key) ?? false
             const toggleDelete = () => { setDeleted(current => current.includes(row.key) ? current.filter(key => key !== row.key) : [...current, row.key]); setPreview(null); setNotice('') }
-            const gaps = deleted.includes(row.key) ? ['삭제 예정'] : row.excluded ? ['제외 예정'] : [!row.housingComplexId && '단지 연결', !row.housingTypeId && !row.newHousingType && '주택형 연결', !targets.length && '임대조건 없음'].filter(Boolean)
+            const gaps = deleted.includes(row.key) ? ['삭제 예정'] : row.excluded ? ['제외 예정'] : [!row.housingComplexId && '단지 연결', !row.housingTypeId && !row.newHousingType && '주택형 연결', !targets.length && '임대조건 없음', duplicateKeys.has(row.key) && 'LH 원본과 중복 가능'].filter(Boolean)
             return <Fragment key={row.key}><tr data-excluded={row.excluded || deleted.includes(row.key) || undefined}>
               <th scope="row" title={row.housingComplexName && row.complexName && row.housingComplexName !== row.complexName ? `공고 표기: ${row.complexName}` : undefined}>{row.housingComplexName || row.complexName || '새 공급행'}</th><td>{row.typeName || '미입력'}</td>
               <td>{group || row.groupId ? `공통 ${group?.sharedHouseholdCount ?? row.sharedHouseholdCount ?? '미확인'}` : row.householdCount ?? '미확인'}</td>

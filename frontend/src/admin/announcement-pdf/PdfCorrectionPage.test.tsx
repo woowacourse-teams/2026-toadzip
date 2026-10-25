@@ -398,3 +398,14 @@ it('검산에서 맞지 않은 합계를 공급정보 위에 보여 준다', asy
   await open(JSON.stringify(extraction))
   expect(screen.getByRole('note', { name: '검산 결과' })).toHaveTextContent('공급면적 42㎡가 전용 + 공용 41.47㎡와 달라 계산값을 씁니다.')
 })
+
+it('LH 공급 원본 행이 공급행에 없으면 LH 행 연결로 안내하고 새 공급정보로 추가할 수 없다', async () => {
+  const lh = [{ rowIdentifier: 'LH:P:SUPPLY:1', complexLabel: '익산한스빌', typeName: '26B', exclusiveArea: '26.41' }]
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, unattachedLhSupplyRows: lh } })
+  await open()
+  expect(screen.getByText(/LH 공급 원본 1행\(익산한스빌 · 26B · 26.41㎡\)이 아직 공급행에 없습니다/)).toBeVisible()
+  expect(screen.getByRole('link', { name: 'LH 행 연결로 이동' })).toHaveAttribute('href', '/admin/failures/lh-links/current-source')
+  const options = screen.getAllByRole('option', { name: '새 공급정보로 추가 (LH 행 연결 후 가능)' })
+  expect(options.length).toBeGreaterThan(0)
+  for (const option of options) expect(option).toBeDisabled()
+})

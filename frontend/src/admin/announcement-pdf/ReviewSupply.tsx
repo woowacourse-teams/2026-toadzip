@@ -6,6 +6,7 @@ import { cellMatches, createRowReview, destinationLabel, editCell, sharedGroupSt
 import { ComplexDecisions } from './ComplexDecision'
 import { missingHousingType, pickHousingType, type ComplexLabels, type HousingCandidates } from './matching'
 import { ReviewCells } from './ReviewCells'
+import { possibleLhDuplicates, unattachedLhRows } from '../supply/lhSupplyOwnership'
 import styles from './PdfCorrection.module.css'
 
 // 표기 변경을 반영할 때만 공개 화면에 보일 이름을 미리 알려 준다.
@@ -15,6 +16,8 @@ function shownTypeName(row: RowReview) {
 }
 
 export function ReviewSupply({ review, workspace, housing, complexes, filter, empty, onChange, onEvidence }: { review: Review; workspace: JsonWorkspace; housing: HousingCandidates; complexes: ComplexLabels; filter: ReviewFilter; empty: string; onChange: (review: Review) => void; onEvidence: (evidence: Evidence) => void }) {
+  // LH 공급 원본 행이 아직 공급행에 없으면 행 분할은 LH 연결 펼침이 맡으므로 새 공급정보로 추가하지 않는다.
+  const lhLocked = unattachedLhRows(workspace.supply).length > 0, duplicates = possibleLhDuplicates(workspace.supply)
   function update(index: number, next: RowReview) { onChange({ ...review, rows: review.rows.map((row, at) => at === index ? next : row) }) }
   function mapping(index: number, destination: string, anchorKey: string) {
     const old = review.rows[index], anchor = workspace.supply.rows.find(row => row.key === anchorKey)
@@ -41,6 +44,7 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
     <div className={styles.sectionHeading}><div><h2>공급정보</h2><p>기존 값과 PDF에서 가져온 값을 비교하고, 반영할 항목을 고르세요.</p></div></div>
     {filter === 'all' && review.rows.filter(row => row.include).length > 1 && pdfOrderChanges(review, workspace) && <p className={styles.notice}>저장하면 공급행을 PDF 공급 표 순서({review.rows.flatMap((row, index) => row.include ? [review.extraction.supplyRows[index].typeName ?? `공급행 ${index + 1}`] : []).join(' → ')})로 표시합니다. PDF에 없는 기존 공급행은 그 뒤에 원래 순서대로 둡니다.</p>}
     {filter === 'all' && review.extraction.checks.length > 0 && <div className={`${styles.pending} ${styles.checks}`} role="note" aria-label="검산 결과"><p><strong>검산 확인</strong> 합계·면적이 맞지 않는 항목입니다. 공고문과 대조하세요.</p><ul>{review.extraction.checks.map(check => <li key={check}>{check}</li>)}</ul></div>}
+    {filter === 'all' && duplicates.length > 0 && <div className={styles.pending} role="note" aria-label="LH 원본과 중복 가능"><p><strong>LH 원본과 중복 가능</strong> LH 공급 원본으로 펼친 행이 있는 단지에 직접 추가한 행이 있습니다. 같은 주택형이면 공급정보 보정에서 직접 추가한 행을 지우세요.</p><ul>{duplicates.map(row => <li key={row.key}>{row.housingComplexName ?? row.complexName} · {row.typeName} (#{row.id})</li>)}</ul></div>}
     {filter === 'all' && <ComplexDecisions review={review} workspace={workspace} onChange={onChange} />}
     {filter === 'all' && review.extraction.sharedCounts.map((group, index) => <div className={styles.shared} key={index}><strong>공통 모집 {group.count}세대</strong><span>{sharedLabel(review, group.paths)}{group.paths.every(path => path.endsWith('.totalSupplyHouseholdCount')) && !sharedGroupStorable(review, index) ? ' 기존 공급행 없이 새로 만드는 행끼리는 공통 모집수를 저장할 수 없어 각 행을 비워 둡니다.' : ''}</span>{group.page && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence({ page: group.page!, quote: group.quote, path: group.paths[0] })}>PDF {group.page}쪽 보기</Button>}</div>)}
     {review.rows.map((row, index) => {
@@ -57,7 +61,7 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
         {pendingRow(row) && <div className={styles.pending}><p><strong>확인 필요</strong> {row.proposal.reason}</p><Button data-design-system className={styles.secondaryButton} disabled={!row.proposal.destination} onClick={() => update(index, { ...row, reviewed: true })}>{`공급행 ${index + 1} 대응 확인`}</Button></div>}
         {!row.include ? <p className={styles.hint}>이 행의 추출값을 제외합니다. 기존 공급정보는 유지합니다.</p> : <>
           <div className={styles.mapping}>
-            <label>공급행 {index + 1} 저장할 위치<select value={row.proposal.destination} onChange={event => mapping(index, event.target.value, event.target.value === 'new' ? row.proposal.anchorKey : event.target.value)}><option value="">수정할 기존 항목을 선택하세요</option>{workspace.supply.rows.filter(item => !item.excluded).map(item => <option key={item.key} value={item.key}>{destinationLabel(item)}</option>)}<option value="new">새 공급정보로 추가</option></select></label>
+            <label>공급행 {index + 1} 저장할 위치<select value={row.proposal.destination} onChange={event => mapping(index, event.target.value, event.target.value === 'new' ? row.proposal.anchorKey : event.target.value)}><option value="">수정할 기존 항목을 선택하세요</option>{workspace.supply.rows.filter(item => !item.excluded).map(item => <option key={item.key} value={item.key}>{destinationLabel(item)}</option>)}<option value="new" disabled={lhLocked}>{lhLocked ? '새 공급정보로 추가 (LH 행 연결 후 가능)' : '새 공급정보로 추가'}</option></select></label>
             {/* 단지에 연결되지 않은 기존 공급행도 위 '단지 정하기'에서 단지를 정한다. */}
             {current && current.housingComplexId === null && <NewSupplyComplex row={row} index={index} onChange={next => update(index, next)} />}
             {row.proposal.destination === 'new' && <div>

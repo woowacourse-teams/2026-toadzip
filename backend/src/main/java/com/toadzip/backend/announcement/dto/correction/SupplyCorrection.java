@@ -20,8 +20,10 @@ public final class SupplyCorrection {
     private SupplyCorrection() { }
 
     /** deletableRowKeys는 지울 수 있는 행(원천 없이 관리자가 추가했고 공통 모집 묶음에 없는 행)이다. 원천행은 제외만 할 수 있다. */
+    /** unattachedLhSupplyRows는 공고의 LH 공급 원본 행 중 어떤 공급행에도 LH 행 식별자로 붙지 않은 행이다. */
     public record Workspace(String snapshotToken, long version, List<Row> rows, List<Source> sources, List<String> sourceWarnings,
-            List<RowSource> rowSources, List<String> deletableRowKeys) { }
+            List<RowSource> rowSources, List<String> deletableRowKeys, List<LhSupplyRow> unattachedLhSupplyRows) { }
+    public record LhSupplyRow(String rowIdentifier, String complexLabel, String typeName, String exclusiveArea) { }
     /** 공급행이 기록한 원천행. 작업실의 sources에서 같은 분류·키의 원천을 찾아 행 옆에 보여준다. */
     public record RowSource(String rowKey, String category, String sourceKey) { }
     public record Preview(String confirmationToken, List<Row> before, List<Row> after, List<String> warnings,

@@ -27,6 +27,7 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.mapping.service.AnnouncementSupplyMatchingService;
+import com.toadzip.backend.ingest.mapping.service.LhSupplyLinkService;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -69,6 +70,7 @@ public class SupplyCorrectionService {
     private final AdminDataChangeRepository changes;
     private final QualityComparisonService comparisons;
     private final SupplyCorrectionGroups groupCorrections;
+    private final LhSupplyLinkService lhLinks;
     private final AnnouncementSupplyMatchingService supplyMatching;
     private final ObjectMapper json;
 
@@ -92,7 +94,7 @@ public class SupplyCorrectionService {
         var deletable = stored.stream().filter(SupplyCorrectionService::deletable).map(row -> "row:" + row.getId()).sorted().toList();
         var workspace = new SupplyCorrection.Workspace(hash(List.of(comparison.snapshotToken(), currentRows)),
                 announcement.getVersion(), currentRows, comparison.sources(), sourceStatus.missingWarnings(id), rowSources,
-                deletable);
+                deletable, unattachedLhSupplyRows(announcement, stored));
         var snapshot = new Snapshot(workspace, comparison, currentRows);
         if (log.isDebugEnabled()) {
             var parts = tokenParts(snapshot);
@@ -101,6 +103,18 @@ public class SupplyCorrectionService {
                     shortToken(workspace.snapshotToken()), parts.get(0), parts.get(1), parts.get(2), parts.get(3));
         }
         return snapshot;
+    }
+
+    /** LH 공급 원본이 있으면 행 분할은 LH 연결 펼침이 맡는다. 아직 어떤 공급행에도 붙지 않은 LH 행을 찾는다. */
+    private List<SupplyCorrection.LhSupplyRow> unattachedLhSupplyRows(Announcement announcement,
+            List<SupplyRow> stored) {
+        String identifier = announcement.getSourceAnnouncementIdentifier();
+        if (identifier == null || identifier.isBlank()) { return List.of(); }
+        var attached = stored.stream().map(SupplyRow::getLhSourceSupplyRowIdentifier).filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        return lhLinks.currentSupplies(identifier).stream().filter(supply -> !attached.contains(supply.rowIdentifier()))
+                .map(supply -> new SupplyCorrection.LhSupplyRow(supply.rowIdentifier(), supply.complexLabel(),
+                        supply.typeName(), supply.exclusiveArea())).toList();
     }
 
     /**
@@ -147,6 +161,11 @@ public class SupplyCorrectionService {
         var announcement = find(id);
         var planned = plan(announcement, before.rows(), request.rows(), Set.copyOf(before.deletableRowKeys()),
                 request.deletedRowKeys());
+        if (!before.unattachedLhSupplyRows().isEmpty() && planned.stream().anyMatch(row -> row.id() == null)) {
+            throw new IllegalArgumentException("LH 공급 원본 " + before.unattachedLhSupplyRows().size()
+                    + "행이 아직 공급행에 붙지 않았습니다. 새 공급행을 추가하지 말고 LH 행 연결을 저장한 뒤 "
+                    + "공고 정제를 다시 실행하고, 펼쳐진 공급행을 보정하세요.");
+        }
         var groupPlans = groupCorrections.plan(announcement, planned, request.newGroups());
         var warnings = validateSchedulesAndCounts(id, planned, request.newGroups());
         if (groupPlans.isEmpty() && same(before.rows(), planned)) {

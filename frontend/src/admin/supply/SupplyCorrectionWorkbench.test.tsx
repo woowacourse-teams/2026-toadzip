@@ -173,3 +173,10 @@ it('공고 표기가 달라도 연결한 단지 이름으로 보여 같은 단�
   expect(within(table).getAllByRole('rowheader').map(cell => cell.textContent)).toEqual(['한스빌', '한스빌'])
   expect(within(table).getAllByRole('rowheader')[1]).toHaveAttribute('title', '공고 표기: 익산 한스빌 국민임대')
 })
+
+it('LH 공급 원본 행이 공급행에 없으면 직접 추가를 막고 이유를 알린다', async () => {
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...structuredClone(workspace), unattachedLhSupplyRows: [{ rowIdentifier: 'LH:P:SUPPLY:1', complexLabel: '한스빌', typeName: '26B', exclusiveArea: null }] })
+  await setup(false)
+  expect(screen.getByRole('button', { name: '직접 추가' })).toBeDisabled()
+  expect(screen.getByRole('note')).toHaveTextContent('LH 공급 원본 1행(한스빌 · 26B)이 아직 공급행에 없습니다.')
+})
