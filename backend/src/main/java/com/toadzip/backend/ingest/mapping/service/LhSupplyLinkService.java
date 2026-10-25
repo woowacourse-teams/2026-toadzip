@@ -36,6 +36,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
@@ -66,7 +67,12 @@ public class LhSupplyLinkService {
         return view(identifier, List.of());
     }
 
-    /** 공고의 현재 LH 공급 원본 행. 마이홈 원천이나 LH 공급 원본이 없거나 원천을 해석할 수 없으면 비어 있다. */
+    /**
+     * 공고의 현재 LH 공급 원본 행. 마이홈 원천이나 LH 공급 원본이 없거나 원천을 해석할 수 없으면 비어 있다.
+     * LH 수집 연결 해석은 실패하면 자기 트랜잭션 경계 밖으로 예외를 던진다. 호출한 보정 트랜잭션이 롤백 전용이 되지 않도록
+     * 트랜잭션 없이 읽어 해석 실패가 그 해석의 트랜잭션에서만 끝나게 한다.
+     */
+    @Transactional(readOnly = true, propagation = Propagation.NOT_SUPPORTED)
     public List<CurrentSupply> currentSupplies(String identifier) {
         try {
             return context(identifier).supplies().stream().map(supply -> new CurrentSupply(

@@ -191,6 +191,11 @@ class LhSupplyLinkIntegrationTest {
 
         assertThat(unchanged.releasedSupplyMatches()).isEmpty();
         assertThat(decisionCount()).isOne();
+
+        var released = read(release(unchanged, "공고문 재확인 결과 다른 단지").andExpect(status().isOk()));
+
+        assertThat(released.releasedSupplyMatches()).containsExactly(myhomeRow);
+        assertThat(decisionCount()).isZero();
     }
 
     @Test
@@ -223,6 +228,36 @@ class LhSupplyLinkIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith(
                         "LH 공급 원본 1행이 아직 공급행에 붙지 않았습니다.")));
+
+        // 기존 행의 값 수정은 막지 않는다.
+        var edited = workspace.get("rows").deepCopy();
+        ((ObjectNode) edited.get(0)).put("typeName", "26A");
+        request.set("rows", edited);
+        mvc.perform(post(correctionPath(id) + "/preview").with(user("operator").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        // LH 행을 연결하고 다시 정제하면 그 LH 행이 공급행에 붙어 새 행 추가 제한이 풀린다.
+        save(view(), "공고문 단지 목록 대조").andExpect(status().isOk());
+        mapping.mapAll();
+        mvc.perform(get(correctionPath(id)).with(user("operator").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.unattachedLhSupplyRows").isEmpty());
+    }
+
+    @Test
+    @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
+    @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
+            executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD)
+    void LH_수집_연결을_확정할_수_없는_공고도_공급정보_보정_작업실을_연다() throws Exception {
+        mapping.mapAll();
+        // 공고 등록 뒤 LH 수집 연결이 사라지면 LH 공급 원본을 고를 수 없다. 보정 작업실은 그래도 열려야 한다.
+        jdbc.sql("DELETE FROM lh_announcement_collection_links").update();
+        long id = jdbc.sql("SELECT id FROM announcements").query(Long.class).single();
+
+        mvc.perform(get(correctionPath(id)).with(user("operator").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.unattachedLhSupplyRows").isEmpty());
     }
 
     @Test
