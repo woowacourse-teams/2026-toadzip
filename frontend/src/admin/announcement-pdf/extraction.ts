@@ -26,11 +26,11 @@ export type ReadResult = { ok: true; value: Extraction; repairs: string[] } | { 
 const jsonEscapes = new Set(['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'])
 const maximumBytes = 1_000_000
 
-/** ChatGPT 응답에서 JSON 객체를 읽는다. 값은 바꾸지 않고 형식 문제만 고치며 고친 내용을 모두 돌려준다. */
+/** AI 추출 응답에서 JSON 객체를 읽는다. 값은 바꾸지 않고 형식 문제만 고치며 고친 내용을 모두 돌려준다. */
 export function readExtraction(text: string): ReadResult {
   const repairs: string[] = []
   let source = text.replace(/^﻿/, '').trim()
-  if (!source) return { ok: false, error: 'ChatGPT 응답을 붙여넣어 주세요.', repairs }
+  if (!source) return { ok: false, error: '추출 결과가 비어 있습니다. 다시 추출하세요.', repairs }
   if (new TextEncoder().encode(source).length > maximumBytes) {
     return { ok: false, error: '응답이 UTF-8 기준 1MB를 넘습니다. 한 공고의 응답만 붙여넣어 주세요.', repairs }
   }
@@ -163,7 +163,7 @@ function notes(value: unknown): ExtractionNote[] {
   return Array.isArray(value) ? value.filter(isRecord).flatMap(item => typeof item.path === 'string'
     ? [{ path: normalizePath(item.path), reason: text(item.reason) ?? '' }] : []) : []
 }
-/** sharedCounts에서 처음 걸린 항목과 이유를 돌려준다. 값은 고치지 않고 ChatGPT에 다시 요청할 수 있게 위치를 알린다. */
+/** sharedCounts에서 처음 걸린 항목과 이유를 돌려준다. 값은 고치지 않고 다시 추출할 수 있게 위치를 알린다. */
 /**
  * 공통 모집수는 두 가지다. 여러 공급행이 함께 쓰는 모집수(supplyRows[n].totalSupplyHouseholdCount)와,
  * 한 공급행 안의 여러 대상이 함께 쓰는 모집수(supplyRows[n].targets[m].supplyHouseholdCount, 예: 대학생·청년 통합 추첨)다.

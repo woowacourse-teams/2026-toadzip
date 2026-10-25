@@ -10,6 +10,7 @@ import { getManagementDetail, ManagementError } from '../management/api'
 import { labels } from '../management/fields'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import { readExtraction, type Evidence } from './extraction'
+import { extractAnnouncementPdf, preferredPdf, type ExtractionState } from './extractionApi'
 import { checkAnnouncement, type ComplexLabels, type HousingCandidates } from './matching'
 import { applicableCells, assembleReview, cellMatches, changeValue, createReview, housingNameCandidates, pendingChanges, pendingItems, pendingSchedule, rebaseReview, remapSchedule, ReviewError, reviewSection, shown, type HousingNameCandidate, type PendingChange, type Review, type ReviewFilter, type ReviewSection, type ScheduleReview } from './review'
 import { ReviewCells } from './ReviewCells'
@@ -20,6 +21,7 @@ import styles from './PdfCorrection.module.css'
 
 const PdfDocumentPreview = lazy(() => import('../../public-housing/components/PdfDocumentPreview'))
 type Phase = 'prepare' | 'review' | 'result'
+type SelectedPdf = { url: string; name: string; file: Blob }
 const sectionLabels: [ReviewSection, string][] = [['supply', '공급정보'], ['schedule', '일정'], ['reception', '접수처·기본정보']]
 const filterLabels: [ReviewFilter, string][] = [['all', '전체'], ['pending', '확인 필요'], ['changed', '변경'], ['new', '추가']]
 function validEvidenceUrl(value: string) {
@@ -62,10 +64,12 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false), [attempt, setAttempt] = useState(0)
   const [blocked, setBlocked] = useState(false), [uncertain, setUncertain] = useState(false)
   const [attachmentId, setAttachmentId] = useState('')
-  const [attachmentPdf, setPdf] = useState<{ url: string; name: string } | null>(null), [pdfError, setPdfError] = useState('')
+  const [attachmentPdf, setPdf] = useState<SelectedPdf | null>(null), [pdfError, setPdfError] = useState('')
   // 첨부파일이 없는 기관 공고는 관리자가 원문에서 받은 PDF를 직접 골라 같은 흐름으로 쓴다.
-  const [localPdf, setLocalPdf] = useState<{ url: string; name: string } | null>(null)
+  const [localPdf, setLocalPdf] = useState<SelectedPdf | null>(null)
   const pdf = localPdf ?? attachmentPdf
+  const [extraction, setExtraction] = useState<ExtractionState>({ status: 'idle' })
+  const extractionRun = useRef<AbortController | null>(null)
   const [focus, setFocus] = useState<PdfFocus | null>(null), [mobileView, setMobileView] = useState<'pdf' | 'review'>('review')
   const [reason, setReason] = useState(''), [sourceUrl, setSourceUrl] = useState(''), [sourcePage, setSourcePage] = useState('')
   const [renames, setRenames] = useState<HousingNameCandidate[]>([])
@@ -90,7 +94,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     void loadJsonWorkspace(id, controller.signal).then(async value => {
       if (initialRows) value = { ...value, supply: { ...value.supply, rows: initialRows } }
       const [next, names] = await Promise.all([candidates(value, controller.signal), complexLabels(value, controller.signal)])
-      if (!controller.signal.aborted) { setWorkspace(value); setHousing(next); setComplexes(names); setSourceUrl(String(value.detail.data.originalUrl ?? '')); setAttachmentId(String(value.detail.attachments?.find(item => /\.pdf(?:$|[?\s])/i.test(item.fileName))?.attachmentId ?? '')) }
+      if (!controller.signal.aborted) { setWorkspace(value); setHousing(next); setComplexes(names); setSourceUrl(String(value.detail.data.originalUrl ?? '')); setAttachmentId(String(preferredPdf(value.detail.attachments ?? [])?.attachmentId ?? '')) }
     }).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '공고를 불러오지 못했습니다.') })
     return () => controller.abort()
   }, [id, attempt, initialRows])
@@ -102,11 +106,24 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     const pending = loadAnnouncementAttachment(id, attachmentId, false, controller.signal)
     void pending.then(blob => {
       if (controller.signal.aborted) return
-      objectUrl = URL.createObjectURL(blob); setPdf({ url: objectUrl, name: attachment?.fileName ?? '공고문 PDF' })
+      objectUrl = URL.createObjectURL(blob); setPdf({ url: objectUrl, name: attachment?.fileName ?? '공고문 PDF', file: blob })
     }).catch(cause => { if (!controller.signal.aborted) setPdfError(attachmentErrorMessage(cause)) })
     return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl) }
   }, [id, attachmentId, workspace?.detail.attachments])
   useEffect(() => () => { if (localPdf) URL.revokeObjectURL(localPdf.url) }, [localPdf])
+  // 추출은 관리자가 버튼을 누를 때만 한다(호출마다 비용이 든다). PDF를 바꾸면 이전 결과와 진행 중인 요청을 버린다.
+  useEffect(() => { extractionRun.current?.abort(); setExtraction({ status: 'idle' }); setText('') }, [pdf])
+  useEffect(() => () => extractionRun.current?.abort(), [])
+  function extract() {
+    if (!pdf) return
+    extractionRun.current?.abort()
+    const controller = new AbortController(); extractionRun.current = controller
+    setExtraction({ status: 'running', startedAt: Date.now() }); setText('')
+    void extractAnnouncementPdf(id, pdf.file, pdf.name, controller.signal).then(result => {
+      if (controller.signal.aborted) return
+      setText(result.json); setExtraction({ status: 'done', result })
+    }).catch(cause => { if (!controller.signal.aborted) setExtraction({ status: 'failed', message: cause instanceof Error ? cause.message : 'PDF에서 값을 추출하지 못했습니다.' }) })
+  }
   useEffect(() => {
     heading.current?.focus()
     if (reviewPane.current) reviewPane.current.scrollTop = 0
@@ -131,7 +148,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     if (review && reviewedWith === `${pdf.url}\n${text}`) { setPhase('review'); setError(''); return }
     const extraction = supplyDraft ? { ...parsed.value, announcement: {}, receptionPlace: {}, schedules: [] } : parsed.value
     const next = createReview(extraction, workspace, housing)
-    setReview(next); setReviewedWith(`${pdf.url}\n${text}`); setReason(`${pdf.name} · 프롬프트 v6로 추출 후 PDF와 대조`)
+    setReview(next); setReviewedWith(`${pdf.url}\n${text}`); setReason(`${pdf.name} · AI 자동 추출 후 PDF와 대조`)
     setSourcePage([...new Set(parsed.value.evidence.map(item => item.page))].sort((a, b) => a - b).join(', ').slice(0, 100))
     setPhase('review'); setSection('supply'); setFilter('all'); setError(''); setNotice('')
   }
@@ -186,7 +203,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     {supplyDraft ? <header className={styles.heading}><div><h2>PDF로 공급정보 채우기</h2><p>PDF와 대조한 공급정보를 편집표에 채웁니다. 저장 전까지 등록값은 유지됩니다.</p></div><Button data-design-system className={styles.secondaryButton} onClick={() => { if (!text.trim() || window.confirm('PDF 검토를 취소하고 편집표로 돌아갈까요?')) supplyDraft.onCancel() }}>편집표로 돌아가기</Button></header> : <header className={styles.heading}><div><Link to={back}>공고 상세로 돌아가기</Link><h1 ref={heading} tabIndex={-1}>PDF로 공고 보정</h1><p>#{id} · {workspace.detail.summary.name}</p>{phase !== 'result' && <FailureTargets rows={failureRows} workspace={workspace} />}</div><ol aria-label="보정 진행"><li aria-current={phase === 'prepare' ? 'step' : undefined}>요청 준비</li><li aria-current={phase === 'review' ? 'step' : undefined}>비교·보정</li><li aria-current={phase === 'result' ? 'step' : undefined}>적용 결과</li></ol></header>}
     {error && <div role="alert" className={styles.error}><p>{error}</p>{blocked && <Button data-design-system onClick={() => void reload()} disabled={busy}>입력을 유지하고 최신값 비교</Button>}</div>}
     {notice && <p role="status" className={styles.notice}>{notice}</p>}
-    {phase === 'prepare' && <RequestPreparation attachments={workspace.detail.attachments?.filter(item => /\.pdf(?:$|[?\s])/i.test(item.fileName)) ?? []} attachmentId={attachmentId} onAttachment={value => { setLocalPdf(null); if (value !== attachmentId) { setPdf(null); setAttachmentId(value) } }} localPdf={Boolean(localPdf)} onLocalFile={file => { setFocus(null); setLocalPdf({ url: URL.createObjectURL(file), name: file.name }) }} pdf={pdf} pdfError={localPdf ? '' : pdfError} text={text} onText={setText} parsed={parsed} checks={checks} onReview={start} />}
+    {phase === 'prepare' && <RequestPreparation attachments={workspace.detail.attachments?.filter(item => /\.pdf(?:$|[?\s])/i.test(item.fileName)) ?? []} attachmentId={attachmentId} onAttachment={value => { setLocalPdf(null); if (value !== attachmentId) { setPdf(null); setAttachmentId(value) } }} localPdf={Boolean(localPdf)} onLocalFile={file => { setFocus(null); setLocalPdf({ url: URL.createObjectURL(file), name: file.name, file }) }} pdf={pdf} pdfError={localPdf ? '' : pdfError} preview={pdf && <Suspense fallback={<p role="status">PDF 뷰어를 불러오는 중…</p>}><PdfDocumentPreview url={pdf.url} name={pdf.name} focus={focus} /></Suspense>} extraction={extraction} onExtract={extract} parsed={parsed} checks={checks} onReview={start} />}
     {active && review && <><div className={styles.mobileSwitch}><Button data-design-system aria-pressed={mobileView === 'pdf'} onClick={() => setMobileView('pdf')}>PDF 보기</Button><Button data-design-system aria-pressed={mobileView === 'review'} onClick={() => setMobileView('review')}>검토표 보기</Button></div><div className={styles.workbench}>{pdfPane}
       <div ref={reviewPane} className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="review">
         {checks.some(check => check.matches === false) && <p className={styles.error}>PDF의 {checks.filter(check => check.matches === false).map(check => `${check.label}(${check.pdf})`).join('·')}이 현재 공고와 다릅니다. 이 공고의 PDF로 받은 응답인지 확인하세요.</p>}

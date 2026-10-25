@@ -21,14 +21,8 @@
 .heading a { font-size:var(--ds-text-caption); }
 .heading ol { display:flex; gap:var(--ds-space-4); margin:0; padding:0; list-style:none; font-size:var(--ds-text-caption); color:var(--ds-color-muted-base); flex-wrap:wrap; }
 .heading li[aria-current=step] { color:var(--ds-color-action); font-weight:var(--ds-weight-strong); }
-.prepare { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:stretch; column-gap:var(--ds-space-6); row-gap:0; border-top:1px solid var(--ds-color-divider); padding-top:var(--ds-space-5); }
-.prepare > section { position:relative; display:grid; grid-row:span 5; grid-template-rows:subgrid; min-width:0; }
-.prepare > section > header { grid-row:1; }
-.prepare .sourceFile { grid-row:2; }
-.prepare .promptPanel { grid-row:3; }
-.prepare .prepareFeedback { grid-row:2; align-self:end; padding-bottom:var(--ds-space-4); }
-.prepare .prepareError { grid-row:4; }
-.prepare .prepareAction { grid-row:5; }
+.prepare { display:grid; grid-template-columns:minmax(320px,1.2fr) minmax(0,1fr); align-items:start; gap:var(--ds-space-6); border-top:1px solid var(--ds-color-divider); padding-top:var(--ds-space-5); }
+.prepare > section { position:relative; min-width:0; }
 .prepare > section > header { margin-bottom:var(--ds-space-4); }
 .prepare > section > header p { color:var(--ds-color-muted-base); font-size:var(--ds-text-caption); margin-bottom:0; }
 .sourceFile { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:var(--ds-space-3); padding-bottom:var(--ds-space-4); }
@@ -40,19 +34,22 @@
 .sourceFile label.downloadButton { cursor:pointer; }
 .sourceFile label.downloadButton:focus-within { outline:2px solid var(--ds-color-action); outline-offset:2px; }
 .sourceFile strong { font-size:var(--ds-text-caption); font-weight:500; overflow-wrap:anywhere; }
-.promptPanel { border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); overflow:hidden; background:var(--ds-color-surface); min-width:0; }
-.promptPanel > header { height:48px; box-sizing:border-box; display:flex; align-items:center; justify-content:space-between; gap:var(--ds-space-2); padding:var(--ds-space-1) var(--ds-space-3); border-bottom:1px solid var(--ds-color-divider); }
-.page .promptPanel h3 { font-size:var(--ds-text-caption); margin:0; }
-.promptPanel h3 span { color:var(--ds-color-muted-base); margin-left:var(--ds-space-1); font-weight:400; }
-.prompt { height:180px; box-sizing:border-box; margin:0; white-space:pre-wrap; overflow:auto; font:inherit; line-height:1.7; font-size:var(--ds-text-caption); padding:var(--ds-space-4); scrollbar-width:thin; scrollbar-color:var(--ds-color-divider) transparent; }
-.page .responsePanel textarea { display:block; width:100%; height:180px; padding:var(--ds-space-4); border:0; border-radius:0; resize:none; line-height:1.7; font-size:var(--ds-text-caption); }
-.responsePanel > header label { font-weight:var(--ds-weight-strong); }
-.page .copyButton { padding:0 var(--ds-space-3); }
-.prepareFeedback > :first-child { margin-block:0; }
-.prepareFeedback :is(.notice,.error) { display:flex; align-items:center; height:44px; box-sizing:border-box; padding:var(--ds-space-2) var(--ds-space-3); }
-.prepareFeedback :is(.notice,.error) p { min-width:0; margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.prepareAction { display:grid; grid-template-rows:1fr auto; padding-top:var(--ds-space-4); margin-top:0; align-self:stretch; }
-.prepareAction p { min-height:2.8em; margin-bottom:var(--ds-space-3); }
+/* 미리보기 영역이 곧 끌어다 놓는 영역이다. 높이를 고정해 추출 상태가 바뀌어도 화면이 흔들리지 않게 한다. */
+.dropZone { display:flex; flex-direction:column; height:min(70dvh,720px); min-height:360px; overflow:hidden; border:1px solid var(--ds-color-divider); background:var(--ds-color-surface); }
+.dropZone > .hint { margin:auto; padding:var(--ds-space-5); text-align:center; }
+.dropZone[data-dragging=true] { border-color:var(--ds-color-action); background:var(--ds-color-action-soft); }
+.extractionStart { display:grid; gap:var(--ds-space-3); }
+.page .extractionStart p { margin:0; }
+.extractionProgress { padding:var(--ds-space-3) var(--ds-space-4); margin-bottom:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); background:var(--ds-color-action-soft); color:var(--ds-color-action); }
+.page .extractionProgress p { margin:0 0 var(--ds-space-3); }
+/* 끝나는 시점을 알 수 없어 진행률을 꾸미지 않고 흐르는 막대로 보여준다. */
+.loadingBar { position:relative; height:4px; overflow:hidden; border-radius:999px; background:var(--ds-color-surface); }
+.loadingBar > span { position:absolute; inset-block:0; width:35%; border-radius:inherit; background:var(--ds-color-action); animation:loadingBar 1.4s ease-in-out infinite; }
+@keyframes loadingBar { from { left:-35%; } to { left:100%; } }
+@media(prefers-reduced-motion:reduce) { .loadingBar > span { animation:none; left:0; width:100%; opacity:.5; } }
+.extractionResult ul { margin:0 0 var(--ds-space-4); padding-left:var(--ds-space-5); font-size:var(--ds-text-caption); line-height:1.7; }
+.page .extractionResult h3 { font-size:var(--ds-text-caption); margin:var(--ds-space-4) 0 var(--ds-space-2); }
+.prepareAction { padding-top:var(--ds-space-4); }
 .prepareAction button { width:100%; }
 .actions { display:flex; flex-wrap:wrap; align-items:center; gap:var(--ds-space-3); }
 .hint { color:var(--ds-color-muted-base); font-size:var(--ds-text-caption); }
@@ -144,7 +141,8 @@
 .result { border-top:1px solid var(--ds-color-divider); padding-top:var(--ds-space-7); max-width:800px; }
 .renames { margin-top:var(--ds-space-7); padding-top:var(--ds-space-5); border-top:1px solid var(--ds-color-divider); }
 .renames li { line-height:1.8; font-variant-numeric:tabular-nums; }
-.srOnly { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
+/* 관리자 공통 input 규칙(width:100%)보다 우선해야 숨긴 파일 입력이 화면 밖으로 넘치지 않는다. */
+.srOnly, .page input.srOnly[type] { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
 .mobileLabel, .mobileSwitch { display:none; }
 @media(min-width:901px) { .workbench > .pdfPane[hidden] { display:flex; } .workbench > .reviewPane[hidden] { display:block; } }
 @container(max-width:500px) {
@@ -184,7 +182,7 @@
 .target { background:var(--ds-color-surface-subtle); padding:var(--ds-space-4); border:1px solid var(--ds-color-divider); }
 .conditions { font-size:var(--ds-text-caption); margin-bottom:var(--ds-space-4); }
 .conditions li { line-height:1.7; margin-block:var(--ds-space-3); }
-@media(max-width:700px) { .prepare { grid-template-columns:1fr; gap:var(--ds-space-7); } .prompt { height:180px; } .prepare > section { display:flex; flex-direction:column; } }
+@media(max-width:700px) { .prepare { grid-template-columns:1fr; gap:var(--ds-space-7); } .dropZone { height:60dvh; } }
 .filePicker { position:relative; min-width:0; }
 .filePickerLabel { display:block; margin-bottom:var(--ds-space-2); font-size:var(--ds-text-caption); line-height:1.6; }
 .page .filePickerButton { display:flex; align-items:center; gap:var(--ds-space-3); width:100%; min-height:var(--admin-control-height,36px); padding:0 var(--ds-space-3); background:var(--ds-color-surface); color:var(--ds-color-text); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); text-align:left; font:inherit; font-size:var(--ds-text-caption); cursor:pointer; }
@@ -195,13 +193,6 @@
 .fileOptions > li { padding:var(--ds-space-3); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:var(--ds-text-caption); cursor:pointer; border-radius:var(--ds-radius-control); }
 .fileOptions > li[aria-selected=true] { font-weight:var(--ds-weight-strong); }
 .fileOptions > li[data-active=true] { background:var(--ds-color-action-soft); }
-
-.page .prepareFeedback .parseSuccess, .page .prepareFeedback .parseSuccess p { color:var(--ds-color-action); }
-.page .prepareFeedback .parseError, .page .prepareFeedback .parseError p { color:var(--ds-color-deadline); }
-/* 읽기 오류는 어느 항목이 틀렸는지 끝까지 보여야 하므로 줄을 바꿔 모두 보인다. */
-.page .prepareFeedback .parseError { height:auto; min-height:44px; }
-.page .prepareFeedback .parseError p { white-space:normal; overflow:visible; overflow-wrap:anywhere; }
-.page .prepareFeedback .parseError { background:color-mix(in srgb,var(--ds-color-deadline) 6%,var(--ds-color-surface)); border-color:color-mix(in srgb,var(--ds-color-deadline) 25%,var(--ds-color-surface)); }
 
 .page[data-embedded=true][data-focused=true] { height:calc(100dvh - 140px); min-height:600px; }
 

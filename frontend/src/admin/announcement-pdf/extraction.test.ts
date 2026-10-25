@@ -1,9 +1,14 @@
+/// <reference types="node" />
+
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import fixtures from './fixtures/scenarios.json'
-import prompt from './announcementUpdatePrompt.v6.txt?raw'
+// 백엔드가 모델에 보내는 프롬프트의 응답 예제를 이 화면이 그대로 읽는지 확인한다.
+const prompt = readFileSync(resolve(process.cwd(), '../backend/src/main/resources/announcement/pdf-extraction-prompt.txt'), 'utf8')
 import { evidenceFor, noteFor, pathCovers, readExtraction, type Extraction } from './extraction'
 
-describe('ChatGPT 공고 응답 읽기', () => {
+describe('AI 추출 응답 읽기', () => {
   it('단지 개요는 이름이 있는 항목만 읽고, 없는 응답(v4)도 그대로 읽는다', () => {
     const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: Record<string, unknown> }
     input.data.complexes = [{ sourceComplexName: ' 인천부평 ', address: '인천광역시 부평구 부평동 65-17', totalHouseholdCount: 350, parkingCount: '112대' }, { address: '이름 없음' }]
@@ -94,11 +99,12 @@ describe('ChatGPT 공고 응답 읽기', () => {
     const result = readExtraction(prompt.slice(prompt.indexOf('[응답 예제]')))
     if (!result.ok) throw new Error(result.error)
     expect(result.value.supplyRows.map(row => [row.typeName, row.values.supplyArea])).toEqual([['36A', 49.8], ['26A', 41.47], ['26B', 41.53]])
-    expect(result.value.sharedCounts.map(group => group.count)).toEqual([40, 77])
+    // 가군·나군처럼 임대조건만 다른 대상은 공통 모집수가 아니라 notApplicable이고, 대학생·청년 통합 모집만 묶는다.
+    expect(result.value.sharedCounts.map(group => group.count)).toEqual([77])
     expect(result.value.checks).toEqual([])
-    // 임대조건 근거는 공급 표(3쪽)가 아니라 임대조건 표(4쪽)를 가리키고, 펼친 세부 타입 행에도 옮겨진다.
-    expect(['supplyRows[0].targets[0].rentalDeposit', 'supplyRows[2].targets[0].monthlyRent'].map(path => evidenceFor(result.value.evidence, path)?.page)).toEqual([4, 4])
-    expect(evidenceFor(result.value.evidence, 'supplyRows[2].supplyArea')?.page).toBe(3)
+    // 임대조건 근거는 공급 표(3쪽)가 아니라 임대조건 표(4쪽)를 가리킨다.
+    expect(evidenceFor(result.value.evidence, 'supplyRows[0].targets[0].rentalDeposit')?.page).toBe(4)
+    expect(evidenceFor(result.value.evidence, 'supplyRows[0].supplyArea')?.page).toBe(3)
   })
 
   describe('세부 타입 펼치기와 검산', () => {

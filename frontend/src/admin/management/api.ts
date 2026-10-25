@@ -47,12 +47,13 @@ export async function requestManagementApi(
       throw new Error('인증 응답이 올바르지 않습니다.')
     }
     headers[csrf.headerName] = csrf.token
-    if (body !== undefined) headers['Content-Type'] = 'application/json'
+    // FormData는 브라우저가 multipart 경계를 담은 Content-Type을 직접 붙인다.
+    if (body !== undefined && !(body instanceof FormData)) headers['Content-Type'] = 'application/json'
   }
 
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method, credentials: 'include', headers, signal,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
   })
   if (response.status === 204) return null
 
