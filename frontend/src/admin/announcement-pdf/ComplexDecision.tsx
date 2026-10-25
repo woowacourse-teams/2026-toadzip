@@ -7,8 +7,9 @@ import { isRecord } from '../management/managementContract'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
 import { createRowReview, editCell, preserveCellChoice, type Review, type RowReview } from './review'
 import { missingHousingType, pickHousingType } from './matching'
-import { NewComplexRegistration } from './NewComplexRegistration'
+import { NewComplexRegistration, type MyHomeComplexOverview } from './NewComplexRegistration'
 import { alignSourceRows, emptySourceRows } from './sourceAlignment'
+import { sameComplex } from './matching'
 import { createPdfHousingTypes } from './pdfHousingTypes'
 import type { ExtractedRow } from './extraction'
 import styles from './PdfCorrection.module.css'
@@ -33,6 +34,18 @@ export function ComplexDecisions({ review, workspace, onChange }: { review: Revi
     <h3>단지 정하기</h3>
     {[...groups].map(([name, indexes]) => <ComplexDecision key={name} name={name} indexes={indexes} review={review} workspace={workspace} onChange={onChange} />)}
   </section>
+}
+
+/** 수집한 마이홈 공고 원천에서 이 단지의 개요를 꺼낸다. 같은 단지명이 없으면 공고의 첫 마이홈 원천을 쓴다. */
+function myHomeOverview(workspace: JsonWorkspace, name: string): MyHomeComplexOverview | undefined {
+  const raws = workspace.supply.sources.filter(source => source.category === 'MYHOME_ANNOUNCEMENT').flatMap(source => source.rows.map(row => row.raw))
+    .filter((raw): raw is Record<string, unknown> => isRecord(raw))
+  const raw = raws.find(item => sameComplex(item.hsmp_nm, name)) ?? raws[0]
+  if (!raw) return undefined
+  const text = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : null
+  const households = Number(text(raw.tot_hshld_co))
+  return { name: text(raw.hsmp_nm), address: text(raw.full_adres), pnu: text(raw.pnu), households: Number.isSafeInteger(households) && households > 0 ? households : null,
+    heating: text(raw.heat_mthd_nm), building: text(raw.house_ty_nm) }
 }
 
 function ComplexDecision({ name, indexes, review, workspace, onChange }: { name: string; indexes: number[]; review: Review; workspace: JsonWorkspace; onChange: (review: Review) => void }) {
@@ -86,7 +99,7 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
     <ComplexPicker disabled={busy} initialQuery={name} onSelect={item => void choose(item.id, item.name, false)} />
     {error && <p role="alert" className={styles.error}>{error}</p>}
     {registering
-      ? <NewComplexRegistration index={indexes[0]} defaultName={name} defaultAddress={overview?.address ?? ''} defaultPnu={sources[0]?.pnu ?? ''} defaultHouseholds={overview?.totalHouseholdCount ?? null} defaultParking={overview?.parkingCount ?? null}
+      ? <NewComplexRegistration index={indexes[0]} defaultName={name} defaultAddress={overview?.address ?? ''} defaultPnu={sources[0]?.pnu ?? ''} myhome={myHomeOverview(workspace, name)} defaultHouseholds={overview?.totalHouseholdCount ?? null} defaultParking={overview?.parkingCount ?? null}
         rentalType={String(workspace.detail.data.rentalType ?? '')} agencyCode={String(workspace.detail.data.agencyCode ?? '')} onCreated={complex => void choose(complex.id, complex.name, true)} />
       : !decided && <Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => setRegistering(true)}>찾는 단지가 없으면 새 단지로 등록</Button>}
   </div>
