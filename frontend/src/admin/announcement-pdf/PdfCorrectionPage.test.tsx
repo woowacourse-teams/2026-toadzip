@@ -152,8 +152,10 @@ it('깨진 응답은 검토를 시작하지 못하며 내용을 유지한다', a
   renderPage()
   const field = await screen.findByRole('textbox', { name: 'ChatGPT 응답' })
   fireEvent.change(field, { target: { value: '{broken}' } })
+  await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
+  fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
   expect(screen.getByRole('alert')).toBeVisible()
-  expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeDisabled()
+  expect(screen.queryByRole('heading', { name: '공급정보' })).not.toBeInTheDocument()
   expect(field).toHaveValue('{broken}')
 })
 it('원문 URL이 없으면 근거 입력을 펼쳐 안내한다', async () => {
@@ -166,17 +168,19 @@ it('원문 URL이 없으면 근거 입력을 펼쳐 안내한다', async () => {
   expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeEnabled()
 })
 
-it('붙여넣는 즉시 오류 또는 추출 수를 보여주고 검토 버튼으로만 다음 단계로 간다', async () => {
+it('입력 중에는 응답을 읽지 않고 검토 버튼을 누를 때만 읽어 오류를 보여 주거나 다음 단계로 간다', async () => {
   renderPage()
   const response = await screen.findByRole('textbox', { name: 'ChatGPT 응답' })
   fireEvent.change(response, { target: { value: '{broken}' } })
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
+  fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
   expect(screen.getByRole('alert')).toHaveTextContent('JSON')
   fireEvent.change(response, { target: { value: JSON.stringify(fixtures.hansville.extraction) } })
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-  expect(screen.getByText(/공급행 2개 · 임대조건 2개 · 일정 3개 · 미확인 \d+개 · 공고명 일치 · 공고일 일치/)).toBeVisible()
-  expect(screen.queryByText(/형식 복구/)).not.toBeInTheDocument()
-  await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
   expect(screen.queryByRole('heading', { name: '공급정보' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
+  expect(await screen.findByRole('heading', { name: '공급정보' })).toBeVisible()
 })
 
 it('확인 필요 항목을 세고 하단 버튼으로 다음 항목에 이동하며 상태로 거른다', async () => {
@@ -212,13 +216,12 @@ it('기준 단지는 원천 공급행이 아니라 단지명·임대유형으로
   expect(anchor).toHaveValue(first.key)
 })
 
-it('다른 공고의 응답이면 공고명·공고일이 다르다고 알리고 검토 화면에도 남긴다', async () => {
+it('다른 공고의 응답이면 검토 화면에 공고명·공고일이 다르다고 알린다', async () => {
   renderPage()
   fireEvent.change(await screen.findByRole('textbox', { name: 'ChatGPT 응답' }), { target: { value: JSON.stringify(fixtures.gwangju.extraction) } })
-  expect(await screen.findByRole('alert')).toHaveTextContent('현재 공고와 다른 PDF의 응답일 수 있습니다 · 공고명 다름(PDF 광주첨단 H-1,2,3BL 행복주택 예비입주자 모집) · 공고일 다름(PDF 2026-10-15)')
   await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
   fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
-  expect(await screen.findByText(/이 공고의 PDF로 받은 응답인지 확인하세요/)).toBeVisible()
+  expect(await screen.findByText(/공고명\(광주첨단 H-1,2,3BL 행복주택 예비입주자 모집\)·공고일\(2026-10-15\)이 현재 공고와 다릅니다. 이 공고의 PDF로 받은 응답인지 확인하세요/)).toBeVisible()
 })
 
 it('공급정보의 PDF 채우기는 작성 중인 행을 기준으로 대조하고 저장 없이 편집표에 돌려준다', async () => {
@@ -279,7 +282,7 @@ it('응답 준비로 돌아갔다 와도 같은 응답이면 검토하던 입력
   fireEvent.click(screen.getByRole('button', { name: '응답 준비로 돌아가기' }))
   fireEvent.change(await screen.findByRole('textbox', { name: 'ChatGPT 응답' }), { target: { value: JSON.stringify({ ...fixtures.hansville.extraction }, null, 1) } })
   fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
-  expect(await screen.findByLabelText('보정 이유')).toHaveValue('공고문.pdf · 프롬프트 v6로 추출 후 PDF와 대조')
+  expect(await screen.findByLabelText('보정 이유')).toHaveValue('공고문.pdf · 프롬프트 v7로 추출 후 PDF와 대조')
 })
 
 it('단지에 맞는 주택형이 없으면 따로 알리고 PDF 형명·면적으로 새 주택형을 추가해 저장한다', async () => {

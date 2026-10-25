@@ -20,10 +20,14 @@ export type Extraction = {
   evidence: Evidence[]
   /** 합계·면적 검산에서 다르게 나온 항목. 저장을 막지 않고 확인할 내용으로 보여 준다. */
   checks: string[]
+  /** 날짜 없이 개별안내한 일정(notApplicable의 path "schedules")의 이유. 받은 일정 값에는 적용하지 않는다. */
+  undatedSchedules: string[]
 }
 export type ReadResult = { ok: true; value: Extraction; repairs: string[] } | { ok: false; error: string; repairs: string[] }
 
 const jsonEscapes = new Set(['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'])
+// 채팅 화면에서 복사하면 공백이 &#x20; 같은 HTML 문자 코드로 붙어 오는 경우가 있다.
+const whitespaceEntities = /(?:&#[xX]0*(?:20|[aA]0|9|[aAdD]);|&#0*(?:32|160|9|10|13);|&nbsp;)+/g
 const maximumBytes = 1_000_000
 
 /** ChatGPT 응답에서 JSON 객체를 읽는다. 값은 바꾸지 않고 형식 문제만 고치며 고친 내용을 모두 돌려준다. */
@@ -45,6 +49,13 @@ export function readExtraction(text: string): ReadResult {
     source = source.slice(first, last + 1)
     repairs.push('JSON 앞뒤의 설명 문장을 걷어냈습니다.')
   }
+  let entities = 0
+  // 따옴표 옆이면 값의 앞뒤 공백이거나 JSON 사이 공백이라 지우고, 그 밖에는 공백 한 칸으로 바꾼다.
+  source = source.replace(whitespaceEntities, (match: string, offset: number, whole: string) => {
+    entities += 1
+    return whole[offset - 1] === '"' || whole[offset + match.length] === '"' ? '' : ' '
+  })
+  if (entities) repairs.push(`HTML 공백 문자 코드(&#x20; 등) ${entities}곳을 공백으로 고쳤습니다.`)
   const dropped = new Map<string, number>()
   source = source.replace(/\\(.)/gs, (match, character: string) => {
     if (jsonEscapes.has(character)) return match
@@ -109,7 +120,8 @@ function extraction(value: unknown): Extraction | string {
     sharedCounts: (value.sharedCounts as Record<string, unknown>[]).map(item => ({
       paths: (item.paths as string[]).map(normalizePath), count: count(item.count), page: page(item.page), quote: text(item.quote) ?? '',
     })),
-    unresolved: notes(data.unresolvedFields), notApplicable: notes(value.notApplicable),
+    unresolved: notes(data.unresolvedFields),
+    notApplicable: notes(value.notApplicable).filter(note => note.path !== 'schedules'),
     evidence: (value.evidence as Record<string, unknown>[]).map(item => ({ path: normalizePath(item.path as string), page: page(item.page)!, quote: text(item.quote) ?? '' })),
   }
   const expanded = expandSubtypes(data.supplyRows, parsed)
@@ -125,6 +137,7 @@ function extraction(value: unknown): Extraction | string {
     sharedCounts: expanded.sharedCounts,
     evidence: expanded.evidence,
     checks: checks(data.supplyRows, complexes, parsed.sharedCounts),
+    undatedSchedules: notes(value.notApplicable).filter(note => note.path === 'schedules' && note.reason).map(note => note.reason),
   }
 }
 

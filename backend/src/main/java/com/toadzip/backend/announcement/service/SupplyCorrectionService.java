@@ -132,7 +132,18 @@ public class SupplyCorrectionService {
     }
 
     public SupplyCorrection.Preview preview(long id, SupplyCorrection.Request request) {
-        var before = checked(id, request.snapshotToken());
+        return preview(id, checked(id, request.snapshotToken()), request);
+    }
+
+    /** 같은 트랜잭션에서 이미 읽은 공급정보로 미리보기를 만든다. 원천 비교 스냅샷을 다시 계산하지 않는다. */
+    public SupplyCorrection.Preview preview(long id, SupplyCorrection.Workspace before,
+            SupplyCorrection.Request request) {
+        if (!before.snapshotToken().equals(request.snapshotToken())) {
+            log.warn("event=announcement.supply_correction.conflict_detected announcementId={} check=snapshot "
+                    + "requestToken={} currentToken={}", id, shortToken(request.snapshotToken()),
+                    shortToken(before.snapshotToken()));
+            throw new AdminDataStaleException("등록값이나 원천이 바뀌었습니다. 입력을 보관하고 최신 값과 다시 비교하세요.");
+        }
         var announcement = find(id);
         var planned = plan(announcement, before.rows(), request.rows(), Set.copyOf(before.deletableRowKeys()),
                 request.deletedRowKeys());
@@ -166,16 +177,18 @@ public class SupplyCorrectionService {
     }
 
     /**
-     * 다른 보정 이력 한 건에 공급행 변경을 포함할 때 공급행만 저장한다.
+     * 다른 보정 이력 한 건에 공급행 변경을 포함할 때 공급행만 저장한다. 호출자가 같은 잠금 트랜잭션에서 만든 미리보기를 쓴다.
      * 호출자는 같은 트랜잭션에서 이력을 남긴 뒤 {@link #recordOperation}으로 작업 번호를 그 이력에 연결한다.
      */
     @Transactional(propagation = Propagation.MANDATORY)
-    public Written writeWithoutHistory(long id, SupplyCorrection.Apply request, String actor) {
+    public void writeWithoutHistory(long id, SupplyCorrection.Apply request, SupplyCorrection.Preview preview,
+            String actor) {
         var announcement = announcements.findByIdForUpdate(id).orElseThrow(AnnouncementNotFoundException::new);
         if (corrections.findByOperationId(request.correction().operationId()).isPresent()) {
             throw new AdminDataConflictException("이미 적용한 공급정보 보정 작업입니다. 최신값을 다시 확인하세요.");
         }
-        return write(announcement, id, request, actor);
+        confirm(id, preview, request);
+        writePlanned(announcement, preview, request, actor);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -201,12 +214,22 @@ public class SupplyCorrectionService {
 
     private Written write(Announcement announcement, long id, SupplyCorrection.Apply request, String actor) {
         var preview = preview(id, request.correction());
+        confirm(id, preview, request);
+        writePlanned(announcement, preview, request, actor);
+        return new Written(preview.before(), workspace(id));
+    }
+
+    private void confirm(long id, SupplyCorrection.Preview preview, SupplyCorrection.Apply request) {
         if (!preview.confirmationToken().equals(request.confirmationToken())) {
             log.warn("event=announcement.supply_correction.conflict_detected announcementId={} check=confirmation "
                     + "requestToken={} currentToken={}", id, shortToken(request.confirmationToken()),
                     shortToken(preview.confirmationToken()));
             throw new AdminDataStaleException("미리보기 이후 선택한 단지·주택형 또는 변경안이 바뀌었습니다. 다시 확인하세요.");
         }
+    }
+
+    private void writePlanned(Announcement announcement, SupplyCorrection.Preview preview,
+            SupplyCorrection.Apply request, String actor) {
         var stored = rows.findAllByAnnouncement(announcement).stream()
                 .collect(Collectors.toMap(SupplyRow::getId, Function.identity()));
         var groupPlans = groupCorrections.plan(announcement, preview.after(), request.correction().newGroups());
@@ -231,7 +254,6 @@ public class SupplyCorrectionService {
                 request.correction().reason(), actor);
         announcement.recordAdminSupplyChange();
         announcements.flush();
-        return new Written(preview.before(), workspace(id));
     }
 
     /** 기존 행 중 주택형 연결이 바뀐 행. 연결은 정제의 저장 매칭이 소유하므로 원천행 식별자로 넘긴다. */

@@ -26,6 +26,7 @@ public class IngestFailureReviewQueryRepository {
 
     private static final TypeReference<Map<String, Object>> METADATA_TYPE = new TypeReference<>() {};
     // 원천 키 계산을 실패 행마다 반복하지 않도록 필요한 원천 이름을 한 번 조회해 공유한다.
+    // 원천 키는 계산식이라 색인을 못 탄다. 키 첫 부분(단지 일련번호·공고 ID)으로 묶음을 먼저 좁혀 전체 원천행 계산을 피한다.
     private static final String PAGE_SQL = """
             WITH latest_collection_failures AS (
                 SELECT DISTINCT ON (source, request_description) *
@@ -39,17 +40,33 @@ public class IngestFailureReviewQueryRepository {
                     AND (:status = 'ALL' OR status = :status)
                     AND (CAST(:executionId AS uuid) IS NULL OR last_execution_id = :executionId)
                     AND (CAST(:failureId AS bigint) IS NULL OR id = :failureId)
+            ), source_bundle_keys AS MATERIALIZED (
+                SELECT DISTINCT category IN ('announcement', 'enrichment') AS announcement_key,
+                    CASE WHEN source_key ~ '^[0-9]{1,4}:' THEN substr(source_key, strpos(source_key, ':') + 1,
+                        split_part(source_key, ':', 1)::int) END AS bundle_key
+                FROM scoped_failures WHERE category IN ('complex', 'announcement', 'enrichment')
             ), complex_sources AS MATERIALIZED (
                 SELECT DISTINCT ON (source.source_key) source.source_key, source.name
                 FROM (%s) source
-                WHERE source.source_key IN (
+                WHERE source.id IN (
+                    SELECT r.id FROM myhome_complex_source_rows r
+                    JOIN myhome_complex_source_bundles b ON b.id = r.source_id
+                    WHERE b.hsmp_sn IN (
+                        SELECT CASE WHEN bundle_key ~ '^[0-9]{1,18}$' THEN bundle_key::bigint END
+                        FROM source_bundle_keys WHERE NOT announcement_key
+                    )
+                ) AND source.source_key IN (
                     SELECT source_key FROM scoped_failures WHERE category = 'complex'
                 )
                 ORDER BY source.source_key, source.collected_at DESC NULLS LAST, source.id DESC
             ), announcement_sources AS MATERIALIZED (
                 SELECT DISTINCT ON (source.source_key) source.source_key, source.name
                 FROM (%s) source
-                WHERE source.source_key IN (
+                WHERE source.id IN (
+                    SELECT r.id FROM myhome_announcement_source_rows r
+                    JOIN myhome_announcement_source_bundles b ON b.id = r.source_id
+                    WHERE b.pblanc_id IN (SELECT bundle_key FROM source_bundle_keys WHERE announcement_key)
+                ) AND source.source_key IN (
                     SELECT source_key FROM scoped_failures WHERE category IN ('announcement', 'enrichment')
                 )
                 ORDER BY source.source_key, (source.raw_payload::jsonb ->> 'active')::boolean DESC NULLS LAST,

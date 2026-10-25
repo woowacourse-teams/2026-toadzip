@@ -25,6 +25,9 @@ import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
+import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
+import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
+import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureStore;
 import jakarta.validation.Validator;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -33,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -58,6 +62,8 @@ public class AnnouncementJsonCorrectionService {
     private final AdminAnnouncementManagementService management;
     private final SupplyCorrectionService supplies;
     private final AdminAnnouncementImportJson importJson;
+    private final MyHomeAnnouncementMappingFailureStore mappingFailures;
+    private final LhAnnouncementEnrichmentFailureStore enrichmentFailures;
     private final ObjectMapper json;
     private final Validator validator;
 
@@ -84,7 +90,9 @@ public class AnnouncementJsonCorrectionService {
         }
         SupplyCorrection.Apply supplyApply = plan.preview().supply() == null ? null
                 : new SupplyCorrection.Apply(request.correction(), plan.preview().supply().confirmationToken());
-        var written = supplyApply == null ? null : supplies.writeWithoutHistory(id, supplyApply, actor);
+        if (supplyApply != null) {
+            supplies.writeWithoutHistory(id, supplyApply, plan.preview().supply(), actor);
+        }
         if (!plan.preview().fields().isEmpty()) {
             announcement.reviseByAdmin(incoming(announcement, plan.metadata()));
         }
@@ -102,10 +110,19 @@ public class AnnouncementJsonCorrectionService {
         var change = changes.saveAndFlush(new AdminDataChange("ANNOUNCEMENT", id, "CORRECT_FROM_PDF", actor,
                 json.writeValueAsString(Map.of("detail", plan.before().detail(), "events", plan.before().events(),
                         "rows", plan.before().supply().rows())), json.writeValueAsString(audit)));
-        if (written != null) {
+        if (supplyApply != null) {
             supplies.recordOperation(id, supplyApply, change.getId(), announcement.getVersion());
         }
+        resolveFailures(announcement.getSourceAnnouncementIdentifier());
         return after;
+    }
+
+    /** PDF 보정은 공고를 원문 기준으로 맞추므로 이 공고에 남은 정제·보강 실패를 모두 해결로 바꾼다. 원인이 남으면 다음 정제가 다시 연다. */
+    private void resolveFailures(String identifier) {
+        if (identifier == null || identifier.isBlank()) { return; }
+        UUID executionId = IngestExecutionContext.currentExecutionId().orElse(null);
+        mappingFailures.reconcileForAnnouncement(identifier, List.of(), executionId);
+        enrichmentFailures.reconcileForAnnouncement(identifier, List.of(), executionId);
     }
 
     private Prepared prepare(long id, Request request) {
@@ -120,7 +137,7 @@ public class AnnouncementJsonCorrectionService {
         SupplyCorrection.Preview supply = null;
         if (!request.correction().newGroups().isEmpty()
                 || !hash(before.supply().rows()).equals(hash(request.correction().rows()))) {
-            supply = supplies.preview(id, request.correction());
+            supply = supplies.preview(id, before.supply(), request.correction());
         }
         if (supply == null && !before.supply().snapshotToken().equals(request.correction().snapshotToken())) {
             throw new AdminDataConflictException("공급정보가 바뀌었습니다. 다시 확인하세요.");

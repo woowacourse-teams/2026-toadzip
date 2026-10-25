@@ -1,11 +1,11 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { RequestPreparation } from './RequestPreparation'
-import prompt from './announcementUpdatePrompt.v6.txt?raw'
+import prompt from './announcementUpdatePrompt.v7.txt?raw'
 
 const attachments = [{ attachmentId: 1, fileName: '공고문.pdf', fileType: 'ANNOUNCEMENT', fileUrl: 'https://example.com/1.pdf' }]
 function props() {
-  return { attachments, attachmentId: '1', onAttachment: vi.fn(), localPdf: false, onLocalFile: vi.fn(), pdf: { url: 'blob:notice', name: '공고문.pdf' }, pdfError: '', text: '', onText: vi.fn(), parsed: { ok: false as const, error: '', repairs: [] }, checks: [], onReview: vi.fn() }
+  return { attachments, attachmentId: '1', onAttachment: vi.fn(), localPdf: false, onLocalFile: vi.fn(), pdf: { url: 'blob:notice', name: '공고문.pdf' }, pdfError: '', text: '', onText: vi.fn(), parsed: null, checks: [], onReview: vi.fn() }
 }
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 it('한 번의 준비로 전체 프롬프트를 복사하고 ChatGPT 탭과 PDF 다운로드를 연다', async () => {
