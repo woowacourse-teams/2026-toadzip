@@ -96,6 +96,9 @@ describe('ChatGPT 공고 응답 읽기', () => {
     expect(result.value.supplyRows.map(row => [row.typeName, row.values.supplyArea])).toEqual([['36A', 49.8], ['26A', 41.47], ['26B', 41.53]])
     expect(result.value.sharedCounts.map(group => group.count)).toEqual([40, 77])
     expect(result.value.checks).toEqual([])
+    // 임대조건 근거는 공급 표(3쪽)가 아니라 임대조건 표(4쪽)를 가리키고, 펼친 세부 타입 행에도 옮겨진다.
+    expect(['supplyRows[0].targets[0].rentalDeposit', 'supplyRows[2].targets[0].monthlyRent'].map(path => evidenceFor(result.value.evidence, path)?.page)).toEqual([4, 4])
+    expect(evidenceFor(result.value.evidence, 'supplyRows[2].supplyArea')?.page).toBe(3)
   })
 
   describe('세부 타입 펼치기와 검산', () => {
