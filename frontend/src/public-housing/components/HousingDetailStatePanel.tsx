@@ -9,7 +9,6 @@ interface HousingDetailStatePanelProps {
   readonly status: DetailStatus
   readonly errorMessage: string | null
   readonly backButton?: ReactNode
-  readonly loadingMessageVisible?: boolean
   readonly onClose: () => void
   readonly onRetry: () => void
 }
@@ -30,7 +29,7 @@ const DETAIL_LABELS = {
 } as const
 
 export function HousingDetailStatePanel({
-  kind, id, status, errorMessage, backButton, loadingMessageVisible = true, onClose, onRetry,
+  kind, id, status, errorMessage, backButton, onClose, onRetry,
 }: HousingDetailStatePanelProps) {
   const panelRef = useRef<HTMLElement>(null)
   const labels = DETAIL_LABELS[kind]
@@ -63,13 +62,10 @@ export function HousingDetailStatePanel({
         {backButton}
         <DetailCloseButton label={`${labels.name} 상세 닫기`} onClose={onClose} />
       </header>
-      {/* 로딩 문구를 늦게 넣어도 읽히도록 status 영역은 먼저 둔다. */}
       <div className="housing-detail-state__content" role={status === 'loading' ? 'status' : 'alert'}>
-        {(status !== 'loading' || loadingMessageVisible) && <>
-          <strong>{heading}</strong>
-          <span>{description}</span>
-          {status === 'error' && <button type="button" onClick={onRetry}>다시 시도</button>}
-        </>}
+        <strong>{heading}</strong>
+        <span>{description}</span>
+        {status === 'error' && <button type="button" onClick={onRetry}>다시 시도</button>}
       </div>
     </aside>
   )

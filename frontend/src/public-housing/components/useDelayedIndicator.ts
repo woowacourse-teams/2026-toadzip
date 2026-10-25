@@ -26,3 +26,15 @@ export function useDelayedIndicator(active: boolean) {
 
   return visible
 }
+
+// 로딩 표시 규칙을 화면 값에 적용한다.
+// 표시 전에는 마지막으로 끝난 화면을, 최소 표시 중에는 로딩 화면을 돌려준다. 닫힌 화면은 바로 반영한다.
+export function useDelayedLoadingView<T>(value: T, loading: boolean, open: boolean): T {
+  const indicatorVisible = useDelayedIndicator(loading)
+  const [settled, setSettled] = useState(value)
+  const [loadingValue, setLoadingValue] = useState(value)
+  if (!loading && settled !== value) setSettled(value)
+  if (loading && indicatorVisible && loadingValue !== value) setLoadingValue(value)
+  if (loading) return indicatorVisible ? value : settled
+  return indicatorVisible && open ? loadingValue : value
+}

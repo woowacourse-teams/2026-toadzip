@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useDelayedIndicator } from './useDelayedIndicator.ts'
+import { useDelayedIndicator, useDelayedLoadingView } from './useDelayedIndicator.ts'
 
 describe('useDelayedIndicator', () => {
   beforeEach(() => vi.useFakeTimers())
@@ -46,5 +46,45 @@ describe('useDelayedIndicator', () => {
     rerender({ active: true })
     act(() => vi.advanceTimersByTime(1000))
     expect(result.current).toBe(true)
+  })
+})
+
+describe('useDelayedLoadingView', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  function renderView() {
+    return renderHook(
+      ({ value, loading, open }) => useDelayedLoadingView(value, loading, open),
+      { initialProps: { value: 'A', loading: false, open: true } },
+    )
+  }
+
+  it('로딩 표시 전에는 직전 화면을 유지하고 빠른 응답은 바로 바꾼다', () => {
+    const { result, rerender } = renderView()
+    rerender({ value: 'B 로딩', loading: true, open: true })
+    expect(result.current).toBe('A')
+    act(() => vi.advanceTimersByTime(299))
+    rerender({ value: 'B', loading: false, open: true })
+    expect(result.current).toBe('B')
+  })
+
+  it('로딩을 표시했으면 응답이 와도 최소 시간 동안 로딩 화면을 유지한다', () => {
+    const { result, rerender } = renderView()
+    rerender({ value: 'B 로딩', loading: true, open: true })
+    act(() => vi.advanceTimersByTime(300))
+    expect(result.current).toBe('B 로딩')
+    rerender({ value: 'B', loading: false, open: true })
+    expect(result.current).toBe('B 로딩')
+    act(() => vi.advanceTimersByTime(500))
+    expect(result.current).toBe('B')
+  })
+
+  it('최소 표시 중에도 닫으면 바로 닫는다', () => {
+    const { result, rerender } = renderView()
+    rerender({ value: 'B 로딩', loading: true, open: true })
+    act(() => vi.advanceTimersByTime(300))
+    rerender({ value: '닫힘', loading: false, open: false })
+    expect(result.current).toBe('닫힘')
   })
 })

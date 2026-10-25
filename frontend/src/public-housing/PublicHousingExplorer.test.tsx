@@ -3460,6 +3460,26 @@ describe('PublicHousingExplorer', () => {
     expect(screen.getByTestId('map-camera-request')).toHaveTextContent(cameraRequest ?? '')
   })
 
+  it('다른 상세로 넘어가는 동안 직전 상세를 유지하고 응답이 늦을 때만 로딩을 알린다', async () => {
+    const repository = createRepository()
+    const announcementResponse = createDeferred<AnnouncementDetail>()
+    renderExplorer(repository, '/?complexId=17')
+    const complexPanel = await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
+    repository.findAnnouncementDetail.mockReturnValueOnce(announcementResponse.promise)
+
+    fireEvent.click(within(complexPanel).getByRole('button', {
+      name: '성남 청년 행복주택 입주자 모집 공고 상세 보기',
+    }))
+
+    expect(screen.getByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })).toBeVisible()
+    expect(screen.queryByText('공고 상세를 불러오고 있어요.')).not.toBeInTheDocument()
+    expect(await screen.findByText('공고 상세를 불러오고 있어요.')).toBeVisible()
+    expect(screen.queryByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })).not.toBeInTheDocument()
+
+    await act(async () => announcementResponse.resolve(announcementDetail()))
+    expect(await screen.findByRole('complementary', { name: '성남 청년 행복주택 입주자 모집 공고 상세 정보' })).toBeVisible()
+  })
+
   it('교차 상세을 두 번 중첩해도 각 부모 상세의 호출 버튼으로 차례로 돌아간다', async () => {
     const repository = createRepository()
     renderSearchedExplorer(repository)
