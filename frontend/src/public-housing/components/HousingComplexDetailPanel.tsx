@@ -511,7 +511,8 @@ function BasicInformation({ detail }: { detail: HousingComplexDetailData }) {
           term="총세대수"
           value={formatNullableCount(detail.totalHouseholdCount, '세대')}
         />
-        <DetailFact missingLabel=""
+        {/* 입주 전 단지는 주차대수를 모를 수 있어 비어 있으면 미확인으로 보여 준다. */}
+        <DetailFact missingLabel="미확인"
           term="총주차대수(세대당)"
           value={parkingSummary(detail.totalParkingCount, detail.totalHouseholdCount)}
         />

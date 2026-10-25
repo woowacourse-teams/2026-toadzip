@@ -102,7 +102,7 @@ public class MyHomeComplexMerge {
                     || !Objects.equals(first.getHousingType(), complex.getHousingType())
                     || !Objects.equals(first.getCorridorType(), complex.getCorridorType())
                     || !Objects.equals(first.getElevatorInstalled(), complex.getElevatorInstalled())
-                    || first.getParkingSpaceCount() != complex.getParkingSpaceCount()) {
+                    || !Objects.equals(first.getParkingSpaceCount(), complex.getParkingSpaceCount())) {
                 throw new IllegalArgumentException("단지 공통값이 다릅니다. 통합 전에 차이를 확인해야 합니다.");
             }
         }

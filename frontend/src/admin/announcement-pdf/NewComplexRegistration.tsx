@@ -28,7 +28,7 @@ export function NewComplexRegistration({ index, defaultName, defaultAddress = ''
   const [candidates, setCandidates] = useState<AddressCandidate[] | null>(null), [searchError, setSearchError] = useState('')
   const set = (key: keyof typeof values) => (event: { target: { value: string } }) => setValues(current => ({ ...current, [key]: event.target.value }))
   const problem = !values.name.trim() ? '단지명을 입력하세요.' : !values.address.trim() ? '주소를 입력하세요.' : !PNU.test(values.pnu) ? 'PNU 19자리를 입력하세요.'
-    : !values.latitude || !values.longitude ? '위도·경도를 입력하세요.' : values.households === '' ? '전체 세대수를 입력하세요.' : values.parking === '' ? '주차대수를 입력하세요.' : ''
+    : !values.latitude || !values.longitude ? '위도·경도를 입력하세요.' : values.households === '' ? '전체 세대수를 입력하세요.' : ''
   async function search() {
     if (!keyword.trim() || searching) return
     setSearching(true); setSearchError(''); setCandidates(null)
@@ -59,7 +59,7 @@ export function NewComplexRegistration({ index, defaultName, defaultAddress = ''
       const created = await createHousingComplex({ name: values.name.trim(), rentalType, agencyCode,
         address: { roadAddress: values.address.trim(), pnu: values.pnu, legalDongCode: values.pnu.slice(0, 10), provinceCode: values.pnu.slice(0, 2),
           cityCountyDistrictCode: values.pnu.slice(0, 5), latitude: coordinate(Number(values.latitude)), longitude: coordinate(Number(values.longitude)) },
-        totalHouseholdCount: Number(values.households), totalParkingCount: Number(values.parking), completionDate: values.completionDate || null,
+        totalHouseholdCount: Number(values.households), totalParkingCount: values.parking === '' ? null : Number(values.parking), completionDate: values.completionDate || null,
         heatingType: null, buildingType: null, corridorType: null, hasElevator: null, overviewImageUrl: null, moveOutCountLastYear: null })
       onCreated({ id: created.housingComplexId, name: created.name })
     } catch (cause) {
@@ -89,7 +89,7 @@ export function NewComplexRegistration({ index, defaultName, defaultAddress = ''
     <label>위도<input value={values.latitude} type="number" step="0.000001" onChange={set('latitude')} /></label>
     <label>경도<input value={values.longitude} type="number" step="0.000001" onChange={set('longitude')} /></label>
     <label>전체 세대수<input value={values.households} type="number" min={0} onChange={set('households')} /></label>
-    <label>주차대수<input value={values.parking} type="number" min={0} onChange={set('parking')} /></label>
+    <label>주차대수<input value={values.parking} type="number" min={0} placeholder="모르면 비워 두세요" onChange={set('parking')} /></label>
     <label>준공일 (선택)<input value={values.completionDate} type="date" onChange={set('completionDate')} /></label>
     {error && <p role="alert" className={styles.error}>{error}</p>}
     <Button data-design-system disabled={Boolean(problem) || busy} title={problem || undefined} onClick={() => void register()}>{busy ? '등록하는 중…' : '단지 등록하고 연결'}</Button>
