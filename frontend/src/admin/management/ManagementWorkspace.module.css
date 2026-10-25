@@ -98,6 +98,8 @@
 .editor :global(.management-page) fieldset, .editor :global(.registration-form) fieldset { min-width: 0; margin: 0 0 24px; padding: 18px; border: 1px solid var(--ds-color-divider); border-radius: 10px; background: var(--ds-color-surface-subtle); }
 .editor fieldset legend { padding: 0 6px; font-size: 14px; font-weight: 700; color: var(--ds-color-text); }
 .editor :global(.registration-grid), .editor :global(.admin-data-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+/* 입력 칸이 편집 영역 끝까지 늘어나지 않도록 폼 묶음 폭을 제한한다. */
+.editor fieldset:has(> :global(.registration-grid)) { max-width: 760px; }
 .editor :global(.registration-field):has([name="name"], [name="address.roadAddress"], [name="originalUrl"], [name="overviewImageUrl"], [name="receptionPlace.address"], input[type="url"]) { grid-column: 1 / -1; }
 .editor :global(.registration-field) label { display: block; font-size: 13px; font-weight: 600; color: var(--ds-color-label); }
 .editor :global(.registration-field) :global(.admin-required) { color: var(--ds-color-action); font-size: 10px; }

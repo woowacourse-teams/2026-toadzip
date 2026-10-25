@@ -4,6 +4,7 @@ import { BrandLink } from '../../BrandLink'
 import { useAdminAuth } from './useAdminAuth'
 import styles from './AdminLayout.module.css'
 import { FailureReturnLink } from '../ingest/FailureReturnLink'
+import { UnsavedChangesDialog } from '../management/UnsavedChangesDialog'
 
 const workLinks = [['/admin/operations', '운영 홈', 'home'], ['/admin/complexes', '단지 관리', 'building'],
   ['/admin/announcements', '공고 관리', 'document'], ['/admin/failures', '실패·검토 항목', 'alert']] as const
@@ -81,6 +82,7 @@ export function AdminLayout() {
       <main className="admin-content" id="admin-main">
         <FailureReturnLink />
         <Outlet />
+        <UnsavedChangesDialog />
       </main>
     </div>
   )

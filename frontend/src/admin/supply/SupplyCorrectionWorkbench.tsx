@@ -129,16 +129,24 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
           {rows.map((row, index) => {
             const group = newGroups.find(group => group.rowKeys.includes(row.key))
             const targets = row.targets.filter(target => !target.excluded)
+            const deletable = workspace.deletableRowKeys?.includes(row.key) ?? false
+            const toggleDelete = () => { setDeleted(current => current.includes(row.key) ? current.filter(key => key !== row.key) : [...current, row.key]); setPreview(null); setNotice('') }
             const gaps = deleted.includes(row.key) ? ['삭제 예정'] : row.excluded ? ['제외 예정'] : [!row.housingComplexId && '단지 연결', !row.housingTypeId && !row.newHousingType && '주택형 연결', !targets.length && '임대조건 없음'].filter(Boolean)
             return <Fragment key={row.key}><tr data-excluded={row.excluded || deleted.includes(row.key) || undefined}>
               <th scope="row" title={row.housingComplexName && row.complexName && row.housingComplexName !== row.complexName ? `공고 표기: ${row.complexName}` : undefined}>{row.housingComplexName || row.complexName || '새 공급행'}</th><td>{row.typeName || '미입력'}</td>
               <td>{group || row.groupId ? `공통 ${group?.sharedHouseholdCount ?? row.sharedHouseholdCount ?? '미확인'}` : row.householdCount ?? '미확인'}</td>
               <td>{targets.length ? `${targets.length}개` : '없음'}</td><td>{gaps.join(' · ') || '—'}</td>
-              <td><button type="button" aria-label={`${row.complexName || '새 공급행'} ${row.typeName || ''} 편집`} aria-expanded={expanded === row.key} onClick={() => setExpanded(expanded === row.key ? null : row.key)}>{expanded === row.key ? '닫기' : '편집'}</button></td>
+              <td><div className={styles.rowActions}><button type="button" aria-label={`${row.complexName || '새 공급행'} ${row.typeName || ''} 편집`} aria-expanded={expanded === row.key} onClick={() => setExpanded(expanded === row.key ? null : row.key)}>{expanded === row.key ? '닫기' : '편집'}</button>
+                {/* 관리자가 추가한 저장 행은 삭제, 원천행은 기록을 남기는 제외, 저장 전 추가 행은 바로 지운다. */}
+                {deletable ? <button type="button" aria-label={`${row.complexName} ${row.typeName} ${deleted.includes(row.key) ? '삭제 취소' : '삭제'}`} onClick={toggleDelete}>{deleted.includes(row.key) ? '삭제 취소' : '삭제'}</button>
+                  : row.id ? <button type="button" aria-label={`${row.complexName} ${row.typeName} ${row.excluded ? '제외 취소' : '제외'}`}
+                    onClick={() => edit(current => current.map(item => item.key === row.key ? { ...item, excluded: !item.excluded } : item))}>{row.excluded ? '제외 취소' : '제외'}</button>
+                  : <button type="button" aria-label={`${row.complexName || '새 공급행'} ${row.typeName || ''} 지우기`}
+                    onClick={() => { edit(current => current.filter(item => item.key !== row.key)); if (expanded === row.key) setExpanded(null) }}>지우기</button>}</div></td>
             </tr>{expanded === row.key && <tr><td colSpan={6} className={styles.expandedCell}><SupplyRowDraft value={row} inline sharedCount={group?.sharedHouseholdCount} first={index === 0} last={index === rows.length - 1}
               onChange={next => edit(current => current.map(item => item.key === next.key ? next : item))}
               onRemove={() => { edit(current => current.filter(item => item.key !== row.key)); setExpanded(null) }}
-              deleted={deleted.includes(row.key)} onDelete={workspace.deletableRowKeys?.includes(row.key) ? () => { setDeleted(current => current.includes(row.key) ? current.filter(key => key !== row.key) : [...current, row.key]); setPreview(null); setNotice('') } : undefined}
+              deleted={deleted.includes(row.key)} onDelete={deletable ? toggleDelete : undefined}
               onMove={delta => edit(current => { const next = [...current]; [next[index], next[index + delta]] = [next[index + delta], next[index]]; return next.map((item, order) => ({ ...item, displayOrder: order })) })} /></td></tr>}</Fragment>
           })}
         </tbody></table></div>

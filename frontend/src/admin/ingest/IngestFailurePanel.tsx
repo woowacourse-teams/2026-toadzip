@@ -174,18 +174,16 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
           {matching.totalElements > 0 ? <button type="button" onClick={() => move(0)}>첫 페이지로</button> : null}</div> : null}
         {matching && matching.items.length > 0 ? <table className={styles.table}>
           <caption className="sr-only">{label} 오류 목록 · {matching.page + 1}페이지</caption>
-          <colgroup><col className={styles.targetColumn}/><col style={{width:260}}/><col style={{width:230}}/><col style={{width:140}}/><col className={styles.actionColumn}/></colgroup>
-          <thead><tr><th scope="col">대상·작업</th><th scope="col">문제 원인·다음 행동</th><th scope="col">현재 서비스 데이터</th><th scope="col">처리 상태</th><th scope="col">확인·처리</th></tr></thead>
+          <colgroup><col className={styles.targetColumn}/><col/><col style={{width:120}}/><col className={styles.actionColumn}/></colgroup>
+          <thead><tr><th scope="col">대상</th><th scope="col">원인</th><th scope="col">상태</th><th scope="col">확인·처리</th></tr></thead>
           <tbody>{matching.items.map(row => {
             const target = reviewTarget(row)
+            // 목록은 무엇이 왜 실패했는지만 보여 준다. 근거·서비스 데이터·처리 기록은 확인·처리 창에서 본다.
             return <tr key={`${row.category}-${row.id}`}>
               <th scope="row" title={target.title}>{row.product ? <Link to={follow(`/admin/${row.product.resourceType}/${row.product.id}`, row)}>{target.title}</Link> : <span>{target.title}</span>}
-                <small>{failureCategories[row.category].label}{target.context ? ` · ${target.context}` : ''}</small>
-                <time dateTime={row.occurredAt}>{formatTime(row.occurredAt)}</time></th>
-              <td><strong>{reasonLabel(row)}</strong><p className={styles.clamp} title={row.detail}>{row.detail}</p><small>{nextAction(row)}</small></td>
-              <td><ProductSummary row={row}/></td>
-              <td><span className={styles.status} data-status={row.status}>{statusLabel(row.status)}</span><small>발생 {row.occurrenceCount}회{row.recurrenceCount ? ` · 재발 ${row.recurrenceCount}회` : ''}</small>
-                {row.status === 'RESOLVED' && row.lastResolvedAt ? <time dateTime={row.lastResolvedAt}>{formatTime(row.lastResolvedAt)}</time> : null}</td>
+                <small>{failureCategories[row.category].label}{target.context ? ` · ${target.context}` : ''}</small></th>
+              <td title={row.detail}>{reasonLabel(row)}</td>
+              <td><span className={styles.status} data-status={row.status}>{statusLabel(row.status)}</span></td>
               <td><button type="button" aria-label={`확인·처리: ${target.title}`} onClick={() => openSelection(row)}>확인·처리</button></td>
             </tr>
           })}</tbody>

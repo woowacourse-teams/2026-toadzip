@@ -26,13 +26,15 @@ beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value:function(this:HTMLDialogElement){this.removeAttribute('open');this.dispatchEvent(new Event('close'))}})
 })
 
-it('대상·원인·다음 행동과 선택한 실행을 함께 보여준다', async () => {
+it('목록은 대상·원인·상태만 보여주고 상세 설명은 확인·처리 창에 둔다', async () => {
   fetchFailures.mockResolvedValue(page())
   render(<IngestFailurePanel initialCategory="announcement" executionId="run-1" />, {wrapper:MemoryRouter})
   expect(await screen.findByText(row.target)).toBeVisible()
   expect(screen.getByText('연결할 단지를 찾지 못함')).toBeVisible()
-  expect(screen.getByText(row.detail)).toBeVisible()
+  expect(screen.queryByText(row.detail)).not.toBeInTheDocument()
   expect(screen.getByText('총 41건 · 실행 필터 적용')).toBeVisible()
+  fireEvent.click(screen.getByRole('button',{name:`확인·처리: ${row.target}`}))
+  expect(within(screen.getByRole('dialog')).getByText(text => text.includes(row.detail))).toBeVisible()
   expect(fetchFailures).toHaveBeenCalledWith('announcement','announcement','PENDING',0,expect.any(AbortSignal), {keyword:'',executionId:'run-1'})
 })
 
