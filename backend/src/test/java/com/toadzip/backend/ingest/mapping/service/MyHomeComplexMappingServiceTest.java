@@ -119,6 +119,35 @@ class MyHomeComplexMappingServiceTest {
     }
 
     @Test
+    void 마이홈에_없던_관리자_등록_단지는_마이홈_단지가_생기면_새로_만들지_않고_연결해_비워_둔_값만_채운다() {
+        var admin = complexRepository.save(HousingComplex.create("관리자 등록 단지", HousingComplex.ADMIN_SOURCE_PREFIX + "test",
+                "NATIONAL_RENTAL", com.toadzip.backend.housing.domain.Address.create("서울특별시 종로구 테스트로 1",
+                        "1111010100100010000", "1111010100", "11", "11110", new BigDecimal("37.5"), new BigDecimal("126.9")),
+                350, "LH", null, null, null, null, null, null, null, null));
+        var adminType = housingTypeRepository.save(HousingType.createFromMyHome(admin,
+                HousingType.ADMIN_SOURCE_PREFIX + "46A", "46A", new BigDecimal("46.8000"), null));
+        sourceRepository.saveAll(List.of(source("46A", "46.8000", "20.2000"), source("59A", "59.9500", "24.1000")));
+
+        var report = service.mapAll();
+        service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(report.createdComplexCount()).isZero();
+        assertThat(complexRepository.findAll()).singleElement().satisfies(complex -> {
+            assertThat(complex.getId()).isEqualTo(admin.getId());
+            // 관리자가 정한 단지명·세대수는 유지하고, 비워 둔 주차대수·준공일은 마이홈 값으로 채운다.
+            assertThat(complex.getName()).isEqualTo("관리자 등록 단지");
+            assertThat(complex.getTotalHouseholdCount()).isEqualTo(350);
+            assertThat(complex.getParkingSpaceCount()).isEqualTo(80);
+            assertThat(complex.getCompletionDate()).isEqualTo(LocalDate.of(2020, 1, 1));
+        });
+        // 관리자가 만든 46A는 마이홈 46A로 이어받아 주택형이 두 번 생기지 않는다.
+        assertThat(housingTypeRepository.findAll()).extracting(HousingType::getName).containsExactlyInAnyOrder("46A", "59A");
+        assertThat(housingTypeRepository.findById(adminType.getId()).orElseThrow().getSourceHousingTypeIdentifier())
+                .doesNotStartWith(HousingType.ADMIN_SOURCE_PREFIX);
+    }
+
+    @Test
     void 주소가_바뀌면_현재_위치정보에서_새_좌표를_읽는다() {
         sourceRepository.save(source("46A", "46.8000", "20.2000"));
         service.mapAll();

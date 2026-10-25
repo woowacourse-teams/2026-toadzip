@@ -260,6 +260,28 @@ public class HousingComplex {
      * 관리자가 먼저 등록한 단지에 마이홈 단지가 연결되면, 관리자가 비워 둔 값만 마이홈 값으로 채운다.
      * 단지명·주소·세대수처럼 관리자가 정한 값은 유지한다.
      */
+    /** 관리자가 직접 등록한 단지의 원천 식별자 접두어. 마이홈 원천이 없는 입주 전 단지가 여기에 해당한다. */
+    public static final String ADMIN_SOURCE_PREFIX = "ADMIN_ENTRY-HOUSING-COMPLEX-";
+
+    public boolean isAdminRegistered() {
+        return sourceComplexIdentifier.startsWith(ADMIN_SOURCE_PREFIX);
+    }
+
+    public boolean fillBlanksFromMyHome(LocalDate completionDate, String heatingType, String housingType,
+            String corridorType, Boolean elevatorInstalled, Integer parkingSpaceCount) {
+        boolean changed = false;
+        if (this.completionDate == null && completionDate != null) { this.completionDate = completionDate; changed = true; }
+        if (this.heatingType == null && heatingType != null) { this.heatingType = heatingType; changed = true; }
+        if (this.housingType == null && housingType != null) { this.housingType = housingType; changed = true; }
+        if (this.corridorType == null && corridorType != null) { this.corridorType = corridorType; changed = true; }
+        if (this.elevatorInstalled == null && elevatorInstalled != null) { this.elevatorInstalled = elevatorInstalled; changed = true; }
+        if (this.parkingSpaceCount == null && parkingSpaceCount != null) {
+            validateNonNegative(parkingSpaceCount, "주차대수");
+            this.parkingSpaceCount = parkingSpaceCount; changed = true;
+        }
+        return changed;
+    }
+
     public void reviseByAdmin(HousingComplex incoming) {
         if (adminDeleted) {
             throw new IllegalArgumentException("휴지통에서 복구한 뒤 수정해 주세요.");

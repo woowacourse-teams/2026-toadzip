@@ -174,7 +174,7 @@ public class AdminHousingComplexManagementService {
             throw new AdminDataConflictException("이 단지에 같은 이름의 주택형이 있습니다.");
         }
         // 관리자가 만든 주택형은 수집 원천이 없으므로 원천 식별자를 새로 만들고 관리자 수정으로 표시해 재수집이 덮어쓰지 않게 한다.
-        var type = HousingType.createFromMyHome(complex, "ADMIN_ENTRY-HOUSING-TYPE-" + java.util.UUID.randomUUID(),
+        var type = HousingType.createFromMyHome(complex, HousingType.ADMIN_SOURCE_PREFIX + java.util.UUID.randomUUID(),
                 name, request.exclusiveArea(), request.supplyArea());
         type.reviseByAdmin(name, request.exclusiveArea(), request.householdCount());
         types.save(type);
