@@ -97,8 +97,8 @@ public class HousingComplex {
     @Column(nullable = true)
     private Boolean elevatorInstalled;
 
-    @Column(nullable = false)
-    private int parkingSpaceCount;
+    // 입주 전 단지는 마이홈에도 주차대수가 없어 관리자가 비워 둘 수 있다. 비어 있으면 공개 화면에 미확인으로 보인다.
+    private Integer parkingSpaceCount;
 
     private String imageUrl;
 
@@ -119,7 +119,7 @@ public class HousingComplex {
             String housingType,
             String corridorType,
             Boolean elevatorInstalled,
-            int parkingSpaceCount,
+            Integer parkingSpaceCount,
             String imageUrl,
             Integer recentOneYearMoveOutCount
     ) {
@@ -132,7 +132,7 @@ public class HousingComplex {
         validateNotBlankIfPresent(heatingType, "난방유형");
         validateNotBlankIfPresent(housingType, "주택유형");
         validateNotBlankIfPresent(corridorType, "복도유형");
-        validateNonNegative(parkingSpaceCount, "주차대수");
+        validateNonNegativeIfPresent(parkingSpaceCount, "주차대수");
         validateNonNegativeIfPresent(recentOneYearMoveOutCount, "최근 1년 퇴거자 수");
         this.name = name;
         this.sourceComplexIdentifier = sourceComplexIdentifier;
@@ -162,7 +162,7 @@ public class HousingComplex {
             String housingType,
             String corridorType,
             Boolean elevatorInstalled,
-            int parkingSpaceCount,
+            Integer parkingSpaceCount,
             String imageUrl,
             Integer recentOneYearMoveOutCount
     ) {
@@ -256,6 +256,10 @@ public class HousingComplex {
         return true;
     }
 
+    /**
+     * 관리자가 먼저 등록한 단지에 마이홈 단지가 연결되면, 관리자가 비워 둔 값만 마이홈 값으로 채운다.
+     * 단지명·주소·세대수처럼 관리자가 정한 값은 유지한다.
+     */
     public void reviseByAdmin(HousingComplex incoming) {
         if (adminDeleted) {
             throw new IllegalArgumentException("휴지통에서 복구한 뒤 수정해 주세요.");
@@ -302,7 +306,7 @@ public class HousingComplex {
                 && java.util.Objects.equals(housingType, incoming.housingType)
                 && java.util.Objects.equals(corridorType, incoming.corridorType)
                 && java.util.Objects.equals(elevatorInstalled, incoming.elevatorInstalled)
-                && parkingSpaceCount == incoming.parkingSpaceCount;
+                && java.util.Objects.equals(parkingSpaceCount, incoming.parkingSpaceCount);
     }
 
     private void applyMyHomeValues(HousingComplex incoming) {

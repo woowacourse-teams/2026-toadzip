@@ -19,7 +19,7 @@ export type HousingComplexCreateRequest = {
   buildingType: string | null
   corridorType: string | null
   hasElevator: boolean | null
-  totalParkingCount: number
+  totalParkingCount: number | null
   overviewImageUrl: string | null
   moveOutCountLastYear: number | null
 }

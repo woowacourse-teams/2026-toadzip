@@ -431,6 +431,11 @@ describe('HousingComplexDetailPanel', () => {
     focus.mockRestore()
   })
 
+  it('주차대수를 모르는 단지는 총주차대수를 미확인으로 표시한다', () => {
+    const { panel } = renderPanel(detailWith({ totalParkingCount: null }))
+    expect(factValue(section(panel, '단지 기본 정보'), '총주차대수(세대당)').getByText('미확인')).toBeInTheDocument()
+  })
+
   it('값이 없으면 빈칸으로 표시하고 0과 false는 실제 값으로 표시한다', () => {
     const { panel } = renderPanel(
       detailWith({

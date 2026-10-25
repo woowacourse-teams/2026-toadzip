@@ -84,13 +84,14 @@ class AdminHousingComplexRegistrationIntegrationTest {
     }
 
     @Test
-    void 입주_전_신규_단지는_준공일과_건물_정보를_비워_저장할_수_있다() throws Exception {
+    void 입주_전_신규_단지는_준공일과_건물_정보와_주차대수를_비워_저장할_수_있다() throws Exception {
         String request = validRequest()
                 .replace("\"completionDate\": \"2020-06-30\",", "")
                 .replace("\"heatingType\": \"INDIVIDUAL\",", "")
                 .replace("\"buildingType\": \"APARTMENT\",", "")
                 .replace("\"corridorType\": \"STAIR\",", "")
                 .replace("\"hasElevator\": true,", "")
+                .replace("\"totalParkingCount\": 0,", "")
                 .replace("\"moveOutCountLastYear\": 0", "\"moveOutCountLastYear\": null");
         MvcResult result = mockMvc.perform(post(ENDPOINT)
                         .with(user("admin").roles("ADMIN"))
@@ -108,7 +109,8 @@ class AdminHousingComplexRegistrationIntegrationTest {
                 () -> assertThat(saved.getCompletionDate()).isNull(),
                 () -> assertThat(saved.getHeatingType()).isNull(),
                 () -> assertThat(saved.getElevatorInstalled()).isNull(),
-                () -> assertThat(saved.getRecentOneYearMoveOutCount()).isNull()
+                () -> assertThat(saved.getRecentOneYearMoveOutCount()).isNull(),
+                () -> assertThat(saved.getParkingSpaceCount()).isNull()
         );
     }
 

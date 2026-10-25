@@ -183,7 +183,7 @@ public class MyHomeComplexSourceMapper {
                     && Objects.equals(housingType, product.getHousingType())
                     && Objects.equals(corridorType, product.getCorridorType())
                     && Objects.equals(elevatorInstalled, product.getElevatorInstalled())
-                    && parkingSpaceCount == product.getParkingSpaceCount();
+                    && Objects.equals(parkingSpaceCount, product.getParkingSpaceCount());
         }
     }
 

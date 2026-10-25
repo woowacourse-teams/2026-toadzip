@@ -20,7 +20,8 @@ export type ManagementComplexSummary = {
   sourceIdentifier: string
   completionDate: string | null
   totalHouseholdCount: number
-  totalParkingCount: number
+  /** 입주 전 단지는 주차대수를 모를 수 있다. */
+  totalParkingCount: number | null
   heatingType: string | null
   buildingType: string | null
   corridorType: string | null
@@ -236,7 +237,7 @@ function isCount(value: unknown): value is number {
 
 function isManagementComplexSummary(value: unknown): value is ManagementComplexSummary {
   return isRecord(value) && typeof value.sourceIdentifier === 'string' && isNullableString(value.completionDate)
-    && isCount(value.totalHouseholdCount) && isCount(value.totalParkingCount)
+    && isCount(value.totalHouseholdCount) && (value.totalParkingCount === null || isCount(value.totalParkingCount))
     && isNullableString(value.heatingType) && isNullableString(value.buildingType) && isNullableString(value.corridorType)
     && (value.hasElevator === null || typeof value.hasElevator === 'boolean')
     && (value.moveOutCountLastYear === null || isCount(value.moveOutCountLastYear))

@@ -34,7 +34,7 @@ public record AdminHousingComplexCreateRequest(
         BuildingType buildingType,
         CorridorType corridorType,
         Boolean hasElevator,
-        @NotNull(message = "필수 값입니다.")
+        // 입주 전 단지는 주차대수를 공고문·마이홈 어디에서도 알 수 없을 수 있어 비워 둘 수 있다.
         @PositiveOrZero(message = "0 이상이어야 합니다.")
         Integer totalParkingCount,
         @Size(max = 255, message = "255자 이하여야 합니다.")
