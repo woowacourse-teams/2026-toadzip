@@ -51,6 +51,8 @@ export type ManagementHousingType = {
   name: string
   exclusiveArea: number
   householdCount: number | null
+  /** 관리자가 휴지통으로 옮긴 주택형. 공개·후보 조회에서는 빠진다. */
+  deleted?: boolean
 }
 
 export type ManagementSupplyRow = {
@@ -135,6 +137,7 @@ export function parseManagementDetail(value: unknown): ManagementDetailData {
       }
       housingTypes.push({
         id: item.id, name: item.name, exclusiveArea: item.exclusiveArea, householdCount: item.householdCount,
+        deleted: item.deleted === true,
       })
     }
   }
