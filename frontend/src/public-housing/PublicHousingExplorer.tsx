@@ -15,6 +15,7 @@ import {
   type DetailReturnFocus,
 } from './navigation/detailHistory.ts'
 import { HousingDetailStatePanel, type DetailStatus } from './components/HousingDetailStatePanel.tsx'
+import { useDelayedIndicator } from './components/useDelayedIndicator.ts'
 import { toHousingComplexCardData } from './presentation/complexPresentation.ts'
 import { MISSING_DATA_LABEL } from './presentation/missingData.ts'
 import {
@@ -1780,6 +1781,7 @@ function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backT
   onRetry: () => void
   onBackToSummary?: () => void
 } & DetailBackProps) {
+  const loadingVisible = useDelayedIndicator(state.status === 'loading')
   if (state.status === 'closed') {
     return null
   }
@@ -1790,7 +1792,7 @@ function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backT
     : <DetailBackButton backTarget={backTarget} onBack={onBack} />
   return (
     <HousingDetailOverlay label="단지 상세" mobile={mobile} onClose={onClose}>
-      {state.status === 'ready' && state.detail
+      {state.status === 'ready' && state.detail && !loadingVisible
         ? <HousingComplexDetailPanel
             mobile={mobile}
             streetView={streetView}
@@ -1799,7 +1801,8 @@ function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backT
             detail={toHousingComplexDetailData(state.detail)}
             onClose={onClose} onOpenAnnouncement={onOpenAnnouncement} />
         : <HousingDetailStatePanel kind="complex" id={state.complexId} backButton={backButton}
-            status={state.status} errorMessage={state.errorMessage}
+            status={loadingVisible ? 'loading' : state.status} loadingMessageVisible={loadingVisible}
+            errorMessage={state.errorMessage}
             onClose={onClose} onRetry={onRetry} />}
     </HousingDetailOverlay>
   )
@@ -1812,18 +1815,20 @@ function AnnouncementDetailLayer({ state, onClose, onOpenComplex, onRetry, backT
   onOpenComplex: (complexId: string) => void
   onRetry: () => void
 } & DetailBackProps) {
+  const loadingVisible = useDelayedIndicator(state.status === 'loading')
   if (state.status === 'closed') {
     return null
   }
   return (
     <HousingDetailOverlay label="공고 상세" mobile={mobile} onClose={onClose}>
-      {state.status === 'ready' && state.detail
+      {state.status === 'ready' && state.detail && !loadingVisible
         ? <HousingAnnouncementDetailPanel
             backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
             detail={toHousingAnnouncementDetailData(state.detail)}
             onClose={onClose} onOpenComplex={onOpenComplex} />
         : <HousingDetailStatePanel kind="announcement" id={state.announcementId} backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
-            status={state.status} errorMessage={state.errorMessage} onClose={onClose} onRetry={onRetry} />}
+            status={loadingVisible ? 'loading' : state.status} loadingMessageVisible={loadingVisible}
+            errorMessage={state.errorMessage} onClose={onClose} onRetry={onRetry} />}
     </HousingDetailOverlay>
   )
 }

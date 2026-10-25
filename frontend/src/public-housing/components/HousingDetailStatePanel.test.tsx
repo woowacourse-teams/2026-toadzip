@@ -16,6 +16,12 @@ describe.each([
     expect(screen.queryByText(`${label} 17`)).not.toBeInTheDocument()
   })
 
+  it('로딩 문구를 숨겨도 status 영역과 닫기는 먼저 제공한다', () => {
+    render(<HousingDetailStatePanel {...props} status="loading" loadingMessageVisible={false} />)
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+    expect(screen.getByRole('button', { name: `${label} 상세 닫기` })).toBeVisible()
+  })
+
   it('존재하지 않는 상세에는 오류 설명만 제공한다', () => {
     render(<HousingDetailStatePanel {...props} status="not-found" />)
     expect(screen.getByRole('alert')).toHaveTextContent(missing)

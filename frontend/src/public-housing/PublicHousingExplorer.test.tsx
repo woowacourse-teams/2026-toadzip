@@ -2178,7 +2178,8 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '서울가람 행복주택 지도 마커 선택' }))
     await act(async () => detailResponse.resolve(complexDetail()))
 
-    expect(screen.getByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })).toBeVisible()
+    // 로딩 문구가 보였다면 최소 표시 시간을 채운 뒤 상세로 바뀐다.
+    expect(await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })).toBeVisible()
     expect(screen.getByText('카메라 37.56,127')).toBeVisible()
     expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('14')
     expect(screen.getByTestId('map-camera-request')).toHaveTextContent(cameraRequest ?? '')
