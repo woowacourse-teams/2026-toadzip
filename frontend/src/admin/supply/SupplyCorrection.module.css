@@ -30,7 +30,10 @@
 .workspace :is(input,select,textarea,button,summary,a):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
 @media (max-width: 600px) { .workspace input, .workspace select, .workspace textarea { font-size: 16px; } .rowBody { padding-inline: var(--ds-space-3); } }
 
-.review > :not(summary) { margin-inline: var(--ds-space-4); }
+.review > summary { padding: var(--ds-space-4); }
+/* 상위 화면의 문단 여백 규칙에 밀리지 않도록 본문 여백은 래퍼 패딩으로 준다. */
+.reviewBody { display: grid; gap: var(--ds-space-3); padding: 0 var(--ds-space-4) var(--ds-space-4); min-width: 0; }
+.reviewBody > p { margin: 0; }
 .review table { min-width: 0; }
 .issues { display: inline-flex; flex-wrap: wrap; gap: var(--ds-space-2); margin-left: var(--ds-space-2); vertical-align: middle; }
 .issues span { padding: 2px var(--ds-space-2); border-radius: var(--ds-radius-control); color: var(--ds-color-status-upcoming); background: var(--ds-color-status-upcoming-surface); font-size: var(--ds-text-caption); font-weight: normal; }
@@ -54,3 +57,4 @@
 .merge h4, .merge p, .merge ul { margin: 0; }
 .merge label { display: grid; gap: var(--ds-space-1); max-width: 32rem; }
 .merge button { justify-self: start; }
+.field { display: grid; gap: var(--ds-space-2); align-content: start; }
