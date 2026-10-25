@@ -26,7 +26,6 @@ import com.toadzip.backend.announcement.repository.AnnouncementAttachmentReposit
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureStore;
 import jakarta.validation.Validator;
 import java.util.ArrayList;
@@ -36,7 +35,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -113,16 +111,15 @@ public class AnnouncementJsonCorrectionService {
         if (supplyApply != null) {
             supplies.recordOperation(id, supplyApply, change.getId(), announcement.getVersion());
         }
-        resolveFailures(announcement.getSourceAnnouncementIdentifier());
+        resolveFailures(announcement.getSourceAnnouncementIdentifier(), actor);
         return after;
     }
 
-    /** PDF 보정은 공고를 원문 기준으로 맞추므로 이 공고에 남은 정제·보강 실패를 모두 해결로 바꾼다. 원인이 남으면 다음 정제가 다시 연다. */
-    private void resolveFailures(String identifier) {
+    /** PDF 보정은 공고를 원문 기준으로 맞추므로 이 공고에 남은 정제·보강 실패를 해결한 관리자와 함께 해결로 바꾼다. */
+    private void resolveFailures(String identifier, String actor) {
         if (identifier == null || identifier.isBlank()) { return; }
-        UUID executionId = IngestExecutionContext.currentExecutionId().orElse(null);
-        mappingFailures.reconcileForAnnouncement(identifier, List.of(), executionId);
-        enrichmentFailures.reconcileForAnnouncement(identifier, List.of(), executionId);
+        mappingFailures.resolveByAdmin(identifier, actor);
+        enrichmentFailures.resolveByAdmin(identifier, actor);
     }
 
     private Prepared prepare(long id, Request request) {

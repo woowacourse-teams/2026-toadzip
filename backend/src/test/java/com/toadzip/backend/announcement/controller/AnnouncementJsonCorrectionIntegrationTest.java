@@ -107,6 +107,13 @@ class AnnouncementJsonCorrectionIntegrationTest {
                 UNION ALL
                 SELECT status FROM lh_announcement_enrichment_failures WHERE source_announcement_identifier = ?
                 """, String.class, identifier, identifier)).containsOnly("RESOLVED").hasSize(3);
+        assertThat(jdbc.queryForList("""
+                SELECT last_resolved_by FROM myhome_announcement_mapping_failures
+                WHERE source_announcement_identifier = ?
+                UNION ALL
+                SELECT last_resolved_by FROM lh_announcement_enrichment_failures
+                WHERE source_announcement_identifier = ?
+                """, String.class, identifier, identifier)).containsOnly("admin").hasSize(3);
         assertThat(jdbc.queryForObject("SELECT status FROM myhome_announcement_mapping_failures "
                 + "WHERE source_announcement_identifier = 'other'", String.class)).isEqualTo("PENDING");
     }

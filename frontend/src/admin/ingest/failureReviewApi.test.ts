@@ -18,6 +18,9 @@ it('서버의 전체 건수와 대상 불확실성을 보존하고 조회·취�
   const result=await getFailureReviews('announcement','announcement','PENDING',0,signal)
   expect(requestManagementApi).toHaveBeenCalledWith('/api/admin/ingest/failure-reviews?domain=announcement&category=announcement&status=PENDING&page=0&size=20','GET',undefined,signal)
   expect(result).toMatchObject({totalElements:1,totalPages:1,items:[{target:'공고 · 공급행 3',productLinkStatus:'UNKNOWN',product:null,recurrenceCount:1}]})
+  expect(result.items[0].lastResolvedBy).toBeNull()
+  vi.mocked(requestManagementApi).mockResolvedValue({...response,items:[{...response.items[0],lastResolvedBy:'root'}]})
+  expect((await getFailureReviews('announcement','all','ALL',0)).items[0].lastResolvedBy).toBe('root')
 })
 
 it.each([

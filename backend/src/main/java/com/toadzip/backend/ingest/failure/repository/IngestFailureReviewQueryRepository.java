@@ -225,20 +225,21 @@ public class IngestFailureReviewQueryRepository {
                         CASE WHEN source IN ('MYHOME_COMPLEX', 'LH_LEASE_CATALOG')
                             THEN 'complex' ELSE 'announcement' END
                         """, "source", "request_description", "NULL::text", "NULL::text", "NULL::text",
-                        "error_type", "reason", "resolved_at", "resolved_execution_id",
+                        "error_type", "reason", "resolved_at", "resolved_execution_id", "NULL::text",
                         "jsonb_build_object('attemptCount', attempt_count, 'errorType', error_type)"),
                 new FailureQuery("myhome_complex_mapping_failures", "complex", "'complex'", "'MYHOME_COMPLEX'",
                         "source_key", "source_complex_identifier", "NULL::text", "NULL::text", "reason", "detail",
-                        "last_resolved_at", "last_resolved_execution_id", "'{}'::jsonb"),
+                        "last_resolved_at", "last_resolved_execution_id", "last_resolved_by", "'{}'::jsonb"),
                 // LH 세대수 보강은 되면 쓰고 안 되면 마이홈 세대수를 쓰는 선택 보강이라 관리자가 처리할 실패로 보이지 않는다.
                 new FailureQuery("myhome_announcement_mapping_failures", "announcement", "'announcement'",
                         "'MYHOME_ANNOUNCEMENT'", "source_key", "NULL::text", "source_announcement_identifier",
                         "NULL::text", "reason", "detail", "last_resolved_at", "last_resolved_execution_id",
+                        "last_resolved_by",
                         "jsonb_build_object('sourceHouseSerialNumber', source_house_serial_number)"),
                 new FailureQuery("lh_announcement_enrichment_failures", "enrichment", "'announcement'",
                         "'LH_ANNOUNCEMENT'", "source_key", "NULL::text", "source_announcement_identifier",
                         "NULL::text", "reason", "detail", "last_resolved_at", "last_resolved_execution_id",
-                        "jsonb_build_object('panId', pan_id)")
+                        "last_resolved_by", "jsonb_build_object('panId', pan_id)")
         );
     }
 
@@ -248,11 +249,12 @@ public class IngestFailureReviewQueryRepository {
                     %s AS source_complex_identifier, %s AS source_announcement_identifier, %s AS target_name,
                     %s AS reason, %s AS detail, status, occurred_at, last_occurred_at, occurrence_count,
                     recurrence_count, %s AS last_resolved_at, first_execution_id, last_execution_id,
-                    %s AS last_resolved_execution_id, jsonb_strip_nulls(%s)::text AS metadata
+                    %s AS last_resolved_execution_id, %s AS last_resolved_by, jsonb_strip_nulls(%s)::text AS metadata
                 FROM %s
                 """.formatted(query.category(), query.domain(), query.source(), query.sourceKey(),
                         query.complexIdentifier(), query.announcementIdentifier(), query.targetName(), query.reason(),
-                        query.detail(), query.resolvedAt(), query.resolvedExecutionId(), query.metadata(),
+                        query.detail(), query.resolvedAt(), query.resolvedExecutionId(), query.resolvedBy(),
+                        query.metadata(),
                         query.table());
     }
 
@@ -266,6 +268,7 @@ public class IngestFailureReviewQueryRepository {
                 instant(row, "occurred_at"), instant(row, "last_occurred_at"), row.getInt("occurrence_count"),
                 row.getInt("recurrence_count"), instant(row, "last_resolved_at"), uuid(row, "first_execution_id"),
                 uuid(row, "last_execution_id"), uuid(row, "last_resolved_execution_id"),
+                row.getString("last_resolved_by"),
                 row.getString("source_complex_identifier"), row.getString("source_announcement_identifier"),
                 row.getString("target_name_value"), json.readValue(row.getString("metadata"), METADATA_TYPE),
                 productLinkStatus(row, product), product);
@@ -320,7 +323,7 @@ public class IngestFailureReviewQueryRepository {
     private record FailureQuery(
             String table, String category, String domain, String source, String sourceKey, String complexIdentifier,
             String announcementIdentifier, String targetName, String reason, String detail, String resolvedAt,
-            String resolvedExecutionId, String metadata
+            String resolvedExecutionId, String resolvedBy, String metadata
     ) {
     }
 }

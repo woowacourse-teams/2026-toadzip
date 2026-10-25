@@ -11,7 +11,7 @@ const fetchFailures = vi.mocked(getFailureReviews)
 const row: FailureReview = {
   id:1,category:'announcement',target:'공고 A · 공급행 3',sourceKey:'A:3',source:'MYHOME_ANNOUNCEMENT',
   reason:'COMPLEX_NOT_FOUND',detail:'주소와 단지명에 일치하는 단지가 없습니다.',status:'PENDING',
-  occurredAt:'2026-09-26T03:00:00Z',occurrenceCount:2,recurrenceCount:0,lastResolvedAt:null,
+  occurredAt:'2026-09-26T03:00:00Z',occurrenceCount:2,recurrenceCount:0,lastResolvedAt:null,lastResolvedBy:null,
   executionId:'run-1',raw:{},productLinkStatus:'UNKNOWN',product:null,
 }
 const page = (items:FailureReview[] = [row], number = 0):FailureReviewPageData =>
@@ -180,6 +180,16 @@ it('해결되어 미해결 목록에서 사라져도 처리창에서 개별 오�
   expect(getFailureReview).toHaveBeenLastCalledWith('announcement',1,expect.any(AbortSignal))
   fireEvent.click(screen.getByRole('button',{name:'닫기'}))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+it('관리자가 공고 보정으로 해결한 오류는 해결한 관리자를 목록과 처리창에 보여 준다', async () => {
+  const resolved = {...row,status:'RESOLVED',lastResolvedAt:'2026-10-18T07:00:00Z',lastResolvedBy:'root'}
+  fetchFailures.mockResolvedValue(page([resolved]))
+  vi.mocked(getFailureReview).mockResolvedValue(resolved)
+  render(<IngestFailurePanel initialCategory="announcement" executionId={null} />, {wrapper:MemoryRouter})
+  expect(await screen.findByText('관리자 root가 공고 보정으로 해결')).toBeVisible()
+  fireEvent.click(screen.getByRole('button',{name:`확인·처리: ${row.target}`}))
+  await waitFor(() => expect(screen.getByRole('heading',{name:/오류 기록 해결됨 .* 관리자 root가 공고 보정으로 해결/})).toBeVisible())
 })
 
 it('LH 보강 실패에서는 같은 공고 번호로 상세·공급 원천을 각각 확인한다', async () => {
