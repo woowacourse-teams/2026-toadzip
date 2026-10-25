@@ -50,3 +50,7 @@
 .tableScroll tr[data-excluded] > :is(th,td) { color:var(--ds-color-label); }
 .stale { margin: 8px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--ds-color-status-upcoming-surface); color: var(--ds-color-status-upcoming); font-weight: 600; }
 .rowActions { display:flex; flex-wrap:nowrap; gap:var(--ds-space-2); }
+.merge { display: grid; gap: var(--ds-space-3); margin-bottom: var(--ds-space-4); padding: var(--ds-space-3) var(--ds-space-4); border-left: 3px solid var(--ds-color-status-upcoming); background: var(--ds-color-surface); }
+.merge h4, .merge p, .merge ul { margin: 0; }
+.merge label { display: grid; gap: var(--ds-space-1); max-width: 32rem; }
+.merge button { justify-self: start; }

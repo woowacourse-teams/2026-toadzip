@@ -180,3 +180,44 @@ it('LH 공급 원본 행이 공급행에 없으면 직접 추가를 막고 이�
   expect(screen.getByRole('button', { name: '직접 추가' })).toBeDisabled()
   expect(screen.getByRole('note')).toHaveTextContent('LH 공급 원본 1행(한스빌 · 26B)이 아직 공급행에 없습니다.')
 })
+
+it('LH 원본과 중복 가능한 행을 같은 주택형의 펼침 행으로 합치면 조건과 표기를 옮기고 직접 추가 행은 지운다', async () => {
+  const expanded = { ...row, id: 264, key: 'row:264', typeName: '39', householdCount: 100, targets: [] }
+  const manual = { ...row, id: 205, key: 'row:205', typeName: '39A', householdCount: null }
+  const other = { ...row, id: 91, key: 'row:91', typeName: '27', housingTypeId: 99, targets: [] }
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...workspace, rows: [other, expanded, manual], deletableRowKeys: ['row:205'],
+    rowSources: [{ rowKey: 'row:91', category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: 'LH:P:SUPPLY:0' }, { rowKey: 'row:264', category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: 'LH:P:SUPPLY:1' }] })
+  await setup(false)
+  fireEvent.click(screen.getByRole('button', { name: '한스빌 39A 편집' }))
+  const panel = screen.getByRole('region', { name: 'LH 펼친 행으로 합치기' })
+  expect(within(panel).getByLabelText('합칠 LH 펼침 행')).toHaveValue('row:264')
+  fireEvent.click(within(panel).getByRole('button', { name: '펼친 행으로 합치기' }))
+  expect(screen.getByText('합쳐서 삭제 예정')).toBeVisible()
+
+  fireEvent.click(screen.getByRole('button', { name: '한스빌 39A 합치기 취소' }))
+  expect(screen.queryByText('합쳐서 삭제 예정')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '한스빌 39A 편집' }))
+  fireEvent.click(within(screen.getByRole('region', { name: 'LH 펼친 행으로 합치기' })).getByRole('button', { name: '펼친 행으로 합치기' }))
+  fireEvent.change(screen.getByLabelText('보정 이유'), { target: { value: 'LH 펼침 행과 중복' } })
+  fireEvent.click(screen.getByRole('button', { name: '공급정보 저장' }))
+
+  await waitFor(() => expect(previewSupply).toHaveBeenCalled())
+  const input = vi.mocked(previewSupply).mock.calls[0][1]
+  expect(input.deletedRowKeys).toEqual(['row:205'])
+  expect(input.rows.map(item => item.key)).toEqual(['row:91', 'row:264'])
+  expect(input.rows[1]).toMatchObject({ typeName: '39A', householdCount: 100, targets: [expect.objectContaining({ id: null, rent: '200000' })] })
+})
+
+it('펼침 행에 이미 임대조건이 있으면 합치지 않고 두 조건을 보여 준다', async () => {
+  const expanded = { ...row, id: 264, key: 'row:264', typeName: '39', targets: [{ ...row.targets[0], id: 30, key: 'target:30', rent: '85310' }] }
+  const manual = { ...row, id: 205, key: 'row:205', typeName: '39A' }
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...workspace, rows: [expanded, manual], deletableRowKeys: ['row:205'],
+    rowSources: [{ rowKey: 'row:264', category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: 'LH:P:SUPPLY:1' }] })
+  await setup(false)
+  fireEvent.click(screen.getByRole('button', { name: '한스빌 39A 편집' }))
+  const panel = screen.getByRole('region', { name: 'LH 펼친 행으로 합치기' })
+  expect(within(panel).getByRole('button', { name: '펼친 행으로 합치기' })).toBeDisabled()
+  expect(within(panel).getByRole('note')).toHaveTextContent('월 85310')
+  expect(within(panel).getByRole('note')).toHaveTextContent('월 200000')
+})
+
