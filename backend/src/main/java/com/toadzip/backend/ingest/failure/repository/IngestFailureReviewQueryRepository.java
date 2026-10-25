@@ -102,7 +102,7 @@ public class IngestFailureReviewQueryRepository {
                 CASE WHEN complex.id IS NOT NULL THEN
                     complex.latitude IS NOT NULL AND complex.longitude IS NOT NULL END AS has_coordinates,
                 CASE WHEN complex.id IS NOT NULL THEN
-                    (SELECT COUNT(*) FROM housing_types WHERE housing_complex_id = complex.id)
+                    (SELECT COUNT(*) FROM housing_types WHERE housing_complex_id = complex.id AND admin_deleted = false)
                 END AS housing_type_count,
                 CASE WHEN announcement.id IS NOT NULL THEN
                     (SELECT COUNT(DISTINCT housing_complex_id) FROM supply_rows

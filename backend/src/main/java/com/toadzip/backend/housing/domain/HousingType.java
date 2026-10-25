@@ -19,6 +19,7 @@ import java.math.RoundingMode;
 import java.util.Objects;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.SQLRestriction;
 
 @Getter
 @Entity
@@ -31,6 +32,8 @@ import lombok.NoArgsConstructor;
         )
 )
 @NoArgsConstructor(access = PROTECTED)
+// 휴지통 주택형은 기본 조회에서 빠진다. 원천 동기화와 관리자 상세만 HousingTypeRepository의 포함 조회를 쓴다.
+@SQLRestriction("admin_deleted = false")
 public class HousingType {
 
     @Id
@@ -68,6 +71,10 @@ public class HousingType {
     @Column(nullable = false)
     @org.hibernate.annotations.ColumnDefault("false")
     private boolean adminModified;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminDeleted;
 
     @Embedded
     private MyHomeRentalCondition basicRentalCondition;
@@ -213,6 +220,16 @@ public class HousingType {
      */
     private static BigDecimal area(BigDecimal value) {
         return value == null ? null : value.setScale(4, RoundingMode.HALF_UP);
+    }
+
+    /** 관리자 판단을 원천 재수집이 되돌리지 않도록 관리자 수정으로 함께 표시한다. */
+    public void moveToTrash() {
+        adminDeleted = true;
+        adminModified = true;
+    }
+
+    public void restore() {
+        adminDeleted = false;
     }
 
     public void reviseByAdmin(String name, BigDecimal exclusiveArea, Integer householdCount) {

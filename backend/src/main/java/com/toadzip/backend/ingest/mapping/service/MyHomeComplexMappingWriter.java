@@ -296,7 +296,7 @@ public class MyHomeComplexMappingWriter {
     private List<MyHomeHousingTypeMappingData> distinctHousingTypes(
             HousingComplex complex, List<MyHomeHousingTypeMappingData> incoming
     ) {
-        Set<String> stored = housingTypeRepository.findAllByHousingComplex(complex).stream()
+        Set<String> stored = housingTypeRepository.findAllIncludingTrashByHousingComplexId(complex.getId()).stream()
                 .map(HousingType::getSourceHousingTypeIdentifier).filter(Objects::nonNull)
                 .collect(Collectors.toSet());
         Map<List<Object>, MyHomeHousingTypeMappingData> distinct = new LinkedHashMap<>();
@@ -324,7 +324,7 @@ public class MyHomeComplexMappingWriter {
             List<MyHomeHousingTypeMappingData> incoming,
             boolean preserveSupplementalValues
     ) {
-        Map<String, HousingType> remainingStoredByIdentifier = housingTypeRepository.findAllByHousingComplex(complex)
+        Map<String, HousingType> remainingStoredByIdentifier = housingTypeRepository.findAllIncludingTrashByHousingComplexId(complex.getId())
                 .stream()
                 .filter(type -> type.getSourceHousingTypeIdentifier() != null)
                 .collect(Collectors.toMap(

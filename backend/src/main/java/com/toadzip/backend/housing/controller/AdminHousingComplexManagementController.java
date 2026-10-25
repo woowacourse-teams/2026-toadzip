@@ -111,6 +111,22 @@ public class AdminHousingComplexManagementController {
         }
     }
 
+    @DeleteMapping("/{id}/housing-types/{typeId}")
+    public ApiResponse<AdminHousingComplexDetail> trashHousingType(@PathVariable long id, @PathVariable long typeId,
+            @RequestParam @Min(0) long version, Principal principal) {
+        try (var lease = ownership.acquire()) {
+            return new ApiResponse<>(service.trashHousingType(id, typeId, version, false, principal.getName()));
+        }
+    }
+
+    @PostMapping("/{id}/housing-types/{typeId}/restore")
+    public ApiResponse<AdminHousingComplexDetail> restoreHousingType(@PathVariable long id, @PathVariable long typeId,
+            @RequestParam @Min(0) long version, Principal principal) {
+        try (var lease = ownership.acquire()) {
+            return new ApiResponse<>(service.trashHousingType(id, typeId, version, true, principal.getName()));
+        }
+    }
+
     @PostMapping("/{id}/restore")
     public ResponseEntity<Void> restore(@PathVariable long id, @RequestParam @Min(0) long version,
             Principal principal) {

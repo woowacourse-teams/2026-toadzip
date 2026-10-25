@@ -40,6 +40,7 @@
 .admin-table th,.admin-table td {padding:16px 18px;border-bottom:1px solid #e4eae6;line-height:1.5;}
 .admin-table tbody tr:last-child td {border:0;}
 .admin-table tbody tr:hover {background:#f8fbf9;}
+.admin-table tbody tr[data-deleted] :is(th,td) {color:#7a8a83;}
 .admin-table td:first-child {min-width:200px;}
 .admin-table td:first-child a {font-weight:650;text-underline-offset:4px;}
 .admin-status,.pipeline-badge {display:inline-block;padding:4px 8px;border-radius:4px;background:#e8f1ec;color:#295b43;font-size:12px;white-space:nowrap;}

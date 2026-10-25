@@ -91,7 +91,8 @@ class MyHomeComplexMappingServiceTest {
     void setUp() {
         supplyRowRepository.deleteAll();
         announcementRepository.deleteAll();
-        housingTypeRepository.deleteAll();
+        // 휴지통 주택형은 저장소 기본 조회에서 빠지므로 직접 지운다.
+        jdbc.sql("DELETE FROM housing_types").update();
         complexRepository.deleteAll();
         failureRepository.deleteAll();
         sourceRepository.deleteAll();
@@ -320,6 +321,22 @@ class MyHomeComplexMappingServiceTest {
         assertThat(complexRepository.count()).isOne();
         assertThat(housingTypeRepository.count()).isOne();
         verify(geocodingService, times(2)).geocode(anyString());
+    }
+
+    @Test
+    void 관리자가_휴지통으로_옮긴_주택형은_재정제가_다시_만들지_않는다() {
+        sourceRepository.save(source("46A", "46.8000", "20.2000"));
+        service.mapAll();
+        HousingType type = housingTypeRepository.findAll().getFirst();
+        type.moveToTrash();
+        housingTypeRepository.saveAndFlush(type);
+
+        var report = service.mapAll();
+
+        assertThat(report.createdHousingTypeCount()).isZero();
+        assertThat(housingTypeRepository.findAll()).isEmpty();
+        assertThat(housingTypeRepository.findAllIncludingTrashByHousingComplexId(type.getHousingComplex().getId()))
+                .singleElement().satisfies(persisted -> assertThat(persisted.isAdminDeleted()).isTrue());
     }
 
     @Test

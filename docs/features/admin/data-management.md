@@ -6,7 +6,7 @@
 - `/admin/announcements`: 공고 검색, 단지 연결 조건과 공통 필터.
 - 상세 화면: 기본정보, 연관 데이터, 출처·수정 이력으로 분리한다.
 - 공고 상세에서 공급정보의 단지·주택형 연결과 근거가 있는 접수 일정을 수정한다.
-- 단지 상세의 주택형·연결 공고 탭에서 주택형을 추가하거나 이름·전용면적·세대수를 수정하고, 연결 공고의 기본정보·일정·공급정보를 같은 탭에서 편집한다.
+- 단지 상세의 주택형·연결 공고 탭에서 주택형을 추가하거나 이름·전용면적·세대수를 수정하고, 주택형 하나만 휴지통으로 옮기고 복구하며, 연결 공고의 기본정보·일정·공급정보를 같은 탭에서 편집한다.
 - `/admin/ingest/announcements`·`/admin/ingest/complexes`: 공고·단지 실행 요약, 기술 상세와 이력. 기존 `/admin/ingest`·`/admin/ingest-v2`는 새 경로로 이동한다.
 - LH 정확성 지표와 확인된 공급 감소 재조회는 [운영 절차](../../operations/ingest/lh-quality.md)를 따른다.
 - `/admin/failures`: 수집·정제 실패 확인과 전체 작업 재실행. 개별 행 재시도가 아니다.
@@ -31,6 +31,7 @@
 - 공고의 `PUT /{id}/supply-rows/{rowId}`로 공급정보와 연결 대상을 수정한다. `supplyRow`에는 원천 이름 대신 선택적 `announcementHousingTypeName`을 보낸다.
 - 단지의 `POST /{id}/housing-types`는 단지 `version`, `name`, `exclusiveArea`와 선택값 `supplyArea`, `householdCount`로 주택형을 추가한다. 같은 이름은 409로 거절한다.
 - 단지의 `PUT /{id}/housing-types/{typeId}`는 단지 `version`, `name`, `exclusiveArea`, `householdCount`를 받는다. 면적은 소수점 네 자리까지, 세대수는 `null`(미확인)과 0을 구분한다.
+- 단지의 `DELETE /{id}/housing-types/{typeId}?version=...`과 `POST /{id}/housing-types/{typeId}/restore?version=...`은 주택형 하나를 휴지통으로 옮기거나 복구하고 단지 상세를 반환한다. 공급행이나 공급 매칭 판단이 가리키는 주택형은 409로 거절한다. 휴지통 주택형은 기록을 보존하고 관리자 상세에만 `deleted: true`로 남으며 공개 상세·면적 필터·매칭 후보에서 빠진다. 마이홈 재정제는 같은 원천 주택형을 다시 만들지 않는다. `DELETE_HOUSING_TYPE`·`RESTORE_HOUSING_TYPE` 이력을 기록한다.
 - 공고 수정의 접수처 연락처는 미확인이면 `null`을 유지한다. 접수처명·접수방식·URL 검증과 공고 신규 등록의 연락처 필수 규칙은 유지한다.
 - 기존 `PUT /{id}/application-schedules`는 선택적 `version` 쿼리로 충돌을 확인한다.
 - `/api/admin/ingest/pipelines/history?page=...&size=...`는 실행 이력을 제공한다.
@@ -80,6 +81,7 @@
 
 - Flyway `V20260926_05__admin_data_management.sql`을 적용한다.
 - 주택형 편집에는 `V20261008_03__protect_admin_housing_type_updates.sql`이 필요하다. 새 `admin_modified` 열은 기존 행에 false로 추가된다. 스키마 적용 후 새 백엔드·프론트엔드를 배포하며, 구버전 수집기는 주택형 수정 보호를 해석하지 못하므로 혼용하지 않는다. 앱 롤백 시 열을 남겨 데이터는 보존하되 주택형 정제는 중지한다.
+- 주택형 휴지통에는 `V20261025_02__housing_type_admin_deleted.sql`이 필요하다. 새 `admin_deleted` 열은 기존 행에 false로 추가된다.
 - 구버전 서버는 삭제 상태를 해석하지 못하므로 구·신버전 혼용 운영을 피한다.
 - 기존 서버와 수집 작업을 중지한 뒤 마이그레이션을 포함한 백엔드와 프론트엔드를 함께 교체한다.
 - 운영 데이터에서 실제 수집 재실행은 이 작업의 검증에 포함하지 않았다.
