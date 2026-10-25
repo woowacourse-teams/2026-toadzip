@@ -700,8 +700,9 @@ class AnnouncementQueryServiceTest {
         assertEquals("https://example.com/detail-complex.png", matchedResponse.complex().overviewImageUrl());
         assertEquals(housingType.getId(), matchedResponse.housingType().housingTypeId());
         assertEquals("36A", matchedResponse.housingType().name());
-        assertEquals(new BigDecimal("36.00"), matchedResponse.housingType().exclusiveArea());
-        assertEquals(new BigDecimal("48.00"), matchedResponse.housingType().supplyArea());
+        // 주택형 면적은 DB 열과 같은 소수 넷째 자리로 맞춘 값이 응답에 나간다.
+        assertEquals(new BigDecimal("36.0000"), matchedResponse.housingType().exclusiveArea());
+        assertEquals(new BigDecimal("48.0000"), matchedResponse.housingType().supplyArea());
         assertEquals("https://example.com/floor-plan.png", matchedResponse.housingType().floorPlanImageUrl());
         assertNull(matchedResponse.housingType().floorPlan3dImageUrl());
         assertEquals(YearMonth.of(2027, 3), matchedResponse.occupancyExpectedYearMonth());
