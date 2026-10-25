@@ -15,6 +15,7 @@ import {
   type DetailReturnFocus,
 } from './navigation/detailHistory.ts'
 import { HousingDetailStatePanel, type DetailStatus } from './components/HousingDetailStatePanel.tsx'
+import { useDelayedLoadingView } from './components/useDelayedIndicator.ts'
 import { toHousingComplexCardData } from './presentation/complexPresentation.ts'
 import { MISSING_DATA_LABEL } from './presentation/missingData.ts'
 import {
@@ -1424,8 +1425,18 @@ export function PublicHousingExplorer({
         representation: 'INDIVIDUAL',
         transitioning: clusterTransitioning,
       }
-  const hasDetail = complexDetail.status !== 'closed'
-    || announcementDetail.status !== 'closed'
+  // 상세 영역은 로딩 문구를 띄우기 전까지 직전 화면을 유지한다. 단지↔공고 전환도 한 화면으로 다룬다.
+  const detailState = useMemo(
+    () => ({ complexDetail, announcementDetail }),
+    [announcementDetail, complexDetail],
+  )
+  const detailView = useDelayedLoadingView(
+    detailState,
+    complexDetail.status === 'loading' || announcementDetail.status === 'loading',
+    complexDetail.status !== 'closed' || announcementDetail.status !== 'closed',
+  )
+  const hasDetail = detailView.complexDetail.status !== 'closed'
+    || detailView.announcementDetail.status !== 'closed'
   const selectedRegionName = findRegionBoundaryName(boundaryRegionCode ?? '') ?? selectedBoundarySearchItem?.title ?? '선택한 지역'
   const mobileRegionTitle = <span className="housing-results__region-title">
     <span title={selectedRegionName}>{selectedRegionName.split(' ').at(-1)}</span>
@@ -1476,7 +1487,7 @@ export function PublicHousingExplorer({
   const complexDetailLayer = <ComplexDetailLayer
     mobile={mobile}
     streetView={streetViewSupported && !mobile ? streetView : undefined}
-    state={complexDetail}
+    state={detailView.complexDetail}
     onClose={closeDetail}
     backTarget={detailReturnFocusStack.at(-1)}
     onBack={returnToDetail}
@@ -1739,7 +1750,7 @@ export function PublicHousingExplorer({
         >{complexDetailLayer}</HousingComplexSummarySheet> : complexDetailLayer}
         <AnnouncementDetailLayer
           mobile={mobile}
-          state={announcementDetail}
+          state={detailView.announcementDetail}
           onClose={closeDetail}
           backTarget={detailReturnFocusStack.at(-1)}
           onBack={returnToDetail}
@@ -1792,6 +1803,7 @@ function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backT
     <HousingDetailOverlay label="단지 상세" mobile={mobile} onClose={onClose}>
       {state.status === 'ready' && state.detail
         ? <HousingComplexDetailPanel
+            key={state.detail.complexId}
             mobile={mobile}
             streetView={streetView}
             onEscape={streetView?.active ? () => streetView.close('USER_CLOSED', true, 'escape') : undefined}
@@ -1819,6 +1831,7 @@ function AnnouncementDetailLayer({ state, onClose, onOpenComplex, onRetry, backT
     <HousingDetailOverlay label="공고 상세" mobile={mobile} onClose={onClose}>
       {state.status === 'ready' && state.detail
         ? <HousingAnnouncementDetailPanel
+            key={state.detail.announcementId}
             backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
             detail={toHousingAnnouncementDetailData(state.detail)}
             onClose={onClose} onOpenComplex={onOpenComplex} />
