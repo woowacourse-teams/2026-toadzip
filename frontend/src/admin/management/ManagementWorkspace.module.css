@@ -152,6 +152,15 @@
 .workspace .description { margin: -4px 0 12px; font-size: var(--admin-text-body); line-height: 1.6; color: var(--ds-color-muted-base); }
 .body.withEditor { display: flex; flex-direction: column; --management-pane-height: auto; }
 .listPane { min-width: 0; width: 100%; order: 0; }
+/* 전체 목록은 남은 화면 높이를 채워 표만 스크롤한다. 표 아래 행과 페이지 이동이 화면 밖으로 밀리지 않는다. */
+@media (min-width: 701px) {
+  .workspace:has(> .body:not(.withEditor)) { display: flex; flex-direction: column; height: max(560px, calc(100dvh - 148px)); }
+  .body:not(.withEditor) { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .body:not(.withEditor) > .listPane,
+  .body:not(.withEditor) > .listPane > :global(.management-page),
+  .body:not(.withEditor) > .listPane > :global(.management-page) > [aria-busy] { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .body:not(.withEditor) > .listPane > :global(.management-page) > [aria-busy] > [role="region"] { flex: 1; min-height: 0; max-height: none; }
+}
 .withEditor .editor { order: 1; width: 100%; height: auto; overflow: visible; }
 .withEditor .editorBody { overflow: visible; }
 .withEditor .editorBody > :global(.management-detail) { height: auto; }
