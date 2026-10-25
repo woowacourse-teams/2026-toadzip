@@ -52,13 +52,13 @@ it('공고 보정 도구 줄을 없애고 출처·수정 이력 안에서 원천
   expect(comparison).toHaveAttribute('open')
 })
 it('이전 공고 원천 비교 링크는 조회 조건을 보존하고 이력의 비교 영역을 펼친다', async () => {
-  show('/admin/announcements/7?section=verification&provider=LH&workReturnTo=%2Fadmin%2Fquality')
+  show('/admin/announcements/7?section=verification&provider=LH&workReturnTo=%2Fadmin%2Ffailures')
   expect(await screen.findByRole('button', { name: '출처·수정 이력' })).toHaveAttribute('aria-pressed', 'true')
   await waitFor(() => expect(screen.getByLabelText('현재 주소')).toHaveTextContent('section=history'))
   expect(screen.getByLabelText('공고 원천 비교 내용').closest('details')).toHaveAttribute('open')
   const params = new URLSearchParams(screen.getByLabelText('현재 주소').textContent ?? '')
   expect(params.get('provider')).toBe('LH')
-  expect(params.get('workReturnTo')).toBe('/admin/quality')
+  expect(params.get('workReturnTo')).toBe('/admin/failures')
   expect(params.get('comparison')).toBe('source')
 })
 it('폐기한 JSON 갱신 주소는 공고 기본정보로 이동한다', async () => {

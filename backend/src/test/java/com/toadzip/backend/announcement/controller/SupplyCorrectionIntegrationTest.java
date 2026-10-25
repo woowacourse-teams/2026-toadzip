@@ -222,7 +222,7 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
-    void 검토한_범위만_변경을_감지하고_보류와_이력을_목록에_연결한다() throws Exception {
+    void 검토한_범위만_변경을_감지하고_보류와_이력을_남긴다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId();
         var review = reviewRequest(row, "householdCount");
         mvc.perform(post(root(id) + "/reviews").with(user("reviewer").roles("ADMIN")).with(csrf())
@@ -235,18 +235,12 @@ class SupplyCorrectionIntegrationTest {
         reviews(id).andExpect(jsonPath("$.data.records[0].status").value("STALE"))
                 .andExpect(jsonPath("$.data.records[0].checkedValues.householdCount").value(10))
                 .andExpect(jsonPath("$.data.records[0].currentValues.householdCount").value(12));
-        mvc.perform(get("/api/admin/quality/queue").param("resource", "ANNOUNCEMENT").param("reason", "STALE")
-                .with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items[0].id").value(id));
         entities.clear();
         review.put("snapshotToken", request(id).get("snapshotToken").asText()).put("outcome", "ON_HOLD");
         mvc.perform(post(root(id) + "/reviews").with(user("reviewer").roles("ADMIN")).with(csrf())
                 .contentType("application/json").content(json.writeValueAsString(review)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.records[0].status").value("ON_HOLD"))
                 .andExpect(jsonPath("$.data.records[1].latest").value(false));
-        mvc.perform(get("/api/admin/quality/queue").param("resource", "ANNOUNCEMENT").param("reason", "STALE")
-                .with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.totalElements").value(0));
     }
 
     @Test
@@ -430,7 +424,7 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
-    void 원천이_사라진_보정행은_보존하고_작업실과_검토목록에_재확인을_표시한다() throws Exception {
+    void 원천이_사라진_보정행은_보존하고_작업실에_원천_경고를_표시한다() throws Exception {
         var row = fixture();
         row.recordMyHomeSource("missing-source-key");
         row.protectConditionsByAdmin();
@@ -440,10 +434,6 @@ class SupplyCorrectionIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.sourceWarnings[0]").value(
                         org.hamcrest.Matchers.containsString("원천이 없거나 비활성")));
-        mvc.perform(get("/api/admin/quality/queue").param("resource", "ANNOUNCEMENT")
-                .param("reason", "SOURCE_CHANGED").with(user("admin").roles("ADMIN")))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].id").value(id))
-                .andExpect(jsonPath("$.data.items[0].sourceChanges").value(org.hamcrest.Matchers.contains("SUPPLY_SOURCE")));
         assertThat(rows.findById(row.getId())).isPresent();
     }
 

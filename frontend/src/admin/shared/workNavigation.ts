@@ -1,4 +1,4 @@
-const workPaths = new Set(['/admin/quality', '/admin/failures', '/admin/feedback', '/admin/operations', '/admin/notification-deliveries', '/admin/history'])
+const workPaths = new Set(['/admin/failures', '/admin/feedback', '/admin/operations', '/admin/notification-deliveries', '/admin/history'])
 
 export function workReturnTo(params: URLSearchParams): string | null {
   const nested = new URLSearchParams(params.get('returnTo')?.split('?')[1] ?? '')

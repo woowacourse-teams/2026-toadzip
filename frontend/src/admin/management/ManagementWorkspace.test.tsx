@@ -225,7 +225,7 @@ it('상세는 읽기 화면으로 열고 수정 버튼을 눌렀을 때만 편�
 })
 
 it('검토 목록에서 들어온 상세는 원래 검토 조건으로 돌아간다', async () => {
-  const origin = '/admin/quality?keyword=두꺼비&reason=MISSING&page=2'
+  const origin = '/admin/failures?keyword=두꺼비&reason=MISSING&page=2'
   renderPage(`/admin/complexes/7?workReturnTo=${encodeURIComponent(origin)}`, false)
   await screen.findByRole('button', { name: /^수정$/ })
   expect(screen.getByRole('link', { name: '목록으로 돌아가기' })).toHaveAttribute('href', new URL(origin, 'https://local.invalid').pathname + new URL(origin, 'https://local.invalid').search)
