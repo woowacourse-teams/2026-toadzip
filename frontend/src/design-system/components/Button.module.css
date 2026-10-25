@@ -19,7 +19,7 @@
   font-size: var(--ds-text-control-lg);
 }
 
-.root:hover:not(:disabled) {
+.root:hover:not(:disabled):not(:where(:global(.admin-layout) *)) {
   background: var(--ds-color-brand-hover);
 }
 

@@ -1,5 +1,9 @@
 import { rentalTypeLabel } from './rentalTypeLabel.ts'
-import type { HousingComplexDetailData } from '../components/HousingComplexDetailPanel.tsx'
+import type {
+  HousingComplexDetailData,
+  HousingComplexDetailHousingType,
+} from '../components/HousingComplexDetailPanel.tsx'
+import { formatHousingArea, type AreaUnit } from './housingArea.ts'
 import type { ComplexDetail } from '../model/publicHousing.ts'
 
 export function formatRentalConditionCollectedDate(value: string | null): string | null {
@@ -7,6 +11,35 @@ export function formatRentalConditionCollectedDate(value: string | null): string
   const date = new Date(value)
   if (!Number.isFinite(date.getTime())) return null
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(date).replaceAll('-', '.')
+}
+
+type LabeledHousingType = Pick<HousingComplexDetailHousingType, 'housingTypeId' | 'name' | 'exclusiveArea' | 'supplyArea'>
+
+/**
+ * 주택형 표시 이름. 마이홈 단지 원천은 면적만 다른 같은 이름의 주택형을 따로 주므로(ADR-001),
+ * 단지 안에서 이름이 겹칠 때만 전용면적을, 전용면적까지 같으면 공급면적을 붙여 구분한다.
+ */
+export function housingTypeLabels(
+  housingTypes: readonly LabeledHousingType[],
+  unit: AreaUnit,
+): ReadonlyMap<string, string> {
+  const labels = new Map<string, string>()
+  for (const housingType of housingTypes) {
+    const name = housingType.name ?? ''
+    const siblings = housingTypes.filter((other) => other !== housingType && name !== '' && other.name === name)
+    if (siblings.length === 0) {
+      labels.set(housingType.housingTypeId, name)
+      continue
+    }
+    const sameExclusiveArea = siblings.some((other) => other.exclusiveArea === housingType.exclusiveArea)
+    const area = sameExclusiveArea ? housingType.supplyArea : housingType.exclusiveArea
+    const formatted = formatHousingArea(area, unit, '')
+    labels.set(
+      housingType.housingTypeId,
+      formatted === '' ? name : `${name} · ${sameExclusiveArea ? '공급' : '전용'} ${formatted}`,
+    )
+  }
+  return labels
 }
 
 export function toHousingComplexDetailData(

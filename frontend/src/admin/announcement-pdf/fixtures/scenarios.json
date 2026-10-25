@@ -1,0 +1,1613 @@
+{
+  "hansville": {
+    "extraction": {
+      "data": {
+        "announcement": {
+          "name": "익산한스빌 국민임대주택 예비입주자 자격완화 모집",
+          "postedDate": "2026-10-08",
+          "applicationStartDate": "2026-10-21",
+          "applicationEndDate": "2026-10-22",
+          "winnerAnnouncementDate": "2026-12-17"
+        },
+        "receptionPlace": {
+          "name": "주택관리공단 익산한스빌관리소",
+          "method": "VISIT",
+          "address": "전북특별자치도 익산시 목천로 30-14",
+          "contact": "063-843-0039",
+          "url": null
+        },
+        "supplyRows": [
+          {
+            "complexReference": {
+              "sourceComplexName": "익산한스빌"
+            },
+            "sourceHousingTypeName": "26A",
+            "expectedMoveInMonth": null,
+            "totalSupplyHouseholdCount": null,
+            "exclusiveArea": 26.5195,
+            "supplyArea": 40.6486,
+            "targets": [
+              {
+                "target": "일반",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 4076000,
+                "monthlyRent": 72820,
+                "convertedDeposit": 1000000
+              }
+            ]
+          },
+          {
+            "complexReference": {
+              "sourceComplexName": "익산한스빌"
+            },
+            "sourceHousingTypeName": "26B",
+            "expectedMoveInMonth": null,
+            "totalSupplyHouseholdCount": null,
+            "exclusiveArea": 26.4673,
+            "supplyArea": 40.5686,
+            "targets": [
+              {
+                "target": "일반",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 4076000,
+                "monthlyRent": 72820,
+                "convertedDeposit": 1000000
+              }
+            ]
+          }
+        ],
+        "schedules": [
+          {
+            "scheduleType": "APPLICATION",
+            "name": "현장 신청접수",
+            "startAt": "2026-10-21T10:00:00",
+            "endAt": "2026-10-22T16:00:00"
+          },
+          {
+            "scheduleType": "DOCUMENT_SUBMISSION",
+            "name": "현장 신청 시 서류제출",
+            "startAt": "2026-10-21T10:00:00",
+            "endAt": "2026-10-22T16:00:00"
+          },
+          {
+            "scheduleType": "WINNER_ANNOUNCEMENT",
+            "name": "예비입주자 당첨발표",
+            "startAt": "2026-12-17T16:00:00",
+            "endAt": "2026-12-17T16:00:00"
+          }
+        ],
+        "unresolvedFields": []
+      },
+      "sharedCounts": [
+        {
+          "paths": [
+            "supplyRows[0].totalSupplyHouseholdCount",
+            "supplyRows[1].totalSupplyHouseholdCount"
+          ],
+          "count": 170,
+          "page": 4,
+          "quote": "0 170"
+        }
+      ],
+      "notApplicable": [
+        {
+          "path": "receptionPlace.url",
+          "reason": "현장접수만 가능하며 온라인 신청 접수처 URL을 안내하지 않음"
+        },
+        {
+          "path": "supplyRows[0].expectedMoveInMonth",
+          "reason": "기존 국민임대주택 예비입주자 모집으로 공가 발생 시 예비순번에 따라 공급하며 입주예정월을 지정하지 않음"
+        },
+        {
+          "path": "supplyRows[1].expectedMoveInMonth",
+          "reason": "기존 국민임대주택 예비입주자 모집으로 공가 발생 시 예비순번에 따라 공급하며 입주예정월을 지정하지 않음"
+        },
+        {
+          "path": "supplyRows[0].targets[0].supplyRank",
+          "reason": "거주지역, 순위 및 배점 등에 관계없이 선착순 신청접수 순번으로 선정함"
+        },
+        {
+          "path": "supplyRows[1].targets[0].supplyRank",
+          "reason": "거주지역, 순위 및 배점 등에 관계없이 선착순 신청접수 순번으로 선정함"
+        },
+        {
+          "path": "supplyRows[0].targets[0].supplyHouseholdCount",
+          "reason": "공급대상별 모집수를 별도로 구분하지 않으며 26A와 26B의 예비자 모집수 170명을 통합 기재함"
+        },
+        {
+          "path": "supplyRows[1].targets[0].supplyHouseholdCount",
+          "reason": "공급대상별 모집수를 별도로 구분하지 않으며 26A와 26B의 예비자 모집수 170명을 통합 기재함"
+        },
+        {
+          "path": "supplyRows[0].targets[0].reserveCount",
+          "reason": "주택형별 예비자 모집수를 별도로 안내하지 않고 26A와 26B에 대한 모집 예비자수 170명을 통합 기재함"
+        },
+        {
+          "path": "supplyRows[1].targets[0].reserveCount",
+          "reason": "주택형별 예비자 모집수를 별도로 안내하지 않고 26A와 26B에 대한 모집 예비자수 170명을 통합 기재함"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "announcement.name",
+          "page": 1,
+          "quote": "익산한스빌 국민임대주택 예비입주자 자격완화 모집"
+        },
+        {
+          "path": "announcement.postedDate",
+          "page": 1,
+          "quote": "입주자모집공고일 : 2026.10.08."
+        },
+        {
+          "path": "announcement.applicationStartDate",
+          "page": 10,
+          "quote": "2026.10.21. ~"
+        },
+        {
+          "path": "announcement.applicationEndDate",
+          "page": 10,
+          "quote": "2026.10.22."
+        },
+        {
+          "path": "announcement.winnerAnnouncementDate",
+          "page": 10,
+          "quote": "2026.12.17."
+        },
+        {
+          "path": "receptionPlace.name",
+          "page": 10,
+          "quote": "주택관리공단 익산한스빌관리소"
+        },
+        {
+          "path": "receptionPlace.method",
+          "page": 10,
+          "quote": "현장접수만 가능"
+        },
+        {
+          "path": "receptionPlace.address",
+          "page": 10,
+          "quote": "전북특별자치도 익산시 목천로 30-14"
+        },
+        {
+          "path": "receptionPlace.contact",
+          "page": 10,
+          "quote": "063-843-0039"
+        },
+        {
+          "path": "supplyRows[0]",
+          "page": 4,
+          "quote": "26A 26.5195 14.1291 10.2310 50.8796"
+        },
+        {
+          "path": "supplyRows[1]",
+          "page": 4,
+          "quote": "26B 26.4673 14.1013 10.2109 50.7795"
+        },
+        {
+          "path": "supplyRows[0].targets[0]",
+          "page": 5,
+          "quote": "4,076,000 203,800 3,872,200 72,820"
+        },
+        {
+          "path": "supplyRows[1].targets[0]",
+          "page": 5,
+          "quote": "(+) 1,000,000 5,076,000 66,980"
+        },
+        {
+          "path": "supplyRows[0].targets[0].convertedDeposit",
+          "page": 5,
+          "quote": "(+) 1,000,000"
+        },
+        {
+          "path": "supplyRows[1].targets[0].rentalDeposit",
+          "page": 5,
+          "quote": "4,076,000 203,800 3,872,200 72,820"
+        },
+        {
+          "path": "supplyRows[0].targets[0].applicationCondition",
+          "page": 1,
+          "quote": "소득요건 배제"
+        },
+        {
+          "path": "supplyRows[1].targets[0].applicationCondition",
+          "page": 9,
+          "quote": "거주지역, 순위 및 배점 등에 상관없이"
+        },
+        {
+          "path": "schedules[0]",
+          "page": 10,
+          "quote": "2026.10.21. ~ 2026.10.22."
+        },
+        {
+          "path": "schedules[0].startAt",
+          "page": 10,
+          "quote": "10:00 ~ 16:00"
+        },
+        {
+          "path": "schedules[1]",
+          "page": 10,
+          "quote": "현장신청 및 서류제출 장소"
+        },
+        {
+          "path": "schedules[2]",
+          "page": 10,
+          "quote": "2026.12.17. 16:00 이후"
+        }
+      ]
+    },
+    "rows": [
+      {
+        "id": 90,
+        "displayOrder": 1,
+        "sourceComplexName": "익산한스빌",
+        "housingTypeName": "아파트",
+        "pnu": "5214011700113760001",
+        "supplyCategory": "RESUPPLY",
+        "householdCount": 170,
+        "exclusiveArea": null,
+        "supplyArea": null,
+        "moveInMonth": null,
+        "complexId": 3055,
+        "housingTypeId": null,
+        "matchingFailureReason": "원천 주택형명과 면적으로도 주택형 하나를 확정할 수 없습니다.",
+        "groupId": null,
+        "targets": []
+      }
+    ],
+    "events": [
+      {
+        "id": 82,
+        "displayOrder": 1,
+        "scheduleType": "APPLICATION",
+        "name": "접수",
+        "startAt": "2026-10-21T00:00:00",
+        "endAt": "2026-10-22T00:00:00",
+        "complexName": null
+      },
+      {
+        "id": 83,
+        "displayOrder": 2,
+        "scheduleType": "WINNER_ANNOUNCEMENT",
+        "name": "당첨자 발표",
+        "startAt": "2026-12-17T00:00:00",
+        "endAt": "2026-12-17T00:00:00",
+        "complexName": null
+      }
+    ],
+    "complexes": [
+      {
+        "id": 3055,
+        "housingTypes": [
+          {
+            "id": 10352,
+            "name": "26",
+            "exclusiveArea": 26.4673,
+            "supplyArea": 40.5686,
+            "householdCount": 43
+          },
+          {
+            "id": 10353,
+            "name": "26",
+            "exclusiveArea": 26.5195,
+            "supplyArea": 40.6486,
+            "householdCount": 486
+          }
+        ]
+      }
+    ]
+  },
+  "gwangju": {
+    "extraction": {
+      "data": {
+        "announcement": {
+          "name": "광주첨단 H-1,2,3BL 행복주택 예비입주자 모집",
+          "postedDate": "2026-10-15",
+          "applicationStartDate": "2026-10-26",
+          "applicationEndDate": "2026-10-27",
+          "winnerAnnouncementDate": "2027-02-18"
+        },
+        "receptionPlace": {
+          "name": "LH청약플러스",
+          "method": "ONLINE",
+          "address": null,
+          "contact": "1600-1004",
+          "url": "https://apply.lh.or.kr"
+        },
+        "supplyRows": [
+          {
+            "complexReference": {
+              "sourceComplexName": "첨단H-1BL"
+            },
+            "sourceHousingTypeName": "39(창업인)",
+            "expectedMoveInMonth": null,
+            "totalSupplyHouseholdCount": 25,
+            "exclusiveArea": 39.78,
+            "supplyArea": 66.6673,
+            "targets": [
+              {
+                "target": "청년 창업인",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 41848000,
+                "monthlyRent": 226670,
+                "convertedDeposit": 27000000
+              },
+              {
+                "target": "청년 소득(×)",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 35570000,
+                "monthlyRent": 192670,
+                "convertedDeposit": 23000000
+              },
+              {
+                "target": "청년 소득(○)",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 37663000,
+                "monthlyRent": 204000,
+                "convertedDeposit": 24000000
+              },
+              {
+                "target": "신혼부부·한부모",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 41848000,
+                "monthlyRent": 226670,
+                "convertedDeposit": 27000000
+              },
+              {
+                "target": "고령자",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 39775000,
+                "monthlyRent": 215340,
+                "convertedDeposit": 25000000
+              }
+            ]
+          },
+          {
+            "complexReference": {
+              "sourceComplexName": "첨단H-2BL"
+            },
+            "sourceHousingTypeName": "16(대학생,청년)",
+            "expectedMoveInMonth": null,
+            "totalSupplyHouseholdCount": 30,
+            "exclusiveArea": 16.8,
+            "supplyArea": 27.6759,
+            "targets": [
+              {
+                "target": "대학생",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 15878000,
+                "monthlyRent": 86000,
+                "convertedDeposit": 5000000
+              },
+              {
+                "target": "청년 소득(×)",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 15878000,
+                "monthlyRent": 86000,
+                "convertedDeposit": 5000000
+              },
+              {
+                "target": "청년 소득(○)",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 16812000,
+                "monthlyRent": 91060,
+                "convertedDeposit": 6000000
+              }
+            ]
+          },
+          {
+            "complexReference": {
+              "sourceComplexName": "첨단H-2BL"
+            },
+            "sourceHousingTypeName": "36(신혼부부·한부모)",
+            "expectedMoveInMonth": null,
+            "totalSupplyHouseholdCount": 10,
+            "exclusiveArea": 36.72,
+            "supplyArea": 60.4916,
+            "targets": [
+              {
+                "target": "신혼부부·한부모",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 38336000,
+                "monthlyRent": 207650,
+                "convertedDeposit": 24000000
+              },
+              {
+                "target": "청년 소득(×)",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 32585000,
+                "monthlyRent": 176500,
+                "convertedDeposit": 21000000
+              },
+              {
+                "target": "청년 소득(○)",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 34502000,
+                "monthlyRent": 186880,
+                "convertedDeposit": 22000000
+              },
+              {
+                "target": "고령자",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 36419000,
+                "monthlyRent": 197270,
+                "convertedDeposit": 23000000
+              },
+              {
+                "target": "주거급여수급자",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 28752000,
+                "monthlyRent": 155740,
+                "convertedDeposit": 18000000
+              }
+            ]
+          },
+          {
+            "complexReference": {
+              "sourceComplexName": "첨단H-3BL"
+            },
+            "sourceHousingTypeName": "16(대학생,청년)",
+            "expectedMoveInMonth": null,
+            "totalSupplyHouseholdCount": 50,
+            "exclusiveArea": 16.8,
+            "supplyArea": 23.8787,
+            "targets": [
+              {
+                "target": "대학생",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 15935000,
+                "monthlyRent": 86310,
+                "convertedDeposit": 5000000
+              },
+              {
+                "target": "청년 소득無",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 15935000,
+                "monthlyRent": 86310,
+                "convertedDeposit": 5000000
+              },
+              {
+                "target": "청년 소득有",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 16873000,
+                "monthlyRent": 91390,
+                "convertedDeposit": 6000000
+              }
+            ]
+          },
+          {
+            "complexReference": {
+              "sourceComplexName": "첨단H-3BL"
+            },
+            "sourceHousingTypeName": "26(주거급여수급자)",
+            "expectedMoveInMonth": null,
+            "totalSupplyHouseholdCount": 10,
+            "exclusiveArea": 26.97,
+            "supplyArea": 38.3339,
+            "targets": [
+              {
+                "target": "주거급여수급자",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 21522000,
+                "monthlyRent": 116570,
+                "convertedDeposit": 11000000
+              },
+              {
+                "target": "대학생",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 24391000,
+                "monthlyRent": 132120,
+                "convertedDeposit": 14000000
+              },
+              {
+                "target": "청년 소득(×)",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 24391000,
+                "monthlyRent": 132120,
+                "convertedDeposit": 14000000
+              },
+              {
+                "target": "청년 소득(○)",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 25826000,
+                "monthlyRent": 139890,
+                "convertedDeposit": 15000000
+              }
+            ]
+          },
+          {
+            "complexReference": {
+              "sourceComplexName": "첨단H-3BL"
+            },
+            "sourceHousingTypeName": "26(고령(주거약자용))",
+            "expectedMoveInMonth": null,
+            "totalSupplyHouseholdCount": 10,
+            "exclusiveArea": 26.97,
+            "supplyArea": 38.3339,
+            "targets": [
+              {
+                "target": "고령자",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 27261000,
+                "monthlyRent": 147660,
+                "convertedDeposit": 17000000
+              },
+              {
+                "target": "주거급여수급자",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 21522000,
+                "monthlyRent": 116570,
+                "convertedDeposit": 11000000
+              }
+            ]
+          },
+          {
+            "complexReference": {
+              "sourceComplexName": "첨단H-3BL"
+            },
+            "sourceHousingTypeName": "36(신혼부부·한부모)",
+            "expectedMoveInMonth": null,
+            "totalSupplyHouseholdCount": 30,
+            "exclusiveArea": 36.72,
+            "supplyArea": 52.1921,
+            "targets": [
+              {
+                "target": "신혼부부·한부모",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 38628000,
+                "monthlyRent": 209230,
+                "convertedDeposit": 25000000
+              },
+              {
+                "target": "청년 소득(×)",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 32833000,
+                "monthlyRent": 177840,
+                "convertedDeposit": 21000000
+              },
+              {
+                "target": "청년 소득(○)",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 34765000,
+                "monthlyRent": 188310,
+                "convertedDeposit": 22000000
+              },
+              {
+                "target": "고령자",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 36696000,
+                "monthlyRent": 198770,
+                "convertedDeposit": 23000000
+              },
+              {
+                "target": "주거급여수급자",
+                "supplyRank": null,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 28971000,
+                "monthlyRent": 156920,
+                "convertedDeposit": 18000000
+              }
+            ]
+          }
+        ],
+        "schedules": [
+          {
+            "scheduleType": "APPLICATION",
+            "name": "인터넷 청약접수(PC·모바일)",
+            "startAt": "2026-10-26T10:00:00",
+            "endAt": "2026-10-27T16:00:00"
+          },
+          {
+            "scheduleType": "APPLICATION",
+            "name": "현장 청약접수",
+            "startAt": "2026-10-27T10:00:00",
+            "endAt": "2026-10-27T16:00:00"
+          },
+          {
+            "scheduleType": "ETC",
+            "name": "서류제출 대상자 발표",
+            "startAt": "2026-11-10T14:00:00",
+            "endAt": "2026-11-10T14:00:00"
+          },
+          {
+            "scheduleType": "DOCUMENT_SUBMISSION",
+            "name": "서류제출 대상자 서류접수",
+            "startAt": "2026-11-11T00:00:00",
+            "endAt": "2026-11-13T00:00:00"
+          },
+          {
+            "scheduleType": "WINNER_ANNOUNCEMENT",
+            "name": "당첨자 발표",
+            "startAt": "2027-02-18T14:00:00",
+            "endAt": "2027-02-18T14:00:00"
+          }
+        ],
+        "unresolvedFields": []
+      },
+      "sharedCounts": [],
+      "notApplicable": [
+        {
+          "path": "receptionPlace.address",
+          "reason": "주된 접수방법은 인터넷·모바일이며 온라인 접수처에는 현장 주소가 해당하지 않음. 별도 현장 대행접수 장소는 LH 광주북부권주거복지지사임."
+        },
+        {
+          "path": "supplyRows[0].expectedMoveInMonth",
+          "reason": "기존 주택 예비입주자 모집으로 공가 발생에 따라 계약 및 입주하며 입주예정월을 지정하지 않음"
+        },
+        {
+          "path": "supplyRows[1].expectedMoveInMonth",
+          "reason": "기존 주택 예비입주자 모집으로 입주예정월을 지정하지 않음"
+        },
+        {
+          "path": "supplyRows[2].expectedMoveInMonth",
+          "reason": "기존 주택 예비입주자 모집으로 입주예정월을 지정하지 않음"
+        },
+        {
+          "path": "supplyRows[3].expectedMoveInMonth",
+          "reason": "기존 주택 예비입주자 모집으로 입주예정월을 지정하지 않음"
+        },
+        {
+          "path": "supplyRows[4].expectedMoveInMonth",
+          "reason": "기존 주택 예비입주자 모집으로 입주예정월을 지정하지 않음"
+        },
+        {
+          "path": "supplyRows[5].expectedMoveInMonth",
+          "reason": "기존 주택 예비입주자 모집으로 입주예정월을 지정하지 않음"
+        },
+        {
+          "path": "supplyRows[6].expectedMoveInMonth",
+          "reason": "기존 주택 예비입주자 모집으로 입주예정월을 지정하지 않음"
+        },
+        {
+          "path": "supplyRows[*].targets[*].supplyHouseholdCount",
+          "reason": "공급 표에는 주택형별 모집할 예비자수만 있고 공급대상별 모집수를 별도로 구분하지 않음. 주택형 내 공급대상을 통합하여 선정함."
+        },
+        {
+          "path": "supplyRows[*].targets[*].reserveCount",
+          "reason": "공급대상별 예비자 모집수는 별도로 제시하지 않으며 주택형별 총 모집 예비자수만 안내함"
+        },
+        {
+          "path": "supplyRows[*].targets[*].supplyRank",
+          "reason": "대학생·청년·신혼부부·한부모가족은 신청자의 거주지·대학 소재지·소득 근거지에 따른 순위 후 추첨하며 청년 창업인·고령자·주거급여수급자는 추첨으로 선정함. 공급대상별 단일 고정 순위는 없음."
+        }
+      ],
+      "evidence": [
+        {
+          "path": "announcement.name",
+          "page": 1,
+          "quote": "광주첨단 H-1,2,3BL 행복주택 예비입주자 모집"
+        },
+        {
+          "path": "announcement.postedDate",
+          "page": 1,
+          "quote": "모집공고일 : 2026.10.15"
+        },
+        {
+          "path": "announcement.applicationStartDate",
+          "page": 2,
+          "quote": "10.26.(월) 10:00"
+        },
+        {
+          "path": "announcement.applicationEndDate",
+          "page": 2,
+          "quote": "10.27.(화) 16:00"
+        },
+        {
+          "path": "announcement.winnerAnnouncementDate",
+          "page": 2,
+          "quote": "‘27.02.18.(목)"
+        },
+        {
+          "path": "receptionPlace.name",
+          "page": 2,
+          "quote": "LH청약플러스"
+        },
+        {
+          "path": "receptionPlace.method",
+          "page": 2,
+          "quote": "인터넷 (PC‧모바일)"
+        },
+        {
+          "path": "receptionPlace.contact",
+          "page": 35,
+          "quote": "전국 대표전화 1600-1004"
+        },
+        {
+          "path": "receptionPlace.url",
+          "page": 14,
+          "quote": "https://apply.lh.or.kr"
+        },
+        {
+          "path": "supplyRows[0]",
+          "page": 2,
+          "quote": "24 39.78 26.8873 9.5429 29.4862"
+        },
+        {
+          "path": "supplyRows[0].totalSupplyHouseholdCount",
+          "page": 2,
+          "quote": "105.6964 0 25"
+        },
+        {
+          "path": "supplyRows[0].targets[0]",
+          "page": 3,
+          "quote": "41,848,000 2,092,400 39,755,600 226,670"
+        },
+        {
+          "path": "supplyRows[0].targets[1]",
+          "page": 3,
+          "quote": "35,570,000 1,778,500 33,791,500 192,670"
+        },
+        {
+          "path": "supplyRows[0].targets[2]",
+          "page": 3,
+          "quote": "37,663,000 1,883,150 35,779,850"
+        },
+        {
+          "path": "supplyRows[0].targets[3]",
+          "page": 3,
+          "quote": "41,848,000 2,092,400 39,755,600 226,670"
+        },
+        {
+          "path": "supplyRows[0].targets[4]",
+          "page": 3,
+          "quote": "39,775,000 1,988,750 37,786,250 215,340"
+        },
+        {
+          "path": "supplyRows[1]",
+          "page": 2,
+          "quote": "40 16.80 10.8759 3.9364 11.2049"
+        },
+        {
+          "path": "supplyRows[1].totalSupplyHouseholdCount",
+          "page": 2,
+          "quote": "42.8172 12 30"
+        },
+        {
+          "path": "supplyRows[1].targets[0]",
+          "page": 3,
+          "quote": "15,878,000 793,900 15,084,100 86,000"
+        },
+        {
+          "path": "supplyRows[1].targets[1]",
+          "page": 3,
+          "quote": "15,878,000 793,900 15,084,100 86,000"
+        },
+        {
+          "path": "supplyRows[1].targets[2]",
+          "page": 3,
+          "quote": "16,812,000 840,600 15,971,400 91,060"
+        },
+        {
+          "path": "supplyRows[2]",
+          "page": 2,
+          "quote": "24 36.72 23.7716 8.6039 24.4907"
+        },
+        {
+          "path": "supplyRows[2].totalSupplyHouseholdCount",
+          "page": 2,
+          "quote": "93.5862 14 10"
+        },
+        {
+          "path": "supplyRows[2].targets[0]",
+          "page": 3,
+          "quote": "38,336,000 1,916,800 36,419,200 207,650"
+        },
+        {
+          "path": "supplyRows[2].targets[1]",
+          "page": 3,
+          "quote": "32,585,000 1,629,250 30,955,750 176,500"
+        },
+        {
+          "path": "supplyRows[2].targets[2]",
+          "page": 3,
+          "quote": "34,502,000 1,725,100 32,776,900 186,880"
+        },
+        {
+          "path": "supplyRows[2].targets[3]",
+          "page": 3,
+          "quote": "36,419,000 1,820,950 34,598,050 197,270"
+        },
+        {
+          "path": "supplyRows[2].targets[4]",
+          "page": 3,
+          "quote": "28,752,000 1,437,600 27,314,400 155,740"
+        },
+        {
+          "path": "supplyRows[3]",
+          "page": 3,
+          "quote": "76 16.80 7.0787 2.7993 11.5092"
+        },
+        {
+          "path": "supplyRows[3].totalSupplyHouseholdCount",
+          "page": 3,
+          "quote": "38.1872 9 50"
+        },
+        {
+          "path": "supplyRows[3].targets[0]",
+          "page": 4,
+          "quote": "15,935,000 796,750 15,138,250 86,310"
+        },
+        {
+          "path": "supplyRows[3].targets[1]",
+          "page": 4,
+          "quote": "15,935,000 796,750 15,138,250 86,310"
+        },
+        {
+          "path": "supplyRows[3].targets[2]",
+          "page": 4,
+          "quote": "16,873,000 843,650 16,029,350 91,390"
+        },
+        {
+          "path": "supplyRows[4]",
+          "page": 3,
+          "quote": "20 26.97 11.3639 4.4939 18.4764"
+        },
+        {
+          "path": "supplyRows[4].totalSupplyHouseholdCount",
+          "page": 3,
+          "quote": "61.3042 5 10"
+        },
+        {
+          "path": "supplyRows[4].targets[0]",
+          "page": 4,
+          "quote": "21,522,000 1,076,100 20,445,900 116,570"
+        },
+        {
+          "path": "supplyRows[4].targets[1]",
+          "page": 4,
+          "quote": "24,391,000 1,219,550 23,171,450 132,120"
+        },
+        {
+          "path": "supplyRows[4].targets[2]",
+          "page": 4,
+          "quote": "24,391,000 1,219,550 23,171,450 132,120"
+        },
+        {
+          "path": "supplyRows[4].targets[3]",
+          "page": 4,
+          "quote": "25,826,000 1,291,300 24,534,700 139,890"
+        },
+        {
+          "path": "supplyRows[5]",
+          "page": 3,
+          "quote": "12 26.97 11.3639 4.4939 18.4764"
+        },
+        {
+          "path": "supplyRows[5].totalSupplyHouseholdCount",
+          "page": 3,
+          "quote": "61.3042 2 10"
+        },
+        {
+          "path": "supplyRows[5].targets[0]",
+          "page": 4,
+          "quote": "27,261,000 1,363,050 25,897,950 147,660"
+        },
+        {
+          "path": "supplyRows[5].targets[1]",
+          "page": 4,
+          "quote": "21,522,000 1,076,100 20,445,900 116,570"
+        },
+        {
+          "path": "supplyRows[6]",
+          "page": 3,
+          "quote": "60 36.72 15.4721 6.1186 25.1559"
+        },
+        {
+          "path": "supplyRows[6].totalSupplyHouseholdCount",
+          "page": 3,
+          "quote": "83.4666 19 30"
+        },
+        {
+          "path": "supplyRows[6].targets[0]",
+          "page": 4,
+          "quote": "38,628,000 1,931,400 36,696,600 209,230"
+        },
+        {
+          "path": "supplyRows[6].targets[1]",
+          "page": 4,
+          "quote": "32,833,000 1,641,650 31,191,350 177,840"
+        },
+        {
+          "path": "supplyRows[6].targets[2]",
+          "page": 4,
+          "quote": "34,765,000 1,738,250 33,026,750 188,310"
+        },
+        {
+          "path": "supplyRows[6].targets[3]",
+          "page": 4,
+          "quote": "36,696,000 1,834,800 34,861,200 198,770"
+        },
+        {
+          "path": "supplyRows[6].targets[4]",
+          "page": 4,
+          "quote": "28,971,000 1,448,550 27,522,450 156,920"
+        },
+        {
+          "path": "schedules[0]",
+          "page": 14,
+          "quote": "10.26.(월) 10:00"
+        },
+        {
+          "path": "schedules[1]",
+          "page": 14,
+          "quote": "10.27.(화) 10:00 ~ 16:00"
+        },
+        {
+          "path": "schedules[2]",
+          "page": 14,
+          "quote": "11.10.(화) 14:00 이후"
+        },
+        {
+          "path": "schedules[3]",
+          "page": 14,
+          "quote": "11.11.(수) ~ 11.13.(금)"
+        },
+        {
+          "path": "schedules[4]",
+          "page": 14,
+          "quote": "‘27.02.18.(목) 14:00 이후"
+        }
+      ]
+    },
+    "rows": [
+      {
+        "id": 22,
+        "displayOrder": 1,
+        "sourceComplexName": "광주첨단H-1BL",
+        "housingTypeName": "아파트",
+        "pnu": "1233011600106570004",
+        "supplyCategory": "RESUPPLY",
+        "householdCount": 25,
+        "exclusiveArea": null,
+        "supplyArea": null,
+        "moveInMonth": null,
+        "complexId": 962,
+        "housingTypeId": null,
+        "matchingFailureReason": "원천 주택형명과 면적으로도 주택형 하나를 확정할 수 없습니다.",
+        "groupId": null,
+        "targets": []
+      },
+      {
+        "id": 23,
+        "displayOrder": 2,
+        "sourceComplexName": "광주첨단H-2BL",
+        "housingTypeName": "16형(대학생,청년)",
+        "pnu": "1233011600106830002",
+        "supplyCategory": "RESUPPLY",
+        "householdCount": 30,
+        "exclusiveArea": null,
+        "supplyArea": null,
+        "moveInMonth": "2020-02",
+        "complexId": 960,
+        "housingTypeId": 3032,
+        "matchingFailureReason": null,
+        "groupId": null,
+        "targets": []
+      },
+      {
+        "id": 24,
+        "displayOrder": 3,
+        "sourceComplexName": "광주첨단H-2BL",
+        "housingTypeName": "36형(신혼부부,한부모)",
+        "pnu": "1233011600106830002",
+        "supplyCategory": "RESUPPLY",
+        "householdCount": 10,
+        "exclusiveArea": null,
+        "supplyArea": null,
+        "moveInMonth": "2020-02",
+        "complexId": 960,
+        "housingTypeId": 3034,
+        "matchingFailureReason": null,
+        "groupId": null,
+        "targets": []
+      },
+      {
+        "id": 25,
+        "displayOrder": 4,
+        "sourceComplexName": "광주첨단H-3BL",
+        "housingTypeName": "16형(대학생,청년)",
+        "pnu": "1233011500108690002",
+        "supplyCategory": "RESUPPLY",
+        "householdCount": 50,
+        "exclusiveArea": null,
+        "supplyArea": null,
+        "moveInMonth": "2020-02",
+        "complexId": 961,
+        "housingTypeId": 3035,
+        "matchingFailureReason": null,
+        "groupId": null,
+        "targets": []
+      },
+      {
+        "id": 26,
+        "displayOrder": 5,
+        "sourceComplexName": "광주첨단H-3BL",
+        "housingTypeName": "26형(고령(주거약자용))",
+        "pnu": "1233011500108690002",
+        "supplyCategory": "RESUPPLY",
+        "householdCount": 10,
+        "exclusiveArea": null,
+        "supplyArea": null,
+        "moveInMonth": "2020-02",
+        "complexId": 961,
+        "housingTypeId": 3036,
+        "matchingFailureReason": null,
+        "groupId": null,
+        "targets": []
+      },
+      {
+        "id": 27,
+        "displayOrder": 6,
+        "sourceComplexName": "광주첨단H-3BL",
+        "housingTypeName": "26형(주거급여수급자)",
+        "pnu": "1233011500108690002",
+        "supplyCategory": "RESUPPLY",
+        "householdCount": 10,
+        "exclusiveArea": null,
+        "supplyArea": null,
+        "moveInMonth": "2020-02",
+        "complexId": 961,
+        "housingTypeId": 3036,
+        "matchingFailureReason": null,
+        "groupId": null,
+        "targets": []
+      },
+      {
+        "id": 28,
+        "displayOrder": 7,
+        "sourceComplexName": "광주첨단H-3BL",
+        "housingTypeName": "36형(신혼부부,한부모)",
+        "pnu": "1233011500108690002",
+        "supplyCategory": "RESUPPLY",
+        "householdCount": 30,
+        "exclusiveArea": null,
+        "supplyArea": null,
+        "moveInMonth": "2020-02",
+        "complexId": 961,
+        "housingTypeId": 3037,
+        "matchingFailureReason": null,
+        "groupId": null,
+        "targets": []
+      }
+    ],
+    "events": [
+      {
+        "id": 193,
+        "displayOrder": 1,
+        "scheduleType": "APPLICATION",
+        "name": "접수",
+        "startAt": "2026-10-26T00:00:00",
+        "endAt": "2026-10-27T00:00:00",
+        "complexName": "광주첨단 창업지원주택"
+      },
+      {
+        "id": 194,
+        "displayOrder": 2,
+        "scheduleType": "ETC",
+        "name": "서류제출 대상자 발표",
+        "startAt": "2026-11-10T00:00:00",
+        "endAt": "2026-11-10T00:00:00",
+        "complexName": "광주첨단 창업지원주택"
+      },
+      {
+        "id": 195,
+        "displayOrder": 3,
+        "scheduleType": "WINNER_ANNOUNCEMENT",
+        "name": "당첨자 발표",
+        "startAt": "2027-02-18T00:00:00",
+        "endAt": "2027-02-18T00:00:00",
+        "complexName": "광주첨단 창업지원주택"
+      },
+      {
+        "id": 196,
+        "displayOrder": 4,
+        "scheduleType": "DOCUMENT_SUBMISSION",
+        "name": "서류제출",
+        "startAt": "2026-11-10T00:00:00",
+        "endAt": "2026-11-13T00:00:00",
+        "complexName": "광주첨단 창업지원주택"
+      },
+      {
+        "id": 197,
+        "displayOrder": 5,
+        "scheduleType": "APPLICATION",
+        "name": "접수",
+        "startAt": "2026-10-26T00:00:00",
+        "endAt": "2026-10-27T00:00:00",
+        "complexName": "광주첨단 행복주택(H-2)"
+      },
+      {
+        "id": 198,
+        "displayOrder": 6,
+        "scheduleType": "ETC",
+        "name": "서류제출 대상자 발표",
+        "startAt": "2026-11-10T00:00:00",
+        "endAt": "2026-11-10T00:00:00",
+        "complexName": "광주첨단 행복주택(H-2)"
+      },
+      {
+        "id": 199,
+        "displayOrder": 7,
+        "scheduleType": "WINNER_ANNOUNCEMENT",
+        "name": "당첨자 발표",
+        "startAt": "2027-02-18T00:00:00",
+        "endAt": "2027-02-18T00:00:00",
+        "complexName": "광주첨단 행복주택(H-2)"
+      },
+      {
+        "id": 200,
+        "displayOrder": 8,
+        "scheduleType": "DOCUMENT_SUBMISSION",
+        "name": "서류제출",
+        "startAt": "2026-11-10T00:00:00",
+        "endAt": "2026-11-13T00:00:00",
+        "complexName": "광주첨단 행복주택(H-2)"
+      },
+      {
+        "id": 201,
+        "displayOrder": 9,
+        "scheduleType": "APPLICATION",
+        "name": "접수",
+        "startAt": "2026-10-26T00:00:00",
+        "endAt": "2026-10-27T00:00:00",
+        "complexName": "광주첨단 행복주택(H-3)"
+      },
+      {
+        "id": 202,
+        "displayOrder": 10,
+        "scheduleType": "ETC",
+        "name": "서류제출 대상자 발표",
+        "startAt": "2026-11-10T00:00:00",
+        "endAt": "2026-11-10T00:00:00",
+        "complexName": "광주첨단 행복주택(H-3)"
+      },
+      {
+        "id": 203,
+        "displayOrder": 11,
+        "scheduleType": "WINNER_ANNOUNCEMENT",
+        "name": "당첨자 발표",
+        "startAt": "2027-02-18T00:00:00",
+        "endAt": "2027-02-18T00:00:00",
+        "complexName": "광주첨단 행복주택(H-3)"
+      },
+      {
+        "id": 204,
+        "displayOrder": 12,
+        "scheduleType": "DOCUMENT_SUBMISSION",
+        "name": "서류제출",
+        "startAt": "2026-11-10T00:00:00",
+        "endAt": "2026-11-13T00:00:00",
+        "complexName": "광주첨단 행복주택(H-3)"
+      }
+    ],
+    "complexes": [
+      {
+        "id": 961,
+        "housingTypes": [
+          {
+            "id": 3035,
+            "name": "16",
+            "exclusiveArea": 16.8,
+            "supplyArea": 23.8787,
+            "householdCount": 76
+          },
+          {
+            "id": 3036,
+            "name": "26",
+            "exclusiveArea": 26.97,
+            "supplyArea": 38.3339,
+            "householdCount": 64
+          },
+          {
+            "id": 3037,
+            "name": "36",
+            "exclusiveArea": 36.72,
+            "supplyArea": 52.1921,
+            "householdCount": 60
+          }
+        ]
+      },
+      {
+        "id": 960,
+        "housingTypes": [
+          {
+            "id": 3032,
+            "name": "16",
+            "exclusiveArea": 16.8,
+            "supplyArea": 27.6759,
+            "householdCount": 40
+          },
+          {
+            "id": 3033,
+            "name": "26",
+            "exclusiveArea": 26.97,
+            "supplyArea": 44.4297,
+            "householdCount": 36
+          },
+          {
+            "id": 3034,
+            "name": "36",
+            "exclusiveArea": 36.72,
+            "supplyArea": 60.4916,
+            "householdCount": 24
+          }
+        ]
+      },
+      {
+        "id": 962,
+        "housingTypes": [
+          {
+            "id": 3038,
+            "name": "21",
+            "exclusiveArea": 21.88,
+            "supplyArea": 36.6687,
+            "householdCount": 76
+          },
+          {
+            "id": 3039,
+            "name": "39",
+            "exclusiveArea": 39.78,
+            "supplyArea": 66.6673,
+            "householdCount": 24
+          }
+        ]
+      }
+    ]
+  },
+  "gongju": {
+    "extraction": {
+      "data": {
+        "announcement": {
+          "name": "공주옥룡1 영구임대주택 예비입주자 모집",
+          "postedDate": "2026-10-06",
+          "applicationStartDate": "2026-10-27",
+          "applicationEndDate": "2026-10-29",
+          "winnerAnnouncementDate": "2027-02-26"
+        },
+        "receptionPlace": {
+          "name": "공주시 내 거주지 관할 읍·면·동 주민센터",
+          "method": "VISIT",
+          "address": null,
+          "contact": "1600-1004",
+          "url": null
+        },
+        "supplyRows": [
+          {
+            "complexReference": {
+              "sourceComplexName": "공주옥룡1"
+            },
+            "sourceHousingTypeName": "26",
+            "expectedMoveInMonth": null,
+            "totalSupplyHouseholdCount": 70,
+            "exclusiveArea": 26.37,
+            "supplyArea": null,
+            "constructedHouseholdCount": 443,
+            "targets": [
+              {
+                "target": "가군 (생계·의료급여수급자 등)",
+                "supplyRank": 1,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 2520000,
+                "monthlyRent": 49180,
+                "convertedDeposit": null
+              },
+              {
+                "target": "나군 (일반 등)",
+                "supplyRank": 1,
+                "supplyHouseholdCount": null,
+                "reserveCount": null,
+                "rentalDeposit": 3420000,
+                "monthlyRent": 76090,
+                "convertedDeposit": null
+              }
+            ]
+          }
+        ],
+        "schedules": [
+          {
+            "scheduleType": "APPLICATION",
+            "name": "현장 신청접수",
+            "startAt": "2026-10-27T10:00:00",
+            "endAt": "2026-10-29T17:00:00"
+          },
+          {
+            "scheduleType": "WINNER_ANNOUNCEMENT",
+            "name": "예비입주자 발표",
+            "startAt": "2027-02-26T14:00:00",
+            "endAt": "2027-02-26T14:00:00"
+          },
+          {
+            "scheduleType": "CONTRACT",
+            "name": "계약안내(개별안내)",
+            "startAt": null,
+            "endAt": null
+          }
+        ],
+        "unresolvedFields": [
+          {
+            "path": "supplyRows[0].supplyArea",
+            "reason": "동일한 26㎡ 주택형에 대해 101동은 주거전용 26.37㎡와 주거공용 13.47㎡의 합계 39.84㎡, 103동은 주거전용 26.37㎡와 주거공용 13.50㎡의 합계 39.87㎡로 기재되어 있어 단일 공급면적을 확정할 수 없음"
+          }
+        ]
+      },
+      "sharedCounts": [],
+      "notApplicable": [
+        {
+          "path": "receptionPlace.address",
+          "reason": "거주지 관할 읍·면·동 주민센터에서 접수하므로 단일 접수처 주소가 없음"
+        },
+        {
+          "path": "receptionPlace.url",
+          "reason": "인터넷 신청이 불가능하고 현장접수만 가능하므로 온라인 접수 URL이 없음"
+        },
+        {
+          "path": "supplyRows[0].expectedMoveInMonth",
+          "reason": "기존 영구임대주택 예비입주자 모집으로 공가 발생 시 순번에 따라 계약하며 입주예정월을 안내하지 않음"
+        },
+        {
+          "path": "supplyRows[0].targets[0].supplyHouseholdCount",
+          "reason": "가군과 나군의 대상별 모집호수를 구분하지 않고 26㎡ 주택형 전체 예비입주자 70명을 모집함"
+        },
+        {
+          "path": "supplyRows[0].targets[1].supplyHouseholdCount",
+          "reason": "가군과 나군의 대상별 모집호수를 구분하지 않고 26㎡ 주택형 전체 예비입주자 70명을 모집함"
+        },
+        {
+          "path": "supplyRows[0].targets[0].reserveCount",
+          "reason": "대상별 예비입주자 모집수를 별도로 구분하지 않으며 주택형 전체 모집 예비자수 70명만 안내함"
+        },
+        {
+          "path": "supplyRows[0].targets[1].reserveCount",
+          "reason": "대상별 예비입주자 모집수를 별도로 구분하지 않으며 주택형 전체 모집 예비자수 70명만 안내함"
+        },
+        {
+          "path": "supplyRows[0].targets[0].convertedDeposit",
+          "reason": "전환가능 보증금 증액 한도액을 안내하지 않음"
+        },
+        {
+          "path": "supplyRows[0].targets[1].convertedDeposit",
+          "reason": "전환가능 보증금 증액 한도액을 안내하지 않음"
+        },
+        {
+          "path": "schedules[2].startAt",
+          "reason": "계약일정을 추후 개별안내한다고 명시하여 확정된 계약 시작일이 없음"
+        },
+        {
+          "path": "schedules[2].endAt",
+          "reason": "계약일정을 추후 개별안내한다고 명시하여 확정된 계약 종료일이 없음"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "announcement.name",
+          "page": 1,
+          "quote": "공주옥룡1 영구임대주택 예비입주자 모집"
+        },
+        {
+          "path": "announcement.postedDate",
+          "page": 1,
+          "quote": "입주자모집공고일 : 26. 10. 06."
+        },
+        {
+          "path": "announcement.applicationStartDate",
+          "page": 10,
+          "quote": "‘26.10.27(화)~10.29.(목)"
+        },
+        {
+          "path": "announcement.applicationEndDate",
+          "page": 10,
+          "quote": "‘26.10.27(화)~10.29.(목)"
+        },
+        {
+          "path": "announcement.winnerAnnouncementDate",
+          "page": 13,
+          "quote": "발표일 : 2027. 02. 26.(금) 14:00 이후"
+        },
+        {
+          "path": "receptionPlace.name",
+          "page": 10,
+          "quote": "공주시 내 거주지 관할 읍·면·동 주민센터"
+        },
+        {
+          "path": "receptionPlace.method",
+          "page": 10,
+          "quote": "현장 접수만 가능하며"
+        },
+        {
+          "path": "receptionPlace.contact",
+          "page": 25,
+          "quote": "콜센터 1600-1004"
+        },
+        {
+          "path": "supplyRows[0]",
+          "page": 1,
+          "quote": "26 443 26.37 13.47 39.84 20"
+        },
+        {
+          "path": "supplyRows[0].totalSupplyHouseholdCount",
+          "page": 1,
+          "quote": "70"
+        },
+        {
+          "path": "supplyRows[0].exclusiveArea",
+          "page": 1,
+          "quote": "26.37"
+        },
+        {
+          "path": "supplyRows[0].constructedHouseholdCount",
+          "page": 1,
+          "quote": "26 443"
+        },
+        {
+          "path": "supplyRows[0].targets[0]",
+          "page": 2,
+          "quote": "26 2,520,000 126,000 2,394,000 49,180"
+        },
+        {
+          "path": "supplyRows[0].targets[0].supplyRank",
+          "page": 8,
+          "quote": "금회모집은 1순위에 한합니다."
+        },
+        {
+          "path": "supplyRows[0].targets[0].applicationCondition",
+          "page": 2,
+          "quote": "가군 해당자 이외의 영구임대 입주 가능한 자"
+        },
+        {
+          "path": "supplyRows[0].targets[1]",
+          "page": 2,
+          "quote": "3,420,000 171,000 3,249,000 76,090"
+        },
+        {
+          "path": "supplyRows[0].targets[1].supplyRank",
+          "page": 8,
+          "quote": "금회모집은 1순위에 한합니다."
+        },
+        {
+          "path": "supplyRows[0].targets[1].applicationCondition",
+          "page": 2,
+          "quote": "가군 해당자 이외의 영구임대 입주 가능한 자"
+        },
+        {
+          "path": "schedules[0]",
+          "page": 10,
+          "quote": "‘26.10.27(화)~10.29.(목) 10:00~17:00"
+        },
+        {
+          "path": "schedules[1]",
+          "page": 10,
+          "quote": "‘2027.02.26.(금) 14:00 이후"
+        },
+        {
+          "path": "schedules[2]",
+          "page": 10,
+          "quote": "개별안내"
+        }
+      ]
+    },
+    "rows": [
+      {
+        "id": 131,
+        "displayOrder": 1,
+        "sourceComplexName": "공주옥룡1",
+        "housingTypeName": "아파트",
+        "pnu": "4415010900101230000",
+        "supplyCategory": "RESUPPLY",
+        "householdCount": 70,
+        "exclusiveArea": null,
+        "supplyArea": null,
+        "moveInMonth": null,
+        "complexId": 2467,
+        "housingTypeId": null,
+        "matchingFailureReason": "원천 주택형명과 면적으로도 주택형 하나를 확정할 수 없습니다.",
+        "groupId": null,
+        "targets": []
+      }
+    ],
+    "events": [
+      {
+        "id": 14,
+        "displayOrder": 1,
+        "scheduleType": "APPLICATION",
+        "name": "접수",
+        "startAt": "2026-10-27T00:00:00",
+        "endAt": "2026-10-29T00:00:00",
+        "complexName": null
+      },
+      {
+        "id": 15,
+        "displayOrder": 2,
+        "scheduleType": "WINNER_ANNOUNCEMENT",
+        "name": "당첨자 발표",
+        "startAt": "2027-02-26T00:00:00",
+        "endAt": "2027-02-26T00:00:00",
+        "complexName": null
+      }
+    ],
+    "complexes": [
+      {
+        "id": 2467,
+        "housingTypes": [
+          {
+            "id": 8575,
+            "name": "26",
+            "exclusiveArea": 26.37,
+            "supplyArea": 39.84,
+            "householdCount": null
+          },
+          {
+            "id": 8576,
+            "name": "26",
+            "exclusiveArea": 26.37,
+            "supplyArea": 39.87,
+            "householdCount": null
+          },
+          {
+            "id": 8577,
+            "name": "31",
+            "exclusiveArea": 31.32,
+            "supplyArea": 45.26,
+            "householdCount": 149
+          }
+        ]
+      }
+    ]
+  }
+}

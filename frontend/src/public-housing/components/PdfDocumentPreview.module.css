@@ -19,7 +19,16 @@
   font-size: var(--ds-text-caption);
 }
 .controls > span { margin-right: auto; }
-.controls label { white-space: nowrap; }
+/* 관리자 화면의 전역 label 세로 배치가 덮어쓰지 않도록 문서 범위로 지정한다. */
+.document .controls label {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--ds-space-1);
+  font-size: inherit;
+  font-weight: inherit;
+  white-space: nowrap;
+}
 .controls button, .controls select, .search button, .search input {
   min-height: 36px;
   border: 1px solid var(--ds-color-divider);

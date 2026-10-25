@@ -44,7 +44,7 @@ export function ManagementList({ resource, embedded = false, compact = false, re
     }
     setParams(next)
   }
-  function move(next: number) { const current = new URLSearchParams(search); current.set('page', String(next)); updateFilters(current) }
+  function move(next: number) { if (next === page?.page) { setAttempt(value => value + 1); return } const current = new URLSearchParams(search); current.set('page', String(next)); updateFilters(current) }
   return <section className={`management-page ${styles.page}`}>
     {!embedded ? <header className="management-heading"><h1>{title} 관리</h1>
       <Link className="admin-primary" to={`/admin/${resource}/new`}>{title} 추가</Link></header> : null}

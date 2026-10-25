@@ -248,21 +248,29 @@ class AdminManagementIntegrationTest {
         var supply = current.get("supplyRows").get(0);
         var supplyValues = (tools.jackson.databind.node.ObjectNode) supply.get("data");
         supplyValues.put("totalSupplyHouseholdCount", 17);
+        supplyValues.put("announcementHousingTypeName", "공고 표기 59A(신혼부부)");
+        String sourceTypeName = supply.get("sourceHousingTypeName").asText();
         String request = "{\"version\":" + version + ",\"housingComplexId\":" + complexId
                 + ",\"supplyRow\":" + supplyValues + "}";
         mvc.perform(put(path + "/supply-rows/" + supply.get("id").asLong())
                         .with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(request))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.supplyRows[0].modified").value(true))
-                .andExpect(jsonPath("$.data.supplyRows[0].data.totalSupplyHouseholdCount").value(17));
+                .andExpect(jsonPath("$.data.supplyRows[0].data.totalSupplyHouseholdCount").value(17))
+                .andExpect(jsonPath("$.data.supplyRows[0].data.announcementHousingTypeName")
+                        .value("공고 표기 59A(신혼부부)"))
+                .andExpect(jsonPath("$.data.supplyRows[0].sourceHousingTypeName").value(sourceTypeName));
         mvc.perform(delete("/api/admin/housing-complexes/" + complexId).param("version", "0")
                         .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isConflict());
         var row = entityManager.find(com.toadzip.backend.announcement.domain.SupplyRow.class,
                 supply.get("id").asLong());
         var announcement = row.getAnnouncement();
         assertThat(announcement.enrichFromLh("new-pan", "수집 이유", null)).isFalse();
+        // 재정제는 원천 이름만 갱신하고 관리자가 정한 값은 유지한다. 이름 갱신은 공고 변경으로 세지 않는다.
         assertThat(row.updateFromMyHome(null, null, 0, "원천 단지", "주택형", "111",
                 com.toadzip.backend.announcement.domain.SupplyCategory.NEW_SUPPLY, null, 99)).isFalse();
+        assertThat(row.getSourceHousingTypeName()).isEqualTo("주택형");
+        assertThat(row.getAnnouncementHousingTypeName()).isEqualTo("공고 표기 59A(신혼부부)");
         assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(17);
         assertThat(row.getHousingComplex().getId()).isEqualTo(complexId);
     }

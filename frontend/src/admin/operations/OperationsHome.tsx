@@ -38,7 +38,7 @@ export function OperationsHome() {
       <span className={styles.count} aria-label={`${item.title} 건수`}>{counts?.[index].value?.toLocaleString('ko-KR') ?? '—'}<small>건</small></span>
     </li>)}</ul>
     <section><h2>작업 도구</h2><nav className={styles.links} aria-label="운영 도구">
-      <Link to="/admin/ingest">수집 실행·단계별 이력</Link><Link to="/admin/complex-coverage">등록되지 않은 단지 찾기</Link>
+      <Link to="/admin/ingest">수집 실행·단계별 이력</Link>
       <Link to="/admin/complexes">단지 관리</Link><Link to="/admin/announcements">공고 관리</Link>
       <Link to="/admin/users">회원 조사</Link><Link to="/admin/notification-subscriptions">알림 신청·분석</Link>
       <Link to="/admin/feedback?status=IN_PROGRESS">처리 중 의견</Link><Link to="/admin/feedback?status=ON_HOLD">보류한 의견</Link>

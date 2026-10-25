@@ -80,6 +80,7 @@ export interface HousingAnnouncementDetailSupplyRow {
   readonly supplyRowId: string
   readonly sourceComplexName: string | null
   readonly sourceHousingTypeName: string | null
+  readonly displayHousingTypeName?: string | null
   readonly complex: AnnouncementSupplyComplex | null
   readonly housingType: AnnouncementHousingType | null
   readonly occupancyExpectedYearMonth: string | null
@@ -1038,8 +1039,8 @@ function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget
 }
 
 function housingTypeLabel(row: HousingAnnouncementDetailSupplyRow) {
-  if ((row.corrected || row.sharedRecruitment) && row.sourceHousingTypeName) return row.sourceHousingTypeName
-  return row.housingType?.name ?? row.sourceHousingTypeName ?? MISSING_DATA_LABEL
+  // 공고 표시명 → 단지 주택형명 → 원천 순서는 서버가 정한다.
+  return row.displayHousingTypeName ?? row.housingType?.name ?? row.sourceHousingTypeName ?? MISSING_DATA_LABEL
 }
 
 function DocumentActions({ detail, hasAnnouncementFile, onOpenAttachments }: {

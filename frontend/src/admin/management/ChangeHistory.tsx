@@ -1,5 +1,6 @@
 import { SupplyCorrectionHistory } from '../supply/SupplyCorrectionHistory'
-import { useEffect, useState } from 'react'
+import { PdfCorrectionHistory } from '../announcement-pdf/PdfCorrectionHistory'
+import { Fragment, useEffect, useState } from 'react'
 import { sourceCategories, isSourceCategory } from '../ingest/sourceApi'
 import { getManagementHistory } from './api'
 import type { ManagementChange, ManagementResource } from './managementContract'
@@ -14,6 +15,7 @@ export function ChangeHistory({ resource, id, version }: {resource:ManagementRes
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(true)
   const [attempt, setAttempt] = useState(0)
+  const [expanded, setExpanded] = useState<number | null>(null)
   useEffect(() => {
     let active = true; setBusy(true); setError('')
     void getManagementHistory(resource,id,page).then(value => { if(active) setItems(value) }).catch(cause => {
@@ -23,9 +25,18 @@ export function ChangeHistory({ resource, id, version }: {resource:ManagementRes
   },[resource,id,page,version,attempt])
   return <section><h2>수정 이력</h2>{error ? <div role="alert">{error}<button onClick={() => setAttempt(v => v+1)}>다시 불러오기</button></div> : null}
     {busy ? <p role="status">이력을 불러오는 중…</p> : !error && !items.length ? <p>아직 관리자 변경 이력이 없습니다.</p> : null}
-    {!busy && !error ? items.map(item => <details key={item.id} className="admin-change"><summary>{labels[item.action] ?? item.action} · {item.actor} · {new Date(item.occurredAt).toLocaleString('ko-KR')}</summary>
-      {item.action === 'CORRECT_SUPPLY' ? <SupplyCorrectionHistory before={readValue(item.beforeValue)} after={readValue(item.afterValue)} /> : <ChangedValues before={readValue(item.beforeValue)} after={readValue(item.afterValue)} />}
-      <details className="admin-history-record"><summary>전체 기록 보기</summary><div className="admin-change-values"><div><StoredDataTable data={readValue(item.beforeValue)} label="변경 전" readable /></div><div><StoredDataTable data={readValue(item.afterValue)} label="변경 후" readable /></div></div></details></details>) : null}
+    {!busy && !error && items.length > 0 && <div className="admin-table-scroll"><table className="admin-table admin-change-table"><caption className="sr-only">수정 이력 목록</caption>
+      <thead><tr><th scope="col">작업</th><th scope="col">처리자</th><th scope="col">처리 시각</th><th scope="col"><span className="sr-only">상세</span></th></tr></thead>
+      <tbody>{items.map(item => {
+        const label = labels[item.action] ?? item.action, time = new Date(item.occurredAt).toLocaleString('ko-KR'), open = expanded === item.id
+        return <Fragment key={item.id}><tr><th scope="row">{label}</th><td>{item.actor}</td><td>{time}</td>
+          <td><button type="button" aria-expanded={open} aria-label={`${label} · ${item.actor} · ${time} ${open ? '닫기' : '상세 보기'}`} onClick={() => setExpanded(open ? null : item.id)}>{open ? '닫기' : '상세 보기'}</button></td></tr>
+          {open && <tr className="admin-change-detail"><td colSpan={4}>
+            {item.action === 'CORRECT_SUPPLY' ? <SupplyCorrectionHistory before={readValue(item.beforeValue)} after={readValue(item.afterValue)} /> : ['CORRECT_FROM_PDF', 'UPDATE_FROM_JSON'].includes(item.action) ? <PdfCorrectionHistory before={readValue(item.beforeValue)} after={readValue(item.afterValue)} /> : <ChangedValues before={readValue(item.beforeValue)} after={readValue(item.afterValue)} />}
+            {/* 공고 이력은 바뀐 값만 보여준다. 전체 값 나열은 변수명 위주라 판단에 쓰이지 않는다. */}
+            {resource !== 'announcements' && <details className="admin-history-record"><summary>전체 기록 보기</summary><div className="admin-change-values"><div><StoredDataTable data={readValue(item.beforeValue)} label="변경 전" readable /></div><div><StoredDataTable data={readValue(item.afterValue)} label="변경 후" readable /></div></div></details>}
+          </td></tr>}</Fragment>
+      })}</tbody></table></div>}
     <div className="admin-pagination"><button disabled={page === 0 || busy} onClick={() => setPage(v => v-1)}>이전 이력</button><span>{page+1} 페이지</span><button disabled={items.length < 20 || busy} onClick={() => setPage(v => v+1)}>다음 이력</button></div></section>
 }
 function readValue(text:string): unknown { try { return JSON.parse(text) as unknown } catch { return text } }

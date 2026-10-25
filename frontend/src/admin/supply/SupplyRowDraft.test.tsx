@@ -35,12 +35,12 @@ it('다른 단지를 선택하면 이전 주택형을 해제하고 확인된 단
 it('새 단지 조회가 실패하면 기존 연결과 작성한 값을 유지한다', async () => {
   vi.mocked(getManagementDetail).mockRejectedValue(new Error('단지 조회 실패'))
   render(<Editor />)
-  fireEvent.change(screen.getByLabelText('공고의 주택형명'), { target: { value: '작성한 26B' } })
+  fireEvent.change(screen.getByLabelText('이 공고의 주택형 표기'), { target: { value: '작성한 26B' } })
   fireEvent.click(screen.getByRole('button', { name: '단지 검색' }))
   fireEvent.click(await screen.findByRole('button', { name: '선택: 새 단지' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('단지 조회 실패')
-  await waitFor(() => expect(screen.getByLabelText('공고의 주택형명')).toBeEnabled())
-  expect(screen.getByLabelText('공고의 주택형명')).toHaveValue('작성한 26B')
+  await waitFor(() => expect(screen.getByLabelText('이 공고의 주택형 표기')).toBeEnabled())
+  expect(screen.getByLabelText('이 공고의 주택형 표기')).toHaveValue('작성한 26B')
   expect(screen.getByText(/현재 선택: 기존 단지/)).toBeVisible()
 })
 it('연결이 빠진 행은 접힌 요약에 문제를 표시하고 처음부터 펼친다', () => {
@@ -81,4 +81,12 @@ it('펼친 행에 대응하는 원천값을 보여 주고, 원천이 없거나 �
   rerender(<SupplyRowDraft key="none" value={stored} {...props} />)
   fireEvent.click(screen.getByText(/익산한스빌 · 아파트/))
   expect(screen.getByRole('region', { name: '대응 원천' })).toHaveTextContent('대응하는 원천을 정할 수 없습니다')
+})
+it('기존 공급행의 원천 단지명은 수정 칸 없이 보여 주고 단지 주택형 수정은 단지 상세로 안내한다', () => {
+  const row: CorrectionRow = { ...blankRow(0), id: 5, key: 'row:5', complexName: '평화주공1단지', housingComplexId: 7, housingComplexName: '평화주공1단지', typeName: '26' }
+  render(<SupplyRowDraft value={row} onChange={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} first last inline />)
+  expect(screen.queryByLabelText('공고의 단지명')).not.toBeInTheDocument()
+  expect(screen.getByText('수집 원문 단지명: 평화주공1단지')).toBeVisible()
+  expect(screen.getByLabelText('이 공고의 주택형 표기')).toHaveValue('26')
+  expect(screen.getByRole('link', { name: '단지 주택형 이름 고치기 →' })).toHaveAttribute('href', '/admin/complexes/7?section=relations')
 })

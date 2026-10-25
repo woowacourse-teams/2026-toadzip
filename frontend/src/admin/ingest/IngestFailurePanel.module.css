@@ -68,3 +68,13 @@
   .table td:last-child button { padding: var(--ds-space-2); min-width: 0; }
   .workflow { gap: var(--ds-space-3); }
 }
+.pdfGroups { padding:var(--ds-space-4); border:1px solid var(--ds-color-divider); background:var(--ds-color-surface); margin-bottom:var(--ds-space-4); }
+.pdfGroups h3 { margin:0; font-size:var(--ds-text-body); }
+.pdfGroups p { font-size:var(--ds-text-caption); color:var(--ds-color-muted-base); }
+.pdfGroups > div { display:flex; flex-wrap:wrap; justify-content:space-between; gap:var(--ds-space-3); padding-block:var(--ds-space-3); border-top:1px solid var(--ds-color-divider); }
+.pdfGroups a { white-space:nowrap; color:var(--ds-color-action); text-underline-offset:3px; }
+
+.recovery { margin-top: var(--ds-space-4); padding: var(--ds-space-4); border: 1px solid var(--ds-color-action); border-radius: var(--ds-radius-control); scroll-margin-top: 88px; }
+.recovery h4 { margin: 0; font-size: var(--ds-text-body); }
+.recoveryDone { margin: var(--ds-space-3) 0 0; padding: var(--ds-space-3); border-radius: var(--ds-radius-control); background: var(--ds-color-action-soft); font-weight: 600; }
+.recoveryLeft { margin: var(--ds-space-3) 0 0; padding: var(--ds-space-3); border-radius: var(--ds-radius-control); background: var(--ds-color-status-upcoming-surface); color: var(--ds-color-status-upcoming); font-weight: 600; }

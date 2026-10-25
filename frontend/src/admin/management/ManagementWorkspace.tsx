@@ -14,13 +14,14 @@ export function ManagementWorkspace({ resource }: { resource: ManagementResource
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const [revision, setRevision] = useState(0)
+  const [registrationSession, setRegistrationSession] = useState(0)
   const [showList, setShowList] = useState(false)
   const workspaceRef = useRef<HTMLElement>(null)
   const editorRef = useRef<HTMLElement>(null)
   const addRef = useRef<HTMLAnchorElement>(null)
   const returnFocusRef = useRef<HTMLAnchorElement | null>(null)
   const listParams = managementListParams(params, resource)
-  const editorSession = useMemo(() => ({ resource, id }), [resource, id])
+  const editorSession = useMemo(() => ({ resource, id, registrationSession }), [resource, id, registrationSession])
   const currentEditor = useRef<{ session: typeof editorSession; listParams: URLSearchParams } | null>(null)
   const back = workReturnTo(params) ?? managementUrl(resource, listParams)
   const title = resource === 'complexes' ? '단지' : '공고'
@@ -54,7 +55,7 @@ export function ManagementWorkspace({ resource }: { resource: ManagementResource
   return <section ref={workspaceRef} className={styles.workspace}>
     <header className={styles.heading} data-detail={Boolean(id)}>
       <h1>{title} 관리</h1>
-      <Link ref={addRef} className="admin-primary" to={managementUrl(resource, listParams, 'new')}>
+      <Link ref={addRef} className="admin-primary" to={managementUrl(resource, listParams, 'new')} onClick={() => setRegistrationSession(value => value + 1)}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
         {title} 추가
       </Link>
@@ -68,8 +69,8 @@ export function ManagementWorkspace({ resource }: { resource: ManagementResource
           닫기
         </Link></div>
         <div className={styles.editorBody}>{id === 'new' ? resource === 'complexes'
-          ? <HousingComplexRegistrationPage embedded onCreated={created} />
-          : <AnnouncementRegistrationPage embedded onCreated={created} />
+          ? <HousingComplexRegistrationPage key={registrationSession} embedded onCreated={created} />
+          : <AnnouncementRegistrationPage key={registrationSession} embedded onCreated={created} />
           : <ManagementDetail key={`${resource}-${id}`} resource={resource} embedded onChanged={() => setRevision(value => value + 1)} />}</div>
       </section> : null}
     </div>

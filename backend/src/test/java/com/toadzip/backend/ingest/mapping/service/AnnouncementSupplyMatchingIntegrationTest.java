@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -107,7 +108,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         enrichment.enrichAll();
         mapping.mapAll();
         assertThat(supplies.findAll()).extracting(value -> value.getId()).containsExactlyInAnyOrderElementsOf(ids);
-        assertThat(supplies.findAll()).extracting(value -> value.getSourceHousingTypeName())
+        assertThat(supplies.findAll()).extracting(value -> value.getAnnouncementHousingTypeName())
                 .containsExactlyInAnyOrder("26A", "26B");
         assertThat(supplies.findAll()).allSatisfy(row -> assertThat(row.getTotalSupplyHouseholdCount()).isNull());
         var detail = query.getAnnouncement(announcement.getId());
@@ -267,7 +268,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         mapping.mapAll();
         mapping.mapAll();
         assertThat(supplies.findAll()).extracting(value -> value.getId()).containsExactlyInAnyOrderElementsOf(ids);
-        assertThat(supplies.findAll()).extracting(value -> value.getSourceHousingTypeName())
+        assertThat(supplies.findAll()).extracting(value -> value.getAnnouncementHousingTypeName())
                 .containsExactlyInAnyOrder("26A", "26B");
     }
 
@@ -406,6 +407,84 @@ class AnnouncementSupplyMatchingIntegrationTest {
     }
 
     @Test
+    void 대응을_바꿀_행만_보내면_나머지_행은_저장한_매칭으로_정제한다() throws Exception {
+        sources.save(source(TARGET, 2, PNU));
+        var second = types.save(HousingType.createFromMyHome(complex, "complex-21395:26B", "26",
+                new BigDecimal("26.4673"), new BigDecimal("40.5686")));
+        rememberCurrent();
+        var rows = matching.rows(TARGET);
+
+        refineWith(Map.of("rows", List.of(selection(rows.getLast(), second)), "remember", true,
+                "sourceUrl", "https://example.com/official.pdf", "reason", "공고문 4쪽 면적으로 두 번째 행만 다시 확인"))
+                .andExpect(status().isOk());
+
+        assertThat(matching.rows(TARGET)).extracting(Row::housingTypeId)
+                .containsExactly(type.getId(), second.getId());
+        assertThat(jdbc.sql("SELECT housing_type_id FROM announcement_supply_match_decisions ORDER BY row_identifier")
+                .query(Long.class).list()).containsExactly(type.getId(), second.getId());
+    }
+
+    @Test
+    void 한_요청에서_한_원천행은_나누고_다른_원천행은_연결해_함께_저장한다() throws Exception {
+        sources.save(source(TARGET, 2, PNU));
+        var second = types.save(HousingType.createFromMyHome(complex, "complex-21395:26B", "26",
+                new BigDecimal("26.4673"), new BigDecimal("40.5686")));
+        var rows = matching.rows(TARGET);
+
+        refineWith(Map.of("rows", List.of(selection(rows.getLast(), type)),
+                "splits", List.of(splitPlan(rows.getFirst(), Map.of("26A", type, "26B", second))),
+                "remember", true, "sourceUrl", "https://example.com/official.pdf",
+                "reason", "공고문 4쪽의 26A·26B 면적과 다른 행의 주택형 확인")).andExpect(status().isOk());
+
+        assertThat(supplies.findAll()).filteredOn(row -> row.getSupplyGroup() != null)
+                .extracting(row -> row.getAnnouncementHousingTypeName() + ":" + row.getHousingType().getId())
+                .containsExactlyInAnyOrder("26A:" + type.getId(), "26B:" + second.getId());
+        assertThat(matching.rows(TARGET).getLast().housingTypeId()).isEqualTo(type.getId());
+        assertThat(jdbc.sql("SELECT action FROM admin_data_changes ORDER BY id").query(String.class).list())
+                .containsExactly("SAVE_SUPPLY_MATCH", "SPLIT_SUPPLY");
+        mapping.mapAll();
+        assertThat(supplies.count()).isEqualTo(3);
+    }
+
+    @Test
+    void 분할은_근거가_없거나_연결할_행과_겹치면_저장하지_않는다() throws Exception {
+        sources.save(source(TARGET, 2, PNU));
+        var second = types.save(HousingType.createFromMyHome(complex, "complex-21395:26B", "26",
+                new BigDecimal("26.4673"), new BigDecimal("40.5686")));
+        var rows = matching.rows(TARGET);
+        var plan = splitPlan(rows.getFirst(), Map.of("26A", type, "26B", second));
+
+        refineWith(Map.of("rows", List.of(selection(rows.getLast(), type)), "splits", List.of(plan)))
+                .andExpect(status().isBadRequest());
+        refineWith(Map.of("rows", List.of(selection(rows.getFirst(), type)), "splits", List.of(plan),
+                "sourceUrl", "https://example.com/official.pdf", "reason", "같은 행을 연결과 분할에 함께 보냄"))
+                .andExpect(status().isBadRequest());
+        assertThat(announcements.count()).isZero();
+        assertThat(supplies.count()).isZero();
+    }
+
+    @Test
+    void 분할한_원천이_있어도_다른_원천행의_연결은_저장할_수_있다() throws Exception {
+        sources.save(source(TARGET, 2, PNU));
+        var second = types.save(HousingType.createFromMyHome(complex, "complex-21395:26B", "26",
+                new BigDecimal("26.4673"), new BigDecimal("40.5686")));
+        rememberCurrent();
+        var first = matching.rows(TARGET).getFirst();
+        var plan = new java.util.LinkedHashMap<String, Object>(splitPlan(first, Map.of("26A", type, "26B", second)));
+        plan.put("sourceUrl", "https://example.com/official.pdf");
+        plan.put("reason", "공고문 4쪽의 26A·26B 면적 확인");
+        split(plan).andExpect(status().isOk());
+
+        refineWith(Map.of("rows", List.of(selection(matching.rows(TARGET).getLast(), second)), "remember", true,
+                "sourceUrl", "https://example.com/official.pdf", "reason", "다른 행의 주택형 확인"))
+                .andExpect(status().isOk());
+
+        assertThat(matching.rows(TARGET).getLast().housingTypeId()).isEqualTo(second.getId());
+        refineWith(Map.of("rows", List.of(selection(matching.rows(TARGET).getFirst(), type))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     void 일부_행이_유효하지_않으면_어떤_공고나_공급행도_저장하지_않는다() throws Exception {
         sources.save(source(TARGET, 2, PNU));
         var rows = matching.rows(TARGET);
@@ -469,10 +548,10 @@ class AnnouncementSupplyMatchingIntegrationTest {
     }
 
     @Test
-    void 새_공급행이_추가되면_다시_조회하도록_한다() throws Exception {
+    void 조회_후_추가된_공급행이_자동_매칭되지_않으면_저장하지_않는다() throws Exception {
         var row = matching.rows(TARGET).getFirst();
         sources.save(source(TARGET, 2, PNU));
-        refine(TARGET, List.of(request(row, complex.getId(), type.getId()))).andExpect(status().isConflict());
+        refine(TARGET, List.of(request(row, complex.getId(), type.getId()))).andExpect(status().isBadRequest());
         assertThat(announcements.count()).isZero();
     }
 
@@ -512,14 +591,15 @@ class AnnouncementSupplyMatchingIntegrationTest {
         var requests = List.of(request(matching.rows(TARGET).getFirst(), complex.getId(), type.getId()));
         refine(TARGET, requests).andExpect(status().isOk());
         jdbc.sql("""
-                UPDATE supply_rows SET admin_modified = true, source_housing_type_name = '26A',
+                UPDATE supply_rows SET admin_modified = true, announcement_housing_type_name = '26A',
                     housing_type_id = NULL
                 """).update();
         var current = List.of(request(matching.rows(TARGET).getFirst(), complex.getId(), type.getId()));
         refine(TARGET, current).andExpect(status().isOk());
         assertThat(supplies.findAll()).singleElement().satisfies(row -> {
             assertThat(row.getHousingType().getId()).isEqualTo(type.getId());
-            assertThat(row.getSourceHousingTypeName()).isEqualTo("26A");
+            assertThat(row.getAnnouncementHousingTypeName()).isEqualTo("26A");
+            assertThat(row.getSourceHousingTypeName()).isEqualTo("26A,B");
         });
     }
 
@@ -536,9 +616,29 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 단지_검색과_주택형_조회는_해당_단지의_기존_데이터만_반환한다() {
         assertThat(matching.complexes("한스빌")).singleElement()
-                .satisfies(value -> assertThat(value.id()).isEqualTo(complex.getId()));
+                .satisfies(value -> {
+                    assertThat(value.id()).isEqualTo(complex.getId());
+                    assertThat(value.pnu()).isEqualTo(complex.getAddress().getPnu());
+                    assertThat(value.totalHouseholdCount()).isEqualTo(complex.getTotalHouseholdCount());
+                    assertThat(value.housingTypes()).singleElement().satisfies(area -> {
+                        assertThat(area.id()).isEqualTo(type.getId());
+                        assertThat(area.exclusiveArea()).isEqualByComparingTo(type.getExclusiveArea());
+                    });
+                });
         assertThat(matching.housingTypes(complex.getId())).singleElement()
                 .satisfies(value -> assertThat(value.id()).isEqualTo(type.getId()));
+    }
+
+    @Test
+    void 단지_검색에_원천_PNU를_주면_이름이_다른_같은_필지_단지를_먼저_후보로_준다() {
+        var main = complex("중촌주공2단지", "complex-main", PNU, "NATIONAL_RENTAL");
+        complex("한스빌 다른필지", "complex-other", "1111111111111111111", "NATIONAL_RENTAL");
+
+        assertThat(matching.complexes("한스빌", PNU)).extracting(value -> value.id())
+                .containsExactly(complex.getId(), main.getId(), complexes.findBySourceComplexIdentifier("complex-other")
+                        .orElseThrow().getId());
+        assertThat(matching.complexes("한스빌")).extracting(value -> value.id()).doesNotContain(main.getId());
+        assertThatThrownBy(() -> matching.complexes("한스빌", "12a")).hasMessageContaining("PNU");
     }
 
     @Test
@@ -567,6 +667,28 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     private Request request(Row row, long complexId, Long housingTypeId) {
         return new Request(row.rowIdentifier(), row.token(), complexId, housingTypeId);
+    }
+
+    private ResultActions refineWith(Map<String, Object> body) throws Exception {
+        return mvc.perform(post(PATH + "/" + TARGET + "/refine").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body)));
+    }
+
+    private String targetToken(HousingType value) {
+        return matching.housingTypes(complex.getId()).stream().filter(option -> option.id() == value.getId())
+                .findFirst().orElseThrow().token();
+    }
+
+    private Map<String, Object> selection(Row row, HousingType value) {
+        return Map.of("rowIdentifier", row.rowIdentifier(), "token", row.token(), "complexId", complex.getId(),
+                "housingTypeId", value.getId(), "targetToken", targetToken(value));
+    }
+
+    private Map<String, Object> splitPlan(Row row, Map<String, HousingType> names) {
+        var selections = names.entrySet().stream().map(entry -> Map.<String, Object>of("name", entry.getKey(),
+                "complexId", complex.getId(), "housingTypeId", entry.getValue().getId(),
+                "targetToken", targetToken(entry.getValue()))).toList();
+        return Map.of("rowIdentifier", row.rowIdentifier(), "token", row.token(), "rows", selections);
     }
 
     private ResultActions remember(Row row, String targetToken, String sourceUrl, String reason) throws Exception {
@@ -735,6 +857,98 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(supplies.findAll()).singleElement()
                 .satisfies(row -> assertThat(row.getHousingType().getId()).isEqualTo(type.getId()));
         assertThat(pendingFailureReasons()).isEmpty();
+    }
+
+    @Test
+    @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
+    @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
+            executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD)
+    void 선택_없이_다시_정제하면_PDF_보정의_저장_매칭으로_이_공고만_정제하고_실패를_해결한다() throws Exception {
+        mapping.mapAll();
+        long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
+        correctFromPdf(announcementId, type);
+        assertThat(pendingFailureReasons()).containsExactly("AMBIGUOUS_HOUSING_TYPE");
+
+        rerun(TARGET).andExpect(status().isOk());
+
+        assertThat(pendingFailureReasons()).isEmpty();
+        assertThat(supplies.findAll()).singleElement()
+                .satisfies(row -> assertThat(row.getHousingType().getId()).isEqualTo(type.getId()));
+    }
+
+    @Test
+    void 다시_정제가_거절되면_아무것도_저장하지_않고_실패_기록도_바꾸지_않는다() throws Exception {
+        mapping.mapAll();
+        var before = supplies.findAll().getFirst();
+
+        rerun(TARGET).andExpect(status().isBadRequest())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("정제 실패: 공급행 매칭 실패")));
+
+        assertThat(pendingFailureReasons()).containsExactly("AMBIGUOUS_HOUSING_TYPE");
+        assertThat(supplies.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getId()).isEqualTo(before.getId());
+            assertThat(row.getHousingType()).isNull();
+        });
+    }
+
+    @Test
+    void 원천이_없는_공고는_다시_정제할_수_없다() throws Exception {
+        rerun("no-source-announcement").andExpect(status().isBadRequest())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.message").value("공고 원천이 없습니다. 먼저 공고를 수집해 주세요."));
+    }
+
+    @Test
+    void 등록_단지에_없어_제외한_공급행은_정제_오류로_남기지_않고_되돌리면_다시_오류가_된다() throws Exception {
+        sources.save(source(TARGET, 2, "1111010100100010000"));
+        int failedBefore = mapping.mapAll().failedSourceRowCount();
+        var missing = matching.rows(TARGET).stream().filter(row -> row.rowIdentifier().endsWith(":2")).findFirst().orElseThrow();
+        assertThat(missing.complexId()).isNull();
+
+        exclusion(missing, true, "공고문 2쪽: 이 주택형은 등록 단지에 없음").andExpect(status().isOk());
+        assertThat(matching.rows(TARGET)).filteredOn(Row::excluded).extracting(Row::rowIdentifier)
+                .containsExactly(missing.rowIdentifier());
+        assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(failedBefore - 1);
+        assertThat(pendingFailureReasons()).hasSize(failedBefore - 1);
+        assertThat(supplies.findAll()).filteredOn(row -> row.getSourceSupplyRowIdentifier().equals(missing.rowIdentifier()))
+                .singleElement().satisfies(row -> {
+                    assertThat(row.isAdminExcluded()).isTrue();
+                    assertThat(row.getHousingComplex()).isNull();
+                });
+        assertThat(jdbc.sql("SELECT action FROM admin_data_changes WHERE action = 'EXCLUDE_SUPPLY_ROW'")
+                .query(String.class).list()).hasSize(1);
+
+        exclusion(matching.rows(TARGET).stream().filter(Row::excluded).findFirst().orElseThrow(), false, "다시 확인")
+                .andExpect(status().isOk());
+        assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(failedBefore);
+        assertThat(pendingFailureReasons()).hasSize(failedBefore);
+    }
+
+    @Test
+    void 공급행_제외는_근거와_정제된_공급행을_요구한다() throws Exception {
+        var row = matching.rows(TARGET).getFirst();
+        exclusion(row, true, "근거").andExpect(status().isBadRequest());
+        mapping.mapAll();
+        exclusion(row, true, " ").andExpect(status().isBadRequest());
+        assertThat(supplies.findAll()).noneMatch(value -> value.isAdminExcluded());
+    }
+
+    private ResultActions exclusion(Row row, boolean excluded, String reason) throws Exception {
+        return mvc.perform(post(PATH + "/" + TARGET + "/exclusion").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "rowIdentifier", row.rowIdentifier(), "token", row.token(),
+                        "excluded", excluded, "reason", reason))));
+    }
+
+    @Test
+    void 다시_정제는_관리자와_CSRF를_요구한다() throws Exception {
+        mvc.perform(post(PATH + "/" + TARGET + "/rerun").with(csrf())).andExpect(status().isUnauthorized());
+        mvc.perform(post(PATH + "/" + TARGET + "/rerun").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+        assertThat(announcements.count()).isZero();
+    }
+
+    private ResultActions rerun(String identifier) throws Exception {
+        return mvc.perform(post(PATH + "/" + identifier + "/rerun").with(user("admin").roles("ADMIN")).with(csrf()));
     }
 
     private List<String> pendingFailureReasons() {

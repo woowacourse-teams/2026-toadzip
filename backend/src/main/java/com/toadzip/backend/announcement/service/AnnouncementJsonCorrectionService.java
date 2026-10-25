@@ -28,6 +28,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepositor
 import jakarta.validation.Validator;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -81,10 +82,9 @@ public class AnnouncementJsonCorrectionService {
         if (!plan.preview().confirmationToken().equals(apply.confirmationToken())) {
             throw new AdminDataConflictException("변경안이나 연결 후보가 달라졌습니다. 다시 미리보기 하세요.");
         }
-        if (plan.preview().supply() != null) {
-            supplies.apply(id, new SupplyCorrection.Apply(request.correction(),
-                    plan.preview().supply().confirmationToken()), actor);
-        }
+        SupplyCorrection.Apply supplyApply = plan.preview().supply() == null ? null
+                : new SupplyCorrection.Apply(request.correction(), plan.preview().supply().confirmationToken());
+        var written = supplyApply == null ? null : supplies.writeWithoutHistory(id, supplyApply, actor);
         if (!plan.preview().fields().isEmpty()) {
             announcement.reviseByAdmin(incoming(announcement, plan.metadata()));
         }
@@ -93,12 +93,18 @@ public class AnnouncementJsonCorrectionService {
         writeAttachments(announcement, plan.preview().attachments());
         announcements.flush();
         var after = workspace(id);
-        changes.save(new AdminDataChange("ANNOUNCEMENT", id, "UPDATE_FROM_JSON", actor,
+        // PDF 보정 한 번은 공급행·기본정보·일정 변경을 이력 한 건으로 남긴다.
+        var audit = new LinkedHashMap<String, Object>(supplies.audit(after.supply(), request.correction()));
+        audit.put("detail", after.detail());
+        audit.put("events", after.events());
+        audit.put("source", request.document().source());
+        audit.put("fields", request.fields());
+        var change = changes.saveAndFlush(new AdminDataChange("ANNOUNCEMENT", id, "CORRECT_FROM_PDF", actor,
                 json.writeValueAsString(Map.of("detail", plan.before().detail(), "events", plan.before().events(),
-                        "rows", plan.before().supply().rows())), json.writeValueAsString(Map.of(
-                        "detail", after.detail(), "events", after.events(), "rows", after.supply().rows(),
-                        "reason", request.correction().reason(), "sourceUrl", request.correction().sourceUrl(),
-                        "source", request.document().source(), "fields", request.fields()))));
+                        "rows", plan.before().supply().rows())), json.writeValueAsString(audit)));
+        if (written != null) {
+            supplies.recordOperation(id, supplyApply, change.getId(), announcement.getVersion());
+        }
         return after;
     }
 
@@ -112,7 +118,8 @@ public class AnnouncementJsonCorrectionService {
         var metadata = metadata(before.detail().data(), request, fieldChanges);
         find(id).validateAdminRevision(incoming(find(id), metadata));
         SupplyCorrection.Preview supply = null;
-        if (!hash(before.supply().rows()).equals(hash(request.correction().rows()))) {
+        if (!request.correction().newGroups().isEmpty()
+                || !hash(before.supply().rows()).equals(hash(request.correction().rows()))) {
             supply = supplies.preview(id, request.correction());
         }
         if (supply == null && !before.supply().snapshotToken().equals(request.correction().snapshotToken())) {

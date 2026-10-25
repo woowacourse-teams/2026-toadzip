@@ -28,6 +28,7 @@ import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMap
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementSupplyMatcher.LhSupplyMatchResult;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
+import com.toadzip.backend.ingest.mapping.service.LhSupplyRowLinks;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -63,7 +64,8 @@ public class LhAnnouncementEnrichmentWriter {
             LhAnnouncementRequest request,
             List<LhAnnouncementSupplySource> supplies,
             Set<Long> changedHousingTypeRowIds,
-            Set<String> sourceKeysExcludedFromLhEnrichment
+            Set<String> sourceKeysExcludedFromLhEnrichment,
+            Map<String, LhSupplyRowLinks.State> supplyLinks
     ) {
         if (announcement.getSupplyType() == RentalType.ETC) {
             throw new LhAnnouncementEnrichmentRejectedException(
@@ -85,7 +87,7 @@ public class LhAnnouncementEnrichmentWriter {
         boolean verifiedEmptySupply = supplies.isEmpty()
                 && sourceStore.hasVerifiedEmptySupplies(request.panId(), request.requestDescription());
         LhAnnouncementEnrichmentWriteResult result = write(
-                announcement, mapper.map(request.panId(), details, supplies),
+                announcement, mapper.map(request.panId(), details, supplies).withSupplyLinks(supplyLinks),
                 changedHousingTypeRowIds, sourceKeysExcludedFromLhEnrichment, verifiedEmptySupply
         );
         if (!result.failures().isEmpty()) {
@@ -295,7 +297,12 @@ public class LhAnnouncementEnrichmentWriter {
     }
 
     private List<SupplyRow> enrichmentRows(Announcement announcement, Set<String> sourceKeysExcludedFromLhEnrichment) {
-        List<SupplyRow> rows = supplyRowRepository.findAllByAnnouncement(announcement);
+        return enrichmentRows(announcement, supplyRowRepository.findAllByAnnouncement(announcement),
+                sourceKeysExcludedFromLhEnrichment);
+    }
+
+    static List<SupplyRow> enrichmentRows(Announcement announcement, List<SupplyRow> rows,
+            Set<String> sourceKeysExcludedFromLhEnrichment) {
         if (sourceKeysExcludedFromLhEnrichment.isEmpty()) {
             return rows;
         }

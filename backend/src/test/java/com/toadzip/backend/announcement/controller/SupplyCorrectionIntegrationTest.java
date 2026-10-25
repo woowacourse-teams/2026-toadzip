@@ -44,6 +44,7 @@ class SupplyCorrectionIntegrationTest {
     @Autowired private EntityManager entities;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private SupplyRowRepository rows;
+    @Autowired private com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures myhomeSources;
     @Autowired private com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementSupplySourceFixtures lhSupplies;
     @MockitoBean private IngestExecutionOwnershipService ownership;
 
@@ -70,10 +71,13 @@ class SupplyCorrectionIntegrationTest {
         apply(id, request, preview).andExpect(status().isOk());
         entities.flush(); entities.clear();
         var saved = rows.findById(row.getId()).orElseThrow();
-        assertThat(saved.getSourceHousingTypeName()).isEqualTo("26A");
+        assertThat(saved.getSourceHousingTypeName()).isEqualTo("26");
+        assertThat(saved.getAnnouncementHousingTypeName()).isEqualTo("26A");
         assertThat(saved.getTotalSupplyHouseholdCount()).isNull();
         assertThat(saved.getHousingType().getExclusiveArea()).isEqualByComparingTo("26.4673");
         mvc.perform(get("/api/v1/announcements/" + id)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.supplyRows[0].sourceHousingTypeName").value("26"))
+                .andExpect(jsonPath("$.data.supplyRows[0].displayHousingTypeName").value("26A"))
                 .andExpect(jsonPath("$.data.supplyRows[0].exclusiveArea").value(26.5195))
                 .andExpect(jsonPath("$.data.supplyRows[0].totalSupplyHouseholdCount").isEmpty())
                 .andExpect(jsonPath("$.data.supplyRows[0].targets[0].monthlyRent").value(0));
@@ -385,6 +389,125 @@ class SupplyCorrectionIntegrationTest {
                 .contentType("application/json").content(json.writeValueAsString(request)))
                 .andExpect(status().isConflict());
         assertThat(row.isAdminExcluded()).isFalse();
+    }
+
+    @Test
+    void PDF의_공통모집_분할과_임대조건을_함께_저장하고_미리보기는_원본을_유지한다() throws Exception {
+        var row = groupedFixture();
+        long id = row.getAnnouncement().getId();
+        var request = groupRequest(row);
+        var preview = preview(id, request);
+        assertThat(rows.findAllByAnnouncement(row.getAnnouncement())).hasSize(1);
+        assertThat(row.getSupplyGroup()).isNull();
+        assertThat(preview.has("newGroups")).isTrue();
+        assertThat(preview.get("newGroups").get(0).get("sharedHouseholdCount").asInt()).isEqualTo(170);
+
+        apply(id, request, preview).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+        var original = rows.findById(row.getId()).orElseThrow();
+        var saved = rows.findAllByAnnouncement(original.getAnnouncement());
+        assertThat(saved).hasSize(2).allSatisfy(member -> {
+            assertThat(member.getSupplyGroup().getId()).isEqualTo(original.getSupplyGroup().getId());
+            assertThat(member.getSupplyGroup().getSharedHouseholdCount()).isEqualTo(170);
+            assertThat(member.getTotalSupplyHouseholdCount()).isNull();
+            assertThat(member.isAdminModified()).isTrue();
+        });
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM supply_targets WHERE supply_row_id = ?",
+                Long.class, row.getId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT rental_deposit FROM supply_targets WHERE supply_row_id = ?",
+                BigDecimal.class, row.getId())).isEqualByComparingTo("4076000");
+        apply(id, request, preview).andExpect(status().isOk()).andExpect(jsonPath("$.data.alreadyApplied").value(true));
+        assertThat(rows.findAllByAnnouncement(original.getAnnouncement())).hasSize(2);
+    }
+
+    @Test
+    void 같은_주택형으로_분할하거나_다른_공고의_원천행을_지정하면_아무것도_저장하지_않는다() throws Exception {
+        var row = groupedFixture();
+        var request = groupRequest(row);
+        ((ObjectNode) request.get("rows").get(1)).put("housingTypeId", row.getHousingType().getId());
+        mvc.perform(post(root(row.getAnnouncement().getId()) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType("application/json").content(json.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+        request = groupRequest(row);
+        ((ObjectNode) request.get("newGroups").get(0)).put("sourceRowId", fixture().getId());
+        mvc.perform(post(root(row.getAnnouncement().getId()) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType("application/json").content(json.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+        assertThat(rows.findAllByAnnouncement(row.getAnnouncement())).hasSize(1);
+        assertThat(row.getSupplyGroup()).isNull();
+    }
+
+    @Test
+    void 공고_JSON_갱신에서_새_공통모집과_기본정보를_함께_저장한다() throws Exception {
+        var row = groupedFixture();
+        String root = "/api/admin/announcements/" + row.getAnnouncement().getId() + "/json-corrections";
+        var state = json.readTree(mvc.perform(get(root).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+        var request = json.createObjectNode().put("snapshotToken", state.get("snapshotToken").asText());
+        var document = (ObjectNode) json.readTree(java.nio.file.Files.readString(
+                java.nio.file.Path.of("../docs/fixtures/announcement-import-v1-valid.json")));
+        ((ObjectNode) document.get("announcement")).put("name", "PDF 보정 공고");
+        request.set("document", document);
+        request.putArray("fields").add("name"); request.putArray("schedules"); request.putArray("attachments");
+        request.set("correction", groupRequest(row));
+        var preview = json.readTree(mvc.perform(post(root + "/preview").with(user("admin").roles("ADMIN"))
+                .with(csrf()).contentType("application/json").content(request.toString()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+        var apply = json.createObjectNode().put("confirmationToken", preview.get("confirmationToken").asText());
+        apply.set("request", request);
+        mvc.perform(post(root).with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
+                .content(apply.toString())).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+        var saved = rows.findById(row.getId()).orElseThrow();
+        assertThat(saved.getAnnouncement().getName()).isEqualTo("PDF 보정 공고");
+        assertThat(saved.getSupplyGroup().getSharedHouseholdCount()).isEqualTo(170);
+        assertThat(rows.findAllByAnnouncement(saved.getAnnouncement())).hasSize(2);
+    }
+
+    @Test
+    void 분할_미리보기_후_주택형이_바뀌면_409로_거절하고_저장하지_않는다() throws Exception {
+        var row = groupedFixture();
+        var request = groupRequest(row);
+        var preview = preview(row.getAnnouncement().getId(), request);
+        row.getHousingType().reviseByAdmin("변경된 주택형", new BigDecimal("29.1234"), null);
+        entities.flush();
+        apply(row.getAnnouncement().getId(), request, preview).andExpect(status().isConflict());
+        assertThat(rows.findAllByAnnouncement(row.getAnnouncement())).hasSize(1);
+        assertThat(row.getSupplyGroup()).isNull();
+    }
+
+    private SupplyRow groupedFixture() {
+        var row = fixture();
+        var source = com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource.from(1,
+                new com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot(
+                        row.getAnnouncement().getSourceAnnouncementIdentifier(), 1, "모집중", "국민임대 입주자 모집공고",
+                        "한국토지주택공사", "26A,B", "국민임대", null, "20261001", "20261106", "20261008", "20261015",
+                        null, "https://example.com/manual", null, null, row.getHousingComplex().getName(), "서울특별시", "중구",
+                        null, null, null, row.getSupplyPnu(), null, null, 170, null, null, null, null));
+        source.markCollectedAt(java.time.Instant.parse("2026-10-08T00:00:00Z"));
+        myhomeSources.save(source);
+        row.recordMyHomeSource(source.getSourceKey());
+        row = rows.save(row);
+        entities.flush();
+        return row;
+    }
+
+    private ObjectNode groupRequest(SupplyRow row) throws Exception {
+        var type = HousingType.createFromMyHome(row.getHousingComplex(), UUID.randomUUID().toString(),
+                "26B", new BigDecimal("26.5195"), new BigDecimal("40.6486"));
+        entities.persist(type); entities.flush();
+        var request = request(row.getAnnouncement().getId());
+        var first = (ObjectNode) request.get("rows").get(0);
+        first.putNull("householdCount").put("typeName", "26A");
+        ((ObjectNode) first.get("targets").get(0)).put("deposit", "4076000").putNull("householdCount");
+        var second = first.deepCopy().putNull("id").put("key", "new-b").put("typeName", "26B")
+                .put("housingTypeId", type.getId()).put("displayOrder", 1);
+        ((ObjectNode) second.get("targets").get(0)).putNull("id").put("key", "new-target-b");
+        ((tools.jackson.databind.node.ArrayNode) request.get("rows")).add(second);
+        var group = request.putArray("newGroups").addObject().put("sourceRowId", row.getId())
+                .put("sharedHouseholdCount", 170);
+        group.putArray("rowKeys").add(first.get("key").asText()).add("new-b");
+        return request;
     }
 
     private SupplyRow fixture() {

@@ -3,10 +3,10 @@ import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AnnouncementSupplyMatchingForm } from './AnnouncementSupplyMatchingForm'
 import { getManagementDetail } from '../management/api'
-import { getSupplyMatches, searchMatchingComplexes, getMatchingHousingTypes, refineSupplyMatches, releaseSupplyMatch } from './supplyMatchingApi'
+import { getSupplyMatches, searchMatchingComplexes, getMatchingHousingTypes, refineSupplyMatches, releaseSupplyMatch, setSupplyExclusion } from './supplyMatchingApi'
 
 vi.mock('./supplyMatchingApi', () => ({ getSupplyMatches: vi.fn(), searchMatchingComplexes: vi.fn(),
-  getMatchingHousingTypes: vi.fn(), refineSupplyMatches: vi.fn(), releaseSupplyMatch: vi.fn() }))
+  getMatchingHousingTypes: vi.fn(), refineSupplyMatches: vi.fn(), releaseSupplyMatch: vi.fn(), setSupplyExclusion: vi.fn() }))
 vi.mock('../management/api', () => ({ getManagementDetail: vi.fn() }))
 
 const row = { rowIdentifier: '21395:1', token: 'version', sourceComplexName: '익산한스빌',
@@ -27,7 +27,8 @@ describe('선택 적용 후 공고 정제', () => {
     })
     vi.mocked(getSupplyMatches).mockResolvedValue([row])
     vi.mocked(searchMatchingComplexes).mockResolvedValue([{ id: 1, name: '한스빌아파트',
-      roadAddress: '익산시 목천로 30-14', supplyType: 'NATIONAL_RENTAL' }])
+      roadAddress: '익산시 목천로 30-14', supplyType: 'NATIONAL_RENTAL',
+      pnu: '123', totalHouseholdCount: 300, housingTypes: [{ id: 10, name: '26', exclusiveArea: 26.5195 }] }])
     vi.mocked(getMatchingHousingTypes).mockResolvedValue([{ id: 10, name: '26', exclusiveArea: 26.5195, supplyArea: null }])
     vi.mocked(refineSupplyMatches).mockResolvedValue(undefined)
   })
@@ -99,7 +100,7 @@ describe('선택 적용 후 공고 정제', () => {
 
   it('단지를 바꾸면 이전 주택형을 지우고 새 단지의 주택형을 가져온다', async () => {
     vi.mocked(searchMatchingComplexes).mockResolvedValue([{ id: 2, name: '다른 단지', roadAddress: '다른 주소',
-      supplyType: 'NATIONAL_RENTAL' }])
+      supplyType: 'NATIONAL_RENTAL', pnu: '456', totalHouseholdCount: 100, housingTypes: [] }])
     renderForm()
     await screen.findByRole('option', { name: /26 · 전용/ })
     fireEvent.change(screen.getByLabelText('매칭 주택형'), { target: { value: '10' } })
@@ -203,5 +204,107 @@ describe('선택 적용 후 공고 정제', () => {
     await waitFor(() => expect(releaseSupplyMatch).toHaveBeenCalledOnce())
     expect(confirm).toHaveBeenCalledOnce()
     confirm.mockRestore()
+  })
+})
+
+describe('오류 상세에서 연 실패 행 집중', () => {
+  const linked = { ...row, rowIdentifier: '21391:8', sourceComplexName: '대전판암3', complexId: 668, housingTypeId: 5, failure: null }
+  const failed = { ...row, rowIdentifier: '21391:14', sourceComplexName: '대전중촌2', complexId: null, housingTypeId: null,
+    failure: 'PNU와 공급유형이 일치하는 단지를 단지명으로도 하나로 확정할 수 없습니다.' }
+  beforeEach(() => {
+    vi.resetAllMocks()
+    vi.mocked(getManagementDetail).mockRejectedValue(new Error('skip'))
+    vi.mocked(getSupplyMatches).mockResolvedValue([linked, failed])
+    vi.mocked(searchMatchingComplexes).mockResolvedValue([{ id: 900, name: '대전중촌2 영구임대', roadAddress: '대전 중구', supplyType: 'PERMANENT_RENTAL',
+      pnu: '999', totalHouseholdCount: 600, housingTypes: [] }])
+    vi.mocked(getMatchingHousingTypes).mockResolvedValue([])
+    vi.mocked(refineSupplyMatches).mockResolvedValue(undefined)
+  })
+
+  it('실패한 행만 펼치고 원천 단지명으로 후보를 미리 찾아 둔다', async () => {
+    render(<MemoryRouter><AnnouncementSupplyMatchingForm identifier="21391" focusFailed /></MemoryRouter>)
+    expect(await screen.findByRole('button', { name: /대전중촌2 영구임대/ })).toBeVisible()
+    expect(searchMatchingComplexes).toHaveBeenCalledWith('대전중촌2', expect.anything(), '123')
+    expect(searchMatchingComplexes).toHaveBeenCalledOnce()
+    expect(screen.getByText('단지·주택형을 정하지 못한 공급행 1개입니다. 원천 단지명으로 후보를 미리 찾아 두었습니다.')).toBeVisible()
+    const settled = screen.getByText('이미 연결했거나 제외한 공급행 1개 · 지금 상태 그대로 정제합니다').closest('details')!
+    expect(settled).not.toHaveAttribute('open')
+    expect(within(settled).getByText('대전판암3')).not.toBeVisible()
+  })
+
+  it('후보를 고르고 정제하면 접힌 행의 기존 연결까지 함께 보내고 다른 페이지 링크는 보여 주지 않는다', async () => {
+    const onApplied = vi.fn()
+    render(<MemoryRouter><AnnouncementSupplyMatchingForm identifier="21391" focusFailed onApplied={onApplied} /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /대전중촌2 영구임대/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '선택 적용·정제 실행' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: '선택 적용·정제 실행' }))
+    await waitFor(() => expect(refineSupplyMatches).toHaveBeenCalledWith('21391', [
+      { rowIdentifier: '21391:8', token: 'version', complexId: 668, housingTypeId: 5 },
+      { rowIdentifier: '21391:14', token: 'version', complexId: 900, housingTypeId: null }]))
+    expect(await screen.findByRole('status')).toHaveTextContent('정제·저장을 완료했습니다')
+    expect(onApplied).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('link', { name: '공고 관리로 이동' })).not.toBeInTheDocument()
+  })
+
+  it('같은 면적 주택형이 있는 단지, PNU가 같은 단지, 세대수가 큰 본 단지 순으로 보여 준다', async () => {
+    vi.mocked(getSupplyMatches).mockResolvedValue([{ ...failed, exclusiveArea: 31.32, pnu: '3014010400101280001' }])
+    const type = (id: number, area: number) => ({ id, name: String(Math.floor(area)), exclusiveArea: area })
+    vi.mocked(searchMatchingComplexes).mockResolvedValue([
+      { id: 625, name: '대전중촌2 주거복지동', roadAddress: '대전천서로 695', supplyType: 'PERMANENT_RENTAL', pnu: '3014010400101280001', totalHouseholdCount: 112, housingTypes: [type(1975, 19.91), type(1976, 26.84)] },
+      { id: 543, name: '대전중촌2 조각', roadAddress: '대전천서로 695', supplyType: 'PERMANENT_RENTAL', pnu: '3014010400101280009', totalHouseholdCount: 1, housingTypes: [type(1, 31.32)] },
+      { id: 700, name: '대전중촌2 별동', roadAddress: '대전천서로 700', supplyType: 'PERMANENT_RENTAL', pnu: '3014010400101280009', totalHouseholdCount: 40, housingTypes: [] },
+      { id: 600, name: '중촌주공2단지', roadAddress: '대전천서로 695', supplyType: 'PERMANENT_RENTAL', pnu: '3014010400101280001', totalHouseholdCount: 948, housingTypes: [type(1903, 26.37), type(1904, 31.32)] }])
+    render(<MemoryRouter><AnnouncementSupplyMatchingForm identifier="21391" focusFailed /></MemoryRouter>)
+    await screen.findByRole('button', { name: /#600/ })
+    const names = within(screen.getByRole('list')).getAllByRole('button').map(button => button.textContent)
+    expect(names.map(name => name?.match(/#\d+/)?.[0])).toEqual(['#600', '#543', '#625', '#700'])
+    expect(names[0]).toContain('면적 일치')
+    expect(names[0]).toContain('같은 면적 주택형: 31 (31.32㎡)')
+    expect(names[0]).toContain('948세대 · 주택형 2개')
+    expect(names[2]).toContain('PNU 일치')
+    expect(names[2]).toContain('전용 31.32㎡ 주택형 없음')
+  })
+
+  it('단지를 고르면 같은 면적 주택형을 자동으로 선택하고 없으면 경고한다', async () => {
+    vi.mocked(getSupplyMatches).mockResolvedValue([{ ...failed, exclusiveArea: 31.32 }])
+    vi.mocked(searchMatchingComplexes).mockResolvedValue([
+      { id: 600, name: '중촌주공2단지', roadAddress: '대전천서로 695', supplyType: 'PERMANENT_RENTAL', pnu: '1', totalHouseholdCount: 948,
+        housingTypes: [{ id: 1904, name: '31', exclusiveArea: 31.32 }] },
+      { id: 625, name: '대전중촌2 주거복지동', roadAddress: '대전천서로 695', supplyType: 'PERMANENT_RENTAL', pnu: '1', totalHouseholdCount: 112,
+        housingTypes: [{ id: 1975, name: '19', exclusiveArea: 19.91 }] }])
+    vi.mocked(getMatchingHousingTypes).mockImplementation(async complexId => complexId === 600
+      ? [{ id: 1904, name: '31', exclusiveArea: 31.32, supplyArea: 43.7984 }]
+      : [{ id: 1975, name: '19', exclusiveArea: 19.91, supplyArea: 27.8425 }])
+    render(<MemoryRouter><AnnouncementSupplyMatchingForm identifier="21391" focusFailed /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole('button', { name: /#625/ }))
+    expect(await screen.findByText(/이 단지에는 전용 31.32㎡ 주택형이 없습니다. 다른 후보 단지를 확인하세요./)).toBeVisible()
+    expect(screen.getByLabelText('매칭 주택형')).toHaveValue('')
+
+    fireEvent.click(screen.getByRole('button', { name: '단지 다시 선택하기' }))
+    fireEvent.click(screen.getByRole('button', { name: '검색' }))
+    fireEvent.click(await screen.findByRole('button', { name: /#600/ }))
+    await waitFor(() => expect(screen.getByLabelText('매칭 주택형')).toHaveValue('1904'))
+    expect(screen.queryByText(/주택형이 없습니다. 다른 후보/)).not.toBeInTheDocument()
+  })
+
+  it('등록 단지에 없는 공급행을 근거와 함께 제외하면 제외 상태로 접고 나머지만 정제한다', async () => {
+    vi.mocked(setSupplyExclusion).mockResolvedValue([])
+    vi.mocked(getSupplyMatches).mockResolvedValueOnce([linked, failed]).mockResolvedValue([linked, { ...failed, excluded: true }])
+    render(<MemoryRouter><AnnouncementSupplyMatchingForm identifier="21391" focusFailed /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole('button', { name: '등록 단지에 없는 주택형이면 이 공급행 제외' }))
+    expect(screen.getByText(/제외하면 이 모집이 공고에 표시되지 않습니다/)).toBeVisible()
+    expect(screen.getByRole('button', { name: '제외 저장' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('제외 근거'), { target: { value: '공고문 3쪽: 중촌2 44㎡는 등록 단지에 없음' } })
+    fireEvent.click(screen.getByRole('button', { name: '제외 저장' }))
+    await waitFor(() => expect(setSupplyExclusion).toHaveBeenCalledWith('21391', expect.objectContaining({ rowIdentifier: '21391:14' }),
+      true, '공고문 3쪽: 중촌2 44㎡는 등록 단지에 없음'))
+
+    // 남은 실패 행이 없으면 접지 않고 전체를 보여 준다.
+    expect(await screen.findByText('공개에서 제외됨')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '선택 적용·정제 실행' }))
+    await waitFor(() => expect(refineSupplyMatches).toHaveBeenCalledWith('21391', [
+      { rowIdentifier: '21391:8', token: 'version', complexId: 668, housingTypeId: 5 }]))
   })
 })

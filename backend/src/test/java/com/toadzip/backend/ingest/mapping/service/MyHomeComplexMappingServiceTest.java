@@ -45,6 +45,7 @@ class MyHomeComplexMappingServiceTest {
     private static final Instant COLLECTED_AT = Instant.parse("2026-08-27T00:00:00Z");
     private static final String NEW_ADDRESS = "서울특별시 종로구 새길 2";
     private static final String NEW_PNU = "1111010100200020000";
+    private static final String SPLIT_ADDRESS = "대전광역시 서구 둔산로 100";
 
     @Autowired
     private MyHomeComplexMappingService service;
@@ -66,6 +67,22 @@ class MyHomeComplexMappingServiceTest {
 
     @Autowired
     private SupplyRowRepository supplyRowRepository;
+
+    @Autowired
+    private org.springframework.jdbc.core.simple.JdbcClient jdbc;
+
+    @Autowired
+    private com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository matchDecisions;
+
+    @Autowired
+    private SupplyMatchingFingerprint fingerprints;
+
+    private org.springframework.transaction.support.TransactionTemplate transactions;
+
+    @Autowired
+    void setTransactions(org.springframework.transaction.PlatformTransactionManager transactionManager) {
+        transactions = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+    }
 
     @MockitoBean
     private RoadAddressGeocodingService geocodingService;
@@ -656,6 +673,218 @@ class MyHomeComplexMappingServiceTest {
 
         assertThat(service.findFailures(0, 100)).singleElement().satisfies(failure ->
                 assertThat(failure.reason()).isEqualTo(MyHomeComplexMappingFailureReason.GEOCODING_ERROR));
+    }
+
+    @Test
+    void 단지번호만_다른_분할_원천은_세대수를_합산한_한_단지와_면적별_주택형으로_정제한다() {
+        sourceRepository.saveAll(List.of(
+                source(split(30700086L, "26", "26.37", 1367, 80, SPLIT_ADDRESS)),
+                source(split(30700086L, "31", "31.32", 1367, 80, SPLIT_ADDRESS)),
+                source(split(31260572L, "52", "52.74", 13, 80, SPLIT_ADDRESS)),
+                source(split(31324765L, "52", "52.74", 3, 80, SPLIT_ADDRESS)),
+                source(split(31309830L, "52", "52.74", 3, 80, SPLIT_ADDRESS))
+        ));
+
+        var report = service.mapAll();
+        var repeated = service.mapAll();
+
+        assertThat(report.createdComplexCount()).isOne();
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(repeated.unchangedComplexCount()).isOne();
+        assertThat(repeated.createdHousingTypeCount()).isZero();
+        assertThat(complexRepository.findAll()).singleElement().satisfies(complex -> {
+            assertThat(complex.getSourceComplexIdentifier()).isEqualTo("30700086:PERMANENT_RENTAL");
+            assertThat(complex.getTotalHouseholdCount()).isEqualTo(1386);
+        });
+        assertThat(housingTypeRepository.findAll()).extracting(HousingType::getName)
+                .containsExactlyInAnyOrder("26", "31", "52");
+        assertThat(jdbc.sql("SELECT count(DISTINCT housing_complex_id) FROM myhome_complex_links")
+                .query(Long.class).single()).isOne();
+        assertThat(jdbc.sql("SELECT count(*) FROM myhome_complex_links").query(Long.class).single()).isEqualTo(4);
+    }
+
+    @Test
+    void 따로_정제된_분할_단지는_가장_작은_ID로_합치고_참조와_별칭을_옮긴다() {
+        sourceRepository.saveAll(List.of(
+                source(split(30700086L, "26", "26.37", 1367, 80, SPLIT_ADDRESS)),
+                source(split(31260572L, "52", "52.74", 13, 81, SPLIT_ADDRESS))
+        ));
+        service.mapAll();
+        List<HousingComplex> separated = complexRepository.findAll().stream()
+                .sorted(java.util.Comparator.comparing(HousingComplex::getId)).toList();
+        assertThat(separated).hasSize(2);
+        HousingComplex fragment = separated.stream()
+                .filter(complex -> complex.getTotalHouseholdCount() == 13).findFirst().orElseThrow();
+        HousingType fragmentType = housingTypeRepository.findAllByHousingComplex(fragment).getFirst();
+        Announcement announcement = announcementRepository.save(announcement());
+        SupplyRow supply = supplyRowRepository.save(supplyRow(announcement, fragment, fragmentType));
+
+        sourceRepository.deleteAll();
+        sourceRepository.saveAll(List.of(
+                source(split(30700086L, "26", "26.37", 1367, 80, SPLIT_ADDRESS)),
+                source(split(31260572L, "52", "52.74", 13, 80, SPLIT_ADDRESS))
+        ));
+        var report = service.mapAll();
+
+        long representativeId = separated.getFirst().getId();
+        long donorId = separated.getLast().getId();
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(complexRepository.findAll()).singleElement().satisfies(complex -> {
+            assertThat(complex.getId()).isEqualTo(representativeId);
+            assertThat(complex.getTotalHouseholdCount()).isEqualTo(1380);
+        });
+        assertThat(jdbc.sql("SELECT housing_complex_id FROM supply_rows WHERE id = ?").param(supply.getId())
+                .query(Long.class).single()).isEqualTo(representativeId);
+        assertThat(jdbc.sql("SELECT housing_complex_id FROM housing_types WHERE id = ?").param(fragmentType.getId())
+                .query(Long.class).single()).isEqualTo(representativeId);
+        assertThat(jdbc.sql("SELECT housing_complex_id FROM housing_complex_aliases WHERE id = ?").param(donorId)
+                .query(Long.class).single()).isEqualTo(representativeId);
+        assertThat(jdbc.sql("SELECT DISTINCT housing_complex_id FROM myhome_complex_links")
+                .query(Long.class).list()).containsExactly(representativeId);
+    }
+
+    @Test
+    void 분할_단지를_합치면_관리자_기록을_대표로_옮기고_저장_매칭은_재확인_없이_유지한다() {
+        jdbc.sql("TRUNCATE announcement_supply_match_decisions, lh_household_complex_links").update();
+        List<HousingComplex> separated = separatedSplitComplexes();
+        long representativeId = separated.getFirst().getId();
+        HousingComplex donor = separated.getLast();
+        HousingType donorType = housingTypeRepository.findAllByHousingComplex(donor).getFirst();
+        var decision = new com.toadzip.backend.ingest.mapping.domain.AnnouncementSupplyMatchDecision("row-split-1");
+        decision.confirm(donor.getId(), donorType.getId(), "source", targetFingerprint(donorType.getId()),
+                "https://example.com/evidence", "공고 52형은 조각 단지 주택형", "admin");
+        long decisionId = matchDecisions.save(decision).getId();
+        jdbc.sql("""
+                INSERT INTO lh_household_complex_links (source_key, housing_complex_id, source_fingerprint,
+                    target_fingerprint, reason, actor, updated_at, version) VALUES ('lh-split', ?, 's', 't', '확인', 'admin', now(), 0)
+                """).param(donor.getId()).update();
+        jdbc.sql("""
+                INSERT INTO lh_household_target_decisions (housing_complex_id, decision, sources_fingerprint,
+                    target_fingerprint, reason, actor, updated_at, version) VALUES (?, 'SKIP', 's', 't', '확인', 'admin', now(), 0)
+                """).param(donor.getId()).update();
+        jdbc.sql("""
+                INSERT INTO housing_complex_reviews (housing_complex_id, outcome, checked_values, evidence_note,
+                    actor, reviewed_at) VALUES (?, 'VERIFIED', '{"NAME": "대전둔산3"}', '확인', 'admin', now())
+                """).param(donor.getId()).update();
+        for (long complexId : List.of(representativeId, donor.getId())) {
+            jdbc.sql("""
+                    INSERT INTO complex_comparison_links (housing_complex_id, category, source_key, evidence_note,
+                        actor, linked_at) VALUES (?, 'LH_LEASE_CATALOG', 'lh-catalog-1', '같은 단지', 'admin', now())
+                    """).param(complexId).update();
+        }
+        jdbc.sql("""
+                INSERT INTO complex_comparison_links (housing_complex_id, category, source_key, evidence_note,
+                    actor, linked_at) VALUES (?, 'MYHOME_COMPLEX', 'myhome-1', '조각 단지 근거', 'admin', now())
+                """).param(donor.getId()).update();
+
+        mergeSeparatedSplitComplexes();
+
+        var moved = matchDecisions.findById(decisionId).orElseThrow();
+        HousingType movedType = housingTypeRepository.findById(donorType.getId()).orElseThrow();
+        assertThat(moved.getComplexId()).isEqualTo(representativeId);
+        assertThat(jdbc.sql("SELECT housing_complex_id FROM housing_types WHERE id = ?").param(movedType.getId())
+                .query(Long.class).single()).isEqualTo(representativeId);
+        assertThat(moved.getTargetFingerprint()).isEqualTo(targetFingerprint(movedType.getId()));
+        for (String table : List.of("lh_household_complex_links", "lh_household_target_decisions",
+                "housing_complex_reviews")) {
+            assertThat(jdbc.sql("SELECT housing_complex_id FROM " + table).query(Long.class).list())
+                    .as(table).containsExactly(representativeId);
+        }
+        assertThat(jdbc.sql("SELECT housing_complex_id || ':' || source_key FROM complex_comparison_links")
+                .query(String.class).list()).containsExactlyInAnyOrder(
+                        representativeId + ":lh-catalog-1", representativeId + ":myhome-1");
+    }
+
+    @Test
+    void 분할_단지마다_LH_세대수_결정이_있으면_통합을_보류한다() {
+        jdbc.sql("TRUNCATE lh_household_target_decisions").update();
+        List<HousingComplex> separated = separatedSplitComplexes();
+        for (HousingComplex complex : separated) {
+            jdbc.sql("""
+                    INSERT INTO lh_household_target_decisions (housing_complex_id, decision, sources_fingerprint,
+                        target_fingerprint, reason, actor, updated_at, version) VALUES (?, 'SKIP', 's', 't', '확인', 'admin', now(), 0)
+                    """).param(complex.getId()).update();
+        }
+
+        var report = mergeSeparatedSplitComplexes();
+
+        assertThat(report.failedSourceRowCount()).isEqualTo(2);
+        assertThat(complexRepository.findAll()).hasSize(2);
+        assertThat(jdbc.sql("SELECT count(*) FROM lh_household_target_decisions").query(Long.class).single())
+                .isEqualTo(2);
+    }
+
+    private String targetFingerprint(long housingTypeId) {
+        return transactions.execute(status ->
+                fingerprints.target(housingTypeRepository.findById(housingTypeId).orElseThrow()));
+    }
+
+    private List<HousingComplex> separatedSplitComplexes() {
+        sourceRepository.saveAll(List.of(
+                source(split(30700086L, "26", "26.37", 1367, 80, SPLIT_ADDRESS)),
+                source(split(31260572L, "52", "52.74", 13, 81, SPLIT_ADDRESS))
+        ));
+        service.mapAll();
+        return complexRepository.findAll().stream()
+                .sorted(java.util.Comparator.comparing(HousingComplex::getId)).toList();
+    }
+
+    private com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport mergeSeparatedSplitComplexes() {
+        sourceRepository.deleteAll();
+        sourceRepository.saveAll(List.of(
+                source(split(30700086L, "26", "26.37", 1367, 80, SPLIT_ADDRESS)),
+                source(split(31260572L, "52", "52.74", 13, 80, SPLIT_ADDRESS))
+        ));
+        return service.mapAll();
+    }
+
+    @Test
+    void 도로명주소가_다른_원천은_PNU와_이름이_같아도_따로_정제한다() {
+        sourceRepository.saveAll(List.of(
+                source(split(30699970L, "26", "26.37", 595, 80, "경기도 성남시 분당구 벌말로 10")),
+                source(split(30699971L, "26", "26.37", 645, 80, "경기도 성남시 분당구 판교로 607"))
+        ));
+
+        var report = service.mapAll();
+
+        assertThat(report.createdComplexCount()).isEqualTo(2);
+        assertThat(complexRepository.findAll()).extracting(HousingComplex::getTotalHouseholdCount)
+                .containsExactlyInAnyOrder(595, 645);
+    }
+
+    @Test
+    void 합친_단지의_원천이_서로_다른_묶음으로_갈라지면_기존_단지를_보존하고_재확인을_남긴다() {
+        sourceRepository.saveAll(List.of(
+                source(split(30700086L, "26", "26.37", 1367, 80, SPLIT_ADDRESS)),
+                source(split(31260572L, "52", "52.74", 13, 80, SPLIT_ADDRESS))
+        ));
+        service.mapAll();
+        sourceRepository.deleteAll();
+        sourceRepository.saveAll(List.of(
+                source(split(30700086L, "26", "26.37", 1367, 80, SPLIT_ADDRESS)),
+                source(split(31260572L, "52", "52.74", 13, 81, SPLIT_ADDRESS))
+        ));
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isEqualTo(2);
+        assertThat(service.findFailures(0, 10)).allSatisfy(failure ->
+                assertThat(failure.reason()).isEqualTo(MyHomeComplexMappingFailureReason.CONFLICTING_SOURCE_VALUE));
+        assertThat(complexRepository.findAll()).singleElement().satisfies(complex -> {
+            assertThat(complex.getTotalHouseholdCount()).isEqualTo(1380);
+            assertThat(complex.getParkingSpaceCount()).isEqualTo(80);
+        });
+    }
+
+    private MyHomeComplexSourceSnapshot split(
+            Long hsmpSn, String styleName, String exclusiveArea, int householdCount, int parkingCount, String address
+    ) {
+        return new MyHomeComplexSourceSnapshot(
+                hsmpSn, "LH대전충남", "30", "대전광역시", "170", "서구", "대전둔산3", address,
+                "3017011300102180007", "19930607", householdCount, "영구임대", styleName,
+                new BigDecimal(exclusiveArea), new BigDecimal("12.0000"), "아파트", "개별난방", "복도식",
+                "전체동 설치", parkingCount, 6_361_000L, 87_890L, null
+        );
     }
 
     private MyHomeComplexSource source(String styleName, String exclusiveArea, String commonArea) {

@@ -30,8 +30,9 @@ class MyHomeAnnouncementSupplyRowResolverTest {
     private final LhAnnouncementLinkResolver linkResolver = mock(LhAnnouncementLinkResolver.class);
     private final LhAnnouncementSupplySourceReader supplyRepository =
             mock(LhAnnouncementSupplySourceReader.class);
+    private final LhSupplyRowLinks links = mock(LhSupplyRowLinks.class);
     private final MyHomeAnnouncementSupplyRowResolver resolver =
-            new MyHomeAnnouncementSupplyRowResolver(linkResolver, supplyRepository);
+            new MyHomeAnnouncementSupplyRowResolver(linkResolver, supplyRepository, links);
 
     @Test
     void 현재_원천의_LH_연결로_공급행을_해석한다() {
@@ -211,6 +212,40 @@ class MyHomeAnnouncementSupplyRowResolverTest {
                 .containsExactly("LH:pan-id:SUPPLY:1", null);
     }
 
+    @Test
+    void 관리자가_저장한_연결은_단지명과_모집수가_달라도_먼저_잇는다() {
+        savedLink("LH:pan-id:SUPPLY:0", "myhome-row-1", true);
+
+        var result = resolveSources(List.of(new Source("평화주공4단지", 300), new Source("평화주공5단지", 300)), List.of(
+                lhSupply(0, "전주평화5 영구임대주택", "39.6011", "26.37", "38.9756", "280")
+        ));
+
+        assertThat(result).extracting(MyHomeSupplyRowMappingData::sourceComplexName,
+                MyHomeSupplyRowMappingData::resolvedLhSourceIdentifier).containsExactly(
+                tuple("평화주공4단지", null), tuple("평화주공5단지", "LH:pan-id:SUPPLY:0"));
+    }
+
+    @Test
+    void 원천이_바뀐_저장_연결은_쓰지_않고_자동_연결로도_대체하지_않는다() {
+        savedLink("LH:pan-id:SUPPLY:1", "myhome-row-0", false);
+
+        var result = resolveSources(List.of(new Source("평화주공1단지", 450), new Source("평화주공4단지", 300)), List.of(
+                lhSupply(0, "전주평화4 영구임대주택", "39.6011", "26.37", "38.9756", "300"),
+                lhSupply(1, "전주평화주공1단지", "39.8800", "26.37", "39.85", "450")
+        ));
+
+        assertThat(result).extracting(MyHomeSupplyRowMappingData::resolvedLhSourceIdentifier)
+                .containsExactly(null, "LH:pan-id:SUPPLY:0");
+    }
+
+    private void savedLink(String lhIdentifier, String myhomeIdentifier, boolean valid) {
+        var link = new com.toadzip.backend.ingest.mapping.domain.LhSupplyRowLink("announcement", lhIdentifier);
+        link.confirm(myhomeIdentifier, "lh", "myhome", "https://apply.lh.or.kr", "공고문 단지 목록 대조", "operator");
+        when(links.states(org.mockito.ArgumentMatchers.eq("announcement"), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(java.util.Map.of(lhIdentifier, new LhSupplyRowLinks.State(link, valid)));
+    }
+
     private record Source(String complexName, int householdCount) { }
 
     private List<MyHomeSupplyRowMappingData> resolveSources(List<Source> sources,
@@ -220,6 +255,7 @@ class MyHomeAnnouncementSupplyRowResolverTest {
         for (int index = 0; index < sources.size(); index++) {
             MyHomeAnnouncementSource source = mock(MyHomeAnnouncementSource.class);
             when(source.isActive()).thenReturn(true);
+            when(source.getSourceKey()).thenReturn("myhome-row-" + index);
             mocks.add(source);
             rows.add(new MyHomeSupplyRowMappingData(source, "myhome-row-" + index, sources.get(index).complexName(),
                     "아파트", "4420011000102060000", "PERMANENT_RENTAL", SupplyCategory.NEW_SUPPLY,

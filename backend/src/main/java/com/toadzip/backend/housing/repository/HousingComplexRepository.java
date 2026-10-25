@@ -42,4 +42,12 @@ public interface HousingComplexRepository extends JpaRepository<HousingComplex, 
             @Param("pnu") String pnu,
             @Param("supplyType") String supplyType
     );
+
+    @Query("""
+            SELECT complex
+            FROM HousingComplex complex
+            WHERE complex.adminDeleted = false AND complex.address.pnu = :pnu
+            ORDER BY complex.totalHouseholdCount DESC, complex.id
+            """)
+    List<HousingComplex> findAllByPnu(@Param("pnu") String pnu);
 }

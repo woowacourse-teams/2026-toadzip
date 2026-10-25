@@ -1,6 +1,6 @@
 import { type JsonValue, type ManagementValues } from './managementContract'
 export const labels: Record<string, string> = {
-  UPDATE_FROM_JSON: 'JSON으로 공고 갱신',
+  UPDATE_FROM_JSON: 'JSON으로 공고 갱신', CORRECT_FROM_PDF: 'PDF로 공고 보정',
   CORRECT_SUPPLY: '공급정보 일괄 보정', REVIEW_SUPPLY: '공급정보 범위 검토',
   SAVE_SUPPLY_MATCH: '원천 매칭 선택 저장', RELEASE_SUPPLY_MATCH: '원천 매칭 선택 해제',
   SPLIT_SUPPLY: '원천별 공급행 나누기', PROCESS_FEEDBACK: '사용자 의견 처리',
@@ -51,8 +51,8 @@ export const announcementSections: Section[] = [
   {title:'접수처',fields:[{name:'receptionPlace.name',label:'접수처명'},{name:'receptionPlace.method',label:'접수 방식',options:['ONLINE','VISIT','MAIL','ETC']},
     {name:'receptionPlace.address',label:'접수처 주소'},{name:'receptionPlace.contact',label:'연락처'},{name:'receptionPlace.url',label:'접수처 URL',type:'url'}]},
 ]
-export const supplyFields: Field[] = [{name:'sourceComplexName',label:'원문 단지명',required:true},
-  {name:'sourceHousingTypeName',label:'원문 주택형명',required:true},{name:'supplyPnu',label:'공급 PNU',required:true},
+export const supplyFields: Field[] = [{name:'announcementHousingTypeName',label:'공고 표시명'},
+  {name:'supplyPnu',label:'공급 PNU',required:true},
   {name:'expectedMoveInMonth',label:'입주 예정 연월',type:'month'},
   {name:'supplyCategory',label:'공급 구분',options:['NEW_SUPPLY','RESUPPLY'],required:true},
   {name:'totalSupplyHouseholdCount',label:'공급세대수',type:'number',min:0}]

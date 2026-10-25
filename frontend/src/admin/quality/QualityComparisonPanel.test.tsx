@@ -40,14 +40,16 @@ it('충돌하면 수정값과 근거를 보존하고 추가 저장을 막는다'
   expect(screen.getByRole('button', { name: '선택 수정 저장 · 1개' })).toBeDisabled()
 })
 
-it('공고의 공급행은 원천 비교와 원천 확인만 남기고 값 수정은 공급정보 탭으로 보낸다', async () => {
-  const announcement: ManagementDetailData = { ...detail, housingTypes: [], supplyRows: [{ id: 4, housingComplexId: 1, housingComplexName: '한스빌아파트', housingTypeId: null, modified: false, data: { sourceComplexName: '한스빌', sourceHousingTypeName: '아파트', supplyHouseholdCount: 170 } }] }
+it('공고 기본정보와 공급행은 다른 원천값부터 비교하고 확인 기록만 저장한다', async () => {
+  const announcement: ManagementDetailData = { ...detail, housingTypes: [], supplyRows: [{ id: 4, housingComplexId: 1, housingComplexName: '한스빌아파트', housingTypeId: null, modified: false, sourceComplexName: '한스빌', sourceHousingTypeName: '아파트', data: { announcementHousingTypeName: '아파트', supplyHouseholdCount: 170 } }] }
   const rowSnapshot = { ...snapshot, target: 'row:4', detail: announcement, sources: [{ category: 'MYHOME_ANNOUNCEMENT', sourceKey: 'key', automatic: true, evidenceNote: '', rows: [{ id: 9, name: '한스빌', collectedAt: null, raw: { hshld_co: '170' } }] }] }
   mocks.load.mockResolvedValue({ ...rowSnapshot, target: 'basic' })
   render(<MemoryRouter initialEntries={['/admin/announcements/7?section=verification&provider=LH']}><QualityComparisonPanel resource="announcements" id="7" detail={announcement} onChanged={changed} onBusyChange={vi.fn()} /></MemoryRouter>)
-  expect(await screen.findByRole('button', { name: /선택 수정 저장/ })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: /다른 값만/ })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.queryByRole('button', { name: /선택 수정 저장/ })).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: '기본정보에서 수정' })).toBeVisible()
   mocks.load.mockResolvedValue(rowSnapshot)
-  fireEvent.change(screen.getByLabelText('비교·수정 대상'), { target: { value: 'row:4' } })
+  fireEvent.change(screen.getByLabelText('비교 대상'), { target: { value: 'row:4' } })
   await waitFor(() => expect(screen.queryByRole('button', { name: /선택 수정 저장/ })).not.toBeInTheDocument())
   expect(screen.queryByRole('button', { name: '이 원천값 사용' })).not.toBeInTheDocument()
   expect(screen.queryByLabelText(/수정$/)).not.toBeInTheDocument()
@@ -61,4 +63,30 @@ it('공고의 공급행은 원천 비교와 원천 확인만 남기고 값 수�
   await waitFor(() => expect(mocks.request).toHaveBeenCalledWith('/api/admin/quality/ANNOUNCEMENT/7/comparison/checks', 'POST',
     expect.objectContaining({ target: 'row:4', evidenceNote: '공고문 3쪽과 원천 일치' }), expect.any(AbortSignal)))
   expect(await screen.findByText(/현재 원천 확인을 기록했습니다/)).toBeVisible()
+})
+
+it('원천에 없는 항목과 자동 비교 미지원 자료를 접고 실제 원천값을 먼저 표시한다', async () => {
+  mocks.load.mockResolvedValue({ ...snapshot, sources: [...snapshot.sources,
+    { category: 'MYHOME_COMPLEX', sourceKey: 'myhome', automatic: true, evidenceNote: '', rows: [{ id: 10, name: '단지', collectedAt: null, raw: { style_nm: '26A' } }] },
+  ] })
+  show()
+  const row = await screen.findByRole('article', { name: '주택형 세대수 비교' })
+  expect(within(row).getByText('값 다름')).toBeVisible()
+  expect(within(row).getByText('0')).toBeVisible()
+  const summary = within(row).getByText('비교하지 못한 자료 1개')
+  expect(summary.closest('details')).not.toHaveAttribute('open')
+  fireEvent.click(summary)
+  expect(within(row).getByText(/자동 비교 미지원 1개/)).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: /다른 값만/ }))
+  expect(screen.getByRole('article', { name: '주택형 세대수 비교' })).toBeVisible()
+  expect(screen.queryByRole('article', { name: '전용면적 비교' })).not.toBeInTheDocument()
+})
+
+it('동일한 비교값을 전체 검토 완료로 표현하지 않고 비교할 수 없는 항목을 안내한다', async () => {
+  mocks.load.mockResolvedValue({ ...snapshot, sources: [{ ...snapshot.sources[0], rows: [{ id: 9, name: '단지', collectedAt: null, raw: { exclusive_area: '26.1234' } }] }] })
+  show()
+  expect(await screen.findByText('비교값 같음')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: /다른 값만/ }))
+  expect(screen.getByText(/비교 불가·직접 대조 항목은 별도로 확인/)).toBeVisible()
+  expect(screen.getByRole('button', { name: '현재 원천 확인 기록' })).toBeDisabled()
 })

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { ComplexDetail, RawComplexDetail } from '../model/publicHousing.ts'
-import { formatRentalConditionCollectedDate, toHousingComplexDetailData } from './complexDetailPresentation.ts'
+import {
+  formatRentalConditionCollectedDate,
+  housingTypeLabels,
+  toHousingComplexDetailData,
+} from './complexDetailPresentation.ts'
 
 it.each([
   ['2026-10-09T18:30:00Z', '2026.10.10'],
@@ -128,3 +132,49 @@ function complexDetail(changes: Partial<ComplexDetail> = {}): ComplexDetail {
     ...changes,
   }
 }
+
+describe('housingTypeLabels', () => {
+  const type = (housingTypeId: string, name: string | null, exclusiveArea: number | null, supplyArea: number | null) =>
+    ({ housingTypeId, name, exclusiveArea, supplyArea })
+
+  it('단지 안에서 이름이 겹치지 않으면 이름만 표시한다', () => {
+    const labels = housingTypeLabels([type('1', '26', 26.37, 38.54), type('2', '31', 31.32, 45.34)], 'sqm')
+
+    expect([...labels.values()]).toEqual(['26', '31'])
+  })
+
+  it('이름이 같으면 전용면적으로, 전용면적까지 같으면 공급면적으로 구분한다', () => {
+    const labels = housingTypeLabels([
+      type('1', '26', 26.37, 38.54),
+      type('2', '26', 26.37, 39.93),
+      type('3', '16', 16.64, 26.87),
+      type('4', '16', 16.79, 27.11),
+      type('5', '31', 31.32, 45.34),
+    ], 'sqm')
+
+    expect([...labels.values()]).toEqual([
+      '26 · 공급 38.54㎡',
+      '26 · 공급 39.93㎡',
+      '16 · 전용 16.64㎡',
+      '16 · 전용 16.79㎡',
+      '31',
+    ])
+  })
+
+  it('구분 면적은 선택한 면적 단위를 따른다', () => {
+    const labels = housingTypeLabels([type('1', '26', 26.37, 38.54), type('2', '26', 26.37, 39.93)], 'pyeong')
+
+    expect(labels.get('1')).toBe('26 · 공급 11.66평')
+  })
+
+  it('이름이 없거나 구분 면적이 없으면 붙일 값만 붙인다', () => {
+    const labels = housingTypeLabels([
+      type('1', null, 26.37, 38.54),
+      type('2', null, 26.37, 39.93),
+      type('3', '26', 26.37, null),
+      type('4', '26', 26.37, 39.93),
+    ], 'sqm')
+
+    expect([...labels.values()]).toEqual(['', '', '26', '26 · 공급 39.93㎡'])
+  })
+})
