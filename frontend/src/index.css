@@ -918,6 +918,19 @@ a {
   outline-offset: 2px;
 }
 
+/* Detail panels rise in when opened or replaced; each detail ID remounts its panel.
+   No fill mode, so the finished panel keeps no transform for its fixed descendants. */
+.housing-detail-layer > aside {
+  animation: housing-detail-appear 220ms ease-out;
+}
+
+@keyframes housing-detail-appear {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
 /* Animate only newly queried content; the SDK owns the outer map position. */
 .housing-marker-enter {
   transform-origin: 50% 100%;
@@ -1574,7 +1587,8 @@ a {
     --marker-motion-duration: 0s;
   }
 
-  .housing-marker-enter {
+  .housing-marker-enter,
+  .housing-detail-layer > aside {
     animation: none;
   }
 
