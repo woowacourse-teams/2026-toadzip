@@ -57,8 +57,9 @@
 - 대상별 모집수가 표에 없으면 supplyHouseholdCount는 null로 두고 notApplicable에 적으세요. 모든 공급행이 그렇다면 supplyRows[*].targets[*].supplyHouseholdCount 하나로 적으세요.
 
 [evidence]
-- 공고 기본정보(announcement)는 값마다 하나, 접수처는 receptionPlace 하나, 일정은 schedules[번호]마다 하나, 단지는 complexes[번호]마다 하나, 공급행은 supplyRows[번호]마다 하나 적으세요.
-- 대상별 임대조건(targets)과 세부 타입은 공급행 근거로 확인하므로 따로 적지 마세요.
+- 공고 기본정보(announcement)는 값마다 하나, 접수처는 receptionPlace 하나, 일정은 schedules[번호]마다 하나, 단지는 complexes[번호]마다 하나, 공급행은 supplyRows[번호]마다 하나, 대상별 임대조건은 supplyRows[번호].targets[번호]마다 하나 적으세요.
+- 임대조건 표는 공급 표와 다른 쪽에 있는 경우가 많습니다. 대상 근거의 page는 그 대상의 임대조건이 있는 쪽으로 적으세요.
+- 세부 타입은 공급행 근거로 확인하므로 따로 적지 마세요.
 - page는 PDF 뷰어 기준 1부터 시작하는 쪽 번호입니다.
 - quote는 원문에서 그대로 복사한 40자 이내 문구입니다. 표의 값이면 그 값의 숫자가 들어간 부분을 고르세요.
 
@@ -161,6 +162,9 @@
     { "path": "announcement.postedDate", "page": 1, "quote": "모집공고일 : 2026.09.01" },
     { "path": "complexes[0]", "page": 2, "quote": "위치 : 충청북도 청주시 서원구 두꺼비로 1" },
     { "path": "supplyRows[0]", "page": 3, "quote": "36A 36.5000 13.3000" },
-    { "path": "supplyRows[1]", "page": 3, "quote": "26A/B/C 26.37 26.41 77" }
+    { "path": "supplyRows[0].targets[0]", "page": 4, "quote": "대학생 9,000,000 180,000" },
+    { "path": "supplyRows[0].targets[1]", "page": 4, "quote": "소득(×) 10,000,000 200,000" },
+    { "path": "supplyRows[1]", "page": 3, "quote": "26A/B/C 26.37 26.41 77" },
+    { "path": "supplyRows[1].targets[0]", "page": 4, "quote": "청년 20,000,000 150,000" }
   ]
 }
