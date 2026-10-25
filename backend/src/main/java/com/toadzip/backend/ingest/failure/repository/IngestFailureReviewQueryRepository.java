@@ -102,7 +102,7 @@ public class IngestFailureReviewQueryRepository {
                 CASE WHEN complex.id IS NOT NULL THEN
                     complex.latitude IS NOT NULL AND complex.longitude IS NOT NULL END AS has_coordinates,
                 CASE WHEN complex.id IS NOT NULL THEN
-                    (SELECT COUNT(*) FROM housing_types WHERE housing_complex_id = complex.id)
+                    (SELECT COUNT(*) FROM housing_types WHERE housing_complex_id = complex.id AND admin_deleted = false)
                 END AS housing_type_count,
                 CASE WHEN announcement.id IS NOT NULL THEN
                     (SELECT COUNT(DISTINCT housing_complex_id) FROM supply_rows
@@ -213,11 +213,7 @@ public class IngestFailureReviewQueryRepository {
                 new FailureQuery("myhome_complex_mapping_failures", "complex", "'complex'", "'MYHOME_COMPLEX'",
                         "source_key", "source_complex_identifier", "NULL::text", "NULL::text", "reason", "detail",
                         "last_resolved_at", "last_resolved_execution_id", "'{}'::jsonb"),
-                new FailureQuery("lh_household_enrichment_failures", "household", "'complex'", "'LH_LEASE_CATALOG'",
-                        "source_key", "NULL::text", "NULL::text", "complex_name", "reason", "detail",
-                        "last_resolved_at", "last_resolved_execution_id",
-                        "jsonb_build_object('areaName', area_name, 'supplyTypeName', supply_type_name, "
-                                + "'complexName', complex_name)"),
+                // LH 세대수 보강은 되면 쓰고 안 되면 마이홈 세대수를 쓰는 선택 보강이라 관리자가 처리할 실패로 보이지 않는다.
                 new FailureQuery("myhome_announcement_mapping_failures", "announcement", "'announcement'",
                         "'MYHOME_ANNOUNCEMENT'", "source_key", "NULL::text", "source_announcement_identifier",
                         "NULL::text", "reason", "detail", "last_resolved_at", "last_resolved_execution_id",

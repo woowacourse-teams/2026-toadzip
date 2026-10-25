@@ -41,7 +41,7 @@ public class ComplexDetailQueryRepository {
                 SELECT MIN(basic_deposit) AS deposit_min, MAX(basic_deposit) AS deposit_max,
                        MIN(basic_monthly_rent) AS monthly_rent_min, MAX(basic_monthly_rent) AS monthly_rent_max
                 FROM housing_types
-                WHERE housing_complex_id = housing_complex.id
+                WHERE housing_complex_id = housing_complex.id AND admin_deleted = false
             ) price_range ON true
             WHERE housing_complex.id = COALESCE(
                 (SELECT alias.housing_complex_id FROM housing_complex_aliases alias WHERE alias.id = :complexId),
@@ -62,7 +62,7 @@ public class ComplexDetailQueryRepository {
                    housing_type.rental_condition_collected_at,
                    housing_type.source_housing_type_identifier
             FROM housing_types housing_type
-            WHERE housing_type.housing_complex_id = :complexId
+            WHERE housing_type.housing_complex_id = :complexId AND housing_type.admin_deleted = false
             ORDER BY housing_type.id
             """;
 
@@ -225,7 +225,7 @@ public class ComplexDetailQueryRepository {
                 resultSet.getString("corridor_type"),
                 resultSet.getObject("move_out_count_last_year", Integer.class),
                 resultSet.getInt("total_household_count"),
-                resultSet.getInt("total_parking_count"),
+                resultSet.getObject("total_parking_count", Integer.class),
                 resultSet.getObject("deposit_min", Long.class),
                 resultSet.getObject("deposit_max", Long.class),
                 resultSet.getObject("monthly_rent_min", Long.class),

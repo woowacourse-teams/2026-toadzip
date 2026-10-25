@@ -133,6 +133,114 @@ class AnnouncementSupplyMatchingIntegrationTest {
     }
 
     @Test
+    void LH_공급정보로_펼친_행_하나를_나눠도_같은_마이홈_원천의_다른_LH_행은_재정제에서_빠지지_않는다() throws Exception {
+        prepareHansville();
+        var first = types.findAll().stream().filter(value -> value.getExclusiveArea().compareTo(new BigDecimal("26.4673")) == 0)
+                .findFirst().orElseThrow();
+        var second = types.findAll().stream().filter(value -> value.getExclusiveArea().compareTo(new BigDecimal("26.5195")) == 0)
+                .findFirst().orElseThrow();
+        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate)
+                candidateResolver.resolve(sources.findAll().getFirst());
+        lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of(
+                lhSupplyRow(0, candidate.panId(), "26(청년)", "26.4673", "100"),
+                lhSupplyRow(1, candidate.panId(), "26A,B(고령자)", "26.5195", "50"),
+                lhSupplyRow(2, candidate.panId(), "26(신혼부부)", "26.5195", "20")));
+        mapping.mapAll();
+        var rows = matching.rows(TARGET);
+        assertThat(rows).extracting(Row::sourceHousingTypeName).containsExactly("26(청년)", "26A,B(고령자)", "26(신혼부부)");
+        var grouped = rows.get(1);
+
+        refineWith(Map.of("rows", List.of(), "splits", List.of(splitPlan(grouped, Map.of("26A", first, "26B", second))),
+                "remember", true, "sourceUrl", "https://example.com/official.pdf",
+                "reason", "공고문 4쪽의 26A·26B 면적과 고령자 모집수 확인")).andExpect(status().isOk());
+        mapping.mapAll();
+        enrichment.enrichAll();
+        mapping.mapAll();
+
+        assertThat(supplies.findAll()).extracting(row -> row.getAnnouncementHousingTypeName() == null
+                        ? row.getSourceHousingTypeName() : row.getAnnouncementHousingTypeName())
+                .containsExactlyInAnyOrder("26(청년)", "26A", "26B", "26(신혼부부)");
+        // 나눈 행의 공통 모집수는 마이홈 공고 전체(170)가 아니라 그 LH 행의 이번 공급 수(50)다.
+        assertThat(jdbc.sql("SELECT source_row_identifier || '=' || shared_household_count FROM supply_row_groups")
+                .query(String.class).list()).containsExactly(grouped.rowIdentifier() + "=50");
+        assertThat(matching.rows(TARGET)).extracting(Row::sourceHousingTypeName)
+                .containsExactly("26(청년)", "26A,B(고령자)", "26(신혼부부)");
+        assertThat(matching.rows(TARGET).get(1).splitGroup()).isNotNull();
+        assertThat(matching.rows(TARGET).get(1).splitGroup().reviewRequired()).isFalse();
+    }
+
+    @Test
+    void 공급_보정의_새_공통모집도_LH_행_하나만_나누고_재정제와_LH_재보강에서_유지한다() throws Exception {
+        prepareHansville();
+        var first = types.findAll().stream().filter(value -> value.getExclusiveArea().compareTo(new BigDecimal("26.4673")) == 0)
+                .findFirst().orElseThrow();
+        var second = types.findAll().stream().filter(value -> value.getExclusiveArea().compareTo(new BigDecimal("26.5195")) == 0)
+                .findFirst().orElseThrow();
+        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate)
+                candidateResolver.resolve(sources.findAll().getFirst());
+        lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of(
+                lhSupplyRow(0, candidate.panId(), "26(청년)", "26.4673", "100"),
+                lhSupplyRow(1, candidate.panId(), "26A,B(고령자)", "26.5195", "50"),
+                lhSupplyRow(2, candidate.panId(), "26(신혼부부)", "26.5195", "20")));
+        mapping.mapAll();
+        // 공급 보정 작업실은 비교 검토 테이블을 읽는다. 이 테스트 스키마에는 없어 이 테스트 동안만 만든다.
+        boolean comparisonTables = jdbc.sql("SELECT to_regclass('admin_comparison_sources') IS NULL").query(Boolean.class).single();
+        if (comparisonTables) {
+            jdbc.sql(new String(new ClassPathResource("db/migration/V20261016_01__quality_comparison_workflow.sql")
+                    .getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)).update();
+        }
+        try {
+        long id = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
+        String root = "/api/admin/announcements/" + id + "/supply-corrections";
+        var workspace = json.readTree(mvc.perform(get(root).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+        var rows = (tools.jackson.databind.node.ArrayNode) workspace.get("rows").deepCopy();
+        var original = (tools.jackson.databind.node.ObjectNode) java.util.stream.StreamSupport.stream(rows.spliterator(), false)
+                .filter(row -> row.get("id").asLong() == supplies.findAll().stream()
+                        .filter(stored -> stored.getSourceHousingTypeName().equals("26A,B(고령자)")).findFirst().orElseThrow().getId())
+                .findFirst().orElseThrow();
+        original.put("housingTypeId", first.getId()).put("typeName", "26A").putNull("householdCount");
+        var added = original.deepCopy().putNull("id").put("key", java.util.UUID.randomUUID().toString())
+                .put("housingTypeId", second.getId()).put("typeName", "26B").put("displayOrder", 9);
+        added.putArray("targets");
+        rows.add(added);
+        var correction = json.createObjectNode().put("operationId", java.util.UUID.randomUUID().toString())
+                .put("snapshotToken", workspace.get("snapshotToken").asText()).put("reason", "공고문 4쪽 26A·26B 고령자 50세대")
+                .put("sourceUrl", "https://example.com/official.pdf").put("sourcePage", "4");
+        correction.set("rows", rows);
+        correction.putArray("newGroups").addObject().put("sourceRowId", original.get("id").asLong())
+                .put("sharedHouseholdCount", 50).putArray("rowKeys").add(original.get("key").asText()).add(added.get("key").asText());
+        var preview = json.readTree(mvc.perform(post(root + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(correction)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+        var body = json.createObjectNode().put("confirmationToken", preview.get("confirmationToken").asText());
+        body.set("correction", correction);
+        mvc.perform(post(root).with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body))).andExpect(status().isOk());
+
+        mapping.mapAll();
+        enrichment.enrichAll();
+        mapping.mapAll();
+
+        assertThat(supplies.findAll()).extracting(row -> row.getAnnouncementHousingTypeName() == null
+                        ? row.getSourceHousingTypeName() : row.getAnnouncementHousingTypeName())
+                .containsExactlyInAnyOrder("26(청년)", "26A", "26B", "26(신혼부부)");
+        String key = matching.rows(TARGET).get(1).rowIdentifier();
+        assertThat(jdbc.sql("SELECT source_row_identifier || '=' || shared_household_count || ':' || review_required"
+                + " FROM supply_row_groups").query(String.class).list()).containsExactly(key + "=50:false");
+        } finally {
+            if (comparisonTables) { jdbc.sql("DROP TABLE admin_comparison_checks, admin_comparison_sources").update(); }
+        }
+    }
+
+    private com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource lhSupplyRow(int order,
+            String panId, String typeName, String area, String supplied) {
+        return new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource(order, panId,
+                new com.toadzip.backend.ingest.collection.lh.supply.domain.projection.LhAnnouncementSupplySourceSnapshot(
+                        "익산한스빌", typeName, area, null, "529", supplied, "4076000", "72820"));
+    }
+
+    @Test
     void 원천_모집수가_바뀌면_보정과170을_보존하고_재확인_후에만_공통수를_바꾼다() throws Exception {
         prepareHansville();
         var original = splitBody(matching.rows(TARGET).getFirst());
@@ -888,6 +996,53 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(supplies.findAll()).singleElement().satisfies(row -> {
             assertThat(row.getId()).isEqualTo(before.getId());
             assertThat(row.getHousingType()).isNull();
+        });
+    }
+
+    @Test
+    @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
+    @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
+            executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD)
+    void 다시_정제에서_LH_보강이_거절되면_저장은_되돌리고_전체_정제처럼_LH_보강_실패를_기록한다() throws Exception {
+        var source = sources.findAll().getFirst();
+        ReflectionTestUtils.setField(source, "suplyInsttNm", "LH");
+        ReflectionTestUtils.setField(source, "url", "https://example.com/announcements?panId=manual-lh"
+                + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07");
+        sources.save(source);
+        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
+        lhStorage.replaceDetails(candidate.panId(), candidate.requestDescription(), List.of(new LhAnnouncementDetailSource(
+                0, candidate.panId(), "COMPLEX", "익산한스빌", "익산시 목천로 30-14", null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null)));
+        lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of());
+        for (var target : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
+            progressStore.complete(target, TARGET, candidate.requestDescription(), candidate.panId());
+        }
+        mapping.mapAll();
+        long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
+        correctFromPdf(announcementId, type);
+        assertThat(pendingFailureReasons()).containsExactly("AMBIGUOUS_HOUSING_TYPE");
+        // 군산 공고처럼 공고 등록 뒤 수집한 LH 공급 원본의 단지명 표기가 공고 공급행과 달라 LH 보강에서 단지를 찾지 못한다.
+        lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of(
+                new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource(0, candidate.panId(),
+                        new com.toadzip.backend.ingest.collection.lh.supply.domain.projection.LhAnnouncementSupplySourceSnapshot(
+                                "군산한스빌", "39", "39.9500", null, "717", "100", "공고문 참조", "공고문 참조"))));
+        var before = supplies.findAll().getFirst();
+
+        rerun(TARGET).andExpect(status().isBadRequest())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.message").value(
+                        org.hamcrest.Matchers.allOf(org.hamcrest.Matchers.startsWith("정제 실패: LH 보강 실패: COMPLEX_NOT_FOUND"),
+                                org.hamcrest.Matchers.endsWith("오류 목록에 기록했습니다."))));
+
+        assertThat(pendingFailureReasons()).containsExactly("INVALID_VALUE");
+        assertThat(jdbc.sql("""
+                SELECT detail FROM myhome_announcement_mapping_failures
+                WHERE source_announcement_identifier = ? AND status = 'PENDING'
+                """).param(TARGET).query(String.class).single()).startsWith("LH 보강 실패: COMPLEX_NOT_FOUND - ");
+        assertThat(supplies.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getId()).isEqualTo(before.getId());
+            assertThat(row.getHousingType().getId()).isEqualTo(type.getId());
+            assertThat(row.getLhSourceSupplyRowIdentifier()).isEqualTo(before.getLhSourceSupplyRowIdentifier());
         });
     }
 

@@ -5,10 +5,6 @@ vi.mock('./admin/management/api', async importOriginal => ({
   ...(await importOriginal<typeof import('./admin/management/api')>()),
   getManagementPage: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })),
 }))
-vi.mock('./admin/quality/qualityQueueApi', async importOriginal => ({
-  ...(await importOriginal<typeof import('./admin/quality/qualityQueueApi')>()),
-  getQualityQueue: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })),
-}))
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { MemoryRouter } from 'react-router'
@@ -124,7 +120,8 @@ describe('App', () => {
     unmount()
     render(<MemoryRouter initialEntries={['/admin/complexes']}><App /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: '단지 관리' })).toBeVisible()
-    const adminBrand = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
+    const adminBrand = screen.getByRole('link', { name: '관리자 운영 홈으로' })
+    expect(adminBrand).toHaveAttribute('href', '/admin/operations')
     expect(adminBrand.querySelector('.brand-name')).not.toBeInTheDocument()
     expect(adminBrand.querySelector('img'))
       .toHaveAttribute('src', '/logo-bok-search.svg')

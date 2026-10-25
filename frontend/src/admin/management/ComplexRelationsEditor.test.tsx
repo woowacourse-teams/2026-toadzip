@@ -116,3 +116,28 @@ it('연결 공고의 일괄 보정 중 탐색을 막고 적용 후 단지의 연
   complete({ changeId: 1, alreadyApplied: false, workspace: { ...workspace, snapshotToken: 'after', version: 5, rows: [{ ...row, housingComplexId: null, housingTypeId: null }] } })
   expect(await screen.findByText('표시할 공고가 없습니다.')).toBeVisible()
 })
+
+it('주택형을 확인 창 없이 휴지통으로 옮기고 같은 줄에서 복구한다', async () => {
+  const confirm = vi.spyOn(window, 'confirm')
+  mocks.requestManagementApi
+    .mockResolvedValueOnce({ ...complex, data: { version: 3 }, housingTypes: [{ ...complex.housingTypes[0], deleted: true }] })
+    .mockResolvedValueOnce({ ...complex, data: { version: 4 }, housingTypes: [{ ...complex.housingTypes[0], deleted: false }] })
+  await openRelations()
+  fireEvent.click(screen.getByRole('button', { name: '46A 삭제' }))
+  await waitFor(() => expect(mocks.requestManagementApi).toHaveBeenCalledWith('/api/admin/housing-complexes/7/housing-types/9?version=2', 'DELETE'))
+  expect(await screen.findByRole('button', { name: '46A 복구' })).toBeVisible()
+  expect(screen.queryByRole('button', { name: '46A 수정' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '46A 복구' }))
+  await waitFor(() => expect(mocks.requestManagementApi).toHaveBeenLastCalledWith('/api/admin/housing-complexes/7/housing-types/9/restore?version=3', 'POST'))
+  expect(await screen.findByRole('button', { name: '46A 수정' })).toBeVisible()
+  expect(confirm).not.toHaveBeenCalled()
+  confirm.mockRestore()
+})
+
+it('공급행이 연결된 주택형 삭제 거절 사유를 표시한다', async () => {
+  mocks.requestManagementApi.mockRejectedValue(new ManagementError('이 주택형에 연결된 공급정보가 있습니다.', 409))
+  await openRelations()
+  fireEvent.click(screen.getByRole('button', { name: '46A 삭제' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('이 주택형에 연결된 공급정보가 있습니다.')
+  expect(screen.getByRole('button', { name: '46A 수정' })).toBeVisible()
+})

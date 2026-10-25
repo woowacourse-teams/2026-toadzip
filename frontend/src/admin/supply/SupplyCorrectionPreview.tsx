@@ -27,6 +27,9 @@ function newValueWorthShowing(key: string, value: unknown, shownInScope: string[
 }
 function supplyDifferences(before: CorrectionRow[], after: CorrectionRow[], labels = rowLabels) {
   const changes: { scope: string; field: string; before: string; after: string }[] = []
+  for (const removed of before.filter(row => !after.some(next => next.id === row.id))) {
+    changes.push({ scope: `${removed.complexName} · ${removed.typeName}`, field: '공급행', before: `대상 ${removed.targets.length}개`, after: '삭제' })
+  }
   for (const next of after) {
     const previous = before.find(row => row.id !== null && row.id === next.id)
     const scope = `${next.complexName} · ${next.typeName}`

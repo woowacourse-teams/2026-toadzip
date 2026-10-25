@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import { getManagementDetail } from '../management/api'
 import { getSupplyMatches, searchMatchingComplexes, getMatchingHousingTypes, refineSupplyMatches,
-  releaseSupplyMatch, setSupplyExclusion,
+  releaseSupplyMatch, rerunAnnouncement, setSupplyExclusion,
   type SupplyMatch, type MatchingComplex, type MatchingHousingType } from './supplyMatchingApi'
 import styles from './AnnouncementSupplyMatchingForm.module.css'
 import { SupplySplitEditor } from './SupplySplitEditor'
@@ -72,12 +72,22 @@ export function AnnouncementSupplyMatchingForm({ identifier, disabled = false, f
         complexId: choice.complexId, housingTypeId: choice.housingTypeId,
         ...(remember ? { targetToken: choice.targetToken } : {}) })
     }
+    // 바꾼 선택 없이 실행하면 이번에만 쓰는 선택이 없으므로 저장한 연결로 다시 정제한다. 그래야 LH 보강 실패가 오류 목록에 남는다.
+    const unchanged = !remember && rows.every(row => row.excluded
+      || choices[row.rowIdentifier]?.complexId === row.complexId && choices[row.rowIdentifier]?.housingTypeId === row.housingTypeId)
     pending.current = true; setRefining(true); onBusy?.(true); setError(''); setNotice('')
     try {
-      if (remember) await refineSupplyMatches(identifier, selections, { remember: true, sourceUrl: sourceUrl.trim(), reason: reason.trim() })
+      if (unchanged) await rerunAnnouncement(identifier)
+      else if (remember) await refineSupplyMatches(identifier, selections, { remember: true, sourceUrl: sourceUrl.trim(), reason: reason.trim() })
       else await refineSupplyMatches(identifier, selections)
-      if (alive.current) { setNotice(remember ? '매칭 선택과 근거를 저장하고 공고 정제를 완료했습니다. 같은 원천과 주택형에는 다음 정제에서도 이 연결을 사용합니다.' : '선택한 연결로 공고 정제·저장을 완료했습니다.'); onApplied?.() }
-    } catch (cause) { if (alive.current) setError(message(cause)) }
+      if (alive.current) { setNotice(unchanged ? '저장한 연결로 이 공고를 다시 정제했습니다.' : remember ? '매칭 선택과 근거를 저장하고 공고 정제를 완료했습니다. 같은 원천과 주택형에는 다음 정제에서도 이 연결을 사용합니다.' : '선택한 연결로 공고 정제·저장을 완료했습니다.'); onApplied?.() }
+    } catch (cause) {
+      if (alive.current) {
+        setError(message(cause))
+        // 다시 정제가 기록한 실패를 반영하도록 오류 목록과 남은 건수를 새로 고친다.
+        if (unchanged) onApplied?.()
+      }
+    }
     finally { pending.current = false; if (alive.current) { setRefining(false); onBusy?.(false) } }
   }
 

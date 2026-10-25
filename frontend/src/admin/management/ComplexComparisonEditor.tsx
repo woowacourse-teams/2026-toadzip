@@ -19,7 +19,7 @@ export function ComplexComparisonEditor({ id, version, deleted, onChanged, onBus
   const [editing, setEditing] = useState<string[]>([])
   const [note, setNote] = useState('')
   const [addressConfirmed, setAddressConfirmed] = useState(false)
-  const [differentOnly, setDifferentOnly] = useState(false)
+  const [differentOnly, setDifferentOnly] = useState(true)
   const [category, setCategory] = useState<ComparisonCategory>('MYHOME_COMPLEX')
   const [keyword, setKeyword] = useState('')
   const [results, setResults] = useState<SourcePage | null>(null)
@@ -110,6 +110,19 @@ export function ComplexComparisonEditor({ id, version, deleted, onChanged, onBus
   const ordinaryDifferenceCount = ordinaryFields.filter(differs).length
   const addressDifferenceCount = addressFields.filter(differs).length
   const differenceCount = ordinaryDifferenceCount + addressDifferenceCount
+  // 원천마다 같은 값을 반복하지 않도록 같은 값을 낸 원천을 한 칸으로 묶는다.
+  function sourceGroups(field: Field) {
+    const groups = new Map<string, { key: string; candidate: ReturnType<typeof sourceValue>; indexes: number[]; categories: Set<string>; missing: boolean }>()
+    snapshot?.sources.forEach((source, index) => {
+      const candidate = sourceValue(field, source)
+      const key = `${candidate.raw}|${JSON.stringify(candidate.value) ?? ''}|${!source.data}`
+      const group = groups.get(key) ?? { key, candidate, indexes: [], categories: new Set<string>(), missing: !source.data }
+      group.indexes.push(index + 1); group.categories.add(categoryLabels[source.category]); groups.set(key, group)
+    })
+    const total = snapshot?.sources.length ?? 0
+    return [...groups.values()].map(group => ({ ...group,
+      label: `${total > 1 && group.indexes.length === total ? `원천 ${total}개 모두` : `원천 ${group.indexes.join('·')}`} · ${[...group.categories].join('·')}${group.missing ? ' · 현재 원천 없음' : ''}` }))
+  }
   function comparisonRow(field: Field) {
     if (!snapshot) return null
     const current = valueAt(snapshot.current, field.name)
@@ -117,15 +130,13 @@ export function ComplexComparisonEditor({ id, version, deleted, onChanged, onBus
     return <div key={field.name} className={styles.row} role="group" aria-label={`${field.label} 비교`} data-different={differs(field) || undefined}>
       <div className={styles.field}><strong>{field.label}</strong>{differs(field) ? <span className={styles.difference}>값 다름</span> : null}</div>
       <div className={styles.current}><span className={styles.mobileLabel}>현재 등록값</span><strong>{comparisonText(current)}</strong></div>
-      <div className={styles.source}><span className={styles.mobileLabel}>DB 원천값</span>{snapshot.sources.length ? snapshot.sources.map((source, index) => {
-        const candidate = sourceValue(field, source)
-        return <div key={`${source.category}:${source.sourceKey}:${index}`}><span>{candidate.raw}</span><small>원천 {index + 1} · {categoryLabels[source.category]}{!source.data ? ' · 현재 원천 없음' : ''}</small>
-          {candidate.value !== undefined && !field.name.startsWith('address.') && JSON.stringify(candidate.value) !== JSON.stringify(current)
+      <div className={styles.source}><span className={styles.mobileLabel}>DB 원천값</span>{snapshot.sources.length ? sourceGroups(field).map(group =>
+        <div key={group.key}><span>{group.candidate.raw}</span><small>{group.label}</small>
+          {group.candidate.value !== undefined && !field.name.startsWith('address.') && JSON.stringify(group.candidate.value) !== JSON.stringify(current)
             ? <button type="button" disabled={busy || deleted || conflict} onClick={() => {
-              write(field, candidate.value === null ? '' : String(candidate.value)); setEditing(value => [...new Set([...value, field.name])])
+              write(field, group.candidate.value === null ? '' : String(group.candidate.value)); setEditing(value => [...new Set([...value, field.name])])
             }}>이 원천값 사용</button> : null}
-        </div>
-      }) : <span className={styles.muted}>연결된 원천 없음</span>}</div>
+        </div>) : <span className={styles.muted}>연결된 원천 없음</span>}</div>
       <div className={styles.edit}>{selected ? <label>{field.label} 수정값{field.options ? <select aria-label={`${field.label} 수정값`} value={String(valueAt(draft, field.name) ?? '')}
           onChange={event => write(field, event.target.value)} disabled={busy || deleted || conflict} required={field.required}>
           <option value="">{field.required ? '선택해 주세요' : '미확인'}</option>
@@ -135,7 +146,7 @@ export function ComplexComparisonEditor({ id, version, deleted, onChanged, onBus
           min={field.min} max={field.max} step={field.step ?? (field.type === 'number' ? '1' : undefined)} maxLength={field.type ? undefined : 255}
           disabled={busy || deleted || conflict} onChange={event => write(field, event.target.value)} />}
         {fieldErrors[`current.${field.name}`] ? <small role="alert">{fieldErrors[`current.${field.name}`]}</small> : null}
-      </label> : <button type="button" disabled={busy || deleted || conflict} onClick={() => setEditing(value => [...value, field.name])}>{field.label} 수정</button>}</div>
+      </label> : <button type="button" aria-label={`${field.label} 수정`} disabled={busy || deleted || conflict} onClick={() => setEditing(value => [...value, field.name])}>수정</button>}</div>
     </div>
   }
   return <section className={styles.panel} aria-label="DB 원천 비교·수정" aria-busy={busy}>
@@ -187,7 +198,7 @@ export function ComplexComparisonEditor({ id, version, deleted, onChanged, onBus
           {ordinaryFields.filter(field => !differentOnly || differs(field) || changed.some(item => item.name === field.name)).map(comparisonRow)}
           {differentOnly && !ordinaryDifferenceCount && !changed.length ? <p className={styles.empty}>{addressDifferenceCount
             ? `주소 원천값이 다른 항목 ${addressDifferenceCount}개가 있습니다. 아래 주소·위치 영역을 펼쳐 확인하세요.`
-            : '비교 가능한 원천값에서 차이가 없습니다. 원천에 없는 항목은 모든 항목에서 확인하세요.'}</p> : null}</div>
+            : `원천 ${snapshot.sources.length}개와 비교 가능한 값이 모두 같습니다. 원천에 없는 항목은 모든 항목에서 확인하세요.`}</p> : null}</div>
         <details className={styles.address}><summary>주소·위치 함께 확인·수정{addressDifferenceCount ? <span className={styles.difference}> · 값 다름 {addressDifferenceCount}개</span> : null}</summary><p className={styles.hint}>도로명주소·PNU·지역 코드·좌표를 함께 확인합니다. 주소만 원천값으로 덮어쓰지 않습니다.</p>
           <AddressPicker onSelect={address => {
             setDraft(value => ({ ...value, address: { ...(isRecord(value.address) ? value.address : {}), ...address } }))

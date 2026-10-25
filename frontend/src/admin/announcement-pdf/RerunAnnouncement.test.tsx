@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { StrictMode } from 'react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { RerunAnnouncement } from './RerunAnnouncement'
@@ -19,26 +20,38 @@ it('마이홈 원천이 없는 공고에는 다시 정제를 보여 주지 않�
   expect(screen.queryByRole('button', { name: '이 공고만 다시 정제' })).not.toBeInTheDocument()
 })
 
-it('거절되면 서버 사유와 오류 목록이 바뀌지 않았다는 안내를 보여 준다', async () => {
-  api.rerunAnnouncement.mockImplementation(async () => { throw new Error('정제 실패: LH 보강 실패: COMPLEX_NOT_FOUND - LH 공급 원본과 일치하는 기존 공급 단지가 없습니다.') })
+it('거절되면 서버 메시지를 보여 주고 LH 보강 실패는 LH 행 연결로 안내한다', async () => {
+  api.rerunAnnouncement.mockImplementation(async () => { throw new Error('정제 실패: LH 보강 실패: COMPLEX_NOT_FOUND - LH 공급 원본과 일치하는 기존 공급 단지가 없습니다. 저장은 되돌리고 오류 목록에 기록했습니다.') })
   renderWith()
   fireEvent.click(screen.getByRole('button', { name: '이 공고만 다시 정제' }))
   const alert = await screen.findByRole('alert')
-  expect(alert).toHaveTextContent('정제 실패: LH 보강 실패: COMPLEX_NOT_FOUND')
-  expect(alert).toHaveTextContent('오류 목록은 바뀌지 않았습니다.')
-  expect(screen.getByRole('button', { name: '이 공고만 다시 정제' })).toBeEnabled()
+  expect(alert).toHaveTextContent('아직 남은 실패가 있습니다.')
+  expect(alert).toHaveTextContent('저장은 되돌리고 오류 목록에 기록했습니다.')
+  expect(within(alert).getByRole('link', { name: 'LH 행 연결로 처리' })).toHaveAttribute('href', `/admin/failures/lh-links/${base.detail.sourceIdentifier}`)
+  expect(within(alert).getByRole('link', { name: '이 공고의 오류 목록 보기' }))
+    .toHaveAttribute('href', `/admin/failures?domain=announcement&keyword=${base.detail.sourceIdentifier}`)
+  expect(screen.getByRole('button', { name: '다시 정제' })).toBeEnabled()
 })
 
-it('성공하면 오류가 해결됐다고 알리고 실행 중에는 다시 누를 수 없다', async () => {
-  let finish = () => {}
-  api.rerunAnnouncement.mockReturnValue(new Promise<void>(resolve => { finish = resolve }))
+it('LH가 아닌 실패는 이 공고의 오류 목록에서 처리하도록 안내한다', async () => {
+  api.rerunAnnouncement.mockRejectedValue(new Error('정제 실패: 주택형을 특정하지 못했습니다. 오류 목록은 바꾸지 않았습니다.'))
   renderWith()
   fireEvent.click(screen.getByRole('button', { name: '이 공고만 다시 정제' }))
-  expect(screen.getByRole('button', { name: '정제하는 중…' })).toBeDisabled()
-  fireEvent.click(screen.getByRole('button', { name: '정제하는 중…' }))
+  const alert = await screen.findByRole('alert')
+  expect(within(alert).queryByRole('link', { name: 'LH 행 연결로 처리' })).not.toBeInTheDocument()
+  expect(within(alert).getByRole('link', { name: '이 공고의 오류 목록에서 처리' })).toBeVisible()
+})
+
+it('결과 화면에서는 들어오자마자 한 번만 정제하고 성공하면 실패 기록이 정리됐다고 알린다', async () => {
+  let finish = () => {}
+  api.rerunAnnouncement.mockReturnValue(new Promise<void>(resolve => { finish = resolve }))
+  render(<StrictMode><MemoryRouter><RerunAnnouncement workspace={withSource} failureReturn="/admin/failures?domain=announcement&keyword=x" auto /></MemoryRouter></StrictMode>)
+  expect(screen.getByRole('heading', { name: '다시 정제 결과' })).toBeVisible()
+  expect(screen.getByRole('status')).toHaveTextContent('이 공고를 다시 정제하는 중…')
+  expect(screen.queryByRole('button', { name: '다시 정제' })).not.toBeInTheDocument()
   expect(api.rerunAnnouncement).toHaveBeenCalledTimes(1)
   expect(api.rerunAnnouncement).toHaveBeenCalledWith(base.detail.sourceIdentifier)
   finish()
-  expect(await screen.findByRole('status')).toHaveTextContent('이 공고의 오류는 해결됨으로 바뀌었습니다.')
+  expect(await screen.findByText(/실패 기록은 해결됨으로 바뀌었습니다/)).toBeVisible()
   expect(screen.getByRole('link', { name: '오류 목록에서 확인' })).toHaveAttribute('href', '/admin/failures?domain=announcement&keyword=x')
 })

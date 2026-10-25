@@ -113,7 +113,7 @@ class QualityComparisonIntegrationTest {
     }
 
     @Test
-    void 확인한_원천은_수집시각만_변경되면_유지하고_실제_값_변경과_소실은_재검토로_표시한다() throws Exception {
+    void 확인한_뒤_원천_값이_바뀌면_오래된_화면의_수정을_거절한다() throws Exception {
         var type = type();
         long id = type.getHousingComplex().getId();
         String target = "type:" + type.getId();
@@ -128,45 +128,12 @@ class QualityComparisonIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("target", target,
                         "snapshotToken", linked.get("snapshotToken").asText(), "evidenceNote", "원천 확인 기록"))))
                 .andExpect(status().isOk());
-        entities.createNativeQuery("UPDATE myhome_complex_source_rows SET collected_at = CURRENT_TIMESTAMP")
-                .executeUpdate();
-        assertThat(sourceChanges(id)).isZero();
         entities.createNativeQuery("UPDATE myhome_complex_source_rows SET hshld_co = 321").executeUpdate();
-        assertThat(sourceChanges(id)).isEqualTo(1);
-        assertThat(sourceChangeOrigins(id)).containsExactly("COMPARISON_CHECK");
         mvc.perform(put(root(id)).with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("target", target,
                         "snapshotToken", linked.get("snapshotToken").asText(), "values", Map.of("name", "덮어쓰기"),
                         "evidenceNote", "오래된 원천으로 수정 시도")))).andExpect(status().isConflict());
-        entities.createNativeQuery("DELETE FROM myhome_complex_source_rows").executeUpdate();
-        assertThat(sourceChanges(id)).isEqualTo(1);
         assertThat(types.findById(type.getId()).orElseThrow().getName()).isEqualTo("26A");
-    }
-
-    private java.util.List<String> sourceChangeOrigins(long id) throws Exception {
-        String response = mvc.perform(get("/api/admin/quality/queue").param("resource", "COMPLEX")
-                .param("reason", "SOURCE_CHANGED").with(user("admin").roles("ADMIN")))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        var origins = new java.util.ArrayList<String>();
-        for (var item : json.readTree(response).at("/data/items")) {
-            if (item.get("id").asLong() == id) {
-                item.get("sourceChanges").forEach(origin -> origins.add(origin.asText()));
-            }
-        }
-        return origins;
-    }
-
-    private long sourceChanges(long id) throws Exception {
-        String response = mvc.perform(get("/api/admin/quality/queue").param("resource", "COMPLEX")
-                .param("reason", "SOURCE_CHANGED").with(user("admin").roles("ADMIN")))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        long count = 0;
-        for (var item : json.readTree(response).at("/data/items")) {
-            if (item.get("id").asLong() == id) {
-                count++;
-            }
-        }
-        return count;
     }
 
     @Test
@@ -211,15 +178,12 @@ class QualityComparisonIntegrationTest {
         var base = json.readTree(mvc.perform(get(basicPath).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
         assertThat(base.at("/sources/0/data/raw/deposit_text").asText()).isEqualTo("10000000");
-        assertThat(sourceChanges(id)).isZero();
 
         entities.createNativeQuery("UPDATE lh_lease_catalog_source_rows SET deposit_text = '11000000' "
                 + "WHERE complex_label = '카탈로그 연결 단지'").executeUpdate();
         assertThat(catalogKey()).isEqualTo(key);
-        assertThat(sourceChanges(id)).isEqualTo(1);
         catalogRows.deleteAll();
         assertThat(detail(id, target).at("/sources/0/rows").isEmpty()).isTrue();
-        assertThat(sourceChanges(id)).isEqualTo(1);
     }
 
     @Test
@@ -280,7 +244,6 @@ class QualityComparisonIntegrationTest {
         catalogRows.deleteAll();
         catalogRow("카탈로그 연결 단지", "10000000");
         catalogRow("카탈로그 연결 단지", "20000000");
-        assertThat(sourceChanges(id)).isZero();
     }
 
     private long catalogRow(String name, String deposit) {

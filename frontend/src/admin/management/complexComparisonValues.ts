@@ -21,7 +21,12 @@ export function comparisonText(value: JsonValue | undefined): string {
 }
 export function sourceValue(field: Field, source: ComparisonSource): { raw: string; value: JsonValue | undefined } {
   const key = (source.category === 'MYHOME_COMPLEX' ? myHomeFields : lhFields)[field.name]
-  const rawValue = key && source.data ? source.data.raw[key] : undefined
+  let rawValue = key && source.data ? source.data.raw[key] : undefined
+  // 마이홈 signgu_code는 시·도 안의 3자리 번호라, 저장값과 같은 5자리 시·군·구 코드로 시·도 코드를 앞에 붙여 비교한다.
+  const province = source.data?.raw.brtc_code
+  if (field.name === 'address.cityCountyDistrictCode' && source.category === 'MYHOME_COMPLEX' && /^\d{3}$/.test(String(rawValue ?? '')) && /^\d{2}$/.test(String(province ?? ''))) {
+    rawValue = `${String(province)}${String(rawValue)}`
+  }
   if (rawValue === undefined || rawValue === null || rawValue === '') return { raw: '원천에 없음', value: undefined }
   const raw = comparisonText(rawValue)
   const text = String(rawValue).trim()

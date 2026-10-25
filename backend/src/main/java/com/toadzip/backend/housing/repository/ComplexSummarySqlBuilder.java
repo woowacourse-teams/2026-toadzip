@@ -39,6 +39,7 @@ final class ComplexSummarySqlBuilder {
                 SELECT housing_type.housing_complex_id,
             """ + AREA_RANGE_COLUMNS + """
                 FROM housing_types housing_type
+                WHERE housing_type.admin_deleted = false
                 GROUP BY housing_type.housing_complex_id
             )
             """;
@@ -52,7 +53,7 @@ final class ComplexSummarySqlBuilder {
                 SELECT
             """ + AREA_RANGE_COLUMNS + """
                 FROM housing_types housing_type
-                WHERE housing_type.housing_complex_id = housing_complex.id
+                WHERE housing_type.housing_complex_id = housing_complex.id AND housing_type.admin_deleted = false
             ) area_range ON TRUE
             """;
 

@@ -17,7 +17,7 @@ const supplyTargetFields: (Field & { money?: boolean })[] = [
 
 export function targetChoices(resource: ManagementResource, detail: ManagementDetailData): { key: string; label: string }[] {
   return [{ key: 'basic', label: `${resource === 'complexes' ? '단지' : '공고'} 기본정보` },
-    ...detail.housingTypes.map(type => ({ key: `type:${type.id}`, label: `주택형 ${type.name} · ${type.exclusiveArea}㎡` })),
+    ...detail.housingTypes.filter(type => !type.deleted).map(type => ({ key: `type:${type.id}`, label: `주택형 ${type.name} · ${type.exclusiveArea}㎡` })),
     ...detail.supplyRows.map(row => ({ key: `row:${row.id}`, label: `공급행 ${row.sourceComplexName} · ${String(row.data.announcementHousingTypeName ?? row.sourceHousingTypeName)}` })),
     ...(detail.supplyTargets ?? []).map(target => ({ key: `target:${target.id}`,
       label: `임대조건 · ${detail.supplyRows.find(row => row.id === target.supplyRowId)?.data.announcementHousingTypeName ?? target.supplyRowId} · ${target.data.target} · ${target.data.supplyRank ?? '순위 미확인'}` }))]

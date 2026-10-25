@@ -470,6 +470,13 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(screen.queryByText('현재 단계')).not.toBeInTheDocument()
   })
 
+  it('공고문 페이지가 없는 확정 일정은 페이지 없이 공고문으로 연결한다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({
+      applicationSchedules: [applicationSchedule({ sourcePage: null })],
+    })} onClose={vi.fn()} />)
+    expect(screen.getByRole('link', { name: '공고문 보기' })).toHaveAttribute('href', 'https://example.com/schedule.pdf')
+  })
+
   it('일정의 단지명이 없으면 공급 단지명으로 식별하고 안전하지 않은 출처는 링크로 만들지 않는다', () => {
     render(<HousingAnnouncementDetailPanel detail={detail({
       applicationSchedules: [applicationSchedule({ complexName: null, sourceUrl: 'javascript:alert(1)' })],

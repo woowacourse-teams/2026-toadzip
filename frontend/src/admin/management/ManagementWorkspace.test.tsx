@@ -51,7 +51,7 @@ function startInlineComplexRegistration() {
 it('공고 편집을 닫은 뒤 도착한 단지 등록 응답은 편집창을 다시 열지 않는다', async () => {
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   const finish = startInlineComplexRegistration()
-  fireEvent.click(screen.getByRole('link', { name: '편집 닫기' }))
+  fireEvent.click(screen.getByRole('link', { name: '목록으로 돌아가기' }))
   expect(screen.queryByRole('region', { name: '공고 추가' })).not.toBeInTheDocument()
   await finish()
   expect(screen.queryByRole('region', { name: '공고 추가' })).not.toBeInTheDocument()
@@ -72,7 +72,7 @@ it('새 공고 입력으로 이동하면 입력 방식 잠금을 풀고 늦은 �
 it('이전 단지 등록의 완료는 다시 연 편집창에서 진행 중인 새 등록을 풀지 않는다', async () => {
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   const finishPrevious = startInlineComplexRegistration()
-  fireEvent.click(screen.getByRole('link', { name: '편집 닫기' }))
+  fireEvent.click(screen.getByRole('link', { name: '목록으로 돌아가기' }))
   fireEvent.click(screen.getByRole('link', { name: '공고 추가' }))
   fireEvent.click(screen.getByRole('button', { name: '직접 입력' }))
   let finishCurrent!: (value: HousingComplexCreateResponse) => void
@@ -101,7 +101,7 @@ it('행을 열어도 목록과 검색을 유지하며 바로 수정하고 닫는
   expect(screen.getByLabelText('기관')).toHaveValue('LH')
   expect(screen.getByRole('region', { name: '단지 상세·수정' })).toHaveFocus()
   expect(api.getManagementPage).toHaveBeenCalledOnce()
-  fireEvent.click(screen.getByRole('link', { name: '편집 닫기' }))
+  fireEvent.click(screen.getByRole('link', { name: '목록으로 돌아가기' }))
   expect(screen.queryByLabelText('이름')).not.toBeInTheDocument()
   expect(screen.getByRole('table')).toBe(table)
   expect(screen.getByRole('link', { name: summary.name })).toHaveFocus()
@@ -129,7 +129,7 @@ it('미저장 수정의 닫기와 검색을 취소하면 입력과 목록 조건
   renderPage('/admin/complexes/7?provider=LH')
   await openBasicInformation()
   fireEvent.change(screen.getByLabelText('이름'), { target: { value: '저장 전' } })
-  fireEvent.click(screen.getByRole('link', { name: '편집 닫기' }))
+  fireEvent.click(screen.getByRole('link', { name: '목록으로 돌아가기' }))
   expect(screen.getByLabelText('이름')).toHaveValue('저장 전')
   fireEvent.change(screen.getByLabelText('단지명·주소'), { target: { value: '부산' } })
   fireEvent.submit(screen.getByRole('button', { name: '검색' }).closest('form')!)
@@ -145,7 +145,7 @@ it('현재 기본정보 탭을 다시 눌러도 미저장 입력 보호가 유�
   fireEvent.click(screen.getByRole('button', { name: '기본정보' }))
   expect(confirm).not.toHaveBeenCalled()
   confirm.mockReturnValue(false)
-  fireEvent.click(screen.getByRole('link', { name: '편집 닫기' }))
+  fireEvent.click(screen.getByRole('link', { name: '목록으로 돌아가기' }))
   expect(confirm).toHaveBeenCalledOnce()
   expect(screen.getByLabelText('이름')).toHaveValue('저장 전')
   confirm.mockRestore()
@@ -159,7 +159,7 @@ it('저장 중 편집을 닫은 뒤 도착한 등록 응답은 편집 화면을 
   await screen.findByRole('table')
   fireEvent.change(screen.getByLabelText('단지명'), { target: { value: '새 단지' } })
   fireEvent.submit(screen.getByRole('button', { name: '단지 저장' }).closest('form')!)
-  fireEvent.click(screen.getByRole('link', { name: '편집 닫기' }))
+  fireEvent.click(screen.getByRole('link', { name: '목록으로 돌아가기' }))
   expect(screen.queryByRole('region', { name: '단지 추가' })).not.toBeInTheDocument()
   await act(() => finish({ housingComplexId: 8, name: '새 단지', roadAddress: summary.subtitle }))
   expect(screen.queryByRole('region', { name: '단지 상세·수정' })).not.toBeInTheDocument()
@@ -225,9 +225,9 @@ it('상세는 읽기 화면으로 열고 수정 버튼을 눌렀을 때만 편�
 })
 
 it('검토 목록에서 들어온 상세는 원래 검토 조건으로 돌아간다', async () => {
-  const origin = '/admin/quality?keyword=두꺼비&reason=MISSING&page=2'
+  const origin = '/admin/failures?keyword=두꺼비&reason=MISSING&page=2'
   renderPage(`/admin/complexes/7?workReturnTo=${encodeURIComponent(origin)}`, false)
   await screen.findByRole('button', { name: /^수정$/ })
-  expect(screen.getByRole('link', { name: '← 목록으로 돌아가기' })).toHaveAttribute('href', new URL(origin, 'https://local.invalid').pathname + new URL(origin, 'https://local.invalid').search)
-  expect(screen.getByRole('link', { name: '편집 닫기' })).toHaveAttribute('href', new URL(origin, 'https://local.invalid').pathname + new URL(origin, 'https://local.invalid').search)
+  expect(screen.getByRole('link', { name: '목록으로 돌아가기' })).toHaveAttribute('href', new URL(origin, 'https://local.invalid').pathname + new URL(origin, 'https://local.invalid').search)
+  expect(screen.getByRole('link', { name: '목록으로 돌아가기' })).toHaveAttribute('href', new URL(origin, 'https://local.invalid').pathname + new URL(origin, 'https://local.invalid').search)
 })

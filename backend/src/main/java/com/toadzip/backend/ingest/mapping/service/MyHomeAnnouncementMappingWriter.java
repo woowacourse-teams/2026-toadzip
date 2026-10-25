@@ -123,9 +123,7 @@ public class MyHomeAnnouncementMappingWriter {
                         Set.of(), resolved.sourceKeysExcludedFromLhEnrichment(), resolved.supplyLinks());
             }
             catch (LhAnnouncementEnrichmentRejectedException exception) {
-                throw new MyHomeAnnouncementMappingRejectedException(
-                        MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
-                        "LH 보강 실패: " + exception.reason() + " - " + exception.getMessage());
+                throw new LhEnrichmentRejectedMappingException(exception);
             }
         }
         failureStore.reconcileForAnnouncement(
@@ -206,10 +204,7 @@ public class MyHomeAnnouncementMappingWriter {
             );
         }
         catch (LhAnnouncementEnrichmentRejectedException exception) {
-            throw new MyHomeAnnouncementMappingRejectedException(
-                    MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
-                    "LH 보강 실패: " + exception.reason() + " - " + exception.getMessage()
-            );
+            throw new LhEnrichmentRejectedMappingException(exception);
         }
     }
 
@@ -334,8 +329,9 @@ public class MyHomeAnnouncementMappingWriter {
         var groups = supplyGroups.findAllByAnnouncement(announcement).stream()
                 .collect(Collectors.toMap(group -> group.getSourceRowIdentifier(), Function.identity()));
         Set<Long> preservedGroups = new HashSet<>();
+        var expanded = SupplyRowGroupOrigins.expandedIn(rows);
         for (MyHomeSupplyRowMappingData data : rows) {
-            var group = groups.get(data.source().getSourceKey());
+            var group = groups.get(SupplyRowGroupOrigins.key(data));
             if (group != null) {
                 if (!preservedGroups.add(group.getId())) {
                     continue;
@@ -344,7 +340,7 @@ public class MyHomeAnnouncementMappingWriter {
                         && row.getSupplyGroup().getId().equals(group.getId()))
                         .sorted(java.util.Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
                         .toList();
-                if (splitWriter.reviewRequired(group, data.source(), members)) {
+                if (splitWriter.reviewRequired(group, data, expanded.apply(data), members)) {
                     group.requireReview();
                     failures.add(new MyHomeSupplyMatchingFailureData(data.source(),
                             MyHomeAnnouncementMappingFailureReason.MANUAL_MATCH_REVIEW_REQUIRED,
@@ -647,5 +643,14 @@ public class MyHomeAnnouncementMappingWriter {
             MyHomeAnnouncementMappingFailureReason reason,
             String detail
     ) {
+    }
+
+    /** 전체 정제와 단건 정제가 같은 실패로 기록할 수 있도록 LH 보강 거절을 다른 정제 거절과 구분한다. */
+    static class LhEnrichmentRejectedMappingException extends MyHomeAnnouncementMappingRejectedException {
+
+        LhEnrichmentRejectedMappingException(LhAnnouncementEnrichmentRejectedException cause) {
+            super(MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
+                    "LH 보강 실패: " + cause.reason() + " - " + cause.getMessage());
+        }
     }
 }

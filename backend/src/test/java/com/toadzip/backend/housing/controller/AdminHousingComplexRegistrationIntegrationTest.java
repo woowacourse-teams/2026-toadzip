@@ -84,6 +84,37 @@ class AdminHousingComplexRegistrationIntegrationTest {
     }
 
     @Test
+    void 입주_전_신규_단지는_준공일과_건물_정보와_주차대수를_비워_저장할_수_있다() throws Exception {
+        String request = validRequest()
+                .replace("\"completionDate\": \"2020-06-30\",", "")
+                .replace("\"heatingType\": \"INDIVIDUAL\",", "")
+                .replace("\"buildingType\": \"APARTMENT\",", "")
+                .replace("\"corridorType\": \"STAIR\",", "")
+                .replace("\"hasElevator\": true,", "")
+                .replace("\"totalParkingCount\": 0,", "")
+                .replace("\"moveOutCountLastYear\": 0", "\"moveOutCountLastYear\": null");
+        MvcResult result = mockMvc.perform(post(ENDPOINT)
+                        .with(user("admin").roles("ADMIN"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long housingComplexId = objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("data").get("housingComplexId").asLong();
+        entityManager.flush();
+        entityManager.clear();
+        HousingComplex saved = housingComplexRepository.findById(housingComplexId).orElseThrow();
+        assertAll(
+                () -> assertThat(saved.getCompletionDate()).isNull(),
+                () -> assertThat(saved.getHeatingType()).isNull(),
+                () -> assertThat(saved.getElevatorInstalled()).isNull(),
+                () -> assertThat(saved.getRecentOneYearMoveOutCount()).isNull(),
+                () -> assertThat(saved.getParkingSpaceCount()).isNull()
+        );
+    }
+
+    @Test
     void 누락_공백_범위_URL_검증_실패는_입력값_오류를_반환한다() throws Exception {
         mockMvc.perform(post(ENDPOINT)
                         .with(user("admin").roles("ADMIN"))

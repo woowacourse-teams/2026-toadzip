@@ -17,6 +17,6 @@ public record ApplicationScheduleResponse(
         @Schema(description = "공식 공고문에 시각이 없으면 null. 시간대는 Asia/Seoul") LocalTime startTime,
         LocalTime endTime,
         String sourceUrl,
-        int sourcePage
+        Integer sourcePage
 ) {
 }

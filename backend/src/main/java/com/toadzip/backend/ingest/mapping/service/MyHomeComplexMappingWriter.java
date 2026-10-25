@@ -9,6 +9,7 @@ import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
+import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.mapping.domain.AnnouncementSupplyMatchDecision;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMerge;
@@ -179,6 +180,10 @@ public class MyHomeComplexMappingWriter {
                 .findBySourceComplexIdentifier(data.sourceComplexIdentifier())
                 .orElse(null);
         if (complex == null) {
+            HousingComplex adopted = adminRegisteredComplex(data, address);
+            if (adopted != null) {
+                return fillAdminRegisteredComplex(adopted, data);
+            }
             HousingComplex created = HousingComplex.createFromMyHome(
                     data.name(),
                     data.sourceComplexIdentifier(),
@@ -198,7 +203,29 @@ public class MyHomeComplexMappingWriter {
         return updateComplex(complex, data, address);
     }
 
+    /**
+     * 마이홈에 없던 입주 전 단지는 관리자가 먼저 등록한다. 나중에 마이홈 단지가 생기면 같은 PNU·공급유형의 관리자 등록 단지가
+     * 하나뿐이고 아직 다른 마이홈 원천에 연결되지 않았을 때 새로 만들지 않고 그 단지에 연결한다.
+     */
+    private HousingComplex adminRegisteredComplex(MyHomeComplexMappingData data, Address address) {
+        List<HousingComplex> candidates = complexRepository.findAllByPnuAndSupplyType(address.getPnu(), data.supplyType())
+                .stream().filter(HousingComplex::isAdminRegistered)
+                .filter(candidate -> linkRepository.findAllByHousingComplexId(candidate.getId()).isEmpty()).toList();
+        return candidates.size() == 1 ? candidates.getFirst() : null;
+    }
+
+    // 관리자 등록 단지는 관리자가 정한 단지명·주소·세대수를 유지하고, 비워 둔 값만 마이홈 값으로 채운다.
+    private ComplexWriteResult fillAdminRegisteredComplex(HousingComplex complex, MyHomeComplexMappingData data) {
+        complex = complexRepository.findByIdForUpdate(complex.getId()).orElseThrow();
+        boolean filled = complex.fillBlanksFromMyHome(data.completionDate(), data.heatingType(), data.housingType(),
+                data.corridorType(), data.elevatorInstalled(), data.parkingSpaceCount());
+        return new ComplexWriteResult(complex, 0, filled ? 1 : 0);
+    }
+
     private ComplexWriteResult updateComplex(HousingComplex complex, MyHomeComplexMappingData data, Address address) {
+        if (complex.isAdminRegistered()) {
+            return fillAdminRegisteredComplex(complex, data);
+        }
         complex = complexRepository.findByIdForUpdate(complex.getId()).orElseThrow();
         boolean detailsUpdated = complex.updateFromMyHome(
                 data.name(),
@@ -269,7 +296,7 @@ public class MyHomeComplexMappingWriter {
     private List<MyHomeHousingTypeMappingData> distinctHousingTypes(
             HousingComplex complex, List<MyHomeHousingTypeMappingData> incoming
     ) {
-        Set<String> stored = housingTypeRepository.findAllByHousingComplex(complex).stream()
+        Set<String> stored = housingTypeRepository.findAllIncludingTrashByHousingComplexId(complex.getId()).stream()
                 .map(HousingType::getSourceHousingTypeIdentifier).filter(Objects::nonNull)
                 .collect(Collectors.toSet());
         Map<List<Object>, MyHomeHousingTypeMappingData> distinct = new LinkedHashMap<>();
@@ -297,7 +324,7 @@ public class MyHomeComplexMappingWriter {
             List<MyHomeHousingTypeMappingData> incoming,
             boolean preserveSupplementalValues
     ) {
-        Map<String, HousingType> remainingStoredByIdentifier = housingTypeRepository.findAllByHousingComplex(complex)
+        Map<String, HousingType> remainingStoredByIdentifier = housingTypeRepository.findAllIncludingTrashByHousingComplexId(complex.getId())
                 .stream()
                 .filter(type -> type.getSourceHousingTypeIdentifier() != null)
                 .collect(Collectors.toMap(
@@ -354,6 +381,15 @@ public class MyHomeComplexMappingWriter {
         int updated = 0;
         for (MyHomeHousingTypeMappingData data : unmatchedIncoming) {
             HousingType corrected = findUniqueStoredTypeByName(remainingStoredByIdentifier, data);
+            HousingType adminCreated = corrected == null ? adminCreatedType(remainingStoredByIdentifier, data) : null;
+            if (adminCreated != null) {
+                // 관리자가 공고문으로 만든 주택형을 이어받아 같은 주택형이 두 번 생기지 않게 한다.
+                remainingStoredByIdentifier.remove(adminCreated.getSourceHousingTypeIdentifier());
+                adminCreated.adoptMyHomeSource(data.sourceHousingTypeIdentifier(), data.supplyArea());
+                adminCreated.updateBasicRentalCondition(data.basicRentalCondition());
+                updated++;
+                continue;
+            }
             if (corrected == null) {
                 HousingType createdType = HousingType.createFromMyHome(
                         complex,
@@ -395,6 +431,19 @@ public class MyHomeComplexMappingWriter {
         return deletable.size();
     }
 
+    /** 관리자가 만든 주택형 중 같은 이름, 없으면 같은 전용면적이 하나뿐인 주택형 */
+    private HousingType adminCreatedType(Map<String, HousingType> remainingStoredByIdentifier, MyHomeHousingTypeMappingData incoming) {
+        List<HousingType> adminCreated = remainingStoredByIdentifier.values().stream().filter(HousingType::isAdminCreated).toList();
+        List<HousingType> sameName = adminCreated.stream()
+                .filter(type -> SupplyNameNormalizer.sameHousingType(type.getName(), incoming.name())).toList();
+        if (sameName.size() == 1) {
+            return sameName.getFirst();
+        }
+        List<HousingType> sameArea = adminCreated.stream()
+                .filter(type -> type.getExclusiveArea().compareTo(incoming.exclusiveArea()) == 0).toList();
+        return sameName.isEmpty() && sameArea.size() == 1 ? sameArea.getFirst() : null;
+    }
+
     private HousingType findUniqueStoredTypeByName(
             Map<String, HousingType> remainingStoredByIdentifier,
             MyHomeHousingTypeMappingData incoming
@@ -402,6 +451,8 @@ public class MyHomeComplexMappingWriter {
         List<HousingType> sameName = remainingStoredByIdentifier.values()
                 .stream()
                 .filter(type -> type.getName().equals(incoming.name()))
+                // 관리자가 만든 주택형은 마이홈 원천 식별자 형식이 아니라 같은 원천 비교에서 뺀다(adminCreatedType에서 이어받는다).
+                .filter(type -> !type.isAdminCreated())
                 .filter(type -> MyHomeComplexSource.sameSourceComplex(
                         type.getSourceHousingTypeIdentifier(), incoming.sourceHousingTypeIdentifier()))
                 .toList();

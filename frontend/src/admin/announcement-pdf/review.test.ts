@@ -60,7 +60,7 @@ it('같은 기존 행에 두 번 대응하거나 기존 조건을 임의로 제�
   workspace.supply.rows[0].targets.push(old)
   expect(assembleReview(review, workspace, evidence).correction.rows[0].targets[0]).toEqual(old)
   review.rows[1].proposal.destination = review.rows[0].proposal.destination
-  expect(() => assembleReview(review, workspace, evidence)).toThrow('두 번 갱신')
+  expect(() => assembleReview(review, workspace, evidence)).toThrow(expect.objectContaining({ message: expect.stringContaining('공급행 1과 공급행 2이 같은 기존 공급정보'), reviewId: 'row:1' }))
 })
 
 it('잘못된 금액·날짜·코드는 자동으로 보정하지 않는다', () => {
@@ -159,6 +159,18 @@ it('직접 수정에서 주택형 미연결을 선택하면 기존 연결을 해
   row.cells[index] = editCell({ ...row.cells[index], before: existing.housingTypeId }, '')
   expect(row.cells[index]).toMatchObject({ mode: 'manual', value: null, selected: true })
   expect(assembleReview(review, workspace, evidence).correction.rows.find(item => item.key === existing.key)?.housingTypeId).toBeNull()
+})
+
+it('단지에 맞는 주택형이 없을 때 새 주택형 추가를 고르면 PDF 형명·면적으로 주택형을 만든다', () => {
+  const { review, workspace } = scenario('gwangju')
+  const row = review.rows[0], existing = workspace.supply.rows.find(item => item.key === row.proposal.destination)!
+  const source = review.extraction.supplyRows[0]
+  row.newHousingType = true
+  expect(() => assembleReview(review, workspace, evidence)).toThrow('새 주택형')
+  source.values = { ...source.values, exclusiveArea: 99.1234, supplyArea: 120.5 }
+  const saved = assembleReview(review, workspace, evidence).correction.rows.find(item => item.key === existing.key)!
+  expect(saved.housingTypeId).toBeNull()
+  expect(saved.newHousingType).toEqual({ name: saved.typeName, exclusiveArea: 99.1234, supplyArea: 120.5 })
 })
 
 

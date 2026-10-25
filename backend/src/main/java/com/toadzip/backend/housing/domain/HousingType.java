@@ -15,9 +15,11 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Objects;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.SQLRestriction;
 
 @Getter
 @Entity
@@ -30,6 +32,8 @@ import lombok.NoArgsConstructor;
         )
 )
 @NoArgsConstructor(access = PROTECTED)
+// 휴지통 주택형은 기본 조회에서 빠진다. 원천 동기화와 관리자 상세만 HousingTypeRepository의 포함 조회를 쓴다.
+@SQLRestriction("admin_deleted = false")
 public class HousingType {
 
     @Id
@@ -68,6 +72,10 @@ public class HousingType {
     @org.hibernate.annotations.ColumnDefault("false")
     private boolean adminModified;
 
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminDeleted;
+
     @Embedded
     private MyHomeRentalCondition basicRentalCondition;
 
@@ -105,8 +113,8 @@ public class HousingType {
         this.housingComplex = housingComplex;
         this.sourceHousingTypeIdentifier = sourceHousingTypeIdentifier;
         this.name = name;
-        this.exclusiveArea = exclusiveArea;
-        this.supplyArea = supplyArea;
+        this.exclusiveArea = area(exclusiveArea);
+        this.supplyArea = area(supplyArea);
     }
 
     public static HousingType create(
@@ -148,6 +156,26 @@ public class HousingType {
         );
     }
 
+    /** 관리자가 단지 상세나 PDF 보정에서 직접 만든 주택형의 원천 식별자 접두어 */
+    public static final String ADMIN_SOURCE_PREFIX = "ADMIN_ENTRY-HOUSING-TYPE-";
+
+    public boolean isAdminCreated() {
+        return sourceHousingTypeIdentifier.startsWith(ADMIN_SOURCE_PREFIX);
+    }
+
+    /**
+     * 관리자가 만든 주택형을 같은 마이홈 주택형으로 이어받는다. 이후 정제가 원천 식별자로 이 주택형을 찾고,
+     * 이름·면적은 관리자가 정한 값을 유지하며 비어 있는 공급면적만 채운다.
+     */
+    public void adoptMyHomeSource(String sourceHousingTypeIdentifier, BigDecimal supplyArea) {
+        validateNotBlankStatic(sourceHousingTypeIdentifier, "원천 주택형 식별자");
+        validateNonNegativeIfPresent(supplyArea, "공급면적");
+        this.sourceHousingTypeIdentifier = sourceHousingTypeIdentifier;
+        if (this.supplyArea == null && supplyArea != null) {
+            this.supplyArea = area(supplyArea);
+        }
+    }
+
     public boolean updateFromMyHome(
             String sourceHousingTypeIdentifier,
             String name,
@@ -169,8 +197,8 @@ public class HousingType {
         }
         this.sourceHousingTypeIdentifier = sourceHousingTypeIdentifier;
         this.name = name;
-        this.exclusiveArea = exclusiveArea;
-        this.supplyArea = supplyArea;
+        this.exclusiveArea = area(exclusiveArea);
+        this.supplyArea = area(supplyArea);
         return true;
     }
 
@@ -186,6 +214,24 @@ public class HousingType {
         return true;
     }
 
+    /**
+     * 면적은 DB 열과 같은 소수 넷째 자리로 맞춘다. 새로 만든 주택형의 메모리 값(16.37)과 다시 읽은 값(16.3700)이 달라
+     * 같은 주택형인데도 저장 매칭의 대상 지문이 달라지는 일을 막는다.
+     */
+    private static BigDecimal area(BigDecimal value) {
+        return value == null ? null : value.setScale(4, RoundingMode.HALF_UP);
+    }
+
+    /** 관리자 판단을 원천 재수집이 되돌리지 않도록 관리자 수정으로 함께 표시한다. */
+    public void moveToTrash() {
+        adminDeleted = true;
+        adminModified = true;
+    }
+
+    public void restore() {
+        adminDeleted = false;
+    }
+
     public void reviseByAdmin(String name, BigDecimal exclusiveArea, Integer householdCount) {
         validateNotBlank(name, "주택형명");
         validateRequiredAmount(exclusiveArea, "전용면적");
@@ -193,7 +239,7 @@ public class HousingType {
             validateNonNegative(householdCount, "전체 세대수");
         }
         this.name = name;
-        this.exclusiveArea = exclusiveArea;
+        this.exclusiveArea = area(exclusiveArea);
         this.totalHouseholdCount = householdCount;
         this.adminModified = true;
     }

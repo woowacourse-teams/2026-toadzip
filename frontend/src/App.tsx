@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { PdfCorrectionPage } from './admin/announcement-pdf/PdfCorrectionPage'
+import { LhSupplyLinkPage } from './admin/ingest/LhSupplyLinkPage'
 import { FailureReviewPage } from './admin/ingest/FailureReviewPage'
 import { IngestPage } from './admin/ingest/IngestPage'
 import { SourceDataPage } from './admin/ingest/SourceDataPage'
@@ -25,7 +26,6 @@ import { PrivacyBoundary, PrivacyMenu, PrivacyPolicyPage, PrivacySettingsPage } 
 import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
 import { PublicNotificationLayout } from './notifications/PublicNotificationLayout'
 import { LandingPage } from './landing/LandingPage'
-import { QualityQueuePage } from './admin/quality/QualityQueuePage'
 import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { useMobileViewport } from './public-housing/components/useMobileViewport'
 import { clearLoginReturn, loginReturnForBack, safeLoginReturn } from './user/auth/loginReturn'
@@ -117,13 +117,13 @@ function AdminRoutes() {
             <Route path="announcements/:id/pdf-correction" element={<PdfCorrectionPage />} />
             <Route path="announcements/:id?" element={<ManagementWorkspace resource="announcements" />} />
             <Route path="complex-coverage" element={<Navigate to="/admin/complexes" replace />} />
-            <Route path="quality" element={<QualityQueuePage />} />
             <Route path="users" element={<UserListPage />} />
             <Route path="users/:id" element={<UserDetailPage />} />
             <Route path="notification-deliveries" element={<NotificationDeliveriesPage />} />
             <Route path="notification-subscriptions" element={<NotificationManagementPage />} />
             <Route path="feedback" element={<FeedbackListPage />} />
             <Route path="failures" element={<FailureReviewPage />} />
+            <Route path="failures/lh-links/:identifier" element={<LhSupplyLinkPage />} />
             <Route path="sources" element={<SourceDataPage />} />
             <Route path="locations" element={<LocationDataPage />} />
           </Route>

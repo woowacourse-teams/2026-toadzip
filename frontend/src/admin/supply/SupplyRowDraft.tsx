@@ -15,10 +15,12 @@ function linkIssues(row: CorrectionRow): string[] {
   return [...(row.housingComplexId ? [] : ['단지 미연결']), ...(row.housingTypeId || row.newHousingType ? [] : ['주택형 미연결'])]
 }
 
-export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last, sources = [], inline = false, sharedCount }: {
+export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last, sources = [], inline = false, sharedCount, onDelete, deleted = false }: {
   value: CorrectionRow; onChange: (value: CorrectionRow) => void; onRemove: () => void;
   onMove: (delta: number) => void; first: boolean; last: boolean
   inline?: boolean; sharedCount?: number
+  /** 저장된 행 중 관리자가 추가한 행(원천 없음)만 받는다. 누르면 삭제 예정으로 표시하고, 다시 누르면 취소한다. */
+  onDelete?: () => void; deleted?: boolean
   /** 이 행이 기록한 원천행(마이홈·LH)과 작업실 원천 목록에서 찾은 값. */
   sources?: { category: string; sourceKey: string; found: CorrectionSource | null }[]
 }) {
@@ -60,15 +62,17 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
   // 마이홈 매핑은 공급대상을 만들지 않으므로 흔한 상태다. 알리기만 하고 행을 펼치지는 않는다.
   const withoutTargets = !value.excluded && value.targets.every(target => target.excluded)
   return <details className={styles.row} data-inline={inline || undefined} open={inline || !value.id || issues.length > 0}>
-    <summary>{value.complexName || '새 공급행'} · {value.typeName || '주택형 미입력'}{value.excluded ? ' · 제외 예정' : ''}
+    <summary>{value.complexName || '새 공급행'} · {value.typeName || '주택형 미입력'}{deleted ? ' · 삭제 예정' : value.excluded ? ' · 제외 예정' : ''}
       {(issues.length > 0 || withoutTargets) && <span className={styles.issues}>{issues.map(issue => <span key={issue}>{issue}</span>)}
         {withoutTargets && <span data-tone="note">임대조건 없음</span>}</span>}
       <small>{value.protectedValues ? '보정 보호 중' : '자동 갱신 대상'} · 대상 {value.targets.length}개</small></summary>
     <fieldset className={styles.rowBody} disabled={loading}><legend className={styles.srOnly}>공급행 보정</legend>
       <div className={styles.actions}><button type="button" disabled={first} onClick={() => onMove(-1)}>위로</button><button type="button" disabled={last} onClick={() => onMove(1)}>아래로</button>
-        {value.id ? <button type="button" onClick={() => field('excluded', !value.excluded)}>{value.excluded ? '공급행 복구' : '공급행 제외'}</button>
+        {value.id ? <>{!deleted && <button type="button" onClick={() => field('excluded', !value.excluded)}>{value.excluded ? '공급행 복구' : '공급행 제외'}</button>}
+          {onDelete && <button type="button" onClick={onDelete}>{deleted ? '삭제 취소' : '공급행 삭제'}</button>}</>
           : <button type="button" onClick={onRemove}>추가한 행 지우기</button>}</div>
-      {value.excluded && <p>적용하면 이 행과 하위 조건이 공개 결과에서 제외됩니다. 기록을 보존하며 다시 복구할 수 있습니다.</p>}
+      {deleted ? <p>적용하면 관리자가 추가한 이 행과 하위 조건을 지웁니다. 복구할 수 없고 변경 이력에만 남습니다.</p>
+        : value.excluded && <p>적용하면 이 행과 하위 조건이 공개 결과에서 제외됩니다. 기록을 보존하며 다시 복구할 수 있습니다.</p>}
       {value.id && !inline && <section className={styles.rowSource} aria-label="대응 원천">
         {!sources.length && <p>이 행에 대응하는 원천을 정할 수 없습니다. 직접 추가했거나 원천 식별자가 없는 행, 또는 같은 순번의 LH 원천이 여러 개인 행입니다. 공식 자료로 확인하세요.</p>}
         {sources.map(source => source.found?.rows.length ? <details key={`${source.category}:${source.sourceKey}`}><summary>대응 원천 · {source.category} · {source.sourceKey}</summary>

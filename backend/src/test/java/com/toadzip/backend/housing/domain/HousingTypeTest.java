@@ -139,8 +139,9 @@ class HousingTypeTest {
 
         assertEquals(housingComplex, housingType.getHousingComplex());
         assertEquals("36A", housingType.getName());
-        assertEquals(exclusiveArea, housingType.getExclusiveArea());
-        assertEquals(supplyArea, housingType.getSupplyArea());
+        // 면적은 DB 열과 같은 소수 넷째 자리로 맞춘다.
+        assertEquals(new BigDecimal("36.0000"), housingType.getExclusiveArea());
+        assertEquals(new BigDecimal("48.0000"), housingType.getSupplyArea());
         assertEquals(120, housingType.getTotalHouseholdCount());
         assertEquals("https://example.com/floor-plan.png", housingType.getFloorPlanUrl());
         assertFalse(housingType.isDuplex());

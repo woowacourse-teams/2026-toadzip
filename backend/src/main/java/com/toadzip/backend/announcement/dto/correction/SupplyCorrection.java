@@ -19,8 +19,9 @@ import java.util.UUID;
 public final class SupplyCorrection {
     private SupplyCorrection() { }
 
+    /** deletableRowKeys는 지울 수 있는 행(원천 없이 관리자가 추가했고 공통 모집 묶음에 없는 행)이다. 원천행은 제외만 할 수 있다. */
     public record Workspace(String snapshotToken, long version, List<Row> rows, List<Source> sources, List<String> sourceWarnings,
-            List<RowSource> rowSources) { }
+            List<RowSource> rowSources, List<String> deletableRowKeys) { }
     /** 공급행이 기록한 원천행. 작업실의 sources에서 같은 분류·키의 원천을 찾아 행 옆에 보여준다. */
     public record RowSource(String rowKey, String category, String sourceKey) { }
     public record Preview(String confirmationToken, List<Row> before, List<Row> after, List<String> warnings,
@@ -37,13 +38,15 @@ public final class SupplyCorrection {
             @NotBlank @Size(max = 2048) @Pattern(regexp = "^https?://[^\\s]+$") String sourceUrl,
             @Size(max = 100) String sourcePage,
             @NotNull @Size(max = 500) List<@NotNull @Valid Row> rows,
-            @Size(max = 250) List<@NotNull @Valid NewGroup> newGroups) {
+            @Size(max = 250) List<@NotNull @Valid NewGroup> newGroups,
+            @Size(max = 500) List<@NotBlank @Size(max = 64) String> deletedRowKeys) {
         public Request {
             if (newGroups == null) { newGroups = List.of(); }
+            if (deletedRowKeys == null) { deletedRowKeys = List.of(); }
         }
         public Request(UUID operationId, String snapshotToken, String reason, String sourceUrl,
                 String sourcePage, List<Row> rows) {
-            this(operationId, snapshotToken, reason, sourceUrl, sourcePage, rows, List.of());
+            this(operationId, snapshotToken, reason, sourceUrl, sourcePage, rows, List.of(), List.of());
         }
     }
     public record NewGroup(@Positive long sourceRowId,

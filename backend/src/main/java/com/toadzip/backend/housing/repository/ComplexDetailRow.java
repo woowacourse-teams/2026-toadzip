@@ -21,7 +21,7 @@ public record ComplexDetailRow(
         String corridorType,
         Integer moveOutCountLastYear,
         int totalHouseholdCount,
-        int totalParkingCount,
+        Integer totalParkingCount,
         Long depositMin,
         Long depositMax,
         Long monthlyRentMin,

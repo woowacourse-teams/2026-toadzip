@@ -7,7 +7,7 @@ import { parseManagementDetail, type ManagementDetailData, type ManagementResour
 import { announcementSections, complexSections, display, formValues, valueAt } from './fields'
 import { EditFields } from './EditFields'
 import { ComplexRelationsEditor } from './ComplexRelationsEditor'
-import { ManagementStatus } from './ManagementStatus'
+import { ManagementStatus, PublicationType } from './ManagementStatus'
 import { ChangeHistory } from './ChangeHistory'
 import { SupplyCorrectionWorkbench } from '../supply/SupplyCorrectionWorkbench'
 import { AnnouncementSupplyMatchingForm } from '../ingest/AnnouncementSupplyMatchingForm'
@@ -88,9 +88,9 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
     {error ? <div className="registration-error" role="alert"><p>{error}</p><button type="button" disabled={busy} onClick={() => {if(!dirty || window.confirm('입력한 내용을 버리고 새로 조회할까요?')) setAttempt(v => v+1)}}>새로 조회</button></div> : null}
     {!value && !error ? <p role="status">상세 정보를 불러오는 중…</p> : null}
     {notice ? <p className="registration-success" role="status">{notice}</p> : null}
-    {value ? <><header className="management-heading"><div>{embedded ? <h2>{value.summary.name}</h2> : <h1>{value.summary.name}</h1>}<div className="management-summary-meta"><p>{value.summary.subtitle}</p><ManagementStatus summary={value.summary} />
+    {value ? <><header className="management-heading"><div>{embedded ? <h2>{value.summary.name}</h2> : <h1>{value.summary.name}</h1>}<div className="management-summary-meta"><p>{value.summary.subtitle}</p>{value.summary.announcement?.publicationType !== 'ORIGINAL' && <PublicationType summary={value.summary} />}<ManagementStatus summary={value.summary} />
       {resource === 'complexes' && section !== 'verification' && value.summary.complex?.verificationStatus ? <ComplexVerificationBadge status={value.summary.complex.verificationStatus} count={value.summary.complex.reviewedFieldCount} /> : null}</div></div>
-      {!editing || embedded ? <div className="admin-inline">{resource === 'announcements' && !value.summary.deleted && !editing && <Link className="admin-primary" to={`/admin/announcements/${id}/pdf-correction?${params}`} aria-disabled={busy || verificationBusy || extendedBusy} onClick={event => { if (busy || verificationBusy || extendedBusy) event.preventDefault() }}>PDF로 보정</Link>}{!value.summary.deleted && !editing ? <button type="button" data-admin-navigation disabled={busy || verificationBusy || extendedBusy} className="admin-primary" onClick={() => {setEditing(true);setSection('info');setError('');setNotice('')}}>{resource === 'announcements' ? '기본정보 수정' : '수정'}</button> : null}
+      {!editing || embedded ? <div className="admin-inline">{resource === 'announcements' && !value.summary.deleted && !editing && <Link className="admin-tonal" to={`/admin/announcements/${id}/pdf-correction?${params}`} aria-disabled={busy || verificationBusy || extendedBusy} onClick={event => { if (busy || verificationBusy || extendedBusy) event.preventDefault() }}>PDF로 보정</Link>}{!value.summary.deleted && !editing ? <button type="button" data-admin-navigation disabled={busy || verificationBusy || extendedBusy} className="admin-tonal" onClick={() => {setEditing(true);setSection('info');setError('');setNotice('')}}>{resource === 'announcements' ? '기본정보 수정' : '수정'}</button> : null}
         <button type="button" data-admin-navigation disabled={busy || verificationBusy || extendedBusy || dirty} className={value.summary.deleted ? '' : 'admin-danger'} onClick={() => setConfirmation(true)}>{value.summary.deleted ? '복구' : '삭제'}</button></div> : null}</header>
       {value.summary.reviewRequired ? <p className="admin-warning">수집 원천과 관리자 수정값이 다릅니다. 공식 원문을 확인한 뒤 필요한 내용을 수정해 주세요. 저장한 관리자 값은 자동 정제로 덮어쓰지 않습니다.</p> : null}
       {confirmation ? <section className="admin-confirm" role="alertdialog" aria-label={value.summary.deleted ? '복구 확인' : '삭제 확인'}>
@@ -128,7 +128,7 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
           setError(cause instanceof Error ? cause.message : '저장하지 못했습니다.');if(cause instanceof ManagementError) setErrors(cause.fields)
         }).finally(() => setBusy(false))
       }}>
-        {value.scheduleReviewed ? <p className="admin-warning">확인된 접수 기간입니다. 세부 접수 일정 관리에서 변경해 주세요.</p> : null}
+        {value.scheduleReviewed ? <p className="admin-warning">확인된 접수 기간입니다. 확정 접수 일정 관리에서 변경해 주세요.</p> : null}
         {sections.map(group => <fieldset disabled={busy} key={group.title}><legend>{group.title}</legend>
           {group.title === '주소·위치' ? <AddressPicker onSelect={address => {
             for (const [key, fieldValue] of Object.entries(address)) {
