@@ -5,7 +5,7 @@ import { useAdminAuth } from './useAdminAuth'
 import styles from './AdminLayout.module.css'
 import { FailureReturnLink } from '../ingest/FailureReturnLink'
 
-const workLinks = [['/admin/operations', '운영 홈', 'home'], ['/admin/quality', '검토할 데이터', 'review'], ['/admin/complexes', '단지 관리', 'building'],
+const workLinks = [['/admin/operations', '운영 홈', 'home'], ['/admin/complexes', '단지 관리', 'building'],
   ['/admin/announcements', '공고 관리', 'document'], ['/admin/failures', '실패·검토 항목', 'alert']] as const
 const sourceLinks = [['/admin/ingest/announcements', '공고 수집'], ['/admin/ingest/complexes', '단지 수집'],
   ['/admin/sources', '원천 데이터'], ['/admin/locations', '주소 데이터']] as const

@@ -5,10 +5,6 @@ vi.mock('./admin/management/api', async importOriginal => ({
   ...(await importOriginal<typeof import('./admin/management/api')>()),
   getManagementPage: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })),
 }))
-vi.mock('./admin/quality/qualityQueueApi', async importOriginal => ({
-  ...(await importOriginal<typeof import('./admin/quality/qualityQueueApi')>()),
-  getQualityQueue: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })),
-}))
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { MemoryRouter } from 'react-router'
