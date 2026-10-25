@@ -42,12 +42,16 @@ afterEach(() => vi.unstubAllGlobals())
 function renderPage() {
   render(<MemoryRouter initialEntries={['/admin/announcements/29/pdf-correction?failureReturnTo=%2Fadmin%2Ffailures%3Fdomain%3Dannouncement&section=verification']}><Routes><Route path="/admin/announcements/:id/pdf-correction" element={<PdfCorrectionPage />} /></Routes></MemoryRouter>)
 }
+/** 테스트 화면은 좁은 화면처럼 한 패널만 보이므로 PDF 영역을 연다. */
+function showPdf() {
+  fireEvent.click(screen.getByRole('button', { name: 'PDF 보기' }))
+}
 async function startExtraction() {
   fireEvent.click(await screen.findByRole('button', { name: 'PDF에서 값 추출' }))
 }
 async function review(start = true) {
   if (start) await startExtraction()
-  await waitFor(() => expect(screen.getByRole('button', { name: '추출 결과 검토하기' })).toBeEnabled())
+  await waitFor(() => expect(screen.getByRole('button', { name: '추출 결과 검토하기' })).toBeEnabled(), { timeout: 3000 })
   fireEvent.click(screen.getByRole('button', { name: '추출 결과 검토하기' }))
 }
 async function open(text = JSON.stringify(fixtures.hansville.extraction)) {
@@ -143,8 +147,10 @@ it('등록된 PDF를 자동으로 고르고 추출 버튼을 누를 때만 서�
   await startExtraction()
   await waitFor(() => expect(extractor.extractAnnouncementPdf).toHaveBeenCalledOnce())
   expect(extractor.extractAnnouncementPdf).toHaveBeenCalledWith('29', expect.any(Blob), '공고문.pdf', expect.any(AbortSignal))
+  showPdf()
   expect(screen.getByRole('combobox', { name: '공고문 PDF' })).toHaveAccessibleDescription('공고문.pdf')
   expect(screen.getByLabelText('내 PC에서 PDF 고르기')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '추출 보기' }))
   expect(await screen.findByText(/공급행 2개 · 임대조건 2개 · 일정 3개/)).toBeVisible()
   expect(screen.queryByRole('heading', { name: '공급정보' })).not.toBeInTheDocument()
 })
@@ -165,7 +171,23 @@ it('첨부가 여러 개면 종류가 공고문인 PDF를 먼저 골라 추출�
   renderPage()
   await startExtraction()
   await waitFor(() => expect(extractor.extractAnnouncementPdf).toHaveBeenCalledWith('29', expect.any(Blob), '모집 안내.pdf', expect.any(AbortSignal)))
+  showPdf()
   expect(screen.getByRole('combobox', { name: '공고문 PDF' })).toHaveAccessibleDescription('모집 안내.pdf')
+})
+it('준비 단계의 PDF 영역에 PDF를 끌어다 놓으면 그 PDF로 바꾼다', async () => {
+  renderPage()
+  await screen.findByRole('button', { name: 'PDF에서 값 추출' })
+  showPdf()
+  const pane = screen.getByRole('region', { name: 'PDF 근거' })
+  const file = new File(['%PDF'], '끌어온 공고문.pdf', { type: 'application/pdf' })
+  fireEvent.dragOver(pane, { dataTransfer: { files: [file] } })
+  expect(pane).toHaveAttribute('data-dragging', 'true')
+  fireEvent.drop(pane, { dataTransfer: { files: [file] } })
+  expect(pane).toHaveAttribute('data-dragging', 'false')
+  expect(screen.getByText('내 PC · 끌어온 공고문.pdf')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '추출 보기' }))
+  await startExtraction()
+  await waitFor(() => expect(extractor.extractAnnouncementPdf).toHaveBeenCalledWith('29', file, '끌어온 공고문.pdf', expect.any(AbortSignal)))
 })
 it('추출에 실패하면 이유를 알리고 다시 추출하면 검토를 이어 간다', async () => {
   extractor.extractAnnouncementPdf.mockRejectedValueOnce(new ManagementError('AI 모델 호출에 실패했습니다.', 502))
@@ -181,12 +203,14 @@ it('추출에 실패하면 이유를 알리고 다시 추출하면 검토를 이
 it('연결된 PDF가 없으면 내 PC의 PDF를 골라야 추출과 검토를 진행한다', async () => {
   api.loadJsonWorkspace.mockResolvedValue({ ...workspace, detail: { ...workspace.detail, attachments: [] } })
   renderPage()
-  expect(await screen.findByText('연결된 PDF가 없습니다. 원문에서 받은 PDF를 고르세요.')).toBeVisible()
+  fireEvent.click(await screen.findByRole('button', { name: 'PDF 보기' }))
+  expect(await screen.findByText('연결된 PDF가 없습니다')).toBeVisible()
   expect(screen.getByRole('button', { name: '추출 결과 검토하기' })).toBeDisabled()
   expect(extractor.extractAnnouncementPdf).not.toHaveBeenCalled()
   const file = new File(['%PDF'], '금호빛여울채 공고문.pdf', { type: 'application/pdf' })
   fireEvent.change(screen.getByLabelText('내 PC에서 PDF 고르기'), { target: { files: [file] } })
   expect(screen.getByText('내 PC · 금호빛여울채 공고문.pdf')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '추출 보기' }))
   await startExtraction()
   await waitFor(() => expect(extractor.extractAnnouncementPdf).toHaveBeenCalledWith('29', file, '금호빛여울채 공고문.pdf', expect.any(AbortSignal)))
   await review(false)

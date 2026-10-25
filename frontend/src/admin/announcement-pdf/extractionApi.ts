@@ -42,3 +42,8 @@ export function preferredPdf(attachments: Attachment[]): Attachment | undefined 
     ?? pdfs.find(item => /공고문|모집공고/.test(item.fileName))
     ?? pdfs[0]
 }
+
+/** 고른 파일이 PDF가 아니면 이유를 돌려준다. 파일 고르기와 끌어다 놓기가 같은 기준을 쓴다. */
+export function pdfFileProblem(file: File) {
+  return file.type === 'application/pdf' || /\.pdf$/i.test(file.name) ? '' : 'PDF 파일만 고를 수 있습니다.'
+}

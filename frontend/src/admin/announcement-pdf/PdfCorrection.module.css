@@ -21,10 +21,13 @@
 .heading a { font-size:var(--ds-text-caption); }
 .heading ol { display:flex; gap:var(--ds-space-4); margin:0; padding:0; list-style:none; font-size:var(--ds-text-caption); color:var(--ds-color-muted-base); flex-wrap:wrap; }
 .heading li[aria-current=step] { color:var(--ds-color-action); font-weight:var(--ds-weight-strong); }
-.prepare { display:grid; grid-template-columns:minmax(320px,1.2fr) minmax(0,1fr); align-items:start; gap:var(--ds-space-6); border-top:1px solid var(--ds-color-divider); padding-top:var(--ds-space-5); }
-.prepare > section { position:relative; min-width:0; }
-.prepare > section > header { margin-bottom:var(--ds-space-4); }
-.prepare > section > header p { color:var(--ds-color-muted-base); font-size:var(--ds-text-caption); margin-bottom:0; }
+/* 준비 단계 오른쪽 패널. 왼쪽 PDF는 검토 단계와 같은 작업대(.workbench)와 PDF 패널을 쓴다. */
+.preparation { display:grid; gap:var(--ds-space-5); padding-top:var(--ds-space-4); }
+.preparation > header p { color:var(--ds-color-muted-base); font-size:var(--ds-text-caption); margin-bottom:0; }
+.prepareStep { display:grid; gap:var(--ds-space-2); padding-top:var(--ds-space-4); border-top:1px solid var(--ds-color-divider); }
+.page .prepareStep h3 { font-size:var(--ds-text-body); margin:0; }
+.page .prepareStep p { margin:0; }
+.page .announcementName { padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); background:var(--ds-color-surface-subtle); font-weight:var(--ds-weight-strong); overflow-wrap:anywhere; }
 .sourceFile { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:var(--ds-space-3); padding-bottom:var(--ds-space-4); }
 .sourceFile label { min-width:0; }
 .sourceFile > p { grid-column:1 / -1; }
@@ -35,9 +38,8 @@
 .sourceFile label.downloadButton:focus-within { outline:2px solid var(--ds-color-action); outline-offset:2px; }
 .sourceFile strong { font-size:var(--ds-text-caption); font-weight:500; overflow-wrap:anywhere; }
 /* 미리보기 영역이 곧 끌어다 놓는 영역이다. 높이를 고정해 추출 상태가 바뀌어도 화면이 흔들리지 않게 한다. */
-.dropZone { display:flex; flex-direction:column; height:min(70dvh,720px); min-height:360px; overflow:hidden; border:1px solid var(--ds-color-divider); background:var(--ds-color-surface); }
-.dropZone > .hint { margin:auto; padding:var(--ds-space-5); text-align:center; }
-.dropZone[data-dragging=true] { border-color:var(--ds-color-action); background:var(--ds-color-action-soft); }
+.page .pdfEmpty { margin:auto; padding:var(--ds-space-5); text-align:center; color:var(--ds-color-muted-base); font-size:var(--ds-text-caption); }
+.pdfPane[data-dragging=true] { border-color:var(--ds-color-action); background:var(--ds-color-action-soft); }
 .extractionStart { display:grid; gap:var(--ds-space-3); }
 .page .extractionStart p { margin:0; }
 .extractionProgress { padding:var(--ds-space-3) var(--ds-space-4); margin-bottom:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); background:var(--ds-color-action-soft); color:var(--ds-color-action); }
@@ -48,9 +50,7 @@
 @keyframes loadingBar { from { left:-35%; } to { left:100%; } }
 @media(prefers-reduced-motion:reduce) { .loadingBar > span { animation:none; left:0; width:100%; opacity:.5; } }
 .extractionResult ul { margin:0 0 var(--ds-space-4); padding-left:var(--ds-space-5); font-size:var(--ds-text-caption); line-height:1.7; }
-.page .extractionResult h3 { font-size:var(--ds-text-caption); margin:var(--ds-space-4) 0 var(--ds-space-2); }
-.prepareAction { padding-top:var(--ds-space-4); }
-.prepareAction button { width:100%; }
+.page .extractionResult h4 { font-size:var(--ds-text-caption); margin:var(--ds-space-4) 0 var(--ds-space-2); }
 .actions { display:flex; flex-wrap:wrap; align-items:center; gap:var(--ds-space-3); }
 .hint { color:var(--ds-color-muted-base); font-size:var(--ds-text-caption); }
 .error, .notice { padding:var(--ds-space-3) var(--ds-space-4); margin-bottom:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); }
@@ -65,7 +65,11 @@
 .page[data-focused=true] .heading h1 { font-size:20px; margin-top:var(--ds-space-1); }
 .workbench { display:grid; grid-template-columns:minmax(320px,1.2fr) minmax(0,1fr); gap:var(--ds-space-4); flex:1; min-height:0; order:1; }
 .pdfPane { min-width:0; min-height:0; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--ds-color-divider); background:var(--ds-color-surface); }
-.pdfPane > header { display:flex; flex-wrap:wrap; gap:var(--ds-space-2); justify-content:space-between; padding:var(--ds-space-3); font-size:var(--ds-text-caption); }
+/* 준비 단계는 머리에 PDF 고르기가 들어가므로 두 단계의 머리 높이를 맞춰 PDF 뷰어 크기를 같게 한다. */
+.pdfPane > header { display:flex; flex-wrap:wrap; align-items:center; gap:var(--ds-space-2); justify-content:space-between; min-height:61px; box-sizing:border-box; padding:var(--ds-space-3); border-bottom:1px solid var(--ds-color-divider); font-size:var(--ds-text-caption); }
+.pdfPane > header > .sourceFile { flex:1; align-items:center; padding-bottom:0; }
+/* PDF 영역 머리에서는 드롭다운 이름을 화면에서 숨기고 접근 가능한 이름으로만 남겨 검토 단계 머리 높이와 맞춘다. */
+.pdfPane > header .filePickerLabel { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
 .pdfPane > header strong { overflow-wrap:anywhere; font-weight:500; }
 .reviewPane { min-width:0; min-height:0; overflow:auto; padding:0 var(--ds-space-4) var(--ds-space-5); border:1px solid var(--ds-color-divider); background:var(--ds-color-surface); scrollbar-width:thin; scrollbar-color:var(--ds-color-divider) transparent; container-type:inline-size; }
 .reviewTop { position:sticky; top:0; z-index:2; background:var(--ds-color-surface); margin-bottom:var(--ds-space-5); }
@@ -81,9 +85,9 @@
 .pendingLabel { display:block; margin-top:var(--ds-space-1); font-size:11px; }
 .cell[data-pending=true] .cellLabel small { color:var(--ds-color-deadline); }
 [data-review-id]:focus { outline:2px solid var(--ds-color-action); outline-offset:2px; }
-.page .pendingButton { background:var(--ds-color-surface); color:var(--ds-color-deadline); border:1px solid var(--ds-color-deadline); box-shadow:none; margin-right:auto; }
+.page .pendingButton { background:var(--ds-color-surface); color:var(--ds-color-deadline); border:1px solid var(--ds-color-deadline); box-shadow:none; }
 .page .pendingButton:hover:not(:disabled) { background:var(--ds-color-surface-subtle); color:var(--ds-color-deadline); }
-.pendingDone { color:var(--ds-color-action); font-size:var(--ds-text-caption); margin-right:auto; }
+.pendingDone { color:var(--ds-color-action); font-size:var(--ds-text-caption); }
 .page .sections button { background:transparent; color:var(--ds-color-muted-base); padding:var(--ds-space-3) 0; min-height:48px; border:0; border-radius:0; border-bottom:2px solid transparent; box-shadow:none; white-space:nowrap; }
 .page .sections button[aria-pressed=true] { color:var(--ds-color-action); border-bottom-color:var(--ds-color-action); }
 .reviewFields { border:0; padding:0; margin:0; min-width:0; }
@@ -127,6 +131,8 @@
 .target { margin-block:var(--ds-space-4); }
 .scheduleBefore { display:block; color:var(--ds-color-muted-base); }
 .footer { flex:none; order:3; display:flex; justify-content:space-between; align-items:center; gap:var(--ds-space-4); padding:var(--ds-space-4) 0; border-top:1px solid var(--ds-color-divider); background:var(--ds-color-surface-subtle); }
+/* 검토 단계의 접힌 두 줄(반영할 변경·적용 근거 확인, 합계 63px)만큼 띄워 두 단계의 PDF 영역 높이를 같게 한다. */
+.prepareFooter { margin-top:63px; }
 .footer > div:first-child { display:flex; flex-direction:column; gap:var(--ds-space-1); font-size:var(--ds-text-caption); }
 .footer span { color:var(--ds-color-muted-base); }
 .changes { order:2; flex:none; padding-block:var(--ds-space-2); font-size:var(--ds-text-caption); }
@@ -182,7 +188,6 @@
 .target { background:var(--ds-color-surface-subtle); padding:var(--ds-space-4); border:1px solid var(--ds-color-divider); }
 .conditions { font-size:var(--ds-text-caption); margin-bottom:var(--ds-space-4); }
 .conditions li { line-height:1.7; margin-block:var(--ds-space-3); }
-@media(max-width:700px) { .prepare { grid-template-columns:1fr; gap:var(--ds-space-7); } .dropZone { height:60dvh; } }
 .filePicker { position:relative; min-width:0; }
 .filePickerLabel { display:block; margin-bottom:var(--ds-space-2); font-size:var(--ds-text-caption); line-height:1.6; }
 .page .filePickerButton { display:flex; align-items:center; gap:var(--ds-space-3); width:100%; min-height:var(--admin-control-height,36px); padding:0 var(--ds-space-3); background:var(--ds-color-surface); color:var(--ds-color-text); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); text-align:left; font:inherit; font-size:var(--ds-text-caption); cursor:pointer; }
