@@ -2,10 +2,11 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, expect, it, vi } from 'vitest'
 import { NewComplexRegistration } from './NewComplexRegistration'
 import { ManagementError } from '../management/api'
+import { AdminRegistrationApiError } from '../registration/api'
 const lookup = vi.hoisted(() => ({ lookupAddresses: vi.fn() }))
 vi.mock('./addressLookupApi', () => lookup)
 const registration = vi.hoisted(() => ({ createHousingComplex: vi.fn() }))
-vi.mock('../registration/api', () => registration)
+vi.mock('../registration/api', async original => ({ ...await original<typeof import('../registration/api')>(), ...registration }))
 beforeEach(() => vi.clearAllMocks())
 
 function renderForm() {
@@ -54,4 +55,30 @@ it('주소 검색을 쓸 수 없으면 서버 문구와 함께 직접 입력을 
   search(form, '부평동')
   expect(await within(form).findByRole('alert')).toHaveTextContent('주소 검색을 사용할 수 없습니다. 주소·PNU·좌표를 직접 입력하세요.')
   expect(within(form).getByLabelText('PNU')).toBeEnabled()
+})
+
+it('주소 검색 좌표(소수 여덟 자리)와 직접 입력한 좌표는 서버가 받는 여섯 자리로 맞춰 보낸다', async () => {
+  lookup.lookupAddresses.mockResolvedValue([{ roadAddress: '인천광역시 부평구 부평대로 3', jibunAddress: '인천광역시 부평구 부평동 1', pnu: '2823710100100010000',
+    legalDongCode: '2823710100', provinceCode: '28', cityCountyDistrictCode: '28237', latitude: 37.52022573, longitude: 126.7221496 }])
+  registration.createHousingComplex.mockResolvedValue({ housingComplexId: 1, name: '인천부평' })
+  const { form } = renderForm()
+  search(form, '부평대로 3')
+  fireEvent.click(await within(form).findByRole('button', { name: /부평대로 3/ }))
+  expect(within(form).getByLabelText('위도')).toHaveValue(37.520226)
+  fireEvent.change(within(form).getByLabelText('경도'), { target: { value: '126.7194780' } })
+  fireEvent.change(within(form).getByLabelText('전체 세대수'), { target: { value: '350' } })
+  fireEvent.change(within(form).getByLabelText('주차대수'), { target: { value: '112' } })
+  fireEvent.click(within(form).getByRole('button', { name: '단지 등록하고 연결' }))
+  await waitFor(() => expect(registration.createHousingComplex).toHaveBeenCalledWith(expect.objectContaining({
+    address: expect.objectContaining({ latitude: 37.520226, longitude: 126.719478 }) })))
+})
+
+it('등록이 거절되면 서버가 알려 준 항목별 사유를 함께 보여 준다', async () => {
+  registration.createHousingComplex.mockRejectedValue(new AdminRegistrationApiError(400, '요청값이 올바르지 않습니다.', { totalHouseholdCount: '0 이상이어야 합니다.' }))
+  const { form } = renderForm()
+  for (const [label, value] of [['주소(도로명 또는 지번)', '인천광역시 부평구 부평동 65-17'], ['PNU', '2823710100100650017'], ['위도', '37.502996'], ['경도', '126.719475'], ['전체 세대수', '350'], ['주차대수', '112']]) {
+    fireEvent.change(within(form).getByLabelText(label), { target: { value } })
+  }
+  fireEvent.click(within(form).getByRole('button', { name: '단지 등록하고 연결' }))
+  expect(await within(form).findByRole('alert')).toHaveTextContent('요청값이 올바르지 않습니다. 전체 세대수: 0 이상이어야 합니다.')
 })
