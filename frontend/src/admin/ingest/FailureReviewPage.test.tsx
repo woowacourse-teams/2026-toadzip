@@ -53,9 +53,13 @@ it('실패와 별도로 현재 등록 데이터와 사용자 화면 조건을 �
 })
 
 it('정확한 대상 연결이 없는 오류를 미등록이나 미노출로 단정하지 않는다', async () => {
-  reviews.mockResolvedValue({items:[{...row,product:null,productLinkStatus:'UNKNOWN'}],page:0,totalElements:1,totalPages:1,hasNext:false})
+  const unlinked={...row,product:null,productLinkStatus:'UNKNOWN'} as typeof row
+  reviews.mockResolvedValue({items:[unlinked],page:0,totalElements:1,totalPages:1,hasNext:false})
+  vi.mocked(getFailureReview).mockResolvedValue(unlinked)
   render(<MemoryRouter><FailureReviewPage /></MemoryRouter>)
-  expect(await screen.findByText('대상 연결 확인 필요')).toBeVisible()
+  fireEvent.click(await screen.findByRole('button',{name:/^확인·처리:/}))
+  // 서비스 데이터 연결 상태는 확인·처리 창의 접힌 원문 영역에 남는다.
+  expect(await within(screen.getByRole('dialog')).findByText('대상 연결 확인 필요')).toBeInTheDocument()
   expect(screen.queryByRole('link',{name:'단지 확인·수정'})).not.toBeInTheDocument()
 })
 
