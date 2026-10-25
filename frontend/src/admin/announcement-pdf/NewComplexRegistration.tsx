@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button } from '../../design-system/components/Button'
-import { createHousingComplex } from '../registration/api'
+import { AdminRegistrationApiError, createHousingComplex } from '../registration/api'
 import { type AddressCandidate, lookupAddresses } from './addressLookupApi'
 import styles from './PdfCorrection.module.css'
 
@@ -9,6 +9,10 @@ type Props = { index: number; defaultName: string; defaultAddress?: string; defa
   defaultPnu?: string
   rentalType: string; agencyCode: string; onCreated: (complex: { id: number; name: string }) => void }
 const PNU = /^\d{19}$/
+/** 서버는 좌표를 소수 여섯 자리(약 0.1m)까지 받는다. 주소 검색 좌표는 여덟 자리라 맞춰 보낸다. */
+const coordinate = (value: number) => Math.round(value * 1e6) / 1e6
+const fieldLabels: Record<string, string> = { 'address.latitude': '위도', 'address.longitude': '경도', 'address.pnu': 'PNU', 'address.roadAddress': '주소',
+  totalHouseholdCount: '전체 세대수', totalParkingCount: '주차대수', name: '단지명', completionDate: '준공일' }
 
 /**
  * 공고에는 있지만 단지 DB에 없는 새 단지(예: 입주 전 최초 모집)를 PDF 검토 안에서 바로 등록한다.
@@ -44,8 +48,8 @@ export function NewComplexRegistration({ index, defaultName, defaultAddress = ''
   }, [defaultAddress])
   function choose(candidate: AddressCandidate) {
     setValues(current => ({ ...current, address: candidate.roadAddress || candidate.jibunAddress, pnu: candidate.pnu,
-      latitude: candidate.latitude === null ? current.latitude : String(candidate.latitude),
-      longitude: candidate.longitude === null ? current.longitude : String(candidate.longitude) }))
+      latitude: candidate.latitude === null ? current.latitude : String(coordinate(candidate.latitude)),
+      longitude: candidate.longitude === null ? current.longitude : String(coordinate(candidate.longitude)) }))
     setCandidates(null)
   }
   async function register() {
@@ -54,11 +58,15 @@ export function NewComplexRegistration({ index, defaultName, defaultAddress = ''
     try {
       const created = await createHousingComplex({ name: values.name.trim(), rentalType, agencyCode,
         address: { roadAddress: values.address.trim(), pnu: values.pnu, legalDongCode: values.pnu.slice(0, 10), provinceCode: values.pnu.slice(0, 2),
-          cityCountyDistrictCode: values.pnu.slice(0, 5), latitude: Number(values.latitude), longitude: Number(values.longitude) },
+          cityCountyDistrictCode: values.pnu.slice(0, 5), latitude: coordinate(Number(values.latitude)), longitude: coordinate(Number(values.longitude)) },
         totalHouseholdCount: Number(values.households), totalParkingCount: Number(values.parking), completionDate: values.completionDate || null,
         heatingType: null, buildingType: null, corridorType: null, hasElevator: null, overviewImageUrl: null, moveOutCountLastYear: null })
       onCreated({ id: created.housingComplexId, name: created.name })
-    } catch (cause) { setError(cause instanceof Error ? cause.message : '단지를 등록하지 못했습니다.') }
+    } catch (cause) {
+      // 서버가 항목별 사유를 주면 어느 칸이 틀렸는지 함께 보여 준다.
+      const fields = cause instanceof AdminRegistrationApiError ? Object.entries(cause.fieldErrors).map(([field, message]) => `${fieldLabels[field] ?? field}: ${message}`) : []
+      setError([cause instanceof Error ? cause.message : '단지를 등록하지 못했습니다.', ...fields].join(' '))
+    }
     finally { setBusy(false) }
   }
   return <fieldset className={styles.newComplex} disabled={busy} aria-label={`공급행 ${index + 1} 새 단지 등록`}>
