@@ -149,6 +149,26 @@ public class HousingType {
         );
     }
 
+    /** 관리자가 단지 상세나 PDF 보정에서 직접 만든 주택형의 원천 식별자 접두어 */
+    public static final String ADMIN_SOURCE_PREFIX = "ADMIN_ENTRY-HOUSING-TYPE-";
+
+    public boolean isAdminCreated() {
+        return sourceHousingTypeIdentifier.startsWith(ADMIN_SOURCE_PREFIX);
+    }
+
+    /**
+     * 관리자가 만든 주택형을 같은 마이홈 주택형으로 이어받는다. 이후 정제가 원천 식별자로 이 주택형을 찾고,
+     * 이름·면적은 관리자가 정한 값을 유지하며 비어 있는 공급면적만 채운다.
+     */
+    public void adoptMyHomeSource(String sourceHousingTypeIdentifier, BigDecimal supplyArea) {
+        validateNotBlankStatic(sourceHousingTypeIdentifier, "원천 주택형 식별자");
+        validateNonNegativeIfPresent(supplyArea, "공급면적");
+        this.sourceHousingTypeIdentifier = sourceHousingTypeIdentifier;
+        if (this.supplyArea == null && supplyArea != null) {
+            this.supplyArea = area(supplyArea);
+        }
+    }
+
     public boolean updateFromMyHome(
             String sourceHousingTypeIdentifier,
             String name,
