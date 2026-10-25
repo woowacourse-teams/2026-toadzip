@@ -82,3 +82,20 @@ it('등록이 거절되면 서버가 알려 준 항목별 사유를 함께 보�
   fireEvent.click(within(form).getByRole('button', { name: '단지 등록하고 연결' }))
   expect(await within(form).findByRole('alert')).toHaveTextContent('요청값이 올바르지 않습니다. 전체 세대수: 0 이상이어야 합니다.')
 })
+
+it('주차대수는 비워 둘 수 있고, 공고문에 없는 주소·PNU·세대수는 수집한 마이홈 공고 정보로 채워 난방·주택유형과 함께 보낸다', async () => {
+  registration.createHousingComplex.mockResolvedValue({ housingComplexId: 9, name: '인천부평' })
+  const onCreated = vi.fn()
+  render(<NewComplexRegistration index={0} defaultName="인천부평(도시재생뉴딜) 행복주택" rentalType="HAPPY_HOUSING" agencyCode="LH" onCreated={onCreated}
+    myhome={{ name: '인천부평(도시재생뉴딜)', address: '인천광역시 부평구 부평동 65-17', pnu: '2823710100100650017', households: 350, heating: '개별난방', building: '아파트' }} />)
+  const form = screen.getByRole('group', { name: '공급행 1 새 단지 등록' })
+  expect(within(form).getByLabelText('주소(도로명 또는 지번)')).toHaveValue('인천광역시 부평구 부평동 65-17')
+  expect(within(form).getByLabelText('PNU')).toHaveValue('2823710100100650017')
+  expect(within(form).getByLabelText('전체 세대수')).toHaveValue(350)
+  expect(within(form).getByLabelText('주차대수')).toHaveValue(null)
+  fireEvent.change(within(form).getByLabelText('위도'), { target: { value: '37.502996' } })
+  fireEvent.change(within(form).getByLabelText('경도'), { target: { value: '126.719475' } })
+  fireEvent.click(within(form).getByRole('button', { name: '단지 등록하고 연결' }))
+  await waitFor(() => expect(onCreated).toHaveBeenCalled())
+  expect(registration.createHousingComplex).toHaveBeenCalledWith(expect.objectContaining({ totalHouseholdCount: 350, totalParkingCount: null, heatingType: 'INDIVIDUAL', buildingType: 'APARTMENT' }))
+})
