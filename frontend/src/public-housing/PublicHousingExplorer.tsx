@@ -1803,6 +1803,7 @@ function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backT
     <HousingDetailOverlay label="단지 상세" mobile={mobile} onClose={onClose}>
       {state.status === 'ready' && state.detail
         ? <HousingComplexDetailPanel
+            key={state.detail.complexId}
             mobile={mobile}
             streetView={streetView}
             onEscape={streetView?.active ? () => streetView.close('USER_CLOSED', true, 'escape') : undefined}
@@ -1830,6 +1831,7 @@ function AnnouncementDetailLayer({ state, onClose, onOpenComplex, onRetry, backT
     <HousingDetailOverlay label="공고 상세" mobile={mobile} onClose={onClose}>
       {state.status === 'ready' && state.detail
         ? <HousingAnnouncementDetailPanel
+            key={state.detail.announcementId}
             backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
             detail={toHousingAnnouncementDetailData(state.detail)}
             onClose={onClose} onOpenComplex={onOpenComplex} />

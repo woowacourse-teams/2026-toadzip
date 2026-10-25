@@ -3480,6 +3480,28 @@ describe('PublicHousingExplorer', () => {
     expect(await screen.findByRole('complementary', { name: '성남 청년 행복주택 입주자 모집 공고 상세 정보' })).toBeVisible()
   })
 
+  it('같은 종류의 다른 상세로 바로 넘어가도 이전 상세의 패널 상태를 이어받지 않는다', async () => {
+    localStorage.setItem('toadzip.recent-complexes.v1', JSON.stringify([
+      { complexId: '17', name: '서울가람 행복주택', address: null },
+      { complexId: '18', name: '다른 단지', address: null },
+    ]))
+    const repository = createRepository()
+    repository.findComplexDetail.mockImplementation(async (id: string) => id === '18'
+      ? { ...complexDetail(), complexId: '18', name: '다른 단지' }
+      : complexDetail())
+    renderExplorer(repository)
+    fireEvent.click(screen.getByRole('button', { name: '최근 본 단지' }))
+    const recent = screen.getByRole('region', { name: '최근 본 단지' })
+    fireEvent.click(within(recent).getByRole('button', { name: /서울가람/ }))
+    const firstPanel = await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
+
+    fireEvent.click(within(recent).getByRole('button', { name: /다른 단지/ }))
+
+    const nextPanel = await screen.findByRole('complementary', { name: '다른 단지 단지 상세 정보' })
+    expect(nextPanel).not.toBe(firstPanel)
+    expect(firstPanel).not.toBeInTheDocument()
+  })
+
   it('교차 상세을 두 번 중첩해도 각 부모 상세의 호출 버튼으로 차례로 돌아간다', async () => {
     const repository = createRepository()
     renderSearchedExplorer(repository)
