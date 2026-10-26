@@ -227,13 +227,17 @@ export function HousingComplexDetailPanel({
       >
         <section className={styles.identity} aria-labelledby={titleId}>
           {!mobile && images}
-          {identityType}
-          <p className={styles.address}>{displayAddress(detail)}</p>
+          <div className={styles.identitySummary}>
+            <div className={styles.identityDescription}>
+              {identityType}
+              <p className={styles.address}>{displayAddress(detail)}</p>
+            </div>
+            <BookmarkButton type="COMPLEX" targetId={detail.complexId} name={detail.name} iconOnly />
+          </div>
           {mobile && images}
           {/* 단지 단위 행동(알림·거리뷰)은 같은 모양·높이의 보조 버튼 한 쌍으로 둔다. */}
           <div className={styles.identityActions}>
-            <BookmarkButton type="COMPLEX" targetId={detail.complexId} name={detail.name} />
-          <NotificationInterestButton
+            <NotificationInterestButton
               target={{ type: 'COMPLEX', id: detail.complexId, name: detail.name }}
               source="COMPLEX_DETAIL"
             />
