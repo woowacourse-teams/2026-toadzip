@@ -2856,6 +2856,20 @@ describe('PublicHousingExplorer', () => {
     expect(screen.getByTestId('location-search')).toHaveTextContent('?type=ANNOUNCEMENT')
   })
 
+  it.each([
+    ['complexId=17', '단지 상세 닫기', '/mypage/notifications'],
+    ['announcementId=201', '공고 상세 닫기', '/mypage/notifications?type=ANNOUNCEMENT'],
+  ])('알림 관리에서 연 %s 상세를 닫으면 원래 분류로 복귀한다', async (query, closeLabel, origin) => {
+    const repository = createRepository()
+    render(<MemoryRouter initialEntries={[{ pathname: '/explore', search: `?${query}`, state: { mypageReturn: origin } }]}><Routes>
+      <Route path="/explore" element={<PublicHousingExplorer repository={repository} mapRepository={repository} regionRepository={createRegionRepository()} />} />
+      <Route path="/mypage/notifications" element={<><h1>돌아온 알림 관리</h1><LocationSearch /></>} />
+    </Routes></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: closeLabel }))
+    expect(await screen.findByRole('heading', { name: '돌아온 알림 관리' })).toBeVisible()
+    expect(screen.getByTestId('location-search').textContent).toBe(origin.includes('?') ? '?type=ANNOUNCEMENT' : '')
+  })
+
   it('상세 닫기는 현재 URL만 정리하고 지도 위치와 줌 및 무관 상태를 유지한다', async () => {
     const repository = createRepository()
     renderSearchedExplorer(repository, '/?source=shared&mapLat=37.58123&mapLng=126.99123&mapZoom=15.50#results')

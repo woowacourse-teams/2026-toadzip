@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { Link, MemoryRouter } from 'react-router'
+import { Link, MemoryRouter, useLocation } from 'react-router'
 import { afterEach, expect, it, vi } from 'vitest'
 import App from './App'
+import { myPageReturnPath } from './user/mypage/mypageNavigation'
 
 vi.mock('./public-housing/interest/notificationInterestRepository', async (importOriginal) => {
   const original = await importOriginal<typeof import('./public-housing/interest/notificationInterestRepository')>()
@@ -240,4 +241,30 @@ it('알림 분류는 키보드로 이동하고 비어 있는 분류도 선택할
   expect(await screen.findByText('등록한 단지 알림이 없어요.')).toBeVisible()
   expect(screen.getByRole('tab', { name: '단지 0' })).toHaveAttribute('aria-selected', 'true')
   expect(screen.getByRole('button', { name: '모든 알림 해제' })).toBeEnabled()
+})
+
+function NotificationLocation() {
+  const location = useLocation()
+  return <output aria-label="현재 위치" data-mypage-return={myPageReturnPath(location.state)}>{location.pathname}{location.search}</output>
+}
+
+it.each([
+  ['/mypage/notifications', '서울 행복주택', '/explore?complexId=1'],
+  ['/mypage/notifications?type=ANNOUNCEMENT', '가을 모집 공고', '/explore?announcementId=2'],
+])('알림 관리 %s의 이름을 누르면 %s 상세로 이동하며 출발 분류를 유지한다', async (origin, name, detail) => {
+  session()
+  render(<MemoryRouter initialEntries={[origin]}><App /><NotificationLocation /></MemoryRouter>)
+  const link = await screen.findByRole('link', { name })
+  expect(link).toHaveAttribute('href', detail)
+  fireEvent.click(link)
+  expect(screen.getByLabelText('현재 위치')).toHaveTextContent(detail)
+  expect(screen.getByLabelText('현재 위치')).toHaveAttribute('data-mypage-return', origin)
+  expect(vi.mocked(fetch).mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0)
+})
+
+it('지역 알림 이름은 단지나 공고 상세 링크로 만들지 않는다', async () => {
+  session()
+  render(<MemoryRouter initialEntries={['/mypage/notifications?type=REGION']}><App /></MemoryRouter>)
+  expect(await screen.findByText('서울특별시 전체')).toBeVisible()
+  expect(screen.queryByRole('link', { name: '서울특별시 전체' })).not.toBeInTheDocument()
 })

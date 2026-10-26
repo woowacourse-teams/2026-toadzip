@@ -1,5 +1,6 @@
 import { useId, useRef } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
+import { useMyPageReturnState } from '../../user/mypage/mypageNavigation'
 import { ManagementTable, ManagementRow } from '../../user/mypage/ManagementTable'
 import { NotificationDeviceList } from '../../notifications/NotificationDeviceList'
 import { NotificationPushControl } from '../../notifications/NotificationPushControl'
@@ -13,6 +14,7 @@ const groups = [
 
 export function NotificationSettings() {
   const context = useNotificationInterests()
+  const returnState = useMyPageReturnState()
   const heading = useRef<HTMLHeadingElement>(null)
   const tabs = useRef<Array<HTMLButtonElement | null>>([])
   const id = useId()
@@ -66,7 +68,9 @@ export function NotificationSettings() {
           {targets.map((target) => <ManagementRow key={target.id} actions={
             <button className={styles.actionButton} type="button" disabled={context.blocked} aria-label={`${target.name} 알림 해제`}
               onClick={(event) => { heading.current?.focus(); context.request({ target, source: 'SETTING' }, event.currentTarget) }}>알림 해제</button>
-          }><strong>{target.name}</strong></ManagementRow>)}
+          }><strong>{target.type === 'REGION' ? target.name : <Link
+            to={`/explore?${target.type === 'COMPLEX' ? 'complexId' : 'announcementId'}=${encodeURIComponent(target.id)}`}
+            state={returnState}>{target.name}</Link>}</strong></ManagementRow>)}
         </ManagementTable>}
     </section>
     <NotificationDeviceList />
