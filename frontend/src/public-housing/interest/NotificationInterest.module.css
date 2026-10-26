@@ -12,7 +12,8 @@
   cursor: pointer;
 }
 .bell { flex: 0 0 40px; width: 40px; padding: 8px; border: 0; background: transparent; }
-.button svg, .bell svg { width: 20px; height: 20px; }
+.button svg, .bell svg { width: 20px; height: 20px; color: #a66b00; }
+.button svg[data-state="requested"] path:first-child, .bell svg[data-state="requested"] path:first-child { fill: #f5c542; }
 .button[data-requested='true'] {
   border-color: var(--ds-color-brand);
   background: var(--ds-color-action-soft);
@@ -83,3 +84,5 @@
 }
 
 .inlineFeedback { margin: 0 0 12px; padding: 12px 14px; border-radius: 10px; background: var(--ds-color-action-soft); color: var(--ds-color-text); font-size: 14px; line-height: 1.5; text-align: center; word-break: keep-all; }
+
+.button:disabled[aria-busy=true], .bell:disabled[aria-busy=true] { opacity: 1; cursor: default; }

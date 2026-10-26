@@ -76,3 +76,21 @@ it('기본은 접혀 있고 펼칠 때만 조회하며 작은 안내 문구는 �
   expect(disclosure).toHaveAttribute('aria-expanded', 'false')
   expect(screen.queryByText('Mac · Chrome')).not.toBeInTheDocument()
 })
+
+
+it('기기 해제는 즉시 숨기고 실패하면 다시 표시한다', async () => {
+  let reject!: (error: Error) => void
+  vi.spyOn(pushDeviceRepository, 'devices').mockResolvedValue([current, other])
+  const disable = vi.spyOn(pushDeviceRepository, 'disableDevice').mockImplementation(() => new Promise<void>((_, fail) => { reject = fail }))
+  renderList()
+  fireEvent.click(screen.getByRole('button', { name: '알림 받는 기기' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'iPhone · 홈 화면 앱 알림 해제' }))
+  expect(screen.queryByText('iPhone · 홈 화면 앱')).not.toBeInTheDocument()
+  expect(screen.queryByText('해제 중…')).not.toBeInTheDocument()
+  expect(screen.getByText('Mac · Chrome')).toBeVisible()
+  expect(disable).toHaveBeenCalledOnce()
+  await act(async () => reject(new Error('offline')))
+  expect(screen.getByText('iPhone · 홈 화면 앱')).toBeVisible()
+  expect(screen.getByRole('button', { name: 'iPhone · 홈 화면 앱 알림 해제' })).toBeEnabled()
+  expect(screen.getByRole('alert')).toHaveTextContent('해제하지 못했어요')
+})
