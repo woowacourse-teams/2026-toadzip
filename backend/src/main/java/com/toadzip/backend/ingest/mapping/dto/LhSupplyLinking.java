@@ -13,9 +13,14 @@ public final class LhSupplyLinking {
     /**
      * token은 조회 시점의 원천과 저장 연결을 나타낸다. 저장·해제 요청은 이 값으로 동시 변경을 막는다.
      * failures는 현재 원천과 등록 공급행으로 LH 보강 매칭을 다시 해 본 결과이며 저장된 오류 기록과 시점이 다를 수 있다.
+     * releasedSupplyMatches는 이번 저장·해제로 LH 행 구성이 바뀌어 함께 해제한 저장 매칭의 행 식별자다. 조회에서는 비어 있다.
      */
     public record View(String token, Announcement announcement, List<MyHomeRow> myhomeRows, List<LhRow> lhRows,
-            List<MatchFailure> failures) {
+            List<MatchFailure> failures, List<String> releasedSupplyMatches) {
+    }
+
+    /** 공고의 현재 LH 공급 원본 행. PDF 보정이 공급행에 아직 붙지 않은 LH 행을 찾을 때 쓴다. */
+    public record CurrentSupply(String rowIdentifier, String complexLabel, String typeName, String exclusiveArea) {
     }
 
     public record Announcement(String identifier, String name, String sourceUrl, String panId) {

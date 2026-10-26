@@ -41,6 +41,7 @@ PDF 업로드·보관과 공유 초안 API는 제공하지 않는다. 로컬 폴
   - 마이홈(`MYHOME_ANNOUNCEMENT`)은 공급행이 기록한 원천 키를 그대로 준다.
   - LH(`LH_ANNOUNCEMENT_SUPPLY`)는 공급행이 `LH:{panId}:SUPPLY:{순번}`만 기록하므로, 원천 키 `{panId}:{요청 해시}:{순번}` 중 공고 번호와 순번이 같은 것이 하나일 때 그 키를 준다. 없으면 기록값을 그대로 줘서 찾을 수 없음을 알리고, 여러 개면 추정하지 않고 생략한다.
   - 원천 식별자가 없는 행(직접 추가 등)은 목록에 없다.
+- GET의 `unattachedLhSupplyRows`는 공고의 현재 LH 공급 원본 행 중 어떤 공급행에도 `LH:{panId}:SUPPLY:{순번}`으로 붙지 않은 행 `{rowIdentifier, complexLabel, typeName, exclusiveArea}`다. LH 공급 원본이 있으면 행 분할은 LH 연결 펼침이 맡는다. 이 목록이 비어 있지 않으면 미리보기·저장은 새 공급행(공통 모집 묶음의 새 행 포함)을 400으로 거절한다. 기존 행 수정·주택형 연결·임대조건은 그대로 허용한다. 관리자는 LH 행 연결을 저장하고 공고 정제를 다시 실행한 뒤 펼쳐진 공급행을 보정한다. 마이홈·LH 원천이 없는 공고는 빈 목록이다.
 - POST `/preview`: 전체 행·하위 조건 변경안과 UUID 작업 번호, 근거·이유를 검증하여 변경 전후와 confirmationToken 반환. 저장하지 않는다.
 - 행의 `typeName`은 이 공고의 주택형 표기다. 조회는 공개 화면에 보이는 이름을 주고, 저장은 공고 표기로만 한다. 기존 행의 `complexName`은 원천 단지명이라 요청 값과 관계없이 유지한다. 원천이 없는 새 행만 입력값을 원천 이름으로 남긴다.
 - POST: `{correction, confirmationToken}`. 공고 잠금과 수집 소유권 아래 전체 보정·새 주택형·보호·이력을 한 트랜잭션으로 저장한다.
@@ -64,7 +65,7 @@ PDF 업로드·보관과 공유 초안 API는 제공하지 않는다. 로컬 폴
 
 - GET `/api/admin/announcements/{id}/json-corrections`: 공고 상세·공급 작업실·일반 일정과 전체 `snapshotToken`을 반환한다.
 - POST `/preview`: `{snapshotToken, document, fields, schedules, attachments, correction}`. `document`는 신규 등록과 같은 `admin-announcement-import/v1`이다. `fields`에는 적용할 기본정보·접수처 필드명을, 일정·첨부에는 `{inputIndex, existingId}`를 넣는다. `existingId: null`은 추가이며 기존 ID는 현재 공고 소속이어야 한다. `correction`은 기존 공급 보정 요청 계약이다.
-- POST: `{request, confirmationToken}`. 관리자 인증·CSRF·수집 소유권과 공고 잠금 아래 동일 미리보기를 재검증하고 모든 변경과 `CORRECT_FROM_PDF` 이력을 한 트랜잭션으로 저장한다.
+- POST: `{request, confirmationToken}`. 관리자 인증·CSRF·수집 소유권과 공고 잠금 아래 동일 미리보기를 재검증하고 모든 변경과 `CORRECT_FROM_PDF` 이력을 한 트랜잭션으로 저장한다. 같은 트랜잭션에서 이 공고의 미해결 `myhome_announcement_mapping_failures`·`lh_announcement_enrichment_failures`를 해결로 바꾸고 `last_resolved_by`에 보정한 관리자를 남긴다(`V20261026_01`). 정제가 해결한 실패는 이 값이 비어 있다. 원천 비교 스냅샷은 저장 전·후 한 번씩만 계산한다.
 - 이 경로는 관리자 화면의 PDF 보정만 사용한다. 공급행·기본정보·접수처·일정 변경을 이력 한 건에 남기며 별도의 `CORRECT_SUPPLY` 이력을 만들지 않는다. 공급 보정의 작업 번호는 이 이력에 연결해 같은 작업 번호의 재적용을 막는다. 이전에 저장된 `UPDATE_FROM_JSON` 이력과 함께 남은 `CORRECT_SUPPLY` 이력은 그대로 둔다.
 - 미확인·null 기본값과 확인되지 않은 일정·첨부는 선택 적용을 거절한다. 선택하지 않은 값과 하위 항목은 유지하며 생략으로 삭제하지 않는다. 기존 ID·원천 식별자·확인된 접수 일정은 유지한다. 신규 알림은 만들지 않는다.
 - 전체 스냅샷과 미리보기 토큰에 공급 보정의 후보 검증 토큰까지 포함한다. 동시 변경·이미 적용한 요청은 409다. 저장 응답이 불분명하면 최신 작업실을 조회한 뒤 다시 비교하며 자동 재적용하지 않는다.

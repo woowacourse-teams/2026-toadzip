@@ -29,6 +29,7 @@ public record IngestFailureReviewPageResponse(
             UUID firstExecutionId,
             UUID lastExecutionId,
             UUID lastResolvedExecutionId,
+            String lastResolvedBy,
             String sourceComplexIdentifier,
             String sourceAnnouncementIdentifier,
             String targetName,

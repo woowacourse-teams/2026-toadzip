@@ -975,7 +975,8 @@ class AnnouncementSupplyMatchingIntegrationTest {
         mapping.mapAll();
         long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
         correctFromPdf(announcementId, type);
-        assertThat(pendingFailureReasons()).containsExactly("AMBIGUOUS_HOUSING_TYPE");
+        // PDF 보정 저장이 이 공고의 실패를 해결로 바꾸고, 다시 정제는 원인이 남았는지 확인한다.
+        assertThat(pendingFailureReasons()).isEmpty();
 
         rerun(TARGET).andExpect(status().isOk());
 
@@ -1021,7 +1022,8 @@ class AnnouncementSupplyMatchingIntegrationTest {
         mapping.mapAll();
         long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
         correctFromPdf(announcementId, type);
-        assertThat(pendingFailureReasons()).containsExactly("AMBIGUOUS_HOUSING_TYPE");
+        // PDF 보정 저장이 이 공고의 실패를 해결로 바꾸고, 다시 정제는 원인이 남았는지 확인한다.
+        assertThat(pendingFailureReasons()).isEmpty();
         // 군산 공고처럼 공고 등록 뒤 수집한 LH 공급 원본의 단지명 표기가 공고 공급행과 달라 LH 보강에서 단지를 찾지 못한다.
         lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of(
                 new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource(0, candidate.panId(),

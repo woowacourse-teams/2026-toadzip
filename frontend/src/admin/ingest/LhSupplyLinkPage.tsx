@@ -74,6 +74,8 @@ function LhSupplyLinkWorkspace({ identifier }: { identifier: string }) {
     if (!view || saving || changes.length === 0 || evidenceProblem) return
     setSaving(true); setOutcome(null)
     let latest = view
+    // LH 행 구성이 바뀐 원천행의 저장 매칭은 서버가 함께 해제한다. 정제 결과와 함께 알린다.
+    const released: string[] = []
     try {
       // 저장 API는 원천행 하나에 LH 행 여러 개를 받으므로 고른 단지별로 묶어 차례로 저장한다.
       const groups = new Map<string, string[]>()
@@ -81,9 +83,13 @@ function LhSupplyLinkWorkspace({ identifier }: { identifier: string }) {
         const target = choices[row.rowIdentifier]
         if (target !== RELEASE) groups.set(target, [...(groups.get(target) ?? []), row.rowIdentifier])
       }
-      for (const [target, rows] of groups) latest = await saveLhSupplyLinks(identifier, latest, target, rows, sourceUrl.trim(), reason.trim())
+      for (const [target, rows] of groups) {
+        latest = await saveLhSupplyLinks(identifier, latest, target, rows, sourceUrl.trim(), reason.trim())
+        released.push(...latest.releasedSupplyMatches ?? [])
+      }
       for (const row of changes.filter(item => choices[item.rowIdentifier] === RELEASE)) {
         latest = await releaseLhSupplyLink(identifier, latest, row.rowIdentifier, reason.trim())
+        released.push(...latest.releasedSupplyMatches ?? [])
       }
     } catch (cause) {
       setOutcome({ ok: false, text: `${message(cause)} 저장된 연결을 다시 불러왔습니다.` })
@@ -92,9 +98,9 @@ function LhSupplyLinkWorkspace({ identifier }: { identifier: string }) {
     }
     try {
       await rerunAnnouncement(identifier)
-      setOutcome({ ok: true, text: '연결을 저장하고 다시 정제했습니다. 이 공고의 오류가 해결됐습니다.' })
+      setOutcome({ ok: true, text: `연결을 저장하고 다시 정제했습니다. 이 공고의 오류가 해결됐습니다.${releasedNotice(released)}` })
     } catch (cause) {
-      setOutcome({ ok: false, text: `연결은 저장했습니다. ${message(cause)}` })
+      setOutcome({ ok: false, text: `연결은 저장했습니다.${releasedNotice(released)} ${message(cause)}` })
     } finally { setSaving(false); setAttempt(value => value + 1) }
   }
 
@@ -191,3 +197,7 @@ function myhomeLabel(row: LhLinkMyHomeRow, rows: LhLinkMyHomeRow[]): string {
   return rows.filter(item => item.complexName === row.complexName).length > 1 ? `${name} · ${row.housingTypeName ?? '유형 없음'}` : name
 }
 function message(cause: unknown): string { return cause instanceof Error ? cause.message : 'LH 공급 연결을 처리하지 못했습니다.' }
+
+function releasedNotice(rows: string[]) {
+  return rows.length ? ` LH 행 구성이 바뀐 원천행의 저장 매칭 ${rows.length}개를 해제했습니다. PDF 보정에서 펼쳐진 공급행의 주택형을 확인하세요.` : ''
+}

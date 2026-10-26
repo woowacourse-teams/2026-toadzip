@@ -15,7 +15,7 @@ const row: FailureReview = {
   id: 7, category: 'complex', target: '두꺼비 단지', sourceKey: 'source-7', source: 'MYHOME_COMPLEX',
   reason: 'MISSING_REQUIRED_VALUE', detail: '주택형명 값이 없습니다.', status: 'PENDING',
   occurredAt: '2026-10-03T03:00:00Z', occurrenceCount: 2, recurrenceCount: 0,
-  executionId: null, lastResolvedAt: null, raw: {}, productLinkStatus: 'EXISTS',
+  executionId: null, lastResolvedAt: null, lastResolvedBy: null, raw: {}, productLinkStatus: 'EXISTS',
   product: { id: 42, name: '두꺼비 단지', resourceType: 'complexes', deleted: false,
     hasCoordinates: true, housingTypeCount: 0, linkedComplexCount: null, supplyRowCount: null,
     applicationScheduleCount: null, attachmentCount: null, applicationStartDate: null, applicationEndDate: null,

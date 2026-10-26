@@ -12,6 +12,8 @@ export type FailureProduct = {
 }
 export type FailureReview = IngestFailure & {
   id: number; category: FailureCategory; recurrenceCount: number; lastResolvedAt: string | null
+  /** 관리자가 공고를 보정해 해결로 바꾼 경우의 관리자. 정제가 해결했으면 null이다. */
+  lastResolvedBy: string | null
   productLinkStatus: 'EXISTS' | 'NOT_FOUND' | 'UNKNOWN'; product: FailureProduct | null
 }
 export type FailureReviewPageData = {
@@ -44,6 +46,7 @@ function parseReview(value: unknown): FailureReview {
     || !['PENDING', 'RESOLVED', 'SKIPPED'].includes(String(value.status))
     || typeof value.lastOccurredAt !== 'string' || !count(value.occurrenceCount) || !count(value.recurrenceCount)
     || !nullableText(value.lastResolvedAt) || !nullableText(value.lastExecutionId) || !nullableText(value.source)
+    || value.lastResolvedBy !== undefined && !nullableText(value.lastResolvedBy)
     || !nullableText(value.sourceComplexIdentifier) || !nullableText(value.sourceAnnouncementIdentifier)
     || !nullableText(value.targetName) || !record(value.metadata)
     || !['EXISTS', 'NOT_FOUND', 'UNKNOWN'].includes(String(value.productLinkStatus))) throw invalid()
@@ -59,7 +62,8 @@ function parseReview(value: unknown): FailureReview {
     id: value.id, category: value.category as FailureCategory, target: name + serial, sourceKey: value.sourceKey,
     reason: value.reason, detail: value.detail, status: String(value.status), occurredAt: value.lastOccurredAt,
     occurrenceCount: value.occurrenceCount, recurrenceCount: value.recurrenceCount,
-    lastResolvedAt: value.lastResolvedAt, executionId: value.lastExecutionId, source: value.source,
+    lastResolvedAt: value.lastResolvedAt, lastResolvedBy: typeof value.lastResolvedBy === 'string' ? value.lastResolvedBy : null,
+    executionId: value.lastExecutionId, source: value.source,
     raw, productLinkStatus: value.productLinkStatus as FailureReview['productLinkStatus'], product,
   }
 }

@@ -5,6 +5,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
@@ -28,6 +29,7 @@ import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.View;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +42,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /** 단지명 표기가 달라 자동으로 붙지 않는 LH 공급행을 관리자가 연결하는 흐름을 실제 정제·보강으로 검증한다. */
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
@@ -167,6 +171,96 @@ class LhSupplyLinkIntegrationTest {
     }
 
     @Test
+    void LH_연결로_원천행의_LH_행_구성이_바뀌면_그_행의_저장_매칭을_해제하고_구성이_같으면_유지한다() throws Exception {
+        mapping.mapAll();
+        var view = view();
+        String myhomeRow = view.myhomeRows().getFirst().rowIdentifier();
+        saveDecision(myhomeRow);
+
+        var linked = read(save(view, "공고문 단지 목록 대조").andExpect(status().isOk()));
+
+        assertThat(linked.releasedSupplyMatches()).containsExactly(myhomeRow);
+        assertThat(decisionCount()).isZero();
+        assertThat(jdbc.sql("SELECT after_value FROM admin_data_changes WHERE action = 'RELEASE_SUPPLY_MATCH'")
+                .query(String.class).single()).contains(myhomeRow, "LH 행 구성이 바뀌어");
+        mapping.mapAll();
+        assertThat(pendingMappingFailures()).isEmpty();
+
+        saveDecision(myhomeRow);
+        var unchanged = read(save(linked, "같은 연결을 다시 확인").andExpect(status().isOk()));
+
+        assertThat(unchanged.releasedSupplyMatches()).isEmpty();
+        assertThat(decisionCount()).isOne();
+
+        var released = read(release(unchanged, "공고문 재확인 결과 다른 단지").andExpect(status().isOk()));
+
+        assertThat(released.releasedSupplyMatches()).containsExactly(myhomeRow);
+        assertThat(decisionCount()).isZero();
+    }
+
+    @Test
+    @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
+    @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
+            executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD)
+    void LH_원본행이_공급행에_붙지_않았으면_PDF_보정은_새_공급행을_거절한다() throws Exception {
+        mapping.mapAll();
+        long id = jdbc.sql("SELECT id FROM announcements").query(Long.class).single();
+        var workspace = json.readTree(mvc.perform(get(correctionPath(id)).with(user("operator").roles("ADMIN")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+        assertThat(workspace.get("unattachedLhSupplyRows")).singleElement().satisfies(row -> {
+            assertThat(row.get("rowIdentifier").asText()).isEqualTo("LH:" + panId + ":SUPPLY:0");
+            assertThat(row.get("complexLabel").asText()).isEqualTo("전주평화4 영구임대주택");
+        });
+        var request = json.createObjectNode();
+        request.put("operationId", UUID.randomUUID().toString());
+        request.put("snapshotToken", workspace.get("snapshotToken").asText());
+        request.put("reason", "공고문 공급 표 대조");
+        request.put("sourceUrl", OFFICIAL_URL);
+        var rows = workspace.get("rows").deepCopy();
+        var extra = (ObjectNode) rows.get(0).deepCopy();
+        extra.putNull("id").put("key", UUID.randomUUID().toString()).put("typeName", "26B");
+        extra.putArray("targets");
+        ((ArrayNode) rows).add(extra);
+        request.set("rows", rows);
+
+        mvc.perform(post(correctionPath(id) + "/preview").with(user("operator").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith(
+                        "LH 공급 원본 1행이 아직 공급행에 붙지 않았습니다.")));
+
+        // 기존 행의 값 수정은 막지 않는다.
+        var edited = workspace.get("rows").deepCopy();
+        ((ObjectNode) edited.get(0)).put("typeName", "26A");
+        request.set("rows", edited);
+        mvc.perform(post(correctionPath(id) + "/preview").with(user("operator").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        // LH 행을 연결하고 다시 정제하면 그 LH 행이 공급행에 붙어 새 행 추가 제한이 풀린다.
+        save(view(), "공고문 단지 목록 대조").andExpect(status().isOk());
+        mapping.mapAll();
+        mvc.perform(get(correctionPath(id)).with(user("operator").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.unattachedLhSupplyRows").isEmpty());
+    }
+
+    @Test
+    @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
+    @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
+            executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD)
+    void LH_수집_연결을_확정할_수_없는_공고도_공급정보_보정_작업실을_연다() throws Exception {
+        mapping.mapAll();
+        // 공고 등록 뒤 LH 수집 연결이 사라지면 LH 공급 원본을 고를 수 없다. 보정 작업실은 그래도 열려야 한다.
+        jdbc.sql("DELETE FROM lh_announcement_collection_links").update();
+        long id = jdbc.sql("SELECT id FROM announcements").query(Long.class).single();
+
+        mvc.perform(get(correctionPath(id)).with(user("operator").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.unattachedLhSupplyRows").isEmpty());
+    }
+
+    @Test
     void 연결한_LH_원천이_바뀌면_재확인을_요구하고_다시_저장하면_재적용한다() throws Exception {
         save(view(), "공고문 단지 목록 대조").andExpect(status().isOk());
         mapping.mapAll();
@@ -254,6 +348,23 @@ class LhSupplyLinkIntegrationTest {
         return mvc.perform(post(PATH)
                 .with(user("operator").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body)));
+    }
+
+    private void saveDecision(String rowIdentifier) {
+        jdbc.sql("""
+                INSERT INTO announcement_supply_match_decisions (version, row_identifier, complex_id, housing_type_id,
+                    source_fingerprint, target_fingerprint, source_url, reason, actor, updated_at)
+                SELECT 0, :row, complex.id, type.id, 'source', 'target', :url, 'PDF 보정', 'operator', now()
+                FROM housing_complexes complex JOIN housing_types type ON type.housing_complex_id = complex.id
+                """).param("row", rowIdentifier).param("url", OFFICIAL_URL).update();
+    }
+
+    private long decisionCount() {
+        return jdbc.sql("SELECT count(*) FROM announcement_supply_match_decisions").query(Long.class).single();
+    }
+
+    private String correctionPath(long id) {
+        return "/api/admin/announcements/" + id + "/supply-corrections";
     }
 
     private View view() throws Exception {
