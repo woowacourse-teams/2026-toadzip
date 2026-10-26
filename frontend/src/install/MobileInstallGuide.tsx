@@ -6,14 +6,14 @@ import styles from './MobileInstall.module.css'
 
 const guides = {
   ios: [
-    { title: 'Safari에서 공유를 눌러요', description: '더 보기(···) → 공유. 공유 버튼이 바로 보이면 눌러 주세요.', image: 'iphone-share.png', alt: 'iPhone Safari의 더 보기 메뉴에 있는 공유 버튼', position: 'iosShare' },
-    { title: '홈 화면에 추가를 선택해요', description: '공유 화면의 더 보기(···)를 열고 홈 화면에 추가를 눌러요.', image: 'iphone-home.png', alt: 'iPhone 공유 메뉴의 홈 화면에 추가 항목 실제 캡처', position: 'iosHome' },
-    { title: '추가를 누르면 끝!', description: '오른쪽 위 추가를 눌러요. 웹 앱으로 열기가 보이면 켜 두세요.', image: 'iphone-add.png', alt: 'iPhone 복덕방 홈 화면에 추가 확인창의 추가 버튼 실제 캡처', position: 'iosAdd' },
+    { title: 'Safari에서 공유를 눌러요', description: '더 보기(···) → 공유. 공유 버튼이 바로 보이면 눌러 주세요.', image: 'iphone-share.png', alt: 'iPhone Safari의 더 보기 메뉴에 있는 공유 버튼', position: 'iosShare', target: [550, 1628, 125, 65] },
+    { title: '홈 화면에 추가를 선택해요', description: '공유 화면의 더 보기(···)를 열고 홈 화면에 추가를 눌러요.', image: 'iphone-home.png', alt: 'iPhone 공유 메뉴의 홈 화면에 추가 항목 실제 캡처', position: 'iosHome', target: [320, 1768, 245, 65] },
+    { title: '추가를 누르면 끝!', description: '오른쪽 위 추가를 눌러요. 웹 앱으로 열기가 보이면 켜 두세요.', image: 'iphone-add.png', alt: 'iPhone 복덕방 홈 화면에 추가 확인창의 추가 버튼 실제 캡처', position: 'iosAdd', target: [1077, 330, 91, 78] },
   ],
   android: [
-    { title: 'Chrome에서 더 보기를 눌러요', description: '주소창 오른쪽의 점 세 개(⋮)를 눌러 주세요.', image: 'android-browser.png', alt: 'Android Chrome 주소창 오른쪽의 더 보기 버튼 실제 캡처', position: 'androidBrowser' },
-    { title: '홈 화면에 추가를 선택해요', description: '메뉴 아래쪽에 있어요. 설치와 바로가기가 나오면 설치를 선택해요.', image: 'android-menu.png', alt: 'Android Chrome 메뉴의 홈 화면에 추가 항목 실제 캡처', position: 'androidMenu' },
-    { title: '설치를 누르면 끝!', description: '설치 또는 추가를 눌러요. 완료되면 홈 화면의 복덕방 아이콘으로 열어 주세요.', image: 'android-add.png', alt: 'Android Chrome 복덕방 앱 설치 확인창의 설치 버튼 실제 캡처', position: 'androidAdd' },
+    { title: 'Chrome에서 더 보기를 눌러요', description: '주소창 오른쪽의 점 세 개(⋮)를 눌러 주세요.', image: 'android-browser.png', alt: 'Android Chrome 주소창 오른쪽의 더 보기 버튼 실제 캡처', position: 'androidBrowser', target: [1011, 150, 43, 53] },
+    { title: '홈 화면에 추가를 선택해요', description: '메뉴 아래쪽에 있어요. 설치와 바로가기가 나오면 설치를 선택해요.', image: 'android-menu.png', alt: 'Android Chrome 메뉴의 홈 화면에 추가 항목 실제 캡처', position: 'androidMenu', target: [630, 1974, 270, 65] },
+    { title: '설치를 누르면 끝!', description: '설치 또는 추가를 눌러요. 완료되면 홈 화면의 복덕방 아이콘으로 열어 주세요.', image: 'android-add.png', alt: 'Android Chrome 복덕방 앱 설치 확인창의 설치 버튼 실제 캡처', position: 'androidAdd', target: [880, 1455, 85, 60] },
   ],
 } as const
 
@@ -36,7 +36,12 @@ export function MobileInstallGuide({ initialPlatform, onClose, notification = fa
     </div>
     {message && <p role="status">{message}</p>}
     <div className={styles.stepHeading} aria-live="polite"><span>{step + 1} / 3</span><h3>{guide.title}</h3><p>{guide.description}</p></div>
-    <figure className={styles.capture}><div className={`${styles.viewport} ${styles[guide.position]}`}><img src={`/install/${guide.image}`} alt={guide.alt} /></div>
+    <figure className={styles.capture}><div className={`${styles.viewport} ${styles[guide.position]}`}><div className={styles.shot}>
+        <img src={`/install/${guide.image}`} alt={guide.alt} />
+        <svg className={styles.touchMark} viewBox={platform === 'ios' ? '0 0 1206 2622' : '0 0 1080 2400'} aria-hidden="true" focusable="false">
+          <ellipse cx={guide.target[0]} cy={guide.target[1]} rx={guide.target[2]} ry={guide.target[3]} vectorEffect="non-scaling-stroke" />
+        </svg>
+      </div></div>
       <figcaption>복덕방 · {platform === 'ios' ? 'iOS 26 Safari' : 'Android Chrome'} 실제 캡처<br />기기·버전에 따라 메뉴 위치가 달라요.</figcaption>
     </figure>
     <p className={styles.tip}>{platform === 'ios'
