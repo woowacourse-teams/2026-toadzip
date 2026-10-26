@@ -7,7 +7,7 @@ interface InstallPrompt extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 const dismissalKey = 'toadzip.install-dismissed-until'
-const week = 7 * 24 * 60 * 60 * 1000
+const day = 24 * 60 * 60 * 1000
 function dismissedUntil() {
   try { return Number(localStorage.getItem(dismissalKey)) || 0 } catch { return 0 }
 }
@@ -64,7 +64,7 @@ export function MobileInstallProvider({ children }: { readonly children: ReactNo
     }
   }, [])
   const dismiss = () => {
-    const next = Date.now() + week
+    const next = Date.now() + day
     setUntil(next)
     try { localStorage.setItem(dismissalKey, String(next)) } catch { /* Keep the preference for this session. */ }
   }
