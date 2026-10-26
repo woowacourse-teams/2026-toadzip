@@ -48,7 +48,7 @@
 - 서버는 PDF 쪽 텍스트에서 공급표·임대조건표(값이 함께 있는 쪽)와 그 다음 쪽, 일정·문의처·대상 설명 쪽, 첫 쪽을 고르고 `[별지` 양식은 뺀다. 공급표나 임대조건표를 찾지 못하면 전체 쪽을 보내고 경고한다.
 - 고른 쪽만 남긴 PDF와 [추출 프롬프트](../../../backend/src/main/resources/announcement/pdf-extraction-prompt.txt)를 모델에 보내고, 지원하는 모델이면 [응답 스키마](../../../backend/src/main/resources/announcement/pdf-extraction-schema.json)를 강제한다. 스키마는 Gemini SDK가 읽는 OpenAPI 형식이라 null 허용을 `"type"` 배열이 아니라 `"nullable": true`로 쓴다. 모델이 쓴 첨부 PDF 기준 쪽 번호는 원본 쪽 번호로 바꾼다.
 - 값은 고치지 않고 날짜 형식, 면적만 있는 주택형명, 공용·공급면적 중복, 공고일보다 이른 입주예정월, 대상 표기, 공고 제목과 같은 단지명을 `warnings`로 알린다.
-- 모델은 `AI_CHAT_MODEL`로 고른다. 기본값 `none`은 기능을 끄고 503 `ANNOUNCEMENT_PDF_EXTRACTION_UNAVAILABLE`을 돌려준다. `google-genai`는 `GEMINI_API_KEY`(Gemini Developer API)와 `GEMINI_CHAT_MODEL`(기본 `gemini-3.6-flash`)을 쓰며 생각 수준은 `LOW`다.
+- 모델은 `AI_CHAT_MODEL`로 고른다. 기본값 `none`은 기능을 끄고 503 `ANNOUNCEMENT_PDF_EXTRACTION_UNAVAILABLE`을 돌려준다. `google-genai`는 `GEMINI_API_KEY`(Gemini Developer API)와 `GEMINI_CHAT_MODEL`(기본 `gemini-3.5-flash-lite`)을 쓰며 생각 수준은 `LOW`다.
 - 읽을 수 없는 PDF는 400 `ANNOUNCEMENT_PDF_INVALID`, 모델 호출 실패·빈 응답·JSON이 아닌 응답은 502 `ANNOUNCEMENT_PDF_EXTRACTION_FAILED`다. 일시 오류만 한 번 다시 시도한다. 추출 소요 시간·쪽 수·토큰 수는 `event=announcement.pdf_extraction.completed` 로그로 남는다.
 - 추출에 성공하면 응답 전체를 `announcement_pdf_extractions`에 공고 ID, PDF 내용의 SHA-256, 파일 이름과 함께 남긴다. PDF 원본은 남기지 않고, 공고 데이터에도 반영하지 않는다. 저장에 실패해도 추출 응답은 그대로 돌려주고 `event=announcement.pdf_extraction.save_failed` 경고 로그를 남긴다. 공고를 지우면 함께 지운다.
 - `GET /api/admin/announcements/{id}/pdf-extractions/latest`는 가장 최근에 저장한 결과를 모델 호출 없이 돌려준다. `data`는 `fileName`, `pdfSha256`(소문자 16진수), `createdAt`, `extraction`(추출 응답과 같은 형식)이며 저장한 결과가 없으면 `null`이다.
