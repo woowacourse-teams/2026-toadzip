@@ -1,0 +1,17 @@
+.container { overflow: hidden; border: 1px solid var(--ds-color-divider); border-radius: 12px; background: var(--ds-color-surface); }
+.table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; font-size: var(--ds-text-body); line-height: var(--ds-line-height-body); }
+.table th { padding: 16px 20px; font-size: var(--ds-text-caption); font-weight: 600; color: var(--ds-color-label); background: var(--ds-color-surface); border-bottom: 1px solid var(--ds-color-divider); }
+.table th:last-child { width: 260px; text-align: center; }
+.table td { padding: 22px 20px; vertical-align: middle; border-bottom: 1px solid var(--ds-color-divider); }
+.table tr:last-child td { border-bottom: 0; }
+.target { overflow-wrap: anywhere; }
+.target h3, .target h4 { margin: 8px 0; font-size: var(--ds-text-section); line-height: 1.6; }
+.target a { color: var(--ds-color-text); text-decoration: none; }
+.target a:hover { color: var(--ds-color-action); text-decoration: underline; text-underline-offset: 3px; }
+.target p { margin: 6px 0 0; color: var(--ds-color-label); font-size: var(--ds-text-caption); }
+.actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; }
+.actions button { min-height: var(--ds-control-height-md); }
+@media(max-width: 1023px) { .table th:last-child { width: 124px; } }
+@media(max-width: 767px) { .table th { padding: 12px; } .table td { padding: 18px 12px; } .table th:last-child { width: 124px; } .actions { flex-direction: column; gap: 8px; } .actions button { min-width: 100px; padding-inline: 8px; gap: 4px; white-space: nowrap; font-size: var(--ds-text-caption); } }
+
+.target > strong { display: block; font-size: var(--ds-text-section); line-height: 1.6; }

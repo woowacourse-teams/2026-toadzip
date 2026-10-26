@@ -12,7 +12,8 @@
   cursor: pointer;
 }
 .bell { flex: 0 0 40px; width: 40px; padding: 8px; border: 0; background: transparent; }
-.button svg, .bell svg { width: 20px; height: 20px; }
+.button svg, .bell svg { width: 20px; height: 20px; color: #a66b00; }
+.button svg[data-state="requested"] path:first-child, .bell svg[data-state="requested"] path:first-child { fill: #f5c542; }
 .button[data-requested='true'] {
   border-color: var(--ds-color-brand);
   background: var(--ds-color-action-soft);

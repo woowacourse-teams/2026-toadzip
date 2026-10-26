@@ -7,7 +7,7 @@ import {
   within,
 } from '@testing-library/react'
 import { useRef, useState } from 'react'
-import { MemoryRouter, useLocation, useNavigate } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { trackEvent } from '../analytics/googleAnalytics.ts'
 import { consentStore } from '../privacy/consentStore'
@@ -1044,7 +1044,7 @@ describe('PublicHousingExplorer', () => {
     expect(screen.getByRole('article', { name: '서울가람 행복주택' })).toBeVisible()
     await waitFor(() => expect(repository.findMap).toHaveBeenCalledTimes(2))
     await act(async () => pendingMap.reject(new Error('지도 조회 실패')))
-    expect(await screen.findByText('지도 조회 실패')).toBeVisible()
+    expect(await screen.findByText('잠시 후 다시 시도해 주세요.')).toBeVisible()
     expect(screen.getByRole('article', { name: '서울가람 행복주택' })).toBeVisible()
   })
 
@@ -1063,7 +1063,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: /^단지 더 보기/ }))
     const signal = repository.findComplexPage.mock.calls[1][3]
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
-    await screen.findByText('이동 지도 실패')
+    await screen.findByText('잠시 후 다시 시도해 주세요.')
     expect(signal.aborted).toBe(false)
     expect(scroll.scrollTop).toBe(140)
     await act(async () => more.resolve(complexPageFor(18, '다음 페이지 단지')))
@@ -1210,7 +1210,8 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     const retry = await screen.findByRole('button', { name: '지도 다시 시도' })
 
-    expect(screen.getByRole('alert')).toHaveTextContent('지도 집계 실패')
+    expect(screen.getByRole('alert')).toHaveTextContent('잠시 후 다시 시도해 주세요.')
+    expect(screen.queryByText('지도 집계 실패')).not.toBeInTheDocument()
     expect(repository.findComplexPage).not.toHaveBeenCalled()
     fireEvent.click(retry)
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(2))
@@ -2133,7 +2134,7 @@ describe('PublicHousingExplorer', () => {
     await waitFor(() => expect(repository.findMap).toHaveBeenCalled())
     await screen.findByRole('heading', { name: '서울가람 행복주택' })
     fireEvent.click(screen.getByRole('button', { name: /^단지 더 보기/ }))
-    await screen.findByText('다음 페이지 실패')
+    await screen.findByText('잠시 후 다시 시도해 주세요.')
     fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
 
     expect(await screen.findByRole('heading', {
@@ -2833,6 +2834,26 @@ describe('PublicHousingExplorer', () => {
     expect(repository.findMap).toHaveBeenCalledOnce()
     expect(repository.findComplexPage).toHaveBeenCalledOnce()
     expectCurrentSearch({ boundaryRegionCode: '11',})
+  })
+
+  it.each([
+    ['complexId=17', '단지 상세 닫기', 'click'],
+    ['announcementId=101', '공고 상세 닫기', 'click'],
+    ['complexId=17', '단지 상세 닫기', 'Escape'],
+    ['announcementId=101', '공고 상세 닫기', 'Escape'],
+  ])('마이페이지에서 연 %s 상세은 기존 %s의 %s 동작으로 출발 탭에 복귀한다', async (query, label, action) => {
+    const repository = createRepository()
+    render(<MemoryRouter initialEntries={[{ pathname: '/explore', search: `?${query}`, state: { mypageReturn: '/mypage/bookmarks?type=ANNOUNCEMENT' } }]}><Routes>
+      <Route path="/explore" element={<PublicHousingExplorer repository={repository} mapRepository={repository} regionRepository={createRegionRepository()} />} />
+      <Route path="/mypage/bookmarks" element={<><h1>돌아온 북마크</h1><LocationSearch /></>} />
+    </Routes></MemoryRouter>)
+    const close = await screen.findByRole('button', { name: label })
+    expect(screen.queryByRole('link', { name: '마이페이지로 돌아가기' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: '마이페이지 복귀' })).not.toBeInTheDocument()
+    if (action === 'Escape') fireEvent.keyDown(close, { key: 'Escape' })
+    else fireEvent.click(close)
+    expect(await screen.findByRole('heading', { name: '돌아온 북마크' })).toBeVisible()
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?type=ANNOUNCEMENT')
   })
 
   it('상세 닫기는 현재 URL만 정리하고 지도 위치와 줌 및 무관 상태를 유지한다', async () => {

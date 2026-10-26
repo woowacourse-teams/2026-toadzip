@@ -1,0 +1,3 @@
+.back { display: inline-flex; align-items: center; justify-content: center; min-height: var(--ds-control-height-md); padding: 10px 16px; box-sizing: border-box; border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-text); font: inherit; font-weight: 600; text-decoration: none; text-align: center; }
+.back:hover { background: var(--ds-color-action-soft); }
+.back:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }

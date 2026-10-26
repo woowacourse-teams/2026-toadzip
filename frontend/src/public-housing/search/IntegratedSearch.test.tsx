@@ -225,6 +225,7 @@ describe('IntegratedSearch', () => {
 
     expect(body).toContainElement(screen.getByText('지역 검색 중이에요.'))
     expect(body).toContainElement(await screen.findByRole('alert'))
+    expect(screen.queryByText(/Harness API|\/api\/v1\/regions/)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '지역 다시 시도' }))
     expect(body).toContainElement(await screen.findByText('검색 결과가 없어요.'))
     expect(search).toHaveBeenCalledTimes(5)
@@ -466,9 +467,9 @@ describe('IntegratedSearch', () => {
     expect(screen.queryByText('서울 단지')).not.toBeInTheDocument()
   })
 
-  it('일부 유형 실패 시 성공 결과와 해당 유형 재시도를 함께 표시한다', async () => {
+  it('일부 유형 실패 시 내부 원문 없이 성공 결과와 해당 유형 재시도를 함께 표시한다', async () => {
     const successful = response([], [item('COMPLEX', '1', '서울 단지')], [], [{
-      message: '지역 검색에 실패했습니다. 다시 시도해 주세요.',
+      message: 'Harness API fixture missing: /api/v1/regions',
       type: 'REGION',
     }])
     const repository = repositoryWith(successful)
@@ -477,6 +478,7 @@ describe('IntegratedSearch', () => {
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })
 
     expect(await screen.findByText('서울 단지')).toBeVisible()
+    expect(screen.queryByText(/Harness API|\/api\/v1\/regions/)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '지역 다시 시도' }))
     await waitFor(() => expect(repository.search).toHaveBeenCalledTimes(5))
     expect(repository.search).toHaveBeenLastCalledWith('서울', false, 0, expect.any(AbortSignal), 'REGION')

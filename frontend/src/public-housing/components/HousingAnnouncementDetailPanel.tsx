@@ -1,3 +1,4 @@
+import { BookmarkButton } from '../../user/bookmarks/BookmarkButton'
 import { captureProductEvent } from '../../analytics/productAnalytics'
 import { detailVisitId, useDetailScrollAnalytics } from './detailAnalytics'
 import { toHttpUrl } from '../presentation/httpUrl.ts'
@@ -221,7 +222,8 @@ export function HousingAnnouncementDetailPanel({
           <div className={styles.summaryBlock}>
             <NoticeIntro detail={detail} groups={groups} />
             <div className={styles.notificationAction}>
-              <NotificationInterestButton
+              <BookmarkButton type="ANNOUNCEMENT" targetId={detail.announcementId} name={title} />
+          <NotificationInterestButton
                 target={{ type: 'ANNOUNCEMENT', id: detail.announcementId, name: title }}
                 source="ANNOUNCEMENT_DETAIL"
               />

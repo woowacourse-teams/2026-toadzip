@@ -6,11 +6,11 @@ import { NotificationInboxContext, type InboxContextValue } from './Notification
 import type { NotificationItem, NotificationPageResult, NotificationRepository } from './notificationRepository'
 
 const item: NotificationItem = { id: '10', type: 'ANNOUNCEMENT_CREATED', announcementId: '23', title: '서울 새 공고', createdAt: '2026-10-13T00:00:00Z', readAt: null, targetAvailable: true }
-function setup(overrides: Partial<NotificationRepository> = {}) {
+function setup(overrides: Partial<NotificationRepository> = {}, mypageReturn?: string) {
   const repository = { count: vi.fn(async () => 1), list: vi.fn(async () => ({ items: [item], nextCursor: null, readThrough: '10', totalCount: 1 })), read: vi.fn(async () => {}), readAll: vi.fn(async () => {}), delete: vi.fn(async () => {}), ...overrides }
   const context: InboxContextValue = { userId: '1', unreadCount: 1, error: null, repository, revision: 0, invalidate: vi.fn(), sessionExpired: vi.fn() }
-  function Location() { const location = useLocation(); return <output aria-label="현재 주소">{location.pathname}{location.search}</output> }
-  const view = render(<MemoryRouter><NotificationInboxContext.Provider value={context}><NotificationInbox /><Location /></NotificationInboxContext.Provider></MemoryRouter>)
+  function Location() { const location = useLocation(); return <output aria-label="현재 주소" data-mypage-return={location.state?.mypageReturn}>{location.pathname}{location.search}</output> }
+  const view = render(<MemoryRouter initialEntries={[{ pathname: "/notifications", state: { mypageReturn } }]}><NotificationInboxContext.Provider value={context}><NotificationInbox /><Location /></NotificationInboxContext.Provider></MemoryRouter>)
   return { ...view, repository, context }
 }
 it('열면 목록만 조회하고 항목을 눌러야 읽음 처리 후 상세로 이동한다', async () => {
@@ -99,4 +99,12 @@ it('일정 알림은 일정명과 기간·대상·조건·원문을 분리해 �
   expect(source).toHaveAttribute('href', 'https://example.com/notice')
   expect(source.closest('button')).toBeNull()
   expect(screen.queryByText('내일 서류 제출 일정이 시작돼요.')).not.toBeInTheDocument()
+})
+
+it.each([false, true])('마이페이지 보관함에서 공고 이동 시 복귀 탭을 유지한다 (읽음 실패: %s)', async (failure) => {
+  setup(failure ? { read: vi.fn().mockRejectedValue(new Error('offline')) } : {}, '/mypage/notifications')
+  fireEvent.click(await screen.findByRole('button', { name: /서울 새 공고/ }))
+  if (failure) fireEvent.click(await screen.findByRole('link', { name: '공고만 보기' }))
+  await waitFor(() => expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/explore?announcementId=23'))
+  expect(screen.getByLabelText('현재 주소')).toHaveAttribute('data-mypage-return', '/mypage/notifications')
 })

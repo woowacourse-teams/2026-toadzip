@@ -1,3 +1,4 @@
+import { BookmarkButton } from '../../user/bookmarks/BookmarkButton'
 import { captureProductEvent } from '../../analytics/productAnalytics'
 import { detailVisitId, useDetailScrollAnalytics } from './detailAnalytics'
 import { toHttpUrl } from '../presentation/httpUrl.ts'
@@ -229,7 +230,8 @@ export function HousingComplexDetailPanel({
           {mobile && images}
           {/* 단지 단위 행동(알림·거리뷰)은 같은 모양·높이의 보조 버튼 한 쌍으로 둔다. */}
           <div className={styles.identityActions}>
-            <NotificationInterestButton
+            <BookmarkButton type="COMPLEX" targetId={detail.complexId} name={detail.name} />
+          <NotificationInterestButton
               target={{ type: 'COMPLEX', id: detail.complexId, name: detail.name }}
               source="COMPLEX_DETAIL"
             />

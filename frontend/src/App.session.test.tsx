@@ -25,11 +25,13 @@ const memberStatus = { userId: '7', settingsRevision: 0, targets: [{ targetType:
 const guestStatus = { guest: true, targets: [] } satisfies NotificationSubscriptionStatus
 
 function renderHome(logoutFails = false) {
+  let member = true
   const fetcher = vi.fn(async (input: RequestInfo | URL) => {
     const path = new URL(String(input), 'http://localhost').pathname
-    if (path === '/api/auth/me') return Response.json({ id: 7, email: 'member@example.com' })
+    if (path === '/api/auth/me') return member ? Response.json({ id: 7, email: 'member@example.com' }) : new Response(null, { status: 401 })
+    if (path === '/api/v1/bookmarks/me') return Response.json({ items: [] })
     if (path === '/api/auth/csrf') return Response.json({ token: 'csrf', headerName: 'X-CSRF' })
-    if (path === '/api/auth/logout') return new Response(null, { status: logoutFails ? 500 : 204 })
+    if (path === '/api/auth/logout') { if (!logoutFails) member = false; return new Response(null, { status: logoutFails ? 500 : 204 }) }
     throw new Error(`Unexpected request: ${path}`)
   })
   vi.stubGlobal('fetch', fetcher)
@@ -46,7 +48,7 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals() })
 
 describe('홈의 사용자 세션과 알림 상태', () => {
-  it('로그아웃하면 탐색 화면은 유지하면서 이전 회원 조회를 버리고 비로그인 신청 상태를 다시 읽는다', async () => {
+  it('마이페이지에서 로그아웃하면 지도로 돌아가면서 이전 회원 조회를 버리고 비로그인 신청 상태를 다시 읽는다', async () => {
     const previousRead = deferred<NotificationSubscriptionStatus>()
     const guestRead = deferred<NotificationSubscriptionStatus>()
     interest.loadStatus.mockReset().mockResolvedValueOnce(memberStatus)
@@ -55,7 +57,8 @@ describe('홈의 사용자 세션과 알림 상태', () => {
     await screen.findByRole('button', { name: '서울 단지 알림 취소' })
     fireEvent.change(screen.getByRole('textbox', { name: '현재 검색어' }), { target: { value: '마포' } })
     fireEvent.focus(window)
-    fireEvent.click(await screen.findByText('마이페이지'))
+    fireEvent.click(await screen.findByRole('link', { name: '마이페이지' }))
+    fireEvent.click(await screen.findByRole('link', { name: '계정' }))
     fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
     await screen.findByText('로그인 확인 중…')
     expect(interest.loadStatus).toHaveBeenCalledTimes(3)
@@ -64,7 +67,7 @@ describe('홈의 사용자 세션과 알림 상태', () => {
     await act(async () => previousRead.resolve(memberStatus))
     expect(screen.getByRole('button', { name: '로그인' })).toBeVisible()
     expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled()
-    expect(screen.getByRole('textbox', { name: '현재 검색어' })).toHaveValue('마포')
+    expect(screen.getByRole('textbox', { name: '현재 검색어' })).toHaveValue('서울')
     fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
     expect(await screen.findByRole('dialog', { name: '로그인이 필요해요' })).toBeVisible()
   })
@@ -72,9 +75,11 @@ describe('홈의 사용자 세션과 알림 상태', () => {
   it('로그아웃 실패는 기존 회원 신청을 지우거나 다시 읽지 않는다', async () => {
     renderHome(true)
     await screen.findByRole('button', { name: '서울 단지 알림 취소' })
-    fireEvent.click(await screen.findByText('마이페이지'))
+    fireEvent.click(await screen.findByRole('link', { name: '마이페이지' }))
+    fireEvent.click(await screen.findByRole('link', { name: '계정' }))
     fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
-    await screen.findByText('로그아웃 실패')
+    expect(await screen.findByRole('alert')).toHaveTextContent('로그아웃하지 못했어요.')
+    fireEvent.click(screen.getByRole('link', { name: /지도로 돌아가기/ }))
     expect(screen.getByRole('button', { name: '서울 단지 알림 취소' })).toBeEnabled()
     expect(interest.loadStatus).toHaveBeenCalledOnce()
     expect(screen.queryByRole('button', { name: '로그인' })).not.toBeInTheDocument()
@@ -88,7 +93,8 @@ describe('홈의 사용자 세션과 알림 상태', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
     fireEvent.click(screen.getByRole('button', { name: '신청하기' }))
-    fireEvent.click(await screen.findByText('마이페이지'))
+    fireEvent.click(await screen.findByRole('link', { name: '마이페이지' }))
+    fireEvent.click(await screen.findByRole('link', { name: '계정' }))
     fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
     await screen.findByRole('button', { name: '로그인' })
     await waitFor(() => expect(interest.loadStatus).toHaveBeenCalledTimes(2))

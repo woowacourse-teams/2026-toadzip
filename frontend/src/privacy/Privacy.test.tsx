@@ -110,8 +110,21 @@ it('공개 화면 이동은 검증된 동의를 폐기하거나 동일 페이지
   render(app('/privacy/settings'))
   await waitFor(() => expect(consentStore.allowed()).toBe(true))
   const generation = consentStore.generation()
-  fireEvent.click(screen.getByRole('link', { name: '← 지도로 돌아가기' }))
+  fireEvent.click(screen.getByRole('link', { name: '지도로 돌아가기' }))
   expect(await screen.findByLabelText('정보')).toBeVisible()
   expect(consentStore.generation()).toBe(generation)
   expect(consentStore.allowed()).toBe(true)
+})
+
+it('마이페이지에서 분석·정책·고정 버전을 열어도 복귀 탭이 유지된다', async () => {
+  render(<MemoryRouter initialEntries={[{ pathname: '/privacy/settings', state: { mypageReturn: '/mypage/account' } }]}><Routes>
+    <Route path="/privacy/settings" element={<PrivacySettingsPage />} />
+    <Route path="/privacy" element={<PrivacyPolicyPage />} />
+    <Route path="/privacy/:key/:version" element={<PrivacyPolicyPage />} />
+  </Routes></MemoryRouter>)
+  fireEvent.click(screen.getByRole('link', { name: '개인정보처리방침' }))
+  fireEvent.click(await screen.findByRole('link', { name: '이 버전의 고정 주소' }))
+  expect(screen.getByRole('link', { name: '마이페이지로 돌아가기' })).toHaveAttribute('href', '/mypage/account')
+  fireEvent.click(screen.getByRole('link', { name: '분석 설정 변경' }))
+  expect(screen.getByRole('link', { name: '마이페이지로 돌아가기' })).toHaveAttribute('href', '/mypage/account')
 })

@@ -6,7 +6,8 @@ import { useNotificationInterests } from '../../public-housing/interest/Notifica
 import { NotificationSettings } from '../../public-housing/interest/NotificationSettings'
 import styles from './MemberMenuModal.module.css'
 
-export function MemberMenuModal({ view, onClose, returnFocusRef, children }: {
+export function MemberMenuModal({ view, onClose, returnFocusRef, children, inboxOnly = false }: {
+  readonly inboxOnly?: boolean
   readonly view: 'inbox' | 'settings' | 'account'
   readonly onClose: () => void
   readonly returnFocusRef: RefObject<HTMLElement | null>
@@ -55,6 +56,7 @@ export function MemberMenuModal({ view, onClose, returnFocusRef, children }: {
       </button>
     </header>
     {view !== 'account' ? <>
+      {inboxOnly ? <div className={styles.panel}><NotificationInbox onNavigate={onClose} /></div> : <>
       <div className={styles.tabs} role="tablist" aria-label="알림 구분"
         onKeyDown={(event) => {
           if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
@@ -74,6 +76,7 @@ export function MemberMenuModal({ view, onClose, returnFocusRef, children }: {
       <div className={styles.panel} id={`${tabId}-panel-settings`} role="tabpanel" aria-labelledby={`${tabId}-settings`} hidden={activeTab !== 'settings'} tabIndex={0}>
         {activeTab === 'settings' && <NotificationSettings />}
       </div>
+      </>}
       <div className={styles.footer}>
         <div ref={feedbackRef} />
         <button className={styles.confirm} type="button" onClick={onClose}>확인</button>

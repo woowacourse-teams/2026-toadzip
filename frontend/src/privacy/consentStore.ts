@@ -310,7 +310,7 @@ export class ConsentStore {
       const result = await this.api.choose(current.subject.kind, choice)
       const verified = current.subject.kind === 'GUEST' ? await this.api.context() : result
       if (epoch !== this.epoch || !this.authenticationMatches(authVersion)) return
-      if (scopeOf(verified) !== scope || verified.subject.contextId !== result.subject.contextId) throw new Error('브라우저 쿠키를 확인하지 못했습니다.')
+      if (scopeOf(verified) !== scope || verified.subject.contextId !== result.subject.contextId) throw new CookieVerificationError()
       await this.removeStop(scope, action === 'GRANT' ? oldMarker : commandId)
       if (epoch !== this.epoch || !this.authenticationMatches(authVersion)) return
       this.retryChoice = null
@@ -329,7 +329,7 @@ export class ConsentStore {
       if (failed && failed.choice.action !== 'GRANT') void this.updateStop(failed.scope, failed.choice.commandId)
       if (error.code === 'PRIVACY_NOTICE_CHANGED') window.dispatchEvent(new Event('privacy-notices-refresh'))
       this.update({ error: '설정이나 안내가 변경됐어요. 현재 내용을 확인하고 다시 선택해 주세요.' })
-    } else this.update({ error: error instanceof Error ? error.message : '선택을 저장하지 못했어요. 다시 시도해 주세요.' })
+    } else this.update({ error: error instanceof CookieVerificationError ? '브라우저 쿠키를 확인하지 못했습니다.' : '선택을 저장하지 못했어요. 다시 시도해 주세요.' })
   }
   retry = async () => {
     if (this.state.saving) return
@@ -346,7 +346,7 @@ export class ConsentStore {
       const result = await this.api.choose(retry.kind, retry.choice)
       const verified = retry.kind === 'GUEST' ? await this.api.context() : result
       if (epoch !== this.epoch || !this.authenticationMatches(authVersion)) return
-      if (scopeOf(verified) !== retry.scope || verified.subject.contextId !== result.subject.contextId) throw new Error('브라우저 쿠키를 확인하지 못했습니다.')
+      if (scopeOf(verified) !== retry.scope || verified.subject.contextId !== result.subject.contextId) throw new CookieVerificationError()
       await this.removeStop(retry.scope, retry.choice.action === 'GRANT' ? retry.markerId : retry.choice.commandId)
       if (epoch !== this.epoch || !this.authenticationMatches(authVersion)) return
       this.retryChoice = null
@@ -412,3 +412,5 @@ export class ConsentStore {
 }
 export const consentStore = new ConsentStore()
 export const analyticsCollectionAllowed = () => consentStore.allowed()
+
+class CookieVerificationError extends Error {}

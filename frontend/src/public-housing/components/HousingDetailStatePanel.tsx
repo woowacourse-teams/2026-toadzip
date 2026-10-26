@@ -1,3 +1,4 @@
+import { Button } from '../../design-system/components/Button'
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react'
 import { DetailCloseButton } from './DetailPrimitives.tsx'
 
@@ -65,7 +66,7 @@ export function HousingDetailStatePanel({
       <div className="housing-detail-state__content" role={status === 'loading' ? 'status' : 'alert'}>
         <strong>{heading}</strong>
         <span>{description}</span>
-        {status === 'error' && <button type="button" onClick={onRetry}>다시 시도</button>}
+        {status === 'error' && <Button onClick={onRetry}>다시 시도</Button>}
       </div>
     </aside>
   )
