@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, expect, it, vi } from 'vitest'
 import { BookmarkProvider } from '../bookmarks/BookmarkProvider'
@@ -93,4 +93,20 @@ it('공고 분류 주소로 복귀하면 공고 표를 유지한다', async () =
   setup('/mypage/bookmarks?type=ANNOUNCEMENT')
   expect(await screen.findByRole('table', { name: '공고 북마크 내역' })).toBeVisible()
   expect(screen.getByRole('button', { name: '공고 1' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+it('북마크의 주소와 접수 일정은 이름·관리 사이의 별도 열에서 표시한다', async () => {
+  const scheduled = { ...announcement, available: true, applicationStartDate: '2026-10-20', applicationEndDate: '2026-10-30' }
+  setup('/mypage/bookmarks', { list: vi.fn().mockResolvedValue([complex, scheduled]), save: vi.fn(), remove: vi.fn() })
+  const complexes = await screen.findByRole('table', { name: '단지 북마크 내역' })
+  expect(within(complexes).getAllByRole('columnheader').map(cell => cell.textContent)).toEqual(['관심 대상', '주소', '관리'])
+  const complexRow = within(complexes).getByRole('row', { name: /서울 행복주택/ })
+  const cells = within(complexRow).getAllByRole('cell')
+  expect(cells).toHaveLength(3)
+  expect(cells[0]).not.toHaveTextContent('서울시 중구')
+  expect(cells[1]).toHaveTextContent('서울시 중구')
+  fireEvent.click(screen.getByRole('button', { name: '공고 1' }))
+  const announcements = screen.getByRole('table', { name: '공고 북마크 내역' })
+  expect(within(announcements).getAllByRole('columnheader').map(cell => cell.textContent)).toEqual(['관심 대상', '접수 일정', '관리'])
+  expect(within(announcements).getByRole('cell', { name: '2026-10-20 ~ 2026-10-30' })).toBeVisible()
 })

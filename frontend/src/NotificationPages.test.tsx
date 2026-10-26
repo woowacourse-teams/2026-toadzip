@@ -34,6 +34,7 @@ it('알림 관리 주소에서 종류별 설정을 보고 해제한다', async (
   render(<MemoryRouter initialEntries={['/mypage/notifications']}><App /></MemoryRouter>)
   expect(await screen.findByRole('heading', { name: '알림 관리' })).toBeVisible()
   expect(await screen.findByText('서울 행복주택')).toBeVisible()
+  expect(screen.queryByText(/알림을 받고 있어요/)).not.toBeInTheDocument()
   expect(screen.queryByText('가을 모집 공고')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('tab', { name: '공고 1' }))
   expect(screen.getByText('가을 모집 공고')).toBeVisible()

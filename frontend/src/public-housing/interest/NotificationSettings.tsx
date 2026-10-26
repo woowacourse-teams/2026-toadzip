@@ -66,7 +66,7 @@ export function NotificationSettings() {
           {targets.map((target) => <ManagementRow key={target.id} actions={
             <button className={styles.actionButton} type="button" disabled={context.blocked} aria-label={`${target.name} 알림 해제`}
               onClick={(event) => { heading.current?.focus(); context.request({ target, source: 'SETTING' }, event.currentTarget) }}>알림 해제</button>
-          }><strong>{target.name}</strong><p>{selected.title} 알림을 받고 있어요.</p></ManagementRow>)}
+          }><strong>{target.name}</strong></ManagementRow>)}
         </ManagementTable>}
     </section>
     <NotificationDeviceList />

@@ -101,11 +101,10 @@ export function MyPage() {
           {bookmarks?.listStatus === 'error' && <RetryNotice title="북마크를 불러오지 못했어요" onRetry={bookmarks.reload} />}
           {bookmarks?.listStatus === 'ready' && (items.length === 0 ? <section className={styles.notice}><NoticeIcon /><h3>저장한 {filter === 'COMPLEX' ? '단지가' : '공고가'} 없어요</h3><p>지도에서 마음에 드는 주택을 찾아 북마크해 보세요.</p><Link className={styles.mapLink} to={lastExplorerPath()}>주택 찾아보기 <span aria-hidden="true">→</span></Link></section> : <>
             <p className={styles.resultCount}>{filter === 'COMPLEX' ? '단지' : '공고'} {items.length}개 <span>최근 저장순</span></p>
-            <ManagementTable label={`${filter === 'COMPLEX' ? '단지' : '공고'} 북마크 내역`}>{items.map(item => <ManagementRow key={`${item.type}:${item.targetId}`} actions={<><BookmarkButton type={item.type} targetId={item.targetId} name={item.name} />{item.available && <NotificationInterestButton target={{ type: item.type, id: item.targetId, name: item.name }} source="SETTING" />}</>}>
-              <div className={styles.cardMeta}><span>{item.type === 'COMPLEX' ? '단지' : '공고'}</span>{item.status && <span data-status={item.status}>{applicationStatusLabel(item.status)}</span>}</div>
+            <ManagementTable label={`${filter === 'COMPLEX' ? '단지' : '공고'} 북마크 내역`} detailLabel={filter === 'COMPLEX' ? '주소' : '접수 일정'}>{items.map(item => <ManagementRow key={`${item.type}:${item.targetId}`} details={item.type === 'COMPLEX' ? item.address ?? '확인된 주소가 없어요' : item.applicationStartDate && item.applicationEndDate ? <><time dateTime={item.applicationStartDate}>{item.applicationStartDate}</time> ~ <time dateTime={item.applicationEndDate}>{item.applicationEndDate}</time></> : '확인된 일정이 없어요'} actions={<><BookmarkButton type={item.type} targetId={item.targetId} name={item.name} />{item.available && <NotificationInterestButton target={{ type: item.type, id: item.targetId, name: item.name }} source="SETTING" />}</>}>
+              {item.status && <div className={styles.cardMeta}><span data-status={item.status}>{applicationStatusLabel(item.status)}</span></div>}
               <h3>{item.available ? <Link state={returnState} to={`/explore?${item.type === 'COMPLEX' ? 'complexId' : 'announcementId'}=${encodeURIComponent(item.targetId)}`}>{item.name}</Link> : item.name}</h3>
               {!item.available && <p>현재 상세 정보를 조회할 수 없어요.</p>}
-              <p>{item.type === 'COMPLEX' ? item.address ?? '확인된 주소가 없어요' : item.applicationStartDate && item.applicationEndDate ? `${item.applicationStartDate} ~ ${item.applicationEndDate}` : '확인된 일정이 없어요'}</p>
             </ManagementRow>)}</ManagementTable>
           </>)}
         </>}

@@ -1,17 +1,35 @@
 .container { overflow: hidden; border: 1px solid var(--ds-color-divider); border-radius: 12px; background: var(--ds-color-surface); }
 .table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; font-size: var(--ds-text-body); line-height: var(--ds-line-height-body); }
-.table th { padding: 16px 20px; font-size: var(--ds-text-caption); font-weight: 600; color: var(--ds-color-label); background: var(--ds-color-surface); border-bottom: 1px solid var(--ds-color-divider); }
-.table th:last-child { width: 260px; text-align: center; }
-.table td { padding: 22px 20px; vertical-align: middle; border-bottom: 1px solid var(--ds-color-divider); }
+.table th, .table td { box-sizing: border-box; }
+.table th { padding: 14px 20px; font-size: var(--ds-text-caption); font-weight: 600; color: var(--ds-color-label); background: var(--ds-color-surface); border-bottom: 1px solid var(--ds-color-divider); }
+.table th:last-child { width: 284px; text-align: center; }
+.table td { padding: 16px 20px; vertical-align: middle; border-bottom: 1px solid var(--ds-color-divider); }
 .table tr:last-child td { border-bottom: 0; }
 .target { overflow-wrap: anywhere; }
-.target h3, .target h4 { margin: 8px 0; font-size: var(--ds-text-section); line-height: 1.6; }
+.target h3, .target h4 { margin: 0; font-size: var(--ds-text-body); font-weight: 700; line-height: 1.55; }
+.target h3:not(:first-child), .target h4:not(:first-child) { margin-top: 6px; }
 .target a { color: var(--ds-color-text); text-decoration: none; }
 .target a:hover { color: var(--ds-color-action); text-decoration: underline; text-underline-offset: 3px; }
 .target p { margin: 6px 0 0; color: var(--ds-color-label); font-size: var(--ds-text-caption); }
+.detailsHeading { width: 30%; }
+.details { color: var(--ds-color-label); font-size: var(--ds-text-caption); line-height: 1.65; overflow-wrap: anywhere; }
+.details time { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; }
 .actions button { min-height: var(--ds-control-height-md); }
-@media(max-width: 1023px) { .table th:last-child { width: 124px; } }
-@media(max-width: 767px) { .table th { padding: 12px; } .table td { padding: 18px 12px; } .table th:last-child { width: 124px; } .actions { flex-direction: column; gap: 8px; } .actions button { min-width: 100px; padding-inline: 8px; gap: 4px; white-space: nowrap; font-size: var(--ds-text-caption); } }
-
-.target > strong { display: block; font-size: var(--ds-text-section); line-height: 1.6; }
+.target > strong { display: block; font-size: var(--ds-text-body); line-height: 1.55; }
+@media(max-width: 1023px) { .table th:last-child { width: 124px; } .table th, .table td { padding-inline: 16px; } .actions { flex-direction: column; } }
+@media(max-width: 767px) {
+  .table th { padding: 12px; }
+  .table td { padding: 16px 12px; }
+  .actions { gap: 8px; }
+  .actions button { min-width: 100px; padding-inline: 8px; gap: 4px; white-space: nowrap; font-size: var(--ds-text-caption); }
+  /* Keep the address/date close to the name while the actions stay in one column. */
+  .table[data-has-details=true], .table[data-has-details=true] :is(thead, tbody) { display: block; }
+  .table[data-has-details=true] tr { display: grid; grid-template-columns: minmax(0, 1fr) 124px; }
+  .table[data-has-details=true] thead tr, .table[data-has-details=true] tbody tr:not(:last-child) { border-bottom: 1px solid var(--ds-color-divider); }
+  .table[data-has-details=true] :is(th, td) { width: auto; min-width: 0; border: 0; }
+  .table[data-has-details=true] .detailsHeading { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .table[data-has-details=true] .target { grid-column: 1; padding-bottom: 0; }
+  .table[data-has-details=true] .details { grid-column: 1; padding-top: 6px; }
+  .table[data-has-details=true] .actionsCell { display: flex; align-items: center; justify-content: center; grid-column: 2; grid-row: 1 / 3; }
+}
