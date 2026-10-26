@@ -14,6 +14,8 @@ const lookup = vi.hoisted(() => ({ lookupAddresses: vi.fn(async () => []) }))
 vi.mock('./addressLookupApi', () => lookup)
 const pdfTypes = vi.hoisted(() => ({ createPdfHousingTypes: vi.fn(async () => {}) }))
 vi.mock('./pdfHousingTypes', () => pdfTypes)
+const extractor = vi.hoisted(() => ({ extractAnnouncementPdf: vi.fn(), loadLatestExtraction: vi.fn() }))
+vi.mock('./extractionApi', async original => ({ ...await original<typeof import('./extractionApi')>(), ...extractor }))
 const matchingTypes = vi.hoisted(() => ({ getMatchingHousingTypes: vi.fn() }))
 vi.mock('../ingest/supplyMatchingApi', () => matchingTypes)
 vi.mock('../../public-housing/api/announcementAttachments', () => ({ loadAnnouncementAttachment: async () => new Blob(), attachmentErrorMessage: () => 'PDF 열기 실패' }))
@@ -30,16 +32,39 @@ beforeEach(() => {
   api.loadJsonWorkspace.mockResolvedValue(workspace)
   api.applyJsonUpdate.mockResolvedValue(workspace)
   api.previewJsonUpdate.mockResolvedValue({ confirmationToken: 'confirmed' })
+  extracts(JSON.stringify(fixtures.hansville.extraction))
+  extractor.loadLatestExtraction.mockResolvedValue(null)
 })
+/** 빈 Blob(첨부 PDF 목)의 SHA-256 */
+const EMPTY_PDF_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+function savedResult(pdfSha256: string) {
+  return { fileName: '지난 공고문.pdf', pdfSha256, createdAt: '2026-10-25T03:00:00Z',
+    extraction: { json: JSON.stringify(fixtures.hansville.extraction), pages: [1, 2], totalPages: 3, warnings: [], usage: { promptTokens: 100, outputTokens: 50, thinkingTokens: null } } }
+}
+/** 서버 추출 API가 돌려줄 JSON을 정한다. 실제 모델은 부르지 않는다. */
+function extracts(json: string) {
+  extractor.extractAnnouncementPdf.mockResolvedValue({ json, pages: [1, 2], totalPages: 3, warnings: [], usage: { promptTokens: 100, outputTokens: 50, thinkingTokens: null } })
+}
 afterEach(() => vi.unstubAllGlobals())
 function renderPage() {
   render(<MemoryRouter initialEntries={['/admin/announcements/29/pdf-correction?failureReturnTo=%2Fadmin%2Ffailures%3Fdomain%3Dannouncement&section=verification']}><Routes><Route path="/admin/announcements/:id/pdf-correction" element={<PdfCorrectionPage />} /></Routes></MemoryRouter>)
 }
+/** 테스트 화면은 좁은 화면처럼 한 패널만 보이므로 PDF 영역을 연다. */
+function showPdf() {
+  fireEvent.click(screen.getByRole('button', { name: 'PDF 보기' }))
+}
+async function startExtraction() {
+  fireEvent.click(await screen.findByRole('button', { name: 'PDF에서 값 추출' }))
+}
+async function review(start = true) {
+  if (start) await startExtraction()
+  await waitFor(() => expect(screen.getByRole('button', { name: '추출 결과 검토하기' })).toBeEnabled(), { timeout: 3000 })
+  fireEvent.click(screen.getByRole('button', { name: '추출 결과 검토하기' }))
+}
 async function open(text = JSON.stringify(fixtures.hansville.extraction)) {
+  extracts(text)
   renderPage()
-  fireEvent.change(await screen.findByRole('textbox', { name: 'ChatGPT 응답' }), { target: { value: text } })
-  await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
-  fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
+  await review()
   await screen.findByRole('heading', { name: '공급정보' })
 }
 function manual(scope: string, label: string) {
@@ -122,41 +147,113 @@ it('저장 전 검증 요청 실패는 저장 응답 유실과 구분하고 재�
   expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeEnabled()
   expect(api.applyJsonUpdate).not.toHaveBeenCalled()
 })
-it('등록된 PDF를 자동 선택하고 다운로드와 프롬프트를 보여준다', async () => {
+it('등록된 PDF를 자동으로 고르고 추출 버튼을 누를 때만 서버에서 추출한다', async () => {
   renderPage()
-  expect(await screen.findByLabelText('프롬프트 내용')).toHaveTextContent('첨부한 공식 공고문 PDF에서')
-  const download = await screen.findByRole('link', { name: 'PDF 다운로드' })
-  expect(download).toHaveAttribute('download', '공고문.pdf')
+  await screen.findByRole('button', { name: 'PDF에서 값 추출' })
+  expect(extractor.extractAnnouncementPdf).not.toHaveBeenCalled()
+  await startExtraction()
+  await waitFor(() => expect(extractor.extractAnnouncementPdf).toHaveBeenCalledOnce())
+  expect(extractor.extractAnnouncementPdf).toHaveBeenCalledWith('29', expect.any(Blob), '공고문.pdf', expect.any(AbortSignal))
+  showPdf()
   expect(screen.getByRole('combobox', { name: '공고문 PDF' })).toHaveAccessibleDescription('공고문.pdf')
-  expect(screen.queryByLabelText('내 PC에서 PDF 고르기')).not.toBeInTheDocument()
+  expect(screen.getByLabelText('내 PC에서 PDF 고르기')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '추출 보기' }))
+  expect(await screen.findByText(/공급행 2개 · 임대조건 2개 · 일정 3개/)).toBeVisible()
+  expect(screen.queryByRole('heading', { name: '공급정보' })).not.toBeInTheDocument()
 })
-it('연결된 PDF가 없으면 내 PC의 PDF를 골라야 준비와 검토를 진행한다', async () => {
+it('추출 뒤 PDF를 바꾸면 이전 결과를 버리고 다시 추출하게 한다', async () => {
+  renderPage()
+  await startExtraction()
+  expect(await screen.findByText(/공급행 2개 · 임대조건 2개 · 일정 3개/)).toBeVisible()
+  fireEvent.change(screen.getByLabelText('내 PC에서 PDF 고르기'), { target: { files: [new File(['%PDF'], '정정 공고문.pdf', { type: 'application/pdf' })] } })
+  expect(await screen.findByRole('button', { name: 'PDF에서 값 추출' })).toBeVisible()
+  expect(screen.queryByText(/공급행 2개/)).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '추출 결과 검토하기' })).toBeDisabled()
+  expect(extractor.extractAnnouncementPdf).toHaveBeenCalledOnce()
+})
+it('첨부가 여러 개면 종류가 공고문인 PDF를 먼저 골라 추출한다', async () => {
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, detail: { ...workspace.detail, attachments: [
+    { attachmentId: 70, fileName: '신청서 양식.pdf', fileType: 'REFERENCE', fileUrl: 'https://example.com/form.pdf' },
+    { attachmentId: 71, fileName: '모집 안내.pdf', fileType: 'ANNOUNCEMENT', fileUrl: 'https://example.com/notice.pdf' }] } })
+  renderPage()
+  await startExtraction()
+  await waitFor(() => expect(extractor.extractAnnouncementPdf).toHaveBeenCalledWith('29', expect.any(Blob), '모집 안내.pdf', expect.any(AbortSignal)))
+  showPdf()
+  expect(screen.getByRole('combobox', { name: '공고문 PDF' })).toHaveAccessibleDescription('모집 안내.pdf')
+})
+it('준비 단계의 PDF 영역에 PDF를 끌어다 놓으면 그 PDF로 바꾼다', async () => {
+  renderPage()
+  await screen.findByRole('button', { name: 'PDF에서 값 추출' })
+  showPdf()
+  const pane = screen.getByRole('region', { name: 'PDF 근거' })
+  const file = new File(['%PDF'], '끌어온 공고문.pdf', { type: 'application/pdf' })
+  fireEvent.dragOver(pane, { dataTransfer: { files: [file] } })
+  expect(pane).toHaveAttribute('data-dragging', 'true')
+  fireEvent.drop(pane, { dataTransfer: { files: [file] } })
+  expect(pane).toHaveAttribute('data-dragging', 'false')
+  expect(screen.getByText('내 PC · 끌어온 공고문.pdf')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '추출 보기' }))
+  await startExtraction()
+  await waitFor(() => expect(extractor.extractAnnouncementPdf).toHaveBeenCalledWith('29', file, '끌어온 공고문.pdf', expect.any(AbortSignal)))
+})
+it('같은 PDF로 저장한 이전 결과가 있으면 모델을 부르지 않고 불러와 검토한다', async () => {
+  extractor.loadLatestExtraction.mockResolvedValue(savedResult(EMPTY_PDF_SHA256))
+  renderPage()
+  expect(await screen.findByText(/지금 PDF와 같은 파일입니다/)).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '이전 결과 불러오기' }))
+  expect(screen.getByText(/지난 공고문\.pdf에서 추출해 저장한 결과를 불러왔습니다/)).toBeVisible()
+  await review(false)
+  await screen.findByRole('heading', { name: '공급정보' })
+  expect(extractor.extractAnnouncementPdf).not.toHaveBeenCalled()
+})
+it('이전 결과가 다른 PDF에서 나왔으면 그렇다고 알린다', async () => {
+  extractor.loadLatestExtraction.mockResolvedValue(savedResult('0'.repeat(64)))
+  renderPage()
+  expect(await screen.findByText(/지금 고른 PDF와 다른 파일에서 추출했습니다/)).toBeVisible()
+  expect(screen.getByRole('button', { name: '이전 결과 불러오기' })).toBeEnabled()
+})
+it('이전 결과를 불러오지 못해도 추출은 할 수 있다', async () => {
+  extractor.loadLatestExtraction.mockRejectedValue(new ManagementError('요청을 처리하지 못했습니다.', 500))
+  renderPage()
+  await startExtraction()
+  expect(await screen.findByText(/공급행 2개 · 임대조건 2개 · 일정 3개/)).toBeVisible()
+  expect(screen.queryByRole('button', { name: '이전 결과 불러오기' })).not.toBeInTheDocument()
+})
+it('추출에 실패하면 이유를 알리고 다시 추출하면 검토를 이어 간다', async () => {
+  extractor.extractAnnouncementPdf.mockRejectedValueOnce(new ManagementError('AI 모델 호출에 실패했습니다.', 502))
+  renderPage()
+  await startExtraction()
+  expect(await screen.findByRole('alert')).toHaveTextContent('AI 모델 호출에 실패했습니다.')
+  expect(screen.getByRole('button', { name: '추출 결과 검토하기' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: '다시 추출' }))
+  await review(false)
+  await screen.findByRole('heading', { name: '공급정보' })
+  expect(extractor.extractAnnouncementPdf).toHaveBeenCalledTimes(2)
+})
+it('연결된 PDF가 없으면 내 PC의 PDF를 골라야 추출과 검토를 진행한다', async () => {
   api.loadJsonWorkspace.mockResolvedValue({ ...workspace, detail: { ...workspace.detail, attachments: [] } })
   renderPage()
-  expect(await screen.findByText('연결된 PDF가 없습니다. 원문에서 받은 PDF를 고르세요.')).toBeVisible()
-  expect(screen.getByRole('button', { name: 'PDF 받고 프롬프트 복사해 ChatGPT 열기' })).toBeDisabled()
-  fireEvent.change(screen.getByRole('textbox', { name: 'ChatGPT 응답' }), { target: { value: JSON.stringify(fixtures.hansville.extraction) } })
-  expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeDisabled()
-  const picker = screen.getByLabelText('내 PC에서 PDF 고르기')
-  fireEvent.change(picker, { target: { files: [new File(['x'], '메모.txt', { type: 'text/plain' })] } })
-  expect(screen.getByRole('alert')).toHaveTextContent('PDF 파일만 고를 수 있습니다.')
-  fireEvent.change(picker, { target: { files: [new File(['%PDF'], '금호빛여울채 공고문.pdf', { type: 'application/pdf' })] } })
+  fireEvent.click(await screen.findByRole('button', { name: 'PDF 보기' }))
+  expect(await screen.findByText('연결된 PDF가 없습니다')).toBeVisible()
+  expect(screen.getByRole('button', { name: '추출 결과 검토하기' })).toBeDisabled()
+  expect(extractor.extractAnnouncementPdf).not.toHaveBeenCalled()
+  const file = new File(['%PDF'], '금호빛여울채 공고문.pdf', { type: 'application/pdf' })
+  fireEvent.change(screen.getByLabelText('내 PC에서 PDF 고르기'), { target: { files: [file] } })
   expect(screen.getByText('내 PC · 금호빛여울채 공고문.pdf')).toBeVisible()
-  expect(screen.getByRole('button', { name: '프롬프트 복사해 ChatGPT 열기' })).toBeEnabled()
-  expect(screen.queryByRole('link', { name: 'PDF 다운로드' })).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
+  fireEvent.click(screen.getByRole('button', { name: '추출 보기' }))
+  await startExtraction()
+  await waitFor(() => expect(extractor.extractAnnouncementPdf).toHaveBeenCalledWith('29', file, '금호빛여울채 공고문.pdf', expect.any(AbortSignal)))
+  await review(false)
   await screen.findByRole('heading', { name: '공급정보' })
   expect(document.querySelector('[data-pane=pdf]')).toHaveTextContent('금호빛여울채 공고문.pdf')
 })
-it('깨진 응답은 검토를 시작하지 못하며 내용을 유지한다', async () => {
+it('추출 결과를 읽지 못하면 검토를 시작하지 못하고 다시 추출하게 한다', async () => {
+  extracts('{broken}')
   renderPage()
-  const field = await screen.findByRole('textbox', { name: 'ChatGPT 응답' })
-  fireEvent.change(field, { target: { value: '{broken}' } })
-  await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
-  fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
-  expect(screen.getByRole('alert')).toBeVisible()
-  expect(screen.queryByRole('heading', { name: '공급정보' })).not.toBeInTheDocument()
-  expect(field).toHaveValue('{broken}')
+  await startExtraction()
+  expect(await screen.findByRole('alert')).toHaveTextContent('JSON')
+  expect(screen.getByRole('button', { name: '추출 결과 검토하기' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '다시 추출' })).toBeEnabled()
 })
 it('원문 URL이 없으면 근거 입력을 펼쳐 안내한다', async () => {
   api.loadJsonWorkspace.mockResolvedValue({ ...workspace, detail: { ...workspace.detail, data: { ...workspace.detail.data, originalUrl: null } } })
@@ -166,21 +263,6 @@ it('원문 URL이 없으면 근거 입력을 펼쳐 안내한다', async () => {
   expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeDisabled()
   fireEvent.change(screen.getByRole('textbox', { name: '공식 근거 URL' }), { target: { value: 'https://example.com/official-notice' } })
   expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeEnabled()
-})
-
-it('입력 중에는 응답을 읽지 않고 검토 버튼을 누를 때만 읽어 오류를 보여 주거나 다음 단계로 간다', async () => {
-  renderPage()
-  const response = await screen.findByRole('textbox', { name: 'ChatGPT 응답' })
-  fireEvent.change(response, { target: { value: '{broken}' } })
-  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-  await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
-  fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
-  expect(screen.getByRole('alert')).toHaveTextContent('JSON')
-  fireEvent.change(response, { target: { value: JSON.stringify(fixtures.hansville.extraction) } })
-  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-  expect(screen.queryByRole('heading', { name: '공급정보' })).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
-  expect(await screen.findByRole('heading', { name: '공급정보' })).toBeVisible()
 })
 
 it('확인 필요 항목을 세고 하단 버튼으로 다음 항목에 이동하며 상태로 거른다', async () => {
@@ -216,12 +298,13 @@ it('기준 단지는 원천 공급행이 아니라 단지명·임대유형으로
   expect(anchor).toHaveValue(first.key)
 })
 
-it('다른 공고의 응답이면 검토 화면에 공고명·공고일이 다르다고 알린다', async () => {
+it('다른 공고의 PDF면 공고명·공고일이 다르다고 알리고 검토 화면에도 남긴다', async () => {
+  extracts(JSON.stringify(fixtures.gwangju.extraction))
   renderPage()
-  fireEvent.change(await screen.findByRole('textbox', { name: 'ChatGPT 응답' }), { target: { value: JSON.stringify(fixtures.gwangju.extraction) } })
-  await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
-  fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
-  expect(await screen.findByText(/공고명\(광주첨단 H-1,2,3BL 행복주택 예비입주자 모집\)·공고일\(2026-10-15\)이 현재 공고와 다릅니다. 이 공고의 PDF로 받은 응답인지 확인하세요/)).toBeVisible()
+  await startExtraction()
+  expect(await screen.findByRole('alert')).toHaveTextContent('현재 공고와 다른 PDF일 수 있습니다 · 공고명 다름(PDF 광주첨단 H-1,2,3BL 행복주택 예비입주자 모집) · 공고일 다름(PDF 2026-10-15)')
+  await review(false)
+  expect(await screen.findByText(/이 공고의 PDF로 받은 응답인지 확인하세요/)).toBeVisible()
 })
 
 it('공급정보의 PDF 채우기는 작성 중인 행을 기준으로 대조하고 저장 없이 편집표에 돌려준다', async () => {
@@ -229,9 +312,7 @@ it('공급정보의 PDF 채우기는 작성 중인 행을 기준으로 대조하
   const draft = structuredClone(workspace.supply.rows)
   draft[0].moveInMonth = '2027-03'
   render(<MemoryRouter><PdfCorrectionWorkspace id="29" supplyDraft={{ rows: draft, onFill, onCancel: vi.fn() }} /></MemoryRouter>)
-  fireEvent.change(await screen.findByLabelText('ChatGPT 응답'), { target: { value: JSON.stringify(fixtures.hansville.extraction) } })
-  await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
-  fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
+  await review()
   expect(screen.queryByRole('navigation', { name: 'PDF 보정 영역' })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '공급정보 편집표에 채우기' }))
   await waitFor(() => expect(onFill).toHaveBeenCalledOnce())
@@ -244,13 +325,12 @@ it('공급정보의 PDF 채우기는 작성 중인 행을 기준으로 대조하
 it('빈 공고의 PDF 추출값은 단지를 검색해 선택한 뒤 첫 공급행으로 채운다', async () => {
   api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, rows: [] } })
   const onFill = vi.fn()
-  render(<MemoryRouter><PdfCorrectionWorkspace id="29" supplyDraft={{ rows: [], onFill, onCancel: vi.fn() }} /></MemoryRouter>)
   const extraction = structuredClone(fixtures.hansville.extraction)
   extraction.data.supplyRows = extraction.data.supplyRows.slice(0, 1)
   extraction.sharedCounts = []
-  fireEvent.change(await screen.findByLabelText('ChatGPT 응답'), { target: { value: JSON.stringify(extraction) } })
-  await waitFor(() => expect(screen.getByRole('button', { name: '응답 검토하기' })).toBeEnabled())
-  fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
+  extracts(JSON.stringify(extraction))
+  render(<MemoryRouter><PdfCorrectionWorkspace id="29" supplyDraft={{ rows: [], onFill, onCancel: vi.fn() }} /></MemoryRouter>)
+  await review()
   // PDF 단지명으로 미리 검색한 후보에서 고른다.
   fireEvent.click(await within(screen.getByRole('region', { name: 'PDF 단지 정하기' })).findByRole('button', { name: '선택: 검색 단지' }))
   expect(await screen.findByLabelText('공급행 1 소재지 PNU')).toHaveValue('1114010100100010000')
@@ -271,18 +351,19 @@ it('실패 검토에서 열면 고칠 공급행과 오류 사유를 먼저 보�
   expect(screen.getByRole('link', { name: '공고 상세로 돌아가기' }).getAttribute('href')).not.toContain('failureRow')
 })
 
-it('응답 준비로 돌아갔다 와도 같은 응답이면 검토하던 입력을 이어 간다', async () => {
+it('응답 준비로 돌아갔다 와도 같은 PDF·응답이면 검토하던 입력을 이어 간다', async () => {
   await open()
   fireEvent.change(screen.getByLabelText('보정 이유'), { target: { value: '직접 고친 이유' } })
   fireEvent.click(screen.getByRole('button', { name: '응답 준비로 돌아가기' }))
-  const field = await screen.findByRole('textbox', { name: 'ChatGPT 응답' })
-  expect(field).toHaveValue(JSON.stringify(fixtures.hansville.extraction))
-  fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
+  // 같은 PDF로 돌아오면 다시 추출하지 않는다.
+  fireEvent.click(await screen.findByRole('button', { name: '추출 결과 검토하기' }))
   expect(await screen.findByLabelText('보정 이유')).toHaveValue('직접 고친 이유')
+  expect(extractor.extractAnnouncementPdf).toHaveBeenCalledOnce()
   fireEvent.click(screen.getByRole('button', { name: '응답 준비로 돌아가기' }))
-  fireEvent.change(await screen.findByRole('textbox', { name: 'ChatGPT 응답' }), { target: { value: JSON.stringify({ ...fixtures.hansville.extraction }, null, 1) } })
-  fireEvent.click(screen.getByRole('button', { name: '응답 검토하기' }))
-  expect(await screen.findByLabelText('보정 이유')).toHaveValue('공고문.pdf · 프롬프트 v7로 추출 후 PDF와 대조')
+  extracts(JSON.stringify({ ...fixtures.hansville.extraction }, null, 1))
+  fireEvent.click(await screen.findByRole('button', { name: '다시 추출' }))
+  await review(false)
+  expect(await screen.findByLabelText('보정 이유')).toHaveValue('공고문.pdf · AI 자동 추출 후 PDF와 대조')
 })
 
 it('단지에 맞는 주택형이 없으면 따로 알리고 PDF 형명·면적으로 새 주택형을 추가해 저장한다', async () => {

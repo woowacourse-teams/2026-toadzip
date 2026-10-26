@@ -172,7 +172,7 @@ export function foreignCharacters(value: unknown) {
   return [...new Set(value.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Cyrillic}]/gu) ?? [])]
     .filter(character => !'無有外內'.includes(character)).join('')
 }
-/** ChatGPT가 주택형명 대신 면적(26.37, 26.37㎡)을 넣은 경우다. 표기로 쓰면 공개 화면에 면적만 보인다. */
+/** 추출 모델이 주택형명 대신 면적(26.37, 26.37㎡)을 넣은 경우다. 표기로 쓰면 공개 화면에 면적만 보인다. */
 export function areaOnlyTypeName(value: unknown) {
   // 정수만 있는 표기(26)는 흔한 주택형 이름이라 소수점이나 면적 단위가 있을 때만 면적으로 본다.
   return typeof value === 'string' && /^\d+(\.\d+\s*(㎡|m2)?|(\.\d+)?\s*(㎡|m2))$/.test(value.trim())
