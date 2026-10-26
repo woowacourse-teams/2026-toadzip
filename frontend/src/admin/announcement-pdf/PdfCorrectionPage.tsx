@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import { attachmentErrorMessage, loadAnnouncementAttachment } from '../../public-housing/api/announcementAttachments'
@@ -116,7 +116,8 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   }, [id, attachmentId, workspace?.detail.attachments])
   useEffect(() => () => { if (localPdf) URL.revokeObjectURL(localPdf.url) }, [localPdf])
   // 추출은 관리자가 버튼을 누를 때만 한다(호출마다 비용이 든다). PDF를 바꾸면 이전 결과와 진행 중인 요청을 버린다.
-  useEffect(() => { extractionRun.current?.abort(); setExtraction({ status: 'idle' }); setText('') }, [pdf])
+  // 화면에 그리기 전에 비워야 새 PDF의 추출 버튼을 바로 눌러도 늦게 도는 초기화가 그 요청을 취소하지 않는다.
+  useLayoutEffect(() => { extractionRun.current?.abort(); setExtraction({ status: 'idle' }); setText('') }, [pdf])
   useEffect(() => () => extractionRun.current?.abort(), [])
   useEffect(() => {
     const controller = new AbortController(); setSaved(null)
