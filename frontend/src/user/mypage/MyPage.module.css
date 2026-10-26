@@ -34,7 +34,7 @@
 .notice h3 { margin: 0; font-size: 20px; line-height: 1.5; }
 .notice p { margin: 12px 0 24px; color: var(--ds-color-label); line-height: 1.8; }
 .noticeIcon { width: 36px; height: 36px; padding: 14px; border-radius: 16px; color: var(--ds-color-action); background: var(--ds-color-action-soft); margin-bottom: 20px; }
-.notice button { display: inline-flex; gap: 8px; }
+.notice button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; line-height: var(--ds-line-height-body); }
 .account { padding: 28px; border: 1px solid var(--ds-color-divider); border-radius: 12px; background: var(--ds-color-surface); }
 .signedIn { display: inline-flex; align-items: center; gap: 8px; font-size: var(--ds-text-body); font-weight: 600; color: var(--ds-color-action); margin-bottom: 24px; }
 .signedIn > span { width: 7px; height: 7px; border-radius: 50%; background: var(--ds-color-brand); }
