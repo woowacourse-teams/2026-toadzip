@@ -248,7 +248,7 @@ describe('useAnnouncementResults', () => {
     expect(screen.queryByText('101')).not.toBeInTheDocument()
     nextFiltersPage.reject(new Error('새 공고 연결 실패'))
 
-    expect(await screen.findByText('새 공고 연결 실패')).toBeVisible()
+    expect(await screen.findByText('잠시 후 다시 시도해 주세요.')).toBeVisible()
     expect(screen.queryByText('101')).not.toBeInTheDocument()
   })
 
@@ -259,7 +259,7 @@ describe('useAnnouncementResults', () => {
       .mockResolvedValueOnce(announcementPage(['201'], null, false))
     render(<Harness enabled repository={repository} />)
 
-    expect(await screen.findByText('공고 연결 실패')).toBeVisible()
+    expect(await screen.findByText('잠시 후 다시 시도해 주세요.')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
 
     expect(await screen.findByText('201')).toBeVisible()
@@ -281,7 +281,7 @@ describe('useAnnouncementResults', () => {
     render(<Harness enabled repository={repository} />)
     await screen.findByText('101')
     fireEvent.click(screen.getByRole('button', { name: '더 보기' }))
-    await screen.findByText('다음 공고 실패')
+    await screen.findByText('잠시 후 다시 시도해 주세요.')
 
     fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
 

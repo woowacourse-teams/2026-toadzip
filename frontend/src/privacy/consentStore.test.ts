@@ -797,3 +797,11 @@ it('lease 중단 뒤 재확인이 없어도 실제 동의 만료 시 남은 기�
   expect(store.remainingConsentLifetime()).toBe(0)
   expect(stopped).toHaveBeenCalledOnce()
 })
+
+it('예상하지 못한 저장 오류의 내부 원문을 사용자에게 노출하지 않는다', async () => {
+  const { store, api } = setup(); await store.refresh()
+  api.choose.mockRejectedValue(new Error('SQL internal /api/v1/privacy failure'))
+  await store.choose('GRANT', 'SETTINGS')
+  expect(store.getSnapshot().error).toBe('선택을 저장하지 못했어요. 다시 시도해 주세요.')
+  expect(store.allowed()).toBe(false)
+})
