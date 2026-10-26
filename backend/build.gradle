@@ -30,6 +30,9 @@ dependencies {
 	implementation 'org.jsoup:jsoup:1.23.2'
 	implementation 'com.google.firebase:firebase-admin:9.11.0'
 	implementation 'org.postgresql:postgresql'
+	implementation platform('org.springframework.ai:spring-ai-bom:2.0.2')
+	implementation 'org.springframework.ai:spring-ai-starter-model-google-genai'
+	implementation 'org.apache.pdfbox:pdfbox:3.0.8'
 	runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 	compileOnly 'org.projectlombok:lombok'
 	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
