@@ -25,8 +25,6 @@
 .filters button[aria-pressed=true]::after { content: ''; position: absolute; inset: auto 0 -1px; height: 3px; background: var(--ds-color-brand); }
 .count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 4px; box-sizing: border-box; border-radius: 5px; background: var(--ds-color-section-divider); color: var(--ds-color-label); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; }
 .filters button[aria-pressed=true] .count { background: var(--ds-color-action-soft); color: var(--ds-color-action); }
-.resultCount { display: flex; justify-content: space-between; align-items: center; margin: 0 0 12px; font-weight: 600; }
-.resultCount span { color: var(--ds-color-muted); font-size: var(--ds-text-caption); font-weight: 400; }
 .cardMeta { display: inline-flex; flex-wrap: wrap; gap: var(--ds-status-badge-gap); }
 .cardMeta > span { display: inline-flex; align-items: center; min-height: var(--ds-status-badge-min-height); box-sizing: border-box; background: var(--ds-color-status-neutral-surface); color: var(--ds-color-status-neutral); font-size: var(--ds-status-badge-font-size); font-weight: 600; border-radius: var(--ds-status-badge-radius); padding: var(--ds-status-badge-padding-block) var(--ds-status-badge-padding-inline); }
 .cardMeta > span[data-status=APPLYING] { color: var(--ds-color-status-applying); background: var(--ds-color-status-applying-surface); }

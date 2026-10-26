@@ -34,31 +34,30 @@ export function NotificationSettings() {
   const targets = context.targets.filter((target) => target.type === selected.type)
 
   return <div className={styles.settings}>
-    <NotificationPushControl />
-    <div className={styles.actions}>
+    <div className={styles.toolbar}>
+      <div className={styles.tabs} role="tablist" aria-label="알림 대상 유형">
+        {groups.map(({ type, title }, index) => <button key={type} ref={(element) => { tabs.current[index] = element }}
+          id={`${id}-${type}`} type="button" role="tab" aria-selected={selected.type === type}
+          aria-label={`${title} ${context.targets.filter((target) => target.type === type).length}`}
+          aria-controls={`${id}-panel`} tabIndex={selected.type === type ? 0 : -1}
+          onClick={() => select(type)} onKeyDown={(event) => {
+            const next = event.key === 'ArrowRight' ? (index + 1) % groups.length
+              : event.key === 'ArrowLeft' ? (index + groups.length - 1) % groups.length
+              : event.key === 'Home' ? 0 : event.key === 'End' ? groups.length - 1 : null
+            if (next === null) return
+            event.preventDefault()
+            select(groups[next]!.type)
+            tabs.current[next]?.focus()
+          }}>
+          <span>{title}</span><span className={styles.count}>{context.targets.filter((target) => target.type === type).length}</span>
+        </button>)}
+      </div>
       <button className={styles.actionButton} type="button" disabled={context.blocked || context.targets.length === 0}
         onClick={(event) => { tabs.current[groups.findIndex(group => group.type === selected.type)]?.focus(); context.clearAll(event.currentTarget) }}>
         {context.clearingAll ? '전체 해제 중…' : '모든 알림 해제'}
       </button>
     </div>
     {context.batchError && <p className={styles.error} role="alert">{context.batchError}</p>}
-    <div className={styles.tabs} role="tablist" aria-label="알림 대상 유형">
-      {groups.map(({ type, title }, index) => <button key={type} ref={(element) => { tabs.current[index] = element }}
-        id={`${id}-${type}`} type="button" role="tab" aria-selected={selected.type === type}
-        aria-label={`${title} ${context.targets.filter((target) => target.type === type).length}`}
-        aria-controls={`${id}-panel`} tabIndex={selected.type === type ? 0 : -1}
-        onClick={() => select(type)} onKeyDown={(event) => {
-          const next = event.key === 'ArrowRight' ? (index + 1) % groups.length
-            : event.key === 'ArrowLeft' ? (index + groups.length - 1) % groups.length
-            : event.key === 'Home' ? 0 : event.key === 'End' ? groups.length - 1 : null
-          if (next === null) return
-          event.preventDefault()
-          select(groups[next]!.type)
-          tabs.current[next]?.focus()
-        }}>
-        <span>{title}</span><span className={styles.count}>{context.targets.filter((target) => target.type === type).length}</span>
-      </button>)}
-    </div>
     <section id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${selected.type}`} tabIndex={0} className={styles.panel}>
       {targets.length === 0
         ? <p className={styles.empty}>{context.targets.length === 0 ? '등록한 알림이 없어요.' : `등록한 ${selected.title} 알림이 없어요.`}</p>
@@ -71,6 +70,6 @@ export function NotificationSettings() {
             state={returnState}>{target.name}</Link>}</strong></ManagementRow>)}
         </ManagementTable>}
     </section>
-    <NotificationDeviceList />
+    <div className={styles.deviceSettings}><NotificationPushControl /><NotificationDeviceList /></div>
   </div>
 }
