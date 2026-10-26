@@ -94,7 +94,8 @@ export function DetailCloseButton({ label, onClose, returnToMyPage = false }: De
       type="button" aria-label={returnToMyPage ? '마이페이지로 돌아가기' : label}
       data-mypage-return={returnToMyPage || undefined} onClick={onClose}>
       <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d={returnToMyPage ? 'M19 12H5m7-7-7 7 7 7' : 'm6 6 12 12M18 6 6 18'} />
+        {returnToMyPage && <path className={styles.myPageArrow} d="M19 12H5m7-7-7 7 7 7" />}
+        <path className={returnToMyPage ? styles.myPageClose : undefined} d="m6 6 12 12M18 6 6 18" />
       </svg>
       {returnToMyPage && <span>마이페이지</span>}
     </button>

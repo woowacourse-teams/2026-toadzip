@@ -344,3 +344,19 @@
 }
 
 .myPageButton svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+.myPageClose { display: none; }
+
+@media (max-width: 767px) {
+  .myPageButton {
+    width: 44px;
+    flex: 0 0 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    color: var(--ds-color-label);
+  }
+  .myPageButton svg { width: 28px; height: 28px; }
+  .myPageButton span, .myPageArrow { display: none; }
+  .myPageClose { display: inline; }
+}

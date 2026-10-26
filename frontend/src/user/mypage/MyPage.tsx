@@ -118,5 +118,5 @@ export function MyPage() {
 }
 function NoticeIcon() { return <svg className={styles.noticeIcon} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 3h12v18l-6-4-6 4z" /></svg> }
 function RetryNotice({ title, onRetry }: { readonly title: string; readonly onRetry?: () => void }) {
-  return <section className={styles.notice}><div role="alert"><h3>{title}</h3><p>잠시 후 다시 시도해 주세요.</p></div><Button onClick={onRetry}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 7v5h-5M4 17v-5h5M5 8a8 8 0 0 1 14-2l1 6M4 12l1 6a8 8 0 0 0 14-2" /></svg>다시 시도</Button></section>
+  return <section className={styles.notice}><div role="alert"><h3>{title}</h3><p>잠시 후 다시 시도해 주세요.</p></div><Button onClick={onRetry}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2.34 5.66" /></svg>다시 시도</Button></section>
 }

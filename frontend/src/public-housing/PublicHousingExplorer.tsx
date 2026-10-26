@@ -2027,7 +2027,7 @@ function HousingMapRequestFeedback({
     return null
   }
   return (
-    <RequestError title="지도 정보를 불러오지 못했어요." onRetry={onRetry} retryLabel="지도 다시 시도" />
+    <RequestError title="지도 정보를 불러오지 못했어요." onRetry={onRetry} />
   )
 }
 

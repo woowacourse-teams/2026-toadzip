@@ -1208,7 +1208,7 @@ describe('PublicHousingExplorer', () => {
     renderExplorer(repository, '/', undefined, undefined, mapRepository)
 
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
-    const retry = await screen.findByRole('button', { name: '지도 다시 시도' })
+    const retry = await screen.findByRole('button', { name: '다시 시도' })
 
     expect(screen.getByRole('alert')).toHaveTextContent('잠시 후 다시 시도해 주세요.')
     expect(screen.queryByText('지도 집계 실패')).not.toBeInTheDocument()
