@@ -15,3 +15,10 @@ export function useMyPageReturnState() {
   const path = pages.has(current) ? current : myPageReturnPath(location.state)
   return path ? { mypageReturn: path } : undefined
 }
+
+export function clearMyPageReturnState(state: unknown): unknown {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return state
+  const next: Record<string, unknown> = { ...state }
+  delete next.mypageReturn
+  return next
+}

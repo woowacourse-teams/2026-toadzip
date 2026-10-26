@@ -84,6 +84,7 @@ export interface HousingComplexDetailData {
 }
 
 export interface HousingComplexDetailPanelProps {
+  readonly returnToMyPage?: boolean
   readonly detail: HousingComplexDetailData
   readonly onClose: () => void
   readonly backButton?: ReactNode
@@ -101,6 +102,7 @@ interface HousingTypeSelection {
 }
 
 export function HousingComplexDetailPanel({
+  returnToMyPage,
   detail,
   onClose,
   onOpenAnnouncement,
@@ -210,7 +212,7 @@ export function HousingComplexDetailPanel({
           <h2 ref={headingRef} id={titleId} tabIndex={-1}>{detail.name}</h2>
         </div>
         {headerActions}
-        <DetailCloseButton label={preview ? '단지 요약 닫기' : '단지 상세 닫기'} onClose={onClose} />
+        <DetailCloseButton label={preview ? '단지 요약 닫기' : '단지 상세 닫기'} onClose={onClose} returnToMyPage={returnToMyPage} />
       </header>
 
       <div

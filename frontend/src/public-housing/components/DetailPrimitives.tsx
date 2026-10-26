@@ -83,16 +83,20 @@ export function DetailFact({ term, value, wide = false, emphasis = false, missin
 }
 
 interface DetailCloseButtonProps {
+  readonly returnToMyPage?: boolean
   readonly label: string
   readonly onClose: () => void
 }
 
-export function DetailCloseButton({ label, onClose }: DetailCloseButtonProps) {
+export function DetailCloseButton({ label, onClose, returnToMyPage = false }: DetailCloseButtonProps) {
   return (
-    <button className={styles.closeButton} type="button" aria-label={label} onClick={onClose}>
-      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-        <path d="m6 6 12 12M18 6 6 18" />
+    <button className={[styles.closeButton, returnToMyPage ? styles.myPageButton : ''].filter(Boolean).join(' ')}
+      type="button" aria-label={returnToMyPage ? '마이페이지로 돌아가기' : label}
+      data-mypage-return={returnToMyPage || undefined} onClick={onClose}>
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d={returnToMyPage ? 'M19 12H5m7-7-7 7 7 7' : 'm6 6 12 12M18 6 6 18'} />
       </svg>
+      {returnToMyPage && <span>마이페이지</span>}
     </button>
   )
 }

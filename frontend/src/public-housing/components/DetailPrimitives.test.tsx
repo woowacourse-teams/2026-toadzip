@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DetailFact, DetailFacts, DetailSection, DetailTable } from './DetailPrimitives'
+import { DetailCloseButton, DetailFact, DetailFacts, DetailSection, DetailTable } from './DetailPrimitives'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -64,4 +64,17 @@ describe('상세 섹션·항목 모양', () => {
     expect(screen.getByText('임대종류').tagName).toBe('DT')
     expect(screen.getByText('행복주택').tagName).toBe('DD')
   })
+})
+
+it('마이페이지 복귀는 기존 닫기 자리에 짧은 문구와 명확한 접근성 이름을 제공한다', () => {
+  const close = vi.fn()
+  const view = render(<DetailCloseButton label="단지 상세 닫기" onClose={close} returnToMyPage />)
+  const button = screen.getByRole('button', { name: '마이페이지로 돌아가기' })
+  expect(button).toHaveTextContent('마이페이지')
+  expect(screen.getAllByRole('button')).toHaveLength(1)
+  fireEvent.click(button)
+  expect(close).toHaveBeenCalledOnce()
+  view.rerender(<DetailCloseButton label="단지 상세 닫기" onClose={close} />)
+  expect(screen.getByRole('button', { name: '단지 상세 닫기' })).toBeVisible()
+  expect(screen.queryByText('마이페이지')).not.toBeInTheDocument()
 })
