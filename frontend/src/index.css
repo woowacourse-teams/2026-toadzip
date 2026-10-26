@@ -859,7 +859,7 @@ a {
   margin-left: auto;
 }
 
-.housing-detail-state > header button {
+.housing-detail-state > header button:not([data-mypage-return]) {
   display: grid;
   width: 44px;
   min-width: 44px;
@@ -872,7 +872,7 @@ a {
   place-items: center;
 }
 
-.housing-detail-state > header button span {
+.housing-detail-state > header button:not([data-mypage-return]) span {
   color: currentcolor;
   font-size: 24px;
   line-height: 1;

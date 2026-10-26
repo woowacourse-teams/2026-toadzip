@@ -1,7 +1,10 @@
+import { useExplorerReturn } from '../../public-housing/navigation/ExplorerReturnContext'
 import { captureProductEvent, createAnalyticsId, setReplaySensitive } from '../../analytics/productAnalytics'
 import { useLayoutEffect, useId, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { IconButton } from '../../design-system/components/IconButton'
+import { useLocation } from 'react-router'
+import { rememberLoginReturn } from './loginReturn'
 import { LoginContent } from './LoginContent'
 import styles from './LoginModal.module.css'
 
@@ -14,6 +17,8 @@ interface Props {
 }
 
 export function LoginModal({ loginFailed, sessionError, onClose, returnFocusRef, entryPoint = 'button' }: Props) {
+  const location = useLocation()
+  const explorerReturn = useExplorerReturn()
   const [modalId] = useState(createAnalyticsId)
   const initialEntryPoint = useRef(entryPoint)
   const closing = useRef(false)
@@ -65,7 +70,7 @@ export function LoginModal({ loginFailed, sessionError, onClose, returnFocusRef,
           </svg>
         </IconButton>
         <LoginContent loginFailed={loginFailed} sessionError={sessionError} titleId={titleId}
-          descriptionId={descriptionId} alertRef={alertRef} providerRef={providerRef} modalId={modalId} />
+          descriptionId={descriptionId} alertRef={alertRef} providerRef={providerRef} modalId={modalId} onBeginLogin={() => rememberLoginReturn(explorerReturn?.current ?? location.pathname + location.search + location.hash, true)} />
       </div>
     </dialog>, document.body,
   )

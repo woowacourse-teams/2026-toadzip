@@ -1,3 +1,4 @@
+import { BookmarkButton } from '../../user/bookmarks/BookmarkButton'
 import { captureProductEvent } from '../../analytics/productAnalytics'
 import { detailVisitId, useDetailScrollAnalytics } from './detailAnalytics'
 import { toHttpUrl } from '../presentation/httpUrl.ts'
@@ -83,6 +84,7 @@ export interface HousingComplexDetailData {
 }
 
 export interface HousingComplexDetailPanelProps {
+  readonly returnToMyPage?: boolean
   readonly detail: HousingComplexDetailData
   readonly onClose: () => void
   readonly backButton?: ReactNode
@@ -100,6 +102,7 @@ interface HousingTypeSelection {
 }
 
 export function HousingComplexDetailPanel({
+  returnToMyPage,
   detail,
   onClose,
   onOpenAnnouncement,
@@ -209,7 +212,7 @@ export function HousingComplexDetailPanel({
           <h2 ref={headingRef} id={titleId} tabIndex={-1}>{detail.name}</h2>
         </div>
         {headerActions}
-        <DetailCloseButton label={preview ? '단지 요약 닫기' : '단지 상세 닫기'} onClose={onClose} />
+        <DetailCloseButton label={preview ? '단지 요약 닫기' : '단지 상세 닫기'} onClose={onClose} returnToMyPage={returnToMyPage} />
       </header>
 
       <div
@@ -224,8 +227,13 @@ export function HousingComplexDetailPanel({
       >
         <section className={styles.identity} aria-labelledby={titleId}>
           {!mobile && images}
-          {identityType}
-          <p className={styles.address}>{displayAddress(detail)}</p>
+          <div className={styles.identitySummary}>
+            <div className={styles.identityDescription}>
+              {identityType}
+              <p className={styles.address}>{displayAddress(detail)}</p>
+            </div>
+            <BookmarkButton type="COMPLEX" targetId={detail.complexId} name={detail.name} iconOnly />
+          </div>
           {mobile && images}
           {/* 단지 단위 행동(알림·거리뷰)은 같은 모양·높이의 보조 버튼 한 쌍으로 둔다. */}
           <div className={styles.identityActions}>

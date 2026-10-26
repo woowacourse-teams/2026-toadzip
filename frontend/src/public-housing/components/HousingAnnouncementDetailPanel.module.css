@@ -163,8 +163,16 @@
   background: var(--ds-color-surface);
 }
 
+.summaryIdentity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+}
+
 .intro {
   display: grid;
+  min-width: 0;
   gap: var(--ds-space-1);
 }
 

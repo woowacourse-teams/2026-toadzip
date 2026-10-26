@@ -1,0 +1,14 @@
+.wrapper { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 14px; border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-label); font: inherit; cursor: pointer; }
+.button[aria-pressed=true] { color: var(--ds-color-action); background: var(--ds-color-action-soft); }
+.button:disabled { opacity: .55; cursor: wait; }
+.button:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
+.button svg { width: 18px; height: 18px; }
+.error { color: var(--ds-color-deadline); font-size: var(--ds-text-caption); }
+
+.button:disabled[aria-busy=true] { opacity: 1; cursor: default; }
+
+.iconWrapper { flex: 0 0 auto; max-width: 40%; flex-direction: column; align-items: flex-end; }
+.button.iconButton { width: 44px; height: 44px; justify-content: center; padding: 0; border-color: transparent; background: transparent; }
+.iconButton svg { width: 22px; height: 22px; }
+.iconButton:hover:not(:disabled) { background: var(--ds-color-action-soft); }

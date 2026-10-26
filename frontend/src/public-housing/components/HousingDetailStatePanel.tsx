@@ -5,6 +5,7 @@ import { DetailCloseButton } from './DetailPrimitives.tsx'
 export type DetailStatus = 'closed' | 'loading' | 'ready' | 'not-found' | 'error'
 
 interface HousingDetailStatePanelProps {
+  readonly returnToMyPage?: boolean
   readonly kind: 'complex' | 'announcement'
   readonly id: string | null
   readonly status: DetailStatus
@@ -30,7 +31,7 @@ const DETAIL_LABELS = {
 } as const
 
 export function HousingDetailStatePanel({
-  kind, id, status, errorMessage, backButton, onClose, onRetry,
+  kind, id, status, errorMessage, backButton, onClose, onRetry, returnToMyPage,
 }: HousingDetailStatePanelProps) {
   const panelRef = useRef<HTMLElement>(null)
   const labels = DETAIL_LABELS[kind]
@@ -61,7 +62,7 @@ export function HousingDetailStatePanel({
       {/* 불러오는 중·오류에는 내부 ID 같은 임시 제목을 보이지 않고 뒤로·닫기만 둔다. */}
       <header>
         {backButton}
-        <DetailCloseButton label={`${labels.name} 상세 닫기`} onClose={onClose} />
+        <DetailCloseButton label={`${labels.name} 상세 닫기`} onClose={onClose} returnToMyPage={returnToMyPage} />
       </header>
       <div className="housing-detail-state__content" role={status === 'loading' ? 'status' : 'alert'}>
         <strong>{heading}</strong>

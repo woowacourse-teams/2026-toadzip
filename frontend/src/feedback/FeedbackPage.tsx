@@ -1,6 +1,6 @@
 import { captureProductEvent, createAnalyticsId } from '../analytics/productAnalytics'
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router'
+import { PageReturnLink } from '../user/mypage/MyPageReturn'
 import { BrandLink } from '../BrandLink'
 import { Button } from '../design-system/components/Button'
 import { submitFeedback } from './api'
@@ -40,9 +40,9 @@ export function FeedbackPage() {
       captureProductEvent('feedback_succeeded', { feedback_id: feedbackId, submission_id: submissionId })
       setContent('')
       setSubmitted(true)
-    } catch (cause) {
+    } catch {
       captureProductEvent('feedback_failed', { feedback_id: feedbackId, submission_id: submissionId, failure_reason: 'request_failed' })
-      setError(cause instanceof Error ? cause.message : '의견을 보내지 못했어요. 다시 시도해 주세요.')
+      setError('의견을 보내지 못했어요. 작성한 내용을 확인하고 다시 시도해 주세요.')
     } finally {
       inFlight.current = false
       setPending(false)
@@ -51,10 +51,7 @@ export function FeedbackPage() {
 
   return <div className={`${styles.page} ph-no-capture`}>
     <header className={styles.header}><div className={styles.headerInner}>
-      <BrandLink /><Link className={styles.backLink} to="/explore">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>
-        지도로 돌아가기
-      </Link>
+      <BrandLink /><PageReturnLink />
     </div></header>
     <main className={styles.main}>
       <div className={styles.heading}>
@@ -68,7 +65,7 @@ export function FeedbackPage() {
         <span className={styles.successIcon} aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m6 12 4 4 8-8" /></svg></span>
         <h2 ref={confirmation} tabIndex={-1}>의견이 접수되었어요.</h2>
         <p>남겨 주신 의견은 서비스 개선에 참고할게요.</p>
-        <Link to="/explore">지도로 돌아가기</Link>
+        <PageReturnLink />
       </section> : <form className={styles.form} noValidate aria-label="의견 접수" aria-busy={pending}
         onSubmit={event => { event.preventDefault(); void submit() }}>
         <div className={styles.labelRow}><label htmlFor="feedback-content">의견 내용</label></div>

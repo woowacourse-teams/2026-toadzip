@@ -1,3 +1,4 @@
+import { clearMyPageReturnState, myPageReturnPath } from '../user/mypage/mypageNavigation'
 import { RequestError } from './components/RequestError'
 import { useExplorerReturn } from './navigation/ExplorerReturnContext'
 import { useListMeasurement } from './analytics/useListMeasurement'
@@ -195,6 +196,7 @@ export function PublicHousingExplorer({
   streetViewSupported = true,
 }: PublicHousingExplorerProps) {
   const location = useLocation()
+  const mypageReturn = myPageReturnPath(location.state)
   const markerHoverAnalytics = useMarkerHoverAnalytics()
   const navigate = useNavigate()
   const navigationType = useNavigationType()
@@ -888,6 +890,9 @@ export function PublicHousingExplorer({
       mobileDetailListModeRef.current ??= listPanelMode
       setListPanelMode('collapsed')
     }
+    const leavingMyPage = mypageReturn !== null && entryPoint !== 'detail'
+    const originState = leavingMyPage
+      ? clearMyPageReturnState(clearDetailHistoryState(location.state)) : location.state
     const currentSearch = new URLSearchParams(location.search)
     const activeElement = document.activeElement
     const opener = activeElement instanceof HTMLElement
@@ -896,7 +901,7 @@ export function PublicHousingExplorer({
       : null
     const currentDetail = toDetailReturnFocusLocation(detailLocation)
     const actionKey = opener?.dataset.detailReturnFocus ?? null
-    const returnFocus = currentDetail
+    const returnFocus = !leavingMyPage && currentDetail
       && currentDetail.kind !== detailKind(kind)
       && actionKey
       ? { ...currentDetail, actionKey }
@@ -916,8 +921,8 @@ export function PublicHousingExplorer({
     const currentKind = detailResultTab(detailLocation)
     const replace = currentKind === kind
     const detailState = replace
-      ? location.state
-      : withDetailHistoryState(location.state, returnFocus)
+      ? originState
+      : withDetailHistoryState(originState, returnFocus)
     const internalState = withRecentComplexPreview(detailState,
       mobile && entryPoint === 'recent' && kind === 'complexes' ? { complexId: id, expanded: false }
         : entryPoint === 'detail' ? readRecentComplexPreview(location.state) : null)
@@ -941,6 +946,7 @@ export function PublicHousingExplorer({
     location.search,
     location.state,
     navigate,
+    mypageReturn,
     prepareDetailVisit,
     prepareProductDetail,
     listPanelMode,
@@ -1023,6 +1029,11 @@ export function PublicHousingExplorer({
     setCardHighlightedComplexId(null)
     setMarkerHighlightedComplexId(null)
 
+    if (mypageReturn) {
+      navigate(mypageReturn, { replace: true })
+      return
+    }
+
     const nextSearch = clearDetailQuery(
       new URLSearchParams(location.search),
     )
@@ -1039,6 +1050,7 @@ export function PublicHousingExplorer({
     navigate,
     closeStreetView,
     trackDetailAction,
+    mypageReturn,
   ])
 
   const selectResultTab = useCallback((tab: ResultList) => {
@@ -1486,6 +1498,7 @@ export function PublicHousingExplorer({
   }
 
   const complexDetailLayer = <ComplexDetailLayer
+    returnToMyPage={mypageReturn !== null}
     mobile={mobile}
     streetView={streetViewSupported && !mobile ? streetView : undefined}
     state={detailView.complexDetail}
@@ -1750,6 +1763,7 @@ export function PublicHousingExplorer({
           onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'detail' }); setDetailRetryRevision((current) => current + 1) }}
         >{complexDetailLayer}</HousingComplexSummarySheet> : complexDetailLayer}
         <AnnouncementDetailLayer
+          returnToMyPage={mypageReturn !== null}
           mobile={mobile}
           state={detailView.announcementDetail}
           onClose={closeDetail}
@@ -1783,8 +1797,9 @@ function DetailBackButton({ backTarget, onBack }: DetailBackProps) {
   )
 }
 
-function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backTarget, onBack, streetView, mobile, onBackToSummary }: {
+function ComplexDetailLayer({ returnToMyPage, state, onClose, onOpenAnnouncement, onRetry, backTarget, onBack, streetView, mobile, onBackToSummary }: {
   state: ComplexDetailState
+  returnToMyPage: boolean
   mobile: boolean
   streetView?: StreetViewController
   onClose: () => void
@@ -1804,6 +1819,7 @@ function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backT
     <HousingDetailOverlay label="단지 상세" mobile={mobile} onClose={onClose}>
       {state.status === 'ready' && state.detail
         ? <HousingComplexDetailPanel
+            returnToMyPage={returnToMyPage}
             key={state.detail.complexId}
             mobile={mobile}
             streetView={streetView}
@@ -1811,15 +1827,16 @@ function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backT
             backButton={backButton}
             detail={toHousingComplexDetailData(state.detail)}
             onClose={onClose} onOpenAnnouncement={onOpenAnnouncement} />
-        : <HousingDetailStatePanel kind="complex" id={state.complexId} backButton={backButton}
+        : <HousingDetailStatePanel returnToMyPage={returnToMyPage} kind="complex" id={state.complexId} backButton={backButton}
             status={state.status} errorMessage={state.errorMessage}
             onClose={onClose} onRetry={onRetry} />}
     </HousingDetailOverlay>
   )
 }
 
-function AnnouncementDetailLayer({ state, onClose, onOpenComplex, onRetry, backTarget, onBack, mobile }: {
+function AnnouncementDetailLayer({ returnToMyPage, state, onClose, onOpenComplex, onRetry, backTarget, onBack, mobile }: {
   state: AnnouncementDetailState
+  returnToMyPage: boolean
   mobile: boolean
   onClose: () => void
   onOpenComplex: (complexId: string) => void
@@ -1832,11 +1849,12 @@ function AnnouncementDetailLayer({ state, onClose, onOpenComplex, onRetry, backT
     <HousingDetailOverlay label="공고 상세" mobile={mobile} onClose={onClose}>
       {state.status === 'ready' && state.detail
         ? <HousingAnnouncementDetailPanel
+            returnToMyPage={returnToMyPage}
             key={state.detail.announcementId}
             backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
             detail={toHousingAnnouncementDetailData(state.detail)}
             onClose={onClose} onOpenComplex={onOpenComplex} />
-        : <HousingDetailStatePanel kind="announcement" id={state.announcementId} backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
+        : <HousingDetailStatePanel returnToMyPage={returnToMyPage} kind="announcement" id={state.announcementId} backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
             status={state.status} errorMessage={state.errorMessage} onClose={onClose} onRetry={onRetry} />}
     </HousingDetailOverlay>
   )

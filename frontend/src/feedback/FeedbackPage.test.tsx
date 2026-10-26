@@ -34,11 +34,12 @@ it.each([' \n\t ', '\u00a0', '\u202f', '\ufeff'])('공백만 입력한 의견을
 })
 
 it('실패하면 내용을 보존하고 다시 제출할 수 있다', async () => {
-  vi.mocked(submitFeedback).mockRejectedValueOnce(new Error('전송 실패')).mockResolvedValueOnce()
+  vi.mocked(submitFeedback).mockRejectedValueOnce(new Error('SQL internal /api/v1/feedback failed')).mockResolvedValueOnce()
   const input = setup()
   fireEvent.change(input, { target: { value: '검색을 개선해 주세요.' } })
   fireEvent.click(screen.getByRole('button', { name: '의견 보내기' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent('전송 실패')
+  expect(await screen.findByRole('alert')).toHaveTextContent('의견을 보내지 못했어요. 작성한 내용을 확인하고 다시 시도해 주세요.')
+  expect(screen.queryByText(/SQL internal/)).not.toBeInTheDocument()
   expect(input).toHaveValue('검색을 개선해 주세요.')
   fireEvent.click(screen.getByRole('button', { name: '의견 보내기' }))
   expect(await screen.findByRole('heading', { name: '의견이 접수되었어요.' })).toBeVisible()

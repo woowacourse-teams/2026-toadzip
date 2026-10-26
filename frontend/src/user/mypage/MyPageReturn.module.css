@@ -1,0 +1,4 @@
+.back { display: flex; flex: 0 0 44px; align-items: center; justify-content: center; width: 44px; height: 44px; margin-left: auto; padding: 0; box-sizing: border-box; border: 0; border-radius: var(--ds-radius-control); background: transparent; color: var(--ds-color-text); text-decoration: none; }
+.back svg { width: 24px; height: 24px; }
+.back:hover { background: var(--ds-color-action-soft); }
+.back:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }

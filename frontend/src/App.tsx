@@ -12,6 +12,8 @@ import { AdminLayout } from './admin/auth/AdminLayout'
 import { LoginPage } from './admin/auth/LoginPage'
 import { RequireAdmin } from './admin/auth/RequireAdmin'
 import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHousingExplorer.tsx'
+import { MyPage } from './user/mypage/MyPage'
+import { rememberExplorerPath } from './user/auth/loginReturn'
 import { BrandLink } from './BrandLink'
 import { NotificationInterestSessionControl } from './public-housing/interest/NotificationInterest'
 import { NotificationPage } from './public-housing/interest/NotificationPage'
@@ -22,7 +24,7 @@ import { FeedbackPage } from './feedback/FeedbackPage'
 import { NotificationDeliveriesPage } from './admin/notifications/NotificationDeliveriesPage'
 import { OperationsHome } from './admin/operations/OperationsHome'
 import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
-import { PrivacyBoundary, PrivacyMenu, PrivacyPolicyPage, PrivacySettingsPage } from './privacy/Privacy'
+import { PrivacyBoundary, PrivacyPolicyPage, PrivacySettingsPage } from './privacy/Privacy'
 import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
 import { PublicNotificationLayout } from './notifications/PublicNotificationLayout'
 import { LandingPage } from './landing/LandingPage'
@@ -46,6 +48,7 @@ function LandingEntry() {
 
 function Home() {
   const location = useLocation()
+  useEffect(() => { rememberExplorerPath(location.pathname + location.search + location.hash) }, [location])
   const navigationType = useNavigationType()
   const [backReturn] = useState(() => navigationType === 'POP'
     ? { key: location.key, url: loginReturnForBack(location.pathname + location.search + location.hash) }
@@ -59,7 +62,7 @@ function Home() {
     <ExplorerReturnContext value={returnUrl}>
       <div className="app-shell">
         <div className="service-rail-brand"><BrandLink /></div>
-        <div className="service-rail-account"><PrivacyMenu /><Link className="service-feedback-link" to="/feedback">의견 보내기</Link><NotificationInterestSessionControl presentation="rail" /></div>
+        <div className="service-rail-account"><Link className="service-feedback-link" to="/feedback">의견 보내기</Link><NotificationInterestSessionControl presentation="rail" /></div>
         <main className="map-main"><DefaultPublicHousingExplorer showWelcome={false} /></main>
       </div>
     </ExplorerReturnContext>
@@ -150,7 +153,8 @@ export default function App() {
       <Route element={<PublicNotificationLayout />}>
         <Route path="/explore" element={<Home />} />
         <Route path="/notifications" element={<NotificationPage />} />
-        <Route path="/mypage/notifications" element={<NotificationPage management />} />
+        <Route path="/mypage" element={<Navigate to="/mypage/bookmarks" replace />} />
+        <Route path="/mypage/:section" element={<MyPage />} />
       </Route>
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/privacy/:key/:version" element={<PrivacyPolicyPage />} />
