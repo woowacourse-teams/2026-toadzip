@@ -377,13 +377,18 @@ describe('PublicHousingExplorer', () => {
       await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledOnce())
       act(() => failure?.({ code, message: 'browser error', PERMISSION_DENIED: 1,
         POSITION_UNAVAILABLE: 2, TIMEOUT: 3 }))
-      expect(screen.getByText(code === 1
+      const message = code === 1
         ? '위치 사용이 차단되어 있어요. 브라우저 설정에서 허용하거나 지역을 검색해 주세요.'
-        : '현재 위치를 확인하지 못했어요. 다시 시도하거나 지역을 검색해 주세요.')).toBeVisible()
+        : '현재 위치를 확인하지 못했어요. 다시 시도하거나 지역을 검색해 주세요.'
+      expect(screen.queryByText(message)).not.toBeInTheDocument()
       expect(screen.getByText('카메라 37.5666103,126.9783882')).toBeVisible()
       expect(screen.getByRole('searchbox')).toBeEnabled()
       fireEvent.click(screen.getByRole('button', { name: '현재 위치로 이동' }))
       expect(getCurrentPosition).toHaveBeenCalledTimes(2)
+      act(() => failure?.({ code, message: 'browser error', PERMISSION_DENIED: 1,
+        POSITION_UNAVAILABLE: 2, TIMEOUT: 3 }))
+      expect(screen.getByText(message)).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: '현재 위치로 이동' }))
       act(() => success(position))
       expect(screen.getByText('카메라 35.18,129.07')).toBeVisible()
     })
