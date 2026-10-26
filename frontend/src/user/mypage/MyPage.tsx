@@ -87,19 +87,19 @@ export function MyPage() {
     <div className={styles.layout}>
       <aside className={styles.sidebar}>
         <p className={styles.eyebrow}>공공주택 복덕방</p><h1>마이페이지</h1>
-        <nav aria-label="마이페이지 메뉴">{sections.map(item => <NavLink key={item.path} to={`/mypage/${item.path}`} className={() => section.path === item.path ? styles.active : ''} aria-current={section.path === item.path ? 'page' : undefined}><span>{item.label}</span><span aria-hidden="true">›</span></NavLink>)}</nav>
-        <Link className={styles.feedbackLink} to="/feedback" state={returnState}>제보/의견 보내기 <span aria-hidden="true">↗</span></Link>
+        <nav aria-label="마이페이지 메뉴">{sections.map(item => <NavLink key={item.path} to={`/mypage/${item.path}`} className={() => section.path === item.path ? styles.active : ''} aria-current={section.path === item.path ? 'page' : undefined}><span>{item.label}</span></NavLink>)}</nav>
+        <Link className={styles.feedbackLink} to="/feedback" state={returnState}>제보/의견 보내기</Link>
       </aside>
       <main className={styles.content}>
         <div className={styles.sectionHeader}><div><h2>{section.path === 'bookmarks' ? '내 북마크' : section.label}</h2><p className={styles.description}>{section.description}</p></div>{mode === 'member' && section.path === 'notifications' && <Link className={styles.secondaryLink} to="/notifications" state={returnState}>알림 보관함</Link>}</div>
         {mode === 'loading' && <div className={styles.notice} role="status">마이페이지를 불러오는 중…</div>}
         {mode === 'error' && <RetryNotice title="마이페이지를 불러오지 못했어요" onRetry={bookmarks?.reload} />}
-        {mode === 'guest' && <section className={styles.notice}><NoticeIcon /><h3>로그인이 필요해요</h3><p>로그인하면 저장한 주택과 알림을 한곳에서 관리할 수 있어요.</p><Button ref={loginButton} onClick={() => setLogin(true)}>로그인</Button></section>}
+        {mode === 'guest' && <section className={styles.notice}><h3>로그인이 필요해요</h3><p>로그인하면 저장한 주택과 알림을 한곳에서 관리할 수 있어요.</p><Button ref={loginButton} onClick={() => setLogin(true)}>로그인</Button></section>}
         {mode === 'member' && section.path === 'bookmarks' && <>
           <div className={styles.filters} role="group" aria-label="북마크 유형">{(['COMPLEX', 'ANNOUNCEMENT'] as const).map(type => <button key={type} type="button" aria-label={`${type === 'COMPLEX' ? '단지' : '공고'} ${bookmarks?.listStatus === 'ready' ? bookmarks.items.filter(item => item.type === type).length : '불러오는 중'}`} aria-pressed={filter === type} onClick={() => setFilter(type)}><span>{type === 'COMPLEX' ? '단지' : '공고'}</span><span className={styles.count}>{bookmarks?.listStatus === 'ready' ? bookmarks.items.filter(item => item.type === type).length : '—'}</span></button>)}</div>
           {bookmarks?.listStatus === 'loading' && <div className={styles.notice} role="status">북마크를 불러오는 중…</div>}
           {bookmarks?.listStatus === 'error' && <RetryNotice title="북마크를 불러오지 못했어요" onRetry={bookmarks.reload} />}
-          {bookmarks?.listStatus === 'ready' && (items.length === 0 ? <section className={styles.notice}><NoticeIcon /><h3>저장한 {filter === 'COMPLEX' ? '단지가' : '공고가'} 없어요</h3><p>지도에서 마음에 드는 주택을 찾아 북마크해 보세요.</p><Link className={styles.mapLink} to={lastExplorerPath()}>주택 찾아보기 <span aria-hidden="true">→</span></Link></section> : <>
+          {bookmarks?.listStatus === 'ready' && (items.length === 0 ? <section className={styles.notice}><h3>저장한 {filter === 'COMPLEX' ? '단지가' : '공고가'} 없어요</h3><p>지도에서 마음에 드는 주택을 찾아 북마크해 보세요.</p><Link className={styles.mapLink} to={lastExplorerPath()}>주택 찾아보기</Link></section> : <>
             <ManagementTable label={`${filter === 'COMPLEX' ? '단지' : '공고'} 북마크 내역`} statusLabel={filter === 'ANNOUNCEMENT' ? '접수 상태' : undefined} detailLabel={filter === 'COMPLEX' ? '주소' : '접수 일정'}>{items.map(item => <ManagementRow key={`${item.type}:${item.targetId}`} status={item.type === 'ANNOUNCEMENT' ? <div className={styles.cardMeta}><span data-status={item.status ?? undefined}>{applicationStatusLabel(item.status)}</span></div> : undefined} details={item.type === 'COMPLEX' ? item.address ?? '확인된 주소가 없어요' : item.applicationStartDate && item.applicationEndDate ? <><time dateTime={item.applicationStartDate}>{item.applicationStartDate}</time> ~ <time dateTime={item.applicationEndDate}>{item.applicationEndDate}</time></> : '확인된 일정이 없어요'} actions={<><BookmarkButton type={item.type} targetId={item.targetId} name={item.name} />{item.available && <NotificationInterestButton target={{ type: item.type, id: item.targetId, name: item.name }} source="SETTING" />}</>}>
               <h3>{item.available ? <Link state={returnState} to={`/explore?${item.type === 'COMPLEX' ? 'complexId' : 'announcementId'}=${encodeURIComponent(item.targetId)}`}>{item.name}</Link> : item.name}</h3>
               {!item.available && <p>현재 상세 정보를 조회할 수 없어요.</p>}
@@ -107,7 +107,7 @@ export function MyPage() {
           </>)}
         </>}
         {mode === 'member' && section.path === 'notifications' && (interests?.mode === 'error' ? <RetryNotice title="알림 설정을 불러오지 못했어요" onRetry={interests.refreshStatus} /> : interests?.mode === 'guest' ? <RetryNotice title="로그인 상태를 다시 확인해 주세요" onRetry={() => { interests.refreshStatus(); bookmarks?.reload() }} /> : <NotificationSettings />)}
-        {mode === 'member' && section.path === 'account' && <section className={styles.account}><DetailFacts columns={1} appearance="list"><DetailFact term="이메일" value={bookmarks?.user?.email ?? '등록된 이메일이 없어요'} /></DetailFacts><div className={styles.accountFooter}><p>현재 기기에서 로그아웃합니다.</p><Button disabled={loggingOut} onClick={() => void logout()}>{loggingOut ? '로그아웃 중…' : '로그아웃'}</Button></div>{logoutError && <p role="alert">{logoutError}</p>}</section>}
+        {mode === 'member' && section.path === 'account' && <section className={styles.account}><DetailFacts columns={1} appearance="list"><DetailFact term="이메일" value={bookmarks?.user?.email ?? '등록된 이메일이 없어요'} /></DetailFacts><div className={styles.accountFooter}><p>현재 기기에서 로그아웃합니다.</p><Button className={styles.logoutButton} disabled={loggingOut} onClick={() => void logout()}>{loggingOut ? '로그아웃 중…' : '로그아웃'}</Button></div>{logoutError && <p role="alert">{logoutError}</p>}</section>}
 
       </main>
     </div>
@@ -115,7 +115,6 @@ export function MyPage() {
     {!mobile && (login || loginRequested && mode === 'guest') && <LoginModal loginFailed={loginResult === 'failed'} sessionError={false} onClose={closeLogin} returnFocusRef={loginButton} />}
   </div>
 }
-function NoticeIcon() { return <svg className={styles.noticeIcon} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 3h12v18l-6-4-6 4z" /></svg> }
 function RetryNotice({ title, onRetry }: { readonly title: string; readonly onRetry?: () => void }) {
   return <section className={styles.notice}><div role="alert"><h3>{title}</h3><p>잠시 후 다시 시도해 주세요.</p></div><Button onClick={onRetry}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11a9 9 0 0 1 15.36-5.36L21 8M21 3v5h-5M21 13a9 9 0 0 1-15.36 5.36L3 16M3 21v-5h5" /></svg>다시 시도</Button></section>
 }
