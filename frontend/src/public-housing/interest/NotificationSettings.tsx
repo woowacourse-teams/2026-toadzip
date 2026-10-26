@@ -54,7 +54,7 @@ export function NotificationSettings() {
       </div>
       <button className={styles.actionButton} type="button" disabled={context.blocked || context.targets.length === 0}
         onClick={(event) => { tabs.current[groups.findIndex(group => group.type === selected.type)]?.focus(); context.clearAll(event.currentTarget) }}>
-        {context.clearingAll ? '전체 해제 중…' : '모든 알림 해제'}
+        모든 알림 해제
       </button>
     </div>
     {context.batchError && <p className={styles.error} role="alert">{context.batchError}</p>}

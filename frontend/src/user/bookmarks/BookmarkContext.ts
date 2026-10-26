@@ -6,6 +6,7 @@ export interface BookmarkContextValue {
   readonly listStatus: 'loading' | 'ready' | 'error'
   readonly user: Awaited<ReturnType<typeof getCurrentUser>>
   readonly items: readonly BookmarkItem[]
+  readonly optimistic: ReadonlyMap<string, boolean>
   readonly pending: ReadonlySet<string>
   readonly error: string
   readonly reload: () => void

@@ -630,13 +630,15 @@ it('빈 저장 응답은 성공으로 표시하지 않고 현재 설정을 다�
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
-it('신청 응답을 기다리는 동안 저장 상태를 보여 주고 성공한 뒤에만 완료 화면을 연다', async () => {
+it('신청은 즉시 버튼에 반영하고 성공한 뒤에만 완료 화면을 연다', async () => {
   const response = deferred<NotificationInterestResult>()
   const repo = repository()
   repo.record.mockReturnValueOnce(response.promise)
   render(example(repo))
   await click()
-  expect(screen.getByRole('button', { name: '저장 중…' })).toBeDisabled()
+  expect(screen.queryByText('저장 중…')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '서울 단지 알림 취소' })).toBeDisabled()
+  expect(screen.queryByRole('button', { name: '신청하기' })).not.toBeInTheDocument()
   expect(screen.queryByRole('dialog', { name: '알림 신청을 완료했어요' })).not.toBeInTheDocument()
   const event = repo.record.mock.calls[0]![0]
   await act(async () => response.resolve(resultFor(event, 'ACTIVATED')))
@@ -644,3 +646,18 @@ it('신청 응답을 기다리는 동안 저장 상태를 보여 주고 성공�
   expect(screen.getByRole('status')).toHaveTextContent('서울 단지')
 })
 
+
+it('알림 해제는 즉시 반영하고 실패하면 구독 상태를 복원한다', async () => {
+  const response = deferred<NotificationInterestResult>()
+  const repo = repository({ ...member, targets: [{ targetType: 'COMPLEX', targetId: '1', targetName: '서울 단지' }] })
+  repo.record.mockReturnValueOnce(response.promise)
+  render(example(repo))
+  const button = await screen.findByRole('button', { name: '서울 단지 알림 취소' })
+  fireEvent.click(button)
+  expect(button).toHaveAttribute('aria-pressed', 'false')
+  expect(button).toHaveTextContent('알림 받기')
+  expect(button).toBeDisabled()
+  await act(async () => response.reject(new Error('offline')))
+  expect(screen.getByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('dialog', { name: '알림 요청 오류' })).toBeVisible()
+})

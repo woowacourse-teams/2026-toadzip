@@ -19,14 +19,14 @@ function BookmarkControl({ type, targetId, name, context }: Props & { readonly c
   const mobile = useMobileViewport()
   const [login, setLogin] = useState(false)
   const trigger = useRef<HTMLButtonElement>(null)
-  const saved = context.items.some((item) => item.type === type && item.targetId === targetId)
+  const saved = context.optimistic.get(bookmarkKey(type, targetId)) ?? context.items.some((item) => item.type === type && item.targetId === targetId)
   const pending = context.pending.has(bookmarkKey(type, targetId))
   return <span className={styles.wrapper}>
     <button ref={trigger} type="button" className={styles.button} aria-label={`${name} 북마크 ${saved ? '해제' : '저장'}`}
-      aria-pressed={saved} disabled={context.mode === 'loading' || context.mode === 'member' && context.listStatus === 'loading' || pending}
+      aria-pressed={saved} aria-busy={pending || undefined} disabled={context.mode === 'loading' || context.mode === 'member' && context.listStatus === 'loading' || pending}
       onClick={() => { if (context.mode === 'guest') { if (mobile) { const returnTo = explorerReturn?.current ?? location.pathname + location.search + location.hash; rememberLoginReturn(returnTo); void navigate(loginPageUrl(returnTo)) } else setLogin(true) } else if (context.mode === 'error' || context.listStatus === 'error') context.reload(); else void context.toggle(type, targetId) }}>
       <svg aria-hidden="true" viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.7"><path d="M6 3h12v18l-6-4-6 4z" /></svg>
-      {pending ? '저장 중…' : context.mode === 'error' || context.listStatus === 'error' ? '북마크 다시 확인' : saved ? '저장됨' : '북마크'}
+      {context.mode === 'error' || context.listStatus === 'error' ? '북마크 다시 확인' : saved ? '저장됨' : '북마크'}
     </button>
     {context.error && <span className={styles.error} role="alert">{context.error}</span>}
     {login && <LoginModal loginFailed={false} sessionError={false} onClose={() => setLogin(false)} returnFocusRef={trigger} />}

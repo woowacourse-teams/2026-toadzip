@@ -12,6 +12,7 @@ export function BookmarkProvider({ children, repository = bookmarkRepository, lo
   const [items, setItems] = useState<readonly BookmarkItem[]>([])
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set())
   const [error, setError] = useState('')
+  const [optimistic, setOptimistic] = useState<ReadonlyMap<string, boolean>>(new Map())
   const generation = useRef(0)
   const snapshotVersion = useRef(0)
   const inFlight = useRef(new Set<string>())
@@ -19,14 +20,14 @@ export function BookmarkProvider({ children, repository = bookmarkRepository, lo
   const reset = useCallback(() => {
     generation.current++; controller.current?.abort(); inFlight.current.clear()
     accountId.current = null
-    setUser(null); setItems([]); setPending(new Set()); setError(''); setMode('guest')
+    setUser(null); setItems([]); setPending(new Set()); setOptimistic(new Map()); setError(''); setMode('guest')
   }, [])
   const reload = useCallback(() => {
     const version = ++generation.current
     controller.current?.abort()
     const request = new AbortController(); controller.current = request
     accountId.current = null
-    inFlight.current.clear(); setPending(new Set()); setItems([]); setUser(null); setMode('loading'); setListStatus('loading'); setError('')
+    inFlight.current.clear(); setPending(new Set()); setOptimistic(new Map()); setItems([]); setUser(null); setMode('loading'); setListStatus('loading'); setError('')
     void loadUser().then(async (account) => {
       if (version !== generation.current) return
       if (!account) { reset(); return }
@@ -59,6 +60,8 @@ export function BookmarkProvider({ children, repository = bookmarkRepository, lo
     const mutationAccountId = accountId.current
     const saved = items.some((item) => item.type === type && item.targetId === id)
     inFlight.current.add(key); setPending(new Set(inFlight.current)); setError('')
+    snapshotVersion.current++
+    setOptimistic(current => new Map(current).set(key, !saved))
     try {
       if (saved) await repository.remove(type, id)
       else await repository.save(type, id)
@@ -66,15 +69,27 @@ export function BookmarkProvider({ children, repository = bookmarkRepository, lo
       // Read the server after writes: its timestamps and availability are authoritative.
       const snapshotOrder = ++snapshotVersion.current
       const snapshot = await repository.list(controller.current?.signal)
-      if (version === generation.current && snapshotOrder === snapshotVersion.current) setItems(snapshot)
+      if (version === generation.current) {
+        setItems(current => {
+          if (snapshotOrder === snapshotVersion.current) return snapshot
+          // A newer write can invalidate this full snapshot, but this target's
+          // response still completes its own operation without undoing siblings.
+          const ownItem = snapshot.find(item => bookmarkKey(item.type, item.targetId) === key)
+          const remaining = current.filter(item => bookmarkKey(item.type, item.targetId) !== key)
+          return ownItem ? [ownItem, ...remaining] : remaining
+        })
+      }
     } catch (failure) {
       if (version !== generation.current) return
       if (failure instanceof BookmarkSessionExpired) { reset(); return }
       setError('북마크를 변경하지 못했습니다. 다시 시도해 주세요.')
     } finally {
-      if (version === generation.current) { inFlight.current.delete(key); setPending(new Set(inFlight.current)) }
+      if (version === generation.current) {
+        inFlight.current.delete(key); setPending(new Set(inFlight.current))
+        setOptimistic(current => { const next = new Map(current); next.delete(key); return next })
+      }
       else if (mutationAccountId !== null && accountId.current === mutationAccountId) reload()
     }
   }
-  return <BookmarkContext.Provider value={{ mode, listStatus, user, items, pending, error, reload, toggle }}>{children}</BookmarkContext.Provider>
+  return <BookmarkContext.Provider value={{ mode, listStatus, user, items: items.filter(item => optimistic.get(bookmarkKey(item.type, item.targetId)) !== false), optimistic, pending, error, reload, toggle }}>{children}</BookmarkContext.Provider>
 }

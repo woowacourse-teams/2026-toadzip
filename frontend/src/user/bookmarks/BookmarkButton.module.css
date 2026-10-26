@@ -5,3 +5,5 @@
 .button:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
 .button svg { width: 18px; height: 18px; }
 .error { color: var(--ds-color-deadline); font-size: var(--ds-text-caption); }
+
+.button:disabled[aria-busy=true] { opacity: 1; cursor: default; }
