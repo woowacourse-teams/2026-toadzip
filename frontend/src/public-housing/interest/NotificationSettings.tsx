@@ -15,7 +15,6 @@ const groups = [
 export function NotificationSettings() {
   const context = useNotificationInterests()
   const returnState = useMyPageReturnState()
-  const heading = useRef<HTMLHeadingElement>(null)
   const tabs = useRef<Array<HTMLButtonElement | null>>([])
   const id = useId()
   const [params, setParams] = useSearchParams()
@@ -37,9 +36,8 @@ export function NotificationSettings() {
   return <div className={styles.settings}>
     <NotificationPushControl />
     <div className={styles.actions}>
-      <h3 ref={heading} tabIndex={-1}>관심 알림 <span>{context.targets.length}</span></h3>
       <button className={styles.actionButton} type="button" disabled={context.blocked || context.targets.length === 0}
-        onClick={(event) => { heading.current?.focus(); context.clearAll(event.currentTarget) }}>
+        onClick={(event) => { tabs.current[groups.findIndex(group => group.type === selected.type)]?.focus(); context.clearAll(event.currentTarget) }}>
         {context.clearingAll ? '전체 해제 중…' : '모든 알림 해제'}
       </button>
     </div>
@@ -67,7 +65,7 @@ export function NotificationSettings() {
         : <ManagementTable label={`${selected.title} 알림 신청 내역`}>
           {targets.map((target) => <ManagementRow key={target.id} actions={
             <button className={styles.actionButton} type="button" disabled={context.blocked} aria-label={`${target.name} 알림 해제`}
-              onClick={(event) => { heading.current?.focus(); context.request({ target, source: 'SETTING' }, event.currentTarget) }}>알림 해제</button>
+              onClick={(event) => { tabs.current[groups.findIndex(group => group.type === selected.type)]?.focus(); context.request({ target, source: 'SETTING' }, event.currentTarget) }}>알림 해제</button>
           }><strong>{target.type === 'REGION' ? target.name : <Link
             to={`/explore?${target.type === 'COMPLEX' ? 'complexId' : 'announcementId'}=${encodeURIComponent(target.id)}`}
             state={returnState}>{target.name}</Link>}</strong></ManagementRow>)}

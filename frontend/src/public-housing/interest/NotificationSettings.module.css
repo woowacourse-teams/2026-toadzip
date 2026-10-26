@@ -1,8 +1,5 @@
 .settings { color: var(--ds-color-text); }
-.actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.actions h3 { margin: 0; font-size: var(--ds-text-section); font-weight: 600; }
-.actions h3:focus { outline: none; }
-.actions h3 span { margin-left: 4px; color: var(--ds-color-label); }
+.actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
 .actionButton { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-height: 44px; min-width: 80px; padding: 8px 12px; background: var(--ds-color-surface); border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); color: var(--ds-color-text); font: inherit; font-size: var(--ds-text-body); font-weight: 600; line-height: 1.4; cursor: pointer; }
 .actionButton:hover:not(:disabled) { background: var(--ds-color-surface-subtle); border-color: var(--ds-color-label); }
 .actionButton:disabled { opacity: .45; cursor: default; }

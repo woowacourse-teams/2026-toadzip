@@ -20,7 +20,6 @@
 .description { font-size: var(--ds-text-caption); color: var(--ds-color-label); margin: 0; }
 .filters { display: flex; gap: var(--ds-space-4); margin-bottom: var(--ds-space-4); border-bottom: 1px solid var(--ds-color-divider); }
 .filters button { position: relative; display: flex; align-items: center; justify-content: center; gap: var(--ds-space-2); min-height: var(--ds-control-height-md); padding: 8px 12px; border: 0; background: transparent; color: var(--ds-color-label); font: inherit; font-weight: 600; cursor: pointer; }
-.filters button svg { width: 18px; height: 18px; flex-shrink: 0; }
 .filters button:hover { background: var(--ds-color-surface-subtle); }
 .filters button[aria-pressed=true] { color: var(--ds-color-text); }
 .filters button[aria-pressed=true]::after { content: ''; position: absolute; inset: auto 0 -1px; height: 3px; background: var(--ds-color-brand); }
@@ -37,8 +36,6 @@
 .noticeIcon { width: 24px; height: 24px; padding: 0; color: var(--ds-color-action); margin-bottom: var(--ds-space-3); }
 .notice button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; line-height: var(--ds-line-height-body); }
 .account { padding: var(--ds-space-5); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); }
-.signedIn { display: inline-flex; align-items: center; gap: 8px; font-size: var(--ds-text-body); font-weight: 600; color: var(--ds-color-action); margin-bottom: var(--ds-space-4); }
-.signedIn > span { width: 7px; height: 7px; border-radius: 50%; background: var(--ds-color-brand); }
 .account dl { overflow-wrap: anywhere; }
 .accountFooter { display: flex; justify-content: space-between; align-items: center; gap: 20px; border-top: 1px solid var(--ds-color-divider); margin-top: 24px; padding-top: 24px; }
 .accountFooter p { color: var(--ds-color-label); }

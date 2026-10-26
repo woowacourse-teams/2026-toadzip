@@ -240,6 +240,8 @@ it('알림 분류는 키보드로 이동하고 비어 있는 분류도 선택할
   fireEvent.click(screen.getByRole('button', { name: '서울 행복주택 알림 해제' }))
   expect(await screen.findByText('등록한 단지 알림이 없어요.')).toBeVisible()
   expect(screen.getByRole('tab', { name: '단지 0' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('tab', { name: '단지 0' })).toHaveFocus()
+  expect(screen.queryByRole('heading', { name: /관심 알림/ })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: '모든 알림 해제' })).toBeEnabled()
 })
 

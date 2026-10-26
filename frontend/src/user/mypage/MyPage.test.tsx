@@ -34,7 +34,7 @@ it('이메일이 없는 계정을 표시하고 로그아웃 실패 시 화면을
   fireEvent.click(screen.getByRole('button', { name: '로그아웃' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('로그아웃하지 못했어요.')
   expect(screen.getByLabelText('주소')).toHaveTextContent('/mypage/account')
-  expect(screen.getByText('로그인됨')).toBeVisible()
+  expect(screen.queryByText('로그인됨')).not.toBeInTheDocument()
 })
 it('로그아웃 성공 시 지도 필터와 선택으로 돌아간다', async () => {
   sessionStorage.setItem('toadzip:last-explore-path', '/explore?complexId=1&mapZoom=9#map')
