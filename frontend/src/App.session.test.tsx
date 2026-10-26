@@ -79,7 +79,7 @@ describe('홈의 사용자 세션과 알림 상태', () => {
     fireEvent.click(await screen.findByRole('link', { name: '계정' }))
     fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('로그아웃하지 못했어요.')
-    fireEvent.click(screen.getByRole('link', { name: /지도로 돌아가기/ }))
+    fireEvent.click(screen.getByRole('link', { name: /지도로 이동/ }))
     expect(screen.getByRole('button', { name: '서울 단지 알림 취소' })).toBeEnabled()
     expect(interest.loadStatus).toHaveBeenCalledOnce()
     expect(screen.queryByRole('button', { name: '로그인' })).not.toBeInTheDocument()

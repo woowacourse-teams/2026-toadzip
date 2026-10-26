@@ -52,7 +52,7 @@ it('이전 지도 경로를 새로고침 이후에도 복구한다', async () =>
   sessionStorage.setItem('toadzip:last-explore-path', '/explore?mapZoom=10&announcementId=2#detail')
   setup()
   await screen.findByText('내 북마크')
-  expect(screen.getByRole('link', { name: /지도로 돌아가기/ })).toHaveAttribute('href', '/explore?mapZoom=10&announcementId=2#detail')
+  expect(screen.getByRole('link', { name: /지도로 이동/ })).toHaveAttribute('href', '/explore?mapZoom=10&announcementId=2#detail')
 })
 it('북마크 조회 장애에도 계정과 로그아웃을 사용할 수 있다', async () => {
   setup('/mypage/account', { list: vi.fn().mockRejectedValue(new Error('offline')), save: vi.fn(), remove: vi.fn() })

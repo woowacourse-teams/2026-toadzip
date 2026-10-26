@@ -25,6 +25,6 @@ it('직접 진입은 지도 복귀를 제공하며 외부 주소와 임의 경�
   expect(myPageReturnPath({ mypageReturn: '/admin' })).toBeNull()
   expect(myPageReturnPath({ mypageReturn: '/mypage/bookmarks?type=ANNOUNCEMENT' })).toBe('/mypage/bookmarks?type=ANNOUNCEMENT')
   render(<MemoryRouter initialEntries={['/privacy']}><PageReturnLink /></MemoryRouter>)
-  expect(screen.getByRole('link', { name: '지도로 돌아가기' })).toHaveAttribute('href', '/explore')
+  expect(screen.getByRole('link', { name: '지도로 이동' })).toHaveAttribute('href', '/explore')
   expect(screen.queryByRole('link', { name: '마이페이지로 돌아가기' })).not.toBeInTheDocument()
 })

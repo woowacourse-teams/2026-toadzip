@@ -1,5 +1,3 @@
-.link { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: var(--ds-control-height-md); padding: 10px 18px; box-sizing: border-box; border-radius: var(--ds-radius-control); color: var(--ds-color-on-brand); background: var(--ds-color-brand); font-size: var(--ds-text-control-lg); font-weight: 700; text-decoration: none; white-space: nowrap; }
-.link:hover { background: var(--ds-color-brand-hover); }
+.link:any-link { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 var(--ds-space-2); box-sizing: border-box; border: 0; border-radius: var(--ds-radius-control); color: var(--ds-color-label); background: transparent; font-size: var(--ds-text-body); font-weight: 500; text-decoration: none; white-space: nowrap; }
+.link:hover { background: var(--ds-color-control-hover); }
 .link:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
-.link svg { width: 20px; height: 20px; flex-shrink: 0; }
-@media(max-width: 767px) { .link { font-size: var(--ds-text-body); padding: 10px 12px; gap: 6px; } }

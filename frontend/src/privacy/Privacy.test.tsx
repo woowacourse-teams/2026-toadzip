@@ -110,7 +110,7 @@ it('공개 화면 이동은 검증된 동의를 폐기하거나 동일 페이지
   render(app('/privacy/settings'))
   await waitFor(() => expect(consentStore.allowed()).toBe(true))
   const generation = consentStore.generation()
-  fireEvent.click(screen.getByRole('link', { name: '지도로 돌아가기' }))
+  fireEvent.click(screen.getByRole('link', { name: '지도로 이동' }))
   expect(await screen.findByLabelText('정보')).toBeVisible()
   expect(consentStore.generation()).toBe(generation)
   expect(consentStore.allowed()).toBe(true)
