@@ -12,7 +12,7 @@ const guides = {
   ],
   android: [
     { title: 'Chrome에서 더 보기를 눌러요', description: '주소창 오른쪽의 점 세 개(⋮)를 눌러 주세요.', image: 'android-browser.png', alt: 'Android Chrome 주소창 오른쪽의 더 보기 버튼 실제 캡처', position: 'androidBrowser' },
-    { title: '홈 화면에 추가를 선택해요', description: '메뉴 아래쪽에 있어요. 앱 설치로 표시될 수도 있어요.', image: 'android-menu.png', alt: 'Android Chrome 메뉴의 홈 화면에 추가 항목 실제 캡처', position: 'androidMenu' },
+    { title: '홈 화면에 추가를 선택해요', description: '메뉴 아래쪽에 있어요. 설치와 바로가기가 나오면 설치를 선택해요.', image: 'android-menu.png', alt: 'Android Chrome 메뉴의 홈 화면에 추가 항목 실제 캡처', position: 'androidMenu' },
     { title: '설치를 누르면 끝!', description: '설치 또는 추가를 눌러요. 완료되면 홈 화면의 복덕방 아이콘으로 열어 주세요.', image: 'android-add.png', alt: 'Android Chrome 복덕방 앱 설치 확인창의 설치 버튼 실제 캡처', position: 'androidAdd' },
   ],
 } as const
