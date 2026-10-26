@@ -183,7 +183,7 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
               <th scope="row" title={target.title}>{row.product ? <Link to={follow(`/admin/${row.product.resourceType}/${row.product.id}`, row)}>{target.title}</Link> : <span>{target.title}</span>}
                 <small>{failureCategories[row.category].label}{target.context ? ` · ${target.context}` : ''}</small></th>
               <td title={row.detail}>{reasonLabel(row)}</td>
-              <td><span className={styles.status} data-status={row.status}>{statusLabel(row.status)}</span></td>
+              <td><span className={styles.status} data-status={row.status}>{statusLabel(row.status)}</span>{resolvedByLabel(row) && <small className={styles.resolvedBy}>{resolvedByLabel(row)}</small>}</td>
               <td><button type="button" aria-label={`확인·처리: ${target.title}`} onClick={() => openSelection(row)}>확인·처리</button></td>
             </tr>
           })}</tbody>
@@ -217,7 +217,7 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
           disabled={retryDisabled || detailPending || Boolean(detailError)} onApplied={processed} onBusy={setActionBusy} />}
         {runError ? <p role="alert">{runError}</p> : null}
         <div className={styles.dialogResult}>
-          <h4 id="failure-result-title" ref={resultHeading} tabIndex={-1}>오류 기록 <strong>{statusLabel(selected.status)}</strong>{selected.lastResolvedAt ? ` · ${formatTime(selected.lastResolvedAt)}` : ''}
+          <h4 id="failure-result-title" ref={resultHeading} tabIndex={-1}>오류 기록 <strong>{statusLabel(selected.status)}</strong>{selected.lastResolvedAt ? ` · ${formatTime(selected.lastResolvedAt)}` : ''}{resolvedByLabel(selected) ? ` · ${resolvedByLabel(selected)}` : ''}
             {!detailPending && !detailError && detail?.checkedAt ? <small> · 조회 {formatTime(detail.checkedAt)}</small> : null}</h4>
           <button type="button" disabled={detailPending || actionBusy} onClick={processed}>다시 확인</button>
           {selected.product?.publicDetailAvailable && <Link to={`/?${selected.product.resourceType === 'complexes' ? 'complexId' : 'announcementId'}=${selected.product.id}`} target="_blank" rel="noreferrer">사용자 상세</Link>}
@@ -279,6 +279,8 @@ const exclusionLabels: Record<string,string> = {
   NOT_LISTABLE_PUBLICATION_TYPE:'공고 종류상 기본 목록 제외', MISSING_PREVIOUS_ANNOUNCEMENT:'정정 공고의 이전 공고 연결 없음',
   HAS_SUCCESSOR:'후속 공고가 있어 기본 목록 제외',
 }
+// 정제가 아니라 관리자가 공고를 보정해 해결한 기록이면 누가 해결했는지 보여 준다.
+function resolvedByLabel(row: FailureReview) { return row.status === 'RESOLVED' && row.lastResolvedBy ? `관리자 ${row.lastResolvedBy}가 공고 보정으로 해결` : '' }
 function statusLabel(status:string) { return status === 'RESOLVED' ? '해결됨' : status === 'SKIPPED' ? '건너뜀' : '미해결' }
 function formatTime(value:string) {
   const date=new Date(value)

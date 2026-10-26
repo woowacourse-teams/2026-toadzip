@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import fixtures from './fixtures/scenarios.json'
-import prompt from './announcementUpdatePrompt.v6.txt?raw'
+import prompt from './announcementUpdatePrompt.v7.txt?raw'
 import { evidenceFor, noteFor, pathCovers, readExtraction, type Extraction } from './extraction'
 
 describe('ChatGPT 공고 응답 읽기', () => {
@@ -29,6 +29,16 @@ describe('ChatGPT 공고 응답 읽기', () => {
     expect(result.value.supplyRows[0].targets[0].rentalDeposit).toBe('123456789012345678')
     expect(result.value.schedules[0].name).toBe('현장 ~ 신청:접수*')
     expect(result.repairs).toHaveLength(4)
+  })
+
+  it('복사하며 붙은 HTML 공백 문자 코드를 값 앞뒤에서는 지우고 값 사이와 JSON 사이에서는 공백으로 고친다', () => {
+    const body = JSON.stringify(fixtures.hansville.extraction, null, 2).replace(/,\n/g, ',&#x20;\n')
+      .replace('"현장 신청접수"', '"&#x20;현장&#x20;신청접수&nbsp;"')
+    const result = readExtraction(body)
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.value.schedules[0].name).toBe('현장 신청접수')
+    expect(result.repairs).toEqual([expect.stringContaining('HTML 공백 문자 코드')])
   })
 
   it('정상적인 역슬래시와 문자열 이스케이프를 보존한다', () => {

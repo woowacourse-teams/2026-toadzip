@@ -81,6 +81,43 @@ class AnnouncementJsonCorrectionIntegrationTest {
         apply(id, request, preview.path("confirmationToken").asText()).andExpect(status().isConflict());
     }
 
+    @Test
+    void PDF_보정을_저장하면_이_공고에_남은_정제와_보강_실패를_모두_해결로_바꾼다() throws Exception {
+        var announcement = fixture();
+        long id = announcement.getId();
+        String identifier = announcement.getSourceAnnouncementIdentifier();
+        for (var row : new String[][] {
+                {"myhome_announcement_mapping_failures", identifier + ":1", "HOUSING_TYPE_NOT_FOUND"},
+                {"myhome_announcement_mapping_failures", identifier + ":2", "AMBIGUOUS_HOUSING_TYPE"},
+                {"lh_announcement_enrichment_failures", identifier + ":lh", "HOUSING_TYPE_NOT_FOUND"},
+                {"myhome_announcement_mapping_failures", "other:1", "HOUSING_TYPE_NOT_FOUND"}}) {
+            String owner = row[1].startsWith("other") ? "other" : identifier;
+            jdbc.update(("INSERT INTO %s (source_key, source_announcement_identifier, reason, detail, status, "
+                    + "occurred_at, last_occurred_at, occurrence_count, recurrence_count) "
+                    + "VALUES (?, ?, ?, '실패', 'PENDING', now(), now(), 1, 0)").formatted(row[0]),
+                    row[1], owner, row[2]);
+        }
+        var request = request(id);
+        ((ObjectNode) request.path("correction").path("rows").get(0)).put("householdCount", 3);
+        apply(id, request, preview(id, request).path("confirmationToken").asText()).andExpect(status().isOk());
+        entities.flush();
+
+        assertThat(jdbc.queryForList("""
+                SELECT status FROM myhome_announcement_mapping_failures WHERE source_announcement_identifier = ?
+                UNION ALL
+                SELECT status FROM lh_announcement_enrichment_failures WHERE source_announcement_identifier = ?
+                """, String.class, identifier, identifier)).containsOnly("RESOLVED").hasSize(3);
+        assertThat(jdbc.queryForList("""
+                SELECT last_resolved_by FROM myhome_announcement_mapping_failures
+                WHERE source_announcement_identifier = ?
+                UNION ALL
+                SELECT last_resolved_by FROM lh_announcement_enrichment_failures
+                WHERE source_announcement_identifier = ?
+                """, String.class, identifier, identifier)).containsOnly("admin").hasSize(3);
+        assertThat(jdbc.queryForObject("SELECT status FROM myhome_announcement_mapping_failures "
+                + "WHERE source_announcement_identifier = 'other'", String.class)).isEqualTo("PENDING");
+    }
+
     private Announcement fixture() {
         var fixtures = new NotificationFixtures(entities, jdbc);
         var announcement = fixtures.announcement();

@@ -68,3 +68,11 @@ it('제안이 없는 행은 단지를 골라야 하고 근거 URL이 없으면 �
   fireEvent.change(screen.getByLabelText('공식 근거 URL'), { target: { value: 'https://example.com/notice.pdf' } })
   expect(screen.getByRole('button', { name: '연결 1개 저장하고 다시 정제' })).toBeEnabled()
 })
+
+it('LH 행 구성이 바뀌어 해제한 저장 매칭을 정제 결과와 함께 알린다', async () => {
+  api.saveLhSupplyLinks.mockImplementation(async (_id, current, target) => ({ ...current, releasedSupplyMatches: target === 'M1' ? ['M1'] : [] }))
+  api.rerunAnnouncement.mockResolvedValue(undefined)
+  renderPage()
+  fireEvent.click(await screen.findByRole('button', { name: '연결 3개 저장하고 다시 정제' }))
+  expect(await screen.findByRole('status')).toHaveTextContent('원천행의 저장 매칭 1개를 해제했습니다. PDF 보정에서 펼쳐진 공급행의 주택형을 확인하세요.')
+})

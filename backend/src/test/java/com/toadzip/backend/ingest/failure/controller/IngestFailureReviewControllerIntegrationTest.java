@@ -260,7 +260,22 @@ class IngestFailureReviewControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].productLinkStatus").value("UNKNOWN"))
                 .andExpect(jsonPath("$.data.items[0].lastResolvedAt").value("2026-10-02T02:00:00Z"))
-                .andExpect(jsonPath("$.data.items[0].lastResolvedExecutionId").value(resolvedExecutionId.toString()));
+                .andExpect(jsonPath("$.data.items[0].lastResolvedExecutionId").value(resolvedExecutionId.toString()))
+                .andExpect(jsonPath("$.data.items[0].lastResolvedBy").isEmpty());
+    }
+
+    @Test
+    void 관리자가_공고_보정으로_해결한_실패는_해결한_관리자를_보여_준다() throws Exception {
+        stageFailure("myhome_announcement_mapping_failures", "6:notice:1", "source_announcement_identifier", "notice",
+                "HOUSING_TYPE_NOT_FOUND");
+        jdbc.sql("UPDATE myhome_announcement_mapping_failures SET status = 'RESOLVED', "
+                + "last_resolved_at = '2026-10-26T01:00:00Z', last_resolved_by = 'root'").update();
+
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
+                        .param("domain", "announcement").param("status", "RESOLVED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].lastResolvedBy").value("root"))
+                .andExpect(jsonPath("$.data.items[0].lastResolvedExecutionId").isEmpty());
     }
 
     @ParameterizedTest

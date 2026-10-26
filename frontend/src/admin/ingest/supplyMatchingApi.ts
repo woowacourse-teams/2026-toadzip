@@ -148,7 +148,7 @@ export async function setSupplyExclusion(identifier: string, row: SupplyMatch, e
 }
 
 export type LhSupplyLinkView = { token: string; announcement?: LhLinkAnnouncement; myhomeRows: LhLinkMyHomeRow[]
-  lhRows: LhLinkSupplyRow[]; failures?: LhSupplyMatchFailure[] }
+  lhRows: LhLinkSupplyRow[]; failures?: LhSupplyMatchFailure[]; releasedSupplyMatches?: string[] }
 export type LhLinkAnnouncement = { identifier: string; name: string | null; sourceUrl: string | null; panId: string | null }
 /** 현재 원천과 등록 공급행으로 LH 보강 매칭을 다시 해 본 결과다. */
 export type LhSupplyMatchFailure = { lhRowIdentifier: string; reason: string; detail: string; candidates: LhMatchCandidate[] }
@@ -199,7 +199,9 @@ function parseLhSupplyLinks(value: unknown): LhSupplyLinkView {
       exclusiveArea: row.exclusiveArea, supplyArea: row.supplyArea, suppliedUnitCount: row.suppliedUnitCount,
       linkedRowIdentifier: row.linkedRowIdentifier, savedLink: parseSavedLhLink(row.savedLink, invalid) }
   })
-  return { token: value.token, myhomeRows, lhRows,
+  if (value.releasedSupplyMatches !== undefined && (!Array.isArray(value.releasedSupplyMatches)
+    || !value.releasedSupplyMatches.every(item => typeof item === 'string'))) throw invalid()
+  return { token: value.token, myhomeRows, lhRows, releasedSupplyMatches: (value.releasedSupplyMatches ?? []) as string[],
     ...(value.announcement !== undefined ? { announcement: parseLhAnnouncement(value.announcement, invalid) } : {}),
     ...(value.failures !== undefined ? { failures: parseLhFailures(value.failures, invalid) } : {}) }
 }

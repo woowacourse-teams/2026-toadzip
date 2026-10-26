@@ -26,6 +26,7 @@ public class IngestFailureReviewQueryRepository {
 
     private static final TypeReference<Map<String, Object>> METADATA_TYPE = new TypeReference<>() {};
     // 원천 키 계산을 실패 행마다 반복하지 않도록 필요한 원천 이름을 한 번 조회해 공유한다.
+    // 원천 키는 계산식이라 색인을 못 탄다. 키 첫 부분(단지 일련번호·공고 ID)으로 묶음을 먼저 좁혀 전체 원천행 계산을 피한다.
     private static final String PAGE_SQL = """
             WITH latest_collection_failures AS (
                 SELECT DISTINCT ON (source, request_description) *
@@ -39,17 +40,33 @@ public class IngestFailureReviewQueryRepository {
                     AND (:status = 'ALL' OR status = :status)
                     AND (CAST(:executionId AS uuid) IS NULL OR last_execution_id = :executionId)
                     AND (CAST(:failureId AS bigint) IS NULL OR id = :failureId)
+            ), source_bundle_keys AS MATERIALIZED (
+                SELECT DISTINCT category IN ('announcement', 'enrichment') AS announcement_key,
+                    CASE WHEN source_key ~ '^[0-9]{1,4}:' THEN substr(source_key, strpos(source_key, ':') + 1,
+                        split_part(source_key, ':', 1)::int) END AS bundle_key
+                FROM scoped_failures WHERE category IN ('complex', 'announcement', 'enrichment')
             ), complex_sources AS MATERIALIZED (
                 SELECT DISTINCT ON (source.source_key) source.source_key, source.name
                 FROM (%s) source
-                WHERE source.source_key IN (
+                WHERE source.id IN (
+                    SELECT r.id FROM myhome_complex_source_rows r
+                    JOIN myhome_complex_source_bundles b ON b.id = r.source_id
+                    WHERE b.hsmp_sn IN (
+                        SELECT CASE WHEN bundle_key ~ '^[0-9]{1,18}$' THEN bundle_key::bigint END
+                        FROM source_bundle_keys WHERE NOT announcement_key
+                    )
+                ) AND source.source_key IN (
                     SELECT source_key FROM scoped_failures WHERE category = 'complex'
                 )
                 ORDER BY source.source_key, source.collected_at DESC NULLS LAST, source.id DESC
             ), announcement_sources AS MATERIALIZED (
                 SELECT DISTINCT ON (source.source_key) source.source_key, source.name
                 FROM (%s) source
-                WHERE source.source_key IN (
+                WHERE source.id IN (
+                    SELECT r.id FROM myhome_announcement_source_rows r
+                    JOIN myhome_announcement_source_bundles b ON b.id = r.source_id
+                    WHERE b.pblanc_id IN (SELECT bundle_key FROM source_bundle_keys WHERE announcement_key)
+                ) AND source.source_key IN (
                     SELECT source_key FROM scoped_failures WHERE category IN ('announcement', 'enrichment')
                 )
                 ORDER BY source.source_key, (source.raw_payload::jsonb ->> 'active')::boolean DESC NULLS LAST,
@@ -208,20 +225,21 @@ public class IngestFailureReviewQueryRepository {
                         CASE WHEN source IN ('MYHOME_COMPLEX', 'LH_LEASE_CATALOG')
                             THEN 'complex' ELSE 'announcement' END
                         """, "source", "request_description", "NULL::text", "NULL::text", "NULL::text",
-                        "error_type", "reason", "resolved_at", "resolved_execution_id",
+                        "error_type", "reason", "resolved_at", "resolved_execution_id", "NULL::text",
                         "jsonb_build_object('attemptCount', attempt_count, 'errorType', error_type)"),
                 new FailureQuery("myhome_complex_mapping_failures", "complex", "'complex'", "'MYHOME_COMPLEX'",
                         "source_key", "source_complex_identifier", "NULL::text", "NULL::text", "reason", "detail",
-                        "last_resolved_at", "last_resolved_execution_id", "'{}'::jsonb"),
+                        "last_resolved_at", "last_resolved_execution_id", "last_resolved_by", "'{}'::jsonb"),
                 // LH 세대수 보강은 되면 쓰고 안 되면 마이홈 세대수를 쓰는 선택 보강이라 관리자가 처리할 실패로 보이지 않는다.
                 new FailureQuery("myhome_announcement_mapping_failures", "announcement", "'announcement'",
                         "'MYHOME_ANNOUNCEMENT'", "source_key", "NULL::text", "source_announcement_identifier",
                         "NULL::text", "reason", "detail", "last_resolved_at", "last_resolved_execution_id",
+                        "last_resolved_by",
                         "jsonb_build_object('sourceHouseSerialNumber', source_house_serial_number)"),
                 new FailureQuery("lh_announcement_enrichment_failures", "enrichment", "'announcement'",
                         "'LH_ANNOUNCEMENT'", "source_key", "NULL::text", "source_announcement_identifier",
                         "NULL::text", "reason", "detail", "last_resolved_at", "last_resolved_execution_id",
-                        "jsonb_build_object('panId', pan_id)")
+                        "last_resolved_by", "jsonb_build_object('panId', pan_id)")
         );
     }
 
@@ -231,11 +249,12 @@ public class IngestFailureReviewQueryRepository {
                     %s AS source_complex_identifier, %s AS source_announcement_identifier, %s AS target_name,
                     %s AS reason, %s AS detail, status, occurred_at, last_occurred_at, occurrence_count,
                     recurrence_count, %s AS last_resolved_at, first_execution_id, last_execution_id,
-                    %s AS last_resolved_execution_id, jsonb_strip_nulls(%s)::text AS metadata
+                    %s AS last_resolved_execution_id, %s AS last_resolved_by, jsonb_strip_nulls(%s)::text AS metadata
                 FROM %s
                 """.formatted(query.category(), query.domain(), query.source(), query.sourceKey(),
                         query.complexIdentifier(), query.announcementIdentifier(), query.targetName(), query.reason(),
-                        query.detail(), query.resolvedAt(), query.resolvedExecutionId(), query.metadata(),
+                        query.detail(), query.resolvedAt(), query.resolvedExecutionId(), query.resolvedBy(),
+                        query.metadata(),
                         query.table());
     }
 
@@ -249,6 +268,7 @@ public class IngestFailureReviewQueryRepository {
                 instant(row, "occurred_at"), instant(row, "last_occurred_at"), row.getInt("occurrence_count"),
                 row.getInt("recurrence_count"), instant(row, "last_resolved_at"), uuid(row, "first_execution_id"),
                 uuid(row, "last_execution_id"), uuid(row, "last_resolved_execution_id"),
+                row.getString("last_resolved_by"),
                 row.getString("source_complex_identifier"), row.getString("source_announcement_identifier"),
                 row.getString("target_name_value"), json.readValue(row.getString("metadata"), METADATA_TYPE),
                 productLinkStatus(row, product), product);
@@ -303,7 +323,7 @@ public class IngestFailureReviewQueryRepository {
     private record FailureQuery(
             String table, String category, String domain, String source, String sourceKey, String complexIdentifier,
             String announcementIdentifier, String targetName, String reason, String detail, String resolvedAt,
-            String resolvedExecutionId, String metadata
+            String resolvedExecutionId, String resolvedBy, String metadata
     ) {
     }
 }

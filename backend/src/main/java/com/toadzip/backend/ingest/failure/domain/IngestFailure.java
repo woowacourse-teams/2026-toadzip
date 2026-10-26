@@ -54,6 +54,9 @@ public abstract class IngestFailure<T extends IngestFailure<T>> {
     private UUID lastExecutionId;
     private UUID lastResolvedExecutionId;
 
+    /** 관리자가 공고를 보정해 해결로 바꾼 경우의 관리자. 정제가 해결하면 비운다. */
+    private String lastResolvedBy;
+
     protected IngestFailure(String sourceKey, Enum<?> reason, String detail, Instant occurredAt) {
         requireText(sourceKey, "원천 키");
         require(reason, "실패 사유");
@@ -97,6 +100,17 @@ public abstract class IngestFailure<T extends IngestFailure<T>> {
         status = IngestFailureStatus.RESOLVED;
         lastResolvedAt = resolvedAt;
         lastResolvedExecutionId = executionId;
+        lastResolvedBy = null;
+    }
+
+    /** 관리자가 공고를 원문 기준으로 보정해 해결로 바꾼다. 정제 실행이 아니므로 실행 ID는 남기지 않는다. */
+    public void resolveByAdmin(Instant resolvedAt, String actor) {
+        requireText(actor, "해결한 관리자");
+        if (status == IngestFailureStatus.RESOLVED) {
+            return;
+        }
+        resolve(resolvedAt, null);
+        lastResolvedBy = actor;
     }
 
     private static void requireText(String value, String fieldName) {

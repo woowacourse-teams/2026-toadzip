@@ -83,12 +83,16 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
       <fieldset disabled={loading}><legend>연결할 단지·공통 주택형</legend>
         <p>현재 선택: {value.housingComplexName || '단지 미연결'} · {value.newHousingType ? '새 주택형 생성 예정' : value.housingTypeId ? `주택형 #${value.housingTypeId}` : '주택형 미연결'}</p>
         {!value.groupId && <ComplexPicker disabled={loading} onSelect={item => void chooseComplex(item.id, item.name)} />}
-        {value.housingComplexId && <><button type="button" onClick={() => setLookup(true)}>이 단지의 주택형 확인</button>
+        {/* 연결 확인과 해제는 같은 단지 연결에 대한 동작이라 한 줄에 둔다. */}
+        {(value.housingComplexId || !value.groupId) && <div className={styles.actions}>
+          {value.housingComplexId && <button type="button" onClick={() => setLookup(true)}>이 단지의 주택형 확인</button>}
+          {!value.groupId && <button type="button" onClick={() => { setTypes([]); setLookup(false); onChange({ ...value, housingComplexId: null, housingComplexName: null, housingTypeId: null, newHousingType: null }) }}>단지·주택형 연결 해제</button>}
+        </div>}
+        {value.housingComplexId && <>
           {lookup && <label>공통 주택형<select value={value.newHousingType ? 'new' : value.housingTypeId ?? ''} onChange={event => {
             if (event.target.value === 'new') onChange({ ...value, housingTypeId: null, newHousingType: { name: value.typeName, exclusiveArea: value.exclusiveArea ?? 0, supplyArea: value.supplyArea } })
             else onChange({ ...value, housingTypeId: event.target.value ? Number(event.target.value) : null, newHousingType: null })
           }}><option value="">미연결</option>{types.map(type => <option key={type.id} value={type.id}>{type.name} · 전용 {type.exclusiveArea}㎡ · #{type.id}</option>)}<option value="new">누락된 주택형 만들기</option></select></label>}</>}
-        {!value.groupId && <button type="button" onClick={() => { setTypes([]); setLookup(false); onChange({ ...value, housingComplexId: null, housingComplexName: null, housingTypeId: null, newHousingType: null }) }}>단지·주택형 연결 해제</button>}
         {value.newHousingType && <div className={styles.fields}>
           <label>새 공통 주택형 이름<input required maxLength={255} value={value.newHousingType.name} onChange={event => field('newHousingType', { ...value.newHousingType!, name: event.target.value })} /></label>
           <label>새 공통 전용면적 (㎡)<input required type="number" min="0.0001" step="0.0001" value={value.newHousingType.exclusiveArea || ''} onChange={event => field('newHousingType', { ...value.newHousingType!, exclusiveArea: Number(event.target.value) })} /></label>
@@ -109,15 +113,19 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
       </fieldset>
       {error && <p role="alert">{error}</p>}
       {(value.groupId || sharedCount !== undefined) && <p>공통 모집수 {sharedCount ?? value.sharedHouseholdCount ?? '미확정'}세대는 묶음에 한 번만 보관합니다. 단지·공통 모집수 변경은 위의 ‘원천별 공급행 보정’에서 처리하세요.</p>}
-      <fieldset><legend>이 공고에만 적용할 공급정보</legend><div className={styles.fields}>
-        {/* 기존 행의 원천 단지명은 정제가 관리한다. 원천이 없는 새 행만 처음 표기를 입력한다. */}
-        {value.id ? <p className={styles.sourceName}>수집 원문 단지명: {value.complexName}</p>
-          : <label>공고의 단지명<input required maxLength={255} value={value.complexName} onChange={event => field('complexName', event.target.value)} /></label>}
-        <label>이 공고의 주택형 표기<input required maxLength={255} value={value.typeName} aria-describedby={`${value.key}-type-name`} onChange={event => field('typeName', event.target.value)} /></label>
-        <p id={`${value.key}-type-name`} className={styles.sourceName}>
-          공개 화면에 이 표기로 보이며 이 공고에만 적용됩니다. 연결한 단지 주택형 이름과 같으면 단지 이름을 따라갑니다.
-          {value.housingComplexId ? <> 단지 주택형 이름 자체가 틀렸다면 <a href={`/admin/complexes/${value.housingComplexId}?section=relations`} target="_blank" rel="noreferrer">단지 주택형 이름 고치기 →</a></> : null}
-        </p>
+      <fieldset><legend>이 공고에만 적용할 공급정보</legend>
+      {/* 기존 행의 원천 단지명은 정제가 관리한다. 원천이 없는 새 행만 처음 표기를 입력한다. */}
+      {value.id ? <p className={styles.sourceName}>수집 원문 단지명: {value.complexName}</p> : null}
+      <div className={styles.fields}>
+        {!value.id && <label>공고의 단지명<input required maxLength={255} value={value.complexName} onChange={event => field('complexName', event.target.value)} /></label>}
+        {/* 표기 설명은 입력칸 바로 아래에 둬 다른 입력칸과 같은 칸을 차지하지 않게 한다. */}
+        <div className={styles.field}>
+          <label>이 공고의 주택형 표기<input required maxLength={255} value={value.typeName} aria-describedby={`${value.key}-type-name`} onChange={event => field('typeName', event.target.value)} /></label>
+          <p id={`${value.key}-type-name`} className={styles.sourceName}>
+            공개 화면에 이 표기로 보이며 이 공고에만 적용됩니다. 연결한 단지 주택형 이름과 같으면 단지 이름을 따라갑니다.
+            {value.housingComplexId ? <> 단지 주택형 이름 자체가 틀렸다면 <a href={`/admin/complexes/${value.housingComplexId}?section=relations`} target="_blank" rel="noreferrer">단지 주택형 이름 고치기 →</a></> : null}
+          </p>
+        </div>
         <label>공급 PNU<input required maxLength={255} value={value.pnu} onChange={event => field('pnu', event.target.value)} /></label>
         <label>공급 구분<select value={value.category} onChange={event => field('category', event.target.value as CorrectionRow['category'])}><option value="NEW_SUPPLY">신규 공급</option><option value="RESUPPLY">재공급</option></select></label>
         <label>입주 예정 연월<input type="month" value={value.moveInMonth ?? ''} onChange={event => field('moveInMonth', event.target.value || null)} /></label>

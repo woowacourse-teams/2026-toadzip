@@ -70,6 +70,25 @@ class IngestFailureTest {
         assertThat(failure.getStatus()).isEqualTo(RESOLVED);
     }
 
+    @ParameterizedTest
+    @MethodSource("failures")
+    <T extends IngestFailure<T>> void 관리자_해결은_해결한_관리자를_남기고_정제_해결은_관리자를_비운다(
+            T failure, T observed, String[] specificFields, Object[] expectedValues
+    ) {
+        assertThatThrownBy(() -> failure.resolveByAdmin(RESOLVED_AT, " "))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("해결한 관리자은 필수입니다.");
+
+        failure.resolveByAdmin(RESOLVED_AT, "root");
+
+        assertThat(failure).extracting("status", "lastResolvedAt", "lastResolvedExecutionId", "lastResolvedBy")
+                .containsExactly(RESOLVED, RESOLVED_AT, null, "root");
+        failure.observe(observed, null);
+        assertThat(failure.getLastResolvedBy()).isEqualTo("root");
+        UUID execution = UUID.randomUUID();
+        failure.resolve(RESOLVED_AT.plusSeconds(60), execution);
+        assertThat(failure).extracting("lastResolvedExecutionId", "lastResolvedBy").containsExactly(execution, null);
+    }
+
     private static Stream<Arguments> failures() {
         return Stream.of(
                 Arguments.of(

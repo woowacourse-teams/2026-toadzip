@@ -13,6 +13,7 @@ import com.toadzip.backend.ingest.enrichment.service.LhSupplyMatchDiagnostics;
 import com.toadzip.backend.ingest.mapping.domain.LhSupplyRowLink;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.Announcement;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.Candidate;
+import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.CurrentSupply;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.LhRow;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.MatchFailure;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.MyHomeRow;
@@ -20,15 +21,22 @@ import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.ReleaseRequest;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.SaveRequest;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.SavedLink;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.View;
+import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.ingest.mapping.repository.LhSupplyRowLinkRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
@@ -42,6 +50,7 @@ import tools.jackson.databind.ObjectMapper;
 public class LhSupplyLinkService {
     // 연결 실패로 정제가 롤백되면 공고가 아직 없을 수 있어 이력은 연결 단위로 남긴다.
     private static final String RESOURCE = "LH_SUPPLY_LINK";
+    private static final String MATCH_RELEASE_REASON = "LH 공급 연결로 마이홈 원천행의 LH 행 구성이 바뀌어 원천 지문이 달라짐";
 
     private final MyHomeAnnouncementSourceReader sources;
     private final MyHomeAnnouncementSourceMapper mapper;
@@ -52,8 +61,30 @@ public class LhSupplyLinkService {
     private final AdminDataChangeRepository changes;
     private final ObjectMapper json;
     private final LhSupplyMatchDiagnostics diagnostics;
+    private final AnnouncementSupplyMatchDecisionRepository decisions;
 
     public View view(String identifier) {
+        return view(identifier, List.of());
+    }
+
+    /**
+     * 공고의 현재 LH 공급 원본 행. 마이홈 원천이나 LH 공급 원본이 없거나 원천을 해석할 수 없으면 비어 있다.
+     * LH 수집 연결 해석은 실패하면 자기 트랜잭션 경계 밖으로 예외를 던진다. 호출한 보정 트랜잭션이 롤백 전용이 되지 않도록
+     * 트랜잭션 없이 읽어 해석 실패가 그 해석의 트랜잭션에서만 끝나게 한다.
+     */
+    @Transactional(readOnly = true, propagation = Propagation.NOT_SUPPORTED)
+    public List<CurrentSupply> currentSupplies(String identifier) {
+        try {
+            return context(identifier).supplies().stream().map(supply -> new CurrentSupply(
+                    LhSupplyRowLinks.identifier(supply), supply.getComplexLabel(), supply.getTypeName(),
+                    supply.getExclusiveArea())).toList();
+        }
+        catch (InvalidIngestRequestException unavailable) {
+            return List.of();
+        }
+    }
+
+    private View view(String identifier, List<String> releasedSupplyMatches) {
         var context = context(identifier);
         var myhomeRows = context.currentSources().stream().map(source -> new MyHomeRow(source.getSourceKey(),
                 source.getHsmpNm(), source.getHouseTyNm(), source.getSumSuplyCo(),
@@ -63,7 +94,7 @@ public class LhSupplyLinkService {
         var announcement = new Announcement(identifier, first.getPblancNm(), first.getUrl(), context.panId());
         var failures = diagnostics.diagnose(identifier, context.panId(), context.supplies(), context.states(),
                 context.excludedSourceKeys()).stream().map(this::failure).toList();
-        return new View(context.token(), announcement, myhomeRows, lhRows, failures);
+        return new View(context.token(), announcement, myhomeRows, lhRows, failures, releasedSupplyMatches);
     }
 
     private MatchFailure failure(LhSupplyMatchDiagnostics.Failure failure) {
@@ -88,6 +119,7 @@ public class LhSupplyLinkService {
         if (request.lhRowIdentifiers().stream().distinct().count() != request.lhRowIdentifiers().size()) {
             throw new InvalidIngestRequestException("같은 LH 공급행을 중복 선택할 수 없습니다.");
         }
+        long linkId = 0;
         for (String lhRowIdentifier : request.lhRowIdentifiers()) {
             var supply = context.supply(lhRowIdentifier)
                     .orElseThrow(() -> new InvalidIngestRequestException("해당 공고의 LH 공급 원본 행이 아닙니다."));
@@ -100,8 +132,9 @@ public class LhSupplyLinkService {
             changes.save(new AdminDataChange(RESOURCE, link.getId(), "SAVE_LH_SUPPLY_LINK", actor, before,
                     json.writeValueAsString(Map.of("announcementIdentifier", identifier,
                             "lhRowIdentifier", lhRowIdentifier, "link", savedLink(link, false)))));
+            linkId = link.getId();
         }
-        return view(identifier);
+        return view(identifier, releaseChangedMatches(identifier, context, linkId, actor));
     }
 
     @Transactional
@@ -120,7 +153,53 @@ public class LhSupplyLinkService {
         changes.save(new AdminDataChange(RESOURCE, linkId, "RELEASE_LH_SUPPLY_LINK", actor, before,
                 json.writeValueAsString(Map.of("announcementIdentifier", identifier,
                         "lhRowIdentifier", request.lhRowIdentifier(), "reason", request.reason().strip()))));
-        return view(identifier);
+        return view(identifier, releaseChangedMatches(identifier, context, linkId, actor));
+    }
+
+    /**
+     * LH 행 구성이 바뀐 마이홈 원천행은 다음 정제에서 LH 주택형별로 다시 펼쳐져 저장 매칭의 원천 지문이 반드시 어긋난다.
+     * 정제가 거절되지 않도록 그 원천행과 펼친 행의 저장 매칭을 함께 해제한다. 주택형은 다시 정제한 뒤 PDF 보정에서 확인한다.
+     */
+    private List<String> releaseChangedMatches(String identifier, Context before, long linkId, String actor) {
+        var after = context(identifier);
+        Set<String> changedSources = new HashSet<>();
+        for (var supply : after.supplies()) {
+            String lhRowIdentifier = LhSupplyRowLinks.identifier(supply);
+            String previous = before.linkedRows().get(lhRowIdentifier);
+            String current = after.linkedRows().get(lhRowIdentifier);
+            if (!Objects.equals(previous, current)) {
+                Optional.ofNullable(previous).ifPresent(changedSources::add);
+                Optional.ofNullable(current).ifPresent(changedSources::add);
+            }
+        }
+        Set<String> rowIdentifiers = new TreeSet<>(changedSources);
+        for (var supply : after.supplies()) {
+            String lhRowIdentifier = LhSupplyRowLinks.identifier(supply);
+            if (changedSources.contains(before.linkedRows().get(lhRowIdentifier))
+                    || changedSources.contains(after.linkedRows().get(lhRowIdentifier))) {
+                rowIdentifiers.add(identifier + ":LH:" + supply.getPanId() + ":" + supply.getSourceOrder());
+            }
+        }
+        List<String> released = new ArrayList<>();
+        for (String rowIdentifier : rowIdentifiers) {
+            decisions.findByRowIdentifier(rowIdentifier).ifPresent(decision -> {
+                var previous = new LinkedHashMap<String, Object>();
+                previous.put("rowIdentifier", rowIdentifier);
+                previous.put("complexId", decision.getComplexId());
+                previous.put("housingTypeId", decision.getHousingTypeId());
+                previous.put("sourceUrl", decision.getSourceUrl());
+                previous.put("reason", decision.getReason());
+                previous.put("actor", decision.getActor());
+                decisions.delete(decision);
+                changes.save(new AdminDataChange(RESOURCE, linkId, "RELEASE_SUPPLY_MATCH", actor,
+                        json.writeValueAsString(previous), json.writeValueAsString(Map.of(
+                                "announcementIdentifier", identifier, "rowIdentifier", rowIdentifier,
+                                "reason", MATCH_RELEASE_REASON))));
+                released.add(rowIdentifier);
+            });
+        }
+        decisions.flush();
+        return released;
     }
 
     private LhRow lhRow(Context context, LhAnnouncementSupplySource supply) {

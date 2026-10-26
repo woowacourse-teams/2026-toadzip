@@ -85,3 +85,4 @@
 .dialogResult p { margin: 0; }
 .dialogResult small { display: inline; margin: 0; }
 .dialog .dialogResult h4 { margin: 0; font-size: var(--admin-text-body, 15px); font-weight: 500; line-height: 1.4; }
+.resolvedBy { display: block; margin-top: var(--ds-space-1); color: var(--ds-color-label); font-size: var(--ds-text-caption); }
