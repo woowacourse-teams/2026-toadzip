@@ -115,7 +115,7 @@ it('전체 해제 중에는 중복 클릭과 개별 해제를 막는다', async 
   fireEvent.click(clearAll)
   expect(clearAll).toBeDisabled()
   expect(clearAll).toHaveTextContent('전체 해제 중…')
-  expect(screen.getByRole('button', { name: '서울 행복주택 알림 해제' })).toBeDisabled()
+  expect(screen.queryByRole('button', { name: '서울 행복주택 알림 해제' })).not.toBeInTheDocument()
   await waitFor(() => expect(writes).toBe(1))
   release()
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('알림 설정을 모두 해제했어요.'))
