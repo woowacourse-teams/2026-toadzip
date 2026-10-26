@@ -1,0 +1,13 @@
+.error { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--ds-space-4); margin: var(--ds-space-4); padding: var(--ds-space-5); border: 1px solid var(--ds-color-divider); border-radius: 10px; background: var(--ds-color-surface); color: var(--ds-color-text); font-size: var(--ds-text-body); line-height: var(--ds-line-height-body); }
+.error strong { display: block; font-size: var(--ds-text-section); font-weight: 600; line-height: var(--ds-line-height-title); }
+.error p { margin: var(--ds-space-2) 0 0; color: var(--ds-color-label); }
+.error button { display: inline-flex; align-items: center; justify-content: center; gap: var(--ds-space-2); }
+.error svg { display: block; width: 18px; height: 18px; flex-shrink: 0; }
+@media(max-width: 767px) {
+  .error { flex-direction: column; align-items: center; gap: 12px; margin: 8px 12px; padding: 12px; }
+  .error > div { min-width: 0; }
+  .error strong { font-size: var(--ds-text-body); line-height: 1.5; word-break: keep-all; }
+  .error p { margin-top: 4px; font-size: var(--ds-text-caption); line-height: 1.5; word-break: keep-all; }
+  .error button { flex-shrink: 0; gap: 6px; padding-inline: 12px; }
+  .error svg { width: 16px; height: 16px; }
+}
