@@ -1,12 +1,12 @@
-.container { overflow: hidden; border: 1px solid var(--ds-color-divider); border-radius: 12px; background: var(--ds-color-surface); }
+.container { overflow: hidden; border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); }
 .table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; font-size: var(--ds-text-body); line-height: var(--ds-line-height-body); }
 .table th, .table td { box-sizing: border-box; }
-.table th { padding: 14px 20px; font-size: var(--ds-text-caption); font-weight: 600; color: var(--ds-color-label); background: var(--ds-color-surface); border-bottom: 1px solid var(--ds-color-divider); }
+.table th { padding: var(--ds-space-3) var(--ds-space-4); font-size: var(--ds-text-caption); font-weight: 600; color: var(--ds-color-label); background: var(--ds-color-surface); border-bottom: 1px solid var(--ds-color-divider); }
 .table th:last-child { width: 244px; text-align: center; }
-.table td { padding: 16px 20px; vertical-align: middle; border-bottom: 1px solid var(--ds-color-divider); }
+.table td { padding: var(--ds-space-3) var(--ds-space-4); vertical-align: middle; border-bottom: 1px solid var(--ds-color-divider); }
 .table tr:last-child td { border-bottom: 0; }
 .target { overflow-wrap: anywhere; }
-.target h3, .target h4 { margin: 0; font-size: var(--ds-text-body); font-weight: 700; line-height: 1.55; }
+.target h3, .target h4 { margin: 0; font-size: var(--ds-text-body); font-weight: 600; line-height: var(--ds-line-height-body); }
 .target h3:not(:first-child), .target h4:not(:first-child) { margin-top: 6px; }
 .target a { color: var(--ds-color-text); text-decoration: none; }
 .target a:hover { color: var(--ds-color-action); text-decoration: underline; text-underline-offset: 3px; }
@@ -30,25 +30,26 @@
 }
 @media(max-width: 767px) {
   .table th { padding: 12px; }
-  .table td { padding: 16px 12px; }
+  .table td { padding: var(--ds-space-3); }
   .table th:last-child { width: 124px; }
   .actions { flex-direction: column; gap: 8px; }
   .actions button { min-width: 100px; padding-inline: 8px; gap: 4px; white-space: nowrap; font-size: var(--ds-text-caption); }
-  /* Keep the address/date close to the name while the actions stay in one column. */
+  /* Give bookmark names the available width; keep actions together below the details. */
   .table[data-has-details=true], .table[data-has-details=true] :is(thead, tbody) { display: block; }
-  .table[data-has-details=true] tr { display: grid; grid-template-columns: minmax(0, 1fr) 124px; }
+  .table[data-has-details=true] tr { display: grid; grid-template-columns: minmax(0, 1fr); }
   .table[data-has-details=true] thead tr, .table[data-has-details=true] tbody tr:not(:last-child) { border-bottom: 1px solid var(--ds-color-divider); }
   .table[data-has-details=true] :is(th, td) { width: auto; min-width: 0; border: 0; }
-  .table[data-has-details=true] .detailsHeading { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .table[data-has-details=true] .detailsHeading, .table[data-has-details=true] th:last-child { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .table[data-has-details=true] .target { grid-column: 1; padding-bottom: 0; }
   .table[data-has-details=true] .details { grid-column: 1; padding-top: 6px; }
-  .table[data-has-details=true] .actionsCell { display: flex; align-items: center; justify-content: center; grid-column: 2; grid-row: 1 / 3; }
+  .table[data-has-details=true] .actionsCell { display: flex; align-items: center; justify-content: flex-end; grid-column: 1 / -1; grid-row: 3; padding-top: var(--ds-space-2); }
+  .table[data-has-details=true] .actions { flex-direction: row; }
 }
 
 @media(max-width: 767px) {
-  .table[data-has-status=true] tr { grid-template-columns: 80px minmax(0, 1fr) 124px; }
+  .table[data-has-status=true] tr { grid-template-columns: 72px minmax(0, 1fr); }
   .table[data-has-status=true] .statusHeading { width: auto; padding-inline: 8px; }
   .table[data-has-status=true] .status { display: flex; align-items: center; justify-content: center; grid-column: 1; grid-row: 1 / 3; padding-inline: 8px; }
   .table[data-has-status=true] .target, .table[data-has-status=true] .details { grid-column: 2; }
-  .table[data-has-status=true] .actionsCell { grid-column: 3; }
+  .table[data-has-status=true] .actionsCell { grid-column: 1 / -1; }
 }

@@ -3,16 +3,17 @@
 .actions h3 { margin: 0; font-size: var(--ds-text-section); font-weight: 600; }
 .actions h3:focus { outline: none; }
 .actions h3 span { margin-left: 4px; color: var(--ds-color-label); }
-.actionButton { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-height: 44px; min-width: 80px; padding: 10px 16px; background: var(--ds-color-surface); border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); color: var(--ds-color-text); font: inherit; font-size: var(--ds-text-body); font-weight: 600; line-height: 1.4; cursor: pointer; }
+.actionButton { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-height: 44px; min-width: 80px; padding: 8px 12px; background: var(--ds-color-surface); border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); color: var(--ds-color-text); font: inherit; font-size: var(--ds-text-body); font-weight: 600; line-height: 1.4; cursor: pointer; }
 .actionButton:hover:not(:disabled) { background: var(--ds-color-surface-subtle); border-color: var(--ds-color-label); }
 .actionButton:disabled { opacity: .45; cursor: default; }
 .actionButton:focus-visible, .tabs button:focus-visible, .panel:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
-.tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 6px; margin: 20px 0; background: var(--ds-color-section-divider); border: 1px solid var(--ds-color-divider); border-radius: 12px; }
-.tabs button { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; padding: 8px; border: 1px solid transparent; border-radius: var(--ds-radius-control); background: transparent; color: var(--ds-color-label); font: inherit; font-size: var(--ds-text-section); font-weight: 600; cursor: pointer; }
-.tabs button:hover { background: var(--ds-color-surface); }
-.tabs button[aria-selected=true] { border-color: var(--ds-color-action); color: var(--ds-color-on-brand); background: var(--ds-color-surface); box-shadow: inset 0 -3px var(--ds-color-brand); }
-.count { display: inline-flex; justify-content: center; align-items: center; min-width: 26px; padding: 3px 6px; box-sizing: border-box; border-radius: 6px; background: var(--ds-color-divider); font-size: var(--ds-text-caption); }
-.tabs button[aria-selected=true] .count { color: var(--ds-color-action); background: var(--ds-color-action-selected); }
-.empty { margin: 0; padding: 52px 16px; text-align: center; color: var(--ds-color-label); font-size: var(--ds-text-body); background: var(--ds-color-surface); border: 1px solid var(--ds-color-divider); border-radius: 12px; }
+.tabs { display: flex; gap: var(--ds-space-4); margin: var(--ds-space-3) 0 var(--ds-space-4); border-bottom: 1px solid var(--ds-color-divider); }
+.tabs button { position: relative; display: flex; align-items: center; justify-content: center; gap: var(--ds-space-2); min-height: var(--ds-control-height-md); padding: 8px 12px; border: 0; background: transparent; color: var(--ds-color-label); font: inherit; font-size: var(--ds-text-body); font-weight: 600; cursor: pointer; }
+.tabs button:hover { background: var(--ds-color-surface-subtle); }
+.tabs button[aria-selected=true] { color: var(--ds-color-text); }
+.tabs button[aria-selected=true]::after { content: ''; position: absolute; inset: auto 0 -1px; height: 3px; background: var(--ds-color-brand); }
+.count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 4px; box-sizing: border-box; border-radius: 5px; background: var(--ds-color-section-divider); color: var(--ds-color-label); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; }
+.tabs button[aria-selected=true] .count { background: var(--ds-color-action-soft); color: var(--ds-color-action); }
+.empty { margin: 0; padding: 32px var(--ds-space-4); text-align: center; color: var(--ds-color-label); font-size: var(--ds-text-body); background: var(--ds-color-surface); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); }
 .error { padding: 12px; background: var(--ds-color-surface-subtle); color: var(--ds-color-text); font-size: 13px; line-height: 1.6; }
-@media(max-width: 767px) { .tabs { gap: 4px; padding: 4px; } .tabs button { gap: 6px; font-size: var(--ds-text-body); } }
+@media(max-width: 767px) { .tabs { gap: var(--ds-space-2); } .tabs button { flex: 1; gap: 6px; font-size: var(--ds-text-body); } }
