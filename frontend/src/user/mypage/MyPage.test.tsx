@@ -96,7 +96,7 @@ it('공고 분류 주소로 복귀하면 공고 표를 유지한다', async () =
 })
 
 it('북마크의 주소와 접수 일정은 이름·관리 사이의 별도 열에서 표시한다', async () => {
-  const scheduled = { ...announcement, available: true, applicationStartDate: '2026-10-20', applicationEndDate: '2026-10-30' }
+  const scheduled = { ...announcement, available: true, status: 'APPLYING', applicationStartDate: '2026-10-20', applicationEndDate: '2026-10-30' }
   setup('/mypage/bookmarks', { list: vi.fn().mockResolvedValue([complex, scheduled]), save: vi.fn(), remove: vi.fn() })
   const complexes = await screen.findByRole('table', { name: '단지 북마크 내역' })
   expect(within(complexes).getAllByRole('columnheader').map(cell => cell.textContent)).toEqual(['관심 대상', '주소', '관리'])
@@ -107,6 +107,19 @@ it('북마크의 주소와 접수 일정은 이름·관리 사이의 별도 열�
   expect(cells[1]).toHaveTextContent('서울시 중구')
   fireEvent.click(screen.getByRole('button', { name: '공고 1' }))
   const announcements = screen.getByRole('table', { name: '공고 북마크 내역' })
-  expect(within(announcements).getAllByRole('columnheader').map(cell => cell.textContent)).toEqual(['관심 대상', '접수 일정', '관리'])
+  expect(within(announcements).getAllByRole('columnheader').map(cell => cell.textContent)).toEqual(['접수 상태', '관심 대상', '접수 일정', '관리'])
+  const announcementRow = within(announcements).getByRole('row', { name: /가을 공고/ })
+  const announcementCells = within(announcementRow).getAllByRole('cell')
+  expect(announcementCells).toHaveLength(4)
+  expect(announcementCells[0]).toHaveTextContent('접수중')
+  expect(announcementCells[1]).toHaveTextContent('가을 공고')
+  expect(announcementCells[1]).not.toHaveTextContent('접수중')
   expect(within(announcements).getByRole('cell', { name: '2026-10-20 ~ 2026-10-30' })).toBeVisible()
+})
+
+it('접수 상태가 없는 공고도 맨 왼쪽 열에 공고문 확인을 표시한다', async () => {
+  setup('/mypage/bookmarks?type=ANNOUNCEMENT', { list: vi.fn().mockResolvedValue([{ ...announcement, status: null }]), save: vi.fn(), remove: vi.fn() })
+  const table = await screen.findByRole('table', { name: '공고 북마크 내역' })
+  const row = within(table).getByRole('row', { name: /가을 공고/ })
+  expect(within(row).getAllByRole('cell')[0]).toHaveTextContent('공고문 확인')
 })

@@ -11,12 +11,18 @@
 .target a { color: var(--ds-color-text); text-decoration: none; }
 .target a:hover { color: var(--ds-color-action); text-decoration: underline; text-underline-offset: 3px; }
 .target p { margin: 6px 0 0; color: var(--ds-color-label); font-size: var(--ds-text-caption); }
+.statusHeading { width: 104px; text-align: center; }
+.table .status { padding-inline: 12px; text-align: center; }
 .detailsHeading { width: 30%; }
 .details { color: var(--ds-color-label); font-size: var(--ds-text-caption); line-height: 1.65; overflow-wrap: anywhere; }
 .details time { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; }
 .actions button { min-height: var(--ds-control-height-md); }
 .target > strong { display: block; font-size: var(--ds-text-body); line-height: 1.55; }
+@media(max-width: 1199px) {
+  .table[data-has-status=true] th:last-child { width: 124px; }
+  .table[data-has-status=true] .actions { flex-direction: column; }
+}
 @media(max-width: 1023px) { .table th:last-child { width: 124px; } .table th, .table td { padding-inline: 16px; } .actions { flex-direction: column; } }
 @media(max-width: 767px) {
   .table th { padding: 12px; }
@@ -32,4 +38,12 @@
   .table[data-has-details=true] .target { grid-column: 1; padding-bottom: 0; }
   .table[data-has-details=true] .details { grid-column: 1; padding-top: 6px; }
   .table[data-has-details=true] .actionsCell { display: flex; align-items: center; justify-content: center; grid-column: 2; grid-row: 1 / 3; }
+}
+
+@media(max-width: 767px) {
+  .table[data-has-status=true] tr { grid-template-columns: 80px minmax(0, 1fr) 124px; }
+  .table[data-has-status=true] .statusHeading { width: auto; padding-inline: 8px; }
+  .table[data-has-status=true] .status { display: flex; align-items: center; justify-content: center; grid-column: 1; grid-row: 1 / 3; padding-inline: 8px; }
+  .table[data-has-status=true] .target, .table[data-has-status=true] .details { grid-column: 2; }
+  .table[data-has-status=true] .actionsCell { grid-column: 3; }
 }

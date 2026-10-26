@@ -27,7 +27,7 @@
 .filters button[aria-pressed=true] .count { background: var(--ds-color-action-selected); color: var(--ds-color-action); }
 .resultCount { display: flex; justify-content: space-between; align-items: center; margin: 0 0 12px; font-weight: 600; }
 .resultCount span { color: var(--ds-color-muted); font-size: var(--ds-text-caption); font-weight: 400; }
-.cardMeta { display: flex; flex-wrap: wrap; gap: var(--ds-status-badge-gap); }
+.cardMeta { display: inline-flex; flex-wrap: wrap; gap: var(--ds-status-badge-gap); }
 .cardMeta > span { display: inline-flex; align-items: center; min-height: var(--ds-status-badge-min-height); box-sizing: border-box; background: var(--ds-color-status-neutral-surface); color: var(--ds-color-status-neutral); font-size: var(--ds-status-badge-font-size); font-weight: 600; border-radius: var(--ds-status-badge-radius); padding: var(--ds-status-badge-padding-block) var(--ds-status-badge-padding-inline); }
 .cardMeta > span[data-status=APPLYING] { color: var(--ds-color-status-applying); background: var(--ds-color-status-applying-surface); }
 .notice { display: flex; align-items: center; flex-direction: column; text-align: center; padding: 48px 24px; background: var(--ds-color-surface); border: 1px solid var(--ds-color-divider); border-radius: 12px; }
