@@ -432,7 +432,6 @@ export function NotificationInterestProvider({ children, repository = notificati
           void send(action)
         }}>신청하기</button>
       </div>
-      <p className={styles.hint}>회원 계정에 관심 대상을 저장해요. 이용자 ID와 선택한 대상을 사용해요.</p>
       <Link className={styles.helpLink} to="/privacy">개인정보처리방침</Link>
       {!noticeVersion && <p className={styles.hint} role="status">신청 안내를 확인하고 있어요.</p>}
     </InterestDialog>}

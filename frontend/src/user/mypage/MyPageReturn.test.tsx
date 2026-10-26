@@ -14,7 +14,10 @@ it('문서 간 이동 후에도 출발한 마이페이지 탭으로 돌아온다
     <Route path="/privacy/*" element={<Child />} /><Route path="/mypage/account" element={<Origin />} />
   </Routes></MemoryRouter>)
   fireEvent.click(screen.getByRole('link', { name: '다음 문서' }))
-  fireEvent.click(screen.getByRole('link', { name: '마이페이지로 돌아가기' }))
+  const close = screen.getByRole('link', { name: '마이페이지로 돌아가기' })
+  expect(close.textContent).toBe('')
+  expect(close.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+  fireEvent.click(close)
   expect(screen.getByRole('heading')).toHaveTextContent('/mypage/account')
 })
 it('직접 진입은 지도 복귀를 제공하며 외부 주소와 임의 경로를 받지 않는다', () => {

@@ -1,3 +1,4 @@
-.back { display: inline-flex; align-items: center; justify-content: center; min-height: var(--ds-control-height-md); padding: 10px 16px; box-sizing: border-box; border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-text); font: inherit; font-weight: 600; text-decoration: none; text-align: center; }
+.back { display: flex; flex: 0 0 44px; align-items: center; justify-content: center; width: 44px; height: 44px; margin-left: auto; padding: 0; box-sizing: border-box; border: 0; border-radius: var(--ds-radius-control); background: transparent; color: var(--ds-color-text); text-decoration: none; }
+.back svg { width: 24px; height: 24px; }
 .back:hover { background: var(--ds-color-action-soft); }
 .back:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
