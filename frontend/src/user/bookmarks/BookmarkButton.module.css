@@ -7,3 +7,10 @@
 .error { color: var(--ds-color-deadline); font-size: var(--ds-text-caption); }
 
 .button:disabled[aria-busy=true] { opacity: 1; cursor: default; }
+.icon { display: inline-flex; flex: 0 0 40px; align-items: center; justify-content: center; width: 40px; min-height: 40px; padding: 8px; border: 0; border-radius: var(--ds-radius-control); background: transparent; color: var(--ds-color-label); cursor: pointer; }
+.icon[aria-pressed=true] { color: var(--ds-color-action); }
+.icon:hover:not(:disabled) { color: var(--ds-color-action); }
+.icon:disabled { opacity: .55; cursor: wait; }
+.icon:disabled[aria-busy=true] { opacity: 1; cursor: default; }
+.icon:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
+.icon svg { width: 20px; height: 20px; }

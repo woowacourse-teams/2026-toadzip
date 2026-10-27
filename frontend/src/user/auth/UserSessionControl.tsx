@@ -151,7 +151,7 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
           <path d="M4 4h16v16H4zM4 13h5l1 3h4l1-3h5" />
         </svg><span>{mobile ? '알림' : '알림 보관함'}</span><NotificationBadge />
       </button>}
-      {session === 'signed-in' && (presentation === 'default' ? accountActions : <Link className="service-login-link" to="/mypage/bookmarks" onClick={() => { rememberExplorerPath(explorerReturn?.current ?? pathname + search + hash); captureProductEvent('account_menu_opened') }}>마이페이지</Link>)}
+      {session === 'signed-in' && (presentation === 'default' ? accountActions : <Link className="service-login-link" to="/mypage" aria-current={pathname.startsWith('/mypage') ? 'page' : undefined} onClick={() => { rememberExplorerPath(explorerReturn?.current ?? pathname + search + hash); captureProductEvent('account_menu_opened') }}>마이페이지</Link>)}
       {session === 'signed-in' && (memberView || inboxRequested) && <MemberMenuModal inboxOnly={presentation === 'rail'} key={memberView === 'account' ? 'account' : 'notifications'} view={memberView ?? 'inbox'} onClose={closeMember} returnFocusRef={memberTrigger}>
         {accountActions}
         {logoutError && <p role="alert">로그아웃하지 못했어요. 다시 시도해 주세요.</p>}

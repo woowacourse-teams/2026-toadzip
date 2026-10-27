@@ -18,9 +18,11 @@
   background: var(--ds-color-action-soft);
   color: var(--ds-color-text);
 }
-.bell[data-requested='true'] { color: var(--ds-color-text); }
+/* 신청한 알림 종은 알림 색으로 채운다. */
+.bell[data-requested='true'], .button[data-requested='true'] svg { color: var(--ds-color-notification); }
 .button:hover:not(:disabled) { border-color: var(--ds-color-action); background: var(--ds-color-action-soft); }
-.bell:hover:not(:disabled) { color: var(--ds-color-action); }
+/* 빈 종에만 hover 강조를 주고, 신청한 종은 그대로 둔다. */
+.bell:not([data-requested='true']):hover:not(:disabled) { color: var(--ds-color-notification); }
 .button:disabled, .bell:disabled { opacity: 0.6; cursor: wait; }
 .button:focus-visible, .bell:focus-visible, .dialog button:focus-visible, .input:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
 .dialog::backdrop {

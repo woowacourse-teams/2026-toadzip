@@ -12,7 +12,6 @@ import { AdminLayout } from './admin/auth/AdminLayout'
 import { LoginPage } from './admin/auth/LoginPage'
 import { RequireAdmin } from './admin/auth/RequireAdmin'
 import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHousingExplorer.tsx'
-import { MyPage } from './user/mypage/MyPage'
 import { rememberExplorerPath } from './user/auth/loginReturn'
 import { BrandLink } from './BrandLink'
 import { NotificationInterestSessionControl } from './public-housing/interest/NotificationInterest'
@@ -153,8 +152,8 @@ export default function App() {
       <Route element={<PublicNotificationLayout />}>
         <Route path="/explore" element={<Home />} />
         <Route path="/notifications" element={<NotificationPage />} />
-        <Route path="/mypage" element={<Navigate to="/mypage/bookmarks" replace />} />
-        <Route path="/mypage/:section" element={<MyPage />} />
+        <Route path="/mypage" element={<Home />} />
+        <Route path="/mypage/:section" element={<Home />} />
       </Route>
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/privacy/:key/:version" element={<PrivacyPolicyPage />} />
