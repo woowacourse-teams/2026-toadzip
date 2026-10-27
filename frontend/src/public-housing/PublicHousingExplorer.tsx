@@ -1062,13 +1062,21 @@ export function PublicHousingExplorer({
     setActiveResultTab('mypage')
   }, [onMyPageRoute])
   // 마이페이지에서 연 상세는 마지막 지도 위치 위에 열고, 닫기 버튼이 출발한 마이페이지 화면으로 돌아가게 한다.
+  // 단지는 최근 본 단지와 같이 지도를 단지로 옮기고, 모바일에서는 요약 미리보기부터 보여준다.
   function openDetailFromMyPage(kind: ResultTab, id: string) {
     const mapPath = new URL(lastExplorerPath(), window.location.origin)
     const search = kind === 'complexes'
       ? setComplexIdQuery(clearDetailQuery(mapPath.searchParams), id)
       : setAnnouncementIdQuery(clearDetailQuery(mapPath.searchParams), id)
+    const state = { mypageReturn: location.pathname + location.search }
     setListPanelMode('collapsed')
-    navigate({ pathname: '/explore', search: toSearchString(search) }, { state: { mypageReturn: location.pathname + location.search } })
+    if (kind === 'complexes') {
+      pendingDetailCameraRef.current = { id, revision: viewportRevisionRef.current }
+      setDetailCameraRevision((current) => current + 1)
+    }
+    navigate({ pathname: '/explore', search: toSearchString(search) }, {
+      state: kind === 'complexes' && mobile ? withRecentComplexPreview(state, { complexId: id, expanded: false }) : state,
+    })
   }
 
   // 마이페이지 패널에서 다른 패널로 바꾸면 /mypage 주소를 지도 주소로 돌린다.
@@ -1785,6 +1793,7 @@ export function PublicHousingExplorer({
         </div>
         {showingRecentComplex ? <HousingComplexSummarySheet
           key={recentPreview.complexId}
+          returnToMyPage={mypageReturn !== null}
           expanded={recentPreview.expanded}
           onBackToSummary={returnToComplexSummary}
           recent={recentComplexes.find((recent) => recent.complexId === recentPreview?.complexId)}
