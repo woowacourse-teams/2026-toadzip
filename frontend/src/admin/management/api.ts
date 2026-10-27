@@ -19,11 +19,14 @@ export function managementResourcePath(resource: ManagementResource): string {
 export class ManagementError extends Error {
   readonly status: number
   readonly fields: Record<string, string>
+  /** 서버 오류 코드. 409의 `ADMIN_DATA_STALE`은 최신값을 다시 조회하면 이어서 저장할 수 있는 충돌이다. */
+  readonly code: string | null
 
-  constructor(message: string, status: number, fields: Record<string, string> = {}) {
+  constructor(message: string, status: number, fields: Record<string, string> = {}, code: string | null = null) {
     super(message)
     this.status = status
     this.fields = fields
+    this.code = code
   }
 }
 
@@ -44,12 +47,13 @@ export async function requestManagementApi(
       throw new Error('인증 응답이 올바르지 않습니다.')
     }
     headers[csrf.headerName] = csrf.token
-    if (body !== undefined) headers['Content-Type'] = 'application/json'
+    // FormData는 브라우저가 multipart 경계를 담은 Content-Type을 직접 붙인다.
+    if (body !== undefined && !(body instanceof FormData)) headers['Content-Type'] = 'application/json'
   }
 
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method, credentials: 'include', headers, signal,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
   })
   if (response.status === 204) return null
 
@@ -66,7 +70,8 @@ export async function requestManagementApi(
     const message = isRecord(result) && typeof result.message === 'string'
       ? result.message
       : '요청을 처리하지 못했습니다. 다시 시도해 주세요.'
-    throw new ManagementError(message, response.status, fields)
+    const code = isRecord(result) && typeof result.code === 'string' ? result.code : null
+    throw new ManagementError(message, response.status, fields, code)
   }
   return isRecord(result) && 'data' in result ? result.data : result
 }

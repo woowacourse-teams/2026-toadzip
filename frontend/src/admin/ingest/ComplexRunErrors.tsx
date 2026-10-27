@@ -6,8 +6,8 @@ import { ComplexIconButton } from './ComplexIconButton'
 import { ComplexStageHelp } from './ComplexStageHelp'
 import { IconButton } from '../../design-system/components/IconButton'
 
-type Mode = 'collection' | 'complex' | 'household' | 'coordinates'
-const labels: Record<Mode, string> = { collection: '수집 오류', complex: '단지 정제 오류', household: '세대수 보강 오류', coordinates: '좌표 문제' }
+type Mode = 'collection' | 'complex' | 'coordinates'
+const labels: Record<Mode, string> = { collection: '수집 오류', complex: '단지 정제 오류', coordinates: '좌표 문제' }
 const reasonLabels: Record<string, string> = {
   GEOCODING_ERROR: '주소에 맞는 좌표를 찾지 못함', MISSING_REQUIRED_VALUE: '필수 원천값 누락',
   INVALID_VALUE: '원천 값 확인 필요', INVALID_SOURCE: '원천 데이터 형식 오류', CONFLICTING_SOURCE_VALUE: '원천 값 충돌',
@@ -17,7 +17,7 @@ const reasonLabels: Record<string, string> = {
 
 export function ComplexRunErrors({ executionId, phase }: { executionId: string; phase?: 'collection' | 'refinement' }) {
   const modes: Mode[] = phase === 'collection' ? ['collection'] : phase === 'refinement'
-    ? ['complex', 'coordinates', 'household'] : ['collection', 'complex', 'coordinates', 'household']
+    ? ['complex', 'coordinates'] : ['collection', 'complex', 'coordinates']
   const [mode, setMode] = useState<Mode>(modes[0])
   const [page, setPage] = useState(0)
   const [keyword, setKeyword] = useState('')

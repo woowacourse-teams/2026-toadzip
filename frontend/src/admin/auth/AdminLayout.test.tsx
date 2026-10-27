@@ -17,7 +17,8 @@ function setup() {
 }
 it('매일 하는 작업은 바로 보이고 수집 도구는 펼쳐서 찾을 수 있다', () => {
   setup()
-  expect(screen.getByRole('link', { name: '검토할 데이터' })).toBeVisible()
+  expect(screen.queryByRole('link', { name: '검토할 데이터' })).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: '실패·검토 항목' })).toBeVisible()
   expect(screen.getByRole('link', { name: '원천 데이터' })).not.toBeVisible()
   fireEvent.click(screen.getByText('수집·원천 도구'))
   expect(screen.getByRole('link', { name: '원천 데이터' })).toBeVisible()
@@ -44,7 +45,7 @@ it('접힌 메뉴에도 모든 링크의 아이콘과 접근 가능한 이름, �
   fireEvent.click(collapse)
   const menu = screen.getByRole('navigation', { name: '관리자 메뉴' })
   const links = menu.querySelectorAll('a')
-  expect(links).toHaveLength(14)
+  expect(links).toHaveLength(12)
   links.forEach(link => {
     expect(link.querySelector('svg')).not.toBeNull()
     expect(link).toHaveAccessibleName()
@@ -70,4 +71,8 @@ it('로그아웃 실패는 알리고 다시 시도해 로그인 화면으로 이
   expect(await screen.findByRole('alert')).toHaveTextContent('로그아웃 연결 실패')
   fireEvent.click(screen.getByRole('button', { name: '로그아웃' }))
   await waitFor(() => expect(screen.getByRole('heading', { name: '관리자 로그인' })).toBeVisible())
+})
+it('관리자 화면의 로고는 서비스 홈이 아니라 운영 홈으로 연결한다', () => {
+  setup()
+  expect(screen.getByRole('link', { name: '관리자 운영 홈으로' })).toHaveAttribute('href', '/admin/operations')
 })

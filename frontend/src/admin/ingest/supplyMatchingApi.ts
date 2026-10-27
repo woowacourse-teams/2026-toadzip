@@ -8,6 +8,8 @@ export type SupplyMatch = {
   savedMatch?: SavedSupplyMatch | null
   totalSupplyHouseholdCount?: number | null
   splitGroup?: SplitSupplyGroup | null
+  /** 등록 단지에 없어 관리자가 공개에서 뺀 공급행. 정제는 이 행의 매칭 실패를 오류로 남기지 않는다. */
+  excluded?: boolean
 }
 export type SplitSupplyGroup = { id: number; sharedHouseholdCount: number | null; sourceUrl: string; reason: string
   actor: string; updatedAt: string; reviewRequired: boolean
@@ -17,13 +19,15 @@ export type SavedSupplyMatch = { complexId: number | null; housingTypeId: number
   reason: string; actor: string; updatedAt: string; reviewRequired: boolean }
 export type MatchEvidence = { remember: true; sourceUrl: string; reason: string }
 export type SupplySelection = { rowIdentifier: string; token: string; complexId: number; housingTypeId: number | null; targetToken?: string }
-export type MatchingComplex = { id: number; name: string; roadAddress: string; supplyType: string }
+export type MatchingComplex = { id: number; name: string; roadAddress: string; supplyType: string
+  pnu: string; totalHouseholdCount: number; housingTypes: { id: number; name: string; exclusiveArea: number }[] }
 export type MatchingHousingType = { id: number; name: string; exclusiveArea: number; supplyArea: number | null; householdCount?: number | null; token?: string }
 const root = '/api/admin/ingest/announcement-supply-matches'
 function number(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value) }
 function id(value: unknown): value is number { return number(value) && Number.isSafeInteger(value) && value > 0 }
 function nullableNumber(value: unknown): value is number | null { return value === null || number(value) }
 function nullableId(value: unknown): value is number | null { return value === null || id(value) }
+function count(value: unknown): value is number { return number(value) && Number.isSafeInteger(value) && value >= 0 }
 
 export async function getSupplyMatches(identifier: string, signal?: AbortSignal): Promise<SupplyMatch[]> {
   const result = await requestManagementApi(`${root}/${encodeURIComponent(identifier)}`, 'GET', undefined, signal)
@@ -43,7 +47,8 @@ function parseMatches(result: unknown): SupplyMatch[] {
       supplyArea: value.supplyArea, complexId: value.complexId, housingTypeId: value.housingTypeId,
       failure: value.failure, ...(value.savedMatch !== undefined ? { savedMatch: parseSavedMatch(value.savedMatch) } : {}),
       ...(value.totalSupplyHouseholdCount !== undefined ? { totalSupplyHouseholdCount: parseCount(value.totalSupplyHouseholdCount) } : {}),
-      ...(value.splitGroup !== undefined ? { splitGroup: parseSplitGroup(value.splitGroup) } : {}) }
+      ...(value.splitGroup !== undefined ? { splitGroup: parseSplitGroup(value.splitGroup) } : {}),
+      ...(typeof value.excluded === 'boolean' ? { excluded: value.excluded } : {}) }
   })
 }
 
@@ -84,13 +89,23 @@ function parseSavedMatch(value: unknown): SavedSupplyMatch | null {
     reason: value.reason, actor: value.actor, updatedAt: value.updatedAt, reviewRequired: value.reviewRequired }
 }
 
-export async function searchMatchingComplexes(query: string, signal?: AbortSignal): Promise<MatchingComplex[]> {
-  const result = await requestManagementApi(`${root}/complexes?${new URLSearchParams({ query })}`, 'GET', undefined, signal)
+/** pnu를 주면 이름이 달라도 같은 필지의 단지를 함께 찾는다. */
+export async function searchMatchingComplexes(query: string, signal?: AbortSignal, pnu = ''): Promise<MatchingComplex[]> {
+  const params = new URLSearchParams({ query })
+  if (pnu) params.set('pnu', pnu)
+  const result = await requestManagementApi(`${root}/complexes?${params}`, 'GET', undefined, signal)
   if (!Array.isArray(result)) throw new Error('단지 검색 응답이 올바르지 않습니다.')
   return result.map(value => {
     if (!isRecord(value) || !id(value.id) || typeof value.name !== 'string' || typeof value.roadAddress !== 'string'
-      || typeof value.supplyType !== 'string') throw new Error('단지 검색 응답이 올바르지 않습니다.')
-    return { id: value.id, name: value.name, roadAddress: value.roadAddress, supplyType: value.supplyType }
+      || typeof value.supplyType !== 'string' || typeof value.pnu !== 'string'
+      || !count(value.totalHouseholdCount) || !Array.isArray(value.housingTypes)) throw new Error('단지 검색 응답이 올바르지 않습니다.')
+    const housingTypes = value.housingTypes.map(type => {
+      if (!isRecord(type) || !id(type.id) || typeof type.name !== 'string' || !number(type.exclusiveArea))
+        throw new Error('단지 검색 응답이 올바르지 않습니다.')
+      return { id: type.id, name: type.name, exclusiveArea: type.exclusiveArea }
+    })
+    return { id: value.id, name: value.name, roadAddress: value.roadAddress, supplyType: value.supplyType,
+      pnu: value.pnu, totalHouseholdCount: value.totalHouseholdCount, housingTypes }
   })
 }
 
@@ -115,7 +130,113 @@ export async function refineSupplyMatches(identifier: string, rows: SupplySelect
     || result.failedSourceRowCount !== 0) throw new Error('정제 결과 응답이 올바르지 않습니다. 공고 관리에서 결과를 확인해 주세요.')
 }
 
+/** 선택 없이 저장한 매칭·자동 매칭으로 이 공고만 다시 정제한다. 하나라도 실패하면 서버가 전체를 되돌린다. */
+export async function rerunAnnouncement(identifier: string): Promise<void> {
+  const result = await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/rerun`, 'POST')
+  if (!isRecord(result) || !Number.isSafeInteger(result.updatedAnnouncementCount)
+    || result.failedSourceRowCount !== 0) throw new Error('정제 결과 응답이 올바르지 않습니다. 오류 목록에서 결과를 확인해 주세요.')
+}
+
 export async function releaseSupplyMatch(identifier: string, row: SupplyMatch, reason: string): Promise<SupplyMatch[]> {
   return parseMatches(await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/release`, 'POST',
     { rowIdentifier: row.rowIdentifier, token: row.token, reason }))
+}
+
+export async function setSupplyExclusion(identifier: string, row: SupplyMatch, excluded: boolean, reason: string): Promise<SupplyMatch[]> {
+  return parseMatches(await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/exclusion`, 'POST',
+    { rowIdentifier: row.rowIdentifier, token: row.token, excluded, reason }))
+}
+
+export type LhSupplyLinkView = { token: string; announcement?: LhLinkAnnouncement; myhomeRows: LhLinkMyHomeRow[]
+  lhRows: LhLinkSupplyRow[]; failures?: LhSupplyMatchFailure[]; releasedSupplyMatches?: string[] }
+export type LhLinkAnnouncement = { identifier: string; name: string | null; sourceUrl: string | null; panId: string | null }
+/** 현재 원천과 등록 공급행으로 LH 보강 매칭을 다시 해 본 결과다. */
+export type LhSupplyMatchFailure = { lhRowIdentifier: string; reason: string; detail: string; candidates: LhMatchCandidate[] }
+export type LhMatchCandidate = { supplyRowId: number; myhomeRowIdentifier: string | null; sourceComplexName: string
+  sourceHousingTypeName: string; complexName: string | null; housingTypeName: string | null; lhRowIdentifier: string | null }
+export type LhLinkMyHomeRow = { rowIdentifier: string; complexName: string | null; housingTypeName: string | null
+  supplyHouseholdCount: number | null; splitCorrected: boolean }
+export type LhLinkSupplyRow = { rowIdentifier: string; complexLabel: string | null; typeName: string | null
+  exclusiveArea: string | null; supplyArea: string | null; suppliedUnitCount: string | null
+  linkedRowIdentifier: string | null; savedLink: SavedLhSupplyLink | null }
+export type SavedLhSupplyLink = { myhomeRowIdentifier: string; sourceUrl: string; reason: string; actor: string
+  updatedAt: string; reviewRequired: boolean }
+
+function nullableText(value: unknown): value is string | null { return value === null || typeof value === 'string' }
+
+export async function getLhSupplyLinks(identifier: string, signal?: AbortSignal): Promise<LhSupplyLinkView> {
+  return parseLhSupplyLinks(await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/lh-links`, 'GET',
+    undefined, signal))
+}
+
+export async function saveLhSupplyLinks(identifier: string, view: LhSupplyLinkView, myhomeRowIdentifier: string,
+  lhRowIdentifiers: string[], sourceUrl: string, reason: string): Promise<LhSupplyLinkView> {
+  return parseLhSupplyLinks(await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/lh-links`, 'POST',
+    { token: view.token, myhomeRowIdentifier, lhRowIdentifiers, sourceUrl, reason }))
+}
+
+export async function releaseLhSupplyLink(identifier: string, view: LhSupplyLinkView, lhRowIdentifier: string,
+  reason: string): Promise<LhSupplyLinkView> {
+  return parseLhSupplyLinks(await requestManagementApi(`${root}/${encodeURIComponent(identifier)}/lh-links/release`,
+    'POST', { token: view.token, lhRowIdentifier, reason }))
+}
+
+function parseLhSupplyLinks(value: unknown): LhSupplyLinkView {
+  const invalid = () => new Error('LH 공급 연결 응답이 올바르지 않습니다.')
+  if (!isRecord(value) || typeof value.token !== 'string' || !Array.isArray(value.myhomeRows)
+    || !Array.isArray(value.lhRows)) throw invalid()
+  const myhomeRows = value.myhomeRows.map(row => {
+    if (!isRecord(row) || typeof row.rowIdentifier !== 'string' || !nullableText(row.complexName)
+      || !nullableText(row.housingTypeName) || typeof row.splitCorrected !== 'boolean') throw invalid()
+    return { rowIdentifier: row.rowIdentifier, complexName: row.complexName, housingTypeName: row.housingTypeName,
+      supplyHouseholdCount: parseCount(row.supplyHouseholdCount), splitCorrected: row.splitCorrected }
+  })
+  const lhRows = value.lhRows.map(row => {
+    if (!isRecord(row) || typeof row.rowIdentifier !== 'string' || !nullableText(row.complexLabel)
+      || !nullableText(row.typeName) || !nullableText(row.exclusiveArea) || !nullableText(row.supplyArea)
+      || !nullableText(row.suppliedUnitCount) || !nullableText(row.linkedRowIdentifier)) throw invalid()
+    return { rowIdentifier: row.rowIdentifier, complexLabel: row.complexLabel, typeName: row.typeName,
+      exclusiveArea: row.exclusiveArea, supplyArea: row.supplyArea, suppliedUnitCount: row.suppliedUnitCount,
+      linkedRowIdentifier: row.linkedRowIdentifier, savedLink: parseSavedLhLink(row.savedLink, invalid) }
+  })
+  if (value.releasedSupplyMatches !== undefined && (!Array.isArray(value.releasedSupplyMatches)
+    || !value.releasedSupplyMatches.every(item => typeof item === 'string'))) throw invalid()
+  return { token: value.token, myhomeRows, lhRows, releasedSupplyMatches: (value.releasedSupplyMatches ?? []) as string[],
+    ...(value.announcement !== undefined ? { announcement: parseLhAnnouncement(value.announcement, invalid) } : {}),
+    ...(value.failures !== undefined ? { failures: parseLhFailures(value.failures, invalid) } : {}) }
+}
+
+function parseLhAnnouncement(value: unknown, invalid: () => Error): LhLinkAnnouncement {
+  if (!isRecord(value) || typeof value.identifier !== 'string' || !nullableText(value.name)
+    || !nullableText(value.sourceUrl) || !nullableText(value.panId)) throw invalid()
+  const sourceUrl = value.sourceUrl !== null && /^https?:\/\//i.test(value.sourceUrl) ? value.sourceUrl : null
+  return { identifier: value.identifier, name: value.name, sourceUrl, panId: value.panId }
+}
+
+function parseLhFailures(value: unknown, invalid: () => Error): LhSupplyMatchFailure[] {
+  if (!Array.isArray(value)) throw invalid()
+  return value.map(failure => {
+    if (!isRecord(failure) || typeof failure.lhRowIdentifier !== 'string' || typeof failure.reason !== 'string'
+      || typeof failure.detail !== 'string' || !Array.isArray(failure.candidates)) throw invalid()
+    const candidates = failure.candidates.map(candidate => {
+      if (!isRecord(candidate) || !id(candidate.supplyRowId) || !nullableText(candidate.myhomeRowIdentifier)
+        || typeof candidate.sourceComplexName !== 'string' || typeof candidate.sourceHousingTypeName !== 'string'
+        || !nullableText(candidate.complexName) || !nullableText(candidate.housingTypeName)
+        || !nullableText(candidate.lhRowIdentifier)) throw invalid()
+      return { supplyRowId: candidate.supplyRowId, myhomeRowIdentifier: candidate.myhomeRowIdentifier,
+        sourceComplexName: candidate.sourceComplexName, sourceHousingTypeName: candidate.sourceHousingTypeName,
+        complexName: candidate.complexName, housingTypeName: candidate.housingTypeName,
+        lhRowIdentifier: candidate.lhRowIdentifier }
+    })
+    return { lhRowIdentifier: failure.lhRowIdentifier, reason: failure.reason, detail: failure.detail, candidates }
+  })
+}
+
+function parseSavedLhLink(value: unknown, invalid: () => Error): SavedLhSupplyLink | null {
+  if (value === null) return null
+  if (!isRecord(value) || typeof value.myhomeRowIdentifier !== 'string' || typeof value.sourceUrl !== 'string'
+    || !/^https?:\/\//i.test(value.sourceUrl) || typeof value.reason !== 'string' || typeof value.actor !== 'string'
+    || typeof value.updatedAt !== 'string' || typeof value.reviewRequired !== 'boolean') throw invalid()
+  return { myhomeRowIdentifier: value.myhomeRowIdentifier, sourceUrl: value.sourceUrl, reason: value.reason,
+    actor: value.actor, updatedAt: value.updatedAt, reviewRequired: value.reviewRequired }
 }

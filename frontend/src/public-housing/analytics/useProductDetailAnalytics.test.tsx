@@ -1,5 +1,5 @@
 import { StrictMode } from 'react'
-import { act, cleanup, render, waitFor } from '@testing-library/react'
+import { act, cleanup, render, renderHook, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DetailLocationResult } from '../navigation/detailLocation'
@@ -8,6 +8,8 @@ import { captureProductEvent } from '../../analytics/productAnalytics'
 import { ProductAnalyticsBoundary } from '../../analytics/ProductAnalyticsBoundary'
 import type { AnalyticsStopReason } from '../../privacy/consentStore'
 import { HousingDetailOverlay } from '../components/HousingDetailOverlay'
+import type { MarkerHoverAttribution } from '../../analytics/markerHoverAnalytics'
+import type { DetailEntryPoint } from '../../analytics/googleAnalytics'
 
 const consent = vi.hoisted(() => ({ allowed: true, listeners: new Set<() => void>(),
   stopListeners: new Set<(reason: AnalyticsStopReason) => void>(),
@@ -54,6 +56,121 @@ beforeEach(() => {
   capture.mockClear().mockImplementation(() => consent.allowed)
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rectangle)
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+})
+
+describe('직접 마커 호버와 실제 상세 표시 연결', () => {
+  function hover(complexId = '12'): MarkerHoverAttribution {
+    return { complex_id: complexId, exploration_id: crypto.randomUUID(), hover_id: crypto.randomUUID(), measurement_version: 'marker_hover_v1' }
+  }
+  function setup() {
+    const dialog = document.createElement('dialog')
+    dialog.open = true; dialog.className = 'housing-detail-layer'; dialog.setAttribute('aria-label', '단지 상세')
+    dialog.dataset.testBlocker = 'true'; document.body.append(dialog)
+    const initialProps: { location: DetailLocationResult; ready: string | null } = { location: { kind: 'none' }, ready: null }
+    const view = renderHook(({ location, ready }) => useProductDetailAnalytics({
+      detailLocation: location, readyComplexId: ready, readyAnnouncementId: null,
+    }), { wrapper: wrap, initialProps })
+    return { ...view, dialog }
+  }
+  it('호버 종료·재진입 후 늦게 표시되어도 처음 요청한 호버와 방문 ID를 유지한다', async () => {
+    const view = setup()
+    const first = hover()
+    const original = { ...first }
+    act(() => view.result.current.prepare('complex', '12', 'map', first))
+    const request = collected('detail_open_requested')[0]?.[1]
+    view.rerender({ location: { kind: 'complex', complexId: '12' }, ready: null })
+    // Later hover state must not be consulted by the asynchronous detail observer.
+    Object.assign(first, hover())
+    expect(collected('view_complex')).toHaveLength(0)
+    view.rerender({ location: { kind: 'complex', complexId: '12' }, ready: '12' })
+    await waitFor(() => expect(collected('view_complex')).toHaveLength(1))
+    expect(request).toMatchObject(original)
+    expect(collected('view_complex')[0]?.[1]).toMatchObject({ ...original, detail_visit_id: request?.detail_visit_id })
+  })
+  it('상세가 호버 종료 전에 먼저 표시되어도 같은 연결을 한 번만 남긴다', async () => {
+    const view = setup(), attribution = hover()
+    act(() => view.result.current.prepare('complex', '12', 'map', attribution))
+    view.rerender({ location: { kind: 'complex', complexId: '12' }, ready: '12' })
+    await waitFor(() => expect(collected('view_complex')).toHaveLength(1))
+    view.rerender({ location: { kind: 'complex', complexId: '12' }, ready: '12' })
+    expect(collected('view_complex')).toHaveLength(1)
+    expect(collected('view_complex')[0]?.[1]).toMatchObject(attribution)
+  })
+  it('응답 실패·취소는 실제 열람이 아니며 다음 방문에 이전 호버를 붙이지 않는다', async () => {
+    const view = setup()
+    act(() => view.result.current.prepare('complex', '12', 'map', hover()))
+    view.rerender({ location: { kind: 'complex', complexId: '12' }, ready: null })
+    await act(async () => {})
+    expect(collected('view_complex')).toHaveLength(0)
+    view.rerender({ location: { kind: 'none' }, ready: null })
+    view.rerender({ location: { kind: 'complex', complexId: '13' }, ready: '12' })
+    await act(async () => {})
+    expect(collected('view_complex')).toHaveLength(0)
+    view.rerender({ location: { kind: 'complex', complexId: '13' }, ready: '13' })
+    await waitFor(() => expect(collected('view_complex')).toHaveLength(1))
+    expect(collected('view_complex')[0]?.[1]).not.toHaveProperty('hover_id')
+  })
+  it.each(['list', 'search', 'recent', 'history', 'direct'] as DetailEntryPoint[])('%s 진입에는 전달된 호버가 있어도 연결하지 않는다', async entry => {
+    const view = setup()
+    act(() => view.result.current.prepare('complex', '12', entry, hover()))
+    view.rerender({ location: { kind: 'complex', complexId: '12' }, ready: '12' })
+    await waitFor(() => expect(collected('view_complex')).toHaveLength(1))
+    expect(collected('detail_open_requested')[0]?.[1]).not.toHaveProperty('hover_id')
+    expect(collected('view_complex')[0]?.[1]).not.toHaveProperty('hover_id')
+  })
+  it('다른 단지 호버는 연결하지 않는다', async () => {
+    const view = setup()
+    act(() => view.result.current.prepare('complex', '12', 'map', hover('13')))
+    view.rerender({ location: { kind: 'complex', complexId: '12' }, ready: '12' })
+    await waitFor(() => expect(collected('view_complex')).toHaveLength(1))
+    expect(collected('view_complex')[0]?.[1]).not.toHaveProperty('hover_id')
+  })
+  it('이미 열린 상세의 재클릭은 기존 방문과 연결을 바꾸지 않는다', async () => {
+    const view = setup(), first = hover()
+    act(() => view.result.current.prepare('complex', '12', 'map', first))
+    view.rerender({ location: { kind: 'complex', complexId: '12' }, ready: '12' })
+    await waitFor(() => expect(collected('view_complex')).toHaveLength(1))
+    const original = collected('view_complex')[0]?.[1]
+    const second = hover()
+    act(() => view.result.current.prepare('complex', '12', 'map', second))
+    view.rerender({ location: { kind: 'complex', complexId: '12' }, ready: '12' })
+    expect(collected('view_complex')).toHaveLength(1)
+    expect(collected('view_complex')[0]?.[1]).toMatchObject(first)
+    expect(collected('detail_open_requested')[1]?.[1]).toMatchObject({ ...second, detail_visit_id: original?.detail_visit_id })
+  })
+  it.each(['list', 'search', 'keyboard'] as const)('이미 열린 상세를 %s에서 다시 선택해도 요청에 이전 호버를 붙이지 않는다', async entry => {
+    const view = setup(), attribution = hover()
+    act(() => view.result.current.prepare('complex', '12', 'map', attribution))
+    view.rerender({ location: { kind: 'complex', complexId: '12' }, ready: '12' })
+    await waitFor(() => expect(collected('view_complex')).toHaveLength(1))
+    act(() => view.result.current.prepare('complex', '12', entry === 'keyboard' ? 'map' : entry))
+    expect(collected('detail_open_requested')[1]?.[1]).not.toHaveProperty('hover_id')
+    expect(collected('view_complex')).toHaveLength(1)
+    expect(collected('view_complex')[0]?.[1]).toMatchObject(attribution)
+  })
+  it('한 호버에서 상세를 닫고 다시 열면 서로 다른 상세 방문으로 남긴다', async () => {
+    const view = setup(), attribution = hover()
+    act(() => view.result.current.prepare('complex', '12', 'map', attribution))
+    view.rerender({ location: { kind: 'complex', complexId: '12' }, ready: '12' })
+    await waitFor(() => expect(collected('view_complex')).toHaveLength(1))
+    view.rerender({ location: { kind: 'none' }, ready: null })
+    act(() => view.result.current.prepare('complex', '12', 'map', attribution))
+    view.rerender({ location: { kind: 'complex', complexId: '12' }, ready: '12' })
+    await waitFor(() => expect(collected('view_complex')).toHaveLength(2))
+    const visits = collected('view_complex').map(([, properties]) => properties)
+    expect(visits[0]?.hover_id).toBe(visits[1]?.hover_id)
+    expect(visits[0]?.detail_visit_id).not.toBe(visits[1]?.detail_visit_id)
+  })
+  it.each(['reset', 'context-change', 'consent-replaced'] as const)('%s 후 늦은 응답에는 이전 연결을 재사용하지 않는다', async reason => {
+    const view = setup()
+    act(() => view.result.current.prepare('complex', '12', 'map', hover()))
+    view.rerender({ location: { kind: 'complex', complexId: '12' }, ready: null })
+    await act(async () => notifyStop(reason))
+    view.rerender({ location: { kind: 'complex', complexId: '12' }, ready: '12' })
+    await setConsent(true)
+    await waitFor(() => expect(collected('view_complex')).toHaveLength(1))
+    expect(collected('view_complex')[0]?.[1]).not.toHaveProperty('hover_id')
+  })
 })
 afterEach(() => { cleanup(); consent.listeners.clear(); consent.stopListeners.clear(); document.querySelectorAll('[data-test-blocker]').forEach(node => node.remove()); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals() })
 

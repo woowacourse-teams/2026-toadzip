@@ -54,6 +54,7 @@ it('충돌하면 수정값과 근거를 보존하고 재저장을 막는다', as
 
 it('미확인 원천과 false·0을 구분하며 임의로 자동 채우지 않는다', async () => {
   show()
+  fireEvent.click(await screen.findByRole('button', { name: '모든 항목' }))
   const parking = await screen.findByRole('group', { name: '주차대수 비교' })
   expect(within(parking).getAllByText('0')).toHaveLength(2)
   expect(within(parking).queryByRole('button', { name: '이 원천값 사용' })).not.toBeInTheDocument()
@@ -70,4 +71,27 @@ it('주소만 다른 경우에도 차이 개수와 펼쳐 확인할 영역을 �
   fireEvent.click(screen.getByText(/주소·위치 함께 확인·수정/))
   expect(within(screen.getByRole('group', { name: '도로명주소 비교' })).getByText('다른 도로명주소')).toBeVisible()
   expect(screen.queryByText('비교 가능한 원천값에서 차이가 없습니다.')).not.toBeInTheDocument()
+})
+
+it('값이 다른 항목만 먼저 보여주고 같은 값을 낸 원천은 한 칸으로 묶는다', async () => {
+  const second = { ...snapshot.sources[0], sourceKey: 'myhome-10', automatic: true, data: { ...source, id: 10, sourceKey: 'myhome-10' } }
+  const third = { ...snapshot.sources[0], sourceKey: 'myhome-11', automatic: true, data: { ...source, id: 11, sourceKey: 'myhome-11', raw: { ...source.raw, hshld_co: 130 } } }
+  mocks.get.mockResolvedValue({ ...snapshot, sources: [snapshot.sources[0], second, third] })
+  show()
+  const households = await screen.findByRole('group', { name: '전체 세대수 비교' })
+  expect(screen.queryByRole('group', { name: '이름 비교' })).not.toBeInTheDocument()
+  expect(within(households).getByText('원천 1·2 · 마이홈 단지')).toBeVisible()
+  expect(within(households).getByText('원천 3 · 마이홈 단지')).toBeVisible()
+  expect(within(households).getAllByRole('button', { name: '이 원천값 사용' })).toHaveLength(2)
+  fireEvent.click(screen.getByRole('button', { name: '모든 항목' }))
+  expect(within(screen.getByRole('group', { name: '이름 비교' })).getByText('원천 3개 모두 · 마이홈 단지')).toBeVisible()
+})
+
+it('마이홈의 3자리 시·군·구 번호는 시·도 코드를 붙여 저장값과 비교한다', async () => {
+  mocks.get.mockResolvedValue({ ...snapshot, sources: [{ ...snapshot.sources[0], data: { ...source, raw: { ...source.raw, hshld_co: 10, brtc_code: '11', signgu_code: '140' } } }] })
+  show()
+  fireEvent.click(await screen.findByText(/주소·위치 함께 확인·수정/))
+  const district = screen.getByRole('group', { name: '시·군·구 코드 비교' })
+  expect(within(district).getAllByText('11140')).toHaveLength(2)
+  expect(within(district).queryByText('값 다름')).not.toBeInTheDocument()
 })

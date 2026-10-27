@@ -78,31 +78,34 @@ public class MyHomeAnnouncementMappingWriter {
         return writeRegistration(resolved, previous, Map.of());
     }
 
-    /** 요청에서 검증한 선택을 이번 정제에만 적용한다. 별도 매칭 규칙은 저장하지 않는다. */
+    /**
+     * 요청에서 검증한 선택과 원천행 분할을 이번 정제에 함께 적용한다. 분할을 먼저 적용하고 나머지 행을 정제한다.
+     * 선택을 기억하는 규칙은 호출한 쪽이 저장한다.
+     */
     @Transactional
     public MyHomeAnnouncementWriteResult writeSelected(ResolvedAnnouncement resolved, Announcement previous,
-            Map<String, MyHomeSupplyMatchResult> selections) {
-        return writeRegistration(resolved, previous, selections);
+            Map<String, MyHomeSupplyMatchResult> selections, List<AnnouncementSupplySplitWriter.SplitPlan> plans) {
+        return writeRegistration(resolved, previous, selections, plans);
     }
 
     @Transactional
     public MyHomeAnnouncementWriteResult writeSplit(ResolvedAnnouncement resolved, Announcement previous,
             AnnouncementSupplySplitWriter.SplitPlan plan) {
-        return writeRegistration(resolved, previous, Map.of(), plan);
+        return writeRegistration(resolved, previous, Map.of(), List.of(plan));
     }
 
     /** 단건 등록은 LH 보강을 재검증하고 실패 시 전체 저장을 되돌린다. */
     private MyHomeAnnouncementWriteResult writeRegistration(ResolvedAnnouncement resolved, Announcement previous,
             Map<String, MyHomeSupplyMatchResult> selections) {
-        return writeRegistration(resolved, previous, selections, null);
+        return writeRegistration(resolved, previous, selections, List.of());
     }
 
     private MyHomeAnnouncementWriteResult writeRegistration(ResolvedAnnouncement resolved, Announcement previous,
-            Map<String, MyHomeSupplyMatchResult> selections, AnnouncementSupplySplitWriter.SplitPlan plan) {
+            Map<String, MyHomeSupplyMatchResult> selections, List<AnnouncementSupplySplitWriter.SplitPlan> plans) {
         IngestExecutionScope.verifyHeld();
         IngestExecutionScope.checkStopRequested();
         String identifier = resolved.data().sourceAnnouncementIdentifier();
-        MyHomeAnnouncementWriteResult result = writeResolved(resolved, previous, selections, plan);
+        MyHomeAnnouncementWriteResult result = writeResolved(resolved, previous, selections, plans);
         if (!result.failures().isEmpty()) {
             MyHomeSupplyMatchingFailureData failure = result.failures().getFirst();
             throw new MyHomeAnnouncementMappingRejectedException(
@@ -117,11 +120,10 @@ public class MyHomeAnnouncementMappingWriter {
                     .orElseThrow();
             try {
                 enrichmentWriter.writeAfterMapping(announcement, resolved.request(), resolved.supplies(),
-                        Set.of(), resolved.sourceKeysExcludedFromLhEnrichment());
+                        Set.of(), resolved.sourceKeysExcludedFromLhEnrichment(), resolved.supplyLinks());
             }
             catch (LhAnnouncementEnrichmentRejectedException exception) {
-                throw new MyHomeAnnouncementMappingRejectedException(
-                        MyHomeAnnouncementMappingFailureReason.INVALID_VALUE, "LH 보강 실패: " + exception.getMessage());
+                throw new LhEnrichmentRejectedMappingException(exception);
             }
         }
         failureStore.reconcileForAnnouncement(
@@ -143,12 +145,12 @@ public class MyHomeAnnouncementMappingWriter {
 
     private MyHomeAnnouncementWriteResult writeResolved(ResolvedAnnouncement resolved,
             Announcement previousAnnouncement, Map<String, MyHomeSupplyMatchResult> selections) {
-        return writeResolved(resolved, previousAnnouncement, selections, null);
+        return writeResolved(resolved, previousAnnouncement, selections, List.of());
     }
 
     private MyHomeAnnouncementWriteResult writeResolved(ResolvedAnnouncement resolved,
             Announcement previousAnnouncement, Map<String, MyHomeSupplyMatchResult> selections,
-            AnnouncementSupplySplitWriter.SplitPlan plan) {
+            List<AnnouncementSupplySplitWriter.SplitPlan> plans) {
         MyHomeAnnouncementMappingData data = resolved.data();
         AnnouncementWriteResult announcementResult = writeAnnouncement(data, previousAnnouncement);
         if (announcementResult.announcement().getProvider() != data.provider()) {
@@ -159,7 +161,7 @@ public class MyHomeAnnouncementMappingWriter {
         if (announcementResult.releasedLhOwnership()) {
             deleteLhEnrichment(announcementResult.announcement());
         }
-        if (plan != null) {
+        for (var plan : plans) {
             splitWriter.apply(announcementResult.announcement(), plan);
         }
         SupplyRowsWriteResult supplyRowsResult = writeSupplyRows(
@@ -197,14 +199,12 @@ public class MyHomeAnnouncementMappingWriter {
         try {
             enrichmentWriter.writeAfterMapping(
                     announcement, resolved.request(), resolved.supplies(),
-                    supplyRowsResult.changedHousingTypeRowIds(), resolved.sourceKeysExcludedFromLhEnrichment()
+                    supplyRowsResult.changedHousingTypeRowIds(), resolved.sourceKeysExcludedFromLhEnrichment(),
+                    resolved.supplyLinks()
             );
         }
         catch (LhAnnouncementEnrichmentRejectedException exception) {
-            throw new MyHomeAnnouncementMappingRejectedException(
-                    MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
-                    "LH 보강 실패: " + exception.reason() + " - " + exception.getMessage()
-            );
+            throw new LhEnrichmentRejectedMappingException(exception);
         }
     }
 
@@ -329,8 +329,9 @@ public class MyHomeAnnouncementMappingWriter {
         var groups = supplyGroups.findAllByAnnouncement(announcement).stream()
                 .collect(Collectors.toMap(group -> group.getSourceRowIdentifier(), Function.identity()));
         Set<Long> preservedGroups = new HashSet<>();
+        var expanded = SupplyRowGroupOrigins.expandedIn(rows);
         for (MyHomeSupplyRowMappingData data : rows) {
-            var group = groups.get(data.source().getSourceKey());
+            var group = groups.get(SupplyRowGroupOrigins.key(data));
             if (group != null) {
                 if (!preservedGroups.add(group.getId())) {
                     continue;
@@ -339,7 +340,7 @@ public class MyHomeAnnouncementMappingWriter {
                         && row.getSupplyGroup().getId().equals(group.getId()))
                         .sorted(java.util.Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
                         .toList();
-                if (splitWriter.reviewRequired(group, data.source(), members)) {
+                if (splitWriter.reviewRequired(group, data, expanded.apply(data), members)) {
                     group.requireReview();
                     failures.add(new MyHomeSupplyMatchingFailureData(data.source(),
                             MyHomeAnnouncementMappingFailureReason.MANUAL_MATCH_REVIEW_REQUIRED,
@@ -375,11 +376,14 @@ public class MyHomeAnnouncementMappingWriter {
             if (match == null) {
                 match = supplyMatcher.match(data);
             }
-            if (stored != null && stored.isAdminModified()
-                    && selections.containsKey(data.sourceSupplyRowIdentifier())) {
-                throw new MyHomeAnnouncementMappingRejectedException(
-                        MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
-                        "관리자가 수정한 공급행입니다. 기존 공고 관리 화면에서 연결을 수정해 주세요.");
+            if (stored != null && stored.isAdminExcluded() && match.failure() != null) {
+                // 관리자가 등록 단지에 없다고 제외한 행은 매칭 실패로 남기지 않고 그대로 둔다. LH 보강도 보류하지 않는다.
+                if (stored.updateDisplayOrder(displayOrder++)) {
+                    updated++;
+                    continue;
+                }
+                unchanged++;
+                continue;
             }
             if (match.failure() != null) {
                 failures.add(match.failure());
@@ -426,7 +430,14 @@ public class MyHomeAnnouncementMappingWriter {
                     data.totalSupplyHouseholdCount()
             );
             changed |= applyLhResolution(stored, data, match);
-            if (!Objects.equals(previousHousingTypeId, housingTypeId(stored))) {
+            // 관리자 보정은 표기값만 보호한다. 연결은 저장한 매칭이나 이번 선택이 있을 때 그 값을 따른다.
+            if (stored.isAdminModified() && match.failure() == null
+                    && (selections.containsKey(data.sourceSupplyRowIdentifier())
+                    || matchDecisions.findByRowIdentifier(data.sourceSupplyRowIdentifier()).isPresent())) {
+                changed |= stored.relinkByAdminMatch(match.complex(), match.housingType());
+            }
+            // 이전 주택형의 금액이 새 주택형에 남지 않게 보호한다. 미연결이던 행은 이어질 이전 금액이 없다.
+            if (previousHousingTypeId != null && !Objects.equals(previousHousingTypeId, housingTypeId(stored))) {
                 changedHousingTypeRowIds.add(stored.getId());
             }
             if (changed) {
@@ -632,5 +643,14 @@ public class MyHomeAnnouncementMappingWriter {
             MyHomeAnnouncementMappingFailureReason reason,
             String detail
     ) {
+    }
+
+    /** 전체 정제와 단건 정제가 같은 실패로 기록할 수 있도록 LH 보강 거절을 다른 정제 거절과 구분한다. */
+    static class LhEnrichmentRejectedMappingException extends MyHomeAnnouncementMappingRejectedException {
+
+        LhEnrichmentRejectedMappingException(LhAnnouncementEnrichmentRejectedException cause) {
+            super(MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
+                    "LH 보강 실패: " + cause.reason() + " - " + cause.getMessage());
+        }
     }
 }

@@ -9,7 +9,7 @@ beforeEach(() => vi.resetAllMocks())
 function row(extra: Partial<FailureReview> = {}): FailureReview {
   return { id: 1, category: 'complex', target: '검증 단지', sourceKey: 'fixture-source', reason: 'GEOCODING_ERROR',
     detail: '도로명주소에 맞는 좌표가 없습니다.', status: 'PENDING', occurredAt: '2026-10-22T00:00:00Z', occurrenceCount: 1,
-    recurrenceCount: 0, lastResolvedAt: null, executionId: 'refine-1', source: null, raw: {}, productLinkStatus: 'NOT_FOUND', product: null, ...extra }
+    recurrenceCount: 0, lastResolvedAt: null, lastResolvedBy: null, executionId: 'refine-1', source: null, raw: {}, productLinkStatus: 'NOT_FOUND', product: null, ...extra }
 }
 function page(items: FailureReview[], extra: Partial<FailureReviewPageData> = {}): FailureReviewPageData {
   return { items, page: 0, totalElements: items.length, totalPages: 1, hasNext: false, ...extra }
@@ -26,6 +26,13 @@ it('조회 실패를 오류 없음으로 표시하지 않고 재시도 후 대�
   expect(screen.queryByRole('link')).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /수정|보정|실행/ })).not.toBeInTheDocument()
   expect(getReviews).toHaveBeenLastCalledWith('complex', 'complex', 'ALL', 0, expect.any(AbortSignal), { executionId: 'refine-1', keyword: '' })
+})
+it('정제 오류 선택지는 현재 실패 조회 API가 지원하는 단지 정제와 좌표 문제만 제공한다', async () => {
+  getReviews.mockResolvedValue(page([]))
+  render(<ComplexRunErrors executionId="refine-1" phase="refinement" />)
+  await screen.findByText('이 실행에 기록된 단지 정제 오류가 없습니다.')
+  expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(['단지 정제 오류', '좌표 문제'])
+  expect(getReviews).toHaveBeenCalledExactlyOnceWith('complex', 'complex', 'ALL', 0, expect.any(AbortSignal), { executionId: 'refine-1', keyword: '' })
 })
 it('좌표 문제는 뒷 페이지까지 확인하며 다른 원인의 실패를 섞지 않는다', async () => {
   getReviews.mockResolvedValueOnce(page([]))

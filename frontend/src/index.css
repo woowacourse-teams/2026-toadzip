@@ -918,6 +918,19 @@ a {
   outline-offset: 2px;
 }
 
+/* Detail panels rise in when opened or replaced; each detail ID remounts its panel.
+   No fill mode, so the finished panel keeps no transform for its fixed descendants. */
+.housing-detail-layer > aside {
+  animation: housing-detail-appear 220ms ease-out;
+}
+
+@keyframes housing-detail-appear {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
 /* Animate only newly queried content; the SDK owns the outer map position. */
 .housing-marker-enter {
   transform-origin: 50% 100%;
@@ -1208,12 +1221,12 @@ a {
 .housing-map-marker__agency[data-agency='SH'] { color: var(--ds-color-agency-sh); }
 .housing-map-marker__agency[data-agency='GH'] { color: var(--ds-color-agency-gh); }
 
-.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__content {
+.housing-map-marker:is(.is-previewing, .is-highlighted) .housing-map-marker__content {
   clip-path: inset(0 0 0 0 round 5px);
   transition: clip-path var(--marker-motion-duration) var(--marker-motion-easing);
 }
 
-.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__surface {
+.housing-map-marker:is(.is-previewing, .is-highlighted) .housing-map-marker__surface {
   width: calc(100% + 2px);
   height: calc(100% + 2px);
   box-shadow: 0 4px 12px rgb(18 37 47 / 18%);
@@ -1223,20 +1236,20 @@ a {
     box-shadow var(--marker-motion-duration) var(--marker-motion-easing);
 }
 
-.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__top {
+.housing-map-marker:is(.is-previewing, .is-highlighted) .housing-map-marker__top {
   visibility: visible;
 }
 
-.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__compact {
+.housing-map-marker:is(.is-previewing, .is-highlighted) .housing-map-marker__compact {
   visibility: hidden;
 }
 
-.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__title-reveal,
-.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__details {
+.housing-map-marker:is(.is-previewing, .is-highlighted) .housing-map-marker__title-reveal,
+.housing-map-marker:is(.is-previewing, .is-highlighted) .housing-map-marker__details {
   visibility: visible;
 }
 
-.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__row {
+.housing-map-marker:is(.is-previewing, .is-highlighted) .housing-map-marker__row {
   width: 100%;
 }
 
@@ -1574,7 +1587,8 @@ a {
     --marker-motion-duration: 0s;
   }
 
-  .housing-marker-enter {
+  .housing-marker-enter,
+  .housing-detail-layer > aside {
     animation: none;
   }
 
@@ -1624,10 +1638,11 @@ button {
 
 .admin-login-form {
   display: grid;
-  width: min(100%, 360px);
+  /* 가운데 정렬 격자에서는 %가 내용 폭을 따라가므로 화면 폭 기준으로 고정한다. */
+  width: min(360px, calc(100vw - 48px));
   gap: 16px;
   padding: 28px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--ds-color-divider);
   border-radius: 12px;
   background: #ffffff;
   text-align: left;
@@ -1650,11 +1665,34 @@ button {
 
 .admin-login-form input {
   padding: 10px 12px;
-  border: 1px solid #94a3b8;
-  border-radius: 6px;
+  border: 1px solid var(--ds-color-border-base);
+  border-radius: 8px;
 }
 
-.admin-login-form button,
+.admin-login-form input:focus {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 1px;
+  border-color: var(--ds-color-action);
+}
+
+.admin-login-error {
+  min-height: 24px;
+  margin: -8px 0;
+}
+
+/* 관리자 화면의 주 행동 색(초록 채움)과 같은 버튼을 쓴다. */
+.admin-login-form button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  color: #ffffff;
+  background: var(--ds-color-action);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.admin-login-form button:disabled { opacity: .6; cursor: progress; }
+
 .admin-header button {
   padding: 10px 14px;
   border: 0;
@@ -2164,7 +2202,7 @@ button {
   font-weight: 700;
 }
 
-.registration-submit:hover:not(:disabled) {
+.registration-submit:hover:not(:disabled):not(:where(.admin-layout *)) {
   background: var(--brand-dark);
   color: #ffffff;
 }
@@ -2285,7 +2323,7 @@ button {
 .admin-navigation { display: flex; gap: 8px; padding: 14px max(24px, calc((100vw - 1200px) / 2)); border-bottom: 1px solid #d9e3e1; background: #fff; overflow-x: auto; }
 .admin-navigation a { color: #516761; text-decoration: none; padding: 10px 18px; border-radius: 8px; white-space: nowrap; font-weight: 600; }
 .admin-navigation a[aria-current="page"] { color: #fff; background: #17685b; }
-.admin-navigation a:focus-visible { outline: 3px solid #8abfb3; outline-offset: 2px; }
+.admin-navigation a:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: -2px; }
 .admin-mode-switch { display: flex; gap: 8px; }
 .admin-mode-switch button[aria-pressed="true"] { background: #17685b; color: #fff; border-color: #17685b; }
 .pipeline-work-caption { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
@@ -2586,7 +2624,7 @@ button {
 /* Mobile lists float over the stable map; details use the browser's modal layer. */
 @media (max-width: 767px), (hover: none) and (pointer: coarse) {
   :root {
-    --explorer-nav-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    --explorer-nav-bottom: max(4px, env(safe-area-inset-bottom, 0px));
     --explorer-footer-height: calc(72px + var(--explorer-nav-bottom));
   }
   .app-shell {
@@ -2783,4 +2821,11 @@ button {
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
   }
+}
+
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
+  .housing-results__page-header h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ds-text-body); }
+  .housing-results__region-title { display: flex; align-items: center; }
+  .housing-results__region-title > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .housing-results__region-title > :last-child { flex-shrink: 0; white-space: pre; }
 }

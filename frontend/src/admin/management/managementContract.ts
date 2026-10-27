@@ -20,7 +20,8 @@ export type ManagementComplexSummary = {
   sourceIdentifier: string
   completionDate: string | null
   totalHouseholdCount: number
-  totalParkingCount: number
+  /** 입주 전 단지는 주차대수를 모를 수 있다. */
+  totalParkingCount: number | null
   heatingType: string | null
   buildingType: string | null
   corridorType: string | null
@@ -38,6 +39,8 @@ export type ManagementAnnouncementSummary = {
   applicationStartDate: string
   applicationEndDate: string
   winnerAnnouncementDate: string
+  /** ORIGINAL·CORRECTION·CANCELLATION. 이전 서버 응답에는 없다. */
+  publicationType?: string
 }
 
 export type JsonValue = string | number | boolean | null | { [key: string]: JsonValue } | JsonValue[]
@@ -48,6 +51,8 @@ export type ManagementHousingType = {
   name: string
   exclusiveArea: number
   householdCount: number | null
+  /** 관리자가 휴지통으로 옮긴 주택형. 공개·후보 조회에서는 빠진다. */
+  deleted?: boolean
 }
 
 export type ManagementSupplyRow = {
@@ -57,6 +62,9 @@ export type ManagementSupplyRow = {
   housingComplexName: string | null
   housingTypeId: number | null
   modified: boolean
+  // 정제가 소유하는 원천 표기다. 관리자는 data의 공고 표시명만 수정한다.
+  sourceComplexName: string
+  sourceHousingTypeName: string
   data: ManagementValues
 }
 
@@ -129,6 +137,7 @@ export function parseManagementDetail(value: unknown): ManagementDetailData {
       }
       housingTypes.push({
         id: item.id, name: item.name, exclusiveArea: item.exclusiveArea, householdCount: item.householdCount,
+        deleted: item.deleted === true,
       })
     }
   }
@@ -139,13 +148,15 @@ export function parseManagementDetail(value: unknown): ManagementDetailData {
       if (!isRecord(item) || typeof item.id !== 'number' || !isManagementValues(item.data)
         || typeof item.modified !== 'boolean' || !isNullableNumber(item.housingComplexId)
         || !isNullableNumber(item.housingTypeId)
-        || (item.housingComplexName !== null && typeof item.housingComplexName !== 'string')) {
+        || (item.housingComplexName !== null && typeof item.housingComplexName !== 'string')
+        || typeof item.sourceComplexName !== 'string' || typeof item.sourceHousingTypeName !== 'string') {
         throw new Error('공급정보 응답이 올바르지 않습니다.')
       }
       supplyRows.push({
         ...(item.sharedRecruitment != null ? { sharedRecruitment: parseSharedRecruitment(item.sharedRecruitment) } : {}),
         id: item.id, data: item.data, modified: item.modified, housingComplexId: item.housingComplexId,
         housingTypeId: item.housingTypeId, housingComplexName: item.housingComplexName,
+        sourceComplexName: item.sourceComplexName, sourceHousingTypeName: item.sourceHousingTypeName,
       })
     }
   }
@@ -229,7 +240,7 @@ function isCount(value: unknown): value is number {
 
 function isManagementComplexSummary(value: unknown): value is ManagementComplexSummary {
   return isRecord(value) && typeof value.sourceIdentifier === 'string' && isNullableString(value.completionDate)
-    && isCount(value.totalHouseholdCount) && isCount(value.totalParkingCount)
+    && isCount(value.totalHouseholdCount) && (value.totalParkingCount === null || isCount(value.totalParkingCount))
     && isNullableString(value.heatingType) && isNullableString(value.buildingType) && isNullableString(value.corridorType)
     && (value.hasElevator === null || typeof value.hasElevator === 'boolean')
     && (value.moveOutCountLastYear === null || isCount(value.moveOutCountLastYear))
@@ -242,6 +253,7 @@ function isManagementAnnouncementSummary(value: unknown): value is ManagementAnn
     && typeof value.recruitmentType === 'string' && typeof value.postedDate === 'string'
     && typeof value.applicationStartDate === 'string' && typeof value.applicationEndDate === 'string'
     && typeof value.winnerAnnouncementDate === 'string'
+    && (value.publicationType === undefined || typeof value.publicationType === 'string')
 }
 
 function isJsonValue(value: unknown): value is JsonValue {

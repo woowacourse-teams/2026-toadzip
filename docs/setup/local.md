@@ -2,10 +2,6 @@
 
 아래 명령은 저장소 루트에서 실행한다. 기본 실행은 앱과 PostgreSQL만 준비하며 모니터링 컨테이너를 띄우지 않는다.
 
-PowerShell에서 로컬 DB를 삭제하고 관리자 계정을 다시 생성하는 절차는
-[로컬 DB 초기화 후 다시 실행](../operations/database/local-reset.md)을 참고한다.
-
-
 ## 환경변수
 
 `.env.example`을 참고해서 `.env`를 생성한다.

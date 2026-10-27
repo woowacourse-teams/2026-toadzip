@@ -377,13 +377,18 @@ describe('PublicHousingExplorer', () => {
       await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledOnce())
       act(() => failure?.({ code, message: 'browser error', PERMISSION_DENIED: 1,
         POSITION_UNAVAILABLE: 2, TIMEOUT: 3 }))
-      expect(screen.getByText(code === 1
+      const message = code === 1
         ? '위치 사용이 차단되어 있어요. 브라우저 설정에서 허용하거나 지역을 검색해 주세요.'
-        : '현재 위치를 확인하지 못했어요. 다시 시도하거나 지역을 검색해 주세요.')).toBeVisible()
+        : '현재 위치를 확인하지 못했어요. 다시 시도하거나 지역을 검색해 주세요.'
+      expect(screen.queryByText(message)).not.toBeInTheDocument()
       expect(screen.getByText('카메라 37.5666103,126.9783882')).toBeVisible()
       expect(screen.getByRole('searchbox')).toBeEnabled()
       fireEvent.click(screen.getByRole('button', { name: '현재 위치로 이동' }))
       expect(getCurrentPosition).toHaveBeenCalledTimes(2)
+      act(() => failure?.({ code, message: 'browser error', PERMISSION_DENIED: 1,
+        POSITION_UNAVAILABLE: 2, TIMEOUT: 3 }))
+      expect(screen.getByText(message)).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: '현재 위치로 이동' }))
       act(() => success(position))
       expect(screen.getByText('카메라 35.18,129.07')).toBeVisible()
     })
@@ -599,7 +604,7 @@ describe('PublicHousingExplorer', () => {
       renderSearchedExplorer(createRepository())
       await screen.findByRole('article', { name: '서울가람 행복주택' })
       const handle = screen.getByRole('slider', { name: '목록 높이' })
-      expect(handle).toHaveAttribute('aria-valuetext', '절반 펼침')
+      expect(handle).toHaveAttribute('aria-valuenow', '25')
       fireEvent.keyDown(handle, { key: 'End' })
       expect(handle).toHaveAttribute('aria-valuetext', '크게 펼침')
       fireEvent.keyDown(handle, { key: 'Home' })
@@ -608,7 +613,7 @@ describe('PublicHousingExplorer', () => {
       expect(screen.getByRole('button', { name: /단지 목록 보기$/ })).toHaveFocus()
       fireEvent.click(screen.getByRole('button', { name: /단지 목록 보기$/ }))
       expect(screen.getByRole('region', { name: '단지 목록' })).toBeVisible()
-      expect(handle).toHaveAttribute('aria-valuetext', '절반 펼침')
+      expect(handle).toHaveAttribute('aria-valuenow', '25')
     } finally {
       vi.unstubAllGlobals()
     }
@@ -664,7 +669,7 @@ describe('PublicHousingExplorer', () => {
     vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 767px)' || query === '(max-width: 1023px)' }))
     try {
       renderSearchedExplorer(createRepository())
-      fireEvent.click(screen.getByRole('button', { name: tab === '단지 목록' ? /단지 목록 보기$/ : '공고 목록' }))
+      if (tab === '공고 목록') fireEvent.click(screen.getByRole('button', { name: '공고 목록' }))
       const opener = await within(screen.getByRole('region', { name: tab })).findByRole('button', { name: action })
       opener.focus()
       fireEvent.click(opener)
@@ -2178,7 +2183,8 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '서울가람 행복주택 지도 마커 선택' }))
     await act(async () => detailResponse.resolve(complexDetail()))
 
-    expect(screen.getByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })).toBeVisible()
+    // 로딩 문구가 보였다면 최소 표시 시간을 채운 뒤 상세로 바뀐다.
+    expect(await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })).toBeVisible()
     expect(screen.getByText('카메라 37.56,127')).toBeVisible()
     expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('14')
     expect(screen.getByTestId('map-camera-request')).toHaveTextContent(cameraRequest ?? '')
@@ -2730,6 +2736,26 @@ describe('PublicHousingExplorer', () => {
     expect(screen.queryByText('로컬 mock')).not.toBeInTheDocument()
   })
 
+  it.each(['ready', 'pending'])('리뷰 회귀: %s 상태에서 프로필이 바뀌면 현재 영역을 새 정책으로 다시 조회한다', async phase => {
+    let mobile = false
+    const listeners = new Set<() => void>()
+    vi.stubGlobal('matchMedia', () => ({ get matches() { return mobile },
+      addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_: string, listener: () => void) => listeners.delete(listener),
+    }))
+    try {
+      const repository = createRepository()
+      renderExplorer(repository)
+      fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+      if (phase === 'ready') await waitFor(() => expect(repository.findMap).toHaveBeenCalledOnce())
+      repository.findMap.mockClear()
+      act(() => { mobile = true; listeners.forEach(listener => listener()) })
+      await waitFor(() => expect(repository.findMap).toHaveBeenCalled())
+      expect(repository.findMap.mock.calls.every(([query]) => query.clusteringProfile === 'MOBILE')).toBe(true)
+      expect(repository.findMap.mock.calls[0][0].previousResolvedStage).toBeUndefined()
+    } finally { vi.unstubAllGlobals() }
+  })
+
   it('기존 지도 query는 최초 카메라에 한 번 반영하고 URL에서 제거한다', async () => {
     const repository = createRepository()
     renderExplorer(
@@ -3070,6 +3096,53 @@ describe('PublicHousingExplorer', () => {
     expect(screen.queryByLabelText('단지 상세 정보')).not.toBeInTheDocument()
   })
 
+  describe('모바일 단지 목록 자동 추가 조회', () => {
+    afterEach(() => vi.unstubAllGlobals())
+
+    it('총 개수를 표시하고 목록 끝에서 20개씩 요청하며 접히거나 실패하면 자동 요청을 멈춘다', async () => {
+      vi.stubGlobal('matchMedia', () => ({ matches: true }))
+      const observers = installAnnouncementIntersectionObserver()
+      const repository = createRepository()
+      const next = createDeferred<ComplexPage>()
+      repository.findComplexPage
+        .mockResolvedValueOnce(complexBatch(1, 20, 'next-20', 41))
+        .mockReturnValueOnce(next.promise)
+        .mockRejectedValueOnce(new Error('연결 실패'))
+        .mockResolvedValueOnce(complexBatch(41, 1, null, 41))
+      renderSearchedExplorer(repository)
+      const panel = await screen.findByRole('region', { name: '단지 목록' })
+      await within(panel).findByRole('article', { name: '자동 조회 단지 20' })
+      expect(screen.getByRole('heading', { name: /단지 41개/ })).toBeVisible()
+      expect(within(panel).queryByRole('button', { name: /단지 더 보기/ })).not.toBeInTheDocument()
+      const observer = observers.findLast(entry => panel.contains(entry.root))!
+      expect(observer).toBeDefined()
+      const scroll = observer.root as HTMLElement
+      scroll.scrollTop = 1200
+      act(() => { observer.notify(true); observer.notify(true) })
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
+      expect(repository.findComplexPage).toHaveBeenLastCalledWith(null, 'next-20', 20, expect.any(AbortSignal), { regionCode: '11' })
+      expect(within(panel).getByText('다음 단지를 불러오고 있어요.')).toBeVisible()
+      await act(async () => next.resolve(complexBatch(21, 20, 'next-40', 41)))
+      expect(within(panel).getAllByRole('article')).toHaveLength(40)
+      expect(scroll.scrollTop).toBe(1200)
+      const beforeCollapse = observers.findLast(entry => panel.contains(entry.root))!
+      fireEvent.keyDown(screen.getByRole('slider', { name: '목록 높이' }), { key: 'Home' })
+      act(() => beforeCollapse.notify(true))
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
+      fireEvent.click(screen.getByRole('button', { name: /단지 목록 보기$/ }))
+      const current = observers.findLast(entry => panel.contains(entry.root))!
+      await act(async () => current.notify(true))
+      const retry = within(panel).getByRole('button', { name: '다시 시도' })
+      expect(within(panel).getByRole('article', { name: '자동 조회 단지 40' }).compareDocumentPosition(retry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      act(() => current.notify(true))
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(3)
+      fireEvent.click(retry)
+      await within(panel).findByRole('article', { name: '자동 조회 단지 41' })
+      expect(within(panel).getByText('모든 단지를 확인했어요.')).toBeVisible()
+      expect(repository.findComplexPage).toHaveBeenLastCalledWith(null, 'next-40', 20, expect.any(AbortSignal), { regionCode: '11' })
+    })
+  })
+
   describe('공고 목록 자동 추가 조회', () => {
     afterEach(() => vi.unstubAllGlobals())
 
@@ -3390,6 +3463,48 @@ describe('PublicHousingExplorer', () => {
     expect(screen.getByText('카메라 37.5666103,126.9783882')).toBeVisible()
     expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('14.256')
     expect(screen.getByTestId('map-camera-request')).toHaveTextContent(cameraRequest ?? '')
+  })
+
+  it('다른 상세로 넘어가는 동안 직전 상세를 유지하고 응답이 늦을 때만 로딩을 알린다', async () => {
+    const repository = createRepository()
+    const announcementResponse = createDeferred<AnnouncementDetail>()
+    renderExplorer(repository, '/?complexId=17')
+    const complexPanel = await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
+    repository.findAnnouncementDetail.mockReturnValueOnce(announcementResponse.promise)
+
+    fireEvent.click(within(complexPanel).getByRole('button', {
+      name: '성남 청년 행복주택 입주자 모집 공고 상세 보기',
+    }))
+
+    expect(screen.getByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })).toBeVisible()
+    expect(screen.queryByText('공고 상세를 불러오고 있어요.')).not.toBeInTheDocument()
+    expect(await screen.findByText('공고 상세를 불러오고 있어요.')).toBeVisible()
+    expect(screen.queryByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })).not.toBeInTheDocument()
+
+    await act(async () => announcementResponse.resolve(announcementDetail()))
+    expect(await screen.findByRole('complementary', { name: '성남 청년 행복주택 입주자 모집 공고 상세 정보' })).toBeVisible()
+  })
+
+  it('같은 종류의 다른 상세로 바로 넘어가도 이전 상세의 패널 상태를 이어받지 않는다', async () => {
+    localStorage.setItem('toadzip.recent-complexes.v1', JSON.stringify([
+      { complexId: '17', name: '서울가람 행복주택', address: null },
+      { complexId: '18', name: '다른 단지', address: null },
+    ]))
+    const repository = createRepository()
+    repository.findComplexDetail.mockImplementation(async (id: string) => id === '18'
+      ? { ...complexDetail(), complexId: '18', name: '다른 단지' }
+      : complexDetail())
+    renderExplorer(repository)
+    fireEvent.click(screen.getByRole('button', { name: '최근 본 단지' }))
+    const recent = screen.getByRole('region', { name: '최근 본 단지' })
+    fireEvent.click(within(recent).getByRole('button', { name: /서울가람/ }))
+    const firstPanel = await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
+
+    fireEvent.click(within(recent).getByRole('button', { name: /다른 단지/ }))
+
+    const nextPanel = await screen.findByRole('complementary', { name: '다른 단지 단지 상세 정보' })
+    expect(nextPanel).not.toBe(firstPanel)
+    expect(firstPanel).not.toBeInTheDocument()
   })
 
   it('교차 상세을 두 번 중첩해도 각 부모 상세의 호출 버튼으로 차례로 돌아간다', async () => {
@@ -4654,6 +4769,16 @@ function installAnnouncementIntersectionObserver() {
     disconnect() {}
   })
   return observers
+}
+
+function complexBatch(start: number, size: number, nextCursor: string | null, totalCount: number): ComplexPage {
+  const sample = complexPageFor(1, '단지').items[0]
+  const items = Array.from({ length: size }, (_, index) => {
+    const raw = { ...sample.raw, complexId: start + index, name: `자동 조회 단지 ${start + index}` }
+    return { ...sample, complexId: String(raw.complexId), name: raw.name, raw }
+  })
+  const raw = { items: items.map(item => item.raw), hasNext: nextCursor !== null, nextCursor, totalCount }
+  return { ...raw, items, raw }
 }
 
 function announcementBatch(start: number, size: number, nextCursor: string | null, totalCount: number): AnnouncementPage {

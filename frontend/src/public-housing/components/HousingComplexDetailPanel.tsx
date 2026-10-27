@@ -17,7 +17,6 @@ import {
   DetailTable,
 } from './DetailPrimitives'
 import { formatHousingMoneyReadable } from '../presentation/housingMoney'
-import { MISSING_DATA_LABEL } from '../presentation/missingData'
 import { formatHousingArea as formatArea, type AreaUnit } from '../presentation/housingArea'
 import { useAreaUnit } from '../presentation/useAreaUnit'
 import { AreaUnitToggle } from './AreaUnitToggle'
@@ -27,7 +26,7 @@ import { NotificationInterestButton } from '../interest/NotificationInterest'
 import { StreetViewEntry } from '../../street-view/StreetViewEntry'
 import type { StreetViewController } from '../../street-view/useStreetView'
 import type { ComplexBasicRentalCondition } from '../model/publicHousing'
-import { formatRentalConditionCollectedDate } from '../presentation/complexDetailPresentation'
+import { formatRentalConditionCollectedDate, housingTypeLabels } from '../presentation/complexDetailPresentation'
 
 export interface HousingComplexDetailSupplyCondition {
   readonly target: string | null
@@ -113,6 +112,7 @@ export function HousingComplexDetailPanel({
 }: HousingComplexDetailPanelProps) {
   const scrollAnalytics = useDetailScrollAnalytics('COMPLEX', detail.complexId)
   const { areaUnit, toggleAreaUnit } = useAreaUnit()
+  const typeLabels = housingTypeLabels(detail.housingTypes, areaUnit)
   const initialHousingTypeId = detail.housingTypes[0]?.housingTypeId ?? null
   const [selection, setSelection] = useState<HousingTypeSelection>({
     complexId: detail.complexId,
@@ -272,11 +272,11 @@ export function HousingComplexDetailPanel({
                           <tr key={conditionIndex}>
                             {conditionIndex === 0 && (
                               <th scope="rowgroup" rowSpan={conditions.length}>
-                                {housingTypeName(housingType)}
+                                {typeLabels.get(housingType.housingTypeId) || '-'}
                               </th>
                             )}
                             <td>
-                              {formatArea(housingType.exclusiveArea, areaUnit, '')}
+                              {formatArea(housingType.exclusiveArea, areaUnit, '-')}
                               <span className={styles.conditionTarget}>{condition?.label ?? ''}</span>
                               {condition?.target && <span className={styles.conditionTarget}>{condition.target}</span>}
                             </td>
@@ -318,7 +318,7 @@ export function HousingComplexDetailPanel({
                       onFocus={() => revealHousingType(housingType.housingTypeId)}
                       onKeyDown={(event) => handleHousingTypeKeyDown(event, index)}
                     >
-                      {housingTypeName(housingType)}
+                      {typeLabels.get(housingType.housingTypeId) || '-'}
                     </button>
                   )
                 })}
@@ -336,7 +336,7 @@ export function HousingComplexDetailPanel({
                     tabIndex={0}
                     hidden={!selected}
                   >
-                    {selected && <HousingTypePanel housingType={housingType} areaUnit={areaUnit} onToggleAreaUnit={toggleAreaUnit} />}
+                    {selected && <HousingTypePanel housingType={housingType} name={typeLabels.get(housingType.housingTypeId) ?? ''} areaUnit={areaUnit} onToggleAreaUnit={toggleAreaUnit} />}
                   </div>
                 )
               })}
@@ -461,16 +461,16 @@ function AnnouncementCard({
       </header>
       <div className={styles.announcementBody}>
         <DetailFacts columns={2} appearance="list">
-          <DetailFact term="접수 시작" value={displayDate(announcement.applicationStartAt)} />
-          <DetailFact term="접수 마감" value={displayDate(announcement.applicationEndAt)} />
+          <DetailFact missingLabel="-" term="접수 시작" value={displayDate(announcement.applicationStartAt)} />
+          <DetailFact missingLabel="-" term="접수 마감" value={displayDate(announcement.applicationEndAt)} />
           {announcement.actualCompetitionRate !== null && (
-            <DetailFact
+            <DetailFact missingLabel="-"
               term="실제 경쟁률"
               value={`${formatNumber(announcement.actualCompetitionRate)} : 1`}
             />
           )}
           {announcement.targets.length > 0 && (
-            <DetailFact term="공고 대상" value={announcement.targets.join(' · ')} wide />
+            <DetailFact missingLabel="-" term="공고 대상" value={announcement.targets.join(' · ')} wide />
           )}
         </DetailFacts>
         {onOpenAnnouncement && (
@@ -496,22 +496,23 @@ function BasicInformation({ detail }: { detail: HousingComplexDetailData }) {
       title="단지 기본 정보"
     >
       <DetailFacts columns={2} appearance="list">
-        <DetailFact term="공급기관" value={detail.agencyName} />
-        <DetailFact term="임대종류" value={detail.rentalTypeLabel} />
-        <DetailFact term="준공일자" value={displayDate(detail.completionDate)} />
-        <DetailFact term="건물형태" value={detail.buildingTypeLabel} />
-        <DetailFact term="엘리베이터" value={availability(detail.hasElevator)} />
-        <DetailFact term="난방종류" value={detail.heatingTypeLabel} />
-        <DetailFact term="복도유형" value={detail.corridorTypeLabel} />
-        <DetailFact
+        <DetailFact missingLabel="-" term="공급기관" value={detail.agencyName} />
+        <DetailFact missingLabel="-" term="임대종류" value={detail.rentalTypeLabel} />
+        <DetailFact missingLabel="-" term="준공일자" value={displayDate(detail.completionDate)} />
+        <DetailFact missingLabel="-" term="건물형태" value={detail.buildingTypeLabel} />
+        <DetailFact missingLabel="-" term="엘리베이터" value={availability(detail.hasElevator)} />
+        <DetailFact missingLabel="-" term="난방종류" value={detail.heatingTypeLabel} />
+        <DetailFact missingLabel="-" term="복도유형" value={detail.corridorTypeLabel} />
+        <DetailFact missingLabel="-"
           term="1년 퇴거 세대수"
           value={formatNullableCount(detail.moveOutCountLastYear, '세대')}
         />
-        <DetailFact
+        <DetailFact missingLabel="-"
           term="총세대수"
           value={formatNullableCount(detail.totalHouseholdCount, '세대')}
         />
-        <DetailFact
+        {/* 입주 전 단지는 주차대수를 모를 수 있어 비어 있으면 미확인으로 보여 준다. */}
+        <DetailFact missingLabel="미확인"
           term="총주차대수(세대당)"
           value={parkingSummary(detail.totalParkingCount, detail.totalHouseholdCount)}
         />
@@ -522,15 +523,16 @@ function BasicInformation({ detail }: { detail: HousingComplexDetailData }) {
 
 function HousingTypePanel({
   housingType,
+  name,
   areaUnit,
   onToggleAreaUnit,
 }: {
   housingType: HousingComplexDetailHousingType
+  name: string
   areaUnit: AreaUnit
   onToggleAreaUnit: () => void
 }) {
   const floorPlanImages = floorPlanUrls(housingType)
-  const name = housingTypeName(housingType)
 
   return (
     <>
@@ -550,11 +552,12 @@ function HousingTypePanel({
         <AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} />
       </div>
       <DetailFacts columns={2}>
-        <DetailFact term="주택형" value={name} />
-        <DetailFact term="전용 면적" value={formatArea(housingType.exclusiveArea, areaUnit, '')} />
-        <DetailFact term="공급 면적" value={formatArea(housingType.supplyArea, areaUnit, '')} />
-        <DetailFact term="복층여부" value={duplexLabel(housingType.isDuplex)} />
-        <DetailFact
+        {/* 바로 옆에 면적을 표시하므로 구분 라벨이 아닌 원래 이름을 쓴다. */}
+        <DetailFact missingLabel="-" term="주택형" value={housingType.name ?? ''} />
+        <DetailFact missingLabel="-" term="전용 면적" value={formatArea(housingType.exclusiveArea, areaUnit, '-')} />
+        <DetailFact missingLabel="-" term="공급 면적" value={formatArea(housingType.supplyArea, areaUnit, '')} />
+        <DetailFact missingLabel="-" term="복층여부" value={duplexLabel(housingType.isDuplex)} />
+        <DetailFact missingLabel="-"
           term="관리비"
           value={formatDetailMoney(housingType.maintenanceFee)}
           emphasis={Number.isFinite(housingType.maintenanceFee)}
@@ -568,7 +571,7 @@ function HousingTypePanel({
         <ul className={styles.supplyList}>
           {housingType.currentSupplyConditions.map((condition, index) => (
             <li key={`${condition.target ?? 'unknown'}-${index}`}>
-              <strong>{condition.target ?? ''}</strong>
+              <strong>{condition.target || '-'}</strong>
               <SupplyConditionTable housingTypeName={name} condition={condition} />
             </li>
           ))}
@@ -588,8 +591,8 @@ function BasicRentalCondition({ condition }: { condition: ComplexBasicRentalCond
     <>
       <h4>기본 임대조건</h4>
       <DetailFacts columns={1}>
-        <DetailFact term="기본 보증금" value={formatDetailMoney(condition?.deposit ?? null)} emphasis={Number.isFinite(condition?.deposit)} />
-        <DetailFact term="기본 월 임대료" value={formatDetailMoney(condition?.monthlyRent ?? null)} emphasis={Number.isFinite(condition?.monthlyRent)} />
+        <DetailFact missingLabel="-" term="기본 보증금" value={formatDetailMoney(condition?.deposit ?? null)} emphasis={Number.isFinite(condition?.deposit)} />
+        <DetailFact missingLabel="-" term="기본 월 임대료" value={formatDetailMoney(condition?.monthlyRent ?? null)} emphasis={Number.isFinite(condition?.monthlyRent)} />
       </DetailFacts>
       {(sourceLabel || collectedDateLabel) && (
         <p className={styles.rentalConditionSource}>
@@ -713,10 +716,6 @@ function floorPlanUrls(housingType: HousingComplexDetailHousingType) {
   ].filter((image): image is { label: string; url: string } => image.url !== null)
 }
 
-function housingTypeName(housingType: HousingComplexDetailHousingType) {
-  return housingType.name ?? ''
-}
-
 function isSafeHttpUrl(value: string) {
   return toHttpUrl(value) !== null
 }
@@ -826,13 +825,12 @@ function isUrgent(announcement: HousingComplexDetailAnnouncement) {
     && announcement.dDay <= 3
 }
 
-/** 비교 목록의 금액. 값이 없으면 빈칸 대신 흐린 결측 문구를 둔다. */
+/** 단지의 누락된 금액은 하이픈으로 표시한다. */
 function DetailMoney({ value }: { readonly value: number | null | undefined }) {
-  const formatted = formatDetailMoney(value)
-  return formatted === '' ? <span className={styles.missingValue}>{MISSING_DATA_LABEL}</span> : <>{formatted}</>
+  return <>{formatDetailMoney(value)}</>
 }
 
 /** 단지 상세 금액은 억·만 단위로 읽는 순서대로 표시하고 버리지 않는다. */
 function formatDetailMoney(value: number | null | undefined) {
-  return value == null || !Number.isFinite(value) || value < 0 ? '' : formatHousingMoneyReadable(value)
+  return value == null || !Number.isFinite(value) || value < 0 ? '-' : formatHousingMoneyReadable(value)
 }

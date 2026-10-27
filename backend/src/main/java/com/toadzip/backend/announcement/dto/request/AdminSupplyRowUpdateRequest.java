@@ -12,8 +12,8 @@ public record AdminSupplyRowUpdateRequest(@NotNull @PositiveOrZero Long version,
         @Positive Long housingComplexId, @Positive Long housingTypeId,
         @NotNull @Valid SupplyData supplyRow,
         @Valid AdminDocumentEvidence documentEvidence) {
-    public record SupplyData(@NotBlank @Size(max = 255) String sourceComplexName,
-            @NotBlank @Size(max = 255) String sourceHousingTypeName,
+    /** 원천 단지명·주택형명은 정제만 바꾼다. 주택형 표기는 이 공고의 표시명으로만 받는다. */
+    public record SupplyData(@Size(max = 255) String announcementHousingTypeName,
             @NotBlank @Size(max = 255) String supplyPnu,
             java.time.YearMonth expectedMoveInMonth,
             @NotNull com.toadzip.backend.announcement.domain.SupplyCategory supplyCategory,

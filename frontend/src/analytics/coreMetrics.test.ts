@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import type { AnalyticsStopReason } from '../privacy/consentStore'
 
 const consent = vi.hoisted(() => ({ allowed: true,
-  stops: [] as Array<(reason?: 'pause' | 'reset' | 'context-change') => void>,
+  stops: [] as Array<(reason?: AnalyticsStopReason) => void>,
   listeners: [] as Array<() => void>,
 }))
 vi.mock('../privacy/consentStore', () => ({ analyticsCollectionAllowed: () => consent.allowed,
@@ -10,12 +11,12 @@ vi.mock('../privacy/consentStore', () => ({ analyticsCollectionAllowed: () => co
     remainingConsentLifetime: () => 180 * 24 * 60 * 60 * 1000,
     transition: () => { consent.allowed = false; consent.stops.forEach(listener => listener('context-change')); consent.listeners.forEach(listener => listener()) },
     refresh: async () => {},
-    onStop: (listener: (reason?: 'pause' | 'reset' | 'context-change') => void) => { consent.stops.push(listener); return () => {} },
+    onStop: (listener: (reason?: AnalyticsStopReason) => void) => { consent.stops.push(listener); return () => {} },
     subscribe: (listener: () => void) => { consent.listeners.push(listener); return () => {} },
   },
 }))
 const network = vi.fn<typeof fetch>()
-function stop(reason: 'pause' | 'reset' | 'context-change' = 'pause') {
+function stop(reason: AnalyticsStopReason = 'pause') {
   consent.allowed = false
   consent.stops.forEach(listener => listener(reason))
 }
@@ -191,4 +192,97 @@ it.each([408, 429])('retries a temporary HTTP %i rejection with the original UUI
   expect(network).toHaveBeenCalledTimes(2)
   expect(payload(1).uuid).toBe(first.uuid)
   expect(sessionStorage.getItem('toadzip.posthog.sent-actions.v1')).toContain('visit:temporary')
+})
+
+function hoverProperties() {
+  return { exploration_id: crypto.randomUUID(), hover_id: crypto.randomUUID(), complex_id: '17',
+    measurement_version: 'marker_hover_v1', duration_ms: 124, reason: 'document_hidden',
+    hover_started_at: '2026-10-23T01:00:00.000Z', occurred_at: '2026-10-23T01:00:00.124Z' }
+}
+
+it('retains an eligible opportunity and paused hover completion with occurrence-time metadata', async () => {
+  const analytics = await import('./productAnalytics')
+  analytics.setProductAuthState('guest')
+  const properties = hoverProperties()
+  analytics.captureProductEvent('map_marker_hover_available', {
+    exploration_id: properties.exploration_id, measurement_version: properties.measurement_version,
+  })
+  const completion = analytics.prepareMarkerHoverCompletion()
+  expect(completion).not.toBeNull()
+  stop()
+  expect(analytics.captureProductEvent('map_marker_hover_ended', properties)).toBe(false)
+  expect(completion?.complete({ ...properties, email: 'private@example.test', latitude: 37.1 })).toBe(true)
+  await settled()
+  expect(network).not.toHaveBeenCalled()
+  window.history.replaceState({}, '', '/feedback')
+  allow(); await settled()
+  expect(network).toHaveBeenCalledTimes(2)
+  expect(payload(0).event).toBe('map_marker_hover_available')
+  expect(payload(1)).toMatchObject({ event: 'map_marker_hover_ended', timestamp: properties.occurred_at,
+    properties: { ...properties, identity_basis: 'browser_v1', environment: 'dev', auth_state: 'guest', page_name: 'explorer', $pathname: '/explore' } })
+  expect(String(network.mock.calls[1][1]?.body)).not.toMatch(/private|latitude/)
+})
+
+it('retries an interrupted raw hover with the same event, hover and browser IDs', async () => {
+  let complete: (response: Response) => void = () => { throw new Error('request missing') }
+  network.mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+  const analytics = await import('./productAnalytics')
+  const completion = analytics.prepareMarkerHoverCompletion()
+  expect(completion?.complete(hoverProperties())).toBe(true)
+  await settled()
+  const first = payload(0), signal = network.mock.calls[0][1]?.signal
+  stop()
+  expect(signal?.aborted).toBe(true)
+  complete(new Response('{}', { status: 200 })); await settled()
+  allow(); await settled()
+  const second = payload(1)
+  expect(second).toMatchObject({ uuid: first.uuid, timestamp: first.timestamp,
+    properties: { event_id: first.properties.event_id, hover_id: first.properties.hover_id,
+      exploration_id: first.properties.exploration_id, distinct_id: first.properties.distinct_id } })
+  expect(completion?.complete(hoverProperties())).toBe(false)
+})
+
+it('never creates a pre-consent hover permission that could be upgraded later', async () => {
+  consent.allowed = false
+  const analytics = await import('./productAnalytics')
+  expect(analytics.prepareMarkerHoverCompletion()).toBeNull()
+  expect(analytics.captureProductEvent('map_marker_hover_available', hoverProperties())).toBe(false)
+  allow(); await settled()
+  expect(network).not.toHaveBeenCalled()
+})
+
+it.each(['reset', 'context-change', 'consent-replaced'] as const)('discards raw hover queues and captured permissions on %s', async reason => {
+  const analytics = await import('./productAnalytics')
+  const completion = analytics.prepareMarkerHoverCompletion()
+  analytics.captureProductEvent('map_marker_hover_available', hoverProperties())
+  completion?.complete(hoverProperties())
+  stop(reason)
+  expect(completion?.isCurrent()).toBe(false)
+  expect(completion?.complete(hoverProperties())).toBe(false)
+  allow(); await settled()
+  expect(network).not.toHaveBeenCalled()
+})
+
+it('limits raw hover retention independently of the core outcome capacity', async () => {
+  const analytics = await import('./productAnalytics')
+  const completions = Array.from({ length: 101 }, () => analytics.prepareMarkerHoverCompletion())
+  const core = analytics.prepareNotificationCompletion()
+  stop()
+  completions.slice(0, 100).forEach(completion => expect(completion?.complete(hoverProperties())).toBe(true))
+  expect(completions[100]?.complete(hoverProperties())).toBe(false)
+  expect(core({ target_type: 'COMPLEX', target_id: '17' })).toBe(true)
+  await settled()
+  expect(network).not.toHaveBeenCalled()
+})
+
+it('expires both raw hover records and their completion permissions after 24 hours', async () => {
+  const analytics = await import('./productAnalytics')
+  const completion = analytics.prepareMarkerHoverCompletion()
+  stop()
+  expect(completion?.complete(hoverProperties())).toBe(true)
+  await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000)
+  expect(completion?.isCurrent()).toBe(false)
+  expect(completion?.complete(hoverProperties())).toBe(false)
+  allow(); await settled()
+  expect(network).not.toHaveBeenCalled()
 })

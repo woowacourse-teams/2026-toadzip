@@ -78,7 +78,7 @@ export function groupAnnouncementSupplyRows(
       address: complex?.address ?? null,
       complexId: complex?.complexId ?? null,
       key,
-      name: (first.corrected ? first.sourceComplexName : complex?.name)
+      name: complex?.name
         ?? first.sourceComplexName
         ?? MISSING_DATA_LABEL,
       overviewImageUrl: complex?.overviewImageUrl ?? null,
@@ -141,6 +141,7 @@ function toSupplyRow(
     occupancyExpectedYearMonth: row.occupancyExpectedYearMonth,
     sourceComplexName: row.sourceComplexName,
     sourceHousingTypeName: row.sourceHousingTypeName,
+    displayHousingTypeName: row.displayHousingTypeName,
     supplyRowId: row.supplyRowId,
     supplyTypeLabel: supplyTypeLabel(row.supplyType),
     targets: row.targets,

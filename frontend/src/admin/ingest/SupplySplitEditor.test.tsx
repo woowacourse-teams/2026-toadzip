@@ -26,8 +26,8 @@ function setup() {
 }
 async function fill() {
   await screen.findAllByRole('option', { name: /26.4673/ })
-  fireEvent.change(screen.getByLabelText('공고 주택형명 1'), { target: { value: '26A' } })
-  fireEvent.change(screen.getByLabelText('공고 주택형명 2'), { target: { value: '26B' } })
+  fireEvent.change(screen.getByLabelText('이 공고의 주택형 표기 1'), { target: { value: '26A' } })
+  fireEvent.change(screen.getByLabelText('이 공고의 주택형 표기 2'), { target: { value: '26B' } })
   fireEvent.change(screen.getByLabelText('연결 주택형 1'), { target: { value: '10' } })
   fireEvent.change(screen.getByLabelText('연결 주택형 2'), { target: { value: '11' } })
   fireEvent.change(screen.getByLabelText('보정 공식 출처 URL'), { target: { value: 'https://www.myhome.go.kr/official' } })
@@ -61,7 +61,7 @@ it('원천 충돌이면 형명·선택·근거를 유지한다', async () => {
   setup(); await fill()
   fireEvent.click(screen.getByRole('button', { name: '공급행 보정·저장' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('원천이 변경')
-  expect(screen.getByLabelText('공고 주택형명 1')).toHaveValue('26A')
+  expect(screen.getByLabelText('이 공고의 주택형 표기 1')).toHaveValue('26A')
   expect(screen.getByLabelText('연결 주택형 2')).toHaveValue('11')
   expect(screen.getByLabelText('보정 확인 근거')).toHaveValue('공고의 A/B와 면적 확인')
 })

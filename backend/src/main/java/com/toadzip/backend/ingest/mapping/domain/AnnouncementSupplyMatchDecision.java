@@ -51,6 +51,12 @@ public class AnnouncementSupplyMatchDecision {
         this.rowIdentifier = rowIdentifier;
     }
 
+    /** 원천 분할 단지를 합쳐 같은 주택형의 소속 단지만 바뀐 경우다. 확인자와 근거는 그대로 둔다. */
+    public void moveToComplex(long complexId, String targetFingerprint) {
+        this.complexId = complexId;
+        this.targetFingerprint = targetFingerprint;
+    }
+
     public void confirm(long complexId, long housingTypeId, String sourceFingerprint, String targetFingerprint,
             String sourceUrl, String reason, String actor) {
         this.complexId = complexId;

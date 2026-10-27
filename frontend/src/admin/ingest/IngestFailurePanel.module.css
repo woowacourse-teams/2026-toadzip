@@ -1,8 +1,6 @@
 .page, .panel { min-width: 0; }
 :global(.admin-content):has(.page) { max-width: none; }
 .tabs { display: flex; gap: var(--ds-space-2); border-bottom: 1px solid var(--ds-color-divider); margin-bottom: var(--ds-space-4); }
-.page .tabs button { border: 0; border-radius: 0; background: transparent; color: var(--ds-color-label); padding: var(--ds-space-3) var(--ds-space-4); }
-.page .tabs button[aria-selected="true"] { color: var(--ds-color-action); box-shadow: inset 0 -2px var(--ds-color-action); }
 .workflow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-4); }
 .workflow a { text-underline-offset: 3px; }
 .hint { font-size: var(--ds-text-caption); color: var(--ds-color-label); line-height: var(--ds-line-height-body); margin: var(--ds-space-3) 0; }
@@ -23,13 +21,13 @@
 .results { position: relative; }
 .summary { display: flex; justify-content: space-between; gap: var(--ds-space-3); color: var(--ds-color-label); font-size: var(--ds-text-caption); margin-bottom: var(--ds-space-2); }
 .loading { position: absolute; right: 0; top: 34px; z-index: 5; margin: 0; padding: var(--ds-space-2) var(--ds-space-3); background: var(--ds-color-surface); color: var(--ds-color-label); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); font-size: var(--ds-text-caption); }
-.scroll { --target-width: 220px; --action-width: 120px; height: 65vh; overflow: auto; border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); scrollbar-color: var(--ds-color-border-base) var(--ds-color-surface-subtle); }
+.scroll { --target-width: 280px; --action-width: 120px; max-height: 65vh; overflow: auto; border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); scrollbar-color: var(--ds-color-border-base) var(--ds-color-surface-subtle); }
 .empty { padding: var(--ds-space-6); color: var(--ds-color-label); }
 .empty h3 { color: var(--ds-color-text); font-size: var(--ds-text-body); }
-.table { width: calc(var(--target-width) + var(--action-width) + 630px); min-width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; text-align: left; font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; color: var(--ds-color-text); }
+.table { width: calc(var(--target-width) + var(--action-width) + 400px); min-width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; text-align: left; font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; color: var(--ds-color-text); }
 .targetColumn { width: var(--target-width); }
 .actionColumn { width: var(--action-width); }
-.table th, .table td { box-sizing: border-box; padding: var(--ds-space-3); border-right: 1px solid var(--ds-color-divider); border-bottom: 1px solid var(--ds-color-divider); line-height: var(--ds-line-height-body); vertical-align: top; overflow-wrap: anywhere; }
+.table th, .table td { box-sizing: border-box; padding: var(--ds-space-3); border-right: 1px solid var(--ds-color-divider); border-bottom: 1px solid var(--ds-color-divider); line-height: var(--ds-line-height-body); vertical-align: middle; overflow-wrap: anywhere; }
 .table thead th { position: sticky; top: 0; z-index: 2; background: var(--ds-color-surface-subtle); color: var(--ds-color-label); font-weight: var(--ds-weight-strong); }
 .table th:first-child { position: sticky; left: 0; z-index: 1; border-right-color: var(--ds-color-border-base); }
 .table thead th:first-child { z-index: 3; }
@@ -40,7 +38,6 @@
 .table small, .table time, .dialogBody small { display: block; margin-top: var(--ds-space-2); color: var(--ds-color-label); font-weight: 400; }
 .table time { font-size: 12px; }
 .table p { margin: var(--ds-space-2) 0; }
-.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .table tbody tr:hover > * { background: var(--ds-color-action-soft); }
 .table a { color: var(--ds-color-action); text-underline-offset: 3px; }
 .status { display: inline-block; padding: var(--ds-space-1) var(--ds-space-2); border-radius: var(--ds-radius-control); background: var(--ds-color-surface-subtle); color: var(--ds-color-label); white-space: nowrap; }
@@ -68,3 +65,24 @@
   .table td:last-child button { padding: var(--ds-space-2); min-width: 0; }
   .workflow { gap: var(--ds-space-3); }
 }
+.pdfGroups { padding:var(--ds-space-4); border:1px solid var(--ds-color-divider); background:var(--ds-color-surface); margin-bottom:var(--ds-space-4); }
+.pdfGroups h3 { margin:0; font-size:var(--ds-text-body); }
+.pdfGroups p { font-size:var(--ds-text-caption); color:var(--ds-color-muted-base); }
+.pdfGroups > div { display:flex; flex-wrap:wrap; justify-content:space-between; gap:var(--ds-space-3); padding-block:var(--ds-space-3); border-top:1px solid var(--ds-color-divider); }
+.pdfGroups a { white-space:nowrap; color:var(--ds-color-action); text-underline-offset:3px; }
+
+.recovery { margin-top: var(--ds-space-4); padding: var(--ds-space-4); border: 1px solid var(--ds-color-action); border-radius: var(--ds-radius-control); scroll-margin-top: 88px; }
+.recovery h4 { margin: 0; font-size: var(--ds-text-body); }
+.recoveryDone { margin: var(--ds-space-3) 0 0; padding: var(--ds-space-3); border-radius: var(--ds-radius-control); background: var(--ds-color-action-soft); font-weight: 600; }
+.recoveryLeft { margin: var(--ds-space-3) 0 0; padding: var(--ds-space-3); border-radius: var(--ds-radius-control); background: var(--ds-color-status-upcoming-surface); color: var(--ds-color-status-upcoming); font-weight: 600; }
+
+/* 내용이 불러와져 높이가 바뀌어도 창이 위아래로 움직이지 않게 위쪽에 고정한다. */
+.dialog[open] { margin: 24px auto auto; }
+.dialogBody { display: grid; gap: 12px; }
+.dialogSummary h3 { margin: 0; font-size: var(--admin-text-heading, 17px); }
+.dialogSummary p { margin: 4px 0 0; }
+.dialogResult { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding-top: 12px; border-top: 1px solid var(--ds-color-divider); }
+.dialogResult p { margin: 0; }
+.dialogResult small { display: inline; margin: 0; }
+.dialog .dialogResult h4 { margin: 0; font-size: var(--admin-text-body, 15px); font-weight: 500; line-height: 1.4; }
+.resolvedBy { display: block; margin-top: var(--ds-space-1); color: var(--ds-color-label); font-size: var(--ds-text-caption); }

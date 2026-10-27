@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
@@ -33,6 +34,14 @@ public class MyHomeAnnouncementMappingFailureStore {
                 .forEach(repository::save);
     }
 
+    /** 단건 정제가 거절되어 정제 트랜잭션은 되돌려도, 전체 정제와 같은 실패 기록은 별도 트랜잭션으로 남긴다. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void reconcileRejectedAnnouncement(
+            String identifier, List<MyHomeAnnouncementMappingFailure> failures, UUID executionId
+    ) {
+        reconcileForAnnouncement(identifier, failures, executionId);
+    }
+
     @Transactional
     public void reconcileAfterRun(List<MyHomeAnnouncementMappingFailure> failures, UUID executionId) {
         Instant resolvedAt = clock.instant();
@@ -45,5 +54,14 @@ public class MyHomeAnnouncementMappingFailureStore {
         }
         IngestFailureReconciler.reconcile(stored, history, failures, resolvedAt, executionId)
                 .forEach(repository::save);
+    }
+
+    /** 관리자가 공고를 보정해 이 공고의 미해결 실패를 모두 해결로 바꾼다. 원인이 남으면 다음 정제가 다시 연다. */
+    @Transactional
+    public void resolveByAdmin(String identifier, String actor) {
+        Instant resolvedAt = clock.instant();
+        repository.findAllBySourceAnnouncementIdentifier(identifier).stream()
+                .filter(failure -> failure.getStatus() == PENDING)
+                .forEach(failure -> failure.resolveByAdmin(resolvedAt, actor));
     }
 }

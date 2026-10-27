@@ -37,7 +37,6 @@
 .workspace .secondary { min-height: 36px; padding: var(--ds-space-2) var(--ds-space-3); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-label); cursor: pointer; }
 .workspace .secondary:hover { background: var(--ds-color-surface-subtle); }
 .workspace .primary { min-height: var(--ds-control-height-md); padding: 0 var(--ds-space-4); border: 0; border-radius: var(--ds-radius-control); background: var(--ds-color-brand); color: var(--ds-color-on-brand); }
-.workspace .primary:hover:not(:disabled) { background: var(--ds-color-brand-hover); }
 .workspace button:disabled { cursor: not-allowed; }
 .secondary:disabled, .textButton:disabled { opacity: .55; }
 .workspace button:focus-visible, .workspace input:focus-visible, .workspace select:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
@@ -75,3 +74,17 @@
 .splitEditor textarea { width: 100%; padding: var(--ds-space-3); border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); font: inherit; resize: vertical; }
 .splitActions { display: flex; gap: var(--ds-space-3); flex-wrap: wrap; }
 @container (max-width: 640px) { .splitRow { grid-template-columns: minmax(0, 1fr); } }
+.compare { width: 100%; margin: var(--ds-space-3) 0; border-collapse: collapse; font-size: var(--ds-text-caption); }
+.compare th, .compare td { padding: var(--ds-space-2); border: 1px solid var(--ds-color-divider); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.compare thead th, .compare tbody th { color: var(--ds-color-label); background: var(--ds-color-surface-subtle); font-weight: 600; }
+.differs { color: var(--ds-color-status-upcoming); background: var(--ds-color-status-upcoming-surface); font-weight: 600; }
+
+.settled { display: grid; gap: var(--ds-space-3); }
+.settled summary { cursor: pointer; color: var(--ds-color-label); font-size: var(--ds-text-caption); }
+.match { margin-left: var(--ds-space-2); padding: 0 var(--ds-space-2); border-radius: var(--ds-radius-control); background: var(--ds-color-action-soft); color: var(--ds-color-action); font-size: var(--ds-text-caption); font-style: normal; }
+/* 관리자 공통 버튼의 inline-flex가 후보 카드의 세로 배치를 덮지 않게 한다. */
+.workspace .results .result { display: grid; grid-template-columns: minmax(0, 1fr); }
+
+.exclusion { display: grid; gap: var(--ds-space-2); margin-top: var(--ds-space-3); }
+.exclusion label { display: grid; gap: var(--ds-space-1); font-size: var(--ds-text-caption); color: var(--ds-color-label); }
+.exclusionActions { display: flex; flex-wrap: wrap; gap: var(--ds-space-3); align-items: center; }

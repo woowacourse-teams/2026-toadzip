@@ -23,7 +23,7 @@ public record AdminHousingComplexUpdateRequest(
         @Size(max = 255) String buildingType,
         @Size(max = 255) String corridorType,
         Boolean hasElevator,
-        @NotNull @PositiveOrZero Integer totalParkingCount,
+        @PositiveOrZero Integer totalParkingCount,
         @Size(max = 255) @Pattern(regexp = "^https?://[^\\s]+$") String overviewImageUrl,
         @PositiveOrZero Integer moveOutCountLastYear,
         @Valid AdminDocumentEvidence documentEvidence) {

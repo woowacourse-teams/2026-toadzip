@@ -100,7 +100,11 @@ function decodeComplexPage(value: unknown, path: string): RawComplexPage {
   const response = recordAt(value, path)
   const items = arrayAt(recordField(response, 'items', path), `${path}.items`)
 
+  const totalCount = response.totalCount == null ? null : safeIntegerAt(response.totalCount, `${path}.totalCount`)
+  if (totalCount !== null && totalCount < 0) throw new PublicHousingContractError(`${path}.totalCount`)
+
   return {
+    totalCount,
     items: items.map((item, index) =>
       decodeComplexListItem(item, `${path}.items[${index}]`),
     ),
@@ -240,7 +244,7 @@ function decodeApplicationSchedule(value: unknown, path: string): RawAnnouncemen
     startTime: nullableTimeAt(schedule.startTime, `${path}.startTime`),
     endTime: nullableTimeAt(schedule.endTime, `${path}.endTime`),
     sourceUrl: stringAt(schedule.sourceUrl, `${path}.sourceUrl`),
-    sourcePage: positiveSafeIntegerAt(schedule.sourcePage, `${path}.sourcePage`),
+    sourcePage: schedule.sourcePage === null || schedule.sourcePage === undefined ? null : positiveSafeIntegerAt(schedule.sourcePage, `${path}.sourcePage`),
   }
 }
 
@@ -382,6 +386,7 @@ function decodeAnnouncementSupplyRow(
 
   return {
     ...(Object.hasOwn(row, 'corrected') ? { corrected: booleanAt(row.corrected, `${path}.corrected`) } : {}),
+    ...(Object.hasOwn(row, 'displayHousingTypeName') ? { displayHousingTypeName: nullableStringAt(row.displayHousingTypeName, `${path}.displayHousingTypeName`) } : {}),
     ...(Object.hasOwn(row, 'exclusiveArea') ? { exclusiveArea: nullableFiniteNumberAt(row.exclusiveArea, `${path}.exclusiveArea`), supplyArea: nullableFiniteNumberAt(row.supplyArea, `${path}.supplyArea`) } : {}),
     ...(row.sharedRecruitment != null ? { sharedRecruitment: decodeSharedRecruitment(row.sharedRecruitment, `${path}.sharedRecruitment`) } : {}),
     supplyRowId: positiveSafeIntegerAt(

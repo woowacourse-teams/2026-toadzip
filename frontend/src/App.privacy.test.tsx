@@ -53,16 +53,14 @@ it.each(['/explore/', '/EXPLORE///', '/%65xplore', '/explor%65/'])('%s에서도 
   expect(await screen.findByText(/현재 브라우저의 비회원 설정 · 철회/)).toBeVisible()
 })
 
-it('동의한 사용자가 랜딩으로 돌아오면 수집을 중지하고 개인정보처리방침을 열어도 다시 동의시키지 않는다', async () => {
+it('로고를 누르면 탐색과 동의를 유지하고 개인정보처리방침을 열어도 다시 동의시키지 않는다', async () => {
   window.history.replaceState({}, '', '/explore')
   render(<BrowserRouter><App /></BrowserRouter>)
   fireEvent.click(await screen.findByRole('button', { name: '동의하기' }))
   await waitFor(() => expect(consentStore.allowed()).toBe(true))
   fireEvent.click(screen.getByRole('link', { name: '공공주택 복덕방 홈' }))
-  expect(consentStore.allowed()).toBe(false)
-  expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('공공주택 찾기,')
-  fireEvent.click(screen.getAllByRole('link', { name: '시작하기' })[0])
-  await waitFor(() => expect(consentStore.allowed()).toBe(true))
+  expect(window.location.pathname).toBe('/explore')
+  expect(consentStore.allowed()).toBe(true)
   expect(screen.queryByRole('button', { name: '동의하기' })).not.toBeInTheDocument()
   fireEvent.click(screen.getByText('정보'))
   fireEvent.click(screen.getByRole('link', { name: '개인정보처리방침' }))

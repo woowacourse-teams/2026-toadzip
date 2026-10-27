@@ -106,7 +106,7 @@ class IngestFailureReviewControllerIntegrationTest {
     }
 
     @Test
-    void 다섯_실패_종류를_도메인별로_나누고_범위를_벗어난_페이지에도_전체_건수를_보존한다() throws Exception {
+    void 실패_종류를_도메인별로_나누고_LH_세대수_보강은_보이지_않으며_범위를_벗어난_페이지에도_전체_건수를_보존한다() throws Exception {
         collectionFailure("MYHOME_COMPLEX", "PENDING");
         collectionFailure("LH_LEASE_CATALOG", "SKIPPED");
         collectionFailure("MYHOME_ANNOUNCEMENT", "PENDING");
@@ -126,7 +126,7 @@ class IngestFailureReviewControllerIntegrationTest {
                         .param("domain", "complex").param("status", "ALL").param("size", "2"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items.length()").value(2))
-                .andExpect(jsonPath("$.data.totalElements").value(4))
+                .andExpect(jsonPath("$.data.totalElements").value(3))
                 .andExpect(jsonPath("$.data.totalPages").value(2))
                 .andExpect(jsonPath("$.data.hasNext").value(true));
         mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
@@ -144,8 +144,7 @@ class IngestFailureReviewControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.totalElements").value(1));
         mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
                         .param("domain", "complex").param("category", "household"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.totalElements").value(1));
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -246,9 +245,6 @@ class IngestFailureReviewControllerIntegrationTest {
     void 제품_부재와_추정할_수_없는_연결을_구분하고_수집_해결_시각과_실행을_보존한다() throws Exception {
         stageFailure("myhome_complex_mapping_failures", "missing", "source_complex_identifier", "missing",
                 "GEOCODING_ERROR");
-        stageFailure("lh_household_enrichment_failures", "household", "complex_name", "같은 이름 단지",
-                "COMPLEX_NOT_FOUND");
-        complex("other", "같은 이름 단지", false);
         collectionFailure("MYHOME_COMPLEX", "RESOLVED");
         UUID resolvedExecutionId = UUID.randomUUID();
         jdbc.sql("UPDATE external_data_collection_failures SET resolved_at = '2026-10-02T02:00:00Z', "
@@ -260,16 +256,26 @@ class IngestFailureReviewControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.items[0].productLinkStatus").value("NOT_FOUND"))
                 .andExpect(jsonPath("$.data.items[0].product").isEmpty());
         mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
-                        .param("domain", "complex").param("category", "household"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items[0].productLinkStatus").value("UNKNOWN"))
-                .andExpect(jsonPath("$.data.items[0].product").isEmpty());
-        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
                         .param("domain", "complex").param("category", "collection").param("status", "RESOLVED"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].productLinkStatus").value("UNKNOWN"))
                 .andExpect(jsonPath("$.data.items[0].lastResolvedAt").value("2026-10-02T02:00:00Z"))
-                .andExpect(jsonPath("$.data.items[0].lastResolvedExecutionId").value(resolvedExecutionId.toString()));
+                .andExpect(jsonPath("$.data.items[0].lastResolvedExecutionId").value(resolvedExecutionId.toString()))
+                .andExpect(jsonPath("$.data.items[0].lastResolvedBy").isEmpty());
+    }
+
+    @Test
+    void 관리자가_공고_보정으로_해결한_실패는_해결한_관리자를_보여_준다() throws Exception {
+        stageFailure("myhome_announcement_mapping_failures", "6:notice:1", "source_announcement_identifier", "notice",
+                "HOUSING_TYPE_NOT_FOUND");
+        jdbc.sql("UPDATE myhome_announcement_mapping_failures SET status = 'RESOLVED', "
+                + "last_resolved_at = '2026-10-26T01:00:00Z', last_resolved_by = 'root'").update();
+
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
+                        .param("domain", "announcement").param("status", "RESOLVED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].lastResolvedBy").value("root"))
+                .andExpect(jsonPath("$.data.items[0].lastResolvedExecutionId").isEmpty());
     }
 
     @ParameterizedTest

@@ -1171,11 +1171,14 @@ class LhAnnouncementEnrichmentServiceTest {
         SupplyRow expanded = supplyRowRepository.findBySourceSupplyRowIdentifier("21026:LH:100:1").orElseThrow();
         Long expandedTargetId = supplyTargetRepository.findAllBySupplyRow(expanded).getFirst().getId();
         if (adminModifiedExpanded) {
-            expanded.reviseByAdmin(
-                    expanded.getHousingComplex(), expanded.getHousingType(), "동삼2", "관리자 확인 59B",
-                    PNU, YearMonth.of(2027, 1), SupplyCategory.RESUPPLY, 7
-            );
-            supplyRowRepository.save(expanded);
+            // 운영의 관리자 수정처럼 트랜잭션 안에서 연결 주택형 이름과 비교한다.
+            transactionTemplate.executeWithoutResult(status -> {
+                SupplyRow managed = supplyRowRepository.findById(expanded.getId()).orElseThrow();
+                managed.reviseByAdmin(
+                        managed.getHousingComplex(), managed.getHousingType(), "관리자 확인 59B",
+                        PNU, YearMonth.of(2027, 1), SupplyCategory.RESUPPLY, 7
+                );
+            });
         }
         historical.markMissed();
         historical.markMissed();
@@ -1228,7 +1231,7 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(expandedTarget.getMonthlyRent()).isEqualByComparingTo(expectedExpandedRent);
         if (adminModifiedExpanded) {
             SupplyRow preserved = supplyRowRepository.findById(expanded.getId()).orElseThrow();
-            assertThat(preserved.getSourceHousingTypeName()).isEqualTo("관리자 확인 59B");
+            assertThat(preserved.getAnnouncementHousingTypeName()).isEqualTo("관리자 확인 59B");
             assertThat(preserved.getExpectedMoveInMonth()).isEqualTo(YearMonth.of(2027, 1));
             assertThat(preserved.getSupplyCategory()).isEqualTo(SupplyCategory.RESUPPLY);
             assertThat(preserved.getTotalSupplyHouseholdCount()).isEqualTo(7);
@@ -2391,6 +2394,34 @@ class LhAnnouncementEnrichmentServiceTest {
                 assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000")
         );
         assertThat(qualityService.snapshot().preservedAmountTargetCount()).isZero();
+    }
+
+    // 로컬 DB #45 아산읍내: LH 금액이 "공고문 참조"인 미연결 행이 연결될 때 공고 변경 전체가 롤백됐다.
+    @Test
+    void 미연결이던_공급행은_LH_금액이_없어도_새_주택형_연결을_저장한다() {
+        saveComplex();
+        HousingComplex complex = housingComplexRepository.findAll().getFirst();
+        HousingType linkedType = housingTypeRepository.findAllByHousingComplex(complex).getFirst();
+        HousingType duplicate = housingTypeRepository.save(HousingType.createFromMyHome(
+                complex, "source-housing-type-id:duplicate", "46A",
+                new BigDecimal("46.8000"), new BigDecimal("67.0000")
+        ));
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("공고문 참조", "공고문 참조");
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        assertThat(announcementRepository.findAll()).singleElement()
+                .satisfies(announcement -> assertThat(announcement.getLhPanId()).isEqualTo(PAN_ID));
+        assertThat(supplyRowRepository.findAll()).singleElement()
+                .satisfies(row -> assertThat(row.getHousingType()).isNull());
+
+        housingTypeRepository.delete(duplicate);
+
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(supplyRowRepository.findAll()).singleElement()
+                .satisfies(row -> assertThat(row.getHousingType().getId()).isEqualTo(linkedType.getId()));
+        assertThat(supplyTargetRepository.findAll()).isEmpty();
     }
 
     @Test

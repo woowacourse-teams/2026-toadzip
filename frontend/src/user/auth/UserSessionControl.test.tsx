@@ -1,3 +1,4 @@
+import { rememberLoginReturn, readLoginReturn } from './loginReturn'
 import { captureProductEvent, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
@@ -7,7 +8,7 @@ import { UserSessionControl } from './UserSessionControl'
 vi.mock('../../analytics/productAnalytics', () => ({ captureProductEvent: vi.fn(), createAnalyticsId: () => 'modal-id', setProductAuthState: vi.fn(), setReplaySensitive: vi.fn() }))
 beforeEach(() => vi.clearAllMocks())
 
-afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
+afterEach(() => { sessionStorage.clear(); vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 
 it('로그인 버튼은 현재 화면에서 카카오와 구글 로그인 모달을 연다', async () => {
   vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.com')
@@ -96,7 +97,7 @@ it('모달 내용 클릭은 유지하고 배경 클릭은 닫는다', async () =
 
 function LocationDisplay() {
   const location = useLocation()
-  return <output aria-label="현재 주소">{location.pathname}{location.search}</output>
+  return <output aria-label="현재 주소">{location.pathname}{location.search}{location.hash}</output>
 }
 
 it('실패 안내에 포커스를 주고 닫으면 실패 상태만 제거하며 다시 열 때 안내를 지운다', async () => {
@@ -170,6 +171,8 @@ it('모바일 마이 모달은 계정 행동을 수집하고 열려 있는 동�
   fireEvent.click(account)
 
   const dialog = screen.getByRole('dialog', { name: '마이페이지' })
+  expect(within(dialog).getByRole('link', { name: '분석 설정' })).toHaveAttribute('href', '/privacy/settings')
+  expect(within(dialog).getByRole('link', { name: '개인정보처리방침' })).toBeVisible()
   expect(dialog).toHaveClass('ph-no-capture')
   expect(captureProductEvent).toHaveBeenCalledWith('account_menu_opened')
   expect(setReplaySensitive).toHaveBeenCalledWith('member_menu', true)
@@ -198,4 +201,13 @@ vi.mock('../../privacy/usePrivacy', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../privacy/usePrivacy')>()
   const notices = [{ key: 'PRIVACY_POLICY', version: 'privacy-2026-10-09-v1' }, { key: 'NOTIFICATION_NOTICE', version: 'notification-2026-10-09-v1' }]
   return { ...original, usePrivacyNotices: () => ({ notices, error: false, retry: vi.fn() }) }
+})
+
+it('모바일 OAuth 성공의 복귀 주소가 콜백 로그인 쿼리 정리보다 우선한다', async () => {
+  rememberLoginReturn('/explore?boundaryRegionCode=11440#map', true)
+  render(<MemoryRouter initialEntries={['/explore?login=required']}>
+    <UserSessionControl sessionOverride="signed-in" /><LocationDisplay />
+  </MemoryRouter>)
+  await waitFor(() => expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/explore?boundaryRegionCode=11440#map'))
+  expect(readLoginReturn(true)).toBeNull()
 })

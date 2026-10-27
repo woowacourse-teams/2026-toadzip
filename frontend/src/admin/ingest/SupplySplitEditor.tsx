@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { housingTypeLabel } from './housingTypeLabel'
 import { getMatchingHousingTypes, splitSupplyRow, type SupplyMatch, type MatchingHousingType } from './supplyMatchingApi'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import styles from './AnnouncementSupplyMatchingForm.module.css'
@@ -53,7 +54,7 @@ export function SupplySplitEditor({ identifier, row, complexId, disabled, onBusy
     if (selections.some(value => !value.name || !value.housingTypeId || !value.targetToken)
       || new Set(selections.map(value => value.name.toLocaleLowerCase())).size !== selections.length
       || new Set(selections.map(value => value.housingTypeId)).size !== selections.length) {
-      setError('각 공급행에 서로 다른 공고 주택형명과 연결할 주택형을 지정해 주세요.'); return
+      setError('각 공급행에 서로 다른 주택형 표기와 연결할 주택형을 지정해 주세요.'); return
     }
     if (!/^https?:\/\//i.test(sourceUrl.trim()) || !reason.trim()) {
       setError('공식 출처 URL과 확인 근거를 입력해 주세요.'); return
@@ -82,13 +83,12 @@ export function SupplySplitEditor({ identifier, row, complexId, disabled, onBusy
     <fieldset disabled={disabled || saving || loading}>
       <legend>보정할 공급행</legend>
       {drafts.map((draft, index) => <div key={draft.key} className={styles.splitRow}>
-        <label>공고 주택형명 {index + 1}<input maxLength={200} value={draft.name} placeholder={index === 0 ? '예: 26A' : '예: 26B'}
+        <label>이 공고의 주택형 표기 {index + 1}<input maxLength={200} value={draft.name} placeholder={index === 0 ? '예: 26A' : '예: 26B'}
           onChange={event => setDrafts(values => values.map(value => value.key === draft.key ? { ...value, name: event.target.value } : value))} /></label>
         <label>연결 주택형 {index + 1}<select value={draft.housingTypeId} disabled={complexId === null}
           onChange={event => setDrafts(values => values.map(value => value.key === draft.key ? { ...value, housingTypeId: event.target.value } : value))}>
           <option value="">주택형 선택</option>
-          {types.map(type => <option key={type.id} value={type.id}>{type.name} · 전용 {type.exclusiveArea}㎡
-            {type.supplyArea == null ? '' : ` · 공급 ${type.supplyArea}㎡`}</option>)}
+          {types.map(type => <option key={type.id} value={type.id}>{housingTypeLabel(type, types)}</option>)}
         </select></label>
         <span>개별 모집수 미확정</span>
         {!draft.id && drafts.length > 2 && <button type="button" onClick={() => { setDrafts(values => values.filter(value => value.key !== draft.key)); setDirty(true) }}>행 삭제</button>}

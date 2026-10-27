@@ -69,8 +69,8 @@ describe('API 기본 주소 정책', () => {
         const { getCurrentAdmin } = await import('../admin/auth/api')
         request = getCurrentAdmin
       } else if (api === 'registration') {
-        const { validateAnnouncementImport } = await import('../admin/registration/api')
-        request = () => validateAnnouncementImport('{}')
+        const { createAnnouncement } = await import('../admin/registration/api')
+        request = () => createAnnouncement({} as Parameters<typeof createAnnouncement>[0])
       } else {
         const { getLhAnnouncementQuality } = await import('../admin/ingest/api')
         request = getLhAnnouncementQuality

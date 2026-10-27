@@ -1,11 +1,11 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { ManagementList } from './ManagementList'
 import { ManagementSummaryTable } from './ManagementSummaryTable'
 import { parseManagementDetail, type ManagementPage, type ManagementSummary } from './managementContract'
 
-const mocks = vi.hoisted(() => ({ getManagementPage: vi.fn() }))
+const mocks = vi.hoisted(() => ({ getManagementPage: vi.fn(), getManagementDetail: vi.fn(), requestManagementApi: vi.fn() }))
 vi.mock('./api', async original => ({ ...(await original<typeof import('./api')>()), ...mocks }))
 
 const legacy: ManagementSummary = { id: 7, name: '두꺼비 단지', subtitle: '서울 중구 세종대로 1', provider: 'LH', rental: 'HAPPY_HOUSING', deleted: false, modified: false, reviewRequired: false, updatedAt: null }
@@ -22,21 +22,35 @@ beforeEach(() => { vi.clearAllMocks(); mocks.getManagementPage.mockResolvedValue
 
 it('단지 표는 핵심 정보만 표시하고 세대수 0과 누락을 구분한다', () => {
   render(<MemoryRouter><ManagementSummaryTable items={[complex, { ...legacy, id: 8, name: '미확인 단지' }]} resource="complexes" returnTo="/admin/complexes?provider=LH" /></MemoryRouter>)
-  expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['단지명', '도로명주소', '공급 기관', '공급 유형', '세대수', '관리 상태'])
+  expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['단지명', '도로명주소', '공급 기관', '공급 유형', '세대수', '검토 상태', '확인할 상태'])
   expect(screen.getByRole('cell', { name: '0' })).toBeVisible()
   expect(screen.getByRole('cell', { name: '미확인' })).toBeVisible()
   expect(screen.getAllByText('미검토')).toHaveLength(2)
   expect(screen.getByRole('link', { name: '두꺼비 단지' })).toHaveAttribute('href', '/admin/complexes/7?returnTo=%2Fadmin%2Fcomplexes%3Fprovider%3DLH')
   expect(screen.queryByText('MYHOME-7')).not.toBeInTheDocument()
-  expect(screen.getAllByText('등록됨')[0]).toHaveAttribute('title', expect.stringContaining('모집 상태를 뜻하지 않습니다'))
+  expect(screen.queryByText('등록됨')).not.toBeInTheDocument()
+  expect(screen.getAllByLabelText('특이 상태 없음')[0]).toHaveTextContent('—')
 })
 
 it('공고 표는 모집 유형과 접수 기간을 함께 표시한다', () => {
   render(<MemoryRouter><ManagementSummaryTable items={[announcement]} resource="announcements" /></MemoryRouter>)
-  expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['공고명', '공급 기관', '공급 유형', '모집 유형', '게시일', '접수 기간', '관리 상태'])
+  expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['공고명', '공급 기관', '공급 유형', '모집 유형', '공고 구분', '게시일', '접수 기간', '확인할 상태'])
   expect(screen.getByRole('cell', { name: '예비 입주자' })).toBeVisible()
   expect(screen.getByRole('cell', { name: '2026-10-10 ~ 2026-10-15' })).toBeVisible()
   expect(screen.queryByText('LH-7')).not.toBeInTheDocument()
+})
+
+it('정정 공고는 공고 구분 칸에, 확인이 필요한 상태는 상태 칸에 따로 표시한다', () => {
+  render(<MemoryRouter><ManagementSummaryTable resource="announcements" items={[
+    { ...announcement, id: 8, name: '정정 공고', reviewRequired: true, announcement: { ...announcement.announcement!, publicationType: 'CORRECTION' } },
+    { ...announcement, id: 9, name: '평소 공고', announcement: { ...announcement.announcement!, publicationType: 'ORIGINAL' } },
+  ]} /></MemoryRouter>)
+  const [corrected, ordinary] = screen.getAllByRole('row').slice(1)
+  const cells = within(corrected).getAllByRole('cell')
+  expect(cells.find(cell => cell.textContent === '정정공고')).toBeDefined()
+  expect(cells.find(cell => cell.textContent === '원천 변경 확인')).toBeDefined()
+  expect(within(ordinary).getByText('원공고')).toBeVisible()
+  expect(within(ordinary).getByLabelText('특이 상태 없음')).toBeVisible()
 })
 
 it('기존 요약 응답도 상세 연결 표에 표시하고 게시일은 subtitle을 사용한다', () => {
@@ -122,7 +136,8 @@ it('검토 필터로 검색하고 페이지 이동과 상세 복귀 링크에 �
   await screen.findByRole('table')
   expect(mocks.getManagementPage.mock.lastCall?.[1].get('verification')).toBe('VERIFIED')
   expect(mocks.getManagementPage.mock.lastCall?.[1].has('page')).toBe(false)
-  expect(screen.getByRole('link', { name: '두꺼비 단지' }).closest('th')).toHaveTextContent('확인 완료 · 2/6항목')
+  expect(screen.getByRole('cell', { name: /확인 완료\s*· 2\/6항목/ })).toBeVisible()
+  expect(screen.getByRole('link', { name: '두꺼비 단지' }).closest('th')).not.toHaveTextContent('확인 완료')
   expect(screen.getByRole('link', { name: '두꺼비 단지' })).toHaveAttribute('href', expect.stringContaining('verification%3DVERIFIED'))
   fireEvent.click(screen.getByRole('button', { name: '다음' }))
   await act(async () => {})
@@ -139,4 +154,47 @@ it('새 요약 데이터는 검증하고 이전 응답의 누락 필드는 호�
     expect(() => parseManagementDetail(detail({ ...legacy, complex: complexValue }))).toThrow('상세 응답이 올바르지 않습니다.')
   }
   expect(() => parseManagementDetail(detail({ ...legacy, announcement: { ...announcement.announcement, applicationStartDate: null } }))).toThrow('상세 응답이 올바르지 않습니다.')
+})
+
+it('현재 페이지 번호를 다시 누르면 같은 조건으로 새로 조회한다', async () => {
+  render(<MemoryRouter initialEntries={['/admin/complexes?provider=LH&page=0']}><ManagementList resource="complexes" /></MemoryRouter>)
+  await screen.findByRole('table')
+  const current = screen.getByRole('button', { name: '1페이지' })
+  expect(current).toBeEnabled()
+  expect(current).toHaveAttribute('aria-current', 'page')
+  fireEvent.click(current)
+  await act(async () => {})
+  expect(mocks.getManagementPage).toHaveBeenCalledTimes(2)
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('provider')).toBe('LH')
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('page')).toBe('0')
+})
+
+it('현재 페이지의 행을 골라 한꺼번에 휴지통으로 옮기고 목록을 다시 불러온다', async () => {
+  mocks.getManagementPage.mockResolvedValue(page(complex))
+  mocks.getManagementDetail.mockResolvedValue({ data: { version: 5 } })
+  mocks.requestManagementApi.mockResolvedValue(null)
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  render(<MemoryRouter initialEntries={['/admin/complexes']}><ManagementList resource="complexes" /></MemoryRouter>)
+  await screen.findByRole('table')
+  expect(screen.getByRole('button', { name: '선택 삭제' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('checkbox', { name: '이 페이지 전체 선택' }))
+  expect(screen.getByText('1개 선택')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '선택 삭제' }))
+  expect(await screen.findByRole('status')).toHaveTextContent('1개를 휴지통으로 이동했습니다.')
+  expect(mocks.requestManagementApi).toHaveBeenCalledWith(`/api/admin/housing-complexes/${complex.id}?version=5`, 'DELETE')
+  await waitFor(() => expect(mocks.getManagementPage).toHaveBeenCalledTimes(2))
+})
+
+it('휴지통 탭으로 지운 항목을 보고, 검색해도 휴지통 조건을 유지한다', async () => {
+  render(<MemoryRouter initialEntries={['/admin/complexes?keyword=두꺼비&page=2']}><ManagementList resource="complexes" /></MemoryRouter>)
+  await screen.findByRole('link', { name: '두꺼비 단지' })
+  expect(screen.getByRole('button', { name: '등록 데이터' })).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.click(screen.getByRole('button', { name: '휴지통' }))
+  await waitFor(() => expect(mocks.getManagementPage.mock.lastCall?.[1].get('deleted')).toBe('true'))
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('keyword')).toBe('두꺼비')
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('page')).toBeNull()
+  expect(screen.getByRole('button', { name: '휴지통' })).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.click(screen.getByRole('button', { name: '검색' }))
+  await waitFor(() => expect(mocks.getManagementPage.mock.lastCall?.[1].get('deleted')).toBe('true'))
+  expect(screen.queryByLabelText('보관 상태')).not.toBeInTheDocument()
 })

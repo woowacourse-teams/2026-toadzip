@@ -217,6 +217,9 @@ public class MyHomeComplexMergeService {
         catch (IllegalArgumentException exception) {
             throw conflict(exception.getMessage());
         }
+        require(store.countAdminRecords(ids.subList(1, ids.size())) == 0,
+                "통합할 단지에 저장 매칭·LH 세대수 연결·세대수 결정·검증·비교 기록이 있습니다. "
+                        + "통합 복구로 되돌릴 수 없으므로 기록을 정리한 뒤 다시 확인해야 합니다.");
         LhCatalogSource selected = lhSources.findById(request.lhSourceId())
                 .orElseThrow(() -> conflict("선택한 LH 원천이 없습니다."));
         long sum = observations.stream().mapToLong(ComplexMergePreviewResponse.Source::householdCount).sum();

@@ -87,15 +87,22 @@ public class LhHousingTypeHouseholdMatcher {
             Map<MatchKey, List<HousingComplex>> indexed,
             LhHousingTypeHouseholdSource source
     ) {
+        return bestNameMatches(structuralMatches(indexed, source), source.complexName());
+    }
+
+    /** 이름을 비교하기 전, 공급유형·전체 세대수·지역이 같은 LH 단지 후보다. */
+    List<HousingComplex> structuralMatches(
+            Map<MatchKey, List<HousingComplex>> indexed,
+            LhHousingTypeHouseholdSource source
+    ) {
         String supplyType = sourceSupplyType(source.supplyTypeName());
         if (supplyType == null) {
             return List.of();
         }
         MatchKey key = new MatchKey(supplyType, source.totalHouseholdCount());
-        List<HousingComplex> structuralMatches = indexed.getOrDefault(key, List.of()).stream()
+        return indexed.getOrDefault(key, List.of()).stream()
                 .filter(complex -> regionMatches(complex, source.areaName()))
                 .toList();
-        return bestNameMatches(structuralMatches, source.complexName());
     }
 
     private String sourceSupplyType(String supplyTypeName) {

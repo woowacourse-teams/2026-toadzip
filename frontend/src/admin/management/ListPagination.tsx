@@ -11,7 +11,7 @@ export function ListPagination({ page, totalPages, onMove, disabled = false, lab
       <button className={styles.edge} type="button" disabled={disabled || empty || page === 0} onClick={() => onMove(0)} aria-label="처음">처음</button>
       <button type="button" disabled={disabled || empty || page === 0} onClick={() => onMove(page - 1)} aria-label="이전">이전</button>
       {pages.map(number => <button type="button" key={number} aria-label={`${number + 1}페이지`}
-        aria-current={page === number ? 'page' : undefined} disabled={disabled || page === number}
+        aria-current={page === number ? 'page' : undefined} disabled={disabled}
         onClick={() => onMove(number)}>{number + 1}</button>)}
       <button type="button" disabled={disabled || empty || page >= totalPages - 1} onClick={() => onMove(page + 1)} aria-label="다음">다음</button>
       <button className={styles.edge} type="button" disabled={disabled || empty || page >= totalPages - 1} onClick={() => onMove(totalPages - 1)} aria-label="마지막">마지막</button>
@@ -27,7 +27,7 @@ export function ListPagination({ page, totalPages, onMove, disabled = false, lab
         input.reportValidity()
         return
       }
-      if (!disabled && number - 1 !== page) onMove(number - 1)
+      if (!disabled) onMove(number - 1)
     }}>
       <label className={styles.jumpLabel}>바로가기<input aria-label="페이지 바로가기" name="destination" type="number" inputMode="numeric"
         min={1} max={totalPages || 1} step={1} required disabled={disabled || empty} defaultValue={empty ? '' : page + 1}

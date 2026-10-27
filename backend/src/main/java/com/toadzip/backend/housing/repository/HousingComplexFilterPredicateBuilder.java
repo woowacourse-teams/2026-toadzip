@@ -96,6 +96,7 @@ final class HousingComplexFilterPredicateBuilder {
                     SELECT 1
                     FROM housing_types matched_housing_type
                     WHERE matched_housing_type.housing_complex_id = housing_complex.id
+                      AND matched_housing_type.admin_deleted = false
             """;
 
     private static final String EXISTS_END = """

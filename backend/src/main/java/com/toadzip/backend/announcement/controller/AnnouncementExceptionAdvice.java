@@ -4,11 +4,15 @@ import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.exception.AnnouncementImportDuplicatedException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementImportException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementCursorException;
+import com.toadzip.backend.announcement.exception.InvalidAnnouncementPdfException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestException;
 import com.toadzip.backend.announcement.exception.InvalidRegionCodeException;
+import com.toadzip.backend.announcement.exception.PdfExtractionFailedException;
+import com.toadzip.backend.announcement.exception.PdfExtractionUnavailableException;
 import com.toadzip.backend.global.exception.ErrorResponse;
 import com.toadzip.backend.global.exception.RequestTraceIdResolver;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -16,6 +20,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+@Slf4j
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice
 public class AnnouncementExceptionAdvice {
@@ -30,6 +35,45 @@ public class AnnouncementExceptionAdvice {
     private static final String ANNOUNCEMENT_NOT_FOUND_MESSAGE = "모집 공고를 찾을 수 없습니다.";
     private static final String ANNOUNCEMENT_IMPORT_INVALID = "ANNOUNCEMENT_IMPORT_INVALID";
     private static final String ANNOUNCEMENT_IMPORT_DUPLICATED = "ANNOUNCEMENT_IMPORT_DUPLICATED";
+    private static final String ANNOUNCEMENT_PDF_INVALID = "ANNOUNCEMENT_PDF_INVALID";
+    private static final String PDF_EXTRACTION_UNAVAILABLE = "ANNOUNCEMENT_PDF_EXTRACTION_UNAVAILABLE";
+    private static final String PDF_EXTRACTION_FAILED = "ANNOUNCEMENT_PDF_EXTRACTION_FAILED";
+
+    @ExceptionHandler(InvalidAnnouncementPdfException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidAnnouncementPdf(
+            InvalidAnnouncementPdfException exception,
+            HttpServletRequest request
+    ) {
+        return badRequest(ANNOUNCEMENT_PDF_INVALID, exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(PdfExtractionUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handlePdfExtractionUnavailable(
+            PdfExtractionUnavailableException exception,
+            HttpServletRequest request
+    ) {
+        ErrorResponse response = new ErrorResponse(
+                PDF_EXTRACTION_UNAVAILABLE,
+                exception.getMessage(),
+                traceIdOf(request)
+        );
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(response);
+    }
+
+    @ExceptionHandler(PdfExtractionFailedException.class)
+    public ResponseEntity<ErrorResponse> handlePdfExtractionFailed(
+            PdfExtractionFailedException exception,
+            HttpServletRequest request
+    ) {
+        // 공급자 오류 문구에는 요청 정보가 섞일 수 있어 응답에는 고정 문구만 쓰고 원인은 로그에 남긴다.
+        log.warn("event=announcement.pdf_extraction.failed reason={}", exception.getMessage(), exception);
+        ErrorResponse response = new ErrorResponse(
+                PDF_EXTRACTION_FAILED,
+                exception.getMessage(),
+                traceIdOf(request)
+        );
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(response);
+    }
 
     @ExceptionHandler(InvalidAnnouncementRequestException.class)
     public ResponseEntity<ErrorResponse> handleInvalidRequest(HttpServletRequest request) {

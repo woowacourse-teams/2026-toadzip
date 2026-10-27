@@ -35,6 +35,7 @@ import type {
 
 export function toComplexPage(raw: RawComplexPage): ComplexPage {
   return {
+    totalCount: raw.totalCount ?? null,
     items: raw.items.map(toComplexListItem),
     nextCursor: raw.nextCursor,
     hasNext: raw.hasNext,
@@ -194,6 +195,7 @@ function toAnnouncementSupplyRow(
 ): AnnouncementSupplyRow {
   return {
     ...(raw.corrected !== undefined ? { corrected: raw.corrected } : {}),
+    ...(raw.displayHousingTypeName !== undefined ? { displayHousingTypeName: raw.displayHousingTypeName } : {}),
     ...('exclusiveArea' in raw ? { exclusiveArea: raw.exclusiveArea, supplyArea: raw.supplyArea } : {}),
     ...(raw.sharedRecruitment ? { sharedRecruitment: raw.sharedRecruitment } : {}),
     supplyRowId: canonicalId(raw.supplyRowId),

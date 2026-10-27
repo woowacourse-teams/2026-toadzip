@@ -241,7 +241,7 @@ public class MyHomeAnnouncementMappingService {
         }
     }
 
-    private MyHomeAnnouncementMappingFailure failureOf(
+    static MyHomeAnnouncementMappingFailure failureOf(
             MyHomeAnnouncementSource source,
             MyHomeAnnouncementMappingFailureReason reason,
             String detail,

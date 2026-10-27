@@ -4,7 +4,6 @@ import static jakarta.persistence.FetchType.LAZY;
 import static lombok.AccessLevel.PROTECTED;
 
 import jakarta.persistence.Entity;
-import jakarta.persistence.Column;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -27,6 +26,5 @@ public class HousingComplexAlias {
     @OnDelete(action = OnDeleteAction.CASCADE)
     private HousingComplex housingComplex;
 
-    @Column(nullable = false)
     private UUID mergeId;
 }
