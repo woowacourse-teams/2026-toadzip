@@ -70,7 +70,8 @@ describe('홈의 사용자 세션과 알림 상태', () => {
     fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
     await screen.findByText('로그인 확인 중…')
     expect(interest.loadStatus).toHaveBeenCalledTimes(3)
-    expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeDisabled()
+    // 세션 초기화와 지도 화면 전환은 별개로 반영되므로, 지도 버튼이 나타난 뒤 상태를 확인한다.
+    expect(await screen.findByRole('button', { name: '서울 단지 알림 받기' })).toBeDisabled()
     await act(async () => guestRead.resolve(guestStatus))
     await act(async () => previousRead.resolve(memberStatus))
     expect(screen.getByRole('button', { name: '로그인' })).toBeVisible()
