@@ -6,6 +6,8 @@
 
 - [소셜 로그인](social-login.md): 로그인 API, 카카오·구글 연결, 환경별 설정과 동의·계정 상태의 처리.
 
+- [회원 북마크](bookmarks.md): 독립 북마크 API, 마이페이지와 탐색 복귀.
+
 ## 관련 문서
 
 접근 권한·소유권 검증은 [백엔드 보안 기준](../../development/backend/security.md), 동의·고지 정책은 [개인정보 기능](../privacy/README.md)을 따른다.
