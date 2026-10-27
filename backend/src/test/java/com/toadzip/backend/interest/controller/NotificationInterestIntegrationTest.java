@@ -10,6 +10,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.interest.domain.NotificationTargetType;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +38,8 @@ class NotificationInterestIntegrationTest {
     private static final long MEMBER = 90000001L;
     @Autowired private MockMvc mockMvc;
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private AnnouncementRepository announcements;
+    @Autowired private Clock clock;
 
     @BeforeEach
     void member() {
@@ -138,6 +146,33 @@ class NotificationInterestIntegrationTest {
                 .andExpect(jsonPath("$.code").value("ANALYTICS_CONSENT_REQUIRED"));
         assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM privacy_notification_events", Integer.class));
         assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM announcement_views", Integer.class));
+    }
+
+    @Test
+    void 북마크하지_않은_공고_알림도_접수상태와_일정을_조회한다() throws Exception {
+        LocalDate today = LocalDate.ofInstant(clock.instant(), ZoneId.of("Asia/Seoul"));
+        Announcement announcement = announcements.saveAndFlush(Announcement.create(
+                "notification-status", null, null, "알림 공고", "원공고", "행복주택", "신규모집", "LH",
+                today.minusDays(3), today.minusDays(1), today.plusDays(2), today.plusDays(10),
+                "https://example.com/notice", null, 0L, null));
+        subscriptions.activateForMember(MEMBER, NotificationTargetType.ANNOUNCEMENT,
+                announcement.getId().toString(), clock.instant());
+        subscriptions.activateForMember(MEMBER, NotificationTargetType.REGION, "11", clock.instant());
+
+        mockMvc.perform(get(ENDPOINT).with(user(Long.toString(MEMBER)).roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.targets[0].status").value("APPLYING"))
+                .andExpect(jsonPath("$.targets[0].applicationStartDate").value(today.minusDays(1).toString()))
+                .andExpect(jsonPath("$.targets[0].applicationEndDate").value(today.plusDays(2).toString()))
+                .andExpect(jsonPath("$.targets[1].status").isEmpty());
+
+        jdbc.update("UPDATE announcements SET application_schedule_reviewed = true WHERE id = ?",
+                announcement.getId());
+        mockMvc.perform(get(ENDPOINT).with(user(Long.toString(MEMBER)).roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.targets[0].status").value("CLOSED"))
+                .andExpect(jsonPath("$.targets[0].applicationStartDate").isEmpty())
+                .andExpect(jsonPath("$.targets[0].applicationEndDate").isEmpty());
     }
 
     private String observation(String type) {

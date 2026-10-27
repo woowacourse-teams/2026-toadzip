@@ -131,6 +131,7 @@ export function NotificationInterestProvider({ children, repository = notificati
       setProductAuthState(member ? 'member' : 'guest')
       setTargets(member ? status.targets.map((target) => ({
         type: target.targetType, id: target.targetId,
+        status: target.status, applicationStartDate: target.applicationStartDate, applicationEndDate: target.applicationEndDate,
         name: (target.targetType === 'REGION' ? findRegionBoundaryName(target.targetId) : target.targetName)
           ?? `${{ REGION: '지역', COMPLEX: '단지', ANNOUNCEMENT: '공고' }[target.targetType]} ${target.targetId}`,
       })) : [])

@@ -73,3 +73,12 @@ describe('회원 알림 설정 API', () => {
     expect(fetcher.mock.calls[1]?.[1].signal.aborted).toBe(true)
   })
 })
+
+it('알림 목록의 공고 접수 상태와 날짜를 보존하며 잘못된 날짜를 거부한다', async () => {
+  const notice = { ...target, targetType: 'ANNOUNCEMENT', status: 'CLOSED', applicationStartDate: '2026-10-20', applicationEndDate: '2026-10-30' }
+  const snapshot = { userId: '7', settingsRevision: 0, targets: [notice] }
+  const fetcher = vi.fn().mockResolvedValueOnce(Response.json(snapshot)).mockResolvedValueOnce(Response.json({ ...snapshot, targets: [{ ...notice, applicationStartDate: 'wrong' }] }))
+  const repository = createNotificationInterestRepository(fetcher)
+  expect(await repository.loadStatus?.()).toEqual(snapshot)
+  await expect(repository.loadStatus?.()).rejects.toThrow('알림 대상 응답')
+})
