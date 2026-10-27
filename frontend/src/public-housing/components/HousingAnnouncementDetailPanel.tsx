@@ -223,10 +223,12 @@ export function HousingAnnouncementDetailPanel({
           role="region" aria-label="요약 영역" tabIndex={-1}
           ref={(node) => { sectionRefs.current.summary = node }}>
           <div className={styles.summaryBlock}>
-            <NoticeIntro detail={detail} groups={groups} />
+            <div className={styles.summaryIdentity}>
+              <NoticeIntro detail={detail} groups={groups} />
+              <BookmarkButton type="ANNOUNCEMENT" targetId={detail.announcementId} name={title} iconOnly />
+            </div>
             <div className={styles.notificationAction}>
-              <BookmarkButton type="ANNOUNCEMENT" targetId={detail.announcementId} name={title} />
-          <NotificationInterestButton
+              <NotificationInterestButton
                 target={{ type: 'ANNOUNCEMENT', id: detail.announcementId, name: title }}
                 source="ANNOUNCEMENT_DETAIL"
               />

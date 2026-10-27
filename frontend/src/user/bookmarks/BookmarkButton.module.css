@@ -7,3 +7,8 @@
 .error { color: var(--ds-color-deadline); font-size: var(--ds-text-caption); }
 
 .button:disabled[aria-busy=true] { opacity: 1; cursor: default; }
+
+.iconWrapper { flex: 0 0 auto; max-width: 40%; flex-direction: column; align-items: flex-end; }
+.button.iconButton { width: 44px; height: 44px; justify-content: center; padding: 0; border-color: transparent; background: transparent; }
+.iconButton svg { width: 22px; height: 22px; }
+.iconButton:hover:not(:disabled) { background: var(--ds-color-action-soft); }

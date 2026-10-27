@@ -68,13 +68,13 @@ export function useRegionComplexResults(
         } }
       })
       requestRef.current = null
-    }).catch((error: unknown) => {
+    }).catch((_error: unknown) => {
       if (controller.signal.aborted) return
       requestRef.current = null
       if (measurement) captureProductEvent('list_more_failed', measurement)
       setResult((current) => ({ key, state: {
         ...current.state, status: 'error',
-        errorMessage: error instanceof Error ? error.message : '잠시 후 다시 시도해 주세요.',
+        errorMessage: '잠시 후 다시 시도해 주세요.',
       } }))
     })
   }, [key, regionCode, repository])
