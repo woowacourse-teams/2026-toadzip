@@ -1,7 +1,5 @@
 package com.toadzip.backend.ingest.mapping.service;
 
-import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.MYHOME_COMPLEX_MAPPING;
-
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
@@ -9,7 +7,6 @@ import com.toadzip.backend.ingest.collection.lh.leasecatalog.repository.LhLeaseC
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdMatcher;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMerge;
 import com.toadzip.backend.ingest.mapping.dto.ComplexMergeCandidateResponse;
@@ -24,7 +21,6 @@ import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMergeRepositor
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMergeStore;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingRejectedException;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -52,7 +48,6 @@ public class MyHomeComplexMergeService {
     private final MyHomeComplexSourceMapper mapper;
     private final LhHousingTypeHouseholdMatcher matcher;
     private final MyHomeComplexMergeStore store;
-    private final IngestOperationLock executionLock;
     private final TransactionTemplate transaction;
     private final Clock clock;
 
@@ -61,7 +56,7 @@ public class MyHomeComplexMergeService {
             MyHomeComplexMergeRepository merges, MyHomeComplexSourceReader sources,
             LhLeaseCatalogSourceReader lhSources, MyHomeComplexSourceMapper mapper,
             LhHousingTypeHouseholdMatcher matcher, MyHomeComplexMergeStore store,
-            IngestOperationLock executionLock, PlatformTransactionManager transactionManager, Clock clock
+            PlatformTransactionManager transactionManager, Clock clock
     ) {
         this.complexes = complexes;
         this.links = links;
@@ -71,7 +66,6 @@ public class MyHomeComplexMergeService {
         this.mapper = mapper;
         this.matcher = matcher;
         this.store = store;
-        this.executionLock = executionLock;
         this.transaction = new TransactionTemplate(transactionManager);
         this.clock = clock;
     }
@@ -91,15 +85,11 @@ public class MyHomeComplexMergeService {
     }
 
     public ComplexMergeResponse merge(ComplexMergeRequest request, String actor) {
-        return executionLock.tryRun(
-                        MYHOME_COMPLEX_MAPPING, () -> transaction.execute(status -> mergeLocked(request, actor)))
-                .orElseThrow(() -> new IngestAlreadyRunningException("단지 정제 또는 통합이 실행 중입니다."));
+        return transaction.execute(status -> mergeLocked(request, actor));
     }
 
     public ComplexMergeResponse revert(UUID id, String actor) {
-        return executionLock.tryRun(
-                        MYHOME_COMPLEX_MAPPING, () -> transaction.execute(status -> revertLocked(id, actor)))
-                .orElseThrow(() -> new IngestAlreadyRunningException("단지 정제 또는 통합이 실행 중입니다."));
+        return transaction.execute(status -> revertLocked(id, actor));
     }
 
     @Transactional(readOnly = true)

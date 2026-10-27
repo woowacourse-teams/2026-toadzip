@@ -4,8 +4,6 @@ import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeRegionCatalog;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.ArrayList;
@@ -36,15 +34,7 @@ public class MyHomeComplexCollectionService {
 
     private final MyHomeComplexRegionCollectionService regionCollector;
 
-    private final IngestOperationLock executionLock;
-
     public MyHomeComplexCollectionReport collect(MyHomeComplexCollectionRequest request) {
-        return executionLock.tryRun(IngestOperationLock.Operation.MYHOME_COMPLEX_COLLECTION,
-                () -> collectUnlocked(request)).orElseThrow(
-                () -> new IngestAlreadyRunningException("마이홈 단지 수집이 이미 실행 중입니다."));
-    }
-
-    private MyHomeComplexCollectionReport collectUnlocked(MyHomeComplexCollectionRequest request) {
         log.info(
                 "마이홈 단지 수집을 시작합니다: pageSize={}, maxPages={}, allRegions={}, maxConcurrentRegions={}",
                 request.pageSize(),

@@ -21,7 +21,6 @@ import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseSt
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.pipeline.repository.IngestExecutionOwnershipRepository;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import com.toadzip.backend.global.config.PostgresTestDatabases;
 import java.time.Clock;
@@ -70,7 +69,7 @@ import tools.jackson.databind.json.JsonMapper;
 @ContextConfiguration(classes = LhLeaseCatalogStorageIntegrationTest.JpaConfiguration.class,
         initializers = LhLeaseCatalogStorageIntegrationTest.SchemaInitializer.class)
 @Import({LhLeaseCatalogCollector.class, LhLeaseCatalogStorageService.class, SourceCollectionRecordService.class,
-        LhLeaseCatalogApiRepository.class, LhLeaseCatalogPageParser.class, IngestOperationLock.class,
+        LhLeaseCatalogApiRepository.class, LhLeaseCatalogPageParser.class,
         IngestWriteOwnershipGuard.class, IngestExecutionOwnershipRepository.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)

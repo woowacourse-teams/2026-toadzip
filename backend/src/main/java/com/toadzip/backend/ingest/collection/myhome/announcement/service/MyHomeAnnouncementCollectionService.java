@@ -10,10 +10,8 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.util.UUID;
@@ -26,7 +24,6 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class MyHomeAnnouncementCollectionService {
 
-    private final IngestOperationLock executionLock;
     private final MyHomeAnnouncementCollector collector;
     private final MyHomeAnnouncementLifecycleService lifecycle;
     private final SourceCollectionRecordService records;
@@ -35,14 +32,6 @@ public class MyHomeAnnouncementCollectionService {
     private final Clock clock;
 
     public ExternalDataCollectionReport collect(
-            com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionRequest request
-    ) {
-        return executionLock.tryRun(IngestOperationLock.Operation.MYHOME_ANNOUNCEMENT_COLLECTION,
-                () -> collectUnlocked(request)).orElseThrow(
-                () -> new IngestAlreadyRunningException("마이홈 공고 수집이 이미 실행 중입니다."));
-    }
-
-    private ExternalDataCollectionReport collectUnlocked(
             com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionRequest request
     ) {
         UUID runId = IngestExecutionContext.currentExecutionId().orElseGet(UUID::randomUUID);

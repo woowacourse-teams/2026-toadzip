@@ -1,14 +1,12 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
-import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.MYHOME_ANNOUNCEMENT_MAPPING;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
@@ -21,7 +19,6 @@ import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingWrite
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyRowResolver.ResolvedAnnouncement;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -48,8 +45,6 @@ public class MyHomeAnnouncementMappingService {
 
     private final MyHomeAnnouncementMappingFailureStore failureStore;
 
-    private final IngestOperationLock executionLock;
-
     private final AnnouncementRepository announcementRepository;
 
     private final MyHomeAnnouncementSourceMapper sourceMapper;
@@ -60,17 +55,7 @@ public class MyHomeAnnouncementMappingService {
 
     private final Clock clock;
 
-    public MyHomeAnnouncementMappingReport mapAll() {
-        return executionLock.tryRun(MYHOME_ANNOUNCEMENT_MAPPING, this::mapAllUnlocked)
-                .orElseThrow(this::alreadyRunning);
-    }
-
     public MyHomeAnnouncementMappingReport registerAnnouncement(String pblancId) {
-        return executionLock.tryRun(MYHOME_ANNOUNCEMENT_MAPPING, () -> registerUnlocked(pblancId))
-                .orElseThrow(this::alreadyRunning);
-    }
-
-    private MyHomeAnnouncementMappingReport registerUnlocked(String pblancId) {
         if (announcementRepository.findBySourceAnnouncementIdentifier(pblancId).isPresent()) {
             throw new AnnouncementRegistrationException("이미 등록된 공고입니다: " + pblancId);
         }
@@ -108,7 +93,7 @@ public class MyHomeAnnouncementMappingService {
         }
     }
 
-    private MyHomeAnnouncementMappingReport mapAllUnlocked() {
+    public MyHomeAnnouncementMappingReport mapAll() {
         Instant occurredAt = clock.instant();
         List<MyHomeAnnouncementMappingFailure> failures = new ArrayList<>();
         Map<String, List<MyHomeAnnouncementSource>> groupedSources = groupSources(failures, occurredAt);
@@ -289,10 +274,5 @@ public class MyHomeAnnouncementMappingService {
             return null;
         }
         return value.strip();
-    }
-
-    private IngestAlreadyRunningException alreadyRunning() {
-        log.warn("마이홈 공고 매핑이 이미 실행 중이므로 중복 실행을 건너뜁니다.");
-        return new IngestAlreadyRunningException("마이홈 공고 매핑이 이미 실행 중입니다.");
     }
 }

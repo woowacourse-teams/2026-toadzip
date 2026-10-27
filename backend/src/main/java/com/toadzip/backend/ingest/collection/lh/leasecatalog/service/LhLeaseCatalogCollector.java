@@ -10,9 +10,6 @@ import com.toadzip.backend.ingest.collection.paging.domain.PagedCollectionBuffer
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.util.UUID;
@@ -27,13 +24,10 @@ public class LhLeaseCatalogCollector {
     private final LhLeaseCatalogApiRepository apiRepository;
     private final LhLeaseCatalogStorageService storage;
     private final SourceCollectionRecordService records;
-    private final IngestOperationLock executionLock;
     private final Clock clock;
 
     public UUID collect(LhLeaseCatalogCollectionRequest request) {
-        return executionLock.tryRun(Operation.LH_LEASE_CATALOG_COLLECTION,
-                () -> collectUnlocked(request, page -> apiRepository.fetch(request, page)))
-                .orElseThrow(() -> new IngestAlreadyRunningException("LH 임대 카탈로그 수집이 이미 실행 중입니다."));
+        return collectPages(request, page -> apiRepository.fetch(request, page));
     }
 
     UUID collectWithinBatch(
@@ -43,10 +37,10 @@ public class LhLeaseCatalogCollector {
 
         return retry.collectPages(ExternalDataSource.LH_LEASE_CATALOG,
                 page -> "PG_SZ=" + request.pageSize() + "&PAGE=" + page, counter,
-                page -> apiRepository.fetch(request, page), fetch -> collectUnlocked(request, fetch));
+                page -> apiRepository.fetch(request, page), fetch -> collectPages(request, fetch));
     }
 
-    private UUID collectUnlocked(
+    private UUID collectPages(
             LhLeaseCatalogCollectionRequest request,
             IntFunction<SourcePage<LhCatalogSourceSnapshot>> fetch
     ) {

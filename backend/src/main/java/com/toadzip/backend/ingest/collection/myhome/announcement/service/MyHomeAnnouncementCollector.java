@@ -10,11 +10,8 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHo
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.util.UUID;
@@ -29,32 +26,27 @@ public class MyHomeAnnouncementCollector {
     private final MyHomeAnnouncementStorageService storage;
     private final SourceCollectionRecordService records;
     private final MyHomeAnnouncementApiRepository apiRepository;
-    private final IngestOperationLock executionLock;
     private final Clock clock;
 
     public UUID collect(MyHomeAnnouncementCollectionRequest request) {
-        return executionLock.tryRun(Operation.MYHOME_ANNOUNCEMENT_COLLECTION,
-                () -> collectUnlocked(request, page -> apiRepository.fetch(request, page)))
-                .orElseThrow(() -> new IngestAlreadyRunningException("마이홈 공고 수집이 이미 실행 중입니다."));
+        return collectPages(request, page -> apiRepository.fetch(request, page));
     }
 
     /** 목록의 모든 페이지를 검증하지만 해당 공고만 저장한다. 전체 수집 완료 처리는 하지 않는다. */
     public int collectAnnouncement(String pblancId, ExternalDataRetryExecutor retry) {
-        return executionLock.tryRun(Operation.MYHOME_ANNOUNCEMENT_COLLECTION, () -> {
-            UUID executionId = IngestExecutionContext.currentExecutionId().orElseGet(UUID::randomUUID);
-            var counter = new ExternalDataCallCounter();
-            int stored = 0;
-            for (MyHomeAnnouncementSupplyType type : MyHomeAnnouncementSupplyType.values()) {
-                var request = new MyHomeAnnouncementCollectionRequest(
-                        executionId, type.requestCode(), 500, 1000, clock.instant(), pblancId);
-                UUID recordId = collectWithinBatch(request, retry, counter);
-                stored += records.storedRowCount(recordId);
-            }
-            if (stored == 0) {
-                throw new InvalidIngestRequestException("공고를 찾을 수 없습니다: " + pblancId);
-            }
-            return stored;
-        }).orElseThrow(() -> new IngestAlreadyRunningException("마이홈 공고 수집이 이미 실행 중입니다."));
+        UUID executionId = IngestExecutionContext.currentExecutionId().orElseGet(UUID::randomUUID);
+        var counter = new ExternalDataCallCounter();
+        int stored = 0;
+        for (MyHomeAnnouncementSupplyType type : MyHomeAnnouncementSupplyType.values()) {
+            var request = new MyHomeAnnouncementCollectionRequest(
+                    executionId, type.requestCode(), 500, 1000, clock.instant(), pblancId);
+            UUID recordId = collectWithinBatch(request, retry, counter);
+            stored += records.storedRowCount(recordId);
+        }
+        if (stored == 0) {
+            throw new InvalidIngestRequestException("공고를 찾을 수 없습니다: " + pblancId);
+        }
+        return stored;
     }
 
     UUID collectWithinBatch(
@@ -65,10 +57,10 @@ public class MyHomeAnnouncementCollector {
         return retry.collectPages(ExternalDataSource.MYHOME_ANNOUNCEMENT,
                 page -> "suplyTy=" + request.supplyTypeCode() + "&pageNo=" + page
                         + "&numOfRows=" + request.pageSize(), counter,
-                page -> apiRepository.fetch(request, page), fetch -> collectUnlocked(request, fetch));
+                page -> apiRepository.fetch(request, page), fetch -> collectPages(request, fetch));
     }
 
-    private UUID collectUnlocked(
+    private UUID collectPages(
             MyHomeAnnouncementCollectionRequest request,
             IntFunction<SourcePage<MyHomeAnnouncementSourceSnapshot>> fetch
     ) {

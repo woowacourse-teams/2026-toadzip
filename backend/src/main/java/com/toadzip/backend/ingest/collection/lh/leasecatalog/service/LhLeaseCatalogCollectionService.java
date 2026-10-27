@@ -9,10 +9,8 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +22,6 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class LhLeaseCatalogCollectionService {
 
-    private final IngestOperationLock executionLock;
     private final LhLeaseCatalogCollector collector;
     private final SourceCollectionRecordService records;
     private final ExternalDataFailureRecorder failureRecorder;
@@ -32,12 +29,6 @@ public class LhLeaseCatalogCollectionService {
     private final Clock clock;
 
     public ExternalDataCollectionReport collect(LhLeaseCatalogCollectionRequest request) {
-        return executionLock.tryRun(IngestOperationLock.Operation.LH_LEASE_CATALOG_COLLECTION,
-                () -> collectUnlocked(request)).orElseThrow(
-                () -> new IngestAlreadyRunningException("LH 임대 카탈로그 수집이 이미 실행 중입니다."));
-    }
-
-    private ExternalDataCollectionReport collectUnlocked(LhLeaseCatalogCollectionRequest request) {
         var counter = new ExternalDataCallCounter();
         int stored;
         IngestExecutionScope.beginWork("LH 임대 카탈로그", "페이지", -1);

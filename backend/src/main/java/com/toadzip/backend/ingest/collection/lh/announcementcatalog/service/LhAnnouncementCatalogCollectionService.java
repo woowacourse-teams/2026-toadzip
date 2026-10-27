@@ -8,10 +8,8 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
@@ -29,18 +27,12 @@ public class LhAnnouncementCatalogCollectionService {
     private static final int MAX_PAGES = 1_000;
 
     private final LhAnnouncementCatalogCollector collector;
-    private final IngestOperationLock executionLock;
     private final ExternalDataRetryExecutor retryExecutor;
     private final ExternalDataFailureRecorder failureRecorder;
     private final MeterRegistry meterRegistry;
     private final Clock clock;
 
     public ExternalDataCollectionReport collect() {
-        return executionLock.tryRun(IngestOperationLock.Operation.LH_ANNOUNCEMENT_COLLECTION, this::collectUnlocked)
-                .orElseThrow(() -> new IngestAlreadyRunningException("LH 공고 목록 수집이 이미 실행 중입니다."));
-    }
-
-    private ExternalDataCollectionReport collectUnlocked() {
         var counter = new ExternalDataCallCounter();
         LhAnnouncementCatalogStorageService.StoreResult result;
         IngestExecutionScope.beginWork("LH 공고 목록", "페이지", -1);

@@ -1,13 +1,11 @@
 package com.toadzip.backend.ingest.collection.service;
 
-import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.LH_ANNOUNCEMENT_COLLECTION;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -40,11 +38,9 @@ import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementEx
 import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.MockClock;
@@ -60,7 +56,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -68,7 +63,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -94,9 +88,6 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Mock
     private LhAnnouncementExternalRepository externalRepository;
-
-    @Mock
-    private IngestOperationLock executionLock;
 
     @Mock
     private LhAnnouncementCatalogSourceReader catalogRepository;
@@ -128,11 +119,6 @@ class LhAnnouncementExternalCollectionServiceTest {
                 });
         metricClock = new MockClock();
         meterRegistry = new SimpleMeterRegistry(SimpleConfig.DEFAULT, metricClock);
-        lenient().when(executionLock.<ExternalDataCollectionReport>tryRun(eq(LH_ANNOUNCEMENT_COLLECTION), any()))
-                .thenAnswer(invocation -> {
-                    Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(1);
-                    return Optional.of(operation.get());
-                });
         LhAnnouncementCollectionProgressManager progressManager =
                 new LhAnnouncementCollectionProgressManager(
                         progressStore,
@@ -149,7 +135,6 @@ class LhAnnouncementExternalCollectionServiceTest {
         );
         service = new LhAnnouncementExternalCollectionService(
                 myHomeAnnouncementRepository,
-                executionLock,
                 progressManager,
                 failureRecorder,
                 new LhAnnouncementCollectionCandidateResolver(catalogRepository),
@@ -1429,16 +1414,6 @@ class LhAnnouncementExternalCollectionServiceTest {
         assertThat(supplies.storedRowCount()).isOne();
         assertThat(details.failedRequestCount()).isZero();
         assertThat(supplies.failedRequestCount()).isZero();
-    }
-
-    @Test
-    void 같은_API_수집이_실행_중이면_외부_API를_호출하지_않는다() {
-        doReturn(Optional.empty()).when(executionLock).tryRun(eq(LH_ANNOUNCEMENT_COLLECTION), any());
-
-        assertThatThrownBy(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL))
-                .isInstanceOf(IngestAlreadyRunningException.class);
-
-        verify(externalRepository, never()).fetchDetail(any());
     }
 
     @Test

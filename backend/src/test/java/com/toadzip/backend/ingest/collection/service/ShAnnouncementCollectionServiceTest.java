@@ -1,6 +1,5 @@
 package com.toadzip.backend.ingest.collection.service;
 
-import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.SH_ANNOUNCEMENT_COLLECTION;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -11,14 +10,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.repository.ShAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.ShAnnouncementStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.ShAnnouncementListParser;
 import com.toadzip.backend.ingest.collection.repository.external.ShAnnouncementHtmlParser;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
@@ -26,8 +23,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Optional;
-import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,17 +40,12 @@ class ShAnnouncementCollectionServiceTest {
     @Mock
     private ShAnnouncementStore store;
     @Mock
-    private IngestOperationLock lock;
-    @Mock
     private ExternalDataFailureRecorder failures;
 
     private ShAnnouncementCollectionService service;
 
     @BeforeEach
     void setUp() {
-        when(lock.<ExternalDataCollectionReport>tryRun(eq(SH_ANNOUNCEMENT_COLLECTION), any()))
-                .thenAnswer(invocation -> Optional.of(invocation.<Supplier<ExternalDataCollectionReport>>getArgument(1)
-                        .get()));
         service = service(90);
     }
 
@@ -197,7 +187,7 @@ class ShAnnouncementCollectionServiceTest {
     private ShAnnouncementCollectionService service(int days) {
         var metrics = new SimpleMeterRegistry();
         return new ShAnnouncementCollectionService(externalRepository, new ShAnnouncementListParser(), detailParser, store,
-                lock, new ExternalDataRetryExecutor(Duration.ZERO, metrics), failures,
+                new ExternalDataRetryExecutor(Duration.ZERO, metrics), failures,
                 Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), days, Duration.ZERO);
     }
 

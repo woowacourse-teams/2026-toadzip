@@ -1,13 +1,9 @@
 package com.toadzip.backend.ingest.collection.service;
 
-import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.MYHOME_ANNOUNCEMENT_COLLECTION;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -25,14 +21,10 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeA
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementStorageService;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,9 +44,6 @@ class MyHomeAnnouncementCollectionServiceTest {
     private MyHomeAnnouncementExternalRepository externalRepository;
 
     @Mock
-    private IngestOperationLock executionLock;
-
-    @Mock
     private MyHomeAnnouncementStorageService storage;
 
     @Mock
@@ -68,11 +57,7 @@ class MyHomeAnnouncementCollectionServiceTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        lenient().when(executionLock.tryRun(eq(MYHOME_ANNOUNCEMENT_COLLECTION), any())).thenAnswer(invocation -> {
-            Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(1);
-            return Optional.of(operation.get());
-        });
-        service = new CollectionServiceTestFixture().announcement(externalRepository, storage, lifecycle, executionLock,
+        service = new CollectionServiceTestFixture().announcement(externalRepository, storage, lifecycle,
                 failureRecorder, new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry()));
     }
 
@@ -103,18 +88,6 @@ class MyHomeAnnouncementCollectionServiceTest {
         assertThat(small.externalApiCallCount()).isEqualTo(174);
         assertThat(large.externalApiCallCount()).isEqualTo(8);
         verify(lifecycle, times(2)).completeRun(any());
-    }
-
-    @Test
-    @DisplayName("이미 실행 중이면 중복 수집을 거절한다")
-    void rejectsConcurrentCollection() {
-        doReturn(Optional.empty()).when(executionLock).tryRun(eq(MYHOME_ANNOUNCEMENT_COLLECTION), any());
-
-        assertThatThrownBy(() -> service.collect(new MyHomeAnnouncementCollectionRequest(2, 10)))
-                .isInstanceOf(IngestAlreadyRunningException.class)
-                .hasMessage("마이홈 공고 수집이 이미 실행 중입니다.");
-
-        verify(externalRepository, never()).fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt());
     }
 
     @Test

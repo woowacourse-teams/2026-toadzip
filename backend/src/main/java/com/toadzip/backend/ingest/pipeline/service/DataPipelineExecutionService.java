@@ -131,7 +131,7 @@ public class DataPipelineExecutionService {
                     INTERRUPTED_FAILURE_MESSAGE
             );
             recoverTerminalCollections(startedAt);
-            collectionRecovery.recoverUnlinkedCollections();
+            collectionRecovery.recoverUnlinkedCollections(lease);
             execution = createExecution(executionId, type, targetIdentifier, startedAt);
         }
         catch (RuntimeException exception) {
@@ -376,7 +376,7 @@ public class DataPipelineExecutionService {
         }
         try (var lease = recoveryLease.orElseThrow()) {
             lease.verifyHeld();
-            collectionRecovery.recoverUnlinkedCollections();
+            collectionRecovery.recoverUnlinkedCollections(lease);
             Instant now = Instant.now(clock);
             try {
                 executionStateService.recoverInterruptedBefore(

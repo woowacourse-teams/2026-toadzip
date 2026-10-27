@@ -1,7 +1,6 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
 import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
-import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.LH_ANNOUNCEMENT_ENRICHMENT;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
@@ -28,13 +27,11 @@ import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMap
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter.LhAnnouncementEnrichmentWriteResult;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter.LhSupplyMatchingFailureData;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.service.LhSupplyRowLinks;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -61,7 +58,6 @@ public class LhAnnouncementEnrichmentService {
     private final LhAnnouncementEnrichmentFailureRepository failureRepository;
     private final LhAnnouncementEnrichmentFailureStore failureStore;
     private final MyHomeAnnouncementMappingFailureRepository mappingFailureRepository;
-    private final IngestOperationLock executionLock;
     private final LhAnnouncementEnrichmentMapper mapper;
     private final LhAnnouncementEnrichmentWriter writer;
     private final LhAnnouncementLinkResolver linkResolver;
@@ -70,11 +66,6 @@ public class LhAnnouncementEnrichmentService {
     private final Clock clock;
 
     public LhAnnouncementEnrichmentReport enrichAll() {
-        return executionLock.tryRun(LH_ANNOUNCEMENT_ENRICHMENT, this::enrichAllUnlocked)
-                .orElseThrow(this::alreadyRunning);
-    }
-
-    private LhAnnouncementEnrichmentReport enrichAllUnlocked() {
         Instant occurredAt = clock.instant();
         List<LhAnnouncementEnrichmentFailure> failures = new ArrayList<>();
         Set<String> incompleteMappingIds = mappingFailureRepository.findAllByStatus(PENDING)
@@ -270,10 +261,5 @@ public class LhAnnouncementEnrichmentService {
 
     private boolean blank(String value) {
         return value == null || value.isBlank();
-    }
-
-    private IngestAlreadyRunningException alreadyRunning() {
-        log.warn("LH 공고 보강이 이미 실행 중이므로 중복 실행을 건너뜁니다.");
-        return new IngestAlreadyRunningException("LH 공고 보강이 이미 실행 중입니다.");
     }
 }

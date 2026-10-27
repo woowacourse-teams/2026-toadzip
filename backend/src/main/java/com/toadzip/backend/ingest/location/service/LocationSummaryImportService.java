@@ -1,9 +1,6 @@
 package com.toadzip.backend.ingest.location.service;
 
-import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.MYHOME_COMPLEX_MAPPING;
-
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.location.domain.LocationSummaryRecord;
 import com.toadzip.backend.ingest.location.domain.NormalizedRoadAddress;
@@ -11,7 +8,6 @@ import com.toadzip.backend.ingest.location.dto.LocationSummaryImportReport;
 import com.toadzip.backend.ingest.location.repository.LocationSummaryStore;
 import com.toadzip.backend.ingest.location.repository.external.LocationSummaryFileParseResult;
 import com.toadzip.backend.ingest.location.repository.external.LocationSummaryFileParser;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -52,32 +48,21 @@ public class LocationSummaryImportService {
 
     private final MyHomeComplexSourceReader sourceRepository;
 
-    private final IngestOperationLock executionLock;
-
     private final TransactionTemplate transactionTemplate;
 
     public LocationSummaryImportService(
             LocationSummaryFileParser parser,
             LocationSummaryStore locationStore,
             MyHomeComplexSourceReader sourceRepository,
-            IngestOperationLock executionLock,
             TransactionTemplate transactionTemplate
     ) {
         this.parser = parser;
         this.locationStore = locationStore;
         this.sourceRepository = sourceRepository;
-        this.executionLock = executionLock;
         this.transactionTemplate = transactionTemplate;
     }
 
     public LocationSummaryImportReport importMatches(String sourceFileName, InputStream input) {
-        return executionLock.tryRun(MYHOME_COMPLEX_MAPPING, () -> importUnlocked(sourceFileName, input))
-                .orElseThrow(() -> new IngestAlreadyRunningException(
-                "단지 매핑 또는 위치정보요약DB 선별 적재가 이미 실행 중입니다."
-        ));
-    }
-
-    private LocationSummaryImportReport importUnlocked(String sourceFileName, InputStream input) {
         Set<String> targetAddresses = normalizedTargetAddresses();
         if (targetAddresses.isEmpty()) {
             throw new InvalidIngestRequestException(

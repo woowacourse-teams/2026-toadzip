@@ -22,7 +22,6 @@ import com.toadzip.backend.ingest.collection.lh.repository.external.LhAnnounceme
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.pipeline.repository.IngestExecutionOwnershipRepository;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -78,7 +77,7 @@ import tools.jackson.databind.json.JsonMapper;
         SourceCollectionRecordService.class,
         LhAnnouncementCatalogWriteLock.class,
         LhAnnouncementCatalogApiRepository.class,
-        LhAnnouncementCircuitBreaker.class, LhAnnouncementCatalogPageParser.class, IngestOperationLock.class,
+        LhAnnouncementCircuitBreaker.class, LhAnnouncementCatalogPageParser.class,
         IngestWriteOwnershipGuard.class, IngestExecutionOwnershipRepository.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)

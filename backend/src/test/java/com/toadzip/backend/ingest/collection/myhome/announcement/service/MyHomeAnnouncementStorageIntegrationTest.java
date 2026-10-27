@@ -26,12 +26,10 @@ import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApi
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeResponseStatusValidator;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
 import com.toadzip.backend.ingest.pipeline.repository.IngestExecutionOwnershipRepository;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionStateService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
@@ -97,7 +95,7 @@ import tools.jackson.databind.json.JsonMapper;
         MyHomeAnnouncementRunRepository.class,
         IngestWriteOwnershipGuard.class,
         IngestExecutionOwnershipRepository.class, MyHomeAnnouncementCollector.class,
-        MyHomeAnnouncementApiRepository.class, MyHomeAnnouncementPageParser.class, IngestOperationLock.class})
+        MyHomeAnnouncementApiRepository.class, MyHomeAnnouncementPageParser.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -134,9 +132,6 @@ class MyHomeAnnouncementStorageIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
-
-    @Autowired
-    private IngestOperationLock executionLock;
 
     @Autowired
     private MyHomeAnnouncementCollectionRepository sourceRepository;
@@ -1068,18 +1063,6 @@ class MyHomeAnnouncementStorageIntegrationTest {
 
         assertThat(sourceRepository.count()).isZero();
         assertFailedAttempt("resultCode=" + resultCode);
-    }
-
-    @Test
-    void rejectsConcurrentCollectionBeforeStartingHttpOrCreatingARecord() {
-        executionLock.tryRun(IngestOperationLock.Operation.MYHOME_ANNOUNCEMENT_COLLECTION, () -> {
-            assertThatThrownBy(() -> collector.collect(request("01", 2)))
-                    .isInstanceOf(IngestAlreadyRunningException.class);
-            return true;
-        }).orElseThrow();
-
-        assertThat(sourceRepository.count()).isZero();
-        assertThat(records()).isEmpty();
     }
 
     private String apiUrl(int page) {

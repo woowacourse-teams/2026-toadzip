@@ -75,7 +75,7 @@ class MyHomeComplexCollectionServiceTest {
     void setUp() {
         var regionCollector = new CollectionServiceTestFixture().complex(externalRepository, regionCatalog,
                 storage, failureRecorder, new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry()));
-        service = new MyHomeComplexCollectionService(regionCatalog, regionCollector, CollectionServiceTestFixture.lock());
+        service = new MyHomeComplexCollectionService(regionCatalog, regionCollector);
     }
 
     @Test
@@ -587,7 +587,7 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeComplexRegionCollectionService concurrentCollector = mock(MyHomeComplexRegionCollectionService.class);
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
                 regionCatalog,
-                concurrentCollector, CollectionServiceTestFixture.lock()
+                concurrentCollector
         );
         String executionId = UUID.randomUUID().toString();
         when(regionCatalog.findAll()).thenReturn(List.of(seoul, busan));
@@ -647,7 +647,7 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeComplexRegionCollectionService concurrentCollector = mock(MyHomeComplexRegionCollectionService.class);
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
                 regionCatalog,
-                concurrentCollector, CollectionServiceTestFixture.lock()
+                concurrentCollector
         );
         CountDownLatch slowWorkerStarted = new CountDownLatch(1);
         CountDownLatch rateLimitReturned = new CountDownLatch(1);
@@ -710,7 +710,7 @@ class MyHomeComplexCollectionServiceTest {
         var retryingCollector = new CollectionServiceTestFixture().complex(externalRepository, regionCatalog,
                 storage, failureRecorder, new ExternalDataRetryExecutor(Duration.ofSeconds(30), new SimpleMeterRegistry()));
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
-                regionCatalog, retryingCollector, CollectionServiceTestFixture.lock());
+                regionCatalog, retryingCollector);
         CountDownLatch retryRequestStarted = new CountDownLatch(1);
         when(regionCatalog.findAll()).thenReturn(List.of(retryingRegion, rateLimitedRegion));
         when(externalRepository.fetch(retryingRegion, request, 1))
@@ -748,7 +748,7 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeComplexRegionCollectionService concurrentCollector = mock(MyHomeComplexRegionCollectionService.class);
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
                 regionCatalog,
-                concurrentCollector, CollectionServiceTestFixture.lock()
+                concurrentCollector
         );
         CountDownLatch slowWorkerStarted = new CountDownLatch(1);
         CountDownLatch slowWorkerInterrupted = new CountDownLatch(1);

@@ -1,6 +1,5 @@
 package com.toadzip.backend.ingest.collection.service;
 
-import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.LH_ANNOUNCEMENT_COLLECTION;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -9,7 +8,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.fixture.dto.LhAnnouncementCatalogPage.Entry;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhCatalogStorageFixtures.StoreResult;
@@ -22,12 +20,9 @@ import com.toadzip.backend.ingest.collection.lh.announcementcatalog.service.LhAn
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
-import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,8 +42,6 @@ class LhAnnouncementCatalogCollectionServiceTest {
     @Mock
     private LhCatalogStorageFixtures store;
     @Mock
-    private IngestOperationLock lock;
-    @Mock
     private ExternalDataFailureRecorder failureRecorder;
 
     private LhAnnouncementCatalogCollectionService service;
@@ -56,16 +49,11 @@ class LhAnnouncementCatalogCollectionServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(lock.<ExternalDataCollectionReport>tryRun(eq(LH_ANNOUNCEMENT_COLLECTION), any()))
-                .thenAnswer(invocation -> {
-                    Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(1);
-                    return Optional.of(operation.get());
-                });
         when(externalRepository.fetchCatalog(anyInt(), eq(500))).thenReturn(
                 JsonMapper.builder().build().createObjectNode()
         );
         meterRegistry = new SimpleMeterRegistry();
-        service = new CollectionServiceTestFixture().catalog(externalRepository, parser, store, lock,
+        service = new CollectionServiceTestFixture().catalog(externalRepository, parser, store,
                 failureRecorder, new ExternalDataRetryExecutor(Duration.ZERO, meterRegistry), meterRegistry);
     }
 

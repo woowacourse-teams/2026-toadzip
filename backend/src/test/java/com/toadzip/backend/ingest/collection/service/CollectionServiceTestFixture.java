@@ -61,16 +61,13 @@ import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComple
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexRegionCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexStorageService;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -86,15 +83,6 @@ public final class CollectionServiceTestFixture {
         lenient().when(records.start(any())).thenAnswer(invocation -> UUID.randomUUID());
         lenient().when(records.storedRowCount(any())).thenAnswer(
                 invocation -> storedCounts.get(invocation.<UUID>getArgument(0)));
-    }
-
-    static IngestOperationLock lock() {
-        var lock = mock(IngestOperationLock.class);
-        lenient().when(lock.tryRun(any(), any())).thenAnswer(invocation -> {
-            Supplier<Object> action = invocation.getArgument(1);
-            return Optional.of(action.get());
-        });
-        return lock;
     }
 
     MyHomeComplexRegionCollectionService complex(
@@ -122,7 +110,7 @@ public final class CollectionServiceTestFixture {
             return null;
         }).when(storage).complete(any(), any(), any());
         var collector = new MyHomeComplexCollector(
-                storage, records, api, regions, lock(), CLOCK);
+                storage, records, api, regions, CLOCK);
         return new MyHomeComplexRegionCollectionService(
                 collector, records, failures, retry, CLOCK);
     }
@@ -130,7 +118,7 @@ public final class CollectionServiceTestFixture {
     MyHomeAnnouncementCollectionService announcement(
             MyHomeAnnouncementExternalRepository external,
             MyHomeAnnouncementStorageService storage, MyHomeAnnouncementLifecycleService lifecycle,
-            IngestOperationLock lock, ExternalDataFailureRecorder failures, ExternalDataRetryExecutor retry
+            ExternalDataFailureRecorder failures, ExternalDataRetryExecutor retry
     ) {
         var api = mock(MyHomeAnnouncementApiRepository.class);
         var parser = new MyHomeAnnouncementPageParser(mapper);
@@ -148,9 +136,9 @@ public final class CollectionServiceTestFixture {
             return null;
         }).when(storage).complete(any(), any(), any());
         var collector = new MyHomeAnnouncementCollector(
-                storage, records, api, lock, CLOCK);
+                storage, records, api, CLOCK);
         return new MyHomeAnnouncementCollectionService(
-                lock, collector, lifecycle, records, failures, retry, CLOCK);
+                collector, lifecycle, records, failures, retry, CLOCK);
     }
 
     LhLeaseCatalogCollectionService lease(
@@ -175,18 +163,17 @@ public final class CollectionServiceTestFixture {
             storedCounts.put(invocation.getArgument(0), fixtures.replaceCatalog(rows));
             return null;
         }).when(storage).complete(any(), any(), any());
-        var lock = lock();
         var collector = new LhLeaseCatalogCollector(
-                api, storage, records, lock, CLOCK);
+                api, storage, records, CLOCK);
         return new LhLeaseCatalogCollectionService(
-                lock, collector, records, failures, retry, CLOCK);
+                collector, records, failures, retry, CLOCK);
     }
 
     LhAnnouncementCatalogCollectionService catalog(
             LhAnnouncementExternalRepository external,
             LhAnnouncementCatalogPageParser parser,
             LhCatalogStorageFixtures fixtures,
-            IngestOperationLock lock, ExternalDataFailureRecorder failures, ExternalDataRetryExecutor retry,
+            ExternalDataFailureRecorder failures, ExternalDataRetryExecutor retry,
             MeterRegistry meters
     ) {
         var api = mock(LhAnnouncementCatalogApiRepository.class);
@@ -209,9 +196,9 @@ public final class CollectionServiceTestFixture {
                     result.storedRowCount(), result.newRowCount(), result.changedRowCount());
         });
         var collector = new LhAnnouncementCatalogCollector(
-                api, storage, records, lock, CLOCK);
+                api, storage, records, CLOCK);
         return new LhAnnouncementCatalogCollectionService(
-                collector, lock, retry, failures, meters, CLOCK);
+                collector, retry, failures, meters, CLOCK);
     }
 
     public LhAnnouncementQueryCollector query(

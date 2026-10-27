@@ -11,9 +11,6 @@ import com.toadzip.backend.ingest.collection.paging.domain.PagedCollectionBuffer
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.util.UUID;
@@ -28,13 +25,10 @@ public class LhAnnouncementCatalogCollector {
     private final LhAnnouncementCatalogApiRepository apiRepository;
     private final LhAnnouncementCatalogStorageService storage;
     private final SourceCollectionRecordService records;
-    private final IngestOperationLock executionLock;
     private final Clock clock;
 
     public UUID collect(LhAnnouncementCatalogCollectionRequest request) {
-        return executionLock.tryRun(Operation.LH_ANNOUNCEMENT_COLLECTION,
-                () -> collectUnlocked(request, page -> apiRepository.fetch(request, page)).id())
-                .orElseThrow(() -> new IngestAlreadyRunningException("LH 공고 목록 수집이 이미 실행 중입니다."));
+        return collectPages(request, page -> apiRepository.fetch(request, page)).id();
     }
 
     LhAnnouncementCatalogStorageService.StoreResult collectWithinBatch(
@@ -44,10 +38,10 @@ public class LhAnnouncementCatalogCollector {
 
         return retry.collectPages(ExternalDataSource.LH_ANNOUNCEMENT_CATALOG,
                 page -> "PG_SZ=" + request.pageSize() + "&PAGE=" + page, counter,
-                page -> apiRepository.fetch(request, page), fetch -> collectUnlocked(request, fetch).stored());
+                page -> apiRepository.fetch(request, page), fetch -> collectPages(request, fetch).stored());
     }
 
-    private CollectionResult collectUnlocked(
+    private CollectionResult collectPages(
             LhAnnouncementCatalogCollectionRequest request,
             IntFunction<LhAnnouncementCatalogPage> fetch
     ) {

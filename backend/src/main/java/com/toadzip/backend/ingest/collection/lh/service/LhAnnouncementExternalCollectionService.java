@@ -1,7 +1,5 @@
 package com.toadzip.backend.ingest.collection.lh.service;
 
-import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.LH_ANNOUNCEMENT_COLLECTION;
-
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.lh.configuration.LhAnnouncementClientProperties;
@@ -11,10 +9,8 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollection
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.ArrayList;
@@ -51,7 +47,6 @@ public class LhAnnouncementExternalCollectionService {
     private static final int ANNOUNCEMENT_BATCH_SIZE = 500;
 
     private final MyHomeAnnouncementSourceReader myHomeAnnouncementRepository;
-    private final IngestOperationLock executionLock;
     private final LhAnnouncementCollectionProgressManager progressManager;
     private final ExternalDataFailureRecorder failureRecorder;
     private final LhAnnouncementCollectionCandidateResolver candidateResolver;
@@ -63,9 +58,7 @@ public class LhAnnouncementExternalCollectionService {
     public ExternalDataCollectionReport collect(ExternalDataSource targetSource) {
         validateTargetSource(targetSource);
         log.info("{} 수집을 시작합니다.", targetSource.operation());
-        ExternalDataCollectionReport report = executionLock
-                .tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> collectAnnouncements(targetSource))
-                .orElseThrow(() -> alreadyRunning(targetSource));
+        ExternalDataCollectionReport report = collectAnnouncements(targetSource);
         log.info(
                 "{} 수집을 완료했습니다: storedRowCount={}, failedRequestCount={}, "
                         + "externalApiCallCount={}, skippedRequestCount={}",
@@ -88,10 +81,7 @@ public class LhAnnouncementExternalCollectionService {
         validateTargetSource(targetSource);
         validatePblancId(pblancId);
         log.info("{} 강제 갱신을 시작합니다: pblancId={}", targetSource.operation(), pblancId);
-        ExternalDataCollectionReport report = executionLock
-                .tryRun(LH_ANNOUNCEMENT_COLLECTION,
-                        () -> refreshAnnouncement(targetSource, pblancId.strip(), sourceExecutionId))
-                .orElseThrow(() -> alreadyRunning(targetSource));
+        ExternalDataCollectionReport report = refreshAnnouncement(targetSource, pblancId.strip(), sourceExecutionId);
         log.info(
                 "{} 강제 갱신을 완료했습니다: pblancId={}, storedRowCount={}, failedRequestCount={}, "
                         + "externalApiCallCount={}, skippedRequestCount={}",
@@ -596,11 +586,6 @@ public class LhAnnouncementExternalCollectionService {
         if (pblancId == null || pblancId.isBlank()) {
             throw new InvalidIngestRequestException("공고 식별자는 필수입니다.");
         }
-    }
-
-    private IngestAlreadyRunningException alreadyRunning(ExternalDataSource targetSource) {
-        log.warn("{} 수집이 이미 실행 중이므로 중복 실행을 건너뜁니다.", targetSource.operation());
-        return new IngestAlreadyRunningException(targetSource.operation() + " 수집이 이미 실행 중입니다.");
     }
 
 }

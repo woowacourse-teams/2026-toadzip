@@ -29,13 +29,11 @@ import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApi
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeResponseStatusValidator;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
 import com.toadzip.backend.ingest.pipeline.repository.IngestExecutionOwnershipRepository;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionStateService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
@@ -107,7 +105,7 @@ import tools.jackson.databind.json.JsonMapper;
         ExternalDataRetryExecutor.class,
         SourceCollectionRecordService.class, MyHomeComplexStorageService.class, IngestWriteOwnershipGuard.class, IngestExecutionOwnershipRepository.class,
         MyHomeComplexCollector.class, MyHomeComplexApiRepository.class, MyHomeComplexPageParser.class,
-        MyHomeRegionCatalog.class, IngestOperationLock.class})
+        MyHomeRegionCatalog.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -144,9 +142,6 @@ class MyHomeComplexStorageIntegrationTest {
 
     @Autowired
     private MutableClock clock;
-
-    @Autowired
-    private IngestOperationLock executionLock;
 
     @Autowired
     private MyHomeComplexCollectionRepository sourceRepository;
@@ -1025,18 +1020,6 @@ class MyHomeComplexStorageIntegrationTest {
         assertThat(source(100L).rows()).containsExactly(original);
         assertThat(region("11", "680")).isEqualTo(previous);
         assertFailedRecord("소유권");
-    }
-
-    @Test
-    void secondConcurrentCollectionIsRejectedBeforeHttpOrRequestRecordCreation() {
-        executionLock.tryRun(IngestOperationLock.Operation.MYHOME_COMPLEX_COLLECTION, () -> {
-            assertThatThrownBy(() -> collector.collect(apiRequest(1000)))
-                    .isInstanceOf(IngestAlreadyRunningException.class);
-            return true;
-        }).orElseThrow();
-
-        assertThat(sourceRepository.count()).isZero();
-        assertThat(records()).isEmpty();
     }
 
     @Test

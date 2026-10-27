@@ -9,9 +9,6 @@ import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeReg
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.util.UUID;
@@ -28,14 +25,11 @@ public class MyHomeComplexCollector {
     private final SourceCollectionRecordService records;
     private final MyHomeComplexApiRepository apiRepository;
     private final MyHomeRegionCatalog regionCatalog;
-    private final IngestOperationLock executionLock;
     private final Clock clock;
 
     public UUID collect(MyHomeComplexCollectionRequest request) {
         regionCatalog.find(request.provinceCode(), request.districtCode());
-        return executionLock.tryRun(Operation.MYHOME_COMPLEX_COLLECTION,
-                () -> collectUnlocked(request, page -> apiRepository.fetch(request, page)))
-                .orElseThrow(() -> new IngestAlreadyRunningException("마이홈 단지 수집이 이미 실행 중입니다."));
+        return collectPages(request, page -> apiRepository.fetch(request, page));
     }
 
     UUID collectWithinBatch(
@@ -46,14 +40,14 @@ public class MyHomeComplexCollector {
         return retry.collectPages(ExternalDataSource.MYHOME_COMPLEX,
                 page -> "brtcCode=" + request.provinceCode() + "&signguCode=" + request.districtCode()
                         + "&pageNo=" + page + "&numOfRows=" + request.pageSize(), counter,
-                page -> apiRepository.fetch(request, page), fetch -> collectUnlocked(request, fetch), () -> {
+                page -> apiRepository.fetch(request, page), fetch -> collectPages(request, fetch), () -> {
                     if (rateLimitReached.get()) {
                         throw new RateLimitCollectionCancelledException();
                     }
                 });
     }
 
-    private UUID collectUnlocked(
+    private UUID collectPages(
             MyHomeComplexCollectionRequest request,
             IntFunction<SourcePage<MyHomeComplexSourceSnapshot>> fetch
     ) {
