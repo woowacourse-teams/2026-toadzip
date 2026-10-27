@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Button } from '../design-system/components/Button'
 import { NotificationDialog } from '../notifications/NotificationDialog'
-import type { InstallPlatform } from './MobileInstallContext'
+import { useMobileInstall, type InstallPlatform } from './MobileInstallContext'
 import styles from './MobileInstall.module.css'
 
 const guides = {
@@ -20,7 +20,9 @@ const guides = {
 export function MobileInstallGuide({ initialPlatform, onClose, notification = false, message = '' }: {
   readonly initialPlatform: InstallPlatform; readonly onClose: () => void; readonly notification?: boolean; readonly message?: string
 }) {
-  const [platform, setPlatform] = useState(initialPlatform)
+  const platform = initialPlatform
+  const install = useMobileInstall()
+  const canInstall = platform === 'android' && install?.platform === 'android' && install.canPrompt
   const [step, setStep] = useState(0)
   const guide = guides[platform][step]
   const [copied, setCopied] = useState(false)
@@ -30,11 +32,11 @@ export function MobileInstallGuide({ initialPlatform, onClose, notification = fa
     catch { setCopyError(true) }
   }
   return <NotificationDialog title={notification ? 'iPhone에서 알림 받기' : '홈 화면에 복덕방 추가하기'} onClose={onClose}>
-    <div className={styles.platforms} role="group" aria-label="휴대폰 종류">
-      {(['ios', 'android'] as const).map(device => <button key={device} type="button" aria-pressed={platform === device}
-        onClick={() => { setPlatform(device); setStep(0) }}>{device === 'ios' ? '아이폰 · Safari' : '안드로이드 · Chrome'}</button>)}
-    </div>
     {message && <p role="status">{message}</p>}
+    {canInstall && <div className={styles.directInstall}>
+      <Button className={styles.add} disabled={install.busy} onClick={install.open}>복덕방 설치하기</Button>
+      <p>설치창에서 ‘설치’를 눌러 주세요.</p>
+    </div>}
     <div className={styles.stepHeading} aria-live="polite"><span>{step + 1} / 3</span><h3>{guide.title}</h3><p>{guide.description}</p></div>
     <figure className={styles.capture}><div className={`${styles.viewport} ${styles[guide.position]}`}><div className={styles.shot}>
         <img src={`/install/${guide.image}`} alt={guide.alt} />
