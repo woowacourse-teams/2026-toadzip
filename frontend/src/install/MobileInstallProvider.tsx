@@ -6,11 +6,6 @@ interface InstallPrompt extends Event {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
-const dismissalKey = 'toadzip.install-dismissed-until'
-const day = 24 * 60 * 60 * 1000
-function dismissedUntil() {
-  try { return Number(localStorage.getItem(dismissalKey)) || 0 } catch { return 0 }
-}
 function standalone() {
   return !!window.matchMedia?.('(display-mode: standalone)').matches
     || ('standalone' in navigator && navigator.standalone === true)
@@ -23,7 +18,7 @@ function platform(): InstallPlatform {
 export function MobileInstallProvider({ children }: { readonly children: ReactNode }) {
   const [narrow, setNarrow] = useState(() => !!window.matchMedia?.('(max-width: 767px)').matches)
   const [installed, setInstalled] = useState(standalone)
-  const [until, setUntil] = useState(dismissedUntil)
+  const [dismissed, setDismissed] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)
   const [canPrompt, setCanPrompt] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -48,31 +43,25 @@ export function MobileInstallProvider({ children }: { readonly children: ReactNo
     const onInstalled = () => {
       setInstalled(true); setGuideOpen(false); setCanPrompt(false); promptRef.current = null
     }
-    const onStorage = (event: StorageEvent) => { if (event.key === dismissalKey) setUntil(dismissedUntil()) }
     width?.addEventListener?.('change', updateWidth)
     display?.addEventListener?.('change', updateDisplay)
     window.addEventListener('beforeinstallprompt', onPrompt)
     window.addEventListener('appinstalled', onInstalled)
-    window.addEventListener('storage', onStorage)
     return () => {
       mounted.current = false
       width?.removeEventListener?.('change', updateWidth)
       display?.removeEventListener?.('change', updateDisplay)
       window.removeEventListener('beforeinstallprompt', onPrompt)
       window.removeEventListener('appinstalled', onInstalled)
-      window.removeEventListener('storage', onStorage)
     }
   }, [])
-  const dismiss = () => {
-    const next = Date.now() + day
-    setUntil(next)
-    try { localStorage.setItem(dismissalKey, String(next)) } catch { /* Keep the preference for this session. */ }
-  }
+  const dismiss = () => setDismissed(true)
   const open = async () => {
     if (requesting.current) return
     setMessage('')
     const event = promptRef.current
     if (device === 'ios' || !event) { setGuideOpen(true); return }
+    setGuideOpen(false)
     requesting.current = true
     setBusy(true)
     promptRef.current = null
@@ -95,7 +84,7 @@ export function MobileInstallProvider({ children }: { readonly children: ReactNo
       if (mounted.current) setBusy(false)
     }
   }
-  return <MobileInstallContext value={{ visible: narrow && !installed, dismissed: until > Date.now(), canPrompt, busy, message, platform: device, open: () => { void open() }, dismiss }}>
+  return <MobileInstallContext value={{ visible: narrow && !installed, dismissed, canPrompt, busy, message, platform: device, open: () => { void open() }, dismiss }}>
     {children}
     {narrow && !installed && guideOpen && <MobileInstallGuide initialPlatform={device} onClose={() => setGuideOpen(false)} message={message} />}
   </MobileInstallContext>
