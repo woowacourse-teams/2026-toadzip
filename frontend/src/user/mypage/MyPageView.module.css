@@ -6,7 +6,7 @@
 .single { box-sizing: border-box; display: grid; gap: var(--ds-space-3); max-width: 600px; padding: 0 var(--ds-space-7) var(--ds-space-6); }
 .page > .pageHeader { padding: var(--ds-space-6) var(--ds-space-7) var(--ds-space-4); }
 
-/* 넓은 화면: 왼쪽 흰 메뉴 영역은 화면 높이를 채우고, 오른쪽에 섹션 카드를 쌓는다. */
+/* 넓은 화면: 왼쪽 메뉴와 오른쪽 관리 영역을 나란히 배치한다. */
 .columns { display: grid; grid-template-columns: minmax(320px, 400px) minmax(0, 1fr); min-height: 100%; }
 .hub { position: sticky; top: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--ds-space-3); height: 100dvh; padding: var(--ds-space-7) var(--ds-space-6) var(--ds-space-5); overflow-y: auto; border-right: 1px solid var(--ds-color-divider); background: var(--ds-color-surface); }
 .hub > .pageHeader { padding-bottom: var(--ds-space-2); }
@@ -129,8 +129,25 @@ button.item:focus-visible { outline: 2px solid var(--ds-color-action); outline-o
   .kinds button { padding-inline: var(--ds-space-3); }
 }
 
-/* 넓은 화면의 왼쪽 메뉴 행은 모서리와 행 구분선 없이 둔다. */
+/* 넓은 화면에서는 바깥 페이지 대신 관리 카드의 본문만 스크롤한다.
+   높이가 낮거나 확대된 화면에서는 왼쪽 메뉴도 자체 스크롤로 접근할 수 있다. */
 @media (min-width: 1024px) {
+  .page:has(.columns) { overflow: hidden; overscroll-behavior-y: none; }
+  .columns { height: 100%; min-height: 0; }
+  .hub { position: static; height: 100%; min-height: 0; overscroll-behavior-y: none; }
+  .hub > * { flex-shrink: 0; }
+  .lists { height: 100%; min-height: 0; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+  .lists > .sub { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .lists > .sub > .subHeader, .lists > .sub > .kinds { flex-shrink: 0; }
+  .lists > .sub > [role=tabpanel] { flex: 1; min-height: 0; margin-inline-end: calc(-1 * var(--ds-space-3)); padding-inline-end: var(--ds-space-3); overflow-y: auto; overscroll-behavior-y: none; scrollbar-gutter: stable; }
+  .hub, .lists > .sub > [role=tabpanel] { scrollbar-width: thin; scrollbar-color: var(--ds-color-border-base) transparent; }
+  @supports selector(::-webkit-scrollbar) {
+    :is(.hub, .lists > .sub > [role=tabpanel]) { scrollbar-width: auto; scrollbar-color: auto; }
+    :is(.hub, .lists > .sub > [role=tabpanel])::-webkit-scrollbar { width: 6px; }
+    :is(.hub, .lists > .sub > [role=tabpanel])::-webkit-scrollbar-track { background: transparent; }
+    :is(.hub, .lists > .sub > [role=tabpanel])::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--ds-color-border-base); }
+    :is(.hub, .lists > .sub > [role=tabpanel])::-webkit-scrollbar-thumb:hover { background: var(--ds-color-muted); }
+  }
   .hub > .counts.card, .hub > .counts.card > .row { border-radius: 0; }
   .hub > .counts.card > .row + .row { border-top: 0; }
 }
