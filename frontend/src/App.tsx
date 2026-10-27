@@ -12,7 +12,6 @@ import { AdminLayout } from './admin/auth/AdminLayout'
 import { LoginPage } from './admin/auth/LoginPage'
 import { RequireAdmin } from './admin/auth/RequireAdmin'
 import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHousingExplorer.tsx'
-import { MyPage } from './user/mypage/MyPage'
 import { rememberExplorerPath } from './user/auth/loginReturn'
 import { BrandLink } from './BrandLink'
 import { NotificationInterestSessionControl } from './public-housing/interest/NotificationInterest'
@@ -32,6 +31,7 @@ import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { useMobileViewport } from './public-housing/components/useMobileViewport'
 import { clearLoginReturn, loginReturnForBack, safeLoginReturn } from './user/auth/loginReturn'
 import { ExplorerReturnContext } from './public-housing/navigation/ExplorerReturnContext'
+import { MobileInstallProvider } from './install/MobileInstallProvider'
 
 function LandingEntry() {
   const { search, hash } = useLocation()
@@ -145,7 +145,7 @@ export default function App() {
     return <Navigate to={{ pathname: '/explore', search, hash }} state={state} replace />
   }
   return (
-    <>
+    <MobileInstallProvider>
     {pathname !== '/' && <PrivacyBoundary />}
     <ProductAnalyticsBoundary />
     <Routes>
@@ -153,8 +153,8 @@ export default function App() {
       <Route element={<PublicNotificationLayout />}>
         <Route path="/explore" element={<Home />} />
         <Route path="/notifications" element={<NotificationPage />} />
-        <Route path="/mypage" element={<Navigate to="/mypage/bookmarks" replace />} />
-        <Route path="/mypage/:section" element={<MyPage />} />
+        <Route path="/mypage" element={<Home />} />
+        <Route path="/mypage/:section" element={<Home />} />
       </Route>
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/privacy/:key/:version" element={<PrivacyPolicyPage />} />
@@ -164,6 +164,6 @@ export default function App() {
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
-    </>
+    </MobileInstallProvider>
   )
 }

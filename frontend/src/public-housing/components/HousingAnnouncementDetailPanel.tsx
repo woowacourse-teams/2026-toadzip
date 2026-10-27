@@ -225,7 +225,7 @@ export function HousingAnnouncementDetailPanel({
           <div className={styles.summaryBlock}>
             <div className={styles.summaryIdentity}>
               <NoticeIntro detail={detail} groups={groups} />
-              <BookmarkButton type="ANNOUNCEMENT" targetId={detail.announcementId} name={title} iconOnly />
+              <BookmarkButton type="ANNOUNCEMENT" targetId={detail.announcementId} name={title} iconOnly size="md" />
             </div>
             <div className={styles.notificationAction}>
               <NotificationInterestButton

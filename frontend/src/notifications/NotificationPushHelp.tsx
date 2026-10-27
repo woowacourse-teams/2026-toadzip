@@ -1,9 +1,13 @@
 import { Button } from '../design-system/components/Button'
+import { MobileInstallGuide } from '../install/MobileInstallGuide'
+import { useMobileInstall } from '../install/MobileInstallContext'
 import { NotificationDialog } from './NotificationDialog'
 import { pushInstallationHelp } from './pushInstallationHelp'
 import styles from './NotificationPushControl.module.css'
 export function NotificationPushHelp({ onClose }: { readonly onClose: () => void }) {
   const help = pushInstallationHelp()
+  const mobile = useMobileInstall()?.visible
+  if (help === 'home-screen' && mobile) return <MobileInstallGuide initialPlatform="ios" notification onClose={onClose} />
   if (!help) return <NotificationDialog title="브라우저에서 알림을 허용해 주세요" onClose={onClose}>
     <p>이 브라우저에서 복덕방 알림이 차단되어 있어요. 권한을 다시 요청할 수 없어 직접 변경해야 해요.</p>
     <ol className={styles.steps}>

@@ -19,10 +19,11 @@ interface Props {
   readonly expanded?: boolean
   readonly onBackToSummary?: () => void
   readonly children?: ReactNode
+  readonly returnToMyPage?: boolean
 }
 
 export function HousingComplexSummarySheet({ recent, detail, status, onExpand, onClose, onRetry,
-  expanded = false, onBackToSummary, children }: Props) {
+  expanded = false, onBackToSummary, children, returnToMyPage = false }: Props) {
   const sheet = useRef<HTMLElement>(null)
   const handle = useRef<HTMLButtonElement>(null)
   const content = useRef<HTMLDivElement>(null)
@@ -136,7 +137,7 @@ export function HousingComplexSummarySheet({ recent, detail, status, onExpand, o
       {(collapsed || !ready) && <header className={styles.header}>
         <h2>{name}</h2>
         {collapseButton}
-        <DetailCloseButton label="단지 요약 닫기" onClose={onClose} />
+        <DetailCloseButton label="단지 요약 닫기" onClose={onClose} returnToMyPage={returnToMyPage} />
       </header>}
       <div ref={content} id={contentId} className={ready ? styles.preview : styles.content}
         aria-hidden={collapsed || undefined} inert={collapsed || undefined}>
@@ -149,7 +150,7 @@ export function HousingComplexSummarySheet({ recent, detail, status, onExpand, o
               : ' 현재 연결된 모집 공고가 없습니다.'}
           </p>
           <HousingComplexDetailPanel detail={toHousingComplexDetailData(detail)} mobile preview
-            onClose={onClose} headerActions={collapseButton} />
+            onClose={onClose} headerActions={collapseButton} returnToMyPage={returnToMyPage} />
         </> : <>
           <p className={styles.metadata} aria-label={`공급기관 ${agency}, 임대유형 ${rental}`}>
             <strong data-agency={agencyCode}>{agency}</strong><span aria-hidden="true">·</span><span>{rental}</span>

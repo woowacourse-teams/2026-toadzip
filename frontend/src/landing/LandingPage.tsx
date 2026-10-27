@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { BrandLink } from '../BrandLink'
+import { MobileInstallCard, MobileInstallAction } from '../install/MobileInstall'
 import styles from './LandingPage.module.css'
 
 const steps = [
@@ -120,6 +121,7 @@ export function LandingPage() {
             </h1>
             <p className={styles.description}>살고 싶은 동네의 공공주택,<br />보증금·월세부터 모집 공고까지 연결해 드려요.</p>
             <StartLink />
+            <MobileInstallCard />
           </div>
           <div className={styles.heroVisual}>
             <div className={styles.heroOrbit} aria-hidden="true" />
@@ -188,6 +190,7 @@ export function LandingPage() {
         <BrandLink showName className={styles.brand} />
         <p>공공주택을 찾는 당신 곁에, 복덕방</p>
         <a href="#about">맨 위로 ↑</a>
+        <MobileInstallAction />
       </footer>
     </div>
   )

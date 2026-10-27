@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router'
 
-const pages = new Set(['/mypage/bookmarks', '/mypage/notifications', '/mypage/account', '/mypage/bookmarks?type=ANNOUNCEMENT', '/mypage/notifications?type=ANNOUNCEMENT', '/mypage/notifications?type=REGION'])
+const pages = new Set(['/mypage', '/mypage/bookmarks', '/mypage/notifications', '/mypage/account', '/mypage/bookmarks?type=ANNOUNCEMENT', '/mypage/notifications?type=ANNOUNCEMENT', '/mypage/notifications?type=REGION', '/mypage/notifications?type=DEVICES'])
 
 export function myPageReturnPath(state: unknown): string | null {
   if (!state || typeof state !== 'object' || !('mypageReturn' in state)) return null

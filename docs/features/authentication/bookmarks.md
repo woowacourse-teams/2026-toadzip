@@ -27,7 +27,7 @@ GET 응답은 `{items: [...]}`이며 각 항목은 다음 필드를 가진다.
 `INSERT ... WHERE NOT EXISTS`로 중복을 방지한다. 병합에서 생긴 중복은 목록에서 하나로
 보여주고 해제할 때 전부 삭제한다. 직접 DB에 쓰는 다른 경로는 이 API 잠금을 우회한다.
 
-프론트 주소는 `/mypage`, `/mypage/bookmarks`, `/mypage/notifications`, `/mypage/account`, `/mypage/info`다.
+프론트 주소는 `/mypage`(요약), `/mypage/bookmarks`(북마크 관리), `/mypage/notifications`(알림 관리)다. 예전 `/mypage/account`, `/mypage/info`는 요약으로 연다.
 `/notifications`는 받은 알림 보관함으로 유지하며 기존 알림·기기 설정을 공유한다. 지도 복귀 URL은 탭의 sessionStorage에
 비민감 탐색 조건만 저장한다. OAuth 목적지는 허용된 내부 경로만 저장하고 30분 뒤 만료한다.
 회원 북마크를 localStorage에 저장하지 않는다.

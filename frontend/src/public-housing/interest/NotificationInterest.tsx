@@ -131,6 +131,7 @@ export function NotificationInterestProvider({ children, repository = notificati
       setProductAuthState(member ? 'member' : 'guest')
       setTargets(member ? status.targets.map((target) => ({
         type: target.targetType, id: target.targetId,
+        status: target.status, applicationStartDate: target.applicationStartDate, applicationEndDate: target.applicationEndDate,
         name: (target.targetType === 'REGION' ? findRegionBoundaryName(target.targetId) : target.targetName)
           ?? `${{ REGION: '지역', COMPLEX: '단지', ANNOUNCEMENT: '공고' }[target.targetType]} ${target.targetId}`,
       })) : [])
@@ -328,8 +329,12 @@ export function NotificationInterestProvider({ children, repository = notificati
     request(pending.selection, pending.button)
   }, [mode, request, requested])
 
-  const clearAll = useCallback(async (button: HTMLButtonElement) => {
+  const clearAll = useCallback(async (button: HTMLButtonElement, selection?: readonly NotificationTarget[]) => {
     if (mode !== 'member' || inFlight.current || dialog || failed || targets.length === 0) return
+    const selectedKeys = selection && new Set(selection.map(requestedKey))
+    const batch = selectedKeys ? targets.filter(target => selectedKeys.has(requestedKey(target))) : targets
+    if (batch.length === 0) return
+    const batchKeys = new Set(batch.map(requestedKey))
     const version = ++requestVersion.current
     const privacyGeneration = consentStore.generation()
     trigger.current = button
@@ -338,12 +343,12 @@ export function NotificationInterestProvider({ children, repository = notificati
     const controller = new AbortController()
     batchController.current = controller
     setBusy(true); setClearingAll(true); setBatchError(''); setMessage('')
-    const remainingKeys = new Set(targets.map(requestedKey))
-    setTargets([])
+    const remainingKeys = new Set(batchKeys)
+    setTargets(targets.filter(target => !batchKeys.has(requestedKey(target))))
     const pageName = window.location.pathname === '/mypage/notifications' ? 'notification_settings' : 'explorer'
     let failures = 0
     let refreshAfterResponse = false
-    for (const target of targets) {
+    for (const target of batch) {
       if (version !== requestVersion.current) return
       const key = requestedKey(target)
       const event = batchRetries.current.get(key) ?? eventFor({ target, source: 'SETTING' }, 'CANCELLED')
@@ -374,7 +379,7 @@ export function NotificationInterestProvider({ children, repository = notificati
         break
       }
     }
-    setTargets(targets.filter(target => remainingKeys.has(requestedKey(target))))
+    setTargets(targets.filter(target => !batchKeys.has(requestedKey(target)) || remainingKeys.has(requestedKey(target))))
     inFlight.current = false
     batchInFlight.current = false
     batchController.current = null
@@ -384,9 +389,9 @@ export function NotificationInterestProvider({ children, repository = notificati
       setMessage('처리 결과를 확인하지 못했어요. 현재 알림 설정을 다시 확인해 주세요.')
       reconcileStatus(true)
     } else if (failures > 0) {
-      setBatchError(`${failures}개 설정을 해제하지 못했어요. 전체 해제를 눌러 다시 시도해 주세요.`)
+      setBatchError(`${selection ? remainingKeys.size : failures}개 설정을 해제하지 못했어요. 남은 항목을 다시 해제해 주세요.`)
     } else {
-      setMessage('알림 설정을 모두 해제했어요.')
+      setMessage(selection ? '선택한 알림을 해제했어요.' : '알림 설정을 모두 해제했어요.')
     }
   }, [dialog, eventFor, failed, mode, reconcileStatus, repository, targets])
 

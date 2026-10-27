@@ -347,16 +347,7 @@
 
 .myPageClose { display: none; }
 
+/* 모바일도 출발한 마이페이지로 돌아간다는 것을 문구로 보여준다. */
 @media (max-width: 767px) {
-  .myPageButton {
-    width: 44px;
-    flex: 0 0 44px;
-    padding: 0;
-    border: 0;
-    border-radius: 6px;
-    color: var(--ds-color-label);
-  }
-  .myPageButton svg { width: 28px; height: 28px; }
-  .myPageButton span, .myPageArrow { display: none; }
-  .myPageClose { display: inline; }
+  .myPageButton { min-height: 44px; }
 }

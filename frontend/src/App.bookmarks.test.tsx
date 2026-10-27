@@ -3,8 +3,12 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, expect, it, vi } from 'vitest'
 import App from './App'
 vi.mock('./public-housing/DefaultPublicHousingExplorer', async () => {
+  const { useLocation } = await import('react-router')
   const { BookmarkButton } = await import('./user/bookmarks/BookmarkButton')
-  return { DefaultPublicHousingExplorer: () => <BookmarkButton type="COMPLEX" targetId="1" name="서울 주택" /> }
+  const { MyPageView } = await import('./user/mypage/MyPageView')
+  return { DefaultPublicHousingExplorer: () => useLocation().pathname.startsWith('/mypage')
+    ? <MyPageView onOpenComplex={vi.fn()} onOpenAnnouncement={vi.fn()} onBrowseAnnouncements={vi.fn()} onClose={vi.fn()} />
+    : <BookmarkButton type="COMPLEX" targetId="1" name="서울 주택" /> }
 })
 vi.mock('./public-housing/interest/notificationInterestRepository', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./public-housing/interest/notificationInterestRepository')>()),
@@ -29,5 +33,6 @@ it('지도에서 저장 중 마이페이지로 이동해도 저장 완료 목록
   fireEvent.click(await screen.findByRole('link', { name: '마이페이지' }))
   await screen.findByText('저장한 단지가 없어요')
   await act(async () => complete())
-  expect(await screen.findByRole('link', { name: '서울 주택' })).toHaveAttribute('href', '/explore?complexId=1')
+  expect(await screen.findByText('서울 주택')).toBeVisible()
+  expect(screen.getByRole('button', { name: '서울 주택 북마크 해제' })).toBeVisible()
 })

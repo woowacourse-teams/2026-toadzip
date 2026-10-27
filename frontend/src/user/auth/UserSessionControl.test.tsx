@@ -128,7 +128,7 @@ it('지도 사이드바의 로그인 계정은 마이페이지에서 기존 로�
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 1 }) }))
   render(<MemoryRouter><UserSessionControl presentation="rail" /></MemoryRouter>)
   const account = await screen.findByRole('link', { name: '마이페이지' })
-  expect(account).toHaveAttribute('href', '/mypage/bookmarks')
+  expect(account).toHaveAttribute('href', '/mypage')
   expect(screen.queryByRole('button', { name: '로그아웃' })).not.toBeInTheDocument()
 })
 
@@ -150,7 +150,7 @@ it('회원만 계정 아이콘 위의 알림 보관함과 알림 관리에 접�
   render(<MemoryRouter><UserSessionControl presentation="rail" /></MemoryRouter>)
   expect(await screen.findByRole('button', { name: '알림 보관함' })).toHaveAttribute('aria-haspopup', 'dialog')
   fireEvent.click(screen.getByText('마이페이지'))
-  expect(screen.getByRole('link', { name: '마이페이지' })).toHaveAttribute('href', '/mypage/bookmarks')
+  expect(screen.getByRole('link', { name: '마이페이지' })).toHaveAttribute('href', '/mypage')
 })
 
 it('비회원 사이드바에는 알림 보관함을 표시하지 않는다', async () => {
@@ -166,7 +166,7 @@ it('모바일 회원도 마이페이지 링크로 이동하며 계정 메뉴 행
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 1 }) }))
   render(<MemoryRouter><UserSessionControl presentation="rail" /><LocationDisplay /></MemoryRouter>)
   fireEvent.click(await screen.findByRole('link', { name: '마이페이지' }))
-  expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/mypage/bookmarks')
+  expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/mypage')
   expect(captureProductEvent).toHaveBeenCalledWith('account_menu_opened')
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })

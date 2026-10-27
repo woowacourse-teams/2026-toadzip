@@ -11,13 +11,22 @@ vi.mock('./public-housing/interest/notificationInterestRepository', async (impor
   notificationInterestRepository: interest,
 }))
 
+// 마이페이지는 지도 탐색 화면 안에서 열리므로, 주소에 따라 지도 대역이나 마이페이지 화면을 그린다.
 vi.mock('./public-housing/DefaultPublicHousingExplorer', async () => {
+  const { useLocation, useNavigate } = await import('react-router')
   const { NotificationInterestButton } = await import('./public-housing/interest/NotificationInterest')
+  const { MyPageView } = await import('./user/mypage/MyPageView')
   return {
-    DefaultPublicHousingExplorer: () => <>
-      <input aria-label="현재 검색어" defaultValue="서울" />
-      <NotificationInterestButton target={{ type: 'COMPLEX', id: '1', name: '서울 단지' }} source="COMPLEX_DETAIL" />
-    </>,
+    DefaultPublicHousingExplorer: () => {
+      const navigate = useNavigate()
+      if (useLocation().pathname.startsWith('/mypage')) {
+        return <MyPageView onOpenComplex={vi.fn()} onOpenAnnouncement={vi.fn()} onBrowseAnnouncements={vi.fn()} onClose={() => navigate('/explore')} />
+      }
+      return <>
+        <input aria-label="현재 검색어" defaultValue="서울" />
+        <NotificationInterestButton target={{ type: 'COMPLEX', id: '1', name: '서울 단지' }} source="COMPLEX_DETAIL" />
+      </>
+    },
   }
 })
 
@@ -58,11 +67,11 @@ describe('홈의 사용자 세션과 알림 상태', () => {
     fireEvent.change(screen.getByRole('textbox', { name: '현재 검색어' }), { target: { value: '마포' } })
     fireEvent.focus(window)
     fireEvent.click(await screen.findByRole('link', { name: '마이페이지' }))
-    fireEvent.click(await screen.findByRole('link', { name: '계정' }))
     fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
     await screen.findByText('로그인 확인 중…')
     expect(interest.loadStatus).toHaveBeenCalledTimes(3)
-    expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeDisabled()
+    // 세션 초기화와 지도 화면 전환은 별개로 반영되므로, 지도 버튼이 나타난 뒤 상태를 확인한다.
+    expect(await screen.findByRole('button', { name: '서울 단지 알림 받기' })).toBeDisabled()
     await act(async () => guestRead.resolve(guestStatus))
     await act(async () => previousRead.resolve(memberStatus))
     expect(screen.getByRole('button', { name: '로그인' })).toBeVisible()
@@ -76,10 +85,9 @@ describe('홈의 사용자 세션과 알림 상태', () => {
     renderHome(true)
     await screen.findByRole('button', { name: '서울 단지 알림 취소' })
     fireEvent.click(await screen.findByRole('link', { name: '마이페이지' }))
-    fireEvent.click(await screen.findByRole('link', { name: '계정' }))
     fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('로그아웃하지 못했어요.')
-    fireEvent.click(screen.getByRole('link', { name: /지도로 이동/ }))
+    fireEvent.click(screen.getByRole('button', { name: '지도로 돌아가기' }))
     expect(screen.getByRole('button', { name: '서울 단지 알림 취소' })).toBeEnabled()
     expect(interest.loadStatus).toHaveBeenCalledOnce()
     expect(screen.queryByRole('button', { name: '로그인' })).not.toBeInTheDocument()
@@ -94,7 +102,6 @@ describe('홈의 사용자 세션과 알림 상태', () => {
     fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
     fireEvent.click(screen.getByRole('button', { name: '신청하기' }))
     fireEvent.click(await screen.findByRole('link', { name: '마이페이지' }))
-    fireEvent.click(await screen.findByRole('link', { name: '계정' }))
     fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
     await screen.findByRole('button', { name: '로그인' })
     await waitFor(() => expect(interest.loadStatus).toHaveBeenCalledTimes(2))

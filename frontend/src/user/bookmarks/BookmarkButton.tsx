@@ -7,12 +7,12 @@ import { LoginModal } from '../auth/LoginModal'
 import { bookmarkKey, useBookmarks, type BookmarkContextValue } from './BookmarkContext'
 import type { BookmarkType } from './bookmarkRepository'
 import styles from './BookmarkButton.module.css'
-interface Props { readonly type: BookmarkType; readonly targetId: string; readonly name: string; readonly iconOnly?: boolean }
+interface Props { readonly type: BookmarkType; readonly targetId: string; readonly name: string; readonly iconOnly?: boolean; readonly size?: 'sm' | 'md' }
 export function BookmarkButton(props: Props) {
   const context = useBookmarks()
   return context ? <BookmarkControl {...props} context={context} /> : null
 }
-function BookmarkControl({ type, targetId, name, iconOnly = false, context }: Props & { readonly context: BookmarkContextValue }) {
+function BookmarkControl({ type, targetId, name, iconOnly = false, size = 'sm', context }: Props & { readonly context: BookmarkContextValue }) {
   const location = useLocation()
   const explorerReturn = useExplorerReturn()
   const navigate = useNavigate()
@@ -23,8 +23,8 @@ function BookmarkControl({ type, targetId, name, iconOnly = false, context }: Pr
   const pending = context.pending.has(bookmarkKey(type, targetId))
   const retry = context.mode === 'error' || context.listStatus === 'error'
   const label = `북마크 ${retry ? '다시 확인' : saved ? '해제' : '저장'}`
-  return <span className={`${styles.wrapper}${iconOnly ? ` ${styles.iconWrapper}` : ''}`}>
-    <button ref={trigger} type="button" className={`${styles.button}${iconOnly ? ` ${styles.iconButton}` : ''}`} aria-label={`${name} ${label}`} title={iconOnly ? label : undefined}
+  return <span className={`${styles.wrapper}${iconOnly && size === 'md' ? ` ${styles.iconWrapper}` : ''}`}>
+    <button ref={trigger} type="button" className={iconOnly ? size === 'md' ? `${styles.button} ${styles.iconButton}` : styles.icon : styles.button} aria-label={`${name} ${label}`} title={iconOnly ? label : undefined}
       aria-pressed={saved} aria-busy={pending || undefined} disabled={context.mode === 'loading' || context.mode === 'member' && context.listStatus === 'loading' || pending}
       onClick={() => { if (context.mode === 'guest') { if (mobile) { const returnTo = explorerReturn?.current ?? location.pathname + location.search + location.hash; rememberLoginReturn(returnTo); void navigate(loginPageUrl(returnTo)) } else setLogin(true) } else if (context.mode === 'error' || context.listStatus === 'error') context.reload(); else void context.toggle(type, targetId) }}>
       <svg aria-hidden="true" viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.7"><path d="M6 3h12v18l-6-4-6 4z" /></svg>

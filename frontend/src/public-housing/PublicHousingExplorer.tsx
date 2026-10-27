@@ -1,6 +1,9 @@
 import { clearMyPageReturnState, myPageReturnPath } from '../user/mypage/mypageNavigation'
 import { RequestError } from './components/RequestError'
+import { MyPageView } from '../user/mypage/MyPageView'
+import { lastExplorerPath } from '../user/auth/loginReturn'
 import { useExplorerReturn } from './navigation/ExplorerReturnContext'
+import { MobileInstallCard } from '../install/MobileInstall'
 import { useListMeasurement } from './analytics/useListMeasurement'
 import { captureProductEvent } from '../analytics/productAnalytics'
 import { useMarkerHoverAnalytics, type MarkerHoverAttribution } from '../analytics/markerHoverAnalytics'
@@ -136,7 +139,7 @@ const DEFAULT_MAP_LOCATION = {
 }
 
 type ResultTab = 'complexes' | 'announcements'
-type ResultList = ResultTab | 'recent'
+type ResultList = ResultTab | 'recent' | 'mypage'
 
 interface ComplexDetailState {
   readonly complexId: string | null
@@ -297,9 +300,9 @@ export function PublicHousingExplorer({
     }
   }, [])
   const [activeResultTab, setActiveResultTab] =
-    useState<ResultList>(() => mobile && readRecentComplexPreview(location.state) ? 'recent' : 'complexes')
+    useState<ResultList>(() => location.pathname.startsWith('/mypage') ? 'mypage' : mobile && readRecentComplexPreview(location.state) ? 'recent' : 'complexes')
   const [announcementListRequested, setAnnouncementListRequested] = useState(false)
-  const [listPanelMode, setListPanelMode] = useState<'auto' | 'open' | 'collapsed'>(() => (
+  const [listPanelMode, setListPanelMode] = useState<'auto' | 'open' | 'collapsed'>(() => location.pathname.startsWith('/mypage') ? 'open' : (
     (initialDetail.kind === 'complex' || initialDetail.kind === 'announcement')
       && (isMobileViewport() || window.matchMedia?.('(max-width: 1023px)').matches) ? 'collapsed' : 'auto'
   ))
@@ -560,8 +563,8 @@ export function PublicHousingExplorer({
     }
   }, [announcementFiltersKey])
   const showListPage = !streetView.active && !integratedSearchActive && listPanelMode !== 'collapsed'
-    && (activeResultTab === 'recent' || (activeResultTab === 'announcements' ? announcementListRequested : boundaryRegionCode !== null))
-  const prepareListEntry = useListMeasurement(showListPage, activeResultTab === 'complexes' ? 'region_complex' : activeResultTab === 'announcements' ? 'announcement' : 'recent', activeResultTab === 'complexes' ? regionResults.key : activeResultTab === 'announcements' ? announcementFiltersKey : 'recent')
+    && (activeResultTab === 'recent' || activeResultTab === 'mypage' || (activeResultTab === 'announcements' ? announcementListRequested : boundaryRegionCode !== null))
+  const prepareListEntry = useListMeasurement(showListPage && activeResultTab !== 'mypage', activeResultTab === 'complexes' ? 'region_complex' : activeResultTab === 'announcements' ? 'announcement' : 'recent', activeResultTab === 'complexes' ? regionResults.key : activeResultTab === 'announcements' ? announcementFiltersKey : 'recent')
 
   const announcementResults = useAnnouncementResults(
     repository,
@@ -1053,6 +1056,45 @@ export function PublicHousingExplorer({
     mypageReturn,
   ])
 
+  const onMyPageRoute = location.pathname.startsWith('/mypage')
+  useEffect(() => {
+    if (!onMyPageRoute) return
+    setIntegratedSearchActive(false)
+    setListPanelMode('open')
+    setActiveResultTab('mypage')
+  }, [onMyPageRoute])
+  // 로고·뒤로가기처럼 페이지 밖에서 /mypage를 벗어나도 마이페이지 화면을 닫는다.
+  useEffect(() => {
+    if (onMyPageRoute || activeResultTab !== 'mypage') return
+    setActiveResultTab('complexes')
+    setListPanelMode('collapsed')
+  }, [onMyPageRoute, activeResultTab])
+  // 마이페이지에서 연 상세는 마지막 지도 위치 위에 열고, 닫기 버튼이 출발한 마이페이지 화면으로 돌아가게 한다.
+  // 단지는 최근 본 단지와 같이 지도를 단지로 옮기고, 모바일에서는 요약 미리보기부터 보여준다.
+  function openDetailFromMyPage(kind: ResultTab, id: string) {
+    const mapPath = new URL(lastExplorerPath(), window.location.origin)
+    const search = kind === 'complexes'
+      ? setComplexIdQuery(clearDetailQuery(mapPath.searchParams), id)
+      : setAnnouncementIdQuery(clearDetailQuery(mapPath.searchParams), id)
+    const state = { mypageReturn: location.pathname + location.search }
+    setListPanelMode('collapsed')
+    if (kind === 'complexes') {
+      pendingDetailCameraRef.current = { id, revision: viewportRevisionRef.current }
+      setDetailCameraRevision((current) => current + 1)
+    }
+    navigate({ pathname: '/explore', search: toSearchString(search) }, {
+      state: kind === 'complexes' && mobile ? withRecentComplexPreview(state, { complexId: id, expanded: false }) : state,
+    })
+  }
+
+  // 마이페이지 패널에서 다른 패널로 바꾸면 /mypage 주소를 지도 주소로 돌린다.
+  const previousResultTabRef = useRef(activeResultTab)
+  useEffect(() => {
+    const previous = previousResultTabRef.current
+    previousResultTabRef.current = activeResultTab
+    if (onMyPageRoute && previous === 'mypage' && activeResultTab !== 'mypage') navigate({ pathname: '/explore' }, { replace: true })
+  }, [onMyPageRoute, activeResultTab, navigate])
+
   const selectResultTab = useCallback((tab: ResultList) => {
     closeStreetView('USER_CLOSED', false)
     mobileDetailListModeRef.current = null
@@ -1495,6 +1537,7 @@ export function PublicHousingExplorer({
     mobileDetailListModeRef.current = null
     pendingListTriggerFocusRef.current = activeResultTab
     setListPanelMode('collapsed')
+    if (onMyPageRoute) navigate({ pathname: '/explore' }, { replace: true })
   }
 
   const complexDetailLayer = <ComplexDetailLayer
@@ -1557,6 +1600,11 @@ export function PublicHousingExplorer({
           </button>
         </div>
       </nav>
+      {onMyPageRoute && showListPage && activeResultTab === 'mypage' && <MyPageView
+        onOpenComplex={(id) => openDetailFromMyPage('complexes', id)}
+        onOpenAnnouncement={(id) => openDetailFromMyPage('announcements', id)}
+        onBrowseAnnouncements={() => selectResultTab('announcements')}
+        onClose={() => { setListPanelMode('collapsed'); navigate(lastExplorerPath()) }} />}
       <div className="housing-browse-panel">
         <div className="housing-search-overlay" ref={searchOverlayRef}>
           <IntegratedSearch
@@ -1567,7 +1615,7 @@ export function PublicHousingExplorer({
             selectionControl={!mobile && regionControl('desktop')}
           />
         </div>
-        <HousingResultsPanel visible={showListPage} onCollapse={collapseResults}
+        <HousingResultsPanel visible={showListPage && activeResultTab !== 'mypage'} onCollapse={collapseResults}
           initialMobileHeightPercent={activeResultTab === 'complexes' && complexResults.status !== 'error' ? 25 : 50}
           headerActions={mobile && activeResultTab === 'complexes' ? regionControl('mobile-header') : undefined}
           title={mobile && activeResultTab === 'complexes' ? mobileRegionTitle : activeResultTab === 'recent' ? '최근 본 단지' : activeResultTab === 'complexes' ? '단지 목록' : '공고 목록'}>
@@ -1734,6 +1782,7 @@ export function PublicHousingExplorer({
       {mobile && !showListPage && !hasDetail && !integratedSearchActive && !streetView.active && regionControl('mobile-collapsed')}
 
       <main ref={mapWorkspaceRef} className="housing-map-workspace">
+        {!hasDetail && !showResultPage && !integratedSearchActive && !streetView.active && <MobileInstallCard floating />}
         <div className="housing-map-filter" hidden={streetView.active} inert={streetView.active}>
           <ComplexFilterToolbar
             filters={complexFilters}
@@ -1753,6 +1802,7 @@ export function PublicHousingExplorer({
         </div>
         {showingRecentComplex ? <HousingComplexSummarySheet
           key={recentPreview.complexId}
+          returnToMyPage={mypageReturn !== null}
           expanded={recentPreview.expanded}
           onBackToSummary={returnToComplexSummary}
           recent={recentComplexes.find((recent) => recent.complexId === recentPreview?.complexId)}
@@ -2514,7 +2564,7 @@ function focusComplexCard(card: HTMLElement | undefined) {
 }
 
 function focusListTrigger(kind: ResultList) {
-  const trigger = document.getElementById(kind === 'recent' ? 'recent-list-trigger' : kind === 'complexes' ? 'region-complex-list-trigger' : 'announcement-list-trigger')
+  const trigger = kind === 'mypage' ? document.querySelector<HTMLElement>('.service-rail-account .service-login-link') : document.getElementById(kind === 'recent' ? 'recent-list-trigger' : kind === 'complexes' ? 'region-complex-list-trigger' : 'announcement-list-trigger')
   const target = isAvailableFocusTarget(trigger) ? trigger
     : document.querySelector<HTMLInputElement>('.housing-search-overlay input[type="search"]')
   target?.focus({ preventScroll: true })

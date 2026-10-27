@@ -1,14 +1,20 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { Link, MemoryRouter, useLocation } from 'react-router'
+import { Link, MemoryRouter } from 'react-router'
 import { afterEach, expect, it, vi } from 'vitest'
 import App from './App'
-import { myPageReturnPath } from './user/mypage/mypageNavigation'
 
 vi.mock('./public-housing/interest/notificationInterestRepository', async (importOriginal) => {
   const original = await importOriginal<typeof import('./public-housing/interest/notificationInterestRepository')>()
   return { ...original, notificationInterestRepository: original.createNotificationInterestRepository((...args) => globalThis.fetch(...args)) }
 })
-vi.mock('./public-housing/DefaultPublicHousingExplorer', () => ({ DefaultPublicHousingExplorer: () => <div>지도</div> }))
+// 마이페이지는 지도 탐색 화면 안에서 열리므로, 지도 대신 마이페이지 화면만 그리는 대역을 둔다.
+vi.mock('./public-housing/DefaultPublicHousingExplorer', async () => {
+  const { useLocation } = await import('react-router')
+  const { MyPageView } = await import('./user/mypage/MyPageView')
+  return { DefaultPublicHousingExplorer: () => useLocation().pathname.startsWith('/mypage')
+    ? <MyPageView onOpenComplex={vi.fn()} onOpenAnnouncement={vi.fn()} onBrowseAnnouncements={vi.fn()} onClose={vi.fn()} />
+    : <div>지도</div> }
+})
 afterEach(() => vi.unstubAllGlobals())
 
 function session(member = true) {
@@ -24,7 +30,7 @@ function session(member = true) {
     if (options?.method === 'POST') { active = false; return settingResult(options, ++settingsRevision) }
     return new Response(JSON.stringify({ userId: '7', settingsRevision, targets: active ? [
       { ...targetNotice, targetType: 'COMPLEX', targetId: '1', targetName: '서울 행복주택' },
-      { ...targetNotice, targetType: 'ANNOUNCEMENT', targetId: '2', targetName: '가을 모집 공고' },
+      { ...targetNotice, targetType: 'ANNOUNCEMENT', targetId: '2', targetName: '가을 모집 공고', status: 'APPLYING', applicationStartDate: '2026-10-20', applicationEndDate: '2026-10-30' },
       { ...targetNotice, targetType: 'REGION', targetId: '11' },
     ] : [] }))
   }))
@@ -39,11 +45,13 @@ it('알림 관리 주소에서 종류별 설정을 보고 해제한다', async (
   expect(screen.queryByText('가을 모집 공고')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('tab', { name: '공고 1' }))
   expect(screen.getByText('가을 모집 공고')).toBeVisible()
+  expect(screen.getByText('접수중')).toBeVisible()
+  expect(screen.getByText('접수 10.20 ~ 10.30')).toBeVisible()
   expect(screen.queryByText('서울 행복주택')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('tab', { name: '지역 1' }))
   expect(screen.getByText('서울특별시 전체')).toBeVisible()
   fireEvent.click(screen.getByRole('tab', { name: '단지 1' }))
-  fireEvent.click(screen.getByRole('button', { name: '서울 행복주택 알림 해제' }))
+  fireEvent.click(screen.getByRole('button', { name: '서울 행복주택 알림 취소' }))
   await waitFor(() => expect(screen.queryByText('서울 행복주택')).not.toBeInTheDocument())
 })
 
@@ -57,23 +65,45 @@ it('보관함 주소에서 받은 알림 목록을 확인한다', async () => {
 it('비회원이 관리 주소로 직접 접속해도 설정을 노출하지 않는다', async () => {
   session(false)
   render(<MemoryRouter initialEntries={['/mypage/notifications']}><App /></MemoryRouter>)
-  expect(await screen.findByText('로그인하면 저장한 주택과 알림을 한곳에서 관리할 수 있어요.')).toBeVisible()
+  expect(await screen.findByText('저장한 단지·공고와 새 공고 알림을 한곳에서 관리할 수 있어요.')).toBeVisible()
   expect(screen.queryByText('서울 행복주택')).not.toBeInTheDocument()
 })
 
-it('전체 해제는 단지·공고·지역 설정을 모두 비우고 빈 목록에서는 비활성화된다', async () => {
+function clearAllAlarms() {
+  const all = screen.getByRole<HTMLInputElement>('checkbox', { name: '전체 선택' })
+  if (!all.checked) fireEvent.click(all)
+  fireEvent.click(screen.getByRole('button', { name: /^알림 끄기 \(\d+\)$/ }))
+  const confirm = screen.getByRole('group', { name: '알림 해제 확인' })
+  fireEvent.click(within(confirm).getByRole('button', { name: '알림 해제' }))
+}
+
+it('전체 해제는 현재 분류만 비우며 다른 분류와 취소한 선택은 보존한다', async () => {
   session()
   render(<MemoryRouter initialEntries={['/mypage/notifications']}><App /></MemoryRouter>)
   await screen.findByText('서울 행복주택')
-  fireEvent.click(screen.getByRole('button', { name: '모든 알림 해제' }))
+  fireEvent.click(screen.getByRole('checkbox', { name: '전체 선택' }))
+  fireEvent.click(screen.getByRole('button', { name: /^알림 끄기 \(\d+\)$/ }))
+  expect(screen.getByRole('group', { name: '알림 해제 확인' })).toHaveTextContent('단지 알림 1개')
+  fireEvent.click(screen.getByRole('button', { name: '취소' }))
+  expect(screen.getByText('서울 행복주택')).toBeVisible()
+  clearAllAlarms()
   await waitFor(() => expect(screen.queryByText('서울 행복주택')).not.toBeInTheDocument())
-  expect(screen.queryByText('가을 모집 공고')).not.toBeInTheDocument()
-  expect(screen.queryByText('서울특별시 전체')).not.toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '모든 알림 해제' })).toBeDisabled()
-  expect(screen.getByRole('status')).toHaveTextContent('알림 설정을 모두 해제했어요.')
+  expect(screen.queryByRole('button', { name: /알림 끄기|^알림 해제$/ })).not.toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: '공고 1' })).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: '지역 1' })).toBeInTheDocument()
+  await screen.findByText('선택한 알림을 해제했어요.')
+  fireEvent.click(screen.getByRole('tab', { name: '공고 1' }))
+  clearAllAlarms()
+  await waitFor(() => expect(within(screen.getByRole('region', { name: '알림 관리' })).getByRole('tab', { name: '공고 0' })).toBeInTheDocument())
+  fireEvent.click(screen.getByRole('tab', { name: '지역 1' }))
+  clearAllAlarms()
+  await waitFor(() => expect(screen.getByRole('tab', { name: '지역 0' })).toBeInTheDocument())
+  const writes = vi.mocked(fetch).mock.calls.filter(([, options]) => options?.method === 'POST')
+    .map(([, options]) => JSON.parse(String(options?.body)))
+  expect(writes.map(event => event.targetType)).toEqual(['COMPLEX', 'ANNOUNCEMENT', 'REGION'])
 })
 
-it('전체 해제 중 실패한 설정은 남기고 같은 이벤트로 재시도한다', async () => {
+it('같은 탭의 일부 해제가 실패하면 미완료 항목만 복원하고 같은 이벤트로 재시도한다', async () => {
   let shouldFail = true
   let settingsRevision = 0
   const writes: Array<{ eventId: string; targetId: string }> = []
@@ -89,28 +119,27 @@ it('전체 해제 중 실패한 설정은 남기고 같은 이벤트로 재시�
     }
     return Response.json({ userId: '7', settingsRevision: 0, targets: [
       { ...targetNotice, targetType: 'COMPLEX', targetId: '1', targetName: '서울 행복주택' },
-      { ...targetNotice, targetType: 'ANNOUNCEMENT', targetId: '2', targetName: '가을 모집 공고' },
+      { ...targetNotice, targetType: 'COMPLEX', targetId: '2', targetName: '다른 행복주택' },
+      { ...targetNotice, targetType: 'ANNOUNCEMENT', targetId: '1', targetName: '가을 모집 공고' },
       { ...targetNotice, targetType: 'REGION', targetId: '11' },
     ] })
   }))
   render(<MemoryRouter initialEntries={['/mypage/notifications']}><App /></MemoryRouter>)
   await screen.findByText('서울 행복주택')
-  fireEvent.click(screen.getByRole('button', { name: '모든 알림 해제' }))
+  clearAllAlarms()
   expect(await screen.findByRole('alert')).toHaveTextContent('1개 설정을 해제하지 못했어요.')
   expect(screen.queryByText('서울 행복주택')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('tab', { name: '지역 1' }))
-  expect(screen.getByText('서울특별시 전체')).toBeVisible()
-  fireEvent.click(screen.getByRole('tab', { name: '공고 1' }))
-  expect(screen.getByText('가을 모집 공고')).toBeVisible()
+  expect(screen.getByText('다른 행복주택')).toBeVisible()
+  expect(screen.getByRole('tab', { name: '공고 1' })).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: '지역 1' })).toBeInTheDocument()
   shouldFail = false
-  fireEvent.click(screen.getByRole('button', { name: '모든 알림 해제' }))
-  await waitFor(() => expect(screen.queryByText('가을 모집 공고')).not.toBeInTheDocument())
-  expect(writes.filter((event) => event.targetId === '2').map((event) => event.eventId))
-    .toEqual([writes[1]?.eventId, writes[1]?.eventId])
-  expect(writes).toHaveLength(4)
+  clearAllAlarms()
+  await waitFor(() => expect(screen.queryByText('다른 행복주택')).not.toBeInTheDocument())
+  expect(writes.filter(event => event.targetId === '2').map(event => event.eventId)).toEqual([writes[1]?.eventId, writes[1]?.eventId])
+  expect(writes).toHaveLength(3)
 })
 
-it('전체 해제 중에는 중복 클릭과 개별 해제를 막는다', async () => {
+it('전체 해제 중에는 다른 탭에서도 중복·개별 해제를 막는다', async () => {
   session()
   const fetcher = globalThis.fetch
   let release!: () => void
@@ -122,18 +151,45 @@ it('전체 해제 중에는 중복 클릭과 개별 해제를 막는다', async 
   }))
   render(<MemoryRouter initialEntries={['/mypage/notifications']}><App /></MemoryRouter>)
   await screen.findByText('서울 행복주택')
-  const clearAll = screen.getByRole('button', { name: '모든 알림 해제' })
-  fireEvent.click(clearAll)
-  fireEvent.click(clearAll)
-  expect(clearAll).toBeDisabled()
-  expect(clearAll).toHaveTextContent('모든 알림 해제')
-  expect(screen.queryByRole('button', { name: '서울 행복주택 알림 해제' })).not.toBeInTheDocument()
+  clearAllAlarms()
+  expect(screen.queryByText('서울 행복주택')).not.toBeInTheDocument()
+  expect(within(screen.getByRole('region', { name: '알림 관리' })).getByRole('tab', { name: '단지 0' })).toHaveFocus()
+  fireEvent.click(screen.getByRole('tab', { name: '공고 1' }))
+  expect(screen.getByRole('checkbox', { name: '전체 선택' })).toBeDisabled()
+  expect(screen.queryByRole('button', { name: /알림 끄기|^알림 해제$/ })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '가을 모집 공고 알림 취소' })).toBeDisabled()
   await waitFor(() => expect(writes).toBe(1))
   release()
-  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('알림 설정을 모두 해제했어요.'))
-  expect(writes).toBe(3)
+  await screen.findByText('선택한 알림을 해제했어요.')
+  expect(writes).toBe(1)
+  expect(screen.getByText('가을 모집 공고')).toBeVisible()
+  expect(screen.getByText('접수중')).toBeVisible()
+  expect(screen.getByText('접수 10.20 ~ 10.30')).toBeVisible()
 })
 
+it('선택 해제는 체크한 항목만 전송하고 다른 종류의 동일 ID는 유지한다', async () => {
+  session()
+  const fetcher = globalThis.fetch
+  vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL, options?: RequestInit) => {
+    if (String(url).endsWith('/notification-subscriptions/me') && !options?.method) return Response.json({ userId: '7', settingsRevision: 0, targets: [
+      { ...targetNotice, targetType: 'COMPLEX', targetId: '1', targetName: '선택한 단지' },
+      { ...targetNotice, targetType: 'COMPLEX', targetId: '2', targetName: '남겨둘 단지' },
+      { ...targetNotice, targetType: 'ANNOUNCEMENT', targetId: '1', targetName: '동일 ID 공고' },
+    ] })
+    return fetcher(url, options)
+  }))
+  render(<MemoryRouter initialEntries={['/mypage/notifications']}><App /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('checkbox', { name: '선택한 단지 선택' }))
+  fireEvent.click(screen.getByRole('button', { name: '알림 끄기 (1)' }))
+  fireEvent.click(within(screen.getByRole('group', { name: '알림 해제 확인' })).getByRole('button', { name: '알림 해제' }))
+  await screen.findByText('선택한 알림을 해제했어요.')
+  expect(screen.queryByText('선택한 단지')).not.toBeInTheDocument()
+  expect(screen.getByText('남겨둘 단지')).toBeVisible()
+  expect(screen.getByRole('tab', { name: '공고 1' })).toBeInTheDocument()
+  const writes = vi.mocked(fetch).mock.calls.filter(([, options]) => options?.method === 'POST')
+  expect(writes).toHaveLength(1)
+  expect(JSON.parse(String(writes[0]?.[1]?.body))).toMatchObject({ targetType: 'COMPLEX', targetId: '1', eventType: 'CANCELLED' })
+})
 
 it('지도에서 보관함을 모달로 열고 닫으면 원래 버튼으로 포커스가 돌아온다', async () => {
   session()
@@ -149,18 +205,17 @@ it('지도에서 보관함을 모달로 열고 닫으면 원래 버튼으로 포
   expect(trigger).toHaveFocus()
 })
 
-it('모바일 마이페이지에서 알림 관리와 의견 보내기 및 계정에 접근한다', async () => {
+it('모바일 마이페이지 요약에서 알림 관리와 의견 보내기 및 로그아웃에 접근한다', async () => {
   session()
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })))
   render(<MemoryRouter initialEntries={['/explore']}><App /></MemoryRouter>)
   fireEvent.click(await screen.findByRole('link', { name: '마이페이지' }))
-  expect(await screen.findByRole('heading', { name: '마이페이지' })).toBeVisible()
-  expect(screen.getByRole('link', { name: '제보/의견 보내기' })).toHaveAttribute('href', '/feedback')
-  fireEvent.click(screen.getByRole('link', { name: '알림 관리' }))
-  expect(await screen.findByText('서울 행복주택')).toBeVisible()
-  expect(screen.getByRole('link', { name: '알림 보관함' })).toHaveAttribute('href', '/notifications')
-  fireEvent.click(screen.getByRole('link', { name: '계정' }))
   expect(await screen.findByRole('button', { name: '로그아웃' })).toBeVisible()
+  expect(screen.getByRole('heading', { name: '마이페이지' })).toBeVisible()
+  expect(within(screen.getByRole('navigation', { name: '서비스' })).getByRole('link', { name: '의견 보내기' })).toHaveAttribute('href', '/feedback')
+  fireEvent.click(await screen.findByRole('link', { name: /알림 관리/ }))
+  expect(await screen.findByText('서울 행복주택')).toBeVisible()
+  expect(within(screen.getByRole('region', { name: '알림 관리' })).getByRole('link', { name: '마이페이지로 돌아가기' })).toHaveAttribute('href', '/mypage')
 })
 
 it('지도 보관함은 받은 알림만 표시하고 설정은 마이페이지에서 관리한다', async () => {
@@ -173,33 +228,32 @@ it('지도 보관함은 받은 알림만 표시하고 설정은 마이페이지�
   expect(within(dialog).queryByText('서울 행복주택')).not.toBeInTheDocument()
   fireEvent.click(within(dialog).getByRole('button', { name: '알림 보관함 닫기' }))
   fireEvent.click(screen.getByRole('link', { name: '마이페이지' }))
-  fireEvent.click(await screen.findByRole('link', { name: '알림 관리' }))
-  expect(await screen.findByRole('table', { name: '단지 알림 신청 내역' })).toHaveTextContent('서울 행복주택')
+  fireEvent.click(await screen.findByRole('link', { name: /알림 관리/ }))
+  const alarms = await screen.findByRole('tabpanel', { name: '단지 1' })
+  expect(await within(alarms).findByText('서울 행복주택')).toBeVisible()
   fireEvent.click(screen.getByRole('tab', { name: '공고 1' }))
-  expect(screen.getByRole('table', { name: '공고 알림 신청 내역' })).toHaveTextContent('가을 모집 공고')
+  expect(screen.getByRole('tabpanel', { name: '공고 1' })).toHaveTextContent('가을 모집 공고')
   fireEvent.click(screen.getByRole('tab', { name: '지역 1' }))
-  expect(screen.getByRole('table', { name: '지역 알림 신청 내역' })).toHaveTextContent('서울특별시 전체')
-  fireEvent.click(screen.getByRole('link', { name: '알림 보관함' }))
-  fireEvent.click(await screen.findByRole('link', { name: '마이페이지로 돌아가기' }))
-  expect(await screen.findByRole('heading', { name: '알림 관리' })).toBeVisible()
-  expect(await screen.findByRole('tab', { name: '지역 1' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('tabpanel', { name: '지역 1' })).toHaveTextContent('서울특별시 전체')
 })
 
-it('이전 정보 메뉴 주소는 북마크와 공통 푸터로 연결한다', async () => {
+it('이전 정보·계정 메뉴 주소는 마이페이지 요약과 개인정보 링크로 연결한다', async () => {
   session()
   render(<MemoryRouter initialEntries={['/mypage/info']}><App /></MemoryRouter>)
-  expect(await screen.findByRole('heading', { name: '내 북마크' })).toBeVisible()
+  await screen.findByRole('button', { name: '로그아웃' })
+  expect(screen.getByRole('heading', { name: '마이페이지' })).toBeVisible()
   expect(screen.queryByRole('link', { name: '정보 및 설정' })).not.toBeInTheDocument()
-  expect(screen.getByRole('contentinfo')).toHaveTextContent('개인정보처리방침')
+  expect(screen.getByRole('link', { name: '개인정보처리방침' })).toHaveAttribute('href', '/privacy')
 })
 
-it('마이페이지에서 의견 화면으로 이동하면 원래 탭으로 복귀한다', async () => {
+it('마이페이지에서 의견 화면으로 이동하면 마이페이지로 복귀한다', async () => {
   session()
   render(<MemoryRouter initialEntries={['/mypage/account']}><App /></MemoryRouter>)
-  fireEvent.click(await screen.findByRole('link', { name: '제보/의견 보내기' }))
+  fireEvent.click(within(await screen.findByRole('navigation', { name: '서비스' })).getByRole('link', { name: '의견 보내기' }))
   expect(await screen.findByRole('heading', { name: '의견 보내기' })).toBeVisible()
   fireEvent.click(screen.getByRole('link', { name: '마이페이지로 돌아가기' }))
-  expect(await screen.findByRole('heading', { name: '계정' })).toBeVisible()
+  await screen.findByRole('button', { name: '로그아웃' })
+  expect(screen.getByRole('heading', { name: '마이페이지' })).toBeVisible()
 })
 
 
@@ -235,33 +289,15 @@ it('알림 분류는 키보드로 이동하고 비어 있는 분류도 선택할
   expect(screen.getByRole('tab', { name: '공고 1' })).toHaveFocus()
   expect(screen.getByRole('tab', { name: '공고 1' })).toHaveAttribute('aria-selected', 'true')
   fireEvent.keyDown(document.activeElement!, { key: 'End' })
-  expect(screen.getByRole('tab', { name: '지역 1' })).toHaveFocus()
+  expect(screen.getByRole('tab', { name: '기기 관리' })).toHaveFocus()
   fireEvent.keyDown(document.activeElement!, { key: 'Home' })
-  fireEvent.click(screen.getByRole('button', { name: '서울 행복주택 알림 해제' }))
+  fireEvent.click(screen.getByRole('button', { name: '서울 행복주택 알림 취소' }))
   expect(await screen.findByText('등록한 단지 알림이 없어요.')).toBeVisible()
-  expect(screen.getByRole('tab', { name: '단지 0' })).toHaveAttribute('aria-selected', 'true')
-  expect(screen.getByRole('tab', { name: '단지 0' })).toHaveFocus()
+  const alarms = within(screen.getByRole('region', { name: '알림 관리' }))
+  expect(alarms.getByRole('tab', { name: '단지 0' })).toHaveAttribute('aria-selected', 'true')
+  expect(alarms.getByRole('tab', { name: '단지 0' })).toHaveFocus()
   expect(screen.queryByRole('heading', { name: /관심 알림/ })).not.toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '모든 알림 해제' })).toBeEnabled()
-})
-
-function NotificationLocation() {
-  const location = useLocation()
-  return <output aria-label="현재 위치" data-mypage-return={myPageReturnPath(location.state)}>{location.pathname}{location.search}</output>
-}
-
-it.each([
-  ['/mypage/notifications', '서울 행복주택', '/explore?complexId=1'],
-  ['/mypage/notifications?type=ANNOUNCEMENT', '가을 모집 공고', '/explore?announcementId=2'],
-])('알림 관리 %s의 이름을 누르면 %s 상세로 이동하며 출발 분류를 유지한다', async (origin, name, detail) => {
-  session()
-  render(<MemoryRouter initialEntries={[origin]}><App /><NotificationLocation /></MemoryRouter>)
-  const link = await screen.findByRole('link', { name })
-  expect(link).toHaveAttribute('href', detail)
-  fireEvent.click(link)
-  expect(screen.getByLabelText('현재 위치')).toHaveTextContent(detail)
-  expect(screen.getByLabelText('현재 위치')).toHaveAttribute('data-mypage-return', origin)
-  expect(vi.mocked(fetch).mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0)
+  expect(screen.queryByRole('button', { name: /알림 끄기|^알림 해제$/ })).not.toBeInTheDocument()
 })
 
 it('지역 알림 이름은 단지나 공고 상세 링크로 만들지 않는다', async () => {
@@ -269,4 +305,5 @@ it('지역 알림 이름은 단지나 공고 상세 링크로 만들지 않는�
   render(<MemoryRouter initialEntries={['/mypage/notifications?type=REGION']}><App /></MemoryRouter>)
   expect(await screen.findByText('서울특별시 전체')).toBeVisible()
   expect(screen.queryByRole('link', { name: '서울특별시 전체' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '서울특별시 전체' })).not.toBeInTheDocument()
 })

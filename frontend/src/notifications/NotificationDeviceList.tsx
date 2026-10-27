@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type RefObject } from 'react'
 import { Button } from '../design-system/components/Button'
 import { useNotificationInbox } from './NotificationInboxContext'
 import { useNotificationPush } from './NotificationPushContext'
@@ -8,10 +8,16 @@ import { lastUsedLabel, pushDeviceLabel } from './pushDeviceMetadata'
 import { usePushClientState } from './usePushClientState'
 import styles from './NotificationDeviceList.module.css'
 
-export function NotificationDeviceList() {
+export function NotificationDeviceList({ expanded = false }: { readonly expanded?: boolean }) {
   const inbox = useNotificationInbox()
   if (!pushUiEnabled || !inbox?.userId) return null
-  return <DeviceDisclosure key={inbox.userId} userId={inbox.userId} />
+  return expanded ? <ExpandedDevices key={inbox.userId} userId={inbox.userId} /> : <DeviceDisclosure key={inbox.userId} userId={inbox.userId} />
+}
+function ExpandedDevices({ userId }: { readonly userId: string }) {
+  const heading = useRef<HTMLHeadingElement>(null)
+  return <section className={`${styles.section} ${styles.expanded}`} aria-label="알림 받는 기기">
+    <DeviceList userId={userId} headingRef={heading} onDisabled={() => heading.current?.focus()} />
+  </section>
 }
 function DeviceDisclosure({ userId }: { readonly userId: string }) {
   const [expanded, setExpanded] = useState(false)
@@ -27,7 +33,7 @@ function DeviceDisclosure({ userId }: { readonly userId: string }) {
     </div>
   </section>
 }
-function DeviceList({ userId, onDisabled }: { readonly userId: string; readonly onDisabled: () => void }) {
+function DeviceList({ userId, headingRef, onDisabled }: { readonly userId: string; readonly headingRef?: RefObject<HTMLHeadingElement | null>; readonly onDisabled: () => void }) {
   const push = useNotificationPush()
   const pushState = usePushClientState(push?.client)
   const [devices, setDevices] = useState<readonly PushDeviceSummary[] | null>(null)
@@ -69,6 +75,7 @@ function DeviceList({ userId, onDisabled }: { readonly userId: string; readonly 
   const visibleDevices = devices?.filter(device => device.deviceId !== busy) ?? null
   return <div className={styles.content}>
     <div className={styles.actions}>
+      {headingRef && <h3 ref={headingRef} tabIndex={-1} className={styles.heading}>연결된 기기 목록</h3>}
       <button type="button" className={styles.refresh} disabled={busy !== null} aria-label="기기 목록 다시 조회" onClick={() => setRevision(value => value + 1)}>새로고침</button></div>
     {error && <p className={styles.feedback} role="alert">{error}</p>}
     {message && <p className={styles.feedback} role="status">{message}</p>}
