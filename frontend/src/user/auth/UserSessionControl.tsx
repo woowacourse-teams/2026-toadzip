@@ -149,9 +149,9 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
         onClick={(event) => { memberTrigger.current = event.currentTarget; setMemberView('inbox') }}>
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
           <path d="M4 4h16v16H4zM4 13h5l1 3h4l1-3h5" />
-        </svg><span>{mobile ? '알림' : '알림 보관함'}</span><NotificationBadge />
+        </svg><span className="housing-navigation__multiline-label">{mobile ? '알림' : <>알림<span className="housing-navigation__label-break" /> 보관함</>}</span><NotificationBadge />
       </button>}
-      {session === 'signed-in' && (presentation === 'default' ? accountActions : <Link className="service-login-link" to="/mypage" aria-current={pathname.startsWith('/mypage') ? 'page' : undefined} onClick={() => { rememberExplorerPath(explorerReturn?.current ?? pathname + search + hash); captureProductEvent('account_menu_opened') }}>마이페이지</Link>)}
+      {session === 'signed-in' && (presentation === 'default' ? accountActions : <Link className="service-login-link" to="/mypage" aria-current={pathname.startsWith('/mypage') ? 'page' : undefined} onClick={() => { rememberExplorerPath(explorerReturn?.current ?? pathname + search + hash); captureProductEvent('account_menu_opened') }}><span className="housing-navigation__multiline-label">마이<span className="housing-navigation__label-break" />페이지</span></Link>)}
       {session === 'signed-in' && (memberView || inboxRequested) && <MemberMenuModal inboxOnly={presentation === 'rail'} key={memberView === 'account' ? 'account' : 'notifications'} view={memberView ?? 'inbox'} onClose={closeMember} returnFocusRef={memberTrigger}>
         {accountActions}
         {logoutError && <p role="alert">로그아웃하지 못했어요. 다시 시도해 주세요.</p>}

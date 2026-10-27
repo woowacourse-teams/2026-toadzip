@@ -2383,7 +2383,7 @@ button {
 .service-rail-account .service-login-link:hover { background: var(--ds-color-action-soft); }
 /* 레일 아래쪽 메뉴도 위쪽 공고·최근 본 단지와 같은 글자 크기·굵기·모서리를 쓴다. */
 .service-rail-account :is(.service-feedback-link, .service-notification-inbox, .service-login-link) {
-  border-radius: 12px; color: var(--ds-color-label); font-size: 11px; font-weight: 650; line-height: normal;
+  border-radius: 12px; color: var(--ds-color-label); font-size: 11px; font-weight: 650; line-height: normal; text-align: center;
 }
 .service-rail-account .service-login-link[aria-current="page"] { box-shadow: inset 0 0 0 1px var(--ds-color-brand); background: var(--ds-color-action-soft); color: var(--ds-color-text); }
 .service-rail-account .service-user-loading { text-align: center; font-size: 11px; }
