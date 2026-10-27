@@ -21,3 +21,8 @@
 .list li > button { background: var(--ds-color-surface); color: var(--ds-color-label); border: 1px solid var(--ds-color-divider); }
 .list li > button:hover:not(:disabled) { background: var(--ds-color-surface-subtle); }
 @media (prefers-reduced-motion: reduce) { .disclosure svg { transition: none; } }
+
+/* 마이페이지 전용 탭에서는 앞선 수신 설정 구분선을 공유한다. */
+.expanded { margin-top: 0; border-top: 0; }
+.expanded .list li > button { min-height: 32px; padding: 0 10px; font-size: var(--ds-text-caption); }
+.expanded .actions { align-items: center; justify-content: space-between; gap: var(--ds-space-3); padding-bottom: var(--ds-space-2); }
