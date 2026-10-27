@@ -4,6 +4,7 @@ import { useMyPageReturnState } from '../../user/mypage/mypageNavigation'
 import { ManagementTable, ManagementRow } from '../../user/mypage/ManagementTable'
 import { NotificationDeviceList } from '../../notifications/NotificationDeviceList'
 import { NotificationPushControl } from '../../notifications/NotificationPushControl'
+import { Button } from '../../design-system/components/Button'
 import { useNotificationInterests } from './NotificationInterestContext'
 import type { NotificationTargetType } from './notificationInterestRepository'
 import styles from './NotificationSettings.module.css'
@@ -52,10 +53,10 @@ export function NotificationSettings() {
           <span>{title}</span><span className={styles.count}>{context.targets.filter((target) => target.type === type).length}</span>
         </button>)}
       </div>
-      <button className={styles.actionButton} type="button" disabled={context.blocked || context.targets.length === 0}
+      <Button className={styles.clearAll} variant="secondary" disabled={context.blocked || context.targets.length === 0}
         onClick={(event) => { tabs.current[groups.findIndex(group => group.type === selected.type)]?.focus(); context.clearAll(event.currentTarget) }}>
         모든 알림 해제
-      </button>
+      </Button>
     </div>
     {context.batchError && <p className={styles.error} role="alert">{context.batchError}</p>}
     <section id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${selected.type}`} tabIndex={0} className={styles.panel}>
@@ -63,8 +64,8 @@ export function NotificationSettings() {
         ? <p className={styles.empty}>{context.targets.length === 0 ? '등록한 알림이 없어요.' : `등록한 ${selected.title} 알림이 없어요.`}</p>
         : <ManagementTable label={`${selected.title} 알림 신청 내역`}>
           {targets.map((target) => <ManagementRow key={target.id} actions={
-            <button className={styles.actionButton} type="button" disabled={context.blocked} aria-label={`${target.name} 알림 해제`}
-              onClick={(event) => { tabs.current[groups.findIndex(group => group.type === selected.type)]?.focus(); context.request({ target, source: 'SETTING' }, event.currentTarget) }}>알림 해제</button>
+            <Button variant="secondary" disabled={context.blocked} aria-label={`${target.name} 알림 해제`}
+              onClick={(event) => { tabs.current[groups.findIndex(group => group.type === selected.type)]?.focus(); context.request({ target, source: 'SETTING' }, event.currentTarget) }}>알림 해제</Button>
           }><strong>{target.type === 'REGION' ? target.name : <Link
             to={`/explore?${target.type === 'COMPLEX' ? 'complexId' : 'announcementId'}=${encodeURIComponent(target.id)}`}
             state={returnState}>{target.name}</Link>}</strong></ManagementRow>)}

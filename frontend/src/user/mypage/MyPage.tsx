@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, NavLink, useLocation, useNavigate } from 'react-router'
 import { BrandLink } from '../../BrandLink'
 import { Button } from '../../design-system/components/Button'
+import { buttonClassName } from '../../design-system/components/buttonClassName'
 import { DetailFact, DetailFacts } from '../../public-housing/components/DetailPrimitives'
 import { NotificationSettings } from '../../public-housing/interest/NotificationSettings'
 import { NotificationInterestButton } from '../../public-housing/interest/NotificationInterest'
@@ -91,7 +92,7 @@ export function MyPage() {
         <Link className={styles.feedbackLink} to="/feedback" state={returnState}>제보/의견 보내기</Link>
       </aside>
       <main className={styles.content}>
-        <div className={styles.sectionHeader}><div><h2>{section.path === 'bookmarks' ? '내 북마크' : section.label}</h2><p className={styles.description}>{section.description}</p></div>{mode === 'member' && section.path === 'notifications' && <Link className={styles.secondaryLink} to="/notifications" state={returnState}>알림 보관함</Link>}</div>
+        <div className={styles.sectionHeader}><div><h2>{section.path === 'bookmarks' ? '내 북마크' : section.label}</h2><p className={styles.description}>{section.description}</p></div>{mode === 'member' && section.path === 'notifications' && <Link className={buttonClassName({ variant: 'secondary' })} to="/notifications" state={returnState}>알림 보관함</Link>}</div>
         {mode === 'loading' && <div className={styles.notice} role="status">마이페이지를 불러오는 중…</div>}
         {mode === 'error' && <RetryNotice title="마이페이지를 불러오지 못했어요" onRetry={bookmarks?.reload} />}
         {mode === 'guest' && <section className={styles.notice}><h3>로그인이 필요해요</h3><p>로그인하면 저장한 주택과 알림을 한곳에서 관리할 수 있어요.</p><Button ref={loginButton} onClick={() => setLogin(true)}>로그인</Button></section>}
@@ -107,7 +108,7 @@ export function MyPage() {
           </>)}
         </>}
         {mode === 'member' && section.path === 'notifications' && (interests?.mode === 'error' ? <RetryNotice title="알림 설정을 불러오지 못했어요" onRetry={interests.refreshStatus} /> : interests?.mode === 'guest' ? <RetryNotice title="로그인 상태를 다시 확인해 주세요" onRetry={() => { interests.refreshStatus(); bookmarks?.reload() }} /> : <NotificationSettings />)}
-        {mode === 'member' && section.path === 'account' && <section className={styles.account}><DetailFacts columns={1} appearance="list"><DetailFact term="이메일" value={bookmarks?.user?.email ?? '등록된 이메일이 없어요'} /></DetailFacts><div className={styles.accountFooter}><p>현재 기기에서 로그아웃합니다.</p><Button className={styles.logoutButton} disabled={loggingOut} onClick={() => void logout()}>{loggingOut ? '로그아웃 중…' : '로그아웃'}</Button></div>{logoutError && <p role="alert">{logoutError}</p>}</section>}
+        {mode === 'member' && section.path === 'account' && <section className={styles.account}><DetailFacts columns={1} appearance="list"><DetailFact term="이메일" value={bookmarks?.user?.email ?? '등록된 이메일이 없어요'} /></DetailFacts><div className={styles.accountFooter}><p>현재 기기에서 로그아웃합니다.</p><Button variant="secondary" disabled={loggingOut} onClick={() => void logout()}>{loggingOut ? '로그아웃 중…' : '로그아웃'}</Button></div>{logoutError && <p role="alert">{logoutError}</p>}</section>}
 
       </main>
     </div>
