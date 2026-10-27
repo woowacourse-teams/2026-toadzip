@@ -45,6 +45,8 @@ import type {
   HousingMapIndividualResult,
 } from './model/housingMap.ts'
 import { PublicHousingExplorer } from './PublicHousingExplorer.tsx'
+import { BookmarkProvider } from '../user/bookmarks/BookmarkProvider'
+import type { BookmarkRepository } from '../user/bookmarks/bookmarkRepository'
 import type {
   IntegratedSearchRepository,
   IntegratedSearchResponse,
@@ -2873,6 +2875,25 @@ describe('PublicHousingExplorer', () => {
     expect(screen.getByTestId('location-search').textContent).toBe(origin.includes('?') ? '?type=ANNOUNCEMENT' : '')
   })
 
+  it('마이페이지 주소는 지도 위 페이지로 열고, 고른 단지를 지도에서 연 뒤 마이페이지 버튼으로 복귀한다', async () => {
+    const repository = createRepository()
+    const bookmarks: BookmarkRepository = { list: vi.fn().mockResolvedValue([{ type: 'COMPLEX', targetId: '17', name: '서울가람 행복주택', createdAt: '2026-10-26T09:00:00', available: true, address: '서울특별시 중구 세종대로 110', status: null, applicationStartDate: null, applicationEndDate: null }]), save: vi.fn(), remove: vi.fn() }
+    const explorer = <PublicHousingExplorer repository={repository} mapRepository={repository} regionRepository={createRegionRepository()} />
+    render(<MemoryRouter initialEntries={['/mypage/bookmarks']}><BookmarkProvider repository={bookmarks} loadUser={async () => ({ id: 7, email: null })}><Routes>
+      <Route path="/explore" element={explorer} />
+      <Route path="/mypage/:section" element={explorer} />
+    </Routes><LocationPath /></BookmarkProvider></MemoryRouter>)
+    fireEvent.click((await screen.findByText('서울가람 행복주택')).closest('button')!)
+    expect(screen.getByTestId('location-path')).toHaveTextContent('/explore?complexId=17')
+    expect(screen.queryByRole('heading', { name: '마이페이지' })).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: '마이페이지로 돌아가기' }))
+    expect(screen.getByTestId('location-path')).toHaveTextContent('/mypage/bookmarks')
+    expect(await screen.findByRole('heading', { name: '마이페이지' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '지도로 돌아가기' }))
+    expect(screen.getByTestId('location-path')).toHaveTextContent(/^\/explore/)
+    expect(screen.queryByRole('heading', { name: '마이페이지' })).not.toBeInTheDocument()
+  })
+
   it('마이페이지에서 연 상세끼리 이동하면 이전 상세와 마이페이지 복귀를 함께 제공한다', async () => {
     const repository = createRepository()
     render(<MemoryRouter initialEntries={[{ pathname: '/explore', search: '?announcementId=201', state: { mypageReturn: '/mypage/notifications?type=ANNOUNCEMENT' } }]}><Routes>
@@ -4065,6 +4086,11 @@ function searchItem(
     title,
     type,
   }
+}
+
+function LocationPath() {
+  const location = useLocation()
+  return <output data-testid="location-path">{location.pathname}{location.search}</output>
 }
 
 function LocationSearch() {

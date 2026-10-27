@@ -70,8 +70,8 @@
 .kinds button { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: var(--ds-control-height-md); margin-bottom: -2px; padding: 0 var(--ds-space-4); border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--ds-color-muted); font: inherit; font-size: var(--ds-text-section); cursor: pointer; }
 .kinds button span { color: var(--ds-color-muted); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; }
 .kinds button:hover { color: var(--ds-color-text); }
-.kinds button[aria-pressed=true] { border-bottom-color: var(--ds-color-brand); color: var(--ds-color-text); font-weight: 700; }
-.kinds button[aria-pressed=true] span { color: var(--ds-color-action); }
+.kinds button[aria-selected=true] { border-bottom-color: var(--ds-color-brand); color: var(--ds-color-text); font-weight: 700; }
+.kinds button[aria-selected=true] span { color: var(--ds-color-action); }
 .kinds button:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: -2px; }
 
 .list { margin: 0; padding: 0; list-style: none; }

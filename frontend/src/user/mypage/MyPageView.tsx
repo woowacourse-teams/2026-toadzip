@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import { IconButton } from '../../design-system/components/IconButton'
@@ -18,6 +18,7 @@ import { clearLoginReturn, lastExplorerPath, loginPageUrl, readLoginReturn, reme
 import { BookmarkButton } from '../bookmarks/BookmarkButton'
 import { useBookmarks } from '../bookmarks/BookmarkContext'
 import type { BookmarkItem, BookmarkType } from '../bookmarks/bookmarkRepository'
+import { useMyPageReturnState } from './mypageNavigation'
 import styles from './MyPageView.module.css'
 
 type Kind = NotificationTargetType
@@ -50,6 +51,7 @@ export function MyPageView({ onOpenComplex, onOpenAnnouncement, onBrowseAnnounce
   const location = useLocation()
   const navigate = useNavigate()
   const mobile = useMobileViewport()
+  const returnState = useMyPageReturnState()
   const selected = readSub(location.pathname, location.search)
   const sub: Sub = selected ?? { section: 'bookmarks', kind: 'COMPLEX' }
   // 넓은 화면은 두 목록을 함께 보여주므로 분류를 목록마다 기억한다.
@@ -136,7 +138,7 @@ export function MyPageView({ onOpenComplex, onOpenAnnouncement, onBrowseAnnounce
       <aside className={styles.hub}>
         {header}
         <section className={`${styles.card} ${styles.account}`} aria-label="계정">
-          <span>{bookmarks?.user?.email ?? '이메일 없음'}</span>
+          <span>{bookmarks?.user?.email ?? '등록된 이메일이 없어요'}</span>
           <Button variant="secondary" disabled={loggingOut} onClick={() => void logout()}>로그아웃</Button>
         </section>
         {logoutError && <p className={styles.error} role="alert">{logoutError}</p>}
@@ -148,7 +150,7 @@ export function MyPageView({ onOpenComplex, onOpenAnnouncement, onBrowseAnnounce
             value={alarms ? `${alarms.length}개` : '—'} detail={alarms ? breakdown(alarms, ['COMPLEX', 'ANNOUNCEMENT', 'REGION']) : undefined} />
         </nav>
         <nav className={`${styles.card} ${styles.feedback}`} aria-label="서비스">
-          <Link className={styles.row} to="/feedback"><span className={styles.rowLabel}>의견 보내기</span><Chevron /></Link>
+          <Link className={styles.row} to="/feedback" state={returnState}><span className={styles.rowLabel}>의견 보내기</span><Chevron /></Link>
         </nav>
         <footer className={styles.privacy}><PrivacyLinks /></footer>
       </aside>
@@ -219,12 +221,8 @@ function BookmarkList({ kind, onSelectKind, onOpenComplex, onOpenAnnouncement }:
   if (bookmarks.listStatus === 'error') return <RequestError title="북마크를 불러오지 못했어요" onRetry={bookmarks.reload} />
   const items = bookmarks.items.filter(item => item.type === kind)
   if (kind === 'ANNOUNCEMENT') items.sort(byApplicationUrgency)
-  return <>
-    <div className={styles.kinds} role="group" aria-label="북마크 유형">
-      {(['COMPLEX', 'ANNOUNCEMENT'] as const).map(value => <button key={value} type="button" aria-pressed={kind === value} onClick={() => onSelectKind(value)}>
-        {kindLabels[value]} <span>{bookmarks.items.filter(item => item.type === value).length}</span>
-      </button>)}
-    </div>
+  return <KindTabs id="mypage-saved" label="북마크 유형" kinds={['COMPLEX', 'ANNOUNCEMENT']} selected={kind} onSelect={onSelectKind}
+    count={value => bookmarks.items.filter(item => item.type === value).length}>
     {items.length === 0 ? <div className={styles.empty}>
       <strong>저장한 {kind === 'COMPLEX' ? '단지가' : '공고가'} 없어요</strong>
       <p>상세에서 북마크 아이콘을 누르면 여기에 모여요.</p>
@@ -238,13 +236,13 @@ function BookmarkList({ kind, onSelectKind, onOpenComplex, onOpenAnnouncement }:
         </span>
         <span className={styles.meta}>{!item.available ? '지금은 상세 정보를 볼 수 없어요' : kind === 'COMPLEX' ? item.address ?? '주소 정보 없음' : scheduleText(item)}</span>
       </button>
-      <div className={styles.actions}>
+      <div className={styles.actions} onClickCapture={() => focusSelectedTab('mypage-saved')}>
         {item.available && <NotificationInterestButton iconOnly target={{ type: item.type, id: item.targetId, name: item.name }} source="SETTING" />}
         <BookmarkButton iconOnly type={item.type} targetId={item.targetId} name={item.name} />
       </div>
     </li>)}
     </ul>}
-  </>
+  </KindTabs>
 }
 
 function AlarmList({ kind, onSelectKind, onOpenComplex, onOpenAnnouncement }: {
@@ -258,14 +256,10 @@ function AlarmList({ kind, onSelectKind, onOpenComplex, onOpenAnnouncement }: {
   if (context.mode === 'error') return <RequestError title="알림을 불러오지 못했어요" onRetry={context.refreshStatus} />
   if (context.mode !== 'member') return null
   const targets = context.targets.filter(target => target.type === kind)
-  return <>
-    <div className={styles.kinds} role="group" aria-label="알림 대상 유형">
-      {(['COMPLEX', 'ANNOUNCEMENT', 'REGION'] as const).map(value => <button key={value} type="button" aria-pressed={kind === value} onClick={() => onSelectKind(value)}>
-        {kindLabels[value]} <span>{context.targets.filter(target => target.type === value).length}</span>
-      </button>)}
-    </div>
+  return <KindTabs id="mypage-notifications" label="알림 대상 유형" kinds={['COMPLEX', 'ANNOUNCEMENT', 'REGION']} selected={kind} onSelect={onSelectKind}
+    count={value => context.targets.filter(target => target.type === value).length}>
     {targets.length === 0
-      ? <div className={styles.empty}><strong>{kindLabels[kind]} 알림이 없어요</strong><p>상세나 지역 검색에서 종 아이콘을 누르면 새 공고를 알려드려요.</p></div>
+      ? <div className={styles.empty}><strong>등록한 {kindLabels[kind]} 알림이 없어요.</strong><p>상세나 지역 검색에서 종 아이콘을 누르면 새 공고를 알려드려요.</p></div>
       : <ul className={styles.list}>
         {targets.map(target => <li key={target.id}>
           {target.type === 'REGION'
@@ -274,11 +268,47 @@ function AlarmList({ kind, onSelectKind, onOpenComplex, onOpenAnnouncement }: {
               <strong className={styles.name}>{target.name}</strong>
               <span className={styles.meta}>{target.type === 'COMPLEX' ? '이 단지의 새 공고' : '접수 일정 변경'}</span>
             </button>}
-          <div className={styles.actions}><NotificationInterestButton iconOnly target={target} source="SETTING" /></div>
+          <div className={styles.actions} onClickCapture={() => focusSelectedTab('mypage-notifications')}><NotificationInterestButton iconOnly target={target} source="SETTING" /></div>
         </li>)}
       </ul>}
     {context.batchError && <p className={styles.error} role="alert">{context.batchError}</p>}
     <section className={styles.devices} aria-label="이 기기의 알림 수신"><NotificationPushControl /><NotificationDeviceList /></section>
+  </KindTabs>
+}
+
+// 행이 사라지는 해제 동작 전에 포커스를 현재 분류 탭으로 옮겨 키보드 위치를 잃지 않게 한다.
+function focusSelectedTab(id: string) {
+  document.querySelector<HTMLElement>(`#${id}-tabs [role="tab"][aria-selected="true"]`)?.focus()
+}
+
+function KindTabs<K extends Kind>({ id, label, kinds, selected, count, onSelect, children }: {
+  readonly id: string
+  readonly label: string
+  readonly kinds: readonly K[]
+  readonly selected: K
+  readonly count: (kind: K) => number
+  readonly onSelect: (kind: K) => void
+  readonly children: ReactNode
+}) {
+  const tabs = useRef<Array<HTMLButtonElement | null>>([])
+  return <>
+    <div id={`${id}-tabs`} className={styles.kinds} role="tablist" aria-label={label}>
+      {kinds.map((kind, index) => <button key={kind} ref={(element) => { tabs.current[index] = element }} id={`${id}-tab-${kind}`}
+        type="button" role="tab" aria-selected={selected === kind} aria-controls={`${id}-panel`} tabIndex={selected === kind ? 0 : -1}
+        aria-label={`${kindLabels[kind]} ${count(kind)}`} onClick={() => onSelect(kind)}
+        onKeyDown={(event) => {
+          const next = event.key === 'ArrowRight' ? (index + 1) % kinds.length
+            : event.key === 'ArrowLeft' ? (index + kinds.length - 1) % kinds.length
+            : event.key === 'Home' ? 0 : event.key === 'End' ? kinds.length - 1 : null
+          if (next === null) return
+          event.preventDefault()
+          onSelect(kinds[next]!)
+          tabs.current[next]?.focus()
+        }}>
+        {kindLabels[kind]} <span>{count(kind)}</span>
+      </button>)}
+    </div>
+    <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-tab-${selected}`}>{children}</div>
   </>
 }
 
@@ -292,7 +322,7 @@ function ClearAllAlarms() {
     {confirming && <div className={styles.clearAll} role="group" aria-label="모든 알림 끄기 확인">
       <p>단지·공고·지역 알림 {context.targets.length}개를 모두 끌까요?</p>
       <div><Button variant="secondary" onClick={() => setConfirming(false)}>취소</Button>
-        <Button variant="secondary" disabled={context.blocked} onClick={(event) => { setConfirming(false); context.clearAll(event.currentTarget) }}>모두 끄기</Button></div>
+        <Button variant="secondary" disabled={context.blocked} onClick={(event) => { focusSelectedTab('mypage-notifications'); setConfirming(false); context.clearAll(event.currentTarget) }}>모두 끄기</Button></div>
     </div>}
   </>
 }
