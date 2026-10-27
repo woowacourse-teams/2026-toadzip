@@ -48,6 +48,19 @@ describe('현재 위치 확인', () => {
     expect(getCurrentPosition).toHaveBeenCalledOnce()
   })
 
+  it.each([1, 2, 3])('자동 확인 오류 %i는 숨기고 수동 재시도 실패는 안내한다', async code => {
+    const onLocated = vi.fn()
+    const { result } = renderHook(() => useCurrentLocation(true, onLocated))
+    await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledOnce())
+    act(() => fail?.(error(code)))
+    expect(result.current.state.kind).toBe('idle')
+    expect(onLocated).not.toHaveBeenCalled()
+    act(() => result.current.locate())
+    expect(getCurrentPosition).toHaveBeenCalledTimes(2)
+    act(() => fail?.(error(code)))
+    expect(result.current.state.kind).toBe('error')
+  })
+
   it('자동 시작을 기다리고 수동 요청은 중복 실행하지 않는다', () => {
     const { result } = renderHook(() => useCurrentLocation(false, vi.fn()))
     expect(result.current.position).toBeNull()

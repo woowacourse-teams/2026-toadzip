@@ -1,4 +1,5 @@
 import { NotificationDeviceList } from '../../notifications/NotificationDeviceList'
+import { MobileInstallAction } from '../../install/MobileInstall'
 import { NotificationPushControl } from '../../notifications/NotificationPushControl'
 import { useRef } from 'react'
 import { useNotificationInterests } from './NotificationInterestContext'
@@ -16,6 +17,7 @@ export function NotificationSettings() {
   if (context.mode !== 'member') return null
   return <div className={styles.settings}>
     <NotificationPushControl />
+    <MobileInstallAction />
     <div className={styles.actions}>
       <h3 ref={heading} tabIndex={-1}>관심 알림 <span>{context.targets.length}</span></h3>
       <button className={styles.actionButton} type="button" disabled={context.blocked || context.targets.length === 0}

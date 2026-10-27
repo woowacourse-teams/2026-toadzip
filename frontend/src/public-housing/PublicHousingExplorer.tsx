@@ -1,4 +1,5 @@
 import { useExplorerReturn } from './navigation/ExplorerReturnContext'
+import { MobileInstallCard } from '../install/MobileInstall'
 import { useListMeasurement } from './analytics/useListMeasurement'
 import { captureProductEvent } from '../analytics/productAnalytics'
 import { useMarkerHoverAnalytics, type MarkerHoverAttribution } from '../analytics/markerHoverAnalytics'
@@ -1720,6 +1721,7 @@ export function PublicHousingExplorer({
       {mobile && !showListPage && !hasDetail && !integratedSearchActive && !streetView.active && regionControl('mobile-collapsed')}
 
       <main ref={mapWorkspaceRef} className="housing-map-workspace">
+        {!hasDetail && !showResultPage && !integratedSearchActive && !streetView.active && <MobileInstallCard floating />}
         <div className="housing-map-filter" hidden={streetView.active} inert={streetView.active}>
           <ComplexFilterToolbar
             filters={complexFilters}
