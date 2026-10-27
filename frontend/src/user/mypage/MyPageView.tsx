@@ -8,10 +8,15 @@ import { RequestError } from '../../public-housing/components/RequestError'
 import { useMobileViewport } from '../../public-housing/components/useMobileViewport'
 import { NotificationInterestButton } from '../../public-housing/interest/NotificationInterest'
 import { useNotificationInterests } from '../../public-housing/interest/NotificationInterestContext'
-import type { NotificationTargetType } from '../../public-housing/interest/notificationInterestRepository'
+import type { NotificationTarget, NotificationTargetType } from '../../public-housing/interest/notificationInterestRepository'
 import { MobileInstallAction } from '../../install/MobileInstall'
 import { NotificationDeviceList } from '../../notifications/NotificationDeviceList'
 import { NotificationPushControl } from '../../notifications/NotificationPushControl'
+import { useNotificationPush } from '../../notifications/NotificationPushContext'
+import { usePushClientState } from '../../notifications/usePushClientState'
+import { pushUiEnabled } from '../../notifications/firebasePushSdk'
+import { pushInstallationHelp } from '../../notifications/pushInstallationHelp'
+import { NotificationPushHelp } from '../../notifications/NotificationPushHelp'
 import { PrivacyLinks } from '../../privacy/Privacy'
 import { logoutUser } from '../auth/api'
 import { LoginModal } from '../auth/LoginModal'
@@ -23,15 +28,16 @@ import { useMyPageReturnState } from './mypageNavigation'
 import styles from './MyPageView.module.css'
 
 type Kind = NotificationTargetType
-type Sub = { readonly section: 'bookmarks'; readonly kind: BookmarkType } | { readonly section: 'notifications'; readonly kind: Kind }
+type AlarmKind = Kind | 'DEVICES'
+type Sub = { readonly section: 'bookmarks'; readonly kind: BookmarkType } | { readonly section: 'notifications'; readonly kind: AlarmKind }
 
-const kindLabels: Record<Kind, string> = { COMPLEX: '단지', ANNOUNCEMENT: '공고', REGION: '지역' }
+const kindLabels: Record<AlarmKind, string> = { COMPLEX: '단지', ANNOUNCEMENT: '공고', REGION: '지역', DEVICES: '기기 관리' }
 
 // /mypage는 요약 화면이다. 넓은 화면은 고른 관리 화면(기본: 북마크)을 오른쪽에 함께 보여준다.
 function readSub(pathname: string, search: string): Sub | null {
   const type = new URLSearchParams(search).get('type')
   if (pathname === '/mypage/bookmarks') return { section: 'bookmarks', kind: type === 'ANNOUNCEMENT' ? 'ANNOUNCEMENT' : 'COMPLEX' }
-  if (pathname === '/mypage/notifications') return { section: 'notifications', kind: type === 'ANNOUNCEMENT' || type === 'REGION' ? type : 'COMPLEX' }
+  if (pathname === '/mypage/notifications') return { section: 'notifications', kind: type === 'ANNOUNCEMENT' || type === 'REGION' || type === 'DEVICES' ? type : 'COMPLEX' }
   return null
 }
 function subPath(sub: Sub) {
@@ -57,7 +63,7 @@ export function MyPageView({ onOpenComplex, onOpenAnnouncement, onBrowseAnnounce
   const sub: Sub = selected ?? { section: 'bookmarks', kind: 'COMPLEX' }
   // 넓은 화면은 두 목록을 함께 보여주므로 분류를 목록마다 기억한다.
   const [savedKind, setSavedKind] = useState<BookmarkType>(selected?.section === 'bookmarks' ? selected.kind : 'COMPLEX')
-  const [alarmKind, setAlarmKind] = useState<Kind>(selected?.section === 'notifications' ? selected.kind : 'COMPLEX')
+  const [alarmKind, setAlarmKind] = useState<AlarmKind>(selected?.section === 'notifications' ? selected.kind : 'COMPLEX')
   useEffect(() => {
     if (selected?.section === 'bookmarks') setSavedKind(selected.kind)
     if (selected?.section === 'notifications') setAlarmKind(selected.kind)
@@ -168,7 +174,7 @@ export function MyPageView({ onOpenComplex, onOpenAnnouncement, onBrowseAnnounce
           <header className={styles.subHeader}>
             <Link className={styles.back} to="/mypage" aria-label="마이페이지로 돌아가기"><Chevron back /></Link>
             <h2 id="mypage-alarm-title">{subTitle({ section: 'notifications', kind: alarmKind })}</h2>
-            <ClearAllAlarms />
+            <PushAction onManage={() => { selectKind({ section: 'notifications', kind: 'DEVICES' }); focusSelectedTab('mypage-notifications', 'DEVICES') }} />
           </header>
           <AlarmList kind={alarmKind} onSelectKind={kind => selectKind({ section: 'notifications', kind })} onOpenComplex={onOpenComplex} onOpenAnnouncement={onOpenAnnouncement} />
         </section>
@@ -220,15 +226,54 @@ function BookmarkList({ kind, onSelectKind, onOpenComplex, onOpenAnnouncement }:
   const bookmarks = useBookmarks()
   if (!bookmarks || bookmarks.listStatus === 'loading') return <p className={styles.status} role="status">불러오는 중…</p>
   if (bookmarks.listStatus === 'error') return <RequestError title="북마크를 불러오지 못했어요" onRetry={bookmarks.reload} />
-  const items = bookmarks.items.filter(item => item.type === kind)
-  if (kind === 'ANNOUNCEMENT') items.sort(byApplicationUrgency)
   return <KindTabs id="mypage-saved" label="북마크 유형" kinds={['COMPLEX', 'ANNOUNCEMENT']} selected={kind} onSelect={onSelectKind}
     count={value => bookmarks.items.filter(item => item.type === value).length}>
+    <BookmarkTargets key={`${bookmarks.user?.id}-${kind}`} kind={kind} onOpenComplex={onOpenComplex} onOpenAnnouncement={onOpenAnnouncement} />
+  </KindTabs>
+}
+
+function BookmarkTargets({ kind, onOpenComplex, onOpenAnnouncement }: {
+  readonly kind: BookmarkType
+  readonly onOpenComplex: (id: string) => void
+  readonly onOpenAnnouncement: (id: string) => void
+}) {
+  const bookmarks = useBookmarks()!
+  const items = bookmarks.items.filter(item => item.type === kind)
+  if (kind === 'ANNOUNCEMENT') items.sort(byApplicationUrgency)
+  const [checked, setChecked] = useState<ReadonlySet<string>>(new Set())
+  const [confirming, setConfirming] = useState<readonly BookmarkItem[] | null>(null)
+  const allCheckbox = useRef<HTMLInputElement>(null)
+  const selected = items.filter(item => checked.has(item.targetId))
+  const blocked = bookmarks.pending.size > 0
+  useEffect(() => {
+    if (allCheckbox.current) allCheckbox.current.indeterminate = selected.length > 0 && selected.length < items.length
+  }, [selected.length, items.length])
+  return <>
+    {items.length > 0 && <div className={styles.alarmToolbar}>
+      <label className={styles.selectAll}><input ref={allCheckbox} type="checkbox" checked={selected.length === items.length}
+        disabled={blocked || confirming !== null} onChange={event => setChecked(new Set(event.target.checked ? items.map(item => item.targetId) : []))} />전체 선택</label>
+      {selected.length > 0 && <div className={styles.batchActions}>
+        <Button variant="secondary" disabled={blocked || confirming !== null} onClick={() => setConfirming(selected)}>북마크 삭제 ({selected.length})</Button>
+      </div>}
+    </div>}
+    {confirming && <div className={styles.clearAll} role="group" aria-label="북마크 해제 확인">
+      <p>{kindLabels[kind]} 북마크 {confirming.length}개를 해제할까요?</p>
+      <div><Button variant="secondary" onClick={() => { setConfirming(null); focusSelectedTab('mypage-saved') }}>취소</Button>
+        <Button variant="secondary" disabled={blocked} onClick={() => {
+          const remaining = confirming.filter(item => items.some(current => current.targetId === item.targetId))
+          focusSelectedTab('mypage-saved'); setConfirming(null); setChecked(new Set())
+          void Promise.all(remaining.map(item => bookmarks.toggle(item.type, item.targetId)))
+        }}>북마크 해제</Button></div>
+    </div>}
     {items.length === 0 ? <div className={styles.empty}>
       <strong>저장한 {kind === 'COMPLEX' ? '단지가' : '공고가'} 없어요</strong>
       <p>상세에서 북마크 아이콘을 누르면 여기에 모여요.</p>
     </div> : <ul className={styles.list}>
     {items.map(item => <li key={item.targetId} data-closed={item.status === 'CLOSED' || item.status === 'CANCELLED' || undefined}>
+      <label className={styles.alarmCheckbox}><input type="checkbox" aria-label={`${item.name} 선택`} checked={checked.has(item.targetId)}
+        disabled={blocked || confirming !== null} onChange={() => setChecked(previous => {
+          const next = new Set(previous); if (next.has(item.targetId)) next.delete(item.targetId); else next.add(item.targetId); return next
+        })} /></label>
       <button type="button" className={styles.item} disabled={!item.available}
         onClick={() => kind === 'COMPLEX' ? onOpenComplex(item.targetId) : onOpenAnnouncement(item.targetId)}>
         <span className={styles.titleLine}>
@@ -238,56 +283,125 @@ function BookmarkList({ kind, onSelectKind, onOpenComplex, onOpenAnnouncement }:
         <span className={styles.meta}>{!item.available ? '지금은 상세 정보를 볼 수 없어요' : kind === 'COMPLEX' ? item.address ?? '주소 정보 없음' : scheduleText(item)}</span>
       </button>
       <div className={styles.actions} onClickCapture={() => focusSelectedTab('mypage-saved')}>
-        {item.available && <NotificationInterestButton iconOnly target={{ type: item.type, id: item.targetId, name: item.name }} source="SETTING" />}
+        {item.available && <NotificationInterestButton iconOnly target={{ type: item.type, id: item.targetId, name: item.name, status: item.status, applicationStartDate: item.applicationStartDate, applicationEndDate: item.applicationEndDate }} source="SETTING" />}
         <BookmarkButton iconOnly type={item.type} targetId={item.targetId} name={item.name} />
       </div>
     </li>)}
     </ul>}
-  </KindTabs>
+  </>
 }
 
 function AlarmList({ kind, onSelectKind, onOpenComplex, onOpenAnnouncement }: {
-  readonly kind: Kind
-  readonly onSelectKind: (kind: Kind) => void
+  readonly kind: AlarmKind
+  readonly onSelectKind: (kind: AlarmKind) => void
   readonly onOpenComplex: (id: string) => void
   readonly onOpenAnnouncement: (id: string) => void
 }) {
   const context = useNotificationInterests()
-  if (!context || context.mode === 'loading') return <p className={styles.status} role="status">불러오는 중…</p>
-  if (context.mode === 'error') return <RequestError title="알림을 불러오지 못했어요" onRetry={context.refreshStatus} />
-  if (context.mode !== 'member') return null
+  const refreshStatus = context?.refreshStatus
+  useEffect(() => { if (kind === 'ANNOUNCEMENT') refreshStatus?.() }, [kind, refreshStatus])
+  return <KindTabs id="mypage-notifications" label="알림 대상 유형" kinds={['COMPLEX', 'ANNOUNCEMENT', 'REGION', 'DEVICES']} selected={kind} onSelect={onSelectKind}
+    count={value => value === 'DEVICES' ? undefined : context?.targets.filter(target => target.type === value).length ?? 0}>
+    {kind === 'DEVICES'
+      ? <section className={styles.devices} aria-label="기기 관리">
+        {pushUiEnabled ? <><NotificationPushControl compact /><MobileInstallAction /><NotificationDeviceList expanded /></> : <p>현재 기기 알림을 사용할 수 없어요.</p>}
+      </section>
+      : !context || context.mode === 'loading' ? <p className={styles.status} role="status">불러오는 중…</p>
+        : context.mode === 'error' ? <RequestError title="알림을 불러오지 못했어요" onRetry={context.refreshStatus} />
+          : context.mode === 'member' ? <AlarmTargets key={`${context.userId}-${kind}`} kind={kind} onOpenComplex={onOpenComplex} onOpenAnnouncement={onOpenAnnouncement} /> : null}
+  </KindTabs>
+}
+
+function AlarmTargets({ kind, onOpenComplex, onOpenAnnouncement }: {
+  readonly kind: Kind
+  readonly onOpenComplex: (id: string) => void
+  readonly onOpenAnnouncement: (id: string) => void
+}) {
+  const context = useNotificationInterests()!
   const targets = context.targets.filter(target => target.type === kind)
-  return <KindTabs id="mypage-notifications" label="알림 대상 유형" kinds={['COMPLEX', 'ANNOUNCEMENT', 'REGION']} selected={kind} onSelect={onSelectKind}
-    count={value => context.targets.filter(target => target.type === value).length}>
+  const [checked, setChecked] = useState<ReadonlySet<string>>(new Set())
+  const [confirming, setConfirming] = useState<readonly NotificationTarget[] | null>(null)
+  const allCheckbox = useRef<HTMLInputElement>(null)
+  const selected = targets.filter(target => checked.has(target.id))
+  useEffect(() => {
+    if (allCheckbox.current) allCheckbox.current.indeterminate = selected.length > 0 && selected.length < targets.length
+  }, [selected.length, targets.length])
+  function toggle(id: string) {
+    setChecked(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next })
+  }
+  return <>
+    {targets.length > 0 && <div className={styles.alarmToolbar}>
+      <label className={styles.selectAll}><input ref={allCheckbox} type="checkbox" checked={selected.length === targets.length}
+        disabled={context.blocked || confirming !== null} onChange={event => setChecked(new Set(event.target.checked ? targets.map(target => target.id) : []))} />전체 선택</label>
+      {selected.length > 0 && <div className={styles.batchActions}>
+        <Button variant="secondary" disabled={context.blocked || confirming !== null} onClick={() => setConfirming(selected)}>알림 끄기 ({selected.length})</Button>
+      </div>}
+    </div>}
+    {confirming && <div className={styles.clearAll} role="group" aria-label="알림 해제 확인">
+      <p>{kindLabels[kind]} 알림 {confirming.length}개를 해제할까요?</p>
+      <div><Button variant="secondary" onClick={() => { setConfirming(null); focusSelectedTab('mypage-notifications') }}>취소</Button>
+        <Button variant="secondary" disabled={context.blocked} onClick={(event) => {
+          focusSelectedTab('mypage-notifications'); context.clearAll(event.currentTarget, confirming); setConfirming(null); setChecked(new Set())
+        }}>알림 해제</Button></div>
+    </div>}
     {targets.length === 0
       ? <div className={styles.empty}><strong>등록한 {kindLabels[kind]} 알림이 없어요.</strong><p>상세나 지역 검색에서 종 아이콘을 누르면 새 공고를 알려드려요.</p></div>
       : <ul className={styles.list}>
         {targets.map(target => <li key={target.id}>
+          <label className={styles.alarmCheckbox}><input type="checkbox" aria-label={`${target.name} 선택`} checked={checked.has(target.id)}
+            disabled={context.blocked || confirming !== null} onChange={() => toggle(target.id)} /></label>
           {target.type === 'REGION'
             ? <div className={styles.item}><strong className={styles.name}>{target.name}</strong><span className={styles.meta}>이 지역의 새 공고</span></div>
             : <button type="button" className={styles.item} onClick={() => target.type === 'COMPLEX' ? onOpenComplex(target.id) : onOpenAnnouncement(target.id)}>
-              <strong className={styles.name}>{target.name}</strong>
-              <span className={styles.meta}>{target.type === 'COMPLEX' ? '이 단지의 새 공고' : '접수 일정 변경'}</span>
+              <span className={styles.titleLine}>
+                {target.type === 'ANNOUNCEMENT' && <AnnouncementBadge item={target} countdown={false} />}
+                <strong className={styles.name}>{target.name}</strong>
+              </span>
+              <span className={styles.meta}>{target.type === 'COMPLEX' ? '이 단지의 새 공고' : scheduleText(target)}</span>
             </button>}
           <div className={styles.actions} onClickCapture={() => focusSelectedTab('mypage-notifications')}><NotificationInterestButton iconOnly target={target} source="SETTING" /></div>
         </li>)}
       </ul>}
     {context.batchError && <p className={styles.error} role="alert">{context.batchError}</p>}
-    <section className={styles.devices} aria-label="이 기기의 알림 수신"><NotificationPushControl /><MobileInstallAction /><NotificationDeviceList /></section>
-  </KindTabs>
+  </>
+}
+
+function PushAction({ onManage }: { readonly onManage: () => void }) {
+  const push = useNotificationPush()
+  const state = usePushClientState(push?.client)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [requested, setRequested] = useState(false)
+  const needsInstallation = pushInstallationHelp()
+  useEffect(() => {
+    if (requested && state.status === 'on') setRequested(false)
+    if (requested && (state.status === 'error' || state.status === 'off' && state.message)) {
+      setRequested(false); onManage()
+    }
+  }, [requested, state.status, state.message, onManage])
+  return <>
+    <button type="button" className={styles.pushAction} aria-label={state.status === 'on' ? '알림 켜짐' : '이 기기 알림 켜기'} disabled={pushUiEnabled && !needsInstallation && !push?.error && (state.status === 'loading' || state.status === 'busy')}
+      onClick={() => {
+        if (state.status === 'on') { onManage(); return }
+        if (needsInstallation || 'Notification' in window && Notification.permission === 'denied') { setHelpOpen(true); return }
+        if (!pushUiEnabled || !push?.client || push.error || state.status === 'error') { onManage(); return }
+        setRequested(true); void push.client.enable()
+      }}>{state.status === 'on' ? '알림 켜짐' : '알림 켜기'}</button>
+    {helpOpen && <NotificationPushHelp onClose={() => setHelpOpen(false)} />}
+  </>
 }
 
 // 행이 사라지는 해제 동작 전에 포커스를 현재 분류 탭으로 옮겨 키보드 위치를 잃지 않게 한다.
-function focusSelectedTab(id: string) {
-  document.querySelector<HTMLElement>(`#${id}-tabs [role="tab"][aria-selected="true"]`)?.focus()
+function focusSelectedTab(id: string, kind?: AlarmKind) {
+  const selector = kind ? `#${id}-tab-${kind}` : `#${id}-tabs [role="tab"][aria-selected="true"]`
+  document.querySelector<HTMLElement>(selector)?.focus()
 }
 
-function KindTabs<K extends Kind>({ id, label, kinds, selected, count, onSelect, children }: {
+function KindTabs<K extends AlarmKind>({ id, label, kinds, selected, count, onSelect, children }: {
   readonly id: string
   readonly label: string
   readonly kinds: readonly K[]
   readonly selected: K
-  readonly count: (kind: K) => number
+  readonly count: (kind: K) => number | undefined
   readonly onSelect: (kind: K) => void
   readonly children: ReactNode
 }) {
@@ -296,7 +410,7 @@ function KindTabs<K extends Kind>({ id, label, kinds, selected, count, onSelect,
     <div id={`${id}-tabs`} className={styles.kinds} role="tablist" aria-label={label}>
       {kinds.map((kind, index) => <button key={kind} ref={(element) => { tabs.current[index] = element }} id={`${id}-tab-${kind}`}
         type="button" role="tab" aria-selected={selected === kind} aria-controls={`${id}-panel`} tabIndex={selected === kind ? 0 : -1}
-        aria-label={`${kindLabels[kind]} ${count(kind)}`} onClick={() => onSelect(kind)}
+        data-device={kind === 'DEVICES' || undefined} aria-label={count(kind) === undefined ? kindLabels[kind] : `${kindLabels[kind]} ${count(kind)}`} onClick={() => onSelect(kind)}
         onKeyDown={(event) => {
           const next = event.key === 'ArrowRight' ? (index + 1) % kinds.length
             : event.key === 'ArrowLeft' ? (index + kinds.length - 1) % kinds.length
@@ -306,25 +420,10 @@ function KindTabs<K extends Kind>({ id, label, kinds, selected, count, onSelect,
           onSelect(kinds[next]!)
           tabs.current[next]?.focus()
         }}>
-        {kindLabels[kind]} <span>{count(kind)}</span>
+        {kindLabels[kind]} {count(kind) !== undefined && <span>{count(kind)}</span>}
       </button>)}
     </div>
     <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-tab-${selected}`}>{children}</div>
-  </>
-}
-
-// 일괄 해제는 모든 분류에 적용되므로 분류 칩이 아닌 제목 줄에 둔다.
-function ClearAllAlarms() {
-  const context = useNotificationInterests()
-  const [confirming, setConfirming] = useState(false)
-  if (context?.mode !== 'member' || context.targets.length === 0) return null
-  return <>
-    <button type="button" className={styles.textButton} disabled={context.blocked || confirming} onClick={() => setConfirming(true)}>모든 알림 끄기</button>
-    {confirming && <div className={styles.clearAll} role="group" aria-label="모든 알림 끄기 확인">
-      <p>단지·공고·지역 알림 {context.targets.length}개를 모두 끌까요?</p>
-      <div><Button variant="secondary" onClick={() => setConfirming(false)}>취소</Button>
-        <Button variant="secondary" disabled={context.blocked} onClick={(event) => { focusSelectedTab('mypage-notifications'); setConfirming(false); context.clearAll(event.currentTarget) }}>모두 끄기</Button></div>
-    </div>}
   </>
 }
 
@@ -334,7 +433,9 @@ function Chevron({ back = false }: { readonly back?: boolean }) {
   </svg>
 }
 
-function AnnouncementBadge({ item, countdown: showCountdown = true }: { readonly item: BookmarkItem; readonly countdown?: boolean }) {
+type AnnouncementSchedule = Partial<Pick<BookmarkItem, 'status' | 'applicationStartDate' | 'applicationEndDate'>>
+
+function AnnouncementBadge({ item, countdown: showCountdown = true }: { readonly item: AnnouncementSchedule; readonly countdown?: boolean }) {
   const tone = item.status === 'APPLYING' ? 'applying' : item.status === 'BEFORE_APPLICATION' ? 'upcoming'
     : item.status === 'CLOSED' ? 'closed' : item.status === 'CANCELLED' ? 'cancelled' : 'unknown'
   const label = { applying: '접수중', upcoming: '공고중', closed: '접수마감', cancelled: '공고취소', unknown: '공고문 확인' }[tone]
@@ -347,7 +448,7 @@ function AnnouncementBadge({ item, countdown: showCountdown = true }: { readonly
   return <AnnouncementStatusBadge label={label} tone={tone} countdown={countdown} />
 }
 
-function scheduleText(item: BookmarkItem) {
+function scheduleText(item: AnnouncementSchedule) {
   return item.applicationStartDate && item.applicationEndDate
     ? `접수 ${formatDate(item.applicationStartDate)} ~ ${formatDate(item.applicationEndDate)}` : '접수 일정 미정'
 }

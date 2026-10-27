@@ -141,3 +141,23 @@ button.item:focus-visible { outline: 2px solid var(--ds-color-action); outline-o
   .hub > .feedback > .row { padding-inline: var(--ds-space-2); border-radius: 0; }
   .hub > .feedback + .privacy { margin-top: 0; }
 }
+
+/* 알림 목록의 선택·일괄 작업은 현재 분류에만 적용한다. */
+.alarmToolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ds-space-2); padding: var(--ds-space-3) 0; border-bottom: 1px solid var(--ds-color-divider); }
+.batchActions { display: flex; align-items: center; gap: var(--ds-space-2); }
+.batchActions button, .clearAll button { min-height: 32px; padding-inline: 10px; font-size: var(--ds-text-caption); white-space: nowrap; }
+.pushAction { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 0 var(--ds-space-3); border: 1px solid var(--ds-color-action); border-radius: var(--ds-radius-control); background: var(--ds-color-action-soft); color: var(--ds-color-action); font: inherit; font-size: var(--ds-text-caption); font-weight: 600; white-space: nowrap; cursor: pointer; }
+.pushAction:hover:not(:disabled) { background: var(--ds-color-surface); }
+.pushAction:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
+.pushAction:disabled { color: var(--ds-color-muted); cursor: wait; }
+.selectAll, .alarmCheckbox { display: inline-flex; align-items: center; gap: var(--ds-space-2); min-height: 44px; cursor: pointer; }
+.selectAll { min-height: 32px; color: var(--ds-color-muted); font-size: var(--ds-text-caption); }
+.alarmCheckbox { justify-content: center; flex: 0 0 32px; }
+.selectAll input, .alarmCheckbox input { width: 18px; height: 18px; margin: 0; accent-color: var(--ds-color-action); cursor: pointer; }
+.selectAll input:focus-visible, .alarmCheckbox input:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
+.kinds:has([data-device]) { overflow-x: auto; }
+.kinds button[data-device] { white-space: nowrap; }
+@media (max-width: 767px) {
+  .kinds:has([data-device]) button { padding-inline: var(--ds-space-2); white-space: nowrap; font-size: var(--ds-text-body); }
+  .batchActions { margin-left: auto; }
+}

@@ -30,7 +30,7 @@ function session(member = true) {
     if (options?.method === 'POST') { active = false; return settingResult(options, ++settingsRevision) }
     return new Response(JSON.stringify({ userId: '7', settingsRevision, targets: active ? [
       { ...targetNotice, targetType: 'COMPLEX', targetId: '1', targetName: '서울 행복주택' },
-      { ...targetNotice, targetType: 'ANNOUNCEMENT', targetId: '2', targetName: '가을 모집 공고' },
+      { ...targetNotice, targetType: 'ANNOUNCEMENT', targetId: '2', targetName: '가을 모집 공고', status: 'APPLYING', applicationStartDate: '2026-10-20', applicationEndDate: '2026-10-30' },
       { ...targetNotice, targetType: 'REGION', targetId: '11' },
     ] : [] }))
   }))
@@ -45,6 +45,8 @@ it('알림 관리 주소에서 종류별 설정을 보고 해제한다', async (
   expect(screen.queryByText('가을 모집 공고')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('tab', { name: '공고 1' }))
   expect(screen.getByText('가을 모집 공고')).toBeVisible()
+  expect(screen.getByText('접수중')).toBeVisible()
+  expect(screen.getByText('접수 10.20 ~ 10.30')).toBeVisible()
   expect(screen.queryByText('서울 행복주택')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('tab', { name: '지역 1' }))
   expect(screen.getByText('서울특별시 전체')).toBeVisible()
@@ -68,28 +70,40 @@ it('비회원이 관리 주소로 직접 접속해도 설정을 노출하지 않
 })
 
 function clearAllAlarms() {
-  fireEvent.click(screen.getByRole('button', { name: '모든 알림 끄기' }))
-  const confirm = screen.getByRole('group', { name: '모든 알림 끄기 확인' })
-  expect(confirm).toHaveTextContent('단지·공고·지역 알림')
-  fireEvent.click(within(confirm).getByRole('button', { name: '모두 끄기' }))
+  const all = screen.getByRole<HTMLInputElement>('checkbox', { name: '전체 선택' })
+  if (!all.checked) fireEvent.click(all)
+  fireEvent.click(screen.getByRole('button', { name: /^알림 끄기 \(\d+\)$/ }))
+  const confirm = screen.getByRole('group', { name: '알림 해제 확인' })
+  fireEvent.click(within(confirm).getByRole('button', { name: '알림 해제' }))
 }
 
-it('전체 해제는 확인 후 단지·공고·지역 설정을 모두 비우고 빈 목록에서는 버튼을 숨긴다', async () => {
+it('전체 해제는 현재 분류만 비우며 다른 분류와 취소한 선택은 보존한다', async () => {
   session()
   render(<MemoryRouter initialEntries={['/mypage/notifications']}><App /></MemoryRouter>)
   await screen.findByText('서울 행복주택')
-  fireEvent.click(screen.getByRole('button', { name: '모든 알림 끄기' }))
+  fireEvent.click(screen.getByRole('checkbox', { name: '전체 선택' }))
+  fireEvent.click(screen.getByRole('button', { name: /^알림 끄기 \(\d+\)$/ }))
+  expect(screen.getByRole('group', { name: '알림 해제 확인' })).toHaveTextContent('단지 알림 1개')
   fireEvent.click(screen.getByRole('button', { name: '취소' }))
   expect(screen.getByText('서울 행복주택')).toBeVisible()
   clearAllAlarms()
   await waitFor(() => expect(screen.queryByText('서울 행복주택')).not.toBeInTheDocument())
-  expect(screen.queryByText('가을 모집 공고')).not.toBeInTheDocument()
-  expect(screen.queryByText('서울특별시 전체')).not.toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: '모든 알림 끄기' })).not.toBeInTheDocument()
-  expect(screen.getByRole('status')).toHaveTextContent('알림 설정을 모두 해제했어요.')
+  expect(screen.queryByRole('button', { name: /알림 끄기|^알림 해제$/ })).not.toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: '공고 1' })).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: '지역 1' })).toBeInTheDocument()
+  await screen.findByText('선택한 알림을 해제했어요.')
+  fireEvent.click(screen.getByRole('tab', { name: '공고 1' }))
+  clearAllAlarms()
+  await waitFor(() => expect(within(screen.getByRole('region', { name: '알림 관리' })).getByRole('tab', { name: '공고 0' })).toBeInTheDocument())
+  fireEvent.click(screen.getByRole('tab', { name: '지역 1' }))
+  clearAllAlarms()
+  await waitFor(() => expect(screen.getByRole('tab', { name: '지역 0' })).toBeInTheDocument())
+  const writes = vi.mocked(fetch).mock.calls.filter(([, options]) => options?.method === 'POST')
+    .map(([, options]) => JSON.parse(String(options?.body)))
+  expect(writes.map(event => event.targetType)).toEqual(['COMPLEX', 'ANNOUNCEMENT', 'REGION'])
 })
 
-it('전체 해제 중 실패한 설정은 남기고 같은 이벤트로 재시도한다', async () => {
+it('같은 탭의 일부 해제가 실패하면 미완료 항목만 복원하고 같은 이벤트로 재시도한다', async () => {
   let shouldFail = true
   let settingsRevision = 0
   const writes: Array<{ eventId: string; targetId: string }> = []
@@ -105,7 +119,8 @@ it('전체 해제 중 실패한 설정은 남기고 같은 이벤트로 재시�
     }
     return Response.json({ userId: '7', settingsRevision: 0, targets: [
       { ...targetNotice, targetType: 'COMPLEX', targetId: '1', targetName: '서울 행복주택' },
-      { ...targetNotice, targetType: 'ANNOUNCEMENT', targetId: '2', targetName: '가을 모집 공고' },
+      { ...targetNotice, targetType: 'COMPLEX', targetId: '2', targetName: '다른 행복주택' },
+      { ...targetNotice, targetType: 'ANNOUNCEMENT', targetId: '1', targetName: '가을 모집 공고' },
       { ...targetNotice, targetType: 'REGION', targetId: '11' },
     ] })
   }))
@@ -114,19 +129,17 @@ it('전체 해제 중 실패한 설정은 남기고 같은 이벤트로 재시�
   clearAllAlarms()
   expect(await screen.findByRole('alert')).toHaveTextContent('1개 설정을 해제하지 못했어요.')
   expect(screen.queryByText('서울 행복주택')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('tab', { name: '지역 1' }))
-  expect(screen.getByText('서울특별시 전체')).toBeVisible()
-  fireEvent.click(screen.getByRole('tab', { name: '공고 1' }))
-  expect(screen.getByText('가을 모집 공고')).toBeVisible()
+  expect(screen.getByText('다른 행복주택')).toBeVisible()
+  expect(screen.getByRole('tab', { name: '공고 1' })).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: '지역 1' })).toBeInTheDocument()
   shouldFail = false
   clearAllAlarms()
-  await waitFor(() => expect(screen.queryByText('가을 모집 공고')).not.toBeInTheDocument())
-  expect(writes.filter((event) => event.targetId === '2').map((event) => event.eventId))
-    .toEqual([writes[1]?.eventId, writes[1]?.eventId])
-  expect(writes).toHaveLength(4)
+  await waitFor(() => expect(screen.queryByText('다른 행복주택')).not.toBeInTheDocument())
+  expect(writes.filter(event => event.targetId === '2').map(event => event.eventId)).toEqual([writes[1]?.eventId, writes[1]?.eventId])
+  expect(writes).toHaveLength(3)
 })
 
-it('전체 해제 중에는 중복 클릭과 개별 해제를 막는다', async () => {
+it('전체 해제 중에는 다른 탭에서도 중복·개별 해제를 막는다', async () => {
   session()
   const fetcher = globalThis.fetch
   let release!: () => void
@@ -139,15 +152,44 @@ it('전체 해제 중에는 중복 클릭과 개별 해제를 막는다', async 
   render(<MemoryRouter initialEntries={['/mypage/notifications']}><App /></MemoryRouter>)
   await screen.findByText('서울 행복주택')
   clearAllAlarms()
-  expect(screen.queryByRole('button', { name: '모두 끄기' })).not.toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: '모든 알림 끄기' })).not.toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: '서울 행복주택 알림 취소' })).not.toBeInTheDocument()
+  expect(screen.queryByText('서울 행복주택')).not.toBeInTheDocument()
+  expect(within(screen.getByRole('region', { name: '알림 관리' })).getByRole('tab', { name: '단지 0' })).toHaveFocus()
+  fireEvent.click(screen.getByRole('tab', { name: '공고 1' }))
+  expect(screen.getByRole('checkbox', { name: '전체 선택' })).toBeDisabled()
+  expect(screen.queryByRole('button', { name: /알림 끄기|^알림 해제$/ })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '가을 모집 공고 알림 취소' })).toBeDisabled()
   await waitFor(() => expect(writes).toBe(1))
   release()
-  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('알림 설정을 모두 해제했어요.'))
-  expect(writes).toBe(3)
+  await screen.findByText('선택한 알림을 해제했어요.')
+  expect(writes).toBe(1)
+  expect(screen.getByText('가을 모집 공고')).toBeVisible()
+  expect(screen.getByText('접수중')).toBeVisible()
+  expect(screen.getByText('접수 10.20 ~ 10.30')).toBeVisible()
 })
 
+it('선택 해제는 체크한 항목만 전송하고 다른 종류의 동일 ID는 유지한다', async () => {
+  session()
+  const fetcher = globalThis.fetch
+  vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL, options?: RequestInit) => {
+    if (String(url).endsWith('/notification-subscriptions/me') && !options?.method) return Response.json({ userId: '7', settingsRevision: 0, targets: [
+      { ...targetNotice, targetType: 'COMPLEX', targetId: '1', targetName: '선택한 단지' },
+      { ...targetNotice, targetType: 'COMPLEX', targetId: '2', targetName: '남겨둘 단지' },
+      { ...targetNotice, targetType: 'ANNOUNCEMENT', targetId: '1', targetName: '동일 ID 공고' },
+    ] })
+    return fetcher(url, options)
+  }))
+  render(<MemoryRouter initialEntries={['/mypage/notifications']}><App /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('checkbox', { name: '선택한 단지 선택' }))
+  fireEvent.click(screen.getByRole('button', { name: '알림 끄기 (1)' }))
+  fireEvent.click(within(screen.getByRole('group', { name: '알림 해제 확인' })).getByRole('button', { name: '알림 해제' }))
+  await screen.findByText('선택한 알림을 해제했어요.')
+  expect(screen.queryByText('선택한 단지')).not.toBeInTheDocument()
+  expect(screen.getByText('남겨둘 단지')).toBeVisible()
+  expect(screen.getByRole('tab', { name: '공고 1' })).toBeInTheDocument()
+  const writes = vi.mocked(fetch).mock.calls.filter(([, options]) => options?.method === 'POST')
+  expect(writes).toHaveLength(1)
+  expect(JSON.parse(String(writes[0]?.[1]?.body))).toMatchObject({ targetType: 'COMPLEX', targetId: '1', eventType: 'CANCELLED' })
+})
 
 it('지도에서 보관함을 모달로 열고 닫으면 원래 버튼으로 포커스가 돌아온다', async () => {
   session()
@@ -247,7 +289,7 @@ it('알림 분류는 키보드로 이동하고 비어 있는 분류도 선택할
   expect(screen.getByRole('tab', { name: '공고 1' })).toHaveFocus()
   expect(screen.getByRole('tab', { name: '공고 1' })).toHaveAttribute('aria-selected', 'true')
   fireEvent.keyDown(document.activeElement!, { key: 'End' })
-  expect(screen.getByRole('tab', { name: '지역 1' })).toHaveFocus()
+  expect(screen.getByRole('tab', { name: '기기 관리' })).toHaveFocus()
   fireEvent.keyDown(document.activeElement!, { key: 'Home' })
   fireEvent.click(screen.getByRole('button', { name: '서울 행복주택 알림 취소' }))
   expect(await screen.findByText('등록한 단지 알림이 없어요.')).toBeVisible()
@@ -255,7 +297,7 @@ it('알림 분류는 키보드로 이동하고 비어 있는 분류도 선택할
   expect(alarms.getByRole('tab', { name: '단지 0' })).toHaveAttribute('aria-selected', 'true')
   expect(alarms.getByRole('tab', { name: '단지 0' })).toHaveFocus()
   expect(screen.queryByRole('heading', { name: /관심 알림/ })).not.toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '모든 알림 끄기' })).toBeEnabled()
+  expect(screen.queryByRole('button', { name: /알림 끄기|^알림 해제$/ })).not.toBeInTheDocument()
 })
 
 it('지역 알림 이름은 단지나 공고 상세 링크로 만들지 않는다', async () => {

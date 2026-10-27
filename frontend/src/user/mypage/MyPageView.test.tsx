@@ -101,7 +101,7 @@ it('비회원에게 로그인 안내를 보여주고 로그인 실패 복귀 시
   setup('/mypage?login=failed', undefined, false)
   expect(await screen.findByText('로그인하고 관심 주택을 챙겨 보세요')).toBeVisible()
   expect(await screen.findByRole('dialog', { name: '로그인' })).toBeVisible()
-  expect(screen.getByRole('alert')).toHaveTextContent('로그인을 완료하지 못했어요.')
+  expect(screen.getByText('로그인을 완료하지 못했어요.').closest('[role=alert]')).toBeVisible()
 })
 
 it('북마크 세션은 정상이어도 알림 초기화 오류는 재시도할 수 있다', async () => {
