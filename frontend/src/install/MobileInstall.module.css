@@ -8,10 +8,9 @@
 .floating { position: absolute; left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); z-index: 110; margin: 0; }
 .action > button { display: flex; justify-content: space-between; width: 100%; padding: 12px 0; border: 0; background: none; color: var(--ds-color-action); font: inherit; cursor: pointer; text-align: left; }
 .action p { font-size: 12px; }
-.platforms { display: flex; gap: 4px; padding: 4px; background: var(--ds-color-surface-subtle); border-radius: 12px; }
-.platforms button { flex: 1; min-height: 40px; border: 0; border-radius: 9px; background: transparent; color: var(--ds-color-muted); font: inherit; font-size: 12px; cursor: pointer; }
-.platforms button[aria-pressed="true"] { background: var(--ds-color-surface); color: var(--ds-color-action); font-weight: 700; box-shadow: 0 1px 4px rgb(0 0 0 / 8%); }
 .stepHeading { margin: 18px 0 12px; }
+.directInstall { margin-top: 16px; }
+.directInstall p { margin: 8px 0 0; font-size: 12px; color: var(--ds-color-muted); }
 .stepHeading > span { color: var(--ds-color-action); font-size: 12px; font-weight: 700; }
 .stepHeading h3 { margin: 6px 0; font-size: 18px; }
 .stepHeading p { margin: 0; min-height: 42px; font-size: 13px; }
