@@ -187,7 +187,7 @@ describe('HousingComplexDetailPanel', () => {
 
     fireEvent.click(within(panel).getByRole('tab', { name: '44B' }))
     const secondPanel = within(panel).getByRole('tabpanel', { name: '44B' })
-    expect(factValue(secondPanel, '기본 보증금').getByText('', { selector: 'dd' })).toBeEmptyDOMElement()
+    expect(factValue(secondPanel, '기본 보증금').getByText('-')).toBeInTheDocument()
     expect(factValue(secondPanel, '기본 월 임대료').getByText('0원')).toBeInTheDocument()
     expect(within(secondPanel).getByRole('link', { name: '마이홈' })).toHaveAttribute('href', 'https://www.myhome.go.kr/rental/102')
   })
@@ -204,12 +204,12 @@ describe('HousingComplexDetailPanel', () => {
     expect(within(basicRow).getByText('18만 5,500원')).toBeInTheDocument()
     const currentRow = within(table).getByText('청년').closest('tr')!
     expect(within(currentRow).getByText('현재 공급')).toBeInTheDocument()
-    expect(within(currentRow).getByRole('cell', { name: '' })).toBeInTheDocument()
+    expect(within(currentRow).getByRole('cell', { name: '-' })).toBeInTheDocument()
     expect(within(currentRow).getByText('20만원')).toBeInTheDocument()
     expect(within(table).getByRole('rowheader', { name: '36A' })).toHaveAttribute('rowspan', '2')
     expect(within(panel).getByRole('table', { name: '36A 청년 현재 공급 조건' })).not.toHaveTextContent('4,200만원')
     expect(within(within(panel).getByRole('table', { name: '36A 청년 현재 공급 조건' }))
-      .getAllByRole('cell', { name: '' })).toHaveLength(2)
+      .getAllByRole('cell', { name: '-' })).toHaveLength(2)
   })
 
   it.each([null, 'javascript:alert(1)'])('출처 주소 %s는 링크로 만들지 않고 잘못된 수집일은 표시하지 않는다', (sourceUrl) => {
@@ -230,7 +230,7 @@ describe('HousingComplexDetailPanel', () => {
     fireEvent.click(within(section(panel, '주택형별 임대조건')).getByRole('button', { name: '평 전환' }))
     expect(within(panel).getAllByRole('button', { name: '㎡ 전환' })).toHaveLength(2)
     expect(within(panel).getAllByText('10.93평')).toHaveLength(2)
-    expect(factValue(section(panel, '주택형 정보'), '공급 면적').getByText('', { selector: 'dd' })).toBeEmptyDOMElement()
+    expect(factValue(section(panel, '주택형 정보'), '공급 면적').getByText('-')).toBeInTheDocument()
     fireEvent.click(within(panel).getByRole('tab', { name: '44B' }))
     expect(within(panel).getAllByText('13.57평')).toHaveLength(2)
     expect(within(panel).getByText('18.19평')).toBeVisible()
@@ -436,9 +436,14 @@ describe('HousingComplexDetailPanel', () => {
     expect(factValue(section(panel, '단지 기본 정보'), '총주차대수(세대당)').getByText('미확인')).toBeInTheDocument()
   })
 
-  it('값이 없으면 빈칸으로 표시하고 0과 false는 실제 값으로 표시한다', () => {
+  it('값이 없으면 하이픈으로 표시하고 0과 false는 실제 값으로 표시한다', () => {
     const { panel } = renderPanel(
       detailWith({
+        agencyName: '',
+        rentalTypeLabel: '',
+        buildingTypeLabel: '',
+        heatingTypeLabel: '',
+        corridorTypeLabel: '',
         completionDate: null,
         hasElevator: false,
         moveOutCountLastYear: 0,
@@ -465,15 +470,17 @@ describe('HousingComplexDetailPanel', () => {
     )
     const facts = section(panel, '단지 기본 정보')
 
-    expect(factValue(facts, '준공일자').getByText('', { selector: 'dd' })).toBeEmptyDOMElement()
+    for (const term of ['공급기관', '임대종류', '건물형태', '난방종류', '복도유형', '준공일자']) {
+      expect(factValue(facts, term).getByText('-')).toBeInTheDocument()
+    }
     expect(factValue(facts, '엘리베이터').getByText('없음')).toBeInTheDocument()
     expect(factValue(facts, '1년 퇴거 세대수').getByText('0세대')).toBeInTheDocument()
     expect(factValue(facts, '총세대수').getByText('0세대')).toBeInTheDocument()
     expect(factValue(facts, '총주차대수(세대당)').getByText('0대')).toBeInTheDocument()
 
     const housingType = section(panel, '주택형 정보')
-    expect(factValue(housingType, '전용 면적').getByText('', { selector: 'dd' })).toBeEmptyDOMElement()
-    expect(factValue(housingType, '공급 면적').getByText('', { selector: 'dd' })).toBeEmptyDOMElement()
+    expect(factValue(housingType, '전용 면적').getByText('-')).toBeInTheDocument()
+    expect(factValue(housingType, '공급 면적').getByText('-')).toBeInTheDocument()
     expect(factValue(housingType, '복층여부').getByText('해당 없음')).toBeInTheDocument()
     expect(factValue(housingType, '관리비').getByText('0원')).toBeInTheDocument()
     expect(within(housingType).getAllByText('0원')).toHaveLength(3)
@@ -493,11 +500,11 @@ describe('HousingComplexDetailPanel', () => {
       .toHaveAttribute('headers', within(table).getByRole('rowheader', { name: '임대보증금' }).id)
     expect(within(table).getByRole('cell', { name: '20만원' }))
       .toHaveAttribute('headers', within(table).getByRole('rowheader', { name: '월 임대료' }).id)
-    expect(within(table).getByRole('row', { name: '전환 가능 보증금' }))
+    expect(within(table).getByRole('row', { name: '전환 가능 보증금 -' }))
       .toBeInTheDocument()
     expect(within(table).getByRole('cell', { name: '5,000만원' }))
       .toHaveAttribute('data-emphasis', 'true')
-    expect(within(table).getByRole('cell', { name: '' }))
+    expect(within(table).getByRole('cell', { name: '-' }))
       .not.toHaveAttribute('data-emphasis')
   })
 
@@ -550,8 +557,8 @@ describe('HousingComplexDetailPanel', () => {
     expect(firstTab).toHaveAttribute('tabindex', '-1')
     expect(secondTab).toHaveAttribute('aria-controls', secondPanel.id)
     expect(secondPanel).toHaveAttribute('aria-labelledby', secondTab.id)
-    expect(factValue(secondPanel, '기본 보증금').getByText('', { selector: 'dd' })).toBeEmptyDOMElement()
-    expect(factValue(secondPanel, '기본 월 임대료').getByText('', { selector: 'dd' })).toBeEmptyDOMElement()
+    expect(factValue(secondPanel, '기본 보증금').getByText('-')).toBeInTheDocument()
+    expect(factValue(secondPanel, '기본 월 임대료').getByText('-')).toBeInTheDocument()
     expect(within(information).queryByRole('tabpanel', { name: '36A' })).not.toBeInTheDocument()
     expect(within(table).queryByRole('button')).not.toBeInTheDocument()
     expect(table.querySelector('[data-selected]')).toBeNull()
@@ -664,7 +671,7 @@ describe('HousingComplexDetailPanel', () => {
     expect(within(table).getByRole('rowheader', { name: '36A' })).toHaveAttribute('rowspan', '2')
     expect(within(table).queryByRole('button')).not.toBeInTheDocument()
     const missingRow = within(table).getByRole('rowheader', { name: '44B' }).closest('tr')!
-    expect(within(missingRow).getAllByRole('cell', { name: '' })).toHaveLength(2)
+    expect(within(missingRow).getAllByRole('cell', { name: '-' })).toHaveLength(2)
     fireEvent.click(within(panel).getByRole('tab', { name: '44B' }))
     expect(within(panel).getByRole('tabpanel', { name: '44B' })).toBeInTheDocument()
   })
