@@ -1,3 +1,6 @@
+import { clearMyPageReturnState, myPageReturnPath } from '../user/mypage/mypageNavigation'
+import { MyPageView } from '../user/mypage/MyPageView'
+import { lastExplorerPath } from '../user/auth/loginReturn'
 import { useExplorerReturn } from './navigation/ExplorerReturnContext'
 import { MobileInstallCard } from '../install/MobileInstall'
 import { useListMeasurement } from './analytics/useListMeasurement'
@@ -135,7 +138,7 @@ const DEFAULT_MAP_LOCATION = {
 }
 
 type ResultTab = 'complexes' | 'announcements'
-type ResultList = ResultTab | 'recent'
+type ResultList = ResultTab | 'recent' | 'mypage'
 
 interface ComplexDetailState {
   readonly complexId: string | null
@@ -195,6 +198,7 @@ export function PublicHousingExplorer({
   streetViewSupported = true,
 }: PublicHousingExplorerProps) {
   const location = useLocation()
+  const mypageReturn = myPageReturnPath(location.state)
   const markerHoverAnalytics = useMarkerHoverAnalytics()
   const navigate = useNavigate()
   const navigationType = useNavigationType()
@@ -295,9 +299,9 @@ export function PublicHousingExplorer({
     }
   }, [])
   const [activeResultTab, setActiveResultTab] =
-    useState<ResultList>(() => mobile && readRecentComplexPreview(location.state) ? 'recent' : 'complexes')
+    useState<ResultList>(() => location.pathname.startsWith('/mypage') ? 'mypage' : mobile && readRecentComplexPreview(location.state) ? 'recent' : 'complexes')
   const [announcementListRequested, setAnnouncementListRequested] = useState(false)
-  const [listPanelMode, setListPanelMode] = useState<'auto' | 'open' | 'collapsed'>(() => (
+  const [listPanelMode, setListPanelMode] = useState<'auto' | 'open' | 'collapsed'>(() => location.pathname.startsWith('/mypage') ? 'open' : (
     (initialDetail.kind === 'complex' || initialDetail.kind === 'announcement')
       && (isMobileViewport() || window.matchMedia?.('(max-width: 1023px)').matches) ? 'collapsed' : 'auto'
   ))
@@ -558,8 +562,8 @@ export function PublicHousingExplorer({
     }
   }, [announcementFiltersKey])
   const showListPage = !streetView.active && !integratedSearchActive && listPanelMode !== 'collapsed'
-    && (activeResultTab === 'recent' || (activeResultTab === 'announcements' ? announcementListRequested : boundaryRegionCode !== null))
-  const prepareListEntry = useListMeasurement(showListPage, activeResultTab === 'complexes' ? 'region_complex' : activeResultTab === 'announcements' ? 'announcement' : 'recent', activeResultTab === 'complexes' ? regionResults.key : activeResultTab === 'announcements' ? announcementFiltersKey : 'recent')
+    && (activeResultTab === 'recent' || activeResultTab === 'mypage' || (activeResultTab === 'announcements' ? announcementListRequested : boundaryRegionCode !== null))
+  const prepareListEntry = useListMeasurement(showListPage && activeResultTab !== 'mypage', activeResultTab === 'complexes' ? 'region_complex' : activeResultTab === 'announcements' ? 'announcement' : 'recent', activeResultTab === 'complexes' ? regionResults.key : activeResultTab === 'announcements' ? announcementFiltersKey : 'recent')
 
   const announcementResults = useAnnouncementResults(
     repository,
@@ -888,6 +892,9 @@ export function PublicHousingExplorer({
       mobileDetailListModeRef.current ??= listPanelMode
       setListPanelMode('collapsed')
     }
+    const leavingMyPage = mypageReturn !== null && entryPoint !== 'detail'
+    const originState = leavingMyPage
+      ? clearMyPageReturnState(clearDetailHistoryState(location.state)) : location.state
     const currentSearch = new URLSearchParams(location.search)
     const activeElement = document.activeElement
     const opener = activeElement instanceof HTMLElement
@@ -896,7 +903,7 @@ export function PublicHousingExplorer({
       : null
     const currentDetail = toDetailReturnFocusLocation(detailLocation)
     const actionKey = opener?.dataset.detailReturnFocus ?? null
-    const returnFocus = currentDetail
+    const returnFocus = !leavingMyPage && currentDetail
       && currentDetail.kind !== detailKind(kind)
       && actionKey
       ? { ...currentDetail, actionKey }
@@ -916,8 +923,8 @@ export function PublicHousingExplorer({
     const currentKind = detailResultTab(detailLocation)
     const replace = currentKind === kind
     const detailState = replace
-      ? location.state
-      : withDetailHistoryState(location.state, returnFocus)
+      ? originState
+      : withDetailHistoryState(originState, returnFocus)
     const internalState = withRecentComplexPreview(detailState,
       mobile && entryPoint === 'recent' && kind === 'complexes' ? { complexId: id, expanded: false }
         : entryPoint === 'detail' ? readRecentComplexPreview(location.state) : null)
@@ -941,6 +948,7 @@ export function PublicHousingExplorer({
     location.search,
     location.state,
     navigate,
+    mypageReturn,
     prepareDetailVisit,
     prepareProductDetail,
     listPanelMode,
@@ -1023,6 +1031,11 @@ export function PublicHousingExplorer({
     setCardHighlightedComplexId(null)
     setMarkerHighlightedComplexId(null)
 
+    if (mypageReturn) {
+      navigate(mypageReturn, { replace: true })
+      return
+    }
+
     const nextSearch = clearDetailQuery(
       new URLSearchParams(location.search),
     )
@@ -1039,7 +1052,47 @@ export function PublicHousingExplorer({
     navigate,
     closeStreetView,
     trackDetailAction,
+    mypageReturn,
   ])
+
+  const onMyPageRoute = location.pathname.startsWith('/mypage')
+  useEffect(() => {
+    if (!onMyPageRoute) return
+    setIntegratedSearchActive(false)
+    setListPanelMode('open')
+    setActiveResultTab('mypage')
+  }, [onMyPageRoute])
+  // 로고·뒤로가기처럼 페이지 밖에서 /mypage를 벗어나도 마이페이지 화면을 닫는다.
+  useEffect(() => {
+    if (onMyPageRoute || activeResultTab !== 'mypage') return
+    setActiveResultTab('complexes')
+    setListPanelMode('collapsed')
+  }, [onMyPageRoute, activeResultTab])
+  // 마이페이지에서 연 상세는 마지막 지도 위치 위에 열고, 닫기 버튼이 출발한 마이페이지 화면으로 돌아가게 한다.
+  // 단지는 최근 본 단지와 같이 지도를 단지로 옮기고, 모바일에서는 요약 미리보기부터 보여준다.
+  function openDetailFromMyPage(kind: ResultTab, id: string) {
+    const mapPath = new URL(lastExplorerPath(), window.location.origin)
+    const search = kind === 'complexes'
+      ? setComplexIdQuery(clearDetailQuery(mapPath.searchParams), id)
+      : setAnnouncementIdQuery(clearDetailQuery(mapPath.searchParams), id)
+    const state = { mypageReturn: location.pathname + location.search }
+    setListPanelMode('collapsed')
+    if (kind === 'complexes') {
+      pendingDetailCameraRef.current = { id, revision: viewportRevisionRef.current }
+      setDetailCameraRevision((current) => current + 1)
+    }
+    navigate({ pathname: '/explore', search: toSearchString(search) }, {
+      state: kind === 'complexes' && mobile ? withRecentComplexPreview(state, { complexId: id, expanded: false }) : state,
+    })
+  }
+
+  // 마이페이지 패널에서 다른 패널로 바꾸면 /mypage 주소를 지도 주소로 돌린다.
+  const previousResultTabRef = useRef(activeResultTab)
+  useEffect(() => {
+    const previous = previousResultTabRef.current
+    previousResultTabRef.current = activeResultTab
+    if (onMyPageRoute && previous === 'mypage' && activeResultTab !== 'mypage') navigate({ pathname: '/explore' }, { replace: true })
+  }, [onMyPageRoute, activeResultTab, navigate])
 
   const selectResultTab = useCallback((tab: ResultList) => {
     closeStreetView('USER_CLOSED', false)
@@ -1483,9 +1536,11 @@ export function PublicHousingExplorer({
     mobileDetailListModeRef.current = null
     pendingListTriggerFocusRef.current = activeResultTab
     setListPanelMode('collapsed')
+    if (onMyPageRoute) navigate({ pathname: '/explore' }, { replace: true })
   }
 
   const complexDetailLayer = <ComplexDetailLayer
+    returnToMyPage={mypageReturn !== null}
     mobile={mobile}
     streetView={streetViewSupported && !mobile ? streetView : undefined}
     state={detailView.complexDetail}
@@ -1544,6 +1599,11 @@ export function PublicHousingExplorer({
           </button>
         </div>
       </nav>
+      {onMyPageRoute && showListPage && activeResultTab === 'mypage' && <MyPageView
+        onOpenComplex={(id) => openDetailFromMyPage('complexes', id)}
+        onOpenAnnouncement={(id) => openDetailFromMyPage('announcements', id)}
+        onBrowseAnnouncements={() => selectResultTab('announcements')}
+        onClose={() => { setListPanelMode('collapsed'); navigate(lastExplorerPath()) }} />}
       <div className="housing-browse-panel">
         <div className="housing-search-overlay" ref={searchOverlayRef}>
           <IntegratedSearch
@@ -1554,7 +1614,7 @@ export function PublicHousingExplorer({
             selectionControl={!mobile && regionControl('desktop')}
           />
         </div>
-        <HousingResultsPanel visible={showListPage} onCollapse={collapseResults}
+        <HousingResultsPanel visible={showListPage && activeResultTab !== 'mypage'} onCollapse={collapseResults}
           initialMobileHeightPercent={activeResultTab === 'complexes' ? 25 : 50}
           headerActions={mobile && activeResultTab === 'complexes' ? regionControl('mobile-header') : undefined}
           title={mobile && activeResultTab === 'complexes' ? mobileRegionTitle : activeResultTab === 'recent' ? '최근 본 단지' : activeResultTab === 'complexes' ? '단지 목록' : '공고 목록'}>
@@ -1741,6 +1801,7 @@ export function PublicHousingExplorer({
         </div>
         {showingRecentComplex ? <HousingComplexSummarySheet
           key={recentPreview.complexId}
+          returnToMyPage={mypageReturn !== null}
           expanded={recentPreview.expanded}
           onBackToSummary={returnToComplexSummary}
           recent={recentComplexes.find((recent) => recent.complexId === recentPreview?.complexId)}
@@ -1751,6 +1812,7 @@ export function PublicHousingExplorer({
           onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'detail' }); setDetailRetryRevision((current) => current + 1) }}
         >{complexDetailLayer}</HousingComplexSummarySheet> : complexDetailLayer}
         <AnnouncementDetailLayer
+          returnToMyPage={mypageReturn !== null}
           mobile={mobile}
           state={detailView.announcementDetail}
           onClose={closeDetail}
@@ -1784,8 +1846,9 @@ function DetailBackButton({ backTarget, onBack }: DetailBackProps) {
   )
 }
 
-function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backTarget, onBack, streetView, mobile, onBackToSummary }: {
+function ComplexDetailLayer({ returnToMyPage, state, onClose, onOpenAnnouncement, onRetry, backTarget, onBack, streetView, mobile, onBackToSummary }: {
   state: ComplexDetailState
+  returnToMyPage: boolean
   mobile: boolean
   streetView?: StreetViewController
   onClose: () => void
@@ -1805,6 +1868,7 @@ function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backT
     <HousingDetailOverlay label="단지 상세" mobile={mobile} onClose={onClose}>
       {state.status === 'ready' && state.detail
         ? <HousingComplexDetailPanel
+            returnToMyPage={returnToMyPage}
             key={state.detail.complexId}
             mobile={mobile}
             streetView={streetView}
@@ -1812,15 +1876,16 @@ function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backT
             backButton={backButton}
             detail={toHousingComplexDetailData(state.detail)}
             onClose={onClose} onOpenAnnouncement={onOpenAnnouncement} />
-        : <HousingDetailStatePanel kind="complex" id={state.complexId} backButton={backButton}
+        : <HousingDetailStatePanel returnToMyPage={returnToMyPage} kind="complex" id={state.complexId} backButton={backButton}
             status={state.status} errorMessage={state.errorMessage}
             onClose={onClose} onRetry={onRetry} />}
     </HousingDetailOverlay>
   )
 }
 
-function AnnouncementDetailLayer({ state, onClose, onOpenComplex, onRetry, backTarget, onBack, mobile }: {
+function AnnouncementDetailLayer({ returnToMyPage, state, onClose, onOpenComplex, onRetry, backTarget, onBack, mobile }: {
   state: AnnouncementDetailState
+  returnToMyPage: boolean
   mobile: boolean
   onClose: () => void
   onOpenComplex: (complexId: string) => void
@@ -1833,11 +1898,12 @@ function AnnouncementDetailLayer({ state, onClose, onOpenComplex, onRetry, backT
     <HousingDetailOverlay label="공고 상세" mobile={mobile} onClose={onClose}>
       {state.status === 'ready' && state.detail
         ? <HousingAnnouncementDetailPanel
+            returnToMyPage={returnToMyPage}
             key={state.detail.announcementId}
             backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
             detail={toHousingAnnouncementDetailData(state.detail)}
             onClose={onClose} onOpenComplex={onOpenComplex} />
-        : <HousingDetailStatePanel kind="announcement" id={state.announcementId} backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
+        : <HousingDetailStatePanel returnToMyPage={returnToMyPage} kind="announcement" id={state.announcementId} backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
             status={state.status} errorMessage={state.errorMessage} onClose={onClose} onRetry={onRetry} />}
     </HousingDetailOverlay>
   )
@@ -2516,7 +2582,7 @@ function focusComplexCard(card: HTMLElement | undefined) {
 }
 
 function focusListTrigger(kind: ResultList) {
-  const trigger = document.getElementById(kind === 'recent' ? 'recent-list-trigger' : kind === 'complexes' ? 'region-complex-list-trigger' : 'announcement-list-trigger')
+  const trigger = kind === 'mypage' ? document.querySelector<HTMLElement>('.service-rail-account .service-login-link') : document.getElementById(kind === 'recent' ? 'recent-list-trigger' : kind === 'complexes' ? 'region-complex-list-trigger' : 'announcement-list-trigger')
   const target = isAvailableFocusTarget(trigger) ? trigger
     : document.querySelector<HTMLInputElement>('.housing-search-overlay input[type="search"]')
   target?.focus({ preventScroll: true })

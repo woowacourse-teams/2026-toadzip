@@ -859,7 +859,7 @@ a {
   margin-left: auto;
 }
 
-.housing-detail-state > header button {
+.housing-detail-state > header button:not([data-mypage-return]) {
   display: grid;
   width: 44px;
   min-width: 44px;
@@ -872,7 +872,7 @@ a {
   place-items: center;
 }
 
-.housing-detail-state > header button span {
+.housing-detail-state > header button:not([data-mypage-return]) span {
   color: currentcolor;
   font-size: 24px;
   line-height: 1;
@@ -2381,6 +2381,11 @@ button {
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke='black' stroke-width='1.6'%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3Cpath d='M4 22v-2a8 8 0 0 1 16 0v2'/%3E%3C/g%3E%3C/svg%3E") center / contain;
 }
 .service-rail-account .service-login-link:hover { background: var(--ds-color-action-soft); }
+/* 레일 아래쪽 메뉴도 위쪽 공고·최근 본 단지와 같은 글자 크기·굵기·모서리를 쓴다. */
+.service-rail-account :is(.service-feedback-link, .service-notification-inbox, .service-login-link) {
+  border-radius: 12px; color: var(--ds-color-label); font-size: 11px; font-weight: 650; line-height: normal; text-align: center;
+}
+.service-rail-account .service-login-link[aria-current="page"] { box-shadow: inset 0 0 0 1px var(--ds-color-brand); background: var(--ds-color-action-soft); color: var(--ds-color-text); }
 .service-rail-account .service-user-loading { text-align: center; font-size: 11px; }
 .app-shell .housing-explorer { position: relative; display: block; width: 100%; height: 100%; }
 .app-shell .housing-map-workspace { width: 100%; height: 100%; }

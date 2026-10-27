@@ -5,7 +5,7 @@ export function safeLoginReturn(value: string | null): string {
   if (!value?.startsWith('/') || value.startsWith('//') || value.includes('\\')) return '/explore'
   try {
     const url = new URL(value, window.location.origin)
-    if (url.origin !== window.location.origin || !['/explore', '/notifications', '/mypage/notifications'].includes(url.pathname)) return '/explore'
+    if (url.origin !== window.location.origin || !['/explore', '/notifications', '/mypage/notifications', '/mypage', '/mypage/bookmarks', '/mypage/account', '/mypage/info'].includes(url.pathname)) return '/explore'
     url.searchParams.delete('login')
     url.searchParams.delete('reason')
     return url.pathname + url.search + url.hash
@@ -48,4 +48,17 @@ export function loginPageUrl(returnTo: string, failed = false) {
   const query = new URLSearchParams({ returnTo: safeLoginReturn(returnTo) })
   if (failed) query.set('login', 'failed')
   return `/login?${query}`
+}
+
+const EXPLORER_KEY = 'toadzip:last-explore-path'
+export function rememberExplorerPath(path: string) {
+  const safe = safeLoginReturn(path)
+  if (!safe.startsWith('/explore')) return
+  try { sessionStorage.setItem(EXPLORER_KEY, safe) } catch { /* Optional navigation memory. */ }
+}
+export function lastExplorerPath(): string {
+  try {
+    const safe = safeLoginReturn(sessionStorage.getItem(EXPLORER_KEY))
+    return safe.startsWith('/explore') ? safe : '/explore'
+  } catch { return '/explore' }
 }

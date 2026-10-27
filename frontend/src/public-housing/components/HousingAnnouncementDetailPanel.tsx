@@ -1,3 +1,4 @@
+import { BookmarkButton } from '../../user/bookmarks/BookmarkButton'
 import { captureProductEvent } from '../../analytics/productAnalytics'
 import { detailVisitId, useDetailScrollAnalytics } from './detailAnalytics'
 import { toHttpUrl } from '../presentation/httpUrl.ts'
@@ -119,6 +120,7 @@ export interface HousingAnnouncementDetailData {
 }
 
 export interface HousingAnnouncementDetailPanelProps {
+  readonly returnToMyPage?: boolean
   readonly detail: HousingAnnouncementDetailData
   readonly onClose: () => void
   readonly backButton?: ReactNode
@@ -141,6 +143,7 @@ const DETAIL_SECTIONS = [
 type DetailSectionKey = typeof DETAIL_SECTIONS[number]['key']
 
 export function HousingAnnouncementDetailPanel({
+  returnToMyPage,
   detail,
   onClose,
   onOpenComplex,
@@ -185,6 +188,7 @@ export function HousingAnnouncementDetailPanel({
       onKeyDown={handlePanelKeyDown}
     >
       <StickyHeader
+        returnToMyPage={returnToMyPage}
         backButton={backButton}
         detail={detail}
         title={title}
@@ -221,7 +225,8 @@ export function HousingAnnouncementDetailPanel({
           <div className={styles.summaryBlock}>
             <NoticeIntro detail={detail} groups={groups} />
             <div className={styles.notificationAction}>
-              <NotificationInterestButton
+              <BookmarkButton type="ANNOUNCEMENT" targetId={detail.announcementId} name={title} />
+          <NotificationInterestButton
                 target={{ type: 'ANNOUNCEMENT', id: detail.announcementId, name: title }}
                 source="ANNOUNCEMENT_DETAIL"
               />
@@ -329,6 +334,7 @@ function useAnnouncementSections(announcementId: string) {
 }
 
 function StickyHeader({
+  returnToMyPage,
   backButton,
   detail,
   title,
@@ -336,6 +342,7 @@ function StickyHeader({
   headingRef,
   onClose,
 }: {
+  returnToMyPage?: boolean
   detail: HousingAnnouncementDetailData
   title: string
   titleId: string
@@ -386,7 +393,7 @@ function StickyHeader({
         </div>
         <h2 ref={headingRef} id={titleId} tabIndex={-1} title={title}>{title}</h2>
       </div>
-      <DetailCloseButton label="공고 상세 닫기" onClose={onClose} />
+      <DetailCloseButton label="공고 상세 닫기" onClose={onClose} returnToMyPage={returnToMyPage} />
     </header>
   )
 }

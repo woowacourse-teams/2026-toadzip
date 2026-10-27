@@ -19,3 +19,12 @@
 .switch:disabled { cursor: wait; opacity: .6; }
 .switch:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 4px; }
 @media (prefers-reduced-motion: reduce) { .switch, .thumb { transition: none; } }
+
+/* 마이페이지에서는 상태와 조작만 한 줄에 모으고, 좁은 화면에서 자연스럽게 감싼다. */
+.compact { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ds-space-3); margin-bottom: var(--ds-space-6); padding: var(--ds-space-3) var(--ds-space-4); border-bottom: 0; background: var(--ds-color-surface-subtle); }
+.compact .heading { display: grid; gap: var(--ds-space-1); }
+.compact .heading h3 { font-size: var(--ds-text-section); }
+.compactControls { display: flex; flex: 1; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--ds-space-2) var(--ds-space-3); }
+.compactControls .switchRow { min-height: 36px; gap: var(--ds-space-3); font-size: var(--ds-text-caption); }
+.compactControls .message { margin: 0; color: var(--ds-color-muted); font-size: var(--ds-text-caption); }
+.compactControls > button { min-height: 32px; padding-inline: 10px; font-size: var(--ds-text-caption); white-space: nowrap; }

@@ -164,7 +164,7 @@ function sumNullable(values: readonly (number | null)[]) {
   return known.reduce((total, value) => total + value, 0)
 }
 
-function applicationStatusLabel(value: string | null) {
+export function applicationStatusLabel(value: string | null) {
   return codeLabel(value, {
     APPLYING: '접수중',
     BEFORE_APPLICATION: '공고중',

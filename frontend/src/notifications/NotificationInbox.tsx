@@ -1,3 +1,4 @@
+import { useMyPageReturnState } from '../user/mypage/mypageNavigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { Button } from '../design-system/components/Button'
@@ -17,6 +18,7 @@ export function NotificationInbox({ onNavigate }: { readonly onNavigate?: () => 
   const revision = context?.revision
   const count = context?.unreadCount
   const navigate = useNavigate()
+  const returnState = useMyPageReturnState()
   const [state, setState] = useState({ userId, page: empty, loading: true, error: '' })
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
@@ -81,7 +83,7 @@ export function NotificationInbox({ onNavigate }: { readonly onNavigate?: () => 
       setState(current => ({ ...current, page: { ...current.page, items: current.page.items.map(value =>
         (!item && BigInt(value.id) <= BigInt(page.readThrough)) || value.id === item?.id ? { ...value, readAt: value.readAt ?? now } : value) } }))
       context?.invalidate()
-      if (item?.targetAvailable) { onNavigate?.(); void navigate(`/explore?announcementId=${item.announcementId}`) }
+      if (item?.targetAvailable) { onNavigate?.(); void navigate(`/explore?announcementId=${item.announcementId}`, { state: returnState }) }
     } catch (error) {
       if (signal.aborted || version !== generation.current) return
       if (error instanceof NotificationApiError && error.status === 401) sessionExpired?.()
@@ -132,7 +134,7 @@ export function NotificationInbox({ onNavigate }: { readonly onNavigate?: () => 
       {edit.all && <p>모든 페이지의 알림을 선택했어요. 편집 중 도착한 새 알림은 남겨요.</p>}
     </div>}
     {message && <p className={styles.feedback} role="status">{message}</p>}
-    {actionError && !confirmDelete && <p className={styles.feedback} role="alert">{actionError} {failedItem?.targetAvailable && <Link to={`/explore?announcementId=${failedItem.announcementId}`} onClick={onNavigate}>공고만 보기</Link>}</p>}
+    {actionError && !confirmDelete && <p className={styles.feedback} role="alert">{actionError} {failedItem?.targetAvailable && <Link state={returnState} to={`/explore?announcementId=${failedItem.announcementId}`} onClick={onNavigate}>공고만 보기</Link>}</p>}
     {state.error && <p role="alert">{state.error} <button className={styles.textButton} type="button" onClick={() => { finishEditing(); setRetry(value => value + 1) }}>다시 시도</button></p>}
     {!loading && !state.error && !page.items.length && <div className={styles.empty}><p>아직 받은 알림이 없어요.</p><p>관심 단지·지역의 새 공고와 신청한 공고 일정을 알려 드릴게요.</p></div>}
     <ul className={styles.list}>{page.items.map(item => <li key={item.id} className={item.readAt ? styles.read : styles.unread}>

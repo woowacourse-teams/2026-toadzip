@@ -9,6 +9,15 @@
   cursor: pointer;
 }
 
+.root:any-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 .md {
   min-height: var(--ds-control-height-md);
   font-size: var(--ds-text-body);
@@ -21,6 +30,17 @@
 
 .root:hover:not(:disabled):not(:where(:global(.admin-layout) *)) {
   background: var(--ds-color-brand-hover);
+}
+
+.secondary {
+  border: 1px solid var(--ds-color-border-base);
+  background: var(--ds-color-surface);
+  color: var(--ds-color-text);
+}
+
+.secondary:hover:not(:disabled):not(:where(:global(.admin-layout) *)) {
+  border-color: var(--ds-color-label);
+  background: var(--ds-color-surface-subtle);
 }
 
 .root:focus-visible {

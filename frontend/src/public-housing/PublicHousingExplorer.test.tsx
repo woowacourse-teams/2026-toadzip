@@ -7,7 +7,7 @@ import {
   within,
 } from '@testing-library/react'
 import { useRef, useState } from 'react'
-import { MemoryRouter, useLocation, useNavigate } from 'react-router'
+import { Link, MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { trackEvent } from '../analytics/googleAnalytics.ts'
 import { consentStore } from '../privacy/consentStore'
@@ -45,6 +45,8 @@ import type {
   HousingMapIndividualResult,
 } from './model/housingMap.ts'
 import { PublicHousingExplorer } from './PublicHousingExplorer.tsx'
+import { BookmarkProvider } from '../user/bookmarks/BookmarkProvider'
+import type { BookmarkRepository } from '../user/bookmarks/bookmarkRepository'
 import type {
   IntegratedSearchRepository,
   IntegratedSearchResponse,
@@ -2840,6 +2842,115 @@ describe('PublicHousingExplorer', () => {
     expectCurrentSearch({ boundaryRegionCode: '11',})
   })
 
+  it.each([
+    ['complexId=17', '단지 상세 닫기', 'click'],
+    ['announcementId=101', '공고 상세 닫기', 'click'],
+    ['complexId=17', '단지 상세 닫기', 'Escape'],
+    ['announcementId=101', '공고 상세 닫기', 'Escape'],
+  ])('마이페이지에서 연 %s 상세은 기존 %s의 %s 동작으로 출발 탭에 복귀한다', async (query, label, action) => {
+    const repository = createRepository()
+    render(<MemoryRouter initialEntries={[{ pathname: '/explore', search: `?${query}`, state: { mypageReturn: '/mypage/bookmarks?type=ANNOUNCEMENT' } }]}><Routes>
+      <Route path="/explore" element={<PublicHousingExplorer repository={repository} mapRepository={repository} regionRepository={createRegionRepository()} />} />
+      <Route path="/mypage/bookmarks" element={<><h1>돌아온 북마크</h1><LocationSearch /></>} />
+    </Routes></MemoryRouter>)
+    const close = await screen.findByRole('button', { name: '마이페이지로 돌아가기' })
+    expect(close).toHaveTextContent('마이페이지')
+    expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '마이페이지로 돌아가기' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: '마이페이지 복귀' })).not.toBeInTheDocument()
+    if (action === 'Escape') fireEvent.keyDown(close, { key: 'Escape' })
+    else fireEvent.click(close)
+    expect(await screen.findByRole('heading', { name: '돌아온 북마크' })).toBeVisible()
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?type=ANNOUNCEMENT')
+  })
+
+  it.each([
+    ['complexId=17', '단지 상세 닫기', '/mypage/notifications'],
+    ['announcementId=201', '공고 상세 닫기', '/mypage/notifications?type=ANNOUNCEMENT'],
+  ])('알림 관리에서 연 %s 상세를 닫으면 원래 분류로 복귀한다', async (query, closeLabel, origin) => {
+    const repository = createRepository()
+    render(<MemoryRouter initialEntries={[{ pathname: '/explore', search: `?${query}`, state: { mypageReturn: origin } }]}><Routes>
+      <Route path="/explore" element={<PublicHousingExplorer repository={repository} mapRepository={repository} regionRepository={createRegionRepository()} />} />
+      <Route path="/mypage/notifications" element={<><h1>돌아온 알림 관리</h1><LocationSearch /></>} />
+    </Routes></MemoryRouter>)
+    const close = await screen.findByRole('button', { name: '마이페이지로 돌아가기' })
+    expect(screen.queryByRole('button', { name: closeLabel })).not.toBeInTheDocument()
+    fireEvent.click(close)
+    expect(await screen.findByRole('heading', { name: '돌아온 알림 관리' })).toBeVisible()
+    expect(screen.getByTestId('location-search').textContent).toBe(origin.includes('?') ? '?type=ANNOUNCEMENT' : '')
+  })
+
+  it('마이페이지 주소는 지도 위 페이지로 열고, 고른 단지를 지도에서 연 뒤 마이페이지 버튼으로 복귀한다', async () => {
+    const repository = createRepository()
+    const bookmarks: BookmarkRepository = { list: vi.fn().mockResolvedValue([{ type: 'COMPLEX', targetId: '17', name: '서울가람 행복주택', createdAt: '2026-10-26T09:00:00', available: true, address: '서울특별시 중구 세종대로 110', status: null, applicationStartDate: null, applicationEndDate: null }]), save: vi.fn(), remove: vi.fn() }
+    const explorer = <PublicHousingExplorer repository={repository} mapRepository={repository} regionRepository={createRegionRepository()} />
+    render(<MemoryRouter initialEntries={['/mypage/bookmarks']}><BookmarkProvider repository={bookmarks} loadUser={async () => ({ id: 7, email: null })}><Routes>
+      <Route path="/explore" element={explorer} />
+      <Route path="/mypage/:section" element={explorer} />
+    </Routes><LocationPath /></BookmarkProvider></MemoryRouter>)
+    fireEvent.click((await screen.findByText('서울가람 행복주택')).closest('button')!)
+    expect(screen.getByTestId('location-path')).toHaveTextContent('/explore?complexId=17')
+    expect(screen.queryByRole('heading', { name: '마이페이지' })).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: '마이페이지로 돌아가기' }))
+    expect(screen.getByTestId('location-path')).toHaveTextContent('/mypage/bookmarks')
+    expect(await screen.findByRole('heading', { name: '마이페이지' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '지도로 돌아가기' }))
+    expect(screen.getByTestId('location-path')).toHaveTextContent(/^\/explore/)
+    expect(screen.queryByRole('heading', { name: '마이페이지' })).not.toBeInTheDocument()
+  })
+
+  it('마이페이지 밖의 링크로 지도 주소에 가면 마이페이지 화면을 닫는다', async () => {
+    const repository = createRepository()
+    const explorer = <PublicHousingExplorer repository={repository} mapRepository={repository} regionRepository={createRegionRepository()} />
+    render(<MemoryRouter initialEntries={['/mypage']}><BookmarkProvider repository={{ list: vi.fn().mockResolvedValue([]), save: vi.fn(), remove: vi.fn() }} loadUser={async () => ({ id: 7, email: null })}>
+      <Link to="/explore">로고</Link>
+      <Routes><Route path="/explore" element={explorer} /><Route path="/mypage" element={explorer} /></Routes>
+    </BookmarkProvider></MemoryRouter>)
+    await screen.findByRole('button', { name: '로그아웃' })
+    expect(screen.getByRole('heading', { name: '마이페이지' })).toBeVisible()
+    fireEvent.click(screen.getByRole('link', { name: '로고' }))
+    await waitFor(() => expect(screen.queryByRole('heading', { name: '마이페이지' })).not.toBeInTheDocument())
+  })
+
+  it('마이페이지에서 연 상세끼리 이동하면 이전 상세와 마이페이지 복귀를 함께 제공한다', async () => {
+    const repository = createRepository()
+    render(<MemoryRouter initialEntries={[{ pathname: '/explore', search: '?announcementId=201', state: { mypageReturn: '/mypage/notifications?type=ANNOUNCEMENT' } }]}><Routes>
+      <Route path="/explore" element={<PublicHousingExplorer repository={repository} mapRepository={repository} regionRepository={createRegionRepository()} />} />
+      <Route path="/mypage/notifications" element={<><h1>돌아온 알림 관리</h1><LocationSearch /></>} />
+    </Routes></MemoryRouter>)
+    await screen.findByRole('complementary', { name: '성남 청년 행복주택 입주자 모집 공고 상세 정보' })
+    const openComplex = screen.getByRole('button', { name: '서울가람 행복주택 단지 상세 보기' })
+    openComplex.focus()
+    fireEvent.click(openComplex)
+    await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
+    expect(screen.getByRole('button', { name: '마이페이지로 돌아가기' })).toHaveTextContent('마이페이지')
+    fireEvent.click(screen.getByRole('button', { name: '← 공고로 돌아가기' }))
+    await screen.findByRole('complementary', { name: '성남 청년 행복주택 입주자 모집 공고 상세 정보' })
+    fireEvent.click(screen.getByRole('button', { name: '마이페이지로 돌아가기' }))
+    expect(await screen.findByRole('heading', { name: '돌아온 알림 관리' })).toBeVisible()
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?type=ANNOUNCEMENT')
+  })
+
+  it.each(['지도 마커', '검색 목록'])('마이페이지 상세를 보다가 %s에서 단지를 고르면 지도 탐색으로 전환한다', async (entry) => {
+    const repository = createRepository()
+    render(<MemoryRouter initialEntries={[{ pathname: '/explore', search: '?announcementId=201&boundaryRegionCode=11', state: { mypageReturn: '/mypage/bookmarks' } }]}>
+      <PublicHousingExplorer repository={repository} mapRepository={repository} regionRepository={createRegionRepository()} /><LocationSearch />
+    </MemoryRouter>)
+    await screen.findByRole('complementary', { name: '성남 청년 행복주택 입주자 모집 공고 상세 정보' })
+    expect(screen.getByRole('button', { name: '마이페이지로 돌아가기' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    const trigger = entry === '지도 마커'
+      ? await screen.findByRole('button', { name: '서울가람 행복주택 지도 마커 선택' })
+      : within(await screen.findByRole('region', { name: '단지 목록' })).getByRole('button', { name: '서울가람 행복주택 단지 상세 보기' })
+    fireEvent.click(trigger)
+    await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
+    expect(screen.queryByRole('button', { name: '마이페이지로 돌아가기' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '← 공고로 돌아가기' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
+    expect(screen.getByTestId('location-search')).toHaveTextContent('boundaryRegionCode=11')
+    expect(screen.getByTestId('location-search')).not.toHaveTextContent('complexId')
+  })
+
   it('상세 닫기는 현재 URL만 정리하고 지도 위치와 줌 및 무관 상태를 유지한다', async () => {
     const repository = createRepository()
     renderSearchedExplorer(repository, '/?source=shared&mapLat=37.58123&mapLng=126.99123&mapZoom=15.50#results')
@@ -3993,6 +4104,11 @@ function searchItem(
     title,
     type,
   }
+}
+
+function LocationPath() {
+  const location = useLocation()
+  return <output data-testid="location-path">{location.pathname}{location.search}</output>
 }
 
 function LocationSearch() {

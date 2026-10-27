@@ -131,6 +131,7 @@ export function NotificationInterestProvider({ children, repository = notificati
       setProductAuthState(member ? 'member' : 'guest')
       setTargets(member ? status.targets.map((target) => ({
         type: target.targetType, id: target.targetId,
+        status: target.status, applicationStartDate: target.applicationStartDate, applicationEndDate: target.applicationEndDate,
         name: (target.targetType === 'REGION' ? findRegionBoundaryName(target.targetId) : target.targetName)
           ?? `${{ REGION: '지역', COMPLEX: '단지', ANNOUNCEMENT: '공고' }[target.targetType]} ${target.targetId}`,
       })) : [])
@@ -234,6 +235,12 @@ export function NotificationInterestProvider({ children, repository = notificati
     const version = ++requestVersion.current
     const privacyGeneration = consentStore.generation()
     inFlight.current = true
+    const previousTargets = targets
+    setTargets(current => {
+      const remaining = current.filter(target => requestedKey(target) !== requestedKey(action.target))
+      return action.event.eventType === 'CANCELLED' ? remaining : [...remaining, action.target]
+    })
+    setDialog(null)
     setBusy(true); setFailed(null); setMessage(''); setBatchError('')
     let refreshAfterResponse = false
     try {
@@ -270,6 +277,7 @@ export function NotificationInterestProvider({ children, repository = notificati
     } catch (error) {
       if (version !== requestVersion.current) return
       if (privacyGeneration !== consentStore.generation() || action.event.expectedUserId !== memberId.current) { refreshAfterResponse = true; return }
+      setTargets(previousTargets)
       captureFailure(action)
       if (error instanceof NotificationRequestError && [401, 409].includes(error.status)) {
         refreshAfterResponse = true
@@ -282,7 +290,7 @@ export function NotificationInterestProvider({ children, repository = notificati
         if (refreshAfterResponse) refreshStatus()
       }
     }
-  }, [refreshStatus, repository])
+  }, [refreshStatus, repository, targets])
 
   const request = useCallback((selection: Selection, button: HTMLButtonElement) => {
     if (mode === 'error') {
@@ -321,8 +329,12 @@ export function NotificationInterestProvider({ children, repository = notificati
     request(pending.selection, pending.button)
   }, [mode, request, requested])
 
-  const clearAll = useCallback(async (button: HTMLButtonElement) => {
+  const clearAll = useCallback(async (button: HTMLButtonElement, selection?: readonly NotificationTarget[]) => {
     if (mode !== 'member' || inFlight.current || dialog || failed || targets.length === 0) return
+    const selectedKeys = selection && new Set(selection.map(requestedKey))
+    const batch = selectedKeys ? targets.filter(target => selectedKeys.has(requestedKey(target))) : targets
+    if (batch.length === 0) return
+    const batchKeys = new Set(batch.map(requestedKey))
     const version = ++requestVersion.current
     const privacyGeneration = consentStore.generation()
     trigger.current = button
@@ -331,10 +343,12 @@ export function NotificationInterestProvider({ children, repository = notificati
     const controller = new AbortController()
     batchController.current = controller
     setBusy(true); setClearingAll(true); setBatchError(''); setMessage('')
+    const remainingKeys = new Set(batchKeys)
+    setTargets(targets.filter(target => !batchKeys.has(requestedKey(target))))
     const pageName = window.location.pathname === '/mypage/notifications' ? 'notification_settings' : 'explorer'
     let failures = 0
     let refreshAfterResponse = false
-    for (const target of targets) {
+    for (const target of batch) {
       if (version !== requestVersion.current) return
       const key = requestedKey(target)
       const event = batchRetries.current.get(key) ?? eventFor({ target, source: 'SETTING' }, 'CANCELLED')
@@ -354,7 +368,7 @@ export function NotificationInterestProvider({ children, repository = notificati
         }
         batchRetries.current.delete(key)
         if (result?.currentTarget?.active) { refreshAfterResponse = true; continue }
-        setTargets((current) => current.filter((item) => requestedKey(item) !== key))
+        remainingKeys.delete(key)
       } catch (error) {
         if (version !== requestVersion.current) return
         if (privacyGeneration !== consentStore.generation() || action.event.expectedUserId !== memberId.current) { refreshAfterResponse = true; break }
@@ -365,6 +379,7 @@ export function NotificationInterestProvider({ children, repository = notificati
         break
       }
     }
+    setTargets(targets.filter(target => !batchKeys.has(requestedKey(target)) || remainingKeys.has(requestedKey(target))))
     inFlight.current = false
     batchInFlight.current = false
     batchController.current = null
@@ -374,9 +389,9 @@ export function NotificationInterestProvider({ children, repository = notificati
       setMessage('처리 결과를 확인하지 못했어요. 현재 알림 설정을 다시 확인해 주세요.')
       reconcileStatus(true)
     } else if (failures > 0) {
-      setBatchError(`${failures}개 설정을 해제하지 못했어요. 전체 해제를 눌러 다시 시도해 주세요.`)
+      setBatchError(`${selection ? remainingKeys.size : failures}개 설정을 해제하지 못했어요. 남은 항목을 다시 해제해 주세요.`)
     } else {
-      setMessage('알림 설정을 모두 해제했어요.')
+      setMessage(selection ? '선택한 알림을 해제했어요.' : '알림 설정을 모두 해제했어요.')
     }
   }, [dialog, eventFor, failed, mode, reconcileStatus, repository, targets])
 
@@ -395,7 +410,7 @@ export function NotificationInterestProvider({ children, repository = notificati
     }).catch(() => { exposed.current.delete(key) })
   }, [eventFor, repository])
 
-  const context = useMemo(() => ({ userId, blocked: mode === 'loading' || mode === 'error' || busy || dialog !== null || failed !== null,
+  const context = useMemo(() => ({ userId, updating: busy, blocked: mode === 'loading' || mode === 'error' || busy || dialog !== null || failed !== null,
     setFeedbackContainer, mode, retrying, requested, targets, request, expose, resetSession, refreshStatus, clearAll, clearingAll, batchError }), [userId, clearAll, clearingAll, batchError, busy, dialog, expose, failed, mode, request, requested, retrying, targets, resetSession, refreshStatus])
   function dismiss() { if (busy) return; restoreFocus.current = true; setDialog(null); setFailed(null); setSelection(null) }
 
@@ -420,9 +435,8 @@ export function NotificationInterestProvider({ children, repository = notificati
             pageName: window.location.pathname === '/mypage/notifications' ? 'notification_settings' : 'explorer',
             completeAnalytics: prepareNotificationCompletion() }
           void send(action)
-        }}>{busy ? '저장 중…' : '신청하기'}</button>
+        }}>신청하기</button>
       </div>
-      <p className={styles.hint}>회원 계정에 관심 대상을 저장해요. 이용자 ID와 선택한 대상을 사용해요.</p>
       <Link className={styles.helpLink} to="/privacy">개인정보처리방침</Link>
       {!noticeVersion && <p className={styles.hint} role="status">신청 안내를 확인하고 있어요.</p>}
     </InterestDialog>}
@@ -515,7 +529,7 @@ export function NotificationInterestButton({ target, source, iconOnly = false }:
     <button ref={button} type="button" className={iconOnly ? styles.bell : styles.button}
       aria-label={`${name} 알림 ${isRequested ? '취소' : '받기'}`} title={iconOnly ? (isRequested ? '알림 취소' : '알림 받기') : undefined}
       aria-pressed={isRequested} data-requested={isRequested}
-      disabled={context.mode === 'error' ? context.retrying : context.blocked} aria-busy={context.retrying || undefined}
+      disabled={context.mode === 'error' ? context.retrying : context.blocked} aria-busy={context.retrying || context.updating || undefined}
       onClick={(event) => context.request({ target, source }, event.currentTarget)}>
       <svg aria-hidden="true" data-state={isRequested ? 'requested' : 'idle'} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" fill={isRequested ? 'currentColor' : 'none'} />

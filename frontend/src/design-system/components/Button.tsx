@@ -1,16 +1,14 @@
 import type { ComponentPropsWithRef } from 'react'
-import styles from './Button.module.css'
+import { buttonClassName, type ButtonAppearance } from './buttonClassName'
 
-export type ButtonProps = ComponentPropsWithRef<'button'> & {
-  readonly size?: 'md' | 'lg'
-}
+export type ButtonProps = ComponentPropsWithRef<'button'> & ButtonAppearance
 
-export function Button({ size = 'md', type = 'button', className, ...props }: ButtonProps) {
+export function Button({ size, variant, type = 'button', className, ...props }: ButtonProps) {
   return (
     <button
       {...props}
       type={type}
-      className={[styles.root, styles[size], className].filter(Boolean).join(' ')}
+      className={buttonClassName({ size, variant }, className)}
     />
   )
 }

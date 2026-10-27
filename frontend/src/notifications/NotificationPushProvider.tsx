@@ -26,7 +26,7 @@ export function NotificationPushProvider({ children }: { readonly children: Reac
       stopLogout = registerPushLogoutHandler(() => client?.afterLogout() ?? Promise.resolve())
       setState({ userId, client, current, error: '' })
       await client.start(current)
-    }).catch(error => { if (alive) setState({ userId, client: null, current: null, error: error instanceof Error ? error.message : '푸시 알림을 준비하지 못했어요.' }) })
+    }).catch(() => { if (alive) setState({ userId, client: null, current: null, error: '기기 알림을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.' }) })
     return () => { alive = false; controller.abort(); stopLogout?.(); client?.dispose() }
   }, [userId, invalidate, retry])
   useEffect(() => {

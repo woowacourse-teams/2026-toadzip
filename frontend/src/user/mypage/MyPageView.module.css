@@ -1,0 +1,180 @@
+/* 지도 영역을 덮는 페이지. 데스크톱 레일과 모바일 하단 탭은 그대로 보인다.
+   글자색은 본문(--ds-color-text)과 보조(--ds-color-muted) 두 단계만 쓴다. */
+.page { position: fixed; z-index: 600; inset: 0 0 0 var(--explorer-rail-width, 60px); overflow-y: auto; background: var(--ds-color-surface-subtle); color: var(--ds-color-text); font-family: var(--ds-font-family-ui); font-size: var(--ds-text-body); line-height: var(--ds-line-height-body); }
+.pageHeader { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-2); }
+.pageHeader h1 { margin: 0; font-size: 22px; line-height: 1.35; letter-spacing: -0.02em; }
+.single { box-sizing: border-box; display: grid; gap: var(--ds-space-3); max-width: 600px; padding: 0 var(--ds-space-7) var(--ds-space-6); }
+.page > .pageHeader { padding: var(--ds-space-6) var(--ds-space-7) var(--ds-space-4); }
+
+/* 넓은 화면: 왼쪽 메뉴와 오른쪽 관리 영역을 나란히 배치한다. */
+.columns { display: grid; grid-template-columns: minmax(320px, 400px) minmax(0, 1fr); min-height: 100%; }
+.hub { position: sticky; top: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--ds-space-3); height: 100dvh; padding: var(--ds-space-7) var(--ds-space-6) var(--ds-space-5); overflow-y: auto; border-right: 1px solid var(--ds-color-divider); background: var(--ds-color-surface); }
+.hub > .pageHeader { padding-bottom: var(--ds-space-2); }
+.hub > .card { border: 1px solid var(--ds-color-divider); }
+.hub > .counts { border: 0; }
+.counts > .row { padding-inline: var(--ds-space-2); }
+.privacy { margin-top: auto; padding-top: var(--ds-space-4); border-top: 1px solid var(--ds-color-divider); }
+/* 오른쪽은 왼쪽 메뉴에서 고른 섹션 하나만 화면 높이까지 채운다. */
+.lists { box-sizing: border-box; display: grid; width: 100%; min-height: 100dvh; padding: var(--ds-space-7); }
+.lists > .sub:not([data-current]) { display: none; }
+.lists > .sub { padding: var(--ds-space-4) var(--ds-space-6) var(--ds-space-6); }
+.counts > .row[aria-current=page] { background: var(--ds-color-action-soft); }
+.counts > .row[aria-current=page] .rowLabel { color: var(--ds-color-text); font-weight: 700; }
+
+.card { box-sizing: border-box; border-radius: 16px; background: var(--ds-color-surface); }
+
+/* 요약 행: 이름 ··· 값 › */
+.row { display: flex; align-items: center; gap: var(--ds-space-2); min-height: 56px; padding: var(--ds-space-3) var(--ds-space-4); color: inherit; text-decoration: none; }
+.row + .row { border-top: 1px solid var(--ds-color-divider); }
+.card > .row:first-child { border-radius: 16px 16px 0 0; }
+.card > .row:last-child { border-radius: 0 0 16px 16px; }
+.card > .row:only-child { border-radius: 16px; }
+.row:hover { background: #f7f8f9; }
+.row:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: -2px; }
+.rowLabel { display: grid; flex: 1; min-width: 0; gap: 2px; font-size: var(--ds-text-control-lg); font-weight: 700; }
+.rowLabel small { color: var(--ds-color-muted); font-size: var(--ds-text-caption); font-weight: 400; }
+.rowValue { color: var(--ds-color-text); font-size: var(--ds-text-control-lg); font-weight: 700; font-variant-numeric: tabular-nums; }
+.chevron { flex-shrink: 0; width: 18px; height: 18px; color: var(--ds-color-muted); }
+
+.urgent { display: grid; gap: var(--ds-space-2); padding: var(--ds-space-4); }
+.urgentLabel { margin: 0; color: var(--ds-color-muted); font-size: var(--ds-text-caption); }
+.urgent > strong { font-size: var(--ds-text-control-lg); }
+.urgentBody { display: grid; grid-template-columns: minmax(0, 1fr) auto; justify-items: start; gap: 6px var(--ds-space-2); padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.urgentBody > strong { grid-column: 1; font-size: var(--ds-text-section); line-height: 1.45; overflow-wrap: anywhere; }
+.urgentBody > .meta { grid-column: 1; }
+.urgentBody > .chevron { grid-column: 2; grid-row: 1 / 4; align-self: center; }
+.urgentBody:hover > strong { text-decoration: underline; text-underline-offset: 3px; }
+.urgentBody:focus-visible, .inlineLink:focus-visible, .back:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; border-radius: 4px; }
+.inlineLink { display: inline-flex; align-items: center; justify-self: start; gap: 2px; min-height: 32px; padding: 0; border: 0; background: transparent; color: var(--ds-color-action); font: inherit; font-weight: 600; cursor: pointer; }
+.inlineLink .chevron { color: currentColor; }
+
+.account { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-3); padding: var(--ds-space-3) var(--ds-space-4); }
+.account > span { min-width: 0; overflow: hidden; color: var(--ds-color-text); text-overflow: ellipsis; white-space: nowrap; }
+.guest { display: grid; justify-items: start; gap: var(--ds-space-2); padding: var(--ds-space-5) var(--ds-space-4); }
+.guest strong { font-size: var(--ds-text-section); }
+.guest p { margin: 0 0 var(--ds-space-2); color: var(--ds-color-muted); }
+
+.privacy nav, .single > nav:last-child { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--ds-space-3); margin: var(--ds-space-2) 0; font-size: var(--ds-text-caption); }
+.privacy nav a, .single > nav:last-child a { color: var(--ds-color-muted); }
+
+/* 하위 목록 */
+.sub { padding: var(--ds-space-2) var(--ds-space-4) var(--ds-space-4); }
+.subHeader { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-1); min-height: var(--ds-control-height-md); }
+.subHeader h2 { flex: 1; min-width: 0; }
+.subHeader h2 { margin: 0; font-size: var(--ds-text-title); line-height: 1.4; }
+.back { display: none; align-items: center; justify-content: center; width: 40px; height: 40px; margin-left: -10px; color: var(--ds-color-text); }
+.back .chevron { width: 22px; height: 22px; color: currentColor; }
+
+/* 단지·공고·지역 분류는 밑줄 탭으로 표시한다. */
+.kinds { display: flex; gap: var(--ds-space-1); margin: var(--ds-space-1) 0 var(--ds-space-2); border-bottom: 2px solid var(--ds-color-divider); }
+.kinds button { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: var(--ds-control-height-md); margin-bottom: -2px; padding: 0 var(--ds-space-4); border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--ds-color-muted); font: inherit; font-size: var(--ds-text-section); cursor: pointer; }
+.kinds button span { color: var(--ds-color-muted); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; }
+.kinds button:hover { color: var(--ds-color-text); }
+.kinds button[aria-selected=true] { border-bottom-color: var(--ds-color-brand); color: var(--ds-color-text); font-weight: 700; }
+.kinds button[aria-selected=true] span { color: var(--ds-color-action); }
+.kinds button:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: -2px; }
+
+.list { margin: 0; padding: 0; list-style: none; }
+.list li { display: flex; align-items: center; gap: var(--ds-space-1); border-top: 1px solid var(--ds-color-divider); }
+.list li:first-child { border-top: 0; }
+.list li[data-closed] .item { opacity: .6; }
+.item { display: grid; flex: 1; min-width: 0; justify-items: start; gap: 4px; padding: var(--ds-space-3) 0; border: 0; background: transparent; color: inherit; font: inherit; line-height: 1.5; text-align: left; }
+button.item { cursor: pointer; }
+button.item:hover:not(:disabled) .name { text-decoration: underline; text-underline-offset: 3px; }
+button.item:disabled { cursor: default; }
+button.item:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; border-radius: 4px; }
+.name { font-size: var(--ds-text-control-lg); font-weight: 700; overflow-wrap: anywhere; }
+/* 공고 상태는 제목 앞에 붙여 한 줄로 읽는다. */
+/* 제목이 길면 배지 아래로 이어서 감싸, 좁은 화면에서도 제목 폭을 잃지 않는다. */
+.titleLine { display: block; min-width: 0; line-height: 1.6; }
+.titleLine > [data-status-badge] { margin-right: var(--ds-space-2); vertical-align: 1px; }
+.meta { color: var(--ds-color-muted); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; }
+.actions { display: flex; flex-shrink: 0; align-items: center; }
+
+.empty { display: grid; justify-items: start; gap: var(--ds-space-2); padding: var(--ds-space-6) 0; }
+.empty strong { font-size: var(--ds-text-section); }
+.empty p { margin: 0; color: var(--ds-color-muted); line-height: 1.6; }
+.status { padding: var(--ds-space-6) 0; color: var(--ds-color-muted); }
+.error { margin: var(--ds-space-2) 0; color: var(--ds-color-deadline); font-size: var(--ds-text-caption); }
+
+.clearAll { display: flex; flex: 0 0 100%; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ds-space-2); margin-top: var(--ds-space-2); padding: var(--ds-space-3); border-radius: var(--ds-radius-control); background: var(--ds-color-surface-subtle); }
+.clearAll p { margin: 0; }
+.clearAll div { display: flex; gap: var(--ds-space-2); }
+.textButton { min-height: 32px; padding: 0 4px; border: 0; background: transparent; color: var(--ds-color-muted); font: inherit; font-size: var(--ds-text-caption); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.textButton:hover:not(:disabled) { color: var(--ds-color-deadline); }
+.textButton:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
+.devices { margin-top: var(--ds-space-4); }
+
+/* 1023px 이하는 요약 화면과 하위 목록을 한 번에 하나씩 보여준다. */
+@media (max-width: 1023px) {
+  .columns { display: block; }
+  .hub { position: static; height: auto; padding: var(--ds-space-6); overflow: visible; border-right: 0; background: transparent; }
+  .hub > .card { border: 0; }
+  .hub > .account { order: 1; }
+  .hub > .error { order: 1; }
+  .hub > .privacy { order: 2; margin-top: var(--ds-space-2); border-top: 0; }
+  .counts > .row { padding-inline: var(--ds-space-4); }
+  .lists { min-height: 0; align-content: start; padding: var(--ds-space-3) var(--ds-space-6) var(--ds-space-6); }
+  .lists > .sub { padding: var(--ds-space-2) var(--ds-space-4) var(--ds-space-4); }
+  .counts > .row[aria-current=page] { background: transparent; }
+  .page[data-view=hub] .lists, .page[data-view=sub] .hub { display: none; }
+  .back { display: inline-flex; }
+}
+
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
+  .page { inset: 0 0 var(--explorer-footer-height, 76px) 0; }
+  .hub { padding: var(--ds-space-5) var(--ds-space-4); }
+  .lists { padding-inline: var(--ds-space-4); }
+  .single, .page > .pageHeader { padding-inline: var(--ds-space-4); }
+  .kinds button { padding-inline: var(--ds-space-3); }
+}
+
+/* 넓은 화면에서는 바깥 페이지 대신 관리 카드의 본문만 스크롤한다.
+   높이가 낮거나 확대된 화면에서는 왼쪽 메뉴도 자체 스크롤로 접근할 수 있다. */
+@media (min-width: 1024px) {
+  .page:has(.columns) { overflow: hidden; overscroll-behavior-y: none; }
+  .columns { height: 100%; min-height: 0; }
+  .hub { position: static; height: 100%; min-height: 0; overscroll-behavior-y: none; }
+  .hub > * { flex-shrink: 0; }
+  .lists { height: 100%; min-height: 0; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+  .lists > .sub { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .lists > .sub > .subHeader, .lists > .sub > .kinds { flex-shrink: 0; }
+  .lists > .sub > [role=tabpanel] { flex: 1; min-height: 0; margin-inline-end: calc(-1 * var(--ds-space-3)); padding-inline-end: var(--ds-space-3); overflow-y: auto; overscroll-behavior-y: none; scrollbar-gutter: stable; }
+  .hub, .lists > .sub > [role=tabpanel] { scrollbar-width: thin; scrollbar-color: var(--ds-color-border-base) transparent; }
+  @supports selector(::-webkit-scrollbar) {
+    :is(.hub, .lists > .sub > [role=tabpanel]) { scrollbar-width: auto; scrollbar-color: auto; }
+    :is(.hub, .lists > .sub > [role=tabpanel])::-webkit-scrollbar { width: 6px; }
+    :is(.hub, .lists > .sub > [role=tabpanel])::-webkit-scrollbar-track { background: transparent; }
+    :is(.hub, .lists > .sub > [role=tabpanel])::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--ds-color-border-base); }
+    :is(.hub, .lists > .sub > [role=tabpanel])::-webkit-scrollbar-thumb:hover { background: var(--ds-color-muted); }
+  }
+  .hub > .counts.card, .hub > .counts.card > .row { border-radius: 0; }
+  .hub > .counts.card > .row + .row { border-top: 0; }
+}
+
+/* 의견 보내기는 넓은 화면에서 메뉴 영역 맨 아래, 개인정보 링크 바로 위에 둔다. */
+@media (min-width: 1024px) {
+  .hub > .feedback { margin-top: auto; border: 0; border-radius: 0; }
+  .hub > .feedback > .row { padding-inline: var(--ds-space-2); border-radius: 0; }
+  .hub > .feedback + .privacy { margin-top: 0; }
+}
+
+/* 알림 목록의 선택·일괄 작업은 현재 분류에만 적용한다. */
+.alarmToolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ds-space-2); padding: var(--ds-space-3) 0; border-bottom: 1px solid var(--ds-color-divider); }
+.batchActions { display: flex; align-items: center; gap: var(--ds-space-2); }
+.batchActions button, .clearAll button { min-height: 32px; padding-inline: 10px; font-size: var(--ds-text-caption); white-space: nowrap; }
+.pushAction { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 0 var(--ds-space-3); border: 1px solid var(--ds-color-action); border-radius: var(--ds-radius-control); background: var(--ds-color-action-soft); color: var(--ds-color-action); font: inherit; font-size: var(--ds-text-caption); font-weight: 600; white-space: nowrap; cursor: pointer; }
+.pushAction:hover:not(:disabled) { background: var(--ds-color-surface); }
+.pushAction:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
+.pushAction:disabled { color: var(--ds-color-muted); cursor: wait; }
+.selectAll, .alarmCheckbox { display: inline-flex; align-items: center; gap: var(--ds-space-2); min-height: 44px; cursor: pointer; }
+.selectAll { min-height: 32px; color: var(--ds-color-muted); font-size: var(--ds-text-caption); }
+.alarmCheckbox { justify-content: center; flex: 0 0 32px; }
+.selectAll input, .alarmCheckbox input { width: 18px; height: 18px; margin: 0; accent-color: var(--ds-color-action); cursor: pointer; }
+.selectAll input:focus-visible, .alarmCheckbox input:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
+.kinds:has([data-device]) { overflow-x: auto; }
+.kinds button[data-device] { white-space: nowrap; }
+@media (max-width: 767px) {
+  .kinds:has([data-device]) button { padding-inline: var(--ds-space-2); white-space: nowrap; font-size: var(--ds-text-body); }
+  .batchActions { margin-left: auto; }
+}

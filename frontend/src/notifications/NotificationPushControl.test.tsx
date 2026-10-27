@@ -63,3 +63,15 @@ it('미지원 또는 설정 누락 시 등록 버튼 없이 이유와 재시도�
   expect(screen.getByRole('alert')).toHaveTextContent('지원하지 않는 브라우저')
   expect(screen.queryByRole('switch', { name: '이 기기 알림 받기' })).not.toBeInTheDocument()
 })
+
+it('간결한 설정에서는 반복 설명 없이 연결 오류와 재시도를 제공한다', () => {
+  const retry = vi.fn()
+  render(<NotificationPushContext.Provider value={{ client: null, error: '기기 알림을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.', retry }}><NotificationPushControl compact /></NotificationPushContext.Provider>)
+  expect(screen.getByRole('heading', { name: '이 기기에서 알림 받기' })).toBeVisible()
+  expect(screen.getByRole('alert')).toHaveTextContent('알림을 연결하지 못했어요.')
+  expect(screen.queryByText('이 기기에만 적용')).not.toBeInTheDocument()
+  expect(screen.queryByText(/새 공고와 신청한 공고/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/직접 로그아웃하면/)).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+  expect(retry).toHaveBeenCalledOnce()
+})

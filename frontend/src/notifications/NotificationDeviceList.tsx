@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type RefObject } from 'react'
 import { Button } from '../design-system/components/Button'
 import { useNotificationInbox } from './NotificationInboxContext'
 import { useNotificationPush } from './NotificationPushContext'
@@ -8,10 +8,16 @@ import { lastUsedLabel, pushDeviceLabel } from './pushDeviceMetadata'
 import { usePushClientState } from './usePushClientState'
 import styles from './NotificationDeviceList.module.css'
 
-export function NotificationDeviceList() {
+export function NotificationDeviceList({ expanded = false }: { readonly expanded?: boolean }) {
   const inbox = useNotificationInbox()
   if (!pushUiEnabled || !inbox?.userId) return null
-  return <DeviceDisclosure key={inbox.userId} userId={inbox.userId} />
+  return expanded ? <ExpandedDevices key={inbox.userId} userId={inbox.userId} /> : <DeviceDisclosure key={inbox.userId} userId={inbox.userId} />
+}
+function ExpandedDevices({ userId }: { readonly userId: string }) {
+  const heading = useRef<HTMLHeadingElement>(null)
+  return <section className={`${styles.section} ${styles.expanded}`} aria-label="알림 받는 기기">
+    <DeviceList userId={userId} headingRef={heading} onDisabled={() => heading.current?.focus()} />
+  </section>
 }
 function DeviceDisclosure({ userId }: { readonly userId: string }) {
   const [expanded, setExpanded] = useState(false)
@@ -27,7 +33,7 @@ function DeviceDisclosure({ userId }: { readonly userId: string }) {
     </div>
   </section>
 }
-function DeviceList({ userId, onDisabled }: { readonly userId: string; readonly onDisabled: () => void }) {
+function DeviceList({ userId, headingRef, onDisabled }: { readonly userId: string; readonly headingRef?: RefObject<HTMLHeadingElement | null>; readonly onDisabled: () => void }) {
   const push = useNotificationPush()
   const pushState = usePushClientState(push?.client)
   const [devices, setDevices] = useState<readonly PushDeviceSummary[] | null>(null)
@@ -66,21 +72,23 @@ function DeviceList({ userId, onDisabled }: { readonly userId: string; readonly 
       if (!controller.signal.aborted) { mutation.current = null; setBusy(null) }
     }
   }
+  const visibleDevices = devices?.filter(device => device.deviceId !== busy) ?? null
   return <div className={styles.content}>
     <div className={styles.actions}>
+      {headingRef && <h3 ref={headingRef} tabIndex={-1} className={styles.heading}>연결된 기기 목록</h3>}
       <button type="button" className={styles.refresh} disabled={busy !== null} aria-label="기기 목록 다시 조회" onClick={() => setRevision(value => value + 1)}>새로고침</button></div>
     {error && <p className={styles.feedback} role="alert">{error}</p>}
     {message && <p className={styles.feedback} role="status">{message}</p>}
     {!devices && !error && <p role="status">기기 목록을 불러오는 중…</p>}
-    {devices?.length === 0 && <p className={styles.empty}>알림을 받는 기기가 없어요.</p>}
-    {!!devices?.length && <ul className={styles.list}>{[...devices].sort((a, b) => Number(b.current) - Number(a.current)).map(device => {
+    {visibleDevices?.length === 0 && <p className={styles.empty}>알림을 받는 기기가 없어요.</p>}
+    {!!visibleDevices?.length && <ul className={styles.list}>{[...visibleDevices].sort((a, b) => Number(b.current) - Number(a.current)).map(device => {
       const label = pushDeviceLabel(device.platform, device.browser)
       return <li key={device.deviceId}>
         <div className={styles.details}><div className={styles.deviceTitle}><strong>{label}</strong>{device.current && <span className={styles.badge}>현재 사용 중</span>}</div>
           <span className={styles.lastUsed}>마지막 사용 · {lastUsedLabel(device.lastSeenAt)}</span>
           {device.resumeAfterLogin && <span className={styles.paused}>로그아웃으로 일시 중지</span>}
         </div>
-        {!device.current && <Button disabled={busy !== null} aria-label={`${label} 알림 해제`} onClick={() => void disable(device)}>{busy === device.deviceId ? '해제 중…' : '알림 해제'}</Button>}
+        {!device.current && <Button disabled={busy !== null} aria-label={`${label} 알림 해제`} onClick={() => void disable(device)}>알림 해제</Button>}
       </li>
     })}</ul>}
   </div>
