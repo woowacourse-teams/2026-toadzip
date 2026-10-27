@@ -1,7 +1,10 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -30,11 +33,15 @@ import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.projection.L
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
+import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.service.RoadAddressGeocodingService;
+import com.toadzip.backend.ingest.mapping.dto.ComplexMergeRequest;
+import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import com.toadzip.backend.user.domain.User;
 import com.toadzip.backend.user.repository.UserRepository;
@@ -97,6 +104,7 @@ class MyHomeComplexMergeIntegrationTest {
     @Autowired private UserRepository users;
     @Autowired private LhHousingTypeHouseholdEnrichmentService enrichment;
     @Autowired private IngestExecutionOwnershipService ownership;
+    @Autowired private MyHomeComplexMergeService mergeService;
     @MockitoBean private RoadAddressGeocodingService geocoding;
 
     private List<Long> ids;
@@ -571,12 +579,62 @@ class MyHomeComplexMergeIntegrationTest {
     }
 
     @Test
+    void 커밋_직전에_실행_소유권을_잃으면_통합을_롤백한다() throws Exception {
+        addReferences();
+        ComplexMergeRequest request = json.convertValue(mergeRequest(), ComplexMergeRequest.class);
+        List<String> before = productState();
+        Lease lease = lease();
+        doNothing().doThrow(new IngestOwnershipLostException()).when(lease).verifyHeld();
+        claimOwnership(lease);
+
+        try (var ignored = IngestExecutionScope.open(lease)) {
+            assertThatThrownBy(() -> mergeService.merge(request, "admin"))
+                    .isInstanceOf(IngestOwnershipLostException.class);
+        }
+
+        assertThat(productState()).isEqualTo(before);
+        assertThat(jdbc.sql("SELECT count(*) FROM myhome_complex_merges WHERE id = ?")
+                .param(request.operationId()).query(Long.class).single()).isZero();
+    }
+
+    @Test
+    void 실행_소유권의_세대가_바뀌었으면_복구하지_않는다() throws Exception {
+        JsonNode merged = merge();
+        UUID operationId = UUID.fromString(merged.get("operationId").asText());
+        List<String> before = productState();
+        Lease lease = lease();
+        claimOwnership(lease);
+        jdbc.sql("UPDATE ingest_execution_ownership SET generation = generation + 1 WHERE id = 1").update();
+
+        try (var ignored = IngestExecutionScope.open(lease)) {
+            assertThatThrownBy(() -> mergeService.revert(operationId, "admin"))
+                    .isInstanceOf(IngestOwnershipLostException.class);
+        }
+
+        assertThat(productState()).isEqualTo(before);
+        assertThat(jdbc.sql("SELECT reverted_at IS NULL FROM myhome_complex_merges WHERE id = ?")
+                .param(operationId).query(Boolean.class).single()).isTrue();
+    }
+
+    @Test
     void 관리자가_아니면_근거_조회와_통합을_할_수_없다() throws Exception {
         mvc.perform(get(ENDPOINT + "/candidates")).andExpect(status().isUnauthorized());
         mvc.perform(post(ENDPOINT + "/preview").with(user(privacyPermissionMemberId()).roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of("complexIds", ids, "lhSourceId", lhId))))
                 .andExpect(status().isForbidden());
+    }
+
+    private Lease lease() {
+        Lease lease = mock(Lease.class);
+        when(lease.ownerId()).thenReturn(UUID.randomUUID());
+        when(lease.generation()).thenReturn(1L);
+        return lease;
+    }
+
+    private void claimOwnership(Lease lease) {
+        jdbc.sql("UPDATE ingest_execution_ownership SET owner_id = ?, generation = ? WHERE id = 1")
+                .params(lease.ownerId(), lease.generation()).update();
     }
 
     private JsonNode merge() throws Exception {

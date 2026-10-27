@@ -21,6 +21,7 @@ import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMergeRepositor
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMergeStore;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingRejectedException;
+import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -48,6 +49,7 @@ public class MyHomeComplexMergeService {
     private final MyHomeComplexSourceMapper mapper;
     private final LhHousingTypeHouseholdMatcher matcher;
     private final MyHomeComplexMergeStore store;
+    private final IngestWriteOwnershipGuard ownershipGuard;
     private final TransactionTemplate transaction;
     private final Clock clock;
 
@@ -56,6 +58,7 @@ public class MyHomeComplexMergeService {
             MyHomeComplexMergeRepository merges, MyHomeComplexSourceReader sources,
             LhLeaseCatalogSourceReader lhSources, MyHomeComplexSourceMapper mapper,
             LhHousingTypeHouseholdMatcher matcher, MyHomeComplexMergeStore store,
+            IngestWriteOwnershipGuard ownershipGuard,
             PlatformTransactionManager transactionManager, Clock clock
     ) {
         this.complexes = complexes;
@@ -66,6 +69,7 @@ public class MyHomeComplexMergeService {
         this.mapper = mapper;
         this.matcher = matcher;
         this.store = store;
+        this.ownershipGuard = ownershipGuard;
         this.transaction = new TransactionTemplate(transactionManager);
         this.clock = clock;
     }
@@ -125,6 +129,7 @@ public class MyHomeComplexMergeService {
     }
 
     private ComplexMergeResponse mergeLocked(ComplexMergeRequest request, String actor) {
+        ownershipGuard.verifyWrite();
         require(request.confirmedSameComplex(), "동일 실제 단지와 공급 범위를 명시적으로 확인해야 합니다.");
         MyHomeComplexMerge previous = merges.findById(request.operationId()).orElse(null);
         if (previous != null) {
@@ -161,6 +166,7 @@ public class MyHomeComplexMergeService {
     }
 
     private ComplexMergeResponse revertLocked(UUID id, String actor) {
+        ownershipGuard.verifyWrite();
         MyHomeComplexMerge merge = findMerge(id);
         if (merge.getRevertedAt() != null) {
             return response(merge);
