@@ -31,6 +31,7 @@ import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { useMobileViewport } from './public-housing/components/useMobileViewport'
 import { clearLoginReturn, loginReturnForBack, safeLoginReturn } from './user/auth/loginReturn'
 import { ExplorerReturnContext } from './public-housing/navigation/ExplorerReturnContext'
+import { MobileInstallProvider } from './install/MobileInstallProvider'
 
 function LandingEntry() {
   const { search, hash } = useLocation()
@@ -144,7 +145,7 @@ export default function App() {
     return <Navigate to={{ pathname: '/explore', search, hash }} state={state} replace />
   }
   return (
-    <>
+    <MobileInstallProvider>
     {pathname !== '/' && <PrivacyBoundary />}
     <ProductAnalyticsBoundary />
     <Routes>
@@ -163,6 +164,6 @@ export default function App() {
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
-    </>
+    </MobileInstallProvider>
   )
 }

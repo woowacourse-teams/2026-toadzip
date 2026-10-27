@@ -7,7 +7,7 @@ import {
   within,
 } from '@testing-library/react'
 import { useRef, useState } from 'react'
-import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
+import { Link, MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { trackEvent } from '../analytics/googleAnalytics.ts'
 import { consentStore } from '../privacy/consentStore'
@@ -379,13 +379,18 @@ describe('PublicHousingExplorer', () => {
       await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledOnce())
       act(() => failure?.({ code, message: 'browser error', PERMISSION_DENIED: 1,
         POSITION_UNAVAILABLE: 2, TIMEOUT: 3 }))
-      expect(screen.getByText(code === 1
+      const message = code === 1
         ? '위치 사용이 차단되어 있어요. 브라우저 설정에서 허용하거나 지역을 검색해 주세요.'
-        : '현재 위치를 확인하지 못했어요. 다시 시도하거나 지역을 검색해 주세요.')).toBeVisible()
+        : '현재 위치를 확인하지 못했어요. 다시 시도하거나 지역을 검색해 주세요.'
+      expect(screen.queryByText(message)).not.toBeInTheDocument()
       expect(screen.getByText('카메라 37.5666103,126.9783882')).toBeVisible()
       expect(screen.getByRole('searchbox')).toBeEnabled()
       fireEvent.click(screen.getByRole('button', { name: '현재 위치로 이동' }))
       expect(getCurrentPosition).toHaveBeenCalledTimes(2)
+      act(() => failure?.({ code, message: 'browser error', PERMISSION_DENIED: 1,
+        POSITION_UNAVAILABLE: 2, TIMEOUT: 3 }))
+      expect(screen.getByText(message)).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: '현재 위치로 이동' }))
       act(() => success(position))
       expect(screen.getByText('카메라 35.18,129.07')).toBeVisible()
     })
@@ -2892,6 +2897,19 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '지도로 돌아가기' }))
     expect(screen.getByTestId('location-path')).toHaveTextContent(/^\/explore/)
     expect(screen.queryByRole('heading', { name: '마이페이지' })).not.toBeInTheDocument()
+  })
+
+  it('마이페이지 밖의 링크로 지도 주소에 가면 마이페이지 화면을 닫는다', async () => {
+    const repository = createRepository()
+    const explorer = <PublicHousingExplorer repository={repository} mapRepository={repository} regionRepository={createRegionRepository()} />
+    render(<MemoryRouter initialEntries={['/mypage']}><BookmarkProvider repository={{ list: vi.fn().mockResolvedValue([]), save: vi.fn(), remove: vi.fn() }} loadUser={async () => ({ id: 7, email: null })}>
+      <Link to="/explore">로고</Link>
+      <Routes><Route path="/explore" element={explorer} /><Route path="/mypage" element={explorer} /></Routes>
+    </BookmarkProvider></MemoryRouter>)
+    await screen.findByRole('button', { name: '로그아웃' })
+    expect(screen.getByRole('heading', { name: '마이페이지' })).toBeVisible()
+    fireEvent.click(screen.getByRole('link', { name: '로고' }))
+    await waitFor(() => expect(screen.queryByRole('heading', { name: '마이페이지' })).not.toBeInTheDocument())
   })
 
   it('마이페이지에서 연 상세끼리 이동하면 이전 상세와 마이페이지 복귀를 함께 제공한다', async () => {

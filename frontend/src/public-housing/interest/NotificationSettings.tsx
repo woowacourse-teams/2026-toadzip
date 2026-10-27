@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router'
 import { useMyPageReturnState } from '../../user/mypage/mypageNavigation'
 import { ManagementTable, ManagementRow } from '../../user/mypage/ManagementTable'
 import { NotificationDeviceList } from '../../notifications/NotificationDeviceList'
+import { MobileInstallAction } from '../../install/MobileInstall'
 import { NotificationPushControl } from '../../notifications/NotificationPushControl'
 import { Button } from '../../design-system/components/Button'
 import { useNotificationInterests } from './NotificationInterestContext'
@@ -71,6 +72,6 @@ export function NotificationSettings() {
             state={returnState}>{target.name}</Link>}</strong></ManagementRow>)}
         </ManagementTable>}
     </section>
-    <div className={styles.deviceSettings}><NotificationPushControl /><NotificationDeviceList /></div>
+    <div className={styles.deviceSettings}><NotificationPushControl /><MobileInstallAction /><NotificationDeviceList /></div>
   </div>
 }

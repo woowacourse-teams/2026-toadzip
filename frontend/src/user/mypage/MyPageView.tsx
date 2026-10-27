@@ -9,6 +9,7 @@ import { useMobileViewport } from '../../public-housing/components/useMobileView
 import { NotificationInterestButton } from '../../public-housing/interest/NotificationInterest'
 import { useNotificationInterests } from '../../public-housing/interest/NotificationInterestContext'
 import type { NotificationTargetType } from '../../public-housing/interest/notificationInterestRepository'
+import { MobileInstallAction } from '../../install/MobileInstall'
 import { NotificationDeviceList } from '../../notifications/NotificationDeviceList'
 import { NotificationPushControl } from '../../notifications/NotificationPushControl'
 import { PrivacyLinks } from '../../privacy/Privacy'
@@ -272,7 +273,7 @@ function AlarmList({ kind, onSelectKind, onOpenComplex, onOpenAnnouncement }: {
         </li>)}
       </ul>}
     {context.batchError && <p className={styles.error} role="alert">{context.batchError}</p>}
-    <section className={styles.devices} aria-label="이 기기의 알림 수신"><NotificationPushControl /><NotificationDeviceList /></section>
+    <section className={styles.devices} aria-label="이 기기의 알림 수신"><NotificationPushControl /><MobileInstallAction /><NotificationDeviceList /></section>
   </KindTabs>
 }
 

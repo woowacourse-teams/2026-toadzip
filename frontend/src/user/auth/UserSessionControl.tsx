@@ -9,6 +9,7 @@ import { useMobileViewport } from '../../public-housing/components/useMobileView
 import { PrivacyLinks } from '../../privacy/Privacy'
 import { clearLoginReturn, loginPageUrl, readLoginReturn, rememberLoginReturn, rememberExplorerPath } from './loginReturn'
 import { useExplorerReturn } from '../../public-housing/navigation/ExplorerReturnContext'
+import { MobileInstallAction } from '../../install/MobileInstall'
 
 type SessionState = 'loading' | 'guest' | 'signed-in' | 'error'
 
@@ -118,6 +119,7 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
   }
 
   const accountActions = <>
+    <MobileInstallAction />
     <button className="service-notification-management" type="button" aria-haspopup="dialog" onClick={(event) => {
       if (memberView !== 'account') memberTrigger.current = event.currentTarget
       setMemberView('settings')

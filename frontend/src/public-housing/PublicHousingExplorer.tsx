@@ -2,6 +2,7 @@ import { clearMyPageReturnState, myPageReturnPath } from '../user/mypage/mypageN
 import { MyPageView } from '../user/mypage/MyPageView'
 import { lastExplorerPath } from '../user/auth/loginReturn'
 import { useExplorerReturn } from './navigation/ExplorerReturnContext'
+import { MobileInstallCard } from '../install/MobileInstall'
 import { useListMeasurement } from './analytics/useListMeasurement'
 import { captureProductEvent } from '../analytics/productAnalytics'
 import { useMarkerHoverAnalytics, type MarkerHoverAttribution } from '../analytics/markerHoverAnalytics'
@@ -1061,6 +1062,12 @@ export function PublicHousingExplorer({
     setListPanelMode('open')
     setActiveResultTab('mypage')
   }, [onMyPageRoute])
+  // 로고·뒤로가기처럼 페이지 밖에서 /mypage를 벗어나도 마이페이지 화면을 닫는다.
+  useEffect(() => {
+    if (onMyPageRoute || activeResultTab !== 'mypage') return
+    setActiveResultTab('complexes')
+    setListPanelMode('collapsed')
+  }, [onMyPageRoute, activeResultTab])
   // 마이페이지에서 연 상세는 마지막 지도 위치 위에 열고, 닫기 버튼이 출발한 마이페이지 화면으로 돌아가게 한다.
   // 단지는 최근 본 단지와 같이 지도를 단지로 옮기고, 모바일에서는 요약 미리보기부터 보여준다.
   function openDetailFromMyPage(kind: ResultTab, id: string) {
@@ -1592,7 +1599,7 @@ export function PublicHousingExplorer({
           </button>
         </div>
       </nav>
-      {showListPage && activeResultTab === 'mypage' && <MyPageView
+      {onMyPageRoute && showListPage && activeResultTab === 'mypage' && <MyPageView
         onOpenComplex={(id) => openDetailFromMyPage('complexes', id)}
         onOpenAnnouncement={(id) => openDetailFromMyPage('announcements', id)}
         onBrowseAnnouncements={() => selectResultTab('announcements')}
@@ -1774,6 +1781,7 @@ export function PublicHousingExplorer({
       {mobile && !showListPage && !hasDetail && !integratedSearchActive && !streetView.active && regionControl('mobile-collapsed')}
 
       <main ref={mapWorkspaceRef} className="housing-map-workspace">
+        {!hasDetail && !showResultPage && !integratedSearchActive && !streetView.active && <MobileInstallCard floating />}
         <div className="housing-map-filter" hidden={streetView.active} inert={streetView.active}>
           <ComplexFilterToolbar
             filters={complexFilters}
