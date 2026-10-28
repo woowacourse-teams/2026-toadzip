@@ -7,6 +7,11 @@
 .error { color: var(--ds-color-deadline); font-size: var(--ds-text-caption); }
 
 .button:disabled[aria-busy=true] { opacity: 1; cursor: default; }
+
+.iconWrapper { flex: 0 0 auto; max-width: 40%; flex-direction: column; align-items: flex-end; }
+.button.iconButton { width: 44px; height: 44px; justify-content: center; padding: 0; border-color: transparent; background: transparent; }
+.iconButton svg { width: 22px; height: 22px; }
+.iconButton:hover:not(:disabled) { background: var(--ds-color-action-soft); }
 .icon { display: inline-flex; flex: 0 0 40px; align-items: center; justify-content: center; width: 40px; min-height: 40px; padding: 8px; border: 0; border-radius: var(--ds-radius-control); background: transparent; color: var(--ds-color-label); cursor: pointer; }
 .icon[aria-pressed=true] { color: var(--ds-color-action); }
 .icon:hover:not(:disabled) { color: var(--ds-color-action); }
