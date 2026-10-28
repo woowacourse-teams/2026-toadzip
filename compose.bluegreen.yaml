@@ -15,3 +15,35 @@ services:
     profiles: [bluegreen]
     image: "${BACKEND_GREEN_IMAGE:-toadzip-backend:latest}"
     ports: !reset []
+
+  frontend-blue:
+    extends:
+      file: compose.yaml
+      service: frontend
+    profiles: [bluegreen]
+    image: "${FRONTEND_BLUE_IMAGE:-toadzip-frontend:latest}"
+    ports: !reset []
+    depends_on: !reset {}
+    volumes:
+      - type: bind
+        source: ./frontend/nginx/api-disabled.conf
+        target: /etc/nginx/toadzip/api-proxy.conf
+        read_only: true
+        bind:
+          create_host_path: false
+
+  frontend-green:
+    extends:
+      file: compose.yaml
+      service: frontend
+    profiles: [bluegreen]
+    image: "${FRONTEND_GREEN_IMAGE:-toadzip-frontend:latest}"
+    ports: !reset []
+    depends_on: !reset {}
+    volumes:
+      - type: bind
+        source: ./frontend/nginx/api-disabled.conf
+        target: /etc/nginx/toadzip/api-proxy.conf
+        read_only: true
+        bind:
+          create_host_path: false
