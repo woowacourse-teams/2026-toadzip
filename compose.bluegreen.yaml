@@ -1,0 +1,17 @@
+﻿# Opt-in backend instances; the existing backend remains the active service.
+services:
+  backend-blue:
+    extends:
+      file: compose.yaml
+      service: backend
+    profiles: [bluegreen]
+    image: "${BACKEND_BLUE_IMAGE:-toadzip-backend:latest}"
+    ports: !reset []
+
+  backend-green:
+    extends:
+      file: compose.yaml
+      service: backend
+    profiles: [bluegreen]
+    image: "${BACKEND_GREEN_IMAGE:-toadzip-backend:latest}"
+    ports: !reset []
