@@ -81,7 +81,7 @@ class PrepareTests(unittest.TestCase):
         self.assertEqual(bluegreen.DEFAULT_RUNTIME, ROOT / 'infra/runtime/bluegreen')
         with self.assertRaisesRegex(bluegreen.DeploymentError, 'tracked configuration'):
             module.prepare(ROOT / 'infra/nginx', self.source)
-        for path in ('scripts/bluegreen.py', 'scripts/deploy-bluegreen.ps1',
+        for path in ('scripts/bluegreen.py', 'scripts/release-bluegreen.py', 'scripts/deploy-bluegreen.ps1',
                      'scripts/switch-frontend.ps1', 'compose.yaml',
                      '.github/workflows/deploy-dev.yml', '.github/workflows/deploy-prod.yml'):
             self.assertNotIn('.local/', (ROOT / path).read_text(), path)

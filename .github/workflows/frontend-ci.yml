@@ -46,6 +46,7 @@ jobs:
         if: github.event_name != 'pull_request' || steps.filter.outputs.frontend == 'true'
         run: |
           python3 -B ../tests/deployment/test_bluegreen.py
+          python3 -B ../tests/deployment/test_release_bluegreen.py
           python3 -B ../tests/deployment/test_prepare_bluegreen.py
       - name: Check frontend
         if: github.event_name != 'pull_request' || steps.filter.outputs.frontend == 'true'

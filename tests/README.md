@@ -11,6 +11,8 @@ Flyway 검사 도구, 배포 설정과 모니터링 구성의 회귀 테스트�
 | [`deployment/test_bluegreen.py`](deployment/test_bluegreen.py) | POSIX 프론트·백엔드 도구의 후보 준비·전환·복구·공통 잠금·요청 대기·정지한 컨테이너 재시작·정적 파일 보관을 Docker 없이 검증합니다. `python3 -B tests/deployment/test_bluegreen.py`로 실행합니다. |
 | [`deployment/test_backend_bluegreen.py`](deployment/test_backend_bluegreen.py) | `--image`로 지정한 실제 백엔드와 격리 PostgreSQL을 사용해 후보 실패·Nginx 오류·Blue/Green 전환·원복·DB 보존을 검증합니다. |
 | [`deployment/test_bluegreen_drain.py`](deployment/test_bluegreen_drain.py) | 실제 Linux 도구·Nginx로 긴 프론트/API 요청, 정지·원복, 세 버전 정적 파일, 대기 초과·전환 실패·후보 실패를 검증합니다. |
+| [`deployment/test_release_bluegreen.py`](deployment/test_release_bluegreen.py) | CI SHA·빌드 선행·전체 잠금·실패 중단·부분 배포 보고와 워크플로 셸을 검증합니다. 프론트 CI에서 실행합니다. |
+| [`deployment/test_release_bluegreen_linux.py`](deployment/test_release_bluegreen_linux.py) | 격리 Git 체크아웃과 실제 Linux/Compose에서 커밋 라벨 빌드·순차 배포·Step Summary를 검증합니다. 수동 실행 검사입니다. |
 | [`deployment/test_prepare_bluegreen.py`](deployment/test_prepare_bluegreen.py) | 서버 런타임 준비·기존 상태 보존·이전 설정 복사·배포 잠금·기본 경로를 검증합니다. 프론트 CI에서 실행합니다. |
 | [`deployment/test_backend_health.py`](deployment/test_backend_health.py) | Compose의 healthcheck·시작 순서와 상태 응답 판정을 검증합니다. 별도로 실행하는 검사입니다. |
 | [`monitoring/`](monitoring/) | 대시보드 조회식·요청 필드와 DB 호스트·PostgreSQL·로그 수집 구성을 검증합니다. 별도로 실행하며 일부 검사는 Docker가 필요합니다. |
@@ -73,3 +75,17 @@ Docker·Python 3과 최초 이미지·`apk` 패키지 다운로드 네트워크�
 
 컨테이너는 해당 고유 프로젝트만 정리합니다. 이미지·시험 구성·신호 파일·로그는 로컬 검증 자료로 남깁니다.
 실제 서비스의 로그인·지도 SDK·UI 조작이나 여러 릴리스 사이 API 호환성을 검증한 결과로 해석하지 않습니다.
+
+## Linux 릴리스 통합 검증
+
+저장소 루트에서 `python3 -B tests/deployment/test_release_bluegreen_linux.py`로 실행한다.
+Docker·Python 3과 이미지·`apk` 패키지를 받는 네트워크가 필요하다. 고유 프로젝트에 시험용 Nginx·HTTP 서버를
+기동하고 `.local/` 안에 별도 Git 저장소와 Docker 빌드 컨텍스트를 만든다. 실제 서버·인증정보·외부 Git 원격에는 연결하지 않는다.
+
+Linux 부모 셸의 `flock`을 Python에 전달한 상태에서 실제 릴리스 도구를 실행한다.
+두 커밋 라벨 이미지의 빌드, 백엔드·프론트 전환, 이전 컨테이너 정지, 보관된 이전 정적 파일과
+기록한 이미지 ID·연결 색상·Actions 요약을 실제 실행 상태와 대조한다.
+정상 종료·예외에서 해당 프로젝트의 컨테이너만 정리하고 자료·이미지는 로컬에 남긴다.
+
+GitHub 호스팅 러너·Self-hosted Runner·도메인 TLS·실제 Spring/React 이미지 빌드·운영 DB를 검증한 결과는 아니다.
+빠른 회귀 검사는 `python3 -B tests/deployment/test_release_bluegreen.py`로 실행한다.

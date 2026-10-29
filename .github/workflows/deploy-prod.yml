@@ -28,12 +28,31 @@ jobs:
     runs-on: [self-hosted, linux, toadzip-prod]
     timeout-minutes: 30
     steps:
-      - name: Deploy
-        working-directory: ${{ vars.PROD_DEPLOY_PATH }} # Github에서 설정한 환경변수
+      - name: Deploy verified revision with Blue/Green
+        working-directory: ${{ vars.PROD_DEPLOY_PATH }}
+        env:
+          DEPLOY_PATH: ${{ vars.PROD_DEPLOY_PATH }}
+          BLUEGREEN_URL: ${{ vars.PROD_BLUEGREEN_URL }}
+          BLUEGREEN_RUNTIME: ${{ vars.PROD_BLUEGREEN_RUNTIME }}
+          BLUEGREEN_COMPOSE_OVERRIDES: ${{ vars.PROD_BLUEGREEN_COMPOSE_OVERRIDES }}
+          CI_COMMIT: ${{ github.sha }}
+          DEPLOY_BRANCH: main
         shell: bash
-        # 실제 동작하는 명령어 입력
         run: |
-          git switch main
-          git pull --ff-only origin main
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          docker compose up -d --build --wait --wait-timeout 180
+          set -euo pipefail
+          : "${DEPLOY_PATH:?Configure the deployment checkout path}"
+          : "${BLUEGREEN_URL:?Configure the verified public Edge/Caddy HTTPS URL}"
+          [[ "$BLUEGREEN_URL" == https://* ]]
+          [[ "$CI_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          runtime="$(cd -- "${BLUEGREEN_RUNTIME:-infra/runtime/bluegreen}" && pwd -P)"
+          edge="$(cd -- "$runtime/edge" && pwd -P)"
+          exec 9>"$(dirname -- "$edge")/deploy.lock"
+          flock --nonblock 9
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git fetch --no-tags origin "refs/heads/$DEPLOY_BRANCH"
+          git merge-base --is-ancestor "$CI_COMMIT" FETCH_HEAD
+          git checkout --detach "$CI_COMMIT"
+          test "$(git rev-parse HEAD)" = "$CI_COMMIT"
+          python3 -B scripts/release-bluegreen.py \
+            --revision "$CI_COMMIT" --environment prod \
+            --runtime "$runtime" --url "$BLUEGREEN_URL" --lock-fd 9
