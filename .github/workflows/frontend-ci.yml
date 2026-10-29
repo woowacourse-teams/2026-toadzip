@@ -41,7 +41,9 @@ jobs:
         run: npm ci
       - name: Verify notification deployment configuration
         if: github.event_name != 'pull_request' || steps.filter.outputs.frontend == 'true'
-        run: python3 ../tests/deployment/test_notification_environment.py
+        run: |
+          docker compose version
+          python3 ../tests/deployment/test_notification_environment.py
       - name: Verify Blue/Green deployment scripts
         if: github.event_name != 'pull_request' || steps.filter.outputs.frontend == 'true'
         run: |

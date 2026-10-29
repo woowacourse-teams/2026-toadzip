@@ -98,7 +98,8 @@ class NotificationEnvironmentTests(unittest.TestCase):
                 mount = next(volume for volume in candidate['volumes'] if volume['target'] == target)
                 self.assertEqual(mount['source'], '/tmp/fixture-adc.json')
                 self.assertTrue(mount['read_only'])
-                self.assertFalse(mount['bind']['create_host_path'])
+                # Compose versions may omit false-valued fields in config JSON.
+                self.assertFalse(mount.get('bind', {}).get('create_host_path', False))
                 self.assertFalse(candidate.get('ports'))
                 self.assertEqual(candidate['image'], 'toadzip-backend:latest')
         for name in ('frontend', 'frontend-blue', 'frontend-green', 'caddy', 'edge-nginx'):

@@ -46,7 +46,8 @@ class CaddyIngressTests(unittest.TestCase):
         services = json.loads(configuration().stdout)['services']
         for mount in services['edge-nginx']['volumes']:
             self.assertTrue(mount['read_only'])
-            self.assertFalse(mount['bind']['create_host_path'])
+            # Compose versions may omit false-valued fields in config JSON.
+            self.assertFalse(mount.get('bind', {}).get('create_host_path', False))
 
     def test_default_server_paths_are_in_infra_runtime_not_local(self):
         services = json.loads(configuration({'EDGE_NGINX_CONF_DIR': '', 'EDGE_NGINX_ASSET_DIR': ''}).stdout)['services']
