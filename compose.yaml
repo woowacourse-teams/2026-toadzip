@@ -101,7 +101,12 @@ services:
     ports:
       - "127.0.0.1:18080:80"
     volumes:
-      - ./infra/nginx/edge/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - type: bind
+        source: "${EDGE_NGINX_CONF_DIR:-./infra/nginx/edge}"
+        target: /etc/nginx/conf.d
+        read_only: true
+        bind:
+          create_host_path: false
     restart: unless-stopped
 
   alloy:
