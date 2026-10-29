@@ -8,6 +8,7 @@ Flyway 검사 도구, 배포 설정과 모니터링 구성의 회귀 테스트�
 | --- | --- |
 | [`ci/test_flyway_migrations.py`](ci/test_flyway_migrations.py) | 임시 Git 이력으로 Flyway 버전 중복, 낮은 버전 추가와 기존 SQL 변경 차단을 검증합니다. 백엔드 CI에서 실행합니다. |
 | [`deployment/test_notification_environment.py`](deployment/test_notification_environment.py) | 알림 기능의 기본 비활성화, 빌드·런타임 환경값과 선택적 인증정보 마운트를 검증합니다. 프론트엔드 CI에서 실행합니다. |
+| [`deployment/test_bluegreen.py`](deployment/test_bluegreen.py) | POSIX 프론트·백엔드 도구의 후보 준비·전환·복구·공통 잠금을 Docker 없이 검증합니다. `python3 -B tests/deployment/test_bluegreen.py`로 실행합니다. |
 | [`deployment/test_backend_bluegreen.py`](deployment/test_backend_bluegreen.py) | `--image`로 지정한 실제 백엔드와 격리 PostgreSQL을 사용해 후보 실패·Nginx 오류·Blue/Green 전환·원복·DB 보존을 검증합니다. |
 | [`deployment/test_backend_health.py`](deployment/test_backend_health.py) | Compose의 healthcheck·시작 순서와 상태 응답 판정을 검증합니다. 별도로 실행하는 검사입니다. |
 | [`monitoring/`](monitoring/) | 대시보드 조회식·요청 필드와 DB 호스트·PostgreSQL·로그 수집 구성을 검증합니다. 별도로 실행하며 일부 검사는 Docker가 필요합니다. |
@@ -27,7 +28,8 @@ DB·원격 저장소에 연결하지 않으며, `.local/`에 만든 테스트용
 
 ## 실제 백엔드 Blue/Green 로컬 검증
 
-Docker와 Python 3, 현재 소스에서 빌드한 백엔드 이미지가 필요합니다. 저장소 루트에서 실행합니다.
+Docker와 Python 3, 현재 소스에서 빌드한 백엔드 이미지가 필요합니다. 시험용 `docker:cli` Linux 컨테이너에서
+Bash·Python을 `apk`로 설치하므로 최초 이미지 다운로드와 패키지 설치 네트워크가 필요합니다. 저장소 루트에서 실행합니다.
 
 ```bash
 docker build -t toadzip-backend:bluegreen-check ./backend
@@ -37,7 +39,9 @@ python3 -B tests/deployment/test_backend_bluegreen.py --image toadzip-backend:bl
 매 실행마다 고유 Compose 프로젝트와 tmpfs PostgreSQL 두 개를 만듭니다. 실제 `.env`와 실행 중인
 서비스·볼륨을 사용하지 않습니다. Edge는 임의의 localhost 포트만 열고 백엔드·DB는 호스트 포트를 열지 않습니다.
 현재 소스의 `local` 프로필·Flyway·JPA 검증을 사용하며 두 색상에는 같은 이미지 ID를 지정합니다.
-후보 DB 인증 실패 시 기존 경로 유지, 잘못된 Nginx 설정 복구, Green 전환과 Blue 원복을 확인합니다.
+실제 `deploy-bluegreen.sh --service backend`로 후보 DB 인증 실패 시 기존 경로 유지와 Green 전환을,
+`switch-backend.sh`로 Blue 원복을 확인합니다. 잘못된 Nginx 설정은 별도 주입 후 복구를 확인합니다.
+Linux CLI에 저장소는 읽기 전용, 해당 시험 디렉터리만 쓰기 가능하게 마운트하고 `.env`는 빈 파일로 가립니다.
 고유 API 요청을 해당 백엔드 로그에서 찾고, DB를 조회하는 공고 목록 API도 함께 검사합니다.
 
 생성·큐 처리·정리 알림 작업은 두 백엔드에서 활성화하지만, 외부 FCM 발송은 끕니다.

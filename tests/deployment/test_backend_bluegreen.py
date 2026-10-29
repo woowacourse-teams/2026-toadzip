@@ -94,6 +94,8 @@ class BackendCheck:
       retries: 3
     restart: 'no'
 ''')
+        self.image_id = image_id
+        self.cli = None
         self.stopped = threading.Event()
         self.monitor = None
         self.samples = []
@@ -197,6 +199,37 @@ class BackendCheck:
             self.samples.append({'elapsed_seconds': time.monotonic() - started, 'error': failure})
             self.stopped.wait(0.1)
 
+    def start_linux_cli(self):
+        self.cli = self.project + "-cli"
+        empty_env = self.runtime / "empty.env"
+        empty_env.touch()
+        arguments = ['docker', 'run', '-d', '--name', self.cli, '--network', self.project + '_default',
+                     '-v', '/var/run/docker.sock:/var/run/docker.sock', '-v', f'{ROOT}:{ROOT}:ro',
+                     '-v', f'{self.runtime}:{self.runtime}', '-v', f'{empty_env}:{ROOT}/.env:ro', '-w', str(ROOT)]
+        for key, value in self.environment.items():
+            if key not in ('PATH', 'HOME', 'TMPDIR', 'DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_CONFIG'):
+                arguments += ['-e', key + '=' + value]
+        self.command([*arguments, 'docker:cli', 'sh', '-c',
+                      'apk add --no-cache python3 bash >/dev/null && touch /tmp/ready && sleep 900'])
+        for _ in range(60):
+            if self.command(['docker', 'exec', self.cli, 'test', '-f', '/tmp/ready'], check=False).returncode == 0:
+                return
+            time.sleep(1)
+        raise RuntimeError('Linux CLI fixture is not ready')
+
+    def deploy(self, broken=False, check=True):
+        arguments = ['docker', 'exec', self.cli, 'bash', 'scripts/deploy-bluegreen.sh', '--service', 'backend',
+                     '--project', self.project, '--runtime', str(self.runtime), '--url', 'http://edge-nginx',
+                     '--compose-override', str(self.fixture), '--image', self.image_id]
+        if broken:
+            arguments += ['--compose-override', str(self.broken)]
+        return self.command(arguments, check=check)
+
+    def restore_blue(self):
+        self.command(['docker', 'exec', self.cli, 'bash', 'scripts/switch-backend.sh', '--color', 'blue',
+                      '--project', self.project, '--runtime', str(self.runtime), '--url', 'http://edge-nginx',
+                      '--compose-override', str(self.fixture)])
+
     def run(self):
         try:
             print('Starting disposable PostgreSQL pair and actual backend Blue', flush=True)
@@ -211,34 +244,32 @@ class BackendCheck:
             self.sql("CREATE SCHEMA bluegreen_check; CREATE TABLE bluegreen_check.sentinel (id int PRIMARY KEY); "
                      "INSERT INTO bluegreen_check.sentinel VALUES (533);")
             history = self.history()
+            self.start_linux_cli()
             self.monitor = threading.Thread(target=self.watch, daemon=True)
             self.monitor.start()
-            failed = self.compose('up', '-d', '--no-build', '--no-deps', '--wait', '--wait-timeout', '25',
-                                  'backend-green', broken=True, check=False)
+            failed = self.deploy(broken=True, check=False)
             assert failed.returncode != 0, 'Wrong DB credentials must reject the candidate'
             assert self.config.read_text() == self.original
             self.verify_backend('backend-blue')
             print('PASS: unhealthy candidate leaves Blue serving API', flush=True)
-            self.compose('up', '-d', '--no-build', '--no-deps', '--force-recreate', '--wait',
-                         '--wait-timeout', '180', 'backend-green')
+            self.deploy()
             for service in ('backend-blue', 'backend-green'):
                 container = self.container(service)
                 assert self.docker('inspect', '--format', '{{.State.Health.Status}}', container) == 'healthy'
                 assert self.docker('inspect', '--format', '{{json .HostConfig.PortBindings}}', container) in ('{}', 'null')
             try:
-                self.switch('backend-green', invalid=True)
+                self.switch('backend-blue', invalid=True)
             except RuntimeError as error:
                 assert 'intentionally_invalid_directive' in str(error)
-                assert self.config.read_text() == self.original
-                self.verify_backend('backend-blue')
+                self.verify_backend('backend-green')
             else:
                 raise AssertionError('Invalid Nginx configuration was accepted')
             print('PASS: rejected Nginx configuration restores previous route', flush=True)
-            self.switch('backend-green')
-            print('PASS: Blue -> Green, actual API requests observed in Green logs', flush=True)
-            self.switch('backend-blue')
+            self.verify_backend('backend-green')
+            print('PASS: Linux deploy tool chose Green; actual API requests observed in Green logs', flush=True)
+            self.restore_blue()
             self.verify_backend('backend-blue')
-            print('PASS: Green -> Blue rollback; actual API requests observed in Blue logs', flush=True)
+            print('PASS: Linux switch tool restored Blue; actual API requests observed in Blue logs', flush=True)
             assert history == self.history(), 'Unexpected Flyway history change'
             assert self.sql('SELECT id FROM bluegreen_check.sentinel;') == '533'
             print('PASS: primary/privacy Flyway history and sentinel data preserved', flush=True)
@@ -249,6 +280,8 @@ class BackendCheck:
             (self.runtime / 'requests.json').write_text(json.dumps(self.samples, indent=2))
             logs = self.compose('logs', '--no-color', '--tail', '300', check=False)
             (self.runtime / 'containers.log').write_text(logs.stdout + logs.stderr)
+            if self.cli:
+                self.command(['docker', 'rm', '-f', self.cli], check=False)
             cleanup = self.compose('down', '--timeout', '10', check=False)
             if cleanup.returncode:
                 raise RuntimeError('Fixture cleanup failed; inspect project ' + self.project)
