@@ -39,7 +39,7 @@ def configuration(extra=None, overlays=()):
     command = ['docker', 'compose', '--env-file', '/dev/null', '-f', 'compose.yaml']
     for overlay in overlays:
         command.extend(['-f', overlay])
-    result = subprocess.run([*command, 'config', '--format', 'json'], cwd=ROOT, env=environment,
+    result = subprocess.run([*command, '--profile', 'bluegreen', 'config', '--format', 'json'], cwd=ROOT, env=environment,
                             capture_output=True, text=True, check=True, timeout=30)
     return json.loads(result.stdout)['services']
 
@@ -76,6 +76,33 @@ class NotificationEnvironmentTests(unittest.TestCase):
         self.assertFalse(mount.get('bind', {}).get('create_host_path', False))
         self.assertFalse(services['frontend'].get('volumes'))
         self.assertNotIn('GOOGLE_APPLICATION_CREDENTIALS', services['frontend']['build']['args'])
+
+    def test_credentials_reach_both_colors_with_caddy_server_overlay(self):
+        services = configuration({**SERVER_PUSH,
+                                  'TOADZIP_CADDY_DOMAIN': 'dev.bokduckbang.com',
+                                  'SPRING_PROFILES_ACTIVE': 'dev',
+                                  'NOTIFICATION_FIREBASE_CREDENTIALS_FILE': '/tmp/fixture-adc.json'},
+                                 ('compose.bluegreen.yaml', 'compose.caddy-server.yaml',
+                                  'compose.notification-credentials.yaml'))
+        target = '/run/secrets/notification-firebase-adc.json'
+        base = services['backend']
+        for color in ('blue', 'green'):
+            name = 'backend-' + color
+            with self.subTest(service=name):
+                candidate = services[name]
+                self.assertEqual(candidate['environment']['GOOGLE_APPLICATION_CREDENTIALS'], target)
+                for key, value in base['environment'].items():
+                    self.assertEqual(candidate['environment'].get(key), value, key)
+                self.assertEqual(candidate['volumes'], base['volumes'])
+                mount = next(volume for volume in candidate['volumes'] if volume['target'] == target)
+                self.assertEqual(mount['source'], '/tmp/fixture-adc.json')
+                self.assertTrue(mount['read_only'])
+                self.assertFalse(mount['bind']['create_host_path'])
+                self.assertFalse(candidate.get('ports'))
+                self.assertEqual(candidate['image'], 'toadzip-backend:latest')
+        for name in ('frontend', 'frontend-blue', 'frontend-green', 'caddy', 'edge-nginx'):
+            self.assertNotIn('GOOGLE_APPLICATION_CREDENTIALS', services[name].get('environment', {}))
+            self.assertFalse(any(mount['target'] == target for mount in services[name].get('volumes', [])))
 
 
 if __name__ == '__main__':

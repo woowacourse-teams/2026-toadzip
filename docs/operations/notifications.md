@@ -162,8 +162,13 @@ frontend 빌드 인자로 전달한다. 공개 웹 설정을 바꾸면 frontend 
 워크로드 ID를 사용하면 기본 Compose만 사용한다. 관리되는 ADC 파일을 사용할 경우 저장소 밖의 절대 경로를
 `NOTIFICATION_FIREBASE_CREDENTIALS_FILE`로 지정하고 기존 Compose 명령에
 `-f compose.notification-credentials.yaml`을 추가한다. 예를 들어 `-f compose.yaml -f compose.https.yaml
--f compose.notification-credentials.yaml` 순서다. 이 overlay는 backend에만 파일을 읽기 전용으로 마운트하며
+-f compose.notification-credentials.yaml` 순서다. 이 overlay는 backend·backend-blue·backend-green에 같은 파일을 읽기 전용으로 마운트하며
 컨테이너 경로를 `GOOGLE_APPLICATION_CREDENTIALS`로 지정한다. backend UID 10001의 읽기 권한을 준비해야 한다.
+Blue/Green 배포에서는 [서버 배포 설정](deployment.md#bluegreen-서버-준비)의
+`DEV_BLUEGREEN_COMPOSE_OVERRIDES` 또는 `PROD_BLUEGREEN_COMPOSE_OVERRIDES`에도
+`compose.notification-credentials.yaml`을 별도 줄로 추가한다. 수동 배포는
+`--compose-override compose.caddy-server.yaml --compose-override compose.notification-credentials.yaml`을 전달한다.
+`.env`의 `COMPOSE_FILE`에만 추가하면 배포 도구가 이 파일을 사용하지 않는다.
 개인키 내용은 `.env`, 빌드 인자, frontend 이미지에 넣지 않는다.
 
 delivery만 끄면 알림함과 폴링은 유지된다. publisher off 기간은 기본 소급하지 않는다.
