@@ -92,7 +92,23 @@ class Deployment:
         )
 
     @contextlib.contextmanager
-    def lock(self):
+    def lock(self, inherited_fd=None):
+        if inherited_fd is not None:
+            descriptor = os.dup(inherited_fd)
+            try:
+                actual = os.fstat(descriptor)
+                expected = (self.directory.parent / "deploy.lock").stat()
+                if (actual.st_dev, actual.st_ino) != (expected.st_dev, expected.st_ino):
+                    raise DeploymentError("Inherited lock does not match the Edge deployment lock")
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError as error:
+                    raise DeploymentError("Another deployment is running") from error
+                yield
+            finally:
+                # Closing this duplicate must not unlock the parent Actions shell.
+                os.close(descriptor)
+            return
         with (self.directory.parent / "deploy.lock").open("a") as handle:
             try:
                 fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -184,8 +200,18 @@ class Deployment:
         # Use a frontend-owned static route; /assets/ is served by Edge itself.
         prefix = "/api/edge-probe-" if self.service == "backend" else "/region-boundaries/edge-probe-"
         probe = prefix + uuid.uuid4().hex
+        status = None
+        request_failure = None
         for _ in range(10):
-            status, _body = self.request(probe)
+            try:
+                status, _body = self.request(probe)
+            except DeploymentError as failure:
+                # During recovery an old Nginx worker may still use the dead source.
+                # The following attempt must still prove arrival at the target.
+                status = None
+                request_failure = failure
+                time.sleep(0.5)
+                continue
             if status == 404:
                 logs = docker("logs", "--since", since, "--tail", "100", target)
                 if probe in logs:
@@ -194,7 +220,7 @@ class Deployment:
         raise DeploymentError(
             f"Could not verify requests reaching the selected {self.service} "
             f"(probe={probe}, last_status={status}, expected=404 with target log)"
-        )
+        ) from request_failure
 
     def check_target(self, service):
         target = self.container(service, include_stopped=True)

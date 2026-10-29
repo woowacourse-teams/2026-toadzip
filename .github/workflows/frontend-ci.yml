@@ -47,6 +47,7 @@ jobs:
         run: |
           python3 -B ../tests/deployment/test_bluegreen.py
           python3 -B ../tests/deployment/test_release_bluegreen.py
+          python3 -B ../tests/deployment/test_rollback_bluegreen.py
           python3 -B ../tests/deployment/test_caddy_ingress.py
           python3 -B ../tests/deployment/test_prepare_bluegreen.py
       - name: Check frontend

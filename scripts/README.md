@@ -10,6 +10,7 @@
 | [`test-https.py`](test-https.py) | 임시 인증서로 로컬 HTTPS·Nginx 갱신 hook을 검증합니다. `--config-only`는 Compose 설정과 hook 검사만 수행합니다. |
 | [`prepare-bluegreen.py`](prepare-bluegreen.py) | `infra/runtime/bluegreen/` 설정·정적 파일 디렉터리를 준비합니다. 기존 상태는 덮어쓰지 않습니다. |
 | [`release-bluegreen.py`](release-bluegreen.py) | CI 커밋·서버 준비를 확인하고 두 이미지를 빌드한 뒤 공통 잠금 안에서 백엔드·프론트를 순차 배포합니다. [CI 운영 절차](../docs/operations/deployment.md)를 따릅니다. |
+| [`rollback-bluegreen.py`](rollback-bluegreen.py) | 보관된 프론트·백엔드 이미지의 지정 커밋을 확인하고 복구합니다. [수동 실행·기록·제약](../docs/operations/deployment.md#직전-배포-롤백)을 따릅니다. |
 | [`deploy-bluegreen.sh`](deploy-bluegreen.sh), [`switch-frontend.sh`](switch-frontend.sh), [`switch-backend.sh`](switch-backend.sh) | Linux/POSIX용 프론트·백엔드 배포·전환 명령입니다. [`bluegreen.py`](bluegreen.py)의 공통 잠금·복구 로직을 사용합니다. |
 | [`deploy-bluegreen.ps1`](deploy-bluegreen.ps1) | Windows 로컬 검증용입니다. 화면이 Blue로 전달될 때 기존 로컬 이미지로 Green 프론트엔드를 재생성하고 준비 상태를 확인합니다. 화면 전환은 별도 명령입니다. |
 | [`switch-frontend.ps1`](switch-frontend.ps1) | Windows 로컬 검증용입니다. 프론트엔드 전달 대상을 Blue/Green으로 바꾸고 설정 검사·reload·실제 요청 수신을 확인합니다. API 전달 대상은 유지합니다. |

@@ -2,6 +2,7 @@
 """Opt-in Linux release integration with a committed fixture checkout and actual Compose builds."""
 
 import importlib.util
+import datetime
 import json
 from pathlib import Path
 import shutil
@@ -17,7 +18,7 @@ class ReleaseCheck(module.DrainCheck):
     def prepare_checkout(self):
         source = self.runtime / 'release-source'
         (source / 'scripts').mkdir(parents=True)
-        for name in ('bluegreen.py', 'release-bluegreen.py'):
+        for name in ('bluegreen.py', 'release-bluegreen.py', 'rollback-bluegreen.py'):
             shutil.copyfile(ROOT / 'scripts' / name, source / 'scripts' / name)
         for name in ('compose.yaml', 'compose.bluegreen.yaml'):
             shutil.copyfile(ROOT / name, source / name)
@@ -83,6 +84,43 @@ class ReleaseCheck(module.DrainCheck):
             assert revision in (self.runtime / 'summary.md').read_text()
             print('PASS: both SHA-labelled images built before backend/frontend deployment under inherited Linux lock', flush=True)
             print('PASS: old containers stopped; recorded image IDs/routes and Actions summary match actual state', flush=True)
+            rollback_shell = shell.replace('scripts/release-bluegreen.py --revision "$3"',
+                                           'scripts/rollback-bluegreen.py --target-revision "$3"')
+            def rollback(target, check=True):
+                result = self.command(['docker', 'exec', '-e', 'GITHUB_STEP_SUMMARY=' + str(self.runtime / 'rollback-summary.md'),
+                                       self.cli, 'bash', '-c', rollback_shell, 'rollback-fixture', str(source),
+                                       str(self.runtime), target, self.project, str(self.fixture)], check=check, timeout=300)
+                self.logs.append(result.stdout + result.stderr)
+                return result
+            rejected = rollback('2' * 40, check=False)
+            assert rejected.returncode != 0 and self.version() == 'release-v2'
+            for service in ('backend', 'frontend'):
+                assert self.running(service + '-green')
+            rollback('1' * 40)
+            rollback_reports = [json.loads(path.read_text()) for path in (self.runtime / 'rollbacks').glob('*.json')]
+            restored = next(item for item in rollback_reports if item['result'] == 'success')
+            assert restored['completed'] == ['backend', 'frontend'] and restored['routes_verified']
+            assert restored['routes'] == {'backend': 'backend-blue', 'frontend': 'frontend-blue'}
+            assert self.version() == 'v1'
+            assert datetime.datetime.fromisoformat(restored['completed_at']) >= datetime.datetime.fromisoformat(restored['started_at'])
+            assert restored['duration_seconds'] >= 0
+            for service in ('backend', 'frontend'):
+                assert self.running(service + '-blue') and not self.running(service + '-green')
+                assert restored['from'][service]['revision'] == revision
+                assert restored['to'][service]['revision'] == '1' * 40
+                assert self.docker('inspect', '--format', '{{.Image}}', self.container(service + '-blue')) == restored['to'][service]['image']
+            summary = (self.runtime / 'rollback-summary.md').read_text()
+            assert restored['started_at'] in summary and restored['completed_at'] in summary
+            print('PASS: wrong rollback revision rejected before switching; retained images restored under inherited lock', flush=True)
+            print('PASS: rollback start/end timestamps, duration, image IDs and Actions summary match actual state', flush=True)
+            # A real recovery must also work when the selected source application has died.
+            for service in ('backend', 'frontend'):
+                self.docker('stop', '--time', '10', self.container(service + '-blue'))
+            rollback(revision)
+            assert self.version() == 'release-v2'
+            for service in ('backend', 'frontend'):
+                assert self.running(service + '-green')
+            print('PASS: retained revision restores service even when both active containers have exited', flush=True)
         finally:
             self.pool.shutdown(wait=True)
             (self.runtime / 'release-tool.log').write_text('\n'.join(self.logs))

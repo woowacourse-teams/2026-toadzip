@@ -65,7 +65,7 @@ class DrainCheck(module.BackendCheck):
         build = self.runtime / 'build'
         build.mkdir()
         (build / 'server.py').write_text(SERVER)
-        (build / 'Dockerfile').write_text('FROM docker:cli\nRUN apk add --no-cache python3 bash curl\nCOPY server.py /fixture-server.py\n')
+        (build / 'Dockerfile').write_text('FROM docker:cli\nRUN apk add --no-cache python3 bash curl\nCOPY server.py /fixture-server.py\nLABEL org.opencontainers.image.revision=1111111111111111111111111111111111111111\n')
         runner = self.project + '-runner'
         self.command(['docker', 'build', '--pull=false', '-t', runner, str(build)])
         self.image_id = self.docker('image', 'inspect', '--format', '{{.Id}}', runner)
@@ -95,7 +95,7 @@ class DrainCheck(module.BackendCheck):
             if version == 'bad':
                 config = build / 'frontend.conf'
                 config.write_text(config.read_text().replace('listen 8080;', 'listen 8080; location ^~ /region-boundaries/edge-probe- { return 500; }'))
-            (build / 'Dockerfile.frontend').write_text('FROM nginx:stable-alpine\nCOPY frontend.conf /etc/nginx/conf.d/default.conf\nCOPY logging.conf /etc/nginx/toadzip/logging.conf\nCOPY html/ /usr/share/nginx/html/\n')
+            (build / 'Dockerfile.frontend').write_text('FROM nginx:stable-alpine\nCOPY frontend.conf /etc/nginx/conf.d/default.conf\nCOPY logging.conf /etc/nginx/toadzip/logging.conf\nCOPY html/ /usr/share/nginx/html/\nLABEL org.opencontainers.image.revision=1111111111111111111111111111111111111111\n')
             tag = self.project + '-' + version
             self.command(['docker', 'build', '--pull=false', '-f', str(build / 'Dockerfile.frontend'), '-t', tag, str(build)])
             self.frontends[version] = self.docker('image', 'inspect', '--format', '{{.Id}}', tag)

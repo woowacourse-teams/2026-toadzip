@@ -102,6 +102,51 @@ CI에서 실행하는 빠른 배포 검사는 `tests/deployment/test_bluegreen.p
 실제 Linux 빌드·전환을 시험하는 격리 검증은 [검증 안내](../../tests/README.md#linux-릴리스-통합-검증)를 따른다.
 코드 변경·로컬 시험 성공은 실제 Actions 실행 또는 개발·운영 서버 적용 완료를 뜻하지 않는다.
 
+## 직전 배포 롤백
+
+[Rollback Blue/Green](../../.github/workflows/rollback.yml)은 수동 실행 전용이다.
+[GitHub 수동 실행 조건](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)에 따라
+워크플로 파일이 저장소 기본 브랜치에 등록되어 있어야 Actions에서 실행할 수 있다.
+개발은 `develop` 브랜치·`dev`, 운영은 `main` 브랜치·`prod` 조합만 허용한다.
+자동 배포와 같은 Actions concurrency 그룹 및 서버 `deploy.lock`을 사용한다.
+기존 수동 배포 명령은 그대로 사용하며, 아래 롤백은 이미 보관된 컨테이너를 복원하는 별도 명령이다.
+
+1. 직전 성공한 배포의 전체 커밋 SHA를 Actions 로그·Summary 또는 서버 `releases/*.json`에서 확인한다.
+   그 버전의 백엔드가 현재 DB 스키마와 호환되는지 먼저 확인한다. 롤백은 DB 변경을 되돌리지 않는다.
+2. Actions에서 **Rollback Blue/Green → Run workflow**를 선택하고 환경에 맞는 브랜치와
+   `environment`, `target_revision`을 지정한다. `target_revision`은 40자리 전체 SHA다.
+3. 워크플로는 양쪽 서비스의 반대 색상에 보관된 이미지가 모두 지정 SHA인지 확인하고 healthy를 확인한다.
+   대상이 없거나 다른 커밋이면 트래픽 전환 전에 중단한다. 초기 legacy → Blue 전환 직후에는
+   반대 Green 컨테이너가 없으므로 이 기능으로 legacy 컨테이너를 복구할 수 없다.
+4. 준비된 두 대상의 upstream을 한 설정으로 함께 전환하고 실제 요청 경로·health·공고 조회와 기존 요청 종료를 확인한다.
+   현재 앱이 종료되어도 보관된 대상을 준비해 복구할 수 있다. 이전 이미지를 다시 빌드하거나 컨테이너를 재생성하지 않으며,
+   대상 앱의 Flyway 실행 여부는 해당 버전의 시작 동작을 따른다.
+5. 실행 Summary의 `success`, 두 완료 항목, 전환 전후 커밋·이미지 ID와 시작·완료 UTC 시각·소요 시간을 확인한다.
+   배포 전부터 외부 요청 관찰을 켜 두고 롤백 완료 후까지 응답 실패 여부를 함께 확인한다.
+   실행 링크와 관찰 결과를 이슈·PR에 첨부하면 롤백 검증 기록으로 사용할 수 있다.
+
+같은 커밋이 이미 활성화되어 있으면 중단한다. 같은 버전을 다른 색상으로 재배포하는 시험은
+서로 다른 버전 간 복구 증거가 되지 않는다. 다음 배포가 보관 대상을 재생성하면 그보다 오래된
+버전으로는 이 도구만으로 돌아갈 수 없다.
+
+기록은 Actions 로그·Summary와 서버 `infra/runtime/bluegreen/rollbacks/*.json`에 남긴다.
+시작·완료 시각은 잠금을 획득한 뒤 실제 롤백 도구를 실행한 시간이며 Actions 대기·Git 준비 시간은 제외한다.
+일반 실패·인터럽트에도 실패 단계와 현재 설정 경로를 기록한다. 강제 종료·호스트 장애에서는 완료 기록이 없을 수 있다.
+전환 검증에 실패하면 이전 설정으로 복구를 시도하지만 기존 앱 자체가 장애이면 복구 검증도 실패할 수 있다.
+이전 컨테이너 정리 단계에서 실패하면 전환된 경로를 유지하고 실패로 보고한다.
+실패 시 `completed`·`stage`·`routes`와 백업을 보고 실제 상태를 확인하며 전체 복구 성공으로 해석하지 않는다.
+
+SSH에서 직접 수행해야 할 때는 저장소 루트에서 다음을 실행한다. `--lock-fd`를 생략하면 같은 잠금을 직접 잡는다.
+실행 결과는 서버에 저장되지만 Actions에는 남지 않는다.
+
+```shell
+python3 -B scripts/rollback-bluegreen.py \
+  --target-revision <직전_성공_배포의_40자리_SHA> \
+  --environment dev --url https://dev.bokduckbang.com \
+  --compose-override compose.caddy-server.yaml \
+  --compose-override compose.notification-credentials.yaml
+```
+
 ## DB 전환·계약 변경이 필요한 특별 배포
 
 현재 워크플로는 호스트의 개인정보·알림 스키마 점검 스크립트와 writer의 단계별 중지를 실행하지 않는다.

@@ -199,7 +199,7 @@ class ReleaseTests(unittest.TestCase):
     def test_inherited_descriptor_keeps_parent_lock_after_release(self):
         lock = self.runtime / 'deploy.lock'
         with lock.open('a') as handle:
-            module.fcntl.flock(handle, module.fcntl.LOCK_EX | module.fcntl.LOCK_NB)
+            bluegreen.fcntl.flock(handle, bluegreen.fcntl.LOCK_EX | bluegreen.fcntl.LOCK_NB)
             self.options.lock_fd = handle.fileno()
             self.release.run()
             with self.assertRaises(bluegreen.DeploymentError):

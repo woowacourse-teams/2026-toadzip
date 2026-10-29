@@ -168,6 +168,25 @@ class DeploymentTests(unittest.TestCase):
         self.assertTrue(self.runner.requests[-1].startswith(prefix))
         self.assertEqual(self.runner.probe[self.service + "-blue"], self.runner.requests[-1])
 
+    def test_route_probe_retries_connection_failure_but_still_requires_target_log(self):
+        request = self.runner.request
+        attempts = []
+        def transient(path):
+            attempts.append(path)
+            if len(attempts) == 1:
+                raise module.DeploymentError("old worker connection timed out")
+            return request(path)
+        self.runner.request = transient
+        self.runner.verify_route(self.service + "-blue")
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(self.runner.probe[self.service + "-blue"], attempts[-1])
+
+    def test_route_probe_continuous_connection_failure_is_not_accepted(self):
+        with patch.object(self.runner, "request", side_effect=module.DeploymentError("connection failed")) as request:
+            with self.assertRaisesRegex(module.DeploymentError, "Could not verify requests"):
+                self.runner.verify_route(self.service + "-blue")
+            self.assertEqual(request.call_count, 10)
+
     def test_route_probe_rejects_response_without_target_log(self):
         self.runner.probe.clear()
         self.runner.request = lambda path: (404, b"")

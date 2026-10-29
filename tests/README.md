@@ -12,7 +12,8 @@ Flyway 검사 도구, 배포 설정과 모니터링 구성의 회귀 테스트�
 | [`deployment/test_backend_bluegreen.py`](deployment/test_backend_bluegreen.py) | `--image`로 지정한 실제 백엔드와 격리 PostgreSQL을 사용해 후보 실패·Nginx 오류·Blue/Green 전환·원복·DB 보존을 검증합니다. |
 | [`deployment/test_bluegreen_drain.py`](deployment/test_bluegreen_drain.py) | 실제 Linux 도구·Nginx로 긴 프론트/API 요청, 정지·원복, 세 버전 정적 파일, 대기 초과·전환 실패·후보 실패를 검증합니다. |
 | [`deployment/test_release_bluegreen.py`](deployment/test_release_bluegreen.py) | CI SHA·빌드 선행·전체 잠금·실패 중단·부분 배포 보고와 워크플로 셸을 검증합니다. 프론트 CI에서 실행합니다. |
-| [`deployment/test_release_bluegreen_linux.py`](deployment/test_release_bluegreen_linux.py) | 격리 Git 체크아웃과 실제 Linux/Compose에서 커밋 라벨 빌드·순차 배포·Step Summary를 검증합니다. 수동 실행 검사입니다. |
+| [`deployment/test_rollback_bluegreen.py`](deployment/test_rollback_bluegreen.py) | 지정 롤백 커밋·공통 잠금·사전 검사·전환 복구·정리 실패·시작 및 완료 기록과 수동 워크플로 셸을 검증합니다. 프론트 CI에서 실행합니다. |
+| [`deployment/test_release_bluegreen_linux.py`](deployment/test_release_bluegreen_linux.py) | 격리 Git 체크아웃과 실제 Linux/Compose에서 커밋 라벨 빌드·순차 배포와 실제 이전 이미지 복구·시각·Step Summary를 검증합니다. 수동 실행 검사입니다. |
 | [`deployment/test_caddy_ingress.py`](deployment/test_caddy_ingress.py) | 서버 포트·HTTP 프론트·런타임·저장소·기존 TLS 제거를 검증합니다. 프론트 CI에서 실행합니다. |
 | [`deployment/test_caddy_ingress_linux.py`](deployment/test_caddy_ingress_linux.py) | 임시 CA와 loopback 포트로 실제 Caddy HTTPS·헤더·Edge 연결·저장소를 확인합니다. 수동 검사입니다. |
 | [`deployment/test_prepare_bluegreen.py`](deployment/test_prepare_bluegreen.py) | 서버 런타임 준비·기존 상태 보존·이전 설정 복사·배포 잠금·기본 경로를 검증합니다. 프론트 CI에서 실행합니다. |

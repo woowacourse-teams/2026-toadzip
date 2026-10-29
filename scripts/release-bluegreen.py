@@ -3,7 +3,6 @@
 
 import argparse
 import contextlib
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -29,25 +28,8 @@ class Release:
 
     @contextlib.contextmanager
     def lock(self):
-        if self.options.lock_fd is None:
-            with self.runners['frontend'].lock():
-                yield
-            return
-        # CI holds this same open file description while fetching/checking out the revision.
-        descriptor = os.dup(self.options.lock_fd)
-        try:
-            actual = os.fstat(descriptor)
-            expected = (self.runners['frontend'].directory.parent / 'deploy.lock').stat()
-            if (actual.st_dev, actual.st_ino) != (expected.st_dev, expected.st_ino):
-                raise bluegreen.DeploymentError('Inherited lock does not match the Edge deployment lock')
-            try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as error:
-                raise bluegreen.DeploymentError('Another deployment is running') from error
+        with self.runners['frontend'].lock(self.options.lock_fd):
             yield
-        finally:
-            # Do not LOCK_UN: the parent shell still owns this lock through checkout and release.
-            os.close(descriptor)
 
     def git(self, *arguments):
         return subprocess.check_output(['git', *arguments], cwd=bluegreen.ROOT, text=True).strip()
