@@ -14,13 +14,15 @@ SPRING_PROFILES_ACTIVE=dev
 TOADZIP_CADDY_DOMAIN=dev.bokduckbang.com
 EDGE_NGINX_CONF_DIR=/absolute/checkout/infra/runtime/bluegreen/edge
 EDGE_NGINX_ASSET_DIR=/absolute/checkout/infra/runtime/bluegreen/assets
-COMPOSE_FILE=compose.yaml:compose.bluegreen.yaml:compose.caddy-server.yaml
+COMPOSE_FILE=compose.yaml:compose.bluegreen.yaml:compose.caddy-server.yaml:compose.notification-credentials.yaml
+NOTIFICATION_FIREBASE_CREDENTIALS_FILE=/absolute/managed-secrets/firebase-dev.json
 SESSION_COOKIE_SECURE=true
 ADMIN_CORS_ALLOWED_ORIGIN=https://dev.bokduckbang.com
 ```
 
 기존 `COMPOSE_FILE=compose.yaml:compose.https.yaml`에 덧붙이지 말고 파일 목록을 교체한다.
-DB·OAuth·알림 등 기존 서버 값은 보존한다. 별도 인증정보 overlay가 필요하면 해당 파일도 명시한다.
+DB·OAuth·알림 등 기존 서버 값은 보존한다. Firebase 인증파일은 해당 환경의 기존 관리 파일 경로를 지정하고 backend UID 10001의 읽기 권한을 확인한다.
+다른 인증정보 overlay가 필요하면 해당 파일도 명시한다.
 기본 경로를 사용하면 위 `EDGE_NGINX_*` 두 항목은 생략할 수 있다.
 `python3 -B scripts/prepare-bluegreen.py`가 `infra/runtime/bluegreen/edge/default.conf`와 `assets/`를 준비한다.
 서버 overlay는 준비된 경로가 없으면 적용에 실패한다. 자세한 준비는 [배포 도구](../../scripts/README.md#linux-프론트백엔드-bluegreen-도구)를 따른다.
