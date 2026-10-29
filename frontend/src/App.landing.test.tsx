@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { StrictMode } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -35,6 +35,23 @@ it('비로그인 첫 방문에는 API 없이 서비스 소개와 시작하기를
   expect(screen.getByRole('region', { name: '복덕방 사용법' })).toBeVisible()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(fetcher).not.toHaveBeenCalled()
+})
+
+it('기술 소개는 사례별 제목과 그림 자료, 측정 조건을 보여준다', () => {
+  vi.stubGlobal('fetch', vi.fn())
+  open()
+  expect(screen.getByRole('link', { name: '기술 소개' })).toHaveAttribute('href', '#technology')
+  const technology = screen.getByRole('region', { name: /정확하고 빠르게 잇는 기술/ })
+  const cases = within(technology).getAllByRole('article')
+  expect(cases.map((item) => within(item).getByRole('heading', { level: 3 }).textContent)).toEqual([
+    'LH 공고 수집, 160초에서 41초로', '외부 API가 멈춰도 수집이 무너지지 않게',
+    '원천은 보존하고, 정제는 언제든 다시', '지도 클러스터링',
+  ])
+  expect(within(technology).getByRole('figure', { name: /동시 2개 160.7초, 동시 8개 41.1초/ })).toBeVisible()
+  expect(within(technology).getByRole('list', { name: '지도 확대 수준별 표시 단계' })).toHaveTextContent('1단계권역11개2단계시·도16개3단계시·군·구230개4단계개별 단지화면 안')
+  expect(within(technology).queryByRole('term')).not.toBeInTheDocument()
+  expect(technology).not.toHaveTextContent(/Gemini|AI/)
+  expect(within(technology).getByText(/운영 환경의 성능을 보장하는 값은 아니에요/)).toBeVisible()
 })
 
 it('시작하기는 로그인 없이 지도를 열고 뒤로가기는 랜딩으로 돌아온다', () => {
