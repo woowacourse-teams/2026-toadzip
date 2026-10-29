@@ -55,4 +55,6 @@ jobs:
           test "$(git rev-parse HEAD)" = "$CI_COMMIT"
           python3 -B scripts/release-bluegreen.py \
             --revision "$CI_COMMIT" --environment dev \
-            --runtime "$runtime" --url "$BLUEGREEN_URL" --lock-fd 9
+            --runtime "$runtime" --url "$BLUEGREEN_URL" --lock-fd 9 \
+            --compose-override compose.caddy-server.yaml \
+            --compose-override compose.notification-credentials.yaml

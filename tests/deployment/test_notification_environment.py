@@ -2,6 +2,7 @@
 """Exercise Compose interpolation with public fixtures, never a developer .env."""
 import json
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import unittest
@@ -103,6 +104,30 @@ class NotificationEnvironmentTests(unittest.TestCase):
         for name in ('frontend', 'frontend-blue', 'frontend-green', 'caddy', 'edge-nginx'):
             self.assertNotIn('GOOGLE_APPLICATION_CREDENTIALS', services[name].get('environment', {}))
             self.assertFalse(any(mount['target'] == target for mount in services[name].get('volumes', [])))
+
+    def test_actions_release_commands_mount_credentials_in_dev_and_prod(self):
+        for environment in ('dev', 'prod'):
+            with self.subTest(environment=environment):
+                workflow = (ROOT / '.github/workflows' / ('deploy-' + environment + '.yml')).read_text()
+                command = workflow.split('python3 -B scripts/release-bluegreen.py', 1)[1]
+                arguments = shlex.split(command.replace(chr(92) + chr(10), ' '))
+                overlays = [arguments[index + 1] for index, argument in enumerate(arguments)
+                            if argument == '--compose-override']
+                self.assertIn('compose.caddy-server.yaml', overlays)
+                self.assertIn('compose.notification-credentials.yaml', overlays)
+                services = configuration({**SERVER_PUSH,
+                                          'SPRING_PROFILES_ACTIVE': environment,
+                                          'TOADZIP_CADDY_DOMAIN': 'notification.example.invalid',
+                                          'NOTIFICATION_FIREBASE_CREDENTIALS_FILE': '/tmp/fixture-adc.json'},
+                                         ('compose.bluegreen.yaml', *overlays))
+                base = services['backend']
+                for color in ('blue', 'green'):
+                    candidate = services['backend-' + color]
+                    self.assertEqual(candidate['environment'], base['environment'])
+                    self.assertEqual(candidate['volumes'], base['volumes'])
+                    self.assertFalse(candidate.get('ports'))
+                    self.assertEqual(candidate['environment']['GOOGLE_APPLICATION_CREDENTIALS'],
+                                     '/run/secrets/notification-firebase-adc.json')
 
 
 if __name__ == '__main__':

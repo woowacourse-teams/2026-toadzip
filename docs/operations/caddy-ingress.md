@@ -64,8 +64,9 @@ curl --head --connect-timeout 5 --max-time 10 http://dev.bokduckbang.com/
 ```
 
 도메인 인증서·외부 HTTPS·HTTP 리다이렉트와 브라우저의 지도·공고·PDF·새로고침·사용 중인 로그인을 확인한다.
-그 뒤 [자동 배포 설정](deployment.md#bluegreen-서버-준비)의 `DEV_BLUEGREEN_URL`을 설정하고,
-`DEV_BLUEGREEN_COMPOSE_OVERRIDES`에 `compose.caddy-server.yaml`을 지정한다. 운영은 `PROD_*`를 사용한다.
+그 뒤 [자동 배포 설정](deployment.md#bluegreen-서버-준비)의 `DEV_BLUEGREEN_URL`을 설정한다.
+Actions는 Caddy·Firebase 인증파일 overlay를 기본으로 전달하므로 서버 인증파일 경로도 준비한다.
+`DEV_BLUEGREEN_COMPOSE_OVERRIDES`는 그 외 추가 설정이 있을 때만 지정한다. 운영은 `PROD_*`를 사용한다.
 
 전환 실패 시 새 구성으로 Caddy만 정지하고 백업한 `.env`·Compose·이미지로 프론트 공개 포트를 복원한다.
 성공 후 기존 Certbot timer·hook의 이 도메인 담당 여부를 확인해 중복 관리를 정리한다.

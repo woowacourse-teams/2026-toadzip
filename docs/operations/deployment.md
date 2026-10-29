@@ -46,7 +46,7 @@ Runner에는 Git·Bash·`flock`·Python 3·Docker Compose가 필요하다. 서�
 | `DEV_DEPLOY_PATH` / `PROD_DEPLOY_PATH` | 기존 서버 체크아웃의 절대 경로 |
 | `DEV_BLUEGREEN_URL` / `PROD_BLUEGREEN_URL` | 실제 Edge/Caddy를 거치는 공개 HTTPS 주소. 미설정이면 배포 중단 |
 | `DEV_BLUEGREEN_RUNTIME` / `PROD_BLUEGREEN_RUNTIME` | 선택 설정. 기본은 체크아웃의 `infra/runtime/bluegreen` |
-| `DEV_BLUEGREEN_COMPOSE_OVERRIDES` / `PROD_BLUEGREEN_COMPOSE_OVERRIDES` | 선택 설정. 추가 서버 Compose 파일 경로를 한 줄에 하나씩 지정 |
+| `DEV_BLUEGREEN_COMPOSE_OVERRIDES` / `PROD_BLUEGREEN_COMPOSE_OVERRIDES` | 선택 설정. 기본 Caddy·인증파일 설정 외에 추가할 Compose 파일 경로를 한 줄에 하나씩 지정 |
 
 `python3 -B scripts/prepare-bluegreen.py`로 `infra/runtime/bluegreen/`을 준비하고
 설정 마운트·정적 파일 보관 경로·실제 진입점 전환을 먼저 완료한다.
@@ -55,8 +55,10 @@ Runner에는 Git·Bash·`flock`·Python 3·Docker Compose가 필요하다. 서�
 워크플로는 최초 컨테이너·TLS·Caddy·모니터링·DB를 생성하거나 공개 포트를 변경하지 않는다.
 기존 프론트 컨테이너가 진입점인 서버에서는 [Caddy 설정과 포트 전환](caddy-ingress.md)을 먼저 적용한다.
 
-기존 `.env`의 `COMPOSE_FILE`은 이 명령에서 자동 적용하지 않는다. 도구는 `compose.yaml`·`compose.bluegreen.yaml`과
-위 변수로 명시한 추가 파일만 사용한다.
+기존 `.env`의 `COMPOSE_FILE`은 이 명령에서 자동 적용하지 않는다. Actions는 `compose.yaml`·`compose.bluegreen.yaml`에
+`compose.caddy-server.yaml`·`compose.notification-credentials.yaml`을 명시적으로 추가한다.
+서버에는 [Firebase 인증파일 경로와 읽기 권한](notifications.md#설정과-출시-순서)이 준비되어 있어야 한다.
+위 저장소 변수는 그 외 서버별 추가 설정에 사용하며, 기본 두 파일은 중복 등록하지 않아도 된다.
 이전 경로를 `*_BLUEGREEN_RUNTIME`이나 서버 `EDGE_NGINX_*`에 지정했다면 새 경로로 함께 변경한다. ADC 등 런타임 설정을 legacy `backend`에만 덧붙이는 overlay는
 두 색상에도 같은 필수 환경·마운트를 전달해야 한다. 누락·환경 프로필 불일치·후보 호스트 포트 공개는 사전 검사에서 거부한다.
 서버 인증정보는 GitHub 저장소 변수에 넣지 않고 기존 서버 파일·자격 관리 방식을 유지한다.
@@ -83,7 +85,9 @@ Runner에는 Git·Bash·`flock`·Python 3·Docker Compose가 필요하다. 서�
 ```shell
 python3 -B scripts/release-bluegreen.py \
   --revision "$CI_COMMIT" --environment dev \
-  --runtime "$runtime" --url "$BLUEGREEN_URL" --lock-fd 9
+  --runtime "$runtime" --url "$BLUEGREEN_URL" --lock-fd 9 \
+  --compose-override compose.caddy-server.yaml \
+  --compose-override compose.notification-credentials.yaml
 ```
 
 - 환경별 Actions concurrency를 유지하고 진행 중인 배포를 취소하지 않는다. 배포 job 제한은 기존 30분이다.
