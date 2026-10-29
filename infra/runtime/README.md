@@ -20,4 +20,4 @@ python3 -B scripts/prepare-bluegreen.py
 준비 명령은 기존 연결 색상과 정적 파일을 덮어쓰거나 지우지 않는다. 다른 경로에서 이전할 때는
 `--from-config /기존/edge/default.conf`로 최초 복사 원본을 지정할 수 있다. 원본은 이동·삭제하지 않는다.
 기존 Edge 컨테이너는 새 디렉터리 마운트로 별도 전환해야 하며 준비 명령은 Docker를 실행하지 않는다.
-서버 적용은 [배포 운영](../../docs/operations/deployment.md)을 따른다.
+서버 적용은 [배포 운영](../../docs/operations/deployment.md)과 [Caddy 진입점](../../docs/operations/caddy-ingress.md)을 따른다.

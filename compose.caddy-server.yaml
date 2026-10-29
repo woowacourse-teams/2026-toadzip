@@ -1,0 +1,40 @@
+# Application-server ingress. Use instead of compose.https.yaml after the initial port cutover.
+services:
+  frontend:
+    ports: !reset []
+    command: [nginx, -c, /etc/nginx/nginx.conf, -g, 'daemon off;']
+    environment: !reset {}
+    group_add: !reset []
+    volumes: !reset []
+
+  edge-nginx:
+    volumes:
+      - type: bind
+        source: "${EDGE_NGINX_CONF_DIR:-./infra/runtime/bluegreen/edge}"
+        target: /etc/nginx/conf.d
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${EDGE_NGINX_ASSET_DIR:-./infra/runtime/bluegreen/assets}"
+        target: /var/cache/toadzip/assets
+        read_only: true
+        bind:
+          create_host_path: false
+
+  caddy:
+    extends:
+      file: compose.caddy.yaml
+      service: caddy
+    environment:
+      TOADZIP_CADDY_DOMAIN: "${TOADZIP_CADDY_DOMAIN:?Set the application server domain}"
+    ports: !override
+      - '80:80'
+      - '443:443'
+    depends_on:
+      edge-nginx:
+        condition: service_started
+
+volumes:
+  toadzip_caddy_data:
+  toadzip_caddy_config:

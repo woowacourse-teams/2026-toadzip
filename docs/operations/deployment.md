@@ -53,7 +53,7 @@ Runner에는 Git·Bash·`flock`·Python 3·Docker Compose가 필요하다. 서�
 배포 상태는 Git에서 제외하며, 설정 원본은 `infra/nginx/edge/default.conf`로 관리한다.
 [Linux 배포 도구](../../scripts/README.md#linux-프론트백엔드-bluegreen-도구)의 초기 준비를 따른다.
 워크플로는 최초 컨테이너·TLS·Caddy·모니터링·DB를 생성하거나 공개 포트를 변경하지 않는다.
-기존 프론트 컨테이너가 진입점인 서버에서는 먼저 공개 진입점 전환을 완료한다.
+기존 프론트 컨테이너가 진입점인 서버에서는 [Caddy 설정과 포트 전환](caddy-ingress.md)을 먼저 적용한다.
 
 기존 `.env`의 `COMPOSE_FILE`은 이 명령에서 자동 적용하지 않는다. 도구는 `compose.yaml`·`compose.bluegreen.yaml`과
 위 변수로 명시한 추가 파일만 사용한다.

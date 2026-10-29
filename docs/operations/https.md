@@ -1,5 +1,7 @@
 # Certbot으로 개발·운영 HTTPS 적용
 
+기존 프론트 Nginx/Certbot 구성의 안내다. Blue/Green 서버는 [Caddy 진입점 전환](caddy-ingress.md)을 따른다.
+
 EC2의 Certbot이 인증서를 발급·갱신하고, Docker 안의 Nginx가 그 인증서를 읽어
 HTTPS 요청을 받는다. 브라우저의 `/api` 요청은 기존처럼 Nginx에서 백엔드로 전달한다.
 호스트에 Nginx를 추가로 설치하지 않는다.

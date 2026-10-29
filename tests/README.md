@@ -13,6 +13,8 @@ Flyway 검사 도구, 배포 설정과 모니터링 구성의 회귀 테스트�
 | [`deployment/test_bluegreen_drain.py`](deployment/test_bluegreen_drain.py) | 실제 Linux 도구·Nginx로 긴 프론트/API 요청, 정지·원복, 세 버전 정적 파일, 대기 초과·전환 실패·후보 실패를 검증합니다. |
 | [`deployment/test_release_bluegreen.py`](deployment/test_release_bluegreen.py) | CI SHA·빌드 선행·전체 잠금·실패 중단·부분 배포 보고와 워크플로 셸을 검증합니다. 프론트 CI에서 실행합니다. |
 | [`deployment/test_release_bluegreen_linux.py`](deployment/test_release_bluegreen_linux.py) | 격리 Git 체크아웃과 실제 Linux/Compose에서 커밋 라벨 빌드·순차 배포·Step Summary를 검증합니다. 수동 실행 검사입니다. |
+| [`deployment/test_caddy_ingress.py`](deployment/test_caddy_ingress.py) | 서버 포트·HTTP 프론트·런타임·저장소·기존 TLS 제거를 검증합니다. 프론트 CI에서 실행합니다. |
+| [`deployment/test_caddy_ingress_linux.py`](deployment/test_caddy_ingress_linux.py) | 임시 CA와 loopback 포트로 실제 Caddy HTTPS·헤더·Edge 연결·저장소를 확인합니다. 수동 검사입니다. |
 | [`deployment/test_prepare_bluegreen.py`](deployment/test_prepare_bluegreen.py) | 서버 런타임 준비·기존 상태 보존·이전 설정 복사·배포 잠금·기본 경로를 검증합니다. 프론트 CI에서 실행합니다. |
 | [`deployment/test_backend_health.py`](deployment/test_backend_health.py) | Compose의 healthcheck·시작 순서와 상태 응답 판정을 검증합니다. 별도로 실행하는 검사입니다. |
 | [`monitoring/`](monitoring/) | 대시보드 조회식·요청 필드와 DB 호스트·PostgreSQL·로그 수집 구성을 검증합니다. 별도로 실행하며 일부 검사는 Docker가 필요합니다. |
@@ -89,3 +91,5 @@ Linux 부모 셸의 `flock`을 Python에 전달한 상태에서 실제 릴리스
 
 GitHub 호스팅 러너·Self-hosted Runner·도메인 TLS·실제 Spring/React 이미지 빌드·운영 DB를 검증한 결과는 아니다.
 빠른 회귀 검사는 `python3 -B tests/deployment/test_release_bluegreen.py`로 실행한다.
+
+Caddy 검사의 실행 조건과 범위는 [Caddy 운영](../docs/operations/caddy-ingress.md#로컬-검증)을 따릅니다.
