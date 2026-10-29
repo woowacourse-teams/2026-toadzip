@@ -8,6 +8,7 @@
 | --- | --- |
 | [`check-flyway-migrations.py`](check-flyway-migrations.py) | Git에 커밋된 Flyway SQL의 버전 중복, develop보다 낮거나 같은 신규 버전, 기존 SQL의 수정·삭제·이름 변경을 검사합니다. |
 | [`test-https.py`](test-https.py) | 임시 인증서로 로컬 HTTPS·Nginx 갱신 hook을 검증합니다. `--config-only`는 Compose 설정과 hook 검사만 수행합니다. |
+| [`prepare-bluegreen.py`](prepare-bluegreen.py) | `infra/runtime/bluegreen/` 설정·정적 파일 디렉터리를 준비합니다. 기존 상태는 덮어쓰지 않습니다. |
 | [`deploy-bluegreen.sh`](deploy-bluegreen.sh), [`switch-frontend.sh`](switch-frontend.sh), [`switch-backend.sh`](switch-backend.sh) | Linux/POSIX용 프론트·백엔드 배포·전환 명령입니다. [`bluegreen.py`](bluegreen.py)의 공통 잠금·복구 로직을 사용합니다. |
 | [`deploy-bluegreen.ps1`](deploy-bluegreen.ps1) | Windows 로컬 검증용입니다. 화면이 Blue로 전달될 때 기존 로컬 이미지로 Green 프론트엔드를 재생성하고 준비 상태를 확인합니다. 화면 전환은 별도 명령입니다. |
 | [`switch-frontend.ps1`](switch-frontend.ps1) | Windows 로컬 검증용입니다. 프론트엔드 전달 대상을 Blue/Green으로 바꾸고 설정 검사·reload·실제 요청 수신을 확인합니다. API 전달 대상은 유지합니다. |
@@ -30,17 +31,15 @@ Bash, Python 3, Docker Compose가 필요합니다. Blue/Green 서비스를 정�
 아래 초기 준비는 기존 프론트엔드·백엔드가 실행 중인 로컬 검증 환경을 기준으로 합니다.
 실제 서버의 최초 진입점 전환·HTTPS·CI 연결 절차는 별도로 준비해야 합니다.
 
-Edge의 설정은 Git 원본을 수정하지 않도록 런타임 디렉터리에 복사합니다. 기존 런타임 파일은 보존합니다.
+설정 원본은 `infra/nginx/edge/default.conf`에 두고, 준비 명령이 `infra/runtime/bluegreen/edge/default.conf`를 생성합니다.
+기존 런타임 파일·연결 색상·정적 파일은 보존합니다. 배포에는 `.local` 디렉터리가 필요하지 않습니다.
 아래 Edge 재생성은 마운트를 바꾸기 위한 최초 준비이며, Edge가 실제 사용자 요청을 받는 서버에서
 그대로 실행하면 일시 중단될 수 있습니다. 런타임 디렉터리는 Docker 실행 호스트에 있어야 합니다.
 
 ```bash
-mkdir -p .local/edge-nginx-533-runtime/edge .local/edge-nginx-533-runtime/assets
-if [ ! -e .local/edge-nginx-533-runtime/edge/default.conf ]; then
-    cp infra/nginx/edge/default.conf .local/edge-nginx-533-runtime/edge/default.conf
-fi
-export EDGE_NGINX_CONF_DIR="$(pwd)/.local/edge-nginx-533-runtime/edge"
-export EDGE_NGINX_ASSET_DIR="$(pwd)/.local/edge-nginx-533-runtime/assets"
+python3 -B scripts/prepare-bluegreen.py
+export EDGE_NGINX_CONF_DIR="$(pwd)/infra/runtime/bluegreen/edge"
+export EDGE_NGINX_ASSET_DIR="$(pwd)/infra/runtime/bluegreen/assets"
 docker compose up -d --no-deps --force-recreate edge-nginx
 
 # 이미 빌드한 로컬 이미지 이름으로 교체합니다. 기존 frontend에서도 첫 Blue로 전환할 수 있습니다.
@@ -54,7 +53,9 @@ bash scripts/switch-frontend.sh --color blue
 bash scripts/switch-backend.sh --color blue
 ```
 
-기존 런타임 설정은 초기 복사 명령이 덮어쓰지 않습니다. 이전 버전의 런타임에는
+기존 런타임 설정은 준비 명령이 덮어쓰지 않습니다. 다른 경로에서 옮길 때는
+`python3 -B scripts/prepare-bluegreen.py --from-config /기존경로/edge/default.conf`로 원본을 복사할 수 있습니다.
+이 명령은 기존 파일·마운트를 옮기거나 삭제하지 않습니다. 기존 Edge에는 새 마운트를 별도 적용해야 합니다. 이전 버전의 런타임에는
 [`infra/nginx/edge/default.conf`](../infra/nginx/edge/default.conf)의 `/assets/`·`@frontend_assets` 위치와
 `mjs` 타입을 반영하되 현재 `frontend_active`·`backend_active`는 유지한 뒤 `nginx -t`·reload를 수행합니다.
 Edge에는 설정 디렉터리와 별도로 `/var/cache/toadzip/assets` 읽기 전용 마운트가 필요합니다.
@@ -93,7 +94,7 @@ Edge에는 설정 디렉터리와 별도로 `/var/cache/toadzip/assets` 읽기 �
   Vite의 해시 파일을 대상으로 하며 `/index.html`·서비스 워커·`/region-boundaries/` 등 고정 URL은 보관하지 않습니다.
   아카이브는 자동 삭제하지 않습니다. 디스크 사용량을 관찰하고 활성 구버전 화면의 유지 기간을 결정한 뒤
   별도 승인된 정리 절차를 준비합니다. 이전 화면과 새 API의 계약 호환성은 릴리스별로 확인합니다.
-- 기본 프로젝트는 `2026-toadzip`, 런타임은 `.local/edge-nginx-533-runtime`, 확인 주소는
+- 기본 프로젝트는 `2026-toadzip`, 런타임은 `infra/runtime/bluegreen`, 확인 주소는
   `http://127.0.0.1:18080`입니다. `--project`, `--runtime`, `--url`로 변경할 수 있습니다.
   `--compose-override`는 여러 번 지정할 수 있습니다. 예: `--compose-override compose.local.yaml`.
   인증서 검증을 생략하는 옵션은 제공하지 않으며, 확인 주소의 리다이렉트를 따라가지 않습니다.
@@ -112,11 +113,11 @@ Edge에는 설정 디렉터리와 별도로 `/var/cache/toadzip/assets` 읽기 �
 개발·운영 서버의 Linux 배포 워크플로에는 연결되어 있지 않습니다.
 
 - Docker 프로젝트 이름은 `2026-toadzip`이며, 프론트엔드 Blue·Green과 Edge Nginx가 준비되어 있어야 합니다.
-- Edge Nginx는 `.local/edge-nginx-533-runtime/edge`를 `/etc/nginx/conf.d`에 읽기 전용으로 마운트해야 합니다. 확인 요청 주소는 `http://127.0.0.1:18080`입니다.
+- Edge Nginx는 `infra/runtime/bluegreen/edge`를 `/etc/nginx/conf.d`에 읽기 전용으로 마운트해야 합니다. 확인 요청 주소는 `http://127.0.0.1:18080`입니다.
 - 재생성 도구는 기존 로컬 이미지를 ID로 고정하고 `--no-build --pull never --no-deps`로 Green만 교체합니다. `-ComposeOverride`로 추가 Compose 파일을 지정할 수 있습니다.
 - 재생성할 때는 아래처럼 공통 `deploy.lock`을 잡고 호출합니다. 전환 도구는 같은 잠금을 내부에서 사용합니다. 설정을 수동으로 바꾸거나 다른 배포 명령을 동시에 실행하지 않습니다.
 - 전환 도구는 설정 변경 전에 백업하고, 변경 후 오류가 나면 이전 설정으로 복구를 시도합니다. 후보 기동 실패·복구와 진행 중 요청 완료의 검증은 별도입니다.
-- 설정 백업·추가 시험 설정·요청 로그는 `.local/`에 보관하며 커밋하지 않습니다.
+- 설정 백업·배포 기록은 `infra/runtime/bluegreen/`에 보관하며 커밋하지 않습니다.
 
 다음 예시는 저장소 루트에서 실행합니다. Green을 실제로 재생성한 뒤 화면을 Green으로 전환하고 Blue로 원복합니다. 사용할 이미지는 이미 로컬에 있어야 합니다.
 
@@ -124,7 +125,7 @@ Edge에는 설정 디렉터리와 별도로 `/var/cache/toadzip/assets` 읽기 �
 # 공통 잠금을 잡고 Green 프론트엔드 준비 후 전환·원복
 & {
     $ErrorActionPreference = 'Stop'
-    $runtime = (Resolve-Path '.local/edge-nginx-533-runtime').Path
+    $runtime = (Resolve-Path 'infra/runtime/bluegreen').Path
     $lock = [IO.File]::Open(
         (Join-Path $runtime 'deploy.lock'),
         [IO.FileMode]::OpenOrCreate,

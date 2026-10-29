@@ -108,7 +108,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: "${EDGE_NGINX_ASSET_DIR:-./.local/edge-nginx-533-runtime/assets}"
+        source: "${EDGE_NGINX_ASSET_DIR:-./infra/runtime/bluegreen/assets}"
         target: /var/cache/toadzip/assets
         read_only: true
         bind:

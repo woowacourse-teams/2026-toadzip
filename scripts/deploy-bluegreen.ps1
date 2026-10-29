@@ -22,7 +22,7 @@ Push-Location (Split-Path -Parent $PSScriptRoot)
 
 try {
     $edge = '2026-toadzip-edge-nginx-1'
-    $edgeDir = (Resolve-Path '.local/edge-nginx-533-runtime/edge').Path
+    $edgeDir = (Resolve-Path 'infra/runtime/bluegreen/edge').Path
 
     $mounts = Invoke-Docker inspect --format '{{json .Mounts}}' $edge |
         ConvertFrom-Json

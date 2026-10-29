@@ -21,6 +21,7 @@ import urllib.request
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_RUNTIME = ROOT / "infra/runtime/bluegreen"
 
 
 class DeploymentError(RuntimeError):
@@ -353,39 +354,42 @@ class Deployment:
 
     def run(self):
         with self.lock():
-            self.check_mount()
-            draining = {worker for worker, mode in self.workers().items() if mode == "draining"}
-            if draining:
-                self.wait_workers(draining)
-            before = self.config.read_text()
-            active = active_service(before, self.service)
-            if self.options.action == "switch":
-                self.switch(self.options.color, before)
-                return
-            color = "green" if active == self.service + "-blue" else "blue"
-            self.check_http()
-            self.verify_route(self.container(active))
-            image = docker("image", "inspect", "--format", "{{.Id}}", self.options.image)
-            if not re.fullmatch(r"sha256:[0-9a-f]{64}", image):
-                raise DeploymentError("Expected a local immutable image ID")
-            self.archive_assets(self.container(active))
-            inactive = self.find_container(self.service + "-" + color, include_stopped=True)
-            if inactive:
-                self.archive_assets(inactive)
-            environment = dict(self.environment, **{self.service.upper() + "_" + color.upper() + "_IMAGE": image})
-            self.compose(
-                "up", "-d", "--no-deps", "--no-build", "--pull", "never", "--force-recreate",
-                "--wait", "--wait-timeout", "180", self.service + "-" + color,
-                environment=environment, timeout=210,
-            )
-            self.switch(color, before)
+            self.run_locked()
+
+    def run_locked(self):
+        self.check_mount()
+        draining = {worker for worker, mode in self.workers().items() if mode == "draining"}
+        if draining:
+            self.wait_workers(draining)
+        before = self.config.read_text()
+        active = active_service(before, self.service)
+        if self.options.action == "switch":
+            self.switch(self.options.color, before)
+            return
+        color = "green" if active == self.service + "-blue" else "blue"
+        self.check_http()
+        self.verify_route(self.container(active))
+        image = docker("image", "inspect", "--format", "{{.Id}}", self.options.image)
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", image):
+            raise DeploymentError("Expected a local immutable image ID")
+        self.archive_assets(self.container(active))
+        inactive = self.find_container(self.service + "-" + color, include_stopped=True)
+        if inactive:
+            self.archive_assets(inactive)
+        environment = dict(self.environment, **{self.service.upper() + "_" + color.upper() + "_IMAGE": image})
+        self.compose(
+            "up", "-d", "--no-deps", "--no-build", "--pull", "never", "--force-recreate",
+            "--wait", "--wait-timeout", "180", self.service + "-" + color,
+            environment=environment, timeout=210,
+        )
+        self.switch(color, before)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["deploy", "switch"])
     parser.add_argument("--project", default="2026-toadzip")
-    parser.add_argument("--runtime", type=Path, default=ROOT / ".local/edge-nginx-533-runtime")
+    parser.add_argument("--runtime", type=Path, default=DEFAULT_RUNTIME)
     parser.add_argument("--url", default="http://127.0.0.1:18080")
     parser.add_argument("--compose-override", type=Path, action="append", default=[])
     parser.add_argument("--service", choices=["frontend", "backend"], default="frontend")

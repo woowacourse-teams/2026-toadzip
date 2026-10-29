@@ -52,7 +52,7 @@ $deployLock = $null
 $changed = $false
 
 try {
-    $runtime = (Resolve-Path '.local/edge-nginx-533-runtime').Path
+    $runtime = (Resolve-Path 'infra/runtime/bluegreen').Path
     $edgeDir = Join-Path $runtime 'edge'
     $confPath = Join-Path $edgeDir 'default.conf'
     $edge = '2026-toadzip-edge-nginx-1'

@@ -11,6 +11,7 @@ Flyway 검사 도구, 배포 설정과 모니터링 구성의 회귀 테스트�
 | [`deployment/test_bluegreen.py`](deployment/test_bluegreen.py) | POSIX 프론트·백엔드 도구의 후보 준비·전환·복구·공통 잠금·요청 대기·정지한 컨테이너 재시작·정적 파일 보관을 Docker 없이 검증합니다. `python3 -B tests/deployment/test_bluegreen.py`로 실행합니다. |
 | [`deployment/test_backend_bluegreen.py`](deployment/test_backend_bluegreen.py) | `--image`로 지정한 실제 백엔드와 격리 PostgreSQL을 사용해 후보 실패·Nginx 오류·Blue/Green 전환·원복·DB 보존을 검증합니다. |
 | [`deployment/test_bluegreen_drain.py`](deployment/test_bluegreen_drain.py) | 실제 Linux 도구·Nginx로 긴 프론트/API 요청, 정지·원복, 세 버전 정적 파일, 대기 초과·전환 실패·후보 실패를 검증합니다. |
+| [`deployment/test_prepare_bluegreen.py`](deployment/test_prepare_bluegreen.py) | 서버 런타임 준비·기존 상태 보존·이전 설정 복사·배포 잠금·기본 경로를 검증합니다. 프론트 CI에서 실행합니다. |
 | [`deployment/test_backend_health.py`](deployment/test_backend_health.py) | Compose의 healthcheck·시작 순서와 상태 응답 판정을 검증합니다. 별도로 실행하는 검사입니다. |
 | [`monitoring/`](monitoring/) | 대시보드 조회식·요청 필드와 DB 호스트·PostgreSQL·로그 수집 구성을 검증합니다. 별도로 실행하며 일부 검사는 Docker가 필요합니다. |
 
