@@ -8,6 +8,7 @@
 |---|---|
 | [배포](deployment.md) | 자동·수동 배포, 특별 DB 전환과 배포 실패 대응 |
 | [모니터링](monitoring.md) | 로그·메트릭·대시보드·알림 구성과 검증 |
+| [Caddy 진입점](caddy-ingress.md) | Blue/Green 서버의 공개 HTTPS·Edge 연결과 포트 전환 |
 | [HTTPS](https.md) | 개발·운영 인증서 발급·권한·갱신과 문제 대응 |
 | [DB 운영](database/README.md) | DB 서버·Flyway 도입·기존 DB 전환·복구 |
 | [수집 운영](ingest/README.md) | 실행 중지·잠금 복구·품질·성능·좌표 적재 |

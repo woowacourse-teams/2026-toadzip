@@ -16,6 +16,9 @@ Desktop.ini
 # Personal local workspace (never commit)
 /.local/
 
+# Generated deployment state (templates are tracked under infra/nginx/edge/)
+/infra/runtime/bluegreen/
+
 # Existing temporary workspace (keep local files)
 /tmp/
 

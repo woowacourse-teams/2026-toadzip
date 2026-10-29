@@ -1,0 +1,65 @@
+name: Rollback Blue/Green
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: '대상 서버 (dev: develop 브랜치, prod: main 브랜치)'
+        type: choice
+        required: true
+        default: dev
+        options: [dev, prod]
+      target_revision:
+        description: '보관된 이전 배포의 전체 커밋 SHA (40자리)'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: toadzip-${{ inputs.environment }}-deploy
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Restore retained frontend and backend
+    if: >-
+      (inputs.environment == 'dev' && github.ref == 'refs/heads/develop') ||
+      (inputs.environment == 'prod' && github.ref == 'refs/heads/main')
+    runs-on: [self-hosted, linux, "${{ inputs.environment == 'dev' && 'toadzip-dev' || 'toadzip-prod' }}"]
+    timeout-minutes: 30
+    steps:
+      - name: Roll back verified retained images
+        working-directory: ${{ vars[format('{0}_DEPLOY_PATH', inputs.environment == 'dev' && 'DEV' || 'PROD')] }}
+        env:
+          DEPLOY_PATH: ${{ vars[format('{0}_DEPLOY_PATH', inputs.environment == 'dev' && 'DEV' || 'PROD')] }}
+          BLUEGREEN_URL: ${{ vars[format('{0}_BLUEGREEN_URL', inputs.environment == 'dev' && 'DEV' || 'PROD')] }}
+          BLUEGREEN_RUNTIME: ${{ vars[format('{0}_BLUEGREEN_RUNTIME', inputs.environment == 'dev' && 'DEV' || 'PROD')] }}
+          BLUEGREEN_COMPOSE_OVERRIDES: ${{ vars[format('{0}_BLUEGREEN_COMPOSE_OVERRIDES', inputs.environment == 'dev' && 'DEV' || 'PROD')] }}
+          ROLLBACK_ENVIRONMENT: ${{ inputs.environment }}
+          TARGET_REVISION: ${{ inputs.target_revision }}
+          TOOL_REVISION: ${{ github.sha }}
+          DEPLOY_BRANCH: ${{ inputs.environment == 'dev' && 'develop' || 'main' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_PATH:?Configure the deployment checkout path}"
+          : "${BLUEGREEN_URL:?Configure the public Edge/Caddy HTTPS URL}"
+          [[ "$BLUEGREEN_URL" == https://* ]]
+          [[ "$TARGET_REVISION" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$TOOL_REVISION" =~ ^[0-9a-f]{40}$ ]]
+          runtime="$(cd -- "${BLUEGREEN_RUNTIME:-infra/runtime/bluegreen}" && pwd -P)"
+          edge="$(cd -- "$runtime/edge" && pwd -P)"
+          exec 9>"$(dirname -- "$edge")/deploy.lock"
+          flock --nonblock 9
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git fetch --no-tags origin "refs/heads/$DEPLOY_BRANCH"
+          git merge-base --is-ancestor "$TOOL_REVISION" FETCH_HEAD
+          git checkout --detach "$TOOL_REVISION"
+          test "$(git rev-parse HEAD)" = "$TOOL_REVISION"
+          python3 -B scripts/rollback-bluegreen.py \
+            --target-revision "$TARGET_REVISION" --environment "$ROLLBACK_ENVIRONMENT" \
+            --runtime "$runtime" --url "$BLUEGREEN_URL" --lock-fd 9 \
+            --compose-override compose.caddy-server.yaml \
+            --compose-override compose.notification-credentials.yaml

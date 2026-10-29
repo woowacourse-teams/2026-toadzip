@@ -11,7 +11,8 @@
 | [ci-paths.yml](ci-paths.yml) | PR에서 백엔드·프론트엔드 검증이 필요한 변경 경로 |
 | [backend-ci.yml](workflows/backend-ci.yml) | Flyway 검사와 백엔드 테스트 두 분할을 실행하고 `Backend Check`로 결과 취합 |
 | [frontend-ci.yml](workflows/frontend-ci.yml) | 린트·테스트·빌드와 알림 배포 설정을 `Frontend Check`로 검증 |
-| [deploy-dev.yml](workflows/deploy-dev.yml) · [deploy-prod.yml](workflows/deploy-prod.yml) | CI 통과 후 환경별 Self-hosted Runner에서 개발·운영 배포 |
+| [deploy-dev.yml](workflows/deploy-dev.yml) · [deploy-prod.yml](workflows/deploy-prod.yml) | CI 통과 커밋을 고정하고 환경별 Self-hosted Runner에서 Blue/Green 순차 배포 |
+| [rollback.yml](workflows/rollback.yml) | 지정한 이전 커밋의 보관 이미지로 수동 복구하고 시작·완료 시각과 결과 기록 |
 
 ## 관련 문서
 

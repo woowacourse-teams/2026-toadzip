@@ -96,6 +96,25 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  edge-nginx:
+    image: nginx:stable-alpine
+    ports:
+      - "127.0.0.1:18080:80"
+    volumes:
+      - type: bind
+        source: "${EDGE_NGINX_CONF_DIR:-./infra/nginx/edge}"
+        target: /etc/nginx/conf.d
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${EDGE_NGINX_ASSET_DIR:-./infra/runtime/bluegreen/assets}"
+        target: /var/cache/toadzip/assets
+        read_only: true
+        bind:
+          create_host_path: true
+    restart: unless-stopped
+
   alloy:
     image: grafana/alloy:v1.20.0
     command:
