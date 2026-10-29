@@ -23,6 +23,7 @@ class BackendCheck:
         self.runtime = ROOT / '.local' / self.project
         self.directory = self.runtime / 'edge'
         self.directory.mkdir(parents=True)
+        (self.runtime / 'assets').mkdir()
         self.config = self.directory / 'default.conf'
         self.original = (ROOT / 'infra/nginx/edge/default.conf').read_text().replace(
             'server backend:8080;', 'server backend-blue:8080;', 1)
@@ -37,7 +38,7 @@ class BackendCheck:
             'SHARED_DB_HOST': 'db-shared', 'SHARED_DB_PORT': '5432', 'SHARED_DB_NAME': 'fixture',
             'SHARED_DB_USERNAME': 'fixture', 'SHARED_DB_PASSWORD': 'fixture-only',
             'SPRING_PROFILES_ACTIVE': 'local', 'LOKI_PUSH_URL': 'http://unused.invalid',
-            'EDGE_NGINX_CONF_DIR': str(self.directory),
+            'EDGE_NGINX_CONF_DIR': str(self.directory), 'EDGE_NGINX_ASSET_DIR': str(self.runtime / 'assets'),
             'NOTIFICATION_PUBLISHER_ENABLED': 'true', 'NOTIFICATION_MATERIALIZER_ENABLED': 'true',
             'NOTIFICATION_MAINTENANCE_ENABLED': 'true', 'NOTIFICATION_DELIVERY_ENABLED': 'false',
             'NOTIFICATION_ACTIVATION_AT': '2026-10-01T00:00:00Z',
@@ -119,7 +120,7 @@ class BackendCheck:
                              self.project, *files, '--profile', 'bluegreen', *arguments], check=check)
 
     def container(self, service):
-        ids = self.compose('ps', '-q', service).stdout.splitlines()
+        ids = self.compose('ps', '--all', '-q', service).stdout.splitlines()
         if len(ids) != 1:
             raise RuntimeError('Expected one fixture container: ' + service)
         return ids[0]
@@ -255,10 +256,12 @@ class BackendCheck:
             self.deploy()
             for service in ('backend-blue', 'backend-green'):
                 container = self.container(service)
-                assert self.docker('inspect', '--format', '{{.State.Health.Status}}', container) == 'healthy'
+                assert self.docker('inspect', '--format', '{{.State.Status}}', container) == ('exited' if service.endswith('blue') else 'running')
+                if service.endswith('green'):
+                    assert self.docker('inspect', '--format', '{{.State.Health.Status}}', container) == 'healthy'
                 assert self.docker('inspect', '--format', '{{json .HostConfig.PortBindings}}', container) in ('{}', 'null')
             try:
-                self.switch('backend-blue', invalid=True)
+                self.switch('backend-green', invalid=True)
             except RuntimeError as error:
                 assert 'intentionally_invalid_directive' in str(error)
                 self.verify_backend('backend-green')

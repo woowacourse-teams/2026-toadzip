@@ -25,6 +25,8 @@ Bash, Python 3, Docker Compose가 필요합니다. Blue/Green 서비스를 정�
 `compose.bluegreen.yaml`과 실행 중인 Edge·프론트·백엔드·DB를 사용합니다.
 `--service frontend`가 기본값이며, `--service backend`를 지정하면 백엔드만 배포합니다.
 각 명령은 선택한 서비스의 upstream만 변경하며 프론트와 백엔드를 한 번에 전환하지 않습니다.
+전환 후 이전 컨테이너를 정지하므로 서버에서는 Edge/Caddy가 실제 진입점인 상태에서 실행합니다.
+기존 프론트 컨테이너의 공개 포트로 직접 들어오는 요청이 남아 있으면 먼저 진입점 전환을 완료해야 합니다.
 아래 초기 준비는 기존 프론트엔드·백엔드가 실행 중인 로컬 검증 환경을 기준으로 합니다.
 실제 서버의 최초 진입점 전환·HTTPS·CI 연결 절차는 별도로 준비해야 합니다.
 
@@ -33,11 +35,12 @@ Edge의 설정은 Git 원본을 수정하지 않도록 런타임 디렉터리에
 그대로 실행하면 일시 중단될 수 있습니다. 런타임 디렉터리는 Docker 실행 호스트에 있어야 합니다.
 
 ```bash
-mkdir -p .local/edge-nginx-533-runtime/edge
+mkdir -p .local/edge-nginx-533-runtime/edge .local/edge-nginx-533-runtime/assets
 if [ ! -e .local/edge-nginx-533-runtime/edge/default.conf ]; then
     cp infra/nginx/edge/default.conf .local/edge-nginx-533-runtime/edge/default.conf
 fi
 export EDGE_NGINX_CONF_DIR="$(pwd)/.local/edge-nginx-533-runtime/edge"
+export EDGE_NGINX_ASSET_DIR="$(pwd)/.local/edge-nginx-533-runtime/assets"
 docker compose up -d --no-deps --force-recreate edge-nginx
 
 # 이미 빌드한 로컬 이미지 이름으로 교체합니다. 기존 frontend에서도 첫 Blue로 전환할 수 있습니다.
@@ -51,6 +54,14 @@ bash scripts/switch-frontend.sh --color blue
 bash scripts/switch-backend.sh --color blue
 ```
 
+기존 런타임 설정은 초기 복사 명령이 덮어쓰지 않습니다. 이전 버전의 런타임에는
+[`infra/nginx/edge/default.conf`](../infra/nginx/edge/default.conf)의 `/assets/`·`@frontend_assets` 위치와
+`mjs` 타입을 반영하되 현재 `frontend_active`·`backend_active`는 유지한 뒤 `nginx -t`·reload를 수행합니다.
+Edge에는 설정 디렉터리와 별도로 `/var/cache/toadzip/assets` 읽기 전용 마운트가 필요합니다.
+새 마운트는 컨테이너 재생성이 필요하므로 실제 진입점 전환 전 초기 준비에서 적용합니다.
+이미 Edge가 공개 진입점이면 위 재생성 명령을 무중단 변경으로 간주하지 않습니다.
+도구는 Edge가 시험용 정적 파일을 실제 제공하는지 확인하며, 구형 설정에서는 프론트 배포를 중단합니다.
+
 - 배포는 현재 전달 대상의 반대 색상을 선택합니다. `--image`를 로컬 이미지 ID로 고정하고,
   후보만 `--no-build --pull never --no-deps`로 재생성하여 healthy를 기다립니다.
 - 준비부터 전환 확인·실패 복구까지 동일한 `deploy.lock`을 유지합니다. 프론트·백엔드·전환 명령이
@@ -59,13 +70,29 @@ bash scripts/switch-backend.sh --color blue
 - 새 설정은 임시 파일에서 원자적으로 교체하고, 실제 마운트 내용·`nginx -t`·reload를 확인합니다.
   고유 요청의 대상 컨테이너 로그, 프론트 응답과 백엔드 UP 응답으로 실제 전달을 검증합니다.
   백엔드는 대상 컨테이너의 8081 관리 health와 DB를 조회하는 공고 목록 API도 확인합니다.
-  `/assets/edge-probe-*` 또는 `/api/edge-probe-*`의 404 요청 로그는 전달 확인을 위한 정상 동작입니다.
+  `/__edge-probe-*`의 200 또는 `/api/edge-probe-*`의 404 요청 로그는 전달 확인을 위한 정상 동작입니다.
+  `/assets/edge-archive-probe-*` 파일은 아카이브 마운트·실제 제공 경로를 확인한 직후 제거합니다.
 - 전환 이후 실패·일반 인터럽트 시 이전 설정을 복구하고 이전 컨테이너의 요청 수신까지 확인합니다.
   강제 종료·호스트 장애는 자동 복구를 보장하지 않습니다. 실패 시 출력된 `.conf.bak`을 사용해
   런타임 설정을 복구하고 `nginx -t` 후 reload·응답을 확인합니다.
-- 이전 컨테이너는 종료하지 않습니다. 후보 기동 실패 시에도 진단을 위해 후보를 남깁니다.
-  진행 중 요청 종료 대기, 구버전 정적 파일 제공 정책과
-  이전 컨테이너 정리는 후속 배포 절차에서 구현·검증해야 합니다.
+- reload 직전 Edge worker의 PID와 시작 시각을 저장하고, 이 세대가 모두 종료된 뒤 이전 컨테이너를
+  최대 40초의 종료 유예로 정지합니다. 삭제하거나 이미지를 정리하지 않습니다.
+  [Nginx graceful reload](https://nginx.org/en/docs/control.html)는 이전 worker에서 기존 요청을 마칩니다.
+  `--drain-timeout` 기본 330초 안에 끝나지 않으면 이전 경로로 복구하고 이전 컨테이너를 유지합니다.
+  다음 배포도 남아 있는 draining worker를 먼저 기다리므로 사용 중인 후보를 재생성하지 않습니다.
+  장기 스트림·WebSocket은 대기 시간을 넘길 수 있으며 강제로 종료하지 않습니다.
+- 명시적 전환·원복은 정지된 기존 컨테이너를 `docker start`로 재시작하고 healthy를 기다립니다.
+  저장된 이미지·환경을 그대로 사용하며 최신 태그로 재생성하지 않습니다. 다음 배포가 같은 색상을
+  재생성하면 그보다 오래된 컨테이너로의 원복은 이 명령만으로 할 수 없습니다.
+- 후보 기동·전환 검증·요청 종료 대기 실패는 이전 컨테이너를 정지하지 않습니다.
+  정리 단계의 Docker 오류·강제 종료 감지는 새 경로를 유지한 채 실패로 보고합니다.
+  실제 컨테이너 상태를 확인한 뒤 복구하고, 성공한 배포로 간주하지 않습니다.
+- 프론트 배포는 현재·후보·재생성할 이전 색상의 `/usr/share/nginx/html/assets/`를 런타임 `assets/`에 복사합니다.
+  Edge가 과거·현재 파일을 직접 제공하므로 이전 컨테이너를 정지하거나 색상을 재사용해도 기존 화면의
+  지연 로딩 파일을 받을 수 있습니다. 같은 URL에 다른 내용이 있으면 배포를 거부합니다.
+  Vite의 해시 파일을 대상으로 하며 `/index.html`·서비스 워커·`/region-boundaries/` 등 고정 URL은 보관하지 않습니다.
+  아카이브는 자동 삭제하지 않습니다. 디스크 사용량을 관찰하고 활성 구버전 화면의 유지 기간을 결정한 뒤
+  별도 승인된 정리 절차를 준비합니다. 이전 화면과 새 API의 계약 호환성은 릴리스별로 확인합니다.
 - 기본 프로젝트는 `2026-toadzip`, 런타임은 `.local/edge-nginx-533-runtime`, 확인 주소는
   `http://127.0.0.1:18080`입니다. `--project`, `--runtime`, `--url`로 변경할 수 있습니다.
   `--compose-override`는 여러 번 지정할 수 있습니다. 예: `--compose-override compose.local.yaml`.

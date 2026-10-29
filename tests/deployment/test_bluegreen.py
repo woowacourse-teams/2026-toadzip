@@ -30,6 +30,8 @@ class Harness(module.Deployment):
         self.recreations = []
         self.failure = None
         self.failed_once = False
+        self.stopped = set()
+        self.started = []
 
     def compose(self, *args, environment=None, timeout=30):
         self.commands.append(args)
@@ -43,10 +45,14 @@ class Harness(module.Deployment):
         raise AssertionError(args)
 
     def request(self, path):
-        if path.startswith(("/assets/edge-probe-", "/api/edge-probe-")):
+        if path.startswith("/assets/edge-archive-probe-"):
+            if self.failure == "archive-route":
+                return 404, b""
+            return 200, (self.assets / path.split("/")[-1]).read_bytes()
+        if path.startswith(("/__edge-probe-", "/api/edge-probe-")):
             if not (self.failure == "probe" and self.served != self.service + "-blue"):
                 self.probe[self.served] = path
-            return 404, b""
+            return (404 if self.service == "backend" else 200), b""
         if path == "/api/health":
             return 200, b'{"status":"UP"}'
         if path == "/api/v1/announcements?size=1":
@@ -61,7 +67,26 @@ class Harness(module.Deployment):
             directory = str(self.directory)
             if self.failure == "mount":
                 directory += "-different"
-            return json.dumps([{"Destination": "/etc/nginx/conf.d", "Source": directory, "RW": False}])
+            return json.dumps([{"Destination": "/etc/nginx/conf.d", "Source": directory, "RW": False},
+                               {"Destination": "/var/cache/toadzip/assets", "Source": str(self.assets), "RW": False}])
+        if args[:3] == ("inspect", "--format", "{{json .State}}"):
+            running = args[-1] not in self.stopped
+            return json.dumps({"Running": running, "Status": "running" if running else "exited",
+                               "ExitCode": 0, "Health": {"Status": "healthy"}})
+        if args[0] == "stop":
+            if self.failure == "stop":
+                raise module.DeploymentError("stop failed")
+            self.stopped.add(args[-1])
+            return args[-1]
+        if args[0] == "start":
+            self.started.append(args[-1])
+            self.stopped.discard(args[-1])
+            return args[-1]
+        if args[0] == "cp":
+            service = args[1].split(":")[0]
+            name = "shared.js" if self.failure == "asset-collision" else service + ".js"
+            (Path(args[-1]) / name).write_text(service)
+            return ""
         if args[:3] == ("inspect", "--format", "{{.State.Health.Status}}"):
             if self.failure == "unhealthy" and args[-1] == self.service + "-green":
                 return "unhealthy"
@@ -90,6 +115,14 @@ class Harness(module.Deployment):
                 return '{"status":"DOWN"}' if self.failure == "management" else '{"status":"UP"}'
         raise AssertionError(args)
 
+    def workers(self):
+        if self.served == self.service + "-blue":
+            return {("10", "100"): "active"}
+        workers = {("20", "200"): "active"}
+        if self.failure == "drain":
+            workers[("10", "100")] = "draining"
+        return workers
+
 
 class DeploymentTests(unittest.TestCase):
     service = "frontend"
@@ -98,9 +131,10 @@ class DeploymentTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="bluegreen-test-", dir=ROOT / ".local")
         runtime = Path(self.temporary.name)
         (runtime / "edge").mkdir()
+        (runtime / "assets").mkdir()
         (runtime / "edge/default.conf").write_text(CONFIG)
         self.options = argparse.Namespace(action="deploy", project="fixture-project", runtime=runtime,
-            url="http://127.0.0.1:18080", compose_override=[], image="fixture:release", color=None, service=self.service)
+            url="http://127.0.0.1:18080", compose_override=[], image="fixture:release", color=None, service=self.service, drain_timeout=1)
         self.runner = Harness(self.options)
         self.patch_docker = patch.object(module, "docker", side_effect=self.runner.docker)
         self.patch_docker.start()
@@ -125,6 +159,20 @@ class DeploymentTests(unittest.TestCase):
         other = "backend" if self.service == "frontend" else "frontend"
         self.assertIn("server " + other + "-blue:8080;", self.runner.config.read_text())
         self.assertTrue(list(self.runner.runtime.glob("before-switch-*.conf.bak")))
+
+    def test_previous_container_stops_only_after_worker_drain(self):
+        events = []
+        self.runner.wait_workers = lambda workers: events.append("drained")
+        original = self.runner.docker
+        def docker(*args, **kwargs):
+            if args[0] == "stop":
+                events.append("stopped")
+            return original(*args, **kwargs)
+        self.patch_docker.stop()
+        self.patch_docker = patch.object(module, "docker", side_effect=docker)
+        self.patch_docker.start()
+        self.runner.run()
+        self.assertEqual(events, ["drained", "stopped"])
 
     def test_green_to_blue_and_legacy_to_blue_choose_correct_candidate(self):
         for active in [self.service + "-green", self.service]:
@@ -192,11 +240,60 @@ class DeploymentTests(unittest.TestCase):
         self.runner.compose = compose
         self.runner.run()
 
+    def test_drain_timeout_restores_route_without_stopping_previous(self):
+        self.options.drain_timeout = 0
+        self.runner.failure = "drain"
+        with self.assertRaisesRegex(module.DeploymentError, "previous route restored"):
+            self.runner.run()
+        self.assertEqual(self.runner.served, self.service + "-blue")
+        self.assertEqual(self.runner.stopped, set())
+
+    def test_rollback_restarts_exact_stopped_container_without_recreating_it(self):
+        self.options.action = "switch"
+        self.options.color = "green"
+        self.runner.stopped.add(self.service + "-green")
+        self.runner.run()
+        self.assertEqual(self.runner.started, [self.service + "-green"])
+        self.assertEqual(self.runner.recreations, [])
+        self.assertEqual(self.runner.stopped, {self.service + "-blue"})
+
+    def test_cleanup_failure_keeps_new_route_active(self):
+        self.runner.failure = "stop"
+        with self.assertRaisesRegex(module.DeploymentError, "New route is active"):
+            self.runner.run()
+        self.assertEqual(self.runner.served, self.service + "-green")
+
     def test_ambiguous_upstream_is_rejected(self):
         self.runner.config.write_text(CONFIG + CONFIG)
         with self.assertRaisesRegex(module.DeploymentError, "exactly one"):
             self.runner.run()
         self.assertEqual(self.runner.recreations, [])
+
+
+class FrontendAssetTests(unittest.TestCase):
+    setUp = DeploymentTests.setUp
+    tearDown = DeploymentTests.tearDown
+    service = "frontend"
+    def test_missing_archive_route_blocks_candidate_before_stop_or_recreation(self):
+        self.runner.failure = "archive-route"
+        with self.assertRaisesRegex(module.DeploymentError, "asset archive is unavailable"):
+            self.runner.run()
+        self.assertEqual(self.runner.recreations, [])
+        self.assertEqual(self.runner.stopped, set())
+        self.assertEqual(list(self.runner.assets.iterdir()), [])
+
+    def test_changed_content_at_existing_asset_url_rejects_candidate(self):
+        self.runner.failure = "asset-collision"
+        with self.assertRaisesRegex(module.DeploymentError, "URL reused"):
+            self.runner.run()
+        self.assertEqual(self.runner.recreations, [])
+        self.assertEqual(self.runner.config.read_text(), CONFIG)
+
+    def test_old_and_new_assets_are_kept_after_previous_container_stops(self):
+        self.runner.run()
+        self.assertEqual((self.runner.assets / "frontend-blue.js").read_text(), "frontend-blue")
+        self.assertEqual((self.runner.assets / "frontend-green.js").read_text(), "frontend-green")
+        self.assertIn("frontend-blue", self.runner.stopped)
 
 
 class BackendDeploymentTests(DeploymentTests):

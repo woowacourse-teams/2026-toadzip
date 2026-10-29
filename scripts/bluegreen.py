@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""POSIX frontend/backend Blue/Green deployment; keeps the previous container running."""
+"""Blue/Green deployment with request draining and retained frontend assets."""
 
 import argparse
 import contextlib
 import datetime
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -70,9 +72,11 @@ class Deployment:
         self.runtime = options.runtime.resolve(strict=True)
         self.directory = (self.runtime / "edge").resolve(strict=True)
         self.config = self.directory / "default.conf"
+        self.assets = self.directory.parent / "assets"
         if self.config.resolve() == (ROOT / "infra/nginx/edge/default.conf").resolve():
             raise DeploymentError("Use a runtime copy, not the tracked Nginx configuration")
-        self.environment = dict(os.environ, EDGE_NGINX_CONF_DIR=str(self.directory))
+        self.environment = dict(os.environ, EDGE_NGINX_CONF_DIR=str(self.directory),
+                                EDGE_NGINX_ASSET_DIR=str(self.assets))
         self.files = ["-f", "compose.yaml", "-f", "compose.bluegreen.yaml"]
         for overlay in options.compose_override:
             self.files.extend(["-f", str(overlay.resolve(strict=True))])
@@ -98,8 +102,16 @@ class Deployment:
             finally:
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
-    def container(self, service):
-        ids = self.compose("ps", "--status", "running", "-q", service).splitlines()
+    def find_container(self, service, include_stopped=False):
+        filters = ("--all",) if include_stopped else ("--status", "running")
+        ids = self.compose("ps", *filters, "-q", service).splitlines()
+        if len(ids) > 1:
+            raise DeploymentError(f"Expected at most one container: {service}")
+        return ids[0] if ids else None
+
+    def container(self, service, include_stopped=False):
+        target = self.find_container(service, include_stopped)
+        ids = [target] if target else []
         if len(ids) != 1:
             raise DeploymentError(f"Expected one running container: {service}")
         return ids[0]
@@ -112,7 +124,24 @@ class Deployment:
             raise DeploymentError("Edge Nginx needs a read-only configuration directory mount")
         if Path(matches[0]["Source"]).resolve() != self.directory:
             raise DeploymentError("Edge Nginx mounts a different configuration directory")
+        if self.service == "frontend":
+            assets = [mount for mount in mounts if mount["Destination"] == "/var/cache/toadzip/assets"]
+            if (len(assets) != 1 or assets[0]["RW"]
+                    or Path(assets[0]["Source"]).resolve() != self.assets.resolve(strict=True)):
+                raise DeploymentError("Edge Nginx needs the matching read-only asset archive mount")
         self.check_mounted_text(self.config.read_text())
+        if self.service == "frontend":
+            self.assets.chmod(0o755)
+            probe = self.assets / ("edge-archive-probe-" + uuid.uuid4().hex + ".js")
+            payload = uuid.uuid4().hex.encode()
+            try:
+                with probe.open("xb") as handle:
+                    handle.write(payload)
+                    os.fchmod(handle.fileno(), 0o644)
+                if self.request("/assets/" + probe.name) != (200, payload):
+                    raise DeploymentError("Edge asset archive is unavailable; update and reload runtime asset locations")
+            finally:
+                probe.unlink(missing_ok=True)
 
     def check_mounted_text(self, expected):
         mounted = docker("exec", self.edge, "cat", "/etc/nginx/conf.d/default.conf")
@@ -150,11 +179,11 @@ class Deployment:
 
     def verify_route(self, target):
         since = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        prefix = "/api/" if self.service == "backend" else "/assets/"
-        probe = prefix + "edge-probe-" + uuid.uuid4().hex
+        prefix = "/api/edge-probe-" if self.service == "backend" else "/__edge-probe-"
+        probe = prefix + uuid.uuid4().hex
         for _ in range(10):
             status, _body = self.request(probe)
-            if status == 404:
+            if status == (404 if self.service == "backend" else 200):
                 logs = docker("logs", "--since", since, "--tail", "100", target)
                 if probe in logs:
                     return
@@ -162,7 +191,22 @@ class Deployment:
         raise DeploymentError(f"Could not verify requests reaching the selected {self.service}")
 
     def check_target(self, service):
-        target = self.container(service)
+        target = self.container(service, include_stopped=True)
+        state = json.loads(docker("inspect", "--format", "{{json .State}}", target))
+        if not state["Running"]:
+            if state["Status"] not in ("exited", "created"):
+                raise DeploymentError(f"Cannot restart rollback container: {service}")
+            docker("start", target)
+            deadline = time.monotonic() + 180
+            while True:
+                state = json.loads(docker("inspect", "--format", "{{json .State}}", target))
+                if not state["Running"] or state.get("Health", {}).get("Status") == "unhealthy":
+                    raise DeploymentError(f"Rollback container failed to start: {service}")
+                if state.get("Health", {}).get("Status") == "healthy":
+                    break
+                if time.monotonic() >= deadline:
+                    raise DeploymentError(f"Rollback container health timed out: {service}")
+                time.sleep(0.5)
         health = docker("inspect", "--format", "{{.State.Health.Status}}", target)
         if health != "healthy":
             raise DeploymentError(f"Target is not healthy: {service}")
@@ -179,6 +223,84 @@ class Deployment:
             docker("exec", target, "wget", "--quiet", "--output-document=/dev/null",
                    "http://127.0.0.1:8080/manifest.webmanifest")
         return target
+
+    def workers(self):
+        command = r'''for d in /proc/[0-9]*; do
+            cmd=$(tr '\000' ' ' < "$d/cmdline" 2>/dev/null) || continue
+            case "$cmd" in 'nginx: worker process'*)
+                started=$(awk '{print $22}' "$d/stat" 2>/dev/null) || continue
+                [ -n "$started" ] || continue
+                case "$cmd" in *'shutting down'*) mode=draining;; *) mode=active;; esac
+                printf '%s %s %s\n' "${d##*/}" "$started" "$mode";;
+            esac
+        done'''
+        output = docker("exec", self.edge, "sh", "-c", command)
+        result = {}
+        for line in output.splitlines():
+            pid, started, mode = line.split()
+            result[(pid, started)] = mode
+        if not result:
+            raise DeploymentError("No Edge Nginx workers found; refusing container cleanup")
+        return result
+
+    def wait_workers(self, previous):
+        deadline = time.monotonic() + self.options.drain_timeout
+        while previous.intersection(self.workers()):
+            if time.monotonic() >= deadline:
+                raise DeploymentError("Request drain timed out; previous container was not stopped")
+            time.sleep(0.25)
+
+    def archive_assets(self, target):
+        if self.service != "frontend":
+            return
+        self.assets.chmod(0o755)
+        with tempfile.TemporaryDirectory(dir=self.runtime, prefix="asset-copy-") as temporary:
+            docker("cp", target + ":/usr/share/nginx/html/assets/.", temporary)
+            files = list(Path(temporary).rglob("*"))
+            if not files:
+                raise DeploymentError("Frontend asset directory is empty")
+            for source in files:
+                if source.is_symlink() or not (source.is_dir() or source.is_file()):
+                    raise DeploymentError("Asset archive accepts only regular files and directories")
+                if source.is_dir():
+                    continue
+                destination = self.assets / source.relative_to(temporary)
+                if self.assets.resolve() not in destination.resolve().parents:
+                    raise DeploymentError("Asset destination escapes the archive")
+                if destination.exists():
+                    if hashlib.sha256(destination.read_bytes()).digest() != hashlib.sha256(source.read_bytes()).digest():
+                        raise DeploymentError(f"Asset URL reused with different contents: {source.relative_to(temporary)}")
+                    continue
+                destination.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+                for directory in (destination.parent, *destination.parent.parents):
+                    if directory == self.assets:
+                        break
+                    directory.chmod(0o755)
+                descriptor, name = tempfile.mkstemp(dir=destination.parent, prefix=".asset-", suffix=".tmp")
+                try:
+                    with os.fdopen(descriptor, "wb") as handle:
+                        with source.open("rb") as incoming:
+                            shutil.copyfileobj(incoming, handle)
+                        os.fchmod(handle.fileno(), 0o644)
+                        handle.flush()
+                        os.fsync(handle.fileno())
+                    os.replace(name, destination)
+                finally:
+                    if Path(name).exists():
+                        Path(name).unlink()
+
+    def retire(self, previous, target):
+        if previous == target:
+            return
+        try:
+            docker("stop", "--time", "40", previous, timeout=50)
+            state = json.loads(docker("inspect", "--format", "{{json .State}}", previous))
+            if state["Running"] or state["ExitCode"] == 137:
+                raise DeploymentError("Previous container did not shut down gracefully")
+        except (DeploymentError, subprocess.TimeoutExpired) as error:
+            raise DeploymentError("New route is active; previous container cleanup failed; inspect containers") from error
+        self.verify_route(target)
+        self.check_http()
 
     def write_config(self, text):
         descriptor, temporary = tempfile.mkstemp(dir=self.directory, suffix=".tmp", prefix="switch-")
@@ -204,6 +326,9 @@ class Deployment:
         previous = self.container(active_service(before, self.service))
         self.check_http()
         self.verify_route(previous)
+        self.archive_assets(previous)
+        self.archive_assets(target)
+        previous_workers = set(self.workers())
         after = replace_service(before, target_service, self.service)
         backup = self.runtime / ("before-switch-" + uuid.uuid4().hex + ".conf.bak")
         with backup.open("x") as handle:
@@ -213,6 +338,7 @@ class Deployment:
             self.reload()
             self.verify_route(target)
             self.check_http()
+            self.wait_workers(previous_workers)
         except (Exception, KeyboardInterrupt) as failure:
             try:
                 self.write_config(before)
@@ -221,12 +347,16 @@ class Deployment:
                 self.check_http()
             except (Exception, KeyboardInterrupt) as recovery:
                 raise DeploymentError(f"Switch and recovery failed; backup: {backup}") from recovery
-            raise DeploymentError(f"Switch failed; previous route restored; backup: {backup}") from failure
+            raise DeploymentError(f"Switch failed ({failure}); previous route restored; backup: {backup}") from failure
+        self.retire(previous, target)
         print(f"{self.service.capitalize()} route verified: {target_service}; backup: {backup}")
 
     def run(self):
         with self.lock():
             self.check_mount()
+            draining = {worker for worker, mode in self.workers().items() if mode == "draining"}
+            if draining:
+                self.wait_workers(draining)
             before = self.config.read_text()
             active = active_service(before, self.service)
             if self.options.action == "switch":
@@ -238,6 +368,10 @@ class Deployment:
             image = docker("image", "inspect", "--format", "{{.Id}}", self.options.image)
             if not re.fullmatch(r"sha256:[0-9a-f]{64}", image):
                 raise DeploymentError("Expected a local immutable image ID")
+            self.archive_assets(self.container(active))
+            inactive = self.find_container(self.service + "-" + color, include_stopped=True)
+            if inactive:
+                self.archive_assets(inactive)
             environment = dict(self.environment, **{self.service.upper() + "_" + color.upper() + "_IMAGE": image})
             self.compose(
                 "up", "-d", "--no-deps", "--no-build", "--pull", "never", "--force-recreate",
@@ -257,7 +391,10 @@ def main():
     parser.add_argument("--service", choices=["frontend", "backend"], default="frontend")
     parser.add_argument("--image", help="Existing local image tag or ID for the selected service")
     parser.add_argument("--color", choices=["blue", "green"])
+    parser.add_argument("--drain-timeout", type=int, default=330, help="Seconds to wait for old Nginx workers")
     options = parser.parse_args()
+    if options.drain_timeout < 1:
+        parser.error("--drain-timeout must be positive")
     if options.action == "deploy" and not options.image:
         parser.error("deploy requires --image")
     if options.action == "switch" and not options.color:

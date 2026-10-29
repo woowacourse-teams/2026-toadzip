@@ -107,6 +107,12 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: "${EDGE_NGINX_ASSET_DIR:-./.local/edge-nginx-533-runtime/assets}"
+        target: /var/cache/toadzip/assets
+        read_only: true
+        bind:
+          create_host_path: true
     restart: unless-stopped
 
   alloy:
