@@ -12,8 +12,6 @@
 | [`release-bluegreen.py`](release-bluegreen.py) | CI 커밋·서버 준비를 확인하고 두 이미지를 빌드한 뒤 공통 잠금 안에서 백엔드·프론트를 순차 배포합니다. [CI 운영 절차](../docs/operations/deployment.md)를 따릅니다. |
 | [`rollback-bluegreen.py`](rollback-bluegreen.py) | 보관된 프론트·백엔드 이미지의 지정 커밋을 확인하고 복구합니다. [수동 실행·기록·제약](../docs/operations/deployment.md#직전-배포-롤백)을 따릅니다. |
 | [`deploy-bluegreen.sh`](deploy-bluegreen.sh), [`switch-frontend.sh`](switch-frontend.sh), [`switch-backend.sh`](switch-backend.sh) | Linux/POSIX용 프론트·백엔드 배포·전환 명령입니다. [`bluegreen.py`](bluegreen.py)의 공통 잠금·복구 로직을 사용합니다. |
-| [`deploy-bluegreen.ps1`](deploy-bluegreen.ps1) | Windows 로컬 검증용입니다. 화면이 Blue로 전달될 때 기존 로컬 이미지로 Green 프론트엔드를 재생성하고 준비 상태를 확인합니다. 화면 전환은 별도 명령입니다. |
-| [`switch-frontend.ps1`](switch-frontend.ps1) | Windows 로컬 검증용입니다. 프론트엔드 전달 대상을 Blue/Green으로 바꾸고 설정 검사·reload·실제 요청 수신을 확인합니다. API 전달 대상은 유지합니다. |
 | [`check-notification-schema.sh`](check-notification-schema.sh), [`check-notification-schema.sql`](check-notification-schema.sql) | 선택한 개발·운영 DB의 알림 스키마와 Flyway 이력을 읽기 전용으로 검사합니다. |
 | [`check-privacy-schema.sh`](check-privacy-schema.sh), [`check-privacy-schema.sql`](check-privacy-schema.sql) | 개인정보 배포 전후 PRIMARY DB의 폐기된 변경 흔적·독립 Flyway 이력·신규 전용 테이블을 읽기 전용으로 검사합니다. [배포 순서](../docs/operations/database/privacy-deployment.md)를 따릅니다. |
 | [`flyway-login-constraint-prepare.sql`](flyway-login-constraint-prepare.sql) | **DB 변경:** Flyway 이력이 없는 기존 DB에서 로그인 식별자 고유 제약의 이름을 바꿔 전환을 준비합니다. |
@@ -100,7 +98,7 @@ Edge에는 설정 디렉터리와 별도로 `/var/cache/toadzip/assets` 읽기 �
   `http://127.0.0.1:18080`입니다. `--project`, `--runtime`, `--url`로 변경할 수 있습니다.
   `--compose-override`는 여러 번 지정할 수 있습니다. 예: `--compose-override compose.local.yaml`.
   인증서 검증을 생략하는 옵션은 제공하지 않으며, 확인 주소의 리다이렉트를 따라가지 않습니다.
-- Linux용 도구끼리 공통 잠금을 사용합니다. PowerShell 도구나 수동 설정 변경을 동시에 실행하지 않습니다.
+- 배포·롤백 도구는 공통 잠금을 사용합니다. 도구 실행 중에는 런타임 설정을 수동으로 변경하지 않습니다.
 - 회귀 검사는 저장소 루트에서 `python3 -B tests/deployment/test_bluegreen.py`로 실행합니다.
   Docker·실제 `.env`를 사용하지 않고 후보 실패·전환 실패·원복·프론트/백엔드 잠금 경합을 검사합니다.
   실제 Linux 컨테이너에서 Bash 명령을 실행하는 백엔드 통합 시험은 [검증 안내](../tests/README.md#실제-백엔드-bluegreen-로컬-검증)를 따릅니다.
@@ -108,44 +106,6 @@ Edge에는 설정 디렉터리와 별도로 `/var/cache/toadzip/assets` 읽기 �
   DB 변경은 취소하지 않습니다. 서로 다른 릴리스의 공존·앱 원복 가능성은 후보 기동 전에 확인합니다.
   [특별 DB 배포](../docs/operations/deployment.md#db-전환계약-변경이-필요한-특별-배포)와
   [알림 동시 실행](../docs/operations/notifications.md#bluegreen-동시-실행)의 플래그·ADC 전달 조건을 따릅니다.
-
-### 로컬 프론트엔드 Blue/Green 검증
-
-두 PowerShell 도구는 초기 구성이 끝난 Windows 로컬 환경에서 사용합니다.
-개발·운영 서버의 Linux 배포 워크플로에는 연결되어 있지 않습니다.
-
-- Docker 프로젝트 이름은 `2026-toadzip`이며, 프론트엔드 Blue·Green과 Edge Nginx가 준비되어 있어야 합니다.
-- Edge Nginx는 `infra/runtime/bluegreen/edge`를 `/etc/nginx/conf.d`에 읽기 전용으로 마운트해야 합니다. 확인 요청 주소는 `http://127.0.0.1:18080`입니다.
-- 재생성 도구는 기존 로컬 이미지를 ID로 고정하고 `--no-build --pull never --no-deps`로 Green만 교체합니다. `-ComposeOverride`로 추가 Compose 파일을 지정할 수 있습니다.
-- 재생성할 때는 아래처럼 공통 `deploy.lock`을 잡고 호출합니다. 전환 도구는 같은 잠금을 내부에서 사용합니다. 설정을 수동으로 바꾸거나 다른 배포 명령을 동시에 실행하지 않습니다.
-- 전환 도구는 설정 변경 전에 백업하고, 변경 후 오류가 나면 이전 설정으로 복구를 시도합니다. 후보 기동 실패·복구와 진행 중 요청 완료의 검증은 별도입니다.
-- 설정 백업·배포 기록은 `infra/runtime/bluegreen/`에 보관하며 커밋하지 않습니다.
-
-다음 예시는 저장소 루트에서 실행합니다. Green을 실제로 재생성한 뒤 화면을 Green으로 전환하고 Blue로 원복합니다. 사용할 이미지는 이미 로컬에 있어야 합니다.
-
-```powershell
-# 공통 잠금을 잡고 Green 프론트엔드 준비 후 전환·원복
-& {
-    $ErrorActionPreference = 'Stop'
-    $runtime = (Resolve-Path 'infra/runtime/bluegreen').Path
-    $lock = [IO.File]::Open(
-        (Join-Path $runtime 'deploy.lock'),
-        [IO.FileMode]::OpenOrCreate,
-        [IO.FileAccess]::ReadWrite,
-        [IO.FileShare]::None
-    )
-    try {
-        .\scripts\deploy-bluegreen.ps1 -Image 'toadzip-frontend:bg-local-533'
-    }
-    finally {
-        $lock.Dispose()
-    }
-
-    # 화면 전달 대상을 Green으로 전환한 뒤 Blue로 원복
-    .\scripts\switch-frontend.ps1 -Color green
-    .\scripts\switch-frontend.ps1 -Color blue
-}
-```
 
 ### 공통 검사·DB 도구
 
