@@ -30,8 +30,9 @@ class ReleaseCheck(module.DrainCheck):
         (html / 'index.html').write_text('release-v2')
         (html / 'manifest.webmanifest').write_text('{"version":"release-v2"}')
         (html / 'assets/release-v2.js').write_text('console.log("release-v2")')
-        (source / 'frontend/Dockerfile').write_text('FROM nginx:stable-alpine\nCOPY nginx/fixture.conf /etc/nginx/conf.d/default.conf\nCOPY html/ /usr/share/nginx/html/\n')
-        (source / 'frontend/nginx/fixture.conf').write_text('server { listen 8080; root /usr/share/nginx/html; location = /healthz { return 200 "ok"; } location /assets/ { try_files $uri =404; } location / { try_files $uri /index.html; } }')
+        shutil.copyfile(ROOT / 'frontend/nginx/logging.conf', source / 'frontend/nginx/logging.conf')
+        (source / 'frontend/Dockerfile').write_text('FROM nginx:stable-alpine\nCOPY nginx/fixture.conf /etc/nginx/conf.d/default.conf\nCOPY nginx/logging.conf /etc/nginx/toadzip/logging.conf\nCOPY html/ /usr/share/nginx/html/\n')
+        (source / 'frontend/nginx/fixture.conf').write_text('include /etc/nginx/toadzip/logging.conf; server { listen 8080; root /usr/share/nginx/html; location = /healthz { return 200 "ok"; } location /assets/ { try_files $uri =404; } location ^~ /region-boundaries/ { try_files $uri =404; } location / { try_files $uri /index.html; } }')
         (source / '.gitignore').write_text('.env\n.local/\n')
         for arguments in (['init', '-q'], ['config', 'user.name', 'Release fixture'],
                           ['config', 'user.email', 'fixture@example.invalid'], ['add', '.'],
@@ -50,6 +51,7 @@ class ReleaseCheck(module.DrainCheck):
             self.url = 'http://127.0.0.1:' + binding['HostPort']
             source, revision = self.prepare_checkout()
             self.start_cli()
+            self.check_frontend_probe_log()
             self.command(['docker', 'exec', self.cli, 'apk', 'add', '--no-cache', 'git', 'util-linux'])
             self.command(['docker', 'exec', '-w', '/tmp', self.cli, 'git', 'config', '--global', '--add', 'safe.directory', str(source)])
             shell = '''set -euo pipefail

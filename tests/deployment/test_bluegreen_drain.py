@@ -6,6 +6,7 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import shutil
 import time
 import urllib.error
 import urllib.request
@@ -69,6 +70,7 @@ class DrainCheck(module.BackendCheck):
         self.command(['docker', 'build', '--pull=false', '-t', runner, str(build)])
         self.image_id = self.docker('image', 'inspect', '--format', '{{.Id}}', runner)
         self.environment.update(BACKEND_BLUE_IMAGE=self.image_id, BACKEND_GREEN_IMAGE=self.image_id)
+        shutil.copyfile(ROOT / 'frontend/nginx/logging.conf', build / 'logging.conf')
         self.frontends = {}
         for version in ('v1', 'v2', 'v3', 'bad'):
             html = build / 'html'
@@ -80,18 +82,20 @@ class DrainCheck(module.BackendCheck):
             (html / 'assets' / ('app-' + version + '.js')).write_text('import("/assets/chunk-' + version + '.mjs")')
             (html / 'assets' / ('chunk-' + version + '.mjs')).write_text('export default "' + version + '"')
             (html / 'manifest.webmanifest').write_text(json.dumps({'version': version}))
-            (build / 'frontend.conf').write_text('''server {
+            (build / 'frontend.conf').write_text('''include /etc/nginx/toadzip/logging.conf;
+            server {
                 listen 8080;
                 root /usr/share/nginx/html;
                 location = /healthz { return 200 "ok"; }
                 location /slow { proxy_pass http://backend-blue:8080/slow; }
                 location /assets/ { try_files $uri =404; }
+                location ^~ /region-boundaries/ { try_files $uri =404; }
                 location / { try_files $uri /index.html; }
             }''')
             if version == 'bad':
                 config = build / 'frontend.conf'
-                config.write_text(config.read_text().replace('listen 8080;', 'listen 8080; location ^~ /__edge-probe- { return 500; }'))
-            (build / 'Dockerfile.frontend').write_text('FROM nginx:stable-alpine\nCOPY frontend.conf /etc/nginx/conf.d/default.conf\nCOPY html/ /usr/share/nginx/html/\n')
+                config.write_text(config.read_text().replace('listen 8080;', 'listen 8080; location ^~ /region-boundaries/edge-probe- { return 500; }'))
+            (build / 'Dockerfile.frontend').write_text('FROM nginx:stable-alpine\nCOPY frontend.conf /etc/nginx/conf.d/default.conf\nCOPY logging.conf /etc/nginx/toadzip/logging.conf\nCOPY html/ /usr/share/nginx/html/\n')
             tag = self.project + '-' + version
             self.command(['docker', 'build', '--pull=false', '-f', str(build / 'Dockerfile.frontend'), '-t', tag, str(build)])
             self.frontends[version] = self.docker('image', 'inspect', '--format', '{{.Id}}', tag)
@@ -186,6 +190,27 @@ class DrainCheck(module.BackendCheck):
     def version(self):
         return json.loads(self.request('/manifest.webmanifest')[1])['version']
 
+    def check_frontend_probe_log(self):
+        # Reproduce the production logger's $uri rewrite, then verify a static 404
+        # retains the unique path needed to prove which frontend served it.
+        spa_probe = '/__edge-probe-spa-regression'
+        static_probe = '/region-boundaries/edge-probe-static-regression'
+        assert self.request(spa_probe)[0] == 200
+        try:
+            self.request(static_probe)
+        except urllib.error.HTTPError as error:
+            assert error.code == 404
+        else:
+            raise AssertionError('Frontend probe must not return the SPA page')
+        def logged():
+            logs = self.docker('logs', '--tail', '100', self.container('frontend-blue'))
+            entries = [json.loads(line) for line in logs.splitlines() if line.startswith('{"timestamp":')]
+            return (any(entry['uri'] == '/index.html' and entry['status'] == 200 for entry in entries)
+                    and any(entry['uri'] == static_probe and entry['status'] == 404 for entry in entries)
+                    and not any(entry['uri'] == spa_probe for entry in entries))
+        self.until(logged)
+        print('PASS: production JSON logger rewrites SPA probe; static 404 preserves route proof', flush=True)
+
     def check_assets(self, versions):
         for version in versions:
             status, body = self.request('/assets/chunk-' + version + '.mjs')
@@ -228,6 +253,7 @@ class DrainCheck(module.BackendCheck):
             binding = json.loads(self.docker('inspect', '--format', '{{json .NetworkSettings.Ports}}', self.container('edge-nginx')))['80/tcp'][0]
             self.url = 'http://127.0.0.1:' + binding['HostPort']
             self.start_cli()
+            self.check_frontend_probe_log()
             self.long_deploy('frontend', self.frontends['v2'], lambda: self.version() == 'v2')
             self.check_assets(('v1', 'v2'))
             print('PASS: long frontend request completes before stop; old/new assets survive', flush=True)

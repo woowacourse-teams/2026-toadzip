@@ -26,6 +26,7 @@ class Harness(module.Deployment):
         super().__init__(options)
         self.served = self.service + "-blue"
         self.probe = {}
+        self.requests = []
         self.commands = []
         self.recreations = []
         self.failure = None
@@ -45,14 +46,15 @@ class Harness(module.Deployment):
         raise AssertionError(args)
 
     def request(self, path):
+        self.requests.append(path)
         if path.startswith("/assets/edge-archive-probe-"):
             if self.failure == "archive-route":
                 return 404, b""
             return 200, (self.assets / path.split("/")[-1]).read_bytes()
-        if path.startswith(("/__edge-probe-", "/api/edge-probe-")):
+        if path.startswith(("/region-boundaries/edge-probe-", "/api/edge-probe-")):
             if not (self.failure == "probe" and self.served != self.service + "-blue"):
                 self.probe[self.served] = path
-            return (404 if self.service == "backend" else 200), b""
+            return 404, b""
         if path == "/api/health":
             return 200, b'{"status":"UP"}'
         if path == "/api/v1/announcements?size=1":
@@ -159,6 +161,26 @@ class DeploymentTests(unittest.TestCase):
         other = "backend" if self.service == "frontend" else "frontend"
         self.assertIn("server " + other + "-blue:8080;", self.runner.config.read_text())
         self.assertTrue(list(self.runner.runtime.glob("before-switch-*.conf.bak")))
+
+    def test_route_probe_survives_frontend_spa_uri_rewrite(self):
+        self.runner.verify_route(self.service + "-blue")
+        prefix = "/api/edge-probe-" if self.service == "backend" else "/region-boundaries/edge-probe-"
+        self.assertTrue(self.runner.requests[-1].startswith(prefix))
+        self.assertEqual(self.runner.probe[self.service + "-blue"], self.runner.requests[-1])
+
+    def test_route_probe_rejects_response_without_target_log(self):
+        self.runner.probe.clear()
+        self.runner.request = lambda path: (404, b"")
+        with self.assertRaisesRegex(module.DeploymentError, "Could not verify requests"):
+            self.runner.verify_route(self.service + "-blue")
+
+    def test_route_probe_rejects_spa_success_even_with_target_log(self):
+        def request(path):
+            self.runner.probe[self.service + "-blue"] = path
+            return 200, b"SPA fallback"
+        self.runner.request = request
+        with self.assertRaisesRegex(module.DeploymentError, "Could not verify requests"):
+            self.runner.verify_route(self.service + "-blue")
 
     def test_previous_container_stops_only_after_worker_drain(self):
         events = []

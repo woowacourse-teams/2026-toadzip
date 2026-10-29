@@ -180,16 +180,21 @@ class Deployment:
 
     def verify_route(self, target):
         since = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        prefix = "/api/edge-probe-" if self.service == "backend" else "/__edge-probe-"
+        # SPA fallbacks log /index.html as $uri, hiding the unique request path.
+        # Use a frontend-owned static route; /assets/ is served by Edge itself.
+        prefix = "/api/edge-probe-" if self.service == "backend" else "/region-boundaries/edge-probe-"
         probe = prefix + uuid.uuid4().hex
         for _ in range(10):
             status, _body = self.request(probe)
-            if status == (404 if self.service == "backend" else 200):
+            if status == 404:
                 logs = docker("logs", "--since", since, "--tail", "100", target)
                 if probe in logs:
                     return
             time.sleep(0.5)
-        raise DeploymentError(f"Could not verify requests reaching the selected {self.service}")
+        raise DeploymentError(
+            f"Could not verify requests reaching the selected {self.service} "
+            f"(probe={probe}, last_status={status}, expected=404 with target log)"
+        )
 
     def check_target(self, service):
         target = self.container(service, include_stopped=True)
