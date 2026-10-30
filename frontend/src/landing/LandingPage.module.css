@@ -34,10 +34,10 @@
 .page .start {
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 42px;
+  justify-content: center;
+  gap: 10px;
   min-height: 56px;
-  padding: 0 25px;
+  padding: 0 28px;
   border-radius: var(--ds-radius-control);
   background: var(--ds-color-brand);
   color: var(--ds-color-on-brand);
@@ -48,7 +48,7 @@
 }
 .page .start:focus-visible { background: var(--ds-color-brand-strong); }
 .page .start:active { translate: 0 2px; scale: .98; }
-.start span { display: inline-block; font-size: 23px; font-weight: 400; transition: transform 220ms cubic-bezier(.2,.7,.2,1); }
+.start span { display: inline-block; font-size: 1.15em; font-weight: 500; line-height: 1; transition: transform 220ms cubic-bezier(.2,.7,.2,1); }
 .page .start:focus-visible span { transform: translate(3px, -3px); }
 .page .start:active span { transform: translate(1px, -1px); }
 @media (hover: hover) and (pointer: fine) {
@@ -57,7 +57,7 @@
   .page .start:active { translate: 0 2px; scale: .98; }
   .page .start:active span { transform: translate(1px, -1px); }
 }
-.page .compact { min-height: var(--ds-control-height-md); padding: 0 19px; gap: 24px; font-size: 14px; }
+.page .compact { min-height: var(--ds-control-height-md); padding: 0 18px; gap: 8px; font-size: 14px; }
 .skipLink { position: absolute; z-index: 20; top: -80px; left: 20px; padding: 14px; background: var(--ds-color-surface); }
 .skipLink:focus { top: 16px; }
 
@@ -77,11 +77,11 @@
 .mapBlocks { stroke: currentColor; stroke-width: 1; }
 .mapRoads { stroke: currentColor; stroke-width: 2; }
 .eyebrow { margin-bottom: 25px !important; color: var(--ds-color-action); font-size: 15px; font-weight: 650; letter-spacing: -.03em; }
-.hero h1 { font-size: clamp(42px, 4.55vw, 62px); font-weight: 780; line-height: 1.22; letter-spacing: -.065em; }
+.hero h1 { font-size: clamp(44px, 4.9vw, 68px); font-weight: 780; line-height: 1.22; letter-spacing: -.065em; }
 .heroLine { display: block; overflow: hidden; padding-bottom: .08em; margin-bottom: -.08em; }
 .heroLine > span { display: block; }
-.heroAccent { color: var(--ds-color-text); background: linear-gradient(transparent 64%, var(--ds-color-brand-tint) 64%); box-decoration-break: clone; -webkit-box-decoration-break: clone; }
-.description { margin: 26px 0 33px !important; color: var(--ds-color-label); font-size: 17px; line-height: 1.8; letter-spacing: -.035em; word-break: keep-all; }
+.heroAccent { color: var(--ds-color-action); }
+.description { margin: 26px 0 33px !important; color: var(--ds-color-label); font-size: 18px; line-height: 1.8; letter-spacing: -.035em; word-break: keep-all; }
 .heroVisual { position: relative; min-width: 0; padding-left: 24px; perspective: 1200px; }
 .heroOrbit {
   position: absolute;
@@ -198,7 +198,7 @@
   .page { --landing-header-height: 76px; }
   .navigation { gap: 22px; }
   .hero { padding-top: 70px; padding-bottom: 100px; grid-template-columns: 1.05fr .95fr; }
-  .hero h1 { font-size: 46px; }
+  .hero h1 { font-size: 50px; }
   .heroScreen { width: 620px; }
   .heroOrbit { width: 480px; height: 480px; }
   .walkthrough { grid-template-columns: 265px minmax(0, 1fr); gap: 30px; }
@@ -213,13 +213,13 @@
   .brand :global(.brand-name) { font-size: 15px; }
   .brand :global(.brand-logo) { width: 30px; height: 30px; }
   .navigation > a:not(.start) { display: none; }
-  .page .compact { min-height: 40px; padding: 0 13px; gap: 12px; font-size: 13px; }
+  .page .compact { min-height: 40px; padding: 0 14px; gap: 6px; font-size: 13px; }
   .hero { display: flex; flex-direction: column; align-items: stretch; justify-content: center; padding: 36px var(--landing-mobile-gutter) 88px; }
   .heroCopy { z-index: 2; }
   .eyebrow { font-size: 13px; margin-bottom: 20px !important; }
-  .hero h1 { font-size: clamp(36px, 10.2vw, 54px); line-height: 1.24; }
-  .description { font-size: 15px; margin: 22px 0 26px !important; }
-  .page .start:not(.compact) { min-height: 52px; font-size: 15px; gap: 48px; }
+  .hero h1 { font-size: clamp(38px, 10.8vw, 58px); line-height: 1.24; }
+  .description { font-size: 16px; margin: 22px 0 26px !important; }
+  .page .start:not(.compact) { min-height: 52px; font-size: 16px; gap: 10px; }
   .heroVisual { padding: 0; margin-top: 36px; animation: none; }
   .heroOrbit { width: 110%; height: auto; aspect-ratio: 1; left: 60%; }
   .heroScreen { width: 100%; padding: 5px; border-radius: 12px; transform: none; animation: none; }
