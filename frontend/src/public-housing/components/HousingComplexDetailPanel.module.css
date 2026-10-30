@@ -535,6 +535,9 @@
 }
 
 @container housing-complex-detail (max-width: 270px) {
+  .identityActions {
+    grid-auto-flow: row;
+  }
   .announcementCard {
     grid-template-columns: minmax(0, 1fr);
   }

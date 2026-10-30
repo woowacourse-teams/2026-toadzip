@@ -1,3 +1,4 @@
+import { RequestError } from '../components/RequestError'
 import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
 import { createSearchMeasurement, type SearchMeasurement } from '../analytics/searchMeasurement'
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
@@ -204,7 +205,7 @@ export function SearchGroup({
           if (failure) {
             if (page === 0) measurement.settle(type, 0, true)
             else captureProductEvent('search_more_failed', { ...measurement.properties, result_type: type.toLowerCase(), request_id: requestId, page })
-            setState((current) => ({ ...current, error: failure.message, kind: 'error' }))
+            setState((current) => ({ ...current, error: '검색 결과를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.', kind: 'error' }))
             return
           }
           if (page === 0) measurement.settle(type, responseItems(response, type).length, false)
@@ -294,12 +295,8 @@ export function SearchGroup({
         <p className={styles.message} role="status">{label} 검색 결과가 없어요.</p>
       )}
       {state.kind === 'error' && (
-        <div className="integrated-search__partial-error" role="alert">
-          <span>{state.error}</span>
-          <button type="button" onClick={() => { captureProductEvent('exploration_retry_clicked', { surface: measurement.properties.surface, result_type: type.toLowerCase() }); setRetryRevision((current) => current + 1) }}>
-            {label} 다시 시도
-          </button>
-        </div>
+        <RequestError title={`${label} 검색 결과를 불러오지 못했어요.`} retryLabel={`${label} 다시 시도`}
+          onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: measurement.properties.surface, result_type: type.toLowerCase() }); setRetryRevision(current => current + 1) }} />
       )}
       {state.hasNext && state.kind !== 'error' && (
         <button

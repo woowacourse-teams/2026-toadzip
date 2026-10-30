@@ -1051,7 +1051,7 @@ describe('PublicHousingExplorer', () => {
     expect(screen.getByRole('article', { name: '서울가람 행복주택' })).toBeVisible()
     await waitFor(() => expect(repository.findMap).toHaveBeenCalledTimes(2))
     await act(async () => pendingMap.reject(new Error('지도 조회 실패')))
-    expect(await screen.findByText('지도 조회 실패')).toBeVisible()
+    expect(await screen.findByText('잠시 후 다시 시도해 주세요.')).toBeVisible()
     expect(screen.getByRole('article', { name: '서울가람 행복주택' })).toBeVisible()
   })
 
@@ -1070,7 +1070,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: /^단지 더 보기/ }))
     const signal = repository.findComplexPage.mock.calls[1][3]
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
-    await screen.findByText('이동 지도 실패')
+    await screen.findByText('잠시 후 다시 시도해 주세요.')
     expect(signal.aborted).toBe(false)
     expect(scroll.scrollTop).toBe(140)
     await act(async () => more.resolve(complexPageFor(18, '다음 페이지 단지')))
@@ -1215,9 +1215,10 @@ describe('PublicHousingExplorer', () => {
     renderExplorer(repository, '/', undefined, undefined, mapRepository)
 
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
-    const retry = await screen.findByRole('button', { name: '지도 다시 시도' })
+    const retry = await screen.findByRole('button', { name: '다시 시도' })
 
-    expect(screen.getByRole('alert')).toHaveTextContent('지도 집계 실패')
+    expect(screen.getByRole('alert')).toHaveTextContent('잠시 후 다시 시도해 주세요.')
+    expect(screen.queryByText('지도 집계 실패')).not.toBeInTheDocument()
     expect(repository.findComplexPage).not.toHaveBeenCalled()
     fireEvent.click(retry)
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(2))
@@ -2140,7 +2141,7 @@ describe('PublicHousingExplorer', () => {
     await waitFor(() => expect(repository.findMap).toHaveBeenCalled())
     await screen.findByRole('heading', { name: '서울가람 행복주택' })
     fireEvent.click(screen.getByRole('button', { name: /^단지 더 보기/ }))
-    await screen.findByText('다음 페이지 실패')
+    await screen.findByText('잠시 후 다시 시도해 주세요.')
     fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
 
     expect(await screen.findByRole('heading', {
