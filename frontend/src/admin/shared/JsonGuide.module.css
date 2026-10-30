@@ -1,9 +1,0 @@
-.guide { margin-block: var(--ds-space-4); min-width: 0; }
-.guide summary { cursor: pointer; font-weight: 600; padding-block: var(--ds-space-2); }
-.body { display: grid; gap: var(--ds-space-3); min-width: 0; padding: var(--ds-space-4); background: var(--ds-color-surface-subtle); }
-.body label { display: grid; gap: var(--ds-space-2); min-width: 0; }
-.body textarea { box-sizing: border-box; width: 100%; min-width: 0; resize: vertical; font: inherit; font-size: var(--ds-text-caption); }
-.body table { border-collapse: collapse; width: 100%; }
-.body th, .body td { text-align: left; vertical-align: top; padding: var(--ds-space-2); border-bottom: 1px solid var(--ds-color-divider); overflow-wrap: anywhere; }
-.body th { width: 30%; }
-.body button { justify-self: start; }

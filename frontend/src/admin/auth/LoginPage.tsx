@@ -1,18 +1,19 @@
 import { useState, type FormEvent } from 'react'
-import { Navigate, useNavigate } from 'react-router'
+import { Navigate, useLocation, useNavigate } from 'react-router'
 import { BrandLink } from '../../BrandLink'
 import { useAdminAuth } from './useAdminAuth'
 
 export function LoginPage() {
   const { session, isLoading, login } = useAdminAuth()
   const navigate = useNavigate()
+  const returnTo = adminReturnPath(useLocation().state)
   const [loginIdentifier, setLoginIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   if (!isLoading && session) {
-    return <Navigate to="/admin" replace />
+    return <Navigate to={returnTo} replace />
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -25,7 +26,7 @@ export function LoginPage() {
     setIsSubmitting(true)
     try {
       await login(loginIdentifier, password)
-      navigate('/admin', { replace: true })
+      navigate(returnTo, { replace: true })
     } catch (requestError) {
       if (requestError instanceof Error) {
         setError(requestError.message)
@@ -62,11 +63,19 @@ export function LoginPage() {
             value={password}
           />
         </label>
-        {error ? <p className="form-error">{error}</p> : null}
+        {/* 실패 문구가 나타나도 폼 높이가 바뀌지 않도록 문구 줄을 항상 둔다. */}
+        <p className="form-error admin-login-error">{error}</p>
         <button disabled={isSubmitting} type="submit">
           {isSubmitting ? '로그인 중…' : '로그인'}
         </button>
       </form>
     </main>
   )
+}
+
+// 관리자 화면 안의 주소로만 돌아간다. 외부 주소나 로그인 화면 자체는 기본 화면으로 보낸다.
+function adminReturnPath(state: unknown) {
+  const from = typeof state === 'object' && state !== null && 'from' in state ? state.from : null
+  if (typeof from !== 'string' || !/^\/admin(?:[/?]|$)/.test(from) || from.startsWith('/admin/login')) return '/admin'
+  return from
 }

@@ -5,10 +5,6 @@ vi.mock('./admin/management/api', async importOriginal => ({
   ...(await importOriginal<typeof import('./admin/management/api')>()),
   getManagementPage: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })),
 }))
-vi.mock('./admin/quality/qualityQueueApi', async importOriginal => ({
-  ...(await importOriginal<typeof import('./admin/quality/qualityQueueApi')>()),
-  getQualityQueue: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })),
-}))
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { MemoryRouter } from 'react-router'
@@ -124,10 +120,20 @@ describe('App', () => {
     unmount()
     render(<MemoryRouter initialEntries={['/admin/complexes']}><App /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: '단지 관리' })).toBeVisible()
-    const adminBrand = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
+    const adminBrand = screen.getByRole('link', { name: '관리자 운영 홈으로' })
+    expect(adminBrand).toHaveAttribute('href', '/admin/operations')
     expect(adminBrand.querySelector('.brand-name')).not.toBeInTheDocument()
     expect(adminBrand.querySelector('img'))
       .toHaveAttribute('src', '/logo-bok-search.svg')
+  })
+
+  it('폐기한 단지 누락 대조 주소는 단지 관리로 연결하고 전용 메뉴를 표시하지 않는다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
+    render(<MemoryRouter initialEntries={['/admin/complex-coverage']}><App /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: '단지 관리', level: 1 })).toBeVisible()
+    expect(screen.getByRole('link', { name: '단지 관리' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.queryByRole('link', { name: '단지 누락 대조' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '공식 목록과 대조' })).not.toBeInTheDocument()
   })
 
   it('만료된 세션의 로그아웃 응답이 401이어도 로그인 상태를 지우고 다시 로그인한다', async () => {
@@ -168,9 +174,7 @@ describe('App', () => {
     expect(screen.queryByRole('button', { name: '공고 수집 실행' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('link', { name: '공고 관리' }))
     fireEvent.click(screen.getByRole('link', { name: '공고 추가' }))
-    expect(screen.getByRole('heading', { name: 'JSON 가져오기' })).toBeVisible()
-    expect(screen.queryByRole('heading', { name: '직접 입력' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '직접 입력' }))
+    expect(screen.queryByRole('button', { name: 'JSON 가져오기' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '직접 입력' })).toBeVisible()
     expect(screen.queryByRole('heading', { name: 'JSON 가져오기' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByText('수집·원천 도구', { selector: 'summary' }))

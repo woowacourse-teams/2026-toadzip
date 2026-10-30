@@ -73,8 +73,8 @@ class AnnouncementJsonCorrectionRollbackIntegrationTest {
         var preview = json.readTree(mvc.perform(post(root + "/preview").with(user("admin").roles("ADMIN"))
                 .with(csrf()).contentType("application/json").content(request.toString()))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
-        doThrow(new IllegalStateException("audit failure fixture")).when(changes).save(argThat(change ->
-                change != null && "UPDATE_FROM_JSON".equals(change.getAction())));
+        doThrow(new IllegalStateException("audit failure fixture")).when(changes).saveAndFlush(argThat(change ->
+                change != null && "CORRECT_FROM_PDF".equals(change.getAction())));
         var apply = json.createObjectNode(); apply.set("request", request);
         apply.put("confirmationToken", preview.get("confirmationToken").asText());
         mvc.perform(post(root).with(user("admin").roles("ADMIN")).with(csrf())

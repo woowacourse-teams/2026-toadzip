@@ -45,6 +45,8 @@ docker compose up -d --build --wait --wait-timeout 300
 
 ## HTTPS 적용
 
+Blue/Green 서버는 [Caddy 진입점 설정](../operations/caddy-ingress.md)을 따른다. 기존 프론트 Nginx/Certbot 구성은 아래 절차를 사용하며 두 구성을 같은 공개 포트에 동시에 적용하지 않는다.
+
 개발과 운영은 서로 다른 EC2에서 같은 HTTPS 구성을 사용한다.
 개발에서 검증한 뒤 운영에 적용하며 인증서는 각 서버의 도메인으로 별도 발급한다.
 

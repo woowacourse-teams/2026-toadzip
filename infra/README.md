@@ -14,6 +14,7 @@ DB 운영, HTTPS 인증서 갱신, 로그·메트릭 수집과 모니터링에 �
 | [`grafana/provisioning/`](grafana/provisioning/) | 대시보드와 Prometheus·Loki 데이터 소스를 자동 등록합니다. |
 | [`loki/loki-config.yml`](loki/loki-config.yml) | 로그 저장소와 보관 기간 등 Loki 서버 설정을 정의합니다. |
 | [`monitoring/`](monitoring/) | Grafana 환경변수 예시와 모니터링 도메인을 Grafana로 연결하는 `Caddyfile`을 담습니다. |
+| [`runtime/`](runtime/) | 배포 중 변경되는 연결 색상·정적 파일·잠금·기록의 저장 위치와 준비 방법입니다. |
 | [`prometheus/prometheus.yml`](prometheus/prometheus.yml) | 개발·운영 백엔드와 공유 DB 호스트의 메트릭 수집 대상과 주기를 정의합니다. |
 
 ## 문서 안내

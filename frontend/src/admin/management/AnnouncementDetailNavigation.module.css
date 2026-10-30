@@ -1,0 +1,13 @@
+.navigation { border-block: 1px solid var(--ds-color-divider); }
+.content { display: flex; gap: 20px; align-items: center; padding-inline: 20px; }
+.content { overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--ds-color-divider) transparent; }
+.navigation .content button { flex: none; min-height: 40px; border: 0; border-radius: 0; background: transparent; color: var(--ds-color-muted-base); box-shadow: none; font-size: var(--admin-text-body, 15px); }
+.navigation .content button { padding: 0; border-bottom: 2px solid transparent; white-space: nowrap; }
+.navigation .content button[aria-pressed='true'] { color: var(--ds-color-action); border-bottom-color: var(--ds-color-action); }
+.navigation button:hover:not(:disabled) { color: var(--ds-color-action); }
+.navigation button:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: -2px; }
+.navigation button:disabled { opacity: .5; }
+@media (max-width: 700px) {
+  .content { padding-inline: var(--ds-space-4); }
+  .content { gap: var(--ds-space-4); }
+}

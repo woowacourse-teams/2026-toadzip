@@ -127,11 +127,9 @@ it('실패 복귀 후 세션 조회에 실패해도 로그인 제공자로 재�
 it('지도 사이드바의 로그인 계정은 마이페이지에서 기존 로그아웃을 제공한다', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 1 }) }))
   render(<MemoryRouter><UserSessionControl presentation="rail" /></MemoryRouter>)
-  const account = await screen.findByText('마이페이지')
-  expect(account.closest('details')).not.toHaveAttribute('open')
-  fireEvent.click(account)
-  expect(account.closest('details')).toHaveAttribute('open')
-  expect(screen.getByRole('button', { name: '로그아웃' })).toBeVisible()
+  const account = await screen.findByRole('link', { name: '마이페이지' })
+  expect(account).toHaveAttribute('href', '/mypage')
+  expect(screen.queryByRole('button', { name: '로그아웃' })).not.toBeInTheDocument()
 })
 
 it('로그인 조회는 브라우저 ID를 바꾸지 않고 상태와 명시적 모달 행동만 수집한다', async () => {
@@ -152,7 +150,7 @@ it('회원만 계정 아이콘 위의 알림 보관함과 알림 관리에 접�
   render(<MemoryRouter><UserSessionControl presentation="rail" /></MemoryRouter>)
   expect(await screen.findByRole('button', { name: '알림 보관함' })).toHaveAttribute('aria-haspopup', 'dialog')
   fireEvent.click(screen.getByText('마이페이지'))
-  expect(screen.getByRole('button', { name: '알림 관리' })).toHaveAttribute('aria-haspopup', 'dialog')
+  expect(screen.getByRole('link', { name: '마이페이지' })).toHaveAttribute('href', '/mypage')
 })
 
 it('비회원 사이드바에는 알림 보관함을 표시하지 않는다', async () => {
@@ -163,25 +161,14 @@ it('비회원 사이드바에는 알림 보관함을 표시하지 않는다', as
   expect(screen.queryByRole('button', { name: '알림 관리' })).not.toBeInTheDocument()
 })
 
-it('모바일 마이 모달은 계정 행동을 수집하고 열려 있는 동안 리플레이를 제외한다', async () => {
+it('모바일 회원도 마이페이지 링크로 이동하며 계정 메뉴 행동을 수집한다', async () => {
   vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 1 }) }))
-  render(<MemoryRouter><UserSessionControl presentation="rail" /></MemoryRouter>)
-  const account = await screen.findByRole('button', { name: '마이' })
-  fireEvent.click(account)
-
-  const dialog = screen.getByRole('dialog', { name: '마이페이지' })
-  expect(within(dialog).getByRole('link', { name: '분석 설정' })).toHaveAttribute('href', '/privacy/settings')
-  expect(within(dialog).getByRole('link', { name: '개인정보처리방침' })).toBeVisible()
-  expect(dialog).toHaveClass('ph-no-capture')
+  render(<MemoryRouter><UserSessionControl presentation="rail" /><LocationDisplay /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('link', { name: '마이페이지' }))
+  expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/mypage')
   expect(captureProductEvent).toHaveBeenCalledWith('account_menu_opened')
-  expect(setReplaySensitive).toHaveBeenCalledWith('member_menu', true)
-  expect(within(dialog).getByRole('button', { name: '알림 관리' })).toBeVisible()
-  expect(within(dialog).getByRole('button', { name: '로그아웃' })).toBeVisible()
-
-  fireEvent.click(within(dialog).getByRole('button', { name: '마이페이지 닫기' }))
-  expect(setReplaySensitive).toHaveBeenLastCalledWith('member_menu', false)
-  expect(account).toHaveFocus()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
 it('비회원의 보관함 직접 진입은 로그인 모달과 리다이렉트 계측을 유지한다', async () => {
@@ -210,4 +197,12 @@ it('모바일 OAuth 성공의 복귀 주소가 콜백 로그인 쿼리 정리보
   </MemoryRouter>)
   await waitFor(() => expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/explore?boundaryRegionCode=11440#map'))
   expect(readLoginReturn(true)).toBeNull()
+})
+
+it('마이페이지 진입은 URL에서 소비된 현재 지도 카메라도 보존한다', async () => {
+  const { ExplorerReturnContext } = await import('../../public-housing/navigation/ExplorerReturnContext')
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 7 }) }))
+  render(<MemoryRouter initialEntries={['/explore?boundaryRegionCode=11']}><ExplorerReturnContext value={{ current: '/explore?boundaryRegionCode=11&mapLat=37.5&mapLng=127&mapZoom=14' }}><UserSessionControl presentation="rail" /></ExplorerReturnContext></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('link', { name: '마이페이지' }))
+  expect(sessionStorage.getItem('toadzip:last-explore-path')).toBe('/explore?boundaryRegionCode=11&mapLat=37.5&mapLng=127&mapZoom=14')
 })

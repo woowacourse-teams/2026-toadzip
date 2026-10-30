@@ -6,21 +6,19 @@ import { getFailureReview, getFailureReviews, type FailureDomain, type FailureRe
 import { ListPagination } from '../management/ListPagination'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import styles from './IngestFailurePanel.module.css'
-import { AnnouncementSupplyMatchingForm } from './AnnouncementSupplyMatchingForm'
+import { AnnouncementFailureRecovery } from './AnnouncementFailureRecovery'
 import { failureReturnUrl } from './failureNavigation'
-import { FailureRetryButton } from './FailureRetryButton'
-import { FailureSourceRecovery } from './FailureSourceRecovery'
 
 type Props = {
   domain?: FailureDomain; initialCategory?: FailureCategory; executionId: string | null; refreshToken?: number
-  onRetry?: () => void; retryDisabled?: boolean; runMessage?: string; runError?: string
+  retryDisabled?: boolean; runError?: string
 }
 
 export function IngestFailurePanel({ domain: selectedDomain, initialCategory, executionId, refreshToken = 0,
-  onRetry, retryDisabled = false, runMessage = '', runError = '' }: Props) {
+  retryDisabled = false, runError = '' }: Props) {
   const domain = selectedDomain ?? (initialCategory === 'announcement' || initialCategory === 'enrichment' ? 'announcement' : 'complex')
   const [params, setParams] = useSearchParams()
-  const allowed: (FailureCategory | 'all')[] = domain === 'complex' ? ['all','collection','complex','household'] : ['all','collection','announcement','enrichment']
+  const allowed: (FailureCategory | 'all')[] = domain === 'complex' ? ['all','collection','complex'] : ['all','collection','announcement','enrichment']
   const rawCategory = params.get('category') ?? initialCategory ?? 'all'
   const category = allowed.includes(rawCategory as FailureCategory | 'all') ? rawCategory as FailureCategory | 'all' : 'all'
   const rawStatus = params.get('status') ?? 'PENDING'
@@ -43,7 +41,7 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
   const selectionKey = params.get('failure') ?? ''
   const [selectionCategory, selectionIdText] = selectionKey.split(':')
   const selectionId = Number(selectionIdText)
-  const validSelection = ['collection', 'complex', 'household', 'announcement', 'enrichment'].includes(selectionCategory)
+  const validSelection = ['collection', 'complex', 'announcement', 'enrichment'].includes(selectionCategory)
     && allowed.includes(selectionCategory as FailureCategory)
     && /^[1-9][0-9]*$/.test(selectionIdText ?? '') && Number.isSafeInteger(selectionId)
     && selectionKey === `${selectionCategory}:${selectionIdText}`
@@ -66,8 +64,13 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
     next.set('failure', `${row.category}:${row.id}`)
     return failureReturnUrl(path, `/admin/failures?${next}`)
   }
-  const [matchingOpen, setMatchingOpen] = useState(false)
-  useEffect(() => { setMatchingOpen(false); setActionBusy(false) }, [selectionKey])
+  const pdfGroups = new Map<number, FailureReview[]>()
+  for (const row of matching?.items ?? []) {
+    if (!canCorrectPdf(row)) continue
+    const announcementId = row.product!.id
+    pdfGroups.set(announcementId, [...pdfGroups.get(announcementId) ?? [], row])
+  }
+  useEffect(() => { setActionBusy(false) }, [selectionKey])
 
   useEffect(() => {
     if (!validQuery) return
@@ -126,6 +129,10 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
   }
   const label = domain === 'complex' ? '단지' : '공고'
   const actionDisabled = retryDisabled || actionBusy || detailPending || Boolean(detailError)
+  // 공고의 단지·주택형 매칭 오류는 상세 안에서 실패 행을 바로 고치고 이 공고만 정제한다. 전체 정제·다른 페이지 이동은 숨긴다.
+  const recoveryIdentifier = selected && (selected.category === 'announcement' || selected.category === 'enrichment')
+    && typeof selected.raw.sourceAnnouncementIdentifier === 'string' && supplyMatchingFailure(selected)
+    ? selected.raw.sourceAnnouncementIdentifier : null
   return <section className={styles.panel} aria-label={`${label} 오류 목록`}>
     <form key={keyword} className={styles.search} onSubmit={event => {
       event.preventDefault()
@@ -151,6 +158,10 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
     {!validQuery ? <p role="alert">조회 조건이 올바르지 않습니다. <button type="button" onClick={() => setParams({domain})}>조회 조건 초기화</button></p> : null}
     {error ? <p role="alert">{error} <button type="button" onClick={() => setRevision(value => value + 1)}>다시 조회</button></p> : null}
     <div className={styles.results} aria-busy={pending}>
+      {!pending && !error && pdfGroups.size > 0 && <section className={styles.pdfGroups} aria-label="PDF로 보정할 공고">
+        <h3>이 페이지의 주택형 대응 오류</h3><p>같은 공고의 주택형 대응 오류를 묶었습니다. PDF 보정 후 정제를 다시 실행하면 이 오류 때문에 보류된 LH 보강도 함께 다시 판정됩니다.</p>
+        {[...pdfGroups.entries()].map(([announcementId, rows]) => <div key={announcementId}><strong>{rows[0].product!.name}</strong><Link to={follow(`/admin/announcements/${announcementId}/pdf-correction?${pdfFailureParams(rows)}`, rows[0])}>PDF로 보정 · {rows.length}건</Link></div>)}
+      </section>}
       <div className={styles.summary}>
         <span>{matching ? `총 ${matching.totalElements.toLocaleString()}건` : '오류 목록 조회'}
           {matching && executionId ? ' · 실행 필터 적용' : ''}</span>
@@ -163,18 +174,16 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
           {matching.totalElements > 0 ? <button type="button" onClick={() => move(0)}>첫 페이지로</button> : null}</div> : null}
         {matching && matching.items.length > 0 ? <table className={styles.table}>
           <caption className="sr-only">{label} 오류 목록 · {matching.page + 1}페이지</caption>
-          <colgroup><col className={styles.targetColumn}/><col style={{width:260}}/><col style={{width:230}}/><col style={{width:140}}/><col className={styles.actionColumn}/></colgroup>
-          <thead><tr><th scope="col">대상·작업</th><th scope="col">문제 원인·다음 행동</th><th scope="col">현재 서비스 데이터</th><th scope="col">처리 상태</th><th scope="col">확인·처리</th></tr></thead>
+          <colgroup><col className={styles.targetColumn}/><col/><col style={{width:120}}/><col className={styles.actionColumn}/></colgroup>
+          <thead><tr><th scope="col">대상</th><th scope="col">원인</th><th scope="col">상태</th><th scope="col">확인·처리</th></tr></thead>
           <tbody>{matching.items.map(row => {
             const target = reviewTarget(row)
+            // 목록은 무엇이 왜 실패했는지만 보여 준다. 근거·서비스 데이터·처리 기록은 확인·처리 창에서 본다.
             return <tr key={`${row.category}-${row.id}`}>
               <th scope="row" title={target.title}>{row.product ? <Link to={follow(`/admin/${row.product.resourceType}/${row.product.id}`, row)}>{target.title}</Link> : <span>{target.title}</span>}
-                <small>{failureCategories[row.category].label}{target.context ? ` · ${target.context}` : ''}</small>
-                <time dateTime={row.occurredAt}>{formatTime(row.occurredAt)}</time></th>
-              <td><strong>{reasonLabel(row)}</strong><p className={styles.clamp} title={row.detail}>{row.detail}</p><small>{nextAction(row)}</small></td>
-              <td><ProductSummary row={row}/></td>
-              <td><span className={styles.status} data-status={row.status}>{statusLabel(row.status)}</span><small>발생 {row.occurrenceCount}회{row.recurrenceCount ? ` · 재발 ${row.recurrenceCount}회` : ''}</small>
-                {row.status === 'RESOLVED' && row.lastResolvedAt ? <time dateTime={row.lastResolvedAt}>{formatTime(row.lastResolvedAt)}</time> : null}</td>
+                <small>{failureCategories[row.category].label}{target.context ? ` · ${target.context}` : ''}</small></th>
+              <td title={row.detail}>{reasonLabel(row)}</td>
+              <td><span className={styles.status} data-status={row.status}>{statusLabel(row.status)}</span>{resolvedByLabel(row) && <small className={styles.resolvedBy}>{resolvedByLabel(row)}</small>}</td>
               <td><button type="button" aria-label={`확인·처리: ${target.title}`} onClick={() => openSelection(row)}>확인·처리</button></td>
             </tr>
           })}</tbody>
@@ -189,62 +198,50 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
       {detailPending && <p className={styles.detailNotice} role="status">오류와 서비스 데이터의 최신 상태를 확인하는 중입니다.</p>}
       {detailError && <div className={styles.detailNotice} role="alert"><p>{detailError}</p><p>이전 표시값을 최신 처리 결과로 판단하지 마세요.</p><button type="button" onClick={processed}>상세 다시 조회</button></div>}
       {selected ? <div className={styles.dialogBody}>
-        <h3>{reviewTarget(selected).title}</h3><p><span className={styles.status} data-status={selected.status}>{statusLabel(selected.status)}</span> · {failureCategories[selected.category].label}</p>
-        <section className={styles.detailSection}><h3>1. 원인과 근거 확인</h3><strong>{reasonLabel(selected)}</strong><p>{selected.detail}</p><p>{nextAction(selected)}</p>
-          <div className={styles.workflow}>
-            <Link to={follow(sourceLocation(selected))}>{selected.category === 'enrichment' ? 'LH 상세 원천 확인' : '원천 데이터 확인'}</Link>
-            {selected.category === 'enrichment' && <Link to={follow(sourceLocation(selected, true))}>LH 공급 원천 확인</Link>}
-          </div>
-          {selected.category === 'enrichment' && !selected.raw.panId && <p className={styles.hint}>오류에 LH 공고 번호가 없어 원천 목록 전체로 이동합니다. 마이홈 공고의 원문에서 LH 연결을 먼저 확인하세요.</p>}
-        </section>
-        <section className={styles.detailSection}><h3>2. 필요한 조치</h3><div className={styles.workflow}>
-          {selected.product ? <Link to={follow(`/admin/${selected.product.resourceType}/${selected.product.id}`)}>{label} 확인·수정</Link> : null}
-          <RecoveryLinks row={selected} follow={follow}/>
-          {selected.category === 'collection' ? <Link to={follow(`/admin/ingest#${domain === 'complex' ? 'complex' : 'announcement'}-pipelines`)}>API 키 입력·원천 수집</Link>
-            : selected.status === 'PENDING' && onRetry ? <FailureRetryButton label={label} disabled={actionDisabled}
-              onRetry={() => { showResult.current = true; onRetry() }}/> : null}
+        {/* 원인 한 줄과 실제로 고칠 수 있는 버튼만 먼저 보인다. 고치기 전의 정제 재실행은 같은 실패를 반복하므로 여기서 권하지 않는다. */}
+        <div className={styles.dialogSummary}><h3>{reviewTarget(selected).title}</h3>
+          <p><span className={styles.status} data-status={selected.status}>{statusLabel(selected.status)}</span> {failureCategories[selected.category].label} · <strong>{reasonLabel(selected)}</strong></p>
+          <p className={styles.hint}>{selected.detail} {nextAction(selected)}</p></div>
+        <div className={styles.workflow} aria-label="처리 방법">
+          {lhLinkFailure(selected) && typeof selected.raw.sourceAnnouncementIdentifier === 'string' && !actionDisabled
+            && <Link className="admin-primary" to={follow(`/admin/failures/lh-links/${encodeURIComponent(selected.raw.sourceAnnouncementIdentifier)}`)}>LH 행 연결</Link>}
+          {canCorrectPdf(selected) && !actionDisabled && <Link className="admin-tonal" to={follow(`/admin/announcements/${selected.product!.id}/pdf-correction`)}>PDF로 보정</Link>}
+          {selected.product ? <Link className="admin-tonal" to={follow(`/admin/${selected.product.resourceType}/${selected.product.id}`)}>{label} 확인·수정</Link> : null}
+          <RecoveryLinks row={selected} follow={follow} inlineRecovery={recoveryIdentifier !== null}/>
+          {selected.category === 'collection' && <Link className="admin-tonal" to={follow(`/admin/ingest#${domain === 'complex' ? 'complex' : 'announcement'}-pipelines`)}>API 키 입력·원천 수집</Link>}
+          <Link to={follow(sourceLocation(selected))}>{selected.category === 'enrichment' ? 'LH 상세 원천' : '원천 데이터'}</Link>
+          {selected.category === 'enrichment' && <Link to={follow(sourceLocation(selected, true))}>LH 공급 원천</Link>}
         </div>
-          {selected.category !== 'collection' && selected.status === 'PENDING' && onRetry ? <p id="failure-retry-scope" className={styles.hint}>
-            수정한 뒤 이 화면으로 돌아와 정제를 다시 실행하세요. 현재 저장된 {label} 원천 전체가 대상이며, 다른 오류와 이미 처리한 데이터도 함께 정제합니다.
-          </p> : null}
-          {selected.category !== 'collection' && runMessage ? <p role="status">{runMessage}</p> : null}{runError ? <p role="alert">{runError}</p> : null}
-          <FailureSourceRecovery key={selectionKey} row={selected} disabled={actionDisabled}
-            onProcessed={() => setRevision(value => value + 1)} onBusy={setActionBusy}/>
-        {(selected.category === 'announcement' || selected.category === 'enrichment') && typeof selected.raw.sourceAnnouncementIdentifier === 'string'
-          && (/COMPLEX|HOUSING_TYPE|MANUAL_MATCH/.test(selected.reason) || selected.detail.includes('수동 매칭')) && <section>
-            <button type="button" aria-expanded={matchingOpen} disabled={actionDisabled}
-              onClick={() => setMatchingOpen(value => !value)}>단지·주택형 매칭</button>
-            {matchingOpen && <AnnouncementSupplyMatchingForm identifier={selected.raw.sourceAnnouncementIdentifier}
-              disabled={retryDisabled || detailPending || Boolean(detailError)} onApplied={processed} onBusy={setActionBusy} />}
-          </section>}
-        </section>
-        <section className={styles.detailSection} aria-labelledby="failure-result-title">
-          <h3 id="failure-result-title" ref={resultHeading} tabIndex={-1}>3. 처리 결과 확인</h3>
-          <button type="button" disabled={detailPending || actionBusy} onClick={processed}>처리 결과 다시 확인</button>
-          {!detailPending && !detailError && detail?.checkedAt && <p className={styles.hint}>조회 시각: {formatTime(detail.checkedAt)}</p>}
-          <p>오류 기록: <strong>{statusLabel(selected.status)}</strong>{selected.lastResolvedAt ? ` · ${formatTime(selected.lastResolvedAt)}` : ''}</p>
-          <p className={styles.hint}>실행 완료와 이 오류의 해결 여부는 다릅니다. 해결됨은 재처리 기록이며 공식 근거에 대한 관리자 검토 완료를 뜻하지 않습니다.</p>
-          <ProductSummary row={selected}/><ProductDetails row={selected}/>
-          <div className={styles.workflow}>
-            {selected.product?.publicDetailAvailable && <Link to={`/?${selected.product.resourceType === 'complexes' ? 'complexId' : 'announcementId'}=${selected.product.id}`} target="_blank" rel="noreferrer">사용자 상세 보기</Link>}
-            <button type="button" disabled={actionBusy} onClick={() => { setRevision(value => value + 1); dialog.current?.close() }}>목록으로 돌아가기</button>
-          </div>
-          <p className={styles.hint}>현재 저장된 데이터 기준입니다. 실제 목록은 지역·지도 범위·검색 조건에 따라 달라집니다.</p>
-        </section>
-        <details className={styles.raw}><summary>실패 기록 원문·실행 정보</summary><StoredDataTable data={selected.raw} label="실패 기록 원문"/></details>
+        {/* LH 연결 오류는 전용 화면에서 처리하므로 공급행 매칭 폼을 함께 띄우지 않는다. */}
+        {recoveryIdentifier && !lhLinkFailure(selected) && <AnnouncementFailureRecovery key={selectionKey} identifier={recoveryIdentifier}
+          disabled={retryDisabled || detailPending || Boolean(detailError)} onApplied={processed} onBusy={setActionBusy} />}
+        {runError ? <p role="alert">{runError}</p> : null}
+        <div className={styles.dialogResult}>
+          <h4 id="failure-result-title" ref={resultHeading} tabIndex={-1}>오류 기록 <strong>{statusLabel(selected.status)}</strong>{selected.lastResolvedAt ? ` · ${formatTime(selected.lastResolvedAt)}` : ''}{resolvedByLabel(selected) ? ` · ${resolvedByLabel(selected)}` : ''}
+            {!detailPending && !detailError && detail?.checkedAt ? <small> · 조회 {formatTime(detail.checkedAt)}</small> : null}</h4>
+          <button type="button" disabled={detailPending || actionBusy} onClick={processed}>다시 확인</button>
+          {selected.product?.publicDetailAvailable && <Link to={`/?${selected.product.resourceType === 'complexes' ? 'complexId' : 'announcementId'}=${selected.product.id}`} target="_blank" rel="noreferrer">사용자 상세</Link>}
+        </div>
+        <details className={styles.raw}><summary>서비스 데이터·실패 기록 원문</summary><ProductSummary row={selected}/><ProductDetails row={selected}/><StoredDataTable data={selected.raw} label="실패 기록 원문"/></details>
       </div> : null}
     </dialog>
   </section>
 }
 
-function RecoveryLinks({row, follow}: {row:FailureReview; follow: (path: string) => string}) {
+function canCorrectPdf(row: FailureReview) {
+  return (row.category === 'announcement' || row.category === 'enrichment') && row.status === 'PENDING'
+    && ['AMBIGUOUS_HOUSING_TYPE', 'HOUSING_TYPE_NOT_FOUND'].includes(row.reason)
+    && row.product?.resourceType === 'announcements' && !row.product.deleted
+}
+
+function RecoveryLinks({row, follow, inlineRecovery}: {row:FailureReview; follow: (path: string) => string; inlineRecovery: boolean}) {
   if (row.category === 'collection') return null
   const complexName = typeof row.raw.complexName === 'string' ? row.raw.complexName.trim() : ''
   const needsComplexReview = /COMPLEX|HOUSING_TYPE/.test(row.reason)
     || (row.productLinkStatus === 'UNKNOWN' && complexName !== '')
   return <>
     {/GEOCODING/.test(row.reason) ? <Link to={follow('/admin/locations')}>좌표 ZIP 업로드·단지 정제</Link> : null}
-    {needsComplexReview && row.product?.resourceType !== 'complexes' ? <Link
+    {needsComplexReview && !inlineRecovery && row.product?.resourceType !== 'complexes' ? <Link
       to={follow(complexName ? `/admin/complexes?keyword=${encodeURIComponent(complexName)}` : '/admin/complexes')}>
       {complexName ? '단지명으로 후보 검색' : '단지·주택형 확인'}
     </Link> : null}
@@ -282,10 +279,32 @@ const exclusionLabels: Record<string,string> = {
   NOT_LISTABLE_PUBLICATION_TYPE:'공고 종류상 기본 목록 제외', MISSING_PREVIOUS_ANNOUNCEMENT:'정정 공고의 이전 공고 연결 없음',
   HAS_SUCCESSOR:'후속 공고가 있어 기본 목록 제외',
 }
+// 정제가 아니라 관리자가 공고를 보정해 해결한 기록이면 누가 해결했는지 보여 준다.
+function resolvedByLabel(row: FailureReview) { return row.status === 'RESOLVED' && row.lastResolvedBy ? `관리자 ${row.lastResolvedBy}가 공고 보정으로 해결` : '' }
 function statusLabel(status:string) { return status === 'RESOLVED' ? '해결됨' : status === 'SKIPPED' ? '건너뜀' : '미해결' }
 function formatTime(value:string) {
   const date=new Date(value)
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false})
+}
+// PDF 보정 화면이 고칠 공급행을 보여 줄 수 있게 오류마다 사유와 원천 공급행 키를 넘긴다.
+function pdfFailureParams(rows: FailureReview[]) {
+  const params = new URLSearchParams({ failureCount: String(rows.length) })
+  rows.slice(0, 10).forEach(row => params.append('failureRow', `${row.reason}|${row.sourceKey}`))
+  return params.toString()
+}
+
+// 정제 직후 LH 보강이 실패하면 공고 정제 오류(INVALID_VALUE)에 "LH 보강 실패: {사유} - …"로 남는다.
+function lhEnrichmentReason(row:FailureReview) {
+  return /^LH 보강 실패: ([A-Z_]+) - /.exec(row.detail)?.[1] ?? null
+}
+function supplyMatchingFailure(row:FailureReview) {
+  const matching = /COMPLEX|HOUSING_TYPE|MANUAL_MATCH|LH_SUPPLY_LINK/
+  return matching.test(row.reason) || matching.test(lhEnrichmentReason(row) ?? '') || row.detail.includes('수동 매칭')
+}
+function lhLinkFailure(row:FailureReview) {
+  const complex = /^(COMPLEX_NOT_FOUND|AMBIGUOUS_COMPLEX|LH_SUPPLY_LINK_REVIEW_REQUIRED)$/
+  if (row.category === 'enrichment') return complex.test(row.reason)
+  return row.category === 'announcement' && complex.test(lhEnrichmentReason(row) ?? '')
 }
 function reasonLabel(row:FailureReview) {
   if (row.category === 'collection') return collectionCause(row).title
@@ -299,6 +318,9 @@ function reasonLabel(row:FailureReview) {
     LH_COLLECTION_REQUEST_UNSUPPORTED:'지원하지 않는 LH 수집 요청', PAN_ID_NOT_FOUND:'LH 공고 번호 누락',
     HOUSING_TYPE_NOT_FOUND:'연결할 주택형을 찾지 못함', AMBIGUOUS_HOUSING_TYPE:'일치하는 주택형이 여러 개',
     MANUAL_MATCH_REVIEW_REQUIRED:'저장한 매칭의 원천·주택형 재확인 필요',
+    LH_SUPPLY_LINK_REVIEW_REQUIRED:'저장한 LH 공급 연결의 원천 재확인 필요',
+    MANUAL_LINK_REVIEW_REQUIRED:'저장한 단지 연결의 원천·단지 재확인 필요',
+    TARGET_DECISION_REVIEW_REQUIRED:'저장한 단지 결정의 원천·단지 재확인 필요',
     LH_DETAIL_SOURCE_NOT_FOUND:'LH 상세 원천 없음',
     LH_SUPPLY_SOURCE_NOT_FOUND:'LH 공급 원천 없음', UNSUPPORTED_SUPPLY_TYPE:'지원하지 않는 공급 유형',
   }
@@ -310,7 +332,9 @@ function nextAction(row:FailureReview) {
   if (row.category === 'collection') return collectionCause(row).action
   if (row.reason === 'MANUAL_MATCH_REVIEW_REQUIRED') return '저장한 매칭의 근거와 현재 원천·주택형을 다시 비교하세요. 연결을 다시 선택해 근거와 함께 저장하거나 저장한 선택을 해제할 수 있습니다.'
   if (/GEOCODING/.test(row.reason)) return '단지 주소와 좌표 원천을 확인하세요. 좌표 ZIP을 업로드해도 일치하는 주소나 좌표가 없으면 별도 확인이 필요합니다.'
-  if (/HOUSING_TYPE/.test(row.reason)) return '단지의 주택형과 원천의 면적·공급 유형을 비교한 뒤 정제하세요.'
+  if (/HOUSING_TYPE/.test(row.reason)) return row.product?.resourceType === 'announcements'
+    ? '공고문으로 확인하려면 위의 PDF로 보정을 사용하세요. 단지 주택형과 원천의 면적·공급 유형을 비교해도 됩니다. 고친 뒤 정제하세요.'
+    : '단지의 주택형과 원천의 면적·공급 유형을 비교한 뒤 정제하세요.'
   if (/COMPLEX/.test(row.reason)) return '단지 등록·주소·공급 유형과 원천 연결을 확인한 뒤 정제하세요.'
   if (/PREVIOUS|CYCLIC/.test(row.reason)) return '이전·후속 공고 연결을 확인한 뒤 정제하세요.'
   if (/LH_.*SOURCE|LH_COLLECTION/.test(row.reason)) return '연결된 LH 원천을 다시 수집한 뒤 정제하세요.'
@@ -319,7 +343,7 @@ function nextAction(row:FailureReview) {
 function sourceLocation(row:FailureReview, supply = false) {
   const category=row.category === 'collection' ? row.source ?? 'MYHOME_COMPLEX'
     : row.category === 'enrichment' ? supply ? 'LH_ANNOUNCEMENT_SUPPLY' : 'LH_ANNOUNCEMENT_DETAIL'
-    : ({complex:'MYHOME_COMPLEX',household:'LH_LEASE_CATALOG',announcement:'MYHOME_ANNOUNCEMENT'} as const)[row.category]
+    : ({complex:'MYHOME_COMPLEX',announcement:'MYHOME_ANNOUNCEMENT'} as const)[row.category]
   const keyword=row.category === 'enrichment' ? typeof row.raw.panId === 'string' ? row.raw.panId : ''
     : typeof row.raw.sourceAnnouncementIdentifier === 'string' ? row.raw.sourceAnnouncementIdentifier
     : typeof row.raw.sourceComplexIdentifier === 'string' ? row.raw.sourceComplexIdentifier.split(':')[0]
@@ -329,5 +353,6 @@ function sourceLocation(row:FailureReview, supply = false) {
   return `/admin/sources?${params}`
 }
 function reviewTarget(row:FailureReview) {
-  return row.category === 'collection' ? failureTarget(row) : {title:row.target,context:null,source:null}
+  if (row.category === 'collection') return failureTarget(row)
+  return {title:row.target,context:null,source:null}
 }

@@ -54,6 +54,7 @@ it('검토 링크로 단지를 열면 비교 화면을 표시하고 수정 작�
   show('/admin/complexes/7?section=verification')
   expect(await screen.findByRole('heading', { name: '원천과 비교하고 바로 수정' })).toBeVisible()
   expect(screen.getByRole('button', { name: '데이터 검증' })).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.click(await screen.findByRole('button', { name: '모든 항목' }))
   fireEvent.click(await screen.findByRole('button', { name: '이름 수정' }))
   fireEvent.change(screen.getByLabelText('이름 수정값'), { target: { value: '비교하며 수정 중' } })
   fireEvent.click(screen.getByText('확인 범위·검토 기록'))
@@ -108,7 +109,7 @@ it('편집 패널에서 검토를 저장하면 탭과 목록 필터를 유지하
   await waitFor(() => expect(api.getManagementPage).toHaveBeenCalledTimes(2))
   expect(api.getManagementPage.mock.lastCall?.[1].get('provider')).toBe('LH')
   expect(screen.getByRole('button', { name: '데이터 검증' })).toHaveAttribute('aria-pressed', 'true')
-  expect(screen.getByRole('link', { name: summary.name }).closest('th')).toHaveTextContent('확인 완료 · 1/6항목')
+  expect(screen.getByRole('link', { name: summary.name }).closest('tr')).toHaveTextContent('확인 완료 · 1/6항목')
   const reviewDetails = screen.getByText('확인 범위·검토 기록').closest('details')!
   if (!reviewDetails.hasAttribute('open')) fireEvent.click(screen.getByText('확인 범위·검토 기록'))
   const panel = await screen.findByRole('region', { name: '단지 데이터 검증' })
@@ -120,7 +121,7 @@ it('편집 패널에서 검토를 저장하면 탭과 목록 필터를 유지하
   expect(screen.getByText('등록된 주택형이 없습니다.')).toBeVisible()
 })
 
-it('검토 작성 중 탭·필터·편집 닫기 이동을 취소하면 입력과 선택을 보존한다', async () => {
+it('검토 작성 중 탭·필터·목록 복귀 이동을 취소하면 입력과 선택을 보존한다', async () => {
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
   show()
   await openBasicInformation()
@@ -131,14 +132,14 @@ it('검토 작성 중 탭·필터·편집 닫기 이동을 취소하면 입력�
   fireEvent.click(await screen.findByRole('checkbox', { name: '단지명 확인' }))
   fireEvent.change(screen.getByLabelText('확인 근거·메모'), { target: { value: '작성 중인 근거' } })
   fireEvent.click(screen.getByRole('button', { name: '기본정보' }))
-  fireEvent.click(screen.getByRole('link', { name: '편집 닫기' }))
+  fireEvent.click(screen.getByRole('link', { name: '목록으로 돌아가기' }))
   fireEvent.submit(screen.getByRole('button', { name: '검색' }).closest('form')!)
   expect(confirm).toHaveBeenCalledTimes(3)
   expect(screen.getByLabelText('확인 근거·메모')).toHaveValue('작성 중인 근거')
   expect(screen.getByRole('checkbox', { name: '단지명 확인' })).toBeChecked()
   expect(api.getManagementPage).toHaveBeenCalledOnce()
   confirm.mockReturnValue(true)
-  fireEvent.click(screen.getByRole('link', { name: '편집 닫기' }))
+  fireEvent.click(screen.getByRole('link', { name: '목록으로 돌아가기' }))
   expect(screen.queryByRole('region', { name: '단지 상세·수정' })).not.toBeInTheDocument()
   expect(screen.getByLabelText('검토 상태')).toHaveValue('UNREVIEWED')
 })

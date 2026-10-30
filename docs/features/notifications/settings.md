@@ -4,7 +4,7 @@
 
 ## 신청과 조회 계약
 
-`GET /api/v1/notification-subscriptions/me`는 인증된 회원의 `{userId, settingsRevision, targets}`를 반환한다. 각 대상은 `targetType`, `targetId`, `targetName`, `noticeVersion`, `requestedAt`, `expiresAt`을 가진다. 삭제된 대상 이름은 null일 수 있다. 목록과 revision은 같은 회원 잠금 아래에서 읽으며 개인 응답은 `Cache-Control: no-store`다.
+`GET /api/v1/notification-subscriptions/me`는 인증된 회원의 `{userId, settingsRevision, targets}`를 반환한다. 각 대상은 `targetType`, `targetId`, `targetName`, `noticeVersion`, `requestedAt`, `expiresAt`을 가진다. 공고에는 북마크와 같은 일정 계산으로 `status`, `applicationStartDate`, `applicationEndDate`를 추가 제공한다. 날짜는 서울 시간대의 조회일 기준 `YYYY-MM-DD`이며, 공고가 아닌 대상이나 일정이 없으면 null이다. 삭제된 대상 이름은 null일 수 있다. 목록과 revision은 같은 회원 잠금 아래에서 읽으며 개인 응답은 `Cache-Control: no-store`다.
 
 도입 전 설정의 `noticeVersion`·`requestedAt`도 null일 수 있다. 과거 고지 확인을 임의로 생성하지
 않으며 이 설정도 정상 목록으로 표시하고 취소할 수 있다. 새 신청은 현재 고지와 신청 시각을 기록한다.

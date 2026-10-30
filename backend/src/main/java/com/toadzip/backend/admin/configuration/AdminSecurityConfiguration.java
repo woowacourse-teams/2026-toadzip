@@ -73,7 +73,7 @@ public class AdminSecurityConfiguration {
                         .requestMatchers("/api/admin/**").hasRole(AdminRole.ADMIN.name())
                         .requestMatchers("/api/auth/me", "/api/auth/logout").hasRole("USER")
                         .requestMatchers("/api/v1/privacy/analytics/me").hasRole("USER")
-                        .requestMatchers("/api/v1/notification-subscriptions/**").hasRole("USER")
+                        .requestMatchers("/api/v1/notification-subscriptions/**", "/api/v1/bookmarks/**").hasRole("USER")
                         .requestMatchers("/api/v1/notifications", "/api/v1/notifications/**",
                                 "/api/v1/notification-push-devices", "/api/v1/notification-push-devices/**").hasRole("USER")
                         .anyRequest().permitAll()

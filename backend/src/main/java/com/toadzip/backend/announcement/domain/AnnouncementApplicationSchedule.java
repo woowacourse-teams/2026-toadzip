@@ -59,17 +59,17 @@ public class AnnouncementApplicationSchedule {
     @Column(nullable = false, length = 2000)
     private String sourceUrl;
 
-    @Column(nullable = false)
-    private int sourcePage;
+    /** 공고문 페이지. 알 때만 남기며 근거는 sourceUrl로 충분하다. */
+    private Integer sourcePage;
 
     public static AnnouncementApplicationSchedule verified(
             Announcement announcement, HousingComplex housingComplex, String supplyRank,
             ApplicationScheduleState state, String condition,
             LocalDate startDate, LocalDate endDate, LocalTime startTime, LocalTime endTime,
-            String sourceUrl, int sourcePage
+            String sourceUrl, Integer sourcePage
     ) {
         if (announcement == null || state == null || startDate == null || endDate == null
-                || endDate.isBefore(startDate) || sourcePage < 1) {
+                || endDate.isBefore(startDate) || sourcePage != null && sourcePage < 1) {
             throw new IllegalArgumentException("접수 일정과 공고문 근거가 올바르지 않습니다.");
         }
         if ((startTime == null) != (endTime == null)

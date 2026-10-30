@@ -19,7 +19,9 @@ public record SupplyRowResponse(
         SharedRecruitment sharedRecruitment,
         BigDecimal exclusiveArea,
         BigDecimal supplyArea,
-        boolean corrected
+        boolean corrected,
+        // 공고 표시명 → 단지 주택형명 → 원천 주택형명 순서로 정한 화면 표시 이름
+        String displayHousingTypeName
 ) {
 
     public SupplyRowResponse {
@@ -32,6 +34,6 @@ public record SupplyRowResponse(
             SupplyComplexResponse complex, HousingTypeResponse housingType, YearMonth occupancyExpectedYearMonth,
             SupplyType supplyType, Integer totalSupplyHouseholdCount, List<SupplyTargetResponse> targets) {
         this(supplyRowId, sourceComplexName, sourceHousingTypeName, complex, housingType, occupancyExpectedYearMonth,
-                supplyType, totalSupplyHouseholdCount, targets, null, null, null, false);
+                supplyType, totalSupplyHouseholdCount, targets, null, null, null, false, sourceHousingTypeName);
     }
 }

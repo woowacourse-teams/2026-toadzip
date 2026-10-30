@@ -1,4 +1,4 @@
-import { Link } from 'react-router'
+import { PrivacyLinks } from '../../privacy/Privacy'
 import type { RefObject } from 'react'
 import { usePrivacyNotices } from '../../privacy/usePrivacy'
 import { consentStore } from '../../privacy/consentStore'
@@ -49,7 +49,7 @@ export function LoginContent({ loginFailed, sessionError, titleId, descriptionId
             Google로 로그인
           </a>
         </div>
-        {!page && <p className={styles.policy}><Link to={policyVersion ? `/privacy/PRIVACY_POLICY/${policyVersion}` : '/privacy'}>개인정보처리방침</Link></p>}
+        {!page && <PrivacyLinks policyVersion={policyVersion} />}
         {noticeError && <p role="alert">개인정보처리방침 안내를 불러오지 못했어요. 로그인은 계속할 수 있어요. <button type="button" onClick={retryNotice}>다시 시도</button></p>}
   </>
 }

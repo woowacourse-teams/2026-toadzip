@@ -1,3 +1,4 @@
+import { PageReturnLink } from '../../user/mypage/MyPageReturn'
 import { Link } from 'react-router'
 import { useRef, useState } from 'react'
 import { MemberMenuModal } from '../../user/auth/MemberMenuModal'
@@ -18,7 +19,7 @@ function NotificationPageContent({ management }: { readonly management: boolean 
   const heading = useRef<HTMLHeadingElement>(null)
   const title = management ? '알림 관리' : '알림 보관함'
   return <div className={styles.page}>
-    <header className={styles.header}><BrandLink /><Link to="/explore">지도로 돌아가기</Link></header>
+    <header className={styles.header}><BrandLink /><PageReturnLink /></header>
     <main className={styles.content}>
       <p className={styles.eyebrow}>{management ? '마이페이지' : '나의 알림'}</p>
       <div className={styles.titleRow}><h1 ref={heading} tabIndex={-1}>{title}</h1>

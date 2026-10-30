@@ -1,0 +1,17 @@
+# Local HTTPS validation. Public 80/443 cutover needs a separate deployment plan.
+services:
+  caddy:
+    image: caddy:2
+    environment:
+      TOADZIP_CADDY_DOMAIN: "${TOADZIP_CADDY_DOMAIN:-localhost}"
+    ports:
+      - "127.0.0.1:18443:443"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - toadzip_caddy_data:/data
+      - toadzip_caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  toadzip_caddy_data:
+  toadzip_caddy_config:

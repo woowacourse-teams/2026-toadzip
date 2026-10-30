@@ -28,7 +28,7 @@ public class IngestFailureReviewController {
     public ApiResponse<IngestFailureReviewPageResponse> findReviews(
             @RequestParam @Pattern(regexp = "complex|announcement") String domain,
             @RequestParam(defaultValue = "all")
-            @Pattern(regexp = "all|collection|complex|household|announcement|enrichment") String category,
+            @Pattern(regexp = "all|collection|complex|announcement|enrichment") String category,
             @RequestParam(defaultValue = "PENDING") @Pattern(regexp = "PENDING|RESOLVED|ALL") String status,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
@@ -40,7 +40,7 @@ public class IngestFailureReviewController {
 
     @GetMapping("/{category}/{id}")
     public ApiResponse<IngestFailureReviewPageResponse.Item> findReview(
-            @PathVariable @Pattern(regexp = "collection|complex|household|announcement|enrichment") String category,
+            @PathVariable @Pattern(regexp = "collection|complex|announcement|enrichment") String category,
             @PathVariable @Min(1) long id
     ) {
         return new ApiResponse<>(service.findReview(category, id));

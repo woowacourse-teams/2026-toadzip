@@ -4,7 +4,12 @@ import { record } from '../../privacy/api'
 export type NotificationTargetType = 'REGION' | 'COMPLEX' | 'ANNOUNCEMENT'
 export type NotificationEventSource = 'SETTING' | 'REGION_SEARCH' | 'COMPLEX_DETAIL' | 'ANNOUNCEMENT_DETAIL'
 export type NotificationEventType = 'EXPOSED' | 'CLICKED' | 'CONFIRMED' | 'DECLINED' | 'CANCELLED'
-export interface NotificationTarget { readonly type: NotificationTargetType; readonly id: string; readonly name: string }
+export interface NotificationAnnouncementSchedule {
+  readonly status?: string | null
+  readonly applicationStartDate?: string | null
+  readonly applicationEndDate?: string | null
+}
+export interface NotificationTarget extends NotificationAnnouncementSchedule { readonly type: NotificationTargetType; readonly id: string; readonly name: string }
 export interface NotificationInterestEvent {
   readonly eventId: string
   readonly eventType: NotificationEventType
@@ -41,7 +46,7 @@ export interface NotificationInterestRepository {
 }
 export interface NotificationSubscriptionStatus {
   readonly guest?: boolean; readonly userId?: string; readonly settingsRevision?: number
-  readonly targets: ReadonlyArray<{ readonly targetType: NotificationTargetType; readonly targetId: string; readonly targetName?: string | null; readonly noticeVersion?: string | null; readonly requestedAt?: string | null; readonly expiresAt?: string }>
+  readonly targets: ReadonlyArray<NotificationAnnouncementSchedule & { readonly targetType: NotificationTargetType; readonly targetId: string; readonly targetName?: string | null; readonly noticeVersion?: string | null; readonly requestedAt?: string | null; readonly expiresAt?: string }>
 }
 function parseStatus(value: unknown): NotificationSubscriptionStatus {
   if (!record(value) || typeof value.userId !== 'string' || !/^\d+$/.test(value.userId) || !Number.isSafeInteger(value.settingsRevision) || Number(value.settingsRevision) < 0 || !Array.isArray(value.targets)) throw new Error('알림 상태 응답이 올바르지 않습니다.')
@@ -50,7 +55,9 @@ function parseStatus(value: unknown): NotificationSubscriptionStatus {
       || typeof item.targetId !== 'string' || !/^[0-9]{1,19}$/.test(item.targetId)
       || (item.targetName !== null && item.targetName !== undefined && typeof item.targetName !== 'string')
       || !['noticeVersion', 'requestedAt'].every(key => item[key] === null || typeof item[key] === 'string')
-      || typeof item.expiresAt !== 'string') throw new Error('알림 대상 응답이 올바르지 않습니다.')
+      || typeof item.expiresAt !== 'string'
+      || (item.status != null && typeof item.status !== 'string')
+      || !['applicationStartDate', 'applicationEndDate'].every(key => item[key] == null || typeof item[key] === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(item[key]) && Number.isFinite(Date.parse(item[key])))) throw new Error('알림 대상 응답이 올바르지 않습니다.')
     return item as unknown as NotificationSubscriptionStatus['targets'][number]
   })
   return { userId: value.userId, settingsRevision: Number(value.settingsRevision), targets }

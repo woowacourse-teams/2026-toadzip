@@ -1,3 +1,4 @@
+import { BookmarkButton } from '../../user/bookmarks/BookmarkButton'
 import { captureProductEvent } from '../../analytics/productAnalytics'
 import { detailVisitId, useDetailScrollAnalytics } from './detailAnalytics'
 import { toHttpUrl } from '../presentation/httpUrl.ts'
@@ -80,6 +81,7 @@ export interface HousingAnnouncementDetailSupplyRow {
   readonly supplyRowId: string
   readonly sourceComplexName: string | null
   readonly sourceHousingTypeName: string | null
+  readonly displayHousingTypeName?: string | null
   readonly complex: AnnouncementSupplyComplex | null
   readonly housingType: AnnouncementHousingType | null
   readonly occupancyExpectedYearMonth: string | null
@@ -118,6 +120,7 @@ export interface HousingAnnouncementDetailData {
 }
 
 export interface HousingAnnouncementDetailPanelProps {
+  readonly returnToMyPage?: boolean
   readonly detail: HousingAnnouncementDetailData
   readonly onClose: () => void
   readonly backButton?: ReactNode
@@ -140,6 +143,7 @@ const DETAIL_SECTIONS = [
 type DetailSectionKey = typeof DETAIL_SECTIONS[number]['key']
 
 export function HousingAnnouncementDetailPanel({
+  returnToMyPage,
   detail,
   onClose,
   onOpenComplex,
@@ -184,6 +188,7 @@ export function HousingAnnouncementDetailPanel({
       onKeyDown={handlePanelKeyDown}
     >
       <StickyHeader
+        returnToMyPage={returnToMyPage}
         backButton={backButton}
         detail={detail}
         title={title}
@@ -218,7 +223,10 @@ export function HousingAnnouncementDetailPanel({
           role="region" aria-label="요약 영역" tabIndex={-1}
           ref={(node) => { sectionRefs.current.summary = node }}>
           <div className={styles.summaryBlock}>
-            <NoticeIntro detail={detail} groups={groups} />
+            <div className={styles.summaryIdentity}>
+              <NoticeIntro detail={detail} groups={groups} />
+              <BookmarkButton type="ANNOUNCEMENT" targetId={detail.announcementId} name={title} iconOnly size="md" />
+            </div>
             <div className={styles.notificationAction}>
               <NotificationInterestButton
                 target={{ type: 'ANNOUNCEMENT', id: detail.announcementId, name: title }}
@@ -328,6 +336,7 @@ function useAnnouncementSections(announcementId: string) {
 }
 
 function StickyHeader({
+  returnToMyPage,
   backButton,
   detail,
   title,
@@ -335,6 +344,7 @@ function StickyHeader({
   headingRef,
   onClose,
 }: {
+  returnToMyPage?: boolean
   detail: HousingAnnouncementDetailData
   title: string
   titleId: string
@@ -385,7 +395,7 @@ function StickyHeader({
         </div>
         <h2 ref={headingRef} id={titleId} tabIndex={-1} title={title}>{title}</h2>
       </div>
-      <DetailCloseButton label="공고 상세 닫기" onClose={onClose} />
+      <DetailCloseButton label="공고 상세 닫기" onClose={onClose} returnToMyPage={returnToMyPage} />
     </header>
   )
 }
@@ -1038,8 +1048,8 @@ function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget
 }
 
 function housingTypeLabel(row: HousingAnnouncementDetailSupplyRow) {
-  if ((row.corrected || row.sharedRecruitment) && row.sourceHousingTypeName) return row.sourceHousingTypeName
-  return row.housingType?.name ?? row.sourceHousingTypeName ?? MISSING_DATA_LABEL
+  // 공고 표시명 → 단지 주택형명 → 원천 순서는 서버가 정한다.
+  return row.displayHousingTypeName ?? row.housingType?.name ?? row.sourceHousingTypeName ?? MISSING_DATA_LABEL
 }
 
 function DocumentActions({ detail, hasAnnouncementFile, onOpenAttachments }: {

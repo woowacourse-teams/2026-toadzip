@@ -83,7 +83,7 @@ describe('DataPipelineControl', () => {
       execution(type, type === 'ANNOUNCEMENT_REGISTRATION' ? 'RUNNING' : 'IDLE')))
     render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
     await act(async () => {})
-    expect(screen.getByRole('button', { name: '단지 수집' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '단지 원천 수집 실행' })).toBeDisabled()
     expect(screen.getByRole('link', { name: '실행 중인 작업 보기' })).toHaveAttribute('href', '/admin/announcements/new?mode=myhome')
   })
 
@@ -98,21 +98,6 @@ describe('DataPipelineControl', () => {
     expect(within(result).getByRole('list', { name: '실행 단계' }).children).toHaveLength(1)
     fireEvent.click(screen.getByRole('button', { name: '공고 수집 개요로 돌아가기' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'SH 공고 수집' })).toBeEnabled())
-  })
-
-  it('v2 단지 화면은 수집·좌표·정제 순서를 안내하고 통합 실행은 추가 작업에 둔다', async () => {
-    render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
-    await act(async () => {})
-    expect(screen.getByRole('heading', { name: '단지 데이터' })).toBeVisible()
-    const steps = screen.getByRole('list', { name: '단지 준비 순서' })
-    expect(within(steps).getAllByRole('listitem')).toHaveLength(3)
-    expect(within(steps).getByRole('button', { name: '단지 수집' })).toBeVisible()
-    expect(within(steps).getByRole('button', { name: '단지 정제' })).toBeVisible()
-    expect(screen.getByText('단지 추가 작업').closest('details')).not.toHaveAttribute('open')
-    expect(screen.queryByText('아직 실행하지 않았습니다.')).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '데이터 수집·정제' })).not.toBeInTheDocument()
-    expect(within(steps).getByRole('link', { name: '위치정보 ZIP 업로드' })).toHaveAttribute('href', '/admin/locations')
-    expect(apiMocks.getLhAnnouncementQuality).not.toHaveBeenCalled()
   })
 
   it('공고 갱신을 기본으로 제공하고 수집·정제 단독 실행은 펼쳐서 선택한다', async () => {
@@ -139,23 +124,6 @@ describe('DataPipelineControl', () => {
     expect(apiMocks.getLhAnnouncementQuality).not.toHaveBeenCalled()
   })
 
-  it('v2 실행 직후 완료 결과는 유지하되 다음 실행 결과와 겹치지 않는다', async () => {
-    apiMocks.startDataPipeline.mockImplementation((type: DataPipelineType) =>
-      Promise.resolve(execution(type, 'COMPLETED')))
-    render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
-    await act(async () => {})
-    fireEvent.click(screen.getByRole('button', { name: '단지 정제' }))
-    await screen.findByRole('article', { name: '현재 작업 단계' })
-    expect(screen.getByRole('article', { name: '현재 작업 단계' })).toHaveTextContent('단지 정제')
-    fireEvent.click(screen.getByRole('button', { name: '단지 수집 개요로 돌아가기' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '단지 수집' })).toBeEnabled())
-    fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
-    fireEvent.change(screen.getByLabelText('공공데이터포털 API 키'), { target: { value: 'fixture-key' } })
-    fireEvent.click(screen.getByRole('button', { name: '단지 수집 시작' }))
-    await waitFor(() => expect(screen.getByRole('article', { name: '현재 작업 단계' })).toHaveTextContent('단지 수집'))
-    expect(screen.getAllByRole('article', { name: '현재 작업 단계' })).toHaveLength(1)
-  })
-
   it.each(['ANNOUNCEMENT_SYNC', 'SH_ANNOUNCEMENT_COLLECTION'] as const)(
     'v2 탭 전환 중에도 %s 실행의 잠금과 중지를 보존한다', async (runningType) => {
     apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) =>
@@ -164,7 +132,8 @@ describe('DataPipelineControl', () => {
     await screen.findByRole('article', { name: '현재 작업 단계' })
     view.rerender(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
     expect(screen.queryByRole('article', { name: '현재 작업 단계' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '단지 정제' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('tab', { name: '3 정제·저장' }))
+    expect(screen.getByRole('button', { name: '단지 정제·저장 실행' })).toBeDisabled()
     expect(screen.getByRole('status')).toHaveTextContent('한 번에 한 작업')
     view.rerender(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
     const stopLabel = runningType === 'SH_ANNOUNCEMENT_COLLECTION'
@@ -637,24 +606,29 @@ describe('DataPipelineControl', () => {
     },
   )
 
-  it.each([false, true])('단지 수집 결과에서 좌표 업로드와 전체 원천 정제를 선택한다 (compact=%s)', async compact => {
+  it.each([false, true])('단지 수집 후에도 좌표 업로드와 전체 원천 정제를 각 단계에서 선택한다 (compact=%s)', async compact => {
     apiMocks.startDataPipeline.mockResolvedValue(execution('COMPLEX_COLLECTION', 'COMPLETED'))
     render(<MemoryRouter><DataPipelineControl domain="complex" compact={compact} /></MemoryRouter>)
     await act(async () => {})
-    startCollection('단지 수집')
-    expect(await screen.findByRole('link', { name: '다음: 위치정보 ZIP 업로드' })).toHaveAttribute('href', '/admin/locations')
-    expect(screen.getByRole('button', { name: '저장된 원천으로 단지 정제 실행' })).toBeEnabled()
-    expect(apiMocks.startDataPipeline).toHaveBeenCalledExactlyOnceWith('COMPLEX_COLLECTION', 'fixture-service-key')
+    fireEvent.click(screen.getByRole('button', { name: '단지 원천 수집 실행' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '단지 원천 수집 실행' })).toBeEnabled())
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('완료')
+    fireEvent.click(screen.getByRole('tab', { name: '2 좌표 적재' }))
+    expect(screen.getByLabelText('위치정보요약DB 월 전체분 ZIP')).toBeVisible()
+    expect(apiMocks.startDataPipeline).toHaveBeenCalledExactlyOnceWith('COMPLEX_COLLECTION')
   })
 
-  it('단지 정제 결과에서 저장 데이터 확인과 공고 작업으로 이어진다', async () => {
+  it('단지 정제 결과는 다른 메뉴로 안내하지 않고 해당 단계에 남긴다', async () => {
     apiMocks.startDataPipeline.mockResolvedValue(execution('COMPLEX_REFINEMENT', 'COMPLETED_WARNINGS'))
     render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
     await act(async () => {})
-    fireEvent.click(screen.getByRole('button', { name: '단지 정제' }))
-    expect(await screen.findByRole('link', { name: '단지 저장 결과 확인' })).toHaveAttribute('href', '/admin/complexes')
-    expect(screen.getByRole('link', { name: '다음: 공고 갱신' })).toHaveAttribute('href', '/admin/ingest/announcements')
-    expect(screen.getByText(/기존 공고의 단지 연결을 다시 시도/)).toBeVisible()
+    fireEvent.click(screen.getByRole('tab', { name: '3 정제·저장' }))
+    fireEvent.click(screen.getByRole('button', { name: '단지 정제·저장 실행' }))
+    await screen.findByText('일부 실패')
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('일부 실패')
+    expect(screen.queryByRole('link', { name: '단지 저장 결과 확인' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: '2 좌표 적재' }))
+    expect(screen.getByLabelText('위치정보요약DB 월 전체분 ZIP')).toBeVisible()
   })
 
   it('통합 실행 재접속은 최신 진행을 복원하고 기존 실행 ID로 중지한다', async () => {

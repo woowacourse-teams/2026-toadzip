@@ -5,10 +5,11 @@ const summary = {
   id: 7, name: '두꺼비 단지', subtitle: '서울', provider: 'LH', rental: 'HAPPY_HOUSING',
   deleted: false, modified: false, reviewRequired: true, updatedAt: null,
 }
-const housingType = { id: 1, name: '36A', exclusiveArea: 36.5, householdCount: null }
+const housingType = { id: 1, name: '36A', exclusiveArea: 36.5, householdCount: null, deleted: false }
 const supplyRow = {
   id: 9, housingComplexId: null, housingComplexName: null, housingTypeId: null,
-  modified: false, data: { sourceComplexName: '미연결 단지', totalSupplyHouseholdCount: 0 },
+  modified: false, sourceComplexName: '미연결 단지', sourceHousingTypeName: '아파트',
+  data: { announcementHousingTypeName: null, totalSupplyHouseholdCount: 0 },
 }
 
 function detail() {

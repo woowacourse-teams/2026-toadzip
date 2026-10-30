@@ -3,13 +3,65 @@ import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getPipelineHistory, type DataPipelineExecution } from './api'
 import { PipelineHistory } from './PipelineHistory'
+import { getFailureReviews } from './failureReviewApi'
 
 vi.mock('./api', () => ({ getPipelineHistory: vi.fn() }))
+vi.mock('./failureReviewApi', () => ({ getFailureReviews: vi.fn().mockResolvedValue({ items: [], page: 0, totalElements: 0, totalPages: 0, hasNext: false }) }))
 const getHistory = vi.mocked(getPipelineHistory)
 
-beforeEach(() => getHistory.mockReset())
+beforeEach(() => { getHistory.mockReset(); vi.mocked(getFailureReviews).mockClear() })
 
 describe('데이터 실행 이력', () => {
+  it('단지 이력은 아이콘으로 페이지 이동·새로고침·상세 닫기를 제공한다', async () => {
+    const first = Array.from({ length: 20 }, (_, index) => execution({ executionId: `run-${index}` }))
+    getHistory.mockResolvedValueOnce(first).mockResolvedValueOnce([execution()]).mockResolvedValueOnce(first).mockResolvedValueOnce(first)
+    render(<MemoryRouter><PipelineHistory domain="complex" compact readOnlyComplex /></MemoryRouter>)
+    const trigger = (await screen.findAllByRole('button', { name: /상세 (펼치기|접기)/ }))[0]
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(trigger)
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('region', { name: '선택한 실행 상세' }).id).toBe(trigger.getAttribute('aria-controls'))
+    expect(screen.getByRole('heading', { name: '선택한 실행 상세' })).toHaveFocus()
+    fireEvent.click(trigger)
+    expect(screen.queryByRole('region', { name: '선택한 실행 상세' })).not.toBeInTheDocument()
+    fireEvent.click(trigger)
+    const close = screen.getByRole('button', { name: '닫기' })
+    expect(close).toHaveTextContent(/^$/)
+    fireEvent.click(close)
+    expect(trigger).toHaveFocus()
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('region', { name: '선택한 실행 상세' })).not.toBeInTheDocument()
+    for (const label of ['새로고침', '이전', '다음']) {
+      const button = screen.getByRole('button', { name: label })
+      expect(button).toHaveTextContent(/^$/)
+      expect(button.querySelector('svg')).not.toBeNull()
+    }
+    expect(screen.getByRole('button', { name: '이전' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: '다음' }))
+    await screen.findByRole('button', { name: /상세 (펼치기|접기)/ })
+    expect(screen.getByText('2 페이지')).toBeVisible()
+    expect(screen.getByRole('button', { name: '다음' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: '이전' }))
+    await screen.findAllByRole('button', { name: /상세 (펼치기|접기)/ })
+    fireEvent.click(screen.getByRole('button', { name: '새로고침' }))
+    await screen.findAllByRole('button', { name: /상세 (펼치기|접기)/ })
+    expect(getHistory.mock.calls).toEqual([[0, 'complex'], [1, 'complex'], [0, 'complex'], [0, 'complex']])
+  })
+  it('단지 이력 상세는 저장된 단계별 결과만 표시하고 당시 상태가 아닌 오류 조회는 제공하지 않는다', async () => {
+    getHistory.mockResolvedValue([execution({ type: 'COMPLEX_REFINEMENT', completedStepResults: [
+      { step: 'MAP_MYHOME_COMPLEXES', stepName: '마이홈 단지 정제', report: { createdComplexCount: 4, updatedComplexCount: 7, failedSourceCount: 2 } },
+    ] })])
+    render(<MemoryRouter><PipelineHistory domain="complex" compact readOnlyComplex /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /상세 (펼치기|접기)/ }))
+    const detail = screen.getByRole('region', { name: '선택한 실행 상세' })
+    expect(within(detail).getByText('신규 단지').nextSibling).toHaveTextContent('4')
+    expect(within(detail).getByText('갱신 단지').nextSibling).toHaveTextContent('7')
+    expect(within(detail).getByText('실패한 원천').nextSibling).toHaveTextContent('2')
+    expect(screen.queryByRole('button', { name: '결과 오류 조회' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: '오류 종류' })).not.toBeInTheDocument()
+    expect(getFailureReviews).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /실행 중지|정제 실행|수정|보정/ })).not.toBeInTheDocument()
+  })
   it('v2 이력 상세에도 같은 단계 표시를 쓰며 진행 중 이력에서 중지하지 않는다', async () => {
     getHistory.mockResolvedValue([execution({ status: 'RUNNING', currentStepName: '마이홈 단지 수집' })])
     render(<MemoryRouter><PipelineHistory domain="complex" compact /></MemoryRouter>)

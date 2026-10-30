@@ -98,6 +98,19 @@
 
 작업별 Micrometer 지표를 아래 의미로 사용한다. job 태그는 `consent`, `notification`, `registration-notice`이다.
 
+Blue/Green처럼 같은 DB에 연결된 백엔드가 여러 개이면 각 인스턴스에서 개인정보 정리 배치가 실행된다.
+동시 실행 회귀 테스트는 분석 동의·알림 개인정보·가입 고지 정리 각각에 대해 잠긴 행 건너뛰기,
+잠금 해제 후 재시도, 두 인스턴스의 삭제 건수 합계와 유효 자료 보존을 검증한다.
+실제 PostgreSQL의 별도 연결과 독립 서비스 인스턴스를 사용하며, 운영 DB에 연결하지 않는다.
+`backend/`에서 아래 명령으로 실행한다. 실제 운영 데이터 규모의 DB 부하 검증은 별도다.
+
+```shell
+./gradlew test --tests com.toadzip.backend.privacy.repository.PrivacyRetentionConcurrencyIntegrationTest --rerun
+```
+
+미처리 건수·최대 지연은 같은 DB를 관찰한 값이므로 인스턴스별 값을 단순 합산하지 않는다.
+마지막 성공 시각·연속 실패는 인스턴스별로 확인한다.
+
 | 지표 | 의미 |
 | --- | --- |
 | `privacy.retention.last.success.seconds` | 마지막 성공의 UTC epoch seconds |

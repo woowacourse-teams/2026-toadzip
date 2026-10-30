@@ -1,5 +1,6 @@
 package com.toadzip.backend.privacy.repository;
 
+import com.toadzip.backend.announcement.repository.ApplicationScheduleSql;
 import com.toadzip.backend.interest.domain.NotificationInterestOutcome;
 import com.toadzip.backend.interest.domain.NotificationSettingCommand;
 import com.toadzip.backend.interest.domain.NotificationSettingReceipt;
@@ -11,12 +12,15 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -107,9 +111,10 @@ public class PrivacyNotificationRepository {
     }
 
     public MemberNotificationSettingsResponse currentSettings(long userId, long revision, Instant now) {
-        List<MemberNotificationSettingsResponse.Target> targets = jdbcTemplate.query("""
+        String sql = """
                 SELECT subscriptions.target_type, subscriptions.target_id,
                     COALESCE(complex.name, announcement.name) AS target_name,
+                    %s AS recruitment_status, %s,
                     notices.notice_version, notices.requested_at,
                     subscriptions.expires_at AS expires_at
                 FROM notification_subscriptions subscriptions
@@ -118,13 +123,22 @@ public class PrivacyNotificationRepository {
                     ON subscriptions.target_type = 'COMPLEX' AND subscriptions.target_id = complex.id::text
                 LEFT JOIN announcements announcement
                     ON subscriptions.target_type = 'ANNOUNCEMENT' AND subscriptions.target_id = announcement.id::text
-                WHERE subscriptions.user_id = ? AND subscriptions.active = true
-                    AND subscriptions.expires_at > ?
+                %s
+                WHERE subscriptions.user_id = :userId AND subscriptions.active = true
+                    AND subscriptions.expires_at > :now
                 ORDER BY subscriptions.target_type, subscriptions.target_id
-                """, (row, number) -> new MemberNotificationSettingsResponse.Target(
-                NotificationTargetType.valueOf(row.getString("target_type")), row.getString("target_id"),
-                row.getString("target_name"), row.getString("notice_version"), instant(row, "requested_at"),
-                instant(row, "expires_at")), userId, Timestamp.from(now));
+                """.formatted(ApplicationScheduleSql.status("announcement", null),
+                        ApplicationScheduleSql.displayPeriodColumns("announcement"),
+                        ApplicationScheduleSql.displayPeriodJoin("announcement", null));
+        List<MemberNotificationSettingsResponse.Target> targets = JdbcClient.create(jdbcTemplate).sql(sql)
+                .param("userId", userId).param("now", Timestamp.from(now))
+                .param("today", LocalDate.ofInstant(now, ZoneId.of("Asia/Seoul")))
+                .query((row, number) -> new MemberNotificationSettingsResponse.Target(
+                        NotificationTargetType.valueOf(row.getString("target_type")), row.getString("target_id"),
+                        row.getString("target_name"), row.getString("notice_version"), instant(row, "requested_at"),
+                        instant(row, "expires_at"), row.getString("recruitment_status"),
+                        row.getObject("application_start_date", LocalDate.class),
+                        row.getObject("application_end_date", LocalDate.class))).list();
         return new MemberNotificationSettingsResponse(Long.toString(userId), revision, targets);
     }
 

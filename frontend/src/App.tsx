@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { PdfCorrectionPage } from './admin/announcement-pdf/PdfCorrectionPage'
+import { LhSupplyLinkPage } from './admin/ingest/LhSupplyLinkPage'
 import { FailureReviewPage } from './admin/ingest/FailureReviewPage'
 import { IngestPage } from './admin/ingest/IngestPage'
 import { SourceDataPage } from './admin/ingest/SourceDataPage'
@@ -10,6 +12,7 @@ import { AdminLayout } from './admin/auth/AdminLayout'
 import { LoginPage } from './admin/auth/LoginPage'
 import { RequireAdmin } from './admin/auth/RequireAdmin'
 import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHousingExplorer.tsx'
+import { rememberExplorerPath } from './user/auth/loginReturn'
 import { BrandLink } from './BrandLink'
 import { NotificationInterestSessionControl } from './public-housing/interest/NotificationInterest'
 import { NotificationPage } from './public-housing/interest/NotificationPage'
@@ -20,16 +23,15 @@ import { FeedbackPage } from './feedback/FeedbackPage'
 import { NotificationDeliveriesPage } from './admin/notifications/NotificationDeliveriesPage'
 import { OperationsHome } from './admin/operations/OperationsHome'
 import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
-import { PrivacyBoundary, PrivacyMenu, PrivacyPolicyPage, PrivacySettingsPage } from './privacy/Privacy'
+import { PrivacyBoundary, PrivacyPolicyPage, PrivacySettingsPage } from './privacy/Privacy'
 import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
 import { PublicNotificationLayout } from './notifications/PublicNotificationLayout'
 import { LandingPage } from './landing/LandingPage'
-import { ComplexCoveragePage } from './admin/documents/ComplexCoveragePage'
-import { QualityQueuePage } from './admin/quality/QualityQueuePage'
 import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { useMobileViewport } from './public-housing/components/useMobileViewport'
 import { clearLoginReturn, loginReturnForBack, safeLoginReturn } from './user/auth/loginReturn'
 import { ExplorerReturnContext } from './public-housing/navigation/ExplorerReturnContext'
+import { MobileInstallProvider } from './install/MobileInstallProvider'
 
 function LandingEntry() {
   const { search, hash } = useLocation()
@@ -46,6 +48,7 @@ function LandingEntry() {
 
 function Home() {
   const location = useLocation()
+  useEffect(() => { rememberExplorerPath(location.pathname + location.search + location.hash) }, [location])
   const navigationType = useNavigationType()
   const [backReturn] = useState(() => navigationType === 'POP'
     ? { key: location.key, url: loginReturnForBack(location.pathname + location.search + location.hash) }
@@ -59,7 +62,7 @@ function Home() {
     <ExplorerReturnContext value={returnUrl}>
       <div className="app-shell">
         <div className="service-rail-brand"><BrandLink /></div>
-        <div className="service-rail-account"><PrivacyMenu /><Link className="service-feedback-link" to="/feedback">의견 보내기</Link><NotificationInterestSessionControl presentation="rail" /></div>
+        <div className="service-rail-account"><Link className="service-feedback-link" to="/feedback">의견 보내기</Link><NotificationInterestSessionControl presentation="rail" /></div>
         <main className="map-main"><DefaultPublicHousingExplorer showWelcome={false} /></main>
       </div>
     </ExplorerReturnContext>
@@ -114,15 +117,16 @@ function AdminRoutes() {
             <Route path="ingest/complexes" element={<IngestPage domain="complex" />} />
             <Route path="ingest-v2" element={<LegacyIngestRedirect />} />
             <Route path="complexes/:id?" element={<ManagementWorkspace resource="complexes" />} />
+            <Route path="announcements/:id/pdf-correction" element={<PdfCorrectionPage />} />
             <Route path="announcements/:id?" element={<ManagementWorkspace resource="announcements" />} />
-            <Route path="complex-coverage" element={<ComplexCoveragePage />} />
-            <Route path="quality" element={<QualityQueuePage />} />
+            <Route path="complex-coverage" element={<Navigate to="/admin/complexes" replace />} />
             <Route path="users" element={<UserListPage />} />
             <Route path="users/:id" element={<UserDetailPage />} />
             <Route path="notification-deliveries" element={<NotificationDeliveriesPage />} />
             <Route path="notification-subscriptions" element={<NotificationManagementPage />} />
             <Route path="feedback" element={<FeedbackListPage />} />
             <Route path="failures" element={<FailureReviewPage />} />
+            <Route path="failures/lh-links/:identifier" element={<LhSupplyLinkPage />} />
             <Route path="sources" element={<SourceDataPage />} />
             <Route path="locations" element={<LocationDataPage />} />
           </Route>
@@ -141,7 +145,7 @@ export default function App() {
     return <Navigate to={{ pathname: '/explore', search, hash }} state={state} replace />
   }
   return (
-    <>
+    <MobileInstallProvider>
     {pathname !== '/' && <PrivacyBoundary />}
     <ProductAnalyticsBoundary />
     <Routes>
@@ -149,7 +153,8 @@ export default function App() {
       <Route element={<PublicNotificationLayout />}>
         <Route path="/explore" element={<Home />} />
         <Route path="/notifications" element={<NotificationPage />} />
-        <Route path="/mypage/notifications" element={<NotificationPage management />} />
+        <Route path="/mypage" element={<Home />} />
+        <Route path="/mypage/:section" element={<Home />} />
       </Route>
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/privacy/:key/:version" element={<PrivacyPolicyPage />} />
@@ -159,6 +164,6 @@ export default function App() {
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
-    </>
+    </MobileInstallProvider>
   )
 }

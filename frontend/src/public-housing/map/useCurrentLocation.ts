@@ -30,7 +30,7 @@ export function useCurrentLocation(
     setState(current => current.kind === 'loading' ? { kind: 'idle' } : current)
   }, [])
 
-  const locate = useCallback(() => {
+  const locate = useCallback((showError = true) => {
     automaticStarted.current = true
     if (pending.current) return
     const revision = ++requestRevision.current
@@ -38,7 +38,7 @@ export function useCurrentLocation(
       if (revision !== requestRevision.current) return
       pending.current = false
       if (reason === 'permission-denied') setPosition(null)
-      setState({ kind: 'error', reason, message })
+      setState(showError ? { kind: 'error', reason, message } : { kind: 'idle' })
     }
     if (!navigator.geolocation || window.isSecureContext === false) {
       fail('unavailable', UNAVAILABLE_MESSAGE)
@@ -74,7 +74,7 @@ export function useCurrentLocation(
     // Defer until the welcome dialog has closed; StrictMode's discarded effect
     // must not trigger a second browser permission request.
     queueMicrotask(() => {
-      if (!cancelled && !automaticStarted.current) locate()
+      if (!cancelled && !automaticStarted.current) locate(false)
     })
     return () => { cancelled = true }
   }, [autoEnabled, locate])

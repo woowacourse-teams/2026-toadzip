@@ -139,7 +139,7 @@ it('리뷰 회귀: OAuth 성공 후 이미 열린 지도에도 저장한 위치�
   rememberLoginReturn('/explore?boundaryRegionCode=11440&mapLat=37.58&mapLng=126.88&mapZoom=15', true)
   vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.endsWith('/notification-subscriptions/me') ? { userId: '7', settingsRevision: 0, targets: [] } : { id: 7 } })))
   render(<MemoryRouter initialEntries={['/explore']}><App /><LocationDisplay /></MemoryRouter>)
-  await screen.findByRole('button', { name: '마이' })
+  await screen.findByRole('link', { name: '마이페이지' })
   await waitFor(expectSavedCamera)
   expect(screen.getByLabelText('현재 주소')).toHaveTextContent('boundaryRegionCode=11440')
 })

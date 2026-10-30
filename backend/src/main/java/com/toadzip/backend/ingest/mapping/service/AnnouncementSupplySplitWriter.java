@@ -29,7 +29,7 @@ class AnnouncementSupplySplitWriter {
 
     void apply(Announcement announcement, SplitPlan plan) {
         var data = plan.source();
-        String origin = data.source().getSourceKey();
+        String origin = SupplyRowGroupOrigins.key(data);
         var group = groups.findBySourceRowIdentifier(origin)
                 .orElseGet(() -> SupplyRowGroup.create(announcement, origin));
         if (!group.getAnnouncement().getId().equals(announcement.getId())) {
@@ -45,18 +45,22 @@ class AnnouncementSupplySplitWriter {
                 || !requestedIds.equals(members.stream().map(SupplyRow::getId).collect(Collectors.toSet()))) {
             throw new AdminDataConflictException("기존 보정 공급행을 누락하거나 다른 행을 사용할 수 없습니다. 다시 확인해 주세요.");
         }
-        var replaced = MyHomeAnnouncementSupplyRowGroups.byMyHomeSource(
-                announcement.getSourceAnnouncementIdentifier(), stored).getOrDefault(origin, List.of());
+        // LH 공급정보로 펼친 원천은 나누는 그 행만 대체한다. 마이홈 원천 전체를 대체하면 같은 원천의 다른 LH 행이 사라진다.
+        var replaced = plan.expanded()
+                ? stored.stream().filter(row -> row.getSupplyGroup() == null
+                        && row.getSourceSupplyRowIdentifier().equals(origin)).toList()
+                : MyHomeAnnouncementSupplyRowGroups.byMyHomeSource(
+                        announcement.getSourceAnnouncementIdentifier(), stored).getOrDefault(origin, List.of());
         if (replaced.stream().anyMatch(SupplyRow::isAdminModified)
                 || !targets.findAllBySupplyRowIdIn(replaced.stream().map(SupplyRow::getId).toList()).isEmpty()) {
             throw new AdminDataConflictException("기존 공급행에 보정값 또는 대상 조건이 있습니다. 조건의 이동을 먼저 확인해 주세요.");
         }
-        group.confirm(data.source().getSumSuplyCo(), fingerprints.splitSource(data.source()),
+        group.confirm(SupplyRowGroupOrigins.householdCount(data, plan.expanded()), fingerprints.splitSource(data, plan.expanded()),
                 plan.sourceUrl().strip(), plan.reason().strip(), plan.actor());
         groups.saveAndFlush(group);
         int displayOrder = 1;
         for (SplitTarget target : plan.targets()) {
-            applyTarget(announcement, group, data, members, target, displayOrder++);
+            applyTarget(announcement, group, data, members, target, displayOrder++, plan.expanded());
         }
         rows.deleteAll(replaced);
         decisions.findByRowIdentifier(origin).ifPresent(decisions::delete);
@@ -65,34 +69,40 @@ class AnnouncementSupplySplitWriter {
     }
 
     private void applyTarget(Announcement announcement, SupplyRowGroup group, MyHomeSupplyRowMappingData data,
-            List<SupplyRow> members, SplitTarget target, int displayOrder) {
+            List<SupplyRow> members, SplitTarget target, int displayOrder, boolean expanded) {
         var match = target.match();
         var row = members.stream().filter(value -> value.getId().equals(target.id())).findFirst().orElse(null);
         if (row == null) {
             row = SupplyRow.create(announcement, match.complex(), match.housingType(), "ADMIN:" + UUID.randomUUID(),
-                    displayOrder, data.sourceComplexName(), target.name().strip(), data.pnu(), null,
+                    displayOrder, data.sourceComplexName(), data.sourceHousingTypeName(), data.pnu(), null,
                     data.supplyCategory(), null, null);
         }
         if (row.getHousingType() != null && !row.getHousingType().getId().equals(match.housingType().getId())
                 && !targets.findAllBySupplyRow(row).isEmpty()) {
             throw new AdminDataConflictException("대상 조건이 있는 공급행의 주택형은 조건과 함께 검토해 주세요.");
         }
-        row.reviseByAdmin(match.complex(), match.housingType(), data.sourceComplexName(), target.name().strip(),
+        // 나눈 행의 이름은 원천 이름이 아니라 이 공고에서 보여 줄 표기다.
+        row.reviseByAdmin(match.complex(), match.housingType(), target.name(),
                 data.pnu(), row.getExpectedMoveInMonth(), data.supplyCategory(), null);
         row.updateDisplayOrder(displayOrder);
         row.protectInGroup(group, target.targetFingerprint());
+        if (expanded) {
+            // LH 보강이 이 행들을 나눈 LH 행의 묶음으로 알아보고 건너뛰도록 원본 LH 행을 기록한다.
+            row.resolveFromLhSupply(data.resolvedLhSourceIdentifier(), null, null);
+        }
         rows.save(row);
     }
 
-    boolean reviewRequired(SupplyRowGroup group, MyHomeAnnouncementSource source, List<SupplyRow> members) {
+    boolean reviewRequired(SupplyRowGroup group, MyHomeSupplyRowMappingData source, boolean expanded, List<SupplyRow> members) {
         return members.size() < 2 || group.isReviewRequired()
-                || !fingerprints.splitSource(source).equals(group.getSourceFingerprint())
+                || !fingerprints.splitSource(source, expanded).equals(group.getSourceFingerprint())
                 || members.stream().anyMatch(row -> row.getHousingType() == null || row.getHousingComplex() == null
                 || row.getHousingComplex().isAdminDeleted()
                 || !fingerprints.target(row.getHousingType()).equals(row.getConfirmedTargetFingerprint()));
     }
 
     record SplitTarget(Long id, String name, MyHomeSupplyMatchResult match, String targetFingerprint) { }
+    /** expanded: 원천이 LH 공급정보로 여러 행이 되어 이 행만 나누는 경우. */
     record SplitPlan(MyHomeSupplyRowMappingData source, List<SplitTarget> targets,
-            String sourceUrl, String reason, String actor) { }
+            String sourceUrl, String reason, String actor, boolean expanded) { }
 }

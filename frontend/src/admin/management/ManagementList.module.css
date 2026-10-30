@@ -1,41 +1,37 @@
 .page { min-width: 0; container-type: inline-size; }
-.verification { margin-top: var(--ds-space-2); }
 :global(.admin-content):has(> .page) { max-width: none; }
 .filters {
   display: grid;
-  grid-template-columns: minmax(180px, 2fr) repeat(2, minmax(110px, 1fr)) auto;
+  grid-template-columns: minmax(180px, 2fr) repeat(2, minmax(110px, 1fr)) auto auto;
   align-items: end;
   gap: 12px;
-  padding: 16px 20px;
-  margin-bottom: 20px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
   background: var(--ds-color-surface);
   border: 1px solid var(--ds-color-divider);
   border-radius: 12px;
 }
-.filters > label { min-width: 0; color: var(--ds-color-label); font-size: 12px; }
+.filters > label { min-width: 0; color: var(--ds-color-label); font-size: var(--admin-text-meta, 13px); }
 .filters input::placeholder { color: var(--ds-color-muted); font-weight: 400; }
 .filters .review { flex-direction: row; align-items: center; min-height: 36px; font-weight: 400; }
 .review input { flex: none; accent-color: var(--ds-color-action); }
-.actions { display: flex; justify-content: flex-end; gap: 8px; }
-.actions button { font-size: 13px; }
-.moreFilters { grid-column: 1 / -1; margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--ds-color-divider); font-size: 13px; }
-.moreFilters summary { display: flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; color: var(--ds-color-label); font-weight: 600; list-style: none; }
-.moreFilters summary::-webkit-details-marker { display: none; }
-.filterChevron { margin-left: auto; }
-.moreFilters[open] .filterChevron { transform: rotate(180deg); }
-.moreFilters[open] summary { color: var(--ds-color-action); }
-.moreFilters summary:hover { color: var(--ds-color-action); }
-.moreFilters > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px 0 4px; }
-.moreFilters:has(select[name="verification"]) > div { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.moreFilters .review { grid-column: 1 / -1; }
-@container (max-width: 860px) {
+.actions { order: 2; display: flex; justify-content: flex-end; gap: 8px; }
+
+.moreToggle { order: 1; display: inline-flex; align-items: center; gap: 6px; }
+.moreToggle[aria-expanded='true'] { color: var(--ds-color-action); }
+.moreToggle[aria-expanded='true'] .filterChevron { transform: rotate(180deg); }
+.morePanel { order: 3; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding-top: 12px; border-top: 1px solid var(--ds-color-divider); }
+.morePanel[hidden] { display: none; }
+.morePanel:has(select[name="verification"]) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.morePanel .review { grid-column: 1 / -1; }
+@container (max-width: 640px) {
   .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .search { grid-column: 1 / -1; }
   .actions { grid-column: 1 / -1; }
-  .moreFilters, .moreFilters[open] summary { grid-column: 1 / -1; }
+  .moreToggle { justify-self: start; }
 }
 @container (max-width: 560px) {
-  .moreFilters:has(select[name="verification"]) > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .morePanel:has(select[name="verification"]) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .filters { padding: 14px; }
   .filters .review, .actions { grid-column: 1 / -1; }
 }
@@ -46,7 +42,7 @@
 .fixedHeight { min-height: 260px; }
 .table { width: 100%; min-width: 900px; border-collapse: separate; border-spacing: 0; table-layout: fixed; text-align: left; font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; color: var(--ds-color-text); }
 .nameColumn { width: var(--name-width); }
-.table th, .table td { box-sizing: border-box; padding: 15px 16px; border-bottom: 1px solid var(--ds-color-divider); line-height: var(--ds-line-height-body); vertical-align: middle; }
+.table th, .table td { box-sizing: border-box; padding: 12px 16px; border-bottom: 1px solid var(--ds-color-divider); line-height: var(--ds-line-height-body); vertical-align: middle; }
 .table thead th { position: sticky; top: 0; z-index: 2; background: var(--ds-color-surface-subtle); color: var(--ds-color-label); font-size: 12px; font-weight: 500; }
 .table th:first-child { position: sticky; left: 0; z-index: 1; border-right: 1px solid var(--ds-color-divider); }
 .table thead th:first-child { z-index: 3; }
@@ -57,8 +53,6 @@
 .table tbody a:hover { color: var(--ds-color-action); text-decoration: underline; text-underline-offset: 3px; }
 .table .number { text-align: right; }
 .table tbody tr:last-child > * { border-bottom: 0; }
-.table tbody tr:hover > * { background: var(--ds-color-action-soft); }
-.table tbody tr[data-selected] > * { background: var(--ds-color-action-soft); }
 .table tbody tr[data-selected] > th { box-shadow: inset 3px 0 var(--ds-color-action); }
 .scroll:focus-visible, .table a:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: -2px; }
 
@@ -85,3 +79,19 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* 일괄 처리 줄과 선택 칸 */
+.bulkBar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; color: var(--ds-color-muted-base); font-size: var(--admin-text-meta, 13px); }
+.bulkBar[data-active] > span:first-child { color: var(--ds-color-action); font-weight: 700; }
+.checkColumn { width: 44px; }
+.table .check { width: 44px; padding-inline: 12px; text-align: center; }
+.table .check input { width: 17px; height: 17px; margin: 0; accent-color: var(--ds-color-action); }
+/* 선택 칸이 있으면 선택 칸과 이름 칸을 함께 왼쪽에 고정한다. */
+.table:has(.check) .check { position: sticky; left: 0; z-index: 1; background: var(--ds-color-surface); border-right: 0; }
+.table:has(.check) thead .check { z-index: 3; background: var(--ds-color-surface-subtle); }
+.table:has(.check) th[scope=row], .table:has(.check) thead th:nth-child(2) { position: sticky; left: 44px; z-index: 1; border-right: 1px solid var(--ds-color-divider); }
+.table:has(.check) thead th:nth-child(2) { z-index: 3; }
+.table:has(.check) tbody th[scope=row] { background: var(--ds-color-surface); }
+
+/* 고정 열의 흰 배경보다 뒤에 두어 강조할 때 체크·제목 칸까지 한 줄로 칠한다. */
+.scroll .table tbody tr:is(:hover, [data-selected], [data-checked]) > * { background: var(--ds-color-action-soft); }

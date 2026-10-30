@@ -4,6 +4,8 @@ export const fieldLabels = new Map<string, string>([
   ...complexSections.flatMap(section => section.fields),
   ...announcementSections.flatMap(section => section.fields),
   ...supplyFields,
+  // 이전 이력에는 관리자가 원천 이름 칸을 직접 고친 값이 남아 있다.
+  { name: 'sourceComplexName', label: '원천 단지명' }, { name: 'sourceHousingTypeName', label: '원천 주택형명' },
 ].map(field => [field.name, field.label]))
 
 const evidenceLabels: Record<string, string> = {

@@ -19,7 +19,6 @@ import com.toadzip.backend.announcement.dto.request.AdminSupplyRowUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminSupplyTargetUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.VerifiedApplicationSchedulesRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest.ReceptionPlaceUpdateRequest;
-import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest.SupplyRowRequest;
 import com.toadzip.backend.announcement.dto.response.AdminAnnouncementDetail;
 import com.toadzip.backend.announcement.dto.response.AnnouncementAttachmentResponse;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
@@ -33,6 +32,7 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.List;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -77,7 +77,9 @@ public class AdminAnnouncementManagementService {
 
     public AdminAnnouncementDetail detail(long id) {
         var announcement = find(id);
-        var supplies = rows.findAllByAnnouncement(announcement);
+        // 상세는 비교·보정 토큰의 재료다. DB가 돌려주는 순서는 실행 계획과 저장 위치에 따라 바뀌므로 화면 순서로 고정한다.
+        var supplies = rows.findAllByAnnouncement(announcement).stream()
+                .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId)).toList();
         List<SupplyTarget> conditions = List.of();
         if (!supplies.isEmpty()) {
             conditions = targets.findAllBySupplyRowIdIn(supplies.stream().map(SupplyRow::getId).toList());
@@ -179,7 +181,7 @@ public class AdminAnnouncementManagementService {
             }
         }
         var values = request.supplyRow();
-        row.reviseByAdmin(complex, type, values.sourceComplexName(), values.sourceHousingTypeName(),
+        row.reviseByAdmin(complex, type, values.announcementHousingTypeName(),
                 values.supplyPnu(), values.expectedMoveInMonth(), values.supplyCategory(),
                 values.totalSupplyHouseholdCount());
         validateCounts(announcement);
@@ -280,7 +282,8 @@ public class AdminAnnouncementManagementService {
                 new AdminDataSummary.AnnouncementSummary(announcement.getSourceAnnouncementIdentifier(),
                         announcement.getOriginalUrl(), announcement.getRecruitmentType().name(),
                         announcement.getPostedDate(), announcement.getApplicationStartDate(),
-                        announcement.getApplicationEndDate(), announcement.getWinnerAnnouncementDate()));
+                        announcement.getApplicationEndDate(), announcement.getWinnerAnnouncementDate(),
+                        announcement.getStatus().name()));
     }
 
     private AdminAnnouncementUpdateRequest data(Announcement announcement) {
@@ -310,7 +313,8 @@ public class AdminAnnouncementManagementService {
                     row.getSupplyGroup().getId(), row.getSupplyGroup().getSharedHouseholdCount());
         }
         return new AdminAnnouncementDetail.SupplyRowItem(row.getId(), complexId, complexName, typeId,
-                row.isAdminModified(), new SupplyRowRequest(row.getSourceComplexName(), row.getSourceHousingTypeName(),
+                row.isAdminModified(), row.getSourceComplexName(), row.getSourceHousingTypeName(),
+                new AdminSupplyRowUpdateRequest.SupplyData(row.displayHousingTypeName(),
                         row.getSupplyPnu(), row.getExpectedMoveInMonth(), row.getSupplyCategory(),
                         row.getTotalSupplyHouseholdCount()), shared);
     }

@@ -99,7 +99,11 @@ public class MyHomeComplexSourceMapper {
 
     public boolean shouldSkip(MyHomeComplexSource source) {
         String supplyType = parser.normalizedText(source.getSuplyTyNm());
-        return "매입임대".equals(supplyType);
+        if ("매입임대".equals(supplyType) || "매입임대".equals(parser.normalizedText(source.getStyleNm()))) {
+            return true;
+        }
+        // 다가구주택 장기전세는 월임대료가 있는 매입형이다. 아파트 장기전세는 건설임대로 유지한다.
+        return "장기전세".equals(supplyType) && "다가구주택".equals(parser.normalizedText(source.getHouseTyNm()));
     }
 
     private MyHomeHousingTypeMappingData housingTypeOf(MyHomeComplexSource source) {
@@ -145,6 +149,31 @@ public class MyHomeComplexSourceMapper {
             List<MyHomeHousingTypeMappingData> housingTypes
     ) {
 
+        SplitComplexKey splitKey() {
+            return new SplitComplexKey(name, supplyType, provider, address.pnu(), address.provinceCode(),
+                    address.cityCountyDistrictCode(), new NormalizedRoadAddress(address.sourceRoadAddress()).value(),
+                    completionDate, heatingType, housingType, corridorType, elevatorInstalled, parkingSpaceCount);
+        }
+
+        static MyHomeComplexMappingData combine(List<MyHomeComplexMappingData> members) {
+            MyHomeComplexMappingData first = members.getFirst();
+            return new MyHomeComplexMappingData(
+                    first.sourceComplexIdentifier,
+                    first.name,
+                    first.supplyType,
+                    first.address,
+                    members.stream().mapToInt(MyHomeComplexMappingData::totalHouseholdCount).sum(),
+                    first.provider,
+                    first.completionDate,
+                    first.heatingType,
+                    first.housingType,
+                    first.corridorType,
+                    first.elevatorInstalled,
+                    first.parkingSpaceCount,
+                    members.stream().flatMap(member -> member.housingTypes.stream()).toList()
+            );
+        }
+
         boolean matchesVerifiedProduct(HousingComplex product) {
             return name.equals(product.getName()) && provider.equals(product.getProvider())
                     && supplyType.equals(product.getSupplyType())
@@ -158,8 +187,25 @@ public class MyHomeComplexSourceMapper {
                     && Objects.equals(housingType, product.getHousingType())
                     && Objects.equals(corridorType, product.getCorridorType())
                     && Objects.equals(elevatorInstalled, product.getElevatorInstalled())
-                    && parkingSpaceCount == product.getParkingSpaceCount();
+                    && Objects.equals(parkingSpaceCount, product.getParkingSpaceCount());
         }
+    }
+
+    record SplitComplexKey(
+            String name,
+            String supplyType,
+            String provider,
+            String pnu,
+            String provinceCode,
+            String cityCountyDistrictCode,
+            String roadAddress,
+            LocalDate completionDate,
+            String heatingType,
+            String housingType,
+            String corridorType,
+            Boolean elevatorInstalled,
+            int parkingSpaceCount
+    ) {
     }
 
     record MyHomeAddressMappingData(

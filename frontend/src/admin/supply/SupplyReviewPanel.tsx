@@ -76,8 +76,8 @@ export function SupplyReviewPanel({ id, workspace, sourceUrl, disabled, onBusyCh
       return [...current.filter(item => item !== scope), ...(selected.length ? [{ category, sourceKey, fields: selected }] : [])]
     })
   }
-  return <details className={`${styles.row} ${styles.review}`} open={!!evidence || undefined}><summary>저장된 공급정보 검토·보류</summary>
-    <p>저장 결과와 공식 자료를 확인한 항목만 기록하세요. 같은 행·조건의 새 기록은 선택한 범위의 최신 판단이 되고, 이전 기록은 아래 이력에 남습니다.</p>
+  return <details className={`${styles.row} ${styles.review}`} open={!!evidence || undefined}><summary>저장된 공급정보 검토·보류</summary><div className={styles.reviewBody}>
+    <p className={styles.hint}>저장 결과와 공식 자료를 확인한 항목만 기록하세요. 같은 행·조건의 새 기록은 선택한 범위의 최신 판단이 되고, 이전 기록은 아래 이력에 남습니다.</p>
     {evidence && baseline.note === evidence.note && <p className={styles.hint}>방금 적용한 보정의 근거를 채웠습니다. 실제로 확인한 행·항목만 골라 기록하세요.</p>}
     {disabled && <p>먼저 작성한 보정을 적용하고 저장 결과를 확인하세요.</p>}
     {error && <p role="alert">{error} <button type="button" onClick={() => setAttempt(value => value + 1)}>기록 다시 조회</button></p>}
@@ -115,5 +115,5 @@ export function SupplyReviewPanel({ id, workspace, sourceUrl, disabled, onBusyCh
         {record.status === 'STALE' && <><StoredDataTable data={record.currentValues && Object.fromEntries(Object.keys(record.checkedValues).map(field => [reviewFieldLabels[field] ?? field, record.currentValues?.[field]]))} label="현재 선택 범위 값" />
           <StoredDataTable data={record.evidence} label="확인한 원천 항목" /><StoredDataTable data={record.currentEvidence} label="현재 원천 항목" /></>}
       </details>)}<p>최근 100개 기록을 표시합니다. 보정 이력은 ‘출처·수정 이력’에서도 확인할 수 있습니다.</p></section>}
-  </details>
+  </div></details>
 }

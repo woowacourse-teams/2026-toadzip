@@ -36,27 +36,116 @@
 - 백엔드 보고서는 `backend-test-reports-ingest`와 `backend-test-reports-application` 아티팩트에 각각 저장된다.
   로컬 분할 실행 방법은 [백엔드 테스트 전략](../development/backend/testing.md#실행-순서)을 따른다.
 
+## Blue/Green 서버 준비
+
+Runner에는 Git·Bash·`flock`·Python 3·Docker Compose가 필요하다. 서버별 `.env`는 기존대로 보존하며
+개발은 `SPRING_PROFILES_ACTIVE=dev`, 운영은 `prod`를 사용한다. 해석된 Compose 환경값을 로그에 출력하지 않는다.
+
+| 저장소 변수 | 용도 |
+| --- | --- |
+| `DEV_DEPLOY_PATH` / `PROD_DEPLOY_PATH` | 기존 서버 체크아웃의 절대 경로 |
+| `DEV_BLUEGREEN_URL` / `PROD_BLUEGREEN_URL` | 실제 Edge/Caddy를 거치는 공개 HTTPS 주소. 미설정이면 배포 중단 |
+| `DEV_BLUEGREEN_RUNTIME` / `PROD_BLUEGREEN_RUNTIME` | 선택 설정. 기본은 체크아웃의 `infra/runtime/bluegreen` |
+| `DEV_BLUEGREEN_COMPOSE_OVERRIDES` / `PROD_BLUEGREEN_COMPOSE_OVERRIDES` | 선택 설정. 기본 Caddy·인증파일 설정 외에 추가할 Compose 파일 경로를 한 줄에 하나씩 지정 |
+
+`python3 -B scripts/prepare-bluegreen.py`로 `infra/runtime/bluegreen/`을 준비하고
+설정 마운트·정적 파일 보관 경로·실제 진입점 전환을 먼저 완료한다.
+배포 상태는 Git에서 제외하며, 설정 원본은 `infra/nginx/edge/default.conf`로 관리한다.
+[Linux 배포 도구](../../scripts/README.md#linux-프론트백엔드-bluegreen-도구)의 초기 준비를 따른다.
+워크플로는 최초 컨테이너·TLS·Caddy·모니터링·DB를 생성하거나 공개 포트를 변경하지 않는다.
+기존 프론트 컨테이너가 진입점인 서버에서는 [Caddy 설정과 포트 전환](caddy-ingress.md)을 먼저 적용한다.
+
+기존 `.env`의 `COMPOSE_FILE`은 이 명령에서 자동 적용하지 않는다. Actions는 `compose.yaml`·`compose.bluegreen.yaml`에
+`compose.caddy-server.yaml`·`compose.notification-credentials.yaml`을 명시적으로 추가한다.
+서버에는 [Firebase 인증파일 경로와 읽기 권한](notifications.md#설정과-출시-순서)이 준비되어 있어야 한다.
+위 저장소 변수는 그 외 서버별 추가 설정에 사용하며, 기본 두 파일은 중복 등록하지 않아도 된다.
+이전 경로를 `*_BLUEGREEN_RUNTIME`이나 서버 `EDGE_NGINX_*`에 지정했다면 새 경로로 함께 변경한다. ADC 등 런타임 설정을 legacy `backend`에만 덧붙이는 overlay는
+두 색상에도 같은 필수 환경·마운트를 전달해야 한다. 누락·환경 프로필 불일치·후보 호스트 포트 공개는 사전 검사에서 거부한다.
+서버 인증정보는 GitHub 저장소 변수에 넣지 않고 기존 서버 파일·자격 관리 방식을 유지한다.
+
 ## 서버에서 실행하는 작업
 
-워크플로는 해당 브랜치로 전환한 뒤 `git pull --ff-only`로 가져오고 다음 명령을 실행한다.
+개발·운영 모두 다음 순서로 실행한다.
+
+1. 공개 HTTPS 주소와 기존 런타임 경로를 확인하고, 수동 배포와 공유하는 `deploy.lock`을 잡는다.
+2. 로컬 변경이 없는지 확인한다. `git fetch` 후 CI 실행의 `GITHUB_SHA`가 대상 브랜치의 이력에 속하는지 확인하고
+   해당 커밋으로 detached checkout한다. 최신 브랜치 커밋으로 대체하지 않는다. 기존 서버 환경 파일·개인 자료는 삭제하지 않는다.
+3. [`release-bluegreen.py`](../../scripts/release-bluegreen.py)가 체크아웃 SHA·깨끗한 작업 트리·환경 프로필·필수 런타임 설정을 확인한다.
+   두 서비스의 현재 경로·응답과 Edge 정적 파일 제공까지 확인한 뒤 빌드한다.
+4. `toadzip-backend:<SHA>`와 `toadzip-frontend:<SHA>`를 순차 빌드한다. 기존 Compose 빌드 인자와 Dockerfile을 사용하고
+   이미지에 `org.opencontainers.image.revision`을 기록한다. 두 이미지의 빌드·라벨 검증이 모두 끝나야 배포한다.
+5. 고정된 이미지 ID로 백엔드 → 프론트 순서로 후보 기동·전환·요청 종료 대기·이전 컨테이너 정지를 실행한다.
+   Git 갱신부터 빌드·두 서비스 전환까지 같은 잠금을 유지한다.
+6. 성공·실패 단계, 완료한 서비스, 빌드 이미지 ID와 런타임 설정의 연결 색상을 Actions 로그·Step Summary 및
+   런타임 `releases/<SHA>-<임의 ID>.json`에 남긴다. 실제 수신 경로가 확인되지 못한 실패에서는 로그·설정 백업도 함께 점검한다.
+
+워크플로가 내부에서 실행하는 명령은 다음과 같다. `--lock-fd 9`는 준비 단계부터 부모 셸이 보유한 잠금이며,
+일반 수동 실행에서는 이 옵션을 생략하면 도구가 같은 잠금을 직접 획득한다.
 
 ```shell
-docker compose up -d --build --wait --wait-timeout 180
+python3 -B scripts/release-bluegreen.py \
+  --revision "$CI_COMMIT" --environment dev \
+  --runtime "$runtime" --url "$BLUEGREEN_URL" --lock-fd 9 \
+  --compose-override compose.caddy-server.yaml \
+  --compose-override compose.notification-credentials.yaml
 ```
 
-운영은 pull 뒤 현재 커밋과 실행의 `GITHUB_SHA`가 같은지도 확인한다. 개발에는 이 검사가 없다.
-추가 push가 겹친 개발 실행은 최초 CI 대상보다 최신 커밋을 가져올 수 있으므로,
-실행의 커밋과 실제 서버 커밋을 구분한다.
+- 환경별 Actions concurrency를 유지하고 진행 중인 배포를 취소하지 않는다. 배포 job 제한은 기존 30분이다.
+- 서버에서 이미지를 빌드하며 GHCR은 사용하지 않는다. 빌드는 서비스별로 순차 수행한다.
+- 기존 `.env`·인증서·볼륨을 유지한다. Git 작업 트리가 수정되었으면 강제 reset·clean 없이 중단한다.
+- 프론트 빌드 실패는 백엔드 전환 전에 중단한다. 백엔드 배포 실패는 프론트 배포를 실행하지 않는다.
+- 백엔드 전환 후 프론트 배포가 실패하면 **백엔드는 새 버전으로 남을 수 있다.** 서비스별 경로 복구와
+  전체 릴리스의 원복을 구분한다. 보고된 실제 상태와 백업·DB 호환성을 확인한 뒤 필요한 서비스만 원복한다.
+- 요청 경로 복구는 이미 성공한 Flyway 마이그레이션을 취소하지 않는다. 아래 특별 배포 절차는 별도로 적용한다.
 
-- 환경별 배포 동시 실행은 concurrency로 제한하며 진행 중인 배포를 취소하지 않는다.
-- 배포 job 제한은 30분이다. 이미지 빌드는 서버에서 수행하며 GHCR을 사용하지 않는다.
-- `--wait`는 healthcheck가 있으면 healthy, 없으면 실행 상태를 기다린다.
-  180초는 준비 대기 제한이며 이미지 빌드 시간과 별개다.
-- 서버의 `.env`, HTTPS overlay·인증서와 기존 볼륨은 유지한다.
-- healthcheck 실패는 자동 롤백이나 이미 성공한 DB 마이그레이션의 취소를 뜻하지 않는다.
+CI에서 실행하는 빠른 배포 검사는 `tests/deployment/test_bluegreen.py`와 `test_release_bluegreen.py`다.
+실제 Linux 빌드·전환을 시험하는 격리 검증은 [검증 안내](../../tests/README.md#linux-릴리스-통합-검증)를 따른다.
+코드 변경·로컬 시험 성공은 실제 Actions 실행 또는 개발·운영 서버 적용 완료를 뜻하지 않는다.
 
-처음 서버를 준비할 때의 환경값·기동은 [서버 설정](../setup/servers.md),
-인증서 설정은 [HTTPS 운영](https.md)을 따른다.
+## 직전 배포 롤백
+
+[Rollback Blue/Green](../../.github/workflows/rollback.yml)은 수동 실행 전용이다.
+[GitHub 수동 실행 조건](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)에 따라
+워크플로 파일이 저장소 기본 브랜치에 등록되어 있어야 Actions에서 실행할 수 있다.
+개발은 `develop` 브랜치·`dev`, 운영은 `main` 브랜치·`prod` 조합만 허용한다.
+자동 배포와 같은 Actions concurrency 그룹 및 서버 `deploy.lock`을 사용한다.
+기존 수동 배포 명령은 그대로 사용하며, 아래 롤백은 이미 보관된 컨테이너를 복원하는 별도 명령이다.
+
+1. 직전 성공한 배포의 전체 커밋 SHA를 Actions 로그·Summary 또는 서버 `releases/*.json`에서 확인한다.
+   그 버전의 백엔드가 현재 DB 스키마와 호환되는지 먼저 확인한다. 롤백은 DB 변경을 되돌리지 않는다.
+2. Actions에서 **Rollback Blue/Green → Run workflow**를 선택하고 환경에 맞는 브랜치와
+   `environment`, `target_revision`을 지정한다. `target_revision`은 40자리 전체 SHA다.
+3. 워크플로는 양쪽 서비스의 반대 색상에 보관된 이미지가 모두 지정 SHA인지 확인하고 healthy를 확인한다.
+   대상이 없거나 다른 커밋이면 트래픽 전환 전에 중단한다. 초기 legacy → Blue 전환 직후에는
+   반대 Green 컨테이너가 없으므로 이 기능으로 legacy 컨테이너를 복구할 수 없다.
+4. 준비된 두 대상의 upstream을 한 설정으로 함께 전환하고 실제 요청 경로·health·공고 조회와 기존 요청 종료를 확인한다.
+   현재 앱이 종료되어도 보관된 대상을 준비해 복구할 수 있다. 이전 이미지를 다시 빌드하거나 컨테이너를 재생성하지 않으며,
+   대상 앱의 Flyway 실행 여부는 해당 버전의 시작 동작을 따른다.
+5. 실행 Summary의 `success`, 두 완료 항목, 전환 전후 커밋·이미지 ID와 시작·완료 UTC 시각·소요 시간을 확인한다.
+   배포 전부터 외부 요청 관찰을 켜 두고 롤백 완료 후까지 응답 실패 여부를 함께 확인한다.
+   실행 링크와 관찰 결과를 이슈·PR에 첨부하면 롤백 검증 기록으로 사용할 수 있다.
+
+같은 커밋이 이미 활성화되어 있으면 중단한다. 같은 버전을 다른 색상으로 재배포하는 시험은
+서로 다른 버전 간 복구 증거가 되지 않는다. 다음 배포가 보관 대상을 재생성하면 그보다 오래된
+버전으로는 이 도구만으로 돌아갈 수 없다.
+
+기록은 Actions 로그·Summary와 서버 `infra/runtime/bluegreen/rollbacks/*.json`에 남긴다.
+시작·완료 시각은 잠금을 획득한 뒤 실제 롤백 도구를 실행한 시간이며 Actions 대기·Git 준비 시간은 제외한다.
+일반 실패·인터럽트에도 실패 단계와 현재 설정 경로를 기록한다. 강제 종료·호스트 장애에서는 완료 기록이 없을 수 있다.
+전환 검증에 실패하면 이전 설정으로 복구를 시도하지만 기존 앱 자체가 장애이면 복구 검증도 실패할 수 있다.
+이전 컨테이너 정리 단계에서 실패하면 전환된 경로를 유지하고 실패로 보고한다.
+실패 시 `completed`·`stage`·`routes`와 백업을 보고 실제 상태를 확인하며 전체 복구 성공으로 해석하지 않는다.
+
+SSH에서 직접 수행해야 할 때는 저장소 루트에서 다음을 실행한다. `--lock-fd`를 생략하면 같은 잠금을 직접 잡는다.
+실행 결과는 서버에 저장되지만 Actions에는 남지 않는다.
+
+```shell
+python3 -B scripts/rollback-bluegreen.py \
+  --target-revision <직전_성공_배포의_40자리_SHA> \
+  --environment dev --url https://dev.bokduckbang.com \
+  --compose-override compose.caddy-server.yaml \
+  --compose-override compose.notification-credentials.yaml
+```
 
 ## DB 전환·계약 변경이 필요한 특별 배포
 
@@ -70,7 +159,7 @@ docker compose up -d --build --wait --wait-timeout 180
 2. 대상 DB·백업·격리 복제본과 완성 릴리스를 준비한다. 기존 DB 도입은
    [Flyway 절차](database/flyway.md), 개인정보 전환은 [개인정보 배포](database/privacy-deployment.md)를 따른다.
 3. 해당 문서의 중지·검사·기동·사후 확인을 승인된 운영자가 수행한다.
-   일반 Compose 일괄 실행으로 특별 배포를 대신하지 않는다.
+   일반 Blue/Green 배포로 특별 배포를 대신하지 않는다.
 4. 스키마·서비스·로그인 등 해당 기능 확인을 마친 뒤 자동 배포를 재개한다.
 
 알림 스키마의 별도 읽기 전용 점검은 [알림 운영](notifications.md)을 따른다.

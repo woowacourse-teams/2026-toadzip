@@ -14,15 +14,21 @@ import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingFailureStore;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingRejectedException;
+import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.SplitComplexKey;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -31,6 +37,11 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 class MyHomeComplexMappingProcessor {
+
+    private static final Comparator<MappedGroup> SPLIT_MEMBER_ORDER = Comparator
+            .comparingInt((MappedGroup member) -> member.data().totalHouseholdCount()).reversed()
+            .thenComparingLong(MappedGroup::hsmpSn)
+            .thenComparing(MappedGroup::identifier);
 
     private final MyHomeComplexSourceReader sourceRepository;
     private final MyHomeComplexLinkRepository linkRepository;
@@ -52,9 +63,32 @@ class MyHomeComplexMappingProcessor {
         MyHomeComplexMappingReport report = MyHomeComplexMappingReport.failedRows(failures.size());
         var executionId = IngestExecutionContext.currentExecutionId().orElse(null);
         try {
+            Map<SplitComplexKey, List<MappedGroup>> splitGroups = new LinkedHashMap<>();
             for (Map.Entry<String, List<MyHomeComplexSource>> group : groups.entrySet()) {
-                report = report.plus(mapGroup(group.getKey(), group.getValue(),
-                        verifiedIdentifiers.contains(group.getKey()), failures, occurredAt));
+                MappedGroup unmapped = new MappedGroup(group.getKey(), group.getValue(), null);
+                if (verifiedIdentifiers.contains(group.getKey())) {
+                    report = report.plus(writeGroup(List.of(unmapped), failures, occurredAt,
+                            () -> writer.writeVerified(group.getKey())));
+                    continue;
+                }
+                try {
+                    MyHomeComplexMappingData data = sourceMapper.map(group.getKey(), group.getValue());
+                    splitGroups.computeIfAbsent(data.splitKey(), ignored -> new ArrayList<>())
+                            .add(new MappedGroup(group.getKey(), group.getValue(), data));
+                }
+                catch (MyHomeComplexMappingRejectedException exception) {
+                    report = report.plus(reject(List.of(unmapped), exception.reason(), exception.getMessage(),
+                            failures, occurredAt));
+                }
+            }
+            Map<String, Long> linkedComplexIds = new HashMap<>();
+            linkRepository.findAll().forEach(link ->
+                    linkedComplexIds.put(link.getSourceComplexIdentifier(), link.getHousingComplex().getId()));
+            Set<Long> sharedComplexIds = complexesLinkedToSeveralSplitGroups(splitGroups, linkedComplexIds);
+            for (List<MappedGroup> members : splitGroups.values()) {
+                boolean shared = members.stream()
+                        .anyMatch(member -> sharedComplexIds.contains(linkedComplexIds.get(member.identifier())));
+                report = report.plus(mapSplitGroup(members, shared, failures, occurredAt));
             }
         }
         catch (RuntimeException exception) {
@@ -113,32 +147,40 @@ class MyHomeComplexMappingProcessor {
                 )));
     }
 
-    private MyHomeComplexMappingReport mapGroup(
-            String identifier,
-            List<MyHomeComplexSource> sources,
-            boolean verified,
+    private Set<Long> complexesLinkedToSeveralSplitGroups(
+            Map<SplitComplexKey, List<MappedGroup>> splitGroups, Map<String, Long> linkedComplexIds
+    ) {
+        Map<Long, Set<SplitComplexKey>> owners = new HashMap<>();
+        splitGroups.forEach((key, members) -> members.stream()
+                .map(member -> linkedComplexIds.get(member.identifier()))
+                .filter(Objects::nonNull)
+                .forEach(complexId -> owners.computeIfAbsent(complexId, ignored -> new HashSet<>()).add(key)));
+        return owners.entrySet().stream().filter(entry -> entry.getValue().size() > 1)
+                .map(Map.Entry::getKey).collect(Collectors.toSet());
+    }
+
+    private MyHomeComplexMappingReport mapSplitGroup(
+            List<MappedGroup> unsorted,
+            boolean sharedWithAnotherGroup,
             List<MyHomeComplexMappingFailure> failures,
             Instant occurredAt
     ) {
-        if (verified) {
-            return writeGroup(identifier, sources, failures, occurredAt, () -> writer.writeVerified(identifier));
+        List<MappedGroup> members = unsorted.stream().sorted(SPLIT_MEMBER_ORDER).toList();
+        if (sharedWithAnotherGroup) {
+            return reject(members, MyHomeComplexMappingFailureReason.CONFLICTING_SOURCE_VALUE,
+                    "같은 단지에 연결된 원천의 단지 공통값이 서로 달라 단지 갱신을 보류합니다.", failures, occurredAt);
         }
-
-        MyHomeComplexMappingData data;
-        try {
-            data = sourceMapper.map(identifier, sources);
-        }
-        catch (MyHomeComplexMappingRejectedException exception) {
-            return reject(identifier, sources, exception.reason(), exception.getMessage(), failures, occurredAt);
-        }
+        List<MyHomeComplexMappingData> data = members.stream().map(MappedGroup::data).toList();
+        MyHomeComplexMappingData combined = data.size() == 1
+                ? data.getFirst() : MyHomeComplexMappingData.combine(data);
 
         GeocodedRoadAddress geocoded;
         try {
-            geocoded = geocodingService.geocode(data.address().sourceRoadAddress());
+            geocoded = geocodingService.geocode(combined.address().sourceRoadAddress());
         }
         catch (RoadAddressGeocodingException exception) {
             MyHomeComplexMappingReport rejected = reject(
-                    identifier, sources, MyHomeComplexMappingFailureReason.GEOCODING_ERROR,
+                    members, MyHomeComplexMappingFailureReason.GEOCODING_ERROR,
                     "도로명주소 좌표 변환 실패: " + exception.getReason() + ", " + exception.getMessage(),
                     failures, occurredAt
             );
@@ -149,13 +191,15 @@ class MyHomeComplexMappingProcessor {
             };
         }
 
-        Address address = data.address().resolve(geocoded);
-        return writeGroup(identifier, sources, failures, occurredAt, () -> writer.write(data, address));
+        Address address = combined.address().resolve(geocoded);
+        if (data.size() == 1) {
+            return writeGroup(members, failures, occurredAt, () -> writer.write(combined, address));
+        }
+        return writeGroup(members, failures, occurredAt, () -> writer.writeSplit(data, combined, address));
     }
 
     private MyHomeComplexMappingReport writeGroup(
-            String identifier,
-            List<MyHomeComplexSource> sources,
+            List<MappedGroup> members,
             List<MyHomeComplexMappingFailure> failures,
             Instant occurredAt,
             Supplier<MyHomeComplexMappingReport> write
@@ -164,13 +208,14 @@ class MyHomeComplexMappingProcessor {
             return write.get();
         }
         catch (MyHomeComplexMappingRejectedException exception) {
-            return reject(identifier, sources, exception.reason(), exception.getMessage(), failures, occurredAt);
+            return reject(members, exception.reason(), exception.getMessage(), failures, occurredAt);
         }
         catch (RuntimeException exception) {
-            log.warn("마이홈 단지 매핑 저장에 실패했습니다: sourceComplexIdentifier={}, sourceRowCount={}",
-                    identifier, sources.size(), exception);
+            log.warn("마이홈 단지 매핑 저장에 실패했습니다: sourceComplexIdentifiers={}, sourceRowCount={}",
+                    members.stream().map(MappedGroup::identifier).toList(),
+                    members.stream().mapToInt(member -> member.sources().size()).sum(), exception);
             MyHomeComplexMappingReport rejected = reject(
-                    identifier, sources, MyHomeComplexMappingFailureReason.PERSISTENCE_ERROR,
+                    members, MyHomeComplexMappingFailureReason.PERSISTENCE_ERROR,
                     "단지와 주택형 저장 중 오류가 발생했습니다.", failures, occurredAt
             );
             return MyHomeComplexMappingReport.operationalFailedRows(rejected.failedSourceRowCount());
@@ -178,17 +223,20 @@ class MyHomeComplexMappingProcessor {
     }
 
     private MyHomeComplexMappingReport reject(
-            String identifier,
-            List<MyHomeComplexSource> sources,
+            List<MappedGroup> members,
             MyHomeComplexMappingFailureReason reason,
             String detail,
             List<MyHomeComplexMappingFailure> failures,
             Instant occurredAt
     ) {
-        for (MyHomeComplexSource source : sources) {
-            failures.add(failureOf(source, identifier, reason, detail, occurredAt));
+        int rows = 0;
+        for (MappedGroup member : members) {
+            for (MyHomeComplexSource source : member.sources()) {
+                failures.add(failureOf(source, member.identifier(), reason, detail, occurredAt));
+            }
+            rows += member.sources().size();
         }
-        return MyHomeComplexMappingReport.failedRows(sources.size());
+        return MyHomeComplexMappingReport.failedRows(rows);
     }
 
     private MyHomeComplexMappingFailure failureOf(
@@ -201,5 +249,12 @@ class MyHomeComplexMappingProcessor {
         return MyHomeComplexMappingFailure.create(
                 source.getSourceKey(), identifier, reason, detail, occurredAt
         );
+    }
+
+    private record MappedGroup(String identifier, List<MyHomeComplexSource> sources, MyHomeComplexMappingData data) {
+
+        long hsmpSn() {
+            return Long.parseLong(identifier.substring(0, identifier.indexOf(':')));
+        }
     }
 }

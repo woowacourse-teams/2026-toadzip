@@ -33,7 +33,7 @@ class HousingComplexTest {
                         String.class,
                         String.class,
                         Boolean.class,
-                        int.class,
+                        Integer.class,
                         String.class,
                         Integer.class
                 )

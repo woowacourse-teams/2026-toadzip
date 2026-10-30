@@ -572,6 +572,7 @@ class AnnouncementControllerTest {
                       "supplyType": "NEW",
                       "totalSupplyHouseholdCount": 5,
                       "exclusiveArea": null, "supplyArea": null, "corrected": false,
+                      "displayHousingTypeName": "36A",
                       "targets": [{
                         "supplyTargetId": 401,
                         "target": "청년",
@@ -593,6 +594,7 @@ class AnnouncementControllerTest {
                       "supplyType": "RESUPPLY",
                       "totalSupplyHouseholdCount": null,
                       "exclusiveArea": null, "supplyArea": null, "corrected": false,
+                      "displayHousingTypeName": "미매칭 44A",
                       "targets": []
                     }],
                     "competition": {"actualRate": 2.5000, "predictedRate": null},

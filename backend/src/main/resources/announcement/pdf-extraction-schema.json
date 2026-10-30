@@ -1,0 +1,380 @@
+{
+  "type": "object",
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "announcement": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "postedDate": {
+              "type": "string",
+              "nullable": true
+            },
+            "applicationStartDate": {
+              "type": "string",
+              "nullable": true
+            },
+            "applicationEndDate": {
+              "type": "string",
+              "nullable": true
+            },
+            "winnerAnnouncementDate": {
+              "type": "string",
+              "nullable": true
+            }
+          },
+          "required": [
+            "name",
+            "postedDate",
+            "applicationStartDate",
+            "applicationEndDate",
+            "winnerAnnouncementDate"
+          ]
+        },
+        "receptionPlace": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "nullable": true
+            },
+            "method": {
+              "type": "string",
+              "enum": [
+                "ONLINE",
+                "VISIT",
+                "MAIL",
+                "ETC"
+              ],
+              "nullable": true
+            },
+            "address": {
+              "type": "string",
+              "nullable": true
+            },
+            "contact": {
+              "type": "string",
+              "nullable": true
+            },
+            "url": {
+              "type": "string",
+              "nullable": true
+            }
+          },
+          "required": [
+            "name",
+            "method",
+            "address",
+            "contact",
+            "url"
+          ]
+        },
+        "complexes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sourceComplexName": {
+                "type": "string"
+              },
+              "address": {
+                "type": "string",
+                "nullable": true
+              },
+              "totalHouseholdCount": {
+                "type": "integer",
+                "nullable": true
+              },
+              "parkingCount": {
+                "type": "integer",
+                "nullable": true
+              }
+            },
+            "required": [
+              "sourceComplexName",
+              "address",
+              "totalHouseholdCount",
+              "parkingCount"
+            ]
+          }
+        },
+        "supplyRows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "complexReference": {
+                "type": "object",
+                "properties": {
+                  "sourceComplexName": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sourceComplexName"
+                ]
+              },
+              "sourceHousingTypeName": {
+                "type": "string",
+                "nullable": true
+              },
+              "expectedMoveInMonth": {
+                "type": "string",
+                "nullable": true
+              },
+              "totalSupplyHouseholdCount": {
+                "type": "integer",
+                "nullable": true
+              },
+              "exclusiveArea": {
+                "type": "number",
+                "nullable": true
+              },
+              "commonArea": {
+                "type": "number",
+                "nullable": true
+              },
+              "supplyArea": {
+                "type": "number",
+                "nullable": true
+              },
+              "constructedHouseholdCount": {
+                "type": "integer",
+                "nullable": true
+              },
+              "subtypes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "exclusiveArea": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "commonArea": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "constructedHouseholdCount": {
+                      "type": "integer",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "exclusiveArea",
+                    "commonArea",
+                    "constructedHouseholdCount"
+                  ]
+                }
+              },
+              "targets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "target": {
+                      "type": "string"
+                    },
+                    "supplyRank": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "supplyHouseholdCount": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "reserveCount": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "rentalDeposit": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "monthlyRent": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "convertedDeposit": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "applicationCondition": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "target",
+                    "supplyRank",
+                    "supplyHouseholdCount",
+                    "reserveCount",
+                    "rentalDeposit",
+                    "monthlyRent",
+                    "convertedDeposit",
+                    "applicationCondition"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "complexReference",
+              "sourceHousingTypeName",
+              "expectedMoveInMonth",
+              "totalSupplyHouseholdCount",
+              "exclusiveArea",
+              "commonArea",
+              "supplyArea",
+              "constructedHouseholdCount",
+              "subtypes",
+              "targets"
+            ]
+          }
+        },
+        "schedules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "scheduleType": {
+                "type": "string",
+                "enum": [
+                  "APPLICATION",
+                  "DOCUMENT_SUBMISSION",
+                  "WINNER_ANNOUNCEMENT",
+                  "CONTRACT",
+                  "MOVE_IN",
+                  "ETC"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "startAt": {
+                "type": "string"
+              },
+              "endAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "scheduleType",
+              "name",
+              "startAt",
+              "endAt"
+            ]
+          }
+        },
+        "unresolvedFields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "reason"
+            ]
+          }
+        }
+      },
+      "required": [
+        "announcement",
+        "receptionPlace",
+        "complexes",
+        "supplyRows",
+        "schedules",
+        "unresolvedFields"
+      ]
+    },
+    "sharedCounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "count": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "quote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "paths",
+          "count",
+          "page",
+          "quote"
+        ]
+      }
+    },
+    "notApplicable": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "reason"
+        ]
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "quote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "page",
+          "quote"
+        ]
+      }
+    }
+  },
+  "required": [
+    "data",
+    "sharedCounts",
+    "notApplicable",
+    "evidence"
+  ]
+}

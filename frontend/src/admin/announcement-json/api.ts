@@ -12,7 +12,7 @@ export type ChildChange = { inputIndex: number; existingId: number | null; befor
 export type JsonPreview = { confirmationToken: string; fields: JsonChange[]; supply: SupplyPreview | null; schedules: ChildChange[]; attachments: ChildChange[]; warnings: string[] }
 const path = (id: string) => `/api/admin/announcements/${encodeURIComponent(id)}/json-corrections`
 function objectArray(value: unknown): value is JsonObject[] { return Array.isArray(value) && value.every(isRecord) }
-function invalid(): never { throw new Error('공고 JSON 갱신 응답이 올바르지 않습니다.') }
+function invalid(): never { throw new Error('공고 보정 응답이 올바르지 않습니다.') }
 function workspace(value: unknown): JsonWorkspace {
   if (!isRecord(value) || typeof value.snapshotToken !== 'string' || !objectArray(value.events)
     || !value.events.every(item => Number.isSafeInteger(item.id) && Number(item.id) > 0 && isRecord(item.data)
@@ -30,7 +30,11 @@ export async function previewJsonUpdate(id: string, input: JsonUpdateInput): Pro
       && Number(item.inputIndex) >= 0 && (item.existingId === null || Number.isSafeInteger(item.existingId) && Number(item.existingId) > 0)
       && (item.before === null || isRecord(item.before)) && isRecord(item.after))) invalid()
   }
-  return { ...result, supply: result.supply === null ? null : parseSupplyPreview(result.supply) } as JsonPreview
+  const supply = result.supply === null ? null : parseSupplyPreview(result.supply)
+  if (input.correction.newGroups?.length && JSON.stringify(input.correction.newGroups) !== JSON.stringify(supply?.newGroups)) {
+    throw new Error('서버가 공통 모집 묶음을 확인하지 못했습니다. PDF 보정을 지원하는 서버로 갱신한 뒤 다시 요청하세요.')
+  }
+  return { ...result, supply } as JsonPreview
 }
 export async function applyJsonUpdate(id: string, request: JsonUpdateInput, confirmationToken: string) {
   return workspace(await requestManagementApi(path(id), 'POST', { request, confirmationToken }))

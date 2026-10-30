@@ -326,3 +326,28 @@
   color: var(--ds-color-muted);
   font-weight: 400;
 }
+
+/* Replace the existing close control without adding a header row. */
+.myPageButton {
+  width: auto;
+  flex: 0 0 auto;
+  gap: 6px;
+  padding-inline: 10px;
+  border: 1px solid var(--ds-color-divider);
+  border-radius: var(--ds-radius-control);
+  color: var(--ds-color-text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.myPageButton svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+.myPageClose { display: none; }
+
+/* 모바일도 출발한 마이페이지로 돌아간다는 것을 문구로 보여준다. */
+@media (max-width: 767px) {
+  .myPageButton { min-height: 44px; }
+}
