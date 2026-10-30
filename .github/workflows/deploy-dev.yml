@@ -28,10 +28,33 @@ jobs:
     runs-on: [self-hosted, linux, toadzip-dev]
     timeout-minutes: 30
     steps:
-      - name: Deploy
+      - name: Deploy verified revision with Blue/Green
         working-directory: ${{ vars.DEV_DEPLOY_PATH }}
+        env:
+          DEPLOY_PATH: ${{ vars.DEV_DEPLOY_PATH }}
+          BLUEGREEN_URL: ${{ vars.DEV_BLUEGREEN_URL }}
+          BLUEGREEN_RUNTIME: ${{ vars.DEV_BLUEGREEN_RUNTIME }}
+          BLUEGREEN_COMPOSE_OVERRIDES: ${{ vars.DEV_BLUEGREEN_COMPOSE_OVERRIDES }}
+          CI_COMMIT: ${{ github.sha }}
+          DEPLOY_BRANCH: develop
         shell: bash
         run: |
-          git switch develop
-          git pull --ff-only origin develop
-          docker compose up -d --build --wait --wait-timeout 180
+          set -euo pipefail
+          : "${DEPLOY_PATH:?Configure the deployment checkout path}"
+          : "${BLUEGREEN_URL:?Configure the verified public Edge/Caddy HTTPS URL}"
+          [[ "$BLUEGREEN_URL" == https://* ]]
+          [[ "$CI_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          runtime="$(cd -- "${BLUEGREEN_RUNTIME:-infra/runtime/bluegreen}" && pwd -P)"
+          edge="$(cd -- "$runtime/edge" && pwd -P)"
+          exec 9>"$(dirname -- "$edge")/deploy.lock"
+          flock --nonblock 9
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git fetch --no-tags origin "refs/heads/$DEPLOY_BRANCH"
+          git merge-base --is-ancestor "$CI_COMMIT" FETCH_HEAD
+          git checkout --detach "$CI_COMMIT"
+          test "$(git rev-parse HEAD)" = "$CI_COMMIT"
+          python3 -B scripts/release-bluegreen.py \
+            --revision "$CI_COMMIT" --environment dev \
+            --runtime "$runtime" --url "$BLUEGREEN_URL" --lock-fd 9 \
+            --compose-override compose.caddy-server.yaml \
+            --compose-override compose.notification-credentials.yaml

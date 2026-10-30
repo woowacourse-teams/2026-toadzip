@@ -170,13 +170,18 @@
 }
 
 .identitySummary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ds-space-3);
+  position: relative;
 }
 
 .identityDescription { min-width: 0; }
+
+/* 정보의 너비와 줄 간격을 유지하고 북마크만 섹션 오른쪽에 배치한다. */
+.identitySummary > span {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
 
 .identityActions {
   display: grid;

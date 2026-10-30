@@ -116,6 +116,24 @@ V20261014_02는 임시 비회원 구독·이메일·취소 요청 테이블 3개
 개발 작업은 실제 운영 DB 삭제를 실행하지 않는다.
 적용 후 [스키마 점검](../../scripts/check-notification-schema.sql)에서 새 마이그레이션의 성공과 비회원 테이블 부재를 확인한다.
 
+## Blue/Green 동시 실행
+
+두 백엔드에 같은 알림 플래그가 전달되면 각 프로세스가 별도로 스케줄러를 시작한다.
+일정·신규 공고 이벤트는 `event_key` 고유 제약과 `ON CONFLICT DO NOTHING`으로 중복 생성을 막고,
+보관함 생성은 outbox 행의 `FOR UPDATE SKIP LOCKED`로 작업을 나눈다.
+발송 선점은 트랜잭션 advisory lock·행 잠금과 lease를 사용하며, 정리는 `SKIP LOCKED`로 처리한다.
+동일 DB 대기열을 보는 두 프로세스의 queue gauge는 합산하지 않는다. 인스턴스별 상태 또는 최댓값을 확인한다.
+
+외부 FCM 접수와 DB 결과 저장은 하나의 트랜잭션이 아니다. 접수 후 프로세스가 종료되거나
+lease가 만료되면 같은 발송이 재시도될 수 있다. 이전 토큰의 DB 결과는 거부하지만 기기 수신의
+정확히 한 번 전송까지 보장하지는 않는다. 두 컨테이너를 켜는 것만으로 외부 발송 검증을 완료하지 않는다.
+
+로컬 검증 명령과 실제 백엔드 전환·복구 시험의 범위는 [배포 검증](../../tests/README.md#실제-백엔드-bluegreen-로컬-검증)을 따른다.
+운영에서는 두 이미지가 같은 구독·이벤트 계약을 사용하는지, 후보의 플래그와 ADC 마운트가
+실제로 전달되는지 확인한다. `compose.bluegreen.yaml`의 `extends`는 `compose.yaml`을 원본으로 하므로,
+다른 overlay의 `backend`에만 추가한 설정이 Blue/Green에도 자동 적용된다고 가정하지 않는다.
+구버전과 혼용할 수 없는 DB 변경에는 앞의 별도 전환 절차를 적용한다.
+
 ## 설정과 출시 순서
 
 기본값은 모두 false다. Firebase 비공개 키는 저장소나 VITE 변수에 넣지 않는다.
@@ -144,8 +162,13 @@ frontend 빌드 인자로 전달한다. 공개 웹 설정을 바꾸면 frontend 
 워크로드 ID를 사용하면 기본 Compose만 사용한다. 관리되는 ADC 파일을 사용할 경우 저장소 밖의 절대 경로를
 `NOTIFICATION_FIREBASE_CREDENTIALS_FILE`로 지정하고 기존 Compose 명령에
 `-f compose.notification-credentials.yaml`을 추가한다. 예를 들어 `-f compose.yaml -f compose.https.yaml
--f compose.notification-credentials.yaml` 순서다. 이 overlay는 backend에만 파일을 읽기 전용으로 마운트하며
+-f compose.notification-credentials.yaml` 순서다. 이 overlay는 backend·backend-blue·backend-green에 같은 파일을 읽기 전용으로 마운트하며
 컨테이너 경로를 `GOOGLE_APPLICATION_CREDENTIALS`로 지정한다. backend UID 10001의 읽기 권한을 준비해야 한다.
+개발·운영 Actions는 이 overlay와 Caddy 서버 overlay를 기본으로 전달한다.
+수동 Blue/Green 배포는 `--compose-override compose.caddy-server.yaml
+--compose-override compose.notification-credentials.yaml`을 전달한다.
+`.env`의 `COMPOSE_FILE`에만 추가하면 배포 도구가 이 파일을 사용하지 않는다.
+워크로드 ID로 전환해 파일 마운트가 필요 없어지면 Actions의 인증파일 옵션도 함께 변경한다.
 개인키 내용은 `.env`, 빌드 인자, frontend 이미지에 넣지 않는다.
 
 delivery만 끄면 알림함과 폴링은 유지된다. publisher off 기간은 기본 소급하지 않는다.
