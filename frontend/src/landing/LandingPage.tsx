@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { BrandLink } from '../BrandLink'
 import { MobileInstallCard, MobileInstallAction } from '../install/MobileInstall'
 import styles from './LandingPage.module.css'
+import { TechnologySection } from './TechnologySection'
 
 const steps = [
   {
@@ -94,6 +95,7 @@ export function LandingPage() {
         <nav aria-label="랜딩페이지 메뉴" className={styles.navigation}>
           <a href="#about">서비스 소개</a>
           <a href="#how-it-works">사용법</a>
+          <a href="#technology">기술 소개</a>
           <StartLink compact />
         </nav>
       </header>
@@ -117,7 +119,7 @@ export function LandingPage() {
             <p className={styles.eyebrow}>나에게 맞는 공공주택을 찾는 첫걸음</p>
             <h1 id="landing-title">
               <span className={styles.heroLine}><span>공공주택 찾기,</span></span>
-              <span className={styles.heroLine}><span className={styles.heroAccent}>이제 한곳에서.</span></span>
+              <span className={styles.heroLine}><span>이제 <span className={styles.heroAccent}>한곳에서</span>.</span></span>
             </h1>
             <p className={styles.description}>살고 싶은 동네의 공공주택,<br />보증금·월세부터 모집 공고까지 연결해 드려요.</p>
             <StartLink />
@@ -176,6 +178,8 @@ export function LandingPage() {
           </div>
           <p className={styles.screenNote}>실제 서비스 화면의 일부를 확대했어요. 모집 정보는 조회 시점에 따라 달라질 수 있어요.</p>
         </section>
+
+        <TechnologySection />
 
         <section className={styles.closing} aria-labelledby="start-title">
           <div data-reveal>
