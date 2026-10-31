@@ -9,6 +9,7 @@ import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupp
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
@@ -232,7 +233,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
         if (preserveOriginalIdentifier) {
             return sourceRow.sourceSupplyRowIdentifier();
         }
-        return announcementIdentifier + ":LH:" + source.getPanId() + ":" + source.getSourceOrder();
+        return LhSourceIdentifier.supplyRow(announcementIdentifier, source.getPanId(), source.getSourceOrder());
     }
 
     private String sourceHousingTypeName(

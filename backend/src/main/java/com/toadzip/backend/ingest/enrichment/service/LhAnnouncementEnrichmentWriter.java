@@ -17,6 +17,7 @@ import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
+import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
@@ -398,7 +399,7 @@ public class LhAnnouncementEnrichmentWriter {
 
     private void deleteOtherLhTargets(List<SupplyTarget> storedTargets, String retainedIdentifier) {
         List<SupplyTarget> previousTargets = storedTargets.stream()
-                .filter(target -> isLhSource(target.getSourceSupplyTargetIdentifier()))
+                .filter(target -> LhSourceIdentifier.isLhSource(target.getSourceSupplyTargetIdentifier()))
                 .filter(target -> !target.isAdminModified())
                 .filter(target -> !retainedIdentifier.equals(target.getSourceSupplyTargetIdentifier()))
                 .toList();
@@ -414,7 +415,7 @@ public class LhAnnouncementEnrichmentWriter {
     ) {
         var reviewed = storedTargets.stream()
                 .filter(SupplyTarget::isAdminModified)
-                .filter(target -> isLhSource(target.getSourceSupplyTargetIdentifier()))
+                .filter(target -> LhSourceIdentifier.isLhSource(target.getSourceSupplyTargetIdentifier()))
                 .findFirst();
         if (reviewed.isPresent()) {
             return new SupplyTargetWriteResult(reviewed.get().getSourceSupplyTargetIdentifier(), 0, 0);
@@ -475,13 +476,9 @@ public class LhAnnouncementEnrichmentWriter {
         }
         return storedTargets.stream()
                 .map(SupplyTarget::getSourceSupplyTargetIdentifier)
-                .filter(this::isLhSource)
+                .filter(LhSourceIdentifier::isLhSource)
                 .findFirst()
                 .orElse(currentIdentifier);
-    }
-
-    private boolean isLhSource(String identifier) {
-        return identifier != null && identifier.startsWith("LH:");
     }
 
     private Map<String, AnnouncementSchedule> schedulesBySource(List<AnnouncementSchedule> storedSchedules) {
@@ -509,7 +506,7 @@ public class LhAnnouncementEnrichmentWriter {
     ) {
         return storedSchedules.stream()
                 .filter(schedule -> !schedule.isAdminModified())
-                .filter(schedule -> lhSourceForAnyPan(schedule.getSourceScheduleIdentifier(), replacedPanIds))
+                .filter(schedule -> LhSourceIdentifier.isLhSourceOfAny(schedule.getSourceScheduleIdentifier(), replacedPanIds))
                 .filter(schedule -> !retained.contains(schedule.getSourceScheduleIdentifier()))
                 .toList();
     }
@@ -519,7 +516,7 @@ public class LhAnnouncementEnrichmentWriter {
     ) {
         return storedAttachments.stream()
                 .filter(attachment -> !attachment.isAdminModified())
-                .filter(attachment -> lhSourceForAnyPan(attachment.getSourceAttachmentIdentifier(), replacedPanIds))
+                .filter(attachment -> LhSourceIdentifier.isLhSourceOfAny(attachment.getSourceAttachmentIdentifier(), replacedPanIds))
                 .filter(attachment -> !retained.contains(attachment.getSourceAttachmentIdentifier()))
                 .toList();
     }
@@ -531,16 +528,12 @@ public class LhAnnouncementEnrichmentWriter {
     ) {
         for (List<SupplyTarget> storedTargets : targetsByRow.values()) {
             List<SupplyTarget> stale = storedTargets.stream()
-                    .filter(target -> lhSourceForAnyPan(target.getSourceSupplyTargetIdentifier(), replacedPanIds))
+                    .filter(target -> LhSourceIdentifier.isLhSourceOfAny(target.getSourceSupplyTargetIdentifier(), replacedPanIds))
                     .filter(target -> !target.isAdminModified())
                     .filter(target -> !retained.contains(target.getSourceSupplyTargetIdentifier()))
                     .toList();
             supplyTargetRepository.deleteAll(stale);
         }
-    }
-
-    private boolean lhSourceForAnyPan(String identifier, Set<String> panIds) {
-        return identifier != null && panIds.stream().anyMatch(panId -> identifier.startsWith("LH:" + panId + ":"));
     }
 
     private record SchedulesWriteResult(int created, int updated) {

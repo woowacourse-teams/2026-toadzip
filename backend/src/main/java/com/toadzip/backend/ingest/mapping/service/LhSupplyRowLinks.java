@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.mapping.domain.LhSupplyRowLink;
 import com.toadzip.backend.ingest.mapping.repository.LhSupplyRowLinkRepository;
 import java.nio.charset.StandardCharsets;
@@ -27,7 +28,7 @@ public class LhSupplyRowLinks {
     private final ObjectMapper json;
 
     public static String identifier(LhAnnouncementSupplySource source) {
-        return "LH:" + source.getPanId() + ":SUPPLY:" + source.getSourceOrder();
+        return LhSourceIdentifier.supply(source.getPanId(), source.getSourceOrder());
     }
 
     /** 공고의 저장 연결을 LH 행 식별자별로 판정한다. 저장 연결이 없는 LH 행은 결과에 없다. */

@@ -6,6 +6,7 @@ import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.mapping.service.LhSupplyRowLinks;
@@ -232,7 +233,7 @@ public class LhAnnouncementEnrichmentMapper {
             throw parser.invalid("LH 공급 원본의 단지명 또는 주택형명이 없습니다.");
         }
         return new LhSupplyData(
-                identifier(panId, "SUPPLY", source.getSourceOrder(), null), source.getComplexLabel(),
+                LhSourceIdentifier.supply(panId, source.getSourceOrder()), source.getComplexLabel(),
                 source.getTypeName(),
                 expectedMoveInMonth,
                 parser.integer(source.getTotalUnitCount(), "전체 세대수"),
@@ -243,7 +244,7 @@ public class LhAnnouncementEnrichmentMapper {
     }
 
     private String identifier(String panId, String datasetType, Integer sourceOrder, String suffix) {
-        String identifier = "LH:" + panId + ":" + datasetType + ":" + sourceOrder;
+        String identifier = LhSourceIdentifier.source(panId, datasetType, sourceOrder);
         if (suffix == null) {
             return identifier;
         }

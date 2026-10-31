@@ -8,6 +8,7 @@ import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupp
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
+import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.enrichment.service.LhSupplyMatchDiagnostics;
 import com.toadzip.backend.ingest.mapping.domain.LhSupplyRowLink;
@@ -177,7 +178,7 @@ public class LhSupplyLinkService {
             String lhRowIdentifier = LhSupplyRowLinks.identifier(supply);
             if (changedSources.contains(before.linkedRows().get(lhRowIdentifier))
                     || changedSources.contains(after.linkedRows().get(lhRowIdentifier))) {
-                rowIdentifiers.add(identifier + ":LH:" + supply.getPanId() + ":" + supply.getSourceOrder());
+                rowIdentifiers.add(LhSourceIdentifier.supplyRow(identifier, supply.getPanId(), supply.getSourceOrder()));
             }
         }
         List<String> released = new ArrayList<>();

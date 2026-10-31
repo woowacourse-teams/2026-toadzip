@@ -12,6 +12,7 @@ import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter;
@@ -263,12 +264,12 @@ public class MyHomeAnnouncementMappingWriter {
     private void deleteLhEnrichment(Announcement announcement) {
         List<AnnouncementSchedule> schedules = scheduleRepository.findAllByAnnouncement(announcement).stream()
                 .filter(schedule -> !schedule.isAdminModified())
-                .filter(schedule -> isLhSource(schedule.getSourceScheduleIdentifier()))
+                .filter(schedule -> LhSourceIdentifier.isLhSource(schedule.getSourceScheduleIdentifier()))
                 .toList();
         scheduleRepository.deleteAll(schedules);
         List<AnnouncementAttachment> attachments = attachmentRepository.findAllByAnnouncement(announcement).stream()
                 .filter(attachment -> !attachment.isAdminModified())
-                .filter(attachment -> isLhSource(attachment.getSourceAttachmentIdentifier()))
+                .filter(attachment -> LhSourceIdentifier.isLhSource(attachment.getSourceAttachmentIdentifier()))
                 .toList();
         attachmentRepository.deleteAll(attachments);
         List<Long> supplyRowIds = supplyRowRepository.findAllByAnnouncement(announcement).stream()
@@ -278,14 +279,10 @@ public class MyHomeAnnouncementMappingWriter {
             return;
         }
         List<SupplyTarget> targets = supplyTargetRepository.findAllBySupplyRowIdIn(supplyRowIds).stream()
-                .filter(target -> isLhSource(target.getSourceSupplyTargetIdentifier()))
+                .filter(target -> LhSourceIdentifier.isLhSource(target.getSourceSupplyTargetIdentifier()))
                 .filter(target -> !target.isAdminModified())
                 .toList();
         supplyTargetRepository.deleteAll(targets);
-    }
-
-    private boolean isLhSource(String identifier) {
-        return identifier != null && identifier.startsWith("LH:");
     }
 
     private SupplyRowsWriteResult writeSupplyRows(
@@ -552,9 +549,9 @@ public class MyHomeAnnouncementMappingWriter {
         if (rows == null) {
             return false;
         }
-        String generatedIdentifierPrefix = announcement.getSourceAnnouncementIdentifier() + ":LH:";
         return rows.stream().anyMatch(row -> row.getLhSourceSupplyRowIdentifier() != null
-                || row.getSourceSupplyRowIdentifier().startsWith(generatedIdentifierPrefix));
+                || LhSourceIdentifier.isSupplyRowOf(
+                        announcement.getSourceAnnouncementIdentifier(), row.getSourceSupplyRowIdentifier()));
     }
 
     private void deleteStaleRows(List<SupplyRow> staleRows) {
