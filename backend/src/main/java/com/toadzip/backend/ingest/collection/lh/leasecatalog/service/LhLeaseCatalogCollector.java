@@ -10,6 +10,7 @@ import com.toadzip.backend.ingest.collection.paging.domain.PagedCollectionBuffer
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
+import com.toadzip.backend.ingest.collection.service.SourceCollectionAttempt;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.util.UUID;
@@ -40,20 +41,14 @@ public class LhLeaseCatalogCollector {
             LhLeaseCatalogCollectionRequest request,
             IntFunction<SourcePage<LhCatalogSourceSnapshot>> fetch
     ) {
-        verifyCanContinue();
-        var attempt = new LhLeaseCatalogCollectionRequest(request.executionId(), request.pageSize(),
-                request.maxPages(), clock.instant());
-        UUID id = records.start(attempt);
-        try {
-            SourcePage<LhCatalogSourceSnapshot> page = fetchPages(attempt, fetch);
-            IngestExecutionScope.verifyHeld();
-            storage.complete(id, attempt, new LhLeaseCatalogCollectedResponse(
-                    page.totalCount(), clock.instant(), page.rows()));
-        } catch (RuntimeException failure) {
-            records.fail(id, attempt, failure);
-            throw failure;
-        }
-        return id;
+        return SourceCollectionAttempt.run(records,
+                () -> new LhLeaseCatalogCollectionRequest(request.executionId(), request.pageSize(),
+                        request.maxPages(), clock.instant()),
+                attempt -> fetchPages(attempt, fetch), (recordId, attempt, page) -> {
+                    storage.complete(recordId, attempt, new LhLeaseCatalogCollectedResponse(
+                            page.totalCount(), clock.instant(), page.rows()));
+                    return recordId;
+                });
     }
 
     private SourcePage<LhCatalogSourceSnapshot> fetchPages(
@@ -62,7 +57,7 @@ public class LhLeaseCatalogCollector {
     ) {
         var buffer = new PagedCollectionBuffer<LhCatalogSourceSnapshot>("LH 임대 카탈로그");
         for (int page = 1; page <= request.maxPages(); page++) {
-            verifyCanContinue();
+            SourceCollectionAttempt.verifyCanContinue();
             var current = fetch.apply(page);
             buffer.add(current, LhCatalogSourceSnapshot::validateIdentifiers);
             IngestExecutionScope.pageCompleted(page, current.totalCount(), request.pageSize());
@@ -71,10 +66,5 @@ public class LhLeaseCatalogCollector {
             }
         }
         return buffer.finish();
-    }
-
-    private void verifyCanContinue() {
-        IngestExecutionScope.verifyHeld();
-        IngestExecutionScope.checkStopRequested();
     }
 }

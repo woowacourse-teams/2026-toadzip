@@ -11,9 +11,9 @@ import com.toadzip.backend.ingest.collection.paging.domain.PagedCollectionBuffer
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
+import com.toadzip.backend.ingest.collection.service.SourceCollectionAttempt;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
-import java.util.UUID;
 import java.util.function.IntFunction;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -41,18 +41,10 @@ public class LhAnnouncementCatalogCollector {
             LhAnnouncementCatalogCollectionRequest request,
             IntFunction<LhAnnouncementCatalogPage> fetch
     ) {
-        verifyCanContinue();
-        var attempt = new LhAnnouncementCatalogCollectionRequest(request.executionId(), request.pageSize(),
-                request.maxPages(), clock.instant());
-        UUID id = records.start(attempt);
-        try {
-            LhAnnouncementCatalogCollectedResponse response = fetchPages(attempt, fetch);
-            IngestExecutionScope.verifyHeld();
-            return storage.complete(id, attempt, response);
-        } catch (RuntimeException failure) {
-            records.fail(id, attempt, failure);
-            throw failure;
-        }
+        return SourceCollectionAttempt.run(records,
+                () -> new LhAnnouncementCatalogCollectionRequest(request.executionId(), request.pageSize(),
+                        request.maxPages(), clock.instant()),
+                attempt -> fetchPages(attempt, fetch), storage::complete);
     }
 
     private LhAnnouncementCatalogCollectedResponse fetchPages(
@@ -62,7 +54,7 @@ public class LhAnnouncementCatalogCollector {
         var buffer = new PagedCollectionBuffer<LhAnnouncementCatalogRow>("LH 공고 목록");
         LhAnnouncementCatalogPage first = null;
         for (int page = 1; page <= request.maxPages(); page++) {
-            verifyCanContinue();
+            SourceCollectionAttempt.verifyCanContinue();
             LhAnnouncementCatalogPage current = fetch.apply(page);
             if (first == null) {
                 first = current;
@@ -78,10 +70,5 @@ public class LhAnnouncementCatalogCollector {
         }
         buffer.finish();
         throw new IllegalStateException("LH 공고 목록의 수집 응답이 없습니다.");
-    }
-
-    private void verifyCanContinue() {
-        IngestExecutionScope.verifyHeld();
-        IngestExecutionScope.checkStopRequested();
     }
 }

@@ -9,7 +9,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeReg
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
-import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
+import com.toadzip.backend.ingest.collection.service.SourceCollectionAttempt;
 import java.time.Clock;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -46,19 +46,13 @@ public class MyHomeComplexCollector {
             MyHomeComplexCollectionRequest request,
             IntFunction<SourcePage<MyHomeComplexSourceSnapshot>> fetch
     ) {
-        verifyCanContinue();
-        var attempt = new MyHomeComplexCollectionRequest(request.executionId(), request.provinceCode(),
-                request.districtCode(), request.pageSize(), request.maxPages(), clock.instant());
-        UUID recordId = records.start(attempt);
-        try {
-            MyHomeComplexCollectionBuffer buffer = fetchPages(attempt, fetch);
-            IngestExecutionScope.verifyHeld();
-            storage.complete(recordId, attempt, buffer.finish(clock.instant()));
-        } catch (RuntimeException failure) {
-            records.fail(recordId, attempt, failure);
-            throw failure;
-        }
-        return recordId;
+        return SourceCollectionAttempt.run(records,
+                () -> new MyHomeComplexCollectionRequest(request.executionId(), request.provinceCode(),
+                        request.districtCode(), request.pageSize(), request.maxPages(), clock.instant()),
+                attempt -> fetchPages(attempt, fetch), (recordId, attempt, buffer) -> {
+                    storage.complete(recordId, attempt, buffer.finish(clock.instant()));
+                    return recordId;
+                });
     }
 
     private MyHomeComplexCollectionBuffer fetchPages(
@@ -67,7 +61,7 @@ public class MyHomeComplexCollector {
     ) {
         var buffer = new MyHomeComplexCollectionBuffer(request);
         for (int page = 1; page <= request.maxPages(); page++) {
-            verifyCanContinue();
+            SourceCollectionAttempt.verifyCanContinue();
             buffer.add(fetch.apply(page));
             if (buffer.isComplete()) {
                 return buffer;
@@ -77,10 +71,5 @@ public class MyHomeComplexCollector {
     }
 
     static final class RateLimitCollectionCancelledException extends RuntimeException {
-    }
-
-    private void verifyCanContinue() {
-        IngestExecutionScope.verifyHeld();
-        IngestExecutionScope.checkStopRequested();
     }
 }

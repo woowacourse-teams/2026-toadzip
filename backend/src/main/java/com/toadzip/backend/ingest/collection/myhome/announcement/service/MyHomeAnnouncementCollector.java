@@ -10,6 +10,7 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHo
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
+import com.toadzip.backend.ingest.collection.service.SourceCollectionAttempt;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
@@ -59,25 +60,19 @@ public class MyHomeAnnouncementCollector {
             MyHomeAnnouncementCollectionRequest request,
             IntFunction<SourcePage<MyHomeAnnouncementSourceSnapshot>> fetch
     ) {
-        verifyCanContinue();
-        var attempt = new MyHomeAnnouncementCollectionRequest(request.executionId(), request.supplyTypeCode(),
-                request.pageSize(), request.maxPages(), clock.instant(), request.pblancId());
-        UUID recordId = records.start(attempt);
-        try {
-            MyHomeAnnouncementCollectionBuffer buffer = fetchPages(attempt, fetch);
-            IngestExecutionScope.verifyHeld();
-            MyHomeAnnouncementCollectedResponse response = buffer.finish(clock.instant());
-            if (attempt.pblancId() != null) {
-                var rows = response.rows().stream()
-                        .filter(row -> attempt.pblancId().equals(row.pblancId().strip())).toList();
-                response = new MyHomeAnnouncementCollectedResponse(rows.size(), response.collectedAt(), rows);
-            }
-            storage.complete(recordId, attempt, response);
-        } catch (RuntimeException failure) {
-            records.fail(recordId, attempt, failure);
-            throw failure;
-        }
-        return recordId;
+        return SourceCollectionAttempt.run(records,
+                () -> new MyHomeAnnouncementCollectionRequest(request.executionId(), request.supplyTypeCode(),
+                        request.pageSize(), request.maxPages(), clock.instant(), request.pblancId()),
+                attempt -> fetchPages(attempt, fetch), (recordId, attempt, buffer) -> {
+                    MyHomeAnnouncementCollectedResponse response = buffer.finish(clock.instant());
+                    if (attempt.pblancId() != null) {
+                        var rows = response.rows().stream()
+                                .filter(row -> attempt.pblancId().equals(row.pblancId().strip())).toList();
+                        response = new MyHomeAnnouncementCollectedResponse(rows.size(), response.collectedAt(), rows);
+                    }
+                    storage.complete(recordId, attempt, response);
+                    return recordId;
+                });
     }
 
     private MyHomeAnnouncementCollectionBuffer fetchPages(
@@ -86,7 +81,7 @@ public class MyHomeAnnouncementCollector {
     ) {
         var buffer = new MyHomeAnnouncementCollectionBuffer(request);
         for (int page = 1; page <= request.maxPages(); page++) {
-            verifyCanContinue();
+            SourceCollectionAttempt.verifyCanContinue();
             var current = fetch.apply(page);
             buffer.add(current);
             IngestExecutionScope.pageCompleted(page, current.totalCount(), request.pageSize());
@@ -95,10 +90,5 @@ public class MyHomeAnnouncementCollector {
             }
         }
         return buffer;
-    }
-
-    private void verifyCanContinue() {
-        IngestExecutionScope.verifyHeld();
-        IngestExecutionScope.checkStopRequested();
     }
 }
