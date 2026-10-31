@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.myhome.complex.repository;
 
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -17,22 +18,22 @@ public class MyHomeComplexSourceReader {
 
     private final MyHomeComplexCollectionRepository sources;
 
-    public List<MyHomeComplexSource> findAll() {
+    public List<MyHomeComplexSourceView> findAll() {
         return project(sources.findAll());
     }
 
-    private List<MyHomeComplexSource> project(
-            List<com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSource> bundles
+    private List<MyHomeComplexSourceView> project(
+            List<MyHomeComplexSource> bundles
     ) {
-        List<MyHomeComplexSource> result = new ArrayList<>();
-        bundles.forEach(bundle -> bundle.getRows().forEach(row -> result.add(MyHomeComplexSource.read(
+        List<MyHomeComplexSourceView> result = new ArrayList<>();
+        bundles.forEach(bundle -> bundle.getRows().forEach(row -> result.add(MyHomeComplexSourceView.read(
                 row.getId(), row.getCollectedAt(), row.snapshot()))));
-        var distinct = new LinkedHashMap<Object, MyHomeComplexSource>();
+        var distinct = new LinkedHashMap<Object, MyHomeComplexSourceView>();
         result.forEach(row -> distinct.putIfAbsent(row.snapshot(), row));
         return List.copyOf(distinct.values());
     }
 
-    public List<MyHomeComplexSource> findAllByHsmpSnIn(Collection<Long> identifiers) {
+    public List<MyHomeComplexSourceView> findAllByHsmpSnIn(Collection<Long> identifiers) {
         if (identifiers.isEmpty()) {
             return List.of();
         }
@@ -40,7 +41,7 @@ public class MyHomeComplexSourceReader {
     }
 
     public List<String> findDistinctRoadAddresses() {
-        return findAll().stream().map(MyHomeComplexSource::getRnAdres)
+        return findAll().stream().map(MyHomeComplexSourceView::getRnAdres)
                 .filter(Objects::nonNull).distinct().toList();
     }
 }

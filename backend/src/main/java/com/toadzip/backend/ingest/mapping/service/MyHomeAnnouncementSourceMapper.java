@@ -7,7 +7,7 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper.MyHomeAnnouncementCommonValues;
 import java.math.BigDecimal;
@@ -29,9 +29,9 @@ public class MyHomeAnnouncementSourceMapper {
         this.commonValuesMapper = commonValuesMapper;
     }
 
-    public MyHomeAnnouncementMappingData map(List<MyHomeAnnouncementSource> sources) {
+    public MyHomeAnnouncementMappingData map(List<MyHomeAnnouncementSourceView> sources) {
         java.util.Map<String, Object> identities = new java.util.HashMap<>();
-        for (MyHomeAnnouncementSource source : sources) {
+        for (MyHomeAnnouncementSourceView source : sources) {
             Object previous = identities.putIfAbsent(source.getSourceKey(), source.snapshot());
             if (previous != null && !previous.equals(source.snapshot())) {
                 throw new MyHomeAnnouncementMappingRejectedException(
@@ -63,7 +63,7 @@ public class MyHomeAnnouncementSourceMapper {
     }
 
     private MyHomeSupplyRowMappingData supplyRowOf(
-            MyHomeAnnouncementSource source,
+            MyHomeAnnouncementSourceView source,
             String announcementName,
             String sourceSupplyType
     ) {
@@ -87,12 +87,12 @@ public class MyHomeAnnouncementSourceMapper {
         );
     }
 
-    private List<MyHomeAnnouncementSource> ordered(List<MyHomeAnnouncementSource> sources) {
-        List<MyHomeAnnouncementSource> ordered = new ArrayList<>(sources);
+    private List<MyHomeAnnouncementSourceView> ordered(List<MyHomeAnnouncementSourceView> sources) {
+        List<MyHomeAnnouncementSourceView> ordered = new ArrayList<>(sources);
         ordered.sort(Comparator.comparing(
-                MyHomeAnnouncementSource::getSourceOrder,
+                MyHomeAnnouncementSourceView::getSourceOrder,
                 Comparator.nullsLast(Comparator.naturalOrder())
-        ).thenComparing(MyHomeAnnouncementSource::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+        ).thenComparing(MyHomeAnnouncementSourceView::getId, Comparator.nullsLast(Comparator.naturalOrder())));
         return ordered;
     }
 
@@ -134,7 +134,7 @@ public class MyHomeAnnouncementSourceMapper {
     }
 
     record MyHomeSupplyRowMappingData(
-            MyHomeAnnouncementSource source,
+            MyHomeAnnouncementSourceView source,
             String sourceSupplyRowIdentifier,
             String sourceComplexName,
             String sourceHousingTypeName,

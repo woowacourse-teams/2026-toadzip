@@ -22,7 +22,7 @@ import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollect
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.View;
@@ -385,8 +385,8 @@ class LhSupplyLinkIntegrationTest {
                 .query(String.class).list();
     }
 
-    private MyHomeAnnouncementSource source() {
-        var source = MyHomeAnnouncementSource.from(1, new MyHomeAnnouncementSourceSnapshot(TARGET,
+    private MyHomeAnnouncementSourceView source() {
+        var source = MyHomeAnnouncementSourceView.from(1, new MyHomeAnnouncementSourceSnapshot(TARGET,
                 1, "모집중", "영구임대 입주자 모집공고", "LH", "26", "영구임대", null,
                 "20261001", "20261106", "20261008", "20261015", null,
                 "https://example.com/announcements?panId=lh-19585&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07",

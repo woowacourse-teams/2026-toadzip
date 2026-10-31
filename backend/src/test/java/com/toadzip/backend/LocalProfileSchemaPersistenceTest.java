@@ -19,8 +19,8 @@ import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSou
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementStorageService;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailure;
@@ -272,8 +272,8 @@ class LocalProfileSchemaPersistenceTest {
                 assertFalse(managedTypes.contains(LhAnnouncementSupplySource.class));
                 assertFalse(managedTypes.contains(LhCatalogSource.class));
                 assertFalse(managedTypes.contains(LhAnnouncementCatalogSource.class));
-                assertFalse(managedTypes.contains(MyHomeComplexSource.class));
-                assertFalse(managedTypes.contains(MyHomeAnnouncementSource.class));
+                assertFalse(managedTypes.contains(MyHomeComplexSourceView.class));
+                assertFalse(managedTypes.contains(MyHomeAnnouncementSourceView.class));
                 var query = new LhAnnouncementQuery("legacy-pan", "03", "06", "07", "062");
                 var detailRequest = new LhAnnouncementCollectionRequest(null, CollectionSource.LH_ANNOUNCEMENT_DETAIL,
                         query, 6, Instant.now().minusSeconds(1));

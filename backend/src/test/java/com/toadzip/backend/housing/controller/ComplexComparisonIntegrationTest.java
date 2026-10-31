@@ -208,7 +208,7 @@ class ComplexComparisonIntegrationTest {
     }
 
     private String sourceKey(long identifier) throws Exception {
-        var row = com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource.from(
+        var row = com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView.from(
                 new com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot(
                         identifier, "한국토지주택공사", "11", "서울", "11140", "중구", "비교 원천 " + identifier,
                         "서울특별시 중구 세종대로 110", "1114010100100010000", "20200101", 120, "행복주택", "26A",

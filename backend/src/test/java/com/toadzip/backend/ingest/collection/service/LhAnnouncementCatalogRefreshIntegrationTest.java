@@ -24,7 +24,7 @@ import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySo
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
@@ -154,7 +154,7 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
 
     @Test
     void 조회_유형이_바뀐_경우_이전_목록_행은_후보_연결에_사용하지_않는다() {
-        MyHomeAnnouncementSource source = sources.save(source("100", 1, "20261030"));
+        MyHomeAnnouncementSourceView source = sources.save(source("100", 1, "20261030"));
         catalogStore.store(List.of(entry("공고중")));
         assertThat(candidateResolver.resolve(source)).isInstanceOfSatisfying(Candidate.class, candidate ->
                 assertThat(candidate.catalogCollectedAt()).isEqualTo(FIRST)
@@ -212,7 +212,7 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
 
     private void observeAgain(Instant now, String status) {
         when(clock.instant()).thenReturn(now);
-        List<MyHomeAnnouncementSource> current = sources.findAll();
+        List<MyHomeAnnouncementSourceView> current = sources.findAll();
         current.forEach(source -> source.markCollectedAt(now));
         sources.saveAll(current);
         catalogStore.store(List.of(entry(status)));
@@ -223,13 +223,13 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
                 "공고", status, "", "", "20261030", "", ""), "{}");
     }
 
-    private MyHomeAnnouncementSource source(String panId, int houseSn, String endDate) {
+    private MyHomeAnnouncementSourceView source(String panId, int houseSn, String endDate) {
         String payload = """
                 {"pblancId":"%s","houseSn":%d,"suplyInsttNm":"한국토지주택공사","suplyTyNm":"행복주택",
                  "endDe":"%s",
                  "url":"https://apply.lh.or.kr/panDetail?panId=%s&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"}
                 """.formatted(panId, houseSn, endDate, panId);
-        var source = MyHomeAnnouncementSource.from(0,
+        var source = MyHomeAnnouncementSourceView.from(0,
                 JsonMapper.builder().build().readValue(payload, MyHomeAnnouncementSourceSnapshot.class));
         source.markCollectedAt(FIRST);
         return source;

@@ -29,7 +29,7 @@ import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollect
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQueryApiRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
@@ -177,13 +177,13 @@ class LhAnnouncementCurrentSourceIntegrationTest {
 
     @Test
     void 최신_행이_500행_배치_밖에_있어도_공급과_상세를_연결하고_현재_PAN으로_정제한다() {
-        MyHomeAnnouncementSource previous = source("P1", 1, "100", "previous", NOW.minusSeconds(60));
+        MyHomeAnnouncementSourceView previous = source("P1", 1, "100", "previous", NOW.minusSeconds(60));
         previous.markMissed();
         previous.markMissed();
-        List<MyHomeAnnouncementSource> rows = new ArrayList<>();
+        List<MyHomeAnnouncementSourceView> rows = new ArrayList<>();
         rows.add(previous);
         for (int index = 0; index < 499; index++) {
-            MyHomeAnnouncementSource filler = source("filler-" + index, 1, "300", "old", NOW);
+            MyHomeAnnouncementSourceView filler = source("filler-" + index, 1, "300", "old", NOW);
             filler.replaceWith(snapshot("filler-" + index, 1, "300", "20260101"));
             rows.add(filler);
         }
@@ -206,7 +206,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
 
     @Test
     void 최신_요청_실패는_이전_원천과_성공_연결과_제품을_보존하고_재시도하면_정제까지_복구한다() {
-        MyHomeAnnouncementSource previous = sources.save(source("P1", 1, "100", "previous", NOW.minusSeconds(60)));
+        MyHomeAnnouncementSourceView previous = sources.save(source("P1", 1, "100", "previous", NOW.minusSeconds(60)));
         collection.collect(SUPPLY);
         collection.collect(DETAIL);
         assertCurrentProduct("100");
@@ -245,7 +245,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
 
     @Test
     void 요청_충돌_실패는_반복해도_하나의_이력으로_남고_현재_원천_복구_후_해결된다() {
-        MyHomeAnnouncementSource first = sources.save(source("P1", 1, "100", "current", NOW));
+        MyHomeAnnouncementSourceView first = sources.save(source("P1", 1, "100", "current", NOW));
         sources.save(source("P1", 2, "200", "current", NOW));
         assertThat(collection.collect(DETAIL).failedRequestCount()).isOne();
         assertThat(collection.refresh(DETAIL, "P1").failedRequestCount()).isOne();
@@ -265,8 +265,8 @@ class LhAnnouncementCurrentSourceIntegrationTest {
     @ParameterizedTest
     @ValueSource(strings = {"expired", "non_lh", "unsupported"})
     void 충돌_공고가_수집_대상에서_빠지면_기존_실패를_건너뜀으로_정리한다(String exclusion) {
-        MyHomeAnnouncementSource first = sources.save(source("P1", 1, "100", "current", NOW));
-        MyHomeAnnouncementSource second = sources.save(source("P1", 2, "200", "current", NOW));
+        MyHomeAnnouncementSourceView first = sources.save(source("P1", 1, "100", "current", NOW));
+        MyHomeAnnouncementSourceView second = sources.save(source("P1", 2, "200", "current", NOW));
         assertThat(collection.collect(DETAIL).failedRequestCount()).isOne();
         Long failureId = failures.findAll().getFirst().getId();
         excludeSource(first, exclusion);
@@ -297,7 +297,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
     @ParameterizedTest
     @ValueSource(strings = {"expired", "non_lh", "unsupported"})
     void 일부_원천만_제외되고_충돌이나_수집_실패가_남으면_기존_보류를_유지한다(String exclusion) {
-        MyHomeAnnouncementSource first = sources.save(source("P1", 1, "100", "current", NOW));
+        MyHomeAnnouncementSourceView first = sources.save(source("P1", 1, "100", "current", NOW));
         sources.save(source("P1", 2, "200", "current", NOW));
         assertThat(collection.collect(DETAIL).failedRequestCount()).isOne();
         Long failureId = failures.findAll().getFirst().getId();
@@ -376,7 +376,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
                 assertThat(failure.getStatus()).isEqualTo(status));
     }
 
-    private void excludeSource(MyHomeAnnouncementSource source, String exclusion) {
+    private void excludeSource(MyHomeAnnouncementSourceView source, String exclusion) {
         switch (exclusion) {
             case "expired" -> ReflectionTestUtils.setField(source, "endDe", "20260801");
             case "non_lh" -> ReflectionTestUtils.setField(source, "suplyInsttNm", "SH");
@@ -405,10 +405,10 @@ class LhAnnouncementCurrentSourceIntegrationTest {
                 assertThat(announcement.getLhPanId()).isEqualTo(panId));
     }
 
-    private MyHomeAnnouncementSource source(
+    private MyHomeAnnouncementSourceView source(
             String identifier, int houseSn, String panId, String runId, Instant seenAt
     ) {
-        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0,
+        MyHomeAnnouncementSourceView source = MyHomeAnnouncementSourceView.from(0,
                 snapshot(identifier, houseSn, panId, "20261030"));
         source.markSeen(runId, seenAt);
         return source;

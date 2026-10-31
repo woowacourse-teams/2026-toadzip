@@ -14,7 +14,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
@@ -39,7 +39,7 @@ class AnnouncementRegistrationServiceTest {
     @Mock private MyHomeAnnouncementSourceReader sources;
     @Mock private LhAnnouncementExternalCollectionService lhCollection;
     @Mock private MyHomeAnnouncementMappingService mapping;
-    @Mock private MyHomeAnnouncementSource source;
+    @Mock private MyHomeAnnouncementSourceView source;
     @Mock private Announcement announcement;
     private AnnouncementRegistrationService service;
 

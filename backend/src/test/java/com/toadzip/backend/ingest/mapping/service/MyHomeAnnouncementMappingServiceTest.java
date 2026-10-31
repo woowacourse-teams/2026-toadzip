@@ -33,7 +33,7 @@ import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollect
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectedResponse;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectionRequest;
@@ -359,7 +359,7 @@ class MyHomeAnnouncementMappingServiceTest {
         storeCollectedHouses(COLLECTED_AT, List.of(1, 2));
         assertThat(service.mapAll().failedSourceRowCount()).isZero();
         List<Long> previousRowIds = supplyRowRepository.findAll().stream().map(SupplyRow::getId).sorted().toList();
-        SupplyRow missingHouse = supplyRow(MyHomeAnnouncementSource.sourceKeyOf(
+        SupplyRow missingHouse = supplyRow(MyHomeAnnouncementSourceView.sourceKeyOf(
                 data("21026", 2, "부산도시공사", "동삼2")));
         SupplyTarget target = supplyTargetRepository.save(SupplyTarget.create(
                 missingHouse, "청년", null, 1, null, null, null, null, null, 1));
@@ -405,7 +405,7 @@ class MyHomeAnnouncementMappingServiceTest {
     @ValueSource(booleans = {false, true})
     void 관리자_보호로_기관변경을_거절하면_LH_파생행과_모든_공급대상을_보존한다(boolean deleted) {
         saveMappedComplex();
-        MyHomeAnnouncementSource source = sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
+        MyHomeAnnouncementSourceView source = sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
         saveLhSupplyLink("21026", "PAN-1");
         lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of(
                 lhSupply(0, "PAN-1", "동삼2", "46A", "46.8000", "67.0000"),
@@ -568,7 +568,7 @@ class MyHomeAnnouncementMappingServiceTest {
                     SupplyTarget.create(row, "수동", null, 1, null, null, null, null, "공고문 참조", 3)
             ));
         }
-        for (MyHomeAnnouncementSource source : sources) {
+        for (MyHomeAnnouncementSourceView source : sources) {
             source.replaceWith(data("21026", source.getHouseSn(), "서울주택도시공사", "동삼2"));
         }
         sourceRepository.saveAll(sources);
@@ -598,7 +598,7 @@ class MyHomeAnnouncementMappingServiceTest {
         saveMappedComplex();
         sourceRepository.save(source(0, data("21026", 1, "부산도시공사", "동삼2")));
         service.mapAll();
-        MyHomeAnnouncementSource source = sourceRepository.findAll().getFirst();
+        MyHomeAnnouncementSourceView source = sourceRepository.findAll().getFirst();
         MyHomeAnnouncementSourceSnapshot changed = data("21026", 1, "서울주택도시공사", "동삼2 변경");
         source.replaceWith(withNameAndSupplyCount(changed, "변경된 국민임대 모집공고", 35));
         source.markCollectedAt(COLLECTED_AT.plusSeconds(60));
@@ -639,7 +639,7 @@ class MyHomeAnnouncementMappingServiceTest {
     @Test
     void 이전_공고가_순환하면_기존_공고가_있어도_두_공고를_저장하지_않는다() {
         saveMappedComplex();
-        MyHomeAnnouncementSource original = source(
+        MyHomeAnnouncementSourceView original = source(
                 0, data("21026", 1, "부산도시공사", "동삼2")
         );
         sourceRepository.save(original);
@@ -671,7 +671,7 @@ class MyHomeAnnouncementMappingServiceTest {
         saveMappedComplex();
         saveDefaultLhSupply("21026");
         saveDefaultLhSupply("21027");
-        MyHomeAnnouncementSource originalSource = source(
+        MyHomeAnnouncementSourceView originalSource = source(
                 0,
                 data("21026", 1, "LH서울", "동삼2")
         );
@@ -705,8 +705,8 @@ class MyHomeAnnouncementMappingServiceTest {
     @Test
     void 비활성_공급_원천은_보존하면서_활성_원천의_공고_정정을_반영한다() {
         saveMappedComplex();
-        MyHomeAnnouncementSource current = source(0, data("21026", 1, "부산도시공사", "동삼2"));
-        MyHomeAnnouncementSource historical = source(1, data("21026", 2, "부산도시공사", "동삼2"));
+        MyHomeAnnouncementSourceView current = source(0, data("21026", 1, "부산도시공사", "동삼2"));
+        MyHomeAnnouncementSourceView historical = source(1, data("21026", 2, "부산도시공사", "동삼2"));
         sourceRepository.saveAll(List.of(current, historical));
         assertThat(service.mapAll().failedSourceRowCount()).isZero();
         List<Long> previousRowIds = supplyRowRepository.findAll().stream().map(SupplyRow::getId).sorted().toList();
@@ -730,8 +730,8 @@ class MyHomeAnnouncementMappingServiceTest {
     @Test
     void 모든_원천이_비활성이면_마지막으로_관찰한_실행의_공통값과_공급행을_보존한다() {
         saveMappedComplex();
-        MyHomeAnnouncementSource previous = source(0, data("21026", 1, "부산도시공사", "동삼2"));
-        MyHomeAnnouncementSource latest = source(1, data("21026", 2, "부산도시공사", "동삼2"));
+        MyHomeAnnouncementSourceView previous = source(0, data("21026", 1, "부산도시공사", "동삼2"));
+        MyHomeAnnouncementSourceView latest = source(1, data("21026", 2, "부산도시공사", "동삼2"));
         sourceRepository.saveAll(List.of(previous, latest));
         service.mapAll();
         List<Long> previousRowIds = supplyRowRepository.findAll().stream().map(SupplyRow::getId).sorted().toList();
@@ -754,8 +754,8 @@ class MyHomeAnnouncementMappingServiceTest {
 
     @Test
     void 같은_실행의_활성_원천끼리_공통값이_다르면_계속_거절한다() {
-        MyHomeAnnouncementSource first = source(0, data("21026", 1, "부산도시공사", "동삼2"));
-        MyHomeAnnouncementSource second = source(1, data("21026", 2, "부산도시공사", "동삼2"));
+        MyHomeAnnouncementSourceView first = source(0, data("21026", 1, "부산도시공사", "동삼2"));
+        MyHomeAnnouncementSourceView second = source(1, data("21026", 2, "부산도시공사", "동삼2"));
         first.markSeen("same-run", COLLECTED_AT);
         second.markSeen("same-run", COLLECTED_AT);
         ReflectionTestUtils.setField(second, "pblancNm", "충돌하는 공고명");
@@ -896,7 +896,7 @@ class MyHomeAnnouncementMappingServiceTest {
         ));
         sourceRepository.save(source(0, data("21026", 1, "부산도시공사", "동삼2")));
         service.mapAll();
-        MyHomeAnnouncementSource source = sourceRepository.findAll().getFirst();
+        MyHomeAnnouncementSourceView source = sourceRepository.findAll().getFirst();
         source.replaceWith(withHousingType(
                 data("21026", 1, "부산도시공사", "동삼2"),
                 "46 A 타입"
@@ -1274,8 +1274,8 @@ class MyHomeAnnouncementMappingServiceTest {
         return complex;
     }
 
-    private MyHomeAnnouncementSource source(int order, MyHomeAnnouncementSourceSnapshot data) {
-        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(order, data);
+    private MyHomeAnnouncementSourceView source(int order, MyHomeAnnouncementSourceSnapshot data) {
+        MyHomeAnnouncementSourceView source = MyHomeAnnouncementSourceView.from(order, data);
         source.markCollectedAt(COLLECTED_AT);
         return source;
     }
@@ -1285,14 +1285,14 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     private void saveDefaultLhSupply(String identifier) {
-        MyHomeAnnouncementSource source = source(0, data(identifier, 1, "LH", "동삼2"));
+        MyHomeAnnouncementSourceView source = source(0, data(identifier, 1, "LH", "동삼2"));
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
         completeLinks(identifier, candidate);
         lhSupplyRepository.save(lhSupply(0, identifier, "동삼2", "46A", "46.8000", "67.0000"));
     }
 
     private void saveLhSupplyLink(String announcementIdentifier, String panId) {
-        MyHomeAnnouncementSource source = sourceRepository.findAll().stream()
+        MyHomeAnnouncementSourceView source = sourceRepository.findAll().stream()
                 .filter(row -> row.getPblancId().equals(announcementIdentifier))
                 .findFirst().orElseThrow();
         ReflectionTestUtils.setField(source, "url", "https://example.com/announcements?panId=" + panId

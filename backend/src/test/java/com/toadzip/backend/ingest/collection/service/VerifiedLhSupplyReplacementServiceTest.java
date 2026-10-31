@@ -12,7 +12,7 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollection
 import com.toadzip.backend.ingest.collection.lh.supply.dto.VerifiedLhSupplyReplacementRequest;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.VerifiedLhSupplyReplacementStore;
 import com.toadzip.backend.ingest.collection.lh.supply.service.VerifiedLhSupplyReplacementService;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
@@ -41,7 +41,7 @@ class VerifiedLhSupplyReplacementServiceTest {
 
     @BeforeEach
     void setUp() {
-        MyHomeAnnouncementSource source = mock(MyHomeAnnouncementSource.class);
+        MyHomeAnnouncementSourceView source = mock(MyHomeAnnouncementSourceView.class);
         when(source.isActive()).thenReturn(true);
         when(myHomeRepository.findAllByPblancIdOrderByIdAsc("pblanc-1")).thenReturn(List.of(source));
         when(resolver.resolveAll(List.of(source))).thenReturn(List.of(

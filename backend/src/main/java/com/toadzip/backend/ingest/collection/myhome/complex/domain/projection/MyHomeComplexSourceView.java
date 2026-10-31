@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 
 @Getter
 @NoArgsConstructor(access = PROTECTED)
-public class MyHomeComplexSource {
+public class MyHomeComplexSourceView {
 
     private Long id;
 
@@ -47,13 +47,13 @@ public class MyHomeComplexSource {
     private Long bassMtRntchrg;
     private Long bassCnvrsGtnLmt;
 
-    private MyHomeComplexSource(MyHomeComplexSourceSnapshot snapshot) {
+    private MyHomeComplexSourceView(MyHomeComplexSourceSnapshot snapshot) {
         sourceKey = sourceKeyOf(snapshot);
         replaceWith(snapshot);
     }
 
-    public static MyHomeComplexSource from(MyHomeComplexSourceSnapshot snapshot) {
-        return new MyHomeComplexSource(snapshot);
+    public static MyHomeComplexSourceView from(MyHomeComplexSourceSnapshot snapshot) {
+        return new MyHomeComplexSourceView(snapshot);
     }
 
     public static String sourceKeyOf(MyHomeComplexSourceSnapshot snapshot) {
@@ -114,7 +114,7 @@ public class MyHomeComplexSource {
         return key.substring(separator + 1, separator + 1 + length);
     }
 
-    public static MyHomeComplexSource read(Long id, Instant collectedAt, MyHomeComplexSourceSnapshot snapshot) {
+    public static MyHomeComplexSourceView read(Long id, Instant collectedAt, MyHomeComplexSourceSnapshot snapshot) {
         var source = from(snapshot);
         source.id = id;
         source.collectedAt = collectedAt;

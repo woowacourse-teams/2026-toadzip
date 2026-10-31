@@ -6,7 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementLifecycleService;
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
@@ -50,7 +50,7 @@ class IngestExecutionOwnershipIntegrationTest {
 
     @Test
     void 잠금_세션을_잃은_실행의_원천_변경을_거절하고_실패로_남긴다() {
-        MyHomeAnnouncementSource stored = sourceRepository.saveAndFlush(MyHomeAnnouncementSource.from(0,
+        MyHomeAnnouncementSourceView stored = sourceRepository.saveAndFlush(MyHomeAnnouncementSourceView.from(0,
                 new MyHomeAnnouncementSourceSnapshot("OWNERSHIP", 1, null, null, null, null, null,
                         null, null, null, null, null, null, null, null, null, null, null, null,
                         null, null, null, null, null, null, null, null, null, null, null)));
@@ -235,7 +235,7 @@ class IngestExecutionOwnershipIntegrationTest {
 
         @Transactional
         public void write(CountDownLatch entered, CountDownLatch release) throws InterruptedException {
-            repository.saveAndFlush(MyHomeAnnouncementSource.from(0,
+            repository.saveAndFlush(MyHomeAnnouncementSourceView.from(0,
                     new MyHomeAnnouncementSourceSnapshot(UUID.randomUUID().toString(), 1, null, null, null,
                             null, null, null, null, null, null, null, null, null, null, null, null, null, null,
                             null, null, null, null, null, null, null, null, null, null, null)));

@@ -17,7 +17,7 @@ import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollect
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQueryApiRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
@@ -200,7 +200,7 @@ class LhAnnouncementCollectionQueryCountTest {
     }
 
     private void prepareCache(int count, boolean sharedRequest) {
-        List<MyHomeAnnouncementSource> rows = new ArrayList<>();
+        List<MyHomeAnnouncementSourceView> rows = new ArrayList<>();
         List<LhAnnouncementCollectionLink> completedLinks = new ArrayList<>();
         Map<String, String> completedRequests = new LinkedHashMap<>();
         for (int index = 0; index < count; index++) {
@@ -226,13 +226,13 @@ class LhAnnouncementCollectionQueryCountTest {
         baselineSuccessCount = completedRequests.size();
     }
 
-    private MyHomeAnnouncementSource source(String identifier, String panId) {
+    private MyHomeAnnouncementSourceView source(String identifier, String panId) {
         String payload = """
                 {"pblancId":"%s","houseSn":1,"suplyInsttNm":"LH","suplyTyNm":"행복주택",
                  "endDe":"20261030",
                  "url":"https://apply.lh.or.kr/panDetail?panId=%s&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"}
                 """.formatted(identifier, panId);
-        return MyHomeAnnouncementSource.from(0,
+        return MyHomeAnnouncementSourceView.from(0,
                 JsonMapper.builder().build().readValue(payload, MyHomeAnnouncementSourceSnapshot.class));
     }
 

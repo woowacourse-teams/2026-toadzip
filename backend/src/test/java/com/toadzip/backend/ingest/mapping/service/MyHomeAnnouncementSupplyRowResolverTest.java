@@ -14,7 +14,7 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolv
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
@@ -36,8 +36,8 @@ class MyHomeAnnouncementSupplyRowResolverTest {
 
     @Test
     void 현재_원천의_LH_연결로_공급행을_해석한다() {
-        MyHomeAnnouncementSource past = mock(MyHomeAnnouncementSource.class);
-        MyHomeAnnouncementSource current = mock(MyHomeAnnouncementSource.class);
+        MyHomeAnnouncementSourceView past = mock(MyHomeAnnouncementSourceView.class);
+        MyHomeAnnouncementSourceView current = mock(MyHomeAnnouncementSourceView.class);
         when(current.isActive()).thenReturn(true);
         MyHomeSupplyRowMappingData pastRow = sourceRow(past, "past-row", "같은 단지");
         MyHomeSupplyRowMappingData currentRow = sourceRow(current, "current-row", "같은 단지");
@@ -64,8 +64,8 @@ class MyHomeAnnouncementSupplyRowResolverTest {
 
     @Test
     void 현재_원천의_연결이_없으면_과거_연결로_대체하지_않는다() {
-        MyHomeAnnouncementSource past = mock(MyHomeAnnouncementSource.class);
-        MyHomeAnnouncementSource current = mock(MyHomeAnnouncementSource.class);
+        MyHomeAnnouncementSourceView past = mock(MyHomeAnnouncementSourceView.class);
+        MyHomeAnnouncementSourceView current = mock(MyHomeAnnouncementSourceView.class);
         when(current.isActive()).thenReturn(true);
         LhAnnouncementRequest pastRequest = new LhAnnouncementRequest("past-pan", "03", "06", "07", "062");
         when(linkResolver.resolveFirstLinked(List.of(past, current)))
@@ -91,7 +91,7 @@ class MyHomeAnnouncementSupplyRowResolverTest {
             String myHomeComplexName,
             String lhComplexName
     ) {
-        MyHomeAnnouncementSource source = mock(MyHomeAnnouncementSource.class);
+        MyHomeAnnouncementSourceView source = mock(MyHomeAnnouncementSourceView.class);
         MyHomeSupplyRowMappingData sourceRow = new MyHomeSupplyRowMappingData(
                 source,
                 "myhome-row",
@@ -250,10 +250,10 @@ class MyHomeAnnouncementSupplyRowResolverTest {
 
     private List<MyHomeSupplyRowMappingData> resolveSources(List<Source> sources,
             List<LhAnnouncementSupplySource> lhSupplies) {
-        List<MyHomeAnnouncementSource> mocks = new java.util.ArrayList<>();
+        List<MyHomeAnnouncementSourceView> mocks = new java.util.ArrayList<>();
         List<MyHomeSupplyRowMappingData> rows = new java.util.ArrayList<>();
         for (int index = 0; index < sources.size(); index++) {
-            MyHomeAnnouncementSource source = mock(MyHomeAnnouncementSource.class);
+            MyHomeAnnouncementSourceView source = mock(MyHomeAnnouncementSourceView.class);
             when(source.isActive()).thenReturn(true);
             when(source.getSourceKey()).thenReturn("myhome-row-" + index);
             mocks.add(source);
@@ -275,7 +275,7 @@ class MyHomeAnnouncementSupplyRowResolverTest {
             int householdCount,
             List<LhAnnouncementSupplySource> lhSupplies
     ) {
-        MyHomeAnnouncementSource source = mock(MyHomeAnnouncementSource.class);
+        MyHomeAnnouncementSourceView source = mock(MyHomeAnnouncementSourceView.class);
         when(source.isActive()).thenReturn(true);
         MyHomeSupplyRowMappingData sourceRow = new MyHomeSupplyRowMappingData(
                 source, "myhome-row", myHomeComplexName, "아파트", "4420011000102060000",
@@ -318,7 +318,7 @@ class MyHomeAnnouncementSupplyRowResolverTest {
     }
 
     private MyHomeSupplyRowMappingData sourceRow(
-            MyHomeAnnouncementSource source,
+            MyHomeAnnouncementSourceView source,
             String identifier,
             String complexName
     ) {

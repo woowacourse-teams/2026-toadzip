@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.housing.domain.Address;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
@@ -53,7 +53,7 @@ class MyHomeComplexMappingProcessor {
     MyHomeComplexMappingReport mapAll() {
         Instant occurredAt = clock.instant();
         List<MyHomeComplexMappingFailure> failures = new ArrayList<>();
-        Map<String, List<MyHomeComplexSource>> groups = groupSources(failures, occurredAt);
+        Map<String, List<MyHomeComplexSourceView>> groups = groupSources(failures, occurredAt);
         Set<String> verifiedIdentifiers = new LinkedHashSet<>();
         linkRepository.findAllByMergeIdIsNotNull().forEach(link ->
                 verifiedIdentifiers.add(link.getSourceComplexIdentifier()));
@@ -63,7 +63,7 @@ class MyHomeComplexMappingProcessor {
         var executionId = IngestExecutionScope.currentExecutionId().orElse(null);
         try {
             Map<SplitComplexKey, List<MappedGroup>> splitGroups = new LinkedHashMap<>();
-            for (Map.Entry<String, List<MyHomeComplexSource>> group : groups.entrySet()) {
+            for (Map.Entry<String, List<MyHomeComplexSourceView>> group : groups.entrySet()) {
                 MappedGroup unmapped = new MappedGroup(group.getKey(), group.getValue(), null);
                 if (verifiedIdentifiers.contains(group.getKey())) {
                     report = report.plus(writeGroup(List.of(unmapped), failures, occurredAt,
@@ -103,11 +103,11 @@ class MyHomeComplexMappingProcessor {
         return report;
     }
 
-    private Map<String, List<MyHomeComplexSource>> groupSources(
+    private Map<String, List<MyHomeComplexSourceView>> groupSources(
             List<MyHomeComplexMappingFailure> failures, Instant occurredAt
     ) {
-        Map<String, List<MyHomeComplexSource>> groups = new LinkedHashMap<>();
-        for (MyHomeComplexSource source : sourceRepository.findAll()) {
+        Map<String, List<MyHomeComplexSourceView>> groups = new LinkedHashMap<>();
+        for (MyHomeComplexSourceView source : sourceRepository.findAll()) {
             if (sourceMapper.shouldSkip(source)) {
                 continue;
             }
@@ -131,7 +131,7 @@ class MyHomeComplexMappingProcessor {
 
     private void recordMissingLinkedSources(
             Set<String> verifiedIdentifiers,
-            Map<String, List<MyHomeComplexSource>> groups,
+            Map<String, List<MyHomeComplexSourceView>> groups,
             List<MyHomeComplexMappingFailure> failures,
             Instant occurredAt
     ) {
@@ -230,7 +230,7 @@ class MyHomeComplexMappingProcessor {
     ) {
         int rows = 0;
         for (MappedGroup member : members) {
-            for (MyHomeComplexSource source : member.sources()) {
+            for (MyHomeComplexSourceView source : member.sources()) {
                 failures.add(failureOf(source, member.identifier(), reason, detail, occurredAt));
             }
             rows += member.sources().size();
@@ -239,7 +239,7 @@ class MyHomeComplexMappingProcessor {
     }
 
     private MyHomeComplexMappingFailure failureOf(
-            MyHomeComplexSource source,
+            MyHomeComplexSourceView source,
             String identifier,
             MyHomeComplexMappingFailureReason reason,
             String detail,
@@ -250,7 +250,7 @@ class MyHomeComplexMappingProcessor {
         );
     }
 
-    private record MappedGroup(String identifier, List<MyHomeComplexSource> sources, MyHomeComplexMappingData data) {
+    private record MappedGroup(String identifier, List<MyHomeComplexSourceView> sources, MyHomeComplexMappingData data) {
 
         long hsmpSn() {
             return Long.parseLong(identifier.substring(0, identifier.indexOf(':')));

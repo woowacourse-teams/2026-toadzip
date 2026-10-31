@@ -9,7 +9,7 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollection
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Resolution;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Skipped;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
@@ -92,12 +92,12 @@ public class LhAnnouncementExternalCollectionService {
         long lastSeenId = 0L;
         while (true) {
             IngestExecutionScope.checkStopRequested();
-            List<MyHomeAnnouncementSource> sources = findNextBatch(targetSource, lastSeenId);
+            List<MyHomeAnnouncementSourceView> sources = findNextBatch(targetSource, lastSeenId);
             if (sources.isEmpty()) {
                 return report;
             }
             lastSeenId = sources.getLast().getId();
-            List<MyHomeAnnouncementSource> completeSources = completeSourceGroups(
+            List<MyHomeAnnouncementSourceView> completeSources = completeSourceGroups(
                     targetSource, sources, loadedAnnouncementKeys
             );
             if (completeSources.isEmpty()) {
@@ -122,7 +122,7 @@ public class LhAnnouncementExternalCollectionService {
             String pblancId,
             UUID sourceExecutionId
     ) {
-        List<MyHomeAnnouncementSource> sources = readSources(targetSource, true,
+        List<MyHomeAnnouncementSourceView> sources = readSources(targetSource, true,
                 () -> myHomeAnnouncementRepository.findAllByPblancIdOrderByIdAsc(pblancId).stream()
                         .filter(source -> sourceExecutionId == null
                                 || sourceExecutionId.toString().equals(source.getLastSeenRunId())).toList());
@@ -132,30 +132,30 @@ public class LhAnnouncementExternalCollectionService {
         return collectBatch(targetSource, sources, new HashSet<>(), new HashMap<>(), true);
     }
 
-    private List<MyHomeAnnouncementSource> findNextBatch(ExternalDataSource targetSource, long lastSeenId) {
+    private List<MyHomeAnnouncementSourceView> findNextBatch(ExternalDataSource targetSource, long lastSeenId) {
         return readSources(targetSource, false,
                 () -> myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(
                         lastSeenId, PageRequest.of(0, ANNOUNCEMENT_BATCH_SIZE)
                 ));
     }
 
-    private List<MyHomeAnnouncementSource> completeSourceGroups(
+    private List<MyHomeAnnouncementSourceView> completeSourceGroups(
             ExternalDataSource targetSource,
-            List<MyHomeAnnouncementSource> batch,
+            List<MyHomeAnnouncementSourceView> batch,
             Set<String> loadedAnnouncementKeys
     ) {
-        List<MyHomeAnnouncementSource> unread = batch.stream()
+        List<MyHomeAnnouncementSourceView> unread = batch.stream()
                 .filter(source -> loadedAnnouncementKeys.add(sourceGroupKey(source)))
                 .toList();
         if (unread.isEmpty()) {
             return List.of();
         }
         List<String> identifiers = unread.stream()
-                .map(MyHomeAnnouncementSource::getPblancId)
+                .map(MyHomeAnnouncementSourceView::getPblancId)
                 .filter(identifier -> identifier != null && !identifier.isBlank())
                 .distinct()
                 .toList();
-        List<MyHomeAnnouncementSource> sources = new ArrayList<>(measurePreparation(
+        List<MyHomeAnnouncementSourceView> sources = new ArrayList<>(measurePreparation(
                 targetSource, false, "source_group_read",
                 () -> myHomeAnnouncementRepository.findAllByPblancIdInOrderByIdAsc(identifiers)
         ));
@@ -165,7 +165,7 @@ public class LhAnnouncementExternalCollectionService {
         return sources;
     }
 
-    private List<MyHomeAnnouncementSource> currentSources(List<MyHomeAnnouncementSource> sources) {
+    private List<MyHomeAnnouncementSourceView> currentSources(List<MyHomeAnnouncementSourceView> sources) {
         return sources.stream()
                 .collect(Collectors.groupingBy(this::sourceGroupKey, LinkedHashMap::new, Collectors.toList()))
                 .values().stream()
@@ -173,31 +173,31 @@ public class LhAnnouncementExternalCollectionService {
                 .toList();
     }
 
-    private String sourceGroupKey(MyHomeAnnouncementSource source) {
+    private String sourceGroupKey(MyHomeAnnouncementSourceView source) {
         if (source.getPblancId() == null || source.getPblancId().isBlank()) {
             return "source:" + source.getSourceKey();
         }
         return source.getPblancId();
     }
 
-    private List<MyHomeAnnouncementSource> readSources(
+    private List<MyHomeAnnouncementSourceView> readSources(
             ExternalDataSource targetSource,
             boolean forceRefresh,
-            Supplier<List<MyHomeAnnouncementSource>> query
+            Supplier<List<MyHomeAnnouncementSourceView>> query
     ) {
-        List<MyHomeAnnouncementSource> sources = measurePreparation(targetSource, forceRefresh, "source_read", query);
+        List<MyHomeAnnouncementSourceView> sources = measurePreparation(targetSource, forceRefresh, "source_read", query);
         recordCount(targetSource, forceRefresh, "source.rows", "read", sources.size());
         return sources;
     }
 
     private ExternalDataCollectionReport collectBatch(
             ExternalDataSource targetSource,
-            List<MyHomeAnnouncementSource> sources,
+            List<MyHomeAnnouncementSourceView> sources,
             Set<String> handledAnnouncementKeys,
             Map<String, Boolean> completedRequests,
             boolean forceRefresh
     ) {
-        List<MyHomeAnnouncementSource> current = measurePreparation(
+        List<MyHomeAnnouncementSourceView> current = measurePreparation(
                 targetSource, forceRefresh, "current_source_selection", () -> currentSources(sources)
         );
         List<Resolution> resolutions = measurePreparation(targetSource, forceRefresh, "candidate_resolution",

@@ -18,7 +18,7 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
@@ -228,8 +228,8 @@ class MyHomeComplexMappingServiceTest {
                 123L, "46A", "46.8000", "20.2000", "서울주택도시공사", "20200101");
         MyHomeComplexSourceSnapshot secondData = data(
                 123L, "59A", "59.9500", "24.1000", "서울주택도시공사", "20200101");
-        MyHomeComplexSource first = source(withPrices(firstData, 10_000_000L, 200_000L));
-        MyHomeComplexSource second = source(withPrices(secondData, 20_000_000L, 100_000L));
+        MyHomeComplexSourceView first = source(withPrices(firstData, 10_000_000L, 200_000L));
+        MyHomeComplexSourceView second = source(withPrices(secondData, 20_000_000L, 100_000L));
         sourceRepository.saveAll(List.of(first, second));
 
         service.mapAll();
@@ -272,7 +272,7 @@ class MyHomeComplexMappingServiceTest {
     @Test
     void 수집시각이_없는_과거_원천은_기본금액을_제공하지_않고_다른_단지도_정제한다() {
         sourceRepository.saveAll(List.of(
-                MyHomeComplexSource.from(withPrices(
+                MyHomeComplexSourceView.from(withPrices(
                         data(123L, "46A", "46.8000", "20.2000", "서울주택도시공사", "20200101"),
                         10_000_000L, 200_000L)),
                 source(withPrices(
@@ -376,7 +376,7 @@ class MyHomeComplexMappingServiceTest {
 
     @Test
     void 변경된_마이홈_단지_정보를_기존_단지에_갱신한다() {
-        MyHomeComplexSource source = source("46A", "46.8000", "20.2000");
+        MyHomeComplexSourceView source = source("46A", "46.8000", "20.2000");
         sourceRepository.save(source);
         service.mapAll();
         Long complexId = complexRepository.findAll().getFirst().getId();
@@ -399,7 +399,7 @@ class MyHomeComplexMappingServiceTest {
         service.mapAll();
         Long housingTypeId = housingTypeRepository.findAll().getFirst().getId();
         sourceRepository.deleteAll();
-        MyHomeComplexSource correctedSource = source("46A", "47.12345", "20.2000");
+        MyHomeComplexSourceView correctedSource = source("46A", "47.12345", "20.2000");
         sourceRepository.save(correctedSource);
 
         var report = service.mapAll();
@@ -489,7 +489,7 @@ class MyHomeComplexMappingServiceTest {
 
     @Test
     void 변환_불가로_바뀐_원천은_전체_정제에서_한_번만_실패로_집계한다() {
-        MyHomeComplexSource source = source("46A", "46.8000", "20.2000");
+        MyHomeComplexSourceView source = source("46A", "46.8000", "20.2000");
         sourceRepository.save(source);
         service.mapAll();
         source.replaceWith(dataWith(
@@ -507,7 +507,7 @@ class MyHomeComplexMappingServiceTest {
 
     @Test
     void 실패했던_원천이_정상화되면_현재_실패_목록에서_제거한다() {
-        MyHomeComplexSource source = source(data(
+        MyHomeComplexSourceView source = source(data(
                 123L,
                 "46A",
                 "46.8000",
@@ -933,7 +933,7 @@ class MyHomeComplexMappingServiceTest {
         );
     }
 
-    private MyHomeComplexSource source(String styleName, String exclusiveArea, String commonArea) {
+    private MyHomeComplexSourceView source(String styleName, String exclusiveArea, String commonArea) {
         return source(data(
                 123L, styleName, exclusiveArea, commonArea, "서울주택도시공사", "20200101"
         ));
@@ -981,8 +981,8 @@ class MyHomeComplexMappingServiceTest {
         );
     }
 
-    private MyHomeComplexSource source(MyHomeComplexSourceSnapshot data) {
-        MyHomeComplexSource source = MyHomeComplexSource.from(data);
+    private MyHomeComplexSourceView source(MyHomeComplexSourceSnapshot data) {
+        MyHomeComplexSourceView source = MyHomeComplexSourceView.from(data);
         source.markCollectedAt(COLLECTED_AT);
         return source;
     }

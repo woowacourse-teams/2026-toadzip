@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.mapping.service;
 
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.domain.SourceText;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import java.time.LocalDate;
@@ -20,8 +20,8 @@ class MyHomeAnnouncementValueParser {
             .withResolverStyle(ResolverStyle.STRICT);
 
     String requiredText(
-            List<MyHomeAnnouncementSource> sources,
-            Function<MyHomeAnnouncementSource, String> extractor,
+            List<MyHomeAnnouncementSourceView> sources,
+            Function<MyHomeAnnouncementSourceView, String> extractor,
             String fieldName
     ) {
         String value = optionalText(sources, extractor, fieldName);
@@ -32,12 +32,12 @@ class MyHomeAnnouncementValueParser {
     }
 
     String optionalText(
-            List<MyHomeAnnouncementSource> sources,
-            Function<MyHomeAnnouncementSource, String> extractor,
+            List<MyHomeAnnouncementSourceView> sources,
+            Function<MyHomeAnnouncementSourceView, String> extractor,
             String fieldName
     ) {
         Set<String> values = new LinkedHashSet<>();
-        for (MyHomeAnnouncementSource source : sources) {
+        for (MyHomeAnnouncementSourceView source : sources) {
             String value = normalizedText(extractor.apply(source));
             if (value != null) {
                 values.add(value);
@@ -58,8 +58,8 @@ class MyHomeAnnouncementValueParser {
     }
 
     LocalDate commonDate(
-            List<MyHomeAnnouncementSource> sources,
-            Function<MyHomeAnnouncementSource, String> extractor,
+            List<MyHomeAnnouncementSourceView> sources,
+            Function<MyHomeAnnouncementSourceView, String> extractor,
             String fieldName
     ) {
         return date(requiredText(sources, extractor, fieldName), fieldName);

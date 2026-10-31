@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.housing.domain.HousingType;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.mapping.domain.AnnouncementSupplyMatchDecision;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import java.nio.charset.StandardCharsets;
@@ -34,7 +34,7 @@ public class SupplyMatchingFingerprint {
                 type.getExclusiveArea(), text(type.getSupplyArea())));
     }
 
-    public String splitSource(MyHomeAnnouncementSource source) {
+    public String splitSource(MyHomeAnnouncementSourceView source) {
         return hash(List.of(source.getSourceKey(), text(source.getHsmpNm()), text(source.getHouseTyNm()),
                 text(source.getPnu()), text(source.getSuplyTyNm()), text(source.getUrl()),
                 text(source.getSumSuplyCo()), text(source.getRentGtn()), text(source.getMtRntchrg()),

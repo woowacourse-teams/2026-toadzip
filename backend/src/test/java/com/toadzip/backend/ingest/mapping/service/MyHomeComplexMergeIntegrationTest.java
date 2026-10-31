@@ -30,7 +30,7 @@ import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSo
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
@@ -501,7 +501,7 @@ class MyHomeComplexMergeIntegrationTest {
         sources.save(source(31713154L, 1, "60", "60.0000", "20.0000"));
         mapping.mapAll();
         merge();
-        MyHomeComplexSource old = sources.findAllByHsmpSnIn(List.of(31713155L)).getFirst();
+        MyHomeComplexSourceView old = sources.findAllByHsmpSnIn(List.of(31713155L)).getFirst();
         long originalId = jdbc.sql("SELECT id FROM housing_types WHERE source_housing_type_identifier = ?")
                 .param(old.getSourceKey()).query(Long.class).single();
         jdbc.sql("UPDATE housing_types SET floor_plan_url = 'manual-plan' WHERE id = ?").param(originalId).update();
@@ -548,7 +548,7 @@ class MyHomeComplexMergeIntegrationTest {
     @Test
     void 통합_후_원천_주택형이_사라져도_수동_보강값이_있는_행은_보존한다() throws Exception {
         merge();
-        MyHomeComplexSource old = sources.findAllByHsmpSnIn(List.of(31713155L)).getFirst();
+        MyHomeComplexSourceView old = sources.findAllByHsmpSnIn(List.of(31713155L)).getFirst();
         jdbc.sql("UPDATE housing_types SET floor_plan_url = 'manual-plan' WHERE source_housing_type_identifier = ?")
                 .param(old.getSourceKey()).update();
         sources.delete(old);
@@ -694,15 +694,15 @@ class MyHomeComplexMergeIntegrationTest {
         return json.readTree(response);
     }
 
-    private MyHomeComplexSource source(long id, int count, String name, String area, String common) {
+    private MyHomeComplexSourceView source(long id, int count, String name, String area, String common) {
         return source(id, count, name, area, common, "행복주택");
     }
 
-    private MyHomeComplexSource source(
+    private MyHomeComplexSourceView source(
             long id, int count, String name, String area, String common, String supplyType
     ) {
         // 참고 주소가 원천마다 달라 정제의 분할 단지 자동 묶음에서 빠지고 관리자 확인 통합 대상으로 남는다.
-        MyHomeComplexSource source = MyHomeComplexSource.from(new MyHomeComplexSourceSnapshot(
+        MyHomeComplexSourceView source = MyHomeComplexSourceView.from(new MyHomeComplexSourceSnapshot(
                 id, "한국토지주택공사", "28", "인천광역시", "237", "부평구", NAME, ADDRESS + " (" + id + ")",
                 "2823710500105500000", null, count, supplyType, name, new BigDecimal(area),
                 new BigDecimal(common), "아파트", null, null, null, 0, null, null, null));

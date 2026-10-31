@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.enrichment.domain.LhSupplyRowLink;
 import com.toadzip.backend.ingest.enrichment.repository.LhSupplyRowLinkRepository;
@@ -32,7 +32,7 @@ public class LhSupplyRowLinks {
     }
 
     /** 공고의 저장 연결을 LH 행 식별자별로 판정한다. 저장 연결이 없는 LH 행은 결과에 없다. */
-    public Map<String, State> states(String announcementIdentifier, List<MyHomeAnnouncementSource> currentSources,
+    public Map<String, State> states(String announcementIdentifier, List<MyHomeAnnouncementSourceView> currentSources,
             List<LhAnnouncementSupplySource> supplies) {
         var result = new LinkedHashMap<String, State>();
         for (var link : links.findAllBySourceAnnouncementIdentifierOrderById(announcementIdentifier)) {
@@ -41,7 +41,7 @@ public class LhSupplyRowLinks {
         return result;
     }
 
-    private boolean valid(LhSupplyRowLink link, List<MyHomeAnnouncementSource> currentSources,
+    private boolean valid(LhSupplyRowLink link, List<MyHomeAnnouncementSourceView> currentSources,
             List<LhAnnouncementSupplySource> supplies) {
         boolean sameSupply = supplies.stream().anyMatch(value ->
                 identifier(value).equals(link.getLhSupplyRowIdentifier())
@@ -53,7 +53,7 @@ public class LhSupplyRowLinks {
     }
 
     /** 조회 이후 원천이나 저장 연결이 바뀌었는지 확인하는 값이다. */
-    public String token(List<MyHomeAnnouncementSource> currentSources, List<LhAnnouncementSupplySource> supplies,
+    public String token(List<MyHomeAnnouncementSourceView> currentSources, List<LhAnnouncementSupplySource> supplies,
             Map<String, State> states) {
         var values = new java.util.ArrayList<Object>();
         currentSources.forEach(source -> values.add(myHomeFingerprint(source)));
@@ -69,7 +69,7 @@ public class LhSupplyRowLinks {
                 source.getSuppliedUnitCount());
     }
 
-    public String myHomeFingerprint(MyHomeAnnouncementSource source) {
+    public String myHomeFingerprint(MyHomeAnnouncementSourceView source) {
         return hash(source.getSourceKey(), source.getHsmpNm(), source.getHouseTyNm(), source.getPnu(),
                 source.getSuplyTyNm(), source.getSumSuplyCo(), source.getUrl());
     }

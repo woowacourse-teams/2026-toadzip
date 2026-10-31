@@ -4,7 +4,7 @@ import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnn
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
 import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
@@ -34,11 +34,11 @@ public class LhAnnouncementCollectionCandidateResolver {
 
     private final LhAnnouncementCatalogSourceReader catalogRepository;
 
-    public Resolution resolve(MyHomeAnnouncementSource source) {
+    public Resolution resolve(MyHomeAnnouncementSourceView source) {
         return resolveAll(List.of(source)).getFirst();
     }
 
-    public List<Resolution> resolveAll(List<MyHomeAnnouncementSource> sources) {
+    public List<Resolution> resolveAll(List<MyHomeAnnouncementSourceView> sources) {
         List<Resolution> resolutions = sources.stream().map(this::infer).toList();
         List<String> panIds = resolutions.stream()
                 .filter(Candidate.class::isInstance)
@@ -60,7 +60,7 @@ public class LhAnnouncementCollectionCandidateResolver {
         }).toList();
     }
 
-    private Resolution infer(MyHomeAnnouncementSource source) {
+    private Resolution infer(MyHomeAnnouncementSourceView source) {
         String sourceAnnouncementKey = sourceAnnouncementKey(source);
         String sourceDescription = sourceDescription(source);
         if (!isLhProvider(source)) {
@@ -97,11 +97,11 @@ public class LhAnnouncementCollectionCandidateResolver {
                 || request.announcementTypeCode().equals(row.getAnnouncementTypeCode()));
     }
 
-    private boolean isLhProvider(MyHomeAnnouncementSource source) {
+    private boolean isLhProvider(MyHomeAnnouncementSourceView source) {
         return LhProviderPolicy.isLh(source.getSuplyInsttNm());
     }
 
-    private Optional<LhAnnouncementRequest> requestOf(MyHomeAnnouncementSource source) {
+    private Optional<LhAnnouncementRequest> requestOf(MyHomeAnnouncementSourceView source) {
         Optional<String> supplyTypeCode = supplyTypeCodeOf(source.getSuplyTyNm());
         if (supplyTypeCode.isEmpty()) {
             return Optional.empty();
@@ -121,7 +121,7 @@ public class LhAnnouncementCollectionCandidateResolver {
         }
     }
 
-    private String sourceDescription(MyHomeAnnouncementSource source) {
+    private String sourceDescription(MyHomeAnnouncementSourceView source) {
         if (source.getId() == null) {
             return source.getSourceKey();
         }
@@ -135,7 +135,7 @@ public class LhAnnouncementCollectionCandidateResolver {
         return Optional.ofNullable(SUPPLY_TYPE_CODE_BY_NAME.get(supplyTypeName.strip()));
     }
 
-    private String sourceAnnouncementKey(MyHomeAnnouncementSource source) {
+    private String sourceAnnouncementKey(MyHomeAnnouncementSourceView source) {
         String pblancId = source.getPblancId();
         if (pblancId == null || pblancId.isBlank()) {
             return "source:" + source.getSourceKey();

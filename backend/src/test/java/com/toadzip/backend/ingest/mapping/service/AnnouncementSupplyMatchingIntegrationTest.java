@@ -19,7 +19,7 @@ import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnounceme
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Request;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Row;
@@ -456,7 +456,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         apiNotice.put("pblancId", TARGET);
         var snapshot = json.treeToValue(apiNotice,
                 com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot.class);
-        var source = MyHomeAnnouncementSource.read(null, 1, Instant.parse("2026-10-18T14:56:03Z"),
+        var source = MyHomeAnnouncementSourceView.read(null, 1, Instant.parse("2026-10-18T14:56:03Z"),
                 null, 0, true, snapshot);
         sources.save(source);
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
@@ -1182,8 +1182,8 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 100, "SH", null, "INDIVIDUAL", "APARTMENT", "CORRIDOR", true, 80));
     }
 
-    private MyHomeAnnouncementSource source(String identifier, int house, String pnu) {
-        var source = MyHomeAnnouncementSource.from(house, new MyHomeAnnouncementSourceSnapshot(identifier,
+    private MyHomeAnnouncementSourceView source(String identifier, int house, String pnu) {
+        var source = MyHomeAnnouncementSourceView.from(house, new MyHomeAnnouncementSourceSnapshot(identifier,
                 house, "모집중", "국민임대 입주자 모집공고", "서울주택도시공사", "26A,B", "국민임대", null,
                 "20261001", "20261106", "20261008", "20261015", null, "https://example.com/manual", null,
                 null, "익산한스빌", "전북특별자치도", "익산시", null, null, null, pnu, null, null,

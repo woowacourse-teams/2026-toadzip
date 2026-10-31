@@ -8,7 +8,7 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollection
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionPolicy;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.CollectionCoverage;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse;
@@ -54,9 +54,9 @@ public class LhAnnouncementQualityService {
     @Transactional(readOnly = true)
     public LhAnnouncementQualityResponse snapshot() {
         Instant now = clock.instant();
-        List<MyHomeAnnouncementSource> currentSources = currentSources();
+        List<MyHomeAnnouncementSourceView> currentSources = currentSources();
         Set<String> currentSourceKeys = currentSources.stream()
-                .map(MyHomeAnnouncementSource::getSourceKey).collect(Collectors.toSet());
+                .map(MyHomeAnnouncementSourceView::getSourceKey).collect(Collectors.toSet());
         List<CurrentRequest> requests = currentRequests(currentSources);
         Set<String> requestHashes = collectionRequests(requests);
         Set<String> linkedPanIds = new HashSet<>();
@@ -67,17 +67,17 @@ public class LhAnnouncementQualityService {
                 collectionCoverage(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, requestHashes), linkedPanIds, currentSourceKeys);
     }
 
-    private List<MyHomeAnnouncementSource> currentSources() {
+    private List<MyHomeAnnouncementSourceView> currentSources() {
         return sourceRepository.findAllByOrderByIdAsc().stream()
                 .filter(source -> source.getPblancId() != null && !source.getPblancId().isBlank())
-                .collect(Collectors.groupingBy(MyHomeAnnouncementSource::getPblancId))
+                .collect(Collectors.groupingBy(MyHomeAnnouncementSourceView::getPblancId))
                 .values().stream()
                 .flatMap(group -> MyHomeAnnouncementCurrentSources.select(group).stream()).toList();
     }
 
-    private List<CurrentRequest> currentRequests(List<MyHomeAnnouncementSource> currentSources) {
-        List<MyHomeAnnouncementSource> sources = currentSources.stream()
-                .filter(MyHomeAnnouncementSource::isActive).toList();
+    private List<CurrentRequest> currentRequests(List<MyHomeAnnouncementSourceView> currentSources) {
+        List<MyHomeAnnouncementSourceView> sources = currentSources.stream()
+                .filter(MyHomeAnnouncementSourceView::isActive).toList();
         var resolutions = candidateResolver.resolveAll(sources);
         Map<String, Set<String>> descriptions = new HashMap<>();
         List<CurrentRequest> requests = new ArrayList<>();

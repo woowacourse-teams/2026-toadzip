@@ -3,7 +3,7 @@ package com.toadzip.backend.ingest.mapping.service;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.MyHomeRentalCondition;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.domain.SourceArea;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.NormalizedRoadAddress;
@@ -20,46 +20,46 @@ public class MyHomeComplexSourceMapper {
     private final MyHomeComplexValueParser parser = new MyHomeComplexValueParser();
     private final MyHomeComplexClassificationPolicy classification = new MyHomeComplexClassificationPolicy();
 
-    public MyHomeComplexMappingData map(String sourceComplexIdentifier, List<MyHomeComplexSource> sources) {
-        String name = parser.requiredText(sources, MyHomeComplexSource::getHsmpNm, "단지명");
+    public MyHomeComplexMappingData map(String sourceComplexIdentifier, List<MyHomeComplexSourceView> sources) {
+        String name = parser.requiredText(sources, MyHomeComplexSourceView::getHsmpNm, "단지명");
         String supplyType = classification.supplyType(
-                parser.requiredText(sources, MyHomeComplexSource::getSuplyTyNm, "공급유형")
+                parser.requiredText(sources, MyHomeComplexSourceView::getSuplyTyNm, "공급유형")
         );
-        String roadAddress = parser.requiredText(sources, MyHomeComplexSource::getRnAdres, "도로명주소");
-        String pnu = parser.pnu(parser.requiredText(sources, MyHomeComplexSource::getPnu, "PNU"));
+        String roadAddress = parser.requiredText(sources, MyHomeComplexSourceView::getRnAdres, "도로명주소");
+        String pnu = parser.pnu(parser.requiredText(sources, MyHomeComplexSourceView::getPnu, "PNU"));
         String provinceCode = parser.provinceCode(
-                parser.requiredText(sources, MyHomeComplexSource::getBrtcCode, "시·도 코드")
+                parser.requiredText(sources, MyHomeComplexSourceView::getBrtcCode, "시·도 코드")
         );
         String districtCode = parser.districtCode(
                 provinceCode,
-                parser.requiredText(sources, MyHomeComplexSource::getSignguCode, "시·군·구 코드")
+                parser.requiredText(sources, MyHomeComplexSourceView::getSignguCode, "시·군·구 코드")
         );
         int totalHouseholdCount = parser.requiredNonNegativeInteger(
                 sources,
-                MyHomeComplexSource::getHshldCo,
+                MyHomeComplexSourceView::getHshldCo,
                 "전체 세대수"
         );
         String provider = classification.provider(
-                parser.requiredText(sources, MyHomeComplexSource::getInsttNm, "공급기관")
+                parser.requiredText(sources, MyHomeComplexSourceView::getInsttNm, "공급기관")
         );
         LocalDate completionDate = parser.optionalDate(
-                parser.optionalText(sources, MyHomeComplexSource::getCompetDe, "준공일")
+                parser.optionalText(sources, MyHomeComplexSourceView::getCompetDe, "준공일")
         );
         String heatingType = classification.heatingType(
-                parser.optionalText(sources, MyHomeComplexSource::getHeatMthdDetailNm, "난방방식")
+                parser.optionalText(sources, MyHomeComplexSourceView::getHeatMthdDetailNm, "난방방식")
         );
         String housingType = classification.housingType(
-                parser.optionalText(sources, MyHomeComplexSource::getHouseTyNm, "주택유형")
+                parser.optionalText(sources, MyHomeComplexSourceView::getHouseTyNm, "주택유형")
         );
         String corridorType = classification.corridorType(
-                parser.optionalText(sources, MyHomeComplexSource::getBuldStleNm, "복도유형")
+                parser.optionalText(sources, MyHomeComplexSourceView::getBuldStleNm, "복도유형")
         );
         Boolean elevatorInstalled = classification.elevatorInstalled(
-                parser.optionalText(sources, MyHomeComplexSource::getElvtrInstlAtNm, "승강기 설치 여부")
+                parser.optionalText(sources, MyHomeComplexSourceView::getElvtrInstlAtNm, "승강기 설치 여부")
         );
         int parkingSpaceCount = parser.requiredNonNegativeInteger(
                 sources,
-                MyHomeComplexSource::getParkngCo,
+                MyHomeComplexSourceView::getParkngCo,
                 "주차대수"
         );
         MyHomeAddressMappingData address = new MyHomeAddressMappingData(
@@ -89,7 +89,7 @@ public class MyHomeComplexSourceMapper {
         );
     }
 
-    public String sourceComplexIdentifier(MyHomeComplexSource source) {
+    public String sourceComplexIdentifier(MyHomeComplexSourceView source) {
         if (source.getHsmpSn() == null) {
             throw parser.missing("단지 식별자");
         }
@@ -97,7 +97,7 @@ public class MyHomeComplexSourceMapper {
         return source.getHsmpSn() + ":" + supplyType;
     }
 
-    public boolean shouldSkip(MyHomeComplexSource source) {
+    public boolean shouldSkip(MyHomeComplexSourceView source) {
         String supplyType = parser.normalizedText(source.getSuplyTyNm());
         if ("매입임대".equals(supplyType) || "매입임대".equals(parser.normalizedText(source.getStyleNm()))) {
             return true;
@@ -106,7 +106,7 @@ public class MyHomeComplexSourceMapper {
         return "장기전세".equals(supplyType) && "다가구주택".equals(parser.normalizedText(source.getHouseTyNm()));
     }
 
-    private MyHomeHousingTypeMappingData housingTypeOf(MyHomeComplexSource source) {
+    private MyHomeHousingTypeMappingData housingTypeOf(MyHomeComplexSourceView source) {
         String name = parser.requiredText(source.getStyleNm(), "주택형명");
         BigDecimal exclusiveArea = parser.requiredArea(source.getSuplyPrvuseAr(), "전용면적");
         BigDecimal commonArea = parser.optionalArea(source.getSuplyCmnuseAr(), "공용면적");

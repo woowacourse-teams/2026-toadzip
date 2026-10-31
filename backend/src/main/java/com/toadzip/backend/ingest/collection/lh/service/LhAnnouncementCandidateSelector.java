@@ -3,7 +3,7 @@ package com.toadzip.backend.ingest.collection.lh.service;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Resolution;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Skipped;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -27,7 +27,7 @@ public class LhAnnouncementCandidateSelector {
 
     /** 고른 공고와 충돌로 보고할 공고를 {@code handledAnnouncementKeys}에 더한다. 호출자는 배치 사이에 같은 집합을 넘긴다. */
     CandidateSelection select(
-            List<MyHomeAnnouncementSource> sources,
+            List<MyHomeAnnouncementSourceView> sources,
             List<Resolution> resolutions,
             Set<String> handledAnnouncementKeys,
             boolean forceRefresh

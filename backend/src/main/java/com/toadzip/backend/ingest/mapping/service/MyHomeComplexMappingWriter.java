@@ -7,7 +7,7 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.mapping.domain.AnnouncementSupplyMatchDecision;
@@ -250,11 +250,11 @@ public class MyHomeComplexMappingWriter {
         List<MyHomeComplexLink> links = linkRepository.findAllByHousingComplexId(complex.getId());
         List<Long> identifiers = links.stream().map(MyHomeComplexLink::getSourceComplexIdentifier)
                 .map(identifier -> Long.valueOf(identifier.substring(0, identifier.indexOf(':')))).toList();
-        Map<String, List<MyHomeComplexSource>> grouped = sourceRepository.findAllByHsmpSnIn(identifiers).stream()
+        Map<String, List<MyHomeComplexSourceView>> grouped = sourceRepository.findAllByHsmpSnIn(identifiers).stream()
                 .collect(Collectors.groupingBy(sourceMapper::sourceComplexIdentifier));
         List<MyHomeHousingTypeMappingData> housingTypes = new ArrayList<>();
         for (MyHomeComplexLink member : links) {
-            List<MyHomeComplexSource> sources = grouped.get(member.getSourceComplexIdentifier());
+            List<MyHomeComplexSourceView> sources = grouped.get(member.getSourceComplexIdentifier());
             if (sources == null || sources.isEmpty()) {
                 throw mergedSourceConflict("확인된 연결 원천이 누락되어 기존 단지와 주택형을 보존합니다.");
             }
@@ -452,7 +452,7 @@ public class MyHomeComplexMappingWriter {
                 .filter(type -> type.getName().equals(incoming.name()))
                 // 관리자가 만든 주택형은 마이홈 원천 식별자 형식이 아니라 같은 원천 비교에서 뺀다(adminCreatedType에서 이어받는다).
                 .filter(type -> !type.isAdminCreated())
-                .filter(type -> MyHomeComplexSource.sameSourceComplex(
+                .filter(type -> MyHomeComplexSourceView.sameSourceComplex(
                         type.getSourceHousingTypeIdentifier(), incoming.sourceHousingTypeIdentifier()))
                 .toList();
         if (sameName.size() != 1) {

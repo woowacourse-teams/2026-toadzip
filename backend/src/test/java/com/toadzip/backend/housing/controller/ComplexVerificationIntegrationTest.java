@@ -168,9 +168,9 @@ class ComplexVerificationIntegrationTest {
                 0, "LH", null, null, null, null, null, 0)).getId();
     }
 
-    private com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource source(
+    private com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView source(
             long identifier, String rental, int households) {
-        var row = com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource.from(
+        var row = com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView.from(
                 new com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot(
                         identifier, "한국토지주택공사", "11", "서울", "11140", "중구", "검증 단지",
                         "서울특별시 중구 세종대로 110", "1114010100100010000", null, households, rental, "26A",

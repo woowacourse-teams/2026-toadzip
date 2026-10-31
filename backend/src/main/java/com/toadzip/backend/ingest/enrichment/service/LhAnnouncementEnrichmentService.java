@@ -15,7 +15,7 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolv
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
@@ -64,7 +64,7 @@ public class LhAnnouncementEnrichmentService {
         List<LhAnnouncementEnrichmentFailure> failures = new ArrayList<>();
         Set<String> incompleteMappingIds = mappingState.incompleteAnnouncementIdentifiers();
         LhAnnouncementEnrichmentReport report = LhAnnouncementEnrichmentReport.empty();
-        for (Map.Entry<String, List<MyHomeAnnouncementSource>> group
+        for (Map.Entry<String, List<MyHomeAnnouncementSourceView>> group
                 : sourcesByAnnouncementWithLh().entrySet()) {
             report = report.plus(enrich(
                     group.getValue(), failures, occurredAt,
@@ -78,9 +78,9 @@ public class LhAnnouncementEnrichmentService {
         return report;
     }
 
-    private Map<String, List<MyHomeAnnouncementSource>> sourcesByAnnouncementWithLh() {
-        Map<String, List<MyHomeAnnouncementSource>> sources = new LinkedHashMap<>();
-        for (MyHomeAnnouncementSource source : myHomeSourceRepository.findAllByOrderByIdAsc()) {
+    private Map<String, List<MyHomeAnnouncementSourceView>> sourcesByAnnouncementWithLh() {
+        Map<String, List<MyHomeAnnouncementSourceView>> sources = new LinkedHashMap<>();
+        for (MyHomeAnnouncementSourceView source : myHomeSourceRepository.findAllByOrderByIdAsc()) {
             if (blank(source.getPblancId())) {
                 continue;
             }
@@ -92,17 +92,17 @@ public class LhAnnouncementEnrichmentService {
     }
 
     private LhAnnouncementEnrichmentReport enrich(
-            List<MyHomeAnnouncementSource> sources,
+            List<MyHomeAnnouncementSourceView> sources,
             List<LhAnnouncementEnrichmentFailure> failures,
             Instant occurredAt,
             boolean mappingIncomplete
     ) {
-        List<MyHomeAnnouncementSource> lhSources = MyHomeAnnouncementCurrentSources.select(sources)
+        List<MyHomeAnnouncementSourceView> lhSources = MyHomeAnnouncementCurrentSources.select(sources)
                 .stream().filter(this::isLh).toList();
         if (lhSources.isEmpty()) {
             return LhAnnouncementEnrichmentReport.empty();
         }
-        MyHomeAnnouncementSource source = lhSources.getFirst();
+        MyHomeAnnouncementSourceView source = lhSources.getFirst();
         Announcement announcement = announcementRepository
                 .findBySourceAnnouncementIdentifier(source.getPblancId())
                 .orElse(null);
@@ -144,13 +144,13 @@ public class LhAnnouncementEnrichmentService {
     private LhAnnouncementEnrichmentReport enrichLinkedAnnouncement(
             Announcement announcement,
             LinkedSource linked,
-            List<MyHomeAnnouncementSource> sources,
-            List<MyHomeAnnouncementSource> currentLhSources,
+            List<MyHomeAnnouncementSourceView> sources,
+            List<MyHomeAnnouncementSourceView> currentLhSources,
             List<LhAnnouncementEnrichmentFailure> failures,
             Instant occurredAt,
             boolean mappingIncomplete
     ) {
-        MyHomeAnnouncementSource source = linked.source();
+        MyHomeAnnouncementSourceView source = linked.source();
         String panId = linked.request().panId();
         String requestHash = LhAnnouncementQuery.requestHashOf(linked.request().requestDescription());
         List<LhAnnouncementDetailSource> details = detailSourceRepository
@@ -182,18 +182,18 @@ public class LhAnnouncementEnrichmentService {
     }
 
     private Set<String> sourceKeysExcludedFromLhEnrichment(
-            List<MyHomeAnnouncementSource> sources,
-            List<MyHomeAnnouncementSource> currentLhSources
+            List<MyHomeAnnouncementSourceView> sources,
+            List<MyHomeAnnouncementSourceView> currentLhSources
     ) {
         Set<String> currentLhSourceKeys = currentLhSources.stream()
-                .map(MyHomeAnnouncementSource::getSourceKey).collect(Collectors.toSet());
-        return sources.stream().map(MyHomeAnnouncementSource::getSourceKey)
+                .map(MyHomeAnnouncementSourceView::getSourceKey).collect(Collectors.toSet());
+        return sources.stream().map(MyHomeAnnouncementSourceView::getSourceKey)
                 .filter(key -> !currentLhSourceKeys.contains(key))
                 .collect(Collectors.toSet());
     }
 
     private void addSupplyFailures(
-            MyHomeAnnouncementSource source,
+            MyHomeAnnouncementSourceView source,
             String panId,
             List<LhSupplyMatchingFailureData> supplyFailures,
             List<LhAnnouncementEnrichmentFailure> failures,
@@ -208,7 +208,7 @@ public class LhAnnouncementEnrichmentService {
     }
 
     private LhAnnouncementEnrichmentReport reject(
-            MyHomeAnnouncementSource source,
+            MyHomeAnnouncementSourceView source,
             String panId,
             LhAnnouncementEnrichmentFailureReason reason,
             String detail,
@@ -245,7 +245,7 @@ public class LhAnnouncementEnrichmentService {
                 .toList();
     }
 
-    private boolean isLh(MyHomeAnnouncementSource source) {
+    private boolean isLh(MyHomeAnnouncementSourceView source) {
         return LhProviderPolicy.isLh(source.getSuplyInsttNm());
     }
 

@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 
 @Getter
 @NoArgsConstructor(access = PROTECTED)
-public class MyHomeAnnouncementSource {
+public class MyHomeAnnouncementSourceView {
 
     private static final int INACTIVE_AFTER_CONSECUTIVE_MISSES = 2;
 
@@ -66,7 +66,7 @@ public class MyHomeAnnouncementSource {
     private Long surlus;
     private Long mtRntchrg;
 
-    private MyHomeAnnouncementSource(int sourceOrder, MyHomeAnnouncementSourceSnapshot snapshot) {
+    private MyHomeAnnouncementSourceView(int sourceOrder, MyHomeAnnouncementSourceSnapshot snapshot) {
         this.sourceOrder = sourceOrder;
         consecutiveMissCount = 0;
         active = true;
@@ -74,8 +74,8 @@ public class MyHomeAnnouncementSource {
         replaceWith(snapshot);
     }
 
-    public static MyHomeAnnouncementSource from(int sourceOrder, MyHomeAnnouncementSourceSnapshot snapshot) {
-        return new MyHomeAnnouncementSource(sourceOrder, snapshot);
+    public static MyHomeAnnouncementSourceView from(int sourceOrder, MyHomeAnnouncementSourceSnapshot snapshot) {
+        return new MyHomeAnnouncementSourceView(sourceOrder, snapshot);
     }
 
     public static String sourceKeyOf(MyHomeAnnouncementSourceSnapshot snapshot) {
@@ -115,7 +115,7 @@ public class MyHomeAnnouncementSource {
         mtRntchrg = snapshot.mtRntchrg();
     }
 
-    public static MyHomeAnnouncementSource read(Long id, int order, Instant collectedAt, String lastSeenRunId,
+    public static MyHomeAnnouncementSourceView read(Long id, int order, Instant collectedAt, String lastSeenRunId,
             int missCount, boolean active,
             MyHomeAnnouncementSourceSnapshot snapshot) {
         var source = from(order, snapshot);

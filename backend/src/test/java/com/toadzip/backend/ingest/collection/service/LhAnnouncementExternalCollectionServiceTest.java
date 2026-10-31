@@ -32,7 +32,7 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollection
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementSharedRequestCollector;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
@@ -105,7 +105,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     private LhAnnouncementExternalCollectionService service;
 
-    private final List<MyHomeAnnouncementSource> storedSources = new ArrayList<>();
+    private final List<MyHomeAnnouncementSourceView> storedSources = new ArrayList<>();
     private long nextSourceId;
     private MockClock metricClock;
     private SimpleMeterRegistry meterRegistry;
@@ -153,11 +153,11 @@ class LhAnnouncementExternalCollectionServiceTest {
     @ParameterizedTest
     @CsvSource({"false,false", "true,false", "false,true"})
     void 과거_비활성_행보다_현재_원천의_요청을_수집한다(boolean forced, boolean splitBatches) {
-        MyHomeAnnouncementSource previous = announcementSource("P1", "100");
+        MyHomeAnnouncementSourceView previous = announcementSource("P1", "100");
         previous.markSeen("previous", NOW.minusSeconds(60));
         previous.markMissed();
         previous.markMissed();
-        MyHomeAnnouncementSource current = announcementSource("P1", "200");
+        MyHomeAnnouncementSourceView current = announcementSource("P1", "200");
         current.markSeen("current", NOW);
         if (forced) {
             when(myHomeAnnouncementRepository.findAllByPblancIdOrderByIdAsc("P1"))
@@ -183,9 +183,9 @@ class LhAnnouncementExternalCollectionServiceTest {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     void 활성_상태가_같으면_최신_실행을_선택하고_비활성_최근_종료도_수집한다(boolean active) {
-        MyHomeAnnouncementSource previous = announcementSource("P1", "100");
+        MyHomeAnnouncementSourceView previous = announcementSource("P1", "100");
         previous.markSeen("previous", NOW.minusSeconds(60));
-        MyHomeAnnouncementSource current = announcementSource("P1", "200");
+        MyHomeAnnouncementSourceView current = announcementSource("P1", "200");
         current.markSeen("current", NOW);
         ReflectionTestUtils.setField(current, "endDe", "20260918");
         if (!active) {
@@ -208,8 +208,8 @@ class LhAnnouncementExternalCollectionServiceTest {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     void 현재_원천의_요청_충돌은_정기와_강제_모두_기존_연결을_보존하고_실패로_기록한다(boolean forced) {
-        MyHomeAnnouncementSource first = announcementSource("P1", "100");
-        MyHomeAnnouncementSource second = announcementSource("P1", "200");
+        MyHomeAnnouncementSourceView first = announcementSource("P1", "100");
+        MyHomeAnnouncementSourceView second = announcementSource("P1", "200");
         first.markSeen("current", NOW);
         second.markSeen("current", NOW);
         if (forced) {
@@ -239,8 +239,8 @@ class LhAnnouncementExternalCollectionServiceTest {
     void 오래된_공고의_충돌은_정기_대상이나_강제_갱신일_때만_실패한다(
             boolean forced, boolean hasEligibleSource, int expectedFailures
     ) {
-        MyHomeAnnouncementSource first = announcementSource("P1", "100");
-        MyHomeAnnouncementSource second = announcementSource("P1", "200");
+        MyHomeAnnouncementSourceView first = announcementSource("P1", "100");
+        MyHomeAnnouncementSourceView second = announcementSource("P1", "200");
         first.markSeen("current", NOW);
         second.markSeen("current", NOW);
         ReflectionTestUtils.setField(first, "endDe", "20260801");
@@ -268,9 +268,9 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 최신_원천이_정기_대상에서_제외되어도_과거_요청으로_되돌아가지_않는다() {
-        MyHomeAnnouncementSource previous = announcementSource("P1", "100");
+        MyHomeAnnouncementSourceView previous = announcementSource("P1", "100");
         previous.markSeen("previous", NOW.minusSeconds(60));
-        MyHomeAnnouncementSource current = announcementSource("P1", "200");
+        MyHomeAnnouncementSourceView current = announcementSource("P1", "200");
         current.markSeen("current", NOW);
         ReflectionTestUtils.setField(current, "endDe", "20260801");
         source(previous, current);
@@ -283,11 +283,11 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 읽은_행과_후보_제외_사유를_페이지에_걸쳐_집계하고_공고수와_요청수를_구분한다() {
-        MyHomeAnnouncementSource first = announcementSource("a", "100");
-        MyHomeAnnouncementSource linked = announcementSource("b", "100");
-        MyHomeAnnouncementSource duplicate = announcementSource("a", "100");
-        MyHomeAnnouncementSource expired = announcementSource("c", "200");
-        MyHomeAnnouncementSource old = announcementSource("old", "300");
+        MyHomeAnnouncementSourceView first = announcementSource("a", "100");
+        MyHomeAnnouncementSourceView linked = announcementSource("b", "100");
+        MyHomeAnnouncementSourceView duplicate = announcementSource("a", "100");
+        MyHomeAnnouncementSourceView expired = announcementSource("c", "200");
+        MyHomeAnnouncementSourceView old = announcementSource("old", "300");
         ReflectionTestUtils.setField(old, "endDe", "20260801");
         when(myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(anyLong(), any()))
                 .thenReturn(List.of(first, linked),
@@ -321,8 +321,8 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 준비_시간은_원천_조회와_후보_해석을_나누고_외부호출과_저장을_제외한다() {
-        MyHomeAnnouncementSource candidate = announcementSource();
-        MyHomeAnnouncementSource unsupported = nonLhAnnouncementSource();
+        MyHomeAnnouncementSourceView candidate = announcementSource();
+        MyHomeAnnouncementSourceView unsupported = nonLhAnnouncementSource();
         when(myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(anyLong(), any()))
                 .thenAnswer(invocation -> {
                     metricClock.add(Duration.ofMillis(10));
@@ -420,11 +420,11 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 연속_외부_장애에서는_남은_공고를_호출하지_않고_성공으로_완료하지_않는다() {
-        List<MyHomeAnnouncementSource> rows = new ArrayList<>();
+        List<MyHomeAnnouncementSourceView> rows = new ArrayList<>();
         for (int index = 0; index < 20; index++) {
             rows.add(announcementSource("source-" + index, "pan-" + index));
         }
-        source(rows.toArray(MyHomeAnnouncementSource[]::new));
+        source(rows.toArray(MyHomeAnnouncementSourceView[]::new));
         var circuit = new LhAnnouncementCircuitBreaker(Clock.fixed(NOW, ZoneOffset.UTC), new SimpleMeterRegistry());
         AtomicInteger networkCalls = new AtomicInteger();
         when(externalRepository.fetchDetail(any())).thenAnswer(invocation -> circuit.execute(() -> {
@@ -480,10 +480,10 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 배치간_공유_요청의_연결_정리_후_중지하면_다음_공유_요청을_시작하지_않는다() {
-        MyHomeAnnouncementSource first = announcementSource("first", "100");
-        MyHomeAnnouncementSource second = announcementSource("second", "200");
-        MyHomeAnnouncementSource nextFirst = announcementSource("next-first", "100");
-        MyHomeAnnouncementSource nextSecond = announcementSource("next-second", "200");
+        MyHomeAnnouncementSourceView first = announcementSource("first", "100");
+        MyHomeAnnouncementSourceView second = announcementSource("second", "200");
+        MyHomeAnnouncementSourceView nextFirst = announcementSource("next-first", "100");
+        MyHomeAnnouncementSourceView nextSecond = announcementSource("next-second", "200");
         source(first, second, nextFirst, nextSecond);
         when(myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(anyLong(), any()))
                 .thenReturn(List.of(first, second), List.of(nextFirst, nextSecond), List.of());
@@ -515,11 +515,11 @@ class LhAnnouncementExternalCollectionServiceTest {
     @Test
     void 설정한_8개_요청을_동시에_처리하되_아홉번째는_완료_슬롯을_기다린다() throws Exception {
         service = service(8);
-        List<MyHomeAnnouncementSource> rows = new ArrayList<>();
+        List<MyHomeAnnouncementSourceView> rows = new ArrayList<>();
         for (int index = 0; index < 10; index++) {
             rows.add(announcementSource("source-" + index, "pan-" + index));
         }
-        source(rows.toArray(MyHomeAnnouncementSource[]::new));
+        source(rows.toArray(MyHomeAnnouncementSourceView[]::new));
         CountDownLatch started = new CountDownLatch(8);
         CountDownLatch release = new CountDownLatch(1);
         AtomicInteger active = new AtomicInteger();
@@ -676,8 +676,8 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 같은_panId의_다른_조회_조건은_저장과_체크포인트까지_순서대로_처리한다() {
-        MyHomeAnnouncementSource first = announcementSource("a", "100");
-        MyHomeAnnouncementSource second = announcementSource("b", "100");
+        MyHomeAnnouncementSourceView first = announcementSource("a", "100");
+        MyHomeAnnouncementSourceView second = announcementSource("b", "100");
         ReflectionTestUtils.setField(second, "url", second.getUrl().replace("aisTpCd=06", "aisTpCd=07"));
         source(first, announcementSource("c", "200"), second);
         Set<String> stored = ConcurrentHashMap.newKeySet();
@@ -1229,8 +1229,8 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 한_실행에서는_동일한_LH_요청을_한_번만_호출한다() {
-        MyHomeAnnouncementSource first = announcementSource("announcement-100");
-        MyHomeAnnouncementSource second = announcementSource("announcement-101");
+        MyHomeAnnouncementSourceView first = announcementSource("announcement-100");
+        MyHomeAnnouncementSourceView second = announcementSource("announcement-101");
         source(first, second);
         when(externalRepository.fetchSupply(any())).thenThrow(new ExternalDataRequestException("일시적 실패"));
 
@@ -1242,8 +1242,8 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 동일한_LH_요청을_공유하는_공고마다_연결을_기록한다() {
-        MyHomeAnnouncementSource first = announcementSource("announcement-100");
-        MyHomeAnnouncementSource second = announcementSource("announcement-101");
+        MyHomeAnnouncementSourceView first = announcementSource("announcement-100");
+        MyHomeAnnouncementSourceView second = announcementSource("announcement-101");
         source(first, second);
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
         when(sourceStore.replaceDetails(eq("100"), any(), any())).thenReturn(1);
@@ -1327,7 +1327,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         List<String> allLinks = new ArrayList<>(completed.getAllValues());
         allLinks.addAll(linked.getAllValues());
         List<String> expectedLinks = new ArrayList<>();
-        for (MyHomeAnnouncementSource source : storedSources) {
+        for (MyHomeAnnouncementSourceView source : storedSources) {
             expectedLinks.add(source.getPblancId());
             expectedLinks.add(source.getPblancId());
         }
@@ -1371,7 +1371,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 마이홈_공고를_ID_기준_500개씩_조회한다() {
-        MyHomeAnnouncementSource source = announcementSource();
+        MyHomeAnnouncementSourceView source = announcementSource();
         source(source);
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
         when(sourceStore.replaceDetails(eq("100"), any(), any())).thenReturn(1);
@@ -1459,9 +1459,9 @@ class LhAnnouncementExternalCollectionServiceTest {
     @Test
     void 단건_등록의_LH_조회는_이번_실행에서_수집한_원천만_사용한다() {
         UUID executionId = UUID.randomUUID();
-        MyHomeAnnouncementSource current = announcementSource("announcement-100");
+        MyHomeAnnouncementSourceView current = announcementSource("announcement-100");
         ReflectionTestUtils.setField(current, "lastSeenRunId", executionId.toString());
-        MyHomeAnnouncementSource old = announcementSource("announcement-100");
+        MyHomeAnnouncementSourceView old = announcementSource("announcement-100");
         ReflectionTestUtils.setField(old, "lastSeenRunId", UUID.randomUUID().toString());
         ReflectionTestUtils.setField(old, "url", "https://example.com/?panId=old"
                 + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07");
@@ -1481,7 +1481,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 강제_갱신은_최근_성공한_공고도_외부_API를_다시_호출한다() {
-        MyHomeAnnouncementSource source = announcementSource("announcement-100");
+        MyHomeAnnouncementSourceView source = announcementSource("announcement-100");
         ReflectionTestUtils.setField(source, "endDe", "20260801");
         when(myHomeAnnouncementRepository.findAllByPblancIdOrderByIdAsc("announcement-100"))
                 .thenReturn(List.of(source));
@@ -1527,7 +1527,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 최근_종료_공고도_실행마다_실제_조회한다() {
-        MyHomeAnnouncementSource source = announcementSource("announcement-100");
+        MyHomeAnnouncementSourceView source = announcementSource("announcement-100");
         ReflectionTestUtils.setField(source, "endDe", "20260918");
         source(source);
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
@@ -1541,7 +1541,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 같은_공고의_종료된_첫_행은_다음_유효한_행을_막지_않는다() {
-        MyHomeAnnouncementSource ended = announcementSource();
+        MyHomeAnnouncementSourceView ended = announcementSource();
         ReflectionTestUtils.setField(ended, "endDe", "20260819");
         source(ended, announcementSource());
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
@@ -1555,7 +1555,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 종료_후_30일이_지난_공고는_정기_수집에서_제외한다() {
-        MyHomeAnnouncementSource source = announcementSource("announcement-100");
+        MyHomeAnnouncementSourceView source = announcementSource("announcement-100");
         ReflectionTestUtils.setField(source, "endDe", "20260819");
         source(source);
 
@@ -1569,8 +1569,8 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 진행중과_최근_종료_공고가_요청을_공유하면_한_번만_조회한다() {
-        MyHomeAnnouncementSource active = announcementSource("announcement-active", "100");
-        MyHomeAnnouncementSource ended = announcementSource("announcement-ended", "100");
+        MyHomeAnnouncementSourceView active = announcementSource("announcement-active", "100");
+        MyHomeAnnouncementSourceView ended = announcementSource("announcement-ended", "100");
         ReflectionTestUtils.setField(ended, "endDe", "20260918");
         source(active, ended);
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
@@ -1584,8 +1584,8 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 진행중과_최근_종료_공고의_요청이_다르면_각각_조회한다() {
-        MyHomeAnnouncementSource active = announcementSource("announcement-active", "100");
-        MyHomeAnnouncementSource ended = announcementSource("announcement-ended", "200");
+        MyHomeAnnouncementSourceView active = announcementSource("announcement-active", "100");
+        MyHomeAnnouncementSourceView ended = announcementSource("announcement-ended", "200");
         ReflectionTestUtils.setField(ended, "endDe", "20260918");
         source(active, ended);
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
@@ -1611,8 +1611,8 @@ class LhAnnouncementExternalCollectionServiceTest {
         return service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
     }
 
-    private void source(MyHomeAnnouncementSource... sources) {
-        List<MyHomeAnnouncementSource> batch = List.of(sources);
+    private void source(MyHomeAnnouncementSourceView... sources) {
+        List<MyHomeAnnouncementSourceView> batch = List.of(sources);
         long lastId = batch.getLast().getId();
         when(myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(anyLong(), any()))
                 .thenAnswer(invocation -> {
@@ -1624,16 +1624,16 @@ class LhAnnouncementExternalCollectionServiceTest {
                 });
     }
 
-    private MyHomeAnnouncementSource announcementSource() {
+    private MyHomeAnnouncementSourceView announcementSource() {
         return announcementSource("100");
     }
 
-    private MyHomeAnnouncementSource announcementSource(String pblancId) {
+    private MyHomeAnnouncementSourceView announcementSource(String pblancId) {
         return announcementSource(pblancId, "100");
     }
 
-    private MyHomeAnnouncementSource announcementSource(String pblancId, String panId) {
-        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, item(
+    private MyHomeAnnouncementSourceView announcementSource(String pblancId, String panId) {
+        MyHomeAnnouncementSourceView source = MyHomeAnnouncementSourceView.from(0, item(
                 pblancId,
                 "행복주택",
                 "https://apply.lh.or.kr/panDetail?panId=" + panId
@@ -1644,8 +1644,8 @@ class LhAnnouncementExternalCollectionServiceTest {
         return source;
     }
 
-    private MyHomeAnnouncementSource nonLhAnnouncementSource() {
-        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, itemWithProvider(
+    private MyHomeAnnouncementSourceView nonLhAnnouncementSource() {
+        MyHomeAnnouncementSourceView source = MyHomeAnnouncementSourceView.from(0, itemWithProvider(
                 "100",
                 "부산도시공사",
                 "행복주택",
@@ -1657,8 +1657,8 @@ class LhAnnouncementExternalCollectionServiceTest {
         return source;
     }
 
-    private MyHomeAnnouncementSource unsupportedLhAnnouncementSource() {
-        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, item(
+    private MyHomeAnnouncementSourceView unsupportedLhAnnouncementSource() {
+        MyHomeAnnouncementSourceView source = MyHomeAnnouncementSourceView.from(0, item(
                 "100",
                 "지원하지 않는 유형",
                 "https://apply.lh.or.kr/panDetail?panId=100"
@@ -1669,8 +1669,8 @@ class LhAnnouncementExternalCollectionServiceTest {
         return source;
     }
 
-    private MyHomeAnnouncementSource integratedLhAnnouncementSource() {
-        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, item(
+    private MyHomeAnnouncementSourceView integratedLhAnnouncementSource() {
+        MyHomeAnnouncementSourceView source = MyHomeAnnouncementSourceView.from(0, item(
                 "2015122300020531",
                 "통합공공임대",
                 "https://apply.lh.or.kr/panDetail?panId=2015122300020531"
@@ -1681,8 +1681,8 @@ class LhAnnouncementExternalCollectionServiceTest {
         return source;
     }
 
-    private MyHomeAnnouncementSource publicRentalAnnouncementSource() {
-        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, item(
+    private MyHomeAnnouncementSourceView publicRentalAnnouncementSource() {
+        MyHomeAnnouncementSourceView source = MyHomeAnnouncementSourceView.from(0, item(
                 "100",
                 "5년임대",
                 "https://apply.lh.or.kr/panDetail?panId=100"

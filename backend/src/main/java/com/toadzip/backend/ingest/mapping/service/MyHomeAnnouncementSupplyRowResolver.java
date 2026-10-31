@@ -8,7 +8,7 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolv
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.domain.SourceText;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
@@ -104,7 +104,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
     }
 
     private List<MyHomeSupplyRowMappingData> currentRows(List<MyHomeSupplyRowMappingData> sourceRows) {
-        List<MyHomeAnnouncementSource> currentSources = MyHomeAnnouncementCurrentSources.select(
+        List<MyHomeAnnouncementSourceView> currentSources = MyHomeAnnouncementCurrentSources.select(
                 sourceRows.stream().map(MyHomeSupplyRowMappingData::source).toList()
         );
         return sourceRows.stream().filter(row -> currentSources.contains(row.source())).toList();
@@ -305,7 +305,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
             return data.supplyRows().stream().map(MyHomeSupplyRowMappingData::source)
                     .filter(source -> historicalSourceKeys.contains(source.getSourceKey())
                             || !LhProviderPolicy.isLh(source.getSuplyInsttNm()))
-                    .map(MyHomeAnnouncementSource::getSourceKey)
+                    .map(MyHomeAnnouncementSourceView::getSourceKey)
                     .collect(Collectors.toSet());
         }
     }

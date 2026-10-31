@@ -4,7 +4,7 @@ import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PEND
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.domain.SourceText;
 import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
@@ -60,7 +60,7 @@ public class MyHomeAnnouncementMappingService {
             throw new AnnouncementRegistrationException("이미 등록된 공고입니다: " + pblancId);
         }
         var executionId = IngestExecutionScope.currentExecutionId().orElse(null);
-        List<MyHomeAnnouncementSource> sources = sourceRepository.findAllByPblancIdOrderByIdAsc(pblancId).stream()
+        List<MyHomeAnnouncementSourceView> sources = sourceRepository.findAllByPblancIdOrderByIdAsc(pblancId).stream()
                 .filter(source -> executionId == null || executionId.toString().equals(source.getLastSeenRunId()))
                 .toList();
         if (sources.isEmpty()) {
@@ -96,7 +96,7 @@ public class MyHomeAnnouncementMappingService {
     public MyHomeAnnouncementMappingReport mapAll() {
         Instant occurredAt = clock.instant();
         List<MyHomeAnnouncementMappingFailure> failures = new ArrayList<>();
-        Map<String, List<MyHomeAnnouncementSource>> groupedSources = groupSources(failures, occurredAt);
+        Map<String, List<MyHomeAnnouncementSourceView>> groupedSources = groupSources(failures, occurredAt);
         Set<String> processed = new LinkedHashSet<>();
         Set<String> processing = new LinkedHashSet<>();
         MyHomeAnnouncementMappingReport report = MyHomeAnnouncementMappingReport.failedRows(failures.size());
@@ -119,7 +119,7 @@ public class MyHomeAnnouncementMappingService {
 
     private MyHomeAnnouncementMappingReport mapGroup(
             String identifier,
-            Map<String, List<MyHomeAnnouncementSource>> groupedSources,
+            Map<String, List<MyHomeAnnouncementSourceView>> groupedSources,
             Set<String> processed,
             Set<String> processing,
             List<MyHomeAnnouncementMappingFailure> failures,
@@ -128,7 +128,7 @@ public class MyHomeAnnouncementMappingService {
         if (processed.contains(identifier)) {
             return MyHomeAnnouncementMappingReport.empty();
         }
-        List<MyHomeAnnouncementSource> sources = groupedSources.get(identifier);
+        List<MyHomeAnnouncementSourceView> sources = groupedSources.get(identifier);
         if (!processing.add(identifier)) {
             MyHomeAnnouncementMappingReport cycleReport = MyHomeAnnouncementMappingReport.empty();
             for (String processingIdentifier : processing) {
@@ -182,12 +182,12 @@ public class MyHomeAnnouncementMappingService {
         }
     }
 
-    private Map<String, List<MyHomeAnnouncementSource>> groupSources(
+    private Map<String, List<MyHomeAnnouncementSourceView>> groupSources(
             List<MyHomeAnnouncementMappingFailure> failures,
             Instant occurredAt
     ) {
-        Map<String, List<MyHomeAnnouncementSource>> grouped = new LinkedHashMap<>();
-        for (MyHomeAnnouncementSource source : sourceRepository.findAll()) {
+        Map<String, List<MyHomeAnnouncementSourceView>> grouped = new LinkedHashMap<>();
+        for (MyHomeAnnouncementSourceView source : sourceRepository.findAll()) {
             String identifier = SourceText.strippedOrNull(source.getPblancId());
             if (identifier == null) {
                 failures.add(failureOf(
@@ -204,13 +204,13 @@ public class MyHomeAnnouncementMappingService {
     }
 
     private MyHomeAnnouncementMappingReport reject(
-            List<MyHomeAnnouncementSource> sources,
+            List<MyHomeAnnouncementSourceView> sources,
             MyHomeAnnouncementMappingFailureReason reason,
             String detail,
             List<MyHomeAnnouncementMappingFailure> failures,
             Instant occurredAt
     ) {
-        for (MyHomeAnnouncementSource source : sources) {
+        for (MyHomeAnnouncementSourceView source : sources) {
             failures.add(failureOf(source, reason, detail, occurredAt));
         }
         return MyHomeAnnouncementMappingReport.failedRows(sources.size());
@@ -227,7 +227,7 @@ public class MyHomeAnnouncementMappingService {
     }
 
     static MyHomeAnnouncementMappingFailure failureOf(
-            MyHomeAnnouncementSource source,
+            MyHomeAnnouncementSourceView source,
             MyHomeAnnouncementMappingFailureReason reason,
             String detail,
             Instant occurredAt

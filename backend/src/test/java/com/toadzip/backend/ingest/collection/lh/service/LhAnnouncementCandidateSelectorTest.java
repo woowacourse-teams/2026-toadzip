@@ -6,7 +6,7 @@ import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Resolution;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Skipped;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.Period;
@@ -46,7 +46,7 @@ class LhAnnouncementCandidateSelectorTest {
                 new LhAnnouncementRequest(panId, "03", "06", "07", "062"));
     }
 
-    private List<MyHomeAnnouncementSource> sources(int size) {
+    private List<MyHomeAnnouncementSourceView> sources(int size) {
         // 강제 수집은 수집 정책을 보지 않으므로 원천 행 내용은 쓰이지 않는다.
         return Collections.nCopies(size, null);
     }

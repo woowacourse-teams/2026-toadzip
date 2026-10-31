@@ -2,7 +2,7 @@ package com.toadzip.backend.ingest.mapping.service;
 
 import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
 
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhEnrichmentMappingState;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import java.util.List;
@@ -27,7 +27,7 @@ class MyHomeLhEnrichmentMappingState implements LhEnrichmentMappingState {
     }
 
     @Override
-    public String commonValuesRejection(List<MyHomeAnnouncementSource> sources) {
+    public String commonValuesRejection(List<MyHomeAnnouncementSourceView> sources) {
         return commonValuesMapper.rejectionDetail(sources);
     }
 }

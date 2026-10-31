@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.mapping.service;
 
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.domain.SourceArea;
 import com.toadzip.backend.ingest.domain.SourceText;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
@@ -22,8 +22,8 @@ class MyHomeComplexValueParser {
             .withResolverStyle(ResolverStyle.STRICT);
 
     String requiredText(
-            List<MyHomeComplexSource> sources,
-            Function<MyHomeComplexSource, String> extractor,
+            List<MyHomeComplexSourceView> sources,
+            Function<MyHomeComplexSourceView, String> extractor,
             String fieldName
     ) {
         String value = optionalText(sources, extractor, fieldName);
@@ -34,8 +34,8 @@ class MyHomeComplexValueParser {
     }
 
     String optionalText(
-            List<MyHomeComplexSource> sources,
-            Function<MyHomeComplexSource, String> extractor,
+            List<MyHomeComplexSourceView> sources,
+            Function<MyHomeComplexSourceView, String> extractor,
             String fieldName
     ) {
         Set<String> values = textValues(sources, extractor);
@@ -46,11 +46,11 @@ class MyHomeComplexValueParser {
     }
 
     private Set<String> textValues(
-            List<MyHomeComplexSource> sources,
-            Function<MyHomeComplexSource, String> extractor
+            List<MyHomeComplexSourceView> sources,
+            Function<MyHomeComplexSourceView, String> extractor
     ) {
         Set<String> values = new LinkedHashSet<>();
-        for (MyHomeComplexSource source : sources) {
+        for (MyHomeComplexSourceView source : sources) {
             String value = normalizedText(extractor.apply(source));
             if (value != null) {
                 values.add(value);
@@ -60,12 +60,12 @@ class MyHomeComplexValueParser {
     }
 
     int requiredNonNegativeInteger(
-            List<MyHomeComplexSource> sources,
-            Function<MyHomeComplexSource, Integer> extractor,
+            List<MyHomeComplexSourceView> sources,
+            Function<MyHomeComplexSourceView, Integer> extractor,
             String fieldName
     ) {
         Set<Integer> values = new LinkedHashSet<>();
-        for (MyHomeComplexSource source : sources) {
+        for (MyHomeComplexSourceView source : sources) {
             Integer value = extractor.apply(source);
             if (value != null) {
                 values.add(value);

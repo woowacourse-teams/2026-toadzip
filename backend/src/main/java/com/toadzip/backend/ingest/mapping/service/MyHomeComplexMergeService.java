@@ -4,7 +4,7 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.repository.LhLeaseCatalogSourceReader;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdMatcher;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink;
@@ -198,9 +198,9 @@ public class MyHomeComplexMergeService {
             require(connected.size() == 1 && connected.getFirst().getMergeId() == null,
                     "단일 마이홈 원천에 연결된 미통합 단지만 선택할 수 있습니다.");
             MyHomeComplexLink link = connected.getFirst();
-            List<MyHomeComplexSource> rows = sourceRows(link);
+            List<MyHomeComplexSourceView> rows = sourceRows(link);
             observations.add(observation(complex, link, rows));
-            sourceRowIds.addAll(rows.stream().map(MyHomeComplexSource::getId).toList());
+            sourceRowIds.addAll(rows.stream().map(MyHomeComplexSourceView::getId).toList());
             sourceLinks.add(link);
             products.add(complex);
         }
@@ -238,7 +238,7 @@ public class MyHomeComplexMergeService {
         return complexes.findById(id).orElseThrow(() -> conflict("선택한 단지가 없습니다."));
     }
 
-    private List<MyHomeComplexSource> sourceRows(MyHomeComplexLink link) {
+    private List<MyHomeComplexSourceView> sourceRows(MyHomeComplexLink link) {
         String identifier = link.getSourceComplexIdentifier();
         long hsmpSn = Long.parseLong(identifier.substring(0, identifier.indexOf(':')));
         return sources.findAllByHsmpSnIn(List.of(hsmpSn)).stream()
@@ -246,7 +246,7 @@ public class MyHomeComplexMergeService {
     }
 
     private ComplexMergePreviewResponse.Source observation(
-            HousingComplex product, MyHomeComplexLink link, List<MyHomeComplexSource> rows
+            HousingComplex product, MyHomeComplexLink link, List<MyHomeComplexSourceView> rows
     ) {
         require(!rows.isEmpty(), "연결할 마이홈 원천이 없습니다.");
         MyHomeComplexMappingData data;
@@ -259,7 +259,7 @@ public class MyHomeComplexMergeService {
         require(data.totalHouseholdCount() > 0 && data.totalHouseholdCount() == product.getTotalHouseholdCount()
                 && data.matchesVerifiedProduct(product),
                 "현재 원천과 제품의 단지 공통값 또는 세대수가 다릅니다.");
-        List<Instant> times = rows.stream().map(MyHomeComplexSource::getCollectedAt).distinct().toList();
+        List<Instant> times = rows.stream().map(MyHomeComplexSourceView::getCollectedAt).distinct().toList();
         require(times.size() == 1 && times.getFirst() != null, "원천의 수집 기준 시각을 확인할 수 없습니다.");
         return new ComplexMergePreviewResponse.Source(link.getSourceComplexIdentifier(),
                 data.totalHouseholdCount(), times.getFirst());
