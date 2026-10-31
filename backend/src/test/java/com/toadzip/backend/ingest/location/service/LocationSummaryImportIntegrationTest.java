@@ -7,7 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.location.repository.RoadAddressLocationRepository;
 import java.io.IOException;

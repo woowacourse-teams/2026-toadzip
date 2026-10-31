@@ -209,7 +209,7 @@ class ComplexComparisonIntegrationTest {
 
     private String sourceKey(long identifier) throws Exception {
         var row = com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource.from(
-                new com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot(
+                new com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot(
                         identifier, "한국토지주택공사", "11", "서울", "11140", "중구", "비교 원천 " + identifier,
                         "서울특별시 중구 세종대로 110", "1114010100100010000", "20200101", 120, "행복주택", "26A",
                         new BigDecimal("26"), null, "아파트", "지역난방", "계단식", "미설치", 0,

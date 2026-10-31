@@ -352,7 +352,7 @@ class QualityComparisonIntegrationTest {
 
     private String source() throws Exception {
         var source = com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource.from(
-                new com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot(
+                new com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot(
                         991421L, "한국토지주택공사", "11", "서울", "11140", "중구", "검토 원천 421",
                         "서울특별시 중구 세종대로 110", "1114010300100010000", "20200101", 120, "행복주택", "26A",
                         new BigDecimal("26.1234"), null, "아파트", "지역난방", "계단식", "미설치", 0,

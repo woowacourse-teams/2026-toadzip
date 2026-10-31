@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.collection.myhome.complex.domain.projection;
 
 import static lombok.AccessLevel.PROTECTED;
 
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -112,15 +113,8 @@ public class MyHomeComplexSource {
         return key.substring(separator + 1, separator + 1 + length);
     }
 
-    public static MyHomeComplexSource read(Long id, int order, Instant collectedAt,
-            com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot snapshot) {
-        var normalized = new MyHomeComplexSourceSnapshot(snapshot.hsmpSn(), snapshot.insttNm(), snapshot.brtcCode(),
-                snapshot.brtcNm(), snapshot.signguCode(), snapshot.signguNm(), snapshot.hsmpNm(), snapshot.rnAdres(),
-                snapshot.pnu(), snapshot.competDe(), snapshot.hshldCo(), snapshot.suplyTyNm(), snapshot.styleNm(),
-                snapshot.suplyPrvuseAr(), snapshot.suplyCmnuseAr(), snapshot.houseTyNm(), snapshot.heatMthdDetailNm(),
-                snapshot.buldStleNm(), snapshot.elvtrInstlAtNm(), snapshot.parkngCo(), snapshot.bassRentGtn(),
-                snapshot.bassMtRntchrg(), snapshot.bassCnvrsGtnLmt());
-        var source = from(normalized);
+    public static MyHomeComplexSource read(Long id, int order, Instant collectedAt, MyHomeComplexSourceSnapshot snapshot) {
+        var source = from(snapshot);
         source.id = id;
         source.collectedAt = collectedAt;
         return source;
