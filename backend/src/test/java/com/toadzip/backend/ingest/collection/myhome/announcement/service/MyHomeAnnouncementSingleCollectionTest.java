@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 
 import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecordService;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementApiRepository;
@@ -28,9 +29,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.ArgumentCaptor;
 import tools.jackson.databind.json.JsonMapper;
-import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
+import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 @ExtendWith(MockitoExtension.class)
 class MyHomeAnnouncementSingleCollectionTest {
@@ -39,13 +39,14 @@ class MyHomeAnnouncementSingleCollectionTest {
     @Mock private SourceCollectionRecordService records;
     @Mock private MyHomeAnnouncementApiRepository api;
 
+    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-10-07T00:00:00Z"), ZoneOffset.UTC);
+
     @Test
     void 없는_ID는_모든_공급유형을_확인한_뒤_실패하며_다른_공고는_저장하지_않는다() {
         when(records.start(any())).thenAnswer(call -> UUID.randomUUID());
         when(api.fetch(any(), eq(1))).thenReturn(new SourcePage<>(1, List.of(row("other", 1))));
 
-        assertThatThrownBy(() -> collector().collectAnnouncement("missing",
-                new ExternalDataRetryExecutor(new SimpleMeterRegistry())))
+        assertThatThrownBy(() -> service().collectAnnouncement("missing"))
                 .hasMessageContaining("공고를 찾을 수 없습니다");
 
         ArgumentCaptor<MyHomeAnnouncementCollectedResponse> response = ArgumentCaptor.captor();
@@ -59,9 +60,8 @@ class MyHomeAnnouncementSingleCollectionTest {
         when(records.start(any())).thenReturn(UUID.randomUUID());
         when(api.fetch(any(), eq(1))).thenThrow(ExternalDataRequestException.rateLimited("limit"));
 
-        assertThatThrownBy(() -> collector().collectAnnouncement("target",
-                new ExternalDataRetryExecutor(new SimpleMeterRegistry())))
-                .isInstanceOf(com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException.class);
+        assertThatThrownBy(() -> service().collectAnnouncement("target"))
+                .isInstanceOf(ExternalDataCallFailureException.class);
 
         verify(storage, never()).complete(any(), any(), any());
         verify(api).fetch(any(), eq(1));
@@ -75,9 +75,8 @@ class MyHomeAnnouncementSingleCollectionTest {
         when(records.start(any())).thenReturn(recordId);
         when(api.fetch(any(), eq(1))).thenReturn(new SourcePage<>(3, List.of(row("target", 1), row("other", 1))));
         when(api.fetch(any(), eq(2))).thenReturn(new SourcePage<>(3, List.of(row("target", 2))));
-        var collector = collector();
-
-        collector.collectWithinBatch(request, CollectionServiceTestFixture.retryWithoutDelay(), new ExternalDataCallCounter());
+        CollectionServiceTestFixture.pagedCollector(records, CLOCK)
+                .collect(collector(), startedAt -> request, new ExternalDataCallCounter());
 
         ArgumentCaptor<MyHomeAnnouncementCollectedResponse> response = ArgumentCaptor.captor();
         ArgumentCaptor<MyHomeAnnouncementCollectionRequest> savedRequest = ArgumentCaptor.captor();
@@ -96,8 +95,12 @@ class MyHomeAnnouncementSingleCollectionTest {
     }
 
     private MyHomeAnnouncementCollector collector() {
-        return new MyHomeAnnouncementCollector(storage, records, api,
-                Clock.fixed(Instant.parse("2026-10-07T00:00:00Z"), ZoneOffset.UTC));
+        return new MyHomeAnnouncementCollector(storage, api);
+    }
+
+    private MyHomeAnnouncementCollectionService service() {
+        return new MyHomeAnnouncementCollectionService(collector(), mock(MyHomeAnnouncementLifecycleService.class),
+                CollectionServiceTestFixture.pagedCollector(records, CLOCK));
     }
 
     private MyHomeAnnouncementSourceSnapshot row(String id, int house) {

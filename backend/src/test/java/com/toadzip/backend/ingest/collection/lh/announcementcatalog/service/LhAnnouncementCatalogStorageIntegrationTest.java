@@ -99,6 +99,9 @@ class LhAnnouncementCatalogStorageIntegrationTest {
     private LhAnnouncementCatalogCollector collector;
 
     @Autowired
+    private Clock clock;
+
+    @Autowired
     private LhAnnouncementCatalogStorageService storage;
 
     @Autowired
@@ -399,8 +402,10 @@ class LhAnnouncementCatalogStorageIntegrationTest {
         }
     }
 
-    private LhAnnouncementCatalogStorageService.StoreResult collect(LhAnnouncementCatalogCollectionRequest request) {
-        return collector.collectWithinBatch(request, CollectionServiceTestFixture.retryWithoutDelay(),
-                new ExternalDataCallCounter());
+    /** 운영처럼 실행 확인 뒤 수집기의 시계로 요청을 다시 만든다. */
+    private int collect(LhAnnouncementCatalogCollectionRequest request) {
+        return CollectionServiceTestFixture.pagedCollector(history, clock).collect(collector,
+                startedAt -> new LhAnnouncementCatalogCollectionRequest(request.executionId(), request.pageSize(),
+                        request.maxPages(), startedAt), new ExternalDataCallCounter());
     }
 }

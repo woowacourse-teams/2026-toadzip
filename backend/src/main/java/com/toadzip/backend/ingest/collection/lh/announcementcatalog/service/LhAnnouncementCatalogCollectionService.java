@@ -1,55 +1,25 @@
 package com.toadzip.backend.ingest.collection.lh.announcementcatalog.service;
 
-import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.dto.LhAnnouncementCatalogCollectionRequest;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
-import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
-import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
-import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
+import com.toadzip.backend.ingest.collection.paging.service.PagedSourceCollector;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
-import io.micrometer.core.instrument.MeterRegistry;
-import java.time.Clock;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class LhAnnouncementCatalogCollectionService {
 
-    private static final ExternalDataSource SOURCE = ExternalDataSource.LH_ANNOUNCEMENT_CATALOG;
     private static final int PAGE_SIZE = 500;
     private static final int MAX_PAGES = 1_000;
 
     private final LhAnnouncementCatalogCollector collector;
-    private final ExternalDataRetryExecutor retryExecutor;
-    private final ExternalDataFailureRecorder failureRecorder;
-    private final MeterRegistry meterRegistry;
-    private final Clock clock;
+    private final PagedSourceCollector pagedCollector;
 
     public ExternalDataCollectionReport collect() {
-        var counter = new ExternalDataCallCounter();
-        LhAnnouncementCatalogStorageService.StoreResult result;
         IngestExecutionScope.beginWork("LH 공고 목록", "페이지", -1);
-        var request = new LhAnnouncementCatalogCollectionRequest(
-                IngestExecutionScope.currentExecutionId().orElse(null), PAGE_SIZE, MAX_PAGES, clock.instant());
-        try {
-            result = collector.collectWithinBatch(request, retryExecutor, counter);
-        } catch (ExternalDataCallFailureException | ExternalDataRequestException failure) {
-            failureRecorder.record(SOURCE, request.failureDescription(), failure, log, "LH 공고 목록 수집 실패");
-            return new ExternalDataCollectionReport(SOURCE.operation(), 0, 1, counter.count(),
-                    0, ExternalDataRateLimit.count(failure));
-        }
-        failureRecorder.resolveStartingWith(SOURCE, request.resolvedFailurePrefix());
-        meterRegistry.counter("ingest.announcement.catalog.rows", "change", "new").increment(result.newRowCount());
-        meterRegistry.counter("ingest.announcement.catalog.rows", "change", "changed")
-                .increment(result.changedRowCount());
-        meterRegistry.counter("ingest.announcement.catalog.rows", "change", "unchanged")
-                .increment(result.unchangedRowCount());
-        return new ExternalDataCollectionReport(SOURCE.operation(), result.storedRowCount(), 0, counter.count());
+        return pagedCollector.collectAndReport(collector, startedAt -> new LhAnnouncementCatalogCollectionRequest(
+                IngestExecutionScope.currentExecutionId().orElse(null), PAGE_SIZE, MAX_PAGES, startedAt));
     }
 }

@@ -6,8 +6,7 @@ import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
-import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollector;
-import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
+import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
 import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
@@ -21,8 +20,7 @@ import org.springframework.stereotype.Service;
 public class AnnouncementRegistrationService {
 
     private final AnnouncementRepository announcements;
-    private final MyHomeAnnouncementCollector collector;
-    private final ExternalDataRetryExecutor retry;
+    private final MyHomeAnnouncementCollectionService myHomeCollection;
     private final MyHomeAnnouncementSourceReader sources;
     private final LhAnnouncementExternalCollectionService lhCollection;
     private final MyHomeAnnouncementMappingService mapping;
@@ -43,7 +41,7 @@ public class AnnouncementRegistrationService {
             throw new AnnouncementRegistrationException("이미 등록된 공고입니다: " + identifier);
         }
         try {
-            int count = collector.collectAnnouncement(identifier, retry);
+            int count = myHomeCollection.collectAnnouncement(identifier);
             return new DataPipelineStepResult("{\"storedRowCount\":" + count + "}", 0, 0, 0);
         }
         catch (InvalidIngestRequestException exception) {

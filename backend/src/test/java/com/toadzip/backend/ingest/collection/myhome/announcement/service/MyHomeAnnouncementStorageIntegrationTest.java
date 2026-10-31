@@ -23,6 +23,7 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHo
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementCollectionRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementPageParser;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementRunRepository;
+import com.toadzip.backend.ingest.collection.paging.service.PagedSourceCollector;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeResponseStatusValidator;
@@ -93,7 +94,7 @@ import tools.jackson.databind.json.JsonMapper;
 @ActiveProfiles("test")
 @ContextConfiguration(classes = MyHomeAnnouncementStorageIntegrationTest.JpaConfiguration.class,
         initializers = MyHomeAnnouncementStorageIntegrationTest.SchemaInitializer.class)
-@Import({MyHomeAnnouncementCollectionService.class,
+@Import({MyHomeAnnouncementCollectionService.class, PagedSourceCollector.class,
         ExternalDataRetryExecutor.class,
         SourceCollectionRecordService.class, MyHomeAnnouncementStorageService.class,
         MyHomeAnnouncementLifecycleService.class,
@@ -645,15 +646,16 @@ class MyHomeAnnouncementStorageIntegrationTest {
             return withSuccess(pageJson(3, third), MediaType.APPLICATION_JSON).createResponse(httpRequest);
         });
 
-        UUID recordId = collect(request("01", 2));
+        int stored = collect(request("01", 2));
 
-        assertThat(recordId).isEqualTo(startedId.get());
+        assertThat(stored).isEqualTo(3);
         assertThat(source("20935").rows()).extracting(RowView::snapshot).containsExactly(first, second);
         assertThat(source("21344").rows()).singleElement().satisfies(value -> {
             assertThat(value.snapshot()).isEqualTo(third);
             assertThat(value.collectedAt()).isEqualTo(FINISHED_AT.plusSeconds(2));
         });
         assertThat(records()).singleElement().satisfies(record -> {
+            assertThat(record.id()).isEqualTo(startedId.get());
             assertThat(record.status()).isEqualTo(CollectionStatus.SUCCESS);
             assertThat(record.rowCount()).isEqualTo(3);
             assertThat(record.finishedAt()).isEqualTo(FINISHED_AT.plusSeconds(2));
@@ -824,16 +826,17 @@ class MyHomeAnnouncementStorageIntegrationTest {
     })
     void acceptsExplicitEmptyCollectionAndKeepsPreviousSource(String payload) {
         MyHomeAnnouncementSourceSnapshot original = row("20935", 1, "기존", "서울특별시");
-        store(request("01", 500), response(COLLECTED_AT, original));
+        UUID previousRecordId = store(request("01", 500), response(COLLECTED_AT, original));
         expectPage(1, payload);
 
-        UUID recordId = collect(request("01", 2));
+        assertThat(collect(request("01", 2))).isZero();
 
         assertThat(source("20935").rows()).extracting(RowView::snapshot).containsExactly(original);
-        assertThat(records()).filteredOn(record -> record.id().equals(recordId)).singleElement().satisfies(record -> {
-            assertThat(record.status()).isEqualTo(CollectionStatus.SUCCESS);
-            assertThat(record.rowCount()).isZero();
-        });
+        assertThat(records()).filteredOn(record -> !record.id().equals(previousRecordId)).singleElement()
+                .satisfies(record -> {
+                    assertThat(record.status()).isEqualTo(CollectionStatus.SUCCESS);
+                    assertThat(record.rowCount()).isZero();
+                });
     }
 
     @Test
@@ -929,8 +932,7 @@ class MyHomeAnnouncementStorageIntegrationTest {
 
         try (var ignored = IngestExecutionScope.open(null, monitor)) {
             if (totalCount == 2) {
-                UUID id = collect(request("01", 2));
-                assertThat(history.storedRowCount(id)).isEqualTo(2);
+                assertThat(collect(request("01", 2))).isEqualTo(2);
                 assertThat(sourceRepository.count()).isOne();
                 assertThat(records()).singleElement().extracting(RecordView::status)
                         .isEqualTo(CollectionStatus.SUCCESS);
@@ -1240,8 +1242,11 @@ class MyHomeAnnouncementStorageIntegrationTest {
         }
     }
 
-    private UUID collect(MyHomeAnnouncementCollectionRequest request) {
-        return collector.collectWithinBatch(request, CollectionServiceTestFixture.retryWithoutDelay(),
+    /** 운영처럼 실행 확인 뒤 수집기의 시계로 요청을 다시 만든다. */
+    private int collect(MyHomeAnnouncementCollectionRequest request) {
+        return CollectionServiceTestFixture.pagedCollector(history, clock).collect(collector,
+                startedAt -> new MyHomeAnnouncementCollectionRequest(request.executionId(), request.supplyTypeCode(),
+                        request.pageSize(), request.maxPages(), startedAt, request.pblancId()),
                 new ExternalDataCallCounter());
     }
 }

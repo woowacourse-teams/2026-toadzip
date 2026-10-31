@@ -151,10 +151,8 @@ public final class CollectionServiceTestFixture {
             storedCounts.put(invocation.getArgument(0), response.rows().size());
             return null;
         }).when(storage).complete(any(), any(), any());
-        var collector = new MyHomeAnnouncementCollector(
-                storage, records, api, CLOCK);
-        return new MyHomeAnnouncementCollectionService(
-                collector, lifecycle, records, failures, retry, CLOCK);
+        return new MyHomeAnnouncementCollectionService(new MyHomeAnnouncementCollector(storage, api), lifecycle,
+                new PagedSourceCollector(records, retry, failures, CLOCK));
     }
 
     LhLeaseCatalogCollectionService lease(
@@ -206,13 +204,12 @@ public final class CollectionServiceTestFixture {
                             convert(row.snapshot(), LhAnnouncementCatalogSnapshot.class),
                             row.rawPayload())).toList();
             var result = fixtures.store(rows);
+            storedCounts.put(invocation.getArgument(0), result.storedRowCount());
             return new LhAnnouncementCatalogStorageService.StoreResult(
                     result.storedRowCount(), result.newRowCount(), result.changedRowCount());
         });
-        var collector = new LhAnnouncementCatalogCollector(
-                api, storage, records, CLOCK);
-        return new LhAnnouncementCatalogCollectionService(
-                collector, retry, failures, meters, CLOCK);
+        return new LhAnnouncementCatalogCollectionService(new LhAnnouncementCatalogCollector(api, storage, meters),
+                new PagedSourceCollector(records, retry, failures, CLOCK));
     }
 
     public LhAnnouncementQueryCollector query(
