@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.collection.myhome.announcement.domain.project
 
 import static lombok.AccessLevel.PROTECTED;
 
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.domain.SourceText;
 import java.time.Instant;
 import lombok.Getter;
@@ -116,16 +117,8 @@ public class MyHomeAnnouncementSource {
 
     public static MyHomeAnnouncementSource read(Long id, int order, Instant collectedAt, String lastSeenRunId,
             int missCount, boolean active,
-            com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot snapshot) {
-        var normalized = new MyHomeAnnouncementSourceSnapshot(snapshot.pblancId(), snapshot.houseSn(),
-                snapshot.sttusNm(), snapshot.pblancNm(), snapshot.suplyInsttNm(), snapshot.houseTyNm(),
-                snapshot.suplyTyNm(), snapshot.beforePblancId(), snapshot.rcritPblancDe(), snapshot.przwnerPresnatnDe(),
-                snapshot.beginDe(), snapshot.endDe(), snapshot.refrnc(), snapshot.url(), snapshot.pcUrl(),
-                snapshot.mobileUrl(), snapshot.hsmpNm(), snapshot.brtcNm(), snapshot.signguNm(), snapshot.fullAdres(),
-                snapshot.rnCodeNm(), snapshot.refrnLegaldongNm(), snapshot.pnu(), snapshot.heatMthdNm(),
-                snapshot.totHshldCo(), snapshot.sumSuplyCo(), snapshot.rentGtn(), snapshot.enty(), snapshot.surlus(),
-                snapshot.mtRntchrg());
-        var source = from(order, normalized);
+            MyHomeAnnouncementSourceSnapshot snapshot) {
+        var source = from(order, snapshot);
         source.id = id;
         source.collectedAt = collectedAt;
         source.lastSeenRunId = lastSeenRunId;

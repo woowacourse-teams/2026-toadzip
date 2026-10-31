@@ -544,7 +544,7 @@ class SupplyCorrectionIntegrationTest {
     private SupplyRow groupedFixture() {
         var row = fixture();
         var source = com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource.from(1,
-                new com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot(
+                new com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot(
                         row.getAnnouncement().getSourceAnnouncementIdentifier(), 1, "모집중", "국민임대 입주자 모집공고",
                         "한국토지주택공사", "26A,B", "국민임대", null, "20261001", "20261106", "20261008", "20261015",
                         null, "https://example.com/manual", null, null, row.getHousingComplex().getName(), "서울특별시", "중구",

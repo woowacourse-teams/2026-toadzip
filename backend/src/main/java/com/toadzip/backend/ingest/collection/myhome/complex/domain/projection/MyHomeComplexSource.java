@@ -114,7 +114,7 @@ public class MyHomeComplexSource {
         return key.substring(separator + 1, separator + 1 + length);
     }
 
-    public static MyHomeComplexSource read(Long id, int order, Instant collectedAt, MyHomeComplexSourceSnapshot snapshot) {
+    public static MyHomeComplexSource read(Long id, Instant collectedAt, MyHomeComplexSourceSnapshot snapshot) {
         var source = from(snapshot);
         source.id = id;
         source.collectedAt = collectedAt;

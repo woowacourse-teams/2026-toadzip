@@ -20,7 +20,7 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Request;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Row;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
@@ -103,7 +103,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 candidateResolver.resolve(sources.findAll().getFirst());
         lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of(
                 new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource(0,
-                        candidate.panId(), new com.toadzip.backend.ingest.collection.lh.supply.domain.projection.LhAnnouncementSupplySourceSnapshot(
+                        candidate.panId(), new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot(
                         "익산한스빌", "26A,B", "26.5195", null, "529", "170", "4076000", "72820"))));
         mapping.mapAll();
         enrichment.enrichAll();
@@ -237,7 +237,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     private com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource lhSupplyRow(int order,
             String panId, String typeName, String area, String supplied) {
         return new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource(order, panId,
-                new com.toadzip.backend.ingest.collection.lh.supply.domain.projection.LhAnnouncementSupplySourceSnapshot(
+                new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot(
                         "익산한스빌", typeName, area, null, "529", supplied, "4076000", "72820"));
     }
 
@@ -1028,7 +1028,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         // 군산 공고처럼 공고 등록 뒤 수집한 LH 공급 원본의 단지명 표기가 공고 공급행과 달라 LH 보강에서 단지를 찾지 못한다.
         lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of(
                 new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource(0, candidate.panId(),
-                        new com.toadzip.backend.ingest.collection.lh.supply.domain.projection.LhAnnouncementSupplySourceSnapshot(
+                        new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot(
                                 "군산한스빌", "39", "39.9500", null, "717", "100", "공고문 참조", "공고문 참조"))));
         var before = supplies.findAll().getFirst();
 

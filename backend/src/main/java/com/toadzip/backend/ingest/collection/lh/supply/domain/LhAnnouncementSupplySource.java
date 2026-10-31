@@ -1,6 +1,5 @@
 package com.toadzip.backend.ingest.collection.lh.supply.domain;
 
-import com.toadzip.backend.ingest.collection.lh.supply.domain.projection.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.domain.SourceText;
 import java.time.Instant;
 import lombok.Getter;
@@ -40,13 +39,9 @@ public class LhAnnouncementSupplySource {
 
     public static LhAnnouncementSupplySource read(
             Long id, int order, String panId, String requestHash, Instant collectedAt,
-            com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot snapshot
+            LhAnnouncementSupplySourceSnapshot snapshot
     ) {
-        var normalizedSnapshot = new LhAnnouncementSupplySourceSnapshot(snapshot.complexLabel(), snapshot.typeName(),
-                snapshot.exclusiveArea(), snapshot.supplyArea(), snapshot.totalUnitCount(),
-                        snapshot.suppliedUnitCount(),
-                snapshot.depositText(), snapshot.monthlyRentText());
-        var source = new LhAnnouncementSupplySource(order, panId, normalizedSnapshot);
+        var source = new LhAnnouncementSupplySource(order, panId, snapshot);
         source.id = id;
         source.requestHash = requestHash;
         source.collectedAt = collectedAt;

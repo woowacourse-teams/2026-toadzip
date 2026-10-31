@@ -1,6 +1,5 @@
 package com.toadzip.backend.ingest.collection.lh.leasecatalog.domain;
 
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.projection.LhCatalogSourceSnapshot;
 import com.toadzip.backend.ingest.domain.SourceText;
 import java.time.Instant;
 import lombok.Getter;
@@ -36,11 +35,8 @@ public class LhCatalogSource {
     }
 
     public static LhCatalogSource read(Long id, int order, Instant collectedAt,
-            com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot snapshot) {
-        var normalized = new LhCatalogSourceSnapshot(snapshot.areaName(), snapshot.supplyTypeName(),
-                snapshot.complexLabel(), snapshot.complexTotalUnitCount(), snapshot.exclusiveArea(),
-                snapshot.totalUnitCount(), snapshot.depositText(), snapshot.monthlyRentText());
-        var source = new LhCatalogSource(order, normalized);
+            LhCatalogSourceSnapshot snapshot) {
+        var source = new LhCatalogSource(order, snapshot);
         source.id = id;
         source.collectedAt = collectedAt;
         return source;

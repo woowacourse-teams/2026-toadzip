@@ -248,7 +248,7 @@ class QualityComparisonIntegrationTest {
 
     private long catalogRow(String name, String deposit) {
         var row = new com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource(0,
-                new com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.projection.LhCatalogSourceSnapshot(
+                new com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot(
                         "서울 중구", "행복주택", name, "120", "26.12", "10", deposit, "100000"));
         row.markCollectedAt(java.time.Instant.parse("2026-10-15T00:00:00Z"));
         return catalogRows.save(row).getId();

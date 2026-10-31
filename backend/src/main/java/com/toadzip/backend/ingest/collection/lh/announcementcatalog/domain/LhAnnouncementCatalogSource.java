@@ -2,7 +2,6 @@ package com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain;
 
 import static lombok.AccessLevel.PROTECTED;
 
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.projection.LhAnnouncementCatalogSnapshot;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -56,14 +55,9 @@ public class LhAnnouncementCatalogSource {
 
     public static LhAnnouncementCatalogSource read(Long id, Instant changedAt, Instant collectedAt,
             boolean present, String rawPayload,
-            com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSnapshot snapshot
+            LhAnnouncementCatalogSnapshot snapshot
     ) {
-        var normalized = snapshot.normalized();
-        var source = from(new LhAnnouncementCatalogSnapshot(normalized.panId(),
-                normalized.connectionSystemDivisionCode(), normalized.upperAnnouncementTypeCode(),
-                normalized.announcementTypeCode(), normalized.supplyInfoTypeCode(), normalized.announcementName(),
-                normalized.status(), normalized.noticeDate(), normalized.publicationDate(), normalized.closingDate(),
-                normalized.detailUrl(), normalized.mobileDetailUrl()), rawPayload, collectedAt);
+        var source = from(snapshot.normalized(), rawPayload, collectedAt);
         source.id = id;
         source.changedAt = changedAt;
         source.presentInLatestCatalog = present;
