@@ -36,4 +36,15 @@ class LhSourceIdentifierTest {
         assertThat(LhSourceIdentifier.isSupplyRowOf("2102", row)).isFalse();
         assertThat(LhSourceIdentifier.isSupplyRowOf("21026", "21026")).isFalse();
     }
+
+    @Test
+    void LH_공급_원천_식별자만_LH_공고와_순번으로_해석한다() {
+        assertThat(LhSourceIdentifier.parseSupply(LhSourceIdentifier.supply("PAN-77", 9)))
+                .contains(new LhSourceIdentifier.Supply("PAN-77", "9"));
+        assertThat(LhSourceIdentifier.parseSupply("LH:PAN-77:DETAIL:1")).isEmpty();
+        assertThat(LhSourceIdentifier.parseSupply("SH:PAN-77:SUPPLY:1")).isEmpty();
+        assertThat(LhSourceIdentifier.parseSupply("LH:PAN-77:SUPPLY")).isEmpty();
+        assertThat(LhSourceIdentifier.parseSupply("21026:LH:PAN-77:1")).isEmpty();
+        assertThat(LhSourceIdentifier.parseSupply(null)).isEmpty();
+    }
 }

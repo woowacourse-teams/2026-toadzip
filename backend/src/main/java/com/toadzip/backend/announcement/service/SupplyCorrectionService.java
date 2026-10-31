@@ -12,6 +12,7 @@ import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
 import com.toadzip.backend.admin.quality.dto.QualityComparison;
+import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.Row;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.Target;
@@ -130,18 +131,18 @@ public class SupplyCorrectionService {
                     row.getMyhomeSourceRowIdentifier()));
         }
         String recorded = row.getLhSourceSupplyRowIdentifier();
-        String[] parts = recorded == null ? new String[0] : recorded.split(":");
-        if (parts.length == 4 && parts[0].equals("LH") && parts[2].equals("SUPPLY")) {
+        LhSourceIdentifier.parseSupply(recorded).ifPresent(supply -> {
             var candidates = sources.stream()
                     .filter(source -> source.category() == IngestSourceCategory.LH_ANNOUNCEMENT_SUPPLY)
                     .map(QualityComparison.Source::sourceKey)
-                    .filter(sourceKey -> sourceKey.startsWith(parts[1] + ":") && sourceKey.endsWith(":" + parts[3]))
+                    .filter(sourceKey -> sourceKey.startsWith(supply.panId() + ":")
+                            && sourceKey.endsWith(":" + supply.sourceOrder()))
                     .distinct().toList();
             if (candidates.size() <= 1) {
                 result.add(new SupplyCorrection.RowSource(key, IngestSourceCategory.LH_ANNOUNCEMENT_SUPPLY.name(),
                         candidates.isEmpty() ? recorded : candidates.getFirst()));
             }
-        }
+        });
         return result;
     }
 

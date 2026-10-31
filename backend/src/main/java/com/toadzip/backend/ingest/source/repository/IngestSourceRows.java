@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.source.repository;
 
+import com.toadzip.backend.ingest.domain.SourceArea;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
 
 /** 관리자 원천 조회는 현행 수집 행만 조회한다. */
@@ -56,8 +57,8 @@ public final class IngestSourceRows {
     private static String myHomeComplex() {
         String key = keyPart("r.hsmp_sn") + " || " + keyPart("r.pnu") + " || "
                 + keyPart("r.suply_ty_nm") + " || " + keyPart("r.style_nm") + " || "
-                + keyPart("trim_scale(round(r.suply_prvuse_ar, 4))") + " || "
-                + keyPart("trim_scale(round(r.suply_cmnuse_ar, 4))");
+                + keyPart("trim_scale(round(r.suply_prvuse_ar, " + SourceArea.SCALE + "))") + " || "
+                + keyPart("trim_scale(round(r.suply_cmnuse_ar, " + SourceArea.SCALE + "))");
         return """
                 SELECT r.id, %s AS source_key, r.hsmp_nm AS name, NULL::text AS original_url,
                        r.collected_at, NULL::timestamptz AS updated_at,

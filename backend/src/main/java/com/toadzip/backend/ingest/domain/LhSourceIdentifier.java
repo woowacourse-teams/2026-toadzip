@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.domain;
 
 import java.util.Collection;
+import java.util.Optional;
 
 /**
  * LH 원천에서 만든 식별자 규칙이다. LH 원천 행은 "LH:{LH 공고}:{종류}:{순번}"을,
@@ -21,6 +22,15 @@ public final class LhSourceIdentifier {
         return source(panId, "SUPPLY", sourceOrder);
     }
 
+    /** LH 공급 원천 식별자 "LH:{LH 공고}:SUPPLY:{순번}"에서 LH 공고와 순번을 꺼낸다. 다른 형식이면 비운다. */
+    public static Optional<Supply> parseSupply(String identifier) {
+        String[] parts = identifier == null ? new String[0] : identifier.split(":");
+        if (parts.length != 4 || !parts[0].equals("LH") || !parts[2].equals("SUPPLY")) {
+            return Optional.empty();
+        }
+        return Optional.of(new Supply(parts[1], parts[3]));
+    }
+
     public static boolean isLhSource(String identifier) {
         return identifier != null && identifier.startsWith(PREFIX);
     }
@@ -39,5 +49,8 @@ public final class LhSourceIdentifier {
 
     private static String supplyRowPrefix(String announcementIdentifier) {
         return announcementIdentifier + ":" + PREFIX;
+    }
+
+    public record Supply(String panId, String sourceOrder) {
     }
 }

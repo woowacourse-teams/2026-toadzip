@@ -100,6 +100,15 @@ class IngestSourceControllerIntegrationTest {
     }
 
     @Test
+    void 마이홈_단지_원천키의_면적은_원천_면적_자리수로_맞추고_뒤쪽_0을_지운다() throws Exception {
+        jdbc.sql("UPDATE myhome_complex_source_rows SET suply_prvuse_ar = 26.1234, suply_cmnuse_ar = 10.5").update();
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
+                        .param("category", "MYHOME_COMPLEX"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].sourceKey").value("3:123-1:-1:-1:7:26.12344:10.5"));
+    }
+
+    @Test
     void 원천키는_기존_정제와_같이_탭과_유니코드_공백을_제거하고_raw는_보존한다() throws Exception {
         String rawIdentifier = "\tMYHOME-123\u3000";
         jdbc.sql("UPDATE myhome_announcement_source_rows SET pblanc_id = :identifier")
