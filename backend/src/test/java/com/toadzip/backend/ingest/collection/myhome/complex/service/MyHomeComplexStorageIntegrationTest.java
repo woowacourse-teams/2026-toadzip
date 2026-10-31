@@ -435,6 +435,21 @@ class MyHomeComplexStorageIntegrationTest {
     }
 
     @Test
+    void readerReturnsEachTrimmedNonBlankRoadAddressOnceAcrossRegions() {
+        store(request("11", "680"), response(COLLECTED_AT,
+                withRoadAddress(row(100L, "11", "680", "59A", 100000L), "서울 강남구 테헤란로 1"),
+                withRoadAddress(row(100L, "11", "680", "84A", 200000L), "서울 강남구 테헤란로 1"),
+                withRoadAddress(row(101L, "11", "680", "59A", 100000L), null),
+                withRoadAddress(row(102L, "11", "680", "59A", 100000L), " ")));
+        store(request("26", "110"), response(COLLECTED_AT,
+                withRoadAddress(row(200L, "26", "110", "59A", 100000L), "부산 해운대구 해운대로 2"),
+                withRoadAddress(row(201L, "26", "110", "59A", 100000L), " 서울 강남구 테헤란로 1 ")));
+
+        assertThat(reader.findDistinctRoadAddresses())
+                .containsExactlyInAnyOrder("서울 강남구 테헤란로 1", "부산 해운대구 해운대로 2");
+    }
+
+    @Test
     void retainsLegacyDistinctionBetweenMissingAndEmptyRowKeyFields() {
         MyHomeComplexSourceSnapshot missingPnu = withPnu(row(100L, "11", "680", "59A", 100000L), null);
         MyHomeComplexSourceSnapshot emptyPnu = withPnu(row(100L, "11", "680", "59A", 200000L), "");
@@ -1172,6 +1187,15 @@ class MyHomeComplexStorageIntegrationTest {
         return new MyHomeComplexSourceSnapshot(
                 row.hsmpSn(), row.insttNm(), row.brtcCode(), row.brtcNm(), row.signguCode(), row.signguNm(),
                 row.hsmpNm(), row.rnAdres(), pnu, row.competDe(), row.hshldCo(), row.suplyTyNm(), row.styleNm(),
+                row.suplyPrvuseAr(), row.suplyCmnuseAr(), row.houseTyNm(), row.heatMthdDetailNm(), row.buldStleNm(),
+                row.elvtrInstlAtNm(), row.parkngCo(), row.bassRentGtn(), row.bassMtRntchrg(), row.bassCnvrsGtnLmt()
+        );
+    }
+
+    private MyHomeComplexSourceSnapshot withRoadAddress(MyHomeComplexSourceSnapshot row, String roadAddress) {
+        return new MyHomeComplexSourceSnapshot(
+                row.hsmpSn(), row.insttNm(), row.brtcCode(), row.brtcNm(), row.signguCode(), row.signguNm(),
+                row.hsmpNm(), roadAddress, row.pnu(), row.competDe(), row.hshldCo(), row.suplyTyNm(), row.styleNm(),
                 row.suplyPrvuseAr(), row.suplyCmnuseAr(), row.houseTyNm(), row.heatMthdDetailNm(), row.buldStleNm(),
                 row.elvtrInstlAtNm(), row.parkngCo(), row.bassRentGtn(), row.bassMtRntchrg(), row.bassCnvrsGtnLmt()
         );
