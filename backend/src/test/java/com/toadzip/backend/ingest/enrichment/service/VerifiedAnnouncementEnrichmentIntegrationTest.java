@@ -12,7 +12,6 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.util.List;

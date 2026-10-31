@@ -9,7 +9,7 @@ import java.util.Set;
 
 /**
  * 마이홈 정제가 공고 한 건을 쓴 같은 트랜잭션 안에서 LH 보강에 맡기는 일이다.
- * 보강할 수 없으면 {@link LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException}을 던진다.
+ * 보강할 수 없으면 {@link LhAnnouncementEnrichmentRejectedException}을 던진다.
  */
 public interface MappedAnnouncementLhEnrichment {
 

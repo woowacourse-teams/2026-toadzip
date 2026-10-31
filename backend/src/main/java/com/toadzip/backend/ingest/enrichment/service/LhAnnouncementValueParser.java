@@ -1,7 +1,6 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
 import java.math.BigDecimal;
 import java.time.DateTimeException;
 import java.time.LocalDateTime;

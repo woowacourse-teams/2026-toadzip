@@ -23,7 +23,6 @@ import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFail
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAttachmentData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhScheduleData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;

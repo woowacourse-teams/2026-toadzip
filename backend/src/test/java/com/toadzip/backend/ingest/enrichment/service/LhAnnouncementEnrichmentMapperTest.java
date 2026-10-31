@@ -10,7 +10,6 @@ import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDeta
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.projection.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhScheduleData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import java.time.LocalDateTime;

@@ -328,18 +328,4 @@ public class LhAnnouncementEnrichmentMapper {
             return new LinkedMyHomeRow(state.myhomeSourceRowIdentifier(), !state.valid());
         }
     }
-
-    public static class LhAnnouncementEnrichmentRejectedException extends RuntimeException {
-
-        private final LhAnnouncementEnrichmentFailureReason reason;
-
-        LhAnnouncementEnrichmentRejectedException(LhAnnouncementEnrichmentFailureReason reason, String detail) {
-            super(detail);
-            this.reason = reason;
-        }
-
-        public LhAnnouncementEnrichmentFailureReason reason() {
-            return reason;
-        }
-    }
 }

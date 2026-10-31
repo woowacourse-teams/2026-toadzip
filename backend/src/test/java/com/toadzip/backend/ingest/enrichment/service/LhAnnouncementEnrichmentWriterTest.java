@@ -20,7 +20,6 @@ import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementSupplyMatcher.LhSupplyMatchResult;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
