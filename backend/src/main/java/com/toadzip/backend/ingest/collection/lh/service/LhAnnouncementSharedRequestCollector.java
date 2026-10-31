@@ -41,6 +41,7 @@ public class LhAnnouncementSharedRequestCollector {
         return "myhomeAnnouncementCurrentSource=" + sourceAnnouncementKey;
     }
 
+    /** 끝난 요청의 성공 여부를 {@code completedRequests}에 기록한다. 호출자는 다음 배치에서 같은 요청을 다시 실행하지 않고 그 결과로 연결한다. */
     ExternalDataCollectionReport collect(
             ExternalDataSource targetSource,
             List<List<Candidate>> requests,

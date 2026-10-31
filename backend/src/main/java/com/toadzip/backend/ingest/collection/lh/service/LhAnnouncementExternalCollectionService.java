@@ -1,5 +1,7 @@
 package com.toadzip.backend.ingest.collection.lh.service;
 
+import static com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementSharedRequestCollector.sourceSelectionDescription;
+
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
@@ -305,7 +307,7 @@ public class LhAnnouncementExternalCollectionService {
     }
 
     private ExternalDataCollectionReport conflictReport(ExternalDataSource targetSource, Candidate conflict) {
-        failureRecorder.record(targetSource, LhAnnouncementSharedRequestCollector.sourceSelectionDescription(conflict.sourceAnnouncementKey()),
+        failureRecorder.record(targetSource, sourceSelectionDescription(conflict.sourceAnnouncementKey()),
                 new IllegalStateException("현재 마이홈 공고 원천의 LH 요청이 서로 다릅니다: pblancId="
                         + conflict.sourceAnnouncementKey()), log, "LH 현재 원천 선택 실패");
         return new ExternalDataCollectionReport(targetSource.operation(), 0, 1, 0, 0, 0, 0, 1);
@@ -326,7 +328,7 @@ public class LhAnnouncementExternalCollectionService {
                 ));
         Set<String> pendingConflicts = measurePreparation(targetSource, forceRefresh, "failure_read",
                 () -> failureRecorder.findPendingRequestDescriptions(targetSource, candidates.stream()
-                        .map(candidate -> LhAnnouncementSharedRequestCollector.sourceSelectionDescription(candidate.sourceAnnouncementKey())).toList()));
+                        .map(candidate -> sourceSelectionDescription(candidate.sourceAnnouncementKey())).toList()));
         List<List<Candidate>> pending = new ArrayList<>();
         for (List<Candidate> requestCandidates : candidatesByRequest.values()) {
             IngestExecutionScope.verifyCanContinue();

@@ -120,6 +120,10 @@ class LhAnnouncementExternalCollectionServiceTest {
                 });
         metricClock = new MockClock();
         meterRegistry = new SimpleMeterRegistry(SimpleConfig.DEFAULT, metricClock);
+        service = service(2);
+    }
+
+    private LhAnnouncementExternalCollectionService service(int maxConcurrentRequests) {
         LhAnnouncementCollectionProgressManager progressManager =
                 new LhAnnouncementCollectionProgressManager(
                         progressStore,
@@ -133,13 +137,14 @@ class LhAnnouncementExternalCollectionServiceTest {
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 Period.ofDays(30)
         );
-        service = new LhAnnouncementExternalCollectionService(
+        return new LhAnnouncementExternalCollectionService(
                 myHomeAnnouncementRepository,
                 failureRecorder,
                 new LhAnnouncementCollectionCandidateResolver(catalogRepository),
                 collectionPolicy,
                 new LhAnnouncementSharedRequestCollector(candidateCollector, progressManager, failureRecorder,
-                        new LhAnnouncementClientProperties(2, Duration.ofSeconds(3), Duration.ofSeconds(10))),
+                        new LhAnnouncementClientProperties(
+                                maxConcurrentRequests, Duration.ofSeconds(3), Duration.ofSeconds(10))),
                 meterRegistry
         );
     }
@@ -508,8 +513,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 설정한_8개_요청을_동시에_처리하되_아홉번째는_완료_슬롯을_기다린다() throws Exception {
-        ReflectionTestUtils.setField(ReflectionTestUtils.getField(service, "sharedRequests"), "clientProperties",
-                new LhAnnouncementClientProperties(8, Duration.ofSeconds(3), Duration.ofSeconds(10)));
+        service = service(8);
         List<MyHomeAnnouncementSource> rows = new ArrayList<>();
         for (int index = 0; index < 10; index++) {
             rows.add(announcementSource("source-" + index, "pan-" + index));
@@ -1339,6 +1343,27 @@ class LhAnnouncementExternalCollectionServiceTest {
 
         verify(externalRepository).fetchDetail(any());
         verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).link(any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
+    void 앞_배치에서_실패한_공유_요청은_다음_배치의_같은_요청_공고를_연결하지_않는다() {
+        for (int index = 0; index < 501; index++) {
+            announcementSource("announcement-" + index, "100");
+        }
+        when(myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(anyLong(), any()))
+                .thenAnswer(invocation -> {
+                    long cursor = invocation.getArgument(0);
+                    Pageable pageable = invocation.getArgument(1);
+                    return storedSources.stream().filter(source -> source.getId() > cursor)
+                            .limit(pageable.getPageSize()).toList();
+                });
+        when(externalRepository.fetchDetail(any())).thenThrow(new ExternalDataRequestException("조회 실패"));
+
+        var result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        verify(externalRepository).fetchDetail(any());
         verify(progressStore, never()).link(any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
     }
