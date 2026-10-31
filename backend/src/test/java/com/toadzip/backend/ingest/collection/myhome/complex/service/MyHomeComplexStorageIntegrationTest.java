@@ -27,6 +27,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeCom
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexRegionSourceRepository;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeRegionCatalog;
+import com.toadzip.backend.ingest.collection.paging.service.PagedSourceCollector;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeResponseStatusValidator;
@@ -107,7 +108,7 @@ import tools.jackson.databind.json.JsonMapper;
 @ContextConfiguration(classes = MyHomeComplexStorageIntegrationTest.JpaConfiguration.class,
         initializers = MyHomeComplexStorageIntegrationTest.SchemaInitializer.class)
 @Import({MyHomeComplexCollectionService.class, MyHomeComplexRegionCollectionService.class,
-        ExternalDataRetryExecutor.class,
+        PagedSourceCollector.class, ExternalDataRetryExecutor.class,
         SourceCollectionRecordService.class, MyHomeComplexStorageService.class, IngestWriteOwnershipGuard.class, IngestExecutionOwnershipRepository.class,
         MyHomeComplexCollector.class, MyHomeComplexApiRepository.class, MyHomeComplexPageParser.class,
         MyHomeRegionCatalog.class, MyHomeComplexSourceReader.class})
@@ -695,13 +696,13 @@ class MyHomeComplexStorageIntegrationTest {
             return withSuccess(pageJson(3, third), MediaType.APPLICATION_JSON).createResponse(httpRequest);
         });
 
-        UUID recordId = collect(apiRequest(1000));
+        int stored = collect(apiRequest(1000));
 
-        assertThat(recordId).isEqualTo(startedId.get());
+        assertThat(stored).isEqualTo(3);
         assertThat(source(100L).rows()).containsExactly(first, second);
         assertThat(source(101L).rows()).containsExactly(third);
         assertThat(region("11", "680").collectedAt()).isEqualTo(FINISHED_AT.plusSeconds(2));
-        assertThat(region("11", "680").recordId()).isEqualTo(recordId);
+        assertThat(region("11", "680").recordId()).isEqualTo(startedId.get());
         assertThat(region("11", "680").parameters()).containsEntry("numOfRows", "2");
         assertThat(records()).singleElement().satisfies(record -> {
             assertThat(record.status()).isEqualTo(CollectionStatus.SUCCESS);
@@ -875,16 +876,18 @@ class MyHomeComplexStorageIntegrationTest {
             "{\"response\":{\"header\":{\"resultCode\":\"00\"},\"body\":{\"totalCount\":0}}}"
     })
     void explicitlyEmptyFirstPageReplacesOnlyTargetRegion(String payload) {
-        store(request("11", "680"), response(COLLECTED_AT, row(100L, "11", "680", "59A", 100000L)));
+        UUID previousRecordId = store(request("11", "680"),
+                response(COLLECTED_AT, row(100L, "11", "680", "59A", 100000L)));
         MyHomeComplexSourceSnapshot busan = row(200L, "26", "110", "59A", 200000L);
         store(request("26", "110"), response(COLLECTED_AT, busan));
         expectPage(1, payload);
 
-        UUID recordId = collect(apiRequest(1000));
+        assertThat(collect(apiRequest(1000))).isZero();
 
+        UUID recordId = region("11", "680").recordId();
+        assertThat(recordId).isNotEqualTo(previousRecordId);
         assertThat(sourceRepository.count()).isOne();
         assertThat(source(200L).rows()).containsExactly(busan);
-        assertThat(region("11", "680").recordId()).isEqualTo(recordId);
         assertThat(region("11", "680").collectedAt()).isEqualTo(FINISHED_AT);
         assertThat(records()).filteredOn(record -> record.id().equals(recordId)).singleElement().satisfies(record -> {
             assertThat(record.status()).isEqualTo(CollectionStatus.SUCCESS);
@@ -998,8 +1001,7 @@ class MyHomeComplexStorageIntegrationTest {
 
         try (var ignored = IngestExecutionScope.open(null, monitor)) {
             if (totalCount == 2) {
-                UUID id = collect(apiRequest(1000));
-                assertThat(history.storedRowCount(id)).isEqualTo(2);
+                assertThat(collect(apiRequest(1000))).isEqualTo(2);
                 assertThat(sourceRepository.findAllByHsmpSnIn(List.of(100L))).isEmpty();
                 assertThat(sourceRepository.count()).isEqualTo(2);
                 assertThat(records()).noneMatch(record -> record.status() == CollectionStatus.FAILED);
@@ -1038,9 +1040,9 @@ class MyHomeComplexStorageIntegrationTest {
 
     @Test
     void unknownRegionIsRejectedBeforeHttpOrRequestRecordCreation() {
-        var unknown = new MyHomeComplexCollectionRequest(EXECUTION_ID, "99", "999", 2, 1000, STARTED_AT);
+        var unknown = new MyHomeComplexCollectionCommand("99", "999", 2, 1000);
 
-        assertThatThrownBy(() -> collect(unknown)).isInstanceOf(InvalidIngestRequestException.class);
+        assertThatThrownBy(() -> batch.collect(unknown)).isInstanceOf(InvalidIngestRequestException.class);
 
         assertThat(sourceRepository.count()).isZero();
         assertThat(records()).isEmpty();
@@ -1292,8 +1294,11 @@ class MyHomeComplexStorageIntegrationTest {
         }
     }
 
-    private UUID collect(MyHomeComplexCollectionRequest request) {
-        return collector.collectWithinBatch(request, CollectionServiceTestFixture.retryWithoutDelay(),
-                new ExternalDataCallCounter(), new AtomicBoolean());
+    /** 운영처럼 실행 확인 뒤 수집기의 시계로 요청을 다시 만든다. */
+    private int collect(MyHomeComplexCollectionRequest request) {
+        return CollectionServiceTestFixture.pagedCollector(history, clock).collect(collector,
+                startedAt -> new MyHomeComplexCollectionRequest(request.executionId(), request.provinceCode(),
+                        request.districtCode(), request.pageSize(), request.maxPages(), startedAt),
+                new ExternalDataCallCounter());
     }
 }

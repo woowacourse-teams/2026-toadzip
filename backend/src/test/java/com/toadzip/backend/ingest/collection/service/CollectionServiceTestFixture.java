@@ -125,10 +125,8 @@ public final class CollectionServiceTestFixture {
             storedCounts.put(invocation.getArgument(0), response.rows().size());
             return null;
         }).when(storage).complete(any(), any(), any());
-        var collector = new MyHomeComplexCollector(
-                storage, records, api, regions, CLOCK);
-        return new MyHomeComplexRegionCollectionService(
-                collector, records, failures, retry, CLOCK);
+        return new MyHomeComplexRegionCollectionService(new MyHomeComplexCollector(storage, api),
+                new PagedSourceCollector(records, retry, failures, CLOCK));
     }
 
     MyHomeAnnouncementCollectionService announcement(
