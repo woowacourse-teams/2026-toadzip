@@ -12,8 +12,8 @@ import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeCom
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.mapping.domain.AnnouncementSupplyMatchDecision;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink;
-import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMerge;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
+import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMerge;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository;
@@ -260,7 +260,7 @@ public class MyHomeComplexMappingWriter {
             }
             MyHomeComplexMappingData data = sourceMapper.map(member.getSourceComplexIdentifier(), sources);
             if (!data.matchesVerifiedProduct(complex)
-                    || !java.util.Objects.equals(member.getApprovedHouseholdCount(), data.totalHouseholdCount())) {
+                    || !Objects.equals(member.getApprovedHouseholdCount(), data.totalHouseholdCount())) {
                 throw mergedSourceConflict("통합 근거의 단지 공통값 또는 원천 세대수가 변경되어 재확인이 필요합니다.");
             }
             housingTypes.addAll(data.housingTypes());

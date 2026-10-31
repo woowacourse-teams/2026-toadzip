@@ -1,7 +1,9 @@
 package com.toadzip.backend.ingest.collection.fixture.repository;
 
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -25,7 +27,7 @@ public class LhLeaseCatalogSourceFixtures {
     }
 
     public List<LhCatalogSource> saveAll(Iterable<LhCatalogSource> sources) {
-        List<LhCatalogSource> result = new java.util.ArrayList<>();
+        List<LhCatalogSource> result = new ArrayList<>();
         sources.forEach(row -> result.add(save(row)));
         return result;
     }
@@ -37,7 +39,7 @@ public class LhLeaseCatalogSourceFixtures {
     }
 
     @Transactional(readOnly = true)
-    public java.util.Optional<LhCatalogSource> findById(Long id) {
+    public Optional<LhCatalogSource> findById(Long id) {
         return findAll().stream().filter(row -> id.equals(row.getId())).findFirst();
     }
 

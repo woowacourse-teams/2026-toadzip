@@ -2,11 +2,13 @@ package com.toadzip.backend.housing.service;
 
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.housing.dto.response.HousingTypeImpact;
+import com.toadzip.backend.housing.repository.HousingTypeImpactRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,7 +22,7 @@ import tools.jackson.databind.ObjectMapper;
 @Transactional(readOnly = true)
 public class HousingTypeImpactService {
     private final HousingTypeRepository types;
-    private final com.toadzip.backend.housing.repository.HousingTypeImpactRepository impacts;
+    private final HousingTypeImpactRepository impacts;
     private final ObjectMapper json;
 
     public HousingTypeImpact detail(long complexId, long typeId) {
@@ -29,7 +31,7 @@ public class HousingTypeImpactService {
             throw new IllegalArgumentException("이 단지에 속한 주택형을 선택하세요.");
         }
         var affected = impacts.rows(typeId);
-        var values = new java.util.LinkedHashMap<String, Object>();
+        var values = new LinkedHashMap<String, Object>();
         values.put("name", type.getName()); values.put("area", type.getExclusiveArea());
         String token = hash(List.of(typeId, values, type.getHousingComplex().getVersion(), affected));
         return new HousingTypeImpact(token, affected);

@@ -1,7 +1,10 @@
 package com.toadzip.backend.ingest.collection.fixture.repository;
 
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSource;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -25,7 +28,7 @@ public class LhAnnouncementCatalogSourceFixtures {
     }
 
     public List<LhAnnouncementCatalogSource> saveAll(Iterable<LhAnnouncementCatalogSource> sources) {
-        List<LhAnnouncementCatalogSource> result = new java.util.ArrayList<>();
+        List<LhAnnouncementCatalogSource> result = new ArrayList<>();
         sources.forEach(row -> result.add(save(row)));
         return result;
     }
@@ -37,7 +40,7 @@ public class LhAnnouncementCatalogSourceFixtures {
     }
 
     @Transactional(readOnly = true)
-    public java.util.Optional<LhAnnouncementCatalogSource> findById(Long id) {
+    public Optional<LhAnnouncementCatalogSource> findById(Long id) {
         return findAll().stream().filter(row -> id.equals(row.getId())).findFirst();
     }
 
@@ -66,7 +69,7 @@ public class LhAnnouncementCatalogSourceFixtures {
     public void flush() {}
 
     @Transactional(readOnly = true)
-    public List<LhAnnouncementCatalogSource> findAllBySourceKeyIn(java.util.Collection<String> keys) {
+    public List<LhAnnouncementCatalogSource> findAllBySourceKeyIn(Collection<String> keys) {
         return findAll().stream().filter(row -> keys.contains(row.getSourceKey())).toList();
     }
 
@@ -76,13 +79,13 @@ public class LhAnnouncementCatalogSourceFixtures {
     }
 
     @Transactional(readOnly = true)
-    public List<LhAnnouncementCatalogSource> findAllByPanIdIn(java.util.Collection<String> ids) {
+    public List<LhAnnouncementCatalogSource> findAllByPanIdIn(Collection<String> ids) {
         return findAll().stream().filter(row -> ids.contains(row.getPanId())).toList();
     }
 
     @Transactional(readOnly = true)
     public List<LhAnnouncementCatalogSource> findAllByPanIdInAndPresentInLatestCatalogTrue(
-            java.util.Collection<String> ids) {
+            Collection<String> ids) {
         return findAllByPanIdIn(ids).stream().filter(LhAnnouncementCatalogSource::isPresentInLatestCatalog).toList();
     }
 

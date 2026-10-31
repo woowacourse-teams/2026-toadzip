@@ -11,6 +11,7 @@ import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDeci
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Function;
 import org.springframework.stereotype.Component;
 
@@ -37,7 +38,7 @@ class MyHomeAnnouncementSupplyMatcher {
     MyHomeSupplyMatchResult match(MyHomeSupplyRowMappingData data) {
         var saved = decisions.findByRowIdentifier(data.sourceSupplyRowIdentifier()).orElse(null);
         if (saved != null) {
-            var type = housingTypeRepository.findById(java.util.Objects.requireNonNullElse(saved.getHousingTypeId(), -1L))
+            var type = housingTypeRepository.findById(Objects.requireNonNullElse(saved.getHousingTypeId(), -1L))
                     .orElse(null);
             if (type == null || !type.getHousingComplex().getId().equals(saved.getComplexId())
                     || !fingerprints.source(data).equals(saved.getSourceFingerprint())

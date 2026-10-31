@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import com.toadzip.backend.global.config.PostgresTestDatabases;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionStatus;
 import com.toadzip.backend.ingest.collection.history.domain.SourceCollectionRecord;
@@ -39,11 +40,12 @@ import com.toadzip.backend.ingest.pipeline.repository.IngestExecutionOwnershipRe
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import com.toadzip.backend.global.config.PostgresTestDatabases;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -366,14 +368,14 @@ class LhAnnouncementStorageIntegrationTest {
                 "https://apply.lh.or.kr/evidence", "공식 근거 확인", "test-admin");
     }
 
-    private java.sql.Timestamp consumed(long id) {
+    private Timestamp consumed(long id) {
         return jdbc.queryForObject("SELECT consumed_at FROM verified_lh_supply_replacements WHERE id = ?",
-                java.sql.Timestamp.class, id);
+                Timestamp.class, id);
     }
 
     private List<SourceView> view() {
         return new TransactionTemplate(transactionManager).execute(status -> sources.findAll().stream()
-                .sorted(java.util.Comparator.comparing(LhAnnouncementQuerySource::getQueryHash))
+                .sorted(Comparator.comparing(LhAnnouncementQuerySource::getQueryHash))
                 .map(source -> new SourceView(source.getId(), source.getVersion(), source.getQueryHash(),
                         source.getRequestHash(), source.getCollectedAt(), source.isVerifiedEmpty(),
                         source.getLastCollectionRecord().getId(),

@@ -7,10 +7,12 @@ import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectedAtReader;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionLinkRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionProgressStore;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -99,18 +101,18 @@ class LhAnnouncementCollectionProgressStoreTest {
         return collectedAtReader.find(SUPPLY, List.of(hash(request))).containsKey(hash(request));
     }
 
-    private java.util.UUID canonical(String request, Instant at) {
-        var id = java.util.UUID.randomUUID();
+    private UUID canonical(String request, Instant at) {
+        var id = UUID.randomUUID();
         jdbc.sql("INSERT INTO source_collection_records "
                         + "(id, version, source, started_at, finished_at, status, stored_row_count) "
                         + "VALUES (:id, 0, 'LH_ANNOUNCEMENT_SUPPLY', :time, :time, 'SUCCESS', 0)")
-                .param("id", id).param("time", java.sql.Timestamp.from(at)).update();
+                .param("id", id).param("time", Timestamp.from(at)).update();
         jdbc.sql("INSERT INTO lh_announcement_query_sources "
                         + "(version, source, pan_id, query_hash, request_hash, request_description, collected_at, "
                         + "verified_empty, last_collection_record_id) VALUES "
                         + "(0, 'LH_ANNOUNCEMENT_SUPPLY', '100', :query, :hash, :request, :time, true, :id)")
                 .param("query", hash(request.replaceFirst("&COLLECTION_VERSION=[0-9]+$", "")))
-                .param("hash", hash(request)).param("request", request).param("time", java.sql.Timestamp.from(at))
+                .param("hash", hash(request)).param("request", request).param("time", Timestamp.from(at))
                 .param("id", id).update();
         return id;
     }

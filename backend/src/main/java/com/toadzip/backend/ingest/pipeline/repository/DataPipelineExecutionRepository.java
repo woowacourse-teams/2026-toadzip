@@ -4,9 +4,12 @@ import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -17,8 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 public interface DataPipelineExecutionRepository
         extends JpaRepository<DataPipelineExecution, Long> {
 
-    org.springframework.data.domain.Page<DataPipelineExecution> findByTypeIn(
-            java.util.Collection<DataPipelineType> types, org.springframework.data.domain.Pageable pageable);
+    Page<DataPipelineExecution> findByTypeIn(
+            Collection<DataPipelineType> types, Pageable pageable);
 
     Optional<DataPipelineExecution> findFirstByTypeOrderByIdDesc(
             DataPipelineType type

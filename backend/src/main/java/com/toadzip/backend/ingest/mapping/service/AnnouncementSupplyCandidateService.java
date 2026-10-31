@@ -1,5 +1,7 @@
 package com.toadzip.backend.ingest.mapping.service;
 
+import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
@@ -9,7 +11,9 @@ import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Housing
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -37,9 +41,9 @@ public class AnnouncementSupplyCandidateService {
         if (!parcel.isEmpty() && !parcel.matches("\\d{1,30}")) {
             throw new InvalidIngestRequestException("PNU는 숫자로 입력해 주세요.");
         }
-        String keyword = query.strip().toLowerCase(java.util.Locale.ROOT)
+        String keyword = query.strip().toLowerCase(Locale.ROOT)
                 .replace("!", "!!").replace("%", "!%").replace("_", "!_");
-        var merged = new LinkedHashMap<Long, com.toadzip.backend.housing.domain.HousingComplex>();
+        var merged = new LinkedHashMap<Long, HousingComplex>();
         if (!parcel.isEmpty()) {
             complexes.findAllByPnu(parcel).forEach(value -> merged.put(value.getId(), value));
         }
@@ -50,10 +54,10 @@ public class AnnouncementSupplyCandidateService {
         // 이름·주소가 같은 단지가 원천에서 여러 개로 나뉘어 있어 PNU·세대수와 주택형 면적으로 구분하게 한다.
         var typesByComplex = found.isEmpty() ? Map.<Long, List<HousingTypeArea>>of()
                 : types.findAllByHousingComplexIdIn(found.stream().map(value -> value.getId()).toList()).stream()
-                        .sorted(Comparator.comparing(com.toadzip.backend.housing.domain.HousingType::getId))
-                        .collect(java.util.stream.Collectors.groupingBy(value -> value.getHousingComplex().getId(),
-                                java.util.stream.Collectors.mapping(value -> new HousingTypeArea(value.getId(),
-                                        value.getName(), value.getExclusiveArea()), java.util.stream.Collectors.toList())));
+                        .sorted(Comparator.comparing(HousingType::getId))
+                        .collect(Collectors.groupingBy(value -> value.getHousingComplex().getId(),
+                                Collectors.mapping(value -> new HousingTypeArea(value.getId(),
+                                        value.getName(), value.getExclusiveArea()), Collectors.toList())));
         return found.stream()
                 .map(value -> new ComplexOption(value.getId(), value.getName(),
                         value.getAddress().getRoadAddress(), value.getSupplyType(), value.getAddress().getPnu(),
@@ -65,7 +69,7 @@ public class AnnouncementSupplyCandidateService {
                 .filter(value -> !value.isAdminDeleted())
                 .orElseThrow(() -> new InvalidIngestRequestException("선택한 단지가 없습니다."));
         return types.findAllByHousingComplex(complex).stream()
-                .sorted(java.util.Comparator.comparing(com.toadzip.backend.housing.domain.HousingType::getId))
+                .sorted(Comparator.comparing(HousingType::getId))
                 .map(value -> new HousingTypeOption(value.getId(), value.getName(),
                         value.getExclusiveArea(), value.getSupplyArea(), value.getTotalHouseholdCount(),
                         fingerprints.target(value))).toList();

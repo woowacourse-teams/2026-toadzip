@@ -10,6 +10,7 @@ import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.Unli
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -237,7 +238,7 @@ public class LhAnnouncementQualityStore {
     }
 
     private Instant instant(ResultSet result, String column) throws SQLException {
-        java.sql.Timestamp timestamp = result.getTimestamp(column);
+        Timestamp timestamp = result.getTimestamp(column);
         if (timestamp == null) {
             return null;
         }

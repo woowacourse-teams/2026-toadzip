@@ -1,7 +1,12 @@
 package com.toadzip.backend.ingest.collection.fixture.repository;
 
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
+import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexCollectionRepository;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -15,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class MyHomeComplexSourceFixtures {
     private final CollectedSourceRows rows;
     private final JdbcClient jdbc;
+    private final MyHomeComplexCollectionRepository bundles;
 
     public MyHomeComplexSourceView save(MyHomeComplexSourceView row) {
         return rows.save("myhome_complex_source_rows", row);
@@ -25,22 +31,20 @@ public class MyHomeComplexSourceFixtures {
     }
 
     public List<MyHomeComplexSourceView> saveAll(Iterable<MyHomeComplexSourceView> sources) {
-        List<MyHomeComplexSourceView> result = new java.util.ArrayList<>();
+        List<MyHomeComplexSourceView> result = new ArrayList<>();
         sources.forEach(row -> result.add(save(row)));
         return result;
     }
 
     @Transactional(readOnly = true)
     public List<MyHomeComplexSourceView> findAll() {
-        var sources = jdbc.sql("SELECT r.* FROM myhome_complex_source_rows r ORDER BY r.id")
-                .query(MyHomeComplexSourceView.class).list();
-        sources.forEach(source -> org.springframework.test.util.ReflectionTestUtils.setField(
-                source, "sourceKey", MyHomeComplexSourceView.sourceKeyOf(source.snapshot())));
-        return sources;
+        return bundles.findAll().stream().flatMap(bundle -> bundle.getRows().stream())
+                .map(MyHomeComplexSourceView::of)
+                .sorted(Comparator.comparing(MyHomeComplexSourceView::getId)).toList();
     }
 
     @Transactional(readOnly = true)
-    public java.util.Optional<MyHomeComplexSourceView> findById(Long id) {
+    public Optional<MyHomeComplexSourceView> findById(Long id) {
         return findAll().stream().filter(row -> id.equals(row.getId())).findFirst();
     }
 
@@ -69,12 +73,12 @@ public class MyHomeComplexSourceFixtures {
     public void flush() {}
 
     @Transactional(readOnly = true)
-    public List<MyHomeComplexSourceView> findAllBySourceKeyIn(java.util.Collection<String> keys) {
+    public List<MyHomeComplexSourceView> findAllBySourceKeyIn(Collection<String> keys) {
         return findAll().stream().filter(row -> keys.contains(row.getSourceKey())).toList();
     }
 
     @Transactional(readOnly = true)
-    public List<MyHomeComplexSourceView> findAllByHsmpSnIn(java.util.Collection<Long> ids) {
+    public List<MyHomeComplexSourceView> findAllByHsmpSnIn(Collection<Long> ids) {
         return findAll().stream().filter(row -> ids.contains(row.getHsmpSn())).toList();
     }
 

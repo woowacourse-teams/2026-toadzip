@@ -12,8 +12,8 @@ import static org.mockito.Mockito.when;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementExternalRepository;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSupplyType;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSupplyType;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectedResponse;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionCommand;
@@ -114,7 +114,7 @@ class MyHomeAnnouncementCollectionServiceTest {
         assertThat(snapshots.getAllValues().stream().map(MyHomeAnnouncementCollectedResponse::rows).toList()).filteredOn(value -> !value.isEmpty())
                 .singleElement()
                 .extracting(List::getFirst)
-                .extracting(value -> ((com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot) value).pblancId())
+                .extracting(value -> ((MyHomeAnnouncementSourceSnapshot) value).pblancId())
                 .isEqualTo("1");
         assertThat(result.storedRowCount()).isOne();
         assertThat(result.failedRequestCount()).isZero();
@@ -237,7 +237,7 @@ class MyHomeAnnouncementCollectionServiceTest {
         ArgumentCaptor<MyHomeAnnouncementCollectedResponse> batches = ArgumentCaptor.captor();
         verify(storage, times(MyHomeAnnouncementSupplyType.values().length)).complete(any(), any(), batches.capture());
         assertThat(batches.getAllValues().stream().map(MyHomeAnnouncementCollectedResponse::rows).toList()).filteredOn(batch -> !batch.isEmpty()).singleElement()
-                .satisfies(batch -> assertThat(batch).extracting(com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot::houseSn)
+                .satisfies(batch -> assertThat(batch).extracting(MyHomeAnnouncementSourceSnapshot::houseSn)
                         .containsExactly(1, 2, 2, 3));
         verify(lifecycle).completeRun(any());
         verify(failureRecorder, never()).record(any(), any(), any(), any(), any());

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import java.net.URI;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -19,7 +20,7 @@ class LhAnnouncementRequestTest {
         ).orElseThrow();
 
         assertThat(request.panId()).isEqualTo("100");
-        assertThat(request.toParams()).containsEntry("PAN_ID", java.util.List.of("100"));
+        assertThat(request.toParams()).containsEntry("PAN_ID", List.of("100"));
         assertThat(request.toParams()).doesNotContainKeys("PG_SZ", "PAGE");
         assertThat(request.requestDescription()).isEqualTo(
                 "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06"

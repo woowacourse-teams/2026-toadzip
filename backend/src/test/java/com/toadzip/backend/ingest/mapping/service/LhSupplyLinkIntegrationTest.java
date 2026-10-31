@@ -15,6 +15,7 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
 import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
@@ -22,15 +23,15 @@ import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollect
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.View;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
-import java.util.UUID;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +40,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import tools.jackson.databind.json.JsonMapper;
@@ -201,7 +203,7 @@ class LhSupplyLinkIntegrationTest {
     @Test
     @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
     @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
-            executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD)
+            executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void LH_원본행이_공급행에_붙지_않았으면_PDF_보정은_새_공급행을_거절한다() throws Exception {
         mapping.mapAll();
         long id = jdbc.sql("SELECT id FROM announcements").query(Long.class).single();
@@ -248,7 +250,7 @@ class LhSupplyLinkIntegrationTest {
     @Test
     @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
     @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
-            executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD)
+            executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void LH_수집_연결을_확정할_수_없는_공고도_공급정보_보정_작업실을_연다() throws Exception {
         mapping.mapAll();
         // 공고 등록 뒤 LH 수집 연결이 사라지면 LH 공급 원본을 고를 수 없다. 보정 작업실은 그래도 열려야 한다.
@@ -318,7 +320,7 @@ class LhSupplyLinkIntegrationTest {
         String memberId = jdbc.sql("""
                         INSERT INTO users(login_identifier,created_at) VALUES (:identifier,CURRENT_TIMESTAMP)
                         RETURNING id
-                        """).param("identifier", "google:lh-link-" + java.util.UUID.randomUUID())
+                        """).param("identifier", "google:lh-link-" + UUID.randomUUID())
                 .query(Long.class).single().toString();
         var body = json.writeValueAsString(Map.of("token", "token", "lhRowIdentifier", "LH:1:SUPPLY:0",
                 "reason", "근거"));
@@ -386,13 +388,13 @@ class LhSupplyLinkIntegrationTest {
     }
 
     private MyHomeAnnouncementSourceView source() {
-        var source = MyHomeAnnouncementSourceView.from(1, new MyHomeAnnouncementSourceSnapshot(TARGET,
+        var source = MyHomeSourceViews.announcement(1, new MyHomeAnnouncementSourceSnapshot(TARGET,
                 1, "모집중", "영구임대 입주자 모집공고", "LH", "26", "영구임대", null,
                 "20261001", "20261106", "20261008", "20261015", null,
                 "https://example.com/announcements?panId=lh-19585&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07",
                 null, null, "평화주공4단지", "전북특별자치도", "전주시", null, null, null, PNU, null, null,
                 300, null, null, null, null));
-        source.markCollectedAt(Instant.parse("2026-10-08T00:00:00Z"));
+        source = MyHomeSourceViews.collectedAt(source, Instant.parse("2026-10-08T00:00:00Z"));
         return source;
     }
 }

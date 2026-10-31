@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.dto.LhAnnouncementCatalogPage.Entry;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementCatalogSourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementDetailSourceFixtures;
@@ -24,8 +25,8 @@ import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySo
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import java.time.Clock;
@@ -212,9 +213,8 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
 
     private void observeAgain(Instant now, String status) {
         when(clock.instant()).thenReturn(now);
-        List<MyHomeAnnouncementSourceView> current = sources.findAll();
-        current.forEach(source -> source.markCollectedAt(now));
-        sources.saveAll(current);
+        sources.saveAll(sources.findAll().stream()
+                .map(source -> MyHomeSourceViews.collectedAt(source, now)).toList());
         catalogStore.store(List.of(entry(status)));
     }
 
@@ -229,9 +229,9 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
                  "endDe":"%s",
                  "url":"https://apply.lh.or.kr/panDetail?panId=%s&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"}
                 """.formatted(panId, houseSn, endDate, panId);
-        var source = MyHomeAnnouncementSourceView.from(0,
+        var source = MyHomeSourceViews.announcement(0,
                 JsonMapper.builder().build().readValue(payload, MyHomeAnnouncementSourceSnapshot.class));
-        source.markCollectedAt(FIRST);
+        source = MyHomeSourceViews.collectedAt(source, FIRST);
         return source;
     }
 

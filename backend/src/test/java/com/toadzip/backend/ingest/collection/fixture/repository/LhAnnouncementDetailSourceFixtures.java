@@ -1,7 +1,10 @@
 package com.toadzip.backend.ingest.collection.fixture.repository;
 
 import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -25,7 +28,7 @@ public class LhAnnouncementDetailSourceFixtures {
     }
 
     public List<LhAnnouncementDetailSource> saveAll(Iterable<LhAnnouncementDetailSource> sources) {
-        List<LhAnnouncementDetailSource> result = new java.util.ArrayList<>();
+        List<LhAnnouncementDetailSource> result = new ArrayList<>();
         sources.forEach(row -> result.add(save(row)));
         return result;
     }
@@ -40,7 +43,7 @@ public class LhAnnouncementDetailSourceFixtures {
     }
 
     @Transactional(readOnly = true)
-    public java.util.Optional<LhAnnouncementDetailSource> findById(Long id) {
+    public Optional<LhAnnouncementDetailSource> findById(Long id) {
         return findAll().stream().filter(row -> id.equals(row.getId())).findFirst();
     }
 
@@ -71,7 +74,7 @@ public class LhAnnouncementDetailSourceFixtures {
     @Transactional(readOnly = true)
     public List<LhAnnouncementDetailSource> findAllByPanIdAndRequestHashOrderBySourceOrderAsc(String pan, String hash) {
         return findAll().stream().filter(row -> pan.equals(row.getPanId())
-                && java.util.Objects.equals(hash, row.getRequestHash())).toList();
+                && Objects.equals(hash, row.getRequestHash())).toList();
     }
 
     public void deleteByPanIdAndRequestHash(String pan, String hash) {

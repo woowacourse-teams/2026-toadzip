@@ -1,71 +1,54 @@
 package com.toadzip.backend.ingest.collection.myhome.complex.domain.projection;
 
-import static lombok.AccessLevel.PROTECTED;
-
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceRow;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.domain.SourceArea;
 import com.toadzip.backend.ingest.domain.SourceText;
 import java.math.BigDecimal;
 import java.time.Instant;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 
+/** 정제가 읽는 마이홈 단지 원천 행 하나. 원천 행 Entity를 읽어 만든 뒤 바뀌지 않는다. */
 @Getter
-@NoArgsConstructor(access = PROTECTED)
 public class MyHomeComplexSourceView {
 
-    private Long id;
+    private final Long id;
 
-    private String sourceKey;
+    private final String sourceKey;
 
-    private Instant collectedAt;
+    private final Instant collectedAt;
 
-    private Long hsmpSn;
-    private String insttNm;
-    private String brtcCode;
-    private String brtcNm;
-    private String signguCode;
-    private String signguNm;
-    private String hsmpNm;
-    private String rnAdres;
-    private String pnu;
-    private String competDe;
-    private Integer hshldCo;
-    private String suplyTyNm;
-    private String styleNm;
+    private final Long hsmpSn;
+    private final String insttNm;
+    private final String brtcCode;
+    private final String brtcNm;
+    private final String signguCode;
+    private final String signguNm;
+    private final String hsmpNm;
+    private final String rnAdres;
+    private final String pnu;
+    private final String competDe;
+    private final Integer hshldCo;
+    private final String suplyTyNm;
+    private final String styleNm;
 
-    private BigDecimal suplyPrvuseAr;
+    private final BigDecimal suplyPrvuseAr;
 
-    private BigDecimal suplyCmnuseAr;
+    private final BigDecimal suplyCmnuseAr;
 
-    private String houseTyNm;
-    private String heatMthdDetailNm;
-    private String buldStleNm;
-    private String elvtrInstlAtNm;
-    private Integer parkngCo;
-    private Long bassRentGtn;
-    private Long bassMtRntchrg;
-    private Long bassCnvrsGtnLmt;
+    private final String houseTyNm;
+    private final String heatMthdDetailNm;
+    private final String buldStleNm;
+    private final String elvtrInstlAtNm;
+    private final Integer parkngCo;
+    private final Long bassRentGtn;
+    private final Long bassMtRntchrg;
+    private final Long bassCnvrsGtnLmt;
 
-    private MyHomeComplexSourceView(MyHomeComplexSourceSnapshot snapshot) {
+    private MyHomeComplexSourceView(Long id, Instant collectedAt, MyHomeComplexSourceSnapshot snapshot) {
+        this.id = id;
+        this.collectedAt = collectedAt;
         sourceKey = sourceKeyOf(snapshot);
-        replaceWith(snapshot);
-    }
-
-    public static MyHomeComplexSourceView from(MyHomeComplexSourceSnapshot snapshot) {
-        return new MyHomeComplexSourceView(snapshot);
-    }
-
-    public static String sourceKeyOf(MyHomeComplexSourceSnapshot snapshot) {
-        return keyPart(snapshot.hsmpSn())
-                + keyPart(snapshot.pnu())
-                + keyPart(snapshot.suplyTyNm())
-                + keyPart(snapshot.styleNm())
-                + keyPart(snapshot.suplyPrvuseAr())
-                + keyPart(snapshot.suplyCmnuseAr());
-    }
-
-    public void replaceWith(MyHomeComplexSourceSnapshot snapshot) {
         hsmpSn = snapshot.hsmpSn();
         insttNm = SourceText.strippedOrNull(snapshot.insttNm());
         brtcCode = SourceText.strippedOrNull(snapshot.brtcCode());
@@ -91,6 +74,23 @@ public class MyHomeComplexSourceView {
         bassCnvrsGtnLmt = snapshot.bassCnvrsGtnLmt();
     }
 
+    public static MyHomeComplexSourceView of(MyHomeComplexSourceRow row) {
+        return read(row.getId(), row.getCollectedAt(), row.snapshot());
+    }
+
+    public static MyHomeComplexSourceView read(Long id, Instant collectedAt, MyHomeComplexSourceSnapshot snapshot) {
+        return new MyHomeComplexSourceView(id, collectedAt, snapshot);
+    }
+
+    public static String sourceKeyOf(MyHomeComplexSourceSnapshot snapshot) {
+        return keyPart(snapshot.hsmpSn())
+                + keyPart(snapshot.pnu())
+                + keyPart(snapshot.suplyTyNm())
+                + keyPart(snapshot.styleNm())
+                + keyPart(snapshot.suplyPrvuseAr())
+                + keyPart(snapshot.suplyCmnuseAr());
+    }
+
     public MyHomeComplexSourceSnapshot snapshot() {
         return new MyHomeComplexSourceSnapshot(
                 hsmpSn, insttNm, brtcCode, brtcNm, signguCode, signguNm,
@@ -112,20 +112,6 @@ public class MyHomeComplexSourceView {
             throw new IllegalArgumentException("유효하지 않은 마이홈 원천 식별자입니다.");
         }
         return key.substring(separator + 1, separator + 1 + length);
-    }
-
-    public static MyHomeComplexSourceView read(Long id, Instant collectedAt, MyHomeComplexSourceSnapshot snapshot) {
-        var source = from(snapshot);
-        source.id = id;
-        source.collectedAt = collectedAt;
-        return source;
-    }
-
-    public void markCollectedAt(Instant collectedAt) {
-        if (collectedAt == null) {
-            throw new IllegalArgumentException("수집 시각은 필수입니다.");
-        }
-        this.collectedAt = collectedAt;
     }
 
     private static String keyPart(Object raw) {

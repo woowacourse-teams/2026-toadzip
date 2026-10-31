@@ -5,9 +5,10 @@ import static com.toadzip.backend.ingest.location.service.LocationSummaryZipFixt
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.location.repository.RoadAddressLocationRepository;
 import java.io.IOException;
@@ -82,7 +83,7 @@ class LocationSummaryImportIntegrationTest {
     }
 
     private MyHomeComplexSourceView source(String roadAddress) {
-        return MyHomeComplexSourceView.from(new MyHomeComplexSourceSnapshot(
+        return MyHomeSourceViews.complex(new MyHomeComplexSourceSnapshot(
                 1L, "한국토지주택공사", "11", "서울특별시", "110", "종로구", "테스트 단지",
                 roadAddress, "1111010100100010000", "20200101", 100, "국민임대", "46A",
                 new BigDecimal("46.8"), new BigDecimal("20.2"), "아파트", "지역난방", "복도식",

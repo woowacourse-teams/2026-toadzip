@@ -24,14 +24,16 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.repository.ComplexDetailQueryRepository;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
@@ -41,8 +43,8 @@ import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingExcepti
 import com.toadzip.backend.ingest.location.service.RoadAddressGeocodingService;
 import com.toadzip.backend.ingest.mapping.dto.ComplexMergeRequest;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
-import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.user.domain.User;
 import com.toadzip.backend.user.repository.UserRepository;
 import java.math.BigDecimal;
@@ -51,6 +53,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -75,11 +79,11 @@ import tools.jackson.databind.ObjectMapper;
 class MyHomeComplexMergeIntegrationTest {
 
     @org.springframework.beans.factory.annotation.Autowired
-    private com.toadzip.backend.user.repository.UserRepository privacyPermissionUsers;
+    private UserRepository privacyPermissionUsers;
 
     private String privacyPermissionMemberId() {
-        var member = com.toadzip.backend.user.domain.User.create(
-                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        var member = User.create(
+                "google:permission-" + UUID.randomUUID(), LocalDateTime.now());
         return privacyPermissionUsers.saveAndFlush(member).getId().toString();
     }
 
@@ -92,7 +96,7 @@ class MyHomeComplexMergeIntegrationTest {
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper json;
     @Autowired private JdbcClient jdbc;
-    @Autowired private com.toadzip.backend.housing.repository.ComplexDetailQueryRepository detailQueries;
+    @Autowired private ComplexDetailQueryRepository detailQueries;
     @Autowired private MyHomeComplexSourceFixtures sources;
     @Autowired private LhLeaseCatalogSourceFixtures lhSources;
     @Autowired private HousingComplexRepository complexes;
@@ -112,7 +116,7 @@ class MyHomeComplexMergeIntegrationTest {
 
     private List<Long> detailPriceRange(long complexId) {
         var row = detailQueries.findComplex(complexId).orElseThrow();
-        return java.util.Arrays.asList(row.depositMin(), row.depositMax(), row.monthlyRentMin(), row.monthlyRentMax());
+        return Arrays.asList(row.depositMin(), row.depositMax(), row.monthlyRentMin(), row.monthlyRentMax());
     }
 
     @BeforeEach
@@ -516,7 +520,7 @@ class MyHomeComplexMergeIntegrationTest {
 
     @Test
     void 확인하지_않은_요청은_조건이_일치해도_통합할_수_없다() throws Exception {
-        Map<String, Object> request = new java.util.HashMap<>(mergeRequest());
+        Map<String, Object> request = new HashMap<>(mergeRequest());
         request.put("confirmedSameComplex", false);
         mvc.perform(post(ENDPOINT).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(request)))
@@ -702,11 +706,11 @@ class MyHomeComplexMergeIntegrationTest {
             long id, int count, String name, String area, String common, String supplyType
     ) {
         // 참고 주소가 원천마다 달라 정제의 분할 단지 자동 묶음에서 빠지고 관리자 확인 통합 대상으로 남는다.
-        MyHomeComplexSourceView source = MyHomeComplexSourceView.from(new MyHomeComplexSourceSnapshot(
+        MyHomeComplexSourceView source = MyHomeSourceViews.complex(new MyHomeComplexSourceSnapshot(
                 id, "한국토지주택공사", "28", "인천광역시", "237", "부평구", NAME, ADDRESS + " (" + id + ")",
                 "2823710500105500000", null, count, supplyType, name, new BigDecimal(area),
                 new BigDecimal(common), "아파트", null, null, null, 0, null, null, null));
-        source.markCollectedAt(COLLECTED_AT);
+        source = MyHomeSourceViews.collectedAt(source, COLLECTED_AT);
         return source;
     }
 }

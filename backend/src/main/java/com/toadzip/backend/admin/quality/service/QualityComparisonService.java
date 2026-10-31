@@ -3,12 +3,14 @@ package com.toadzip.backend.admin.quality.service;
 import com.toadzip.backend.admin.domain.AdminDataChange;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.admin.quality.domain.QualityResource;
-import com.toadzip.backend.admin.quality.dto.QualityComparison;
 import com.toadzip.backend.admin.quality.dto.QualityComparison.Source;
+import com.toadzip.backend.admin.quality.dto.QualityComparison;
 import com.toadzip.backend.admin.quality.dto.QualityComparisonRequest;
 import com.toadzip.backend.admin.quality.repository.QualityComparisonRepository;
 import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
+import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.housing.exception.AdminHousingComplexNotFoundException;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.service.ComplexComparisonService;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
@@ -189,11 +191,11 @@ public class QualityComparisonService {
     private void lock(QualityResource resource, long id) {
         if (resource == QualityResource.COMPLEX) {
             complexes.findByIdForUpdate(id).orElseThrow(
-                    com.toadzip.backend.housing.exception.AdminHousingComplexNotFoundException::new);
+                    AdminHousingComplexNotFoundException::new);
             return;
         }
         announcements.findByIdForUpdate(id).orElseThrow(
-                com.toadzip.backend.announcement.exception.AnnouncementNotFoundException::new);
+                AnnouncementNotFoundException::new);
     }
 
     private String token(Object detail, List<Source> evidence) {

@@ -1,88 +1,76 @@
 package com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection;
 
-import static lombok.AccessLevel.PROTECTED;
-
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceRow;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.domain.SourceText;
 import java.time.Instant;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 
+/** 정제·보강이 읽는 마이홈 공고 원천 행 하나. 원천 행 Entity를 읽어 만든 뒤 바뀌지 않는다. */
 @Getter
-@NoArgsConstructor(access = PROTECTED)
 public class MyHomeAnnouncementSourceView {
 
-    private static final int INACTIVE_AFTER_CONSECUTIVE_MISSES = 2;
+    private final Long id;
 
-    private Long id;
+    private final String sourceKey;
 
-    private String sourceKey;
+    private final Instant collectedAt;
 
-    private Instant collectedAt;
+    private final String lastSeenRunId;
 
-    private String lastSeenRunId;
+    private final int consecutiveMissCount;
 
-    private int consecutiveMissCount;
+    private final boolean active;
 
-    private boolean active;
+    private final Integer sourceOrder;
 
-    private Integer sourceOrder;
+    private final String pblancId;
+    private final Integer houseSn;
+    private final String sttusNm;
+    private final String pblancNm;
+    private final String suplyInsttNm;
+    private final String houseTyNm;
+    private final String suplyTyNm;
+    private final String beforePblancId;
+    private final String rcritPblancDe;
+    private final String przwnerPresnatnDe;
+    private final String beginDe;
+    private final String endDe;
 
-    private String pblancId;
-    private Integer houseSn;
-    private String sttusNm;
-    private String pblancNm;
-    private String suplyInsttNm;
-    private String houseTyNm;
-    private String suplyTyNm;
-    private String beforePblancId;
-    private String rcritPblancDe;
-    private String przwnerPresnatnDe;
-    private String beginDe;
-    private String endDe;
+    private final String refrnc;
 
-    private String refrnc;
+    private final String url;
 
-    private String url;
+    private final String pcUrl;
 
-    private String pcUrl;
+    private final String mobileUrl;
 
-    private String mobileUrl;
+    private final String hsmpNm;
+    private final String brtcNm;
+    private final String signguNm;
 
-    private String hsmpNm;
-    private String brtcNm;
-    private String signguNm;
+    private final String fullAdres;
 
-    private String fullAdres;
+    private final String rnCodeNm;
+    private final String refrnLegaldongNm;
+    private final String pnu;
+    private final String heatMthdNm;
+    private final String totHshldCo;
+    private final Integer sumSuplyCo;
+    private final Long rentGtn;
+    private final Long enty;
+    private final Long surlus;
+    private final Long mtRntchrg;
 
-    private String rnCodeNm;
-    private String refrnLegaldongNm;
-    private String pnu;
-    private String heatMthdNm;
-    private String totHshldCo;
-    private Integer sumSuplyCo;
-    private Long rentGtn;
-    private Long enty;
-    private Long surlus;
-    private Long mtRntchrg;
-
-    private MyHomeAnnouncementSourceView(int sourceOrder, MyHomeAnnouncementSourceSnapshot snapshot) {
+    private MyHomeAnnouncementSourceView(Long id, int sourceOrder, Instant collectedAt, String lastSeenRunId,
+            int consecutiveMissCount, boolean active, MyHomeAnnouncementSourceSnapshot snapshot) {
+        this.id = id;
         this.sourceOrder = sourceOrder;
-        consecutiveMissCount = 0;
-        active = true;
+        this.collectedAt = collectedAt;
+        this.lastSeenRunId = lastSeenRunId;
+        this.consecutiveMissCount = consecutiveMissCount;
+        this.active = active;
         sourceKey = sourceKeyOf(snapshot);
-        replaceWith(snapshot);
-    }
-
-    public static MyHomeAnnouncementSourceView from(int sourceOrder, MyHomeAnnouncementSourceSnapshot snapshot) {
-        return new MyHomeAnnouncementSourceView(sourceOrder, snapshot);
-    }
-
-    public static String sourceKeyOf(MyHomeAnnouncementSourceSnapshot snapshot) {
-        return keyPart(snapshot.pblancId()) + keyPart(snapshot.houseSn());
-    }
-
-    public void replaceWith(MyHomeAnnouncementSourceSnapshot snapshot) {
         pblancId = SourceText.strippedOrNull(snapshot.pblancId());
         houseSn = snapshot.houseSn();
         sttusNm = SourceText.strippedOrNull(snapshot.sttusNm());
@@ -115,16 +103,20 @@ public class MyHomeAnnouncementSourceView {
         mtRntchrg = snapshot.mtRntchrg();
     }
 
-    public static MyHomeAnnouncementSourceView read(Long id, int order, Instant collectedAt, String lastSeenRunId,
-            int missCount, boolean active,
+    public static MyHomeAnnouncementSourceView of(MyHomeAnnouncementSourceRow row) {
+        return read(row.getId(), row.getSourceOrder(), row.getCollectedAt(), row.getLastSeenRunId(),
+                row.getConsecutiveMissCount(), row.isActive(), row.snapshot());
+    }
+
+    public static MyHomeAnnouncementSourceView read(Long id, int sourceOrder, Instant collectedAt,
+            String lastSeenRunId, int consecutiveMissCount, boolean active,
             MyHomeAnnouncementSourceSnapshot snapshot) {
-        var source = from(order, snapshot);
-        source.id = id;
-        source.collectedAt = collectedAt;
-        source.lastSeenRunId = lastSeenRunId;
-        source.consecutiveMissCount = missCount;
-        source.active = active;
-        return source;
+        return new MyHomeAnnouncementSourceView(id, sourceOrder, collectedAt, lastSeenRunId, consecutiveMissCount,
+                active, snapshot);
+    }
+
+    public static String sourceKeyOf(MyHomeAnnouncementSourceSnapshot snapshot) {
+        return keyPart(snapshot.pblancId()) + keyPart(snapshot.houseSn());
     }
 
     public MyHomeAnnouncementSourceSnapshot snapshot() {
@@ -132,33 +124,6 @@ public class MyHomeAnnouncementSourceView {
                 suplyTyNm, beforePblancId, rcritPblancDe, przwnerPresnatnDe, beginDe, endDe, refrnc, url, pcUrl,
                 mobileUrl, hsmpNm, brtcNm, signguNm, fullAdres, rnCodeNm, refrnLegaldongNm, pnu, heatMthdNm, totHshldCo,
                 sumSuplyCo, rentGtn, enty, surlus, mtRntchrg);
-    }
-
-    public void markCollectedAt(Instant collectedAt) {
-        if (collectedAt == null) {
-            throw new IllegalArgumentException("수집 시각은 필수입니다.");
-        }
-        this.collectedAt = collectedAt;
-    }
-
-    public void markSeen(String runId, Instant seenAt) {
-        if (runId == null || runId.isBlank()) {
-            throw new IllegalArgumentException("수집 실행 ID는 필수입니다.");
-        }
-        if (seenAt == null) {
-            throw new IllegalArgumentException("마지막 확인 시각은 필수입니다.");
-        }
-        lastSeenRunId = runId;
-        consecutiveMissCount = 0;
-        active = true;
-        markCollectedAt(seenAt);
-    }
-
-    public void markMissed() {
-        consecutiveMissCount++;
-        if (consecutiveMissCount >= INACTIVE_AFTER_CONSECUTIVE_MISSES) {
-            active = false;
-        }
     }
 
     private static String keyPart(Object raw) {

@@ -5,21 +5,22 @@ import com.toadzip.backend.notification.configuration.NotificationProperties;
 import com.toadzip.backend.notification.domain.NewAnnouncementNotificationPolicy;
 import com.toadzip.backend.notification.domain.NotificationAudienceSnapshot;
 import com.toadzip.backend.notification.domain.PendingNotificationEvent;
+import com.toadzip.backend.notification.domain.ScheduleReminder;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import tools.jackson.databind.ObjectMapper;
-import java.time.Clock;
-import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 @Repository
 @RequiredArgsConstructor
@@ -53,7 +54,7 @@ public class NotificationOutboxRepository {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public boolean appendSchedule(com.toadzip.backend.notification.domain.ScheduleReminder reminder, NotificationAudienceSnapshot snapshot) {
+    public boolean appendSchedule(ScheduleReminder reminder, NotificationAudienceSnapshot snapshot) {
         return jdbc.update("""
                 INSERT INTO notification_outbox_events(event_key,announcement_id,source_identifier,occurred_at,
                     status,attempts,next_attempt_at,recipient_cursor,target_snapshot)

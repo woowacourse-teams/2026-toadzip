@@ -24,6 +24,7 @@ import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMap
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementSupplyMatcher.LhSupplyMatchResult;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -81,7 +82,7 @@ class LhAnnouncementEnrichmentWriterTest {
                 mapper, failureStore, sourceStore
         );
 
-        assertThatThrownBy(() -> writer.writeAfterMapping(announcement, request, List.of(), Set.of(), Set.of(), java.util.Map.of()))
+        assertThatThrownBy(() -> writer.writeAfterMapping(announcement, request, List.of(), Set.of(), Set.of(), Map.of()))
                 .isInstanceOf(DataPipelineStoppedException.class);
 
         org.mockito.Mockito.verifyNoInteractions(failureStore);

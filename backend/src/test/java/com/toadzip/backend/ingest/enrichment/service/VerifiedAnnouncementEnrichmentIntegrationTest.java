@@ -5,15 +5,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
+import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
+import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
+import com.toadzip.backend.announcement.domain.AttachmentType;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
+import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -89,14 +94,14 @@ class VerifiedAnnouncementEnrichmentIntegrationTest {
     void JSON으로_보정한_일정과_첨부는_원천에서_변경되거나_사라져도_유지한다() {
         var announcement = announcement("json-children");
         String pan = "json-pan";
-        var start = java.time.LocalDateTime.of(2026, 10, 20, 9, 0);
+        var start = LocalDateTime.of(2026, 10, 20, 9, 0);
         var end = start.plusDays(1);
-        var event = com.toadzip.backend.announcement.domain.AnnouncementSchedule.createFromSource(
-                announcement, "LH:" + pan + ":event", com.toadzip.backend.announcement.domain.ScheduleType.APPLICATION,
+        var event = AnnouncementSchedule.createFromSource(
+                announcement, "LH:" + pan + ":event", ScheduleType.APPLICATION,
                 "접수", start, end, 0);
-        var attachment = com.toadzip.backend.announcement.domain.AnnouncementAttachment.createFromSource(
+        var attachment = AnnouncementAttachment.createFromSource(
                 announcement, "LH:" + pan + ":file", "공고.pdf",
-                com.toadzip.backend.announcement.domain.AttachmentType.ANNOUNCEMENT, "https://example.com/old.pdf", 0);
+                AttachmentType.ANNOUNCEMENT, "https://example.com/old.pdf", 0);
         event.reviseByAdmin(event.getScheduleType(), "공식 확인 접수", start, end);
         attachment.reviseByAdmin("공식 확인.pdf", attachment.getFileType(), "https://example.com/confirmed.pdf");
         entityManager.persist(event); entityManager.persist(attachment); entityManager.flush();
@@ -116,9 +121,9 @@ class VerifiedAnnouncementEnrichmentIntegrationTest {
                         "다른 자료.pdf", attachment.getFileType(), "https://example.com/other.pdf")), List.of()),
                 Set.of(), Set.of());
         entityManager.flush(); entityManager.clear();
-        assertThat(entityManager.find(com.toadzip.backend.announcement.domain.AnnouncementSchedule.class,
+        assertThat(entityManager.find(AnnouncementSchedule.class,
                 event.getId()).getName()).isEqualTo("공식 확인 접수");
-        assertThat(entityManager.find(com.toadzip.backend.announcement.domain.AnnouncementAttachment.class,
+        assertThat(entityManager.find(AnnouncementAttachment.class,
                 attachment.getId()).getFileName()).isEqualTo("공식 확인.pdf");
     }
 }

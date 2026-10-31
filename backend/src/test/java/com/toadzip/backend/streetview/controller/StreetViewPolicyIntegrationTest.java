@@ -11,6 +11,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.user.domain.User;
+import com.toadzip.backend.user.repository.UserRepository;
+import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,6 +28,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
@@ -32,18 +38,18 @@ import org.springframework.transaction.annotation.Transactional;
 class StreetViewPolicyIntegrationTest {
 
     @org.springframework.beans.factory.annotation.Autowired
-    private com.toadzip.backend.user.repository.UserRepository privacyPermissionUsers;
+    private UserRepository privacyPermissionUsers;
 
     private String privacyPermissionMemberId() {
-        var member = com.toadzip.backend.user.domain.User.create(
-                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        var member = User.create(
+                "google:permission-" + UUID.randomUUID(), LocalDateTime.now());
         return privacyPermissionUsers.saveAndFlush(member).getId().toString();
     }
 
     private static final String POLICY = "/api/admin/street-view-policy";
     @Autowired private MockMvc mockMvc;
     @Autowired private JdbcClient jdbc;
-    @Autowired private jakarta.persistence.EntityManager entityManager;
+    @Autowired private EntityManager entityManager;
     private long complexId;
 
     @BeforeEach
@@ -145,7 +151,7 @@ class StreetViewPolicyIntegrationTest {
         update(-1, true, "활성화").andExpect(status().isBadRequest());
     }
 
-    private org.springframework.test.web.servlet.ResultActions update(long version, boolean enabled, String reason)
+    private ResultActions update(long version, boolean enabled, String reason)
             throws Exception {
         return mockMvc.perform(put(POLICY).with(user("operator").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content("""
@@ -157,10 +163,10 @@ class StreetViewPolicyIntegrationTest {
         return "/api/v1/complexes/" + id + "/street-view";
     }
 
-    private java.math.BigDecimal decimal(String value) {
+    private BigDecimal decimal(String value) {
         if (value == null) {
             return null;
         }
-        return new java.math.BigDecimal(value);
+        return new BigDecimal(value);
     }
 }

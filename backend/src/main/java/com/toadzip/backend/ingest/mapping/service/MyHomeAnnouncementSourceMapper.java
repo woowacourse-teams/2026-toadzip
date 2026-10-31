@@ -14,7 +14,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -30,7 +32,7 @@ public class MyHomeAnnouncementSourceMapper {
     }
 
     public MyHomeAnnouncementMappingData map(List<MyHomeAnnouncementSourceView> sources) {
-        java.util.Map<String, Object> identities = new java.util.HashMap<>();
+        Map<String, Object> identities = new HashMap<>();
         for (MyHomeAnnouncementSourceView source : sources) {
             Object previous = identities.putIfAbsent(source.getSourceKey(), source.snapshot());
             if (previous != null && !previous.equals(source.snapshot())) {

@@ -9,13 +9,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.util.List;
-import java.time.Clock;
-import java.time.LocalDate;
-import java.time.ZoneId;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.interest.domain.NotificationTargetType;
+import com.toadzip.backend.interest.repository.NotificationSubscriptionRepository;
+import java.sql.Timestamp;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,21 +50,21 @@ class NotificationInterestIntegrationTest {
                 MEMBER, "privacy-notification-member", "retained@example.com");
     }
 
-    @Autowired private com.toadzip.backend.interest.repository.NotificationSubscriptionRepository subscriptions;
+    @Autowired private NotificationSubscriptionRepository subscriptions;
 
     @Test
     void 활성화_시각은_중복확인에_보존되고_재구독에_갱신된다() {
-        var first = java.time.Instant.parse("2026-10-13T00:00:00Z");
-        var type = com.toadzip.backend.interest.domain.NotificationTargetType.REGION;
+        var first = Instant.parse("2026-10-13T00:00:00Z");
+        var type = NotificationTargetType.REGION;
         subscriptions.activateForMember(MEMBER, type, "11", first);
         subscriptions.activateForMember(MEMBER, type, "11", first.plusSeconds(10));
         assertEquals(first, jdbc.queryForObject("SELECT activated_at FROM notification_subscriptions WHERE user_id = ?",
-                java.sql.Timestamp.class, MEMBER).toInstant());
+                Timestamp.class, MEMBER).toInstant());
         subscriptions.cancel(MEMBER, type, "11", first.plusSeconds(20));
         subscriptions.activateForMember(MEMBER, type, "11", first.plusSeconds(30));
         assertEquals(first.plusSeconds(30), jdbc.queryForObject(
                 "SELECT activated_at FROM notification_subscriptions WHERE user_id = ?",
-                java.sql.Timestamp.class, MEMBER).toInstant());
+                Timestamp.class, MEMBER).toInstant());
     }
 
     @Test

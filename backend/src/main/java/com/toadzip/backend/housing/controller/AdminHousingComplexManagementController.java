@@ -4,15 +4,18 @@ import com.toadzip.backend.admin.dto.AdminChangeResponse;
 import com.toadzip.backend.admin.dto.AdminDataSummary;
 import com.toadzip.backend.admin.dto.AdminPage;
 import com.toadzip.backend.admin.dto.AdminSearch;
+import com.toadzip.backend.global.response.ApiResponse;
+import com.toadzip.backend.housing.domain.ComplexVerificationStatus;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexUpdateRequest;
-import com.toadzip.backend.housing.dto.request.ComplexReviewRequest;
+import com.toadzip.backend.housing.dto.request.AdminHousingTypeCreateRequest;
 import com.toadzip.backend.housing.dto.request.AdminHousingTypeUpdateRequest;
+import com.toadzip.backend.housing.dto.request.ComplexReviewRequest;
 import com.toadzip.backend.housing.dto.response.AdminHousingComplexDetail;
 import com.toadzip.backend.housing.dto.response.ComplexVerificationResponse;
-import com.toadzip.backend.housing.domain.ComplexVerificationStatus;
+import com.toadzip.backend.housing.dto.response.HousingTypeImpact;
 import com.toadzip.backend.housing.service.AdminHousingComplexManagementService;
 import com.toadzip.backend.housing.service.ComplexVerificationService;
-import com.toadzip.backend.global.response.ApiResponse;
+import com.toadzip.backend.housing.service.HousingTypeImpactService;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
@@ -36,10 +39,10 @@ public class AdminHousingComplexManagementController {
     private final AdminHousingComplexManagementService service;
     private final IngestExecutionOwnershipService ownership;
     private final ComplexVerificationService verification;
-    private final com.toadzip.backend.housing.service.HousingTypeImpactService typeImpacts;
+    private final HousingTypeImpactService typeImpacts;
     public AdminHousingComplexManagementController(AdminHousingComplexManagementService service,
             IngestExecutionOwnershipService ownership, ComplexVerificationService verification,
-            com.toadzip.backend.housing.service.HousingTypeImpactService typeImpacts) {
+            HousingTypeImpactService typeImpacts) {
         this.service = service;
         this.ownership = ownership;
         this.verification = verification;
@@ -88,14 +91,14 @@ public class AdminHousingComplexManagementController {
     }
 
     @GetMapping("/{id}/housing-types/{typeId}/impact")
-    public ApiResponse<com.toadzip.backend.housing.dto.response.HousingTypeImpact> typeImpact(
+    public ApiResponse<HousingTypeImpact> typeImpact(
             @PathVariable long id, @PathVariable long typeId) {
         return new ApiResponse<>(typeImpacts.detail(id, typeId));
     }
 
     @PostMapping("/{id}/housing-types")
     public ApiResponse<AdminHousingComplexDetail> createHousingType(@PathVariable long id,
-            @Valid @RequestBody com.toadzip.backend.housing.dto.request.AdminHousingTypeCreateRequest request,
+            @Valid @RequestBody AdminHousingTypeCreateRequest request,
             Principal principal) {
         try (var lease = ownership.acquire()) {
             return new ApiResponse<>(service.createHousingType(id, request, principal.getName()));

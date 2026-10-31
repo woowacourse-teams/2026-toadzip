@@ -6,14 +6,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSource;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSource;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Skipped;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -173,6 +174,6 @@ class LhAnnouncementCollectionCandidateResolverTest {
                 null, null, null, url, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null
         );
-        return MyHomeAnnouncementSourceView.from(0, snapshot);
+        return MyHomeSourceViews.announcement(0, snapshot);
     }
 }

@@ -13,19 +13,25 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecoveryService;
+import com.toadzip.backend.ingest.collection.repository.external.IngestServiceKeyContext;
+import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
+import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
+import com.toadzip.backend.ingest.pipeline.dto.DataPipelineStartRequest;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
-import com.toadzip.backend.ingest.collection.repository.external.IngestServiceKeyContext;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Executor;
@@ -34,9 +40,9 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
@@ -122,7 +128,7 @@ class DataPipelineExecutionServiceTest {
                 DataPipelineExecution.startRegistration(invocation.getArgument(0),
                         invocation.getArgument(1), invocation.getArgument(2)));
 
-        com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse response;
+        DataPipelineExecutionResponse response;
         if (fromUrl) {
             response = service.startAnnouncementRegistrationUrl(
                     "https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21026");
@@ -146,7 +152,7 @@ class DataPipelineExecutionServiceTest {
                 DataPipelineExecution.startRegistration(invocation.getArgument(0),
                         invocation.getArgument(1), invocation.getArgument(2)));
         org.mockito.Mockito.doThrow(
-                new com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException("이미 등록된 공고"))
+                new AnnouncementRegistrationException("이미 등록된 공고"))
                 .when(runner).run(org.mockito.ArgumentMatchers.eq(DataPipelineType.ANNOUNCEMENT_REGISTRATION),
                         any(), org.mockito.ArgumentMatchers.eq("21026"));
 
@@ -179,14 +185,14 @@ class DataPipelineExecutionServiceTest {
         assertThat(accepted.toString()).doesNotContain("runtime-test-key", "serviceKey");
         assertThat(service.findLatest(type).toString())
                 .doesNotContain("runtime-test-key", "serviceKey");
-        assertThat(new com.toadzip.backend.ingest.pipeline.dto.DataPipelineStartRequest("runtime-test-key").toString())
+        assertThat(new DataPipelineStartRequest("runtime-test-key").toString())
                 .doesNotContain("runtime-test-key");
     }
 
     @Test
     void 정제_실행에_입력키를_사용하려고_하면_저장_전에_거부한다() {
         assertThatThrownBy(() -> service.start(DataPipelineType.COMPLEX_REFINEMENT, "runtime-test-key"))
-                .isInstanceOf(com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException.class)
+                .isInstanceOf(InvalidIngestRequestException.class)
                 .hasMessageNotContaining("runtime-test-key");
         verify(executionLock, never()).tryAcquire(any(UUID.class));
     }
@@ -210,7 +216,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 실행_ID를_별도_로그_맥락으로_전달하고_요청_traceId를_보존한다() {
         configureStoredExecution();
-        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
         service = serviceWith(task -> {
             Thread worker = Thread.ofPlatform().start(task);
             try {
@@ -245,7 +251,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 실행_ID를_실행_맥락으로_전달한다() {
         configureStoredExecution();
-        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
         service = serviceWith(task -> {
             Thread worker = Thread.ofPlatform().start(task);
             try {
@@ -256,7 +262,7 @@ class DataPipelineExecutionServiceTest {
                 throw new IllegalStateException(exception);
             }
         });
-        AtomicReference<Optional<java.util.UUID>> observedExecutionId = new AtomicReference<>();
+        AtomicReference<Optional<UUID>> observedExecutionId = new AtomicReference<>();
         doAnswer(invocation -> {
             observedExecutionId.set(IngestExecutionScope.currentExecutionId());
             throw new IllegalStateException("테스트 실패");
@@ -270,7 +276,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 시작한_작업이_모든_단계를_마치면_완료_상태를_조회한다() {
         configureStoredExecution();
-        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
         doAnswer(invocation -> {
             DataPipelineType type = invocation.getArgument(0);
             UUID executionId = invocation.getArgument(1);
@@ -300,7 +306,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 다른_애플리케이션_인스턴스에서도_완료된_실행_상태를_조회한다() {
         configureStoredExecution();
-        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
         doAnswer(invocation -> {
             DataPipelineType type = invocation.getArgument(0);
             UUID executionId = invocation.getArgument(1);
@@ -357,7 +363,7 @@ class DataPipelineExecutionServiceTest {
 
     @Test
     void 다른_파이프라인이_실행_중이면_새_실행을_거부한다() {
-        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.empty());
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.start(DataPipelineType.ANNOUNCEMENT_REFINEMENT))
                 .isInstanceOf(IngestAlreadyRunningException.class)
@@ -366,7 +372,7 @@ class DataPipelineExecutionServiceTest {
 
     @Test
     void 최초_실행_상태를_저장하지_못하면_실행_잠금을_반납한다() {
-        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
         when(executionStateService.create(any(), any(), any()))
                 .thenThrow(new IllegalStateException("database unavailable"));
 
@@ -380,7 +386,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 부분_실패한_단계와_서버_응답을_실패_상태에_보존한다() {
         configureStoredExecution();
-        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
         String serverResponse = "{\"failedSourceRowCount\":3}";
         doAnswer(invocation -> {
             UUID executionId = invocation.getArgument(1);
@@ -402,11 +408,11 @@ class DataPipelineExecutionServiceTest {
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         assertThat(status.failure().stepName()).isEqualTo("마이홈 공고 정제");
         assertThat(status.failure().serverResponse())
-                .isEqualTo(java.util.Map.of("failedSourceRowCount", 3));
+                .isEqualTo(Map.of("failedSourceRowCount", 3));
         assertThat(status.partiallyFailedSteps()).singleElement().satisfies(failure -> {
             assertThat(failure.step()).isEqualTo(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
             assertThat(failure.report())
-                    .isEqualTo(java.util.Map.of("failedSourceRowCount", 3));
+                    .isEqualTo(Map.of("failedSourceRowCount", 3));
         });
         verify(lease).close();
     }
@@ -414,7 +420,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 호출_제한으로_건너뛴_단계가_있으면_부분_완료_상태와_사유를_보존한다() {
         configureStoredExecution();
-        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
         String serverResponse = "{\"rateLimitedRequestCount\":1}";
         doAnswer(invocation -> {
             UUID executionId = invocation.getArgument(1);
@@ -453,25 +459,25 @@ class DataPipelineExecutionServiceTest {
         assertThat(status.completedSteps()).hasSize(3);
         assertThat(status.completedStepResults()).hasSize(3);
         assertThat(status.completedStepResults().getFirst().report())
-                .isEqualTo(java.util.Map.of("collectedSourceRowCount", 1));
+                .isEqualTo(Map.of("collectedSourceRowCount", 1));
         assertThat(status.skippedSteps()).singleElement().satisfies(skipped -> {
             assertThat(skipped.stepName()).isEqualTo("마이홈 공고 수집");
             assertThat(skipped.reason()).contains("호출 제한");
             assertThat(skipped.serverResponse())
-                    .isEqualTo(java.util.Map.of("rateLimitedRequestCount", 1));
+                    .isEqualTo(Map.of("rateLimitedRequestCount", 1));
         });
     }
 
     @Test
     void LH_회로_차단은_실패한_단계와_재실행_안내를_보존한다() {
         configureStoredExecution();
-        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
         doAnswer(invocation -> {
             UUID executionId = invocation.getArgument(1);
             executionStateService.startStep(executionId, DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
             executionStateService.completeStep(executionId, DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS, "{}");
             executionStateService.startStep(executionId, DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
-            throw new com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException(
+            throw new LhAnnouncementUnavailableException(
                     "LH 공고 API 장애로 호출을 잠시 중단했습니다. 잠시 후 재실행해주세요.");
         }).when(runner).run(any(), any());
 
@@ -487,7 +493,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 완료_상태_저장에_실패하면_실패_상태로_종료한다() {
         configureStoredExecution();
-        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
         doAnswer(invocation -> {
             throw new IllegalStateException("final status write failed");
         }).when(executionStateService).complete(any(), any());
@@ -515,7 +521,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 오래_갱신되지_않은_실행은_실패_상태로_복구한다() {
         DataPipelineExecution staleExecution = DataPipelineExecution.start(
-                java.util.UUID.randomUUID(),
+                UUID.randomUUID(),
                 DataPipelineType.ANNOUNCEMENT_COLLECTION,
                 Instant.parse("2026-09-02T11:00:00Z")
         );
@@ -544,7 +550,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 오래_갱신되지_않았어도_실행_잠금이_유지되면_복구하지_않는다() {
         DataPipelineExecution activeExecution = DataPipelineExecution.start(
-                java.util.UUID.randomUUID(),
+                UUID.randomUUID(),
                 DataPipelineType.ANNOUNCEMENT_COLLECTION,
                 Instant.parse("2026-09-02T11:00:00Z")
         );

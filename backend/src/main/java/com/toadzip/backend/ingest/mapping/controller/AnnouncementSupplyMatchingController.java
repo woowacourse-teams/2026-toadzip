@@ -4,13 +4,14 @@ import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Complex
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.HousingTypeOption;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.RefineRequest;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ReleaseRequest;
-import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Row;
+import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching;
+import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import com.toadzip.backend.ingest.mapping.service.AnnouncementSupplyCandidateService;
 import com.toadzip.backend.ingest.mapping.service.AnnouncementSupplyMatchingService;
 import jakarta.validation.Valid;
-import java.util.List;
 import java.security.Principal;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -51,14 +52,14 @@ public class AnnouncementSupplyMatchingController {
 
     @PostMapping("/{identifier}/exclusion")
     public List<Row> exclude(@PathVariable String identifier,
-            @Valid @RequestBody com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ExclusionRequest request,
+            @Valid @RequestBody AnnouncementSupplyMatching.ExclusionRequest request,
             Principal principal) {
         return matching.exclude(identifier, request, principal.getName());
     }
 
     @PostMapping("/{identifier}/split")
     public List<Row> split(@PathVariable String identifier,
-            @Valid @RequestBody com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SplitRequest request,
+            @Valid @RequestBody AnnouncementSupplyMatching.SplitRequest request,
             Principal principal) {
         return matching.split(identifier, request, principal.getName());
     }

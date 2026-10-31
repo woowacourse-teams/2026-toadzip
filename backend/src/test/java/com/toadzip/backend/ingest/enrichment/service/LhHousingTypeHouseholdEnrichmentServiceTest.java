@@ -14,6 +14,7 @@ import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailure
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -114,7 +115,7 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
         var report = service.enrichAll();
 
         assertThat(report.failedSourceComplexCount()).isOne();
-        assertThat(housingTypeRepository.findAllById(java.util.List.of(firstType.getId(), secondType.getId())))
+        assertThat(housingTypeRepository.findAllById(List.of(firstType.getId(), secondType.getId())))
                 .allSatisfy(type -> assertThat(type.getTotalHouseholdCount()).isNull());
         assertThat(failureRepository.findAll()).singleElement().satisfies(failure -> {
             assertThat(failure.getReason())

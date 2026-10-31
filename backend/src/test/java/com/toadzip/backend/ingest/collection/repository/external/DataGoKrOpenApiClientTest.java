@@ -6,8 +6,8 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
-import java.net.URI;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
+import java.net.URI;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -72,7 +73,7 @@ class DataGoKrOpenApiClientTest {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(request -> { }).andRespond(request -> {
-            throw new org.springframework.web.client.ResourceAccessException("failure at " + request.getURI());
+            throw new ResourceAccessException("failure at " + request.getURI());
         });
         DataGoKrOpenApiClient client = client(builder);
         try (var ignored = IngestExecutionScope.open(null, null, null, "runtime-test-key")) {

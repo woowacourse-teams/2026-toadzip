@@ -9,6 +9,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import com.toadzip.backend.global.config.PostgresTestDatabases;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionStatus;
 import com.toadzip.backend.ingest.collection.history.domain.SourceCollectionRecord;
@@ -41,7 +42,6 @@ import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import com.toadzip.backend.global.config.PostgresTestDatabases;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -50,6 +50,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -274,11 +276,11 @@ class MyHomeAnnouncementStorageIntegrationTest {
         UUID first = completedEmptyRun();
         UUID second = completedEmptyRun();
 
-        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var firstResult = executor.submit(() -> lifecycle.completeRun(first));
             var secondResult = executor.submit(() -> lifecycle.completeRun(second));
-            firstResult.get(10, java.util.concurrent.TimeUnit.SECONDS);
-            secondResult.get(10, java.util.concurrent.TimeUnit.SECONDS);
+            firstResult.get(10, TimeUnit.SECONDS);
+            secondResult.get(10, TimeUnit.SECONDS);
         }
 
         assertThat(jdbc.queryForObject("SELECT consecutive_miss_count FROM myhome_announcement_source_rows",

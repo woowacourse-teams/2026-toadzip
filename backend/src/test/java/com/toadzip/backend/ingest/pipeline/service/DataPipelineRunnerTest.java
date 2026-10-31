@@ -27,6 +27,7 @@ import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
+import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
@@ -148,7 +149,7 @@ class DataPipelineRunnerTest {
     @Test
     void 단건_수집_실패_후에는_정제나_LH_상세를_실행하지_않는다() {
         when(registrationService.execute(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS, "21026"))
-                .thenThrow(new com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException(
+                .thenThrow(new AnnouncementRegistrationException(
                         "외부 API 호출 제한"));
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->

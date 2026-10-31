@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
+import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
@@ -20,9 +21,9 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.http.MediaType;
 
 @WebMvcTest(DataPipelineController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -49,7 +50,7 @@ class DataPipelineControllerTest {
     @Test
     void URL_검증_실패는_접수가_아닌_400과_사유로_응답한다() throws Exception {
         when(executionService.startAnnouncementRegistrationUrl("https://apply.lh.or.kr"))
-                .thenThrow(new com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException(
+                .thenThrow(new InvalidIngestRequestException(
                         "잘못된 공고 URL입니다."));
         mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration/url")
                         .contentType(MediaType.APPLICATION_JSON).content("{\"url\":\"https://apply.lh.or.kr\"}"))
@@ -137,7 +138,7 @@ class DataPipelineControllerTest {
     @Test
     void 정제_실행은_서비스키_입력을_거부한다() throws Exception {
         when(executionService.start(DataPipelineType.COMPLEX_REFINEMENT, "test-key"))
-                .thenThrow(new com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException(
+                .thenThrow(new InvalidIngestRequestException(
                         "수집 작업에만 서비스키를 입력할 수 있습니다."));
         mockMvc.perform(post("/api/admin/ingest/pipelines/complex-refinement")
                         .contentType(MediaType.APPLICATION_JSON).content("{\"serviceKey\":\"test-key\"}"))

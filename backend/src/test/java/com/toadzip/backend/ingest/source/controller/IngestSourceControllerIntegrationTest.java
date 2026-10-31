@@ -7,8 +7,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
+import com.toadzip.backend.user.domain.User;
+import com.toadzip.backend.user.repository.UserRepository;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,11 +39,11 @@ import org.springframework.transaction.annotation.Transactional;
 class IngestSourceControllerIntegrationTest {
 
     @org.springframework.beans.factory.annotation.Autowired
-    private com.toadzip.backend.user.repository.UserRepository privacyPermissionUsers;
+    private UserRepository privacyPermissionUsers;
 
     private String privacyPermissionMemberId() {
-        var member = com.toadzip.backend.user.domain.User.create(
-                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        var member = User.create(
+                "google:permission-" + UUID.randomUUID(), LocalDateTime.now());
         return privacyPermissionUsers.saveAndFlush(member).getId().toString();
     }
 
@@ -52,7 +56,7 @@ class IngestSourceControllerIntegrationTest {
     @BeforeEach
     void storeSources() {
         storeShSource();
-        for (String category : java.util.List.of("MYHOME_COMPLEX", "MYHOME_ANNOUNCEMENT", "LH_LEASE_CATALOG",
+        for (String category : List.of("MYHOME_COMPLEX", "MYHOME_ANNOUNCEMENT", "LH_LEASE_CATALOG",
                 "LH_ANNOUNCEMENT_CATALOG", "LH_ANNOUNCEMENT_DETAIL", "LH_ANNOUNCEMENT_SUPPLY")) {
             storeCurrentSource(category);
         }
@@ -65,7 +69,7 @@ class IngestSourceControllerIntegrationTest {
         jdbc.sql("UPDATE lh_announcement_supply_rows SET complex_label = '두꺼비 공급'").update();
         jdbc.sql("UPDATE lh_announcement_catalog_entries SET changed_at = '2026-10-01T01:00:00Z', raw_payload = "
                 + "'{\"PAN_NM\":\"두꺼비 LH 공고\",\"DTL_URL\":\"https://official.test/lh\",\"EXTRA_FIELD\":\"보존값\"}'").update();
-        for (String table : java.util.List.of("myhome_complex_source_rows", "myhome_announcement_source_rows",
+        for (String table : List.of("myhome_complex_source_rows", "myhome_announcement_source_rows",
                 "lh_lease_catalog_source_rows", "lh_announcement_catalog_entries", "lh_announcement_detail_rows",
                 "lh_announcement_supply_rows")) {
             jdbc.sql("UPDATE " + table + " SET collected_at = '2026-10-02T01:00:00Z'").update();

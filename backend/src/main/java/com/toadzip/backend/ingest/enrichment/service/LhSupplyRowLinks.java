@@ -8,11 +8,13 @@ import com.toadzip.backend.ingest.enrichment.repository.LhSupplyRowLinkRepositor
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
@@ -55,7 +57,7 @@ public class LhSupplyRowLinks {
     /** 조회 이후 원천이나 저장 연결이 바뀌었는지 확인하는 값이다. */
     public String token(List<MyHomeAnnouncementSourceView> currentSources, List<LhAnnouncementSupplySource> supplies,
             Map<String, State> states) {
-        var values = new java.util.ArrayList<Object>();
+        var values = new ArrayList<Object>();
         currentSources.forEach(source -> values.add(myHomeFingerprint(source)));
         supplies.forEach(supply -> values.add(lhFingerprint(supply)));
         states.values().forEach(state -> values.add(state.link().getId() + ":" + state.link().getVersion()));
@@ -75,7 +77,7 @@ public class LhSupplyRowLinks {
     }
 
     private String hash(Object... values) {
-        var texts = Arrays.stream(values).map(value -> java.util.Objects.toString(value, "")).toList();
+        var texts = Arrays.stream(values).map(value -> Objects.toString(value, "")).toList();
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                     .digest(json.writeValueAsString(texts).getBytes(StandardCharsets.UTF_8)));

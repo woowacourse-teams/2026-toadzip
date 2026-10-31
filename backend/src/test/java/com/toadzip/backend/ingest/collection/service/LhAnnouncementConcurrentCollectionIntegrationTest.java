@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementDetailSourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
@@ -18,8 +19,8 @@ import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollect
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQueryApiRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -161,7 +162,7 @@ class LhAnnouncementConcurrentCollectionIntegrationTest {
                 {"pblancId":"%s","houseSn":1,"suplyInsttNm":"한국토지주택공사","suplyTyNm":"행복주택",
                  "url":"https://apply.lh.or.kr/panDetail?panId=%s&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"}
                 """.formatted(id, panId);
-        return MyHomeAnnouncementSourceView.from(0, JsonMapper.builder().build()
+        return MyHomeSourceViews.announcement(0, JsonMapper.builder().build()
                 .readValue(payload, MyHomeAnnouncementSourceSnapshot.class));
     }
 

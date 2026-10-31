@@ -1,9 +1,9 @@
 package com.toadzip.backend.housing.service;
 
 import com.toadzip.backend.admin.domain.AdminDataChange;
-import com.toadzip.backend.admin.dto.AdminDocumentEvidence;
 import com.toadzip.backend.admin.dto.AdminChangeResponse;
 import com.toadzip.backend.admin.dto.AdminDataSummary;
+import com.toadzip.backend.admin.dto.AdminDocumentEvidence;
 import com.toadzip.backend.admin.dto.AdminPage;
 import com.toadzip.backend.admin.dto.AdminSearch;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
@@ -11,12 +11,13 @@ import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
-import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.ComplexVerificationStatus;
+import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexCreateRequest.AddressRequest;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexUpdateRequest;
+import com.toadzip.backend.housing.dto.request.AdminHousingTypeCreateRequest;
 import com.toadzip.backend.housing.dto.request.AdminHousingTypeUpdateRequest;
 import com.toadzip.backend.housing.dto.response.AdminHousingComplexDetail;
 import com.toadzip.backend.housing.exception.AdminHousingComplexNotFoundException;
@@ -26,11 +27,14 @@ import com.toadzip.backend.housing.repository.HousingComplexReviewRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
+import java.util.HashMap;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 @Service
 @Transactional(readOnly = true)
@@ -72,7 +76,7 @@ public class AdminHousingComplexManagementService {
         var page = complexes.searchAdmin(search.pattern(), search.identifier(), search.providerCode(), search.providerLegacy(),
                 search.rentalCode(), search.rentalLegacy(), search.regionCode(), search.deleted(), search.review(),
                 verificationFilter, PageRequest.of(search.page(), search.pageSize()));
-        var statuses = new java.util.HashMap<Long, HousingComplexReviewRepository.ReviewStatus>();
+        var statuses = new HashMap<Long, HousingComplexReviewRepository.ReviewStatus>();
         if (!page.isEmpty()) {
             reviews.currentStatuses(page.stream().map(HousingComplex::getId).toList())
                     .forEach(status -> statuses.put(status.getId(), status));
@@ -169,7 +173,7 @@ public class AdminHousingComplexManagementService {
 
     @Transactional
     public AdminHousingComplexDetail createHousingType(
-            long id, com.toadzip.backend.housing.dto.request.AdminHousingTypeCreateRequest request, String actor) {
+            long id, AdminHousingTypeCreateRequest request, String actor) {
         var complex = complexes.findByIdForUpdate(id).orElseThrow(AdminHousingComplexNotFoundException::new);
         checkVersion(complex, request.version());
         if (complex.isAdminDeleted()) {
@@ -180,7 +184,7 @@ public class AdminHousingComplexManagementService {
             throw new AdminDataConflictException("이 단지에 같은 이름의 주택형이 있습니다.");
         }
         // 관리자가 만든 주택형은 수집 원천이 없으므로 원천 식별자를 새로 만들고 관리자 수정으로 표시해 재수집이 덮어쓰지 않게 한다.
-        var type = HousingType.createFromMyHome(complex, HousingType.ADMIN_SOURCE_PREFIX + java.util.UUID.randomUUID(),
+        var type = HousingType.createFromMyHome(complex, HousingType.ADMIN_SOURCE_PREFIX + UUID.randomUUID(),
                 name, request.exclusiveArea(), request.supplyArea());
         type.reviseByAdmin(name, request.exclusiveArea(), request.householdCount());
         types.save(type);
@@ -235,7 +239,7 @@ public class AdminHousingComplexManagementService {
     }
 
     private String auditedData(Object data, AdminDocumentEvidence evidence) {
-        var result = (tools.jackson.databind.node.ObjectNode) json.valueToTree(data);
+        var result = (ObjectNode) json.valueToTree(data);
         if (evidence != null) {
             result.set("documentEvidence", json.valueToTree(evidence));
         }

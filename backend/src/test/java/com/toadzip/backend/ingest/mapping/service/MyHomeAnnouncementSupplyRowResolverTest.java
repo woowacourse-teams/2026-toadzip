@@ -15,12 +15,15 @@ import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupp
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
+import com.toadzip.backend.ingest.enrichment.domain.LhSupplyRowLink;
 import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -239,19 +242,19 @@ class MyHomeAnnouncementSupplyRowResolverTest {
     }
 
     private void savedLink(String lhIdentifier, String myhomeIdentifier, boolean valid) {
-        var link = new com.toadzip.backend.ingest.enrichment.domain.LhSupplyRowLink("announcement", lhIdentifier);
+        var link = new LhSupplyRowLink("announcement", lhIdentifier);
         link.confirm(myhomeIdentifier, "lh", "myhome", "https://apply.lh.or.kr", "공고문 단지 목록 대조", "operator");
         when(links.states(org.mockito.ArgumentMatchers.eq("announcement"), org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any()))
-                .thenReturn(java.util.Map.of(lhIdentifier, new LhSupplyRowLinks.State(link, valid)));
+                .thenReturn(Map.of(lhIdentifier, new LhSupplyRowLinks.State(link, valid)));
     }
 
     private record Source(String complexName, int householdCount) { }
 
     private List<MyHomeSupplyRowMappingData> resolveSources(List<Source> sources,
             List<LhAnnouncementSupplySource> lhSupplies) {
-        List<MyHomeAnnouncementSourceView> mocks = new java.util.ArrayList<>();
-        List<MyHomeSupplyRowMappingData> rows = new java.util.ArrayList<>();
+        List<MyHomeAnnouncementSourceView> mocks = new ArrayList<>();
+        List<MyHomeSupplyRowMappingData> rows = new ArrayList<>();
         for (int index = 0; index < sources.size(); index++) {
             MyHomeAnnouncementSourceView source = mock(MyHomeAnnouncementSourceView.class);
             when(source.isActive()).thenReturn(true);

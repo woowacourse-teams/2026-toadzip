@@ -16,8 +16,8 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexExternalRepository;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectedResponse;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
@@ -44,6 +44,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -96,7 +97,7 @@ class MyHomeComplexCollectionServiceTest {
         ArgumentCaptor<MyHomeComplexCollectedResponse> snapshots = ArgumentCaptor.captor();
         verify(storage).complete(any(), argThat(r -> r.provinceCode().equals(region.provinceCode())
                         && r.districtCode().equals(region.districtCode())), snapshots.capture());
-        assertThat(snapshots.getValue().rows()).extracting(com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot::hsmpSn)
+        assertThat(snapshots.getValue().rows()).extracting(MyHomeComplexSourceSnapshot::hsmpSn)
                 .containsExactly(1L, 2L, 3L);
         assertThat(result.storedRowCount()).isEqualTo(3);
         assertThat(result.failedRequestCount()).isZero();
@@ -655,7 +656,7 @@ class MyHomeComplexCollectionServiceTest {
     @Test
     @DisplayName("전국 수집 중 호출 제한이 발생하면 재시도와 대기 지역 요청을 중단한다")
     void stopsConcurrentRegionsAfterRateLimit() {
-        List<MyHomeRegion> regions = java.util.stream.IntStream.rangeClosed(1, 8)
+        List<MyHomeRegion> regions = IntStream.rangeClosed(1, 8)
                 .mapToObj(index -> new MyHomeRegion(
                         "11",
                         "%03d".formatted(index),

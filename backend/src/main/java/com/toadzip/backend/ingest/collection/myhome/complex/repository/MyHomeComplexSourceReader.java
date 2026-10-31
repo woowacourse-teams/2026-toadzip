@@ -26,8 +26,7 @@ public class MyHomeComplexSourceReader {
             List<MyHomeComplexSource> bundles
     ) {
         List<MyHomeComplexSourceView> result = new ArrayList<>();
-        bundles.forEach(bundle -> bundle.getRows().forEach(row -> result.add(MyHomeComplexSourceView.read(
-                row.getId(), row.getCollectedAt(), row.snapshot()))));
+        bundles.forEach(bundle -> bundle.getRows().forEach(row -> result.add(MyHomeComplexSourceView.of(row))));
         var distinct = new LinkedHashMap<Object, MyHomeComplexSourceView>();
         result.forEach(row -> distinct.putIfAbsent(row.snapshot(), row));
         return List.copyOf(distinct.values());

@@ -30,9 +30,7 @@ public class MyHomeAnnouncementSourceReader {
             List<MyHomeAnnouncementSource> bundles
     ) {
         List<MyHomeAnnouncementSourceView> result = new ArrayList<>();
-        bundles.forEach(bundle -> bundle.getRows().forEach(row -> result.add(MyHomeAnnouncementSourceView.read(
-                row.getId(), row.getSourceOrder(), row.getCollectedAt(), row.getLastSeenRunId(),
-                row.getConsecutiveMissCount(), row.isActive(), row.snapshot()))));
+        bundles.forEach(bundle -> bundle.getRows().forEach(row -> result.add(MyHomeAnnouncementSourceView.of(row))));
         result.sort(Comparator.comparing(MyHomeAnnouncementSourceView::isActive).reversed()
                 .thenComparing(MyHomeAnnouncementSourceView::getCollectedAt, Comparator.nullsLast(Comparator.reverseOrder()))
                 .thenComparing(MyHomeAnnouncementSourceView::getId));
@@ -63,8 +61,7 @@ public class MyHomeAnnouncementSourceReader {
 
     public List<MyHomeAnnouncementSourceView> findByIdGreaterThanOrderByIdAsc(Long id, Pageable page) {
         return rows.findByIdGreaterThanOrderByIdAsc(id, page).stream()
-                .map(row -> MyHomeAnnouncementSourceView.read(row.getId(), row.getSourceOrder(), row.getCollectedAt(),
-                        row.getLastSeenRunId(), row.getConsecutiveMissCount(), row.isActive(), row.snapshot()))
+                .map(MyHomeAnnouncementSourceView::of)
                 .toList();
     }
 }

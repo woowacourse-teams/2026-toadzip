@@ -4,15 +4,22 @@ import static com.toadzip.backend.notification.NotificationFixtures.NOW;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.notification.NotificationFixtures;
-import com.toadzip.backend.notification.domain.NotificationSendResult;
+import com.toadzip.backend.notification.domain.ClaimedNotificationDelivery;
 import com.toadzip.backend.notification.domain.NotificationSendResult.Status;
+import com.toadzip.backend.notification.domain.NotificationSendResult;
 import com.toadzip.backend.notification.repository.NotificationAudienceRepository;
 import com.toadzip.backend.notification.repository.NotificationDeliveryRepository;
 import com.toadzip.backend.notification.repository.NotificationPushSender;
 import jakarta.persistence.EntityManager;
+import java.sql.Timestamp;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.ZoneOffset;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -90,7 +97,7 @@ class NotificationDeliveryIntegrationTest {
                 .deliverAvailable(20);
         assertThat(status()).isEqualTo("RETRY");
         assertThat(jdbc.queryForObject("SELECT next_attempt_at FROM notification_deliveries WHERE device_id=?",
-                java.sql.Timestamp.class, deviceId).toInstant()).isEqualTo(NOW.plusSeconds(300));
+                Timestamp.class, deviceId).toInstant()).isEqualTo(NOW.plusSeconds(300));
         assertThat(jdbc.queryForObject("SELECT attempts FROM notification_deliveries WHERE device_id=?",
                 Integer.class, deviceId)).isEqualTo(1);
     }
@@ -128,14 +135,14 @@ class NotificationDeliveryIntegrationTest {
     @Test
     void 만료_lease는_회수하지만_이전_토큰의_결과는_무시한다() {
         var transaction = new TransactionTemplate(manager);
-        var first = transaction.execute(status -> deliveries.claimNext(NOW, java.time.Duration.ofSeconds(120)))
+        var first = transaction.execute(status -> deliveries.claimNext(NOW, Duration.ofSeconds(120)))
                 .orElseThrow();
         assertThat(jdbc.queryForObject("SELECT lease_until FROM notification_deliveries WHERE id=?",
-                java.sql.Timestamp.class, first.id()).toInstant()).isEqualTo(NOW.plusSeconds(120));
-        assertThat(transaction.<java.util.Optional<com.toadzip.backend.notification.domain.ClaimedNotificationDelivery>>execute(status -> deliveries.claimNext(NOW.plusSeconds(119),
-                java.time.Duration.ofSeconds(120)))).isEmpty();
+                Timestamp.class, first.id()).toInstant()).isEqualTo(NOW.plusSeconds(120));
+        assertThat(transaction.<Optional<ClaimedNotificationDelivery>>execute(status -> deliveries.claimNext(NOW.plusSeconds(119),
+                Duration.ofSeconds(120)))).isEmpty();
         var recovered = transaction.execute(status -> deliveries.claimNext(NOW.plusSeconds(120),
-                java.time.Duration.ofSeconds(120))).orElseThrow();
+                Duration.ofSeconds(120))).orElseThrow();
         assertThat(recovered.leaseToken()).isNotEqualTo(first.leaseToken());
         var accepted = new NotificationSendResult(Status.ACCEPTED, "projects/test/messages/recovery", null, null);
         assertThat(transaction.<Boolean>execute(status -> deliveries.recordResult(first, accepted, NOW.plusSeconds(121))))
@@ -147,7 +154,7 @@ class NotificationDeliveryIntegrationTest {
 
     @Test
     void 접수성공후_결과를_잃어도_보관함은_하나로_유지된다() {
-        new TransactionTemplate(manager).execute(status -> deliveries.claimNext(NOW, java.time.Duration.ofSeconds(120)))
+        new TransactionTemplate(manager).execute(status -> deliveries.claimNext(NOW, Duration.ofSeconds(120)))
                 .orElseThrow();
         // FCM 접수 뒤 프로세스 종료: DB 완료 갱신을 하지 않고 lease 복구로 재전송한다.
         var sender = (NotificationPushSender) delivery ->
@@ -169,7 +176,7 @@ class NotificationDeliveryIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT enabled FROM notification_push_devices WHERE id=?", Boolean.class, deviceId))
                 .isTrue();
         jdbc.update("UPDATE notification_deliveries SET status='RETRY',next_attempt_at=? WHERE device_id=?",
-                java.sql.Timestamp.from(NOW), deviceId);
+                Timestamp.from(NOW), deviceId);
         new NotificationDeliveryService(deliveries, audience,
                 delivery -> { throw new AssertionError("만료된 작업을 발송했습니다."); }, manager,
                 Clock.fixed(NOW.plusSeconds(86400), ZoneOffset.UTC)).deliverAvailable(20);
@@ -178,14 +185,14 @@ class NotificationDeliveryIntegrationTest {
 
     @Test
     void 두_워커는_같은_발송_작업을_동시에_선점하지_않는다() throws Exception {
-        var claimed = new java.util.concurrent.CountDownLatch(1);
-        var release = new java.util.concurrent.CountDownLatch(1);
-        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+        var claimed = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var first = executor.submit(() -> new TransactionTemplate(manager).execute(status -> {
-                var delivery = deliveries.claimNext(NOW, java.time.Duration.ofSeconds(120));
+                var delivery = deliveries.claimNext(NOW, Duration.ofSeconds(120));
                 claimed.countDown();
                 try {
-                    assertThat(release.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                    assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
                 } catch (InterruptedException exception) {
                     Thread.currentThread().interrupt();
                     throw new IllegalStateException(exception);
@@ -193,21 +200,21 @@ class NotificationDeliveryIntegrationTest {
                 return delivery;
             }));
             try {
-                assertThat(claimed.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                assertThat(claimed.await(5, TimeUnit.SECONDS)).isTrue();
                 var second = executor.submit(() -> new TransactionTemplate(manager).execute(status ->
-                        deliveries.claimNext(NOW, java.time.Duration.ofSeconds(120))));
-                assertThat(second.get(5, java.util.concurrent.TimeUnit.SECONDS)).isEmpty();
+                        deliveries.claimNext(NOW, Duration.ofSeconds(120))));
+                assertThat(second.get(5, TimeUnit.SECONDS)).isEmpty();
             } finally {
                 release.countDown();
             }
-            assertThat(first.get(5, java.util.concurrent.TimeUnit.SECONDS)).isPresent();
+            assertThat(first.get(5, TimeUnit.SECONDS)).isPresent();
         }
     }
 
     @Test
     void 보관함에서_삭제하면_대기_중인_푸시는_발송하지_않는다() {
         jdbc.update("UPDATE user_notifications SET deleted_at=? WHERE event_id=?",
-                java.sql.Timestamp.from(NOW), eventId);
+                Timestamp.from(NOW), eventId);
         service(delivery -> { throw new AssertionError("삭제한 알림을 발송했습니다."); }).deliverAvailable(20);
         assertThat(status()).isEqualTo("SKIPPED");
     }

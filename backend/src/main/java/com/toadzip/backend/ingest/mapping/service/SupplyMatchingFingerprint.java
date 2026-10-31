@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.mapping.service;
 
+import com.toadzip.backend.announcement.domain.SupplyRowGroup;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.mapping.domain.AnnouncementSupplyMatchDecision;
@@ -51,7 +52,7 @@ public class SupplyMatchingFingerprint {
                 text(row.resolvedLhSourceIdentifier())));
     }
 
-    String splitReview(String token, com.toadzip.backend.announcement.domain.SupplyRowGroup group) {
+    String splitReview(String token, SupplyRowGroup group) {
         if (group == null) {
             return token;
         }

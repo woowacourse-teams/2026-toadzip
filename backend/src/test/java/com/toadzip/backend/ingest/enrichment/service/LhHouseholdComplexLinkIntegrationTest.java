@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -152,7 +153,7 @@ class LhHouseholdComplexLinkIntegrationTest {
         String memberId = jdbc.sql("""
                         INSERT INTO users(login_identifier,created_at) VALUES (:identifier,CURRENT_TIMESTAMP)
                         RETURNING id
-                        """).param("identifier", "google:household-" + java.util.UUID.randomUUID())
+                        """).param("identifier", "google:household-" + UUID.randomUUID())
                 .query(Long.class).single().toString();
 
         mvc.perform(get(PATH + failureId() + "/complex-link")).andExpect(status().isUnauthorized());

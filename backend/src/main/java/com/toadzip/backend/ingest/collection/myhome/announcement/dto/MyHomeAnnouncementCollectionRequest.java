@@ -4,6 +4,7 @@ import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
 import com.toadzip.backend.ingest.collection.paging.dto.PagedSourceRequest;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -42,7 +43,7 @@ public record MyHomeAnnouncementCollectionRequest(
 
     @Override
     public Map<String, String> parameters() {
-        var parameters = new java.util.LinkedHashMap<>(Map.of(
+        var parameters = new LinkedHashMap<>(Map.of(
                 "suplyTy", supplyTypeCode,
                 "numOfRows", Integer.toString(pageSize),
                 "maxPages", Integer.toString(maxPages)

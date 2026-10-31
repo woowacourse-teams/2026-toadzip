@@ -9,9 +9,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecoveryService;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
+import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecoveryService;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
@@ -323,7 +323,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
             DataPipelineExecutionLock.Lease lease
     ) {
         DataPipelineExecutionLock executionLock = mock(DataPipelineExecutionLock.class);
-        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
         ScheduledExecutorService heartbeatExecutor = mock(ScheduledExecutorService.class);
         ScheduledFuture<?> heartbeatTask = mock(ScheduledFuture.class);
         doReturn(heartbeatTask).when(heartbeatExecutor)
@@ -396,7 +396,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
     }
     private LhAnnouncementCatalogCollectionService successfulCatalogService() {
         var service = mock(LhAnnouncementCatalogCollectionService.class);
-        when(service.collect()).thenReturn(new com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport(
+        when(service.collect()).thenReturn(new ExternalDataCollectionReport(
                 "lh-announcement-catalog", 1, 0, 1
         ));
         return service;

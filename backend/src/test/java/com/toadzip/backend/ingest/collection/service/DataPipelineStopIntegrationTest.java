@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -100,7 +101,7 @@ class DataPipelineStopIntegrationTest {
         UUID id = UUID.randomUUID();
         stateService.create(id, DataPipelineType.COMPLEX_COLLECTION, Instant.now());
         try (var workers = Executors.newFixedThreadPool(4)) {
-            var tasks = java.util.stream.IntStream.range(0, 20).mapToObj(index -> workers.submit(() -> {
+            var tasks = IntStream.range(0, 20).mapToObj(index -> workers.submit(() -> {
                 stateService.recordRequestStarted(id, "page=" + index, Instant.now());
                 stateService.recordRequestFinished(id, Instant.now());
             })).toList();
@@ -140,7 +141,7 @@ class DataPipelineStopIntegrationTest {
         var monitor = new DataPipelineExecutionMonitor(id, stateService, Clock.systemUTC());
         monitor.beginWork("전체 지역", "지역", 40);
         try (var workers = Executors.newFixedThreadPool(4)) {
-            var tasks = java.util.stream.IntStream.range(0, 20).mapToObj(index -> workers.submit(() -> {
+            var tasks = IntStream.range(0, 20).mapToObj(index -> workers.submit(() -> {
                 monitor.requestFinished();
                 monitor.requestFinished();
                 monitor.workCompleted();

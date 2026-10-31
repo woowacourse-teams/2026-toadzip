@@ -41,7 +41,7 @@ public class LhStorageFixtures {
         var at = clock.instant();
         var request = new LhLeaseCatalogCollectionRequest(null, 9999, 1000, at);
         var rows = snapshots.stream().map(row -> mapper.convertValue(row,
-                com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot.class)).toList();
+                LhCatalogSourceSnapshot.class)).toList();
         leaseStorage.complete(records.start(request), request,
                 new LhLeaseCatalogCollectedResponse(rows.size(), at, rows));
         return rows.size();

@@ -13,6 +13,7 @@ import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDeci
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchResult;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -39,7 +40,7 @@ class AnnouncementSupplySplitWriter {
         var members = stored.stream().filter(row -> row.getSupplyGroup() != null
                 && row.getSupplyGroup().getSourceRowIdentifier().equals(origin)).toList();
         var requestedIds = plan.targets().stream().map(SplitTarget::id)
-                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+                .filter(Objects::nonNull).collect(Collectors.toSet());
         long requestedExisting = plan.targets().stream().filter(target -> target.id() != null).count();
         if (requestedIds.size() != requestedExisting
                 || !requestedIds.equals(members.stream().map(SupplyRow::getId).collect(Collectors.toSet()))) {

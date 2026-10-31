@@ -9,11 +9,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
+import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
+import com.toadzip.backend.announcement.domain.AttachmentType;
+import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import com.toadzip.backend.notification.NotificationFixtures;
 import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +32,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -70,7 +78,7 @@ class AnnouncementJsonCorrectionIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT total_supply_household_count FROM supply_rows WHERE announcement_id=?",
                 Integer.class, id)).isEqualTo(3);
         assertThat(jdbc.queryForObject("SELECT announcement_exclusive_area FROM supply_rows WHERE announcement_id=?",
-                java.math.BigDecimal.class, id)).isEqualByComparingTo("36.5");
+                BigDecimal.class, id)).isEqualByComparingTo("36.5");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM announcements", Long.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox_events", Long.class)).isZero();
         // 공급행·기본정보 변경을 함께 저장해도 이력은 한 건이고, 작업 번호는 그 이력에 연결된다.
@@ -133,16 +141,16 @@ class AnnouncementJsonCorrectionIntegrationTest {
     @Test
     void 선택한_일정과_첨부만_갱신하고_기존_다른_항목과_재정제_보호를_유지한다() throws Exception {
         var announcement = fixture();
-        var event = com.toadzip.backend.announcement.domain.AnnouncementSchedule.createFromSource(
-                announcement, "LH:old:event", com.toadzip.backend.announcement.domain.ScheduleType.APPLICATION,
-                "기존 접수", java.time.LocalDateTime.of(2026, 10, 20, 9, 0),
-                java.time.LocalDateTime.of(2026, 10, 21, 18, 0), 0);
-        var attachment = com.toadzip.backend.announcement.domain.AnnouncementAttachment.createFromSource(
+        var event = AnnouncementSchedule.createFromSource(
+                announcement, "LH:old:event", ScheduleType.APPLICATION,
+                "기존 접수", LocalDateTime.of(2026, 10, 20, 9, 0),
+                LocalDateTime.of(2026, 10, 21, 18, 0), 0);
+        var attachment = AnnouncementAttachment.createFromSource(
                 announcement, "LH:old:file", "기존 공고문.pdf",
-                com.toadzip.backend.announcement.domain.AttachmentType.ANNOUNCEMENT,
+                AttachmentType.ANNOUNCEMENT,
                 "https://example.com/old.pdf", 0);
-        var kept = com.toadzip.backend.announcement.domain.AnnouncementAttachment.create(announcement,
-                "기존 참고.pdf", com.toadzip.backend.announcement.domain.AttachmentType.REFERENCE,
+        var kept = AnnouncementAttachment.create(announcement,
+                "기존 참고.pdf", AttachmentType.REFERENCE,
                 "https://example.com/reference.pdf", 1);
         entities.persist(event); entities.persist(attachment); entities.persist(kept); entities.flush();
         var request = request(announcement.getId());
@@ -152,8 +160,8 @@ class AnnouncementJsonCorrectionIntegrationTest {
         var preview = preview(announcement.getId(), request);
         apply(announcement.getId(), request, preview.path("confirmationToken").asText()).andExpect(status().isOk());
         entities.flush(); entities.clear();
-        var storedEvent = entities.find(com.toadzip.backend.announcement.domain.AnnouncementSchedule.class, event.getId());
-        var storedAttachment = entities.find(com.toadzip.backend.announcement.domain.AnnouncementAttachment.class,
+        var storedEvent = entities.find(AnnouncementSchedule.class, event.getId());
+        var storedAttachment = entities.find(AnnouncementAttachment.class,
                 attachment.getId());
         assertThat(storedEvent.getName()).isEqualTo("인터넷 접수");
         assertThat(storedEvent.isAdminModified()).isTrue();
@@ -163,7 +171,7 @@ class AnnouncementJsonCorrectionIntegrationTest {
                 "https://example.com/overwrite.pdf", 0)).isFalse();
         assertThat(storedEvent.updateFromSource(storedEvent.getScheduleType(), "덮어쓸 일정",
                 storedEvent.getStartAt(), storedEvent.getEndAt(), 0, null)).isFalse();
-        assertThat(entities.find(com.toadzip.backend.announcement.domain.AnnouncementAttachment.class,
+        assertThat(entities.find(AnnouncementAttachment.class,
                 kept.getId()).getFileName()).isEqualTo("기존 참고.pdf");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM announcement_attachments WHERE announcement_id=?",
                 Long.class, announcement.getId())).isEqualTo(2);
@@ -175,8 +183,8 @@ class AnnouncementJsonCorrectionIntegrationTest {
         var request = request(announcement.getId());
         ((ObjectNode) request.path("correction").path("rows").get(0)).put("householdCount", 3);
         var preview = preview(announcement.getId(), request);
-        entities.persist(com.toadzip.backend.announcement.domain.AnnouncementAttachment.create(announcement,
-                "늦게 수집한 자료.pdf", com.toadzip.backend.announcement.domain.AttachmentType.REFERENCE,
+        entities.persist(AnnouncementAttachment.create(announcement,
+                "늦게 수집한 자료.pdf", AttachmentType.REFERENCE,
                 "https://example.com/changed.pdf", 0));
         entities.flush();
         apply(announcement.getId(), request, preview.path("confirmationToken").asText())
@@ -217,7 +225,7 @@ class AnnouncementJsonCorrectionIntegrationTest {
         var preview = preview(announcement.getId(), request);
         apply(announcement.getId(), request, preview.path("confirmationToken").asText()).andExpect(status().isOk());
         assertThat(announcement.isApplicationScheduleReviewed()).isTrue();
-        assertThat(announcement.getApplicationStartDate()).isEqualTo(java.time.LocalDate.of(2026, 10, 13));
+        assertThat(announcement.getApplicationStartDate()).isEqualTo(LocalDate.of(2026, 10, 13));
     }
 
     @Test
@@ -263,7 +271,7 @@ class AnnouncementJsonCorrectionIntegrationTest {
                 .getContentAsString()).get("data");
     }
 
-    private org.springframework.test.web.servlet.ResultActions apply(long id, ObjectNode request, String token)
+    private ResultActions apply(long id, ObjectNode request, String token)
             throws Exception {
         var body = json.createObjectNode(); body.set("request", request); body.put("confirmationToken", token);
         return mvc.perform(post("/api/admin/announcements/" + id + "/json-corrections")

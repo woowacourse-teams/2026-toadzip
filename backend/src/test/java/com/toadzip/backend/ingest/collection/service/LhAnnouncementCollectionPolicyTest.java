@@ -3,9 +3,10 @@ package com.toadzip.backend.ingest.collection.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionPolicy;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.Period;
@@ -42,7 +43,7 @@ class LhAnnouncementCollectionPolicyTest {
     }
 
     private MyHomeAnnouncementSourceView source(String endDate) {
-        return MyHomeAnnouncementSourceView.from(0, new MyHomeAnnouncementSourceSnapshot(
+        return MyHomeSourceViews.announcement(0, new MyHomeAnnouncementSourceSnapshot(
                 "announcement-100", 1, "모집중", "공고", "LH", null, "행복주택", null,
                 null, null, null, endDate, null,
                 "https://apply.lh.or.kr/panDetail?panId=100&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06",

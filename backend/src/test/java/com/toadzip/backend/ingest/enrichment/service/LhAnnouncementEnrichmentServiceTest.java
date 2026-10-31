@@ -32,6 +32,7 @@ import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.fixture.LhAnnouncementDetailFixtures;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.CollectedSourceRows;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementDetailSourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementExternalRepository;
@@ -50,12 +51,12 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollection
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionProgressManager;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhSupplySnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhSupplySnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.VerifiedLhSupplyReplacementStore;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
@@ -77,6 +78,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.IntStream;
@@ -275,22 +277,21 @@ class LhAnnouncementEnrichmentServiceTest {
                 new BigDecimal("59.8000"), new BigDecimal("84.0000")));
 
         MyHomeAnnouncementSourceView historical = myHomeSource();
-        historical.markSeen("earlier", Instant.parse("2026-08-28T00:00:00Z"));
+        historical = MyHomeSourceViews.seen(historical, "earlier", Instant.parse("2026-08-28T00:00:00Z"));
         myHomeSourceRepository.save(historical);
         saveLhSources("10,000,000", "200,000");
         completeLinks(historical);
         mappingService.mapAll();
         enrichmentService.enrichAll();
         Long historicalTargetId = supplyTargetRepository.findAll().getFirst().getId();
-        historical.markMissed();
-        historical.markMissed();
+        historical = MyHomeSourceViews.inactive(historical);
         myHomeSourceRepository.save(historical);
         MyHomeAnnouncementSourceView current = myHomeSource();
         ReflectionTestUtils.setField(current, "houseTyNm", "통합형");
         ReflectionTestUtils.setField(current, "houseSn", 2);
         ReflectionTestUtils.setField(current, "sourceKey", "5:210261:2");
         ReflectionTestUtils.setField(current, "url", current.getUrl().replace("aisTpCd=07", "aisTpCd=08"));
-        current.markSeen("latest", Instant.parse("2026-08-29T00:00:00Z"));
+        current = MyHomeSourceViews.seen(current, "latest", Instant.parse("2026-08-29T00:00:00Z"));
         myHomeSourceRepository.save(current);
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(current);
         String request = candidate.requestDescription();
@@ -1010,7 +1011,7 @@ class LhAnnouncementEnrichmentServiceTest {
         saveComplex();
         MyHomeAnnouncementSourceView source = myHomeSourceRepository.save(myHomeSource());
         mapMyHomeSource();
-        source.replaceWith(new MyHomeAnnouncementSourceSnapshot(
+        source = MyHomeSourceViews.replaced(source, new MyHomeAnnouncementSourceSnapshot(
                 "21026", 1, "모집중", "국민임대 입주자 모집공고", "LH서울", "아파트", "국민임대", null,
                 "20260813", "20261106", "20260824", "20260831", "1600-1004",
                 "https://example.com/announcements", null, null, "동삼2", "서울특별시", "종로구",
@@ -1105,8 +1106,7 @@ class LhAnnouncementEnrichmentServiceTest {
         MyHomeAnnouncementSourceView historical = myHomeSource();
         ReflectionTestUtils.setField(historical, "houseSn", 2);
         ReflectionTestUtils.setField(historical, "sourceKey", "5:210261:2");
-        historical.markMissed();
-        historical.markMissed();
+        historical = MyHomeSourceViews.inactive(historical);
         myHomeSourceRepository.save(historical);
         ReflectionTestUtils.setField(current, "pblancNm", "정정된 국민임대 입주자 모집공고");
         ReflectionTestUtils.setField(current, "endDe", "20260902");
@@ -1131,7 +1131,7 @@ class LhAnnouncementEnrichmentServiceTest {
         ));
         MyHomeAnnouncementSourceView historical = myHomeSource();
         ReflectionTestUtils.setField(historical, "houseTyNm", historicalHousingType);
-        historical.markSeen("earlier", Instant.parse("2026-08-28T00:00:00Z"));
+        historical = MyHomeSourceViews.seen(historical, "earlier", Instant.parse("2026-08-28T00:00:00Z"));
         myHomeSourceRepository.save(historical);
         saveLhSources("10,000,000", "200,000");
         saveSupply(new LhAnnouncementSupplySource(1, PAN_ID,
@@ -1144,15 +1144,14 @@ class LhAnnouncementEnrichmentServiceTest {
         List<Long> historicalRowIds = supplyRowRepository.findAll().stream().map(SupplyRow::getId).toList();
         List<Long> historicalTargetIds = supplyTargetRepository.findAll().stream().map(SupplyTarget::getId).toList();
         if (!historicalActive) {
-            historical.markMissed();
-            historical.markMissed();
+            historical = MyHomeSourceViews.inactive(historical);
             myHomeSourceRepository.save(historical);
         }
         MyHomeAnnouncementSourceView current = myHomeSource();
         ReflectionTestUtils.setField(current, "houseSn", 2);
         ReflectionTestUtils.setField(current, "sourceKey", "5:210261:2");
         ReflectionTestUtils.setField(current, "sourceOrder", 1);
-        current.markSeen("latest", Instant.parse("2026-08-29T00:00:00Z"));
+        current = MyHomeSourceViews.seen(current, "latest", Instant.parse("2026-08-29T00:00:00Z"));
         myHomeSourceRepository.save(current);
         switchLhSource(current, "59B", "12,000,000", "250,000");
 
@@ -1167,8 +1166,9 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(supplyTargetRepository.findAllById(historicalTargetIds))
                 .hasSize(2).extracting(target -> target.getMonthlyRent().intValueExact())
                 .containsExactlyInAnyOrder(200000, 300000);
+        String currentSourceKey = current.getSourceKey();
         assertThat(supplyRowRepository.findAll())
-                .filteredOn(row -> row.getSourceSupplyRowIdentifier().equals(current.getSourceKey()))
+                .filteredOn(row -> row.getSourceSupplyRowIdentifier().equals(currentSourceKey))
                 .singleElement().satisfies(row -> {
                     assertThat(row.getSourceHousingTypeName()).isEqualTo("59B");
                     assertThat(row.getLhSourceSupplyRowIdentifier()).isEqualTo("LH:200:SUPPLY:0");
@@ -1196,7 +1196,7 @@ class LhAnnouncementEnrichmentServiceTest {
         MyHomeAnnouncementSourceView historical = myHomeSource();
         ReflectionTestUtils.setField(historical, "houseTyNm", "통합형");
         ReflectionTestUtils.setField(historical, "sourceOrder", 1);
-        historical.markSeen("earlier", Instant.parse("2026-08-28T00:00:00Z"));
+        historical = MyHomeSourceViews.seen(historical, "earlier", Instant.parse("2026-08-28T00:00:00Z"));
         myHomeSourceRepository.save(historical);
         saveLhSources("10,000,000", "200,000");
         saveSupply(new LhAnnouncementSupplySource(1, PAN_ID,
@@ -1220,8 +1220,7 @@ class LhAnnouncementEnrichmentServiceTest {
                 );
             });
         }
-        historical.markMissed();
-        historical.markMissed();
+        historical = MyHomeSourceViews.inactive(historical);
         myHomeSourceRepository.save(historical);
         MyHomeAnnouncementSourceView current = myHomeSource();
         ReflectionTestUtils.setField(current, "houseSn", 2);
@@ -1230,7 +1229,7 @@ class LhAnnouncementEnrichmentServiceTest {
             ReflectionTestUtils.setField(current, "sourceOrder", 2);
         }
         ReflectionTestUtils.setField(current, "url", current.getUrl().replace("aisTpCd=07", "aisTpCd=08"));
-        current.markSeen("latest", Instant.parse("2026-08-29T00:00:00Z"));
+        current = MyHomeSourceViews.seen(current, "latest", Instant.parse("2026-08-29T00:00:00Z"));
         myHomeSourceRepository.save(current);
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(current);
         sourceStore.replaceDetails(PAN_ID, candidate.requestDescription(), List.of(detail(
@@ -1791,21 +1790,20 @@ class LhAnnouncementEnrichmentServiceTest {
     void 빈_공급_승인은_현재_원천의_금액만_제거하고_과거_원천의_금액을_보존한다(boolean mappingOnly) {
         saveComplex();
         MyHomeAnnouncementSourceView historical = myHomeSource();
-        historical.markSeen("earlier", Instant.parse("2026-08-28T00:00:00Z"));
+        historical = MyHomeSourceViews.seen(historical, "earlier", Instant.parse("2026-08-28T00:00:00Z"));
         myHomeSourceRepository.save(historical);
         saveLhSources("10,000,000", "200,000");
         completeLinks(historical);
         mappingService.mapAll();
         enrichmentService.enrichAll();
         Long historicalTargetId = supplyTargetRepository.findAll().getFirst().getId();
-        historical.markMissed();
-        historical.markMissed();
+        historical = MyHomeSourceViews.inactive(historical);
         myHomeSourceRepository.save(historical);
         MyHomeAnnouncementSourceView current = myHomeSource();
         ReflectionTestUtils.setField(current, "houseSn", 2);
         ReflectionTestUtils.setField(current, "sourceKey", "5:210261:2");
         ReflectionTestUtils.setField(current, "url", current.getUrl().replace("aisTpCd=07", "aisTpCd=08"));
-        current.markSeen("latest", Instant.parse("2026-08-29T00:00:00Z"));
+        current = MyHomeSourceViews.seen(current, "latest", Instant.parse("2026-08-29T00:00:00Z"));
         myHomeSourceRepository.save(current);
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(current);
         String request = candidate.requestDescription();
@@ -2681,7 +2679,7 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     private MyHomeAnnouncementSourceView myHomeSource(String identifier, String supplyType) {
-        MyHomeAnnouncementSourceView source = MyHomeAnnouncementSourceView.from(0, new MyHomeAnnouncementSourceSnapshot(
+        MyHomeAnnouncementSourceView source = MyHomeSourceViews.announcement(0, new MyHomeAnnouncementSourceSnapshot(
                 identifier, 1, "모집중", supplyType + " 입주자 모집공고", "LH서울", "46A", supplyType, null,
                 "20260813", "20261106", "20260824", "20260831", "1600-1004",
                 "https://example.com/announcements?panId=" + PAN_ID
@@ -2689,7 +2687,7 @@ class LhAnnouncementEnrichmentServiceTest {
                 "서울특별시 종로구 테스트로 1", "테스트로", "테스트동", PNU, "지역난방", "100", 20,
                 10_000_000L, 2_000_000L, 8_000_000L, 200_000L
         ));
-        source.markCollectedAt(Instant.parse("2026-08-28T00:00:00Z"));
+        source = MyHomeSourceViews.collectedAt(source, Instant.parse("2026-08-28T00:00:00Z"));
         return source;
     }
 
@@ -2727,8 +2725,8 @@ class LhAnnouncementEnrichmentServiceTest {
                 )));
     }
 
-    private java.util.List<java.util.List<Object>> querySourceState() {
-        return querySources.findAll().stream().map(source -> java.util.Arrays.<Object>asList(
+    private List<List<Object>> querySourceState() {
+        return querySources.findAll().stream().map(source -> Arrays.<Object>asList(
                 source.getId(), source.getRequestHash(), source.getCollectedAt(),
                 source.getLastCollectionRecord().getId())).toList();
     }

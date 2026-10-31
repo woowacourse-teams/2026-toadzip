@@ -14,6 +14,7 @@ import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchResult;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchingFailureData;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -83,7 +84,7 @@ class MyHomeSupplyRowWriter {
                 }
                 var members = storedRows.values().stream().filter(row -> row.getSupplyGroup() != null
                         && row.getSupplyGroup().getId().equals(group.getId()))
-                        .sorted(java.util.Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
+                        .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
                         .toList();
                 if (splitWriter.reviewRequired(group, data, expanded.apply(data), members)) {
                     group.requireReview();

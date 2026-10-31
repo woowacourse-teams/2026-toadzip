@@ -19,6 +19,7 @@ import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdTargetDecisionView;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -217,7 +218,7 @@ class LhHouseholdTargetDecisionIntegrationTest {
 
     private List<Integer> householdCounts() {
         return types.findAllByHousingComplex(complex).stream()
-                .sorted(java.util.Comparator.comparing(HousingType::getExclusiveArea))
+                .sorted(Comparator.comparing(HousingType::getExclusiveArea))
                 .map(HousingType::getTotalHouseholdCount).toList();
     }
 }

@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.collection.lh.leasecatalog.repository;
 
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,7 +19,7 @@ public class LhLeaseCatalogSourceReader {
                 .map(row -> LhCatalogSource.read(row.getId(), row.getSourceOrder(), row.getCollectedAt(), row.snapshot()))
                 .toList()).orElseGet(List::of);
     }
-    public java.util.Optional<LhCatalogSource> findById(Long id) {
+    public Optional<LhCatalogSource> findById(Long id) {
         return findAllByOrderBySourceOrderAsc().stream().filter(row -> id.equals(row.getId())).findFirst();
     }
 

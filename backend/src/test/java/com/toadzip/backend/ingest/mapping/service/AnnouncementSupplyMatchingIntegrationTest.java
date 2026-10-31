@@ -8,40 +8,59 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
+import com.toadzip.backend.announcement.service.AnnouncementQueryService;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
+import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Request;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Row;
-import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.http.MediaType;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.jdbc.Sql;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
 @AutoConfigureMockMvc
@@ -64,18 +83,18 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Autowired private LhAnnouncementCollectionProgressStore progressStore;
     @Autowired private MyHomeAnnouncementMappingService mapping;
     @Autowired private LhStorageFixtures lhStorage;
-    @Autowired private com.toadzip.backend.announcement.service.AnnouncementQueryService query;
-    @Autowired private com.toadzip.backend.announcement.repository.SupplyTargetRepository targets;
-    @Autowired private com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService enrichment;
+    @Autowired private AnnouncementQueryService query;
+    @Autowired private SupplyTargetRepository targets;
+    @Autowired private LhAnnouncementEnrichmentService enrichment;
     private HousingComplex complex;
     private HousingType type;
 
     private Map<String, Object> splitBody(Row row) {
         var candidates = candidateService.housingTypes(complex.getId());
-        var selections = new java.util.ArrayList<Map<String, Object>>();
+        var selections = new ArrayList<Map<String, Object>>();
         for (int index = 0; index < candidates.size(); index++) {
             var option = candidates.get(index);
-            var selection = new java.util.LinkedHashMap<String, Object>();
+            var selection = new LinkedHashMap<String, Object>();
             if (row.splitGroup() != null) { selection.put("id", row.splitGroup().rows().get(index).id()); }
             selection.put("name", List.of("26A", "26B").get(index));
             selection.put("complexId", complex.getId());
@@ -83,7 +102,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
             selection.put("targetToken", option.token());
             selections.add(selection);
         }
-        return new java.util.LinkedHashMap<>(Map.of("rowIdentifier", row.rowIdentifier(), "token", row.token(),
+        return new LinkedHashMap<>(Map.of("rowIdentifier", row.rowIdentifier(), "token", row.token(),
                 "sourceUrl", "https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21395",
                 "reason", "공식 API 기반 회귀 검증의 명시적 A/B 선택이며 실제 대응 확정이 아님", "rows", selections));
     }
@@ -102,8 +121,8 @@ class AnnouncementSupplyMatchingIntegrationTest {
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate)
                 candidateResolver.resolve(sources.findAll().getFirst());
         lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of(
-                new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource(0,
-                        candidate.panId(), new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot(
+                new LhAnnouncementSupplySource(0,
+                        candidate.panId(), new LhAnnouncementSupplySourceSnapshot(
                         "익산한스빌", "26A,B", "26.5195", null, "529", "170", "4076000", "72820"))));
         mapping.mapAll();
         enrichment.enrichAll();
@@ -116,9 +135,9 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(detail.supplyHouseholdCount()).isEqualTo(170);
         mvc.perform(get("/api/v1/announcements/" + announcement.getId()))
                 .andExpect(status().isOk())
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                .andExpect(MockMvcResultMatchers
                         .jsonPath("$.data.supplyHouseholdCount").value(170))
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                .andExpect(MockMvcResultMatchers
                         .jsonPath("$.data.supplyRows[0].sharedRecruitment.householdCount").value(170));
         assertThat(detail.supplyRows()).hasSize(2).allSatisfy(row -> {
             assertThat(row.totalSupplyHouseholdCount()).isNull();
@@ -188,24 +207,24 @@ class AnnouncementSupplyMatchingIntegrationTest {
         boolean comparisonTables = jdbc.sql("SELECT to_regclass('admin_comparison_sources') IS NULL").query(Boolean.class).single();
         if (comparisonTables) {
             jdbc.sql(new String(new ClassPathResource("db/migration/V20261016_01__quality_comparison_workflow.sql")
-                    .getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)).update();
+                    .getInputStream().readAllBytes(), StandardCharsets.UTF_8)).update();
         }
         try {
         long id = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
         String root = "/api/admin/announcements/" + id + "/supply-corrections";
         var workspace = json.readTree(mvc.perform(get(root).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
-        var rows = (tools.jackson.databind.node.ArrayNode) workspace.get("rows").deepCopy();
-        var original = (tools.jackson.databind.node.ObjectNode) java.util.stream.StreamSupport.stream(rows.spliterator(), false)
+        var rows = (ArrayNode) workspace.get("rows").deepCopy();
+        var original = (ObjectNode) StreamSupport.stream(rows.spliterator(), false)
                 .filter(row -> row.get("id").asLong() == supplies.findAll().stream()
                         .filter(stored -> stored.getSourceHousingTypeName().equals("26A,B(고령자)")).findFirst().orElseThrow().getId())
                 .findFirst().orElseThrow();
         original.put("housingTypeId", first.getId()).put("typeName", "26A").putNull("householdCount");
-        var added = original.deepCopy().putNull("id").put("key", java.util.UUID.randomUUID().toString())
+        var added = original.deepCopy().putNull("id").put("key", UUID.randomUUID().toString())
                 .put("housingTypeId", second.getId()).put("typeName", "26B").put("displayOrder", 9);
         added.putArray("targets");
         rows.add(added);
-        var correction = json.createObjectNode().put("operationId", java.util.UUID.randomUUID().toString())
+        var correction = json.createObjectNode().put("operationId", UUID.randomUUID().toString())
                 .put("snapshotToken", workspace.get("snapshotToken").asText()).put("reason", "공고문 4쪽 26A·26B 고령자 50세대")
                 .put("sourceUrl", "https://example.com/official.pdf").put("sourcePage", "4");
         correction.set("rows", rows);
@@ -234,10 +253,10 @@ class AnnouncementSupplyMatchingIntegrationTest {
         }
     }
 
-    private com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource lhSupplyRow(int order,
+    private LhAnnouncementSupplySource lhSupplyRow(int order,
             String panId, String typeName, String area, String supplied) {
-        return new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource(order, panId,
-                new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot(
+        return new LhAnnouncementSupplySource(order, panId,
+                new LhAnnouncementSupplySourceSnapshot(
                         "익산한스빌", typeName, area, null, "529", supplied, "4076000", "72820"));
     }
 
@@ -312,7 +331,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         jdbc.sql("UPDATE myhome_announcement_source_rows SET sum_suply_co = 170").update();
         rememberCurrent();
         var original = supplies.findAll().getFirst();
-        targets.save(com.toadzip.backend.announcement.domain.SupplyTarget.create(original, "전체", null,
+        targets.save(SupplyTarget.create(original, "전체", null,
                 170, null, new BigDecimal("4076000"), new BigDecimal("72820"), null, "공고문 참조", 0));
         types.save(HousingType.createFromMyHome(complex, "other", "26", new BigDecimal("26.5195"), null));
         split(splitBody(matching.rows(TARGET).getFirst())).andExpect(status().isConflict());
@@ -427,7 +446,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 assertThat(value.getHousingType().getId()).isEqualTo(type.getId()));
     }
 
-    private tools.jackson.databind.JsonNode prepareHansville() throws Exception {
+    private JsonNode prepareHansville() throws Exception {
         var fixture = json.readTree(new ClassPathResource("ingest/hansville-21395.json").getInputStream());
         var notice = fixture.get("announcement");
         var building = fixture.get("complex");
@@ -450,12 +469,12 @@ class AnnouncementSupplyMatchingIntegrationTest {
             type = types.save(HousingType.createFromMyHome(complex, "30700120:fixture:" + index,
                     row.get("styleNm").asText(), row.get("suplyPrvuseAr").decimalValue(), null));
         }
-        var apiNotice = (tools.jackson.databind.node.ObjectNode) fixture.get("api")
+        var apiNotice = (ObjectNode) fixture.get("api")
                 .get("announcement").get("items").get(0).deepCopy();
         // 공고 ID만 테스트용으로 격리하고 나머지는 실제 응답값을 유지한다.
         apiNotice.put("pblancId", TARGET);
         var snapshot = json.treeToValue(apiNotice,
-                com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot.class);
+                MyHomeAnnouncementSourceSnapshot.class);
         var source = MyHomeAnnouncementSourceView.read(null, 1, Instant.parse("2026-10-18T14:56:03Z"),
                 null, 0, true, snapshot);
         sources.save(source);
@@ -579,7 +598,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 new BigDecimal("26.4673"), new BigDecimal("40.5686")));
         rememberCurrent();
         var first = matching.rows(TARGET).getFirst();
-        var plan = new java.util.LinkedHashMap<String, Object>(splitPlan(first, Map.of("26A", type, "26B", second)));
+        var plan = new LinkedHashMap<String, Object>(splitPlan(first, Map.of("26A", type, "26B", second)));
         plan.put("sourceUrl", "https://example.com/official.pdf");
         plan.put("reason", "공고문 4쪽의 26A·26B 면적 확인");
         split(plan).andExpect(status().isOk());
@@ -755,7 +774,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         String memberId = jdbc.sql("""
                         INSERT INTO users(login_identifier,created_at) VALUES (:identifier,CURRENT_TIMESTAMP)
                         RETURNING id
-                        """).param("identifier", "google:matching-" + java.util.UUID.randomUUID())
+                        """).param("identifier", "google:matching-" + UUID.randomUUID())
                 .query(Long.class).single().toString();
         mvc.perform(get(PATH + "/" + TARGET)).andExpect(status().isUnauthorized());
         mvc.perform(get(PATH + "/" + TARGET).with(user(memberId).roles("USER")))
@@ -951,7 +970,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
     @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
-            executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD)
+            executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void PDF_보정으로_연결한_공급행은_재정제에서_매칭_실패로_다시_남지_않는다() throws Exception {
         mapping.mapAll();
         assertThat(pendingFailureReasons()).containsExactly("AMBIGUOUS_HOUSING_TYPE");
@@ -971,7 +990,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
     @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
-            executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD)
+            executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void 선택_없이_다시_정제하면_PDF_보정의_저장_매칭으로_이_공고만_정제하고_실패를_해결한다() throws Exception {
         mapping.mapAll();
         long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
@@ -992,7 +1011,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         var before = supplies.findAll().getFirst();
 
         rerun(TARGET).andExpect(status().isBadRequest())
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("정제 실패: 공급행 매칭 실패")));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("정제 실패: 공급행 매칭 실패")));
 
         assertThat(pendingFailureReasons()).containsExactly("AMBIGUOUS_HOUSING_TYPE");
         assertThat(supplies.findAll()).singleElement().satisfies(row -> {
@@ -1004,7 +1023,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
     @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
-            executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD)
+            executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void 다시_정제에서_LH_보강이_거절되면_저장은_되돌리고_전체_정제처럼_LH_보강_실패를_기록한다() throws Exception {
         var source = sources.findAll().getFirst();
         ReflectionTestUtils.setField(source, "suplyInsttNm", "LH");
@@ -1027,13 +1046,13 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(pendingFailureReasons()).isEmpty();
         // 군산 공고처럼 공고 등록 뒤 수집한 LH 공급 원본의 단지명 표기가 공고 공급행과 달라 LH 보강에서 단지를 찾지 못한다.
         lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of(
-                new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource(0, candidate.panId(),
-                        new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot(
+                new LhAnnouncementSupplySource(0, candidate.panId(),
+                        new LhAnnouncementSupplySourceSnapshot(
                                 "군산한스빌", "39", "39.9500", null, "717", "100", "공고문 참조", "공고문 참조"))));
         var before = supplies.findAll().getFirst();
 
         rerun(TARGET).andExpect(status().isBadRequest())
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.message").value(
+                .andExpect(MockMvcResultMatchers.jsonPath("$.message").value(
                         org.hamcrest.Matchers.allOf(org.hamcrest.Matchers.startsWith("정제 실패: LH 보강 실패: COMPLEX_NOT_FOUND"),
                                 org.hamcrest.Matchers.endsWith("오류 목록에 기록했습니다."))));
 
@@ -1052,7 +1071,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 원천이_없는_공고는_다시_정제할_수_없다() throws Exception {
         rerun("no-source-announcement").andExpect(status().isBadRequest())
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.message").value("공고 원천이 없습니다. 먼저 공고를 수집해 주세요."));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.message").value("공고 원천이 없습니다. 먼저 공고를 수집해 주세요."));
     }
 
     @Test
@@ -1123,19 +1142,19 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 .andReturn().getResponse().getContentAsString()).get("data");
         var request = json.createObjectNode();
         request.put("snapshotToken", state.path("snapshotToken").asText());
-        request.set("document", json.readTree(java.nio.file.Files.readString(
-                java.nio.file.Path.of("../docs/fixtures/announcement-import-v1-valid.json"))));
+        request.set("document", json.readTree(Files.readString(
+                Path.of("../docs/fixtures/announcement-import-v1-valid.json"))));
         request.putArray("fields");
         request.putArray("schedules");
         request.putArray("attachments");
         var correction = request.putObject("correction");
-        correction.put("operationId", java.util.UUID.randomUUID().toString());
+        correction.put("operationId", UUID.randomUUID().toString());
         correction.put("snapshotToken", state.path("supply").path("snapshotToken").asText());
         correction.put("reason", "공고문 PDF 4쪽에서 주택형 확인");
         correction.put("sourceUrl", "https://example.com/official.pdf");
         correction.putNull("sourcePage");
         correction.set("rows", state.path("supply").path("rows").deepCopy());
-        ((tools.jackson.databind.node.ObjectNode) correction.get("rows").get(0))
+        ((ObjectNode) correction.get("rows").get(0))
                 .put("housingComplexId", complex.getId()).put("housingTypeId", housingType.getId());
         var preview = json.readTree(mvc.perform(post("/api/admin/announcements/" + announcementId
                         + "/json-corrections/preview").with(user("admin").roles("ADMIN")).with(csrf())
@@ -1183,12 +1202,12 @@ class AnnouncementSupplyMatchingIntegrationTest {
     }
 
     private MyHomeAnnouncementSourceView source(String identifier, int house, String pnu) {
-        var source = MyHomeAnnouncementSourceView.from(house, new MyHomeAnnouncementSourceSnapshot(identifier,
+        var source = MyHomeSourceViews.announcement(house, new MyHomeAnnouncementSourceSnapshot(identifier,
                 house, "모집중", "국민임대 입주자 모집공고", "서울주택도시공사", "26A,B", "국민임대", null,
                 "20261001", "20261106", "20261008", "20261015", null, "https://example.com/manual", null,
                 null, "익산한스빌", "전북특별자치도", "익산시", null, null, null, pnu, null, null,
                 0, null, null, null, null));
-        source.markCollectedAt(Instant.parse("2026-10-08T00:00:00Z"));
+        source = MyHomeSourceViews.collectedAt(source, Instant.parse("2026-10-08T00:00:00Z"));
         return source;
     }
 }

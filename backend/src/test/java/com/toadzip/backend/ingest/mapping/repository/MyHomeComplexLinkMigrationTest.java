@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,7 +46,7 @@ class MyHomeComplexLinkMigrationTest {
                     assertThat(rows.getInt(1)).isEqualTo(3);
                 }
                 try (var rows = sql.executeQuery("SELECT housing_complex_id FROM myhome_complex_links ORDER BY 1")) {
-                    for (long id : java.util.List.of(3425L, 3426L, 3427L)) {
+                    for (long id : List.of(3425L, 3426L, 3427L)) {
                         assertThat(rows.next()).isTrue();
                         assertThat(rows.getLong(1)).isEqualTo(id);
                     }

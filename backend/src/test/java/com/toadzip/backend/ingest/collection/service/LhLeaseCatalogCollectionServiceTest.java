@@ -17,6 +17,7 @@ import com.toadzip.backend.ingest.collection.repository.external.ExternalDataReq
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 @ExtendWith(MockitoExtension.class)
 class LhLeaseCatalogCollectionServiceTest {
@@ -44,7 +46,7 @@ class LhLeaseCatalogCollectionServiceTest {
     @BeforeEach
     void setUp() {
         service = new CollectionServiceTestFixture().lease(externalRepository, sourceStore, failureRecorder,
-                new ExternalDataRetryExecutor(java.time.Duration.ZERO, new SimpleMeterRegistry()));
+                new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry()));
     }
 
     @Test
@@ -154,7 +156,7 @@ class LhLeaseCatalogCollectionServiceTest {
         var mapper = JsonMapper.builder().build();
         var list = mapper.readTree(rows);
         for (int index = 0; index < list.size(); index++) {
-            ((tools.jackson.databind.node.ObjectNode) list.get(index)).put("ALL_CNT", total)
+            ((ObjectNode) list.get(index)).put("ALL_CNT", total)
                     .put("RNUM", (page - 1) * size + index + 1);
         }
         return mapper.readTree("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsSch\":[{\"PAGE\":" + page

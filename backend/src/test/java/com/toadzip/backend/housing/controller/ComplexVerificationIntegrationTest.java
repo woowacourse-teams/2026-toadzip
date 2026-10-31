@@ -11,12 +11,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
+import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
+import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink;
+import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import com.toadzip.backend.user.domain.User;
 import com.toadzip.backend.user.repository.UserRepository;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -29,6 +37,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -44,8 +53,8 @@ class ComplexVerificationIntegrationTest {
     @Autowired private HousingComplexRepository complexes;
     @Autowired private UserRepository userRepository;
     @Autowired private EntityManager entityManager;
-    @Autowired private com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures sources;
-    @Autowired private com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository links;
+    @Autowired private MyHomeComplexSourceFixtures sources;
+    @Autowired private MyHomeComplexLinkRepository links;
     @MockitoBean private IngestExecutionOwnershipService ownership;
 
     @BeforeEach
@@ -74,9 +83,9 @@ class ComplexVerificationIntegrationTest {
         source(902, "행복주택", 20);
         source(903, "행복주택", 999);
         var complex = complexes.findById(id).orElseThrow();
-        links.saveAndFlush(com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink
+        links.saveAndFlush(MyHomeComplexLink
                 .connect("901:HAPPY_HOUSING", complex));
-        links.saveAndFlush(com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink
+        links.saveAndFlush(MyHomeComplexLink
                 .connect("902:HAPPY_HOUSING", complex));
         JsonNode evidence = data(id).get("sources");
         assertThat(evidence.size()).isEqualTo(2);
@@ -89,7 +98,7 @@ class ComplexVerificationIntegrationTest {
     void 원천이_화면_조회_후_변경되면_검토_저장을_거부한다() throws Exception {
         long id = createComplex();
         var row = source(904, "행복주택", 10);
-        links.saveAndFlush(com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink
+        links.saveAndFlush(MyHomeComplexLink
                 .connect("904:HAPPY_HOUSING", complexes.findById(id).orElseThrow()));
         var outdated = request(data(id), List.of("HOUSEHOLD_COUNT"), "VERIFIED");
         entityManager.createNativeQuery("UPDATE myhome_complex_source_rows SET hshld_co = 11 WHERE id = :id")
@@ -147,7 +156,7 @@ class ComplexVerificationIntegrationTest {
         long id = createComplex();
         var emptyFields = request(data(id), List.of(), "VERIFIED");
         save(id, emptyFields).andExpect(status().isBadRequest());
-        var unsafe = new java.util.LinkedHashMap<>(request(data(id), List.of("NAME"), "VERIFIED"));
+        var unsafe = new LinkedHashMap<>(request(data(id), List.of("NAME"), "VERIFIED"));
         unsafe.put("evidenceUrl", "javascript:alert(1)");
         save(id, unsafe).andExpect(status().isBadRequest());
         unsafe.put("evidenceUrl", "");
@@ -162,20 +171,20 @@ class ComplexVerificationIntegrationTest {
     }
 
     private long createComplex() {
-        return complexes.saveAndFlush(HousingComplex.createFromMyHome("검증 단지", "admin:" + java.util.UUID.randomUUID(),
+        return complexes.saveAndFlush(HousingComplex.createFromMyHome("검증 단지", "admin:" + UUID.randomUUID(),
                 "HAPPY_HOUSING", Address.create("서울특별시 중구 세종대로 110", "1114010100100010000",
                         "1114010100", "11", "11140", new BigDecimal("37.566500"), new BigDecimal("126.978000")),
                 0, "LH", null, null, null, null, null, 0)).getId();
     }
 
-    private com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView source(
+    private MyHomeComplexSourceView source(
             long identifier, String rental, int households) {
-        var row = com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView.from(
-                new com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot(
+        var row = MyHomeSourceViews.complex(
+                new MyHomeComplexSourceSnapshot(
                         identifier, "한국토지주택공사", "11", "서울", "11140", "중구", "검증 단지",
                         "서울특별시 중구 세종대로 110", "1114010100100010000", null, households, rental, "26A",
                         new BigDecimal("26"), null, null, null, null, null, 0, null, null, null));
-        row.markCollectedAt(java.time.Instant.parse("2026-10-08T00:00:00Z"));
+        row = MyHomeSourceViews.collectedAt(row, Instant.parse("2026-10-08T00:00:00Z"));
         return sources.save(row);
     }
 
@@ -195,7 +204,7 @@ class ComplexVerificationIntegrationTest {
                 "evidenceUrl", "https://example.com/complex", "evidenceNote", "공급기관 단지 안내 2쪽 확인");
     }
 
-    private org.springframework.test.web.servlet.ResultActions save(long id, Map<String, Object> body)
+    private ResultActions save(long id, Map<String, Object> body)
             throws Exception {
         return mvc.perform(post(path(id) + "/reviews").with(user("reviewer").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body)));

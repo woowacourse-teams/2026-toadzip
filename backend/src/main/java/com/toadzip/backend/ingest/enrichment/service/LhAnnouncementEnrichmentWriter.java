@@ -19,6 +19,7 @@ import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupp
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
+import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
@@ -299,9 +300,9 @@ public class LhAnnouncementEnrichmentWriter implements MappedAnnouncementLhEnric
             return matched.row().getSupplyGroup() != null;
         }
         var complexRows = rows.stream().filter(row ->
-                com.toadzip.backend.ingest.domain.SupplyNameNormalizer.sameComplex(
+                SupplyNameNormalizer.sameComplex(
                         row.getSourceComplexName(), source.complexName())
-                || row.getHousingComplex() != null && com.toadzip.backend.ingest.domain.SupplyNameNormalizer.sameComplex(
+                || row.getHousingComplex() != null && SupplyNameNormalizer.sameComplex(
                         row.getHousingComplex().getName(), source.complexName())).toList();
         return !complexRows.isEmpty() && complexRows.stream().allMatch(row -> row.getSupplyGroup() != null);
     }

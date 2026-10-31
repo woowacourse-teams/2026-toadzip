@@ -31,8 +31,11 @@ import java.time.Clock;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -65,8 +68,8 @@ public class AnnouncementSupplyMatchingService {
         var excluded = announcements.findBySourceAnnouncementIdentifier(identifier)
                 .map(value -> productRows.findAllByAnnouncement(value).stream()
                         .filter(SupplyRow::isAdminExcluded).map(SupplyRow::getSourceSupplyRowIdentifier)
-                        .collect(java.util.stream.Collectors.toSet()))
-                .orElse(java.util.Set.of());
+                        .collect(Collectors.toSet()))
+                .orElse(Set.of());
         var supplyRows = supplyRows(identifier);
         var expanded = SupplyRowGroupOrigins.expandedIn(supplyRows);
         for (var data : supplyRows) {
@@ -385,7 +388,7 @@ public class AnnouncementSupplyMatchingService {
     private AnnouncementSupplySplitWriter.SplitPlan splitPlan(MyHomeSupplyRowMappingData data,
             List<SplitSelection> rows, String sourceUrl, String reason, String actor, boolean expanded) {
         if (rows.stream().map(SplitSelection::complexId).distinct().count() != 1
-                || rows.stream().map(value -> value.name().strip().toLowerCase(java.util.Locale.ROOT))
+                || rows.stream().map(value -> value.name().strip().toLowerCase(Locale.ROOT))
                         .distinct().count() != rows.size()
                 || rows.stream().map(SplitSelection::housingTypeId).distinct().count() != rows.size()) {
             throw new InvalidIngestRequestException("같은 단지의 서로 다른 주택형과 중복되지 않는 공고 주택형명을 선택해 주세요.");
