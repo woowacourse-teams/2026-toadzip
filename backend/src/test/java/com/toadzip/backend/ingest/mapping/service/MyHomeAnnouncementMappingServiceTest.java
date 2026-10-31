@@ -966,6 +966,38 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     @Test
+    void 주택형_면적은_값이_정확히_같을_때만_일치로_본다() {
+        saveMappedComplex();
+        HousingComplex complex = complexRepository.findAll().getFirst();
+        HousingType exactArea = housingTypeRepository.save(HousingType.createFromMyHome(
+                complex,
+                "second-source-housing-type-id",
+                "59A",
+                new BigDecimal("59.9500"),
+                new BigDecimal("84.0500")
+        ));
+        housingTypeRepository.save(HousingType.createFromMyHome(
+                complex,
+                "third-source-housing-type-id",
+                "59B",
+                new BigDecimal("59.5000"),
+                new BigDecimal("84.5000")
+        ));
+        sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
+        saveDefaultLhSupply("21026");
+        service.mapAll();
+        saveLhSupplyLink("21026", "PAN-1");
+        lhSupplyRepository.saveAll(List.of(
+                lhSupply(0, "PAN-1", "동삼 2단지 국민임대", "46-A형", "99.0000", "99.0000"),
+                lhSupply(1, "PAN-1", "동삼 2단지 국민임대", "기타", "59.9500", "99.0000")
+        ));
+
+        service.mapAll();
+
+        assertThat(supplyRow("21026:LH:PAN-1:1").getHousingType().getId()).isEqualTo(exactArea.getId());
+    }
+
+    @Test
     void 부분_lh_공급_교체를_거절하고_기존_공급행과_공급대상을_보존한다() {
         saveMappedComplex();
         sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
