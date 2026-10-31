@@ -13,7 +13,6 @@ import com.toadzip.backend.ingest.collection.service.SourceCollectionAttempt;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.util.UUID;
-import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -38,21 +37,21 @@ public class LhAnnouncementQueryCollector {
             MeterRegistry meters
     ) {
         ExternalDataSource source = ExternalDataSource.valueOf(request.source().name());
-        Supplier<LhAnnouncementCollectionRequest> newAttempt = () -> new LhAnnouncementCollectionRequest(
-                request.executionId(), request.source(), request.query(), request.collectionVersion(), clock.instant());
+        var attempt = SourceCollectionAttempt.prepare(() -> new LhAnnouncementCollectionRequest(
+                request.executionId(), request.source(), request.query(), request.collectionVersion(), clock.instant()));
         if (request.source() == CollectionSource.LH_ANNOUNCEMENT_SUPPLY) {
-            return SourceCollectionAttempt.run(records, newAttempt,
-                    attempt -> retry.execute(source, request.description(),
+            return attempt.run(records,
+                    started -> retry.execute(source, request.description(),
                             () -> supplyParser.parse(request.query().supplyInfoTypeCode(), api.supply(request.query())),
                             counter),
-                    (recordId, attempt, rows) -> store(meters, source, recordId,
-                            () -> storage.completeSupply(recordId, attempt, clock.instant(), rows)));
+                    (recordId, started, rows) -> store(meters, source, recordId,
+                            () -> storage.completeSupply(recordId, started, clock.instant(), rows)));
         }
-        return SourceCollectionAttempt.run(records, newAttempt,
-                attempt -> retry.execute(source, request.description(),
+        return attempt.run(records,
+                started -> retry.execute(source, request.description(),
                         () -> detailParser.parse(api.detail(request.query())), counter),
-                (recordId, attempt, rows) -> store(meters, source, recordId,
-                        () -> storage.completeDetail(recordId, attempt, clock.instant(), rows)));
+                (recordId, started, rows) -> store(meters, source, recordId,
+                        () -> storage.completeDetail(recordId, started, clock.instant(), rows)));
     }
 
     private UUID store(MeterRegistry meters, ExternalDataSource source, UUID recordId, Runnable completion) {

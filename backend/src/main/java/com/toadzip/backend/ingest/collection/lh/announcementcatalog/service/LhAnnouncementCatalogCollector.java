@@ -40,10 +40,9 @@ public class LhAnnouncementCatalogCollector {
             LhAnnouncementCatalogCollectionRequest request,
             IntFunction<LhAnnouncementCatalogPage> fetch
     ) {
-        return SourceCollectionAttempt.run(records,
-                () -> new LhAnnouncementCatalogCollectionRequest(request.executionId(), request.pageSize(),
-                        request.maxPages(), clock.instant()),
-                attempt -> fetchPages(attempt, fetch), storage::complete);
+        return SourceCollectionAttempt.prepare(() -> new LhAnnouncementCatalogCollectionRequest(request.executionId(), request.pageSize(),
+                        request.maxPages(), clock.instant()))
+                .run(records, attempt -> fetchPages(attempt, fetch), storage::complete);
     }
 
     private LhAnnouncementCatalogCollectedResponse fetchPages(

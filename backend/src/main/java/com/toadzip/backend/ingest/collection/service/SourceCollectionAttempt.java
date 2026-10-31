@@ -9,29 +9,35 @@ import java.util.function.Supplier;
 
 /**
  * 원천 수집 한 번의 이력 생명주기다. 이력을 열고 원천을 모은 뒤 저장하고, 실패하면 이력을 실패로 닫고 예외를 그대로 던진다.
- * 실행 소유권과 중지 요청을 확인한 뒤에 요청을 만들어 이력의 시작 시각이 확인 대기를 포함하지 않게 하고,
+ * 실행 소유권과 중지 요청을 확인한 뒤에만 요청을 만들어 이력의 시작 시각이 확인 대기를 포함하지 않게 하고,
  * 저장하기 직전에 실행 소유권을 다시 확인한다.
  */
-public final class SourceCollectionAttempt {
+public final class SourceCollectionAttempt<A extends SourceCollectionRequest> {
 
-    private SourceCollectionAttempt() {
+    private final A request;
+
+    private SourceCollectionAttempt(A request) {
+        this.request = request;
     }
 
-    public static <A extends SourceCollectionRequest, T, R> R run(
-            SourceCollectionRecordService records,
-            Supplier<A> newAttempt,
-            Function<A, T> collect,
-            Store<A, T, R> store
-    ) {
+    /** 실행 소유권과 중지 요청을 확인한 뒤 요청을 만든다. 확인에 걸리면 요청을 만들지 않는다. */
+    public static <A extends SourceCollectionRequest> SourceCollectionAttempt<A> prepare(Supplier<A> newRequest) {
         verifyCanContinue();
-        A attempt = newAttempt.get();
-        UUID recordId = records.start(attempt);
+        return new SourceCollectionAttempt<>(newRequest.get());
+    }
+
+    public A request() {
+        return request;
+    }
+
+    public <T, R> R run(SourceCollectionRecordService records, Function<A, T> collect, Store<A, T, R> store) {
+        UUID recordId = records.start(request);
         try {
-            T collected = collect.apply(attempt);
+            T collected = collect.apply(request);
             IngestExecutionScope.verifyHeld();
-            return store.store(recordId, attempt, collected);
+            return store.store(recordId, request, collected);
         } catch (RuntimeException failure) {
-            records.fail(recordId, attempt, failure);
+            records.fail(recordId, request, failure);
             throw failure;
         }
     }
@@ -45,6 +51,6 @@ public final class SourceCollectionAttempt {
     @FunctionalInterface
     public interface Store<A, T, R> {
 
-        R store(UUID recordId, A attempt, T collected);
+        R store(UUID recordId, A request, T collected);
     }
 }

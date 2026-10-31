@@ -93,6 +93,9 @@ class LhLeaseCatalogStorageIntegrationTest {
     private LhLeaseCatalogCollector collector;
 
     @Autowired
+    private Clock clock;
+
+    @Autowired
     private LhLeaseCatalogStorageService storage;
 
     @Autowired
@@ -148,12 +151,13 @@ class LhLeaseCatalogStorageIntegrationTest {
             return withSuccess(page(2, 3, last), MediaType.APPLICATION_JSON).createResponse(request);
         });
 
-        UUID id = collect(request(2));
+        int stored = collect(request(2));
 
+        assertThat(stored).isEqualTo(3);
         assertThat(source().rows()).containsExactly(first, first, last);
         assertThat(source().collectedAt()).isEqualTo(NOW);
-        assertThat(source().recordId()).isEqualTo(id);
         assertThat(records.findAll()).singleElement().satisfies(record -> {
+            assertThat(source().recordId()).isEqualTo(record.getId());
             assertThat(record.getStatus()).isEqualTo(CollectionStatus.SUCCESS);
             assertThat(record.getStoredRowCount()).isEqualTo(3);
         });
@@ -366,8 +370,10 @@ class LhLeaseCatalogStorageIntegrationTest {
         }
     }
 
-    private UUID collect(LhLeaseCatalogCollectionRequest request) {
-        return collector.collectWithinBatch(request, CollectionServiceTestFixture.retryWithoutDelay(),
-                new ExternalDataCallCounter());
+    /** 운영처럼 실행 확인 뒤 수집기의 시계로 요청을 다시 만든다. */
+    private int collect(LhLeaseCatalogCollectionRequest request) {
+        return CollectionServiceTestFixture.pagedCollector(history, clock).collect(collector,
+                startedAt -> new LhLeaseCatalogCollectionRequest(request.executionId(), request.pageSize(),
+                        request.maxPages(), startedAt), new ExternalDataCallCounter());
     }
 }

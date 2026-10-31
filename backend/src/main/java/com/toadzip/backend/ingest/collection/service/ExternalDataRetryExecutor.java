@@ -47,7 +47,8 @@ public class ExternalDataRetryExecutor {
         return execute(source, requestDescription, action, callCounter, () -> {});
     }
 
-    private <T> T execute(
+    /** beforeAttempt는 호출 시도와 재시도 대기 중 확인마다 실행해, 함께 수집하는 다른 작업의 취소 신호를 확인한다. */
+    public <T> T execute(
             ExternalDataSource source, String requestDescription, Supplier<T> action,
             ExternalDataCallCounter callCounter, Runnable beforeAttempt
     ) {

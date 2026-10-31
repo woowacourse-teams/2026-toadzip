@@ -58,10 +58,9 @@ public class MyHomeAnnouncementCollector {
             MyHomeAnnouncementCollectionRequest request,
             IntFunction<SourcePage<MyHomeAnnouncementSourceSnapshot>> fetch
     ) {
-        return SourceCollectionAttempt.run(records,
-                () -> new MyHomeAnnouncementCollectionRequest(request.executionId(), request.supplyTypeCode(),
-                        request.pageSize(), request.maxPages(), clock.instant(), request.pblancId()),
-                attempt -> fetchPages(attempt, fetch), (recordId, attempt, buffer) -> {
+        return SourceCollectionAttempt.prepare(() -> new MyHomeAnnouncementCollectionRequest(request.executionId(), request.supplyTypeCode(),
+                        request.pageSize(), request.maxPages(), clock.instant(), request.pblancId()))
+                .run(records, attempt -> fetchPages(attempt, fetch), (recordId, attempt, buffer) -> {
                     MyHomeAnnouncementCollectedResponse response = buffer.finish(clock.instant());
                     if (attempt.pblancId() != null) {
                         var rows = response.rows().stream()

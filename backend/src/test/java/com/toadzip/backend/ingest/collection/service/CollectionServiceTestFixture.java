@@ -63,6 +63,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeReg
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollector;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexRegionCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexStorageService;
+import com.toadzip.backend.ingest.collection.paging.service.PagedSourceCollector;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -87,6 +88,11 @@ public final class CollectionServiceTestFixture {
     /** 운영 수집과 같은 재시도·예외 변환 흐름을 재시도 대기 없이 실행한다. */
     public static ExternalDataRetryExecutor retryWithoutDelay() {
         return new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry());
+    }
+
+    /** 저장 통합 테스트가 운영과 같은 페이지 수집 흐름을 재시도 대기 없이 실행한다. */
+    public static PagedSourceCollector pagedCollector(SourceCollectionRecordService records, Clock clock) {
+        return new PagedSourceCollector(records, retryWithoutDelay(), mock(ExternalDataFailureRecorder.class), clock);
     }
 
     public CollectionServiceTestFixture() {
@@ -173,10 +179,8 @@ public final class CollectionServiceTestFixture {
             storedCounts.put(invocation.getArgument(0), fixtures.replaceCatalog(rows));
             return null;
         }).when(storage).complete(any(), any(), any());
-        var collector = new LhLeaseCatalogCollector(
-                api, storage, records, CLOCK);
-        return new LhLeaseCatalogCollectionService(
-                collector, records, failures, retry, CLOCK);
+        return new LhLeaseCatalogCollectionService(new LhLeaseCatalogCollector(api, storage),
+                new PagedSourceCollector(records, retry, failures, CLOCK));
     }
 
     LhAnnouncementCatalogCollectionService catalog(

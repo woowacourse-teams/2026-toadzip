@@ -44,10 +44,9 @@ public class MyHomeComplexCollector {
             MyHomeComplexCollectionRequest request,
             IntFunction<SourcePage<MyHomeComplexSourceSnapshot>> fetch
     ) {
-        return SourceCollectionAttempt.run(records,
-                () -> new MyHomeComplexCollectionRequest(request.executionId(), request.provinceCode(),
-                        request.districtCode(), request.pageSize(), request.maxPages(), clock.instant()),
-                attempt -> fetchPages(attempt, fetch), (recordId, attempt, buffer) -> {
+        return SourceCollectionAttempt.prepare(() -> new MyHomeComplexCollectionRequest(request.executionId(), request.provinceCode(),
+                        request.districtCode(), request.pageSize(), request.maxPages(), clock.instant()))
+                .run(records, attempt -> fetchPages(attempt, fetch), (recordId, attempt, buffer) -> {
                     storage.complete(recordId, attempt, buffer.finish(clock.instant()));
                     return recordId;
                 });

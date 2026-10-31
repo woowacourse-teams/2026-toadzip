@@ -30,7 +30,7 @@ class SourceCollectionAttemptTest {
         UUID recordId = UUID.randomUUID();
         when(records.start(attempt)).thenReturn(recordId);
 
-        String stored = SourceCollectionAttempt.run(records, () -> attempt, request -> "rows",
+        String stored = SourceCollectionAttempt.prepare(() -> attempt).run(records, request -> "rows",
                 (id, request, rows) -> id + ":" + rows);
 
         assertThat(stored).isEqualTo(recordId + ":rows");
@@ -38,16 +38,16 @@ class SourceCollectionAttemptTest {
     }
 
     @Test
-    void 중지_요청이_있으면_요청을_만들거나_수집_이력을_열지_않는다() {
+    void 중지_요청이_있으면_요청을_만들지_않아_수집_이력을_열_수_없다() {
         var monitor = mock(DataPipelineExecutionMonitor.class);
         doThrow(new DataPipelineStoppedException()).when(monitor).checkStopRequested();
         var created = new AtomicBoolean();
 
         try (var ignored = IngestExecutionScope.open(null, monitor)) {
-            assertThatThrownBy(() -> SourceCollectionAttempt.run(records, () -> {
+            assertThatThrownBy(() -> SourceCollectionAttempt.prepare(() -> {
                 created.set(true);
                 return attempt;
-            }, request -> "rows", (id, request, rows) -> id)).isInstanceOf(DataPipelineStoppedException.class);
+            })).isInstanceOf(DataPipelineStoppedException.class);
         }
 
         assertThat(created).isFalse();
@@ -64,7 +64,7 @@ class SourceCollectionAttemptTest {
         var stored = new AtomicBoolean();
 
         try (var ignored = IngestExecutionScope.open(lease)) {
-            assertThatThrownBy(() -> SourceCollectionAttempt.run(records, () -> attempt, request -> "rows",
+            assertThatThrownBy(() -> SourceCollectionAttempt.prepare(() -> attempt).run(records, request -> "rows",
                     (id, request, rows) -> {
                         stored.set(true);
                         return id;
@@ -81,7 +81,7 @@ class SourceCollectionAttemptTest {
         when(records.start(attempt)).thenReturn(recordId);
         var failure = new IllegalArgumentException("페이지 간 전체 건수가 다릅니다.");
 
-        assertThatThrownBy(() -> SourceCollectionAttempt.run(records, () -> attempt, request -> {
+        assertThatThrownBy(() -> SourceCollectionAttempt.prepare(() -> attempt).run(records, request -> {
             throw failure;
         }, (id, request, rows) -> id)).isSameAs(failure);
 
@@ -94,7 +94,7 @@ class SourceCollectionAttemptTest {
         when(records.start(attempt)).thenReturn(recordId);
         var failure = new IllegalStateException("수집 기록을 찾을 수 없습니다.");
 
-        assertThatThrownBy(() -> SourceCollectionAttempt.run(records, () -> attempt, request -> "rows",
+        assertThatThrownBy(() -> SourceCollectionAttempt.prepare(() -> attempt).run(records, request -> "rows",
                 (id, request, rows) -> {
                     throw failure;
                 })).isSameAs(failure);
