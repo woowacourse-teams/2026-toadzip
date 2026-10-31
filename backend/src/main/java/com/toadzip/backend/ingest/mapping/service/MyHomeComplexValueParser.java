@@ -1,10 +1,11 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.domain.SourceArea;
+import com.toadzip.backend.ingest.domain.SourceText;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingRejectedException;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -110,7 +111,7 @@ class MyHomeComplexValueParser {
         if (value.signum() < 0) {
             throw invalid(fieldName + "은 음수일 수 없습니다.");
         }
-        return value.setScale(4, RoundingMode.HALF_UP);
+        return SourceArea.normalized(value);
     }
 
     String pnu(String value) {
@@ -160,10 +161,7 @@ class MyHomeComplexValueParser {
     }
 
     String normalizedText(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.strip();
+        return SourceText.strippedOrNull(value);
     }
 
     MyHomeComplexMappingRejectedException missing(String fieldName) {

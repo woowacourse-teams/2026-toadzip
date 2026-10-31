@@ -1,8 +1,8 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
+import com.toadzip.backend.ingest.domain.SourceArea;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -77,7 +77,7 @@ public class LhHousingTypeHouseholdSourceMapper {
             if (value.signum() < 0) {
                 throw new IllegalArgumentException("전용면적은 음수일 수 없습니다.");
             }
-            return value.setScale(4, RoundingMode.HALF_UP);
+            return SourceArea.normalized(value);
         }
         catch (NumberFormatException exception) {
             throw new IllegalArgumentException("전용면적이 숫자가 아닙니다.");

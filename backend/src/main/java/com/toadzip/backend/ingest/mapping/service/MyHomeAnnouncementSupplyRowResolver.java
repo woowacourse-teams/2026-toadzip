@@ -10,6 +10,7 @@ import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncement
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.domain.SourceText;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
@@ -241,7 +242,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
             MyHomeSupplyRowMappingData sourceRow,
             LhAnnouncementSupplySource lhSupply
     ) {
-        String lhTypeName = normalizedText(lhSupply.getTypeName());
+        String lhTypeName = SourceText.strippedOrNull(lhSupply.getTypeName());
         if (lhTypeName != null) {
             return lhTypeName;
         }
@@ -277,7 +278,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
     }
 
     private String normalizedNumber(String raw) {
-        String normalized = normalizedText(raw);
+        String normalized = SourceText.strippedOrNull(raw);
         if (normalized == null) {
             return null;
         }
@@ -287,13 +288,6 @@ public class MyHomeAnnouncementSupplyRowResolver {
             return null;
         }
         return withoutUnit;
-    }
-
-    private String normalizedText(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.strip();
     }
 
     record ResolvedAnnouncement(

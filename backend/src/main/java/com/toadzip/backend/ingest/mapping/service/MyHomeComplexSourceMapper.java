@@ -4,11 +4,11 @@ import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.MyHomeRentalCondition;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.domain.SourceArea;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.NormalizedRoadAddress;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
@@ -112,7 +112,7 @@ public class MyHomeComplexSourceMapper {
         BigDecimal commonArea = parser.optionalArea(source.getSuplyCmnuseAr(), "공용면적");
         BigDecimal supplyArea = null;
         if (commonArea != null) {
-            supplyArea = exclusiveArea.add(commonArea).setScale(4, RoundingMode.HALF_UP);
+            supplyArea = SourceArea.normalized(exclusiveArea.add(commonArea));
         }
         return new MyHomeHousingTypeMappingData(
                 source.getSourceKey(),

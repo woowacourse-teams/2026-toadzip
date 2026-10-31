@@ -40,6 +40,6 @@ public class MyHomeComplexSourceReader {
 
     public List<String> findDistinctRoadAddresses() {
         return findAll().stream().map(MyHomeComplexSource::getRnAdres)
-                .filter(address -> address != null && !address.isBlank()).distinct().toList();
+                .filter(java.util.Objects::nonNull).distinct().toList();
     }
 }

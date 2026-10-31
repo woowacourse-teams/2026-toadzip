@@ -6,6 +6,7 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
+import com.toadzip.backend.ingest.domain.SourceText;
 import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
@@ -188,7 +189,7 @@ public class MyHomeAnnouncementMappingService {
     ) {
         Map<String, List<MyHomeAnnouncementSource>> grouped = new LinkedHashMap<>();
         for (MyHomeAnnouncementSource source : sourceRepository.findAll()) {
-            String identifier = normalizedText(source.getPblancId());
+            String identifier = SourceText.strippedOrNull(source.getPblancId());
             if (identifier == null) {
                 failures.add(failureOf(
                         source,
@@ -267,12 +268,5 @@ public class MyHomeAnnouncementMappingService {
                 .stream()
                 .map(MyHomeAnnouncementMappingFailureResponse::from)
                 .toList();
-    }
-
-    private String normalizedText(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.strip();
     }
 }

@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.collection.myhome.announcement.domain.project
 
 import static lombok.AccessLevel.PROTECTED;
 
+import com.toadzip.backend.ingest.domain.SourceText;
 import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -81,31 +82,31 @@ public class MyHomeAnnouncementSource {
     }
 
     public void replaceWith(MyHomeAnnouncementSourceSnapshot snapshot) {
-        pblancId = trim(snapshot.pblancId());
+        pblancId = SourceText.strippedOrNull(snapshot.pblancId());
         houseSn = snapshot.houseSn();
-        sttusNm = trim(snapshot.sttusNm());
-        pblancNm = trim(snapshot.pblancNm());
-        suplyInsttNm = trim(snapshot.suplyInsttNm());
-        houseTyNm = trim(snapshot.houseTyNm());
-        suplyTyNm = trim(snapshot.suplyTyNm());
-        beforePblancId = trim(snapshot.beforePblancId());
-        rcritPblancDe = trim(snapshot.rcritPblancDe());
-        przwnerPresnatnDe = trim(snapshot.przwnerPresnatnDe());
-        beginDe = trim(snapshot.beginDe());
-        endDe = trim(snapshot.endDe());
-        refrnc = trim(snapshot.refrnc());
-        url = trim(snapshot.url());
-        pcUrl = trim(snapshot.pcUrl());
-        mobileUrl = trim(snapshot.mobileUrl());
-        hsmpNm = trim(snapshot.hsmpNm());
-        brtcNm = trim(snapshot.brtcNm());
-        signguNm = trim(snapshot.signguNm());
-        fullAdres = trim(snapshot.fullAdres());
-        rnCodeNm = trim(snapshot.rnCodeNm());
-        refrnLegaldongNm = trim(snapshot.refrnLegaldongNm());
-        pnu = trim(snapshot.pnu());
-        heatMthdNm = trim(snapshot.heatMthdNm());
-        totHshldCo = trim(snapshot.totHshldCo());
+        sttusNm = SourceText.strippedOrNull(snapshot.sttusNm());
+        pblancNm = SourceText.strippedOrNull(snapshot.pblancNm());
+        suplyInsttNm = SourceText.strippedOrNull(snapshot.suplyInsttNm());
+        houseTyNm = SourceText.strippedOrNull(snapshot.houseTyNm());
+        suplyTyNm = SourceText.strippedOrNull(snapshot.suplyTyNm());
+        beforePblancId = SourceText.strippedOrNull(snapshot.beforePblancId());
+        rcritPblancDe = SourceText.strippedOrNull(snapshot.rcritPblancDe());
+        przwnerPresnatnDe = SourceText.strippedOrNull(snapshot.przwnerPresnatnDe());
+        beginDe = SourceText.strippedOrNull(snapshot.beginDe());
+        endDe = SourceText.strippedOrNull(snapshot.endDe());
+        refrnc = SourceText.strippedOrNull(snapshot.refrnc());
+        url = SourceText.strippedOrNull(snapshot.url());
+        pcUrl = SourceText.strippedOrNull(snapshot.pcUrl());
+        mobileUrl = SourceText.strippedOrNull(snapshot.mobileUrl());
+        hsmpNm = SourceText.strippedOrNull(snapshot.hsmpNm());
+        brtcNm = SourceText.strippedOrNull(snapshot.brtcNm());
+        signguNm = SourceText.strippedOrNull(snapshot.signguNm());
+        fullAdres = SourceText.strippedOrNull(snapshot.fullAdres());
+        rnCodeNm = SourceText.strippedOrNull(snapshot.rnCodeNm());
+        refrnLegaldongNm = SourceText.strippedOrNull(snapshot.refrnLegaldongNm());
+        pnu = SourceText.strippedOrNull(snapshot.pnu());
+        heatMthdNm = SourceText.strippedOrNull(snapshot.heatMthdNm());
+        totHshldCo = SourceText.strippedOrNull(snapshot.totHshldCo());
         sumSuplyCo = snapshot.sumSuplyCo();
         rentGtn = snapshot.rentGtn();
         enty = snapshot.enty();
@@ -173,12 +174,5 @@ public class MyHomeAnnouncementSource {
         }
         String value = raw.toString().strip();
         return value.length() + ":" + value;
-    }
-
-    private static String trim(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.strip();
     }
 }

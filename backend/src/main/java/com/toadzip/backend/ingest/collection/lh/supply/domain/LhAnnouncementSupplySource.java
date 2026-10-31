@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.lh.supply.domain;
 
 import com.toadzip.backend.ingest.collection.lh.supply.domain.projection.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.domain.SourceText;
 import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -26,15 +27,15 @@ public class LhAnnouncementSupplySource {
 
     public LhAnnouncementSupplySource(int sourceOrder, String panId, LhAnnouncementSupplySourceSnapshot snapshot) {
         this.sourceOrder = sourceOrder;
-        this.panId = trim(panId);
-        complexLabel = trim(snapshot.complexLabel());
-        typeName = trim(snapshot.typeName());
-        exclusiveArea = trim(snapshot.exclusiveArea());
-        supplyArea = trim(snapshot.supplyArea());
-        totalUnitCount = trim(snapshot.totalUnitCount());
-        suppliedUnitCount = trim(snapshot.suppliedUnitCount());
-        depositText = trim(snapshot.depositText());
-        monthlyRentText = trim(snapshot.monthlyRentText());
+        this.panId = SourceText.strippedOrNull(panId);
+        complexLabel = SourceText.strippedOrNull(snapshot.complexLabel());
+        typeName = SourceText.strippedOrNull(snapshot.typeName());
+        exclusiveArea = SourceText.strippedOrNull(snapshot.exclusiveArea());
+        supplyArea = SourceText.strippedOrNull(snapshot.supplyArea());
+        totalUnitCount = SourceText.strippedOrNull(snapshot.totalUnitCount());
+        suppliedUnitCount = SourceText.strippedOrNull(snapshot.suppliedUnitCount());
+        depositText = SourceText.strippedOrNull(snapshot.depositText());
+        monthlyRentText = SourceText.strippedOrNull(snapshot.monthlyRentText());
     }
 
     public static LhAnnouncementSupplySource read(
@@ -64,12 +65,5 @@ public class LhAnnouncementSupplySource {
             throw new IllegalArgumentException("LH 조회 조건 해시는 필수입니다.");
         }
         this.requestHash = requestHash;
-    }
-
-    private static String trim(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.strip();
     }
 }

@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.lh.leasecatalog.domain;
 
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.projection.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.domain.SourceText;
 import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -24,14 +25,14 @@ public class LhCatalogSource {
 
     public LhCatalogSource(int sourceOrder, LhCatalogSourceSnapshot snapshot) {
         this.sourceOrder = sourceOrder;
-        areaName = trim(snapshot.areaName());
-        supplyTypeName = trim(snapshot.supplyTypeName());
-        complexLabel = trim(snapshot.complexLabel());
-        complexTotalUnitCount = trim(snapshot.complexTotalUnitCount());
-        exclusiveArea = trim(snapshot.exclusiveArea());
-        totalUnitCount = trim(snapshot.totalUnitCount());
-        depositText = trim(snapshot.depositText());
-        monthlyRentText = trim(snapshot.monthlyRentText());
+        areaName = SourceText.strippedOrNull(snapshot.areaName());
+        supplyTypeName = SourceText.strippedOrNull(snapshot.supplyTypeName());
+        complexLabel = SourceText.strippedOrNull(snapshot.complexLabel());
+        complexTotalUnitCount = SourceText.strippedOrNull(snapshot.complexTotalUnitCount());
+        exclusiveArea = SourceText.strippedOrNull(snapshot.exclusiveArea());
+        totalUnitCount = SourceText.strippedOrNull(snapshot.totalUnitCount());
+        depositText = SourceText.strippedOrNull(snapshot.depositText());
+        monthlyRentText = SourceText.strippedOrNull(snapshot.monthlyRentText());
     }
 
     public static LhCatalogSource read(Long id, int order, Instant collectedAt,
@@ -50,12 +51,5 @@ public class LhCatalogSource {
             throw new IllegalArgumentException("수집 시각은 필수입니다.");
         }
         this.collectedAt = collectedAt;
-    }
-
-    private static String trim(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.strip();
     }
 }

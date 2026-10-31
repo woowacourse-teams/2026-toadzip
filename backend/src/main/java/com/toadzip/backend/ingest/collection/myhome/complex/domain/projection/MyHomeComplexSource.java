@@ -3,8 +3,9 @@ package com.toadzip.backend.ingest.collection.myhome.complex.domain.projection;
 import static lombok.AccessLevel.PROTECTED;
 
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
+import com.toadzip.backend.ingest.domain.SourceArea;
+import com.toadzip.backend.ingest.domain.SourceText;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -66,24 +67,24 @@ public class MyHomeComplexSource {
 
     public void replaceWith(MyHomeComplexSourceSnapshot snapshot) {
         hsmpSn = snapshot.hsmpSn();
-        insttNm = trim(snapshot.insttNm());
-        brtcCode = trim(snapshot.brtcCode());
-        brtcNm = trim(snapshot.brtcNm());
-        signguCode = trim(snapshot.signguCode());
-        signguNm = trim(snapshot.signguNm());
-        hsmpNm = trim(snapshot.hsmpNm());
-        rnAdres = trim(snapshot.rnAdres());
-        pnu = trim(snapshot.pnu());
-        competDe = trim(snapshot.competDe());
+        insttNm = SourceText.strippedOrNull(snapshot.insttNm());
+        brtcCode = SourceText.strippedOrNull(snapshot.brtcCode());
+        brtcNm = SourceText.strippedOrNull(snapshot.brtcNm());
+        signguCode = SourceText.strippedOrNull(snapshot.signguCode());
+        signguNm = SourceText.strippedOrNull(snapshot.signguNm());
+        hsmpNm = SourceText.strippedOrNull(snapshot.hsmpNm());
+        rnAdres = SourceText.strippedOrNull(snapshot.rnAdres());
+        pnu = SourceText.strippedOrNull(snapshot.pnu());
+        competDe = SourceText.strippedOrNull(snapshot.competDe());
         hshldCo = snapshot.hshldCo();
-        suplyTyNm = trim(snapshot.suplyTyNm());
-        styleNm = trim(snapshot.styleNm());
-        suplyPrvuseAr = area(snapshot.suplyPrvuseAr());
-        suplyCmnuseAr = area(snapshot.suplyCmnuseAr());
-        houseTyNm = trim(snapshot.houseTyNm());
-        heatMthdDetailNm = trim(snapshot.heatMthdDetailNm());
-        buldStleNm = trim(snapshot.buldStleNm());
-        elvtrInstlAtNm = trim(snapshot.elvtrInstlAtNm());
+        suplyTyNm = SourceText.strippedOrNull(snapshot.suplyTyNm());
+        styleNm = SourceText.strippedOrNull(snapshot.styleNm());
+        suplyPrvuseAr = SourceArea.normalized(snapshot.suplyPrvuseAr());
+        suplyCmnuseAr = SourceArea.normalized(snapshot.suplyCmnuseAr());
+        houseTyNm = SourceText.strippedOrNull(snapshot.houseTyNm());
+        heatMthdDetailNm = SourceText.strippedOrNull(snapshot.heatMthdDetailNm());
+        buldStleNm = SourceText.strippedOrNull(snapshot.buldStleNm());
+        elvtrInstlAtNm = SourceText.strippedOrNull(snapshot.elvtrInstlAtNm());
         parkngCo = snapshot.parkngCo();
         bassRentGtn = snapshot.bassRentGtn();
         bassMtRntchrg = snapshot.bassMtRntchrg();
@@ -133,22 +134,8 @@ public class MyHomeComplexSource {
         }
         String value = raw.toString().strip();
         if (raw instanceof BigDecimal decimal) {
-            value = area(decimal).stripTrailingZeros().toPlainString();
+            value = SourceArea.normalized(decimal).stripTrailingZeros().toPlainString();
         }
         return value.length() + ":" + value;
-    }
-
-    private static BigDecimal area(BigDecimal value) {
-        if (value == null) {
-            return null;
-        }
-        return value.setScale(4, RoundingMode.HALF_UP);
-    }
-
-    private static String trim(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.strip();
     }
 }

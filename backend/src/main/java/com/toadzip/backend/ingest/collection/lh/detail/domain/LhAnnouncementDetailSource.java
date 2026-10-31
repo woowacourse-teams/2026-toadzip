@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.lh.detail.domain;
 
 import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceSnapshot;
+import com.toadzip.backend.ingest.domain.SourceText;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -88,34 +89,34 @@ public class LhAnnouncementDetailSource {
             String etcContents
     ) {
         this.sourceOrder = sourceOrder;
-        this.panId = trim(panId);
-        this.datasetType = trim(datasetType);
-        this.complexName = trim(complexName);
-        this.address = trim(address);
-        this.detailAddress = trim(detailAddress);
-        this.totalUnitCount = trim(totalUnitCount);
-        this.heatingDescription = trim(heatingDescription);
-        this.exclusiveAreaRange = trim(exclusiveAreaRange);
-        this.expectedMoveInYearMonth = trim(expectedMoveInYearMonth);
-        this.guidanceText = trim(guidanceText);
-        this.applicationPeriod = trim(applicationPeriod);
-        this.documentTargetAnnouncementDate = trim(documentTargetAnnouncementDate);
-        this.documentSubmissionBeginDate = trim(documentSubmissionBeginDate);
-        this.documentSubmissionEndDate = trim(documentSubmissionEndDate);
-        this.contractBeginDate = trim(contractBeginDate);
-        this.contractEndDate = trim(contractEndDate);
-        this.receptionAddress = trim(receptionAddress);
-        this.receptionDetailAddress = trim(receptionDetailAddress);
-        this.operationBegin = trim(operationBegin);
-        this.operationEnd = trim(operationEnd);
-        this.phone = trim(phone);
-        this.receptionGuidance = trim(receptionGuidance);
-        this.kind = trim(kind);
-        this.name = trim(name);
-        this.url = trim(url);
-        this.attachmentComplexName = trim(attachmentComplexName);
-        this.correctionReason = trim(correctionReason);
-        this.etcContents = trim(etcContents);
+        this.panId = SourceText.strippedOrNull(panId);
+        this.datasetType = SourceText.strippedOrNull(datasetType);
+        this.complexName = SourceText.strippedOrNull(complexName);
+        this.address = SourceText.strippedOrNull(address);
+        this.detailAddress = SourceText.strippedOrNull(detailAddress);
+        this.totalUnitCount = SourceText.strippedOrNull(totalUnitCount);
+        this.heatingDescription = SourceText.strippedOrNull(heatingDescription);
+        this.exclusiveAreaRange = SourceText.strippedOrNull(exclusiveAreaRange);
+        this.expectedMoveInYearMonth = SourceText.strippedOrNull(expectedMoveInYearMonth);
+        this.guidanceText = SourceText.strippedOrNull(guidanceText);
+        this.applicationPeriod = SourceText.strippedOrNull(applicationPeriod);
+        this.documentTargetAnnouncementDate = SourceText.strippedOrNull(documentTargetAnnouncementDate);
+        this.documentSubmissionBeginDate = SourceText.strippedOrNull(documentSubmissionBeginDate);
+        this.documentSubmissionEndDate = SourceText.strippedOrNull(documentSubmissionEndDate);
+        this.contractBeginDate = SourceText.strippedOrNull(contractBeginDate);
+        this.contractEndDate = SourceText.strippedOrNull(contractEndDate);
+        this.receptionAddress = SourceText.strippedOrNull(receptionAddress);
+        this.receptionDetailAddress = SourceText.strippedOrNull(receptionDetailAddress);
+        this.operationBegin = SourceText.strippedOrNull(operationBegin);
+        this.operationEnd = SourceText.strippedOrNull(operationEnd);
+        this.phone = SourceText.strippedOrNull(phone);
+        this.receptionGuidance = SourceText.strippedOrNull(receptionGuidance);
+        this.kind = SourceText.strippedOrNull(kind);
+        this.name = SourceText.strippedOrNull(name);
+        this.url = SourceText.strippedOrNull(url);
+        this.attachmentComplexName = SourceText.strippedOrNull(attachmentComplexName);
+        this.correctionReason = SourceText.strippedOrNull(correctionReason);
+        this.etcContents = SourceText.strippedOrNull(etcContents);
     }
 
     public static LhAnnouncementDetailSource read(
@@ -135,9 +136,9 @@ public class LhAnnouncementDetailSource {
         source.id = id;
         source.requestHash = requestHash;
         source.collectedAt = collectedAt;
-        source.applicationBeginDate = trim(snapshot.applicationBeginDate());
-        source.applicationEndDate = trim(snapshot.applicationEndDate());
-        source.winnerAnnouncementDate = trim(snapshot.winnerAnnouncementDate());
+        source.applicationBeginDate = SourceText.strippedOrNull(snapshot.applicationBeginDate());
+        source.applicationEndDate = SourceText.strippedOrNull(snapshot.applicationEndDate());
+        source.winnerAnnouncementDate = SourceText.strippedOrNull(snapshot.winnerAnnouncementDate());
         return source;
     }
 
@@ -154,9 +155,9 @@ public class LhAnnouncementDetailSource {
         if (!"SCHEDULE".equals(datasetType)) {
             throw new IllegalStateException("일정 원천에만 접수·당첨자 발표일을 지정할 수 있습니다.");
         }
-        this.applicationBeginDate = trim(applicationBeginDate);
-        this.applicationEndDate = trim(applicationEndDate);
-        this.winnerAnnouncementDate = trim(winnerAnnouncementDate);
+        this.applicationBeginDate = SourceText.strippedOrNull(applicationBeginDate);
+        this.applicationEndDate = SourceText.strippedOrNull(applicationEndDate);
+        this.winnerAnnouncementDate = SourceText.strippedOrNull(winnerAnnouncementDate);
     }
 
     public void assignRequestHash(String requestHash) {
@@ -176,12 +177,5 @@ public class LhAnnouncementDetailSource {
                 operationBegin, operationEnd, phone, receptionGuidance, kind, name, url,
                 attachmentComplexName, correctionReason, etcContents
         ).anyMatch(Objects::nonNull);
-    }
-
-    private static String trim(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.strip();
     }
 }
