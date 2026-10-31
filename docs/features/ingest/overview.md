@@ -38,7 +38,7 @@ MyHome은 `MyHomeAnnouncementCollectionService.collect()` → `PagedSourceCollec
 7개 공급유형별 모든 페이지가 유효할 때 원천과 성공 기록을 함께 저장한다. 전체 유형 성공 후 `MyHomeAnnouncementLifecycleService.completeRun()`으로 미조회를 판정한다. 호출 제한은 남은 유형을 중단한다.
 
 LH 공급·상세는 [LhAnnouncementExternalCollectionService](../../../backend/src/main/java/com/toadzip/backend/ingest/collection/lh/service/LhAnnouncementExternalCollectionService.java)의 `collect()`에서 시작한다.
-`collectAnnouncements()` → `collectBatch()`에서 대상을 고르고 `collectRequests()`에서 병렬 실행과 결과를 회수한다.
+`collectAnnouncements()` → `collectBatch()`에서 대상을 고르고 `LhAnnouncementSharedRequestCollector.collect()`에서 병렬 실행과 결과를 회수한다.
 요청 하나는 `LhAnnouncementCandidateCollector.collectAndStore()` → `LhAnnouncementQueryCollector.collect()` → `LhAnnouncementStorageService.completeSupply()/completeDetail()`에서 조회·검증·저장을 처리한다.
 조회 조건·공급코드는 `LhAnnouncementCollectionCandidateResolver`, 종료일에 따른 대상 포함 여부는 `LhAnnouncementCollectionPolicy`가 정한다. 일반 수집도 대상 요청을 매 실행 실제 조회한다. 같은 실행에서 공유하는 요청만 합치며 이전 실행의 성공 원천으로 호출을 생략하지 않는다.
 

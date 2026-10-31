@@ -2,7 +2,6 @@ package com.toadzip.backend.ingest.collection.lh.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.lh.configuration.LhAnnouncementClientProperties;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Resolution;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Skipped;
@@ -14,23 +13,13 @@ import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CompletionService;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorCompletionService;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -46,12 +35,10 @@ public class LhAnnouncementExternalCollectionService {
     private static final int ANNOUNCEMENT_BATCH_SIZE = 500;
 
     private final MyHomeAnnouncementSourceReader myHomeAnnouncementRepository;
-    private final LhAnnouncementCollectionProgressManager progressManager;
     private final ExternalDataFailureRecorder failureRecorder;
     private final LhAnnouncementCollectionCandidateResolver candidateResolver;
-    private final LhAnnouncementCandidateCollector candidateCollector;
     private final LhAnnouncementCollectionPolicy collectionPolicy;
-    private final LhAnnouncementClientProperties clientProperties;
+    private final LhAnnouncementSharedRequestCollector sharedRequests;
     private final MeterRegistry meterRegistry;
 
     public ExternalDataCollectionReport collect(ExternalDataSource targetSource) {
@@ -241,7 +228,7 @@ public class LhAnnouncementExternalCollectionService {
     ) {
         failureRecorder.skipAll(targetSource,
                 selection.sourceKeysWithoutEligibleCandidates().stream()
-                        .map(this::sourceSelectionDescription).toList(),
+                        .map(LhAnnouncementSharedRequestCollector::sourceSelectionDescription).toList(),
                 "현재 마이홈 공고 원천이 모두 LH 수집 대상에서 제외되어 충돌 재처리를 건너뜁니다.");
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
         for (Candidate conflict : selection.conflicts()) {
@@ -318,14 +305,10 @@ public class LhAnnouncementExternalCollectionService {
     }
 
     private ExternalDataCollectionReport conflictReport(ExternalDataSource targetSource, Candidate conflict) {
-        failureRecorder.record(targetSource, sourceSelectionDescription(conflict.sourceAnnouncementKey()),
+        failureRecorder.record(targetSource, LhAnnouncementSharedRequestCollector.sourceSelectionDescription(conflict.sourceAnnouncementKey()),
                 new IllegalStateException("현재 마이홈 공고 원천의 LH 요청이 서로 다릅니다: pblancId="
                         + conflict.sourceAnnouncementKey()), log, "LH 현재 원천 선택 실패");
         return new ExternalDataCollectionReport(targetSource.operation(), 0, 1, 0, 0, 0, 0, 1);
-    }
-
-    private String sourceSelectionDescription(String sourceAnnouncementKey) {
-        return "myhomeAnnouncementCurrentSource=" + sourceAnnouncementKey;
     }
 
     private ExternalDataCollectionReport collectCandidates(
@@ -343,7 +326,7 @@ public class LhAnnouncementExternalCollectionService {
                 ));
         Set<String> pendingConflicts = measurePreparation(targetSource, forceRefresh, "failure_read",
                 () -> failureRecorder.findPendingRequestDescriptions(targetSource, candidates.stream()
-                        .map(candidate -> sourceSelectionDescription(candidate.sourceAnnouncementKey())).toList()));
+                        .map(candidate -> LhAnnouncementSharedRequestCollector.sourceSelectionDescription(candidate.sourceAnnouncementKey())).toList()));
         List<List<Candidate>> pending = new ArrayList<>();
         for (List<Candidate> requestCandidates : candidatesByRequest.values()) {
             IngestExecutionScope.verifyCanContinue();
@@ -353,7 +336,7 @@ public class LhAnnouncementExternalCollectionService {
                 continue;
             }
             if (successful) {
-                linkCandidates(targetSource, requestCandidates, pendingConflicts);
+                sharedRequests.link(targetSource, requestCandidates, pendingConflicts);
             }
         }
         int pendingCandidateCount = pending.stream().mapToInt(List::size).sum();
@@ -364,7 +347,7 @@ public class LhAnnouncementExternalCollectionService {
         IngestExecutionScope.beginWork(
                 targetSource.operation() + " · 현재 묶음 (최대 500개 원천 행)", "요청", pending.size()
         );
-        return collectRequests(targetSource, pending, completedRequests, pendingConflicts);
+        return sharedRequests.collect(targetSource, pending, completedRequests, pendingConflicts);
     }
 
     private <T> T measurePreparation(
@@ -405,152 +388,6 @@ public class LhAnnouncementExternalCollectionService {
             int policyExcludedCount,
             int duplicateCount
     ) {
-    }
-
-    private ExternalDataCollectionReport collectRequests(
-            ExternalDataSource targetSource,
-            List<List<Candidate>> requests,
-            Map<String, Boolean> completedRequests,
-            Set<String> pendingConflicts
-    ) {
-        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
-        try (ExecutorService executor = Executors.newFixedThreadPool(clientProperties.maxConcurrentRequests())) {
-            CompletionService<ExternalDataCollectionReport> completions =
-                    new ExecutorCompletionService<>(executor);
-            List<CollectionRequest> pending = new ArrayList<>();
-            for (int index = 0; index < requests.size(); index++) {
-                pending.add(new CollectionRequest(index, requests.get(index)));
-            }
-            Map<Future<ExternalDataCollectionReport>, CollectionRequest> running = new HashMap<>();
-            Map<Integer, Throwable> failures = new TreeMap<>();
-            boolean stopScheduling = false;
-            while (!pending.isEmpty() || !running.isEmpty()) {
-                while (!stopScheduling && running.size() < clientProperties.maxConcurrentRequests()) {
-                    CollectionRequest next = takeNextEligible(pending, running.values());
-                    if (next == null) {
-                        break;
-                    }
-                    Future<ExternalDataCollectionReport> result = completions.submit(
-                            collectionTask(targetSource, next.candidates(), pendingConflicts)
-                    );
-                    running.put(result, next);
-                }
-                if (running.isEmpty()) {
-                    break;
-                }
-                Future<ExternalDataCollectionReport> completed = completions.take();
-                CollectionRequest finished = running.remove(completed);
-                try {
-                    ExternalDataCollectionReport result = completed.get();
-                    report = report.plus(result);
-                    completedRequests.put(finished.description(), result.failedRequestCount() == 0);
-                    IngestExecutionScope.workCompleted();
-                    stopScheduling |= report.rateLimitedRequestCount() > 0;
-                }
-                catch (ExecutionException exception) {
-                    failures.put(finished.index(), exception.getCause());
-                    stopScheduling = true;
-                }
-            }
-            throwCollectedFailures(failures);
-        }
-        catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("LH 공고 수집 대기가 중단되었습니다.", exception);
-        }
-        return report;
-    }
-
-    private void throwCollectedFailures(Map<Integer, Throwable> failures) {
-        Throwable failure = null;
-        for (Throwable additionalFailure : failures.values()) {
-            if (failure == null) {
-                failure = additionalFailure;
-                continue;
-            }
-            if (failure != additionalFailure) {
-                failure.addSuppressed(additionalFailure);
-            }
-        }
-        if (failure != null) {
-            throw propagate(failure);
-        }
-    }
-
-    private RuntimeException propagate(Throwable failure) {
-        if (failure instanceof RuntimeException runtimeException) {
-            return runtimeException;
-        }
-        if (failure instanceof Error error) {
-            throw error;
-        }
-        return new IllegalStateException("LH 공고 수집 작업이 실패했습니다.", failure);
-    }
-
-    private CollectionRequest takeNextEligible(
-            List<CollectionRequest> pending,
-            Collection<CollectionRequest> running
-    ) {
-        Iterator<CollectionRequest> iterator = pending.iterator();
-        while (iterator.hasNext()) {
-            CollectionRequest next = iterator.next();
-            if (running.stream().anyMatch(request -> request.panId().equals(next.panId()))) {
-                continue;
-            }
-            iterator.remove();
-            return next;
-        }
-        return null;
-    }
-
-    private record CollectionRequest(int index, List<Candidate> candidates) {
-
-        String panId() {
-            return candidates.getFirst().panId();
-        }
-
-        String description() {
-            return candidates.getFirst().requestDescription();
-        }
-    }
-
-    private Callable<ExternalDataCollectionReport> collectionTask(
-            ExternalDataSource targetSource,
-            List<Candidate> requestCandidates,
-            Set<String> pendingConflicts
-    ) {
-        return IngestExecutionScope.propagate(
-                () -> collectSharedRequest(targetSource, requestCandidates, pendingConflicts));
-    }
-
-    private ExternalDataCollectionReport collectSharedRequest(
-            ExternalDataSource targetSource,
-            List<Candidate> requestCandidates,
-            Set<String> pendingConflicts
-    ) {
-        ExternalDataCollectionReport report = candidateCollector.collect(targetSource, requestCandidates.getFirst());
-        if (report.failedRequestCount() > 0) {
-            return report;
-        }
-        linkCandidates(targetSource, requestCandidates.subList(1, requestCandidates.size()), pendingConflicts);
-        resolveConflict(targetSource, requestCandidates.getFirst(), pendingConflicts);
-        return report;
-    }
-
-    private void linkCandidates(
-            ExternalDataSource targetSource, List<Candidate> candidates, Set<String> pendingConflicts
-    ) {
-        for (Candidate candidate : candidates) {
-            progressManager.link(targetSource, candidate);
-            resolveConflict(targetSource, candidate, pendingConflicts);
-        }
-    }
-
-    private void resolveConflict(ExternalDataSource targetSource, Candidate candidate, Set<String> pendingConflicts) {
-        String conflictRequest = sourceSelectionDescription(candidate.sourceAnnouncementKey());
-        if (pendingConflicts.contains(conflictRequest)) {
-            failureRecorder.resolve(targetSource, conflictRequest);
-        }
     }
 
     private ExternalDataCollectionReport skipReport(

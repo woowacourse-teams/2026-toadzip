@@ -29,6 +29,7 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollection
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionPolicy;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionProgressManager;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementSharedRequestCollector;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot;
@@ -134,12 +135,11 @@ class LhAnnouncementExternalCollectionServiceTest {
         );
         service = new LhAnnouncementExternalCollectionService(
                 myHomeAnnouncementRepository,
-                progressManager,
                 failureRecorder,
                 new LhAnnouncementCollectionCandidateResolver(catalogRepository),
-                candidateCollector,
                 collectionPolicy,
-                new LhAnnouncementClientProperties(2, Duration.ofSeconds(3), Duration.ofSeconds(10)),
+                new LhAnnouncementSharedRequestCollector(candidateCollector, progressManager, failureRecorder,
+                        new LhAnnouncementClientProperties(2, Duration.ofSeconds(3), Duration.ofSeconds(10))),
                 meterRegistry
         );
     }
@@ -508,7 +508,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 설정한_8개_요청을_동시에_처리하되_아홉번째는_완료_슬롯을_기다린다() throws Exception {
-        ReflectionTestUtils.setField(service, "clientProperties",
+        ReflectionTestUtils.setField(ReflectionTestUtils.getField(service, "sharedRequests"), "clientProperties",
                 new LhAnnouncementClientProperties(8, Duration.ofSeconds(3), Duration.ofSeconds(10)));
         List<MyHomeAnnouncementSource> rows = new ArrayList<>();
         for (int index = 0; index < 10; index++) {
