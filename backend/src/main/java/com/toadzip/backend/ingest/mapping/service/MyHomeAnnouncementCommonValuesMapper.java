@@ -4,7 +4,6 @@ import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.stereotype.Component;

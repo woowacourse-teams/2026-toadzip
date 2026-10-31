@@ -243,7 +243,7 @@ public class LhSupplyLinkService {
         try {
             resolved = resolver.resolve(mapper.map(current));
         }
-        catch (MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException exception) {
+        catch (MyHomeAnnouncementMappingRejectedException exception) {
             throw new InvalidIngestRequestException(exception.getMessage());
         }
         if (resolved.supplies().isEmpty()) {

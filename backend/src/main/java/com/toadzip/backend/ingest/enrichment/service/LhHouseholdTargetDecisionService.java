@@ -16,7 +16,6 @@ import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdTargetDecisionView.S
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdTargetDecisionView.SourceGroup;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdTargetDecisionRepository;
-import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService.MatchedSource;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
@@ -115,14 +114,14 @@ public class LhHouseholdTargetDecisionService {
     private Context context(long failureId) {
         var failure = failures.findById(failureId)
                 .orElseThrow(() -> new InvalidIngestRequestException("세대수 보강 오류가 없습니다."));
-        List<MatchedSource> matches = enrichment.currentMatches(new ArrayList<>(), clock.instant()).matchedSources();
+        List<LhHouseholdMatchedSource> matches = enrichment.currentMatches(new ArrayList<>(), clock.instant()).matchedSources();
         var own = matches.stream().filter(matched -> matched.sourceKey().failureKey().equals(failure.getSourceKey()))
                 .findFirst().orElse(null);
         if (own == null) {
             return new Context(failureId, failure.getSourceKey(), null, List.of(), List.of(), null);
         }
         HousingComplex complex = own.complex();
-        List<MatchedSource> group = matches.stream()
+        List<LhHouseholdMatchedSource> group = matches.stream()
                 .filter(matched -> matched.complex().getId().equals(complex.getId()))
                 .sorted(Comparator.comparing(matched -> matched.sourceKey().failureKey())).toList();
         List<HousingType> housingTypes = types.findAllByHousingComplex(complex).stream()
@@ -180,7 +179,7 @@ public class LhHouseholdTargetDecisionService {
                 decision.getActor(), decision.getUpdatedAt(), reviewRequired);
     }
 
-    private record Context(long failureId, String sourceKey, HousingComplex complex, List<MatchedSource> group,
+    private record Context(long failureId, String sourceKey, HousingComplex complex, List<LhHouseholdMatchedSource> group,
             List<HousingType> housingTypes, LhHouseholdTargetDecision decision) {
     }
 }

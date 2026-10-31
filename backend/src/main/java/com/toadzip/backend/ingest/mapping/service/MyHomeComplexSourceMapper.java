@@ -237,18 +237,4 @@ public class MyHomeComplexSourceMapper {
             MyHomeRentalCondition basicRentalCondition
     ) {
     }
-
-    static class MyHomeComplexMappingRejectedException extends RuntimeException {
-
-        private final MyHomeComplexMappingFailureReason reason;
-
-        MyHomeComplexMappingRejectedException(MyHomeComplexMappingFailureReason reason, String detail) {
-            super(detail);
-            this.reason = reason;
-        }
-
-        MyHomeComplexMappingFailureReason reason() {
-            return reason;
-        }
-    }
 }

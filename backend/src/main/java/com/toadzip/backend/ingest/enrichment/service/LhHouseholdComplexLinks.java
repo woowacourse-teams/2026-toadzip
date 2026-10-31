@@ -44,7 +44,7 @@ class LhHouseholdComplexLinks {
     }
 
     /** 같은 단지를 두고 경쟁하는 LH 묶음 전체의 구성과 세대수 값이다. 묶음이 늘거나 줄거나 값이 바뀌면 달라진다. */
-    String sourcesFingerprint(List<LhHousingTypeHouseholdEnrichmentService.MatchedSource> group) {
+    String sourcesFingerprint(List<LhHouseholdMatchedSource> group) {
         return hash(group.stream().sorted(Comparator.comparing(matched -> matched.sourceKey().failureKey()))
                 .map(matched -> matched.sourceKey().failureKey() + "|" + sourceFingerprint(matched.source())
                         + "|" + householdCounts(matched.source()))
@@ -58,7 +58,7 @@ class LhHouseholdComplexLinks {
     }
 
     /** 경쟁 묶음들의 전체 세대수와 전용면적별 세대수가 모두 같으면 같은 공급으로 본다. */
-    boolean identical(List<LhHousingTypeHouseholdEnrichmentService.MatchedSource> group) {
+    boolean identical(List<LhHouseholdMatchedSource> group) {
         return group.stream().map(matched -> matched.source().totalHouseholdCount() + "|"
                 + householdCounts(matched.source())).distinct().count() == 1;
     }

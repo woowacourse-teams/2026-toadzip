@@ -210,7 +210,7 @@ public class AnnouncementSupplyMatchingService {
             }
             return report;
         }
-        catch (MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException exception) {
+        catch (MyHomeAnnouncementMappingRejectedException exception) {
             throw new InvalidIngestRequestException("정제 실패: " + exception.getMessage());
         }
     }
@@ -231,7 +231,7 @@ public class AnnouncementSupplyMatchingService {
         try {
             return writer.writeSelected(current, previous, Map.of(), List.of()).report();
         }
-        catch (MyHomeAnnouncementMappingWriter.LhEnrichmentRejectedMappingException exception) {
+        catch (LhEnrichmentRejectedMappingException exception) {
             var failures = currentSources.stream().map(source -> MyHomeAnnouncementMappingService.failureOf(
                     source, exception.reason(), exception.getMessage(), clock.instant())).toList();
             try {
@@ -246,7 +246,7 @@ public class AnnouncementSupplyMatchingService {
             throw new InvalidIngestRequestException("정제 실패: " + exception.getMessage()
                     + " 저장은 되돌리고 오류 목록에 기록했습니다.");
         }
-        catch (MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException exception) {
+        catch (MyHomeAnnouncementMappingRejectedException exception) {
             throw new InvalidIngestRequestException("정제 실패: " + exception.getMessage() + " 오류 목록은 바꾸지 않았습니다.");
         }
     }
@@ -291,7 +291,7 @@ public class AnnouncementSupplyMatchingService {
         try {
             sourceRows = resolver.resolve(mapper.map(current)).data().supplyRows();
         }
-        catch (MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException exception) {
+        catch (MyHomeAnnouncementMappingRejectedException exception) {
             return;
         }
         for (var data : sourceRows) {
@@ -359,7 +359,7 @@ public class AnnouncementSupplyMatchingService {
         String before = json.writeValueAsString(rows(identifier));
         try {
             writer.writeSplit(current, previous, plan);
-        } catch (MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException exception) {
+        } catch (MyHomeAnnouncementMappingRejectedException exception) {
             throw new InvalidIngestRequestException("정제 실패: " + exception.getMessage());
         }
         productRows.flush();
@@ -489,7 +489,7 @@ public class AnnouncementSupplyMatchingService {
         try {
             return resolver.resolve(mapper.map(current));
         }
-        catch (MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException exception) {
+        catch (MyHomeAnnouncementMappingRejectedException exception) {
             throw new InvalidIngestRequestException(exception.getMessage());
         }
     }

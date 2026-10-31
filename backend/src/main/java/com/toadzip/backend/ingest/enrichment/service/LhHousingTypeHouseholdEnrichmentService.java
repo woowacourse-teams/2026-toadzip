@@ -100,10 +100,10 @@ public class LhHousingTypeHouseholdEnrichmentService {
                 .collect(Collectors.toMap(LhHouseholdComplexLink::getSourceKey, link -> link));
         LhHousingTypeHouseholdEnrichmentReport report =
                 LhHousingTypeHouseholdEnrichmentReport.empty(sourceGroups.size());
-        List<MatchedSource> matchedSources = new ArrayList<>();
+        List<LhHouseholdMatchedSource> matchedSources = new ArrayList<>();
         for (Map.Entry<LhHousingTypeHouseholdSourceKey, List<LhCatalogSource>> entry
                 : sourceGroups.entrySet()) {
-            Optional<MatchedSource> matchedSource = match(
+            Optional<LhHouseholdMatchedSource> matchedSource = match(
                     entry.getKey(), entry.getValue(), indexedComplexes, failures, occurredAt,
                     savedLinks.get(entry.getKey().failureKey()), complexesById
             );
@@ -116,7 +116,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
         return new CurrentMatches(matchedSources, report);
     }
 
-    private Optional<MatchedSource> match(
+    private Optional<LhHouseholdMatchedSource> match(
             LhHousingTypeHouseholdSourceKey sourceKey,
             List<LhCatalogSource> sources,
             Map<LhHousingTypeHouseholdMatcher.MatchKey, List<HousingComplex>> indexedComplexes,
@@ -154,7 +154,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
                 ));
                 return Optional.empty();
             }
-            return Optional.of(new MatchedSource(sourceKey, matches.getFirst(), source));
+            return Optional.of(new LhHouseholdMatchedSource(sourceKey, matches.getFirst(), source));
         }
         catch (IllegalArgumentException exception) {
             LhCatalogSource first = sources.getFirst();
@@ -176,7 +176,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
     }
 
     // 관리자가 저장한 연결을 이름 비교보다 먼저 쓴다. 원천이나 단지가 바뀌었으면 자동 매칭으로 대체하지 않는다.
-    private Optional<MatchedSource> linkedMatch(
+    private Optional<LhHouseholdMatchedSource> linkedMatch(
             LhHousingTypeHouseholdSourceKey sourceKey,
             List<LhCatalogSource> sources,
             LhHousingTypeHouseholdSource source,
@@ -193,7 +193,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
                     occurredAt));
             return Optional.empty();
         }
-        return Optional.of(new MatchedSource(sourceKey, target, source));
+        return Optional.of(new LhHouseholdMatchedSource(sourceKey, target, source));
     }
 
     private String failureDetail(IllegalArgumentException exception) {
@@ -204,17 +204,17 @@ public class LhHousingTypeHouseholdEnrichmentService {
     }
 
     private LhHousingTypeHouseholdEnrichmentReport writeUniqueMatches(
-            List<MatchedSource> matchedSources,
+            List<LhHouseholdMatchedSource> matchedSources,
             Map<Long, LhHouseholdTargetDecision> decisions,
             List<LhHouseholdEnrichmentFailure> failures,
             Instant occurredAt
     ) {
-        Map<Long, List<MatchedSource>> groupsByComplex = new LinkedHashMap<>();
+        Map<Long, List<LhHouseholdMatchedSource>> groupsByComplex = new LinkedHashMap<>();
         matchedSources.forEach(matched -> groupsByComplex
                 .computeIfAbsent(matched.complex().getId(), ignored -> new ArrayList<>()).add(matched));
         LhHousingTypeHouseholdEnrichmentReport report =
                 LhHousingTypeHouseholdEnrichmentReport.empty(0);
-        for (List<MatchedSource> group : groupsByComplex.values()) {
+        for (List<LhHouseholdMatchedSource> group : groupsByComplex.values()) {
             report = report.plus(writeComplex(group, decisions.get(group.getFirst().complex().getId()), failures,
                     occurredAt));
         }
@@ -223,7 +223,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
 
     // 한 단지에 매칭된 묶음이 하나면 그대로, 관리자 결정이 있으면 그 결정대로, 세대수가 모두 같으면 한 번만 쓴다.
     private LhHousingTypeHouseholdEnrichmentReport writeComplex(
-            List<MatchedSource> group,
+            List<LhHouseholdMatchedSource> group,
             LhHouseholdTargetDecision decision,
             List<LhHouseholdEnrichmentFailure> failures,
             Instant occurredAt
@@ -242,7 +242,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
     }
 
     private LhHousingTypeHouseholdEnrichmentReport writeDecided(
-            List<MatchedSource> group,
+            List<LhHouseholdMatchedSource> group,
             LhHouseholdTargetDecision decision,
             List<LhHouseholdEnrichmentFailure> failures,
             Instant occurredAt
@@ -265,14 +265,14 @@ public class LhHousingTypeHouseholdEnrichmentService {
     }
 
     private LhHousingTypeHouseholdEnrichmentReport failGroup(
-            List<MatchedSource> group,
+            List<LhHouseholdMatchedSource> group,
             LhHouseholdEnrichmentFailureReason reason,
             String detail,
             List<LhHouseholdEnrichmentFailure> failures,
             Instant occurredAt
     ) {
         LhHousingTypeHouseholdEnrichmentReport report = LhHousingTypeHouseholdEnrichmentReport.empty(0);
-        for (MatchedSource matchedSource : group) {
+        for (LhHouseholdMatchedSource matchedSource : group) {
             failures.add(LhHouseholdEnrichmentFailure.create(
                     matchedSource.sourceKey().failureKey(),
                     matchedSource.source().areaName(),
@@ -336,7 +336,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
     }
 
 
-    private void logDuplicateMatch(MatchedSource matchedSource, int sourceGroupCount) {
+    private void logDuplicateMatch(LhHouseholdMatchedSource matchedSource, int sourceGroupCount) {
         log.warn(
                 "event=lh_household.match.duplicate result=skipped source=lh_catalog "
                         + "sourceName={} targetId={} groups={}",
@@ -357,13 +357,6 @@ public class LhHousingTypeHouseholdEnrichmentService {
         );
     }
 
-    record CurrentMatches(List<MatchedSource> matchedSources, LhHousingTypeHouseholdEnrichmentReport report) {
-    }
-
-    record MatchedSource(
-            LhHousingTypeHouseholdSourceKey sourceKey,
-            HousingComplex complex,
-            LhHousingTypeHouseholdSource source
-    ) {
+    record CurrentMatches(List<LhHouseholdMatchedSource> matchedSources, LhHousingTypeHouseholdEnrichmentReport report) {
     }
 }

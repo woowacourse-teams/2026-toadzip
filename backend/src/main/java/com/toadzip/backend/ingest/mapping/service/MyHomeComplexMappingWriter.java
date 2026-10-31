@@ -19,7 +19,6 @@ import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDeci
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMergeStore;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingData;
-import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingRejectedException;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeHousingTypeMappingData;
 import java.util.ArrayList;
 import java.util.Arrays;

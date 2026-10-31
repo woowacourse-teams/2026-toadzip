@@ -152,21 +152,4 @@ public class MyHomeAnnouncementSourceMapper {
                     + ":" + exclusiveArea + ":" + supplyArea + ":" + resolvedLhSourceIdentifier;
         }
     }
-
-    static class MyHomeAnnouncementMappingRejectedException extends RuntimeException {
-
-        private final MyHomeAnnouncementMappingFailureReason reason;
-
-        MyHomeAnnouncementMappingRejectedException(
-                MyHomeAnnouncementMappingFailureReason reason,
-                String detail
-        ) {
-            super(detail);
-            this.reason = reason;
-        }
-
-        MyHomeAnnouncementMappingFailureReason reason() {
-            return reason;
-        }
-    }
 }

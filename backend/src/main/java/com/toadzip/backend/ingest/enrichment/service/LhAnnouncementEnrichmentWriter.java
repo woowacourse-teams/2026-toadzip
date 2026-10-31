@@ -593,11 +593,4 @@ public class LhAnnouncementEnrichmentWriter implements MappedAnnouncementLhEnric
             List<LhSupplyMatchingFailureData> failures
     ) {
     }
-
-    record LhSupplyMatchingFailureData(
-            LhSupplyData source,
-            LhAnnouncementEnrichmentFailureReason reason,
-            String detail
-    ) {
-    }
 }

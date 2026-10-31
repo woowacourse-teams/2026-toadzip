@@ -11,7 +11,6 @@ import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailur
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureStore;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
-import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchResult;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchingFailureData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyRowResolver.ResolvedAnnouncement;
@@ -264,14 +263,5 @@ public class MyHomeAnnouncementMappingWriter {
             MyHomeAnnouncementMappingReport report,
             List<MyHomeSupplyMatchingFailureData> failures
     ) {
-    }
-
-    /** 전체 정제와 단건 정제가 같은 실패로 기록할 수 있도록 LH 보강 거절을 다른 정제 거절과 구분한다. */
-    static class LhEnrichmentRejectedMappingException extends MyHomeAnnouncementMappingRejectedException {
-
-        LhEnrichmentRejectedMappingException(LhAnnouncementEnrichmentRejectedException cause) {
-            super(MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
-                    "LH 보강 실패: " + cause.reason() + " - " + cause.getMessage());
-        }
     }
 }
