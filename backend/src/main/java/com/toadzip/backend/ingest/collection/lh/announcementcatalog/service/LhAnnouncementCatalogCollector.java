@@ -27,10 +27,6 @@ public class LhAnnouncementCatalogCollector {
     private final SourceCollectionRecordService records;
     private final Clock clock;
 
-    public UUID collect(LhAnnouncementCatalogCollectionRequest request) {
-        return collectPages(request, page -> apiRepository.fetch(request, page)).id();
-    }
-
     LhAnnouncementCatalogStorageService.StoreResult collectWithinBatch(
             LhAnnouncementCatalogCollectionRequest request, ExternalDataRetryExecutor retry,
             ExternalDataCallCounter counter
@@ -38,10 +34,10 @@ public class LhAnnouncementCatalogCollector {
 
         return retry.collectPages(ExternalDataSource.LH_ANNOUNCEMENT_CATALOG,
                 page -> "PG_SZ=" + request.pageSize() + "&PAGE=" + page, counter,
-                page -> apiRepository.fetch(request, page), fetch -> collectPages(request, fetch).stored());
+                page -> apiRepository.fetch(request, page), fetch -> collectPages(request, fetch));
     }
 
-    private CollectionResult collectPages(
+    private LhAnnouncementCatalogStorageService.StoreResult collectPages(
             LhAnnouncementCatalogCollectionRequest request,
             IntFunction<LhAnnouncementCatalogPage> fetch
     ) {
@@ -52,7 +48,7 @@ public class LhAnnouncementCatalogCollector {
         try {
             LhAnnouncementCatalogCollectedResponse response = fetchPages(attempt, fetch);
             IngestExecutionScope.verifyHeld();
-            return new CollectionResult(id, storage.complete(id, attempt, response));
+            return storage.complete(id, attempt, response);
         } catch (RuntimeException failure) {
             records.fail(id, attempt, failure);
             throw failure;
@@ -82,9 +78,6 @@ public class LhAnnouncementCatalogCollector {
         }
         buffer.finish();
         throw new IllegalStateException("LH 공고 목록의 수집 응답이 없습니다.");
-    }
-
-    private record CollectionResult(UUID id, LhAnnouncementCatalogStorageService.StoreResult stored) {
     }
 
     private void verifyCanContinue() {

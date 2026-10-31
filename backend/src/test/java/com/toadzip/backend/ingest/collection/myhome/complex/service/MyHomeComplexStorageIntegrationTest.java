@@ -29,7 +29,10 @@ import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeReg
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeResponseStatusValidator;
+import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
+import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
+import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
@@ -691,7 +694,7 @@ class MyHomeComplexStorageIntegrationTest {
             return withSuccess(pageJson(3, third), MediaType.APPLICATION_JSON).createResponse(httpRequest);
         });
 
-        UUID recordId = collector.collect(apiRequest(1000));
+        UUID recordId = collect(apiRequest(1000));
 
         assertThat(recordId).isEqualTo(startedId.get());
         assertThat(source(100L).rows()).containsExactly(first, second);
@@ -708,16 +711,16 @@ class MyHomeComplexStorageIntegrationTest {
 
     @ParameterizedTest
     @EnumSource(value = HttpStatus.class, names = {"INTERNAL_SERVER_ERROR", "TOO_MANY_REQUESTS"})
-    void httpFailurePreservesCurrentRegionAndClosesStartedRecordWithoutRetry(HttpStatus status) {
+    void httpFailurePreservesCurrentRegionAndClosesStartedRecord(HttpStatus status) {
         MyHomeComplexSourceSnapshot original = row(100L, "11", "680", "59A", 100000L);
         store(request("11", "680"), response(COLLECTED_AT, original));
         RegionView previous = region("11", "680");
         expectPage(1, pageJson(3, row(101L, "11", "680", "59B", 200000L)));
-        httpServer.expect(requestTo(apiUrl(2))).andRespond(withStatus(status));
+        httpServer.expect(ExpectedCount.times(status == HttpStatus.TOO_MANY_REQUESTS ? 1 : 3), requestTo(apiUrl(2))).andRespond(withStatus(status));
 
-        assertThatThrownBy(() -> collector.collect(apiRequest(1000)))
-                .isInstanceOf(ExternalDataRequestException.class).satisfies(failure -> {
-                    ExternalDataRequestException external = (ExternalDataRequestException) failure;
+        assertThatThrownBy(() -> collect(apiRequest(1000)))
+                .isInstanceOf(ExternalDataCallFailureException.class)
+                .cause().isInstanceOfSatisfying(ExternalDataRequestException.class, external -> {
                     assertThat(external.isRateLimited()).isEqualTo(status == HttpStatus.TOO_MANY_REQUESTS);
                     assertThat(external.isRetryable()).isTrue();
                 });
@@ -733,8 +736,8 @@ class MyHomeComplexStorageIntegrationTest {
         expectPage(1, pageJson(3, row(100L, "11", "680", "59A", 100000L)));
         expectPage(2, pageJson(4, row(101L, "11", "680", "59B", 200000L)));
 
-        assertThatThrownBy(() -> collector.collect(apiRequest(1000)))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("페이지 간 전체 건수");
+        assertThatThrownBy(() -> collect(apiRequest(1000)))
+                .isInstanceOf(ExternalDataCallFailureException.class).hasMessageContaining("페이지 간 전체 건수");
 
         assertThat(sourceRepository.count()).isZero();
         assertThat(regionRepository.count()).isZero();
@@ -749,8 +752,8 @@ class MyHomeComplexStorageIntegrationTest {
         expectPage(1, pageJson(3, row(101L, "11", "680", "59B", 200000L)));
         expectPage(2, pageJson(3));
 
-        assertThatThrownBy(() -> collector.collect(apiRequest(1000)))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("빈 페이지");
+        assertThatThrownBy(() -> collect(apiRequest(1000)))
+                .isInstanceOf(ExternalDataCallFailureException.class).hasMessageContaining("빈 페이지");
 
         assertThat(source(100L).rows()).containsExactly(original);
         assertThat(region("11", "680")).isEqualTo(previous);
@@ -764,8 +767,8 @@ class MyHomeComplexStorageIntegrationTest {
                 {"response":{"header":{"resultCode":"03"}}}
                 """);
 
-        assertThatThrownBy(() -> collector.collect(apiRequest(1000)))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("페이지 간 전체 건수");
+        assertThatThrownBy(() -> collect(apiRequest(1000)))
+                .isInstanceOf(ExternalDataCallFailureException.class).hasMessageContaining("페이지 간 전체 건수");
 
         assertThat(sourceRepository.count()).isZero();
         assertThat(regionRepository.count()).isZero();
@@ -776,8 +779,8 @@ class MyHomeComplexStorageIntegrationTest {
     void maximumPageExhaustionIsFailureAndCannotStorePartialRows() {
         expectPage(1, pageJson(3, row(100L, "11", "680", "59A", 100000L)));
 
-        assertThatThrownBy(() -> collector.collect(apiRequest(1)))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("최대 페이지");
+        assertThatThrownBy(() -> collect(apiRequest(1)))
+                .isInstanceOf(ExternalDataCallFailureException.class).hasMessageContaining("최대 페이지");
 
         assertThat(sourceRepository.count()).isZero();
         assertThat(regionRepository.count()).isZero();
@@ -789,7 +792,7 @@ class MyHomeComplexStorageIntegrationTest {
         expectPage(1, pageJson(2, row(100L, "11", "680", "59A", 100000L)));
         expectPage(2, pageJson(2, row(101L, "11", "680", "59B", 200000L)));
 
-        collector.collect(apiRequest(1000));
+        collect(apiRequest(1000));
 
         assertThat(sourceRepository.count()).isEqualTo(2);
         assertThat(records()).singleElement().satisfies(record -> {
@@ -810,8 +813,9 @@ class MyHomeComplexStorageIntegrationTest {
                 "\"" + field + "\":\\d+", "\"" + field + "\":100.9");
         expectPage(1, payload);
 
-        assertThatThrownBy(() -> collector.collect(apiRequest(1000)))
-                .isInstanceOf(ExternalDataRequestException.class).hasMessageContaining("응답 행 형식");
+        assertThatThrownBy(() -> collect(apiRequest(1000)))
+                .isInstanceOf(ExternalDataCallFailureException.class)
+                .hasCauseInstanceOf(ExternalDataRequestException.class).hasMessageContaining("응답 행 형식");
 
         assertThat(source(100L).rows()).containsExactly(original);
         assertThat(region("11", "680")).isEqualTo(previous);
@@ -827,7 +831,7 @@ class MyHomeComplexStorageIntegrationTest {
                 .replace("\"bassRentGtn\":100000", "\"bassRentGtn\":\"100000\"");
         expectPage(1, payload);
 
-        collector.collect(apiRequest(1000));
+        collect(apiRequest(1000));
 
         assertThat(source(100L).rows()).containsExactly(original);
         assertThat(records()).singleElement().extracting(RecordView::status).isEqualTo(CollectionStatus.SUCCESS);
@@ -856,7 +860,8 @@ class MyHomeComplexStorageIntegrationTest {
         RegionView previous = region("11", "680");
         expectPage(1, payload);
 
-        assertThatThrownBy(() -> collector.collect(apiRequest(1000))).isInstanceOf(ExternalDataRequestException.class);
+        assertThatThrownBy(() -> collect(apiRequest(1000))).isInstanceOf(ExternalDataCallFailureException.class)
+                .hasCauseInstanceOf(ExternalDataRequestException.class);
 
         assertThat(source(100L).rows()).containsExactly(original);
         assertThat(region("11", "680")).isEqualTo(previous);
@@ -874,7 +879,7 @@ class MyHomeComplexStorageIntegrationTest {
         store(request("26", "110"), response(COLLECTED_AT, busan));
         expectPage(1, payload);
 
-        UUID recordId = collector.collect(apiRequest(1000));
+        UUID recordId = collect(apiRequest(1000));
 
         assertThat(sourceRepository.count()).isOne();
         assertThat(source(200L).rows()).containsExactly(busan);
@@ -893,7 +898,7 @@ class MyHomeComplexStorageIntegrationTest {
                 {"response":{"header":{"resultCode":"00"},"body":{"totalCount":"1","item":%s}}}
                 """.formatted(objectMapper.writeValueAsString(original)));
 
-        collector.collect(apiRequest(1000));
+        collect(apiRequest(1000));
 
         assertThat(source(100L).rows()).containsExactly(original);
         assertThat(records()).singleElement().extracting(RecordView::status).isEqualTo(CollectionStatus.SUCCESS);
@@ -904,7 +909,7 @@ class MyHomeComplexStorageIntegrationTest {
         MyHomeComplexSourceSnapshot original = row(100L, "11", "680", "59A", 100000L);
         expectPage(1, pageJson(2, original, original));
 
-        collector.collect(apiRequest(1000));
+        collect(apiRequest(1000));
 
         assertThat(source(100L).rows()).containsExactly(original, original);
         assertThat(records()).singleElement().extracting(RecordView::rowCount).isEqualTo(2);
@@ -920,8 +925,8 @@ class MyHomeComplexStorageIntegrationTest {
         expectPage(1, repeated);
         expectPage(2, repeated);
 
-        assertThatThrownBy(() -> collector.collect(apiRequest(1000)))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("응답 페이지가 반복");
+        assertThatThrownBy(() -> collect(apiRequest(1000)))
+                .isInstanceOf(ExternalDataCallFailureException.class).hasMessageContaining("응답 페이지가 반복");
 
         assertThat(source(100L).rows()).containsExactly(original);
         assertThat(region("11", "680")).isEqualTo(previous);
@@ -932,8 +937,8 @@ class MyHomeComplexStorageIntegrationTest {
     void mixedRegionOnTheFirstPageFailsBeforeAnotherHttpCall() {
         expectPage(1, pageJson(3, row(100L, "26", "110", "59A", 100000L)));
 
-        assertThatThrownBy(() -> collector.collect(apiRequest(1000)))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("요청한 지역");
+        assertThatThrownBy(() -> collect(apiRequest(1000)))
+                .isInstanceOf(ExternalDataCallFailureException.class).hasMessageContaining("요청한 지역");
 
         assertThat(sourceRepository.count()).isZero();
         assertFailedRecord("요청한 지역");
@@ -943,8 +948,8 @@ class MyHomeComplexStorageIntegrationTest {
     void missingIdentifierOnTheFirstPageFailsBeforeAnotherHttpCall() {
         expectPage(1, pageJson(3, row(null, "11", "680", "59A", 100000L)));
 
-        assertThatThrownBy(() -> collector.collect(apiRequest(1000)))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("단지 식별자");
+        assertThatThrownBy(() -> collect(apiRequest(1000)))
+                .isInstanceOf(ExternalDataCallFailureException.class).hasMessageContaining("단지 식별자");
 
         assertThat(sourceRepository.count()).isZero();
         assertFailedRecord("단지 식별자");
@@ -955,8 +960,8 @@ class MyHomeComplexStorageIntegrationTest {
         expectPage(1, pageJson(2, row(100L, "11", "680", "59A", 100000L)));
         expectPage(2, pageJson(2, row(100L, "11", "680", "59A", 200000L)));
 
-        assertThatThrownBy(() -> collector.collect(apiRequest(1000)))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("응답 내용이 충돌");
+        assertThatThrownBy(() -> collect(apiRequest(1000)))
+                .isInstanceOf(ExternalDataCallFailureException.class).hasMessageContaining("응답 내용이 충돌");
 
         assertThat(sourceRepository.count()).isZero();
         assertFailedRecord("응답 내용이 충돌");
@@ -967,8 +972,8 @@ class MyHomeComplexStorageIntegrationTest {
         expectPage(1, pageJson(1, row(100L, "11", "680", "59A", 100000L),
                 row(101L, "11", "680", "59B", 200000L)));
 
-        assertThatThrownBy(() -> collector.collect(apiRequest(1000)))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("전체 건수를 초과");
+        assertThatThrownBy(() -> collect(apiRequest(1000)))
+                .isInstanceOf(ExternalDataCallFailureException.class).hasMessageContaining("전체 건수를 초과");
 
         assertThat(sourceRepository.count()).isZero();
         assertFailedRecord("전체 건수를 초과");
@@ -992,14 +997,14 @@ class MyHomeComplexStorageIntegrationTest {
 
         try (var ignored = IngestExecutionScope.open(null, monitor)) {
             if (totalCount == 2) {
-                UUID id = collector.collect(apiRequest(1000));
+                UUID id = collect(apiRequest(1000));
                 assertThat(history.storedRowCount(id)).isEqualTo(2);
                 assertThat(sourceRepository.findAllByHsmpSnIn(List.of(100L))).isEmpty();
                 assertThat(sourceRepository.count()).isEqualTo(2);
                 assertThat(records()).noneMatch(record -> record.status() == CollectionStatus.FAILED);
                 return;
             }
-            assertThatThrownBy(() -> collector.collect(apiRequest(1000)))
+            assertThatThrownBy(() -> collect(apiRequest(1000)))
                     .isInstanceOf(DataPipelineStoppedException.class);
         }
         assertThat(source(100L).rows()).containsExactly(original);
@@ -1021,7 +1026,7 @@ class MyHomeComplexStorageIntegrationTest {
         });
 
         try (var ignored = IngestExecutionScope.open(lease)) {
-            assertThatThrownBy(() -> collector.collect(apiRequest(1000)))
+            assertThatThrownBy(() -> collect(apiRequest(1000)))
                     .isInstanceOf(IngestOwnershipLostException.class);
         }
 
@@ -1034,7 +1039,7 @@ class MyHomeComplexStorageIntegrationTest {
     void unknownRegionIsRejectedBeforeHttpOrRequestRecordCreation() {
         var unknown = new MyHomeComplexCollectionRequest(EXECUTION_ID, "99", "999", 2, 1000, STARTED_AT);
 
-        assertThatThrownBy(() -> collector.collect(unknown)).isInstanceOf(InvalidIngestRequestException.class);
+        assertThatThrownBy(() -> collect(unknown)).isInstanceOf(InvalidIngestRequestException.class);
 
         assertThat(sourceRepository.count()).isZero();
         assertThat(records()).isEmpty();
@@ -1049,7 +1054,7 @@ class MyHomeComplexStorageIntegrationTest {
                 + "CHECK (bass_rent_gtn <> 999)");
         expectPage(1, pageJson(1, row(101L, "11", "680", "59B", 999L)));
         try {
-            assertThatThrownBy(() -> collector.collect(apiRequest(1000))).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> collect(apiRequest(1000))).isInstanceOf(RuntimeException.class);
 
             assertThat(sourceRepository.count()).isOne();
             assertThat(source(100L).rows()).containsExactly(original);
@@ -1068,9 +1073,9 @@ class MyHomeComplexStorageIntegrationTest {
                 {"OpenAPI_ServiceResponse":{"cmmMsgHeader":{"returnReasonCode":"%s","returnAuthMsg":"LIMIT"}}}
                 """.formatted(resultCode));
 
-        assertThatThrownBy(() -> collector.collect(apiRequest(1000)))
-                .isInstanceOf(ExternalDataRequestException.class).satisfies(failure -> {
-                    ExternalDataRequestException external = (ExternalDataRequestException) failure;
+        assertThatThrownBy(() -> collect(apiRequest(1000)))
+                .isInstanceOf(ExternalDataCallFailureException.class)
+                .cause().isInstanceOfSatisfying(ExternalDataRequestException.class, external -> {
                     assertThat(external.isRateLimited()).isTrue();
                     assertThat(external.isRetryable()).isEqualTo("23".equals(resultCode));
                 });
@@ -1084,7 +1089,7 @@ class MyHomeComplexStorageIntegrationTest {
         clock.set(FINISHED_AT.plusNanos(123456789));
         expectPage(1, pageJson(1, row(100L, "11", "680", "59A", 100000L)));
 
-        collector.collect(apiRequest(1000));
+        collect(apiRequest(1000));
 
         assertThat(records()).singleElement().satisfies(record -> {
             assertThat(record.status()).isEqualTo(CollectionStatus.SUCCESS);
@@ -1098,7 +1103,7 @@ class MyHomeComplexStorageIntegrationTest {
         String precise = "59.901234567890123456789000";
         expectPage(1, pageJson(1, row(100L, "11", "680", "59A", 100000L)).replace("59.901234", precise));
 
-        collector.collect(apiRequest(1000));
+        collect(apiRequest(1000));
 
         assertThat(source(100L).rows().getFirst().suplyPrvuseAr()).isEqualTo(new BigDecimal(precise));
         assertThat(source(100L).rows().getFirst().suplyCmnuseAr()).isEqualTo(new BigDecimal("20.1200"));
@@ -1284,5 +1289,10 @@ class MyHomeComplexStorageIntegrationTest {
             environment.getPropertySources().addFirst(new MapPropertySource("complexStorageSchema",
                     Map.of("spring.datasource.url", url)));
         }
+    }
+
+    private UUID collect(MyHomeComplexCollectionRequest request) {
+        return collector.collectWithinBatch(request, CollectionServiceTestFixture.retryWithoutDelay(),
+                new ExternalDataCallCounter(), new AtomicBoolean());
     }
 }

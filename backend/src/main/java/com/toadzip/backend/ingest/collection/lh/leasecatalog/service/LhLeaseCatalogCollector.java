@@ -26,10 +26,6 @@ public class LhLeaseCatalogCollector {
     private final SourceCollectionRecordService records;
     private final Clock clock;
 
-    public UUID collect(LhLeaseCatalogCollectionRequest request) {
-        return collectPages(request, page -> apiRepository.fetch(request, page));
-    }
-
     UUID collectWithinBatch(
             LhLeaseCatalogCollectionRequest request, ExternalDataRetryExecutor retry,
             ExternalDataCallCounter counter

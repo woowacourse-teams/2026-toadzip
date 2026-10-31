@@ -62,7 +62,9 @@ import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComple
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexStorageService;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -78,6 +80,11 @@ public final class CollectionServiceTestFixture {
     private final JsonMapper mapper = JsonMapper.builder().build();
     public final SourceCollectionRecordService records = mock(SourceCollectionRecordService.class);
     private final Map<UUID, Integer> storedCounts = new ConcurrentHashMap<>();
+
+    /** 운영 수집과 같은 재시도·예외 변환 흐름을 재시도 대기 없이 실행한다. */
+    public static ExternalDataRetryExecutor retryWithoutDelay() {
+        return new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry());
+    }
 
     public CollectionServiceTestFixture() {
         lenient().when(records.start(any())).thenAnswer(invocation -> UUID.randomUUID());

@@ -37,12 +37,6 @@ public class LhAnnouncementQueryCollector {
 
     private final Clock clock;
 
-    public UUID collect(LhAnnouncementCollectionRequest request) {
-        return collect(request,
-                () -> supplyParser.parse(request.query().supplyInfoTypeCode(), api.supply(request.query())),
-                () -> detailParser.parse(api.detail(request.query())), Runnable::run);
-    }
-
     UUID collectWithinBatch(
             LhAnnouncementCollectionRequest request, ExternalDataRetryExecutor retry, ExternalDataCallCounter counter,
             MeterRegistry meters

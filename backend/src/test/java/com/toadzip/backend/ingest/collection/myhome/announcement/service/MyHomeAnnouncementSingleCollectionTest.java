@@ -15,6 +15,8 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAn
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectedResponse;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
+import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
+import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import java.util.List;
 import java.util.UUID;
 import java.time.Clock;
@@ -75,7 +77,7 @@ class MyHomeAnnouncementSingleCollectionTest {
         when(api.fetch(any(), eq(2))).thenReturn(new SourcePage<>(3, List.of(row("target", 2))));
         var collector = collector();
 
-        collector.collect(request);
+        collector.collectWithinBatch(request, CollectionServiceTestFixture.retryWithoutDelay(), new ExternalDataCallCounter());
 
         ArgumentCaptor<MyHomeAnnouncementCollectedResponse> response = ArgumentCaptor.captor();
         ArgumentCaptor<MyHomeAnnouncementCollectionRequest> savedRequest = ArgumentCaptor.captor();

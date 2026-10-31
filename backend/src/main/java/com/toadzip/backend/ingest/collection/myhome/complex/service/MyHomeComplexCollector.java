@@ -27,11 +27,6 @@ public class MyHomeComplexCollector {
     private final MyHomeRegionCatalog regionCatalog;
     private final Clock clock;
 
-    public UUID collect(MyHomeComplexCollectionRequest request) {
-        regionCatalog.find(request.provinceCode(), request.districtCode());
-        return collectPages(request, page -> apiRepository.fetch(request, page));
-    }
-
     UUID collectWithinBatch(
             MyHomeComplexCollectionRequest request, ExternalDataRetryExecutor retry, ExternalDataCallCounter counter,
             AtomicBoolean rateLimitReached

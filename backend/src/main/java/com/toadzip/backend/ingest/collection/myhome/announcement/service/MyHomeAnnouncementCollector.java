@@ -27,10 +27,6 @@ public class MyHomeAnnouncementCollector {
     private final MyHomeAnnouncementApiRepository apiRepository;
     private final Clock clock;
 
-    public UUID collect(MyHomeAnnouncementCollectionRequest request) {
-        return collectPages(request, page -> apiRepository.fetch(request, page));
-    }
-
     /** 목록의 모든 페이지를 검증하지만 해당 공고만 저장한다. 전체 수집 완료 처리는 하지 않는다. */
     public int collectAnnouncement(String pblancId, ExternalDataRetryExecutor retry) {
         UUID executionId = IngestExecutionScope.currentExecutionId().orElseGet(UUID::randomUUID);

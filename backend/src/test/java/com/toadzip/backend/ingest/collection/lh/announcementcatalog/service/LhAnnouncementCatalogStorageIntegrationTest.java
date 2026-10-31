@@ -21,6 +21,8 @@ import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.L
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhAnnouncementCircuitBreaker;
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
+import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
+import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.pipeline.repository.IngestExecutionOwnershipRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -146,7 +148,8 @@ class LhAnnouncementCatalogStorageIntegrationTest {
             return withSuccess(page(2, 3, last), MediaType.APPLICATION_JSON).createResponse(request);
         });
 
-        UUID id = collector.collect(request(2));
+        collect(request(2));
+        UUID id = records.findAll().getFirst().getId();
 
         assertThat(view()).hasSize(3).anySatisfy(source -> {
             assertThat(source.snapshot()).isEqualTo(first);
@@ -165,7 +168,7 @@ class LhAnnouncementCatalogStorageIntegrationTest {
         seed(row("PAN-A", "이름 A"));
         expectPage(1, page(1, 1, row("PAN-A", " 이름 A ")));
 
-        collector.collect(request(2));
+        collect(request(2));
 
         assertThat(view()).singleElement().satisfies(source -> {
             assertThat(source.changedAt()).isEqualTo(COLLECTED_AT);
@@ -178,7 +181,7 @@ class LhAnnouncementCatalogStorageIntegrationTest {
     void absentEntriesArePreservedAndReappearingEntryGetsNewChangeTime() {
         seed(row("PAN-A", "이름 A"));
         expectPage(1, page(1, 1, row("PAN-B", "이름 B")));
-        collector.collect(request(2));
+        collect(request(2));
         assertThat(view()).hasSize(2).anySatisfy(source -> {
             assertThat(source.snapshot().panId()).isEqualTo("PAN-A");
             assertThat(source.present()).isFalse();
@@ -187,7 +190,7 @@ class LhAnnouncementCatalogStorageIntegrationTest {
         http.reset();
         expectPage(1, page(1, 1, row("PAN-A", "이름 A")));
 
-        collector.collect(request(2));
+        collect(request(2));
 
         assertThat(view()).anySatisfy(source -> {
             assertThat(source.snapshot().panId()).isEqualTo("PAN-A");
@@ -217,7 +220,7 @@ class LhAnnouncementCatalogStorageIntegrationTest {
         expectPage(1, first);
         expectPage(2, next);
 
-        assertThatThrownBy(() -> collector.collect(request(2))).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> collect(request(2))).isInstanceOf(RuntimeException.class);
 
         assertThat(view()).isEqualTo(previous);
         assertFailed();
@@ -229,7 +232,7 @@ class LhAnnouncementCatalogStorageIntegrationTest {
         List<SourceView> previous = view();
         expectPage(1, page(1, 3, row("PAN-B", "B"), row("PAN-C", "C")));
 
-        assertThatThrownBy(() -> collector.collect(request(1))).hasMessageContaining("최대 페이지");
+        assertThatThrownBy(() -> collect(request(1))).hasMessageContaining("최대 페이지");
 
         assertThat(view()).isEqualTo(previous);
         assertFailed();
@@ -275,7 +278,7 @@ class LhAnnouncementCatalogStorageIntegrationTest {
         try {
             expectPage(1, page(1, 2, row("PAN-B", "B"), row("PAN-C", "C")));
 
-            assertThatThrownBy(() -> collector.collect(request(2))).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> collect(request(2))).isInstanceOf(RuntimeException.class);
 
             assertThat(view()).isEqualTo(previous);
             assertFailed();
@@ -394,5 +397,10 @@ class LhAnnouncementCatalogStorageIntegrationTest {
             environment.getPropertySources().addFirst(new MapPropertySource("announcementCatalogSchema",
                     Map.of("spring.datasource.url", url)));
         }
+    }
+
+    private LhAnnouncementCatalogStorageService.StoreResult collect(LhAnnouncementCatalogCollectionRequest request) {
+        return collector.collectWithinBatch(request, CollectionServiceTestFixture.retryWithoutDelay(),
+                new ExternalDataCallCounter());
     }
 }
