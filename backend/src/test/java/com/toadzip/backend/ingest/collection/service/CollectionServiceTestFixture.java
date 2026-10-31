@@ -43,26 +43,27 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementStorageSer
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhSupplyResponseParser;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSupplyType;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectedResponse;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementApiRepository;
-import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementPageParser;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollector;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementLifecycleService;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementStorageService;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectedResponse;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexApiRepository;
-import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexPageParser;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeRegionCatalog;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollector;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexRegionCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexStorageService;
+import com.toadzip.backend.ingest.collection.myhome.repository.MyHomePageParser;
 import com.toadzip.backend.ingest.collection.paging.service.PagedSourceCollector;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -108,7 +109,7 @@ public final class CollectionServiceTestFixture {
             ExternalDataFailureRecorder failures, ExternalDataRetryExecutor retry
     ) {
         var api = mock(MyHomeComplexApiRepository.class);
-        var parser = new MyHomeComplexPageParser(mapper);
+        var parser = new MyHomePageParser<>(mapper, MyHomeComplexSourceSnapshot.class, "단지");
         lenient().when(api.fetch(any(), anyInt())).thenAnswer(invocation -> {
             MyHomeComplexCollectionRequest request = invocation.getArgument(0);
             var region = region(regions, request.provinceCode(), request.districtCode());
@@ -135,7 +136,7 @@ public final class CollectionServiceTestFixture {
             ExternalDataFailureRecorder failures, ExternalDataRetryExecutor retry
     ) {
         var api = mock(MyHomeAnnouncementApiRepository.class);
-        var parser = new MyHomeAnnouncementPageParser(mapper);
+        var parser = new MyHomePageParser<>(mapper, MyHomeAnnouncementSourceSnapshot.class, "공고");
         lenient().when(api.fetch(any(), anyInt())).thenAnswer(invocation -> {
             MyHomeAnnouncementCollectionRequest request = invocation.getArgument(0);
             var type = Arrays.stream(MyHomeAnnouncementSupplyType.values())

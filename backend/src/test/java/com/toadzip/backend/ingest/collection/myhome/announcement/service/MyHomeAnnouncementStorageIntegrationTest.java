@@ -21,7 +21,6 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnou
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementApiRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementCollectionRepository;
-import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementPageParser;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementRunRepository;
 import com.toadzip.backend.ingest.collection.paging.service.PagedSourceCollector;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
@@ -101,7 +100,7 @@ import tools.jackson.databind.json.JsonMapper;
         MyHomeAnnouncementRunRepository.class,
         IngestWriteOwnershipGuard.class,
         IngestExecutionOwnershipRepository.class, MyHomeAnnouncementCollector.class,
-        MyHomeAnnouncementApiRepository.class, MyHomeAnnouncementPageParser.class})
+        MyHomeAnnouncementApiRepository.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)

@@ -1,27 +1,26 @@
-package com.toadzip.backend.ingest.collection.myhome.announcement.repository;
+package com.toadzip.backend.ingest.collection.myhome.repository;
 
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import java.util.ArrayList;
 import java.util.List;
-import org.springframework.stereotype.Component;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.ObjectReader;
 
-@Component
-public class MyHomeAnnouncementPageParser {
+public class MyHomePageParser<T> {
 
     private final ObjectReader snapshotReader;
+    private final String label;
 
-    public MyHomeAnnouncementPageParser(ObjectMapper objectMapper) {
-        snapshotReader = objectMapper.readerFor(MyHomeAnnouncementSourceSnapshot.class)
+    public MyHomePageParser(ObjectMapper objectMapper, Class<T> snapshotType, String label) {
+        snapshotReader = objectMapper.readerFor(snapshotType)
                 .without(DeserializationFeature.ACCEPT_FLOAT_AS_INT);
+        this.label = label;
     }
 
-    public SourcePage<MyHomeAnnouncementSourceSnapshot> parse(JsonNode response) {
+    public SourcePage<T> parse(JsonNode response) {
         String resultCode = response.at("/response/header/resultCode").asString("");
         JsonNode body = response.at("/response/body");
         if ("03".equals(resultCode)) {
@@ -33,7 +32,7 @@ public class MyHomeAnnouncementPageParser {
         return new SourcePage<>(totalCount(body.path("totalCount")), rows(body.path("item")));
     }
 
-    private SourcePage<MyHomeAnnouncementSourceSnapshot> noDataPage(JsonNode body) {
+    private SourcePage<T> noDataPage(JsonNode body) {
         if (!body.isMissingNode() && !body.isNull() && !body.isObject()) {
             throw invalidSchema();
         }
@@ -65,7 +64,7 @@ public class MyHomeAnnouncementPageParser {
         throw invalidSchema();
     }
 
-    private List<MyHomeAnnouncementSourceSnapshot> rows(JsonNode item) {
+    private List<T> rows(JsonNode item) {
         if (item.isMissingNode() || item.isNull()) {
             return List.of();
         }
@@ -75,25 +74,25 @@ public class MyHomeAnnouncementPageParser {
         if (!item.isArray()) {
             throw invalidSchema();
         }
-        List<MyHomeAnnouncementSourceSnapshot> rows = new ArrayList<>();
+        List<T> rows = new ArrayList<>();
         for (JsonNode row : item) {
             rows.add(snapshot(row));
         }
         return rows;
     }
 
-    private MyHomeAnnouncementSourceSnapshot snapshot(JsonNode row) {
+    private T snapshot(JsonNode row) {
         if (!row.isObject()) {
             throw invalidSchema();
         }
         try {
             return snapshotReader.readValue(row);
         } catch (RuntimeException failure) {
-            throw new ExternalDataRequestException("마이홈 공고 응답 행 형식이 올바르지 않습니다.", failure);
+            throw new ExternalDataRequestException("마이홈 " + label + " 응답 행 형식이 올바르지 않습니다.", failure);
         }
     }
 
     private ExternalDataRequestException invalidSchema() {
-        return new ExternalDataRequestException("마이홈 공고 응답의 body, item 또는 totalCount 구조가 올바르지 않습니다.");
+        return new ExternalDataRequestException("마이홈 " + label + " 응답의 body, item 또는 totalCount 구조가 올바르지 않습니다.");
     }
 }

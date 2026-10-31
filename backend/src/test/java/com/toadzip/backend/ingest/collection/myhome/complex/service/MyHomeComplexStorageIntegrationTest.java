@@ -23,7 +23,6 @@ import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCol
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexApiRepository;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexCollectionRepository;
-import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexPageParser;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexRegionSourceRepository;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeRegionCatalog;
@@ -110,7 +109,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Import({MyHomeComplexCollectionService.class, MyHomeComplexRegionCollectionService.class,
         PagedSourceCollector.class, ExternalDataRetryExecutor.class,
         SourceCollectionRecordService.class, MyHomeComplexStorageService.class, IngestWriteOwnershipGuard.class, IngestExecutionOwnershipRepository.class,
-        MyHomeComplexCollector.class, MyHomeComplexApiRepository.class, MyHomeComplexPageParser.class,
+        MyHomeComplexCollector.class, MyHomeComplexApiRepository.class,
         MyHomeRegionCatalog.class, MyHomeComplexSourceReader.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
