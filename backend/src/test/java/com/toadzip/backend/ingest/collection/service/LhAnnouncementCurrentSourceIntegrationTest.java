@@ -35,7 +35,7 @@ import com.toadzip.backend.ingest.collection.repository.external.ExternalDataReq
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
-import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
+import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
@@ -240,7 +240,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
         assertThat(announcements.findAll()).singleElement()
                 .extracting(Announcement::getId).isEqualTo(announcementId);
         assertThat(failures.findAll()).allSatisfy(failure ->
-                assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.RESOLVED));
+                assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.RESOLVED));
     }
 
     @Test
@@ -250,7 +250,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
         assertThat(collection.collect(DETAIL).failedRequestCount()).isOne();
         assertThat(collection.refresh(DETAIL, "P1").failedRequestCount()).isOne();
         assertThat(failures.findAll()).singleElement().satisfies(failure ->
-                assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.PENDING));
+                assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.PENDING));
         assertThat(links.count()).isZero();
 
         first.markMissed();
@@ -259,7 +259,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
         assertThat(collection.refresh(DETAIL, "P1").failedRequestCount()).isZero();
         assertThat(links.findAll()).singleElement().satisfies(link -> assertThat(link.getPanId()).isEqualTo("200"));
         assertThat(failures.findAll()).singleElement().satisfies(failure ->
-                assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.RESOLVED));
+                assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.RESOLVED));
     }
 
     @ParameterizedTest
@@ -279,7 +279,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
         assertThat(excluded.externalApiCallCount()).isZero();
         assertThat(failures.findAll()).singleElement().satisfies(failure -> {
             assertThat(failure.getId()).isEqualTo(failureId);
-            assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.SKIPPED);
+            assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.SKIPPED);
         });
         assertThat(links.count()).isZero();
 
@@ -289,7 +289,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
         assertThat(collection.collect(DETAIL).failedRequestCount()).isOne();
         assertThat(failures.findAll()).singleElement().satisfies(failure -> {
             assertThat(failure.getId()).isEqualTo(failureId);
-            assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.PENDING);
+            assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.PENDING);
             assertThat(failure.getRecurrenceCount()).isOne();
         });
     }
@@ -308,7 +308,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
         assertThat(collection.collect(DETAIL).failedRequestCount()).isOne();
 
         assertThat(failures.findById(failureId)).hasValueSatisfying(failure ->
-                assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.PENDING));
+                assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.PENDING));
         assertThat(links.count()).isZero();
     }
 
@@ -326,10 +326,10 @@ class LhAnnouncementCurrentSourceIntegrationTest {
 
         assertThat(report.failedRequestCount()).isZero();
         assertThat(report.externalApiCallCount()).isOne();
-        assertFailureStatus(firstFailure, ExternalDataFailureStatus.RESOLVED);
-        assertFailureStatus(linkedFailure, ExternalDataFailureStatus.RESOLVED);
-        assertFailureStatus(otherApiFailure, ExternalDataFailureStatus.PENDING);
-        assertFailureStatus(otherAnnouncementFailure, ExternalDataFailureStatus.PENDING);
+        assertFailureStatus(firstFailure, IngestFailureStatus.RESOLVED);
+        assertFailureStatus(linkedFailure, IngestFailureStatus.RESOLVED);
+        assertFailureStatus(otherApiFailure, IngestFailureStatus.PENDING);
+        assertFailureStatus(otherAnnouncementFailure, IngestFailureStatus.PENDING);
         assertThat(querySources.findAll()).singleElement().satisfies(checkpoint ->
                 assertThat(checkpoint.getCollectedAt()).isEqualTo(NOW));
     }
@@ -351,8 +351,8 @@ class LhAnnouncementCurrentSourceIntegrationTest {
         var report = collection.collect(DETAIL);
 
         assertThat(report.failedRequestCount()).isOne();
-        assertFailureStatus(successfulFailure, ExternalDataFailureStatus.RESOLVED);
-        assertFailureStatus(unsuccessfulFailure, ExternalDataFailureStatus.PENDING);
+        assertFailureStatus(successfulFailure, IngestFailureStatus.RESOLVED);
+        assertFailureStatus(unsuccessfulFailure, IngestFailureStatus.PENDING);
         assertThat(links.findAll()).singleElement().satisfies(link ->
                 assertThat(link.getSourceAnnouncementKey()).isEqualTo("P1"));
     }
@@ -371,7 +371,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
         )).getId();
     }
 
-    private void assertFailureStatus(Long identifier, ExternalDataFailureStatus status) {
+    private void assertFailureStatus(Long identifier, IngestFailureStatus status) {
         assertThat(failures.findById(identifier)).hasValueSatisfying(failure ->
                 assertThat(failure.getStatus()).isEqualTo(status));
     }

@@ -54,7 +54,7 @@ class ExternalDataFailureRecorderTest {
 
         ArgumentCaptor<ExternalDataCollectionFailure> storedFailure = ArgumentCaptor.captor();
         verify(store).store(storedFailure.capture(), isNull());
-        assertThat(storedFailure.getValue().getReason()).doesNotContain(secret);
+        assertThat(storedFailure.getValue().getDetail()).doesNotContain(secret);
 
         ArgumentCaptor<Object> loggedException = ArgumentCaptor.captor();
         verify(logger).warn(anyString(), any(), any(), any(), loggedException.capture());
@@ -83,9 +83,9 @@ class ExternalDataFailureRecorderTest {
 
         ArgumentCaptor<ExternalDataCollectionFailure> storedFailure = ArgumentCaptor.captor();
         verify(store).store(storedFailure.capture(), isNull());
-        assertThat(storedFailure.getValue().getRequestDescription())
+        assertThat(storedFailure.getValue().getSourceKey())
                 .isEqualTo("serviceKey=[REDACTED]&page=1");
-        assertThat(storedFailure.getValue().getReason())
+        assertThat(storedFailure.getValue().getDetail())
                 .isEqualTo("serviceKey=[REDACTED] 호출 실패");
     }
 }

@@ -10,7 +10,7 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAn
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
-import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
+import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import java.net.URI;
 import java.util.List;
@@ -54,13 +54,13 @@ public class VerifiedLhSupplyReplacementService {
             throw new InvalidIngestRequestException("현재 마이홈 공고의 LH 공급 요청과 승인 대상이 다릅니다.");
         }
         ExternalDataCollectionFailure failure = failureRepository
-                .findFirstBySourceAndRequestDescriptionOrderByIdDesc(
+                .findFirstBySourceAndSourceKeyOrderByIdDesc(
                         ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, request.requestDescription())
                 .orElseThrow(() -> new InvalidIngestRequestException("보류된 LH 공급 요청을 찾을 수 없습니다."));
-        if (failure.getStatus() != ExternalDataFailureStatus.PENDING || !replacementFailure(failure)) {
+        if (failure.getStatus() != IngestFailureStatus.PENDING || !replacementFailure(failure)) {
             throw new InvalidIngestRequestException("공급 감소로 보류된 요청만 승인할 수 있습니다.");
         }
-        if (!failure.getReason().contains("proposedFingerprint=" + request.proposedFingerprint())
+        if (!failure.getDetail().contains("proposedFingerprint=" + request.proposedFingerprint())
                 && !("EmptyLhSupplyReplacementException".equals(failure.getErrorType())
                 && request.proposedFingerprint().equals(LhSupplySnapshot.fingerprint(List.of())))) {
             throw new InvalidIngestRequestException("보류된 공급 응답의 지문과 승인 대상이 다릅니다.");

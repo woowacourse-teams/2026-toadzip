@@ -45,7 +45,7 @@ public final class IngestFailureReconciler {
         return created;
     }
 
-    private record FailureKey(String sourceKey, Enum<?> reason) {
+    private record FailureKey(String sourceKey, Object reason) {
 
         private static FailureKey from(IngestFailure<?> failure) {
             return new FailureKey(failure.getSourceKey(), failure.getReason());

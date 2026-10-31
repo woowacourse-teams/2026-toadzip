@@ -62,7 +62,6 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
-import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
@@ -789,9 +788,9 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(linkRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
                 .containsExactlyInAnyOrderElementsOf(previousLinks);
         assertThat(externalFailureRepository.findAll()).singleElement().satisfies(failure -> {
-            assertThat(failure.getRequestDescription()).isEqualTo(candidate.requestDescription());
-            assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.PENDING);
-            assertThat(failure.getReason()).isEqualTo("기존 LH 공급 원천을 빈 수집 결과로 교체할 수 없습니다.");
+            assertThat(failure.getSourceKey()).isEqualTo(candidate.requestDescription());
+            assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.PENDING);
+            assertThat(failure.getDetail()).isEqualTo("기존 LH 공급 원천을 빈 수집 결과로 교체할 수 없습니다.");
         });
         assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
         assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
@@ -828,7 +827,7 @@ class LhAnnouncementEnrichmentServiceTest {
             assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000");
         });
         assertThat(externalFailureRepository.findAll()).singleElement().satisfies(failure ->
-                assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.RESOLVED));
+                assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.RESOLVED));
     }
 
     @ParameterizedTest
@@ -931,8 +930,8 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(linkRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
                 .containsExactlyInAnyOrderElementsOf(previousLinks);
         assertThat(externalFailureRepository.findAll()).singleElement().satisfies(failure -> {
-            assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.PENDING);
-            assertThat(failure.getReason()).contains("기존 공급행 1건이 누락");
+            assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.PENDING);
+            assertThat(failure.getDetail()).contains("기존 공급행 1건이 누락");
         });
         assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
         assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
@@ -957,7 +956,7 @@ class LhAnnouncementEnrichmentServiceTest {
             assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000");
         });
         assertThat(externalFailureRepository.findAll()).singleElement().satisfies(failure ->
-                assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.RESOLVED));
+                assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.RESOLVED));
     }
 
     @Test
