@@ -138,8 +138,7 @@ public class ShAnnouncementCollectionService {
             recordFailure(request, exception, progress);
             return;
         }
-        IngestExecutionScope.verifyHeld();
-        IngestExecutionScope.checkStopRequested();
+        IngestExecutionScope.verifyCanContinue();
         store.store(new ShAnnouncementSnapshot(entry.seq(), content.title(), content.department(), content.registeredDate(),
                 ShAnnouncementExternalRepository.detailUrl(entry.seq()),
                 ShAnnouncementExternalRepository.LIST_URL + "&page=" + page.page(), content.bodyText(), content.attachments()));

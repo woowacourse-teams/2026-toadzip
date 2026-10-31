@@ -162,8 +162,7 @@ public class DataPipelineRunner {
     }
 
     private void startStep(UUID executionId, DataPipelineStep step, DataPipelineStep previousPartiallyFailedStep) {
-        IngestExecutionScope.verifyHeld();
-        IngestExecutionScope.checkStopRequested();
+        IngestExecutionScope.verifyCanContinue();
         if (previousPartiallyFailedStep != null) {
             executionStateService.startStepAfterPartialFailure(executionId, previousPartiallyFailedStep, step);
             return;

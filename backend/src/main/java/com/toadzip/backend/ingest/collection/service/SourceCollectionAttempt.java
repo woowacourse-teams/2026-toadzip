@@ -22,7 +22,7 @@ public final class SourceCollectionAttempt<A extends SourceCollectionRequest> {
 
     /** 실행 소유권과 중지 요청을 확인한 뒤 요청을 만든다. 확인에 걸리면 요청을 만들지 않는다. */
     public static <A extends SourceCollectionRequest> SourceCollectionAttempt<A> prepare(Supplier<A> newRequest) {
-        verifyCanContinue();
+        IngestExecutionScope.verifyCanContinue();
         return new SourceCollectionAttempt<>(newRequest.get());
     }
 
@@ -42,12 +42,6 @@ public final class SourceCollectionAttempt<A extends SourceCollectionRequest> {
             records.fail(recordId, request, failure);
             throw failure;
         }
-    }
-
-    /** 다음 외부 요청이나 페이지 처리 전에 실행 소유권과 중지 요청을 확인한다. */
-    public static void verifyCanContinue() {
-        IngestExecutionScope.verifyHeld();
-        IngestExecutionScope.checkStopRequested();
     }
 
     @FunctionalInterface

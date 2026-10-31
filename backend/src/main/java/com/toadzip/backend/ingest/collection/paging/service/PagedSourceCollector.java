@@ -98,7 +98,7 @@ public class PagedSourceCollector {
     ) {
         PageBuffer<P, C> buffer = source.newBuffer(request);
         for (int page = 1; page <= request.maxPages() && !buffer.isComplete(); page++) {
-            SourceCollectionAttempt.verifyCanContinue();
+            IngestExecutionScope.verifyCanContinue();
             buffer.add(calls.fetch(page));
             if (source.reportsPageProgress()) {
                 IngestExecutionScope.pageCompleted(page, buffer.totalCount(), request.pageSize());

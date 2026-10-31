@@ -75,6 +75,12 @@ public final class IngestExecutionScope implements AutoCloseable {
         current().ifPresent(Lease::verifyHeld);
     }
 
+    /** 다음 외부 요청이나 쓰기 전에 실행 소유권과 중지 요청을 확인한다. */
+    public static void verifyCanContinue() {
+        verifyHeld();
+        checkStopRequested();
+    }
+
     /** 실행 맥락과 로그 MDC를 작업 스레드에 전달하고 작업 뒤 이전 상태로 복원한다. */
     public static <T> Callable<T> propagate(Callable<T> task) {
         State captured = CURRENT.get();
@@ -83,8 +89,7 @@ public final class IngestExecutionScope implements AutoCloseable {
             Map<String, String> previousLog = MDC.getCopyOfContextMap();
             replaceLog(capturedLog);
             try (var ignored = new IngestExecutionScope(captured)) {
-                verifyHeld();
-                checkStopRequested();
+                verifyCanContinue();
                 return task.call();
             }
             finally {

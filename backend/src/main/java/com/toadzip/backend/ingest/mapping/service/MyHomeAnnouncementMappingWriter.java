@@ -68,8 +68,7 @@ public class MyHomeAnnouncementMappingWriter {
     /** 신규 공고·공급행·LH 보강을 하나의 트랜잭션으로 저장한다. */
     @Transactional
     public MyHomeAnnouncementWriteResult register(ResolvedAnnouncement resolved, Announcement previous) {
-        IngestExecutionScope.verifyHeld();
-        IngestExecutionScope.checkStopRequested();
+        IngestExecutionScope.verifyCanContinue();
         String identifier = resolved.data().sourceAnnouncementIdentifier();
         if (announcementRepository.findBySourceAnnouncementIdentifierForUpdate(identifier).isPresent()) {
             throw new AnnouncementRegistrationException("이미 등록된 공고입니다: " + identifier);
@@ -101,8 +100,7 @@ public class MyHomeAnnouncementMappingWriter {
 
     private MyHomeAnnouncementWriteResult writeRegistration(ResolvedAnnouncement resolved, Announcement previous,
             Map<String, MyHomeSupplyMatchResult> selections, List<AnnouncementSupplySplitWriter.SplitPlan> plans) {
-        IngestExecutionScope.verifyHeld();
-        IngestExecutionScope.checkStopRequested();
+        IngestExecutionScope.verifyCanContinue();
         String identifier = resolved.data().sourceAnnouncementIdentifier();
         MyHomeAnnouncementWriteResult result = writeResolved(resolved, previous, selections, plans);
         if (!result.failures().isEmpty()) {
@@ -127,8 +125,7 @@ public class MyHomeAnnouncementMappingWriter {
         }
         failureStore.reconcileForAnnouncement(
                 identifier, List.of(), IngestExecutionScope.currentExecutionId().orElse(null));
-        IngestExecutionScope.verifyHeld();
-        IngestExecutionScope.checkStopRequested();
+        IngestExecutionScope.verifyCanContinue();
         announcementRepository.flush();
         return result;
     }

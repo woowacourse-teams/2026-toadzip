@@ -346,8 +346,7 @@ public class LhAnnouncementExternalCollectionService {
                         .map(candidate -> sourceSelectionDescription(candidate.sourceAnnouncementKey())).toList()));
         List<List<Candidate>> pending = new ArrayList<>();
         for (List<Candidate> requestCandidates : candidatesByRequest.values()) {
-            IngestExecutionScope.verifyHeld();
-            IngestExecutionScope.checkStopRequested();
+            IngestExecutionScope.verifyCanContinue();
             Boolean successful = completedRequests.get(requestCandidates.getFirst().requestDescription());
             if (successful == null) {
                 pending.add(requestCandidates);

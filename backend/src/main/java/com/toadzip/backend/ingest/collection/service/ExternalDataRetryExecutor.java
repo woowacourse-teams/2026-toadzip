@@ -51,8 +51,7 @@ public class ExternalDataRetryExecutor {
     ) {
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             beforeAttempt.run();
-            IngestExecutionScope.verifyHeld();
-            IngestExecutionScope.checkStopRequested();
+            IngestExecutionScope.verifyCanContinue();
             IngestExecutionScope.requestStarted(source.operation() + " · " + requestDescription);
             callCounter.increment();
             boolean attempted = true;

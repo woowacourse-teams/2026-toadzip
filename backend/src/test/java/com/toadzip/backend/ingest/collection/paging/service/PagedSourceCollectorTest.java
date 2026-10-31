@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -26,6 +27,7 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.time.Instant;
@@ -135,6 +137,23 @@ class PagedSourceCollectorTest {
         order.verify(rateLimit).checkBeforeAttempt();
         order.verify(rateLimit).reached();
         order.verify(failureRecorder).record(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void 페이지를_부르기_전에_중지_요청을_호출_제한_확인보다_먼저_반영한다() {
+        var monitor = mock(DataPipelineExecutionMonitor.class);
+        var rateLimit = mock(RateLimitSignal.class);
+        doNothing().doThrow(new DataPipelineStoppedException()).when(monitor).checkStopRequested();
+        source.page(1, () -> new SourcePage<>(1, List.of("a")));
+
+        try (var ignored = IngestExecutionScope.open(null, monitor)) {
+            assertThatThrownBy(() -> collector.collectAndReport(
+                    source, TestRequest::new, new ExternalDataCallCounter(), rateLimit))
+                    .isInstanceOf(DataPipelineStoppedException.class);
+        }
+
+        verify(rateLimit, never()).checkBeforeAttempt();
+        verify(records).fail(eq(recordId), any(), isA(DataPipelineStoppedException.class));
     }
 
     @Test
