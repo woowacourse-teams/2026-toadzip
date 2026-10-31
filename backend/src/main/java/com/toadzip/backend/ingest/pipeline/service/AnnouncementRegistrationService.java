@@ -11,7 +11,6 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import lombok.RequiredArgsConstructor;
@@ -60,7 +59,7 @@ public class AnnouncementRegistrationService {
     }
 
     private DataPipelineStepResult collectLh(String identifier, ExternalDataSource target) {
-        var executionId = IngestExecutionContext.currentExecutionId().orElse(null);
+        var executionId = IngestExecutionScope.currentExecutionId().orElse(null);
         boolean hasLhSource = sources.findAllByPblancIdOrderByIdAsc(identifier).stream()
                 .filter(source -> executionId == null || executionId.toString().equals(source.getLastSeenRunId()))
                 .anyMatch(source -> LhProviderPolicy.isLh(source.getSuplyInsttNm()));
@@ -80,7 +79,7 @@ public class AnnouncementRegistrationService {
     private ExternalDataCollectionReport refreshLh(
             ExternalDataSource target, String identifier
     ) {
-        var executionId = IngestExecutionContext.currentExecutionId().orElse(null);
+        var executionId = IngestExecutionScope.currentExecutionId().orElse(null);
         if (executionId != null) {
             return lhCollection.refresh(target, identifier, executionId);
         }

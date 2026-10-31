@@ -10,7 +10,6 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import lombok.RequiredArgsConstructor;
@@ -35,7 +34,7 @@ public class LhLeaseCatalogCollectionService {
         try {
             var attempt =
                     new com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.LhLeaseCatalogCollectionRequest(
-                    IngestExecutionContext.currentExecutionId().orElse(null), request.pageSize(),
+                    IngestExecutionScope.currentExecutionId().orElse(null), request.pageSize(),
                     request.maxPages(), clock.instant());
             stored = records.storedRowCount(collector.collectWithinBatch(attempt, retryExecutor, counter));
         } catch (ExternalDataCallFailureException | ExternalDataRequestException failure) {

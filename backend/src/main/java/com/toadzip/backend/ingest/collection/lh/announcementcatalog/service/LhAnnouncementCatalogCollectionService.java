@@ -9,7 +9,6 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
@@ -38,7 +37,7 @@ public class LhAnnouncementCatalogCollectionService {
         IngestExecutionScope.beginWork("LH 공고 목록", "페이지", -1);
         try {
             var request = new LhAnnouncementCatalogCollectionRequest(
-                    IngestExecutionContext.currentExecutionId().orElse(null), PAGE_SIZE, MAX_PAGES, clock.instant());
+                    IngestExecutionScope.currentExecutionId().orElse(null), PAGE_SIZE, MAX_PAGES, clock.instant());
             result = collector.collectWithinBatch(request, retryExecutor, counter);
         } catch (ExternalDataCallFailureException | ExternalDataRequestException failure) {
             failureRecorder.record(SOURCE, "PG_SZ=" + PAGE_SIZE, failure, log, "LH 공고 목록 수집 실패");

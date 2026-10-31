@@ -232,7 +232,7 @@ public class DataPipelineExecutionService {
         setExecutionContext("traceId", traceId);
         MDC.put("executionId", executionId.toString());
         var monitor = new DataPipelineExecutionMonitor(executionId, executionStateService, clock);
-        try (lease; var ignored = IngestExecutionScope.open(lease, monitor, serviceKey)) {
+        try (lease; var ignored = IngestExecutionScope.open(executionId, lease, monitor, serviceKey)) {
             lease.verifyHeld();
             runAndRecordOutcome(executionId, type, targetIdentifier);
         }

@@ -16,7 +16,6 @@ import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter;
 import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureStore;
@@ -127,7 +126,7 @@ public class MyHomeAnnouncementMappingWriter {
             }
         }
         failureStore.reconcileForAnnouncement(
-                identifier, List.of(), IngestExecutionContext.currentExecutionId().orElse(null));
+                identifier, List.of(), IngestExecutionScope.currentExecutionId().orElse(null));
         IngestExecutionScope.verifyHeld();
         IngestExecutionScope.checkStopRequested();
         announcementRepository.flush();

@@ -4,7 +4,7 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataFailureStore;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.util.Collection;
 import java.util.Set;
@@ -82,7 +82,7 @@ public class ExternalDataFailureRecorder {
     }
 
     private UUID currentExecutionId() {
-        return IngestExecutionContext.currentExecutionId().orElse(null);
+        return IngestExecutionScope.currentExecutionId().orElse(null);
     }
 
     private String reasonOf(RuntimeException exception) {

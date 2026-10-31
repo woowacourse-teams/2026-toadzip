@@ -12,7 +12,7 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataRetryInterruptedException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -51,7 +51,7 @@ public class MyHomeComplexRegionCollectionService {
         try {
             var attempt =
                     new com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionRequest(
-                    IngestExecutionContext.currentExecutionId().orElse(null), region.provinceCode(),
+                    IngestExecutionScope.currentExecutionId().orElse(null), region.provinceCode(),
                     region.districtCode(), request.pageSize(), request.maxPages(), clock.instant());
             UUID id = collector.collectWithinBatch(attempt, retryExecutor, callCounter, rateLimitReached);
             storedRowCount = records.storedRowCount(id);

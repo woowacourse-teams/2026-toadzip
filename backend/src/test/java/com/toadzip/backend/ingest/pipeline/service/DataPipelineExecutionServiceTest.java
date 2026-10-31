@@ -243,6 +243,31 @@ class DataPipelineExecutionServiceTest {
     }
 
     @Test
+    void 실행_ID를_실행_맥락으로_전달한다() {
+        configureStoredExecution();
+        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
+        service = serviceWith(task -> {
+            Thread worker = Thread.ofPlatform().start(task);
+            try {
+                worker.join();
+            }
+            catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(exception);
+            }
+        });
+        AtomicReference<Optional<java.util.UUID>> observedExecutionId = new AtomicReference<>();
+        doAnswer(invocation -> {
+            observedExecutionId.set(IngestExecutionScope.currentExecutionId());
+            throw new IllegalStateException("테스트 실패");
+        }).when(runner).run(any(), any());
+
+        var started = service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+
+        assertThat(observedExecutionId.get()).contains(started.executionId());
+    }
+
+    @Test
     void 시작한_작업이_모든_단계를_마치면_완료_상태를_조회한다() {
         configureStoredExecution();
         when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));

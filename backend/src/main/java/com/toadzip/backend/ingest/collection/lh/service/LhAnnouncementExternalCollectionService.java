@@ -35,7 +35,6 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.MDC;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
@@ -521,18 +520,8 @@ public class LhAnnouncementExternalCollectionService {
             List<Candidate> requestCandidates,
             Set<String> pendingConflicts
     ) {
-        Map<String, String> context = MDC.getCopyOfContextMap();
-        return IngestExecutionScope.propagate(() -> {
-            try {
-                if (context != null) {
-                    MDC.setContextMap(context);
-                }
-                return collectSharedRequest(targetSource, requestCandidates, pendingConflicts);
-            }
-            finally {
-                MDC.clear();
-            }
-        });
+        return IngestExecutionScope.propagate(
+                () -> collectSharedRequest(targetSource, requestCandidates, pendingConflicts));
     }
 
     private ExternalDataCollectionReport collectSharedRequest(

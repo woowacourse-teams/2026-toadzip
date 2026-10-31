@@ -7,7 +7,6 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingFailureResponse;
@@ -19,6 +18,7 @@ import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingWrite
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyRowResolver.ResolvedAnnouncement;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -59,7 +59,7 @@ public class MyHomeAnnouncementMappingService {
         if (announcementRepository.findBySourceAnnouncementIdentifier(pblancId).isPresent()) {
             throw new AnnouncementRegistrationException("이미 등록된 공고입니다: " + pblancId);
         }
-        var executionId = IngestExecutionContext.currentExecutionId().orElse(null);
+        var executionId = IngestExecutionScope.currentExecutionId().orElse(null);
         List<MyHomeAnnouncementSource> sources = sourceRepository.findAllByPblancIdOrderByIdAsc(pblancId).stream()
                 .filter(source -> executionId == null || executionId.toString().equals(source.getLastSeenRunId()))
                 .toList();
@@ -112,7 +112,7 @@ public class MyHomeAnnouncementMappingService {
         }
         failureStore.reconcileAfterRun(
                 failures,
-                IngestExecutionContext.currentExecutionId().orElse(null)
+                IngestExecutionScope.currentExecutionId().orElse(null)
         );
         return report;
     }

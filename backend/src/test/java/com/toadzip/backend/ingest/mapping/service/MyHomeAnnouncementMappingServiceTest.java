@@ -45,6 +45,7 @@ import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDeta
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
 import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -244,12 +245,8 @@ class MyHomeAnnouncementMappingServiceTest {
         collectedSourceStorage.complete(collectionHistory.start(request), request,
                 new MyHomeAnnouncementCollectedResponse(1, COLLECTED_AT.plusSeconds(60), List.of(row)));
 
-        org.slf4j.MDC.put("executionId", executionId.toString());
-        try {
+        try (var ignored = IngestExecutionScope.open(executionId, null, null, null)) {
             service.registerAnnouncement("21026");
-        }
-        finally {
-            org.slf4j.MDC.remove("executionId");
         }
 
         assertThat(supplyRowRepository.count()).isOne();

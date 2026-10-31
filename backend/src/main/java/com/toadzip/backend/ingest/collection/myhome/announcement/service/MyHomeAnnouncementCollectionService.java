@@ -11,7 +11,6 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.util.UUID;
@@ -34,7 +33,7 @@ public class MyHomeAnnouncementCollectionService {
     public ExternalDataCollectionReport collect(
             com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionRequest request
     ) {
-        UUID runId = IngestExecutionContext.currentExecutionId().orElseGet(UUID::randomUUID);
+        UUID runId = IngestExecutionScope.currentExecutionId().orElseGet(UUID::randomUUID);
         var report = ExternalDataCollectionReport.empty(ExternalDataSource.MYHOME_ANNOUNCEMENT.operation());
         for (MyHomeAnnouncementSupplyType type : MyHomeAnnouncementSupplyType.values()) {
             IngestExecutionScope.beginWork("마이홈 공고 · " + type.requestCode(), "페이지", -1);

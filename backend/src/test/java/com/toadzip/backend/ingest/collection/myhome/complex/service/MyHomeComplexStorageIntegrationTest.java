@@ -186,15 +186,12 @@ class MyHomeComplexStorageIntegrationTest {
     void administratorRegionExecutionUsesOneOperationLockAndPropagatesExecutionId() {
         httpServer.expect(requestTo(apiUrl(1))).andRespond(withSuccess(
                 pageJson(1, row(100L, "11", "680", "59A", 100000L)), MediaType.APPLICATION_JSON));
-        org.slf4j.MDC.put("executionId", EXECUTION_ID.toString());
-        try {
+        try (var ignored = IngestExecutionScope.open(EXECUTION_ID, null, null, null)) {
             var result = batch.collect(new com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest(
                     "11", "680", 2, 10));
             assertThat(result.storedRowCount()).isOne();
             assertThat(result.failedRequestCount()).isZero();
             assertThat(result.externalApiCallCount()).isOne();
-        } finally {
-            org.slf4j.MDC.remove("executionId");
         }
         assertThat(recordRepository.findAllByExecutionIdAndSource(EXECUTION_ID, CollectionSource.MYHOME_COMPLEX))
                 .singleElement().extracting(record -> record.getStatus()).isEqualTo(CollectionStatus.SUCCESS);
@@ -215,14 +212,11 @@ class MyHomeComplexStorageIntegrationTest {
                     return withSuccess(pageJson(1, row(100L, "11", "680", "59A", 100000L)),
                             MediaType.APPLICATION_JSON).createResponse(request);
                 });
-        org.slf4j.MDC.put("executionId", EXECUTION_ID.toString());
-        try {
+        try (var ignored = IngestExecutionScope.open(EXECUTION_ID, null, null, null)) {
             var result = batch.collect(com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest.allRegions(2, 10));
             assertThat(result.storedRowCount()).isEqualTo(2);
             assertThat(result.failedRequestCount()).isZero();
             assertThat(result.externalApiCallCount()).isEqualTo(2);
-        } finally {
-            org.slf4j.MDC.remove("executionId");
         }
         assertThat(recordRepository.findAllByExecutionIdAndSource(EXECUTION_ID, CollectionSource.MYHOME_COMPLEX))
                 .hasSize(2).allMatch(record -> record.getStatus() == CollectionStatus.SUCCESS);

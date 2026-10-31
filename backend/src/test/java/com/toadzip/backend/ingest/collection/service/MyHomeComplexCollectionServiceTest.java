@@ -593,16 +593,17 @@ class MyHomeComplexCollectionServiceTest {
                 regionCatalog,
                 concurrentCollector
         );
-        String executionId = UUID.randomUUID().toString();
+        UUID executionId = UUID.randomUUID();
         when(regionCatalog.findAll()).thenReturn(List.of(seoul, busan));
         when(concurrentCollector.collect(any(), eq(request), any(AtomicBoolean.class)))
                 .thenAnswer(invocation -> {
-                    assertThat(MDC.get("executionId")).isEqualTo(executionId);
+                    assertThat(IngestExecutionScope.currentExecutionId()).contains(executionId);
+                    assertThat(MDC.get("executionId")).isEqualTo(executionId.toString());
                     return MyHomeComplexCollectionReport.empty();
                 });
 
-        MDC.put("executionId", executionId);
-        try {
+        MDC.put("executionId", executionId.toString());
+        try (var scope = IngestExecutionScope.open(executionId, null, null, null)) {
             concurrentService.collect(request);
         }
         finally {

@@ -28,10 +28,10 @@ import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMap
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter.LhAnnouncementEnrichmentWriteResult;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter.LhSupplyMatchingFailureData;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.service.LhSupplyRowLinks;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -83,7 +83,7 @@ public class LhAnnouncementEnrichmentService {
         }
         failureStore.reconcileAfterRun(
                 failures,
-                IngestExecutionContext.currentExecutionId().orElse(null)
+                IngestExecutionScope.currentExecutionId().orElse(null)
         );
         return report;
     }

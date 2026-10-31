@@ -13,7 +13,6 @@ import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.domain.AnnouncementSupplyMatchDecision;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ComplexOption;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ExclusionRequest;
@@ -245,7 +244,7 @@ public class AnnouncementSupplyMatchingService {
                     source, exception.reason(), exception.getMessage(), clock.instant())).toList();
             try {
                 failureStore.reconcileRejectedAnnouncement(identifier, failures,
-                        IngestExecutionContext.currentExecutionId().orElse(null));
+                        IngestExecutionScope.currentExecutionId().orElse(null));
             }
             catch (RuntimeException recordingFailure) {
                 log.warn("단건 정제의 LH 보강 실패를 기록하지 못했습니다. identifier={}", identifier, recordingFailure);

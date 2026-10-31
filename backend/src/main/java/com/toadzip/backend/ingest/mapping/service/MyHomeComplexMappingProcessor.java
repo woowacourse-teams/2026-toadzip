@@ -3,7 +3,6 @@ package com.toadzip.backend.ingest.mapping.service;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.service.RoadAddressGeocodingService;
@@ -15,6 +14,7 @@ import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingFailure
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingRejectedException;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.SplitComplexKey;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -61,7 +61,7 @@ class MyHomeComplexMappingProcessor {
         recordMissingLinkedSources(verifiedIdentifiers, groups, failures, occurredAt);
 
         MyHomeComplexMappingReport report = MyHomeComplexMappingReport.failedRows(failures.size());
-        var executionId = IngestExecutionContext.currentExecutionId().orElse(null);
+        var executionId = IngestExecutionScope.currentExecutionId().orElse(null);
         try {
             Map<SplitComplexKey, List<MappedGroup>> splitGroups = new LinkedHashMap<>();
             for (Map.Entry<String, List<MyHomeComplexSource>> group : groups.entrySet()) {

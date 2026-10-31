@@ -17,7 +17,7 @@ import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureExc
 import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import lombok.RequiredArgsConstructor;
@@ -101,7 +101,7 @@ public class LhAnnouncementCandidateCollector {
     ) {
         var query = new LhAnnouncementQuery(request.panId(), request.connectionSystemDivisionCode(),
                 request.upperAnnouncementTypeCode(), request.announcementTypeCode(), request.supplyInfoTypeCode());
-        var attempt = new LhAnnouncementCollectionRequest(IngestExecutionContext.currentExecutionId().orElse(null),
+        var attempt = new LhAnnouncementCollectionRequest(IngestExecutionScope.currentExecutionId().orElse(null),
                 CollectionSource.valueOf(targetSource.name()), query, 6, clock.instant());
         return records.storedRowCount(collector.collectWithinBatch(attempt, retryExecutor, callCounter, meterRegistry));
     }

@@ -69,6 +69,7 @@ import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.ingest.quality.service.LhAnnouncementQualityService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import jakarta.persistence.EntityManager;
@@ -88,7 +89,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -2099,7 +2099,7 @@ class LhAnnouncementEnrichmentServiceTest {
         myHomeSourceRepository.save(source);
         UUID executionId = UUID.randomUUID();
 
-        try (var ignored = MDC.putCloseable("executionId", executionId.toString())) {
+        try (var ignored = IngestExecutionScope.open(executionId, null, null, null)) {
             assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
         }
 

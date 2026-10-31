@@ -27,8 +27,8 @@ import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMap
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhScheduleData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementSupplyMatcher.LhSupplyMatchResult;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.service.LhSupplyRowLinks;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -96,7 +96,7 @@ public class LhAnnouncementEnrichmentWriter {
         }
         failureStore.reconcileForAnnouncement(
                 announcement.getSourceAnnouncementIdentifier(), List.of(),
-                IngestExecutionContext.currentExecutionId().orElse(null)
+                IngestExecutionScope.currentExecutionId().orElse(null)
         );
     }
 

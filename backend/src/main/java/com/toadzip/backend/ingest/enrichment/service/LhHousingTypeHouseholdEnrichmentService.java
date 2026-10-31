@@ -21,7 +21,7 @@ import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdTargetDecisio
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHousehold;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHouseholdSource;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHouseholdSourceKey;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -83,7 +83,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
         report = report.plus(writeUniqueMatches(current.matchedSources(), decisions, failures, occurredAt));
         failureStore.reconcileAfterRun(
                 failures,
-                IngestExecutionContext.currentExecutionId().orElse(null)
+                IngestExecutionScope.currentExecutionId().orElse(null)
         );
         logCompleted(report);
         return report;
