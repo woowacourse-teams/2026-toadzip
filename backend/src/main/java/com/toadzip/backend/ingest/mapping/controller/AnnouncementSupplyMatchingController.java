@@ -6,6 +6,7 @@ import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.RefineR
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ReleaseRequest;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Row;
+import com.toadzip.backend.ingest.mapping.service.AnnouncementSupplyCandidateService;
 import com.toadzip.backend.ingest.mapping.service.AnnouncementSupplyMatchingService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/admin/ingest/announcement-supply-matches")
 public class AnnouncementSupplyMatchingController {
     private final AnnouncementSupplyMatchingService matching;
+    private final AnnouncementSupplyCandidateService candidates;
 
     @GetMapping("/{identifier}")
     public List<Row> rows(@PathVariable String identifier) {
@@ -64,11 +66,11 @@ public class AnnouncementSupplyMatchingController {
     @GetMapping("/complexes")
     public List<ComplexOption> complexes(@RequestParam String query,
             @RequestParam(defaultValue = "") String pnu) {
-        return matching.complexes(query, pnu);
+        return candidates.complexes(query, pnu);
     }
 
     @GetMapping("/complexes/{complexId}/housing-types")
     public List<HousingTypeOption> types(@PathVariable long complexId) {
-        return matching.housingTypes(complexId);
+        return candidates.housingTypes(complexId);
     }
 }

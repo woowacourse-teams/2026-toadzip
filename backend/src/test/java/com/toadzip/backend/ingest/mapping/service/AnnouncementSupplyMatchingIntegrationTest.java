@@ -51,6 +51,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     private static final String TARGET = "manual-21395";
     private static final String PNU = "2823710500105500000";
     @Autowired private AnnouncementSupplyMatchingService matching;
+    @Autowired private AnnouncementSupplyCandidateService candidateService;
     @Autowired private MyHomeAnnouncementSourceFixtures sources;
     @Autowired private HousingComplexRepository complexes;
     @Autowired private HousingTypeRepository types;
@@ -70,7 +71,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     private HousingType type;
 
     private Map<String, Object> splitBody(Row row) {
-        var candidates = matching.housingTypes(complex.getId());
+        var candidates = candidateService.housingTypes(complex.getId());
         var selections = new java.util.ArrayList<Map<String, Object>>();
         for (int index = 0; index < candidates.size(); index++) {
             var option = candidates.get(index);
@@ -335,7 +336,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         var body = splitBody(original);
         var third = types.save(HousingType.createFromMyHome(complex, "additional-test-type", "26C",
                 new BigDecimal("26.6"), null));
-        var candidate = matching.housingTypes(complex.getId()).stream()
+        var candidate = candidateService.housingTypes(complex.getId()).stream()
                 .filter(value -> value.id() == third.getId()).findFirst().orElseThrow();
         @SuppressWarnings("unchecked")
         var selections = (List<Map<String, Object>>) body.get("rows");
@@ -355,7 +356,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         var second = types.save(HousingType.createFromMyHome(complex, "complex-21395:26B", "26",
                 new BigDecimal("26.5195"), null));
         var row = matching.rows(TARGET).getFirst();
-        var candidates = matching.housingTypes(complex.getId());
+        var candidates = candidateService.housingTypes(complex.getId());
         mvc.perform(post(PATH + "/" + TARGET + "/split").with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
                         "rowIdentifier", row.rowIdentifier(), "token", row.token(),
@@ -389,7 +390,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
             assertThat(row.exclusiveArea()).isNull();
             assertThat(row.housingTypeId()).isNull();
         });
-        String chosenToken = matching.housingTypes(complex.getId()).stream()
+        String chosenToken = candidateService.housingTypes(complex.getId()).stream()
                 .filter(option -> option.id() == type.getId()).findFirst().orElseThrow().token();
         remember(before.getFirst(), chosenToken, notice.get("sourceUrl").asText(),
                 "재현 테스트의 명시적 후보 선택이며 실제 주택형 대응을 확정한 자료가 아님")
@@ -723,7 +724,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 단지_검색과_주택형_조회는_해당_단지의_기존_데이터만_반환한다() {
-        assertThat(matching.complexes("한스빌")).singleElement()
+        assertThat(candidateService.complexes("한스빌")).singleElement()
                 .satisfies(value -> {
                     assertThat(value.id()).isEqualTo(complex.getId());
                     assertThat(value.pnu()).isEqualTo(complex.getAddress().getPnu());
@@ -733,7 +734,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
                         assertThat(area.exclusiveArea()).isEqualByComparingTo(type.getExclusiveArea());
                     });
                 });
-        assertThat(matching.housingTypes(complex.getId())).singleElement()
+        assertThat(candidateService.housingTypes(complex.getId())).singleElement()
                 .satisfies(value -> assertThat(value.id()).isEqualTo(type.getId()));
     }
 
@@ -742,11 +743,11 @@ class AnnouncementSupplyMatchingIntegrationTest {
         var main = complex("중촌주공2단지", "complex-main", PNU, "NATIONAL_RENTAL");
         complex("한스빌 다른필지", "complex-other", "1111111111111111111", "NATIONAL_RENTAL");
 
-        assertThat(matching.complexes("한스빌", PNU)).extracting(value -> value.id())
+        assertThat(candidateService.complexes("한스빌", PNU)).extracting(value -> value.id())
                 .containsExactly(complex.getId(), main.getId(), complexes.findBySourceComplexIdentifier("complex-other")
                         .orElseThrow().getId());
-        assertThat(matching.complexes("한스빌")).extracting(value -> value.id()).doesNotContain(main.getId());
-        assertThatThrownBy(() -> matching.complexes("한스빌", "12a")).hasMessageContaining("PNU");
+        assertThat(candidateService.complexes("한스빌")).extracting(value -> value.id()).doesNotContain(main.getId());
+        assertThatThrownBy(() -> candidateService.complexes("한스빌", "12a")).hasMessageContaining("PNU");
     }
 
     @Test
@@ -783,7 +784,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     }
 
     private String targetToken(HousingType value) {
-        return matching.housingTypes(complex.getId()).stream().filter(option -> option.id() == value.getId())
+        return candidateService.housingTypes(complex.getId()).stream().filter(option -> option.id() == value.getId())
                 .findFirst().orElseThrow().token();
     }
 
@@ -809,7 +810,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     }
 
     private void rememberCurrent() throws Exception {
-        String token = matching.housingTypes(complex.getId()).stream().filter(value -> value.id() == type.getId())
+        String token = candidateService.housingTypes(complex.getId()).stream().filter(value -> value.id() == type.getId())
                 .findFirst().orElseThrow().token();
         var selections = matching.rows(TARGET).stream().map(row -> Map.of(
                 "rowIdentifier", row.rowIdentifier(), "token", row.token(), "complexId", complex.getId(),
@@ -865,7 +866,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 후보_조회_후_면적이_변경되면_오래된_후보로_저장하지_않는다() throws Exception {
         var row = matching.rows(TARGET).getFirst();
-        String token = matching.housingTypes(complex.getId()).getFirst().token();
+        String token = candidateService.housingTypes(complex.getId()).getFirst().token();
         jdbc.sql("UPDATE housing_types SET exclusive_area = 31 WHERE id = ?").param(type.getId()).update();
         remember(row, token, "https://example.com/official", "원문 확인").andExpect(status().isConflict());
         assertThat(announcements.count()).isZero();
@@ -876,7 +877,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 저장한_선택이_바뀐_뒤에는_이전_화면의_저장과_해제를_거절한다() throws Exception {
         var stale = matching.rows(TARGET).getFirst();
-        String token = matching.housingTypes(complex.getId()).getFirst().token();
+        String token = candidateService.housingTypes(complex.getId()).getFirst().token();
         rememberCurrent();
         remember(stale, token, "https://example.com/official", "이전 입력").andExpect(status().isConflict());
         mvc.perform(post(PATH + "/" + TARGET + "/release").with(user("admin").roles("ADMIN")).with(csrf())
@@ -903,7 +904,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 근거와_유효한_공식_URL이_없으면_선택을_저장하지_않는다() throws Exception {
         var row = matching.rows(TARGET).getFirst();
-        String token = matching.housingTypes(complex.getId()).getFirst().token();
+        String token = candidateService.housingTypes(complex.getId()).getFirst().token();
         remember(row, token, "javascript:alert(1)", "원문 확인").andExpect(status().isBadRequest());
         remember(row, token, "https://example.com/official", " ").andExpect(status().isBadRequest());
         assertThat(announcements.count()).isZero();
@@ -912,7 +913,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 일부_원천행이_사라져도_저장한_연결의_공급행은_삭제하지_않는다() throws Exception {
         sources.save(source(TARGET, 2, PNU));
-        String targetToken = matching.housingTypes(complex.getId()).getFirst().token();
+        String targetToken = candidateService.housingTypes(complex.getId()).getFirst().token();
         var selections = matching.rows(TARGET).stream().map(row -> Map.of(
                 "rowIdentifier", row.rowIdentifier(), "token", row.token(), "complexId", complex.getId(),
                 "housingTypeId", type.getId(), "targetToken", targetToken)).toList();
@@ -1167,7 +1168,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         for (var target : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
             progressStore.complete(target, TARGET, candidate.requestDescription(), candidate.panId());
         }
-        remember(matching.rows(TARGET).getFirst(), matching.housingTypes(complex.getId()).getFirst().token(),
+        remember(matching.rows(TARGET).getFirst(), candidateService.housingTypes(complex.getId()).getFirst().token(),
                 "https://example.com/official", "공식 자료 확인").andExpect(status().isBadRequest());
         assertThat(announcements.count()).isZero();
         assertThat(jdbc.sql("SELECT count(*) FROM announcement_supply_match_decisions").query(Long.class).single())

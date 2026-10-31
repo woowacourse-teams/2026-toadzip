@@ -54,7 +54,7 @@ SourceMapper → SupplyRowResolver → MappingWriter(→ MyHomeSupplyRowWriter) 
 독립 보강은 `LhAnnouncementEnrichmentService.enrichAll()`에서 시작하며 별도 실패 이력을 관리한다.
 
 정제와 보강은 `mapping → enrichment` 한 방향으로만 의존한다. 공고 한 건을 쓰는 경로에서 정제는 보강을 `MappedAnnouncementLhEnrichment`(LH 보강 실행·LH 소유 해제, 거절은 `LhAnnouncementEnrichmentRejectedException`)로만 부른다. 보강이 정제에서 확인하는 상태(미해소 정제 실패 공고, 공통값 거절 사유)는 `LhEnrichmentMappingState`로 받는다.
-LH 공급 연결의 판정·지문 규칙(`LhSupplyRowLinks`)과 저장소는 정제와 보강이 함께 쓰는 규칙으로 enrichment에 둔다. 관리자 연결의 저장·해제는 정제 쪽 `LhSupplyLinkService`가 한다. 이 규칙이나 지문 필드를 바꾸면 이미 저장한 연결이 무효가 되고 정제의 `SupplyRowResolver`·`LhSupplyLinkService`도 영향을 받는다.
+LH 공급 연결의 판정·지문 규칙(`LhSupplyRowLinks`)과 저장소는 정제와 보강이 함께 쓰는 규칙으로 enrichment에 둔다. 관리자 연결의 저장·해제는 정제 쪽 `LhSupplyLinkService`가 한다. 이 규칙이나 지문 필드를 바꾸면 이미 저장한 연결이 무효가 되고 정제의 `SupplyRowResolver`·`LhSupplyLinkService`도 영향을 받는다. 관리자 연결 화면의 매칭 진단(`LhSupplyMatchDiagnostics`)과 단지 병합의 세대수 매칭(`LhHousingTypeHouseholdMatcher`)도 정제가 쓰는 보강 쪽 규칙이다.
 
 ## LH 공고 목록 단독 수집
 
