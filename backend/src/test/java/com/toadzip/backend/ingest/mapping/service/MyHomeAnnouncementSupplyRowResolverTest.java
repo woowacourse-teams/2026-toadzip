@@ -15,6 +15,7 @@ import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupp
 import com.toadzip.backend.ingest.collection.lh.supply.domain.projection.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
@@ -239,7 +240,7 @@ class MyHomeAnnouncementSupplyRowResolverTest {
     }
 
     private void savedLink(String lhIdentifier, String myhomeIdentifier, boolean valid) {
-        var link = new com.toadzip.backend.ingest.mapping.domain.LhSupplyRowLink("announcement", lhIdentifier);
+        var link = new com.toadzip.backend.ingest.enrichment.domain.LhSupplyRowLink("announcement", lhIdentifier);
         link.confirm(myhomeIdentifier, "lh", "myhome", "https://apply.lh.or.kr", "공고문 단지 목록 대조", "operator");
         when(links.states(org.mockito.ArgumentMatchers.eq("announcement"), org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any()))

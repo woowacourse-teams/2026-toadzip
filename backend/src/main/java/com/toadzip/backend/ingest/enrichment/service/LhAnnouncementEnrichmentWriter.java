@@ -28,7 +28,6 @@ import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMap
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhScheduleData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementSupplyMatcher.LhSupplyMatchResult;
-import com.toadzip.backend.ingest.mapping.service.LhSupplyRowLinks;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -43,7 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @RequiredArgsConstructor
-public class LhAnnouncementEnrichmentWriter {
+public class LhAnnouncementEnrichmentWriter implements MappedAnnouncementLhEnrichment {
 
     private static final String ALL_TARGET = "전체";
     private static final String ALL_RANK = "전체";
@@ -59,6 +58,7 @@ public class LhAnnouncementEnrichmentWriter {
     private final LhAnnouncementEnrichmentFailureStore failureStore;
     private final LhAnnouncementSupplySourceReader sourceStore;
 
+    @Override
     @Transactional
     public void writeAfterMapping(
             Announcement announcement,
@@ -101,7 +101,7 @@ public class LhAnnouncementEnrichmentWriter {
         );
     }
 
-    /** 공고가 LH 소유에서 벗어나면 관리자가 고치지 않은 LH 일정·첨부·공급대상을 지운다. */
+    @Override
     @Transactional
     public void releaseLhOwnership(Announcement announcement) {
         List<AnnouncementSchedule> schedules = scheduleRepository.findAllByAnnouncement(announcement).stream()

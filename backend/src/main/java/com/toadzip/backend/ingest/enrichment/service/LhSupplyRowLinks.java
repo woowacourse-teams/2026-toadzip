@@ -1,10 +1,10 @@
-package com.toadzip.backend.ingest.mapping.service;
+package com.toadzip.backend.ingest.enrichment.service;
 
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
-import com.toadzip.backend.ingest.mapping.domain.LhSupplyRowLink;
-import com.toadzip.backend.ingest.mapping.repository.LhSupplyRowLinkRepository;
+import com.toadzip.backend.ingest.enrichment.domain.LhSupplyRowLink;
+import com.toadzip.backend.ingest.enrichment.repository.LhSupplyRowLinkRepository;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -53,7 +53,7 @@ public class LhSupplyRowLinks {
     }
 
     /** 조회 이후 원천이나 저장 연결이 바뀌었는지 확인하는 값이다. */
-    String token(List<MyHomeAnnouncementSource> currentSources, List<LhAnnouncementSupplySource> supplies,
+    public String token(List<MyHomeAnnouncementSource> currentSources, List<LhAnnouncementSupplySource> supplies,
             Map<String, State> states) {
         var values = new java.util.ArrayList<Object>();
         currentSources.forEach(source -> values.add(myHomeFingerprint(source)));
@@ -63,13 +63,13 @@ public class LhSupplyRowLinks {
     }
 
     /** 연결 판단에 쓰는 LH 값만 담는다. 보증금·임대료처럼 보강으로 갱신되는 값은 재확인 사유가 아니다. */
-    String lhFingerprint(LhAnnouncementSupplySource source) {
+    public String lhFingerprint(LhAnnouncementSupplySource source) {
         return hash(source.getPanId(), source.getRequestHash(), source.getSourceOrder(), source.getComplexLabel(),
                 source.getTypeName(), source.getExclusiveArea(), source.getSupplyArea(), source.getTotalUnitCount(),
                 source.getSuppliedUnitCount());
     }
 
-    String myHomeFingerprint(MyHomeAnnouncementSource source) {
+    public String myHomeFingerprint(MyHomeAnnouncementSource source) {
         return hash(source.getSourceKey(), source.getHsmpNm(), source.getHouseTyNm(), source.getPnu(),
                 source.getSuplyTyNm(), source.getSumSuplyCo(), source.getUrl());
     }

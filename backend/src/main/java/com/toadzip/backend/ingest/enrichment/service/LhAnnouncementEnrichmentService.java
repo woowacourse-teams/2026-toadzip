@@ -28,9 +28,6 @@ import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMap
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter.LhAnnouncementEnrichmentWriteResult;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter.LhSupplyMatchingFailureData;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
-import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
-import com.toadzip.backend.ingest.mapping.service.LhSupplyRowLinks;
-import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.time.Instant;
@@ -57,22 +54,17 @@ public class LhAnnouncementEnrichmentService {
     private final LhAnnouncementSupplySourceReader supplySourceRepository;
     private final LhAnnouncementEnrichmentFailureRepository failureRepository;
     private final LhAnnouncementEnrichmentFailureStore failureStore;
-    private final MyHomeAnnouncementMappingFailureRepository mappingFailureRepository;
+    private final LhEnrichmentMappingState mappingState;
     private final LhAnnouncementEnrichmentMapper mapper;
     private final LhAnnouncementEnrichmentWriter writer;
     private final LhAnnouncementLinkResolver linkResolver;
-    private final MyHomeAnnouncementCommonValuesMapper commonValuesMapper;
     private final LhSupplyRowLinks supplyLinks;
     private final Clock clock;
 
     public LhAnnouncementEnrichmentReport enrichAll() {
         Instant occurredAt = clock.instant();
         List<LhAnnouncementEnrichmentFailure> failures = new ArrayList<>();
-        Set<String> incompleteMappingIds = mappingFailureRepository.findAllByStatus(PENDING)
-                .stream()
-                .map(failure -> failure.getSourceAnnouncementIdentifier())
-                .filter(identifier -> !blank(identifier))
-                .collect(Collectors.toSet());
+        Set<String> incompleteMappingIds = mappingState.incompleteAnnouncementIdentifiers();
         LhAnnouncementEnrichmentReport report = LhAnnouncementEnrichmentReport.empty();
         for (Map.Entry<String, List<MyHomeAnnouncementSource>> group
                 : sourcesByAnnouncementWithLh().entrySet()) {
@@ -123,7 +115,7 @@ public class LhAnnouncementEnrichmentService {
         if (announcement.getProvider() != AgencyCode.LH) {
             return LhAnnouncementEnrichmentReport.empty();
         }
-        String rejectionDetail = commonValuesMapper.rejectionDetail(sources);
+        String rejectionDetail = mappingState.commonValuesRejection(sources);
         if (rejectionDetail != null) {
             return reject(source, null, LhAnnouncementEnrichmentFailureReason.INVALID_VALUE,
                     rejectionDetail, failures, occurredAt);

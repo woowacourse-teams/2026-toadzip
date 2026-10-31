@@ -5,7 +5,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter;
+import com.toadzip.backend.ingest.enrichment.service.MappedAnnouncementLhEnrichment;
 import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
@@ -37,7 +37,7 @@ public class MyHomeAnnouncementMappingWriter {
 
     private final MyHomeSupplyRowWriter supplyRowWriter;
 
-    private final LhAnnouncementEnrichmentWriter enrichmentWriter;
+    private final MappedAnnouncementLhEnrichment lhEnrichment;
 
     private final MyHomeAnnouncementMappingFailureStore failureStore;
     private final AnnouncementSupplySplitWriter splitWriter;
@@ -126,7 +126,7 @@ public class MyHomeAnnouncementMappingWriter {
             return new MyHomeAnnouncementWriteResult(reportOf(announcementResult, preserved), List.of());
         }
         if (announcementResult.releasedLhOwnership()) {
-            enrichmentWriter.releaseLhOwnership(announcementResult.announcement());
+            lhEnrichment.releaseLhOwnership(announcementResult.announcement());
         }
         for (var plan : plans) {
             splitWriter.apply(announcementResult.announcement(), plan);
@@ -168,7 +168,7 @@ public class MyHomeAnnouncementMappingWriter {
 
     private void enrichLh(Announcement announcement, ResolvedAnnouncement resolved, Set<Long> changedHousingTypeRowIds) {
         try {
-            enrichmentWriter.writeAfterMapping(announcement, resolved.request(), resolved.supplies(),
+            lhEnrichment.writeAfterMapping(announcement, resolved.request(), resolved.supplies(),
                     changedHousingTypeRowIds, resolved.sourceKeysExcludedFromLhEnrichment(), resolved.supplyLinks());
         }
         catch (LhAnnouncementEnrichmentRejectedException exception) {

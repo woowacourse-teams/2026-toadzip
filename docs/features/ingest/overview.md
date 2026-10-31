@@ -45,13 +45,15 @@ LH 공급·상세는 [LhAnnouncementExternalCollectionService](../../../backend/
 공고 정제는 `MyHomeAnnouncementMappingService.mapAll()`에서 공고별로 다음 경로를 따른다.
 
 ```text
-SourceMapper → SupplyRowResolver → MappingWriter → EnrichmentWriter.writeAfterMapping
+SourceMapper → SupplyRowResolver → MappingWriter(→ MyHomeSupplyRowWriter) → MappedAnnouncementLhEnrichment.writeAfterMapping
 공통값 검증 → LH 연결·공급 원천 준비 → 공고·공급행 저장 → 변경된 기존 LH 공고 보강
 ```
 
 준비한 LH 요청·공급 원천·과거 원천 구분은 재사용한다. 주택형 변경은 공급행을 수정할 때 기록한다.
 현재 원천 중 기관이 빈 행도 매핑에는 포함하지만 LH 보강에서는 제외해 기존 금액을 보존한다. `MappingWriter`가 공고 한 건의 트랜잭션을 소유한다. 보강 실패 시 주택형과 금액을 함께 롤백한다. 최초 매핑과 변경 없는 재매핑은 상세 보강을 요구하지 않는다.
 독립 보강은 `LhAnnouncementEnrichmentService.enrichAll()`에서 시작하며 별도 실패 이력을 관리한다.
+
+정제와 보강은 `mapping → enrichment` 한 방향으로만 의존한다. 정제는 보강을 `MappedAnnouncementLhEnrichment`(LH 보강 실행·LH 소유 해제)로만 부른다. 보강이 정제에서 확인하는 상태(미해소 정제 실패 공고, 공통값 거절 사유)는 `LhEnrichmentMappingState`로 받는다. 정제 구현을 바꿀 때는 이 두 계약만 지키면 보강을 고치지 않아도 된다. 관리자가 저장한 LH 공급 연결(`LhSupplyRowLinks`)은 보강이 소유한다.
 
 ## LH 공고 목록 단독 수집
 

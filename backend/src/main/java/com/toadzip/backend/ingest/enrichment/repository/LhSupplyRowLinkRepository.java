@@ -1,6 +1,6 @@
-package com.toadzip.backend.ingest.mapping.repository;
+package com.toadzip.backend.ingest.enrichment.repository;
 
-import com.toadzip.backend.ingest.mapping.domain.LhSupplyRowLink;
+import com.toadzip.backend.ingest.enrichment.domain.LhSupplyRowLink;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;

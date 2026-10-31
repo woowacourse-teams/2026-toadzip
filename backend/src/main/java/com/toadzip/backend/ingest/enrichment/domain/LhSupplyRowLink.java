@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.mapping.domain;
+package com.toadzip.backend.ingest.enrichment.domain;
 
 import static lombok.AccessLevel.PROTECTED;
 
