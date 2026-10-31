@@ -24,6 +24,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeCom
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexCollectionRepository;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexPageParser;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexRegionSourceRepository;
+import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeRegionCatalog;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
@@ -105,7 +106,7 @@ import tools.jackson.databind.json.JsonMapper;
         ExternalDataRetryExecutor.class,
         SourceCollectionRecordService.class, MyHomeComplexStorageService.class, IngestWriteOwnershipGuard.class, IngestExecutionOwnershipRepository.class,
         MyHomeComplexCollector.class, MyHomeComplexApiRepository.class, MyHomeComplexPageParser.class,
-        MyHomeRegionCatalog.class})
+        MyHomeRegionCatalog.class, MyHomeComplexSourceReader.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -145,6 +146,9 @@ class MyHomeComplexStorageIntegrationTest {
 
     @Autowired
     private MyHomeComplexCollectionRepository sourceRepository;
+
+    @Autowired
+    private MyHomeComplexSourceReader reader;
 
     @MockitoSpyBean
     private MyHomeComplexRegionSourceRepository regionRepository;
@@ -420,6 +424,16 @@ class MyHomeComplexStorageIntegrationTest {
 
         assertThat(source(100L).rows()).containsExactly(original, original, equivalent);
         assertThat(records()).singleElement().extracting(RecordView::rowCount).isEqualTo(3);
+    }
+
+    @Test
+    void readerReturnsRepeatedResponseRowsOnce() {
+        MyHomeComplexSourceSnapshot original = row(100L, "11", "680", "59A", 100000L);
+        MyHomeComplexSourceSnapshot other = row(100L, "11", "680", "84A", 200000L);
+
+        store(request("11", "680"), response(COLLECTED_AT, original, original, other));
+
+        assertThat(reader.findAll()).hasSize(2);
     }
 
     @Test

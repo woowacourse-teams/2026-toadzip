@@ -96,6 +96,8 @@ class LhAnnouncementCatalogCollectionServiceTest {
     void 페이지간_전체_건수가_바뀌면_저장하지_않는다() {
         when(parser.parse(any(), eq(1), eq(500))).thenReturn(page(0, 500, 501));
         when(parser.parse(any(), eq(2), eq(500))).thenReturn(page(500, 1, 502));
+        org.mockito.Mockito.lenient().when(parser.parse(any(), eq(3), eq(500))).thenReturn(page(501, 1, 502));
+        org.mockito.Mockito.lenient().when(store.store(any())).thenReturn(new StoreResult(502, 502, 0));
 
         assertThat(service.collect().failedRequestCount()).isOne();
         verify(store, never()).store(any());
