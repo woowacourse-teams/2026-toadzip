@@ -39,35 +39,37 @@ public class PagedSourceCollector {
     public <A extends PagedSourceRequest, P, C> int collect(
             PagedSource<A, P, C> source, Function<Instant, A> newRequest, ExternalDataCallCounter counter
     ) {
-        return collect(source, prepare(newRequest), counter, () -> {
-        });
+        return collect(source, prepare(newRequest), counter, RateLimitSignal.NONE);
     }
 
     public <A extends PagedSourceRequest, P, C> ExternalDataCollectionReport collectAndReport(
             PagedSource<A, P, C> source, Function<Instant, A> newRequest
     ) {
-        return collectAndReport(source, newRequest, new ExternalDataCallCounter(), () -> {
-        });
+        return collectAndReport(source, newRequest, new ExternalDataCallCounter(), RateLimitSignal.NONE);
     }
 
     /**
      * 원천을 저장하고 보고한다. 외부 호출 실패는 실패 기록으로 남겨 실패 보고로 돌려주고, 성공하면 이 요청 범위의 이전 실패
-     * 기록을 해소한다. beforeAttempt는 외부 호출 시도와 재시도 대기 중 확인마다 실행된다.
+     * 기록을 해소한다. 호출 제한에 걸리면 실패를 기록하기 전에 함께 수집하는 단위에 알린다.
      */
     public <A extends PagedSourceRequest, P, C> ExternalDataCollectionReport collectAndReport(
             PagedSource<A, P, C> source, Function<Instant, A> newRequest, ExternalDataCallCounter counter,
-            Runnable beforeAttempt
+            RateLimitSignal rateLimit
     ) {
         SourceCollectionAttempt<A> attempt = prepare(newRequest);
         A request = attempt.request();
         int stored;
         try {
-            stored = collect(source, attempt, counter, beforeAttempt);
+            stored = collect(source, attempt, counter, rateLimit);
         } catch (ExternalDataCallFailureException | ExternalDataRequestException failure) {
+            int rateLimitedRequestCount = ExternalDataRateLimit.count(failure);
+            if (rateLimitedRequestCount > 0) {
+                rateLimit.reached();
+            }
             failureRecorder.record(source.source(), request.failureDescription(), failure, log,
                     source.failureLogMessage());
             return new ExternalDataCollectionReport(source.source().operation(), 0, 1, counter.count(), 0,
-                    ExternalDataRateLimit.count(failure));
+                    rateLimitedRequestCount);
         }
         failureRecorder.resolveStartingWith(source.source(), request.resolvedFailurePrefix());
         return new ExternalDataCollectionReport(source.source().operation(), stored, 0, counter.count());
@@ -79,9 +81,9 @@ public class PagedSourceCollector {
 
     private <A extends PagedSourceRequest, P, C> int collect(
             PagedSource<A, P, C> source, SourceCollectionAttempt<A> attempt, ExternalDataCallCounter counter,
-            Runnable beforeAttempt
+            RateLimitSignal rateLimit
     ) {
-        var calls = new PageCalls<>(source, attempt.request(), counter, beforeAttempt);
+        var calls = new PageCalls<>(source, attempt.request(), counter, rateLimit);
         UUID recordId;
         try {
             recordId = attempt.run(records, request -> collectPages(source, request, calls),
@@ -115,17 +117,17 @@ public class PagedSourceCollector {
         private final PagedSource<A, P, ?> source;
         private final A request;
         private final ExternalDataCallCounter counter;
-        private final Runnable beforeAttempt;
+        private final RateLimitSignal rateLimit;
         private int lastPage = 1;
         private int lastAttemptCount;
 
         private PageCalls(
-                PagedSource<A, P, ?> source, A request, ExternalDataCallCounter counter, Runnable beforeAttempt
+                PagedSource<A, P, ?> source, A request, ExternalDataCallCounter counter, RateLimitSignal rateLimit
         ) {
             this.source = source;
             this.request = request;
             this.counter = counter;
-            this.beforeAttempt = beforeAttempt;
+            this.rateLimit = rateLimit;
         }
 
         private P fetch(int page) {
@@ -133,7 +135,7 @@ public class PagedSourceCollector {
             int before = counter.count();
             try {
                 return retry.execute(source.source(), request.pageDescription(page),
-                        () -> source.fetch(request, page), counter, beforeAttempt);
+                        () -> source.fetch(request, page), counter, rateLimit::checkBeforeAttempt);
             } finally {
                 lastAttemptCount = counter.count() - before;
             }

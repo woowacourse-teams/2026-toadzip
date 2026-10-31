@@ -7,6 +7,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCol
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
 import com.toadzip.backend.ingest.collection.paging.service.PagedSourceCollector;
+import com.toadzip.backend.ingest.collection.paging.service.RateLimitSignal;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataRetryInterruptedException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
@@ -42,11 +43,8 @@ public class MyHomeComplexRegionCollectionService {
         try {
             report = pagedCollector.collectAndReport(collector, startedAt -> new MyHomeComplexCollectionRequest(
                     IngestExecutionScope.currentExecutionId().orElse(null), region.provinceCode(),
-                    region.districtCode(), request.pageSize(), request.maxPages(), startedAt), callCounter, () -> {
-                if (rateLimitReached.get()) {
-                    throw new RateLimitCollectionCancelledException();
-                }
-            });
+                    region.districtCode(), request.pageSize(), request.maxPages(), startedAt), callCounter,
+                    new SharedRateLimit(rateLimitReached));
         }
         catch (RateLimitCollectionCancelledException exception) {
             return cancelledReport(callCounter);
@@ -56,9 +54,6 @@ public class MyHomeComplexRegionCollectionService {
                 return cancelledReport(callCounter);
             }
             throw exception;
-        }
-        if (report.rateLimitedRequestCount() > 0) {
-            rateLimitReached.set(true);
         }
         return new MyHomeComplexCollectionReport(report.operation(), report.storedRowCount(),
                 report.failedRequestCount(), report.externalApiCallCount(), report.rateLimitedRequestCount());
@@ -71,6 +66,21 @@ public class MyHomeComplexRegionCollectionService {
                 0,
                 callCounter.count()
         );
+    }
+
+    private record SharedRateLimit(AtomicBoolean rateLimitReached) implements RateLimitSignal {
+
+        @Override
+        public void checkBeforeAttempt() {
+            if (rateLimitReached.get()) {
+                throw new RateLimitCollectionCancelledException();
+            }
+        }
+
+        @Override
+        public void reached() {
+            rateLimitReached.set(true);
+        }
     }
 
     private static final class RateLimitCollectionCancelledException extends RuntimeException {

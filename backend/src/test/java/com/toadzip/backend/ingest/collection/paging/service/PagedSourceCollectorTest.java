@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -36,6 +37,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 class PagedSourceCollectorTest {
 
@@ -117,6 +119,22 @@ class PagedSourceCollectorTest {
         verify(failureRecorder).record(eq(ExternalDataSource.LH_LEASE_CATALOG), eq("PAGE=1"),
                 isA(ExternalDataCallFailureException.class), any(), eq("시험 원천 수집 실패"));
         verify(failureRecorder, never()).resolveStartingWith(any(), any());
+    }
+
+    @Test
+    void 호출_제한에_걸리면_실패를_기록하기_전에_함께_수집하는_단위에_알린다() {
+        var rateLimit = mock(RateLimitSignal.class);
+        source.page(1, () -> {
+            throw ExternalDataRequestException.rateLimited("호출 제한");
+        });
+
+        var report = collector.collectAndReport(source, TestRequest::new, new ExternalDataCallCounter(), rateLimit);
+
+        assertThat(report.rateLimitedRequestCount()).isOne();
+        InOrder order = inOrder(rateLimit, failureRecorder);
+        order.verify(rateLimit).checkBeforeAttempt();
+        order.verify(rateLimit).reached();
+        order.verify(failureRecorder).record(any(), any(), any(), any(), any());
     }
 
     @Test
