@@ -126,9 +126,8 @@ class LhAnnouncementExternalCollectionServiceTest {
                 );
         var fixture = new CollectionServiceTestFixture();
         LhAnnouncementCandidateCollector candidateCollector = new LhAnnouncementCandidateCollector(
-                fixture.query(externalRepository, sourceStore), fixture.records,
-                new ExternalDataRetryExecutor(Duration.ZERO, meterRegistry), Clock.fixed(NOW, ZoneOffset.UTC), meterRegistry,
-                failureRecorder, progressManager);
+                fixture.query(externalRepository, sourceStore, new ExternalDataRetryExecutor(Duration.ZERO, meterRegistry),
+                        meterRegistry), failureRecorder, progressManager);
         LhAnnouncementCollectionPolicy collectionPolicy = new LhAnnouncementCollectionPolicy(
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 Period.ofDays(30)

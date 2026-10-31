@@ -31,11 +31,13 @@ import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApi
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
+import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
 import com.toadzip.backend.ingest.pipeline.repository.IngestExecutionOwnershipRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import com.toadzip.backend.global.config.PostgresTestDatabases;
 import java.time.Clock;
@@ -161,15 +163,16 @@ class LhAnnouncementStorageIntegrationTest {
         var row = supply(" 단지 ", " 형 1 ");
         expect(request, "dsList01", List.of(supplyWire(row), supplyWire(row)));
 
-        UUID id = collect(request);
+        int stored = collect(request);
 
-        assertThat(view()).singleElement().satisfies(source -> {
-            assertThat(source.supplies()).containsExactly(row, row);
-            assertThat(source.collectedAt()).isEqualTo(NOW);
-            assertThat(source.requestHash()).isEqualTo(request.requestHash());
-            assertThat(source.recordId()).isEqualTo(id);
-        });
+        assertThat(stored).isEqualTo(2);
         assertThat(records.findAll()).singleElement().satisfies(record -> {
+            assertThat(view()).singleElement().satisfies(source -> {
+                assertThat(source.supplies()).containsExactly(row, row);
+                assertThat(source.collectedAt()).isEqualTo(NOW);
+                assertThat(source.requestHash()).isEqualTo(request.requestHash());
+                assertThat(source.recordId()).isEqualTo(record.getId());
+            });
             assertThat(record.getStatus()).isEqualTo(CollectionStatus.SUCCESS);
             assertThat(record.getStoredRowCount()).isEqualTo(2);
         });
@@ -433,6 +436,16 @@ class LhAnnouncementStorageIntegrationTest {
         }
 
         @Bean
+        ExternalDataRetryExecutor retryExecutor() {
+            return CollectionServiceTestFixture.retryWithoutDelay();
+        }
+
+        @Bean
+        MeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
+        }
+
+        @Bean
         ObjectMapper objectMapper() {
             return JsonMapper.builder().build();
         }
@@ -474,8 +487,9 @@ class LhAnnouncementStorageIntegrationTest {
         }
     }
 
-    private UUID collect(LhAnnouncementCollectionRequest request) {
-        return collector.collectWithinBatch(request, CollectionServiceTestFixture.retryWithoutDelay(),
-                new ExternalDataCallCounter(), new SimpleMeterRegistry());
+    /** 운영처럼 실행 확인 뒤 수집기의 시계로 요청을 다시 만든다. */
+    private int collect(LhAnnouncementCollectionRequest request) {
+        return collector.collect(startedAt -> new LhAnnouncementCollectionRequest(request.executionId(),
+                request.source(), request.query(), request.collectionVersion(), startedAt), new ExternalDataCallCounter());
     }
 }

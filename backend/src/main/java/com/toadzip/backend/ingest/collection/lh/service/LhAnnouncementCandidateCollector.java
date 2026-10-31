@@ -3,14 +3,12 @@ package com.toadzip.backend.ingest.collection.lh.service;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
-import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecordService;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
-import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
@@ -18,8 +16,6 @@ import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacem
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
-import io.micrometer.core.instrument.MeterRegistry;
-import java.time.Clock;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -34,10 +30,6 @@ import org.springframework.stereotype.Component;
 public class LhAnnouncementCandidateCollector {
 
     private final LhAnnouncementQueryCollector collector;
-    private final SourceCollectionRecordService records;
-    private final ExternalDataRetryExecutor retryExecutor;
-    private final Clock clock;
-    private final MeterRegistry meterRegistry;
     private final ExternalDataFailureRecorder failureRecorder;
     private final LhAnnouncementCollectionProgressManager progressManager;
 
@@ -101,8 +93,8 @@ public class LhAnnouncementCandidateCollector {
     ) {
         var query = new LhAnnouncementQuery(request.panId(), request.connectionSystemDivisionCode(),
                 request.upperAnnouncementTypeCode(), request.announcementTypeCode(), request.supplyInfoTypeCode());
-        var attempt = new LhAnnouncementCollectionRequest(IngestExecutionScope.currentExecutionId().orElse(null),
-                CollectionSource.valueOf(targetSource.name()), query, 6, clock.instant());
-        return records.storedRowCount(collector.collectWithinBatch(attempt, retryExecutor, callCounter, meterRegistry));
+        return collector.collect(startedAt -> new LhAnnouncementCollectionRequest(
+                IngestExecutionScope.currentExecutionId().orElse(null), CollectionSource.valueOf(targetSource.name()),
+                query, 6, startedAt), callCounter);
     }
 }

@@ -18,6 +18,7 @@ import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class SourceCollectionAttemptTest {
@@ -30,10 +31,13 @@ class SourceCollectionAttemptTest {
         UUID recordId = UUID.randomUUID();
         when(records.start(attempt)).thenReturn(recordId);
 
-        String stored = SourceCollectionAttempt.prepare(() -> attempt).run(records, request -> "rows",
-                (id, request, rows) -> id + ":" + rows);
+        var stored = new AtomicReference<String>();
 
-        assertThat(stored).isEqualTo(recordId + ":rows");
+        UUID returned = SourceCollectionAttempt.prepare(() -> attempt).run(records, request -> "rows",
+                (id, request, rows) -> stored.set(id + ":" + rows));
+
+        assertThat(returned).isEqualTo(recordId);
+        assertThat(stored).hasValue(recordId + ":rows");
         verify(records, never()).fail(any(), any(), any());
     }
 
@@ -65,10 +69,7 @@ class SourceCollectionAttemptTest {
 
         try (var ignored = IngestExecutionScope.open(lease)) {
             assertThatThrownBy(() -> SourceCollectionAttempt.prepare(() -> attempt).run(records, request -> "rows",
-                    (id, request, rows) -> {
-                        stored.set(true);
-                        return id;
-                    })).isSameAs(lost);
+                    (id, request, rows) -> stored.set(true))).isSameAs(lost);
         }
 
         assertThat(stored).isFalse();
@@ -83,7 +84,8 @@ class SourceCollectionAttemptTest {
 
         assertThatThrownBy(() -> SourceCollectionAttempt.prepare(() -> attempt).run(records, request -> {
             throw failure;
-        }, (id, request, rows) -> id)).isSameAs(failure);
+        }, (id, request, rows) -> {
+        })).isSameAs(failure);
 
         verify(records).fail(recordId, attempt, failure);
     }

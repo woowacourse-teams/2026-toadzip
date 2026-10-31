@@ -30,12 +30,14 @@ public final class SourceCollectionAttempt<A extends SourceCollectionRequest> {
         return request;
     }
 
-    public <T, R> R run(SourceCollectionRecordService records, Function<A, T> collect, Store<A, T, R> store) {
+    /** 저장까지 마친 수집 이력의 ID를 돌려준다. */
+    public <T> UUID run(SourceCollectionRecordService records, Function<A, T> collect, Store<A, T> store) {
         UUID recordId = records.start(request);
         try {
             T collected = collect.apply(request);
             IngestExecutionScope.verifyHeld();
-            return store.store(recordId, request, collected);
+            store.store(recordId, request, collected);
+            return recordId;
         } catch (RuntimeException failure) {
             records.fail(recordId, request, failure);
             throw failure;
@@ -49,8 +51,8 @@ public final class SourceCollectionAttempt<A extends SourceCollectionRequest> {
     }
 
     @FunctionalInterface
-    public interface Store<A, T, R> {
+    public interface Store<A, T> {
 
-        R store(UUID recordId, A request, T collected);
+        void store(UUID recordId, A request, T collected);
     }
 }

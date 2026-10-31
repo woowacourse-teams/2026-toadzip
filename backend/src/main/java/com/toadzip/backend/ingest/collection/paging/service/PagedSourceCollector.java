@@ -86,11 +86,7 @@ public class PagedSourceCollector {
         var calls = new PageCalls<>(source, attempt.request(), counter, rateLimit);
         UUID recordId;
         try {
-            recordId = attempt.run(records, request -> collectPages(source, request, calls),
-                    (id, request, collected) -> {
-                        source.store(id, request, collected);
-                        return id;
-                    });
+            recordId = attempt.run(records, request -> collectPages(source, request, calls), source::store);
         } catch (IllegalArgumentException failure) {
             throw calls.failure(failure);
         }

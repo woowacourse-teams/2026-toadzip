@@ -212,7 +212,9 @@ public final class CollectionServiceTestFixture {
 
     public LhAnnouncementQueryCollector query(
             LhAnnouncementExternalRepository external,
-            LhStorageFixtures fixtures
+            LhStorageFixtures fixtures,
+            ExternalDataRetryExecutor retry,
+            MeterRegistry meters
     ) {
         var api = mock(LhAnnouncementQueryApiRepository.class);
         lenient().when(api.supply(any())).thenAnswer(
@@ -242,7 +244,7 @@ public final class CollectionServiceTestFixture {
         }).when(storage).completeDetail(any(), any(), any(), any());
         return new LhAnnouncementQueryCollector(api,
                 new LhSupplyResponseParser(),
-                new LhDetailResponseParser(), storage, records, CLOCK);
+                new LhDetailResponseParser(), storage, records, retry, meters, CLOCK);
     }
 
     private LhAnnouncementRequest oldQuery(

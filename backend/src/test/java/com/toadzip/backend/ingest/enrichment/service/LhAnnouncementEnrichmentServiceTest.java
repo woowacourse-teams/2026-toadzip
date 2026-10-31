@@ -2555,8 +2555,9 @@ class LhAnnouncementEnrichmentServiceTest {
     private LhAnnouncementCandidateCollector collector(LhAnnouncementExternalRepository external) {
         var fixture = new CollectionServiceTestFixture();
         var meters = new SimpleMeterRegistry();
-        return new LhAnnouncementCandidateCollector(fixture.query(external, sourceStore), fixture.records,
-                new ExternalDataRetryExecutor(meters), java.time.Clock.systemUTC(), meters, failureRecorder, progressManager);
+        return new LhAnnouncementCandidateCollector(
+                fixture.query(external, sourceStore, new ExternalDataRetryExecutor(meters), meters), failureRecorder,
+                progressManager);
     }
 
     private JsonNode response(String json) {
