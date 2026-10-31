@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Resolution;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Skipped;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
 import java.time.Clock;
 import java.time.Instant;
@@ -26,7 +27,8 @@ class LhAnnouncementCandidateSelectorTest {
     void 요청이_서로_다른_공고는_충돌로_한_번만_빼고_앞_배치에서_다룬_공고는_중복으로_뺀다() {
         Candidate conflictFirst = candidate("A", "PAN-1");
         List<Resolution> resolutions = List.of(
-                conflictFirst, candidate("A", "PAN-2"), candidate("B", "PAN-3"), candidate("C", "PAN-4"));
+                conflictFirst, candidate("A", "PAN-2"), candidate("B", "PAN-3"), candidate("C", "PAN-4"),
+                new Skipped("D", "source D", "지원하지 않는 조건"));
         Set<String> handled = new HashSet<>(Set.of("C"));
 
         var selection = selector.select(sources(resolutions.size()), resolutions, handled, true);
@@ -35,6 +37,8 @@ class LhAnnouncementCandidateSelectorTest {
         assertThat(selection.candidates()).extracting(Candidate::sourceAnnouncementKey).containsExactly("B");
         assertThat(selection.duplicateCount()).isEqualTo(1);
         assertThat(handled).containsExactlyInAnyOrder("A", "B", "C");
+        assertThat(selection.skipped()).extracting(Skipped::sourceAnnouncementKey).containsExactly("D");
+        assertThat(selection.sourceKeysWithoutEligibleCandidates()).containsExactly("D");
     }
 
     private Candidate candidate(String sourceKey, String panId) {

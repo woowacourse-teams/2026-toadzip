@@ -69,7 +69,6 @@ public class LhAnnouncementCandidateSelector {
         );
     }
 
-
     private Set<String> conflictingSourceKeys(List<Resolution> resolutions) {
         Map<String, Set<String>> requestsBySource = new HashMap<>();
         for (Resolution resolution : resolutions) {
@@ -85,13 +84,11 @@ public class LhAnnouncementCandidateSelector {
                 .collect(Collectors.toSet());
     }
 
-
     private void addConflict(Candidate candidate, Set<String> visited, List<Candidate> conflicts) {
         if (visited.add(candidate.sourceAnnouncementKey())) {
             conflicts.add(candidate);
         }
     }
-
 
     record CandidateSelection(
             List<Candidate> candidates,

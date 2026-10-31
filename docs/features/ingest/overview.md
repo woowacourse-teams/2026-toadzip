@@ -28,7 +28,7 @@ Spring은 생성자 주입으로 객체를 연결한다. `Runner.run()`에서 �
 
 단지 정제는 `MyHomeComplexMappingService.mapAll()` → `MyHomeComplexMappingProcessor.mapAll()`에서 원천을 묶는다. 일반 단지는 위치정보 DB의 좌표를 읽어 저장하고, 확인된 통합 단지는 기존 주소를 검증해 금액·주택형만 갱신한다. 저장은 단지별 트랜잭션이다.
 신규 주소의 좌표가 필요하면 수집 후 위치정보요약DB ZIP을 관리자 API로 업로드한다. 업로드는 정제 파이프라인에 포함되지 않는다.
-실패는 작업이 끝날 때 현재 원천과 대조해 갱신하며 이전 실패 이력은 보존한다.
+실패는 작업이 끝날 때 현재 원천과 대조해 갱신하며 이전 실패 이력은 보존한다. 정제·보강 실패의 대조·저장·관리자 해결은 `IngestFailureStore`가 공통으로 맡고, 원천별 Store는 대조할 실패 범위만 고른다.
 단계별 후보 준비·배치 실행 API는 제공하지 않는다.
 
 ## 공고 수집·정제를 따라가는 순서
@@ -40,7 +40,7 @@ MyHome은 `MyHomeAnnouncementCollectionService.collect()` → `PagedSourceCollec
 LH 공급·상세는 [LhAnnouncementExternalCollectionService](../../../backend/src/main/java/com/toadzip/backend/ingest/collection/lh/service/LhAnnouncementExternalCollectionService.java)의 `collect()`에서 시작한다.
 `collectAnnouncements()` → `collectBatch()`에서 대상을 고르고 `LhAnnouncementSharedRequestCollector.collect()`에서 병렬 실행과 결과를 회수한다.
 요청 하나는 `LhAnnouncementCandidateCollector.collectAndStore()` → `LhAnnouncementQueryCollector.collect()` → `LhAnnouncementStorageService.completeSupply()/completeDetail()`에서 조회·검증·저장을 처리한다.
-조회 조건·공급코드는 `LhAnnouncementCollectionCandidateResolver`, 종료일에 따른 대상 포함 여부는 `LhAnnouncementCollectionPolicy`가 정한다. 일반 수집도 대상 요청을 매 실행 실제 조회한다. 같은 실행에서 공유하는 요청만 합치며 이전 실행의 성공 원천으로 호출을 생략하지 않는다.
+조회 조건·공급코드는 `LhAnnouncementCollectionCandidateResolver`, 종료일에 따른 대상 포함 여부는 `LhAnnouncementCollectionPolicy`가 정한다. 해석한 후보 중 요청 충돌·배치 간 중복·정책 제외를 걸러 이번 실행의 후보를 고르는 일은 `LhAnnouncementCandidateSelector`가 맡는다. 일반 수집도 대상 요청을 매 실행 실제 조회한다. 같은 실행에서 공유하는 요청만 합치며 이전 실행의 성공 원천으로 호출을 생략하지 않는다.
 
 공고 정제는 `MyHomeAnnouncementMappingService.mapAll()`에서 공고별로 다음 경로를 따른다.
 
