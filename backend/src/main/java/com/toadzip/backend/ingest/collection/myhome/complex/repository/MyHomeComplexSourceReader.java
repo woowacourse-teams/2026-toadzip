@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +41,6 @@ public class MyHomeComplexSourceReader {
 
     public List<String> findDistinctRoadAddresses() {
         return findAll().stream().map(MyHomeComplexSource::getRnAdres)
-                .filter(java.util.Objects::nonNull).distinct().toList();
+                .filter(Objects::nonNull).distinct().toList();
     }
 }
