@@ -32,19 +32,17 @@ public class LhLeaseCatalogCollectionService {
         var counter = new ExternalDataCallCounter();
         int stored;
         IngestExecutionScope.beginWork("LH 임대 카탈로그", "페이지", -1);
+        var attempt = new LhLeaseCatalogCollectionRequest(IngestExecutionScope.currentExecutionId().orElse(null),
+                request.pageSize(), request.maxPages(), clock.instant());
         try {
-            var attempt =
-                    new LhLeaseCatalogCollectionRequest(
-                    IngestExecutionScope.currentExecutionId().orElse(null), request.pageSize(),
-                    request.maxPages(), clock.instant());
             stored = records.storedRowCount(collector.collectWithinBatch(attempt, retryExecutor, counter));
         } catch (ExternalDataCallFailureException | ExternalDataRequestException failure) {
-            failureRecorder.record(ExternalDataSource.LH_LEASE_CATALOG, request.requestDescription(1),
+            failureRecorder.record(ExternalDataSource.LH_LEASE_CATALOG, attempt.failureDescription(),
                     failure, log, "LH 임대 카탈로그 수집 실패");
             return new ExternalDataCollectionReport(ExternalDataSource.LH_LEASE_CATALOG.operation(),
                     0, 1, counter.count(), 0, ExternalDataRateLimit.count(failure));
         }
-        failureRecorder.resolveStartingWith(ExternalDataSource.LH_LEASE_CATALOG, "PG_SZ=");
+        failureRecorder.resolveStartingWith(ExternalDataSource.LH_LEASE_CATALOG, attempt.resolvedFailurePrefix());
         return new ExternalDataCollectionReport(ExternalDataSource.LH_LEASE_CATALOG.operation(),
                 stored, 0, counter.count());
     }

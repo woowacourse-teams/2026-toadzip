@@ -1,6 +1,5 @@
 package com.toadzip.backend.ingest.collection.myhome.complex.dto.api;
 
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeRegion;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 
 public record MyHomeComplexCollectionCommand(
@@ -21,10 +20,6 @@ public record MyHomeComplexCollectionCommand(
 
     public boolean requestsAllRegions() {
         return provinceCode == null;
-    }
-
-    public String requestDescription(MyHomeRegion region, int page) {
-        return region.requestDescription() + "&pageNo=" + page + "&numOfRows=" + pageSize;
     }
 
     private static void validateRegionCodes(String provinceCode, String districtCode) {

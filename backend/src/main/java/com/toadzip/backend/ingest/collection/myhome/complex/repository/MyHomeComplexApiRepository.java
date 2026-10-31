@@ -32,21 +32,8 @@ public class MyHomeComplexApiRepository {
         try {
             return parser.parse(client.get("rentalHouseGwList", parameters));
         } catch (ExternalDataRequestException failure) {
-            throw contextualFailure(request, page, failure);
+            throw failure.withContext("brtcCode=%s&signguCode=%s&pageNo=%d".formatted(
+                    request.provinceCode(), request.districtCode(), page));
         }
-    }
-
-    private ExternalDataRequestException contextualFailure(
-            MyHomeComplexCollectionRequest request, int page, ExternalDataRequestException failure
-    ) {
-        String reason = "brtcCode=%s&signguCode=%s&pageNo=%d: %s".formatted(
-                request.provinceCode(), request.districtCode(), page, failure.getMessage());
-        if (failure.isRateLimited()) {
-            return ExternalDataRequestException.rateLimited(reason, failure, failure.isRetryable());
-        }
-        if (failure.isRetryable()) {
-            return ExternalDataRequestException.retryable(reason, failure);
-        }
-        return new ExternalDataRequestException(reason, failure);
     }
 }

@@ -32,9 +32,7 @@ public class MyHomeComplexCollector {
             AtomicBoolean rateLimitReached
     ) {
         regionCatalog.find(request.provinceCode(), request.districtCode());
-        return retry.collectPages(ExternalDataSource.MYHOME_COMPLEX,
-                page -> "brtcCode=" + request.provinceCode() + "&signguCode=" + request.districtCode()
-                        + "&pageNo=" + page + "&numOfRows=" + request.pageSize(), counter,
+        return retry.collectPages(ExternalDataSource.MYHOME_COMPLEX, request::pageDescription, counter,
                 page -> apiRepository.fetch(request, page), fetch -> collectPages(request, fetch), () -> {
                     if (rateLimitReached.get()) {
                         throw new RateLimitCollectionCancelledException();

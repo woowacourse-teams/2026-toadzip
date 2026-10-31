@@ -55,19 +55,18 @@ public class MyHomeAnnouncementCollectionService {
             MyHomeAnnouncementCollectionCommand request
     ) {
         var counter = new ExternalDataCallCounter();
+        var attempt = new MyHomeAnnouncementCollectionRequest(
+                runId, type.requestCode(), request.pageSize(), request.maxPages(), clock.instant());
         int stored;
         try {
-            var attempt = new MyHomeAnnouncementCollectionRequest(
-                    runId, type.requestCode(), request.pageSize(), request.maxPages(), clock.instant());
             stored = records.storedRowCount(collector.collectWithinBatch(attempt, retryExecutor, counter));
         } catch (ExternalDataCallFailureException | ExternalDataRequestException failure) {
-            failureRecorder.record(ExternalDataSource.MYHOME_ANNOUNCEMENT, request.requestDescription(type, 1),
+            failureRecorder.record(ExternalDataSource.MYHOME_ANNOUNCEMENT, attempt.failureDescription(),
                     failure, log, "마이홈 공고 공급유형 수집 실패");
             return new ExternalDataCollectionReport(ExternalDataSource.MYHOME_ANNOUNCEMENT.operation(),
                     0, 1, counter.count(), 0, ExternalDataRateLimit.count(failure));
         }
-        failureRecorder.resolveStartingWith(ExternalDataSource.MYHOME_ANNOUNCEMENT,
-                "suplyTy=" + type.requestCode() + "&pageNo=");
+        failureRecorder.resolveStartingWith(ExternalDataSource.MYHOME_ANNOUNCEMENT, attempt.resolvedFailurePrefix());
         return new ExternalDataCollectionReport(ExternalDataSource.MYHOME_ANNOUNCEMENT.operation(),
                 stored, 0, counter.count());
     }

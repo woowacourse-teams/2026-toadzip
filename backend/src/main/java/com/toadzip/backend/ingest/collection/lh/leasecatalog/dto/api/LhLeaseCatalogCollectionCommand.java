@@ -9,8 +9,4 @@ public record LhLeaseCatalogCollectionCommand(int pageSize, int maxPages) {
             throw new InvalidIngestRequestException("페이지 크기와 최대 페이지 수는 1~10000이어야 합니다.");
         }
     }
-
-    public String requestDescription(int page) {
-        return "PG_SZ=" + pageSize + "&PAGE=" + page;
-    }
 }

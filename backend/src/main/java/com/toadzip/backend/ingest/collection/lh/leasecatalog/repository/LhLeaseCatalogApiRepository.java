@@ -29,7 +29,7 @@ public class LhLeaseCatalogApiRepository {
         try {
             return parser.parse(client.get("lhLeaseInfo1/lhLeaseInfo1", parameters), request, page);
         } catch (ExternalDataRequestException failure) {
-            throw failure.withContext("PG_SZ=%d&PAGE=%d".formatted(request.pageSize(), page));
+            throw failure.withContext(request.pageDescription(page));
         }
     }
 }

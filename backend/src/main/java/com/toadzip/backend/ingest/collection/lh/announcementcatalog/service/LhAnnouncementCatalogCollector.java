@@ -32,8 +32,7 @@ public class LhAnnouncementCatalogCollector {
             ExternalDataCallCounter counter
     ) {
 
-        return retry.collectPages(ExternalDataSource.LH_ANNOUNCEMENT_CATALOG,
-                page -> "PG_SZ=" + request.pageSize() + "&PAGE=" + page, counter,
+        return retry.collectPages(ExternalDataSource.LH_ANNOUNCEMENT_CATALOG, request::pageDescription, counter,
                 page -> apiRepository.fetch(request, page), fetch -> collectPages(request, fetch));
     }
 

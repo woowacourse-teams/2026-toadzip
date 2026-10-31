@@ -35,16 +35,16 @@ public class LhAnnouncementCatalogCollectionService {
         var counter = new ExternalDataCallCounter();
         LhAnnouncementCatalogStorageService.StoreResult result;
         IngestExecutionScope.beginWork("LH 공고 목록", "페이지", -1);
+        var request = new LhAnnouncementCatalogCollectionRequest(
+                IngestExecutionScope.currentExecutionId().orElse(null), PAGE_SIZE, MAX_PAGES, clock.instant());
         try {
-            var request = new LhAnnouncementCatalogCollectionRequest(
-                    IngestExecutionScope.currentExecutionId().orElse(null), PAGE_SIZE, MAX_PAGES, clock.instant());
             result = collector.collectWithinBatch(request, retryExecutor, counter);
         } catch (ExternalDataCallFailureException | ExternalDataRequestException failure) {
-            failureRecorder.record(SOURCE, "PG_SZ=" + PAGE_SIZE, failure, log, "LH 공고 목록 수집 실패");
+            failureRecorder.record(SOURCE, request.failureDescription(), failure, log, "LH 공고 목록 수집 실패");
             return new ExternalDataCollectionReport(SOURCE.operation(), 0, 1, counter.count(),
                     0, ExternalDataRateLimit.count(failure));
         }
-        failureRecorder.resolveStartingWith(SOURCE, "PG_SZ=" + PAGE_SIZE);
+        failureRecorder.resolveStartingWith(SOURCE, request.resolvedFailurePrefix());
         meterRegistry.counter("ingest.announcement.catalog.rows", "change", "new").increment(result.newRowCount());
         meterRegistry.counter("ingest.announcement.catalog.rows", "change", "changed")
                 .increment(result.changedRowCount());

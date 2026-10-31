@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.fixture.dto.LhAnnouncementCatalogPage.Entry;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhCatalogStorageFixtures.StoreResult;
@@ -77,6 +78,7 @@ class LhAnnouncementCatalogCollectionServiceTest {
                 .isEqualTo(2);
         assertThat(meterRegistry.counter("ingest.announcement.catalog.rows", "change", "unchanged").count())
                 .isEqualTo(496);
+        verify(failureRecorder).resolveStartingWith(ExternalDataSource.LH_ANNOUNCEMENT_CATALOG, "PG_SZ=500");
     }
 
     @Test
@@ -89,7 +91,9 @@ class LhAnnouncementCatalogCollectionServiceTest {
 
         assertThat(result.failedRequestCount()).isOne();
         verify(store, never()).store(any());
-        verify(failureRecorder).record(any(), any(), any(), any(), any());
+        verify(failureRecorder).record(eq(ExternalDataSource.LH_ANNOUNCEMENT_CATALOG), eq("PG_SZ=500"), any(), any(),
+                any());
+        verify(failureRecorder, never()).resolveStartingWith(any(), any());
     }
 
     @Test

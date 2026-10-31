@@ -31,20 +31,7 @@ public class MyHomeAnnouncementApiRepository {
         try {
             return parser.parse(client.get("rsdtRcritNtcList", parameters));
         } catch (ExternalDataRequestException failure) {
-            throw contextualFailure(request, page, failure);
+            throw failure.withContext("suplyTy=%s&pageNo=%d".formatted(request.supplyTypeCode(), page));
         }
-    }
-
-    private ExternalDataRequestException contextualFailure(
-            MyHomeAnnouncementCollectionRequest request, int page, ExternalDataRequestException failure
-    ) {
-        String reason = "suplyTy=%s&pageNo=%d: %s".formatted(request.supplyTypeCode(), page, failure.getMessage());
-        if (failure.isRateLimited()) {
-            return ExternalDataRequestException.rateLimited(reason, failure, failure.isRetryable());
-        }
-        if (failure.isRetryable()) {
-            return ExternalDataRequestException.retryable(reason, failure);
-        }
-        return new ExternalDataRequestException(reason, failure);
     }
 }

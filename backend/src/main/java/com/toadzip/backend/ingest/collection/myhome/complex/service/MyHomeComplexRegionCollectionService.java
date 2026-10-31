@@ -48,12 +48,10 @@ public class MyHomeComplexRegionCollectionService {
             return MyHomeComplexCollectionReport.empty();
         }
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
+        var attempt = new MyHomeComplexCollectionRequest(IngestExecutionScope.currentExecutionId().orElse(null),
+                region.provinceCode(), region.districtCode(), request.pageSize(), request.maxPages(), clock.instant());
         int storedRowCount;
         try {
-            var attempt =
-                    new MyHomeComplexCollectionRequest(
-                    IngestExecutionScope.currentExecutionId().orElse(null), region.provinceCode(),
-                    region.districtCode(), request.pageSize(), request.maxPages(), clock.instant());
             UUID id = collector.collectWithinBatch(attempt, retryExecutor, callCounter, rateLimitReached);
             storedRowCount = records.storedRowCount(id);
         }
@@ -67,12 +65,9 @@ public class MyHomeComplexRegionCollectionService {
             throw exception;
         }
         catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
-            return failedReport(region, request, rateLimitReached, callCounter, exception);
+            return failedReport(attempt, rateLimitReached, callCounter, exception);
         }
-        failureRecorder.resolveStartingWith(
-                ExternalDataSource.MYHOME_COMPLEX,
-                region.requestDescription() + "&pageNo="
-        );
+        failureRecorder.resolveStartingWith(ExternalDataSource.MYHOME_COMPLEX, attempt.resolvedFailurePrefix());
         return new MyHomeComplexCollectionReport(
                 ExternalDataSource.MYHOME_COMPLEX.operation(),
                 storedRowCount,
@@ -91,8 +86,7 @@ public class MyHomeComplexRegionCollectionService {
     }
 
     private MyHomeComplexCollectionReport failedReport(
-            MyHomeRegion region,
-            MyHomeComplexCollectionCommand request,
+            MyHomeComplexCollectionRequest attempt,
             AtomicBoolean rateLimitReached,
             ExternalDataCallCounter callCounter,
             RuntimeException exception
@@ -103,7 +97,7 @@ public class MyHomeComplexRegionCollectionService {
         }
         failureRecorder.record(
                 ExternalDataSource.MYHOME_COMPLEX,
-                request.requestDescription(region, 1),
+                attempt.failureDescription(),
                 exception,
                 log,
                 "마이홈 단지 지역 수집에 실패했습니다"

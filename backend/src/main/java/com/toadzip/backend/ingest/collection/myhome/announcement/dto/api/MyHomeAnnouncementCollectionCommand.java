@@ -1,6 +1,5 @@
 package com.toadzip.backend.ingest.collection.myhome.announcement.dto.api;
 
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSupplyType;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 
 public record MyHomeAnnouncementCollectionCommand(int pageSize, int maxPages) {
@@ -11,9 +10,5 @@ public record MyHomeAnnouncementCollectionCommand(int pageSize, int maxPages) {
                     "페이지 크기와 최대 페이지 수는 1~1000이어야 합니다."
             );
         }
-    }
-
-    public String requestDescription(MyHomeAnnouncementSupplyType supplyType, int page) {
-        return "suplyTy=" + supplyType.requestCode() + "&pageNo=" + page + "&numOfRows=" + pageSize;
     }
 }

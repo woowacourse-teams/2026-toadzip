@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.myhome.announcement.dto;
 
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
-import com.toadzip.backend.ingest.collection.history.dto.SourceCollectionRequest;
+import com.toadzip.backend.ingest.collection.paging.dto.PagedSourceRequest;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
@@ -15,7 +15,7 @@ public record MyHomeAnnouncementCollectionRequest(
         int maxPages,
         Instant startedAt,
         String pblancId
-) implements SourceCollectionRequest {
+) implements PagedSourceRequest {
     public MyHomeAnnouncementCollectionRequest(
             UUID executionId, String supplyTypeCode, int pageSize, int maxPages, Instant startedAt
     ) {
@@ -51,5 +51,15 @@ public record MyHomeAnnouncementCollectionRequest(
             parameters.put("pblancId", pblancId);
         }
         return Map.copyOf(parameters);
+    }
+
+    @Override
+    public String pageDescription(int page) {
+        return resolvedFailurePrefix() + page + "&numOfRows=" + pageSize;
+    }
+
+    @Override
+    public String resolvedFailurePrefix() {
+        return "suplyTy=" + supplyTypeCode + "&pageNo=";
     }
 }

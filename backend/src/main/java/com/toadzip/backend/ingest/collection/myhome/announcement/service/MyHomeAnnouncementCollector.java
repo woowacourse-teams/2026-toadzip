@@ -50,9 +50,7 @@ public class MyHomeAnnouncementCollector {
             ExternalDataCallCounter counter
     ) {
 
-        return retry.collectPages(ExternalDataSource.MYHOME_ANNOUNCEMENT,
-                page -> "suplyTy=" + request.supplyTypeCode() + "&pageNo=" + page
-                        + "&numOfRows=" + request.pageSize(), counter,
+        return retry.collectPages(ExternalDataSource.MYHOME_ANNOUNCEMENT, request::pageDescription, counter,
                 page -> apiRepository.fetch(request, page), fetch -> collectPages(request, fetch));
     }
 
