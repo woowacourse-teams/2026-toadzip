@@ -2,23 +2,24 @@ package com.toadzip.backend.ingest.mapping.repository;
 
 import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
 
-import com.toadzip.backend.ingest.failure.domain.IngestFailureReconciler;
+import com.toadzip.backend.ingest.failure.repository.IngestFailureStore;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
 import java.time.Clock;
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-@RequiredArgsConstructor
-public class MyHomeAnnouncementMappingFailureStore {
+public class MyHomeAnnouncementMappingFailureStore extends IngestFailureStore<MyHomeAnnouncementMappingFailure> {
 
     private final MyHomeAnnouncementMappingFailureRepository repository;
-    private final Clock clock;
+
+    public MyHomeAnnouncementMappingFailureStore(MyHomeAnnouncementMappingFailureRepository repository, Clock clock) {
+        super(repository, clock);
+        this.repository = repository;
+    }
 
     @Transactional
     public void reconcileForAnnouncement(
@@ -28,10 +29,7 @@ public class MyHomeAnnouncementMappingFailureStore {
                 .anyMatch(failure -> !identifier.equals(failure.getSourceAnnouncementIdentifier()))) {
             throw new IllegalArgumentException("재검사한 공고에 속한 실패만 갱신할 수 있습니다.");
         }
-        List<MyHomeAnnouncementMappingFailure> stored = repository
-                .findAllBySourceAnnouncementIdentifier(identifier);
-        IngestFailureReconciler.reconcile(stored, List.of(), failures, clock.instant(), executionId)
-                .forEach(repository::save);
+        reconcile(repository.findAllBySourceAnnouncementIdentifier(identifier), failures, executionId);
     }
 
     /** 단건 정제가 거절되어 정제 트랜잭션은 되돌려도, 전체 정제와 같은 실패 기록은 별도 트랜잭션으로 남긴다. */
@@ -44,24 +42,11 @@ public class MyHomeAnnouncementMappingFailureStore {
 
     @Transactional
     public void reconcileAfterRun(List<MyHomeAnnouncementMappingFailure> failures, UUID executionId) {
-        Instant resolvedAt = clock.instant();
-        List<MyHomeAnnouncementMappingFailure> stored = repository.findAllByStatus(PENDING);
-        List<MyHomeAnnouncementMappingFailure> history = List.of();
-        if (!failures.isEmpty()) {
-            history = repository.findAllBySourceKeyIn(
-                    failures.stream().map(MyHomeAnnouncementMappingFailure::getSourceKey).distinct().toList()
-            );
-        }
-        IngestFailureReconciler.reconcile(stored, history, failures, resolvedAt, executionId)
-                .forEach(repository::save);
+        reconcileWithHistory(repository.findAllByStatus(PENDING), failures, executionId);
     }
 
-    /** 관리자가 공고를 보정해 이 공고의 미해결 실패를 모두 해결로 바꾼다. 원인이 남으면 다음 정제가 다시 연다. */
     @Transactional
     public void resolveByAdmin(String identifier, String actor) {
-        Instant resolvedAt = clock.instant();
-        repository.findAllBySourceAnnouncementIdentifier(identifier).stream()
-                .filter(failure -> failure.getStatus() == PENDING)
-                .forEach(failure -> failure.resolveByAdmin(resolvedAt, actor));
+        resolvePendingByAdmin(repository.findAllBySourceAnnouncementIdentifier(identifier), actor);
     }
 }

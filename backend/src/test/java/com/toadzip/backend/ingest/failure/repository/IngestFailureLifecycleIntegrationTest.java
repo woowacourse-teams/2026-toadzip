@@ -6,6 +6,7 @@ import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.RESO
 import static com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason.COMPLEX_NOT_FOUND;
 import static com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason.GEOCODING_ERROR;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import com.toadzip.backend.global.config.ClockConfig;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
@@ -184,6 +185,18 @@ class IngestFailureLifecycleIntegrationTest {
                 .singleElement()
                 .extracting(MyHomeComplexMappingFailure::getStatus)
                 .isEqualTo(PENDING);
+    }
+
+    @Test
+    void 단지_단건_관찰은_관찰한_실패만_기록하고_다른_미해결_실패는_닫지_않는다() {
+        complexStore.reconcileAfterRun(List.of(complexFailure("source-a", "complex-a")), null);
+
+        complexStore.recordObserved(List.of(complexFailure("source-b", "complex-b")), null);
+
+        assertThat(complexRepository.findAll())
+                .extracting(MyHomeComplexMappingFailure::getSourceComplexIdentifier,
+                        MyHomeComplexMappingFailure::getStatus)
+                .containsExactlyInAnyOrder(tuple("complex-a", PENDING), tuple("complex-b", PENDING));
     }
 
     @Test

@@ -5,6 +5,7 @@ import static com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichment
 import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
 import static com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason.COMPLEX_NOT_FOUND;
 import static com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason.INVALID_VALUE;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -87,6 +88,35 @@ class IngestFailureStoreQueryScopeTest {
         verify(repository).findAllByStatus(PENDING);
         verify(repository).findAllBySourceKeyIn(List.of("source-key"));
         verify(repository, never()).findAll();
+    }
+
+    @Test
+    void 공고_단위_실패_조정은_다른_공고의_실패를_받지_않는다() {
+        var myHomeStore = new MyHomeAnnouncementMappingFailureStore(
+                mock(MyHomeAnnouncementMappingFailureRepository.class), CLOCK
+        );
+        var lhStore = new LhAnnouncementEnrichmentFailureStore(
+                mock(LhAnnouncementEnrichmentFailureRepository.class), CLOCK
+        );
+        var myHomeFailure = MyHomeAnnouncementMappingFailure.create(
+                "source-key", "other-announcement", 1, COMPLEX_NOT_FOUND, "실패", OCCURRED_AT
+        );
+        var lhFailure = LhAnnouncementEnrichmentFailure.create(
+                "source-key", "other-announcement", "pan-id", ANNOUNCEMENT_NOT_FOUND, "실패", OCCURRED_AT
+        );
+
+        assertThatThrownBy(() -> myHomeStore.reconcileForAnnouncement("announcement-id", List.of(myHomeFailure), null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("재검사한 공고에 속한 실패만 갱신할 수 있습니다.");
+        assertThatThrownBy(() -> myHomeStore.reconcileForAnnouncement(" ", List.of(), null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("재검사한 공고에 속한 실패만 갱신할 수 있습니다.");
+        assertThatThrownBy(() -> lhStore.reconcileForAnnouncement("announcement-id", List.of(lhFailure), null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("재검사한 공고에 속한 실패만 갱신할 수 있습니다.");
+        assertThatThrownBy(() -> lhStore.reconcileForAnnouncement(" ", List.of(), null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("재검사한 공고 식별자는 필수입니다.");
     }
 
     @Test

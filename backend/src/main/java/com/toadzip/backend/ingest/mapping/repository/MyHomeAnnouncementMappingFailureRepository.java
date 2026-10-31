@@ -2,13 +2,12 @@ package com.toadzip.backend.ingest.mapping.repository;
 
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
 import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
-import java.util.Collection;
+import com.toadzip.backend.ingest.failure.repository.IngestFailureRepository;
 import java.util.List;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface MyHomeAnnouncementMappingFailureRepository
-        extends JpaRepository<MyHomeAnnouncementMappingFailure, Long> {
+        extends IngestFailureRepository<MyHomeAnnouncementMappingFailure> {
 
     List<MyHomeAnnouncementMappingFailure> findAllByOrderBySourceKeyAscIdAsc(Pageable pageable);
 
@@ -17,8 +16,6 @@ public interface MyHomeAnnouncementMappingFailureRepository
     );
 
     List<MyHomeAnnouncementMappingFailure> findAllByStatus(IngestFailureStatus status);
-
-    List<MyHomeAnnouncementMappingFailure> findAllBySourceKeyIn(Collection<String> sourceKeys);
 
     List<MyHomeAnnouncementMappingFailure> findAllBySourceAnnouncementIdentifier(String identifier);
 

@@ -90,7 +90,8 @@ class AnnouncementJsonCorrectionIntegrationTest {
                 {"myhome_announcement_mapping_failures", identifier + ":1", "HOUSING_TYPE_NOT_FOUND"},
                 {"myhome_announcement_mapping_failures", identifier + ":2", "AMBIGUOUS_HOUSING_TYPE"},
                 {"lh_announcement_enrichment_failures", identifier + ":lh", "HOUSING_TYPE_NOT_FOUND"},
-                {"myhome_announcement_mapping_failures", "other:1", "HOUSING_TYPE_NOT_FOUND"}}) {
+                {"myhome_announcement_mapping_failures", "other:1", "HOUSING_TYPE_NOT_FOUND"},
+                {"lh_announcement_enrichment_failures", "other:lh", "HOUSING_TYPE_NOT_FOUND"}}) {
             String owner = row[1].startsWith("other") ? "other" : identifier;
             jdbc.update(("INSERT INTO %s (source_key, source_announcement_identifier, reason, detail, status, "
                     + "occurred_at, last_occurred_at, occurrence_count, recurrence_count) "
@@ -114,8 +115,11 @@ class AnnouncementJsonCorrectionIntegrationTest {
                 SELECT last_resolved_by FROM lh_announcement_enrichment_failures
                 WHERE source_announcement_identifier = ?
                 """, String.class, identifier, identifier)).containsOnly("admin").hasSize(3);
-        assertThat(jdbc.queryForObject("SELECT status FROM myhome_announcement_mapping_failures "
-                + "WHERE source_announcement_identifier = 'other'", String.class)).isEqualTo("PENDING");
+        assertThat(jdbc.queryForList("""
+                SELECT status FROM myhome_announcement_mapping_failures WHERE source_announcement_identifier = 'other'
+                UNION ALL
+                SELECT status FROM lh_announcement_enrichment_failures WHERE source_announcement_identifier = 'other'
+                """, String.class)).containsOnly("PENDING").hasSize(2);
     }
 
     private Announcement fixture() {

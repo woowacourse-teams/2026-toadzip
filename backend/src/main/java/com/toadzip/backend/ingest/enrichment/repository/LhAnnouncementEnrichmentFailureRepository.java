@@ -2,13 +2,12 @@ package com.toadzip.backend.ingest.enrichment.repository;
 
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
 import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
-import java.util.Collection;
+import com.toadzip.backend.ingest.failure.repository.IngestFailureRepository;
 import java.util.List;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface LhAnnouncementEnrichmentFailureRepository
-        extends JpaRepository<LhAnnouncementEnrichmentFailure, Long> {
+        extends IngestFailureRepository<LhAnnouncementEnrichmentFailure> {
 
     List<LhAnnouncementEnrichmentFailure> findAllByOrderBySourceKeyAscIdAsc(Pageable pageable);
 
@@ -17,8 +16,6 @@ public interface LhAnnouncementEnrichmentFailureRepository
     );
 
     List<LhAnnouncementEnrichmentFailure> findAllByStatus(IngestFailureStatus status);
-
-    List<LhAnnouncementEnrichmentFailure> findAllBySourceKeyIn(Collection<String> sourceKeys);
 
     List<LhAnnouncementEnrichmentFailure> findAllBySourceAnnouncementIdentifier(String sourceAnnouncementIdentifier);
 
