@@ -18,6 +18,7 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAn
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectedResponse;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementApiRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementCollectionRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementPageParser;
@@ -185,7 +186,7 @@ class MyHomeAnnouncementStorageIntegrationTest {
                     pageJson(1, row(announcementId, 1, "새 공고", "서울특별시")), MediaType.APPLICATION_JSON));
         }
         try (var ignored = IngestExecutionScope.open(runId, null, null, null)) {
-            var result = batch.collect(new com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionRequest(2, 10));
+            var result = batch.collect(new MyHomeAnnouncementCollectionCommand(2, 10));
             assertThat(result.storedRowCount()).isEqualTo(6);
             assertThat(result.failedRequestCount()).isOne();
             assertThat(result.externalApiCallCount()).isEqualTo(7);
@@ -210,7 +211,7 @@ class MyHomeAnnouncementStorageIntegrationTest {
             httpServer.expect(requestTo(batchUrl(type, 1)))
                     .andRespond(withSuccess(pageJson(0), MediaType.APPLICATION_JSON));
         }
-        var result = batch.collect(new com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionRequest(2, 10));
+        var result = batch.collect(new MyHomeAnnouncementCollectionCommand(2, 10));
         assertThat(result.externalApiCallCount()).isEqualTo(9);
         assertThat(result.storedRowCount()).isEqualTo(3);
         assertThat(result.failedRequestCount()).isZero();

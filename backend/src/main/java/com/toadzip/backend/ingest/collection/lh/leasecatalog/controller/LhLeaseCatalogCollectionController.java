@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.lh.leasecatalog.controller;
 
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.api.LhLeaseCatalogCollectionRequest;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.api.LhLeaseCatalogCollectionCommand;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCatalogCollectionService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -32,7 +32,7 @@ public class LhLeaseCatalogCollectionController {
             @Max(value = 10_000, message = "10000 이하여야 합니다.") int maxPages
     ) {
         ExternalDataCollectionReport report = collectionService.collect(
-                new LhLeaseCatalogCollectionRequest(pageSize, maxPages)
+                new LhLeaseCatalogCollectionCommand(pageSize, maxPages)
         );
         if (report.failedRequestCount() > 0) {
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(report);

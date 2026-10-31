@@ -10,7 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.myhome.announcement.controller.MyHomeAnnouncementCollectionController;
-import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -38,7 +38,7 @@ class MyHomeAnnouncementCollectionControllerTest {
         mockMvc.perform(post("/api/admin/ingest/myhome/announcements"))
                 .andExpect(status().isOk());
 
-        ArgumentCaptor<MyHomeAnnouncementCollectionRequest> request = ArgumentCaptor.captor();
+        ArgumentCaptor<MyHomeAnnouncementCollectionCommand> request = ArgumentCaptor.captor();
         verify(collectionService).collect(request.capture());
         assertThat(request.getValue().pageSize()).isEqualTo(10);
         assertThat(request.getValue().maxPages()).isEqualTo(1_000);

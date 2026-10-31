@@ -2,7 +2,7 @@ package com.toadzip.backend.ingest.collection.myhome.complex.service;
 
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
-import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeRegionCatalog;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
@@ -32,7 +32,7 @@ public class MyHomeComplexCollectionService {
 
     private final MyHomeComplexRegionCollectionService regionCollector;
 
-    public MyHomeComplexCollectionReport collect(MyHomeComplexCollectionRequest request) {
+    public MyHomeComplexCollectionReport collect(MyHomeComplexCollectionCommand request) {
         log.info(
                 "마이홈 단지 수집을 시작합니다: pageSize={}, maxPages={}, allRegions={}, maxConcurrentRegions={}",
                 request.pageSize(),
@@ -54,7 +54,7 @@ public class MyHomeComplexCollectionService {
 
     private MyHomeComplexCollectionReport collectRegions(
             List<MyHomeRegion> regions,
-            MyHomeComplexCollectionRequest request
+            MyHomeComplexCollectionCommand request
     ) {
         if (regions.size() == 1) {
             MyHomeComplexCollectionReport report = regionCollector.collect(regions.getFirst(), request);
@@ -66,7 +66,7 @@ public class MyHomeComplexCollectionService {
 
     private MyHomeComplexCollectionReport collectRegionsConcurrently(
             List<MyHomeRegion> regions,
-            MyHomeComplexCollectionRequest request
+            MyHomeComplexCollectionCommand request
     ) {
         ExecutorService executor = Executors.newFixedThreadPool(MAX_CONCURRENT_REGIONS);
         AtomicBoolean rateLimitReached = new AtomicBoolean();
@@ -150,7 +150,7 @@ public class MyHomeComplexCollectionService {
     private Future<MyHomeComplexCollectionReport> submit(
             CompletionService<MyHomeComplexCollectionReport> completedTasks,
             MyHomeRegion region,
-            MyHomeComplexCollectionRequest request,
+            MyHomeComplexCollectionCommand request,
             AtomicBoolean rateLimitReached
     ) {
         return completedTasks.submit(
@@ -160,7 +160,7 @@ public class MyHomeComplexCollectionService {
 
     private MyHomeComplexCollectionReport collectRegion(
             MyHomeRegion region,
-            MyHomeComplexCollectionRequest request,
+            MyHomeComplexCollectionCommand request,
             AtomicBoolean rateLimitReached
     ) {
         MyHomeComplexCollectionReport report = regionCollector.collect(region, request, rateLimitReached);
@@ -186,7 +186,7 @@ public class MyHomeComplexCollectionService {
         return interruption;
     }
 
-    private List<MyHomeRegion> regionsFor(MyHomeComplexCollectionRequest request) {
+    private List<MyHomeRegion> regionsFor(MyHomeComplexCollectionCommand request) {
         if (request.requestsAllRegions()) {
             return regionCatalog.findAll();
         }

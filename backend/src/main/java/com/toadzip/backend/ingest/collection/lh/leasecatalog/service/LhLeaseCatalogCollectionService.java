@@ -3,7 +3,8 @@ package com.toadzip.backend.ingest.collection.lh.leasecatalog.service;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecordService;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.api.LhLeaseCatalogCollectionRequest;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.LhLeaseCatalogCollectionRequest;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.api.LhLeaseCatalogCollectionCommand;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
@@ -27,13 +28,13 @@ public class LhLeaseCatalogCollectionService {
     private final ExternalDataRetryExecutor retryExecutor;
     private final Clock clock;
 
-    public ExternalDataCollectionReport collect(LhLeaseCatalogCollectionRequest request) {
+    public ExternalDataCollectionReport collect(LhLeaseCatalogCollectionCommand request) {
         var counter = new ExternalDataCallCounter();
         int stored;
         IngestExecutionScope.beginWork("LH 임대 카탈로그", "페이지", -1);
         try {
             var attempt =
-                    new com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.LhLeaseCatalogCollectionRequest(
+                    new LhLeaseCatalogCollectionRequest(
                     IngestExecutionScope.currentExecutionId().orElse(null), request.pageSize(),
                     request.maxPages(), clock.instant());
             stored = records.storedRowCount(collector.collectWithinBatch(attempt, retryExecutor, counter));

@@ -31,6 +31,7 @@ import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.projection.LhCatalogSourceSnapshot;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.LhLeaseCatalogCollectedResponse;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.LhLeaseCatalogCollectionRequest;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.api.LhLeaseCatalogCollectionCommand;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.repository.LhLeaseCatalogApiRepository;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.repository.LhLeaseCatalogPageParser;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCatalogCollectionService;
@@ -45,6 +46,7 @@ import com.toadzip.backend.ingest.collection.lh.supply.repository.LhSupplyRespon
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSupplyType;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectedResponse;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementApiRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementPageParser;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
@@ -54,6 +56,7 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeA
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectedResponse;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexApiRepository;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexPageParser;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeRegionCatalog;
@@ -103,10 +106,10 @@ public final class CollectionServiceTestFixture {
         lenient().when(api.fetch(any(), anyInt())).thenAnswer(invocation -> {
             MyHomeComplexCollectionRequest request = invocation.getArgument(0);
             var region = region(regions, request.provinceCode(), request.districtCode());
-            var oldRequest = new com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest(
+            var oldRequest = new MyHomeComplexCollectionCommand(
                     request.provinceCode(), request.districtCode(), request.pageSize(), request.maxPages());
             if (regions.find(request.provinceCode(), request.districtCode()) == null) {
-                oldRequest = com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest.allRegions(
+                oldRequest = MyHomeComplexCollectionCommand.allRegions(
                         request.pageSize(), request.maxPages());
             }
             return parser.parse(external.fetch(region, oldRequest, invocation.getArgument(1)));
@@ -133,7 +136,7 @@ public final class CollectionServiceTestFixture {
             MyHomeAnnouncementCollectionRequest request = invocation.getArgument(0);
             var type = Arrays.stream(MyHomeAnnouncementSupplyType.values())
                     .filter(value -> value.requestCode().equals(request.supplyTypeCode())).findFirst().orElseThrow();
-            var oldRequest = new com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionRequest(
+            var oldRequest = new MyHomeAnnouncementCollectionCommand(
                     request.pageSize(), request.maxPages());
             return parser.parse(external.fetch(type, oldRequest, invocation.getArgument(1)));
         });
@@ -157,7 +160,7 @@ public final class CollectionServiceTestFixture {
         var parser = new LhLeaseCatalogPageParser();
         lenient().when(api.fetch(any(), anyInt())).thenAnswer(invocation -> {
             LhLeaseCatalogCollectionRequest request = invocation.getArgument(0);
-            var oldRequest = new com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.api.LhLeaseCatalogCollectionRequest(
+            var oldRequest = new LhLeaseCatalogCollectionCommand(
                     request.pageSize(), request.maxPages());
             return parser.parse(external.fetch(oldRequest, invocation.getArgument(1)),
                     request, invocation.getArgument(1));

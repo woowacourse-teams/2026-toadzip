@@ -20,7 +20,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectedResponse;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
-import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeRegionCatalog;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexRegionCollectionService;
@@ -464,7 +464,7 @@ class MyHomeComplexCollectionServiceTest {
     @DisplayName("후속 페이지 파싱 실패는 실제 페이지와 시도 횟수로 기록하고 성공 처리하지 않는다")
     void recordsActualComplexParseFailurePageAndAttemptCount() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
-        MyHomeComplexCollectionRequest request = request();
+        MyHomeComplexCollectionCommand request = request();
         when(regionCatalog.find("11", "110")).thenReturn(region);
         when(externalRepository.fetch(region, request, 1))
                 .thenReturn(response(itemsFor(region, 1, 2), 3));
@@ -568,7 +568,7 @@ class MyHomeComplexCollectionServiceTest {
     void propagatesConcurrentComplexStoreFailure() {
         MyHomeRegion seoul = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion busan = new MyHomeRegion("26", "110", "부산광역시", "중구");
-        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexCollectionCommand request = MyHomeComplexCollectionCommand.allRegions(2, 10);
         when(regionCatalog.findAll()).thenReturn(List.of(busan, seoul));
         when(externalRepository.fetch(seoul, request, 1)).thenReturn(response(itemsFor(seoul, 1), 1));
         when(externalRepository.fetch(busan, request, 1)).thenReturn(response(itemsFor(busan, 2), 1));
@@ -587,7 +587,7 @@ class MyHomeComplexCollectionServiceTest {
     void propagatesExecutionIdToConcurrentWorkers() {
         MyHomeRegion seoul = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion busan = new MyHomeRegion("26", "110", "부산광역시", "중구");
-        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexCollectionCommand request = MyHomeComplexCollectionCommand.allRegions(2, 10);
         MyHomeComplexRegionCollectionService concurrentCollector = mock(MyHomeComplexRegionCollectionService.class);
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
                 regionCatalog,
@@ -619,7 +619,7 @@ class MyHomeComplexCollectionServiceTest {
     void reportsConcurrentWorkerProgressToExecutionMonitor() {
         MyHomeRegion seoul = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion busan = new MyHomeRegion("26", "110", "부산광역시", "중구");
-        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexCollectionCommand request = MyHomeComplexCollectionCommand.allRegions(2, 10);
         when(regionCatalog.findAll()).thenReturn(List.of(seoul, busan));
         when(externalRepository.fetch(seoul, request, 1)).thenReturn(response(itemsFor(seoul, 1), 1));
         when(externalRepository.fetch(busan, request, 1)).thenReturn(response(itemsFor(busan, 2), 1));
@@ -639,7 +639,7 @@ class MyHomeComplexCollectionServiceTest {
     void concurrentWorkersCheckExecutionStopRequest() {
         MyHomeRegion seoul = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion busan = new MyHomeRegion("26", "110", "부산광역시", "중구");
-        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexCollectionCommand request = MyHomeComplexCollectionCommand.allRegions(2, 10);
         when(regionCatalog.findAll()).thenReturn(List.of(seoul, busan));
         var monitor = mock(DataPipelineExecutionMonitor.class);
         doThrow(new DataPipelineStoppedException()).when(monitor).checkStopRequested();
@@ -663,8 +663,8 @@ class MyHomeComplexCollectionServiceTest {
                         "테스트구" + index
                 ))
                 .toList();
-        MyHomeComplexCollectionRequest request =
-                MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexCollectionCommand request =
+                MyHomeComplexCollectionCommand.allRegions(2, 10);
         when(regionCatalog.findAll()).thenReturn(regions);
         when(externalRepository.fetch(any(), eq(request), eq(1)))
                 .thenThrow(ExternalDataRequestException.rateLimited(
@@ -686,7 +686,7 @@ class MyHomeComplexCollectionServiceTest {
     void waitsForRunningWorkerAndReportsItsCompletedResultAfterRateLimit() throws Exception {
         MyHomeRegion rateLimitedRegion = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion slowRegion = new MyHomeRegion("26", "110", "부산광역시", "중구");
-        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexCollectionCommand request = MyHomeComplexCollectionCommand.allRegions(2, 10);
         MyHomeComplexRegionCollectionService concurrentCollector = mock(MyHomeComplexRegionCollectionService.class);
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
                 regionCatalog,
@@ -749,7 +749,7 @@ class MyHomeComplexCollectionServiceTest {
     void cancelsRetryWaitAfterRateLimitWithoutAddingFailure() throws Exception {
         MyHomeRegion retryingRegion = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion rateLimitedRegion = new MyHomeRegion("26", "110", "부산광역시", "중구");
-        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexCollectionCommand request = MyHomeComplexCollectionCommand.allRegions(2, 10);
         var retryingCollector = new CollectionServiceTestFixture().complex(externalRepository, regionCatalog,
                 storage, failureRecorder, new ExternalDataRetryExecutor(Duration.ofSeconds(30), new SimpleMeterRegistry()));
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
@@ -787,7 +787,7 @@ class MyHomeComplexCollectionServiceTest {
     void waitsForRunningWorkerBeforePropagatingWorkerFailure() throws Exception {
         MyHomeRegion failedRegion = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion slowRegion = new MyHomeRegion("26", "110", "부산광역시", "중구");
-        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexCollectionCommand request = MyHomeComplexCollectionCommand.allRegions(2, 10);
         MyHomeComplexRegionCollectionService concurrentCollector = mock(MyHomeComplexRegionCollectionService.class);
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
                 regionCatalog,
@@ -844,8 +844,8 @@ class MyHomeComplexCollectionServiceTest {
         }
     }
 
-    private MyHomeComplexCollectionRequest request() {
-        return new MyHomeComplexCollectionRequest("11", "110", 2, 10);
+    private MyHomeComplexCollectionCommand request() {
+        return new MyHomeComplexCollectionCommand("11", "110", 2, 10);
     }
 
     private void awaitIgnoringInterrupt(CountDownLatch release, CountDownLatch... interruptions) {

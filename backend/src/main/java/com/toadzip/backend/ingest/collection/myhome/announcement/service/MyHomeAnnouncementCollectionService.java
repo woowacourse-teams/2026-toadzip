@@ -5,6 +5,7 @@ import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecordService;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSupplyType;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionCommand;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
@@ -31,7 +32,7 @@ public class MyHomeAnnouncementCollectionService {
     private final Clock clock;
 
     public ExternalDataCollectionReport collect(
-            com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionRequest request
+            MyHomeAnnouncementCollectionCommand request
     ) {
         UUID runId = IngestExecutionScope.currentExecutionId().orElseGet(UUID::randomUUID);
         var report = ExternalDataCollectionReport.empty(ExternalDataSource.MYHOME_ANNOUNCEMENT.operation());
@@ -51,7 +52,7 @@ public class MyHomeAnnouncementCollectionService {
 
     private ExternalDataCollectionReport collectSupplyType(
             UUID runId, MyHomeAnnouncementSupplyType type,
-            com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionRequest request
+            MyHomeAnnouncementCollectionCommand request
     ) {
         var counter = new ExternalDataCallCounter();
         int stored;

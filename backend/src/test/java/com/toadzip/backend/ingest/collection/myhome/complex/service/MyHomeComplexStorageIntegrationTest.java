@@ -20,6 +20,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplex
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectedResponse;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexApiRepository;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexCollectionRepository;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexPageParser;
@@ -190,7 +191,7 @@ class MyHomeComplexStorageIntegrationTest {
         httpServer.expect(requestTo(apiUrl(1))).andRespond(withSuccess(
                 pageJson(1, row(100L, "11", "680", "59A", 100000L)), MediaType.APPLICATION_JSON));
         try (var ignored = IngestExecutionScope.open(EXECUTION_ID, null, null, null)) {
-            var result = batch.collect(new com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest(
+            var result = batch.collect(new MyHomeComplexCollectionCommand(
                     "11", "680", 2, 10));
             assertThat(result.storedRowCount()).isOne();
             assertThat(result.failedRequestCount()).isZero();
@@ -216,7 +217,7 @@ class MyHomeComplexStorageIntegrationTest {
                             MediaType.APPLICATION_JSON).createResponse(request);
                 });
         try (var ignored = IngestExecutionScope.open(EXECUTION_ID, null, null, null)) {
-            var result = batch.collect(com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest.allRegions(2, 10));
+            var result = batch.collect(MyHomeComplexCollectionCommand.allRegions(2, 10));
             assertThat(result.storedRowCount()).isEqualTo(2);
             assertThat(result.failedRequestCount()).isZero();
             assertThat(result.externalApiCallCount()).isEqualTo(2);

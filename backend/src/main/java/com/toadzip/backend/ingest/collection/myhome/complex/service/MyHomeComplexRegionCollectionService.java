@@ -4,7 +4,8 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecordService;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
-import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
@@ -33,14 +34,14 @@ public class MyHomeComplexRegionCollectionService {
 
     public MyHomeComplexCollectionReport collect(
             MyHomeRegion region,
-            MyHomeComplexCollectionRequest request
+            MyHomeComplexCollectionCommand request
     ) {
         return collect(region, request, new AtomicBoolean());
     }
 
     public MyHomeComplexCollectionReport collect(
             MyHomeRegion region,
-            MyHomeComplexCollectionRequest request,
+            MyHomeComplexCollectionCommand request,
             AtomicBoolean rateLimitReached
     ) {
         if (rateLimitReached.get()) {
@@ -50,7 +51,7 @@ public class MyHomeComplexRegionCollectionService {
         int storedRowCount;
         try {
             var attempt =
-                    new com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionRequest(
+                    new MyHomeComplexCollectionRequest(
                     IngestExecutionScope.currentExecutionId().orElse(null), region.provinceCode(),
                     region.districtCode(), request.pageSize(), request.maxPages(), clock.instant());
             UUID id = collector.collectWithinBatch(attempt, retryExecutor, callCounter, rateLimitReached);
@@ -91,7 +92,7 @@ public class MyHomeComplexRegionCollectionService {
 
     private MyHomeComplexCollectionReport failedReport(
             MyHomeRegion region,
-            MyHomeComplexCollectionRequest request,
+            MyHomeComplexCollectionCommand request,
             AtomicBoolean rateLimitReached,
             ExternalDataCallCounter callCounter,
             RuntimeException exception

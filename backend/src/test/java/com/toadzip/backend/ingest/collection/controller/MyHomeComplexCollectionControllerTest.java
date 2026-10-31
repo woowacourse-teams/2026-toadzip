@@ -10,7 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.toadzip.backend.ingest.collection.myhome.complex.controller.MyHomeComplexCollectionController;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
-import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import org.junit.jupiter.api.Test;
@@ -42,7 +42,7 @@ class MyHomeComplexCollectionControllerTest {
                 .andExpect(jsonPath("$.failedRequestCount").value(0))
                 .andExpect(jsonPath("$.externalApiCallCount").value(7));
 
-        ArgumentCaptor<MyHomeComplexCollectionRequest> request = ArgumentCaptor.captor();
+        ArgumentCaptor<MyHomeComplexCollectionCommand> request = ArgumentCaptor.captor();
         verify(collectionService).collect(request.capture());
         org.assertj.core.api.Assertions.assertThat(request.getValue().pageSize()).isEqualTo(500);
         org.assertj.core.api.Assertions.assertThat(request.getValue().maxPages()).isEqualTo(1_000);

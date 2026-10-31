@@ -3,20 +3,20 @@ package com.toadzip.backend.ingest.collection.myhome.complex.dto.api;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeRegion;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 
-public record MyHomeComplexCollectionRequest(
+public record MyHomeComplexCollectionCommand(
         String provinceCode,
         String districtCode,
         int pageSize,
         int maxPages
 ) {
 
-    public MyHomeComplexCollectionRequest {
+    public MyHomeComplexCollectionCommand {
         validateRegionCodes(provinceCode, districtCode);
         validatePaging(pageSize, maxPages);
     }
 
-    public static MyHomeComplexCollectionRequest allRegions(int pageSize, int maxPages) {
-        return new MyHomeComplexCollectionRequest(null, null, pageSize, maxPages);
+    public static MyHomeComplexCollectionCommand allRegions(int pageSize, int maxPages) {
+        return new MyHomeComplexCollectionCommand(null, null, pageSize, maxPages);
     }
 
     public boolean requestsAllRegions() {
