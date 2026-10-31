@@ -638,6 +638,47 @@ class LhAnnouncementEnrichmentServiceTest {
                 assertThat(stored.getId()).isEqualTo(targetId));
     }
 
+    @Test
+    void 공급기관이_LH에서_SH로_바뀌어도_관리자가_고친_LH_보강값은_보존한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        AnnouncementSchedule schedule = scheduleRepository.findAll().stream()
+                .filter(stored -> stored.getSourceScheduleIdentifier().startsWith("LH:"))
+                .findFirst().orElseThrow();
+        AnnouncementAttachment attachment = attachmentRepository.findAll().stream()
+                .filter(stored -> stored.getSourceAttachmentIdentifier().startsWith("LH:"))
+                .findFirst().orElseThrow();
+        SupplyTarget target = supplyTargetRepository.findAll().stream()
+                .filter(stored -> stored.getSourceSupplyTargetIdentifier().startsWith("LH:"))
+                .findFirst().orElseThrow();
+        LocalDateTime start = LocalDateTime.of(2026, 9, 1, 10, 0);
+        schedule.reviseByAdmin(ScheduleType.APPLICATION, "관리자 확인 접수", start, start.plusDays(1));
+        attachment.reviseByAdmin("관리자 확인 공고문.pdf", AttachmentType.REFERENCE, "https://example.com/admin.pdf");
+        target.reviseByAdmin("청년", "1순위", 7, 0,
+                new BigDecimal("7000000"), BigDecimal.ZERO, null, "원문 확인");
+        scheduleRepository.save(schedule);
+        attachmentRepository.save(attachment);
+        supplyTargetRepository.save(target);
+        ReflectionTestUtils.setField(source, "suplyInsttNm", "서울주택도시공사");
+        myHomeSourceRepository.save(source);
+
+        var report = mappingService.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(stored ->
+                assertThat(stored.getProvider()).isEqualTo(AgencyCode.SH));
+        assertThat(scheduleRepository.findAll()).extracting(AnnouncementSchedule::getId)
+                .containsExactly(schedule.getId());
+        assertThat(attachmentRepository.findAll()).extracting(AnnouncementAttachment::getId)
+                .containsExactly(attachment.getId());
+        assertThat(supplyTargetRepository.findAll()).extracting(SupplyTarget::getId)
+                .containsExactly(target.getId());
+    }
+
     @ParameterizedTest
     @CsvSource({
             "5년임대, PUBLIC_RENTAL_5Y",

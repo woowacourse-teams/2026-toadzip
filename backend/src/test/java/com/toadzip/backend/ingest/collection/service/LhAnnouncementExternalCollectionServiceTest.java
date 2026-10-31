@@ -775,6 +775,21 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void 병렬_요청_worker의_외부_요청을_실행_진행에_기록한다() {
+        source(announcementSource("a", "100"), announcementSource("b", "200"));
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(any(), any(), any())).thenReturn(1);
+        var monitor = mock(DataPipelineExecutionMonitor.class);
+
+        try (var scope = IngestExecutionScope.open(null, monitor)) {
+            service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        }
+
+        verify(monitor, times(2)).requestStarted(any());
+        verify(monitor, times(2)).requestFinished();
+    }
+
+    @Test
     void LH_상세_수집은_상세_행만_저장한다() {
         source(announcementSource());
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());

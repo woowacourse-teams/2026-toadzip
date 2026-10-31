@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.collection.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atMost;
@@ -27,6 +28,9 @@ import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComple
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
@@ -607,6 +611,44 @@ class MyHomeComplexCollectionServiceTest {
 
         verify(concurrentCollector, times(2))
                 .collect(any(), eq(request), any(AtomicBoolean.class));
+    }
+
+    @Test
+    @DisplayName("전국 동시 수집 worker의 외부 요청과 지역 완료를 실행 진행에 기록한다")
+    void reportsConcurrentWorkerProgressToExecutionMonitor() {
+        MyHomeRegion seoul = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        MyHomeRegion busan = new MyHomeRegion("26", "110", "부산광역시", "중구");
+        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        when(regionCatalog.findAll()).thenReturn(List.of(seoul, busan));
+        when(externalRepository.fetch(seoul, request, 1)).thenReturn(response(itemsFor(seoul, 1), 1));
+        when(externalRepository.fetch(busan, request, 1)).thenReturn(response(itemsFor(busan, 2), 1));
+        var monitor = mock(DataPipelineExecutionMonitor.class);
+
+        try (var scope = IngestExecutionScope.open(null, monitor)) {
+            service.collect(request);
+        }
+
+        verify(monitor).beginWork("마이홈 단지 · 전체 지역", "지역", 2L);
+        verify(monitor, times(2)).requestStarted(any());
+        verify(monitor, times(2)).workCompleted();
+    }
+
+    @Test
+    @DisplayName("전국 동시 수집 worker는 외부 요청 전에 실행 중지 요청을 확인한다")
+    void concurrentWorkersCheckExecutionStopRequest() {
+        MyHomeRegion seoul = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        MyHomeRegion busan = new MyHomeRegion("26", "110", "부산광역시", "중구");
+        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        when(regionCatalog.findAll()).thenReturn(List.of(seoul, busan));
+        var monitor = mock(DataPipelineExecutionMonitor.class);
+        doThrow(new DataPipelineStoppedException()).when(monitor).checkStopRequested();
+
+        try (var scope = IngestExecutionScope.open(null, monitor)) {
+            assertThatThrownBy(() -> service.collect(request)).isInstanceOf(DataPipelineStoppedException.class);
+        }
+
+        verify(externalRepository, never()).fetch(any(), any(), anyInt());
+        verify(monitor, never()).workCompleted();
     }
 
     @Test
