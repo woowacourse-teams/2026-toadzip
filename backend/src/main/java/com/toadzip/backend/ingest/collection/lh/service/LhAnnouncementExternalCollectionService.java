@@ -4,6 +4,7 @@ import static com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementSha
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCandidateSelector.CandidateSelection;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Resolution;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Skipped;
@@ -39,7 +40,7 @@ public class LhAnnouncementExternalCollectionService {
     private final MyHomeAnnouncementSourceReader myHomeAnnouncementRepository;
     private final ExternalDataFailureRecorder failureRecorder;
     private final LhAnnouncementCollectionCandidateResolver candidateResolver;
-    private final LhAnnouncementCollectionPolicy collectionPolicy;
+    private final LhAnnouncementCandidateSelector candidateSelector;
     private final LhAnnouncementSharedRequestCollector sharedRequests;
     private final MeterRegistry meterRegistry;
 
@@ -202,7 +203,7 @@ public class LhAnnouncementExternalCollectionService {
         List<Resolution> resolutions = measurePreparation(targetSource, forceRefresh, "candidate_resolution",
                 () -> candidateResolver.resolveAll(current));
         CandidateSelection selection = measurePreparation(targetSource, forceRefresh, "candidate_selection",
-                () -> selectCandidates(current, resolutions, handledAnnouncementKeys, forceRefresh));
+                () -> candidateSelector.select(current, resolutions, handledAnnouncementKeys, forceRefresh));
         recordSelection(targetSource, forceRefresh, selection, sources.size() - current.size());
         ExternalDataCollectionReport report = selectionReport(targetSource, selection);
         return report.plus(collectCandidates(
@@ -240,70 +241,6 @@ public class LhAnnouncementExternalCollectionService {
             report = report.plus(skipReport(targetSource, skipped.sourceDescription(), skipped.reason()));
         }
         return report;
-    }
-
-    private CandidateSelection selectCandidates(
-            List<MyHomeAnnouncementSource> sources,
-            List<Resolution> resolutions,
-            Set<String> handledAnnouncementKeys,
-            boolean forceRefresh
-    ) {
-        Set<String> conflictingKeys = conflictingSourceKeys(resolutions);
-        Set<String> sourceKeysWithoutEligibleCandidates = resolutions.stream()
-                .map(Resolution::sourceAnnouncementKey)
-                .collect(Collectors.toSet());
-        List<Skipped> skippedSources = new ArrayList<>();
-        List<Candidate> conflicts = new ArrayList<>();
-        List<Candidate> candidates = new ArrayList<>();
-        int policyExcludedCount = 0;
-        int duplicateCount = 0;
-        for (int sourceIndex = 0; sourceIndex < sources.size(); sourceIndex++) {
-            Resolution resolution = resolutions.get(sourceIndex);
-            if (resolution instanceof Skipped skipped) {
-                skippedSources.add(skipped);
-                continue;
-            }
-            Candidate candidate = (Candidate) resolution;
-            if (!forceRefresh && !collectionPolicy.isCollectionTarget(sources.get(sourceIndex))) {
-                policyExcludedCount++;
-                continue;
-            }
-            sourceKeysWithoutEligibleCandidates.remove(candidate.sourceAnnouncementKey());
-            if (conflictingKeys.contains(candidate.sourceAnnouncementKey())) {
-                addConflict(candidate, handledAnnouncementKeys, conflicts);
-                continue;
-            }
-            if (!handledAnnouncementKeys.add(candidate.sourceAnnouncementKey())) {
-                duplicateCount++;
-                continue;
-            }
-            candidates.add(candidate);
-        }
-        return new CandidateSelection(
-                candidates, skippedSources, conflicts, sourceKeysWithoutEligibleCandidates,
-                policyExcludedCount, duplicateCount
-        );
-    }
-
-    private Set<String> conflictingSourceKeys(List<Resolution> resolutions) {
-        Map<String, Set<String>> requestsBySource = new HashMap<>();
-        for (Resolution resolution : resolutions) {
-            if (!(resolution instanceof Candidate candidate)) {
-                continue;
-            }
-            requestsBySource.computeIfAbsent(candidate.sourceAnnouncementKey(), ignored -> new HashSet<>())
-                    .add(candidate.requestDescription());
-        }
-        return requestsBySource.entrySet().stream()
-                .filter(entry -> entry.getValue().size() > 1)
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toSet());
-    }
-
-    private void addConflict(Candidate candidate, Set<String> visited, List<Candidate> conflicts) {
-        if (visited.add(candidate.sourceAnnouncementKey())) {
-            conflicts.add(candidate);
-        }
     }
 
     private ExternalDataCollectionReport conflictReport(ExternalDataSource targetSource, Candidate conflict) {
@@ -380,16 +317,6 @@ public class LhAnnouncementExternalCollectionService {
             return "forced";
         }
         return "scheduled";
-    }
-
-    private record CandidateSelection(
-            List<Candidate> candidates,
-            List<Skipped> skipped,
-            List<Candidate> conflicts,
-            Set<String> sourceKeysWithoutEligibleCandidates,
-            int policyExcludedCount,
-            int duplicateCount
-    ) {
     }
 
     private ExternalDataCollectionReport skipReport(

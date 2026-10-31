@@ -25,6 +25,7 @@ import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhAnnouncementCircuitBreaker;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCandidateCollector;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCandidateSelector;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionPolicy;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionProgressManager;
@@ -141,7 +142,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                 myHomeAnnouncementRepository,
                 failureRecorder,
                 new LhAnnouncementCollectionCandidateResolver(catalogRepository),
-                collectionPolicy,
+                new LhAnnouncementCandidateSelector(collectionPolicy),
                 new LhAnnouncementSharedRequestCollector(candidateCollector, progressManager, failureRecorder,
                         new LhAnnouncementClientProperties(
                                 maxConcurrentRequests, Duration.ofSeconds(3), Duration.ofSeconds(10))),
