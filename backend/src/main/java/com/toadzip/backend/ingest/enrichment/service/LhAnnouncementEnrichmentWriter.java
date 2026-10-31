@@ -101,6 +101,32 @@ public class LhAnnouncementEnrichmentWriter {
         );
     }
 
+    /** 공고가 LH 소유에서 벗어나면 관리자가 고치지 않은 LH 일정·첨부·공급대상을 지운다. */
+    @Transactional
+    public void releaseLhOwnership(Announcement announcement) {
+        List<AnnouncementSchedule> schedules = scheduleRepository.findAllByAnnouncement(announcement).stream()
+                .filter(schedule -> !schedule.isAdminModified())
+                .filter(schedule -> LhSourceIdentifier.isLhSource(schedule.getSourceScheduleIdentifier()))
+                .toList();
+        scheduleRepository.deleteAll(schedules);
+        List<AnnouncementAttachment> attachments = attachmentRepository.findAllByAnnouncement(announcement).stream()
+                .filter(attachment -> !attachment.isAdminModified())
+                .filter(attachment -> LhSourceIdentifier.isLhSource(attachment.getSourceAttachmentIdentifier()))
+                .toList();
+        attachmentRepository.deleteAll(attachments);
+        List<Long> supplyRowIds = supplyRowRepository.findAllByAnnouncement(announcement).stream()
+                .map(SupplyRow::getId)
+                .toList();
+        if (supplyRowIds.isEmpty()) {
+            return;
+        }
+        List<SupplyTarget> targets = supplyTargetRepository.findAllBySupplyRowIdIn(supplyRowIds).stream()
+                .filter(target -> LhSourceIdentifier.isLhSource(target.getSourceSupplyTargetIdentifier()))
+                .filter(target -> !target.isAdminModified())
+                .toList();
+        supplyTargetRepository.deleteAll(targets);
+    }
+
     @Transactional
     public LhAnnouncementEnrichmentWriteResult write(
             Announcement announcement,
