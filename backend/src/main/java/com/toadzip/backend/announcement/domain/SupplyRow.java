@@ -15,12 +15,17 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.YearMonth;
 import java.math.BigDecimal;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -63,7 +68,7 @@ public class SupplyRow {
         boolean keepsDefault = announcementHousingTypeName == null && displayTypeName != null
                 && displayTypeName.strip().equals(defaultHousingTypeName());
         housingComplex = incoming.housingComplex;
-        housingType = incoming.housingType;
+        represent(incoming.housingType);
         announcementHousingTypeName = keepsDefault ? null : labelDifferentFromDefault(displayTypeName);
         supplyPnu = incoming.supplyPnu;
         expectedMoveInMonth = incoming.expectedMoveInMonth;
@@ -87,9 +92,31 @@ public class SupplyRow {
             return false;
         }
         housingComplex = complex;
-        housingType = type;
+        represent(type);
         matchingFailureReason = null;
         return true;
+    }
+
+    public Set<HousingType> getHousingTypes() {
+        return Set.copyOf(housingTypes);
+    }
+
+    /** 대표 주택형을 바꾸면 함께 모집하는 주택형도 대표 하나로 맞춘다. 같으면 연결을 다시 쓰지 않는다. */
+    private void represent(HousingType type) {
+        housingType = type;
+        boolean unchanged = type == null ? housingTypes.isEmpty()
+                : housingTypes.size() == 1 && sameType(housingTypes.iterator().next(), type);
+        if (unchanged) {
+            return;
+        }
+        housingTypes.clear();
+        if (type != null) {
+            housingTypes.add(type);
+        }
+    }
+
+    private static boolean sameType(HousingType linked, HousingType type) {
+        return linked == type || linked.getId() != null && linked.getId().equals(type.getId());
     }
 
     private static Long idOf(HousingComplex complex) {
@@ -198,6 +225,14 @@ public class SupplyRow {
     @JoinColumn(name = "housing_type_id")
     private HousingType housingType;
 
+    /** 함께 모집하는 주택형. 대표 주택형도 포함한다. 지금은 대표 주택형 하나만 연결한다. */
+    @Getter(AccessLevel.NONE)
+    @ManyToMany(fetch = LAZY)
+    @JoinTable(name = "supply_row_housing_types",
+            joinColumns = @JoinColumn(name = "supply_row_id"),
+            inverseJoinColumns = @JoinColumn(name = "housing_type_id"))
+    private Set<HousingType> housingTypes = new HashSet<>();
+
     @Column(nullable = false)
     private String sourceSupplyRowIdentifier;
 
@@ -279,7 +314,7 @@ public class SupplyRow {
         validateNonNegativeIfPresent(totalSupplyHouseholdCount, "전체 공급세대수");
         this.announcement = announcement;
         this.housingComplex = housingComplex;
-        this.housingType = housingType;
+        represent(housingType);
         this.sourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
         this.displayOrder = displayOrder;
         this.sourceComplexName = sourceComplexName;
@@ -466,7 +501,7 @@ public class SupplyRow {
 
     private void applySourceValues(SupplyRow incoming) {
         housingComplex = incoming.housingComplex;
-        housingType = incoming.housingType;
+        represent(incoming.housingType);
         displayOrder = incoming.displayOrder;
         sourceComplexName = incoming.sourceComplexName;
         sourceHousingTypeName = incoming.sourceHousingTypeName;

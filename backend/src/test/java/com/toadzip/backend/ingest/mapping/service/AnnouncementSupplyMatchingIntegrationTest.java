@@ -997,8 +997,11 @@ class AnnouncementSupplyMatchingIntegrationTest {
     void 저장한_선택을_근거와_함께_해제하면_제품은_유지하고_다음_정제부터_자동_매칭한다() throws Exception {
         mapping.mapAll();
         assertThat(supplyOwner()).isEqualTo("LH_SOURCE");
+        assertLinksFollowRepresentative();
         rememberCurrent();
         assertThat(supplyOwner()).isEqualTo("ANNOUNCEMENT_DOCUMENT");
+        assertThat(jdbc.sql("SELECT count(*) FROM supply_row_housing_types").query(Long.class).single()).isPositive();
+        assertLinksFollowRepresentative();
         var row = rowQuery.rows(TARGET).getFirst();
         mvc.perform(post(PATH + "/" + TARGET + "/release").with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
@@ -1083,6 +1086,10 @@ class AnnouncementSupplyMatchingIntegrationTest {
         long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
 
         correctFromPdf(announcementId, type);
+        // PDF 보정이 정한 대표 주택형이 함께 모집하는 주택형에도 들어간다.
+        assertThat(jdbc.sql("SELECT housing_type_id FROM supply_row_housing_types").query(Long.class).list())
+                .containsExactly(type.getId());
+        assertLinksFollowRepresentative();
         assertThat(jdbc.sql("SELECT housing_type_id, reason FROM announcement_supply_match_decisions")
                 .query((rs, rowNum) -> List.of(rs.getLong(1), rs.getString(2))).list())
                 .containsExactly(List.of(type.getId(), "공고문 PDF 4쪽에서 주택형 확인"));
@@ -1243,6 +1250,15 @@ class AnnouncementSupplyMatchingIntegrationTest {
         mapping.mapAll();
         exclusion(row, true, " ").andExpect(status().isBadRequest());
         assertThat(supplies.findAll()).noneMatch(value -> value.isAdminExcluded());
+    }
+
+    /** 정제와 매칭 보정이 쓴 공급행은 함께 모집하는 주택형이 대표 주택형 하나뿐이다. */
+    private void assertLinksFollowRepresentative() {
+        assertThat(jdbc.sql("""
+                SELECT count(*) FROM supply_rows row
+                FULL JOIN supply_row_housing_types link ON link.supply_row_id = row.id
+                WHERE link.housing_type_id IS DISTINCT FROM row.housing_type_id
+                """).query(Long.class).single()).isZero();
     }
 
     private String supplyOwner() {

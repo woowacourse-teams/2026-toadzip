@@ -179,6 +179,15 @@ LH 임대 목록에는 같은 단지가 이름만 다른 묶음으로 두 번 �
 복구가 끝나면 원래 제품 ID·참조·연결이 돌아오고 별칭은 제거된다. 통합·복구 이력은 유지한다.
 스냅샷 형식 버전은 1이다. 이후 관련 테이블 컬럼을 변경할 때 기존 이력의 복원 호환성도 검토한다.
 
+### 공급행이 함께 모집하는 주택형
+
+공급행이 함께 모집하는 주택형(`supply_row_housing_types`)은 `V20261101_04`가 만들고 대표 주택형으로 채운다. 대표 주택형도 연결에 들어 있다.
+- 연결을 모르는 이전 애플리케이션이 함께 돌거나 그 버전으로 롤백되면, 대표를 바꿔도 이전 연결이 남는다. 그러면 그 주택형의 면적 수정·휴지통 이동이 409로 막힌다.
+- 그 버전이 주택형을 지우면 연결도 함께 지워진다.
+- 다시 배포한 뒤 다면적 연결이 생기기 전(S2 전)이면 아래 SQL로 연결을 대표에 맞춘다.
+  `DELETE FROM supply_row_housing_types link USING supply_rows row WHERE row.id = link.supply_row_id AND link.housing_type_id IS DISTINCT FROM row.housing_type_id;`
+  `INSERT INTO supply_row_housing_types SELECT id, housing_type_id FROM supply_rows WHERE housing_type_id IS NOT NULL ON CONFLICT DO NOTHING;`
+
 ## 검증 근거
 
 - `MyHomeComplexMergeIntegrationTest`: 삼산부영 원천 ID·6/1/4·LH 11, 알려진 두 51형 면적을 고정한다.

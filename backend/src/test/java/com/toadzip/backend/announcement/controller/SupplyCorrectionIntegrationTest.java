@@ -353,6 +353,37 @@ class SupplyCorrectionIntegrationTest {
                 row.getHousingType().getId())).isEqualByComparingTo(row.getHousingType().getExclusiveArea());
     }
 
+    @Test
+    void 함께_모집하는_주택형으로만_연결된_주택형도_전용면적을_바꿀_수_없다() throws Exception {
+        var row = fixture();
+        var joint = HousingType.createFromMyHome(row.getHousingComplex(), UUID.randomUUID().toString(), "26B",
+                new BigDecimal("26.7000"), null);
+        entities.persist(joint); entities.flush();
+        jdbc.update("INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id) VALUES (?, ?)",
+                row.getId(), joint.getId());
+        String path = "/api/admin/housing-complexes/" + row.getHousingComplex().getId() + "/housing-types/" + joint.getId();
+        var update = json.createObjectNode().put("version", row.getHousingComplex().getVersion())
+                .put("name", "26B").put("exclusiveArea", 27).put("impactToken", impactToken(path));
+        mvc.perform(MockMvcRequestBuilders.put(path)
+                .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
+                .content(json.writeValueAsString(update))).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(containsString("전용면적을 바꿀 수 없습니다")));
+    }
+
+    @Test
+    void 연결_없이_대표로만_쓰인_주택형도_전용면적을_바꿀_수_없다() throws Exception {
+        // 연결 표를 모르는 이전 애플리케이션이 만든 공급행도 대표 주택형으로 면적을 지킨다.
+        var row = fixture();
+        jdbc.update("DELETE FROM supply_row_housing_types WHERE supply_row_id = ?", row.getId());
+        String path = "/api/admin/housing-complexes/" + row.getHousingComplex().getId()
+                + "/housing-types/" + row.getHousingType().getId();
+        var update = json.createObjectNode().put("version", row.getHousingComplex().getVersion())
+                .put("name", "26").put("exclusiveArea", 27).put("impactToken", impactToken(path));
+        mvc.perform(MockMvcRequestBuilders.put(path)
+                .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
+                .content(json.writeValueAsString(update))).andExpect(status().isConflict());
+    }
+
     private String impactToken(String path) throws Exception {
         return json.readTree(mvc.perform(get(path + "/impact").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.rows[0].supplyRowId").isNumber())

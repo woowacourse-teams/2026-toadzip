@@ -530,6 +530,22 @@ class AdminManagementIntegrationTest {
         assertThat(getData(path).get("housingTypes").get(0).get("deleted").asBoolean()).isFalse();
     }
 
+    @Test
+    void 함께_모집하는_주택형으로만_연결된_주택형도_휴지통으로_옮기지_않는다() throws Exception {
+        long id = createComplex();
+        long typeId = createHousingType(id);
+        long announcementId = createAnnouncement(id);
+        entityManager.createNativeQuery("""
+                        INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id)
+                        SELECT id, :typeId FROM supply_rows WHERE announcement_id = :id
+                        """).setParameter("typeId", typeId).setParameter("id", announcementId).executeUpdate();
+        String path = "/api/admin/housing-complexes/" + id;
+        long version = getData(path).get("data").get("version").asLong();
+        mvc.perform(delete(path + "/housing-types/" + typeId).param("version", String.valueOf(version))
+                        .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isConflict());
+        assertThat(getData(path).get("housingTypes").get(0).get("deleted").asBoolean()).isFalse();
+    }
+
     private long createHousingType(long complexId) {
         var type = HousingType.createFromMyHome(
                 complexes.findById(complexId).orElseThrow(), "TYPE-" + complexId,
