@@ -24,9 +24,13 @@ import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMapper;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionQueryService;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionRecovery;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineRunner;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineHeartbeat;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionStateService;
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineRunner;
 import jakarta.persistence.EntityManager;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -35,12 +39,12 @@ import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -417,7 +421,7 @@ class SourceCollectionRecoveryIntegrationTest {
         var orphan = record(null, STARTED_AT);
         UUID id = null;
         try {
-            var result = queryService(new DataPipelineExecutionLock(dataSource))
+            var result = pipelineService(new DataPipelineExecutionLock(dataSource))
                     .start(DataPipelineType.COMPLEX_REFINEMENT);
             id = result.executionId();
 
@@ -535,19 +539,29 @@ class SourceCollectionRecoveryIntegrationTest {
         return lock;
     }
 
-    private DataPipelineExecutionService queryService(DataPipelineExecutionLock lock) {
+    private DataPipelineExecutionQueryService queryService(DataPipelineExecutionLock lock) {
         return queryService(lock, new SourceCollectionRecoveryService(records,
                 transactionManager, Clock.fixed(RECOVERED_AT, ZoneOffset.UTC)));
     }
 
-    private DataPipelineExecutionService queryService(
+    private DataPipelineExecutionQueryService queryService(
             DataPipelineExecutionLock lock, SourceCollectionRecoveryService recovery
     ) {
+        return new DataPipelineExecutionQueryService(executions,
+                new DataPipelineExecutionMapper(JsonMapper.builder().build()),
+                new DataPipelineExecutionRecovery(lock, states, recovery, Clock.fixed(RECOVERED_AT, ZoneOffset.UTC)));
+    }
+
+    private DataPipelineExecutionService pipelineService(DataPipelineExecutionLock lock) {
         var heartbeatExecutor = mock(ScheduledExecutorService.class);
         when(heartbeatExecutor.scheduleWithFixedDelay(any(), anyLong(), anyLong(), any()))
                 .thenReturn(mock(ScheduledFuture.class));
-        return new DataPipelineExecutionService(mock(DataPipelineRunner.class), lock, executions, states,
-                recovery, Runnable::run, heartbeatExecutor, Clock.fixed(RECOVERED_AT, ZoneOffset.UTC),
-                new DataPipelineExecutionMapper(JsonMapper.builder().build()));
+        Clock clock = Clock.fixed(RECOVERED_AT, ZoneOffset.UTC);
+        var failures = new DataPipelineFailureRecorder(states, clock);
+        return new DataPipelineExecutionService(mock(DataPipelineRunner.class), lock, states,
+                new DataPipelineExecutionRecovery(lock, states,
+                        new SourceCollectionRecoveryService(records, transactionManager, clock), clock),
+                new DataPipelineHeartbeat(heartbeatExecutor, states, failures, clock), failures,
+                Runnable::run, clock, new DataPipelineExecutionMapper(JsonMapper.builder().build()));
     }
 }

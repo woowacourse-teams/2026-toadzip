@@ -10,6 +10,7 @@ import com.toadzip.backend.ingest.mapping.controller.MyHomeComplexMappingControl
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import com.toadzip.backend.ingest.pipeline.controller.DataPipelineController;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionQueryService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -38,6 +39,9 @@ class RemovedIngestApiControllerTest {
 
     @MockitoBean
     private DataPipelineExecutionService executionService;
+
+    @MockitoBean
+    private DataPipelineExecutionQueryService executionQuery;
 
     @ParameterizedTest
     @ValueSource(strings = {

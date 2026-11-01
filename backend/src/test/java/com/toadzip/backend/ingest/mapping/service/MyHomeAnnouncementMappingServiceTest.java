@@ -55,6 +55,7 @@ import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionQueryService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.math.BigDecimal;
@@ -163,6 +164,9 @@ class MyHomeAnnouncementMappingServiceTest {
     private DataPipelineExecutionService pipeline;
 
     @Autowired
+    private DataPipelineExecutionQueryService pipelineQuery;
+
+    @Autowired
     private DataPipelineExecutionRepository executions;
 
     @Autowired
@@ -240,7 +244,7 @@ class MyHomeAnnouncementMappingServiceTest {
     ) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
         while (System.nanoTime() < deadline) {
-            var response = pipeline.find(executionId);
+            var response = pipelineQuery.find(executionId);
             if (response.status() != DataPipelineExecutionStatus.RUNNING && !pipelineLock.isHeld()) {
                 return response;
             }

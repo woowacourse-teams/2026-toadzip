@@ -5,6 +5,7 @@ import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineStartRequest;
 import com.toadzip.backend.ingest.pipeline.dto.AnnouncementRegistrationRequest;
 import com.toadzip.backend.ingest.pipeline.dto.AnnouncementRegistrationUrlRequest;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionQueryService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -25,9 +26,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class DataPipelineController {
 
     private final DataPipelineExecutionService executionService;
+    private final DataPipelineExecutionQueryService executionQuery;
 
-    public DataPipelineController(DataPipelineExecutionService executionService) {
+    public DataPipelineController(
+            DataPipelineExecutionService executionService, DataPipelineExecutionQueryService executionQuery
+    ) {
         this.executionService = executionService;
+        this.executionQuery = executionQuery;
     }
 
     @PostMapping("/{type}")
@@ -59,7 +64,7 @@ public class DataPipelineController {
 
     @GetMapping("/executions/{executionId}")
     public ResponseEntity<DataPipelineExecutionResponse> find(@PathVariable UUID executionId) {
-        return ResponseEntity.ok(executionService.find(executionId));
+        return ResponseEntity.ok(executionQuery.find(executionId));
     }
 
     @GetMapping("/history")
@@ -69,14 +74,14 @@ public class DataPipelineController {
             @RequestParam(required = false) String domain
     ) {
         if (domain != null) {
-            return ResponseEntity.ok(executionService.history(page, size, domain));
+            return ResponseEntity.ok(executionQuery.history(page, size, domain));
         }
-        return ResponseEntity.ok(executionService.history(page, size));
+        return ResponseEntity.ok(executionQuery.history(page, size));
     }
 
     @GetMapping("/{type}")
     public ResponseEntity<DataPipelineExecutionResponse> findLatest(@PathVariable String type) {
-        DataPipelineExecutionResponse response = executionService.findLatest(
+        DataPipelineExecutionResponse response = executionQuery.findLatest(
                 DataPipelineType.fromPathValue(type)
         );
         return ResponseEntity.ok(response);

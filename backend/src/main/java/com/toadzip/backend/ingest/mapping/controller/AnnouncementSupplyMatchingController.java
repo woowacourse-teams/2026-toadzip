@@ -9,6 +9,7 @@ import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import com.toadzip.backend.ingest.mapping.service.AnnouncementSupplyCandidateService;
 import com.toadzip.backend.ingest.mapping.service.AnnouncementSupplyMatchingService;
+import com.toadzip.backend.ingest.mapping.service.AnnouncementSupplyRowQueryService;
 import jakarta.validation.Valid;
 import java.security.Principal;
 import java.util.List;
@@ -26,11 +27,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/admin/ingest/announcement-supply-matches")
 public class AnnouncementSupplyMatchingController {
     private final AnnouncementSupplyMatchingService matching;
+    private final AnnouncementSupplyRowQueryService rowQuery;
     private final AnnouncementSupplyCandidateService candidates;
 
     @GetMapping("/{identifier}")
     public List<Row> rows(@PathVariable String identifier) {
-        return matching.rows(identifier);
+        return rowQuery.rows(identifier);
     }
 
     @PostMapping("/{identifier}/refine")

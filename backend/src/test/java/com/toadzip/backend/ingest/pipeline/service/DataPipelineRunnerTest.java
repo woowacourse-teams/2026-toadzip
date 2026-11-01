@@ -103,20 +103,22 @@ class DataPipelineRunnerTest {
                 .thenReturn(collectionReport("lh-announcement-catalog"));
         resultAdapter = new DataPipelineStepResultAdapter(JsonMapper.builder().build());
         runner = new DataPipelineRunner(
-                myHomeComplexCollectionService,
-                lhLeaseCatalogCollectionService,
-                myHomeAnnouncementCollectionService,
-                lhAnnouncementCatalogCollectionService,
-                collectionService,
-                myHomeComplexMappingService,
-                householdEnrichmentService,
-                myHomeAnnouncementMappingService,
-                announcementEnrichmentService,
-                resultAdapter,
+                new DataPipelineStepExecutor(
+                        myHomeComplexCollectionService,
+                        lhLeaseCatalogCollectionService,
+                        myHomeAnnouncementCollectionService,
+                        lhAnnouncementCatalogCollectionService,
+                        collectionService,
+                        myHomeComplexMappingService,
+                        householdEnrichmentService,
+                        myHomeAnnouncementMappingService,
+                        announcementEnrichmentService,
+                        resultAdapter,
+                        registrationService,
+                        shAnnouncementCollectionService
+                ),
                 executionStateService,
-                meterRegistry,
-                registrationService,
-                shAnnouncementCollectionService
+                meterRegistry
         );
     }
 

@@ -68,6 +68,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     private static final String TARGET = "manual-21395";
     private static final String PNU = "2823710500105500000";
     @Autowired private AnnouncementSupplyMatchingService matching;
+    @Autowired private AnnouncementSupplyRowQueryService rowQuery;
     @Autowired private AnnouncementSupplyCandidateService candidateService;
     @Autowired private MyHomeAnnouncementSourceFixtures sources;
     @Autowired private HousingComplexRepository complexes;
@@ -113,7 +114,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 실제_한스빌_원천에서_보정한_AB와_공통170은_LH_재보강과_공개_집계에서도_유지한다() throws Exception {
         prepareHansville();
-        split(splitBody(matching.rows(TARGET).getFirst())).andExpect(status().isOk());
+        split(splitBody(rowQuery.rows(TARGET).getFirst())).andExpect(status().isOk());
         var announcement = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow();
         var ids = supplies.findAll().stream().map(value -> value.getId()).toList();
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate)
@@ -148,6 +149,28 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(types.findAll()).extracting(value -> value.getName()).containsOnly("26");
         assertThat(jdbc.sql("SELECT actor FROM admin_data_changes WHERE action = 'SPLIT_SUPPLY'")
                 .query(String.class).list()).containsExactly("operator");
+        var before = json.readTree(jdbc.sql("SELECT before_value FROM admin_data_changes WHERE action = 'SPLIT_SUPPLY'")
+                .query(String.class).single());
+        var after = json.readTree(jdbc.sql("SELECT after_value FROM admin_data_changes WHERE action = 'SPLIT_SUPPLY'")
+                .query(String.class).single());
+        assertThat(before.get(0).get("splitGroup").isNull()).isTrue();
+        assertThat(after.get(0).get("splitGroup").get("rows")).hasSize(2);
+    }
+
+    @Test
+    void 휴지통의_공고는_복수_공급행으로_나누지_않는다() throws Exception {
+        prepareHansville();
+        mapping.mapAll();
+        var announcement = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow();
+        announcement.moveToTrash();
+        announcements.saveAndFlush(announcement);
+
+        split(splitBody(rowQuery.rows(TARGET).getFirst())).andExpect(status().isConflict())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.message")
+                        .value("삭제 상태 또는 공고 기관이 원천과 다릅니다. 공고 관리에서 확인해 주세요."));
+
+        assertThat(jdbc.sql("SELECT count(*) FROM admin_data_changes WHERE action = 'SPLIT_SUPPLY'")
+                .query(Long.class).single()).isZero();
     }
 
     @Test
@@ -164,7 +187,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 lhSupplyRow(1, candidate.panId(), "26A,B(고령자)", "26.5195", "50"),
                 lhSupplyRow(2, candidate.panId(), "26(신혼부부)", "26.5195", "20")));
         mapping.mapAll();
-        var rows = matching.rows(TARGET);
+        var rows = rowQuery.rows(TARGET);
         assertThat(rows).extracting(Row::sourceHousingTypeName).containsExactly("26(청년)", "26A,B(고령자)", "26(신혼부부)");
         var grouped = rows.get(1);
 
@@ -181,10 +204,10 @@ class AnnouncementSupplyMatchingIntegrationTest {
         // 나눈 행의 공통 모집수는 마이홈 공고 전체(170)가 아니라 그 LH 행의 이번 공급 수(50)다.
         assertThat(jdbc.sql("SELECT source_row_identifier || '=' || shared_household_count FROM supply_row_groups")
                 .query(String.class).list()).containsExactly(grouped.rowIdentifier() + "=50");
-        assertThat(matching.rows(TARGET)).extracting(Row::sourceHousingTypeName)
+        assertThat(rowQuery.rows(TARGET)).extracting(Row::sourceHousingTypeName)
                 .containsExactly("26(청년)", "26A,B(고령자)", "26(신혼부부)");
-        assertThat(matching.rows(TARGET).get(1).splitGroup()).isNotNull();
-        assertThat(matching.rows(TARGET).get(1).splitGroup().reviewRequired()).isFalse();
+        assertThat(rowQuery.rows(TARGET).get(1).splitGroup()).isNotNull();
+        assertThat(rowQuery.rows(TARGET).get(1).splitGroup().reviewRequired()).isFalse();
     }
 
     @Test
@@ -243,7 +266,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(supplies.findAll()).extracting(row -> row.getAnnouncementHousingTypeName() == null
                         ? row.getSourceHousingTypeName() : row.getAnnouncementHousingTypeName())
                 .containsExactlyInAnyOrder("26(청년)", "26A", "26B", "26(신혼부부)");
-        String key = matching.rows(TARGET).get(1).rowIdentifier();
+        String key = rowQuery.rows(TARGET).get(1).rowIdentifier();
         assertThat(jdbc.sql("SELECT source_row_identifier || '=' || shared_household_count || ':' || review_required"
                 + " FROM supply_row_groups").query(String.class).list()).containsExactly(key + "=50:false");
         } finally {
@@ -261,26 +284,26 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 원천_모집수가_바뀌면_보정과170을_보존하고_재확인_후에만_공통수를_바꾼다() throws Exception {
         prepareHansville();
-        var original = splitBody(matching.rows(TARGET).getFirst());
+        var original = splitBody(rowQuery.rows(TARGET).getFirst());
         split(original).andExpect(status().isOk());
         split(original).andExpect(status().isConflict());
         jdbc.sql("UPDATE myhome_announcement_source_rows SET sum_suply_co = 190").update();
         mapping.mapAll();
-        var changed = matching.rows(TARGET).getFirst();
+        var changed = rowQuery.rows(TARGET).getFirst();
         assertThat(changed.splitGroup().reviewRequired()).isTrue();
         assertThat(changed.splitGroup().sharedHouseholdCount()).isEqualTo(170);
         assertThat(changed.totalSupplyHouseholdCount()).isEqualTo(190);
         var ids = supplies.findAll().stream().map(value -> value.getId()).toList();
         split(splitBody(changed)).andExpect(status().isOk());
-        assertThat(matching.rows(TARGET).getFirst().splitGroup().reviewRequired()).isFalse();
-        assertThat(matching.rows(TARGET).getFirst().splitGroup().sharedHouseholdCount()).isEqualTo(190);
+        assertThat(rowQuery.rows(TARGET).getFirst().splitGroup().reviewRequired()).isFalse();
+        assertThat(rowQuery.rows(TARGET).getFirst().splitGroup().sharedHouseholdCount()).isEqualTo(190);
         assertThat(supplies.findAll()).extracting(value -> value.getId()).containsExactlyInAnyOrderElementsOf(ids);
     }
 
     @Test
     void 같은_후보를_복제하거나_조회후_바뀐_주택형으로_분할하면_제품을_만들지_않는다() throws Exception {
         prepareHansville();
-        var row = matching.rows(TARGET).getFirst();
+        var row = rowQuery.rows(TARGET).getFirst();
         var body = splitBody(row);
         @SuppressWarnings("unchecked")
         var selections = (List<Map<String, Object>>) body.get("rows");
@@ -298,7 +321,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     void 복수_공급행_뒤_LH검증이_실패하면_행과_공통수와_이력을_함께_롤백한다() throws Exception {
         prepareHansville();
         jdbc.sql("DELETE FROM lh_announcement_detail_rows").update();
-        split(splitBody(matching.rows(TARGET).getFirst())).andExpect(status().isBadRequest());
+        split(splitBody(rowQuery.rows(TARGET).getFirst())).andExpect(status().isBadRequest());
         assertThat(announcements.count()).isZero();
         assertThat(supplies.count()).isZero();
         assertThat(jdbc.sql("SELECT count(*) FROM supply_row_groups").query(Long.class).single()).isZero();
@@ -309,10 +332,10 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 보정한_주택형이_바뀌어도_AB_행을_보존하며_단일_매칭으로_축소하지_않는다() throws Exception {
         prepareHansville();
-        split(splitBody(matching.rows(TARGET).getFirst())).andExpect(status().isOk());
+        split(splitBody(rowQuery.rows(TARGET).getFirst())).andExpect(status().isOk());
         jdbc.sql("UPDATE housing_types SET exclusive_area = 30 WHERE id = ?").param(type.getId()).update();
         mapping.mapAll();
-        var current = matching.rows(TARGET).getFirst();
+        var current = rowQuery.rows(TARGET).getFirst();
         assertThat(current.splitGroup().reviewRequired()).isTrue();
         assertThat(current.splitGroup().rows()).hasSize(2);
         mvc.perform(post(PATH + "/" + TARGET + "/refine").with(user("admin").roles("ADMIN")).with(csrf())
@@ -332,7 +355,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         targets.save(SupplyTarget.create(original, "전체", null,
                 170, null, new BigDecimal("4076000"), new BigDecimal("72820"), null, "공고문 참조", 0));
         types.save(HousingType.createFromMyHome(complex, "other", "26", new BigDecimal("26.5195"), null));
-        split(splitBody(matching.rows(TARGET).getFirst())).andExpect(status().isConflict());
+        split(splitBody(rowQuery.rows(TARGET).getFirst())).andExpect(status().isConflict());
         assertThat(supplies.findAll()).singleElement().satisfies(row -> assertThat(row.getId()).isEqualTo(original.getId()));
         assertThat(targets.count()).isEqualTo(1);
         assertThat(jdbc.sql("SELECT count(*) FROM supply_row_groups").query(Long.class).single()).isZero();
@@ -348,8 +371,8 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 보정에_새_행을_추가하면_기존_AB_뒤에_배치하며_ID와_공통수를_유지한다() throws Exception {
         prepareHansville();
-        split(splitBody(matching.rows(TARGET).getFirst())).andExpect(status().isOk());
-        var original = matching.rows(TARGET).getFirst();
+        split(splitBody(rowQuery.rows(TARGET).getFirst())).andExpect(status().isOk());
+        var original = rowQuery.rows(TARGET).getFirst();
         var body = splitBody(original);
         var third = types.save(HousingType.createFromMyHome(complex, "additional-test-type", "26C",
                 new BigDecimal("26.6"), null));
@@ -360,7 +383,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         selections.add(Map.of("name", "26C", "complexId", complex.getId(), "housingTypeId", third.getId(),
                 "targetToken", candidate.token()));
         split(body).andExpect(status().isOk());
-        var updated = matching.rows(TARGET).getFirst().splitGroup();
+        var updated = rowQuery.rows(TARGET).getFirst().splitGroup();
         assertThat(updated.rows()).extracting(value -> value.name()).containsExactly("26A", "26B", "26C");
         assertThat(updated.rows().subList(0, 2)).extracting(value -> value.id())
                 .containsExactlyElementsOf(original.splitGroup().rows().stream().map(value -> value.id()).toList());
@@ -372,7 +395,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         jdbc.sql("UPDATE myhome_announcement_source_rows SET sum_suply_co = 170").update();
         var second = types.save(HousingType.createFromMyHome(complex, "complex-21395:26B", "26",
                 new BigDecimal("26.5195"), null));
-        var row = matching.rows(TARGET).getFirst();
+        var row = rowQuery.rows(TARGET).getFirst();
         var candidates = candidateService.housingTypes(complex.getId());
         mvc.perform(post(PATH + "/" + TARGET + "/split").with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
@@ -401,7 +424,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 마이홈_21395의_실제_API_한_원천행과_두_주택형을_보존하고_명시적_선택을_재사용한다() throws Exception {
         var notice = prepareHansville();
-        var before = matching.rows(TARGET);
+        var before = rowQuery.rows(TARGET);
         assertThat(before).singleElement().satisfies(row -> {
             assertThat(row.sourceHousingTypeName()).isEqualTo("아파트");
             assertThat(row.exclusiveArea()).isNull();
@@ -423,7 +446,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 근거와_함께_선택을_기억하면_후속_자동_정제에서도_연결을_유지한다() throws Exception {
-        var row = matching.rows(TARGET).getFirst();
+        var row = rowQuery.rows(TARGET).getFirst();
         var response = mvc.perform(get(PATH + "/complexes/" + complex.getId() + "/housing-types")
                 .with(user("admin").roles("ADMIN"))).andExpect(status().isOk()).andReturn();
         var option = json.readTree(response.getResponse().getContentAsString()).get(0);
@@ -438,7 +461,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
                         "remember", true, "sourceUrl", "https://example.com/official.pdf",
                         "reason", "공고문 3쪽의 주택형 면적을 확인함"))))
                 .andExpect(status().isOk());
-        assertThat(matching.rows(TARGET).getFirst().housingTypeId()).isEqualTo(type.getId());
+        assertThat(rowQuery.rows(TARGET).getFirst().housingTypeId()).isEqualTo(type.getId());
         mapping.mapAll();
         assertThat(supplies.findAll()).singleElement().satisfies(value ->
                 assertThat(value.getHousingType().getId()).isEqualTo(type.getId()));
@@ -505,7 +528,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 선택값을_한번에_보내면_별도_저장_없이_공고가_등록된다() throws Exception {
-        var row = matching.rows(TARGET).getFirst();
+        var row = rowQuery.rows(TARGET).getFirst();
         assertThat(row.complexId()).isEqualTo(complex.getId());
         assertThat(row.housingTypeId()).isNull();
         refine(TARGET, List.of(request(row, complex.getId(), type.getId()))).andExpect(status().isOk());
@@ -517,14 +540,14 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 assertThat(value.getHsmpNm()).isEqualTo("익산한스빌"));
         assertThat(complexes.findById(complex.getId()).orElseThrow().getName()).isEqualTo("한스빌아파트");
         // 선택 규칙은 남지 않는다. 자동 매칭 결과는 여전히 모호하지만 최종 공급행의 연결은 저장된다.
-        assertThat(matching.rows(TARGET).getFirst().housingTypeId()).isNull();
+        assertThat(rowQuery.rows(TARGET).getFirst().housingTypeId()).isNull();
     }
 
     @Test
     void 여러_공급행을_한번에_선택하고_다른_공고의_원천은_변경하지_않는다() throws Exception {
         sources.save(source(TARGET, 2, PNU));
         sources.save(source("other-ann", 1, PNU));
-        var requests = matching.rows(TARGET).stream()
+        var requests = rowQuery.rows(TARGET).stream()
                 .map(row -> request(row, complex.getId(), type.getId())).toList();
         refine(TARGET, requests).andExpect(status().isOk());
         assertThat(supplies.count()).isEqualTo(2);
@@ -538,13 +561,13 @@ class AnnouncementSupplyMatchingIntegrationTest {
         var second = types.save(HousingType.createFromMyHome(complex, "complex-21395:26B", "26",
                 new BigDecimal("26.4673"), new BigDecimal("40.5686")));
         rememberCurrent();
-        var rows = matching.rows(TARGET);
+        var rows = rowQuery.rows(TARGET);
 
         refineWith(Map.of("rows", List.of(selection(rows.getLast(), second)), "remember", true,
                 "sourceUrl", "https://example.com/official.pdf", "reason", "공고문 4쪽 면적으로 두 번째 행만 다시 확인"))
                 .andExpect(status().isOk());
 
-        assertThat(matching.rows(TARGET)).extracting(Row::housingTypeId)
+        assertThat(rowQuery.rows(TARGET)).extracting(Row::housingTypeId)
                 .containsExactly(type.getId(), second.getId());
         assertThat(jdbc.sql("SELECT housing_type_id FROM announcement_supply_match_decisions ORDER BY row_identifier")
                 .query(Long.class).list()).containsExactly(type.getId(), second.getId());
@@ -555,7 +578,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         sources.save(source(TARGET, 2, PNU));
         var second = types.save(HousingType.createFromMyHome(complex, "complex-21395:26B", "26",
                 new BigDecimal("26.4673"), new BigDecimal("40.5686")));
-        var rows = matching.rows(TARGET);
+        var rows = rowQuery.rows(TARGET);
 
         refineWith(Map.of("rows", List.of(selection(rows.getLast(), type)),
                 "splits", List.of(splitPlan(rows.getFirst(), Map.of("26A", type, "26B", second))),
@@ -565,7 +588,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(supplies.findAll()).filteredOn(row -> row.getSupplyGroup() != null)
                 .extracting(row -> row.getAnnouncementHousingTypeName() + ":" + row.getHousingType().getId())
                 .containsExactlyInAnyOrder("26A:" + type.getId(), "26B:" + second.getId());
-        assertThat(matching.rows(TARGET).getLast().housingTypeId()).isEqualTo(type.getId());
+        assertThat(rowQuery.rows(TARGET).getLast().housingTypeId()).isEqualTo(type.getId());
         assertThat(jdbc.sql("SELECT action FROM admin_data_changes ORDER BY id").query(String.class).list())
                 .containsExactly("SAVE_SUPPLY_MATCH", "SPLIT_SUPPLY");
         mapping.mapAll();
@@ -577,7 +600,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         sources.save(source(TARGET, 2, PNU));
         var second = types.save(HousingType.createFromMyHome(complex, "complex-21395:26B", "26",
                 new BigDecimal("26.4673"), new BigDecimal("40.5686")));
-        var rows = matching.rows(TARGET);
+        var rows = rowQuery.rows(TARGET);
         var plan = splitPlan(rows.getFirst(), Map.of("26A", type, "26B", second));
 
         refineWith(Map.of("rows", List.of(selection(rows.getLast(), type)), "splits", List.of(plan)))
@@ -595,25 +618,25 @@ class AnnouncementSupplyMatchingIntegrationTest {
         var second = types.save(HousingType.createFromMyHome(complex, "complex-21395:26B", "26",
                 new BigDecimal("26.4673"), new BigDecimal("40.5686")));
         rememberCurrent();
-        var first = matching.rows(TARGET).getFirst();
+        var first = rowQuery.rows(TARGET).getFirst();
         var plan = new LinkedHashMap<String, Object>(splitPlan(first, Map.of("26A", type, "26B", second)));
         plan.put("sourceUrl", "https://example.com/official.pdf");
         plan.put("reason", "공고문 4쪽의 26A·26B 면적 확인");
         split(plan).andExpect(status().isOk());
 
-        refineWith(Map.of("rows", List.of(selection(matching.rows(TARGET).getLast(), second)), "remember", true,
+        refineWith(Map.of("rows", List.of(selection(rowQuery.rows(TARGET).getLast(), second)), "remember", true,
                 "sourceUrl", "https://example.com/official.pdf", "reason", "다른 행의 주택형 확인"))
                 .andExpect(status().isOk());
 
-        assertThat(matching.rows(TARGET).getLast().housingTypeId()).isEqualTo(second.getId());
-        refineWith(Map.of("rows", List.of(selection(matching.rows(TARGET).getFirst(), type))))
+        assertThat(rowQuery.rows(TARGET).getLast().housingTypeId()).isEqualTo(second.getId());
+        refineWith(Map.of("rows", List.of(selection(rowQuery.rows(TARGET).getFirst(), type))))
                 .andExpect(status().isConflict());
     }
 
     @Test
     void 일부_행이_유효하지_않으면_어떤_공고나_공급행도_저장하지_않는다() throws Exception {
         sources.save(source(TARGET, 2, PNU));
-        var rows = matching.rows(TARGET);
+        var rows = rowQuery.rows(TARGET);
         var other = complex("다른 단지", "other", PNU, "NATIONAL_RENTAL");
         var foreign = types.save(HousingType.createFromMyHome(other, "other:26", "26", BigDecimal.ONE, null));
         refine(TARGET, List.of(request(rows.getFirst(), complex.getId(), type.getId()),
@@ -629,7 +652,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         for (var target : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
             progressStore.complete(target, TARGET, candidate.requestDescription(), candidate.panId());
         }
-        var row = matching.rows(TARGET).getFirst();
+        var row = rowQuery.rows(TARGET).getFirst();
         refine(TARGET, List.of(request(row, complex.getId(), type.getId()))).andExpect(status().isBadRequest());
         assertThat(announcements.count()).isZero();
         assertThat(supplies.count()).isZero();
@@ -638,7 +661,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 정제_실패_후_원천을_유지하고_선택을_고쳐_재시도할_수_있다() throws Exception {
-        var row = matching.rows(TARGET).getFirst();
+        var row = rowQuery.rows(TARGET).getFirst();
         refine(TARGET, List.of(request(row, complex.getId(), null))).andExpect(status().isBadRequest());
         assertThat(supplies.count()).isZero();
         refine(TARGET, List.of(request(row, complex.getId(), type.getId()))).andExpect(status().isOk());
@@ -648,7 +671,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void PNU가_달라도_관리자가_명시한_단지와_주택형으로_정제한다() throws Exception {
         jdbc.sql("UPDATE myhome_announcement_source_rows SET pnu = '1111010100100010000'").update();
-        var row = matching.rows(TARGET).getFirst();
+        var row = rowQuery.rows(TARGET).getFirst();
         assertThat(row.complexId()).isNull();
         refine(TARGET, List.of(request(row, complex.getId(), type.getId()))).andExpect(status().isOk());
         assertThat(supplies.findAll().getFirst().getHousingComplex().getId()).isEqualTo(complex.getId());
@@ -656,7 +679,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 조회_후_원천이_변경되면_정제를_거절한다() throws Exception {
-        var row = matching.rows(TARGET).getFirst();
+        var row = rowQuery.rows(TARGET).getFirst();
         jdbc.sql("UPDATE myhome_announcement_source_rows SET house_ty_nm = '새 주택형'").update();
         refine(TARGET, List.of(request(row, complex.getId(), type.getId()))).andExpect(status().isConflict());
         assertThat(announcements.count()).isZero();
@@ -664,14 +687,14 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 재수집_시각만_변경되면_기존_조회_값으로_정제할_수_있다() throws Exception {
-        var row = matching.rows(TARGET).getFirst();
+        var row = rowQuery.rows(TARGET).getFirst();
         jdbc.sql("UPDATE myhome_announcement_source_rows SET collected_at = now()").update();
         refine(TARGET, List.of(request(row, complex.getId(), type.getId()))).andExpect(status().isOk());
     }
 
     @Test
     void 조회_후_추가된_공급행이_자동_매칭되지_않으면_저장하지_않는다() throws Exception {
-        var row = matching.rows(TARGET).getFirst();
+        var row = rowQuery.rows(TARGET).getFirst();
         sources.save(source(TARGET, 2, PNU));
         refine(TARGET, List.of(request(row, complex.getId(), type.getId()))).andExpect(status().isBadRequest());
         assertThat(announcements.count()).isZero();
@@ -679,7 +702,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 다른_공고의_행이나_중복_행은_거절한다() throws Exception {
-        var row = matching.rows(TARGET).getFirst();
+        var row = rowQuery.rows(TARGET).getFirst();
         sources.save(source("other-ann", 1, PNU));
         refine("other-ann", List.of(request(row, complex.getId(), type.getId()))).andExpect(status().isBadRequest());
         sources.save(source(TARGET, 2, PNU));
@@ -690,7 +713,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 삭제되었거나_공급유형이_다른_단지는_거절한다() throws Exception {
-        var row = matching.rows(TARGET).getFirst();
+        var row = rowQuery.rows(TARGET).getFirst();
         jdbc.sql("UPDATE housing_complexes SET admin_deleted = true WHERE id = ?").param(complex.getId()).update();
         refine(TARGET, List.of(request(row, complex.getId(), type.getId()))).andExpect(status().isBadRequest());
         jdbc.sql("UPDATE housing_complexes SET admin_deleted = false, supply_type = 'HAPPY_HOUSING' WHERE id = ?")
@@ -701,7 +724,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 기존_공고도_정제하며_반복_요청은_중복_생성을_하지_않는다() throws Exception {
-        var requests = List.of(request(matching.rows(TARGET).getFirst(), complex.getId(), type.getId()));
+        var requests = List.of(request(rowQuery.rows(TARGET).getFirst(), complex.getId(), type.getId()));
         refine(TARGET, requests).andExpect(status().isOk());
         refine(TARGET, requests).andExpect(status().isOk());
         assertThat(announcements.count()).isEqualTo(1);
@@ -710,13 +733,13 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 관리자가_수정한_공급행도_선택한_연결은_반영하고_표기값은_덮어쓰지_않는다() throws Exception {
-        var requests = List.of(request(matching.rows(TARGET).getFirst(), complex.getId(), type.getId()));
+        var requests = List.of(request(rowQuery.rows(TARGET).getFirst(), complex.getId(), type.getId()));
         refine(TARGET, requests).andExpect(status().isOk());
         jdbc.sql("""
                 UPDATE supply_rows SET admin_modified = true, announcement_housing_type_name = '26A',
                     housing_type_id = NULL
                 """).update();
-        var current = List.of(request(matching.rows(TARGET).getFirst(), complex.getId(), type.getId()));
+        var current = List.of(request(rowQuery.rows(TARGET).getFirst(), complex.getId(), type.getId()));
         refine(TARGET, current).andExpect(status().isOk());
         assertThat(supplies.findAll()).singleElement().satisfies(row -> {
             assertThat(row.getHousingType().getId()).isEqualTo(type.getId());
@@ -727,7 +750,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 관리자가_공고_기관을_변경했다면_선택을_무시하고_성공하지_않는다() throws Exception {
-        var requests = List.of(request(matching.rows(TARGET).getFirst(), complex.getId(), type.getId()));
+        var requests = List.of(request(rowQuery.rows(TARGET).getFirst(), complex.getId(), type.getId()));
         refine(TARGET, requests).andExpect(status().isOk());
         jdbc.sql("UPDATE announcements SET admin_modified = true, provider = 'LH'").update();
         refine(TARGET, requests).andExpect(status().isBadRequest());
@@ -825,7 +848,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     private void rememberCurrent() throws Exception {
         String token = candidateService.housingTypes(complex.getId()).stream().filter(value -> value.id() == type.getId())
                 .findFirst().orElseThrow().token();
-        var selections = matching.rows(TARGET).stream().map(row -> Map.of(
+        var selections = rowQuery.rows(TARGET).stream().map(row -> Map.of(
                 "rowIdentifier", row.rowIdentifier(), "token", row.token(), "complexId", complex.getId(),
                 "housingTypeId", type.getId(), "targetToken", token)).toList();
         mvc.perform(post(PATH + "/" + TARGET + "/refine").with(user("admin").roles("ADMIN")).with(csrf())
@@ -847,7 +870,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     void 저장한_매칭의_원천이_달라지면_자동_대체하지_않고_마지막_정상_연결을_보존한다() throws Exception {
         rememberCurrent();
         jdbc.sql("UPDATE myhome_announcement_source_rows SET house_ty_nm = '42'").update();
-        assertThat(matching.rows(TARGET).getFirst().savedMatch().reviewRequired()).isTrue();
+        assertThat(rowQuery.rows(TARGET).getFirst().savedMatch().reviewRequired()).isTrue();
         assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(1);
         assertThat(supplies.findAll()).singleElement().satisfies(row -> {
             assertThat(row.getHousingType().getId()).isEqualTo(type.getId());
@@ -862,7 +885,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         rememberCurrent();
         jdbc.sql("UPDATE myhome_announcement_source_rows SET pblanc_nm = '공고명 정정', collected_at = now()")
                 .update();
-        assertThat(matching.rows(TARGET).getFirst().savedMatch().reviewRequired()).isFalse();
+        assertThat(rowQuery.rows(TARGET).getFirst().savedMatch().reviewRequired()).isFalse();
         assertThat(mapping.mapAll().failedSourceRowCount()).isZero();
         assertThat(supplies.findAll().getFirst().getHousingType().getId()).isEqualTo(type.getId());
     }
@@ -871,14 +894,14 @@ class AnnouncementSupplyMatchingIntegrationTest {
     void 저장_이후_주택형이_바뀌면_다른_이름의_후보로_자동_매칭하지_않는다() throws Exception {
         rememberCurrent();
         jdbc.sql("UPDATE housing_types SET exclusive_area = 31 WHERE id = ?").param(type.getId()).update();
-        assertThat(matching.rows(TARGET).getFirst().savedMatch().reviewRequired()).isTrue();
+        assertThat(rowQuery.rows(TARGET).getFirst().savedMatch().reviewRequired()).isTrue();
         assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(1);
         assertThat(supplies.findAll().getFirst().getHousingType().getId()).isEqualTo(type.getId());
     }
 
     @Test
     void 후보_조회_후_면적이_변경되면_오래된_후보로_저장하지_않는다() throws Exception {
-        var row = matching.rows(TARGET).getFirst();
+        var row = rowQuery.rows(TARGET).getFirst();
         String token = candidateService.housingTypes(complex.getId()).getFirst().token();
         jdbc.sql("UPDATE housing_types SET exclusive_area = 31 WHERE id = ?").param(type.getId()).update();
         remember(row, token, "https://example.com/official", "원문 확인").andExpect(status().isConflict());
@@ -889,7 +912,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 저장한_선택이_바뀐_뒤에는_이전_화면의_저장과_해제를_거절한다() throws Exception {
-        var stale = matching.rows(TARGET).getFirst();
+        var stale = rowQuery.rows(TARGET).getFirst();
         String token = candidateService.housingTypes(complex.getId()).getFirst().token();
         rememberCurrent();
         remember(stale, token, "https://example.com/official", "이전 입력").andExpect(status().isConflict());
@@ -902,14 +925,14 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 저장한_선택을_근거와_함께_해제하면_제품은_유지하고_다음_정제부터_자동_매칭한다() throws Exception {
         rememberCurrent();
-        var row = matching.rows(TARGET).getFirst();
+        var row = rowQuery.rows(TARGET).getFirst();
         mvc.perform(post(PATH + "/" + TARGET + "/release").with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
                         "rowIdentifier", row.rowIdentifier(), "token", row.token(), "reason", "연결 판단 재검토"))))
                 .andExpect(status().isOk());
-        assertThat(matching.rows(TARGET).getFirst().savedMatch()).isNull();
+        assertThat(rowQuery.rows(TARGET).getFirst().savedMatch()).isNull();
         assertThat(supplies.findAll().getFirst().getHousingType().getId()).isEqualTo(type.getId());
-        assertThat(matching.rows(TARGET).getFirst().housingTypeId()).isNull();
+        assertThat(rowQuery.rows(TARGET).getFirst().housingTypeId()).isNull();
         assertThat(jdbc.sql("SELECT actor FROM admin_data_changes WHERE action = 'RELEASE_SUPPLY_MATCH'")
                 .query(String.class).list()).contains("admin");
         var saved = json.readTree(jdbc.sql("SELECT after_value FROM admin_data_changes WHERE action = 'SAVE_SUPPLY_MATCH'")
@@ -929,7 +952,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 근거와_유효한_공식_URL이_없으면_선택을_저장하지_않는다() throws Exception {
-        var row = matching.rows(TARGET).getFirst();
+        var row = rowQuery.rows(TARGET).getFirst();
         String token = candidateService.housingTypes(complex.getId()).getFirst().token();
         remember(row, token, "javascript:alert(1)", "원문 확인").andExpect(status().isBadRequest());
         remember(row, token, "https://example.com/official", " ").andExpect(status().isBadRequest());
@@ -940,7 +963,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     void 일부_원천행이_사라져도_저장한_연결의_공급행은_삭제하지_않는다() throws Exception {
         sources.save(source(TARGET, 2, PNU));
         String targetToken = candidateService.housingTypes(complex.getId()).getFirst().token();
-        var selections = matching.rows(TARGET).stream().map(row -> Map.of(
+        var selections = rowQuery.rows(TARGET).stream().map(row -> Map.of(
                 "rowIdentifier", row.rowIdentifier(), "token", row.token(), "complexId", complex.getId(),
                 "housingTypeId", type.getId(), "targetToken", targetToken)).toList();
         mvc.perform(post(PATH + "/" + TARGET + "/refine").with(user("admin").roles("ADMIN")).with(csrf())
@@ -1113,11 +1136,11 @@ class AnnouncementSupplyMatchingIntegrationTest {
     void 등록_단지에_없어_제외한_공급행은_정제_오류로_남기지_않고_되돌리면_다시_오류가_된다() throws Exception {
         sources.save(source(TARGET, 2, "1111010100100010000"));
         int failedBefore = mapping.mapAll().failedSourceRowCount();
-        var missing = matching.rows(TARGET).stream().filter(row -> row.rowIdentifier().endsWith(":2")).findFirst().orElseThrow();
+        var missing = rowQuery.rows(TARGET).stream().filter(row -> row.rowIdentifier().endsWith(":2")).findFirst().orElseThrow();
         assertThat(missing.complexId()).isNull();
 
         exclusion(missing, true, "공고문 2쪽: 이 주택형은 등록 단지에 없음").andExpect(status().isOk());
-        assertThat(matching.rows(TARGET)).filteredOn(Row::excluded).extracting(Row::rowIdentifier)
+        assertThat(rowQuery.rows(TARGET)).filteredOn(Row::excluded).extracting(Row::rowIdentifier)
                 .containsExactly(missing.rowIdentifier());
         assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(failedBefore - 1);
         assertThat(pendingFailureReasons()).hasSize(failedBefore - 1);
@@ -1129,7 +1152,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(jdbc.sql("SELECT action FROM admin_data_changes WHERE action = 'EXCLUDE_SUPPLY_ROW'")
                 .query(String.class).list()).hasSize(1);
 
-        exclusion(matching.rows(TARGET).stream().filter(Row::excluded).findFirst().orElseThrow(), false, "다시 확인")
+        exclusion(rowQuery.rows(TARGET).stream().filter(Row::excluded).findFirst().orElseThrow(), false, "다시 확인")
                 .andExpect(status().isOk());
         assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(failedBefore);
         assertThat(pendingFailureReasons()).hasSize(failedBefore);
@@ -1137,7 +1160,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 공급행_제외는_근거와_정제된_공급행을_요구한다() throws Exception {
-        var row = matching.rows(TARGET).getFirst();
+        var row = rowQuery.rows(TARGET).getFirst();
         exclusion(row, true, "근거").andExpect(status().isBadRequest());
         mapping.mapAll();
         exclusion(row, true, " ").andExpect(status().isBadRequest());
@@ -1178,6 +1201,23 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 .read());
     }
 
+    @Test
+    @Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
+    @Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
+            executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
+    void PDF_보정에서_주택형_연결을_지우면_저장한_매칭도_해제한다() throws Exception {
+        mapping.mapAll();
+        long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
+        correctFromPdf(announcementId, type);
+        assertThat(jdbc.sql("SELECT count(*) FROM announcement_supply_match_decisions").query(Long.class).single())
+                .isOne();
+
+        correctFromPdf(announcementId, null);
+
+        assertThat(jdbc.sql("SELECT count(*) FROM announcement_supply_match_decisions").query(Long.class).single())
+                .isZero();
+    }
+
     /** 관리자 화면의 PDF 보정과 같은 경로로 공급행의 주택형 연결만 바꾼다. */
     private void correctFromPdf(long announcementId, HousingType housingType) throws Exception {
         var state = json.readTree(mvc.perform(get("/api/admin/announcements/" + announcementId + "/json-corrections")
@@ -1196,8 +1236,13 @@ class AnnouncementSupplyMatchingIntegrationTest {
         correction.put("sourceUrl", "https://example.com/official.pdf");
         correction.putNull("sourcePage");
         correction.set("rows", state.path("supply").path("rows").deepCopy());
-        ((ObjectNode) correction.get("rows").get(0))
-                .put("housingComplexId", complex.getId()).put("housingTypeId", housingType.getId());
+        var row = ((ObjectNode) correction.get("rows").get(0)).put("housingComplexId", complex.getId());
+        if (housingType == null) {
+            row.putNull("housingTypeId");
+        }
+        else {
+            row.put("housingTypeId", housingType.getId());
+        }
         var preview = json.readTree(mvc.perform(post("/api/admin/announcements/" + announcementId
                         + "/json-corrections/preview").with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(request.toString()))
@@ -1225,7 +1270,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         for (var target : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
             progressStore.complete(target, TARGET, candidate.requestDescription(), candidate.panId());
         }
-        remember(matching.rows(TARGET).getFirst(), candidateService.housingTypes(complex.getId()).getFirst().token(),
+        remember(rowQuery.rows(TARGET).getFirst(), candidateService.housingTypes(complex.getId()).getFirst().token(),
                 "https://example.com/official", "공식 자료 확인").andExpect(status().isBadRequest());
         assertThat(announcements.count()).isZero();
         assertThat(jdbc.sql("SELECT count(*) FROM announcement_supply_match_decisions").query(Long.class).single())

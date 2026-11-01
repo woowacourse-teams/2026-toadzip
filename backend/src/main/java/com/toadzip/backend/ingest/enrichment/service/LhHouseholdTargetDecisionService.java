@@ -39,7 +39,7 @@ public class LhHouseholdTargetDecisionService {
     private static final String RESOURCE = "LH_HOUSEHOLD_DECISION";
 
     private final LhHouseholdEnrichmentFailureRepository failures;
-    private final LhHousingTypeHouseholdEnrichmentService enrichment;
+    private final LhHouseholdComplexMatches complexMatches;
     private final HousingTypeRepository types;
     private final LhHouseholdTargetDecisionRepository decisions;
     private final LhHouseholdComplexLinks fingerprints;
@@ -114,7 +114,7 @@ public class LhHouseholdTargetDecisionService {
     private Context context(long failureId) {
         var failure = failures.findById(failureId)
                 .orElseThrow(() -> new InvalidIngestRequestException("세대수 보강 오류가 없습니다."));
-        List<LhHouseholdMatchedSource> matches = enrichment.currentMatches(new ArrayList<>(), clock.instant()).matchedSources();
+        List<LhHouseholdMatchedSource> matches = complexMatches.current(new ArrayList<>(), clock.instant()).matchedSources();
         var own = matches.stream().filter(matched -> matched.sourceKey().failureKey().equals(failure.getSourceKey()))
                 .findFirst().orElse(null);
         if (own == null) {
@@ -172,9 +172,7 @@ public class LhHouseholdTargetDecisionService {
             return null;
         }
         boolean reviewRequired = context.complex() == null
-                || !fingerprints.sourcesFingerprint(context.group()).equals(decision.getSourcesFingerprint())
-                || !fingerprints.decisionTargetFingerprint(context.complex(), context.housingTypes())
-                        .equals(decision.getTargetFingerprint());
+                || !fingerprints.decisionCurrent(decision, context.group(), context.complex(), context.housingTypes());
         return new SavedDecision(decision.getDecision().name(), decision.getChosenSourceKey(), decision.getReason(),
                 decision.getActor(), decision.getUpdatedAt(), reviewRequired);
     }

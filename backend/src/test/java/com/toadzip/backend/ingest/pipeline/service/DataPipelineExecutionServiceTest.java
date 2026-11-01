@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -17,6 +18,7 @@ import com.toadzip.backend.ingest.collection.repository.external.IngestServiceKe
 import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
@@ -43,6 +45,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
@@ -50,6 +53,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
 class DataPipelineExecutionServiceTest {
+
+    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-09-02T12:00:00Z"), ZoneOffset.UTC);
 
     @Mock
     private DataPipelineRunner runner;
@@ -77,6 +82,8 @@ class DataPipelineExecutionServiceTest {
 
     private DataPipelineExecutionService service;
 
+    private DataPipelineExecutionQueryService query;
+
     @BeforeEach
     void setUp() {
         lenient().when(executionLock.tryAcquire())
@@ -88,21 +95,26 @@ class DataPipelineExecutionServiceTest {
                 any()
         );
         service = serviceWith(Runnable::run);
+        query = new DataPipelineExecutionQueryService(executionRepository, executionMapper(), recovery(CLOCK));
     }
 
     private DataPipelineExecutionService serviceWith(Executor executor) {
-        Clock clock = Clock.fixed(Instant.parse("2026-09-02T12:00:00Z"), ZoneOffset.UTC);
+        var failures = new DataPipelineFailureRecorder(executionStateService, CLOCK);
         return new DataPipelineExecutionService(
                 runner,
                 executionLock,
-                executionRepository,
                 executionStateService,
-                collectionRecovery,
+                recovery(CLOCK),
+                new DataPipelineHeartbeat(heartbeatExecutor, executionStateService, failures, CLOCK),
+                failures,
                 executor,
-                heartbeatExecutor,
-                clock,
+                CLOCK,
                 executionMapper()
         );
+    }
+
+    private DataPipelineExecutionRecovery recovery(Clock clock) {
+        return new DataPipelineExecutionRecovery(executionLock, executionStateService, collectionRecovery, clock);
     }
 
     @ParameterizedTest
@@ -183,7 +195,7 @@ class DataPipelineExecutionServiceTest {
 
         assertThat(IngestServiceKeyContext.current()).isEmpty();
         assertThat(accepted.toString()).doesNotContain("runtime-test-key", "serviceKey");
-        assertThat(service.findLatest(type).toString())
+        assertThat(query.findLatest(type).toString())
                 .doesNotContain("runtime-test-key", "serviceKey");
         assertThat(new DataPipelineStartRequest("runtime-test-key").toString())
                 .doesNotContain("runtime-test-key");
@@ -208,7 +220,7 @@ class DataPipelineExecutionServiceTest {
         service.start(DataPipelineType.COMPLEX_COLLECTION, "runtime-test-key");
 
         assertThat(IngestServiceKeyContext.current()).isEmpty();
-        assertThat(service.findLatest(DataPipelineType.COMPLEX_COLLECTION).status())
+        assertThat(query.findLatest(DataPipelineType.COMPLEX_COLLECTION).status())
                 .isEqualTo(DataPipelineExecutionStatus.FAILED);
         verify(lease).close();
     }
@@ -288,7 +300,7 @@ class DataPipelineExecutionServiceTest {
         }).when(runner).run(any(), any());
 
         var started = service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
-        var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+        var status = query.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(started.executionId()).isNotNull();
         assertThat(started.status()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
@@ -317,17 +329,8 @@ class DataPipelineExecutionServiceTest {
             return null;
         }).when(runner).run(any(), any());
         service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
-        DataPipelineExecutionService otherInstance = new DataPipelineExecutionService(
-                runner,
-                executionLock,
-                executionRepository,
-                executionStateService,
-                collectionRecovery,
-                Runnable::run,
-                heartbeatExecutor,
-                Clock.fixed(Instant.parse("2026-09-02T12:00:00Z"), ZoneOffset.UTC),
-                executionMapper()
-        );
+        DataPipelineExecutionQueryService otherInstance = new DataPipelineExecutionQueryService(
+                executionRepository, executionMapper(), recovery(CLOCK));
 
         var status = otherInstance.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
@@ -345,7 +348,7 @@ class DataPipelineExecutionServiceTest {
         when(executionRepository.findByExecutionId(executionId))
                 .thenReturn(Optional.of(execution));
 
-        var response = service.find(executionId);
+        var response = query.find(executionId);
 
         assertThat(response.executionId()).isEqualTo(executionId);
         assertThat(response.type()).isEqualTo(DataPipelineType.ANNOUNCEMENT_REFINEMENT);
@@ -356,7 +359,7 @@ class DataPipelineExecutionServiceTest {
         UUID executionId = UUID.randomUUID();
         when(executionRepository.findByExecutionId(executionId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.find(executionId))
+        assertThatThrownBy(() -> query.find(executionId))
                 .isInstanceOf(DataPipelineExecutionNotFoundException.class)
                 .hasMessageContaining(executionId.toString());
     }
@@ -384,6 +387,37 @@ class DataPipelineExecutionServiceTest {
     }
 
     @Test
+    void 중단_실행_복구에_실패하면_새_실행을_만들지_않고_실행_잠금을_반납한다() {
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        when(executionStateService.recoverInterruptedBefore(any(), any(), any()))
+                .thenThrow(new IllegalStateException("database unavailable"));
+
+        assertThatThrownBy(() -> service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("database unavailable");
+
+        verify(executionStateService, never()).create(any(), any(), any());
+        verify(lease).close();
+    }
+
+    @Test
+    void heartbeat가_실행_소유권을_잃으면_실행을_현재_단계의_실패로_끝낸다() {
+        configureStoredExecution();
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        var accepted = serviceWith(task -> { }).start(DataPipelineType.ANNOUNCEMENT_REFINEMENT);
+        executionStateService.startStep(accepted.executionId(), DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+        ArgumentCaptor<Runnable> heartbeat = ArgumentCaptor.forClass(Runnable.class);
+        verify(heartbeatExecutor).scheduleWithFixedDelay(heartbeat.capture(), anyLong(), anyLong(), any());
+        doThrow(new IngestOwnershipLostException()).when(lease).verifyHeld();
+
+        heartbeat.getValue().run();
+
+        var status = query.find(accepted.executionId());
+        assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
+        assertThat(status.failure().stepName()).isEqualTo("마이홈 공고 정제");
+    }
+
+    @Test
     void 부분_실패한_단계와_서버_응답을_실패_상태에_보존한다() {
         configureStoredExecution();
         when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
@@ -403,7 +437,7 @@ class DataPipelineExecutionServiceTest {
         }).when(runner).run(any(), any());
 
         service.start(DataPipelineType.ANNOUNCEMENT_REFINEMENT);
-        var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_REFINEMENT);
+        var status = query.findLatest(DataPipelineType.ANNOUNCEMENT_REFINEMENT);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         assertThat(status.failure().stepName()).isEqualTo("마이홈 공고 정제");
@@ -453,7 +487,7 @@ class DataPipelineExecutionServiceTest {
         }).when(runner).run(any(), any());
 
         service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
-        var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+        var status = query.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS);
         assertThat(status.completedSteps()).hasSize(3);
@@ -482,7 +516,7 @@ class DataPipelineExecutionServiceTest {
         }).when(runner).run(any(), any());
 
         service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
-        var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+        var status = query.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         assertThat(status.failure().stepName()).isEqualTo("LH 공고 목록 수집");
@@ -539,7 +573,7 @@ class DataPipelineExecutionServiceTest {
                     return 1;
                 });
 
-        var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+        var status = query.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         assertThat(status.failure().message()).contains("중단");
@@ -558,7 +592,7 @@ class DataPipelineExecutionServiceTest {
                 .thenReturn(Optional.of(activeExecution));
         when(executionLock.tryAcquire()).thenReturn(Optional.empty());
 
-        var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+        var status = query.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
         verify(executionStateService, never()).recoverInterruptedBefore(any(), any(), any());
