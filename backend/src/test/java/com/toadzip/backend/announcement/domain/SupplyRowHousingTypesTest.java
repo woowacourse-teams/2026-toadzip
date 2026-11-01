@@ -48,6 +48,23 @@ class SupplyRowHousingTypesTest {
     }
 
     @Test
+    void 대표_주택형이_그대로면_보정_저장이_함께_모집하는_주택형을_지우지_않는다() {
+        ReflectionTestUtils.setField(area59, "id", 59L);
+        ReflectionTestUtils.setField(area84, "id", 84L);
+        SupplyRow row = SupplyRow.create(new Announcement(), complex, area59, "row-1", 0, "두꺼비 행복주택", "59A",
+                null, null, SupplyCategory.NEW_SUPPLY, null, 10);
+        @SuppressWarnings("unchecked")
+        var linked = (java.util.Set<HousingType>) ReflectionTestUtils.getField(row, "housingTypes");
+        linked.add(area84);
+
+        row.reviseByAdmin(complex, area59, "59A", null, null, SupplyCategory.NEW_SUPPLY, 12);
+        assertThat(row.getHousingTypes()).containsExactlyInAnyOrder(area59, area84);
+
+        row.reviseByAdmin(complex, area84, "84A", null, null, SupplyCategory.NEW_SUPPLY, 12);
+        assertThat(row.getHousingTypes()).containsExactly(area84);
+    }
+
+    @Test
     void 대표_주택형이_없는_공급행은_함께_모집하는_주택형도_없다() {
         SupplyRow row = SupplyRow.create(new Announcement(), null, null, "row-1", 0, "두꺼비 행복주택", "59A",
                 "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, "일치하는 단지가 없습니다.", 10);

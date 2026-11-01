@@ -101,11 +101,16 @@ public class SupplyRow {
         return Set.copyOf(housingTypes);
     }
 
-    /** 대표 주택형을 바꾸면 함께 모집하는 주택형도 대표 하나로 맞춘다. 같으면 연결을 다시 쓰지 않는다. */
+    /**
+     * 대표 주택형을 바꾸면 함께 모집하는 주택형도 대표 하나로 맞춘다. 대표가 그대로면 함께 모집하는 주택형을 지우지 않는다.
+     * PDF·공급 보정이 LH 한 행에 묶인 주택형 여럿 중 대표만 다시 저장해도 나머지 연결이 남게 하려는 것이다.
+     */
     private void represent(HousingType type) {
+        boolean sameRepresentative = type != null && housingType != null && sameType(housingType, type)
+                && housingTypes.stream().anyMatch(linked -> sameType(linked, type));
         housingType = type;
-        boolean unchanged = type == null ? housingTypes.isEmpty()
-                : housingTypes.size() == 1 && sameType(housingTypes.iterator().next(), type);
+        boolean unchanged = type == null ? housingTypes.isEmpty() : sameRepresentative
+                || housingTypes.size() == 1 && sameType(housingTypes.iterator().next(), type);
         if (unchanged) {
             return;
         }
