@@ -72,6 +72,7 @@ import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.ingest.quality.service.LhAnnouncementQualityService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -90,6 +91,7 @@ import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -104,6 +106,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 
+@ExtendWith(IngestExecutionExtension.class)
 @SpringBootTest
 @ActiveProfiles("test")
 class LhAnnouncementEnrichmentServiceTest {
@@ -2086,7 +2089,7 @@ class LhAnnouncementEnrichmentServiceTest {
         myHomeSourceRepository.save(source);
         UUID executionId = UUID.randomUUID();
 
-        try (var ignored = IngestExecutionScope.open(executionId, null, null, null)) {
+        try (var ignored = IngestExecutionScope.open(executionId, IngestExecutionScope.current().orElseThrow(), null, null)) {
             assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
         }
 

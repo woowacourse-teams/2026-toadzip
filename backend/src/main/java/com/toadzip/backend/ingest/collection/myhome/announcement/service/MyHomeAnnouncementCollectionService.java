@@ -22,6 +22,7 @@ public class MyHomeAnnouncementCollectionService {
     private final PagedSourceCollector pagedCollector;
 
     public ExternalDataCollectionReport collect(MyHomeAnnouncementCollectionCommand request) {
+        IngestExecutionScope.requireHeld();
         UUID runId = IngestExecutionScope.currentExecutionId().orElseGet(UUID::randomUUID);
         var report = ExternalDataCollectionReport.empty(ExternalDataSource.MYHOME_ANNOUNCEMENT.operation());
         for (MyHomeAnnouncementSupplyType type : MyHomeAnnouncementSupplyType.values()) {
@@ -41,6 +42,7 @@ public class MyHomeAnnouncementCollectionService {
 
     /** 목록의 모든 페이지를 검증하지만 해당 공고만 저장한다. 실패를 기록하지 않고 전체 수집 완료 처리도 하지 않는다. */
     public int collectAnnouncement(String pblancId) {
+        IngestExecutionScope.requireHeld();
         UUID executionId = IngestExecutionScope.currentExecutionId().orElseGet(UUID::randomUUID);
         var counter = new ExternalDataCallCounter();
         int stored = 0;

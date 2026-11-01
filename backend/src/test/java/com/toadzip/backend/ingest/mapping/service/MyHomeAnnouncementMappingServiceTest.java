@@ -57,6 +57,8 @@ import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionQueryService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension.AcquiresOwnExecution;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -67,6 +69,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -80,6 +83,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest(properties = {"app.notification.publisher-enabled=true",
         "app.notification.activation-at=2026-01-01T00:00:00Z"})
+@ExtendWith(IngestExecutionExtension.class)
 @ActiveProfiles("test")
 class MyHomeAnnouncementMappingServiceTest {
 
@@ -194,6 +198,7 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     @Test
+    @AcquiresOwnExecution
     void 단건_비동기_실행은_원천_확보부터_등록_완료까지_대상만_처리한다() throws Exception {
         saveMappedComplex();
         var rows = List.of(data("21026", 1, "부산도시공사", "동삼2"),
@@ -226,6 +231,7 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     @Test
+    @AcquiresOwnExecution
     void 단건_비동기_실행은_없는_ID의_실패_사유를_상태에_저장한다() throws Exception {
         org.mockito.Mockito.when(announcementApi.fetch(org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyInt())).thenReturn(new SourcePage<>(0, List.of()));
@@ -265,7 +271,7 @@ class MyHomeAnnouncementMappingServiceTest {
         collectedSourceStorage.complete(collectionHistory.start(request), request,
                 new MyHomeAnnouncementCollectedResponse(1, COLLECTED_AT.plusSeconds(60), List.of(row)));
 
-        try (var ignored = IngestExecutionScope.open(executionId, null, null, null)) {
+        try (var ignored = IngestExecutionScope.open(executionId, IngestExecutionScope.current().orElseThrow(), null, null)) {
             service.registerAnnouncement("21026");
         }
 

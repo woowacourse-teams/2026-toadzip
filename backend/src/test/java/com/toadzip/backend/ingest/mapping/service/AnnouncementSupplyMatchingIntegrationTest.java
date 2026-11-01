@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.mapping.service;
 
+import static com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension.owned;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -34,6 +35,7 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projecti
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Request;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Row;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -69,6 +71,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     private static final String PATH = "/api/admin/ingest/announcement-supply-matches";
     private static final String TARGET = "manual-21395";
     private static final String PNU = "2823710500105500000";
+    @Autowired private IngestExecutionOwnershipService ownership;
     @Autowired private AnnouncementSupplyMatchingService matching;
     @Autowired private AnnouncementSupplyRowQueryService rowQuery;
     @Autowired private CorrectedSupplyLinkService correctedLinks;
@@ -140,9 +143,9 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 LhSourceViews.supply(0,
                         candidate.panId(), new LhAnnouncementSupplySourceSnapshot(
                         "익산한스빌", "26A,B", "26.5195", null, "529", "170", "4076000", "72820"))));
-        mapping.mapAll();
-        enrichment.enrichAll();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
+        owned(ownership, enrichment::enrichAll);
+        owned(ownership, mapping::mapAll);
         assertThat(supplies.findAll()).extracting(value -> value.getId()).containsExactlyInAnyOrderElementsOf(ids);
         assertThat(supplies.findAll()).extracting(value -> value.getAnnouncementHousingTypeName())
                 .containsExactlyInAnyOrder("26A", "26B");
@@ -177,7 +180,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 휴지통의_공고는_복수_공급행으로_나누지_않는다() throws Exception {
         prepareHansville();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         var announcement = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow();
         announcement.moveToTrash();
         announcements.saveAndFlush(announcement);
@@ -203,7 +206,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 lhSupplyRow(0, candidate.panId(), "26(청년)", "26.4673", "100"),
                 lhSupplyRow(1, candidate.panId(), "26A,B(고령자)", "26.5195", "50"),
                 lhSupplyRow(2, candidate.panId(), "26(신혼부부)", "26.5195", "20")));
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         var rows = rowQuery.rows(TARGET);
         assertThat(rows).extracting(Row::sourceHousingTypeName).containsExactly("26(청년)", "26A,B(고령자)", "26(신혼부부)");
         var grouped = rows.get(1);
@@ -211,9 +214,9 @@ class AnnouncementSupplyMatchingIntegrationTest {
         refineWith(Map.of("rows", List.of(), "splits", List.of(splitPlan(grouped, Map.of("26A", first, "26B", second))),
                 "remember", true, "sourceUrl", "https://example.com/official.pdf",
                 "reason", "공고문 4쪽의 26A·26B 면적과 고령자 모집수 확인")).andExpect(status().isOk());
-        mapping.mapAll();
-        enrichment.enrichAll();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
+        owned(ownership, enrichment::enrichAll);
+        owned(ownership, mapping::mapAll);
 
         assertThat(supplies.findAll()).extracting(row -> row.getAnnouncementHousingTypeName() == null
                         ? row.getSourceHousingTypeName() : row.getAnnouncementHousingTypeName())
@@ -247,17 +250,17 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 lhSupplyRow(0, candidate.panId(), "26(청년)", "26.4673", "100"),
                 lhSupplyRow(1, candidate.panId(), "26A,B(고령자)", "26.5195", "50"),
                 lhSupplyRow(2, candidate.panId(), "26(신혼부부)", "26.5195", "20")));
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         var rows = rowQuery.rows(TARGET);
         assertThat(rows).extracting(Row::sourceHousingTypeName).containsExactly("26(청년)", "26A,B(고령자)", "26(신혼부부)");
         refineWith(Map.of("rows", List.of(), "splits", List.of(splitPlan(rows.getFirst(), Map.of("26A", first, "26B", second))),
                 "remember", true, "sourceUrl", "https://example.com/official.pdf",
                 "reason", "공고문 4쪽의 26A·26B 면적 확인")).andExpect(status().isOk());
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         List<String> before = supplyRowState();
 
         jdbc.sql("DELETE FROM lh_announcement_supply_rows").update();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
 
         assertThat(supplyRowState()).isEqualTo(before);
         assertThat(supplies.findAll()).extracting(SupplyRow::getDisplayOrder).doesNotHaveDuplicates();
@@ -266,12 +269,12 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 원천에서_사라진_저장_매칭_행은_현재_행_뒤로_옮기고_옮긴_행을_갱신으로_센다() throws Exception {
         sources.save(source(TARGET, 2, PNU));
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         rememberCurrent();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         jdbc.sql("DELETE FROM myhome_announcement_source_rows WHERE house_sn = 1").update();
 
-        var report = mapping.mapAll();
+        var report = owned(ownership, mapping::mapAll);
 
         assertThat(supplies.findAll()).hasSize(2).extracting(SupplyRow::getDisplayOrder).containsExactlyInAnyOrder(1, 2);
         assertThat(report.updatedSupplyRowCount()).isEqualTo(2);
@@ -290,7 +293,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 lhSupplyRow(0, candidate.panId(), "26(청년)", "26.4673", "100"),
                 lhSupplyRow(1, candidate.panId(), "26A,B(고령자)", "26.5195", "50"),
                 lhSupplyRow(2, candidate.panId(), "26(신혼부부)", "26.5195", "20")));
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         // 공급 보정 작업실은 비교 검토 테이블을 읽는다. 이 테스트 스키마에는 없어 이 테스트 동안만 만든다.
         boolean comparisonTables = jdbc.sql("SELECT to_regclass('admin_comparison_sources') IS NULL").query(Boolean.class).single();
         if (comparisonTables) {
@@ -326,9 +329,9 @@ class AnnouncementSupplyMatchingIntegrationTest {
         mvc.perform(post(root).with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body))).andExpect(status().isOk());
 
-        mapping.mapAll();
-        enrichment.enrichAll();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
+        owned(ownership, enrichment::enrichAll);
+        owned(ownership, mapping::mapAll);
 
         assertThat(supplies.findAll()).extracting(row -> row.getAnnouncementHousingTypeName() == null
                         ? row.getSourceHousingTypeName() : row.getAnnouncementHousingTypeName())
@@ -355,7 +358,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         split(original).andExpect(status().isOk());
         split(original).andExpect(status().isConflict());
         jdbc.sql("UPDATE myhome_announcement_source_rows SET sum_suply_co = 190").update();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         var changed = rowQuery.rows(TARGET).getFirst();
         assertThat(changed.splitGroup().reviewRequired()).isTrue();
         assertThat(changed.splitGroup().sharedHouseholdCount()).isEqualTo(170);
@@ -401,7 +404,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         prepareHansville();
         split(splitBody(rowQuery.rows(TARGET).getFirst())).andExpect(status().isOk());
         jdbc.sql("UPDATE housing_types SET exclusive_area = 30 WHERE id = ?").param(type.getId()).update();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         var current = rowQuery.rows(TARGET).getFirst();
         assertThat(current.splitGroup().reviewRequired()).isTrue();
         assertThat(current.splitGroup().rows()).hasSize(2);
@@ -481,8 +484,8 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(jdbc.sql("SELECT shared_household_count FROM supply_row_groups")
                 .query(Integer.class).list()).containsExactly(170);
         var ids = supplies.findAll().stream().map(value -> value.getId()).toList();
-        mapping.mapAll();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
+        owned(ownership, mapping::mapAll);
         assertThat(supplies.findAll()).extracting(value -> value.getId()).containsExactlyInAnyOrderElementsOf(ids);
         assertThat(supplies.findAll()).extracting(value -> value.getAnnouncementHousingTypeName())
                 .containsExactlyInAnyOrder("26A", "26B");
@@ -502,7 +505,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         remember(before.getFirst(), chosenToken, notice.get("sourceUrl").asText(),
                 "재현 테스트의 명시적 후보 선택이며 실제 주택형 대응을 확정한 자료가 아님")
                 .andExpect(status().isOk());
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         assertThat(supplies.findAll()).singleElement().satisfies(row -> {
             assertThat(row.getSourceHousingTypeName()).isEqualTo("아파트");
             assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(170);
@@ -529,7 +532,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
                         "reason", "공고문 3쪽의 주택형 면적을 확인함"))))
                 .andExpect(status().isOk());
         assertThat(rowQuery.rows(TARGET).getFirst().housingTypeId()).isEqualTo(type.getId());
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         assertThat(supplies.findAll()).singleElement().satisfies(value ->
                 assertThat(value.getHousingType().getId()).isEqualTo(type.getId()));
     }
@@ -658,7 +661,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(rowQuery.rows(TARGET).getLast().housingTypeId()).isEqualTo(type.getId());
         assertThat(jdbc.sql("SELECT action FROM admin_data_changes ORDER BY id").query(String.class).list())
                 .containsExactly("SAVE_SUPPLY_MATCH", "SPLIT_SUPPLY");
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         assertThat(supplies.count()).isEqualTo(3);
     }
 
@@ -929,7 +932,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         sources.save(source(TARGET, 2, PNU));
         rememberCurrent();
         jdbc.sql("UPDATE myhome_announcement_source_rows SET house_ty_nm = '42' WHERE house_sn = 1").update();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         assertThat(supplies.findAll()).extracting(value -> value.getDisplayOrder()).doesNotHaveDuplicates();
     }
 
@@ -938,7 +941,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         rememberCurrent();
         jdbc.sql("UPDATE myhome_announcement_source_rows SET house_ty_nm = '42'").update();
         assertThat(rowQuery.rows(TARGET).getFirst().savedMatch().reviewRequired()).isTrue();
-        assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(1);
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isEqualTo(1);
         assertThat(supplies.findAll()).singleElement().satisfies(row -> {
             assertThat(row.getHousingType().getId()).isEqualTo(type.getId());
             assertThat(row.getSourceHousingTypeName()).isEqualTo("26A,B");
@@ -953,7 +956,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         jdbc.sql("UPDATE myhome_announcement_source_rows SET pblanc_nm = '공고명 정정', collected_at = now()")
                 .update();
         assertThat(rowQuery.rows(TARGET).getFirst().savedMatch().reviewRequired()).isFalse();
-        assertThat(mapping.mapAll().failedSourceRowCount()).isZero();
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isZero();
         assertThat(supplies.findAll().getFirst().getHousingType().getId()).isEqualTo(type.getId());
     }
 
@@ -962,7 +965,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         rememberCurrent();
         jdbc.sql("UPDATE housing_types SET exclusive_area = 31 WHERE id = ?").param(type.getId()).update();
         assertThat(rowQuery.rows(TARGET).getFirst().savedMatch().reviewRequired()).isTrue();
-        assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(1);
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isEqualTo(1);
         assertThat(supplies.findAll().getFirst().getHousingType().getId()).isEqualTo(type.getId());
     }
 
@@ -1038,7 +1041,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
                         "rows", selections, "remember", true, "sourceUrl", "https://example.com/official",
                         "reason", "공식 공급행 2개 확인")))).andExpect(status().isOk());
         jdbc.sql("DELETE FROM myhome_announcement_source_rows WHERE house_sn = 1").update();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         assertThat(supplies.count()).isEqualTo(2);
         assertThat(supplies.findAll()).extracting(value -> value.getDisplayOrder()).doesNotHaveDuplicates();
     }
@@ -1051,9 +1054,9 @@ class AnnouncementSupplyMatchingIntegrationTest {
         original.confirmTargetCountScope(true);
         supplies.saveAndFlush(original);
         sources.save(source(TARGET, 2, PNU));
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         jdbc.sql("DELETE FROM myhome_announcement_source_rows WHERE house_sn = 1").update();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         var preserved = supplies.findById(original.getId()).orElseThrow();
         assertThat(preserved.isAdminExcluded()).isTrue();
         assertThat(preserved.isAreaOverride()).isTrue();
@@ -1069,7 +1072,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
             executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void PDF_보정으로_연결한_공급행은_재정제에서_매칭_실패로_다시_남지_않는다() throws Exception {
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         assertThat(pendingFailureReasons()).containsExactly("AMBIGUOUS_HOUSING_TYPE");
         long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
 
@@ -1077,7 +1080,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(jdbc.sql("SELECT housing_type_id, reason FROM announcement_supply_match_decisions")
                 .query((rs, rowNum) -> List.of(rs.getLong(1), rs.getString(2))).list())
                 .containsExactly(List.of(type.getId(), "공고문 PDF 4쪽에서 주택형 확인"));
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
 
         assertThat(supplies.findAll()).singleElement()
                 .satisfies(row -> assertThat(row.getHousingType().getId()).isEqualTo(type.getId()));
@@ -1089,7 +1092,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
             executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void 선택_없이_다시_정제하면_PDF_보정의_저장_매칭으로_이_공고만_정제하고_실패를_해결한다() throws Exception {
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
         correctFromPdf(announcementId, type);
         // PDF 보정 저장이 이 공고의 실패를 해결로 바꾸고, 다시 정제는 원인이 남았는지 확인한다.
@@ -1104,7 +1107,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 다시_정제가_거절되면_아무것도_저장하지_않고_실패_기록도_바꾸지_않는다() throws Exception {
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         var before = supplies.findAll().getFirst();
 
         rerun(TARGET).andExpect(status().isBadRequest())
@@ -1132,7 +1135,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         for (var target : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
             progressStore.complete(target, TARGET, candidate.requestDescription(), candidate.panId());
         }
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
         correctFromPdf(announcementId, type);
         // PDF 보정 저장이 이 공고의 실패를 해결로 바꾸고, 다시 정제는 원인이 남았는지 확인한다.
@@ -1177,7 +1180,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 휴지통의_공고는_다시_정제하지_않는다() throws Exception {
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         var announcement = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow();
         announcement.moveToTrash();
         announcements.saveAndFlush(announcement);
@@ -1202,14 +1205,14 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 등록_단지에_없어_제외한_공급행은_정제_오류로_남기지_않고_되돌리면_다시_오류가_된다() throws Exception {
         sources.save(source(TARGET, 2, "1111010100100010000"));
-        int failedBefore = mapping.mapAll().failedSourceRowCount();
+        int failedBefore = owned(ownership, mapping::mapAll).failedSourceRowCount();
         var missing = rowQuery.rows(TARGET).stream().filter(row -> row.rowIdentifier().endsWith(":2")).findFirst().orElseThrow();
         assertThat(missing.complexId()).isNull();
 
         exclusion(missing, true, "공고문 2쪽: 이 주택형은 등록 단지에 없음").andExpect(status().isOk());
         assertThat(rowQuery.rows(TARGET)).filteredOn(Row::excluded).extracting(Row::rowIdentifier)
                 .containsExactly(missing.rowIdentifier());
-        assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(failedBefore - 1);
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isEqualTo(failedBefore - 1);
         assertThat(pendingFailureReasons()).hasSize(failedBefore - 1);
         assertThat(supplies.findAll()).filteredOn(row -> row.getSourceSupplyRowIdentifier().equals(missing.rowIdentifier()))
                 .singleElement().satisfies(row -> {
@@ -1221,7 +1224,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
         exclusion(rowQuery.rows(TARGET).stream().filter(Row::excluded).findFirst().orElseThrow(), false, "다시 확인")
                 .andExpect(status().isOk());
-        assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(failedBefore);
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isEqualTo(failedBefore);
         assertThat(pendingFailureReasons()).hasSize(failedBefore);
     }
 
@@ -1229,7 +1232,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     void 공급행_제외는_근거와_정제된_공급행을_요구한다() throws Exception {
         var row = rowQuery.rows(TARGET).getFirst();
         exclusion(row, true, "근거").andExpect(status().isBadRequest());
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         exclusion(row, true, " ").andExpect(status().isBadRequest());
         assertThat(supplies.findAll()).noneMatch(value -> value.isAdminExcluded());
     }
@@ -1273,7 +1276,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
             executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void PDF_보정에서_주택형_연결을_지우면_저장한_매칭도_해제한다() throws Exception {
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
         correctFromPdf(announcementId, type);
         assertThat(jdbc.sql("SELECT count(*) FROM announcement_supply_match_decisions").query(Long.class).single())

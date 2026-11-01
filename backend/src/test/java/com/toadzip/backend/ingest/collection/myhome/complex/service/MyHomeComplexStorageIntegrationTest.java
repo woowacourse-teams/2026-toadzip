@@ -45,11 +45,13 @@ import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureExc
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
+import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
 import com.toadzip.backend.ingest.pipeline.repository.IngestExecutionOwnershipRepository;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionStateService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -74,6 +76,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.NullSource;
@@ -116,9 +119,10 @@ import tools.jackson.databind.json.JsonMapper;
         initializers = MyHomeComplexStorageIntegrationTest.SchemaInitializer.class)
 @Import({MyHomeComplexCollectionService.class, MyHomeComplexRegionCollectionService.class,
         PagedSourceCollector.class, ExternalDataRetryExecutor.class,
-        SourceCollectionRecordService.class, MyHomeComplexStorageService.class, IngestWriteOwnershipGuard.class, IngestExecutionOwnershipRepository.class,
+        SourceCollectionRecordService.class, MyHomeComplexStorageService.class, IngestWriteOwnershipGuard.class, IngestExecutionOwnershipRepository.class, DataPipelineExecutionLock.class,
         MyHomeComplexCollector.class, MyHomeComplexApiRepository.class,
         MyHomeRegionCatalog.class, MyHomeComplexSourceReader.class})
+@ExtendWith(IngestExecutionExtension.class)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -198,7 +202,7 @@ class MyHomeComplexStorageIntegrationTest {
     void administratorRegionExecutionUsesOneOperationLockAndPropagatesExecutionId() {
         httpServer.expect(requestTo(apiUrl(1))).andRespond(withSuccess(
                 pageJson(1, row(100L, "11", "680", "59A", 100000L)), MediaType.APPLICATION_JSON));
-        try (var ignored = IngestExecutionScope.open(EXECUTION_ID, null, null, null)) {
+        try (var ignored = IngestExecutionScope.open(EXECUTION_ID, IngestExecutionScope.current().orElseThrow(), null, null)) {
             var result = batch.collect(new MyHomeComplexCollectionCommand(
                     "11", "680", 2, 10));
             assertThat(result.storedRowCount()).isOne();
@@ -224,7 +228,7 @@ class MyHomeComplexStorageIntegrationTest {
                     return withSuccess(pageJson(1, row(100L, "11", "680", "59A", 100000L)),
                             MediaType.APPLICATION_JSON).createResponse(request);
                 });
-        try (var ignored = IngestExecutionScope.open(EXECUTION_ID, null, null, null)) {
+        try (var ignored = IngestExecutionScope.open(EXECUTION_ID, IngestExecutionScope.current().orElseThrow(), null, null)) {
             var result = batch.collect(MyHomeComplexCollectionCommand.allRegions(2, 10));
             assertThat(result.storedRowCount()).isEqualTo(2);
             assertThat(result.failedRequestCount()).isZero();
@@ -254,7 +258,7 @@ class MyHomeComplexStorageIntegrationTest {
                 });
         clock.set(FINISHED_AT.plusSeconds(60));
 
-        try (var ignored = IngestExecutionScope.open(EXECUTION_ID, null, null, null)) {
+        try (var ignored = IngestExecutionScope.open(EXECUTION_ID, IngestExecutionScope.current().orElseThrow(), null, null)) {
             var result = batch.collect(MyHomeComplexCollectionCommand.allRegions(2, 10));
             assertThat(result.storedRowCount()).isEqualTo(2);
             assertThat(result.failedRequestCount()).isOne();
@@ -1055,7 +1059,7 @@ class MyHomeComplexStorageIntegrationTest {
                     row(102L, "11", "680", "84C", 300000L)), MediaType.APPLICATION_JSON).createResponse(httpRequest);
         });
 
-        try (var ignored = IngestExecutionScope.open(null, monitor)) {
+        try (var ignored = IngestExecutionScope.open(IngestExecutionScope.current().orElseThrow(), monitor)) {
             if (totalCount == 2) {
                 assertThat(collect(apiRequest(1000))).isEqualTo(2);
                 assertThat(sourceRepository.findAllByHsmpSnIn(List.of(100L))).isEmpty();

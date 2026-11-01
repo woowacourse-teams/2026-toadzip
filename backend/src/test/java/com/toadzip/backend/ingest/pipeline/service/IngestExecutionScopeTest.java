@@ -2,7 +2,10 @@ package com.toadzip.backend.ingest.pipeline.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 
+import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -17,6 +20,27 @@ class IngestExecutionScopeTest {
     @AfterEach
     void clearLog() {
         MDC.clear();
+    }
+
+    @Test
+    void 실행_소유권_없이_진입점을_부르면_거절한다() {
+        assertThatThrownBy(IngestExecutionScope::requireHeld).isInstanceOf(IllegalStateException.class)
+                .hasMessage("수집·정제는 실행 소유권 안에서만 실행할 수 있습니다.");
+
+        try (var ignored = IngestExecutionScope.open(null)) {
+            assertThatThrownBy(IngestExecutionScope::requireHeld).isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    @Test
+    void 실행_소유권을_잡았으면_아직_잡고_있는지_확인한다() {
+        var lost = new IllegalStateException("실행 소유권을 잃었습니다.");
+        Lease lease = mock(Lease.class);
+        doThrow(lost).when(lease).verifyHeld();
+
+        try (var ignored = IngestExecutionScope.open(lease)) {
+            assertThatThrownBy(IngestExecutionScope::requireHeld).isSameAs(lost);
+        }
     }
 
     @Test

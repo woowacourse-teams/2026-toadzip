@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.mapping.service;
 
+import static com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension.owned;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -28,6 +29,7 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAn
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.View;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -59,6 +61,7 @@ class LhSupplyLinkIntegrationTest {
     private static final String PNU = "4511311100100010000";
     private static final String OTHER_PNU = "4511311100100050000";
     private static final String OFFICIAL_URL = "https://apply.lh.or.kr/lhapply/apply/wt/wrtanc/selectWrtancInfo.do";
+    @Autowired private IngestExecutionOwnershipService ownership;
     @Autowired private MyHomeAnnouncementSourceFixtures sources;
     @Autowired private HousingComplexRepository complexes;
     @Autowired private HousingTypeRepository types;
@@ -106,8 +109,8 @@ class LhSupplyLinkIntegrationTest {
 
     @Test
     void 연결하지_않은_LH_공급행은_LH_보강에서_단지를_찾지_못한다() {
-        mapping.mapAll();
-        enrichment.enrichAll();
+        owned(ownership, mapping::mapAll);
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(supplies.findAll()).singleElement()
                 .satisfies(row -> assertThat(row.getLhSourceSupplyRowIdentifier()).isNull());
@@ -116,7 +119,7 @@ class LhSupplyLinkIntegrationTest {
 
     @Test
     void 조회하면_실패한_LH_행과_비교할_공급행_후보를_현재_데이터로_알려준다() throws Exception {
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
 
         var view = view();
 
@@ -133,7 +136,7 @@ class LhSupplyLinkIntegrationTest {
             });
         });
         save(view, "공고문 단지 목록 대조").andExpect(status().isOk());
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         assertThat(view().failures()).isEmpty();
     }
 
@@ -147,8 +150,8 @@ class LhSupplyLinkIntegrationTest {
 
         var after = read(save(before, "공고문 단지 목록의 전주평화4가 평화주공4단지임을 확인함")
                 .andExpect(status().isOk()));
-        mapping.mapAll();
-        enrichment.enrichAll();
+        owned(ownership, mapping::mapAll);
+        owned(ownership, enrichment::enrichAll);
 
         String myhomeRow = before.myhomeRows().getFirst().rowIdentifier();
         assertThat(after.lhRows().getFirst().linkedRowIdentifier()).isEqualTo(myhomeRow);
@@ -171,10 +174,10 @@ class LhSupplyLinkIntegrationTest {
 
     @Test
     void 정제를_다시_하지_않아도_LH_보강은_저장한_연결의_원천행에서_공급행을_찾는다() throws Exception {
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         save(view(), "공고문 단지 목록 대조").andExpect(status().isOk());
 
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(pendingEnrichmentFailures()).isEmpty();
         assertThat(supplies.findAll()).singleElement()
@@ -190,7 +193,7 @@ class LhSupplyLinkIntegrationTest {
 
         moveLinkToSecondSource();
         assertThat(rowOf(linked.second()).getLhSourceSupplyRowIdentifier()).isEqualTo("LH:" + panId + ":SUPPLY:9");
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(pendingEnrichmentFailures()).isEmpty();
         assertThat(lhTargetRows()).containsExactly(linked.second());
@@ -212,7 +215,7 @@ class LhSupplyLinkIntegrationTest {
 
         assertThat(rowOf(linked.first()).getLhSourceSupplyRowIdentifier()).isNull();
         assertThat(lhTargetRows()).containsExactly(linked.first());
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
         assertThat(pendingEnrichmentFailures()).isEmpty();
         assertThat(lhTargetRows()).containsExactly(linked.first(), linked.second());
     }
@@ -220,10 +223,10 @@ class LhSupplyLinkIntegrationTest {
     @Test
     void 보강이_단지_이름으로_붙인_공급행도_연결을_다른_원천행에_저장하면_LH_연결과_금액을_놓는다() throws Exception {
         addSecondSource();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         // 정제는 원천 단지명으로 붙이지 못하지만, 보강은 연결 단지 이름으로 첫 원천행의 공급행을 찾는다.
         jdbc.sql("UPDATE housing_complexes SET name = '전주평화4 영구임대주택' WHERE name = '평화주공4단지'").update();
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
         var view = view();
         String first = view.myhomeRows().getFirst().rowIdentifier();
         String second = view.myhomeRows().getLast().rowIdentifier();
@@ -231,7 +234,7 @@ class LhSupplyLinkIntegrationTest {
         assertThat(lhTargetRows()).containsExactly(first);
 
         moveLinkToSecondSource();
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(rowOf(first).getLhSourceSupplyRowIdentifier()).isNull();
         assertThat(lhTargetRows()).containsExactly(second);
@@ -249,7 +252,7 @@ class LhSupplyLinkIntegrationTest {
 
     @Test
     void LH_연결로_원천행의_LH_행_구성이_바뀌면_그_행의_저장_매칭을_해제하고_구성이_같으면_유지한다() throws Exception {
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         var view = view();
         String myhomeRow = view.myhomeRows().getFirst().rowIdentifier();
         saveDecision(myhomeRow);
@@ -276,7 +279,7 @@ class LhSupplyLinkIntegrationTest {
                 .containsExactlyInAnyOrder("rowIdentifier", "complexId", "housingTypeId", "sourceUrl", "reason", "actor");
         assertThat(keys(matchRelease.after()))
                 .containsExactlyInAnyOrder("announcementIdentifier", "rowIdentifier", "reason");
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         assertThat(pendingMappingFailures()).isEmpty();
 
         saveDecision(myhomeRow);
@@ -296,7 +299,7 @@ class LhSupplyLinkIntegrationTest {
     @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
             executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void LH_원본행이_공급행에_붙지_않았으면_PDF_보정은_새_공급행을_거절한다() throws Exception {
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         long id = jdbc.sql("SELECT id FROM announcements").query(Long.class).single();
         var workspace = json.readTree(mvc.perform(get(correctionPath(id)).with(user("operator").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
@@ -332,7 +335,7 @@ class LhSupplyLinkIntegrationTest {
 
         // LH 행을 연결하고 다시 정제하면 그 LH 행이 공급행에 붙어 새 행 추가 제한이 풀린다.
         save(view(), "공고문 단지 목록 대조").andExpect(status().isOk());
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         mvc.perform(get(correctionPath(id)).with(user("operator").roles("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.unattachedLhSupplyRows").isEmpty());
@@ -343,7 +346,7 @@ class LhSupplyLinkIntegrationTest {
     @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
             executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void LH_수집_연결을_확정할_수_없는_공고도_공급정보_보정_작업실을_연다() throws Exception {
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         // 공고 등록 뒤 LH 수집 연결이 사라지면 LH 공급 원본을 고를 수 없다. 보정 작업실은 그래도 열려야 한다.
         jdbc.sql("DELETE FROM lh_announcement_collection_links").update();
         long id = jdbc.sql("SELECT id FROM announcements").query(Long.class).single();
@@ -356,11 +359,11 @@ class LhSupplyLinkIntegrationTest {
     @Test
     void 연결한_LH_원천이_바뀌면_재확인을_요구하고_다시_저장하면_재적용한다() throws Exception {
         save(view(), "공고문 단지 목록 대조").andExpect(status().isOk());
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         var stale = view();
         jdbc.sql("UPDATE lh_announcement_supply_rows SET supplied_unit_count = '13'").update();
 
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
         var changed = view();
         save(stale, "오래된 화면에서 저장").andExpect(status().isConflict());
 
@@ -368,8 +371,8 @@ class LhSupplyLinkIntegrationTest {
         assertThat(changed.lhRows().getFirst().linkedRowIdentifier()).isNull();
         assertThat(pendingEnrichmentFailures()).containsExactly("LH_SUPPLY_LINK_REVIEW_REQUIRED");
         save(changed, "변경된 모집수를 공고문 정정본으로 다시 확인함").andExpect(status().isOk());
-        mapping.mapAll();
-        enrichment.enrichAll();
+        owned(ownership, mapping::mapAll);
+        owned(ownership, enrichment::enrichAll);
         assertThat(pendingEnrichmentFailures()).isEmpty();
         assertThat(supplies.findAll()).singleElement()
                 .satisfies(row -> assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(13));
@@ -381,8 +384,8 @@ class LhSupplyLinkIntegrationTest {
         long linkId = linkId();
 
         var released = read(release(saved, "다른 단지로 잘못 연결함").andExpect(status().isOk()));
-        mapping.mapAll();
-        enrichment.enrichAll();
+        owned(ownership, mapping::mapAll);
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(released.lhRows().getFirst().savedLink()).isNull();
         assertThat(released.lhRows().getFirst().linkedRowIdentifier()).isNull();
@@ -433,11 +436,11 @@ class LhSupplyLinkIntegrationTest {
     /** 같은 공고에 두 번째 마이홈 원천행을 더하고 LH 공급행을 첫 원천행에 연결해 정제·보강까지 마친다. */
     private TwoSources linkFirstOfTwoSources() throws Exception {
         addSecondSource();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         var view = view();
         save(view, "공고문 단지 목록 대조").andExpect(status().isOk());
-        mapping.mapAll();
-        enrichment.enrichAll();
+        owned(ownership, mapping::mapAll);
+        owned(ownership, enrichment::enrichAll);
         var linked = new TwoSources(view.myhomeRows().getFirst().rowIdentifier(),
                 view.myhomeRows().getLast().rowIdentifier());
         assertThat(lhTargetRows()).containsExactly(linked.first());

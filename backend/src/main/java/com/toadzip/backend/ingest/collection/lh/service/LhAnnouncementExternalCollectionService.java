@@ -45,6 +45,7 @@ public class LhAnnouncementExternalCollectionService {
     private final MeterRegistry meterRegistry;
 
     public ExternalDataCollectionReport collect(ExternalDataSource targetSource) {
+        IngestExecutionScope.requireHeld();
         validateTargetSource(targetSource);
         log.info("{} 수집을 시작합니다.", targetSource.operation());
         ExternalDataCollectionReport report = collectAnnouncements(targetSource);
@@ -67,6 +68,7 @@ public class LhAnnouncementExternalCollectionService {
     public ExternalDataCollectionReport refresh(
             ExternalDataSource targetSource, String pblancId, UUID sourceExecutionId
     ) {
+        IngestExecutionScope.requireHeld();
         validateTargetSource(targetSource);
         validatePblancId(pblancId);
         log.info("{} 강제 갱신을 시작합니다: pblancId={}", targetSource.operation(), pblancId);

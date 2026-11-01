@@ -18,6 +18,7 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnou
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import java.util.List;
 import java.util.UUID;
 import java.time.Clock;
@@ -32,6 +33,7 @@ import tools.jackson.databind.json.JsonMapper;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 
+@ExtendWith(IngestExecutionExtension.class)
 @ExtendWith(MockitoExtension.class)
 class MyHomeAnnouncementSingleCollectionTest {
 

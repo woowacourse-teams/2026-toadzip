@@ -67,6 +67,7 @@ public class ShAnnouncementCollectionService {
     }
 
     public ExternalDataCollectionReport collect() {
+        IngestExecutionScope.requireHeld();
         LocalDate cutoff = LocalDate.MIN;
         if (lookbackDays > 0) {
             cutoff = LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))).minusDays(lookbackDays);

@@ -16,6 +16,7 @@ public class LhLeaseCatalogCollectionService {
     private final PagedSourceCollector pagedCollector;
 
     public ExternalDataCollectionReport collect(LhLeaseCatalogCollectionCommand request) {
+        IngestExecutionScope.requireHeld();
         IngestExecutionScope.beginWork("LH 임대 카탈로그", "페이지", -1);
         return pagedCollector.collectAndReport(collector, startedAt -> new LhLeaseCatalogCollectionRequest(
                 IngestExecutionScope.currentExecutionId().orElse(null), request.pageSize(), request.maxPages(),

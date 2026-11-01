@@ -33,11 +33,13 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
+import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
 import com.toadzip.backend.ingest.pipeline.repository.IngestExecutionOwnershipRepository;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionStateService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -58,6 +60,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -98,11 +101,12 @@ import tools.jackson.databind.json.JsonMapper;
 @Import({MyHomeAnnouncementCollectionService.class, PagedSourceCollector.class,
         ExternalDataRetryExecutor.class,
         SourceCollectionRecordService.class, MyHomeAnnouncementStorageService.class,
-        MyHomeAnnouncementLifecycleService.class,
+        MyHomeAnnouncementLifecycleService.class, DataPipelineExecutionLock.class,
         MyHomeAnnouncementRunRepository.class,
         IngestWriteOwnershipGuard.class,
         IngestExecutionOwnershipRepository.class, MyHomeAnnouncementCollector.class,
         MyHomeAnnouncementApiRepository.class})
+@ExtendWith(IngestExecutionExtension.class)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -187,7 +191,7 @@ class MyHomeAnnouncementStorageIntegrationTest {
             httpServer.expect(requestTo(url)).andRespond(withSuccess(
                     pageJson(1, row(announcementId, 1, "새 공고", "서울특별시")), MediaType.APPLICATION_JSON));
         }
-        try (var ignored = IngestExecutionScope.open(runId, null, null, null)) {
+        try (var ignored = IngestExecutionScope.open(runId, IngestExecutionScope.current().orElseThrow(), null, null)) {
             var result = batch.collect(new MyHomeAnnouncementCollectionCommand(2, 10));
             assertThat(result.storedRowCount()).isEqualTo(6);
             assertThat(result.failedRequestCount()).isOne();
@@ -931,7 +935,7 @@ class MyHomeAnnouncementStorageIntegrationTest {
                     row("20935", 2, "공고", "서울특별시")), MediaType.APPLICATION_JSON).createResponse(httpRequest);
         });
 
-        try (var ignored = IngestExecutionScope.open(null, monitor)) {
+        try (var ignored = IngestExecutionScope.open(IngestExecutionScope.current().orElseThrow(), monitor)) {
             if (totalCount == 2) {
                 assertThat(collect(request("01", 2))).isEqualTo(2);
                 assertThat(sourceRepository.count()).isOne();

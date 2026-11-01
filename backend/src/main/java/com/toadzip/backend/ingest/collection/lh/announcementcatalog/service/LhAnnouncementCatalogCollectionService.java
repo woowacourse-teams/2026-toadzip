@@ -18,6 +18,7 @@ public class LhAnnouncementCatalogCollectionService {
     private final PagedSourceCollector pagedCollector;
 
     public ExternalDataCollectionReport collect() {
+        IngestExecutionScope.requireHeld();
         IngestExecutionScope.beginWork("LH 공고 목록", "페이지", -1);
         return pagedCollector.collectAndReport(collector, startedAt -> new LhAnnouncementCatalogCollectionRequest(
                 IngestExecutionScope.currentExecutionId().orElse(null), PAGE_SIZE, MAX_PAGES, startedAt));
