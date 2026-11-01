@@ -1,5 +1,7 @@
 package com.toadzip.backend.ingest.mapping.dto;
 
+import com.toadzip.backend.ingest.domain.IngestStepReport;
+
 public record MyHomeAnnouncementMappingReport(
         int createdAnnouncementCount,
         int updatedAnnouncementCount,
@@ -9,7 +11,7 @@ public record MyHomeAnnouncementMappingReport(
         int unchangedSupplyRowCount,
         int deletedSupplyRowCount,
         int failedSourceRowCount
-) {
+) implements IngestStepReport {
 
     public MyHomeAnnouncementMappingReport {
         if (createdAnnouncementCount < 0
@@ -43,5 +45,16 @@ public record MyHomeAnnouncementMappingReport(
                 deletedSupplyRowCount + other.deletedSupplyRowCount,
                 failedSourceRowCount + other.failedSourceRowCount
         );
+    }
+
+    /** 정제하지 못한 원천행은 단계를 멈추지 않는 경고다. */
+    @Override
+    public int stepFailureCount() {
+        return 0;
+    }
+
+    @Override
+    public int stepWarningCount() {
+        return failedSourceRowCount;
     }
 }
