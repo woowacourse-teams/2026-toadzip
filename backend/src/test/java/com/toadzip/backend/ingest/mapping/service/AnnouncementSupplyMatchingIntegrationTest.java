@@ -1204,10 +1204,9 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 """).param(TARGET).query(String.class).list();
     }
 
-    /** 관리자 화면의 PDF 보정과 같은 경로로 공급행의 주택형 연결만 바꾼다. */
     @Test
-    @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
-    @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
+    @Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
+    @Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
             executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void PDF_보정에서_주택형_연결을_지우면_저장한_매칭도_해제한다() throws Exception {
         mapping.mapAll();
@@ -1222,6 +1221,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 .isZero();
     }
 
+    /** 관리자 화면의 PDF 보정과 같은 경로로 공급행의 주택형 연결만 바꾼다. */
     private void correctFromPdf(long announcementId, HousingType housingType) throws Exception {
         var state = json.readTree(mvc.perform(get("/api/admin/announcements/" + announcementId + "/json-corrections")
                 .with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
