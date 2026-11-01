@@ -193,8 +193,8 @@ public class AnnouncementSupplyMatchingService {
                         continue;
                     }
                     String before = json.writeValueAsString(savedMatches.view(data, false));
-                    var saved = savedMatches.confirm(data, match, request.sourceUrl().strip(), request.reason().strip(),
-                            actor);
+                    var saved = savedMatches.confirm(data, match.complex(), match.housingType(),
+                            request.sourceUrl().strip(), request.reason().strip(), actor);
                     changes.save(new AdminDataChange("ANNOUNCEMENT", announcement.getId(), "SAVE_SUPPLY_MATCH", actor,
                             before, json.writeValueAsString(Map.of("rowIdentifier", data.sourceSupplyRowIdentifier(),
                                     "decision", saved))));
@@ -311,7 +311,7 @@ public class AnnouncementSupplyMatchingService {
             if (match.failure() != null) {
                 continue;
             }
-            savedMatches.confirm(data, match, sourceUrl.strip(), reason.strip(), actor);
+            savedMatches.confirm(data, match.complex(), match.housingType(), sourceUrl.strip(), reason.strip(), actor);
         }
     }
 

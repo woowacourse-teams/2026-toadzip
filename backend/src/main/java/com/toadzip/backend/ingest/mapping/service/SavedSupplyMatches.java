@@ -1,12 +1,12 @@
 package com.toadzip.backend.ingest.mapping.service;
 
+import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.mapping.domain.AnnouncementSupplyMatchDecision;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SavedMatch;
 import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
-import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchResult;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -51,13 +51,13 @@ class SavedSupplyMatches {
     }
 
     /** 검증한 선택을 저장하고 저장한 내용을 돌려준다. 원천과 연결 대상의 지금 지문을 함께 남긴다. */
-    SavedMatch confirm(MyHomeSupplyRowMappingData data, MyHomeSupplyMatchResult match, String sourceUrl,
-            String reason, String actor) {
+    SavedMatch confirm(MyHomeSupplyRowMappingData data, HousingComplex complex, HousingType housingType,
+            String sourceUrl, String reason, String actor) {
         String rowIdentifier = data.sourceSupplyRowIdentifier();
         var decision = decisions.findByRowIdentifier(rowIdentifier)
                 .orElseGet(() -> new AnnouncementSupplyMatchDecision(rowIdentifier));
-        decision.confirm(match.complex().getId(), match.housingType().getId(), fingerprints.source(data),
-                fingerprints.target(match.housingType()), sourceUrl, reason, actor);
+        decision.confirm(complex.getId(), housingType.getId(), fingerprints.source(data),
+                fingerprints.target(housingType), sourceUrl, reason, actor);
         return savedMatchOf(decisions.saveAndFlush(decision), false);
     }
 
