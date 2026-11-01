@@ -20,6 +20,7 @@ import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.CollectedSourceRows;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementSupplySourceFixtures;
@@ -27,7 +28,7 @@ import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixture
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
 import com.toadzip.backend.ingest.collection.history.repository.SourceCollectionRecordRepository;
 import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecordService;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceSnapshot;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionLinkRepository;
@@ -301,11 +302,10 @@ class MyHomeAnnouncementMappingServiceTest {
         assertThat(lhSupplyRepository.findAll()).hasSize(1);
 
         lhSourceStore.replaceDetails("21026", lhRequestDescription("21026"), List.of(
-                new LhAnnouncementDetailSource(
-                        0, "21026", "ETC_INFO", null, null, null, null, null, null,
-                        null, null, null, null, null, null,
-                        null, null, null, null, null, null, null, null, null, null, null, null,
-                        "정정 사유", null)));
+                LhSourceViews.detail(0, "21026", new LhAnnouncementDetailSourceSnapshot(
+                        "ETC_INFO", null, null, null, null, null, null, null, null, null, null, null, null, null,
+                        null, null, null, null, null, null, null, null, null, null, null, null, null, null, "정정 사유",
+                        null))));
         service.registerAnnouncement("21026");
 
         assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement ->
@@ -1327,9 +1327,12 @@ class MyHomeAnnouncementMappingServiceTest {
             String supplyArea,
             String suppliedUnitCount
     ) {
-        LhAnnouncementSupplySource source = new LhAnnouncementSupplySource(
+        return LhAnnouncementSupplySource.read(
+                null,
                 sourceOrder,
                 panId,
+                LhAnnouncementQuery.requestHashOf(lhRequestDescription(panId)),
+                COLLECTED_AT,
                 new LhAnnouncementSupplySourceSnapshot(
                         complexLabel,
                         typeName,
@@ -1341,9 +1344,6 @@ class MyHomeAnnouncementMappingServiceTest {
                         null
                 )
         );
-        source.markCollectedAt(COLLECTED_AT);
-        source.assignRequestHash(LhAnnouncementQuery.requestHashOf(lhRequestDescription(panId)));
-        return source;
     }
 
     private String lhRequestDescription(String panId) {

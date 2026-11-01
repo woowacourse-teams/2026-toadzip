@@ -3,27 +3,28 @@ package com.toadzip.backend.ingest.collection.lh.leasecatalog.domain;
 import com.toadzip.backend.ingest.domain.SourceText;
 import java.time.Instant;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 
+/** 보강·단지 병합이 읽는 LH 임대 카탈로그 원천 하나. 저장된 행을 읽어 만든 뒤 바뀌지 않는다. */
 @Getter
-@NoArgsConstructor
 public class LhCatalogSource {
 
-    private Long id;
+    private final Long id;
 
-    private Integer sourceOrder;
-    private Instant collectedAt;
-    private String areaName;
-    private String supplyTypeName;
-    private String complexLabel;
-    private String complexTotalUnitCount;
-    private String exclusiveArea;
-    private String totalUnitCount;
-    private String depositText;
-    private String monthlyRentText;
+    private final Integer sourceOrder;
+    private final Instant collectedAt;
+    private final String areaName;
+    private final String supplyTypeName;
+    private final String complexLabel;
+    private final String complexTotalUnitCount;
+    private final String exclusiveArea;
+    private final String totalUnitCount;
+    private final String depositText;
+    private final String monthlyRentText;
 
-    public LhCatalogSource(int sourceOrder, LhCatalogSourceSnapshot snapshot) {
+    private LhCatalogSource(Long id, int sourceOrder, Instant collectedAt, LhCatalogSourceSnapshot snapshot) {
+        this.id = id;
         this.sourceOrder = sourceOrder;
+        this.collectedAt = collectedAt;
         areaName = SourceText.strippedOrNull(snapshot.areaName());
         supplyTypeName = SourceText.strippedOrNull(snapshot.supplyTypeName());
         complexLabel = SourceText.strippedOrNull(snapshot.complexLabel());
@@ -36,16 +37,6 @@ public class LhCatalogSource {
 
     public static LhCatalogSource read(Long id, int order, Instant collectedAt,
             LhCatalogSourceSnapshot snapshot) {
-        var source = new LhCatalogSource(order, snapshot);
-        source.id = id;
-        source.collectedAt = collectedAt;
-        return source;
-    }
-
-    public void markCollectedAt(Instant collectedAt) {
-        if (collectedAt == null) {
-            throw new IllegalArgumentException("수집 시각은 필수입니다.");
-        }
-        this.collectedAt = collectedAt;
+        return new LhCatalogSource(id, order, collectedAt, snapshot);
     }
 }

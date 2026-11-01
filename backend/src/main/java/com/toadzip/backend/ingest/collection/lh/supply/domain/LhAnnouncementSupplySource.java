@@ -3,30 +3,35 @@ package com.toadzip.backend.ingest.collection.lh.supply.domain;
 import com.toadzip.backend.ingest.domain.SourceText;
 import java.time.Instant;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 
+/** 정제·보강이 읽는 LH 공급행 원천 하나. 저장된 행을 읽어 만든 뒤 바뀌지 않는다. */
 @Getter
-@NoArgsConstructor
 public class LhAnnouncementSupplySource {
 
-    private Long id;
+    private final Long id;
 
-    private Integer sourceOrder;
-    private Instant collectedAt;
-    private String panId;
-    private String requestHash;
-    private String complexLabel;
-    private String typeName;
-    private String exclusiveArea;
-    private String supplyArea;
-    private String totalUnitCount;
-    private String suppliedUnitCount;
-    private String depositText;
-    private String monthlyRentText;
+    private final Integer sourceOrder;
+    private final Instant collectedAt;
+    private final String panId;
+    private final String requestHash;
+    private final String complexLabel;
+    private final String typeName;
+    private final String exclusiveArea;
+    private final String supplyArea;
+    private final String totalUnitCount;
+    private final String suppliedUnitCount;
+    private final String depositText;
+    private final String monthlyRentText;
 
-    public LhAnnouncementSupplySource(int sourceOrder, String panId, LhAnnouncementSupplySourceSnapshot snapshot) {
+    private LhAnnouncementSupplySource(
+            Long id, int sourceOrder, String panId, String requestHash, Instant collectedAt,
+            LhAnnouncementSupplySourceSnapshot snapshot
+    ) {
+        this.id = id;
         this.sourceOrder = sourceOrder;
         this.panId = SourceText.strippedOrNull(panId);
+        this.requestHash = requestHash;
+        this.collectedAt = collectedAt;
         complexLabel = SourceText.strippedOrNull(snapshot.complexLabel());
         typeName = SourceText.strippedOrNull(snapshot.typeName());
         exclusiveArea = SourceText.strippedOrNull(snapshot.exclusiveArea());
@@ -41,24 +46,6 @@ public class LhAnnouncementSupplySource {
             Long id, int order, String panId, String requestHash, Instant collectedAt,
             LhAnnouncementSupplySourceSnapshot snapshot
     ) {
-        var source = new LhAnnouncementSupplySource(order, panId, snapshot);
-        source.id = id;
-        source.requestHash = requestHash;
-        source.collectedAt = collectedAt;
-        return source;
-    }
-
-    public void markCollectedAt(Instant collectedAt) {
-        if (collectedAt == null) {
-            throw new IllegalArgumentException("수집 시각은 필수입니다.");
-        }
-        this.collectedAt = collectedAt;
-    }
-
-    public void assignRequestHash(String requestHash) {
-        if (requestHash == null || requestHash.isBlank()) {
-            throw new IllegalArgumentException("LH 조회 조건 해시는 필수입니다.");
-        }
-        this.requestHash = requestHash;
+        return new LhAnnouncementSupplySource(id, order, panId, requestHash, collectedAt, snapshot);
     }
 }

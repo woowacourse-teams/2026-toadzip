@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.housing.domain.AgencyCode;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver;
@@ -295,7 +296,7 @@ class MyHomeAnnouncementSupplyRowResolverTest {
 
     private LhAnnouncementSupplySource lhSupply(int order, String complexName, String typeName,
             String exclusiveArea, String supplyArea, String suppliedCount) {
-        return new LhAnnouncementSupplySource(order, "pan-id", new LhAnnouncementSupplySourceSnapshot(
+        return LhSourceViews.supply(order, "pan-id", new LhAnnouncementSupplySourceSnapshot(
                 complexName, typeName, exclusiveArea, supplyArea, null, suppliedCount, null, null));
     }
 
@@ -304,7 +305,7 @@ class MyHomeAnnouncementSupplyRowResolverTest {
     }
 
     private LhAnnouncementSupplySource lhSupply(String complexName, String panId, String typeName) {
-        return new LhAnnouncementSupplySource(
+        return LhSourceViews.supply(
                 0,
                 panId,
                 new LhAnnouncementSupplySourceSnapshot(

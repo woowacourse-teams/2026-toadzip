@@ -1,8 +1,8 @@
 package com.toadzip.backend.ingest.collection.lh.dto;
 
+import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import java.net.URI;
 import java.util.Optional;
-import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -14,7 +14,7 @@ public record LhAnnouncementRequest(
         String supplyInfoTypeCode
 ) {
 
-    private static final int COLLECTION_VERSION = 6;
+    public static final int COLLECTION_VERSION = 6;
 
     public static Optional<LhAnnouncementRequest> from(URI detailUrl, String supplyInfoTypeCode) {
         MultiValueMap<String, String> query = UriComponentsBuilder.fromUri(detailUrl)
@@ -36,35 +36,14 @@ public record LhAnnouncementRequest(
         ));
     }
 
-    public MultiValueMap<String, String> toParams() {
-        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("PAN_ID", panId);
-        params.add("CCR_CNNT_SYS_DS_CD", connectionSystemDivisionCode);
-        params.add("UPP_AIS_TP_CD", upperAnnouncementTypeCode);
-        if (announcementTypeCode != null) {
-            params.add("AIS_TP_CD", announcementTypeCode);
-        }
-        params.add("SPL_INF_TP_CD", supplyInfoTypeCode);
-        return params;
+    /** 이 요청이 외부 API에 보내는 조회 조건. 파라미터와 요청 설명은 조회 조건 하나에서 만든다. */
+    public LhAnnouncementQuery query() {
+        return new LhAnnouncementQuery(panId, connectionSystemDivisionCode, upperAnnouncementTypeCode,
+                announcementTypeCode, supplyInfoTypeCode);
     }
 
     public String requestDescription() {
-        return unversionedRequestDescription() + "&COLLECTION_VERSION=" + COLLECTION_VERSION;
-    }
-
-    private String unversionedRequestDescription() {
-        String description = baseRequestDescription();
-        if (announcementTypeCode == null) {
-            return description;
-        }
-        return description + "&AIS_TP_CD=" + announcementTypeCode;
-    }
-
-    private String baseRequestDescription() {
-        return "PAN_ID=" + panId
-                + "&CCR_CNNT_SYS_DS_CD=" + connectionSystemDivisionCode
-                + "&UPP_AIS_TP_CD=" + upperAnnouncementTypeCode
-                + "&SPL_INF_TP_CD=" + supplyInfoTypeCode;
+        return query().description(COLLECTION_VERSION);
     }
 
     private static boolean isBlank(String value) {

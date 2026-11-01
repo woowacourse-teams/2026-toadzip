@@ -80,12 +80,8 @@ class DataPipelineExecutionRepositoryTest {
         executionRepository.updateHeartbeat(refreshedRowId, now.minusSeconds(30));
         entityManager.clear();
 
-        assertThat(executionStateService.recoverInterrupted(
-                refreshedId, now.minusSeconds(120), now, "중단 복구"
-        )).isFalse();
-        assertThat(executionStateService.recoverInterrupted(
-                completedId, now.minusSeconds(120), now, "중단 복구"
-        )).isFalse();
+        executionStateService.recoverInterruptedBefore(now.minusSeconds(120), now, "중단 복구");
+
         assertThat(executionRepository.findByExecutionId(refreshedId).orElseThrow())
                 .satisfies(execution -> {
                     assertThat(execution.getStatus()).isEqualTo(DataPipelineExecutionStatus.RUNNING);

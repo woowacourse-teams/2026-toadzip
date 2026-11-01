@@ -87,18 +87,6 @@ public interface DataPipelineExecutionRepository
             """)
     List<DataPipelineExecution> findTerminalWithRunningCollectionsForUpdate();
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("""
-            select execution from DataPipelineExecution execution
-            where execution.executionId = :executionId
-              and execution.status = com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus.RUNNING
-              and execution.heartbeatAt < :cutoff
-            """)
-    Optional<DataPipelineExecution> findInterruptedForUpdate(
-            @Param("executionId") UUID executionId,
-            @Param("cutoff") Instant cutoff
-    );
-
     @Modifying
     @Transactional
     @Query("""

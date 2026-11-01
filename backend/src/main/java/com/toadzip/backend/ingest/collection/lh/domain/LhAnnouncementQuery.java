@@ -44,6 +44,11 @@ public record LhAnnouncementQuery(
         return description;
     }
 
+    /** 수집 버전까지 붙인 요청 설명. 수집 기록과 진행 상태가 이 문자열로 같은 요청을 찾는다. */
+    public String description(int collectionVersion) {
+        return description() + "&COLLECTION_VERSION=" + collectionVersion;
+    }
+
     public String identityHash() {
         return requestHashOf(description());
     }

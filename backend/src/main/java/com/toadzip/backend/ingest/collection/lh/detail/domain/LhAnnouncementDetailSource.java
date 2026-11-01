@@ -1,181 +1,103 @@
 package com.toadzip.backend.ingest.collection.lh.detail.domain;
 
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceSnapshot;
 import com.toadzip.backend.ingest.domain.SourceText;
 import java.time.Instant;
-import java.util.Objects;
-import java.util.stream.Stream;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 
+/** 보강이 읽는 LH 공고 상세 원천 행 하나. 저장된 행을 읽어 만든 뒤 바뀌지 않는다. */
 @Getter
-@NoArgsConstructor
 public class LhAnnouncementDetailSource {
 
-    private Long id;
+    private final Long id;
 
-    private Integer sourceOrder;
-    private Instant collectedAt;
-    private String panId;
-    private String requestHash;
-    private String datasetType;
-    private String complexName;
-    private String address;
-    private String detailAddress;
-    private String totalUnitCount;
-    private String heatingDescription;
-    private String exclusiveAreaRange;
-    private String expectedMoveInYearMonth;
+    private final Integer sourceOrder;
+    private final Instant collectedAt;
+    private final String panId;
+    private final String requestHash;
+    private final String datasetType;
+    private final String complexName;
+    private final String address;
+    private final String detailAddress;
+    private final String totalUnitCount;
+    private final String heatingDescription;
+    private final String exclusiveAreaRange;
+    private final String expectedMoveInYearMonth;
 
-    private String guidanceText;
+    private final String guidanceText;
 
-    private String applicationPeriod;
-    private String applicationBeginDate;
-    private String applicationEndDate;
-    private String winnerAnnouncementDate;
-    private String documentTargetAnnouncementDate;
-    private String documentSubmissionBeginDate;
-    private String documentSubmissionEndDate;
-    private String contractBeginDate;
-    private String contractEndDate;
-    private String receptionAddress;
-    private String receptionDetailAddress;
-    private String operationBegin;
-    private String operationEnd;
-    private String phone;
+    private final String applicationPeriod;
+    private final String applicationBeginDate;
+    private final String applicationEndDate;
+    private final String winnerAnnouncementDate;
+    private final String documentTargetAnnouncementDate;
+    private final String documentSubmissionBeginDate;
+    private final String documentSubmissionEndDate;
+    private final String contractBeginDate;
+    private final String contractEndDate;
+    private final String receptionAddress;
+    private final String receptionDetailAddress;
+    private final String operationBegin;
+    private final String operationEnd;
+    private final String phone;
 
-    private String receptionGuidance;
+    private final String receptionGuidance;
 
-    private String kind;
-    private String name;
+    private final String kind;
+    private final String name;
 
-    private String url;
+    private final String url;
 
-    private String attachmentComplexName;
+    private final String attachmentComplexName;
 
-    private String correctionReason;
+    private final String correctionReason;
 
-    private String etcContents;
+    private final String etcContents;
 
-    public LhAnnouncementDetailSource(
-            int sourceOrder,
-            String panId,
-            String datasetType,
-            String complexName,
-            String address,
-            String detailAddress,
-            String totalUnitCount,
-            String heatingDescription,
-            String exclusiveAreaRange,
-            String expectedMoveInYearMonth,
-            String guidanceText,
-            String applicationPeriod,
-            String documentTargetAnnouncementDate,
-            String documentSubmissionBeginDate,
-            String documentSubmissionEndDate,
-            String contractBeginDate,
-            String contractEndDate,
-            String receptionAddress,
-            String receptionDetailAddress,
-            String operationBegin,
-            String operationEnd,
-            String phone,
-            String receptionGuidance,
-            String kind,
-            String name,
-            String url,
-            String attachmentComplexName,
-            String correctionReason,
-            String etcContents
+    private LhAnnouncementDetailSource(
+            Long id, int sourceOrder, String panId, String requestHash, Instant collectedAt,
+            LhAnnouncementDetailSourceSnapshot snapshot
     ) {
+        this.id = id;
         this.sourceOrder = sourceOrder;
         this.panId = SourceText.strippedOrNull(panId);
-        this.datasetType = SourceText.strippedOrNull(datasetType);
-        this.complexName = SourceText.strippedOrNull(complexName);
-        this.address = SourceText.strippedOrNull(address);
-        this.detailAddress = SourceText.strippedOrNull(detailAddress);
-        this.totalUnitCount = SourceText.strippedOrNull(totalUnitCount);
-        this.heatingDescription = SourceText.strippedOrNull(heatingDescription);
-        this.exclusiveAreaRange = SourceText.strippedOrNull(exclusiveAreaRange);
-        this.expectedMoveInYearMonth = SourceText.strippedOrNull(expectedMoveInYearMonth);
-        this.guidanceText = SourceText.strippedOrNull(guidanceText);
-        this.applicationPeriod = SourceText.strippedOrNull(applicationPeriod);
-        this.documentTargetAnnouncementDate = SourceText.strippedOrNull(documentTargetAnnouncementDate);
-        this.documentSubmissionBeginDate = SourceText.strippedOrNull(documentSubmissionBeginDate);
-        this.documentSubmissionEndDate = SourceText.strippedOrNull(documentSubmissionEndDate);
-        this.contractBeginDate = SourceText.strippedOrNull(contractBeginDate);
-        this.contractEndDate = SourceText.strippedOrNull(contractEndDate);
-        this.receptionAddress = SourceText.strippedOrNull(receptionAddress);
-        this.receptionDetailAddress = SourceText.strippedOrNull(receptionDetailAddress);
-        this.operationBegin = SourceText.strippedOrNull(operationBegin);
-        this.operationEnd = SourceText.strippedOrNull(operationEnd);
-        this.phone = SourceText.strippedOrNull(phone);
-        this.receptionGuidance = SourceText.strippedOrNull(receptionGuidance);
-        this.kind = SourceText.strippedOrNull(kind);
-        this.name = SourceText.strippedOrNull(name);
-        this.url = SourceText.strippedOrNull(url);
-        this.attachmentComplexName = SourceText.strippedOrNull(attachmentComplexName);
-        this.correctionReason = SourceText.strippedOrNull(correctionReason);
-        this.etcContents = SourceText.strippedOrNull(etcContents);
+        this.requestHash = requestHash;
+        this.collectedAt = collectedAt;
+        datasetType = SourceText.strippedOrNull(snapshot.datasetType());
+        complexName = SourceText.strippedOrNull(snapshot.complexName());
+        address = SourceText.strippedOrNull(snapshot.address());
+        detailAddress = SourceText.strippedOrNull(snapshot.detailAddress());
+        totalUnitCount = SourceText.strippedOrNull(snapshot.totalUnitCount());
+        heatingDescription = SourceText.strippedOrNull(snapshot.heatingDescription());
+        exclusiveAreaRange = SourceText.strippedOrNull(snapshot.exclusiveAreaRange());
+        expectedMoveInYearMonth = SourceText.strippedOrNull(snapshot.expectedMoveInYearMonth());
+        guidanceText = SourceText.strippedOrNull(snapshot.guidanceText());
+        applicationPeriod = SourceText.strippedOrNull(snapshot.applicationPeriod());
+        applicationBeginDate = SourceText.strippedOrNull(snapshot.applicationBeginDate());
+        applicationEndDate = SourceText.strippedOrNull(snapshot.applicationEndDate());
+        winnerAnnouncementDate = SourceText.strippedOrNull(snapshot.winnerAnnouncementDate());
+        documentTargetAnnouncementDate = SourceText.strippedOrNull(snapshot.documentTargetAnnouncementDate());
+        documentSubmissionBeginDate = SourceText.strippedOrNull(snapshot.documentSubmissionBeginDate());
+        documentSubmissionEndDate = SourceText.strippedOrNull(snapshot.documentSubmissionEndDate());
+        contractBeginDate = SourceText.strippedOrNull(snapshot.contractBeginDate());
+        contractEndDate = SourceText.strippedOrNull(snapshot.contractEndDate());
+        receptionAddress = SourceText.strippedOrNull(snapshot.receptionAddress());
+        receptionDetailAddress = SourceText.strippedOrNull(snapshot.receptionDetailAddress());
+        operationBegin = SourceText.strippedOrNull(snapshot.operationBegin());
+        operationEnd = SourceText.strippedOrNull(snapshot.operationEnd());
+        phone = SourceText.strippedOrNull(snapshot.phone());
+        receptionGuidance = SourceText.strippedOrNull(snapshot.receptionGuidance());
+        kind = SourceText.strippedOrNull(snapshot.kind());
+        name = SourceText.strippedOrNull(snapshot.name());
+        url = SourceText.strippedOrNull(snapshot.url());
+        attachmentComplexName = SourceText.strippedOrNull(snapshot.attachmentComplexName());
+        correctionReason = SourceText.strippedOrNull(snapshot.correctionReason());
+        etcContents = SourceText.strippedOrNull(snapshot.etcContents());
     }
 
     public static LhAnnouncementDetailSource read(
             Long id, int order, String panId, String requestHash, Instant collectedAt,
             LhAnnouncementDetailSourceSnapshot snapshot
     ) {
-        var source = new LhAnnouncementDetailSource(order, panId, snapshot.datasetType(), snapshot.complexName(),
-                snapshot.address(), snapshot.detailAddress(), snapshot.totalUnitCount(), snapshot.heatingDescription(),
-                snapshot.exclusiveAreaRange(), snapshot.expectedMoveInYearMonth(), snapshot.guidanceText(),
-                snapshot.applicationPeriod(), snapshot.documentTargetAnnouncementDate(),
-                snapshot.documentSubmissionBeginDate(), snapshot.documentSubmissionEndDate(),
-                        snapshot.contractBeginDate(),
-                snapshot.contractEndDate(), snapshot.receptionAddress(), snapshot.receptionDetailAddress(),
-                snapshot.operationBegin(), snapshot.operationEnd(), snapshot.phone(), snapshot.receptionGuidance(),
-                snapshot.kind(), snapshot.name(), snapshot.url(), snapshot.attachmentComplexName(),
-                snapshot.correctionReason(), snapshot.etcContents());
-        source.id = id;
-        source.requestHash = requestHash;
-        source.collectedAt = collectedAt;
-        source.applicationBeginDate = SourceText.strippedOrNull(snapshot.applicationBeginDate());
-        source.applicationEndDate = SourceText.strippedOrNull(snapshot.applicationEndDate());
-        source.winnerAnnouncementDate = SourceText.strippedOrNull(snapshot.winnerAnnouncementDate());
-        return source;
-    }
-
-    public void markCollectedAt(Instant collectedAt) {
-        if (collectedAt == null) {
-            throw new IllegalArgumentException("수집 시각은 필수입니다.");
-        }
-        this.collectedAt = collectedAt;
-    }
-
-    public void assignScheduleDates(
-            String applicationBeginDate, String applicationEndDate, String winnerAnnouncementDate
-    ) {
-        if (!"SCHEDULE".equals(datasetType)) {
-            throw new IllegalStateException("일정 원천에만 접수·당첨자 발표일을 지정할 수 있습니다.");
-        }
-        this.applicationBeginDate = SourceText.strippedOrNull(applicationBeginDate);
-        this.applicationEndDate = SourceText.strippedOrNull(applicationEndDate);
-        this.winnerAnnouncementDate = SourceText.strippedOrNull(winnerAnnouncementDate);
-    }
-
-    public void assignRequestHash(String requestHash) {
-        if (requestHash == null || requestHash.isBlank()) {
-            throw new IllegalArgumentException("LH 조회 조건 해시는 필수입니다.");
-        }
-        this.requestHash = requestHash;
-    }
-
-    public boolean hasContent() {
-        return Stream.of(
-                complexName, address, detailAddress, totalUnitCount, heatingDescription,
-                exclusiveAreaRange, expectedMoveInYearMonth, guidanceText, applicationPeriod,
-                applicationBeginDate, applicationEndDate, winnerAnnouncementDate,
-                documentTargetAnnouncementDate, documentSubmissionBeginDate, documentSubmissionEndDate,
-                contractBeginDate, contractEndDate, receptionAddress, receptionDetailAddress,
-                operationBegin, operationEnd, phone, receptionGuidance, kind, name, url,
-                attachmentComplexName, correctionReason, etcContents
-        ).anyMatch(Objects::nonNull);
+        return new LhAnnouncementDetailSource(id, order, panId, requestHash, collectedAt, snapshot);
     }
 }

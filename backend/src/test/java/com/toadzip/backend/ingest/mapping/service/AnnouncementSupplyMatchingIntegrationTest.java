@@ -19,10 +19,11 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceSnapshot;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
@@ -121,7 +122,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate)
                 candidateResolver.resolve(sources.findAll().getFirst());
         lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of(
-                new LhAnnouncementSupplySource(0,
+                LhSourceViews.supply(0,
                         candidate.panId(), new LhAnnouncementSupplySourceSnapshot(
                         "익산한스빌", "26A,B", "26.5195", null, "529", "170", "4076000", "72820"))));
         mapping.mapAll();
@@ -255,7 +256,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     private LhAnnouncementSupplySource lhSupplyRow(int order,
             String panId, String typeName, String area, String supplied) {
-        return new LhAnnouncementSupplySource(order, panId,
+        return LhSourceViews.supply(order, panId,
                 new LhAnnouncementSupplySourceSnapshot(
                         "익산한스빌", typeName, area, null, "529", supplied, "4076000", "72820"));
     }
@@ -480,11 +481,11 @@ class AnnouncementSupplyMatchingIntegrationTest {
         sources.save(source);
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
         // 공식 화면의 단지명·주소만 LH 상세 형식에 담는다. LH 공급 보강은 없는 상태로 재현한다.
-        lhStorage.replaceDetails(candidate.panId(), candidate.requestDescription(), List.of(new LhAnnouncementDetailSource(
-                0, candidate.panId(), "COMPLEX", notice.get("complexName").asText(),
-                notice.get("roadAddress").asText(), null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null)));
+        lhStorage.replaceDetails(candidate.panId(), candidate.requestDescription(), List.of(LhSourceViews.detail(0, candidate.panId(),
+                new LhAnnouncementDetailSourceSnapshot(
+                "COMPLEX", notice.get("complexName").asText(), notice.get("roadAddress").asText(), null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null))));
         lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of());
         for (var target : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
             progressStore.complete(target, TARGET, candidate.requestDescription(), candidate.panId());
@@ -1031,10 +1032,10 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07");
         sources.save(source);
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
-        lhStorage.replaceDetails(candidate.panId(), candidate.requestDescription(), List.of(new LhAnnouncementDetailSource(
-                0, candidate.panId(), "COMPLEX", "익산한스빌", "익산시 목천로 30-14", null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null)));
+        lhStorage.replaceDetails(candidate.panId(), candidate.requestDescription(), List.of(LhSourceViews.detail(0, candidate.panId(),
+                new LhAnnouncementDetailSourceSnapshot(
+                "COMPLEX", "익산한스빌", "익산시 목천로 30-14", null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null))));
         lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of());
         for (var target : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
             progressStore.complete(target, TARGET, candidate.requestDescription(), candidate.panId());
@@ -1046,7 +1047,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(pendingFailureReasons()).isEmpty();
         // 군산 공고처럼 공고 등록 뒤 수집한 LH 공급 원본의 단지명 표기가 공고 공급행과 달라 LH 보강에서 단지를 찾지 못한다.
         lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of(
-                new LhAnnouncementSupplySource(0, candidate.panId(),
+                LhSourceViews.supply(0, candidate.panId(),
                         new LhAnnouncementSupplySourceSnapshot(
                                 "군산한스빌", "39", "39.9500", null, "717", "100", "공고문 참조", "공고문 참조"))));
         var before = supplies.findAll().getFirst();

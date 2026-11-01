@@ -6,7 +6,9 @@ import static org.assertj.core.groups.Tuple.tuple;
 
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.ingest.collection.fixture.LhAnnouncementDetailFixtures;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceSnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
@@ -269,11 +271,10 @@ class LhAnnouncementEnrichmentMapperTest {
     }
 
     private LhAnnouncementDetailSource complexDetail(int order, String complexName, String expectedMoveInYearMonth) {
-        return new LhAnnouncementDetailSource(
-                order, PAN_ID, "COMPLEX", complexName, null, null, null, null, null,
-                expectedMoveInYearMonth, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null
-        );
+        return LhSourceViews.detail(order, PAN_ID, new LhAnnouncementDetailSourceSnapshot(
+                "COMPLEX", complexName, null, null, null, null, null, expectedMoveInYearMonth, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null));
     }
 
     private LhAnnouncementSupplySource supply(int order, String complexName, String housingTypeName) {
@@ -289,7 +290,7 @@ class LhAnnouncementEnrichmentMapperTest {
             String deposit,
             String rent
     ) {
-        return new LhAnnouncementSupplySource(order, PAN_ID, new LhAnnouncementSupplySourceSnapshot(
+        return LhSourceViews.supply(order, PAN_ID, new LhAnnouncementSupplySourceSnapshot(
                 complexName, housingTypeName, null, null, totalUnitCount, suppliedUnitCount, deposit, rent
         ));
     }

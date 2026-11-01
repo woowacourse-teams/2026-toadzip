@@ -18,10 +18,10 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
@@ -268,10 +268,8 @@ class QualityComparisonIntegrationTest {
     }
 
     private long catalogRow(String name, String deposit) {
-        var row = new LhCatalogSource(0,
-                new LhCatalogSourceSnapshot(
-                        "서울 중구", "행복주택", name, "120", "26.12", "10", deposit, "100000"));
-        row.markCollectedAt(Instant.parse("2026-10-15T00:00:00Z"));
+        var row = LhSourceViews.catalog(0, Instant.parse("2026-10-15T00:00:00Z"), new LhCatalogSourceSnapshot(
+                "서울 중구", "행복주택", name, "120", "26.12", "10", deposit, "100000"));
         return catalogRows.save(row).getId();
     }
 

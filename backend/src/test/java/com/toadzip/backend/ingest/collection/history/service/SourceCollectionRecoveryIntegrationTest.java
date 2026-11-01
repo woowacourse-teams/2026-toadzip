@@ -224,7 +224,7 @@ class SourceCollectionRecoveryIntegrationTest {
         Long sourceId = source.getId();
         entityManager.clear();
 
-        assertThat(states.recoverInterrupted(executionId, cutoff(), RECOVERED_AT, RECOVERY_REASON)).isTrue();
+        assertThat(states.recoverInterruptedBefore(cutoff(), RECOVERED_AT, RECOVERY_REASON)).isPositive();
         entityManager.clear();
 
         assertThat(records.findById(running.getId()).orElseThrow()).satisfies(found -> {
@@ -262,7 +262,6 @@ class SourceCollectionRecoveryIntegrationTest {
         assertThat(records.findById(first.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.FAILED);
         assertThat(records.findById(second.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.FAILED);
         assertThat(records.findById(fresh.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.RUNNING);
-        assertThat(states.recoverInterrupted(freshId, cutoff(), RECOVERED_AT, RECOVERY_REASON)).isFalse();
     }
 
     @Test
@@ -271,7 +270,7 @@ class SourceCollectionRecoveryIntegrationTest {
         UUID executionId = execution(STARTED_AT);
         var stale = record(executionId, STARTED_AT);
         try {
-            assertThat(states.recoverInterrupted(executionId, cutoff(), RECOVERED_AT, RECOVERY_REASON)).isTrue();
+            assertThat(states.recoverInterruptedBefore(cutoff(), RECOVERED_AT, RECOVERY_REASON)).isPositive();
             stale.complete(RECOVERED_AT.plusSeconds(1), 1);
 
             assertThatThrownBy(() -> records.saveAndFlush(stale))
@@ -289,8 +288,8 @@ class SourceCollectionRecoveryIntegrationTest {
         UUID executionId = execution(STARTED_AT);
         var running = record(executionId, RECOVERED_AT.plusSeconds(1));
         try {
-            assertThatThrownBy(() -> states.recoverInterrupted(
-                    executionId, cutoff(), RECOVERED_AT, RECOVERY_REASON)).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> states.recoverInterruptedBefore(
+                    cutoff(), RECOVERED_AT, RECOVERY_REASON)).isInstanceOf(IllegalArgumentException.class);
             assertThat(executions.findByExecutionId(executionId).orElseThrow().getStatus())
                     .isEqualTo(DataPipelineExecutionStatus.RUNNING);
             assertThat(records.findById(running.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.RUNNING);

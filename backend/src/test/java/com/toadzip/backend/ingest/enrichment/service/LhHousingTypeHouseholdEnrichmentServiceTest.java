@@ -7,6 +7,7 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
@@ -267,11 +268,10 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
             int typeCount,
             String complexName
     ) {
-        LhCatalogSource source = new LhCatalogSource(order, new LhCatalogSourceSnapshot(
-                "서울", supplyType, complexName, String.valueOf(complexCount), area,
-                String.valueOf(typeCount), null, null
-        ));
-        source.markCollectedAt(Instant.parse("2026-09-01T00:00:00Z"));
+        LhCatalogSource source = LhSourceViews.catalog(order, Instant.parse("2026-09-01T00:00:00Z"),
+                new LhCatalogSourceSnapshot(
+                "서울", supplyType, complexName, String.valueOf(complexCount), area, String.valueOf(typeCount), null,
+                null));
         sourceRepository.save(source);
     }
 

@@ -12,6 +12,7 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
@@ -180,9 +181,9 @@ class LhHouseholdTargetDecisionIntegrationTest {
     private void group(String label, List<String> counts) {
         List<LhCatalogSource> rows = new ArrayList<>();
         for (int index = 0; index < AREAS.size(); index++) {
-            var source = new LhCatalogSource(order++, new LhCatalogSourceSnapshot("경상남도 남해군", "국민임대", label,
-                    "353", AREAS.get(index), counts.get(index), null, null));
-            source.markCollectedAt(Instant.parse("2026-10-24T00:00:00Z"));
+            var source = LhSourceViews.catalog(order++, Instant.parse("2026-10-24T00:00:00Z"),
+                    new LhCatalogSourceSnapshot(
+                    "경상남도 남해군", "국민임대", label, "353", AREAS.get(index), counts.get(index), null, null));
             rows.add(source);
         }
         lhSources.saveAll(rows);

@@ -1,12 +1,18 @@
 package com.toadzip.backend.ingest.collection.fixture.repository;
 
 import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceSnapshot;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
+import org.springframework.jdbc.core.DataClassRowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional
 public class LhAnnouncementDetailSourceFixtures {
+    private static final DataClassRowMapper<LhAnnouncementDetailSourceSnapshot> SNAPSHOTS = new DataClassRowMapper<>(LhAnnouncementDetailSourceSnapshot.class);
+
     private final CollectedSourceRows rows;
     private final JdbcClient jdbc;
 
@@ -39,7 +47,7 @@ public class LhAnnouncementDetailSourceFixtures {
                 SELECT r.*, q.pan_id, q.request_hash
                 FROM lh_announcement_detail_rows r JOIN lh_announcement_query_sources q ON q.id = r.source_id
                 ORDER BY r.id
-                """).query(LhAnnouncementDetailSource.class).list();
+                """).query(this::read).list();
     }
 
     @Transactional(readOnly = true)
@@ -81,4 +89,14 @@ public class LhAnnouncementDetailSourceFixtures {
         deleteAll(findAllByPanIdAndRequestHashOrderBySourceOrderAsc(pan, hash));
     }
 
+    private LhAnnouncementDetailSource read(ResultSet row, int number) throws SQLException {
+        return LhAnnouncementDetailSource.read(row.getLong("id"), row.getInt("source_order"), row.getString("pan_id"),
+                row.getString("request_hash"), collectedAt(row),
+                SNAPSHOTS.mapRow(row, number));
+    }
+
+    private static Instant collectedAt(ResultSet row) throws SQLException {
+        OffsetDateTime collectedAt = row.getObject("collected_at", OffsetDateTime.class);
+        return collectedAt == null ? null : collectedAt.toInstant();
+    }
 }

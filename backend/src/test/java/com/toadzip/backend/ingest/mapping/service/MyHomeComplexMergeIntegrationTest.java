@@ -27,6 +27,7 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.ComplexDetailQueryRepository;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
@@ -134,9 +135,8 @@ class MyHomeComplexMergeIntegrationTest {
                 source(31713154L, 1, "51", "51.5017", "18.8617"),
                 source(31713153L, 4, "59", "59.0000", "20.0000")
         ));
-        LhCatalogSource lh = new LhCatalogSource(1, new LhCatalogSourceSnapshot(
+        LhCatalogSource lh = LhSourceViews.catalog(1, COLLECTED_AT, new LhCatalogSourceSnapshot(
                 "인천", "행복주택", NAME, "11", "51.5017", "7", null, null));
-        lh.markCollectedAt(COLLECTED_AT);
         lhId = lhSources.save(lh).getId();
         mapping.mapAll();
         ids = complexes.findAll().stream().map(HousingComplex::getId).sorted().toList();

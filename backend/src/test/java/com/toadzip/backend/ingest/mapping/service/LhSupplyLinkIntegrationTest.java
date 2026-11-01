@@ -15,13 +15,13 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceSnapshot;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
@@ -87,12 +87,13 @@ class LhSupplyLinkIntegrationTest {
         var source = sources.save(source());
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
         panId = candidate.panId();
-        lhStorage.replaceDetails(panId, candidate.requestDescription(), List.of(new LhAnnouncementDetailSource(
-                0, panId, "COMPLEX", "전주평화4 영구임대주택", "전북특별자치도 전주시 완산구 평화로 1",
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null)));
+        lhStorage.replaceDetails(panId, candidate.requestDescription(), List.of(LhSourceViews.detail(0, panId,
+                new LhAnnouncementDetailSourceSnapshot(
+                "COMPLEX", "전주평화4 영구임대주택", "전북특별자치도 전주시 완산구 평화로 1", null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null))));
         // LH 표기가 마이홈 단지명과 다르고 모집수도 달라 자동 연결 규칙으로는 이을 수 없다.
-        lhStorage.replaceSupplies(panId, candidate.requestDescription(), List.of(new LhAnnouncementSupplySource(0,
+        lhStorage.replaceSupplies(panId, candidate.requestDescription(), List.of(LhSourceViews.supply(0,
                 panId, new LhAnnouncementSupplySourceSnapshot("전주평화4 영구임대주택", "26", "26.37", "38.9756",
                         "300", "12", "4076000", "72820"))));
         for (var target : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {

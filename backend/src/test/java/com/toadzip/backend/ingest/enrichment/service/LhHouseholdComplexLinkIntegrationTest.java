@@ -12,6 +12,7 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
@@ -196,9 +197,8 @@ class LhHouseholdComplexLinkIntegrationTest {
     }
 
     private LhCatalogSource lh(int order, String area, String count) {
-        var source = new LhCatalogSource(order, new LhCatalogSourceSnapshot("대전광역시 서구", "영구임대",
-                "대전관저5 천년나무 1단지", "240", area, count, null, null));
-        source.markCollectedAt(Instant.parse("2026-10-24T00:00:00Z"));
+        var source = LhSourceViews.catalog(order, Instant.parse("2026-10-24T00:00:00Z"), new LhCatalogSourceSnapshot(
+                "대전광역시 서구", "영구임대", "대전관저5 천년나무 1단지", "240", area, count, null, null));
         return source;
     }
 }

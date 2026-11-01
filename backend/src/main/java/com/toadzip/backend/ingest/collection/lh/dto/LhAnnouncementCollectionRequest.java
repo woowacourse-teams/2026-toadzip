@@ -29,7 +29,7 @@ public record LhAnnouncementCollectionRequest(
     }
 
     public String description() {
-        return query.description() + "&COLLECTION_VERSION=" + collectionVersion;
+        return query.description(collectionVersion);
     }
 
     public String requestHash() {

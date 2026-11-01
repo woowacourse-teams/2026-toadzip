@@ -3,7 +3,6 @@ package com.toadzip.backend.ingest.collection.lh.service;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
-import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
@@ -91,10 +90,8 @@ public class LhAnnouncementCandidateCollector {
             LhAnnouncementRequest request,
             ExternalDataCallCounter callCounter
     ) {
-        var query = new LhAnnouncementQuery(request.panId(), request.connectionSystemDivisionCode(),
-                request.upperAnnouncementTypeCode(), request.announcementTypeCode(), request.supplyInfoTypeCode());
         return collector.collect(startedAt -> new LhAnnouncementCollectionRequest(
                 IngestExecutionScope.currentExecutionId().orElse(null), CollectionSource.valueOf(targetSource.name()),
-                query, 6, startedAt), callCounter);
+                request.query(), LhAnnouncementRequest.COLLECTION_VERSION, startedAt), callCounter);
     }
 }
