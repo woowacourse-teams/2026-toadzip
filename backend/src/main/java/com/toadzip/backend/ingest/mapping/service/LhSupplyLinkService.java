@@ -3,7 +3,10 @@ package com.toadzip.backend.ingest.mapping.service;
 import com.toadzip.backend.admin.domain.AdminDataChange;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowGroupRepository;
+import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
@@ -43,7 +46,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * 단지명 표기가 달라 자동으로 붙지 않는 LH 공급 원본 행을 관리자가 마이홈 원천행에 연결·해제한다.
- * 저장·해제는 다음 정제와 LH 보강부터 반영되며 이미 만든 공급행은 바로 바꾸지 않는다.
+ * 저장·해제는 다음 정제와 LH 보강부터 반영된다. 이미 만든 공급행은 연결이 바뀐 LH 행의 기록과 그 LH 금액만 바로 놓는다.
  */
 @Service
 @RequiredArgsConstructor
@@ -63,6 +66,9 @@ public class LhSupplyLinkService {
     private final ObjectMapper json;
     private final LhSupplyMatchDiagnostics diagnostics;
     private final SavedSupplyMatches savedMatches;
+    private final AnnouncementRepository announcements;
+    private final SupplyRowRepository supplyRows;
+    private final SupplyTargetRepository supplyTargets;
 
     public View view(String identifier) {
         return view(identifier, List.of());
@@ -135,7 +141,7 @@ public class LhSupplyLinkService {
                             "lhRowIdentifier", lhRowIdentifier, "link", savedLink(link, false)))));
             linkId = link.getId();
         }
-        return view(identifier, releaseChangedMatches(identifier, context, linkId, actor));
+        return view(identifier, releaseChangedSources(identifier, context, linkId, actor));
     }
 
     @Transactional
@@ -154,16 +160,20 @@ public class LhSupplyLinkService {
         changes.save(new AdminDataChange(RESOURCE, linkId, "RELEASE_LH_SUPPLY_LINK", actor, before,
                 json.writeValueAsString(Map.of("announcementIdentifier", identifier,
                         "lhRowIdentifier", request.lhRowIdentifier(), "reason", request.reason().strip()))));
-        return view(identifier, releaseChangedMatches(identifier, context, linkId, actor));
+        return view(identifier, releaseChangedSources(identifier, context, linkId, actor));
     }
 
     /**
      * LH 행 구성이 바뀐 마이홈 원천행은 다음 정제에서 LH 주택형별로 다시 펼쳐져 저장 매칭의 원천 지문이 반드시 어긋난다.
      * 정제가 거절되지 않도록 그 원천행과 펼친 행의 저장 매칭을 함께 해제한다. 주택형은 다시 정제한 뒤 PDF 보정에서 확인한다.
+     * 재정제 전 보강이 이전 행에 금액을 붙이지 않도록, 연결이 바뀐 LH 행을 기록한 공급행 가운데 그 LH 행이 이제 다른 원천행으로
+     * 해석되는 행의 LH 연결 기록도 놓는다. 보강이 이름으로 맞춰 기록한 행도 포함한다.
+     * 관리자가 그 LH 행이 이 원천행의 것이 아니라고 확인했으므로 이전 행에 붙은 그 LH 금액도 지운다. 관리자가 고친 금액은 둔다.
      */
-    private List<String> releaseChangedMatches(String identifier, Context before, long linkId, String actor) {
+    private List<String> releaseChangedSources(String identifier, Context before, long linkId, String actor) {
         var after = context(identifier);
         Set<String> changedSources = new HashSet<>();
+        Set<String> movedLhRows = new HashSet<>();
         for (var supply : after.supplies()) {
             String lhRowIdentifier = LhSupplyRowLinks.identifier(supply);
             String previous = before.linkedRows().get(lhRowIdentifier);
@@ -171,8 +181,10 @@ public class LhSupplyLinkService {
             if (!Objects.equals(previous, current)) {
                 Optional.ofNullable(previous).ifPresent(changedSources::add);
                 Optional.ofNullable(current).ifPresent(changedSources::add);
+                movedLhRows.add(lhRowIdentifier);
             }
         }
+        releaseMovedLhSources(identifier, after, movedLhRows);
         Set<String> rowIdentifiers = new TreeSet<>(changedSources);
         for (var supply : after.supplies()) {
             String lhRowIdentifier = LhSupplyRowLinks.identifier(supply);
@@ -199,6 +211,26 @@ public class LhSupplyLinkService {
             });
         }
         return released;
+    }
+
+    private void releaseMovedLhSources(String identifier, Context after, Set<String> movedLhRows) {
+        var rows = announcements.findBySourceAnnouncementIdentifier(identifier)
+                .map(supplyRows::findAllByAnnouncement).orElse(List.of());
+        Map<Long, String> movedTargets = new HashMap<>();
+        for (var row : rows) {
+            String lhSource = row.getLhSourceSupplyRowIdentifier();
+            if (movedLhRows.contains(lhSource)
+                    && row.releaseLhSourceResolvedElsewhere(after.linkedRows().get(lhSource))) {
+                movedTargets.put(row.getId(), LhSourceIdentifier.target(lhSource));
+            }
+        }
+        if (movedTargets.isEmpty()) {
+            return;
+        }
+        supplyTargets.deleteAll(supplyTargets.findAllBySupplyRowIdIn(movedTargets.keySet()).stream()
+                .filter(target -> !target.isAdminModified() && movedTargets.get(target.getSupplyRow().getId())
+                        .equals(target.getSourceSupplyTargetIdentifier()))
+                .toList());
     }
 
     private LhRow lhRow(Context context, LhAnnouncementSupplySourceView supply) {

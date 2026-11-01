@@ -434,6 +434,23 @@ public class SupplyRow {
         return true;
     }
 
+    /**
+     * 관리자가 LH 공급 연결을 바꿔 기록한 LH 원천 행이 이제 다른 마이홈 원천행({@code resolvedSourceRowIdentifier})으로
+     * 해석되거나 어느 원천행으로도 해석되지 않으면({@code null}) 그 LH 연결을 놓는다. 보강은 기록한 LH 식별자를 저장 연결보다 먼저 쓰므로 놓지 않으면 재정제 전 보강이
+     * 이전 행에 금액을 붙인다. 관리자 보정 행도 LH 연결은 정제가 기록하므로 함께 놓는다. 값은 바꾸지 않는다.
+     * 관리자가 정하지 않은 모집수는 다음 정제가 마이홈 값으로 되돌리고, LH가 채운 입주월은 그대로 남는다.
+     */
+    public boolean releaseLhSourceResolvedElsewhere(String resolvedSourceRowIdentifier) {
+        if (lhSourceSupplyRowIdentifier == null
+                || Objects.equals(myhomeSourceRowIdentifier, resolvedSourceRowIdentifier)) {
+            return false;
+        }
+        lhSourceSupplyRowIdentifier = null;
+        lhTotalSupplyHouseholdCountOwned = false;
+        lhTotalSupplyHouseholdCountEnriched = false;
+        return true;
+    }
+
     private boolean hasSameSourceValues(SupplyRow incoming) {
         return Objects.equals(housingComplex, incoming.housingComplex)
                 && Objects.equals(housingType, incoming.housingType)
