@@ -544,8 +544,8 @@ class MyHomeAnnouncementMappingServiceTest {
 
     @ParameterizedTest
     @CsvSource({
-            "5년임대, PUBLIC_RENTAL_5Y",
-            "10년임대, PUBLIC_RENTAL_10Y"
+            "5년임대, PUBLIC_RENTAL",
+            "10년임대, PUBLIC_RENTAL"
     })
     void 공공임대_기간을_공고_임대유형으로_보존하고_단지와_연결한다(String sourceSupplyType, RentalType expectedType) {
         saveMappedComplex("동삼2", "123:" + expectedType.name(), expectedType.name());
@@ -567,7 +567,7 @@ class MyHomeAnnouncementMappingServiceTest {
 
     @Test
     void 기존에_기타로_저장된_5년임대_공고를_재매핑하면_정식_임대유형으로_교정한다() {
-        saveMappedComplex("동삼2", "123:PUBLIC_RENTAL_5Y", "PUBLIC_RENTAL_5Y");
+        saveMappedComplex("동삼2", "123:PUBLIC_RENTAL_5Y", "PUBLIC_RENTAL");
         sourceRepository.save(source(0, withSupplyType(
                 data("21026", 1, "부산도시공사", "동삼2"),
                 "5년임대"
@@ -581,7 +581,7 @@ class MyHomeAnnouncementMappingServiceTest {
 
         assertThat(report.updatedAnnouncementCount()).isOne();
         assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement ->
-                assertThat(announcement.getSupplyType()).isEqualTo(RentalType.PUBLIC_RENTAL_5Y));
+                assertThat(announcement.getSupplyType()).isEqualTo(RentalType.PUBLIC_RENTAL));
     }
 
     @Test

@@ -10,7 +10,7 @@ const myHomeFields: Record<string, string> = { name: 'hsmp_nm', agencyCode: 'ins
   totalHouseholdCount: 'hshld_co', totalParkingCount: 'parkng_co', heatingType: 'heat_mthd_detail_nm', buildingType: 'house_ty_nm', corridorType: 'buld_stle_nm', hasElevator: 'elvtr_instl_at_nm' }
 const lhFields: Record<string, string> = { name: 'complex_label', rentalType: 'supply_type_name', totalHouseholdCount: 'complex_total_unit_count' }
 const codes: Record<string, string> = { 한국토지주택공사: 'LH', 서울주택도시공사: 'SH', SH공사: 'SH', 경기주택도시공사: 'GH',
-  행복주택: 'HAPPY_HOUSING', 국민임대: 'NATIONAL_RENTAL', 영구임대: 'PERMANENT_RENTAL', '5년임대': 'PUBLIC_RENTAL_5Y', '10년임대': 'PUBLIC_RENTAL_10Y',
+  행복주택: 'HAPPY_HOUSING', 국민임대: 'NATIONAL_RENTAL', 영구임대: 'PERMANENT_RENTAL', '5년임대': 'PUBLIC_RENTAL', '10년임대': 'PUBLIC_RENTAL',
   '50년임대': 'PUBLIC_RENTAL_50Y', '50년공공임대': 'PUBLIC_RENTAL_50Y', 통합공공임대: 'INTEGRATED_PUBLIC_RENTAL', 재개발임대: 'REDEVELOPMENT_RENTAL',
   장기전세: 'LONG_TERM_JEONSE', 개별난방: 'INDIVIDUAL', 중앙난방: 'CENTRAL', 지역난방: 'DISTRICT', 아파트: 'APARTMENT', 오피스텔: 'OFFICETEL',
   계단식: 'STAIR', 복도식: 'CORRIDOR', 혼합식: 'MIXED', 기타: 'ETC' }

@@ -37,8 +37,7 @@ export function sourceMatches(field: VerificationField, values: VerificationValu
 }
 function rentalLabel(value: string): string {
   if (value === '50년임대' || value === '50년공공임대') return '50년 공공임대'
-  if (value === '5년임대') return '5년 공공임대'
-  if (value === '10년임대') return '10년 공공임대'
+  if (value === '5년임대' || value === '10년임대') return labels.PUBLIC_RENTAL
   return labels[value] ?? value
 }
 function agencyCode(value: string) {

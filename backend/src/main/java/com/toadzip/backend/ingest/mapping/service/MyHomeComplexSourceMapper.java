@@ -93,7 +93,7 @@ public class MyHomeComplexSourceMapper {
         if (source.getHsmpSn() == null) {
             throw parser.missing("단지 식별자");
         }
-        String supplyType = classification.supplyType(parser.requiredText(source.getSuplyTyNm(), "공급유형"));
+        String supplyType = classification.sourceCode(parser.requiredText(source.getSuplyTyNm(), "공급유형"));
         return source.getHsmpSn() + ":" + supplyType;
     }
 

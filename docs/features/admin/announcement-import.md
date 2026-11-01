@@ -28,7 +28,7 @@
 
 | 필드 | 허용값 |
 |---|---|
-| `announcement.rentalType` | `HAPPY_HOUSING`, `NATIONAL_RENTAL`, `PERMANENT_RENTAL`, `PUBLIC_RENTAL_5Y`, `PUBLIC_RENTAL_10Y`, `PUBLIC_RENTAL_50Y`, `INTEGRATED_PUBLIC_RENTAL`, `REDEVELOPMENT_RENTAL`, `LONG_TERM_JEONSE`, `ETC` |
+| `announcement.rentalType` | `HAPPY_HOUSING`, `NATIONAL_RENTAL`, `PERMANENT_RENTAL`, `PUBLIC_RENTAL`(분양전환 공공임대, 이전 `PUBLIC_RENTAL_5Y`·`PUBLIC_RENTAL_10Y`도 받음), `PUBLIC_RENTAL_50Y`, `INTEGRATED_PUBLIC_RENTAL`, `REDEVELOPMENT_RENTAL`, `LONG_TERM_JEONSE`, `ETC` |
 | `announcement.recruitmentType` | `NEW`, `WAITLIST`, `ETC` |
 | `announcement.agencyCode` | `LH`, `SH`, `GH`, `ETC` |
 | `receptionPlace.method` | `ONLINE`, `VISIT`, `MAIL`, `ETC` |

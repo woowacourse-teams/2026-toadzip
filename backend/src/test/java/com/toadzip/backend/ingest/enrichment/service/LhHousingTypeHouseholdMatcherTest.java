@@ -70,15 +70,25 @@ class LhHousingTypeHouseholdMatcherTest {
     }
 
     @Test
-    void 공공임대_원천은_연수별_공공임대_단지를_원래_순서로_검색한다() {
-        HousingComplex fiveYear = complex("강릉송정", "PUBLIC_RENTAL_5Y", 623);
-        HousingComplex tenYear = complex("강릉송정", "PUBLIC_RENTAL_10Y", 623);
+    void 공공임대_원천은_분양전환과_50년_공공임대_단지를_원래_순서로_검색한다() {
+        HousingComplex saleConversion = complex("강릉송정", "PUBLIC_RENTAL", 623);
+        HousingComplex fiftyYear = complex("강릉송정", "PUBLIC_RENTAL_50Y", 623);
         HousingComplex otherCount = complex("강릉송정", "PUBLIC_RENTAL_50Y", 624);
         LhHousingTypeHouseholdSource source = source("강릉송정", "공공임대", 623);
 
         assertThat(matcher.findMatches(
-                matcher.index(List.of(tenYear, otherCount, fiveYear)), source
-        )).containsExactly(tenYear, fiveYear);
+                matcher.index(List.of(fiftyYear, otherCount, saleConversion)), source
+        )).containsExactly(fiftyYear, saleConversion);
+    }
+
+    @Test
+    void 기간을_밝힌_공공임대_원천은_분양전환과_50년_공공임대를_서로_찾지_않는다() {
+        HousingComplex saleConversion = complex("강릉송정", "PUBLIC_RENTAL", 623);
+        HousingComplex fiftyYear = complex("강릉송정", "PUBLIC_RENTAL_50Y", 623);
+        var index = matcher.index(List.of(saleConversion, fiftyYear));
+
+        assertThat(matcher.findMatches(index, source("강릉송정", "10년임대", 623))).containsExactly(saleConversion);
+        assertThat(matcher.findMatches(index, source("강릉송정", "50년임대", 623))).containsExactly(fiftyYear);
     }
 
     private LhHousingTypeHouseholdSource source(

@@ -22,10 +22,10 @@ public class LhHousingTypeHouseholdMatcher {
             Map.entry("국민임대주택", "NATIONAL_RENTAL"),
             Map.entry("영구임대", "PERMANENT_RENTAL"),
             Map.entry("영구임대주택", "PERMANENT_RENTAL"),
-            Map.entry("5년임대", "PUBLIC_RENTAL_5Y"),
-            Map.entry("공공임대5년", "PUBLIC_RENTAL_5Y"),
-            Map.entry("10년임대", "PUBLIC_RENTAL_10Y"),
-            Map.entry("공공임대10년", "PUBLIC_RENTAL_10Y"),
+            Map.entry("5년임대", "PUBLIC_RENTAL"),
+            Map.entry("공공임대5년", "PUBLIC_RENTAL"),
+            Map.entry("10년임대", "PUBLIC_RENTAL"),
+            Map.entry("공공임대10년", "PUBLIC_RENTAL"),
             Map.entry("50년임대", "PUBLIC_RENTAL_50Y"),
             Map.entry("공공임대50년", "PUBLIC_RENTAL_50Y"),
             Map.entry("장기전세", "LONG_TERM_JEONSE"),
@@ -33,9 +33,10 @@ public class LhHousingTypeHouseholdMatcher {
             Map.entry("재개발임대", "REDEVELOPMENT_RENTAL")
     );
     private static final Set<String> PUBLIC_RENTAL_TYPES = Set.of(
-            "PUBLIC_RENTAL_5Y", "PUBLIC_RENTAL_10Y", "PUBLIC_RENTAL_50Y"
+            "PUBLIC_RENTAL", "PUBLIC_RENTAL_50Y"
     );
-    private static final String PUBLIC_RENTAL = "PUBLIC_RENTAL";
+    /** 기간을 밝히지 않은 `공공임대`는 분양전환·50년 공공임대 단지 모두에 대어 본다. */
+    private static final String ANY_PUBLIC_RENTAL = "ANY_PUBLIC_RENTAL";
     private static final List<String> NAME_DECORATIONS = List.of(
             "통합공공임대주택",
             "국민임대주택",
@@ -77,7 +78,7 @@ public class LhHousingTypeHouseholdMatcher {
             MatchKey key = new MatchKey(complex.getSupplyType(), complex.getTotalHouseholdCount());
             indexed.computeIfAbsent(key, ignored -> new ArrayList<>()).add(complex);
             if (PUBLIC_RENTAL_TYPES.contains(complex.getSupplyType())) {
-                MatchKey publicRentalKey = new MatchKey(PUBLIC_RENTAL, complex.getTotalHouseholdCount());
+                MatchKey publicRentalKey = new MatchKey(ANY_PUBLIC_RENTAL, complex.getTotalHouseholdCount());
                 indexed.computeIfAbsent(publicRentalKey, ignored -> new ArrayList<>()).add(complex);
             }
         }
@@ -109,7 +110,7 @@ public class LhHousingTypeHouseholdMatcher {
     private String sourceSupplyType(String supplyTypeName) {
         String normalized = LhCatalogNames.normalized(supplyTypeName);
         if ("공공임대".equals(normalized)) {
-            return PUBLIC_RENTAL;
+            return ANY_PUBLIC_RENTAL;
         }
         return SUPPLY_TYPES.get(normalized);
     }

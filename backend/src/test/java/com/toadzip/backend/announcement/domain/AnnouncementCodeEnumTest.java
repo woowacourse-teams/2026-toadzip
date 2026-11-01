@@ -18,8 +18,13 @@ class AnnouncementCodeEnumTest {
         assertEquals(RentalType.HAPPY_HOUSING, RentalType.fromStoredValue("행복주택"));
         assertEquals(RentalType.NATIONAL_RENTAL, RentalType.fromStoredValue("국민임대"));
         assertEquals(RentalType.PERMANENT_RENTAL, RentalType.fromStoredValue("영구임대"));
-        assertEquals(RentalType.PUBLIC_RENTAL_5Y, RentalType.fromStoredValue("5년임대"));
-        assertEquals(RentalType.PUBLIC_RENTAL_10Y, RentalType.fromStoredValue("10년임대"));
+        // 공공임대 5·10년은 분양전환 공공임대 하나로 합쳤다. 합치기 전 저장값·요청 코드도 공공임대로 읽는다.
+        assertEquals(RentalType.PUBLIC_RENTAL, RentalType.fromStoredValue("5년임대"));
+        assertEquals(RentalType.PUBLIC_RENTAL, RentalType.fromStoredValue("PUBLIC_RENTAL_10Y"));
+        assertEquals(RentalType.PUBLIC_RENTAL, RentalType.fromStoredValue("10년임대"));
+        assertEquals(RentalType.PUBLIC_RENTAL, RentalType.fromStoredValue("PUBLIC_RENTAL_5Y"));
+        assertEquals(RentalType.PUBLIC_RENTAL, RentalType.fromCode("PUBLIC_RENTAL_5Y"));
+        assertEquals(RentalType.PUBLIC_RENTAL_50Y, RentalType.fromCode("PUBLIC_RENTAL_50Y"));
         assertEquals(RentalType.PUBLIC_RENTAL_50Y, RentalType.fromStoredValue("50년공공임대"));
         assertEquals(RentalType.INTEGRATED_PUBLIC_RENTAL, RentalType.fromStoredValue("통합공공임대"));
         assertEquals(RentalType.REDEVELOPMENT_RENTAL, RentalType.fromStoredValue("재개발임대"));
@@ -54,9 +59,19 @@ class AnnouncementCodeEnumTest {
     }
 
     @Test
+    void 요청_본문의_합치기_전_공공임대_코드도_공공임대로_읽고_모르는_코드는_거절한다() {
+        var json = tools.jackson.databind.json.JsonMapper.builder().build();
+
+        assertEquals(RentalType.PUBLIC_RENTAL, json.readValue("\"PUBLIC_RENTAL_10Y\"", RentalType.class));
+        assertEquals(RentalType.PUBLIC_RENTAL, json.readValue("\"PUBLIC_RENTAL\"", RentalType.class));
+        org.junit.jupiter.api.Assertions.assertThrows(tools.jackson.core.JacksonException.class,
+                () -> json.readValue("\"PUBLIC_RENTAL_6Y\"", RentalType.class));
+    }
+
+    @Test
     void 모든_정식_코드를_선언한다() {
         assertEquals(
-                10,
+                9,
                 RentalType.values().length
         );
         assertEquals(3, AnnouncementPublicationType.values().length);
