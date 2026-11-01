@@ -32,17 +32,15 @@ public class LhSupplyMatchDiagnostics {
             return List.of();
         }
         var enrichmentRows = supplyRows.read(announcement, sourceKeysExcludedFromLhEnrichment);
-        List<SupplyRow> allRows = enrichmentRows.all();
-        List<SupplyRow> rows = enrichmentRows.matchable();
         List<Failure> failures = new ArrayList<>();
         for (LhAnnouncementSupplySourceView supply : supplies) {
-            diagnose(panId, supply, supplyLinks, allRows, rows).ifPresent(failures::add);
+            diagnose(panId, supply, supplyLinks, enrichmentRows).ifPresent(failures::add);
         }
         return failures;
     }
 
     private Optional<Failure> diagnose(String panId, LhAnnouncementSupplySourceView supply,
-            Map<String, LhSupplyRowLinks.State> supplyLinks, List<SupplyRow> allRows, List<SupplyRow> rows) {
+            Map<String, LhSupplyRowLinks.State> supplyLinks, LhEnrichmentSupplyRows.Rows enrichmentRows) {
         String identifier = LhSupplyRowLinks.identifier(supply);
         LhSupplyData source;
         try {
@@ -51,12 +49,11 @@ public class LhSupplyMatchDiagnostics {
             return Optional.of(new Failure(identifier, exception.reason().name(), exception.getMessage(),
                     List.of()));
         }
-        // 복수 공급행으로 보정한 행에 붙는 LH 행은 보강이 건너뛰므로 실패로 보지 않는다. 보강은 매칭 행이 없어도
-        // 같은 단지 행이 모두 묶음이면 건너뛰지만, 진단은 매칭된 묶음 행만 본다.
-        var protectedMatch = matcher.match(allRows, source).row();
-        if (protectedMatch != null && protectedMatch.getSupplyGroup() != null) {
+        // 복수 공급행으로 보정한 행에 붙는 LH 행은 보강이 건너뛰므로 실패로 보지 않는다.
+        if (supplyRows.skips(enrichmentRows, source)) {
             return Optional.empty();
         }
+        List<SupplyRow> rows = enrichmentRows.matchable();
         var match = matcher.match(rows, source);
         if (match.failure() == null) {
             return Optional.empty();

@@ -6,7 +6,6 @@ import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
-import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
@@ -46,7 +45,7 @@ class LhSupplyAmountWriter {
             Set<String> sourceKeysExcludedFromLhEnrichment) {
         LhEnrichmentSupplyRows.Rows enrichmentRows = supplyRows.read(announcement, sourceKeysExcludedFromLhEnrichment);
         List<SupplyRow> rows = enrichmentRows.matchable();
-        var supplies = data.supplies().stream().filter(source -> !protectedSupply(enrichmentRows, source)).toList();
+        var supplies = data.supplies().stream().filter(source -> !supplyRows.skips(enrichmentRows, source)).toList();
         if (supplies.isEmpty()) {
             if (!changedHousingTypeRowIds.isEmpty()) {
                 throw missingAmountForChangedHousingType();
@@ -78,24 +77,6 @@ class LhSupplyAmountWriter {
                 .filter(target -> LhOwnedValues.owned(target.getSourceSupplyTargetIdentifier(),
                         target.isAdminModified()))
                 .toList());
-    }
-
-    /** 복수 공급행으로 보정한 묶음 행에 붙는 LH 공급이다. 보강은 이 공급을 건너뛴다. */
-    private boolean protectedSupply(LhEnrichmentSupplyRows.Rows enrichmentRows, LhSupplyData source) {
-        if (!enrichmentRows.hasGroupedRows()) {
-            return false;
-        }
-        List<SupplyRow> rows = enrichmentRows.all();
-        var matched = supplyMatcher.match(rows, source);
-        if (matched.row() != null) {
-            return matched.row().getSupplyGroup() != null;
-        }
-        var complexRows = rows.stream().filter(row ->
-                SupplyNameNormalizer.sameComplex(
-                        row.getSourceComplexName(), source.complexName())
-                || row.getHousingComplex() != null && SupplyNameNormalizer.sameComplex(
-                        row.getHousingComplex().getName(), source.complexName())).toList();
-        return !complexRows.isEmpty() && complexRows.stream().allMatch(row -> row.getSupplyGroup() != null);
     }
 
     private void requireAmountsForChangedHousingTypes(
