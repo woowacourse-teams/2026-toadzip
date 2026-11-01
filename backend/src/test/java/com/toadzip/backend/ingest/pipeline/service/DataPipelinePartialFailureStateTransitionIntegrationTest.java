@@ -346,20 +346,22 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
             LhHousingTypeHouseholdEnrichmentService enrichmentService
     ) {
         return new DataPipelineRunner(
-                mock(MyHomeComplexCollectionService.class),
-                mock(LhLeaseCatalogCollectionService.class),
-                mock(MyHomeAnnouncementCollectionService.class),
-                mock(LhAnnouncementCatalogCollectionService.class),
-                mock(LhAnnouncementExternalCollectionService.class),
-                mappingService,
-                enrichmentService,
-                mock(MyHomeAnnouncementMappingService.class),
-                mock(LhAnnouncementEnrichmentService.class),
-                new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
+                new DataPipelineStepExecutor(
+                        mock(MyHomeComplexCollectionService.class),
+                        mock(LhLeaseCatalogCollectionService.class),
+                        mock(MyHomeAnnouncementCollectionService.class),
+                        mock(LhAnnouncementCatalogCollectionService.class),
+                        mock(LhAnnouncementExternalCollectionService.class),
+                        mappingService,
+                        enrichmentService,
+                        mock(MyHomeAnnouncementMappingService.class),
+                        mock(LhAnnouncementEnrichmentService.class),
+                        new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
+                        mock(AnnouncementRegistrationService.class),
+                        mock(ShAnnouncementCollectionService.class)
+                ),
                 executionStateService,
-                new SimpleMeterRegistry(),
-                mock(AnnouncementRegistrationService.class),
-                mock(ShAnnouncementCollectionService.class)
+                new SimpleMeterRegistry()
         );
     }
 
@@ -378,20 +380,22 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
             LhAnnouncementEnrichmentService enrichmentService
     ) {
         return new DataPipelineRunner(
-                mock(MyHomeComplexCollectionService.class),
-                mock(LhLeaseCatalogCollectionService.class),
-                myHomeService,
-                successfulCatalogService(),
-                collectionService,
-                mock(MyHomeComplexMappingService.class),
-                mock(LhHousingTypeHouseholdEnrichmentService.class),
-                mappingService,
-                enrichmentService,
-                new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
+                new DataPipelineStepExecutor(
+                        mock(MyHomeComplexCollectionService.class),
+                        mock(LhLeaseCatalogCollectionService.class),
+                        myHomeService,
+                        successfulCatalogService(),
+                        collectionService,
+                        mock(MyHomeComplexMappingService.class),
+                        mock(LhHousingTypeHouseholdEnrichmentService.class),
+                        mappingService,
+                        enrichmentService,
+                        new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
+                        mock(AnnouncementRegistrationService.class),
+                        mock(ShAnnouncementCollectionService.class)
+                ),
                 executionStateService,
-                new SimpleMeterRegistry(),
-                mock(AnnouncementRegistrationService.class),
-                mock(ShAnnouncementCollectionService.class)
+                new SimpleMeterRegistry()
         );
     }
     private LhAnnouncementCatalogCollectionService successfulCatalogService() {
