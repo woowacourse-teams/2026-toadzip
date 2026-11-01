@@ -18,6 +18,7 @@ import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuerySource;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQueryApiRepository;
+import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceReader;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhAnnouncementCircuitBreaker;
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
@@ -26,6 +27,7 @@ import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupp
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhSupplySnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplyRowRepository;
+import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhSupplyResponseParser;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.VerifiedLhSupplyReplacementStore;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
@@ -90,7 +92,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Import({LhAnnouncementQueryCollector.class, LhAnnouncementStorageService.class, SourceCollectionRecordService.class,
         LhAnnouncementQueryApiRepository.class, LhSupplyResponseParser.class, LhDetailResponseParser.class,
         VerifiedLhSupplyReplacementStore.class, IngestWriteOwnershipGuard.class,
-        IngestExecutionOwnershipRepository.class})
+        IngestExecutionOwnershipRepository.class, LhAnnouncementSupplySourceReader.class,
+        LhAnnouncementQuerySourceReader.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -119,6 +122,9 @@ class LhAnnouncementStorageIntegrationTest {
 
     @Autowired
     private LhAnnouncementSupplyRowRepository supplies;
+
+    @Autowired
+    private LhAnnouncementSupplySourceReader supplyReader;
 
     @Autowired
     private LhAnnouncementDetailRowRepository details;
@@ -178,6 +184,15 @@ class LhAnnouncementStorageIntegrationTest {
             assertThat(record.getStatus()).isEqualTo(CollectionStatus.SUCCESS);
             assertThat(record.getStoredRowCount()).isEqualTo(2);
         });
+        Map<String, String> parameters = new TransactionTemplate(transactionManager).execute(status ->
+                Map.copyOf(records.findAll().getFirst().getRequestParameters()));
+        assertThat(parameters).containsEntry("COLLECTION_VERSION", "6").containsEntry("PAN_ID", "PAN-A");
+        assertThat(supplyReader.findAllByPanIdAndRequestHashOrderBySourceOrderAsc("PAN-A", request.requestHash()))
+                .hasSize(2).allSatisfy(source -> {
+                    assertThat(source.getPanId()).isEqualTo("PAN-A");
+                    assertThat(source.getRequestHash()).isEqualTo(request.requestHash());
+                    assertThat(source.getComplexLabel()).isEqualTo("단지");
+                });
     }
 
     @Test
