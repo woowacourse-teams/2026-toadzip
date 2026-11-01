@@ -229,7 +229,7 @@ public class AnnouncementSupplyMatchingService {
             return writer.correct(current, previous, Correction.NONE).report();
         }
         catch (LhEnrichmentRejectedMappingException exception) {
-            var failures = currentSources.stream().map(source -> MyHomeAnnouncementMappingFailureStore.failureOf(
+            var failures = currentSources.stream().map(source -> MyHomeAnnouncementSourceMapper.failureOf(
                     source, exception.reason(), exception.getMessage(), clock.instant())).toList();
             try {
                 failureStore.reconcileRejectedAnnouncement(identifier, failures,

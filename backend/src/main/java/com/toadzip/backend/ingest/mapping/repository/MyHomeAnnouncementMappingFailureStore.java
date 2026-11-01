@@ -1,11 +1,8 @@
 package com.toadzip.backend.ingest.mapping.repository;
 
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.failure.repository.IngestFailureStore;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
-import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import java.time.Clock;
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
@@ -44,22 +41,5 @@ public class MyHomeAnnouncementMappingFailureStore extends IngestFailureStore<My
     @Transactional
     public void resolveByAdmin(String identifier, String actor) {
         resolvePendingByAdmin(repository.findAllBySourceAnnouncementIdentifier(identifier), actor);
-    }
-
-    /** 마이홈 공고 원천행 하나의 정제 실패다. */
-    public static MyHomeAnnouncementMappingFailure failureOf(
-            MyHomeAnnouncementSourceView source,
-            MyHomeAnnouncementMappingFailureReason reason,
-            String detail,
-            Instant occurredAt
-    ) {
-        return MyHomeAnnouncementMappingFailure.create(
-                source.getSourceKey(),
-                source.getPblancId(),
-                source.getHouseSn(),
-                reason,
-                detail,
-                occurredAt
-        );
     }
 }

@@ -8,9 +8,11 @@ import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
+import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper.MyHomeAnnouncementCommonValues;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -86,6 +88,23 @@ public class MyHomeAnnouncementSourceMapper {
                 null,
                 null,
                 null
+        );
+    }
+
+    /** 마이홈 공고 원천행 하나의 정제 실패다. */
+    static MyHomeAnnouncementMappingFailure failureOf(
+            MyHomeAnnouncementSourceView source,
+            MyHomeAnnouncementMappingFailureReason reason,
+            String detail,
+            Instant occurredAt
+    ) {
+        return MyHomeAnnouncementMappingFailure.create(
+                source.getSourceKey(),
+                source.getPblancId(),
+                source.getHouseSn(),
+                reason,
+                detail,
+                occurredAt
         );
     }
 

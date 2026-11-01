@@ -184,7 +184,7 @@ public class MyHomeAnnouncementMappingService {
         for (MyHomeAnnouncementSourceView source : sourceRepository.findAll()) {
             String identifier = SourceText.strippedOrNull(source.getPblancId());
             if (identifier == null) {
-                failures.add(MyHomeAnnouncementMappingFailureStore.failureOf(
+                failures.add(MyHomeAnnouncementSourceMapper.failureOf(
                         source,
                         MyHomeAnnouncementMappingFailureReason.MISSING_REQUIRED_VALUE,
                         "공고 식별자 값이 없습니다.",
@@ -205,7 +205,7 @@ public class MyHomeAnnouncementMappingService {
             Instant occurredAt
     ) {
         for (MyHomeAnnouncementSourceView source : sources) {
-            failures.add(MyHomeAnnouncementMappingFailureStore.failureOf(source, reason, detail, occurredAt));
+            failures.add(MyHomeAnnouncementSourceMapper.failureOf(source, reason, detail, occurredAt));
         }
         return MyHomeAnnouncementMappingReport.failedRows(sources.size());
     }
@@ -216,7 +216,7 @@ public class MyHomeAnnouncementMappingService {
             Instant occurredAt
     ) {
         for (MyHomeSupplyMatchingFailureData failure : matchingFailures) {
-            failures.add(MyHomeAnnouncementMappingFailureStore.failureOf(failure.source(), failure.reason(), failure.detail(), occurredAt));
+            failures.add(MyHomeAnnouncementSourceMapper.failureOf(failure.source(), failure.reason(), failure.detail(), occurredAt));
         }
     }
 
