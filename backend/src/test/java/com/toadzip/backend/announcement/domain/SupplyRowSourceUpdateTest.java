@@ -111,6 +111,21 @@ class SupplyRowSourceUpdateTest {
         assertThat(supplyRow.isLhTotalSupplyHouseholdCountOwned()).isFalse();
     }
 
+    @Test
+    void 기록한_LH_행이_여전히_이_원천행으로_해석되면_LH_연결을_유지하고_다른_원천행으로_옮겨_가면_놓는다() {
+        SupplyRow supplyRow = supplyRow("기존 단지");
+        supplyRow.recordMyHomeSource("myhome-1");
+        supplyRow.resolveFromLhSupply("LH:100:SUPPLY:0", 20, 20);
+
+        assertThat(supplyRow.releaseLhSourceResolvedElsewhere("myhome-1")).isFalse();
+        assertThat(supplyRow.getLhSourceSupplyRowIdentifier()).isEqualTo("LH:100:SUPPLY:0");
+
+        assertThat(supplyRow.releaseLhSourceResolvedElsewhere("myhome-2")).isTrue();
+        assertThat(supplyRow.getLhSourceSupplyRowIdentifier()).isNull();
+        assertThat(supplyRow.isLhTotalSupplyHouseholdCountOwned()).isFalse();
+        assertThat(supplyRow.releaseLhSourceResolvedElsewhere(null)).isFalse();
+    }
+
     private SupplyRow supplyRow(String complexName) {
         return SupplyRow.create(
                 new Announcement(),

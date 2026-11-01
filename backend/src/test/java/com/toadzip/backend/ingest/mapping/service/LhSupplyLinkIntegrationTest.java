@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -55,6 +56,7 @@ class LhSupplyLinkIntegrationTest {
     private static final String TARGET = "manual-19585";
     private static final String PATH = "/api/admin/ingest/announcement-supply-matches/" + TARGET + "/lh-links";
     private static final String PNU = "4511311100100010000";
+    private static final String OTHER_PNU = "4511311100100050000";
     private static final String OFFICIAL_URL = "https://apply.lh.or.kr/lhapply/apply/wt/wrtanc/selectWrtancInfo.do";
     @Autowired private MyHomeAnnouncementSourceFixtures sources;
     @Autowired private HousingComplexRepository complexes;
@@ -171,6 +173,72 @@ class LhSupplyLinkIntegrationTest {
         assertThat(pendingEnrichmentFailures()).isEmpty();
         assertThat(supplies.findAll()).singleElement()
                 .satisfies(row -> assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(12));
+    }
+
+    @Test
+    void 연결을_다른_원천행으로_옮기면_재정제_없이_보강해도_금액은_새_원천행의_공급행에만_붙는다() throws Exception {
+        var linked = linkFirstOfTwoSources();
+        // 연결이 바뀌지 않은 LH 행의 기록은 그 행이 바뀐 원천행에 있어도 연결 변경이 놓지 않는다.
+        jdbc.sql("UPDATE supply_rows SET lh_source_supply_row_identifier = :lh WHERE myhome_source_row_identifier = :row")
+                .param("lh", "LH:" + panId + ":SUPPLY:9").param("row", linked.second()).update();
+
+        moveLinkToSecondSource();
+        assertThat(rowOf(linked.second()).getLhSourceSupplyRowIdentifier()).isEqualTo("LH:" + panId + ":SUPPLY:9");
+        enrichment.enrichAll();
+
+        assertThat(pendingEnrichmentFailures()).isEmpty();
+        assertThat(lhTargetRows()).containsExactly(linked.second());
+        assertThat(rowOf(linked.first()).getLhSourceSupplyRowIdentifier()).isNull();
+        assertThat(rowOf(linked.second())).satisfies(row -> {
+            assertThat(row.getLhSourceSupplyRowIdentifier()).isEqualTo("LH:" + panId + ":SUPPLY:0");
+            assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(12);
+        });
+    }
+
+    @Test
+    void 연결을_옮기면_관리자가_보정한_이전_공급행도_LH_연결을_놓고_관리자가_고친_금액은_둔다() throws Exception {
+        var linked = linkFirstOfTwoSources();
+        jdbc.sql("UPDATE supply_rows SET admin_modified = true WHERE myhome_source_row_identifier = :row")
+                .param("row", linked.first()).update();
+        jdbc.sql("UPDATE supply_targets SET admin_modified = true").update();
+
+        moveLinkToSecondSource();
+
+        assertThat(rowOf(linked.first()).getLhSourceSupplyRowIdentifier()).isNull();
+        assertThat(lhTargetRows()).containsExactly(linked.first());
+        enrichment.enrichAll();
+        assertThat(pendingEnrichmentFailures()).isEmpty();
+        assertThat(lhTargetRows()).containsExactly(linked.first(), linked.second());
+    }
+
+    @Test
+    void 보강이_단지_이름으로_붙인_공급행도_연결을_다른_원천행에_저장하면_LH_연결과_금액을_놓는다() throws Exception {
+        addSecondSource();
+        mapping.mapAll();
+        // 정제는 원천 단지명으로 붙이지 못하지만, 보강은 연결 단지 이름으로 첫 원천행의 공급행을 찾는다.
+        jdbc.sql("UPDATE housing_complexes SET name = '전주평화4 영구임대주택' WHERE name = '평화주공4단지'").update();
+        enrichment.enrichAll();
+        var view = view();
+        String first = view.myhomeRows().getFirst().rowIdentifier();
+        String second = view.myhomeRows().getLast().rowIdentifier();
+        assertThat(view.lhRows().getFirst().linkedRowIdentifier()).isNull();
+        assertThat(lhTargetRows()).containsExactly(first);
+
+        moveLinkToSecondSource();
+        enrichment.enrichAll();
+
+        assertThat(rowOf(first).getLhSourceSupplyRowIdentifier()).isNull();
+        assertThat(lhTargetRows()).containsExactly(second);
+    }
+
+    @Test
+    void 연결을_해제하면_그_LH_행을_기록한_공급행의_LH_연결과_금액을_놓는다() throws Exception {
+        var linked = linkFirstOfTwoSources();
+
+        release(view(), "공고문 재확인 결과 다른 단지").andExpect(status().isOk());
+
+        assertThat(rowOf(linked.first()).getLhSourceSupplyRowIdentifier()).isNull();
+        assertThat(lhTargetRows()).isEmpty();
     }
 
     @Test
@@ -343,6 +411,48 @@ class LhSupplyLinkIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
     }
 
+    /** 같은 공고에 두 번째 마이홈 원천행을 더하고 LH 공급행을 첫 원천행에 연결해 정제·보강까지 마친다. */
+    private TwoSources linkFirstOfTwoSources() throws Exception {
+        addSecondSource();
+        mapping.mapAll();
+        var view = view();
+        save(view, "공고문 단지 목록 대조").andExpect(status().isOk());
+        mapping.mapAll();
+        enrichment.enrichAll();
+        var linked = new TwoSources(view.myhomeRows().getFirst().rowIdentifier(),
+                view.myhomeRows().getLast().rowIdentifier());
+        assertThat(lhTargetRows()).containsExactly(linked.first());
+        assertThat(rowOf(linked.first()).getLhSourceSupplyRowIdentifier()).isEqualTo("LH:" + panId + ":SUPPLY:0");
+        return linked;
+    }
+
+    private void addSecondSource() {
+        var complex = complexes.save(HousingComplex.createFromMyHome("평화주공5단지", "complex-19586", "PERMANENT_RENTAL",
+                Address.create("전북특별자치도 전주시 완산구 평화로 5", OTHER_PNU, OTHER_PNU.substring(0, 10), "52", "52111",
+                        new BigDecimal("35.8"), new BigDecimal("127.1")),
+                300, "LH", null, "INDIVIDUAL", "APARTMENT", "CORRIDOR", true, 80));
+        types.save(HousingType.createFromMyHome(complex, "complex-19586:26", "26",
+                new BigDecimal("26.3700"), new BigDecimal("38.9756")));
+        sources.save(source(2, "평화주공5단지", OTHER_PNU));
+    }
+
+    private void moveLinkToSecondSource() throws Exception {
+        var view = view();
+        saveBody(Map.of("token", view.token(), "myhomeRowIdentifier", view.myhomeRows().getLast().rowIdentifier(),
+                "lhRowIdentifiers", List.of(view.lhRows().getFirst().rowIdentifier()),
+                "sourceUrl", OFFICIAL_URL, "reason", "공고문 재확인 결과 평화주공5단지")).andExpect(status().isOk());
+    }
+
+    private SupplyRow rowOf(String myhomeRow) {
+        var rows = supplies.findAll().stream()
+                .filter(row -> myhomeRow.equals(row.getMyhomeSourceRowIdentifier())).toList();
+        assertThat(rows).hasSize(1);
+        return rows.getFirst();
+    }
+
+    private record TwoSources(String first, String second) {
+    }
+
     private ResultActions save(View view, String reason) throws Exception {
         return saveBody(Map.of("token", view.token(), "myhomeRowIdentifier", view.myhomeRows().getFirst().rowIdentifier(),
                 "lhRowIdentifiers", List.of(view.lhRows().getFirst().rowIdentifier()),
@@ -392,17 +502,31 @@ class LhSupplyLinkIntegrationTest {
                 + "WHERE status = 'PENDING'").query(String.class).list();
     }
 
+    /** LH 보강 금액 공급대상이 붙은 공급행의 마이홈 원천행. */
+    private List<String> lhTargetRows() {
+        return jdbc.sql("""
+                SELECT row.myhome_source_row_identifier FROM supply_targets target
+                JOIN supply_rows row ON row.id = target.supply_row_id
+                WHERE target.source_supply_target_identifier LIKE 'LH:%'
+                ORDER BY row.id
+                """).query(String.class).list();
+    }
+
     private List<String> pendingEnrichmentFailures() {
         return jdbc.sql("SELECT reason FROM lh_announcement_enrichment_failures WHERE status = 'PENDING'")
                 .query(String.class).list();
     }
 
     private MyHomeAnnouncementSourceView source() {
-        var source = MyHomeSourceViews.announcement(1, new MyHomeAnnouncementSourceSnapshot(TARGET,
-                1, "모집중", "영구임대 입주자 모집공고", "LH", "26", "영구임대", null,
+        return source(1, "평화주공4단지", PNU);
+    }
+
+    private MyHomeAnnouncementSourceView source(int order, String complexName, String pnu) {
+        var source = MyHomeSourceViews.announcement(order, new MyHomeAnnouncementSourceSnapshot(TARGET,
+                order, "모집중", "영구임대 입주자 모집공고", "LH", "26", "영구임대", null,
                 "20261001", "20261106", "20261008", "20261015", null,
                 "https://example.com/announcements?panId=lh-19585&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07",
-                null, null, "평화주공4단지", "전북특별자치도", "전주시", null, null, null, PNU, null, null,
+                null, null, complexName, "전북특별자치도", "전주시", null, null, null, pnu, null, null,
                 300, null, null, null, null));
         source = MyHomeSourceViews.collectedAt(source, Instant.parse("2026-10-08T00:00:00Z"));
         return source;
