@@ -44,6 +44,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -161,6 +162,11 @@ class LhSupplyLinkIntegrationTest {
         assertThat(pendingEnrichmentFailures()).isEmpty();
         assertThat(jdbc.sql("SELECT actor FROM admin_data_changes WHERE action = 'SAVE_LH_SUPPLY_LINK'")
                 .query(String.class).list()).containsExactly("operator");
+        var saved = change("SAVE_LH_SUPPLY_LINK");
+        assertThat(saved.resourceType()).isEqualTo("LH_SUPPLY_LINK");
+        assertThat(saved.resourceId()).isEqualTo(linkId());
+        assertThat(saved.before().isNull()).isTrue();
+        assertThat(keys(saved.after())).containsExactlyInAnyOrder("announcementIdentifier", "lhRowIdentifier", "link");
     }
 
     @Test
@@ -263,6 +269,13 @@ class LhSupplyLinkIntegrationTest {
         assertThat(releasedMatch.path("sourceUrl").asString()).isEqualTo(OFFICIAL_URL);
         assertThat(releasedMatch.path("reason").asString()).isEqualTo("PDF 보정");
         assertThat(releasedMatch.path("actor").asString()).isEqualTo("operator");
+        var matchRelease = change("RELEASE_SUPPLY_MATCH");
+        assertThat(matchRelease.resourceType()).isEqualTo("LH_SUPPLY_LINK");
+        assertThat(matchRelease.resourceId()).isEqualTo(linkId());
+        assertThat(keys(matchRelease.before()))
+                .containsExactly("rowIdentifier", "complexId", "housingTypeId", "sourceUrl", "reason", "actor");
+        assertThat(keys(matchRelease.after()))
+                .containsExactlyInAnyOrder("announcementIdentifier", "rowIdentifier", "reason");
         mapping.mapAll();
         assertThat(pendingMappingFailures()).isEmpty();
 
@@ -365,6 +378,7 @@ class LhSupplyLinkIntegrationTest {
     @Test
     void 연결을_이유와_함께_해제하면_다음_정제부터_자동_연결로_돌아간다() throws Exception {
         var saved = read(save(view(), "공고문 단지 목록 대조").andExpect(status().isOk()));
+        long linkId = linkId();
 
         var released = read(release(saved, "다른 단지로 잘못 연결함").andExpect(status().isOk()));
         mapping.mapAll();
@@ -375,6 +389,11 @@ class LhSupplyLinkIntegrationTest {
         assertThat(jdbc.sql("SELECT count(*) FROM lh_supply_row_links").query(Long.class).single()).isZero();
         assertThat(jdbc.sql("SELECT after_value FROM admin_data_changes WHERE action = 'RELEASE_LH_SUPPLY_LINK'")
                 .query(String.class).single()).contains("다른 단지로 잘못 연결함");
+        var linkRelease = change("RELEASE_LH_SUPPLY_LINK");
+        assertThat(linkRelease.resourceType()).isEqualTo("LH_SUPPLY_LINK");
+        assertThat(linkRelease.resourceId()).isEqualTo(linkId);
+        assertThat(keys(linkRelease.before())).containsExactlyInAnyOrder("announcementIdentifier", "lhRowIdentifier", "link");
+        assertThat(keys(linkRelease.after())).containsExactlyInAnyOrder("announcementIdentifier", "lhRowIdentifier", "reason");
         assertThat(pendingEnrichmentFailures()).containsExactly("COMPLEX_NOT_FOUND");
     }
 
@@ -530,5 +549,23 @@ class LhSupplyLinkIntegrationTest {
                 300, null, null, null, null));
         source = MyHomeSourceViews.collectedAt(source, Instant.parse("2026-10-08T00:00:00Z"));
         return source;
+    }
+
+    private long linkId() {
+        return jdbc.sql("SELECT id FROM lh_supply_row_links").query(Long.class).single();
+    }
+
+    private Change change(String action) {
+        return jdbc.sql("SELECT resource_type, resource_id, before_value, after_value FROM admin_data_changes "
+                        + "WHERE action = ?").param(action)
+                .query((row, index) -> new Change(row.getString(1), row.getLong(2), json.readTree(row.getString(3)),
+                        json.readTree(row.getString(4)))).single();
+    }
+
+    private List<String> keys(JsonNode node) {
+        return node.properties().stream().map(Map.Entry::getKey).toList();
+    }
+
+    private record Change(String resourceType, long resourceId, JsonNode before, JsonNode after) {
     }
 }

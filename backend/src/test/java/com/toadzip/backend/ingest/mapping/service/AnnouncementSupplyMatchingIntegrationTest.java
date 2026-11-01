@@ -69,6 +69,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     private static final String PNU = "2823710500105500000";
     @Autowired private AnnouncementSupplyMatchingService matching;
     @Autowired private AnnouncementSupplyRowQueryService rowQuery;
+    @Autowired private CorrectedSupplyLinkService correctedLinks;
     @Autowired private AnnouncementSupplyCandidateService candidateService;
     @Autowired private MyHomeAnnouncementSourceFixtures sources;
     @Autowired private HousingComplexRepository complexes;
@@ -109,6 +110,20 @@ class AnnouncementSupplyMatchingIntegrationTest {
     private ResultActions split(Map<String, Object> body) throws Exception {
         return mvc.perform(post(PATH + "/" + TARGET + "/split").with(user("operator").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body)));
+    }
+
+    @Test
+    void 나눈_원천행은_PDF_보정_연결로_저장하지_않는다() throws Exception {
+        prepareHansville();
+        var row = rowQuery.rows(TARGET).getFirst();
+        split(splitBody(row)).andExpect(status().isOk());
+        var type = types.findAll().getFirst();
+
+        correctedLinks.remember(TARGET, Map.of(row.rowIdentifier(), type), "https://example.com/official.pdf",
+                "공고문 근거", "operator");
+
+        assertThat(jdbc.sql("SELECT count(*) FROM announcement_supply_match_decisions WHERE row_identifier = ?")
+                .param(row.rowIdentifier()).query(Long.class).single()).isZero();
     }
 
     @Test

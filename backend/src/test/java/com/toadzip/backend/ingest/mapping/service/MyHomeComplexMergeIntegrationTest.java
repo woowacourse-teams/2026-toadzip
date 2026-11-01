@@ -49,6 +49,8 @@ import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.user.domain.User;
 import com.toadzip.backend.user.repository.UserRepository;
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.Statement;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -59,6 +61,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -95,6 +103,7 @@ class MyHomeComplexMergeIntegrationTest {
     private static final Instant COLLECTED_AT = Instant.parse("2026-09-03T00:00:00Z");
 
     @Autowired private MockMvc mvc;
+    @Autowired private DataSource dataSource;
     @Autowired private ObjectMapper json;
     @Autowired private JdbcClient jdbc;
     @Autowired private ComplexDetailQueryRepository detailQueries;
@@ -583,6 +592,28 @@ class MyHomeComplexMergeIntegrationTest {
     }
 
     @Test
+    void 통합은_원천을_잠가_동시에_바뀐_원천을_근거로_삼지_않는다() throws Exception {
+        ComplexMergeRequest request = json.convertValue(mergeRequest(), ComplexMergeRequest.class);
+
+        Throwable failure = mergeWhileUncommitted(
+                "UPDATE myhome_complex_source_rows SET bass_mt_rntchrg = 12345", request);
+
+        assertThat(failure).isNotNull();
+        assertThat(complexes.count()).isEqualTo(3);
+    }
+
+    @Test
+    void 통합은_단지를_잠가_동시에_고친_수동값을_잃지_않는다() throws Exception {
+        ComplexMergeRequest request = json.convertValue(mergeRequest(), ComplexMergeRequest.class);
+
+        mergeWhileUncommitted("UPDATE housing_complexes SET image_url = 'https://example.com/b.png' WHERE id = "
+                + ids.get(1), request);
+
+        assertThat(complexes.findAll()).extracting(HousingComplex::getImageUrl)
+                .contains("https://example.com/b.png");
+    }
+
+    @Test
     void 커밋_직전에_실행_소유권을_잃으면_통합을_롤백한다() throws Exception {
         addReferences();
         ComplexMergeRequest request = json.convertValue(mergeRequest(), ComplexMergeRequest.class);
@@ -639,6 +670,28 @@ class MyHomeComplexMergeIntegrationTest {
     private void claimOwnership(Lease lease) {
         jdbc.sql("UPDATE ingest_execution_ownership SET owner_id = ?, generation = ? WHERE id = 1")
                 .params(lease.ownerId(), lease.generation()).update();
+    }
+
+    /** 다른 트랜잭션이 커밋하지 않은 변경을 쥔 채 통합을 시작하고, 통합이 그 변경에 막힌 뒤 커밋한다. 통합의 실패를 돌려준다. */
+    private Throwable mergeWhileUncommitted(String update, ComplexMergeRequest request) throws Exception {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try (Connection other = dataSource.getConnection()) {
+            other.setAutoCommit(false);
+            try (Statement statement = other.createStatement()) {
+                statement.executeUpdate(update);
+            }
+            Future<?> merge = executor.submit(() -> mergeService.merge(request, "admin"));
+            Thread.sleep(1_000);
+            other.commit();
+            try {
+                merge.get(30, TimeUnit.SECONDS);
+                return null;
+            } catch (ExecutionException exception) {
+                return exception.getCause();
+            }
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     private JsonNode merge() throws Exception {
