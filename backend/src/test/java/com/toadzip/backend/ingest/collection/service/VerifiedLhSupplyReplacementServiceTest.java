@@ -54,7 +54,7 @@ class VerifiedLhSupplyReplacementServiceTest {
     @Test
     void 보류_응답의_지문과_LH_공식_근거가_일치하면_승인을_기록한다() {
         String description = LH_REQUEST.requestDescription();
-        when(failureRepository.findFirstBySourceAndSourceKeyOrderByIdDesc(
+        when(failureRepository.findFirstBySourceAndRequestDescriptionOrderByIdDesc(
                 ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, description))
                 .thenReturn(Optional.of(failure("proposedFingerprint=" + FINGERPRINT)));
 
@@ -66,7 +66,7 @@ class VerifiedLhSupplyReplacementServiceTest {
 
     @Test
     void 다른_응답의_지문은_승인하지_않는다() {
-        when(failureRepository.findFirstBySourceAndSourceKeyOrderByIdDesc(
+        when(failureRepository.findFirstBySourceAndRequestDescriptionOrderByIdDesc(
                 ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, LH_REQUEST.requestDescription()))
                 .thenReturn(Optional.of(failure("proposedFingerprint=" + "b".repeat(64))));
 

@@ -29,7 +29,7 @@ Spring은 생성자 주입으로 객체를 연결한다. `DataPipelineRunner.run
 
 단지 정제는 `MyHomeComplexMappingService.mapAll()` → `MyHomeComplexMappingProcessor.mapAll()`에서 원천을 묶는다. 일반 단지는 위치정보 DB의 좌표를 읽어 저장하고, 확인된 통합 단지는 기존 주소를 검증해 금액·주택형만 갱신한다. 저장은 단지별 트랜잭션이다.
 신규 주소의 좌표가 필요하면 수집 후 위치정보요약DB ZIP을 관리자 API로 업로드한다. 업로드는 정제 파이프라인에 포함되지 않는다.
-실패는 작업이 끝날 때 현재 원천과 대조해 갱신하며 이전 실패 이력은 보존한다. 정제·보강 실패의 전체 실행 후 대조·저장·미해결·이력 조회는 `IngestFailureStore`가 공통으로 맡는다. 원천별 Store는 대상 실패를 고르는 일만 더한다. 공고 정제·보강 Store는 공고 단위 대조와 관리자 해결(`resolveByAdmin`)을, 단지 정제 Store는 정제가 중간에 멈췄을 때 그때까지 관찰한 실패 기록(`recordObserved`)을 더한다. 관리자 다시 정제가 LH 보강 때문에 거절돼 정제를 되돌려도, 그 실패는 별도 트랜잭션(`reconcileRejectedAnnouncement`)으로 남긴다. 외부 수집 실패(`ExternalDataCollectionFailure`)도 `IngestFailure`를 상속하지만 요청 단위로 `ExternalDataFailureStore`·`ExternalDataFailureRecorder`가 관리한다.
+실패는 작업이 끝날 때 현재 원천과 대조해 갱신하며 이전 실패 이력은 보존한다. 정제·보강 실패의 전체 실행 후 대조·저장·미해결·이력 조회는 `IngestFailureStore`가 공통으로 맡는다. 원천별 Store는 대상 실패를 고르는 일만 더한다. 공고 정제·보강 Store는 공고 단위 대조와 관리자 해결(`resolveByAdmin`)을, 단지 정제 Store는 정제가 중간에 멈췄을 때 그때까지 관찰한 실패 기록(`recordObserved`)을 더한다. 관리자 다시 정제가 LH 보강 때문에 거절돼 정제를 되돌려도, 그 실패는 별도 트랜잭션(`reconcileRejectedAnnouncement`)으로 남긴다. 외부 수집 실패(`ExternalDataCollectionFailure`)는 출처와 조회 조건으로 같은 실패를 찾고 오류 유형이 다시 관찰될 때 바뀌므로 `IngestFailure`를 상속하지 않고, 요청 단위로 `ExternalDataFailureStore`·`ExternalDataFailureRecorder`가 관리한다.
 단계별 후보 준비·배치 실행 API는 제공하지 않는다.
 
 ## 공고 수집·정제를 따라가는 순서
