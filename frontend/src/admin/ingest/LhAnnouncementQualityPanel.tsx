@@ -193,7 +193,7 @@ export function LhAnnouncementQualityPanel({ collectionExecution }: {
               <h4>공식 근거 확인 후 공급 재조회</h4>
               <p>선택한 요청: {held.requestDescription}</p>
               <p className="ingest-meta">승인할 응답 지문: {held.proposedFingerprint}</p>
-              <label>마이홈 공고 ID<input required value={pblancId} onChange={(event) => setPblancId(event.target.value)} /></label>
+              <label>마이홈 공고 ID 또는 LH:공고 ID<input required value={pblancId} onChange={(event) => setPblancId(event.target.value)} /></label>
               <label>LH 공식 공고문 URL<input required type="url" value={evidenceUrl}
                 onChange={(event) => setEvidenceUrl(event.target.value)} /></label>
               <label>철회·정정 확인 사유<textarea required value={reason}

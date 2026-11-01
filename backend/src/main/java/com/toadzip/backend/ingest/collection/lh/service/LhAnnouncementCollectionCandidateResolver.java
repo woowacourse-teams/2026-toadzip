@@ -45,6 +45,13 @@ public class LhAnnouncementCollectionCandidateResolver {
                 .toList();
     }
 
+    /** 종료 정책과 관계없이 최신 공고목록의 임대주택 공고 요청. 관리자 승인·강제 재조회는 마이홈 경로처럼 종료 정책을 건너뛴다. */
+    public List<Candidate> resolveCatalogRequests() {
+        return catalogRepository.findAllPresentRentalHousingAnnouncements().stream()
+                .map(this::catalogCandidate)
+                .toList();
+    }
+
     private Candidate catalogCandidate(LhAnnouncementCatalogSourceView source) {
         LhAnnouncementRequest request = new LhAnnouncementRequest(source.getPanId(),
                 source.getConnectionSystemDivisionCode(), source.getUpperAnnouncementTypeCode(),

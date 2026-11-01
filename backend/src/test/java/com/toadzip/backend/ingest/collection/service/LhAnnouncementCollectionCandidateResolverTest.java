@@ -49,11 +49,12 @@ class LhAnnouncementCollectionCandidateResolverTest {
     }
 
     @Test
-    void 종료_후_수집_기간이_지난_공고목록_공고는_후보에서_뺀다() {
+    void 종료_후_수집_기간이_지난_공고목록_공고는_후보에서_빼되_관리자_승인용_요청에는_남긴다() {
         when(catalogRepository.findAllPresentRentalHousingAnnouncements())
                 .thenReturn(List.of(catalogAnnouncement("06", "07", "062", "2026.08.01")));
 
         assertThat(resolver.resolveCatalogTargets()).isEmpty();
+        assertThat(resolver.resolveCatalogRequests()).extracting(Candidate::panId).containsExactly("200");
     }
 
     @Test

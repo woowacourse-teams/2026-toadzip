@@ -65,6 +65,25 @@ class VerifiedLhSupplyReplacementServiceTest {
     }
 
     @Test
+    void 마이홈_공고가_없는_LH_공고는_LH_공고_ID로_공고목록의_요청을_승인한다() {
+        String description = LH_REQUEST.requestDescription();
+        when(resolver.resolveCatalogRequests()).thenReturn(List.of(
+                new LhAnnouncementCollectionCandidateResolver.Candidate("lh-catalog:x", "catalog", LH_REQUEST)));
+        when(failureRepository.findFirstBySourceAndSourceKeyOrderByIdDesc(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, description))
+                .thenReturn(Optional.of(failure("proposedFingerprint=" + FINGERPRINT)));
+
+        service.approve("LH:" + LH_REQUEST.panId(), request(FINGERPRINT, "https://apply.lh.or.kr/notice"), "operator");
+
+        verify(replacementStore).approve(LhAnnouncementQuery.requestHashOf(description),
+                FINGERPRINT, "https://apply.lh.or.kr/notice", "주택형 철회 확인", "operator");
+        // 다른 LH 공고 ID로는 같은 요청을 승인하지 않는다.
+        assertThatThrownBy(() -> service.approve("LH:other",
+                request(FINGERPRINT, "https://apply.lh.or.kr/notice"), "operator"))
+                .isInstanceOf(InvalidIngestRequestException.class);
+    }
+
+    @Test
     void 다른_응답의_지문은_승인하지_않는다() {
         when(failureRepository.findFirstBySourceAndSourceKeyOrderByIdDesc(
                 ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, LH_REQUEST.requestDescription()))

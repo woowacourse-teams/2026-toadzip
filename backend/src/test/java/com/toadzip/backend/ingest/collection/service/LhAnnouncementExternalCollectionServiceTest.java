@@ -191,6 +191,23 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void 공고목록_요청_하나만_다시_조회하고_목록에_없는_요청은_거절한다() {
+        when(catalogRepository.findAllPresentRentalHousingAnnouncements())
+                .thenReturn(List.of(catalogAnnouncement("300", "07", "062"), catalogAnnouncement("400", "07", "062")));
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        String target = new LhAnnouncementRequest("300", "03", "06", "07", "062").requestDescription();
+
+        service.refreshCatalogTarget(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, target);
+
+        ArgumentCaptor<LhAnnouncementRequest> request = ArgumentCaptor.forClass(LhAnnouncementRequest.class);
+        verify(externalRepository).fetchDetail(request.capture());
+        assertThat(request.getValue().panId()).isEqualTo("300");
+        assertThatThrownBy(() -> service.refreshCatalogTarget(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                new LhAnnouncementRequest("999", "03", "06", "07", "062").requestDescription()))
+                .isInstanceOf(InvalidIngestRequestException.class);
+    }
+
+    @Test
     void 마이홈_종료_정책으로_뺀_요청은_공고목록에서도_수집하지_않는다() {
         source(stored(MyHomeSourceViews.change(announcementSource("P1", "100")).endDe("20260101").read()));
         when(catalogRepository.findAllPresentRentalHousingAnnouncements())

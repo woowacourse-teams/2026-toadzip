@@ -2,6 +2,8 @@ package com.toadzip.backend.ingest.collection.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -18,6 +20,7 @@ import com.toadzip.backend.ingest.collection.lh.supply.service.VerifiedLhSupplyR
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.pipeline.configuration.DataPipelineExecutionWebConfiguration;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
+import java.net.URI;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -158,6 +161,39 @@ class LhAnnouncementCollectionControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.successfulRequestCount").value(1));
         verify(ownershipService, times(1)).acquire();
+    }
+
+    @Test
+    void LH_공고_ID로_승인하면_공고목록의_그_요청만_다시_조회한다() throws Exception {
+        when(replacementService.approve(eq("LH:100"), any(), eq("operator"))).thenReturn(1L);
+        when(replacementService.finish(1L)).thenReturn(true);
+        when(collectionService.refreshCatalogTarget(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "PAN_ID=100&COLLECTION_VERSION=6"))
+                .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 1, 0, 1, 0, 0, 1));
+        lenient().when(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "LH:100"))
+                .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 1, 0, 1, 0, 0, 1));
+
+        mockMvc.perform(post("/api/admin/ingest/lh/announcements/supplies/LH:100/verified-replacement")
+                        .principal(() -> "operator")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"requestDescription":"PAN_ID=100&COLLECTION_VERSION=6",
+                                 "proposedFingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                                 "evidenceUrl":"https://apply.lh.or.kr/notice","reason":"철회 공고 확인"}
+                                """))
+                .andExpect(status().isOk());
+        verify(collectionService, never()).refresh(any(), any());
+        // 화면은 encodeURIComponent로 `LH%3A100`을 보낸다.
+        mockMvc.perform(post(URI.create("/api/admin/ingest/lh/announcements/supplies/LH%3A100/verified-replacement"))
+                        .principal(() -> "operator")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"requestDescription":"PAN_ID=100&COLLECTION_VERSION=6",
+                                 "proposedFingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                                 "evidenceUrl":"https://apply.lh.or.kr/notice","reason":"철회 공고 확인"}
+                                """))
+                .andExpect(status().isOk());
+        verify(replacementService, times(2)).approve(eq("LH:100"), any(), eq("operator"));
     }
 
     @Test

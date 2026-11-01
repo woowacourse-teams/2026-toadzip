@@ -64,6 +64,18 @@ public class LhAnnouncementExternalCollectionService {
         return refresh(targetSource, pblancId, null);
     }
 
+    /** 공고목록에서 정한 수집 후보 하나를 다시 받는다. 마이홈 공고가 없는 LH 공고의 공급 교체 승인 뒤에 쓴다. */
+    public ExternalDataCollectionReport refreshCatalogTarget(ExternalDataSource targetSource, String requestDescription) {
+        validateTargetSource(targetSource);
+        List<Candidate> candidates = candidateResolver.resolveCatalogRequests().stream()
+                .filter(candidate -> candidate.requestDescription().equals(requestDescription))
+                .toList();
+        if (candidates.isEmpty()) {
+            throw new InvalidIngestRequestException("최신 공고목록에 있는 LH 공고의 수집 요청이 아닙니다.");
+        }
+        return collectCandidates(targetSource, candidates, new HashMap<>(), true);
+    }
+
     public ExternalDataCollectionReport refresh(
             ExternalDataSource targetSource, String pblancId, UUID sourceExecutionId
     ) {
