@@ -117,6 +117,25 @@ public class AnnouncementComplex {
         return true;
     }
 
+    /**
+     * PDF·공급 보정에서 관리자가 정한 단지로 연결한다. 자동·이관 연결과 같은 단지여도 관리자가 확인했으므로 관리자 연결이 된다.
+     * 바뀐 것이 있으면 true다.
+     */
+    public boolean linkByAdmin(HousingComplex complex, String actor, Instant at) {
+        if (complex == null) {
+            throw new IllegalArgumentException("연결할 단지가 필요합니다.");
+        }
+        if (linkMethod == ComplexLinkMethod.ADMIN && housingComplex != null
+                && Objects.equals(housingComplex.getId(), complex.getId())) {
+            return false;
+        }
+        housingComplex = complex;
+        linkMethod = ComplexLinkMethod.ADMIN;
+        linkedBy = actor;
+        linkedAt = at;
+        return true;
+    }
+
     /** 연결된 제품 단지. 연결 단지가 휴지통에 있으면 미연결로 본다. */
     public HousingComplex linkedComplex() {
         if (housingComplex == null || housingComplex.isAdminDeleted()) {
