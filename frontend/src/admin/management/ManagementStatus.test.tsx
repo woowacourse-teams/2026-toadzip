@@ -16,9 +16,19 @@ it('공고 출처와 공급정보 주인을 알려 정제가 공급행을 다시
   expect(screen.getByText('출처: LH 원천')).toBeInTheDocument()
   expect(screen.getByText('공급정보: 원천 반영')).toBeInTheDocument()
   rerender(<AnnouncementOwnership summary={{ ...summary, announcement: { ...summary.announcement!,
+    supplyOwner: 'ANNOUNCEMENT_DOCUMENT' } }} />)
+  expect(screen.getByText('공급정보: 공고문 확정')).toHaveAttribute('title', expect.stringContaining('공급행을 다시 만들지 않습니다'))
+})
+
+it('LH 공고 정제가 다루지 않는 공고에는 공급정보 주인을 표시하지 않는다', () => {
+  const { rerender } = render(<AnnouncementOwnership summary={{ ...summary, announcement: { ...summary.announcement!,
     origin: 'ADMIN_ENTRY', supplyOwner: 'ANNOUNCEMENT_DOCUMENT' } }} />)
   expect(screen.getByText('출처: 직접 등록')).toBeInTheDocument()
-  expect(screen.getByText('공급정보: 공고문 확정')).toHaveAttribute('title', expect.stringContaining('공급행을 다시 만들지 않습니다'))
+  expect(screen.queryByText(/공급정보:/)).not.toBeInTheDocument()
+  rerender(<AnnouncementOwnership summary={{ ...summary, announcement: { ...summary.announcement!,
+    origin: 'MYHOME_LEGACY', supplyOwner: 'LH_SOURCE' } }} />)
+  expect(screen.getByText('출처: 마이홈(과거)')).toBeInTheDocument()
+  expect(screen.queryByText(/공급정보:/)).not.toBeInTheDocument()
 })
 
 it('출처와 공급정보 주인이 없는 이전 응답에는 표시하지 않는다', () => {
