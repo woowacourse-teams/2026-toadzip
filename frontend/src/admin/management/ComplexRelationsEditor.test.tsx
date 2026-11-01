@@ -6,11 +6,11 @@ import { ManagementError } from './api'
 import { applySupply, loadSupplyWorkspace, previewSupply, blankRow } from '../supply/supplyCorrectionApi'
 import type { ManagementDetailData } from './managementContract'
 
-const mocks = vi.hoisted(() => ({ getManagementDetail: vi.fn(), requestManagementApi: vi.fn(), getManagementHistory: vi.fn() }))
+const mocks = vi.hoisted(() => ({ getManagementDetail: vi.fn(), requestManagementApi: vi.fn(), getManagementHistory: vi.fn(), loadHousingTypeImpact: vi.fn() }))
 vi.mock('./api', async original => ({ ...(await original<typeof import('./api')>()), ...mocks }))
 vi.mock('../supply/SupplyReviewPanel', () => ({ SupplyReviewPanel: () => null }))
 vi.mock('../supply/supplyCorrectionApi', async original => ({ ...await original<typeof import('../supply/supplyCorrectionApi')>(), loadSupplyWorkspace: vi.fn(), previewSupply: vi.fn(), applySupply: vi.fn() }))
-vi.mock('./housingTypeImpactApi', () => ({ loadHousingTypeImpact: () => Promise.resolve({ token: 'impact', rows: [] }) }))
+vi.mock('./housingTypeImpactApi', () => ({ loadHousingTypeImpact: mocks.loadHousingTypeImpact }))
 const summary = { id: 7, name: '두꺼비 단지', subtitle: '서울', provider: 'LH', rental: 'HAPPY_HOUSING', deleted: false, modified: false, reviewRequired: false, updatedAt: null }
 const announcement: ManagementDetailData = {
   summary: { ...summary, id: 21, name: '두꺼비 입주 공고' }, sourceIdentifier: 'A-21',
@@ -28,6 +28,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   mocks.getManagementDetail.mockImplementation((resource: string) => Promise.resolve(resource === 'complexes' ? complex : announcement))
   mocks.getManagementHistory.mockResolvedValue([])
+  mocks.loadHousingTypeImpact.mockResolvedValue({ token: 'impact', rows: [] })
   vi.mocked(loadSupplyWorkspace).mockResolvedValue({ snapshotToken: 'before', version: 4, rows: [], sources: [] })
 })
 async function openRelations() {
@@ -53,6 +54,22 @@ it('주택형을 수정하고 세대수 미확인과 0을 구분해 저장한다
   fireEvent.submit(screen.getByRole('button', { name: '수정 영향 확인' }).closest('form')!)
   fireEvent.click(await screen.findByRole('button', { name: '영향을 확인한 주택형 저장' }))
   await waitFor(() => expect(mocks.requestManagementApi).toHaveBeenLastCalledWith(expect.any(String), 'PUT', expect.objectContaining({ version: 3, householdCount: null })))
+})
+
+it('공급행이 연결된 주택형은 면적 변경 저장을 막고 이름만 바꾸면 저장한다', async () => {
+  mocks.loadHousingTypeImpact.mockResolvedValue({ token: 'impact', rows: [{ announcementId: 21, announcementName: '두꺼비 입주 공고', supplyRowId: 3, excluded: false, announcementVersion: 4 }] })
+  mocks.requestManagementApi.mockResolvedValue(complex)
+  await openRelations()
+  fireEvent.click(screen.getByRole('button', { name: '46A 수정' }))
+  fireEvent.change(screen.getByLabelText('전용면적 (㎡)'), { target: { value: '59.1234' } })
+  fireEvent.submit(screen.getByRole('button', { name: '수정 영향 확인' }).closest('form')!)
+  expect(await screen.findByRole('alert')).toHaveTextContent('전용면적을 바꿀 수 없습니다')
+  expect(screen.queryByRole('button', { name: '영향을 확인한 주택형 저장' })).toBeNull()
+  fireEvent.change(screen.getByLabelText('전용면적 (㎡)'), { target: { value: '46.8' } })
+  fireEvent.change(screen.getByLabelText('주택형 이름'), { target: { value: '46B' } })
+  fireEvent.submit(screen.getByRole('button', { name: '수정 영향 확인' }).closest('form')!)
+  fireEvent.click(await screen.findByRole('button', { name: '영향을 확인한 주택형 저장' }))
+  await waitFor(() => expect(mocks.requestManagementApi).toHaveBeenCalledWith('/api/admin/housing-complexes/7/housing-types/9', 'PUT', expect.objectContaining({ name: '46B', exclusiveArea: 46.8 })))
 })
 
 it('주택형 저장 충돌은 입력을 유지하고 탭 이동 취소는 편집을 유지한다', async () => {
