@@ -1,0 +1,24 @@
+[project]
+name = "toadzip-ai-worker"
+version = "0.1.0"
+description = "ai_jobs 작업 큐를 처리하는 두꺼비집 AI 워커"
+requires-python = ">=3.12"
+dependencies = [
+    "psycopg[binary]>=3.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "testcontainers[postgres]>=4",
+]
+
+[build-system]
+requires = ["uv_build>=0.8,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "ai_worker"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
