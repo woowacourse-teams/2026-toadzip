@@ -76,6 +76,7 @@ class LhSupplyAmountWriterTest {
     }
 
     private LhSupplyAmountWriter writer() {
-        return new LhSupplyAmountWriter(supplyRowRepository, supplyTargetRepository, supplyMatcher);
+        return new LhSupplyAmountWriter(supplyRowRepository, new LhEnrichmentSupplyRows(supplyRowRepository),
+                supplyTargetRepository, supplyMatcher);
     }
 }

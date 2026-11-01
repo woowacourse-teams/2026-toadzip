@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class LhSupplyMatchDiagnostics {
     private final AnnouncementRepository announcements;
-    private final LhSupplyAmountWriter amounts;
+    private final LhEnrichmentSupplyRows supplyRows;
     private final LhAnnouncementEnrichmentMapper mapper;
     private final LhAnnouncementSupplyMatcher matcher;
 
@@ -31,8 +31,9 @@ public class LhSupplyMatchDiagnostics {
         if (announcement == null) {
             return List.of();
         }
-        List<SupplyRow> allRows = amounts.enrichmentRows(announcement, sourceKeysExcludedFromLhEnrichment);
-        List<SupplyRow> rows = allRows.stream().filter(row -> row.getSupplyGroup() == null).toList();
+        var enrichmentRows = supplyRows.read(announcement, sourceKeysExcludedFromLhEnrichment);
+        List<SupplyRow> allRows = enrichmentRows.all();
+        List<SupplyRow> rows = enrichmentRows.matchable();
         List<Failure> failures = new ArrayList<>();
         for (LhAnnouncementSupplySourceView supply : supplies) {
             diagnose(panId, supply, supplyLinks, allRows, rows).ifPresent(failures::add);
@@ -50,7 +51,8 @@ public class LhSupplyMatchDiagnostics {
             return Optional.of(new Failure(identifier, exception.reason().name(), exception.getMessage(),
                     List.of()));
         }
-        // 복수 공급행으로 보정한 행에 붙는 LH 행은 보강이 건너뛰므로 실패로 보지 않는다.
+        // 복수 공급행으로 보정한 행에 붙는 LH 행은 보강이 건너뛰므로 실패로 보지 않는다. 보강은 매칭 행이 없어도
+        // 같은 단지 행이 모두 묶음이면 건너뛰지만, 진단은 매칭된 묶음 행만 본다.
         var protectedMatch = matcher.match(allRows, source).row();
         if (protectedMatch != null && protectedMatch.getSupplyGroup() != null) {
             return Optional.empty();

@@ -71,10 +71,6 @@ public class SupplyTarget {
         adminModified = true;
     }
 
-    public void markLhAmountPreserved() {
-        markLhAmountPreserved("LH_AMOUNT_NOT_PROVIDED");
-    }
-
     /** LH 원천으로 만든 공급대상인지는 호출한 쪽이 판정한다. */
     public void markLhAmountPreserved(String reason) {
         if (adminModified) {

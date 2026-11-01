@@ -6,7 +6,6 @@ import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
-import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
@@ -35,6 +34,7 @@ class LhSupplyAmountWriter {
     private static final String ALL_RANK = "전체";
 
     private final SupplyRowRepository supplyRowRepository;
+    private final LhEnrichmentSupplyRows supplyRows;
     private final SupplyTargetRepository supplyTargetRepository;
     private final LhAnnouncementSupplyMatcher supplyMatcher;
 
@@ -44,9 +44,9 @@ class LhSupplyAmountWriter {
      */
     Result write(Announcement announcement, LhAnnouncementEnrichmentData data, Set<Long> changedHousingTypeRowIds,
             Set<String> sourceKeysExcludedFromLhEnrichment) {
-        List<SupplyRow> allRows = enrichmentRows(announcement, sourceKeysExcludedFromLhEnrichment);
-        List<SupplyRow> rows = allRows.stream().filter(row -> row.getSupplyGroup() == null).toList();
-        var supplies = data.supplies().stream().filter(source -> !protectedSupply(allRows, source)).toList();
+        LhEnrichmentSupplyRows.Rows enrichmentRows = supplyRows.read(announcement, sourceKeysExcludedFromLhEnrichment);
+        List<SupplyRow> rows = enrichmentRows.matchable();
+        var supplies = data.supplies().stream().filter(source -> !protectedSupply(enrichmentRows, source)).toList();
         if (supplies.isEmpty()) {
             if (!changedHousingTypeRowIds.isEmpty()) {
                 throw missingAmountForChangedHousingType();
@@ -80,26 +80,12 @@ class LhSupplyAmountWriter {
                 .toList());
     }
 
-    /** LH 보강이 보는 공고의 공급행이다. LH 보강에서 뺀 마이홈 원천의 공급행은 뺀다. */
-    List<SupplyRow> enrichmentRows(Announcement announcement, Set<String> sourceKeysExcludedFromLhEnrichment) {
-        List<SupplyRow> rows = supplyRowRepository.findAllByAnnouncement(announcement);
-        if (sourceKeysExcludedFromLhEnrichment.isEmpty()) {
-            return rows;
-        }
-        Set<Long> rowIdsExcludedFromLhEnrichment = MyHomeAnnouncementSupplyRowGroups.byMyHomeSource(
-                announcement.getSourceAnnouncementIdentifier(), rows
-        ).entrySet().stream()
-                .filter(group -> sourceKeysExcludedFromLhEnrichment.contains(group.getKey()))
-                .flatMap(group -> group.getValue().stream())
-                .map(SupplyRow::getId)
-                .collect(Collectors.toSet());
-        return rows.stream().filter(row -> !rowIdsExcludedFromLhEnrichment.contains(row.getId())).toList();
-    }
-
-    private boolean protectedSupply(List<SupplyRow> rows, LhSupplyData source) {
-        if (rows.stream().noneMatch(row -> row.getSupplyGroup() != null)) {
+    /** 복수 공급행으로 보정한 묶음 행에 붙는 LH 공급이다. 보강은 이 공급을 건너뛴다. */
+    private boolean protectedSupply(LhEnrichmentSupplyRows.Rows enrichmentRows, LhSupplyData source) {
+        if (!enrichmentRows.hasGroupedRows()) {
             return false;
         }
+        List<SupplyRow> rows = enrichmentRows.all();
         var matched = supplyMatcher.match(rows, source);
         if (matched.row() != null) {
             return matched.row().getSupplyGroup() != null;
