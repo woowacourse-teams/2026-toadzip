@@ -174,6 +174,7 @@ public class SupplyCorrectionService {
                     + "공고 정제를 다시 실행하고, 펼쳐진 공급행을 보정하세요.");
         }
         var groupPlans = groupCorrections.plan(announcement, planned, request.newGroups());
+        checkNewTypes(planned);
         var warnings = new ArrayList<>(validateSchedulesAndCounts(id, planned, request.newGroups()));
         warnings.addAll(linkWarnings(complexLinks(announcement, before.rows(), planned)));
         if (groupPlans.isEmpty() && same(before.rows(), planned)) {
@@ -206,16 +207,17 @@ public class SupplyCorrectionService {
     /**
      * 다른 보정 이력 한 건에 공급행 변경을 포함할 때 공급행만 저장한다. 호출자가 같은 잠금 트랜잭션에서 만든 미리보기를 쓴다.
      * 호출자는 같은 트랜잭션에서 이력을 남긴 뒤 {@link #recordOperation}으로 작업 번호를 그 이력에 연결한다.
+     * 요청 행의 작업 키마다 저장한 공급행을 돌려준다.
      */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void writeWithoutHistory(long id, SupplyCorrection.Apply request, SupplyCorrection.Preview preview,
+    public Map<String, SupplyRow> writeWithoutHistory(long id, SupplyCorrection.Apply request, SupplyCorrection.Preview preview,
             String actor) {
         var announcement = announcements.findByIdForUpdate(id).orElseThrow(AnnouncementNotFoundException::new);
         if (corrections.findByOperationId(request.correction().operationId()).isPresent()) {
             throw new AdminDataConflictException("이미 적용한 공급정보 보정 작업입니다. 최신값을 다시 확인하세요.");
         }
         confirm(id, preview, request);
-        writePlanned(announcement, preview, request, actor);
+        return writePlanned(announcement, preview, request, actor);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -255,17 +257,18 @@ public class SupplyCorrectionService {
         }
     }
 
-    private void writePlanned(Announcement announcement, SupplyCorrection.Preview preview,
+    private Map<String, SupplyRow> writePlanned(Announcement announcement, SupplyCorrection.Preview preview,
             SupplyCorrection.Apply request, String actor) {
         var stored = rows.findAllByAnnouncement(announcement).stream()
                 .collect(Collectors.toMap(SupplyRow::getId, Function.identity()));
         var groupPlans = groupCorrections.plan(announcement, preview.after(), request.correction().newGroups());
         Map<String, SupplyRow> written = new LinkedHashMap<>();
+        Map<String, HousingType> createdTypes = new HashMap<>();
         var beforeById = preview.before().stream().collect(Collectors.toMap(Row::id, Function.identity()));
         for (var row : preview.after()) {
             var saved = stored.get(row.id());
             if (row.id() == null || !same(beforeById.get(row.id()), row)) {
-                saved = writeRow(announcement, saved, row, request.correction());
+                saved = writeRow(announcement, saved, row, request.correction(), createdTypes);
             }
             written.put(row.key(), saved);
         }
@@ -283,6 +286,7 @@ public class SupplyCorrectionService {
                 request.correction().reason(), actor);
         announcement.recordAdminSupplyChange();
         announcements.flush();
+        return written;
     }
 
     /** 이 저장이 관리자 연결로 정하는 공고 단지와 단지, 그 자리에서 같은 면적 주택형으로 맞출 단지 없는 행의 작업 키. */
@@ -534,10 +538,20 @@ public class SupplyCorrectionService {
         return List.copyOf(warnings);
     }
 
-    private SupplyRow writeRow(Announcement announcement, SupplyRow stored, Row input, SupplyCorrection.Request request) {
+    private SupplyRow writeRow(Announcement announcement, SupplyRow stored, Row input, SupplyCorrection.Request request,
+            Map<String, HousingType> createdTypes) {
         var complex = complex(input.housingComplexId());
-        var type = type(input, complex, "MANUAL:" + request.operationId() + ":" + input.key());
-        if (input.newHousingType() != null) { types.save(type); }
+        HousingType type;
+        if (input.newHousingType() == null) {
+            type = type(input, complex, null);
+        } else {
+            // 한 저장에서 같은 단지·전용면적의 새 주택형을 고른 행들은 주택형 하나를 함께 쓴다.
+            type = createdTypes.get(newTypeKey(input));
+            if (type == null) {
+                type = types.save(type(input, complex, "MANUAL:" + request.operationId() + ":" + input.key()));
+                createdTypes.put(newTypeKey(input), type);
+            }
+        }
         if (stored == null) {
             // 원천이 없는 직접 추가 행은 처음 입력한 표기를 원천 이름으로 남긴다.
             stored = rows.save(SupplyRow.create(announcement, complex, type,
@@ -577,10 +591,9 @@ public class SupplyCorrectionService {
             if (complex == null || row.housingTypeId() != null) {
                 throw new IllegalArgumentException("새 주택형을 만들 단지만 선택하세요. 기존 주택형과 함께 지정할 수 없습니다.");
             }
+            // PDF·공급 보정으로 만든 주택형은 공고 값이라 보호하지 않는다. 다음 공고가 이름·면적·세대수를 갱신한다.
             var input = row.newHousingType();
-            var created = HousingType.createFromMyHome(complex, identifier, input.name(), input.exclusiveArea(), input.supplyArea());
-            created.reviseByAdmin(input.name(), input.exclusiveArea(), null);
-            return created;
+            return HousingType.createFromMyHome(complex, identifier, input.name(), input.exclusiveArea(), input.supplyArea());
         }
         if (row.housingTypeId() == null) { return null; }
         var type = types.findById(row.housingTypeId()).orElseThrow(
@@ -589,6 +602,30 @@ public class SupplyCorrectionService {
             throw new IllegalArgumentException("선택한 단지에 속한 주택형을 선택하세요.");
         }
         return type;
+    }
+
+    private static String newTypeKey(Row row) {
+        return row.housingComplexId() + ":" + row.newHousingType().exclusiveArea().stripTrailingZeros().toPlainString();
+    }
+
+    /**
+     * 새 주택형은 단지에 같은 전용면적 주택형이 없을 때만 만든다. 있으면 그 주택형을 고르게 하고, 휴지통에 있으면
+     * 복구한 뒤 연결하게 한다. 같은 면적 주택형이 둘이 되면 공급행을 면적으로 맞출 수 없기 때문이다.
+     */
+    private void checkNewTypes(List<Row> planned) {
+        for (var row : planned) {
+            if (row.newHousingType() == null || row.housingComplexId() == null) { continue; }
+            var area = row.newHousingType().exclusiveArea();
+            var same = types.findAllIncludingTrashByHousingComplexId(row.housingComplexId()).stream()
+                    .filter(type -> type.getExclusiveArea().compareTo(area) == 0).toList();
+            String label = row.typeName() + ": 전용 " + area.stripTrailingZeros().toPlainString() + "㎡ 주택형이 ";
+            if (same.stream().anyMatch(type -> !type.isAdminDeleted())) {
+                throw new IllegalArgumentException(label + "이 단지에 있습니다. 새로 만들지 말고 그 주택형을 선택하세요.");
+            }
+            if (!same.isEmpty()) {
+                throw new IllegalArgumentException(label + "휴지통에 있습니다. 단지 상세에서 복구한 뒤 연결하세요.");
+            }
+        }
     }
 
     private List<Object> candidateValues(List<Row> planned) {

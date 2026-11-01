@@ -184,10 +184,8 @@ public class AdminHousingComplexManagementService {
         if (types.findAllByHousingComplex(complex).stream().anyMatch(type -> type.getName().equals(name))) {
             throw new AdminDataConflictException("이 단지에 같은 이름의 주택형이 있습니다.");
         }
-        // 관리자가 만든 주택형은 수집 원천이 없으므로 원천 식별자를 새로 만들고 관리자 수정으로 표시해 재수집이 덮어쓰지 않게 한다.
-        var type = HousingType.createFromMyHome(complex, HousingType.ADMIN_SOURCE_PREFIX + UUID.randomUUID(),
-                name, request.exclusiveArea(), request.supplyArea());
-        type.reviseByAdmin(name, request.exclusiveArea(), request.householdCount());
+        var type = HousingType.createByAdmin(complex, HousingType.ADMIN_SOURCE_PREFIX + UUID.randomUUID(),
+                name, request.exclusiveArea(), request.supplyArea(), request.householdCount());
         types.save(type);
         complex.noteHousingTypeRevisionByAdmin();
         complexes.flush();

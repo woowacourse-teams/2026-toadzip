@@ -10,10 +10,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
+import com.toadzip.backend.housing.domain.HousingType.AnnouncementValues;
+import java.time.Instant;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 
 class HousingTypeTest {
+    private static final Instant POSTED = Instant.parse("2026-10-12T15:00:00Z");
 
     @Test
     void 관리자_수정_주택형은_마이홈_재정제와_LH_보강이_덮어쓰지_않는다() {
@@ -52,6 +55,80 @@ class HousingTypeTest {
         assertThrows(IllegalArgumentException.class, () -> type.reviseByAdmin("59B", BigDecimal.ONE, -1));
         assertEquals("46A", type.getName());
         assertFalse(type.isAdminModified());
+    }
+
+    @Test
+    void 관리자_주택형_수정은_실제로_바꾼_필드만_공고로부터_보호한다() {
+        HousingType type = HousingType.createFromMyHome(
+                createHousingComplex(), "source-type", "46A", new BigDecimal("46.8"), null);
+        type.reviseByAdmin("46A", new BigDecimal("46.8"), 12);
+
+        assertFalse(type.isNameAdminModified());
+        assertTrue(type.isHouseholdCountAdminModified());
+        assertTrue(type.observeAnnouncement(new AnnouncementValues("46A1", new BigDecimal("65.1"), 30), POSTED));
+        assertAll(
+                () -> assertEquals("46A1", type.getName()),
+                () -> assertEquals(new BigDecimal("65.1000"), type.getSupplyArea()),
+                () -> assertEquals(12, type.getTotalHouseholdCount())
+        );
+    }
+
+    @Test
+    void 관리자가_이름을_바꾸면_공고가_이름을_덮지_않고_세대수는_갱신한다() {
+        HousingType type = HousingType.createFromMyHome(
+                createHousingComplex(), "source-type", "46A", new BigDecimal("46.8"), null);
+        type.reviseByAdmin("46 A형", new BigDecimal("46.8"), null);
+
+        assertTrue(type.observeAnnouncement(new AnnouncementValues("46A", null, 30), POSTED));
+        assertEquals("46 A형", type.getName());
+        assertEquals(30, type.getTotalHouseholdCount());
+        assertNull(type.getSupplyArea());
+    }
+
+    @Test
+    void 관리자가_만든_주택형은_입력한_이름과_세대수를_보호한다() {
+        HousingType counted = HousingType.createByAdmin(createHousingComplex(), "ADMIN_ENTRY-HOUSING-TYPE-1", "59",
+                new BigDecimal("59.9"), null, 20);
+        HousingType uncounted = HousingType.createByAdmin(createHousingComplex(), "ADMIN_ENTRY-HOUSING-TYPE-2", "59",
+                new BigDecimal("59.9"), null, null);
+
+        assertTrue(counted.isNameAdminModified() && counted.isHouseholdCountAdminModified() && counted.isAdminModified());
+        assertTrue(uncounted.isNameAdminModified());
+        assertFalse(uncounted.isHouseholdCountAdminModified());
+        assertTrue(uncounted.observeAnnouncement(new AnnouncementValues("59A", null, 40), POSTED));
+        assertEquals("59", uncounted.getName());
+        assertEquals(40, uncounted.getTotalHouseholdCount());
+    }
+
+    @Test
+    void 더_이른_공고는_값을_되돌리지_않고_같은_날_공고는_다시_반영한다() {
+        HousingType type = HousingType.createFromMyHome(
+                createHousingComplex(), "source-type", "46A", new BigDecimal("46.8"), null);
+        assertTrue(type.observeAnnouncement(new AnnouncementValues("46A", null, 30), POSTED));
+
+        assertFalse(type.observeAnnouncement(new AnnouncementValues("46B", null, 10), POSTED.minusSeconds(86400)));
+        assertEquals("46A", type.getName());
+        assertEquals(30, type.getTotalHouseholdCount());
+        assertEquals(POSTED, type.getAnnouncementObservedAt());
+
+        assertTrue(type.observeAnnouncement(new AnnouncementValues("46A", null, 32), POSTED));
+        assertEquals(32, type.getTotalHouseholdCount());
+        assertTrue(type.observeAnnouncement(new AnnouncementValues(null, null, 33), POSTED.plusSeconds(86400)));
+        assertEquals(POSTED.plusSeconds(86400), type.getAnnouncementObservedAt());
+        assertEquals("46A", type.getName());
+    }
+
+    @Test
+    void 같은_공고_값은_바뀐_것이_없고_음수_공고_값은_받지_않는다() {
+        HousingType type = HousingType.createFromMyHome(
+                createHousingComplex(), "source-type", "46A", new BigDecimal("46.8"), new BigDecimal("65.1"));
+        type.observeAnnouncement(new AnnouncementValues("46A", new BigDecimal("65.10"), 30), POSTED);
+
+        assertFalse(type.observeAnnouncement(new AnnouncementValues("46A", new BigDecimal("65.1"), 30), POSTED));
+        assertThrows(IllegalArgumentException.class,
+                () -> type.observeAnnouncement(new AnnouncementValues("46A", null, -1), POSTED));
+        assertThrows(IllegalArgumentException.class,
+                () -> type.observeAnnouncement(new AnnouncementValues("46A", new BigDecimal("-1"), 1), POSTED));
     }
 
     @Test

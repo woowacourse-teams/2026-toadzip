@@ -285,3 +285,20 @@ it('일정 일시는 자정이면 날짜만, 시각이 있으면 시:분까지 �
   expect(['2026-06-01T00:00:00', '2026-06-01T16:00:00', '2026-06-01T09:30', '2026-06-01', null].map(shownDateTime))
     .toEqual(['2026-06-01', '2026-06-01 16:00', '2026-06-01 09:30', '2026-06-01', '미확인'])
 })
+
+it('주택형 공고 값은 고른 이름·공급면적과 건설호수만 보내고 고르지 않은 값과 공급대상 괄호는 보내지 않는다', () => {
+  const { review, workspace } = scenario('gwangju')
+  const valueOf = (key: string) => assembleReview(review, workspace, evidence).housingTypeValues?.find(value => value.rowKey === key)
+  const index = review.rows.findIndex(row => row.include && row.proposal.destination === 'row:22')
+  expect(valueOf('row:22')).toEqual({ rowKey: 'row:22', name: '39', supplyArea: 66.6673, householdCount: null })
+  expect(valueOf('row:26')?.name).toBe('26')
+  const row = review.rows[index], edited = row.cells.findIndex(cell => cell.field === 'supplyArea')
+  row.cells[edited] = editCell(row.cells[edited], '66.6')
+  expect(valueOf('row:22')?.supplyArea).toBe(66.6)
+  const name = row.cells.findIndex(cell => cell.field === 'sourceHousingTypeName')
+  row.cells[name] = { ...row.cells[name], selected: false, state: 'changed' }
+  expect(valueOf('row:22')?.name).toBeNull()
+  const area = row.cells.findIndex(cell => cell.field === 'supplyArea')
+  row.cells[area] = { ...row.cells[area], selected: false, state: 'changed' }
+  expect(valueOf('row:22')).toBeUndefined()
+})

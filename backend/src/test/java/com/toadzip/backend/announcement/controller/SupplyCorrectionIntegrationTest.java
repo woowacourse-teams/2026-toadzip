@@ -404,7 +404,7 @@ class SupplyCorrectionIntegrationTest {
         mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType("application/json").content(json.writeValueAsString(request))).andExpect(status().isBadRequest());
         input.put("targetCountsComparable", false).putNull("housingTypeId");
-        input.putObject("newHousingType").put("name", "26").put("exclusiveArea", new BigDecimal("26.4673"));
+        input.putObject("newHousingType").put("name", "30").put("exclusiveArea", new BigDecimal("30.1200"));
         long events = jdbc.queryForObject("SELECT count(*) FROM notification_outbox_events", Long.class);
         var preview = preview(id, request);
         apply(id, request, preview).andExpect(status().isOk())
@@ -412,7 +412,9 @@ class SupplyCorrectionIntegrationTest {
         entities.flush(); entities.clear();
         var saved = rows.findById(row.getId()).orElseThrow();
         assertThat(saved.getHousingType().getId()).isNotEqualTo(originalTypeId);
-        assertThat(saved.getHousingType().isAdminModified()).isTrue();
+        assertThat(saved.getHousingType().getName()).isEqualTo("30");
+        // 보정으로 만든 주택형은 공고 값이라 보호하지 않는다. 다음 공고가 갱신한다.
+        assertThat(saved.getHousingType().isNameAdminModified()).isFalse();
         assertThat(saved.updateDisplayOrder(999)).isFalse();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox_events", Long.class)).isEqualTo(events);
     }

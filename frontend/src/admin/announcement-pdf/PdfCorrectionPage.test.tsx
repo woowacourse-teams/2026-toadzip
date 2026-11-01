@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, onTestFinished, vi } from 'vitest'
 import { PdfCorrectionPage, PdfCorrectionWorkspace } from './PdfCorrectionPage'
 import { scenario } from './fixtures/workspace'
 import fixtures from './fixtures/scenarios.json'
-import type { JsonUpdateInput } from '../announcement-json/api'
+import type { JsonPreview, JsonUpdateInput } from '../announcement-json/api'
 import { ManagementError } from '../management/api'
 const api = vi.hoisted(() => ({ loadJsonWorkspace: vi.fn(), previewJsonUpdate: vi.fn(), applyJsonUpdate: vi.fn() }))
 vi.mock('../announcement-json/api', () => api)
@@ -31,7 +31,7 @@ beforeEach(() => {
   vi.stubGlobal('URL', class extends URL { static createObjectURL = () => 'blob:pdf'; static revokeObjectURL = vi.fn() })
   api.loadJsonWorkspace.mockResolvedValue(workspace)
   api.applyJsonUpdate.mockResolvedValue(workspace)
-  api.previewJsonUpdate.mockResolvedValue({ confirmationToken: 'confirmed' })
+  api.previewJsonUpdate.mockResolvedValue({ confirmationToken: 'confirmed', housingTypes: [], housingTypeWarnings: [] })
   extracts(JSON.stringify(fixtures.hansville.extraction))
   extractor.loadLatestExtraction.mockResolvedValue(null)
 })
@@ -71,7 +71,7 @@ function manual(scope: string, label: string) {
   fireEvent.click(within(screen.getByRole('group', { name: `${scope} ${label} 반영 방법` })).getByRole('button', { name: '직접 수정' }))
 }
 it('추가 확인 체크나 미리보기 화면 없이 서버 검증을 마친 같은 보정안만 한 번 저장한다', async () => {
-  let finish!: (value: { confirmationToken: string }) => void
+  let finish!: (value: Pick<JsonPreview, 'confirmationToken' | 'housingTypes' | 'housingTypeWarnings'>) => void
   api.previewJsonUpdate.mockImplementation(() => new Promise(resolve => { finish = resolve }))
   await open()
   expect(screen.queryByRole('checkbox', { name: /확인함|대조함/ })).not.toBeInTheDocument()
@@ -81,7 +81,9 @@ it('추가 확인 체크나 미리보기 화면 없이 서버 검증을 마친 �
   expect(api.applyJsonUpdate).not.toHaveBeenCalled()
   const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
   expect(input.correction.newGroups).toEqual([expect.objectContaining({ sourceRowId: 90, sharedHouseholdCount: 170 })])
-  await act(async () => finish({ confirmationToken: 'confirmed' }))
+  expect(input.housingTypeValues?.map(value => value.name)).toEqual(expect.arrayContaining(['26A', '26B']))
+  await act(async () => finish({ confirmationToken: 'confirmed', housingTypeWarnings: ['26: 관리자가 고친 세대수를 유지합니다.'],
+    housingTypes: [{ rowKey: 'row:1', housingTypeId: 10353, typeName: '26', before: { name: '26', supplyArea: null, householdCount: null }, after: { name: '26A', supplyArea: 52.5, householdCount: 120 } }] }))
   await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })
   expect(api.applyJsonUpdate).toHaveBeenCalledExactlyOnceWith('29', input, 'confirmed')
   expect(screen.queryByRole('heading', { name: '적용할 변경' })).not.toBeInTheDocument()
@@ -90,7 +92,7 @@ it('추가 확인 체크나 미리보기 화면 없이 서버 검증을 마친 �
   expect(result).toHaveTextContent('이 공고의 미해결 오류를 해결로 바꿨습니다.')
   expect(screen.getByRole('link', { name: '저장된 공급정보 확인' }).getAttribute('href')).toContain('section=relations')
   expect(screen.getByRole('link', { name: '출처·수정 이력 보기' }).getAttribute('href')).toContain('section=history')
-  expect(within(screen.getByRole('region', { name: '단지 주택형 이름 후보' })).getAllByRole('listitem').map(item => item.textContent)).toEqual(['#10353 「26」 → 공고 표기 「26A」', '#10352 「26」 → 공고 표기 「26B」'])
+  expect(within(screen.getByRole('region', { name: '공고로 갱신한 주택형' })).getAllByRole('listitem').map(item => item.textContent)).toEqual(['#10353 「26」 → 이름 26A · 공급면적 52.5㎡ · 세대수 120', '26: 관리자가 고친 세대수를 유지합니다.'])
 })
 it('저장할 위치가 없는 공급정보는 오류를 알리고 서버에 보내지 않는다', async () => {
   await open()

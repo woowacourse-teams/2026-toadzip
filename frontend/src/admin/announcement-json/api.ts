@@ -6,10 +6,15 @@ export type JsonObject = Record<string, unknown>
 export type ExtractedAnnouncement = { schemaVersion: string; source: JsonObject; announcement: JsonObject; receptionPlace: JsonObject | null; supplyRows: JsonObject[]; schedules: JsonObject[]; attachments: JsonObject[]; unresolvedFields: JsonObject[] }
 export type JsonWorkspace = { snapshotToken: string; detail: ManagementDetailData; supply: SupplyWorkspace; events: { id: number; data: JsonObject; complexName: string | null }[] }
 export type Selection = { inputIndex: number; existingId: number | null }
-export type JsonUpdateInput = { snapshotToken: string; document: ExtractedAnnouncement; fields: string[]; schedules: Selection[]; attachments: Selection[]; correction: SupplyCorrectionInput }
+/** 공고문에서 읽은 공급행 주택형의 값. 저장하면 그 행이 고른 주택형에 반영한다. */
+export type HousingTypeValue = { rowKey: string; name: string | null; supplyArea: number | null; householdCount: number | null }
+export type JsonUpdateInput = { snapshotToken: string; document: ExtractedAnnouncement; fields: string[]; schedules: Selection[]; attachments: Selection[]; correction: SupplyCorrectionInput; housingTypeValues?: HousingTypeValue[] }
+export type TypeValues = { name: string; supplyArea: number | null; householdCount: number | null }
+/** housingTypeId가 null이면 이 저장에서 새로 만드는 주택형이다. */
+export type HousingTypeChange = { rowKey: string; housingTypeId: number | null; typeName: string; before: TypeValues | null; after: TypeValues }
 export type JsonChange = { field: string; before: unknown; after: unknown }
 export type ChildChange = { inputIndex: number; existingId: number | null; before: JsonObject | null; after: JsonObject }
-export type JsonPreview = { confirmationToken: string; fields: JsonChange[]; supply: SupplyPreview | null; schedules: ChildChange[]; attachments: ChildChange[]; warnings: string[] }
+export type JsonPreview = { confirmationToken: string; fields: JsonChange[]; supply: SupplyPreview | null; schedules: ChildChange[]; attachments: ChildChange[]; housingTypes: HousingTypeChange[]; housingTypeWarnings: string[]; warnings: string[] }
 const path = (id: string) => `/api/admin/announcements/${encodeURIComponent(id)}/json-corrections`
 function objectArray(value: unknown): value is JsonObject[] { return Array.isArray(value) && value.every(isRecord) }
 function invalid(): never { throw new Error('공고 보정 응답이 올바르지 않습니다.') }
@@ -30,11 +35,16 @@ export async function previewJsonUpdate(id: string, input: JsonUpdateInput): Pro
       && Number(item.inputIndex) >= 0 && (item.existingId === null || Number.isSafeInteger(item.existingId) && Number(item.existingId) > 0)
       && (item.before === null || isRecord(item.before)) && isRecord(item.after))) invalid()
   }
+  // 주택형 갱신을 모르는 이전 서버는 두 목록을 주지 않는다.
+  const housingTypes = result.housingTypes ?? [], housingTypeWarnings = result.housingTypeWarnings ?? []
+  if (!objectArray(housingTypes) || !housingTypes.every(item => typeof item.rowKey === 'string' && typeof item.typeName === 'string'
+      && (item.housingTypeId === null || Number.isSafeInteger(item.housingTypeId)) && (item.before === null || isRecord(item.before)) && isRecord(item.after))
+    || !Array.isArray(housingTypeWarnings) || !housingTypeWarnings.every(item => typeof item === 'string')) invalid()
   const supply = result.supply === null ? null : parseSupplyPreview(result.supply)
   if (input.correction.newGroups?.length && JSON.stringify(input.correction.newGroups) !== JSON.stringify(supply?.newGroups)) {
     throw new Error('서버가 공통 모집 묶음을 확인하지 못했습니다. PDF 보정을 지원하는 서버로 갱신한 뒤 다시 요청하세요.')
   }
-  return { ...result, supply } as JsonPreview
+  return { ...result, supply, housingTypes, housingTypeWarnings } as JsonPreview
 }
 export async function applyJsonUpdate(id: string, request: JsonUpdateInput, confirmationToken: string) {
   return workspace(await requestManagementApi(path(id), 'POST', { request, confirmationToken }))
