@@ -2,14 +2,21 @@ package com.toadzip.backend.ingest.collection.myhome.complex.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isA;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionStatus;
 import com.toadzip.backend.ingest.collection.history.domain.SourceCollectionRecord;
@@ -33,6 +40,7 @@ import com.toadzip.backend.ingest.collection.repository.external.MyHomeResponseS
 import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
+import com.toadzip.backend.ingest.exception.exception.CollectedSourceConflictException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
@@ -225,6 +233,40 @@ class MyHomeComplexStorageIntegrationTest {
         assertThat(recordRepository.findAllByExecutionIdAndSource(EXECUTION_ID, CollectionSource.MYHOME_COMPLEX))
                 .hasSize(2).allMatch(record -> record.getStatus() == CollectionStatus.SUCCESS);
         assertThat(sourceRepository.count()).isEqualTo(2);
+    }
+
+    @Test
+    void regionConflictFailsOnlyThatRegionAndOtherRegionsKeepStoring() {
+        store(request("11", "680"), response(COLLECTED_AT, row(100L, "11", "680", "59A", 100000L)));
+        var seoul = regions.find("11", "680");
+        var busan = regions.find("26", "110");
+        doReturn(List.of(seoul, busan)).when(regions).findAll();
+        String busanUrl = apiUrl(1).replace("brtcCode=11&signguCode=680", "brtcCode=26&signguCode=110");
+        httpServer.expect(ExpectedCount.times(2), request ->
+                assertThat(request.getURI().toString()).isIn(apiUrl(1), busanUrl)).andRespond(request -> {
+                    if (request.getURI().toString().equals(busanUrl)) {
+                        return withSuccess(pageJson(1, row(100L, "26", "110", "59A", 200000L)),
+                                MediaType.APPLICATION_JSON).createResponse(request);
+                    }
+                    return withSuccess(pageJson(2, row(100L, "11", "680", "59A", 100000L),
+                            row(101L, "11", "680", "84B", 300000L)),
+                            MediaType.APPLICATION_JSON).createResponse(request);
+                });
+        clock.set(FINISHED_AT.plusSeconds(60));
+
+        try (var ignored = IngestExecutionScope.open(EXECUTION_ID, null, null, null)) {
+            var result = batch.collect(MyHomeComplexCollectionCommand.allRegions(2, 10));
+            assertThat(result.storedRowCount()).isEqualTo(2);
+            assertThat(result.failedRequestCount()).isOne();
+        }
+        verify(failures).record(eq(ExternalDataSource.MYHOME_COMPLEX),
+                startsWith("brtcCode=26&signguCode=110&pageNo=1"), isA(ExternalDataCallFailureException.class),
+                any(), any());
+        assertThat(source(101L).rows()).hasSize(1);
+        assertThat(recordRepository.findAllByExecutionIdAndSource(EXECUTION_ID, CollectionSource.MYHOME_COMPLEX))
+                .filteredOn(record -> record.getStatus() == CollectionStatus.FAILED).singleElement()
+                .extracting(SourceCollectionRecord::getErrorType)
+                .isEqualTo(CollectedSourceConflictException.class.getSimpleName());
     }
 
     @Test
@@ -470,7 +512,7 @@ class MyHomeComplexStorageIntegrationTest {
 
         assertThatThrownBy(() -> store(request("26", "110"), response(COLLECTED_AT.plusSeconds(1),
                 row(100L, "26", "110", "59A", 200000L), row(201L, "26", "110", "84B", 400000L))))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("기존 단지 식별자의 지역과 충돌");
+                .isInstanceOf(CollectedSourceConflictException.class).hasMessageContaining("기존 단지 식별자의 지역과 충돌");
 
         assertThat(sourceRepository.count()).isEqualTo(2);
         assertThat(source(100L).rows()).containsExactly(seoul);

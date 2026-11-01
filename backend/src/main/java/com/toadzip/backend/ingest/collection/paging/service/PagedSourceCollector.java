@@ -9,6 +9,7 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.collection.service.SourceCollectionAttempt;
+import com.toadzip.backend.ingest.exception.exception.CollectedSourceConflictException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
@@ -22,8 +23,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * 페이지로 나눠 받는 원천을 끝까지 모아 한 번에 저장한다. 실행을 확인한 뒤 요청을 만들고, 수집 이력을 열어 페이지마다
- * 실행 확인·재시도 호출·검증·진행 보고를 반복한 뒤 저장한다. 페이지 검증과 저장의 실패는 재시도하지 않고, 수집 이력에는
- * 원래 실패를 남긴 채 마지막으로 받은 페이지의 호출 실패로 바꿔 던진다.
+ * 실행 확인·재시도 호출·검증·진행 보고를 반복한 뒤 저장한다. 응답 검증 실패와 저장된 원천과의 충돌은 재시도하지 않고,
+ * 수집 이력에는 원래 실패를 남긴 채 마지막으로 받은 페이지의 호출 실패로 바꿔 던진다. 응답을 검증한 뒤 저장하다 난 다른
+ * 오류는 내부 오류이므로 바꾸지 않고 그대로 던진다.
  */
 @Slf4j
 @Component
@@ -86,9 +88,15 @@ public class PagedSourceCollector {
         var calls = new PageCalls<>(source, attempt.request(), counter, rateLimit);
         UUID recordId;
         try {
-            recordId = attempt.run(records, request -> collectPages(source, request, calls), source::store);
+            recordId = attempt.run(records, request -> calls.validated(collectPages(source, request, calls)),
+                    source::store);
         } catch (IllegalArgumentException failure) {
+            if (calls.responseValidated) {
+                throw failure;
+            }
             throw calls.failure(failure);
+        } catch (CollectedSourceConflictException conflict) {
+            throw calls.failure(conflict);
         }
         return records.storedRowCount(recordId);
     }
@@ -107,7 +115,7 @@ public class PagedSourceCollector {
         return buffer.finish(clock.instant());
     }
 
-    /** 페이지 호출을 재시도 실행기로 보내고, 실패를 바꿀 때 쓸 마지막 페이지와 그 호출 횟수를 기억한다. */
+    /** 페이지 호출을 재시도 실행기로 보내고, 실패를 바꿀 때 쓸 마지막 페이지와 그 호출 횟수, 응답 검증을 마쳤는지를 기억한다. */
     private final class PageCalls<A extends PagedSourceRequest, P> {
 
         private final PagedSource<A, P, ?> source;
@@ -116,6 +124,7 @@ public class PagedSourceCollector {
         private final RateLimitSignal rateLimit;
         private int lastPage = 1;
         private int lastAttemptCount;
+        private boolean responseValidated;
 
         private PageCalls(
                 PagedSource<A, P, ?> source, A request, ExternalDataCallCounter counter, RateLimitSignal rateLimit
@@ -137,7 +146,12 @@ public class PagedSourceCollector {
             }
         }
 
-        private ExternalDataCallFailureException failure(IllegalArgumentException cause) {
+        private <C> C validated(C collected) {
+            responseValidated = true;
+            return collected;
+        }
+
+        private ExternalDataCallFailureException failure(RuntimeException cause) {
             return new ExternalDataCallFailureException(source.source(), request.pageDescription(lastPage),
                     lastAttemptCount, new ExternalDataRequestException(cause.getMessage()));
         }

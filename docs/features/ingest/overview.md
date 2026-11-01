@@ -35,7 +35,7 @@ Spring은 생성자 주입으로 객체를 연결한다. `DataPipelineRunner.run
 ## 공고 수집·정제를 따라가는 순서
 
 MyHome은 `MyHomeAnnouncementCollectionService.collect()` → `PagedSourceCollector.collectAndReport()` → `MyHomeAnnouncementCollector.store()` → `MyHomeAnnouncementStorageService.complete()`을 읽는다.
-페이지로 받는 원천(마이홈 단지·공고, LH 임대·공고 목록)의 `*Collector`는 `PagedSource`로 페이지 조회·검증·저장 방법만 정한다. 재시도, 수집 이력, 실행 확인과 실패 기록은 `PagedSourceCollector`가 맡는다. 수집 이력 하나의 생명주기(실행 확인 → 요청 생성 → 이력 시작 → 수집 → 저장 직전 소유권 재확인, 실패 시 이력 실패 마감)는 `SourceCollectionAttempt`가 맡고, `PagedSourceCollector`와 LH 공급·상세의 `LhAnnouncementQueryCollector`가 함께 쓴다.
+페이지로 받는 원천(마이홈 단지·공고, LH 임대·공고 목록)의 `*Collector`는 `PagedSource`로 페이지 조회·검증·저장 방법만 정한다. 재시도, 수집 이력, 실행 확인과 실패 기록은 `PagedSourceCollector`가 맡는다. 수집 이력 하나의 생명주기(실행 확인 → 요청 생성 → 이력 시작 → 수집 → 저장 직전 소유권 재확인, 실패 시 이력 실패 마감)는 `SourceCollectionAttempt`가 맡고, `PagedSourceCollector`와 LH 공급·상세의 `LhAnnouncementQueryCollector`가 함께 쓴다. 페이지 응답 검증 실패와 저장된 원천과의 충돌(`CollectedSourceConflictException`, 마이홈 단지의 지역 충돌)은 마지막 페이지의 외부 호출 실패로 기록하고 다른 요청을 계속한다. 응답 검증을 마친 뒤 저장하다 난 그 밖의 오류는 내부 오류로 실행을 실패시키며 외부 수집 실패로 기록하지 않는다.
 7개 공급유형별 모든 페이지가 유효할 때 원천과 성공 기록을 함께 저장한다. 전체 유형 성공 후 `MyHomeAnnouncementLifecycleService.completeRun()`으로 미조회를 판정한다. 호출 제한은 남은 유형을 중단한다.
 
 LH 공급·상세는 [LhAnnouncementExternalCollectionService](../../../backend/src/main/java/com/toadzip/backend/ingest/collection/lh/service/LhAnnouncementExternalCollectionService.java)의 `collect()`에서 시작한다.

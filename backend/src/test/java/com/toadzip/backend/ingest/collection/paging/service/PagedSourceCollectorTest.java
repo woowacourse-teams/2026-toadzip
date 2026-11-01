@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.ArgumentMatchers.same;
@@ -24,6 +25,7 @@ import com.toadzip.backend.ingest.collection.paging.dto.PagedSourceRequest;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
+import com.toadzip.backend.ingest.exception.exception.CollectedSourceConflictException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
@@ -88,15 +90,32 @@ class PagedSourceCollectorTest {
     }
 
     @Test
-    void 저장_중_검증_실패도_호출_실패로_바꾸고_이력에는_원래_실패를_남긴다() {
+    void 저장_중_내부_오류는_호출_실패로_바꾸지_않고_실패_기록_없이_그대로_던진다() {
         source.page(1, () -> new SourcePage<>(1, List.of("a")));
-        var failure = new IllegalArgumentException("저장할 원천이 요청과 다릅니다.");
+        var failure = new IllegalArgumentException("실제 수집 시각은 저장 실행 시각보다 늦을 수 없습니다.");
         source.storeFailure = failure;
 
-        assertThatThrownBy(() -> collector.collect(source, TestRequest::new, new ExternalDataCallCounter()))
-                .isInstanceOf(ExternalDataCallFailureException.class);
+        assertThatThrownBy(() -> collector.collectAndReport(source, TestRequest::new)).isSameAs(failure);
 
         verify(records).fail(eq(recordId), any(), same(failure));
+        verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void 저장된_원천과_충돌하면_마지막_페이지의_호출_실패로_기록하고_실패_보고로_돌려준다() {
+        source.page(1, () -> new SourcePage<>(1, List.of("a")));
+        var conflict = new CollectedSourceConflictException("기존 단지 식별자의 지역과 충돌합니다.");
+        source.storeFailure = conflict;
+
+        var report = collector.collectAndReport(source, TestRequest::new);
+
+        assertThat(report.failedRequestCount()).isOne();
+        verify(records).fail(eq(recordId), any(), same(conflict));
+        verify(failureRecorder).record(eq(ExternalDataSource.LH_LEASE_CATALOG), eq("PAGE=1"),
+                argThat(failure -> failure instanceof ExternalDataCallFailureException call
+                        && call.getRequestDescription().equals("PAGE=1")
+                        && call.getCause() instanceof ExternalDataRequestException cause
+                        && cause.getMessage().equals(conflict.getMessage())), any(), eq("시험 원천 수집 실패"));
     }
 
     @Test

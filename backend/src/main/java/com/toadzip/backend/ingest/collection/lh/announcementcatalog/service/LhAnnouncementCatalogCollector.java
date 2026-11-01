@@ -32,7 +32,7 @@ public class LhAnnouncementCatalogCollector implements PagedSource<
 
     @Override
     public LhAnnouncementCatalogCollectionBuffer newBuffer(LhAnnouncementCatalogCollectionRequest request) {
-        return new LhAnnouncementCatalogCollectionBuffer();
+        return new LhAnnouncementCatalogCollectionBuffer(request);
     }
 
     @Override
