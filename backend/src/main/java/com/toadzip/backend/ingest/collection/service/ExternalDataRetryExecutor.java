@@ -2,9 +2,9 @@ package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestRejectedException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataRetryInterruptedException;
-import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -61,7 +61,7 @@ public class ExternalDataRetryExecutor {
             try {
                 return executeAttempt(source, action);
             }
-            catch (LhAnnouncementUnavailableException exception) {
+            catch (ExternalDataRequestRejectedException exception) {
                 callCounter.decrement();
                 attempted = false;
                 throw exception;
@@ -101,7 +101,7 @@ public class ExternalDataRetryExecutor {
             result = "completed";
             return response;
         }
-        catch (LhAnnouncementUnavailableException exception) {
+        catch (ExternalDataRequestRejectedException exception) {
             result = "rejected";
             throw exception;
         }

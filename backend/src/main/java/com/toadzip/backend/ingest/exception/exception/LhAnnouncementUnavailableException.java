@@ -1,19 +1,15 @@
 package com.toadzip.backend.ingest.exception.exception;
 
-public class LhAnnouncementUnavailableException extends RuntimeException {
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestRejectedException;
 
-    private final boolean rateLimited;
+/** LH 공고 API 장애 차단기가 요청을 거절했다. */
+public class LhAnnouncementUnavailableException extends ExternalDataRequestRejectedException {
 
     public LhAnnouncementUnavailableException(String message) {
         this(message, false);
     }
 
     public LhAnnouncementUnavailableException(String message, boolean rateLimited) {
-        super(message);
-        this.rateLimited = rateLimited;
-    }
-
-    public boolean isRateLimited() {
-        return rateLimited;
+        super(message, rateLimited);
     }
 }
