@@ -3,7 +3,7 @@ package com.toadzip.backend.ingest.collection.lh.service;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Resolution;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Skipped;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.SourceResolution;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -27,28 +27,27 @@ public class LhAnnouncementCandidateSelector {
 
     /** 고른 공고와 충돌로 보고할 공고를 {@code handledAnnouncementKeys}에 더한다. 호출자는 배치 사이에 같은 집합을 넘긴다. */
     CandidateSelection select(
-            List<MyHomeAnnouncementSourceView> sources,
-            List<Resolution> resolutions,
+            List<SourceResolution> resolutions,
             Set<String> handledAnnouncementKeys,
             boolean forceRefresh
     ) {
         Set<String> conflictingKeys = conflictingSourceKeys(resolutions);
         Set<String> sourceKeysWithoutEligibleCandidates = resolutions.stream()
-                .map(Resolution::sourceAnnouncementKey)
+                .map(resolved -> resolved.resolution().sourceAnnouncementKey())
                 .collect(Collectors.toSet());
         List<Skipped> skippedSources = new ArrayList<>();
         List<Candidate> conflicts = new ArrayList<>();
         List<Candidate> candidates = new ArrayList<>();
         int policyExcludedCount = 0;
         int duplicateCount = 0;
-        for (int sourceIndex = 0; sourceIndex < sources.size(); sourceIndex++) {
-            Resolution resolution = resolutions.get(sourceIndex);
+        for (SourceResolution resolved : resolutions) {
+            Resolution resolution = resolved.resolution();
             if (resolution instanceof Skipped skipped) {
                 skippedSources.add(skipped);
                 continue;
             }
             Candidate candidate = (Candidate) resolution;
-            if (!forceRefresh && !collectionPolicy.isCollectionTarget(sources.get(sourceIndex))) {
+            if (!forceRefresh && !collectionPolicy.isCollectionTarget(resolved.source())) {
                 policyExcludedCount++;
                 continue;
             }
@@ -69,10 +68,10 @@ public class LhAnnouncementCandidateSelector {
         );
     }
 
-    private Set<String> conflictingSourceKeys(List<Resolution> resolutions) {
+    private Set<String> conflictingSourceKeys(List<SourceResolution> resolutions) {
         Map<String, Set<String>> requestsBySource = new HashMap<>();
-        for (Resolution resolution : resolutions) {
-            if (!(resolution instanceof Candidate candidate)) {
+        for (SourceResolution resolved : resolutions) {
+            if (!(resolved.resolution() instanceof Candidate candidate)) {
                 continue;
             }
             requestsBySource.computeIfAbsent(candidate.sourceAnnouncementKey(), ignored -> new HashSet<>())

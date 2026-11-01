@@ -39,8 +39,16 @@ public class LhAnnouncementCollectionCandidateResolver {
     }
 
     public List<Resolution> resolveAll(List<MyHomeAnnouncementSourceView> sources) {
-        List<Resolution> resolutions = sources.stream().map(this::infer).toList();
+        return resolveEach(sources).stream().map(SourceResolution::resolution).toList();
+    }
+
+    /** 원천마다 해석한 결과를 그 원천과 함께 돌려준다. */
+    public List<SourceResolution> resolveEach(List<MyHomeAnnouncementSourceView> sources) {
+        List<SourceResolution> resolutions = sources.stream()
+                .map(source -> new SourceResolution(source, infer(source)))
+                .toList();
         List<String> panIds = resolutions.stream()
+                .map(SourceResolution::resolution)
                 .filter(Candidate.class::isInstance)
                 .map(Candidate.class::cast)
                 .map(Candidate::panId)
@@ -52,11 +60,12 @@ public class LhAnnouncementCollectionCandidateResolver {
         Map<String, List<LhAnnouncementCatalogSourceView>> catalogByPanId = catalogRepository
                 .findAllByPanIdInAndPresentInLatestCatalogTrue(panIds)
                 .stream().collect(Collectors.groupingBy(LhAnnouncementCatalogSourceView::getPanId));
-        return resolutions.stream().map(resolution -> {
-            if (resolution instanceof Candidate candidate) {
-                return resolveFromCatalog(candidate, catalogByPanId.getOrDefault(candidate.panId(), List.of()));
+        return resolutions.stream().map(resolved -> {
+            if (resolved.resolution() instanceof Candidate candidate) {
+                return new SourceResolution(resolved.source(),
+                        resolveFromCatalog(candidate, catalogByPanId.getOrDefault(candidate.panId(), List.of())));
             }
-            return resolution;
+            return resolved;
         }).toList();
     }
 
@@ -141,6 +150,9 @@ public class LhAnnouncementCollectionCandidateResolver {
             return "source:" + source.getSourceKey();
         }
         return pblancId;
+    }
+
+    public record SourceResolution(MyHomeAnnouncementSourceView source, Resolution resolution) {
     }
 
     public sealed interface Resolution permits Candidate, Skipped {

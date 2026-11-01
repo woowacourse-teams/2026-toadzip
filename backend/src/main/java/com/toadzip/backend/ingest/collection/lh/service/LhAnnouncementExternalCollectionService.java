@@ -6,8 +6,8 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCandidateSelector.CandidateSelection;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
-import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Resolution;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Skipped;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.SourceResolution;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
@@ -200,10 +200,10 @@ public class LhAnnouncementExternalCollectionService {
         List<MyHomeAnnouncementSourceView> current = measurePreparation(
                 targetSource, forceRefresh, "current_source_selection", () -> currentSources(sources)
         );
-        List<Resolution> resolutions = measurePreparation(targetSource, forceRefresh, "candidate_resolution",
-                () -> candidateResolver.resolveAll(current));
+        List<SourceResolution> resolutions = measurePreparation(targetSource, forceRefresh, "candidate_resolution",
+                () -> candidateResolver.resolveEach(current));
         CandidateSelection selection = measurePreparation(targetSource, forceRefresh, "candidate_selection",
-                () -> candidateSelector.select(current, resolutions, handledAnnouncementKeys, forceRefresh));
+                () -> candidateSelector.select(resolutions, handledAnnouncementKeys, forceRefresh));
         recordSelection(targetSource, forceRefresh, selection, sources.size() - current.size());
         ExternalDataCollectionReport report = selectionReport(targetSource, selection);
         return report.plus(collectCandidates(
