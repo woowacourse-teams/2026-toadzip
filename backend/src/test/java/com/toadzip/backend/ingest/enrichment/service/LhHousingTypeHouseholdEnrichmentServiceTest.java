@@ -126,6 +126,22 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
     }
 
     @Test
+    void 해결한_세대수_보강_실패는_실패_목록에서_빠지고_이력에만_남는다() {
+        saveComplex("동삼2", "NATIONAL_RENTAL", 120);
+        saveComplex("동삼2", "NATIONAL_RENTAL", 120);
+        saveCatalog(0, "국민임대", "46.8", 120, 120);
+        service.enrichAll();
+        assertThat(service.findFailures(0, 10)).hasSize(1);
+
+        var failure = failureRepository.findAll().getFirst();
+        failure.resolve(Instant.parse("2026-11-01T00:00:00Z"), null);
+        failureRepository.save(failure);
+
+        assertThat(service.findFailures(0, 10)).isEmpty();
+        assertThat(service.findFailureHistory(0, 10)).hasSize(1);
+    }
+
+    @Test
     void 여러_LH_원천_그룹이_같은_단지에_매칭되면_어느_값도_보강하지_않는다() {
         HousingComplex complex = saveComplex("동삼2주공아파트", "NATIONAL_RENTAL", 120);
         HousingType type = saveType(complex, "46A", "46.8000");

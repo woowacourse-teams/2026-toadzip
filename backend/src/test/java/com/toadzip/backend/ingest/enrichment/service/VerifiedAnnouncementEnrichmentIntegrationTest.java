@@ -121,9 +121,9 @@ class VerifiedAnnouncementEnrichmentIntegrationTest {
                         "다른 자료.pdf", attachment.getFileType(), "https://example.com/other.pdf")), List.of(), false),
                 Set.of(), Set.of());
         entityManager.flush(); entityManager.clear();
-        assertThat(entityManager.find(AnnouncementSchedule.class,
-                event.getId()).getName()).isEqualTo("공식 확인 접수");
-        assertThat(entityManager.find(AnnouncementAttachment.class,
-                attachment.getId()).getFileName()).isEqualTo("공식 확인.pdf");
+        assertThat(entityManager.find(AnnouncementSchedule.class, event.getId()))
+                .isNotNull().extracting(AnnouncementSchedule::getName).isEqualTo("공식 확인 접수");
+        assertThat(entityManager.find(AnnouncementAttachment.class, attachment.getId()))
+                .isNotNull().extracting(AnnouncementAttachment::getFileName).isEqualTo("공식 확인.pdf");
     }
 }

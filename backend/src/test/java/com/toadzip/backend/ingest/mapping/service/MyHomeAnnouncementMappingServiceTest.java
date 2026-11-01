@@ -304,6 +304,9 @@ class MyHomeAnnouncementMappingServiceTest {
         assertThat(report.createdAnnouncementCount()).isZero();
         assertThat(announcementRepository.count()).isZero();
         assertThat(failureRepository.findAll())
+                .extracting(MyHomeAnnouncementMappingFailure::getSourceHouseSerialNumber)
+                .containsExactlyInAnyOrder(earlier.getHouseSn(), later.getHouseSn());
+        assertThat(failureRepository.findAll())
                 .extracting(MyHomeAnnouncementMappingFailure::getSourceAnnouncementIdentifier,
                         MyHomeAnnouncementMappingFailure::getReason, MyHomeAnnouncementMappingFailure::getDetail)
                 .containsExactlyInAnyOrder(
