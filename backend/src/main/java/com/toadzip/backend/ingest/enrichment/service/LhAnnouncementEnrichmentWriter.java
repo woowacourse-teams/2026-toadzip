@@ -11,11 +11,10 @@ import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepositor
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.RentalType;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
-import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
@@ -63,7 +62,7 @@ public class LhAnnouncementEnrichmentWriter implements MappedAnnouncementLhEnric
     public void writeAfterMapping(
             Announcement announcement,
             LhAnnouncementRequest request,
-            List<LhAnnouncementSupplySource> supplies,
+            List<LhAnnouncementSupplySourceView> supplies,
             Set<Long> changedHousingTypeRowIds,
             Set<String> sourceKeysExcludedFromLhEnrichment,
             Map<String, LhSupplyRowLinks.State> supplyLinks
@@ -74,10 +73,10 @@ public class LhAnnouncementEnrichmentWriter implements MappedAnnouncementLhEnric
                     "지원하지 않는 공급유형의 LH 공고입니다."
             );
         }
-        List<LhAnnouncementDetailSource> details = detailSourceRepository
+        List<LhAnnouncementDetailSourceView> details = detailSourceRepository
                 .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
                         request.panId(),
-                        LhAnnouncementQuery.requestHashOf(request.requestDescription())
+                        request.requestHash()
                 );
         if (details.isEmpty()) {
             throw new LhAnnouncementEnrichmentRejectedException(

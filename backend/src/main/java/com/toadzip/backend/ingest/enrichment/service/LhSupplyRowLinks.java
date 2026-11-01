@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.enrichment.domain.LhSupplyRowLink;
@@ -29,13 +29,13 @@ public class LhSupplyRowLinks {
     private final LhSupplyRowLinkRepository links;
     private final ObjectMapper json;
 
-    public static String identifier(LhAnnouncementSupplySource source) {
+    public static String identifier(LhAnnouncementSupplySourceView source) {
         return LhSourceIdentifier.supply(source.getPanId(), source.getSourceOrder());
     }
 
     /** 공고의 저장 연결을 LH 행 식별자별로 판정한다. 저장 연결이 없는 LH 행은 결과에 없다. */
     public Map<String, State> states(String announcementIdentifier, List<MyHomeAnnouncementSourceView> currentSources,
-            List<LhAnnouncementSupplySource> supplies) {
+            List<LhAnnouncementSupplySourceView> supplies) {
         var result = new LinkedHashMap<String, State>();
         for (var link : links.findAllBySourceAnnouncementIdentifierOrderById(announcementIdentifier)) {
             result.put(link.getLhSupplyRowIdentifier(), new State(link, valid(link, currentSources, supplies)));
@@ -44,7 +44,7 @@ public class LhSupplyRowLinks {
     }
 
     private boolean valid(LhSupplyRowLink link, List<MyHomeAnnouncementSourceView> currentSources,
-            List<LhAnnouncementSupplySource> supplies) {
+            List<LhAnnouncementSupplySourceView> supplies) {
         boolean sameSupply = supplies.stream().anyMatch(value ->
                 identifier(value).equals(link.getLhSupplyRowIdentifier())
                         && lhFingerprint(value).equals(link.getLhSourceFingerprint()));
@@ -55,7 +55,7 @@ public class LhSupplyRowLinks {
     }
 
     /** 조회 이후 원천이나 저장 연결이 바뀌었는지 확인하는 값이다. */
-    public String token(List<MyHomeAnnouncementSourceView> currentSources, List<LhAnnouncementSupplySource> supplies,
+    public String token(List<MyHomeAnnouncementSourceView> currentSources, List<LhAnnouncementSupplySourceView> supplies,
             Map<String, State> states) {
         var values = new ArrayList<Object>();
         currentSources.forEach(source -> values.add(myHomeFingerprint(source)));
@@ -65,7 +65,7 @@ public class LhSupplyRowLinks {
     }
 
     /** 연결 판단에 쓰는 LH 값만 담는다. 보증금·임대료처럼 보강으로 갱신되는 값은 재확인 사유가 아니다. */
-    public String lhFingerprint(LhAnnouncementSupplySource source) {
+    public String lhFingerprint(LhAnnouncementSupplySourceView source) {
         return hash(source.getPanId(), source.getRequestHash(), source.getSourceOrder(), source.getComplexLabel(),
                 source.getTypeName(), source.getExclusiveArea(), source.getSupplyArea(), source.getTotalUnitCount(),
                 source.getSuppliedUnitCount());

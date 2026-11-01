@@ -6,13 +6,12 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
-import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver.LinkedSource;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
@@ -152,14 +151,14 @@ public class LhAnnouncementEnrichmentService {
     ) {
         MyHomeAnnouncementSourceView source = linked.source();
         String panId = linked.request().panId();
-        String requestHash = LhAnnouncementQuery.requestHashOf(linked.request().requestDescription());
-        List<LhAnnouncementDetailSource> details = detailSourceRepository
+        String requestHash = linked.request().requestHash();
+        List<LhAnnouncementDetailSourceView> details = detailSourceRepository
                 .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
         if (details.isEmpty()) {
             return reject(source, panId, LhAnnouncementEnrichmentFailureReason.LH_DETAIL_SOURCE_NOT_FOUND,
                     "연결된 LH 공고 상세 원본이 없습니다.", failures, occurredAt);
         }
-        List<LhAnnouncementSupplySource> supplies = supplySourceRepository
+        List<LhAnnouncementSupplySourceView> supplies = supplySourceRepository
                 .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
         try {
             LhAnnouncementEnrichmentData data = mapper.map(panId, details, supplies).withSupplyLinks(supplyLinks

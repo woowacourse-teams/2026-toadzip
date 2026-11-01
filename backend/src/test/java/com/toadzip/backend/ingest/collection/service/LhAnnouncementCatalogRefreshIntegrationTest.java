@@ -15,7 +15,7 @@ import com.toadzip.backend.ingest.collection.fixture.repository.LhCatalogStorage
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
@@ -204,7 +204,7 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
         assertThat(service.collect(DETAIL).externalApiCallCount()).isOne();
     }
 
-    private List<LhAnnouncementDetailSource> currentDetails() {
+    private List<LhAnnouncementDetailSourceView> currentDetails() {
         return querySources.findAll().stream()
                 .filter(source -> source.getSource() == CollectionSource.LH_ANNOUNCEMENT_DETAIL)
                 .flatMap(source -> detailReader.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(

@@ -5,7 +5,6 @@ import com.toadzip.backend.ingest.collection.history.dto.SourceCollectionRequest
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -23,9 +22,7 @@ public record LhAnnouncementCollectionRequest(
 
     @Override
     public Map<String, String> parameters() {
-        var parameters = new HashMap<>(query.parameters());
-        parameters.put("COLLECTION_VERSION", Integer.toString(collectionVersion));
-        return Map.copyOf(parameters);
+        return query.parameters(collectionVersion);
     }
 
     public String description() {

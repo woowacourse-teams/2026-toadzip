@@ -2,8 +2,8 @@ package com.toadzip.backend.ingest.enrichment.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -25,8 +25,8 @@ class LhHousingTypeHouseholdSourceMapperTest {
         });
     }
 
-    private LhCatalogSource source(int order, String area, String supplyType, String complex, String exclusiveArea) {
-        return LhCatalogSource.read((long) order, order, Instant.parse("2026-10-01T00:00:00Z"),
+    private LhLeaseCatalogSourceView source(int order, String area, String supplyType, String complex, String exclusiveArea) {
+        return LhLeaseCatalogSourceView.read((long) order, order, Instant.parse("2026-10-01T00:00:00Z"),
                 new LhCatalogSourceSnapshot(area, supplyType, complex, "100", exclusiveArea, "10", null, null));
     }
 }

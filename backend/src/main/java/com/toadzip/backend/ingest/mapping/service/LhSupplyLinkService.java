@@ -4,7 +4,7 @@ import com.toadzip.backend.admin.domain.AdminDataChange;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowGroupRepository;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
@@ -204,7 +204,7 @@ public class LhSupplyLinkService {
         return released;
     }
 
-    private LhRow lhRow(Context context, LhAnnouncementSupplySource supply) {
+    private LhRow lhRow(Context context, LhAnnouncementSupplySourceView supply) {
         String identifier = LhSupplyRowLinks.identifier(supply);
         var state = context.states().get(identifier);
         SavedLink saved = null;
@@ -258,11 +258,11 @@ public class LhSupplyLinkService {
                 resolved.sourceKeysExcludedFromLhEnrichment());
     }
 
-    private record Context(List<MyHomeAnnouncementSourceView> currentSources, List<LhAnnouncementSupplySource> supplies,
+    private record Context(List<MyHomeAnnouncementSourceView> currentSources, List<LhAnnouncementSupplySourceView> supplies,
             Map<String, LhSupplyRowLinks.State> states, Map<String, String> linkedRows, String token, String panId,
             Set<String> excludedSourceKeys) {
 
-        Optional<LhAnnouncementSupplySource> supply(String identifier) {
+        Optional<LhAnnouncementSupplySourceView> supply(String identifier) {
             return supplies.stream().filter(value -> LhSupplyRowLinks.identifier(value).equals(identifier))
                     .findFirst();
         }

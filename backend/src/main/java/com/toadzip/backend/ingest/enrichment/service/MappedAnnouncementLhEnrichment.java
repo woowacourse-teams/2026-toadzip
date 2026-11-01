@@ -2,7 +2,7 @@ package com.toadzip.backend.ingest.enrichment.service;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -16,7 +16,7 @@ public interface MappedAnnouncementLhEnrichment {
     void writeAfterMapping(
             Announcement announcement,
             LhAnnouncementRequest request,
-            List<LhAnnouncementSupplySource> supplies,
+            List<LhAnnouncementSupplySourceView> supplies,
             Set<Long> changedHousingTypeRowIds,
             Set<String> sourceKeysExcludedFromLhEnrichment,
             Map<String, LhSupplyRowLinks.State> supplyLinks

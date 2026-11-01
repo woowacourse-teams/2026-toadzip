@@ -6,7 +6,7 @@ import lombok.Getter;
 
 /** 보강·단지 병합이 읽는 LH 임대 카탈로그 원천 하나. 저장된 행을 읽어 만든 뒤 바뀌지 않는다. */
 @Getter
-public class LhCatalogSource {
+public class LhLeaseCatalogSourceView {
 
     private final Long id;
 
@@ -21,7 +21,7 @@ public class LhCatalogSource {
     private final String depositText;
     private final String monthlyRentText;
 
-    private LhCatalogSource(Long id, int sourceOrder, Instant collectedAt, LhCatalogSourceSnapshot snapshot) {
+    private LhLeaseCatalogSourceView(Long id, int sourceOrder, Instant collectedAt, LhCatalogSourceSnapshot snapshot) {
         this.id = id;
         this.sourceOrder = sourceOrder;
         this.collectedAt = collectedAt;
@@ -35,8 +35,8 @@ public class LhCatalogSource {
         monthlyRentText = SourceText.strippedOrNull(snapshot.monthlyRentText());
     }
 
-    public static LhCatalogSource read(Long id, int order, Instant collectedAt,
+    public static LhLeaseCatalogSourceView read(Long id, int order, Instant collectedAt,
             LhCatalogSourceSnapshot snapshot) {
-        return new LhCatalogSource(id, order, collectedAt, snapshot);
+        return new LhLeaseCatalogSourceView(id, order, collectedAt, snapshot);
     }
 }

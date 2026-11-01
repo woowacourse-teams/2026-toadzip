@@ -2,7 +2,7 @@ package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.repository.LhLeaseCatalogSourceReader;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
@@ -78,7 +78,7 @@ public class MyHomeComplexMergeService {
         var candidates = store.candidates(afterId, size);
         var products = complexes.findAllById(candidates.stream()
                 .map(ComplexMergeCandidateRow::representativeId).toList());
-        List<LhCatalogSource> catalog = lhSources.findAllByOrderBySourceOrderAsc();
+        List<LhLeaseCatalogSourceView> catalog = lhSources.findAllByOrderBySourceOrderAsc();
         return candidates.stream().map(candidate -> candidateResponse(candidate, products, catalog)).toList();
     }
 
@@ -103,7 +103,7 @@ public class MyHomeComplexMergeService {
     private ComplexMergeCandidateResponse candidateResponse(
             ComplexMergeCandidateRow candidate,
             List<HousingComplex> products,
-            List<LhCatalogSource> catalog
+            List<LhLeaseCatalogSourceView> catalog
     ) {
         HousingComplex product = products.stream()
                 .filter(complex -> complex.getId() == candidate.representativeId()).findFirst().orElseThrow();
@@ -118,7 +118,7 @@ public class MyHomeComplexMergeService {
 
     private List<ComplexMergeCandidateResponse.LhEvidence> candidateEvidence(
             HousingComplex product,
-            List<LhCatalogSource> catalog
+            List<LhLeaseCatalogSourceView> catalog
     ) {
         return catalog.stream().filter(source -> matcher.hasExactIdentity(product,
                         source.getComplexLabel(), source.getAreaName(), source.getSupplyTypeName()))
@@ -215,15 +215,15 @@ public class MyHomeComplexMergeService {
         require(store.countAdminRecords(ids.subList(1, ids.size())) == 0,
                 "통합할 단지에 저장 매칭·LH 세대수 연결·세대수 결정·검증·비교 기록이 있습니다. "
                         + "통합 복구로 되돌릴 수 없으므로 기록을 정리한 뒤 다시 확인해야 합니다.");
-        LhCatalogSource selected = lhSources.findById(request.lhSourceId())
+        LhLeaseCatalogSourceView selected = lhSources.findById(request.lhSourceId())
                 .orElseThrow(() -> conflict("선택한 LH 원천이 없습니다."));
         long sum = observations.stream().mapToLong(ComplexMergePreviewResponse.Source::householdCount).sum();
-        List<LhCatalogSource> evidenceRows = lhEvidence(products.getFirst(), selected, sum);
+        List<LhLeaseCatalogSourceView> evidenceRows = lhEvidence(products.getFirst(), selected, sum);
         if (lock) {
             store.lockReferences(ids);
         }
         String before = store.state(ids);
-        String evidence = store.evidence(sourceRowIds, evidenceRows.stream().map(LhCatalogSource::getId).toList());
+        String evidence = store.evidence(sourceRowIds, evidenceRows.stream().map(LhLeaseCatalogSourceView::getId).toList());
         String hash = hash(before + "\n" + evidence);
         return new PreparedMerge(new ComplexMergePreviewResponse(
                 ids.getFirst(), ids, Math.toIntExact(sum), hash, observations, selected.getId(),
@@ -265,14 +265,14 @@ public class MyHomeComplexMergeService {
                 data.totalHouseholdCount(), times.getFirst());
     }
 
-    private List<LhCatalogSource> lhEvidence(HousingComplex product, LhCatalogSource selected, long sum) {
+    private List<LhLeaseCatalogSourceView> lhEvidence(HousingComplex product, LhLeaseCatalogSourceView selected, long sum) {
         require(matcher.hasExactIdentity(product, selected.getComplexLabel(), selected.getAreaName(),
                 selected.getSupplyTypeName()), "LH 근거의 이름·지역·공급유형이 일치하지 않습니다.");
-        List<LhCatalogSource> rows = lhSources.findAllByOrderBySourceOrderAsc().stream()
+        List<LhLeaseCatalogSourceView> rows = lhSources.findAllByOrderBySourceOrderAsc().stream()
                 .filter(row -> Objects.equals(row.getComplexLabel(), selected.getComplexLabel())
                         && Objects.equals(row.getAreaName(), selected.getAreaName())
                         && Objects.equals(row.getSupplyTypeName(), selected.getSupplyTypeName())).toList();
-        for (LhCatalogSource row : rows) {
+        for (LhLeaseCatalogSourceView row : rows) {
             require(row.getCollectedAt() != null && row.getCollectedAt().equals(selected.getCollectedAt()),
                     "LH 근거의 수집 시각이 누락되었거나 서로 다릅니다.");
             try {

@@ -23,7 +23,7 @@ import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementDe
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementSupplySourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionLinkRepository;
@@ -355,7 +355,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
                 assertThat(link.getSourceAnnouncementKey()).isEqualTo("P1"));
     }
 
-    private List<LhAnnouncementDetailSource> currentDetails() {
+    private List<LhAnnouncementDetailSourceView> currentDetails() {
         return querySources.findAll().stream()
                 .filter(source -> source.getSource() == CollectionSource.LH_ANNOUNCEMENT_DETAIL)
                 .flatMap(source -> detailReader.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(

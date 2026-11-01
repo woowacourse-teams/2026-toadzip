@@ -1,12 +1,13 @@
 package com.toadzip.backend.ingest.collection.lh.detail.domain;
 
+import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuerySource;
 import com.toadzip.backend.ingest.domain.SourceText;
 import java.time.Instant;
 import lombok.Getter;
 
 /** 보강이 읽는 LH 공고 상세 원천 행 하나. 저장된 행을 읽어 만든 뒤 바뀌지 않는다. */
 @Getter
-public class LhAnnouncementDetailSource {
+public class LhAnnouncementDetailSourceView {
 
     private final Long id;
 
@@ -53,7 +54,7 @@ public class LhAnnouncementDetailSource {
 
     private final String etcContents;
 
-    private LhAnnouncementDetailSource(
+    private LhAnnouncementDetailSourceView(
             Long id, int sourceOrder, String panId, String requestHash, Instant collectedAt,
             LhAnnouncementDetailSourceSnapshot snapshot
     ) {
@@ -94,10 +95,15 @@ public class LhAnnouncementDetailSource {
         etcContents = SourceText.strippedOrNull(snapshot.etcContents());
     }
 
-    public static LhAnnouncementDetailSource read(
+    public static LhAnnouncementDetailSourceView of(LhAnnouncementDetailRow row, LhAnnouncementQuerySource source) {
+        return read(row.getId(), row.getSourceOrder(), source.getPanId(), source.getRequestHash(), row.getCollectedAt(),
+                row.snapshot());
+    }
+
+    public static LhAnnouncementDetailSourceView read(
             Long id, int order, String panId, String requestHash, Instant collectedAt,
             LhAnnouncementDetailSourceSnapshot snapshot
     ) {
-        return new LhAnnouncementDetailSource(id, order, panId, requestHash, collectedAt, snapshot);
+        return new LhAnnouncementDetailSourceView(id, order, panId, requestHash, collectedAt, snapshot);
     }
 }

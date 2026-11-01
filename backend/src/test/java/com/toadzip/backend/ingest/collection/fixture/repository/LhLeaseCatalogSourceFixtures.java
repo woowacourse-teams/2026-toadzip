@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.fixture.repository;
 
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -26,28 +26,28 @@ public class LhLeaseCatalogSourceFixtures {
     private final CollectedSourceRows rows;
     private final JdbcClient jdbc;
 
-    public LhCatalogSource save(LhCatalogSource row) {
+    public LhLeaseCatalogSourceView save(LhLeaseCatalogSourceView row) {
         return rows.save("lh_lease_catalog_source_rows", row);
     }
 
-    public LhCatalogSource saveAndFlush(LhCatalogSource row) {
+    public LhLeaseCatalogSourceView saveAndFlush(LhLeaseCatalogSourceView row) {
         return save(row);
     }
 
-    public List<LhCatalogSource> saveAll(Iterable<LhCatalogSource> sources) {
-        List<LhCatalogSource> result = new ArrayList<>();
+    public List<LhLeaseCatalogSourceView> saveAll(Iterable<LhLeaseCatalogSourceView> sources) {
+        List<LhLeaseCatalogSourceView> result = new ArrayList<>();
         sources.forEach(row -> result.add(save(row)));
         return result;
     }
 
     @Transactional(readOnly = true)
-    public List<LhCatalogSource> findAll() {
+    public List<LhLeaseCatalogSourceView> findAll() {
         return jdbc.sql("SELECT r.* FROM lh_lease_catalog_source_rows r ORDER BY r.id")
                 .query(this::read).list();
     }
 
     @Transactional(readOnly = true)
-    public Optional<LhCatalogSource> findById(Long id) {
+    public Optional<LhLeaseCatalogSourceView> findById(Long id) {
         return findAll().stream().filter(row -> id.equals(row.getId())).findFirst();
     }
 
@@ -56,7 +56,7 @@ public class LhLeaseCatalogSourceFixtures {
         return jdbc.sql("SELECT COUNT(*) FROM lh_lease_catalog_source_rows").query(Long.class).single();
     }
 
-    public void delete(LhCatalogSource row) {
+    public void delete(LhLeaseCatalogSourceView row) {
         jdbc.sql("DELETE FROM lh_lease_catalog_source_rows WHERE id = ?").param(row.getId()).update();
     }
 
@@ -68,7 +68,7 @@ public class LhLeaseCatalogSourceFixtures {
         deleteAll();
     }
 
-    public void deleteAll(Iterable<LhCatalogSource> sources) {
+    public void deleteAll(Iterable<LhLeaseCatalogSourceView> sources) {
         sources.forEach(this::delete);
     }
 
@@ -76,12 +76,12 @@ public class LhLeaseCatalogSourceFixtures {
     public void flush() {}
 
     @Transactional(readOnly = true)
-    public List<LhCatalogSource> findAllByOrderBySourceOrderAsc() {
+    public List<LhLeaseCatalogSourceView> findAllByOrderBySourceOrderAsc() {
         return findAll();
     }
 
-    private LhCatalogSource read(ResultSet row, int number) throws SQLException {
-        return LhCatalogSource.read(row.getLong("id"), row.getInt("source_order"),
+    private LhLeaseCatalogSourceView read(ResultSet row, int number) throws SQLException {
+        return LhLeaseCatalogSourceView.read(row.getLong("id"), row.getInt("source_order"),
                 collectedAt(row), SNAPSHOTS.mapRow(row, number));
     }
 

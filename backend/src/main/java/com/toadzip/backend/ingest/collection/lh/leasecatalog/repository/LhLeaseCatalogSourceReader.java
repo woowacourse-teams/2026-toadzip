@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.collection.lh.leasecatalog.repository;
 
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -14,12 +14,12 @@ public class LhLeaseCatalogSourceReader {
 
     private final LhLeaseCatalogSourceRepository sources;
 
-    public List<LhCatalogSource> findAllByOrderBySourceOrderAsc() {
+    public List<LhLeaseCatalogSourceView> findAllByOrderBySourceOrderAsc() {
         return sources.findByScopeKey("ALL").map(source -> source.getRows().stream()
-                .map(row -> LhCatalogSource.read(row.getId(), row.getSourceOrder(), row.getCollectedAt(), row.snapshot()))
+                .map(row -> LhLeaseCatalogSourceView.read(row.getId(), row.getSourceOrder(), row.getCollectedAt(), row.snapshot()))
                 .toList()).orElseGet(List::of);
     }
-    public Optional<LhCatalogSource> findById(Long id) {
+    public Optional<LhLeaseCatalogSourceView> findById(Long id) {
         return findAllByOrderBySourceOrderAsc().stream().filter(row -> id.equals(row.getId())).findFirst();
     }
 

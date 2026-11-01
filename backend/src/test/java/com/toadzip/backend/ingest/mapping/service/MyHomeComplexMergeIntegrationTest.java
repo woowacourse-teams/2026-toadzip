@@ -31,8 +31,8 @@ import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
@@ -135,7 +135,7 @@ class MyHomeComplexMergeIntegrationTest {
                 source(31713154L, 1, "51", "51.5017", "18.8617"),
                 source(31713153L, 4, "59", "59.0000", "20.0000")
         ));
-        LhCatalogSource lh = LhSourceViews.catalog(1, COLLECTED_AT, new LhCatalogSourceSnapshot(
+        LhLeaseCatalogSourceView lh = LhSourceViews.catalog(1, COLLECTED_AT, new LhCatalogSourceSnapshot(
                 "인천", "행복주택", NAME, "11", "51.5017", "7", null, null));
         lhId = lhSources.save(lh).getId();
         mapping.mapAll();

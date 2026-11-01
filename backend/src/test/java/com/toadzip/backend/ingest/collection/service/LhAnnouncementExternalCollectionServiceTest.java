@@ -21,7 +21,7 @@ import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementEx
 import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
 import com.toadzip.backend.ingest.collection.lh.configuration.LhAnnouncementClientProperties;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhAnnouncementCircuitBreaker;
@@ -32,7 +32,7 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollection
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionProgressManager;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementSharedRequestCollector;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
@@ -823,11 +823,11 @@ class LhAnnouncementExternalCollectionServiceTest {
 
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
-        ArgumentCaptor<List<LhAnnouncementDetailSource>> sources = ArgumentCaptor.captor();
+        ArgumentCaptor<List<LhAnnouncementDetailSourceView>> sources = ArgumentCaptor.captor();
         verify(externalRepository).fetchDetail(any());
         verify(sourceStore).replaceDetails(eq("100"), any(), sources.capture());
         assertThat(sources.getValue()).hasSize(101);
-        assertThat(sources.getValue()).extracting(LhAnnouncementDetailSource::getSourceOrder)
+        assertThat(sources.getValue()).extracting(LhAnnouncementDetailSourceView::getSourceOrder)
                 .containsExactlyElementsOf(IntStream.range(0, 101).boxed().toList());
         assertThat(result.storedRowCount()).isEqualTo(101);
         assertThat(result.externalApiCallCount()).isOne();
@@ -890,11 +890,11 @@ class LhAnnouncementExternalCollectionServiceTest {
 
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
 
-        ArgumentCaptor<List<LhAnnouncementSupplySource>> sources = ArgumentCaptor.captor();
+        ArgumentCaptor<List<LhAnnouncementSupplySourceView>> sources = ArgumentCaptor.captor();
         verify(externalRepository).fetchSupply(any());
         verify(sourceStore).replaceSupplies(eq("100"), any(), sources.capture());
         assertThat(sources.getValue()).hasSize(101);
-        assertThat(sources.getValue()).extracting(LhAnnouncementSupplySource::getSourceOrder)
+        assertThat(sources.getValue()).extracting(LhAnnouncementSupplySourceView::getSourceOrder)
                 .containsExactlyElementsOf(IntStream.range(0, 101).boxed().toList());
         assertThat(result.storedRowCount()).isEqualTo(101);
         assertThat(result.externalApiCallCount()).isOne();
@@ -908,7 +908,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
 
-        ArgumentCaptor<List<LhAnnouncementSupplySource>> sources = ArgumentCaptor.captor();
+        ArgumentCaptor<List<LhAnnouncementSupplySourceView>> sources = ArgumentCaptor.captor();
         verify(sourceStore).replaceSupplies(eq("100"), any(), sources.capture());
         assertThat(sources.getValue()).hasSize(100);
         assertThat(result.failedRequestCount()).isZero();
@@ -1100,7 +1100,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
 
-        ArgumentCaptor<List<LhAnnouncementSupplySource>> supplies = ArgumentCaptor.captor();
+        ArgumentCaptor<List<LhAnnouncementSupplySourceView>> supplies = ArgumentCaptor.captor();
         verify(sourceStore).replaceSupplies(eq("100"), any(), supplies.capture());
         assertThat(supplies.getValue()).singleElement().satisfies(supply -> {
             assertThat(supply.getComplexLabel()).isEqualTo("가 단지");

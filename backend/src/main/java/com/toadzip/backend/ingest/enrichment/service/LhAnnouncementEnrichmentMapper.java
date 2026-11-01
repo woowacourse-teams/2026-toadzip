@@ -4,8 +4,8 @@ import com.toadzip.backend.announcement.domain.AttachmentType;
 import com.toadzip.backend.announcement.domain.ReceptionMethod;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.ScheduleType;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
@@ -26,15 +26,15 @@ public class LhAnnouncementEnrichmentMapper {
 
     public LhAnnouncementEnrichmentData map(
             String panId,
-            List<LhAnnouncementDetailSource> details,
-            List<LhAnnouncementSupplySource> supplies
+            List<LhAnnouncementDetailSourceView> details,
+            List<LhAnnouncementSupplySourceView> supplies
     ) {
         List<LhScheduleData> schedules = new ArrayList<>();
         List<LhAttachmentData> attachments = new ArrayList<>();
         List<LhComplexData> complexes = new ArrayList<>();
         String correctionReason = null;
         ReceptionPlace receptionPlace = null;
-        for (LhAnnouncementDetailSource detail : details) {
+        for (LhAnnouncementDetailSourceView detail : details) {
             if ("ETC_INFO".equals(detail.getDatasetType()) && detail.getCorrectionReason() != null) {
                 correctionReason = detail.getCorrectionReason();
             }
@@ -60,7 +60,7 @@ public class LhAnnouncementEnrichmentMapper {
     }
 
     private YearMonth expectedMoveInMonthOf(
-            LhAnnouncementSupplySource supply,
+            LhAnnouncementSupplySourceView supply,
             List<LhComplexData> complexes
     ) {
         List<LhComplexData> matches = complexes.stream()
@@ -76,7 +76,7 @@ public class LhAnnouncementEnrichmentMapper {
         return SupplyNameNormalizer.sameComplex(left, right);
     }
 
-    private ReceptionPlace receptionOf(LhAnnouncementDetailSource detail) {
+    private ReceptionPlace receptionOf(LhAnnouncementDetailSourceView detail) {
         String address = joined(detail.getReceptionAddress(), detail.getReceptionDetailAddress());
         String name = textWithin(detail.getReceptionGuidance(), MAX_RECEPTION_NAME_LENGTH);
         if (name == null || name.isBlank()) {
@@ -92,7 +92,7 @@ public class LhAnnouncementEnrichmentMapper {
         return value;
     }
 
-    private List<LhScheduleData> schedulesOf(String panId, LhAnnouncementDetailSource source) {
+    private List<LhScheduleData> schedulesOf(String panId, LhAnnouncementDetailSourceView source) {
         List<LhScheduleData> schedules = new ArrayList<>();
         addApplication(schedules, panId, source);
         addDate(
@@ -121,7 +121,7 @@ public class LhAnnouncementEnrichmentMapper {
         return schedules;
     }
 
-    private void addApplication(List<LhScheduleData> schedules, String panId, LhAnnouncementDetailSource source) {
+    private void addApplication(List<LhScheduleData> schedules, String panId, LhAnnouncementDetailSourceView source) {
         if (!parser.unavailable(source.getApplicationPeriod())) {
             addRange(schedules, panId, source, ScheduleType.APPLICATION, "접수", source.getApplicationPeriod());
             return;
@@ -133,7 +133,7 @@ public class LhAnnouncementEnrichmentMapper {
     private void addRange(
             List<LhScheduleData> schedules,
             String panId,
-            LhAnnouncementDetailSource source,
+            LhAnnouncementDetailSourceView source,
             ScheduleType type,
             String name,
             String range
@@ -151,7 +151,7 @@ public class LhAnnouncementEnrichmentMapper {
     private void addRange(
             List<LhScheduleData> schedules,
             String panId,
-            LhAnnouncementDetailSource source,
+            LhAnnouncementDetailSourceView source,
             ScheduleType type,
             String name,
             String begin,
@@ -176,7 +176,7 @@ public class LhAnnouncementEnrichmentMapper {
     private void addDate(
             List<LhScheduleData> schedules,
             String panId,
-            LhAnnouncementDetailSource source,
+            LhAnnouncementDetailSourceView source,
             ScheduleType type,
             String name,
             String value
@@ -189,7 +189,7 @@ public class LhAnnouncementEnrichmentMapper {
 
     private LhScheduleData schedule(
             String panId,
-            LhAnnouncementDetailSource source,
+            LhAnnouncementDetailSourceView source,
             ScheduleType type,
             String name,
             LocalDateTime startAt,
@@ -204,7 +204,7 @@ public class LhAnnouncementEnrichmentMapper {
         );
     }
 
-    private LhAttachmentData attachmentOf(String panId, LhAnnouncementDetailSource source) {
+    private LhAttachmentData attachmentOf(String panId, LhAnnouncementDetailSourceView source) {
         if (parser.blank(source.getName()) || parser.blank(source.getUrl())) {
             throw parser.invalid("첨부파일명 또는 URL이 없습니다.");
         }
@@ -227,7 +227,7 @@ public class LhAnnouncementEnrichmentMapper {
         return AttachmentType.REFERENCE;
     }
 
-    private LhSupplyData supplyOf(String panId, LhAnnouncementSupplySource source, YearMonth expectedMoveInMonth) {
+    private LhSupplyData supplyOf(String panId, LhAnnouncementSupplySourceView source, YearMonth expectedMoveInMonth) {
         if (parser.blank(source.getComplexLabel()) || parser.blank(source.getTypeName())) {
             throw parser.invalid("LH 공급 원본의 단지명 또는 주택형명이 없습니다.");
         }

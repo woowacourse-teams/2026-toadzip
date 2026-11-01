@@ -34,8 +34,8 @@ import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionLinkRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectedResponse;
@@ -1307,7 +1307,7 @@ class MyHomeAnnouncementMappingServiceTest {
         }
     }
 
-    private LhAnnouncementSupplySource lhSupply(
+    private LhAnnouncementSupplySourceView lhSupply(
             int sourceOrder,
             String panId,
             String complexLabel,
@@ -1318,7 +1318,7 @@ class MyHomeAnnouncementMappingServiceTest {
         return lhSupply(sourceOrder, panId, complexLabel, typeName, exclusiveArea, supplyArea, "10");
     }
 
-    private LhAnnouncementSupplySource lhSupply(
+    private LhAnnouncementSupplySourceView lhSupply(
             int sourceOrder,
             String panId,
             String complexLabel,
@@ -1327,7 +1327,7 @@ class MyHomeAnnouncementMappingServiceTest {
             String supplyArea,
             String suppliedUnitCount
     ) {
-        return LhAnnouncementSupplySource.read(
+        return LhAnnouncementSupplySourceView.read(
                 null,
                 sourceOrder,
                 panId,

@@ -14,8 +14,8 @@ import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.View;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -196,7 +196,7 @@ class LhHouseholdComplexLinkIntegrationTest {
                 240, "LH", null, "INDIVIDUAL", "APARTMENT", "CORRIDOR", true, 100));
     }
 
-    private LhCatalogSource lh(int order, String area, String count) {
+    private LhLeaseCatalogSourceView lh(int order, String area, String count) {
         var source = LhSourceViews.catalog(order, Instant.parse("2026-10-24T00:00:00Z"), new LhCatalogSourceSnapshot(
                 "대전광역시 서구", "영구임대", "대전관저5 천년나무 1단지", "240", area, count, null, null));
         return source;

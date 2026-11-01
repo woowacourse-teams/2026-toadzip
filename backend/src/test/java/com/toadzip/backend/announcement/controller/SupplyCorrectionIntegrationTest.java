@@ -18,8 +18,8 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementSupplySourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
@@ -432,8 +432,8 @@ class SupplyCorrectionIntegrationTest {
                 .andExpect(jsonPath("$.data.rowSources[1].sourceKey").value("LH:PAN-77:SUPPLY:9"));
     }
 
-    private LhAnnouncementSupplySource lhSupply(String hash, int order) {
-        return LhAnnouncementSupplySource.read(null, order, "PAN-77", hash,
+    private LhAnnouncementSupplySourceView lhSupply(String hash, int order) {
+        return LhAnnouncementSupplySourceView.read(null, order, "PAN-77", hash,
                 Instant.parse("2026-10-18T00:00:00Z"),
                 new LhAnnouncementSupplySourceSnapshot(
                         "한스빌", "26", "26.4673", null, "300", "10", "1000000", "200000"));

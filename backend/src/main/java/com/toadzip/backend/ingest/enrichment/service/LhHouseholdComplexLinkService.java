@@ -7,7 +7,7 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.repository.LhLeaseCatalogSourceReader;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdComplexLink;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.Candidate;
@@ -113,7 +113,7 @@ public class LhHouseholdComplexLinkService {
                 .orElseThrow(() -> new InvalidIngestRequestException("세대수 보강 오류가 없습니다."));
         String sourceKey = failure.getSourceKey();
         var link = links.findBySourceKey(sourceKey).orElse(null);
-        List<LhCatalogSource> group = mapper.group(sources.findAllByOrderBySourceOrderAsc()).entrySet().stream()
+        List<LhLeaseCatalogSourceView> group = mapper.group(sources.findAllByOrderBySourceOrderAsc()).entrySet().stream()
                 .filter(entry -> entry.getKey().failureKey().equals(sourceKey))
                 .map(Map.Entry::getValue).findFirst().orElse(List.of());
         if (group.isEmpty()) {

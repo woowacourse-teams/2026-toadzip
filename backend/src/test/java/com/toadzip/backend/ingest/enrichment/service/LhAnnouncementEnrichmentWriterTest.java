@@ -14,7 +14,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
@@ -71,7 +71,7 @@ class LhAnnouncementEnrichmentWriterTest {
         LhAnnouncementRequest request = new LhAnnouncementRequest("100", "03", "06", "08", "062");
         when(announcement.getId()).thenReturn(1L);
         when(detailSourceRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(any(), any()))
-                .thenReturn(List.of(mock(LhAnnouncementDetailSource.class)));
+                .thenReturn(List.of(mock(LhAnnouncementDetailSourceView.class)));
         when(mapper.map(any(), any(), any())).thenReturn(new LhAnnouncementEnrichmentData(
                 "100", null, null, List.of(), List.of(), List.of()
         ));

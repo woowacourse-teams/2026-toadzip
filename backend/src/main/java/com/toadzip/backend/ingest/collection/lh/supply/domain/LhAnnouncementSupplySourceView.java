@@ -1,12 +1,13 @@
 package com.toadzip.backend.ingest.collection.lh.supply.domain;
 
+import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuerySource;
 import com.toadzip.backend.ingest.domain.SourceText;
 import java.time.Instant;
 import lombok.Getter;
 
 /** 정제·보강이 읽는 LH 공급행 원천 하나. 저장된 행을 읽어 만든 뒤 바뀌지 않는다. */
 @Getter
-public class LhAnnouncementSupplySource {
+public class LhAnnouncementSupplySourceView {
 
     private final Long id;
 
@@ -23,7 +24,7 @@ public class LhAnnouncementSupplySource {
     private final String depositText;
     private final String monthlyRentText;
 
-    private LhAnnouncementSupplySource(
+    private LhAnnouncementSupplySourceView(
             Long id, int sourceOrder, String panId, String requestHash, Instant collectedAt,
             LhAnnouncementSupplySourceSnapshot snapshot
     ) {
@@ -42,10 +43,15 @@ public class LhAnnouncementSupplySource {
         monthlyRentText = SourceText.strippedOrNull(snapshot.monthlyRentText());
     }
 
-    public static LhAnnouncementSupplySource read(
+    public static LhAnnouncementSupplySourceView of(LhAnnouncementSupplyRow row, LhAnnouncementQuerySource source) {
+        return read(row.getId(), row.getSourceOrder(), source.getPanId(), source.getRequestHash(), row.getCollectedAt(),
+                row.snapshot());
+    }
+
+    public static LhAnnouncementSupplySourceView read(
             Long id, int order, String panId, String requestHash, Instant collectedAt,
             LhAnnouncementSupplySourceSnapshot snapshot
     ) {
-        return new LhAnnouncementSupplySource(id, order, panId, requestHash, collectedAt, snapshot);
+        return new LhAnnouncementSupplySourceView(id, order, panId, requestHash, collectedAt, snapshot);
     }
 }

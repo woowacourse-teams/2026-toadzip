@@ -6,7 +6,7 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.repository.LhLeaseCatalogSourceReader;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdComplexLink;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailure;
@@ -91,7 +91,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
 
     /** 현재 원천과 단지로 묶음별 매칭을 계산한다. 매칭하지 못한 묶음은 failures에 담는다. 저장하지 않는다. */
     CurrentMatches currentMatches(List<LhHouseholdEnrichmentFailure> failures, Instant occurredAt) {
-        Map<LhHousingTypeHouseholdSourceKey, List<LhCatalogSource>> sourceGroups =
+        Map<LhHousingTypeHouseholdSourceKey, List<LhLeaseCatalogSourceView>> sourceGroups =
                 sourceMapper.group(sourceRepository.findAllByOrderBySourceOrderAsc());
         List<HousingComplex> complexes = complexRepository.findAll();
         var indexedComplexes = matcher.index(complexes);
@@ -101,7 +101,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
         LhHousingTypeHouseholdEnrichmentReport report =
                 LhHousingTypeHouseholdEnrichmentReport.empty(sourceGroups.size());
         List<LhHouseholdMatchedSource> matchedSources = new ArrayList<>();
-        for (Map.Entry<LhHousingTypeHouseholdSourceKey, List<LhCatalogSource>> entry
+        for (Map.Entry<LhHousingTypeHouseholdSourceKey, List<LhLeaseCatalogSourceView>> entry
                 : sourceGroups.entrySet()) {
             Optional<LhHouseholdMatchedSource> matchedSource = match(
                     entry.getKey(), entry.getValue(), indexedComplexes, failures, occurredAt,
@@ -118,7 +118,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
 
     private Optional<LhHouseholdMatchedSource> match(
             LhHousingTypeHouseholdSourceKey sourceKey,
-            List<LhCatalogSource> sources,
+            List<LhLeaseCatalogSourceView> sources,
             Map<LhHousingTypeHouseholdMatcher.MatchKey, List<HousingComplex>> indexedComplexes,
             List<LhHouseholdEnrichmentFailure> failures,
             Instant occurredAt,
@@ -157,7 +157,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
             return Optional.of(new LhHouseholdMatchedSource(sourceKey, matches.getFirst(), source));
         }
         catch (IllegalArgumentException exception) {
-            LhCatalogSource first = sources.getFirst();
+            LhLeaseCatalogSourceView first = sources.getFirst();
             log.warn(
                     "event=lh_household.map.failed result=skipped source=lh_catalog "
                             + "sourceOrder={} detail={}",
@@ -178,7 +178,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
     // 관리자가 저장한 연결을 이름 비교보다 먼저 쓴다. 원천이나 단지가 바뀌었으면 자동 매칭으로 대체하지 않는다.
     private Optional<LhHouseholdMatchedSource> linkedMatch(
             LhHousingTypeHouseholdSourceKey sourceKey,
-            List<LhCatalogSource> sources,
+            List<LhLeaseCatalogSourceView> sources,
             LhHousingTypeHouseholdSource source,
             LhHouseholdComplexLink savedLink,
             Map<Long, HousingComplex> complexesById,
@@ -318,12 +318,12 @@ public class LhHousingTypeHouseholdEnrichmentService {
 
     private LhHouseholdEnrichmentFailure failure(
             LhHousingTypeHouseholdSourceKey sourceKey,
-            List<LhCatalogSource> sources,
+            List<LhLeaseCatalogSourceView> sources,
             LhHouseholdEnrichmentFailureReason reason,
             String detail,
             Instant occurredAt
     ) {
-        LhCatalogSource first = sources.getFirst();
+        LhLeaseCatalogSourceView first = sources.getFirst();
         return LhHouseholdEnrichmentFailure.create(
                 sourceKey.failureKey(),
                 first.getAreaName(),

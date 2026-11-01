@@ -9,8 +9,8 @@ import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureRepository;
 import java.math.BigDecimal;
@@ -268,7 +268,7 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
             int typeCount,
             String complexName
     ) {
-        LhCatalogSource source = LhSourceViews.catalog(order, Instant.parse("2026-09-01T00:00:00Z"),
+        LhLeaseCatalogSourceView source = LhSourceViews.catalog(order, Instant.parse("2026-09-01T00:00:00Z"),
                 new LhCatalogSourceSnapshot(
                 "서울", supplyType, complexName, String.valueOf(complexCount), area, String.valueOf(typeCount), null,
                 null));

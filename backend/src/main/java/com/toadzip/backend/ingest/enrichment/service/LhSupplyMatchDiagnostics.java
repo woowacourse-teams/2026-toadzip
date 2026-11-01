@@ -3,7 +3,7 @@ package com.toadzip.backend.ingest.enrichment.service;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,7 +26,7 @@ public class LhSupplyMatchDiagnostics {
     private final LhAnnouncementSupplyMatcher matcher;
 
     public List<Failure> diagnose(String announcementIdentifier, String panId,
-            List<LhAnnouncementSupplySource> supplies, Map<String, LhSupplyRowLinks.State> supplyLinks,
+            List<LhAnnouncementSupplySourceView> supplies, Map<String, LhSupplyRowLinks.State> supplyLinks,
             Set<String> sourceKeysExcludedFromLhEnrichment) {
         var announcement = announcements.findBySourceAnnouncementIdentifier(announcementIdentifier).orElse(null);
         if (announcement == null) {
@@ -36,13 +36,13 @@ public class LhSupplyMatchDiagnostics {
                 supplyRows.findAllByAnnouncement(announcement), sourceKeysExcludedFromLhEnrichment);
         List<SupplyRow> rows = allRows.stream().filter(row -> row.getSupplyGroup() == null).toList();
         List<Failure> failures = new ArrayList<>();
-        for (LhAnnouncementSupplySource supply : supplies) {
+        for (LhAnnouncementSupplySourceView supply : supplies) {
             diagnose(panId, supply, supplyLinks, allRows, rows).ifPresent(failures::add);
         }
         return failures;
     }
 
-    private Optional<Failure> diagnose(String panId, LhAnnouncementSupplySource supply,
+    private Optional<Failure> diagnose(String panId, LhAnnouncementSupplySourceView supply,
             Map<String, LhSupplyRowLinks.State> supplyLinks, List<SupplyRow> allRows, List<SupplyRow> rows) {
         String identifier = LhSupplyRowLinks.identifier(supply);
         LhSupplyData source;

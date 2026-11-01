@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
 import com.toadzip.backend.ingest.domain.SourceArea;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -12,11 +12,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class LhHousingTypeHouseholdSourceMapper {
 
-    public Map<LhHousingTypeHouseholdSourceKey, List<LhCatalogSource>> group(
-            List<LhCatalogSource> sources
+    public Map<LhHousingTypeHouseholdSourceKey, List<LhLeaseCatalogSourceView>> group(
+            List<LhLeaseCatalogSourceView> sources
     ) {
-        Map<LhHousingTypeHouseholdSourceKey, List<LhCatalogSource>> grouped = new LinkedHashMap<>();
-        for (LhCatalogSource source : sources) {
+        Map<LhHousingTypeHouseholdSourceKey, List<LhLeaseCatalogSourceView>> grouped = new LinkedHashMap<>();
+        for (LhLeaseCatalogSourceView source : sources) {
             LhHousingTypeHouseholdSourceKey key = new LhHousingTypeHouseholdSourceKey(
                     LhCatalogNames.region(source.getAreaName()),
                     LhCatalogNames.normalized(source.getSupplyTypeName()),
@@ -27,8 +27,8 @@ public class LhHousingTypeHouseholdSourceMapper {
         return grouped;
     }
 
-    public LhHousingTypeHouseholdSource map(List<LhCatalogSource> sources) {
-        LhCatalogSource first = sources.getFirst();
+    public LhHousingTypeHouseholdSource map(List<LhLeaseCatalogSourceView> sources) {
+        LhLeaseCatalogSourceView first = sources.getFirst();
         String areaName = required(first.getAreaName(), "지역명");
         String supplyTypeName = required(first.getSupplyTypeName(), "공급유형");
         String complexName = required(first.getComplexLabel(), "단지명");
@@ -42,9 +42,9 @@ public class LhHousingTypeHouseholdSourceMapper {
         );
     }
 
-    private int sameComplexHouseholdCount(List<LhCatalogSource> sources) {
+    private int sameComplexHouseholdCount(List<LhLeaseCatalogSourceView> sources) {
         Integer totalHouseholdCount = null;
-        for (LhCatalogSource source : sources) {
+        for (LhLeaseCatalogSourceView source : sources) {
             int current = nonNegativeInteger(source.getComplexTotalUnitCount(), "단지 전체 세대수");
             if (totalHouseholdCount != null && totalHouseholdCount != current) {
                 throw new IllegalArgumentException("단지 전체 세대수가 서로 다릅니다.");
@@ -54,9 +54,9 @@ public class LhHousingTypeHouseholdSourceMapper {
         return totalHouseholdCount;
     }
 
-    private List<LhHousingTypeHousehold> housingTypes(List<LhCatalogSource> sources) {
+    private List<LhHousingTypeHousehold> housingTypes(List<LhLeaseCatalogSourceView> sources) {
         Map<BigDecimal, Integer> householdCountsByArea = new LinkedHashMap<>();
-        for (LhCatalogSource source : sources) {
+        for (LhLeaseCatalogSourceView source : sources) {
             BigDecimal area = area(source.getExclusiveArea());
             int householdCount = nonNegativeInteger(source.getTotalUnitCount(), "주택형 세대수");
             Integer previous = householdCountsByArea.putIfAbsent(area, householdCount);

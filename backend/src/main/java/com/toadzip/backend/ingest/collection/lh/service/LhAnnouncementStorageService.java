@@ -10,8 +10,8 @@ import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuerySource
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplyRow;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhSupplySnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplyRowRepository;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.VerifiedLhSupplyReplacementStore;
@@ -114,17 +114,16 @@ public class LhAnnouncementStorageService {
             LhAnnouncementQuerySource source, LhAnnouncementCollectionRequest request,
             List<LhAnnouncementSupplySourceSnapshot> rows
     ) {
-        List<LhAnnouncementSupplySource> previous = List.of();
+        List<LhAnnouncementSupplySourceView> previous = List.of();
         if (source.getId() != null) {
             previous = supplies.findAllBySourceIdOrderBySourceOrderAsc(source.getId()).stream()
-                    .map(row -> LhAnnouncementSupplySource.read(row.getId(), row.getSourceOrder(),
-                            source.getPanId(), source.getRequestHash(), source.getCollectedAt(), row.snapshot()))
+                    .map(row -> LhAnnouncementSupplySourceView.of(row, source))
                     .toList();
         }
         boolean previousVerifiedEmpty = source.isVerifiedEmpty();
-        List<LhAnnouncementSupplySource> current = new ArrayList<>();
+        List<LhAnnouncementSupplySourceView> current = new ArrayList<>();
         for (int index = 0; index < rows.size(); index++) {
-            current.add(LhAnnouncementSupplySource.read(null, index, request.query().panId(),
+            current.add(LhAnnouncementSupplySourceView.read(null, index, request.query().panId(),
                     request.requestHash(), null, rows.get(index)));
         }
         long missing = LhSupplySnapshot.missingRowCount(previous, current);

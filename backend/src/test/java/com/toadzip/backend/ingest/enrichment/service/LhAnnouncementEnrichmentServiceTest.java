@@ -40,8 +40,8 @@ import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementEx
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementSupplySourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
@@ -52,8 +52,8 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCandidateC
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionProgressManager;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhSupplySnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.VerifiedLhSupplyReplacementStore;
@@ -1237,7 +1237,7 @@ class LhAnnouncementEnrichmentServiceTest {
         sourceStore.replaceDetails(PAN_ID, candidate.requestDescription(), List.of(detail(
                 0, "ETC_INFO", null, null, null, null, null, null, null, "현재 원천"
         )));
-        List<LhAnnouncementSupplySource> currentSupplies = new ArrayList<>();
+        List<LhAnnouncementSupplySourceView> currentSupplies = new ArrayList<>();
         currentSupplies.add(LhSourceViews.supply(0, PAN_ID,
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "46A", "46.8", "67.0", "100", "20", "12,000,000", "250,000"
@@ -2275,7 +2275,7 @@ class LhAnnouncementEnrichmentServiceTest {
         ReflectionTestUtils.setField(second, "houseTyNm", "59B");
         myHomeSourceRepository.save(second);
         saveLhSources("10,000,000", "200,000");
-        LhAnnouncementSupplySource secondSupply = saveSupply(LhSourceViews.supply(1, PAN_ID,
+        LhAnnouncementSupplySourceView secondSupply = saveSupply(LhSourceViews.supply(1, PAN_ID,
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "59B", "59.8", "84.0", "80", "10", "20000000", "300000"
                 )));
@@ -2540,7 +2540,7 @@ class LhAnnouncementEnrichmentServiceTest {
     ) {
         ReflectionTestUtils.setField(source, "url", source.getUrl().replace("panId=100", "panId=200"));
         myHomeSourceRepository.save(source);
-        LhAnnouncementDetailSource detail = detail(0, "ETC_INFO", null, null, null, null, null,
+        LhAnnouncementDetailSourceView detail = detail(0, "ETC_INFO", null, null, null, null, null,
                 null, null, "새 공고");
         ReflectionTestUtils.setField(detail, "panId", "200");
         saveDetail(detail);
@@ -2743,29 +2743,29 @@ class LhAnnouncementEnrichmentServiceTest {
                 .findFirst().orElseThrow();
     }
 
-    private LhAnnouncementDetailSource saveDetail(LhAnnouncementDetailSource source) {
+    private LhAnnouncementDetailSourceView saveDetail(LhAnnouncementDetailSourceView source) {
         String description = requestDescriptionFor(source.getPanId());
         fixtures.querySource("LH_ANNOUNCEMENT_DETAIL", description, source.getCollectedAt());
         return detailSourceRepository.save(
                 LhSourceViews.requested(source, LhAnnouncementQuery.requestHashOf(description)));
     }
 
-    private void saveDetails(List<LhAnnouncementDetailSource> sources) {
+    private void saveDetails(List<LhAnnouncementDetailSourceView> sources) {
         sources.forEach(this::saveDetail);
     }
 
-    private LhAnnouncementSupplySource saveSupply(LhAnnouncementSupplySource source) {
+    private LhAnnouncementSupplySourceView saveSupply(LhAnnouncementSupplySourceView source) {
         String description = requestDescriptionFor(source.getPanId());
         fixtures.querySource("LH_ANNOUNCEMENT_SUPPLY", description, source.getCollectedAt());
         return supplySourceRepository.save(
                 LhSourceViews.requested(source, LhAnnouncementQuery.requestHashOf(description)));
     }
 
-    private void saveSupplies(List<LhAnnouncementSupplySource> sources) {
+    private void saveSupplies(List<LhAnnouncementSupplySourceView> sources) {
         sources.forEach(this::saveSupply);
     }
 
-    private LhAnnouncementDetailSource detail(
+    private LhAnnouncementDetailSourceView detail(
             int order,
             String datasetType,
             String applicationPeriod,

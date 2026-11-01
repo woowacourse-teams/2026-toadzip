@@ -22,8 +22,8 @@ import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.L
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.service.LhAnnouncementCatalogCollector;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.service.LhAnnouncementCatalogStorageService;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.collection.lh.detail.repository.LhDetailResponseParser;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementCollectionRequest;
@@ -40,8 +40,8 @@ import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCata
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQueryApiRepository;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementQueryCollector;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementStorageService;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhSupplyResponseParser;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSupplyType;
@@ -226,7 +226,7 @@ public final class CollectionServiceTestFixture {
         lenient().doAnswer(invocation -> {
             var request = invocation.<LhAnnouncementCollectionRequest>getArgument(1);
             List<LhAnnouncementSupplySourceSnapshot> rows = invocation.getArgument(3);
-            var sources = IntStream.range(0, rows.size()).mapToObj(index -> LhAnnouncementSupplySource.read(
+            var sources = IntStream.range(0, rows.size()).mapToObj(index -> LhAnnouncementSupplySourceView.read(
                     null, index, request.query().panId(), request.requestHash(),
                     invocation.getArgument(2), rows.get(index))).toList();
             int count = fixtures.replaceSupplies(request.query().panId(), request.description(), sources);
@@ -236,7 +236,7 @@ public final class CollectionServiceTestFixture {
         lenient().doAnswer(invocation -> {
             var request = invocation.<LhAnnouncementCollectionRequest>getArgument(1);
             List<LhAnnouncementDetailSourceSnapshot> rows = invocation.getArgument(3);
-            var sources = IntStream.range(0, rows.size()).mapToObj(index -> LhAnnouncementDetailSource.read(
+            var sources = IntStream.range(0, rows.size()).mapToObj(index -> LhAnnouncementDetailSourceView.read(
                     null, index, request.query().panId(), request.requestHash(),
                     invocation.getArgument(2), rows.get(index))).toList();
             int count = fixtures.replaceDetails(request.query().panId(), request.description(), sources);

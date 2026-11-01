@@ -1,7 +1,6 @@
 package com.toadzip.backend.ingest.quality.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectedAtReader;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionLinkRepository;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
@@ -97,7 +96,7 @@ public class LhAnnouncementQualityService {
     private Set<String> collectionRequests(List<CurrentRequest> requests) {
         return requests.stream()
                 .filter(CurrentRequest::collectionTarget)
-                .map(request -> LhAnnouncementQuery.requestHashOf(request.candidate().requestDescription()))
+                .map(request -> request.candidate().request().requestHash())
                 .collect(Collectors.toSet());
     }
 

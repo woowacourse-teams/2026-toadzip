@@ -26,8 +26,8 @@ import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnounceme
 import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceSnapshot;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
@@ -254,7 +254,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         }
     }
 
-    private LhAnnouncementSupplySource lhSupplyRow(int order,
+    private LhAnnouncementSupplySourceView lhSupplyRow(int order,
             String panId, String typeName, String area, String supplied) {
         return LhSourceViews.supply(order, panId,
                 new LhAnnouncementSupplySourceSnapshot(

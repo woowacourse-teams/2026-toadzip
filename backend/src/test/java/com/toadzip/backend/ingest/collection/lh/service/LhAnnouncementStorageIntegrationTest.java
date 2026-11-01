@@ -22,8 +22,8 @@ import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySo
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhAnnouncementCircuitBreaker;
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplyRow;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhSupplySnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplyRowRepository;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhSupplyResponseParser;
@@ -359,9 +359,9 @@ class LhAnnouncementStorageIntegrationTest {
     }
 
     private long approve(LhAnnouncementCollectionRequest request, LhAnnouncementSupplySourceSnapshot... snapshots) {
-        List<LhAnnouncementSupplySource> views = new ArrayList<>();
+        List<LhAnnouncementSupplySourceView> views = new ArrayList<>();
         for (int index = 0; index < snapshots.length; index++) {
-            views.add(LhAnnouncementSupplySource.read(null, index, request.query().panId(),
+            views.add(LhAnnouncementSupplySourceView.read(null, index, request.query().panId(),
                     request.requestHash(), null, snapshots[index]));
         }
         return approvals.approve(request.requestHash(), LhSupplySnapshot.fingerprint(views),

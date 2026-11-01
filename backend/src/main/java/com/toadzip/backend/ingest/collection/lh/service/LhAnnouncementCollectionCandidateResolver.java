@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.collection.lh.service;
 
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSource;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSourceView;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
 import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
@@ -49,9 +49,9 @@ public class LhAnnouncementCollectionCandidateResolver {
         if (panIds.isEmpty()) {
             return resolutions;
         }
-        Map<String, List<LhAnnouncementCatalogSource>> catalogByPanId = catalogRepository
+        Map<String, List<LhAnnouncementCatalogSourceView>> catalogByPanId = catalogRepository
                 .findAllByPanIdInAndPresentInLatestCatalogTrue(panIds)
-                .stream().collect(Collectors.groupingBy(LhAnnouncementCatalogSource::getPanId));
+                .stream().collect(Collectors.groupingBy(LhAnnouncementCatalogSourceView::getPanId));
         return resolutions.stream().map(resolution -> {
             if (resolution instanceof Candidate candidate) {
                 return resolveFromCatalog(candidate, catalogByPanId.getOrDefault(candidate.panId(), List.of()));
@@ -73,14 +73,14 @@ public class LhAnnouncementCollectionCandidateResolver {
         return new Candidate(sourceAnnouncementKey, sourceDescription, request.orElseThrow());
     }
 
-    private Candidate resolveFromCatalog(Candidate candidate, List<LhAnnouncementCatalogSource> catalog) {
-        List<LhAnnouncementCatalogSource> matches = catalog.stream()
+    private Candidate resolveFromCatalog(Candidate candidate, List<LhAnnouncementCatalogSourceView> catalog) {
+        List<LhAnnouncementCatalogSourceView> matches = catalog.stream()
                 .filter(row -> matches(candidate.request(), row))
                 .toList();
         if (matches.size() != 1) {
             return candidate;
         }
-        LhAnnouncementCatalogSource row = matches.getFirst();
+        LhAnnouncementCatalogSourceView row = matches.getFirst();
         LhAnnouncementRequest canonical = new LhAnnouncementRequest(
                 row.getPanId(), row.getConnectionSystemDivisionCode(), row.getUpperAnnouncementTypeCode(),
                 row.getAnnouncementTypeCode(), row.getSupplyInfoTypeCode()
@@ -89,7 +89,7 @@ public class LhAnnouncementCollectionCandidateResolver {
                 row.getChangedAt(), row.getCollectedAt());
     }
 
-    private boolean matches(LhAnnouncementRequest request, LhAnnouncementCatalogSource row) {
+    private boolean matches(LhAnnouncementRequest request, LhAnnouncementCatalogSourceView row) {
         return request.panId().equals(row.getPanId())
                 && request.connectionSystemDivisionCode().equals(row.getConnectionSystemDivisionCode())
                 && request.upperAnnouncementTypeCode().equals(row.getUpperAnnouncementTypeCode())

@@ -46,6 +46,10 @@ public record LhAnnouncementRequest(
         return query().description(COLLECTION_VERSION);
     }
 
+    public String requestHash() {
+        return LhAnnouncementQuery.requestHashOf(requestDescription());
+    }
+
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
     }

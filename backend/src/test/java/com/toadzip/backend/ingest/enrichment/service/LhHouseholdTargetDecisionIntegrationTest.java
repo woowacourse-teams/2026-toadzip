@@ -14,8 +14,8 @@ import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdTargetDecisionView;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -179,7 +179,7 @@ class LhHouseholdTargetDecisionIntegrationTest {
     }
 
     private void group(String label, List<String> counts) {
-        List<LhCatalogSource> rows = new ArrayList<>();
+        List<LhLeaseCatalogSourceView> rows = new ArrayList<>();
         for (int index = 0; index < AREAS.size(); index++) {
             var source = LhSourceViews.catalog(order++, Instant.parse("2026-10-24T00:00:00Z"),
                     new LhCatalogSourceSnapshot(

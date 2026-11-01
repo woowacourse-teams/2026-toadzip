@@ -12,8 +12,8 @@ import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.enrichment.domain.LhSupplyRowLink;
@@ -253,7 +253,7 @@ class MyHomeAnnouncementSupplyRowResolverTest {
     private record Source(String complexName, int householdCount) { }
 
     private List<MyHomeSupplyRowMappingData> resolveSources(List<Source> sources,
-            List<LhAnnouncementSupplySource> lhSupplies) {
+            List<LhAnnouncementSupplySourceView> lhSupplies) {
         List<MyHomeAnnouncementSourceView> mocks = new ArrayList<>();
         List<MyHomeSupplyRowMappingData> rows = new ArrayList<>();
         for (int index = 0; index < sources.size(); index++) {
@@ -277,7 +277,7 @@ class MyHomeAnnouncementSupplyRowResolverTest {
     private List<MyHomeSupplyRowMappingData> resolveSingleSource(
             String myHomeComplexName,
             int householdCount,
-            List<LhAnnouncementSupplySource> lhSupplies
+            List<LhAnnouncementSupplySourceView> lhSupplies
     ) {
         MyHomeAnnouncementSourceView source = mock(MyHomeAnnouncementSourceView.class);
         when(source.isActive()).thenReturn(true);
@@ -294,17 +294,17 @@ class MyHomeAnnouncementSupplyRowResolverTest {
         return resolver.resolve(data(List.of(sourceRow))).data().supplyRows();
     }
 
-    private LhAnnouncementSupplySource lhSupply(int order, String complexName, String typeName,
+    private LhAnnouncementSupplySourceView lhSupply(int order, String complexName, String typeName,
             String exclusiveArea, String supplyArea, String suppliedCount) {
         return LhSourceViews.supply(order, "pan-id", new LhAnnouncementSupplySourceSnapshot(
                 complexName, typeName, exclusiveArea, supplyArea, null, suppliedCount, null, null));
     }
 
-    private LhAnnouncementSupplySource lhSupply(String complexName) {
+    private LhAnnouncementSupplySourceView lhSupply(String complexName) {
         return lhSupply(complexName, "pan-id", "LH 주택형");
     }
 
-    private LhAnnouncementSupplySource lhSupply(String complexName, String panId, String typeName) {
+    private LhAnnouncementSupplySourceView lhSupply(String complexName, String panId, String typeName) {
         return LhSourceViews.supply(
                 0,
                 panId,
