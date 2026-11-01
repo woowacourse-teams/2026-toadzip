@@ -1,12 +1,11 @@
-import { pipelineStepDefinitions as definitions, pipelineStepSequences as sequences, pipelineStepState as stepState, pipelineStepStates as states, type Step } from './pipelineSteps'
+import { pipelineStepDefinitions as definitions, pipelineStepSequenceOf as sequenceOf, pipelineStepState as stepState, pipelineStepStates as states, type Step } from './pipelineSteps'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { DataPipelineExecution } from './api'
 import { DataPipelineProgress, PipelineReport } from './DataPipelineProgress'
 import { StoredDataTable } from '../shared/StoredDataTable'
-import { pipelineLabels, pipelineStatusLabels } from './pipelineLabels'
+import { pipelineLabels, pipelineStatusLabels, retiredAnnouncementRegistrationNotice } from './pipelineLabels'
 import styles from './PipelineExecutionSteps.module.css'
-import { AnnouncementSupplyMatchingForm } from './AnnouncementSupplyMatchingForm'
 import { PipelineNextActions } from './PipelineNextActions'
 
 export function PipelineExecutionSteps({ execution, onStop, stopping = false, onRefine, recoveryDisabled, focused = false, pending = false, children }: {
@@ -14,7 +13,6 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
   onRefine?: () => void; recoveryDisabled?: boolean; focused?: boolean; pending?: boolean; children?: ReactNode
 }) {
   const [selected, setSelected] = useState<Step | null>(null)
-  const [matchingOpen, setMatchingOpen] = useState(false)
   const label = pipelineLabels[execution.type]
   const domain = execution.type.startsWith('COMPLEX_') ? 'complex' : 'announcement'
   const selectedName = selected ? definitions[selected] : null
@@ -32,7 +30,7 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
     {execution.status !== 'IDLE' && <p className="ingest-meta">시작: {formatTime(execution.startedAt)} · 종료: {formatTime(execution.finishedAt)}</p>}
     <div className={styles.body}>
     <ol className={styles.steps} aria-label="실행 단계">
-      {sequences[execution.type].map((step, index) => {
+      {sequenceOf(execution).map((step, index) => {
         const state = stepState(execution, step)
         const name = execution.type === 'ANNOUNCEMENT_REGISTRATION' ? ({
           COLLECT_MYHOME_ANNOUNCEMENTS: '마이홈 원천 확보', COLLECT_LH_ANNOUNCEMENT_SUPPLIES: 'LH 공급 수집',
@@ -53,12 +51,7 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
     {focused && execution.status === 'RUNNING' && <h4>{execution.currentStepName ?? '첫 단계 준비 중'}</h4>}
     {execution.status === 'RUNNING' && <DataPipelineProgress execution={execution} label={label} />}
     {execution.failure && <p role="alert" className="form-error">{execution.failure.message}</p>}
-    {execution.type === 'ANNOUNCEMENT_REGISTRATION' && execution.status === 'FAILED'
-      && execution.targetAnnouncementIdentifier && execution.failure?.stepName === definitions.MAP_MYHOME_ANNOUNCEMENTS
-      && <div>
-        <button type="button" aria-expanded={matchingOpen} onClick={() => setMatchingOpen(value => !value)}>단지·주택형 매칭</button>
-        {matchingOpen && <AnnouncementSupplyMatchingForm identifier={execution.targetAnnouncementIdentifier} />}
-      </div>}
+    {execution.type === 'ANNOUNCEMENT_REGISTRATION' && <p role="note">{retiredAnnouncementRegistrationNotice}</p>}
     {execution.status === 'RUNNING' && onStop && <button type="button" disabled={stopping || execution.stopRequested || !execution.executionId}
       onClick={onStop}>{stopping || execution.stopRequested ? '중지 요청 중…' : `${label} 실행 중지`}</button>}
     {execution.stopRequested && execution.status === 'RUNNING' && <p role="status">현재 처리가 끝나면 중지합니다. 이미 저장한 데이터는 유지됩니다.</p>}

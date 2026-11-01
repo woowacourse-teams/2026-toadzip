@@ -35,7 +35,6 @@
 .source header span, .source p { color: var(--ds-color-label); line-height: var(--ds-line-height-body); }
 .recent { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-2); min-height: var(--ds-control-height-md); margin-block: var(--ds-space-4); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; }
 .recent > span:last-of-type { color: var(--ds-color-muted); }
-.registrationLink { padding-block: var(--ds-space-4); border-bottom: 1px solid var(--ds-color-divider); }
 .notice { padding: var(--ds-space-4); background: var(--ds-color-surface-subtle); line-height: var(--ds-line-height-body); }
 .back { margin-bottom: var(--ds-space-3); }
 @media (max-width: 900px) {

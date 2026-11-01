@@ -44,6 +44,12 @@ public class LhAnnouncementCatalogSourceView {
 
     private final String closingDate;
 
+    private final String announcementName;
+
+    private final String noticeDate;
+
+    private final String detailUrl;
+
     private LhAnnouncementCatalogSourceView(
             Long id, Instant changedAt, Instant collectedAt, boolean present, LhAnnouncementCatalogSnapshot snapshot
     ) {
@@ -59,6 +65,14 @@ public class LhAnnouncementCatalogSourceView {
         this.collectedAt = collectedAt;
         presentInLatestCatalog = present;
         closingDate = normalized.closingDate();
+        announcementName = normalized.announcementName();
+        noticeDate = normalized.noticeDate();
+        detailUrl = normalized.detailUrl();
+    }
+
+    /** 공고목록의 공고일(`2026.09.01`). 형식이 다르거나 비어 있으면 비어 있다. */
+    public Optional<LocalDate> noticeLocalDate() {
+        return catalogDate(noticeDate);
     }
 
     public boolean isRentalHousingAnnouncement() {
@@ -68,11 +82,15 @@ public class LhAnnouncementCatalogSourceView {
 
     /** 공고목록의 접수 마감일(`2026.09.01`). 형식이 다르거나 비어 있으면 비어 있다. */
     public Optional<LocalDate> closingLocalDate() {
-        if (closingDate == null || closingDate.isBlank()) {
+        return catalogDate(closingDate);
+    }
+
+    private static Optional<LocalDate> catalogDate(String value) {
+        if (value == null || value.isBlank()) {
             return Optional.empty();
         }
         try {
-            return Optional.of(LocalDate.parse(closingDate, CATALOG_DATE));
+            return Optional.of(LocalDate.parse(value, CATALOG_DATE));
         }
         catch (DateTimeParseException exception) {
             return Optional.empty();

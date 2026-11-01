@@ -12,6 +12,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComple
 import com.toadzip.backend.ingest.collection.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
+import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
@@ -35,6 +36,7 @@ class DataPipelineStepExecutor {
     private final LhHousingTypeHouseholdEnrichmentService householdEnrichmentService;
     private final MyHomeAnnouncementMappingService myHomeAnnouncementMappingService;
     private final LhAnnouncementEnrichmentService announcementEnrichmentService;
+    private final LhAnnouncementRefinementService lhAnnouncementRefinementService;
     private final DataPipelineStepResultAdapter resultAdapter;
     private final AnnouncementRegistrationService registrationService;
     private final ShAnnouncementCollectionService shAnnouncementCollectionService;
@@ -73,6 +75,7 @@ class DataPipelineStepExecutor {
             case ENRICH_LH_ANNOUNCEMENTS -> resultAdapter.adapt(
                     announcementEnrichmentService.enrichAll()
             );
+            case MAP_LH_ANNOUNCEMENTS -> resultAdapter.adapt(lhAnnouncementRefinementService.refineAll());
         };
     }
 }

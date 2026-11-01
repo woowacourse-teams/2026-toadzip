@@ -6,9 +6,7 @@ import type { ManagementDetailData } from './managementContract'
 
 const api = vi.hoisted(() => ({ getManagementDetail: vi.fn(), getManagementHistory: vi.fn() }))
 vi.mock('./api', async original => ({ ...(await original<typeof import('./api')>()), ...api }))
-vi.mock('../ingest/AnnouncementSupplyMatchingForm', () => ({ AnnouncementSupplyMatchingForm: ({ onExcluded }: { onExcluded?: () => void }) =>
-  <button type="button" onClick={onExcluded}>공급행 제외 완료</button> }))
-vi.mock('../supply/SupplyCorrectionWorkbench', () => ({ SupplyCorrectionWorkbench: () => null }))
+vi.mock('../supply/SupplyCorrectionWorkbench', () => ({ SupplyCorrectionWorkbench: () => <section aria-label="공급정보 편집표">편집표</section> }))
 vi.mock('../quality/QualityComparisonPanel', () => ({ QualityComparisonPanel: () => <section aria-label="공고 원천 비교 내용">수집값 확인</section> }))
 const detail: ManagementDetailData = { summary: { id: 7, name: '검토 단지', subtitle: '서울', provider: 'LH', rental: 'HAPPY_HOUSING',
   deleted: false, modified: false, reviewRequired: false, updatedAt: null }, sourceIdentifier: 'source', data: { version: 1, name: '검토 단지' },
@@ -73,12 +71,11 @@ it('폐기한 JSON 갱신 주소는 공고 기본정보로 이동한다', async 
   expect(screen.getByLabelText('현재 주소')).toHaveTextContent('provider=LH')
 })
 
-it('원천별 공급행 보정에서 공급행을 제외하면 공고 버전이 바뀌므로 상세를 새로 조회한다', async () => {
+it('함께 모집하는 공급행이 있어도 지원 종료한 원천별 공급행 보정 없이 공급정보 편집표만 연다', async () => {
   const announcement = { ...detail, summary: { ...detail.summary, name: '검토 공고' },
     supplyRows: [{ id: 1, sharedRecruitment: { id: 3, householdCount: 10 } }] } as unknown as ManagementDetailData
   api.getManagementDetail.mockResolvedValue(announcement)
   show('/admin/announcements/7?section=relations')
-  fireEvent.click(await screen.findByText('원천별 공급행 보정'))
-  fireEvent.click(await screen.findByRole('button', { name: '공급행 제외 완료' }))
-  await waitFor(() => expect(api.getManagementDetail).toHaveBeenCalledTimes(2))
+  expect(await screen.findByRole('region', { name: '공급정보 편집표' })).toBeVisible()
+  expect(screen.queryByText('원천별 공급행 보정')).not.toBeInTheDocument()
 })

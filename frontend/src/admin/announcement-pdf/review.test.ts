@@ -21,6 +21,14 @@ it('한스빌의 공통 모집수는 묶음에 한 번만 넣고 기존 공급�
   expect(workspace.supply.rows[0].householdCount).toBe(170)
 })
 
+it('연결되지 않은 LH 행이 있으면 새 공급정보 추가를 막고 지원 종료한 LH 행 연결을 권하지 않는다', () => {
+  const { review, workspace } = scenario('hansville')
+  const index = review.rows.findIndex(row => row.include && row.proposal.destination === 'new')
+  expect(index).toBeGreaterThanOrEqual(0)
+  const locked = { ...workspace, supply: { ...workspace.supply, unattachedLhSupplyRows: [{ rowIdentifier: 'LH:P:SUPPLY:1', complexLabel: '한스빌', typeName: '26B', exclusiveArea: null }] } }
+  expect(() => assembleReview(review, locked, evidence)).toThrow(`공급행 ${index + 1}: 공급정보에 연결되지 않은 LH 행은 새 공급정보로 추가할 수 없습니다. 기존 공급정보 행을 고르세요.`)
+})
+
 it('광주첨단의 단지별 일정은 기존 ID마다 복사하고 새 방문접수도 추가한다', () => {
   const { review, workspace } = scenario('gwangju')
   const request = assembleReview(review, workspace, evidence)

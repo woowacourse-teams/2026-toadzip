@@ -23,12 +23,12 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @RequiredArgsConstructor
-class LhScheduleAttachmentWriter {
+public class LhScheduleAttachmentWriter {
 
     private final AnnouncementScheduleRepository scheduleRepository;
     private final AnnouncementAttachmentRepository attachmentRepository;
 
-    Result write(Announcement announcement, LhAnnouncementEnrichmentData data, String previousPanId) {
+    public Result write(Announcement announcement, LhAnnouncementEnrichmentData data, String previousPanId) {
         Count schedules = writeSchedules(announcement, data.schedules(),
                 replacedPanIds(data.schedules(), data.panId(), previousPanId));
         Count attachments = writeAttachments(announcement, data.attachments(),
@@ -138,6 +138,6 @@ class LhScheduleAttachmentWriter {
     private record Count(int created, int updated) {
     }
 
-    record Result(int createdSchedules, int updatedSchedules, int createdAttachments, int updatedAttachments) {
+    public record Result(int createdSchedules, int updatedSchedules, int createdAttachments, int updatedAttachments) {
     }
 }

@@ -15,7 +15,6 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecoveryService;
 import com.toadzip.backend.ingest.collection.repository.external.IngestServiceKeyContext;
-import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
@@ -46,6 +45,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -54,6 +54,9 @@ import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
 class DataPipelineExecutionServiceTest {
+
+    private static final String RETIRED_REGISTRATION_MESSAGE =
+            "마이홈 공고 정제·LH 보강과 그 보정은 지원을 종료했습니다. 공고는 LH 공고 정제와 PDF 보정으로만 바뀝니다.";
 
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-09-02T12:00:00Z"), ZoneOffset.UTC);
 
@@ -119,61 +122,41 @@ class DataPipelineExecutionServiceTest {
     }
 
     @ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"", " "})
-    void 단건_등록은_빈_ID로_잠금을_얻지_않는다(String identifier) {
+    @ValueSource(strings = {"", " "})
+    void 지원을_종료한_단건_등록은_빈_ID_검증보다_먼저_거절하고_잠금을_얻지_않는다(String identifier) {
         assertThatThrownBy(() -> service.startAnnouncementRegistration(identifier))
-                .hasMessageContaining("공고 ID");
+                .isInstanceOf(RetiredIngestOperationException.class)
+                .hasMessage(RETIRED_REGISTRATION_MESSAGE);
         verify(executionLock, never()).tryAcquire(any());
     }
 
     @Test
-    void 잘못된_URL은_실행_잠금을_얻기_전에_거부한다() {
+    void 지원을_종료한_단건_등록은_URL_형식_검증보다_먼저_거절하고_잠금을_얻지_않는다() {
         assertThatThrownBy(() -> service.startAnnouncementRegistrationUrl("https://apply.lh.or.kr"))
-                .hasMessageContaining("잘못된 공고 URL");
+                .isInstanceOf(RetiredIngestOperationException.class)
+                .hasMessage(RETIRED_REGISTRATION_MESSAGE);
         verify(executionLock, never()).tryAcquire(any());
     }
 
     @ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
-    void 단건_등록의_실행_ID와_대상_ID를_보존하고_설정키로_비동기_실행한다(boolean fromUrl) {
-        when(executionLock.tryAcquire(any())).thenReturn(Optional.of(lease));
-        when(executionStateService.createRegistration(any(), any(), any())).thenAnswer(invocation ->
-                DataPipelineExecution.startRegistration(invocation.getArgument(0),
-                        invocation.getArgument(1), invocation.getArgument(2)));
-
-        DataPipelineExecutionResponse response;
+    @ValueSource(booleans = {false, true})
+    void 지원을_종료한_단건_등록은_올바른_대상이어도_잠금과_실행_기록_전에_거절한다(boolean fromUrl) {
         if (fromUrl) {
-            response = service.startAnnouncementRegistrationUrl(
-                    "https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21026");
+            assertThatThrownBy(() -> service.startAnnouncementRegistrationUrl(
+                    "https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21026"))
+                    .isInstanceOf(RetiredIngestOperationException.class)
+                    .hasMessage(RETIRED_REGISTRATION_MESSAGE);
         }
         else {
-            response = service.startAnnouncementRegistration(" 21026 ");
+            assertThatThrownBy(() -> service.startAnnouncementRegistration(" 21026 "))
+                    .isInstanceOf(RetiredIngestOperationException.class)
+                    .hasMessage(RETIRED_REGISTRATION_MESSAGE);
         }
 
-        assertThat(response.executionId()).isNotNull();
-        assertThat(response.targetAnnouncementIdentifier()).isEqualTo("21026");
-        assertThat(response.type()).isEqualTo(DataPipelineType.ANNOUNCEMENT_REGISTRATION);
-        verify(runner).run(DataPipelineType.ANNOUNCEMENT_REGISTRATION, response.executionId(), "21026");
-        verify(executionStateService).complete(response.executionId(), Instant.parse("2026-09-02T12:00:00Z"));
+        verify(executionLock, never()).tryAcquire(any());
+        verify(executionStateService, never()).createRegistration(any(), any(), any());
+        verify(runner, never()).run(any(), any(), any());
         assertThat(IngestServiceKeyContext.current()).isEmpty();
-    }
-
-    @Test
-    void 단건_등록_실패는_관리자에게_구체적_사유로_전달한다() {
-        when(executionLock.tryAcquire(any())).thenReturn(Optional.of(lease));
-        when(executionStateService.createRegistration(any(), any(), any())).thenAnswer(invocation ->
-                DataPipelineExecution.startRegistration(invocation.getArgument(0),
-                        invocation.getArgument(1), invocation.getArgument(2)));
-        org.mockito.Mockito.doThrow(
-                new AnnouncementRegistrationException("이미 등록된 공고"))
-                .when(runner).run(org.mockito.ArgumentMatchers.eq(DataPipelineType.ANNOUNCEMENT_REGISTRATION),
-                        any(), org.mockito.ArgumentMatchers.eq("21026"));
-
-        var response = service.startAnnouncementRegistration("21026");
-
-        verify(executionStateService).fail(response.executionId(), null, "이미 등록된 공고", null,
-                Instant.parse("2026-09-02T12:00:00Z"));
-        verify(executionStateService, never()).complete(any(), any());
     }
 
     @ParameterizedTest
@@ -437,7 +420,7 @@ class DataPipelineExecutionServiceTest {
         configureStoredExecution();
         when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
         var accepted = serviceWith(task -> { }).start(DataPipelineType.ANNOUNCEMENT_REFINEMENT);
-        executionStateService.startStep(accepted.executionId(), DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+        executionStateService.startStep(accepted.executionId(), DataPipelineStep.MAP_LH_ANNOUNCEMENTS);
         ArgumentCaptor<Runnable> heartbeat = ArgumentCaptor.forClass(Runnable.class);
         verify(heartbeatExecutor).scheduleWithFixedDelay(heartbeat.capture(), anyLong(), anyLong(), any());
         doThrow(new IngestOwnershipLostException()).when(lease).verifyHeld();
@@ -446,24 +429,24 @@ class DataPipelineExecutionServiceTest {
 
         var status = query.find(accepted.executionId());
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
-        assertThat(status.failure().stepName()).isEqualTo("마이홈 공고 정제");
+        assertThat(status.failure().stepName()).isEqualTo("LH 공고 정제");
     }
 
     @Test
     void 부분_실패한_단계와_서버_응답을_실패_상태에_보존한다() {
         configureStoredExecution();
         when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
-        String serverResponse = "{\"failedSourceRowCount\":3}";
+        String serverResponse = "{\"failedAnnouncementCount\":3}";
         doAnswer(invocation -> {
             UUID executionId = invocation.getArgument(1);
-            executionStateService.startStep(executionId, DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+            executionStateService.startStep(executionId, DataPipelineStep.MAP_LH_ANNOUNCEMENTS);
             executionStateService.recordPartialFailure(
                     executionId,
-                    DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS,
+                    DataPipelineStep.MAP_LH_ANNOUNCEMENTS,
                     serverResponse
             );
             throw new DataPipelinePartialFailureException(
-                    DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS,
+                    DataPipelineStep.MAP_LH_ANNOUNCEMENTS,
                     serverResponse
             );
         }).when(runner).run(any(), any());
@@ -472,13 +455,13 @@ class DataPipelineExecutionServiceTest {
         var status = query.findLatest(DataPipelineType.ANNOUNCEMENT_REFINEMENT);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
-        assertThat(status.failure().stepName()).isEqualTo("마이홈 공고 정제");
+        assertThat(status.failure().stepName()).isEqualTo("LH 공고 정제");
         assertThat(status.failure().serverResponse())
-                .isEqualTo(Map.of("failedSourceRowCount", 3));
+                .isEqualTo(Map.of("failedAnnouncementCount", 3));
         assertThat(status.partiallyFailedSteps()).singleElement().satisfies(failure -> {
-            assertThat(failure.step()).isEqualTo(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+            assertThat(failure.step()).isEqualTo(DataPipelineStep.MAP_LH_ANNOUNCEMENTS);
             assertThat(failure.report())
-                    .isEqualTo(Map.of("failedSourceRowCount", 3));
+                    .isEqualTo(Map.of("failedAnnouncementCount", 3));
         });
         verify(lease).close();
     }

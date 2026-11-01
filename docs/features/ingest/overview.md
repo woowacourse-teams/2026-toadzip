@@ -65,6 +65,8 @@ MyHomeAnnouncementSourceMapper → MyHomeAnnouncementSupplyRowResolver → MyHom
 준비한 LH 요청·공급 원천·과거 원천 구분은 재사용한다. 주택형 변경은 공급행을 수정할 때 기록한다.
 현재 원천 중 기관이 빈 행도 매핑에는 포함하지만 LH 보강에서는 제외해 기존 금액을 보존한다. `MyHomeAnnouncementMappingWriter`가 공고 한 건의 트랜잭션을 소유한다. 보강 실패 시 주택형과 금액을 함께 롤백한다. 진입점은 세 개다.
 
+마이홈 공고 정제와 아래 세 진입점은 지원을 종료했다. 공고 정제는 [LH 공고 정제](lh-linking.md#lh-공고-정제-announcement-refinement)를 따른다.
+
 | 진입점 | 호출 경로 | 실패 처리 |
 |---|---|---|
 | `write` | 전체 정제 `MyHomeAnnouncementMappingService.mapAll()` | 공급행 매칭 실패는 결과로 돌려준다. 이미 LH 보강을 마친 공고(`lhPanId` 있음)에 변경이 있을 때만 보강한다. 최초 매핑과 변경 없는 재매핑은 보강하지 않는다 |

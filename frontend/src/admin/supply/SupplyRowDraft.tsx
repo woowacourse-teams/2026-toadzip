@@ -112,7 +112,7 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
         </section>}
       </fieldset>
       {error && <p role="alert">{error}</p>}
-      {(value.groupId || sharedCount !== undefined) && <p>공통 모집수 {sharedCount ?? value.sharedHouseholdCount ?? '미확정'}세대는 묶음에 한 번만 보관합니다. 단지·공통 모집수 변경은 위의 ‘원천별 공급행 보정’에서 처리하세요.</p>}
+      {(value.groupId || sharedCount !== undefined) && <p>공통 모집수 {sharedCount ?? value.sharedHouseholdCount ?? '미확정'}세대는 묶음에 한 번만 보관합니다. 단지·공통 모집수는 여기서 바꿀 수 없습니다.</p>}
       <fieldset><legend>이 공고에만 적용할 공급정보</legend>
       {/* 기존 행의 원천 단지명은 정제가 관리한다. 원천이 없는 새 행만 처음 표기를 입력한다. */}
       {value.id ? <p className={styles.sourceName}>수집 원문 단지명: {value.complexName}</p> : null}

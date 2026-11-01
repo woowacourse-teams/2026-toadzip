@@ -245,8 +245,21 @@ public class SupplyRow {
     @Column(nullable = false)
     private String sourceHousingTypeName;
 
-    @Column(nullable = false)
+    /** LH 원천으로 만든 공급행은 공급 PNU가 없을 수 있다. */
     private String supplyPnu;
+
+    /** 이 공급행이 속한 공고 단지. LH 원천으로 만든 공급행만 채워지고, 공고 단지를 모르는 행은 비어 있다. */
+    @ManyToOne(fetch = LAZY)
+    @JoinColumn(name = "announcement_complex_id")
+    private AnnouncementComplex announcementComplex;
+
+    /** LH가 준 대표 전용면적. 함께 모집하는 면적 중 하나이고 어느 면적을 고르는지는 일정하지 않다. */
+    @Column(precision = 10, scale = 4)
+    private BigDecimal lhExclusiveArea;
+
+    @Enumerated(STRING)
+    @Column(length = 30)
+    private LhSupplyMatchStatus lhMatchStatus;
 
     @Convert(converter = YearMonthAttributeConverter.class)
     private YearMonth expectedMoveInMonth;
@@ -308,7 +321,7 @@ public class SupplyRow {
         validateNonNegative(displayOrder, "표시순서");
         validateNotBlank(sourceComplexName, "원천 단지명");
         validateNotBlank(sourceHousingTypeName, "원천 주택형명");
-        validateNotBlank(supplyPnu, "공급 PNU");
+        validateNotBlankIfPresent(supplyPnu, "공급 PNU");
         validateRequired(supplyCategory, "공급구분");
         validateNotBlankIfPresent(matchingFailureReason, "매칭 실패 사유");
         validateNonNegativeIfPresent(totalSupplyHouseholdCount, "전체 공급세대수");
@@ -354,6 +367,62 @@ public class SupplyRow {
                 matchingFailureReason,
                 totalSupplyHouseholdCount
         );
+    }
+
+    /**
+     * LH 공급 한 행으로 공급행을 만든다. 단지는 공고 단지의 연결 단지, 대표 주택형은 그 단지에서 LH 대표 전용면적과 면적이 같은 주택형이다.
+     * LH 원천 소유 공고에서만 쓴다.
+     */
+    public static SupplyRow createFromLh(Announcement announcement, AnnouncementComplex complex, HousingType type,
+            String sourceSupplyRowIdentifier, String lhSourceSupplyRowIdentifier, int displayOrder, String typeName,
+            BigDecimal lhExclusiveArea, YearMonth expectedMoveInMonth, SupplyCategory supplyCategory,
+            Integer supplyHouseholdCount, LhSupplyMatchStatus status) {
+        SupplyRow row = new SupplyRow(announcement, complex.linkedComplex(), type, sourceSupplyRowIdentifier,
+                displayOrder, complex.getSourceComplexName(), typeName, null, expectedMoveInMonth, supplyCategory, null,
+                supplyHouseholdCount);
+        row.announcementComplex = complex;
+        row.lhExclusiveArea = lhExclusiveArea;
+        row.lhMatchStatus = status;
+        row.lhSourceSupplyRowIdentifier = lhSourceSupplyRowIdentifier;
+        row.lhTotalSupplyHouseholdCountOwned = supplyHouseholdCount != null;
+        row.lhTotalSupplyHouseholdCountEnriched = supplyHouseholdCount != null;
+        return row;
+    }
+
+    /** LH 원천 소유 공고의 공급행을 이번 LH 행으로 맞춘다. 관리자가 고친 행과 휴지통 공고는 바꾸지 않는다. 바뀌었으면 true다. */
+    public boolean updateFromLh(SupplyRow incoming) {
+        if (adminModified || announcement.isAdminDeleted()) {
+            return false;
+        }
+        if (hasSameSourceValues(incoming) && Objects.equals(idOf(announcementComplex), idOf(incoming.announcementComplex))
+                && Objects.equals(lhExclusiveArea, incoming.lhExclusiveArea) && lhMatchStatus == incoming.lhMatchStatus
+                && Objects.equals(lhSourceSupplyRowIdentifier, incoming.lhSourceSupplyRowIdentifier)
+                && lhTotalSupplyHouseholdCountOwned == incoming.lhTotalSupplyHouseholdCountOwned) {
+            return false;
+        }
+        applySourceValues(incoming);
+        announcementComplex = incoming.announcementComplex;
+        lhExclusiveArea = incoming.lhExclusiveArea;
+        lhMatchStatus = incoming.lhMatchStatus;
+        lhSourceSupplyRowIdentifier = incoming.lhSourceSupplyRowIdentifier;
+        lhTotalSupplyHouseholdCountOwned = incoming.lhTotalSupplyHouseholdCountOwned;
+        lhTotalSupplyHouseholdCountEnriched = incoming.lhTotalSupplyHouseholdCountEnriched;
+        return true;
+    }
+
+    /**
+     * 공고문 소유 공급행은 정제가 값·단지·주택형을 바꾸지 않고 비어 있는 공고 단지 참조만 채운다. PDF가 정한 연결을 덮지 않기 위해서다.
+     */
+    public boolean fillAnnouncementComplex(AnnouncementComplex complex) {
+        if (announcementComplex != null || complex == null) {
+            return false;
+        }
+        announcementComplex = complex;
+        return true;
+    }
+
+    private static Long idOf(AnnouncementComplex complex) {
+        return complex == null ? null : complex.getId();
     }
 
     public boolean updateFromMyHome(
@@ -492,7 +561,7 @@ public class SupplyRow {
                 && displayOrder == incoming.displayOrder
                 && sourceComplexName.equals(incoming.sourceComplexName)
                 && sourceHousingTypeName.equals(incoming.sourceHousingTypeName)
-                && supplyPnu.equals(incoming.supplyPnu)
+                && Objects.equals(supplyPnu, incoming.supplyPnu)
                 && Objects.equals(expectedMoveInMonth, incoming.expectedMoveInMonth)
                 && supplyCategory == incoming.supplyCategory
                 && Objects.equals(matchingFailureReason, incoming.matchingFailureReason)

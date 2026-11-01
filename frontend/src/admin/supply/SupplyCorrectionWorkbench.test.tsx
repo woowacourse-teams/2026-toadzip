@@ -178,7 +178,8 @@ it('LH 공급 원본 행이 공급행에 없으면 직접 추가를 막고 이�
   vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...structuredClone(workspace), unattachedLhSupplyRows: [{ rowIdentifier: 'LH:P:SUPPLY:1', complexLabel: '한스빌', typeName: '26B', exclusiveArea: null }] })
   await setup(false)
   expect(screen.getByRole('button', { name: '직접 추가' })).toBeDisabled()
-  expect(screen.getByRole('note')).toHaveTextContent('LH 공급 원본 1행(한스빌 · 26B)이 아직 공급행에 없습니다.')
+  expect(screen.getByRole('note')).toHaveTextContent('LH 공급 원본 1행(한스빌 · 26B)이 공급정보에 연결되지 않았습니다. 연결되지 않은 LH 행은 새 공급정보로 추가할 수 없습니다. 기존 공급정보 행을 고르세요.')
+  expect(screen.getByRole('note')).not.toHaveTextContent('LH 행 연결')
 })
 
 it('LH 원본과 중복 가능한 행을 같은 주택형의 펼침 행으로 합치면 조건과 표기를 옮기고 직접 추가 행은 지운다', async () => {

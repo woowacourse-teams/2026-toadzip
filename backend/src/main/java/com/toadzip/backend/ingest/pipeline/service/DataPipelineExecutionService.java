@@ -75,6 +75,7 @@ public class DataPipelineExecutionService {
     }
 
     public DataPipelineExecutionResponse startAnnouncementRegistration(String identifier) {
+        rejectRetired(DataPipelineType.ANNOUNCEMENT_REGISTRATION);
         if (identifier == null || identifier.isBlank() || identifier.strip().length() > 100) {
             throw new InvalidIngestRequestException("마이홈 공고 ID는 1자 이상 100자 이하로 입력해 주세요.");
         }
@@ -82,6 +83,7 @@ public class DataPipelineExecutionService {
     }
 
     public DataPipelineExecutionResponse startAnnouncementRegistrationUrl(String url) {
+        rejectRetired(DataPipelineType.ANNOUNCEMENT_REGISTRATION);
         MyHomeAnnouncementUrl target;
         try {
             target = MyHomeAnnouncementUrl.parse(url);
@@ -94,9 +96,7 @@ public class DataPipelineExecutionService {
     }
 
     public DataPipelineExecutionResponse start(DataPipelineType type, String serviceKey) {
-        if (type.isRetired()) {
-            throw RetiredIngestOperationException.complexRefinement();
-        }
+        rejectRetired(type);
         if (type != DataPipelineType.COMPLEX_COLLECTION && type != DataPipelineType.ANNOUNCEMENT_COLLECTION
                 && type != DataPipelineType.COMPLEX_SYNC && type != DataPipelineType.ANNOUNCEMENT_SYNC) {
             throw new InvalidIngestRequestException("수집 작업에만 서비스키를 입력할 수 있습니다.");
@@ -114,9 +114,7 @@ public class DataPipelineExecutionService {
     private DataPipelineExecutionResponse startExecution(
             DataPipelineType type, String serviceKey, String targetIdentifier
     ) {
-        if (type.isRetired()) {
-            throw RetiredIngestOperationException.complexRefinement();
-        }
+        rejectRetired(type);
         UUID executionId = UUID.randomUUID();
         DataPipelineExecutionLock.Lease lease = executionLock.tryAcquire(executionId)
                 .orElseThrow(() -> new IngestAlreadyRunningException(ALREADY_RUNNING_MESSAGE));
@@ -246,5 +244,11 @@ public class DataPipelineExecutionService {
             return;
         }
         MDC.put(key, value);
+    }
+
+    private static void rejectRetired(DataPipelineType type) {
+        if (type.isRetired()) {
+            throw RetiredIngestOperationException.of(type);
+        }
     }
 }

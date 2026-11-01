@@ -78,13 +78,14 @@ describe('DataPipelineControl', () => {
     } finally { view.unmount(); vi.useRealTimers() }
   })
 
-  it('공고 단건 등록도 공통 실행 잠금에 포함하고 해당 관리 화면으로 안내한다', async () => {
+  it('지난 공고 단건 등록이 실행 중이면 공통 실행 잠금에 포함하고 지원 종료한 등록 화면으로 보내지 않는다', async () => {
     apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
       execution(type, type === 'ANNOUNCEMENT_REGISTRATION' ? 'RUNNING' : 'IDLE')))
     render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
     await act(async () => {})
     expect(screen.getByRole('button', { name: '단지 원천 수집 실행' })).toBeDisabled()
-    expect(screen.getByRole('link', { name: '실행 중인 작업 보기' })).toHaveAttribute('href', '/admin/announcements/new?mode=myhome')
+    expect(screen.getByRole('status')).toHaveTextContent('공고 단건 등록 실행 중입니다. 수집·정제는 한 번에 한 작업만 실행할 수 있습니다.')
+    expect(screen.queryByRole('link', { name: '실행 중인 작업 보기' })).not.toBeInTheDocument()
   })
 
   it('v2 공고 화면에서 SH 수집을 키 없이 실행하고 한 단계 결과를 표시한다', async () => {
@@ -560,7 +561,7 @@ describe('DataPipelineControl', () => {
   })
   it('통합 실행 버튼은 서버에 한 번 요청하고 모든 시작 버튼을 잠근다', async () => {
     apiMocks.startDataPipeline.mockResolvedValue(execution('ANNOUNCEMENT_SYNC', 'RUNNING', {
-      currentStepName: '마이홈 공고 정제', currentStepIndex: 5,
+      currentStepName: 'LH 공고 정제', currentStepIndex: 5,
     }))
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
@@ -568,7 +569,7 @@ describe('DataPipelineControl', () => {
     fireEvent.change(screen.getByLabelText('공공데이터포털 API 키'), { target: { value: 'fixture-service-key' } })
     fireEvent.click(screen.getByRole('button', { name: '마이홈 다건 갱신 시작' }))
 
-    expect(await screen.findByRole('status')).toHaveTextContent('5/6 · 마이홈 공고 정제 실행 중')
+    expect(await screen.findByRole('status')).toHaveTextContent('5/5 · LH 공고 정제 실행 중')
     expect(apiMocks.startDataPipeline).toHaveBeenCalledExactlyOnceWith('ANNOUNCEMENT_SYNC', 'fixture-service-key')
     expect(screen.getByRole('button', { name: '단지 수집·정제' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '공고 정제' })).toBeDisabled()
@@ -771,8 +772,9 @@ function execution(
 
 function stepCount(type: DataPipelineType): number {
   if (type === 'SH_ANNOUNCEMENT_COLLECTION') return 1
-  if (type === 'ANNOUNCEMENT_SYNC') return 6
+  if (type === 'ANNOUNCEMENT_SYNC') return 5
   if (type === 'COMPLEX_SYNC' || type === 'ANNOUNCEMENT_COLLECTION') return 4
+  if (type === 'ANNOUNCEMENT_REFINEMENT') return 1
   return 2
 }
 

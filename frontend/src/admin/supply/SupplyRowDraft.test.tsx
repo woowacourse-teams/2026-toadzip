@@ -90,3 +90,10 @@ it('기존 공급행의 원천 단지명은 수정 칸 없이 보여 주고 단�
   expect(screen.getByLabelText('이 공고의 주택형 표기')).toHaveValue('26')
   expect(screen.getByRole('link', { name: '단지 주택형 이름 고치기 →' })).toHaveAttribute('href', '/admin/complexes/7?section=relations')
 })
+it('공통 모집 묶음 행은 지원 종료한 원천별 공급행 보정 대신 여기서 바꿀 수 없다고만 알린다', () => {
+  const row: CorrectionRow = { ...blankRow(0), id: 5, key: 'row:5', housingComplexId: 7, housingComplexName: '한스빌', housingTypeId: 9, typeName: '26', groupId: 3, sharedHouseholdCount: 170 }
+  render(<SupplyRowDraft value={row} onChange={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} first last inline />)
+  const notice = screen.getByText(/공통 모집수 170세대는 묶음에 한 번만 보관합니다/)
+  expect(notice).toHaveTextContent('단지·공통 모집수는 여기서 바꿀 수 없습니다.')
+  expect(notice).not.toHaveTextContent('원천별 공급행 보정')
+})

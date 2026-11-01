@@ -5,8 +5,6 @@ import { IngestFailurePanel } from './IngestFailurePanel'
 import { getFailureReview, getFailureReviews, type FailureReview, type FailureReviewPageData } from './failureReviewApi'
 
 vi.mock('./failureReviewApi', () => ({getFailureReviews:vi.fn(), getFailureReview:vi.fn()}))
-vi.mock('./AnnouncementFailureRecovery', () => ({announcementRecoveryId:'announcement-failure-recovery',
-  AnnouncementFailureRecovery: ({identifier}:{identifier:string}) => <section aria-label="여기서 바로 복구">공고 {identifier}</section>}))
 const fetchFailures = vi.mocked(getFailureReviews)
 const row: FailureReview = {
   id:1,category:'announcement',target:'공고 A · 공급행 3',sourceKey:'A:3',source:'MYHOME_ANNOUNCEMENT',
@@ -285,23 +283,23 @@ it('현재 페이지의 같은 공고 주택형 오류를 묶고 원래 필터�
   expect(back.searchParams.get('failure')).toBe('announcement:1')
 })
 
-it('정제 직후 LH 보강이 단지를 찾지 못한 공고 정제 오류는 매칭 폼 없이 LH 행 연결 화면으로 보낸다', async () => {
+it('정제 직후 LH 보강이 단지를 찾지 못한 공고 정제 오류도 지원 종료한 LH 행 연결로 보내지 않는다', async () => {
   fetchFailures.mockResolvedValue(page([{...row, reason:'INVALID_VALUE', raw:{sourceAnnouncementIdentifier:'21391'},
     detail:'LH 보강 실패: COMPLEX_NOT_FOUND - LH 공급 원본과 일치하는 기존 공급 단지가 없습니다.'}]))
   render(<IngestFailurePanel initialCategory="announcement" executionId={null} />, {wrapper:MemoryRouter})
   fireEvent.click(await screen.findByRole('button',{name:`확인·처리: ${row.target}`}))
-  const dialog=within(screen.getByRole('dialog'))
-  expect(dialog.queryByRole('region',{name:'여기서 바로 복구'})).not.toBeInTheDocument()
-  expect((await dialog.findByRole('link',{name:'LH 행 연결'})).getAttribute('href')).toMatch(/^\/admin\/failures\/lh-links\/21391\?failureReturnTo=/)
+  const workflow=within(within(screen.getByRole('dialog')).getByLabelText('처리 방법'))
+  expect(workflow.getByRole('link',{name:'원천 데이터'})).toBeVisible()
+  expect(workflow.queryByRole('link',{name:'LH 행 연결'})).not.toBeInTheDocument()
 })
 
-it('마이홈 원천의 단지 미발견은 상세 안에서 복구하고 전체 정제·단지 목록 이동·LH 공급 원본 연결을 숨긴다', async () => {
+it('마이홈 원천의 단지 미발견은 상세 안의 복구 폼 대신 단지 후보 검색으로 연결한다', async () => {
   fetchFailures.mockResolvedValue(page([{...row, raw:{sourceAnnouncementIdentifier:'21391', complexName:'대전중촌2'}}]))
   render(<IngestFailurePanel initialCategory="announcement" executionId={null} />, {wrapper:MemoryRouter})
   fireEvent.click(await screen.findByRole('button',{name:`확인·처리: ${row.target}`}))
   const dialog=within(screen.getByRole('dialog'))
-  expect(dialog.getByRole('region',{name:'여기서 바로 복구'})).toBeVisible()
-  expect(dialog.queryByRole('button',{name:/정제 다시 실행/})).not.toBeInTheDocument()
-  expect(dialog.queryByRole('link',{name:'단지명으로 후보 검색'})).not.toBeInTheDocument()
+  expectReturnLink(dialog.getByRole('link',{name:'단지명으로 후보 검색'}), `/admin/complexes?keyword=${encodeURIComponent('대전중촌2')}`, 'announcement:1')
+  expect(dialog.queryByRole('button',{name:/정제/})).not.toBeInTheDocument()
   expect(dialog.queryByRole('link',{name:'LH 행 연결'})).not.toBeInTheDocument()
+  expect(dialog.getAllByRole('button').map(button => button.textContent)).toEqual(['닫기','다시 확인'])
 })

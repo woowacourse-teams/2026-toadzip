@@ -261,7 +261,7 @@ public class LhAnnouncementEnrichmentMapper {
         return first + " " + second;
     }
 
-    record LhAnnouncementEnrichmentData(
+    public record LhAnnouncementEnrichmentData(
             String panId,
             String correctionReason,
             ReceptionPlace receptionPlace,
@@ -286,7 +286,7 @@ public class LhAnnouncementEnrichmentMapper {
         }
     }
 
-    record LhScheduleData(
+    public record LhScheduleData(
             String sourceIdentifier,
             ScheduleType type,
             String name,
@@ -296,13 +296,13 @@ public class LhAnnouncementEnrichmentMapper {
     ) {
     }
 
-    record LhAttachmentData(String sourceIdentifier, String name, AttachmentType type, String url) {
+    public record LhAttachmentData(String sourceIdentifier, String name, AttachmentType type, String url) {
     }
 
     private record LhComplexData(String name, String expectedMoveInYearMonth) {
     }
 
-    record LhSupplyData(
+    public record LhSupplyData(
             String sourceIdentifier,
             String complexName,
             String housingTypeName,

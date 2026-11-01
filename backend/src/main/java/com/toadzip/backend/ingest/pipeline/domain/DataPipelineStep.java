@@ -11,7 +11,8 @@ public enum DataPipelineStep {
     COLLECT_LH_ANNOUNCEMENT_SUPPLIES("LH 공고 공급 원본 수집"),
     COLLECT_LH_ANNOUNCEMENT_DETAILS("LH 공고 상세 원본 수집"),
     MAP_MYHOME_ANNOUNCEMENTS("마이홈 공고 정제"),
-    ENRICH_LH_ANNOUNCEMENTS("LH 공고 상세·공급 정보 보강");
+    ENRICH_LH_ANNOUNCEMENTS("LH 공고 상세·공급 정보 보강"),
+    MAP_LH_ANNOUNCEMENTS("LH 공고 정제");
 
     private final String displayName;
 

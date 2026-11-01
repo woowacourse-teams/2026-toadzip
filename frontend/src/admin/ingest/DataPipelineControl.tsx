@@ -17,6 +17,7 @@ import { Button } from '../../design-system/components/Button'
 import styles from './CollectionStartForm.module.css'
 import workflow from './PipelineWorkflow.module.css'
 import { ComplexIngestStages } from './ComplexIngestStages'
+import { pipelineStepSequences } from './pipelineSteps'
 
 type DataPipelineType = SharedDataPipelineType
 
@@ -33,16 +34,6 @@ const pipelineTypes: readonly DataPipelineType[] = [
   'SH_ANNOUNCEMENT_COLLECTION',
   'ANNOUNCEMENT_REGISTRATION',
 ]
-const pipelineStepCounts: Record<DataPipelineType, number> = {
-  COMPLEX_COLLECTION: 2,
-  COMPLEX_REFINEMENT: 2,
-  ANNOUNCEMENT_COLLECTION: 4,
-  ANNOUNCEMENT_REFINEMENT: 2,
-  COMPLEX_SYNC: 4,
-  ANNOUNCEMENT_SYNC: 6,
-  SH_ANNOUNCEMENT_COLLECTION: 1,
-  ANNOUNCEMENT_REGISTRATION: 4,
-}
 const pipelineGroups = [
   {
     id: 'complex-pipelines',
@@ -282,9 +273,10 @@ export function DataPipelineControl({ domain, compact = false }: {
   const runningElsewhere = pipelineTypes.find(type => !visibleTypes.includes(type)
     && pipelineStates[type].execution.status === 'RUNNING')
   const lockNotice = runningElsewhere ? <p role="status" className={workflow.notice}>
-    {pipelineLabels[runningElsewhere]} 실행 중입니다. 수집·정제는 한 번에 한 작업만 실행할 수 있습니다.{' '}
-    <Link to={runningElsewhere === 'ANNOUNCEMENT_REGISTRATION' ? '/admin/announcements/new?mode=myhome'
-      : `/admin/ingest/${domain === 'complex' ? 'announcements' : 'complexes'}`}>실행 중인 작업 보기</Link>
+    {pipelineLabels[runningElsewhere]} 실행 중입니다. 수집·정제는 한 번에 한 작업만 실행할 수 있습니다.
+    {/* 지원 종료한 단건 등록은 진행을 볼 화면이 없으므로 이동 링크를 두지 않는다. */}
+    {runningElsewhere !== 'ANNOUNCEMENT_REGISTRATION' && <>{' '}
+      <Link to={`/admin/ingest/${domain === 'complex' ? 'announcements' : 'complexes'}`}>실행 중인 작업 보기</Link></>}
   </p> : null
   if (domain === 'complex') return <section aria-label="단지 수집 작업">
     {lockNotice}
@@ -333,8 +325,8 @@ export function DataPipelineControl({ domain, compact = false }: {
       <>
         <div className={workflow.sources}>
           <section aria-labelledby="myhome-source" className={workflow.source}>
-            <header><h2 id="myhome-source">마이홈</h2><span>LH 정보 보강 포함</span></header>
-            <p>마이홈 공고와 LH 목록·공급·상세를 수집한 뒤 저장된 원천을 정제합니다.</p>
+            <header><h2 id="myhome-source">마이홈</h2><span>LH 공고 정제 포함</span></header>
+            <p>마이홈 공고와 LH 목록·공급·상세를 수집한 뒤 LH 공고를 정제합니다. 마이홈 공고는 수집만 합니다.</p>
             {recent(pipelineGroups[1].types)}
             <Button data-design-system disabled={isAnyPipelineRunning} onClick={() => handleRun('ANNOUNCEMENT_SYNC')}>마이홈 다건 갱신</Button>
             <details className={workflow.additional}><summary>수집·정제 따로 실행</summary>
@@ -350,7 +342,6 @@ export function DataPipelineControl({ domain, compact = false }: {
             <button type="button" disabled={isAnyPipelineRunning} onClick={() => handleRun('SH_ANNOUNCEMENT_COLLECTION')}>SH 공고 수집</button>
           </section>
         </div>
-        <p className={workflow.registrationLink}>공고 한 건을 추가하려면 <Link to="/admin/announcements/new?mode=myhome">공고 관리에서 마이홈 공고 가져오기</Link></p>
         <details className={workflow.additional} onToggle={event => setQualityOpen(event.currentTarget.open)}>
           <summary>LH 데이터 품질·공급 감소 보류 확인</summary>
           <p className="ingest-meta">LH 공고만의 연결·금액·일정 상태입니다. 수집 실행의 성공 여부와 별도로 확인합니다.</p>
@@ -538,7 +529,7 @@ function idleExecution(type: DataPipelineType): DataPipelineExecution {
     status: 'IDLE',
     currentStepName: null,
     currentStepIndex: 0,
-    totalStepCount: pipelineStepCounts[type],
+    totalStepCount: pipelineStepSequences[type].length,
     completedSteps: [],
     skippedSteps: [],
     partiallyFailedSteps: [],

@@ -94,5 +94,5 @@ it('단지와 공고에 모두 미저장 입력이 있어도 이동 확인은 �
   fireEvent.change(screen.getByLabelText('공고명'), { target: { value: '미저장 공고' } })
   fireEvent.click(screen.getByRole('button', { name: '마이홈에서 가져오기' }))
   expect(confirm).toHaveBeenCalledOnce()
-  expect(screen.getByLabelText('마이홈 공고 URL')).toBeVisible()
+  expect(screen.getByRole('note')).toHaveTextContent('마이홈 공고 단건 등록은 지원을 종료했습니다.')
 })
