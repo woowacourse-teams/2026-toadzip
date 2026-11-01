@@ -12,6 +12,7 @@ import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFo
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionQueryService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import java.util.List;
 import java.util.UUID;
@@ -79,7 +80,7 @@ class DataPipelineControllerTest {
     @Test
     void 없는_실행_ID의_상태_조회는_404를_반환한다() throws Exception {
         UUID executionId = UUID.randomUUID();
-        when(executionService.find(executionId))
+        when(executionQuery.find(executionId))
                 .thenThrow(new DataPipelineExecutionNotFoundException("실행을 찾을 수 없습니다."));
         mockMvc.perform(get("/api/admin/ingest/pipelines/executions/{executionId}", executionId))
                 .andExpect(status().isNotFound());
@@ -90,7 +91,7 @@ class DataPipelineControllerTest {
         UUID executionId = UUID.randomUUID();
         mockMvc.perform(get("/api/admin/ingest/pipelines/executions/{executionId}", executionId))
                 .andExpect(status().isOk());
-        verify(executionService).find(executionId);
+        verify(executionQuery).find(executionId);
     }
 
     @Autowired
@@ -98,6 +99,9 @@ class DataPipelineControllerTest {
 
     @MockitoBean
     private DataPipelineExecutionService executionService;
+
+    @MockitoBean
+    private DataPipelineExecutionQueryService executionQuery;
 
     @ParameterizedTest
     @CsvSource({
@@ -161,7 +165,7 @@ class DataPipelineControllerTest {
     ) throws Exception {
         DataPipelineExecutionResponse response = DataPipelineExecutionResponse.idle(type);
         when(executionService.start(type)).thenReturn(response);
-        when(executionService.findLatest(type)).thenReturn(response);
+        when(executionQuery.findLatest(type)).thenReturn(response);
 
         mockMvc.perform(post("/api/admin/ingest/pipelines/{type}", pathValue))
                 .andExpect(status().isAccepted())
@@ -184,7 +188,7 @@ class DataPipelineControllerTest {
         DataPipelineExecutionResponse response = DataPipelineExecutionResponse.idle(
                 DataPipelineType.ANNOUNCEMENT_COLLECTION
         );
-        when(executionService.history(2, 20)).thenReturn(List.of(response));
+        when(executionQuery.history(2, 20)).thenReturn(List.of(response));
 
         mockMvc.perform(get("/api/admin/ingest/pipelines/history")
                         .param("page", "2")
@@ -192,7 +196,7 @@ class DataPipelineControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].type").value("ANNOUNCEMENT_COLLECTION"));
 
-        verify(executionService).history(2, 20);
+        verify(executionQuery).history(2, 20);
     }
 
     @Test

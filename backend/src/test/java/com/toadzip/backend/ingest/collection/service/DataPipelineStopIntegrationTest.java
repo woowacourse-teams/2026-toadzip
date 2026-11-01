@@ -12,6 +12,7 @@ import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionQueryService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionStateService;
 import java.time.Clock;
@@ -36,6 +37,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 class DataPipelineStopIntegrationTest {
 
     @Autowired private DataPipelineExecutionService service;
+    @Autowired private DataPipelineExecutionQueryService query;
     @Autowired private DataPipelineExecutionStateService stateService;
     @Autowired private DataPipelineExecutionLock executionLock;
     @Autowired private ExternalDataRetryExecutor retryExecutor;
@@ -83,7 +85,7 @@ class DataPipelineStopIntegrationTest {
             }
             result.get(10, TimeUnit.SECONDS);
         }
-        var stopped = service.find(accepted.executionId());
+        var stopped = query.find(accepted.executionId());
         assertThat(firstFinished).isTrue();
         assertThat(calls).hasValue(1);
         assertThat(stopped.status()).isEqualTo(DataPipelineExecutionStatus.STOPPED);
@@ -113,7 +115,7 @@ class DataPipelineStopIntegrationTest {
         stateService.startStep(id, DataPipelineStep.COLLECT_MYHOME_COMPLEXES);
         stateService.completeStep(id, DataPipelineStep.COLLECT_MYHOME_COMPLEXES, "{}");
         stateService.stop(id, Instant.now());
-        var stopped = service.find(id);
+        var stopped = query.find(id);
         assertThat(stopped.externalRequestCount()).isEqualTo(20);
         assertThat(stopped.stopRequested()).isTrue();
         assertThat(stopped.completedSteps()).containsExactly("마이홈 단지 수집");
@@ -150,23 +152,23 @@ class DataPipelineStopIntegrationTest {
                 task.get(10, TimeUnit.SECONDS);
             }
         }
-        var progress = service.find(id);
+        var progress = query.find(id);
         assertThat(progress.externalRequestCount()).isEqualTo(40);
         assertThat(progress.workProgress().completedCount()).isEqualTo(20);
         assertThat(progress.workProgress().totalCount()).isEqualTo(40);
         assertThat(progress.workProgress().updatedAt()).isAfterOrEqualTo(progress.workProgress().startedAt());
         stateService.completeStep(id, DataPipelineStep.COLLECT_MYHOME_COMPLEXES, "{}");
         stateService.startStep(id, DataPipelineStep.COLLECT_LH_LEASE_CATALOG);
-        assertThat(service.find(id).workProgress()).isNull();
+        assertThat(query.find(id).workProgress()).isNull();
         monitor.beginWork("카탈로그", "페이지", -1);
-        assertThat(service.find(id).workProgress().totalCount()).isEqualTo(-1);
+        assertThat(query.find(id).workProgress().totalCount()).isEqualTo(-1);
         monitor.pageCompleted(1, 250, 100);
-        assertThat(service.find(id).workProgress().totalCount()).isEqualTo(3);
-        assertThat(service.find(id).workProgress().completedCount()).isEqualTo(1);
+        assertThat(query.find(id).workProgress().totalCount()).isEqualTo(3);
+        assertThat(query.find(id).workProgress().completedCount()).isEqualTo(1);
         stateService.requestStop(id);
         stateService.stop(id, Instant.now());
         monitor.workCompleted();
-        assertThat(service.find(id).workProgress().completedCount()).isEqualTo(1);
+        assertThat(query.find(id).workProgress().completedCount()).isEqualTo(1);
     }
 
     private static void await(CountDownLatch latch) {

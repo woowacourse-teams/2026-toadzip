@@ -248,7 +248,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 mock(DataPipelineExecutionLock.Lease.class));
 
         var accepted = service.start(DataPipelineType.ANNOUNCEMENT_SYNC);
-        var failed = service.find(accepted.executionId());
+        var failed = query().find(accepted.executionId());
 
         assertThat(failed.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         assertThat(failed.currentStepIndex()).isEqualTo(4);
@@ -262,8 +262,8 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         var recovered = service.start(DataPipelineType.ANNOUNCEMENT_REFINEMENT);
 
         assertThat(recovered.executionId()).isNotEqualTo(failed.executionId());
-        assertThat(service.find(recovered.executionId()).status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
-        assertThat(service.find(failed.executionId()).status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
+        assertThat(query().find(recovered.executionId()).status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
+        assertThat(query().find(failed.executionId()).status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         verify(myHomeService).collect(any());
         verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
         verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
@@ -286,7 +286,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 mock(DataPipelineExecutionLock.Lease.class));
 
         var accepted = service.start(DataPipelineType.ANNOUNCEMENT_SYNC);
-        var result = service.find(accepted.executionId());
+        var result = query().find(accepted.executionId());
 
         assertThat(result.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS);
         assertThat(result.skippedSteps()).extracting("stepName").containsExactly(
@@ -328,17 +328,27 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         ScheduledFuture<?> heartbeatTask = mock(ScheduledFuture.class);
         doReturn(heartbeatTask).when(heartbeatExecutor)
                 .scheduleWithFixedDelay(any(), anyLong(), anyLong(), any());
+        Clock clock = Clock.fixed(STARTED_AT, ZoneOffset.UTC);
+        var failures = new DataPipelineFailureRecorder(executionStateService, clock);
         return new DataPipelineExecutionService(
                 runner,
                 executionLock,
-                executionRepository,
                 executionStateService,
-                mock(SourceCollectionRecoveryService.class),
+                new DataPipelineExecutionRecovery(executionLock, executionStateService,
+                        mock(SourceCollectionRecoveryService.class), clock),
+                new DataPipelineHeartbeat(heartbeatExecutor, executionStateService, failures, clock),
+                failures,
                 Runnable::run,
-                heartbeatExecutor,
-                Clock.fixed(STARTED_AT, ZoneOffset.UTC),
+                clock,
                 new DataPipelineExecutionMapper(JsonMapper.builder().build())
         );
+    }
+
+    private DataPipelineExecutionQueryService query() {
+        return new DataPipelineExecutionQueryService(executionRepository,
+                new DataPipelineExecutionMapper(JsonMapper.builder().build()),
+                new DataPipelineExecutionRecovery(mock(DataPipelineExecutionLock.class), executionStateService,
+                        mock(SourceCollectionRecoveryService.class), Clock.fixed(STARTED_AT, ZoneOffset.UTC)));
     }
 
     private DataPipelineRunner runner(
