@@ -12,7 +12,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
-/** 공급 매칭 보정을 공고의 관리자 변경 이력으로 남긴다. 이력 화면이 읽는 동작 이름과 JSON 모양을 여기서만 정한다. */
+/**
+ * 공급 매칭 보정을 공고의 관리자 변경 이력으로 남긴다. 공고 단위 이력의 동작 이름과 JSON 모양을 여기서만 정한다.
+ * LH 공급 연결 때문에 놓은 저장 매칭은 연결 단위로 {@link LhSupplyLinkChangeLog}가 남긴다.
+ */
 @Component
 @RequiredArgsConstructor
 class SupplyMatchingChangeLog {
