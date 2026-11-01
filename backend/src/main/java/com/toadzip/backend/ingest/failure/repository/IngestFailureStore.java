@@ -8,8 +8,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.data.domain.PageRequest;
 
-/** 정제·보강 실패 Store의 공통 저장 흐름이다. 어떤 실패를 대상으로 맞출지는 각 Store가 고른다. 외부 수집 실패는 요청 단위로 따로 관리한다. */
+/** 정제·보강 실패 Store의 공통 저장·조회 흐름이다. 어떤 실패를 대상으로 맞출지는 각 Store가 고른다. 외부 수집 실패는 요청 단위로 따로 관리한다. */
 public abstract class IngestFailureStore<T extends IngestFailure<T>> {
 
     private final IngestFailureRepository<T> repository;
@@ -43,6 +44,21 @@ public abstract class IngestFailureStore<T extends IngestFailure<T>> {
         failures.stream()
                 .filter(failure -> failure.getStatus() == PENDING)
                 .forEach(failure -> failure.resolveByAdmin(resolvedAt, actor));
+    }
+
+    /** 미해결 실패를 원천 키 순으로 한 쪽씩 읽는다. */
+    public List<T> pending(int page, int size) {
+        return repository.findAllByStatusOrderBySourceKeyAscIdAsc(PENDING, PageRequest.of(page, size));
+    }
+
+    /** 미해결 실패를 원천 키 순으로 모두 읽는다. */
+    public List<T> pending() {
+        return repository.findAllByStatusOrderBySourceKeyAsc(PENDING);
+    }
+
+    /** 해결한 실패까지 원천 키 순으로 한 쪽씩 읽는다. */
+    public List<T> history(int page, int size) {
+        return repository.findAllByOrderBySourceKeyAscIdAsc(PageRequest.of(page, size));
     }
 
     private void save(List<T> created) {

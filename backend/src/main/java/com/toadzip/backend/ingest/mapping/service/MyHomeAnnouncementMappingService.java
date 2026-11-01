@@ -1,7 +1,5 @@
 package com.toadzip.backend.ingest.mapping.service;
 
-import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
-
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
@@ -12,7 +10,6 @@ import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailur
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingFailureResponse;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
-import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureStore;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingWriter.MyHomeAnnouncementWriteResult;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchingFailureData;
@@ -30,7 +27,6 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,7 +37,6 @@ public class MyHomeAnnouncementMappingService {
 
     private final MyHomeAnnouncementSourceReader sourceRepository;
 
-    private final MyHomeAnnouncementMappingFailureRepository failureRepository;
 
     private final MyHomeAnnouncementMappingFailureStore failureStore;
 
@@ -190,7 +185,7 @@ public class MyHomeAnnouncementMappingService {
         for (MyHomeAnnouncementSourceView source : sourceRepository.findAll()) {
             String identifier = SourceText.strippedOrNull(source.getPblancId());
             if (identifier == null) {
-                failures.add(failureOf(
+                failures.add(MyHomeAnnouncementMappingFailureStore.failureOf(
                         source,
                         MyHomeAnnouncementMappingFailureReason.MISSING_REQUIRED_VALUE,
                         "공고 식별자 값이 없습니다.",
@@ -211,7 +206,7 @@ public class MyHomeAnnouncementMappingService {
             Instant occurredAt
     ) {
         for (MyHomeAnnouncementSourceView source : sources) {
-            failures.add(failureOf(source, reason, detail, occurredAt));
+            failures.add(MyHomeAnnouncementMappingFailureStore.failureOf(source, reason, detail, occurredAt));
         }
         return MyHomeAnnouncementMappingReport.failedRows(sources.size());
     }
@@ -222,32 +217,13 @@ public class MyHomeAnnouncementMappingService {
             Instant occurredAt
     ) {
         for (MyHomeSupplyMatchingFailureData failure : matchingFailures) {
-            failures.add(failureOf(failure.source(), failure.reason(), failure.detail(), occurredAt));
+            failures.add(MyHomeAnnouncementMappingFailureStore.failureOf(failure.source(), failure.reason(), failure.detail(), occurredAt));
         }
-    }
-
-    static MyHomeAnnouncementMappingFailure failureOf(
-            MyHomeAnnouncementSourceView source,
-            MyHomeAnnouncementMappingFailureReason reason,
-            String detail,
-            Instant occurredAt
-    ) {
-        return MyHomeAnnouncementMappingFailure.create(
-                source.getSourceKey(),
-                source.getPblancId(),
-                source.getHouseSn(),
-                reason,
-                detail,
-                occurredAt
-        );
     }
 
     @Transactional(readOnly = true)
     public List<MyHomeAnnouncementMappingFailureResponse> findFailures(int page, int size) {
-        return failureRepository.findAllByStatusOrderBySourceKeyAscIdAsc(
-                        PENDING,
-                        PageRequest.of(page, size)
-                )
+        return failureStore.pending(page, size)
                 .stream()
                 .map(MyHomeAnnouncementMappingFailureResponse::from)
                 .toList();
@@ -255,7 +231,7 @@ public class MyHomeAnnouncementMappingService {
 
     @Transactional(readOnly = true)
     public List<MyHomeAnnouncementMappingFailureResponse> findFailures() {
-        return failureRepository.findAllByStatusOrderBySourceKeyAsc(PENDING)
+        return failureStore.pending()
                 .stream()
                 .map(MyHomeAnnouncementMappingFailureResponse::from)
                 .toList();
@@ -263,7 +239,7 @@ public class MyHomeAnnouncementMappingService {
 
     @Transactional(readOnly = true)
     public List<MyHomeAnnouncementMappingFailureResponse> findFailureHistory(int page, int size) {
-        return failureRepository.findAllByOrderBySourceKeyAscIdAsc(PageRequest.of(page, size))
+        return failureStore.history(page, size)
                 .stream()
                 .map(MyHomeAnnouncementMappingFailureResponse::from)
                 .toList();

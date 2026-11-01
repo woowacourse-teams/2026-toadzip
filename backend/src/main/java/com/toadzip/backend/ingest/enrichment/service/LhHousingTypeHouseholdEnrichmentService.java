@@ -1,7 +1,5 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
-import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
-
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
@@ -15,7 +13,6 @@ import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdTargetDecision;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdEnrichmentFailureResponse;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdComplexLinkRepository;
-import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureStore;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdTargetDecisionRepository;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHousehold;
@@ -32,7 +29,6 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,7 +43,6 @@ public class LhHousingTypeHouseholdEnrichmentService {
     private final LhHousingTypeHouseholdSourceMapper sourceMapper;
     private final LhHousingTypeHouseholdMatcher matcher;
     private final LhHouseholdEnrichmentFailureStore failureStore;
-    private final LhHouseholdEnrichmentFailureRepository failureRepository;
     private final Clock clock;
     private final LhHouseholdComplexLinkRepository linkRepository;
     private final LhHouseholdComplexLinks links;
@@ -55,10 +50,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
 
     @Transactional(readOnly = true)
     public List<LhHouseholdEnrichmentFailureResponse> findFailures(int page, int size) {
-        return failureRepository.findAllByStatusOrderBySourceKeyAscIdAsc(
-                        PENDING,
-                        PageRequest.of(page, size)
-                )
+        return failureStore.pending(page, size)
                 .stream()
                 .map(LhHouseholdEnrichmentFailureResponse::from)
                 .toList();
@@ -66,7 +58,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
 
     @Transactional(readOnly = true)
     public List<LhHouseholdEnrichmentFailureResponse> findFailureHistory(int page, int size) {
-        return failureRepository.findAllByOrderBySourceKeyAscIdAsc(PageRequest.of(page, size))
+        return failureStore.history(page, size)
                 .stream()
                 .map(LhHouseholdEnrichmentFailureResponse::from)
                 .toList();

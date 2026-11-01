@@ -1,7 +1,5 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
-import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
-
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
@@ -18,7 +16,6 @@ import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFail
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentFailureResponse;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
-import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter.LhAnnouncementEnrichmentWriteResult;
@@ -34,7 +31,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,7 +42,6 @@ public class LhAnnouncementEnrichmentService {
     private final MyHomeAnnouncementSourceReader myHomeSourceRepository;
     private final AnnouncementRepository announcementRepository;
     private final LhAnnouncementSupplySourceReader supplySourceRepository;
-    private final LhAnnouncementEnrichmentFailureRepository failureRepository;
     private final LhAnnouncementEnrichmentFailureStore failureStore;
     private final LhEnrichmentMappingState mappingState;
     private final LhAnnouncementEnrichmentSources enrichmentSources;
@@ -209,24 +204,21 @@ public class LhAnnouncementEnrichmentService {
 
     @Transactional(readOnly = true)
     public List<LhAnnouncementEnrichmentFailureResponse> findFailures(int page, int size) {
-        return failureRepository.findAllByStatusOrderBySourceKeyAscIdAsc(
-                        PENDING,
-                        PageRequest.of(page, size)
-                ).stream()
+        return failureStore.pending(page, size).stream()
                 .map(LhAnnouncementEnrichmentFailureResponse::from)
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public List<LhAnnouncementEnrichmentFailureResponse> findFailures() {
-        return failureRepository.findAllByStatusOrderBySourceKeyAsc(PENDING).stream()
+        return failureStore.pending().stream()
                 .map(LhAnnouncementEnrichmentFailureResponse::from)
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public List<LhAnnouncementEnrichmentFailureResponse> findFailureHistory(int page, int size) {
-        return failureRepository.findAllByOrderBySourceKeyAscIdAsc(PageRequest.of(page, size)).stream()
+        return failureStore.history(page, size).stream()
                 .map(LhAnnouncementEnrichmentFailureResponse::from)
                 .toList();
     }
