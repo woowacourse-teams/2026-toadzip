@@ -53,14 +53,14 @@ it('가로 탭에 선택한 단계만 표시하고 각 실행 버튼은 한 곳�
   select('3 정제·저장')
   expect(screen.queryByText(/현재 저장된 단지 원본 전체/)).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '단지 정제·저장 안내' }))
-  expect(screen.getByRole('tooltip')).toHaveTextContent('현재 저장된 단지 원본 전체를 단지·주택형으로 정제해 저장합니다.')
+  expect(screen.getByRole('tooltip')).toHaveTextContent('단지 원본을 단지·주택형으로 정제하던 단계입니다. 지금은 지난 실행 결과만 볼 수 있습니다.')
 })
 it('세 단계의 안내를 호버·포커스·클릭으로 열고 Escape나 영역 이탈로 닫으며 실행하지 않는다', async () => {
   await show()
   for (const [tab, stage, text] of [
     ['1 원천 수집', '단지 원천 수집', '마이홈 단지와 LH 임대 카탈로그를 수집해 원본을 저장합니다.'],
     ['2 좌표 적재', '주소에 맞는 좌표 적재', '위치정보요약DB 월 전체분 ZIP을 업로드해 저장된 단지 원본의 주소에 맞는 좌표를 준비합니다.'],
-    ['3 정제·저장', '단지 정제·저장', '현재 저장된 단지 원본 전체를 단지·주택형으로 정제해 저장합니다.'],
+    ['3 정제·저장', '단지 정제·저장', '단지 원본을 단지·주택형으로 정제하던 단계입니다. 지금은 지난 실행 결과만 볼 수 있습니다.'],
   ]) {
     select(tab)
     const button = screen.getByRole('button', { name: `${stage} 안내` })
@@ -117,7 +117,7 @@ it('방향키·Home·End로 탭을 선택하고 포커스를 옮긴다', async (
   fireEvent.keyDown(third, { key: 'Home' })
   expect(first).toHaveFocus()
 })
-it('탭을 바꿔도 선택한 ZIP과 업로드 결과를 유지하며 안내로 3단계를 연다', async () => {
+it('탭을 바꿔도 선택한 ZIP과 업로드 결과를 유지한다', async () => {
   let resolve: (value: LocationSummaryImportReport) => void = () => {}
   vi.mocked(uploadLocationSummary).mockReturnValue(new Promise(complete => { resolve = complete }))
   await show()
@@ -141,15 +141,15 @@ it('탭을 바꿔도 선택한 ZIP과 업로드 결과를 유지하며 안내로
   await screen.findByRole('region', { name: '좌표 적재 결과' })
   expect(uploadLocationSummary).toHaveBeenCalledExactlyOnceWith(zip)
   expect(startDataPipeline).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('link', { name: '3단계에서 단지 정제·저장' }))
-  expect(screen.getByRole('tab', { name: '3 정제·저장' })).toHaveAttribute('aria-selected', 'true')
+  select('3 정제·저장')
   select('2 좌표 적재')
   expect(screen.getByRole('region', { name: '좌표 적재 결과' })).toBeVisible()
 })
 it('직접 연결된 3단계를 열되 정제를 자동 실행하지 않는다', async () => {
   render(<MemoryRouter initialEntries={['/admin/ingest/complexes#complex-refinement']}><DataPipelineControl domain="complex" compact /></MemoryRouter>)
-  await waitFor(() => expect(screen.getByRole('button', { name: '단지 정제·저장 실행' })).toBeEnabled())
+  await waitFor(() => expect(screen.getByRole('button', { name: '단지 원천 수집 실행', hidden: true })).toBeEnabled())
   expect(screen.getByRole('tab', { name: '3 정제·저장' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('button', { name: '단지 정제·저장 실행' })).toBeDisabled()
   expect(startDataPipeline).not.toHaveBeenCalled()
 })
 it('재진입 시 진행 중 수집과 마지막 정제 결과를 복구하고 단위를 유지한다', async () => {
@@ -166,16 +166,19 @@ it('재진입 시 진행 중 수집과 마지막 정제 결과를 복구하고 �
   select('2 좌표 적재')
   expect(screen.getByLabelText('위치정보요약DB 월 전체분 ZIP')).toBeDisabled()
 })
-it('정제만 실행하고 그 결과를 같은 영역에 남긴다', async () => {
-  vi.mocked(startDataPipeline).mockResolvedValue(execution('COMPLEX_REFINEMENT', { executionId: 'refine-1', status: 'COMPLETED_WARNINGS',
-    completedStepResults: [{ step: 'MAP_MYHOME_COMPLEXES', stepName: '마이홈 단지 정제', report: { createdComplexCount: 4, updatedComplexCount: 7, failedSourceCount: 2 } }],
-  }))
+it('정제·저장은 지원 종료로 실행할 수 없고 안내와 지난 정제 결과를 보인다', async () => {
+  vi.mocked(getDataPipelineStatus).mockImplementation(async type => execution(type, type === 'COMPLEX_REFINEMENT'
+    ? { executionId: 'refine-1', status: 'COMPLETED_WARNINGS', startedAt: '2026-10-21T00:00:00Z',
+      completedStepResults: [{ step: 'MAP_MYHOME_COMPLEXES', stepName: '마이홈 단지 정제', report: { createdComplexCount: 4, updatedComplexCount: 7, failedSourceCount: 2 } }] }
+    : {}))
   await show()
   select('3 정제·저장')
-  fireEvent.click(screen.getByRole('button', { name: '단지 정제·저장 실행' }))
-  await waitFor(() => expect(within(screen.getByRole('group', { name: '실행 상태' })).getByText('일부 실패')).toBeVisible())
-  assertStages()
-  expect(startDataPipeline).toHaveBeenCalledExactlyOnceWith('COMPLEX_REFINEMENT')
+  const start = screen.getByRole('button', { name: '단지 정제·저장 실행' })
+  expect(start).toBeDisabled()
+  expect(start).toHaveAccessibleDescription('지원 종료: 단지·주택형은 공고와 PDF 보정으로만 바뀝니다.')
+  fireEvent.click(start)
+  expect(startDataPipeline).not.toHaveBeenCalled()
+  expect(within(screen.getByRole('group', { name: '실행 상태' })).getByText('일부 실패')).toBeVisible()
   expect(screen.getByText('신규 단지').nextSibling).toHaveTextContent('4')
   expect(screen.getByText('갱신 단지').nextSibling).toHaveTextContent('7')
   expect(screen.getByRole('button', { name: '결과 오류 조회' })).toBeVisible()
@@ -183,14 +186,13 @@ it('정제만 실행하고 그 결과를 같은 영역에 남긴다', async () =
 it('시작 응답 유실은 서버 상태로 복구하며 중지 요청도 해당 실행에만 보낸다', async () => {
   const view = await show()
   vi.mocked(startDataPipeline).mockRejectedValue(new Error('연결 실패'))
-  vi.mocked(getDataPipelineStatus).mockImplementation(async type => execution(type, type === 'COMPLEX_REFINEMENT'
-    ? { executionId: 'refine-1', status: 'RUNNING', currentStepName: '마이홈 단지 정제' } : {}))
-  vi.mocked(stopDataPipeline).mockResolvedValue(execution('COMPLEX_REFINEMENT', { executionId: 'refine-1', status: 'STOPPED' }))
-  select('3 정제·저장')
-  fireEvent.click(screen.getByRole('button', { name: '단지 정제·저장 실행' }))
-  fireEvent.click(await screen.findByRole('button', { name: '정제 중지' }))
+  vi.mocked(getDataPipelineStatus).mockImplementation(async type => execution(type, type === 'COMPLEX_COLLECTION'
+    ? { executionId: 'collect-1', status: 'RUNNING', currentStepName: '마이홈 단지 수집' } : {}))
+  vi.mocked(stopDataPipeline).mockResolvedValue(execution('COMPLEX_COLLECTION', { executionId: 'collect-1', status: 'STOPPED' }))
+  fireEvent.click(screen.getByRole('button', { name: '단지 원천 수집 실행' }))
+  fireEvent.click(await screen.findByRole('button', { name: '수집 중지' }))
   await screen.findByText('중지됨')
-  expect(stopDataPipeline).toHaveBeenCalledExactlyOnceWith('refine-1')
+  expect(stopDataPipeline).toHaveBeenCalledExactlyOnceWith('collect-1')
   view.unmount()
 })
 it('기존 통합 실행도 복구하되 중지 버튼은 현재 처리 중인 단계에 하나만 둔다', async () => {
@@ -211,25 +213,25 @@ it('기존 통합 실행도 복구하되 중지 버튼은 현재 처리 중인 �
 it('새 실행을 접수할 때 과거 통합 실행의 결과를 이번 결과로 표시하지 않는다', async () => {
   vi.mocked(getDataPipelineStatus).mockImplementation(async type => execution(type, type === 'COMPLEX_SYNC'
     ? { executionId: 'old-sync', status: 'COMPLETED', startedAt: '2026-10-21T00:00:00Z', totalStepCount: 4,
-      completedStepResults: [{ step: 'MAP_MYHOME_COMPLEXES', stepName: '마이홈 단지 정제', report: { createdComplexCount: 999 } }] } : {}))
+      completedStepResults: [{ step: 'COLLECT_MYHOME_COMPLEXES', stepName: '마이홈 단지 수집', report: { storedRowCount: 999 } }] } : {}))
   let resolve: (value: DataPipelineExecution) => void = () => {}
   vi.mocked(startDataPipeline).mockReturnValue(new Promise(complete => { resolve = complete }))
   await show()
-  select('3 정제·저장')
-  const refinement = screen.getByRole('tabpanel')
-  expect(within(refinement).getByText('999')).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: '단지 정제·저장 실행' }))
-  expect(within(refinement).queryByText('999')).not.toBeInTheDocument()
-  expect(within(refinement).getByText(/실행 접수를 확인/)).toBeVisible()
-  expect(within(refinement).queryByRole('group', { name: '실행 상태' })).not.toBeInTheDocument()
-  await act(async () => resolve(execution('COMPLEX_REFINEMENT', { executionId: 'new-refine', status: 'COMPLETED', startedAt: '2026-10-22T00:00:00Z' })))
+  const collection = screen.getByRole('tabpanel')
+  expect(within(collection).getByText('999')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '단지 원천 수집 실행' }))
+  expect(within(collection).queryByText('999')).not.toBeInTheDocument()
+  expect(within(collection).getByText(/실행 접수를 확인/)).toBeVisible()
+  expect(within(collection).queryByRole('group', { name: '실행 상태' })).not.toBeInTheDocument()
+  await act(async () => resolve(execution('COMPLEX_COLLECTION', { executionId: 'new-collect', status: 'COMPLETED', startedAt: '2026-10-22T00:00:00Z' })))
 })
 
 
 it.each([
-  ['COMPLEX_COLLECTION', '1 원천 수집', '단지 원천 수집', '수집 중지', '마이홈 단지 수집'],
-  ['COMPLEX_REFINEMENT', '3 정제·저장', '단지 정제·저장', '정제 중지', '마이홈 단지 정제'],
-] as const)('%s의 중지 버튼은 실행 버튼 옆에 하나만 두고 요청 중에는 다시 누를 수 없다', async (type, tab, stage, label, step) => {
+  ['COMPLEX_COLLECTION', '1 원천 수집', '단지 원천 수집', '수집 중지', '마이홈 단지 수집', true],
+  // 지원 종료 전에 시작한 정제는 멈출 수 있지만 다시 시작할 수는 없다.
+  ['COMPLEX_REFINEMENT', '3 정제·저장', '단지 정제·저장', '정제 중지', '마이홈 단지 정제', false],
+] as const)('%s의 중지 버튼은 실행 버튼 옆에 하나만 두고 요청 중에는 다시 누를 수 없다', async (type, tab, stage, label, step, restartable) => {
   const running = execution(type, { executionId: 'active-run', status: 'RUNNING', currentStepName: step })
   vi.mocked(getDataPipelineStatus).mockImplementation(async value => value === type ? running : execution(value))
   let finishStop: (value: DataPipelineExecution) => void = () => {}
@@ -249,6 +251,7 @@ it.each([
   expect(stopDataPipeline).toHaveBeenCalledExactlyOnceWith('active-run')
   await act(async () => finishStop({ ...running, status: 'STOPPED', stopRequested: true }))
   expect(within(actions).queryByRole('button', { name: label })).not.toBeInTheDocument()
-  expect(start).toBeEnabled()
+  if (restartable) expect(start).toBeEnabled()
+  else expect(start).toBeDisabled()
   view.unmount()
 })

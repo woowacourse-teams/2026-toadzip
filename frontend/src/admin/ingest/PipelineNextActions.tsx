@@ -1,5 +1,6 @@
 import { Link } from 'react-router'
 import type { DataPipelineExecution } from './api'
+import { retiredComplexRefinementNotice } from './pipelineLabels'
 import styles from './PipelineWorkflow.module.css'
 
 export function PipelineNextActions({ execution, onRefine, disabled = false }: {
@@ -16,17 +17,14 @@ export function PipelineNextActions({ execution, onRefine, disabled = false }: {
   if (!manualRefinement && !completed) return null
 
   return <div className={styles.nextActions} aria-label="다음 작업">
-    {manualRefinement && <p>자동 정제가 실행되지 않았습니다. 수집 결과를 확인한 뒤 저장된 원천으로 정제할 수 있습니다.</p>}
-    {complex && (collection || manualRefinement) && <>
-      <p>새 단지 주소가 추가되었다면 위치정보 ZIP을 업로드한 뒤 단지를 정제해 주세요. 기존 좌표가 준비되어 있으면 바로 정제할 수 있습니다.</p>
-      <Link to="/admin/locations">다음: 위치정보 ZIP 업로드</Link>
-    </>}
-    {(collection || manualRefinement) && <>
+    {complex && (collection || manualRefinement) && <p>{retiredComplexRefinementNotice}</p>}
+    {!complex && manualRefinement && <p>자동 정제가 실행되지 않았습니다. 수집 결과를 확인한 뒤 저장된 원천으로 정제할 수 있습니다.</p>}
+    {!complex && (collection || manualRefinement) && <>
       <p className="ingest-meta">정제는 현재 저장된 원천 전체를 사용합니다. 이전 수집의 원천이 포함될 수 있습니다.</p>
       {onRefine ? <button type="button" disabled={disabled} onClick={onRefine}>
-        저장된 원천으로 {complex ? '단지' : '공고'} 정제 실행
-      </button> : <Link to={`/admin/failures?domain=${complex ? 'complex' : 'announcement'}&category=all&executionId=${encodeURIComponent(execution.executionId ?? '')}`}>
-        {complex ? '단지' : '공고'} 정제 화면으로 이동</Link>}
+        저장된 원천으로 공고 정제 실행
+      </button> : <Link to={`/admin/failures?domain=announcement&category=all&executionId=${encodeURIComponent(execution.executionId ?? '')}`}>
+        공고 정제 화면으로 이동</Link>}
     </>}
     {!collection && !manualRefinement && <>
       <div className={styles.actions}>

@@ -15,7 +15,7 @@ GRS80 UTM-K 좌표가 들어 있다. 일변동 연계 API와 승인키는 사용
 1. `POST /api/admin/ingest/myhome/complexes`로 마이홈 단지 원천 데이터를 먼저 수집한다.
 2. `POST /api/admin/ingest/juso/location-summaries`에 월 전체분 ZIP을 multipart의 `file`로 전송한다.
 3. 응답의 `targetRoadAddressCount`, `matchedRoadAddressCount`, `unmatchedRoadAddressCount`를 확인한다.
-4. `POST /api/admin/ingest/myhome/complex-mappings`로 단지 매핑을 실행한다.
+4. 단지 매핑(`POST /api/admin/ingest/myhome/complex-mappings`)은 [지원을 종료](../../features/ingest/executions.md#실행-방법)해 410으로 거절한다.
 
 ```bash
 curl -X POST \

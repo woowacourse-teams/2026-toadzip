@@ -6,6 +6,7 @@ import type { PipelineViewState } from './PipelineResult'
 import { ComplexExecutionResult, ComplexExecutionSummary, ComplexExecutionStop } from './ComplexExecutionResult'
 import { LocationSummaryUpload } from './LocationSummaryUpload'
 import { pipelineStepDefinitions, pipelineStepSequences } from './pipelineSteps'
+import { retiredComplexRefinementNotice } from './pipelineLabels'
 import styles from './ComplexIngest.module.css'
 import { ComplexStageHelp } from './ComplexStageHelp'
 import { ComplexStatusBadge } from './ComplexStatusBadge'
@@ -92,11 +93,12 @@ export function ComplexIngestStages({ states, disabled, startingType, stopping, 
     </section>
     <section className={styles.stage} id="complex-refinement" role="tabpanel" hidden={selected !== 2} aria-labelledby={`${tabId}-2`}>
       <header><div className={styles.stageTitle}><span className={styles.number}>3</span><div className={styles.helpLabel}><h2 id="complex-refinement-title">단지 정제·저장</h2>
-        <ComplexStageHelp stage="단지 정제·저장">현재 저장된 단지 원본 전체를 단지·주택형으로 정제해 저장합니다.</ComplexStageHelp></div></div>
+        <ComplexStageHelp stage="단지 정제·저장">단지 원본을 단지·주택형으로 정제하던 단계입니다. 지금은 지난 실행 결과만 볼 수 있습니다.</ComplexStageHelp></div></div>
         <ComplexExecutionSummary execution={latest('COMPLEX_REFINEMENT')} pending={startingType === 'COMPLEX_REFINEMENT'} stopping={stopping[latest('COMPLEX_REFINEMENT').type]} /></header>
       <div className={styles.executionActions} role="group" aria-label="단지 정제·저장 실행 제어">
-        <Button data-design-system disabled={disabled} onClick={() => onStart('COMPLEX_REFINEMENT')}>단지 정제·저장 실행</Button>
+        <Button data-design-system disabled aria-describedby="complex-refinement-retired">단지 정제·저장 실행</Button>
         {isRunning(2) && <ComplexExecutionStop execution={latest('COMPLEX_REFINEMENT')} label="정제 중지" stopping={stopping[latest('COMPLEX_REFINEMENT').type]} onStop={() => onStop(latest('COMPLEX_REFINEMENT').type)} />}
+        <p id="complex-refinement-retired" role="note">{retiredComplexRefinementNotice}</p>
       </div>
       {result('COMPLEX_REFINEMENT')}
     </section>

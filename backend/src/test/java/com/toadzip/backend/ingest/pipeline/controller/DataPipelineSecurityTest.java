@@ -188,7 +188,7 @@ class DataPipelineSecurityTest {
     @ParameterizedTest
     @CsvSource({
             "complex-collection, COMPLEX_COLLECTION", "announcement-collection, ANNOUNCEMENT_COLLECTION",
-            "complex-sync, COMPLEX_SYNC", "announcement-sync, ANNOUNCEMENT_SYNC"
+            "announcement-sync, ANNOUNCEMENT_SYNC"
     })
     void 관리자는_CSRF와_입력키로_수집을_접수하며_키는_응답에_없다(
             String pathValue, DataPipelineType type

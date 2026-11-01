@@ -21,6 +21,7 @@ import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningExcept
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
+import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
@@ -177,7 +178,7 @@ class DataPipelineExecutionServiceTest {
 
     @ParameterizedTest
     @EnumSource(value = DataPipelineType.class, names = {
-            "COMPLEX_COLLECTION", "ANNOUNCEMENT_COLLECTION", "COMPLEX_SYNC", "ANNOUNCEMENT_SYNC"
+            "COMPLEX_COLLECTION", "ANNOUNCEMENT_COLLECTION", "ANNOUNCEMENT_SYNC"
     })
     void 입력키는_비동기_작업에서만_사용하고_상태와_스레드에_남기지_않는다(DataPipelineType type) {
         configureStoredExecution();
@@ -201,11 +202,42 @@ class DataPipelineExecutionServiceTest {
                 .doesNotContain("runtime-test-key");
     }
 
+    @ParameterizedTest
+    @EnumSource(value = DataPipelineType.class, names = {"COMPLEX_REFINEMENT", "COMPLEX_SYNC"})
+    void 지원을_종료한_단지_정제는_잠금과_실행_기록_전에_거절한다(DataPipelineType type) {
+        assertThatThrownBy(() -> service.start(type))
+                .isInstanceOf(RetiredIngestOperationException.class)
+                .hasMessage("단지 정제는 지원을 종료했습니다. 단지·주택형은 공고와 PDF 보정으로만 바뀝니다.");
+
+        verify(executionLock, never()).tryAcquire(any(UUID.class));
+        verify(executionStateService, never()).create(any(), any(), any());
+        verify(runner, never()).run(any(), any());
+    }
+
+    @Test
+    void 지원을_종료한_단지_동기화는_입력키가_있어도_거절한다() {
+        assertThatThrownBy(() -> service.start(DataPipelineType.COMPLEX_SYNC, "runtime-test-key"))
+                .isInstanceOf(RetiredIngestOperationException.class)
+                .hasMessageNotContaining("runtime-test-key");
+
+        verify(executionLock, never()).tryAcquire(any(UUID.class));
+        verify(executionStateService, never()).create(any(), any(), any());
+    }
+
     @Test
     void 정제_실행에_입력키를_사용하려고_하면_저장_전에_거부한다() {
-        assertThatThrownBy(() -> service.start(DataPipelineType.COMPLEX_REFINEMENT, "runtime-test-key"))
+        assertThatThrownBy(() -> service.start(DataPipelineType.ANNOUNCEMENT_REFINEMENT, "runtime-test-key"))
                 .isInstanceOf(InvalidIngestRequestException.class)
                 .hasMessageNotContaining("runtime-test-key");
+        verify(executionLock, never()).tryAcquire(any(UUID.class));
+    }
+
+    @Test
+    void 지원을_종료한_단지_정제는_입력키_형식보다_먼저_거절한다() {
+        assertThatThrownBy(() -> service.start(DataPipelineType.COMPLEX_REFINEMENT, "runtime-test-key"))
+                .isInstanceOf(RetiredIngestOperationException.class);
+        assertThatThrownBy(() -> service.start(DataPipelineType.COMPLEX_SYNC, " "))
+                .isInstanceOf(RetiredIngestOperationException.class);
         verify(executionLock, never()).tryAcquire(any(UUID.class));
     }
 

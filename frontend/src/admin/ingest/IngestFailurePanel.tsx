@@ -240,7 +240,7 @@ function RecoveryLinks({row, follow, inlineRecovery}: {row:FailureReview; follow
   const needsComplexReview = /COMPLEX|HOUSING_TYPE/.test(row.reason)
     || (row.productLinkStatus === 'UNKNOWN' && complexName !== '')
   return <>
-    {/GEOCODING/.test(row.reason) ? <Link to={follow('/admin/locations')}>좌표 ZIP 업로드·단지 정제</Link> : null}
+    {/GEOCODING/.test(row.reason) ? <Link to={follow('/admin/locations')}>좌표 ZIP 업로드</Link> : null}
     {needsComplexReview && !inlineRecovery && row.product?.resourceType !== 'complexes' ? <Link
       to={follow(complexName ? `/admin/complexes?keyword=${encodeURIComponent(complexName)}` : '/admin/complexes')}>
       {complexName ? '단지명으로 후보 검색' : '단지·주택형 확인'}

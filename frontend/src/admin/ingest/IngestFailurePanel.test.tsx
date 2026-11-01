@@ -93,7 +93,7 @@ it('좌표 오류에서 ZIP 업로드로 이동하고 좌표가 없는 원천의
   render(<IngestFailurePanel domain="complex" executionId={null}/>, {wrapper:MemoryRouter})
   fireEvent.click(await screen.findByRole('button',{name:`확인·처리: ${row.target}`}))
   const dialog=within(screen.getByRole('dialog'))
-  expectReturnLink(dialog.getByRole('link',{name:'좌표 ZIP 업로드·단지 정제'}), '/admin/locations', 'complex:1')
+  expectReturnLink(dialog.getByRole('link',{name:'좌표 ZIP 업로드'}), '/admin/locations', 'complex:1')
   expect(dialog.getByText(/좌표 ZIP을 업로드해도 일치하는 주소나 좌표가 없으면/)).toBeVisible()
   expect(dialog.queryByRole('link',{name:'단지·주택형 확인'})).not.toBeInTheDocument()
 })

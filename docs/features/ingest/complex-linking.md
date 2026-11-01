@@ -116,7 +116,7 @@ LH 임대 목록 원천(지역·공급유형·단지명 묶음)은 공급유형�
 - API 기준 경로는 `/api/admin/ingest/lh/housing-type-households/failures/{failureId}/complex-link`다.
   `GET`은 비교 결과와 조회 `token`, `POST`는 `complexId`·`token`·`reason`·선택 `sourceUrl`로 저장, `POST /release`는
   `token`·`reason`으로 해제한다. 두 POST는 관리자 세션·CSRF와 전역 수집·정제 쓰기 잠금을 쓰고, 조회 뒤 원천·후보·연결이
-  바뀌면 409로 거절한다.
+  바뀌면 409로 거절한다. 단지 정제 [지원 종료](executions.md#실행-방법)로 지금은 두 POST 모두 410으로 거절한다.
 - 배포: `V20261024_05`는 연결 테이블, `V20261024_06`은 세대수 보강 오류 사유 제약에 `MANUAL_LINK_REVIEW_REQUIRED`를 추가한다.
   새 사유가 기록된 뒤에는 구버전 서버로 즉시 되돌리지 않는다.
 
@@ -140,7 +140,7 @@ LH 임대 목록에는 같은 단지가 이름만 다른 묶음으로 두 번 �
   `RELEASE_LH_HOUSEHOLD_DECISION`으로 남긴다.
 - API: `/api/admin/ingest/lh/housing-type-households/failures/{failureId}/target-decision`의 `GET`(비교와 `token`),
   `POST`(`decision`·`chosenSourceKey`·`token`·`reason`), `POST /release`(`token`·`reason`). 쓰기 요청은 관리자 세션·CSRF·
-  전역 수집·정제 쓰기 잠금을 쓰며 조회 뒤 바뀌면 409로 거절한다.
+  전역 수집·정제 쓰기 잠금을 쓰며 조회 뒤 바뀌면 409로 거절한다. 지금은 단지 정제 지원 종료로 두 POST 모두 410으로 거절한다.
 - 배포: `V20261024_07`은 결정 테이블, `V20261024_08`은 세대수 보강 오류 사유 제약에 `TARGET_DECISION_REVIEW_REQUIRED`를 추가한다.
 
 ## 관리자 API

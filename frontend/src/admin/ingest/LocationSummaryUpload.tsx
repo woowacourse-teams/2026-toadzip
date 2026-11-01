@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import { uploadLocationSummary, type LocationSummaryImportReport } from './api'
 import styles from './ComplexIngest.module.css'
@@ -63,9 +62,7 @@ export function LocationSummaryUpload({ embedded = false, disabled = false, onBu
       </dl>
     </div></section>}
     {report && report.unmatchedRoadAddressCount > 0 && <aside className={styles.nextAction} aria-label="다음 작업 안내"><h3>다음 작업</h3><p>좌표를 찾지 못한 주소가 {report.unmatchedRoadAddressCount.toLocaleString('ko-KR')}개 있습니다.{' '}
-        {embedded ? <Link to="#complex-refinement">3단계에서 단지 정제·저장</Link> : <Link to="/admin/ingest/complexes#complex-refinement">단지 수집 화면의 3단계에서 단지 정제·저장</Link>}
-        을 실행한 뒤, 결과의 ‘좌표 문제’에서 대상과 사유를 확인하세요.</p></aside>}
-    {!embedded && <p><Link to="/admin/ingest/complexes#complex-refinement">단지 수집 3단계에서 단지 정제·저장</Link></p>}
+        단지 정제는 지원을 종료했습니다. 새 단지의 좌표는 PDF 보정에서 공고문 주소로 정합니다.</p></aside>}
   </section>
 }
 

@@ -67,6 +67,11 @@ public enum DataPipelineType {
         };
     }
 
+    // 단지 정제는 지원을 종료했다. 지난 실행 이력을 읽도록 유형과 단계 정의는 남긴다.
+    public boolean isRetired() {
+        return this == COMPLEX_REFINEMENT || this == COMPLEX_SYNC;
+    }
+
     public boolean requiresSuccessfulCollection(DataPipelineStep step) {
         return (this == COMPLEX_SYNC || this == ANNOUNCEMENT_SYNC || this == ANNOUNCEMENT_REGISTRATION)
                 && !step.isCollection();

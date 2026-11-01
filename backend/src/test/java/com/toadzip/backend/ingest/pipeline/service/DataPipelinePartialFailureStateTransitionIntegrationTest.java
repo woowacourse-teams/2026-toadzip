@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doReturn;
@@ -22,6 +23,7 @@ import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
+import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
@@ -42,6 +44,7 @@ import java.util.concurrent.ScheduledFuture;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
@@ -76,11 +79,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         when(enrichmentService.enrichAll()).thenReturn(
                 LhHousingTypeHouseholdEnrichmentReport.matched(1, 0, 0)
         );
-        DataPipelineRunner runner = runner(mappingService, enrichmentService);
-        DataPipelineExecutionLock.Lease lease = mock(DataPipelineExecutionLock.Lease.class);
-        DataPipelineExecutionService service = service(runner, lease);
-
-        service.start(DataPipelineType.COMPLEX_REFINEMENT);
+        runRetiredComplexRefinement(runner(mappingService, enrichmentService));
 
         var execution = executionRepository
                 .findFirstByTypeOrderByIdDesc(DataPipelineType.COMPLEX_REFINEMENT)
@@ -95,7 +94,6 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 .containsExactly(DataPipelineStep.MAP_MYHOME_COMPLEXES,
                         DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS);
         verify(enrichmentService).enrichAll();
-        verify(lease).close();
     }
 
     @Test
@@ -107,12 +105,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         when(enrichmentService.enrichAll()).thenReturn(
                 LhHousingTypeHouseholdEnrichmentReport.matched(0, 0, 1)
         );
-        DataPipelineExecutionService service = service(
-                runner(mappingService, enrichmentService),
-                mock(DataPipelineExecutionLock.Lease.class)
-        );
-
-        service.start(DataPipelineType.COMPLEX_REFINEMENT);
+        runRetiredComplexRefinement(runner(mappingService, enrichmentService));
 
         var execution = executionRepository
                 .findFirstByTypeOrderByIdDesc(DataPipelineType.COMPLEX_REFINEMENT)
@@ -134,11 +127,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         when(enrichmentService.enrichAll()).thenReturn(
                 LhHousingTypeHouseholdEnrichmentReport.matched(1, 0, 0)
         );
-        DataPipelineRunner runner = runner(mappingService, enrichmentService);
-        DataPipelineExecutionLock.Lease lease = mock(DataPipelineExecutionLock.Lease.class);
-        DataPipelineExecutionService service = service(runner, lease);
-
-        service.start(DataPipelineType.COMPLEX_REFINEMENT);
+        runRetiredComplexRefinement(runner(mappingService, enrichmentService));
 
         var execution = executionRepository
                 .findFirstByTypeOrderByIdDesc(DataPipelineType.COMPLEX_REFINEMENT)
@@ -148,6 +137,25 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         assertThat(execution.getCompletedSteps())
                 .containsExactly(DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS);
         verify(enrichmentService).enrichAll();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DataPipelineType.class, names = {"COMPLEX_REFINEMENT", "COMPLEX_SYNC"})
+    void 지원을_종료한_단지_정제는_시작을_거절하고_실행_기록을_남기지_않는다(DataPipelineType type) {
+        MyHomeComplexMappingService mappingService = mock(MyHomeComplexMappingService.class);
+        LhHousingTypeHouseholdEnrichmentService enrichmentService =
+                mock(LhHousingTypeHouseholdEnrichmentService.class);
+        DataPipelineExecutionService service = service(
+                runner(mappingService, enrichmentService),
+                mock(DataPipelineExecutionLock.Lease.class)
+        );
+
+        long executionCount = executionRepository.count();
+
+        assertThatThrownBy(() -> service.start(type)).isInstanceOf(RetiredIngestOperationException.class);
+
+        assertThat(executionRepository.count()).isEqualTo(executionCount);
+        verifyNoInteractions(mappingService, enrichmentService);
     }
 
     @Test
@@ -316,6 +324,21 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
 
         assertThat(executionRepository.findByExecutionId(executionId).orElseThrow().getStatus())
                 .isEqualTo(DataPipelineExecutionStatus.COMPLETED);
+    }
+
+    // 단지 정제는 실행 시작을 거절한다. 코드를 지울 때까지 러너와 상태 저장을 직접 이어 단계별 상태 전이를 지킨다.
+    private void runRetiredComplexRefinement(DataPipelineRunner runner) {
+        UUID executionId = UUID.randomUUID();
+        executionStateService.create(executionId, DataPipelineType.COMPLEX_REFINEMENT, STARTED_AT);
+        try {
+            runner.run(DataPipelineType.COMPLEX_REFINEMENT, executionId);
+            executionStateService.complete(executionId, STARTED_AT.plusSeconds(1));
+        }
+        catch (DataPipelinePartialFailureException exception) {
+            new DataPipelineFailureRecorder(executionStateService, Clock.fixed(STARTED_AT, ZoneOffset.UTC)).record(
+                    executionId, DataPipelineType.COMPLEX_REFINEMENT, exception.getStep(),
+                    exception.getMessage(), exception.getServerResponse());
+        }
     }
 
     private DataPipelineExecutionService service(

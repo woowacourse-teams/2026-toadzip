@@ -11,6 +11,10 @@ export const pipelineLabels: Record<DataPipelineType, string> = {
   SH_ANNOUNCEMENT_COLLECTION: 'SH 공고 수집',
 }
 
+// 단지 정제는 지원을 종료했다. 지난 실행 이력과 결과는 계속 보여 준다.
+export const retiredPipelineTypes: readonly DataPipelineType[] = ['COMPLEX_REFINEMENT', 'COMPLEX_SYNC']
+export const retiredComplexRefinementNotice = '지원 종료: 단지·주택형은 공고와 PDF 보정으로만 바뀝니다.'
+
 import type { DataPipelineExecution } from './api'
 export const pipelineStatusLabels: Record<DataPipelineExecution['status'], string> = {
   IDLE:'미실행', RUNNING:'실행 중', COMPLETED:'완료', COMPLETED_WARNINGS:'일부 실패',

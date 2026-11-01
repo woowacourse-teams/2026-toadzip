@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.mapping.controller;
 
+import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingFailureResponse;
-import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -24,8 +24,8 @@ public class MyHomeComplexMappingController {
     }
 
     @PostMapping
-    public ResponseEntity<MyHomeComplexMappingReport> mapAll() {
-        return ResponseEntity.ok(mappingService.mapAll());
+    public ResponseEntity<Void> mapAll() {
+        throw RetiredIngestOperationException.complexRefinement();
     }
 
     @GetMapping("/failures/page")

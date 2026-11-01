@@ -1,4 +1,4 @@
-import { pipelineLabels, pipelineStatusLabels } from './pipelineLabels'
+import { pipelineLabels, pipelineStatusLabels, retiredComplexRefinementNotice, retiredPipelineTypes } from './pipelineLabels'
 import { Link } from 'react-router'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -399,18 +399,19 @@ export function DataPipelineControl({ domain, compact = false }: {
                   {buttonLabel('COMPLEX_COLLECTION', pipelineStates.COMPLEX_COLLECTION.execution.status)}</Button></li>
               <li><strong>2. 주소에 맞는 좌표 적재</strong><p>새 단지 주소가 있다면 ZIP을 업로드합니다. 준비된 좌표는 그대로 사용합니다.</p>
                 <Link to="/admin/locations">위치정보 ZIP 업로드</Link></li>
-              <li><strong>3. 단지 정제·저장</strong><p>저장된 원천 전체를 정제하고 단지·주택형 결과를 확인합니다.</p>
-                <button type="button" disabled={isAnyPipelineRunning} onClick={() => handleRun('COMPLEX_REFINEMENT')}>
+              <li><strong>3. 단지 정제·저장</strong><p>{retiredComplexRefinementNotice}</p>
+                <button type="button" disabled>
                   {buttonLabel('COMPLEX_REFINEMENT', pipelineStates.COMPLEX_REFINEMENT.execution.status)}</button></li>
             </ol>}
             <details className={workflow.additional}>
               <summary>{group.id === 'complex-pipelines' ? '단지 추가 작업' : '공고 추가 작업'}</summary>
               <p className="ingest-meta">{group.id === 'complex-pipelines'
-                ? '좌표가 준비된 단지는 수집과 정제를 이어서 실행할 수 있습니다.'
+                ? retiredComplexRefinementNotice
                 : '수집만 다시 하거나, 외부 호출 없이 저장된 공고 원천 전체를 정제할 수 있습니다. 이전 수집의 원천도 포함됩니다.'}</p>
               <div className={workflow.actions}>
                 {(group.id === 'complex-pipelines' ? [group.types[0]] : [group.types[1], group.types[2]]).map(type =>
-                  <button type="button" key={type} disabled={isAnyPipelineRunning} onClick={() => handleRun(type)}>
+                  <button type="button" key={type} disabled={isAnyPipelineRunning || retiredPipelineTypes.includes(type)}
+                    onClick={() => handleRun(type)}>
                     {buttonLabel(type, pipelineStates[type].execution.status)}</button>)}
               </div>
             </details>
