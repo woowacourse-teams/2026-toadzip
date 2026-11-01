@@ -55,7 +55,8 @@ public class LhAnnouncementEnrichmentMapper {
                 panId, correctionReason, receptionPlace, schedules, attachments,
                 supplies.stream()
                         .map(source -> supplyOf(panId, source, expectedMoveInMonthOf(source, complexes)))
-                        .toList()
+                        .toList(),
+                false
         );
     }
 
@@ -266,14 +267,22 @@ public class LhAnnouncementEnrichmentMapper {
             ReceptionPlace receptionPlace,
             List<LhScheduleData> schedules,
             List<LhAttachmentData> attachments,
-            List<LhSupplyData> supplies
+            List<LhSupplyData> supplies,
+            boolean verifiedEmptySupply
     ) {
 
         /** 관리자가 저장한 LH 공급 연결을 LH 행 식별자로 붙인다. */
         LhAnnouncementEnrichmentData withSupplyLinks(Map<String, LhSupplyRowLinks.State> supplyLinks) {
             return new LhAnnouncementEnrichmentData(panId, correctionReason, receptionPlace, schedules, attachments,
                     supplies.stream().map(supply -> supply.withLinkedRow(
-                            LinkedMyHomeRow.of(supplyLinks.get(supply.sourceIdentifier())))).toList());
+                            LinkedMyHomeRow.of(supplyLinks.get(supply.sourceIdentifier())))).toList(),
+                    verifiedEmptySupply);
+        }
+
+        /** 공급 원천이 비었고 그 요청의 공급이 없다고 확인된 수집이면 보강의 금액을 지운다. */
+        LhAnnouncementEnrichmentData withVerifiedEmptySupply(boolean verifiedEmptySupply) {
+            return new LhAnnouncementEnrichmentData(panId, correctionReason, receptionPlace, schedules, attachments,
+                    supplies, verifiedEmptySupply);
         }
     }
 

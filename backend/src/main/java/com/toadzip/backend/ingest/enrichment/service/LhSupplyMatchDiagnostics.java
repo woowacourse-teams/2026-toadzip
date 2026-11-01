@@ -2,7 +2,6 @@ package com.toadzip.backend.ingest.enrichment.service;
 
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
-import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import java.util.ArrayList;
@@ -21,7 +20,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class LhSupplyMatchDiagnostics {
     private final AnnouncementRepository announcements;
-    private final SupplyRowRepository supplyRows;
+    private final LhSupplyAmountWriter amounts;
     private final LhAnnouncementEnrichmentMapper mapper;
     private final LhAnnouncementSupplyMatcher matcher;
 
@@ -32,8 +31,7 @@ public class LhSupplyMatchDiagnostics {
         if (announcement == null) {
             return List.of();
         }
-        List<SupplyRow> allRows = LhAnnouncementEnrichmentWriter.enrichmentRows(announcement,
-                supplyRows.findAllByAnnouncement(announcement), sourceKeysExcludedFromLhEnrichment);
+        List<SupplyRow> allRows = amounts.enrichmentRows(announcement, sourceKeysExcludedFromLhEnrichment);
         List<SupplyRow> rows = allRows.stream().filter(row -> row.getSupplyGroup() == null).toList();
         List<Failure> failures = new ArrayList<>();
         for (LhAnnouncementSupplySourceView supply : supplies) {

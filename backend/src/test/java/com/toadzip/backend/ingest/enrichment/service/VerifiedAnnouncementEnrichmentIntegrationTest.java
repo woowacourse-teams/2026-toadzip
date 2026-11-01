@@ -51,7 +51,7 @@ class VerifiedAnnouncementEnrichmentIntegrationTest {
                 "https://apply.lh.or.kr/notice.pdf", 6));
 
         writer.write(detached, new LhAnnouncementEnrichmentData(
-                "2015122300020856", "자동 원천 문구", null, List.of(), List.of(), List.of()),
+                "2015122300020856", "자동 원천 문구", null, List.of(), List.of(), List.of(), false),
                 Set.of(), Set.of());
         entityManager.flush();
         entityManager.clear();
@@ -72,11 +72,11 @@ class VerifiedAnnouncementEnrichmentIntegrationTest {
                 "https://apply.lh.or.kr/notice.pdf", "공식 정정 확인");
 
         assertThatThrownBy(() -> writer.write(correction, new LhAnnouncementEnrichmentData(
-                "2015122300020681", null, null, List.of(), List.of(), List.of()), Set.of(), Set.of()))
+                "2015122300020681", null, null, List.of(), List.of(), List.of(), false), Set.of(), Set.of()))
                 .isInstanceOf(LhAnnouncementEnrichmentRejectedException.class)
                 .hasMessageContaining("확인된 공고의 LH 원천");
         assertThatThrownBy(() -> writer.write(previous, new LhAnnouncementEnrichmentData(
-                "2015122300020856", null, null, List.of(), List.of(), List.of()), Set.of(), Set.of()))
+                "2015122300020856", null, null, List.of(), List.of(), List.of(), false), Set.of(), Set.of()))
                 .isInstanceOf(LhAnnouncementEnrichmentRejectedException.class);
         assertThat(previous.getLhPanId()).isEqualTo("2015122300020681");
         assertThat(correction.getLhPanId()).isEqualTo("2015122300020856");
@@ -109,7 +109,7 @@ class VerifiedAnnouncementEnrichmentIntegrationTest {
                 List.of(new LhAnnouncementEnrichmentMapper.LhScheduleData("LH:" + pan + ":event",
                         event.getScheduleType(), "자동 변경 접수", start.plusDays(1), end.plusDays(1), null)),
                 List.of(new LhAnnouncementEnrichmentMapper.LhAttachmentData("LH:" + pan + ":file",
-                        "자동 변경.pdf", attachment.getFileType(), "https://example.com/changed.pdf")), List.of()),
+                        "자동 변경.pdf", attachment.getFileType(), "https://example.com/changed.pdf")), List.of(), false),
                 Set.of(), Set.of());
         entityManager.flush();
         assertThat(event.getName()).isEqualTo("공식 확인 접수");
@@ -118,7 +118,7 @@ class VerifiedAnnouncementEnrichmentIntegrationTest {
                 List.of(new LhAnnouncementEnrichmentMapper.LhScheduleData("LH:" + pan + ":replacement",
                         event.getScheduleType(), "다른 접수", start, end, null)),
                 List.of(new LhAnnouncementEnrichmentMapper.LhAttachmentData("LH:" + pan + ":replacement",
-                        "다른 자료.pdf", attachment.getFileType(), "https://example.com/other.pdf")), List.of()),
+                        "다른 자료.pdf", attachment.getFileType(), "https://example.com/other.pdf")), List.of(), false),
                 Set.of(), Set.of());
         entityManager.flush(); entityManager.clear();
         assertThat(entityManager.find(AnnouncementSchedule.class,

@@ -6,8 +6,6 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
-import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
 import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver.LinkedSource;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver;
@@ -47,12 +45,11 @@ public class LhAnnouncementEnrichmentService {
 
     private final MyHomeAnnouncementSourceReader myHomeSourceRepository;
     private final AnnouncementRepository announcementRepository;
-    private final LhAnnouncementDetailSourceReader detailSourceRepository;
     private final LhAnnouncementSupplySourceReader supplySourceRepository;
     private final LhAnnouncementEnrichmentFailureRepository failureRepository;
     private final LhAnnouncementEnrichmentFailureStore failureStore;
     private final LhEnrichmentMappingState mappingState;
-    private final LhAnnouncementEnrichmentMapper mapper;
+    private final LhAnnouncementEnrichmentSources enrichmentSources;
     private final LhAnnouncementEnrichmentWriter writer;
     private final LhAnnouncementLinkResolver linkResolver;
     private final LhSupplyRowLinks supplyLinks;
@@ -151,27 +148,17 @@ public class LhAnnouncementEnrichmentService {
     ) {
         MyHomeAnnouncementSourceView source = linked.source();
         String panId = linked.request().panId();
-        String requestHash = linked.request().requestHash();
-        List<LhAnnouncementDetailSourceView> details = detailSourceRepository
-                .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
-        if (details.isEmpty()) {
-            return reject(source, panId, LhAnnouncementEnrichmentFailureReason.LH_DETAIL_SOURCE_NOT_FOUND,
-                    "연결된 LH 공고 상세 원본이 없습니다.", failures, occurredAt);
-        }
         List<LhAnnouncementSupplySourceView> supplies = supplySourceRepository
-                .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
+                .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, linked.request().requestHash());
         try {
-            LhAnnouncementEnrichmentData data = mapper.map(panId, details, supplies).withSupplyLinks(supplyLinks
+            LhAnnouncementEnrichmentData data = enrichmentSources.read(linked.request(), supplies, supplyLinks
                     .states(source.getPblancId(), MyHomeAnnouncementCurrentSources.select(sources), supplies));
             if (mappingIncomplete && announcement.getLhPanId() != null) {
                 return reject(source, panId, LhAnnouncementEnrichmentFailureReason.INVALID_VALUE,
                         "마이홈 공고 매핑 실패가 남아 LH 보강을 보류했습니다.", failures, occurredAt);
             }
             LhAnnouncementEnrichmentWriteResult result = writer.write(
-                    announcement, data, Set.of(), sourceKeysExcludedFromLhEnrichment(sources, currentLhSources),
-                    supplies.isEmpty() && supplySourceRepository.hasVerifiedEmptySupplies(
-                            panId, linked.request().requestDescription()
-                    )
+                    announcement, data, Set.of(), sourceKeysExcludedFromLhEnrichment(sources, currentLhSources)
             );
             addSupplyFailures(source, panId, result.failures(), failures, occurredAt);
             return result.report();
