@@ -93,6 +93,15 @@ class MyHomeAnnouncementMappingServiceTest {
     private MyHomeAnnouncementMappingService service;
 
     @Autowired
+    private MyHomeAnnouncementMappingWriter writer;
+
+    @Autowired
+    private MyHomeAnnouncementSupplyRowResolver supplyRowResolver;
+
+    @Autowired
+    private MyHomeAnnouncementSourceMapper sourceMapper;
+
+    @Autowired
     private MyHomeAnnouncementSourceFixtures sourceRepository;
 
     @Autowired
@@ -280,13 +289,14 @@ class MyHomeAnnouncementMappingServiceTest {
                 });
     }
 
-    @Test
-    void 전체_정제는_이전_공고가_없으면_각_공고를_거절하고_앞서_거절한_이전_공고의_집계도_더한다() {
+    // 원천 저장 순서가 처리 순서다. 뒤 공고를 먼저 읽으면 이전 공고를 재귀로 먼저 거절하고 그 집계를 뒤 공고 결과에 더한다.
+    @ParameterizedTest(name = "뒤 공고를 먼저 읽음 = {0}")
+    @ValueSource(booleans = {true, false})
+    void 전체_정제는_이전_공고가_없으면_각_공고를_거절하고_앞서_거절한_이전_공고의_집계도_더한다(boolean laterFirst) {
         saveMappedComplex();
-        sourceRepository.saveAll(List.of(
-                source(0, withPrevious(data("21027", 1, "부산도시공사", "동삼2"), "21026")),
-                source(1, withPrevious(data("21028", 1, "부산도시공사", "동삼2"), "21027"))
-        ));
+        var earlier = source(0, withPrevious(data("21027", 1, "부산도시공사", "동삼2"), "21026"));
+        var later = source(1, withPrevious(data("21028", 1, "부산도시공사", "동삼2"), "21027"));
+        sourceRepository.saveAll(laterFirst ? List.of(later, earlier) : List.of(earlier, later));
 
         var report = service.mapAll();
 
@@ -301,6 +311,19 @@ class MyHomeAnnouncementMappingServiceTest {
                                 "이전 공고를 찾을 수 없습니다: 21026"),
                         tuple("21028", MyHomeAnnouncementMappingFailureReason.PREVIOUS_ANNOUNCEMENT_NOT_FOUND,
                                 "이전 공고를 찾을 수 없습니다: 21027"));
+    }
+
+    @Test
+    void 등록_확인_뒤_다른_요청이_먼저_등록했으면_Writer가_잠근_공고로_다시_확인해_거절한다() {
+        saveMappedComplex();
+        sourceRepository.save(source(0, data("21026", 1, "부산도시공사", "동삼2")));
+        var resolved = supplyRowResolver.resolve(sourceMapper.map(sourceRepository.findAll()));
+        service.registerAnnouncement("21026");
+
+        assertThatThrownBy(() -> writer.register(resolved, null))
+                .isInstanceOf(AnnouncementRegistrationException.class)
+                .hasMessage("이미 등록된 공고입니다: 21026");
+        assertThat(announcementRepository.count()).isOne();
     }
 
     @Test

@@ -261,12 +261,17 @@ public class AnnouncementSupplyMatchingService {
         if (existing != null && splitting && existing.getProvider() != current.data().provider()) {
             throw new AdminDataConflictException("공고 기관이 원천과 다릅니다. 공고 관리에서 확인해 주세요.");
         }
-        var previous = announcements.findBySourceAnnouncementIdentifier(
-                current.data().previousSourceAnnouncementIdentifier()).orElse(null);
-        if (current.data().previousSourceAnnouncementIdentifier() != null && previous == null) {
-            throw new InvalidIngestRequestException("이전 공고를 먼저 등록해 주세요.");
+        return previousOf(current);
+    }
+
+    // 정정·취소 공고가 이어 붙을 이전 공고. 보정은 이전 공고를 대신 등록하지 않는다.
+    private Announcement previousOf(MyHomeAnnouncementSupplyRowResolver.ResolvedAnnouncement current) {
+        String previousIdentifier = current.data().previousSourceAnnouncementIdentifier();
+        if (previousIdentifier == null) {
+            return null;
         }
-        return previous;
+        return announcements.findBySourceAnnouncementIdentifier(previousIdentifier)
+                .orElseThrow(() -> new InvalidIngestRequestException("이전 공고를 먼저 등록해 주세요."));
     }
 
     /**
@@ -336,12 +341,7 @@ public class AnnouncementSupplyMatchingService {
         }
         var plan = splitPlan(data, request.rows(), request.sourceUrl(), request.reason(), actor,
                 SupplyRowGroupOrigins.expandedIn(current.data().supplyRows()).apply(data));
-        var previous = announcements.findBySourceAnnouncementIdentifier(
-                current.data().previousSourceAnnouncementIdentifier())
-                .orElse(null);
-        if (current.data().previousSourceAnnouncementIdentifier() != null && previous == null) {
-            throw new InvalidIngestRequestException("이전 공고를 먼저 등록해 주세요.");
-        }
+        var previous = previousOf(current);
         String before = json.writeValueAsString(rows(identifier));
         try {
             writer.correct(current, previous, Correction.split(plan));
