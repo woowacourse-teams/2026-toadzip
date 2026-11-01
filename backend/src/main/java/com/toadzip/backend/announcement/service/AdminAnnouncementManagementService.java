@@ -288,7 +288,8 @@ public class AdminAnnouncementManagementService {
                         announcement.getOriginalUrl(), announcement.getRecruitmentType().name(),
                         announcement.getPostedDate(), announcement.getApplicationStartDate(),
                         announcement.getApplicationEndDate(), announcement.getWinnerAnnouncementDate(),
-                        announcement.getStatus().name()));
+                        announcement.getStatus().name(), announcement.origin().name(),
+                        announcement.getSupplyOwner().name()));
     }
 
     private AdminAnnouncementUpdateRequest data(Announcement announcement) {

@@ -317,7 +317,9 @@ describe('오류 상세에서 연 실패 행 집중', () => {
   it('등록 단지에 없는 공급행을 근거와 함께 제외하면 제외 상태로 접고 나머지만 정제한다', async () => {
     vi.mocked(setSupplyExclusion).mockResolvedValue([])
     vi.mocked(getSupplyMatches).mockResolvedValueOnce([linked, failed]).mockResolvedValue([linked, { ...failed, excluded: true }])
-    render(<MemoryRouter><AnnouncementSupplyMatchingForm identifier="21391" focusFailed /></MemoryRouter>)
+    const applied = vi.fn()
+    const excluded = vi.fn()
+    render(<MemoryRouter><AnnouncementSupplyMatchingForm identifier="21391" focusFailed onApplied={applied} onExcluded={excluded} /></MemoryRouter>)
 
     fireEvent.click(await screen.findByRole('button', { name: '등록 단지에 없는 주택형이면 이 공급행 제외' }))
     expect(screen.getByText(/제외하면 이 모집이 공고에 표시되지 않습니다/)).toBeVisible()
@@ -326,6 +328,9 @@ describe('오류 상세에서 연 실패 행 집중', () => {
     fireEvent.click(screen.getByRole('button', { name: '제외 저장' }))
     await waitFor(() => expect(setSupplyExclusion).toHaveBeenCalledWith('21391', expect.objectContaining({ rowIdentifier: '21391:14' }),
       true, '공고문 3쪽: 중촌2 44㎡는 등록 단지에 없음'))
+    // 제외는 공고 버전을 올리므로 상세는 새로 조회하게 알리되, 정제를 돌린 것은 아니므로 적용 완료로 알리지 않는다.
+    await waitFor(() => expect(excluded).toHaveBeenCalledOnce())
+    expect(applied).not.toHaveBeenCalled()
 
     // 남은 실패 행이 없으면 접지 않고 전체를 보여 준다. 바꾼 선택이 없으므로 저장한 연결로 다시 정제한다.
     expect(await screen.findByText('공개에서 제외됨')).toBeVisible()

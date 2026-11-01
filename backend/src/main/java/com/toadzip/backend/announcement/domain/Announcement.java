@@ -14,6 +14,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -142,6 +144,12 @@ public class Announcement {
 
     private String lhPanId;
 
+    /** 이전 아티팩트가 만든 공고는 정제가 공급행을 덮지 않도록 공고문 소유로 둔다. */
+    @Enumerated(EnumType.STRING)
+    @org.hibernate.annotations.ColumnDefault("'ANNOUNCEMENT_DOCUMENT'")
+    @Column(nullable = false, length = 30)
+    private SupplyOwner supplyOwner;
+
     @Column(nullable = false)
     private boolean lhReceptionPlaceOwned;
 
@@ -201,6 +209,8 @@ public class Announcement {
         validateNonNegativeIfPresent(actualCompetitionRate, "실제 경쟁률");
         validateNonNegativeIfPresent(predictedCompetitionRate, "예상 경쟁률");
         this.sourceAnnouncementIdentifier = sourceAnnouncementIdentifier;
+        supplyOwner = AnnouncementOrigin.of(sourceAnnouncementIdentifier, null) == AnnouncementOrigin.ADMIN_ENTRY
+                ? SupplyOwner.ANNOUNCEMENT_DOCUMENT : SupplyOwner.LH_SOURCE;
         this.previousSourceAnnouncementIdentifier = previousSourceAnnouncementIdentifier;
         this.previousAnnouncement = previousAnnouncement;
         this.name = name;
@@ -365,7 +375,22 @@ public class Announcement {
         return true;
     }
 
+    public AnnouncementOrigin origin() {
+        return AnnouncementOrigin.of(sourceAnnouncementIdentifier, lhPanId);
+    }
+
+    /** 관리자가 공급정보를 고치면 공고문이 주인이 된다. 정제는 이 공고의 공급행을 원천 값으로 다시 만들지 않는다. */
+    public void takeSupplyFromDocument() {
+        supplyOwner = SupplyOwner.ANNOUNCEMENT_DOCUMENT;
+    }
+
     public void recordAdminSupplyChange() {
+        takeSupplyFromDocument();
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
+    /** 접수 일정은 공급정보가 아니므로 공급정보 소유를 바꾸지 않는다. */
+    public void recordAdminScheduleChange() {
         adminUpdatedAt = java.time.Instant.now();
     }
 

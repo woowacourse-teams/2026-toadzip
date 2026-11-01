@@ -117,8 +117,12 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Test
     void 나눈_원천행은_PDF_보정_연결로_저장하지_않는다() throws Exception {
         prepareHansville();
+        mapping.mapAll();
+        assertThat(supplyOwner()).isEqualTo("LH_SOURCE");
         var row = rowQuery.rows(TARGET).getFirst();
         split(splitBody(row)).andExpect(status().isOk());
+        // 나눈 공급행은 관리자가 공고문으로 확정한 공급정보다.
+        assertThat(supplyOwner()).isEqualTo("ANNOUNCEMENT_DOCUMENT");
         var type = types.findAll().getFirst();
 
         correctedLinks.remember(TARGET, Map.of(row.rowIdentifier(), type), "https://example.com/official.pdf",
@@ -991,13 +995,18 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 저장한_선택을_근거와_함께_해제하면_제품은_유지하고_다음_정제부터_자동_매칭한다() throws Exception {
+        mapping.mapAll();
+        assertThat(supplyOwner()).isEqualTo("LH_SOURCE");
         rememberCurrent();
+        assertThat(supplyOwner()).isEqualTo("ANNOUNCEMENT_DOCUMENT");
         var row = rowQuery.rows(TARGET).getFirst();
         mvc.perform(post(PATH + "/" + TARGET + "/release").with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
                         "rowIdentifier", row.rowIdentifier(), "token", row.token(), "reason", "연결 판단 재검토"))))
                 .andExpect(status().isOk());
         assertThat(rowQuery.rows(TARGET).getFirst().savedMatch()).isNull();
+        // 저장한 매칭을 풀어도 공고문 소유는 원천 소유로 돌아가지 않는다.
+        assertThat(supplyOwner()).isEqualTo("ANNOUNCEMENT_DOCUMENT");
         assertThat(supplies.findAll().getFirst().getHousingType().getId()).isEqualTo(type.getId());
         assertThat(rowQuery.rows(TARGET).getFirst().housingTypeId()).isNull();
         assertThat(jdbc.sql("SELECT actor FROM admin_data_changes WHERE action = 'RELEASE_SUPPLY_MATCH'")
@@ -1205,6 +1214,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         int failedBefore = mapping.mapAll().failedSourceRowCount();
         var missing = rowQuery.rows(TARGET).stream().filter(row -> row.rowIdentifier().endsWith(":2")).findFirst().orElseThrow();
         assertThat(missing.complexId()).isNull();
+        assertThat(supplyOwner()).isEqualTo("LH_SOURCE");
 
         exclusion(missing, true, "공고문 2쪽: 이 주택형은 등록 단지에 없음").andExpect(status().isOk());
         assertThat(rowQuery.rows(TARGET)).filteredOn(Row::excluded).extracting(Row::rowIdentifier)
@@ -1218,6 +1228,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 });
         assertThat(jdbc.sql("SELECT action FROM admin_data_changes WHERE action = 'EXCLUDE_SUPPLY_ROW'")
                 .query(String.class).list()).hasSize(1);
+        assertThat(supplyOwner()).isEqualTo("ANNOUNCEMENT_DOCUMENT");
 
         exclusion(rowQuery.rows(TARGET).stream().filter(Row::excluded).findFirst().orElseThrow(), false, "다시 확인")
                 .andExpect(status().isOk());
@@ -1232,6 +1243,11 @@ class AnnouncementSupplyMatchingIntegrationTest {
         mapping.mapAll();
         exclusion(row, true, " ").andExpect(status().isBadRequest());
         assertThat(supplies.findAll()).noneMatch(value -> value.isAdminExcluded());
+    }
+
+    private String supplyOwner() {
+        return jdbc.sql("SELECT supply_owner FROM announcements WHERE source_announcement_identifier = ?")
+                .param(TARGET).query(String.class).single();
     }
 
     private ResultActions exclusion(Row row, boolean excluded, String reason) throws Exception {

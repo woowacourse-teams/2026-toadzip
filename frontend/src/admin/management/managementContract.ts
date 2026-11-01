@@ -41,6 +41,10 @@ export type ManagementAnnouncementSummary = {
   winnerAnnouncementDate: string
   /** ORIGINAL·CORRECTION·CANCELLATION. 이전 서버 응답에는 없다. */
   publicationType?: string
+  /** LH_SOURCE·ADMIN_ENTRY·MYHOME_LEGACY. 이전 서버 응답에는 없다. */
+  origin?: string
+  /** LH_SOURCE·ANNOUNCEMENT_DOCUMENT. 이전 서버 응답에는 없다. */
+  supplyOwner?: string
 }
 
 export type JsonValue = string | number | boolean | null | { [key: string]: JsonValue } | JsonValue[]
@@ -254,6 +258,8 @@ function isManagementAnnouncementSummary(value: unknown): value is ManagementAnn
     && typeof value.applicationStartDate === 'string' && typeof value.applicationEndDate === 'string'
     && typeof value.winnerAnnouncementDate === 'string'
     && (value.publicationType === undefined || typeof value.publicationType === 'string')
+    && (value.origin === undefined || typeof value.origin === 'string')
+    && (value.supplyOwner === undefined || typeof value.supplyOwner === 'string')
 }
 
 function isJsonValue(value: unknown): value is JsonValue {

@@ -118,6 +118,8 @@ class AdminManagementIntegrationTest {
                 .andExpect(jsonPath("$.data.items[0].announcement.originalUrl").value("https://example.com/notice"))
                 .andExpect(jsonPath("$.data.items[0].announcement.recruitmentType").value("NEW"))
                 .andExpect(jsonPath("$.data.items[0].announcement.publicationType").value("ORIGINAL"))
+                .andExpect(jsonPath("$.data.items[0].announcement.origin").value("ADMIN_ENTRY"))
+                .andExpect(jsonPath("$.data.items[0].announcement.supplyOwner").value("ANNOUNCEMENT_DOCUMENT"))
                 .andExpect(jsonPath("$.data.items[0].announcement.postedDate").value("2026-09-01"))
                 .andExpect(jsonPath("$.data.items[0].announcement.applicationStartDate").value("2026-09-10"))
                 .andExpect(jsonPath("$.data.items[0].announcement.applicationEndDate").value("2026-09-20"))
@@ -163,6 +165,8 @@ class AdminManagementIntegrationTest {
                         .value("https://example.com/notice"))
                 .andExpect(jsonPath("$.data.announcements[0].announcement.recruitmentType").value("NEW"))
                 .andExpect(jsonPath("$.data.announcements[0].announcement.publicationType").value("ORIGINAL"))
+                .andExpect(jsonPath("$.data.announcements[0].announcement.origin").value("ADMIN_ENTRY"))
+                .andExpect(jsonPath("$.data.announcements[0].announcement.supplyOwner").value("ANNOUNCEMENT_DOCUMENT"))
                 .andExpect(jsonPath("$.data.announcements[0].announcement.postedDate").value("2026-09-01"))
                 .andExpect(jsonPath("$.data.announcements[0].announcement.applicationStartDate").value("2026-09-10"))
                 .andExpect(jsonPath("$.data.announcements[0].announcement.applicationEndDate").value("2026-09-20"))
@@ -593,6 +597,53 @@ class AdminManagementIntegrationTest {
         }
         assertThat(getData(path).get("data").toString()).isEqualTo(before);
         assertThat(getData(path + "/changes").size()).isZero();
+    }
+
+    @Test
+    void 공급행이나_공급대상을_고치면_원천_소유_공고가_공고문_소유가_된다() throws Exception {
+        long complexId = createComplex();
+        long id = createAnnouncement(complexId);
+        String path = "/api/admin/announcements/" + id;
+        long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
+        var target = SupplyTarget.createFromSource(entityManager.find(SupplyRow.class, rowId),
+                "LH:TEST", "청년", "1순위", 5, new BigDecimal("10000000"), new BigDecimal("200000"), 0);
+        entityManager.persist(target);
+        long targetId = target.getId();
+        // 직접 등록 공고는 처음부터 공고문 소유라 정제가 만든 공고처럼 원천 소유로 되돌려 둔다.
+        useSourceOwner(id);
+        var current = getData(path);
+        var supplyValues = (ObjectNode) current.get("supplyRows").get(0).get("data");
+        mvc.perform(put(path + "/supply-rows/" + rowId).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"version\":" + current.get("data").get("version").asLong()
+                                + ",\"housingComplexId\":" + complexId + ",\"supplyRow\":" + supplyValues + "}"))
+                .andExpect(status().isOk());
+        assertThat(supplyOwner(id)).isEqualTo("ANNOUNCEMENT_DOCUMENT");
+
+        useSourceOwner(id);
+        String body = """
+                {"version":%d,"target":"청년","supplyRank":"1순위","supplyHouseholdCount":5,
+                 "reserveCount":null,"rentalDeposit":"12000000","monthlyRent":"0", "convertedDeposit":null,
+                 "applicationCondition":"공고문 참조","documentEvidence":%s}
+                """.formatted(getData(path).get("data").get("version").asLong(),
+                documentEvidence().replace("\"field\":\"name\"", "\"field\":\"rentalDeposit\""));
+        mvc.perform(put(path + "/supply-targets/" + targetId).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(withExpectedTargetValues(path, body)))
+                .andExpect(status().isOk());
+        assertThat(supplyOwner(id)).isEqualTo("ANNOUNCEMENT_DOCUMENT");
+    }
+
+    private void useSourceOwner(long id) {
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE announcements SET supply_owner = 'LH_SOURCE' WHERE id = ?1")
+                .setParameter(1, id).executeUpdate();
+        entityManager.clear();
+        assertThat(supplyOwner(id)).isEqualTo("LH_SOURCE");
+    }
+
+    private String supplyOwner(long id) {
+        entityManager.flush();
+        return (String) entityManager.createNativeQuery("SELECT supply_owner FROM announcements WHERE id = ?1")
+                .setParameter(1, id).getSingleResult();
     }
 
     @Test

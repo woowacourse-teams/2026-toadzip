@@ -12,5 +12,5 @@ public record AdminDataSummary(long id, String name, String subtitle, String pro
 
     public record AnnouncementSummary(String sourceIdentifier, String originalUrl, String recruitmentType,
             LocalDate postedDate, LocalDate applicationStartDate, LocalDate applicationEndDate,
-            LocalDate winnerAnnouncementDate, String publicationType) { }
+            LocalDate winnerAnnouncementDate, String publicationType, String origin, String supplyOwner) { }
 }

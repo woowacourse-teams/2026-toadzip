@@ -86,9 +86,12 @@ class SupplyCorrectionIntegrationTest {
         var preview = preview(id, request);
         assertThat(rows.findById(row.getId()).orElseThrow().getSourceHousingTypeName()).isEqualTo("26");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_data_changes", Long.class)).isZero();
+        assertThat(supplyOwner(id)).isEqualTo("LH_SOURCE");
 
         apply(id, request, preview).andExpect(status().isOk());
         entities.flush(); entities.clear();
+        // 관리자가 저장한 공급정보는 공고문이 주인이라 정제가 공급행을 다시 만들지 않는다.
+        assertThat(supplyOwner(id)).isEqualTo("ANNOUNCEMENT_DOCUMENT");
         var saved = rows.findById(row.getId()).orElseThrow();
         assertThat(saved.getSourceHousingTypeName()).isEqualTo("26");
         assertThat(saved.getAnnouncementHousingTypeName()).isEqualTo("26A");
@@ -638,4 +641,8 @@ class SupplyCorrectionIntegrationTest {
     }
 
     private String root(long id) { return "/api/admin/announcements/" + id + "/supply-corrections"; }
+
+    private String supplyOwner(long id) {
+        return jdbc.queryForObject("SELECT supply_owner FROM announcements WHERE id = ?", String.class, id);
+    }
 }

@@ -80,7 +80,7 @@ public class VerifiedApplicationScheduleService {
         scheduleRepository.deleteAll(scheduleRepository.findAllByAnnouncementIdIn(List.of(announcementId)));
         scheduleRepository.saveAll(schedules);
         announcement.confirmApplicationPeriod(start, end);
-        announcement.recordAdminSupplyChange();
+        announcement.recordAdminScheduleChange();
         changes.save(new AdminDataChange("ANNOUNCEMENT", announcementId,
                 "UPDATE_SCHEDULE", actor, json.writeValueAsString(previous), json.writeValueAsString(request.schedules())));
     }

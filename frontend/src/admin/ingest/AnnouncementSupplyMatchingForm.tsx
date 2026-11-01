@@ -9,8 +9,10 @@ import styles from './AnnouncementSupplyMatchingForm.module.css'
 import { SupplySplitEditor } from './SupplySplitEditor'
 
 /** focusFailed: 오류 상세에서 열 때 실패·재확인 행만 펼치고 이미 연결된 행은 접어 둔다. 정제는 공고 전체 행으로 실행한다. */
-export function AnnouncementSupplyMatchingForm({ identifier, disabled = false, focusFailed = false, onApplied, onBusy }: {
-  identifier: string; disabled?: boolean; focusFailed?: boolean; onApplied?: () => void; onBusy?: (busy: boolean) => void
+export function AnnouncementSupplyMatchingForm({ identifier, disabled = false, focusFailed = false, onApplied, onExcluded, onBusy }: {
+  identifier: string; disabled?: boolean; focusFailed?: boolean; onApplied?: () => void
+  /** 제외는 정제를 다시 돌리지 않지만 공급정보 주인을 공고문으로 바꿔 공고 버전을 올린다. */
+  onExcluded?: () => void; onBusy?: (busy: boolean) => void
 }) {
   const [rows, setRows] = useState<SupplyMatch[]>([])
   const [error, setError] = useState('')
@@ -96,7 +98,7 @@ export function AnnouncementSupplyMatchingForm({ identifier, disabled = false, f
     pending.current = true; setRefining(true); onBusy?.(true); setError(''); setNotice('')
     try {
       await setSupplyExclusion(identifier, row, excluded, exclusionReason)
-      if (alive.current) setRevision(value => value + 1)
+      if (alive.current) { setRevision(value => value + 1); onExcluded?.() }
     } catch (cause) { if (alive.current) setError(message(cause)) }
     finally { pending.current = false; if (alive.current) { setRefining(false); onBusy?.(false) } }
   }
