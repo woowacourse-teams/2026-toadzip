@@ -43,7 +43,7 @@ public class AnnouncementSupplyMatchingService {
         var previous = targets.writablePrevious(identifier, planned.current(), planned.splitting());
         String rowsBefore = null;
         if (planned.splitting()) {
-            rowsBefore = changeLog.snapshot(rowQuery.rows(identifier));
+            rowsBefore = changeLog.beforeSplit(identifier);
         }
         try {
             var report = writer.correct(planned.current(), previous, planned.correction()).report();
@@ -62,8 +62,7 @@ public class AnnouncementSupplyMatchingService {
                 }
             }
             if (planned.splitting()) {
-                productRows.flush();
-                changeLog.split(announcement, rowsBefore, rowQuery.rows(identifier), actor);
+                changeLog.split(announcement, identifier, rowsBefore, actor);
             }
             return report;
         }
@@ -116,17 +115,13 @@ public class AnnouncementSupplyMatchingService {
         targets.verifySplittable(identifier, current);
         var plan = planner.split(current, data, request, actor);
         var previous = targets.previousOf(current);
-        String before = changeLog.snapshot(rowQuery.rows(identifier));
+        String before = changeLog.beforeSplit(identifier);
         try {
             writer.correct(current, previous, Correction.split(plan));
         } catch (MyHomeAnnouncementMappingRejectedException exception) {
             throw new InvalidIngestRequestException("정제 실패: " + exception.getMessage());
         }
-        // 공급행과 공고는 같은 영속성 컨텍스트라 한 번 flush로 둘 다 반영된다.
-        productRows.flush();
-        var result = rowQuery.rows(identifier);
-        changeLog.split(targets.written(identifier), before, result, actor);
-        return result;
+        return changeLog.split(targets.written(identifier), identifier, before, actor);
     }
 
     @Transactional

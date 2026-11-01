@@ -40,11 +40,15 @@ class SupplyCorrectionSources {
             throw new InvalidIngestRequestException("공고 원천이 없습니다. 먼저 공고를 수집해 주세요.");
         }
         try {
-            return resolver.resolve(mapper.map(current));
+            return resolve(current);
         }
         catch (MyHomeAnnouncementMappingRejectedException exception) {
             throw new InvalidIngestRequestException(exception.getMessage());
         }
+    }
+
+    private ResolvedAnnouncement resolve(List<MyHomeAnnouncementSourceView> current) {
+        return resolver.resolve(mapper.map(current));
     }
 
     List<MyHomeSupplyRowMappingData> supplyRows(String identifier) {
@@ -58,7 +62,7 @@ class SupplyCorrectionSources {
             return Optional.empty();
         }
         try {
-            return Optional.of(resolver.resolve(mapper.map(current)).data().supplyRows());
+            return Optional.of(resolve(current).data().supplyRows());
         }
         catch (MyHomeAnnouncementMappingRejectedException exception) {
             return Optional.empty();
