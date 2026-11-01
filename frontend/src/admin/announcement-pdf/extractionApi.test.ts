@@ -1,0 +1,104 @@
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+
+const mocks = vi.hoisted(() => ({ request: vi.fn() }))
+vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(), requestManagementApi: mocks.request }))
+
+import { ManagementError } from '../management/api'
+import { JOB_POLL_MS, JOB_WAIT_LIMIT_MS, extractAnnouncementPdf, pdfSha256 } from './extractionApi'
+
+const PATH = '/api/admin/announcements/29/pdf-extractions'
+const extraction = { json: '{"data":{}}', pages: [1, 3], totalPages: 9, warnings: [], usage: { promptTokens: 10, outputTokens: 5, thinkingTokens: null } }
+const pdf = new Blob(['%PDF'])
+const job = (status: string, more: Record<string, unknown> = {}) => ({ jobId: 31, status, fileName: '공고문.pdf', pdfSha256: 'x', failure: null, extraction: null, ...more })
+const inProgress = () => new ManagementError('이미 진행 중인 PDF 추출 작업이 있습니다.', 409, {}, 'ANNOUNCEMENT_PDF_EXTRACTION_IN_PROGRESS')
+
+beforeEach(() => { vi.useFakeTimers(); mocks.request.mockReset() })
+afterEach(() => { vi.useRealTimers() })
+
+test('작업을 넣고 성공할 때까지 작업 상태를 다시 물어 결과를 돌려준다', async () => {
+  mocks.request.mockResolvedValueOnce(job('PENDING')).mockResolvedValueOnce(job('RUNNING'))
+    .mockResolvedValueOnce(job('SUCCEEDED', { extraction }))
+
+  const result = extractAnnouncementPdf('29', new Blob(['%PDF']), '공고문.pdf')
+  await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 2)
+
+  await expect(result).resolves.toEqual(extraction)
+  expect(mocks.request).toHaveBeenNthCalledWith(1, PATH, 'POST', expect.any(FormData), undefined)
+  expect(mocks.request).toHaveBeenNthCalledWith(3, `${PATH}/jobs/31`, 'GET', undefined, undefined)
+})
+
+test('작업이 실패하면 워커가 남긴 사유로 실패한다', async () => {
+  mocks.request.mockResolvedValueOnce(job('FAILED', { failure: { code: 'PDF_INVALID', message: 'PDF를 읽지 못했습니다.' } }))
+
+  await expect(extractAnnouncementPdf('29', new Blob(['%PDF']), '공고문.pdf')).rejects.toThrow('PDF를 읽지 못했습니다.')
+})
+
+test('같은 PDF의 진행 중 작업이 있으면 새로 넣지 않고 그 작업을 기다린다', async () => {
+  const sha = await pdfSha256(pdf)
+  mocks.request.mockRejectedValueOnce(inProgress())
+    .mockResolvedValueOnce(job('RETRY', { pdfSha256: sha })).mockResolvedValueOnce(job('SUCCEEDED', { pdfSha256: sha, extraction }))
+
+  const result = extractAnnouncementPdf('29', pdf, '공고문.pdf')
+  // PDF 해시는 가짜 타이머 밖에서 계산되므로 다음 조회 예약을 기다린 뒤 시간을 넘긴다.
+  await vi.waitFor(() => expect(vi.getTimerCount()).toBe(1))
+  await vi.advanceTimersByTimeAsync(JOB_POLL_MS)
+
+  await expect(result).resolves.toEqual(extraction)
+  expect(mocks.request).toHaveBeenNthCalledWith(2, `${PATH}/jobs/active`, 'GET', undefined, undefined)
+})
+
+test('다른 PDF의 작업이 진행 중이면 그 결과를 기다리지 않는다', async () => {
+  mocks.request.mockRejectedValueOnce(inProgress()).mockResolvedValueOnce(job('RUNNING', { fileName: '다른 공고문.pdf', pdfSha256: 'other' }))
+
+  await expect(extractAnnouncementPdf('29', pdf, '공고문.pdf')).rejects.toThrow('다른 PDF(다른 공고문.pdf)의 추출이 진행 중입니다.')
+  expect(mocks.request).toHaveBeenCalledTimes(2)
+})
+
+test('진행 중 작업이 그사이 끝났으면 같은 PDF의 최근 결과를 쓴다', async () => {
+  const sha = await pdfSha256(pdf)
+  mocks.request.mockRejectedValueOnce(inProgress()).mockResolvedValueOnce(null)
+    .mockResolvedValueOnce({ fileName: '공고문.pdf', pdfSha256: sha, createdAt: '2026-11-01T01:00:00Z', extraction })
+
+  await expect(extractAnnouncementPdf('29', pdf, '공고문.pdf')).resolves.toEqual(extraction)
+  expect(mocks.request).toHaveBeenNthCalledWith(3, `${PATH}/latest`, 'GET', undefined, undefined)
+})
+
+test('진행 중 작업이 그사이 끝났어도 다른 PDF의 결과면 쓰지 않는다', async () => {
+  mocks.request.mockRejectedValueOnce(inProgress()).mockResolvedValueOnce(null)
+    .mockResolvedValueOnce({ fileName: '다른 공고문.pdf', pdfSha256: 'other', createdAt: '2026-11-01T01:00:00Z', extraction })
+
+  await expect(extractAnnouncementPdf('29', pdf, '공고문.pdf')).rejects.toThrow('진행 중이던 추출이 방금 끝났습니다.')
+})
+
+test('기다리는 시간이 상한을 넘으면 더 묻지 않고 이어서 기다리는 방법을 알린다', async () => {
+  mocks.request.mockResolvedValue(job('PENDING'))
+
+  const result = extractAnnouncementPdf('29', pdf, '공고문.pdf')
+  const settled = expect(result).rejects.toThrow('추출이 아직 끝나지 않았습니다.')
+  await vi.advanceTimersByTimeAsync(JOB_WAIT_LIMIT_MS + JOB_POLL_MS)
+  await settled
+  const calls = mocks.request.mock.calls.length
+  await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3)
+
+  expect(mocks.request).toHaveBeenCalledTimes(calls)
+})
+
+test('알 수 없는 작업 상태면 실패로 끝낸다', async () => {
+  mocks.request.mockResolvedValueOnce(job('CANCELLED'))
+
+  await expect(extractAnnouncementPdf('29', pdf, '공고문.pdf')).rejects.toThrow('추출 작업 상태를 알 수 없습니다.')
+})
+
+test('기다리는 중에 취소하면 더 묻지 않는다', async () => {
+  mocks.request.mockResolvedValue(job('PENDING'))
+  const controller = new AbortController()
+
+  const result = extractAnnouncementPdf('29', new Blob(['%PDF']), '공고문.pdf', controller.signal)
+  const settled = expect(result).rejects.toBeDefined()
+  await vi.advanceTimersByTimeAsync(0)
+  controller.abort()
+  await settled
+  await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3)
+
+  expect(mocks.request).toHaveBeenCalledOnce()
+})

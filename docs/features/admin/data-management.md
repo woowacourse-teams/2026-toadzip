@@ -44,16 +44,19 @@
 
 ### PDF 자동 추출
 
-- `POST /api/admin/announcements/{id}/pdf-extractions`는 multipart `file`(공고문 PDF)을 받아 PDF 보정 화면이 읽는 추출 JSON을 돌려준다. 모델 호출 중에는 DB 트랜잭션을 열지 않는다.
-  응답 `data`는 `json`(추출 JSON 문자열), `pages`(모델에 보낸 원본 쪽, 1부터), `totalPages`, `warnings`, `usage`(`promptTokens`·`outputTokens`·`thinkingTokens`, 모르면 `null`)다.
-- 서버는 PDF 쪽 텍스트에서 공급표·임대조건표(값이 함께 있는 쪽)와 그 다음 쪽, 일정·문의처·대상 설명 쪽, 첫 쪽을 고르고 `[별지` 양식은 뺀다. 공급표나 임대조건표를 찾지 못하면 전체 쪽을 보내고 경고한다.
-- 고른 쪽만 남긴 PDF와 [추출 프롬프트](../../../backend/src/main/resources/announcement/pdf-extraction-prompt.txt)를 모델에 보내고, 지원하는 모델이면 [응답 스키마](../../../backend/src/main/resources/announcement/pdf-extraction-schema.json)를 강제한다. 스키마는 Gemini SDK가 읽는 OpenAPI 형식이라 null 허용을 `"type"` 배열이 아니라 `"nullable": true`로 쓴다. 모델이 쓴 첨부 PDF 기준 쪽 번호는 원본 쪽 번호로 바꾼다.
-- 값은 고치지 않고 날짜 형식, 면적만 있는 주택형명, 공용·공급면적 중복, 공고일보다 이른 입주예정월, 대상 표기, 공고 제목과 같은 단지명을 `warnings`로 알린다.
-- 모델은 `AI_CHAT_MODEL`로 고른다. 기본값 `none`은 기능을 끄고 503 `ANNOUNCEMENT_PDF_EXTRACTION_UNAVAILABLE`을 돌려준다. `google-genai`는 `GEMINI_API_KEY`(Gemini Developer API)와 `GEMINI_CHAT_MODEL`(기본 `gemini-3.5-flash-lite`)을 쓰며 생각 수준은 `LOW`다.
-- 읽을 수 없는 PDF는 400 `ANNOUNCEMENT_PDF_INVALID`, 모델 호출 실패·빈 응답·JSON이 아닌 응답은 502 `ANNOUNCEMENT_PDF_EXTRACTION_FAILED`다. 일시 오류만 한 번 다시 시도한다. 추출 소요 시간·쪽 수·토큰 수는 `event=announcement.pdf_extraction.completed` 로그로 남는다.
-- 추출에 성공하면 응답 전체를 `announcement_pdf_extractions`에 공고 ID, PDF 내용의 SHA-256, 파일 이름과 함께 남긴다. PDF 원본은 남기지 않고, 공고 데이터에도 반영하지 않는다. 저장에 실패해도 추출 응답은 그대로 돌려주고 `event=announcement.pdf_extraction.save_failed` 경고 로그를 남긴다. 공고를 지우면 함께 지운다.
-- `GET /api/admin/announcements/{id}/pdf-extractions/latest`는 가장 최근에 저장한 결과를 모델 호출 없이 돌려준다. `data`는 `fileName`, `pdfSha256`(소문자 16진수), `createdAt`, `extraction`(추출 응답과 같은 형식)이며 저장한 결과가 없으면 `null`이다.
-- 자동 테스트는 실제 모델을 부르지 않는다. 실제 호출은 키를 설정한 로컬 서버에서 확인한다.
+- 추출은 AI 작업 큐(`ai_jobs`)로 한다. Spring은 작업을 넣고 상태·결과를 읽기만 하고, 꺼내기·lease·재시도·완료·실패 기록과 추출은 저장소 최상위 `ai-worker/`의 Python 워커가 한다. 워커는 FOR UPDATE SKIP LOCKED로 작업을 꺼낸다.
+- `POST /api/admin/announcements/{id}/pdf-extractions`는 multipart `file`(공고문 PDF, 30MB 이하)을 받아 작업을 넣고 202와 작업 상태를 돌려준다. 빈 파일·30MB 초과·읽을 수 없는 PDF는 400 `ANNOUNCEMENT_PDF_INVALID`, 없는 공고는 404다.
+  - 같은 공고에 진행 중 작업(`PENDING`·`RUNNING`·`RETRY`)이 있으면 새로 넣지 않고 409 `ANNOUNCEMENT_PDF_EXTRACTION_IN_PROGRESS`다. 화면은 진행 중 작업을 이어서 기다린다.
+  - 작업을 넣을 때 이 공고의 LH 공급 API 행(공고 번호마다 공급행이 있는 가장 최근 원천, LH가 보낸 문자열 그대로)과 공급행이 연결된 단지의 주택형(휴지통 제외)을 입력 스냅숏으로 담는다. 워커는 도메인 테이블을 읽지 않는다.
+- 작업 상태는 `GET .../pdf-extractions/jobs/{jobId}`, 진행 중 작업은 `GET .../pdf-extractions/jobs/active`(없으면 `null`)로 읽는다. 다른 공고의 작업 ID는 404 `ANNOUNCEMENT_PDF_EXTRACTION_JOB_NOT_FOUND`다.
+  응답 `data`는 `jobId`, `status`(`PENDING`·`RUNNING`·`RETRY`·`SUCCEEDED`·`FAILED`), `fileName`, `pdfSha256`, `attempts`, `createdAt`, `completedAt`(끝나기 전 `null`), `failure`(`FAILED`일 때 `{code, message}`), `extraction`(`SUCCEEDED`일 때 추출 결과)이다.
+- 추출 결과는 `json`(추출 JSON 문자열, 근거 쪽 번호는 원본 PDF 기준), `pages`(모델에 보낸 원본 쪽, 1부터), `totalPages`, `warnings`, `usage`(`promptTokens`·`outputTokens`·`thinkingTokens`, 모르면 `null`)다. 워커와 주고받는 입력·결과 형식은 [계약 예시](../../../ai-worker/contract/README.md)를 원본으로 한다.
+- 일시 오류(네트워크, 429, 5xx, 시간 초과)만 다시 시도하며 처리는 작업당 최대 3번(`max_attempts`)이다. 잘못된 PDF, 인증·잔액 오류는 바로 `FAILED`다. lease가 끝난 `RUNNING` 작업은 다른 워커가 다시 꺼낸다. 큐 상태 전이 규칙은 [계약 예시](../../../ai-worker/contract/README.md)에 둔다.
+- 화면은 3초마다 작업 상태를 묻고 15분이 지나면 기다리기를 멈춘다. 진행 중인 작업이 다른 PDF의 것이면 이어 기다리지 않고 알린다.
+- PDF는 처리 중에만 작업 행에 보관하고 `SUCCEEDED`·`FAILED`가 되면 비운다(DB 제약으로 강제). 공고 데이터에는 반영하지 않고, 공고를 지우면 작업도 함께 지운다.
+- 워커는 `ai_jobs`만 읽고 상태·결과 열만 고칠 수 있는 DB 역할 `toadzip_ai_worker`를 쓴다. 역할과 비밀번호는 DB 초기화 스크립트·운영 절차가 만들고, 마이그레이션은 역할이 있을 때만 권한을 준다. 역할을 마이그레이션 뒤에 만들면 `V20261103_01`의 GRANT를 다시 실행한다.
+- `GET /api/admin/announcements/{id}/pdf-extractions/latest`는 가장 최근에 성공한 작업의 결과를 모델 호출 없이 돌려준다. `data`는 `fileName`, `pdfSha256`(소문자 16진수), `createdAt`(작업이 끝난 시각), `extraction`이며 성공한 작업이 없으면 `null`이다. 예전 동기 추출 결과(`announcement_pdf_extractions`)는 `V20261103_01`에서 성공 작업으로 옮겼다.
+- 자동 테스트는 실제 모델을 부르지 않는다. 실제 호출은 키를 설정한 로컬 워커에서 확인한다.
 
 ## 데이터 규칙
 
@@ -78,7 +81,7 @@
   SHA-256, 관리자 메모와 `citations`(항목·쪽수·인용)를 받는다. 기존 요청은 근거 없이도 처리한다.
 - 근거는 변경 후 값의 `documentEvidence`로 기존 수정 이력에 같은 트랜잭션으로 저장한다.
   서버는 원문 내용의 진위를 자동 보증하지 않는다. 선택적 문서 근거 계약과 과거 이력은 호환성을 위해 유지한다.
-  화면은 연결된 공고문 보기, 수동·JSON 입력과 [PDF 자동 추출](#pdf-자동-추출)을 제공한다. PDF 원본은 서버에 보관하지 않고, 추출 결과만 다시 불러올 수 있게 남긴다.
+  화면은 연결된 공고문 보기, 수동·JSON 입력과 [PDF 자동 추출](#pdf-자동-추출)을 제공한다. PDF는 추출 작업이 처리되는 동안에만 서버에 두고, 추출 결과는 다시 불러올 수 있게 남긴다.
 - 공고 상세의 `supplyTargets`는 공급행·대상별 임대조건을 반환한다. 금액은 정밀도를 보존하는 원 단위 정수 문자열이다.
 - `PUT /api/admin/announcements/{id}/supply-targets/{targetId}`는 현재 공고 버전과 공급대상·순위·세대수·예비자수·
   보증금·월임대료·전환보증금·신청조건·선택적 문서 근거를 받아 기존 공급대상 하나를 수정한다.

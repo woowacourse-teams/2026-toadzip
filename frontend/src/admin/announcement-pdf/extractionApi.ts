@@ -1,6 +1,6 @@
 import type { JsonWorkspace } from '../announcement-json/api'
 import { isRecord } from '../management/managementContract'
-import { requestManagementApi } from '../management/api'
+import { ManagementError, requestManagementApi } from '../management/api'
 
 type Attachment = NonNullable<JsonWorkspace['detail']['attachments']>[number]
 
@@ -31,10 +31,74 @@ function parsePdfExtraction(value: unknown): PdfExtraction {
     usage: { promptTokens: count(value.usage.promptTokens), outputTokens: count(value.usage.outputTokens), thinkingTokens: count(value.usage.thinkingTokens) } }
 }
 
+/** 추출 작업 상태를 다시 묻는 간격. 추출은 보통 1~3분 걸린다. */
+export const JOB_POLL_MS = 3000
+/** 이보다 오래 끝나지 않으면 기다리기를 멈춘다. 작업은 서버에서 계속되고, 다시 추출하면 이어서 기다린다. */
+export const JOB_WAIT_LIMIT_MS = 15 * 60 * 1000
+
+type ExtractionJob = { jobId: number; status: string; fileName: string; pdfSha256: string; failure: { code: string; message: string } | null; extraction: unknown }
+
+const pendingStatuses = new Set(['PENDING', 'RUNNING', 'RETRY'])
+
+function parseJob(value: unknown): ExtractionJob {
+  if (!isRecord(value) || count(value.jobId) === null || typeof value.status !== 'string' || typeof value.fileName !== 'string' || typeof value.pdfSha256 !== 'string') {
+    throw new Error('추출 작업 응답 형식이 올바르지 않습니다.')
+  }
+  const failure = isRecord(value.failure) && typeof value.failure.code === 'string' && typeof value.failure.message === 'string'
+    ? { code: value.failure.code, message: value.failure.message } : null
+  return { jobId: value.jobId as number, status: value.status, fileName: value.fileName, pdfSha256: value.pdfSha256, failure, extraction: value.extraction }
+}
+
+function wait(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason)
+    const abort = () => { clearTimeout(timer); reject(signal?.reason) }
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve() }, ms)
+    signal?.addEventListener('abort', abort, { once: true })
+  })
+}
+
+/** 진행 중 작업에 이어 붙는다. 다른 PDF의 작업이면 그 결과를 이 PDF의 결과로 쓰지 않는다. */
+async function joinActiveJob(id: string, sha256: string, signal?: AbortSignal): Promise<ExtractionJob | PdfExtraction> {
+  const path = `/api/admin/announcements/${encodeURIComponent(id)}/pdf-extractions`
+  const active = await requestManagementApi(`${path}/jobs/active`, 'GET', undefined, signal)
+  if (active === null) {
+    // 그사이 끝났다. 같은 PDF가 성공했으면 그 결과를 쓰고, 아니면 다시 추출하게 한다.
+    const latest = await loadLatestExtraction(id, signal)
+    if (latest?.pdfSha256 === sha256) return latest.extraction
+    throw new Error('진행 중이던 추출이 방금 끝났습니다. 다시 추출해 주세요.')
+  }
+  const job = parseJob(active)
+  if (job.pdfSha256 !== sha256) throw new Error(`다른 PDF(${job.fileName})의 추출이 진행 중입니다. 끝난 뒤 다시 추출해 주세요.`)
+  return job
+}
+
+/**
+ * 공고문 PDF 추출 작업을 넣고 끝날 때까지 기다린다. 추출은 AI 워커가 따로 한다.
+ * 이 공고에 같은 PDF의 진행 중 작업이 이미 있으면 새로 넣지 않고 그 작업을 이어서 기다린다.
+ */
 export async function extractAnnouncementPdf(id: string, file: Blob, fileName: string, signal?: AbortSignal): Promise<PdfExtraction> {
+  const path = `/api/admin/announcements/${encodeURIComponent(id)}/pdf-extractions`
   const form = new FormData()
   form.append('file', file, fileName)
-  return parsePdfExtraction(await requestManagementApi(`/api/admin/announcements/${encodeURIComponent(id)}/pdf-extractions`, 'POST', form, signal))
+  let job: ExtractionJob
+  try {
+    job = parseJob(await requestManagementApi(path, 'POST', form, signal))
+  } catch (error) {
+    if (!(error instanceof ManagementError && error.code === 'ANNOUNCEMENT_PDF_EXTRACTION_IN_PROGRESS')) throw error
+    const joined = await joinActiveJob(id, await pdfSha256(file), signal)
+    if (!('jobId' in joined)) return joined
+    job = joined
+  }
+  const deadline = Date.now() + JOB_WAIT_LIMIT_MS
+  while (job.status !== 'SUCCEEDED') {
+    if (job.status === 'FAILED') throw new Error(job.failure?.message ?? '추출에 실패했습니다.')
+    if (!pendingStatuses.has(job.status)) throw new Error('추출 작업 상태를 알 수 없습니다.')
+    if (Date.now() >= deadline) throw new Error('추출이 아직 끝나지 않았습니다. 잠시 뒤 다시 추출을 누르면 이어서 기다립니다.')
+    await wait(JOB_POLL_MS, signal)
+    job = parseJob(await requestManagementApi(`${path}/jobs/${job.jobId}`, 'GET', undefined, signal))
+  }
+  return parsePdfExtraction(job.extraction)
 }
 
 /** 공고에 가장 최근에 저장한 추출 결과. 없으면 null이다. 모델을 다시 부르지 않는다. */

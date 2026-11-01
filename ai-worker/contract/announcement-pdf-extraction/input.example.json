@@ -1,0 +1,24 @@
+{
+  "lhSupplyRows": [
+    {
+      "order": 0,
+      "complexLabel": "인천부평(도시재생뉴딜) 행복주택",
+      "typeName": "16A(대학생/청년)",
+      "exclusiveArea": "16.37",
+      "supplyArea": "27.6384",
+      "suppliedUnitCount": "78",
+      "totalUnitCount": "78"
+    }
+  ],
+  "housingTypes": [
+    {
+      "id": 71,
+      "complexId": 7,
+      "complexName": "인천부평 행복주택",
+      "name": "16A",
+      "exclusiveArea": 16.37,
+      "supplyArea": 27.6384,
+      "totalHouseholdCount": 78
+    }
+  ]
+}

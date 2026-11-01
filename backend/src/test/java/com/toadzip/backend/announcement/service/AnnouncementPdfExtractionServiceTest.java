@@ -8,130 +8,141 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.announcement.domain.AnnouncementPdfExtractionRecord;
-import com.toadzip.backend.announcement.dto.response.AnnouncementPdfExtraction;
-import com.toadzip.backend.announcement.dto.response.SavedAnnouncementPdfExtraction;
+import com.toadzip.backend.announcement.domain.PdfExtractionInput;
+import com.toadzip.backend.announcement.domain.PdfExtractionJob;
+import com.toadzip.backend.announcement.domain.PdfExtractionJobStatus;
+import com.toadzip.backend.announcement.domain.PdfExtractionJobView;
+import com.toadzip.backend.announcement.domain.PdfExtractionSource;
+import com.toadzip.backend.announcement.dto.response.PdfExtractionJobResponse;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
-import com.toadzip.backend.announcement.repository.AnnouncementPdfExtractionRecordRepository;
+import com.toadzip.backend.announcement.exception.InvalidAnnouncementPdfException;
+import com.toadzip.backend.announcement.exception.PdfExtractionInProgressException;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
-import com.toadzip.backend.announcement.repository.external.AnnouncementExtractionModel;
-import com.toadzip.backend.announcement.repository.external.AnnouncementExtractionReply;
-import java.io.IOException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
+import com.toadzip.backend.announcement.repository.PdfExtractionInputQueryRepository;
+import com.toadzip.backend.announcement.repository.PdfExtractionJobRepository;
+import java.sql.SQLException;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.EnumSet;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.hibernate.exception.ConstraintViolationException;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Limit;
+import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.json.JsonMapper;
 
 class AnnouncementPdfExtractionServiceTest {
-
-    private static final String REPLY = """
-            {"data":{"announcement":{"name":"공고"},"complexes":[],"supplyRows":[]},"sharedCounts":[],
-            "notApplicable":[],"evidence":[{"path":"announcement.name","page":2,"quote":"공고"}]}
+    private static final Instant NOW = Instant.parse("2026-11-01T01:00:00Z");
+    private static final String RESULT = """
+            {"json":"{}","pages":[1],"totalPages":9,"warnings":[],
+            "usage":{"promptTokens":1,"outputTokens":2,"thinkingTokens":null}}
             """;
+    private static final PdfExtractionInput INPUT = new PdfExtractionInput(
+            List.of(new PdfExtractionInput.LhSupplyRow(0, "부평", "16A", "16.37", "27.6", "78", "78")), List.of());
 
     private final AnnouncementRepository announcements = mock(AnnouncementRepository.class);
-    private final AnnouncementExtractionModel model = mock(AnnouncementExtractionModel.class);
-    private final AnnouncementPdfExtractionRecordRepository records =
-            mock(AnnouncementPdfExtractionRecordRepository.class);
+    private final PdfExtractionJobRepository jobs = mock(PdfExtractionJobRepository.class);
+    private final PdfExtractionInputQueryRepository inputs = mock(PdfExtractionInputQueryRepository.class);
     private final AnnouncementPdfExtractionService service = new AnnouncementPdfExtractionService(
-            announcements, records, model, JsonMapper.builder().build());
+            announcements, jobs, inputs, JsonMapper.builder().build(), Clock.fixed(NOW, ZoneOffset.UTC));
 
     @Test
-    void 공급표와_임대조건표를_찾지_못한_PDF는_전체_쪽을_보내고_경고한다() throws IOException {
-        when(announcements.existsById(7L)).thenReturn(true);
-        when(model.extract(any())).thenReturn(new AnnouncementExtractionReply(REPLY,
-                new AnnouncementExtractionReply.Usage(900, 300, 50)));
-
-        AnnouncementPdfExtraction result = service.extract(7L, AnnouncementPdfDocumentTest.pdf("cover", "notice"), "공고문.pdf");
-
-        ArgumentCaptor<byte[]> sent = ArgumentCaptor.forClass(byte[].class);
-        verify(model).extract(sent.capture());
-        assertThat(AnnouncementPdfDocument.read(sent.getValue()).pageTexts()).hasSize(2);
-        assertThat(result.pages()).containsExactly(1, 2);
-        assertThat(result.totalPages()).isEqualTo(2);
-        assertThat(result.warnings()).containsExactly("공급표·임대조건표 쪽을 찾지 못해 전체 2쪽을 보냈습니다.");
-        assertThat(result.usage()).isEqualTo(new AnnouncementPdfExtraction.Usage(900, 300, 50));
-        assertThat(result.json()).contains("\"page\":2");
-    }
-
-    @Test
-    void 없는_공고면_PDF를_읽거나_모델을_부르지_않는다() {
-        when(announcements.existsById(7L)).thenReturn(false);
-
-        assertThatThrownBy(() -> service.extract(7L, new byte[] {1}, "공고문.pdf"))
-                .isInstanceOf(AnnouncementNotFoundException.class);
-        verify(model, never()).extract(any());
-    }
-
-    @Test
-    void 추출에_성공하면_PDF_해시와_파일_이름으로_결과를_저장한다() throws Exception {
+    void PDF와_입력_스냅숏을_담은_대기_작업을_넣는다() throws Exception {
         byte[] pdf = AnnouncementPdfDocumentTest.pdf("cover");
         when(announcements.existsById(7L)).thenReturn(true);
-        when(model.extract(any())).thenReturn(new AnnouncementExtractionReply(REPLY,
-                new AnnouncementExtractionReply.Usage(900, 300, null)));
+        when(inputs.read(7L)).thenReturn(INPUT);
+        when(jobs.saveAndFlush(any())).thenAnswer(invocation -> {
+            PdfExtractionJob job = invocation.getArgument(0);
+            ReflectionTestUtils.setField(job, "id", 31L);
+            return job;
+        });
 
-        AnnouncementPdfExtraction result = service.extract(7L, pdf, "공고문.pdf");
+        PdfExtractionJobResponse response = service.request(7L, "admin", "공고문.pdf", pdf);
 
-        ArgumentCaptor<AnnouncementPdfExtractionRecord> saved =
-                ArgumentCaptor.forClass(AnnouncementPdfExtractionRecord.class);
-        verify(records).save(saved.capture());
-        assertThat(saved.getValue().getAnnouncementId()).isEqualTo(7L);
-        assertThat(saved.getValue().getPdfSha256()).isEqualTo(sha256(pdf));
-        assertThat(saved.getValue().getFileName()).isEqualTo("공고문.pdf");
-        assertThat(JsonMapper.builder().build().readValue(saved.getValue().getResult(),
-                AnnouncementPdfExtraction.class)).isEqualTo(result);
+        ArgumentCaptor<PdfExtractionJob> saved = ArgumentCaptor.forClass(PdfExtractionJob.class);
+        verify(jobs).saveAndFlush(saved.capture());
+        PdfExtractionJob job = saved.getValue();
+        assertThat(job.getStatus()).isEqualTo(PdfExtractionJobStatus.PENDING);
+        assertThat(job.getPdf()).isEqualTo(pdf);
+        assertThat(job.getPdfSha256()).isEqualTo(PdfExtractionSource.of("공고문.pdf", pdf).sha256());
+        assertThat(job.getRequestedBy()).isEqualTo("admin");
+        assertThat(job.getNextAttemptAt()).isEqualTo(NOW);
+        assertThat(JsonMapper.builder().build().readValue(job.getInput(), PdfExtractionInput.class))
+                .isEqualTo(INPUT);
+        assertThat(response.jobId()).isEqualTo(31L);
+        assertThat(response.status()).isEqualTo("PENDING");
+        assertThat(response.extraction()).isNull();
     }
 
     @Test
-    void 결과_저장에_실패해도_이미_받은_추출_결과는_돌려준다() throws IOException {
+    void 진행_중_작업이_있으면_새_작업을_넣지_않는다() throws Exception {
         when(announcements.existsById(7L)).thenReturn(true);
-        when(model.extract(any())).thenReturn(new AnnouncementExtractionReply(REPLY,
-                new AnnouncementExtractionReply.Usage(900, 300, null)));
-        when(records.save(any())).thenThrow(new IllegalStateException("db down"));
+        when(jobs.existsByKindAndAnnouncementIdAndStatusIn(PdfExtractionJob.KIND, 7L, EnumSet.of(
+                PdfExtractionJobStatus.PENDING, PdfExtractionJobStatus.RUNNING, PdfExtractionJobStatus.RETRY)))
+                .thenReturn(true);
 
-        AnnouncementPdfExtraction result = service.extract(7L, AnnouncementPdfDocumentTest.pdf("cover"), "공고문.pdf");
-
-        assertThat(result.totalPages()).isEqualTo(1);
+        assertThatThrownBy(() -> service.request(7L, "admin", "공고문.pdf", AnnouncementPdfDocumentTest.pdf("cover")))
+                .isInstanceOf(PdfExtractionInProgressException.class);
+        verify(jobs, never()).saveAndFlush(any());
     }
 
     @Test
-    void 저장한_최근_추출_결과를_다시_돌려준다() {
-        AnnouncementPdfExtraction extraction = new AnnouncementPdfExtraction("{}", List.of(1, 3), 9,
-                List.of("경고"), new AnnouncementPdfExtraction.Usage(900, 300, null));
-        AnnouncementPdfExtractionRecord record = new AnnouncementPdfExtractionRecord(7L, "ab".repeat(32),
-                "공고문.pdf", JsonMapper.builder().build().writeValueAsString(extraction));
+    void 동시에_넣다가_진행_중_작업_제약에_걸리면_진행_중으로_알린다() throws Exception {
         when(announcements.existsById(7L)).thenReturn(true);
-        when(records.findFirstByAnnouncementIdOrderByCreatedAtDescIdDesc(7L)).thenReturn(Optional.of(record));
+        when(inputs.read(7L)).thenReturn(INPUT);
+        when(jobs.saveAndFlush(any())).thenThrow(violation("ux_ai_jobs_active"));
 
-        SavedAnnouncementPdfExtraction saved = service.latest(7L);
-
-        assertThat(saved.fileName()).isEqualTo("공고문.pdf");
-        assertThat(saved.pdfSha256()).isEqualTo("ab".repeat(32));
-        assertThat(saved.createdAt()).isEqualTo(record.getCreatedAt());
-        assertThat(saved.extraction()).isEqualTo(extraction);
-        verify(model, never()).extract(any());
+        assertThatThrownBy(() -> service.request(7L, "admin", "공고문.pdf", AnnouncementPdfDocumentTest.pdf("cover")))
+                .isInstanceOf(PdfExtractionInProgressException.class);
     }
 
     @Test
-    void 저장한_추출_결과가_없으면_null을_돌려준다() {
+    void 진행_중_작업_제약이_아닌_위반은_진행_중으로_바꾸지_않는다() throws Exception {
         when(announcements.existsById(7L)).thenReturn(true);
-        when(records.findFirstByAnnouncementIdOrderByCreatedAtDescIdDesc(7L)).thenReturn(Optional.empty());
+        when(inputs.read(7L)).thenReturn(INPUT);
+        when(jobs.saveAndFlush(any())).thenThrow(violation("ai_jobs_announcement_id_fkey"));
 
-        assertThat(service.latest(7L)).isNull();
+        assertThatThrownBy(() -> service.request(7L, "admin", "공고문.pdf", AnnouncementPdfDocumentTest.pdf("cover")))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
-    void 없는_공고의_최근_결과는_404로_막는다() {
+    void 최근_결과는_성공한_작업에서_읽는다() {
+        when(announcements.existsById(7L)).thenReturn(true);
+        when(jobs.findLatestViews(PdfExtractionJob.KIND, 7L, PdfExtractionJobStatus.SUCCEEDED, Limit.of(1)))
+                .thenReturn(List.of(new PdfExtractionJobView(31L, PdfExtractionJobStatus.SUCCEEDED, "공고문.pdf",
+                        "ab".repeat(32), 1, NOW, NOW.plusSeconds(60), null, null, RESULT)));
+
+        var latest = service.latest(7L);
+
+        assertThat(latest).isNotNull();
+        assertThat(latest.createdAt()).isEqualTo(NOW.plusSeconds(60));
+        assertThat(latest.extraction().totalPages()).isEqualTo(9);
+    }
+
+    private static DataIntegrityViolationException violation(String constraint) {
+        return new DataIntegrityViolationException("could not execute statement",
+                new ConstraintViolationException("violation", new SQLException("violation", "23505"), constraint));
+    }
+
+    @Test
+    void 읽을_수_없는_PDF는_작업으로_넣지_않는다() {
+        when(announcements.existsById(7L)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.request(7L, "admin", "공고문.pdf", new byte[] {1, 2}))
+                .isInstanceOf(InvalidAnnouncementPdfException.class);
+        verify(jobs, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void 없는_공고면_작업을_넣지_않는다() {
         when(announcements.existsById(7L)).thenReturn(false);
 
-        assertThatThrownBy(() -> service.latest(7L)).isInstanceOf(AnnouncementNotFoundException.class);
-    }
-
-    private static String sha256(byte[] content) throws NoSuchAlgorithmException {
-        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
+        assertThatThrownBy(() -> service.request(7L, "admin", "공고문.pdf", new byte[] {1}))
+                .isInstanceOf(AnnouncementNotFoundException.class);
+        verify(jobs, never()).saveAndFlush(any());
     }
 }

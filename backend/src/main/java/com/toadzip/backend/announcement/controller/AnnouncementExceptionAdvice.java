@@ -8,6 +8,8 @@ import com.toadzip.backend.announcement.exception.InvalidAnnouncementPdfExceptio
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestException;
 import com.toadzip.backend.announcement.exception.InvalidRegionCodeException;
 import com.toadzip.backend.announcement.exception.PdfExtractionFailedException;
+import com.toadzip.backend.announcement.exception.PdfExtractionInProgressException;
+import com.toadzip.backend.announcement.exception.PdfExtractionJobNotFoundException;
 import com.toadzip.backend.announcement.exception.PdfExtractionUnavailableException;
 import com.toadzip.backend.global.exception.ErrorResponse;
 import com.toadzip.backend.global.exception.RequestTraceIdResolver;
@@ -38,6 +40,8 @@ public class AnnouncementExceptionAdvice {
     private static final String ANNOUNCEMENT_PDF_INVALID = "ANNOUNCEMENT_PDF_INVALID";
     private static final String PDF_EXTRACTION_UNAVAILABLE = "ANNOUNCEMENT_PDF_EXTRACTION_UNAVAILABLE";
     private static final String PDF_EXTRACTION_FAILED = "ANNOUNCEMENT_PDF_EXTRACTION_FAILED";
+    private static final String PDF_EXTRACTION_IN_PROGRESS = "ANNOUNCEMENT_PDF_EXTRACTION_IN_PROGRESS";
+    private static final String PDF_EXTRACTION_JOB_NOT_FOUND = "ANNOUNCEMENT_PDF_EXTRACTION_JOB_NOT_FOUND";
 
     @ExceptionHandler(InvalidAnnouncementPdfException.class)
     public ResponseEntity<ErrorResponse> handleInvalidAnnouncementPdf(
@@ -73,6 +77,32 @@ public class AnnouncementExceptionAdvice {
                 traceIdOf(request)
         );
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(response);
+    }
+
+    @ExceptionHandler(PdfExtractionInProgressException.class)
+    public ResponseEntity<ErrorResponse> handlePdfExtractionInProgress(
+            PdfExtractionInProgressException exception,
+            HttpServletRequest request
+    ) {
+        ErrorResponse response = new ErrorResponse(
+                PDF_EXTRACTION_IN_PROGRESS,
+                exception.getMessage(),
+                traceIdOf(request)
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+
+    @ExceptionHandler(PdfExtractionJobNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handlePdfExtractionJobNotFound(
+            PdfExtractionJobNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        ErrorResponse response = new ErrorResponse(
+                PDF_EXTRACTION_JOB_NOT_FOUND,
+                exception.getMessage(),
+                traceIdOf(request)
+        );
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
     }
 
     @ExceptionHandler(InvalidAnnouncementRequestException.class)

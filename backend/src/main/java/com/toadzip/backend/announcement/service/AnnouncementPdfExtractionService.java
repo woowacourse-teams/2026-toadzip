@@ -1,116 +1,148 @@
 package com.toadzip.backend.announcement.service;
 
-import com.toadzip.backend.announcement.domain.AnnouncementPdfExtractionRecord;
-import com.toadzip.backend.announcement.domain.ExtractionPageSelection;
+import com.toadzip.backend.announcement.domain.PdfExtractionInput;
+import com.toadzip.backend.announcement.domain.PdfExtractionJob;
+import com.toadzip.backend.announcement.domain.PdfExtractionJobStatus;
+import com.toadzip.backend.announcement.domain.PdfExtractionJobView;
+import com.toadzip.backend.announcement.domain.PdfExtractionSource;
 import com.toadzip.backend.announcement.dto.response.AnnouncementPdfExtraction;
+import com.toadzip.backend.announcement.dto.response.PdfExtractionJobResponse;
 import com.toadzip.backend.announcement.dto.response.SavedAnnouncementPdfExtraction;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
-import com.toadzip.backend.announcement.repository.AnnouncementPdfExtractionRecordRepository;
+import com.toadzip.backend.announcement.exception.PdfExtractionInProgressException;
+import com.toadzip.backend.announcement.exception.PdfExtractionJobNotFoundException;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
-import com.toadzip.backend.announcement.repository.external.AnnouncementExtractionModel;
-import com.toadzip.backend.announcement.repository.external.AnnouncementExtractionReply;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
+import com.toadzip.backend.announcement.repository.PdfExtractionInputQueryRepository;
+import com.toadzip.backend.announcement.repository.PdfExtractionJobRepository;
+import java.time.Clock;
+import java.util.EnumSet;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.data.domain.Limit;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 공고문 PDF에서 필요한 쪽만 골라 AI 모델로 보정용 JSON을 뽑는다.
- * 같은 PDF를 다시 추출하는 비용을 줄이려고 결과를 남기고, 공고 데이터에는 반영하지 않는다.
- * 모델 호출이 수십 초 걸리므로 DB 트랜잭션을 열지 않는다.
+ * 공고문 PDF 추출을 작업(ai_jobs)으로 넣고 상태와 결과를 읽는다. 추출은 Python AI 워커가 하고, 공고 데이터에는 반영하지 않는다.
+ * 같은 공고에 진행 중 작업이 있으면 새로 넣지 않아 유료 호출이 겹치지 않게 한다.
  */
 @Slf4j
 @Service
 public class AnnouncementPdfExtractionService {
+    private static final Set<PdfExtractionJobStatus> ACTIVE = EnumSet.of(
+            PdfExtractionJobStatus.PENDING, PdfExtractionJobStatus.RUNNING, PdfExtractionJobStatus.RETRY);
+    private static final String ACTIVE_JOB_INDEX = "ux_ai_jobs_active";
 
     private final AnnouncementRepository announcements;
-    private final AnnouncementPdfExtractionRecordRepository records;
-    private final AnnouncementExtractionModel model;
+    private final PdfExtractionJobRepository jobs;
+    private final PdfExtractionInputQueryRepository inputs;
     private final ObjectMapper objectMapper;
+    private final Clock clock;
 
     public AnnouncementPdfExtractionService(
             AnnouncementRepository announcements,
-            AnnouncementPdfExtractionRecordRepository records,
-            AnnouncementExtractionModel model,
-            ObjectMapper objectMapper
+            PdfExtractionJobRepository jobs,
+            PdfExtractionInputQueryRepository inputs,
+            ObjectMapper objectMapper,
+            Clock clock
     ) {
         this.announcements = announcements;
-        this.records = records;
-        this.model = model;
+        this.jobs = jobs;
+        this.inputs = inputs;
         this.objectMapper = objectMapper;
+        this.clock = clock;
     }
 
-    public AnnouncementPdfExtraction extract(long announcementId, byte[] pdf, String fileName) {
-        if (!announcements.existsById(announcementId)) {
-            throw new AnnouncementNotFoundException();
+    public PdfExtractionJobResponse request(long announcementId, String admin, String fileName, byte[] pdf) {
+        requireAnnouncement(announcementId);
+        AnnouncementPdfDocument.read(pdf);
+        if (jobs.existsByKindAndAnnouncementIdAndStatusIn(PdfExtractionJob.KIND, announcementId, ACTIVE)) {
+            throw new PdfExtractionInProgressException();
         }
-        AnnouncementPdfDocument document = AnnouncementPdfDocument.read(pdf);
-        ExtractionPageSelection selection = ExtractionPageSelection.select(document.pageTexts());
-        long started = System.nanoTime();
-        AnnouncementExtractionReply reply = model.extract(document.pages(selection.pageNumbers()));
-        ExtractedAnnouncementJson extracted = ExtractedAnnouncementJson.from(
-                objectMapper, reply.json(), selection.pageNumbers());
-        AnnouncementPdfExtraction result = result(document, selection, extracted, reply.usage());
-        log.info("event=announcement.pdf_extraction.completed announcementId={} pages={}/{} elapsedMs={} "
-                        + "promptTokens={} outputTokens={} thinkingTokens={} warnings={}",
-                announcementId, selection.pageNumbers().size(), result.totalPages(),
-                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started), reply.usage().promptTokens(),
-                reply.usage().outputTokens(), reply.usage().thinkingTokens(), result.warnings().size());
-        save(announcementId, pdf, fileName, result);
-        return result;
+        PdfExtractionInput input = inputs.read(announcementId);
+        PdfExtractionJob job = PdfExtractionJob.requestedByAdmin(announcementId, admin,
+                PdfExtractionSource.of(fileName, pdf), objectMapper.writeValueAsString(input), clock.instant());
+        PdfExtractionJob saved = save(job);
+        log.info("event=announcement.pdf_extraction.requested announcementId={} jobId={} lhSupplyRows={} "
+                        + "housingTypes={}", announcementId, saved.getId(), input.lhSupplyRows().size(),
+                input.housingTypes().size());
+        return response(PdfExtractionJobView.of(saved));
     }
 
-    /** 가장 최근에 저장한 추출 결과. 없으면 null이다. */
-    public SavedAnnouncementPdfExtraction latest(long announcementId) {
-        if (!announcements.existsById(announcementId)) {
-            throw new AnnouncementNotFoundException();
-        }
-        return records.findFirstByAnnouncementIdOrderByCreatedAtDescIdDesc(announcementId)
-                .map(record -> new SavedAnnouncementPdfExtraction(record.getFileName(), record.getPdfSha256(),
-                        record.getCreatedAt(), objectMapper.readValue(record.getResult(),
-                                AnnouncementPdfExtraction.class)))
+    public PdfExtractionJobResponse job(long announcementId, long jobId) {
+        requireAnnouncement(announcementId);
+        return jobs.findView(PdfExtractionJob.KIND, announcementId, jobId)
+                .map(this::response)
+                .orElseThrow(PdfExtractionJobNotFoundException::new);
+    }
+
+    /** 진행 중인 작업. 없으면 null이다. */
+    public PdfExtractionJobResponse active(long announcementId) {
+        requireAnnouncement(announcementId);
+        return jobs.findViewsByStatusIn(PdfExtractionJob.KIND, announcementId, ACTIVE, Limit.of(1)).stream()
+                .findFirst()
+                .map(this::response)
                 .orElse(null);
     }
 
-    // 모델 비용은 이미 들었으므로 저장에 실패해도 관리자가 받은 결과로 검토를 이어 가게 한다.
-    private void save(long announcementId, byte[] pdf, String fileName, AnnouncementPdfExtraction result) {
+    /** 가장 최근에 성공한 추출 결과. 없으면 null이다. */
+    public SavedAnnouncementPdfExtraction latest(long announcementId) {
+        requireAnnouncement(announcementId);
+        return jobs.findLatestViews(PdfExtractionJob.KIND, announcementId, PdfExtractionJobStatus.SUCCEEDED,
+                        Limit.of(1)).stream()
+                .findFirst()
+                .map(job -> new SavedAnnouncementPdfExtraction(job.fileName(), job.pdfSha256(), job.completedAt(),
+                        extraction(job)))
+                .orElse(null);
+    }
+
+    // 동시에 들어온 두 요청은 진행 중 작업 unique index가 하나만 받는다. 다른 제약 위반은 그대로 올린다.
+    private PdfExtractionJob save(PdfExtractionJob job) {
         try {
-            records.save(new AnnouncementPdfExtractionRecord(announcementId, sha256(pdf), fileName,
-                    objectMapper.writeValueAsString(result)));
+            return jobs.saveAndFlush(job);
         }
-        catch (RuntimeException exception) {
-            log.warn("event=announcement.pdf_extraction.save_failed announcementId={}", announcementId, exception);
+        catch (DataIntegrityViolationException exception) {
+            if (violates(exception, ACTIVE_JOB_INDEX)) {
+                throw new PdfExtractionInProgressException();
+            }
+            throw exception;
         }
     }
 
-    private static String sha256(byte[] content) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
+    private static boolean violates(Throwable exception, String constraint) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException violation
+                    && constraint.equalsIgnoreCase(violation.getConstraintName())) {
+                return true;
+            }
         }
-        catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        return false;
+    }
+
+    private void requireAnnouncement(long announcementId) {
+        if (!announcements.existsById(announcementId)) {
+            throw new AnnouncementNotFoundException();
         }
     }
 
-    private static AnnouncementPdfExtraction result(
-            AnnouncementPdfDocument document,
-            ExtractionPageSelection selection,
-            ExtractedAnnouncementJson extracted,
-            AnnouncementExtractionReply.Usage usage
-    ) {
-        int totalPages = document.pageTexts().size();
-        List<String> warnings = new ArrayList<>();
-        if (selection.wholeDocument()) {
-            warnings.add("공급표·임대조건표 쪽을 찾지 못해 전체 %d쪽을 보냈습니다.".formatted(totalPages));
+    private PdfExtractionJobResponse response(PdfExtractionJobView job) {
+        return new PdfExtractionJobResponse(job.id(), job.status().name(), job.fileName(), job.pdfSha256(),
+                job.attempts(), job.createdAt(), job.completedAt(), failure(job), extraction(job));
+    }
+
+    private static PdfExtractionJobResponse.Failure failure(PdfExtractionJobView job) {
+        if (job.status() != PdfExtractionJobStatus.FAILED) {
+            return null;
         }
-        warnings.addAll(extracted.warnings());
-        return new AnnouncementPdfExtraction(extracted.json(), selection.pageNumbers(), totalPages,
-                List.copyOf(warnings), new AnnouncementPdfExtraction.Usage(
-                        usage.promptTokens(), usage.outputTokens(), usage.thinkingTokens()));
+        return new PdfExtractionJobResponse.Failure(job.errorCode(), job.errorMessage());
+    }
+
+    private AnnouncementPdfExtraction extraction(PdfExtractionJobView job) {
+        if (job.result() == null) {
+            return null;
+        }
+        return objectMapper.readValue(job.result(), AnnouncementPdfExtraction.class);
     }
 }
