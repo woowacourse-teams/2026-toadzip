@@ -106,15 +106,28 @@ public class MyHomeComplexMerge {
                 throw new IllegalArgumentException("단지 공통값이 다릅니다. 통합 전에 차이를 확인해야 합니다.");
             }
         }
-        singleManualValue(complexes, HousingComplex::getImageUrl);
-        singleManualValue(complexes, HousingComplex::getRecentOneYearMoveOutCount);
+        manualValues(complexes);
     }
 
-    public static <T> T singleManualValue(List<HousingComplex> complexes, Function<HousingComplex, T> field) {
+    /** 통합할 단지의 수동 입력값을 하나로 고른다. 값이 서로 다르면 어느 쪽도 덮어쓰지 않도록 거절한다. */
+    public static ManualValues manualValues(List<HousingComplex> complexes) {
+        return new ManualValues(singleManualValue(complexes, HousingComplex::getImageUrl),
+                singleManualValue(complexes, HousingComplex::getRecentOneYearMoveOutCount));
+    }
+
+    private static <T> T singleManualValue(List<HousingComplex> complexes, Function<HousingComplex, T> field) {
         List<T> values = complexes.stream().map(field).filter(Objects::nonNull).distinct().toList();
         if (values.size() > 1) {
             throw new IllegalArgumentException("수동 입력값이 충돌합니다. 덮어쓰지 않고 통합을 보류합니다.");
         }
         return values.stream().findFirst().orElse(null);
+    }
+
+    /** 통합 대표 단지가 이어받을 수동 입력값이다. */
+    public record ManualValues(String imageUrl, Integer moveOutCount) {
+
+        public void adoptInto(HousingComplex representative, int householdCount) {
+            representative.adoptVerifiedMerge(householdCount, imageUrl, moveOutCount);
+        }
     }
 }

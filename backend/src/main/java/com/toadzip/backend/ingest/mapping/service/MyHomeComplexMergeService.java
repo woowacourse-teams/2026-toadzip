@@ -91,11 +91,7 @@ public class MyHomeComplexMergeService {
         );
         merges.saveAndFlush(merge);
         HousingComplex representative = prepared.complexes().getFirst();
-        representative.adoptVerifiedMerge(
-                preview.adoptedHouseholdCount(),
-                MyHomeComplexMerge.singleManualValue(prepared.complexes(), HousingComplex::getImageUrl),
-                MyHomeComplexMerge.singleManualValue(
-                        prepared.complexes(), HousingComplex::getRecentOneYearMoveOutCount));
+        MyHomeComplexMerge.manualValues(prepared.complexes()).adoptInto(representative, preview.adoptedHouseholdCount());
         for (int index = 0; index < prepared.links().size(); index++) {
             prepared.links().get(index).verifyAndConnect(
                     representative, merge.getId(), preview.sources().get(index).householdCount());

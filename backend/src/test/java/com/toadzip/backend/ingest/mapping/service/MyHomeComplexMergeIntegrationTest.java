@@ -43,6 +43,7 @@ import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureRea
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.service.RoadAddressGeocodingService;
 import com.toadzip.backend.ingest.mapping.dto.ComplexMergeRequest;
+import com.toadzip.backend.ingest.mapping.exception.ComplexMergeConflictException;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
@@ -598,7 +599,8 @@ class MyHomeComplexMergeIntegrationTest {
         Throwable failure = mergeWhileUncommitted(
                 "UPDATE myhome_complex_source_rows SET bass_mt_rntchrg = 12345", request);
 
-        assertThat(failure).isNotNull();
+        assertThat(failure).isInstanceOf(ComplexMergeConflictException.class)
+                .hasMessageContaining("미리보기 이후 원천 또는 제품 데이터가 바뀌었습니다");
         assertThat(complexes.count()).isEqualTo(3);
     }
 

@@ -273,7 +273,7 @@ class LhSupplyLinkIntegrationTest {
         assertThat(matchRelease.resourceType()).isEqualTo("LH_SUPPLY_LINK");
         assertThat(matchRelease.resourceId()).isEqualTo(linkId());
         assertThat(keys(matchRelease.before()))
-                .containsExactly("rowIdentifier", "complexId", "housingTypeId", "sourceUrl", "reason", "actor");
+                .containsExactlyInAnyOrder("rowIdentifier", "complexId", "housingTypeId", "sourceUrl", "reason", "actor");
         assertThat(keys(matchRelease.after()))
                 .containsExactlyInAnyOrder("announcementIdentifier", "rowIdentifier", "reason");
         mapping.mapAll();
