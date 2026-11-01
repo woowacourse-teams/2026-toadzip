@@ -70,7 +70,7 @@ def worker_conn(postgres, owner):
 
 
 def insert_job(owner: psycopg.Connection, announcement_id: int = 1, *, status: str = "PENDING", attempts: int = 0,
-               lease_expired: bool = False, input: dict | None = None) -> int:
+               lease_expired: bool = False, input: dict | None = None, age_minutes: int = 0) -> int:
     """Spring이 넣는 것과 같은 작업 행을 넣는다. RUNNING이면 lease를 함께 채운다."""
     lease_until = "now() - interval '1 second'" if lease_expired else "now() + interval '10 minutes'"
     running = status == "RUNNING"
@@ -80,10 +80,10 @@ def insert_job(owner: psycopg.Connection, announcement_id: int = 1, *, status: s
             next_attempt_at, lease_token, lease_until, file_name, pdf_sha256, pdf, input, created_at)
         VALUES ('ANNOUNCEMENT_PDF_EXTRACTION', %s, 'ADMIN', 'admin', %s, %s, 3, now(),
             {"gen_random_uuid()" if running else "NULL"}, {lease_until if running else "NULL"},
-            'notice.pdf', repeat('a', 64), %s, %s, now())
+            'notice.pdf', repeat('a', 64), %s, %s, now() - make_interval(mins => %s))
         RETURNING id
         """,
-        (announcement_id, status, attempts, PDF, json.dumps(input) if input is not None else None),
+        (announcement_id, status, attempts, PDF, json.dumps(input) if input is not None else None, age_minutes),
     ).fetchone()[0]
 
 
@@ -92,7 +92,7 @@ def job_row(owner: psycopg.Connection, job_id: int) -> dict:
         return cursor.execute(
             """
             SELECT status, attempts, pdf, result, jsonb_typeof(result) AS result_type, error_code, error_message,
-                lease_token, lease_until, completed_at,
+                lease_token, lease_until, started_at, completed_at,
                 extract(epoch FROM next_attempt_at - now()) AS retry_in_seconds,
                 extract(epoch FROM lease_until - now()) AS lease_seconds
             FROM ai_jobs WHERE id = %s

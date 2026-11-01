@@ -27,6 +27,26 @@ test('작업을 넣고 성공할 때까지 작업 상태를 다시 물어 결과
   expect(mocks.request).toHaveBeenNthCalledWith(3, `${PATH}/jobs/31`, 'GET', undefined, undefined)
 })
 
+test('공고 첨부면 파일을 올리지 않고 서버가 그 첨부를 받게 한다', async () => {
+  mocks.request.mockResolvedValueOnce(job('SUCCEEDED', { extraction }))
+
+  await expect(extractAnnouncementPdf('29', pdf, '공고문.pdf', undefined, { attachmentId: '68' })).resolves.toEqual(extraction)
+  expect(mocks.request).toHaveBeenCalledWith(`${PATH}/attachments/68`, 'POST', undefined, undefined)
+})
+
+test('재시도를 기다리는 동안 사유가 바뀔 때만 알리고, 다시 처리하면 사유를 지운다', async () => {
+  const reason = { code: 'UPSTREAM_TIMEOUT', message: '추출 서비스 응답이 늦습니다.' }
+  mocks.request.mockResolvedValueOnce(job('RETRY', { retryReason: reason })).mockResolvedValueOnce(job('RETRY', { retryReason: reason }))
+    .mockResolvedValueOnce(job('RUNNING', { retryReason: reason })).mockResolvedValueOnce(job('SUCCEEDED', { extraction }))
+  const onRetry = vi.fn()
+
+  const result = extractAnnouncementPdf('29', pdf, '공고문.pdf', undefined, { onRetry })
+  await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3)
+
+  await expect(result).resolves.toEqual(extraction)
+  expect(onRetry.mock.calls).toEqual([['추출 서비스 응답이 늦습니다.'], [null]])
+})
+
 test('작업이 실패하면 워커가 남긴 사유로 실패한다', async () => {
   mocks.request.mockResolvedValueOnce(job('FAILED', { failure: { code: 'PDF_INVALID', message: 'PDF를 읽지 못했습니다.' } }))
 

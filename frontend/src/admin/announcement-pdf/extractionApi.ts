@@ -17,7 +17,7 @@ export type PdfExtraction = {
 /** 서버에 남겨 둔 이전 추출 결과. pdfSha256으로 지금 고른 PDF와 같은 파일인지 비교한다. */
 export type SavedExtraction = { fileName: string; pdfSha256: string; createdAt: string; extraction: PdfExtraction }
 
-export type ExtractionState = { status: 'idle' } | { status: 'running'; startedAt: number }
+export type ExtractionState = { status: 'idle' } | { status: 'running'; startedAt: number; retryReason?: string }
   | { status: 'done'; result: PdfExtraction; saved?: SavedExtraction } | { status: 'failed'; message: string }
 
 const count = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null
@@ -33,10 +33,17 @@ function parsePdfExtraction(value: unknown): PdfExtraction {
 
 /** 추출 작업 상태를 다시 묻는 간격. 추출은 보통 1~3분 걸린다. */
 export const JOB_POLL_MS = 3000
-/** 이보다 오래 끝나지 않으면 기다리기를 멈춘다. 작업은 서버에서 계속되고, 다시 추출하면 이어서 기다린다. */
-export const JOB_WAIT_LIMIT_MS = 15 * 60 * 1000
+/**
+ * 이보다 오래 끝나지 않으면 기다리기를 멈춘다. 워커는 넣은 지 40분이 지난 작업을 실패로 끝내므로(ai-worker DEADLINE)
+ * 보통은 이 상한 전에 성공이나 실패를 받는다. 상한은 워커가 멈춘 경우의 안전장치다.
+ */
+export const JOB_WAIT_LIMIT_MS = 45 * 60 * 1000
 
-type ExtractionJob = { jobId: number; status: string; fileName: string; pdfSha256: string; failure: { code: string; message: string } | null; extraction: unknown }
+type Reason = { code: string; message: string }
+type ExtractionJob = { jobId: number; status: string; fileName: string; pdfSha256: string; failure: Reason | null; retryReason: Reason | null; extraction: unknown }
+
+/** attachmentId가 있으면 서버가 그 공고 첨부를 받아 작업을 넣는다. onRetry는 기다리는 동안 재시도 사유가 바뀔 때마다 받는다. */
+export type ExtractionOptions = { attachmentId?: string; onRetry?: (message: string | null) => void }
 
 const pendingStatuses = new Set(['PENDING', 'RUNNING', 'RETRY'])
 
@@ -44,10 +51,12 @@ function parseJob(value: unknown): ExtractionJob {
   if (!isRecord(value) || count(value.jobId) === null || typeof value.status !== 'string' || typeof value.fileName !== 'string' || typeof value.pdfSha256 !== 'string') {
     throw new Error('추출 작업 응답 형식이 올바르지 않습니다.')
   }
-  const failure = isRecord(value.failure) && typeof value.failure.code === 'string' && typeof value.failure.message === 'string'
-    ? { code: value.failure.code, message: value.failure.message } : null
-  return { jobId: value.jobId as number, status: value.status, fileName: value.fileName, pdfSha256: value.pdfSha256, failure, extraction: value.extraction }
+  return { jobId: value.jobId as number, status: value.status, fileName: value.fileName, pdfSha256: value.pdfSha256,
+    failure: parseReason(value.failure), retryReason: parseReason(value.retryReason), extraction: value.extraction }
 }
+
+const parseReason = (value: unknown): Reason | null => isRecord(value) && typeof value.code === 'string' && typeof value.message === 'string'
+  ? { code: value.code, message: value.message } : null
 
 function wait(ms: number, signal?: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
@@ -75,15 +84,16 @@ async function joinActiveJob(id: string, sha256: string, signal?: AbortSignal): 
 
 /**
  * 공고문 PDF 추출 작업을 넣고 끝날 때까지 기다린다. 추출은 AI 워커가 따로 한다.
+ * 공고 첨부면 서버가 첨부를 받고, 관리자가 고른 파일이면 파일을 올린다. file은 진행 중 작업이 같은 PDF인지 비교하는 데 쓴다.
  * 이 공고에 같은 PDF의 진행 중 작업이 이미 있으면 새로 넣지 않고 그 작업을 이어서 기다린다.
  */
-export async function extractAnnouncementPdf(id: string, file: Blob, fileName: string, signal?: AbortSignal): Promise<PdfExtraction> {
+export async function extractAnnouncementPdf(id: string, file: Blob, fileName: string, signal?: AbortSignal, options: ExtractionOptions = {}): Promise<PdfExtraction> {
   const path = `/api/admin/announcements/${encodeURIComponent(id)}/pdf-extractions`
-  const form = new FormData()
-  form.append('file', file, fileName)
   let job: ExtractionJob
   try {
-    job = parseJob(await requestManagementApi(path, 'POST', form, signal))
+    job = parseJob(options.attachmentId
+      ? await requestManagementApi(`${path}/attachments/${encodeURIComponent(options.attachmentId)}`, 'POST', undefined, signal)
+      : await requestManagementApi(path, 'POST', upload(file, fileName), signal))
   } catch (error) {
     if (!(error instanceof ManagementError && error.code === 'ANNOUNCEMENT_PDF_EXTRACTION_IN_PROGRESS')) throw error
     const joined = await joinActiveJob(id, await pdfSha256(file), signal)
@@ -91,14 +101,23 @@ export async function extractAnnouncementPdf(id: string, file: Blob, fileName: s
     job = joined
   }
   const deadline = Date.now() + JOB_WAIT_LIMIT_MS
+  let retryReason: string | null = null
   while (job.status !== 'SUCCEEDED') {
     if (job.status === 'FAILED') throw new Error(job.failure?.message ?? '추출에 실패했습니다.')
     if (!pendingStatuses.has(job.status)) throw new Error('추출 작업 상태를 알 수 없습니다.')
+    const nextReason = job.status === 'RETRY' ? job.retryReason?.message ?? null : null
+    if (nextReason !== retryReason) { retryReason = nextReason; options.onRetry?.(retryReason) }
     if (Date.now() >= deadline) throw new Error('추출이 아직 끝나지 않았습니다. 잠시 뒤 다시 추출을 누르면 이어서 기다립니다.')
     await wait(JOB_POLL_MS, signal)
     job = parseJob(await requestManagementApi(`${path}/jobs/${job.jobId}`, 'GET', undefined, signal))
   }
   return parsePdfExtraction(job.extraction)
+}
+
+function upload(file: Blob, fileName: string) {
+  const form = new FormData()
+  form.append('file', file, fileName)
+  return form
 }
 
 /** 공고에 가장 최근에 저장한 추출 결과. 없으면 null이다. 모델을 다시 부르지 않는다. */

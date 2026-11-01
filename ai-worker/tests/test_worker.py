@@ -1,14 +1,15 @@
 import json
 import logging
+import time
 from datetime import timedelta
 from decimal import Decimal
 
 import psycopg
 import pytest
 
-from ai_worker import jobs
+from ai_worker import jobs, worker
 from ai_worker.extraction import PermanentError, TransientError
-from ai_worker.worker import INTERNAL_ERROR_CODE, LEASE, run_once
+from ai_worker.worker import DEADLINE, INTERNAL_ERROR_CODE, LEASE, run_once
 from conftest import PDF, connect_worker, contract_example, insert_job, job_row
 
 
@@ -64,7 +65,7 @@ def test_claim_is_committed_before_extraction(owner, worker_conn):
     assert seen["status"] == "RUNNING"
     assert seen["attempts"] == 1
     assert seen["lease_token"] is not None
-    assert 595 < seen["lease_seconds"] <= 600
+    assert 175 < seen["lease_seconds"] <= 180
 
 
 def test_locked_job_is_skipped_not_waited_for(postgres, owner, worker_conn):
@@ -90,8 +91,10 @@ def test_transient_errors_retry_with_backoff_then_fail(owner, worker_conn):
 
     run_once(worker_conn, extractor)
     row = job_row(owner, job_id)
+    first_started_at = row["started_at"]
     assert (row["status"], row["attempts"], row["pdf"]) == ("RETRY", 1, PDF)
-    assert (row["lease_token"], row["lease_until"], row["error_code"]) == (None, None, None)
+    assert (row["lease_token"], row["lease_until"]) == (None, None)
+    assert (row["error_code"], row["error_message"]) == ("UPSTREAM_TIMEOUT", "추출 서비스 응답이 늦습니다.")
     assert 55 < row["retry_in_seconds"] <= 60
 
     assert run_once(worker_conn, extractor) is False, "예약 시각 전에는 꺼내지 않는다"
@@ -101,6 +104,7 @@ def test_transient_errors_retry_with_backoff_then_fail(owner, worker_conn):
     row = job_row(owner, job_id)
     assert (row["status"], row["attempts"], row["pdf"]) == ("RETRY", 2, PDF)
     assert 295 < row["retry_in_seconds"] <= 300
+    assert row["started_at"] == first_started_at, "started_at은 첫 시작 시각을 남긴다"
 
     owner.execute("UPDATE ai_jobs SET next_attempt_at = now() WHERE id = %s", (job_id,))
     run_once(worker_conn, extractor)
@@ -133,18 +137,18 @@ def test_unexpected_error_fails_with_public_message(owner, worker_conn):
 
 def test_expired_lease_is_reclaimed_and_old_lease_cannot_write(postgres, owner, worker_conn):
     job_id = insert_job(owner)
-    first = jobs.claim(worker_conn, LEASE)
+    first = jobs.claim(worker_conn, LEASE, DEADLINE)
     owner.execute("UPDATE ai_jobs SET lease_until = now() - interval '1 second' WHERE id = %s", (job_id,))
 
     with connect_worker(postgres) as second_conn:
-        second = jobs.claim(second_conn, LEASE)
+        second = jobs.claim(second_conn, LEASE, DEADLINE)
         assert second is not None, "lease가 끝난 RUNNING은 다시 꺼낸다"
         assert (second.id, second.attempts) == (job_id, 2)
         assert second.lease_token != first.lease_token
 
         assert jobs.complete(worker_conn, first, json.dumps({"stale": True})) is False
         assert jobs.fail(worker_conn, first, "STALE", "stale") is False
-        assert jobs.retry(worker_conn, first, timedelta(minutes=1)) is False
+        assert jobs.retry(worker_conn, first, timedelta(minutes=1), "STALE", "stale") is False
         assert job_row(owner, job_id)["status"] == "RUNNING"
 
         assert jobs.complete(second_conn, second, json.dumps({"fresh": True})) is True
@@ -225,7 +229,7 @@ def test_expired_lease_without_attempts_left_is_never_claimed(owner, worker_conn
     insert_job(owner, status="RUNNING", attempts=3, lease_expired=True)
 
     try:
-        claimed = jobs.claim(worker_conn, LEASE)
+        claimed = jobs.claim(worker_conn, LEASE, DEADLINE)
     except psycopg.errors.CheckViolation:
         pytest.fail("시도를 다 쓴 작업을 다시 꺼내려 했다")
     assert claimed is None
@@ -256,3 +260,120 @@ def test_last_attempt_with_live_lease_is_left_running(owner, worker_conn):
     assert run_once(worker_conn, FakeExtractor()) is False
 
     assert job_row(owner, job_id)["status"] == "RUNNING"
+
+
+def test_success_after_retry_clears_retry_reason(owner, worker_conn):
+    job_id = insert_job(owner)
+    run_once(worker_conn, FakeExtractor(error=TransientError("UPSTREAM_TIMEOUT", "늦습니다.")))
+    owner.execute("UPDATE ai_jobs SET next_attempt_at = now() WHERE id = %s", (job_id,))
+
+    run_once(worker_conn, FakeExtractor())
+
+    row = job_row(owner, job_id)
+    assert (row["status"], row["error_code"], row["error_message"]) == ("SUCCEEDED", None, None)
+
+
+def test_heartbeat_extends_lease_while_extracting(owner, worker_conn, monkeypatch):
+    monkeypatch.setattr(worker, "HEARTBEAT", timedelta(milliseconds=100))
+    job_id = insert_job(owner)
+    leases = []
+
+    def watch_lease(job):
+        for _ in range(2):
+            leases.append(owner.execute("SELECT lease_until FROM ai_jobs WHERE id = %s", (job_id,)).fetchone()[0])
+            time.sleep(0.35)
+
+    run_once(worker_conn, FakeExtractor(during=watch_lease))
+
+    assert leases[1] > leases[0]
+    assert job_row(owner, job_id)["status"] == "SUCCEEDED"
+
+
+def test_heartbeat_stops_when_lease_is_taken(owner, worker_conn, monkeypatch):
+    monkeypatch.setattr(worker, "HEARTBEAT", timedelta(milliseconds=100))
+    job_id = insert_job(owner)
+    seen = {}
+
+    def take_lease(job):
+        owner.execute("UPDATE ai_jobs SET lease_token = gen_random_uuid(), lease_until = now() WHERE id = %s", (job_id,))
+        seen["taken"] = owner.execute("SELECT lease_until FROM ai_jobs WHERE id = %s", (job_id,)).fetchone()[0]
+        time.sleep(0.35)
+
+    run_once(worker_conn, FakeExtractor(during=take_lease))
+
+    row = job_row(owner, job_id)
+    assert (row["status"], row["lease_until"]) == ("RUNNING", seen["taken"])
+
+
+@pytest.mark.parametrize("status, attempts", [("PENDING", 0), ("RETRY", 1), ("RUNNING", 1)])
+def test_job_past_deadline_fails_in_any_active_status(owner, worker_conn, status, attempts):
+    job_id = insert_job(owner, status=status, attempts=attempts, age_minutes=41)
+    extractor = FakeExtractor()
+
+    assert run_once(worker_conn, extractor) is False
+
+    assert extractor.jobs == []
+    row = job_row(owner, job_id)
+    assert (row["status"], row["error_code"], row["pdf"]) == ("FAILED", jobs.DEADLINE_EXCEEDED_CODE, None)
+    assert (row["lease_token"], row["lease_until"]) == (None, None)
+    assert row["completed_at"] is not None
+
+
+def test_job_before_deadline_is_processed(owner, worker_conn):
+    job_id = insert_job(owner, age_minutes=39)
+
+    assert run_once(worker_conn, FakeExtractor()) is True
+
+    assert job_row(owner, job_id)["status"] == "SUCCEEDED"
+
+
+def test_claim_skips_job_past_deadline(owner, worker_conn):
+    insert_job(owner, age_minutes=41)
+
+    assert jobs.claim(worker_conn, LEASE, DEADLINE) is None
+
+
+def test_lease_is_not_extended_past_deadline(owner, worker_conn):
+    job_id = insert_job(owner)
+    job = jobs.claim(worker_conn, LEASE, DEADLINE)
+    owner.execute("UPDATE ai_jobs SET created_at = now() - interval '41 minutes' WHERE id = %s", (job_id,))
+
+    assert jobs.extend_lease(worker_conn, job, LEASE, DEADLINE) is False
+
+
+def test_heartbeat_keeps_extending_after_a_database_error(owner, worker_conn, monkeypatch):
+    monkeypatch.setattr(worker, "HEARTBEAT", timedelta(milliseconds=100))
+    real_extend = jobs.extend_lease
+    calls = []
+
+    def flaky_extend(*args):
+        calls.append(1)
+        if len(calls) == 1:
+            raise psycopg.OperationalError("연결이 잠시 끊김")
+        return real_extend(*args)
+
+    monkeypatch.setattr(jobs, "extend_lease", flaky_extend)
+    job_id = insert_job(owner)
+    leases = []
+
+    def watch_lease(job):
+        for _ in range(2):
+            leases.append(owner.execute("SELECT lease_until FROM ai_jobs WHERE id = %s", (job_id,)).fetchone()[0])
+            time.sleep(0.35)
+
+    run_once(worker_conn, FakeExtractor(during=watch_lease))
+
+    assert len(calls) >= 2
+    assert leases[1] > leases[0]
+
+
+def test_deadline_cleanup_leaves_finished_jobs_alone(owner, worker_conn):
+    job_id = insert_job(owner)
+    run_once(worker_conn, FakeExtractor(error=PermanentError("INVALID_PDF", "PDF를 읽을 수 없습니다.")))
+    owner.execute("UPDATE ai_jobs SET created_at = now() - interval '41 minutes' WHERE id = %s", (job_id,))
+    before = job_row(owner, job_id)
+
+    run_once(worker_conn, FakeExtractor())
+
+    after = job_row(owner, job_id)
+    assert (after["error_code"], after["completed_at"]) == ("INVALID_PDF", before["completed_at"])

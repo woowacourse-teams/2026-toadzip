@@ -1,0 +1,33 @@
+name: AI Worker CI
+
+on:
+  pull_request:
+    paths:
+      - 'ai-worker/**'
+      # 워커 테스트는 Flyway의 ai_jobs 마이그레이션을 그대로 적용한다.
+      - 'backend/src/main/resources/db/migration/**'
+      - '.github/workflows/ai-worker-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-worker-ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: AI Worker Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ai-worker
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Test queue processing against Postgres (Testcontainers)
+        run: uv run pytest

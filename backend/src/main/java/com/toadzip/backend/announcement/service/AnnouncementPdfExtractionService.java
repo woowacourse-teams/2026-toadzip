@@ -5,15 +5,21 @@ import com.toadzip.backend.announcement.domain.PdfExtractionJob;
 import com.toadzip.backend.announcement.domain.PdfExtractionJobStatus;
 import com.toadzip.backend.announcement.domain.PdfExtractionJobView;
 import com.toadzip.backend.announcement.domain.PdfExtractionSource;
+import com.toadzip.backend.announcement.domain.TemporaryAttachment;
 import com.toadzip.backend.announcement.dto.response.AnnouncementPdfExtraction;
+import com.toadzip.backend.announcement.dto.response.AttachmentContent;
 import com.toadzip.backend.announcement.dto.response.PdfExtractionJobResponse;
 import com.toadzip.backend.announcement.dto.response.SavedAnnouncementPdfExtraction;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
+import com.toadzip.backend.announcement.exception.AttachmentUnavailableException;
+import com.toadzip.backend.announcement.exception.InvalidAnnouncementPdfException;
 import com.toadzip.backend.announcement.exception.PdfExtractionInProgressException;
 import com.toadzip.backend.announcement.exception.PdfExtractionJobNotFoundException;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.PdfExtractionInputQueryRepository;
 import com.toadzip.backend.announcement.repository.PdfExtractionJobRepository;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.time.Clock;
 import java.util.EnumSet;
 import java.util.Set;
@@ -31,6 +37,7 @@ import tools.jackson.databind.ObjectMapper;
 @Slf4j
 @Service
 public class AnnouncementPdfExtractionService {
+    public static final long MAX_PDF_BYTES = 30L * 1024 * 1024;
     private static final Set<PdfExtractionJobStatus> ACTIVE = EnumSet.of(
             PdfExtractionJobStatus.PENDING, PdfExtractionJobStatus.RUNNING, PdfExtractionJobStatus.RETRY);
     private static final String ACTIVE_JOB_INDEX = "ux_ai_jobs_active";
@@ -38,6 +45,7 @@ public class AnnouncementPdfExtractionService {
     private final AnnouncementRepository announcements;
     private final PdfExtractionJobRepository jobs;
     private final PdfExtractionInputQueryRepository inputs;
+    private final AnnouncementAttachmentService attachments;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -45,12 +53,14 @@ public class AnnouncementPdfExtractionService {
             AnnouncementRepository announcements,
             PdfExtractionJobRepository jobs,
             PdfExtractionInputQueryRepository inputs,
+            AnnouncementAttachmentService attachments,
             ObjectMapper objectMapper,
             Clock clock
     ) {
         this.announcements = announcements;
         this.jobs = jobs;
         this.inputs = inputs;
+        this.attachments = attachments;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -58,9 +68,7 @@ public class AnnouncementPdfExtractionService {
     public PdfExtractionJobResponse request(long announcementId, String admin, String fileName, byte[] pdf) {
         requireAnnouncement(announcementId);
         AnnouncementPdfDocument.read(pdf);
-        if (jobs.existsByKindAndAnnouncementIdAndStatusIn(PdfExtractionJob.KIND, announcementId, ACTIVE)) {
-            throw new PdfExtractionInProgressException();
-        }
+        requireNoActiveJob(announcementId);
         PdfExtractionInput input = inputs.read(announcementId);
         PdfExtractionJob job = PdfExtractionJob.requestedByAdmin(announcementId, admin,
                 PdfExtractionSource.of(fileName, pdf), objectMapper.writeValueAsString(input), clock.instant());
@@ -69,6 +77,28 @@ public class AnnouncementPdfExtractionService {
                         + "housingTypes={}", announcementId, saved.getId(), input.lhSupplyRows().size(),
                 input.housingTypes().size());
         return response(PdfExtractionJobView.of(saved));
+    }
+
+    /** 공고 첨부 PDF를 서버가 받아 작업을 넣는다. 진행 중 작업이 있으면 내려받지 않는다. */
+    public PdfExtractionJobResponse requestAttachment(long announcementId, String admin, long attachmentId) {
+        requireAnnouncement(announcementId);
+        requireNoActiveJob(announcementId);
+        AttachmentContent content = attachments.read(announcementId, attachmentId, false);
+        return request(announcementId, admin, content.fileName(), bytesOf(content.file()));
+    }
+
+    private static byte[] bytesOf(TemporaryAttachment file) {
+        try (file) {
+            if (file.size() > MAX_PDF_BYTES) {
+                throw new InvalidAnnouncementPdfException("공고문 PDF는 30MB 이하만 추출할 수 있습니다.");
+            }
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream((int) file.size());
+            file.transferTo(bytes);
+            return bytes.toByteArray();
+        }
+        catch (IOException exception) {
+            throw new AttachmentUnavailableException(AttachmentUnavailableException.Reason.UPSTREAM_FAILURE);
+        }
     }
 
     public PdfExtractionJobResponse job(long announcementId, long jobId) {
@@ -121,6 +151,12 @@ public class AnnouncementPdfExtractionService {
         return false;
     }
 
+    private void requireNoActiveJob(long announcementId) {
+        if (jobs.existsByKindAndAnnouncementIdAndStatusIn(PdfExtractionJob.KIND, announcementId, ACTIVE)) {
+            throw new PdfExtractionInProgressException();
+        }
+    }
+
     private void requireAnnouncement(long announcementId) {
         if (!announcements.existsById(announcementId)) {
             throw new AnnouncementNotFoundException();
@@ -129,11 +165,18 @@ public class AnnouncementPdfExtractionService {
 
     private PdfExtractionJobResponse response(PdfExtractionJobView job) {
         return new PdfExtractionJobResponse(job.id(), job.status().name(), job.fileName(), job.pdfSha256(),
-                job.attempts(), job.createdAt(), job.completedAt(), failure(job), extraction(job));
+                job.attempts(), job.createdAt(), job.completedAt(), failure(job), retryReason(job), extraction(job));
     }
 
     private static PdfExtractionJobResponse.Failure failure(PdfExtractionJobView job) {
         if (job.status() != PdfExtractionJobStatus.FAILED) {
+            return null;
+        }
+        return new PdfExtractionJobResponse.Failure(job.errorCode(), job.errorMessage());
+    }
+
+    private static PdfExtractionJobResponse.Failure retryReason(PdfExtractionJobView job) {
+        if (job.status() != PdfExtractionJobStatus.RETRY || job.errorCode() == null) {
             return null;
         }
         return new PdfExtractionJobResponse.Failure(job.errorCode(), job.errorMessage());

@@ -20,7 +20,8 @@ import styles from './PdfCorrection.module.css'
 
 const PdfDocumentPreview = lazy(() => import('../../public-housing/components/PdfDocumentPreview'))
 type Phase = 'prepare' | 'review' | 'result'
-type SelectedPdf = { url: string; name: string; file: Blob }
+// attachmentId가 있으면 공고 첨부라 추출 때 서버가 같은 첨부를 받는다.
+type SelectedPdf = { url: string; name: string; file: Blob; attachmentId?: string }
 const sectionLabels: [ReviewSection, string][] = [['supply', '공급정보'], ['schedule', '일정'], ['reception', '접수처·기본정보']]
 const filterLabels: [ReviewFilter, string][] = [['all', '전체'], ['pending', '확인 필요'], ['changed', '변경'], ['new', '추가']]
 function validEvidenceUrl(value: string) {
@@ -113,7 +114,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     const pending = loadAnnouncementAttachment(id, attachmentId, false, controller.signal)
     void pending.then(blob => {
       if (controller.signal.aborted) return
-      objectUrl = URL.createObjectURL(blob); setPdf({ url: objectUrl, name: attachment?.fileName ?? '공고문 PDF', file: blob })
+      objectUrl = URL.createObjectURL(blob); setPdf({ url: objectUrl, name: attachment?.fileName ?? '공고문 PDF', file: blob, attachmentId })
     }).catch(cause => { if (!controller.signal.aborted) setPdfError(attachmentErrorMessage(cause)) })
     return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl) }
   }, [id, attachmentId, workspace?.detail.attachments])
@@ -143,7 +144,10 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     extractionRun.current?.abort()
     const controller = new AbortController(); extractionRun.current = controller
     setExtraction({ status: 'running', startedAt: Date.now() }); setText('')
-    void extractAnnouncementPdf(id, pdf.file, pdf.name, controller.signal).then(result => {
+    const onRetry = (message: string | null) => {
+      if (!controller.signal.aborted) setExtraction(previous => previous.status === 'running' ? { ...previous, retryReason: message ?? undefined } : previous)
+    }
+    void extractAnnouncementPdf(id, pdf.file, pdf.name, controller.signal, { attachmentId: pdf.attachmentId, onRetry }).then(result => {
       if (controller.signal.aborted) return
       setText(result.json); setExtraction({ status: 'done', result })
       if (pdfHash) setSaved({ fileName: pdf.name, pdfSha256: pdfHash, createdAt: new Date().toISOString(), extraction: result })

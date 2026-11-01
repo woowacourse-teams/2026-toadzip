@@ -2,13 +2,18 @@ package com.toadzip.backend.announcement.controller;
 
 import com.toadzip.backend.announcement.dto.response.PdfExtractionJobResponse;
 import com.toadzip.backend.announcement.dto.response.SavedAnnouncementPdfExtraction;
+import com.toadzip.backend.announcement.exception.AttachmentUnavailableException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementPdfException;
 import com.toadzip.backend.announcement.service.AnnouncementPdfExtractionService;
+import com.toadzip.backend.global.exception.ErrorResponse;
 import com.toadzip.backend.global.response.ApiResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,8 +30,6 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/admin/announcements/{id}/pdf-extractions")
 public class AnnouncementPdfExtractionController {
-    static final long MAX_PDF_BYTES = 30L * 1024 * 1024;
-
     private final AnnouncementPdfExtractionService service;
 
     public AnnouncementPdfExtractionController(AnnouncementPdfExtractionService service) {
@@ -43,10 +46,21 @@ public class AnnouncementPdfExtractionController {
         if (file.isEmpty()) {
             throw new InvalidAnnouncementPdfException("공고문 PDF 파일을 선택해 주세요.");
         }
-        if (file.getSize() > MAX_PDF_BYTES) {
+        if (file.getSize() > AnnouncementPdfExtractionService.MAX_PDF_BYTES) {
             throw new InvalidAnnouncementPdfException("공고문 PDF는 30MB 이하만 올릴 수 있습니다.");
         }
         return new ApiResponse<>(service.request(id, authentication.getName(), fileNameOf(file), contentOf(file)));
+    }
+
+    /** 공고에 수집된 첨부 PDF로 작업을 넣는다. 화면이 PDF를 다시 올리지 않고 서버가 첨부를 받는다. */
+    @PostMapping("/attachments/{attachmentId}")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ApiResponse<PdfExtractionJobResponse> requestAttachment(
+            @PathVariable long id,
+            @PathVariable long attachmentId,
+            Authentication authentication
+    ) {
+        return new ApiResponse<>(service.requestAttachment(id, authentication.getName(), attachmentId));
     }
 
     @GetMapping("/jobs/{jobId}")
@@ -62,6 +76,14 @@ public class AnnouncementPdfExtractionController {
     @GetMapping("/latest")
     public ApiResponse<SavedAnnouncementPdfExtraction> latest(@PathVariable long id) {
         return new ApiResponse<>(service.latest(id));
+    }
+
+    @ExceptionHandler(AttachmentUnavailableException.class)
+    public ResponseEntity<ErrorResponse> attachmentUnavailable(
+            AttachmentUnavailableException exception,
+            HttpServletRequest request
+    ) {
+        return AnnouncementAttachmentController.response(exception, request);
     }
 
     private static String fileNameOf(MultipartFile file) {

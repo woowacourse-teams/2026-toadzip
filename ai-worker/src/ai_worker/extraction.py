@@ -24,5 +24,9 @@ class PermanentError(ExtractionError):
 
 class Extractor(Protocol):
     def extract(self, job: Job) -> dict:
-        """job.pdf와 job.input으로 추출해 ai_jobs.result에 쓸 JSON 객체를 돌려준다."""
+        """job.pdf와 job.input으로 추출해 ai_jobs.result에 쓸 JSON 객체를 돌려준다.
+
+        외부 호출마다 시간 제한을 두어 한 번의 추출이 worker.DEADLINE보다 훨씬 짧게 끝나야 한다.
+        추출이 멈추면 그 워커는 다음 작업을 꺼내지 못하고, 마감 정리는 다른 워커가 돌 때만 일어난다.
+        """
         ...

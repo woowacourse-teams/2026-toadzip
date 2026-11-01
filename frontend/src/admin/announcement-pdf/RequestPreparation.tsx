@@ -75,7 +75,10 @@ function ExtractionStatus({ extraction, hasPdf, parsed, checks, onExtract, sameP
   if (extraction.status === 'idle') return hasPdf
     ? <div className={styles.extractionStart}><p className={styles.hint}>제목을 확인했으면 추출을 시작하세요. 보통 10~40초 걸립니다.</p><Button data-design-system className={samePdf ? styles.secondaryButton : undefined} onClick={onExtract}>PDF에서 값 추출</Button></div>
     : <p role="status" className={styles.hint}>PDF를 고르면 추출할 수 있습니다.</p>
-  if (extraction.status === 'running') return <Elapsed startedAt={extraction.startedAt} />
+  if (extraction.status === 'running') return <>
+    <Elapsed startedAt={extraction.startedAt} />
+    {extraction.retryReason && <p role="status" className={styles.hint}>잠시 뒤 다시 시도합니다 · {extraction.retryReason}</p>}
+  </>
   if (extraction.status === 'failed') return <div role="alert" className={styles.error}><p>{extraction.message}</p>{retry}</div>
   if (!parsed.ok) return <div role="alert" className={styles.error}><p>{parsed.error}</p>{retry}</div>
   const { result } = extraction

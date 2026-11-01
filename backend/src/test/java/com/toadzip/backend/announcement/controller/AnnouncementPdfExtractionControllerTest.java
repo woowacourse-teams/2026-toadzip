@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -16,6 +17,7 @@ import com.toadzip.backend.announcement.dto.response.AnnouncementPdfExtraction;
 import com.toadzip.backend.announcement.dto.response.PdfExtractionJobResponse;
 import com.toadzip.backend.announcement.dto.response.SavedAnnouncementPdfExtraction;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
+import com.toadzip.backend.announcement.exception.AttachmentUnavailableException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementPdfException;
 import com.toadzip.backend.announcement.exception.PdfExtractionInProgressException;
 import com.toadzip.backend.announcement.exception.PdfExtractionJobNotFoundException;
@@ -78,7 +80,7 @@ class AnnouncementPdfExtractionControllerTest {
 
     @Test
     void PDF가_30MB를_넘으면_400으로_거절하고_작업을_넣지_않는다() throws Exception {
-        byte[] large = new byte[(int) AnnouncementPdfExtractionController.MAX_PDF_BYTES + 1];
+        byte[] large = new byte[(int) AnnouncementPdfExtractionService.MAX_PDF_BYTES + 1];
 
         mockMvc.perform(upload(large))
                 .andExpect(status().isBadRequest())
@@ -109,7 +111,7 @@ class AnnouncementPdfExtractionControllerTest {
     void 실패한_작업은_실패_사유를_돌려준다() throws Exception {
         when(service.job(7L, 31L)).thenReturn(new PdfExtractionJobResponse(31L, "FAILED", "공고문.pdf",
                 "ab".repeat(32), 3, CREATED, CREATED.plusSeconds(600),
-                new PdfExtractionJobResponse.Failure("MODEL_UNAVAILABLE", "AI 모델 호출에 계속 실패했습니다."), null));
+                new PdfExtractionJobResponse.Failure("MODEL_UNAVAILABLE", "AI 모델 호출에 계속 실패했습니다."), null, null));
 
         mockMvc.perform(get(PATH + "/jobs/31"))
                 .andExpect(status().isOk())
@@ -117,6 +119,37 @@ class AnnouncementPdfExtractionControllerTest {
                 .andExpect(jsonPath("$.data.attempts").value(3))
                 .andExpect(jsonPath("$.data.failure.code").value("MODEL_UNAVAILABLE"))
                 .andExpect(jsonPath("$.data.completedAt").value("2026-11-01T01:10:00Z"));
+    }
+
+    @Test
+    void 재시도_대기_작업은_재시도_사유를_돌려준다() throws Exception {
+        when(service.job(7L, 31L)).thenReturn(new PdfExtractionJobResponse(31L, "RETRY", "공고문.pdf",
+                "ab".repeat(32), 1, CREATED, null, null,
+                new PdfExtractionJobResponse.Failure("UPSTREAM_TIMEOUT", "추출 서비스 응답이 늦습니다."), null));
+
+        mockMvc.perform(get(PATH + "/jobs/31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.retryReason.message").value("추출 서비스 응답이 늦습니다."))
+                .andExpect(jsonPath("$.data.failure").doesNotExist());
+    }
+
+    @Test
+    void 첨부_PDF로_작업을_넣고_202를_돌려준다() throws Exception {
+        when(service.requestAttachment(7L, "admin", 68L)).thenReturn(pending(31L));
+
+        mockMvc.perform(post(PATH + "/attachments/68").principal(new TestingAuthenticationToken("admin", null)))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.jobId").value(31));
+    }
+
+    @Test
+    void 첨부를_받지_못하면_첨부_오류_코드와_상태를_돌려준다() throws Exception {
+        when(service.requestAttachment(7L, "admin", 68L))
+                .thenThrow(new AttachmentUnavailableException(AttachmentUnavailableException.Reason.NOT_PDF));
+
+        mockMvc.perform(post(PATH + "/attachments/68").principal(new TestingAuthenticationToken("admin", null)))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("ATTACHMENT_NOT_PDF"));
     }
 
     @Test
@@ -166,6 +199,6 @@ class AnnouncementPdfExtractionControllerTest {
 
     private static PdfExtractionJobResponse pending(long jobId) {
         return new PdfExtractionJobResponse(jobId, "PENDING", "공고문.pdf", "ab".repeat(32), 0, CREATED, null,
-                null, null);
+                null, null, null);
     }
 }
