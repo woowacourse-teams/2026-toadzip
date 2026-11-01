@@ -6,9 +6,9 @@
 ## 시작할 파일 두 개
 
 1. [DataPipelineType](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/domain/DataPipelineType.java)의 `steps()`: 독립·통합 작업의 단계와 순서.
-2. [DataPipelineRunner](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineRunner.java)의 `execute()`: 단계별로 실제 호출하는 서비스.
+2. [DataPipelineStepExecutor](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineStepExecutor.java)의 `execute()`: 단계별로 실제 호출하는 서비스.
 
-Spring은 생성자 주입으로 객체를 연결한다. `DataPipelineRunner.run()`에서 단계 실행 → `DataPipelineExecutionStateService` 결과 저장을 따라간다. 단계별 부분 실패·호출 제한·중단 확인은 `DataPipelineRunner`, 실행 전체의 시작·완료·실패·잠금은 `DataPipelineExecutionService`가 맡는다. 실행 ID·잠금 lease·진행 모니터·서비스키는 `IngestExecutionScope`가 스레드 범위로 보관한다. `verifyCanContinue()`가 실행 소유권과 중지 요청을 확인하고, `propagate()`가 작업 스레드에 이 맥락과 로그 MDC를 넘긴다. 중단된 파이프라인 복구는 같은 실행의 진행 중 수집 기록도 실패로 마감하며 성공 원천을 보존한다.
+Spring은 생성자 주입으로 객체를 연결한다. `DataPipelineRunner.run()`에서 단계 실행 → `DataPipelineExecutionStateService` 결과 저장을 따라간다. 단계별 부분 실패·호출 제한·중단 확인은 `DataPipelineRunner`, 실행 전체의 시작·완료·실패·잠금은 `DataPipelineExecutionService`, 끝나지 못한 실행 복구는 `DataPipelineExecutionRecovery`, 이력·상태 조회는 `DataPipelineExecutionQueryService`가 맡는다. 실행 ID·잠금 lease·진행 모니터·서비스키는 `IngestExecutionScope`가 스레드 범위로 보관한다. `verifyCanContinue()`가 실행 소유권과 중지 요청을 확인하고, `propagate()`가 작업 스레드에 이 맥락과 로그 MDC를 넘긴다. 중단된 파이프라인 복구는 같은 실행의 진행 중 수집 기록도 실패로 마감하며 성공 원천을 보존한다.
 
 ## 작업을 고른 뒤 내려갈 곳
 
@@ -62,7 +62,7 @@ MyHomeAnnouncementSourceMapper → MyHomeAnnouncementSupplyRowResolver → MyHom
 
 관리자가 원천 공급행마다 저장한 매칭의 지문 기반 유효성 판정·확정·해제·단지 통합 때의 이동은 `SavedSupplyMatches`만 안다.
 독립 보강은 `LhAnnouncementEnrichmentService.enrichAll()`에서 시작하며 별도 실패 이력을 관리한다.
-공급 원천과 저장 연결은 각 경로가 읽어 넘기고(정제는 `MyHomeAnnouncementSupplyRowResolver`, 독립 보강은 `LhAnnouncementEnrichmentService`), `LhAnnouncementEnrichmentSources`가 상세 원천과 공급이 없다고 확인된 수집인지를 더해 같은 보강 입력을 만든다. 상세 원천이 없으면 거절한다. `LhAnnouncementEnrichmentWriter`는 공고를 잠그고 확인된 공고의 LH 원천 불일치를 거절한 뒤 공고 값, 일정·첨부(`LhScheduleAttachmentWriter`), 공급행 금액(`LhSupplyAmountWriter`)을 차례로 쓴다. 보강이 보는 공급행 선택(보강에서 뺀 마이홈 원천 제외, 복수 공급행으로 보정한 묶음 행은 매칭 대상에서 빼고 그 행에 붙는 LH 공급은 건너뜀)은 `LhEnrichmentSupplyRows`가 정하고 관리자 매칭 진단도 같은 규칙을 쓴다. LH 원천 식별자 형식은 `LhSourceIdentifier`만 알고, 보강이 고치거나 지울 수 있는 값(관리자가 고치지 않은 LH 값)은 `LhOwnedValues`가 판정한다.
+공급 원천과 저장 연결은 각 경로가 읽어 넘기고(정제는 `MyHomeAnnouncementSupplyRowResolver`, 독립 보강은 `LhAnnouncementEnricher`), `LhAnnouncementEnrichmentSources`가 상세 원천과 공급이 없다고 확인된 수집인지를 더해 같은 보강 입력을 만든다. 상세 원천이 없으면 거절한다. `LhAnnouncementEnrichmentWriter`는 공고를 잠그고 확인된 공고의 LH 원천 불일치를 거절한 뒤 공고 값, 일정·첨부(`LhScheduleAttachmentWriter`), 공급행 금액(`LhSupplyAmountWriter`)을 차례로 쓴다. 보강이 보는 공급행 선택(보강에서 뺀 마이홈 원천 제외, 복수 공급행으로 보정한 묶음 행은 매칭 대상에서 빼고 그 행에 붙는 LH 공급은 건너뜀)은 `LhEnrichmentSupplyRows`가 정하고 관리자 매칭 진단도 같은 규칙을 쓴다. LH 원천 식별자 형식은 `LhSourceIdentifier`만 알고, 보강이 고치거나 지울 수 있는 값(관리자가 고치지 않은 LH 값)은 `LhOwnedValues`가 판정한다.
 
 정제와 보강은 `mapping → enrichment` 한 방향으로만 의존한다. 공고 한 건을 쓰는 경로에서 정제는 보강을 `MappedAnnouncementLhEnrichment`(LH 보강 실행·LH 소유 해제, 거절은 `LhAnnouncementEnrichmentRejectedException`)로만 부른다. 보강이 정제에서 확인하는 상태(미해소 정제 실패 공고, 공통값 거절 사유)는 `LhEnrichmentMappingState`로 받는다. 구현은 `MappedAnnouncementLhEnrichment`가 `LhAnnouncementEnrichmentWriter`(enrichment), `LhEnrichmentMappingState`가 `MyHomeLhEnrichmentMappingState`(mapping)다.
 LH 공급 연결의 판정·지문 규칙(`LhSupplyRowLinks`)과 저장소는 정제와 보강이 함께 쓰는 규칙으로 enrichment에 둔다. 관리자 연결의 저장·해제는 정제 쪽 `LhSupplyLinkService`가 한다. 이 규칙이나 지문 필드를 바꾸면 이미 저장한 연결이 무효가 되고 정제의 `MyHomeAnnouncementSupplyRowResolver`·`LhSupplyLinkService`도 영향을 받는다. 관리자 연결 화면의 매칭 진단(`LhSupplyMatchDiagnostics`)과 단지 병합의 세대수 매칭(`LhHousingTypeHouseholdMatcher`)도 정제가 쓰는 보강 쪽 규칙이다.
@@ -101,7 +101,7 @@ LH 공급·상세는 TTL로 호출을 생략하지 않으며 TTL 환경 설정�
 
 | 질문 | 시작점 |
 |---|---|
-| 실행·중단·복구 | [DataPipelineExecutionService](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineExecutionService.java) → `DataPipelineExecutionStateService`·실행 잠금 |
+| 실행·중단·복구 | [DataPipelineExecutionService](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineExecutionService.java) → `DataPipelineExecutionStateService`·실행 잠금, 복구는 `DataPipelineExecutionRecovery`, 조회는 `DataPipelineExecutionQueryService` |
 | 수집·정제의 동시 실행 차단 | [IngestExecutionLockInterceptor](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/controller/IngestExecutionLockInterceptor.java)(개별 API)와 `DataPipelineExecutionService`(파이프라인)가 같은 [DataPipelineExecutionLock](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/repository/DataPipelineExecutionLock.java)을 잡는다 |
 | 실패의 해결·재발 | [IngestFailure](../../../backend/src/main/java/com/toadzip/backend/ingest/failure/domain/IngestFailure.java)의 상태 전이, [IngestFailureReconciler](../../../backend/src/main/java/com/toadzip/backend/ingest/failure/domain/IngestFailureReconciler.java)의 일괄 조정 |
 | 위치 파일 적재 | [LocationSummaryImportService](../../../backend/src/main/java/com/toadzip/backend/ingest/location/service/LocationSummaryImportService.java) → `LocationSummaryFileParser`·`LocationSummaryStore` |

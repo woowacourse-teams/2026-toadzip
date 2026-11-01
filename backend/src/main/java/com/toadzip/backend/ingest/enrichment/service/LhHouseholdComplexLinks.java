@@ -44,7 +44,6 @@ class LhHouseholdComplexLinks {
                 complex.getAddress().getRoadAddress(), complex.isAdminDeleted());
     }
 
-    /** 같은 단지를 두고 경쟁하는 LH 묶음 전체의 구성과 세대수 값이다. 묶음이 늘거나 줄거나 값이 바뀌면 달라진다. */
     /** 저장한 단지 결정 이후 경쟁하는 원천 묶음과 대상 단지·주택형이 바뀌지 않았으면 결정을 그대로 쓸 수 있다. */
     boolean decisionCurrent(LhHouseholdTargetDecision decision, List<LhHouseholdMatchedSource> group,
             HousingComplex complex, List<HousingType> housingTypes) {
@@ -52,6 +51,7 @@ class LhHouseholdComplexLinks {
                 && decisionTargetFingerprint(complex, housingTypes).equals(decision.getTargetFingerprint());
     }
 
+    /** 같은 단지를 두고 경쟁하는 LH 묶음 전체의 구성과 세대수 값이다. 묶음이 늘거나 줄거나 값이 바뀌면 달라진다. */
     String sourcesFingerprint(List<LhHouseholdMatchedSource> group) {
         return hash(group.stream().sorted(Comparator.comparing(matched -> matched.sourceKey().failureKey()))
                 .map(matched -> matched.sourceKey().failureKey() + "|" + sourceFingerprint(matched.source())
