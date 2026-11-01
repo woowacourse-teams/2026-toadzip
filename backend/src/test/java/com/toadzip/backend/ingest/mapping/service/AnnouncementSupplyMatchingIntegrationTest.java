@@ -35,8 +35,6 @@ import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Request
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Row;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -54,7 +52,6 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.jdbc.Sql;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
@@ -627,11 +624,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 정제_후_LH_보강이_실패하면_공고와_공급행을_모두_롤백한다() throws Exception {
-        var source = sources.findAll().getFirst();
-        ReflectionTestUtils.setField(source, "suplyInsttNm", "LH");
-        ReflectionTestUtils.setField(source, "url", "https://example.com/announcements?panId=manual-lh"
-                + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07");
-        sources.save(source);
+        var source = savedAsLhSource();
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
         for (var target : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
             progressStore.complete(target, TARGET, candidate.requestDescription(), candidate.panId());
@@ -1039,11 +1032,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
             executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void 다시_정제에서_LH_보강이_거절되면_저장은_되돌리고_전체_정제처럼_LH_보강_실패를_기록한다() throws Exception {
-        var source = sources.findAll().getFirst();
-        ReflectionTestUtils.setField(source, "suplyInsttNm", "LH");
-        ReflectionTestUtils.setField(source, "url", "https://example.com/announcements?panId=manual-lh"
-                + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07");
-        sources.save(source);
+        var source = savedAsLhSource();
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
         lhStorage.replaceDetails(candidate.panId(), candidate.requestDescription(), List.of(LhSourceViews.detail(0, candidate.panId(),
                 new LhAnnouncementDetailSourceSnapshot(
@@ -1181,6 +1170,14 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 """).param(TARGET).query(String.class).list();
     }
 
+    /** 저장된 첫 마이홈 원천을 LH 공고 원천으로 바꿔 다시 저장한다. */
+    private MyHomeAnnouncementSourceView savedAsLhSource() {
+        return sources.save(MyHomeSourceViews.change(sources.findAll().getFirst())
+                .suplyInsttNm("LH")
+                .url("https://example.com/announcements?panId=manual-lh&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07")
+                .read());
+    }
+
     /** 관리자 화면의 PDF 보정과 같은 경로로 공급행의 주택형 연결만 바꾼다. */
     private void correctFromPdf(long announcementId, HousingType housingType) throws Exception {
         var state = json.readTree(mvc.perform(get("/api/admin/announcements/" + announcementId + "/json-corrections")
@@ -1188,8 +1185,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 .andReturn().getResponse().getContentAsString()).get("data");
         var request = json.createObjectNode();
         request.put("snapshotToken", state.path("snapshotToken").asText());
-        request.set("document", json.readTree(Files.readString(
-                Path.of("../docs/fixtures/announcement-import-v1-valid.json"))));
+        request.set("document", json.readTree(new ClassPathResource("announcement/import-v1-valid.json").getInputStream()));
         request.putArray("fields");
         request.putArray("schedules");
         request.putArray("attachments");
@@ -1224,11 +1220,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 뒤의_LH_보강이_실패하면_선택과_제품과_선택_이력을_함께_취소한다() throws Exception {
-        var source = sources.findAll().getFirst();
-        ReflectionTestUtils.setField(source, "suplyInsttNm", "LH");
-        ReflectionTestUtils.setField(source, "url", "https://example.com/announcements?panId=manual-lh"
-                + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07");
-        sources.save(source);
+        var source = savedAsLhSource();
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
         for (var target : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
             progressStore.complete(target, TARGET, candidate.requestDescription(), candidate.panId());

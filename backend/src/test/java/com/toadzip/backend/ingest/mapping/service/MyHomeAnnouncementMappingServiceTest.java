@@ -772,8 +772,7 @@ class MyHomeAnnouncementMappingServiceTest {
         List<Long> previousRowIds = supplyRowRepository.findAll().stream().map(SupplyRow::getId).sorted().toList();
 
         historical = MyHomeSourceViews.inactive(historical);
-        ReflectionTestUtils.setField(current, "pblancNm", "정정된 국민임대 입주자 모집공고");
-        ReflectionTestUtils.setField(current, "endDe", "20260902");
+        current = MyHomeSourceViews.change(current).pblancNm("정정된 국민임대 입주자 모집공고").endDe("20260902").read();
         sourceRepository.saveAll(List.of(current, historical));
 
         assertThat(service.mapAll().failedSourceRowCount()).isZero();
@@ -798,7 +797,7 @@ class MyHomeAnnouncementMappingServiceTest {
         previous = MyHomeSourceViews.seen(previous, "earlier", COLLECTED_AT);
         previous = MyHomeSourceViews.inactive(previous);
         latest = MyHomeSourceViews.seen(latest, "later", COLLECTED_AT.plusSeconds(60));
-        ReflectionTestUtils.setField(latest, "pblancNm", "마지막으로 관찰한 공고명");
+        latest = MyHomeSourceViews.change(latest).pblancNm("마지막으로 관찰한 공고명").read();
         latest = MyHomeSourceViews.inactive(latest);
         sourceRepository.saveAll(List.of(previous, latest));
 
@@ -815,7 +814,7 @@ class MyHomeAnnouncementMappingServiceTest {
         MyHomeAnnouncementSourceView second = source(1, data("21026", 2, "부산도시공사", "동삼2"));
         first = MyHomeSourceViews.seen(first, "same-run", COLLECTED_AT);
         second = MyHomeSourceViews.seen(second, "same-run", COLLECTED_AT);
-        ReflectionTestUtils.setField(second, "pblancNm", "충돌하는 공고명");
+        second = MyHomeSourceViews.change(second).pblancNm("충돌하는 공고명").read();
         sourceRepository.saveAll(List.of(first, second));
 
         assertThat(service.mapAll().failedSourceRowCount()).isEqualTo(2);
@@ -1349,11 +1348,11 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     private void saveLhSupplyLink(String announcementIdentifier, String panId) {
-        MyHomeAnnouncementSourceView source = sourceRepository.findAll().stream()
+        MyHomeAnnouncementSourceView source = MyHomeSourceViews.change(sourceRepository.findAll().stream()
                 .filter(row -> row.getPblancId().equals(announcementIdentifier))
-                .findFirst().orElseThrow();
-        ReflectionTestUtils.setField(source, "url", "https://example.com/announcements?panId=" + panId
-                + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07");
+                .findFirst().orElseThrow())
+                .url("https://example.com/announcements?panId=" + panId + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07")
+                .read();
         sourceRepository.save(source);
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
         completeLinks(announcementIdentifier, candidate);

@@ -17,8 +17,6 @@ import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipServi
 import com.toadzip.backend.notification.NotificationFixtures;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -27,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -240,8 +239,7 @@ class AnnouncementJsonCorrectionIntegrationTest {
 
     private ObjectNode request(long id) throws Exception {
         var state = data("/api/admin/announcements/" + id + "/json-corrections");
-        var document = (ObjectNode) json.readTree(Files.readString(
-                Path.of("../docs/fixtures/announcement-import-v1-valid.json")));
+        var document = (ObjectNode) json.readTree(new ClassPathResource("announcement/import-v1-valid.json").getInputStream());
         ((ObjectNode) document.get("announcement")).put("name", "JSON으로 확인한 공고");
         var request = json.createObjectNode();
         request.put("snapshotToken", state.path("snapshotToken").asText());

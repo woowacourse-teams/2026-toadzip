@@ -26,8 +26,6 @@ import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipServi
 import com.toadzip.backend.notification.NotificationFixtures;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -39,6 +37,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -524,8 +523,7 @@ class SupplyCorrectionIntegrationTest {
         var state = json.readTree(mvc.perform(get(root).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
         var request = json.createObjectNode().put("snapshotToken", state.get("snapshotToken").asText());
-        var document = (ObjectNode) json.readTree(Files.readString(
-                Path.of("../docs/fixtures/announcement-import-v1-valid.json")));
+        var document = (ObjectNode) json.readTree(new ClassPathResource("announcement/import-v1-valid.json").getInputStream());
         ((ObjectNode) document.get("announcement")).put("name", "PDF 보정 공고");
         request.set("document", document);
         request.putArray("fields").add("name"); request.putArray("schedules"); request.putArray("attachments");

@@ -22,7 +22,7 @@
 ## CI 실행 범위
 
 - PR은 `dorny/paths-filter`로 변경된 영역만 검증한다. 설명 문서만 바뀌면 무거운 검증을 생략한다.
-  루트 설정, `.github/`, `scripts/`, `tests/`의 실행 파일과 공통 테스트 자료 `docs/fixtures/` 변경은 양쪽 검증을 실행한다.
+  루트 설정, `.github/`, `scripts/`, `tests/`의 실행 파일과 문서용 예시 입력 `docs/fixtures/` 변경은 양쪽 검증을 실행한다.
   백엔드의 지도 대표 좌표 CSV도 프론트엔드 일치 검사에서 읽으므로 양쪽을 검증한다.
   [ci-paths.yml](../../.github/ci-paths.yml)의 제외 규칙은 `some-with-excludes` 방식으로 평가한다. 소스 디렉터리 안의 Markdown 리소스는 제외하지 않는다.
 - [백엔드 CI](../../.github/workflows/backend-ci.yml)는 Flyway 검사와 백엔드 테스트 두 분할을 실행하고 `Backend Check`로 결과를 모은다.

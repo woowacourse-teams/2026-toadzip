@@ -40,19 +40,33 @@ public final class LhSourceViews {
     /** 같은 원천을 다른 조회 조건 해시로 읽은 것처럼 만든다. */
     public static LhAnnouncementDetailSourceView requested(LhAnnouncementDetailSourceView source, String requestHash) {
         return LhAnnouncementDetailSourceView.read(source.getId(), source.getSourceOrder(), source.getPanId(),
-                requestHash, source.getCollectedAt(), new LhAnnouncementDetailSourceSnapshot(
-                        source.getDatasetType(), source.getComplexName(), source.getAddress(),
-                        source.getDetailAddress(), source.getTotalUnitCount(), source.getHeatingDescription(),
-                        source.getExclusiveAreaRange(), source.getExpectedMoveInYearMonth(),
-                        source.getGuidanceText(), source.getApplicationPeriod(), source.getApplicationBeginDate(),
-                        source.getApplicationEndDate(), source.getWinnerAnnouncementDate(),
-                        source.getDocumentTargetAnnouncementDate(), source.getDocumentSubmissionBeginDate(),
-                        source.getDocumentSubmissionEndDate(), source.getContractBeginDate(),
-                        source.getContractEndDate(), source.getReceptionAddress(),
-                        source.getReceptionDetailAddress(), source.getOperationBegin(), source.getOperationEnd(),
-                        source.getPhone(), source.getReceptionGuidance(), source.getKind(), source.getName(),
-                        source.getUrl(), source.getAttachmentComplexName(), source.getCorrectionReason(),
-                        source.getEtcContents()));
+                requestHash, source.getCollectedAt(), snapshotOf(source, source.getComplexName()));
+    }
+
+    /** 같은 상세 원천이 단지명만 바뀌어 다시 수집된 경우. */
+    public static LhAnnouncementDetailSourceView complexRenamed(
+            LhAnnouncementDetailSourceView source, String complexName
+    ) {
+        return LhAnnouncementDetailSourceView.read(source.getId(), source.getSourceOrder(), source.getPanId(),
+                source.getRequestHash(), source.getCollectedAt(), snapshotOf(source, complexName));
+    }
+
+    private static LhAnnouncementDetailSourceSnapshot snapshotOf(
+            LhAnnouncementDetailSourceView source, String complexName
+    ) {
+        return new LhAnnouncementDetailSourceSnapshot(
+                source.getDatasetType(), complexName, source.getAddress(),
+                source.getDetailAddress(), source.getTotalUnitCount(), source.getHeatingDescription(),
+                source.getExclusiveAreaRange(), source.getExpectedMoveInYearMonth(),
+                source.getGuidanceText(), source.getApplicationPeriod(), source.getApplicationBeginDate(),
+                source.getApplicationEndDate(), source.getWinnerAnnouncementDate(),
+                source.getDocumentTargetAnnouncementDate(), source.getDocumentSubmissionBeginDate(),
+                source.getDocumentSubmissionEndDate(), source.getContractBeginDate(),
+                source.getContractEndDate(), source.getReceptionAddress(),
+                source.getReceptionDetailAddress(), source.getOperationBegin(), source.getOperationEnd(),
+                source.getPhone(), source.getReceptionGuidance(), source.getKind(), source.getName(),
+                source.getUrl(), source.getAttachmentComplexName(), source.getCorrectionReason(),
+                source.getEtcContents());
     }
 
     /** 목록에서 처음 본 공고처럼 변경 시각과 수집 시각이 같은 원천을 만든다. */
