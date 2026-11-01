@@ -7,9 +7,7 @@ import com.toadzip.backend.announcement.domain.SupplyRowGroup;
 import com.toadzip.backend.announcement.repository.SupplyRowGroupRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
-import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchResult;
 import java.util.List;
@@ -25,7 +23,7 @@ class AnnouncementSupplySplitWriter {
     private final SupplyRowGroupRepository groups;
     private final SupplyRowRepository rows;
     private final SupplyTargetRepository targets;
-    private final AnnouncementSupplyMatchDecisionRepository decisions;
+    private final SavedSupplyMatches savedMatches;
     private final SupplyMatchingFingerprint fingerprints;
 
     void apply(Announcement announcement, SplitPlan plan) {
@@ -64,7 +62,7 @@ class AnnouncementSupplySplitWriter {
             applyTarget(announcement, group, data, members, target, displayOrder++, plan.expanded());
         }
         rows.deleteAll(replaced);
-        decisions.findByRowIdentifier(origin).ifPresent(decisions::delete);
+        savedMatches.release(origin);
         rows.flush();
         announcement.recordAdminSupplyChange();
     }

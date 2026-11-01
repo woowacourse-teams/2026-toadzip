@@ -10,12 +10,10 @@ import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
-import com.toadzip.backend.ingest.mapping.domain.AnnouncementSupplyMatchDecision;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMerge;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
-import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMergeStore;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingData;
@@ -47,7 +45,7 @@ public class MyHomeComplexMappingWriter {
     private final MyHomeComplexSourceReader sourceRepository;
     private final MyHomeComplexSourceMapper sourceMapper;
     private final MyHomeComplexMergeStore mergeStore;
-    private final AnnouncementSupplyMatchDecisionRepository matchDecisionRepository;
+    private final SavedSupplyMatches savedMatches;
     private final SupplyMatchingFingerprint fingerprints;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -149,8 +147,7 @@ public class MyHomeComplexMappingWriter {
         }
         HousingComplex representative = complexes.getFirst();
         List<Long> donorIds = complexIds.subList(1, complexIds.size());
-        List<Long> validDecisions = matchDecisionRepository.findAllByComplexIdIn(donorIds).stream()
-                .filter(this::hasValidTarget).map(AnnouncementSupplyMatchDecision::getId).toList();
+        List<Long> validDecisions = savedMatches.validIn(donorIds);
         List<Long> validGroupRows = donorIds.stream().flatMap(id -> supplyRowRepository.findAllByHousingComplexId(id)
                         .stream())
                 .filter(row -> row.getConfirmedTargetFingerprint() != null && row.getHousingType() != null
@@ -158,18 +155,9 @@ public class MyHomeComplexMappingWriter {
                 .map(SupplyRow::getId).toList();
         representative.adoptVerifiedMerge(representative.getTotalHouseholdCount(), imageUrl, moveOutCount);
         mergeStore.absorbSplitComplexes(representative.getId(), donorIds);
-        matchDecisionRepository.findAllById(validDecisions).forEach(decision -> decision.moveToComplex(
-                representative.getId(),
-                fingerprints.target(housingTypeRepository.findById(decision.getHousingTypeId()).orElseThrow())));
+        savedMatches.moveToComplex(validDecisions, representative.getId());
         supplyRowRepository.findAllById(validGroupRows).forEach(row ->
                 row.reconfirmTargetAfterComplexMove(fingerprints.target(row.getHousingType())));
-    }
-
-    private boolean hasValidTarget(AnnouncementSupplyMatchDecision decision) {
-        HousingType type = decision.getHousingTypeId() == null ? null
-                : housingTypeRepository.findById(decision.getHousingTypeId()).orElse(null);
-        return type != null && type.getHousingComplex().getId().equals(decision.getComplexId())
-                && fingerprints.target(type).equals(decision.getTargetFingerprint());
     }
 
     private ComplexWriteResult upsertComplex(
@@ -423,7 +411,7 @@ public class MyHomeComplexMappingWriter {
         List<HousingType> deletable = stale.stream()
                 .filter(type -> !type.isAdminModified())
                 .filter(type -> !supplyRowRepository.existsByHousingType(type))
-                .filter(type -> !matchDecisionRepository.existsByHousingTypeId(type.getId()))
+                .filter(type -> !savedMatches.references(type))
                 .filter(type -> !preserveSupplementalValues || !type.hasSupplementalInformation())
                 .toList();
         housingTypeRepository.deleteAll(deletable);

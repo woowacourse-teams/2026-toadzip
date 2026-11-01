@@ -24,7 +24,6 @@ import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.ReleaseRequest;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.SaveRequest;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.SavedLink;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.View;
-import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -63,7 +62,7 @@ public class LhSupplyLinkService {
     private final AdminDataChangeRepository changes;
     private final ObjectMapper json;
     private final LhSupplyMatchDiagnostics diagnostics;
-    private final AnnouncementSupplyMatchDecisionRepository decisions;
+    private final SavedSupplyMatches savedMatches;
 
     public View view(String identifier) {
         return view(identifier, List.of());
@@ -184,7 +183,7 @@ public class LhSupplyLinkService {
         }
         List<String> released = new ArrayList<>();
         for (String rowIdentifier : rowIdentifiers) {
-            decisions.findByRowIdentifier(rowIdentifier).ifPresent(decision -> {
+            savedMatches.release(rowIdentifier).ifPresent(decision -> {
                 var previous = new LinkedHashMap<String, Object>();
                 previous.put("rowIdentifier", rowIdentifier);
                 previous.put("complexId", decision.getComplexId());
@@ -192,7 +191,6 @@ public class LhSupplyLinkService {
                 previous.put("sourceUrl", decision.getSourceUrl());
                 previous.put("reason", decision.getReason());
                 previous.put("actor", decision.getActor());
-                decisions.delete(decision);
                 changes.save(new AdminDataChange(RESOURCE, linkId, "RELEASE_SUPPLY_MATCH", actor,
                         json.writeValueAsString(previous), json.writeValueAsString(Map.of(
                                 "announcementIdentifier", identifier, "rowIdentifier", rowIdentifier,
@@ -200,7 +198,7 @@ public class LhSupplyLinkService {
                 released.add(rowIdentifier);
             });
         }
-        decisions.flush();
+        savedMatches.flush();
         return released;
     }
 

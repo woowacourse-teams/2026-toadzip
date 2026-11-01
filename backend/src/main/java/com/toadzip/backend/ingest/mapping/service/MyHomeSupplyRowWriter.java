@@ -9,7 +9,6 @@ import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
-import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchResult;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchingFailureData;
@@ -34,7 +33,7 @@ class MyHomeSupplyRowWriter {
     private final SupplyRowRepository supplyRowRepository;
     private final SupplyTargetRepository supplyTargetRepository;
     private final MyHomeAnnouncementSupplyMatcher supplyMatcher;
-    private final AnnouncementSupplyMatchDecisionRepository matchDecisions;
+    private final SavedSupplyMatches savedMatches;
     private final SupplyRowGroupRepository supplyGroups;
     private final AnnouncementSupplySplitWriter splitWriter;
 
@@ -179,7 +178,7 @@ class MyHomeSupplyRowWriter {
             // 관리자 보정은 표기값만 보호한다. 연결은 저장한 매칭이나 이번 선택이 있을 때 그 값을 따른다.
             if (stored.isAdminModified() && match.failure() == null
                     && (selections.containsKey(data.sourceSupplyRowIdentifier())
-                    || matchDecisions.findByRowIdentifier(data.sourceSupplyRowIdentifier()).isPresent())) {
+                    || savedMatches.exists(data.sourceSupplyRowIdentifier()))) {
                 changed |= stored.relinkByAdminMatch(match.complex(), match.housingType());
             }
             // 이전 주택형의 금액이 새 주택형에 남지 않게 보호한다. 미연결이던 행은 이어질 이전 금액이 없다.
@@ -201,7 +200,7 @@ class MyHomeSupplyRowWriter {
                 continue;
             }
             if (!stored.isAdminModified()
-                    && matchDecisions.findByRowIdentifier(stored.getSourceSupplyRowIdentifier()).isEmpty()) {
+                    && !savedMatches.exists(stored.getSourceSupplyRowIdentifier())) {
                 staleRows.add(stored);
                 continue;
             }

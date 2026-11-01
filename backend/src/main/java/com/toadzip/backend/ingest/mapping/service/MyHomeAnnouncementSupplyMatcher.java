@@ -7,11 +7,9 @@ import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
-import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Function;
 import org.springframework.stereotype.Component;
 
@@ -20,34 +18,27 @@ class MyHomeAnnouncementSupplyMatcher {
 
     private final HousingComplexRepository housingComplexRepository;
     private final HousingTypeRepository housingTypeRepository;
-    private final AnnouncementSupplyMatchDecisionRepository decisions;
-    private final SupplyMatchingFingerprint fingerprints;
+    private final SavedSupplyMatches savedMatches;
 
     MyHomeAnnouncementSupplyMatcher(
             HousingComplexRepository housingComplexRepository,
             HousingTypeRepository housingTypeRepository,
-            AnnouncementSupplyMatchDecisionRepository decisions,
-            SupplyMatchingFingerprint fingerprints
+            SavedSupplyMatches savedMatches
     ) {
         this.housingComplexRepository = housingComplexRepository;
         this.housingTypeRepository = housingTypeRepository;
-        this.decisions = decisions;
-        this.fingerprints = fingerprints;
+        this.savedMatches = savedMatches;
     }
 
     MyHomeSupplyMatchResult match(MyHomeSupplyRowMappingData data) {
-        var saved = decisions.findByRowIdentifier(data.sourceSupplyRowIdentifier()).orElse(null);
+        var saved = savedMatches.find(data).orElse(null);
         if (saved != null) {
-            var type = housingTypeRepository.findById(Objects.requireNonNullElse(saved.getHousingTypeId(), -1L))
-                    .orElse(null);
-            if (type == null || !type.getHousingComplex().getId().equals(saved.getComplexId())
-                    || !fingerprints.source(data).equals(saved.getSourceFingerprint())
-                    || !fingerprints.target(type).equals(saved.getTargetFingerprint())) {
+            if (!saved.valid()) {
                 return MyHomeSupplyMatchResult.failure(data,
                         MyHomeAnnouncementMappingFailureReason.MANUAL_MATCH_REVIEW_REQUIRED,
                         "저장한 매칭의 원천 또는 연결 대상이 변경되었습니다. 근거를 다시 확인하고 선택을 저장해 주세요.");
             }
-            return matchSelected(data, saved.getComplexId(), saved.getHousingTypeId());
+            return matchSelected(data, saved.complexId(), saved.housingTypeId());
         }
         List<HousingComplex> complexes = housingComplexRepository.findAllByPnuAndSupplyType(
                 data.pnu(),

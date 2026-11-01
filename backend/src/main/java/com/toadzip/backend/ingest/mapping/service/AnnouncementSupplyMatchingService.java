@@ -11,19 +11,17 @@ import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
-import com.toadzip.backend.ingest.mapping.domain.AnnouncementSupplyMatchDecision;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ExclusionRequest;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.RefineRequest;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ReleaseRequest;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Row;
-import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SavedMatch;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SplitGroup;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SplitRequest;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SplitRow;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.SplitSelection;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
-import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureStore;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingWriter.Correction;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchResult;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
@@ -53,7 +51,7 @@ public class AnnouncementSupplyMatchingService {
     private final MyHomeAnnouncementSupplyMatcher matcher;
     private final AnnouncementRepository announcements;
     private final MyHomeAnnouncementMappingWriter writer;
-    private final AnnouncementSupplyMatchDecisionRepository decisions;
+    private final SavedSupplyMatches savedMatches;
     private final SupplyMatchingFingerprint fingerprints;
     private final AdminDataChangeRepository changes;
     private final ObjectMapper json;
@@ -112,7 +110,7 @@ public class AnnouncementSupplyMatchingService {
                     token(data),
                     data.sourceComplexName(), data.sourceHousingTypeName(), data.pnu(),
                     data.exclusiveArea(), data.supplyArea(), complexId, typeId, match.failureDetail(),
-                    savedMatch(data, match.failure() != null), data.source().getSumSuplyCo(), null,
+                    savedMatches.view(data, match.failure() != null), data.source().getSumSuplyCo(), null,
                     excluded.contains(data.sourceSupplyRowIdentifier())));
         }
         return List.copyOf(result.values());
@@ -186,7 +184,7 @@ public class AnnouncementSupplyMatchingService {
             rowsBefore = json.writeValueAsString(rows(identifier));
         }
         try {
-            var report = writer.writeSelected(current, previous, selections, plans).report();
+            var report = writer.correct(current, previous, new Correction(selections, plans)).report();
             var announcement = announcements.findBySourceAnnouncementIdentifier(identifier).orElseThrow();
             if (request.rememberSelection()) {
                 for (var data : sourceRows) {
@@ -194,16 +192,12 @@ public class AnnouncementSupplyMatchingService {
                     if (match == null) {
                         continue;
                     }
-                    var decision = decisions.findByRowIdentifier(data.sourceSupplyRowIdentifier())
-                            .orElseGet(() -> new AnnouncementSupplyMatchDecision(data.sourceSupplyRowIdentifier()));
-                    String before = json.writeValueAsString(savedMatch(data, false));
-                    decision.confirm(match.complex().getId(), match.housingType().getId(), fingerprints.source(data),
-                            fingerprints.target(match.housingType()), request.sourceUrl().strip(),
-                            request.reason().strip(), actor);
-                    decisions.saveAndFlush(decision);
+                    String before = json.writeValueAsString(savedMatches.view(data, false));
+                    savedMatches.confirm(data, match, request.sourceUrl().strip(), request.reason().strip(), actor);
+                    savedMatches.flush();
                     changes.save(new AdminDataChange("ANNOUNCEMENT", announcement.getId(), "SAVE_SUPPLY_MATCH", actor,
                             before, json.writeValueAsString(Map.of("rowIdentifier", data.sourceSupplyRowIdentifier(),
-                                    "decision", savedMatch(data, false)))));
+                                    "decision", savedMatches.view(data, false)))));
                 }
             }
             if (!plans.isEmpty()) {
@@ -232,7 +226,7 @@ public class AnnouncementSupplyMatchingService {
         var currentSources = sources.findAllByPblancIdOrderByIdAsc(identifier);
         var previous = writablePrevious(identifier, current, false);
         try {
-            return writer.writeSelected(current, previous, Map.of(), List.of()).report();
+            return writer.correct(current, previous, Correction.NONE).report();
         }
         catch (LhEnrichmentRejectedMappingException exception) {
             var failures = currentSources.stream().map(source -> MyHomeAnnouncementMappingService.failureOf(
@@ -303,34 +297,23 @@ public class AnnouncementSupplyMatchingService {
                     || groups.findBySourceRowIdentifier(SupplyRowGroupOrigins.key(data)).isPresent()) {
                 continue;
             }
-            var saved = decisions.findByRowIdentifier(rowIdentifier);
             var type = links.get(rowIdentifier);
             if (type == null) {
-                saved.ifPresent(decisions::delete);
+                savedMatches.release(rowIdentifier);
                 continue;
             }
             var match = matcher.matchSelected(data, type.getHousingComplex().getId(), type.getId());
             if (match.failure() != null) {
                 continue;
             }
-            var decision = saved.orElseGet(() -> new AnnouncementSupplyMatchDecision(rowIdentifier));
-            decision.confirm(match.complex().getId(), type.getId(), fingerprints.source(data),
-                    fingerprints.target(type), sourceUrl.strip(), reason.strip(), actor);
-            decisions.save(decision);
+            savedMatches.confirm(data, match, sourceUrl.strip(), reason.strip(), actor);
         }
-        decisions.flush();
+        savedMatches.flush();
     }
 
     private String token(MyHomeSupplyRowMappingData data) {
-        return fingerprints.splitReview(fingerprints.review(data,
-                decisions.findByRowIdentifier(data.sourceSupplyRowIdentifier()).orElse(null)),
+        return fingerprints.splitReview(savedMatches.reviewToken(data),
                 groups.findBySourceRowIdentifier(SupplyRowGroupOrigins.key(data)).orElse(null));
-    }
-
-    private SavedMatch savedMatch(MyHomeSupplyRowMappingData data, boolean reviewRequired) {
-        return decisions.findByRowIdentifier(data.sourceSupplyRowIdentifier()).map(value -> new SavedMatch(
-                value.getComplexId(), value.getHousingTypeId(), value.getSourceUrl(), value.getReason(),
-                value.getActor(), value.getUpdatedAt(), reviewRequired)).orElse(null);
     }
 
     private void validateEvidence(RefineRequest request) {
@@ -361,7 +344,7 @@ public class AnnouncementSupplyMatchingService {
         }
         String before = json.writeValueAsString(rows(identifier));
         try {
-            writer.writeSplit(current, previous, plan);
+            writer.correct(current, previous, Correction.split(plan));
         } catch (MyHomeAnnouncementMappingRejectedException exception) {
             throw new InvalidIngestRequestException("정제 실패: " + exception.getMessage());
         }
@@ -416,12 +399,13 @@ public class AnnouncementSupplyMatchingService {
         if (!token(data).equals(request.token())) {
             throw new AdminDataConflictException("원천 또는 저장한 선택이 변경되었습니다. 다시 조회해 주세요.");
         }
-        var decision = decisions.findByRowIdentifier(request.rowIdentifier())
-                .orElseThrow(() -> new AdminDataConflictException("저장한 매칭이 없습니다. 다시 조회해 주세요."));
+        if (!savedMatches.exists(request.rowIdentifier())) {
+            throw new AdminDataConflictException("저장한 매칭이 없습니다. 다시 조회해 주세요.");
+        }
         var announcement = announcements.findBySourceAnnouncementIdentifierForUpdate(identifier).orElseThrow();
-        String before = json.writeValueAsString(savedMatch(data, false));
-        decisions.delete(decision);
-        decisions.flush();
+        String before = json.writeValueAsString(savedMatches.view(data, false));
+        savedMatches.release(request.rowIdentifier());
+        savedMatches.flush();
         changes.save(new AdminDataChange("ANNOUNCEMENT", announcement.getId(), "RELEASE_SUPPLY_MATCH", actor,
                 before, json.writeValueAsString(Map.of("rowIdentifier", request.rowIdentifier(),
                         "reason", request.reason().strip()))));

@@ -41,7 +41,7 @@ public class MyHomeAnnouncementMappingWriter {
     private final MyHomeAnnouncementMappingFailureStore failureStore;
     private final AnnouncementSupplySplitWriter splitWriter;
 
-    /** 신규 공고·공급행·LH 보강을 하나의 트랜잭션으로 저장한다. */
+    /** 신규 공고·공급행·LH 보강을 하나의 트랜잭션으로 저장한다. 이미 등록된 공고는 거절한다. */
     @Transactional
     public MyHomeAnnouncementWriteResult register(ResolvedAnnouncement resolved, Announcement previous) {
         IngestExecutionScope.verifyCanContinue();
@@ -49,36 +49,31 @@ public class MyHomeAnnouncementMappingWriter {
         if (announcementRepository.findBySourceAnnouncementIdentifierForUpdate(identifier).isPresent()) {
             throw new AnnouncementRegistrationException("이미 등록된 공고입니다: " + identifier);
         }
-        return writeRegistration(resolved, previous, Map.of());
+        return writeStrictly(resolved, previous, Correction.NONE);
     }
 
     /**
-     * 요청에서 검증한 선택과 원천행 분할을 이번 정제에 함께 적용한다. 분할을 먼저 적용하고 나머지 행을 정제한다.
+     * 관리자 보정을 적용해 공고 한 건만 다시 정제한다. 분할을 먼저 적용하고 나머지 행을 정제한다.
      * 선택을 기억하는 규칙은 호출한 쪽이 저장한다.
      */
     @Transactional
-    public MyHomeAnnouncementWriteResult writeSelected(ResolvedAnnouncement resolved, Announcement previous,
-            Map<String, MyHomeSupplyMatchResult> selections, List<AnnouncementSupplySplitWriter.SplitPlan> plans) {
-        return writeRegistration(resolved, previous, selections, plans);
+    public MyHomeAnnouncementWriteResult correct(ResolvedAnnouncement resolved, Announcement previous,
+            Correction correction) {
+        return writeStrictly(resolved, previous, correction);
     }
 
+    /** 전체 정제의 공고 한 건. 공급행 매칭 실패는 결과로 돌려주고, LH 보강이 실패하면 공고 한 건을 모두 되돌린다. */
     @Transactional
-    public MyHomeAnnouncementWriteResult writeSplit(ResolvedAnnouncement resolved, Announcement previous,
-            AnnouncementSupplySplitWriter.SplitPlan plan) {
-        return writeRegistration(resolved, previous, Map.of(), List.of(plan));
+    public MyHomeAnnouncementWriteResult write(ResolvedAnnouncement resolved, Announcement previousAnnouncement) {
+        return writeResolved(resolved, previousAnnouncement, Correction.NONE);
     }
 
-    /** 단건 등록은 LH 보강을 재검증하고 실패 시 전체 저장을 되돌린다. */
-    private MyHomeAnnouncementWriteResult writeRegistration(ResolvedAnnouncement resolved, Announcement previous,
-            Map<String, MyHomeSupplyMatchResult> selections) {
-        return writeRegistration(resolved, previous, selections, List.of());
-    }
-
-    private MyHomeAnnouncementWriteResult writeRegistration(ResolvedAnnouncement resolved, Announcement previous,
-            Map<String, MyHomeSupplyMatchResult> selections, List<AnnouncementSupplySplitWriter.SplitPlan> plans) {
+    /** 단건 정제는 공급행 매칭이 하나라도 실패하면 거절하고, LH 보강을 다시 검증해 실패하면 전체 저장을 되돌린다. */
+    private MyHomeAnnouncementWriteResult writeStrictly(ResolvedAnnouncement resolved, Announcement previous,
+            Correction correction) {
         IngestExecutionScope.verifyCanContinue();
         String identifier = resolved.data().sourceAnnouncementIdentifier();
-        MyHomeAnnouncementWriteResult result = writeResolved(resolved, previous, selections, plans);
+        MyHomeAnnouncementWriteResult result = writeResolved(resolved, previous, correction);
         if (!result.failures().isEmpty()) {
             MyHomeSupplyMatchingFailureData failure = result.failures().getFirst();
             throw new MyHomeAnnouncementMappingRejectedException(
@@ -100,23 +95,8 @@ public class MyHomeAnnouncementMappingWriter {
         return result;
     }
 
-    /** 주택형 변경과 LH 금액 보강을 함께 저장한다. 보강이 실패하면 공고 한 건을 모두 되돌린다. */
-    @Transactional
-    public MyHomeAnnouncementWriteResult write(
-            ResolvedAnnouncement resolved,
-            Announcement previousAnnouncement
-    ) {
-        return writeResolved(resolved, previousAnnouncement, Map.of());
-    }
-
     private MyHomeAnnouncementWriteResult writeResolved(ResolvedAnnouncement resolved,
-            Announcement previousAnnouncement, Map<String, MyHomeSupplyMatchResult> selections) {
-        return writeResolved(resolved, previousAnnouncement, selections, List.of());
-    }
-
-    private MyHomeAnnouncementWriteResult writeResolved(ResolvedAnnouncement resolved,
-            Announcement previousAnnouncement, Map<String, MyHomeSupplyMatchResult> selections,
-            List<AnnouncementSupplySplitWriter.SplitPlan> plans) {
+            Announcement previousAnnouncement, Correction correction) {
         MyHomeAnnouncementMappingData data = resolved.data();
         AnnouncementWriteResult announcementResult = writeAnnouncement(data, previousAnnouncement);
         if (announcementResult.announcement().getProvider() != data.provider()) {
@@ -127,7 +107,7 @@ public class MyHomeAnnouncementMappingWriter {
         if (announcementResult.releasedLhOwnership()) {
             lhEnrichment.releaseLhOwnership(announcementResult.announcement());
         }
-        for (var plan : plans) {
+        for (var plan : correction.splits()) {
             splitWriter.apply(announcementResult.announcement(), plan);
         }
         SupplyRowsWriteResult supplyRowsResult = supplyRowWriter.write(
@@ -135,7 +115,7 @@ public class MyHomeAnnouncementMappingWriter {
                 data.supplyRows(),
                 resolved.preserveExistingLhResolvedRows(),
                 resolved.historicalSourceKeys(),
-                selections
+                correction.selections()
         );
         enrichChangedAnnouncement(resolved, announcementResult, supplyRowsResult);
         if (announcementResult.created() == 1) {
@@ -256,6 +236,23 @@ public class MyHomeAnnouncementMappingWriter {
 
         int unchanged() {
             return 1 - created - updated;
+        }
+    }
+
+    /** 관리자가 고른 공급행 연결(원천행 식별자별)과 원천행 분할. */
+    record Correction(
+            Map<String, MyHomeSupplyMatchResult> selections, List<AnnouncementSupplySplitWriter.SplitPlan> splits
+    ) {
+
+        static final Correction NONE = new Correction(Map.of(), List.of());
+
+        Correction {
+            selections = Map.copyOf(selections);
+            splits = List.copyOf(splits);
+        }
+
+        static Correction split(AnnouncementSupplySplitWriter.SplitPlan plan) {
+            return new Correction(Map.of(), List.of(plan));
         }
     }
 
