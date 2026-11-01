@@ -1070,6 +1070,38 @@ class AnnouncementSupplyMatchingIntegrationTest {
     }
 
     @Test
+    void 이전_공고가_등록되지_않았으면_다시_정제하지_않는다() throws Exception {
+        sources.save(MyHomeSourceViews.announcement(1, new MyHomeAnnouncementSourceSnapshot("revision-only",
+                1, "모집중", "국민임대 정정공고", "서울주택도시공사", "26A,B", "국민임대", "absent-previous",
+                "20261001", "20261106", "20261008", "20261015", null, "https://example.com/manual", null,
+                null, "익산한스빌", "전북특별자치도", "익산시", null, null, null, "1111010100100010000", null, null,
+                0, null, null, null, null)));
+
+        rerun("revision-only").andExpect(status().isBadRequest())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.message").value("이전 공고를 먼저 등록해 주세요."));
+
+        assertThat(announcements.findBySourceAnnouncementIdentifier("revision-only")).isEmpty();
+    }
+
+    @Test
+    void 휴지통의_공고는_다시_정제하지_않는다() throws Exception {
+        mapping.mapAll();
+        var announcement = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow();
+        announcement.moveToTrash();
+        announcements.saveAndFlush(announcement);
+        var before = supplies.findAll().getFirst();
+
+        rerun(TARGET).andExpect(status().isBadRequest())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.message").value("삭제된 공고입니다. 공고 관리에서 먼저 복구해 주세요."));
+
+        assertThat(supplies.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getId()).isEqualTo(before.getId());
+            assertThat(row.getHousingType()).isNull();
+        });
+        assertThat(pendingFailureReasons()).containsExactly("AMBIGUOUS_HOUSING_TYPE");
+    }
+
+    @Test
     void 원천이_없는_공고는_다시_정제할_수_없다() throws Exception {
         rerun("no-source-announcement").andExpect(status().isBadRequest())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.message").value("공고 원천이 없습니다. 먼저 공고를 수집해 주세요."));

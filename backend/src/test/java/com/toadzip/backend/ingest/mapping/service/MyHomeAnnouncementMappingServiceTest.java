@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.mapping.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
@@ -44,6 +45,7 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHo
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementCollectionRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementStorageService;
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
+import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
 import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
@@ -264,10 +266,41 @@ class MyHomeAnnouncementMappingServiceTest {
         sourceRepository.save(source(0, data("21026", 1, "부산도시공사", "동삼2")));
         sourceRepository.save(source(1, withPrevious(data("21027", 1, "부산도시공사", "동삼2"), "21026")));
 
-        assertThatThrownBy(() -> service.registerAnnouncement("21027")).hasMessageContaining("이전 공고");
+        assertThatThrownBy(() -> service.registerAnnouncement("21027"))
+                .isInstanceOf(AnnouncementRegistrationException.class)
+                .hasMessage("정제 실패: 이전 공고가 등록되어 있지 않습니다: 21026");
 
         assertThat(announcementRepository.count()).isZero();
         assertThat(sourceRepository.findAll()).hasSize(2);
+        assertThat(failureRepository.findAllBySourceAnnouncementIdentifier("21027")).singleElement()
+                .satisfies(failure -> {
+                    assertThat(failure.getReason())
+                            .isEqualTo(MyHomeAnnouncementMappingFailureReason.PREVIOUS_ANNOUNCEMENT_NOT_FOUND);
+                    assertThat(failure.getDetail()).isEqualTo("이전 공고가 등록되어 있지 않습니다: 21026");
+                });
+    }
+
+    @Test
+    void 전체_정제는_이전_공고가_없으면_각_공고를_거절하고_앞서_거절한_이전_공고의_집계도_더한다() {
+        saveMappedComplex();
+        sourceRepository.saveAll(List.of(
+                source(0, withPrevious(data("21027", 1, "부산도시공사", "동삼2"), "21026")),
+                source(1, withPrevious(data("21028", 1, "부산도시공사", "동삼2"), "21027"))
+        ));
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isEqualTo(2);
+        assertThat(report.createdAnnouncementCount()).isZero();
+        assertThat(announcementRepository.count()).isZero();
+        assertThat(failureRepository.findAll())
+                .extracting(MyHomeAnnouncementMappingFailure::getSourceAnnouncementIdentifier,
+                        MyHomeAnnouncementMappingFailure::getReason, MyHomeAnnouncementMappingFailure::getDetail)
+                .containsExactlyInAnyOrder(
+                        tuple("21027", MyHomeAnnouncementMappingFailureReason.PREVIOUS_ANNOUNCEMENT_NOT_FOUND,
+                                "이전 공고를 찾을 수 없습니다: 21026"),
+                        tuple("21028", MyHomeAnnouncementMappingFailureReason.PREVIOUS_ANNOUNCEMENT_NOT_FOUND,
+                                "이전 공고를 찾을 수 없습니다: 21027"));
     }
 
     @Test
