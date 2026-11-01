@@ -83,7 +83,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
 import org.springframework.data.domain.Pageable;
-import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -194,7 +193,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         previous = stored(MyHomeSourceViews.seen(previous, "previous", NOW.minusSeconds(60)));
         MyHomeAnnouncementSourceView current = announcementSource("P1", "200");
         current = stored(MyHomeSourceViews.seen(current, "current", NOW));
-        ReflectionTestUtils.setField(current, "endDe", "20260918");
+        current = stored(MyHomeSourceViews.change(current).endDe("20260918").read());
         if (!active) {
             previous = stored(MyHomeSourceViews.inactive(previous));
             current = stored(MyHomeSourceViews.inactive(current));
@@ -248,11 +247,8 @@ class LhAnnouncementExternalCollectionServiceTest {
         MyHomeAnnouncementSourceView second = announcementSource("P1", "200");
         first = stored(MyHomeSourceViews.seen(first, "current", NOW));
         second = stored(MyHomeSourceViews.seen(second, "current", NOW));
-        ReflectionTestUtils.setField(first, "endDe", "20260801");
-        ReflectionTestUtils.setField(second, "endDe", "20260801");
-        if (hasEligibleSource) {
-            ReflectionTestUtils.setField(second, "endDe", "20260918");
-        }
+        first = stored(MyHomeSourceViews.change(first).endDe("20260801").read());
+        second = stored(MyHomeSourceViews.change(second).endDe(hasEligibleSource ? "20260918" : "20260801").read());
         if (forced) {
             when(myHomeAnnouncementRepository.findAllByPblancIdOrderByIdAsc("P1"))
                     .thenReturn(List.of(first, second));
@@ -277,7 +273,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         previous = stored(MyHomeSourceViews.seen(previous, "previous", NOW.minusSeconds(60)));
         MyHomeAnnouncementSourceView current = announcementSource("P1", "200");
         current = stored(MyHomeSourceViews.seen(current, "current", NOW));
-        ReflectionTestUtils.setField(current, "endDe", "20260801");
+        current = stored(MyHomeSourceViews.change(current).endDe("20260801").read());
         source(previous, current);
 
         ExternalDataCollectionReport report = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
@@ -293,7 +289,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         MyHomeAnnouncementSourceView duplicate = announcementSource("a", "100");
         MyHomeAnnouncementSourceView expired = announcementSource("c", "200");
         MyHomeAnnouncementSourceView old = announcementSource("old", "300");
-        ReflectionTestUtils.setField(old, "endDe", "20260801");
+        old = stored(MyHomeSourceViews.change(old).endDe("20260801").read());
         when(myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(anyLong(), any()))
                 .thenReturn(List.of(first, linked),
                         List.of(duplicate, expired, old, nonLhAnnouncementSource(), unsupportedLhAnnouncementSource()),
@@ -683,7 +679,9 @@ class LhAnnouncementExternalCollectionServiceTest {
     void 같은_panId의_다른_조회_조건은_저장과_체크포인트까지_순서대로_처리한다() {
         MyHomeAnnouncementSourceView first = announcementSource("a", "100");
         MyHomeAnnouncementSourceView second = announcementSource("b", "100");
-        ReflectionTestUtils.setField(second, "url", second.getUrl().replace("aisTpCd=06", "aisTpCd=07"));
+        second = stored(MyHomeSourceViews.change(second)
+                .url(second.getUrl().replace("aisTpCd=06", "aisTpCd=07"))
+                .read());
         source(first, announcementSource("c", "200"), second);
         Set<String> stored = ConcurrentHashMap.newKeySet();
         List<String> samePanConditions = new ArrayList<>();
@@ -1465,11 +1463,12 @@ class LhAnnouncementExternalCollectionServiceTest {
     void 단건_등록의_LH_조회는_이번_실행에서_수집한_원천만_사용한다() {
         UUID executionId = UUID.randomUUID();
         MyHomeAnnouncementSourceView current = announcementSource("announcement-100");
-        ReflectionTestUtils.setField(current, "lastSeenRunId", executionId.toString());
+        current = stored(MyHomeSourceViews.change(current).lastSeenRunId(executionId.toString()).read());
         MyHomeAnnouncementSourceView old = announcementSource("announcement-100");
-        ReflectionTestUtils.setField(old, "lastSeenRunId", UUID.randomUUID().toString());
-        ReflectionTestUtils.setField(old, "url", "https://example.com/?panId=old"
-                + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07");
+        old = stored(MyHomeSourceViews.change(old)
+                .lastSeenRunId(UUID.randomUUID().toString())
+                .url("https://example.com/?panId=old&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07")
+                .read());
         when(myHomeAnnouncementRepository.findAllByPblancIdOrderByIdAsc("announcement-100"))
                 .thenReturn(List.of(current, old));
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
@@ -1487,7 +1486,7 @@ class LhAnnouncementExternalCollectionServiceTest {
     @Test
     void 강제_갱신은_최근_성공한_공고도_외부_API를_다시_호출한다() {
         MyHomeAnnouncementSourceView source = announcementSource("announcement-100");
-        ReflectionTestUtils.setField(source, "endDe", "20260801");
+        source = stored(MyHomeSourceViews.change(source).endDe("20260801").read());
         when(myHomeAnnouncementRepository.findAllByPblancIdOrderByIdAsc("announcement-100"))
                 .thenReturn(List.of(source));
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
@@ -1533,7 +1532,7 @@ class LhAnnouncementExternalCollectionServiceTest {
     @Test
     void 최근_종료_공고도_실행마다_실제_조회한다() {
         MyHomeAnnouncementSourceView source = announcementSource("announcement-100");
-        ReflectionTestUtils.setField(source, "endDe", "20260918");
+        source = stored(MyHomeSourceViews.change(source).endDe("20260918").read());
         source(source);
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
         when(sourceStore.replaceDetails(eq("100"), any(), any())).thenReturn(1);
@@ -1547,7 +1546,7 @@ class LhAnnouncementExternalCollectionServiceTest {
     @Test
     void 같은_공고의_종료된_첫_행은_다음_유효한_행을_막지_않는다() {
         MyHomeAnnouncementSourceView ended = announcementSource();
-        ReflectionTestUtils.setField(ended, "endDe", "20260819");
+        ended = stored(MyHomeSourceViews.change(ended).endDe("20260819").read());
         source(ended, announcementSource());
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
         when(sourceStore.replaceDetails(eq("100"), any(), any())).thenReturn(1);
@@ -1561,8 +1560,11 @@ class LhAnnouncementExternalCollectionServiceTest {
     @Test
     void 종료_후_30일이_지난_공고는_정기_수집에서_제외한다() {
         MyHomeAnnouncementSourceView source = announcementSource("announcement-100");
-        ReflectionTestUtils.setField(source, "endDe", "20260819");
+        source = stored(MyHomeSourceViews.change(source).endDe("20260819").read());
         source(source);
+        // 제외가 빠지면 조회가 정상 응답으로 끝나 호출 수 단언에서 드러나게 한다.
+        lenient().when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        lenient().when(sourceStore.replaceDetails(eq("100"), any(), any())).thenReturn(1);
 
         ExternalDataCollectionReport result = service.collect(
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL
@@ -1576,7 +1578,7 @@ class LhAnnouncementExternalCollectionServiceTest {
     void 진행중과_최근_종료_공고가_요청을_공유하면_한_번만_조회한다() {
         MyHomeAnnouncementSourceView active = announcementSource("announcement-active", "100");
         MyHomeAnnouncementSourceView ended = announcementSource("announcement-ended", "100");
-        ReflectionTestUtils.setField(ended, "endDe", "20260918");
+        ended = stored(MyHomeSourceViews.change(ended).endDe("20260918").read());
         source(active, ended);
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
         when(sourceStore.replaceDetails(eq("100"), any(), any())).thenReturn(1);
@@ -1591,7 +1593,7 @@ class LhAnnouncementExternalCollectionServiceTest {
     void 진행중과_최근_종료_공고의_요청이_다르면_각각_조회한다() {
         MyHomeAnnouncementSourceView active = announcementSource("announcement-active", "100");
         MyHomeAnnouncementSourceView ended = announcementSource("announcement-ended", "200");
-        ReflectionTestUtils.setField(ended, "endDe", "20260918");
+        ended = stored(MyHomeSourceViews.change(ended).endDe("20260918").read());
         source(active, ended);
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
         when(sourceStore.replaceDetails(any(), any(), any())).thenReturn(1);
@@ -1635,6 +1637,10 @@ class LhAnnouncementExternalCollectionServiceTest {
         return source;
     }
 
+    private MyHomeAnnouncementSourceView storedWithNextId(MyHomeAnnouncementSourceSnapshot snapshot) {
+        return stored(MyHomeSourceViews.change(MyHomeSourceViews.announcement(0, snapshot)).id(++nextSourceId).read());
+    }
+
     private MyHomeAnnouncementSourceView announcementSource() {
         return announcementSource("100");
     }
@@ -1644,59 +1650,49 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     private MyHomeAnnouncementSourceView announcementSource(String pblancId, String panId) {
-        MyHomeAnnouncementSourceView source = MyHomeSourceViews.announcement(0, item(
+        return storedWithNextId(item(
                 pblancId,
                 "행복주택",
                 "https://apply.lh.or.kr/panDetail?panId=" + panId
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"
         ));
-        ReflectionTestUtils.setField(source, "id", ++nextSourceId);
-        return stored(source);
     }
 
     private MyHomeAnnouncementSourceView nonLhAnnouncementSource() {
-        MyHomeAnnouncementSourceView source = MyHomeSourceViews.announcement(0, itemWithProvider(
+        return storedWithNextId(itemWithProvider(
                 "100",
                 "부산도시공사",
                 "행복주택",
                 "https://apply.lh.or.kr/panDetail?panId=100"
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"
         ));
-        ReflectionTestUtils.setField(source, "id", ++nextSourceId);
-        return stored(source);
     }
 
     private MyHomeAnnouncementSourceView unsupportedLhAnnouncementSource() {
-        MyHomeAnnouncementSourceView source = MyHomeSourceViews.announcement(0, item(
+        return storedWithNextId(item(
                 "100",
                 "지원하지 않는 유형",
                 "https://apply.lh.or.kr/panDetail?panId=100"
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"
         ));
-        ReflectionTestUtils.setField(source, "id", ++nextSourceId);
-        return stored(source);
     }
 
     private MyHomeAnnouncementSourceView integratedLhAnnouncementSource() {
-        MyHomeAnnouncementSourceView source = MyHomeSourceViews.announcement(0, item(
+        return storedWithNextId(item(
                 "2015122300020531",
                 "통합공공임대",
                 "https://apply.lh.or.kr/panDetail?panId=2015122300020531"
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=48"
         ));
-        ReflectionTestUtils.setField(source, "id", ++nextSourceId);
-        return stored(source);
     }
 
     private MyHomeAnnouncementSourceView publicRentalAnnouncementSource() {
-        MyHomeAnnouncementSourceView source = MyHomeSourceViews.announcement(0, item(
+        return storedWithNextId(item(
                 "100",
                 "5년임대",
                 "https://apply.lh.or.kr/panDetail?panId=100"
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=05&aisTpCd=06"
         ));
-        ReflectionTestUtils.setField(source, "id", ++nextSourceId);
-        return stored(source);
     }
 
     private MyHomeAnnouncementSourceSnapshot item(String supplyType, String url) {

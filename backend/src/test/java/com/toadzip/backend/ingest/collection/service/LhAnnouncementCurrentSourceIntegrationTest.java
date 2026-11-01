@@ -56,7 +56,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -267,8 +266,8 @@ class LhAnnouncementCurrentSourceIntegrationTest {
         MyHomeAnnouncementSourceView second = sources.save(source("P1", 2, "200", "current", NOW));
         assertThat(collection.collect(DETAIL).failedRequestCount()).isOne();
         Long failureId = failures.findAll().getFirst().getId();
-        excludeSource(first, exclusion);
-        excludeSource(second, exclusion);
+        first = excluded(first, exclusion);
+        second = excluded(second, exclusion);
         sources.saveAll(List.of(first, second));
 
         var excluded = collection.collect(DETAIL);
@@ -299,7 +298,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
         sources.save(source("P1", 2, "200", "current", NOW));
         assertThat(collection.collect(DETAIL).failedRequestCount()).isOne();
         Long failureId = failures.findAll().getFirst().getId();
-        excludeSource(first, exclusion);
+        first = excluded(first, exclusion);
         sources.save(first);
         when(external.detail(any())).thenThrow(new ExternalDataRequestException("현재 요청 수집 실패"));
 
@@ -374,13 +373,13 @@ class LhAnnouncementCurrentSourceIntegrationTest {
                 assertThat(failure.getStatus()).isEqualTo(status));
     }
 
-    private void excludeSource(MyHomeAnnouncementSourceView source, String exclusion) {
-        switch (exclusion) {
-            case "expired" -> ReflectionTestUtils.setField(source, "endDe", "20260801");
-            case "non_lh" -> ReflectionTestUtils.setField(source, "suplyInsttNm", "SH");
-            case "unsupported" -> ReflectionTestUtils.setField(source, "suplyTyNm", "미지원 유형");
+    private MyHomeAnnouncementSourceView excluded(MyHomeAnnouncementSourceView source, String exclusion) {
+        return switch (exclusion) {
+            case "expired" -> MyHomeSourceViews.change(source).endDe("20260801").read();
+            case "non_lh" -> MyHomeSourceViews.change(source).suplyInsttNm("SH").read();
+            case "unsupported" -> MyHomeSourceViews.change(source).suplyTyNm("미지원 유형").read();
             default -> throw new IllegalArgumentException("알 수 없는 수집 제외 조건: " + exclusion);
-        }
+        };
     }
 
     private void saveHousingComplex() {

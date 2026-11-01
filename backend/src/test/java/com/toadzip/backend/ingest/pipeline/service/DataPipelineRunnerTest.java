@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -23,6 +24,7 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeA
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
 import com.toadzip.backend.ingest.collection.service.ShAnnouncementCollectionService;
+import com.toadzip.backend.ingest.domain.IngestStepReport;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
@@ -37,10 +39,13 @@ import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -204,16 +209,14 @@ class DataPipelineRunnerTest {
 
     @Test
     void 단지_수집_단계를_의존_순서대로_실행한다() {
-        givenSuccessfulComplexCollectionReports();
+        List<IngestStepReport> reports = givenSuccessfulComplexCollectionReports();
 
         runner.run(DataPipelineType.COMPLEX_COLLECTION, executionId);
 
-        InOrder order = inOrder(
-                myHomeComplexCollectionService,
-                lhLeaseCatalogCollectionService
+        assertThat(completedSteps()).containsExactly(
+                completed(DataPipelineStep.COLLECT_MYHOME_COMPLEXES, reports.get(0)),
+                completed(DataPipelineStep.COLLECT_LH_LEASE_CATALOG, reports.get(1))
         );
-        order.verify(myHomeComplexCollectionService).collect(any());
-        order.verify(lhLeaseCatalogCollectionService).collect(any());
         verify(myHomeAnnouncementCollectionService, never()).collect(any());
     }
 
@@ -228,49 +231,42 @@ class DataPipelineRunnerTest {
 
     @Test
     void 공고_수집_단계를_의존_순서대로_실행한다() {
-        givenSuccessfulAnnouncementCollectionReports();
+        List<IngestStepReport> reports = givenSuccessfulAnnouncementCollectionReports();
 
         runner.run(DataPipelineType.ANNOUNCEMENT_COLLECTION, executionId);
 
-        InOrder order = inOrder(
-                myHomeAnnouncementCollectionService,
-                lhAnnouncementCatalogCollectionService,
-                collectionService
+        assertThat(completedSteps()).containsExactly(
+                completed(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS, reports.get(0)),
+                completed(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG, reports.get(1)),
+                completed(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES, reports.get(2)),
+                completed(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS, reports.get(3))
         );
-        order.verify(myHomeAnnouncementCollectionService).collect(any());
-        order.verify(lhAnnouncementCatalogCollectionService).collect();
-        order.verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
-        order.verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
         verify(myHomeComplexCollectionService, never()).collect(any());
     }
 
     @Test
     void 단지_정제_단계를_의존_순서대로_실행한다() {
-        givenSuccessfulComplexRefinementReports();
+        List<IngestStepReport> reports = givenSuccessfulComplexRefinementReports();
 
         runner.run(DataPipelineType.COMPLEX_REFINEMENT, executionId);
 
-        InOrder order = inOrder(
-                myHomeComplexMappingService,
-                householdEnrichmentService
+        assertThat(completedSteps()).containsExactly(
+                completed(DataPipelineStep.MAP_MYHOME_COMPLEXES, reports.get(0)),
+                completed(DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS, reports.get(1))
         );
-        order.verify(myHomeComplexMappingService).mapAll();
-        order.verify(householdEnrichmentService).enrichAll();
         verify(myHomeAnnouncementMappingService, never()).mapAll();
     }
 
     @Test
     void 공고_정제_단계를_의존_순서대로_실행한다() {
-        givenSuccessfulAnnouncementRefinementReports();
+        List<IngestStepReport> reports = givenSuccessfulAnnouncementRefinementReports();
 
         runner.run(DataPipelineType.ANNOUNCEMENT_REFINEMENT, executionId);
 
-        InOrder order = inOrder(
-                myHomeAnnouncementMappingService,
-                announcementEnrichmentService
+        assertThat(completedSteps()).containsExactly(
+                completed(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS, reports.get(0)),
+                completed(DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS, reports.get(1))
         );
-        order.verify(myHomeAnnouncementMappingService).mapAll();
-        order.verify(announcementEnrichmentService).enrichAll();
         verify(myHomeComplexMappingService, never()).mapAll();
     }
 
@@ -677,33 +673,57 @@ class DataPipelineRunnerTest {
         verify(householdEnrichmentService).enrichAll();
     }
 
-    private void givenSuccessfulComplexCollectionReports() {
-        when(myHomeComplexCollectionService.collect(any()))
-                .thenReturn(new MyHomeComplexCollectionReport("myhome-complex", 1, 0, 1));
-        when(lhLeaseCatalogCollectionService.collect(any()))
-                .thenReturn(collectionReport("lh-lease-catalog"));
+    /** 단계 순서대로 각 단계 서비스가 돌려줄 보고서를 정하고 그 보고서를 같은 순서로 돌려준다. */
+    private List<IngestStepReport> givenSuccessfulComplexCollectionReports() {
+        var myHomeComplexes = new MyHomeComplexCollectionReport("myhome-complex", 1, 0, 1);
+        var lhLeaseCatalog = collectionReport("lh-lease-catalog");
+        when(myHomeComplexCollectionService.collect(any())).thenReturn(myHomeComplexes);
+        when(lhLeaseCatalogCollectionService.collect(any())).thenReturn(lhLeaseCatalog);
+        return List.of(myHomeComplexes, lhLeaseCatalog);
     }
 
-    private void givenSuccessfulAnnouncementCollectionReports() {
-        when(myHomeAnnouncementCollectionService.collect(any()))
-                .thenReturn(collectionReport("myhome-announcement"));
-        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY))
-                .thenReturn(collectionReport("lh-announcement-supply"));
-        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL))
-                .thenReturn(collectionReport("lh-announcement-detail"));
+    private List<IngestStepReport> givenSuccessfulAnnouncementCollectionReports() {
+        var myHomeAnnouncements = collectionReport("myhome-announcement");
+        var lhSupplies = collectionReport("lh-announcement-supply");
+        var lhDetails = collectionReport("lh-announcement-detail");
+        when(myHomeAnnouncementCollectionService.collect(any())).thenReturn(myHomeAnnouncements);
+        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY)).thenReturn(lhSupplies);
+        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)).thenReturn(lhDetails);
+        // LH 공고목록 보고서는 setUp에서 정한다.
+        return List.of(myHomeAnnouncements, collectionReport("lh-announcement-catalog"), lhSupplies, lhDetails);
     }
 
-    private void givenSuccessfulComplexRefinementReports() {
-        when(myHomeComplexMappingService.mapAll()).thenReturn(complexMappingReport(0));
-        when(householdEnrichmentService.enrichAll())
-                .thenReturn(new LhHousingTypeHouseholdEnrichmentReport(1, 1, 1, 0, 0, 0));
+    private List<IngestStepReport> givenSuccessfulComplexRefinementReports() {
+        var myHomeComplexes = complexMappingReport(0);
+        var households = new LhHousingTypeHouseholdEnrichmentReport(1, 1, 1, 0, 0, 0);
+        when(myHomeComplexMappingService.mapAll()).thenReturn(myHomeComplexes);
+        when(householdEnrichmentService.enrichAll()).thenReturn(households);
+        return List.of(myHomeComplexes, households);
     }
 
-    private void givenSuccessfulAnnouncementRefinementReports() {
-        when(myHomeAnnouncementMappingService.mapAll())
-                .thenReturn(new MyHomeAnnouncementMappingReport(1, 0, 0, 1, 0, 0, 0, 0));
-        when(announcementEnrichmentService.enrichAll())
-                .thenReturn(LhAnnouncementEnrichmentReport.empty());
+    private List<IngestStepReport> givenSuccessfulAnnouncementRefinementReports() {
+        var myHomeAnnouncements = new MyHomeAnnouncementMappingReport(1, 0, 0, 1, 0, 0, 0, 0);
+        var lhAnnouncements = LhAnnouncementEnrichmentReport.empty();
+        when(myHomeAnnouncementMappingService.mapAll()).thenReturn(myHomeAnnouncements);
+        when(announcementEnrichmentService.enrichAll()).thenReturn(lhAnnouncements);
+        return List.of(myHomeAnnouncements, lhAnnouncements);
+    }
+
+    /** 실행 이력에 완료로 기록된 단계와 그 응답을 기록된 순서대로 돌려준다. */
+    private List<CompletedStep> completedSteps() {
+        ArgumentCaptor<DataPipelineStep> steps = ArgumentCaptor.forClass(DataPipelineStep.class);
+        ArgumentCaptor<String> responses = ArgumentCaptor.forClass(String.class);
+        verify(executionStateService, atLeastOnce()).completeStep(eq(executionId), steps.capture(), responses.capture());
+        return IntStream.range(0, steps.getAllValues().size())
+                .mapToObj(index -> new CompletedStep(steps.getAllValues().get(index), responses.getAllValues().get(index)))
+                .toList();
+    }
+
+    private CompletedStep completed(DataPipelineStep step, IngestStepReport report) {
+        return new CompletedStep(step, resultAdapter.adapt(report).serverResponse());
+    }
+
+    private record CompletedStep(DataPipelineStep step, String serverResponse) {
     }
 
     private ExternalDataCollectionReport collectionReport(String operation) {

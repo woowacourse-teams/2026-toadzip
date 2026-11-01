@@ -44,6 +44,17 @@ LH 공급·상세는 [LhAnnouncementExternalCollectionService](../../../backend/
 장애 차단기가 요청 전에 거절하면 `ExternalDataRequestRejectedException`(LH는 `LhAnnouncementUnavailableException`)으로 끝나고, 재시도와 호출 수 집계에서 빠진다. 호출 한도로 닫힌 차단기의 거절은 그 요청의 실패로 보고하고, 장애로 닫힌 차단기의 거절은 실행을 `FAILED`로 끝낸다.
 조회 조건·공급코드는 `LhAnnouncementCollectionCandidateResolver`, 종료일에 따른 대상 포함 여부는 `LhAnnouncementCollectionPolicy`가 정한다. 해석한 후보 중 요청 충돌·배치 간 중복·정책 제외를 걸러 이번 실행의 후보를 고르는 일은 `LhAnnouncementCandidateSelector`가 맡는다. 일반 수집도 대상 요청을 매 실행 실제 조회한다. 같은 실행에서 공유하는 요청만 합치며 이전 실행의 성공 원천으로 호출을 생략하지 않는다.
 
+마이홈 단지 전국 수집(`MyHomeComplexCollectionService`)도 지역을 병렬로 수집하지만, 두 병렬 흐름은 실패와 호출 제한을 다루는 방식이 달라 공통화하지 않는다.
+
+| 상황 | 마이홈 단지 지역 수집 | LH 공급·상세 요청 |
+|---|---|---|
+| 작업 실패 | 실행 중인 지역 작업을 중단(`shutdownNow`)한다. 중지 요청 예외면 끝날 때까지 기다린다 | 새 요청만 시작하지 않고 실행 중인 요청은 끝까지 회수한다 |
+| 호출 제한 | 공유 신호로 실행 중인 지역의 다음 페이지 호출까지 막는다 | 새 요청만 시작하지 않는다 |
+| 실행 순서 | 남은 지역을 순서대로 넣는다 | 같은 LH 공고의 요청은 동시에 실행하지 않는다 |
+| 완료 기록 | 지역마다 작업 스레드에서 진행을 기록한다 | 요청별 성공 여부를 다음 배치에 넘긴다 |
+
+합치면 이 차이를 정책 인자와 콜백으로 넘기는 얕은 도우미가 된다. 작업 스레드로 실행 맥락을 넘기는 일은 두 곳 모두 `IngestExecutionScope.propagate()`를 쓴다.
+
 공고 정제는 `MyHomeAnnouncementMappingService.mapAll()`에서 공고별로 다음 경로를 따른다.
 
 ```text
