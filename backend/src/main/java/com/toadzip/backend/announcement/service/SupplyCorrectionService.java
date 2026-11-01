@@ -27,7 +27,7 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.ingest.mapping.service.AnnouncementSupplyMatchingService;
+import com.toadzip.backend.ingest.mapping.service.CorrectedSupplyLinkService;
 import com.toadzip.backend.ingest.mapping.service.LhSupplyLinkService;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -72,7 +72,7 @@ public class SupplyCorrectionService {
     private final QualityComparisonService comparisons;
     private final SupplyCorrectionGroups groupCorrections;
     private final LhSupplyLinkService lhLinks;
-    private final AnnouncementSupplyMatchingService supplyMatching;
+    private final CorrectedSupplyLinkService correctedLinks;
     private final ObjectMapper json;
 
     public SupplyCorrection.Workspace workspace(long id) {
@@ -269,7 +269,7 @@ public class SupplyCorrectionService {
             targets.deleteAll(targets.findAllBySupplyRow(row));
             rows.delete(row);
         }
-        supplyMatching.rememberCorrectedLinks(announcement.getSourceAnnouncementIdentifier(),
+        correctedLinks.remember(announcement.getSourceAnnouncementIdentifier(),
                 changedLinks(preview, beforeById, written), request.correction().sourceUrl(),
                 request.correction().reason(), actor);
         announcement.recordAdminSupplyChange();

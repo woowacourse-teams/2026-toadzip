@@ -10,7 +10,7 @@ import com.toadzip.backend.announcement.repository.SupplyRowGroupRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
-import com.toadzip.backend.ingest.mapping.service.AnnouncementSupplyMatchingService;
+import com.toadzip.backend.ingest.mapping.service.AnnouncementSupplyRowQueryService;
 import com.toadzip.backend.ingest.mapping.service.SupplyMatchingFingerprint;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -31,7 +31,7 @@ class SupplyCorrectionGroups {
     private final SupplyRowGroupRepository groups;
     private final MyHomeAnnouncementSourceReader sources;
     private final SupplyMatchingFingerprint fingerprints;
-    private final AnnouncementSupplyMatchingService supplyMatching;
+    private final AnnouncementSupplyRowQueryService supplyRows;
 
     List<Plan> plan(Announcement announcement, List<Row> planned, List<NewGroup> requested) {
         if (requested.isEmpty()) { return List.of(); }
@@ -47,7 +47,7 @@ class SupplyCorrectionGroups {
             var original = stored.stream().filter(row -> row.getId().equals(input.sourceRowId())).findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("분할할 원천 공급행이 이 공고에 없습니다."));
             // LH 공급정보로 여러 행이 된 원천은 그 LH 행 단위로 묶는다. 마이홈 원천 단위로 묶으면 같은 원천의 다른 행이 사라진다.
-            var expanded = original.getSupplyGroup() == null ? supplyMatching.expandedSplitOrigin(
+            var expanded = original.getSupplyGroup() == null ? supplyRows.expandedSplitOrigin(
                     announcement.getSourceAnnouncementIdentifier(), original.getSourceSupplyRowIdentifier()).orElse(null) : null;
             if (expanded != null) {
                 if (!usedSources.add(expanded.key()) || groups.findBySourceRowIdentifier(expanded.key()).isPresent()) {
