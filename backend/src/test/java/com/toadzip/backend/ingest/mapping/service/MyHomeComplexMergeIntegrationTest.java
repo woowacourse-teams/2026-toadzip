@@ -674,7 +674,7 @@ class MyHomeComplexMergeIntegrationTest {
                 .params(lease.ownerId(), lease.generation()).update();
     }
 
-    /** 다른 트랜잭션이 커밋하지 않은 변경을 쥔 채 통합을 시작하고, 통합이 그 변경에 막힌 뒤 커밋한다. 통합의 실패를 돌려준다. */
+    /** 다른 트랜잭션이 커밋하지 않은 변경을 쥔 채 통합을 시작하고, 통합이 그 잠금에 막히면 커밋한다. 통합의 실패를 돌려준다. */
     private Throwable mergeWhileUncommitted(String update, ComplexMergeRequest request) throws Exception {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try (Connection other = dataSource.getConnection()) {
@@ -683,7 +683,7 @@ class MyHomeComplexMergeIntegrationTest {
                 statement.executeUpdate(update);
             }
             Future<?> merge = executor.submit(() -> mergeService.merge(request, "admin"));
-            Thread.sleep(1_000);
+            awaitLockWaiter(merge);
             other.commit();
             try {
                 merge.get(30, TimeUnit.SECONDS);
@@ -693,6 +693,18 @@ class MyHomeComplexMergeIntegrationTest {
             }
         } finally {
             executor.shutdownNow();
+        }
+    }
+
+    /** 통합이 다른 트랜잭션의 잠금을 기다리기 시작할 때까지 기다린다. 잠그지 않는 통합은 그 전에 끝난다. */
+    private void awaitLockWaiter(Future<?> merge) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (!merge.isDone() && System.nanoTime() < deadline) {
+            if (jdbc.sql("SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock'")
+                    .query(Long.class).single() > 0) {
+                return;
+            }
+            Thread.sleep(20);
         }
     }
 

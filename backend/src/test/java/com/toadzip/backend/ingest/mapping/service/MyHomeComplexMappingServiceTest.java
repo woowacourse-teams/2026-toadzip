@@ -885,6 +885,27 @@ class MyHomeComplexMappingServiceTest {
     }
 
     @Test
+    void 분할_단지를_합칠_때_같은_주택형은_이미_저장된_주택형을_이어_쓴다() {
+        sourceRepository.saveAll(List.of(
+                source(split(30700086L, "59", "59.00", 1367, 80, SPLIT_ADDRESS)),
+                source(split(31260572L, "26", "26.37", 13, 81, SPLIT_ADDRESS))
+        ));
+        service.mapAll();
+        long storedTypeId = housingTypeRepository.findAll().stream()
+                .filter(type -> type.getName().equals("26")).findFirst().orElseThrow().getId();
+
+        sourceRepository.deleteAll();
+        sourceRepository.saveAll(List.of(
+                source(split(30700086L, "26", "26.37", 1367, 80, SPLIT_ADDRESS)),
+                source(split(31260572L, "26", "26.37", 13, 80, SPLIT_ADDRESS))
+        ));
+        service.mapAll();
+
+        assertThat(housingTypeRepository.findAll()).filteredOn(type -> type.getName().equals("26"))
+                .singleElement().extracting(HousingType::getId).isEqualTo(storedTypeId);
+    }
+
+    @Test
     void 분할_단지를_합치면_한쪽에만_있던_수동값을_대표_단지가_이어받는다() {
         List<HousingComplex> separated = separatedSplitComplexes();
         jdbc.sql("UPDATE housing_complexes SET image_url = 'https://example.com/donor.png', "

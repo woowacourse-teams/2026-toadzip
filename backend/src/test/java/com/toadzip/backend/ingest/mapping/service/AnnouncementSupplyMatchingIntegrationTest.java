@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
@@ -223,6 +224,20 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 .containsExactly("26(청년)", "26A,B(고령자)", "26(신혼부부)");
         assertThat(rowQuery.rows(TARGET).get(1).splitGroup()).isNotNull();
         assertThat(rowQuery.rows(TARGET).get(1).splitGroup().reviewRequired()).isFalse();
+    }
+
+    @Test
+    void 원천에서_사라진_저장_매칭_행은_현재_행_뒤로_옮기고_옮긴_행을_갱신으로_센다() throws Exception {
+        sources.save(source(TARGET, 2, PNU));
+        mapping.mapAll();
+        rememberCurrent();
+        mapping.mapAll();
+        jdbc.sql("DELETE FROM myhome_announcement_source_rows WHERE house_sn = 1").update();
+
+        var report = mapping.mapAll();
+
+        assertThat(supplies.findAll()).hasSize(2).extracting(SupplyRow::getDisplayOrder).containsExactlyInAnyOrder(1, 2);
+        assertThat(report.updatedSupplyRowCount()).isEqualTo(2);
     }
 
     @Test
@@ -1308,4 +1323,5 @@ class AnnouncementSupplyMatchingIntegrationTest {
         source = MyHomeSourceViews.collectedAt(source, Instant.parse("2026-10-08T00:00:00Z"));
         return source;
     }
+
 }
