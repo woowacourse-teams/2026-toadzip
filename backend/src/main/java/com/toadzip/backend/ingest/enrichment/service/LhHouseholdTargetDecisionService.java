@@ -172,9 +172,7 @@ public class LhHouseholdTargetDecisionService {
             return null;
         }
         boolean reviewRequired = context.complex() == null
-                || !fingerprints.sourcesFingerprint(context.group()).equals(decision.getSourcesFingerprint())
-                || !fingerprints.decisionTargetFingerprint(context.complex(), context.housingTypes())
-                        .equals(decision.getTargetFingerprint());
+                || !fingerprints.decisionCurrent(decision, context.group(), context.complex(), context.housingTypes());
         return new SavedDecision(decision.getDecision().name(), decision.getChosenSourceKey(), decision.getReason(),
                 decision.getActor(), decision.getUpdatedAt(), reviewRequired);
     }

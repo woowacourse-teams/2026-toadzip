@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.enrichment.service;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdComplexLink;
+import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdTargetDecision;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHouseholdSource;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -44,6 +45,13 @@ class LhHouseholdComplexLinks {
     }
 
     /** 같은 단지를 두고 경쟁하는 LH 묶음 전체의 구성과 세대수 값이다. 묶음이 늘거나 줄거나 값이 바뀌면 달라진다. */
+    /** 저장한 단지 결정 이후 경쟁하는 원천 묶음과 대상 단지·주택형이 바뀌지 않았으면 결정을 그대로 쓸 수 있다. */
+    boolean decisionCurrent(LhHouseholdTargetDecision decision, List<LhHouseholdMatchedSource> group,
+            HousingComplex complex, List<HousingType> housingTypes) {
+        return sourcesFingerprint(group).equals(decision.getSourcesFingerprint())
+                && decisionTargetFingerprint(complex, housingTypes).equals(decision.getTargetFingerprint());
+    }
+
     String sourcesFingerprint(List<LhHouseholdMatchedSource> group) {
         return hash(group.stream().sorted(Comparator.comparing(matched -> matched.sourceKey().failureKey()))
                 .map(matched -> matched.sourceKey().failureKey() + "|" + sourceFingerprint(matched.source())

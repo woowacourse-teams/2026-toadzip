@@ -78,10 +78,7 @@ class LhHouseholdComplexWriter {
             Instant occurredAt
     ) {
         HousingComplex complex = group.getFirst().complex();
-        boolean current = links.sourcesFingerprint(group).equals(decision.getSourcesFingerprint())
-                && links.decisionTargetFingerprint(complex, housingTypeRepository.findAllByHousingComplex(complex))
-                        .equals(decision.getTargetFingerprint());
-        if (!current) {
+        if (!links.decisionCurrent(decision, group, complex, housingTypeRepository.findAllByHousingComplex(complex))) {
             return failGroup(group, LhHouseholdEnrichmentFailureReason.TARGET_DECISION_REVIEW_REQUIRED,
                     "저장한 단지 결정 이후 경쟁하는 LH 원천 묶음이나 단지가 바뀌었습니다. 다시 확인해 주세요.",
                     failures, occurredAt);
