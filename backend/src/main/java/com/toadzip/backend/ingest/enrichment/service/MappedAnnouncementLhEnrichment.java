@@ -24,4 +24,11 @@ public interface MappedAnnouncementLhEnrichment {
 
     /** 공고가 LH 소유에서 벗어나면 관리자가 고치지 않은 LH 일정·첨부·공급대상을 지운다. */
     void releaseLhOwnership(Announcement announcement);
+
+    /**
+     * 관리자가 LH 공급 연결을 다른 원천행으로 옮긴 LH 행({@code movedLhRows})을 이전 공급행에서 놓고, 이전 공급행에 붙은
+     * 그 LH 행의 금액 가운데 관리자가 고치지 않은 금액을 지운다. {@code resolvedSourceRows}는 LH 행마다 지금 해석되는
+     * 마이홈 원천행이다.
+     */
+    void releaseMovedLhRows(Announcement announcement, Map<String, String> resolvedSourceRows, Set<String> movedLhRows);
 }
