@@ -329,6 +329,18 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     }
 
     @Test
+    void PNU_없는_공급행을_빈_칸으로_보내도_바뀐_공급행으로_보지_않는다() throws Exception {
+        var request = request();
+        ((ObjectNode) request.path("correction").path("rows").get(0)).put("pnu", "");
+        request.withArray("fields").add("name");
+
+        var preview = preview(request);
+        assertThat(preview.path("supply").isNull()).isTrue();
+        apply(request, preview).andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT supply_pnu FROM supply_rows WHERE id=?", String.class, row.getId())).isNull();
+    }
+
+    @Test
     void 제외한_공급행에는_공고_값을_반영하지_않는다() throws Exception {
         var request = request();
         ((ObjectNode) request.path("correction").path("rows").get(0)).put("excluded", true);

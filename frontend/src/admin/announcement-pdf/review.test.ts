@@ -21,6 +21,14 @@ it('한스빌의 공통 모집수는 묶음에 한 번만 넣고 기존 공급�
   expect(workspace.supply.rows[0].householdCount).toBe(170)
 })
 
+it('지번을 모르는 단지의 공급행은 소재지 PNU 없이 저장하고 문서 PNU도 비운다', () => {
+  const { review, workspace } = scenario('hansville')
+  workspace.supply.rows.forEach(row => { row.pnu = '' })
+  const request = assembleReview(review, workspace, evidence)
+  expect(request.correction.rows.every(row => row.pnu === '')).toBe(true)
+  expect(request.document.supplyRows.map(row => (row.complexReference as { pnu: unknown }).pnu)).toEqual(request.document.supplyRows.map(() => null))
+})
+
 it('연결되지 않은 LH 행이 있으면 새 공급정보 추가를 막고 지원 종료한 LH 행 연결을 권하지 않는다', () => {
   const { review, workspace } = scenario('hansville')
   const index = review.rows.findIndex(row => row.include && row.proposal.destination === 'new')

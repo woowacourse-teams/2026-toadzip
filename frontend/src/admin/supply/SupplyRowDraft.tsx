@@ -126,7 +126,7 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
             {value.housingComplexId ? <> 단지 주택형 이름 자체가 틀렸다면 <a href={`/admin/complexes/${value.housingComplexId}?section=relations`} target="_blank" rel="noreferrer">단지 주택형 이름 고치기 →</a></> : null}
           </p>
         </div>
-        <label>공급 PNU<input required maxLength={255} value={value.pnu} onChange={event => field('pnu', event.target.value)} /></label>
+        <label>공급 PNU<input maxLength={255} placeholder="지번을 모르면 비움" value={value.pnu} onChange={event => field('pnu', event.target.value)} /></label>
         <label>공급 구분<select value={value.category} onChange={event => field('category', event.target.value as CorrectionRow['category'])}><option value="NEW_SUPPLY">신규 공급</option><option value="RESUPPLY">재공급</option></select></label>
         <label>입주 예정 연월<input type="month" value={value.moveInMonth ?? ''} onChange={event => field('moveInMonth', event.target.value || null)} /></label>
         <label>금회 모집수 (세대)<input type="number" min="0" step="1" disabled={!!value.groupId || sharedCount !== undefined} value={value.householdCount ?? ''} onChange={event => field('householdCount', event.target.value === '' ? null : Number(event.target.value))} /></label>

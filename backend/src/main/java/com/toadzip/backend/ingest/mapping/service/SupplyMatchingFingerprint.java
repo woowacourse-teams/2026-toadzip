@@ -31,7 +31,7 @@ public class SupplyMatchingFingerprint {
     public String target(HousingType type) {
         var complex = type.getHousingComplex();
         return hash(List.of(complex.getId(), complex.isAdminDeleted(), complex.getName(),
-                complex.getAddress().getPnu(), complex.getSupplyType(), type.getId(), type.getName(),
+                text(complex.getAddress().getPnu()), complex.getSupplyType(), type.getId(), type.getName(),
                 type.getExclusiveArea(), text(type.getSupplyArea())));
     }
 

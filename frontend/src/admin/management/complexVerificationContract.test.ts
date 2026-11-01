@@ -17,6 +17,10 @@ describe('단지 검증 응답', () => {
     expect(value.sources).toEqual([])
     expect(currentText('HOUSEHOLD_COUNT', value.currentValues)).toBe('0세대')
   })
+  it('지번을 모르는 단지의 PNU 없음을 받는다', () => {
+    const value = parseComplexVerification({ ...response, currentValues: { ...currentValues, ADDRESS: { ...currentValues.ADDRESS, pnu: null } } })
+    expect(value.currentValues.ADDRESS.pnu).toBeNull()
+  })
   it.each([
     { ...response, status: 'AUTO_VERIFIED' },
     { ...response, snapshotToken: '' },

@@ -99,3 +99,44 @@ it('주차대수는 비워 둘 수 있고, 공고문에 없는 주소·PNU·세�
   await waitFor(() => expect(onCreated).toHaveBeenCalled())
   expect(registration.createHousingComplex).toHaveBeenCalledWith(expect.objectContaining({ totalHouseholdCount: 350, totalParkingCount: null, heatingType: 'INDIVIDUAL', buildingType: 'APARTMENT' }))
 })
+
+it('지번을 모르면 PNU를 비워 두고 고른 주소 검색 결과의 행정구역 코드로 등록한다', async () => {
+  lookup.lookupAddresses.mockResolvedValue([{ roadAddress: '경기도 화성시 봉담읍 동화길 10', jibunAddress: '', pnu: '',
+    legalDongCode: '4159025021', provinceCode: '41', cityCountyDistrictCode: '41590', latitude: 37.2, longitude: 126.9 }])
+  registration.createHousingComplex.mockResolvedValue({ housingComplexId: 3504, name: '인천부평' })
+  const { form, onCreated } = renderForm()
+  search(form, '봉담읍 동화길 10')
+  fireEvent.click(await within(form).findByRole('button', { name: /동화길 10/ }))
+  fireEvent.change(within(form).getByLabelText('전체 세대수'), { target: { value: '350' } })
+  fireEvent.click(within(form).getByRole('button', { name: '단지 등록하고 연결' }))
+  await waitFor(() => expect(onCreated).toHaveBeenCalledWith({ id: 3504, name: '인천부평' }))
+  expect(registration.createHousingComplex).toHaveBeenCalledWith(expect.objectContaining({ address: expect.objectContaining({
+    pnu: null, legalDongCode: '4159025021', provinceCode: '41', cityCountyDistrictCode: '41590' }) }))
+})
+
+it('주소를 직접 고치면 검색 결과의 행정구역 코드를 버리고, PNU도 없으면 등록을 막는다', async () => {
+  lookup.lookupAddresses.mockResolvedValue([{ roadAddress: '경기도 화성시 봉담읍 동화길 10', jibunAddress: '', pnu: '',
+    legalDongCode: '4159025021', provinceCode: '41', cityCountyDistrictCode: '41590', latitude: 37.2, longitude: 126.9 }])
+  const { form } = renderForm()
+  search(form, '봉담읍 동화길 10')
+  fireEvent.click(await within(form).findByRole('button', { name: /동화길 10/ }))
+  fireEvent.change(within(form).getByLabelText('전체 세대수'), { target: { value: '350' } })
+  fireEvent.change(within(form).getByLabelText('주소(도로명 또는 지번)'), { target: { value: '경기도 화성시 봉담읍 동화길 12' } })
+  expect(within(form).getByRole('button', { name: '단지 등록하고 연결' })).toBeDisabled()
+  expect(within(form).getByText('행정구역 코드를 정하려면 주소 검색 결과를 고르거나 PNU를 입력하세요.')).toBeInTheDocument()
+})
+
+it('검색 결과를 고른 뒤 PNU를 고치면 행정구역 코드는 그 PNU 앞자리로 정한다', async () => {
+  lookup.lookupAddresses.mockResolvedValue([{ roadAddress: '', jibunAddress: '인천광역시 부평구 부평동 65-17', pnu: '2823710100100650017',
+    legalDongCode: '2823710100', provinceCode: '28', cityCountyDistrictCode: '28237', latitude: 37.502996, longitude: 126.719475 }])
+  registration.createHousingComplex.mockResolvedValue({ housingComplexId: 3505, name: '인천부평' })
+  const { form, onCreated } = renderForm()
+  search(form, '부평동 65-17')
+  fireEvent.click(await within(form).findByRole('button', { name: /부평동 65-17/ }))
+  fireEvent.change(within(form).getByLabelText('PNU'), { target: { value: '4159025021100100000' } })
+  fireEvent.change(within(form).getByLabelText('전체 세대수'), { target: { value: '350' } })
+  fireEvent.click(within(form).getByRole('button', { name: '단지 등록하고 연결' }))
+  await waitFor(() => expect(onCreated).toHaveBeenCalled())
+  expect(registration.createHousingComplex).toHaveBeenCalledWith(expect.objectContaining({ address: expect.objectContaining({
+    pnu: '4159025021100100000', legalDongCode: '4159025021', cityCountyDistrictCode: '41590' }) }))
+})

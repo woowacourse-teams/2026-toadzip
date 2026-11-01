@@ -245,7 +245,6 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
       row.housingComplexId = complex.id; row.housingComplexName = complex.name
       if (!row.pnu.trim()) row.pnu = complex.pnu
     }
-    if (!row.pnu.trim()) throw new ReviewError(`공급행 ${index + 1}의 소재지 PNU를 확인하세요.`, `row:${index}`)
     applyCells(row as unknown as JsonObject, entry.cells, rowFields)
     // 공고에 주택형 표기가 없으면 새 행은 연결한 단지 주택형 이름으로 표시한다.
     if (!row.typeName.trim()) row.typeName = entry.proposal.candidates.find(type => type.id === row.housingTypeId)?.name ?? ''
@@ -299,7 +298,7 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
   const reception = { ...((workspace.detail.data.receptionPlace ?? {}) as JsonObject) }
   applyCells(reception, review.reception, receptionFields)
   const document: ExtractedAnnouncement = { schemaVersion: 'admin-announcement-import/v1', source: { originalUrl: workspace.detail.data.originalUrl, sourceDocumentId: workspace.detail.sourceIdentifier, extractedAt: new Date().toISOString() }, announcement, receptionPlace: reception, supplyRows: ordered.filter(row => review.rows.some(entry => entry.include && entry.key === row.key)).map(row => ({
-    complexReference: { sourceComplexName: row.complexName, pnu: row.pnu }, sourceHousingTypeName: row.typeName,
+    complexReference: { sourceComplexName: row.complexName, pnu: row.pnu.trim() || null }, sourceHousingTypeName: row.typeName,
     expectedMoveInMonth: row.moveInMonth, supplyCategory: row.category, totalSupplyHouseholdCount: row.householdCount,
     exclusiveArea: row.exclusiveArea, supplyArea: row.supplyArea, targets: row.targets.filter(target => !target.excluded).map(target => ({
       target: target.target, supplyRank: target.supplyRank, supplyHouseholdCount: target.householdCount, reserveCount: target.reserveCount,

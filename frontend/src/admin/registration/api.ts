@@ -5,7 +5,7 @@ export type HousingComplexCreateRequest = {
   agencyCode: string
   address: {
     roadAddress: string
-    pnu: string
+    pnu: string | null
     legalDongCode: string
     provinceCode: string
     cityCountyDistrictCode: string

@@ -20,7 +20,7 @@
 - `schemaVersion`은 `admin-announcement-import/v1`이다. 최상위에는 `source`, `announcement`, `receptionPlace`, `supplyRows`, `schedules`, `attachments`, `unresolvedFields`를 넣고 정의되지 않은 필드는 넣지 않는다. 전체 구조는 [정상 예시](../../fixtures/announcement-import-v1-valid.json)를 따른다.
 - `source.originalUrl`은 공식 원공고의 HTTP(S) URL, `source.sourceDocumentId`는 공식 공고번호다. 공고번호가 없으면 `null`을 쓴다. `source.extractedAt`은 추출 시각과 오프셋을 포함한다.
 - 원문에서 확인한 값만 적는다. 확인할 수 없는 값은 추정하거나 `ETC`로 대체하지 않고 `null`로 두며, 확인이 필요한 경우 `unresolvedFields`에 JSON 경로와 사유를 적는다. `ETC`는 원문에 기타 범주가 명시된 경우에만 쓴다. 신규 등록은 필수값이 `null`이면 차단한다. 기존 갱신은 선택하지 않은 항목의 기존값을 유지하며, `null`·누락·`unresolvedFields`에 표시된 항목을 적용하도록 선택하면 요청 전체를 거절한다.
-- 내부 DB ID는 JSON에 넣지 않는다. 공급행마다 원문 단지명과 19자리 숫자 PNU를 `complexReference`에 넣는다.
+- 내부 DB ID는 JSON에 넣지 않는다. 공급행마다 원문 단지명과 19자리 숫자 PNU를 `complexReference`에 넣는다. 지번을 모르는 단지(공고문으로 새로 만든 단지 등)는 PNU를 비우고(`null`), 그 행은 PNU로 단지 후보를 찾지 않는다.
 - 날짜는 `YYYY-MM-DD`, 연월은 `YYYY-MM`, 일정 일시는 `YYYY-MM-DDTHH:mm:ss` 형식이다. 금액은 원 단위 18자리 이하 정수 또는 정확한 숫자 문자열이며 쉼표·만원·지수 표기를 쓰지 않는다. 세대수는 0 이상 정수다. 공급행·대상·일정·첨부 배열은 원문 순서를 유지한다. 신규 등록은 이 순서로 저장하며, 기존 갱신은 기존 순서를 유지하고 새 항목을 뒤에 추가한다.
 - 공급행의 `exclusiveArea`·`supplyArea`는 선택 항목으로 ㎡ 단위 소수 넷째 자리까지 입력한다. 모르면 생략하거나 `null`로 둔다. 기존 공고 갱신 시 해당 공고의 면적만 보정·보호하며 공통 주택형은 바꾸지 않는다.
 - 신규 등록의 `supplyRows`는 1개 이상이어야 한다. 기존 갱신은 `[]`로 공급정보를 유지할 수 있다. `schedules`, `attachments`, `unresolvedFields`는 값이 없어도 빈 배열로 넣는다. 접수 종료일과 일정 종료일시는 각각 시작보다 빠를 수 없다.

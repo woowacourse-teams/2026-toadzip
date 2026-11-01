@@ -444,8 +444,10 @@ public class SupplyCorrectionService {
         }
         // 기존 행의 원천 단지명은 정제가 소유하므로 요청 값과 관계없이 저장값을 유지한다.
         String complexName = old == null ? row.complexName() : old.complexName();
+        // 지번을 모르는 단지의 공급행은 소재지 PNU가 없다. 빈 입력은 요청 행(SupplyCorrection.Row)이 null로 받는다.
+        String pnu = row.pnu();
         var transientRow = SupplyRow.create(announcement, complex, type, "PREVIEW:" + row.key(), row.displayOrder(),
-                complexName, row.typeName(), row.pnu(), row.moveInMonth(), row.category(), null, row.householdCount());
+                complexName, row.typeName(), pnu, row.moveInMonth(), row.category(), null, row.householdCount());
         var plannedTargets = planTargets(transientRow, old, row.targets());
         BigDecimal exclusiveArea = row.exclusiveArea();
         BigDecimal supplyArea = row.supplyArea();
@@ -456,7 +458,7 @@ public class SupplyCorrectionService {
         boolean modified = old == null || old.protectedValues();
         var result = new Row(row.id(), row.key(), row.housingComplexId(), complexName(complex), row.housingTypeId(),
                 row.newHousingType(), row.groupId(), row.sharedHouseholdCount(), modified, row.excluded(), row.displayOrder(),
-                complexName, row.typeName(), row.pnu(), row.moveInMonth(), row.category(), row.householdCount(),
+                complexName, row.typeName(), pnu, row.moveInMonth(), row.category(), row.householdCount(),
                 row.areaOverride(), decimal(exclusiveArea), decimal(supplyArea), plannedTargets, row.targetCountsComparable());
         if (old != null && !same(old, result) && !modified) {
             return new Row(result.id(), result.key(), result.housingComplexId(), result.housingComplexName(),

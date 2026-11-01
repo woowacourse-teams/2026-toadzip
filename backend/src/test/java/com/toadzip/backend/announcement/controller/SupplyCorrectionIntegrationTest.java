@@ -106,6 +106,21 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
+    void 지번을_모르는_단지의_공급행은_소재지_PNU를_비워_저장한다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        jdbc.update("UPDATE housing_complexes SET pnu = NULL WHERE id = ?", row.getHousingComplex().getId());
+        jdbc.update("UPDATE supply_rows SET supply_pnu = NULL WHERE id = ?", row.getId());
+        entities.clear();
+        var request = request(id);
+        ((ObjectNode) request.get("rows").get(0)).put("pnu", "").put("typeName", "26A");
+
+        apply(id, request, preview(id, request)).andExpect(status().isOk());
+
+        assertThat(jdbc.queryForObject("SELECT supply_pnu IS NULL FROM supply_rows WHERE id = ?", Boolean.class,
+                row.getId())).isTrue();
+    }
+
+    @Test
     void 같은_작업_재전송은_추가행과_이력을_중복생성하지_않는다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId(); var request = request(id);
         var extra = request.get("rows").get(0).deepCopy();

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import jakarta.persistence.Column;
 import java.lang.reflect.Field;
@@ -102,6 +103,20 @@ class AddressTest {
                         new BigDecimal("37.5665"),
                         new BigDecimal("126.9780")
                 )
+        );
+    }
+
+    @Test
+    void 지번을_모르는_단지는_PNU_없이_만들고_같은_값_비교도_PNU_없음끼리_같다고_본다() {
+        Address first = Address.create("서울특별시 중구 세종대로 110", null, "1114010100", "11", "11140",
+                new BigDecimal("37.5665"), new BigDecimal("126.9780"));
+        Address second = Address.create("서울특별시 중구 세종대로 110", null, "1114010100", "11", "11140",
+                new BigDecimal("37.5665"), new BigDecimal("126.9780"));
+
+        assertAll(
+                () -> assertEquals(null, first.getPnu()),
+                () -> assertTrue(first.hasSameValues(second)),
+                () -> assertFalse(first.hasSameValues(createAddress(new BigDecimal("37.5665"), new BigDecimal("126.9780"))))
         );
     }
 
