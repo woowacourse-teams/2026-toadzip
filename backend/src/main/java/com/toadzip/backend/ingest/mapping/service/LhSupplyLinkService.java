@@ -186,11 +186,11 @@ public class LhSupplyLinkService {
             savedMatches.release(rowIdentifier).ifPresent(decision -> {
                 var previous = new LinkedHashMap<String, Object>();
                 previous.put("rowIdentifier", rowIdentifier);
-                previous.put("complexId", decision.getComplexId());
-                previous.put("housingTypeId", decision.getHousingTypeId());
-                previous.put("sourceUrl", decision.getSourceUrl());
-                previous.put("reason", decision.getReason());
-                previous.put("actor", decision.getActor());
+                previous.put("complexId", decision.complexId());
+                previous.put("housingTypeId", decision.housingTypeId());
+                previous.put("sourceUrl", decision.sourceUrl());
+                previous.put("reason", decision.reason());
+                previous.put("actor", decision.actor());
                 changes.save(new AdminDataChange(RESOURCE, linkId, "RELEASE_SUPPLY_MATCH", actor,
                         json.writeValueAsString(previous), json.writeValueAsString(Map.of(
                                 "announcementIdentifier", identifier, "rowIdentifier", rowIdentifier,
@@ -198,7 +198,6 @@ public class LhSupplyLinkService {
                 released.add(rowIdentifier);
             });
         }
-        savedMatches.flush();
         return released;
     }
 

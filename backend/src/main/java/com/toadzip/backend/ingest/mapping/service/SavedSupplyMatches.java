@@ -46,31 +46,29 @@ class SavedSupplyMatches {
     }
 
     SavedMatch view(MyHomeSupplyRowMappingData data, boolean reviewRequired) {
-        return decisions.findByRowIdentifier(data.sourceSupplyRowIdentifier()).map(value -> new SavedMatch(
-                value.getComplexId(), value.getHousingTypeId(), value.getSourceUrl(), value.getReason(),
-                value.getActor(), value.getUpdatedAt(), reviewRequired)).orElse(null);
+        return decisions.findByRowIdentifier(data.sourceSupplyRowIdentifier())
+                .map(value -> savedMatchOf(value, reviewRequired)).orElse(null);
     }
 
-    /** 검증한 선택을 저장한다. 원천과 연결 대상의 지금 지문을 함께 남긴다. */
-    void confirm(MyHomeSupplyRowMappingData data, MyHomeSupplyMatchResult match, String sourceUrl, String reason,
-            String actor) {
+    /** 검증한 선택을 저장하고 저장한 내용을 돌려준다. 원천과 연결 대상의 지금 지문을 함께 남긴다. */
+    SavedMatch confirm(MyHomeSupplyRowMappingData data, MyHomeSupplyMatchResult match, String sourceUrl,
+            String reason, String actor) {
         String rowIdentifier = data.sourceSupplyRowIdentifier();
         var decision = decisions.findByRowIdentifier(rowIdentifier)
                 .orElseGet(() -> new AnnouncementSupplyMatchDecision(rowIdentifier));
         decision.confirm(match.complex().getId(), match.housingType().getId(), fingerprints.source(data),
                 fingerprints.target(match.housingType()), sourceUrl, reason, actor);
-        decisions.save(decision);
+        return savedMatchOf(decisions.saveAndFlush(decision), false);
     }
 
-    /** 저장한 매칭을 지우고, 이력에 남길 수 있게 지운 매칭을 돌려준다. */
-    Optional<AnnouncementSupplyMatchDecision> release(String rowIdentifier) {
+    /** 저장한 매칭을 지우고, 이력에 남길 수 있게 지운 내용을 돌려준다. */
+    Optional<SavedMatch> release(String rowIdentifier) {
         var decision = decisions.findByRowIdentifier(rowIdentifier);
-        decision.ifPresent(decisions::delete);
-        return decision;
-    }
-
-    void flush() {
-        decisions.flush();
+        decision.ifPresent(value -> {
+            decisions.delete(value);
+            decisions.flush();
+        });
+        return decision.map(value -> savedMatchOf(value, false));
     }
 
     /** 분할 단지를 합치기 전에 연결 대상이 아직 유효한 매칭만 고른다. 합친 뒤 {@link #moveToComplex}로 옮긴다. */
@@ -83,6 +81,11 @@ class SavedSupplyMatches {
     void moveToComplex(List<Long> decisionIds, long complexId) {
         decisions.findAllById(decisionIds).forEach(decision -> decision.moveToComplex(complexId,
                 fingerprints.target(housingTypes.findById(decision.getHousingTypeId()).orElseThrow())));
+    }
+
+    private static SavedMatch savedMatchOf(AnnouncementSupplyMatchDecision decision, boolean reviewRequired) {
+        return new SavedMatch(decision.getComplexId(), decision.getHousingTypeId(), decision.getSourceUrl(),
+                decision.getReason(), decision.getActor(), decision.getUpdatedAt(), reviewRequired);
     }
 
     private boolean hasValidTarget(AnnouncementSupplyMatchDecision decision) {

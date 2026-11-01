@@ -1,6 +1,5 @@
 package com.toadzip.backend.ingest.mapping.service;
 
-import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -46,7 +45,7 @@ public class MyHomeComplexMappingWriter {
     private final MyHomeComplexSourceMapper sourceMapper;
     private final MyHomeComplexMergeStore mergeStore;
     private final SavedSupplyMatches savedMatches;
-    private final SupplyMatchingFingerprint fingerprints;
+    private final AnnouncementSupplySplitWriter splitWriter;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public MyHomeComplexMappingReport write(MyHomeComplexMappingData data, Address address) {
@@ -148,16 +147,11 @@ public class MyHomeComplexMappingWriter {
         HousingComplex representative = complexes.getFirst();
         List<Long> donorIds = complexIds.subList(1, complexIds.size());
         List<Long> validDecisions = savedMatches.validIn(donorIds);
-        List<Long> validGroupRows = donorIds.stream().flatMap(id -> supplyRowRepository.findAllByHousingComplexId(id)
-                        .stream())
-                .filter(row -> row.getConfirmedTargetFingerprint() != null && row.getHousingType() != null
-                        && fingerprints.target(row.getHousingType()).equals(row.getConfirmedTargetFingerprint()))
-                .map(SupplyRow::getId).toList();
+        List<Long> validGroupRows = splitWriter.confirmedRowsIn(donorIds);
         representative.adoptVerifiedMerge(representative.getTotalHouseholdCount(), imageUrl, moveOutCount);
         mergeStore.absorbSplitComplexes(representative.getId(), donorIds);
         savedMatches.moveToComplex(validDecisions, representative.getId());
-        supplyRowRepository.findAllById(validGroupRows).forEach(row ->
-                row.reconfirmTargetAfterComplexMove(fingerprints.target(row.getHousingType())));
+        splitWriter.reconfirmAfterComplexMove(validGroupRows);
     }
 
     private ComplexWriteResult upsertComplex(

@@ -809,6 +809,17 @@ class MyHomeComplexMappingServiceTest {
         decision.confirm(donor.getId(), donorType.getId(), "source", targetFingerprint(donorType.getId()),
                 "https://example.com/evidence", "공고 52형은 조각 단지 주택형", "admin");
         long decisionId = matchDecisions.save(decision).getId();
+        // 공급행 묶음 보정으로 확정한 행도 같은 주택형을 가리키면 대표 단지로 옮긴 뒤 재확인 없이 유지한다.
+        Announcement announcement = announcementRepository.save(announcement());
+        long confirmedRowId = supplyRowRepository.save(supplyRow(announcement, donor, donorType)).getId();
+        jdbc.sql("UPDATE supply_rows SET confirmed_target_fingerprint = ? WHERE id = ?")
+                .params(targetFingerprint(donorType.getId()), confirmedRowId).update();
+        // 확정 뒤 주택형이 바뀌어 지문이 맞지 않는 행은 옮겨도 재확인하지 않고 검토 대상으로 남긴다.
+        jdbc.sql("UPDATE supply_rows SET source_supply_row_identifier = 'supply-row-confirmed' WHERE id = ?")
+                .param(confirmedRowId).update();
+        long staleRowId = supplyRowRepository.save(supplyRow(announcement, donor, donorType)).getId();
+        jdbc.sql("UPDATE supply_rows SET confirmed_target_fingerprint = 'stale' WHERE id = ?").param(staleRowId)
+                .update();
         jdbc.sql("""
                 INSERT INTO lh_household_complex_links (source_key, housing_complex_id, source_fingerprint,
                     target_fingerprint, reason, actor, updated_at, version) VALUES ('lh-split', ?, 's', 't', '확인', 'admin', now(), 0)
@@ -840,6 +851,10 @@ class MyHomeComplexMappingServiceTest {
         assertThat(jdbc.sql("SELECT housing_complex_id FROM housing_types WHERE id = ?").param(movedType.getId())
                 .query(Long.class).single()).isEqualTo(representativeId);
         assertThat(moved.getTargetFingerprint()).isEqualTo(targetFingerprint(movedType.getId()));
+        assertThat(jdbc.sql("SELECT confirmed_target_fingerprint FROM supply_rows WHERE id = ?").param(confirmedRowId)
+                .query(String.class).single()).isEqualTo(targetFingerprint(movedType.getId()));
+        assertThat(jdbc.sql("SELECT confirmed_target_fingerprint FROM supply_rows WHERE id = ?").param(staleRowId)
+                .query(String.class).single()).isEqualTo("stale");
         for (String table : List.of("lh_household_complex_links", "lh_household_target_decisions",
                 "housing_complex_reviews")) {
             assertThat(jdbc.sql("SELECT housing_complex_id FROM " + table).query(Long.class).list())

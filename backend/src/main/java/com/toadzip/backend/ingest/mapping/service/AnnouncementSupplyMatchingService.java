@@ -193,11 +193,11 @@ public class AnnouncementSupplyMatchingService {
                         continue;
                     }
                     String before = json.writeValueAsString(savedMatches.view(data, false));
-                    savedMatches.confirm(data, match, request.sourceUrl().strip(), request.reason().strip(), actor);
-                    savedMatches.flush();
+                    var saved = savedMatches.confirm(data, match, request.sourceUrl().strip(), request.reason().strip(),
+                            actor);
                     changes.save(new AdminDataChange("ANNOUNCEMENT", announcement.getId(), "SAVE_SUPPLY_MATCH", actor,
                             before, json.writeValueAsString(Map.of("rowIdentifier", data.sourceSupplyRowIdentifier(),
-                                    "decision", savedMatches.view(data, false)))));
+                                    "decision", saved))));
                 }
             }
             if (!plans.isEmpty()) {
@@ -313,7 +313,6 @@ public class AnnouncementSupplyMatchingService {
             }
             savedMatches.confirm(data, match, sourceUrl.strip(), reason.strip(), actor);
         }
-        savedMatches.flush();
     }
 
     private String token(MyHomeSupplyRowMappingData data) {
@@ -399,13 +398,10 @@ public class AnnouncementSupplyMatchingService {
         if (!token(data).equals(request.token())) {
             throw new AdminDataConflictException("원천 또는 저장한 선택이 변경되었습니다. 다시 조회해 주세요.");
         }
-        if (!savedMatches.exists(request.rowIdentifier())) {
-            throw new AdminDataConflictException("저장한 매칭이 없습니다. 다시 조회해 주세요.");
-        }
         var announcement = announcements.findBySourceAnnouncementIdentifierForUpdate(identifier).orElseThrow();
-        String before = json.writeValueAsString(savedMatches.view(data, false));
-        savedMatches.release(request.rowIdentifier());
-        savedMatches.flush();
+        var released = savedMatches.release(request.rowIdentifier())
+                .orElseThrow(() -> new AdminDataConflictException("저장한 매칭이 없습니다. 다시 조회해 주세요."));
+        String before = json.writeValueAsString(released);
         changes.save(new AdminDataChange("ANNOUNCEMENT", announcement.getId(), "RELEASE_SUPPLY_MATCH", actor,
                 before, json.writeValueAsString(Map.of("rowIdentifier", request.rowIdentifier(),
                         "reason", request.reason().strip()))));

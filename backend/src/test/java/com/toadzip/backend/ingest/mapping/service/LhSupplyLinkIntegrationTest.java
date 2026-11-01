@@ -186,6 +186,15 @@ class LhSupplyLinkIntegrationTest {
         assertThat(decisionCount()).isZero();
         assertThat(jdbc.sql("SELECT after_value FROM admin_data_changes WHERE action = 'RELEASE_SUPPLY_MATCH'")
                 .query(String.class).single()).contains(myhomeRow, "LH 행 구성이 바뀌어");
+        var releasedMatch = json.readTree(jdbc.sql(
+                "SELECT before_value FROM admin_data_changes WHERE action = 'RELEASE_SUPPLY_MATCH'")
+                .query(String.class).single());
+        assertThat(releasedMatch.path("rowIdentifier").asString()).isEqualTo(myhomeRow);
+        assertThat(releasedMatch.path("complexId").isNumber()).isTrue();
+        assertThat(releasedMatch.path("housingTypeId").isNumber()).isTrue();
+        assertThat(releasedMatch.path("sourceUrl").asString()).isEqualTo(OFFICIAL_URL);
+        assertThat(releasedMatch.path("reason").asString()).isEqualTo("PDF 보정");
+        assertThat(releasedMatch.path("actor").asString()).isEqualTo("operator");
         mapping.mapAll();
         assertThat(pendingMappingFailures()).isEmpty();
 

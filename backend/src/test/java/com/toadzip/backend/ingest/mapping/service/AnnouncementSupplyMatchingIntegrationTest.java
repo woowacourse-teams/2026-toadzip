@@ -919,6 +919,19 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(matching.rows(TARGET).getFirst().housingTypeId()).isNull();
         assertThat(jdbc.sql("SELECT actor FROM admin_data_changes WHERE action = 'RELEASE_SUPPLY_MATCH'")
                 .query(String.class).list()).contains("admin");
+        var saved = json.readTree(jdbc.sql("SELECT after_value FROM admin_data_changes WHERE action = 'SAVE_SUPPLY_MATCH'")
+                .query(String.class).single()).path("decision");
+        var released = json.readTree(jdbc.sql(
+                "SELECT before_value FROM admin_data_changes WHERE action = 'RELEASE_SUPPLY_MATCH'")
+                .query(String.class).single());
+        for (var decision : List.of(saved, released)) {
+            assertThat(decision.path("complexId").asLong()).isEqualTo(complex.getId());
+            assertThat(decision.path("housingTypeId").asLong()).isEqualTo(type.getId());
+            assertThat(decision.path("sourceUrl").asString()).isEqualTo("https://example.com/official.pdf");
+            assertThat(decision.path("reason").asString()).isEqualTo("공고문 3쪽에서 면적과 주택형 대응 확인");
+            assertThat(decision.path("actor").asString()).isEqualTo("admin");
+            assertThat(decision.path("updatedAt").isNull()).isFalse();
+        }
     }
 
     @Test
