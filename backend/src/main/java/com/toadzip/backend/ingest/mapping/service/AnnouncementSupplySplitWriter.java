@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -58,7 +59,7 @@ class AnnouncementSupplySplitWriter {
         group.confirm(SupplyRowGroupOrigins.householdCount(data, plan.expanded()), fingerprints.splitSource(data, plan.expanded()),
                 plan.sourceUrl().strip(), plan.reason().strip(), plan.actor());
         groups.saveAndFlush(group);
-        int displayOrder = 1;
+        int displayOrder = firstDisplayOrder(replaced, members);
         for (SplitTarget target : plan.targets()) {
             applyTarget(announcement, group, data, members, target, displayOrder++, plan.expanded());
         }
@@ -66,6 +67,14 @@ class AnnouncementSupplySplitWriter {
         savedMatches.release(origin);
         rows.flush();
         announcement.recordAdminSupplyChange();
+    }
+
+    /**
+     * 나눈 행은 대체하는 행(다시 나누면 기존 구성원)의 자리부터 차례로 차지한다. 관리자 보정 행이라 재정제가 순서를 바꾸지 않으므로
+     * 공고 안의 자리를 여기서 정하지 않으면 다른 공급행과 순서가 겹친다.
+     */
+    private int firstDisplayOrder(List<SupplyRow> replaced, List<SupplyRow> members) {
+        return Stream.concat(replaced.stream(), members.stream()).mapToInt(SupplyRow::getDisplayOrder).min().orElse(1);
     }
 
     private void applyTarget(Announcement announcement, SupplyRowGroup group, MyHomeSupplyRowMappingData data,

@@ -39,6 +39,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -224,6 +225,42 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 .containsExactly("26(청년)", "26A,B(고령자)", "26(신혼부부)");
         assertThat(rowQuery.rows(TARGET).get(1).splitGroup()).isNotNull();
         assertThat(rowQuery.rows(TARGET).get(1).splitGroup().reviewRequired()).isFalse();
+        var ordered = supplies.findAll().stream().sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder)).toList();
+        assertThat(ordered).extracting(SupplyRow::getDisplayOrder).containsExactly(1, 2, 3, 4);
+        List<String> names = ordered.stream().map(row -> row.getAnnouncementHousingTypeName() == null
+                ? row.getSourceHousingTypeName() : row.getAnnouncementHousingTypeName()).toList();
+        assertThat(names.getFirst()).isEqualTo("26(청년)");
+        assertThat(names.subList(1, 3)).containsExactlyInAnyOrder("26A", "26B");
+        assertThat(names.getLast()).isEqualTo("26(신혼부부)");
+    }
+
+    @Test
+    void LH_공급정보가_사라져도_나눈_첫_LH_행과_나머지_LH_해석_행을_그대로_둔다() throws Exception {
+        prepareHansville();
+        var first = types.findAll().stream().filter(value -> value.getExclusiveArea().compareTo(new BigDecimal("26.4673")) == 0)
+                .findFirst().orElseThrow();
+        var second = types.findAll().stream().filter(value -> value.getExclusiveArea().compareTo(new BigDecimal("26.5195")) == 0)
+                .findFirst().orElseThrow();
+        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate)
+                candidateResolver.resolve(sources.findAll().getFirst());
+        lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of(
+                lhSupplyRow(0, candidate.panId(), "26(청년)", "26.4673", "100"),
+                lhSupplyRow(1, candidate.panId(), "26A,B(고령자)", "26.5195", "50"),
+                lhSupplyRow(2, candidate.panId(), "26(신혼부부)", "26.5195", "20")));
+        mapping.mapAll();
+        var rows = rowQuery.rows(TARGET);
+        assertThat(rows).extracting(Row::sourceHousingTypeName).containsExactly("26(청년)", "26A,B(고령자)", "26(신혼부부)");
+        refineWith(Map.of("rows", List.of(), "splits", List.of(splitPlan(rows.getFirst(), Map.of("26A", first, "26B", second))),
+                "remember", true, "sourceUrl", "https://example.com/official.pdf",
+                "reason", "공고문 4쪽의 26A·26B 면적 확인")).andExpect(status().isOk());
+        mapping.mapAll();
+        List<String> before = supplyRowState();
+
+        jdbc.sql("DELETE FROM lh_announcement_supply_rows").update();
+        mapping.mapAll();
+
+        assertThat(supplyRowState()).isEqualTo(before);
+        assertThat(supplies.findAll()).extracting(SupplyRow::getDisplayOrder).doesNotHaveDuplicates();
     }
 
     @Test
@@ -1324,4 +1361,12 @@ class AnnouncementSupplyMatchingIntegrationTest {
         return source;
     }
 
+
+    private List<String> supplyRowState() {
+        return jdbc.sql("""
+                SELECT id || ':' || display_order || ':' || COALESCE(announcement_housing_type_name, source_housing_type_name)
+                    || ':' || COALESCE(supply_group_id::text, '-') || ':' || COALESCE(lh_source_supply_row_identifier, '-')
+                FROM supply_rows ORDER BY id
+                """).query(String.class).list();
+    }
 }

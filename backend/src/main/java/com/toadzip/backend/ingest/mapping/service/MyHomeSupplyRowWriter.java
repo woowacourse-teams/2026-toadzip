@@ -40,7 +40,8 @@ class MyHomeSupplyRowWriter {
 
     /**
      * 원천 행마다 보정 묶음 보존 → LH 해석 보존 묶음 → 단일 행 쓰기 순서로 처리하고, 원천에서 사라진 행을 정리한다.
-     * 앞 단계가 처리한 행은 뒤 단계로 넘기지 않는다.
+     * 보정 묶음을 지킨 원천도 같은 원천의 다른 LH 해석 행은 보존해야 하므로 LH 해석 보존 묶음까지 확인한다.
+     * 보정 묶음 구성원은 LH 해석 보존 묶음에 들지 않으므로 같은 행을 두 번 쓰지 않는다.
      */
     SupplyRowsWriteResult write(
             Announcement announcement,
@@ -51,11 +52,9 @@ class MyHomeSupplyRowWriter {
     ) {
         RowsWrite write = begin(announcement, rows, historicalSourceKeys);
         for (MyHomeSupplyRowMappingData data : rows) {
-            if (keepCorrectionGroup(write, data)) {
-                continue;
-            }
+            boolean keptCorrection = keepCorrectionGroup(write, data);
             if (keepLhResolvedGroup(write, announcement, data, preserveExistingLhResolvedRows, historicalSourceKeys,
-                    selections)) {
+                    selections) || keptCorrection) {
                 continue;
             }
             writeRow(write, announcement, data, selections);
