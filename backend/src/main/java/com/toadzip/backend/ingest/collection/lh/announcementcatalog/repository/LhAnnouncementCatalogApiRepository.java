@@ -31,6 +31,8 @@ public class LhAnnouncementCatalogApiRepository {
         var parameters = new LinkedMultiValueMap<String, String>();
         parameters.add("PG_SZ", Integer.toString(request.pageSize()));
         parameters.add("PAGE", Integer.toString(page));
+        parameters.add("PAN_ST_DT", request.startDateParameter());
+        parameters.add("PAN_ED_DT", request.endDateParameter());
         try {
             var response = circuitBreaker.execute(
                     () -> client.get("lhLeaseNoticeInfo1/lhLeaseNoticeInfo1", parameters));

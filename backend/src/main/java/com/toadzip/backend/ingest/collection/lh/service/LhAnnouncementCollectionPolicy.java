@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.collection.lh.service;
 
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -34,8 +35,16 @@ public class LhAnnouncementCollectionPolicy {
     }
 
     public boolean isCollectionTarget(MyHomeAnnouncementSourceView source) {
-        Optional<LocalDate> endDate = applicationEndDate(source.getEndDe());
-        return endDate.isEmpty() || !endDate.orElseThrow().isBefore(LocalDate.now(clock).minus(recentEndedWindow));
+        return applicationEndDate(source.getEndDe()).map(this::isRecentlyEnded).orElse(true);
+    }
+
+    /** 공고목록 공고도 마이홈 공고와 같은 기준으로 접수가 오래전에 끝난 공고는 받지 않는다. */
+    public boolean isCollectionTarget(LhAnnouncementCatalogSourceView source) {
+        return source.closingLocalDate().map(this::isRecentlyEnded).orElse(true);
+    }
+
+    private boolean isRecentlyEnded(LocalDate endDate) {
+        return !endDate.isBefore(LocalDate.now(clock).minus(recentEndedWindow));
     }
 
     private Optional<LocalDate> applicationEndDate(String value) {

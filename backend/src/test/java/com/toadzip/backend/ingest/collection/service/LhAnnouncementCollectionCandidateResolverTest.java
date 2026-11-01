@@ -16,7 +16,12 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollection
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
+import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionPolicy;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.Period;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -24,8 +29,49 @@ class LhAnnouncementCollectionCandidateResolverTest {
 
     private final LhAnnouncementCatalogSourceReader catalogRepository =
             mock(LhAnnouncementCatalogSourceReader.class);
-    private final LhAnnouncementCollectionCandidateResolver resolver =
-            new LhAnnouncementCollectionCandidateResolver(catalogRepository);
+    private static final Instant NOW = Instant.parse("2026-09-26T00:00:00Z");
+
+    private final LhAnnouncementCollectionCandidateResolver resolver = new LhAnnouncementCollectionCandidateResolver(
+            catalogRepository, new LhAnnouncementCollectionPolicy(Clock.fixed(NOW, ZoneOffset.UTC), Period.ofDays(30)));
+
+    @Test
+    void 공고목록의_임대주택_공고를_목록의_조회코드로_수집_후보로_만든다() {
+        var announcement = catalogAnnouncement("06", "07", "062", "2026.09.20");
+        when(catalogRepository.findAllPresentRentalHousingAnnouncements()).thenReturn(List.of(announcement));
+
+        List<Candidate> candidates = resolver.resolveCatalogTargets();
+
+        assertThat(candidates).singleElement().satisfies(candidate -> {
+            assertThat(candidate.sourceAnnouncementKey()).isEqualTo("lh-catalog:" + announcement.getSourceKey());
+            assertThat(candidate.request()).isEqualTo(new LhAnnouncementRequest("200", "03", "06", "07", "062"));
+            assertThat(candidate.catalogCollectedAt()).isEqualTo(NOW);
+        });
+    }
+
+    @Test
+    void 종료_후_수집_기간이_지난_공고목록_공고는_후보에서_뺀다() {
+        when(catalogRepository.findAllPresentRentalHousingAnnouncements())
+                .thenReturn(List.of(catalogAnnouncement("06", "07", "062", "2026.08.01")));
+
+        assertThat(resolver.resolveCatalogTargets()).isEmpty();
+    }
+
+    @Test
+    void 임대주택_공고와_신혼희망타운_임대_공고만_공고목록_수집_대상이다() {
+        assertThat(catalogAnnouncement("06", "07", "062", "").isRentalHousingAnnouncement()).isTrue();
+        assertThat(catalogAnnouncement("06", "10", "063", "").isRentalHousingAnnouncement()).isTrue();
+        assertThat(catalogAnnouncement("39", "42", "063", "").isRentalHousingAnnouncement()).isTrue();
+        assertThat(catalogAnnouncement("39", "51", "390", "").isRentalHousingAnnouncement()).isTrue();
+        // 어린이집 운영자 모집, 신혼희망타운 공공분양, 분양주택은 받지 않는다.
+        assertThat(catalogAnnouncement("06", "40", "064", "").isRentalHousingAnnouncement()).isFalse();
+        assertThat(catalogAnnouncement("39", "39", "390", "").isRentalHousingAnnouncement()).isFalse();
+        assertThat(catalogAnnouncement("05", "05", "050", "").isRentalHousingAnnouncement()).isFalse();
+    }
+
+    private LhAnnouncementCatalogSourceView catalogAnnouncement(String upper, String type, String supply, String closingDate) {
+        return LhSourceViews.announcementCatalog(NOW, new LhAnnouncementCatalogSnapshot(
+                "200", "03", upper, type, supply, "공고", "공고중", "2026.09.01", "2026.09.01", closingDate, "", ""));
+    }
 
     @Test
     void LH_공고의_공급유형과_URL로_수집_후보를_만든다() {

@@ -8,6 +8,7 @@ import com.toadzip.backend.ingest.collection.lh.announcementcatalog.dto.LhAnnoun
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.dto.LhAnnouncementCatalogCollectionRequest;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.service.LhAnnouncementCatalogStorageService;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
@@ -26,7 +27,8 @@ public class LhCatalogStorageFixtures {
 
     public StoreResult store(List<Entry> entries) {
         var at = clock.instant();
-        var request = new LhAnnouncementCatalogCollectionRequest(null, 9999, 1000, at);
+        var request = new LhAnnouncementCatalogCollectionRequest(null, 9999, 1000,
+                LocalDate.of(2020, 1, 1), LocalDate.of(2030, 12, 31), at);
         var rows = entries.stream().map(entry -> new LhAnnouncementCatalogRow(
                 mapper.convertValue(entry.snapshot(), LhAnnouncementCatalogSnapshot.class),
                 entry.rawPayload())).toList();

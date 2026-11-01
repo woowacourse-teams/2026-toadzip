@@ -1,5 +1,9 @@
 package com.toadzip.backend.ingest.collection.service;
 
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSourceView;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -148,13 +152,73 @@ class LhAnnouncementExternalCollectionServiceTest {
         return new LhAnnouncementExternalCollectionService(
                 myHomeAnnouncementRepository,
                 failureRecorder,
-                new LhAnnouncementCollectionCandidateResolver(catalogRepository),
+                new LhAnnouncementCollectionCandidateResolver(catalogRepository, collectionPolicy),
                 new LhAnnouncementCandidateSelector(collectionPolicy),
                 new LhAnnouncementSharedRequestCollector(candidateCollector, progressManager, failureRecorder,
                         new LhAnnouncementClientProperties(
                                 maxConcurrentRequests, Duration.ofSeconds(3), Duration.ofSeconds(10))),
                 meterRegistry
         );
+    }
+
+    @Test
+    void 마이홈_원천을_처리한_뒤_공고목록에만_있는_임대_공고를_수집한다() {
+        when(catalogRepository.findAllPresentRentalHousingAnnouncements())
+                .thenReturn(List.of(catalogAnnouncement("300", "07", "062")));
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+
+        ExternalDataCollectionReport report = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        ArgumentCaptor<LhAnnouncementRequest> request = ArgumentCaptor.forClass(LhAnnouncementRequest.class);
+        verify(externalRepository).fetchDetail(request.capture());
+        assertThat(request.getValue()).isEqualTo(new LhAnnouncementRequest("300", "03", "06", "07", "062"));
+        assertThat(report.failedRequestCount()).isZero();
+        verify(progressStore).complete(any(), startsWith("lh-catalog:"), any(), eq("300"));
+    }
+
+    @Test
+    void 마이홈_원천으로_이미_수집한_요청은_공고목록에서_다시_호출하지_않는다() {
+        source(announcementSource("P1", "100"));
+        when(catalogRepository.findAllPresentRentalHousingAnnouncements())
+                .thenReturn(List.of(catalogAnnouncement("100", "06", "063")));
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+
+        service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        verify(externalRepository, times(1)).fetchDetail(any());
+        verify(progressStore, never()).complete(any(), startsWith("lh-catalog:"), any(), any());
+        verify(progressStore, never()).link(any(), startsWith("lh-catalog:"), any(), any());
+    }
+
+    @Test
+    void 마이홈_종료_정책으로_뺀_요청은_공고목록에서도_수집하지_않는다() {
+        source(stored(MyHomeSourceViews.change(announcementSource("P1", "100")).endDe("20260101").read()));
+        when(catalogRepository.findAllPresentRentalHousingAnnouncements())
+                .thenReturn(List.of(catalogAnnouncement("100", "06", "063")));
+        lenient().when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+
+        service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        verify(externalRepository, never()).fetchDetail(any());
+    }
+
+    @Test
+    void 마이홈_원천으로_실패한_요청은_같은_실행의_공고목록에서_다시_호출하지_않는다() {
+        source(announcementSource("P1", "100"));
+        AtomicInteger calls = new AtomicInteger();
+        when(externalRepository.fetchDetail(any())).thenAnswer(invocation -> {
+            calls.incrementAndGet();
+            throw ExternalDataRequestException.retryable("LH 응답 실패");
+        });
+        service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        int myHomeCalls = calls.getAndSet(0);
+        when(catalogRepository.findAllPresentRentalHousingAnnouncements())
+                .thenReturn(List.of(catalogAnnouncement("100", "06", "063")));
+
+        service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        assertThat(myHomeCalls).isPositive();
+        assertThat(calls.get()).isEqualTo(myHomeCalls);
     }
 
     @ParameterizedTest
@@ -649,6 +713,8 @@ class LhAnnouncementExternalCollectionServiceTest {
         verify(sourceStore, never()).replaceDetails(eq("100"), any(), any());
         verify(progressStore).complete(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), eq("b"), any(), eq("200"));
         verify(progressStore, never()).complete(any(), eq("a"), any(), any());
+        // 호출 한도에 걸리면 공고목록 단계도 시작하지 않는다.
+        verify(catalogRepository, never()).findAllPresentRentalHousingAnnouncements();
     }
 
     @Test
@@ -1764,4 +1830,9 @@ class LhAnnouncementExternalCollectionServiceTest {
                 + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=6";
     }
 
+
+    private LhAnnouncementCatalogSourceView catalogAnnouncement(String panId, String announcementType, String supplyType) {
+        return LhSourceViews.announcementCatalog(NOW, new LhAnnouncementCatalogSnapshot(
+                panId, "03", "06", announcementType, supplyType, "공고", "공고중", "", "", "", "", ""));
+    }
 }

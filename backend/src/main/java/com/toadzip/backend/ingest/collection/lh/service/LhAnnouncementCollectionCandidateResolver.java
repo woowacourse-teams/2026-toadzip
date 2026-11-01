@@ -22,6 +22,8 @@ public class LhAnnouncementCollectionCandidateResolver {
             "LH 공급기관이 아닌 마이홈 공고라서 수집 대상이 아닙니다.";
     private static final String UNSUPPORTED_REQUEST_REASON =
             "LH 공고 조회 조건을 지원하지 않아 건너뛰었습니다.";
+    /** 공고목록에서 정한 수집 후보의 진행 키 접두사. 마이홈 공고 ID와 겹치지 않는다. */
+    public static final String CATALOG_SOURCE_PREFIX = "lh-catalog:";
     private static final Map<String, String> SUPPLY_TYPE_CODE_BY_NAME = Map.of(
             "5년임대", "060",
             "10년임대", "060",
@@ -33,6 +35,23 @@ public class LhAnnouncementCollectionCandidateResolver {
     );
 
     private final LhAnnouncementCatalogSourceReader catalogRepository;
+    private final LhAnnouncementCollectionPolicy collectionPolicy;
+
+    /** 최신 공고목록의 임대주택 공고 중 종료 정책 안의 공고를 목록의 조회 코드 그대로 수집 후보로 만든다. */
+    public List<Candidate> resolveCatalogTargets() {
+        return catalogRepository.findAllPresentRentalHousingAnnouncements().stream()
+                .filter(collectionPolicy::isCollectionTarget)
+                .map(this::catalogCandidate)
+                .toList();
+    }
+
+    private Candidate catalogCandidate(LhAnnouncementCatalogSourceView source) {
+        LhAnnouncementRequest request = new LhAnnouncementRequest(source.getPanId(),
+                source.getConnectionSystemDivisionCode(), source.getUpperAnnouncementTypeCode(),
+                source.getAnnouncementTypeCode(), source.getSupplyInfoTypeCode());
+        return new Candidate(CATALOG_SOURCE_PREFIX + source.getSourceKey(), "lhCatalogSource=" + source.getSourceKey(),
+                request, source.getChangedAt(), source.getCollectedAt());
+    }
 
     public Resolution resolve(MyHomeAnnouncementSourceView source) {
         return resolveAll(List.of(source)).getFirst();

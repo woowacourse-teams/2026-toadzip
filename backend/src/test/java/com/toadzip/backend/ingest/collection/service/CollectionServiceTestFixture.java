@@ -70,6 +70,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Period;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -82,8 +84,10 @@ import tools.jackson.databind.json.JsonMapper;
 public final class CollectionServiceTestFixture {
 
     static final Clock CLOCK = Clock.systemUTC();
+    static final Period CATALOG_WINDOW = Period.ofYears(2);
     private final JsonMapper mapper = JsonMapper.builder().build();
     public final SourceCollectionRecordService records = mock(SourceCollectionRecordService.class);
+    public final List<LhAnnouncementCatalogCollectionRequest> catalogRequests = new ArrayList<>();
     private final Map<UUID, Integer> storedCounts = new ConcurrentHashMap<>();
 
     /** 운영 수집과 같은 재시도·예외 변환 흐름을 재시도 대기 없이 실행한다. */
@@ -190,6 +194,7 @@ public final class CollectionServiceTestFixture {
         var api = mock(LhAnnouncementCatalogApiRepository.class);
         lenient().when(api.fetch(any(), anyInt())).thenAnswer(invocation -> {
             var request = invocation.<LhAnnouncementCatalogCollectionRequest>getArgument(0);
+            catalogRequests.add(request);
             int page = invocation.getArgument(1);
             return parser.parse(external.fetchCatalog(page, request.pageSize()), page, request.pageSize());
         });
@@ -208,7 +213,7 @@ public final class CollectionServiceTestFixture {
                     result.storedRowCount(), result.newRowCount(), result.changedRowCount());
         });
         return new LhAnnouncementCatalogCollectionService(new LhAnnouncementCatalogCollector(api, storage, meters),
-                new PagedSourceCollector(records, retry, failures, CLOCK));
+                new PagedSourceCollector(records, retry, failures, CLOCK), CLOCK, CATALOG_WINDOW);
     }
 
     public LhAnnouncementQueryCollector query(

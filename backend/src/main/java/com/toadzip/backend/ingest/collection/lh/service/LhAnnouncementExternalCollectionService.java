@@ -89,12 +89,13 @@ public class LhAnnouncementExternalCollectionService {
         Set<String> handledAnnouncementKeys = new HashSet<>();
         Set<String> loadedAnnouncementKeys = new HashSet<>();
         Map<String, Boolean> completedRequests = new HashMap<>();
+        Set<String> myHomeRequests = new HashSet<>();
         long lastSeenId = 0L;
         while (true) {
             IngestExecutionScope.checkStopRequested();
             List<MyHomeAnnouncementSourceView> sources = findNextBatch(targetSource, lastSeenId);
             if (sources.isEmpty()) {
-                return report;
+                return report.plus(collectCatalogTargets(targetSource, myHomeRequests, completedRequests));
             }
             lastSeenId = sources.getLast().getId();
             List<MyHomeAnnouncementSourceView> completeSources = completeSourceGroups(
@@ -107,6 +108,7 @@ public class LhAnnouncementExternalCollectionService {
                     targetSource,
                     completeSources,
                     handledAnnouncementKeys,
+                    myHomeRequests,
                     completedRequests,
                     false
             );
@@ -115,6 +117,22 @@ public class LhAnnouncementExternalCollectionService {
                 return report;
             }
         }
+    }
+
+    /**
+     * 마이홈 원천을 모두 처리한 뒤 공고목록에만 있는 임대주택 공고를 수집한다. 이번 실행에서 마이홈 원천이 가리킨 요청은
+     * 수집했든 종료 정책·충돌로 뺐든 건너뛴다. 마이홈 공고의 보강 원천은 마이홈 기준으로만 바뀌어야 하기 때문이다.
+     */
+    private ExternalDataCollectionReport collectCatalogTargets(
+            ExternalDataSource targetSource,
+            Set<String> myHomeRequests,
+            Map<String, Boolean> completedRequests
+    ) {
+        IngestExecutionScope.checkStopRequested();
+        List<Candidate> candidates = candidateResolver.resolveCatalogTargets().stream()
+                .filter(candidate -> !myHomeRequests.contains(candidate.requestDescription()))
+                .toList();
+        return collectCandidates(targetSource, candidates, completedRequests, false);
     }
 
     private ExternalDataCollectionReport refreshAnnouncement(
@@ -129,7 +147,7 @@ public class LhAnnouncementExternalCollectionService {
         if (sources.isEmpty()) {
             throw new InvalidIngestRequestException("마이홈 공고 원천을 찾을 수 없습니다: pblancId=" + pblancId);
         }
-        return collectBatch(targetSource, sources, new HashSet<>(), new HashMap<>(), true);
+        return collectBatch(targetSource, sources, new HashSet<>(), new HashSet<>(), new HashMap<>(), true);
     }
 
     private List<MyHomeAnnouncementSourceView> findNextBatch(ExternalDataSource targetSource, long lastSeenId) {
@@ -194,6 +212,7 @@ public class LhAnnouncementExternalCollectionService {
             ExternalDataSource targetSource,
             List<MyHomeAnnouncementSourceView> sources,
             Set<String> handledAnnouncementKeys,
+            Set<String> myHomeRequests,
             Map<String, Boolean> completedRequests,
             boolean forceRefresh
     ) {
@@ -202,6 +221,8 @@ public class LhAnnouncementExternalCollectionService {
         );
         List<Resolution> resolutions = measurePreparation(targetSource, forceRefresh, "candidate_resolution",
                 () -> candidateResolver.resolveAll(current));
+        resolutions.stream().filter(Candidate.class::isInstance).map(Candidate.class::cast)
+                .map(Candidate::requestDescription).forEach(myHomeRequests::add);
         CandidateSelection selection = measurePreparation(targetSource, forceRefresh, "candidate_selection",
                 () -> candidateSelector.select(current, resolutions, handledAnnouncementKeys, forceRefresh));
         recordSelection(targetSource, forceRefresh, selection, sources.size() - current.size());
