@@ -19,6 +19,7 @@
 | `LH_ANNOUNCEMENT_CATALOG` | `lh_announcement_catalog_entries` |
 | `LH_ANNOUNCEMENT_DETAIL` | `lh_announcement_detail_rows` |
 | `LH_ANNOUNCEMENT_SUPPLY` | `lh_announcement_supply_rows` |
+| `SH_ANNOUNCEMENT` | `sh_announcement_source` |
 
 현행 수집 원천만 조회한다. 빈 수집 묶음은 빈 목록으로 표시한다.
 활성·비활성 원천 행은 모두 표시하며 정제용 snapshot 중복 제거를 적용하지 않는다.
@@ -38,7 +39,7 @@
 | `raw` | DB에 저장된 원천 항목을 JSON 객체로 전달 |
 
 `raw`는 LH 공고 목록에서는 저장된 `rawPayload` 원천 객체다.
-나머지 다섯 분류는 저장 행의 `snake_case` 필드 객체이며 수집 응답 전체를 의미하지 않는다.
+SH 공고는 저장 행의 필드에 `attachments`를 JSON으로 합친 객체다. 나머지 다섯 분류는 저장 행의 `snake_case` 필드 객체이며 수집 응답 전체를 의미하지 않는다.
 LH 상세·공급의 `pan_id`·`request_hash`는 요청 묶음에서 보완한다. 테이블 간 ID 중복은 `sourceKey`와 함께 구분한다.
 LH 상세의 첨부파일 URL은 `raw.url`에 보존하고 공고 원문으로 표시하지 않는다.
 마이홈 공고의 원문 URL 선택 순서는 기존 정제와 같은 `url` → `pc_url` → `mobile_url`이다.

@@ -37,7 +37,7 @@ event=<domain>.<action>.<state> key=value key=value
 | `durationMs` | 처리 시간 |
 | `errorCode` | 내부 오류 코드 |
 
-- 예시는 `announcement.collection.completed`, `external_api.request.failed`이다.
+- 예시는 `ingest.pipeline.step.finished`, `external_api.request.failed`이다.
 - `traceId`는 MDC에 저장하고 로그 출력 형식에서 공통으로 포함한다.
 
 ## HTTP 요청과 예외
