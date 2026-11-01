@@ -622,7 +622,8 @@ class MyHomeComplexMergeIntegrationTest {
         ComplexMergeRequest request = json.convertValue(mergeRequest(), ComplexMergeRequest.class);
         List<String> before = productState();
         Lease lease = lease();
-        doNothing().doThrow(new IngestOwnershipLostException()).when(lease).verifyHeld();
+        // 진입점 확인, 쓰기 전 확인은 통과하고 커밋 직전 확인에서 소유권을 잃는다.
+        doNothing().doNothing().doThrow(new IngestOwnershipLostException()).when(lease).verifyHeld();
         claimOwnership(lease);
 
         try (var ignored = IngestExecutionScope.open(lease)) {

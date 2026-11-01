@@ -20,6 +20,7 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 /**
  * 수집·정제 진입점은 실행 소유권 안에서만 돈다. 진입점을 직접 부르는 테스트는 테스트 본문을 운영처럼 실행 소유권 안에서 돌린다.
  * Spring 테스트는 실제 실행 잠금으로 소유권을 잡고, 그 밖의 테스트는 늘 잡힌 소유권으로 실행 범위만 연다.
+ * MockMvc POST처럼 스스로 소유권을 잡는 경로를 섞는 테스트는 이 확장 대신 {@link #owned}로 직접 호출만 감싼다.
  */
 public class IngestExecutionExtension implements BeforeTestExecutionCallback, AfterTestExecutionCallback {
 
