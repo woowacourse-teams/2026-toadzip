@@ -138,6 +138,23 @@ class LhHouseholdTargetDecisionIntegrationTest {
     }
 
     @Test
+    void 결정_이후_단지_주택형_면적이_바뀌면_결정을_쓰지_않고_재확인을_요구한다() throws Exception {
+        group("남해평리", COUNTS);
+        group("남해평리(국민)", List.of("100", "90", "57", "106"));
+        enrichment.enrichAll();
+        var view = view();
+        save(view, "USE_SOURCE", view.groups().getFirst().sourceKey(), "공고문 대조").andExpect(status().isOk());
+        jdbc.sql("UPDATE housing_types SET exclusive_area = exclusive_area + 1 WHERE id = (SELECT min(id) FROM housing_types)")
+                .update();
+
+        enrichment.enrichAll();
+
+        assertThat(pendingReasons()).containsExactly("TARGET_DECISION_REVIEW_REQUIRED", "TARGET_DECISION_REVIEW_REQUIRED");
+        assertThat(view().decision().reviewRequired()).isTrue();
+        assertThat(householdCounts()).containsOnlyNulls();
+    }
+
+    @Test
     void 결정을_이유와_함께_해제하면_다음_보강부터_다시_중복_실패로_남긴다() throws Exception {
         group("남해평리", COUNTS);
         group("남해평리(국민)", List.of("100", "90", "57", "106"));

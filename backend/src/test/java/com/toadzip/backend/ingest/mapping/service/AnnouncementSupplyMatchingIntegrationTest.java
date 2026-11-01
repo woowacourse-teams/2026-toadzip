@@ -152,6 +152,28 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(types.findAll()).extracting(value -> value.getName()).containsOnly("26");
         assertThat(jdbc.sql("SELECT actor FROM admin_data_changes WHERE action = 'SPLIT_SUPPLY'")
                 .query(String.class).list()).containsExactly("operator");
+        var before = json.readTree(jdbc.sql("SELECT before_value FROM admin_data_changes WHERE action = 'SPLIT_SUPPLY'")
+                .query(String.class).single());
+        var after = json.readTree(jdbc.sql("SELECT after_value FROM admin_data_changes WHERE action = 'SPLIT_SUPPLY'")
+                .query(String.class).single());
+        assertThat(before.get(0).get("splitGroup").isNull()).isTrue();
+        assertThat(after.get(0).get("splitGroup").get("rows")).hasSize(2);
+    }
+
+    @Test
+    void 휴지통의_공고는_복수_공급행으로_나누지_않는다() throws Exception {
+        prepareHansville();
+        mapping.mapAll();
+        var announcement = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow();
+        announcement.moveToTrash();
+        announcements.saveAndFlush(announcement);
+
+        split(splitBody(rowQuery.rows(TARGET).getFirst())).andExpect(status().isConflict())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.message")
+                        .value("삭제 상태 또는 공고 기관이 원천과 다릅니다. 공고 관리에서 확인해 주세요."));
+
+        assertThat(jdbc.sql("SELECT count(*) FROM admin_data_changes WHERE action = 'SPLIT_SUPPLY'")
+                .query(Long.class).single()).isZero();
     }
 
     @Test
@@ -1183,6 +1205,23 @@ class AnnouncementSupplyMatchingIntegrationTest {
     }
 
     /** 관리자 화면의 PDF 보정과 같은 경로로 공급행의 주택형 연결만 바꾼다. */
+    @Test
+    @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
+    @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
+            executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
+    void PDF_보정에서_주택형_연결을_지우면_저장한_매칭도_해제한다() throws Exception {
+        mapping.mapAll();
+        long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
+        correctFromPdf(announcementId, type);
+        assertThat(jdbc.sql("SELECT count(*) FROM announcement_supply_match_decisions").query(Long.class).single())
+                .isOne();
+
+        correctFromPdf(announcementId, null);
+
+        assertThat(jdbc.sql("SELECT count(*) FROM announcement_supply_match_decisions").query(Long.class).single())
+                .isZero();
+    }
+
     private void correctFromPdf(long announcementId, HousingType housingType) throws Exception {
         var state = json.readTree(mvc.perform(get("/api/admin/announcements/" + announcementId + "/json-corrections")
                 .with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
@@ -1201,8 +1240,13 @@ class AnnouncementSupplyMatchingIntegrationTest {
         correction.put("sourceUrl", "https://example.com/official.pdf");
         correction.putNull("sourcePage");
         correction.set("rows", state.path("supply").path("rows").deepCopy());
-        ((ObjectNode) correction.get("rows").get(0))
-                .put("housingComplexId", complex.getId()).put("housingTypeId", housingType.getId());
+        var row = ((ObjectNode) correction.get("rows").get(0)).put("housingComplexId", complex.getId());
+        if (housingType == null) {
+            row.putNull("housingTypeId");
+        }
+        else {
+            row.put("housingTypeId", housingType.getId());
+        }
         var preview = json.readTree(mvc.perform(post("/api/admin/announcements/" + announcementId
                         + "/json-corrections/preview").with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(request.toString()))

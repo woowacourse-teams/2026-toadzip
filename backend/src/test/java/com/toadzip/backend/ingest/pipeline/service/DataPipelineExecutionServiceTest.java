@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -17,6 +18,7 @@ import com.toadzip.backend.ingest.collection.repository.external.IngestServiceKe
 import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
@@ -43,6 +45,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
@@ -381,6 +384,37 @@ class DataPipelineExecutionServiceTest {
                 .hasMessage("database unavailable");
 
         verify(lease).close();
+    }
+
+    @Test
+    void 중단_실행_복구에_실패하면_새_실행을_만들지_않고_실행_잠금을_반납한다() {
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        when(executionStateService.recoverInterruptedBefore(any(), any(), any()))
+                .thenThrow(new IllegalStateException("database unavailable"));
+
+        assertThatThrownBy(() -> service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("database unavailable");
+
+        verify(executionStateService, never()).create(any(), any(), any());
+        verify(lease).close();
+    }
+
+    @Test
+    void heartbeat가_실행_소유권을_잃으면_실행을_현재_단계의_실패로_끝낸다() {
+        configureStoredExecution();
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        var accepted = serviceWith(task -> { }).start(DataPipelineType.ANNOUNCEMENT_REFINEMENT);
+        executionStateService.startStep(accepted.executionId(), DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+        ArgumentCaptor<Runnable> heartbeat = ArgumentCaptor.forClass(Runnable.class);
+        verify(heartbeatExecutor).scheduleWithFixedDelay(heartbeat.capture(), anyLong(), anyLong(), any());
+        doThrow(new IngestOwnershipLostException()).when(lease).verifyHeld();
+
+        heartbeat.getValue().run();
+
+        var status = query.find(accepted.executionId());
+        assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
+        assertThat(status.failure().stepName()).isEqualTo("마이홈 공고 정제");
     }
 
     @Test
