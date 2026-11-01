@@ -1,10 +1,8 @@
 package com.toadzip.backend.ingest.mapping.service;
 
-import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
-
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhEnrichmentMappingState;
-import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
+import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureStore;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -15,12 +13,12 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 class MyHomeLhEnrichmentMappingState implements LhEnrichmentMappingState {
 
-    private final MyHomeAnnouncementMappingFailureRepository failureRepository;
+    private final MyHomeAnnouncementMappingFailureStore failureStore;
     private final MyHomeAnnouncementCommonValuesMapper commonValuesMapper;
 
     @Override
     public Set<String> incompleteAnnouncementIdentifiers() {
-        return failureRepository.findAllByStatus(PENDING).stream()
+        return failureStore.pending().stream()
                 .map(failure -> failure.getSourceAnnouncementIdentifier())
                 .filter(identifier -> identifier != null && !identifier.isBlank())
                 .collect(Collectors.toSet());

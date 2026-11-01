@@ -1,7 +1,5 @@
 package com.toadzip.backend.ingest.mapping.repository;
 
-import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
-
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.failure.repository.IngestFailureStore;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
@@ -41,11 +39,6 @@ public class MyHomeAnnouncementMappingFailureStore extends IngestFailureStore<My
             String identifier, List<MyHomeAnnouncementMappingFailure> failures, UUID executionId
     ) {
         reconcileForAnnouncement(identifier, failures, executionId);
-    }
-
-    @Transactional
-    public void reconcileAfterRun(List<MyHomeAnnouncementMappingFailure> failures, UUID executionId) {
-        reconcileWithHistory(repository.findAllByStatus(PENDING), failures, executionId);
     }
 
     @Transactional

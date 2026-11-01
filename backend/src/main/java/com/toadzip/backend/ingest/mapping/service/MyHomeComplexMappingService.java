@@ -30,14 +30,6 @@ public class MyHomeComplexMappingService {
     }
 
     @Transactional(readOnly = true)
-    public List<MyHomeComplexMappingFailureResponse> findFailures() {
-        return failureStore.pending()
-                .stream()
-                .map(MyHomeComplexMappingFailureResponse::from)
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
     public List<MyHomeComplexMappingFailureResponse> findFailureHistory(int page, int size) {
         return failureStore.history(page, size)
                 .stream()

@@ -1,7 +1,5 @@
 package com.toadzip.backend.ingest.mapping.repository;
 
-import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
-
 import com.toadzip.backend.ingest.failure.repository.IngestFailureStore;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailure;
 import java.time.Clock;
@@ -13,16 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public class MyHomeComplexMappingFailureStore extends IngestFailureStore<MyHomeComplexMappingFailure> {
 
-    private final MyHomeComplexMappingFailureRepository repository;
-
     public MyHomeComplexMappingFailureStore(MyHomeComplexMappingFailureRepository repository, Clock clock) {
         super(repository, clock);
-        this.repository = repository;
-    }
-
-    @Transactional
-    public void reconcileAfterRun(List<MyHomeComplexMappingFailure> failures, UUID executionId) {
-        reconcileWithHistory(repository.findAllByStatusOrderBySourceKeyAsc(PENDING), failures, executionId);
     }
 
     @Transactional

@@ -1,7 +1,5 @@
 package com.toadzip.backend.ingest.enrichment.repository;
 
-import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
-
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
 import com.toadzip.backend.ingest.failure.repository.IngestFailureStore;
 import java.time.Clock;
@@ -18,11 +16,6 @@ public class LhAnnouncementEnrichmentFailureStore extends IngestFailureStore<LhA
     public LhAnnouncementEnrichmentFailureStore(LhAnnouncementEnrichmentFailureRepository repository, Clock clock) {
         super(repository, clock);
         this.repository = repository;
-    }
-
-    @Transactional
-    public void reconcileAfterRun(List<LhAnnouncementEnrichmentFailure> failures, UUID executionId) {
-        reconcileWithHistory(repository.findAllByStatus(PENDING), failures, executionId);
     }
 
     @Transactional

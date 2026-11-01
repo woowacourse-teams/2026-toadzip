@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.transaction.annotation.Transactional;
 
 /** 정제·보강 실패 Store의 공통 저장·조회 흐름이다. 어떤 실패를 대상으로 맞출지는 각 Store가 고른다. 외부 수집 실패는 요청 단위로 따로 관리한다. */
 public abstract class IngestFailureStore<T extends IngestFailure<T>> {
@@ -19,6 +20,12 @@ public abstract class IngestFailureStore<T extends IngestFailure<T>> {
     protected IngestFailureStore(IngestFailureRepository<T> repository, Clock clock) {
         this.repository = repository;
         this.clock = clock;
+    }
+
+    /** 전체 실행에서 관찰한 실패로 미해결 실패 전체를 맞춘다. */
+    @Transactional
+    public void reconcileAfterRun(List<T> failures, UUID executionId) {
+        reconcileWithHistory(repository.findAllByStatus(PENDING), failures, executionId);
     }
 
     /** 관찰한 실패와 같은 원천 키의 지난 실패까지 함께 맞춰, 해결된 실패가 다시 나타나면 새로 만들지 않고 재발로 센다. */
@@ -51,9 +58,9 @@ public abstract class IngestFailureStore<T extends IngestFailure<T>> {
         return repository.findAllByStatusOrderBySourceKeyAscIdAsc(PENDING, PageRequest.of(page, size));
     }
 
-    /** 미해결 실패를 원천 키 순으로 모두 읽는다. */
+    /** 미해결 실패를 모두 읽는다. 순서는 정하지 않는다. */
     public List<T> pending() {
-        return repository.findAllByStatusOrderBySourceKeyAsc(PENDING);
+        return repository.findAllByStatus(PENDING);
     }
 
     /** 해결한 실패까지 원천 키 순으로 한 쪽씩 읽는다. */

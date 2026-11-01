@@ -37,7 +37,6 @@ public class MyHomeAnnouncementMappingService {
 
     private final MyHomeAnnouncementSourceReader sourceRepository;
 
-
     private final MyHomeAnnouncementMappingFailureStore failureStore;
 
     private final AnnouncementRepository announcementRepository;
@@ -224,14 +223,6 @@ public class MyHomeAnnouncementMappingService {
     @Transactional(readOnly = true)
     public List<MyHomeAnnouncementMappingFailureResponse> findFailures(int page, int size) {
         return failureStore.pending(page, size)
-                .stream()
-                .map(MyHomeAnnouncementMappingFailureResponse::from)
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public List<MyHomeAnnouncementMappingFailureResponse> findFailures() {
-        return failureStore.pending()
                 .stream()
                 .map(MyHomeAnnouncementMappingFailureResponse::from)
                 .toList();

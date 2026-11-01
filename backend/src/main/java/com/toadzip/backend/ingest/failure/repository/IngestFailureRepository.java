@@ -13,7 +13,7 @@ public interface IngestFailureRepository<T extends IngestFailure<T>> extends Jpa
 
     List<T> findAllBySourceKeyIn(Collection<String> sourceKeys);
 
-    List<T> findAllByStatusOrderBySourceKeyAsc(IngestFailureStatus status);
+    List<T> findAllByStatus(IngestFailureStatus status);
 
     List<T> findAllByStatusOrderBySourceKeyAscIdAsc(IngestFailureStatus status, Pageable pageable);
 

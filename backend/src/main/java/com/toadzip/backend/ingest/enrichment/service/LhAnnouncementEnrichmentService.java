@@ -210,13 +210,6 @@ public class LhAnnouncementEnrichmentService {
     }
 
     @Transactional(readOnly = true)
-    public List<LhAnnouncementEnrichmentFailureResponse> findFailures() {
-        return failureStore.pending().stream()
-                .map(LhAnnouncementEnrichmentFailureResponse::from)
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
     public List<LhAnnouncementEnrichmentFailureResponse> findFailureHistory(int page, int size) {
         return failureStore.history(page, size).stream()
                 .map(LhAnnouncementEnrichmentFailureResponse::from)

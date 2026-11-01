@@ -367,7 +367,7 @@ class MyHomeComplexMergeIntegrationTest {
         sources.deleteAll(sources.findAllByHsmpSnIn(List.of(31713154L)));
         List<String> before = productState();
         assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(4);
-        assertThat(mapping.findFailures()).anySatisfy(failure -> {
+        assertThat(mapping.findFailures(0, 100)).anySatisfy(failure -> {
             assertThat(failure.sourceComplexIdentifier()).isEqualTo("31713154:HAPPY_HOUSING");
             assertThat(failure.sourceKey()).isEqualTo("linked-complex:31713154:HAPPY_HOUSING");
         });
@@ -381,13 +381,13 @@ class MyHomeComplexMergeIntegrationTest {
         List<String> before = productState();
 
         assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(3);
-        assertThat(mapping.findFailures()).extracting(failure -> failure.sourceComplexIdentifier())
+        assertThat(mapping.findFailures(0, 100)).extracting(failure -> failure.sourceComplexIdentifier())
                 .containsExactlyInAnyOrder(
                         "31713155:HAPPY_HOUSING", "31713154:HAPPY_HOUSING", "31713153:HAPPY_HOUSING");
         assertThat(productState()).isEqualTo(before);
 
         assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(3);
-        assertThat(mapping.findFailures()).hasSize(3).allSatisfy(failure -> {
+        assertThat(mapping.findFailures(0, 100)).hasSize(3).allSatisfy(failure -> {
             assertThat(failure.occurrenceCount()).isEqualTo(2);
             assertThat(failure.recurrenceCount()).isZero();
         });
@@ -399,7 +399,7 @@ class MyHomeComplexMergeIntegrationTest {
                 source(31713153L, 4, "59", "59.0000", "20.0000")
         ));
         assertThat(mapping.mapAll().failedSourceRowCount()).isZero();
-        assertThat(mapping.findFailures()).isEmpty();
+        assertThat(mapping.findFailures(0, 100)).isEmpty();
         assertThat(mapping.findFailureHistory(0, 10)).hasSize(3).allSatisfy(failure -> {
             assertThat(failure.status()).isEqualTo(IngestFailureStatus.RESOLVED);
             assertThat(failure.lastResolvedAt()).isNotNull();
@@ -445,7 +445,7 @@ class MyHomeComplexMergeIntegrationTest {
         sources.save(source(31713154L, 2, "51", "51.5017", "18.8617", "국민임대"));
 
         assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(5);
-        assertThat(mapping.findFailures()).anySatisfy(failure -> {
+        assertThat(mapping.findFailures(0, 100)).anySatisfy(failure -> {
             assertThat(failure.sourceComplexIdentifier()).isEqualTo("31713154:NATIONAL_RENTAL");
             assertThat(failure.detail()).contains("공급유형");
         });
