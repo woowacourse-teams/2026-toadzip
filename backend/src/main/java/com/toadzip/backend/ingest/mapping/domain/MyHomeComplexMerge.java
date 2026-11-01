@@ -106,6 +106,7 @@ public class MyHomeComplexMerge {
                 throw new IllegalArgumentException("단지 공통값이 다릅니다. 통합 전에 차이를 확인해야 합니다.");
             }
         }
+        // 고르기만 해도 수동값 충돌을 거절한다. 채택은 통합을 실행할 때 한다.
         manualValues(complexes);
     }
 

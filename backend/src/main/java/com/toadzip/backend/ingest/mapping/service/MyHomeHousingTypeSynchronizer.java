@@ -31,8 +31,21 @@ class MyHomeHousingTypeSynchronizer {
     private final SupplyRowRepository supplyRowRepository;
     private final SavedSupplyMatches savedMatches;
 
-    /** 분할 단지 원천을 합칠 때 이름·면적이 같은 주택형은 이미 저장된 원천 식별자를 우선해 하나만 남긴다. */
-    List<MyHomeHousingTypeMappingData> distinct(
+    Result synchronize(HousingComplex complex, List<MyHomeHousingTypeMappingData> incoming) {
+        return synchronize(complex, incoming, false);
+    }
+
+    /** 분할 단지 원천을 합친 주택형은 이름·면적이 같으면 이미 저장된 원천 식별자를 우선해 하나만 남긴 뒤 맞춘다. */
+    Result synchronizeSplit(HousingComplex complex, List<MyHomeHousingTypeMappingData> incoming) {
+        return synchronize(complex, distinct(complex, incoming), false);
+    }
+
+    /** 확인된 통합 단지는 원천에서 사라진 주택형이라도 보강값이 있으면 지우지 않는다. */
+    Result synchronizeVerified(HousingComplex complex, List<MyHomeHousingTypeMappingData> incoming) {
+        return synchronize(complex, incoming, true);
+    }
+
+    private List<MyHomeHousingTypeMappingData> distinct(
             HousingComplex complex, List<MyHomeHousingTypeMappingData> incoming
     ) {
         Set<String> stored = housingTypeRepository.findAllIncludingTrashByHousingComplexId(complex.getId()).stream()
@@ -51,8 +64,7 @@ class MyHomeHousingTypeSynchronizer {
         return List.copyOf(distinct.values());
     }
 
-    /** 원천에서 사라진 주택형 가운데 보강값이 있는 것은 {@code preserveSupplementalValues}면 지우지 않는다. */
-    Result synchronize(
+    private Result synchronize(
             HousingComplex complex,
             List<MyHomeHousingTypeMappingData> incoming,
             boolean preserveSupplementalValues

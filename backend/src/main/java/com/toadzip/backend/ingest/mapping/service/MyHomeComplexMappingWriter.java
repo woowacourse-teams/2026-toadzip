@@ -48,7 +48,7 @@ public class MyHomeComplexMappingWriter {
         if (link == null) {
             linkRepository.save(MyHomeComplexLink.connect(data.sourceComplexIdentifier(), complexResult.complex()));
         }
-        var housingTypeResult = housingTypes.synchronize(complexResult.complex(), data.housingTypes(), false);
+        var housingTypeResult = housingTypes.synchronize(complexResult.complex(), data.housingTypes());
         return new MyHomeComplexMappingReport(
                 complexResult.created(),
                 complexResult.updated(),
@@ -86,8 +86,7 @@ public class MyHomeComplexMappingWriter {
         List<String> linked = links.stream().map(MyHomeComplexLink::getSourceComplexIdentifier).toList();
         identifiers.stream().filter(identifier -> !linked.contains(identifier))
                 .forEach(identifier -> linkRepository.save(MyHomeComplexLink.connect(identifier, complex)));
-        var housingTypeResult = housingTypes.synchronize(
-                complex, housingTypes.distinct(complex, combined.housingTypes()), false);
+        var housingTypeResult = housingTypes.synchronizeSplit(complex, combined.housingTypes());
         return new MyHomeComplexMappingReport(
                 complexResult.created(),
                 complexResult.updated(),
@@ -218,7 +217,7 @@ public class MyHomeComplexMappingWriter {
                 .map(identifier -> Long.valueOf(identifier.substring(0, identifier.indexOf(':')))).toList();
         Map<String, List<MyHomeComplexSourceView>> grouped = sourceRepository.findAllByHsmpSnIn(identifiers).stream()
                 .collect(Collectors.groupingBy(sourceMapper::sourceComplexIdentifier));
-        List<MyHomeHousingTypeMappingData> housingTypes = new ArrayList<>();
+        List<MyHomeHousingTypeMappingData> incoming = new ArrayList<>();
         for (MyHomeComplexLink member : links) {
             List<MyHomeComplexSourceView> sources = grouped.get(member.getSourceComplexIdentifier());
             if (sources == null || sources.isEmpty()) {
@@ -229,9 +228,9 @@ public class MyHomeComplexMappingWriter {
                     || !Objects.equals(member.getApprovedHouseholdCount(), data.totalHouseholdCount())) {
                 throw mergedSourceConflict("통합 근거의 단지 공통값 또는 원천 세대수가 변경되어 재확인이 필요합니다.");
             }
-            housingTypes.addAll(data.housingTypes());
+            incoming.addAll(data.housingTypes());
         }
-        var result = this.housingTypes.synchronize(complex, housingTypes, true);
+        var result = housingTypes.synchronizeVerified(complex, incoming);
         return new MyHomeComplexMappingReport(
                 0, 0, 1,
                 result.created(), result.updated(), result.unchanged(), result.deleted(), 0);

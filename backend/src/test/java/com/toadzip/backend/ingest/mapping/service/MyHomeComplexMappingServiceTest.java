@@ -884,6 +884,36 @@ class MyHomeComplexMappingServiceTest {
                 .isEqualTo(2);
     }
 
+    @Test
+    void 분할_단지를_합치면_한쪽에만_있던_수동값을_대표_단지가_이어받는다() {
+        List<HousingComplex> separated = separatedSplitComplexes();
+        jdbc.sql("UPDATE housing_complexes SET image_url = 'https://example.com/donor.png', "
+                + "recent_one_year_move_out_count = 3 WHERE id = ?").param(separated.getLast().getId()).update();
+
+        var report = mergeSeparatedSplitComplexes();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(complexRepository.findAll()).singleElement().satisfies(complex -> {
+            assertThat(complex.getId()).isEqualTo(separated.getFirst().getId());
+            assertThat(complex.getImageUrl()).isEqualTo("https://example.com/donor.png");
+            assertThat(complex.getRecentOneYearMoveOutCount()).isEqualTo(3);
+        });
+    }
+
+    @Test
+    void 분할_단지의_수동값이_서로_다르면_통합을_보류하고_원천값_충돌로_남긴다() {
+        List<HousingComplex> separated = separatedSplitComplexes();
+        jdbc.sql("UPDATE housing_complexes SET image_url = 'https://example.com/' || id || '.png'").update();
+
+        var report = mergeSeparatedSplitComplexes();
+
+        assertThat(report.failedSourceRowCount()).isEqualTo(2);
+        assertThat(service.findFailures(0, 10)).allSatisfy(failure ->
+                assertThat(failure.reason()).isEqualTo(MyHomeComplexMappingFailureReason.CONFLICTING_SOURCE_VALUE));
+        assertThat(complexRepository.findAll()).hasSize(2)
+                .extracting(HousingComplex::getImageUrl).doesNotHaveDuplicates();
+    }
+
     private String targetFingerprint(long housingTypeId) {
         return transactions.execute(status ->
                 fingerprints.target(housingTypeRepository.findById(housingTypeId).orElseThrow()));
