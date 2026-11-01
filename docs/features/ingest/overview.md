@@ -25,10 +25,11 @@ Spring은 생성자 주입으로 객체를 연결한다. `Runner.run()`에서 �
 기존 원천의 이관·보존과 배포는 [수집 저장 구조 전환 절차](../../operations/database/ingest-upgrade.md)를 따른다.
 
 통합 실행은 수집 뒤 정제까지 이어간다. 수집 부분 실패·호출 제한이면 자동 정제를 막고 독립 정제 실행으로 복구한다. 기존 네 단독 실행은 유지한다.
+단계마다 무엇을 실패·호출 제한 실패·경고로 셀지는 각 단계 보고서가 `IngestStepReport`로 정하고, 파이프라인은 그 수만 읽는다.
 
 단지 정제는 `MyHomeComplexMappingService.mapAll()` → `MyHomeComplexMappingProcessor.mapAll()`에서 원천을 묶는다. 일반 단지는 위치정보 DB의 좌표를 읽어 저장하고, 확인된 통합 단지는 기존 주소를 검증해 금액·주택형만 갱신한다. 저장은 단지별 트랜잭션이다.
 신규 주소의 좌표가 필요하면 수집 후 위치정보요약DB ZIP을 관리자 API로 업로드한다. 업로드는 정제 파이프라인에 포함되지 않는다.
-실패는 작업이 끝날 때 현재 원천과 대조해 갱신하며 이전 실패 이력은 보존한다. 정제·보강 실패의 대조·저장·관리자 해결은 `IngestFailureStore`가 공통으로 맡고, 원천별 Store는 대조할 실패 범위만 고른다.
+실패는 작업이 끝날 때 현재 원천과 대조해 갱신하며 이전 실패 이력은 보존한다. 정제·보강 실패의 대조·저장·관리자 해결과 미해결·이력 조회는 `IngestFailureStore`가 공통으로 맡고, 원천별 Store는 공고 단위 대조처럼 범위를 좁힌 대조만 더한다.
 단계별 후보 준비·배치 실행 API는 제공하지 않는다.
 
 ## 공고 수집·정제를 따라가는 순서
@@ -40,6 +41,7 @@ MyHome은 `MyHomeAnnouncementCollectionService.collect()` → `PagedSourceCollec
 LH 공급·상세는 [LhAnnouncementExternalCollectionService](../../../backend/src/main/java/com/toadzip/backend/ingest/collection/lh/service/LhAnnouncementExternalCollectionService.java)의 `collect()`에서 시작한다.
 `collectAnnouncements()` → `collectBatch()`에서 대상을 고르고 `LhAnnouncementSharedRequestCollector.collect()`에서 병렬 실행과 결과를 회수한다.
 요청 하나는 `LhAnnouncementCandidateCollector.collectAndStore()` → `LhAnnouncementQueryCollector.collect()` → `LhAnnouncementStorageService.completeSupply()/completeDetail()`에서 조회·검증·저장을 처리한다.
+장애 차단기가 요청 전에 거절하면 `ExternalDataRequestRejectedException`(LH는 `LhAnnouncementUnavailableException`)으로 끝나고, 재시도와 호출 수 집계에서 빠진다.
 조회 조건·공급코드는 `LhAnnouncementCollectionCandidateResolver`, 종료일에 따른 대상 포함 여부는 `LhAnnouncementCollectionPolicy`가 정한다. 해석한 후보 중 요청 충돌·배치 간 중복·정책 제외를 걸러 이번 실행의 후보를 고르는 일은 `LhAnnouncementCandidateSelector`가 맡는다. 일반 수집도 대상 요청을 매 실행 실제 조회한다. 같은 실행에서 공유하는 요청만 합치며 이전 실행의 성공 원천으로 호출을 생략하지 않는다.
 
 공고 정제는 `MyHomeAnnouncementMappingService.mapAll()`에서 공고별로 다음 경로를 따른다.
@@ -52,6 +54,7 @@ SourceMapper → SupplyRowResolver → MappingWriter(→ MyHomeSupplyRowWriter) 
 준비한 LH 요청·공급 원천·과거 원천 구분은 재사용한다. 주택형 변경은 공급행을 수정할 때 기록한다.
 현재 원천 중 기관이 빈 행도 매핑에는 포함하지만 LH 보강에서는 제외해 기존 금액을 보존한다. `MappingWriter`가 공고 한 건의 트랜잭션을 소유한다. 보강 실패 시 주택형과 금액을 함께 롤백한다. 최초 매핑과 변경 없는 재매핑은 상세 보강을 요구하지 않는다.
 독립 보강은 `LhAnnouncementEnrichmentService.enrichAll()`에서 시작하며 별도 실패 이력을 관리한다.
+두 보강 경로는 `LhAnnouncementEnrichmentSources`에서 같은 보강 입력(상세·공급 원천, 저장 연결, 공급이 없다고 확인된 수집인지)을 만든다. `LhAnnouncementEnrichmentWriter`는 공고를 잠그고 확인된 공고의 LH 원천 불일치를 거절한 뒤 공고 값, 일정·첨부(`LhScheduleAttachmentWriter`), 공급행 금액(`LhSupplyAmountWriter`)을 차례로 쓴다. LH 원천 식별자 형식은 `LhSourceIdentifier`만 알고, 보강이 고치거나 지울 수 있는 값(관리자가 고치지 않은 LH 값)은 `LhOwnedValues`가 판정한다.
 
 정제와 보강은 `mapping → enrichment` 한 방향으로만 의존한다. 공고 한 건을 쓰는 경로에서 정제는 보강을 `MappedAnnouncementLhEnrichment`(LH 보강 실행·LH 소유 해제, 거절은 `LhAnnouncementEnrichmentRejectedException`)로만 부른다. 보강이 정제에서 확인하는 상태(미해소 정제 실패 공고, 공통값 거절 사유)는 `LhEnrichmentMappingState`로 받는다.
 LH 공급 연결의 판정·지문 규칙(`LhSupplyRowLinks`)과 저장소는 정제와 보강이 함께 쓰는 규칙으로 enrichment에 둔다. 관리자 연결의 저장·해제는 정제 쪽 `LhSupplyLinkService`가 한다. 이 규칙이나 지문 필드를 바꾸면 이미 저장한 연결이 무효가 되고 정제의 `SupplyRowResolver`·`LhSupplyLinkService`도 영향을 받는다. 관리자 연결 화면의 매칭 진단(`LhSupplyMatchDiagnostics`)과 단지 병합의 세대수 매칭(`LhHousingTypeHouseholdMatcher`)도 정제가 쓰는 보강 쪽 규칙이다.
