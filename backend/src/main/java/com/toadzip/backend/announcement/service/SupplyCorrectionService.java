@@ -14,6 +14,8 @@ import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
 import com.toadzip.backend.admin.quality.dto.QualityComparison;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
+import com.toadzip.backend.ingest.lhrefinement.service.LhCurrentSupplies;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.Row;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.Target;
@@ -30,7 +32,6 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.mapping.service.CorrectedSupplyLinkService;
-import com.toadzip.backend.ingest.mapping.service.LhSupplyLinkService;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -75,7 +76,7 @@ public class SupplyCorrectionService {
     private final AdminDataChangeRepository changes;
     private final QualityComparisonService comparisons;
     private final SupplyCorrectionGroups groupCorrections;
-    private final LhSupplyLinkService lhLinks;
+    private final LhCurrentSupplies lhSupplies;
     private final CorrectedSupplyLinkService correctedLinks;
     private final ObjectMapper json;
     private final Clock clock;
@@ -112,16 +113,20 @@ public class SupplyCorrectionService {
         return snapshot;
     }
 
-    /** LH 공급 원본이 있으면 행 분할은 LH 연결 펼침이 맡는다. 아직 어떤 공급행에도 붙지 않은 LH 행을 찾는다. */
+    /**
+     * LH 원천 소유 공고에서 아직 공급행이 되지 않은 LH 공급 원천 행. LH 공고 정제가 LH 공급 한 행마다 공급행을 만들므로,
+     * 원천이 정제 뒤에 바뀌었으면 여기 남는다. 공고문 소유 공고는 정제가 공급행을 만들지 않으므로 보지 않는다.
+     */
     private List<SupplyCorrection.LhSupplyRow> unattachedLhSupplyRows(Announcement announcement,
             List<SupplyRow> stored) {
-        String identifier = announcement.getSourceAnnouncementIdentifier();
-        if (identifier == null || identifier.isBlank()) { return List.of(); }
+        String panId = announcement.getLhPanId();
+        if (panId == null || panId.isBlank() || !announcement.suppliedByLh()) { return List.of(); }
         var attached = stored.stream().map(SupplyRow::getLhSourceSupplyRowIdentifier).filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        return lhLinks.currentSupplies(identifier).stream().filter(supply -> !attached.contains(supply.rowIdentifier()))
-                .map(supply -> new SupplyCorrection.LhSupplyRow(supply.rowIdentifier(), supply.complexLabel(),
-                        supply.typeName(), supply.exclusiveArea())).toList();
+        return lhSupplies.of(panId).stream()
+                .filter(supply -> !attached.contains(LhSupplyRowLinks.identifier(supply)))
+                .map(supply -> new SupplyCorrection.LhSupplyRow(LhSupplyRowLinks.identifier(supply), supply.getComplexLabel(),
+                        supply.getTypeName(), supply.getExclusiveArea())).toList();
     }
 
     /**
@@ -170,8 +175,8 @@ public class SupplyCorrectionService {
                 request.deletedRowKeys());
         if (!before.unattachedLhSupplyRows().isEmpty() && planned.stream().anyMatch(row -> row.id() == null)) {
             throw new IllegalArgumentException("LH 공급 원본 " + before.unattachedLhSupplyRows().size()
-                    + "행이 아직 공급행에 붙지 않았습니다. 새 공급행을 추가하지 말고 LH 행 연결을 저장한 뒤 "
-                    + "공고 정제를 다시 실행하고, 펼쳐진 공급행을 보정하세요.");
+                    + "행이 아직 공급행이 되지 않았습니다. 새 공급행을 추가하지 말고 공고 정제를 다시 실행해 "
+                    + "LH 공급행을 만든 뒤 보정하세요.");
         }
         var groupPlans = groupCorrections.plan(announcement, planned, request.newGroups());
         checkNewTypes(planned);

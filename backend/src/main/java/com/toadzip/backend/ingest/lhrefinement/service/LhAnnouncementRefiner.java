@@ -67,9 +67,7 @@ class LhAnnouncementRefiner {
     private final EntityManager entityManager;
 
     Outcome refine(LhAnnouncementCatalogSourceView catalog, LhComplexIndex index, Tally tally) {
-        LhAnnouncementRequest request = new LhAnnouncementRequest(catalog.getPanId(),
-                catalog.getConnectionSystemDivisionCode(), catalog.getUpperAnnouncementTypeCode(),
-                catalog.getAnnouncementTypeCode(), catalog.getSupplyInfoTypeCode());
+        LhAnnouncementRequest request = LhCurrentSupplies.request(catalog);
         String requestHash = LhAnnouncementQuery.requestHashOf(request.requestDescription());
         List<LhAnnouncementDetailSourceView> details = detailSources.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
                 request.panId(), requestHash);

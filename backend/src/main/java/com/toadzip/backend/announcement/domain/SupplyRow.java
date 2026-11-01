@@ -389,10 +389,20 @@ public class SupplyRow {
         return row;
     }
 
-    /** LH 원천 소유 공고의 공급행을 이번 LH 행으로 맞춘다. 관리자가 고친 행과 휴지통 공고는 바꾸지 않는다. 바뀌었으면 true다. */
+    /**
+     * LH 원천 소유 공고의 공급행을 이번 LH 행으로 맞춘다. 관리자가 고친 행은 값을 두고 LH 원천 행과의 대응만 기록한다.
+     * 원천 순번이 바뀌어도 작업실이 이 행을 그 LH 행에 붙은 공급행으로 보게 하려는 것이다. 휴지통 공고는 바꾸지 않는다. 바뀌었으면 true다.
+     */
     public boolean updateFromLh(SupplyRow incoming) {
-        if (adminModified || announcement.isAdminDeleted()) {
+        if (announcement.isAdminDeleted()) {
             return false;
+        }
+        if (adminModified) {
+            if (Objects.equals(lhSourceSupplyRowIdentifier, incoming.lhSourceSupplyRowIdentifier)) {
+                return false;
+            }
+            lhSourceSupplyRowIdentifier = incoming.lhSourceSupplyRowIdentifier;
+            return true;
         }
         if (hasSameSourceValues(incoming) && Objects.equals(idOf(announcementComplex), idOf(incoming.announcementComplex))
                 && Objects.equals(lhExclusiveArea, incoming.lhExclusiveArea) && lhMatchStatus == incoming.lhMatchStatus

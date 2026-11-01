@@ -20,7 +20,7 @@ export type RowSource = { rowKey: string; category: string; sourceKey: string }
 export type LhSupplyRow = { rowIdentifier: string; complexLabel: string | null; typeName: string | null; exclusiveArea: string | null }
 /**
  * deletableRowKeys: 지울 수 있는 행(원천 없이 관리자가 추가한 행). 원천행은 제외만 할 수 있다.
- * unattachedLhSupplyRows: 어떤 공급행에도 붙지 않은 LH 공급 원본 행. 있으면 서버가 새 공급행 추가를 거절한다.
+ * unattachedLhSupplyRows: LH 원천 소유 공고에서 아직 공급행이 되지 않은 LH 공급 원본 행. 있으면 서버가 새 공급행 추가를 거절한다.
  */
 export type SupplyWorkspace = { snapshotToken: string; version: number; rows: CorrectionRow[]; sources: CorrectionSource[]; sourceWarnings?: string[]; rowSources?: RowSource[]; deletableRowKeys?: string[]; unattachedLhSupplyRows?: LhSupplyRow[] }
 export type NewSupplyGroup = { sourceRowId: number; rowKeys: string[]; sharedHouseholdCount: number }

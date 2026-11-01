@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.lhrefinement.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -36,17 +37,24 @@ import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.ComplexLinkMethod;
 import com.toadzip.backend.announcement.domain.LhSupplyMatchStatus;
 import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
+import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
+import com.toadzip.backend.announcement.service.SupplyCorrectionService;
+import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
+import org.springframework.security.test.context.support.WithMockUser;
 import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
@@ -61,6 +69,7 @@ class LhAnnouncementRefinementIntegrationTest {
     private static final String ADDRESS = "경기도 화성시 동탄대로 100";
 
     @Autowired private LhAnnouncementRefinementService refinement;
+    @Autowired private SupplyCorrectionService supplyCorrections;
     @Autowired private LhCatalogStorageFixtures catalog;
     @Autowired private LhStorageFixtures lhStorage;
     @Autowired private HousingComplexRepository complexes;
@@ -301,6 +310,68 @@ class LhAnnouncementRefinementIntegrationTest {
         assertThat(report.heldAnnouncementCounts()).containsEntry("TRASHED", 1);
         assertThat(announcements.findAllByLhPanIdOrderByIdAsc("P1")).singleElement()
                 .satisfies(found -> assertThat(found.isAdminDeleted()).isTrue());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void 정제_뒤_늘어난_LH_공급_원천_행만_공급행에_붙지_않은_LH_행으로_알리고_공고문_소유_공고는_알리지_않는다() throws Exception {
+        publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
+        details("P1", "동탄 행복주택 단지", ADDRESS);
+        supplies("P1", supply("동탄 행복주택 단지", "59A", "59.9800", "10", "30000000", "200000"));
+        refinement.refineAll();
+        // 공급 보정 작업실은 비교 검토 테이블을 읽는다. 이 테스트 스키마에는 없어 이 테스트 동안만 만든다.
+        boolean comparisonTables = jdbc.sql("SELECT to_regclass('admin_comparison_sources') IS NULL").query(Boolean.class).single();
+        if (comparisonTables) {
+            jdbc.sql(new String(new ClassPathResource("db/migration/V20261016_01__quality_comparison_workflow.sql")
+                    .getInputStream().readAllBytes(), StandardCharsets.UTF_8)).update();
+        }
+        try {
+            long id = announcements.findAllByLhPanIdOrderByIdAsc("P1").getFirst().getId();
+            assertThat(supplyCorrections.workspace(id).unattachedLhSupplyRows()).isEmpty();
+
+            supplies("P1", supply("동탄 행복주택 단지", "59A", "59.9800", "10", "30000000", "200000"),
+                    supply("동탄 행복주택 단지", "84A", "84.9600", "2", "40000000", "300000"));
+
+            var workspace = supplyCorrections.workspace(id);
+            assertThat(workspace.unattachedLhSupplyRows()).singleElement().satisfies(row -> {
+                assertThat(row.rowIdentifier()).isEqualTo(LhSourceIdentifier.supply("P1", 1));
+                assertThat(row.typeName()).isEqualTo("84A");
+            });
+            // 아직 공급행이 되지 않은 LH 행이 있으면 서버도 새 공급행 추가를 거절한다.
+            var first = workspace.rows().getFirst();
+            var added = new SupplyCorrection.Row(null, "new-84", first.housingComplexId(), first.housingComplexName(),
+                    null, null, null, null, false, false, 9, first.complexName(), "84A", null, null, first.category(), 2,
+                    false, null, null, List.of(), false);
+            var request = new SupplyCorrection.Request(UUID.randomUUID(), workspace.snapshotToken(), "공고문 확인",
+                    "https://example.com/notice", null, List.of(first, added));
+            assertThatThrownBy(() -> supplyCorrections.preview(id, request))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("아직 공급행이 되지 않았습니다");
+            jdbc.sql("UPDATE announcements SET supply_owner = 'ANNOUNCEMENT_DOCUMENT' WHERE id = :id").param("id", id).update();
+            assertThat(supplyCorrections.workspace(id).unattachedLhSupplyRows()).isEmpty();
+        } finally {
+            if (comparisonTables) { jdbc.sql("DROP TABLE admin_comparison_checks, admin_comparison_sources").update(); }
+        }
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void 관리자가_고친_LH_공급행도_원천_순번이_바뀌면_다시_정제할_때_LH_행_대응을_옮긴다() throws Exception {
+        publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
+        details("P1", "동탄 행복주택 단지", ADDRESS);
+        supplies("P1", supply("동탄 행복주택 단지", "59A", "59.9800", "10", "30000000", "200000"));
+        refinement.refineAll();
+        jdbc.sql("UPDATE supply_rows SET admin_modified = true, total_supply_household_count = 7").update();
+        supplies("P1", supply("동탄 행복주택 단지", "84A", "84.9600", "2", "40000000", "300000"),
+                supply("동탄 행복주택 단지", "59A", "59.9800", "10", "30000000", "200000"));
+
+        refinement.refineAll();
+
+        inTransaction(() -> {
+            SupplyRow corrected = supplyRows.findAllByAnnouncement(announcements.findAllByLhPanIdOrderByIdAsc("P1")
+                    .getFirst()).stream().filter(row -> row.getSourceHousingTypeName().equals("59A")).findFirst().orElseThrow();
+            assertThat(corrected.getLhSourceSupplyRowIdentifier()).isEqualTo(LhSourceIdentifier.supply("P1", 1));
+            assertThat(corrected.getTotalSupplyHouseholdCount()).isEqualTo(7);
+        });
     }
 
     private void publish(String panId, String name, LocalDate noticeDate) {

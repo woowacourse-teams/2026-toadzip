@@ -19,10 +19,6 @@ public final class LhSupplyLinking {
             List<MatchFailure> failures, List<String> releasedSupplyMatches) {
     }
 
-    /** 공고의 현재 LH 공급 원본 행. PDF 보정이 공급행에 아직 붙지 않은 LH 행을 찾을 때 쓴다. */
-    public record CurrentSupply(String rowIdentifier, String complexLabel, String typeName, String exclusiveArea) {
-    }
-
     public record Announcement(String identifier, String name, String sourceUrl, String panId) {
     }
 

@@ -230,7 +230,7 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
   for (const [index, entry] of review.rows.entries()) {
     if (!entry.include) continue
     if (!entry.proposal.destination) throw new ReviewError(`공급행 ${index + 1}에서 수정할 기존 공급정보를 선택하거나 새 공급정보로 추가하세요.`, `row:${index}`)
-    if (entry.proposal.destination === 'new' && workspace.supply.unattachedLhSupplyRows?.length) throw new ReviewError(`공급행 ${index + 1}: 공급정보에 연결되지 않은 LH 행은 새 공급정보로 추가할 수 없습니다. 기존 공급정보 행을 고르세요.`, `row:${index}`)
+    if (entry.proposal.destination === 'new' && workspace.supply.unattachedLhSupplyRows?.length) throw new ReviewError(`공급행 ${index + 1}: 아직 공급행이 되지 않은 LH 공급 원본이 있어 새 공급정보로 추가할 수 없습니다. 공고 정제를 다시 실행하거나 기존 공급정보 행을 고르세요.`, `row:${index}`)
     const anchor = rows.find(row => row.key === entry.proposal.anchorKey)
     const existing = entry.proposal.destination === 'new' ? undefined : rows.find(row => row.key === entry.proposal.destination)
     if ((!anchor && !entry.proposal.newComplex) || entry.proposal.destination !== 'new' && !existing) throw new ReviewError(`공급행 ${index + 1}의 기존 단지·원천행을 선택하세요.`, `row:${index}`)

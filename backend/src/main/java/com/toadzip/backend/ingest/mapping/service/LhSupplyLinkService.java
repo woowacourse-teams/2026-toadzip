@@ -13,7 +13,6 @@ import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.Announcement;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.Candidate;
-import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.CurrentSupply;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.LhRow;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.MatchFailure;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.MyHomeRow;
@@ -29,7 +28,6 @@ import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -52,23 +50,6 @@ public class LhSupplyLinkService {
 
     public View view(String identifier) {
         return view(identifier, List.of());
-    }
-
-    /**
-     * 공고의 현재 LH 공급 원본 행. 마이홈 원천이나 LH 공급 원본이 없거나 원천을 해석할 수 없으면 비어 있다.
-     * LH 수집 연결 해석은 실패하면 자기 트랜잭션 경계 밖으로 예외를 던진다. 호출한 보정 트랜잭션이 롤백 전용이 되지 않도록
-     * 트랜잭션 없이 읽어 해석 실패가 그 해석의 트랜잭션에서만 끝나게 한다.
-     */
-    @Transactional(readOnly = true, propagation = Propagation.NOT_SUPPORTED)
-    public List<CurrentSupply> currentSupplies(String identifier) {
-        try {
-            return context(identifier).supplies().stream().map(supply -> new CurrentSupply(
-                    LhSupplyRowLinks.identifier(supply), supply.getComplexLabel(), supply.getTypeName(),
-                    supply.getExclusiveArea())).toList();
-        }
-        catch (InvalidIngestRequestException unavailable) {
-            return List.of();
-        }
     }
 
     private View view(String identifier, List<String> releasedSupplyMatches) {

@@ -34,7 +34,7 @@ it('연결되지 않은 LH 행이 있으면 새 공급정보 추가를 막고 �
   const index = review.rows.findIndex(row => row.include && row.proposal.destination === 'new')
   expect(index).toBeGreaterThanOrEqual(0)
   const locked = { ...workspace, supply: { ...workspace.supply, unattachedLhSupplyRows: [{ rowIdentifier: 'LH:P:SUPPLY:1', complexLabel: '한스빌', typeName: '26B', exclusiveArea: null }] } }
-  expect(() => assembleReview(review, locked, evidence)).toThrow(`공급행 ${index + 1}: 공급정보에 연결되지 않은 LH 행은 새 공급정보로 추가할 수 없습니다. 기존 공급정보 행을 고르세요.`)
+  expect(() => assembleReview(review, locked, evidence)).toThrow(`공급행 ${index + 1}: 아직 공급행이 되지 않은 LH 공급 원본이 있어 새 공급정보로 추가할 수 없습니다. 공고 정제를 다시 실행하거나 기존 공급정보 행을 고르세요.`)
 })
 
 it('광주첨단의 단지별 일정은 기존 ID마다 복사하고 새 방문접수도 추가한다', () => {
