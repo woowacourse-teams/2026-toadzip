@@ -546,10 +546,10 @@ public class SupplyCorrectionService {
             type = type(input, complex, null);
         } else {
             // 한 저장에서 같은 단지·전용면적의 새 주택형을 고른 행들은 주택형 하나를 함께 쓴다.
-            type = createdTypes.get(newTypeKey(input));
+            type = createdTypes.get(input.newHousingTypeKey());
             if (type == null) {
                 type = types.save(type(input, complex, "MANUAL:" + request.operationId() + ":" + input.key()));
-                createdTypes.put(newTypeKey(input), type);
+                createdTypes.put(input.newHousingTypeKey(), type);
             }
         }
         if (stored == null) {
@@ -602,10 +602,6 @@ public class SupplyCorrectionService {
             throw new IllegalArgumentException("선택한 단지에 속한 주택형을 선택하세요.");
         }
         return type;
-    }
-
-    private static String newTypeKey(Row row) {
-        return row.housingComplexId() + ":" + row.newHousingType().exclusiveArea().stripTrailingZeros().toPlainString();
     }
 
     /**

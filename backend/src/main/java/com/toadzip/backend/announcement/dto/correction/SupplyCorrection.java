@@ -83,7 +83,12 @@ public final class SupplyCorrection {
             @PositiveOrZero @Digits(integer = 6, fraction = 4) BigDecimal exclusiveArea,
             @PositiveOrZero @Digits(integer = 6, fraction = 4) BigDecimal supplyArea,
             @NotNull @Size(max = 200) List<@NotNull @Valid Target> targets,
-            boolean targetCountsComparable) { }
+            boolean targetCountsComparable) {
+        /** 새로 만들 주택형의 단지·전용면적 키. 한 저장에서 이 키가 같은 행들은 새 주택형 하나를 함께 쓴다. */
+        public String newHousingTypeKey() {
+            return housingComplexId + ":" + newHousingType.exclusiveArea().stripTrailingZeros().toPlainString();
+        }
+    }
 
     public record Target(
             @Positive Long id,

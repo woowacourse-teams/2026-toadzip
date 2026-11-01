@@ -160,7 +160,7 @@ public class AnnouncementHousingTypeWriter {
             }
             var incoming = new AnnouncementValues(blankToNull(value.name()), value.supplyArea(), value.householdCount());
             String typeKey = row.housingTypeId() != null ? "type:" + row.housingTypeId()
-                    : "new:" + row.housingComplexId() + ":" + row.newHousingType().exclusiveArea().stripTrailingZeros().toPlainString();
+                    : "new:" + row.newHousingTypeKey();
             var previous = result.get(typeKey);
             if (previous == null) {
                 result.put(typeKey, new Target(row, incoming));

@@ -316,6 +316,19 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     }
 
     @Test
+    void 휴지통_단지의_주택형에는_공고_값을_반영하지_않는다() throws Exception {
+        var request = request();
+        value(request, "row:" + row.getId(), "36A", null, 120);
+        jdbc.update("UPDATE housing_complexes SET admin_deleted=true WHERE id=?", complex.getId());
+        entities.clear();
+
+        mvc.perform(post(root() + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType("application/json").content(request.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("휴지통 단지의 주택형")));
+    }
+
+    @Test
     void 제외한_공급행에는_공고_값을_반영하지_않는다() throws Exception {
         var request = request();
         ((ObjectNode) request.path("correction").path("rows").get(0)).put("excluded", true);

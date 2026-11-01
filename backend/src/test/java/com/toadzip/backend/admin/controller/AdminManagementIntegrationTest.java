@@ -443,6 +443,11 @@ class AdminManagementIntegrationTest {
         mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body.replace(String.valueOf(version), String.valueOf(next))))
                 .andExpect(status().isConflict());
+        mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body.replace(String.valueOf(version), String.valueOf(next))
+                                .replace("16A", "16B").replace("16.37", "16.3700")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("이 단지에 같은 전용면적")));
         mvc.perform(get(path + "/changes").with(user("admin").roles("ADMIN")))
                 .andExpect(jsonPath("$.data[0].action").value("CREATE_HOUSING_TYPE"));
     }
