@@ -190,7 +190,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 null, null, null, null, null, null, null))));
         lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of());
         for (var target : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
-            progressStore.complete(target, TARGET, candidate.requestDescription(), candidate.panId());
+            progressStore.save(target, TARGET, candidate.requestDescription(), candidate.panId());
         }
         return notice;
     }

@@ -98,7 +98,7 @@ class LhAnnouncementQualityStoreTest {
                 """).param("occurredAt", Timestamp.from(OBSERVED_AT)).update();
         catalog("quality-pan", OBSERVED_AT.minusSeconds(86400));
         source("myhome-1", "quality-pan", null);
-        progressStore.link(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "myhome-1",
+        progressStore.save(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "myhome-1",
                 request("previous-pan").requestDescription(), "previous-pan");
 
         LhAnnouncementQualityResponse result = service.snapshot();
@@ -119,7 +119,7 @@ class LhAnnouncementQualityStoreTest {
         assertThat(result.heldRequests()).extracting(LhAnnouncementQualityResponse.HeldRequest::requestDescription)
                 .contains("quality-held-request");
 
-        progressStore.link(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "myhome-1",
+        progressStore.save(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "myhome-1",
                 request("quality-pan").requestDescription(), "quality-pan");
         assertThat(service.snapshot().unlinkedLhLeaseCatalogCount()).isZero();
     }

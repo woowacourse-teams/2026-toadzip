@@ -56,7 +56,7 @@ class LhAnnouncementCollectionProgressTransactionTest {
                 .when(failureRecorder)
                 .resolve(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, candidate.requestDescription());
 
-        assertThatThrownBy(() -> progressManager.complete(
+        assertThatThrownBy(() -> progressManager.recordLinked(
                 ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, candidate
         ))
                 .isInstanceOf(IllegalStateException.class)

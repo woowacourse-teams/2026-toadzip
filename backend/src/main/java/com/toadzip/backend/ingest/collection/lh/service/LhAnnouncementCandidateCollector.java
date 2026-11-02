@@ -50,7 +50,7 @@ public class LhAnnouncementCandidateCollector {
             }
             return failedReport(targetSource, request, exception, callCounter);
         }
-        progressManager.complete(targetSource, candidate);
+        progressManager.recordLinked(targetSource, candidate);
         return new ExternalDataCollectionReport(
                 targetSource.operation(),
                 storedRowCount,

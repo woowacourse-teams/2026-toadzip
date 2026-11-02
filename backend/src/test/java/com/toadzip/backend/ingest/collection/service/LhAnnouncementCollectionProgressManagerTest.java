@@ -38,40 +38,12 @@ class LhAnnouncementCollectionProgressManagerTest {
     }
 
     @Test
-    void 수집_완료_시_실패_이력을_정리하고_체크포인트를_기록한다() {
+    void 공고_연결을_기록하고_요청과_원천의_실패_이력을_해소한다() {
         Candidate candidate = candidate();
 
-        progressManager.complete(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, candidate);
+        progressManager.recordLinked(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, candidate);
 
-        verify(failureRecorder).resolve(
-                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
-                candidate.requestDescription()
-        );
-        verify(failureRecorder).resolve(
-                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
-                candidate.sourceDescription()
-        );
-        verify(progressStore).complete(
-                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
-                candidate.sourceAnnouncementKey(),
-                candidate.requestDescription(),
-                candidate.panId()
-        );
-    }
-
-    @Test
-    void 수집된_공유_요청을_공고에_연결할_때는_체크포인트를_갱신하지_않는다() {
-        Candidate candidate = candidate();
-
-        progressManager.link(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, candidate);
-
-        verify(progressStore).link(
-                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
-                candidate.sourceAnnouncementKey(),
-                candidate.requestDescription(),
-                candidate.panId()
-        );
-        verify(progressStore, never()).complete(
+        verify(progressStore).save(
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
                 candidate.sourceAnnouncementKey(),
                 candidate.requestDescription(),
@@ -90,14 +62,14 @@ class LhAnnouncementCollectionProgressManagerTest {
     @Test
     void 체크포인트_기록이_실패하면_실패_이력을_해소하지_않는다() {
         Candidate candidate = candidate();
-        doThrow(new IllegalStateException("체크포인트 기록 실패")).when(progressStore).complete(
+        doThrow(new IllegalStateException("체크포인트 기록 실패")).when(progressStore).save(
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
                 candidate.sourceAnnouncementKey(),
                 candidate.requestDescription(),
                 candidate.panId()
         );
 
-        assertThatThrownBy(() -> progressManager.complete(
+        assertThatThrownBy(() -> progressManager.recordLinked(
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
                 candidate
         ))

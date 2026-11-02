@@ -22,17 +22,7 @@ public class LhAnnouncementCollectionProgressStore {
     }
 
     @Transactional
-    public void complete(
-            ExternalDataSource source,
-            String sourceAnnouncementKey,
-            String requestDescription,
-            String panId
-    ) {
-        saveLink(source, sourceAnnouncementKey, requestDescription, panId, clock.instant());
-    }
-
-    @Transactional
-    public void link(
+    public void save(
             ExternalDataSource source,
             String sourceAnnouncementKey,
             String requestDescription,
