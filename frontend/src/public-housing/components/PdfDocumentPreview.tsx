@@ -14,7 +14,7 @@ import scrollbarStyles from './DocumentScrollbar.module.css'
 const scopedViewerStyles = `@scope (.${styles.document}) { ${pdfViewerStyles.replaceAll(':root', ':scope')} .page { box-sizing: content-box; } }`
 
 /** 외부에서 근거 위치를 지정한다. nonce가 바뀔 때마다 해당 쪽으로 이동하고 query를 강조한다. */
-export type PdfFocus = { readonly page: number; readonly query: string; readonly nonce: number }
+export type PdfFocus = { readonly page: number; readonly query: string | readonly string[]; readonly nonce: number }
 type PdfPreviewProps = { readonly url: string; readonly name: string; readonly telemetry?: DocumentPreviewTelemetry; readonly focus?: PdfFocus | null }
 
 export default function PdfDocumentPreview(props: PdfPreviewProps) {

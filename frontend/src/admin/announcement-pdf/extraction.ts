@@ -223,18 +223,20 @@ export function pathCovers(pattern: string, path: string) {
 export function noteFor(notes: ExtractionNote[], path: string) { return notes.find(note => pathCovers(note.path, path)) ?? null }
 
 /**
- * PDF에서 강조할 문구. 네 자리 이상 금액은 원·천원·만원 표기(쉼표 있음·없음) 중 인용문에 낱말로 있는 것을 쓰고, 없으면 원 단위
- * 천 단위 쉼표 표기로 근거 쪽에서 찾는다. 인용문이 표의 다른 칸(전환보증금 대신 보증금 줄)을 담기도 해서다.
+ * PDF에서 강조할 문구. 네 자리 이상 금액은 원·천원·만원 표기(쉼표 있음·없음) 중 인용문에 낱말로 있는 것을 쓴다.
+ * 인용문에 없으면(전환보증금 칸이 인용에 빠진 경우) PDF가 어느 단위로 적었는지 알 수 없어 원·천원·만원 표기를 함께 찾는다.
  * 그 밖의 값은 인용문에 그대로 있으면 그 값만, 없으면 인용문에서 고른 검색어를 강조한다.
  */
-export function evidenceQuery(quote: string, value?: unknown): string {
+export function evidenceQuery(quote: string, value?: unknown): string | string[] {
   const text = typeof value === 'string' || typeof value === 'number' ? String(value).trim() : ''
   if (/^\d{4,}$/.test(text)) {
     const amount = Number(text), forms = (unit: number) => amount % unit === 0 ? [(amount / unit).toLocaleString('en-US'), String(amount / unit)] : []
     // 표 칸에는 (+)·(-)·원이 붙기도 해서 떼고 낱말 단위로 비교한다. 8,100이 8,100,000 안에서 맞지 않게 한다.
     const words = quote.split(/\s+/).map(word => word.replace(/^[(+\-)]+|[원)]+$/g, ''))
     const manwon = forms(10000).map(form => `${form}만`)
-    return [...forms(1), ...forms(1000), ...forms(10000), ...manwon].find(form => words.includes(form)) ?? amount.toLocaleString('en-US')
+    const found = [...forms(1), ...forms(1000), ...forms(10000), ...manwon].find(form => words.includes(form))
+    // 세 자리 이하로 줄어든 표기(400)는 쪽 곳곳에 있어 함께 찾지 않는다.
+    return found ?? [...new Set([1, 1000, 10000].flatMap(unit => forms(unit).slice(0, 1)))].filter(form => form.replace(/\D/g, '').length >= 4)
   }
   // 세 자리 이하 숫자(세대수 등)는 쪽 곳곳에 있어 값만 강조하면 엉뚱한 곳이 강조된다.
   return text && !/^\d+$/.test(text) && quote.includes(text) ? text : searchText(quote)
