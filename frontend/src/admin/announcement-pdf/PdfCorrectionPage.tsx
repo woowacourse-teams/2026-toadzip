@@ -12,7 +12,7 @@ import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import { evidenceQuery, readExtraction, type Evidence } from './extraction'
 import { extractAnnouncementPdf, loadLatestExtraction, pdfFileProblem, pdfSha256, preferredPdf, type ExtractionState, type SavedExtraction } from './extractionApi'
 import { checkAnnouncement, type ComplexLabels, type HousingCandidates } from './matching'
-import { applicableCells, assembleReview, cellMatches, createReview, pendingChanges, pendingItems, pendingSchedule, rebaseReview, remapSchedule, ReviewError, reviewSection, shown, type PendingChange, type Review, type ReviewFilter, type ReviewSection, type ScheduleReview } from './review'
+import { applicableCells, assembleReview, cellMatches, createReview, pendingChanges, pendingItems, pendingSchedule, rebaseReview, remapSchedule, ReviewError, reviewSection, shown, type Cell, type PendingChange, type Review, type ReviewFilter, type ReviewSection, type ScheduleReview } from './review'
 import { ReviewCells } from './ReviewCells'
 import { ReviewSupply } from './ReviewSupply'
 import { PdfSource, PreparationFooter, RequestPreparation } from './RequestPreparation'
@@ -161,7 +161,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   }, [jump])
   function nextPending() {
     if (!review) return
-    const [item] = pendingItems(review)
+    const [item] = pendingItems(review, !supplyDraft)
     if (!item) return
     if (filter !== 'pending') setFilter('all')
     setSection(item.section); setMobileView('review'); setJump(previous => ({ id: item.id, nonce: (previous?.nonce ?? 0) + 1 }))
@@ -173,7 +173,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     if (problem) return
     setFocus(null); setLocalPdf({ url: URL.createObjectURL(file), name: file.name, file })
   }
-  function evidence(item: Evidence, value?: unknown) { setFocus(previous => ({ page: item.page, query: evidenceQuery(item.quote, value), nonce: (previous?.nonce ?? 0) + 1 })); setMobileView('pdf') }
+  function evidence(item: Evidence, cell?: Cell) { setFocus(previous => ({ page: item.page, query: evidenceQuery(item.quote, cell?.value, cell?.kind === 'money'), nonce: (previous?.nonce ?? 0) + 1 })); setMobileView('pdf') }
   function change(next: Review) { setReview(next); setError('') }
   function start() {
     if (!parsed.ok || !workspace || !pdf) return
@@ -220,7 +220,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   }
   if (!workspace) return <section className={styles.page}><h1>PDF로 공고 보정</h1>{error ? <div role="alert"><p>{error}</p><Button onClick={() => setAttempt(value => value + 1)}>다시 불러오기</Button></div> : <p role="status">공고와 연결 주택형을 불러오는 중…</p>}</section>
   if (workspace.detail.summary.deleted) return <section className={styles.page}><h1>휴지통의 공고입니다.</h1><p>공고를 복구한 뒤 보정하세요.</p><Link to={back}>공고 상세로 돌아가기</Link></section>
-  const pending = review ? pendingItems(review) : []
+  const pending = review ? pendingItems(review, !supplyDraft) : []
   const changes = review ? pendingChanges(review) : []
   const counts = { changed: 0, new: 0 }
   if (review) for (const cell of applicableCells(review)) if (cell.extracted.state === 'changed' || cell.extracted.state === 'new') counts[cell.extracted.state] += 1
@@ -252,7 +252,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
           <div className={styles.filters} role="group" aria-label="검토 항목 필터">{filterLabels.map(([key, label]) => <Button data-design-system key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}{key !== 'all' && ` ${key === 'pending' ? pending.length : counts[key]}`}</Button>)}</div>
         </div>
         <fieldset disabled={busy || blocked} className={styles.reviewFields}>
-          {section === 'supply' && <ReviewSupply editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} />}
+          {section === 'supply' && <ReviewSupply savesHousingTypes={!supplyDraft} editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} />}
           {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.extraction.undatedSchedules.length > 0 && <p className={styles.hint}>날짜 없이 안내한 일정: {review.extraction.undatedSchedules.join(' · ')}</p>}{review.schedules.map((schedule, index) => scheduleMatches(schedule) && <section className={styles.supplyBlock} key={index} data-review-id={`schedule:${index}`} tabIndex={-1}><header><h3>{shown(schedule.cells.find(cell => cell.field === 'name')?.value)}</h3><label><input type="checkbox" checked={schedule.include} onChange={event => updateSchedule(index, { include: event.target.checked, reviewed: true })} />일정 {index + 1} 적용</label></header>
             {pendingSchedule(schedule) && <div className={styles.pending}><p><strong>확인 필요</strong> {schedule.proposal.reason}</p><div className={styles.actions}><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: true, reviewed: true })}>{`일정 ${index + 1} 적용`}</Button><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: false, reviewed: true })}>{`일정 ${index + 1} 적용 안 함`}</Button></div></div>}
             <p>{pendingSchedule(schedule) ? '' : schedule.proposal.reason || (schedule.proposal.existingIds.length ? '기존 일정 갱신' : '새 일정 추가')}{schedule.proposal.existingIds.map(existingId => { const event = workspace.events.find(item => item.id === existingId); return <small className={styles.scheduleBefore} key={existingId}>#{existingId} · {event?.complexName ?? '공고 전체'} · {shown(event?.data.name)} · {shown(event?.data.startAt)} ~ {shown(event?.data.endAt)}</small> })}</p>

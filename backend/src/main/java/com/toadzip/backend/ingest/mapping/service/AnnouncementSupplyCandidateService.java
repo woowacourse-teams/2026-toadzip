@@ -73,6 +73,6 @@ public class AnnouncementSupplyCandidateService {
                 .map(value -> new HousingTypeOption(value.getId(), value.getName(),
                         value.getExclusiveArea(), value.getSupplyArea(), value.getTotalHouseholdCount(),
                         fingerprints.target(value), value.announcementValues().basicDeposit(),
-                        value.announcementValues().basicMonthlyRent())).toList();
+                        value.announcementValues().basicMonthlyRent(), value.getRentalConditionSource())).toList();
     }
 }

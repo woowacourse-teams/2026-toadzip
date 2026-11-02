@@ -121,6 +121,17 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     }
 
     @Test
+    void 기본_보증금이나_월_임대료만_보내면_공고_값을_반영하지_않는다() throws Exception {
+        var request = request();
+        value(request, "row:" + row.getId(), null, null, null).put("basicDeposit", 8_100_000L);
+
+        mvc.perform(post(root() + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType("application/json").content(request.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("기본 보증금과 월 임대료는 함께")));
+    }
+
+    @Test
     void 같은_주택형을_고른_행들의_기본_임대조건이_다르면_지금_값을_유지한다() throws Exception {
         var second = SupplyRow.create(announcement, complex, type, UUID.randomUUID().toString(), 1, "알림 테스트 단지",
                 "36A", null, null, SupplyCategory.NEW_SUPPLY, null, 5);

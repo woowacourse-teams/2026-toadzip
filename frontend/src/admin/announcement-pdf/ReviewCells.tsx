@@ -11,7 +11,7 @@ const modes: [ValueMode, string, string][] = [['keep', '기존 값', '기존 값
 /** 단지에 맞는 주택형이 없을 때 연결 주택형에서 고를 수 있는 'PDF 형명·면적으로 새 주택형 추가' */
 export type NewHousingTypeChoice = { label: string; selected: boolean; onSelect: (selected: true) => void }
 
-export function ReviewCells({ cells, scope, housingTypes = [], newType, filter = 'all', onChange, onEvidence }: { cells: Cell[]; scope: string; housingTypes?: MatchingHousingType[]; newType?: NewHousingTypeChoice; filter?: ReviewFilter; onChange: (cells: Cell[]) => void; onEvidence: (evidence: Evidence, value?: unknown) => void }) {
+export function ReviewCells({ cells, scope, housingTypes = [], newType, filter = 'all', onChange, onEvidence }: { cells: Cell[]; scope: string; housingTypes?: MatchingHousingType[]; newType?: NewHousingTypeChoice; filter?: ReviewFilter; onChange: (cells: Cell[]) => void; onEvidence: (evidence: Evidence, cell?: Cell) => void }) {
   const [all, setAll] = useState(false)
   const quiet = filter === 'all' ? cells.filter(cell => cell.mode !== 'manual' && (cell.state === 'same' || cell.state === 'notApplicable')) : []
   const visible = cells.filter(cell => cellMatches(cell, filter) && (all || !quiet.includes(cell)))
@@ -51,7 +51,7 @@ export function ReviewCells({ cells, scope, housingTypes = [], newType, filter =
           {cell.kind === 'housingType' && newType?.selected && cell.mode !== 'manual' ? <strong className={styles.resultValue}>새 주택형 추가 · {newType.label}</strong> : cell.mode === 'manual' ? manualField(cell) : <strong className={styles.resultValue}>{cell.mode === 'keep' && cell.before == null ? emptyKeepResult(cell) : display(cell, cell.mode === 'keep' ? cell.before : cell.value)}</strong>}
           {cell.note && <small>{cell.note}</small>}
         </>}</div>
-        <div className={styles.cellEvidence}>{cell.evidence && <Button data-design-system className={styles.evidenceButton} aria-label={`PDF ${cell.evidence.page}쪽 보기`} onClick={() => onEvidence(cell.evidence!, cell.value)} title={cell.evidence.quote}>p.{cell.evidence.page}</Button>}</div>
+        <div className={styles.cellEvidence}>{cell.evidence && <Button data-design-system className={styles.evidenceButton} aria-label={`PDF ${cell.evidence.page}쪽 보기`} onClick={() => onEvidence(cell.evidence!, cell)} title={cell.evidence.quote}>p.{cell.evidence.page}</Button>}</div>
       </div>
     })}
     {quiet.length > 0 && <Button data-design-system className={styles.quietButton} aria-expanded={all} onClick={() => setAll(value => !value)}>{all ? '같음·해당 없음 접기' : `같음·해당 없음 ${quiet.length}개 보기`}</Button>}

@@ -159,6 +159,10 @@ public class AnnouncementHousingTypeWriter {
             if (row.excluded() || row.housingTypeId() == null && row.newHousingType() == null) {
                 throw new IllegalArgumentException(row.typeName() + ": 제외하지 않고 주택형을 정한 공급행에만 공고 값을 반영합니다.");
             }
+            // 한쪽만 바꾸면 공고 보증금과 마이홈 월 임대료가 섞인 채 공고문 출처로 남는다.
+            if ((value.basicDeposit() == null) != (value.basicMonthlyRent() == null)) {
+                throw new IllegalArgumentException(row.typeName() + ": 기본 보증금과 월 임대료는 함께 보내야 합니다.");
+            }
             var incoming = new AnnouncementValues(blankToNull(value.name()), value.supplyArea(), value.householdCount(),
                     value.basicDeposit(), value.basicMonthlyRent());
             String typeKey = row.housingTypeId() != null ? "type:" + row.housingTypeId()

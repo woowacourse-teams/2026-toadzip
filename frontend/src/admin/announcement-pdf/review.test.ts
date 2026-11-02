@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { scenario } from './fixtures/workspace'
 import { blankTarget } from '../supply/supplyCorrectionApi'
-import { areaOnlyTypeName, destinationLabel, housingTypePrice, foreignCharacters, shownDateTime, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
+import { areaOnlyTypeName, createRowReview, destinationLabel, housingTypePrice, linkedHousingTypeId, pendingPrice, foreignCharacters, shownDateTime, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
 
 
 const evidence = { reason: '공고문과 대조', sourceUrl: 'https://example.com/notice', sourcePage: '4' }
@@ -99,8 +99,11 @@ it('409 뒤 최신값을 비교하면서 수동 입력·제외·저장 위치를
   review.rows[0].cells[0] = editCell(review.rows[0].cells[0], '26A 수동')
   review.rows[0].cells[1] = chooseCellValue(review.rows[0].cells[1], 'keep')
   review.rows[0].targets[0].destination = 'exclude'
+  review.rows[0].priceTarget = null
   workspace.supply.rows[0].typeName = '새 저장값'
   const rebased = rebaseReview(review, workspace, housing)
+  // 관리자가 고른 '지금 값 유지'도 기본값('모두 같음')으로 되돌리지 않는다.
+  expect(rebased.rows[0].priceTarget).toBeNull()
   expect(rebased.rows[0].cells[0]).toMatchObject({ value: '26A 수동', before: '새 저장값', selected: true })
   expect(rebased.rows[0].cells[1].selected).toBe(false)
   expect(rebased.rows[0].targets[0].destination).toBe('exclude')
@@ -369,6 +372,42 @@ it('숫자 앞뒤의 0만 다른 주택형 표기는 기존 표기를 유지한�
   expect(changed.state).not.toBe('same')
 })
 
+it('주택형 가격은 저장과 같은 주택형(반영한 연결 주택형 칸, 아니면 저장 위치의 주택형)을 기준으로 한다', () => {
+  const { review, workspace } = scenario('gwangju')
+  const savedType = () => assembleReview(review, workspace, evidence).correction.rows.find(row => row.key === 'row:23')!.housingTypeId
+  // 저장 위치를 다시 고를 때 면적이 같은 주택형이 둘이라 연결 주택형을 정하지 못하면, 저장은 기존 공급행의 주택형을 그대로 쓴다.
+  review.rows[1] = createRowReview(review.extraction, 1, { ...review.rows[1].proposal, housingTypeId: null }, workspace)
+  expect(linkedHousingTypeId(review.rows[1])).toBe(3032)
+  expect(savedType()).toBe(3032)
+  const at = review.rows[1].cells.findIndex(cell => cell.field === 'housingTypeId')
+  review.rows[1].cells[at] = editCell(review.rows[1].cells[at], '3033')
+  expect(linkedHousingTypeId(review.rows[1])).toBe(3033)
+  expect(savedType()).toBe(3033)
+})
+
+it('이전 PDF 보정에서 고른 주택형 가격은 확인 필요로 남기고, 확인하지 않고 저장하면 지금 가격을 유지한다', () => {
+  const { review, workspace } = scenario('hansville')
+  const row = review.rows[0]
+  row.proposal = { ...row.proposal, candidates: row.proposal.candidates.map(type => type.id === 10353 ? { ...type, basicDeposit: 1_000_000, basicMonthlyRent: 10_000, rentalConditionSource: 'ANNOUNCEMENT' as const } : type) }
+  expect(pendingPrice(row)).toBe(true)
+  expect(pendingItems(review).map(item => item.id)).toContain('price:0')
+  const price = () => assembleReview(review, workspace, evidence).housingTypeValues?.find(value => value.rowKey === row.key)
+  expect(price()?.basicDeposit ?? null).toBeNull()
+  // PDF로 공급정보 편집표만 채울 때는 주택형 값을 저장하지 않으므로 가격 확인을 남기지 않는다.
+  expect(pendingItems(review, false).map(item => item.id)).not.toContain('price:0')
+  row.priceTarget = 0
+  expect(pendingPrice(row)).toBe(false)
+  expect(price()?.basicDeposit).toEqual(expect.any(Number))
+})
+
+it('409 뒤 저장 위치의 주택형이 바뀌었으면 고른 가격 대상을 풀어 새 주택형의 지금 값을 다시 확인한다', () => {
+  const { review, workspace, housing } = scenario('gwangju')
+  review.rows[1].priceTarget = 0
+  expect(rebaseReview(review, workspace, housing).rows[1].priceTarget).toBe(0)
+  const moved = { ...workspace, supply: { ...workspace.supply, rows: workspace.supply.rows.map(row => row.key === 'row:23' ? { ...row, housingTypeId: 3033 } : row) } }
+  expect(rebaseReview(review, moved, housing).rows[1].priceTarget).toBeUndefined()
+})
+
 describe('주택형 기본 임대조건으로 쓸 공급대상', () => {
   const cell = (field: string, value: unknown) => ({ field, value, before: null, mode: 'extracted' })
   // 화면의 금액 칸은 숫자 문자열이다.
@@ -381,6 +420,27 @@ describe('주택형 기본 임대조건으로 쓸 공급대상', () => {
     expect(housingTypePrice(row([target('가군', 2_395_000, 47_630), target('나군', 9_095_000, 98_630)]))).toMatchObject({ chosen: null, same: false })
     // 반영하지 않는 대상과 금액이 없는 대상은 고르지 않는다.
     expect(housingTypePrice(row([target('가군', 2_395_000, 47_630, 'exclude'), target('나군', 9_095_000, 98_630)])).options.map(option => option.label)).toEqual(['나군'])
+  })
+
+  it('금액을 읽지 못한 대상이 있으면 모두 같다고 보지 않고, 지금 값 유지로 둔 칸은 현재 금액을 쓴다', () => {
+    const missing = { destination: 'new', cells: [cell('target', '일반'), cell('rentalDeposit', null), cell('monthlyRent', null)] }
+    expect(housingTypePrice(row([missing, target('청년', 8_100_000, 156_230)]))).toMatchObject({ chosen: null, same: false })
+    const kept = { destination: '7', cells: [cell('target', '일반'), { field: 'rentalDeposit', value: '8100000', before: '7500000', mode: 'keep' }, { field: 'monthlyRent', value: '156230', before: '150000', mode: 'keep' }] }
+    expect(housingTypePrice(row([kept])).options).toEqual([{ index: 0, label: '일반', deposit: 7_500_000, monthlyRent: 150_000 }])
+  })
+
+  it('지금 값이 이전 PDF 보정에서 고른 공고문 값이면 바꾸기 전에 확인 필요로 두고 기본은 유지한다', () => {
+    const announced = { id: 1, name: '26', exclusiveArea: 26, supplyArea: null, basicDeposit: 7_000_000, basicMonthlyRent: 140_000, rentalConditionSource: 'ANNOUNCEMENT' as const }
+    const same = row([target('대학생', 12_308_000, 76_920), target('청년', 12_308_000, 76_920)])
+    expect(housingTypePrice(same, announced)).toMatchObject({ chosen: null, confirm: true })
+    expect(housingTypePrice(same, { ...announced, rentalConditionSource: 'MYHOME' })).toMatchObject({ chosen: 0, confirm: false })
+    expect(housingTypePrice(same, { ...announced, basicDeposit: 12_308_000, basicMonthlyRent: 76_920 })).toMatchObject({ chosen: 0, confirm: false })
+    // 관리자가 대상이나 유지를 고르면 확인을 마친 것으로 본다.
+    expect(housingTypePrice({ ...same, priceTarget: 0 }, announced)).toMatchObject({ chosen: 0, confirm: false })
+    expect(housingTypePrice({ ...same, priceTarget: null }, announced)).toMatchObject({ chosen: null, confirm: false })
+    // 연결 주택형이 후보에 없어 지금 값을 모르면 확인 없이 덮지 않도록 기본은 유지한다.
+    expect(housingTypePrice(same, null)).toMatchObject({ chosen: null, unknown: true })
+    expect(housingTypePrice(same)).toMatchObject({ chosen: 0, unknown: false })
   })
 
   it('관리자가 고른 대상이나 유지를 따른다', () => {

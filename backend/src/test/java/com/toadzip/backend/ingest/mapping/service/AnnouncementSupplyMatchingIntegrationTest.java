@@ -253,6 +253,18 @@ class AnnouncementSupplyMatchingIntegrationTest {
     }
 
     @Test
+    void 주택형_조회는_PDF_보정이_정한_기본_임대조건의_출처를_함께_준다() {
+        type.observeAnnouncement(new HousingType.AnnouncementValues(null, null, null, 8_100_000L, 156_230L),
+                Instant.parse("2026-10-01T00:00:00Z"));
+        types.save(type);
+
+        assertThat(candidateService.housingTypes(complex.getId())).singleElement().satisfies(value -> {
+            assertThat(value.basicDeposit()).isEqualTo(8_100_000L);
+            assertThat(value.rentalConditionSource()).isEqualTo("ANNOUNCEMENT");
+        });
+    }
+
+    @Test
     void 단지_검색에_원천_PNU를_주면_이름이_다른_같은_필지_단지를_먼저_후보로_준다() {
         var main = complex("중촌주공2단지", "complex-main", PNU, "NATIONAL_RENTAL");
         complex("한스빌 다른필지", "complex-other", "1111111111111111111", "NATIONAL_RENTAL");
