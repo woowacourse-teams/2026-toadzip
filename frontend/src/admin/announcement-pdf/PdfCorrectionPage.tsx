@@ -144,10 +144,10 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     extractionRun.current?.abort()
     const controller = new AbortController(); extractionRun.current = controller
     setExtraction({ status: 'running', startedAt: Date.now() }); setText('')
-    const onRetry = (message: string | null) => {
-      if (!controller.signal.aborted) setExtraction(previous => previous.status === 'running' ? { ...previous, retryReason: message ?? undefined } : previous)
+    const onNotice = (message: string | null) => {
+      if (!controller.signal.aborted) setExtraction(previous => previous.status === 'running' ? { ...previous, notice: message ?? undefined } : previous)
     }
-    void extractAnnouncementPdf(id, pdf.file, pdf.name, controller.signal, { attachmentId: pdf.attachmentId, onRetry }).then(result => {
+    void extractAnnouncementPdf(id, pdf.file, pdf.name, controller.signal, { attachmentId: pdf.attachmentId, onNotice }).then(result => {
       if (controller.signal.aborted) return
       setText(result.json); setExtraction({ status: 'done', result })
       if (pdfHash) setSaved({ fileName: pdf.name, pdfSha256: pdfHash, createdAt: new Date().toISOString(), extraction: result })

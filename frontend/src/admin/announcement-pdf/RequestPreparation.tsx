@@ -77,7 +77,7 @@ function ExtractionStatus({ extraction, hasPdf, parsed, checks, onExtract, sameP
     : <p role="status" className={styles.hint}>PDF를 고르면 추출할 수 있습니다.</p>
   if (extraction.status === 'running') return <>
     <Elapsed startedAt={extraction.startedAt} />
-    {extraction.retryReason && <p role="status" className={styles.hint}>잠시 뒤 다시 시도합니다 · {extraction.retryReason}</p>}
+    {extraction.notice && <p role="status" className={styles.hint}>{extraction.notice}</p>}
   </>
   if (extraction.status === 'failed') return <div role="alert" className={styles.error}><p>{extraction.message}</p>{retry}</div>
   if (!parsed.ok) return <div role="alert" className={styles.error}><p>{parsed.error}</p>{retry}</div>

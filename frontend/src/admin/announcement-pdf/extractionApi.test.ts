@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({ request: vi.fn() }))
 vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(), requestManagementApi: mocks.request }))
 
 import { ManagementError } from '../management/api'
-import { JOB_POLL_MS, JOB_WAIT_LIMIT_MS, extractAnnouncementPdf, pdfSha256 } from './extractionApi'
+import { JOB_POLL_MS, JOB_WAIT_LIMIT_MS, NOT_STARTED_NOTICE_MS, extractAnnouncementPdf, pdfSha256 } from './extractionApi'
 
 const PATH = '/api/admin/announcements/29/pdf-extractions'
 const extraction = { json: '{"data":{}}', pages: [1, 3], totalPages: 9, warnings: [], usage: { promptTokens: 10, outputTokens: 5, thinkingTokens: null } }
@@ -38,13 +38,28 @@ test('재시도를 기다리는 동안 사유가 바뀔 때만 알리고, 다시
   const reason = { code: 'UPSTREAM_TIMEOUT', message: '추출 서비스 응답이 늦습니다.' }
   mocks.request.mockResolvedValueOnce(job('RETRY', { retryReason: reason })).mockResolvedValueOnce(job('RETRY', { retryReason: reason }))
     .mockResolvedValueOnce(job('RUNNING', { retryReason: reason })).mockResolvedValueOnce(job('SUCCEEDED', { extraction }))
-  const onRetry = vi.fn()
+  const onNotice = vi.fn()
 
-  const result = extractAnnouncementPdf('29', pdf, '공고문.pdf', undefined, { onRetry })
+  const result = extractAnnouncementPdf('29', pdf, '공고문.pdf', undefined, { onNotice })
   await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3)
 
   await expect(result).resolves.toEqual(extraction)
-  expect(onRetry.mock.calls).toEqual([['추출 서비스 응답이 늦습니다.'], [null]])
+  expect(onNotice.mock.calls).toEqual([['잠시 뒤 다시 시도합니다 · 추출 서비스 응답이 늦습니다.'], [null]])
+})
+
+test('처리가 시작되지 않은 채 오래 기다리면 알리고, 워커가 꺼내면 안내를 지운다', async () => {
+  const pendingPolls = NOT_STARTED_NOTICE_MS / JOB_POLL_MS
+  for (let poll = 0; poll <= pendingPolls; poll++) mocks.request.mockResolvedValueOnce(job('PENDING'))
+  mocks.request.mockResolvedValueOnce(job('RUNNING')).mockResolvedValueOnce(job('SUCCEEDED', { extraction }))
+  const onNotice = vi.fn()
+
+  const result = extractAnnouncementPdf('29', pdf, '공고문.pdf', undefined, { onNotice })
+  await vi.advanceTimersByTimeAsync(NOT_STARTED_NOTICE_MS - JOB_POLL_MS)
+  expect(onNotice).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3)
+
+  await expect(result).resolves.toEqual(extraction)
+  expect(onNotice.mock.calls).toEqual([['아직 처리가 시작되지 않았습니다. 잠시 뒤에도 그대로면 관리자에게 알려 주세요.'], [null]])
 })
 
 test('작업이 실패하면 워커가 남긴 사유로 실패한다', async () => {

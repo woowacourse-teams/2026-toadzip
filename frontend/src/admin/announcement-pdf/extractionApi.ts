@@ -17,7 +17,7 @@ export type PdfExtraction = {
 /** 서버에 남겨 둔 이전 추출 결과. pdfSha256으로 지금 고른 PDF와 같은 파일인지 비교한다. */
 export type SavedExtraction = { fileName: string; pdfSha256: string; createdAt: string; extraction: PdfExtraction }
 
-export type ExtractionState = { status: 'idle' } | { status: 'running'; startedAt: number; retryReason?: string }
+export type ExtractionState = { status: 'idle' } | { status: 'running'; startedAt: number; notice?: string }
   | { status: 'done'; result: PdfExtraction; saved?: SavedExtraction } | { status: 'failed'; message: string }
 
 const count = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null
@@ -38,12 +38,15 @@ export const JOB_POLL_MS = 3000
  * 보통은 이 상한 전에 성공이나 실패를 받는다. 상한은 워커가 멈춘 경우의 안전장치다.
  */
 export const JOB_WAIT_LIMIT_MS = 45 * 60 * 1000
+/** 워커는 대기 작업을 몇 초 안에 꺼내므로, 이만큼 PENDING이면 워커가 멈춘 것으로 보고 알린다. */
+export const NOT_STARTED_NOTICE_MS = 3 * 60 * 1000
+const NOT_STARTED_NOTICE = '아직 처리가 시작되지 않았습니다. 잠시 뒤에도 그대로면 관리자에게 알려 주세요.'
 
 type Reason = { code: string; message: string }
 type ExtractionJob = { jobId: number; status: string; fileName: string; pdfSha256: string; failure: Reason | null; retryReason: Reason | null; extraction: unknown }
 
-/** attachmentId가 있으면 서버가 그 공고 첨부를 받아 작업을 넣는다. onRetry는 기다리는 동안 재시도 사유가 바뀔 때마다 받는다. */
-export type ExtractionOptions = { attachmentId?: string; onRetry?: (message: string | null) => void }
+/** attachmentId가 있으면 서버가 그 공고 첨부를 받아 작업을 넣는다. onNotice는 기다리는 동안 보일 안내(재시도 사유, 처리 미시작)가 바뀔 때마다 받는다. */
+export type ExtractionOptions = { attachmentId?: string; onNotice?: (message: string | null) => void }
 
 const pendingStatuses = new Set(['PENDING', 'RUNNING', 'RETRY'])
 
@@ -100,18 +103,25 @@ export async function extractAnnouncementPdf(id: string, file: Blob, fileName: s
     if (!('jobId' in joined)) return joined
     job = joined
   }
-  const deadline = Date.now() + JOB_WAIT_LIMIT_MS
-  let retryReason: string | null = null
+  const waitStart = Date.now()
+  const deadline = waitStart + JOB_WAIT_LIMIT_MS
+  let notice: string | null = null
   while (job.status !== 'SUCCEEDED') {
     if (job.status === 'FAILED') throw new Error(job.failure?.message ?? '추출에 실패했습니다.')
     if (!pendingStatuses.has(job.status)) throw new Error('추출 작업 상태를 알 수 없습니다.')
-    const nextReason = job.status === 'RETRY' ? job.retryReason?.message ?? null : null
-    if (nextReason !== retryReason) { retryReason = nextReason; options.onRetry?.(retryReason) }
+    const nextNotice = waitingNotice(job, Date.now() - waitStart)
+    if (nextNotice !== notice) { notice = nextNotice; options.onNotice?.(notice) }
     if (Date.now() >= deadline) throw new Error('추출이 아직 끝나지 않았습니다. 잠시 뒤 다시 추출을 누르면 이어서 기다립니다.')
     await wait(JOB_POLL_MS, signal)
     job = parseJob(await requestManagementApi(`${path}/jobs/${job.jobId}`, 'GET', undefined, signal))
   }
   return parsePdfExtraction(job.extraction)
+}
+
+function waitingNotice(job: ExtractionJob, waited: number) {
+  if (job.status === 'RETRY' && job.retryReason) return `잠시 뒤 다시 시도합니다 · ${job.retryReason.message}`
+  if (job.status === 'PENDING' && waited >= NOT_STARTED_NOTICE_MS) return NOT_STARTED_NOTICE
+  return null
 }
 
 function upload(file: Blob, fileName: string) {

@@ -230,7 +230,7 @@ it('준비 단계의 PDF 영역에 PDF를 끌어다 놓으면 그 PDF로 바꾼�
 })
 it('재시도를 기다리는 동안 워커가 남긴 사유를 보여 준다', async () => {
   extractor.extractAnnouncementPdf.mockImplementation((_id, _file, _name, _signal, options) => {
-    options.onRetry('추출 서비스 응답이 늦습니다.')
+    options.onNotice('잠시 뒤 다시 시도합니다 · 추출 서비스 응답이 늦습니다.')
     return new Promise(() => {})
   })
   renderPage()
