@@ -11,7 +11,7 @@ from ai_worker.extraction import MODEL_RESPONSE_INVALID, PermanentError, Transie
 BASE_URL = "https://api.deepseek.com"
 MODEL = "deepseek-flash"
 CONNECT_TIMEOUT = 10
-# 읽기 한 번을 기다리는 시간. 전체 시간은 청크마다 deadline으로 따로 재므로, 마감을 넘는 폭은 이 값까지다.
+# 요청은 남은 마감 시간까지 기다리므로 마감을 넘기지 않는다. 호출하는 쪽은 응답 뒤 처리에 쓸 여유로 이만큼 일찍 마감을 잡는다.
 READ_TIMEOUT = 60
 
 
@@ -60,9 +60,11 @@ class DeepSeek:
         return Reply(text, usage_of(data.get("usage")))
 
     def post(self, body: dict, deadline: float) -> tuple[int, bytes]:
-        """응답을 기다리는 동안 DeepSeek은 빈 줄을 계속 보내 읽기 시간 제한이 걸리지 않는다. 그래서 전체 시간을 따로 잰다."""
+        """DeepSeek은 응답을 기다리는 동안 빈 줄을 보내기도 하지만 1분 넘게 조용할 때도 있다(실측). 읽기 제한을 고정하면
+        늦은 응답마다 시간 초과로 다시 시도해 유료 호출이 겹치므로, 읽기 제한을 남은 마감 시간으로 두고 전체 시간도 따로 잰다."""
+        timeout = httpx.Timeout(max(deadline - time.monotonic(), 0.001), connect=CONNECT_TIMEOUT)
         try:
-            with self.client.stream("POST", "/chat/completions", json=body) as response:
+            with self.client.stream("POST", "/chat/completions", json=body, timeout=timeout) as response:
                 chunks = []
                 for chunk in response.iter_bytes():
                     if time.monotonic() > deadline:

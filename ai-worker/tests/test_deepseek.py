@@ -1,4 +1,6 @@
+import http.server
 import json
+import threading
 import time
 
 import httpx
@@ -113,6 +115,33 @@ def test_reply_slower_than_deadline_is_timeout():
         client(lambda request: httpx.Response(200, stream=KeepAlive())).chat("p", time.monotonic() + 0.2)
 
     assert error.value.code == "MODEL_TIMEOUT"
+
+
+def test_silence_shorter_than_deadline_is_not_timeout(monkeypatch):
+    # 실제 응답에서 DeepSeek이 빈 줄 없이 60초 넘게 조용했다. 시간 제한은 MockTransport가 아니라 실제 연결에서만 걸린다.
+    monkeypatch.setattr(deepseek, "READ_TIMEOUT", 0.1)
+
+    class Slow(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers["Content-Length"]))
+            time.sleep(0.5)
+            payload = json.dumps(completion()).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Slow)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        reply = deepseek.DeepSeek("test-key", base_url=f"http://127.0.0.1:{server.server_port}").chat("p", later())
+    finally:
+        server.shutdown()
+
+    assert reply.content == '{"data": {}}'
 
 
 @pytest.mark.parametrize("payload, code", [

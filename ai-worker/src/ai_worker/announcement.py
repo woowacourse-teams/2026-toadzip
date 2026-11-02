@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 
 KIND = "ANNOUNCEMENT_PDF_EXTRACTION"
 # 쪽 처리가 이만큼도 남기지 않으면 모델을 부르지 않는다. 같은 PDF는 다시 해도 같으므로 바로 실패로 끝낸다.
-# 실측 응답 66~132초에 여유를 두고 읽기 한 번(deepseek.READ_TIMEOUT)을 더한 값이다.
+# 실측 응답 66~132초에 여유를 두고 응답 뒤 처리 여유(deepseek.READ_TIMEOUT)를 더한 값이다.
 MIN_MODEL_TIME = 240
 PROMPTS = files("ai_worker") / "prompts"
 
@@ -92,7 +92,7 @@ class AnnouncementPdfExtractor:
             prompt = build_prompt(rows, pages.prompt_pages(document, selection.pages))
         if deadline - time.monotonic() < MIN_MODEL_TIME:
             raise PermanentError("PDF_TOO_SLOW", "PDF 쪽을 읽는 데 시간이 너무 오래 걸려 추출하지 못했습니다.")
-        # 읽기 한 번(deepseek.READ_TIMEOUT)만큼 넘을 수 있어 그만큼 일찍 끝낸다.
+        # 응답 뒤 검산·결과 정리에 쓸 여유로 deepseek.READ_TIMEOUT만큼 일찍 끝낸다.
         reply = self.model.chat(prompt, deadline - deepseek.READ_TIMEOUT)
         tree = checks.first_json_object(reply.content)
         warnings = []
