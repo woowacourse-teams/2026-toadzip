@@ -98,6 +98,10 @@
 .sectionHeading > span { color:var(--ds-color-action); font-size:var(--ds-text-caption); }
 .shared { display:flex; flex-direction:column; gap:var(--ds-space-2); background:var(--ds-color-action-soft); padding:var(--ds-space-4); margin-bottom:var(--ds-space-5); font-size:var(--ds-text-caption); }
 .supplyBlock { padding-block:var(--ds-space-5); border-top:1px solid var(--ds-color-divider); }
+.complexGroup { margin-top:var(--ds-space-6); }
+.complexGroupTitle { display:flex; align-items:baseline; gap:var(--ds-space-2); padding-bottom:var(--ds-space-2); border-bottom:2px solid var(--ds-color-text-base); font-size:var(--ds-text-title); }
+.complexGroupTitle small { color:var(--ds-color-muted-base); font-size:var(--ds-text-caption); font-weight:400; }
+.complexGroup .supplyBlock:first-of-type { border-top:0; }
 .supplyBlock > header { display:flex; justify-content:space-between; align-items:baseline; gap:var(--ds-space-3); flex-wrap:wrap; }
 .supplyBlock > header p { color:var(--ds-color-muted-base); font-size:var(--ds-text-caption); }
 .mapping { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); align-items:start; gap:var(--ds-space-3); }
@@ -137,14 +141,7 @@
 .prepareFooter { margin-top:63px; }
 .footer > div:first-child { display:flex; flex-direction:column; gap:var(--ds-space-1); font-size:var(--ds-text-caption); }
 .footer span { color:var(--ds-color-muted-base); }
-.changes { order:2; flex:none; padding-block:var(--ds-space-2); font-size:var(--ds-text-caption); }
-.changes summary { cursor:pointer; }
-.changeTable { max-height:220px; overflow:auto; margin-top:var(--ds-space-2); }
-.changeTable table { width:100%; border-collapse:collapse; }
-.changeTable :is(th, td) { padding:var(--ds-space-1) var(--ds-space-2); border-bottom:1px solid var(--ds-color-divider); text-align:left; vertical-align:top; font-weight:inherit; }
-.changeTable thead th { position:sticky; top:0; background:var(--ds-color-surface-subtle); font-weight:600; }
 .reason { order:2; flex:none; padding-block:var(--ds-space-2); max-height:240px; overflow:auto; }
-.reason summary { cursor:pointer; font-size:var(--ds-text-caption); }
 .reason label { margin-block:var(--ds-space-2); }
 .result { border-top:1px solid var(--ds-color-divider); padding-top:var(--ds-space-7); max-width:800px; }
 .renames { margin-top:var(--ds-space-7); padding-top:var(--ds-space-5); border-top:1px solid var(--ds-color-divider); }

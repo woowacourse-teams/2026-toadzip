@@ -2,7 +2,6 @@ import type { ExtractedAnnouncement, HousingTypeValue, JsonObject, JsonUpdateInp
 import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type NewSupplyGroup } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, type Evidence, type Extraction } from './extraction'
 import { defaultTargetDestinations, missingHousingType, originalDate, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
-import { housingTypeLabel } from '../ingest/housingTypeLabel'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
@@ -158,11 +157,22 @@ export function cellMatches(cell: Cell, filter: ReviewFilter) {
 export function pendingRow(row: RowReview) { return row.include && (!row.proposal.destination || row.proposal.needsConfirmation && !row.reviewed) }
 export function pendingTarget(target: TargetReview) { return !target.destination || target.destination !== 'exclude' && target.cells.some(pendingCell) }
 export function pendingSchedule(schedule: ScheduleReview) { return schedule.proposal.needsConfirmation && !schedule.reviewed }
-/** 화면에 보이는 순서(공급정보 → 일정 → 접수처·기본정보)로 남은 확인 항목을 돌려준다. */
+/** PDF 단지 이름별 공급행 번호. 처음 나온 단지 순서를 따른다. 공급정보 화면은 이 묶음대로 보여 준다. */
+export function complexGroups(review: Review) {
+  const groups: { name: string; indexes: number[] }[] = []
+  review.extraction.supplyRows.forEach((source, index) => {
+    const name = source.complexName?.trim() || '단지 이름 없음'
+    const group = groups.find(item => item.name === name)
+    if (group) group.indexes.push(index); else groups.push({ name, indexes: [index] })
+  })
+  return groups
+}
+/** 화면에 보이는 순서(공급정보 단지 묶음 → 일정 → 접수처·기본정보)로 남은 확인 항목을 돌려준다. */
 export function pendingItems(review: Review): PendingItem[] {
   const items: PendingItem[] = []
-  review.rows.forEach((row, index) => {
-    if (!row.include) return
+  complexGroups(review).flatMap(group => group.indexes).forEach(index => {
+    const row = review.rows[index]
+    if (!row?.include) return
     if (pendingRow(row)) items.push({ id: `row:${index}`, section: 'supply' })
     row.cells.filter(pendingCell).forEach(cell => items.push({ id: `cell:${cell.path}`, section: 'supply' }))
     row.targets.forEach((target, at) => { if (pendingTarget(target)) items.push({ id: `target:${index}:${at}`, section: 'supply' }) })
@@ -187,34 +197,23 @@ export function areaOnlyTypeName(value: unknown) {
   return typeof value === 'string' && /^\d+(\.\d+\s*(㎡|m2)?|(\.\d+)?\s*(㎡|m2))$/.test(value.trim())
 }
 export function allCells(review: Review) { return [...review.metadata, ...review.reception, ...review.rows.flatMap(row => [...row.cells, ...row.targets.flatMap(target => target.cells)]), ...review.schedules.flatMap(schedule => schedule.cells)] }
-export type PendingChange = { section: '기본정보' | '접수처' | '공급정보' | '일정'; scope: string; cell: Cell; candidates: RowProposal['candidates'] }
-/** 저장하면 실제로 바뀌는 값만 영역별로 모은다. 다른 탭에 있는 변경도 저장 전에 보이게 하려는 목록이다. */
+export type PendingChange = { section: '기본정보' | '접수처' | '공급정보' | '일정'; scope: string; cell: Cell }
+/** 저장하면 실제로 바뀌는 값만 영역별로 모은다. 하단의 반영 개수와 영역별 요약에 쓴다. */
 export function pendingChanges(review: Review): PendingChange[] {
   const changed = (cell: Cell) => cell.selected && !cell.locked && JSON.stringify(cell.before) !== JSON.stringify(cell.value)
-  const list = (section: PendingChange['section'], scope: string, cells: Cell[], candidates: RowProposal['candidates'] = []) =>
-    cells.filter(changed).map(cell => ({ section, scope, cell, candidates }))
+  const list = (section: PendingChange['section'], scope: string, cells: Cell[]) =>
+    cells.filter(changed).map(cell => ({ section, scope, cell }))
   return [
     ...list('기본정보', '공고', review.metadata),
     ...list('접수처', '접수처', review.reception),
     ...review.rows.flatMap((row, index) => {
       if (!row.include) return []
       const source = review.extraction.supplyRows[index], scope = `공급행 ${index + 1} · ${source.complexName ?? '단지 미확인'} · ${source.typeName ?? '주택형 미확인'}`
-      return [...list('공급정보', scope, row.cells, row.proposal.candidates), ...row.targets.filter(target => target.destination !== 'exclude')
+      return [...list('공급정보', scope, row.cells), ...row.targets.filter(target => target.destination !== 'exclude')
         .flatMap(target => list('공급정보', `${scope} / ${shown(target.cells.find(cell => cell.field === 'target')?.value)}`, target.cells))]
     }),
     ...review.schedules.flatMap((schedule, index) => schedule.include ? list('일정', `일정 ${index + 1} · ${shown(schedule.cells.find(cell => cell.field === 'name')?.value)}`, schedule.cells) : []),
   ]
-}
-/** 변경 목록에 쓰는 값 표기. 주택형은 후보의 이름과 면적으로 보여 준다. */
-export function changeValue(change: PendingChange, value: unknown) {
-  if (change.cell.kind === 'housingType') {
-    if (value == null) return '미연결'
-    const type = change.candidates.find(item => item.id === value)
-    return type ? housingTypeLabel(type, change.candidates) : `#${String(value)}`
-  }
-  if (change.cell.kind === 'method' || change.cell.kind === 'scheduleType') return choices[change.cell.kind].find(([key]) => key === value)?.[1] ?? shown(value)
-  if (change.cell.kind === 'datetime') return shownDateTime(value)
-  return shown(value)
 }
 // 저장 위치는 원천 표기만으로 고르기 어려워 연결 단지·표시 이름·모집수·전용면적을 함께 보여 준다.
 export function destinationLabel(row: CorrectionRow) {

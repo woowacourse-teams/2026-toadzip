@@ -222,6 +222,14 @@ export function pathCovers(pattern: string, path: string) {
 }
 export function noteFor(notes: ExtractionNote[], path: string) { return notes.find(note => pathCovers(note.path, path)) ?? null }
 
+/** PDF에서 강조할 문구. 값이 인용문에 그대로(금액은 천 단위 쉼표로) 있으면 그 값만, 없으면 인용문에서 고른 검색어(searchText)를 강조한다. */
+export function evidenceQuery(quote: string, value?: unknown): string {
+  const text = typeof value === 'string' || typeof value === 'number' ? String(value).trim() : ''
+  // 세 자리 이하 숫자(세대수 등)는 쪽 곳곳에 있어 값만 강조하면 엉뚱한 곳이 강조된다.
+  const candidates = /^\d+$/.test(text) ? text.length >= 4 ? [Number(text).toLocaleString('en-US'), text] : [] : text ? [text] : []
+  return candidates.find(candidate => quote.includes(candidate)) ?? searchText(quote)
+}
+
 /** 같은 경로 → 가까운 상위 경로 → 첫 하위 경로 순으로 근거를 찾는다. */
 export function evidenceFor(evidence: Evidence[], path: string): Evidence | null {
   const exact = evidence.find(item => item.path === path)

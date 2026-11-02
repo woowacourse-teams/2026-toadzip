@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { scenario } from './fixtures/workspace'
 import { blankTarget } from '../supply/supplyCorrectionApi'
-import { areaOnlyTypeName, changeValue, destinationLabel, foreignCharacters, shownDateTime, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
+import { areaOnlyTypeName, destinationLabel, foreignCharacters, shownDateTime, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
 
 
 const evidence = { reason: '공고문과 대조', sourceUrl: 'https://example.com/notice', sourcePage: '4' }
@@ -219,6 +219,15 @@ it('수동으로 작성 중인 행과 조건도 PDF 대응에 사용하여 중�
   expect(result[0].targets[0].key).toBe('draft-target-0')
 })
 
+it('공급행 확인 필요 항목은 화면처럼 PDF 단지 이름별 묶음 순서로 모은다', () => {
+  const { review } = scenario('gwangju')
+  const names = ['A단지', 'B단지', 'A단지', 'B단지', 'A단지', 'B단지', 'A단지']
+  review.extraction.supplyRows = review.extraction.supplyRows.map((row, index) => ({ ...row, complexName: names[index] }))
+  review.rows = review.rows.map(row => ({ ...row, include: true, proposal: { ...row.proposal, destination: '' } }))
+  const rows = pendingItems(review).filter(item => item.id.startsWith('row:')).map(item => item.id)
+  expect(rows).toEqual(['row:0', 'row:2', 'row:4', 'row:6', 'row:1', 'row:3', 'row:5'])
+})
+
 it('확인 필요 항목은 화면 순서로 모으고 사람이 고르거나 대응을 확인하면 사라진다', () => {
   const { review, workspace, housing } = scenario('gongju')
   expect(pendingItems(review).map(item => item.id)).toEqual(['row:0', 'target:0:0', 'target:0:1', 'schedule:2'])
@@ -264,7 +273,7 @@ it('저장 전 변경 목록은 실제로 바뀌는 값만 영역별로 모으�
   const start = review.metadata.findIndex(cell => cell.field === 'applicationStartDate')
   review.metadata[start] = { ...review.metadata[start], before: '2026-03-03', value: '2026-03-01', selected: true, locked: false }
   let changes = pendingChanges(review)
-  expect(changes.filter(change => change.section === '기본정보').map(change => [change.cell.label, changeValue(change, change.cell.before), changeValue(change, change.cell.value)]))
+  expect(changes.filter(change => change.section === '기본정보').map(change => [change.cell.label, change.cell.before, change.cell.value]))
     .toContainEqual(['접수 시작일', '2026-03-03', '2026-03-01'])
   expect(changes.every(change => JSON.stringify(change.cell.before) !== JSON.stringify(change.cell.value))).toBe(true)
   review.metadata[start] = { ...review.metadata[start], selected: false }

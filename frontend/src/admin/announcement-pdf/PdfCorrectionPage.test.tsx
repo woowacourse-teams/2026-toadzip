@@ -102,7 +102,15 @@ it('저장할 위치가 없는 공급정보는 오류를 알리고 서버에 보
   expect(api.previewJsonUpdate).not.toHaveBeenCalled()
   expect(api.applyJsonUpdate).not.toHaveBeenCalled()
 })
-it('형식 오류와 셀 수정·조건 제외를 제공하고 PDF 쪽 이동은 강조 없이 한다', async () => {
+it('공급행을 PDF 단지 이름별로 묶어 한 단지의 주택형을 한곳에 보여 주고, 쓰지 않는 변경 목록은 두지 않는다', async () => {
+  await open()
+  const group = screen.getByRole('region', { name: '익산한스빌 주택형' })
+  expect(within(group).getByRole('heading', { name: '익산한스빌주택형 2개' })).toBeVisible()
+  expect(within(group).getByRole('region', { name: '공급행 1 검토' })).toBeVisible()
+  expect(within(group).getByRole('region', { name: '공급행 2 검토' })).toBeVisible()
+  expect(screen.queryByText(/반영할 변경 \d+개 보기/)).not.toBeInTheDocument()
+})
+it('형식 오류와 셀 수정·조건 제외를 제공하고 PDF 근거 쪽으로 이동해 그 값을 강조한다', async () => {
   await open()
   const row = screen.getByRole('region', { name: '공급행 1 검토' })
   fireEvent.click(within(row).getByRole('button', { name: '조건 1 대조·수정' }))
@@ -114,7 +122,19 @@ it('형식 오류와 셀 수정·조건 제외를 제공하고 PDF 쪽 이동은
   fireEvent.change(input, { target: { value: '4076000' } })
   const details = screen.getByRole('region', { name: '공급행 1 조건 1 수정' })
   fireEvent.click(within(details).getAllByRole('button', { name: 'PDF 5쪽 보기' })[0])
-  expect(await screen.findByText('PDF 5쪽 · 강조 없음')).toBeVisible()
+  // 금액은 PDF 표기(천 단위 쉼표)로 그 값만, 값이 인용문에 없으면 인용문에서 고른 숫자를 강조한다.
+  expect(await screen.findByText('PDF 5쪽 · 강조 4,076,000')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '검토표 보기' }))
+  fireEvent.click(within(row).getByRole('button', { name: 'PDF 5쪽에서 조건 1 월 임대료 (원) 보기' }))
+  expect(await screen.findByText('PDF 5쪽 · 강조 72,820')).toBeVisible()
+  // 셀의 p.N도 그 셀의 값을 강조한다. 다른 값을 먼저 강조해 두고 바뀌는지 본다.
+  fireEvent.click(screen.getByRole('button', { name: '검토표 보기' }))
+  fireEvent.click(within(row).getByRole('button', { name: 'PDF 5쪽에서 조건 1 보증금 (원) 보기' }))
+  expect(await screen.findByText('PDF 5쪽 · 강조 4,076,000')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '검토표 보기' }))
+  const rent = within(screen.getByRole('region', { name: '공급행 1 조건 1 수정' })).getAllByRole('button', { name: 'PDF 5쪽 보기' }).find(button => button.closest('[data-review-id]')?.getAttribute('data-review-id')?.endsWith('.monthlyRent'))!
+  fireEvent.click(rent)
+  expect(await screen.findByText('PDF 5쪽 · 강조 72,820')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '검토표 보기' }))
   fireEvent.change(screen.getByRole('combobox', { name: '공급행 1 조건 1 저장 방법' }), { target: { value: 'exclude' } })
   expect(screen.getByText('이 조건은 적용하지 않습니다. 저장된 기존 조건은 유지합니다.')).toBeVisible()
@@ -265,7 +285,10 @@ it('원문 URL이 없으면 근거 입력을 펼쳐 안내한다', async () => {
   expect(screen.getByRole('status')).toHaveTextContent('공식 근거 URL에 올바른 http 또는 https 주소를 입력하세요.')
   expect(screen.getByRole('textbox', { name: '공식 근거 URL' })).toBeVisible()
   expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeDisabled()
-  fireEvent.change(screen.getByRole('textbox', { name: '공식 근거 URL' }), { target: { value: 'https://example.com/official-notice' } })
+  // 한 글자씩 입력하는 도중 값이 유효해져도 입력란이 사라지지 않아야 끝까지 칠 수 있다.
+  const url = 'https://example.com/official-notice'
+  for (let end = 1; end <= url.length; end++) fireEvent.change(screen.getByRole('textbox', { name: '공식 근거 URL' }), { target: { value: url.slice(0, end) } })
+  expect(screen.getByRole('textbox', { name: '공식 근거 URL' })).toHaveValue(url)
   expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeEnabled()
 })
 
@@ -428,17 +451,17 @@ it('실패 검토에서 열면 고칠 공급행과 오류 사유를 먼저 보�
 
 it('응답 준비로 돌아갔다 와도 같은 PDF·응답이면 검토하던 입력을 이어 간다', async () => {
   await open()
-  fireEvent.change(screen.getByLabelText('보정 이유'), { target: { value: '직접 고친 이유' } })
   fireEvent.click(screen.getByRole('button', { name: '응답 준비로 돌아가기' }))
   // 같은 PDF로 돌아오면 다시 추출하지 않는다.
   fireEvent.click(await screen.findByRole('button', { name: '추출 결과 검토하기' }))
-  expect(await screen.findByLabelText('보정 이유')).toHaveValue('직접 고친 이유')
+  await screen.findByRole('heading', { name: '공급정보' })
   expect(extractor.extractAnnouncementPdf).toHaveBeenCalledOnce()
   fireEvent.click(screen.getByRole('button', { name: '응답 준비로 돌아가기' }))
   extracts(JSON.stringify({ ...fixtures.hansville.extraction }, null, 1))
   fireEvent.click(await screen.findByRole('button', { name: '다시 추출' }))
   await review(false)
-  expect(await screen.findByLabelText('보정 이유')).toHaveValue('공고문.pdf · AI 자동 추출 후 PDF와 대조')
+  // 근거 입력은 자동으로 채우므로 값이 정상이면 보이지 않는다.
+  expect(screen.queryByRole('region', { name: '적용 근거 입력' })).not.toBeInTheDocument()
 })
 
 it('단지에 맞는 주택형이 없으면 따로 알리고 PDF 형명·면적으로 새 주택형을 추가해 저장한다', async () => {
