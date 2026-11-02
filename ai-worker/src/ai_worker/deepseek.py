@@ -87,13 +87,15 @@ class DeepSeek:
 
 
 def cut_off(response: httpx.Response) -> None:
-    """다른 스레드에서 막힌 읽기는 소켓을 닫아도(close) 풀리지 않을 수 있어 shutdown으로 끊는다."""
+    """다른 스레드에서 막힌 읽기는 소켓을 닫아도(close) 풀리지 않을 수 있어 shutdown으로 끊는다.
+    TLS 소켓의 shutdown은 SSL 상태를 먼저 비워 읽던 스레드에 httpx가 감싸지 않는 ValueError를 낼 수 있으므로,
+    아래 소켓만 끊어 읽기가 연결 오류로 끝나게 한다."""
     stream = response.extensions.get("network_stream")
     sock = stream.get_extra_info("socket") if stream is not None else None
     if sock is None:
         return
     try:
-        sock.shutdown(socket.SHUT_RDWR)
+        socket.socket.shutdown(sock, socket.SHUT_RDWR)
     except OSError:
         # 그사이 응답을 다 받아 연결이 닫혔다.
         pass
