@@ -1,19 +1,5 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
-import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.api.LhLeaseCatalogCollectionRequest;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCatalogCollectionService;
-import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionRequest;
-import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest;
-import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
-import com.toadzip.backend.ingest.collection.service.ShAnnouncementCollectionService;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
-import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
-import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
-import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -26,7 +12,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * {@link DataPipelineType#steps()}에 정의된 순서로 수집·정제 서비스를 실행한다.
- * 데이터 처리 경로는 {@link #execute(DataPipelineStep, String)}에서 시작한다.
+ * 단계마다 부를 서비스는 {@link DataPipelineStepExecutor}가 정하고, 여기서는 건너뛰기·호출 제한·단계 상태 기록을 맡는다.
  * 실행 잠금·중단·복구는 {@link DataPipelineExecutionService}가 담당한다.
  */
 @Slf4j
@@ -37,20 +23,9 @@ public class DataPipelineRunner {
     private static final String RATE_LIMIT_SKIP_REASON =
             "외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.";
 
-    private final MyHomeComplexCollectionService myHomeComplexCollectionService;
-    private final LhLeaseCatalogCollectionService lhLeaseCatalogCollectionService;
-    private final MyHomeAnnouncementCollectionService myHomeAnnouncementCollectionService;
-    private final LhAnnouncementCatalogCollectionService lhAnnouncementCatalogCollectionService;
-    private final LhAnnouncementExternalCollectionService collectionService;
-    private final MyHomeComplexMappingService myHomeComplexMappingService;
-    private final LhHousingTypeHouseholdEnrichmentService householdEnrichmentService;
-    private final MyHomeAnnouncementMappingService myHomeAnnouncementMappingService;
-    private final LhAnnouncementEnrichmentService announcementEnrichmentService;
-    private final DataPipelineStepResultAdapter resultAdapter;
+    private final DataPipelineStepExecutor stepExecutor;
     private final DataPipelineExecutionStateService executionStateService;
     private final MeterRegistry meterRegistry;
-    private final AnnouncementRegistrationService registrationService;
-    private final ShAnnouncementCollectionService shAnnouncementCollectionService;
 
     public void run(DataPipelineType type, UUID executionId) {
         run(type, executionId, null);
@@ -113,7 +88,7 @@ public class DataPipelineRunner {
                 }
                 return new StepOutcome(false, null);
             }
-            DataPipelineStepResult result = execute(step, targetIdentifier);
+            DataPipelineStepResult result = stepExecutor.execute(step, targetIdentifier);
             if (result.skipReason() != null) {
                 executionStateService.skipStep(executionId, step, result.skipReason(), result.serverResponse());
                 outcome = "skipped";
@@ -162,8 +137,7 @@ public class DataPipelineRunner {
     }
 
     private void startStep(UUID executionId, DataPipelineStep step, DataPipelineStep previousPartiallyFailedStep) {
-        IngestExecutionScope.verifyHeld();
-        IngestExecutionScope.checkStopRequested();
+        IngestExecutionScope.verifyCanContinue();
         if (previousPartiallyFailedStep != null) {
             executionStateService.startStepAfterPartialFailure(executionId, previousPartiallyFailedStep, step);
             return;
@@ -175,43 +149,6 @@ public class DataPipelineRunner {
         return step == DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG
                 || step == DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES
                 || step == DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS;
-    }
-
-    private DataPipelineStepResult execute(DataPipelineStep step, String targetIdentifier) {
-        if (targetIdentifier != null) {
-            return registrationService.execute(step, targetIdentifier);
-        }
-        return switch (step) {
-            case COLLECT_SH_ANNOUNCEMENTS -> resultAdapter.adapt(shAnnouncementCollectionService.collect());
-            case COLLECT_MYHOME_COMPLEXES -> resultAdapter.adapt(myHomeComplexCollectionService.collect(
-                    MyHomeComplexCollectionRequest.allRegions(500, 1_000)
-            ));
-            case COLLECT_LH_LEASE_CATALOG -> resultAdapter.adapt(lhLeaseCatalogCollectionService.collect(
-                    new LhLeaseCatalogCollectionRequest(9_999, 1)
-            ));
-            case COLLECT_MYHOME_ANNOUNCEMENTS -> resultAdapter.adapt(myHomeAnnouncementCollectionService.collect(
-                    new MyHomeAnnouncementCollectionRequest(500, 1_000)
-            ));
-            case COLLECT_LH_ANNOUNCEMENT_CATALOG -> resultAdapter.adapt(
-                    lhAnnouncementCatalogCollectionService.collect()
-            );
-            case COLLECT_LH_ANNOUNCEMENT_SUPPLIES -> resultAdapter.adapt(
-                    collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY)
-            );
-            case COLLECT_LH_ANNOUNCEMENT_DETAILS -> resultAdapter.adapt(
-                    collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)
-            );
-            case MAP_MYHOME_COMPLEXES -> resultAdapter.adapt(myHomeComplexMappingService.mapAll());
-            case ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS -> resultAdapter.adapt(
-                    householdEnrichmentService.enrichAll()
-            );
-            case MAP_MYHOME_ANNOUNCEMENTS -> resultAdapter.adapt(
-                    myHomeAnnouncementMappingService.mapAll()
-            );
-            case ENRICH_LH_ANNOUNCEMENTS -> resultAdapter.adapt(
-                    announcementEnrichmentService.enrichAll()
-            );
-        };
     }
 
     private record StepOutcome(boolean rateLimited, DataPipelineStepResult partialFailure) {

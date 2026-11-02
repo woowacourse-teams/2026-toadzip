@@ -5,20 +5,35 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.assertj.core.api.Assertions.assertThat;
-import org.springframework.http.MediaType;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.JsonNode;
-import com.toadzip.backend.housing.repository.HousingComplexRepository;
-import jakarta.persistence.EntityManager;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
+import com.toadzip.backend.announcement.domain.AttachmentType;
+import com.toadzip.backend.announcement.domain.SupplyCategory;
+import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
+import com.toadzip.backend.user.domain.User;
+import com.toadzip.backend.user.repository.UserRepository;
+import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
 @AutoConfigureMockMvc
@@ -27,21 +42,21 @@ import org.springframework.transaction.annotation.Transactional;
 class AdminManagementIntegrationTest {
 
     @Autowired
-    private com.toadzip.backend.user.repository.UserRepository memberRepository;
+    private UserRepository memberRepository;
 
     private String memberId() {
-        var member = com.toadzip.backend.user.domain.User.create(
-                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        var member = User.create(
+                "google:permission-" + UUID.randomUUID(), LocalDateTime.now());
         return memberRepository.saveAndFlush(member).getId().toString();
     }
 
     @org.springframework.test.context.bean.override.mockito.MockitoBean
-    private com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService ownership;
+    private IngestExecutionOwnershipService ownership;
 
     @org.junit.jupiter.api.BeforeEach
     void isolateOwnershipFromTestTransaction() {
         org.mockito.Mockito.when(ownership.acquire()).thenAnswer(invocation -> org.mockito.Mockito.mock(
-                com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService.Execution.class));
+                IngestExecutionOwnershipService.Execution.class));
     }
 
     @Autowired private MockMvc mvc;
@@ -114,12 +129,12 @@ class AdminManagementIntegrationTest {
     @Test
     void 공고_상세는_연결된_첨부파일을_표시순서로_반환한다() throws Exception {
         long id = createAnnouncement(createComplex());
-        var announcement = entityManager.find(com.toadzip.backend.announcement.domain.Announcement.class, id);
-        entityManager.persist(com.toadzip.backend.announcement.domain.AnnouncementAttachment.create(
-                announcement, "참고.pdf", com.toadzip.backend.announcement.domain.AttachmentType.REFERENCE,
+        var announcement = entityManager.find(Announcement.class, id);
+        entityManager.persist(AnnouncementAttachment.create(
+                announcement, "참고.pdf", AttachmentType.REFERENCE,
                 "https://example.com/reference.pdf", 1));
-        entityManager.persist(com.toadzip.backend.announcement.domain.AnnouncementAttachment.create(
-                announcement, "공고문.pdf", com.toadzip.backend.announcement.domain.AttachmentType.ANNOUNCEMENT,
+        entityManager.persist(AnnouncementAttachment.create(
+                announcement, "공고문.pdf", AttachmentType.ANNOUNCEMENT,
                 "https://example.com/notice.pdf", 0));
         entityManager.flush();
 
@@ -159,7 +174,7 @@ class AdminManagementIntegrationTest {
     void 수정과_휴지통_복구는_이력을_남기고_기존_버전의_덮어쓰기를_거부한다() throws Exception {
         long id = createComplex();
         String path = "/api/admin/housing-complexes/" + id;
-        var data = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+        var data = (ObjectNode) getData(path).get("data");
         data.put("name", "관리자가 수정한 단지");
         mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(data.toString()))
@@ -186,7 +201,7 @@ class AdminManagementIntegrationTest {
     void 관리자_수정과_삭제_상태를_재정제가_덮어쓰지_않는다() throws Exception {
         long id = createComplex();
         String path = "/api/admin/housing-complexes/" + id;
-        var data = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+        var data = (ObjectNode) getData(path).get("data");
         data.put("name", "확인된 단지명");
         mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(data.toString())).andExpect(status().isOk());
@@ -240,7 +255,7 @@ class AdminManagementIntegrationTest {
         long complexId = createComplex();
         long announcementId = createAnnouncement(complexId);
         String path = "/api/admin/announcements/" + announcementId;
-        var values = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+        var values = (ObjectNode) getData(path).get("data");
         values.put("name", "검토한 모집 공고");
         mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(values.toString()))
@@ -248,7 +263,7 @@ class AdminManagementIntegrationTest {
         var current = getData(path);
         long version = current.get("data").get("version").asLong();
         var supply = current.get("supplyRows").get(0);
-        var supplyValues = (tools.jackson.databind.node.ObjectNode) supply.get("data");
+        var supplyValues = (ObjectNode) supply.get("data");
         supplyValues.put("totalSupplyHouseholdCount", 17);
         supplyValues.put("announcementHousingTypeName", "공고 표기 59A(신혼부부)");
         String sourceTypeName = supply.get("sourceHousingTypeName").asText();
@@ -264,13 +279,13 @@ class AdminManagementIntegrationTest {
                 .andExpect(jsonPath("$.data.supplyRows[0].sourceHousingTypeName").value(sourceTypeName));
         mvc.perform(delete("/api/admin/housing-complexes/" + complexId).param("version", "0")
                         .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isConflict());
-        var row = entityManager.find(com.toadzip.backend.announcement.domain.SupplyRow.class,
+        var row = entityManager.find(SupplyRow.class,
                 supply.get("id").asLong());
         var announcement = row.getAnnouncement();
         assertThat(announcement.enrichFromLh("new-pan", "수집 이유", null)).isFalse();
         // 재정제는 원천 이름만 갱신하고 관리자가 정한 값은 유지한다. 이름 갱신은 공고 변경으로 세지 않는다.
         assertThat(row.updateFromMyHome(null, null, 0, "원천 단지", "주택형", "111",
-                com.toadzip.backend.announcement.domain.SupplyCategory.NEW_SUPPLY, null, 99)).isFalse();
+                SupplyCategory.NEW_SUPPLY, null, 99)).isFalse();
         assertThat(row.getSourceHousingTypeName()).isEqualTo("주택형");
         assertThat(row.getAnnouncementHousingTypeName()).isEqualTo("공고 표기 59A(신혼부부)");
         assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(17);
@@ -352,7 +367,7 @@ class AdminManagementIntegrationTest {
         long newerId = createComplex();
         long announcementId = createAnnouncement(olderId);
         createAnnouncement(newerId);
-        for (String table : java.util.List.of("housing_complexes", "announcements")) {
+        for (String table : List.of("housing_complexes", "announcements")) {
             long id = table.equals("housing_complexes") ? olderId : announcementId;
             entityManager.createNativeQuery("UPDATE " + table + " SET created_at = '2026-01-01T00:00:00Z'")
                     .executeUpdate();
@@ -445,7 +460,7 @@ class AdminManagementIntegrationTest {
         mvc.perform(put("/api/admin/housing-complexes/" + otherId + "/housing-types/" + typeId)
                         .with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isConflict());
-        for (String invalid : java.util.List.of(body.replace("59.5", "-1"),
+        for (String invalid : List.of(body.replace("59.5", "-1"),
                 body.replace("59.5", "59.12345"), body.replace("59B", " "),
                 body.replace("null", "-1"))) {
             mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
@@ -512,9 +527,9 @@ class AdminManagementIntegrationTest {
     }
 
     private long createHousingType(long complexId) {
-        var type = com.toadzip.backend.housing.domain.HousingType.createFromMyHome(
+        var type = HousingType.createFromMyHome(
                 complexes.findById(complexId).orElseThrow(), "TYPE-" + complexId,
-                "46A", new java.math.BigDecimal("46.8"), null);
+                "46A", new BigDecimal("46.8"), null);
         entityManager.persist(type);
         entityManager.flush();
         return type.getId();
@@ -527,15 +542,15 @@ class AdminManagementIntegrationTest {
                 .setParameter("id", id).executeUpdate();
         entityManager.clear();
         String path = "/api/admin/announcements/" + id;
-        var data = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+        var data = (ObjectNode) getData(path).get("data");
         data.put("name", "단지 탭에서 수정한 공고");
         mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(data.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.data.name").value("단지 탭에서 수정한 공고"))
                 .andExpect(jsonPath("$.data.data.receptionPlace.contact").isEmpty());
-        var updated = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
-        ((tools.jackson.databind.node.ObjectNode) updated.get("receptionPlace")).put("name", " ");
+        var updated = (ObjectNode) getData(path).get("data");
+        ((ObjectNode) updated.get("receptionPlace")).put("name", " ");
         mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(updated.toString()))
                 .andExpect(status().isBadRequest());
@@ -543,9 +558,9 @@ class AdminManagementIntegrationTest {
 
     @Test
     void PDF_근거와_변경값을_같은_수정이력에_보존한다() throws Exception {
-        for (String path : java.util.List.of("/api/admin/housing-complexes/" + createComplex(),
+        for (String path : List.of("/api/admin/housing-complexes/" + createComplex(),
                 "/api/admin/announcements/" + createAnnouncement(createComplex()))) {
-            var data = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+            var data = (ObjectNode) getData(path).get("data");
             data.put("name", "PDF 확인 이름");
             data.set("documentEvidence", json.readTree(documentEvidence()));
             mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
@@ -563,10 +578,10 @@ class AdminManagementIntegrationTest {
     @Test
     void 잘못된_PDF_근거는_값과_이력을_변경하지_않는다() throws Exception {
         String path = "/api/admin/housing-complexes/" + createComplex();
-        var data = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+        var data = (ObjectNode) getData(path).get("data");
         String before = data.toString();
         data.put("name", "잘못된 수정");
-        for (String invalid : java.util.List.of(documentEvidence().replace("https://example.com/notice.pdf", "file:///tmp/a"),
+        for (String invalid : List.of(documentEvidence().replace("https://example.com/notice.pdf", "file:///tmp/a"),
                 documentEvidence().replace("a".repeat(64), "bad-hash"),
                 documentEvidence().replace("\"page\":2", "\"page\":0"),
                 documentEvidence().replace("공고문에서 확인", " "),
@@ -585,10 +600,10 @@ class AdminManagementIntegrationTest {
         long id = createAnnouncement(createComplex());
         String path = "/api/admin/announcements/" + id;
         long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
-        var row = entityManager.find(com.toadzip.backend.announcement.domain.SupplyRow.class, rowId);
-        var target = com.toadzip.backend.announcement.domain.SupplyTarget.createFromSource(row,
-                "LH:TEST", "청년", "1순위", 5, new java.math.BigDecimal("10000000"),
-                new java.math.BigDecimal("200000"), 0);
+        var row = entityManager.find(SupplyRow.class, rowId);
+        var target = SupplyTarget.createFromSource(row,
+                "LH:TEST", "청년", "1순위", 5, new BigDecimal("10000000"),
+                new BigDecimal("200000"), 0);
         entityManager.persist(target);
         entityManager.flush();
         long version = getData(path).get("data").get("version").asLong();
@@ -604,8 +619,8 @@ class AdminManagementIntegrationTest {
                 .andExpect(jsonPath("$.data.supplyTargets[0].data.rentalDeposit").value("12000000"))
                 .andExpect(jsonPath("$.data.supplyTargets[0].data.monthlyRent").value("0"));
         assertThat(row.isAdminModified()).isTrue();
-        assertThat(target.updateFromSource("청년", "1순위", 9, java.math.BigDecimal.ONE,
-                java.math.BigDecimal.ONE, 0)).isFalse();
+        assertThat(target.updateFromSource("청년", "1순위", 9, BigDecimal.ONE,
+                BigDecimal.ONE, 0)).isFalse();
         assertThat(target.getRentalDeposit()).isEqualByComparingTo("12000000");
         mvc.perform(put(path + "/supply-targets/" + target.getId()).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isConflict());
@@ -620,8 +635,8 @@ class AdminManagementIntegrationTest {
         long otherId = createAnnouncement(createComplex());
         String path = "/api/admin/announcements/" + id;
         long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
-        var row = entityManager.find(com.toadzip.backend.announcement.domain.SupplyRow.class, rowId);
-        var target = com.toadzip.backend.announcement.domain.SupplyTarget.createFromSource(row,
+        var row = entityManager.find(SupplyRow.class, rowId);
+        var target = SupplyTarget.createFromSource(row,
                 "LH:VALIDATION", "청년", null, null, null, null, 0);
         entityManager.persist(target);
         entityManager.flush();
@@ -639,7 +654,7 @@ class AdminManagementIntegrationTest {
         mvc.perform(put("/api/admin/announcements/" + otherId + "/supply-targets/" + target.getId())
                         .with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isNotFound());
-        for (String invalid : java.util.List.of(body.replace("999999999999999999", "-1"),
+        for (String invalid : List.of(body.replace("999999999999999999", "-1"),
                 body.replace("999999999999999999", "1.5"),
                 body.replace("999999999999999999", "1000000000000000000"), body.replace("청년", " "),
                 body.replace("\"expectedValues\":{", "\"unusedValues\":{"))) {
@@ -658,20 +673,20 @@ class AdminManagementIntegrationTest {
         long id = createAnnouncement(createComplex());
         String path = "/api/admin/announcements/" + id;
         long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
-        var row = entityManager.find(com.toadzip.backend.announcement.domain.SupplyRow.class, rowId);
-        var target = com.toadzip.backend.announcement.domain.SupplyTarget.createFromSource(row,
-                "LH:CONCURRENT", "청년", "1순위", 5, new java.math.BigDecimal("10000000"),
-                new java.math.BigDecimal("200000"), 0);
+        var row = entityManager.find(SupplyRow.class, rowId);
+        var target = SupplyTarget.createFromSource(row,
+                "LH:CONCURRENT", "청년", "1순위", 5, new BigDecimal("10000000"),
+                new BigDecimal("200000"), 0);
         entityManager.persist(target);
         entityManager.flush();
         var detail = getData(path);
         long version = detail.get("data").get("version").asLong();
-        var body = (tools.jackson.databind.node.ObjectNode) detail.get("supplyTargets").get(0).get("data").deepCopy();
+        var body = (ObjectNode) detail.get("supplyTargets").get(0).get("data").deepCopy();
         body.set("expectedValues", body.deepCopy());
         body.put("version", version);
         body.put("rentalDeposit", "12000000");
-        target.updateFromSource("청년", "1순위", 5, new java.math.BigDecimal("10000000"),
-                new java.math.BigDecimal("250000"), 0);
+        target.updateFromSource("청년", "1순위", 5, new BigDecimal("10000000"),
+                new BigDecimal("250000"), 0);
         entityManager.flush();
         assertThat(getData(path).get("data").get("version").asLong()).isEqualTo(version);
 
@@ -686,7 +701,7 @@ class AdminManagementIntegrationTest {
     }
 
     private String withExpectedTargetValues(String path, String body) throws Exception {
-        var values = (tools.jackson.databind.node.ObjectNode) json.readTree(body);
+        var values = (ObjectNode) json.readTree(body);
         values.set("expectedValues", getData(path).get("supplyTargets").get(0).get("data"));
         return values.toString();
     }

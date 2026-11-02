@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.collection.fixture.repository;
 
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.api.LhLeaseCatalogCollectionRequest;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.api.LhLeaseCatalogCollectionCommand;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Profile;
@@ -21,7 +21,7 @@ public class LhLeaseCatalogExternalRepository {
         this.client = client;
     }
 
-    public JsonNode fetch(LhLeaseCatalogCollectionRequest request, int page) {
+    public JsonNode fetch(LhLeaseCatalogCollectionCommand request, int page) {
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
         params.add("PG_SZ", String.valueOf(request.pageSize()));
         params.add("PAGE", String.valueOf(page));

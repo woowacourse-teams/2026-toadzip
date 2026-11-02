@@ -51,7 +51,9 @@ class MyHomeComplexMappingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.createdComplexCount").value(1))
                 .andExpect(jsonPath("$.createdHousingTypeCount").value(2))
-                .andExpect(jsonPath("$.failedSourceRowCount").value(0));
+                .andExpect(jsonPath("$.failedSourceRowCount").value(0))
+                .andExpect(jsonPath("$.stepFailureCount").doesNotExist())
+                .andExpect(jsonPath("$.stepWarningCount").doesNotExist());
 
         verify(mappingService).mapAll();
     }

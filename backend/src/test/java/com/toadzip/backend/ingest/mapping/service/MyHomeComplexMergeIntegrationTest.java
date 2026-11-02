@@ -1,7 +1,11 @@
 package com.toadzip.backend.ingest.mapping.service;
 
+import static com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension.owned;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -21,32 +25,50 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.repository.ComplexDetailQueryRepository;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.projection.LhCatalogSourceSnapshot;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
+import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.service.RoadAddressGeocodingService;
+import com.toadzip.backend.ingest.mapping.dto.ComplexMergeRequest;
+import com.toadzip.backend.ingest.mapping.exception.ComplexMergeConflictException;
+import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.user.domain.User;
 import com.toadzip.backend.user.repository.UserRepository;
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.Statement;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -68,11 +90,11 @@ import tools.jackson.databind.ObjectMapper;
 class MyHomeComplexMergeIntegrationTest {
 
     @org.springframework.beans.factory.annotation.Autowired
-    private com.toadzip.backend.user.repository.UserRepository privacyPermissionUsers;
+    private UserRepository privacyPermissionUsers;
 
     private String privacyPermissionMemberId() {
-        var member = com.toadzip.backend.user.domain.User.create(
-                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        var member = User.create(
+                "google:permission-" + UUID.randomUUID(), LocalDateTime.now());
         return privacyPermissionUsers.saveAndFlush(member).getId().toString();
     }
 
@@ -83,9 +105,10 @@ class MyHomeComplexMergeIntegrationTest {
     private static final Instant COLLECTED_AT = Instant.parse("2026-09-03T00:00:00Z");
 
     @Autowired private MockMvc mvc;
+    @Autowired private DataSource dataSource;
     @Autowired private ObjectMapper json;
     @Autowired private JdbcClient jdbc;
-    @Autowired private com.toadzip.backend.housing.repository.ComplexDetailQueryRepository detailQueries;
+    @Autowired private ComplexDetailQueryRepository detailQueries;
     @Autowired private MyHomeComplexSourceFixtures sources;
     @Autowired private LhLeaseCatalogSourceFixtures lhSources;
     @Autowired private HousingComplexRepository complexes;
@@ -97,6 +120,7 @@ class MyHomeComplexMergeIntegrationTest {
     @Autowired private UserRepository users;
     @Autowired private LhHousingTypeHouseholdEnrichmentService enrichment;
     @Autowired private IngestExecutionOwnershipService ownership;
+    @Autowired private MyHomeComplexMergeService mergeService;
     @MockitoBean private RoadAddressGeocodingService geocoding;
 
     private List<Long> ids;
@@ -104,7 +128,7 @@ class MyHomeComplexMergeIntegrationTest {
 
     private List<Long> detailPriceRange(long complexId) {
         var row = detailQueries.findComplex(complexId).orElseThrow();
-        return java.util.Arrays.asList(row.depositMin(), row.depositMax(), row.monthlyRentMin(), row.monthlyRentMax());
+        return Arrays.asList(row.depositMin(), row.depositMax(), row.monthlyRentMin(), row.monthlyRentMax());
     }
 
     @BeforeEach
@@ -122,11 +146,10 @@ class MyHomeComplexMergeIntegrationTest {
                 source(31713154L, 1, "51", "51.5017", "18.8617"),
                 source(31713153L, 4, "59", "59.0000", "20.0000")
         ));
-        LhCatalogSource lh = new LhCatalogSource(1, new LhCatalogSourceSnapshot(
+        LhLeaseCatalogSourceView lh = LhSourceViews.catalog(1, COLLECTED_AT, new LhCatalogSourceSnapshot(
                 "인천", "행복주택", NAME, "11", "51.5017", "7", null, null));
-        lh.markCollectedAt(COLLECTED_AT);
         lhId = lhSources.save(lh).getId();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         ids = complexes.findAll().stream().map(HousingComplex::getId).sorted().toList();
     }
 
@@ -139,7 +162,7 @@ class MyHomeComplexMergeIntegrationTest {
                 "expectedHash", preview.get("previewHash").asText(),
                 "confirmedSameComplex", true, "reason", "동일 실제 단지와 공급 범위를 확인하고 LH 11세대를 채택"));
 
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
 
         assertThat(complexes.findAll()).singleElement().satisfies(complex -> {
             assertThat(complex.getId()).isEqualTo(ids.getFirst());
@@ -147,7 +170,7 @@ class MyHomeComplexMergeIntegrationTest {
         });
         assertThat(jdbc.sql("SELECT count(*) FROM housing_types").query(Long.class).single()).isEqualTo(4);
         assertThat(sources.count()).isEqualTo(4);
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
         assertThat(housingTypes.findAll()).allSatisfy(type -> assertThat(type.getTotalHouseholdCount()).isNull());
     }
 
@@ -158,10 +181,10 @@ class MyHomeComplexMergeIntegrationTest {
                 SET bass_rent_gtn = CASE hsmp_sn WHEN 31713153 THEN 30000000 ELSE 10000000 END,
                     bass_mt_rntchrg = CASE hsmp_sn WHEN 31713153 THEN 100000 ELSE 200000 END
                 """).update();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
 
         merge();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
 
         assertThat(complexes.findAll()).singleElement().satisfies(complex ->
                 assertThat(detailPriceRange(complex.getId())).containsExactly(10_000_000L, 30_000_000L, 100_000L, 200_000L));
@@ -176,7 +199,7 @@ class MyHomeComplexMergeIntegrationTest {
                 RoadAddressGeocodingFailureReason.ADDRESS_NOT_FOUND, "선별 적재된 좌표가 없습니다."
         ));
 
-        var report = mapping.mapAll();
+        var report = owned(ownership, mapping::mapAll);
 
         assertThat(report.failedSourceRowCount()).isZero();
         assertThat(complexes.findAll()).singleElement().satisfies(complex ->
@@ -185,7 +208,7 @@ class MyHomeComplexMergeIntegrationTest {
 
     @Test
     void 같은_이름과_PNU여도_확인하기_전에는_각_단지를_유지하고_후보만_보여준다() throws Exception {
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         mvc.perform(get(ENDPOINT + "/candidates").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$[0].representativeId").value(ids.getFirst()))
                 .andExpect(jsonPath("$[0].lhEvidence[0].sourceId").value(lhId));
@@ -220,7 +243,7 @@ class MyHomeComplexMergeIntegrationTest {
         assertThat(reverted.get("revertedBy").asText()).isEqualTo("admin");
         assertThat(productState()).isEqualTo(before);
         assertThat(jdbc.sql("SELECT count(*) FROM housing_complex_aliases").query(Long.class).single()).isZero();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         assertThat(complexes.count()).isEqualTo(3);
     }
 
@@ -228,7 +251,7 @@ class MyHomeComplexMergeIntegrationTest {
     void 주택형_금액_추가_전_통합_이력도_금액을_보존하며_복구한다() throws Exception {
         jdbc.sql("UPDATE myhome_complex_source_rows SET bass_rent_gtn = 10000000, bass_mt_rntchrg = 200000")
                 .update();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         JsonNode merged = merge();
         jdbc.sql("""
                 UPDATE myhome_complex_merges
@@ -261,7 +284,7 @@ class MyHomeComplexMergeIntegrationTest {
     void 금액_컬럼_추가_전_통합_이력도_복구할_수_있다() throws Exception {
         jdbc.sql("UPDATE myhome_complex_source_rows SET bass_rent_gtn = 10000000, bass_mt_rntchrg = 200000")
                 .update();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         JsonNode merged = merge();
         jdbc.sql("""
                 UPDATE myhome_complex_merges
@@ -354,8 +377,8 @@ class MyHomeComplexMergeIntegrationTest {
         merge();
         sources.deleteAll(sources.findAllByHsmpSnIn(List.of(31713154L)));
         List<String> before = productState();
-        assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(4);
-        assertThat(mapping.findFailures()).anySatisfy(failure -> {
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isEqualTo(4);
+        assertThat(mapping.findFailures(0, 100)).anySatisfy(failure -> {
             assertThat(failure.sourceComplexIdentifier()).isEqualTo("31713154:HAPPY_HOUSING");
             assertThat(failure.sourceKey()).isEqualTo("linked-complex:31713154:HAPPY_HOUSING");
         });
@@ -368,14 +391,14 @@ class MyHomeComplexMergeIntegrationTest {
         sources.deleteAll();
         List<String> before = productState();
 
-        assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(3);
-        assertThat(mapping.findFailures()).extracting(failure -> failure.sourceComplexIdentifier())
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isEqualTo(3);
+        assertThat(mapping.findFailures(0, 100)).extracting(failure -> failure.sourceComplexIdentifier())
                 .containsExactlyInAnyOrder(
                         "31713155:HAPPY_HOUSING", "31713154:HAPPY_HOUSING", "31713153:HAPPY_HOUSING");
         assertThat(productState()).isEqualTo(before);
 
-        assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(3);
-        assertThat(mapping.findFailures()).hasSize(3).allSatisfy(failure -> {
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isEqualTo(3);
+        assertThat(mapping.findFailures(0, 100)).hasSize(3).allSatisfy(failure -> {
             assertThat(failure.occurrenceCount()).isEqualTo(2);
             assertThat(failure.recurrenceCount()).isZero();
         });
@@ -386,8 +409,8 @@ class MyHomeComplexMergeIntegrationTest {
                 source(31713154L, 1, "51", "51.5017", "18.8617"),
                 source(31713153L, 4, "59", "59.0000", "20.0000")
         ));
-        assertThat(mapping.mapAll().failedSourceRowCount()).isZero();
-        assertThat(mapping.findFailures()).isEmpty();
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isZero();
+        assertThat(mapping.findFailures(0, 100)).isEmpty();
         assertThat(mapping.findFailureHistory(0, 10)).hasSize(3).allSatisfy(failure -> {
             assertThat(failure.status()).isEqualTo(IngestFailureStatus.RESOLVED);
             assertThat(failure.lastResolvedAt()).isNotNull();
@@ -399,7 +422,7 @@ class MyHomeComplexMergeIntegrationTest {
     void 원천의_세대수가_바뀌면_11을_다시_덮어쓰지_않고_재확인으로_남긴다() throws Exception {
         merge();
         jdbc.sql("UPDATE myhome_complex_source_rows SET hshld_co = 7 WHERE hsmp_sn = 31713155").update();
-        assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(4);
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isEqualTo(4);
         assertThat(complexes.findAll().getFirst().getTotalHouseholdCount()).isEqualTo(11);
     }
 
@@ -409,7 +432,7 @@ class MyHomeComplexMergeIntegrationTest {
         List<String> before = productState();
         sources.deleteAll(sources.findAllByHsmpSnIn(List.of(31713154L)));
         sources.save(source(31713154L, 1, "51", "51.5017", "18.8617", "국민임대"));
-        assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(5);
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isEqualTo(5);
         assertThat(productState()).isEqualTo(before);
     }
 
@@ -417,7 +440,7 @@ class MyHomeComplexMergeIntegrationTest {
     void 승인된_공급유형이_남아있으면_같은_hsmpSn의_별도_공급유형은_유지한다() throws Exception {
         merge();
         sources.save(source(31713154L, 1, "51", "51.5017", "18.8617", "국민임대"));
-        assertThat(mapping.mapAll().failedSourceRowCount()).isZero();
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isZero();
         assertThat(complexes.findAll()).extracting(HousingComplex::getSupplyType)
                 .containsExactlyInAnyOrder("HAPPY_HOUSING", "NATIONAL_RENTAL");
     }
@@ -426,14 +449,14 @@ class MyHomeComplexMergeIntegrationTest {
     void 별도_공급유형이_이미_연결되어도_승인된_유형이_사라지면_갱신을_보류한다() throws Exception {
         merge();
         sources.save(source(31713154L, 1, "51", "51.5017", "18.8617", "국민임대"));
-        assertThat(mapping.mapAll().failedSourceRowCount()).isZero();
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isZero();
         List<String> before = productState();
 
         sources.deleteAll(sources.findAllByHsmpSnIn(List.of(31713154L)));
         sources.save(source(31713154L, 2, "51", "51.5017", "18.8617", "국민임대"));
 
-        assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(5);
-        assertThat(mapping.findFailures()).anySatisfy(failure -> {
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isEqualTo(5);
+        assertThat(mapping.findFailures(0, 100)).anySatisfy(failure -> {
             assertThat(failure.sourceComplexIdentifier()).isEqualTo("31713154:NATIONAL_RENTAL");
             assertThat(failure.detail()).contains("공급유형");
         });
@@ -475,7 +498,7 @@ class MyHomeComplexMergeIntegrationTest {
         jdbc.sql("UPDATE myhome_complex_source_rows SET rn_adres = ?")
                 .param(ADDRESS + " (삼산동)").update();
         merge();
-        assertThat(mapping.mapAll().failedSourceRowCount()).isZero();
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isZero();
     }
 
     @Test
@@ -483,7 +506,7 @@ class MyHomeComplexMergeIntegrationTest {
         merge();
         jdbc.sql("UPDATE myhome_complex_source_rows SET parkng_co = 10").update();
         List<String> before = productState();
-        assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(4);
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isEqualTo(4);
         assertThat(productState()).isEqualTo(before);
     }
 
@@ -491,16 +514,16 @@ class MyHomeComplexMergeIntegrationTest {
     void 같은_이름의_주택형을_보정할_때_다른_원천의_ID를_가져오지_않는다() throws Exception {
         sources.deleteAll(sources.findAllByHsmpSnIn(List.of(31713154L)));
         sources.save(source(31713154L, 1, "60", "60.0000", "20.0000"));
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         merge();
-        MyHomeComplexSource old = sources.findAllByHsmpSnIn(List.of(31713155L)).getFirst();
+        MyHomeComplexSourceView old = sources.findAllByHsmpSnIn(List.of(31713155L)).getFirst();
         long originalId = jdbc.sql("SELECT id FROM housing_types WHERE source_housing_type_identifier = ?")
                 .param(old.getSourceKey()).query(Long.class).single();
         jdbc.sql("UPDATE housing_types SET floor_plan_url = 'manual-plan' WHERE id = ?").param(originalId).update();
         sources.delete(old);
         sources.deleteAll(sources.findAllByHsmpSnIn(List.of(31713154L)));
         sources.save(source(31713154L, 1, "51", "51.6000", "18.8617"));
-        assertThat(mapping.mapAll().failedSourceRowCount()).isZero();
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isZero();
         assertThat(jdbc.sql("SELECT id FROM housing_types WHERE source_housing_type_identifier = ?")
                 .param(old.getSourceKey()).query(Long.class).single()).isEqualTo(originalId);
         assertThat(housingTypes.count()).isEqualTo(4);
@@ -508,7 +531,7 @@ class MyHomeComplexMergeIntegrationTest {
 
     @Test
     void 확인하지_않은_요청은_조건이_일치해도_통합할_수_없다() throws Exception {
-        Map<String, Object> request = new java.util.HashMap<>(mergeRequest());
+        Map<String, Object> request = new HashMap<>(mergeRequest());
         request.put("confirmedSameComplex", false);
         mvc.perform(post(ENDPOINT).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(request)))
@@ -529,7 +552,7 @@ class MyHomeComplexMergeIntegrationTest {
     void 실제_재수집으로_수집시각이_바뀌어도_연결과_통합_당시_근거를_보존한다() throws Exception {
         JsonNode merged = merge();
         jdbc.sql("UPDATE myhome_complex_source_rows SET collected_at = TIMESTAMPTZ '2026-09-27 00:00:00Z'").update();
-        assertThat(mapping.mapAll().failedSourceRowCount()).isZero();
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isZero();
         JsonNode history = json.readTree(mvc.perform(get(ENDPOINT + "/" + merged.get("operationId").asText())
                         .with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString());
@@ -540,11 +563,11 @@ class MyHomeComplexMergeIntegrationTest {
     @Test
     void 통합_후_원천_주택형이_사라져도_수동_보강값이_있는_행은_보존한다() throws Exception {
         merge();
-        MyHomeComplexSource old = sources.findAllByHsmpSnIn(List.of(31713155L)).getFirst();
+        MyHomeComplexSourceView old = sources.findAllByHsmpSnIn(List.of(31713155L)).getFirst();
         jdbc.sql("UPDATE housing_types SET floor_plan_url = 'manual-plan' WHERE source_housing_type_identifier = ?")
                 .param(old.getSourceKey()).update();
         sources.delete(old);
-        assertThat(mapping.mapAll().failedSourceRowCount()).isZero();
+        assertThat(owned(ownership, mapping::mapAll).failedSourceRowCount()).isZero();
         assertThat(housingTypes.count()).isEqualTo(4);
     }
 
@@ -571,12 +594,120 @@ class MyHomeComplexMergeIntegrationTest {
     }
 
     @Test
+    void 통합은_원천을_잠가_동시에_바뀐_원천을_근거로_삼지_않는다() throws Exception {
+        ComplexMergeRequest request = json.convertValue(mergeRequest(), ComplexMergeRequest.class);
+
+        Throwable failure = mergeWhileUncommitted(
+                "UPDATE myhome_complex_source_rows SET bass_mt_rntchrg = 12345", request);
+
+        assertThat(failure).isInstanceOf(ComplexMergeConflictException.class)
+                .hasMessageContaining("미리보기 이후 원천 또는 제품 데이터가 바뀌었습니다");
+        assertThat(complexes.count()).isEqualTo(3);
+    }
+
+    @Test
+    void 통합은_단지를_잠가_동시에_고친_수동값을_잃지_않는다() throws Exception {
+        ComplexMergeRequest request = json.convertValue(mergeRequest(), ComplexMergeRequest.class);
+
+        mergeWhileUncommitted("UPDATE housing_complexes SET image_url = 'https://example.com/b.png' WHERE id = "
+                + ids.get(1), request);
+
+        assertThat(complexes.findAll()).extracting(HousingComplex::getImageUrl)
+                .contains("https://example.com/b.png");
+    }
+
+    @Test
+    void 커밋_직전에_실행_소유권을_잃으면_통합을_롤백한다() throws Exception {
+        addReferences();
+        ComplexMergeRequest request = json.convertValue(mergeRequest(), ComplexMergeRequest.class);
+        List<String> before = productState();
+        Lease lease = lease();
+        // 진입점 확인, 쓰기 전 확인은 통과하고 커밋 직전 확인에서 소유권을 잃는다.
+        doNothing().doNothing().doThrow(new IngestOwnershipLostException()).when(lease).verifyHeld();
+        claimOwnership(lease);
+
+        try (var ignored = IngestExecutionScope.open(lease)) {
+            assertThatThrownBy(() -> mergeService.merge(request, "admin"))
+                    .isInstanceOf(IngestOwnershipLostException.class);
+        }
+
+        assertThat(productState()).isEqualTo(before);
+        assertThat(jdbc.sql("SELECT count(*) FROM myhome_complex_merges WHERE id = ?")
+                .param(request.operationId()).query(Long.class).single()).isZero();
+    }
+
+    @Test
+    void 실행_소유권의_세대가_바뀌었으면_복구하지_않는다() throws Exception {
+        JsonNode merged = merge();
+        UUID operationId = UUID.fromString(merged.get("operationId").asText());
+        List<String> before = productState();
+        Lease lease = lease();
+        claimOwnership(lease);
+        jdbc.sql("UPDATE ingest_execution_ownership SET generation = generation + 1 WHERE id = 1").update();
+
+        try (var ignored = IngestExecutionScope.open(lease)) {
+            assertThatThrownBy(() -> mergeService.revert(operationId, "admin"))
+                    .isInstanceOf(IngestOwnershipLostException.class);
+        }
+
+        assertThat(productState()).isEqualTo(before);
+        assertThat(jdbc.sql("SELECT reverted_at IS NULL FROM myhome_complex_merges WHERE id = ?")
+                .param(operationId).query(Boolean.class).single()).isTrue();
+    }
+
+    @Test
     void 관리자가_아니면_근거_조회와_통합을_할_수_없다() throws Exception {
         mvc.perform(get(ENDPOINT + "/candidates")).andExpect(status().isUnauthorized());
         mvc.perform(post(ENDPOINT + "/preview").with(user(privacyPermissionMemberId()).roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of("complexIds", ids, "lhSourceId", lhId))))
                 .andExpect(status().isForbidden());
+    }
+
+    private Lease lease() {
+        Lease lease = mock(Lease.class);
+        when(lease.ownerId()).thenReturn(UUID.randomUUID());
+        when(lease.generation()).thenReturn(1L);
+        return lease;
+    }
+
+    private void claimOwnership(Lease lease) {
+        jdbc.sql("UPDATE ingest_execution_ownership SET owner_id = ?, generation = ? WHERE id = 1")
+                .params(lease.ownerId(), lease.generation()).update();
+    }
+
+    /** 다른 트랜잭션이 커밋하지 않은 변경을 쥔 채 통합을 시작하고, 통합이 그 잠금에 막히면 커밋한다. 통합의 실패를 돌려준다. */
+    private Throwable mergeWhileUncommitted(String update, ComplexMergeRequest request) throws Exception {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try (Connection other = dataSource.getConnection()) {
+            other.setAutoCommit(false);
+            try (Statement statement = other.createStatement()) {
+                statement.executeUpdate(update);
+            }
+            Future<?> merge = executor.submit(() -> owned(ownership, () -> mergeService.merge(request, "admin")));
+            awaitLockWaiter(merge);
+            other.commit();
+            try {
+                merge.get(30, TimeUnit.SECONDS);
+                return null;
+            } catch (ExecutionException exception) {
+                return exception.getCause();
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    /** 통합이 다른 트랜잭션의 잠금을 기다리기 시작할 때까지 기다린다. 잠그지 않는 통합은 그 전에 끝난다. */
+    private void awaitLockWaiter(Future<?> merge) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (!merge.isDone() && System.nanoTime() < deadline) {
+            if (jdbc.sql("SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock'")
+                    .query(Long.class).single() > 0) {
+                return;
+            }
+            Thread.sleep(20);
+        }
     }
 
     private JsonNode merge() throws Exception {
@@ -636,19 +767,19 @@ class MyHomeComplexMergeIntegrationTest {
         return json.readTree(response);
     }
 
-    private MyHomeComplexSource source(long id, int count, String name, String area, String common) {
+    private MyHomeComplexSourceView source(long id, int count, String name, String area, String common) {
         return source(id, count, name, area, common, "행복주택");
     }
 
-    private MyHomeComplexSource source(
+    private MyHomeComplexSourceView source(
             long id, int count, String name, String area, String common, String supplyType
     ) {
         // 참고 주소가 원천마다 달라 정제의 분할 단지 자동 묶음에서 빠지고 관리자 확인 통합 대상으로 남는다.
-        MyHomeComplexSource source = MyHomeComplexSource.from(new MyHomeComplexSourceSnapshot(
+        MyHomeComplexSourceView source = MyHomeSourceViews.complex(new MyHomeComplexSourceSnapshot(
                 id, "한국토지주택공사", "28", "인천광역시", "237", "부평구", NAME, ADDRESS + " (" + id + ")",
                 "2823710500105500000", null, count, supplyType, name, new BigDecimal(area),
                 new BigDecimal(common), "아파트", null, null, null, 0, null, null, null));
-        source.markCollectedAt(COLLECTED_AT);
+        source = MyHomeSourceViews.collectedAt(source, COLLECTED_AT);
         return source;
     }
 }

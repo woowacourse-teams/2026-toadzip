@@ -14,8 +14,12 @@ import com.toadzip.backend.admin.domain.AdminAuthenticationAuditLog;
 import com.toadzip.backend.admin.domain.AdminAuthenticationAuditResult;
 import com.toadzip.backend.admin.repository.AdminAccountRepository;
 import com.toadzip.backend.admin.repository.AdminAuthenticationAuditLogRepository;
+import com.toadzip.backend.user.domain.User;
+import com.toadzip.backend.user.repository.UserRepository;
 import jakarta.servlet.http.Cookie;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +32,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -39,11 +44,11 @@ import tools.jackson.databind.ObjectMapper;
 class AdminAuthenticationIntegrationTest {
 
     @Autowired
-    private com.toadzip.backend.user.repository.UserRepository memberRepository;
+    private UserRepository memberRepository;
 
     private String memberId() {
-        var member = com.toadzip.backend.user.domain.User.create(
-                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        var member = User.create(
+                "google:permission-" + UUID.randomUUID(), LocalDateTime.now());
         return memberRepository.saveAndFlush(member).getId().toString();
     }
 
@@ -78,7 +83,7 @@ class AdminAuthenticationIntegrationTest {
 
     @Test
     void 공식_일정과_정정_등록은_관리자_권한과_CSRF를_요구한다() throws Exception {
-        for (String operation : java.util.List.of("application-schedules", "revision")) {
+        for (String operation : List.of("application-schedules", "revision")) {
             String path = "/api/admin/announcements/42/" + operation;
             CsrfFixture csrfFixture = issueCsrfToken();
             mockMvc.perform(put(path).cookie(csrfFixture.cookie())
@@ -229,11 +234,11 @@ class AdminAuthenticationIntegrationTest {
         return new CsrfFixture(response.get("token").asText(), response.get("headerName").asText(), cookie);
     }
 
-    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder loginRequest(String password) {
+    private MockHttpServletRequestBuilder loginRequest(String password) {
         return loginRequest("admin", password);
     }
 
-    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder loginRequest(
+    private MockHttpServletRequestBuilder loginRequest(
             String loginIdentifier,
             String password
     ) {

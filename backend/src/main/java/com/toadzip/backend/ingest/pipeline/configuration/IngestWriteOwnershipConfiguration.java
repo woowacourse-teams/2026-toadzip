@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Role;
 import org.springframework.core.Ordered;
+import org.springframework.data.repository.Repository;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.interceptor.TransactionAttribute;
 import org.springframework.transaction.interceptor.TransactionAttributeSource;
@@ -31,7 +32,7 @@ public class IngestWriteOwnershipConfiguration {
             @Override
             public boolean matches(Method method, Class<?> targetClass) {
                 // Spring Data의 내부 transaction advice는 별도 순서다. 쓰기는 Service/Store에서 검증한다.
-                if (org.springframework.data.repository.Repository.class.isAssignableFrom(targetClass)) {
+                if (Repository.class.isAssignableFrom(targetClass)) {
                     return false;
                 }
                 TransactionAttribute attribute = transactionAttributes.getTransactionAttribute(method, targetClass);

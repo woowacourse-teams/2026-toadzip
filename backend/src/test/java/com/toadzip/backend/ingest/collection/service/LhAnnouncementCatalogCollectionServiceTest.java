@@ -1,6 +1,5 @@
 package com.toadzip.backend.ingest.collection.service;
 
-import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.LH_ANNOUNCEMENT_COLLECTION;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -9,7 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.fixture.dto.LhAnnouncementCatalogPage.Entry;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhCatalogStorageFixtures.StoreResult;
@@ -22,12 +21,10 @@ import com.toadzip.backend.ingest.collection.lh.announcementcatalog.service.LhAn
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
-import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,6 +34,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.json.JsonMapper;
 
+@ExtendWith(IngestExecutionExtension.class)
 @ExtendWith(MockitoExtension.class)
 class LhAnnouncementCatalogCollectionServiceTest {
 
@@ -47,8 +45,6 @@ class LhAnnouncementCatalogCollectionServiceTest {
     @Mock
     private LhCatalogStorageFixtures store;
     @Mock
-    private IngestOperationLock lock;
-    @Mock
     private ExternalDataFailureRecorder failureRecorder;
 
     private LhAnnouncementCatalogCollectionService service;
@@ -56,16 +52,11 @@ class LhAnnouncementCatalogCollectionServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(lock.<ExternalDataCollectionReport>tryRun(eq(LH_ANNOUNCEMENT_COLLECTION), any()))
-                .thenAnswer(invocation -> {
-                    Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(1);
-                    return Optional.of(operation.get());
-                });
         when(externalRepository.fetchCatalog(anyInt(), eq(500))).thenReturn(
                 JsonMapper.builder().build().createObjectNode()
         );
         meterRegistry = new SimpleMeterRegistry();
-        service = new CollectionServiceTestFixture().catalog(externalRepository, parser, store, lock,
+        service = new CollectionServiceTestFixture().catalog(externalRepository, parser, store,
                 failureRecorder, new ExternalDataRetryExecutor(Duration.ZERO, meterRegistry), meterRegistry);
     }
 
@@ -89,6 +80,7 @@ class LhAnnouncementCatalogCollectionServiceTest {
                 .isEqualTo(2);
         assertThat(meterRegistry.counter("ingest.announcement.catalog.rows", "change", "unchanged").count())
                 .isEqualTo(496);
+        verify(failureRecorder).resolveStartingWith(ExternalDataSource.LH_ANNOUNCEMENT_CATALOG, "PG_SZ=500");
     }
 
     @Test
@@ -101,13 +93,17 @@ class LhAnnouncementCatalogCollectionServiceTest {
 
         assertThat(result.failedRequestCount()).isOne();
         verify(store, never()).store(any());
-        verify(failureRecorder).record(any(), any(), any(), any(), any());
+        verify(failureRecorder).record(eq(ExternalDataSource.LH_ANNOUNCEMENT_CATALOG), eq("PG_SZ=500"), any(), any(),
+                any());
+        verify(failureRecorder, never()).resolveStartingWith(any(), any());
     }
 
     @Test
     void 페이지간_전체_건수가_바뀌면_저장하지_않는다() {
         when(parser.parse(any(), eq(1), eq(500))).thenReturn(page(0, 500, 501));
         when(parser.parse(any(), eq(2), eq(500))).thenReturn(page(500, 1, 502));
+        org.mockito.Mockito.lenient().when(parser.parse(any(), eq(3), eq(500))).thenReturn(page(501, 1, 502));
+        org.mockito.Mockito.lenient().when(store.store(any())).thenReturn(new StoreResult(502, 502, 0));
 
         assertThat(service.collect().failedRequestCount()).isOne();
         verify(store, never()).store(any());

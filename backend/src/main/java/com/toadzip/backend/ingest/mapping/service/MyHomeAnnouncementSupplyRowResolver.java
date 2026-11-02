@@ -1,19 +1,20 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.housing.domain.AgencyCode;
-import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
-import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
+import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.domain.SourceText;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
+import com.toadzip.backend.ingest.enrichment.domain.LhEnrichmentTargetSources;
+import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
-import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -49,30 +50,30 @@ public class MyHomeAnnouncementSupplyRowResolver {
             return new ResolvedAnnouncement(data, null, List.of(), historicalKeys, Map.of());
         }
         LhAnnouncementRequest request = resolveRequest(currentRows);
-        List<LhAnnouncementSupplySource> lhSupplies = lhSupplyRepository
+        List<LhAnnouncementSupplySourceView> lhSupplies = lhSupplyRepository
                 .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
                         request.panId(),
-                        LhAnnouncementQuery.requestHashOf(request.requestDescription())
+                        request.requestHash()
                 );
         if (lhSupplies.isEmpty()) {
             return new ResolvedAnnouncement(data, request, lhSupplies, historicalKeys, Map.of());
         }
         Map<String, LhSupplyRowLinks.State> supplyLinks = links.states(data.sourceAnnouncementIdentifier(),
                 currentRows.stream().map(MyHomeSupplyRowMappingData::source).toList(), lhSupplies);
-        Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matched = matchByComplex(
+        Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySourceView>> matched = matchByComplex(
                 currentRows,
                 lhSupplies,
                 supplyLinks
         );
         List<MyHomeSupplyRowMappingData> resolved = new ArrayList<>();
         for (MyHomeSupplyRowMappingData sourceRow : data.supplyRows()) {
-            List<LhAnnouncementSupplySource> matchedSupplies = matched.get(sourceRow);
+            List<LhAnnouncementSupplySourceView> matchedSupplies = matched.get(sourceRow);
             if (matchedSupplies == null || matchedSupplies.isEmpty()) {
                 resolved.add(sourceRow);
                 continue;
             }
             for (int index = 0; index < matchedSupplies.size(); index++) {
-                LhAnnouncementSupplySource lhSupply = matchedSupplies.get(index);
+                LhAnnouncementSupplySourceView lhSupply = matchedSupplies.get(index);
                 resolved.add(resolveRow(
                         data.sourceAnnouncementIdentifier(),
                         sourceRow,
@@ -102,29 +103,29 @@ public class MyHomeAnnouncementSupplyRowResolver {
     }
 
     private List<MyHomeSupplyRowMappingData> currentRows(List<MyHomeSupplyRowMappingData> sourceRows) {
-        List<MyHomeAnnouncementSource> currentSources = MyHomeAnnouncementCurrentSources.select(
+        List<MyHomeAnnouncementSourceView> currentSources = MyHomeAnnouncementCurrentSources.select(
                 sourceRows.stream().map(MyHomeSupplyRowMappingData::source).toList()
         );
         return sourceRows.stream().filter(row -> currentSources.contains(row.source())).toList();
     }
 
-    private Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matchByComplex(
+    private Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySourceView>> matchByComplex(
             List<MyHomeSupplyRowMappingData> sourceRows,
-            List<LhAnnouncementSupplySource> lhSupplies,
+            List<LhAnnouncementSupplySourceView> lhSupplies,
             Map<String, LhSupplyRowLinks.State> savedLinks
     ) {
         // 관리자가 저장한 연결을 먼저 쓴다. 저장 연결에 걸린 LH 행과 원천행은 단지명 자동 연결에서 뺀다.
         // 원천이 바뀐 저장 연결도 빼서 관리자 판단을 자동 연결이 조용히 대체하지 않게 한다.
-        Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matched = new LinkedHashMap<>();
+        Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySourceView>> matched = new LinkedHashMap<>();
         Set<String> linkedRowKeys = savedLinks.values().stream()
                 .map(LhSupplyRowLinks.State::myhomeSourceRowIdentifier).collect(Collectors.toSet());
-        for (LhAnnouncementSupplySource lhSupply : lhSupplies) {
+        for (LhAnnouncementSupplySourceView lhSupply : lhSupplies) {
             linkedRow(sourceRows, savedLinks.get(LhSupplyRowLinks.identifier(lhSupply)))
                     .ifPresent(row -> matched.computeIfAbsent(row, ignored -> new ArrayList<>()).add(lhSupply));
         }
         List<MyHomeSupplyRowMappingData> automaticRows = sourceRows.stream()
                 .filter(row -> !linkedRowKeys.contains(row.source().getSourceKey())).toList();
-        List<LhAnnouncementSupplySource> automaticSupplies = lhSupplies.stream()
+        List<LhAnnouncementSupplySourceView> automaticSupplies = lhSupplies.stream()
                 .filter(supply -> !savedLinks.containsKey(LhSupplyRowLinks.identifier(supply))).toList();
         matched.putAll(matchByName(automaticRows, automaticSupplies));
         return matched;
@@ -142,12 +143,12 @@ public class MyHomeAnnouncementSupplyRowResolver {
                 .findFirst();
     }
 
-    private Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matchByName(
+    private Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySourceView>> matchByName(
             List<MyHomeSupplyRowMappingData> sourceRows,
-            List<LhAnnouncementSupplySource> lhSupplies
+            List<LhAnnouncementSupplySourceView> lhSupplies
     ) {
-        Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matched = new LinkedHashMap<>();
-        for (LhAnnouncementSupplySource lhSupply : lhSupplies) {
+        Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySourceView>> matched = new LinkedHashMap<>();
+        for (LhAnnouncementSupplySourceView lhSupply : lhSupplies) {
             MyHomeSupplyRowMappingData sourceRow = uniqueSourceRow(sourceRows, lhSupply.getComplexLabel());
             if (sourceRow == null) {
                 continue;
@@ -158,7 +159,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
         // 표기만 다른 경우(아산읍내 ↔ 아산읍내1 영구임대아파트, 평화주공4단지 ↔ 전주평화4 영구임대주택)를 잇는다.
         List<MyHomeSupplyRowMappingData> remainingRows = sourceRows.stream()
                 .filter(row -> !matched.containsKey(row)).toList();
-        List<LhAnnouncementSupplySource> remainingSupplies = lhSupplies.stream()
+        List<LhAnnouncementSupplySourceView> remainingSupplies = lhSupplies.stream()
                 .filter(supply -> matched.values().stream().noneMatch(list -> list.contains(supply))).toList();
         if (remainingRows.size() == 1 && !remainingSupplies.isEmpty()
                 && sameTotal(remainingRows.getFirst(), remainingSupplies)) {
@@ -167,12 +168,12 @@ public class MyHomeAnnouncementSupplyRowResolver {
         return matched;
     }
 
-    private boolean sameTotal(MyHomeSupplyRowMappingData sourceRow, List<LhAnnouncementSupplySource> lhSupplies) {
+    private boolean sameTotal(MyHomeSupplyRowMappingData sourceRow, List<LhAnnouncementSupplySourceView> lhSupplies) {
         if (sourceRow.totalSupplyHouseholdCount() == null) {
             return false;
         }
         long total = 0;
-        for (LhAnnouncementSupplySource lhSupply : lhSupplies) {
+        for (LhAnnouncementSupplySourceView lhSupply : lhSupplies) {
             Integer count = nonNegativeInteger(lhSupply.getSuppliedUnitCount());
             if (count == null) {
                 return false;
@@ -198,7 +199,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
     private MyHomeSupplyRowMappingData resolveRow(
             String announcementIdentifier,
             MyHomeSupplyRowMappingData sourceRow,
-            LhAnnouncementSupplySource lhSupply,
+            LhAnnouncementSupplySourceView lhSupply,
             boolean preserveOriginalIdentifier
     ) {
         String sourceHousingTypeName = sourceHousingTypeName(sourceRow, lhSupply);
@@ -226,20 +227,20 @@ public class MyHomeAnnouncementSupplyRowResolver {
     private String sourceIdentifier(
             String announcementIdentifier,
             MyHomeSupplyRowMappingData sourceRow,
-            LhAnnouncementSupplySource source,
+            LhAnnouncementSupplySourceView source,
             boolean preserveOriginalIdentifier
     ) {
         if (preserveOriginalIdentifier) {
             return sourceRow.sourceSupplyRowIdentifier();
         }
-        return announcementIdentifier + ":LH:" + source.getPanId() + ":" + source.getSourceOrder();
+        return LhSourceIdentifier.supplyRow(announcementIdentifier, source.getPanId(), source.getSourceOrder());
     }
 
     private String sourceHousingTypeName(
             MyHomeSupplyRowMappingData sourceRow,
-            LhAnnouncementSupplySource lhSupply
+            LhAnnouncementSupplySourceView lhSupply
     ) {
-        String lhTypeName = normalizedText(lhSupply.getTypeName());
+        String lhTypeName = SourceText.strippedOrNull(lhSupply.getTypeName());
         if (lhTypeName != null) {
             return lhTypeName;
         }
@@ -275,7 +276,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
     }
 
     private String normalizedNumber(String raw) {
-        String normalized = normalizedText(raw);
+        String normalized = SourceText.strippedOrNull(raw);
         if (normalized == null) {
             return null;
         }
@@ -287,17 +288,10 @@ public class MyHomeAnnouncementSupplyRowResolver {
         return withoutUnit;
     }
 
-    private String normalizedText(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.strip();
-    }
-
     record ResolvedAnnouncement(
             MyHomeAnnouncementMappingData data,
             LhAnnouncementRequest request,
-            List<LhAnnouncementSupplySource> supplies,
+            List<LhAnnouncementSupplySourceView> supplies,
             Set<String> historicalSourceKeys,
             Map<String, LhSupplyRowLinks.State> supplyLinks
     ) {
@@ -307,11 +301,8 @@ public class MyHomeAnnouncementSupplyRowResolver {
         }
 
         Set<String> sourceKeysExcludedFromLhEnrichment() {
-            return data.supplyRows().stream().map(MyHomeSupplyRowMappingData::source)
-                    .filter(source -> historicalSourceKeys.contains(source.getSourceKey())
-                            || !LhProviderPolicy.isLh(source.getSuplyInsttNm()))
-                    .map(MyHomeAnnouncementSource::getSourceKey)
-                    .collect(Collectors.toSet());
+            return LhEnrichmentTargetSources.excludedSourceKeys(
+                    data.supplyRows().stream().map(MyHomeSupplyRowMappingData::source).toList());
         }
     }
 }

@@ -1,11 +1,10 @@
 package com.toadzip.backend.announcement.service;
 
 import com.toadzip.backend.announcement.domain.Announcement;
-import com.toadzip.backend.announcement.domain.AnnouncementSort;
-import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
-import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
+import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
+import com.toadzip.backend.announcement.domain.AnnouncementSort;
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
@@ -16,14 +15,16 @@ import com.toadzip.backend.announcement.dto.response.AnnouncementListResponse;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestException;
 import com.toadzip.backend.announcement.exception.InvalidRegionCodeException;
+import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementDeadlineRow;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchCondition;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
-import com.toadzip.backend.announcement.repository.AnnouncementDeadlineRow;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
+import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -244,11 +245,11 @@ public class AnnouncementQueryService {
         }
     }
 
-    private boolean matchesRegion(Set<String> codes, com.toadzip.backend.housing.domain.Address address) {
+    private boolean matchesRegion(Set<String> codes, Address address) {
         return codes.stream().anyMatch(code -> matchesRegionCode(code, address));
     }
 
-    private boolean matchesRegionCode(String code, com.toadzip.backend.housing.domain.Address address) {
+    private boolean matchesRegionCode(String code, Address address) {
         if (code.length() == 10) {
             return address.getLegalDongCode().startsWith(code.substring(0, 8));
         }

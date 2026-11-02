@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.global.config.PostgresTestDatabases;
+import com.toadzip.backend.notification.domain.NotificationDelivery;
+import com.toadzip.backend.notification.domain.NotificationOutboxEvent;
+import com.toadzip.backend.notification.domain.NotificationPushDevice;
+import com.toadzip.backend.notification.domain.UserNotification;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -41,10 +45,10 @@ class NotificationSchemaIntegrationTest {
         migration.migrate();
         migration.validate();
         var configuration = new org.hibernate.cfg.Configuration()
-                .addAnnotatedClass(com.toadzip.backend.notification.domain.NotificationOutboxEvent.class)
-                .addAnnotatedClass(com.toadzip.backend.notification.domain.UserNotification.class)
-                .addAnnotatedClass(com.toadzip.backend.notification.domain.NotificationPushDevice.class)
-                .addAnnotatedClass(com.toadzip.backend.notification.domain.NotificationDelivery.class)
+                .addAnnotatedClass(NotificationOutboxEvent.class)
+                .addAnnotatedClass(UserNotification.class)
+                .addAnnotatedClass(NotificationPushDevice.class)
+                .addAnnotatedClass(NotificationDelivery.class)
                 .setProperty("hibernate.connection.url", url(database))
                 .setProperty("hibernate.connection.username", USER)
                 .setProperty("hibernate.connection.password", PASSWORD)

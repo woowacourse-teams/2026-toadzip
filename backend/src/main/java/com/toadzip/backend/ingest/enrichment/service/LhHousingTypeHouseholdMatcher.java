@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
 import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHouseholdSource;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -106,7 +107,7 @@ public class LhHousingTypeHouseholdMatcher {
     }
 
     private String sourceSupplyType(String supplyTypeName) {
-        String normalized = normalized(supplyTypeName);
+        String normalized = LhCatalogNames.normalized(supplyTypeName);
         if ("공공임대".equals(normalized)) {
             return PUBLIC_RENTAL;
         }
@@ -115,7 +116,7 @@ public class LhHousingTypeHouseholdMatcher {
 
     public boolean hasExactIdentity(HousingComplex complex, String name, String region, String supplyType) {
         return "LH".equals(complex.getProvider())
-                && normalized(complex.getName()).equals(normalized(name))
+                && LhCatalogNames.normalized(complex.getName()).equals(LhCatalogNames.normalized(name))
                 && regionMatches(complex, region)
                 && complex.getSupplyType().equals(sourceSupplyType(supplyType));
     }
@@ -141,8 +142,8 @@ public class LhHousingTypeHouseholdMatcher {
     }
 
     private int nameScore(String sourceName, String candidateName) {
-        String normalizedSource = normalized(sourceName);
-        String normalizedCandidate = normalized(candidateName);
+        String normalizedSource = LhCatalogNames.normalized(sourceName);
+        String normalizedCandidate = LhCatalogNames.normalized(candidateName);
         if (normalizedSource.equals(normalizedCandidate)) {
             return 10_000;
         }
@@ -231,53 +232,15 @@ public class LhHousingTypeHouseholdMatcher {
         Set<String> result = new HashSet<>();
         Matcher matcher = NUMBER.matcher(value);
         while (matcher.find()) {
-            result.add(withoutLeadingZeros(matcher.group()));
+            result.add(SupplyNameNormalizer.withoutLeadingZeros(matcher.group()));
         }
         return result;
     }
 
-    private String withoutLeadingZeros(String number) {
-        int firstDigit = 0;
-        while (firstDigit < number.length() - 1 && number.charAt(firstDigit) == '0') {
-            firstDigit++;
-        }
-        return number.substring(firstDigit);
-    }
-
     private boolean regionMatches(HousingComplex complex, String areaName) {
-        String address = canonicalRegion(complex.getAddress().getRoadAddress());
-        String sourceRegion = canonicalRegion(areaName);
+        String address = LhCatalogNames.region(complex.getAddress().getRoadAddress());
+        String sourceRegion = LhCatalogNames.region(areaName);
         return !sourceRegion.isEmpty() && address.startsWith(sourceRegion);
-    }
-
-    private String canonicalRegion(String value) {
-        return normalized(value)
-                .replace("서울특별시", "서울")
-                .replace("부산광역시", "부산")
-                .replace("대구광역시", "대구")
-                .replace("인천광역시", "인천")
-                .replace("광주광역시", "광주")
-                .replace("대전광역시", "대전")
-                .replace("울산광역시", "울산")
-                .replace("세종특별자치시", "세종")
-                .replace("강원특별자치도", "강원")
-                .replace("강원도", "강원")
-                .replace("전북특별자치도", "전북")
-                .replace("전라북도", "전북")
-                .replace("제주특별자치도", "제주")
-                .replace("경기도", "경기")
-                .replace("충청북도", "충북")
-                .replace("충청남도", "충남")
-                .replace("전라남도", "전남")
-                .replace("경상북도", "경북")
-                .replace("경상남도", "경남");
-    }
-
-    private String normalized(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replaceAll("[\\s\\-·,()]", "").strip().toLowerCase();
     }
 
     record MatchKey(String supplyType, int totalHouseholdCount) {

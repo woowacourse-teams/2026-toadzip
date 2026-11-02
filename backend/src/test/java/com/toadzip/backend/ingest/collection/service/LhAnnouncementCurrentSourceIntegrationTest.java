@@ -17,20 +17,21 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementCatalogSourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementDetailSourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementSupplySourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionLinkRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQueryApiRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
@@ -39,6 +40,7 @@ import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -48,6 +50,7 @@ import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,10 +58,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+@ExtendWith(IngestExecutionExtension.class)
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
 @ActiveProfiles("test")
 class LhAnnouncementCurrentSourceIntegrationTest {
@@ -177,14 +180,13 @@ class LhAnnouncementCurrentSourceIntegrationTest {
 
     @Test
     void 최신_행이_500행_배치_밖에_있어도_공급과_상세를_연결하고_현재_PAN으로_정제한다() {
-        MyHomeAnnouncementSource previous = source("P1", 1, "100", "previous", NOW.minusSeconds(60));
-        previous.markMissed();
-        previous.markMissed();
-        List<MyHomeAnnouncementSource> rows = new ArrayList<>();
+        MyHomeAnnouncementSourceView previous = source("P1", 1, "100", "previous", NOW.minusSeconds(60));
+        previous = MyHomeSourceViews.inactive(previous);
+        List<MyHomeAnnouncementSourceView> rows = new ArrayList<>();
         rows.add(previous);
         for (int index = 0; index < 499; index++) {
-            MyHomeAnnouncementSource filler = source("filler-" + index, 1, "300", "old", NOW);
-            filler.replaceWith(snapshot("filler-" + index, 1, "300", "20260101"));
+            MyHomeAnnouncementSourceView filler = source("filler-" + index, 1, "300", "old", NOW);
+            filler = MyHomeSourceViews.replaced(filler, snapshot("filler-" + index, 1, "300", "20260101"));
             rows.add(filler);
         }
         rows.add(source("P1", 2, "200", "current", NOW));
@@ -206,14 +208,13 @@ class LhAnnouncementCurrentSourceIntegrationTest {
 
     @Test
     void 최신_요청_실패는_이전_원천과_성공_연결과_제품을_보존하고_재시도하면_정제까지_복구한다() {
-        MyHomeAnnouncementSource previous = sources.save(source("P1", 1, "100", "previous", NOW.minusSeconds(60)));
+        MyHomeAnnouncementSourceView previous = sources.save(source("P1", 1, "100", "previous", NOW.minusSeconds(60)));
         collection.collect(SUPPLY);
         collection.collect(DETAIL);
         assertCurrentProduct("100");
         Long announcementId = announcements.findAll().getFirst().getId();
         Long detailId = currentDetails().getFirst().getId();
-        previous.markMissed();
-        previous.markMissed();
+        previous = MyHomeSourceViews.inactive(previous);
         sources.save(previous);
         sources.save(source("P1", 2, "200", "current", NOW));
         when(external.detail(any())).thenThrow(new ExternalDataRequestException("최신 상세 조회 실패"));
@@ -245,7 +246,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
 
     @Test
     void 요청_충돌_실패는_반복해도_하나의_이력으로_남고_현재_원천_복구_후_해결된다() {
-        MyHomeAnnouncementSource first = sources.save(source("P1", 1, "100", "current", NOW));
+        MyHomeAnnouncementSourceView first = sources.save(source("P1", 1, "100", "current", NOW));
         sources.save(source("P1", 2, "200", "current", NOW));
         assertThat(collection.collect(DETAIL).failedRequestCount()).isOne();
         assertThat(collection.refresh(DETAIL, "P1").failedRequestCount()).isOne();
@@ -253,8 +254,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
                 assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.PENDING));
         assertThat(links.count()).isZero();
 
-        first.markMissed();
-        first.markMissed();
+        first = MyHomeSourceViews.inactive(first);
         sources.save(first);
         assertThat(collection.refresh(DETAIL, "P1").failedRequestCount()).isZero();
         assertThat(links.findAll()).singleElement().satisfies(link -> assertThat(link.getPanId()).isEqualTo("200"));
@@ -265,12 +265,12 @@ class LhAnnouncementCurrentSourceIntegrationTest {
     @ParameterizedTest
     @ValueSource(strings = {"expired", "non_lh", "unsupported"})
     void 충돌_공고가_수집_대상에서_빠지면_기존_실패를_건너뜀으로_정리한다(String exclusion) {
-        MyHomeAnnouncementSource first = sources.save(source("P1", 1, "100", "current", NOW));
-        MyHomeAnnouncementSource second = sources.save(source("P1", 2, "200", "current", NOW));
+        MyHomeAnnouncementSourceView first = sources.save(source("P1", 1, "100", "current", NOW));
+        MyHomeAnnouncementSourceView second = sources.save(source("P1", 2, "200", "current", NOW));
         assertThat(collection.collect(DETAIL).failedRequestCount()).isOne();
         Long failureId = failures.findAll().getFirst().getId();
-        excludeSource(first, exclusion);
-        excludeSource(second, exclusion);
+        first = excluded(first, exclusion);
+        second = excluded(second, exclusion);
         sources.saveAll(List.of(first, second));
 
         var excluded = collection.collect(DETAIL);
@@ -283,8 +283,8 @@ class LhAnnouncementCurrentSourceIntegrationTest {
         });
         assertThat(links.count()).isZero();
 
-        first.replaceWith(snapshot("P1", 1, "100", "20261030"));
-        second.replaceWith(snapshot("P1", 2, "200", "20261030"));
+        first = MyHomeSourceViews.replaced(first, snapshot("P1", 1, "100", "20261030"));
+        second = MyHomeSourceViews.replaced(second, snapshot("P1", 2, "200", "20261030"));
         sources.saveAll(List.of(first, second));
         assertThat(collection.collect(DETAIL).failedRequestCount()).isOne();
         assertThat(failures.findAll()).singleElement().satisfies(failure -> {
@@ -297,11 +297,11 @@ class LhAnnouncementCurrentSourceIntegrationTest {
     @ParameterizedTest
     @ValueSource(strings = {"expired", "non_lh", "unsupported"})
     void 일부_원천만_제외되고_충돌이나_수집_실패가_남으면_기존_보류를_유지한다(String exclusion) {
-        MyHomeAnnouncementSource first = sources.save(source("P1", 1, "100", "current", NOW));
+        MyHomeAnnouncementSourceView first = sources.save(source("P1", 1, "100", "current", NOW));
         sources.save(source("P1", 2, "200", "current", NOW));
         assertThat(collection.collect(DETAIL).failedRequestCount()).isOne();
         Long failureId = failures.findAll().getFirst().getId();
-        excludeSource(first, exclusion);
+        first = excluded(first, exclusion);
         sources.save(first);
         when(external.detail(any())).thenThrow(new ExternalDataRequestException("현재 요청 수집 실패"));
 
@@ -357,7 +357,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
                 assertThat(link.getSourceAnnouncementKey()).isEqualTo("P1"));
     }
 
-    private List<LhAnnouncementDetailSource> currentDetails() {
+    private List<LhAnnouncementDetailSourceView> currentDetails() {
         return querySources.findAll().stream()
                 .filter(source -> source.getSource() == CollectionSource.LH_ANNOUNCEMENT_DETAIL)
                 .flatMap(source -> detailReader.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
@@ -376,13 +376,13 @@ class LhAnnouncementCurrentSourceIntegrationTest {
                 assertThat(failure.getStatus()).isEqualTo(status));
     }
 
-    private void excludeSource(MyHomeAnnouncementSource source, String exclusion) {
-        switch (exclusion) {
-            case "expired" -> ReflectionTestUtils.setField(source, "endDe", "20260801");
-            case "non_lh" -> ReflectionTestUtils.setField(source, "suplyInsttNm", "SH");
-            case "unsupported" -> ReflectionTestUtils.setField(source, "suplyTyNm", "미지원 유형");
+    private MyHomeAnnouncementSourceView excluded(MyHomeAnnouncementSourceView source, String exclusion) {
+        return switch (exclusion) {
+            case "expired" -> MyHomeSourceViews.change(source).endDe("20260801").read();
+            case "non_lh" -> MyHomeSourceViews.change(source).suplyInsttNm("SH").read();
+            case "unsupported" -> MyHomeSourceViews.change(source).suplyTyNm("미지원 유형").read();
             default -> throw new IllegalArgumentException("알 수 없는 수집 제외 조건: " + exclusion);
-        }
+        };
     }
 
     private void saveHousingComplex() {
@@ -405,12 +405,12 @@ class LhAnnouncementCurrentSourceIntegrationTest {
                 assertThat(announcement.getLhPanId()).isEqualTo(panId));
     }
 
-    private MyHomeAnnouncementSource source(
+    private MyHomeAnnouncementSourceView source(
             String identifier, int houseSn, String panId, String runId, Instant seenAt
     ) {
-        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0,
+        MyHomeAnnouncementSourceView source = MyHomeSourceViews.announcement(0,
                 snapshot(identifier, houseSn, panId, "20261030"));
-        source.markSeen(runId, seenAt);
+        source = MyHomeSourceViews.seen(source, runId, seenAt);
         return source;
     }
 

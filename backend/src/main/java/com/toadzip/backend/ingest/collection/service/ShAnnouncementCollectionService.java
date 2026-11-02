@@ -1,7 +1,5 @@
 package com.toadzip.backend.ingest.collection.service;
 
-import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.SH_ANNOUNCEMENT_COLLECTION;
-
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.ShAnnouncementSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
@@ -15,9 +13,7 @@ import com.toadzip.backend.ingest.collection.repository.external.ShAnnouncementL
 import com.toadzip.backend.ingest.collection.repository.external.ShAnnouncementHtmlParser;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataRetryInterruptedException;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.time.Duration;
@@ -42,7 +38,6 @@ public class ShAnnouncementCollectionService {
     private final ShAnnouncementListParser parser;
     private final ShAnnouncementHtmlParser detailParser;
     private final ShAnnouncementStore store;
-    private final IngestOperationLock executionLock;
     private final ExternalDataRetryExecutor retryExecutor;
     private final ExternalDataFailureRecorder failureRecorder;
     private final Clock clock;
@@ -52,7 +47,7 @@ public class ShAnnouncementCollectionService {
     public ShAnnouncementCollectionService(
             ShAnnouncementExternalRepository externalRepository, ShAnnouncementListParser parser,
             ShAnnouncementHtmlParser detailParser,
-            ShAnnouncementStore store, IngestOperationLock executionLock, ExternalDataRetryExecutor retryExecutor,
+            ShAnnouncementStore store, ExternalDataRetryExecutor retryExecutor,
             ExternalDataFailureRecorder failureRecorder, Clock clock,
             @Value("${ingest.sh.lookback-days:90}") int lookbackDays,
             @Value("${ingest.sh.request-interval:1s}") Duration requestInterval
@@ -64,7 +59,6 @@ public class ShAnnouncementCollectionService {
         this.parser = parser;
         this.detailParser = detailParser;
         this.store = store;
-        this.executionLock = executionLock;
         this.retryExecutor = retryExecutor;
         this.failureRecorder = failureRecorder;
         this.clock = clock;
@@ -73,11 +67,7 @@ public class ShAnnouncementCollectionService {
     }
 
     public ExternalDataCollectionReport collect() {
-        return executionLock.tryRun(SH_ANNOUNCEMENT_COLLECTION, this::collectUnlocked)
-                .orElseThrow(() -> new IngestAlreadyRunningException("SH 공고 수집이 이미 실행 중입니다."));
-    }
-
-    private ExternalDataCollectionReport collectUnlocked() {
+        IngestExecutionScope.requireHeld();
         LocalDate cutoff = LocalDate.MIN;
         if (lookbackDays > 0) {
             cutoff = LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))).minusDays(lookbackDays);
@@ -149,8 +139,7 @@ public class ShAnnouncementCollectionService {
             recordFailure(request, exception, progress);
             return;
         }
-        IngestExecutionScope.verifyHeld();
-        IngestExecutionScope.checkStopRequested();
+        IngestExecutionScope.verifyCanContinue();
         store.store(new ShAnnouncementSnapshot(entry.seq(), content.title(), content.department(), content.registeredDate(),
                 ShAnnouncementExternalRepository.detailUrl(entry.seq()),
                 ShAnnouncementExternalRepository.LIST_URL + "&page=" + page.page(), content.bodyText(), content.attachments()));

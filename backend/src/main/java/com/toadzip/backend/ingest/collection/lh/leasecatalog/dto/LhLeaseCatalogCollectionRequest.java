@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.lh.leasecatalog.dto;
 
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
-import com.toadzip.backend.ingest.collection.history.dto.SourceCollectionRequest;
+import com.toadzip.backend.ingest.collection.paging.dto.PagedSourceRequest;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
@@ -10,7 +10,7 @@ import java.util.UUID;
 
 public record LhLeaseCatalogCollectionRequest(
         UUID executionId, int pageSize, int maxPages, Instant startedAt
-) implements SourceCollectionRequest {
+) implements PagedSourceRequest {
 
     public LhLeaseCatalogCollectionRequest {
         if (pageSize < 1 || pageSize > 9999 || maxPages < 1 || maxPages > 1000) {
@@ -27,5 +27,16 @@ public record LhLeaseCatalogCollectionRequest(
     @Override
     public Map<String, String> parameters() {
         return Map.of("scope", "ALL", "PG_SZ", Integer.toString(pageSize), "maxPages", Integer.toString(maxPages));
+    }
+
+    @Override
+    public String pageDescription(int page) {
+        return "PG_SZ=" + pageSize + "&PAGE=" + page;
+    }
+
+    /** 페이지 크기와 관계없이 이전 실패 기록을 모두 해소한다. */
+    @Override
+    public String resolvedFailurePrefix() {
+        return "PG_SZ=";
     }
 }

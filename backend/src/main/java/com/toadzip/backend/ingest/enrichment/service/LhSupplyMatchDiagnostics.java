@@ -2,11 +2,8 @@ package com.toadzip.backend.ingest.enrichment.service;
 
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
-import com.toadzip.backend.announcement.repository.SupplyRowRepository;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
-import com.toadzip.backend.ingest.mapping.service.LhSupplyRowLinks;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -23,29 +20,27 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class LhSupplyMatchDiagnostics {
     private final AnnouncementRepository announcements;
-    private final SupplyRowRepository supplyRows;
+    private final LhEnrichmentSupplyRows supplyRows;
     private final LhAnnouncementEnrichmentMapper mapper;
     private final LhAnnouncementSupplyMatcher matcher;
 
     public List<Failure> diagnose(String announcementIdentifier, String panId,
-            List<LhAnnouncementSupplySource> supplies, Map<String, LhSupplyRowLinks.State> supplyLinks,
+            List<LhAnnouncementSupplySourceView> supplies, Map<String, LhSupplyRowLinks.State> supplyLinks,
             Set<String> sourceKeysExcludedFromLhEnrichment) {
         var announcement = announcements.findBySourceAnnouncementIdentifier(announcementIdentifier).orElse(null);
         if (announcement == null) {
             return List.of();
         }
-        List<SupplyRow> allRows = LhAnnouncementEnrichmentWriter.enrichmentRows(announcement,
-                supplyRows.findAllByAnnouncement(announcement), sourceKeysExcludedFromLhEnrichment);
-        List<SupplyRow> rows = allRows.stream().filter(row -> row.getSupplyGroup() == null).toList();
+        var enrichmentRows = supplyRows.read(announcement, sourceKeysExcludedFromLhEnrichment);
         List<Failure> failures = new ArrayList<>();
-        for (LhAnnouncementSupplySource supply : supplies) {
-            diagnose(panId, supply, supplyLinks, allRows, rows).ifPresent(failures::add);
+        for (LhAnnouncementSupplySourceView supply : supplies) {
+            diagnose(panId, supply, supplyLinks, enrichmentRows).ifPresent(failures::add);
         }
         return failures;
     }
 
-    private Optional<Failure> diagnose(String panId, LhAnnouncementSupplySource supply,
-            Map<String, LhSupplyRowLinks.State> supplyLinks, List<SupplyRow> allRows, List<SupplyRow> rows) {
+    private Optional<Failure> diagnose(String panId, LhAnnouncementSupplySourceView supply,
+            Map<String, LhSupplyRowLinks.State> supplyLinks, LhEnrichmentSupplyRows.Rows enrichmentRows) {
         String identifier = LhSupplyRowLinks.identifier(supply);
         LhSupplyData source;
         try {
@@ -55,10 +50,10 @@ public class LhSupplyMatchDiagnostics {
                     List.of()));
         }
         // 복수 공급행으로 보정한 행에 붙는 LH 행은 보강이 건너뛰므로 실패로 보지 않는다.
-        var protectedMatch = matcher.match(allRows, source).row();
-        if (protectedMatch != null && protectedMatch.getSupplyGroup() != null) {
+        if (supplyRows.skips(enrichmentRows, source)) {
             return Optional.empty();
         }
+        List<SupplyRow> rows = enrichmentRows.matchable();
         var match = matcher.match(rows, source);
         if (match.failure() == null) {
             return Optional.empty();

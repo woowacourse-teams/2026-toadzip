@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.lh.detail.repository;
 
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceReader;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +16,7 @@ public class LhAnnouncementDetailSourceReader {
     private final LhAnnouncementQuerySourceReader sources;
     private final LhAnnouncementDetailRowRepository rows;
 
-    public List<LhAnnouncementDetailSource> findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
+    public List<LhAnnouncementDetailSourceView> findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
             String panId, String requestHash
     ) {
         var source = sources.find(CollectionSource.LH_ANNOUNCEMENT_DETAIL, panId, requestHash);
@@ -28,7 +28,6 @@ public class LhAnnouncementDetailSourceReader {
             return List.of();
         }
         return rows.findAllBySourceIdOrderBySourceOrderAsc(current.getId()).stream()
-                .map(row -> LhAnnouncementDetailSource.read(row.getId(), row.getSourceOrder(), panId,
-                        requestHash, row.getCollectedAt(), row.snapshot())).toList();
+                .map(row -> LhAnnouncementDetailSourceView.of(row, current)).toList();
     }
 }

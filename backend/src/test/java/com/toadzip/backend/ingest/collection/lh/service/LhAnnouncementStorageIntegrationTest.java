@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import com.toadzip.backend.global.config.PostgresTestDatabases;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionStatus;
 import com.toadzip.backend.ingest.collection.history.domain.SourceCollectionRecord;
@@ -17,28 +18,36 @@ import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuerySource;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQueryApiRepository;
+import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceReader;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhAnnouncementCircuitBreaker;
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplyRow;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhSupplySnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplyRowRepository;
+import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhSupplyResponseParser;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.VerifiedLhSupplyReplacementStore;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
+import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
+import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
+import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
 import com.toadzip.backend.ingest.pipeline.repository.IngestExecutionOwnershipRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import com.toadzip.backend.global.config.PostgresTestDatabases;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -83,7 +92,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Import({LhAnnouncementQueryCollector.class, LhAnnouncementStorageService.class, SourceCollectionRecordService.class,
         LhAnnouncementQueryApiRepository.class, LhSupplyResponseParser.class, LhDetailResponseParser.class,
         VerifiedLhSupplyReplacementStore.class, IngestWriteOwnershipGuard.class,
-        IngestExecutionOwnershipRepository.class})
+        IngestExecutionOwnershipRepository.class, LhAnnouncementSupplySourceReader.class,
+        LhAnnouncementQuerySourceReader.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -112,6 +122,9 @@ class LhAnnouncementStorageIntegrationTest {
 
     @Autowired
     private LhAnnouncementSupplyRowRepository supplies;
+
+    @Autowired
+    private LhAnnouncementSupplySourceReader supplyReader;
 
     @Autowired
     private LhAnnouncementDetailRowRepository details;
@@ -158,18 +171,28 @@ class LhAnnouncementStorageIntegrationTest {
         var row = supply(" 단지 ", " 형 1 ");
         expect(request, "dsList01", List.of(supplyWire(row), supplyWire(row)));
 
-        UUID id = collector.collect(request);
+        int stored = collect(request);
 
-        assertThat(view()).singleElement().satisfies(source -> {
-            assertThat(source.supplies()).containsExactly(row, row);
-            assertThat(source.collectedAt()).isEqualTo(NOW);
-            assertThat(source.requestHash()).isEqualTo(request.requestHash());
-            assertThat(source.recordId()).isEqualTo(id);
-        });
+        assertThat(stored).isEqualTo(2);
         assertThat(records.findAll()).singleElement().satisfies(record -> {
+            assertThat(view()).singleElement().satisfies(source -> {
+                assertThat(source.supplies()).containsExactly(row, row);
+                assertThat(source.collectedAt()).isEqualTo(NOW);
+                assertThat(source.requestHash()).isEqualTo(request.requestHash());
+                assertThat(source.recordId()).isEqualTo(record.getId());
+            });
             assertThat(record.getStatus()).isEqualTo(CollectionStatus.SUCCESS);
             assertThat(record.getStoredRowCount()).isEqualTo(2);
         });
+        Map<String, String> parameters = new TransactionTemplate(transactionManager).execute(status ->
+                Map.copyOf(records.findAll().getFirst().getRequestParameters()));
+        assertThat(parameters).containsEntry("COLLECTION_VERSION", "6").containsEntry("PAN_ID", "PAN-A");
+        assertThat(supplyReader.findAllByPanIdAndRequestHashOrderBySourceOrderAsc("PAN-A", request.requestHash()))
+                .hasSize(2).allSatisfy(source -> {
+                    assertThat(source.getPanId()).isEqualTo("PAN-A");
+                    assertThat(source.getRequestHash()).isEqualTo(request.requestHash());
+                    assertThat(source.getComplexLabel()).isEqualTo("단지");
+                });
     }
 
     @Test
@@ -179,7 +202,7 @@ class LhAnnouncementStorageIntegrationTest {
         var previous = view();
         expect(request, "dsList01", List.of(supplyWire(supply("단지", "A")), supplyWire(supply("단지", "C"))));
 
-        assertThatThrownBy(() -> collector.collect(request))
+        assertThatThrownBy(() -> collect(request))
                 .isInstanceOf(IncompleteLhSupplyReplacementException.class);
 
         assertThat(view()).isEqualTo(previous);
@@ -194,7 +217,7 @@ class LhAnnouncementStorageIntegrationTest {
         var request = request(CollectionSource.LH_ANNOUNCEMENT_SUPPLY, "PAN-A", "050", 6);
         expect(request, "dsList01", List.of(supplyWire(supply("단지", "A"))));
 
-        assertThatThrownBy(() -> collector.collect(request))
+        assertThatThrownBy(() -> collect(request))
                 .isInstanceOf(IncompleteLhSupplyReplacementException.class);
 
         assertThat(view()).isEqualTo(previous);
@@ -227,7 +250,8 @@ class LhAnnouncementStorageIntegrationTest {
         };
         expectPayload(request, payload);
 
-        assertThatThrownBy(() -> collector.collect(request)).isInstanceOf(ExternalDataRequestException.class);
+        assertThatThrownBy(() -> collect(request)).isInstanceOf(ExternalDataCallFailureException.class)
+                .hasCauseInstanceOf(ExternalDataRequestException.class);
 
         assertThat(view()).isEqualTo(previous);
         assertFailed();
@@ -241,7 +265,7 @@ class LhAnnouncementStorageIntegrationTest {
         long approvalId = approve(request, incoming);
         expect(request, "dsList01", List.of(supplyWire(incoming)));
 
-        collector.collect(request);
+        collect(request);
 
         assertThat(view()).singleElement().satisfies(source -> assertThat(source.supplies()).containsExactly(incoming));
         assertThat(consumed(approvalId)).isNotNull();
@@ -255,7 +279,7 @@ class LhAnnouncementStorageIntegrationTest {
         long approvalId = approve(request, supply("단지", "A"));
         expect(request, "dsList01", List.of(supplyWire(supply("단지", "C"))));
 
-        assertThatThrownBy(() -> collector.collect(request))
+        assertThatThrownBy(() -> collect(request))
                 .isInstanceOf(IncompleteLhSupplyReplacementException.class);
 
         assertThat(view()).isEqualTo(previous);
@@ -274,7 +298,7 @@ class LhAnnouncementStorageIntegrationTest {
         try {
             expect(request, "dsList01", List.of(supplyWire(supply("단지", "A"))));
 
-            assertThatThrownBy(() -> collector.collect(request)).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> collect(request)).isInstanceOf(RuntimeException.class);
 
             assertThat(view()).isEqualTo(previous);
             assertThat(consumed(approvalId)).isNull();
@@ -290,12 +314,12 @@ class LhAnnouncementStorageIntegrationTest {
         seedSupply(request, supply("단지", "A"));
         approve(request);
         expect(request, "dsList01", List.of());
-        collector.collect(request);
+        collect(request);
         http.reset();
         var upgraded = request(CollectionSource.LH_ANNOUNCEMENT_SUPPLY, "PAN-A", "050", 7);
         expect(upgraded, "dsList01", List.of());
 
-        collector.collect(upgraded);
+        collect(upgraded);
 
         assertThat(view()).singleElement().satisfies(source -> {
             assertThat(source.supplies()).isEmpty();
@@ -308,12 +332,12 @@ class LhAnnouncementStorageIntegrationTest {
     void emptyDetailCannotReplacePreviousSuccessfulDetails() {
         var request = request(CollectionSource.LH_ANNOUNCEMENT_DETAIL, "PAN-A", "050", 6);
         expect(request, "dsSbd", List.of(Map.of("LCC_NT_NM", " 단지 ", "LGDN_ADR", " 원문 주소 ")));
-        collector.collect(request);
+        collect(request);
         var previous = view();
         http.reset();
         expect(request, "dsSbd", List.of());
 
-        assertThatThrownBy(() -> collector.collect(request)).isInstanceOf(EmptyLhDetailReplacementException.class);
+        assertThatThrownBy(() -> collect(request)).isInstanceOf(EmptyLhDetailReplacementException.class);
 
         assertThat(view()).isEqualTo(previous);
         assertFailed();
@@ -324,11 +348,11 @@ class LhAnnouncementStorageIntegrationTest {
         var request = request(CollectionSource.LH_ANNOUNCEMENT_DETAIL, "PAN-A", "050", 6);
         expect(request, "dsSbd", List.of(Map.of("LCC_NT_NM", " 단지 ", "LGDN_ADR", " 원문 주소 "),
                 Map.of("LCC_NT_NM", " 단지 B ", "LGDN_ADR", " 주소 B ")));
-        collector.collect(request);
+        collect(request);
         http.reset();
         expect(request, "dsSbd", List.of(Map.of("LCC_NT_NM", " 단지 ", "LGDN_ADR", " 새 주소 ")));
 
-        collector.collect(request);
+        collect(request);
 
         assertThat(view()).singleElement().satisfies(source ->
                 assertThat(source.details()).singleElement().satisfies(row -> {
@@ -350,23 +374,23 @@ class LhAnnouncementStorageIntegrationTest {
     }
 
     private long approve(LhAnnouncementCollectionRequest request, LhAnnouncementSupplySourceSnapshot... snapshots) {
-        List<LhAnnouncementSupplySource> views = new ArrayList<>();
+        List<LhAnnouncementSupplySourceView> views = new ArrayList<>();
         for (int index = 0; index < snapshots.length; index++) {
-            views.add(LhAnnouncementSupplySource.read(null, index, request.query().panId(),
+            views.add(LhAnnouncementSupplySourceView.read(null, index, request.query().panId(),
                     request.requestHash(), null, snapshots[index]));
         }
         return approvals.approve(request.requestHash(), LhSupplySnapshot.fingerprint(views),
                 "https://apply.lh.or.kr/evidence", "공식 근거 확인", "test-admin");
     }
 
-    private java.sql.Timestamp consumed(long id) {
+    private Timestamp consumed(long id) {
         return jdbc.queryForObject("SELECT consumed_at FROM verified_lh_supply_replacements WHERE id = ?",
-                java.sql.Timestamp.class, id);
+                Timestamp.class, id);
     }
 
     private List<SourceView> view() {
         return new TransactionTemplate(transactionManager).execute(status -> sources.findAll().stream()
-                .sorted(java.util.Comparator.comparing(LhAnnouncementQuerySource::getQueryHash))
+                .sorted(Comparator.comparing(LhAnnouncementQuerySource::getQueryHash))
                 .map(source -> new SourceView(source.getId(), source.getVersion(), source.getQueryHash(),
                         source.getRequestHash(), source.getCollectedAt(), source.isVerifiedEmpty(),
                         source.getLastCollectionRecord().getId(),
@@ -429,6 +453,16 @@ class LhAnnouncementStorageIntegrationTest {
         }
 
         @Bean
+        ExternalDataRetryExecutor retryExecutor() {
+            return CollectionServiceTestFixture.retryWithoutDelay();
+        }
+
+        @Bean
+        MeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
+        }
+
+        @Bean
         ObjectMapper objectMapper() {
             return JsonMapper.builder().build();
         }
@@ -468,5 +502,11 @@ class LhAnnouncementStorageIntegrationTest {
             environment.getPropertySources().addFirst(new MapPropertySource("lhQuerySchema",
                     Map.of("spring.datasource.url", url)));
         }
+    }
+
+    /** 운영처럼 실행 확인 뒤 수집기의 시계로 요청을 다시 만든다. */
+    private int collect(LhAnnouncementCollectionRequest request) {
+        return collector.collect(startedAt -> new LhAnnouncementCollectionRequest(request.executionId(),
+                request.source(), request.query(), request.collectionVersion(), startedAt), new ExternalDataCallCounter());
     }
 }

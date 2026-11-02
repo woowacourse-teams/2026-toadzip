@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.lh.announcementcatalog.dto;
 
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
-import com.toadzip.backend.ingest.collection.history.dto.SourceCollectionRequest;
+import com.toadzip.backend.ingest.collection.paging.dto.PagedSourceRequest;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
@@ -9,7 +9,7 @@ import java.util.UUID;
 
 public record LhAnnouncementCatalogCollectionRequest(
         UUID executionId, int pageSize, int maxPages, Instant startedAt
-) implements SourceCollectionRequest {
+) implements PagedSourceRequest {
 
     public LhAnnouncementCatalogCollectionRequest {
         if (pageSize < 1 || pageSize > 9_999 || maxPages < 1 || maxPages > 1_000 || startedAt == null) {
@@ -26,5 +26,20 @@ public record LhAnnouncementCatalogCollectionRequest(
     @Override
     public Map<String, String> parameters() {
         return Map.of("PG_SZ", Integer.toString(pageSize), "maxPages", Integer.toString(maxPages));
+    }
+
+    @Override
+    public String pageDescription(int page) {
+        return "PG_SZ=" + pageSize + "&PAGE=" + page;
+    }
+
+    @Override
+    public String failureDescription() {
+        return resolvedFailurePrefix();
+    }
+
+    @Override
+    public String resolvedFailurePrefix() {
+        return "PG_SZ=" + pageSize;
     }
 }

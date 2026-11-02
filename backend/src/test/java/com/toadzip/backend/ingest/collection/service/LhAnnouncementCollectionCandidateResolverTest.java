@@ -6,14 +6,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSource;
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.projection.LhAnnouncementCatalogSnapshot;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSourceView;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Skipped;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -27,7 +29,7 @@ class LhAnnouncementCollectionCandidateResolverTest {
 
     @Test
     void LH_공고의_공급유형과_URL로_수집_후보를_만든다() {
-        MyHomeAnnouncementSource source = source(
+        MyHomeAnnouncementSourceView source = source(
                 "LH",
                 "행복주택",
                 "https://apply.lh.or.kr/panDetail?panId=100"
@@ -45,7 +47,7 @@ class LhAnnouncementCollectionCandidateResolverTest {
 
     @Test
     void LH가_아닌_공고는_건너뛸_대상으로_분류한다() {
-        MyHomeAnnouncementSource source = source(
+        MyHomeAnnouncementSourceView source = source(
                 "서울주택도시공사",
                 "행복주택",
                 "https://apply.lh.or.kr/panDetail?panId=100"
@@ -63,9 +65,9 @@ class LhAnnouncementCollectionCandidateResolverTest {
     @Test
     void 목록에서_유일하게_연결되면_공식_공급코드와_변경시각을_사용한다() {
         Instant observedAt = Instant.parse("2026-09-25T00:00:00Z");
-        var row = LhAnnouncementCatalogSource.from(new LhAnnouncementCatalogSnapshot(
+        var row = LhSourceViews.announcementCatalog(observedAt, new LhAnnouncementCatalogSnapshot(
                 "100", "03", "06", "48", "064", "공고", "공고중", "", "", "", "", ""
-        ), "{}", observedAt);
+        ));
         when(catalogRepository.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100")))
                 .thenReturn(List.of(row));
         var source = source("LH", "행복주택",
@@ -85,9 +87,9 @@ class LhAnnouncementCollectionCandidateResolverTest {
     @Test
     void URL에_공고유형이_없으면_유일하게_연결된_목록의_조회코드로_보완한다() {
         Instant collectedAt = Instant.parse("2026-09-25T00:00:00Z");
-        var row = LhAnnouncementCatalogSource.from(new LhAnnouncementCatalogSnapshot(
+        var row = LhSourceViews.announcementCatalog(collectedAt, new LhAnnouncementCatalogSnapshot(
                 "100", "03", "06", "48", "064", "공고", "공고중", "", "", "", "", ""
-        ), "{}", collectedAt);
+        ));
         when(catalogRepository.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100")))
                 .thenReturn(List.of(row));
 
@@ -103,9 +105,9 @@ class LhAnnouncementCollectionCandidateResolverTest {
 
     @Test
     void 같은_공고ID여도_유형이_다르면_기존_마이홈_조회조건을_유지한다() {
-        var row = LhAnnouncementCatalogSource.from(new LhAnnouncementCatalogSnapshot(
+        var row = LhSourceViews.announcementCatalog(Instant.now(), new LhAnnouncementCatalogSnapshot(
                 "100", "03", "06", "10", "061", "공고", "공고중", "", "", "", "", ""
-        ), "{}", Instant.now());
+        ));
         when(catalogRepository.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100")))
                 .thenReturn(List.of(row));
 
@@ -151,9 +153,9 @@ class LhAnnouncementCollectionCandidateResolverTest {
     @Test
     void 목록의_조회조건이_여러_개와_일치하면_추론한_공급코드를_유지한다() {
         var rows = List.of("48", "49").stream()
-                .map(type -> LhAnnouncementCatalogSource.from(new LhAnnouncementCatalogSnapshot(
+                .map(type -> LhSourceViews.announcementCatalog(Instant.now(), new LhAnnouncementCatalogSnapshot(
                         "100", "03", "06", type, "064", "공고", "공고중", "", "", "", "", ""
-                ), "{}", Instant.now()))
+                )))
                 .toList();
         when(catalogRepository.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100")))
                 .thenReturn(rows);
@@ -167,12 +169,12 @@ class LhAnnouncementCollectionCandidateResolverTest {
         });
     }
 
-    private MyHomeAnnouncementSource source(String provider, String supplyType, String url) {
+    private MyHomeAnnouncementSourceView source(String provider, String supplyType, String url) {
         MyHomeAnnouncementSourceSnapshot snapshot = new MyHomeAnnouncementSourceSnapshot(
                 "100", 1, null, "공고", provider, null, supplyType, null, null, null,
                 null, null, null, url, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null
         );
-        return MyHomeAnnouncementSource.from(0, snapshot);
+        return MyHomeSourceViews.announcement(0, snapshot);
     }
 }

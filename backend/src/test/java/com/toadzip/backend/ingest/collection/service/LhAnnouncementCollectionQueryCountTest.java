@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.CollectedSourceRows;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementCatalogSourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
@@ -17,10 +18,12 @@ import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollect
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQueryApiRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -31,6 +34,7 @@ import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -42,6 +46,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+@ExtendWith(IngestExecutionExtension.class)
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
 @ActiveProfiles("test")
 class LhAnnouncementCollectionQueryCountTest {
@@ -200,7 +205,7 @@ class LhAnnouncementCollectionQueryCountTest {
     }
 
     private void prepareCache(int count, boolean sharedRequest) {
-        List<MyHomeAnnouncementSource> rows = new ArrayList<>();
+        List<MyHomeAnnouncementSourceView> rows = new ArrayList<>();
         List<LhAnnouncementCollectionLink> completedLinks = new ArrayList<>();
         Map<String, String> completedRequests = new LinkedHashMap<>();
         for (int index = 0; index < count; index++) {
@@ -221,18 +226,18 @@ class LhAnnouncementCollectionQueryCountTest {
             long parent = fixtures.querySource(DETAIL.name(), request, NOW);
             jdbc.sql("INSERT INTO lh_announcement_detail_rows (source_id, source_order, collected_at, "
                     + "dataset_type, complex_name) VALUES (?, 0, ?, 'COMPLEX', '테스트 단지')")
-                    .params(parent, java.sql.Timestamp.from(NOW)).update();
+                    .params(parent, Timestamp.from(NOW)).update();
         });
         baselineSuccessCount = completedRequests.size();
     }
 
-    private MyHomeAnnouncementSource source(String identifier, String panId) {
+    private MyHomeAnnouncementSourceView source(String identifier, String panId) {
         String payload = """
                 {"pblancId":"%s","houseSn":1,"suplyInsttNm":"LH","suplyTyNm":"행복주택",
                  "endDe":"20261030",
                  "url":"https://apply.lh.or.kr/panDetail?panId=%s&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"}
                 """.formatted(identifier, panId);
-        return MyHomeAnnouncementSource.from(0,
+        return MyHomeSourceViews.announcement(0,
                 JsonMapper.builder().build().readValue(payload, MyHomeAnnouncementSourceSnapshot.class));
     }
 

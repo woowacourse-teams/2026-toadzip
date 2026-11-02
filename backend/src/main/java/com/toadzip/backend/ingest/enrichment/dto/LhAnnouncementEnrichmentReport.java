@@ -1,5 +1,7 @@
 package com.toadzip.backend.ingest.enrichment.dto;
 
+import com.toadzip.backend.ingest.domain.IngestStepReport;
+
 public record LhAnnouncementEnrichmentReport(
         int updatedAnnouncementCount,
         int unchangedAnnouncementCount,
@@ -11,7 +13,7 @@ public record LhAnnouncementEnrichmentReport(
         int createdSupplyTargetCount,
         int updatedSupplyTargetCount,
         int failedSourceCount
-) {
+) implements IngestStepReport {
 
     public static LhAnnouncementEnrichmentReport empty() {
         return new LhAnnouncementEnrichmentReport(0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -34,5 +36,16 @@ public record LhAnnouncementEnrichmentReport(
 
     public static LhAnnouncementEnrichmentReport failed() {
         return new LhAnnouncementEnrichmentReport(0, 0, 0, 0, 0, 0, 0, 0, 0, 1);
+    }
+
+    /** 보강하지 못한 원천은 단계를 멈추지 않는 경고다. */
+    @Override
+    public int stepFailureCount() {
+        return 0;
+    }
+
+    @Override
+    public int stepWarningCount() {
+        return failedSourceCount;
     }
 }

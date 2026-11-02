@@ -7,14 +7,15 @@ import com.toadzip.backend.announcement.domain.SupplyRowGroup;
 import com.toadzip.backend.announcement.repository.SupplyRowGroupRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
-import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchResult;
+import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -24,7 +25,7 @@ class AnnouncementSupplySplitWriter {
     private final SupplyRowGroupRepository groups;
     private final SupplyRowRepository rows;
     private final SupplyTargetRepository targets;
-    private final AnnouncementSupplyMatchDecisionRepository decisions;
+    private final SavedSupplyMatches savedMatches;
     private final SupplyMatchingFingerprint fingerprints;
 
     void apply(Announcement announcement, SplitPlan plan) {
@@ -39,7 +40,7 @@ class AnnouncementSupplySplitWriter {
         var members = stored.stream().filter(row -> row.getSupplyGroup() != null
                 && row.getSupplyGroup().getSourceRowIdentifier().equals(origin)).toList();
         var requestedIds = plan.targets().stream().map(SplitTarget::id)
-                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+                .filter(Objects::nonNull).collect(Collectors.toSet());
         long requestedExisting = plan.targets().stream().filter(target -> target.id() != null).count();
         if (requestedIds.size() != requestedExisting
                 || !requestedIds.equals(members.stream().map(SupplyRow::getId).collect(Collectors.toSet()))) {
@@ -58,14 +59,22 @@ class AnnouncementSupplySplitWriter {
         group.confirm(SupplyRowGroupOrigins.householdCount(data, plan.expanded()), fingerprints.splitSource(data, plan.expanded()),
                 plan.sourceUrl().strip(), plan.reason().strip(), plan.actor());
         groups.saveAndFlush(group);
-        int displayOrder = 1;
+        int displayOrder = firstDisplayOrder(replaced, members);
         for (SplitTarget target : plan.targets()) {
             applyTarget(announcement, group, data, members, target, displayOrder++, plan.expanded());
         }
         rows.deleteAll(replaced);
-        decisions.findByRowIdentifier(origin).ifPresent(decisions::delete);
+        savedMatches.release(origin);
         rows.flush();
         announcement.recordAdminSupplyChange();
+    }
+
+    /**
+     * 나눈 행은 대체하는 행(다시 나누면 기존 구성원)의 자리부터 차례로 차지한다. 관리자 보정 행이라 재정제가 순서를 바꾸지 않으므로
+     * 공고 안의 자리를 여기서 정하지 않으면 다른 공급행과 순서가 겹친다.
+     */
+    private int firstDisplayOrder(List<SupplyRow> replaced, List<SupplyRow> members) {
+        return Stream.concat(replaced.stream(), members.stream()).mapToInt(SupplyRow::getDisplayOrder).min().orElse(1);
     }
 
     private void applyTarget(Announcement announcement, SupplyRowGroup group, MyHomeSupplyRowMappingData data,
@@ -96,9 +105,25 @@ class AnnouncementSupplySplitWriter {
     boolean reviewRequired(SupplyRowGroup group, MyHomeSupplyRowMappingData source, boolean expanded, List<SupplyRow> members) {
         return members.size() < 2 || group.isReviewRequired()
                 || !fingerprints.splitSource(source, expanded).equals(group.getSourceFingerprint())
-                || members.stream().anyMatch(row -> row.getHousingType() == null || row.getHousingComplex() == null
-                || row.getHousingComplex().isAdminDeleted()
-                || !fingerprints.target(row.getHousingType()).equals(row.getConfirmedTargetFingerprint()));
+                || members.stream().anyMatch(row -> row.getHousingComplex() == null
+                || row.getHousingComplex().isAdminDeleted() || !hasConfirmedTarget(row));
+    }
+
+    /** 분할 단지를 합치기 전에 확정한 주택형이 그대로인 묶음 행만 고른다. 합친 뒤 {@link #reconfirmAfterComplexMove}로 옮긴다. */
+    List<Long> confirmedRowsIn(Collection<Long> complexIds) {
+        return complexIds.stream().flatMap(id -> rows.findAllByHousingComplexId(id).stream())
+                .filter(this::hasConfirmedTarget).map(SupplyRow::getId).toList();
+    }
+
+    /** 같은 주택형의 소속 단지만 바뀐 경우다. 관리자 확인은 그대로 두고 대상 지문만 다시 남긴다. */
+    void reconfirmAfterComplexMove(List<Long> rowIds) {
+        rows.findAllById(rowIds).forEach(row ->
+                row.reconfirmTargetAfterComplexMove(fingerprints.target(row.getHousingType())));
+    }
+
+    private boolean hasConfirmedTarget(SupplyRow row) {
+        return row.getHousingType() != null && row.getConfirmedTargetFingerprint() != null
+                && fingerprints.target(row.getHousingType()).equals(row.getConfirmedTargetFingerprint());
     }
 
     record SplitTarget(Long id, String name, MyHomeSupplyMatchResult match, String targetFingerprint) { }

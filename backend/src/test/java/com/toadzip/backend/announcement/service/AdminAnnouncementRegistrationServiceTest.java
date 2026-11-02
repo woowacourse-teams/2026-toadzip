@@ -16,9 +16,9 @@ import com.toadzip.backend.announcement.domain.ReceptionMethod;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest.ReceptionPlaceRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest.SupplyRowRequest;
+import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest;
 import com.toadzip.backend.announcement.dto.response.AdminAnnouncementCreateResponse;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestException;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
@@ -28,6 +28,7 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.exception.AdminHousingComplexNotFoundException;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.Optional;
@@ -52,7 +53,7 @@ class AdminAnnouncementRegistrationServiceTest {
             supplyRowRepository,
             housingComplexRepository,
             identifierGenerator,
-            mock(com.toadzip.backend.notification.repository.NotificationOutboxRepository.class)
+            mock(NotificationOutboxRepository.class)
     );
 
     @BeforeEach

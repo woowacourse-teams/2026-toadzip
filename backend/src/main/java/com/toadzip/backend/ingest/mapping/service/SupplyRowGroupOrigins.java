@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import java.util.Collection;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -18,7 +19,7 @@ final class SupplyRowGroupOrigins {
     /** LH 공급정보로 두 행 이상 펼친 마이홈 원천 키. */
     static Set<String> expanded(Collection<MyHomeSupplyRowMappingData> rows) {
         return rows.stream().collect(Collectors.groupingBy(row -> row.source().getSourceKey(), Collectors.counting()))
-                .entrySet().stream().filter(entry -> entry.getValue() > 1).map(java.util.Map.Entry::getKey)
+                .entrySet().stream().filter(entry -> entry.getValue() > 1).map(Map.Entry::getKey)
                 .collect(Collectors.toSet());
     }
 

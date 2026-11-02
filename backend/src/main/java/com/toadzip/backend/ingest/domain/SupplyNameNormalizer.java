@@ -106,7 +106,8 @@ public final class SupplyNameNormalizer {
         return result;
     }
 
-    private static String withoutLeadingZeros(String number) {
+    /** 숫자 문자열의 앞자리 0을 지운다. 모두 0이면 "0" 하나를 남긴다. */
+    public static String withoutLeadingZeros(String number) {
         int firstDigit = 0;
         while (firstDigit < number.length() - 1 && number.charAt(firstDigit) == '0') {
             firstDigit++;

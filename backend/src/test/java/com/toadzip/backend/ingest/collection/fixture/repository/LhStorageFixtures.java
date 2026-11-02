@@ -2,17 +2,17 @@ package com.toadzip.backend.ingest.collection.fixture.repository;
 
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
 import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecordService;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementCollectionRequest;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.projection.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.LhLeaseCatalogCollectedResponse;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.LhLeaseCatalogCollectionRequest;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCatalogStorageService;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementStorageService;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import java.time.Clock;
 import java.util.Arrays;
 import java.util.List;
@@ -41,14 +41,14 @@ public class LhStorageFixtures {
         var at = clock.instant();
         var request = new LhLeaseCatalogCollectionRequest(null, 9999, 1000, at);
         var rows = snapshots.stream().map(row -> mapper.convertValue(row,
-                com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot.class)).toList();
+                LhCatalogSourceSnapshot.class)).toList();
         leaseStorage.complete(records.start(request), request,
                 new LhLeaseCatalogCollectedResponse(rows.size(), at, rows));
         return rows.size();
     }
 
-    public int replaceDetails(String panId, String description, List<LhAnnouncementDetailSource> sources) {
-        requirePanId(panId, sources.stream().map(LhAnnouncementDetailSource::getPanId).toList());
+    public int replaceDetails(String panId, String description, List<LhAnnouncementDetailSourceView> sources) {
+        requirePanId(panId, sources.stream().map(LhAnnouncementDetailSourceView::getPanId).toList());
         var request = request(CollectionSource.LH_ANNOUNCEMENT_DETAIL, description);
         var rows = sources.stream().map(row -> mapper.convertValue(row,
                 LhAnnouncementDetailSourceSnapshot.class)).toList();
@@ -56,8 +56,8 @@ public class LhStorageFixtures {
         return rows.size();
     }
 
-    public int replaceSupplies(String panId, String description, List<LhAnnouncementSupplySource> sources) {
-        requirePanId(panId, sources.stream().map(LhAnnouncementSupplySource::getPanId).toList());
+    public int replaceSupplies(String panId, String description, List<LhAnnouncementSupplySourceView> sources) {
+        requirePanId(panId, sources.stream().map(LhAnnouncementSupplySourceView::getPanId).toList());
         var request = request(CollectionSource.LH_ANNOUNCEMENT_SUPPLY, description);
         var rows = sources.stream().map(row -> mapper.convertValue(row,
                 LhAnnouncementSupplySourceSnapshot.class)).toList();

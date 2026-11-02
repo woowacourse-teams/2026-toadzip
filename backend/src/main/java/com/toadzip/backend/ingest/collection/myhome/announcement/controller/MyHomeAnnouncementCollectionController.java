@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.myhome.announcement.controller;
 
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -32,7 +32,7 @@ public class MyHomeAnnouncementCollectionController {
             @Max(value = 1_000, message = "1000 이하여야 합니다.") int maxPages
     ) {
         ExternalDataCollectionReport report = collectionService.collect(
-                new MyHomeAnnouncementCollectionRequest(pageSize, maxPages)
+                new MyHomeAnnouncementCollectionCommand(pageSize, maxPages)
         );
         if (report.failedRequestCount() > 0) {
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(report);

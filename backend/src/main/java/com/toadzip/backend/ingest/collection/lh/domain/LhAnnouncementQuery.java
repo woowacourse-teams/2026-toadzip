@@ -12,6 +12,8 @@ public record LhAnnouncementQuery(
         String announcementTypeCode, String supplyInfoTypeCode
 ) {
 
+    private static final String COLLECTION_VERSION = "COLLECTION_VERSION";
+
     public LhAnnouncementQuery {
         if (panId == null || panId.isBlank() || connectionSystemDivisionCode == null
                 || connectionSystemDivisionCode.isBlank() || upperAnnouncementTypeCode == null
@@ -42,6 +44,18 @@ public record LhAnnouncementQuery(
             return description + "&AIS_TP_CD=" + announcementTypeCode;
         }
         return description;
+    }
+
+    /** 수집 버전까지 붙인 조회 조건. 수집 기록이 이 파라미터로 같은 요청인지 확인한다. */
+    public Map<String, String> parameters(int collectionVersion) {
+        var parameters = new LinkedHashMap<>(parameters());
+        parameters.put(COLLECTION_VERSION, Integer.toString(collectionVersion));
+        return Map.copyOf(parameters);
+    }
+
+    /** 수집 버전까지 붙인 요청 설명. 수집 기록과 진행 상태가 이 문자열로 같은 요청을 찾는다. */
+    public String description(int collectionVersion) {
+        return description() + "&" + COLLECTION_VERSION + "=" + collectionVersion;
     }
 
     public String identityHash() {

@@ -143,19 +143,6 @@ public class DataPipelineExecutionStateService {
         return interrupted.size();
     }
 
-    @Transactional
-    public boolean recoverInterrupted(
-            UUID executionId, Instant cutoff, Instant failedAt, String message
-    ) {
-        return executionRepository.findInterruptedForUpdate(executionId, cutoff)
-                .map(execution -> {
-                    failInterruptedExecution(execution, failedAt, message);
-                    executionRepository.flush();
-                    return true;
-                })
-                .orElse(false);
-    }
-
     private void failInterruptedExecution(DataPipelineExecution execution, Instant failedAt, String message) {
         execution.fail(execution.getCurrentStep(), message, null, failedAt);
         collectionRecords.findAllByExecutionIdAndStatusOrderByStartedAtAscIdAsc(

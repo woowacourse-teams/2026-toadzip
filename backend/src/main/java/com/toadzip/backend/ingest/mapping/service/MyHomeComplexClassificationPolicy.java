@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
-import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingRejectedException;
+import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import java.util.Map;
 import java.util.Set;
 
@@ -96,7 +96,7 @@ class MyHomeComplexClassificationPolicy {
 
     private MyHomeComplexMappingRejectedException invalid(String detail) {
         return new MyHomeComplexMappingRejectedException(
-                com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason.INVALID_VALUE,
+                MyHomeComplexMappingFailureReason.INVALID_VALUE,
                 detail
         );
     }

@@ -6,9 +6,9 @@
 ## 시작할 파일 두 개
 
 1. [DataPipelineType](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/domain/DataPipelineType.java)의 `steps()`: 독립·통합 작업의 단계와 순서.
-2. [DataPipelineRunner](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineRunner.java)의 `execute()`: 단계별로 실제 호출하는 서비스.
+2. [DataPipelineStepExecutor](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineStepExecutor.java)의 `execute()`: 단계별로 실제 호출하는 서비스.
 
-Spring은 생성자 주입으로 객체를 연결한다. `Runner.run()`에서 단계 실행 → `StateService` 결과 저장을 따라간다. 단계별 부분 실패·호출 제한·중단 확인은 `Runner`, 실행 전체의 시작·완료·실패·잠금은 `ExecutionService`가 맡는다. 중단된 파이프라인 복구는 같은 실행의 진행 중 수집 기록도 실패로 마감하며 성공 원천을 보존한다.
+Spring은 생성자 주입으로 객체를 연결한다. `DataPipelineRunner.run()`에서 단계 실행 → `DataPipelineExecutionStateService` 결과 저장을 따라간다. 단계별 부분 실패·호출 제한·중단 확인은 `DataPipelineRunner`, 실행 전체의 시작·완료·실패·잠금은 `DataPipelineExecutionService`, 끝나지 못한 실행 복구는 `DataPipelineExecutionRecovery`, 이력·상태 조회는 `DataPipelineExecutionQueryService`가 맡는다. 실행 ID·잠금 lease·진행 모니터·서비스키는 `IngestExecutionScope`가 스레드 범위로 보관한다. `verifyCanContinue()`가 실행 소유권과 중지 요청을 확인하고, `propagate()`가 작업 스레드에 이 맥락과 로그 MDC를 넘긴다. 중단된 파이프라인 복구는 같은 실행의 진행 중 수집 기록도 실패로 마감하며 성공 원천을 보존한다.
 
 ## 작업을 고른 뒤 내려갈 곳
 
@@ -20,37 +20,63 @@ Spring은 생성자 주입으로 객체를 연결한다. `Runner.run()`에서 �
 | 공고 정제 | [MyHomeAnnouncementMappingService](../../../backend/src/main/java/com/toadzip/backend/ingest/mapping/service/MyHomeAnnouncementMappingService.java) → LH 공고 보강 |
 
 수집은 응답·식별·조회 조건·실제 수집 시각을 원천에 보관하고, 요청의 실행 시각·결과는 `collection/history`에 분리한다. 정제·보강은 원천을 읽어 단지·주택형·공고에 반영한다.
-원천 조회·매핑·보강은 `collection` 저장 구조를 사용한다. 정제에서 쓰는 평면 행 모델은 해당 원천의 조회 결과를 담는다.
+원천 조회·매핑·보강은 `collection` 저장 구조를 사용한다. 정제·보강은 저장 행을 읽기 전용 원천 View(`MyHomeAnnouncementSourceView`, `LhAnnouncementSupplySourceView` 등)로 읽는다. View는 저장 행과 그 행을 조회한 원천 요청으로 `of`/`read`에서만 만든다.
 
 기존 원천의 이관·보존과 배포는 [수집 저장 구조 전환 절차](../../operations/database/ingest-upgrade.md)를 따른다.
 
 통합 실행은 수집 뒤 정제까지 이어간다. 수집 부분 실패·호출 제한이면 자동 정제를 막고 독립 정제 실행으로 복구한다. 기존 네 단독 실행은 유지한다.
+단계마다 무엇을 실패·호출 제한 실패·경고로 셀지는 각 단계 보고서가 `IngestStepReport`로 정하고, 파이프라인은 그 수만 읽는다.
 
 단지 정제는 `MyHomeComplexMappingService.mapAll()` → `MyHomeComplexMappingProcessor.mapAll()`에서 원천을 묶는다. 일반 단지는 위치정보 DB의 좌표를 읽어 저장하고, 확인된 통합 단지는 기존 주소를 검증해 금액·주택형만 갱신한다. 저장은 단지별 트랜잭션이다.
 신규 주소의 좌표가 필요하면 수집 후 위치정보요약DB ZIP을 관리자 API로 업로드한다. 업로드는 정제 파이프라인에 포함되지 않는다.
-실패는 작업이 끝날 때 현재 원천과 대조해 갱신하며 이전 실패 이력은 보존한다.
+실패는 작업이 끝날 때 현재 원천과 대조해 갱신하며 이전 실패 이력은 보존한다. 정제·보강 실패의 전체 실행 후 대조·저장·미해결·이력 조회는 `IngestFailureStore`가 공통으로 맡는다. 원천별 Store는 대상 실패를 고르는 일만 더한다. 공고 정제·보강 Store는 공고 단위 대조와 관리자 해결(`resolveByAdmin`)을, 단지 정제 Store는 정제가 중간에 멈췄을 때 그때까지 관찰한 실패 기록(`recordObserved`)을 더한다. 관리자 다시 정제가 LH 보강 때문에 거절돼 정제를 되돌려도, 그 실패는 별도 트랜잭션(`reconcileRejectedAnnouncement`)으로 남긴다. 외부 수집 실패(`ExternalDataCollectionFailure`)는 출처와 조회 조건으로 같은 실패를 찾고 오류 유형이 다시 관찰될 때 바뀌므로 `IngestFailure`를 상속하지 않고, 요청 단위로 `ExternalDataFailureStore`·`ExternalDataFailureRecorder`가 관리한다.
 단계별 후보 준비·배치 실행 API는 제공하지 않는다.
 
 ## 공고 수집·정제를 따라가는 순서
 
-MyHome은 `MyHomeAnnouncementCollectionService.collectSupplyType()` → `MyHomeAnnouncementCollector.collectWithinBatch()` → `MyHomeAnnouncementStorageService.complete()`을 읽는다.
+MyHome은 `MyHomeAnnouncementCollectionService.collect()` → `PagedSourceCollector.collectAndReport()` → `MyHomeAnnouncementCollector.store()` → `MyHomeAnnouncementStorageService.complete()`을 읽는다.
+페이지로 받는 원천(마이홈 단지·공고, LH 임대·공고 목록)의 `*Collector`는 `PagedSource`로 페이지 조회·검증·저장 방법만 정한다. 재시도, 수집 이력, 실행 확인과 실패 기록은 `PagedSourceCollector`가 맡는다. 수집 이력 하나의 생명주기(실행 확인 → 요청 생성 → 이력 시작 → 수집 → 저장 직전 소유권 재확인, 실패 시 이력 실패 마감)는 `SourceCollectionAttempt`가 맡고, `PagedSourceCollector`와 LH 공급·상세의 `LhAnnouncementQueryCollector`가 함께 쓴다. 페이지 응답 검증 실패와 저장된 원천과의 충돌(`CollectedSourceConflictException`, 마이홈 단지의 지역 충돌)은 마지막 페이지의 외부 호출 실패로 기록하고 다른 요청을 계속한다. 응답 검증을 마친 뒤 저장하다 난 그 밖의 오류는 내부 오류로 실행을 실패시키며 외부 수집 실패로 기록하지 않는다.
 7개 공급유형별 모든 페이지가 유효할 때 원천과 성공 기록을 함께 저장한다. 전체 유형 성공 후 `MyHomeAnnouncementLifecycleService.completeRun()`으로 미조회를 판정한다. 호출 제한은 남은 유형을 중단한다.
 
 LH 공급·상세는 [LhAnnouncementExternalCollectionService](../../../backend/src/main/java/com/toadzip/backend/ingest/collection/lh/service/LhAnnouncementExternalCollectionService.java)의 `collect()`에서 시작한다.
-`collectAnnouncements()` → `collectBatch()`에서 대상을 고르고 `collectRequests()`에서 병렬 실행과 결과를 회수한다.
-요청 하나는 `LhAnnouncementCandidateCollector.collectAndStore()` → `LhAnnouncementQueryCollector.collectWithinBatch()` → `LhAnnouncementStorageService.completeSupply()/completeDetail()`에서 조회·검증·저장을 처리한다.
-조회 조건·공급코드는 `LhAnnouncementCollectionCandidateResolver`, 종료일에 따른 대상 포함 여부는 `LhAnnouncementCollectionPolicy`가 정한다. 일반 수집도 대상 요청을 매 실행 실제 조회한다. 같은 실행에서 공유하는 요청만 합치며 이전 실행의 성공 원천으로 호출을 생략하지 않는다.
+`collectAnnouncements()` → `collectBatch()`에서 대상을 고르고 `LhAnnouncementSharedRequestCollector.collect()`에서 병렬 실행과 결과를 회수한다.
+요청 하나는 `LhAnnouncementCandidateCollector.collect()` → `LhAnnouncementQueryCollector.collect()` → `LhAnnouncementStorageService.completeSupply()/completeDetail()`에서 조회·검증·저장을 처리한다.
+장애 차단기가 요청 전에 거절하면 `ExternalDataRequestRejectedException`(LH는 `LhAnnouncementUnavailableException`)으로 끝나고, 재시도와 호출 수 집계에서 빠진다. 호출 한도로 닫힌 차단기의 거절은 그 요청의 실패로 보고하고, 장애로 닫힌 차단기의 거절은 실행을 `FAILED`로 끝낸다.
+조회 조건·공급코드는 `LhAnnouncementCollectionCandidateResolver`, 종료일에 따른 대상 포함 여부는 `LhAnnouncementCollectionPolicy`가 정한다. 해석한 후보 중 요청 충돌·배치 간 중복·정책 제외를 걸러 이번 실행의 후보를 고르는 일은 `LhAnnouncementCandidateSelector`가 맡는다. 일반 수집도 대상 요청을 매 실행 실제 조회한다. 같은 실행에서 공유하는 요청만 합치며 이전 실행의 성공 원천으로 호출을 생략하지 않는다.
+
+마이홈 단지 전국 수집(`MyHomeComplexCollectionService`)도 지역을 병렬로 수집하지만, 두 병렬 흐름은 실패와 호출 제한을 다루는 방식이 달라 공통화하지 않는다.
+
+| 상황 | 마이홈 단지 지역 수집 | LH 공급·상세 요청 |
+|---|---|---|
+| 작업 실패 | 실행 중인 지역 작업을 중단(`shutdownNow`)한다. 중지 요청 예외면 끝날 때까지 기다린다 | 새 요청만 시작하지 않고 실행 중인 요청은 끝까지 회수한다 |
+| 호출 제한 | 공유 신호로 실행 중인 지역의 다음 페이지 호출까지 막는다 | 새 요청만 시작하지 않는다 |
+| 실행 순서 | 남은 지역을 순서대로 넣는다 | 같은 LH 공고의 요청은 동시에 실행하지 않는다 |
+| 완료 기록 | 지역마다 작업 스레드에서 진행을 기록한다 | 요청별 성공 여부를 다음 배치에 넘긴다 |
+
+합치면 이 차이를 정책 인자와 콜백으로 넘기는 얕은 도우미가 된다. 작업 스레드로 실행 맥락을 넘기는 일은 두 곳 모두 `IngestExecutionScope.propagate()`를 쓴다.
 
 공고 정제는 `MyHomeAnnouncementMappingService.mapAll()`에서 공고별로 다음 경로를 따른다.
 
 ```text
-SourceMapper → SupplyRowResolver → MappingWriter → EnrichmentWriter.writeAfterMapping
+MyHomeAnnouncementSourceMapper → MyHomeAnnouncementSupplyRowResolver → MyHomeAnnouncementMappingWriter(→ MyHomeSupplyRowWriter) → MappedAnnouncementLhEnrichment.writeAfterMapping
 공통값 검증 → LH 연결·공급 원천 준비 → 공고·공급행 저장 → 변경된 기존 LH 공고 보강
 ```
 
 준비한 LH 요청·공급 원천·과거 원천 구분은 재사용한다. 주택형 변경은 공급행을 수정할 때 기록한다.
-현재 원천 중 기관이 빈 행도 매핑에는 포함하지만 LH 보강에서는 제외해 기존 금액을 보존한다. `MappingWriter`가 공고 한 건의 트랜잭션을 소유한다. 보강 실패 시 주택형과 금액을 함께 롤백한다. 최초 매핑과 변경 없는 재매핑은 상세 보강을 요구하지 않는다.
+현재 원천 중 기관이 빈 행도 매핑에는 포함하지만 LH 보강에서는 제외해 기존 금액을 보존한다. `MyHomeAnnouncementMappingWriter`가 공고 한 건의 트랜잭션을 소유한다. 보강 실패 시 주택형과 금액을 함께 롤백한다. 진입점은 세 개다.
+
+| 진입점 | 호출 경로 | 실패 처리 |
+|---|---|---|
+| `write` | 전체 정제 `MyHomeAnnouncementMappingService.mapAll()` | 공급행 매칭 실패는 결과로 돌려준다. 이미 LH 보강을 마친 공고(`lhPanId` 있음)에 변경이 있을 때만 보강한다. 최초 매핑과 변경 없는 재매핑은 보강하지 않는다 |
+| `register` | 단건 등록 `AnnouncementRegistrationService` → `MyHomeAnnouncementMappingService.registerAnnouncement` | 이미 등록된 공고는 거절한다. 매칭이 하나라도 실패하면 거절하고, LH 공고는 최초라도 보강까지 검증해 실패하면 공고 한 건을 되돌린다 |
+| `correct` | 관리자 보정·분할·다시 정제 `AnnouncementSupplyMatchingService` | `register`와 같다. 분할을 먼저 적용하고 나머지 행을 정제한다 |
+
+관리자가 원천 공급행마다 저장한 매칭의 지문 기반 유효성 판정·확정·해제·단지 통합 때의 이동은 `SavedSupplyMatches`만 안다.
 독립 보강은 `LhAnnouncementEnrichmentService.enrichAll()`에서 시작하며 별도 실패 이력을 관리한다.
+공급 원천과 저장 연결은 각 경로가 읽어 넘기고(정제는 `MyHomeAnnouncementSupplyRowResolver`, 독립 보강은 `LhAnnouncementEnricher`), `LhAnnouncementEnrichmentSources`가 상세 원천과 공급이 없다고 확인된 수집인지를 더해 같은 보강 입력을 만든다. 상세 원천이 없으면 거절한다. `LhAnnouncementEnrichmentWriter`는 공고를 잠그고 확인된 공고의 LH 원천 불일치를 거절한 뒤 공고 값, 일정·첨부(`LhScheduleAttachmentWriter`), 공급행 금액(`LhSupplyAmountWriter`)을 차례로 쓴다. 보강이 보는 공급행 선택(보강에서 뺀 마이홈 원천 제외, 복수 공급행으로 보정한 묶음 행은 매칭 대상에서 빼고 그 행에 붙는 LH 공급은 건너뜀)은 `LhEnrichmentSupplyRows`가 정하고 관리자 매칭 진단도 같은 규칙을 쓴다. LH 원천 식별자 형식은 `LhSourceIdentifier`만 알고, 보강이 고치거나 지울 수 있는 값(관리자가 고치지 않은 LH 값)은 `LhOwnedValues`가 판정한다.
+
+정제와 보강은 `mapping → enrichment` 한 방향으로만 의존한다. 공고 한 건을 쓰는 경로에서 정제는 보강을 `MappedAnnouncementLhEnrichment`(LH 보강 실행·LH 소유 해제, 거절은 `LhAnnouncementEnrichmentRejectedException`)로만 부른다. 보강이 정제에서 확인하는 상태(미해소 정제 실패 공고, 공통값 거절 사유)는 `LhEnrichmentMappingState`로 받는다. 구현은 `MappedAnnouncementLhEnrichment`가 `LhAnnouncementEnrichmentWriter`(enrichment), `LhEnrichmentMappingState`가 `MyHomeLhEnrichmentMappingState`(mapping)다.
+LH 공급 연결의 판정·지문 규칙(`LhSupplyRowLinks`)과 저장소는 정제와 보강이 함께 쓰는 규칙으로 enrichment에 둔다. 관리자 연결의 저장·해제는 정제 쪽 `LhSupplyLinkService`가 한다. 이 규칙이나 지문 필드를 바꾸면 이미 저장한 연결이 무효가 되고 정제의 `MyHomeAnnouncementSupplyRowResolver`·`LhSupplyLinkService`도 영향을 받는다. 관리자 연결 화면의 매칭 진단(`LhSupplyMatchDiagnostics`)과 단지 병합의 세대수 매칭(`LhHousingTypeHouseholdMatcher`)도 정제가 쓰는 보강 쪽 규칙이다.
 
 ## LH 공고 목록 단독 수집
 
@@ -81,12 +107,12 @@ LH 공급·상세는 TTL로 호출을 생략하지 않으며 TTL 환경 설정�
 관리자 화면에서 처음 상태 조회가 실패하면 재조회한다. 승인할 공급 요청을 바꾸면 이전 요청의 공고 ID·근거·사유·확인 체크를 초기화한다.
 실패 요청 화면의 공고별 LH 강제 재조회는 **마이홈 공고 ID**를 받는다. 공급 또는 상세를 선택해 오래된 종료 공고 제외를 우회한다. 응답 검증·빈 응답 보호·공급행 누락 승인 규칙은 유지한다. 원천 반영 후에는 공고 정제를 실행한다. 조회 대상 없음과 부분 실패는 결과에서 구분한다.
 이력·상태 조회는 실행 잠금이 없는 만료 파이프라인을 복구한다. 빠른 재시작으로 최신 실행에 가려진 이전 실행도 대상이다. 종료된 실행에 남은 `RUNNING` 수집 기록은 별도 트랜잭션으로 실패 마감하고, 기존 실행 결과·성공 기록·성공 원천은 보존한다. DB 오류로 마감하지 못하면 다음 조회·실행 시작에서 다시 복구한다.
-개별 API의 파이프라인 미연결 수집 이력도 이력·상태 조회와 새 파이프라인 시작 시 복구한다. 조회 복구는 실행 잠금을 확보한 동안 수행하며, 파이프라인 실행 중이면 다음 조회로 미뤄 수집 시작과 복구가 작업별 잠금을 두고 경합하지 않게 한다. 해당 작업별 잠금을 획득한 경우에만 `RUNNING`을 실패 마감하며, 작업 중인 수집·기존 성공 이력·성공 원천은 보존한다. 실행 ID가 없거나 대응하는 파이프라인 실행이 없는 이력이 대상이고, DB 오류·잠금 소유권 소실 시 해당 작업의 복구 트랜잭션을 롤백한다.
+개별 API의 파이프라인 미연결 수집 이력도 이력·상태 조회와 새 파이프라인 시작 시 복구한다. 개별 수집도 전역 실행 잠금 안에서만 실행되므로, 복구는 이 잠금을 확보한 동안에만 수행하고 파이프라인이나 개별 수집이 실행 중이면 다음 조회로 미룬다. 실행 ID가 없거나 대응하는 파이프라인 실행이 없는 `RUNNING` 이력을 실패 마감하며, 기존 성공 이력·성공 원천은 보존한다. DB 오류·실행 잠금 소유권 소실 시 복구 트랜잭션을 롤백하고 다음 조회·실행 시작에서 다시 복구한다.
 실제 HTTP 시도는 실패·재시도도 호출수에 포함한다. 서킷이 HTTP 호출 전에 거절한 요청은 보고서와 실행 호출수에서 모두 제외한다.
 
 | 질문 | 시작점 |
 |---|---|
-| 실행·중단·복구 | [DataPipelineExecutionService](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineExecutionService.java) → `StateService`·실행 잠금 |
-| 동기 작업의 충돌 범위 | [IngestOperationLock](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/repository/IngestOperationLock.java)의 `Operation`과 호출 서비스 |
+| 실행·중단·복구 | [DataPipelineExecutionService](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineExecutionService.java) → `DataPipelineExecutionStateService`·실행 잠금, 복구는 `DataPipelineExecutionRecovery`, 조회는 `DataPipelineExecutionQueryService` |
+| 수집·정제의 동시 실행 차단 | [IngestExecutionLockInterceptor](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/controller/IngestExecutionLockInterceptor.java)(개별 API)와 `DataPipelineExecutionService`(파이프라인)가 같은 [DataPipelineExecutionLock](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/repository/DataPipelineExecutionLock.java)을 잡는다 |
 | 실패의 해결·재발 | [IngestFailure](../../../backend/src/main/java/com/toadzip/backend/ingest/failure/domain/IngestFailure.java)의 상태 전이, [IngestFailureReconciler](../../../backend/src/main/java/com/toadzip/backend/ingest/failure/domain/IngestFailureReconciler.java)의 일괄 조정 |
-| 위치 파일 적재 | [LocationSummaryImportService](../../../backend/src/main/java/com/toadzip/backend/ingest/location/service/LocationSummaryImportService.java) → Parser·Store |
+| 위치 파일 적재 | [LocationSummaryImportService](../../../backend/src/main/java/com/toadzip/backend/ingest/location/service/LocationSummaryImportService.java) → `LocationSummaryFileParser`·`LocationSummaryStore` |

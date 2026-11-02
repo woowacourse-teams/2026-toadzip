@@ -4,6 +4,7 @@ import static com.toadzip.backend.notification.NotificationFixtures.NOW;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.notification.NotificationFixtures;
+import com.toadzip.backend.notification.repository.NotificationMaintenanceRepository;
 import jakarta.persistence.EntityManager;
 import java.sql.Timestamp;
 import java.time.Duration;
@@ -21,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class NotificationMaintenanceIntegrationTest {
     @Autowired private NotificationMaintenanceService maintenance;
-    @Autowired private com.toadzip.backend.notification.repository.NotificationMaintenanceRepository repository;
+    @Autowired private NotificationMaintenanceRepository repository;
     @Autowired private EntityManager entities;
     @Autowired private JdbcTemplate jdbc;
     private NotificationFixtures fixtures;

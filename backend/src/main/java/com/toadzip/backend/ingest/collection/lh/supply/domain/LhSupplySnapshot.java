@@ -16,11 +16,11 @@ public final class LhSupplySnapshot {
     }
 
     public static long missingRowCount(
-            List<LhAnnouncementSupplySource> previous,
-            List<LhAnnouncementSupplySource> incoming
+            List<LhAnnouncementSupplySourceView> previous,
+            List<LhAnnouncementSupplySourceView> incoming
     ) {
-        Map<RowIdentity, List<LhAnnouncementSupplySource>> previousGroups = groupsOf(previous);
-        Map<RowIdentity, List<LhAnnouncementSupplySource>> incomingGroups = groupsOf(incoming);
+        Map<RowIdentity, List<LhAnnouncementSupplySourceView>> previousGroups = groupsOf(previous);
+        Map<RowIdentity, List<LhAnnouncementSupplySourceView>> incomingGroups = groupsOf(incoming);
         return previousGroups.entrySet().stream()
                 .mapToLong(entry -> missingCount(
                         entry.getValue(), incomingGroups.getOrDefault(entry.getKey(), List.of())
@@ -28,7 +28,7 @@ public final class LhSupplySnapshot {
                 .sum();
     }
 
-    public static String fingerprint(List<LhAnnouncementSupplySource> sources) {
+    public static String fingerprint(List<LhAnnouncementSupplySourceView> sources) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             sources.stream().map(source -> List.of(
@@ -53,16 +53,16 @@ public final class LhSupplySnapshot {
         return value.getBytes(StandardCharsets.UTF_8).length + ":" + value;
     }
 
-    private static Map<RowIdentity, List<LhAnnouncementSupplySource>> groupsOf(
-            List<LhAnnouncementSupplySource> sources
+    private static Map<RowIdentity, List<LhAnnouncementSupplySourceView>> groupsOf(
+            List<LhAnnouncementSupplySourceView> sources
     ) {
         return sources.stream()
                 .collect(Collectors.groupingBy(RowIdentity::of));
     }
 
     private static long missingCount(
-            List<LhAnnouncementSupplySource> previous,
-            List<LhAnnouncementSupplySource> incoming
+            List<LhAnnouncementSupplySourceView> previous,
+            List<LhAnnouncementSupplySourceView> incoming
     ) {
         Map<RowValues, Long> previousCounts = countsOf(previous);
         if (previousCounts.size() == 1) {
@@ -74,7 +74,7 @@ public final class LhSupplySnapshot {
                 .sum();
     }
 
-    private static Map<RowValues, Long> countsOf(List<LhAnnouncementSupplySource> sources) {
+    private static Map<RowValues, Long> countsOf(List<LhAnnouncementSupplySourceView> sources) {
         return sources.stream()
                 .map(RowValues::of)
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
@@ -87,7 +87,7 @@ public final class LhSupplySnapshot {
             String monthlyRentText
     ) {
 
-        private static RowValues of(LhAnnouncementSupplySource source) {
+        private static RowValues of(LhAnnouncementSupplySourceView source) {
             return new RowValues(
                     source.getTotalUnitCount(), source.getSuppliedUnitCount(),
                     source.getDepositText(), source.getMonthlyRentText()
@@ -97,7 +97,7 @@ public final class LhSupplySnapshot {
 
     private record RowIdentity(String complexName, String typeName, String exclusiveArea, String supplyArea) {
 
-        private static RowIdentity of(LhAnnouncementSupplySource source) {
+        private static RowIdentity of(LhAnnouncementSupplySourceView source) {
             return new RowIdentity(
                     source.getComplexLabel(), source.getTypeName(),
                     normalizedArea(source.getExclusiveArea()), normalizedArea(source.getSupplyArea())

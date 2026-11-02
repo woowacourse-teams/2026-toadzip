@@ -5,6 +5,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.user.domain.User;
+import com.toadzip.backend.user.repository.UserRepository;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -24,11 +27,11 @@ import org.springframework.transaction.annotation.Transactional;
 class IngestFailureReviewControllerIntegrationTest {
 
     @org.springframework.beans.factory.annotation.Autowired
-    private com.toadzip.backend.user.repository.UserRepository privacyPermissionUsers;
+    private UserRepository privacyPermissionUsers;
 
     private String privacyPermissionMemberId() {
-        var member = com.toadzip.backend.user.domain.User.create(
-                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        var member = User.create(
+                "google:permission-" + UUID.randomUUID(), LocalDateTime.now());
         return privacyPermissionUsers.saveAndFlush(member).getId().toString();
     }
 

@@ -11,15 +11,18 @@ import com.toadzip.backend.ingest.collection.repository.ShAnnouncementExternalRe
 import com.toadzip.backend.ingest.collection.repository.ShAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import org.jsoup.Jsoup;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+@ExtendWith(IngestExecutionExtension.class)
 @SpringBootTest(properties = {"ingest.sh.request-interval=0s", "ingest.sh.lookback-days=0"})
 @ActiveProfiles("test")
 class ShAnnouncementCollectionIntegrationTest {

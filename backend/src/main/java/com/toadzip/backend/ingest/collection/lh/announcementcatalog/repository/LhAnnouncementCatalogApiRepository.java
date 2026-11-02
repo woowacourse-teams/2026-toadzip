@@ -36,7 +36,7 @@ public class LhAnnouncementCatalogApiRepository {
                     () -> client.get("lhLeaseNoticeInfo1/lhLeaseNoticeInfo1", parameters));
             return parser.parse(response, page, request.pageSize());
         } catch (ExternalDataRequestException failure) {
-            throw failure.withContext("PG_SZ=" + request.pageSize() + "&PAGE=" + page);
+            throw failure.withContext(request.pageDescription(page));
         }
     }
 }

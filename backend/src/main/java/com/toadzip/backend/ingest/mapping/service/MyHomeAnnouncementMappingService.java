@@ -1,27 +1,21 @@
 package com.toadzip.backend.ingest.mapping.service;
 
-import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
-import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.MYHOME_ANNOUNCEMENT_MAPPING;
-
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
+import com.toadzip.backend.ingest.domain.SourceText;
 import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingFailureResponse;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
-import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureStore;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingWriter.MyHomeAnnouncementWriteResult;
-import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingWriter.MyHomeSupplyMatchingFailureData;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchingFailureData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
-import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyRowResolver.ResolvedAnnouncement;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -33,7 +27,6 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,11 +37,7 @@ public class MyHomeAnnouncementMappingService {
 
     private final MyHomeAnnouncementSourceReader sourceRepository;
 
-    private final MyHomeAnnouncementMappingFailureRepository failureRepository;
-
     private final MyHomeAnnouncementMappingFailureStore failureStore;
-
-    private final IngestOperationLock executionLock;
 
     private final AnnouncementRepository announcementRepository;
 
@@ -60,22 +49,13 @@ public class MyHomeAnnouncementMappingService {
 
     private final Clock clock;
 
-    public MyHomeAnnouncementMappingReport mapAll() {
-        return executionLock.tryRun(MYHOME_ANNOUNCEMENT_MAPPING, this::mapAllUnlocked)
-                .orElseThrow(this::alreadyRunning);
-    }
-
     public MyHomeAnnouncementMappingReport registerAnnouncement(String pblancId) {
-        return executionLock.tryRun(MYHOME_ANNOUNCEMENT_MAPPING, () -> registerUnlocked(pblancId))
-                .orElseThrow(this::alreadyRunning);
-    }
-
-    private MyHomeAnnouncementMappingReport registerUnlocked(String pblancId) {
+        IngestExecutionScope.requireHeld();
         if (announcementRepository.findBySourceAnnouncementIdentifier(pblancId).isPresent()) {
             throw new AnnouncementRegistrationException("이미 등록된 공고입니다: " + pblancId);
         }
-        var executionId = IngestExecutionContext.currentExecutionId().orElse(null);
-        List<MyHomeAnnouncementSource> sources = sourceRepository.findAllByPblancIdOrderByIdAsc(pblancId).stream()
+        var executionId = IngestExecutionScope.currentExecutionId().orElse(null);
+        List<MyHomeAnnouncementSourceView> sources = sourceRepository.findAllByPblancIdOrderByIdAsc(pblancId).stream()
                 .filter(source -> executionId == null || executionId.toString().equals(source.getLastSeenRunId()))
                 .toList();
         if (sources.isEmpty()) {
@@ -108,10 +88,11 @@ public class MyHomeAnnouncementMappingService {
         }
     }
 
-    private MyHomeAnnouncementMappingReport mapAllUnlocked() {
+    public MyHomeAnnouncementMappingReport mapAll() {
+        IngestExecutionScope.requireHeld();
         Instant occurredAt = clock.instant();
         List<MyHomeAnnouncementMappingFailure> failures = new ArrayList<>();
-        Map<String, List<MyHomeAnnouncementSource>> groupedSources = groupSources(failures, occurredAt);
+        Map<String, List<MyHomeAnnouncementSourceView>> groupedSources = groupSources(failures, occurredAt);
         Set<String> processed = new LinkedHashSet<>();
         Set<String> processing = new LinkedHashSet<>();
         MyHomeAnnouncementMappingReport report = MyHomeAnnouncementMappingReport.failedRows(failures.size());
@@ -127,14 +108,14 @@ public class MyHomeAnnouncementMappingService {
         }
         failureStore.reconcileAfterRun(
                 failures,
-                IngestExecutionContext.currentExecutionId().orElse(null)
+                IngestExecutionScope.currentExecutionId().orElse(null)
         );
         return report;
     }
 
     private MyHomeAnnouncementMappingReport mapGroup(
             String identifier,
-            Map<String, List<MyHomeAnnouncementSource>> groupedSources,
+            Map<String, List<MyHomeAnnouncementSourceView>> groupedSources,
             Set<String> processed,
             Set<String> processing,
             List<MyHomeAnnouncementMappingFailure> failures,
@@ -143,7 +124,7 @@ public class MyHomeAnnouncementMappingService {
         if (processed.contains(identifier)) {
             return MyHomeAnnouncementMappingReport.empty();
         }
-        List<MyHomeAnnouncementSource> sources = groupedSources.get(identifier);
+        List<MyHomeAnnouncementSourceView> sources = groupedSources.get(identifier);
         if (!processing.add(identifier)) {
             MyHomeAnnouncementMappingReport cycleReport = MyHomeAnnouncementMappingReport.empty();
             for (String processingIdentifier : processing) {
@@ -197,15 +178,15 @@ public class MyHomeAnnouncementMappingService {
         }
     }
 
-    private Map<String, List<MyHomeAnnouncementSource>> groupSources(
+    private Map<String, List<MyHomeAnnouncementSourceView>> groupSources(
             List<MyHomeAnnouncementMappingFailure> failures,
             Instant occurredAt
     ) {
-        Map<String, List<MyHomeAnnouncementSource>> grouped = new LinkedHashMap<>();
-        for (MyHomeAnnouncementSource source : sourceRepository.findAll()) {
-            String identifier = normalizedText(source.getPblancId());
+        Map<String, List<MyHomeAnnouncementSourceView>> grouped = new LinkedHashMap<>();
+        for (MyHomeAnnouncementSourceView source : sourceRepository.findAll()) {
+            String identifier = SourceText.strippedOrNull(source.getPblancId());
             if (identifier == null) {
-                failures.add(failureOf(
+                failures.add(MyHomeAnnouncementSourceMapper.failureOf(
                         source,
                         MyHomeAnnouncementMappingFailureReason.MISSING_REQUIRED_VALUE,
                         "공고 식별자 값이 없습니다.",
@@ -219,14 +200,14 @@ public class MyHomeAnnouncementMappingService {
     }
 
     private MyHomeAnnouncementMappingReport reject(
-            List<MyHomeAnnouncementSource> sources,
+            List<MyHomeAnnouncementSourceView> sources,
             MyHomeAnnouncementMappingFailureReason reason,
             String detail,
             List<MyHomeAnnouncementMappingFailure> failures,
             Instant occurredAt
     ) {
-        for (MyHomeAnnouncementSource source : sources) {
-            failures.add(failureOf(source, reason, detail, occurredAt));
+        for (MyHomeAnnouncementSourceView source : sources) {
+            failures.add(MyHomeAnnouncementSourceMapper.failureOf(source, reason, detail, occurredAt));
         }
         return MyHomeAnnouncementMappingReport.failedRows(sources.size());
     }
@@ -237,40 +218,13 @@ public class MyHomeAnnouncementMappingService {
             Instant occurredAt
     ) {
         for (MyHomeSupplyMatchingFailureData failure : matchingFailures) {
-            failures.add(failureOf(failure.source(), failure.reason(), failure.detail(), occurredAt));
+            failures.add(MyHomeAnnouncementSourceMapper.failureOf(failure.source(), failure.reason(), failure.detail(), occurredAt));
         }
-    }
-
-    static MyHomeAnnouncementMappingFailure failureOf(
-            MyHomeAnnouncementSource source,
-            MyHomeAnnouncementMappingFailureReason reason,
-            String detail,
-            Instant occurredAt
-    ) {
-        return MyHomeAnnouncementMappingFailure.create(
-                source.getSourceKey(),
-                source.getPblancId(),
-                source.getHouseSn(),
-                reason,
-                detail,
-                occurredAt
-        );
     }
 
     @Transactional(readOnly = true)
     public List<MyHomeAnnouncementMappingFailureResponse> findFailures(int page, int size) {
-        return failureRepository.findAllByStatusOrderBySourceKeyAscIdAsc(
-                        PENDING,
-                        PageRequest.of(page, size)
-                )
-                .stream()
-                .map(MyHomeAnnouncementMappingFailureResponse::from)
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public List<MyHomeAnnouncementMappingFailureResponse> findFailures() {
-        return failureRepository.findAllByStatusOrderBySourceKeyAsc(PENDING)
+        return failureStore.pending(page, size)
                 .stream()
                 .map(MyHomeAnnouncementMappingFailureResponse::from)
                 .toList();
@@ -278,21 +232,9 @@ public class MyHomeAnnouncementMappingService {
 
     @Transactional(readOnly = true)
     public List<MyHomeAnnouncementMappingFailureResponse> findFailureHistory(int page, int size) {
-        return failureRepository.findAllByOrderBySourceKeyAscIdAsc(PageRequest.of(page, size))
+        return failureStore.history(page, size)
                 .stream()
                 .map(MyHomeAnnouncementMappingFailureResponse::from)
                 .toList();
-    }
-
-    private String normalizedText(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.strip();
-    }
-
-    private IngestAlreadyRunningException alreadyRunning() {
-        log.warn("마이홈 공고 매핑이 이미 실행 중이므로 중복 실행을 건너뜁니다.");
-        return new IngestAlreadyRunningException("마이홈 공고 매핑이 이미 실행 중입니다.");
     }
 }

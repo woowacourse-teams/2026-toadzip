@@ -11,12 +11,14 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogExternalRepository;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.api.LhLeaseCatalogCollectionRequest;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.api.LhLeaseCatalogCollectionCommand;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,7 +28,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
+@ExtendWith(IngestExecutionExtension.class)
 @ExtendWith(MockitoExtension.class)
 class LhLeaseCatalogCollectionServiceTest {
 
@@ -44,13 +48,13 @@ class LhLeaseCatalogCollectionServiceTest {
     @BeforeEach
     void setUp() {
         service = new CollectionServiceTestFixture().lease(externalRepository, sourceStore, failureRecorder,
-                new ExternalDataRetryExecutor(java.time.Duration.ZERO, new SimpleMeterRegistry()));
+                new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry()));
     }
 
     @Test
     @DisplayName("LH 임대 카탈로그의 마지막 페이지까지 API 데이터를 저장한다")
     void storesCompleteCatalogPages() {
-        LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
+        LhLeaseCatalogCollectionCommand request = new LhLeaseCatalogCollectionCommand(2, 10);
         when(externalRepository.fetch(request, 1))
                 .thenReturn(response("[" + catalogRow("서울") + "," + catalogRow("부산") + "]", 3, 1, 2));
         when(externalRepository.fetch(request, 2)).thenReturn(response("[" + catalogRow("대구") + "]", 3, 2, 2));
@@ -68,7 +72,7 @@ class LhLeaseCatalogCollectionServiceTest {
     @Test
     @DisplayName("LH 임대 카탈로그 조회 실패는 API 데이터 저장 없이 기록한다")
     void reportsCatalogFailureWithoutSaving() {
-        LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
+        LhLeaseCatalogCollectionCommand request = new LhLeaseCatalogCollectionCommand(2, 10);
         when(externalRepository.fetch(request, 1)).thenThrow(new ExternalDataRequestException("조회 실패"));
 
         var result = service.collect(request);
@@ -82,7 +86,7 @@ class LhLeaseCatalogCollectionServiceTest {
     @Test
     @DisplayName("LH 임대 카탈로그 dataset 타입이 잘못되면 기존 원천을 교체하지 않는다")
     void preservesCatalogWhenDatasetTypeIsInvalid() {
-        LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
+        LhLeaseCatalogCollectionCommand request = new LhLeaseCatalogCollectionCommand(2, 10);
         String payload = "[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsList\":1}]";
         when(externalRepository.fetch(request, 1)).thenReturn(JsonMapper.builder().build().readTree(payload));
 
@@ -95,7 +99,7 @@ class LhLeaseCatalogCollectionServiceTest {
 
     @Test
     void 식별_정보가_없는_카탈로그는_기존_원천을_교체하지_않고_실패로_기록한다() {
-        LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
+        LhLeaseCatalogCollectionCommand request = new LhLeaseCatalogCollectionCommand(2, 10);
         when(externalRepository.fetch(request, 1)).thenReturn(response("[{}]", 1, 1, 2));
 
         var result = service.collect(request);
@@ -110,7 +114,7 @@ class LhLeaseCatalogCollectionServiceTest {
     @Test
     @DisplayName("후속 페이지 파싱 실패는 실제 페이지와 시도 횟수로 기록하고 성공 처리하지 않는다")
     void recordsActualCatalogParseFailurePageAndAttemptCount() {
-        LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(1, 10);
+        LhLeaseCatalogCollectionCommand request = new LhLeaseCatalogCollectionCommand(1, 10);
         when(externalRepository.fetch(request, 1))
                 .thenReturn(response("[" + catalogRow("서울") + "]", 2, 1, 1));
         String invalidPayload = "[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsList\":1}]";
@@ -138,7 +142,7 @@ class LhLeaseCatalogCollectionServiceTest {
     @Test
     @DisplayName("LH 임대 카탈로그 저장 실패는 외부 API 실패로 기록하지 않는다")
     void propagatesCatalogStoreFailure() {
-        LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
+        LhLeaseCatalogCollectionCommand request = new LhLeaseCatalogCollectionCommand(2, 10);
         when(externalRepository.fetch(request, 1)).thenReturn(response("[" + catalogRow("서울") + "]", 1, 1, 2));
         when(sourceStore.replaceCatalog(any())).thenThrow(new IllegalStateException("DB 저장 실패"));
 
@@ -154,7 +158,7 @@ class LhLeaseCatalogCollectionServiceTest {
         var mapper = JsonMapper.builder().build();
         var list = mapper.readTree(rows);
         for (int index = 0; index < list.size(); index++) {
-            ((tools.jackson.databind.node.ObjectNode) list.get(index)).put("ALL_CNT", total)
+            ((ObjectNode) list.get(index)).put("ALL_CNT", total)
                     .put("RNUM", (page - 1) * size + index + 1);
         }
         return mapper.readTree("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsSch\":[{\"PAGE\":" + page

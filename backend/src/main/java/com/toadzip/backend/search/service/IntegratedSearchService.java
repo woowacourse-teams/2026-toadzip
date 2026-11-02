@@ -1,11 +1,12 @@
 package com.toadzip.backend.search.service;
 
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
+import com.toadzip.backend.housing.domain.MapCoordinate;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.region.repository.RegionCoordinateRepository;
+import com.toadzip.backend.region.repository.RegionDisplayOrder;
 import com.toadzip.backend.region.repository.RegionSearchRepository;
 import com.toadzip.backend.region.repository.RegionSearchResult;
-import com.toadzip.backend.region.repository.RegionDisplayOrder;
 import com.toadzip.backend.search.domain.SearchMatch;
 import com.toadzip.backend.search.domain.SearchType;
 import com.toadzip.backend.search.dto.request.IntegratedSearchRequest;
@@ -21,10 +22,15 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -200,14 +206,14 @@ public class IntegratedSearchService {
 
     private List<SearchSourceItem> matchingRegions(SearchMatch match) {
         Set<String> matchingCodes = null;
-        java.util.Map<String, com.toadzip.backend.region.repository.RegionSearchResult> regions =
-                new java.util.LinkedHashMap<>();
+        Map<String, RegionSearchResult> regions =
+                new LinkedHashMap<>();
         for (String token : match.tokens()) {
-            List<com.toadzip.backend.region.repository.RegionSearchResult> matches =
+            List<RegionSearchResult> matches =
                     regionSearchRepository.findByKeyword(token);
             Set<String> tokenCodes = matches.stream()
-                    .map(com.toadzip.backend.region.repository.RegionSearchResult::regionCode)
-                    .collect(java.util.stream.Collectors.toSet());
+                    .map(RegionSearchResult::regionCode)
+                    .collect(Collectors.toSet());
             matches.forEach(region -> regions.put(region.regionCode(), region));
             if (matchingCodes == null) {
                 matchingCodes = new HashSet<>(tokenCodes);
@@ -226,7 +232,7 @@ public class IntegratedSearchService {
     }
 
     private SearchSourceItem regionSource(RegionSearchResult region) {
-        java.util.Optional<com.toadzip.backend.housing.domain.MapCoordinate> coordinate = java.util.Optional.empty();
+        Optional<MapCoordinate> coordinate = Optional.empty();
         if (region.regionCode().length() != 10) {
             coordinate = regionCoordinateRepository.findByRegionCode(region.regionCode());
         }
@@ -293,7 +299,7 @@ public class IntegratedSearchService {
     }
 
     private Page preview(List<SearchResultItemResponse> ranked) {
-        java.util.Map<SearchType, Integer> counts = new java.util.EnumMap<>(SearchType.class);
+        Map<SearchType, Integer> counts = new EnumMap<>(SearchType.class);
         List<SearchResultItemResponse> items = new ArrayList<>();
         for (SearchResultItemResponse item : ranked) {
             int count = counts.getOrDefault(item.type(), 0);

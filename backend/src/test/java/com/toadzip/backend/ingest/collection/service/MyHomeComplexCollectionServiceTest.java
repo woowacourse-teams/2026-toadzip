@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.collection.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atMost;
@@ -15,11 +16,11 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexExternalRepository;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeRegion;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectedResponse;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
-import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeRegionCatalog;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexRegionCollectionService;
@@ -27,6 +28,10 @@ import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComple
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
@@ -40,6 +45,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -54,6 +60,7 @@ import org.slf4j.MDC;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+@ExtendWith(IngestExecutionExtension.class)
 @ExtendWith(MockitoExtension.class)
 class MyHomeComplexCollectionServiceTest {
 
@@ -75,7 +82,7 @@ class MyHomeComplexCollectionServiceTest {
     void setUp() {
         var regionCollector = new CollectionServiceTestFixture().complex(externalRepository, regionCatalog,
                 storage, failureRecorder, new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry()));
-        service = new MyHomeComplexCollectionService(regionCatalog, regionCollector, CollectionServiceTestFixture.lock());
+        service = new MyHomeComplexCollectionService(regionCatalog, regionCollector);
     }
 
     @Test
@@ -92,7 +99,7 @@ class MyHomeComplexCollectionServiceTest {
         ArgumentCaptor<MyHomeComplexCollectedResponse> snapshots = ArgumentCaptor.captor();
         verify(storage).complete(any(), argThat(r -> r.provinceCode().equals(region.provinceCode())
                         && r.districtCode().equals(region.districtCode())), snapshots.capture());
-        assertThat(snapshots.getValue().rows()).extracting(com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot::hsmpSn)
+        assertThat(snapshots.getValue().rows()).extracting(MyHomeComplexSourceSnapshot::hsmpSn)
                 .containsExactly(1L, 2L, 3L);
         assertThat(result.storedRowCount()).isEqualTo(3);
         assertThat(result.failedRequestCount()).isZero();
@@ -460,7 +467,7 @@ class MyHomeComplexCollectionServiceTest {
     @DisplayName("후속 페이지 파싱 실패는 실제 페이지와 시도 횟수로 기록하고 성공 처리하지 않는다")
     void recordsActualComplexParseFailurePageAndAttemptCount() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
-        MyHomeComplexCollectionRequest request = request();
+        MyHomeComplexCollectionCommand request = request();
         when(regionCatalog.find("11", "110")).thenReturn(region);
         when(externalRepository.fetch(region, request, 1))
                 .thenReturn(response(itemsFor(region, 1, 2), 3));
@@ -564,7 +571,7 @@ class MyHomeComplexCollectionServiceTest {
     void propagatesConcurrentComplexStoreFailure() {
         MyHomeRegion seoul = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion busan = new MyHomeRegion("26", "110", "부산광역시", "중구");
-        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexCollectionCommand request = MyHomeComplexCollectionCommand.allRegions(2, 10);
         when(regionCatalog.findAll()).thenReturn(List.of(busan, seoul));
         when(externalRepository.fetch(seoul, request, 1)).thenReturn(response(itemsFor(seoul, 1), 1));
         when(externalRepository.fetch(busan, request, 1)).thenReturn(response(itemsFor(busan, 2), 1));
@@ -583,22 +590,23 @@ class MyHomeComplexCollectionServiceTest {
     void propagatesExecutionIdToConcurrentWorkers() {
         MyHomeRegion seoul = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion busan = new MyHomeRegion("26", "110", "부산광역시", "중구");
-        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexCollectionCommand request = MyHomeComplexCollectionCommand.allRegions(2, 10);
         MyHomeComplexRegionCollectionService concurrentCollector = mock(MyHomeComplexRegionCollectionService.class);
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
                 regionCatalog,
-                concurrentCollector, CollectionServiceTestFixture.lock()
+                concurrentCollector
         );
-        String executionId = UUID.randomUUID().toString();
+        UUID executionId = UUID.randomUUID();
         when(regionCatalog.findAll()).thenReturn(List.of(seoul, busan));
         when(concurrentCollector.collect(any(), eq(request), any(AtomicBoolean.class)))
                 .thenAnswer(invocation -> {
-                    assertThat(MDC.get("executionId")).isEqualTo(executionId);
+                    assertThat(IngestExecutionScope.currentExecutionId()).contains(executionId);
+                    assertThat(MDC.get("executionId")).isEqualTo(executionId.toString());
                     return MyHomeComplexCollectionReport.empty();
                 });
 
-        MDC.put("executionId", executionId);
-        try {
+        MDC.put("executionId", executionId.toString());
+        try (var scope = IngestExecutionScope.open(executionId, IngestExecutionScope.current().orElseThrow(), null, null)) {
             concurrentService.collect(request);
         }
         finally {
@@ -610,9 +618,47 @@ class MyHomeComplexCollectionServiceTest {
     }
 
     @Test
+    @DisplayName("전국 동시 수집 worker의 외부 요청과 지역 완료를 실행 진행에 기록한다")
+    void reportsConcurrentWorkerProgressToExecutionMonitor() {
+        MyHomeRegion seoul = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        MyHomeRegion busan = new MyHomeRegion("26", "110", "부산광역시", "중구");
+        MyHomeComplexCollectionCommand request = MyHomeComplexCollectionCommand.allRegions(2, 10);
+        when(regionCatalog.findAll()).thenReturn(List.of(seoul, busan));
+        when(externalRepository.fetch(seoul, request, 1)).thenReturn(response(itemsFor(seoul, 1), 1));
+        when(externalRepository.fetch(busan, request, 1)).thenReturn(response(itemsFor(busan, 2), 1));
+        var monitor = mock(DataPipelineExecutionMonitor.class);
+
+        try (var scope = IngestExecutionScope.open(IngestExecutionScope.current().orElseThrow(), monitor)) {
+            service.collect(request);
+        }
+
+        verify(monitor).beginWork("마이홈 단지 · 전체 지역", "지역", 2L);
+        verify(monitor, times(2)).requestStarted(any());
+        verify(monitor, times(2)).workCompleted();
+    }
+
+    @Test
+    @DisplayName("전국 동시 수집 worker는 외부 요청 전에 실행 중지 요청을 확인한다")
+    void concurrentWorkersCheckExecutionStopRequest() {
+        MyHomeRegion seoul = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        MyHomeRegion busan = new MyHomeRegion("26", "110", "부산광역시", "중구");
+        MyHomeComplexCollectionCommand request = MyHomeComplexCollectionCommand.allRegions(2, 10);
+        when(regionCatalog.findAll()).thenReturn(List.of(seoul, busan));
+        var monitor = mock(DataPipelineExecutionMonitor.class);
+        doThrow(new DataPipelineStoppedException()).when(monitor).checkStopRequested();
+
+        try (var scope = IngestExecutionScope.open(IngestExecutionScope.current().orElseThrow(), monitor)) {
+            assertThatThrownBy(() -> service.collect(request)).isInstanceOf(DataPipelineStoppedException.class);
+        }
+
+        verify(externalRepository, never()).fetch(any(), any(), anyInt());
+        verify(monitor, never()).workCompleted();
+    }
+
+    @Test
     @DisplayName("전국 수집 중 호출 제한이 발생하면 재시도와 대기 지역 요청을 중단한다")
     void stopsConcurrentRegionsAfterRateLimit() {
-        List<MyHomeRegion> regions = java.util.stream.IntStream.rangeClosed(1, 8)
+        List<MyHomeRegion> regions = IntStream.rangeClosed(1, 8)
                 .mapToObj(index -> new MyHomeRegion(
                         "11",
                         "%03d".formatted(index),
@@ -620,8 +666,8 @@ class MyHomeComplexCollectionServiceTest {
                         "테스트구" + index
                 ))
                 .toList();
-        MyHomeComplexCollectionRequest request =
-                MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexCollectionCommand request =
+                MyHomeComplexCollectionCommand.allRegions(2, 10);
         when(regionCatalog.findAll()).thenReturn(regions);
         when(externalRepository.fetch(any(), eq(request), eq(1)))
                 .thenThrow(ExternalDataRequestException.rateLimited(
@@ -643,11 +689,11 @@ class MyHomeComplexCollectionServiceTest {
     void waitsForRunningWorkerAndReportsItsCompletedResultAfterRateLimit() throws Exception {
         MyHomeRegion rateLimitedRegion = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion slowRegion = new MyHomeRegion("26", "110", "부산광역시", "중구");
-        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexCollectionCommand request = MyHomeComplexCollectionCommand.allRegions(2, 10);
         MyHomeComplexRegionCollectionService concurrentCollector = mock(MyHomeComplexRegionCollectionService.class);
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
                 regionCatalog,
-                concurrentCollector, CollectionServiceTestFixture.lock()
+                concurrentCollector
         );
         CountDownLatch slowWorkerStarted = new CountDownLatch(1);
         CountDownLatch rateLimitReturned = new CountDownLatch(1);
@@ -680,9 +726,9 @@ class MyHomeComplexCollectionServiceTest {
         ExecutorService caller = Executors.newSingleThreadExecutor();
 
         try {
-            Future<MyHomeComplexCollectionReport> collection = caller.submit(
+            Future<MyHomeComplexCollectionReport> collection = caller.submit(IngestExecutionScope.propagate(
                     () -> concurrentService.collect(request)
-            );
+            ));
 
             assertThat(rateLimitReturned.await(2, TimeUnit.SECONDS)).isTrue();
             assertThat(slowWorkerInterrupted.getCount()).isOne();
@@ -706,11 +752,11 @@ class MyHomeComplexCollectionServiceTest {
     void cancelsRetryWaitAfterRateLimitWithoutAddingFailure() throws Exception {
         MyHomeRegion retryingRegion = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion rateLimitedRegion = new MyHomeRegion("26", "110", "부산광역시", "중구");
-        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexCollectionCommand request = MyHomeComplexCollectionCommand.allRegions(2, 10);
         var retryingCollector = new CollectionServiceTestFixture().complex(externalRepository, regionCatalog,
                 storage, failureRecorder, new ExternalDataRetryExecutor(Duration.ofSeconds(30), new SimpleMeterRegistry()));
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
-                regionCatalog, retryingCollector, CollectionServiceTestFixture.lock());
+                regionCatalog, retryingCollector);
         CountDownLatch retryRequestStarted = new CountDownLatch(1);
         when(regionCatalog.findAll()).thenReturn(List.of(retryingRegion, rateLimitedRegion));
         when(externalRepository.fetch(retryingRegion, request, 1))
@@ -744,11 +790,11 @@ class MyHomeComplexCollectionServiceTest {
     void waitsForRunningWorkerBeforePropagatingWorkerFailure() throws Exception {
         MyHomeRegion failedRegion = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion slowRegion = new MyHomeRegion("26", "110", "부산광역시", "중구");
-        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexCollectionCommand request = MyHomeComplexCollectionCommand.allRegions(2, 10);
         MyHomeComplexRegionCollectionService concurrentCollector = mock(MyHomeComplexRegionCollectionService.class);
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
                 regionCatalog,
-                concurrentCollector, CollectionServiceTestFixture.lock()
+                concurrentCollector
         );
         CountDownLatch slowWorkerStarted = new CountDownLatch(1);
         CountDownLatch slowWorkerInterrupted = new CountDownLatch(1);
@@ -770,10 +816,10 @@ class MyHomeComplexCollectionServiceTest {
         ExecutorService caller = Executors.newSingleThreadExecutor();
 
         try {
-            Future<MyHomeComplexCollectionReport> collection = caller.submit(() -> {
+            Future<MyHomeComplexCollectionReport> collection = caller.submit(IngestExecutionScope.propagate(() -> {
                 serviceThread.set(Thread.currentThread());
                 return concurrentService.collect(request);
-            });
+            }));
 
             assertThat(slowWorkerInterrupted.await(2, TimeUnit.SECONDS)).isTrue();
             assertThat(collection.isDone()).isFalse();
@@ -801,8 +847,8 @@ class MyHomeComplexCollectionServiceTest {
         }
     }
 
-    private MyHomeComplexCollectionRequest request() {
-        return new MyHomeComplexCollectionRequest("11", "110", 2, 10);
+    private MyHomeComplexCollectionCommand request() {
+        return new MyHomeComplexCollectionCommand("11", "110", 2, 10);
     }
 
     private void awaitIgnoringInterrupt(CountDownLatch release, CountDownLatch... interruptions) {

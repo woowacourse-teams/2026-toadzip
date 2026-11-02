@@ -13,7 +13,7 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollection
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Skipped;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException.Reason;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
 import java.time.Instant;
@@ -32,7 +32,7 @@ class LhAnnouncementLinkResolverTest {
     private static final LhAnnouncementRequest REQUEST = new LhAnnouncementRequest("100", "03", "06", "07", "062");
 
     @Mock
-    private MyHomeAnnouncementSource source;
+    private MyHomeAnnouncementSourceView source;
 
     @Mock
     private LhAnnouncementCollectionCandidateResolver candidateResolver;
@@ -107,7 +107,7 @@ class LhAnnouncementLinkResolverTest {
 
     @Test
     void 첫_행이_조회_불가여도_다음_행의_연결_누락을_보고한다() {
-        MyHomeAnnouncementSource second = mock(MyHomeAnnouncementSource.class);
+        MyHomeAnnouncementSourceView second = mock(MyHomeAnnouncementSourceView.class);
         when(candidateResolver.resolve(source)).thenReturn(new Skipped(KEY, KEY, "지원하지 않는 요청"));
         when(candidateResolver.resolve(second)).thenReturn(new Candidate(KEY, KEY, REQUEST));
 

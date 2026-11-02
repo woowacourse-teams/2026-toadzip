@@ -7,6 +7,13 @@ import org.junit.jupiter.api.Test;
 class SupplyNameNormalizerTest {
 
     @Test
+    void 숫자의_앞자리_0을_지우고_모두_0이면_0_하나를_남긴다() {
+        assertThat(SupplyNameNormalizer.withoutLeadingZeros("007")).isEqualTo("7");
+        assertThat(SupplyNameNormalizer.withoutLeadingZeros("000")).isEqualTo("0");
+        assertThat(SupplyNameNormalizer.withoutLeadingZeros("10")).isEqualTo("10");
+    }
+
+    @Test
     void 임대유형_접미어와_공백_하이픈_차이를_제거한다() {
         assertThat(SupplyNameNormalizer.sameComplex("중동한라1 영구임대주택", "중동한라-1"))
                 .isTrue();

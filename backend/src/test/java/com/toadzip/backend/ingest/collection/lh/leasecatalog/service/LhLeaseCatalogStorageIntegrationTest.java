@@ -20,8 +20,10 @@ import com.toadzip.backend.ingest.collection.lh.leasecatalog.repository.LhLeaseC
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
+import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
+import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.pipeline.repository.IngestExecutionOwnershipRepository;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import com.toadzip.backend.global.config.PostgresTestDatabases;
 import java.time.Clock;
@@ -55,6 +57,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
@@ -70,7 +73,7 @@ import tools.jackson.databind.json.JsonMapper;
 @ContextConfiguration(classes = LhLeaseCatalogStorageIntegrationTest.JpaConfiguration.class,
         initializers = LhLeaseCatalogStorageIntegrationTest.SchemaInitializer.class)
 @Import({LhLeaseCatalogCollector.class, LhLeaseCatalogStorageService.class, SourceCollectionRecordService.class,
-        LhLeaseCatalogApiRepository.class, LhLeaseCatalogPageParser.class, IngestOperationLock.class,
+        LhLeaseCatalogApiRepository.class, LhLeaseCatalogPageParser.class,
         IngestWriteOwnershipGuard.class, IngestExecutionOwnershipRepository.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -88,6 +91,9 @@ class LhLeaseCatalogStorageIntegrationTest {
 
     @Autowired
     private LhLeaseCatalogCollector collector;
+
+    @Autowired
+    private Clock clock;
 
     @Autowired
     private LhLeaseCatalogStorageService storage;
@@ -145,12 +151,13 @@ class LhLeaseCatalogStorageIntegrationTest {
             return withSuccess(page(2, 3, last), MediaType.APPLICATION_JSON).createResponse(request);
         });
 
-        UUID id = collector.collect(request(2));
+        int stored = collect(request(2));
 
+        assertThat(stored).isEqualTo(3);
         assertThat(source().rows()).containsExactly(first, first, last);
         assertThat(source().collectedAt()).isEqualTo(NOW);
-        assertThat(source().recordId()).isEqualTo(id);
         assertThat(records.findAll()).singleElement().satisfies(record -> {
+            assertThat(source().recordId()).isEqualTo(record.getId());
             assertThat(record.getStatus()).isEqualTo(CollectionStatus.SUCCESS);
             assertThat(record.getStoredRowCount()).isEqualTo(3);
         });
@@ -162,8 +169,8 @@ class LhLeaseCatalogStorageIntegrationTest {
         SourceView previous = source();
         expectPage(1, page(1, 3, row("새 단지")));
 
-        assertThatThrownBy(() -> collector.collect(request(1)))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("최대 페이지");
+        assertThatThrownBy(() -> collect(request(1)))
+                .isInstanceOf(ExternalDataCallFailureException.class).hasMessageContaining("최대 페이지");
 
         assertThat(source()).isEqualTo(previous);
         assertFailed();
@@ -176,8 +183,8 @@ class LhLeaseCatalogStorageIntegrationTest {
         expectPage(1, page(1, 3, row("A"), row("B")));
         expectPage(2, page(2, 4, row("C")));
 
-        assertThatThrownBy(() -> collector.collect(request(2)))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("페이지 간 전체 건수");
+        assertThatThrownBy(() -> collect(request(2)))
+                .isInstanceOf(ExternalDataCallFailureException.class).hasMessageContaining("페이지 간 전체 건수");
 
         assertThat(source()).isEqualTo(previous);
         assertFailed();
@@ -190,8 +197,8 @@ class LhLeaseCatalogStorageIntegrationTest {
         expectPage(1, page(1, 4, row("A"), row("B")));
         expectPage(2, page(2, 4, row("A"), row("B")));
 
-        assertThatThrownBy(() -> collector.collect(request(2)))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("같은 응답 페이지");
+        assertThatThrownBy(() -> collect(request(2)))
+                .isInstanceOf(ExternalDataCallFailureException.class).hasMessageContaining("같은 응답 페이지");
 
         assertThat(source()).isEqualTo(previous);
         assertFailed();
@@ -219,7 +226,8 @@ class LhLeaseCatalogStorageIntegrationTest {
         };
         expectPage(1, payload);
 
-        assertThatThrownBy(() -> collector.collect(request(2))).isInstanceOf(ExternalDataRequestException.class);
+        assertThatThrownBy(() -> collect(request(2))).isInstanceOf(ExternalDataCallFailureException.class)
+                .hasCauseInstanceOf(ExternalDataRequestException.class);
 
         assertThat(source()).isEqualTo(previous);
         assertFailed();
@@ -230,9 +238,10 @@ class LhLeaseCatalogStorageIntegrationTest {
     void httpFailurePreservesSourceAndRetryClassification(HttpStatus status) {
         seed(row("기존 단지"));
         SourceView previous = source();
-        http.expect(requestTo(apiUrl(1))).andRespond(withStatus(status));
+        http.expect(ExpectedCount.times(status == HttpStatus.TOO_MANY_REQUESTS ? 1 : 3), requestTo(apiUrl(1))).andRespond(withStatus(status));
 
-        assertThatThrownBy(() -> collector.collect(request(2)))
+        assertThatThrownBy(() -> collect(request(2)))
+                .isInstanceOf(ExternalDataCallFailureException.class).cause()
                 .isInstanceOfSatisfying(ExternalDataRequestException.class, failure -> {
                     assertThat(failure.getMessage()).contains("PG_SZ=2&PAGE=1");
                     assertThat(failure.isRateLimited()).isEqualTo(status == HttpStatus.TOO_MANY_REQUESTS);
@@ -252,7 +261,7 @@ class LhLeaseCatalogStorageIntegrationTest {
         try {
             expectPage(1, page(1, 2, row("A"), row("B")));
 
-            assertThatThrownBy(() -> collector.collect(request(2))).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> collect(request(2))).isInstanceOf(RuntimeException.class);
 
             assertThat(source()).isEqualTo(previous);
             assertFailed();
@@ -359,5 +368,12 @@ class LhLeaseCatalogStorageIntegrationTest {
             environment.getPropertySources().addFirst(new MapPropertySource("leaseCatalogSchema",
                     Map.of("spring.datasource.url", url)));
         }
+    }
+
+    /** 운영처럼 실행 확인 뒤 수집기의 시계로 요청을 다시 만든다. */
+    private int collect(LhLeaseCatalogCollectionRequest request) {
+        return CollectionServiceTestFixture.pagedCollector(history, clock).collect(collector,
+                startedAt -> new LhLeaseCatalogCollectionRequest(request.executionId(), request.pageSize(),
+                        request.maxPages(), startedAt), new ExternalDataCallCounter());
     }
 }

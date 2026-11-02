@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectionRequest;
-import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementPageParser;
+import com.toadzip.backend.ingest.collection.myhome.repository.MyHomePageParser;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionBuffer;
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import java.time.Instant;
@@ -17,7 +17,8 @@ import tools.jackson.databind.json.JsonMapper;
 class MyHomeAnnouncementResponseParserTest {
 
     private final JsonMapper objectMapper = JsonMapper.builder().build();
-    private final MyHomeAnnouncementPageParser parser = new MyHomeAnnouncementPageParser(objectMapper);
+    private final MyHomePageParser<MyHomeAnnouncementSourceSnapshot> parser =
+            new MyHomePageParser<>(objectMapper, MyHomeAnnouncementSourceSnapshot.class, "공고");
 
     @Test
     @DisplayName("마이홈 공고 응답의 항목과 전체 건수를 파싱한다")

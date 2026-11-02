@@ -29,6 +29,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -135,7 +137,7 @@ class IntegratedSearchServiceTest {
 
     @Test
     void 전체_결과는_페이지당_스물개를_반환한다() {
-        List<SearchSourceItem> announcements = java.util.stream.IntStream.rangeClosed(1, 25)
+        List<SearchSourceItem> announcements = IntStream.rangeClosed(1, 25)
                 .mapToObj(index -> item(SearchType.ANNOUNCEMENT, String.valueOf(index), "서울 공고 " + index))
                 .toList();
         when(internalRepository.findAnnouncements(any(), anyInt())).thenReturn(announcements);
@@ -153,14 +155,14 @@ class IntegratedSearchServiceTest {
     @Test
     void 과도한_페이지_요청을_거부한다() {
         assertThrows(
-                com.toadzip.backend.search.exception.InvalidSearchRequestException.class,
+                InvalidSearchRequestException.class,
                 () -> service.search(fullRequest("서울", Integer.MAX_VALUE))
         );
     }
 
     @Test
     void 유형별_검색은_선택한_유형만_다섯개씩_조회하고_마지막_페이지를_알린다() {
-        List<SearchSourceItem> complexes = java.util.stream.IntStream.rangeClosed(1, 7)
+        List<SearchSourceItem> complexes = IntStream.rangeClosed(1, 7)
                 .mapToObj(index -> item(SearchType.COMPLEX, String.valueOf(index), "서울 단지 " + index))
                 .toList();
         when(internalRepository.findComplexes(any(), anyInt())).thenAnswer(invocation -> {
@@ -189,7 +191,7 @@ class IntegratedSearchServiceTest {
 
     @Test
     void 공고_더보기는_앞_페이지_결과를_중복하거나_누락하지_않는다() {
-        List<SearchSourceItem> announcements = java.util.stream.IntStream.rangeClosed(1, 8)
+        List<SearchSourceItem> announcements = IntStream.rangeClosed(1, 8)
                 .mapToObj(index -> item(SearchType.ANNOUNCEMENT, String.valueOf(index), "서울 공고 " + (9 - index)))
                 .toList();
         when(internalRepository.findAnnouncements(any(), anyInt())).thenAnswer(invocation -> {
@@ -204,7 +206,7 @@ class IntegratedSearchServiceTest {
 
         assertEquals(8L, first.totalCount());
         assertEquals(8L, second.totalCount());
-        List<String> combinedIds = java.util.stream.Stream.concat(
+        List<String> combinedIds = Stream.concat(
                 first.announcements().stream(), second.announcements().stream()
         ).map(result -> result.id()).toList();
         assertEquals(announcements.stream().map(SearchSourceItem::id).toList(), combinedIds);
@@ -233,7 +235,7 @@ class IntegratedSearchServiceTest {
 
     @Test
     void 지역_더보기는_유형별_페이지를_적용하고_범위밖_페이지는_비어있다() {
-        when(regionRepository.findByKeyword("서울")).thenReturn(java.util.stream.IntStream.rangeClosed(1, 7)
+        when(regionRepository.findByKeyword("서울")).thenReturn(IntStream.rangeClosed(1, 7)
                 .mapToObj(index -> region("1110" + index, "서울특별시 구 " + index))
                 .toList());
 
@@ -254,7 +256,7 @@ class IntegratedSearchServiceTest {
 
     @Test
     void 유형별_검색은_크기와_미리보기_옵션이_없어도_다섯개씩_제공한다() {
-        when(internalRepository.findComplexes(any(), anyInt())).thenReturn(java.util.stream.IntStream.rangeClosed(1, 6)
+        when(internalRepository.findComplexes(any(), anyInt())).thenReturn(IntStream.rangeClosed(1, 6)
                 .mapToObj(index -> item(SearchType.COMPLEX, String.valueOf(index), "서울 단지 " + index))
                 .toList());
 
@@ -292,7 +294,7 @@ class IntegratedSearchServiceTest {
 
     @Test
     void 유형별_검색의_마지막_허용_페이지는_요청할_수_없는_다음_페이지를_안내하지_않는다() {
-        List<SearchSourceItem> complexes = java.util.stream.IntStream.rangeClosed(1, 506)
+        List<SearchSourceItem> complexes = IntStream.rangeClosed(1, 506)
                 .mapToObj(index -> item(SearchType.COMPLEX, String.valueOf(index), "서울 단지 " + index))
                 .toList();
         when(internalRepository.findComplexes(any(), anyInt())).thenReturn(complexes);
@@ -308,7 +310,7 @@ class IntegratedSearchServiceTest {
 
     @Test
     void 검색_건수_집계가_실패해도_검색_결과와_더보기를_유지한다() {
-        when(internalRepository.findComplexes(any(), anyInt())).thenReturn(java.util.stream.IntStream.range(0, 6)
+        when(internalRepository.findComplexes(any(), anyInt())).thenReturn(IntStream.range(0, 6)
                 .mapToObj(index -> item(SearchType.COMPLEX, String.valueOf(index), "서울 단지 " + index))
                 .toList());
         when(internalRepository.countComplexes(any())).thenThrow(new IllegalStateException("집계 실패"));
@@ -352,7 +354,7 @@ class IntegratedSearchServiceTest {
     }
 
     private long count(IntegratedSearchResponse response, SearchType type) {
-        return java.util.stream.Stream.of(
+        return Stream.of(
                 response.announcements(), response.complexes(), response.regions()
         ).flatMap(List::stream).filter(item -> item.type() == type).count();
     }

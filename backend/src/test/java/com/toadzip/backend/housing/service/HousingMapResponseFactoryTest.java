@@ -11,6 +11,7 @@ import com.toadzip.backend.housing.domain.MapClusteringAggregateNode;
 import com.toadzip.backend.housing.domain.MapClusteringGroupKey;
 import com.toadzip.backend.housing.domain.MapClusteringRegionGroup;
 import com.toadzip.backend.housing.domain.MapClusteringStage;
+import com.toadzip.backend.housing.domain.MapClusteringZoomPolicy;
 import com.toadzip.backend.housing.domain.MapCoordinate;
 import com.toadzip.backend.housing.dto.response.AgencyResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexMapItemResponse;
@@ -130,7 +131,7 @@ class HousingMapResponseFactoryTest {
         );
     }
 
-    private static com.toadzip.backend.housing.domain.MapClusteringZoomPolicy zoomPolicy() {
+    private static MapClusteringZoomPolicy zoomPolicy() {
         return new CsvMapClusteringZoomPolicyRepository(
                 new ClassPathResource("map-clustering/stage-transitions.csv"),
                 new ClassPathResource("map-clustering/stage-transitions-mobile.csv")

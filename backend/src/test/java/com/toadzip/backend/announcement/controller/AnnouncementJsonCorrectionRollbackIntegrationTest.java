@@ -13,14 +13,13 @@ import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import com.toadzip.backend.notification.NotificationFixtures;
 import jakarta.persistence.EntityManager;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -61,7 +60,7 @@ class AnnouncementJsonCorrectionRollbackIntegrationTest {
         var state = json.readTree(mvc.perform(get(root).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
         var request = json.createObjectNode(); request.put("snapshotToken", state.get("snapshotToken").asText());
-        var document = (ObjectNode) json.readTree(Files.readString(Path.of("../docs/fixtures/announcement-import-v1-valid.json")));
+        var document = (ObjectNode) json.readTree(new ClassPathResource("announcement/import-v1-valid.json").getInputStream());
         ((ObjectNode) document.get("announcement")).put("name", "롤백할 이름"); request.set("document", document);
         request.putArray("fields").add("name"); request.putArray("schedules").addObject().put("inputIndex", 0);
         request.putArray("attachments").addObject().put("inputIndex", 0);

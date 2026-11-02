@@ -1,13 +1,9 @@
 package com.toadzip.backend.ingest.collection.service;
 
-import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.MYHOME_ANNOUNCEMENT_COLLECTION;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -16,23 +12,21 @@ import static org.mockito.Mockito.when;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSupplyType;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectedResponse;
-import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementLifecycleService;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementStorageService;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,14 +39,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+@ExtendWith(IngestExecutionExtension.class)
 @ExtendWith(MockitoExtension.class)
 class MyHomeAnnouncementCollectionServiceTest {
 
     @Mock
     private MyHomeAnnouncementExternalRepository externalRepository;
-
-    @Mock
-    private IngestOperationLock executionLock;
 
     @Mock
     private MyHomeAnnouncementStorageService storage;
@@ -68,11 +60,7 @@ class MyHomeAnnouncementCollectionServiceTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        lenient().when(executionLock.tryRun(eq(MYHOME_ANNOUNCEMENT_COLLECTION), any())).thenAnswer(invocation -> {
-            Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(1);
-            return Optional.of(operation.get());
-        });
-        service = new CollectionServiceTestFixture().announcement(externalRepository, storage, lifecycle, executionLock,
+        service = new CollectionServiceTestFixture().announcement(externalRepository, storage, lifecycle,
                 failureRecorder, new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry()));
     }
 
@@ -80,7 +68,7 @@ class MyHomeAnnouncementCollectionServiceTest {
     void 페이지를_확대해도_7개_공급유형의_모든_원천_행을_동일하게_저장한다() {
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
             MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
-            MyHomeAnnouncementCollectionRequest request = invocation.getArgument(1);
+            MyHomeAnnouncementCollectionCommand request = invocation.getArgument(1);
             int page = invocation.getArgument(2);
             int total = List.of(0, 1, 10, 194, 499, 500, 501).get(supplyType.ordinal());
             int offset = (page - 1) * request.pageSize();
@@ -91,8 +79,8 @@ class MyHomeAnnouncementCollectionServiceTest {
             return responseWithTotalCount(items, total);
         });
 
-        ExternalDataCollectionReport small = service.collect(new MyHomeAnnouncementCollectionRequest(10, 1_000));
-        ExternalDataCollectionReport large = service.collect(new MyHomeAnnouncementCollectionRequest(500, 1_000));
+        ExternalDataCollectionReport small = service.collect(new MyHomeAnnouncementCollectionCommand(10, 1_000));
+        ExternalDataCollectionReport large = service.collect(new MyHomeAnnouncementCollectionCommand(500, 1_000));
 
         ArgumentCaptor<MyHomeAnnouncementCollectedResponse> collected = ArgumentCaptor.captor();
         verify(storage, times(14)).complete(any(), any(), collected.capture());
@@ -106,21 +94,9 @@ class MyHomeAnnouncementCollectionServiceTest {
     }
 
     @Test
-    @DisplayName("이미 실행 중이면 중복 수집을 거절한다")
-    void rejectsConcurrentCollection() {
-        doReturn(Optional.empty()).when(executionLock).tryRun(eq(MYHOME_ANNOUNCEMENT_COLLECTION), any());
-
-        assertThatThrownBy(() -> service.collect(new MyHomeAnnouncementCollectionRequest(2, 10)))
-                .isInstanceOf(IngestAlreadyRunningException.class)
-                .hasMessage("마이홈 공고 수집이 이미 실행 중입니다.");
-
-        verify(externalRepository, never()).fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt());
-    }
-
-    @Test
     @DisplayName("공급유형별 API 데이터를 조회하고 페이지 API 데이터를 저장한다")
     void storesAnnouncementApiDataPages() {
-        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
+        MyHomeAnnouncementCollectionCommand request = new MyHomeAnnouncementCollectionCommand(2, 10);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
             MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
             if (supplyType == MyHomeAnnouncementSupplyType.HAPPY_HOUSE) {
@@ -131,16 +107,16 @@ class MyHomeAnnouncementCollectionServiceTest {
 
         var result = service.collect(request);
 
-        ArgumentCaptor<com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectionRequest> runIds = ArgumentCaptor.captor();
+        ArgumentCaptor<MyHomeAnnouncementCollectionRequest> runIds = ArgumentCaptor.captor();
         ArgumentCaptor<MyHomeAnnouncementCollectedResponse> snapshots = ArgumentCaptor.captor();
         verify(storage, org.mockito.Mockito.times(MyHomeAnnouncementSupplyType.values().length)).complete(any(), runIds.capture(), snapshots.capture());
         var runId = runIds.getAllValues().getFirst().executionId();
-        assertThat(runIds.getAllValues()).extracting(com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectionRequest::executionId).containsOnly(runId);
+        assertThat(runIds.getAllValues()).extracting(MyHomeAnnouncementCollectionRequest::executionId).containsOnly(runId);
         verify(lifecycle).completeRun(runId);
         assertThat(snapshots.getAllValues().stream().map(MyHomeAnnouncementCollectedResponse::rows).toList()).filteredOn(value -> !value.isEmpty())
                 .singleElement()
                 .extracting(List::getFirst)
-                .extracting(value -> ((com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot) value).pblancId())
+                .extracting(value -> ((MyHomeAnnouncementSourceSnapshot) value).pblancId())
                 .isEqualTo("1");
         assertThat(result.storedRowCount()).isOne();
         assertThat(result.failedRequestCount()).isZero();
@@ -152,7 +128,7 @@ class MyHomeAnnouncementCollectionServiceTest {
     @Test
     @DisplayName("공급유형 조회 실패는 실패 이력 기록 대상으로 전달한다")
     void reportsAnnouncementApiDataFailure() {
-        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
+        MyHomeAnnouncementCollectionCommand request = new MyHomeAnnouncementCollectionCommand(2, 10);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenThrow(new ExternalDataRequestException("조회 실패"));
 
@@ -169,7 +145,7 @@ class MyHomeAnnouncementCollectionServiceTest {
     @Test
     @DisplayName("일부 공급유형 조회가 실패하면 미조회 공고를 판정하지 않는다")
     void skipsLifecycleCompletionWhenAnySupplyTypeFails() {
-        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
+        MyHomeAnnouncementCollectionCommand request = new MyHomeAnnouncementCollectionCommand(2, 10);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
             MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
             if (supplyType == MyHomeAnnouncementSupplyType.PERMANENT_RENTAL) {
@@ -187,7 +163,7 @@ class MyHomeAnnouncementCollectionServiceTest {
     @Test
     @DisplayName("성공 코드에 body가 없으면 원천 저장과 미조회 공고 판정을 하지 않는다")
     void preservesSourcesWhenSuccessfulResponseSchemaIsInvalid() {
-        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
+        MyHomeAnnouncementCollectionCommand request = new MyHomeAnnouncementCollectionCommand(2, 10);
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"}}}";
         JsonNode invalidResponse = JsonMapper.builder().build().readTree(payload);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
@@ -203,7 +179,7 @@ class MyHomeAnnouncementCollectionServiceTest {
     @Test
     @DisplayName("식별자 없는 공고 항목이 있으면 해당 공급유형 저장과 전체 미조회 판정을 보류한다")
     void preservesSourcesWhenAnnouncementIdentifierIsMissing() {
-        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
+        MyHomeAnnouncementCollectionCommand request = new MyHomeAnnouncementCollectionCommand(2, 10);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
             MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
             if (supplyType == MyHomeAnnouncementSupplyType.HAPPY_HOUSE) {
@@ -222,7 +198,7 @@ class MyHomeAnnouncementCollectionServiceTest {
     @Test
     @DisplayName("주택 일련번호가 없으면 공급유형 저장과 전체 미조회 판정을 보류한다")
     void preservesSourcesWhenHouseSerialNumberIsMissing() {
-        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
+        MyHomeAnnouncementCollectionCommand request = new MyHomeAnnouncementCollectionCommand(2, 10);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
             MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
             if (supplyType == MyHomeAnnouncementSupplyType.HAPPY_HOUSE) {
@@ -243,7 +219,7 @@ class MyHomeAnnouncementCollectionServiceTest {
     @Test
     @DisplayName("서로 다른 페이지의 같은 주택 행도 원천 응답 그대로 저장한다")
     void keepsRawAnnouncementRowsRepeatedAcrossDifferentPages() {
-        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
+        MyHomeAnnouncementCollectionCommand request = new MyHomeAnnouncementCollectionCommand(2, 10);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
             MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
             int page = invocation.getArgument(2);
@@ -263,7 +239,7 @@ class MyHomeAnnouncementCollectionServiceTest {
         ArgumentCaptor<MyHomeAnnouncementCollectedResponse> batches = ArgumentCaptor.captor();
         verify(storage, times(MyHomeAnnouncementSupplyType.values().length)).complete(any(), any(), batches.capture());
         assertThat(batches.getAllValues().stream().map(MyHomeAnnouncementCollectedResponse::rows).toList()).filteredOn(batch -> !batch.isEmpty()).singleElement()
-                .satisfies(batch -> assertThat(batch).extracting(com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot::houseSn)
+                .satisfies(batch -> assertThat(batch).extracting(MyHomeAnnouncementSourceSnapshot::houseSn)
                         .containsExactly(1, 2, 2, 3));
         verify(lifecycle).completeRun(any());
         verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
@@ -275,7 +251,7 @@ class MyHomeAnnouncementCollectionServiceTest {
             "일부 페이지 수집 후 데이터 없음 응답이 오면 해당 공급유형을 저장하거나 미조회 판정하지 않는다"
     )
     void rejectsPrematureNoDataResponseAfterPartialCollection() {
-        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(1, 10);
+        MyHomeAnnouncementCollectionCommand request = new MyHomeAnnouncementCollectionCommand(1, 10);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
             MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
             int page = invocation.getArgument(2);
@@ -300,7 +276,7 @@ class MyHomeAnnouncementCollectionServiceTest {
             "일부 페이지 수집 후 전체 건수 0의 빈 응답이 오면 해당 공급유형을 저장하지 않는다"
     )
     void rejectsPrematureEmptyResponseAfterPartialCollection() {
-        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(1, 10);
+        MyHomeAnnouncementCollectionCommand request = new MyHomeAnnouncementCollectionCommand(1, 10);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
             MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
             int page = invocation.getArgument(2);
@@ -325,7 +301,7 @@ class MyHomeAnnouncementCollectionServiceTest {
             "후속 페이지의 전체 건수가 첫 페이지와 다르면 해당 공급유형을 저장하지 않는다"
     )
     void rejectsChangedTotalCountBetweenPages() {
-        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(1, 10);
+        MyHomeAnnouncementCollectionCommand request = new MyHomeAnnouncementCollectionCommand(1, 10);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
             MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
             int page = invocation.getArgument(2);
@@ -348,7 +324,7 @@ class MyHomeAnnouncementCollectionServiceTest {
     @Test
     @DisplayName("후속 페이지 파싱 실패는 실제 페이지와 시도 횟수로 기록하고 성공 처리하지 않는다")
     void recordsActualAnnouncementParseFailurePageAndAttemptCount() {
-        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(1, 10);
+        MyHomeAnnouncementCollectionCommand request = new MyHomeAnnouncementCollectionCommand(1, 10);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenAnswer(invocation -> {
                     MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
@@ -383,7 +359,7 @@ class MyHomeAnnouncementCollectionServiceTest {
     @Test
     @DisplayName("후속 페이지 totalCount 불일치는 실제 페이지와 시도 횟수로 기록한다")
     void recordsActualAnnouncementTotalCountFailurePageAndAttemptCount() {
-        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(1, 10);
+        MyHomeAnnouncementCollectionCommand request = new MyHomeAnnouncementCollectionCommand(1, 10);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenAnswer(invocation -> {
                     MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
@@ -418,8 +394,8 @@ class MyHomeAnnouncementCollectionServiceTest {
     @Test
     @DisplayName("호출 제한이 발생하면 남은 공급유형을 조회하지 않는다")
     void stopsRemainingSupplyTypesAfterRateLimit() {
-        MyHomeAnnouncementCollectionRequest request =
-                new MyHomeAnnouncementCollectionRequest(2, 10);
+        MyHomeAnnouncementCollectionCommand request =
+                new MyHomeAnnouncementCollectionCommand(2, 10);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenThrow(ExternalDataRequestException.rateLimited(
                         "resultCode=22, 일일 요청 한도 초과",
@@ -437,7 +413,7 @@ class MyHomeAnnouncementCollectionServiceTest {
     @Test
     @DisplayName("마이홈 공고 저장 실패는 외부 API 실패로 기록하지 않는다")
     void propagatesAnnouncementStoreFailure() {
-        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
+        MyHomeAnnouncementCollectionCommand request = new MyHomeAnnouncementCollectionCommand(2, 10);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenReturn(response("[]"));
         doThrow(new IllegalStateException("DB 저장 실패")).when(storage).complete(any(), any(), any());

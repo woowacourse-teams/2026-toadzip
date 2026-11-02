@@ -1,5 +1,7 @@
 package com.toadzip.backend.ingest.mapping.dto;
 
+import com.toadzip.backend.ingest.domain.IngestStepReport;
+
 public record MyHomeComplexMappingReport(
         int createdComplexCount,
         int updatedComplexCount,
@@ -11,7 +13,7 @@ public record MyHomeComplexMappingReport(
         int failedSourceRowCount,
         int rateLimitedSourceRowCount, // 기존 응답 호환: 로컬 좌표 조회에서는 항상 0
         int operationalFailedSourceRowCount
-) {
+) implements IngestStepReport {
 
     public MyHomeComplexMappingReport(
             int createdComplexCount,
@@ -76,5 +78,21 @@ public record MyHomeComplexMappingReport(
                 rateLimitedSourceRowCount + other.rateLimitedSourceRowCount,
                 operationalFailedSourceRowCount + other.operationalFailedSourceRowCount
         );
+    }
+
+    /** 운영 실패 행만 단계 실패다. 나머지 정제하지 못한 행은 경고다. */
+    @Override
+    public int stepFailureCount() {
+        return operationalFailedSourceRowCount;
+    }
+
+    @Override
+    public int stepRateLimitedFailureCount() {
+        return rateLimitedSourceRowCount;
+    }
+
+    @Override
+    public int stepWarningCount() {
+        return failedSourceRowCount - operationalFailedSourceRowCount;
     }
 }

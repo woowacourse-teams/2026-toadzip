@@ -6,8 +6,8 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
-import java.net.URI;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
+import java.net.URI;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -25,7 +26,7 @@ class DataGoKrOpenApiClientTest {
     void 실행키가_설정키보다_우선하고_실행_종료_후_설정키를_다시_사용한다() {
         DataGoKrOpenApiClient client = new DataGoKrOpenApiClient(null, JsonMapper.builder().build(),
                 "https://example.com", "configured-test-key", "마이홈 단지", new MyHomeResponseStatusValidator());
-        try (var ignored = IngestExecutionScope.open(null, null, "a+b/c==")) {
+        try (var ignored = IngestExecutionScope.open(null, null, null, "a+b/c==")) {
             assertThat(client.buildUri("list", new LinkedMultiValueMap<>()))
                     .hasToString("https://example.com/list?serviceKey=a%2Bb%2Fc%3D%3D");
         }
@@ -43,7 +44,7 @@ class DataGoKrOpenApiClientTest {
                         MediaType.APPLICATION_JSON));
         DataGoKrOpenApiClient client = new DataGoKrOpenApiClient(builder.build(), JsonMapper.builder().build(),
                 "https://example.com", "", "마이홈 단지", new MyHomeResponseStatusValidator());
-        try (var ignored = IngestExecutionScope.open(null, null, "runtime-test-key")) {
+        try (var ignored = IngestExecutionScope.open(null, null, null, "runtime-test-key")) {
             client.get("list", new LinkedMultiValueMap<>());
         }
         server.verify();
@@ -57,7 +58,7 @@ class DataGoKrOpenApiClientTest {
                 "{\"response\":{\"header\":{\"resultCode\":\"30\",\"resultMsg\":\"runtime-test-key 인증 실패\"}}}",
                 MediaType.APPLICATION_JSON));
         DataGoKrOpenApiClient client = client(builder);
-        try (var ignored = IngestExecutionScope.open(null, null, "runtime-test-key")) {
+        try (var ignored = IngestExecutionScope.open(null, null, null, "runtime-test-key")) {
             assertThatThrownBy(() -> client.get("list", new LinkedMultiValueMap<>()))
                     .isInstanceOfSatisfying(ExternalDataRequestException.class, exception -> {
                         assertThat(exception.getMessage()).doesNotContain("runtime-test-key");
@@ -72,10 +73,10 @@ class DataGoKrOpenApiClientTest {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(request -> { }).andRespond(request -> {
-            throw new org.springframework.web.client.ResourceAccessException("failure at " + request.getURI());
+            throw new ResourceAccessException("failure at " + request.getURI());
         });
         DataGoKrOpenApiClient client = client(builder);
-        try (var ignored = IngestExecutionScope.open(null, null, "runtime-test-key")) {
+        try (var ignored = IngestExecutionScope.open(null, null, null, "runtime-test-key")) {
             assertThatThrownBy(() -> client.get("list", new LinkedMultiValueMap<>()))
                     .isInstanceOfSatisfying(ExternalDataRequestException.class, exception -> {
                         assertThat(exception.isRetryable()).isTrue();
@@ -96,7 +97,7 @@ class DataGoKrOpenApiClientTest {
                         "{\"response\":{\"header\":{\"resultCode\":\"30\",\"resultMsg\":\"a+b/c== 인증 실패\"}}}",
                         MediaType.APPLICATION_JSON));
         DataGoKrOpenApiClient client = client(builder);
-        try (var ignored = IngestExecutionScope.open(null, null, "a%2Bb%2Fc%3D%3D")) {
+        try (var ignored = IngestExecutionScope.open(null, null, null, "a%2Bb%2Fc%3D%3D")) {
             assertThatThrownBy(() -> client.get("list", new LinkedMultiValueMap<>()))
                     .hasMessageNotContaining("a+b/c==").hasMessageNotContaining("a%2Bb%2Fc%3D%3D");
         }
@@ -107,7 +108,7 @@ class DataGoKrOpenApiClientTest {
     void 인코딩된_키에_포함된_문자를_조회_조건으로_삽입하지_않는다() {
         DataGoKrOpenApiClient client = new DataGoKrOpenApiClient(null, JsonMapper.builder().build(),
                 "https://example.com", "configured-test-key", "마이홈 단지", new MyHomeResponseStatusValidator());
-        try (var ignored = IngestExecutionScope.open(null, null, "a%2B&PG_SZ=999")) {
+        try (var ignored = IngestExecutionScope.open(null, null, null, "a%2B&PG_SZ=999")) {
             assertThat(client.buildUri("list", new LinkedMultiValueMap<>()))
                     .hasToString("https://example.com/list?serviceKey=a%2B%26PG_SZ%3D999");
         }

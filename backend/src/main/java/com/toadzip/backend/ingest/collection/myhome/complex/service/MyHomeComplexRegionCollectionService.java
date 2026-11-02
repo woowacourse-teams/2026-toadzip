@@ -1,62 +1,52 @@
 package com.toadzip.backend.ingest.collection.myhome.complex.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecordService;
+import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
-import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
+import com.toadzip.backend.ingest.collection.paging.service.PagedSourceCollector;
+import com.toadzip.backend.ingest.collection.paging.service.RateLimitSignal;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
-import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
-import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataRetryInterruptedException;
-import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
-import java.time.Clock;
-import java.util.UUID;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-@Slf4j
 @Component
 @RequiredArgsConstructor
 public class MyHomeComplexRegionCollectionService {
 
     private final MyHomeComplexCollector collector;
-    private final SourceCollectionRecordService records;
-    private final ExternalDataFailureRecorder failureRecorder;
-    private final ExternalDataRetryExecutor retryExecutor;
-    private final Clock clock;
+    private final PagedSourceCollector pagedCollector;
 
     public MyHomeComplexCollectionReport collect(
             MyHomeRegion region,
-            MyHomeComplexCollectionRequest request
+            MyHomeComplexCollectionCommand request
     ) {
         return collect(region, request, new AtomicBoolean());
     }
 
+    /** 다른 지역이 호출 제한에 걸리면 남은 호출을 멈추고 취소로 보고하며, 이 지역이 걸리면 다른 지역에 알린다. */
     public MyHomeComplexCollectionReport collect(
             MyHomeRegion region,
-            MyHomeComplexCollectionRequest request,
+            MyHomeComplexCollectionCommand request,
             AtomicBoolean rateLimitReached
     ) {
         if (rateLimitReached.get()) {
             return MyHomeComplexCollectionReport.empty();
         }
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
-        int storedRowCount;
+        ExternalDataCollectionReport report;
         try {
-            var attempt =
-                    new com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionRequest(
-                    IngestExecutionContext.currentExecutionId().orElse(null), region.provinceCode(),
-                    region.districtCode(), request.pageSize(), request.maxPages(), clock.instant());
-            UUID id = collector.collectWithinBatch(attempt, retryExecutor, callCounter, rateLimitReached);
-            storedRowCount = records.storedRowCount(id);
+            report = pagedCollector.collectAndReport(collector, startedAt -> new MyHomeComplexCollectionRequest(
+                    IngestExecutionScope.currentExecutionId().orElse(null), region.provinceCode(),
+                    region.districtCode(), request.pageSize(), request.maxPages(), startedAt), callCounter,
+                    new SharedRateLimit(rateLimitReached));
         }
-        catch (MyHomeComplexCollector.RateLimitCollectionCancelledException exception) {
+        catch (RateLimitCollectionCancelledException exception) {
             return cancelledReport(callCounter);
         }
         catch (ExternalDataRetryInterruptedException exception) {
@@ -65,19 +55,8 @@ public class MyHomeComplexRegionCollectionService {
             }
             throw exception;
         }
-        catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
-            return failedReport(region, request, rateLimitReached, callCounter, exception);
-        }
-        failureRecorder.resolveStartingWith(
-                ExternalDataSource.MYHOME_COMPLEX,
-                region.requestDescription() + "&pageNo="
-        );
-        return new MyHomeComplexCollectionReport(
-                ExternalDataSource.MYHOME_COMPLEX.operation(),
-                storedRowCount,
-                0,
-                callCounter.count()
-        );
+        return new MyHomeComplexCollectionReport(report.operation(), report.storedRowCount(),
+                report.failedRequestCount(), report.externalApiCallCount(), report.rateLimitedRequestCount());
     }
 
     private MyHomeComplexCollectionReport cancelledReport(ExternalDataCallCounter callCounter) {
@@ -89,31 +68,21 @@ public class MyHomeComplexRegionCollectionService {
         );
     }
 
-    private MyHomeComplexCollectionReport failedReport(
-            MyHomeRegion region,
-            MyHomeComplexCollectionRequest request,
-            AtomicBoolean rateLimitReached,
-            ExternalDataCallCounter callCounter,
-            RuntimeException exception
-    ) {
-        int rateLimitedRequestCount = ExternalDataRateLimit.count(exception);
-        if (rateLimitedRequestCount > 0) {
+    private record SharedRateLimit(AtomicBoolean rateLimitReached) implements RateLimitSignal {
+
+        @Override
+        public void checkBeforeAttempt() {
+            if (rateLimitReached.get()) {
+                throw new RateLimitCollectionCancelledException();
+            }
+        }
+
+        @Override
+        public void reached() {
             rateLimitReached.set(true);
         }
-        failureRecorder.record(
-                ExternalDataSource.MYHOME_COMPLEX,
-                request.requestDescription(region, 1),
-                exception,
-                log,
-                "마이홈 단지 지역 수집에 실패했습니다"
-        );
-        return new MyHomeComplexCollectionReport(
-                ExternalDataSource.MYHOME_COMPLEX.operation(),
-                0,
-                1,
-                callCounter.count(),
-                rateLimitedRequestCount
-        );
     }
 
+    private static final class RateLimitCollectionCancelledException extends RuntimeException {
+    }
 }

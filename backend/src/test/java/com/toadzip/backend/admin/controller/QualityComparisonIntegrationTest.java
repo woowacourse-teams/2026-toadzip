@@ -8,14 +8,30 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.admin.quality.domain.QualityResource;
+import com.toadzip.backend.admin.quality.repository.QualityComparisonRepository;
+import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
+import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
+import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
+import com.toadzip.backend.ingest.source.repository.IngestSourceQueryRepository;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,13 +39,18 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.ConnectionCallback;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
 @AutoConfigureMockMvc
@@ -41,14 +62,14 @@ class QualityComparisonIntegrationTest {
     @Autowired private ObjectMapper json;
     @Autowired private HousingComplexRepository complexes;
     @Autowired private HousingTypeRepository types;
-    @Autowired private com.toadzip.backend.announcement.repository.SupplyRowRepository supplyRows;
-    @Autowired private com.toadzip.backend.announcement.repository.SupplyTargetRepository supplyTargets;
+    @Autowired private SupplyRowRepository supplyRows;
+    @Autowired private SupplyTargetRepository supplyTargets;
     @Autowired private EntityManager entities;
-    @Autowired private com.toadzip.backend.admin.quality.repository.QualityComparisonRepository comparisons;
-    @Autowired private com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures sourceRows;
-    @Autowired private com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures catalogRows;
-    @Autowired private com.toadzip.backend.ingest.source.repository.IngestSourceQueryRepository rawSources;
-    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired private QualityComparisonRepository comparisons;
+    @Autowired private MyHomeComplexSourceFixtures sourceRows;
+    @Autowired private LhLeaseCatalogSourceFixtures catalogRows;
+    @Autowired private IngestSourceQueryRepository rawSources;
+    @Autowired private JdbcTemplate jdbc;
     @MockitoBean private IngestExecutionOwnershipService ownership;
 
     @BeforeEach
@@ -191,12 +212,12 @@ class QualityComparisonIntegrationTest {
         var type = type();
         long id = type.getHousingComplex().getId();
         String target = "type:" + type.getId();
-        var category = com.toadzip.backend.ingest.source.dto.IngestSourceCategory.LH_LEASE_CATALOG;
-        var resource = com.toadzip.backend.admin.quality.domain.QualityResource.COMPLEX;
+        var category = IngestSourceCategory.LH_LEASE_CATALOG;
+        var resource = QualityResource.COMPLEX;
         long first = catalogRow("카탈로그 연결 단지", "10000000");
         long second = catalogRow("카탈로그 연결 단지", "20000000");
-        var expected = new java.util.ArrayList<Map<String, Object>>();
-        for (long rowId : java.util.List.of(first, second)) {
+        var expected = new ArrayList<Map<String, Object>>();
+        for (long rowId : List.of(first, second)) {
             String key = rawSources.findById(category, rowId).orElseThrow().sourceKey();
             assertThat(key).startsWith("lh-lease:");
             entities.createNativeQuery("""
@@ -209,18 +230,18 @@ class QualityComparisonIntegrationTest {
                     "rows", json.readTree(comparisons.fingerprint(category, key))));
         }
         var legacy = json.valueToTree(expected).deepCopy();
-        ((tools.jackson.databind.node.ObjectNode) legacy.get(0)).put("sourceKey", Long.toString(first));
-        ((tools.jackson.databind.node.ObjectNode) legacy.get(1)).put("sourceKey", Long.toString(second));
+        ((ObjectNode) legacy.get(0)).put("sourceKey", Long.toString(first));
+        ((ObjectNode) legacy.get(1)).put("sourceKey", Long.toString(second));
         comparisons.check(resource, id, target, json.writeValueAsString(legacy), "{}", "기존 확인 근거", "original-admin");
         comparisons.link(resource, id, target,
-                com.toadzip.backend.ingest.source.dto.IngestSourceCategory.MYHOME_COMPLEX,
+                IngestSourceCategory.MYHOME_COMPLEX,
                 Long.toString(first), "다른 분류", "original-admin");
         comparisons.link(resource, id, target, category, "9223372036854775807", "이미 소실된 원천", "original-admin");
 
         for (int run = 0; run < 2; run++) {
-            jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
-                org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection,
-                        new org.springframework.core.io.ClassPathResource(
+            jdbc.execute((ConnectionCallback<Void>) connection -> {
+                ScriptUtils.executeSqlScript(connection,
+                        new ClassPathResource(
                                 "db/migration/V20261019_01__stable_lh_lease_comparison_keys.sql"));
                 return null;
             });
@@ -234,7 +255,7 @@ class QualityComparisonIntegrationTest {
         assertThat(links.stream().filter(link -> link.category() == category).map(link -> link.sourceKey()).toList())
                 .containsExactlyInAnyOrder(keys.get(0), keys.get(1), "9223372036854775807");
         assertThat(links.stream().filter(link -> link.category()
-                == com.toadzip.backend.ingest.source.dto.IngestSourceCategory.MYHOME_COMPLEX).findFirst().orElseThrow()
+                == IngestSourceCategory.MYHOME_COMPLEX).findFirst().orElseThrow()
                 .sourceKey()).isEqualTo(Long.toString(first));
         assertThat(json.readTree(jdbc.queryForObject("SELECT evidence::text FROM admin_comparison_checks "
                 + "WHERE resource_id = ? AND target = ?", String.class, id, target))).isEqualTo(json.valueToTree(expected));
@@ -247,10 +268,8 @@ class QualityComparisonIntegrationTest {
     }
 
     private long catalogRow(String name, String deposit) {
-        var row = new com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource(0,
-                new com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.projection.LhCatalogSourceSnapshot(
-                        "서울 중구", "행복주택", name, "120", "26.12", "10", deposit, "100000"));
-        row.markCollectedAt(java.time.Instant.parse("2026-10-15T00:00:00Z"));
+        var row = LhSourceViews.catalog(0, Instant.parse("2026-10-15T00:00:00Z"), new LhCatalogSourceSnapshot(
+                "서울 중구", "행복주택", name, "120", "26.12", "10", deposit, "100000"));
         return catalogRows.save(row).getId();
     }
 
@@ -265,7 +284,7 @@ class QualityComparisonIntegrationTest {
     void 공고의_수집_실행과_누락_횟수만_바뀌면_원천값_변경으로_보지_않는다() {
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
-        for (UUID record : java.util.List.of(first, second)) {
+        for (UUID record : List.of(first, second)) {
             entities.createNativeQuery("""
                     INSERT INTO source_collection_records
                     (id, version, source, started_at, finished_at, status, stored_row_count)
@@ -284,11 +303,11 @@ class QualityComparisonIntegrationTest {
                 FROM myhome_announcement_source_bundles WHERE pblanc_id = 'quality-metadata-test'
                 """).setParameter("record", first).executeUpdate();
         String query = "SELECT raw::text FROM ("
-                + com.toadzip.backend.admin.quality.repository.QualityComparisonRepository.SOURCE_ROWS
+                + QualityComparisonRepository.SOURCE_ROWS
                 + ") sources WHERE category = 'MYHOME_ANNOUNCEMENT' AND raw ->> 'pblanc_id' = 'quality-metadata-test'";
         Object before = entities.createNativeQuery(query).getSingleResult();
         String key = "21:quality-metadata-test1:1";
-        var category = com.toadzip.backend.ingest.source.dto.IngestSourceCategory.MYHOME_ANNOUNCEMENT;
+        var category = IngestSourceCategory.MYHOME_ANNOUNCEMENT;
         var checked = json.readTree(comparisons.fingerprint(category, key));
         assertThat(checked.size()).isEqualTo(1);
         assertThat(checked.get(0)).isEqualTo(json.readTree((String) before));
@@ -331,7 +350,7 @@ class QualityComparisonIntegrationTest {
                 .andExpect(status().isOk());
         var row = supplyRows.findAll().stream().filter(item -> item.getAnnouncement().getId() == id)
                 .findFirst().orElseThrow();
-        var condition = supplyTargets.saveAndFlush(com.toadzip.backend.announcement.domain.SupplyTarget.create(
+        var condition = supplyTargets.saveAndFlush(SupplyTarget.create(
                 row, "일반", "1순위", 5, null, new BigDecimal("10000000"), new BigDecimal("100000"), null, null, 0));
         String target = "target:" + condition.getId();
         var before = json.readTree(mvc.perform(get(path).param("target", target).with(user("admin").roles("ADMIN")))
@@ -351,13 +370,13 @@ class QualityComparisonIntegrationTest {
     }
 
     private String source() throws Exception {
-        var source = com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource.from(
-                new com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot(
+        var source = MyHomeSourceViews.complex(
+                new MyHomeComplexSourceSnapshot(
                         991421L, "한국토지주택공사", "11", "서울", "11140", "중구", "검토 원천 421",
                         "서울특별시 중구 세종대로 110", "1114010300100010000", "20200101", 120, "행복주택", "26A",
                         new BigDecimal("26.1234"), null, "아파트", "지역난방", "계단식", "미설치", 0,
                         null, null, null));
-        source.markCollectedAt(java.time.Instant.parse("2026-10-15T00:00:00Z"));
+        source = MyHomeSourceViews.collectedAt(source, Instant.parse("2026-10-15T00:00:00Z"));
         sourceRows.save(source);
         String response = mvc.perform(get("/api/admin/ingest/sources").param("category", "MYHOME_COMPLEX")
                 .param("keyword", "검토 원천 421").with(user("admin").roles("ADMIN")))

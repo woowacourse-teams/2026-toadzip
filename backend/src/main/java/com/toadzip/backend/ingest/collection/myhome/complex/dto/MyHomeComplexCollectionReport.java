@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.myhome.complex.dto;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.domain.IngestStepReport;
 
 public record MyHomeComplexCollectionReport(
         String operation,
@@ -8,7 +9,7 @@ public record MyHomeComplexCollectionReport(
         int failedRequestCount,
         int externalApiCallCount,
         int rateLimitedRequestCount
-) {
+) implements IngestStepReport {
 
     public MyHomeComplexCollectionReport(
             String operation,
@@ -41,5 +42,15 @@ public record MyHomeComplexCollectionReport(
                 externalApiCallCount + other.externalApiCallCount,
                 rateLimitedRequestCount + other.rateLimitedRequestCount
         );
+    }
+
+    @Override
+    public int stepFailureCount() {
+        return failedRequestCount;
+    }
+
+    @Override
+    public int stepRateLimitedFailureCount() {
+        return rateLimitedRequestCount;
     }
 }

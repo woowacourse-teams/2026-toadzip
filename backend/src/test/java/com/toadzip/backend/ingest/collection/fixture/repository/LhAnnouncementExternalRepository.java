@@ -47,7 +47,9 @@ public class LhAnnouncementExternalRepository {
     }
 
     private JsonNode fetch(String path, LhAnnouncementRequest request) {
-        JsonNode response = circuitBreaker.execute(() -> client.get(path, request.toParams()));
+        var params = new LinkedMultiValueMap<String, String>();
+        request.query().parameters().forEach(params::add);
+        JsonNode response = circuitBreaker.execute(() -> client.get(path, params));
         identityValidator.validate(request, response);
         return response;
     }

@@ -1,9 +1,9 @@
 package com.toadzip.backend.announcement.service;
 
 import com.toadzip.backend.admin.domain.AdminDataChange;
-import com.toadzip.backend.admin.dto.AdminDocumentEvidence;
 import com.toadzip.backend.admin.dto.AdminChangeResponse;
 import com.toadzip.backend.admin.dto.AdminDataSummary;
+import com.toadzip.backend.admin.dto.AdminDocumentEvidence;
 import com.toadzip.backend.admin.dto.AdminPage;
 import com.toadzip.backend.admin.dto.AdminSearch;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
@@ -14,16 +14,17 @@ import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest.ReceptionPlaceUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminSupplyRowUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminSupplyTargetUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.VerifiedApplicationSchedulesRequest;
-import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest.ReceptionPlaceUpdateRequest;
 import com.toadzip.backend.announcement.dto.response.AdminAnnouncementDetail;
 import com.toadzip.backend.announcement.dto.response.AnnouncementAttachmentResponse;
-import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
+import com.toadzip.backend.announcement.dto.response.SupplyRowResponse;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
@@ -33,11 +34,15 @@ import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import java.math.BigDecimal;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 @Service
 @Transactional(readOnly = true)
@@ -187,7 +192,7 @@ public class AdminAnnouncementManagementService {
         validateCounts(announcement);
         var linkedComplexIds = rows.findAllByAnnouncement(announcement).stream()
                 .filter(value -> !value.isAdminExcluded() && value.getHousingComplex() != null)
-                .map(value -> value.getHousingComplex().getId()).collect(java.util.stream.Collectors.toSet());
+                .map(value -> value.getHousingComplex().getId()).collect(Collectors.toSet());
         if (schedules.findAllByAnnouncementIdIn(List.of(id)).stream().anyMatch(schedule ->
                 schedule.getHousingComplex() != null && !linkedComplexIds.contains(schedule.getHousingComplex().getId()))) {
             throw new AdminDataConflictException("이 단지에 지정된 접수 일정이 있습니다. 일정의 적용 단지를 먼저 변경해 주세요.");
@@ -231,7 +236,7 @@ public class AdminAnnouncementManagementService {
 
     private void validateCounts(Announcement announcement) {
         long total = 0;
-        var groups = new java.util.HashSet<Long>();
+        var groups = new HashSet<Long>();
         for (var row : rows.findAllByAnnouncement(announcement)) {
             if (row.isAdminExcluded()) { continue; }
             Integer count = row.getTotalSupplyHouseholdCount();
@@ -242,7 +247,7 @@ public class AdminAnnouncementManagementService {
             if (count != null) { total += count; }
             if (!row.isTargetCountsComparable() || row.getTotalSupplyHouseholdCount() == null) { continue; }
             long targetCount = targets.findAllBySupplyRow(row).stream().filter(target -> !target.isAdminExcluded())
-                    .map(SupplyTarget::getSupplyHouseholdCount).filter(java.util.Objects::nonNull)
+                    .map(SupplyTarget::getSupplyHouseholdCount).filter(Objects::nonNull)
                     .mapToLong(Integer::longValue).sum();
             if (targetCount > row.getTotalSupplyHouseholdCount()) {
                 throw new IllegalArgumentException("같은 범위로 확인한 대상별 모집수 합계가 행 모집수를 초과합니다.");
@@ -257,7 +262,7 @@ public class AdminAnnouncementManagementService {
     }
 
     private String auditedData(Object data, AdminDocumentEvidence evidence) {
-        var result = (tools.jackson.databind.node.ObjectNode) json.valueToTree(data);
+        var result = (ObjectNode) json.valueToTree(data);
         if (evidence != null) {
             result.set("documentEvidence", json.valueToTree(evidence));
         }
@@ -307,9 +312,9 @@ public class AdminAnnouncementManagementService {
             complexId = row.getHousingComplex().getId(); complexName = row.getHousingComplex().getName();
         }
         if (row.getHousingType() != null) { typeId = row.getHousingType().getId(); }
-        com.toadzip.backend.announcement.dto.response.SupplyRowResponse.SharedRecruitment shared = null;
+        SupplyRowResponse.SharedRecruitment shared = null;
         if (row.getSupplyGroup() != null) {
-            shared = new com.toadzip.backend.announcement.dto.response.SupplyRowResponse.SharedRecruitment(
+            shared = new SupplyRowResponse.SharedRecruitment(
                     row.getSupplyGroup().getId(), row.getSupplyGroup().getSharedHouseholdCount());
         }
         return new AdminAnnouncementDetail.SupplyRowItem(row.getId(), complexId, complexName, typeId,

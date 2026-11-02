@@ -6,11 +6,12 @@ import static org.assertj.core.groups.Tuple.tuple;
 
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.ingest.collection.fixture.LhAnnouncementDetailFixtures;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.projection.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhScheduleData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import java.time.LocalDateTime;
@@ -95,11 +96,11 @@ class LhAnnouncementEnrichmentMapperTest {
 
     @Test
     void 다단지_공고는_공급행의_단지에_해당하는_입주예정월을_매핑한다() {
-        List<LhAnnouncementDetailSource> details = List.of(
+        List<LhAnnouncementDetailSourceView> details = List.of(
                 complexDetail(0, "동삼2", "202612"),
                 complexDetail(1, "청운3", "202703")
         );
-        List<LhAnnouncementSupplySource> supplies = List.of(
+        List<LhAnnouncementSupplySourceView> supplies = List.of(
                 supply(0, "동삼2", "46A"),
                 supply(1, "청운3", "59B")
         );
@@ -116,11 +117,11 @@ class LhAnnouncementEnrichmentMapperTest {
 
     @Test
     void 다단지_공고는_단지명_접미어가_달라도_해당_입주예정월을_매핑한다() {
-        List<LhAnnouncementDetailSource> details = List.of(
+        List<LhAnnouncementDetailSourceView> details = List.of(
                 complexDetail(0, "중동한라1", "202612"),
                 complexDetail(1, "중동덕유1", "202703")
         );
-        List<LhAnnouncementSupplySource> supplies = List.of(
+        List<LhAnnouncementSupplySourceView> supplies = List.of(
                 supply(0, "중동한라1 영구임대주택", "46A"),
                 supply(1, "중동덕유1 영구임대주택", "59B")
         );
@@ -137,7 +138,7 @@ class LhAnnouncementEnrichmentMapperTest {
 
     @Test
     void 다단지_공고에서_단지가_불일치하면_입주예정월을_매핑하지_않는다() {
-        List<LhAnnouncementDetailSource> details = List.of(
+        List<LhAnnouncementDetailSourceView> details = List.of(
                 complexDetail(0, "동삼2", "202612"),
                 complexDetail(1, "청운3", "202703")
         );
@@ -191,7 +192,7 @@ class LhAnnouncementEnrichmentMapperTest {
 
     @Test
     void 쉼표가_올바른_세대수와_금액은_단일_숫자로_매핑한다() {
-        LhAnnouncementSupplySource supply = supply(
+        LhAnnouncementSupplySourceView supply = supply(
                 0, "동삼2", "46A", "1,000", "20", "10,000,000", "200,000"
         );
 
@@ -205,7 +206,7 @@ class LhAnnouncementEnrichmentMapperTest {
 
     @Test
     void 앞뒤_공백과_Long_최대값은_정상_숫자로_매핑한다() {
-        LhAnnouncementSupplySource supply = supply(
+        LhAnnouncementSupplySourceView supply = supply(
                 0, "동삼2", "46A", " 9999 ", " 20 ", "9223372036854775807", " 200,000 "
         );
 
@@ -223,7 +224,7 @@ class LhAnnouncementEnrichmentMapperTest {
             "9999세대", "9999~10000", "9999.5", "9999,99"
     })
     void 세대수가_허용된_단일_정수_형식이_아니면_실패한다(String invalidValue) {
-        LhAnnouncementSupplySource supply = supply(
+        LhAnnouncementSupplySourceView supply = supply(
                 0, "동삼2", "46A", invalidValue, "20", "10,000,000", "200,000"
         );
 
@@ -238,7 +239,7 @@ class LhAnnouncementEnrichmentMapperTest {
             "9999만원", "9999~10000", "9999.5", "9999,99", "9223372036854775808"
     })
     void 금액이_허용된_단일_정수_형식이_아니면_실패한다(String invalidValue) {
-        LhAnnouncementSupplySource supply = supply(
+        LhAnnouncementSupplySourceView supply = supply(
                 0, "동삼2", "46A", "100", "20", invalidValue, "200,000"
         );
 
@@ -249,7 +250,7 @@ class LhAnnouncementEnrichmentMapperTest {
 
     @Test
     void 공급_세대수의_형식이_잘못되면_실패한다() {
-        LhAnnouncementSupplySource supply = supply(
+        LhAnnouncementSupplySourceView supply = supply(
                 0, "동삼2", "46A", "100", "10~20", "10,000,000", "200,000"
         );
 
@@ -260,7 +261,7 @@ class LhAnnouncementEnrichmentMapperTest {
 
     @Test
     void 월_임대료의_형식이_잘못되면_실패한다() {
-        LhAnnouncementSupplySource supply = supply(
+        LhAnnouncementSupplySourceView supply = supply(
                 0, "동삼2", "46A", "100", "20", "10,000,000", "10~20만원"
         );
 
@@ -269,19 +270,18 @@ class LhAnnouncementEnrichmentMapperTest {
                 .hasMessage("월 임대료 형식이 올바르지 않습니다.");
     }
 
-    private LhAnnouncementDetailSource complexDetail(int order, String complexName, String expectedMoveInYearMonth) {
-        return new LhAnnouncementDetailSource(
-                order, PAN_ID, "COMPLEX", complexName, null, null, null, null, null,
-                expectedMoveInYearMonth, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null
-        );
+    private LhAnnouncementDetailSourceView complexDetail(int order, String complexName, String expectedMoveInYearMonth) {
+        return LhSourceViews.detail(order, PAN_ID, new LhAnnouncementDetailSourceSnapshot(
+                "COMPLEX", complexName, null, null, null, null, null, expectedMoveInYearMonth, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null));
     }
 
-    private LhAnnouncementSupplySource supply(int order, String complexName, String housingTypeName) {
+    private LhAnnouncementSupplySourceView supply(int order, String complexName, String housingTypeName) {
         return supply(order, complexName, housingTypeName, "100", "20", "10,000,000", "200,000");
     }
 
-    private LhAnnouncementSupplySource supply(
+    private LhAnnouncementSupplySourceView supply(
             int order,
             String complexName,
             String housingTypeName,
@@ -290,7 +290,7 @@ class LhAnnouncementEnrichmentMapperTest {
             String deposit,
             String rent
     ) {
-        return new LhAnnouncementSupplySource(order, PAN_ID, new LhAnnouncementSupplySourceSnapshot(
+        return LhSourceViews.supply(order, PAN_ID, new LhAnnouncementSupplySourceSnapshot(
                 complexName, housingTypeName, null, null, totalUnitCount, suppliedUnitCount, deposit, rent
         ));
     }

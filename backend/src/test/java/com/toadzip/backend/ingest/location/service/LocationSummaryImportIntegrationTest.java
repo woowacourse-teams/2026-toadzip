@@ -5,19 +5,23 @@ import static com.toadzip.backend.ingest.location.service.LocationSummaryZipFixt
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.location.repository.RoadAddressLocationRepository;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import java.io.IOException;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
+@ExtendWith(IngestExecutionExtension.class)
 @SpringBootTest
 @ActiveProfiles("test")
 class LocationSummaryImportIntegrationTest {
@@ -81,8 +85,8 @@ class LocationSummaryImportIntegrationTest {
         assertThat(locationRepository.count()).isOne();
     }
 
-    private MyHomeComplexSource source(String roadAddress) {
-        return MyHomeComplexSource.from(new MyHomeComplexSourceSnapshot(
+    private MyHomeComplexSourceView source(String roadAddress) {
+        return MyHomeSourceViews.complex(new MyHomeComplexSourceSnapshot(
                 1L, "한국토지주택공사", "11", "서울특별시", "110", "종로구", "테스트 단지",
                 roadAddress, "1111010100100010000", "20200101", 100, "국민임대", "46A",
                 new BigDecimal("46.8"), new BigDecimal("20.2"), "아파트", "지역난방", "복도식",

@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.collection.lh.service;
 
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.Period;
@@ -33,7 +33,7 @@ public class LhAnnouncementCollectionPolicy {
         this.recentEndedWindow = recentEndedWindow;
     }
 
-    public boolean isCollectionTarget(MyHomeAnnouncementSource source) {
+    public boolean isCollectionTarget(MyHomeAnnouncementSourceView source) {
         Optional<LocalDate> endDate = applicationEndDate(source.getEndDe());
         return endDate.isEmpty() || !endDate.orElseThrow().isBefore(LocalDate.now(clock).minus(recentEndedWindow));
     }

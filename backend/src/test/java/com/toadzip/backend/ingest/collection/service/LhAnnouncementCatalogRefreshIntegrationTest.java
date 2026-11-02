@@ -7,14 +7,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.dto.LhAnnouncementCatalogPage.Entry;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementCatalogSourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementDetailSourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhCatalogStorageFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.projection.LhAnnouncementCatalogSnapshot;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
@@ -24,10 +25,11 @@ import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySo
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -35,6 +37,7 @@ import java.time.ZoneId;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -43,6 +46,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+@ExtendWith(IngestExecutionExtension.class)
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
 @ActiveProfiles("test")
 class LhAnnouncementCatalogRefreshIntegrationTest {
@@ -154,7 +158,7 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
 
     @Test
     void 조회_유형이_바뀐_경우_이전_목록_행은_후보_연결에_사용하지_않는다() {
-        MyHomeAnnouncementSource source = sources.save(source("100", 1, "20261030"));
+        MyHomeAnnouncementSourceView source = sources.save(source("100", 1, "20261030"));
         catalogStore.store(List.of(entry("공고중")));
         assertThat(candidateResolver.resolve(source)).isInstanceOfSatisfying(Candidate.class, candidate ->
                 assertThat(candidate.catalogCollectedAt()).isEqualTo(FIRST)
@@ -203,7 +207,7 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
         assertThat(service.collect(DETAIL).externalApiCallCount()).isOne();
     }
 
-    private List<LhAnnouncementDetailSource> currentDetails() {
+    private List<LhAnnouncementDetailSourceView> currentDetails() {
         return querySources.findAll().stream()
                 .filter(source -> source.getSource() == CollectionSource.LH_ANNOUNCEMENT_DETAIL)
                 .flatMap(source -> detailReader.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
@@ -212,9 +216,8 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
 
     private void observeAgain(Instant now, String status) {
         when(clock.instant()).thenReturn(now);
-        List<MyHomeAnnouncementSource> current = sources.findAll();
-        current.forEach(source -> source.markCollectedAt(now));
-        sources.saveAll(current);
+        sources.saveAll(sources.findAll().stream()
+                .map(source -> MyHomeSourceViews.collectedAt(source, now)).toList());
         catalogStore.store(List.of(entry(status)));
     }
 
@@ -223,15 +226,15 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
                 "공고", status, "", "", "20261030", "", ""), "{}");
     }
 
-    private MyHomeAnnouncementSource source(String panId, int houseSn, String endDate) {
+    private MyHomeAnnouncementSourceView source(String panId, int houseSn, String endDate) {
         String payload = """
                 {"pblancId":"%s","houseSn":%d,"suplyInsttNm":"한국토지주택공사","suplyTyNm":"행복주택",
                  "endDe":"%s",
                  "url":"https://apply.lh.or.kr/panDetail?panId=%s&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"}
                 """.formatted(panId, houseSn, endDate, panId);
-        var source = MyHomeAnnouncementSource.from(0,
+        var source = MyHomeSourceViews.announcement(0,
                 JsonMapper.builder().build().readValue(payload, MyHomeAnnouncementSourceSnapshot.class));
-        source.markCollectedAt(FIRST);
+        source = MyHomeSourceViews.collectedAt(source, FIRST);
         return source;
     }
 

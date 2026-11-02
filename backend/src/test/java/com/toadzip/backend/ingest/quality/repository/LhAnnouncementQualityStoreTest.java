@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.quality.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.CollectedSourceRows;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
@@ -11,15 +12,17 @@ import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollect
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionPolicy;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse;
 import com.toadzip.backend.ingest.quality.service.LhAnnouncementQualityService;
 import jakarta.persistence.EntityManager;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -29,6 +32,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
+import tools.jackson.databind.json.JsonMapper;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -91,7 +95,7 @@ class LhAnnouncementQualityStoreTest {
                      occurrence_count, recurrence_count, error_type, reason)
                 VALUES ('LH_ANNOUNCEMENT_SUPPLY', 'quality-held-request', :occurredAt, 0, 'PENDING',
                         :occurredAt, 1, 0, 'IncompleteLhSupplyReplacementException', '공급행 감소')
-                """).param("occurredAt", java.sql.Timestamp.from(OBSERVED_AT)).update();
+                """).param("occurredAt", Timestamp.from(OBSERVED_AT)).update();
         catalog("quality-pan", OBSERVED_AT.minusSeconds(86400));
         source("myhome-1", "quality-pan", null);
         progressStore.link(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "myhome-1",
@@ -150,7 +154,7 @@ class LhAnnouncementQualityStoreTest {
     void 현재_회차의_원천만_사용하고_충돌하는_공고는_연결_성공으로_세지_않는다() {
         source("changed", "old-pan", null);
         jdbc.sql("UPDATE myhome_announcement_source_rows SET collected_at = :oldAt, last_seen_run_id = 'old'")
-                .param("oldAt", java.sql.Timestamp.from(OBSERVED_AT.minusSeconds(86400))).update();
+                .param("oldAt", Timestamp.from(OBSERVED_AT.minusSeconds(86400))).update();
         source("changed", "new-pan", null);
         checkpoint("old-pan", OBSERVED_AT.minusSeconds(60));
         source("conflict", "conflict-a", null);
@@ -169,7 +173,7 @@ class LhAnnouncementQualityStoreTest {
         assertThat(service.snapshot().supplyCollection().collectedRequests()).isOne();
 
         jdbc.sql("UPDATE lh_announcement_catalog_entries SET changed_at = :changedAt")
-                .param("changedAt", java.sql.Timestamp.from(OBSERVED_AT.minusSeconds(60))).update();
+                .param("changedAt", Timestamp.from(OBSERVED_AT.minusSeconds(60))).update();
         entityManager.clear();
         assertThat(service.snapshot().supplyCollection().collectedRequests()).isOne();
     }
@@ -194,12 +198,12 @@ class LhAnnouncementQualityStoreTest {
                 VALUES (:panId, :panId, '03', '06', '07', '062', '{}', :changedAt, :now, true, 0, '20260901', '20260928', :record)
                 """).param("panId", panId)
                 .param("record", fixtures.record("LH_ANNOUNCEMENT_CATALOG"))
-                .param("changedAt", java.sql.Timestamp.from(changedAt))
-                .param("now", java.sql.Timestamp.from(OBSERVED_AT)).update();
+                .param("changedAt", Timestamp.from(changedAt))
+                .param("now", Timestamp.from(OBSERVED_AT)).update();
     }
 
     private void source(String pblancId, String panId, String endDate) {
-        var values = new java.util.HashMap<String, Object>();
+        var values = new HashMap<String, Object>();
         values.put("pblancId", pblancId);
         values.put("houseSn", 1);
         values.put("suplyInsttNm", "LH");
@@ -207,10 +211,10 @@ class LhAnnouncementQualityStoreTest {
         values.put("url", "https://apply.lh.or.kr/notice?panId=" + panId
                 + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07");
         values.put("endDe", endDate);
-        var snapshot = tools.jackson.databind.json.JsonMapper.builder().build().convertValue(values,
+        var snapshot = JsonMapper.builder().build().convertValue(values,
                 MyHomeAnnouncementSourceSnapshot.class);
-        var row = MyHomeAnnouncementSource.from(0, snapshot);
-        row.markSeen("current", OBSERVED_AT);
+        var row = MyHomeSourceViews.announcement(0, snapshot);
+        row = MyHomeSourceViews.seen(row, "current", OBSERVED_AT);
         sources.save(row);
     }
 

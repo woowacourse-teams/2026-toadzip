@@ -5,8 +5,4 @@ public record MyHomeRegion(String provinceCode, String districtCode, String prov
     public String description() {
         return provinceName + " " + districtName;
     }
-
-    public String requestDescription() {
-        return "brtcCode=" + provinceCode + "&signguCode=" + districtCode;
-    }
 }

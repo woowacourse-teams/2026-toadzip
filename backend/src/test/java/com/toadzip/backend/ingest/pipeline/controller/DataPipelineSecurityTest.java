@@ -18,6 +18,7 @@ import com.toadzip.backend.global.security.SecurityErrorResponseWriter;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionQueryService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import com.toadzip.backend.privacy.repository.PrivacyNoticeCatalog;
 import com.toadzip.backend.user.repository.UserRepository;
@@ -62,6 +63,7 @@ class DataPipelineSecurityTest {
 
     @Autowired private MockMvc mockMvc;
     @MockitoBean private DataPipelineExecutionService service;
+    @MockitoBean private DataPipelineExecutionQueryService executionQuery;
 
     @Test
     void 인증되지_않은_사용자는_중지할_수_없다() throws Exception {

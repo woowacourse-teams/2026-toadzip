@@ -6,12 +6,10 @@ import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
-import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollector;
-import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
+import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
 import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import lombok.RequiredArgsConstructor;
@@ -22,8 +20,7 @@ import org.springframework.stereotype.Service;
 public class AnnouncementRegistrationService {
 
     private final AnnouncementRepository announcements;
-    private final MyHomeAnnouncementCollector collector;
-    private final ExternalDataRetryExecutor retry;
+    private final MyHomeAnnouncementCollectionService myHomeCollection;
     private final MyHomeAnnouncementSourceReader sources;
     private final LhAnnouncementExternalCollectionService lhCollection;
     private final MyHomeAnnouncementMappingService mapping;
@@ -44,7 +41,7 @@ public class AnnouncementRegistrationService {
             throw new AnnouncementRegistrationException("이미 등록된 공고입니다: " + identifier);
         }
         try {
-            int count = collector.collectAnnouncement(identifier, retry);
+            int count = myHomeCollection.collectAnnouncement(identifier);
             return new DataPipelineStepResult("{\"storedRowCount\":" + count + "}", 0, 0, 0);
         }
         catch (InvalidIngestRequestException exception) {
@@ -60,7 +57,7 @@ public class AnnouncementRegistrationService {
     }
 
     private DataPipelineStepResult collectLh(String identifier, ExternalDataSource target) {
-        var executionId = IngestExecutionContext.currentExecutionId().orElse(null);
+        var executionId = IngestExecutionScope.currentExecutionId().orElse(null);
         boolean hasLhSource = sources.findAllByPblancIdOrderByIdAsc(identifier).stream()
                 .filter(source -> executionId == null || executionId.toString().equals(source.getLastSeenRunId()))
                 .anyMatch(source -> LhProviderPolicy.isLh(source.getSuplyInsttNm()));
@@ -80,7 +77,7 @@ public class AnnouncementRegistrationService {
     private ExternalDataCollectionReport refreshLh(
             ExternalDataSource target, String identifier
     ) {
-        var executionId = IngestExecutionContext.currentExecutionId().orElse(null);
+        var executionId = IngestExecutionScope.currentExecutionId().orElse(null);
         if (executionId != null) {
             return lhCollection.refresh(target, identifier, executionId);
         }

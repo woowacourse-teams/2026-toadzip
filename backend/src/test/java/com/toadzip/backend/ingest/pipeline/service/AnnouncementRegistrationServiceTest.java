@@ -14,11 +14,10 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
-import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollector;
+import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
@@ -36,18 +35,17 @@ import tools.jackson.databind.json.JsonMapper;
 class AnnouncementRegistrationServiceTest {
 
     @Mock private AnnouncementRepository announcements;
-    @Mock private MyHomeAnnouncementCollector collector;
-    @Mock private ExternalDataRetryExecutor retry;
+    @Mock private MyHomeAnnouncementCollectionService myHomeCollection;
     @Mock private MyHomeAnnouncementSourceReader sources;
     @Mock private LhAnnouncementExternalCollectionService lhCollection;
     @Mock private MyHomeAnnouncementMappingService mapping;
-    @Mock private MyHomeAnnouncementSource source;
+    @Mock private MyHomeAnnouncementSourceView source;
     @Mock private Announcement announcement;
     private AnnouncementRegistrationService service;
 
     @BeforeEach
     void setUp() {
-        service = new AnnouncementRegistrationService(announcements, collector, retry, sources, lhCollection,
+        service = new AnnouncementRegistrationService(announcements, myHomeCollection, sources, lhCollection,
                 mapping, new DataPipelineStepResultAdapter(JsonMapper.builder().build()));
     }
 
@@ -58,12 +56,12 @@ class AnnouncementRegistrationServiceTest {
         assertThatThrownBy(() -> service.execute(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS, "21026"))
                 .hasMessageContaining("이미 등록");
 
-        verifyNoInteractions(collector, lhCollection, mapping);
+        verifyNoInteractions(myHomeCollection, lhCollection, mapping);
     }
 
     @Test
     void 없는_공고는_구체적인_실패_사유를_전달한다() {
-        when(collector.collectAnnouncement("missing", retry))
+        when(myHomeCollection.collectAnnouncement("missing"))
                 .thenThrow(new InvalidIngestRequestException("공고를 찾을 수 없습니다: missing"));
 
         assertThatThrownBy(() -> service.execute(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS, "missing"))
@@ -74,7 +72,7 @@ class AnnouncementRegistrationServiceTest {
 
     @Test
     void 마이홈_호출_제한을_구분해_전달한다() {
-        when(collector.collectAnnouncement("21026", retry)).thenThrow(new ExternalDataCallFailureException(
+        when(myHomeCollection.collectAnnouncement("21026")).thenThrow(new ExternalDataCallFailureException(
                 ExternalDataSource.MYHOME_ANNOUNCEMENT, "page=1", 1,
                 ExternalDataRequestException.rateLimited("limit")));
 

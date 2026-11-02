@@ -13,31 +13,44 @@ import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.service.RoadAddressGeocodingService;
+import com.toadzip.backend.ingest.mapping.domain.AnnouncementSupplyMatchDecision;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
+import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
+import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingFailureRepository;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.Comparator;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
+@ExtendWith(IngestExecutionExtension.class)
 @SpringBootTest
 @ActiveProfiles("test")
 class MyHomeComplexMappingServiceTest {
@@ -69,19 +82,19 @@ class MyHomeComplexMappingServiceTest {
     private SupplyRowRepository supplyRowRepository;
 
     @Autowired
-    private org.springframework.jdbc.core.simple.JdbcClient jdbc;
+    private JdbcClient jdbc;
 
     @Autowired
-    private com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository matchDecisions;
+    private AnnouncementSupplyMatchDecisionRepository matchDecisions;
 
     @Autowired
     private SupplyMatchingFingerprint fingerprints;
 
-    private org.springframework.transaction.support.TransactionTemplate transactions;
+    private TransactionTemplate transactions;
 
     @Autowired
-    void setTransactions(org.springframework.transaction.PlatformTransactionManager transactionManager) {
-        transactions = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+    void setTransactions(PlatformTransactionManager transactionManager) {
+        transactions = new TransactionTemplate(transactionManager);
     }
 
     @MockitoBean
@@ -104,6 +117,18 @@ class MyHomeComplexMappingServiceTest {
     }
 
     @Test
+    void 실행_소유권_밖에서_부른_전체_정제는_아무것도_저장하지_않고_거절한다() {
+        sourceRepository.save(source("46A", "46.8000", "20.2000"));
+
+        try (var ignored = IngestExecutionScope.open(null)) {
+            assertThatThrownBy(() -> service.mapAll()).isInstanceOf(IllegalStateException.class)
+                    .hasMessage("수집·정제는 실행 소유권 안에서만 실행할 수 있습니다.");
+        }
+
+        assertThat(complexRepository.count()).isZero();
+    }
+
+    @Test
     void 전체_정제가_좌표와_단지와_주택형을_한_번에_저장한다() {
         sourceRepository.saveAll(List.of(
                 source("46A", "46.8000", "20.2000"),
@@ -122,7 +147,7 @@ class MyHomeComplexMappingServiceTest {
     @Test
     void 마이홈에_없던_관리자_등록_단지는_마이홈_단지가_생기면_새로_만들지_않고_연결해_비워_둔_값만_채운다() {
         var admin = complexRepository.save(HousingComplex.create("관리자 등록 단지", HousingComplex.ADMIN_SOURCE_PREFIX + "test",
-                "NATIONAL_RENTAL", com.toadzip.backend.housing.domain.Address.create("서울특별시 종로구 테스트로 1",
+                "NATIONAL_RENTAL", Address.create("서울특별시 종로구 테스트로 1",
                         "1111010100100010000", "1111010100", "11", "11110", new BigDecimal("37.5"), new BigDecimal("126.9")),
                 350, "LH", null, null, null, null, null, null, null, null));
         var adminType = housingTypeRepository.save(HousingType.createFromMyHome(admin,
@@ -228,8 +253,8 @@ class MyHomeComplexMappingServiceTest {
                 123L, "46A", "46.8000", "20.2000", "서울주택도시공사", "20200101");
         MyHomeComplexSourceSnapshot secondData = data(
                 123L, "59A", "59.9500", "24.1000", "서울주택도시공사", "20200101");
-        MyHomeComplexSource first = source(withPrices(firstData, 10_000_000L, 200_000L));
-        MyHomeComplexSource second = source(withPrices(secondData, 20_000_000L, 100_000L));
+        MyHomeComplexSourceView first = source(withPrices(firstData, 10_000_000L, 200_000L));
+        MyHomeComplexSourceView second = source(withPrices(secondData, 20_000_000L, 100_000L));
         sourceRepository.saveAll(List.of(first, second));
 
         service.mapAll();
@@ -248,8 +273,8 @@ class MyHomeComplexMappingServiceTest {
         assertThat(complexRepository.findAll()).singleElement().satisfies(complex ->
                 assertThat(complex.getRentalPriceRange()).isNull());
 
-        first.replaceWith(withPrices(firstData, null, null));
-        second.replaceWith(withPrices(secondData, 30_000_000L, 300_000L));
+        first = MyHomeSourceViews.replaced(first, withPrices(firstData, null, null));
+        second = MyHomeSourceViews.replaced(second, withPrices(secondData, 30_000_000L, 300_000L));
         sourceRepository.saveAll(List.of(first, second));
 
         var report = service.mapAll();
@@ -272,7 +297,7 @@ class MyHomeComplexMappingServiceTest {
     @Test
     void 수집시각이_없는_과거_원천은_기본금액을_제공하지_않고_다른_단지도_정제한다() {
         sourceRepository.saveAll(List.of(
-                MyHomeComplexSource.from(withPrices(
+                MyHomeSourceViews.complex(withPrices(
                         data(123L, "46A", "46.8000", "20.2000", "서울주택도시공사", "20200101"),
                         10_000_000L, 200_000L)),
                 source(withPrices(
@@ -376,11 +401,11 @@ class MyHomeComplexMappingServiceTest {
 
     @Test
     void 변경된_마이홈_단지_정보를_기존_단지에_갱신한다() {
-        MyHomeComplexSource source = source("46A", "46.8000", "20.2000");
+        MyHomeComplexSourceView source = source("46A", "46.8000", "20.2000");
         sourceRepository.save(source);
         service.mapAll();
         Long complexId = complexRepository.findAll().getFirst().getId();
-        source.replaceWith(data(123L, "46A", "46.8000", "20.2000", "경기주택도시공사", "20200101"));
+        source = MyHomeSourceViews.replaced(source, data(123L, "46A", "46.8000", "20.2000", "경기주택도시공사", "20200101"));
         sourceRepository.save(source);
 
         var report = service.mapAll();
@@ -399,7 +424,7 @@ class MyHomeComplexMappingServiceTest {
         service.mapAll();
         Long housingTypeId = housingTypeRepository.findAll().getFirst().getId();
         sourceRepository.deleteAll();
-        MyHomeComplexSource correctedSource = source("46A", "47.12345", "20.2000");
+        MyHomeComplexSourceView correctedSource = source("46A", "47.12345", "20.2000");
         sourceRepository.save(correctedSource);
 
         var report = service.mapAll();
@@ -489,10 +514,10 @@ class MyHomeComplexMappingServiceTest {
 
     @Test
     void 변환_불가로_바뀐_원천은_전체_정제에서_한_번만_실패로_집계한다() {
-        MyHomeComplexSource source = source("46A", "46.8000", "20.2000");
+        MyHomeComplexSourceView source = source("46A", "46.8000", "20.2000");
         sourceRepository.save(source);
         service.mapAll();
-        source.replaceWith(dataWith(
+        source = MyHomeSourceViews.replaced(source, dataWith(
                 123L, "46A", "46.8000", "20.2000", "서울주택도시공사",
                 null, "국민임대", "20200101", "지역난방", "아파트", "복도식", "전체동 설치"
         ));
@@ -507,7 +532,7 @@ class MyHomeComplexMappingServiceTest {
 
     @Test
     void 실패했던_원천이_정상화되면_현재_실패_목록에서_제거한다() {
-        MyHomeComplexSource source = source(data(
+        MyHomeComplexSourceView source = source(data(
                 123L,
                 "46A",
                 "46.8000",
@@ -515,13 +540,13 @@ class MyHomeComplexMappingServiceTest {
                 "서울주택도시공사",
                 "20200101"
         ));
-        source.replaceWith(dataWith(
+        source = MyHomeSourceViews.replaced(source, dataWith(
                 123L, "46A", "46.8000", "20.2000", "서울주택도시공사",
                 null, "국민임대", "20200101", "지역난방", "아파트", "복도식", "전체동 설치"
         ));
         sourceRepository.save(source);
         service.mapAll();
-        source.replaceWith(dataWith(
+        source = MyHomeSourceViews.replaced(source, dataWith(
                 123L,
                 "46A",
                 "46.8000",
@@ -757,7 +782,7 @@ class MyHomeComplexMappingServiceTest {
         ));
         service.mapAll();
         List<HousingComplex> separated = complexRepository.findAll().stream()
-                .sorted(java.util.Comparator.comparing(HousingComplex::getId)).toList();
+                .sorted(Comparator.comparing(HousingComplex::getId)).toList();
         assertThat(separated).hasSize(2);
         HousingComplex fragment = separated.stream()
                 .filter(complex -> complex.getTotalHouseholdCount() == 13).findFirst().orElseThrow();
@@ -796,10 +821,21 @@ class MyHomeComplexMappingServiceTest {
         long representativeId = separated.getFirst().getId();
         HousingComplex donor = separated.getLast();
         HousingType donorType = housingTypeRepository.findAllByHousingComplex(donor).getFirst();
-        var decision = new com.toadzip.backend.ingest.mapping.domain.AnnouncementSupplyMatchDecision("row-split-1");
+        var decision = new AnnouncementSupplyMatchDecision("row-split-1");
         decision.confirm(donor.getId(), donorType.getId(), "source", targetFingerprint(donorType.getId()),
                 "https://example.com/evidence", "공고 52형은 조각 단지 주택형", "admin");
         long decisionId = matchDecisions.save(decision).getId();
+        // 공급행 묶음 보정으로 확정한 행도 같은 주택형을 가리키면 대표 단지로 옮긴 뒤 재확인 없이 유지한다.
+        Announcement announcement = announcementRepository.save(announcement());
+        long confirmedRowId = supplyRowRepository.save(supplyRow(announcement, donor, donorType)).getId();
+        jdbc.sql("UPDATE supply_rows SET confirmed_target_fingerprint = ? WHERE id = ?")
+                .params(targetFingerprint(donorType.getId()), confirmedRowId).update();
+        // 확정 뒤 주택형이 바뀌어 지문이 맞지 않는 행은 옮겨도 재확인하지 않고 검토 대상으로 남긴다.
+        jdbc.sql("UPDATE supply_rows SET source_supply_row_identifier = 'supply-row-confirmed' WHERE id = ?")
+                .param(confirmedRowId).update();
+        long staleRowId = supplyRowRepository.save(supplyRow(announcement, donor, donorType)).getId();
+        jdbc.sql("UPDATE supply_rows SET confirmed_target_fingerprint = 'stale' WHERE id = ?").param(staleRowId)
+                .update();
         jdbc.sql("""
                 INSERT INTO lh_household_complex_links (source_key, housing_complex_id, source_fingerprint,
                     target_fingerprint, reason, actor, updated_at, version) VALUES ('lh-split', ?, 's', 't', '확인', 'admin', now(), 0)
@@ -831,6 +867,10 @@ class MyHomeComplexMappingServiceTest {
         assertThat(jdbc.sql("SELECT housing_complex_id FROM housing_types WHERE id = ?").param(movedType.getId())
                 .query(Long.class).single()).isEqualTo(representativeId);
         assertThat(moved.getTargetFingerprint()).isEqualTo(targetFingerprint(movedType.getId()));
+        assertThat(jdbc.sql("SELECT confirmed_target_fingerprint FROM supply_rows WHERE id = ?").param(confirmedRowId)
+                .query(String.class).single()).isEqualTo(targetFingerprint(movedType.getId()));
+        assertThat(jdbc.sql("SELECT confirmed_target_fingerprint FROM supply_rows WHERE id = ?").param(staleRowId)
+                .query(String.class).single()).isEqualTo("stale");
         for (String table : List.of("lh_household_complex_links", "lh_household_target_decisions",
                 "housing_complex_reviews")) {
             assertThat(jdbc.sql("SELECT housing_complex_id FROM " + table).query(Long.class).list())
@@ -860,6 +900,57 @@ class MyHomeComplexMappingServiceTest {
                 .isEqualTo(2);
     }
 
+    @Test
+    void 분할_단지를_합칠_때_같은_주택형은_이미_저장된_주택형을_이어_쓴다() {
+        sourceRepository.saveAll(List.of(
+                source(split(30700086L, "59", "59.00", 1367, 80, SPLIT_ADDRESS)),
+                source(split(31260572L, "26", "26.37", 13, 81, SPLIT_ADDRESS))
+        ));
+        service.mapAll();
+        long storedTypeId = housingTypeRepository.findAll().stream()
+                .filter(type -> type.getName().equals("26")).findFirst().orElseThrow().getId();
+
+        sourceRepository.deleteAll();
+        sourceRepository.saveAll(List.of(
+                source(split(30700086L, "26", "26.37", 1367, 80, SPLIT_ADDRESS)),
+                source(split(31260572L, "26", "26.37", 13, 80, SPLIT_ADDRESS))
+        ));
+        service.mapAll();
+
+        assertThat(housingTypeRepository.findAll()).filteredOn(type -> type.getName().equals("26"))
+                .singleElement().extracting(HousingType::getId).isEqualTo(storedTypeId);
+    }
+
+    @Test
+    void 분할_단지를_합치면_한쪽에만_있던_수동값을_대표_단지가_이어받는다() {
+        List<HousingComplex> separated = separatedSplitComplexes();
+        jdbc.sql("UPDATE housing_complexes SET image_url = 'https://example.com/donor.png', "
+                + "recent_one_year_move_out_count = 3 WHERE id = ?").param(separated.getLast().getId()).update();
+
+        var report = mergeSeparatedSplitComplexes();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(complexRepository.findAll()).singleElement().satisfies(complex -> {
+            assertThat(complex.getId()).isEqualTo(separated.getFirst().getId());
+            assertThat(complex.getImageUrl()).isEqualTo("https://example.com/donor.png");
+            assertThat(complex.getRecentOneYearMoveOutCount()).isEqualTo(3);
+        });
+    }
+
+    @Test
+    void 분할_단지의_수동값이_서로_다르면_통합을_보류하고_원천값_충돌로_남긴다() {
+        List<HousingComplex> separated = separatedSplitComplexes();
+        jdbc.sql("UPDATE housing_complexes SET image_url = 'https://example.com/' || id || '.png'").update();
+
+        var report = mergeSeparatedSplitComplexes();
+
+        assertThat(report.failedSourceRowCount()).isEqualTo(2);
+        assertThat(service.findFailures(0, 10)).allSatisfy(failure ->
+                assertThat(failure.reason()).isEqualTo(MyHomeComplexMappingFailureReason.CONFLICTING_SOURCE_VALUE));
+        assertThat(complexRepository.findAll()).hasSize(2)
+                .extracting(HousingComplex::getImageUrl).doesNotHaveDuplicates();
+    }
+
     private String targetFingerprint(long housingTypeId) {
         return transactions.execute(status ->
                 fingerprints.target(housingTypeRepository.findById(housingTypeId).orElseThrow()));
@@ -872,10 +963,10 @@ class MyHomeComplexMappingServiceTest {
         ));
         service.mapAll();
         return complexRepository.findAll().stream()
-                .sorted(java.util.Comparator.comparing(HousingComplex::getId)).toList();
+                .sorted(Comparator.comparing(HousingComplex::getId)).toList();
     }
 
-    private com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport mergeSeparatedSplitComplexes() {
+    private MyHomeComplexMappingReport mergeSeparatedSplitComplexes() {
         sourceRepository.deleteAll();
         sourceRepository.saveAll(List.of(
                 source(split(30700086L, "26", "26.37", 1367, 80, SPLIT_ADDRESS)),
@@ -933,7 +1024,7 @@ class MyHomeComplexMappingServiceTest {
         );
     }
 
-    private MyHomeComplexSource source(String styleName, String exclusiveArea, String commonArea) {
+    private MyHomeComplexSourceView source(String styleName, String exclusiveArea, String commonArea) {
         return source(data(
                 123L, styleName, exclusiveArea, commonArea, "서울주택도시공사", "20200101"
         ));
@@ -981,9 +1072,9 @@ class MyHomeComplexMappingServiceTest {
         );
     }
 
-    private MyHomeComplexSource source(MyHomeComplexSourceSnapshot data) {
-        MyHomeComplexSource source = MyHomeComplexSource.from(data);
-        source.markCollectedAt(COLLECTED_AT);
+    private MyHomeComplexSourceView source(MyHomeComplexSourceSnapshot data) {
+        MyHomeComplexSourceView source = MyHomeSourceViews.complex(data);
+        source = MyHomeSourceViews.collectedAt(source, COLLECTED_AT);
         return source;
     }
 

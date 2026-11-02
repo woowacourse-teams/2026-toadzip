@@ -4,10 +4,13 @@ import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import jakarta.persistence.EntityManager;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanWrapperImpl;
 import org.springframework.context.annotation.Profile;
@@ -97,9 +100,9 @@ public class CollectedSourceRows {
     }
 
     public long querySource(String source, String description, Instant collectedAt) {
-        Map<String, String> parameters = java.util.Arrays.stream(description.split("&"))
+        Map<String, String> parameters = Arrays.stream(description.split("&"))
                 .map(parameter -> parameter.split("=", 2))
-                .collect(java.util.stream.Collectors.toMap(pair -> pair[0], pair -> pair[1]));
+                .collect(Collectors.toMap(pair -> pair[0], pair -> pair[1]));
         var existing = jdbc.sql("SELECT id FROM lh_announcement_query_sources WHERE source = ? "
                 + "AND request_hash = ?").params(source, LhAnnouncementQuery.requestHashOf(description))
                 .query(Long.class).optional();
@@ -193,7 +196,7 @@ public class CollectedSourceRows {
             if (name.equals("class")) { continue; }
             Object value = wrapper.getPropertyValue(name);
             if (value instanceof Instant instant) { value = Timestamp.from(instant); }
-            result.put(name.replaceAll("([a-z0-9])([A-Z])", "$1_$2").toLowerCase(java.util.Locale.ROOT), value);
+            result.put(name.replaceAll("([a-z0-9])([A-Z])", "$1_$2").toLowerCase(Locale.ROOT), value);
         }
         return result;
     }

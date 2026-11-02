@@ -8,15 +8,26 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
+import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementSupplySourceFixtures;
+import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import com.toadzip.backend.notification.NotificationFixtures;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,14 +37,18 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
@@ -47,8 +62,8 @@ class SupplyCorrectionIntegrationTest {
     @Autowired private EntityManager entities;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private SupplyRowRepository rows;
-    @Autowired private com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures myhomeSources;
-    @Autowired private com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementSupplySourceFixtures lhSupplies;
+    @Autowired private MyHomeAnnouncementSourceFixtures myhomeSources;
+    @Autowired private LhAnnouncementSupplySourceFixtures lhSupplies;
     @MockitoBean private IngestExecutionOwnershipService ownership;
 
     @BeforeEach
@@ -92,7 +107,7 @@ class SupplyCorrectionIntegrationTest {
         var extra = request.get("rows").get(0).deepCopy();
         ((ObjectNode) extra).putNull("id").put("key", UUID.randomUUID().toString()).put("typeName", "26B");
         ((ObjectNode) extra.get("targets").get(0)).putNull("id").put("key", UUID.randomUUID().toString());
-        ((tools.jackson.databind.node.ArrayNode) request.get("rows")).add(extra);
+        ((ArrayNode) request.get("rows")).add(extra);
         var preview = preview(id, request);
         apply(id, request, preview).andExpect(status().isOk()).andExpect(jsonPath("$.data.alreadyApplied").value(false));
         apply(id, request, preview).andExpect(status().isOk()).andExpect(jsonPath("$.data.alreadyApplied").value(true));
@@ -122,7 +137,7 @@ class SupplyCorrectionIntegrationTest {
         var extra = request.get("rows").get(0).deepCopy();
         ((ObjectNode) extra).putNull("id").put("key", UUID.randomUUID().toString()).put("typeName", "26B");
         ((ObjectNode) extra.get("targets").get(0)).putNull("id").put("key", UUID.randomUUID().toString());
-        ((tools.jackson.databind.node.ArrayNode) request.get("rows")).add(extra);
+        ((ArrayNode) request.get("rows")).add(extra);
         apply(id, request, preview(id, request)).andExpect(status().isOk());
         var manual = rows.findAllByAnnouncement(row.getAnnouncement()).stream()
                 .filter(item -> item.getSourceSupplyRowIdentifier().startsWith("MANUAL:")).findFirst().orElseThrow();
@@ -149,7 +164,7 @@ class SupplyCorrectionIntegrationTest {
     }
 
     private ObjectNode withoutRow(ObjectNode request, String key) {
-        var rows = (tools.jackson.databind.node.ArrayNode) request.get("rows");
+        var rows = (ArrayNode) request.get("rows");
         for (int index = 0; index < rows.size(); index++) {
             if (rows.get(index).get("key").asText().equals(key)) { rows.remove(index); break; }
         }
@@ -302,7 +317,7 @@ class SupplyCorrectionIntegrationTest {
         return request;
     }
 
-    private org.springframework.test.web.servlet.ResultActions reviews(long id) throws Exception {
+    private ResultActions reviews(long id) throws Exception {
         return mvc.perform(get(root(id) + "/reviews").with(user("admin").roles("ADMIN"))).andExpect(status().isOk());
     }
 
@@ -319,19 +334,19 @@ class SupplyCorrectionIntegrationTest {
                 .andReturn().getResponse().getContentAsString()).get("data");
         var update = json.createObjectNode().put("version", row.getHousingComplex().getVersion())
                 .put("name", "26 공통").put("exclusiveArea", 27).put("impactToken", impact.get("token").asText());
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(path)
+        mvc.perform(MockMvcRequestBuilders.put(path)
                 .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
                 .content(json.writeValueAsString(update))).andExpect(status().isConflict());
         var correction = request(id);
         ((ObjectNode) correction.get("rows").get(0)).put("areaOverride", true);
         apply(id, correction, preview(id, correction)).andExpect(status().isOk());
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(path)
+        mvc.perform(MockMvcRequestBuilders.put(path)
                 .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
                 .content(json.writeValueAsString(update))).andExpect(status().isConflict());
         var latest = json.readTree(mvc.perform(get(path + "/impact").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
         update.put("impactToken", latest.get("token").asText());
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(path)
+        mvc.perform(MockMvcRequestBuilders.put(path)
                 .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
                 .content(json.writeValueAsString(update))).andExpect(status().isOk());
         mvc.perform(get("/api/v1/announcements/" + id)).andExpect(status().isOk())
@@ -347,7 +362,7 @@ class SupplyCorrectionIntegrationTest {
         var condition = (ObjectNode) input.get("targets").get(0);
         condition.put("deposit", "999999999999999999");
         var second = condition.deepCopy().putNull("id").put("key", "additional").put("target", "중복 범위 대상");
-        ((tools.jackson.databind.node.ArrayNode) input.get("targets")).add(second);
+        ((ArrayNode) input.get("targets")).add(second);
         preview(id, request);
         input.put("targetCountsComparable", true);
         mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
@@ -416,10 +431,10 @@ class SupplyCorrectionIntegrationTest {
                 .andExpect(jsonPath("$.data.rowSources[1].sourceKey").value("LH:PAN-77:SUPPLY:9"));
     }
 
-    private com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource lhSupply(String hash, int order) {
-        return com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource.read(null, order, "PAN-77", hash,
-                java.time.Instant.parse("2026-10-18T00:00:00Z"),
-                new com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot(
+    private LhAnnouncementSupplySourceView lhSupply(String hash, int order) {
+        return LhAnnouncementSupplySourceView.read(null, order, "PAN-77", hash,
+                Instant.parse("2026-10-18T00:00:00Z"),
+                new LhAnnouncementSupplySourceSnapshot(
                         "한스빌", "26", "26.4673", null, "300", "10", "1000000", "200000"));
     }
 
@@ -440,10 +455,10 @@ class SupplyCorrectionIntegrationTest {
     @Test
     void 확인한_일정이_참조하는_마지막_단지연결을_제외할_수_없다() throws Exception {
         var row = fixture();
-        var schedule = com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule.verified(
+        var schedule = AnnouncementApplicationSchedule.verified(
                 row.getAnnouncement(), row.getHousingComplex(), null,
-                com.toadzip.backend.announcement.domain.ApplicationScheduleState.CONFIRMED, null,
-                java.time.LocalDate.of(2026, 10, 19), java.time.LocalDate.of(2026, 10, 20), null, null,
+                ApplicationScheduleState.CONFIRMED, null,
+                LocalDate.of(2026, 10, 19), LocalDate.of(2026, 10, 20), null, null,
                 "https://example.com/notice.pdf", 3);
         entities.persist(schedule); entities.flush();
         long id = row.getAnnouncement().getId(); var request = request(id);
@@ -508,8 +523,7 @@ class SupplyCorrectionIntegrationTest {
         var state = json.readTree(mvc.perform(get(root).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
         var request = json.createObjectNode().put("snapshotToken", state.get("snapshotToken").asText());
-        var document = (ObjectNode) json.readTree(java.nio.file.Files.readString(
-                java.nio.file.Path.of("../docs/fixtures/announcement-import-v1-valid.json")));
+        var document = (ObjectNode) json.readTree(new ClassPathResource("announcement/import-v1-valid.json").getInputStream());
         ((ObjectNode) document.get("announcement")).put("name", "PDF 보정 공고");
         request.set("document", document);
         request.putArray("fields").add("name"); request.putArray("schedules"); request.putArray("attachments");
@@ -543,13 +557,13 @@ class SupplyCorrectionIntegrationTest {
 
     private SupplyRow groupedFixture() {
         var row = fixture();
-        var source = com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource.from(1,
-                new com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot(
+        var source = MyHomeSourceViews.announcement(1,
+                new MyHomeAnnouncementSourceSnapshot(
                         row.getAnnouncement().getSourceAnnouncementIdentifier(), 1, "모집중", "국민임대 입주자 모집공고",
                         "한국토지주택공사", "26A,B", "국민임대", null, "20261001", "20261106", "20261008", "20261015",
                         null, "https://example.com/manual", null, null, row.getHousingComplex().getName(), "서울특별시", "중구",
                         null, null, null, row.getSupplyPnu(), null, null, 170, null, null, null, null));
-        source.markCollectedAt(java.time.Instant.parse("2026-10-08T00:00:00Z"));
+        source = MyHomeSourceViews.collectedAt(source, Instant.parse("2026-10-08T00:00:00Z"));
         myhomeSources.save(source);
         row.recordMyHomeSource(source.getSourceKey());
         row = rows.save(row);
@@ -568,7 +582,7 @@ class SupplyCorrectionIntegrationTest {
         var second = first.deepCopy().putNull("id").put("key", "new-b").put("typeName", "26B")
                 .put("housingTypeId", type.getId()).put("displayOrder", 1);
         ((ObjectNode) second.get("targets").get(0)).putNull("id").put("key", "new-target-b");
-        ((tools.jackson.databind.node.ArrayNode) request.get("rows")).add(second);
+        ((ArrayNode) request.get("rows")).add(second);
         var group = request.putArray("newGroups").addObject().put("sourceRowId", row.getId())
                 .put("sharedHouseholdCount", 170);
         group.putArray("rowKeys").add(first.get("key").asText()).add("new-b");
@@ -607,7 +621,7 @@ class SupplyCorrectionIntegrationTest {
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
     }
 
-    private org.springframework.test.web.servlet.ResultActions apply(long id, ObjectNode request, JsonNode preview)
+    private ResultActions apply(long id, ObjectNode request, JsonNode preview)
             throws Exception {
         var body = json.createObjectNode().set("correction", request);
         body.put("confirmationToken", preview.get("confirmationToken").asText());

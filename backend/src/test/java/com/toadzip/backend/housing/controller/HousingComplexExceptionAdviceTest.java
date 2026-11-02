@@ -4,16 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
-import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpStatus;
-import org.springframework.mock.web.MockHttpServletRequest;
-
+import com.toadzip.backend.global.exception.ErrorResponse;
 import com.toadzip.backend.global.exception.RequestTraceIdResolver;
 import com.toadzip.backend.housing.exception.HousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.InvalidComplexCursorException;
 import com.toadzip.backend.housing.exception.InvalidComplexRequestException;
 import com.toadzip.backend.housing.exception.InvalidMapBoundsException;
 import com.toadzip.backend.housing.exception.InvalidRegionCodeException;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 class HousingComplexExceptionAdviceTest {
 
@@ -66,7 +67,7 @@ class HousingComplexExceptionAdviceTest {
     }
 
     private void assertError(
-            org.springframework.http.ResponseEntity<com.toadzip.backend.global.exception.ErrorResponse> response,
+            ResponseEntity<ErrorResponse> response,
             HttpStatus status,
             String code
     ) {
