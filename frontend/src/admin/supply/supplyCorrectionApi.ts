@@ -20,7 +20,7 @@ export type RowSource = { rowKey: string; category: string; sourceKey: string }
 export type LhSupplyRow = { rowIdentifier: string; complexLabel: string | null; typeName: string | null; exclusiveArea: string | null }
 /**
  * deletableRowKeys: 지울 수 있는 행(원천 없이 관리자가 추가한 행). 원천행은 제외만 할 수 있다.
- * unattachedLhSupplyRows: 어떤 공급행에도 붙지 않은 LH 공급 원본 행. 있으면 서버가 새 공급행 추가를 거절한다.
+ * unattachedLhSupplyRows: LH 원천 소유 공고에서 아직 공급행이 되지 않은 LH 공급 원본 행. 있으면 서버가 새 공급행 추가를 거절한다.
  */
 export type SupplyWorkspace = { snapshotToken: string; version: number; rows: CorrectionRow[]; sources: CorrectionSource[]; sourceWarnings?: string[]; rowSources?: RowSource[]; deletableRowKeys?: string[]; unattachedLhSupplyRows?: LhSupplyRow[] }
 export type NewSupplyGroup = { sourceRowId: number; rowKeys: string[]; sharedHouseholdCount: number }
@@ -47,7 +47,7 @@ function row(value: unknown): CorrectionRow {
     || !nullableId(value.housingComplexId) || !nullableText(value.housingComplexName) || !nullableId(value.housingTypeId)
     || !nullableId(value.groupId) || !nullableCount(value.sharedHouseholdCount)
     || typeof value.protectedValues !== 'boolean' || typeof value.excluded !== 'boolean' || !count(value.displayOrder)
-    || typeof value.complexName !== 'string' || typeof value.typeName !== 'string' || typeof value.pnu !== 'string'
+    || typeof value.complexName !== 'string' || typeof value.typeName !== 'string' || value.pnu !== null && typeof value.pnu !== 'string'
     || !nullableText(value.moveInMonth) || !['NEW_SUPPLY', 'RESUPPLY'].includes(String(value.category))
     || !nullableCount(value.householdCount) || typeof value.areaOverride !== 'boolean'
     || !area(value.exclusiveArea) || !area(value.supplyArea) || !Array.isArray(value.targets)
@@ -55,7 +55,8 @@ function row(value: unknown): CorrectionRow {
   if (value.newHousingType !== null && (!isRecord(value.newHousingType) || typeof value.newHousingType.name !== 'string'
     || typeof value.newHousingType.exclusiveArea !== 'number' || !area(value.newHousingType.exclusiveArea)
     || !area(value.newHousingType.supplyArea))) invalid()
-  return { ...value, targets: value.targets.map(target) } as CorrectionRow
+  // 지번을 모르는 공급행은 PNU가 null이다. 화면은 빈 칸으로 다루고, 서버는 빈 PNU를 null로 받는다.
+  return { ...value, pnu: value.pnu ?? '', targets: value.targets.map(target) } as CorrectionRow
 }
 export function parseSupplyWorkspace(value: unknown): SupplyWorkspace {
   if (!isRecord(value) || typeof value.snapshotToken !== 'string' || !count(value.version)

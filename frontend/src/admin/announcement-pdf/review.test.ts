@@ -21,12 +21,20 @@ it('한스빌의 공통 모집수는 묶음에 한 번만 넣고 기존 공급�
   expect(workspace.supply.rows[0].householdCount).toBe(170)
 })
 
+it('지번을 모르는 단지의 공급행은 소재지 PNU 없이 저장하고 문서 PNU도 비운다', () => {
+  const { review, workspace } = scenario('hansville')
+  workspace.supply.rows.forEach(row => { row.pnu = '' })
+  const request = assembleReview(review, workspace, evidence)
+  expect(request.correction.rows.every(row => row.pnu === '')).toBe(true)
+  expect(request.document.supplyRows.map(row => (row.complexReference as { pnu: unknown }).pnu)).toEqual(request.document.supplyRows.map(() => null))
+})
+
 it('연결되지 않은 LH 행이 있으면 새 공급정보 추가를 막고 지원 종료한 LH 행 연결을 권하지 않는다', () => {
   const { review, workspace } = scenario('hansville')
   const index = review.rows.findIndex(row => row.include && row.proposal.destination === 'new')
   expect(index).toBeGreaterThanOrEqual(0)
   const locked = { ...workspace, supply: { ...workspace.supply, unattachedLhSupplyRows: [{ rowIdentifier: 'LH:P:SUPPLY:1', complexLabel: '한스빌', typeName: '26B', exclusiveArea: null }] } }
-  expect(() => assembleReview(review, locked, evidence)).toThrow(`공급행 ${index + 1}: 공급정보에 연결되지 않은 LH 행은 새 공급정보로 추가할 수 없습니다. 기존 공급정보 행을 고르세요.`)
+  expect(() => assembleReview(review, locked, evidence)).toThrow(`공급행 ${index + 1}: 아직 공급행이 되지 않은 LH 공급 원본이 있어 새 공급정보로 추가할 수 없습니다. 공고 정제를 다시 실행하거나 기존 공급정보 행을 고르세요.`)
 })
 
 it('광주첨단의 단지별 일정은 기존 ID마다 복사하고 새 방문접수도 추가한다', () => {
@@ -284,4 +292,25 @@ it('한글 문장에 섞인 한자는 확인 필요로 표시하고 기본 반�
 it('일정 일시는 자정이면 날짜만, 시각이 있으면 시:분까지 보여 준다', () => {
   expect(['2026-06-01T00:00:00', '2026-06-01T16:00:00', '2026-06-01T09:30', '2026-06-01', null].map(shownDateTime))
     .toEqual(['2026-06-01', '2026-06-01 16:00', '2026-06-01 09:30', '2026-06-01', '미확인'])
+})
+
+it('주택형 공고 값은 고른 이름·공급면적과 건설호수만 보내고 고르지 않은 값과 공급대상 괄호는 보내지 않는다', () => {
+  const { review, workspace } = scenario('gwangju')
+  const valueOf = (key: string) => assembleReview(review, workspace, evidence).housingTypeValues?.find(value => value.rowKey === key)
+  const index = review.rows.findIndex(row => row.include && row.proposal.destination === 'row:22')
+  expect(valueOf('row:22')).toEqual({ rowKey: 'row:22', name: '39', supplyArea: 66.6673, householdCount: null })
+  expect(valueOf('row:26')?.name).toBe('26')
+  const areaOnly = review.rows.findIndex(row => row.include && row.proposal.destination === 'row:24')
+  const label = review.rows[areaOnly].cells.findIndex(cell => cell.field === 'sourceHousingTypeName')
+  review.rows[areaOnly].cells[label] = editCell(review.rows[areaOnly].cells[label], '36.91㎡')
+  expect(valueOf('row:24')?.name).toBeNull()
+  const row = review.rows[index], edited = row.cells.findIndex(cell => cell.field === 'supplyArea')
+  row.cells[edited] = editCell(row.cells[edited], '66.6')
+  expect(valueOf('row:22')?.supplyArea).toBe(66.6)
+  const name = row.cells.findIndex(cell => cell.field === 'sourceHousingTypeName')
+  row.cells[name] = { ...row.cells[name], selected: false, state: 'changed' }
+  expect(valueOf('row:22')?.name).toBeNull()
+  const area = row.cells.findIndex(cell => cell.field === 'supplyArea')
+  row.cells[area] = { ...row.cells[area], selected: false, state: 'changed' }
+  expect(valueOf('row:22')).toBeUndefined()
 })

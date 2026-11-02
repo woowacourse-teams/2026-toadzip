@@ -18,6 +18,10 @@ public interface HousingTypeRepository extends JpaRepository<HousingType, Long> 
     @Query(value = "SELECT * FROM housing_types WHERE housing_complex_id = :complexId ORDER BY id", nativeQuery = true)
     List<HousingType> findAllIncludingTrashByHousingComplexId(long complexId);
 
+    /** 주택형 엔티티를 읽지 않고 소속 단지 id만 읽는다. 단지를 잠그기 전에 주택형을 영속성 컨텍스트에 올리지 않으려고 쓴다. */
+    @Query("SELECT DISTINCT type.housingComplex.id FROM HousingType type WHERE type.id IN :ids")
+    List<Long> findComplexIdsByIdIn(Collection<Long> ids);
+
     @Query(value = "SELECT * FROM housing_types WHERE id = :id", nativeQuery = true)
     Optional<HousingType> findIncludingTrashById(long id);
 }

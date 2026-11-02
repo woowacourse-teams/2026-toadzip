@@ -87,8 +87,8 @@ GET 조회는 그대로 둔다. 관리자 화면은 PDF 보정·공급정보 편
 `POST /api/admin/ingest/announcement-supply-matches/{identifier}/lh-links`와 `/lh-links/release`는 410(`INGEST_OPERATION_RETIRED`)으로 거절하고 GET은 그대로 둔다.
 LH 공급 행을 공급행으로 만드는 규칙은 [LH 공고 연결](../../features/ingest/lh-linking.md)을 따른다.
 
-PDF 보정과 공급정보 편집표는 공급정보에 연결되지 않은 LH 공급 원본 행(`unattachedLhSupplyRows`)이 있으면 새 공급행 추가를 막고,
-기존 공급정보 행을 고르게 한다. LH 펼침 행이 있는 단지에 예전에 직접 추가한 행은 `LH 원본과 중복 가능`으로 표시하며 자동으로 지우지 않는다.
+PDF 보정과 공급정보 편집표는 LH 원천 소유 공고에 아직 공급행이 되지 않은 LH 공급 원본 행(`unattachedLhSupplyRows`)이 있으면
+새 공급행 추가를 막고, 공고 정제를 다시 실행하거나 기존 공급정보 행을 고르게 한다. LH 펼침 행이 있는 단지에 예전에 직접 추가한 행은 `LH 원본과 중복 가능`으로 표시하며 자동으로 지우지 않는다.
 같은 주택형이면 공급정보 편집표의 `펼친 행으로 합치기`로 임대조건·표기를 옮긴 뒤 직접 추가한 행을 지운다.
 
 ## 한 원천에서 복수 공급행 보정

@@ -19,7 +19,8 @@ export const labels: Record<string, string> = {
   ONLINE: '온라인', VISIT: '방문', MAIL: '우편', true: '설치', false: '미설치',
   CONFIRMED: '확정', CONDITIONAL: '조건부', UPDATE_SCHEDULE: '접수 일정 수정',
   UPDATE: '정보 수정', DELETE: '휴지통 이동', RESTORE: '복구', UPDATE_SUPPLY: '공급정보 수정',
-  UPDATE_HOUSING_TYPE: '주택형 수정', UPDATE_SUPPLY_TARGET: '공급대상 임대조건 수정',
+  UPDATE_HOUSING_TYPE: '주택형 수정', UPDATE_HOUSING_TYPE_FROM_PDF: 'PDF 공고로 주택형 갱신',
+  UPDATE_SUPPLY_TARGET: '공급대상 임대조건 수정',
 }
 export const rentals = ['HAPPY_HOUSING', 'NATIONAL_RENTAL', 'PERMANENT_RENTAL', 'PUBLIC_RENTAL',
   'PUBLIC_RENTAL_50Y', 'INTEGRATED_PUBLIC_RENTAL', 'REDEVELOPMENT_RENTAL', 'LONG_TERM_JEONSE', 'ETC']
@@ -35,7 +36,7 @@ export const complexSections: Section[] = [
   {title:'주소·위치', fields:[{name:'address.roadAddress',label:'도로명주소',required:true},
     {name:'address.latitude',label:'위도',type:'number',required:true,min:-90,max:90,step:'0.000001'},
     {name:'address.longitude',label:'경도',type:'number',required:true,min:-180,max:180,step:'0.000001'}]},
-  {title:'주소 식별정보',fields:[{name:'address.pnu',label:'PNU',required:true},{name:'address.legalDongCode',label:'법정동 코드',required:true},
+  {title:'주소 식별정보',fields:[{name:'address.pnu',label:'PNU'},{name:'address.legalDongCode',label:'법정동 코드',required:true},
     {name:'address.provinceCode',label:'시·도 코드',required:true},{name:'address.cityCountyDistrictCode',label:'시·군·구 코드',required:true}]},
   {title:'시설정보', fields:[{name:'totalHouseholdCount',label:'전체 세대수',type:'number',min:0,required:true},
     {name:'totalParkingCount',label:'주차대수',type:'number',min:0},{name:'moveOutCountLastYear',label:'최근 1년 퇴거자 수',type:'number',min:0},

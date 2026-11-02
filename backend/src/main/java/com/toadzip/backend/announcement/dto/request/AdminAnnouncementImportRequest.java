@@ -101,7 +101,7 @@ public record AdminAnnouncementImportRequest(
     public record ComplexReferenceRequest(
             @NotBlank(message = "필수 값입니다.") @Size(max = 255, message = "255자 이하여야 합니다.")
             String sourceComplexName,
-            @NotBlank(message = "필수 값입니다.")
+            /** 지번을 모르는 단지는 비운다. 값이 있으면 19자리 숫자다. */
             @Pattern(regexp = "^[0-9]{19}$", message = "19자리 숫자여야 합니다.")
             String pnu
     ) implements RejectUnknownJsonFields {

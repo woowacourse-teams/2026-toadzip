@@ -133,7 +133,6 @@ public class AdminAnnouncementImportValidationService {
         return supplyRow != null
                 && supplyRow.complexReference() != null
                 && supplyRow.complexReference().sourceComplexName() != null
-                && supplyRow.complexReference().pnu() != null
                 && request.announcement() != null
                 && request.announcement().rentalType() != null;
     }
@@ -144,10 +143,10 @@ public class AdminAnnouncementImportValidationService {
             AdminAnnouncementImportRequest request
     ) {
         String sourceName = supplyRow.complexReference().sourceComplexName();
-        List<HousingComplex> complexes = housingComplexRepository.findAllByPnuAndSupplyType(
-                supplyRow.complexReference().pnu(),
-                request.announcement().rentalType().name()
-        );
+        // 신규 등록은 PNU로만 단지 후보를 찾는다. PNU가 없으면 후보 없음으로 두어 등록을 막는다.
+        List<HousingComplex> complexes = supplyRow.complexReference().pnu() == null ? List.of()
+                : housingComplexRepository.findAllByPnuAndSupplyType(supplyRow.complexReference().pnu(),
+                        request.announcement().rentalType().name());
         List<ImportComplexCandidateResponse> candidates = complexes.stream()
                 .sorted(candidateComparator(sourceName))
                 .map(this::candidateOf)

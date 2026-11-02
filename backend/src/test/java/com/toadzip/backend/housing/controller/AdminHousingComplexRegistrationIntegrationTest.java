@@ -115,6 +115,31 @@ class AdminHousingComplexRegistrationIntegrationTest {
     }
 
     @Test
+    void 지번을_모르는_단지는_PNU_없이_저장하고_빈_PNU는_거부한다() throws Exception {
+        MvcResult result = mockMvc.perform(post(ENDPOINT)
+                        .with(user("admin").roles("ADMIN"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validRequest().replace("\"pnu\": \"1114010100100010000\"", "\"pnu\": null")))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long housingComplexId = objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("data").get("housingComplexId").asLong();
+        entityManager.flush();
+        entityManager.clear();
+        HousingComplex saved = housingComplexRepository.findById(housingComplexId).orElseThrow();
+        assertThat(saved.getAddress().getPnu()).isNull();
+        assertThat(saved.getAddress().getCityCountyDistrictCode()).isEqualTo("11140");
+
+        mockMvc.perform(post(ENDPOINT)
+                        .with(user("admin").roles("ADMIN"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validRequest().replace("\"pnu\": \"1114010100100010000\"", "\"pnu\": \" \"")))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void 누락_공백_범위_URL_검증_실패는_입력값_오류를_반환한다() throws Exception {
         mockMvc.perform(post(ENDPOINT)
                         .with(user("admin").roles("ADMIN"))

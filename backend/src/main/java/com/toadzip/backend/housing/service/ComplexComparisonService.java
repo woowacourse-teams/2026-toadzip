@@ -34,6 +34,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -235,7 +236,7 @@ public class ComplexComparisonService {
     }
 
     private boolean sameAddress(AddressRequest before, AddressRequest after) {
-        return before.roadAddress().equals(after.roadAddress()) && before.pnu().equals(after.pnu())
+        return before.roadAddress().equals(after.roadAddress()) && Objects.equals(before.pnu(), after.pnu())
                 && before.legalDongCode().equals(after.legalDongCode())
                 && before.provinceCode().equals(after.provinceCode())
                 && before.cityCountyDistrictCode().equals(after.cityCountyDistrictCode())

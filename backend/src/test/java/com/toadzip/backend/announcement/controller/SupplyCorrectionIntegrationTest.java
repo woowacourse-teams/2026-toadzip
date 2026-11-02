@@ -106,6 +106,21 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
+    void 지번을_모르는_단지의_공급행은_소재지_PNU를_비워_저장한다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        jdbc.update("UPDATE housing_complexes SET pnu = NULL WHERE id = ?", row.getHousingComplex().getId());
+        jdbc.update("UPDATE supply_rows SET supply_pnu = NULL WHERE id = ?", row.getId());
+        entities.clear();
+        var request = request(id);
+        ((ObjectNode) request.get("rows").get(0)).put("pnu", "").put("typeName", "26A");
+
+        apply(id, request, preview(id, request)).andExpect(status().isOk());
+
+        assertThat(jdbc.queryForObject("SELECT supply_pnu IS NULL FROM supply_rows WHERE id = ?", Boolean.class,
+                row.getId())).isTrue();
+    }
+
+    @Test
     void 같은_작업_재전송은_추가행과_이력을_중복생성하지_않는다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId(); var request = request(id);
         var extra = request.get("rows").get(0).deepCopy();
@@ -404,7 +419,7 @@ class SupplyCorrectionIntegrationTest {
         mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType("application/json").content(json.writeValueAsString(request))).andExpect(status().isBadRequest());
         input.put("targetCountsComparable", false).putNull("housingTypeId");
-        input.putObject("newHousingType").put("name", "26").put("exclusiveArea", new BigDecimal("26.4673"));
+        input.putObject("newHousingType").put("name", "30").put("exclusiveArea", new BigDecimal("30.1200"));
         long events = jdbc.queryForObject("SELECT count(*) FROM notification_outbox_events", Long.class);
         var preview = preview(id, request);
         apply(id, request, preview).andExpect(status().isOk())
@@ -412,7 +427,9 @@ class SupplyCorrectionIntegrationTest {
         entities.flush(); entities.clear();
         var saved = rows.findById(row.getId()).orElseThrow();
         assertThat(saved.getHousingType().getId()).isNotEqualTo(originalTypeId);
-        assertThat(saved.getHousingType().isAdminModified()).isTrue();
+        assertThat(saved.getHousingType().getName()).isEqualTo("30");
+        // 보정으로 만든 주택형은 공고 값이라 보호하지 않는다. 다음 공고가 갱신한다.
+        assertThat(saved.getHousingType().isNameAdminModified()).isFalse();
         assertThat(saved.updateDisplayOrder(999)).isFalse();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox_events", Long.class)).isEqualTo(events);
     }

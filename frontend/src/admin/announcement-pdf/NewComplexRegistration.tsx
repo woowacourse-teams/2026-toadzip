@@ -21,9 +21,9 @@ const fieldLabels: Record<string, string> = { 'address.latitude': '위도', 'add
 
 /**
  * 공고에는 있지만 단지 DB에 없는 새 단지(예: 입주 전 최초 모집)를 PDF 검토 안에서 바로 등록한다.
- * 공급유형·기관은 공고 값을 쓰고, 법정동·시도·시군구 코드는 PNU 앞자리로 채운다. 준공일과 건물 정보는 비워 둘 수 있다.
- * 공고문 단지 개요(주소·세대수·주차대수)를 미리 채우고 그 주소로 바로 검색한다. 후보를 고르면 주소·PNU·좌표가 채워지고,
- * 검색을 쓸 수 없으면 직접 입력한다.
+ * 공급유형·기관은 공고 값을 쓰고, 법정동·시도·시군구 코드는 PNU 앞자리로, PNU가 없으면 고른 주소 검색 결과로 채운다. 준공일과 건물 정보는 비워 둘 수 있다.
+ * 공고문 단지 개요(주소·세대수·주차대수)를 미리 채우고 그 주소로 바로 검색한다. 후보를 고르면 주소·PNU·행정구역 코드·좌표가
+ * 채워지고, 검색을 쓸 수 없으면 직접 입력한다. 지번을 모르면 PNU는 비워 두고, 그때 행정구역 코드는 고른 검색 결과에서만 얻는다.
  */
 export function NewComplexRegistration({ index, defaultName, defaultAddress = '', defaultHouseholds = null, defaultParking = null, defaultPnu = '', myhome, rentalType, agencyCode, onCreated }: Props) {
   const households = defaultHouseholds ?? myhome?.households ?? null, initialAddress = defaultAddress || myhome?.address || ''
@@ -34,8 +34,17 @@ export function NewComplexRegistration({ index, defaultName, defaultAddress = ''
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const [keyword, setKeyword] = useState(initialAddress), [searching, setSearching] = useState(false)
   const [candidates, setCandidates] = useState<AddressCandidate[] | null>(null), [searchError, setSearchError] = useState('')
-  const set = (key: keyof typeof values) => (event: { target: { value: string } }) => setValues(current => ({ ...current, [key]: event.target.value }))
-  const problem = !values.name.trim() ? '단지명을 입력하세요.' : !values.address.trim() ? '주소를 입력하세요.' : !PNU.test(values.pnu) ? 'PNU 19자리를 입력하세요.'
+  // 고른 검색 결과의 행정구역 코드. 주소를 직접 고치면 그 주소의 코드가 아니므로 버린다.
+  const [regionCodes, setRegionCodes] = useState<Pick<AddressCandidate, 'legalDongCode' | 'provinceCode' | 'cityCountyDistrictCode'> | null>(null)
+  const set = (key: keyof typeof values) => (event: { target: { value: string } }) => {
+    if (key === 'address') setRegionCodes(null)
+    setValues(current => ({ ...current, [key]: event.target.value }))
+  }
+  const pnu = values.pnu.trim()
+  // PNU가 있으면 그 앞자리가 행정구역 코드다. PNU가 없을 때만 고른 검색 결과의 코드를 쓴다.
+  const codes = PNU.test(pnu) ? { legalDongCode: pnu.slice(0, 10), provinceCode: pnu.slice(0, 2), cityCountyDistrictCode: pnu.slice(0, 5) } : regionCodes
+  const problem = !values.name.trim() ? '단지명을 입력하세요.' : !values.address.trim() ? '주소를 입력하세요.' : pnu && !PNU.test(pnu) ? 'PNU는 19자리 숫자로 입력하거나 비워 두세요.'
+    : !codes ? '행정구역 코드를 정하려면 주소 검색 결과를 고르거나 PNU를 입력하세요.'
     : !values.latitude || !values.longitude ? '위도·경도를 입력하세요.' : values.households === '' ? '전체 세대수를 입력하세요.' : ''
   async function search() {
     if (!keyword.trim() || searching) return
@@ -55,6 +64,7 @@ export function NewComplexRegistration({ index, defaultName, defaultAddress = ''
     return () => controller.abort()
   }, [initialAddress])
   function choose(candidate: AddressCandidate) {
+    setRegionCodes({ legalDongCode: candidate.legalDongCode, provinceCode: candidate.provinceCode, cityCountyDistrictCode: candidate.cityCountyDistrictCode })
     setValues(current => ({ ...current, address: candidate.roadAddress || candidate.jibunAddress, pnu: candidate.pnu,
       latitude: candidate.latitude === null ? current.latitude : String(coordinate(candidate.latitude)),
       longitude: candidate.longitude === null ? current.longitude : String(coordinate(candidate.longitude)) }))
@@ -65,8 +75,7 @@ export function NewComplexRegistration({ index, defaultName, defaultAddress = ''
     setBusy(true); setError('')
     try {
       const created = await createHousingComplex({ name: values.name.trim(), rentalType, agencyCode,
-        address: { roadAddress: values.address.trim(), pnu: values.pnu, legalDongCode: values.pnu.slice(0, 10), provinceCode: values.pnu.slice(0, 2),
-          cityCountyDistrictCode: values.pnu.slice(0, 5), latitude: coordinate(Number(values.latitude)), longitude: coordinate(Number(values.longitude)) },
+        address: { roadAddress: values.address.trim(), pnu: pnu || null, ...codes!, latitude: coordinate(Number(values.latitude)), longitude: coordinate(Number(values.longitude)) },
         totalHouseholdCount: Number(values.households), totalParkingCount: values.parking === '' ? null : Number(values.parking), completionDate: values.completionDate || null,
         heatingType, buildingType, corridorType: null, hasElevator: null, overviewImageUrl: null, moveOutCountLastYear: null })
       onCreated({ id: created.housingComplexId, name: created.name })
@@ -94,7 +103,7 @@ export function NewComplexRegistration({ index, defaultName, defaultAddress = ''
       </button></li>)}
     </ul> : <p className={styles.hint}>검색 결과가 없습니다. 지번 주소로 다시 검색하거나 직접 입력하세요.</p>)}
     <label>주소(도로명 또는 지번)<input value={values.address} maxLength={255} onChange={set('address')} /></label>
-    <label>PNU<input value={values.pnu} inputMode="numeric" maxLength={19} placeholder="19자리 필지 번호" onChange={set('pnu')} /></label>
+    <label>PNU<input value={values.pnu} inputMode="numeric" maxLength={19} placeholder="19자리 필지 번호 · 모르면 비워 두세요" onChange={set('pnu')} /></label>
     <label>위도<input value={values.latitude} type="number" step="0.000001" onChange={set('latitude')} /></label>
     <label>경도<input value={values.longitude} type="number" step="0.000001" onChange={set('longitude')} /></label>
     <label>전체 세대수<input value={values.households} type="number" min={0} onChange={set('households')} /></label>

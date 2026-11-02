@@ -443,8 +443,48 @@ class AdminManagementIntegrationTest {
         mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body.replace(String.valueOf(version), String.valueOf(next))))
                 .andExpect(status().isConflict());
+        mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body.replace(String.valueOf(version), String.valueOf(next))
+                                .replace("16A", "16B").replace("16.37", "16.3700")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("이 단지에 같은 전용면적")));
         mvc.perform(get(path + "/changes").with(user("admin").roles("ADMIN")))
                 .andExpect(jsonPath("$.data[0].action").value("CREATE_HOUSING_TYPE"));
+    }
+
+    @Test
+    void PDF_보정이_공고문_값으로_만든_주택형은_관리자_수정으로_보호하지_않는다() throws Exception {
+        long id = createComplex();
+        String path = "/api/admin/housing-complexes/" + id;
+        long version = getData(path).get("data").get("version").asLong();
+        mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                                {"version": %d, "name": "059.6300A", "exclusiveArea": 59.63, "supplyArea": 78.9091,
+                                 "householdCount": 198, "fromAnnouncement": true}
+                                """.formatted(version)))
+                .andExpect(status().isOk());
+        long next = getData(path).get("data").get("version").asLong();
+        mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                                {"version": %d, "name": "74A", "exclusiveArea": 74.5, "householdCount": 35,
+                                 "fromAnnouncement": false}
+                                """.formatted(next)))
+                .andExpect(status().isOk());
+        long last = getData(path).get("data").get("version").asLong();
+        mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                                {"version": %d, "name": "84A", "exclusiveArea": 84.5}
+                                """.formatted(last)))
+                .andExpect(status().isOk());
+
+        List<Object[]> flags = entityManager.createNativeQuery("""
+                SELECT name, admin_modified, name_admin_modified, household_count_admin_modified, total_household_count
+                FROM housing_types WHERE housing_complex_id = :id ORDER BY exclusive_area
+                """).setParameter("id", id).getResultList();
+        assertThat(flags).hasSize(3);
+        assertThat(flags.get(0)).containsExactly("059.6300A", false, false, false, 198);
+        assertThat(flags.get(1)).containsExactly("74A", true, true, true, 35);
+        assertThat(flags.get(2)).containsExactly("84A", true, true, false, null);
     }
 
     @Test

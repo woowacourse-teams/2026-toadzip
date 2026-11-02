@@ -101,11 +101,16 @@ public class SupplyRow {
         return Set.copyOf(housingTypes);
     }
 
-    /** 대표 주택형을 바꾸면 함께 모집하는 주택형도 대표 하나로 맞춘다. 같으면 연결을 다시 쓰지 않는다. */
+    /**
+     * 대표 주택형을 바꾸면 함께 모집하는 주택형도 대표 하나로 맞춘다. 대표가 그대로면 함께 모집하는 주택형을 지우지 않는다.
+     * PDF·공급 보정이 LH 한 행에 묶인 주택형 여럿 중 대표만 다시 저장해도 나머지 연결이 남게 하려는 것이다.
+     */
     private void represent(HousingType type) {
+        boolean sameRepresentative = type != null && housingType != null && sameType(housingType, type)
+                && housingTypes.stream().anyMatch(linked -> sameType(linked, type));
         housingType = type;
-        boolean unchanged = type == null ? housingTypes.isEmpty()
-                : housingTypes.size() == 1 && sameType(housingTypes.iterator().next(), type);
+        boolean unchanged = type == null ? housingTypes.isEmpty() : sameRepresentative
+                || housingTypes.size() == 1 && sameType(housingTypes.iterator().next(), type);
         if (unchanged) {
             return;
         }
@@ -389,10 +394,20 @@ public class SupplyRow {
         return row;
     }
 
-    /** LH 원천 소유 공고의 공급행을 이번 LH 행으로 맞춘다. 관리자가 고친 행과 휴지통 공고는 바꾸지 않는다. 바뀌었으면 true다. */
+    /**
+     * LH 원천 소유 공고의 공급행을 이번 LH 행으로 맞춘다. 관리자가 고친 행은 값을 두고 LH 원천 행과의 대응만 기록한다.
+     * 원천 순번이 바뀌어도 작업실이 이 행을 그 LH 행에 붙은 공급행으로 보게 하려는 것이다. 휴지통 공고는 바꾸지 않는다. 바뀌었으면 true다.
+     */
     public boolean updateFromLh(SupplyRow incoming) {
-        if (adminModified || announcement.isAdminDeleted()) {
+        if (announcement.isAdminDeleted()) {
             return false;
+        }
+        if (adminModified) {
+            if (Objects.equals(lhSourceSupplyRowIdentifier, incoming.lhSourceSupplyRowIdentifier)) {
+                return false;
+            }
+            lhSourceSupplyRowIdentifier = incoming.lhSourceSupplyRowIdentifier;
+            return true;
         }
         if (hasSameSourceValues(incoming) && Objects.equals(idOf(announcementComplex), idOf(incoming.announcementComplex))
                 && Objects.equals(lhExclusiveArea, incoming.lhExclusiveArea) && lhMatchStatus == incoming.lhMatchStatus

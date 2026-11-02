@@ -71,7 +71,7 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
             </div>}
           </div>
           <p className={styles.hint}>{row.proposal.reason}{source.values.constructedHouseholdCount != null ? ` · PDF 건설호수 ${String(source.values.constructedHouseholdCount)}세대` : ''}</p>
-          {typeof shownTypeName(row) === 'string' && <p className={styles.hint}>{`저장하면 이 공고의 공개 화면에 '${String(shownTypeName(row))}'(으)로 표시됩니다. 다른 공고와 단지 주택형 이름은 바뀌지 않습니다.`}</p>}
+          {typeof shownTypeName(row) === 'string' && <p className={styles.hint}>{`저장하면 이 공고의 공개 화면에 '${String(shownTypeName(row))}'(으)로 표시됩니다. 연결한 단지 주택형 이름도 이 표기로 갱신합니다(끝 괄호는 떼고, 면적만 남으면 갱신하지 않음). 관리자가 고친 이름과 더 최근 공고의 이름은 유지합니다.`}</p>}
           {missing && <div className={styles.pending}><p><strong>맞는 주택형 없음</strong> 연결할 단지에 PDF 전용 {missing.exclusiveArea}㎡ 주택형이 없습니다.{row.newHousingType ? ` 저장하면 '${missingLabel}' 주택형을 이 단지에 추가합니다.` : ''}</p>
             {!row.newHousingType && <Button data-design-system className={styles.secondaryButton} disabled={!missing.name} onClick={chooseNewType}>PDF 형명·면적으로 새 주택형 추가</Button>}</div>}
           <ReviewCells housingTypes={row.proposal.candidates} cells={row.cells} scope={`공급행 ${index + 1}`} filter={filter}

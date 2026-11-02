@@ -1,7 +1,7 @@
-import type { ExtractedAnnouncement, JsonObject, JsonUpdateInput, JsonWorkspace } from '../announcement-json/api'
+import type { ExtractedAnnouncement, HousingTypeValue, JsonObject, JsonUpdateInput, JsonWorkspace } from '../announcement-json/api'
 import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type NewSupplyGroup } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, type Evidence, type Extraction } from './extraction'
-import { defaultTargetDestinations, missingHousingType, normalizedName, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
+import { defaultTargetDestinations, missingHousingType, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
 import { housingTypeLabel } from '../ingest/housingTypeLabel'
 
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
@@ -177,17 +177,6 @@ export function areaOnlyTypeName(value: unknown) {
   // 정수만 있는 표기(26)는 흔한 주택형 이름이라 소수점이나 면적 단위가 있을 때만 면적으로 본다.
   return typeof value === 'string' && /^\d+(\.\d+\s*(㎡|m2)?|(\.\d+)?\s*(㎡|m2))$/.test(value.trim())
 }
-export type HousingNameCandidate = { id: number; current: string; pdf: string }
-/** 연결한 단지 주택형의 이름이 공고 표기와 다르면 단지 보정 후보로 돌려준다. 저장하지 않고 결과 화면에 표시만 한다. */
-export function housingNameCandidates(review: Review): HousingNameCandidate[] {
-  const candidates: HousingNameCandidate[] = []
-  review.rows.forEach((row, index) => {
-    const cell = row.cells.find(item => item.field === 'housingTypeId'), pdf = review.extraction.supplyRows[index].typeName
-    const type = row.proposal.candidates.find(item => item.id === (cell?.selected ? cell.value : cell?.before))
-    if (row.include && type && pdf && !areaOnlyTypeName(pdf) && normalizedName(type.name) !== normalizedName(pdf) && !candidates.some(item => item.id === type.id)) candidates.push({ id: type.id, current: type.name, pdf })
-  })
-  return candidates
-}
 export function allCells(review: Review) { return [...review.metadata, ...review.reception, ...review.rows.flatMap(row => [...row.cells, ...row.targets.flatMap(target => target.cells)]), ...review.schedules.flatMap(schedule => schedule.cells)] }
 export type PendingChange = { section: '기본정보' | '접수처' | '공급정보' | '일정'; scope: string; cell: Cell; candidates: RowProposal['candidates'] }
 /** 저장하면 실제로 바뀌는 값만 영역별로 모은다. 다른 탭에 있는 변경도 저장 전에 보이게 하려는 목록이다. */
@@ -237,10 +226,11 @@ export function sharedGroupStorable(review: Review, groupIndex: number) {
 }
 export function assembleReview(review: Review, workspace: JsonWorkspace, evidence: { reason: string; sourceUrl: string; sourcePage: string | null }): JsonUpdateInput {
   const rows = structuredClone(workspace.supply.rows), taken = new Map<string, number>(), newGroups: NewSupplyGroup[] = []
+  const housingTypeValues: HousingTypeValue[] = []
   for (const [index, entry] of review.rows.entries()) {
     if (!entry.include) continue
     if (!entry.proposal.destination) throw new ReviewError(`공급행 ${index + 1}에서 수정할 기존 공급정보를 선택하거나 새 공급정보로 추가하세요.`, `row:${index}`)
-    if (entry.proposal.destination === 'new' && workspace.supply.unattachedLhSupplyRows?.length) throw new ReviewError(`공급행 ${index + 1}: 공급정보에 연결되지 않은 LH 행은 새 공급정보로 추가할 수 없습니다. 기존 공급정보 행을 고르세요.`, `row:${index}`)
+    if (entry.proposal.destination === 'new' && workspace.supply.unattachedLhSupplyRows?.length) throw new ReviewError(`공급행 ${index + 1}: 아직 공급행이 되지 않은 LH 공급 원본이 있어 새 공급정보로 추가할 수 없습니다. 공고 정제를 다시 실행하거나 기존 공급정보 행을 고르세요.`, `row:${index}`)
     const anchor = rows.find(row => row.key === entry.proposal.anchorKey)
     const existing = entry.proposal.destination === 'new' ? undefined : rows.find(row => row.key === entry.proposal.destination)
     if ((!anchor && !entry.proposal.newComplex) || entry.proposal.destination !== 'new' && !existing) throw new ReviewError(`공급행 ${index + 1}의 기존 단지·원천행을 선택하세요.`, `row:${index}`)
@@ -255,7 +245,6 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
       row.housingComplexId = complex.id; row.housingComplexName = complex.name
       if (!row.pnu.trim()) row.pnu = complex.pnu
     }
-    if (!row.pnu.trim()) throw new ReviewError(`공급행 ${index + 1}의 소재지 PNU를 확인하세요.`, `row:${index}`)
     applyCells(row as unknown as JsonObject, entry.cells, rowFields)
     // 공고에 주택형 표기가 없으면 새 행은 연결한 단지 주택형 이름으로 표시한다.
     if (!row.typeName.trim()) row.typeName = entry.proposal.candidates.find(type => type.id === row.housingTypeId)?.name ?? ''
@@ -282,6 +271,10 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
     }
     if (!row.typeName) throw new ReviewError('새 공급행의 주택형명을 확인하세요.', `row:${index}`)
     if (!existing) rows.push(row)
+    if (!row.excluded && (row.housingTypeId !== null || row.newHousingType)) {
+      const value = housingTypeValue(entry, review.extraction.supplyRows[index], row.key)
+      if (value) housingTypeValues.push(value)
+    }
   }
   for (const [index, group] of review.extraction.sharedCounts.entries()) {
     const members = review.rows.filter(row => row.proposal.sharedIndex === index)
@@ -305,7 +298,7 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
   const reception = { ...((workspace.detail.data.receptionPlace ?? {}) as JsonObject) }
   applyCells(reception, review.reception, receptionFields)
   const document: ExtractedAnnouncement = { schemaVersion: 'admin-announcement-import/v1', source: { originalUrl: workspace.detail.data.originalUrl, sourceDocumentId: workspace.detail.sourceIdentifier, extractedAt: new Date().toISOString() }, announcement, receptionPlace: reception, supplyRows: ordered.filter(row => review.rows.some(entry => entry.include && entry.key === row.key)).map(row => ({
-    complexReference: { sourceComplexName: row.complexName, pnu: row.pnu }, sourceHousingTypeName: row.typeName,
+    complexReference: { sourceComplexName: row.complexName, pnu: row.pnu.trim() || null }, sourceHousingTypeName: row.typeName,
     expectedMoveInMonth: row.moveInMonth, supplyCategory: row.category, totalSupplyHouseholdCount: row.householdCount,
     exclusiveArea: row.exclusiveArea, supplyArea: row.supplyArea, targets: row.targets.filter(target => !target.excluded).map(target => ({
       target: target.target, supplyRank: target.supplyRank, supplyHouseholdCount: target.householdCount, reserveCount: target.reserveCount,
@@ -328,7 +321,43 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
     }
   }
   const fields = [...review.metadata.filter(cell => cell.selected && !cell.locked).map(cell => cell.field), ...review.reception.filter(cell => cell.selected).map(cell => `receptionPlace.${cell.field}`)]
-  return { snapshotToken: workspace.snapshotToken, document, fields, schedules, attachments: [], correction: { operationId: crypto.randomUUID(), snapshotToken: workspace.supply.snapshotToken, rows: ordered, newGroups, ...evidence } }
+  return { snapshotToken: workspace.snapshotToken, document, fields, schedules, attachments: [], correction: { operationId: crypto.randomUUID(), snapshotToken: workspace.supply.snapshotToken, rows: ordered, newGroups, ...evidence }, housingTypeValues }
+}
+
+/** 끝에 붙은 괄호 묶음(중첩 포함)만 뗀다. "26(고령(주거약자용))" → "26", "(구)36(청년)" → "(구)36" */
+function withoutTrailingParentheses(value: string) {
+  let result = value.trim()
+  while (result.endsWith(')')) {
+    let depth = 0, start = -1
+    for (let at = result.length - 1; at >= 0; at--) {
+      if (result[at] === ')') depth++
+      if (result[at] === '(' && --depth === 0) { start = at; break }
+    }
+    if (start <= 0) break
+    result = result.slice(0, start).trim()
+  }
+  return result
+}
+
+/**
+ * 공급행이 고른 주택형에 반영할 공고 값. 이름·공급면적은 관리자가 고른 값(현재값과 같은 값 포함)만 쓰고, 고르지 않은 값은
+ * 보내지 않는다. 면적만 적힌 표기는 주택형 이름이 아니라 보내지 않는다. 세대수는 공고문의 건설호수다.
+ */
+function housingTypeValue(entry: RowReview, source: Extraction['supplyRows'][number], rowKey: string): HousingTypeValue | null {
+  const accepted = (field: string, extracted: unknown) => {
+    const cell = entry.cells.find(item => item.field === field)
+    if (!cell) return extracted
+    if (cell.selected && !cell.locked) return cell.value
+    return cell.state === 'same' ? extracted : null
+  }
+  const name = accepted('sourceHousingTypeName', source.typeName), area = accepted('supplyArea', source.values.supplyArea)
+  const count = source.values.constructedHouseholdCount
+  // "39(창업인)"처럼 끝 괄호는 공급대상 표기라 주택형 이름에 넣지 않는다. 넣으면 공고마다 이름이 바뀐다.
+  const typeName = typeof name === 'string' ? withoutTrailingParentheses(name) : ''
+  const value: HousingTypeValue = { rowKey, name: typeName && !areaOnlyTypeName(typeName) ? typeName : null,
+    supplyArea: typeof area === 'number' && area >= 0 ? area : null,
+    householdCount: typeof count === 'number' && Number.isSafeInteger(count) && count >= 0 ? count : null }
+  return value.name === null && value.supplyArea === null && value.householdCount === null ? null : value
 }
 
 // 서버와 같은 기준(표시 순서 → 작업 키)으로 현재 화면 순서를 만든다.

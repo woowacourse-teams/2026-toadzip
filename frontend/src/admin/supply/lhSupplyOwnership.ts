@@ -1,6 +1,6 @@
 import type { CorrectionRow, LhSupplyRow, SupplyWorkspace } from './supplyCorrectionApi'
 
-/** 공급정보에 연결되지 않은 LH 공급 원본 행이 있으면 새 공급행을 추가하지 않는다. */
+/** 아직 공급행이 되지 않은 LH 공급 원본 행이 있으면 새 공급행을 추가하지 않는다. 정제를 다시 실행하면 공급행이 된다. */
 export function unattachedLhRows(workspace: SupplyWorkspace): LhSupplyRow[] {
   return workspace.unattachedLhSupplyRows ?? []
 }
@@ -9,7 +9,7 @@ export function unattachedLhNotice(workspace: SupplyWorkspace) {
   const rows = unattachedLhRows(workspace)
   if (!rows.length) return ''
   const labels = rows.map(row => [row.complexLabel, row.typeName, row.exclusiveArea && `${row.exclusiveArea}㎡`].filter(Boolean).join(' · ')).join(', ')
-  return `LH 공급 원본 ${rows.length}행(${labels})이 공급정보에 연결되지 않았습니다. 연결되지 않은 LH 행은 새 공급정보로 추가할 수 없습니다. 기존 공급정보 행을 고르세요.`
+  return `LH 공급 원본 ${rows.length}행(${labels})이 아직 공급행이 되지 않았습니다. 새 공급정보로 추가할 수 없으니 공고 정제를 다시 실행하거나 기존 공급정보 행을 고르세요.`
 }
 
 /** LH 원본으로 펼친 행이 있는 단지에 관리자가 직접 추가한 행. LH 행과 같은 주택형이면 중복이다. */
