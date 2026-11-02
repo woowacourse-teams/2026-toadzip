@@ -3,9 +3,11 @@ package com.toadzip.backend.admin.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.admin.quality.domain.QualityResource;
@@ -156,6 +158,50 @@ class QualityComparisonIntegrationTest {
                         "snapshotToken", linked.get("snapshotToken").asText(), "values", Map.of("name", "덮어쓰기"),
                         "evidenceNote", "오래된 원천으로 수정 시도")))).andExpect(status().isConflict());
         assertThat(types.findById(type.getId()).orElseThrow().getName()).isEqualTo("26A");
+    }
+
+    @Test
+    void 오래된_스냅샷으로는_원천을_연결하거나_해제하지_않는다() throws Exception {
+        var type = type();
+        long id = type.getHousingComplex().getId();
+        String target = "type:" + type.getId();
+        String key = source();
+        var before = detail(id, target);
+        var linked = linkSource(id, target, before, key);
+        String stale = linkBody(target, before, "MYHOME_COMPLEX", key);
+        String message = "등록값 또는 DB 원천이 변경되었습니다. 입력을 보관하고 다시 조회하세요.";
+
+        mvc.perform(post(root(id) + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(stale))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.message").value(message));
+        mvc.perform(delete(root(id) + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(stale))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.message").value(message));
+
+        assertThat(detail(id, target).get("snapshotToken")).isEqualTo(linked.get("snapshotToken"));
+        assertThat(actions(id)).containsExactly("LINK_COMPARISON_SOURCE");
+    }
+
+    @Test
+    void 직접_연결한_원천만_해제하고_연결과_해제를_기록한다() throws Exception {
+        var type = type();
+        long id = type.getHousingComplex().getId();
+        String target = "type:" + type.getId();
+        String key = source();
+        var linked = linkSource(id, target, detail(id, target), key);
+        var unlinked = json.readTree(mvc.perform(delete(root(id) + "/sources").with(user("admin").roles("ADMIN"))
+                        .with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(linkBody(target, linked, "MYHOME_COMPLEX", key)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+
+        mvc.perform(delete(root(id) + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(linkBody(target, unlinked, "MYHOME_COMPLEX", key)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("직접 연결한 원천만 해제할 수 있습니다."));
+
+        assertThat(unlinked.get("sources").findValuesAsString("sourceKey")).doesNotContain(key);
+        assertThat(actions(id)).containsExactly("LINK_COMPARISON_SOURCE", "UNLINK_COMPARISON_SOURCE");
     }
 
     @Test
@@ -383,6 +429,24 @@ class QualityComparisonIntegrationTest {
                 .param("keyword", "검토 원천 421").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         return json.readTree(response).at("/data/items/0/sourceKey").asText();
+    }
+
+    private JsonNode linkSource(long id, String target, JsonNode snapshot, String key) throws Exception {
+        return json.readTree(mvc.perform(post(root(id) + "/sources").with(user("admin").roles("ADMIN"))
+                        .with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(linkBody(target, snapshot, "MYHOME_COMPLEX", key)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+    }
+
+    private String linkBody(String target, JsonNode snapshot, String category, String key) {
+        return json.writeValueAsString(Map.of("target", target, "snapshotToken",
+                snapshot.get("snapshotToken").asText(), "category", category, "sourceKey", key,
+                "evidenceNote", "원천 연결 검증"));
+    }
+
+    private List<String> actions(long id) {
+        return jdbc.queryForList("SELECT action FROM admin_data_changes WHERE resource_type = 'COMPLEX' "
+                + "AND resource_id = ? AND action LIKE '%COMPARISON_SOURCE' ORDER BY id", String.class, id);
     }
 
     private JsonNode detail(long id, String target) throws Exception {
