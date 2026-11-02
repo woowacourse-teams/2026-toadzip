@@ -102,6 +102,14 @@ it('저장할 위치가 없는 공급정보는 오류를 알리고 서버에 보
   expect(api.previewJsonUpdate).not.toHaveBeenCalled()
   expect(api.applyJsonUpdate).not.toHaveBeenCalled()
 })
+it('AI 워커가 원문과 대조한 경고를 검토 화면의 검산 확인에도 보여 준다', async () => {
+  extractor.extractAnnouncementPdf.mockResolvedValue({ json: JSON.stringify(fixtures.hansville.extraction), pages: [1, 2], totalPages: 3, warnings: ['supplyRows[0].sourceHousingTypeName: 근거 인용에 없는 LH 주택형 이름(24A)'], usage: { promptTokens: 100, outputTokens: 50, thinkingTokens: null } })
+  renderPage()
+  await review()
+  const checks = await screen.findByRole('note', { name: '검산 결과' })
+  expect(checks).toHaveTextContent('근거 인용에 없는 LH 주택형 이름(24A)')
+})
+
 it('공급행을 PDF 단지 이름별로 묶어 한 단지의 주택형을 한곳에 보여 주고, 쓰지 않는 변경 목록은 두지 않는다', async () => {
   await open()
   const group = screen.getByRole('region', { name: '익산한스빌 주택형' })

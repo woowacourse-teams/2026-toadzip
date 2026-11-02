@@ -11,7 +11,8 @@ from ai_worker.extraction import MODEL_RESPONSE_INVALID, PermanentError
 
 INVALID_CODE = MODEL_RESPONSE_INVALID
 DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
-AREA_ONLY = re.compile(r"[\d.]+")
+# 정수(24, 39)는 흔한 주택형 이름이라 소수점이 있을 때만 면적으로 본다(화면의 areaOnlyTypeName과 같은 기준).
+AREA_ONLY = re.compile(r"\d+\.\d+")
 TARGET_NOTATION = re.compile(r"「|\s\(")
 WHITESPACE = re.compile(r"\s+")
 DATE_FIELDS = ("postedDate", "applicationStartDate", "applicationEndDate", "winnerAnnouncementDate")
@@ -50,8 +51,20 @@ def review(tree: dict, pages: list[int], texts: list[str], lh_types: list[str], 
     rows = objects(data.get("supplyRows"))
     for index, row in enumerate(rows):
         check_supply_row(row, f"supplyRows[{index}]", text(announcement.get("postedDate")), set(lh_types), warnings)
+    check_lh_type_names(rows, evidence, set(lh_types), warnings)
     check_lh_counts(rows, lh_counts, warnings)
     return warnings
+
+
+def check_lh_type_names(rows: list[dict], evidence: list[dict], lh_types: set[str], warnings: list[str]) -> None:
+    """공급행 틀로 준 LH 주택형 이름(24A)을 PDF 공급 표 표기(24) 대신 옮겼는지 본다. 그 행의 근거 인용에 이름이 없으면 경고한다."""
+    quotes = {item.get("path"): WHITESPACE.sub("", text(item.get("quote"))) for item in evidence}
+    for index, row in enumerate(rows):
+        housing_type, quote = text(row.get("sourceHousingTypeName")), quotes.get(f"supplyRows[{index}]")
+        # 공급대상 괄호는 병합 셀이라 표 한 줄 인용에 없을 수 있어 괄호 앞 표기만 대조한다(화면과 같은 기준).
+        core = WHITESPACE.sub("", housing_type).split("(")[0]
+        if housing_type in lh_types and quote and core not in quote:
+            warnings.append(f"supplyRows[{index}].sourceHousingTypeName: 근거 인용에 없는 LH 주택형 이름({housing_type})")
 
 
 def remap_pages(items: list[dict], pages: list[int], warnings: list[str]) -> list[dict]:
@@ -109,7 +122,6 @@ def check_complexes(announcement: dict, complexes: list[dict], warnings: list[st
 
 def check_supply_row(row: dict, path: str, posted_date: str, lh_types: set[str], warnings: list[str]) -> None:
     housing_type = text(row.get("sourceHousingTypeName"))
-    # LH API 주택형은 "39"처럼 숫자만인 경우가 많고, 프롬프트가 그 이름을 그대로 쓰라고 한다.
     if housing_type and AREA_ONLY.fullmatch(housing_type) and housing_type not in lh_types:
         warnings.append(f"{path}.sourceHousingTypeName: 면적 숫자만 있음({housing_type})")
     if row.get("commonArea") is not None and row.get("supplyArea") is not None:

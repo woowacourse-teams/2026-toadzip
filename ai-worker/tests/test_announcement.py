@@ -77,7 +77,9 @@ def test_lh_count_mismatch_is_warning_not_failure():
 
     result = AnnouncementPdfExtractor(FakeModel()).extract(job(pdf(COVER, SUPPLY, RENT), job_input))
 
-    assert result["warnings"] == ["supplyRows[0].totalSupplyHouseholdCount: LH API 모집수 80와 다름(78)"]
+    # 가짜 공급 표에는 "16A"가 없어, LH 이름을 옮긴 경우로도 경고한다.
+    assert result["warnings"] == ["supplyRows[0].sourceHousingTypeName: 근거 인용에 없는 LH 주택형 이름(16A)",
+                                  "supplyRows[0].totalSupplyHouseholdCount: LH API 모집수 80와 다름(78)"]
 
 
 def test_without_lh_rows_frame_is_not_sent():

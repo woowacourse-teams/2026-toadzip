@@ -103,6 +103,39 @@ def test_numeric_housing_type_copied_from_lh_api_is_not_warned():
     ]
 
 
+def test_integer_housing_type_from_pdf_is_not_area_even_if_lh_names_it_differently():
+    # 공급 표가 "24", LH API가 "24A"인 공고. 정수는 흔한 주택형 이름이라 면적으로 경고하지 않는다.
+    tree = response(rows=[row(housing_type="24")])
+
+    assert review(tree, lh_types=["24A"], lh_counts=[None]) == []
+
+
+def test_lh_housing_type_name_missing_from_row_quote_is_warned():
+    # 모델이 PDF 공급 표의 "24" 대신 틀로 받은 LH 이름 "24A"를 옮긴 경우. 근거 인용에 그 이름이 있으면 경고하지 않는다.
+    tree = response(rows=[row(housing_type="24A"), row(housing_type="26")],
+                    evidence=[{"path": "supplyRows[0]", "page": 1, "quote": "24 24.7200 12.6758 50"},
+                              {"path": "supplyRows[1]", "page": 1, "quote": "26 26.8300 13.7 40"}])
+
+    warnings = review(tree, texts=["24 24.7200 12.6758 50 26 26.8300 13.7 40"] + [""] * 9, lh_types=["24A", "26"], lh_counts=[None, None])
+
+    assert warnings == ["supplyRows[0].sourceHousingTypeName: 근거 인용에 없는 LH 주택형 이름(24A)"]
+
+
+def test_lh_housing_type_target_parentheses_need_not_be_in_quote():
+    # 공급대상 괄호는 병합 셀이라 표 한 줄 인용에 없을 수 있다. 괄호 앞 표기(16A)가 있으면 경고하지 않는다.
+    tree = response(rows=[row(housing_type="16A(대학생/청년)")],
+                    evidence=[{"path": "supplyRows[0]", "page": 1, "quote": "16A 16.37 27.6384 78"}])
+
+    assert review(tree, texts=["16A 16.37 27.6384 78"] + [""] * 9, lh_types=["16A(대학생/청년)"], lh_counts=[None]) == []
+
+
+def test_housing_type_not_from_lh_is_not_checked_against_quote():
+    # LH 이름이 아니면(모델이 공급 표에서 읽은 표기) 인용에 없어도 이 경고는 내지 않는다. 화면이 근거와 대조한다.
+    tree = response(rows=[row(housing_type="26B")], evidence=[{"path": "supplyRows[0]", "page": 1, "quote": "26 26.10 40"}])
+
+    assert review(tree, texts=["26 26.10 40"] + [""] * 9, lh_types=["26A"], lh_counts=[None]) == []
+
+
 def test_lh_row_count_mismatch_is_warned_once():
     tree = response(rows=[row(count=20)])
 
