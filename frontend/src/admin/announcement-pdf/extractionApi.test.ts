@@ -83,7 +83,7 @@ test('같은 PDF의 진행 중 작업이 있으면 새로 넣지 않고 그 작�
 })
 
 test('다른 PDF의 작업이 진행 중이면 그 결과를 기다리지 않는다', async () => {
-  mocks.request.mockRejectedValueOnce(inProgress()).mockResolvedValueOnce(job('RUNNING', { fileName: '다른 공고문.pdf', pdfSha256: 'other' }))
+  mocks.request.mockRejectedValueOnce(inProgress()).mockResolvedValueOnce(job('SUCCEEDED', { fileName: '다른 공고문.pdf', pdfSha256: 'other', extraction }))
 
   await expect(extractAnnouncementPdf('29', pdf, '공고문.pdf')).rejects.toThrow('다른 PDF(다른 공고문.pdf)의 추출이 진행 중입니다.')
   expect(mocks.request).toHaveBeenCalledTimes(2)
