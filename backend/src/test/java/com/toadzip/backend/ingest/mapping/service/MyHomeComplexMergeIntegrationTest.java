@@ -37,7 +37,7 @@ import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatal
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
-import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;

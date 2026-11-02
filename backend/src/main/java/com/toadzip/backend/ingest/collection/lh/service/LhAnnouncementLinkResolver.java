@@ -7,8 +7,7 @@ import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollect
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
-import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException.Reason;
-import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolutionException.Reason;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

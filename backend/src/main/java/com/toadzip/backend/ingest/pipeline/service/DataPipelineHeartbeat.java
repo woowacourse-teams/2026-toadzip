@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
-import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import java.time.Clock;

@@ -27,7 +27,7 @@ import com.toadzip.backend.ingest.collection.sh.service.ShAnnouncementCollection
 import com.toadzip.backend.ingest.domain.IngestStepReport;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
-import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport;
 import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;

@@ -11,7 +11,7 @@ import static org.mockito.Mockito.verify;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionStateService;

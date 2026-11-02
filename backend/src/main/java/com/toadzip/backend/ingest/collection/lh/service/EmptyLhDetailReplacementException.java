@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.exception.exception;
+package com.toadzip.backend.ingest.collection.lh.service;
 
 public class EmptyLhDetailReplacementException extends RuntimeException {
 

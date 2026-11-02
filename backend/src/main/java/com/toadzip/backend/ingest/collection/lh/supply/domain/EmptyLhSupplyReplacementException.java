@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.exception.exception;
+package com.toadzip.backend.ingest.collection.lh.supply.domain;
 
 public class EmptyLhSupplyReplacementException extends RuntimeException {
 

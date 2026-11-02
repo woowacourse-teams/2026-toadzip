@@ -14,7 +14,7 @@ import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixture
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.api.LhLeaseCatalogCollectionCommand;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;

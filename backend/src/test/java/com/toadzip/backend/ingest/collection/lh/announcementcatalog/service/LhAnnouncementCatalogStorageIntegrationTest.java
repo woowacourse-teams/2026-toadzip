@@ -25,7 +25,7 @@ import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseSt
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.pipeline.repository.IngestExecutionOwnershipRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import io.micrometer.core.instrument.MeterRegistry;

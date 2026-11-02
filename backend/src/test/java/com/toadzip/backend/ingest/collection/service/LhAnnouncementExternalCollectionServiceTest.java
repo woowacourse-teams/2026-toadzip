@@ -41,10 +41,10 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAn
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
-import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
-import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
+import com.toadzip.backend.ingest.collection.lh.service.EmptyLhDetailReplacementException;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.EmptyLhSupplyReplacementException;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataCallFailureException;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.IncompleteLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;

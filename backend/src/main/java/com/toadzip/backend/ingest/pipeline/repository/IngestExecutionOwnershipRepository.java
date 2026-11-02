@@ -1,6 +1,5 @@
 package com.toadzip.backend.ingest.pipeline.repository;
 
-import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;

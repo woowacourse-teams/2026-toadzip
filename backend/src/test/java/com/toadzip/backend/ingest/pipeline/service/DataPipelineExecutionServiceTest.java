@@ -18,7 +18,7 @@ import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRec
 import com.toadzip.backend.ingest.collection.repository.external.IngestServiceKeyContext;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
-import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;

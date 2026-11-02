@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.exception.exception;
+package com.toadzip.backend.ingest.collection.repository.external;
 
 public final class ExternalDataRetryInterruptedException extends RuntimeException {
 

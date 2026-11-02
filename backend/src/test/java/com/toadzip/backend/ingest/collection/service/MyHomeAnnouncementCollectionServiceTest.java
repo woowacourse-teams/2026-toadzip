@@ -21,7 +21,7 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeA
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementLifecycleService;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementStorageService;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;

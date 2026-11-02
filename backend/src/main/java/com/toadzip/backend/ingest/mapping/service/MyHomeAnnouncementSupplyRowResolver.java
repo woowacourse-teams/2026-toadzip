@@ -12,7 +12,7 @@ import com.toadzip.backend.ingest.domain.SourceText;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.enrichment.domain.LhEnrichmentTargetSources;
 import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
-import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;

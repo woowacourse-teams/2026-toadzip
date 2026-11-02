@@ -9,7 +9,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCol
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexCollectionRepository;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexRegionSourceRepository;
-import com.toadzip.backend.ingest.exception.exception.CollectedSourceConflictException;
+import com.toadzip.backend.ingest.collection.paging.service.CollectedSourceConflictException;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import java.time.Clock;
 import java.util.LinkedHashMap;

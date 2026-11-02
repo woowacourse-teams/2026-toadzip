@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.exception.exception;
+package com.toadzip.backend.ingest.pipeline.repository;
 
 public class IngestOwnershipLostException extends RuntimeException {
 

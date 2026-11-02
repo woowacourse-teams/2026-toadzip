@@ -16,9 +16,8 @@ import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupp
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhSupplySnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplyRowRepository;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.VerifiedLhSupplyReplacementStore;
-import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
-import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
-import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.EmptyLhSupplyReplacementException;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.IncompleteLhSupplyReplacementException;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import java.time.Clock;
 import java.time.Instant;

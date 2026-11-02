@@ -14,8 +14,8 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollection
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
-import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException.Reason;
-import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolutionException.Reason;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolutionException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;

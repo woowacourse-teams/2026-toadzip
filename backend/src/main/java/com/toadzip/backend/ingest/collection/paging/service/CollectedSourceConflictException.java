@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.exception.exception;
+package com.toadzip.backend.ingest.collection.paging.service;
 
 /**
  * 수집한 응답이 이미 저장된 원천과 충돌해 그 요청의 저장을 보류한다. 코드 오류가 아니라 응답 데이터의 문제이므로 페이지 수집은
