@@ -1,15 +1,16 @@
-"""작업 하나를 꺼내 추출하고 결과를 기록한다."""
+"""작업을 꺼내 추출하고 결과를 기록한다. run은 종료 신호가 올 때까지 run_once를 되풀이한다."""
 
 import json
 import logging
 import threading
+from collections.abc import Callable
 from contextlib import contextmanager
 from datetime import timedelta
 
 import psycopg
 
 from ai_worker import jobs
-from ai_worker.extraction import Extractor, PermanentError, TransientError
+from ai_worker.extraction import ATTEMPT_BUDGET, Extractor, PermanentError, TransientError
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +23,31 @@ DEADLINE = timedelta(minutes=40)
 BACKOFF = (timedelta(minutes=1), timedelta(minutes=5))
 INTERNAL_ERROR_CODE = "INTERNAL_ERROR"
 INTERNAL_ERROR_MESSAGE = "추출 중 알 수 없는 오류가 났습니다. 다시 요청해 주세요."
+# 꺼낼 작업이 없을 때와 DB 연결이 끊겼을 때 기다리는 시간.
+IDLE = timedelta(seconds=5)
+RECONNECT = timedelta(seconds=10)
+
+
+def run(connect: Callable[[], psycopg.Connection], extractor: Extractor, stop: threading.Event) -> None:
+    """stop이 켜질 때까지 작업을 처리한다. 처리 중인 작업은 끝까지 하고 멈춘다.
+    run_once가 실패해도 워커를 끝내지 않는다. 끝내면 남은 작업이 모두 마감까지 멈추기 때문이다."""
+    while not stop.is_set():
+        try:
+            with connect() as conn:
+                while not stop.is_set():
+                    try:
+                        worked = run_once(conn, extractor)
+                    except Exception:
+                        log.exception("작업 처리 중 오류가 났습니다.")
+                        if conn.broken or conn.closed:
+                            break
+                        worked = False
+                    if not worked:
+                        stop.wait(IDLE.total_seconds())
+        except psycopg.OperationalError:
+            log.exception("DB에 연결하지 못했습니다. %d초 뒤 다시 연결합니다.", RECONNECT.total_seconds())
+        if not stop.is_set():
+            stop.wait(RECONNECT.total_seconds())
 
 
 def run_once(conn: psycopg.Connection, extractor: Extractor) -> bool:
@@ -36,7 +62,8 @@ def run_once(conn: psycopg.Connection, extractor: Extractor) -> bool:
     if expired:
         log.warning("lease가 끝난 채 시도를 다 쓴 작업 %d건을 실패로 끝냈습니다.", expired)
 
-    job = jobs.claim(conn, LEASE, DEADLINE)
+    # 마감 전에 한 번의 추출을 끝낼 수 없는 작업은 꺼내지 않는다. 꺼내면 끝나도 마감 정리에 밀려 유료 호출만 버린다.
+    job = jobs.claim(conn, LEASE, DEADLINE - ATTEMPT_BUDGET)
     if job is None:
         return False
 

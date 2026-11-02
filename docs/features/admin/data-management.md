@@ -52,7 +52,9 @@
 - 작업 상태는 `GET .../pdf-extractions/jobs/{jobId}`, 진행 중 작업은 `GET .../pdf-extractions/jobs/active`(없으면 `null`)로 읽는다. 다른 공고의 작업 ID는 404 `ANNOUNCEMENT_PDF_EXTRACTION_JOB_NOT_FOUND`다.
   응답 `data`는 `jobId`, `status`(`PENDING`·`RUNNING`·`RETRY`·`SUCCEEDED`·`FAILED`), `fileName`, `pdfSha256`, `attempts`, `createdAt`, `completedAt`(끝나기 전 `null`), `failure`(`FAILED`일 때 `{code, message}`), `retryReason`(`RETRY`일 때 직전 일시 오류 `{code, message}`), `extraction`(`SUCCEEDED`일 때 추출 결과)이다.
 - 추출 결과는 `json`(추출 JSON 문자열, 근거 쪽 번호는 원본 PDF 기준), `pages`(모델에 보낸 원본 쪽, 1부터), `totalPages`, `warnings`, `usage`(`promptTokens`·`outputTokens`·`thinkingTokens`, 모르면 `null`)다. 워커와 주고받는 입력·결과 형식은 [계약 예시](../../../ai-worker/contract/README.md)를 원본으로 한다.
-- 일시 오류(네트워크, 429, 5xx, 시간 초과)만 1분, 5분 뒤 다시 시도하며 처리는 작업당 최대 3번(`max_attempts`)이다. 잘못된 PDF, 인증·잔액 오류는 바로 `FAILED`다. 워커는 처리하는 동안 lease를 늘리고, 멈춘 워커의 작업은 lease(3분)가 끝나면 다른 워커가 다시 꺼낸다. 넣은 지 40분이 지난 작업은 상태와 관계없이 `FAILED`(`DEADLINE_EXCEEDED`)로 끝낸다. 큐 상태 전이 규칙은 [계약 예시](../../../ai-worker/contract/README.md)에 둔다.
+- 워커는 첫 쪽과 공급표·임대조건표·일정·문의처·선정 순위가 있는 쪽만 골라 쪽 텍스트와 표를 DeepSeek(`deepseek-flash`, 생각 수준 low)에 보낸다. 공급표나 임대조건표를 찾지 못하면 전체 쪽을 보내고 경고를 남긴다. LH 공고는 입력 스냅숏의 LH 공급 API 행을 공급행 틀로 함께 보낸다.
+  응답이 JSON 객체가 아니거나 `data`가 없으면 `FAILED`다. 날짜 형식·표기 규칙 위반, 근거 인용문이 그 쪽 원문에 없음, LH API와 다른 공급행 수·모집수는 값을 고치지 않고 `warnings`에 담는다.
+- 일시 오류(네트워크, 429, 5xx, 시간 초과)만 1분, 5분 뒤 다시 시도하며 처리는 작업당 최대 3번(`max_attempts`)이다. 잘못된 PDF, 인증·잔액 오류는 바로 `FAILED`다. 한 번의 처리는 10분 안에 끝내며 마감까지 그만큼 남지 않은 작업은 꺼내지 않는다. 워커는 처리하는 동안 lease를 늘리고, 멈춘 워커의 작업은 lease(3분)가 끝나면 다른 워커가 다시 꺼낸다. 넣은 지 40분이 지난 작업은 상태와 관계없이 `FAILED`(`DEADLINE_EXCEEDED`)로 끝낸다. 큐 상태 전이 규칙은 [계약 예시](../../../ai-worker/contract/README.md)에 둔다.
 - 화면은 3초마다 작업 상태를 묻고, 재시도를 기다리는 동안 `retryReason`을 보여 준다. 워커 마감보다 조금 긴 45분이 지나면 기다리기를 멈춘다. 진행 중인 작업이 다른 PDF의 것이면 이어 기다리지 않고 알린다.
 - PDF는 처리 중에만 작업 행에 보관하고 `SUCCEEDED`·`FAILED`가 되면 비운다(DB 제약으로 강제). 공고 데이터에는 반영하지 않고, 공고를 지우면 작업도 함께 지운다.
 - 워커는 `ai_jobs`만 읽고 상태·결과 열만 고칠 수 있는 DB 역할 `toadzip_ai_worker`를 쓴다. 역할과 비밀번호는 DB 초기화 스크립트·운영 절차가 만들고, 마이그레이션은 역할이 있을 때만 권한을 준다. 역할을 마이그레이션 뒤에 만들면 `V20261103_01`의 GRANT를 다시 실행한다.

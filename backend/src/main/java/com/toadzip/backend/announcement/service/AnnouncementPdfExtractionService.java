@@ -67,7 +67,7 @@ public class AnnouncementPdfExtractionService {
 
     public PdfExtractionJobResponse request(long announcementId, String admin, String fileName, byte[] pdf) {
         requireAnnouncement(announcementId);
-        AnnouncementPdfDocument.read(pdf);
+        AnnouncementPdfDocument.requireReadable(pdf);
         requireNoActiveJob(announcementId);
         PdfExtractionInput input = inputs.read(announcementId);
         PdfExtractionJob job = PdfExtractionJob.requestedByAdmin(announcementId, admin,

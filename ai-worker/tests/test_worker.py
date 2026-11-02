@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 import time
 from datetime import timedelta
 from decimal import Decimal
@@ -319,12 +320,22 @@ def test_job_past_deadline_fails_in_any_active_status(owner, worker_conn, status
     assert row["completed_at"] is not None
 
 
-def test_job_before_deadline_is_processed(owner, worker_conn):
-    job_id = insert_job(owner, age_minutes=39)
+def test_job_with_attempt_budget_left_is_processed(owner, worker_conn):
+    job_id = insert_job(owner, age_minutes=29)
 
     assert run_once(worker_conn, FakeExtractor()) is True
 
     assert job_row(owner, job_id)["status"] == "SUCCEEDED"
+
+
+def test_job_without_attempt_budget_left_waits_for_deadline_cleanup(owner, worker_conn):
+    job_id = insert_job(owner, age_minutes=31)
+    extractor = FakeExtractor()
+
+    assert run_once(worker_conn, extractor) is False
+
+    assert extractor.jobs == []
+    assert job_row(owner, job_id)["status"] == "PENDING"
 
 
 def test_claim_skips_job_past_deadline(owner, worker_conn):
@@ -377,3 +388,64 @@ def test_deadline_cleanup_leaves_finished_jobs_alone(owner, worker_conn):
 
     after = job_row(owner, job_id)
     assert (after["error_code"], after["completed_at"]) == ("INVALID_PDF", before["completed_at"])
+
+
+def test_run_processes_jobs_until_stopped(owner, postgres, monkeypatch):
+    monkeypatch.setattr(worker, "IDLE", timedelta(0))
+    job_ids = [insert_job(owner, 1), insert_job(owner, 2)]
+    stop = threading.Event()
+    extractor = FakeExtractor(during=lambda job: len(extractor.jobs) == 2 and stop.set())
+
+    worker.run(lambda: connect_worker(postgres), extractor, stop)
+
+    assert [job_row(owner, job_id)["status"] for job_id in job_ids] == ["SUCCEEDED", "SUCCEEDED"]
+
+
+def test_run_keeps_going_after_run_once_error(postgres, monkeypatch, caplog):
+    monkeypatch.setattr(worker, "IDLE", timedelta(0))
+    stop = threading.Event()
+    calls = []
+
+    def flaky(conn, extractor):
+        calls.append(conn)
+        if len(calls) == 1:
+            raise psycopg.errors.QueryCanceled("statement timeout")
+        stop.set()
+        return True
+
+    monkeypatch.setattr(worker, "run_once", flaky)
+
+    worker.run(lambda: connect_worker(postgres), FakeExtractor(), stop)
+
+    assert len(calls) == 2
+    assert calls[0] is calls[1]
+    assert "작업 처리 중 오류가 났습니다." in caplog.text
+
+
+def test_run_reconnects_after_connection_failure_and_broken_connection(postgres, monkeypatch):
+    monkeypatch.setattr(worker, "IDLE", timedelta(0))
+    monkeypatch.setattr(worker, "RECONNECT", timedelta(0))
+    stop = threading.Event()
+    connections = []
+    calls = []
+
+    def connect():
+        connections.append(None)
+        if len(connections) == 1:
+            raise psycopg.OperationalError("connection refused")
+        return connect_worker(postgres)
+
+    def breaking(conn, extractor):
+        calls.append(conn)
+        if len(calls) == 1:
+            conn.close()
+            raise psycopg.OperationalError("server closed the connection")
+        stop.set()
+        return True
+
+    monkeypatch.setattr(worker, "run_once", breaking)
+
+    worker.run(connect, FakeExtractor(), stop)
+
+    assert len(connections) == 3
+    assert calls[0] is not calls[1]
