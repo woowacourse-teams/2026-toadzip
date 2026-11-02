@@ -12,12 +12,12 @@ import tools.jackson.databind.ObjectMapper;
 public class MyHomeComplexMergeStore {
 
     /** 대표 단지로 옮기고 되돌릴 때 원래 단지로 돌려놓는 제품 테이블. 잠금·스냅숏·이전·복구가 이 목록을 함께 쓴다. */
-    static final List<String> REFERENCE_TABLES = List.of(
+    private static final List<String> REFERENCE_TABLES = List.of(
             "housing_types", "supply_rows", "favorite_housing_complexes", "announcement_application_schedules",
             "announcement_complexes"
     );
     /** 관리자가 단지에 남긴 기록. 있으면 일반 통합을 막고, 분할 단지 흡수에서는 대표 단지로 옮긴다. */
-    static final List<String> ADMIN_RECORD_TABLES = List.of(
+    private static final List<String> ADMIN_RECORD_TABLES = List.of(
             "lh_household_complex_links", "lh_household_target_decisions", "housing_complex_reviews",
             "complex_comparison_links"
     );
@@ -25,8 +25,7 @@ public class MyHomeComplexMergeStore {
             .map(table -> "'" + table + "', COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM " + table
                     + " r WHERE r.housing_complex_id IN (:ids)), '[]'),")
             .collect(Collectors.joining("\n"));
-    /** 되돌리기가 복원하는 housing_complexes 열. 스키마와 같은지는 MyHomeComplexMergeStoreSchemaTest가 확인한다. */
-    static final List<String> COMPLEX_COLUMNS = List.of(
+    private static final List<String> COMPLEX_COLUMNS = List.of(
             "id", "city_county_district_code", "latitude", "legal_dong_code", "longitude", "pnu",
             "province_code", "road_address", "completion_date", "corridor_type", "elevator_installed",
             "heating_type", "housing_type", "image_url", "name", "parking_space_count", "provider",
