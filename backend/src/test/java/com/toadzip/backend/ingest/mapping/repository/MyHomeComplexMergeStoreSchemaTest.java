@@ -35,17 +35,17 @@ class MyHomeComplexMergeStoreSchemaTest {
                                     SELECT column_name FROM information_schema.columns
                                     WHERE table_schema = 'public' AND table_name = 'housing_complexes'
                                     """));
-                    // 새 테이블이 단지를 참조하면 MyHomeComplexMergeStore의 잠금·스냅숏·이전·복구 목록에 넣고 여기에 더한다.
+                    // 새 테이블이 단지를 참조하면 제품 참조(REFERENCE_TABLES)나 관리자 기록(ADMIN_RECORD_TABLES)에 넣는다.
                     // CASCADE 참조를 빠뜨리면 통합하며 지운 단지와 함께 그 행이 사라진다.
+                    // 원천 연결·별칭과 저장 매칭 결정은 열이나 옮기는 규칙이 달라 Store가 따로 다룬다.
+                    List<String> handled = new ArrayList<>(MyHomeComplexMergeStore.REFERENCE_TABLES);
+                    handled.addAll(MyHomeComplexMergeStore.ADMIN_RECORD_TABLES);
+                    handled.addAll(List.of("myhome_complex_links", "housing_complex_aliases",
+                            "announcement_supply_match_decisions"));
                     assertThat(strings(query, """
                             SELECT DISTINCT conrelid::regclass::text FROM pg_constraint
                             WHERE contype = 'f' AND confrelid = 'public.housing_complexes'::regclass
-                            """)).as("housing_complexes를 참조하는 테이블").containsExactlyInAnyOrder(
-                            "housing_types", "supply_rows", "favorite_housing_complexes",
-                            "announcement_application_schedules", "announcement_complexes", "myhome_complex_links",
-                            "housing_complex_aliases", "housing_complex_reviews", "complex_comparison_links",
-                            "announcement_supply_match_decisions", "lh_household_complex_links",
-                            "lh_household_target_decisions");
+                            """)).as("housing_complexes를 참조하는 테이블").containsExactlyInAnyOrderElementsOf(handled);
                 }
             } finally {
                 statement.execute("DROP DATABASE " + database + " WITH (FORCE)");

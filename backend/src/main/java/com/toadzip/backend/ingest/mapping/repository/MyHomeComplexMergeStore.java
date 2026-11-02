@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.mapping.repository;
 import jakarta.persistence.EntityManager;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
@@ -10,10 +11,20 @@ import tools.jackson.databind.ObjectMapper;
 @Repository
 public class MyHomeComplexMergeStore {
 
-    private static final List<String> REFERENCE_TABLES = List.of(
+    /** 대표 단지로 옮기고 되돌릴 때 원래 단지로 돌려놓는 제품 테이블. 잠금·스냅숏·이전·복구가 이 목록을 함께 쓴다. */
+    static final List<String> REFERENCE_TABLES = List.of(
             "housing_types", "supply_rows", "favorite_housing_complexes", "announcement_application_schedules",
             "announcement_complexes"
     );
+    /** 관리자가 단지에 남긴 기록. 있으면 일반 통합을 막고, 분할 단지 흡수에서는 대표 단지로 옮긴다. */
+    static final List<String> ADMIN_RECORD_TABLES = List.of(
+            "lh_household_complex_links", "lh_household_target_decisions", "housing_complex_reviews",
+            "complex_comparison_links"
+    );
+    private static final String REFERENCE_STATE = REFERENCE_TABLES.stream()
+            .map(table -> "'" + table + "', COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM " + table
+                    + " r WHERE r.housing_complex_id IN (:ids)), '[]'),")
+            .collect(Collectors.joining("\n"));
     /** 되돌리기가 복원하는 housing_complexes 열. 스키마와 같은지는 MyHomeComplexMergeStoreSchemaTest가 확인한다. */
     static final List<String> COMPLEX_COLUMNS = List.of(
             "id", "city_county_district_code", "latitude", "legal_dong_code", "longitude", "pnu",
@@ -58,23 +69,14 @@ public class MyHomeComplexMergeStore {
                     'version', 1,
                     'complexes', COALESCE((SELECT jsonb_agg(to_jsonb(c) ORDER BY c.id)
                         FROM housing_complexes c WHERE c.id IN (:ids)), '[]'),
-                    'housing_types', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id)
-                        FROM housing_types t WHERE t.housing_complex_id IN (:ids)), '[]'),
-                    'supply_rows', COALESCE((SELECT jsonb_agg(to_jsonb(s) ORDER BY s.id)
-                        FROM supply_rows s WHERE s.housing_complex_id IN (:ids)), '[]'),
-                    'favorite_housing_complexes', COALESCE((SELECT jsonb_agg(to_jsonb(f) ORDER BY f.id)
-                        FROM favorite_housing_complexes f WHERE f.housing_complex_id IN (:ids)), '[]'),
-                    'announcement_application_schedules', COALESCE((SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id)
-                        FROM announcement_application_schedules a WHERE a.housing_complex_id IN (:ids)), '[]'),
-                    'announcement_complexes', COALESCE((SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id)
-                        FROM announcement_complexes a WHERE a.housing_complex_id IN (:ids)), '[]'),
+                    %s
                     'links', COALESCE((SELECT jsonb_agg(to_jsonb(l) ORDER BY l.source_complex_identifier)
                         FROM myhome_complex_links l WHERE l.housing_complex_id IN (:ids)), '[]'),
                     'aliases', COALESCE((SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id)
                         FROM housing_complex_aliases a
                         WHERE a.housing_complex_id IN (:ids) OR a.id IN (:ids)), '[]')
                 )::text
-                """).param("ids", ids).query(String.class).single();
+                """.formatted(REFERENCE_STATE)).param("ids", ids).query(String.class).single();
     }
 
     public String evidence(List<Long> sourceIds, List<Long> lhIds) {
@@ -172,11 +174,9 @@ public class MyHomeComplexMergeStore {
     public long countAdminRecords(List<Long> ids) {
         return jdbc.sql("""
                 SELECT (SELECT count(*) FROM announcement_supply_match_decisions WHERE complex_id IN (:ids))
-                    + (SELECT count(*) FROM lh_household_complex_links WHERE housing_complex_id IN (:ids))
-                    + (SELECT count(*) FROM lh_household_target_decisions WHERE housing_complex_id IN (:ids))
-                    + (SELECT count(*) FROM housing_complex_reviews WHERE housing_complex_id IN (:ids))
-                    + (SELECT count(*) FROM complex_comparison_links WHERE housing_complex_id IN (:ids))
-                """).param("ids", ids).query(Long.class).single();
+                """ + ADMIN_RECORD_TABLES.stream()
+                .map(table -> " + (SELECT count(*) FROM " + table + " WHERE housing_complex_id IN (:ids))")
+                .collect(Collectors.joining())).param("ids", ids).query(Long.class).single();
     }
 
     public long countHouseholdTargetDecisions(List<Long> ids) {
@@ -194,8 +194,7 @@ public class MyHomeComplexMergeStore {
                         AND (kept.housing_complex_id = :target
                             OR kept.housing_complex_id IN (:donors) AND kept.id < donor.id))
                 """).param("target", representativeId).param("donors", donorIds).update();
-        for (String table : List.of("lh_household_complex_links", "lh_household_target_decisions",
-                "housing_complex_reviews", "complex_comparison_links")) {
+        for (String table : ADMIN_RECORD_TABLES) {
             jdbc.sql("UPDATE " + table + " SET housing_complex_id = :target WHERE housing_complex_id IN (:donors)")
                     .param("target", representativeId).param("donors", donorIds).update();
         }
