@@ -12,8 +12,11 @@ public record LhLeaseCatalogCollectionRequest(
         UUID executionId, int pageSize, int maxPages, Instant startedAt
 ) implements PagedSourceRequest {
 
+    public static final int MAX_PAGE_SIZE = 9_999;
+    public static final int MAX_PAGES = 1_000;
+
     public LhLeaseCatalogCollectionRequest {
-        if (pageSize < 1 || pageSize > 9999 || maxPages < 1 || maxPages > 1000) {
+        if (pageSize < 1 || pageSize > MAX_PAGE_SIZE || maxPages < 1 || maxPages > MAX_PAGES) {
             throw new IllegalArgumentException("페이지 크기는 1~9,999, 최대 페이지 수는 1~1,000이어야 합니다.");
         }
         startedAt = Objects.requireNonNull(startedAt, "요청 시작 시각은 필수입니다.").truncatedTo(ChronoUnit.MICROS);

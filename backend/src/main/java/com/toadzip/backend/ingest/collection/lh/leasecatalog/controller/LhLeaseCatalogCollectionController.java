@@ -1,5 +1,8 @@
 package com.toadzip.backend.ingest.collection.lh.leasecatalog.controller;
 
+import static com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.LhLeaseCatalogCollectionRequest.MAX_PAGES;
+import static com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.LhLeaseCatalogCollectionRequest.MAX_PAGE_SIZE;
+
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.api.LhLeaseCatalogCollectionCommand;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCatalogCollectionService;
@@ -26,10 +29,10 @@ public class LhLeaseCatalogCollectionController {
     public ResponseEntity<ExternalDataCollectionReport> collect(
             @RequestParam(defaultValue = "9999")
             @Min(value = 1, message = "1 이상이어야 합니다.")
-            @Max(value = 10_000, message = "10000 이하여야 합니다.") int pageSize,
+            @Max(value = MAX_PAGE_SIZE, message = MAX_PAGE_SIZE + " 이하여야 합니다.") int pageSize,
             @RequestParam(defaultValue = "1")
             @Min(value = 1, message = "1 이상이어야 합니다.")
-            @Max(value = 10_000, message = "10000 이하여야 합니다.") int maxPages
+            @Max(value = MAX_PAGES, message = MAX_PAGES + " 이하여야 합니다.") int maxPages
     ) {
         ExternalDataCollectionReport report = collectionService.collect(
                 new LhLeaseCatalogCollectionCommand(pageSize, maxPages)
