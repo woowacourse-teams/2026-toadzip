@@ -9,7 +9,9 @@ import { useDocumentScrollActivity } from './useDocumentScrollActivity.ts'
 import scrollbarStyles from './DocumentScrollbar.module.css'
 
 // Keep the SDK's :root variables and generic annotation styles inside this viewer.
-const scopedViewerStyles = `@scope (.${styles.document}) { ${pdfViewerStyles.replaceAll(':root', ':scope')} }`
+// pdf.js는 쪽 테두리(9px)를 content-box로 계산한다. 앱 전역의 `* { box-sizing: border-box }`가 덮으면 그림만 테두리만큼 줄어
+// 글자층·검색 강조가 아래·오른쪽으로 밀리므로 쪽 상자는 content-box로 되돌린다.
+const scopedViewerStyles = `@scope (.${styles.document}) { ${pdfViewerStyles.replaceAll(':root', ':scope')} .page { box-sizing: content-box; } }`
 
 /** 외부에서 근거 위치를 지정한다. nonce가 바뀔 때마다 해당 쪽으로 이동하고 query를 강조한다. */
 export type PdfFocus = { readonly page: number; readonly query: string; readonly nonce: number }

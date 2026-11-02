@@ -21,17 +21,18 @@ describe('최초 입주자 공고의 LH 원천행 맞추기', () => {
     sourceHousingTypeName: name, expectedMoveInMonth: null, totalSupplyHouseholdCount: total, exclusiveArea, commonArea: null, supplyArea: null, constructedHouseholdCount: null, subtypes: [], targets: targets.map(target) })
   const source = (id: number, typeName: string, householdCount: number) => ({ ...blankRow(id), id, key: `row:${id}`, complexName: '인천부평(도시재생뉴딜)',
     typeName, householdCount, pnu: '2823710100100650017', category: 'NEW_SUPPLY' as const, areaOverride: false })
-  function setup() {
+  function setup(firstName = '16A', firstArea: number | null = null, secondName = '26A', secondArea = 26.01) {
     const base = structuredClone(fixtures.hansville.extraction) as unknown as Record<string, unknown> & { data: Record<string, unknown> }
-    base.data.supplyRows = [pdfRow('16A', 16.37, ['대학생', '청년 소득(×)', '기존거주자(철거민)'], 78),
-      pdfRow('26A', 26.01, ['고령자', '주거급여수급자', '기존거주자(철거민)'], null), pdfRow('26B', 26.1, ['고령자', '주거급여수급자', '기존거주자(철거민)'], null)]
+    base.data.supplyRows = [pdfRow(firstName, 16.37, ['대학생', '청년 소득(×)', '기존거주자(철거민)'], 78),
+      pdfRow(secondName, secondArea, ['고령자', '주거급여수급자', '기존거주자(철거민)'], null), pdfRow('26B', 26.1, ['고령자', '주거급여수급자', '기존거주자(철거민)'], null)]
     base.sharedCounts = [{ paths: ['supplyRows[1].totalSupplyHouseholdCount', 'supplyRows[2].totalSupplyHouseholdCount'], count: 46, page: 3, quote: '26A/B/C 46' }]
     base.notApplicable = [{ path: 'supplyRows[1].targets[2].supplyRank', reason: '순위 없음' }]
-    base.evidence = [0, 1, 2].map(index => ({ path: `supplyRows[${index}]`, page: 3, quote: `행 ${index}` }))
+    // 공급 표 한 줄 인용처럼 주택형 표기를 담는다.
+    base.evidence = [firstName, secondName, '26B'].map((name, index) => ({ path: `supplyRows[${index}]`, page: 3, quote: `${name} 행 ${index}` }))
     const extraction = readExtraction(JSON.stringify(base))
     if (!extraction.ok) throw new Error(extraction.error)
     const { workspace } = scenario('hansville')
-    workspace.supply.rows = [source(10, '16A(대학생/청년)', 78), source(11, '26A/B(고령자)', 4), source(12, '26A/B(주거급여수급자)', 42), source(13, '44A/B(신혼부부·한부모)', 86)]
+    workspace.supply.rows = [{ ...source(10, '16A(대학생/청년)', 78), exclusiveArea: firstArea }, source(11, '26A/B(고령자)', 4), source(12, '26A/B(주거급여수급자)', 42), source(13, '44A/B(신혼부부·한부모)', 86)]
     const review = createReview(extraction.value, workspace, {})
     const candidates = [{ id: 1, name: '16A', exclusiveArea: 16.37, supplyArea: null, householdCount: null }, { id: 2, name: '26A', exclusiveArea: 26.01, supplyArea: null, householdCount: null },
       { id: 3, name: '26B', exclusiveArea: 26.1, supplyArea: null, householdCount: null }]
@@ -54,6 +55,16 @@ describe('최초 입주자 공고의 LH 원천행 맞추기', () => {
     expect(aligned.rows.map(row => row.proposal.needsConfirmation)).toEqual([false, true, true, true, true])
   })
 
+  it('LH 이름과 공고문 표기가 달라도(16A(대학생/청년) ↔ 16) 아직 맞추지 않은 행 중 전용면적이 하나만 같으면 맞추고 확인하게 한다', () => {
+    const { aligned } = setup('16', 16.37)
+    expect(aligned.rows[0].proposal.destination).toBe('row:10')
+    expect(aligned.rows[0].proposal.needsConfirmation).toBe(true)
+    expect(aligned.rows[0].proposal.reason).toContain("형명이 달라(LH '16A(대학생/청년)', 공고문 '16') 전용면적으로 맞췄습니다")
+    // LH 면적을 모르거나 같은 면적의 공고문 행이 둘 이상이면 맞추지 않는다.
+    expect(setup('16').aligned.rows[0].proposal.destination).not.toBe('row:10')
+    expect(setup('16', 16.37, '16B', 16.37).aligned.rows[0].proposal.destination).not.toBe('row:10')
+  })
+
   it('공급대상 묶음마다 행을 복사하고 대상은 묶음 이름으로 나누며, 묶음에 없는 대상은 첫 묶음에 넣고 확인하게 한다', () => {
     const { aligned } = setup()
     expect(aligned.extraction.supplyRows.map(row => row.targets.map(item => item.target))).toEqual([
@@ -62,7 +73,7 @@ describe('최초 입주자 공고의 LH 원천행 맞추기', () => {
     expect(aligned.rows[1].proposal.needsConfirmation).toBe(true)
     // 대상 경로의 메모와 공급행 근거도 복사한 행의 새 번호로 옮긴다.
     expect(noteFor(aligned.extraction.notApplicable, 'supplyRows[1].targets[1].supplyRank')?.reason).toBe('순위 없음')
-    expect(evidenceFor(aligned.extraction.evidence, 'supplyRows[4].targets[0].rentalDeposit')?.quote).toBe('행 2')
+    expect(evidenceFor(aligned.extraction.evidence, 'supplyRows[4].targets[0].rentalDeposit')?.quote).toBe('26B 행 2')
   })
 
   it('저장하면 LH 행을 그 단지·주택형으로 고치고 나눈 행과 LH 공급 수로 공통 모집 묶음을 만든다. 맞는 공고문 행이 없는 LH 행은 그대로 둔다', () => {

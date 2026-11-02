@@ -9,14 +9,16 @@ const prompt = readFileSync(resolve(process.cwd(), '../backend/src/main/resource
 import { evidenceFor, evidenceQuery, noteFor, pathCovers, readExtraction, searchText, type Extraction } from './extraction'
 
 describe('AI 추출 응답 읽기', () => {
-  it('PDF에서 강조할 문구는 인용문에 있는 값만 고르고, 금액은 천 단위 쉼표 표기로 찾는다', () => {
+  it('PDF에서 강조할 문구는 금액이면 그 금액(천 단위 쉼표), 글자면 인용문에 있는 값을 고른다', () => {
     const quote = '2,395,000 119,750 2,275,250 47,630'
     expect(evidenceQuery(quote, 2395000)).toBe('2,395,000')
     expect(evidenceQuery(quote, '47630')).toBe('47,630')
     expect(evidenceQuery('연락처 055-954-9818', '055-954-9818')).toBe('055-954-9818')
-    // 값이 인용문에 없거나 짧은 숫자면 인용문에서 고른 검색어로 강조한다. 병합 셀 때문에 인용문 전체는 PDF에서 찾지 못할 수 있고,
-    // 짧은 숫자는 쪽 곳곳에 있어 엉뚱한 곳을 강조한다.
-    expect(evidenceQuery(quote, 9095000)).toBe(searchText(quote))
+    // 금액은 인용문에 없어도(전환보증금 칸이 인용에 빠진 경우) 그 금액을 PDF 표기로 찾는다.
+    expect(evidenceQuery(quote, 16000000)).toBe('16,000,000')
+    expect(evidenceQuery('보증금 2395000원', 2395000)).toBe('2395000')
+    // 글자 값이 인용문에 없거나 짧은 숫자면 인용문에서 고른 검색어로 강조한다. 짧은 숫자는 쪽 곳곳에 있어 엉뚱한 곳을 강조한다.
+    expect(evidenceQuery(quote, '공공임대')).toBe(searchText(quote))
     expect(searchText(quote)).toBe('2,395,000')
     expect(evidenceQuery('26A 16 26.70 17.6211', 16)).toBe('17.6211')
     expect(evidenceQuery(quote)).toBe('2,395,000')

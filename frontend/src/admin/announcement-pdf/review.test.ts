@@ -268,6 +268,21 @@ it('면적만 적힌 주택형 표기는 공고 표기로 제안하지 않는다
   expect(cell).toMatchObject({ state: 'notApplicable', selected: false, note: '면적만 적힌 값이라 주택형 표기로 쓰지 않습니다.' })
 })
 
+it('주택형 표기가 그 행의 PDF 근거 인용에 없으면(LH 이름 24A ↔ 공급 표 24) 바꾸지 않고 확인 필요로 둔다', () => {
+  const { review, workspace, housing } = scenario('gongju')
+  const extraction = structuredClone(review.extraction)
+  extraction.supplyRows[0].values.sourceHousingTypeName = '24A'
+  extraction.evidence = [...extraction.evidence.filter(item => item.path !== 'supplyRows[0].sourceHousingTypeName'), { path: 'supplyRows[0].sourceHousingTypeName', page: 2, quote: '24 24.7200 12.6758 50' }]
+  const cell = createReview(extraction, workspace, housing).rows[0].cells.find(item => item.field === 'sourceHousingTypeName')!
+  expect(cell).toMatchObject({ state: 'confirm', selected: false })
+  expect(cell.note).toContain("PDF 근거 인용에 '24A'가 없습니다")
+  extraction.evidence = extraction.evidence.map(item => item.path === 'supplyRows[0].sourceHousingTypeName' ? { ...item, quote: '24A 24.7200 12.6758 50' } : item)
+  expect(createReview(extraction, workspace, housing).rows[0].cells.find(item => item.field === 'sourceHousingTypeName')!.state).not.toBe('confirm')
+  // 공급 표 전체(상위 항목)의 근거를 빌려 온 경우에는 그 행 인용이 아니므로 대조하지 않는다.
+  extraction.evidence = [...extraction.evidence.filter(item => !['supplyRows[0]', 'supplyRows[0].sourceHousingTypeName'].includes(item.path)), { path: 'supplyRows', page: 2, quote: '형별 공급계획' }]
+  expect(createReview(extraction, workspace, housing).rows[0].cells.find(item => item.field === 'sourceHousingTypeName')!.note).not.toContain('PDF 근거 인용에')
+})
+
 it('저장 전 변경 목록은 실제로 바뀌는 값만 영역별로 모으고 선택을 끄면 뺀다', () => {
   const { review } = scenario('gongju')
   const start = review.metadata.findIndex(cell => cell.field === 'applicationStartDate')

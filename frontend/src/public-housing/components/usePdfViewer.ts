@@ -50,11 +50,9 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
       const linkService = new PDFLinkService({ eventBus: events, externalLinkTarget: LinkTarget.BLANK,
         externalLinkRel: 'noopener noreferrer', ignoreDestinationZoom: true })
       // Restrict evidence highlighting to its stated page. A normal find may
-      // otherwise navigate to the same number on an unrelated page.
+      // otherwise navigate to the same number on an unrelated page. Matches stay
+      // on that page, so scrolling to the match brings the evidence into view.
       class EvidenceFindController extends PDFFindController {
-        override scrollMatchIntoView(options: Parameters<InstanceType<typeof PDFFindController>['scrollMatchIntoView']>[0]) {
-          if (searchPageRef.current === null) super.scrollMatchIntoView(options)
-        }
         override match(query: string | string[], content: string, pageIndex: number) {
           if (searchPageRef.current !== null && pageIndex + 1 !== searchPageRef.current) return []
           return super.match(query, content, pageIndex)

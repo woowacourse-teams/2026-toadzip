@@ -34,7 +34,7 @@ export function emptySourceRows(workspace: JsonWorkspace, extraction: Extraction
     && names.includes(row.complexName))
 }
 
-type Alignment = { source: CorrectionRow; label: SourceLabel; rows: number[] }
+type Alignment = { source: CorrectionRow; label: SourceLabel; rows: number[]; byArea?: boolean }
 type Copy = { index: number; targets: number[] }
 type Plan = { from: number; alignment: Alignment | null; extraTargets: string[] }
 
@@ -45,10 +45,21 @@ function inGroup(target: unknown, group: string) {
 }
 
 export function sourceAlignments(review: Review, workspace: JsonWorkspace, indexes: number[], complexName: string): Alignment[] {
-  return emptySourceRows(workspace, review.extraction, complexName).flatMap(source => {
+  const named = emptySourceRows(workspace, review.extraction, complexName).map(source => {
     const label = parseSourceLabel(source.typeName)
-    const rows = indexes.filter(index => label.types.some(type => typeKey(type) === typeKey(review.extraction.supplyRows[index].typeName)))
-    return rows.length ? [{ source, label, rows }] : []
+    return { source, label, rows: indexes.filter(index => label.types.some(type => typeKey(type) === typeKey(review.extraction.supplyRows[index].typeName))) }
+  })
+  // 공고문은 PDF 공급 표 표기(24)를 쓰고 LH는 다른 이름(24A)을 쓰기도 한다. 형명으로 못 맞춘 LH 행은
+  // 아직 맞추지 않은 공고문 행 중 전용면적이 같은 행이 하나뿐일 때만 그 행에 맞추고, 확인을 받는다.
+  const claimed = new Set(named.flatMap(item => item.rows))
+  const area = (index: number) => Number(review.extraction.supplyRows[index].values.exclusiveArea)
+  return named.flatMap(item => {
+    if (item.rows.length) return [item]
+    const lhArea = item.source.exclusiveArea
+    const byArea = lhArea == null ? [] : indexes.filter(index => !claimed.has(index) && Math.abs(area(index) - lhArea) < 0.005)
+    if (byArea.length !== 1) return []
+    claimed.add(byArea[0])
+    return [{ ...item, rows: byArea, byArea: true }]
   })
 }
 
@@ -137,12 +148,13 @@ function alignOn(review: Review, workspace: JsonWorkspace, complexName: string, 
     const reason = [alignment.rows.length > 1
       ? `LH 원천 '${alignment.source.typeName}'을(를) 공고문 ${alignment.rows.map(from => source.supplyRows[from].typeName).join('·')}로 나눕니다. 이번 공급 ${alignment.source.householdCount ?? '미확인'}세대를 공통 모집수로 둡니다.`
       : `LH 원천 '${alignment.source.typeName}'에 연결합니다.`,
+    alignment.byArea ? `형명이 달라(LH '${alignment.source.typeName}', 공고문 '${source.supplyRows[alignment.rows[0]].typeName ?? ''}') 전용면적으로 맞췄습니다. 확인하세요.` : '',
     (copies.get(plan.from)?.length ?? 0) > 1 && alignment.label.group ? `대상은 '${alignment.label.group}' 묶음만 넣었습니다.` : '',
     plan.extraTargets.length ? `${plan.extraTargets.join(', ')}은(는) LH 공급대상 묶음에 없어 이 행에 넣었습니다. 확인하세요.` : ''].filter(Boolean).join(' ')
     const next = createRowReview(extraction, index, { destination: first ? alignment.source.key : 'new', anchorKey: '', complexId: complex.id,
       housingTypeId, candidates, recommended: first ? [alignment.source.key] : [], reason, sharedIndex: sharedIndex(index),
       // LH 행 하나(형 하나)에 공고문 행 하나가 형명으로 맞고 대상을 나누지 않았으며 주택형도 정해졌으면 확인 없이 둔다.
-      needsConfirmation: !certain || alignment.rows.length > 1 || alignment.label.types.length > 1 || (copies.get(plan.from)?.length ?? 0) > 1 || plan.extraTargets.length > 0 || housingTypeId === null,
+      needsConfirmation: !certain || Boolean(alignment.byArea) || alignment.rows.length > 1 || alignment.label.types.length > 1 || (copies.get(plan.from)?.length ?? 0) > 1 || plan.extraTargets.length > 0 || housingTypeId === null,
       // 새 행은 LH 행과 같은 소재지·공급 구분이어야 공통 모집 묶음으로 저장된다.
       newComplex: { id: complex.id, name: complex.name, pnu: alignment.source.pnu, category: alignment.source.category } }, workspace)
     const newType = housingTypeId === null && Boolean(extraction.supplyRows[index].typeName)
