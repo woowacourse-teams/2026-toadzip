@@ -11,7 +11,6 @@ import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSourceView;
 import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
-import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
@@ -67,8 +66,8 @@ class LhAnnouncementRefiner {
     private final EntityManager entityManager;
 
     Outcome refine(LhAnnouncementCatalogSourceView catalog, LhComplexIndex index, Tally tally) {
-        LhAnnouncementRequest request = LhCurrentSupplies.request(catalog);
-        String requestHash = LhAnnouncementQuery.requestHashOf(request.requestDescription());
+        LhAnnouncementRequest request = LhAnnouncementRequest.from(catalog);
+        String requestHash = request.requestHash();
         List<LhAnnouncementDetailSourceView> details = detailSources.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
                 request.panId(), requestHash);
         if (details.isEmpty()) {

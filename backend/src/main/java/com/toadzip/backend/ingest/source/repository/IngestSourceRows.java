@@ -2,9 +2,15 @@ package com.toadzip.backend.ingest.source.repository;
 
 import com.toadzip.backend.ingest.domain.SourceArea;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /** 관리자 원천 조회는 현행 수집 행만 조회한다. */
 public final class IngestSourceRows {
+
+    /** 원천 행 JSON(raw_payload)에 함께 담기는 수집 관리 열. 원천 값 비교와 확인 항목에서는 뺀다. */
+    public static final List<String> METADATA_KEYS = List.of("id", "source_id", "collected_at", "source_order",
+            "collection_record_id", "consecutive_miss_count", "last_seen_run_id", "last_seen_at");
 
     // Character.isWhitespace와 같은 문자 집합으로 기존 projection의 String.strip() 키를 재현한다.
     private static final String KEY_WHITESPACE = "U&'\\0009\\000A\\000B\\000C\\000D\\001C\\001D\\001E\\001F\\0020"
@@ -12,6 +18,11 @@ public final class IngestSourceRows {
             + "\\2028\\2029\\205F\\3000'";
 
     private IngestSourceRows() {
+    }
+
+    /** jsonb 식 payload에서 수집 관리 열을 뺀 식 */
+    public static String withoutMetadata(String payload) {
+        return payload + METADATA_KEYS.stream().map(key -> " - '" + key + "'").collect(Collectors.joining());
     }
 
     public static String query(IngestSourceCategory category) {

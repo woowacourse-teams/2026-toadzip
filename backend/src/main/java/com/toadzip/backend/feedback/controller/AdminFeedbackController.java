@@ -1,5 +1,6 @@
 package com.toadzip.backend.feedback.controller;
 
+import com.toadzip.backend.admin.controller.AdminManagementApi;
 import com.toadzip.backend.feedback.service.AdminFeedbackProcessingService;
 import com.toadzip.backend.feedback.domain.FeedbackStatus;
 import com.toadzip.backend.feedback.dto.FeedbackProcessingRequest;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@AdminManagementApi
 @RestController
 @RequestMapping("/api/admin/feedback")
 public class AdminFeedbackController {

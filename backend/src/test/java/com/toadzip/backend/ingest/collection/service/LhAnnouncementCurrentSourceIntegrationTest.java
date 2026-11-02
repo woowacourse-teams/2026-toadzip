@@ -1,11 +1,14 @@
 package com.toadzip.backend.ingest.collection.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
+import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
+import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
@@ -26,6 +29,7 @@ import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
 import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionLinkRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQueryApiRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
@@ -34,12 +38,10 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAn
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
-import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -123,10 +125,11 @@ class LhAnnouncementCurrentSourceIntegrationTest {
     private LhAnnouncementExternalCollectionService collection;
 
     @Autowired
-    private MyHomeAnnouncementMappingService mapping;
+    private LhAnnouncementLinkResolver linkResolver;
 
     @Autowired
-    private LhAnnouncementEnrichmentService enrichment;
+    private MyHomeAnnouncementSourceReader sourceReader;
+
 
     @Autowired
     private HousingComplexRepository complexes;
@@ -179,7 +182,7 @@ class LhAnnouncementCurrentSourceIntegrationTest {
     }
 
     @Test
-    void 최신_행이_500행_배치_밖에_있어도_공급과_상세를_연결하고_현재_PAN으로_정제한다() {
+    void 최신_행이_500행_배치_밖에_있어도_공급과_상세를_현재_PAN으로_연결한다() {
         MyHomeAnnouncementSourceView previous = source("P1", 1, "100", "previous", NOW.minusSeconds(60));
         previous = MyHomeSourceViews.inactive(previous);
         List<MyHomeAnnouncementSourceView> rows = new ArrayList<>();
@@ -201,18 +204,15 @@ class LhAnnouncementCurrentSourceIntegrationTest {
         });
         assertThat(currentDetails()).singleElement().satisfies(detail ->
                 assertThat(detail.getPanId()).isEqualTo("200"));
-        // 배치 경계용 공고는 수집 정책에서 제외했으며 정제 검증에는 P1만 남긴다.
-        sources.deleteAll(sources.findAll().stream().filter(row -> !row.getPblancId().equals("P1")).toList());
-        assertCurrentProduct("200");
+        assertCurrentSources("200");
     }
 
     @Test
-    void 최신_요청_실패는_이전_원천과_성공_연결과_제품을_보존하고_재시도하면_정제까지_복구한다() {
+    void 최신_요청_실패는_이전_원천과_성공_연결을_보존하고_재시도하면_현재_원천으로_복구한다() {
         MyHomeAnnouncementSourceView previous = sources.save(source("P1", 1, "100", "previous", NOW.minusSeconds(60)));
         collection.collect(SUPPLY);
         collection.collect(DETAIL);
-        assertCurrentProduct("100");
-        Long announcementId = announcements.findAll().getFirst().getId();
+        assertCurrentSources("100");
         Long detailId = currentDetails().getFirst().getId();
         previous = MyHomeSourceViews.inactive(previous);
         sources.save(previous);
@@ -226,20 +226,15 @@ class LhAnnouncementCurrentSourceIntegrationTest {
         assertThat(querySources.findAll()).hasSize(2)
                 .allSatisfy(checkpoint -> assertThat(checkpoint.getPanId()).isEqualTo("100"));
         assertThat(currentDetails()).singleElement().satisfies(row -> assertThat(row.getId()).isEqualTo(detailId));
-        assertThat(mapping.mapAll().failedSourceRowCount()).isPositive();
-        assertThat(enrichment.enrichAll().failedSourceCount()).isPositive();
-        assertThat(announcements.findAll()).singleElement().satisfies(announcement -> {
-            assertThat(announcement.getId()).isEqualTo(announcementId);
-            assertThat(announcement.getLhPanId()).isEqualTo("100");
-        });
+        // 현재 마이홈 원천의 LH 요청은 아직 수집되지 않아 PDF 보정이 LH 공급을 고르지 않는다.
+        assertThatThrownBy(() -> linkResolver.resolveFirstLinked(currentMyHomeSources()))
+                .isInstanceOf(LhAnnouncementLinkResolutionException.class);
 
         doReturn(supplyResponse()).when(external).supply(any());
         doReturn(detailResponse()).when(external).detail(any());
         assertThat(collection.refresh(SUPPLY, "P1").failedRequestCount()).isZero();
         assertThat(collection.refresh(DETAIL, "P1").failedRequestCount()).isZero();
-        assertCurrentProduct("200");
-        assertThat(announcements.findAll()).singleElement()
-                .extracting(Announcement::getId).isEqualTo(announcementId);
+        assertCurrentSources("200");
         assertThat(failures.findAll()).allSatisfy(failure ->
                 assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.RESOLVED));
     }
@@ -396,13 +391,21 @@ class LhAnnouncementCurrentSourceIntegrationTest {
                 new BigDecimal("46.8000"), new BigDecimal("67.0000")));
     }
 
-    private void assertCurrentProduct(String panId) {
-        assertThat(mapping.mapAll().failedSourceRowCount())
-                .as("매핑 실패: %s", mappingFailures.findAll().stream().map(failure -> failure.getDetail()).toList())
-                .isZero();
-        assertThat(enrichment.enrichAll().failedSourceCount()).isZero();
-        assertThat(announcements.findAll()).singleElement().satisfies(announcement ->
-                assertThat(announcement.getLhPanId()).isEqualTo(panId));
+    /** P1의 현재 마이홈 원천이 그 PAN의 LH 요청으로 이어지고, 그 요청의 공급 수집 기록과 상세가 남아 있다. */
+    private void assertCurrentSources(String panId) {
+        var request = linkResolver.resolveFirstLinked(currentMyHomeSources()).request();
+        assertThat(request.panId()).isEqualTo(panId);
+        assertThat(querySources.findAll()).filteredOn(source -> source.getSource() == CollectionSource.LH_ANNOUNCEMENT_SUPPLY)
+                .anySatisfy(source -> {
+                    assertThat(source.getPanId()).isEqualTo(panId);
+                    assertThat(source.getRequestHash()).isEqualTo(request.requestHash());
+                });
+        assertThat(detailReader.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, request.requestHash()))
+                .isNotEmpty();
+    }
+
+    private List<MyHomeAnnouncementSourceView> currentMyHomeSources() {
+        return MyHomeAnnouncementCurrentSources.select(sourceReader.findAllByPblancIdOrderByIdAsc("P1"));
     }
 
     private MyHomeAnnouncementSourceView source(

@@ -1,15 +1,12 @@
 package com.toadzip.backend.ingest.enrichment.controller;
 
-import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentFailureResponse;
-import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -22,11 +19,6 @@ public class LhAnnouncementEnrichmentController {
 
     public LhAnnouncementEnrichmentController(LhAnnouncementEnrichmentService enrichmentService) {
         this.enrichmentService = enrichmentService;
-    }
-
-    @PostMapping
-    public ResponseEntity<LhAnnouncementEnrichmentReport> enrichAll() {
-        throw RetiredIngestOperationException.myHomeAnnouncementRefinement();
     }
 
     @GetMapping("/failures/page")

@@ -17,7 +17,7 @@ Spring은 생성자 주입으로 객체를 연결한다. `DataPipelineRunner.run
 | 단지 수집 | [MyHomeComplexCollectionService](../../../backend/src/main/java/com/toadzip/backend/ingest/collection/myhome/complex/service/MyHomeComplexCollectionService.java) → LH 임대목록 수집 |
 | 단지 정제 | [MyHomeComplexMappingService](../../../backend/src/main/java/com/toadzip/backend/ingest/mapping/service/MyHomeComplexMappingService.java) → LH 세대수 보강 |
 | 공고 수집 | [MyHomeAnnouncementCollectionService](../../../backend/src/main/java/com/toadzip/backend/ingest/collection/myhome/announcement/service/MyHomeAnnouncementCollectionService.java) → LH 목록 → 공급 → 상세 수집 |
-| 공고 정제 | [MyHomeAnnouncementMappingService](../../../backend/src/main/java/com/toadzip/backend/ingest/mapping/service/MyHomeAnnouncementMappingService.java) → LH 공고 보강 |
+| 공고 정제 | [LhAnnouncementRefinementService](../../../backend/src/main/java/com/toadzip/backend/ingest/lhrefinement/service/LhAnnouncementRefinementService.java) → LH 공고 정제 |
 
 수집은 응답·식별·조회 조건·실제 수집 시각을 원천에 보관하고, 요청의 실행 시각·결과는 `collection/history`에 분리한다. 정제·보강은 원천을 읽어 단지·주택형·공고에 반영한다.
 원천 조회·매핑·보강은 `collection` 저장 구조를 사용한다. 정제·보강은 저장 행을 읽기 전용 원천 View(`MyHomeAnnouncementSourceView`, `LhAnnouncementSupplySourceView` 등)로 읽는다. View는 저장 행과 그 행을 조회한 원천 요청으로 `of`/`read`에서만 만든다.
@@ -29,7 +29,7 @@ Spring은 생성자 주입으로 객체를 연결한다. `DataPipelineRunner.run
 
 단지 정제는 `MyHomeComplexMappingService.mapAll()` → `MyHomeComplexMappingProcessor.mapAll()`에서 원천을 묶는다. 일반 단지는 위치정보 DB의 좌표를 읽어 저장하고, 확인된 통합 단지는 기존 주소를 검증해 금액·주택형만 갱신한다. 저장은 단지별 트랜잭션이다.
 신규 주소의 좌표가 필요하면 수집 후 위치정보요약DB ZIP을 관리자 API로 업로드한다. 업로드는 정제 파이프라인에 포함되지 않는다.
-실패는 작업이 끝날 때 현재 원천과 대조해 갱신하며 이전 실패 이력은 보존한다. 정제·보강 실패의 전체 실행 후 대조·저장·미해결·이력 조회는 `IngestFailureStore`가 공통으로 맡는다. 원천별 Store는 대상 실패를 고르는 일만 더한다. 공고 정제·보강 Store는 공고 단위 대조와 관리자 해결(`resolveByAdmin`)을, 단지 정제 Store는 정제가 중간에 멈췄을 때 그때까지 관찰한 실패 기록(`recordObserved`)을 더한다. 관리자 다시 정제가 LH 보강 때문에 거절돼 정제를 되돌려도, 그 실패는 별도 트랜잭션(`reconcileRejectedAnnouncement`)으로 남긴다. 외부 수집 실패(`ExternalDataCollectionFailure`)는 출처와 조회 조건으로 같은 실패를 찾고 오류 유형이 다시 관찰될 때 바뀌므로 `IngestFailure`를 상속하지 않고, 요청 단위로 `ExternalDataFailureStore`·`ExternalDataFailureRecorder`가 관리한다.
+실패는 작업이 끝날 때 현재 원천과 대조해 갱신하며 이전 실패 이력은 보존한다. 정제·보강 실패의 전체 실행 후 대조·저장·미해결·이력 조회는 `IngestFailureStore`가 공통으로 맡는다. 원천별 Store는 대상 실패를 고르는 일만 더한다. 지원을 종료한 마이홈 공고 정제·LH 보강 Store는 지난 실패의 조회와 관리자 해결(`resolveByAdmin`)만, 단지 정제 Store는 정제가 중간에 멈췄을 때 그때까지 관찰한 실패 기록(`recordObserved`)을 더한다. 외부 수집 실패(`ExternalDataCollectionFailure`)는 출처와 조회 조건으로 같은 실패를 찾고 오류 유형이 다시 관찰될 때 바뀌므로 `IngestFailure`를 상속하지 않고, 요청 단위로 `ExternalDataFailureStore`·`ExternalDataFailureRecorder`가 관리한다.
 단계별 후보 준비·배치 실행 API는 제공하지 않는다.
 
 ## 공고 수집·정제를 따라가는 순서
@@ -55,30 +55,11 @@ LH 공급·상세는 [LhAnnouncementExternalCollectionService](../../../backend/
 
 합치면 이 차이를 정책 인자와 콜백으로 넘기는 얕은 도우미가 된다. 작업 스레드로 실행 맥락을 넘기는 일은 두 곳 모두 `IngestExecutionScope.propagate()`를 쓴다.
 
-공고 정제는 `MyHomeAnnouncementMappingService.mapAll()`에서 공고별로 다음 경로를 따른다.
+공고 정제는 [LH 공고 정제](lh-linking.md#lh-공고-정제-announcement-refinement)를 따른다. 마이홈 공고 정제·LH 보강·단건 등록과 그 보정은 지원을 종료해 코드를 걷어냈다. 지난 실행 이력과 실패 조회는 남긴다.
 
-```text
-MyHomeAnnouncementSourceMapper → MyHomeAnnouncementSupplyRowResolver → MyHomeAnnouncementMappingWriter(→ MyHomeSupplyRowWriter) → MappedAnnouncementLhEnrichment.writeAfterMapping
-공통값 검증 → LH 연결·공급 원천 준비 → 공고·공급행 저장 → 변경된 기존 LH 공고 보강
-```
-
-준비한 LH 요청·공급 원천·과거 원천 구분은 재사용한다. 주택형 변경은 공급행을 수정할 때 기록한다.
-현재 원천 중 기관이 빈 행도 매핑에는 포함하지만 LH 보강에서는 제외해 기존 금액을 보존한다. `MyHomeAnnouncementMappingWriter`가 공고 한 건의 트랜잭션을 소유한다. 보강 실패 시 주택형과 금액을 함께 롤백한다. 진입점은 세 개다.
-
-마이홈 공고 정제와 아래 세 진입점은 지원을 종료했다. 공고 정제는 [LH 공고 정제](lh-linking.md#lh-공고-정제-announcement-refinement)를 따른다.
-
-| 진입점 | 호출 경로 | 실패 처리 |
-|---|---|---|
-| `write` | 전체 정제 `MyHomeAnnouncementMappingService.mapAll()` | 공급행 매칭 실패는 결과로 돌려준다. 이미 LH 보강을 마친 공고(`lhPanId` 있음)에 변경이 있을 때만 보강한다. 최초 매핑과 변경 없는 재매핑은 보강하지 않는다 |
-| `register` | 단건 등록 `AnnouncementRegistrationService` → `MyHomeAnnouncementMappingService.registerAnnouncement` | 이미 등록된 공고는 거절한다. 매칭이 하나라도 실패하면 거절하고, LH 공고는 최초라도 보강까지 검증해 실패하면 공고 한 건을 되돌린다 |
-| `correct` | 관리자 보정·분할·다시 정제 `AnnouncementSupplyMatchingService` | `register`와 같다. 분할을 먼저 적용하고 나머지 행을 정제한다 |
-
+PDF 보정은 마이홈 원천행이 기록된 기존 공급행을 다루려고 마이홈 원천 해석(`MyHomeAnnouncementSourceMapper` → `MyHomeAnnouncementSupplyRowResolver`)을 그대로 읽는다.
 관리자가 원천 공급행마다 저장한 매칭의 지문 기반 유효성 판정·확정·해제·단지 통합 때의 이동은 `SavedSupplyMatches`만 안다.
-독립 보강은 `LhAnnouncementEnrichmentService.enrichAll()`에서 시작하며 별도 실패 이력을 관리한다.
-공급 원천과 저장 연결은 각 경로가 읽어 넘기고(정제는 `MyHomeAnnouncementSupplyRowResolver`, 독립 보강은 `LhAnnouncementEnricher`), `LhAnnouncementEnrichmentSources`가 상세 원천과 공급이 없다고 확인된 수집인지를 더해 같은 보강 입력을 만든다. 상세 원천이 없으면 거절한다. `LhAnnouncementEnrichmentWriter`는 공고를 잠그고 확인된 공고의 LH 원천 불일치를 거절한 뒤 공고 값, 일정·첨부(`LhScheduleAttachmentWriter`), 공급행 금액(`LhSupplyAmountWriter`)을 차례로 쓴다. 보강이 보는 공급행 선택(보강에서 뺀 마이홈 원천 제외, 복수 공급행으로 보정한 묶음 행은 매칭 대상에서 빼고 그 행에 붙는 LH 공급은 건너뜀)은 `LhEnrichmentSupplyRows`가 정하고 관리자 매칭 진단도 같은 규칙을 쓴다. LH 원천 식별자 형식은 `LhSourceIdentifier`만 알고, 보강이 고치거나 지울 수 있는 값(관리자가 고치지 않은 LH 값)은 `LhOwnedValues`가 판정한다.
-
-정제와 보강은 `mapping → enrichment` 한 방향으로만 의존한다. 공고 한 건을 쓰는 경로에서 정제는 보강을 `MappedAnnouncementLhEnrichment`(LH 보강 실행·LH 소유 해제, 거절은 `LhAnnouncementEnrichmentRejectedException`)로만 부른다. 보강이 정제에서 확인하는 상태(미해소 정제 실패 공고, 공통값 거절 사유)는 `LhEnrichmentMappingState`로 받는다. 구현은 `MappedAnnouncementLhEnrichment`가 `LhAnnouncementEnrichmentWriter`(enrichment), `LhEnrichmentMappingState`가 `MyHomeLhEnrichmentMappingState`(mapping)다.
-LH 공급 연결의 판정·지문 규칙(`LhSupplyRowLinks`)과 저장소는 정제와 보강이 함께 쓰는 규칙으로 enrichment에 둔다. 관리자 연결의 저장·해제는 정제 쪽 `LhSupplyLinkService`가 한다. 이 규칙이나 지문 필드를 바꾸면 이미 저장한 연결이 무효가 되고 정제의 `MyHomeAnnouncementSupplyRowResolver`·`LhSupplyLinkService`도 영향을 받는다. 관리자 연결 화면의 매칭 진단(`LhSupplyMatchDiagnostics`)과 단지 병합의 세대수 매칭(`LhHousingTypeHouseholdMatcher`)도 정제가 쓰는 보강 쪽 규칙이다.
+LH 공급 연결의 판정·지문 규칙(`LhSupplyRowLinks`)과 저장소는 enrichment에 둔다. 마이홈 원천 해석과 PDF 보정이 이 규칙을 쓰고, `LhSupplyLinkService`는 연결 상태와 매칭 진단(`LhSupplyMatchDiagnostics`)을 조회만 한다. LH 원천 식별자 형식은 `LhSourceIdentifier`만 알고, LH 공고 정제가 고치거나 지울 수 있는 일정·첨부(관리자가 고치지 않은 LH 값)는 `LhOwnedValues`가 판정한다.
 
 ## LH 공고 목록 단독 수집
 

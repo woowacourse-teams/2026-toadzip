@@ -1,5 +1,6 @@
 package com.toadzip.backend.announcement.controller;
 
+import com.toadzip.backend.admin.controller.AdminManagementApi;
 import com.toadzip.backend.admin.dto.AdminChangeResponse;
 import com.toadzip.backend.admin.dto.AdminDataSummary;
 import com.toadzip.backend.admin.dto.AdminPage;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@AdminManagementApi
 @RestController
 @RequestMapping("/api/admin/announcements")
 public class AdminAnnouncementManagementController {

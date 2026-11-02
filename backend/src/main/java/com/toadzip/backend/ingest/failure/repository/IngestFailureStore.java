@@ -40,11 +40,6 @@ public abstract class IngestFailureStore<T extends IngestFailure<T>> {
         save(IngestFailureReconciler.reconcile(stored, history, observed, reconciledAt, executionId));
     }
 
-    /** 대상 실패만 맞춘다. 대상 밖의 지난 실패는 보지 않는다. */
-    protected void reconcile(List<T> stored, List<T> observed, UUID executionId) {
-        save(IngestFailureReconciler.reconcile(stored, List.of(), observed, clock.instant(), executionId));
-    }
-
     /** 관리자가 공고를 보정해 미해결 실패를 모두 해결로 바꾼다. 원인이 남으면 다음 정제가 다시 연다. */
     protected void resolvePendingByAdmin(List<T> failures, String actor) {
         Instant resolvedAt = clock.instant();

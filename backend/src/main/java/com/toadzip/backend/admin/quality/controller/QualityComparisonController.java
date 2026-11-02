@@ -1,5 +1,6 @@
 package com.toadzip.backend.admin.quality.controller;
 
+import com.toadzip.backend.admin.controller.AdminManagementApi;
 import com.toadzip.backend.admin.quality.domain.QualityResource;
 import com.toadzip.backend.admin.quality.dto.QualityComparison;
 import com.toadzip.backend.admin.quality.dto.QualityComparisonRequest;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@AdminManagementApi
 @RestController
 @RequestMapping("/api/admin/quality/{resource}/{id}/comparison")
 public class QualityComparisonController {

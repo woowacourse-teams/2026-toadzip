@@ -155,15 +155,6 @@ public class SupplyRow {
         targetCountsComparable = comparable;
     }
 
-    /** 등록 단지에 없는 원천 공급행을 공개에서 빼거나 되돌린다. 정제는 제외된 행의 매칭 실패를 오류로 남기지 않는다. */
-    public boolean excludeByAdmin(boolean excluded) {
-        if (adminExcluded == excluded) {
-            return false;
-        }
-        adminExcluded = excluded;
-        return true;
-    }
-
     public void correctPresentation(boolean excluded, int order, boolean overrideArea,
             BigDecimal exclusiveArea, BigDecimal supplyArea) {
         validateNonNegative(order, "표시 순서");
@@ -503,73 +494,6 @@ public class SupplyRow {
         sourceHousingTypeName = typeName;
     }
 
-    public boolean updateDisplayOrder(int displayOrder) {
-        if (adminModified) {
-            return false;
-        }
-        validateNonNegative(displayOrder, "표시 순서");
-        if (this.displayOrder == displayOrder) {
-            return false;
-        }
-        this.displayOrder = displayOrder;
-        return true;
-    }
-
-    public boolean resolveFromLhSupply(
-            String sourceSupplyRowIdentifier,
-            Integer resolvedTotalSupplyHouseholdCount,
-            Integer lhSuppliedHouseholdCount
-    ) {
-        if (announcement.isAdminDeleted()) {
-            return false;
-        }
-        if (adminModified) {
-            // 관리자 보정 행도 LH 원본과의 연결은 정제가 기록해야 보강이 단지명을 다시 비교하지 않는다.
-            // 관리자가 정한 모집수는 유지하고, 연결 기록만으로는 정제 중 LH 재보강을 일으키지 않는다.
-            lhSourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
-            return false;
-        }
-        boolean sourceChanged = !Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier);
-        if (sourceChanged) {
-            boolean changed = !Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier)
-                    || !Objects.equals(totalSupplyHouseholdCount, resolvedTotalSupplyHouseholdCount)
-                    || lhTotalSupplyHouseholdCountOwned != (lhSuppliedHouseholdCount != null)
-                    || lhTotalSupplyHouseholdCountEnriched;
-            lhSourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
-            totalSupplyHouseholdCount = resolvedTotalSupplyHouseholdCount;
-            lhTotalSupplyHouseholdCountOwned = lhSuppliedHouseholdCount != null;
-            lhTotalSupplyHouseholdCountEnriched = false;
-            return changed;
-        }
-        if (lhSuppliedHouseholdCount == null || lhTotalSupplyHouseholdCountEnriched) {
-            return false;
-        }
-        if (Objects.equals(totalSupplyHouseholdCount, lhSuppliedHouseholdCount)
-                && lhTotalSupplyHouseholdCountOwned) {
-            return false;
-        }
-        totalSupplyHouseholdCount = lhSuppliedHouseholdCount;
-        lhTotalSupplyHouseholdCountOwned = true;
-        return true;
-    }
-
-    /**
-     * 관리자가 LH 공급 연결을 바꿔 기록한 LH 원천 행이 이제 다른 마이홈 원천행({@code resolvedSourceRowIdentifier})으로
-     * 해석되거나 어느 원천행으로도 해석되지 않으면({@code null}) 그 LH 연결을 놓는다. 보강은 기록한 LH 식별자를 저장 연결보다 먼저 쓰므로 놓지 않으면 재정제 전 보강이
-     * 이전 행에 금액을 붙인다. 관리자 보정 행도 LH 연결은 정제가 기록하므로 함께 놓는다. 값은 바꾸지 않는다.
-     * 관리자가 정하지 않은 모집수는 다음 정제가 마이홈 값으로 되돌리고, LH가 채운 입주월은 그대로 남는다.
-     */
-    public boolean releaseLhSourceResolvedElsewhere(String resolvedSourceRowIdentifier) {
-        if (lhSourceSupplyRowIdentifier == null
-                || Objects.equals(myhomeSourceRowIdentifier, resolvedSourceRowIdentifier)) {
-            return false;
-        }
-        lhSourceSupplyRowIdentifier = null;
-        lhTotalSupplyHouseholdCountOwned = false;
-        lhTotalSupplyHouseholdCountEnriched = false;
-        return true;
-    }
-
     private boolean hasSameSourceValues(SupplyRow incoming) {
         return Objects.equals(housingComplex, incoming.housingComplex)
                 && Objects.equals(housingType, incoming.housingType)
@@ -594,39 +518,6 @@ public class SupplyRow {
         supplyCategory = incoming.supplyCategory;
         matchingFailureReason = incoming.matchingFailureReason;
         totalSupplyHouseholdCount = incoming.totalSupplyHouseholdCount;
-    }
-
-    public boolean enrichFromLh(
-            String sourceSupplyRowIdentifier,
-            YearMonth expectedMoveInMonth,
-            Integer totalSupplyHouseholdCount
-    ) {
-        if (adminModified || announcement.isAdminDeleted()) {
-            return false;
-        }
-        YearMonth ownedExpectedMoveInMonth = expectedMoveInMonth == null
-                ? this.expectedMoveInMonth
-                : expectedMoveInMonth;
-        Integer ownedTotalSupplyHouseholdCount = totalSupplyHouseholdCount == null
-                ? this.totalSupplyHouseholdCount
-                : totalSupplyHouseholdCount;
-        boolean ownsTotalSupplyHouseholdCount = totalSupplyHouseholdCount != null
-                || lhTotalSupplyHouseholdCountOwned;
-        boolean enrichesTotalSupplyHouseholdCount = totalSupplyHouseholdCount != null
-                || lhTotalSupplyHouseholdCountEnriched;
-        if (Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier)
-                && Objects.equals(this.expectedMoveInMonth, ownedExpectedMoveInMonth)
-                && Objects.equals(this.totalSupplyHouseholdCount, ownedTotalSupplyHouseholdCount)
-                && lhTotalSupplyHouseholdCountOwned == ownsTotalSupplyHouseholdCount
-                && lhTotalSupplyHouseholdCountEnriched == enrichesTotalSupplyHouseholdCount) {
-            return false;
-        }
-        lhSourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
-        this.expectedMoveInMonth = ownedExpectedMoveInMonth;
-        this.totalSupplyHouseholdCount = ownedTotalSupplyHouseholdCount;
-        lhTotalSupplyHouseholdCountOwned = ownsTotalSupplyHouseholdCount;
-        lhTotalSupplyHouseholdCountEnriched = enrichesTotalSupplyHouseholdCount;
-        return true;
     }
 
     private void validateRequired(Object value, String fieldName) {

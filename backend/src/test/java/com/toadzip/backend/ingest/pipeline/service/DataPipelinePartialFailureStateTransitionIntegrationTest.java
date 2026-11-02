@@ -20,13 +20,11 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeA
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
 import com.toadzip.backend.ingest.collection.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
 import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
 import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport;
 import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
-import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
@@ -404,11 +402,8 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                         mock(LhAnnouncementExternalCollectionService.class),
                         mappingService,
                         enrichmentService,
-                        mock(MyHomeAnnouncementMappingService.class),
-                        mock(LhAnnouncementEnrichmentService.class),
                         mock(LhAnnouncementRefinementService.class),
                         new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
-                        mock(AnnouncementRegistrationService.class),
                         mock(ShAnnouncementCollectionService.class)
                 ),
                 executionStateService,
@@ -437,11 +432,8 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                         collectionService,
                         mock(MyHomeComplexMappingService.class),
                         mock(LhHousingTypeHouseholdEnrichmentService.class),
-                        mock(MyHomeAnnouncementMappingService.class),
-                        mock(LhAnnouncementEnrichmentService.class),
                         refinementService,
                         new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
-                        mock(AnnouncementRegistrationService.class),
                         mock(ShAnnouncementCollectionService.class)
                 ),
                 executionStateService,

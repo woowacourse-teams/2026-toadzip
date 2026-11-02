@@ -10,10 +10,8 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeA
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
 import com.toadzip.backend.ingest.collection.service.ShAnnouncementCollectionService;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
 import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementRefinementService;
-import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +19,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * 파이프라인 단계마다 실행할 수집·정제 서비스와 그 입력을 정하고, 결과를 단계 결과 계약으로 바꾼다.
- * 단건 등록은 대상 공고만 다루는 등록 서비스로 보낸다.
+ * 지원을 종료한 마이홈 공고 정제·LH 보강 단계는 지난 실행 이력으로만 남아 실행하지 않는다.
  */
 @Component
 @RequiredArgsConstructor
@@ -34,17 +32,11 @@ class DataPipelineStepExecutor {
     private final LhAnnouncementExternalCollectionService collectionService;
     private final MyHomeComplexMappingService myHomeComplexMappingService;
     private final LhHousingTypeHouseholdEnrichmentService householdEnrichmentService;
-    private final MyHomeAnnouncementMappingService myHomeAnnouncementMappingService;
-    private final LhAnnouncementEnrichmentService announcementEnrichmentService;
     private final LhAnnouncementRefinementService lhAnnouncementRefinementService;
     private final DataPipelineStepResultAdapter resultAdapter;
-    private final AnnouncementRegistrationService registrationService;
     private final ShAnnouncementCollectionService shAnnouncementCollectionService;
 
-    DataPipelineStepResult execute(DataPipelineStep step, String targetIdentifier) {
-        if (targetIdentifier != null) {
-            return registrationService.execute(step, targetIdentifier);
-        }
+    DataPipelineStepResult execute(DataPipelineStep step) {
         return switch (step) {
             case COLLECT_SH_ANNOUNCEMENTS -> resultAdapter.adapt(shAnnouncementCollectionService.collect());
             case COLLECT_MYHOME_COMPLEXES -> resultAdapter.adapt(myHomeComplexCollectionService.collect(
@@ -69,11 +61,8 @@ class DataPipelineStepExecutor {
             case ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS -> resultAdapter.adapt(
                     householdEnrichmentService.enrichAll()
             );
-            case MAP_MYHOME_ANNOUNCEMENTS -> resultAdapter.adapt(
-                    myHomeAnnouncementMappingService.mapAll()
-            );
-            case ENRICH_LH_ANNOUNCEMENTS -> resultAdapter.adapt(
-                    announcementEnrichmentService.enrichAll()
+            case MAP_MYHOME_ANNOUNCEMENTS, ENRICH_LH_ANNOUNCEMENTS -> throw new IllegalStateException(
+                    "지원을 종료한 단계는 실행하지 않습니다: " + step
             );
             case MAP_LH_ANNOUNCEMENTS -> resultAdapter.adapt(lhAnnouncementRefinementService.refineAll());
         };

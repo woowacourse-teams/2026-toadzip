@@ -35,18 +35,11 @@ public class MyHomeAnnouncementCollector implements PagedSource<
         return new MyHomeAnnouncementCollectionBuffer(request);
     }
 
-    /** 공고 하나를 요청하면 목록의 모든 페이지를 검증한 뒤 그 공고의 공급행만 저장한다. */
     @Override
     public void store(
             UUID recordId, MyHomeAnnouncementCollectionRequest request, MyHomeAnnouncementCollectedResponse collected
     ) {
-        MyHomeAnnouncementCollectedResponse response = collected;
-        if (request.pblancId() != null) {
-            var rows = collected.rows().stream()
-                    .filter(row -> request.pblancId().equals(row.pblancId().strip())).toList();
-            response = new MyHomeAnnouncementCollectedResponse(rows.size(), collected.collectedAt(), rows);
-        }
-        storage.complete(recordId, request, response);
+        storage.complete(recordId, request, collected);
     }
 
     @Override

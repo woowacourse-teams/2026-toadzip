@@ -1251,7 +1251,7 @@ class MyHomeAnnouncementStorageIntegrationTest {
     private int collect(MyHomeAnnouncementCollectionRequest request) {
         return CollectionServiceTestFixture.pagedCollector(history, clock).collect(collector,
                 startedAt -> new MyHomeAnnouncementCollectionRequest(request.executionId(), request.supplyTypeCode(),
-                        request.pageSize(), request.maxPages(), startedAt, request.pblancId()),
+                        request.pageSize(), request.maxPages(), startedAt),
                 new ExternalDataCallCounter());
     }
 }

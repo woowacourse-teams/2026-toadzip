@@ -1,13 +1,11 @@
 package com.toadzip.backend.ingest.mapping.service;
 
-import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.announcement.repository.SupplyRowGroupRepository;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.enrichment.domain.LhSupplyRowLink;
-import com.toadzip.backend.ingest.enrichment.repository.LhSupplyRowLinkRepository;
 import com.toadzip.backend.ingest.enrichment.service.LhSupplyMatchDiagnostics;
 import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
@@ -16,23 +14,19 @@ import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.Candidate;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.LhRow;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.MatchFailure;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.MyHomeRow;
-import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.ReleaseRequest;
-import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.SaveRequest;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.SavedLink;
 import com.toadzip.backend.ingest.mapping.dto.LhSupplyLinking.View;
-import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 단지명 표기가 달라 자동으로 붙지 않는 LH 공급 원본 행을 관리자가 마이홈 원천행에 연결·해제한다.
- * 저장·해제는 다음 정제와 LH 보강부터 반영된다. 이미 만든 공급행은 연결이 바뀐 LH 행의 기록과 그 LH 금액만 바로 놓는다.
+ * 마이홈 원천행과 LH 공급 원본 행의 연결 상태와 자동으로 붙지 않은 사유를 보여 준다.
+ * 연결 저장·해제는 마이홈 공고 정제와 함께 지원을 종료했다.
  */
 @Service
 @RequiredArgsConstructor
@@ -42,17 +36,10 @@ public class LhSupplyLinkService {
     private final MyHomeAnnouncementSourceMapper mapper;
     private final MyHomeAnnouncementSupplyRowResolver resolver;
     private final LhSupplyRowLinks links;
-    private final LhSupplyRowLinkRepository repository;
     private final SupplyRowGroupRepository groups;
     private final LhSupplyMatchDiagnostics diagnostics;
-    private final LhSupplyLinkChangeLog changeLog;
-    private final LhSupplyLinkReleases releases;
 
     public View view(String identifier) {
-        return view(identifier, List.of());
-    }
-
-    private View view(String identifier, List<String> releasedSupplyMatches) {
         var context = context(identifier);
         var myhomeRows = context.currentSources().stream().map(source -> new MyHomeRow(source.getSourceKey(),
                 source.getHsmpNm(), source.getHouseTyNm(), source.getSumSuplyCo(),
@@ -62,7 +49,7 @@ public class LhSupplyLinkService {
         var announcement = new Announcement(identifier, first.getPblancNm(), first.getUrl(), context.panId());
         var failures = diagnostics.diagnose(identifier, context.panId(), context.supplies(), context.states(),
                 context.excludedSourceKeys()).stream().map(this::failure).toList();
-        return new View(context.token(), announcement, myhomeRows, lhRows, failures, releasedSupplyMatches);
+        return new View(context.token(), announcement, myhomeRows, lhRows, failures, List.of());
     }
 
     private MatchFailure failure(LhSupplyMatchDiagnostics.Failure failure) {
@@ -70,60 +57,6 @@ public class LhSupplyLinkService {
                 failure.candidates().stream().map(value -> new Candidate(value.supplyRowId(),
                         value.myhomeRowIdentifier(), value.sourceComplexName(), value.sourceHousingTypeName(),
                         value.complexName(), value.housingTypeName(), value.lhRowIdentifier())).toList());
-    }
-
-    @Transactional
-    public View save(String identifier, SaveRequest request, String actor) {
-        // POST 인터셉터가 트랜잭션 종료까지 전역 수집 잠금을 유지한다.
-        IngestExecutionScope.verifyHeld();
-        SupplyMatchingEvidence.validate(request.sourceUrl(), request.reason());
-        var context = verifiedContext(identifier, request.token());
-        var myhome = context.currentSources().stream()
-                .filter(source -> source.getSourceKey().equals(request.myhomeRowIdentifier())).findFirst()
-                .orElseThrow(() -> new InvalidIngestRequestException("해당 공고의 현재 마이홈 원천행이 아닙니다."));
-        if (groups.findBySourceRowIdentifier(myhome.getSourceKey()).isPresent()) {
-            throw new AdminDataConflictException("복수 공급행으로 보정한 원천행은 LH 공급 연결 대상이 아닙니다.");
-        }
-        if (request.lhRowIdentifiers().stream().distinct().count() != request.lhRowIdentifiers().size()) {
-            throw new InvalidIngestRequestException("같은 LH 공급행을 중복 선택할 수 없습니다.");
-        }
-        long linkId = 0;
-        for (String lhRowIdentifier : request.lhRowIdentifiers()) {
-            var supply = context.supply(lhRowIdentifier)
-                    .orElseThrow(() -> new InvalidIngestRequestException("해당 공고의 LH 공급 원본 행이 아닙니다."));
-            var link = repository.findBySourceAnnouncementIdentifierAndLhSupplyRowIdentifier(identifier,
-                    lhRowIdentifier).orElseGet(() -> new LhSupplyRowLink(identifier, lhRowIdentifier));
-            SavedLink before = savedLink(link, false);
-            link.confirm(myhome.getSourceKey(), links.lhFingerprint(supply), links.myHomeFingerprint(myhome),
-                    request.sourceUrl().strip(), request.reason().strip(), actor);
-            repository.saveAndFlush(link);
-            changeLog.linkSaved(link.getId(), identifier, lhRowIdentifier, before, savedLink(link, false), actor);
-            linkId = link.getId();
-        }
-        return view(identifier, releaseChangedSources(identifier, context, linkId, actor));
-    }
-
-    @Transactional
-    public View release(String identifier, ReleaseRequest request, String actor) {
-        IngestExecutionScope.verifyHeld();
-        var context = verifiedContext(identifier, request.token());
-        var state = context.states().get(request.lhRowIdentifier());
-        if (state == null) {
-            throw new AdminDataConflictException("저장한 LH 공급 연결이 없습니다. 다시 조회해 주세요.");
-        }
-        long linkId = state.link().getId();
-        SavedLink released = savedLink(state.link(), !state.valid());
-        repository.delete(state.link());
-        repository.flush();
-        changeLog.linkReleased(linkId, identifier, request.lhRowIdentifier(), released, request.reason().strip(),
-                actor);
-        return view(identifier, releaseChangedSources(identifier, context, linkId, actor));
-    }
-
-    /** 연결을 바꾼 뒤의 원천 해석을 바꾸기 전과 비교해, 연결이 바뀐 원천행의 저장 매칭과 이전 공급행의 LH 기록을 놓는다. */
-    private List<String> releaseChangedSources(String identifier, Context before, long linkId, String actor) {
-        var after = context(identifier);
-        return releases.release(identifier, before.linkedRows(), after.linkedRows(), after.supplies(), linkId, actor);
     }
 
     private LhRow lhRow(Context context, LhAnnouncementSupplySourceView supply) {
@@ -143,14 +76,6 @@ public class LhSupplyLinkService {
         }
         return new SavedLink(link.getMyhomeSourceRowIdentifier(), link.getSourceUrl(), link.getReason(),
                 link.getActor(), link.getUpdatedAt(), reviewRequired);
-    }
-
-    private Context verifiedContext(String identifier, String token) {
-        var context = context(identifier);
-        if (!context.token().equals(token)) {
-            throw new AdminDataConflictException("원천 또는 저장한 연결이 변경되었습니다. 다시 조회해 주세요.");
-        }
-        return context;
     }
 
     private Context context(String identifier) {
@@ -183,10 +108,5 @@ public class LhSupplyLinkService {
     private record Context(List<MyHomeAnnouncementSourceView> currentSources, List<LhAnnouncementSupplySourceView> supplies,
             Map<String, LhSupplyRowLinks.State> states, Map<String, String> linkedRows, String token, String panId,
             Set<String> excludedSourceKeys) {
-
-        Optional<LhAnnouncementSupplySourceView> supply(String identifier) {
-            return supplies.stream().filter(value -> LhSupplyRowLinks.identifier(value).equals(identifier))
-                    .findFirst();
-        }
     }
 }

@@ -26,14 +26,11 @@ import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComple
 import com.toadzip.backend.ingest.collection.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.domain.IngestStepReport;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
-import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport;
 import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
-import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
@@ -77,19 +74,10 @@ class DataPipelineRunnerTest {
     private LhHousingTypeHouseholdEnrichmentService householdEnrichmentService;
 
     @Mock
-    private MyHomeAnnouncementMappingService myHomeAnnouncementMappingService;
-
-    @Mock
-    private LhAnnouncementEnrichmentService announcementEnrichmentService;
-
-    @Mock
     private LhAnnouncementRefinementService lhAnnouncementRefinementService;
 
     @Mock
     private DataPipelineExecutionStateService executionStateService;
-
-    @Mock
-    private AnnouncementRegistrationService registrationService;
 
     private final UUID executionId = UUID.randomUUID();
 
@@ -115,61 +103,13 @@ class DataPipelineRunnerTest {
                         collectionService,
                         myHomeComplexMappingService,
                         householdEnrichmentService,
-                        myHomeAnnouncementMappingService,
-                        announcementEnrichmentService,
                         lhAnnouncementRefinementService,
                         resultAdapter,
-                        registrationService,
                         shAnnouncementCollectionService
                 ),
                 executionStateService,
                 meterRegistry
         );
-    }
-
-    @Test
-    void 단건_등록은_대상_ID를_각_단계에_전달하고_전체_수집과_정제를_호출하지_않는다() {
-        when(registrationService.execute(any(), org.mockito.ArgumentMatchers.eq("21026")))
-                .thenReturn(new DataPipelineStepResult("{}", 0, 0, 0));
-
-        runner.run(DataPipelineType.ANNOUNCEMENT_REGISTRATION, executionId, "21026");
-
-        InOrder order = inOrder(registrationService);
-        for (DataPipelineStep step : DataPipelineType.ANNOUNCEMENT_REGISTRATION.steps()) {
-            order.verify(registrationService).execute(step, "21026");
-        }
-        org.mockito.Mockito.verifyNoInteractions(myHomeAnnouncementCollectionService,
-                myHomeAnnouncementMappingService, announcementEnrichmentService, collectionService);
-    }
-
-    @Test
-    void 해당_없는_LH_단계는_성공이_아닌_생략으로_기록하고_정제를_이어간다() {
-        when(registrationService.execute(any(), eq("21026")))
-                .thenReturn(new DataPipelineStepResult("{}", 0, 0, 0));
-        when(registrationService.execute(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES, "21026"))
-                .thenReturn(DataPipelineStepResult.notApplicable("해당 없음"));
-
-        runner.run(DataPipelineType.ANNOUNCEMENT_REGISTRATION, executionId, "21026");
-
-        verify(executionStateService).skipStep(executionId,
-                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES, "해당 없음", "{}");
-        verify(executionStateService, never()).completeStep(executionId,
-                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES, "{}");
-        verify(registrationService).execute(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS, "21026");
-    }
-
-    @Test
-    void 단건_수집_실패_후에는_정제나_LH_상세를_실행하지_않는다() {
-        when(registrationService.execute(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS, "21026"))
-                .thenThrow(new AnnouncementRegistrationException(
-                        "외부 API 호출 제한"));
-
-        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
-                runner.run(DataPipelineType.ANNOUNCEMENT_REGISTRATION, executionId, "21026"))
-                .hasMessageContaining("호출 제한");
-
-        verify(registrationService, never()).execute(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS, "21026");
-        verify(registrationService, never()).execute(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS, "21026");
     }
 
     @Test
@@ -179,8 +119,7 @@ class DataPipelineRunnerTest {
         runner.run(DataPipelineType.SH_ANNOUNCEMENT_COLLECTION, executionId);
 
         verify(shAnnouncementCollectionService).collect();
-        org.mockito.Mockito.verifyNoInteractions(myHomeAnnouncementMappingService, announcementEnrichmentService,
-                myHomeAnnouncementCollectionService, lhAnnouncementCatalogCollectionService, collectionService);
+        org.mockito.Mockito.verifyNoInteractions(myHomeAnnouncementCollectionService, lhAnnouncementCatalogCollectionService, collectionService);
         verify(executionStateService).completeStep(eq(executionId), eq(DataPipelineStep.COLLECT_SH_ANNOUNCEMENTS), any());
     }
 
@@ -261,7 +200,7 @@ class DataPipelineRunnerTest {
                 completed(DataPipelineStep.MAP_MYHOME_COMPLEXES, reports.get(0)),
                 completed(DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS, reports.get(1))
         );
-        verify(myHomeAnnouncementMappingService, never()).mapAll();
+        verifyNoInteractions(lhAnnouncementRefinementService);
     }
 
     @Test
@@ -274,7 +213,6 @@ class DataPipelineRunnerTest {
                 completed(DataPipelineStep.MAP_LH_ANNOUNCEMENTS, reports.get(0))
         );
         verify(myHomeComplexMappingService, never()).mapAll();
-        verifyNoInteractions(myHomeAnnouncementMappingService, announcementEnrichmentService);
     }
 
     @Test
@@ -598,7 +536,6 @@ class DataPipelineRunnerTest {
         order.verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
         order.verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
         order.verify(lhAnnouncementRefinementService).refineAll();
-        verifyNoInteractions(myHomeAnnouncementMappingService, announcementEnrichmentService);
     }
 
     @Test

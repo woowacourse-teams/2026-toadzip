@@ -32,10 +32,6 @@ class SavedSupplyMatches {
                 hasValidTarget(decision) && fingerprints.source(data).equals(decision.getSourceFingerprint())));
     }
 
-    boolean exists(String rowIdentifier) {
-        return decisions.findByRowIdentifier(rowIdentifier).isPresent();
-    }
-
     boolean references(HousingType type) {
         return decisions.existsByHousingTypeId(type.getId());
     }

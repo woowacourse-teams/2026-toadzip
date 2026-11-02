@@ -121,42 +121,15 @@ class DataPipelineExecutionServiceTest {
         return new DataPipelineExecutionRecovery(executionLock, executionStateService, collectionRecovery, clock);
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"", " "})
-    void 지원을_종료한_단건_등록은_빈_ID_검증보다_먼저_거절하고_잠금을_얻지_않는다(String identifier) {
-        assertThatThrownBy(() -> service.startAnnouncementRegistration(identifier))
-                .isInstanceOf(RetiredIngestOperationException.class)
-                .hasMessage(RETIRED_REGISTRATION_MESSAGE);
-        verify(executionLock, never()).tryAcquire(any());
-    }
-
     @Test
-    void 지원을_종료한_단건_등록은_URL_형식_검증보다_먼저_거절하고_잠금을_얻지_않는다() {
-        assertThatThrownBy(() -> service.startAnnouncementRegistrationUrl("https://apply.lh.or.kr"))
+    void 지원을_종료한_단건_등록은_잠금과_실행_기록_전에_거절한다() {
+        assertThatThrownBy(() -> service.start(DataPipelineType.ANNOUNCEMENT_REGISTRATION))
                 .isInstanceOf(RetiredIngestOperationException.class)
                 .hasMessage(RETIRED_REGISTRATION_MESSAGE);
-        verify(executionLock, never()).tryAcquire(any());
-    }
-
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void 지원을_종료한_단건_등록은_올바른_대상이어도_잠금과_실행_기록_전에_거절한다(boolean fromUrl) {
-        if (fromUrl) {
-            assertThatThrownBy(() -> service.startAnnouncementRegistrationUrl(
-                    "https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21026"))
-                    .isInstanceOf(RetiredIngestOperationException.class)
-                    .hasMessage(RETIRED_REGISTRATION_MESSAGE);
-        }
-        else {
-            assertThatThrownBy(() -> service.startAnnouncementRegistration(" 21026 "))
-                    .isInstanceOf(RetiredIngestOperationException.class)
-                    .hasMessage(RETIRED_REGISTRATION_MESSAGE);
-        }
 
         verify(executionLock, never()).tryAcquire(any());
-        verify(executionStateService, never()).createRegistration(any(), any(), any());
-        verify(runner, never()).run(any(), any(), any());
-        assertThat(IngestServiceKeyContext.current()).isEmpty();
+        verify(executionStateService, never()).create(any(), any(), any());
+        verify(runner, never()).run(any(), any());
     }
 
     @ParameterizedTest

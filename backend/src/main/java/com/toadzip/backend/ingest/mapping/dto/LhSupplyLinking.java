@@ -1,8 +1,5 @@
 package com.toadzip.backend.ingest.mapping.dto;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
 
@@ -11,9 +8,9 @@ public final class LhSupplyLinking {
     }
 
     /**
-     * token은 조회 시점의 원천과 저장 연결을 나타낸다. 저장·해제 요청은 이 값으로 동시 변경을 막는다.
+     * token은 조회 시점의 원천과 저장 연결을 나타낸다.
      * failures는 현재 원천과 등록 공급행으로 LH 보강 매칭을 다시 해 본 결과이며 저장된 오류 기록과 시점이 다를 수 있다.
-     * releasedSupplyMatches는 이번 저장·해제로 LH 행 구성이 바뀌어 함께 해제한 저장 매칭의 행 식별자다. 조회에서는 비어 있다.
+     * releasedSupplyMatches는 연결 저장·해제가 지원을 종료해 늘 비어 있다. 조회 응답 모양을 지키려고 남긴다.
      */
     public record View(String token, Announcement announcement, List<MyHomeRow> myhomeRows, List<LhRow> lhRows,
             List<MatchFailure> failures, List<String> releasedSupplyMatches) {
@@ -40,15 +37,5 @@ public final class LhSupplyLinking {
 
     public record SavedLink(String myhomeRowIdentifier, String sourceUrl, String reason, String actor,
             Instant updatedAt, boolean reviewRequired) {
-    }
-
-    public record SaveRequest(@NotBlank @Size(max = 64) String token,
-            @NotBlank @Size(max = 500) String myhomeRowIdentifier,
-            @NotNull @Size(min = 1, max = 200) List<@NotBlank @Size(max = 200) String> lhRowIdentifiers,
-            @NotBlank @Size(max = 2048) String sourceUrl, @NotBlank @Size(max = 2000) String reason) {
-    }
-
-    public record ReleaseRequest(@NotBlank @Size(max = 64) String token,
-            @NotBlank @Size(max = 200) String lhRowIdentifier, @NotBlank @Size(max = 2000) String reason) {
     }
 }

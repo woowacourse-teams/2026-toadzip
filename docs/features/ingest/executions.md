@@ -43,7 +43,7 @@
 - 정제 전에 멈춘 공고 통합 실행 결과의 `저장된 원천으로 정제 실행`은 기존 정제 단독 API로 새 실행을 만든다. 이전 원천이 포함될 수 있고, 원래 실패 이력은 보존한다.
 - 단지 화면의 실행 진입점과 좌표 업로드 후 동작은 [관리자 가이드](../admin/guide.md#단지-수집)를 따른다.
 - `complex-collection`, `announcement-collection`, `announcement-refinement`의 기존 단계·동작을 보존한다.
-- 공고 한 건 등록은 `POST /api/admin/ingest/pipelines/announcement-registration`(마이홈 공고 ID) 또는 `/announcement-registration/url`(공고 URL)로 시작한다. 마이홈 공고 → LH 공급 → LH 상세 수집 → 정제를 한 실행에서 하며, 이미 등록된 공고는 거절한다. 정제는 `MyHomeAnnouncementMappingWriter.register`라서 매칭이나 LH 보강이 하나라도 실패하면 공고를 등록하지 않는다.
+- 마이홈 공고 한 건 등록(`announcement-registration`)은 지원을 종료했다. `POST /api/admin/ingest/pipelines/announcement-registration`은 다른 실행 유형과 같은 경로로 받아 본문 없이 부르면 `410 INGEST_OPERATION_RETIRED`로 거절하고(예전 `pblancId` 본문은 서비스키 검증에서 400이 된다) URL 등록 API는 없앴다. 지난 등록 실행 이력은 그대로 읽는다.
 - 새 실행은 `MANUAL`로 기록한다. 과거 자동 실행의 `SCHEDULED`·`RECOVERY` 트리거와
   예정 시각·상위 실행 ID는 기존 실행 이력 조회를 위해 읽을 수 있다.
 

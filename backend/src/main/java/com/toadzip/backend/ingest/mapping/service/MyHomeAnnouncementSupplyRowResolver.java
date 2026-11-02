@@ -42,12 +42,8 @@ public class MyHomeAnnouncementSupplyRowResolver {
 
     public ResolvedAnnouncement resolve(MyHomeAnnouncementMappingData data) {
         List<MyHomeSupplyRowMappingData> currentRows = currentRows(data.supplyRows());
-        Set<String> currentKeys = currentRows.stream().map(row -> row.source().getSourceKey())
-                .collect(Collectors.toSet());
-        Set<String> historicalKeys = data.supplyRows().stream().map(row -> row.source().getSourceKey())
-                .filter(key -> !currentKeys.contains(key)).collect(Collectors.toSet());
         if (data.provider() != AgencyCode.LH) {
-            return new ResolvedAnnouncement(data, null, List.of(), historicalKeys, Map.of());
+            return new ResolvedAnnouncement(data, null, List.of(), Map.of());
         }
         LhAnnouncementRequest request = resolveRequest(currentRows);
         List<LhAnnouncementSupplySourceView> lhSupplies = lhSupplyRepository
@@ -56,7 +52,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
                         request.requestHash()
                 );
         if (lhSupplies.isEmpty()) {
-            return new ResolvedAnnouncement(data, request, lhSupplies, historicalKeys, Map.of());
+            return new ResolvedAnnouncement(data, request, lhSupplies, Map.of());
         }
         Map<String, LhSupplyRowLinks.State> supplyLinks = links.states(data.sourceAnnouncementIdentifier(),
                 currentRows.stream().map(MyHomeSupplyRowMappingData::source).toList(), lhSupplies);
@@ -83,7 +79,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
             }
         }
         return new ResolvedAnnouncement(
-                data.withSupplyRows(List.copyOf(resolved)), request, lhSupplies, historicalKeys, supplyLinks
+                data.withSupplyRows(List.copyOf(resolved)), request, lhSupplies, supplyLinks
         );
     }
 
@@ -292,13 +288,8 @@ public class MyHomeAnnouncementSupplyRowResolver {
             MyHomeAnnouncementMappingData data,
             LhAnnouncementRequest request,
             List<LhAnnouncementSupplySourceView> supplies,
-            Set<String> historicalSourceKeys,
             Map<String, LhSupplyRowLinks.State> supplyLinks
     ) {
-
-        boolean preserveExistingLhResolvedRows() {
-            return request != null && supplies.isEmpty();
-        }
 
         Set<String> sourceKeysExcludedFromLhEnrichment() {
             return LhEnrichmentTargetSources.excludedSourceKeys(
