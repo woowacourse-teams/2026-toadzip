@@ -48,7 +48,7 @@
 - `POST /api/admin/announcements/{id}/pdf-extractions`는 multipart `file`(공고문 PDF, 30MB 이하)을 받아 작업을 넣고 202와 작업 상태를 돌려준다. 빈 파일·30MB 초과·읽을 수 없는 PDF는 400 `ANNOUNCEMENT_PDF_INVALID`, 없는 공고는 404다. 화면은 관리자가 내 PC에서 고른 PDF에만 쓴다.
 - `POST .../pdf-extractions/attachments/{attachmentId}`는 공고에 수집된 첨부를 서버가 공개 첨부 API와 같은 경로·제한으로 받아 작업을 넣는다. 응답과 30MB·PDF 검사, 409는 업로드와 같고, 첨부를 받지 못하면 첨부 API와 같은 `ATTACHMENT_*` 오류다. 진행 중 작업이 있으면 첨부를 받지 않는다.
   - 같은 공고에 진행 중 작업(`PENDING`·`RUNNING`·`RETRY`)이 있으면 새로 넣지 않고 409 `ANNOUNCEMENT_PDF_EXTRACTION_IN_PROGRESS`다. 화면은 진행 중 작업을 이어서 기다린다.
-  - 작업을 넣을 때 이 공고의 LH 공급 API 행(공고 번호마다 공급행이 있는 가장 최근 원천, LH가 보낸 문자열 그대로)과 공급행이 연결된 단지의 주택형(휴지통 제외)을 입력 스냅숏으로 담는다. 워커는 도메인 테이블을 읽지 않는다.
+  - 작업을 넣을 때 이 공고의 LH 공급 API 행(공고 번호마다 공급행이 있는 가장 최근 원천, LH가 보낸 문자열 그대로)을 입력 스냅숏으로 담는다. 워커는 도메인 테이블을 읽지 않는다.
 - 작업 상태는 `GET .../pdf-extractions/jobs/{jobId}`, 진행 중 작업은 `GET .../pdf-extractions/jobs/active`(없으면 `null`)로 읽는다. 다른 공고의 작업 ID는 404 `ANNOUNCEMENT_PDF_EXTRACTION_JOB_NOT_FOUND`다.
   응답 `data`는 `jobId`, `status`(`PENDING`·`RUNNING`·`RETRY`·`SUCCEEDED`·`FAILED`), `fileName`, `pdfSha256`, `attempts`, `createdAt`, `completedAt`(끝나기 전 `null`), `failure`(`FAILED`일 때 `{code, message}`), `retryReason`(`RETRY`일 때 직전 일시 오류 `{code, message}`), `extraction`(`SUCCEEDED`일 때 추출 결과)이다.
 - 추출 결과는 `json`(추출 JSON 문자열, 근거 쪽 번호는 원본 PDF 기준), `pages`(모델에 보낸 원본 쪽, 1부터), `totalPages`, `warnings`, `usage`(`promptTokens`·`outputTokens`·`thinkingTokens`, 모르면 `null`)다. 워커와 주고받는 입력·결과 형식은 [계약 예시](../../../ai-worker/contract/README.md)를 원본으로 한다.

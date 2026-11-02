@@ -1,6 +1,5 @@
 package com.toadzip.backend.announcement.domain;
 
-import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -8,16 +7,11 @@ import java.util.List;
  * 형식은 ai-worker/contract/announcement-pdf-extraction/input.example.json과 같아야 한다.
  *
  * @param lhSupplyRows 이 공고의 LH 공급 API 행. 공급행 틀로 쓴다. LH 공고가 아니거나 수집 전이면 비어 있다.
- * @param housingTypes 이 공고 공급행이 연결된 단지의 주택형. 공고 행과 주택형을 짝지을 후보다.
  */
-public record PdfExtractionInput(List<LhSupplyRow> lhSupplyRows, List<HousingTypeCandidate> housingTypes) {
+public record PdfExtractionInput(List<LhSupplyRow> lhSupplyRows) {
 
     /** LH가 보낸 값 그대로(문자열)다. order는 원천 순번이다. */
     public record LhSupplyRow(int order, String complexLabel, String typeName, String exclusiveArea,
             String supplyArea, String suppliedUnitCount, String totalUnitCount) {
-    }
-
-    public record HousingTypeCandidate(long id, long complexId, String complexName, String name,
-            BigDecimal exclusiveArea, BigDecimal supplyArea, Integer totalHouseholdCount) {
     }
 }

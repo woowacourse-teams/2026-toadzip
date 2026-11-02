@@ -23,34 +23,13 @@ public class PdfExtractionInputQueryRepository {
                 ORDER BY s.collected_at DESC NULLS LAST, s.id DESC LIMIT 1)
             ORDER BY r.source_order, r.id
             """;
-    private static final String HOUSING_TYPES = """
-            SELECT t.id, c.id, c.name, t.name, t.exclusive_area, t.supply_area, t.total_household_count
-            FROM housing_types t
-            JOIN housing_complexes c ON c.id = t.housing_complex_id
-            WHERE c.id IN (SELECT ac.housing_complex_id FROM announcement_complexes ac
-                           WHERE ac.announcement_id = :id AND ac.housing_complex_id IS NOT NULL)
-              AND NOT t.admin_deleted AND NOT c.admin_deleted
-            ORDER BY c.id, t.exclusive_area, t.id
-            """;
 
     private final JdbcClient jdbc;
 
     public PdfExtractionInput read(long announcementId) {
-        return new PdfExtractionInput(lhSupplyRows(announcementId), housingTypes(announcementId));
-    }
-
-    private List<PdfExtractionInput.LhSupplyRow> lhSupplyRows(long announcementId) {
-        return jdbc.sql(LH_SUPPLY_ROWS).param("id", announcementId)
+        return new PdfExtractionInput(jdbc.sql(LH_SUPPLY_ROWS).param("id", announcementId)
                 .query((row, index) -> new PdfExtractionInput.LhSupplyRow(row.getInt(1), row.getString(2),
                         row.getString(3), row.getString(4), row.getString(5), row.getString(6), row.getString(7)))
-                .list();
-    }
-
-    private List<PdfExtractionInput.HousingTypeCandidate> housingTypes(long announcementId) {
-        return jdbc.sql(HOUSING_TYPES).param("id", announcementId)
-                .query((row, index) -> new PdfExtractionInput.HousingTypeCandidate(row.getLong(1), row.getLong(2),
-                        row.getString(3), row.getString(4), row.getBigDecimal(5), row.getBigDecimal(6),
-                        row.getObject(7, Integer.class)))
-                .list();
+                .list());
     }
 }

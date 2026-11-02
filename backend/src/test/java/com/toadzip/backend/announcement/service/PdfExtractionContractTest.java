@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.announcement.domain.PdfExtractionInput;
 import com.toadzip.backend.announcement.dto.response.AnnouncementPdfExtraction;
-import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -30,9 +29,7 @@ class PdfExtractionContractTest {
     void 작업_입력_스냅숏은_계약_예시와_같은_JSON으로_쓴다() throws Exception {
         var input = new PdfExtractionInput(
                 List.of(new PdfExtractionInput.LhSupplyRow(0, "인천부평(도시재생뉴딜) 행복주택", "16A(대학생/청년)",
-                        "16.37", "27.6384", "78", "78")),
-                List.of(new PdfExtractionInput.HousingTypeCandidate(71L, 7L, "인천부평 행복주택", "16A",
-                        new BigDecimal("16.37"), new BigDecimal("27.6384"), 78)));
+                        "16.37", "27.6384", "78", "78")));
 
         assertThat(mapper.readTree(mapper.writeValueAsString(input)))
                 .isEqualTo(mapper.readTree(Files.readString(CONTRACT.resolve("input.example.json"))));

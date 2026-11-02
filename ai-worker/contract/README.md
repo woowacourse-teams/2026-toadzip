@@ -4,7 +4,7 @@
 Spring 테스트(`PdfExtractionContractTest`)와 워커 테스트가 같은 파일을 읽어 두 쪽 형식이 어긋나지 않게 한다.
 필드를 바꾸면 이 예시와 양쪽 코드를 함께 고친다.
 
-- `announcement-pdf-extraction/input.example.json`: LH 공급 API 행(LH가 보낸 문자열 그대로)과 연결 단지의 주택형 후보.
+- `announcement-pdf-extraction/input.example.json`: LH 공급 API 행(LH가 보낸 문자열 그대로).
 - `announcement-pdf-extraction/result.example.json`: PDF 보정 화면이 읽는 추출 결과. `json`은 추출 JSON을 문자열로 담고, 근거 쪽 번호는 원본 PDF 기준이다.
 
 ## 큐 상태 전이 (워커가 지킬 것)

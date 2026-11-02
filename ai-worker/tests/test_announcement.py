@@ -72,8 +72,7 @@ def test_lh_rows_are_sent_as_supply_row_frame_and_counts_are_checked():
 
 
 def test_lh_count_mismatch_is_warning_not_failure():
-    job_input = {"lhSupplyRows": [{"typeName": "16A", "exclusiveArea": "16.37", "supplyArea": "27.6", "suppliedUnitCount": "80"}],
-                 "housingTypes": []}
+    job_input = {"lhSupplyRows": [{"typeName": "16A", "exclusiveArea": "16.37", "supplyArea": "27.6", "suppliedUnitCount": "80"}]}
 
     result = AnnouncementPdfExtractor(FakeModel()).extract(job(pdf(COVER, SUPPLY, RENT), job_input))
 
@@ -85,7 +84,7 @@ def test_lh_count_mismatch_is_warning_not_failure():
 def test_without_lh_rows_frame_is_not_sent():
     model = FakeModel()
 
-    AnnouncementPdfExtractor(model).extract(job(pdf(COVER, SUPPLY, RENT), {"lhSupplyRows": [], "housingTypes": []}))
+    AnnouncementPdfExtractor(model).extract(job(pdf(COVER, SUPPLY, RENT), {"lhSupplyRows": []}))
 
     assert announcement.LH_FRAME not in model.prompts[0]
     assert "[LH 공급 API 행]" not in model.prompts[0]

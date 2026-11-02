@@ -50,7 +50,7 @@ class AnnouncementPdfExtractionServiceTest {
             "usage":{"promptTokens":1,"outputTokens":2,"thinkingTokens":null}}
             """;
     private static final PdfExtractionInput INPUT = new PdfExtractionInput(
-            List.of(new PdfExtractionInput.LhSupplyRow(0, "부평", "16A", "16.37", "27.6", "78", "78")), List.of());
+            List.of(new PdfExtractionInput.LhSupplyRow(0, "부평", "16A", "16.37", "27.6", "78", "78")));
 
     private final AnnouncementRepository announcements = mock(AnnouncementRepository.class);
     private final PdfExtractionJobRepository jobs = mock(PdfExtractionJobRepository.class);
