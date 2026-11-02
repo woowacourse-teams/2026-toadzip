@@ -2,6 +2,7 @@ package com.toadzip.backend.admin.quality.service;
 
 import com.toadzip.backend.admin.domain.AdminDataChange;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
+import com.toadzip.backend.admin.exception.AdminDataStaleException;
 import com.toadzip.backend.admin.quality.domain.QualityResource;
 import com.toadzip.backend.admin.quality.dto.QualityComparison.Source;
 import com.toadzip.backend.admin.quality.dto.QualityComparison;
@@ -112,9 +113,11 @@ public class QualityComparisonService {
     @Transactional
     public QualityComparison checkComplex(long id, QualityComparisonRequest.Check request, String actor) {
         lock(QualityResource.COMPLEX, id);
-        if (!request.target().equals("basic")
-                || !complexComparison.detail(id).snapshotToken().equals(request.snapshotToken())) {
+        if (!request.target().equals("basic")) {
             throw new AdminDataConflictException("단지 등록값 또는 원천이 변경되었습니다. 다시 비교해 주세요.");
+        }
+        if (!complexComparison.detail(id).snapshotToken().equals(request.snapshotToken())) {
+            throw new AdminDataStaleException("단지 등록값 또는 원천이 변경되었습니다. 다시 비교해 주세요.");
         }
         var current = detail(QualityResource.COMPLEX, id, "basic");
         return check(QualityResource.COMPLEX, id, new QualityComparisonRequest.Check("basic",
@@ -192,7 +195,7 @@ public class QualityComparisonService {
     private QualityComparison checked(QualityResource resource, long id, String target, String expected) {
         var current = detail(resource, id, target);
         if (!current.snapshotToken().equals(expected)) {
-            throw new AdminDataConflictException("등록값 또는 DB 원천이 변경되었습니다. 입력을 보관하고 다시 조회하세요.");
+            throw new AdminDataStaleException("등록값 또는 DB 원천이 변경되었습니다. 입력을 보관하고 다시 조회하세요.");
         }
         return current;
     }
