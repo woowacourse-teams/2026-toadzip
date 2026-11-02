@@ -242,11 +242,7 @@ def test_public_message_with_nul_is_still_recorded(owner, worker_conn):
 def test_expired_lease_without_attempts_left_is_never_claimed(owner, worker_conn):
     insert_job(owner, status="RUNNING", attempts=3, lease_expired=True)
 
-    try:
-        claimed = jobs.claim(worker_conn, LEASE, DEADLINE, MAX_ATTEMPTS)
-    except psycopg.errors.CheckViolation:
-        pytest.fail("시도를 다 쓴 작업을 다시 꺼내려 했다")
-    assert claimed is None
+    assert jobs.claim(worker_conn, LEASE, DEADLINE, MAX_ATTEMPTS) is None
 
 
 def test_long_public_message_is_truncated_to_column_size(owner, worker_conn):
