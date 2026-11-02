@@ -38,9 +38,9 @@ export const JOB_POLL_MS = 3000
  * 보통은 이 상한 전에 성공이나 실패를 받는다. 상한은 워커가 멈춘 경우의 안전장치다.
  */
 export const JOB_WAIT_LIMIT_MS = 45 * 60 * 1000
-/** 워커는 대기 작업을 몇 초 안에 꺼내므로, 이만큼 PENDING이면 워커가 멈춘 것으로 보고 알린다. */
+/** 워커는 한 번에 작업 하나만 처리해, 앞선 작업이 길면 정상이어도 이만큼 PENDING일 수 있다. 그래서 멈췄다고 단정하지 않고 확인을 권한다. */
 export const NOT_STARTED_NOTICE_MS = 3 * 60 * 1000
-const NOT_STARTED_NOTICE = '아직 처리가 시작되지 않았습니다. AI 워커가 실행 중인지 확인해 주세요.'
+const NOT_STARTED_NOTICE = '아직 처리가 시작되지 않았습니다. 앞선 추출을 처리 중일 수 있으니, 계속 그대로면 AI 워커가 실행 중인지 확인해 주세요.'
 
 type Reason = { code: string; message: string }
 type ExtractionJob = { jobId: number; status: string; fileName: string; pdfSha256: string; failure: Reason | null; retryReason: Reason | null; extraction: unknown }
