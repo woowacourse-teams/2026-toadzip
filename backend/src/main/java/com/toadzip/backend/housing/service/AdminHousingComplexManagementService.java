@@ -193,8 +193,12 @@ public class AdminHousingComplexManagementService {
         if (!sameArea.isEmpty()) {
             throw new AdminDataConflictException("휴지통에 같은 전용면적 주택형이 있습니다. 복구한 뒤 수정해 주세요.");
         }
-        var type = HousingType.createByAdmin(complex, HousingType.ADMIN_SOURCE_PREFIX + UUID.randomUUID(),
-                name, request.exclusiveArea(), request.supplyArea(), request.householdCount());
+        String identifier = HousingType.ADMIN_SOURCE_PREFIX + UUID.randomUUID();
+        var type = request.createdFromAnnouncement()
+                ? HousingType.createFromAnnouncement(complex, identifier, name, request.exclusiveArea(),
+                        request.supplyArea(), request.householdCount())
+                : HousingType.createByAdmin(complex, identifier, name, request.exclusiveArea(), request.supplyArea(),
+                        request.householdCount());
         types.save(type);
         complex.noteHousingTypeRevisionByAdmin();
         complexes.flush();

@@ -189,6 +189,25 @@ public class HousingType {
         return type;
     }
 
+    /**
+     * 관리자가 PDF 보정에서 공고문 값으로 만든 주택형. 공고 값이라 보호하지 않아 다음 공고가 이름·공급면적·세대수를 갱신한다.
+     */
+    public static HousingType createFromAnnouncement(
+            HousingComplex housingComplex,
+            String sourceHousingTypeIdentifier,
+            String name,
+            BigDecimal exclusiveArea,
+            BigDecimal supplyArea,
+            Integer householdCount
+    ) {
+        var type = createFromMyHome(housingComplex, sourceHousingTypeIdentifier, name, exclusiveArea, supplyArea);
+        if (householdCount != null) {
+            type.validateNonNegative(householdCount, "전체 세대수");
+        }
+        type.totalHouseholdCount = householdCount;
+        return type;
+    }
+
     /** 관리자가 단지 상세나 PDF 보정에서 직접 만든 주택형의 원천 식별자 접두어 */
     public static final String ADMIN_SOURCE_PREFIX = "ADMIN_ENTRY-HOUSING-TYPE-";
 

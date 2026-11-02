@@ -598,9 +598,9 @@ public class SupplyCorrectionService {
             if (complex == null || row.housingTypeId() != null) {
                 throw new IllegalArgumentException("새 주택형을 만들 단지만 선택하세요. 기존 주택형과 함께 지정할 수 없습니다.");
             }
-            // PDF·공급 보정으로 만든 주택형은 공고 값이라 보호하지 않는다. 다음 공고가 이름·면적·세대수를 갱신한다.
             var input = row.newHousingType();
-            return HousingType.createFromMyHome(complex, identifier, input.name(), input.exclusiveArea(), input.supplyArea());
+            return HousingType.createFromAnnouncement(complex, identifier, input.name(), input.exclusiveArea(),
+                    input.supplyArea(), null);
         }
         if (row.housingTypeId() == null) { return null; }
         var type = types.findById(row.housingTypeId()).orElseThrow(

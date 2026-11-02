@@ -101,6 +101,20 @@ class HousingTypeTest {
     }
 
     @Test
+    void 공고문으로_만든_주택형은_보호하지_않아_다음_공고가_이름과_세대수를_갱신한다() {
+        HousingType type = HousingType.createFromAnnouncement(createHousingComplex(), "ADMIN_ENTRY-HOUSING-TYPE-3",
+                "059.6300A", new BigDecimal("59.63"), new BigDecimal("78.9091"), 198);
+
+        assertFalse(type.isNameAdminModified() || type.isHouseholdCountAdminModified() || type.isAdminModified());
+        assertEquals(198, type.getTotalHouseholdCount());
+        assertTrue(type.observeAnnouncement(new AnnouncementValues("059.6300B", null, 200), POSTED));
+        assertEquals("059.6300B", type.getName());
+        assertEquals(200, type.getTotalHouseholdCount());
+        assertThrows(IllegalArgumentException.class, () -> HousingType.createFromAnnouncement(createHousingComplex(),
+                "ADMIN_ENTRY-HOUSING-TYPE-4", "59", new BigDecimal("59.63"), null, -1));
+    }
+
+    @Test
     void 더_이른_공고는_값을_되돌리지_않고_같은_날_공고는_다시_반영한다() {
         HousingType type = HousingType.createFromMyHome(
                 createHousingComplex(), "source-type", "46A", new BigDecimal("46.8"), null);
