@@ -16,6 +16,8 @@ export const metadataFields: FieldSpec[] = [['postedDate', '공고일', 'date'],
 export const receptionFields: FieldSpec[] = [['name', '접수처명', 'text'], ['method', '접수 방식', 'method'], ['address', '접수처 주소', 'text'], ['contact', '연락처', 'text'], ['url', '접수처 URL', 'url']]
 export type TargetReview = { destination: string; cells: Cell[] }
 export type RowReview = { proposal: RowProposal; include: boolean; reviewed: boolean; key: string; cells: Cell[]; targets: TargetReview[]
+  /** 주택형 기본 임대조건으로 쓸 대상 순번. null이면 지금 값 유지, 없으면 housingTypePrice가 정한 기본값 */
+  priceTarget?: number | null
   /** 단지에 맞는 주택형이 없어 PDF 형명·면적으로 새 주택형을 만들기로 고른 경우 */
   newHousingType?: boolean }
 export type ScheduleReview = { proposal: ScheduleProposal; include: boolean; reviewed: boolean; cells: Cell[] }
@@ -368,10 +370,42 @@ function housingTypeValue(entry: RowReview, source: Extraction['supplyRows'][num
   const count = source.values.constructedHouseholdCount
   // "39(창업인)"처럼 끝 괄호는 공급대상 표기라 주택형 이름에 넣지 않는다. 넣으면 공고마다 이름이 바뀐다.
   const typeName = typeof name === 'string' ? withoutTrailingParentheses(name) : ''
+  const price = housingTypePrice(entry)
+  const chosen = price.chosen === null ? null : price.options[price.chosen]
   const value: HousingTypeValue = { rowKey, name: typeName && !areaOnlyTypeName(typeName) ? typeName : null,
     supplyArea: typeof area === 'number' && area >= 0 ? area : null,
-    householdCount: typeof count === 'number' && Number.isSafeInteger(count) && count >= 0 ? count : null }
-  return value.name === null && value.supplyArea === null && value.householdCount === null ? null : value
+    householdCount: typeof count === 'number' && Number.isSafeInteger(count) && count >= 0 ? count : null,
+    basicDeposit: chosen?.deposit ?? null, basicMonthlyRent: chosen?.monthlyRent ?? null }
+  return value.name === null && value.supplyArea === null && value.householdCount === null && chosen === null ? null : value
+}
+
+export type PriceOption = { index: number; label: string; deposit: number; monthlyRent: number }
+/**
+ * 주택형 기본 임대조건(보증금·월 임대료)으로 쓸 공급대상. 반영하는 대상의 금액이 하나로 같으면 그 값을 쓰고,
+ * 다르면 '일반' 대상을 미리 고른다. '일반'도 없으면 지금 값을 유지하고 관리자가 검토 화면에서 고른다.
+ */
+export function housingTypePrice(row: RowReview): { options: PriceOption[]; chosen: number | null; same: boolean } {
+  const amount = (cells: Cell[], field: string) => {
+    const cell = cells.find(item => item.field === field)
+    // 금액 칸은 숫자 문자열('41848000')로 들고 있다.
+    const value = !cell ? null : cell.mode === 'keep' ? cell.before : cell.value
+    const number = typeof value === 'string' && /^\d{1,15}$/.test(value) ? Number(value) : value
+    return typeof number === 'number' && Number.isSafeInteger(number) && number >= 0 ? number : null
+  }
+  const options = row.targets.flatMap((target, index) => {
+    const deposit = amount(target.cells, 'rentalDeposit'), monthlyRent = amount(target.cells, 'monthlyRent')
+    const label = shown(target.cells.find(cell => cell.field === 'target')?.value)
+    return target.destination === 'exclude' || deposit === null || monthlyRent === null ? [] : [{ index, label, deposit, monthlyRent }]
+  })
+  const same = options.length > 0 && options.every(option => option.deposit === options[0].deposit && option.monthlyRent === options[0].monthlyRent)
+  if (!options.length) return { options, chosen: null, same }
+  if (row.priceTarget !== undefined) {
+    const picked = row.priceTarget === null ? -1 : options.findIndex(option => option.index === row.priceTarget)
+    return { options, chosen: picked >= 0 ? picked : null, same }
+  }
+  if (same) return { options, chosen: 0, same }
+  const general = options.findIndex(option => option.label.replace(/\s/g, '') === '일반')
+  return { options, chosen: general >= 0 ? general : null, same }
 }
 
 // 서버와 같은 기준(표시 순서 → 작업 키)으로 현재 화면 순서를 만든다.

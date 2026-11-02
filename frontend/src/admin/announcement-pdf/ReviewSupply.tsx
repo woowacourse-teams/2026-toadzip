@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import type { JsonWorkspace } from '../announcement-json/api'
 import { type Evidence } from './extraction'
-import { cellMatches, complexGroups, createRowReview, destinationLabel, editCell, sharedGroupStorable, pdfOrderChanges, pendingRow, pendingTarget, preserveCellChoice, remapTarget, shown, type Review, type ReviewFilter, type RowReview, type TargetReview } from './review'
+import { cellMatches, complexGroups, createRowReview, housingTypePrice, destinationLabel, editCell, sharedGroupStorable, pdfOrderChanges, pendingRow, pendingTarget, preserveCellChoice, remapTarget, shown, type Review, type ReviewFilter, type RowReview, type TargetReview } from './review'
 import { ComplexDecisions } from './ComplexDecision'
 import { missingHousingType, pickHousingType, type ComplexLabels, type HousingCandidates } from './matching'
 import { ReviewCells } from './ReviewCells'
@@ -91,6 +91,7 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
             newType={missing && missing.name ? { label: missingLabel, selected: Boolean(row.newHousingType), onSelect: chooseNewType } : undefined}
             onChange={cells => update(index, { ...row, cells, newHousingType: Boolean(row.newHousingType && missing && keepsNewType(cells)) })} onEvidence={onEvidence} />
           <TargetBlock review={review} index={index} workspace={workspace} filter={filter} update={next => update(index, next)} onEvidence={onEvidence} />
+          {filter === 'all' && <HousingTypePrice row={row} index={index} update={next => update(index, next)} />}
         </>}
       </section>
   }
@@ -129,6 +130,27 @@ function TargetBlock({ review, index, workspace, filter, update, onEvidence }: {
     </section>}
     {conditions.length > 0 && <details className={styles.conditions}><summary>신청 조건 {conditions.length}종 확인</summary><ul>{conditions.map(condition => <li key={condition}>{condition}</li>)}</ul></details>}
   </>
+}
+
+/** 주택형 기본 임대조건(사용자 화면의 단지 가격·필터에 쓰는 값)을 이 공고의 어느 대상 금액으로 갱신할지 보여 주고 고르게 한다. */
+function HousingTypePrice({ row, index, update }: { row: RowReview; index: number; update: (row: RowReview) => void }) {
+  const price = housingTypePrice(row)
+  const type = row.proposal.candidates.find(item => item.id === row.proposal.housingTypeId)
+  if (!price.options.length || row.proposal.housingTypeId === null && !row.newHousingType) return null
+  const won = (value: number | null | undefined) => typeof value === 'number' ? `${value.toLocaleString('ko-KR')}원` : '미확인'
+  const current = `보증금 ${won(type?.basicDeposit)} · 월 ${won(type?.basicMonthlyRent)}`
+  const chosen = price.chosen === null ? null : price.options[price.chosen]
+  const unchanged = chosen !== null && chosen.deposit === type?.basicDeposit && chosen.monthlyRent === type?.basicMonthlyRent
+  return <section className={styles.housingTypePrice} aria-label={`공급행 ${index + 1} 주택형 가격`}>
+    <h4>주택형 가격</h4>
+    <p className={styles.hint}>사용자 화면의 단지 가격·보증금 필터에 쓰는 주택형 기본 임대조건입니다. 지금: {current}</p>
+    {/* 금액이 모두 같아도 관리자가 지금 값을 유지할 수 있게 고르는 칸을 둔다. */}
+    <label>공급행 {index + 1} 주택형 가격으로 쓸 대상<select value={chosen === null ? '' : String(chosen.index)} onChange={event => update({ ...row, priceTarget: event.target.value === '' ? null : Number(event.target.value) })}>
+      <option value="">지금 값 유지</option>
+      {(price.same ? price.options.slice(0, 1) : price.options).map(option => <option key={option.index} value={option.index}>{price.same ? '모든 대상' : option.label} · 보증금 {won(option.deposit)} · 월 {won(option.monthlyRent)}</option>)}
+    </select></label>
+    <p>{chosen === null ? (price.same ? '' : '대상별 금액이 달라 고르지 않으면 지금 값을 유지합니다.') : unchanged ? '지금 값과 같습니다.' : `저장하면 보증금 ${won(chosen.deposit)} · 월 ${won(chosen.monthlyRent)}으로 갱신합니다. 더 최근 공고의 값은 유지합니다.`}</p>
+  </section>
 }
 
 // 단지는 위 '단지 정하기'에서 단지명마다 한 번 정한다. 여기서는 정한 단지와 이 행의 PNU·공급 구분만 확인한다.

@@ -275,7 +275,9 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
 }
 
 function typeValuesLabel(values: JsonPreview['housingTypes'][number]['after']) {
-  return [`이름 ${values.name}`, `공급면적 ${values.supplyArea ?? '미확인'}㎡`, `세대수 ${values.householdCount ?? '미확인'}`].join(' · ')
+  const won = (value: number | null | undefined) => typeof value === 'number' ? `${value.toLocaleString('ko-KR')}원` : '미확인'
+  return [`이름 ${values.name}`, `공급면적 ${values.supplyArea ?? '미확인'}㎡`, `세대수 ${values.householdCount ?? '미확인'}`,
+    ...(values.basicDeposit != null || values.basicMonthlyRent != null ? [`기본 보증금 ${won(values.basicDeposit)} · 월 ${won(values.basicMonthlyRent)}`] : [])].join(' · ')
 }
 
 const changeSections: PendingChange['section'][] = ['기본정보', '접수처', '공급정보', '일정']

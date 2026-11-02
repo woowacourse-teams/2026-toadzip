@@ -13,6 +13,7 @@ import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.MyHomeRentalCondition;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import com.toadzip.backend.notification.NotificationFixtures;
 import jakarta.persistence.EntityManager;
@@ -99,6 +100,42 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT after_value FROM admin_data_changes WHERE resource_type='ANNOUNCEMENT' "
                 + "AND resource_id=? AND action='CORRECT_FROM_PDF'", String.class, announcement.getId()))
                 .contains("\"housingTypes\"");
+    }
+
+    @Test
+    void 고른_공급대상의_금액으로_주택형_기본_임대조건을_갱신하고_출처를_공고문으로_남긴다() throws Exception {
+        var request = request();
+        value(request, "row:" + row.getId(), null, null, null).put("basicDeposit", 8_100_000L).put("basicMonthlyRent", 156_230L);
+
+        var preview = preview(request);
+        assertThat(preview.path("housingTypes").get(0).path("after").path("basicDeposit").asLong()).isEqualTo(8_100_000L);
+        apply(request, preview).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+
+        var stored = entities.find(HousingType.class, type.getId());
+        assertThat(stored.getBasicRentalCondition()).isEqualTo(new MyHomeRentalCondition(8_100_000L, 156_230L, POSTED_AT));
+        assertThat(stored.getRentalConditionSource()).isEqualTo("ANNOUNCEMENT");
+        assertThat(jdbc.queryForList("SELECT after_value FROM admin_data_changes WHERE resource_type='COMPLEX' "
+                + "AND resource_id=? AND action='UPDATE_HOUSING_TYPE_FROM_PDF'", String.class, complex.getId()))
+                .singleElement().asString().contains("\"basicDeposit\":8100000", "\"basicMonthlyRent\":156230");
+    }
+
+    @Test
+    void 같은_주택형을_고른_행들의_기본_임대조건이_다르면_지금_값을_유지한다() throws Exception {
+        var second = SupplyRow.create(announcement, complex, type, UUID.randomUUID().toString(), 1, "알림 테스트 단지",
+                "36A", null, null, SupplyCategory.NEW_SUPPLY, null, 5);
+        entities.persist(second);
+        entities.flush();
+        var request = request();
+        value(request, "row:" + row.getId(), "36A", null, null).put("basicDeposit", 8_100_000L).put("basicMonthlyRent", 156_230L);
+        value(request, "row:" + second.getId(), "36A", null, null).put("basicDeposit", 8_623_000L).put("basicMonthlyRent", 161_140L);
+
+        var preview = preview(request);
+        assertThat(preview.path("housingTypeWarnings").toString()).contains("공고 값이 서로 달라 지금 값을 유지합니다: 기본 임대조건");
+        apply(request, preview).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+
+        assertThat(entities.find(HousingType.class, type.getId()).getBasicRentalCondition()).isNull();
     }
 
     @Test
@@ -400,10 +437,11 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
         return request;
     }
 
-    private void value(ObjectNode request, String rowKey, String name, String supplyArea, Integer householdCount) {
+    private ObjectNode value(ObjectNode request, String rowKey, String name, String supplyArea, Integer householdCount) {
         var value = request.withArray("housingTypeValues").addObject().put("rowKey", rowKey).put("name", name);
         if (supplyArea == null) { value.putNull("supplyArea"); } else { value.put("supplyArea", new BigDecimal(supplyArea)); }
         value.put("householdCount", householdCount);
+        return value;
     }
 
     private JsonNode preview(ObjectNode request) throws Exception {

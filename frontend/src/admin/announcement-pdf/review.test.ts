@@ -1,7 +1,7 @@
-import { expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { scenario } from './fixtures/workspace'
 import { blankTarget } from '../supply/supplyCorrectionApi'
-import { areaOnlyTypeName, destinationLabel, foreignCharacters, shownDateTime, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
+import { areaOnlyTypeName, destinationLabel, housingTypePrice, foreignCharacters, shownDateTime, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
 
 
 const evidence = { reason: '공고문과 대조', sourceUrl: 'https://example.com/notice', sourcePage: '4' }
@@ -322,7 +322,14 @@ it('주택형 공고 값은 고른 이름·공급면적과 건설호수만 보�
   const { review, workspace } = scenario('gwangju')
   const valueOf = (key: string) => assembleReview(review, workspace, evidence).housingTypeValues?.find(value => value.rowKey === key)
   const index = review.rows.findIndex(row => row.include && row.proposal.destination === 'row:22')
-  expect(valueOf('row:22')).toEqual({ rowKey: 'row:22', name: '39', supplyArea: 66.6673, householdCount: null })
+  // 대상별 금액이 달라 고르지 않은 주택형 가격은 보내지 않는다(지금 값 유지).
+  expect(valueOf('row:22')).toEqual({ rowKey: 'row:22', name: '39', supplyArea: 66.6673, householdCount: null, basicDeposit: null, basicMonthlyRent: null })
+  const priced = review.rows.findIndex(row => row.include && row.proposal.destination === 'row:22')
+  review.rows[priced] = { ...review.rows[priced], priceTarget: 0 }
+  const first = review.rows[priced].targets[0].cells
+  expect(valueOf('row:22')).toMatchObject({ basicDeposit: Number(first.find(cell => cell.field === 'rentalDeposit')?.value), basicMonthlyRent: Number(first.find(cell => cell.field === 'monthlyRent')?.value) })
+  expect(valueOf('row:22')?.basicDeposit).toEqual(expect.any(Number))
+  review.rows[priced] = { ...review.rows[priced], priceTarget: undefined }
   expect(valueOf('row:26')?.name).toBe('26')
   const areaOnly = review.rows.findIndex(row => row.include && row.proposal.destination === 'row:24')
   const label = review.rows[areaOnly].cells.findIndex(cell => cell.field === 'sourceHousingTypeName')
@@ -360,4 +367,28 @@ it('숫자 앞뒤의 0만 다른 주택형 표기는 기존 표기를 유지한�
   const lower = workspace.supply.rows.map(row => ({ ...row, typeName: String(review.extraction.supplyRows[0].typeName).toLowerCase() }))
   const changed = createReview(review.extraction, { ...workspace, supply: { ...workspace.supply, rows: lower } }, housing).rows[0].cells.find(item => item.field === 'sourceHousingTypeName')!
   expect(changed.state).not.toBe('same')
+})
+
+describe('주택형 기본 임대조건으로 쓸 공급대상', () => {
+  const cell = (field: string, value: unknown) => ({ field, value, before: null, mode: 'extracted' })
+  // 화면의 금액 칸은 숫자 문자열이다.
+  const target = (name: string, deposit: number, rent: number, destination = 'new') => ({ destination, cells: [cell('target', name), cell('rentalDeposit', String(deposit)), cell('monthlyRent', String(rent))] })
+  const row = (targets: unknown[], priceTarget?: number | null) => ({ targets, ...(priceTarget !== undefined ? { priceTarget } : {}) }) as unknown as Parameters<typeof housingTypePrice>[0]
+
+  it('대상 금액이 모두 같으면 그 금액을, 다르면 일반 대상을 고르고, 일반도 없으면 지금 값을 유지한다', () => {
+    expect(housingTypePrice(row([target('대학생', 12_308_000, 76_920), target('청년 소득X', 12_308_000, 76_920)]))).toMatchObject({ chosen: 0, same: true })
+    expect(housingTypePrice(row([target('고령자', 7_500_000, 70_000), target('일반', 8_100_000, 156_230)]))).toMatchObject({ chosen: 1, same: false })
+    expect(housingTypePrice(row([target('가군', 2_395_000, 47_630), target('나군', 9_095_000, 98_630)]))).toMatchObject({ chosen: null, same: false })
+    // 반영하지 않는 대상과 금액이 없는 대상은 고르지 않는다.
+    expect(housingTypePrice(row([target('가군', 2_395_000, 47_630, 'exclude'), target('나군', 9_095_000, 98_630)])).options.map(option => option.label)).toEqual(['나군'])
+  })
+
+  it('관리자가 고른 대상이나 유지를 따른다', () => {
+    const targets = [target('가군', 2_395_000, 47_630), target('나군', 9_095_000, 98_630)]
+    expect(housingTypePrice(row(targets, 1)).chosen).toBe(1)
+    expect(housingTypePrice(row([target('고령자', 7_500_000, 70_000), target('일반', 8_100_000, 156_230)], null)).chosen).toBeNull()
+    expect(housingTypePrice(row(targets, 5)).chosen).toBeNull()
+    // 금액이 모두 같아도 관리자가 지금 값 유지를 고를 수 있다.
+    expect(housingTypePrice(row([target('대학생', 12_308_000, 76_920), target('청년', 12_308_000, 76_920)], null)).chosen).toBeNull()
+  })
 })

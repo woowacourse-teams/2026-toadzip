@@ -51,8 +51,9 @@ public final class AnnouncementSupplyMatching {
     public record HousingTypeArea(long id, String name, BigDecimal exclusiveArea) {
     }
 
+    /** basicDeposit·basicMonthlyRent는 PDF 보정 검토가 공고 값과 나란히 보여 줄 주택형의 지금 기본 임대조건이다. */
     public record HousingTypeOption(long id, String name, BigDecimal exclusiveArea, BigDecimal supplyArea,
-            Integer householdCount, String token) {
+            Integer householdCount, String token, Long basicDeposit, Long basicMonthlyRent) {
     }
 
     /**

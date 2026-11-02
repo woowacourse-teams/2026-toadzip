@@ -17,6 +17,12 @@ describe('AI 추출 응답 읽기', () => {
     // 금액은 인용문에 없어도(전환보증금 칸이 인용에 빠진 경우) 그 금액을 PDF 표기로 찾는다.
     expect(evidenceQuery(quote, 16000000)).toBe('16,000,000')
     expect(evidenceQuery('보증금 2395000원', 2395000)).toBe('2395000')
+    // 공고문이 천원·만원 단위로 적으면 그 표기로 찾는다. 원 단위 표기가 다른 금액 안에 겹쳐 있어도 낱말로만 맞춘다.
+    expect(evidenceQuery('8,100 405 7,695 156', 8100000)).toBe('8,100')
+    expect(evidenceQuery('(+)1,500 (-)300', 15000000)).toBe('1,500')
+    expect(evidenceQuery('보증금 810만원 임대료 15.6만원', 8100000)).toBe('810만')
+    expect(evidenceQuery('보증금 810 월 15', 8100000)).toBe('810')
+    expect(evidenceQuery('81,000,000 8,100', 8100000)).toBe('8,100')
     // 글자 값이 인용문에 없거나 짧은 숫자면 인용문에서 고른 검색어로 강조한다. 짧은 숫자는 쪽 곳곳에 있어 엉뚱한 곳을 강조한다.
     expect(evidenceQuery(quote, '공공임대')).toBe(searchText(quote))
     expect(searchText(quote)).toBe('2,395,000')
