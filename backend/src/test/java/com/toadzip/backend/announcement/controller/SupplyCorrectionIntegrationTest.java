@@ -298,8 +298,14 @@ class SupplyCorrectionIntegrationTest {
         var review = reviewRequest(row, "householdCount");
         var source = json.createObjectNode().put("category", "MYHOME_ANNOUNCEMENT")
                 .put("sourceKey", workspace.at("/sources/0/sourceKey").asText());
-        source.putArray("fields").add("sum_suply_co");
+        // 수집이 원천 행에 함께 담는 관리 열(collected_at)은 원천 값이 아니라 확인 항목으로 고를 수 없다.
+        source.putArray("fields").add("collected_at");
         review.putArray("sources").add(source);
+        mvc.perform(post(root(id) + "/reviews").with(user("reviewer").roles("ADMIN")).with(csrf())
+                .contentType("application/json").content(json.writeValueAsString(review)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("수집 메타정보를 제외한 실제 원천 항목을 선택하세요."));
+        source.putArray("fields").add("sum_suply_co");
         mvc.perform(post(root(id) + "/reviews").with(user("reviewer").roles("ADMIN")).with(csrf())
                 .contentType("application/json").content(json.writeValueAsString(review)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.records[0].status").value("VERIFIED"));
