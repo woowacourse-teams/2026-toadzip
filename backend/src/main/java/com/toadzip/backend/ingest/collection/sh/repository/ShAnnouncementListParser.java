@@ -1,8 +1,8 @@
-package com.toadzip.backend.ingest.collection.repository.external;
+package com.toadzip.backend.ingest.collection.sh.repository;
 
-import com.toadzip.backend.ingest.collection.dto.ShAnnouncementPage.Entry;
-import com.toadzip.backend.ingest.collection.dto.ShAnnouncementPage;
-import com.toadzip.backend.ingest.collection.repository.ShAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.sh.dto.ShAnnouncementPage.Entry;
+import com.toadzip.backend.ingest.collection.sh.dto.ShAnnouncementPage;
 import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.util.ArrayList;

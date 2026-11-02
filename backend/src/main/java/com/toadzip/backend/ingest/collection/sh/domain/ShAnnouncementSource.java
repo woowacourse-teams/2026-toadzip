@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.collection.domain;
+package com.toadzip.backend.ingest.collection.sh.domain;
 
 import static lombok.AccessLevel.PROTECTED;
 

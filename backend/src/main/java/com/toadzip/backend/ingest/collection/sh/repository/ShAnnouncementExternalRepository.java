@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.collection.repository;
+package com.toadzip.backend.ingest.collection.sh.repository;
 
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import java.net.URI;

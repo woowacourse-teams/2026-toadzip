@@ -1,7 +1,7 @@
-package com.toadzip.backend.ingest.collection.repository;
+package com.toadzip.backend.ingest.collection.sh.repository;
 
-import com.toadzip.backend.ingest.collection.domain.ShAnnouncementSnapshot;
-import com.toadzip.backend.ingest.collection.domain.ShAnnouncementSource;
+import com.toadzip.backend.ingest.collection.sh.domain.ShAnnouncementSnapshot;
+import com.toadzip.backend.ingest.collection.sh.domain.ShAnnouncementSource;
 import java.time.Clock;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;

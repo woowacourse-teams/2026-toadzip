@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.collection.dto;
+package com.toadzip.backend.ingest.collection.sh.dto;
 
 import java.time.LocalDate;
 

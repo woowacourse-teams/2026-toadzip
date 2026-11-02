@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.collection.service;
+package com.toadzip.backend.ingest.collection.sh.service;
 
 import static com.toadzip.backend.ingest.collection.fixture.ShAnnouncementFixtures.detail;
 import static com.toadzip.backend.ingest.collection.fixture.ShAnnouncementFixtures.mainList;
@@ -7,8 +7,8 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.repository.ShAnnouncementExternalRepository;
-import com.toadzip.backend.ingest.collection.repository.ShAnnouncementSourceRepository;
+import com.toadzip.backend.ingest.collection.sh.repository.ShAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.collection.sh.repository.ShAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;

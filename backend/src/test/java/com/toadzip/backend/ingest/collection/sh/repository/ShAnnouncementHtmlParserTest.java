@@ -1,12 +1,13 @@
-package com.toadzip.backend.ingest.collection.repository.external;
+package com.toadzip.backend.ingest.collection.sh.repository;
 
 import static com.toadzip.backend.ingest.collection.fixture.ShAnnouncementFixtures.detail;
 import static com.toadzip.backend.ingest.collection.fixture.ShAnnouncementFixtures.mainList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.toadzip.backend.ingest.collection.dto.ShAnnouncementContent;
-import com.toadzip.backend.ingest.collection.dto.ShAnnouncementPage;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.sh.dto.ShAnnouncementContent;
+import com.toadzip.backend.ingest.collection.sh.dto.ShAnnouncementPage;
 import java.time.LocalDate;
 import org.jsoup.Jsoup;
 import org.junit.jupiter.api.Test;

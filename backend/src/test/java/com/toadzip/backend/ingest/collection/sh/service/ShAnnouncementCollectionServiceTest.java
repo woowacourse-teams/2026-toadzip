@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.collection.service;
+package com.toadzip.backend.ingest.collection.sh.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -10,15 +10,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.repository.ShAnnouncementExternalRepository;
-import com.toadzip.backend.ingest.collection.repository.ShAnnouncementStore;
+import com.toadzip.backend.ingest.collection.sh.repository.ShAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.collection.sh.repository.ShAnnouncementStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.collection.repository.external.ShAnnouncementListParser;
-import com.toadzip.backend.ingest.collection.repository.external.ShAnnouncementHtmlParser;
+import com.toadzip.backend.ingest.collection.sh.repository.ShAnnouncementListParser;
+import com.toadzip.backend.ingest.collection.sh.repository.ShAnnouncementHtmlParser;
+import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -187,9 +187,8 @@ class ShAnnouncementCollectionServiceTest {
     }
 
     private ShAnnouncementCollectionService service(int days) {
-        var metrics = new SimpleMeterRegistry();
         return new ShAnnouncementCollectionService(externalRepository, new ShAnnouncementListParser(), detailParser, store,
-                new ExternalDataRetryExecutor(Duration.ZERO, metrics), failures,
+                CollectionServiceTestFixture.retryWithoutDelay(), failures,
                 Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), days, Duration.ZERO);
     }
 

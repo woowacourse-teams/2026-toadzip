@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.collection.repository;
+package com.toadzip.backend.ingest.collection.sh.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

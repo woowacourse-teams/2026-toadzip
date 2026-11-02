@@ -1,9 +1,10 @@
-package com.toadzip.backend.ingest.collection.repository.external;
+package com.toadzip.backend.ingest.collection.sh.repository;
 
 import static com.toadzip.backend.ingest.collection.fixture.ShAnnouncementFixtures.mainList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import java.time.LocalDate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
