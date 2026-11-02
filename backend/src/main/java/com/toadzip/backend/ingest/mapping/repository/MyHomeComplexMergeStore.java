@@ -14,7 +14,8 @@ public class MyHomeComplexMergeStore {
             "housing_types", "supply_rows", "favorite_housing_complexes", "announcement_application_schedules",
             "announcement_complexes"
     );
-    private static final List<String> COMPLEX_COLUMNS = List.of(
+    /** 되돌리기가 복원하는 housing_complexes 열. 스키마와 같은지는 MyHomeComplexMergeStoreSchemaTest가 확인한다. */
+    static final List<String> COMPLEX_COLUMNS = List.of(
             "id", "city_county_district_code", "latitude", "legal_dong_code", "longitude", "pnu",
             "province_code", "road_address", "completion_date", "corridor_type", "elevator_installed",
             "heating_type", "housing_type", "image_url", "name", "parking_space_count", "provider",
