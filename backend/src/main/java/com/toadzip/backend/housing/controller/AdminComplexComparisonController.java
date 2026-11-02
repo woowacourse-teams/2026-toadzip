@@ -1,5 +1,6 @@
 package com.toadzip.backend.housing.controller;
 
+import com.toadzip.backend.admin.controller.AdminManagementApi;
 import com.toadzip.backend.global.response.ApiResponse;
 import com.toadzip.backend.housing.dto.request.ComplexComparisonLinkRequest;
 import com.toadzip.backend.housing.dto.request.ComplexComparisonUpdateRequest;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@AdminManagementApi
 @RestController
 @RequestMapping("/api/admin/housing-complexes/{id}/verification/comparison")
 public class AdminComplexComparisonController {

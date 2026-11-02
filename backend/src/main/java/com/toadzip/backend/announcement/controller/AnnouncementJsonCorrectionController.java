@@ -1,5 +1,6 @@
 package com.toadzip.backend.announcement.controller;
 
+import com.toadzip.backend.admin.controller.AdminManagementApi;
 import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection;
 import com.toadzip.backend.announcement.service.AnnouncementJsonCorrectionService;
 import com.toadzip.backend.global.response.ApiResponse;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@AdminManagementApi
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/admin/announcements/{id}/json-corrections")
