@@ -96,43 +96,53 @@ class LhAnnouncementRefiner {
         if (values.isEmpty()) {
             return Outcome.VALUES_MISSING;
         }
-        Announcement announcement;
-        boolean created = existing.isEmpty();
-        if (created) {
-            if (values.get().winnerAnnouncementDate() == null) {
-                return Outcome.WINNER_DATE_MISSING;
-            }
-            announcement = announcements.save(Announcement.createFromLh(request.panId(), values.get()));
-            // 정정·취소공고는 원공고를 찾지 못해도 새 공고로 알리지 않는다.
-            if (!new LhRevisionName(values.get().name()).isRevision()
-                    && !values.get().postedDate().isBefore(LocalDate.now(clock).minusDays(LATE_ARRIVAL_DAYS))) {
-                notificationOutbox.appendNewAnnouncement(announcement);
-            }
-            tally.created++;
+        if (existing.isEmpty() && values.get().winnerAnnouncementDate() == null) {
+            return Outcome.WINNER_DATE_MISSING;
         }
-        else {
-            announcement = existing.get();
-            if (announcement.updateFromLh(values.get())) {
-                tally.updated++;
-            }
-        }
+        Announcement announcement = existing.map(found -> adopt(found, values.get(), tally))
+                .orElseGet(() -> create(request.panId(), values.get(), tally));
         announcement.enrichFromLh(request.panId(), data.correctionReason(), data.receptionPlace());
         scheduleWriter.write(announcement, data, null);
         linkRevision(announcement, tally);
         Map<String, AnnouncementComplex> complexes = complexLinker.observe(announcement, detailComplexes(details),
                 supplies, supplyType.get(), index, tally.complexes);
-        if (announcement.suppliedByLh()) {
-            supplyRowWriter.writeLhOwned(announcement, lines(supplies, data), complexes,
-                    AnnouncementNameClassification.supplyCategory(announcement.getName()), tally.supplies);
-        }
-        else {
-            supplyRowWriter.fillDocumentOwned(announcement, complexes, tally.supplies);
-            tally.documentOwned++;
-        }
+        writeSupplies(announcement, supplies, data, complexes, tally);
         if (announcement.observeLhSupply(fingerprint(List.copyOf(complexes.keySet()), supplies))) {
             tally.recheckRequired++;
         }
-        return created ? Outcome.CREATED : Outcome.ADOPTED;
+        if (existing.isPresent()) {
+            return Outcome.ADOPTED;
+        }
+        return Outcome.CREATED;
+    }
+
+    private Announcement create(String panId, LhAnnouncementValues values, Tally tally) {
+        Announcement announcement = announcements.save(Announcement.createFromLh(panId, values));
+        // 정정·취소공고는 원공고를 찾지 못해도 새 공고로 알리지 않는다.
+        if (!new LhRevisionName(values.name()).isRevision()
+                && !values.postedDate().isBefore(LocalDate.now(clock).minusDays(LATE_ARRIVAL_DAYS))) {
+            notificationOutbox.appendNewAnnouncement(announcement);
+        }
+        tally.created++;
+        return announcement;
+    }
+
+    private Announcement adopt(Announcement announcement, LhAnnouncementValues values, Tally tally) {
+        if (announcement.updateFromLh(values)) {
+            tally.updated++;
+        }
+        return announcement;
+    }
+
+    private void writeSupplies(Announcement announcement, List<LhAnnouncementSupplySourceView> supplies,
+            LhAnnouncementEnrichmentData data, Map<String, AnnouncementComplex> complexes, Tally tally) {
+        if (announcement.suppliedByLh()) {
+            supplyRowWriter.writeLhOwned(announcement, lines(supplies, data), complexes,
+                    AnnouncementNameClassification.supplyCategory(announcement.getName()), tally.supplies);
+            return;
+        }
+        supplyRowWriter.fillDocumentOwned(announcement, complexes, tally.supplies);
+        tally.documentOwned++;
     }
 
     /** 앞서 읽은 엔티티는 잠금 조회가 상태를 새로 읽지 않으므로 잠그면서 DB 값으로 다시 읽는다. */

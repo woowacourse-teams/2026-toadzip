@@ -34,7 +34,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 class LhAnnouncementComplexLinker {
 
-    static final String ACTOR = "LH 공고 정제";
+    private static final String ACTOR = "LH 공고 정제";
 
     private final AnnouncementComplexRepository announcementComplexes;
     private final SupplyRowRepository supplyRows;
@@ -55,12 +55,11 @@ class LhAnnouncementComplexLinker {
         for (DetailComplex detail : observed.values()) {
             AnnouncementComplex complex = stored.remove(detail.name());
             if (complex == null) {
-                complex = announcementComplexes.save(AnnouncementComplex.observe(announcement, detail.name(),
-                        detail.roadAddress(), detail.totalHouseholdCount()));
-                tally.created++;
-                link(complex, announcement, migrated.get(detail.name()), supplyType, index, tally);
+                result.put(detail.name(),
+                        create(announcement, detail, migrated.get(detail.name()), supplyType, index, tally));
+                continue;
             }
-            else if (complex.observeAgain(detail.roadAddress(), detail.totalHouseholdCount())) {
+            if (complex.observeAgain(detail.roadAddress(), detail.totalHouseholdCount())) {
                 tally.updated++;
             }
             result.put(detail.name(), complex);
@@ -71,6 +70,15 @@ class LhAnnouncementComplexLinker {
             }
         });
         return result;
+    }
+
+    private AnnouncementComplex create(Announcement announcement, DetailComplex detail, Long migratedComplexId,
+            RentalType supplyType, LhComplexIndex index, Tally tally) {
+        AnnouncementComplex complex = announcementComplexes.save(AnnouncementComplex.observe(announcement,
+                detail.name(), detail.roadAddress(), detail.totalHouseholdCount()));
+        tally.created++;
+        link(complex, announcement, migratedComplexId, supplyType, index, tally);
+        return complex;
     }
 
     private void link(AnnouncementComplex complex, Announcement announcement, Long migratedComplexId,
@@ -119,7 +127,7 @@ class LhAnnouncementComplexLinker {
         Map<String, String> labelByOrder = supplies.stream().collect(Collectors.toMap(
                 row -> String.valueOf(row.getSourceOrder()), LhAnnouncementSupplySourceView::getComplexLabel,
                 (first, second) -> first));
-        String onlyName = names.size() == 1 ? names.iterator().next() : null;
+        String onlyName = onlyName(names);
         Map<String, Set<Long>> linked = new LinkedHashMap<>();
         for (SupplyRow row : supplyRows.findAllByAnnouncement(announcement)) {
             HousingComplex complex = row.getHousingComplex();
@@ -136,6 +144,13 @@ class LhAnnouncementComplexLinker {
         }
         return linked.entrySet().stream().filter(entry -> entry.getValue().size() == 1)
                 .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().iterator().next()));
+    }
+
+    private static String onlyName(Set<String> names) {
+        if (names.size() != 1) {
+            return null;
+        }
+        return names.iterator().next();
     }
 
     record DetailComplex(String name, String roadAddress, Integer totalHouseholdCount) {

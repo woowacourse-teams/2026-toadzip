@@ -62,14 +62,7 @@ class LhSupplyRowWriter {
             SupplyRow incoming = SupplyRow.createFromLh(announcement, complex, type, key, line.data().sourceIdentifier(),
                     order++, line.source().getTypeName(), area, line.data().expectedMoveInMonth(), category,
                     line.data().supplyHouseholdCount(), status);
-            SupplyRow row = stored.remove(key);
-            if (row == null) {
-                row = supplyRows.save(incoming);
-                tally.createdRows++;
-            }
-            else if (row.updateFromLh(incoming)) {
-                tally.updatedRows++;
-            }
+            SupplyRow row = upsert(stored.remove(key), incoming, tally);
             writeTarget(row, key, line.data(), tally);
             tally.count(status);
         }
@@ -78,6 +71,18 @@ class LhSupplyRowWriter {
             supplyRows.delete(stale);
             tally.deletedRows++;
         }
+    }
+
+    private SupplyRow upsert(SupplyRow stored, SupplyRow incoming, Tally tally) {
+        if (stored == null) {
+            SupplyRow saved = supplyRows.save(incoming);
+            tally.createdRows++;
+            return saved;
+        }
+        if (stored.updateFromLh(incoming)) {
+            tally.updatedRows++;
+        }
+        return stored;
     }
 
     /**
@@ -108,7 +113,10 @@ class LhSupplyRowWriter {
                 .filter(complex -> complex.linkedComplex() != null
                         && complex.linkedComplex().getId().equals(rowComplex.getId()))
                 .toList();
-        return linked.size() == 1 ? Optional.of(linked.getFirst()) : Optional.empty();
+        if (linked.size() != 1) {
+            return Optional.empty();
+        }
+        return Optional.of(linked.getFirst());
     }
 
     private void writeTarget(SupplyRow row, String key, LhSupplyData data, Tally tally) {
@@ -128,8 +136,9 @@ class LhSupplyRowWriter {
             supplyTargets.save(SupplyTarget.createFromSource(row, identifier, ALL, ALL, data.supplyHouseholdCount(),
                     data.rentalDeposit(), data.monthlyRent(), 1));
             tally.createdTargets++;
+            return;
         }
-        else if (stored.get().updateFromSource(ALL, ALL, data.supplyHouseholdCount(), data.rentalDeposit(),
+        if (stored.get().updateFromSource(ALL, ALL, data.supplyHouseholdCount(), data.rentalDeposit(),
                 data.monthlyRent(), 1)) {
             tally.updatedTargets++;
         }
@@ -145,7 +154,10 @@ class LhSupplyRowWriter {
                 .filter(type -> type.getExclusiveArea() != null
                         && SourceArea.normalized(type.getExclusiveArea()).compareTo(area) == 0)
                 .toList();
-        return matches.size() == 1 ? matches.getFirst() : null;
+        if (matches.size() != 1) {
+            return null;
+        }
+        return matches.getFirst();
     }
 
     private LhSupplyMatchStatus status(AnnouncementComplex complex, HousingType type, LhSupplyData data) {
