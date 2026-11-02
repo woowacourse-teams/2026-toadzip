@@ -35,7 +35,7 @@ public class QualityComparisonController {
     @GetMapping
     public ApiResponse<QualityComparison> detail(@PathVariable QualityResource resource, @PathVariable long id,
             @RequestParam(defaultValue = "basic")
-            @Pattern(regexp = "basic|(?:type|row|target):[1-9][0-9]{0,17}") String target) {
+            @Pattern(regexp = QualityComparisonRequest.TARGET) String target) {
         return new ApiResponse<>(comparison.detail(resource, id, target));
     }
 
