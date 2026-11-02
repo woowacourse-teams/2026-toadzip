@@ -3,9 +3,11 @@ package com.toadzip.backend.admin.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.admin.quality.domain.QualityResource;
@@ -27,6 +29,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplex
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
 import com.toadzip.backend.ingest.source.repository.IngestSourceQueryRepository;
+import com.toadzip.backend.ingest.source.repository.IngestSourceRows;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -155,6 +158,74 @@ class QualityComparisonIntegrationTest {
                         "snapshotToken", linked.get("snapshotToken").asText(), "values", Map.of("name", "덮어쓰기"),
                         "evidenceNote", "오래된 원천으로 수정 시도")))).andExpect(status().isConflict());
         assertThat(types.findById(type.getId()).orElseThrow().getName()).isEqualTo("26A");
+    }
+
+    @Test
+    void 오래된_스냅샷으로는_원천을_연결하거나_해제하지_않는다() throws Exception {
+        var type = type();
+        long id = type.getHousingComplex().getId();
+        String target = "type:" + type.getId();
+        String key = source();
+        var before = detail(id, target);
+        var linked = linkSource(id, target, before, key);
+        String stale = linkBody(target, before, "MYHOME_COMPLEX", key);
+        String message = "등록값 또는 DB 원천이 변경되었습니다. 입력을 보관하고 다시 조회하세요.";
+
+        mvc.perform(post(root(id) + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(stale))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"))
+                .andExpect(jsonPath("$.message").value(message));
+        mvc.perform(delete(root(id) + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(stale))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"))
+                .andExpect(jsonPath("$.message").value(message));
+
+        assertThat(detail(id, target).get("snapshotToken")).isEqualTo(linked.get("snapshotToken"));
+        assertThat(actions(id)).containsExactly("LINK_COMPARISON_SOURCE");
+    }
+
+    @Test
+    void 오래된_단지_기본_비교로는_원천_확인을_기록하지_않는다() throws Exception {
+        long id = type().getHousingComplex().getId();
+        String basicPath = "/api/admin/housing-complexes/" + id + "/verification/comparison";
+        var before = json.readTree(mvc.perform(get(basicPath).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+        mvc.perform(post(basicPath + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "snapshotToken", before.get("snapshotToken").asText(), "category", "MYHOME_COMPLEX",
+                        "sourceKey", source(), "evidenceNote", "단지 원천 연결")))).andExpect(status().isOk());
+
+        mvc.perform(post(root(id) + "/checks/legacy").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                                "target", "basic", "snapshotToken", before.get("snapshotToken").asText(),
+                                "evidenceNote", "오래된 단지 비교 확인"))))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"))
+                .andExpect(jsonPath("$.message").value("단지 등록값 또는 원천이 변경되었습니다. 다시 비교해 주세요."));
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM admin_data_changes WHERE resource_type = 'COMPLEX' "
+                + "AND resource_id = ? AND action = 'CHECK_COMPARISON_SOURCES'", Integer.class, id)).isZero();
+    }
+
+    @Test
+    void 직접_연결한_원천만_해제하고_연결과_해제를_기록한다() throws Exception {
+        var type = type();
+        long id = type.getHousingComplex().getId();
+        String target = "type:" + type.getId();
+        String key = source();
+        var linked = linkSource(id, target, detail(id, target), key);
+        var unlinked = json.readTree(mvc.perform(delete(root(id) + "/sources").with(user("admin").roles("ADMIN"))
+                        .with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(linkBody(target, linked, "MYHOME_COMPLEX", key)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+
+        mvc.perform(delete(root(id) + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(linkBody(target, unlinked, "MYHOME_COMPLEX", key)))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_CONFLICT"))
+                .andExpect(jsonPath("$.message").value("직접 연결한 원천만 해제할 수 있습니다."));
+
+        assertThat(unlinked.get("sources").findValuesAsString("sourceKey")).doesNotContain(key);
+        assertThat(actions(id)).containsExactly("LINK_COMPARISON_SOURCE", "UNLINK_COMPARISON_SOURCE");
     }
 
     @Test
@@ -303,7 +374,7 @@ class QualityComparisonIntegrationTest {
                 FROM myhome_announcement_source_bundles WHERE pblanc_id = 'quality-metadata-test'
                 """).setParameter("record", first).executeUpdate();
         String query = "SELECT raw::text FROM ("
-                + QualityComparisonRepository.SOURCE_ROWS
+                + IngestSourceRows.NORMALIZED_ROWS
                 + ") sources WHERE category = 'MYHOME_ANNOUNCEMENT' AND raw ->> 'pblanc_id' = 'quality-metadata-test'";
         Object before = entities.createNativeQuery(query).getSingleResult();
         String key = "21:quality-metadata-test1:1";
@@ -382,6 +453,24 @@ class QualityComparisonIntegrationTest {
                 .param("keyword", "검토 원천 421").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         return json.readTree(response).at("/data/items/0/sourceKey").asText();
+    }
+
+    private JsonNode linkSource(long id, String target, JsonNode snapshot, String key) throws Exception {
+        return json.readTree(mvc.perform(post(root(id) + "/sources").with(user("admin").roles("ADMIN"))
+                        .with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(linkBody(target, snapshot, "MYHOME_COMPLEX", key)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+    }
+
+    private String linkBody(String target, JsonNode snapshot, String category, String key) {
+        return json.writeValueAsString(Map.of("target", target, "snapshotToken",
+                snapshot.get("snapshotToken").asText(), "category", category, "sourceKey", key,
+                "evidenceNote", "원천 연결 검증"));
+    }
+
+    private List<String> actions(long id) {
+        return jdbc.queryForList("SELECT action FROM admin_data_changes WHERE resource_type = 'COMPLEX' "
+                + "AND resource_id = ? AND action LIKE '%COMPARISON_SOURCE' ORDER BY id", String.class, id);
     }
 
     private JsonNode detail(long id, String target) throws Exception {

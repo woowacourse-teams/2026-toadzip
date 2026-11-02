@@ -15,32 +15,28 @@ import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupp
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.domain.SourceArea;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
+import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport.SupplyCounts;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * LH 공급 한 행을 공급행 하나로 쓴다. 공급행 키는 `LHROW:{공고 단지 ID}:{정규화한 주택형명}#{같은 이름 안 순번}`이고 LH 대표 면적은 키에
- * 넣지 않는다. 대표 주택형은 연결 단지에서 LH 대표 전용면적과 면적이 같은 주택형이 하나일 때만 정한다. 공고문 소유 공고는 공급행을 만들거나
+ * LH 공급 한 행을 공급행 하나로 쓴다. 공급행 키({@link LhSourceIdentifier#lhOwnedSupplyRow})에는 LH 대표 면적을 넣지 않는다.
+ * 대표 주택형은 연결 단지에서 LH 대표 전용면적과 면적이 같은 주택형이 하나일 때만 정한다. 공고문 소유 공고는 공급행을 만들거나
  * 지우지 않고 비어 있는 공고 단지 참조만 채운다.
  */
 @Component
 @RequiredArgsConstructor
 class LhSupplyRowWriter {
 
-    private static final String ROW_PREFIX = "LHROW:";
     private static final String ALL = "전체";
 
     private final SupplyRowRepository supplyRows;
@@ -57,23 +53,16 @@ class LhSupplyRowWriter {
         int order = 0;
         for (SupplyLine line : lines) {
             AnnouncementComplex complex = complexes.get(line.source().getComplexLabel());
-            String base = complex.getId() + ":" + normalizedTypeName(line.source().getTypeName());
-            int occurrence = occurrences.merge(base, 1, Integer::sum);
-            String key = ROW_PREFIX + base + "#" + occurrence;
+            String typeName = normalizedTypeName(line.source().getTypeName());
+            int occurrence = occurrences.merge(complex.getId() + ":" + typeName, 1, Integer::sum);
+            String key = LhSourceIdentifier.lhOwnedSupplyRow(complex.getId(), typeName, occurrence);
             BigDecimal area = area(line.source().getExclusiveArea());
             HousingType type = representative(complex.linkedComplex(), area, typesByComplex);
             LhSupplyMatchStatus status = status(complex, type, line.data());
             SupplyRow incoming = SupplyRow.createFromLh(announcement, complex, type, key, line.data().sourceIdentifier(),
                     order++, line.source().getTypeName(), area, line.data().expectedMoveInMonth(), category,
                     line.data().supplyHouseholdCount(), status);
-            SupplyRow row = stored.remove(key);
-            if (row == null) {
-                row = supplyRows.save(incoming);
-                tally.createdRows++;
-            }
-            else if (row.updateFromLh(incoming)) {
-                tally.updatedRows++;
-            }
+            SupplyRow row = upsert(stored.remove(key), incoming, tally);
             writeTarget(row, key, line.data(), tally);
             tally.count(status);
         }
@@ -82,6 +71,18 @@ class LhSupplyRowWriter {
             supplyRows.delete(stale);
             tally.deletedRows++;
         }
+    }
+
+    private SupplyRow upsert(SupplyRow stored, SupplyRow incoming, Tally tally) {
+        if (stored == null) {
+            SupplyRow saved = supplyRows.save(incoming);
+            tally.createdRows++;
+            return saved;
+        }
+        if (stored.updateFromLh(incoming)) {
+            tally.updatedRows++;
+        }
+        return stored;
     }
 
     /**
@@ -112,26 +113,10 @@ class LhSupplyRowWriter {
                 .filter(complex -> complex.linkedComplex() != null
                         && complex.linkedComplex().getId().equals(rowComplex.getId()))
                 .toList();
-        return linked.size() == 1 ? Optional.of(linked.getFirst()) : Optional.empty();
-    }
-
-    /** 재확인 기준 지문: 공고 단지 순서와 각 행의 주택형명·대표 면적·공급면적·모집수·보증금·임대료 원문. */
-    String fingerprint(List<String> complexNames, List<LhAnnouncementSupplySourceView> supplies) {
-        List<Object> parts = new ArrayList<>(complexNames);
-        for (LhAnnouncementSupplySourceView row : supplies) {
-            parts.add(String.join("\u001f", Objects.toString(row.getComplexLabel(), ""),
-                    Objects.toString(row.getTypeName(), ""), Objects.toString(row.getExclusiveArea(), ""),
-                    Objects.toString(row.getSupplyArea(), ""), Objects.toString(row.getSuppliedUnitCount(), ""),
-                    Objects.toString(row.getDepositText(), ""), Objects.toString(row.getMonthlyRentText(), "")));
+        if (linked.size() != 1) {
+            return Optional.empty();
         }
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(String.join("\u001e", parts.stream().map(String::valueOf).toList())
-                            .getBytes(StandardCharsets.UTF_8)));
-        }
-        catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException(impossible);
-        }
+        return Optional.of(linked.getFirst());
     }
 
     private void writeTarget(SupplyRow row, String key, LhSupplyData data, Tally tally) {
@@ -151,8 +136,9 @@ class LhSupplyRowWriter {
             supplyTargets.save(SupplyTarget.createFromSource(row, identifier, ALL, ALL, data.supplyHouseholdCount(),
                     data.rentalDeposit(), data.monthlyRent(), 1));
             tally.createdTargets++;
+            return;
         }
-        else if (stored.get().updateFromSource(ALL, ALL, data.supplyHouseholdCount(), data.rentalDeposit(),
+        if (stored.get().updateFromSource(ALL, ALL, data.supplyHouseholdCount(), data.rentalDeposit(),
                 data.monthlyRent(), 1)) {
             tally.updatedTargets++;
         }
@@ -168,7 +154,10 @@ class LhSupplyRowWriter {
                 .filter(type -> type.getExclusiveArea() != null
                         && SourceArea.normalized(type.getExclusiveArea()).compareTo(area) == 0)
                 .toList();
-        return matches.size() == 1 ? matches.getFirst() : null;
+        if (matches.size() != 1) {
+            return null;
+        }
+        return matches.getFirst();
     }
 
     private LhSupplyMatchStatus status(AnnouncementComplex complex, HousingType type, LhSupplyData data) {
@@ -217,14 +206,21 @@ class LhSupplyRowWriter {
             other.statuses.forEach((status, count) -> statuses.merge(status, count, Integer::sum));
         }
 
-        int createdRows;
-        int updatedRows;
-        int deletedRows;
-        int createdTargets;
-        int updatedTargets;
-        int deletedTargets;
-        int filledComplexes;
-        final Map<LhSupplyMatchStatus, Integer> statuses = new EnumMap<>(LhSupplyMatchStatus.class);
+        SupplyCounts toCounts() {
+            Map<String, Integer> statusCounts = new TreeMap<>();
+            statuses.forEach((status, count) -> statusCounts.put(status.name(), count));
+            return new SupplyCounts(createdRows, updatedRows, deletedRows, createdTargets, updatedTargets,
+                    deletedTargets, filledComplexes, statusCounts);
+        }
+
+        private int createdRows;
+        private int updatedRows;
+        private int deletedRows;
+        private int createdTargets;
+        private int updatedTargets;
+        private int deletedTargets;
+        private int filledComplexes;
+        private final Map<LhSupplyMatchStatus, Integer> statuses = new EnumMap<>(LhSupplyMatchStatus.class);
 
         void count(LhSupplyMatchStatus status) {
             statuses.merge(status, 1, Integer::sum);

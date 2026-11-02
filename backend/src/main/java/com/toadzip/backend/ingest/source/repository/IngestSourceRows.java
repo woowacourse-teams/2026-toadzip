@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.source.repository;
 
 import com.toadzip.backend.ingest.domain.SourceArea;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -17,11 +18,20 @@ public final class IngestSourceRows {
             + "\\1680\\2000\\2001\\2002\\2003\\2004\\2005\\2006\\2008\\2009\\200A"
             + "\\2028\\2029\\205F\\3000'";
 
+    /** 원천 행 JSON에서 수집 관리 열을 뺀 jsonb 식. 원천 값이 같으면 다시 수집해도 같다. */
+    public static final String NORMALIZED_PAYLOAD = withoutMetadata("raw_payload::jsonb");
+
+    /** 모든 원천 분류의 현행 행을 category, source_key, raw(NORMALIZED_PAYLOAD)로 합친 SQL */
+    public static final String NORMALIZED_ROWS = Arrays.stream(IngestSourceCategory.values())
+            .map(category -> "SELECT '" + category.name() + "'::text category, source_key, "
+                    + NORMALIZED_PAYLOAD + " raw FROM ("
+                    + query(category) + ") rows")
+            .collect(Collectors.joining(" UNION ALL "));
+
     private IngestSourceRows() {
     }
 
-    /** jsonb 식 payload에서 수집 관리 열을 뺀 식 */
-    public static String withoutMetadata(String payload) {
+    private static String withoutMetadata(String payload) {
         return payload + METADATA_KEYS.stream().map(key -> " - '" + key + "'").collect(Collectors.joining());
     }
 

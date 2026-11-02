@@ -151,7 +151,7 @@ class DataPipelineControllerTest {
     @Test
     void 지원을_종료한_단건_등록도_일반_실행_경로에서_410을_반환한다() throws Exception {
         DataPipelineType type = DataPipelineType.ANNOUNCEMENT_REGISTRATION;
-        when(executionService.start(type)).thenThrow(RetiredIngestOperationException.of(type));
+        when(executionService.start(type)).thenThrow(RetiredIngestOperationException.myHomeAnnouncementRefinement());
 
         mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration"))
                 .andExpect(status().isGone())

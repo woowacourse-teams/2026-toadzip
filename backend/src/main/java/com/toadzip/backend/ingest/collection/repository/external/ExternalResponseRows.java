@@ -17,10 +17,6 @@ public final class ExternalResponseRows {
         return rowsOf(findByKey(root, key));
     }
 
-    public static boolean contains(JsonNode root, String key) {
-        return !findByKey(root, key).isMissingNode();
-    }
-
     private static List<JsonNode> rowsOf(JsonNode found) {
         if (found.isMissingNode()) {
             return List.of();

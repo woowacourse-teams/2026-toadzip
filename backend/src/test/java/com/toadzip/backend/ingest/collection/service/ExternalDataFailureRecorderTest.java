@@ -9,7 +9,6 @@ import static org.mockito.Mockito.verify;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataFailureStore;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
@@ -38,7 +37,6 @@ class ExternalDataFailureRecorderTest {
                 )
         );
         ExternalDataCallFailureException failure = new ExternalDataCallFailureException(
-                ExternalDataSource.MYHOME_COMPLEX,
                 "pageNo=1",
                 3,
                 requestFailure

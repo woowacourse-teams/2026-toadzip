@@ -3,7 +3,7 @@ package com.toadzip.backend.ingest.collection.lh.supply.service;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhSupplySnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.HeldLhSupplyReplacement;
 import com.toadzip.backend.ingest.collection.lh.supply.dto.VerifiedLhSupplyReplacementRequest;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.VerifiedLhSupplyReplacementStore;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
@@ -13,7 +13,6 @@ import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import java.net.URI;
-import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,12 +51,12 @@ public class VerifiedLhSupplyReplacementService {
                 .findFirstBySourceAndRequestDescriptionOrderByIdDesc(
                         ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, request.requestDescription())
                 .orElseThrow(() -> new InvalidIngestRequestException("보류된 LH 공급 요청을 찾을 수 없습니다."));
-        if (failure.getStatus() != ExternalDataFailureStatus.PENDING || !replacementFailure(failure)) {
+        if (failure.getStatus() != ExternalDataFailureStatus.PENDING
+                || !HeldLhSupplyReplacement.isHeld(failure.getErrorType())) {
             throw new InvalidIngestRequestException("공급 감소로 보류된 요청만 승인할 수 있습니다.");
         }
-        if (!failure.getReason().contains("proposedFingerprint=" + request.proposedFingerprint())
-                && !("EmptyLhSupplyReplacementException".equals(failure.getErrorType())
-                && request.proposedFingerprint().equals(LhSupplySnapshot.fingerprint(List.of())))) {
+        if (!HeldLhSupplyReplacement.proposes(
+                failure.getErrorType(), failure.getReason(), request.proposedFingerprint())) {
             throw new InvalidIngestRequestException("보류된 공급 응답의 지문과 승인 대상이 다릅니다.");
         }
         return replacementStore.approve(
@@ -94,11 +93,6 @@ public class VerifiedLhSupplyReplacementService {
     @Transactional
     public boolean finish(long approvalId) {
         return replacementStore.finish(approvalId);
-    }
-
-    private boolean replacementFailure(ExternalDataCollectionFailure failure) {
-        return "IncompleteLhSupplyReplacementException".equals(failure.getErrorType())
-                || "EmptyLhSupplyReplacementException".equals(failure.getErrorType());
     }
 
     private boolean officialLhUrl(String value) {

@@ -41,10 +41,10 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAn
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
-import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
-import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
+import com.toadzip.backend.ingest.collection.lh.service.EmptyLhDetailReplacementException;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.EmptyLhSupplyReplacementException;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.HeldLhSupplyReplacement;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.IncompleteLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
@@ -175,7 +175,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         verify(externalRepository).fetchDetail(request.capture());
         assertThat(request.getValue()).isEqualTo(new LhAnnouncementRequest("300", "03", "06", "07", "062"));
         assertThat(report.failedRequestCount()).isZero();
-        verify(progressStore).complete(any(), startsWith("lh-catalog:"), any(), eq("300"));
+        verify(progressStore).save(any(), startsWith("lh-catalog:"), any(), eq("300"));
     }
 
     @Test
@@ -188,8 +188,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
         verify(externalRepository, times(1)).fetchDetail(any());
-        verify(progressStore, never()).complete(any(), startsWith("lh-catalog:"), any(), any());
-        verify(progressStore, never()).link(any(), startsWith("lh-catalog:"), any(), any());
+        verify(progressStore, never()).save(any(), startsWith("lh-catalog:"), any(), any());
     }
 
     @Test
@@ -315,8 +314,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         assertThat(report.successfulRequestCount()).isZero();
         assertThat(report.externalApiCallCount()).isZero();
         verify(externalRepository, never()).fetchDetail(any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
-        verify(progressStore, never()).link(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
         verify(failureRecorder).record(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
                 eq("myhomeAnnouncementCurrentSource=P1"), any(IllegalStateException.class), any(), any());
     }
@@ -345,8 +343,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         assertThat(report.failedRequestCount()).isEqualTo(expectedFailures);
         assertThat(report.externalApiCallCount()).isZero();
         verify(externalRepository, never()).fetchDetail(any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
-        verify(progressStore, never()).link(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
         verify(failureRecorder, times(expectedFailures)).record(any(), any(), any(), any(), any());
     }
 
@@ -400,7 +397,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         assertThat(preparationTimer("scheduled", "candidate_selection").count()).isEqualTo(2);
         assertThat(result.externalApiCallCount()).isEqualTo(2);
         assertThat(result.skippedRequestCount()).isEqualTo(2);
-        verify(progressStore).link(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), eq("b"), any(), eq("100"));
+        verify(progressStore).save(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), eq("b"), any(), eq("100"));
     }
 
     @Test
@@ -521,7 +518,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
         assertThat(networkCalls.get()).isBetween(5, 6);
         verify(sourceStore, never()).replaceDetails(any(), any(), any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
     }
 
     @Test
@@ -556,8 +553,8 @@ class LhAnnouncementExternalCollectionServiceTest {
                     .hasCauseInstanceOf(LhAnnouncementUnavailableException.class);
         }
         verify(externalRepository, times(2)).fetchDetail(any());
-        verify(progressStore).complete(any(), eq("b"), any(), eq("200"));
-        verify(progressStore, never()).complete(any(), eq("a"), any(), any());
+        verify(progressStore).save(any(), eq("b"), any(), eq("200"));
+        verify(progressStore, never()).save(any(), eq("a"), any(), any());
         assertMetricCount("source.rows", "scheduled", "read", 3);
         assertMetricCount("requests", "scheduled", "refresh", 3);
         assertThat(preparationTimer("scheduled", "source_read").count()).isOne();
@@ -583,9 +580,11 @@ class LhAnnouncementExternalCollectionServiceTest {
             return null;
         }).when(monitor).checkStopRequested();
         doAnswer(invocation -> {
-            stopped.set(true);
+            if ("next-first".equals(invocation.getArgument(1))) {
+                stopped.set(true);
+            }
             return null;
-        }).when(progressStore).link(any(), eq("next-first"), any(), any());
+        }).when(progressStore).save(any(), any(), any(), any());
 
         try (var scope = IngestExecutionScope.open(IngestExecutionScope.current().orElseThrow(), monitor)) {
             assertThatThrownBy(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL))
@@ -593,8 +592,8 @@ class LhAnnouncementExternalCollectionServiceTest {
         }
 
         verify(externalRepository, times(2)).fetchDetail(any());
-        verify(progressStore).link(any(), eq("next-first"), any(), any());
-        verify(progressStore, never()).link(any(), eq("next-second"), any(), any());
+        verify(progressStore).save(any(), eq("next-first"), any(), any());
+        verify(progressStore, never()).save(any(), eq("next-second"), any(), any());
     }
 
     @Test
@@ -672,7 +671,7 @@ class LhAnnouncementExternalCollectionServiceTest {
             assertThat(report.storedRowCount()).isEqualTo(4);
             assertThat(report.externalApiCallCount()).isEqualTo(4);
             assertThat(report.failedRequestCount()).isZero();
-            verify(progressStore, times(4)).complete(any(), any(), any(), any());
+            verify(progressStore, times(4)).save(any(), any(), any(), any());
         }
     }
 
@@ -734,8 +733,8 @@ class LhAnnouncementExternalCollectionServiceTest {
         assertThat(report.rateLimitedRequestCount()).isOne();
         verify(externalRepository, times(2)).fetchDetail(any());
         verify(sourceStore, never()).replaceDetails(eq("100"), any(), any());
-        verify(progressStore).complete(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), eq("b"), any(), eq("200"));
-        verify(progressStore, never()).complete(any(), eq("a"), any(), any());
+        verify(progressStore).save(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), eq("b"), any(), eq("200"));
+        verify(progressStore, never()).save(any(), eq("a"), any(), any());
         // 호출 한도에 걸리면 공고목록 단계도 시작하지 않는다.
         verify(catalogRepository, never()).findAllPresentRentalHousingAnnouncements();
     }
@@ -761,7 +760,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         assertThat(report.rateLimitedRequestCount()).isEqualTo(2);
         assertThat(report.externalApiCallCount()).isOne();
         verify(externalRepository, times(2)).fetchDetail(any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
     }
 
     @Test
@@ -779,7 +778,7 @@ class LhAnnouncementExternalCollectionServiceTest {
             if (request.panId().equals("100")) {
                 if (request.announcementTypeCode().equals("07")) {
                     assertThat(stored).contains("100");
-                    verify(progressStore).complete(any(), eq("a"), any(), eq("100"));
+                    verify(progressStore).save(any(), eq("a"), any(), eq("100"));
                 }
                 samePanConditions.add(request.announcementTypeCode());
             }
@@ -830,8 +829,8 @@ class LhAnnouncementExternalCollectionServiceTest {
                     .isInstanceOf(ExecutionException.class).hasCause(failure);
         }
         verify(externalRepository, times(2)).fetchDetail(any());
-        verify(progressStore).complete(any(), eq("b"), any(), eq("200"));
-        verify(progressStore, never()).complete(any(), eq("a"), any(), any());
+        verify(progressStore).save(any(), eq("b"), any(), eq("200"));
+        verify(progressStore, never()).save(any(), eq("a"), any(), any());
     }
 
     @Test
@@ -848,7 +847,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                 .satisfies(exception -> assertThat(exception.getSuppressed()).containsExactly(secondFailure));
 
         verify(externalRepository, times(2)).fetchDetail(any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
     }
 
     @Test
@@ -1002,7 +1001,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         assertThat(result.failedRequestCount()).isZero();
         assertThat(result.storedRowCount()).isEqualTo(100);
         assertThat(result.externalApiCallCount()).isOne();
-        verify(progressStore).complete(any(), any(), any(), any());
+        verify(progressStore).save(any(), any(), any(), any());
     }
 
     @ParameterizedTest
@@ -1012,7 +1011,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         RuntimeException failure = new EmptyLhSupplyReplacementException();
         JsonNode fetched = response("[{\"dsList01\":[]}]");
         if (!empty) {
-            failure = new IncompleteLhSupplyReplacementException(1);
+            failure = new IncompleteLhSupplyReplacementException(HeldLhSupplyReplacement.incompleteReason(1, "a".repeat(64)));
             fetched = supplyResponse();
         }
         when(externalRepository.fetchSupply(any())).thenReturn(fetched);
@@ -1025,8 +1024,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         assertThat(result.successfulRequestCount()).isZero();
         assertThat(result.storedRowCount()).isZero();
         assertThat(result.externalApiCallCount()).isOne();
-        verify(progressStore, never()).complete(any(), any(), any(), any());
-        verify(progressStore, never()).link(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
         verify(failureRecorder).record(any(), any(), eq(failure), any(), any());
         verify(failureRecorder, never()).resolve(any(), any());
     }
@@ -1043,8 +1041,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
         assertThat(result.failedRequestCount()).isOne();
         assertThat(result.storedRowCount()).isZero();
-        verify(progressStore, never()).complete(any(), any(), any(), any());
-        verify(progressStore, never()).link(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
         verify(failureRecorder).record(any(), any(), eq(failure), any(), any());
     }
 
@@ -1060,7 +1057,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                 .hasMessage("DB 저장 실패");
 
         verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
     }
 
     @Test
@@ -1082,7 +1079,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         );
         verify(externalRepository, times(3)).fetchSupply(any());
         verify(sourceStore, never()).replaceSupplies(any(), any(), any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
         assertThat(result.externalApiCallCount()).isEqualTo(3);
     }
@@ -1101,7 +1098,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                 .hasMessage("실패 기록 갱신 실패");
 
         verify(sourceStore).replaceSupplies(eq("100"), any(), any());
-        verify(progressStore).complete(any(), any(), any(), any());
+        verify(progressStore).save(any(), any(), any(), any());
     }
 
     @Test
@@ -1112,7 +1109,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
         verify(sourceStore, never()).replaceDetails(any(), any(), any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
         assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isOne();
     }
@@ -1129,8 +1126,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         assertThat(result.failedRequestCount()).isOne();
         assertThat(result.storedRowCount()).isZero();
         verify(sourceStore, never()).replaceDetails(any(), any(), any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
-        verify(progressStore, never()).link(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
         verify(failureRecorder).record(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
                 any(), any(ExternalDataCallFailureException.class), any(), any());
     }
@@ -1143,7 +1139,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
 
         verify(sourceStore, never()).replaceSupplies(any(), any(), any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
         assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isOne();
     }
@@ -1158,7 +1154,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
 
         verify(sourceStore, never()).replaceSupplies(any(), any(), any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
     }
 
@@ -1172,7 +1168,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
 
         verify(sourceStore, never()).replaceSupplies(any(), any(), any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
     }
 
@@ -1207,7 +1203,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
         verify(sourceStore, never()).replaceDetails(any(), any(), any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
     }
 
@@ -1219,7 +1215,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
 
         verify(sourceStore, never()).replaceSupplies(any(), any(), any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
     }
 
@@ -1234,7 +1230,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                 .hasMessage("DB 저장 실패");
 
         verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
     }
 
     @Test
@@ -1262,7 +1258,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
         verify(externalRepository, times(2)).fetchSupply(any());
         verify(sourceStore, times(2)).replaceSupplies(eq("100"), any(), any());
-        verify(progressStore, times(2)).complete(any(), any(), any(), any());
+        verify(progressStore, times(2)).save(any(), any(), any(), any());
     }
 
     @Test
@@ -1274,7 +1270,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         var result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
 
         verify(externalRepository).fetchSupply(any());
-        verify(progressStore).complete(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+        verify(progressStore).save(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
                 "100", announcementRequestDescription(), "100");
         assertThat(result.externalApiCallCount()).isOne();
     }
@@ -1291,7 +1287,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         ExternalDataCollectionReport retried = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
         verify(externalRepository, org.mockito.Mockito.times(2)).fetchDetail(any());
-        verify(progressStore).complete(
+        verify(progressStore).save(
                 eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
                 eq("100"),
                 any(),
@@ -1311,7 +1307,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
         verify(externalRepository).fetchDetail(any());
         verify(sourceStore).replaceDetails(eq("100"), any(), any());
-        verify(progressStore).complete(
+        verify(progressStore).save(
                 eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
                 eq("100"),
                 any(),
@@ -1344,13 +1340,13 @@ class LhAnnouncementExternalCollectionServiceTest {
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
         verify(externalRepository, times(1)).fetchDetail(any());
-        verify(progressStore).complete(
+        verify(progressStore).save(
                 eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
                 eq("announcement-100"),
                 any(),
                 eq("100")
         );
-        verify(progressStore).link(
+        verify(progressStore).save(
                 eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
                 eq("announcement-101"),
                 any(),
@@ -1369,9 +1365,9 @@ class LhAnnouncementExternalCollectionServiceTest {
         var result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
         verify(externalRepository).fetchDetail(any());
-        verify(progressStore).complete(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
+        verify(progressStore).save(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
                 eq("announcement-100"), any(), eq("100"));
-        verify(progressStore).link(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
+        verify(progressStore).save(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
                 eq("announcement-101"), any(), eq("100"));
         assertThat(result.externalApiCallCount()).isOne();
     }
@@ -1411,14 +1407,10 @@ class LhAnnouncementExternalCollectionServiceTest {
 
         verify(externalRepository, times(requestCount * 2)).fetchDetail(any());
         verify(sourceStore, times(requestCount * 2)).replaceDetails(any(), any(), any());
-        ArgumentCaptor<String> completed = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> linked = ArgumentCaptor.forClass(String.class);
-        verify(progressStore, times(requestCount * 2)).complete(
-                eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), completed.capture(), any(), any());
-        verify(progressStore, times((count - requestCount) * 2)).link(
+        verify(progressStore, times(count * 2)).save(
                 eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), linked.capture(), any(), any());
-        List<String> allLinks = new ArrayList<>(completed.getAllValues());
-        allLinks.addAll(linked.getAllValues());
+        List<String> allLinks = linked.getAllValues();
         List<String> expectedLinks = new ArrayList<>();
         for (MyHomeAnnouncementSourceView source : storedSources.values()) {
             expectedLinks.add(source.getPblancId());
@@ -1436,8 +1428,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         var result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
         verify(externalRepository).fetchDetail(any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
-        verify(progressStore, never()).link(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
     }
 
@@ -1458,7 +1449,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         var result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
         verify(externalRepository).fetchDetail(any());
-        verify(progressStore, never()).link(any(), any(), any(), any());
+        verify(progressStore, never()).save(any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
     }
 
@@ -1588,7 +1579,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         );
 
         verify(externalRepository).fetchDetail(any());
-        verify(progressStore).complete(
+        verify(progressStore).save(
                 eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
                 eq("announcement-100"),
                 any(),

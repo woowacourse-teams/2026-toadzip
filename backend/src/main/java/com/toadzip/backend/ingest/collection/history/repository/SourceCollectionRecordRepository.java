@@ -14,8 +14,6 @@ import org.springframework.data.repository.query.Param;
 
 public interface SourceCollectionRecordRepository extends JpaRepository<SourceCollectionRecord, UUID> {
 
-    boolean existsBySourceAndStatus(CollectionSource source, CollectionStatus status);
-
     List<SourceCollectionRecord> findAllByExecutionIdAndSource(UUID executionId, CollectionSource source);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

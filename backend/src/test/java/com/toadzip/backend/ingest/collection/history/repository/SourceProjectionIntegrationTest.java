@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
-import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceReader;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import java.util.UUID;
@@ -20,8 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @DataJpaTest(showSql = false)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({MyHomeAnnouncementSourceReader.class, LhAnnouncementQuerySourceReader.class,
-        LhAnnouncementSupplySourceReader.class, LhAnnouncementDetailSourceReader.class})
+@Import({MyHomeAnnouncementSourceReader.class, LhAnnouncementSupplySourceReader.class,
+        LhAnnouncementDetailSourceReader.class})
 @ActiveProfiles("test")
 @Transactional
 class SourceProjectionIntegrationTest {

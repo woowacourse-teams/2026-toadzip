@@ -37,31 +37,31 @@ class LhAnnouncementCollectionProgressStoreTest {
 
     @Test
     void 같은_요청을_공유하는_공고의_연결을_구분한다() {
-        store().complete(SUPPLY, "announcement-100", REQUEST, "100");
-        store().link(SUPPLY, "announcement-101", REQUEST, "100");
+        store().save(SUPPLY, "announcement-100", REQUEST, "100");
+        store().save(SUPPLY, "announcement-101", REQUEST, "100");
         assertThat(linkRepository.findAll()).hasSize(2).allSatisfy(link ->
                 assertThat(link.matches(REQUEST, "100")).isTrue());
     }
 
     @Test
     void 재수집_성공은_같은_공고_연결의_완료_시각만_갱신한다() {
-        store().complete(SUPPLY, "announcement-100", REQUEST, "100");
+        store().save(SUPPLY, "announcement-100", REQUEST, "100");
         Instant refreshed = COMPLETED_AT.plusSeconds(60);
-        store(refreshed).complete(SUPPLY, "announcement-100", REQUEST, "100");
+        store(refreshed).save(SUPPLY, "announcement-100", REQUEST, "100");
         assertThat(linkRepository.findAll()).singleElement().satisfies(link ->
                 assertThat(link.getCompletedAt()).isEqualTo(refreshed));
     }
 
     @Test
     void 다른_요청에_대한_연결은_현재_요청과_일치하지_않는다() {
-        store().complete(SUPPLY, "announcement-100", REQUEST, "100");
+        store().save(SUPPLY, "announcement-100", REQUEST, "100");
         assertThat(linkRepository.findAll()).singleElement().satisfies(link ->
                 assertThat(link.matches("PAN_ID=200&SPL_INF_TP_CD=063", "200")).isFalse());
     }
 
     @Test
     void 연결만_있으면_실제_원천의_최신성을_확인하지_않는다() {
-        store().complete(SUPPLY, "source", REQUEST, "100");
+        store().save(SUPPLY, "source", REQUEST, "100");
         assertThat(hasCollectedAt(REQUEST)).isFalse();
         Instant collected = COMPLETED_AT.minusSeconds(7200);
         canonical(REQUEST, collected);
@@ -85,7 +85,7 @@ class LhAnnouncementCollectionProgressStoreTest {
     @Test
     void 다른_공고에_연결해도_성공_원천의_수집_시각은_보존한다() {
         canonical(REQUEST, COMPLETED_AT);
-        store(COMPLETED_AT.plusSeconds(60)).link(SUPPLY, "another", REQUEST, "100");
+        store(COMPLETED_AT.plusSeconds(60)).save(SUPPLY, "another", REQUEST, "100");
         assertThat(collectedAtReader.find(SUPPLY, List.of(hash(REQUEST))))
                 .containsEntry(hash(REQUEST), COMPLETED_AT);
     }

@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.source.service;
 
-import com.toadzip.backend.ingest.collection.repository.ShAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.collection.sh.repository.ShAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
 import com.toadzip.backend.ingest.source.dto.IngestSourcePageResponse;
 import com.toadzip.backend.ingest.source.repository.IngestSourceQueryRepository;

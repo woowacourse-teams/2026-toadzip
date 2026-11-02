@@ -8,7 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
-import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;

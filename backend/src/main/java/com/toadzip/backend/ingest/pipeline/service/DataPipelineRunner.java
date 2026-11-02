@@ -41,7 +41,7 @@ public class DataPipelineRunner {
                     executionId, step, previousPartiallyFailedStep,
                     skipReason(type, step, collectionRateLimited, lhRateLimited)
             );
-            lhRateLimited |= outcome.rateLimited() && isLhAnnouncementCollection(step);
+            lhRateLimited |= outcome.rateLimited() && step.isLhAnnouncementCollection();
             collectionRateLimited |= outcome.rateLimited() && step.isCollection();
             previousPartiallyFailedStep = null;
             if (outcome.partialFailure() == null) {
@@ -74,7 +74,7 @@ public class DataPipelineRunner {
                         executionId, step, skipReason, "{}"
                 );
                 outcome = "skipped";
-                if (isLhAnnouncementCollection(step)) {
+                if (step.isLhAnnouncementCollection()) {
                     outcome = "rate_limited";
                 }
                 return new StepOutcome(false, null);
@@ -116,7 +116,7 @@ public class DataPipelineRunner {
             return "수집이 호출 제한으로 완료되지 않아 자동 정제를 실행하지 않았습니다. "
                     + "수집 결과를 확인한 뒤 저장된 원천으로 정제를 실행할 수 있습니다.";
         }
-        if (lhRateLimited && isLhAnnouncementCollection(step)) {
+        if (lhRateLimited && step.isLhAnnouncementCollection()) {
             return "앞선 LH 공고 단계의 호출 제한으로 이 단계를 건너뛰었습니다.";
         }
         return null;
@@ -129,12 +129,6 @@ public class DataPipelineRunner {
             return;
         }
         executionStateService.startStep(executionId, step);
-    }
-
-    private boolean isLhAnnouncementCollection(DataPipelineStep step) {
-        return step == DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG
-                || step == DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES
-                || step == DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS;
     }
 
     private record StepOutcome(boolean rateLimited, DataPipelineStepResult partialFailure) {

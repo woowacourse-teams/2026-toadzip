@@ -3,8 +3,6 @@ package com.toadzip.backend.ingest.collection.service;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestRejectedException;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataRetryInterruptedException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -69,7 +67,6 @@ public class ExternalDataRetryExecutor {
             catch (ExternalDataRequestException exception) {
                 if (!canRetry(exception, attempt)) {
                     throw new ExternalDataCallFailureException(
-                            source,
                             requestDescription,
                             attempt,
                             exception

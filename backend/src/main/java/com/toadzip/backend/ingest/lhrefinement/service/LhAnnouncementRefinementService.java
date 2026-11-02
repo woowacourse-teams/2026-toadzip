@@ -3,17 +3,14 @@ package com.toadzip.backend.ingest.lhrefinement.service;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSourceView;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
+import com.toadzip.backend.ingest.lhrefinement.domain.LhRevisionName;
 import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport;
-import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport.ComplexCounts;
-import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport.SupplyCounts;
 import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementRefiner.Outcome;
 import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementRefiner.Tally;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -55,8 +52,6 @@ public class LhAnnouncementRefinementService {
         LhComplexIndex index = transactions.execute(status -> LhComplexIndex.of(housingComplexes.findAll()));
         IngestExecutionScope.beginWork("LH 공고 정제", "공고", targets.size());
         Tally tally = new Tally();
-        Map<String, Integer> held = new TreeMap<>();
-        int adopted = 0;
         int failed = 0;
         for (LhAnnouncementCatalogSourceView target : targets) {
             IngestExecutionScope.checkStopRequested();
@@ -65,11 +60,7 @@ public class LhAnnouncementRefinementService {
                 Tally attempt = new Tally();
                 Outcome outcome = transactions.execute(status -> refiner.refine(target, index, attempt));
                 tally.add(attempt);
-                switch (outcome) {
-                    case CREATED -> { }
-                    case ADOPTED -> adopted++;
-                    default -> held.merge(outcome.name(), 1, Integer::sum);
-                }
+                tally.count(outcome);
             }
             catch (RuntimeException failure) {
                 failed++;
@@ -77,22 +68,12 @@ public class LhAnnouncementRefinementService {
             }
             IngestExecutionScope.workCompleted();
         }
-        var complexes = tally.complexes;
-        var supplies = tally.supplies;
-        Map<String, Integer> statuses = new TreeMap<>();
-        supplies.statuses.forEach((status, count) -> statuses.put(status.name(), count));
-        return new LhAnnouncementRefinementReport(targets.size(), tally.created, adopted, tally.updated, held, failed,
-                tally.documentOwned, tally.recheckRequired, tally.revisionsLinked, tally.revisionsUnlinked,
-                new ComplexCounts(complexes.created, complexes.updated, complexes.absent, complexes.migrated,
-                        complexes.inherited, complexes.auto, complexes.unlinked),
-                new SupplyCounts(supplies.createdRows, supplies.updatedRows, supplies.deletedRows,
-                        supplies.createdTargets, supplies.updatedTargets, supplies.deletedTargets,
-                        supplies.filledComplexes, statuses));
+        return tally.toReport(targets.size(), failed);
     }
 
     /** 같은 공고일이면 원공고를 먼저 정제해 정정·취소공고가 원공고와 그 공고 단지 연결을 찾게 한다. */
     private static boolean isRevision(LhAnnouncementCatalogSourceView view) {
         String name = view.getAnnouncementName();
-        return name != null && LhAnnouncementRefiner.REVISION_PREFIX.matcher(name).find();
+        return name != null && new LhRevisionName(name).isRevision();
     }
 }

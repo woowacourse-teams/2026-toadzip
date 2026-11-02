@@ -93,7 +93,7 @@ class LhSupplyLinkIntegrationTest {
                 panId, new LhAnnouncementSupplySourceSnapshot("전주평화4 영구임대주택", "26", "26.37", "38.9756",
                         "300", "12", "4076000", "72820"))));
         for (var target : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
-            progressStore.complete(target, TARGET, candidate.requestDescription(), panId);
+            progressStore.save(target, TARGET, candidate.requestDescription(), panId);
         }
     }
 

@@ -29,7 +29,7 @@ public final class SupplyNameNormalizer {
     private SupplyNameNormalizer() {
     }
 
-    public static String complexName(String value) {
+    private static String complexName(String value) {
         String normalized = alphanumeric(value).replace("블록", "bl");
         for (String noiseWord : COMPLEX_NOISE_WORDS) {
             normalized = normalized.replace(noiseWord, "");
@@ -37,7 +37,7 @@ public final class SupplyNameNormalizer {
         return canonicalNumbers(normalized);
     }
 
-    public static String housingTypeName(String value) {
+    private static String housingTypeName(String value) {
         return removeSuffixes(alphanumeric(value), HOUSING_TYPE_SUFFIXES);
     }
 

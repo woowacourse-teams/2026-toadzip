@@ -8,10 +8,9 @@ import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
-import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
-import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
-import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.EmptyLhSupplyReplacementException;
+import com.toadzip.backend.ingest.collection.service.ExternalDataCallFailureException;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.IncompleteLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
@@ -50,7 +49,7 @@ public class LhAnnouncementCandidateCollector {
             }
             return failedReport(targetSource, request, exception, callCounter);
         }
-        progressManager.complete(targetSource, candidate);
+        progressManager.recordLinked(targetSource, candidate);
         return new ExternalDataCollectionReport(
                 targetSource.operation(),
                 storedRowCount,

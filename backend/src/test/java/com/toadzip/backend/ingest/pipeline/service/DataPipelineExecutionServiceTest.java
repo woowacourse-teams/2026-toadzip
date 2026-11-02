@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
@@ -17,7 +18,7 @@ import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRec
 import com.toadzip.backend.ingest.collection.repository.external.IngestServiceKeyContext;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
-import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
@@ -33,6 +34,7 @@ import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepos
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -50,6 +52,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
+import org.springframework.data.domain.Page;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
@@ -180,12 +183,47 @@ class DataPipelineExecutionServiceTest {
         verify(executionStateService, never()).create(any(), any(), any());
     }
 
-    @Test
-    void 정제_실행에_입력키를_사용하려고_하면_저장_전에_거부한다() {
-        assertThatThrownBy(() -> service.start(DataPipelineType.ANNOUNCEMENT_REFINEMENT, "runtime-test-key"))
+    @ParameterizedTest
+    @EnumSource(value = DataPipelineType.class, names = {"ANNOUNCEMENT_REFINEMENT", "SH_ANNOUNCEMENT_COLLECTION"})
+    void 서비스키를_받지_않는_실행에_입력키를_사용하려고_하면_저장_전에_거부한다(DataPipelineType type) {
+        assertThatThrownBy(() -> service.start(type, "runtime-test-key"))
                 .isInstanceOf(InvalidIngestRequestException.class)
-                .hasMessageNotContaining("runtime-test-key");
+                .hasMessage("수집 작업에만 서비스키를 입력할 수 있습니다.");
         verify(executionLock, never()).tryAcquire(any(UUID.class));
+    }
+
+    @Test
+    void 단지_이력은_단지_유형만_조회한다() {
+        when(executionRepository.findByTypeIn(any(), any())).thenReturn(Page.empty());
+
+        query.history(0, 20, "complex");
+
+        verify(executionRepository).findByTypeIn(
+                eq(List.of(DataPipelineType.COMPLEX_COLLECTION, DataPipelineType.COMPLEX_REFINEMENT,
+                        DataPipelineType.COMPLEX_SYNC)),
+                any()
+        );
+    }
+
+    @Test
+    void 공고_이력은_SH를_뺀_공고_유형만_조회한다() {
+        when(executionRepository.findByTypeIn(any(), any())).thenReturn(Page.empty());
+
+        query.history(0, 20, "announcement");
+
+        verify(executionRepository).findByTypeIn(
+                eq(List.of(DataPipelineType.ANNOUNCEMENT_COLLECTION, DataPipelineType.ANNOUNCEMENT_REFINEMENT,
+                        DataPipelineType.ANNOUNCEMENT_SYNC, DataPipelineType.ANNOUNCEMENT_REGISTRATION)),
+                any()
+        );
+    }
+
+    @Test
+    void 알_수_없는_이력_구분은_조회_전에_거부한다() {
+        assertThatThrownBy(() -> query.history(0, 20, "sh"))
+                .isInstanceOf(InvalidIngestRequestException.class)
+                .hasMessage("단지 또는 공고를 선택해 주세요.");
+        verify(executionRepository, never()).findByTypeIn(any(), any());
     }
 
     @Test
@@ -195,6 +233,23 @@ class DataPipelineExecutionServiceTest {
         assertThatThrownBy(() -> service.start(DataPipelineType.COMPLEX_SYNC, " "))
                 .isInstanceOf(RetiredIngestOperationException.class);
         verify(executionLock, never()).tryAcquire(any(UUID.class));
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DataPipelineType.class, names = {"COMPLEX_COLLECTION", "ANNOUNCEMENT_COLLECTION", "ANNOUNCEMENT_SYNC"})
+    void 수집을_포함한_실행은_입력키를_받아_수집_스레드에_전달한다(DataPipelineType type) {
+        configureStoredExecution();
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        AtomicReference<Optional<String>> observedKey = new AtomicReference<>();
+        doAnswer(invocation -> {
+            observedKey.set(IngestServiceKeyContext.current());
+            return null;
+        }).when(runner).run(any(), any());
+
+        service.start(type, "runtime-test-key");
+
+        assertThat(observedKey.get()).contains("runtime-test-key");
+        verify(runner).run(eq(type), any());
     }
 
     @Test

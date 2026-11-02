@@ -16,19 +16,8 @@ public class LhAnnouncementCollectionProgressManager {
     private final ExternalDataFailureRecorder failureRecorder;
 
     @Transactional
-    public void complete(ExternalDataSource targetSource, Candidate candidate) {
-        progressStore.complete(
-                targetSource,
-                candidate.sourceAnnouncementKey(),
-                candidate.requestDescription(),
-                candidate.panId()
-        );
-        resolveFailures(targetSource, candidate);
-    }
-
-    @Transactional
-    public void link(ExternalDataSource targetSource, Candidate candidate) {
-        progressStore.link(
+    public void recordLinked(ExternalDataSource targetSource, Candidate candidate) {
+        progressStore.save(
                 targetSource,
                 candidate.sourceAnnouncementKey(),
                 candidate.requestDescription(),

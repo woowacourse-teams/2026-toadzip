@@ -176,7 +176,7 @@ public class LhAnnouncementSharedRequestCollector {
             ExternalDataSource targetSource, List<Candidate> candidates, Set<String> pendingConflicts
     ) {
         for (Candidate candidate : candidates) {
-            progressManager.link(targetSource, candidate);
+            progressManager.recordLinked(targetSource, candidate);
             resolveConflict(targetSource, candidate, pendingConflicts);
         }
     }

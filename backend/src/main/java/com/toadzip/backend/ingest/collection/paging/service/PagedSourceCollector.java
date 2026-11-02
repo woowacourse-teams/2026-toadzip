@@ -9,8 +9,7 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.collection.service.SourceCollectionAttempt;
-import com.toadzip.backend.ingest.exception.exception.CollectedSourceConflictException;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
+import com.toadzip.backend.ingest.collection.service.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
@@ -152,8 +151,8 @@ public class PagedSourceCollector {
         }
 
         private ExternalDataCallFailureException failure(RuntimeException cause) {
-            return new ExternalDataCallFailureException(source.source(), request.pageDescription(lastPage),
-                    lastAttemptCount, new ExternalDataRequestException(cause.getMessage(), cause));
+            return new ExternalDataCallFailureException(request.pageDescription(lastPage), lastAttemptCount,
+                    new ExternalDataRequestException(cause.getMessage(), cause));
         }
     }
 }

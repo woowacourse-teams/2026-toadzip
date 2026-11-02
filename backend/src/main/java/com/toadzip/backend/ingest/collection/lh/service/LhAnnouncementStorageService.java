@@ -9,15 +9,15 @@ import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncement
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuerySource;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.HeldLhSupplyReplacement;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplyRow;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhSupplySnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplyRowRepository;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.VerifiedLhSupplyReplacementStore;
-import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
-import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
-import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.EmptyLhSupplyReplacementException;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.IncompleteLhSupplyReplacementException;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import java.time.Clock;
 import java.time.Instant;
@@ -137,7 +137,8 @@ public class LhAnnouncementStorageService {
         if (rows.isEmpty()) {
             throw new EmptyLhSupplyReplacementException();
         }
-        throw new IncompleteLhSupplyReplacementException(missing, fingerprint);
+        throw new IncompleteLhSupplyReplacementException(
+                HeldLhSupplyReplacement.incompleteReason(missing, fingerprint));
     }
 
     private void requireTime(LhAnnouncementCollectionRequest request, Instant collectedAt) {

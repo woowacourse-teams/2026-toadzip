@@ -11,6 +11,7 @@ import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport.ComplexCounts;
 import java.time.Clock;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -33,7 +34,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 class LhAnnouncementComplexLinker {
 
-    static final String ACTOR = "LH 공고 정제";
+    private static final String ACTOR = "LH 공고 정제";
 
     private final AnnouncementComplexRepository announcementComplexes;
     private final SupplyRowRepository supplyRows;
@@ -54,12 +55,11 @@ class LhAnnouncementComplexLinker {
         for (DetailComplex detail : observed.values()) {
             AnnouncementComplex complex = stored.remove(detail.name());
             if (complex == null) {
-                complex = announcementComplexes.save(AnnouncementComplex.observe(announcement, detail.name(),
-                        detail.roadAddress(), detail.totalHouseholdCount()));
-                tally.created++;
-                link(complex, announcement, migrated.get(detail.name()), supplyType, index, tally);
+                result.put(detail.name(),
+                        create(announcement, detail, migrated.get(detail.name()), supplyType, index, tally));
+                continue;
             }
-            else if (complex.observeAgain(detail.roadAddress(), detail.totalHouseholdCount())) {
+            if (complex.observeAgain(detail.roadAddress(), detail.totalHouseholdCount())) {
                 tally.updated++;
             }
             result.put(detail.name(), complex);
@@ -70,6 +70,15 @@ class LhAnnouncementComplexLinker {
             }
         });
         return result;
+    }
+
+    private AnnouncementComplex create(Announcement announcement, DetailComplex detail, Long migratedComplexId,
+            RentalType supplyType, LhComplexIndex index, Tally tally) {
+        AnnouncementComplex complex = announcementComplexes.save(AnnouncementComplex.observe(announcement,
+                detail.name(), detail.roadAddress(), detail.totalHouseholdCount()));
+        tally.created++;
+        link(complex, announcement, migratedComplexId, supplyType, index, tally);
+        return complex;
     }
 
     private void link(AnnouncementComplex complex, Announcement announcement, Long migratedComplexId,
@@ -118,7 +127,7 @@ class LhAnnouncementComplexLinker {
         Map<String, String> labelByOrder = supplies.stream().collect(Collectors.toMap(
                 row -> String.valueOf(row.getSourceOrder()), LhAnnouncementSupplySourceView::getComplexLabel,
                 (first, second) -> first));
-        String onlyName = names.size() == 1 ? names.iterator().next() : null;
+        String onlyName = onlyName(names);
         Map<String, Set<Long>> linked = new LinkedHashMap<>();
         for (SupplyRow row : supplyRows.findAllByAnnouncement(announcement)) {
             HousingComplex complex = row.getHousingComplex();
@@ -137,6 +146,13 @@ class LhAnnouncementComplexLinker {
                 .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().iterator().next()));
     }
 
+    private static String onlyName(Set<String> names) {
+        if (names.size() != 1) {
+            return null;
+        }
+        return names.iterator().next();
+    }
+
     record DetailComplex(String name, String roadAddress, Integer totalHouseholdCount) {
     }
 
@@ -152,12 +168,16 @@ class LhAnnouncementComplexLinker {
             unlinked += other.unlinked;
         }
 
-        int created;
-        int updated;
-        int absent;
-        int migrated;
-        int inherited;
-        int auto;
-        int unlinked;
+        ComplexCounts toCounts() {
+            return new ComplexCounts(created, updated, absent, migrated, inherited, auto, unlinked);
+        }
+
+        private int created;
+        private int updated;
+        private int absent;
+        private int migrated;
+        private int inherited;
+        private int auto;
+        private int unlinked;
     }
 }

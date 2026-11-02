@@ -18,7 +18,6 @@ import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuerySource;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQueryApiRepository;
-import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceReader;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhAnnouncementCircuitBreaker;
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
@@ -35,9 +34,8 @@ import com.toadzip.backend.ingest.collection.repository.external.ExternalDataReq
 import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
-import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
-import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
+import com.toadzip.backend.ingest.collection.service.ExternalDataCallFailureException;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.IncompleteLhSupplyReplacementException;
 import com.toadzip.backend.ingest.pipeline.repository.IngestExecutionOwnershipRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -92,8 +90,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Import({LhAnnouncementQueryCollector.class, LhAnnouncementStorageService.class, SourceCollectionRecordService.class,
         LhAnnouncementQueryApiRepository.class, LhSupplyResponseParser.class, LhDetailResponseParser.class,
         VerifiedLhSupplyReplacementStore.class, IngestWriteOwnershipGuard.class,
-        IngestExecutionOwnershipRepository.class, LhAnnouncementSupplySourceReader.class,
-        LhAnnouncementQuerySourceReader.class})
+        IngestExecutionOwnershipRepository.class, LhAnnouncementSupplySourceReader.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -203,7 +200,9 @@ class LhAnnouncementStorageIntegrationTest {
         expect(request, "dsList01", List.of(supplyWire(supply("단지", "A")), supplyWire(supply("단지", "C"))));
 
         assertThatThrownBy(() -> collect(request))
-                .isInstanceOf(IncompleteLhSupplyReplacementException.class);
+                .isInstanceOf(IncompleteLhSupplyReplacementException.class)
+                .hasMessage("LH 공급 수집 결과에 기존 공급행 1건이 누락되어 원천을 교체하지 않습니다. proposedFingerprint="
+                        + fingerprint(request, supply("단지", "A"), supply("단지", "C")));
 
         assertThat(view()).isEqualTo(previous);
         assertFailed();
@@ -374,13 +373,18 @@ class LhAnnouncementStorageIntegrationTest {
     }
 
     private long approve(LhAnnouncementCollectionRequest request, LhAnnouncementSupplySourceSnapshot... snapshots) {
+        return approvals.approve(request.requestHash(), fingerprint(request, snapshots),
+                "https://apply.lh.or.kr/evidence", "공식 근거 확인", "test-admin");
+    }
+
+    private String fingerprint(
+            LhAnnouncementCollectionRequest request, LhAnnouncementSupplySourceSnapshot... snapshots) {
         List<LhAnnouncementSupplySourceView> views = new ArrayList<>();
         for (int index = 0; index < snapshots.length; index++) {
             views.add(LhAnnouncementSupplySourceView.read(null, index, request.query().panId(),
                     request.requestHash(), null, snapshots[index]));
         }
-        return approvals.approve(request.requestHash(), LhSupplySnapshot.fingerprint(views),
-                "https://apply.lh.or.kr/evidence", "공식 근거 확인", "test-admin");
+        return LhSupplySnapshot.fingerprint(views);
     }
 
     private Timestamp consumed(long id) {

@@ -10,6 +10,7 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhSupplySnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.dto.VerifiedLhSupplyReplacementRequest;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.VerifiedLhSupplyReplacementStore;
 import com.toadzip.backend.ingest.collection.lh.supply.service.VerifiedLhSupplyReplacementService;
@@ -97,6 +98,63 @@ class VerifiedLhSupplyReplacementServiceTest {
     }
 
     @Test
+    void 기록된_공급_감소_사유의_제안_지문으로_승인한다() {
+        String reason = "LH 공급 수집 결과에 기존 공급행 3건이 누락되어 원천을 교체하지 않습니다. proposedFingerprint="
+                + FINGERPRINT;
+        held("IncompleteLhSupplyReplacementException", reason);
+
+        service.approve("pblanc-1", request(FINGERPRINT, "https://apply.lh.or.kr/notice"), "operator");
+
+        verify(replacementStore).approve(LhAnnouncementQuery.requestHashOf(LH_REQUEST.requestDescription()),
+                FINGERPRINT, "https://apply.lh.or.kr/notice", "주택형 철회 확인", "operator");
+    }
+
+    @Test
+    void 지문_없는_공급_감소_보류는_승인하지_않는다() {
+        held("IncompleteLhSupplyReplacementException",
+                "LH 공급 수집 결과에 기존 공급행 1건이 누락되어 원천을 교체하지 않습니다.");
+
+        assertThatThrownBy(() -> service.approve("pblanc-1",
+                request(FINGERPRINT, "https://apply.lh.or.kr/notice"), "operator"))
+                .isInstanceOf(InvalidIngestRequestException.class)
+                .hasMessage("보류된 공급 응답의 지문과 승인 대상이 다릅니다.");
+        verifyNoInteractions(replacementStore);
+    }
+
+    @Test
+    void 빈_공급_보류는_빈_공급_지문으로_승인한다() {
+        String emptyFingerprint = LhSupplySnapshot.fingerprint(List.of());
+        held("EmptyLhSupplyReplacementException", "기존 LH 공급 원천을 빈 수집 결과로 교체할 수 없습니다.");
+
+        service.approve("pblanc-1", request(emptyFingerprint, "https://apply.lh.or.kr/notice"), "operator");
+
+        verify(replacementStore).approve(LhAnnouncementQuery.requestHashOf(LH_REQUEST.requestDescription()),
+                emptyFingerprint, "https://apply.lh.or.kr/notice", "주택형 철회 확인", "operator");
+    }
+
+    @Test
+    void 빈_공급_보류는_다른_지문으로_승인하지_않는다() {
+        held("EmptyLhSupplyReplacementException", "기존 LH 공급 원천을 빈 수집 결과로 교체할 수 없습니다.");
+
+        assertThatThrownBy(() -> service.approve("pblanc-1",
+                request(FINGERPRINT, "https://apply.lh.or.kr/notice"), "operator"))
+                .isInstanceOf(InvalidIngestRequestException.class)
+                .hasMessage("보류된 공급 응답의 지문과 승인 대상이 다릅니다.");
+        verifyNoInteractions(replacementStore);
+    }
+
+    @Test
+    void 공급_감소가_아닌_실패는_지문이_같아도_승인하지_않는다() {
+        held("ExternalDataRequestException", "proposedFingerprint=" + FINGERPRINT);
+
+        assertThatThrownBy(() -> service.approve("pblanc-1",
+                request(FINGERPRINT, "https://apply.lh.or.kr/notice"), "operator"))
+                .isInstanceOf(InvalidIngestRequestException.class)
+                .hasMessage("공급 감소로 보류된 요청만 승인할 수 있습니다.");
+        verifyNoInteractions(replacementStore);
+    }
+
+    @Test
     void 이미_해결한_보류는_지문이_같아도_승인하지_않는다() {
         ExternalDataCollectionFailure resolved = failure("proposedFingerprint=" + FINGERPRINT);
         resolved.resolve(Instant.parse("2026-09-29T00:00:00Z"), UUID.randomUUID());
@@ -122,6 +180,14 @@ class VerifiedLhSupplyReplacementServiceTest {
         return new VerifiedLhSupplyReplacementRequest(
                 LH_REQUEST.requestDescription(), fingerprint, evidenceUrl, "주택형 철회 확인"
         );
+    }
+
+    private void held(String errorType, String reason) {
+        when(failureRepository.findFirstBySourceAndRequestDescriptionOrderByIdDesc(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, LH_REQUEST.requestDescription()))
+                .thenReturn(Optional.of(ExternalDataCollectionFailure.create(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                        LH_REQUEST.requestDescription(), Instant.parse("2026-09-28T00:00:00Z"), 0,
+                        errorType, reason)));
     }
 
     private ExternalDataCollectionFailure failure(String reason) {

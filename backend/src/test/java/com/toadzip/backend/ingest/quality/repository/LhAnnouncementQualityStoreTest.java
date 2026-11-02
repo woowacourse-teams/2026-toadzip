@@ -1,6 +1,8 @@
 package com.toadzip.backend.ingest.quality.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
+import static org.assertj.core.api.Assertions.tuple;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
@@ -12,6 +14,7 @@ import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollect
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionPolicy;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhSupplySnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
@@ -23,6 +26,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.HashMap;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -98,7 +102,7 @@ class LhAnnouncementQualityStoreTest {
                 """).param("occurredAt", Timestamp.from(OBSERVED_AT)).update();
         catalog("quality-pan", OBSERVED_AT.minusSeconds(86400));
         source("myhome-1", "quality-pan", null);
-        progressStore.link(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "myhome-1",
+        progressStore.save(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "myhome-1",
                 request("previous-pan").requestDescription(), "previous-pan");
 
         LhAnnouncementQualityResponse result = service.snapshot();
@@ -119,9 +123,41 @@ class LhAnnouncementQualityStoreTest {
         assertThat(result.heldRequests()).extracting(LhAnnouncementQualityResponse.HeldRequest::requestDescription)
                 .contains("quality-held-request");
 
-        progressStore.link(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "myhome-1",
+        progressStore.save(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "myhome-1",
                 request("quality-pan").requestDescription(), "quality-pan");
         assertThat(service.snapshot().unlinkedLhLeaseCatalogCount()).isZero();
+    }
+
+    @Test
+    void 보류된_공급_교체만_집계하고_사유에서_제안_지문을_읽는다() {
+        String fingerprint = "c".repeat(64);
+        failure("LH_ANNOUNCEMENT_SUPPLY", "incomplete", "PENDING", "IncompleteLhSupplyReplacementException",
+                "LH 공급 수집 결과에 기존 공급행 2건이 누락되어 원천을 교체하지 않습니다. proposedFingerprint="
+                        + fingerprint, 5);
+        failure("LH_ANNOUNCEMENT_SUPPLY", "empty", "PENDING", "EmptyLhSupplyReplacementException",
+                "기존 LH 공급 원천을 빈 수집 결과로 교체할 수 없습니다.", 4);
+        failure("LH_ANNOUNCEMENT_SUPPLY", "no-fingerprint", "PENDING", "IncompleteLhSupplyReplacementException",
+                "LH 공급 수집 결과에 기존 공급행 1건이 누락되어 원천을 교체하지 않습니다.", 3);
+        failure("LH_ANNOUNCEMENT_SUPPLY", "request-failure", "PENDING", "ExternalDataRequestException",
+                "proposedFingerprint=" + fingerprint, 2);
+        failure("LH_ANNOUNCEMENT_SUPPLY", "resolved", "RESOLVED", "EmptyLhSupplyReplacementException",
+                "기존 LH 공급 원천을 빈 수집 결과로 교체할 수 없습니다.", 1);
+        failure("LH_ANNOUNCEMENT_DETAIL", "detail", "PENDING", "EmptyLhSupplyReplacementException",
+                "기존 LH 공급 원천을 빈 수집 결과로 교체할 수 없습니다.", 0);
+
+        LhAnnouncementQualityResponse result = service.snapshot();
+
+        assertThat(result.preservedSourceRequestCount()).isEqualTo(3);
+        assertThat(result.preservedReasons()).containsExactly(
+                entry("EmptyLhSupplyReplacementException", 1L),
+                entry("IncompleteLhSupplyReplacementException", 2L));
+        assertThat(result.heldRequests()).extracting(
+                        LhAnnouncementQualityResponse.HeldRequest::requestDescription,
+                        LhAnnouncementQualityResponse.HeldRequest::proposedFingerprint)
+                .containsExactly(
+                        tuple("no-fingerprint", null),
+                        tuple("empty", LhSupplySnapshot.fingerprint(List.of())),
+                        tuple("incomplete", fingerprint));
     }
 
     @Test
@@ -187,6 +223,18 @@ class LhAnnouncementQualityStoreTest {
 
         assertThat(service.snapshot().supplyCollection()).isEqualTo(
                 new LhAnnouncementQualityResponse.CollectionCoverage(1, 1, OBSERVED_AT.minusSeconds(43200)));
+    }
+
+    private void failure(String source, String request, String status, String errorType, String reason,
+            long minutesAgo) {
+        Timestamp occurredAt = Timestamp.from(OBSERVED_AT.minusSeconds(minutesAgo * 60));
+        jdbc.sql("""
+                INSERT INTO external_data_collection_failures
+                    (source, request_description, occurred_at, attempt_count, status, last_occurred_at,
+                     occurrence_count, recurrence_count, error_type, reason)
+                VALUES (:source, :request, :occurredAt, 0, :status, :occurredAt, 1, 0, :errorType, :reason)
+                """).param("source", source).param("request", request).param("occurredAt", occurredAt)
+                .param("status", status).param("errorType", errorType).param("reason", reason).update();
     }
 
     private void catalog(String panId, Instant changedAt) {

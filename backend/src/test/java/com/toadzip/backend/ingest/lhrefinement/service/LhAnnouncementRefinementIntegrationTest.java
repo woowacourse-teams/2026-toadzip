@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -42,6 +44,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
 import com.toadzip.backend.announcement.service.SupplyCorrectionService;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.enrichment.service.LhScheduleAttachmentWriter;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -52,6 +55,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
@@ -85,6 +89,7 @@ class LhAnnouncementRefinementIntegrationTest {
     @Autowired private TransactionTemplate transactions;
     @Autowired private JdbcClient jdbc;
     @MockitoSpyBean private NotificationOutboxRepository outbox;
+    @MockitoSpyBean private LhScheduleAttachmentWriter scheduleWriter;
 
     private final List<Entry> catalogEntries = new ArrayList<>();
     private HousingComplex complex;
@@ -163,6 +168,28 @@ class LhAnnouncementRefinementIntegrationTest {
         assertThat(again.supplyRows().updatedTargets()).isZero();
         assertThat(again.announcementComplexes().created()).isZero();
         assertThat(again.announcementComplexes().updated()).isZero();
+    }
+
+    @Test
+    void 정제_보고서는_성공한_공고만_집계하고_실패한_공고의_중간_집계는_버린다() {
+        publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
+        details("P1", "동탄 행복주택 단지", ADDRESS);
+        supplies("P1", supply("동탄 행복주택 단지", "59A", "59.9800", "10", "30000000", "200000"));
+        // 공고를 만들고 공고 수를 센 뒤 실패해 그 공고만 되돌린다.
+        publish("P2", "실패할 공고", today().minusDays(1));
+        details("P2", "실패할 단지", ADDRESS);
+        supplies("P2", supply("실패할 단지", "59A", "59.9800", "10", "30000000", "200000"));
+        doThrow(new IllegalStateException("주입한 실패")).when(scheduleWriter)
+                .write(argThat(announcement -> announcement.getName().equals("실패할 공고")), any(), any());
+        publish("P3", "원천 없는 공고", today().minusDays(1));
+
+        LhAnnouncementRefinementReport report = refinement.refineAll();
+
+        assertThat(report).isEqualTo(new LhAnnouncementRefinementReport(3, 1, 0, 0, Map.of("SOURCES_MISSING", 1), 1,
+                0, 0, 0, 0,
+                new LhAnnouncementRefinementReport.ComplexCounts(1, 0, 0, 0, 0, 1, 0),
+                new LhAnnouncementRefinementReport.SupplyCounts(1, 0, 0, 1, 0, 0, 0, Map.of("MATCHED", 1))));
+        assertThat(announcements.findAllByLhPanIdOrderByIdAsc("P2")).isEmpty();
     }
 
     @Test

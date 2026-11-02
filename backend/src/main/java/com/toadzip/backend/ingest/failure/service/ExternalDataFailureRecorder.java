@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.failure.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
+import com.toadzip.backend.ingest.collection.service.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataFailureStore;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;

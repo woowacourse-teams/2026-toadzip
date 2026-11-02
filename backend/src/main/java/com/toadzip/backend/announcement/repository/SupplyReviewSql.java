@@ -1,6 +1,6 @@
 package com.toadzip.backend.announcement.repository;
 
-import com.toadzip.backend.admin.quality.repository.QualityComparisonRepository;
+import com.toadzip.backend.ingest.source.repository.IngestSourceRows;
 
 public final class SupplyReviewSql {
     public static final String TARGET_VALUES = """
@@ -39,7 +39,7 @@ public final class SupplyReviewSql {
               SELECT COALESCE(jsonb_agg(projected ORDER BY projected::text), '[]'::jsonb) FROM (
                 SELECT (SELECT COALESCE(jsonb_object_agg(field, raw -> field) FILTER (WHERE jsonb_exists(raw, field)), '{}'::jsonb)
                   FROM jsonb_array_elements_text(saved -> 'fields') field) AS projected FROM (
-            """ + QualityComparisonRepository.SOURCE_ROWS + """
+            """ + IngestSourceRows.NORMALIZED_ROWS + """
                 ) source WHERE category = saved ->> 'category' AND source_key = saved ->> 'sourceKey'
               ) projected_rows
             )) ORDER BY ord), '[]'::jsonb)

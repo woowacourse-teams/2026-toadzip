@@ -2,7 +2,6 @@ package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestRejectedException;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 
 public final class ExternalDataRateLimit {
 
