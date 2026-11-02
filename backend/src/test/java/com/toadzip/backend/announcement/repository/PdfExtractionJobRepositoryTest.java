@@ -63,6 +63,20 @@ class PdfExtractionJobRepositoryTest {
     }
 
     @Test
+    void 입력_스냅숏은_문자열로_감싸지_않고_jsonb_객체로_저장한다() {
+        // 문자열로 한 번 더 감싸면 워커가 input을 객체로 읽지 못한다.
+        PdfExtractionJob job = jobs.saveAndFlush(PdfExtractionJob.requestedByAdmin(ANNOUNCEMENT, "admin",
+                PdfExtractionSource.of("a.pdf", new byte[] {1}), "{\"lhSupplyRows\":[]}",
+                Instant.parse("2026-11-01T00:00:00Z")));
+
+        Object[] stored = (Object[]) entityManager.createNativeQuery("""
+                SELECT jsonb_typeof(input), jsonb_typeof(input -> 'lhSupplyRows') FROM ai_jobs WHERE id = :id
+                """).setParameter("id", job.getId()).getSingleResult();
+
+        assertThat(stored).containsExactly("object", "array");
+    }
+
+    @Test
     void 진행_중_작업_index_위반은_그_제약_이름으로_드러난다() {
         // 테스트 스키마는 JPA가 만들어 부분 index가 없다. 같은 정의로 이 트랜잭션 안에서만 만든다.
         entityManager.createNativeQuery("""
