@@ -27,6 +27,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplex
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
 import com.toadzip.backend.ingest.source.repository.IngestSourceQueryRepository;
+import com.toadzip.backend.ingest.source.repository.IngestSourceRows;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -303,7 +304,7 @@ class QualityComparisonIntegrationTest {
                 FROM myhome_announcement_source_bundles WHERE pblanc_id = 'quality-metadata-test'
                 """).setParameter("record", first).executeUpdate();
         String query = "SELECT raw::text FROM ("
-                + QualityComparisonRepository.SOURCE_ROWS
+                + IngestSourceRows.NORMALIZED_ROWS
                 + ") sources WHERE category = 'MYHOME_ANNOUNCEMENT' AND raw ->> 'pblanc_id' = 'quality-metadata-test'";
         Object before = entities.createNativeQuery(query).getSingleResult();
         String key = "21:quality-metadata-test1:1";
