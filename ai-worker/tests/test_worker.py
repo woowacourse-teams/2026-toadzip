@@ -116,6 +116,19 @@ def test_transient_errors_retry_with_backoff_then_fail(owner, worker_conn):
     assert len(extractor.jobs) == 3
 
 
+@pytest.mark.parametrize("age_minutes, status", [(24, "RETRY"), (26, "FAILED")])
+def test_retry_scheduled_past_claim_window_fails_now_with_its_error(owner, worker_conn, age_minutes, status):
+    # 두 번째 시도 뒤 5분 예약이 생성 후 30분(마감 40분 - 시도 예산 10분)을 넘으면 다시 꺼내지 않는다.
+    job_id = insert_job(owner, status="RETRY", attempts=1, age_minutes=age_minutes)
+
+    run_once(worker_conn, FakeExtractor(error=TransientError("MODEL_TIMEOUT", "AI 모델 응답이 늦습니다.")))
+
+    row = job_row(owner, job_id)
+    assert (row["status"], row["attempts"]) == (status, 2)
+    assert (row["error_code"], row["error_message"]) == ("MODEL_TIMEOUT", "AI 모델 응답이 늦습니다.")
+    assert (row["pdf"] is None, row["completed_at"] is not None) == (status == "FAILED", status == "FAILED")
+
+
 def test_permanent_error_fails_without_retry(owner, worker_conn):
     job_id = insert_job(owner)
 
