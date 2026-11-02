@@ -8,7 +8,6 @@ import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDeta
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
-import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
@@ -279,11 +278,6 @@ public class LhAnnouncementEnrichmentMapper {
                     verifiedEmptySupply);
         }
 
-        /** 공급 원천이 비었고 그 요청의 공급이 없다고 확인된 수집이면 보강의 금액을 지운다. */
-        LhAnnouncementEnrichmentData withVerifiedEmptySupply(boolean verifiedEmptySupply) {
-            return new LhAnnouncementEnrichmentData(panId, correctionReason, receptionPlace, schedules, attachments,
-                    supplies, verifiedEmptySupply);
-        }
     }
 
     public record LhScheduleData(

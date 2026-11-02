@@ -36,18 +36,6 @@ public class LhScheduleAttachmentWriter {
         return new Result(schedules.created(), schedules.updated(), attachments.created(), attachments.updated());
     }
 
-    /** 공고가 LH 소유에서 벗어나면 보강의 일정·첨부를 모두 지운다. */
-    void release(Announcement announcement) {
-        scheduleRepository.deleteAll(scheduleRepository.findAllByAnnouncement(announcement).stream()
-                .filter(schedule -> LhOwnedValues.owned(
-                        schedule.getSourceScheduleIdentifier(), schedule.isAdminModified()))
-                .toList());
-        attachmentRepository.deleteAll(attachmentRepository.findAllByAnnouncement(announcement).stream()
-                .filter(attachment -> LhOwnedValues.owned(
-                        attachment.getSourceAttachmentIdentifier(), attachment.isAdminModified()))
-                .toList());
-    }
-
     /** 원천에 남지 않은 보강의 값을 지울 LH 공고들이다. */
     private static Set<String> replacedPanIds(Collection<?> sources, String panId, String previousPanId) {
         Set<String> panIds = new HashSet<>();

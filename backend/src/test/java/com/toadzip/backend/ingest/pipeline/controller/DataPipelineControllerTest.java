@@ -32,53 +32,6 @@ import org.springframework.test.web.servlet.MockMvc;
 class DataPipelineControllerTest {
 
     @Test
-    void URL_등록도_기존_실행_서비스로_비동기_접수한다() throws Exception {
-        String url = "https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21026";
-        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration/url")
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"url\":\"" + url + "\"}"))
-                .andExpect(status().isAccepted());
-        verify(executionService).startAnnouncementRegistrationUrl(url);
-    }
-
-    @ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"{}", "{\"url\":null}", "{\"url\":\" \"}"})
-    void 빈_URL은_실행을_접수하지_않는다(String body) throws Exception {
-        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration/url")
-                        .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isBadRequest());
-        verifyNoInteractions(executionService);
-    }
-
-    @Test
-    void URL_검증_실패는_접수가_아닌_400과_사유로_응답한다() throws Exception {
-        when(executionService.startAnnouncementRegistrationUrl("https://apply.lh.or.kr"))
-                .thenThrow(new InvalidIngestRequestException(
-                        "잘못된 공고 URL입니다."));
-        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration/url")
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"url\":\"https://apply.lh.or.kr\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("잘못된 공고 URL입니다."));
-    }
-
-    @Test
-    void 단건_등록은_공고_ID만_받아_비동기로_접수한다() throws Exception {
-        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration")
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"pblancId\":\" 21026 \"}"))
-                .andExpect(status().isAccepted());
-        verify(executionService).startAnnouncementRegistration("21026");
-    }
-
-    @ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"{}", "{\"pblancId\":null}",
-            "{\"pblancId\":\" \"}", "{\"pblancId\":\"\"}"})
-    void 단건_등록은_빈_ID를_거부한다(String body) throws Exception {
-        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration")
-                        .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isBadRequest());
-        verifyNoInteractions(executionService);
-    }
-
-    @Test
     void 없는_실행_ID의_상태_조회는_404를_반환한다() throws Exception {
         UUID executionId = UUID.randomUUID();
         when(executionQuery.find(executionId))
@@ -193,6 +146,16 @@ class DataPipelineControllerTest {
         mockMvc.perform(get("/api/admin/ingest/pipelines/{type}", pathValue))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.type").value(type.name()));
+    }
+
+    @Test
+    void 지원을_종료한_단건_등록도_일반_실행_경로에서_410을_반환한다() throws Exception {
+        DataPipelineType type = DataPipelineType.ANNOUNCEMENT_REGISTRATION;
+        when(executionService.start(type)).thenThrow(RetiredIngestOperationException.of(type));
+
+        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration"))
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.code").value("INGEST_OPERATION_RETIRED"));
     }
 
     @Test

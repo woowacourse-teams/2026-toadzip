@@ -14,13 +14,6 @@ class LhSourceIdentifierTest {
     }
 
     @Test
-    void LH_원천은_LH_접두어로만_판정한다() {
-        assertThat(LhSourceIdentifier.isLhSource("LH:PAN-1:SUPPLY:0")).isTrue();
-        assertThat(LhSourceIdentifier.isLhSource("LHX:PAN-1")).isFalse();
-        assertThat(LhSourceIdentifier.isLhSource(null)).isFalse();
-    }
-
-    @Test
     void 지정한_LH_공고의_원천만_고르고_공고_번호가_앞부분만_같은_공고는_제외한다() {
         assertThat(LhSourceIdentifier.isLhSourceOfAny("LH:PAN-1:SUPPLY:0", Set.of("PAN-1"))).isTrue();
         assertThat(LhSourceIdentifier.isLhSourceOfAny("LH:PAN-10:SUPPLY:0", Set.of("PAN-1"))).isFalse();

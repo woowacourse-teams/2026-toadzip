@@ -430,7 +430,7 @@ class SupplyCorrectionIntegrationTest {
         assertThat(saved.getHousingType().getName()).isEqualTo("30");
         // 보정으로 만든 주택형은 공고 값이라 보호하지 않는다. 다음 공고가 갱신한다.
         assertThat(saved.getHousingType().isNameAdminModified()).isFalse();
-        assertThat(saved.updateDisplayOrder(999)).isFalse();
+        assertThat(saved.isAdminModified()).isTrue();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox_events", Long.class)).isEqualTo(events);
     }
 

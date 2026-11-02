@@ -76,7 +76,4 @@ public class SupplyRowGroup {
         this.reviewRequired = false;
     }
 
-    public void requireReview() {
-        reviewRequired = true;
-    }
 }

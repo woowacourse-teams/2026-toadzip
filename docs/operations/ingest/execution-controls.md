@@ -78,13 +78,13 @@
 공고의 단지·주택형 매칭 오류는 오류 상세에서 단지 후보 검색이나 PDF 보정으로 확인한다.
 
 API 기준 경로는 `/api/admin/ingest/announcement-supply-matches`다.
-`POST /{identifier}/refine`·`/rerun`·`/release`·`/exclusion`·`/split`은 410(`INGEST_OPERATION_RETIRED`)으로 거절한다.
+`POST /{identifier}/refine`·`/rerun`·`/release`·`/exclusion`·`/split`은 없앴다.
 GET 조회는 그대로 둔다. 관리자 화면은 PDF 보정·공급정보 편집표의 주택형 후보 조회에 `GET /complexes/{complexId}/housing-types`만 쓴다.
 
 ## LH 공급 원본 연결
 
 지원을 종료했다. 실패 검토의 `LH 행 연결` 버튼과 `/admin/failures/lh-links/{identifier}` 화면은 없앴다.
-`POST /api/admin/ingest/announcement-supply-matches/{identifier}/lh-links`와 `/lh-links/release`는 410(`INGEST_OPERATION_RETIRED`)으로 거절하고 GET은 그대로 둔다.
+`POST /api/admin/ingest/announcement-supply-matches/{identifier}/lh-links`와 `/lh-links/release`는 없앴고 GET은 그대로 둔다.
 LH 공급 행을 공급행으로 만드는 규칙은 [LH 공고 연결](../../features/ingest/lh-linking.md)을 따른다.
 
 PDF 보정과 공급정보 편집표는 LH 원천 소유 공고에 아직 공급행이 되지 않은 LH 공급 원본 행(`unattachedLhSupplyRows`)이 있으면
@@ -94,7 +94,7 @@ PDF 보정과 공급정보 편집표는 LH 원천 소유 공고에 아직 공급
 ## 한 원천에서 복수 공급행 보정
 
 원천 한 행을 여러 공급행으로 나누는 `이 원천을 여러 공급행으로 나누기`와 공고 상세의 `원천별 공급행 보정`은 지원을 종료했다.
-`POST /api/admin/ingest/announcement-supply-matches/{identifier}/split`은 410(`INGEST_OPERATION_RETIRED`)으로 거절한다.
+`POST /api/admin/ingest/announcement-supply-matches/{identifier}/split`은 없앴다.
 
 - 공개·관리자 공급행 응답의 선택적 `sharedRecruitment`는 `{id, householdCount}`다.
   같은 그룹 ID의 수량은 공고·단지 합계에서 한 번만 더한다. 개별 행은 미확정으로 표시한다.

@@ -26,11 +26,6 @@ class SupplyCorrectionSources {
     private final SupplyMatchingFingerprint fingerprints;
     private final SupplyRowGroupRepository groups;
 
-    /** 정제를 되돌린 뒤 실패로 기록할 원천. 되돌릴 세션에서 다시 읽으면 쓰던 변경이 먼저 반영되므로 쓰기 전에 읽는다. */
-    List<MyHomeAnnouncementSourceView> views(String identifier) {
-        return sources.findAllByPblancIdOrderByIdAsc(identifier);
-    }
-
     ResolvedAnnouncement resolved(String identifier) {
         if (identifier == null || identifier.isBlank() || identifier.length() > 100) {
             throw new InvalidIngestRequestException("공고 ID가 올바르지 않습니다.");
@@ -67,17 +62,6 @@ class SupplyCorrectionSources {
         catch (MyHomeAnnouncementMappingRejectedException exception) {
             return Optional.empty();
         }
-    }
-
-    /** 저장 매칭 해제와 공개 제외가 고를 원천행. 조회 뒤 원천이나 저장한 선택이 바뀌었으면 거절한다. */
-    MyHomeSupplyRowMappingData selectedRow(String identifier, String rowIdentifier, String token) {
-        var data = supplyRows(identifier).stream()
-                .filter(row -> row.sourceSupplyRowIdentifier().equals(rowIdentifier)).findFirst()
-                .orElseThrow(() -> new InvalidIngestRequestException("해당 공고의 공급행이 아닙니다."));
-        if (!token(data).equals(token)) {
-            throw new AdminDataConflictException("원천 또는 저장한 선택이 변경되었습니다. 다시 조회해 주세요.");
-        }
-        return data;
     }
 
     /** 여러 공급행으로 나눌 원천행. 조회 뒤 원천이나 분할 보정이 바뀌었으면 거절한다. */

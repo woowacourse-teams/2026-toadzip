@@ -67,16 +67,6 @@ public class MyHomeAnnouncementCommonValuesMapper {
         );
     }
 
-    public String rejectionDetail(List<MyHomeAnnouncementSourceView> sources) {
-        try {
-            map(sources);
-            return null;
-        }
-        catch (MyHomeAnnouncementMappingRejectedException exception) {
-            return exception.getMessage();
-        }
-    }
-
     private String originalUrlOf(MyHomeAnnouncementSourceView source) {
         if (parser.normalizedText(source.getUrl()) != null) {
             return parser.normalizedText(source.getUrl());

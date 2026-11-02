@@ -1,15 +1,19 @@
 package com.toadzip.backend.ingest.mapping.service;
 
-import static com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension.owned;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
+import com.toadzip.backend.announcement.domain.RecruitmentType;
+import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.housing.domain.AgencyCode;
+import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.Address;
@@ -29,18 +33,15 @@ import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupp
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
-import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -59,7 +60,6 @@ import tools.jackson.databind.node.ObjectNode;
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class AnnouncementSupplyMatchingIntegrationTest {
-    private static final String PATH = "/api/admin/ingest/announcement-supply-matches";
     private static final String TARGET = "manual-21395";
     private static final String PNU = "2823710500105500000";
     @Autowired private AnnouncementSupplyRowQueryService rowQuery;
@@ -74,15 +74,13 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Autowired private JsonMapper json;
     @Autowired private LhAnnouncementCollectionCandidateResolver candidateResolver;
     @Autowired private LhAnnouncementCollectionProgressStore progressStore;
-    @Autowired private MyHomeAnnouncementMappingService mapping;
+    @Autowired private SupplyCorrectionSources correctionSources;
     @Autowired private LhStorageFixtures lhStorage;
-    @Autowired private LhAnnouncementEnrichmentService enrichment;
-    @Autowired private IngestExecutionOwnershipService ownership;
     private HousingComplex complex;
     private HousingType type;
 
     @Test
-    void 공급_보정의_새_공통모집도_LH_행_하나만_나누고_재정제와_LH_재보강에서_유지한다() throws Exception {
+    void 공급_보정의_새_공통모집은_LH_공급으로_펼친_원천에서_그_LH_행_하나만_나눈다() throws Exception {
         prepareHansville();
         var first = types.findAll().stream().filter(value -> value.getExclusiveArea().compareTo(new BigDecimal("26.4673")) == 0)
                 .findFirst().orElseThrow();
@@ -94,7 +92,10 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 lhSupplyRow(0, candidate.panId(), "26(청년)", "26.4673", "100"),
                 lhSupplyRow(1, candidate.panId(), "26A,B(고령자)", "26.5195", "50"),
                 lhSupplyRow(2, candidate.panId(), "26(신혼부부)", "26.5195", "20")));
-        owned(ownership, mapping::mapAll);
+        registerFromSources();
+        // 마이홈 원천 한 행이 LH 공급 세 행으로 펼쳐진 공고다.
+        assertThat(supplies.findAll()).extracting(row -> row.getSourceHousingTypeName())
+                .containsExactlyInAnyOrder("26(청년)", "26A,B(고령자)", "26(신혼부부)");
         // 공급 보정 작업실은 비교 검토 테이블을 읽는다. 이 테스트 스키마에는 없어 이 테스트 동안만 만든다.
         boolean comparisonTables = jdbc.sql("SELECT to_regclass('admin_comparison_sources') IS NULL").query(Boolean.class).single();
         if (comparisonTables) {
@@ -130,10 +131,6 @@ class AnnouncementSupplyMatchingIntegrationTest {
         mvc.perform(post(root).with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body))).andExpect(status().isOk());
 
-        owned(ownership, mapping::mapAll);
-        owned(ownership, enrichment::enrichAll);
-        owned(ownership, mapping::mapAll);
-
         assertThat(supplies.findAll()).extracting(row -> row.getAnnouncementHousingTypeName() == null
                         ? row.getSourceHousingTypeName() : row.getAnnouncementHousingTypeName())
                 .containsExactlyInAnyOrder("26(청년)", "26A", "26B", "26(신혼부부)");
@@ -150,13 +147,6 @@ class AnnouncementSupplyMatchingIntegrationTest {
         return LhSourceViews.supply(order, panId,
                 new LhAnnouncementSupplySourceSnapshot(
                         "익산한스빌", typeName, area, null, "529", supplied, "4076000", "72820"));
-    }
-
-    @Test
-    void 복수_공급행_보정도_관리자와_CSRF를_요구한다() throws Exception {
-        mvc.perform(post(PATH + "/" + TARGET + "/split").with(csrf())).andExpect(status().isUnauthorized());
-        mvc.perform(post(PATH + "/" + TARGET + "/split").with(user("admin").roles("ADMIN")))
-                .andExpect(status().isForbidden());
     }
 
     private JsonNode prepareHansville() throws Exception {
@@ -218,24 +208,6 @@ class AnnouncementSupplyMatchingIntegrationTest {
         sources.save(source(TARGET, 1, PNU));
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"refine", "rerun", "release", "exclusion", "split"})
-    void 지원을_종료한_공급행_매칭_보정은_관리자_요청도_410으로_거절하고_아무것도_저장하지_않는다(String action)
-            throws Exception {
-        mvc.perform(post(PATH + "/" + TARGET + "/" + action).with(user("admin").roles("ADMIN")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isGone())
-                .andExpect(jsonPath("$.code").value("INGEST_OPERATION_RETIRED"))
-                .andExpect(jsonPath("$.message").value(
-                        "마이홈 공고 정제·LH 보강과 그 보정은 지원을 종료했습니다. 공고는 LH 공고 정제와 PDF 보정으로만 바뀝니다."));
-
-        assertThat(announcements.count()).isZero();
-        assertThat(supplies.count()).isZero();
-        assertThat(jdbc.sql("SELECT count(*) FROM announcement_supply_match_decisions").query(Long.class).single())
-                .isZero();
-        assertThat(jdbc.sql("SELECT count(*) FROM admin_data_changes").query(Long.class).single()).isZero();
-    }
-
     @Test
     void 단지_검색과_주택형_조회는_해당_단지의_기존_데이터만_반환한다() {
         assertThat(candidateService.complexes("한스빌")).singleElement()
@@ -280,9 +252,8 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
     @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
             executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
-    void PDF_보정으로_연결한_공급행은_재정제에서_매칭_실패로_다시_남지_않는다() throws Exception {
-        owned(ownership, mapping::mapAll);
-        assertThat(pendingFailureReasons()).containsExactly("AMBIGUOUS_HOUSING_TYPE");
+    void PDF_보정으로_연결한_공급행은_대표_주택형과_저장한_매칭을_함께_남긴다() throws Exception {
+        registerFromSources();
         long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
 
         correctFromPdf(announcementId, type);
@@ -293,14 +264,11 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(jdbc.sql("SELECT housing_type_id, reason FROM announcement_supply_match_decisions")
                 .query((rs, rowNum) -> List.of(rs.getLong(1), rs.getString(2))).list())
                 .containsExactly(List.of(type.getId(), "공고문 PDF 4쪽에서 주택형 확인"));
-        owned(ownership, mapping::mapAll);
-
         assertThat(supplies.findAll()).singleElement()
                 .satisfies(row -> assertThat(row.getHousingType().getId()).isEqualTo(type.getId()));
-        assertThat(pendingFailureReasons()).isEmpty();
     }
 
-    /** 정제와 매칭 보정이 쓴 공급행은 함께 모집하는 주택형이 대표 주택형 하나뿐이다. */
+    /** PDF 보정이 쓴 공급행은 함께 모집하는 주택형이 대표 주택형 하나뿐이다. */
     private void assertLinksFollowRepresentative() {
         assertThat(jdbc.sql("""
                 SELECT count(*) FROM supply_rows row
@@ -310,26 +278,11 @@ class AnnouncementSupplyMatchingIntegrationTest {
     }
 
     @Test
-    void 다시_정제는_관리자와_CSRF를_요구한다() throws Exception {
-        mvc.perform(post(PATH + "/" + TARGET + "/rerun").with(csrf())).andExpect(status().isUnauthorized());
-        mvc.perform(post(PATH + "/" + TARGET + "/rerun").with(user("admin").roles("ADMIN")))
-                .andExpect(status().isForbidden());
-        assertThat(announcements.count()).isZero();
-    }
-
-    private List<String> pendingFailureReasons() {
-        return jdbc.sql("""
-                SELECT reason FROM myhome_announcement_mapping_failures
-                WHERE source_announcement_identifier = ? AND status = 'PENDING'
-                """).param(TARGET).query(String.class).list();
-    }
-
-    @Test
     @Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
     @Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
             executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void PDF_보정에서_주택형_연결을_지우면_저장한_매칭도_해제한다() throws Exception {
-        owned(ownership, mapping::mapAll);
+        registerFromSources();
         long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
         correctFromPdf(announcementId, type);
         assertThat(jdbc.sql("SELECT count(*) FROM announcement_supply_match_decisions").query(Long.class).single())
@@ -379,11 +332,24 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 .andExpect(status().isOk());
     }
 
-    @Test
-    void 선택_해제도_관리자_권한과_CSRF를_요구한다() throws Exception {
-        mvc.perform(post(PATH + "/" + TARGET + "/release").with(csrf())).andExpect(status().isUnauthorized());
-        mvc.perform(post(PATH + "/" + TARGET + "/release").with(user("admin").roles("ADMIN")))
-                .andExpect(status().isForbidden());
+    /** 지원을 종료한 마이홈 공고 정제가 남긴 공고처럼, 지금 원천의 해석 결과대로 공고와 공급행을 등록한다. */
+    private void registerFromSources() {
+        var first = sources.findAll().getFirst();
+        var announcement = announcements.save(Announcement.create(TARGET, null, null, first.getPblancNm(),
+                AnnouncementPublicationType.ORIGINAL, RentalType.NATIONAL_RENTAL, RecruitmentType.WAITLIST,
+                AgencyCode.LH, LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 8), LocalDate.of(2026, 10, 15),
+                LocalDate.of(2026, 11, 6), first.getUrl(), null, 0L, null));
+        int order = 0;
+        for (var data : correctionSources.supplyRows(TARGET)) {
+            var housingType = data.exclusiveArea() == null ? null : types.findAll().stream()
+                    .filter(value -> value.getExclusiveArea().compareTo(data.exclusiveArea()) == 0)
+                    .findFirst().orElse(null);
+            var row = SupplyRow.create(announcement, complex, housingType, data.sourceSupplyRowIdentifier(), order++,
+                    data.sourceComplexName(), data.sourceHousingTypeName(), data.pnu(), null, data.supplyCategory(),
+                    null, data.totalSupplyHouseholdCount());
+            row.recordMyHomeSource(data.source().getSourceKey());
+            supplies.save(row);
+        }
     }
 
     private HousingComplex complex(String name, String identifier, String pnu, String supplyType) {

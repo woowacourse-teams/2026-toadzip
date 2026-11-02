@@ -1,7 +1,6 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
@@ -20,7 +19,6 @@ import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -34,14 +32,12 @@ class VerifiedAnnouncementEnrichmentIntegrationTest {
 
     @Autowired private AnnouncementRepository repository;
     @Autowired private EntityManager entityManager;
-    @Autowired private LhAnnouncementEnrichmentWriter writer;
+    @Autowired private LhScheduleAttachmentWriter writer;
 
     @Test
-    void 오래된_공고_객체로_보강해도_확인한_일정과_정정관계를_유지한다() {
+    void LH_보강_값을_써도_확인한_일정과_정정관계를_유지한다() {
         Announcement previous = announcement("previous");
-        Announcement detached = announcement("correction");
-        entityManager.detach(detached);
-        Announcement reviewed = repository.findById(detached.getId()).orElseThrow();
+        Announcement reviewed = announcement("correction");
         reviewed.confirmLhRevision(previous, "2015122300020681", "2015122300020856",
                 "https://apply.lh.or.kr/notice.pdf", "공식 정정 확인");
         LocalDate confirmed = LocalDate.of(2026, 9, 15);
@@ -49,37 +45,22 @@ class VerifiedAnnouncementEnrichmentIntegrationTest {
         entityManager.persist(AnnouncementApplicationSchedule.verified(reviewed, null, "1순위",
                 ApplicationScheduleState.CONFIRMED, null, confirmed, confirmed, null, null,
                 "https://apply.lh.or.kr/notice.pdf", 6));
-
-        writer.write(detached, new LhAnnouncementEnrichmentData(
-                "2015122300020856", "자동 원천 문구", null, List.of(), List.of(), List.of(), false),
-                Set.of(), Set.of());
         entityManager.flush();
         entityManager.clear();
 
-        Announcement stored = repository.findById(detached.getId()).orElseThrow();
+        Announcement stored = repository.findById(reviewed.getId()).orElseThrow();
+        stored.enrichFromLh("2015122300020856", "자동 원천 문구", null);
+        writer.write(stored, new LhAnnouncementEnrichmentData(
+                "2015122300020856", "자동 원천 문구", null, List.of(), List.of(), List.of(), false), null);
+        entityManager.flush();
+        entityManager.clear();
+
+        stored = repository.findById(reviewed.getId()).orElseThrow();
         assertThat(stored.getStatus()).isEqualTo(AnnouncementPublicationType.CORRECTION);
         assertThat(stored.getPreviousAnnouncement().getId()).isEqualTo(previous.getId());
         assertThat(stored.getCorrectionCancellationReason()).isEqualTo("공식 정정 확인");
         assertThat(stored.isApplicationScheduleReviewed()).isTrue();
         assertThat(stored.getApplicationEndDate()).isEqualTo(confirmed);
-    }
-
-    @Test
-    void 확인된_정정본의_PAN을_다른_원천으로_보강하지_않는다() {
-        Announcement previous = announcement("previous");
-        Announcement correction = announcement("correction");
-        correction.confirmLhRevision(previous, "2015122300020681", "2015122300020856",
-                "https://apply.lh.or.kr/notice.pdf", "공식 정정 확인");
-
-        assertThatThrownBy(() -> writer.write(correction, new LhAnnouncementEnrichmentData(
-                "2015122300020681", null, null, List.of(), List.of(), List.of(), false), Set.of(), Set.of()))
-                .isInstanceOf(LhAnnouncementEnrichmentRejectedException.class)
-                .hasMessageContaining("확인된 공고의 LH 원천");
-        assertThatThrownBy(() -> writer.write(previous, new LhAnnouncementEnrichmentData(
-                "2015122300020856", null, null, List.of(), List.of(), List.of(), false), Set.of(), Set.of()))
-                .isInstanceOf(LhAnnouncementEnrichmentRejectedException.class);
-        assertThat(previous.getLhPanId()).isEqualTo("2015122300020681");
-        assertThat(correction.getLhPanId()).isEqualTo("2015122300020856");
     }
 
     private Announcement announcement(String identifier) {
@@ -110,7 +91,7 @@ class VerifiedAnnouncementEnrichmentIntegrationTest {
                         event.getScheduleType(), "자동 변경 접수", start.plusDays(1), end.plusDays(1), null)),
                 List.of(new LhAnnouncementEnrichmentMapper.LhAttachmentData("LH:" + pan + ":file",
                         "자동 변경.pdf", attachment.getFileType(), "https://example.com/changed.pdf")), List.of(), false),
-                Set.of(), Set.of());
+                null);
         entityManager.flush();
         assertThat(event.getName()).isEqualTo("공식 확인 접수");
         assertThat(attachment.getFileName()).isEqualTo("공식 확인.pdf");
@@ -119,11 +100,62 @@ class VerifiedAnnouncementEnrichmentIntegrationTest {
                         event.getScheduleType(), "다른 접수", start, end, null)),
                 List.of(new LhAnnouncementEnrichmentMapper.LhAttachmentData("LH:" + pan + ":replacement",
                         "다른 자료.pdf", attachment.getFileType(), "https://example.com/other.pdf")), List.of(), false),
-                Set.of(), Set.of());
+                null);
         entityManager.flush(); entityManager.clear();
         assertThat(entityManager.find(AnnouncementSchedule.class, event.getId()))
                 .isNotNull().extracting(AnnouncementSchedule::getName).isEqualTo("공식 확인 접수");
         assertThat(entityManager.find(AnnouncementAttachment.class, attachment.getId()))
                 .isNotNull().extracting(AnnouncementAttachment::getFileName).isEqualTo("공식 확인.pdf");
+    }
+
+    @Test
+    void 같은_LH_일정과_첨부를_다시_써도_중복해_만들지_않는다() {
+        var announcement = announcement("repeat");
+        var data = scheduleAndAttachment("repeat-pan");
+
+        var first = writer.write(announcement, data, null);
+        var second = writer.write(announcement, data, null);
+        entityManager.flush();
+
+        assertThat(first.createdSchedules()).isOne();
+        assertThat(first.createdAttachments()).isOne();
+        assertThat(second.createdSchedules()).isZero();
+        assertThat(second.createdAttachments()).isZero();
+        assertThat(schedulesOf(announcement)).isOne();
+        assertThat(attachmentsOf(announcement)).isOne();
+    }
+
+    @Test
+    void LH_상세가_일정과_첨부를_주지_않으면_마지막_값을_남긴다() {
+        var announcement = announcement("empty");
+        writer.write(announcement, scheduleAndAttachment("empty-pan"), null);
+        entityManager.flush();
+
+        writer.write(announcement, new LhAnnouncementEnrichmentData("empty-pan", null, null,
+                List.of(), List.of(), List.of(), false), null);
+        entityManager.flush();
+
+        assertThat(schedulesOf(announcement)).isOne();
+        assertThat(attachmentsOf(announcement)).isOne();
+    }
+
+    private LhAnnouncementEnrichmentData scheduleAndAttachment(String pan) {
+        var start = LocalDateTime.of(2026, 10, 20, 9, 0);
+        return new LhAnnouncementEnrichmentData(pan, null, null,
+                List.of(new LhAnnouncementEnrichmentMapper.LhScheduleData("LH:" + pan + ":event",
+                        ScheduleType.APPLICATION, "접수", start, start.plusDays(1), null)),
+                List.of(new LhAnnouncementEnrichmentMapper.LhAttachmentData("LH:" + pan + ":file",
+                        "공고.pdf", AttachmentType.ANNOUNCEMENT, "https://example.com/notice.pdf")),
+                List.of(), false);
+    }
+
+    private long schedulesOf(Announcement announcement) {
+        return entityManager.createQuery("SELECT count(s) FROM AnnouncementSchedule s WHERE s.announcement = :a",
+                Long.class).setParameter("a", announcement).getSingleResult();
+    }
+
+    private long attachmentsOf(Announcement announcement) {
+        return entityManager.createQuery("SELECT count(a) FROM AnnouncementAttachment a WHERE a.announcement = :a",
+                Long.class).setParameter("a", announcement).getSingleResult();
     }
 }

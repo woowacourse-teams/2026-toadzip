@@ -28,14 +28,6 @@ public class DataPipelineRunner {
     private final MeterRegistry meterRegistry;
 
     public void run(DataPipelineType type, UUID executionId) {
-        run(type, executionId, null);
-    }
-
-    public void run(DataPipelineType type, UUID executionId, String targetIdentifier) {
-        if (type == DataPipelineType.ANNOUNCEMENT_REGISTRATION
-                && (targetIdentifier == null || targetIdentifier.isBlank())) {
-            throw new IllegalArgumentException("단건 등록 대상 공고 ID가 없습니다.");
-        }
         DataPipelinePartialFailureException firstReportedPartialFailure = null;
         DataPipelineStep previousPartiallyFailedStep = null;
         boolean lhRateLimited = false;
@@ -47,7 +39,7 @@ public class DataPipelineRunner {
             }
             StepOutcome outcome = runStep(
                     executionId, step, previousPartiallyFailedStep,
-                    skipReason(type, step, collectionRateLimited, lhRateLimited), targetIdentifier
+                    skipReason(type, step, collectionRateLimited, lhRateLimited)
             );
             lhRateLimited |= outcome.rateLimited() && isLhAnnouncementCollection(step);
             collectionRateLimited |= outcome.rateLimited() && step.isCollection();
@@ -71,8 +63,7 @@ public class DataPipelineRunner {
             UUID executionId,
             DataPipelineStep step,
             DataPipelineStep previousPartiallyFailedStep,
-            String skipReason,
-            String targetIdentifier
+            String skipReason
     ) {
         Timer.Sample sample = Timer.start(meterRegistry);
         String outcome = "failed";
@@ -88,12 +79,7 @@ public class DataPipelineRunner {
                 }
                 return new StepOutcome(false, null);
             }
-            DataPipelineStepResult result = stepExecutor.execute(step, targetIdentifier);
-            if (result.skipReason() != null) {
-                executionStateService.skipStep(executionId, step, result.skipReason(), result.serverResponse());
-                outcome = "skipped";
-                return new StepOutcome(false, null);
-            }
+            DataPipelineStepResult result = stepExecutor.execute(step);
             if (result.failedOnlyByRateLimit()) {
                 executionStateService.skipStep(executionId, step, RATE_LIMIT_SKIP_REASON, result.serverResponse());
                 outcome = "rate_limited";

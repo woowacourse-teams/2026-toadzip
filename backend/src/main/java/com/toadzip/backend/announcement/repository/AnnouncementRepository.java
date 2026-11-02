@@ -48,13 +48,6 @@ public interface AnnouncementRepository extends JpaRepository<Announcement, Long
     @Query("select announcement from Announcement announcement where announcement.id = :id")
     Optional<Announcement> findByIdForUpdate(long id);
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("""
-            select announcement from Announcement announcement
-            where announcement.sourceAnnouncementIdentifier = :identifier
-            """)
-    Optional<Announcement> findBySourceAnnouncementIdentifierForUpdate(String identifier);
-
     @Query("""
             SELECT announcement
             FROM Announcement announcement

@@ -81,7 +81,7 @@ class SourceProjectionIntegrationTest {
     }
 
     @Test
-    void canonicalQueryVersionSuppressesOldRowsAndVerifiedEmptyKeepsItsMeaning() {
+    void canonicalQueryVersionSuppressesOldRows() {
         String query = "PAN_ID=PROJECTION-PAN&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06&SPL_INF_TP_CD=062";
         String old = query + "&COLLECTION_VERSION=6";
         String current = query + "&COLLECTION_VERSION=7";
@@ -94,8 +94,6 @@ class SourceProjectionIntegrationTest {
                 LhAnnouncementQuery.requestHashOf(query), hash, current, record);
 
         assertThat(supplies.findAllByPanIdAndRequestHashOrderBySourceOrderAsc("PROJECTION-PAN", oldHash)).isEmpty();
-        assertThat(supplies.hasVerifiedEmptySupplies("PROJECTION-PAN", current)).isTrue();
-        assertThat(supplies.hasVerifiedEmptySupplies("PROJECTION-PAN", old)).isFalse();
     }
 
     @Test

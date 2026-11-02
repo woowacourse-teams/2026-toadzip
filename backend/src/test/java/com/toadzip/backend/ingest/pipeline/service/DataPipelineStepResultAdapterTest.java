@@ -3,9 +3,7 @@ package com.toadzip.backend.ingest.pipeline.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
-import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -32,22 +30,16 @@ class DataPipelineStepResultAdapterTest {
     }
 
     @Test
-    void 공고_정제와_LH_보강의_실패는_단계를_멈추지_않는_경고다() {
-        var mapping = adapter.adapt(new MyHomeAnnouncementMappingReport(0, 0, 0, 0, 0, 0, 0, 4));
+    void LH_세대수_보강의_실패는_단계를_멈추지_않는_경고다() {
         var household = adapter.adapt(new LhHousingTypeHouseholdEnrichmentReport(0, 0, 0, 0, 2, 3));
-        var announcement = adapter.adapt(new LhAnnouncementEnrichmentReport(0, 0, 0, 0, 0, 0, 0, 0, 0, 6));
 
-        assertThat(mapping.failureCount()).isZero();
-        assertThat(mapping.warningCount()).isEqualTo(4);
         assertThat(household.failureCount()).isZero();
         assertThat(household.warningCount()).isEqualTo(5);
-        assertThat(announcement.failureCount()).isZero();
-        assertThat(announcement.warningCount()).isEqualTo(6);
     }
 
     @Test
     void 저장하는_응답에는_보고서_필드만_있고_단계_계약_값은_없다() {
-        var result = adapter.adapt(new MyHomeAnnouncementMappingReport(1, 0, 0, 0, 0, 0, 0, 4));
+        var result = adapter.adapt(new MyHomeComplexMappingReport(1, 0, 0, 0, 0, 0, 0, 4));
 
         assertThat(result.serverResponse())
                 .contains("\"failedSourceRowCount\":4")

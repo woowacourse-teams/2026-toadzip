@@ -6,8 +6,6 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAn
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionCommand;
 import com.toadzip.backend.ingest.collection.paging.service.PagedSourceCollector;
-import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
-import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -38,21 +36,5 @@ public class MyHomeAnnouncementCollectionService {
             lifecycle.completeRun(runId);
         }
         return report;
-    }
-
-    /** 목록의 모든 페이지를 검증하지만 해당 공고만 저장한다. 실패를 기록하지 않고 전체 수집 완료 처리도 하지 않는다. */
-    public int collectAnnouncement(String pblancId) {
-        IngestExecutionScope.requireHeld();
-        UUID executionId = IngestExecutionScope.currentExecutionId().orElseGet(UUID::randomUUID);
-        var counter = new ExternalDataCallCounter();
-        int stored = 0;
-        for (MyHomeAnnouncementSupplyType type : MyHomeAnnouncementSupplyType.values()) {
-            stored += pagedCollector.collect(collector, startedAt -> new MyHomeAnnouncementCollectionRequest(
-                    executionId, type.requestCode(), 500, 1000, startedAt, pblancId), counter);
-        }
-        if (stored == 0) {
-            throw new InvalidIngestRequestException("공고를 찾을 수 없습니다: " + pblancId);
-        }
-        return stored;
     }
 }

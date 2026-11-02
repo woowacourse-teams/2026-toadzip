@@ -1,10 +1,8 @@
 package com.toadzip.backend.ingest.mapping.controller;
 
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -29,17 +27,6 @@ class MyHomeAnnouncementMappingControllerTest {
 
     @MockitoBean
     private MyHomeAnnouncementMappingService mappingService;
-
-    @Test
-    void 공고_매핑_실행은_지원_종료로_410을_반환하고_매핑하지_않는다() throws Exception {
-        mockMvc.perform(post("/api/admin/ingest/myhome/announcement-mappings"))
-                .andExpect(status().isGone())
-                .andExpect(jsonPath("$.code").value("INGEST_OPERATION_RETIRED"))
-                .andExpect(jsonPath("$.message").value(
-                        "마이홈 공고 정제·LH 보강과 그 보정은 지원을 종료했습니다. 공고는 LH 공고 정제와 PDF 보정으로만 바뀝니다."));
-
-        verifyNoInteractions(mappingService);
-    }
 
     @Test
     void 매핑에_실패한_원천과_사유를_조회한다() throws Exception {

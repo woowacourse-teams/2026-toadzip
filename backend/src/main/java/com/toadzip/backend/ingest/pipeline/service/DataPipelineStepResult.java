@@ -4,8 +4,7 @@ record DataPipelineStepResult(
         String serverResponse,
         int failureCount,
         int rateLimitedFailureCount,
-        int warningCount,
-        String skipReason
+        int warningCount
 ) {
 
     DataPipelineStepResult {
@@ -15,14 +14,6 @@ record DataPipelineStepResult(
                 || warningCount < 0) {
             throw new IllegalArgumentException("파이프라인 단계 실패 개수가 올바르지 않습니다.");
         }
-    }
-
-    DataPipelineStepResult(String serverResponse, int failureCount, int rateLimitedFailureCount, int warningCount) {
-        this(serverResponse, failureCount, rateLimitedFailureCount, warningCount, null);
-    }
-
-    static DataPipelineStepResult notApplicable(String reason) {
-        return new DataPipelineStepResult("{}", 0, 0, 0, reason);
     }
 
     boolean failed() {

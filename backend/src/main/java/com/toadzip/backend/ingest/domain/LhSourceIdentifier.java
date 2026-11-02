@@ -36,10 +36,6 @@ public final class LhSourceIdentifier {
         return Optional.of(new Supply(parts[1], parts[3]));
     }
 
-    public static boolean isLhSource(String identifier) {
-        return identifier != null && identifier.startsWith(PREFIX);
-    }
-
     public static boolean isLhSourceOfAny(String identifier, Collection<String> panIds) {
         return identifier != null && panIds.stream().anyMatch(panId -> identifier.startsWith(PREFIX + panId + ":"));
     }

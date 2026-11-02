@@ -3,8 +3,6 @@ package com.toadzip.backend.ingest.pipeline.controller;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineStartRequest;
-import com.toadzip.backend.ingest.pipeline.dto.AnnouncementRegistrationRequest;
-import com.toadzip.backend.ingest.pipeline.dto.AnnouncementRegistrationUrlRequest;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionQueryService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import jakarta.validation.Valid;
@@ -45,21 +43,6 @@ public class DataPipelineController {
         }
         DataPipelineExecutionResponse response = executionService.start(pipelineType, request.serviceKey().strip());
         return ResponseEntity.accepted().body(response);
-    }
-
-    @PostMapping("/announcement-registration")
-    public ResponseEntity<DataPipelineExecutionResponse> register(
-            @Valid @RequestBody AnnouncementRegistrationRequest request
-    ) {
-        return ResponseEntity.accepted()
-                .body(executionService.startAnnouncementRegistration(request.pblancId().strip()));
-    }
-
-    @PostMapping("/announcement-registration/url")
-    public ResponseEntity<DataPipelineExecutionResponse> registerUrl(
-            @Valid @RequestBody AnnouncementRegistrationUrlRequest request
-    ) {
-        return ResponseEntity.accepted().body(executionService.startAnnouncementRegistrationUrl(request.url()));
     }
 
     @GetMapping("/executions/{executionId}")

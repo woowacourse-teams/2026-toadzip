@@ -1,7 +1,6 @@
 package com.toadzip.backend.ingest.collection.lh.supply.repository;
 
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
-import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceReader;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import java.util.List;
@@ -30,15 +29,6 @@ public class LhAnnouncementSupplySourceReader {
         }
         return rows.findAllBySourceIdOrderBySourceOrderAsc(current.getId()).stream()
                 .map(row -> LhAnnouncementSupplySourceView.of(row, current)).toList();
-    }
-    public boolean hasVerifiedEmptySupplies(String panId, String description) {
-        String hash = LhAnnouncementQuery
-                .requestHashOf(description);
-        var source = sources.find(CollectionSource.LH_ANNOUNCEMENT_SUPPLY, panId, hash);
-        if (source.isPresent()) {
-            return source.orElseThrow().getRequestHash().equals(hash) && source.orElseThrow().isVerifiedEmpty();
-        }
-        return false;
     }
 
 }
