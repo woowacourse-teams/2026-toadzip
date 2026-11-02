@@ -1,5 +1,9 @@
 package com.toadzip.backend.ingest.collection.myhome.announcement.domain;
 
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 public enum MyHomeAnnouncementSupplyType {
     PERMANENT_RENTAL("01"),
     NATIONAL_RENTAL("02"),
@@ -13,6 +17,11 @@ public enum MyHomeAnnouncementSupplyType {
 
     MyHomeAnnouncementSupplyType(String requestCode) {
         this.requestCode = requestCode;
+    }
+
+    public static Set<String> requestCodes() {
+        return Arrays.stream(values()).map(MyHomeAnnouncementSupplyType::requestCode)
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     public String requestCode() {
