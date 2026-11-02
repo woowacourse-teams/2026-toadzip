@@ -9,7 +9,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComple
 import com.toadzip.backend.ingest.collection.paging.service.PagedSourceCollector;
 import com.toadzip.backend.ingest.collection.paging.service.RateLimitSignal;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRetryInterruptedException;
+import com.toadzip.backend.ingest.collection.service.ExternalDataRetryInterruptedException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.RequiredArgsConstructor;

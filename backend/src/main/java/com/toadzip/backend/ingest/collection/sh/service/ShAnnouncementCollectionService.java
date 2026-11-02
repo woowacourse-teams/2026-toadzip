@@ -14,8 +14,8 @@ import com.toadzip.backend.ingest.collection.sh.repository.ShAnnouncementHtmlPar
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataCallFailureException;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRetryInterruptedException;
+import com.toadzip.backend.ingest.collection.service.ExternalDataCallFailureException;
+import com.toadzip.backend.ingest.collection.service.ExternalDataRetryInterruptedException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;

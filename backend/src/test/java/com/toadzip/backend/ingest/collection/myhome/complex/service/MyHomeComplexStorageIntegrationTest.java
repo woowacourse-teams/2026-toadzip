@@ -41,7 +41,7 @@ import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixtur
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.collection.paging.service.CollectedSourceConflictException;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataCallFailureException;
+import com.toadzip.backend.ingest.collection.service.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;

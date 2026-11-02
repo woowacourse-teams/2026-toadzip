@@ -43,7 +43,6 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHo
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.lh.service.EmptyLhDetailReplacementException;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.EmptyLhSupplyReplacementException;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.HeldLhSupplyReplacement;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.IncompleteLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;

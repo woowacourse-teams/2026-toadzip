@@ -1,5 +1,6 @@
-package com.toadzip.backend.ingest.collection.repository.external;
+package com.toadzip.backend.ingest.collection.service;
 
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import lombok.Getter;
 
 @Getter

@@ -25,7 +25,7 @@ import com.toadzip.backend.ingest.collection.paging.dto.PagedSourceRequest;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataCallFailureException;
+import com.toadzip.backend.ingest.collection.service.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;

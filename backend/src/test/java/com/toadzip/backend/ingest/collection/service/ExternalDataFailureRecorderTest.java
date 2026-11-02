@@ -9,7 +9,6 @@ import static org.mockito.Mockito.verify;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataFailureStore;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
