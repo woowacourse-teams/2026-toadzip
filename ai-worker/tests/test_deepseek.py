@@ -144,6 +144,44 @@ def test_silence_shorter_than_deadline_is_not_timeout(monkeypatch):
     assert reply.content == '{"data": {}}'
 
 
+def test_silence_after_a_chunk_near_deadline_still_times_out_at_deadline():
+    # 읽기 제한은 읽을 때마다 새로 걸려, 마감 직전에 온 조각 뒤로 조용하면 그만큼 더 기다렸다.
+    chunk_sent = threading.Event()
+
+    class Stalled(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers["Content-Length"]))
+            self.send_response(200)
+            self.send_header("Content-Length", "1000")
+            self.end_headers()
+            self.wfile.flush()
+            time.sleep(0.9)
+            self.wfile.write(b"\n")
+            self.wfile.flush()
+            chunk_sent.set()
+            time.sleep(3)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Stalled)
+    server.daemon_threads = True
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    started = time.monotonic()
+    try:
+        with pytest.raises(TransientError) as error:
+            deepseek.DeepSeek("test-key", base_url=f"http://127.0.0.1:{server.server_port}").chat("p", started + 1)
+        elapsed = time.monotonic() - started
+    finally:
+        server.shutdown()
+
+    assert chunk_sent.is_set()
+    assert error.value.code == "MODEL_TIMEOUT"
+    assert elapsed < 1.3, f"마감 1초를 {elapsed:.2f}초까지 넘겼다"
+
+
 @pytest.mark.parametrize("payload, code", [
     (completion(finish_reason="length"), "MODEL_RESPONSE_TRUNCATED"),
     (completion(content="  "), "MODEL_RESPONSE_EMPTY"),
