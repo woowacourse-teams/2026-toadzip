@@ -15,6 +15,7 @@ import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupp
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.domain.SourceArea;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
+import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport.SupplyCounts;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -217,14 +219,21 @@ class LhSupplyRowWriter {
             other.statuses.forEach((status, count) -> statuses.merge(status, count, Integer::sum));
         }
 
-        int createdRows;
-        int updatedRows;
-        int deletedRows;
-        int createdTargets;
-        int updatedTargets;
-        int deletedTargets;
-        int filledComplexes;
-        final Map<LhSupplyMatchStatus, Integer> statuses = new EnumMap<>(LhSupplyMatchStatus.class);
+        SupplyCounts toCounts() {
+            Map<String, Integer> statusCounts = new TreeMap<>();
+            statuses.forEach((status, count) -> statusCounts.put(status.name(), count));
+            return new SupplyCounts(createdRows, updatedRows, deletedRows, createdTargets, updatedTargets,
+                    deletedTargets, filledComplexes, statusCounts);
+        }
+
+        private int createdRows;
+        private int updatedRows;
+        private int deletedRows;
+        private int createdTargets;
+        private int updatedTargets;
+        private int deletedTargets;
+        private int filledComplexes;
+        private final Map<LhSupplyMatchStatus, Integer> statuses = new EnumMap<>(LhSupplyMatchStatus.class);
 
         void count(LhSupplyMatchStatus status) {
             statuses.merge(status, 1, Integer::sum);

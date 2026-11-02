@@ -21,6 +21,7 @@ import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMap
 import com.toadzip.backend.ingest.enrichment.service.LhScheduleAttachmentWriter;
 import com.toadzip.backend.ingest.lhrefinement.domain.LhRentalTypes;
 import com.toadzip.backend.ingest.lhrefinement.domain.LhRevisionName;
+import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport;
 import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementComplexLinker.DetailComplex;
 import com.toadzip.backend.ingest.lhrefinement.service.LhSupplyRowWriter.SupplyLine;
 import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
@@ -36,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -250,7 +252,9 @@ class LhAnnouncementRefiner {
 
         void add(Tally other) {
             created += other.created;
+            adopted += other.adopted;
             updated += other.updated;
+            other.held.forEach((reason, count) -> held.merge(reason, count, Integer::sum));
             documentOwned += other.documentOwned;
             recheckRequired += other.recheckRequired;
             revisionsLinked += other.revisionsLinked;
@@ -259,13 +263,30 @@ class LhAnnouncementRefiner {
             supplies.add(other.supplies);
         }
 
-        int created;
-        int updated;
-        int documentOwned;
-        int recheckRequired;
-        int revisionsLinked;
-        int revisionsUnlinked;
-        final LhAnnouncementComplexLinker.Tally complexes = new LhAnnouncementComplexLinker.Tally();
-        final LhSupplyRowWriter.Tally supplies = new LhSupplyRowWriter.Tally();
+        /** 만든 공고는 정제하면서 세므로 여기서는 이어받은 공고와 보류 이유만 센다. */
+        void count(Outcome outcome) {
+            switch (outcome) {
+                case CREATED -> { }
+                case ADOPTED -> adopted++;
+                default -> held.merge(outcome.name(), 1, Integer::sum);
+            }
+        }
+
+        LhAnnouncementRefinementReport toReport(int targetCount, int failedCount) {
+            return new LhAnnouncementRefinementReport(targetCount, created, adopted, updated, held, failedCount,
+                    documentOwned, recheckRequired, revisionsLinked, revisionsUnlinked, complexes.toCounts(),
+                    supplies.toCounts());
+        }
+
+        private int created;
+        private int adopted;
+        private int updated;
+        private final Map<String, Integer> held = new TreeMap<>();
+        private int documentOwned;
+        private int recheckRequired;
+        private int revisionsLinked;
+        private int revisionsUnlinked;
+        private final LhAnnouncementComplexLinker.Tally complexes = new LhAnnouncementComplexLinker.Tally();
+        private final LhSupplyRowWriter.Tally supplies = new LhSupplyRowWriter.Tally();
     }
 }

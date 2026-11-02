@@ -11,6 +11,7 @@ import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport.ComplexCounts;
 import java.time.Clock;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -152,12 +153,16 @@ class LhAnnouncementComplexLinker {
             unlinked += other.unlinked;
         }
 
-        int created;
-        int updated;
-        int absent;
-        int migrated;
-        int inherited;
-        int auto;
-        int unlinked;
+        ComplexCounts toCounts() {
+            return new ComplexCounts(created, updated, absent, migrated, inherited, auto, unlinked);
+        }
+
+        private int created;
+        private int updated;
+        private int absent;
+        private int migrated;
+        private int inherited;
+        private int auto;
+        private int unlinked;
     }
 }
