@@ -251,31 +251,6 @@ export async function getDataPipelineStatus(
   return readExecutionResponse(response)
 }
 
-export async function startAnnouncementRegistration(pblancId: string): Promise<DataPipelineExecution> {
-  const identifier = pblancId.trim()
-  if (!identifier) throw new Error('마이홈 공고 ID를 입력해 주세요.')
-  const csrfToken = await requestCsrfToken()
-  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/announcement-registration`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', [csrfToken.headerName]: csrfToken.token },
-    body: JSON.stringify({ pblancId: identifier }),
-  })
-  return readExecutionResponse(response)
-}
-
-export async function startAnnouncementRegistrationUrl(url: string): Promise<DataPipelineExecution> {
-  const target = url.trim()
-  if (!target) throw new Error('마이홈 공고 URL을 입력해 주세요.')
-  const csrfToken = await requestCsrfToken()
-  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/announcement-registration/url`, {
-    method: 'POST', credentials: 'include',
-    headers: { 'Content-Type': 'application/json', [csrfToken.headerName]: csrfToken.token },
-    body: JSON.stringify({ url: target }),
-  })
-  return readExecutionResponse(response)
-}
-
 export async function getDataPipelineExecution(executionId: string): Promise<DataPipelineExecution> {
   const response = await fetch(
     `${apiBaseUrl}/api/admin/ingest/pipelines/executions/${encodeURIComponent(executionId)}`,

@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doReturn;
@@ -18,11 +19,12 @@ import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCo
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
 import com.toadzip.backend.ingest.collection.service.ShAnnouncementCollectionService;
-import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
-import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
+import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
+import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport;
+import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
@@ -35,6 +37,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
@@ -42,11 +45,13 @@ import java.util.concurrent.ScheduledFuture;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,6 +72,24 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
     @Autowired
     private DataPipelineExecutionStateService executionStateService;
 
+    @Autowired
+    private JdbcClient jdbc;
+
+    @Test
+    void 옛_공고_정제_단계에서_실패한_지난_실행도_응답으로_읽는다() {
+        UUID executionId = UUID.randomUUID();
+        executionStateService.create(executionId, DataPipelineType.ANNOUNCEMENT_REFINEMENT, STARTED_AT);
+        // 공고 정제 단계가 바뀌기 전에 마이홈 공고 정제에서 실패한 실행.
+        jdbc.sql("UPDATE data_pipeline_executions SET status = 'FAILED', current_step = 'MAP_MYHOME_ANNOUNCEMENTS',"
+                + " failed_step = 'MAP_MYHOME_ANNOUNCEMENTS' WHERE execution_id = ?").param(executionId).update();
+
+        var response = new DataPipelineExecutionMapper(JsonMapper.builder().build())
+                .response(executionRepository.findByExecutionId(executionId).orElseThrow());
+
+        assertThat(response.currentStepIndex()).isZero();
+        assertThat(response.totalStepCount()).isOne();
+    }
+
     @Test
     void 행별_누락이_있어도_후속_단계를_실행하고_주의_상태로_완료한다() {
         MyHomeComplexMappingService mappingService = mock(MyHomeComplexMappingService.class);
@@ -76,11 +99,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         when(enrichmentService.enrichAll()).thenReturn(
                 LhHousingTypeHouseholdEnrichmentReport.matched(1, 0, 0)
         );
-        DataPipelineRunner runner = runner(mappingService, enrichmentService);
-        DataPipelineExecutionLock.Lease lease = mock(DataPipelineExecutionLock.Lease.class);
-        DataPipelineExecutionService service = service(runner, lease);
-
-        service.start(DataPipelineType.COMPLEX_REFINEMENT);
+        runRetiredComplexRefinement(runner(mappingService, enrichmentService));
 
         var execution = executionRepository
                 .findFirstByTypeOrderByIdDesc(DataPipelineType.COMPLEX_REFINEMENT)
@@ -95,7 +114,6 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 .containsExactly(DataPipelineStep.MAP_MYHOME_COMPLEXES,
                         DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS);
         verify(enrichmentService).enrichAll();
-        verify(lease).close();
     }
 
     @Test
@@ -107,12 +125,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         when(enrichmentService.enrichAll()).thenReturn(
                 LhHousingTypeHouseholdEnrichmentReport.matched(0, 0, 1)
         );
-        DataPipelineExecutionService service = service(
-                runner(mappingService, enrichmentService),
-                mock(DataPipelineExecutionLock.Lease.class)
-        );
-
-        service.start(DataPipelineType.COMPLEX_REFINEMENT);
+        runRetiredComplexRefinement(runner(mappingService, enrichmentService));
 
         var execution = executionRepository
                 .findFirstByTypeOrderByIdDesc(DataPipelineType.COMPLEX_REFINEMENT)
@@ -134,11 +147,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         when(enrichmentService.enrichAll()).thenReturn(
                 LhHousingTypeHouseholdEnrichmentReport.matched(1, 0, 0)
         );
-        DataPipelineRunner runner = runner(mappingService, enrichmentService);
-        DataPipelineExecutionLock.Lease lease = mock(DataPipelineExecutionLock.Lease.class);
-        DataPipelineExecutionService service = service(runner, lease);
-
-        service.start(DataPipelineType.COMPLEX_REFINEMENT);
+        runRetiredComplexRefinement(runner(mappingService, enrichmentService));
 
         var execution = executionRepository
                 .findFirstByTypeOrderByIdDesc(DataPipelineType.COMPLEX_REFINEMENT)
@@ -148,6 +157,25 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         assertThat(execution.getCompletedSteps())
                 .containsExactly(DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS);
         verify(enrichmentService).enrichAll();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DataPipelineType.class, names = {"COMPLEX_REFINEMENT", "COMPLEX_SYNC"})
+    void 지원을_종료한_단지_정제는_시작을_거절하고_실행_기록을_남기지_않는다(DataPipelineType type) {
+        MyHomeComplexMappingService mappingService = mock(MyHomeComplexMappingService.class);
+        LhHousingTypeHouseholdEnrichmentService enrichmentService =
+                mock(LhHousingTypeHouseholdEnrichmentService.class);
+        DataPipelineExecutionService service = service(
+                runner(mappingService, enrichmentService),
+                mock(DataPipelineExecutionLock.Lease.class)
+        );
+
+        long executionCount = executionRepository.count();
+
+        assertThatThrownBy(() -> service.start(type)).isInstanceOf(RetiredIngestOperationException.class);
+
+        assertThat(executionRepository.count()).isEqualTo(executionCount);
+        verifyNoInteractions(mappingService, enrichmentService);
     }
 
     @Test
@@ -237,14 +265,13 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
     void 마지막_수집_부분_실패는_통합_정제를_막고_독립_정제로_복구할_수_있다() {
         var myHomeService = mock(MyHomeAnnouncementCollectionService.class);
         var collectionService = mock(LhAnnouncementExternalCollectionService.class);
-        var mappingService = mock(MyHomeAnnouncementMappingService.class);
-        var enrichmentService = mock(LhAnnouncementEnrichmentService.class);
+        var refinementService = mock(LhAnnouncementRefinementService.class);
         when(myHomeService.collect(any())).thenReturn(ExternalDataCollectionReport.empty("myhome-announcement"));
         when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY))
                 .thenReturn(ExternalDataCollectionReport.empty("lh-announcement-supply"));
         when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL))
                 .thenReturn(new ExternalDataCollectionReport("lh-announcement-detail", 1, 1, 1));
-        var service = service(runner(myHomeService, collectionService, mappingService, enrichmentService),
+        var service = service(runner(myHomeService, collectionService, refinementService),
                 mock(DataPipelineExecutionLock.Lease.class));
 
         var accepted = service.start(DataPipelineType.ANNOUNCEMENT_SYNC);
@@ -252,13 +279,12 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
 
         assertThat(failed.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         assertThat(failed.currentStepIndex()).isEqualTo(4);
-        assertThat(failed.totalStepCount()).isEqualTo(6);
+        assertThat(failed.totalStepCount()).isEqualTo(5);
         assertThat(failed.partiallyFailedSteps()).singleElement()
                 .extracting("step").isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
-        verifyNoInteractions(mappingService, enrichmentService);
+        verifyNoInteractions(refinementService);
 
-        when(mappingService.mapAll()).thenReturn(new MyHomeAnnouncementMappingReport(1, 0, 0, 1, 0, 0, 0, 0));
-        when(enrichmentService.enrichAll()).thenReturn(LhAnnouncementEnrichmentReport.empty());
+        when(refinementService.refineAll()).thenReturn(lhRefinementReport());
         var recovered = service.start(DataPipelineType.ANNOUNCEMENT_REFINEMENT);
 
         assertThat(recovered.executionId()).isNotEqualTo(failed.executionId());
@@ -267,22 +293,21 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         verify(myHomeService).collect(any());
         verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
         verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
-        verify(mappingService).mapAll();
+        verify(refinementService).refineAll();
     }
 
     @Test
     void 통합_수집_호출_제한은_정제_건너뜀_사유와_부분_완료를_저장한다() {
         var myHomeService = mock(MyHomeAnnouncementCollectionService.class);
         var collectionService = mock(LhAnnouncementExternalCollectionService.class);
-        var mappingService = mock(MyHomeAnnouncementMappingService.class);
-        var enrichmentService = mock(LhAnnouncementEnrichmentService.class);
+        var refinementService = mock(LhAnnouncementRefinementService.class);
         when(myHomeService.collect(any()))
                 .thenReturn(new ExternalDataCollectionReport("myhome-announcement", 0, 1, 0, 0, 1));
         when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY))
                 .thenReturn(ExternalDataCollectionReport.empty("lh-announcement-supply"));
         when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL))
                 .thenReturn(ExternalDataCollectionReport.empty("lh-announcement-detail"));
-        var service = service(runner(myHomeService, collectionService, mappingService, enrichmentService),
+        var service = service(runner(myHomeService, collectionService, refinementService),
                 mock(DataPipelineExecutionLock.Lease.class));
 
         var accepted = service.start(DataPipelineType.ANNOUNCEMENT_SYNC);
@@ -290,13 +315,13 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
 
         assertThat(result.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS);
         assertThat(result.skippedSteps()).extracting("stepName").containsExactly(
-                "마이홈 공고 수집", "마이홈 공고 정제", "LH 공고 상세·공급 정보 보강");
+                "마이홈 공고 수집", "LH 공고 정제");
         assertThat(result.skippedSteps().get(1).reason()).contains("자동 정제를 실행하지 않았습니다");
-        verifyNoInteractions(mappingService, enrichmentService);
+        verifyNoInteractions(refinementService);
     }
 
     @ParameterizedTest
-    @CsvSource({"COMPLEX_SYNC, 3, 4", "ANNOUNCEMENT_SYNC, 5, 6"})
+    @CsvSource({"COMPLEX_SYNC, 3, 4", "ANNOUNCEMENT_SYNC, 5, 5"})
     void 통합_실행의_정제_순서와_완료를_저장하고_조회한다(
             DataPipelineType type, int refinementIndex, int totalSteps
     ) {
@@ -316,6 +341,21 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
 
         assertThat(executionRepository.findByExecutionId(executionId).orElseThrow().getStatus())
                 .isEqualTo(DataPipelineExecutionStatus.COMPLETED);
+    }
+
+    // 단지 정제는 실행 시작을 거절한다. 코드를 지울 때까지 러너와 상태 저장을 직접 이어 단계별 상태 전이를 지킨다.
+    private void runRetiredComplexRefinement(DataPipelineRunner runner) {
+        UUID executionId = UUID.randomUUID();
+        executionStateService.create(executionId, DataPipelineType.COMPLEX_REFINEMENT, STARTED_AT);
+        try {
+            runner.run(DataPipelineType.COMPLEX_REFINEMENT, executionId);
+            executionStateService.complete(executionId, STARTED_AT.plusSeconds(1));
+        }
+        catch (DataPipelinePartialFailureException exception) {
+            new DataPipelineFailureRecorder(executionStateService, Clock.fixed(STARTED_AT, ZoneOffset.UTC)).record(
+                    executionId, DataPipelineType.COMPLEX_REFINEMENT, exception.getStep(),
+                    exception.getMessage(), exception.getServerResponse());
+        }
     }
 
     private DataPipelineExecutionService service(
@@ -366,6 +406,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                         enrichmentService,
                         mock(MyHomeAnnouncementMappingService.class),
                         mock(LhAnnouncementEnrichmentService.class),
+                        mock(LhAnnouncementRefinementService.class),
                         new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
                         mock(AnnouncementRegistrationService.class),
                         mock(ShAnnouncementCollectionService.class)
@@ -379,15 +420,13 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
             MyHomeAnnouncementCollectionService myHomeService,
             LhAnnouncementExternalCollectionService collectionService
     ) {
-        return runner(myHomeService, collectionService,
-                mock(MyHomeAnnouncementMappingService.class), mock(LhAnnouncementEnrichmentService.class));
+        return runner(myHomeService, collectionService, mock(LhAnnouncementRefinementService.class));
     }
 
     private DataPipelineRunner runner(
             MyHomeAnnouncementCollectionService myHomeService,
             LhAnnouncementExternalCollectionService collectionService,
-            MyHomeAnnouncementMappingService mappingService,
-            LhAnnouncementEnrichmentService enrichmentService
+            LhAnnouncementRefinementService refinementService
     ) {
         return new DataPipelineRunner(
                 new DataPipelineStepExecutor(
@@ -398,8 +437,9 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                         collectionService,
                         mock(MyHomeComplexMappingService.class),
                         mock(LhHousingTypeHouseholdEnrichmentService.class),
-                        mappingService,
-                        enrichmentService,
+                        mock(MyHomeAnnouncementMappingService.class),
+                        mock(LhAnnouncementEnrichmentService.class),
+                        refinementService,
                         new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
                         mock(AnnouncementRegistrationService.class),
                         mock(ShAnnouncementCollectionService.class)
@@ -408,6 +448,15 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 new SimpleMeterRegistry()
         );
     }
+
+    private LhAnnouncementRefinementReport lhRefinementReport() {
+        return new LhAnnouncementRefinementReport(
+                1, 1, 0, 0, Map.of(), 0, 0, 0, 1, 0,
+                new LhAnnouncementRefinementReport.ComplexCounts(1, 0, 0, 0, 0, 1, 0),
+                new LhAnnouncementRefinementReport.SupplyCounts(1, 0, 0, 1, 0, 0, 1, Map.of())
+        );
+    }
+
     private LhAnnouncementCatalogCollectionService successfulCatalogService() {
         var service = mock(LhAnnouncementCatalogCollectionService.class);
         when(service.collect()).thenReturn(new ExternalDataCollectionReport(

@@ -75,7 +75,7 @@ public final class SupplyCorrection {
             @PositiveOrZero int displayOrder,
             @NotBlank @Size(max = 255) String complexName,
             @NotBlank @Size(max = 255) String typeName,
-            @NotBlank @Size(max = 255) String pnu,
+            @Size(max = 255) String pnu,
             YearMonth moveInMonth,
             @NotNull SupplyCategory category,
             @PositiveOrZero Integer householdCount,

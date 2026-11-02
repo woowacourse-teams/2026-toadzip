@@ -27,6 +27,8 @@ public class VerifiedLhSupplyReplacementService {
 
     private final LhAnnouncementCollectionCandidateResolver candidateResolver;
 
+    private static final String LH_ANNOUNCEMENT_PREFIX = "LH:";
+
     public VerifiedLhSupplyReplacementService(
             ExternalDataCollectionFailureRepository failureRepository,
             VerifiedLhSupplyReplacementStore replacementStore,
@@ -43,15 +45,8 @@ public class VerifiedLhSupplyReplacementService {
         if (!officialLhUrl(request.evidenceUrl())) {
             throw new InvalidIngestRequestException("LH 공식 공고문 또는 정정 근거 URL이 필요합니다.");
         }
-        var currentSources = MyHomeAnnouncementCurrentSources.select(
-                myHomeRepository.findAllByPblancIdOrderByIdAsc(pblancId));
-        boolean matchesCurrentSource = candidateResolver.resolveAll(currentSources)
-                .stream()
-                .filter(LhAnnouncementCollectionCandidateResolver.Candidate.class::isInstance)
-                .map(LhAnnouncementCollectionCandidateResolver.Candidate.class::cast)
-                .anyMatch(candidate -> candidate.requestDescription().equals(request.requestDescription()));
-        if (!matchesCurrentSource) {
-            throw new InvalidIngestRequestException("현재 마이홈 공고의 LH 공급 요청과 승인 대상이 다릅니다.");
+        if (!matchesCurrentRequest(pblancId, request.requestDescription())) {
+            throw new InvalidIngestRequestException("현재 공고의 LH 공급 요청과 승인 대상이 다릅니다.");
         }
         ExternalDataCollectionFailure failure = failureRepository
                 .findFirstBySourceAndRequestDescriptionOrderByIdDesc(
@@ -69,6 +64,31 @@ public class VerifiedLhSupplyReplacementService {
                 LhAnnouncementQuery.requestHashOf(request.requestDescription()),
                 request.proposedFingerprint(), request.evidenceUrl(), request.reason(), operator
         );
+    }
+
+    /**
+     * 승인 대상 요청이 지금 수집하는 공고의 요청인지 본다. `LH:{공고 ID}`는 최신 공고목록의 그 공고, 그 밖은 마이홈 공고의 현재 원천으로
+     * 정한 요청과 비교한다.
+     */
+    private boolean matchesCurrentRequest(String announcementKey, String requestDescription) {
+        if (isLhAnnouncementKey(announcementKey)) {
+            String panId = announcementKey.substring(LH_ANNOUNCEMENT_PREFIX.length());
+            return candidateResolver.resolveCatalogRequests().stream()
+                    .anyMatch(candidate -> candidate.panId().equals(panId)
+                            && candidate.requestDescription().equals(requestDescription));
+        }
+        var currentSources = MyHomeAnnouncementCurrentSources.select(
+                myHomeRepository.findAllByPblancIdOrderByIdAsc(announcementKey));
+        return candidateResolver.resolveAll(currentSources)
+                .stream()
+                .filter(LhAnnouncementCollectionCandidateResolver.Candidate.class::isInstance)
+                .map(LhAnnouncementCollectionCandidateResolver.Candidate.class::cast)
+                .anyMatch(candidate -> candidate.requestDescription().equals(requestDescription));
+    }
+
+    /** 마이홈 공고가 없는 LH 공고는 `LH:{공고 ID}`로 승인한다. LH 공고 정제가 만든 공고의 원천 식별자와 같은 형식이다. */
+    public static boolean isLhAnnouncementKey(String announcementKey) {
+        return announcementKey.startsWith(LH_ANNOUNCEMENT_PREFIX);
     }
 
     @Transactional

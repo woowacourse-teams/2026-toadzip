@@ -7,6 +7,17 @@
 - 성남시 10년임대(2026-10 기준 67개 hsmpSn)는 단지명 `매입임대주택`, 주택형명 `매입임대`로 제공되는 매입임대다. 이름에 `재개발매입`이 있는 아파트는 제외하지 않는다.
 - 마이그레이션 `V20261024_01`은 원천 행이 모두 제외 대상인 자동 등록 단지를 휴지통으로 옮기고 `admin_data_changes`에 기록한다. 관리자 수정, 승인된 통합 연결, 삭제되지 않은 공고 연결이 있는 단지는 옮기지 않으며 관리자 화면에서 복구할 수 있다.
 - 원천 식별자(`hsmpSn:공급유형`)는 `myhome_complex_links`를 통해 제품 단지에 연결한다.
+- 공공임대 5년·10년(`5년임대`·`10년임대`)은 제품 공급유형 `PUBLIC_RENTAL`(분양전환 공공임대) 하나로 둔다. LH 임대목록과 공고가 둘을 구분하지 않아서다.
+  50년 공공임대(`PUBLIC_RENTAL_50Y`)는 분양전환이 없는 다른 상품이라 따로 둔다. 이미 저장된 원천 식별자는 바꾸지 않도록
+  식별자의 공급유형 코드는 `PUBLIC_RENTAL_5Y`·`PUBLIC_RENTAL_10Y`를 그대로 쓴다.
+  공개·관리자 요청의 `PUBLIC_RENTAL_5Y`·`PUBLIC_RENTAL_10Y`(쿼리 파라미터·JSON 본문)는 `PUBLIC_RENTAL`로 받는다.
+- 배포와 복구(공공임대 통합): 마이그레이션 `V20261101_01`는 단지·공고의 5년·10년 값을 `PUBLIC_RENTAL`로 바꾸고 바꾼 행의 원래 값을
+  `public_rental_term_backup`에 남긴다. 이전 아티팩트는 `PUBLIC_RENTAL`을 읽지 못하고, 이전 정제는 새 제약에 걸리는 값을 쓰므로
+  구버전과 함께 돌 수 없다. [특별 배포](../../operations/deployment.md#db-전환계약-변경이-필요한-특별-배포)로 수집·정제 실행을 멈추고 이전 컨테이너를 내린 뒤 전환한다.
+  - 공급유형이 지문에 들어가 5년·10년 단지에 걸린 저장 매칭 결정·확인한 공급대상·LH 세대수 연결은 배포 뒤 재확인 대상으로 돌아가고,
+    공급유형을 확인해 검증한 단지는 `STALE`로 보인다. 값은 지우지 않는다. 배포 전에 운영 DB에서 해당 건수를 읽기 전용으로 센다.
+  - 되돌릴 때는 ① 제약 `announcements_supply_type_check`를 지우고 ② 현재 값이 아직 `PUBLIC_RENTAL`인 행만 백업 값으로 되돌리고
+    ③ 백업에 없는 `PUBLIC_RENTAL` 행은 관리자가 5년·10년 중 하나로 정한 뒤 ④ 이전 제약을 다시 건다. 제약을 먼저 걸면 남은 행 때문에 실패한다.
 - 기존 단지는 마이그레이션에서 현재 ID로 1:1 연결한다. 마이그레이션은 실제 단지를 통합하지 않는다.
 - 최초 통합은 단일 원천을 가진 LH 단지 2~20개를 대상으로 한다. 이미 통합한 그룹의 재통합은 보류한다.
 - 원천이 같은 단지를 여러 hsmpSn으로 나눠 내려주는 경우는 정제가 자동으로 묶는다([분할 원천](#원천이-나눈-같은-단지)).
@@ -105,7 +116,7 @@ LH 임대 목록 원천(지역·공급유형·단지명 묶음)은 공급유형�
 - API 기준 경로는 `/api/admin/ingest/lh/housing-type-households/failures/{failureId}/complex-link`다.
   `GET`은 비교 결과와 조회 `token`, `POST`는 `complexId`·`token`·`reason`·선택 `sourceUrl`로 저장, `POST /release`는
   `token`·`reason`으로 해제한다. 두 POST는 관리자 세션·CSRF와 전역 수집·정제 쓰기 잠금을 쓰고, 조회 뒤 원천·후보·연결이
-  바뀌면 409로 거절한다.
+  바뀌면 409로 거절한다. 단지 정제 [지원 종료](executions.md#실행-방법)로 지금은 두 POST 모두 410으로 거절한다.
 - 배포: `V20261024_05`는 연결 테이블, `V20261024_06`은 세대수 보강 오류 사유 제약에 `MANUAL_LINK_REVIEW_REQUIRED`를 추가한다.
   새 사유가 기록된 뒤에는 구버전 서버로 즉시 되돌리지 않는다.
 
@@ -129,7 +140,7 @@ LH 임대 목록에는 같은 단지가 이름만 다른 묶음으로 두 번 �
   `RELEASE_LH_HOUSEHOLD_DECISION`으로 남긴다.
 - API: `/api/admin/ingest/lh/housing-type-households/failures/{failureId}/target-decision`의 `GET`(비교와 `token`),
   `POST`(`decision`·`chosenSourceKey`·`token`·`reason`), `POST /release`(`token`·`reason`). 쓰기 요청은 관리자 세션·CSRF·
-  전역 수집·정제 쓰기 잠금을 쓰며 조회 뒤 바뀌면 409로 거절한다.
+  전역 수집·정제 쓰기 잠금을 쓰며 조회 뒤 바뀌면 409로 거절한다. 지금은 단지 정제 지원 종료로 두 POST 모두 410으로 거절한다.
 - 배포: `V20261024_07`은 결정 테이블, `V20261024_08`은 세대수 보강 오류 사유 제약에 `TARGET_DECISION_REVIEW_REQUIRED`를 추가한다.
 
 ## 관리자 API
@@ -167,6 +178,15 @@ LH 임대 목록에는 같은 단지가 이름만 다른 묶음으로 두 번 �
 보류된 복구는 이후 변경과 저장된 전후 스냅샷을 대조해 별도의 데이터 이전 작업으로 처리한다.
 복구가 끝나면 원래 제품 ID·참조·연결이 돌아오고 별칭은 제거된다. 통합·복구 이력은 유지한다.
 스냅샷 형식 버전은 1이다. 이후 관련 테이블 컬럼을 변경할 때 기존 이력의 복원 호환성도 검토한다.
+
+### 공급행이 함께 모집하는 주택형
+
+공급행이 함께 모집하는 주택형(`supply_row_housing_types`)은 `V20261101_03`가 만들고 대표 주택형으로 채운다. 대표 주택형도 연결에 들어 있다.
+- 연결을 모르는 이전 애플리케이션이 함께 돌거나 그 버전으로 롤백되면, 대표를 바꿔도 이전 연결이 남는다. 그러면 그 주택형의 면적 수정·휴지통 이동이 409로 막힌다.
+- 그 버전이 주택형을 지우면 연결도 함께 지워진다.
+- 다시 배포한 뒤 다면적 연결이 생기기 전(S2 전)이면 아래 SQL로 연결을 대표에 맞춘다.
+  `DELETE FROM supply_row_housing_types link USING supply_rows row WHERE row.id = link.supply_row_id AND link.housing_type_id IS DISTINCT FROM row.housing_type_id;`
+  `INSERT INTO supply_row_housing_types SELECT id, housing_type_id FROM supply_rows WHERE housing_type_id IS NOT NULL ON CONFLICT DO NOTHING;`
 
 ## 검증 근거
 

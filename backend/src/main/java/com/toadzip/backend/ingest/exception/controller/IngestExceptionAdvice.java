@@ -6,6 +6,7 @@ import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFo
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
+import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
 import com.toadzip.backend.ingest.failure.exception.IngestFailureReviewNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.Ordered;
@@ -22,6 +23,8 @@ public class IngestExceptionAdvice {
     private static final String INVALID_INGEST_REQUEST = "INVALID_INGEST_REQUEST";
 
     private static final String INGEST_ALREADY_RUNNING = "INGEST_ALREADY_RUNNING";
+
+    private static final String INGEST_OPERATION_RETIRED = "INGEST_OPERATION_RETIRED";
 
     private static final String DATA_PIPELINE_EXECUTION_NOT_FOUND =
             "DATA_PIPELINE_EXECUTION_NOT_FOUND";
@@ -50,6 +53,19 @@ public class IngestExceptionAdvice {
                 traceIdOf(request)
         );
         return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
+    }
+
+    @ExceptionHandler(RetiredIngestOperationException.class)
+    public ResponseEntity<ErrorResponse> handleRetiredIngestOperation(
+            RetiredIngestOperationException exception,
+            HttpServletRequest request
+    ) {
+        ErrorResponse errorResponse = new ErrorResponse(
+                INGEST_OPERATION_RETIRED,
+                exception.getMessage(),
+                traceIdOf(request)
+        );
+        return ResponseEntity.status(HttpStatus.GONE).body(errorResponse);
     }
 
     @ExceptionHandler(DataPipelineExecutionNotFoundException.class)

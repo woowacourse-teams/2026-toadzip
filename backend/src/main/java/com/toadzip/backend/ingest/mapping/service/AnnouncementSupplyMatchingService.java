@@ -59,6 +59,7 @@ public class AnnouncementSupplyMatchingService {
                     var saved = savedMatches.confirm(data, match.complex(), match.housingType(),
                             request.sourceUrl().strip(), request.reason().strip(), actor);
                     changeLog.savedMatch(announcement, data.sourceSupplyRowIdentifier(), before, saved, actor);
+                    announcement.takeSupplyFromDocument();
                 }
             }
             if (planned.splitting()) {
@@ -152,6 +153,7 @@ public class AnnouncementSupplyMatchingService {
         if (row.excludeByAdmin(request.excluded())) {
             changeLog.exclusion(announcement, request.rowIdentifier(), before, request.excluded(),
                     request.reason().strip(), actor);
+            announcement.takeSupplyFromDocument();
         }
         return rowQuery.rows(identifier);
     }

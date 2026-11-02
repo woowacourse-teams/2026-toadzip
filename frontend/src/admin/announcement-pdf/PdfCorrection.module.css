@@ -205,7 +205,6 @@
 
 .failureTargets { margin-top:var(--ds-space-2); padding:var(--ds-space-2) var(--ds-space-3); border-left:3px solid var(--ds-color-action); background:var(--ds-color-surface-subtle); font-size:var(--ds-text-caption); }
 .failureTargets ul { margin:var(--ds-space-1) 0 0; padding-left:var(--ds-space-4); }
-.rerun { margin-top:var(--ds-space-7); padding-top:var(--ds-space-5); border-top:1px solid var(--ds-color-divider); display:flex; flex-direction:column; align-items:flex-start; gap:var(--ds-space-2); }
 /* PDF 검토 안의 새 단지 등록: 짧은 입력은 두 칸씩, 주소는 한 줄 전체를 쓴다. */
 .newComplex { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--ds-space-2) var(--ds-space-3); margin:var(--ds-space-3) 0 0; padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); }
 .newComplex legend { padding:0 4px; font-weight:var(--ds-weight-strong); }

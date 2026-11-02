@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.enrichment.controller;
 
+import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentFailureResponse;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
@@ -25,7 +26,7 @@ public class LhAnnouncementEnrichmentController {
 
     @PostMapping
     public ResponseEntity<LhAnnouncementEnrichmentReport> enrichAll() {
-        return ResponseEntity.ok(enrichmentService.enrichAll());
+        throw RetiredIngestOperationException.myHomeAnnouncementRefinement();
     }
 
     @GetMapping("/failures/page")

@@ -2,12 +2,13 @@ package com.toadzip.backend.ingest.enrichment.service;
 
 import static com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension.owned;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
@@ -17,12 +18,13 @@ import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
+import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.ReleaseRequest;
+import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.SaveRequest;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.View;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,6 +47,7 @@ class LhHouseholdComplexLinkIntegrationTest {
     private static final String ADDRESS = "대전광역시 서구 구봉산북로 212";
     private static final String PNU = "3017011600115990000";
     @Autowired private LhHousingTypeHouseholdEnrichmentService enrichment;
+    @Autowired private LhHouseholdComplexLinkService links;
     @Autowired private IngestExecutionOwnershipService ownership;
     @Autowired private LhLeaseCatalogSourceFixtures lhSources;
     @Autowired private HousingComplexRepository complexes;
@@ -88,7 +91,7 @@ class LhHouseholdComplexLinkIntegrationTest {
     void 관리자가_확인해_연결하면_다음_세대수_보강에서_주택형_세대수를_채운다() throws Exception {
         owned(ownership, enrichment::enrichAll);
 
-        save(view(), "도로명 주소와 영구임대 240세대, 전용 21.97·26.9 대조").andExpect(status().isOk());
+        save(view(), "도로명 주소와 영구임대 240세대, 전용 21.97·26.9 대조");
         owned(ownership, enrichment::enrichAll);
 
         assertThat(types.findAllByHousingComplex(complex)).extracting(HousingType::getTotalHouseholdCount)
@@ -101,7 +104,7 @@ class LhHouseholdComplexLinkIntegrationTest {
     @Test
     void 연결한_뒤_단지_세대수가_바뀌면_연결을_쓰지_않고_재확인을_요구한다() throws Exception {
         owned(ownership, enrichment::enrichAll);
-        save(view(), "대조 완료").andExpect(status().isOk());
+        save(view(), "대조 완료");
         jdbc.sql("UPDATE housing_complexes SET total_household_count = 241").update();
 
         owned(ownership, enrichment::enrichAll);
@@ -118,7 +121,7 @@ class LhHouseholdComplexLinkIntegrationTest {
         owned(ownership, enrichment::enrichAll);
         var view = view();
 
-        save(view, "대조").andExpect(status().isConflict());
+        assertThatThrownBy(() -> save(view, "대조")).isInstanceOf(AdminDataConflictException.class);
 
         assertThat(view.linkable()).isFalse();
         assertThat(view.candidates()).hasSize(2);
@@ -128,11 +131,9 @@ class LhHouseholdComplexLinkIntegrationTest {
     @Test
     void 연결을_이유와_함께_해제하면_다음_보강부터_다시_이름으로_매칭한다() throws Exception {
         owned(ownership, enrichment::enrichAll);
-        var saved = read(save(view(), "대조 완료").andExpect(status().isOk()));
+        var saved = save(view(), "대조 완료");
 
-        mvc.perform(post(PATH + failureId() + "/complex-link/release").with(user("operator").roles("ADMIN"))
-                .with(csrf()).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
-                        "token", saved.token(), "reason", "다른 단지로 잘못 연결함")))).andExpect(status().isOk());
+        links.release(failureId(), new ReleaseRequest(saved.token(), "다른 단지로 잘못 연결함"), "operator");
         owned(ownership, enrichment::enrichAll);
 
         assertThat(jdbc.sql("SELECT count(*) FROM lh_household_complex_links").query(Long.class).single()).isZero();
@@ -142,13 +143,12 @@ class LhHouseholdComplexLinkIntegrationTest {
     }
 
     @Test
-    void 조회_후_후보나_원천이_바뀌면_저장을_거절하고_근거_이유는_필수다() throws Exception {
+    void 조회_후_후보나_원천이_바뀌면_저장을_거절한다() throws Exception {
         owned(ownership, enrichment::enrichAll);
         var view = view();
-        save(view, " ").andExpect(status().isBadRequest());
         jdbc.sql("UPDATE housing_complexes SET road_address = '대전광역시 서구 구봉산북로 213'").update();
 
-        save(view, "대조").andExpect(status().isConflict());
+        assertThatThrownBy(() -> save(view, "대조")).isInstanceOf(AdminDataConflictException.class);
     }
 
     @Test
@@ -167,10 +167,9 @@ class LhHouseholdComplexLinkIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
     }
 
-    private ResultActions save(View view, String reason) throws Exception {
-        return mvc.perform(post(PATH + view.failureId() + "/complex-link").with(user("operator").roles("ADMIN"))
-                .with(csrf()).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
-                        "complexId", complex.getId(), "token", view.token(), "reason", reason))));
+    // 저장 API는 지원을 종료했다. 서비스는 S5에서 지울 때까지 직접 호출해 동작을 지킨다.
+    private View save(View view, String reason) {
+        return links.save(view.failureId(), new SaveRequest(complex.getId(), view.token(), null, reason), "operator");
     }
 
     private View view() throws Exception {

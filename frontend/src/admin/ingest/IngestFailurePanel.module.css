@@ -14,9 +14,8 @@
 .executionFilter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-3); padding: var(--ds-space-3) 0; border-bottom: 1px solid var(--ds-color-divider); }
 .executionFilter p { flex: 1; margin: 0; font-size: var(--ds-text-caption); }
 .executionFilter span { display: block; overflow-wrap: anywhere; color: var(--ds-color-label); }
-.executionScope, .recovery { flex-basis: 100%; padding: var(--ds-space-4); border: 1px solid var(--ds-color-divider); background: var(--ds-color-surface-subtle); border-radius: var(--ds-radius-control); }
-.executionScope p, .recovery p { margin: var(--ds-space-2) 0 var(--ds-space-3); }
-.recovery { margin: var(--ds-space-4) 0; }
+.executionScope { flex-basis: 100%; padding: var(--ds-space-4); border: 1px solid var(--ds-color-divider); background: var(--ds-color-surface-subtle); border-radius: var(--ds-radius-control); }
+.executionScope p { margin: var(--ds-space-2) 0 var(--ds-space-3); }
 .detailNotice { margin: var(--ds-space-4); }
 .results { position: relative; }
 .summary { display: flex; justify-content: space-between; gap: var(--ds-space-3); color: var(--ds-color-label); font-size: var(--ds-text-caption); margin-bottom: var(--ds-space-2); }
@@ -71,10 +70,6 @@
 .pdfGroups > div { display:flex; flex-wrap:wrap; justify-content:space-between; gap:var(--ds-space-3); padding-block:var(--ds-space-3); border-top:1px solid var(--ds-color-divider); }
 .pdfGroups a { white-space:nowrap; color:var(--ds-color-action); text-underline-offset:3px; }
 
-.recovery { margin-top: var(--ds-space-4); padding: var(--ds-space-4); border: 1px solid var(--ds-color-action); border-radius: var(--ds-radius-control); scroll-margin-top: 88px; }
-.recovery h4 { margin: 0; font-size: var(--ds-text-body); }
-.recoveryDone { margin: var(--ds-space-3) 0 0; padding: var(--ds-space-3); border-radius: var(--ds-radius-control); background: var(--ds-color-action-soft); font-weight: 600; }
-.recoveryLeft { margin: var(--ds-space-3) 0 0; padding: var(--ds-space-3); border-radius: var(--ds-radius-control); background: var(--ds-color-status-upcoming-surface); color: var(--ds-color-status-upcoming); font-weight: 600; }
 
 /* 내용이 불러와져 높이가 바뀌어도 창이 위아래로 움직이지 않게 위쪽에 고정한다. */
 .dialog[open] { margin: 24px auto auto; }

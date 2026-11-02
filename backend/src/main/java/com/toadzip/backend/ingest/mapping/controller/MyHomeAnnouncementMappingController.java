@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.mapping.controller;
 
+import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingFailureResponse;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
@@ -25,7 +26,7 @@ public class MyHomeAnnouncementMappingController {
 
     @PostMapping
     public ResponseEntity<MyHomeAnnouncementMappingReport> mapAll() {
-        return ResponseEntity.ok(mappingService.mapAll());
+        throw RetiredIngestOperationException.myHomeAnnouncementRefinement();
     }
 
     @GetMapping("/failures/page")

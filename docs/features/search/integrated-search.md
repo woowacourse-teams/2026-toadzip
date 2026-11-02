@@ -10,7 +10,7 @@
 | `preview` | `true`면 입력 중 결과 8개, 유형별 3개 제한 |
 | `page` | 0부터 100까지의 전체 결과 페이지 |
 | `size` | 전체 결과는 20으로 고정 |
-| `rentalTypes` | 임대 유형 필터 |
+| `rentalTypes` | 임대 유형 필터. 분양전환 공공임대는 `PUBLIC_RENTAL`(이전 5년·10년 코드도 받음) |
 | `applicationStatuses` | 모집 상태 필터 |
 | `hasActiveAnnouncement` | 모집 중 공고가 있는 단지 필터 |
 

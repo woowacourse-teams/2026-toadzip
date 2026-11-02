@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.repository;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -31,6 +32,11 @@ public interface AnnouncementRepository extends JpaRepository<Announcement, Long
 
 
     Optional<Announcement> findBySourceAnnouncementIdentifier(String sourceAnnouncementIdentifier);
+
+    /** 같은 LH 공고 ID의 공고. 휴지통이 아닌 가장 작은 ID가 LH 공고 정제를 이어받는다. */
+    List<Announcement> findAllByLhPanIdOrderByIdAsc(String lhPanId);
+
+    List<Announcement> findAllByLhPanIdIsNotNullAndAdminDeletedFalse();
 
     boolean existsByOriginalUrl(String originalUrl);
 

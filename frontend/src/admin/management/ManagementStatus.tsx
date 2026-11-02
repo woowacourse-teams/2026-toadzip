@@ -9,6 +9,22 @@ export function PublicationType({ summary }: { summary: ManagementSummary }) {
   return <span>{publication[type]}</span>
 }
 
+const origins: Record<string, string> = { LH_SOURCE: '출처: LH 원천', ADMIN_ENTRY: '출처: 직접 등록', MYHOME_LEGACY: '출처: 마이홈(과거)' }
+const supplyOwners: Record<string, { label: string; title: string }> = {
+  LH_SOURCE: { label: '공급정보: 원천 반영', title: '관리자가 공급정보를 고친 적이 없습니다. LH 공고 정제로 바꾼 뒤에는 정제가 원천 값으로 공급행을 다시 만듭니다.' },
+  ANNOUNCEMENT_DOCUMENT: { label: '공급정보: 공고문 확정', title: '관리자가 공급정보를 고쳤습니다. LH 공고 정제로 바꾼 뒤에는 정제가 이 공고의 공급행을 다시 만들지 않습니다.' },
+}
+
+/**
+ * 공고 출처와 공급정보의 주인. 정제가 이 공고의 값을 덮는지 구분하게 하고, 값이 없는 이전 응답은 표시하지 않는다.
+ * 공급정보 주인은 LH 공고 정제가 다루는 LH 원천 공고에만 뜻이 있어 그때만 표시한다.
+ */
+export function AnnouncementOwnership({ summary }: { summary: ManagementSummary }) {
+  const origin = origins[summary.announcement?.origin ?? '']
+  const owner = summary.announcement?.origin === 'LH_SOURCE' ? supplyOwners[summary.announcement.supplyOwner ?? ''] : undefined
+  return <>{origin ? <span>{origin}</span> : null}{owner ? <span title={owner.title}>{owner.label}</span> : null}</>
+}
+
 /** 관리자가 확인해야 할 상태만 보여 준다. 평소 상태(등록됨)는 표시하지 않는다. */
 export function ManagementStatus({ summary, placeholder }: { summary: ManagementSummary; placeholder?: string }) {
   const badges: { label: string; tone: string; title: string }[] = []

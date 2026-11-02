@@ -15,6 +15,11 @@ import {
 } from './searchFilterOptions.ts'
 
 const RENTAL_TYPES = RENTAL_TYPE_OPTIONS.map(([value]) => value)
+// 공공임대 5·10년을 합치기 전에 공유한 링크도 분양전환 공공임대로 연다.
+const LEGACY_RENTAL_TYPES = {
+  PUBLIC_RENTAL_5Y: 'PUBLIC_RENTAL',
+  PUBLIC_RENTAL_10Y: 'PUBLIC_RENTAL',
+} as const
 const APPLICATION_STATUSES = APPLICATION_STATUS_OPTIONS.map(([value]) => value)
 const ANNOUNCEMENT_STATUSES = ANNOUNCEMENT_STATUS_OPTIONS.map(([value]) => value)
 const AGENCY_CODES = AGENCY_OPTIONS.map(([value]) => value)
@@ -167,6 +172,7 @@ function parseSharedFilters(
     search,
     `${prefix}RentalTypes`,
     RENTAL_TYPES,
+    LEGACY_RENTAL_TYPES,
   )
   const applicationStatuses = enumValues(
     search,
@@ -223,9 +229,10 @@ function enumValues<T extends string>(
   search: URLSearchParams,
   key: string,
   allowed: readonly T[],
+  legacy: Readonly<Record<string, T>> = {},
 ) {
   const allowedValues = new Set<string>(allowed)
-  return [...new Set(search.getAll(key))]
+  return [...new Set(search.getAll(key).map(value => legacy[value] ?? value))]
     .filter((value): value is T => allowedValues.has(value))
 }
 

@@ -11,7 +11,8 @@ import tools.jackson.databind.ObjectMapper;
 public class MyHomeComplexMergeStore {
 
     private static final List<String> REFERENCE_TABLES = List.of(
-            "housing_types", "supply_rows", "favorite_housing_complexes", "announcement_application_schedules"
+            "housing_types", "supply_rows", "favorite_housing_complexes", "announcement_application_schedules",
+            "announcement_complexes"
     );
     private static final List<String> COMPLEX_COLUMNS = List.of(
             "id", "city_county_district_code", "latitude", "legal_dong_code", "longitude", "pnu",
@@ -64,6 +65,8 @@ public class MyHomeComplexMergeStore {
                         FROM favorite_housing_complexes f WHERE f.housing_complex_id IN (:ids)), '[]'),
                     'announcement_application_schedules', COALESCE((SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id)
                         FROM announcement_application_schedules a WHERE a.housing_complex_id IN (:ids)), '[]'),
+                    'announcement_complexes', COALESCE((SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id)
+                        FROM announcement_complexes a WHERE a.housing_complex_id IN (:ids)), '[]'),
                     'links', COALESCE((SELECT jsonb_agg(to_jsonb(l) ORDER BY l.source_complex_identifier)
                         FROM myhome_complex_links l WHERE l.housing_complex_id IN (:ids)), '[]'),
                     'aliases', COALESCE((SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id)
@@ -90,6 +93,7 @@ public class MyHomeComplexMergeStore {
 
     public boolean sameState(String left, String right) {
         left = withCompatibleHousingTypeSnapshot(left, right);
+        left = withCompatibleAnnouncementComplexSnapshot(left, right);
         if (!hasRentalPriceSnapshot(right)) {
             return jdbc.sql("""
                     SELECT jsonb_set(CAST(:left AS jsonb), '{complexes}', COALESCE((
@@ -101,6 +105,20 @@ public class MyHomeComplexMergeStore {
         }
         return jdbc.sql("SELECT CAST(:left AS jsonb) = CAST(:right AS jsonb)")
                 .param("left", left).param("right", right).query(Boolean.class).single();
+    }
+
+    /**
+     * 공고 단지와 공급행의 공고 단지·LH 매칭 컬럼은 LH 공고 정제와 함께 생겼다. 그 전에 저장한 스냅숏과 비교할 때는 현재 상태에서도 뺀다.
+     */
+    private String withCompatibleAnnouncementComplexSnapshot(String current, String expected) {
+        return jdbc.sql("""
+                SELECT CASE WHEN jsonb_exists(CAST(:expected AS jsonb), 'announcement_complexes') THEN CAST(:current AS jsonb)
+                    ELSE jsonb_set(CAST(:current AS jsonb) - 'announcement_complexes', '{supply_rows}', COALESCE((
+                        SELECT jsonb_agg(supply_row - 'announcement_complex_id' - 'lh_exclusive_area'
+                            - 'lh_match_status' ORDER BY (supply_row->>'id')::bigint)
+                        FROM jsonb_array_elements(CAST(:current AS jsonb)->'supply_rows') supply_row
+                    ), '[]'::jsonb)) END
+                """).param("current", current).param("expected", expected).query(String.class).single();
     }
 
     private String withCompatibleHousingTypeSnapshot(String current, String expected) {

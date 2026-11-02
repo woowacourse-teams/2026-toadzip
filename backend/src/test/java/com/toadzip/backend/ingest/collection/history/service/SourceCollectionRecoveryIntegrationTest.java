@@ -422,7 +422,7 @@ class SourceCollectionRecoveryIntegrationTest {
         UUID id = null;
         try {
             var result = pipelineService(new DataPipelineExecutionLock(dataSource))
-                    .start(DataPipelineType.COMPLEX_REFINEMENT);
+                    .start(DataPipelineType.COMPLEX_COLLECTION);
             id = result.executionId();
 
             assertThat(records.findById(orphan.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.FAILED);

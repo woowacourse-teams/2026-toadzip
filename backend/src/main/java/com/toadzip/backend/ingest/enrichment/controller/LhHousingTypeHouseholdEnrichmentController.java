@@ -1,24 +1,19 @@
 package com.toadzip.backend.ingest.enrichment.controller;
 
-import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.ReleaseRequest;
-import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.SaveRequest;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.View;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdEnrichmentFailureResponse;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdTargetDecisionView;
-import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.service.LhHouseholdComplexLinkService;
 import com.toadzip.backend.ingest.enrichment.service.LhHouseholdTargetDecisionService;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
-import jakarta.validation.Valid;
+import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import java.security.Principal;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -42,8 +37,8 @@ public class LhHousingTypeHouseholdEnrichmentController {
     }
 
     @PostMapping
-    public ResponseEntity<LhHousingTypeHouseholdEnrichmentReport> enrichAll() {
-        return ResponseEntity.ok(enrichmentService.enrichAll());
+    public ResponseEntity<Void> enrichAll() {
+        throw RetiredIngestOperationException.complexRefinement();
     }
 
     @GetMapping("/failures")
@@ -68,15 +63,13 @@ public class LhHousingTypeHouseholdEnrichmentController {
     }
 
     @PostMapping("/failures/{failureId}/complex-link")
-    public View saveComplexLink(@PathVariable long failureId, @Valid @RequestBody SaveRequest request,
-            Principal principal) {
-        return linkService.save(failureId, request, principal.getName());
+    public View saveComplexLink() {
+        throw RetiredIngestOperationException.complexRefinement();
     }
 
     @PostMapping("/failures/{failureId}/complex-link/release")
-    public View releaseComplexLink(@PathVariable long failureId, @Valid @RequestBody ReleaseRequest request,
-            Principal principal) {
-        return linkService.release(failureId, request, principal.getName());
+    public View releaseComplexLink() {
+        throw RetiredIngestOperationException.complexRefinement();
     }
 
     @GetMapping("/failures/{failureId}/target-decision")
@@ -85,14 +78,12 @@ public class LhHousingTypeHouseholdEnrichmentController {
     }
 
     @PostMapping("/failures/{failureId}/target-decision")
-    public LhHouseholdTargetDecisionView saveTargetDecision(@PathVariable long failureId,
-            @Valid @RequestBody LhHouseholdTargetDecisionView.SaveRequest request, Principal principal) {
-        return decisionService.save(failureId, request, principal.getName());
+    public LhHouseholdTargetDecisionView saveTargetDecision() {
+        throw RetiredIngestOperationException.complexRefinement();
     }
 
     @PostMapping("/failures/{failureId}/target-decision/release")
-    public LhHouseholdTargetDecisionView releaseTargetDecision(@PathVariable long failureId,
-            @Valid @RequestBody LhHouseholdTargetDecisionView.ReleaseRequest request, Principal principal) {
-        return decisionService.release(failureId, request, principal.getName());
+    public LhHouseholdTargetDecisionView releaseTargetDecision() {
+        throw RetiredIngestOperationException.complexRefinement();
     }
 }

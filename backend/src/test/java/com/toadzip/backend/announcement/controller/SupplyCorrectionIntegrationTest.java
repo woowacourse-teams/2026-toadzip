@@ -1,5 +1,6 @@
 package com.toadzip.backend.announcement.controller;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -85,9 +86,12 @@ class SupplyCorrectionIntegrationTest {
         var preview = preview(id, request);
         assertThat(rows.findById(row.getId()).orElseThrow().getSourceHousingTypeName()).isEqualTo("26");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_data_changes", Long.class)).isZero();
+        assertThat(supplyOwner(id)).isEqualTo("LH_SOURCE");
 
         apply(id, request, preview).andExpect(status().isOk());
         entities.flush(); entities.clear();
+        // 관리자가 저장한 공급정보는 공고문이 주인이라 정제가 공급행을 다시 만들지 않는다.
+        assertThat(supplyOwner(id)).isEqualTo("ANNOUNCEMENT_DOCUMENT");
         var saved = rows.findById(row.getId()).orElseThrow();
         assertThat(saved.getSourceHousingTypeName()).isEqualTo("26");
         assertThat(saved.getAnnouncementHousingTypeName()).isEqualTo("26A");
@@ -322,36 +326,68 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
-    void 공통_면적은_영향을_확인하고_검토한_공고_면적을_보호한_뒤에만_수정한다() throws Exception {
+    void 공급행이_연결된_주택형은_공고별_면적을_보호해도_공통_면적을_바꿀_수_없고_이름은_바꿀_수_있다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId();
-        var review = reviewRequest(row, "areas");
-        mvc.perform(post(root(id) + "/reviews").with(user("admin").roles("ADMIN")).with(csrf())
-                .contentType("application/json").content(json.writeValueAsString(review))).andExpect(status().isOk());
         String path = "/api/admin/housing-complexes/" + row.getHousingComplex().getId()
                 + "/housing-types/" + row.getHousingType().getId();
-        var impact = json.readTree(mvc.perform(get(path + "/impact").with(user("admin").roles("ADMIN")))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.rows[0].reviewedAreas").value(true))
-                .andReturn().getResponse().getContentAsString()).get("data");
         var update = json.createObjectNode().put("version", row.getHousingComplex().getVersion())
-                .put("name", "26 공통").put("exclusiveArea", 27).put("impactToken", impact.get("token").asText());
+                .put("name", "26 공통").put("exclusiveArea", 27).put("impactToken", impactToken(path));
         mvc.perform(MockMvcRequestBuilders.put(path)
                 .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
-                .content(json.writeValueAsString(update))).andExpect(status().isConflict());
+                .content(json.writeValueAsString(update))).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(containsString("전용면적을 바꿀 수 없습니다")));
         var correction = request(id);
         ((ObjectNode) correction.get("rows").get(0)).put("areaOverride", true);
         apply(id, correction, preview(id, correction)).andExpect(status().isOk());
+        update.put("impactToken", impactToken(path));
         mvc.perform(MockMvcRequestBuilders.put(path)
                 .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
                 .content(json.writeValueAsString(update))).andExpect(status().isConflict());
-        var latest = json.readTree(mvc.perform(get(path + "/impact").with(user("admin").roles("ADMIN")))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
-        update.put("impactToken", latest.get("token").asText());
+        update.put("exclusiveArea", row.getHousingType().getExclusiveArea());
         mvc.perform(MockMvcRequestBuilders.put(path)
                 .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
                 .content(json.writeValueAsString(update))).andExpect(status().isOk());
-        mvc.perform(get("/api/v1/announcements/" + id)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.supplyRows[0].exclusiveArea").value(26.4673));
-        reviews(id).andExpect(jsonPath("$.data.records[0].status").value("VERIFIED"));
+        assertThat(jdbc.queryForObject("SELECT name FROM housing_types WHERE id = ?", String.class,
+                row.getHousingType().getId())).isEqualTo("26 공통");
+        assertThat(jdbc.queryForObject("SELECT exclusive_area FROM housing_types WHERE id = ?", BigDecimal.class,
+                row.getHousingType().getId())).isEqualByComparingTo(row.getHousingType().getExclusiveArea());
+    }
+
+    @Test
+    void 함께_모집하는_주택형으로만_연결된_주택형도_전용면적을_바꿀_수_없다() throws Exception {
+        var row = fixture();
+        var joint = HousingType.createFromMyHome(row.getHousingComplex(), UUID.randomUUID().toString(), "26B",
+                new BigDecimal("26.7000"), null);
+        entities.persist(joint); entities.flush();
+        jdbc.update("INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id) VALUES (?, ?)",
+                row.getId(), joint.getId());
+        String path = "/api/admin/housing-complexes/" + row.getHousingComplex().getId() + "/housing-types/" + joint.getId();
+        var update = json.createObjectNode().put("version", row.getHousingComplex().getVersion())
+                .put("name", "26B").put("exclusiveArea", 27).put("impactToken", impactToken(path));
+        mvc.perform(MockMvcRequestBuilders.put(path)
+                .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
+                .content(json.writeValueAsString(update))).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(containsString("전용면적을 바꿀 수 없습니다")));
+    }
+
+    @Test
+    void 연결_없이_대표로만_쓰인_주택형도_전용면적을_바꿀_수_없다() throws Exception {
+        // 연결 표를 모르는 이전 애플리케이션이 만든 공급행도 대표 주택형으로 면적을 지킨다.
+        var row = fixture();
+        jdbc.update("DELETE FROM supply_row_housing_types WHERE supply_row_id = ?", row.getId());
+        String path = "/api/admin/housing-complexes/" + row.getHousingComplex().getId()
+                + "/housing-types/" + row.getHousingType().getId();
+        var update = json.createObjectNode().put("version", row.getHousingComplex().getVersion())
+                .put("name", "26").put("exclusiveArea", 27).put("impactToken", impactToken(path));
+        mvc.perform(MockMvcRequestBuilders.put(path)
+                .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
+                .content(json.writeValueAsString(update))).andExpect(status().isConflict());
+    }
+
+    private String impactToken(String path) throws Exception {
+        return json.readTree(mvc.perform(get(path + "/impact").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.rows[0].supplyRowId").isNumber())
+                .andReturn().getResponse().getContentAsString()).get("data").get("token").asText();
     }
 
     @Test
@@ -448,7 +484,7 @@ class SupplyCorrectionIntegrationTest {
         mvc.perform(get(root(id)).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.sourceWarnings[0]").value(
-                        org.hamcrest.Matchers.containsString("원천이 없거나 비활성")));
+                        containsString("원천이 없거나 비활성")));
         assertThat(rows.findById(row.getId())).isPresent();
     }
 
@@ -636,4 +672,8 @@ class SupplyCorrectionIntegrationTest {
     }
 
     private String root(long id) { return "/api/admin/announcements/" + id + "/supply-corrections"; }
+
+    private String supplyOwner(long id) {
+        return jdbc.queryForObject("SELECT supply_owner FROM announcements WHERE id = ?", String.class, id);
+    }
 }

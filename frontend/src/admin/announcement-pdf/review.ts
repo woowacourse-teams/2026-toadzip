@@ -240,7 +240,7 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
   for (const [index, entry] of review.rows.entries()) {
     if (!entry.include) continue
     if (!entry.proposal.destination) throw new ReviewError(`공급행 ${index + 1}에서 수정할 기존 공급정보를 선택하거나 새 공급정보로 추가하세요.`, `row:${index}`)
-    if (entry.proposal.destination === 'new' && workspace.supply.unattachedLhSupplyRows?.length) throw new ReviewError(`공급행 ${index + 1}: LH 공급 원본 행이 아직 공급행에 없어 새 공급정보로 추가할 수 없습니다. LH 행 연결 후 다시 정제하고 펼쳐진 공급행을 고르세요.`, `row:${index}`)
+    if (entry.proposal.destination === 'new' && workspace.supply.unattachedLhSupplyRows?.length) throw new ReviewError(`공급행 ${index + 1}: 공급정보에 연결되지 않은 LH 행은 새 공급정보로 추가할 수 없습니다. 기존 공급정보 행을 고르세요.`, `row:${index}`)
     const anchor = rows.find(row => row.key === entry.proposal.anchorKey)
     const existing = entry.proposal.destination === 'new' ? undefined : rows.find(row => row.key === entry.proposal.destination)
     if ((!anchor && !entry.proposal.newComplex) || entry.proposal.destination !== 'new' && !existing) throw new ReviewError(`공급행 ${index + 1}의 기존 단지·원천행을 선택하세요.`, `row:${index}`)
@@ -290,7 +290,7 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
     const current = members.map(row => rows.find(item => item.key === row.key)!)
     if (current.some(row => !row)) throw new Error('공통 모집 묶음의 행 대응을 확인하세요.')
     if (current.every(row => row.groupId !== null && row.groupId === current[0].groupId)) {
-      if (current[0].sharedHouseholdCount !== group.count) throw new Error('기존 공통 모집수가 PDF와 다릅니다. 현재 묶음의 원천별 공급행 보정에서 확인하세요.')
+      if (current[0].sharedHouseholdCount !== group.count) throw new Error('기존 공통 모집수가 PDF와 다릅니다. 공통 모집수는 PDF 보정에서 바꿀 수 없습니다.')
       continue
     }
     const original = current.filter(row => row.id !== null)

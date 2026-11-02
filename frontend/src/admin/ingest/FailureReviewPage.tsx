@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { IngestFailurePanel } from './IngestFailurePanel'
 import { getDataPipelineStatus, startDataPipeline, type DataPipelineExecution, type DataPipelineType } from './api'
-import { pipelineStatusLabels } from './pipelineLabels'
+import { pipelineStatusLabels, retiredComplexRefinementNotice } from './pipelineLabels'
 import type { FailureDomain } from './failureReviewApi'
 import styles from './IngestFailurePanel.module.css'
 import { FailureRetryButton } from './FailureRetryButton'
@@ -14,6 +14,7 @@ export function FailureReviewPage() {
     || (!params.has('domain') && (legacyCategory === 'announcement' || legacyCategory === 'enrichment')) ? 'announcement' : 'complex'
   const type: DataPipelineType = domain === 'complex' ? 'COMPLEX_REFINEMENT' : 'ANNOUNCEMENT_REFINEMENT'
   const label = domain === 'complex' ? '단지' : '공고'
+  const retired = domain === 'complex'
   const [execution, setExecution] = useState<{ type: DataPipelineType; data: DataPipelineExecution } | null>(null)
   const current = execution?.type === type ? execution.data : null
   const [starting, setStarting] = useState(false)
@@ -65,7 +66,7 @@ export function FailureReviewPage() {
   }, [execution?.data.executionId, execution?.data.status, execution?.type])
 
   async function retry() {
-    if (busy) return
+    if (busy || retired) return
     statusGeneration.current += 1
     setStarting(true); setError(''); setRunNotice('')
     try {
@@ -105,9 +106,10 @@ export function FailureReviewPage() {
       <div className={styles.workflow}>
         <Link to={`/admin/${domain === 'complex' ? 'complexes' : 'announcements'}?review=true`}>원천 변경 검토</Link>
         <Link to={`/admin/ingest#${domain === 'complex' ? 'complex' : 'announcement'}-pipelines`}>API 키 입력·원천 수집</Link>
-        <FailureRetryButton key={domain} label={label} disabled={busy} onRetry={() => void retry()}/>
+        <FailureRetryButton key={domain} label={label} disabled={busy || retired} onRetry={() => void retry()}/>
       </div>
-      <p className={styles.hint}>{label} 전체를 다시 정제합니다. 문제가 사라지면 해결됨으로, 재발하면 미해결로 표시됩니다.</p>
+      <p className={styles.hint}>{retired ? retiredComplexRefinementNotice
+        : `${label} 전체를 다시 정제합니다. 문제가 사라지면 해결됨으로, 재발하면 미해결로 표시됩니다.`}</p>
       {runMessage ? <p role="status" className={styles.runMessage}>{runMessage}</p> : null}
       {runNotice ? <p role="status">{runNotice}</p> : null}
       {error ? <p role="alert">{error}</p> : null}

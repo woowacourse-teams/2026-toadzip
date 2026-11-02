@@ -60,11 +60,13 @@ public enum DataPipelineType {
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS
             );
-            case ANNOUNCEMENT_REFINEMENT -> List.of(
-                    DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS,
-                    DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS
-            );
+            case ANNOUNCEMENT_REFINEMENT -> List.of(DataPipelineStep.MAP_LH_ANNOUNCEMENTS);
         };
+    }
+
+    // 단지 정제와 마이홈 공고 단건 등록은 지원을 종료했다. 지난 실행 이력을 읽도록 유형과 단계 정의는 남긴다.
+    public boolean isRetired() {
+        return this == COMPLEX_REFINEMENT || this == COMPLEX_SYNC || this == ANNOUNCEMENT_REGISTRATION;
     }
 
     public boolean requiresSuccessfulCollection(DataPipelineStep step) {

@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionQueryService;
@@ -106,7 +107,7 @@ class DataPipelineControllerTest {
     @ParameterizedTest
     @CsvSource({
             "complex-collection, COMPLEX_COLLECTION", "announcement-collection, ANNOUNCEMENT_COLLECTION",
-            "complex-sync, COMPLEX_SYNC", "announcement-sync, ANNOUNCEMENT_SYNC"
+            "announcement-sync, ANNOUNCEMENT_SYNC"
     })
     void 수집_실행은_입력키를_양끝_공백_제거해_전달하고_응답에_노출하지_않는다(
             String pathValue, DataPipelineType type
@@ -141,10 +142,10 @@ class DataPipelineControllerTest {
 
     @Test
     void 정제_실행은_서비스키_입력을_거부한다() throws Exception {
-        when(executionService.start(DataPipelineType.COMPLEX_REFINEMENT, "test-key"))
+        when(executionService.start(DataPipelineType.ANNOUNCEMENT_REFINEMENT, "test-key"))
                 .thenThrow(new InvalidIngestRequestException(
                         "수집 작업에만 서비스키를 입력할 수 있습니다."));
-        mockMvc.perform(post("/api/admin/ingest/pipelines/complex-refinement")
+        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-refinement")
                         .contentType(MediaType.APPLICATION_JSON).content("{\"serviceKey\":\"test-key\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INGEST_REQUEST"));
@@ -153,10 +154,8 @@ class DataPipelineControllerTest {
     @ParameterizedTest
     @CsvSource({
             "complex-collection, COMPLEX_COLLECTION",
-            "complex-refinement, COMPLEX_REFINEMENT",
             "announcement-collection, ANNOUNCEMENT_COLLECTION",
             "announcement-refinement, ANNOUNCEMENT_REFINEMENT",
-            "complex-sync, COMPLEX_SYNC",
             "announcement-sync, ANNOUNCEMENT_SYNC"
     })
     void 독립_및_통합_실행을_접수하고_진행_상태를_조회한다(
@@ -174,6 +173,26 @@ class DataPipelineControllerTest {
         mockMvc.perform(get("/api/admin/ingest/pipelines/{type}", pathValue))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("IDLE"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"complex-refinement, COMPLEX_REFINEMENT", "complex-sync, COMPLEX_SYNC"})
+    void 지원을_종료한_단지_정제는_410을_반환하고_지난_상태는_조회한다(
+            String pathValue,
+            DataPipelineType type
+    ) throws Exception {
+        when(executionService.start(type)).thenThrow(RetiredIngestOperationException.complexRefinement());
+        when(executionQuery.findLatest(type)).thenReturn(DataPipelineExecutionResponse.idle(type));
+
+        mockMvc.perform(post("/api/admin/ingest/pipelines/{type}", pathValue))
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.code").value("INGEST_OPERATION_RETIRED"))
+                .andExpect(jsonPath("$.message").value(
+                        "단지 정제는 지원을 종료했습니다. 단지·주택형은 공고와 PDF 보정으로만 바뀝니다."));
+
+        mockMvc.perform(get("/api/admin/ingest/pipelines/{type}", pathValue))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.type").value(type.name()));
     }
 
     @Test

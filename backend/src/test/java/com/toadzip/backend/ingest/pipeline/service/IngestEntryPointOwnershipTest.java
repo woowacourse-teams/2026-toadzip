@@ -12,6 +12,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComple
 import com.toadzip.backend.ingest.collection.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
+import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.location.service.LocationSummaryImportService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
@@ -33,6 +34,7 @@ class IngestEntryPointOwnershipTest {
                 Arguments.of(LhLeaseCatalogCollectionService.class, "collect", 1),
                 Arguments.of(LhAnnouncementExternalCollectionService.class, "collect", 1),
                 Arguments.of(LhAnnouncementExternalCollectionService.class, "refresh", 3),
+                Arguments.of(LhAnnouncementExternalCollectionService.class, "refreshCatalogTarget", 2),
                 Arguments.of(MyHomeAnnouncementCollectionService.class, "collect", 1),
                 Arguments.of(MyHomeAnnouncementCollectionService.class, "collectAnnouncement", 1),
                 Arguments.of(MyHomeComplexCollectionService.class, "collect", 1),
@@ -44,7 +46,8 @@ class IngestEntryPointOwnershipTest {
                 Arguments.of(MyHomeAnnouncementMappingService.class, "mapAll", 0),
                 Arguments.of(MyHomeComplexMappingService.class, "mapAll", 0),
                 Arguments.of(MyHomeComplexMergeService.class, "merge", 2),
-                Arguments.of(MyHomeComplexMergeService.class, "revert", 2)
+                Arguments.of(MyHomeComplexMergeService.class, "revert", 2),
+                Arguments.of(LhAnnouncementRefinementService.class, "refineAll", 0)
         );
     }
 

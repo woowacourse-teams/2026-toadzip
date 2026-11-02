@@ -14,6 +14,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -41,6 +43,9 @@ import org.hibernate.annotations.JdbcType;
 )
 @NoArgsConstructor(access = PROTECTED)
 public class Announcement {
+
+    /** LH 공고 정제가 새로 만든 공고의 원천 식별자 접두사. */
+    public static final String LH_SOURCE_IDENTIFIER_PREFIX = "LH:";
 
     @org.hibernate.annotations.CreationTimestamp
     @Column(updatable = false)
@@ -142,6 +147,20 @@ public class Announcement {
 
     private String lhPanId;
 
+    /** 이전 아티팩트가 만든 공고는 정제가 공급행을 덮지 않도록 공고문 소유로 둔다. */
+    @Enumerated(EnumType.STRING)
+    @org.hibernate.annotations.ColumnDefault("'ANNOUNCEMENT_DOCUMENT'")
+    @Column(nullable = false, length = 30)
+    private SupplyOwner supplyOwner;
+
+    /** 공고문 소유 공고가 확정할 때 본 LH 공급 원천 지문. 그 뒤 원천이 바뀌었는지 판단하는 기준이다. */
+    @Column(length = 64)
+    private String lhSupplyFingerprint;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean supplyRecheckRequired;
+
     @Column(nullable = false)
     private boolean lhReceptionPlaceOwned;
 
@@ -201,6 +220,8 @@ public class Announcement {
         validateNonNegativeIfPresent(actualCompetitionRate, "실제 경쟁률");
         validateNonNegativeIfPresent(predictedCompetitionRate, "예상 경쟁률");
         this.sourceAnnouncementIdentifier = sourceAnnouncementIdentifier;
+        supplyOwner = AnnouncementOrigin.of(sourceAnnouncementIdentifier, null) == AnnouncementOrigin.ADMIN_ENTRY
+                ? SupplyOwner.ANNOUNCEMENT_DOCUMENT : SupplyOwner.LH_SOURCE;
         this.previousSourceAnnouncementIdentifier = previousSourceAnnouncementIdentifier;
         this.previousAnnouncement = previousAnnouncement;
         this.name = name;
@@ -243,6 +264,21 @@ public class Announcement {
         revisionEvidenceUrl = evidenceUrl;
         correctionCancellationReason = reason;
         status = AnnouncementPublicationType.CORRECTION;
+    }
+
+    /** LH 공고목록에는 정정·취소공고와 원공고를 잇는 값이 없어 정제가 공고명으로 찾은 원공고에 잇는다. 이미 이어진 공고는 바꾸지 않는다. */
+    public boolean linkLhRevision(Announcement previous, AnnouncementPublicationType revisionType) {
+        if (revisionType == AnnouncementPublicationType.ORIGINAL || previous == null || previous == this) {
+            throw new IllegalArgumentException("정정·취소공고는 다른 이전 공고에만 이을 수 있습니다.");
+        }
+        if (previousAnnouncement != null || adminModified || adminDeleted) {
+            return false;
+        }
+        status = revisionType;
+        previousAnnouncement = previous;
+        previousSourceAnnouncementIdentifier = previous.getSourceAnnouncementIdentifier();
+        previousLhPanId = previous.getLhPanId();
+        return true;
     }
 
     private void confirmLhPanId(String panId) {
@@ -365,7 +401,87 @@ public class Announcement {
         return true;
     }
 
+    public AnnouncementOrigin origin() {
+        return AnnouncementOrigin.of(sourceAnnouncementIdentifier, lhPanId);
+    }
+
+    /**
+     * 관리자가 공급정보를 고치면 공고문이 주인이 된다. 정제는 이 공고의 공급행을 원천 값으로 다시 만들지 않는다. 기준 지문은 관리자가
+     * 보고 저장한 LH 원천, 곧 마지막 정제가 남긴 지문을 그대로 둔다. 저장 전에 새로 수집된 LH 변경도 다음 정제가 재확인으로 알린다.
+     */
+    public void takeSupplyFromDocument() {
+        supplyOwner = SupplyOwner.ANNOUNCEMENT_DOCUMENT;
+        supplyRecheckRequired = false;
+    }
+
+    public boolean suppliedByLh() {
+        return supplyOwner == SupplyOwner.LH_SOURCE;
+    }
+
+    /**
+     * 매 정제가 이번 LH 원천 공급의 지문을 받는다. LH 소유 공고는 지문을 기준으로 남기기만 한다. 공고문 소유 공고는 기준과 다르면 재확인
+     * 대상이 되고 기준을 이번 지문으로 바꾼다. 기준이 없던 공고는 이번 지문을 기준으로 남긴다. 재확인이 새로 켜졌을 때 true다.
+     */
+    public boolean observeLhSupply(String fingerprint) {
+        if (suppliedByLh() || lhSupplyFingerprint == null || lhSupplyFingerprint.equals(fingerprint)) {
+            lhSupplyFingerprint = fingerprint;
+            return false;
+        }
+        lhSupplyFingerprint = fingerprint;
+        if (supplyRecheckRequired) {
+            return false;
+        }
+        supplyRecheckRequired = true;
+        return true;
+    }
+
+    /** LH 공고목록·상세로 새 공고를 만든다. 원천 공고 식별자는 LH 공고 ID로 정하고 공급정보는 LH 원천 소유다. */
+    public static Announcement createFromLh(String panId, LhAnnouncementValues values) {
+        Announcement announcement = new Announcement(LH_SOURCE_IDENTIFIER_PREFIX + panId, null, null, values.name(),
+                AnnouncementPublicationType.ORIGINAL, values.supplyType(), values.recruitmentType(), AgencyCode.LH,
+                values.postedDate(), values.applicationStartDate(), values.applicationEndDate(),
+                values.winnerAnnouncementDate(), values.originalUrl(), null, 0, null, null, null);
+        announcement.lhPanId = panId;
+        announcement.supplyOwner = SupplyOwner.LH_SOURCE;
+        return announcement;
+    }
+
+    /**
+     * LH 값으로 공고를 갱신한다. 관리자가 고친 공고는 덮지 않고 원천 값이 다르면 원천 검토 대상으로 표시한다. 휴지통 공고는 바꾸지 않는다.
+     * 관리자가 확정한 접수 기간·정정 연결·공고 상태와 원천에 없는 당첨자 발표일은 그대로 둔다.
+     */
+    public boolean updateFromLh(LhAnnouncementValues values) {
+        Announcement incoming = new Announcement(sourceAnnouncementIdentifier, previousSourceAnnouncementIdentifier,
+                previousAnnouncement, values.name(), status, values.supplyType(), values.recruitmentType(),
+                AgencyCode.LH, values.postedDate(), unlessReviewed(values.applicationStartDate(), applicationStartDate),
+                unlessReviewed(values.applicationEndDate(), applicationEndDate),
+                Objects.requireNonNullElse(values.winnerAnnouncementDate(), winnerAnnouncementDate),
+                values.originalUrl(), correctionCancellationReason, viewCount, actualCompetitionRate,
+                predictedCompetitionRate, receptionPlace);
+        if (adminModified && !hasSameSourceValues(incoming)) {
+            sourceReviewRequired = true;
+        }
+        if (adminModified || adminDeleted || hasSameSourceValues(incoming)) {
+            return false;
+        }
+        applySourceValues(incoming);
+        return true;
+    }
+
+    private LocalDate unlessReviewed(LocalDate source, LocalDate current) {
+        if (applicationScheduleReviewed) {
+            return current;
+        }
+        return source;
+    }
+
     public void recordAdminSupplyChange() {
+        takeSupplyFromDocument();
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
+    /** 접수 일정은 공급정보가 아니므로 공급정보 소유를 바꾸지 않는다. */
+    public void recordAdminScheduleChange() {
         adminUpdatedAt = java.time.Instant.now();
     }
 

@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.mapping.controller;
 
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -9,7 +10,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingFailureResponse;
-import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
 import java.time.Instant;
 import java.util.List;
@@ -31,19 +31,14 @@ class MyHomeAnnouncementMappingControllerTest {
     private MyHomeAnnouncementMappingService mappingService;
 
     @Test
-    void 저장된_마이홈_원천의_공고와_공급행_매핑을_실행한다() throws Exception {
-        when(mappingService.mapAll()).thenReturn(new MyHomeAnnouncementMappingReport(
-                1, 0, 0, 2, 0, 0, 0, 1
-        ));
-
+    void 공고_매핑_실행은_지원_종료로_410을_반환하고_매핑하지_않는다() throws Exception {
         mockMvc.perform(post("/api/admin/ingest/myhome/announcement-mappings"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.createdAnnouncementCount").value(1))
-                .andExpect(jsonPath("$.createdSupplyRowCount").value(2))
-                .andExpect(jsonPath("$.deletedSupplyRowCount").value(0))
-                .andExpect(jsonPath("$.failedSourceRowCount").value(1));
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.code").value("INGEST_OPERATION_RETIRED"))
+                .andExpect(jsonPath("$.message").value(
+                        "마이홈 공고 정제·LH 보강과 그 보정은 지원을 종료했습니다. 공고는 LH 공고 정제와 PDF 보정으로만 바뀝니다."));
 
-        verify(mappingService).mapAll();
+        verifyNoInteractions(mappingService);
     }
 
     @Test

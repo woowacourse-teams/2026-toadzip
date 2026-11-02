@@ -25,13 +25,13 @@ import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCol
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
 import com.toadzip.backend.ingest.collection.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.domain.IngestStepReport;
-import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
 import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
-import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
+import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport;
+import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
@@ -40,6 +40,7 @@ import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
@@ -82,6 +83,9 @@ class DataPipelineRunnerTest {
     private LhAnnouncementEnrichmentService announcementEnrichmentService;
 
     @Mock
+    private LhAnnouncementRefinementService lhAnnouncementRefinementService;
+
+    @Mock
     private DataPipelineExecutionStateService executionStateService;
 
     @Mock
@@ -113,6 +117,7 @@ class DataPipelineRunnerTest {
                         householdEnrichmentService,
                         myHomeAnnouncementMappingService,
                         announcementEnrichmentService,
+                        lhAnnouncementRefinementService,
                         resultAdapter,
                         registrationService,
                         shAnnouncementCollectionService
@@ -266,10 +271,10 @@ class DataPipelineRunnerTest {
         runner.run(DataPipelineType.ANNOUNCEMENT_REFINEMENT, executionId);
 
         assertThat(completedSteps()).containsExactly(
-                completed(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS, reports.get(0)),
-                completed(DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS, reports.get(1))
+                completed(DataPipelineStep.MAP_LH_ANNOUNCEMENTS, reports.get(0))
         );
         verify(myHomeComplexMappingService, never()).mapAll();
+        verifyNoInteractions(myHomeAnnouncementMappingService, announcementEnrichmentService);
     }
 
     @Test
@@ -335,35 +340,34 @@ class DataPipelineRunnerTest {
     }
 
     @Test
-    void 마이홈_공고_정제에_누락_행이_있어도_LH_공고_보강을_실행한다() {
-        MyHomeAnnouncementMappingReport partialFailure =
-                MyHomeAnnouncementMappingReport.failedRows(2);
-        when(myHomeAnnouncementMappingService.mapAll()).thenReturn(partialFailure);
-        when(announcementEnrichmentService.enrichAll())
-                .thenReturn(LhAnnouncementEnrichmentReport.empty());
+    void LH_공고_정제에_실패한_공고가_있으면_부분_실패로_기록한다() {
+        LhAnnouncementRefinementReport partialFailure = lhRefinementReport(Map.of(), 2);
+        when(lhAnnouncementRefinementService.refineAll()).thenReturn(partialFailure);
 
-        runner.run(DataPipelineType.ANNOUNCEMENT_REFINEMENT, executionId);
+        assertThatThrownBy(() -> runner.run(DataPipelineType.ANNOUNCEMENT_REFINEMENT, executionId))
+                .isInstanceOf(DataPipelinePartialFailureException.class)
+                .extracting("step")
+                .isEqualTo(DataPipelineStep.MAP_LH_ANNOUNCEMENTS);
 
-        verify(executionStateService).completeStepWithWarnings(
-                eq(executionId),
-                eq(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS), any()
+        verify(executionStateService).recordPartialFailure(
+                executionId,
+                DataPipelineStep.MAP_LH_ANNOUNCEMENTS,
+                resultAdapter.adapt(partialFailure).serverResponse()
         );
-        verify(announcementEnrichmentService).enrichAll();
+        verify(executionStateService, never()).completeStep(eq(executionId),
+                eq(DataPipelineStep.MAP_LH_ANNOUNCEMENTS), any());
     }
 
     @Test
-    void 공고_보강에_누락된_원천이_있으면_주의를_남긴다() {
-        when(myHomeAnnouncementMappingService.mapAll())
-                .thenReturn(new MyHomeAnnouncementMappingReport(1, 0, 0, 1, 0, 0, 0, 0));
-        when(announcementEnrichmentService.enrichAll())
-                .thenReturn(LhAnnouncementEnrichmentReport.failed());
+    void LH_공고_정제의_보류는_실패가_아니어서_정제_단계를_완료로_기록한다() {
+        LhAnnouncementRefinementReport held = lhRefinementReport(Map.of("공급 원천 없음", 3), 0);
+        when(lhAnnouncementRefinementService.refineAll()).thenReturn(held);
 
         runner.run(DataPipelineType.ANNOUNCEMENT_REFINEMENT, executionId);
 
-        verify(executionStateService).completeStepWithWarnings(
-                eq(executionId),
-                eq(DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS), any()
-        );
+        assertThat(completedSteps()).containsExactly(completed(DataPipelineStep.MAP_LH_ANNOUNCEMENTS, held));
+        verify(executionStateService, never()).recordPartialFailure(eq(executionId),
+                eq(DataPipelineStep.MAP_LH_ANNOUNCEMENTS), any());
     }
 
     @Test
@@ -588,13 +592,13 @@ class DataPipelineRunnerTest {
         runner.run(type, executionId);
 
         InOrder order = inOrder(myHomeAnnouncementCollectionService, lhAnnouncementCatalogCollectionService,
-                collectionService, myHomeAnnouncementMappingService, announcementEnrichmentService);
+                collectionService, lhAnnouncementRefinementService);
         order.verify(myHomeAnnouncementCollectionService).collect(any());
         order.verify(lhAnnouncementCatalogCollectionService).collect();
         order.verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
         order.verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
-        order.verify(myHomeAnnouncementMappingService).mapAll();
-        order.verify(announcementEnrichmentService).enrichAll();
+        order.verify(lhAnnouncementRefinementService).refineAll();
+        verifyNoInteractions(myHomeAnnouncementMappingService, announcementEnrichmentService);
     }
 
     @Test
@@ -609,8 +613,8 @@ class DataPipelineRunnerTest {
                 .extracting("step").isEqualTo(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
 
         verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
-        verifyNoInteractions(myHomeAnnouncementMappingService, announcementEnrichmentService);
-        verify(executionStateService, never()).startStep(executionId, DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+        verifyNoInteractions(lhAnnouncementRefinementService);
+        verify(executionStateService, never()).startStep(executionId, DataPipelineStep.MAP_LH_ANNOUNCEMENTS);
     }
 
     @Test
@@ -623,11 +627,9 @@ class DataPipelineRunnerTest {
         runner.run(type, executionId);
 
         verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
-        verifyNoInteractions(myHomeAnnouncementMappingService, announcementEnrichmentService);
+        verifyNoInteractions(lhAnnouncementRefinementService);
         verify(executionStateService).skipStep(eq(executionId),
-                eq(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS), any(), eq("{}"));
-        verify(executionStateService).skipStep(eq(executionId),
-                eq(DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS), any(), eq("{}"));
+                eq(DataPipelineStep.MAP_LH_ANNOUNCEMENTS), any(), eq("{}"));
     }
 
     @Test
@@ -640,9 +642,9 @@ class DataPipelineRunnerTest {
         runner.run(type, executionId);
 
         verify(collectionService, never()).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
-        verifyNoInteractions(myHomeAnnouncementMappingService, announcementEnrichmentService);
+        verifyNoInteractions(lhAnnouncementRefinementService);
         verify(executionStateService).skipStep(eq(executionId),
-                eq(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS), any(), eq("{}"));
+                eq(DataPipelineStep.MAP_LH_ANNOUNCEMENTS), any(), eq("{}"));
     }
 
     @Test
@@ -704,11 +706,17 @@ class DataPipelineRunnerTest {
     }
 
     private List<IngestStepReport> givenSuccessfulAnnouncementRefinementReports() {
-        var myHomeAnnouncements = new MyHomeAnnouncementMappingReport(1, 0, 0, 1, 0, 0, 0, 0);
-        var lhAnnouncements = LhAnnouncementEnrichmentReport.empty();
-        when(myHomeAnnouncementMappingService.mapAll()).thenReturn(myHomeAnnouncements);
-        when(announcementEnrichmentService.enrichAll()).thenReturn(lhAnnouncements);
-        return List.of(myHomeAnnouncements, lhAnnouncements);
+        var lhAnnouncements = lhRefinementReport(Map.of(), 0);
+        when(lhAnnouncementRefinementService.refineAll()).thenReturn(lhAnnouncements);
+        return List.of(lhAnnouncements);
+    }
+
+    private LhAnnouncementRefinementReport lhRefinementReport(Map<String, Integer> heldCounts, int failedCount) {
+        return new LhAnnouncementRefinementReport(
+                1, 1, 0, 0, heldCounts, failedCount, 0, 0, 1, 0,
+                new LhAnnouncementRefinementReport.ComplexCounts(1, 0, 0, 0, 0, 1, 0),
+                new LhAnnouncementRefinementReport.SupplyCounts(1, 0, 0, 1, 0, 0, 1, Map.of())
+        );
     }
 
     /** 실행 이력에 완료로 기록된 단계와 그 응답을 기록된 순서대로 돌려준다. */

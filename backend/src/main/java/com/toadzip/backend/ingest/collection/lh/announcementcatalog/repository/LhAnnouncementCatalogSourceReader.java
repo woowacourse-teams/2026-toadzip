@@ -4,6 +4,7 @@ import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnn
 import java.util.Collection;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,5 +24,13 @@ public class LhAnnouncementCatalogSourceReader {
 
     public List<LhAnnouncementCatalogSourceView> findAllByPanIdInAndPresentInLatestCatalogTrue(Collection<String> ids) {
         return findAllByPanIdIn(ids).stream().filter(LhAnnouncementCatalogSourceView::isPresentInLatestCatalog).toList();
+    }
+
+    /** 최신 공고목록에 있는 임대주택 공고를 공고 ID 순으로 읽는다. */
+    public List<LhAnnouncementCatalogSourceView> findAllPresentRentalHousingAnnouncements() {
+        return sources.findAll(Sort.by("panId", "id")).stream().map(LhAnnouncementCatalogSourceView::of)
+                .filter(LhAnnouncementCatalogSourceView::isPresentInLatestCatalog)
+                .filter(LhAnnouncementCatalogSourceView::isRentalHousingAnnouncement)
+                .toList();
     }
 }

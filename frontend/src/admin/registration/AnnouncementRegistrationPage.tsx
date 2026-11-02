@@ -1,4 +1,4 @@
-import { MyhomeAnnouncementImport } from '../ingest/MyhomeAnnouncementImport'
+import { retiredAnnouncementRegistrationNotice } from '../ingest/pipelineLabels'
 import { ComplexPicker } from '../management/ComplexPicker'
 import { getManagementDetail } from '../management/api'
 import { useEffect, useRef, useState } from 'react'
@@ -24,7 +24,10 @@ export function AnnouncementRegistrationPage({ embedded = false, onCreated }: { 
       <button data-admin-navigation={!direct || undefined} type="button" aria-pressed={direct} disabled={submitting} onClick={() => { if (!direct) selectMode('direct') }}>직접 입력</button>
       <button data-admin-navigation={!myhome || undefined} type="button" aria-pressed={myhome} disabled={submitting} onClick={() => { if (!myhome) selectMode('myhome') }}>마이홈에서 가져오기</button>
     </div>
-    {myhome ? <MyhomeAnnouncementImport onSubmittingChange={setSubmitting} /> : <DirectAnnouncement complexId={complexId} submitting={submitting}
+    {myhome ? <section className="registration-card" aria-labelledby="myhome-registration-title">
+      <h2 id="myhome-registration-title">마이홈에서 가져오기</h2>
+      <p role="note">{retiredAnnouncementRegistrationNotice}</p>
+    </section> : <DirectAnnouncement complexId={complexId} submitting={submitting}
       onCreated={onCreated} onSubmittingChange={setSubmitting} onSelect={(id) => setParams(current => { current.set('mode', 'direct'); current.set('complexId', id); return current })} />}
   </section>
 }

@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.collection.service;
 
+import static java.time.format.DateTimeFormatter.BASIC_ISO_DATE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -24,6 +25,7 @@ import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,6 +50,7 @@ class LhAnnouncementCatalogCollectionServiceTest {
     private ExternalDataFailureRecorder failureRecorder;
 
     private LhAnnouncementCatalogCollectionService service;
+    private CollectionServiceTestFixture fixture;
     private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
@@ -56,7 +59,8 @@ class LhAnnouncementCatalogCollectionServiceTest {
                 JsonMapper.builder().build().createObjectNode()
         );
         meterRegistry = new SimpleMeterRegistry();
-        service = new CollectionServiceTestFixture().catalog(externalRepository, parser, store,
+        fixture = new CollectionServiceTestFixture();
+        service = fixture.catalog(externalRepository, parser, store,
                 failureRecorder, new ExternalDataRetryExecutor(Duration.ZERO, meterRegistry), meterRegistry);
     }
 
@@ -81,6 +85,22 @@ class LhAnnouncementCatalogCollectionServiceTest {
         assertThat(meterRegistry.counter("ingest.announcement.catalog.rows", "change", "unchanged").count())
                 .isEqualTo(496);
         verify(failureRecorder).resolveStartingWith(ExternalDataSource.LH_ANNOUNCEMENT_CATALOG, "PG_SZ=500");
+    }
+
+    @Test
+    void 오늘부터_설정한_기간만큼_거슬러_공고목록을_요청한다() {
+        when(parser.parse(any(), eq(1), eq(500))).thenReturn(page(0, 1, 1));
+        when(store.store(any())).thenReturn(new StoreResult(1, 1, 0));
+
+        service.collect();
+
+        LocalDate today = LocalDate.now(CollectionServiceTestFixture.CLOCK);
+        assertThat(fixture.catalogRequests).singleElement().satisfies(request -> {
+            assertThat(request.startDate()).isEqualTo(today.minusYears(2));
+            assertThat(request.endDate()).isEqualTo(today);
+            assertThat(request.parameters()).containsEntry("PAN_ST_DT", BASIC_ISO_DATE.format(today.minusYears(2)))
+                    .containsEntry("PAN_ED_DT", BASIC_ISO_DATE.format(today));
+        });
     }
 
     @Test
@@ -121,7 +141,7 @@ class LhAnnouncementCatalogCollectionServiceTest {
     @Test
     void 전체건수_증거가_없는_빈_목록은_실패로_보고하고_저장하지_않는다() {
         when(parser.parse(any(), eq(1), eq(500)))
-                .thenReturn(new LhAnnouncementCatalogPage(new SourcePage<>(0, List.of()), "20260725", "20260925"));
+                .thenReturn(new LhAnnouncementCatalogPage(new SourcePage<>(0, List.of()), startDate(), endDate()));
         org.mockito.Mockito.lenient().when(store.store(any())).thenReturn(new StoreResult(0, 0, 0));
 
         assertThat(service.collect().failedRequestCount()).isOne();
@@ -143,6 +163,14 @@ class LhAnnouncementCatalogCollectionServiceTest {
                 new LhAnnouncementCatalogSnapshot(String.valueOf(index), "03", "06", "48", "063", "공고",
                         "공고중", "2026.09.25", "20260925", "2026.10.25", "url", "url"), "{}"
         )).toList();
-        return new LhAnnouncementCatalogPage(new SourcePage<>(total, entries), "20260725", "20260925");
+        return new LhAnnouncementCatalogPage(new SourcePage<>(total, entries), startDate(), endDate());
+    }
+
+    private String startDate() {
+        return BASIC_ISO_DATE.format(LocalDate.now(CollectionServiceTestFixture.CLOCK).minusYears(2));
+    }
+
+    private String endDate() {
+        return BASIC_ISO_DATE.format(LocalDate.now(CollectionServiceTestFixture.CLOCK));
     }
 }

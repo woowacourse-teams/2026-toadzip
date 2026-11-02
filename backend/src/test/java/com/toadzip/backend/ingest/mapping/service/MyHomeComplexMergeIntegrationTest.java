@@ -231,7 +231,7 @@ class MyHomeComplexMergeIntegrationTest {
             assertThat(complex.getRecentOneYearMoveOutCount()).isEqualTo(2);
         });
         for (String table : List.of("housing_types", "supply_rows", "favorite_housing_complexes",
-                "announcement_application_schedules")) {
+                "announcement_application_schedules", "announcement_complexes")) {
             assertThat(jdbc.sql("SELECT DISTINCT housing_complex_id FROM " + table)
                     .query(Long.class).list()).containsExactly(ids.getFirst());
         }
@@ -278,6 +278,28 @@ class MyHomeComplexMergeIntegrationTest {
         jdbc.sql("UPDATE housing_types SET basic_deposit = 12300000").update();
 
         expectConflict(ENDPOINT + "/" + merged.get("operationId").asText() + "/revert", Map.of());
+    }
+
+    @Test
+    void 공고_단지_도입_전_통합_이력도_복구할_수_있다() throws Exception {
+        addReferences();
+        jdbc.sql("DELETE FROM announcement_complexes").update();
+        List<String> before = productState();
+        JsonNode merged = merge();
+        // LH 공고 정제 전에 저장한 스냅숏에는 공고 단지와 공급행의 공고 단지·LH 매칭 컬럼이 없다.
+        jdbc.sql("""
+                UPDATE myhome_complex_merges
+                SET before_state = jsonb_set(before_state - 'announcement_complexes', '{supply_rows}', (
+                        SELECT COALESCE(jsonb_agg(row - 'announcement_complex_id' - 'lh_exclusive_area' - 'lh_match_status'),
+                            '[]'::jsonb) FROM jsonb_array_elements(before_state->'supply_rows') row)),
+                    after_state = jsonb_set(after_state - 'announcement_complexes', '{supply_rows}', (
+                        SELECT COALESCE(jsonb_agg(row - 'announcement_complex_id' - 'lh_exclusive_area' - 'lh_match_status'),
+                            '[]'::jsonb) FROM jsonb_array_elements(after_state->'supply_rows') row))
+                """).update();
+
+        postJson(ENDPOINT + "/" + merged.get("operationId").asText() + "/revert", Map.of());
+
+        assertThat(productState()).isEqualTo(before);
     }
 
     @Test
@@ -730,7 +752,7 @@ class MyHomeComplexMergeIntegrationTest {
     private List<String> productState() {
         List<String> snapshots = new ArrayList<>();
         for (String table : List.of("housing_complexes", "housing_types", "supply_rows",
-                "favorite_housing_complexes", "announcement_application_schedules")) {
+                "favorite_housing_complexes", "announcement_application_schedules", "announcement_complexes")) {
             snapshots.add(jdbc.sql(
                     "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id), '[]')::text FROM " + table + " t")
                     .query(String.class).single());
@@ -757,6 +779,11 @@ class MyHomeComplexMergeIntegrationTest {
                     "https://apply.lh.or.kr/notice.pdf", 1));
             jdbc.sql("INSERT INTO favorite_housing_complexes (user_id, housing_complex_id, created_at)"
                     + " VALUES (?, ?, TIMESTAMP '2026-09-01 00:00:00')").params(user.getId(), id).update();
+            // LH 공고 정제가 이 단지에 연결한 공고 단지도 통합과 복구를 따라간다.
+            jdbc.sql("INSERT INTO announcement_complexes (announcement_id, source_complex_name, present_in_source,"
+                    + " housing_complex_id, link_method, linked_by, created_at)"
+                    + " VALUES (?, ?, true, ?, 'AUTO', 'LH 공고 정제', TIMESTAMP '2026-09-01 00:00:00')")
+                    .params(announcement.getId(), "공고 단지 " + id, id).update();
         }
     }
 

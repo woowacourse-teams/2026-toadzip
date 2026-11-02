@@ -86,6 +86,8 @@ it('추가 확인 체크나 미리보기 화면 없이 서버 검증을 마친 �
   expect(api.applyJsonUpdate).toHaveBeenCalledExactlyOnceWith('29', input, 'confirmed')
   expect(screen.queryByRole('heading', { name: '적용할 변경' })).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: '실패 검토로 돌아가기' })).toHaveAttribute('href', '/admin/failures?domain=announcement')
+  const result = screen.getByRole('heading', { name: '공고 보정을 적용했습니다.' }).closest('section')!
+  expect(result).toHaveTextContent('이 공고의 미해결 오류를 해결로 바꿨습니다.')
   expect(screen.getByRole('link', { name: '저장된 공급정보 확인' }).getAttribute('href')).toContain('section=relations')
   expect(screen.getByRole('link', { name: '출처·수정 이력 보기' }).getAttribute('href')).toContain('section=history')
   expect(within(screen.getByRole('region', { name: '단지 주택형 이름 후보' })).getAllByRole('listitem').map(item => item.textContent)).toEqual(['#10353 「26」 → 공고 표기 「26A」', '#10352 「26」 → 공고 표기 「26B」'])
@@ -341,6 +343,19 @@ it('빈 공고의 PDF 추출값은 단지를 검색해 선택한 뒤 첫 공급�
   expect(api.applyJsonUpdate).not.toHaveBeenCalled()
 })
 
+it('마이홈 원천 공고도 보정 결과에서 다시 정제를 실행하지 않고 해결한 오류만 알린다', async () => {
+  const [first] = workspace.supply.rows
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, rowSources: [{ rowKey: first.key, category: 'MYHOME_ANNOUNCEMENT', sourceKey: '5:213951:1' }] } })
+  render(<MemoryRouter initialEntries={['/admin/announcements/29/pdf-correction?failureCount=2&failureReturnTo=%2Fadmin%2Ffailures']}><Routes><Route path="/admin/announcements/:id/pdf-correction" element={<PdfCorrectionPage />} /></Routes></MemoryRouter>)
+  await review()
+  fireEvent.click(await screen.findByRole('button', { name: '보정 내용 적용' }))
+  const result = (await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })).closest('section')!
+  expect(result).toHaveTextContent('이 공고의 오류 2건을 포함해 이 공고의 미해결 오류를 해결로 바꿨습니다.')
+  expect(result).not.toHaveTextContent('정제')
+  expect(within(result).queryByRole('button')).not.toBeInTheDocument()
+  expect(within(result).queryByRole('link', { name: /LH 행 연결/ })).not.toBeInTheDocument()
+})
+
 it('실패 검토에서 열면 고칠 공급행과 오류 사유를 먼저 보여 준다', async () => {
   const [first] = workspace.supply.rows
   api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, rowSources: [{ rowKey: first.key, category: 'MYHOME_ANNOUNCEMENT', sourceKey: '5:213951:1' }] } })
@@ -480,13 +495,15 @@ it('검산에서 맞지 않은 합계를 공급정보 위에 보여 준다', asy
   expect(screen.getByRole('note', { name: '검산 결과' })).toHaveTextContent('공급면적 42㎡가 전용 + 공용 41.47㎡와 달라 계산값을 씁니다.')
 })
 
-it('LH 공급 원본 행이 공급행에 없으면 LH 행 연결로 안내하고 새 공급정보로 추가할 수 없다', async () => {
+it('LH 공급 원본 행이 공급행에 없어도 지원 종료한 LH 행 연결로 안내하지 않고 새 공급정보로 추가할 수 없다', async () => {
   const lh = [{ rowIdentifier: 'LH:P:SUPPLY:1', complexLabel: '익산한스빌', typeName: '26B', exclusiveArea: '26.41' }]
   api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, unattachedLhSupplyRows: lh } })
   await open()
-  expect(screen.getByText(/LH 공급 원본 1행\(익산한스빌 · 26B · 26.41㎡\)이 아직 공급행에 없습니다/)).toBeVisible()
-  expect(screen.getByRole('link', { name: 'LH 행 연결로 이동' })).toHaveAttribute('href', '/admin/failures/lh-links/current-source')
-  const options = screen.getAllByRole('option', { name: '새 공급정보로 추가 (LH 행 연결 후 가능)' })
+  expect(screen.queryByText('LH 행 연결 필요')).not.toBeInTheDocument()
+  expect(screen.queryByText(/LH 공급 원본 1행/)).not.toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: 'LH 행 연결로 이동' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('option', { name: /LH 행 연결/ })).not.toBeInTheDocument()
+  const options = screen.getAllByRole('option', { name: '새 공급정보로 추가 (연결되지 않은 LH 행이 있어 불가)' })
   expect(options.length).toBeGreaterThan(0)
   for (const option of options) expect(option).toBeDisabled()
 })

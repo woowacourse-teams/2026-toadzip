@@ -48,14 +48,14 @@ it('좌표 행 수와 구별한 주소 수 세 개만 보여 주며 정제를 �
   expect(screen.getByText('좌표를 찾은 주소').nextSibling).toHaveTextContent('3,400개')
   expect(screen.getByText('좌표를 찾지 못한 주소').nextSibling).toHaveTextContent('100개')
   expect(screen.queryByText('저장한 좌표 행')).not.toBeInTheDocument()
-  expect(screen.getByRole('link', { name: '3단계에서 단지 정제·저장' })).toHaveAttribute('href', '/#complex-refinement')
-  expect(screen.getByText(/결과의 ‘좌표 문제’/)).toBeVisible()
+  expect(screen.getByRole('complementary', { name: '다음 작업 안내' })).toHaveTextContent('PDF 보정에서 공고문 주소로 정합니다')
+  expect(screen.queryByRole('link', { name: /단지 정제/ })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /정제/ })).not.toBeInTheDocument()
   expect(startDataPipeline).not.toHaveBeenCalled()
 })
-it('독립 주소 업로드 화면도 정제 버튼 없이 단지 수집 3단계로 안내한다', () => {
+it('독립 주소 업로드 화면은 지원을 종료한 단지 정제로 안내하지 않는다', () => {
   show()
-  expect(screen.getByRole('link', { name: '단지 수집 3단계에서 단지 정제·저장' })).toHaveAttribute('href', '/admin/ingest/complexes#complex-refinement')
+  expect(screen.queryByRole('link', { name: /단지 정제/ })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /정제/ })).not.toBeInTheDocument()
 })
 it('업로드 실패는 빈 성공과 구별하고 같은 파일로 재시도할 수 있다', async () => {

@@ -61,7 +61,10 @@ public class LhAnnouncementCollectionController {
         long approvalId = replacementService.approve(pblancId, request, principal.getName());
         ExternalDataCollectionReport report;
         try {
-            report = collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, pblancId);
+            report = VerifiedLhSupplyReplacementService.isLhAnnouncementKey(pblancId)
+                    ? collectionService.refreshCatalogTarget(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                            request.requestDescription())
+                    : collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, pblancId);
         }
         catch (RuntimeException exception) {
             replacementService.finish(approvalId);

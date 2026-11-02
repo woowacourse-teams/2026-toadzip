@@ -82,7 +82,7 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
 
     @Test
     void 일반_공공임대도_CSV_없이_마이홈의_세부_공급유형을_유지하며_보강한다() {
-        HousingComplex complex = saveComplex("공공임대단지", "PUBLIC_RENTAL_10Y", 100);
+        HousingComplex complex = saveComplex("공공임대단지", "PUBLIC_RENTAL", 100);
         HousingType type = saveType(complex, "46A", "46.8000");
         saveCatalog(0, "공공임대", "46.8", 100, 100, "공공임대단지");
 
@@ -92,7 +92,7 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
         assertThat(housingTypeRepository.findById(type.getId()).orElseThrow().getTotalHouseholdCount())
                 .isEqualTo(100);
         assertThat(complexRepository.findById(complex.getId()).orElseThrow().getSupplyType())
-                .isEqualTo("PUBLIC_RENTAL_10Y");
+                .isEqualTo("PUBLIC_RENTAL");
     }
 
     @Test

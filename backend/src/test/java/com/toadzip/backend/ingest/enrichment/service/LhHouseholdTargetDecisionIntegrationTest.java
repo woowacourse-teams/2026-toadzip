@@ -2,12 +2,13 @@ package com.toadzip.backend.ingest.enrichment.service;
 
 import static com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension.owned;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
@@ -18,14 +19,13 @@ import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSo
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdTargetDecisionView;
+import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,6 +48,7 @@ class LhHouseholdTargetDecisionIntegrationTest {
     private static final List<String> AREAS = List.of("33.61", "33.72", "46.8", "51.93");
     private static final List<String> COUNTS = List.of("116", "90", "57", "90");
     @Autowired private LhHousingTypeHouseholdEnrichmentService enrichment;
+    @Autowired private LhHouseholdTargetDecisionService decisions;
     @Autowired private IngestExecutionOwnershipService ownership;
     @Autowired private LhLeaseCatalogSourceFixtures lhSources;
     @Autowired private HousingComplexRepository complexes;
@@ -101,7 +102,7 @@ class LhHouseholdTargetDecisionIntegrationTest {
                 .containsExactlyInAnyOrder("남해평리", "남해평리(국민)");
         String chosen = view.groups().stream().filter(group -> group.complexName().equals("남해평리")).findFirst()
                 .orElseThrow().sourceKey();
-        save(view, "USE_SOURCE", chosen, "공고문 주택형별 세대수와 일치하는 묶음").andExpect(status().isOk());
+        save(view, "USE_SOURCE", chosen, "공고문 주택형별 세대수와 일치하는 묶음");
         owned(ownership, enrichment::enrichAll);
 
         assertThat(pendingReasons()).isEmpty();
@@ -116,7 +117,7 @@ class LhHouseholdTargetDecisionIntegrationTest {
         group("남해평리(국민)", List.of("100", "90", "57", "106"));
         owned(ownership, enrichment::enrichAll);
 
-        save(view(), "SKIP", null, "어느 묶음이 맞는지 공식 자료로 확인할 수 없음").andExpect(status().isOk());
+        save(view(), "SKIP", null, "어느 묶음이 맞는지 공식 자료로 확인할 수 없음");
         owned(ownership, enrichment::enrichAll);
 
         assertThat(pendingReasons()).isEmpty();
@@ -129,7 +130,7 @@ class LhHouseholdTargetDecisionIntegrationTest {
         group("남해평리(국민)", List.of("100", "90", "57", "106"));
         owned(ownership, enrichment::enrichAll);
         var view = view();
-        save(view, "USE_SOURCE", view.groups().getFirst().sourceKey(), "공고문 대조").andExpect(status().isOk());
+        save(view, "USE_SOURCE", view.groups().getFirst().sourceKey(), "공고문 대조");
         jdbc.sql("UPDATE lh_lease_catalog_source_rows SET total_unit_count = '105' WHERE total_unit_count = '106'")
                 .update();
 
@@ -146,7 +147,7 @@ class LhHouseholdTargetDecisionIntegrationTest {
         group("남해평리(국민)", List.of("100", "90", "57", "106"));
         owned(ownership, enrichment::enrichAll);
         var view = view();
-        save(view, "USE_SOURCE", view.groups().getFirst().sourceKey(), "공고문 대조").andExpect(status().isOk());
+        save(view, "USE_SOURCE", view.groups().getFirst().sourceKey(), "공고문 대조");
         jdbc.sql("UPDATE housing_types SET exclusive_area = exclusive_area + 1 WHERE id = (SELECT min(id) FROM housing_types)")
                 .update();
 
@@ -162,11 +163,10 @@ class LhHouseholdTargetDecisionIntegrationTest {
         group("남해평리", COUNTS);
         group("남해평리(국민)", List.of("100", "90", "57", "106"));
         owned(ownership, enrichment::enrichAll);
-        var saved = read(save(view(), "SKIP", null, "확인 불가").andExpect(status().isOk()));
+        var saved = save(view(), "SKIP", null, "확인 불가");
 
-        mvc.perform(post(PATH + failureId() + "/target-decision/release").with(user("operator").roles("ADMIN"))
-                .with(csrf()).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
-                        "token", saved.token(), "reason", "공식 자료를 찾아 다시 판단")))).andExpect(status().isOk());
+        decisions.release(failureId(), new LhHouseholdTargetDecisionView.ReleaseRequest(
+                saved.token(), "공식 자료를 찾아 다시 판단"), "operator");
         owned(ownership, enrichment::enrichAll);
 
         assertThat(jdbc.sql("SELECT count(*) FROM lh_household_target_decisions").query(Long.class).single()).isZero();
@@ -180,10 +180,11 @@ class LhHouseholdTargetDecisionIntegrationTest {
         owned(ownership, enrichment::enrichAll);
         var view = view();
 
-        save(view, "USE_SOURCE", "다른 묶음", "대조").andExpect(status().isBadRequest());
+        assertThatThrownBy(() -> save(view, "USE_SOURCE", "다른 묶음", "대조"))
+                .isInstanceOf(InvalidIngestRequestException.class);
         jdbc.sql("UPDATE lh_lease_catalog_source_rows SET total_unit_count = '105' WHERE total_unit_count = '106'")
                 .update();
-        save(view, "SKIP", null, "대조").andExpect(status().isConflict());
+        assertThatThrownBy(() -> save(view, "SKIP", null, "대조")).isInstanceOf(AdminDataConflictException.class);
         assertThat(jdbc.sql("SELECT count(*) FROM lh_household_target_decisions").query(Long.class).single()).isZero();
     }
 
@@ -209,14 +210,11 @@ class LhHouseholdTargetDecisionIntegrationTest {
         lhSources.saveAll(rows);
     }
 
-    private ResultActions save(LhHouseholdTargetDecisionView view, String decision, String chosen, String reason)
-            throws Exception {
-        Map<String, Object> body = new HashMap<>(Map.of("decision", decision, "token", view.token(), "reason", reason));
-        if (chosen != null) {
-            body.put("chosenSourceKey", chosen);
-        }
-        return mvc.perform(post(PATH + view.failureId() + "/target-decision").with(user("operator").roles("ADMIN"))
-                .with(csrf()).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body)));
+    // 저장 API는 지원을 종료했다. 서비스는 S5에서 지울 때까지 직접 호출해 동작을 지킨다.
+    private LhHouseholdTargetDecisionView save(LhHouseholdTargetDecisionView view, String decision, String chosen,
+            String reason) {
+        return decisions.save(view.failureId(),
+                new LhHouseholdTargetDecisionView.SaveRequest(decision, chosen, view.token(), reason), "operator");
     }
 
     private LhHouseholdTargetDecisionView view() throws Exception {

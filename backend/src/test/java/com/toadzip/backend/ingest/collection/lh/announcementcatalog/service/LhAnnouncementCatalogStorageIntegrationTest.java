@@ -10,6 +10,8 @@ import com.toadzip.backend.ingest.collection.history.domain.SourceCollectionReco
 import com.toadzip.backend.ingest.collection.history.repository.SourceCollectionRecordRepository;
 import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecordService;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogEntry;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSourceView;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogRow;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.dto.LhAnnouncementCatalogCollectedResponse;
@@ -31,6 +33,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import com.toadzip.backend.global.config.PostgresTestDatabases;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -93,6 +96,10 @@ class LhAnnouncementCatalogStorageIntegrationTest {
     private static final Instant COLLECTED_AT = STARTED_AT.plusSeconds(1);
 
     private static final Instant NOW = STARTED_AT.plusSeconds(30);
+
+    private static final LocalDate START_DATE = LocalDate.of(2024, 10, 4);
+
+    private static final LocalDate END_DATE = LocalDate.of(2026, 10, 4);
 
     private static final UUID EXECUTION_ID = UUID.fromString("3c8c7eb0-e980-4c53-9c84-9c79b8d161d7");
 
@@ -168,6 +175,18 @@ class LhAnnouncementCatalogStorageIntegrationTest {
     }
 
     @Test
+    void catalogAnsweredForAnotherPeriodCannotReplaceEntries() {
+        seed(row("PAN-A", "기존 이름"));
+        List<SourceView> previous = view();
+        expectPage(1, page(1, 1, "20260804", row("PAN-B", "B")));
+
+        assertThatThrownBy(() -> collect(request(2))).hasMessageContaining("검색 기간");
+
+        assertThat(view()).isEqualTo(previous);
+        assertFailed();
+    }
+
+    @Test
     void unchangedCatalogRefreshDoesNotAdvanceChangedAt() {
         seed(row("PAN-A", "이름 A"));
         expectPage(1, page(1, 1, row("PAN-A", " 이름 A ")));
@@ -179,6 +198,28 @@ class LhAnnouncementCatalogStorageIntegrationTest {
             assertThat(source.collectedAt()).isEqualTo(NOW);
             assertThat(source.snapshot().announcementName()).isEqualTo(" 이름 A ");
         });
+    }
+
+    @Test
+    void catalogAnsweredForAnotherEndDateCannotReplaceEntries() {
+        seed(row("PAN-A", "기존 이름"));
+        List<SourceView> previous = view();
+        expectPage(1, page(1, 1, "20241004", "20261003", row("PAN-B", "B")));
+
+        assertThatThrownBy(() -> collect(request(2))).hasMessageContaining("검색 기간");
+
+        assertThat(view()).isEqualTo(previous);
+        assertFailed();
+    }
+
+    @Test
+    void collectionTargetsAreRentalEntriesPresentInLatestCatalog() {
+        seed(rental("PAN-OLD"));
+        expectPage(1, page(1, 2, rental("PAN-NEW"), row("PAN-SALE", "분양")));
+        collect(request(2));
+
+        assertThat(new LhAnnouncementCatalogSourceReader(sources).findAllPresentRentalHousingAnnouncements())
+                .extracting(LhAnnouncementCatalogSourceView::getPanId).containsExactly("PAN-NEW");
     }
 
     @Test
@@ -211,7 +252,7 @@ class LhAnnouncementCatalogStorageIntegrationTest {
         String first = page(1, 3, row("PAN-B", "이름 B"), row("PAN-C", "이름 C"));
         String next = page(2, 3, row("PAN-D", "이름 D"));
         switch (invalidPart) {
-            case "period" -> next = next.replace("\"20260804\"", "\"20260805\"");
+            case "period" -> next = next.replace("\"20241004\"", "\"20241005\"");
             case "duplicate" -> next = page(2, 3, row("PAN-B", "충돌 이름"));
             case "count" -> next = page(2, 4, row("PAN-D", "이름 D"));
             case "empty" -> next = page(2, 3);
@@ -269,7 +310,7 @@ class LhAnnouncementCatalogStorageIntegrationTest {
     }
 
     private LhAnnouncementCatalogCollectedResponse response(LhAnnouncementCatalogSnapshot snapshot) {
-        return new LhAnnouncementCatalogCollectedResponse(1, "20260804", "20261004", NOW,
+        return new LhAnnouncementCatalogCollectedResponse(1, "20241004", "20261004", NOW,
                 List.of(new LhAnnouncementCatalogRow(snapshot, "{}")));
     }
 
@@ -292,13 +333,13 @@ class LhAnnouncementCatalogStorageIntegrationTest {
     }
 
     private LhAnnouncementCatalogCollectionRequest request(int maxPages) {
-        return new LhAnnouncementCatalogCollectionRequest(EXECUTION_ID, 2, maxPages, STARTED_AT);
+        return new LhAnnouncementCatalogCollectionRequest(EXECUTION_ID, 2, maxPages, START_DATE, END_DATE, STARTED_AT);
     }
 
     private void seed(LhAnnouncementCatalogSnapshot snapshot) {
         LhAnnouncementCatalogCollectionRequest request = request(2);
         UUID id = history.start(request);
-        storage.complete(id, request, new LhAnnouncementCatalogCollectedResponse(1, "20260804", "20261004",
+        storage.complete(id, request, new LhAnnouncementCatalogCollectedResponse(1, "20241004", "20261004",
                 COLLECTED_AT, List.of(new LhAnnouncementCatalogRow(snapshot, "{}"))));
     }
 
@@ -316,7 +357,8 @@ class LhAnnouncementCatalogStorageIntegrationTest {
     }
 
     private String apiUrl(int page) {
-        return "https://example.com/lhLeaseNoticeInfo1/lhLeaseNoticeInfo1?serviceKey=test-key&PG_SZ=2&PAGE=" + page;
+        return "https://example.com/lhLeaseNoticeInfo1/lhLeaseNoticeInfo1?serviceKey=test-key&PG_SZ=2&PAGE=" + page
+                + "&PAN_ST_DT=20241004&PAN_ED_DT=20261004";
     }
 
     private void expectPage(int page, String payload) {
@@ -324,6 +366,14 @@ class LhAnnouncementCatalogStorageIntegrationTest {
     }
 
     private String page(int page, int total, LhAnnouncementCatalogSnapshot... snapshots) {
+        return page(page, total, "20241004", snapshots);
+    }
+
+    private String page(int page, int total, String startDate, LhAnnouncementCatalogSnapshot... snapshots) {
+        return page(page, total, startDate, "20261004", snapshots);
+    }
+
+    private String page(int page, int total, String startDate, String endDate, LhAnnouncementCatalogSnapshot... snapshots) {
         var rows = new ArrayList<Map<String, String>>();
         for (int index = 0; index < snapshots.length; index++) {
             LhAnnouncementCatalogSnapshot row = snapshots[index];
@@ -339,8 +389,13 @@ class LhAnnouncementCatalogStorageIntegrationTest {
                     Map.entry("RNUM", Integer.toString((page - 1) * 2 + index + 1))));
         }
         return "[{\"dsSch\":[{\"PAGE\":\"%d\",\"PG_SZ\":\"2\","
-                .formatted(page) + "\"PAN_ST_DT\":\"20260804\",\"PAN_ED_DT\":\"20261004\"}]},{\"dsList\":"
+                .formatted(page) + "\"PAN_ST_DT\":\"%s\",\"PAN_ED_DT\":\"%s\"}]},{\"dsList\":".formatted(startDate, endDate)
                 + mapper.writeValueAsString(rows) + "},{\"resHeader\":[{\"SS_CODE\":\"Y\"}]}]";
+    }
+
+    private LhAnnouncementCatalogSnapshot rental(String panId) {
+        return new LhAnnouncementCatalogSnapshot(panId, "03", "06", "07", "062", "임대 " + panId,
+                "공고중", "2026.10.01", "2026.10.01", "2026.10.31", "https://apply.lh.or.kr/a", "https://apply.lh.or.kr/m");
     }
 
     private LhAnnouncementCatalogSnapshot row(String panId, String name) {
@@ -407,6 +462,7 @@ class LhAnnouncementCatalogStorageIntegrationTest {
     private int collect(LhAnnouncementCatalogCollectionRequest request) {
         return CollectionServiceTestFixture.pagedCollector(history, clock).collect(collector,
                 startedAt -> new LhAnnouncementCatalogCollectionRequest(request.executionId(), request.pageSize(),
-                        request.maxPages(), startedAt), new ExternalDataCallCounter());
+                        request.maxPages(), request.startDate(), request.endDate(), startedAt),
+                new ExternalDataCallCounter());
     }
 }

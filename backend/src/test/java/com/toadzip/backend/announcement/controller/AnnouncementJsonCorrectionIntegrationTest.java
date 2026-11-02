@@ -157,8 +157,11 @@ class AnnouncementJsonCorrectionIntegrationTest {
         request.withArray("schedules").addObject().put("inputIndex", 0).put("existingId", event.getId());
         request.withArray("attachments").addObject().put("inputIndex", 0).put("existingId", attachment.getId());
         var preview = preview(announcement.getId(), request);
+        assertThat(supplyOwner(announcement.getId())).isEqualTo("LH_SOURCE");
         apply(announcement.getId(), request, preview.path("confirmationToken").asText()).andExpect(status().isOk());
         entities.flush(); entities.clear();
+        // PDF 보정은 공급행을 고치지 않아도 공고문으로 확인한 것이므로 공고문 소유가 된다(마이그레이션 백필과 같은 기준).
+        assertThat(supplyOwner(announcement.getId())).isEqualTo("ANNOUNCEMENT_DOCUMENT");
         var storedEvent = entities.find(AnnouncementSchedule.class, event.getId());
         var storedAttachment = entities.find(AnnouncementAttachment.class,
                 attachment.getId());
@@ -275,5 +278,9 @@ class AnnouncementJsonCorrectionIntegrationTest {
         return mvc.perform(post("/api/admin/announcements/" + id + "/json-corrections")
                 .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
                 .content(body.toString()));
+    }
+
+    private String supplyOwner(long id) {
+        return jdbc.queryForObject("SELECT supply_owner FROM announcements WHERE id = ?", String.class, id);
     }
 }

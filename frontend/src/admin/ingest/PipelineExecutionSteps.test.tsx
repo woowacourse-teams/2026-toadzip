@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import type { DataPipelineExecution } from './api'
@@ -36,10 +36,35 @@ describe('v2 공통 단계 표시', () => {
     expect(screen.getByRole('button', { name: 'SH 공고 원천 수집 진행' })).toHaveAttribute('aria-current', 'step')
     expect(screen.getByRole('button', { name: 'SH 공고 수집 실행 중지' })).toBeVisible()
   })
-  it('단건 정제 매칭 실패에 수동 매칭 진입 버튼을 제공한다', () => {
+  it('지난 단건 등록 실패 이력은 매칭 진입 없이 지원 종료를 안내한다', () => {
     show(execution({ status: 'FAILED', targetAnnouncementIdentifier: '21395',
       failure: { stepName: '마이홈 공고 정제', message: '공급행 매칭 실패: 주택형을 확정할 수 없습니다.', serverResponse: null } }))
-    expect(screen.getByRole('button', { name: '단지·주택형 매칭' })).toBeVisible()
+    expect(screen.getByText('공급행 매칭 실패: 주택형을 확정할 수 없습니다.')).toBeVisible()
+    expect(screen.queryByRole('button', { name: '단지·주택형 매칭' })).not.toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveTextContent('마이홈 공고 단건 등록은 지원을 종료했습니다. 공고는 LH 공고 정제와 PDF 보정으로만 바뀝니다.')
+  })
+
+  it('공고 정제는 LH 공고 정제 한 단계이고 공고 수집·정제는 수집 네 단계 뒤에 이어진다', () => {
+    show(execution({ type: 'ANNOUNCEMENT_REFINEMENT', currentStepName: 'LH 공고 정제', totalStepCount: 1 }))
+    const refinement = screen.getByRole('list', { name: '실행 단계' })
+    expect(within(refinement).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(refinement).getByRole('button', { name: 'LH 공고 정제 진행' })).toHaveAttribute('aria-current', 'step')
+    cleanup()
+    show(execution({ type: 'ANNOUNCEMENT_SYNC', totalStepCount: 5 }))
+    expect(within(screen.getByRole('list', { name: '실행 단계' })).getAllByRole('button').map(item => item.getAttribute('aria-label'))).toEqual([
+      '마이홈 공고 수집 진행', 'LH 공고 목록 수집 대기', 'LH 공고 공급 원본 수집 대기', 'LH 공고 상세 원본 수집 대기', 'LH 공고 정제 대기',
+    ])
+  })
+
+  it('옛 정제 단계로 끝난 지난 공고 정제 이력은 기록된 옛 단계 이름으로 보여 준다', () => {
+    show(execution({ type: 'ANNOUNCEMENT_REFINEMENT', status: 'COMPLETED_WARNINGS', currentStepName: null,
+      completedSteps: ['마이홈 공고 정제', 'LH 공고 상세·공급 정보 보강'],
+      partiallyFailedSteps: [{ step: 'MAP_MYHOME_ANNOUNCEMENTS', stepName: '마이홈 공고 정제', report: {} }] }))
+    const steps = screen.getByRole('list', { name: '실행 단계' })
+    expect(within(steps).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(steps).getByRole('button', { name: '마이홈 공고 정제 부분 실패' })).toBeVisible()
+    expect(within(steps).getByRole('button', { name: 'LH 공고 상세·공급 정보 보강 성공' })).toBeVisible()
+    expect(within(steps).queryByRole('button', { name: /LH 공고 정제/ })).not.toBeInTheDocument()
   })
   it('단건은 실제 네 단계와 진행·대기를 표시하며 개별 시각을 추정하지 않는다', () => {
     show(execution())
@@ -48,6 +73,24 @@ describe('v2 공통 단계 표시', () => {
     expect(within(steps).getByRole('button', { name: /마이홈 원천 확보 진행/ })).toHaveAttribute('aria-current', 'step')
     expect(within(steps).getByRole('button', { name: /LH 공급 수집 대기/ })).toBeVisible()
     expect(screen.getByText(/종료: 기록 없음/)).toBeVisible()
+  })
+
+  it('완료 단계 표시 이름만 남은 지난 공고 정제 이력도 옛 두 단계 성공으로 보여 준다', () => {
+    show(execution({ type: 'ANNOUNCEMENT_REFINEMENT', status: 'COMPLETED', currentStepName: null,
+      completedSteps: ['마이홈 공고 정제', 'LH 공고 상세·공급 정보 보강'] }))
+    expect(within(screen.getByRole('list', { name: '실행 단계' })).getAllByRole('button').map(item => item.getAttribute('aria-label'))).toEqual([
+      '마이홈 공고 정제 성공', 'LH 공고 상세·공급 정보 보강 성공',
+    ])
+  })
+
+  it('옛 정제 단계에서 실패한 지난 공고 동기화 이력은 수집 네 단계와 옛 두 단계로 보여 준다', () => {
+    show(execution({ type: 'ANNOUNCEMENT_SYNC', status: 'FAILED', currentStepName: null, totalStepCount: 6,
+      completedSteps: ['마이홈 공고 수집', 'LH 공고 목록 수집', 'LH 공고 공급 원본 수집', 'LH 공고 상세 원본 수집'],
+      failure: { stepName: '마이홈 공고 정제', message: '정제 실패', serverResponse: null } }))
+    expect(within(screen.getByRole('list', { name: '실행 단계' })).getAllByRole('button').map(item => item.getAttribute('aria-label'))).toEqual([
+      '마이홈 공고 수집 성공', 'LH 공고 목록 수집 성공', 'LH 공고 공급 원본 수집 성공', 'LH 공고 상세 원본 수집 성공',
+      '마이홈 공고 정제 실패', 'LH 공고 상세·공급 정보 보강 미실행',
+    ])
   })
 
   it('부분 실패와 치명 실패를 구분하고 후속 단계를 미실행으로 표시한다', () => {
@@ -67,7 +110,7 @@ describe('v2 공통 단계 표시', () => {
     expect(within(detail).getByRole('link', { name: '실패 대상 확인' })).toHaveAttribute('href',
       '/admin/failures?domain=announcement&category=collection&executionId=run-1')
     expect(within(detail).getByText('상세 보고서').closest('details')).not.toHaveAttribute('open')
-    expect(within(steps).getByRole('button', { name: /마이홈 공고 정제 미실행/ })).toBeVisible()
+    expect(within(steps).getByRole('button', { name: /LH 공고 정제 미실행/ })).toBeVisible()
   })
 
   it('부분 실패 뒤 후속 성공을 유지하고 최종 실패 사유를 중복 치명 실패로 표시하지 않는다', () => {

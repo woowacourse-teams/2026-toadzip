@@ -16,7 +16,7 @@ public record AdminSupplyRowUpdateRequest(@NotNull @PositiveOrZero Long version,
         @Valid AdminDocumentEvidence documentEvidence) {
     /** 원천 단지명·주택형명은 정제만 바꾼다. 주택형 표기는 이 공고의 표시명으로만 받는다. */
     public record SupplyData(@Size(max = 255) String announcementHousingTypeName,
-            @NotBlank @Size(max = 255) String supplyPnu,
+            @Size(max = 255) String supplyPnu,
             YearMonth expectedMoveInMonth,
             @NotNull SupplyCategory supplyCategory,
             @PositiveOrZero Integer totalSupplyHouseholdCount) { }

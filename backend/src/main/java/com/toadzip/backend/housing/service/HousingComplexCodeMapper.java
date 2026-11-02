@@ -15,8 +15,7 @@ public class HousingComplexCodeMapper {
             case "HAPPY_HOUSING", "행복주택" -> "HAPPY_HOUSING";
             case "NATIONAL_RENTAL", "국민임대" -> "NATIONAL_RENTAL";
             case "PERMANENT_RENTAL", "영구임대" -> "PERMANENT_RENTAL";
-            case "PUBLIC_RENTAL_5Y", "5년임대" -> "PUBLIC_RENTAL_5Y";
-            case "PUBLIC_RENTAL_10Y", "10년임대" -> "PUBLIC_RENTAL_10Y";
+            case "PUBLIC_RENTAL", "공공임대", "PUBLIC_RENTAL_5Y", "5년임대", "PUBLIC_RENTAL_10Y", "10년임대" -> "PUBLIC_RENTAL";
             case "PUBLIC_RENTAL_50Y", "50년공공임대" -> "PUBLIC_RENTAL_50Y";
             case "LONG_TERM_JEONSE", "장기전세" -> "LONG_TERM_JEONSE";
             case "INTEGRATED_PUBLIC_RENTAL", "통합공공임대" -> "INTEGRATED_PUBLIC_RENTAL";

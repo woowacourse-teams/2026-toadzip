@@ -31,6 +31,9 @@ public record LhAnnouncementCatalogCollectedResponse(
                 || collectedAt.isBefore(request.startedAt())) {
             throw new IllegalArgumentException("완료되지 않은 LH 공고 목록은 저장할 수 없습니다.");
         }
+        if (!startDate.equals(request.startDateParameter()) || !endDate.equals(request.endDateParameter())) {
+            throw new IllegalArgumentException("LH 공고 목록이 요청한 검색 기간과 다른 기간으로 응답했습니다.");
+        }
         Set<String> keys = new HashSet<>();
         for (LhAnnouncementCatalogRow row : rows) {
             row.snapshot().validateIdentifiers();

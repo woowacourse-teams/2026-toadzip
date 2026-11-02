@@ -17,7 +17,7 @@ function shownTypeName(row: RowReview) {
 }
 
 export function ReviewSupply({ review, workspace, housing, complexes, filter, empty, onChange, onEvidence, editorHref }: { editorHref?: string; review: Review; workspace: JsonWorkspace; housing: HousingCandidates; complexes: ComplexLabels; filter: ReviewFilter; empty: string; onChange: (review: Review) => void; onEvidence: (evidence: Evidence) => void }) {
-  // LH 공급 원본 행이 아직 공급행에 없으면 행 분할은 LH 연결 펼침이 맡으므로 새 공급정보로 추가하지 않는다.
+  // 공급정보에 연결되지 않은 LH 공급 원본 행이 있으면 새 공급정보로 추가하지 않는다.
   const lhLocked = unattachedLhRows(workspace.supply).length > 0, duplicates = possibleLhDuplicates(workspace.supply)
   function update(index: number, next: RowReview) { onChange({ ...review, rows: review.rows.map((row, at) => at === index ? next : row) }) }
   function mapping(index: number, destination: string, anchorKey: string) {
@@ -62,7 +62,7 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
         {pendingRow(row) && <div className={styles.pending}><p><strong>확인 필요</strong> {row.proposal.reason}</p><Button data-design-system className={styles.secondaryButton} disabled={!row.proposal.destination} onClick={() => update(index, { ...row, reviewed: true })}>{`공급행 ${index + 1} 대응 확인`}</Button></div>}
         {!row.include ? <p className={styles.hint}>이 행의 추출값을 제외합니다. 기존 공급정보는 유지합니다.</p> : <>
           <div className={styles.mapping}>
-            <label>공급행 {index + 1} 저장할 위치<select value={row.proposal.destination} onChange={event => mapping(index, event.target.value, event.target.value === 'new' ? row.proposal.anchorKey : event.target.value)}><option value="">수정할 기존 항목을 선택하세요</option>{workspace.supply.rows.filter(item => !item.excluded).map(item => <option key={item.key} value={item.key}>{destinationLabel(item)}</option>)}<option value="new" disabled={lhLocked}>{lhLocked ? '새 공급정보로 추가 (LH 행 연결 후 가능)' : '새 공급정보로 추가'}</option></select></label>
+            <label>공급행 {index + 1} 저장할 위치<select value={row.proposal.destination} onChange={event => mapping(index, event.target.value, event.target.value === 'new' ? row.proposal.anchorKey : event.target.value)}><option value="">수정할 기존 항목을 선택하세요</option>{workspace.supply.rows.filter(item => !item.excluded).map(item => <option key={item.key} value={item.key}>{destinationLabel(item)}</option>)}<option value="new" disabled={lhLocked}>{lhLocked ? '새 공급정보로 추가 (연결되지 않은 LH 행이 있어 불가)' : '새 공급정보로 추가'}</option></select></label>
             {/* 단지에 연결되지 않은 기존 공급행도 위 '단지 정하기'에서 단지를 정한다. */}
             {current && current.housingComplexId === null && <NewSupplyComplex row={row} index={index} onChange={next => update(index, next)} />}
             {row.proposal.destination === 'new' && <div>

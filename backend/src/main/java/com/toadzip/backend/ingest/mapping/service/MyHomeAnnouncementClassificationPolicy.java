@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
+import com.toadzip.backend.announcement.domain.AnnouncementNameClassification;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.housing.domain.AgencyCode;
@@ -15,8 +16,8 @@ class MyHomeAnnouncementClassificationPolicy {
             Map.entry("행복주택", RentalType.HAPPY_HOUSING),
             Map.entry("국민임대", RentalType.NATIONAL_RENTAL),
             Map.entry("영구임대", RentalType.PERMANENT_RENTAL),
-            Map.entry("5년임대", RentalType.PUBLIC_RENTAL_5Y),
-            Map.entry("10년임대", RentalType.PUBLIC_RENTAL_10Y),
+            Map.entry("5년임대", RentalType.PUBLIC_RENTAL),
+            Map.entry("10년임대", RentalType.PUBLIC_RENTAL),
             Map.entry("50년임대", RentalType.PUBLIC_RENTAL_50Y),
             Map.entry("50년공공임대", RentalType.PUBLIC_RENTAL_50Y),
             Map.entry("통합공공임대", RentalType.INTEGRATED_PUBLIC_RENTAL),
@@ -75,21 +76,10 @@ class MyHomeAnnouncementClassificationPolicy {
     }
 
     RecruitmentType recruitmentType(String name) {
-        if (name.contains("예비")) {
-            return RecruitmentType.WAITLIST;
-        }
-        if (name.contains("모집")) {
-            return RecruitmentType.NEW;
-        }
-        return RecruitmentType.ETC;
+        return AnnouncementNameClassification.recruitmentType(name);
     }
 
     SupplyCategory supplyCategory(String announcementName) {
-        if (announcementName.contains("예비")
-                || announcementName.contains("추가")
-                || announcementName.contains("재공급")) {
-            return SupplyCategory.RESUPPLY;
-        }
-        return SupplyCategory.NEW_SUPPLY;
+        return AnnouncementNameClassification.supplyCategory(announcementName);
     }
 }

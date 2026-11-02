@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.mapping.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
@@ -47,15 +48,13 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeA
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
+import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
 import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
-import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
-import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionQueryService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension.AcquiresOwnExecution;
@@ -65,7 +64,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -168,9 +166,6 @@ class MyHomeAnnouncementMappingServiceTest {
     private DataPipelineExecutionService pipeline;
 
     @Autowired
-    private DataPipelineExecutionQueryService pipelineQuery;
-
-    @Autowired
     private DataPipelineExecutionRepository executions;
 
     @Autowired
@@ -197,66 +192,21 @@ class MyHomeAnnouncementMappingServiceTest {
         collectionRecords.deleteAll();
     }
 
-    @Test
+    @ParameterizedTest
+    @ValueSource(strings = {"21026", "missing"})
     @AcquiresOwnExecution
-    void 단건_비동기_실행은_원천_확보부터_등록_완료까지_대상만_처리한다() throws Exception {
-        saveMappedComplex();
-        var rows = List.of(data("21026", 1, "부산도시공사", "동삼2"),
-                        data("21026", 2, "부산도시공사", "동삼2"), data("other", 1, "부산도시공사", "동삼2"))
-                .stream().map(row -> json.convertValue(row,
-                        com.toadzip.backend.ingest.collection.myhome.announcement.domain.
-                                MyHomeAnnouncementSourceSnapshot.class)).toList();
-        org.mockito.Mockito.when(announcementApi.fetch(org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
-                    MyHomeAnnouncementCollectionRequest request = invocation.getArgument(0);
-                    if ("01".equals(request.supplyTypeCode())) {
-                        return new SourcePage<>(3, rows);
-                    }
-                    return new SourcePage<>(0, List.of());
-                });
+    void 단건_비동기_실행은_지원을_종료해_실행_기록과_잠금_없이_거절한다(String identifier) {
+        long executionCount = executions.count();
 
-        var accepted = pipeline.startAnnouncementRegistration("21026");
-        var completed = awaitRegistration(accepted.executionId());
+        assertThatThrownBy(() -> pipeline.startAnnouncementRegistration(identifier))
+                .isInstanceOf(RetiredIngestOperationException.class)
+                .hasMessageContaining("지원을 종료했습니다");
 
-        assertThat(accepted.status()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
-        assertThat(completed.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS);
-        assertThat(completed.targetAnnouncementIdentifier()).isEqualTo("21026");
-        assertThat(completed.completedSteps()).containsExactly("마이홈 공고 수집", "마이홈 공고 정제");
-        assertThat(completed.skippedSteps()).hasSize(2).allSatisfy(step ->
-                assertThat(step.reason()).contains("해당 없음"));
-        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement ->
-                assertThat(announcement.getSourceAnnouncementIdentifier()).isEqualTo("21026"));
-        assertThat(supplyRowRepository.count()).isEqualTo(2);
-        assertThat(sourceRepository.findAll()).hasSize(2);
-    }
-
-    @Test
-    @AcquiresOwnExecution
-    void 단건_비동기_실행은_없는_ID의_실패_사유를_상태에_저장한다() throws Exception {
-        org.mockito.Mockito.when(announcementApi.fetch(org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.anyInt())).thenReturn(new SourcePage<>(0, List.of()));
-
-        var accepted = pipeline.startAnnouncementRegistration("missing");
-        var failed = awaitRegistration(accepted.executionId());
-
-        assertThat(failed.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
-        assertThat(failed.failure().message()).contains("공고를 찾을 수 없습니다");
+        assertThat(executions.count()).isEqualTo(executionCount);
+        assertThat(pipelineLock.isHeld()).isFalse();
+        verifyNoInteractions(announcementApi);
         assertThat(announcementRepository.count()).isZero();
         assertThat(supplyRowRepository.count()).isZero();
-    }
-
-    private DataPipelineExecutionResponse awaitRegistration(
-            UUID executionId
-    ) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
-        while (System.nanoTime() < deadline) {
-            var response = pipelineQuery.find(executionId);
-            if (response.status() != DataPipelineExecutionStatus.RUNNING && !pipelineLock.isHeld()) {
-                return response;
-            }
-            Thread.sleep(25);
-        }
-        throw new AssertionError("단건 등록 실행이 제한 시간 안에 종료되지 않았습니다.");
     }
 
     @Test
@@ -550,8 +500,8 @@ class MyHomeAnnouncementMappingServiceTest {
 
     @ParameterizedTest
     @CsvSource({
-            "5년임대, PUBLIC_RENTAL_5Y",
-            "10년임대, PUBLIC_RENTAL_10Y"
+            "5년임대, PUBLIC_RENTAL",
+            "10년임대, PUBLIC_RENTAL"
     })
     void 공공임대_기간을_공고_임대유형으로_보존하고_단지와_연결한다(String sourceSupplyType, RentalType expectedType) {
         saveMappedComplex("동삼2", "123:" + expectedType.name(), expectedType.name());
@@ -573,7 +523,7 @@ class MyHomeAnnouncementMappingServiceTest {
 
     @Test
     void 기존에_기타로_저장된_5년임대_공고를_재매핑하면_정식_임대유형으로_교정한다() {
-        saveMappedComplex("동삼2", "123:PUBLIC_RENTAL_5Y", "PUBLIC_RENTAL_5Y");
+        saveMappedComplex("동삼2", "123:PUBLIC_RENTAL_5Y", "PUBLIC_RENTAL");
         sourceRepository.save(source(0, withSupplyType(
                 data("21026", 1, "부산도시공사", "동삼2"),
                 "5년임대"
@@ -587,7 +537,7 @@ class MyHomeAnnouncementMappingServiceTest {
 
         assertThat(report.updatedAnnouncementCount()).isOne();
         assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement ->
-                assertThat(announcement.getSupplyType()).isEqualTo(RentalType.PUBLIC_RENTAL_5Y));
+                assertThat(announcement.getSupplyType()).isEqualTo(RentalType.PUBLIC_RENTAL));
     }
 
     @Test

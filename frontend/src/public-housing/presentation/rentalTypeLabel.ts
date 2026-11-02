@@ -4,6 +4,7 @@ const RENTAL_TYPE_LABELS: Readonly<Record<string, string>> = {
   INTEGRATED_PUBLIC_RENTAL: '통합공공임대',
   NATIONAL_RENTAL: '국민임대',
   PERMANENT_RENTAL: '영구임대',
+  PUBLIC_RENTAL: '분양전환 공공임대',
   PUBLIC_RENTAL_50Y: '50년 공공임대',
   REDEVELOPMENT_RENTAL: '재개발임대',
 }

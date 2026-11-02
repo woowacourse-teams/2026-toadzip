@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.collection.service;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
@@ -20,6 +21,7 @@ import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailu
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -65,6 +67,25 @@ class VerifiedLhSupplyReplacementServiceTest {
     }
 
     @Test
+    void 마이홈_공고가_없는_LH_공고는_LH_공고_ID로_공고목록의_요청을_승인한다() {
+        String description = LH_REQUEST.requestDescription();
+        when(resolver.resolveCatalogRequests()).thenReturn(List.of(
+                new LhAnnouncementCollectionCandidateResolver.Candidate("lh-catalog:x", "catalog", LH_REQUEST)));
+        when(failureRepository.findFirstBySourceAndRequestDescriptionOrderByIdDesc(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, description))
+                .thenReturn(Optional.of(failure("proposedFingerprint=" + FINGERPRINT)));
+
+        service.approve("LH:" + LH_REQUEST.panId(), request(FINGERPRINT, "https://apply.lh.or.kr/notice"), "operator");
+
+        verify(replacementStore).approve(LhAnnouncementQuery.requestHashOf(description),
+                FINGERPRINT, "https://apply.lh.or.kr/notice", "주택형 철회 확인", "operator");
+        // 다른 LH 공고 ID로는 같은 요청을 승인하지 않는다.
+        assertThatThrownBy(() -> service.approve("LH:other",
+                request(FINGERPRINT, "https://apply.lh.or.kr/notice"), "operator"))
+                .isInstanceOf(InvalidIngestRequestException.class);
+    }
+
+    @Test
     void 다른_응답의_지문은_승인하지_않는다() {
         when(failureRepository.findFirstBySourceAndRequestDescriptionOrderByIdDesc(
                 ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, LH_REQUEST.requestDescription()))
@@ -73,6 +94,21 @@ class VerifiedLhSupplyReplacementServiceTest {
         assertThatThrownBy(() -> service.approve("pblanc-1",
                 request(FINGERPRINT, "https://apply.lh.or.kr/notice"), "operator"))
                 .isInstanceOf(InvalidIngestRequestException.class);
+    }
+
+    @Test
+    void 이미_해결한_보류는_지문이_같아도_승인하지_않는다() {
+        ExternalDataCollectionFailure resolved = failure("proposedFingerprint=" + FINGERPRINT);
+        resolved.resolve(Instant.parse("2026-09-29T00:00:00Z"), UUID.randomUUID());
+        when(failureRepository.findFirstBySourceAndRequestDescriptionOrderByIdDesc(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, LH_REQUEST.requestDescription()))
+                .thenReturn(Optional.of(resolved));
+
+        assertThatThrownBy(() -> service.approve("pblanc-1",
+                request(FINGERPRINT, "https://apply.lh.or.kr/notice"), "operator"))
+                .isInstanceOf(InvalidIngestRequestException.class)
+                .hasMessage("공급 감소로 보류된 요청만 승인할 수 있습니다.");
+        verifyNoInteractions(replacementStore);
     }
 
     @Test

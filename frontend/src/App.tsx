@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { PdfCorrectionPage } from './admin/announcement-pdf/PdfCorrectionPage'
-import { LhSupplyLinkPage } from './admin/ingest/LhSupplyLinkPage'
 import { FailureReviewPage } from './admin/ingest/FailureReviewPage'
 import { IngestPage } from './admin/ingest/IngestPage'
 import { SourceDataPage } from './admin/ingest/SourceDataPage'
@@ -126,7 +125,6 @@ function AdminRoutes() {
             <Route path="notification-subscriptions" element={<NotificationManagementPage />} />
             <Route path="feedback" element={<FeedbackListPage />} />
             <Route path="failures" element={<FailureReviewPage />} />
-            <Route path="failures/lh-links/:identifier" element={<LhSupplyLinkPage />} />
             <Route path="sources" element={<SourceDataPage />} />
             <Route path="locations" element={<LocationDataPage />} />
           </Route>

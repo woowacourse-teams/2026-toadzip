@@ -528,7 +528,7 @@ class LhAnnouncementEnrichmentServiceTest {
 
     @Test
     void 공공임대_5년_dsList02_수집부터_보강까지_금회_공급_세대수를_유지한다() {
-        saveComplex("PUBLIC_RENTAL_5Y");
+        saveComplex("PUBLIC_RENTAL");
         MyHomeAnnouncementSourceView source = myHomeSourceRepository.save(myHomeSource("21026", "5년임대"));
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
         LhAnnouncementExternalRepository external = mock(LhAnnouncementExternalRepository.class);
@@ -686,8 +686,8 @@ class LhAnnouncementEnrichmentServiceTest {
 
     @ParameterizedTest
     @CsvSource({
-            "5년임대, PUBLIC_RENTAL_5Y",
-            "10년임대, PUBLIC_RENTAL_10Y"
+            "5년임대, PUBLIC_RENTAL",
+            "10년임대, PUBLIC_RENTAL"
     })
     void 공공임대_기간을_보존한_LH_공고를_상세와_공급정보로_보강한다(
             String sourceSupplyType,
@@ -711,8 +711,8 @@ class LhAnnouncementEnrichmentServiceTest {
     @CsvSource({
             "국민임대, NATIONAL_RENTAL",
             "영구임대, PERMANENT_RENTAL",
-            "5년임대, PUBLIC_RENTAL_5Y",
-            "10년임대, PUBLIC_RENTAL_10Y"
+            "5년임대, PUBLIC_RENTAL",
+            "10년임대, PUBLIC_RENTAL"
     })
     void 최초_LH_공급_API가_빈_응답이어도_마이홈_공급행을_매핑하고_LH_상세로_보강한다(
             String sourceSupplyType,
@@ -754,8 +754,8 @@ class LhAnnouncementEnrichmentServiceTest {
 
     @ParameterizedTest
     @CsvSource({
-            "5년임대, PUBLIC_RENTAL_5Y",
-            "10년임대, PUBLIC_RENTAL_10Y",
+            "5년임대, PUBLIC_RENTAL",
+            "10년임대, PUBLIC_RENTAL",
             "50년임대, PUBLIC_RENTAL_50Y",
             "국민임대, NATIONAL_RENTAL",
             "영구임대, PERMANENT_RENTAL",
@@ -895,8 +895,8 @@ class LhAnnouncementEnrichmentServiceTest {
 
     @ParameterizedTest
     @CsvSource({
-            "5년임대, PUBLIC_RENTAL_5Y",
-            "10년임대, PUBLIC_RENTAL_10Y",
+            "5년임대, PUBLIC_RENTAL",
+            "10년임대, PUBLIC_RENTAL",
             "50년임대, PUBLIC_RENTAL_50Y",
             "국민임대, NATIONAL_RENTAL",
             "영구임대, PERMANENT_RENTAL",
