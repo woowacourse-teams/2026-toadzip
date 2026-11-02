@@ -10,6 +10,23 @@ function View() { const c = useBookmarks(); return <><BookmarkButton type="COMPL
 function setup(repository: BookmarkRepository, loadUser = vi.fn().mockResolvedValue({ id: 7, email: null })) {
   render(<MemoryRouter><BookmarkProvider repository={repository} loadUser={loadUser}><View /></BookmarkProvider></MemoryRouter>)
 }
+it('아이콘 북마크도 접근 가능한 이름과 선택 상태로 저장·해제를 제공한다', async () => {
+  let saved = true
+  const repository = { list: vi.fn(async () => saved ? [item] : []), save: vi.fn(async () => { saved = true }), remove: vi.fn(async () => { saved = false }) }
+  render(<MemoryRouter><BookmarkProvider repository={repository} loadUser={async () => ({ id: 7, email: null })}>
+    <BookmarkButton type="COMPLEX" targetId="1" name="서울 주택" iconOnly />
+  </BookmarkProvider></MemoryRouter>)
+  const button = await screen.findByRole('button', { name: '서울 주택 북마크 해제' })
+  expect(button).toHaveAttribute('aria-pressed', 'true')
+  expect(button.textContent).toBe('')
+  fireEvent.click(button)
+  await waitFor(() => expect(screen.getByRole('button', { name: '서울 주택 북마크 저장' })).toBeEnabled())
+  expect(repository.remove).toHaveBeenCalledOnce()
+  fireEvent.click(button)
+  await waitFor(() => expect(screen.getByRole('button', { name: '서울 주택 북마크 해제' })).toBeEnabled())
+  expect(repository.save).toHaveBeenCalledOnce()
+  expect(button.textContent).toBe('')
+})
 it('회원은 북마크를 저장하고 해제하며 중복 클릭을 막는다', async () => {
   let saved = false
   const repository = { list: vi.fn(async () => saved ? [item] : []), save: vi.fn(async () => { saved = true }), remove: vi.fn(async () => { saved = false }) }

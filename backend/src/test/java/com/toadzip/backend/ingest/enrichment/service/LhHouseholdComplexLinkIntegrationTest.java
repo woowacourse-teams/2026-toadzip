@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
+import static com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension.owned;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -20,6 +21,7 @@ import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatal
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.ReleaseRequest;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.SaveRequest;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.View;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -46,6 +48,7 @@ class LhHouseholdComplexLinkIntegrationTest {
     private static final String PNU = "3017011600115990000";
     @Autowired private LhHousingTypeHouseholdEnrichmentService enrichment;
     @Autowired private LhHouseholdComplexLinkService links;
+    @Autowired private IngestExecutionOwnershipService ownership;
     @Autowired private LhLeaseCatalogSourceFixtures lhSources;
     @Autowired private HousingComplexRepository complexes;
     @Autowired private HousingTypeRepository types;
@@ -68,7 +71,7 @@ class LhHouseholdComplexLinkIntegrationTest {
 
     @Test
     void 이름만_달라_실패하면_공급유형_세대수_지역이_맞는_유일한_후보를_비교로_보여준다() throws Exception {
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         var view = view();
 
@@ -86,10 +89,10 @@ class LhHouseholdComplexLinkIntegrationTest {
 
     @Test
     void 관리자가_확인해_연결하면_다음_세대수_보강에서_주택형_세대수를_채운다() throws Exception {
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         save(view(), "도로명 주소와 영구임대 240세대, 전용 21.97·26.9 대조");
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(types.findAllByHousingComplex(complex)).extracting(HousingType::getTotalHouseholdCount)
                 .containsExactlyInAnyOrder(60, 180);
@@ -100,11 +103,11 @@ class LhHouseholdComplexLinkIntegrationTest {
 
     @Test
     void 연결한_뒤_단지_세대수가_바뀌면_연결을_쓰지_않고_재확인을_요구한다() throws Exception {
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
         save(view(), "대조 완료");
         jdbc.sql("UPDATE housing_complexes SET total_household_count = 241").update();
 
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(pendingReasons()).containsExactly("MANUAL_LINK_REVIEW_REQUIRED");
         assertThat(view().savedLink().reviewRequired()).isTrue();
@@ -115,7 +118,7 @@ class LhHouseholdComplexLinkIntegrationTest {
     @Test
     void 후보가_둘_이상이면_연결을_저장하지_않는다() throws Exception {
         complex("대전관저5 다른단지", "complex-999");
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
         var view = view();
 
         assertThatThrownBy(() -> save(view, "대조")).isInstanceOf(AdminDataConflictException.class);
@@ -127,11 +130,11 @@ class LhHouseholdComplexLinkIntegrationTest {
 
     @Test
     void 연결을_이유와_함께_해제하면_다음_보강부터_다시_이름으로_매칭한다() throws Exception {
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
         var saved = save(view(), "대조 완료");
 
         links.release(failureId(), new ReleaseRequest(saved.token(), "다른 단지로 잘못 연결함"), "operator");
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(jdbc.sql("SELECT count(*) FROM lh_household_complex_links").query(Long.class).single()).isZero();
         assertThat(jdbc.sql("SELECT after_value FROM admin_data_changes WHERE action = 'RELEASE_LH_HOUSEHOLD_LINK'")
@@ -141,7 +144,7 @@ class LhHouseholdComplexLinkIntegrationTest {
 
     @Test
     void 조회_후_후보나_원천이_바뀌면_저장을_거절한다() throws Exception {
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
         var view = view();
         jdbc.sql("UPDATE housing_complexes SET road_address = '대전광역시 서구 구봉산북로 213'").update();
 
@@ -150,7 +153,7 @@ class LhHouseholdComplexLinkIntegrationTest {
 
     @Test
     void 비교와_저장은_관리자와_CSRF를_요구한다() throws Exception {
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
         String memberId = jdbc.sql("""
                         INSERT INTO users(login_identifier,created_at) VALUES (:identifier,CURRENT_TIMESTAMP)
                         RETURNING id

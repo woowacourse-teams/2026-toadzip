@@ -2,7 +2,7 @@ package com.toadzip.backend.ingest.failure.repository;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
-import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
+import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Set;
@@ -22,9 +22,9 @@ public class ExternalDataFailureStore {
 
     @Transactional
     public void store(ExternalDataCollectionFailure failure, UUID executionId) {
-        failureRepository.findFirstBySourceAndSourceKeyOrderByIdDesc(
+        failureRepository.findFirstBySourceAndRequestDescriptionOrderByIdDesc(
                 failure.getSource(),
-                failure.getSourceKey()
+                failure.getRequestDescription()
         ).ifPresentOrElse(
                 stored -> stored.observe(failure, executionId),
                 () -> {
@@ -42,9 +42,9 @@ public class ExternalDataFailureStore {
         if (requestDescriptions.isEmpty()) {
             return Set.of();
         }
-        return failureRepository.findAllBySourceAndSourceKeyInAndStatus(
-                source, requestDescriptions, IngestFailureStatus.PENDING
-        ).stream().map(ExternalDataCollectionFailure::getSourceKey).collect(Collectors.toUnmodifiableSet());
+        return failureRepository.findAllBySourceAndRequestDescriptionInAndStatus(
+                source, requestDescriptions, ExternalDataFailureStatus.PENDING
+        ).stream().map(ExternalDataCollectionFailure::getRequestDescription).collect(Collectors.toUnmodifiableSet());
     }
 
     @Transactional
@@ -54,10 +54,10 @@ public class ExternalDataFailureStore {
             Instant resolvedAt,
             UUID executionId
     ) {
-        failureRepository.findAllBySourceAndSourceKeyAndStatus(
+        failureRepository.findAllBySourceAndRequestDescriptionAndStatus(
                 source,
                 requestDescription,
-                IngestFailureStatus.PENDING
+                ExternalDataFailureStatus.PENDING
         ).forEach(failure -> failure.resolve(resolvedAt, executionId));
     }
 
@@ -68,9 +68,9 @@ public class ExternalDataFailureStore {
             Instant resolvedAt,
             UUID executionId
     ) {
-        failureRepository.findAllBySourceAndStatusAndSourceKeyStartingWith(
+        failureRepository.findAllBySourceAndStatusAndRequestDescriptionStartingWith(
                 source,
-                IngestFailureStatus.PENDING,
+                ExternalDataFailureStatus.PENDING,
                 requestDescriptionPrefix
         ).forEach(failure -> failure.resolve(resolvedAt, executionId));
     }
@@ -86,8 +86,8 @@ public class ExternalDataFailureStore {
         if (requestDescriptions.isEmpty()) {
             return;
         }
-        failureRepository.findAllBySourceAndSourceKeyInAndStatus(
-                source, requestDescriptions, IngestFailureStatus.PENDING
+        failureRepository.findAllBySourceAndRequestDescriptionInAndStatus(
+                source, requestDescriptions, ExternalDataFailureStatus.PENDING
         ).forEach(failure -> failure.skip(skippedAt, skipReason, executionId));
     }
 
@@ -99,10 +99,10 @@ public class ExternalDataFailureStore {
             String skipReason,
             UUID executionId
     ) {
-        failureRepository.findAllBySourceAndSourceKeyAndStatus(
+        failureRepository.findAllBySourceAndRequestDescriptionAndStatus(
                 source,
                 requestDescription,
-                IngestFailureStatus.PENDING
+                ExternalDataFailureStatus.PENDING
         ).forEach(failure -> failure.skip(skippedAt, skipReason, executionId));
     }
 }

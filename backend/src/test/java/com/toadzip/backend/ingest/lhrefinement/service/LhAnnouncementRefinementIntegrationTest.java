@@ -40,6 +40,8 @@ import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
 import com.toadzip.backend.announcement.service.SupplyCorrectionService;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.security.test.context.support.WithMockUser;
 import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import java.math.BigDecimal;
@@ -62,6 +64,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
 @ActiveProfiles("test")
+@ExtendWith(IngestExecutionExtension.class)
 class LhAnnouncementRefinementIntegrationTest {
 
     private static final DateTimeFormatter CATALOG_DATE = DateTimeFormatter.ofPattern("yyyy.MM.dd");

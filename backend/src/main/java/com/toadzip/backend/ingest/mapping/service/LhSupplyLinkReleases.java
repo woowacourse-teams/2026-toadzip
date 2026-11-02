@@ -1,13 +1,11 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
-import com.toadzip.backend.announcement.repository.SupplyRowRepository;
-import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
+import com.toadzip.backend.ingest.enrichment.service.MappedAnnouncementLhEnrichment;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -25,8 +23,7 @@ class LhSupplyLinkReleases {
 
     private final SavedSupplyMatches savedMatches;
     private final AnnouncementRepository announcements;
-    private final SupplyRowRepository supplyRows;
-    private final SupplyTargetRepository supplyTargets;
+    private final MappedAnnouncementLhEnrichment lhEnrichment;
     private final LhSupplyLinkChangeLog changeLog;
 
     /**
@@ -52,7 +49,8 @@ class LhSupplyLinkReleases {
                 movedLhRows.add(lhRowIdentifier);
             }
         }
-        releaseMovedLhSources(identifier, afterLinkedRows, movedLhRows);
+        announcements.findBySourceAnnouncementIdentifier(identifier)
+                .ifPresent(announcement -> lhEnrichment.releaseMovedLhRows(announcement, afterLinkedRows, movedLhRows));
         Set<String> rowIdentifiers = new TreeSet<>(changedSources);
         for (var supply : supplies) {
             String lhRowIdentifier = LhSupplyRowLinks.identifier(supply);
@@ -69,27 +67,5 @@ class LhSupplyLinkReleases {
             });
         }
         return released;
-    }
-
-    private void releaseMovedLhSources(
-            String identifier, Map<String, String> afterLinkedRows, Set<String> movedLhRows
-    ) {
-        var rows = announcements.findBySourceAnnouncementIdentifier(identifier)
-                .map(supplyRows::findAllByAnnouncement).orElse(List.of());
-        Map<Long, String> movedTargets = new HashMap<>();
-        for (var row : rows) {
-            String lhSource = row.getLhSourceSupplyRowIdentifier();
-            if (movedLhRows.contains(lhSource)
-                    && row.releaseLhSourceResolvedElsewhere(afterLinkedRows.get(lhSource))) {
-                movedTargets.put(row.getId(), LhSourceIdentifier.target(lhSource));
-            }
-        }
-        if (movedTargets.isEmpty()) {
-            return;
-        }
-        supplyTargets.deleteAll(supplyTargets.findAllBySupplyRowIdIn(movedTargets.keySet()).stream()
-                .filter(target -> !target.isAdminModified() && movedTargets.get(target.getSupplyRow().getId())
-                        .equals(target.getSourceSupplyTargetIdentifier()))
-                .toList());
     }
 }

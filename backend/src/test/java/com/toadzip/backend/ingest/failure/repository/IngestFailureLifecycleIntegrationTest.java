@@ -15,7 +15,7 @@ import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichment
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
-import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
+import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataFailureStore;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
@@ -106,14 +106,14 @@ class IngestFailureLifecycleIntegrationTest {
         ), recurredExecutionId);
 
         assertThat(externalFailureRepository.findAll()).singleElement().satisfies(failure -> {
-            assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.PENDING);
+            assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.PENDING);
             assertThat(failure.getOccurredAt()).isEqualTo(firstOccurredAt);
             assertThat(failure.getLastOccurredAt()).isEqualTo(secondOccurredAt);
             assertThat(failure.getOccurrenceCount()).isEqualTo(2);
             assertThat(failure.getRecurrenceCount()).isOne();
             assertThat(failure.getFirstExecutionId()).isEqualTo(firstExecutionId);
             assertThat(failure.getLastExecutionId()).isEqualTo(recurredExecutionId);
-            assertThat(failure.getLastResolvedExecutionId()).isEqualTo(resolvedExecutionId);
+            assertThat(failure.getResolvedExecutionId()).isEqualTo(resolvedExecutionId);
         });
     }
 

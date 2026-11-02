@@ -50,6 +50,7 @@ public class MyHomeAnnouncementMappingService {
     private final Clock clock;
 
     public MyHomeAnnouncementMappingReport registerAnnouncement(String pblancId) {
+        IngestExecutionScope.requireHeld();
         if (announcementRepository.findBySourceAnnouncementIdentifier(pblancId).isPresent()) {
             throw new AnnouncementRegistrationException("이미 등록된 공고입니다: " + pblancId);
         }
@@ -88,6 +89,7 @@ public class MyHomeAnnouncementMappingService {
     }
 
     public MyHomeAnnouncementMappingReport mapAll() {
+        IngestExecutionScope.requireHeld();
         Instant occurredAt = clock.instant();
         List<MyHomeAnnouncementMappingFailure> failures = new ArrayList<>();
         Map<String, List<MyHomeAnnouncementSourceView>> groupedSources = groupSources(failures, occurredAt);

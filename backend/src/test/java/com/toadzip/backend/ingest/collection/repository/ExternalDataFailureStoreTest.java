@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
-import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
+import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataFailureStore;
 import java.time.Instant;
@@ -39,10 +39,10 @@ class ExternalDataFailureStoreTest {
         ), null);
 
         assertThat(repository.findAll()).singleElement().satisfies(failure -> {
-            assertThat(failure.getDetail()).isEqualTo("외부 API 응답 오류");
+            assertThat(failure.getReason()).isEqualTo("외부 API 응답 오류");
             assertThat(failure.getOccurredAt()).isEqualTo(occurredAt);
             assertThat(failure.getAttemptCount()).isEqualTo(3);
-            assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.PENDING);
+            assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.PENDING);
         });
     }
 
@@ -68,8 +68,8 @@ class ExternalDataFailureStoreTest {
         );
 
         assertThat(repository.findAll()).singleElement().satisfies(failure -> {
-            assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.RESOLVED);
-            assertThat(failure.getLastResolvedAt()).isEqualTo(resolvedAt);
+            assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.RESOLVED);
+            assertThat(failure.getResolvedAt()).isEqualTo(resolvedAt);
         });
     }
 
@@ -96,10 +96,10 @@ class ExternalDataFailureStoreTest {
         );
 
         assertThat(repository.findAll()).singleElement().satisfies(failure -> {
-            assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.SKIPPED);
-            assertThat(failure.getLastResolvedAt()).isEqualTo(skippedAt);
+            assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.SKIPPED);
+            assertThat(failure.getResolvedAt()).isEqualTo(skippedAt);
             assertThat(failure.getErrorType()).isEqualTo("NOT_APPLICABLE");
-            assertThat(failure.getDetail()).isEqualTo("LH 공급기관이 아닌 마이홈 공고라서 수집 대상이 아닙니다.");
+            assertThat(failure.getReason()).isEqualTo("LH 공급기관이 아닌 마이홈 공고라서 수집 대상이 아닙니다.");
         });
     }
 
@@ -123,13 +123,13 @@ class ExternalDataFailureStoreTest {
                 previousRequest + "&PG_SZ=", resolvedAt, null);
 
         assertThat(repository.findAll()).filteredOn(failure ->
-                failure.getSourceKey().equals(otherPan))
+                failure.getRequestDescription().equals(otherPan))
                 .singleElement()
                 .extracting(ExternalDataCollectionFailure::getStatus)
-                .isEqualTo(IngestFailureStatus.PENDING);
+                .isEqualTo(ExternalDataFailureStatus.PENDING);
         assertThat(repository.findAll()).filteredOn(failure ->
-                !failure.getSourceKey().equals(otherPan))
-                .allMatch(failure -> failure.getStatus() == IngestFailureStatus.RESOLVED);
+                !failure.getRequestDescription().equals(otherPan))
+                .allMatch(failure -> failure.getStatus() == ExternalDataFailureStatus.RESOLVED);
     }
 
     @Test
@@ -161,12 +161,12 @@ class ExternalDataFailureStoreTest {
         store.resolveStartingWith(ExternalDataSource.LH_LEASE_CATALOG, "PG_SZ=", resolvedAt, null);
 
         assertThat(repository.findAll()).filteredOn(failure ->
-                failure.getStatus() == IngestFailureStatus.RESOLVED)
-                .extracting(ExternalDataCollectionFailure::getSourceKey)
+                failure.getStatus() == ExternalDataFailureStatus.RESOLVED)
+                .extracting(ExternalDataCollectionFailure::getRequestDescription)
                 .containsExactlyInAnyOrder(announcement, announcementOtherSize, complex, catalog);
         assertThat(repository.findAll()).filteredOn(failure ->
-                failure.getStatus() == IngestFailureStatus.PENDING)
-                .extracting(ExternalDataCollectionFailure::getSourceKey)
+                failure.getStatus() == ExternalDataFailureStatus.PENDING)
+                .extracting(ExternalDataCollectionFailure::getRequestDescription)
                 .containsExactlyInAnyOrder(otherSupplyType, otherRegion);
     }
 }

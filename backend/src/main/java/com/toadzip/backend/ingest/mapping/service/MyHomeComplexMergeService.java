@@ -14,6 +14,7 @@ import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMergeRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMergeStore;
 import com.toadzip.backend.ingest.mapping.service.ComplexMergePreparation.PreparedMerge;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import java.time.Clock;
 import java.util.UUID;
@@ -58,10 +59,12 @@ public class MyHomeComplexMergeService {
     }
 
     public ComplexMergeResponse merge(ComplexMergeRequest request, String actor) {
+        IngestExecutionScope.requireHeld();
         return transaction.execute(status -> mergeLocked(request, actor));
     }
 
     public ComplexMergeResponse revert(UUID id, String actor) {
+        IngestExecutionScope.requireHeld();
         return transaction.execute(status -> revertLocked(id, actor));
     }
 

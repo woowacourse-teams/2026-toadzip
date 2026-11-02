@@ -35,7 +35,7 @@ class IngestFailureTest {
         UUID repeatedExecution = UUID.randomUUID();
         UUID resolvedExecution = UUID.randomUUID();
         String sourceKey = failure.getSourceKey();
-        Object reason = failure.getReason();
+        Enum<?> reason = failure.getReason();
         failure.attachFirstExecution(firstExecution);
 
         failure.observe(observed, repeatedExecution);

@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.mapping.service;
 
+import static com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension.owned;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -26,6 +27,7 @@ import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupp
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -67,6 +69,7 @@ class LhSupplyLinkIntegrationTest {
     @Autowired private MyHomeAnnouncementMappingService mapping;
     @Autowired private LhAnnouncementEnrichmentService enrichment;
     @Autowired private LhStorageFixtures lhStorage;
+    @Autowired private IngestExecutionOwnershipService ownership;
     private String panId;
 
     @BeforeEach
@@ -102,8 +105,8 @@ class LhSupplyLinkIntegrationTest {
 
     @Test
     void 연결하지_않은_LH_공급행은_LH_보강에서_단지를_찾지_못한다() {
-        mapping.mapAll();
-        enrichment.enrichAll();
+        owned(ownership, mapping::mapAll);
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(supplies.findAll()).singleElement()
                 .satisfies(row -> assertThat(row.getLhSourceSupplyRowIdentifier()).isNull());
@@ -115,7 +118,7 @@ class LhSupplyLinkIntegrationTest {
     @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
             executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void LH_수집_연결을_확정할_수_없는_공고도_공급정보_보정_작업실을_연다() throws Exception {
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         // 공고 등록 뒤 LH 수집 연결이 사라지면 LH 공급 원본을 고를 수 없다. 보정 작업실은 그래도 열려야 한다.
         jdbc.sql("DELETE FROM lh_announcement_collection_links").update();
         long id = jdbc.sql("SELECT id FROM announcements").query(Long.class).single();
@@ -147,7 +150,7 @@ class LhSupplyLinkIntegrationTest {
     @ValueSource(strings = {"", "/release"})
     void 지원을_종료한_LH_연결_저장과_해제는_관리자_요청도_410으로_거절하고_연결을_남기지_않는다(String action)
             throws Exception {
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         var body = json.writeValueAsString(Map.of("token", "token", "myhomeRowIdentifier", "row",
                 "lhRowIdentifiers", List.of("LH:1:SUPPLY:0"), "reason", "근거"));
 

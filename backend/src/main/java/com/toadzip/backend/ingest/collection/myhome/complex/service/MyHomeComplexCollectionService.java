@@ -33,6 +33,7 @@ public class MyHomeComplexCollectionService {
     private final MyHomeComplexRegionCollectionService regionCollector;
 
     public MyHomeComplexCollectionReport collect(MyHomeComplexCollectionCommand request) {
+        IngestExecutionScope.requireHeld();
         log.info(
                 "마이홈 단지 수집을 시작합니다: pageSize={}, maxPages={}, allRegions={}, maxConcurrentRegions={}",
                 request.pageSize(),

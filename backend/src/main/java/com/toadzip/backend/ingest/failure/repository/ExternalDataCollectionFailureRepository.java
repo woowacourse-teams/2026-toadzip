@@ -2,7 +2,7 @@ package com.toadzip.backend.ingest.failure.repository;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
-import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
+import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -12,25 +12,25 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface ExternalDataCollectionFailureRepository extends JpaRepository<ExternalDataCollectionFailure, Long> {
 
-    List<ExternalDataCollectionFailure> findAllBySourceAndSourceKeyAndStatus(
+    List<ExternalDataCollectionFailure> findAllBySourceAndRequestDescriptionAndStatus(
             ExternalDataSource source,
             String requestDescription,
-            IngestFailureStatus status
+            ExternalDataFailureStatus status
     );
 
-    List<ExternalDataCollectionFailure> findAllBySourceAndSourceKeyInAndStatus(
+    List<ExternalDataCollectionFailure> findAllBySourceAndRequestDescriptionInAndStatus(
             ExternalDataSource source,
             Collection<String> requestDescriptions,
-            IngestFailureStatus status
+            ExternalDataFailureStatus status
     );
 
-    List<ExternalDataCollectionFailure> findAllBySourceAndStatusAndSourceKeyStartingWith(
+    List<ExternalDataCollectionFailure> findAllBySourceAndStatusAndRequestDescriptionStartingWith(
             ExternalDataSource source,
-            IngestFailureStatus status,
+            ExternalDataFailureStatus status,
             String requestDescriptionPrefix
     );
 
-    Optional<ExternalDataCollectionFailure> findFirstBySourceAndSourceKeyOrderByIdDesc(
+    Optional<ExternalDataCollectionFailure> findFirstBySourceAndRequestDescriptionOrderByIdDesc(
             ExternalDataSource source,
             String requestDescription
     );
@@ -38,12 +38,12 @@ public interface ExternalDataCollectionFailureRepository extends JpaRepository<E
     @Query("""
             select failure
             from ExternalDataCollectionFailure failure
-            where failure.status = com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING
+            where failure.status = com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus.PENDING
               and failure.id = (
                   select max(latest.id)
                   from ExternalDataCollectionFailure latest
                   where latest.source = failure.source
-                    and latest.sourceKey = failure.sourceKey
+                    and latest.requestDescription = failure.requestDescription
               )
             order by failure.lastOccurredAt desc, failure.id desc
             """)

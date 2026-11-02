@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.mapping.service;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingFailureResponse;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingFailureStore;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +19,7 @@ public class MyHomeComplexMappingService {
     private final MyHomeComplexMappingFailureStore failureStore;
 
     public MyHomeComplexMappingReport mapAll() {
+        IngestExecutionScope.requireHeld();
         return processor.mapAll();
     }
 

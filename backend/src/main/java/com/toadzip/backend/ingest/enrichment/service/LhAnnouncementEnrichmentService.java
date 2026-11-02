@@ -31,6 +31,7 @@ public class LhAnnouncementEnrichmentService {
     private final Clock clock;
 
     public LhAnnouncementEnrichmentReport enrichAll() {
+        IngestExecutionScope.requireHeld();
         Instant occurredAt = clock.instant();
         List<LhAnnouncementEnrichmentFailure> failures = new ArrayList<>();
         Set<String> incompleteMappingIds = mappingState.incompleteAnnouncementIdentifiers();

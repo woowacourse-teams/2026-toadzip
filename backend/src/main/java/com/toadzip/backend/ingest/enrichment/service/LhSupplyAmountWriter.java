@@ -79,6 +79,30 @@ class LhSupplyAmountWriter {
                 .toList());
     }
 
+    /**
+     * LH 공급 연결이 다른 원천행으로 옮겨 간 LH 행({@code movedLhRows})을 기록한 공급행 가운데 그 LH 행이 이제 다른
+     * 원천행으로 해석되는 행에서 LH 연결 기록을 놓고, 그 행에 붙은 그 LH 행의 금액을 지운다. 관리자가 고친 금액은 둔다.
+     * {@code resolvedSourceRows}는 LH 행마다 지금 해석되는 마이홈 원천행이다.
+     */
+    void releaseMovedLhRows(Announcement announcement, Map<String, String> resolvedSourceRows, Set<String> movedLhRows) {
+        Map<Long, String> movedTargets = new HashMap<>();
+        for (SupplyRow row : supplyRowRepository.findAllByAnnouncement(announcement)) {
+            String lhSource = row.getLhSourceSupplyRowIdentifier();
+            if (movedLhRows.contains(lhSource)
+                    && row.releaseLhSourceResolvedElsewhere(resolvedSourceRows.get(lhSource))) {
+                movedTargets.put(row.getId(), LhSourceIdentifier.target(lhSource));
+            }
+        }
+        if (movedTargets.isEmpty()) {
+            return;
+        }
+        supplyTargetRepository.deleteAll(supplyTargetRepository.findAllBySupplyRowIdIn(movedTargets.keySet()).stream()
+                .filter(target -> LhOwnedValues.owned(target.getSourceSupplyTargetIdentifier(), target.isAdminModified()))
+                .filter(target -> movedTargets.get(target.getSupplyRow().getId())
+                        .equals(target.getSourceSupplyTargetIdentifier()))
+                .toList());
+    }
+
     private void requireAmountsForChangedHousingTypes(
             Set<Long> changedHousingTypeRowIds,
             SupplyMatches matches

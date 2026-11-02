@@ -37,6 +37,7 @@ public class LhAnnouncementCatalogCollectionService {
     }
 
     public ExternalDataCollectionReport collect() {
+        IngestExecutionScope.requireHeld();
         IngestExecutionScope.beginWork("LH 공고 목록", "페이지", -1);
         // 상시모집 공고는 게시일이 오래되어도 접수 중이므로 정한 조회 기간의 공고를 모두 받는다.
         LocalDate today = LocalDate.now(clock);

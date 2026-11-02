@@ -30,6 +30,7 @@ import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureExc
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
@@ -59,6 +60,7 @@ import org.slf4j.MDC;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+@ExtendWith(IngestExecutionExtension.class)
 @ExtendWith(MockitoExtension.class)
 class MyHomeComplexCollectionServiceTest {
 
@@ -604,7 +606,7 @@ class MyHomeComplexCollectionServiceTest {
                 });
 
         MDC.put("executionId", executionId.toString());
-        try (var scope = IngestExecutionScope.open(executionId, null, null, null)) {
+        try (var scope = IngestExecutionScope.open(executionId, IngestExecutionScope.current().orElseThrow(), null, null)) {
             concurrentService.collect(request);
         }
         finally {
@@ -626,7 +628,7 @@ class MyHomeComplexCollectionServiceTest {
         when(externalRepository.fetch(busan, request, 1)).thenReturn(response(itemsFor(busan, 2), 1));
         var monitor = mock(DataPipelineExecutionMonitor.class);
 
-        try (var scope = IngestExecutionScope.open(null, monitor)) {
+        try (var scope = IngestExecutionScope.open(IngestExecutionScope.current().orElseThrow(), monitor)) {
             service.collect(request);
         }
 
@@ -645,7 +647,7 @@ class MyHomeComplexCollectionServiceTest {
         var monitor = mock(DataPipelineExecutionMonitor.class);
         doThrow(new DataPipelineStoppedException()).when(monitor).checkStopRequested();
 
-        try (var scope = IngestExecutionScope.open(null, monitor)) {
+        try (var scope = IngestExecutionScope.open(IngestExecutionScope.current().orElseThrow(), monitor)) {
             assertThatThrownBy(() -> service.collect(request)).isInstanceOf(DataPipelineStoppedException.class);
         }
 
@@ -724,9 +726,9 @@ class MyHomeComplexCollectionServiceTest {
         ExecutorService caller = Executors.newSingleThreadExecutor();
 
         try {
-            Future<MyHomeComplexCollectionReport> collection = caller.submit(
+            Future<MyHomeComplexCollectionReport> collection = caller.submit(IngestExecutionScope.propagate(
                     () -> concurrentService.collect(request)
-            );
+            ));
 
             assertThat(rateLimitReturned.await(2, TimeUnit.SECONDS)).isTrue();
             assertThat(slowWorkerInterrupted.getCount()).isOne();
@@ -814,10 +816,10 @@ class MyHomeComplexCollectionServiceTest {
         ExecutorService caller = Executors.newSingleThreadExecutor();
 
         try {
-            Future<MyHomeComplexCollectionReport> collection = caller.submit(() -> {
+            Future<MyHomeComplexCollectionReport> collection = caller.submit(IngestExecutionScope.propagate(() -> {
                 serviceThread.set(Thread.currentThread());
                 return concurrentService.collect(request);
-            });
+            }));
 
             assertThat(slowWorkerInterrupted.await(2, TimeUnit.SECONDS)).isTrue();
             assertThat(collection.isDone()).isFalse();

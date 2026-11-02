@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.mapping.service;
 
+import static com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension.owned;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -29,6 +30,7 @@ import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupp
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -75,6 +77,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Autowired private MyHomeAnnouncementMappingService mapping;
     @Autowired private LhStorageFixtures lhStorage;
     @Autowired private LhAnnouncementEnrichmentService enrichment;
+    @Autowired private IngestExecutionOwnershipService ownership;
     private HousingComplex complex;
     private HousingType type;
 
@@ -91,7 +94,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
                 lhSupplyRow(0, candidate.panId(), "26(청년)", "26.4673", "100"),
                 lhSupplyRow(1, candidate.panId(), "26A,B(고령자)", "26.5195", "50"),
                 lhSupplyRow(2, candidate.panId(), "26(신혼부부)", "26.5195", "20")));
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         // 공급 보정 작업실은 비교 검토 테이블을 읽는다. 이 테스트 스키마에는 없어 이 테스트 동안만 만든다.
         boolean comparisonTables = jdbc.sql("SELECT to_regclass('admin_comparison_sources') IS NULL").query(Boolean.class).single();
         if (comparisonTables) {
@@ -127,9 +130,9 @@ class AnnouncementSupplyMatchingIntegrationTest {
         mvc.perform(post(root).with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body))).andExpect(status().isOk());
 
-        mapping.mapAll();
-        enrichment.enrichAll();
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
+        owned(ownership, enrichment::enrichAll);
+        owned(ownership, mapping::mapAll);
 
         assertThat(supplies.findAll()).extracting(row -> row.getAnnouncementHousingTypeName() == null
                         ? row.getSourceHousingTypeName() : row.getAnnouncementHousingTypeName())
@@ -266,7 +269,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
             executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void PDF_보정으로_연결한_공급행은_재정제에서_매칭_실패로_다시_남지_않는다() throws Exception {
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         assertThat(pendingFailureReasons()).containsExactly("AMBIGUOUS_HOUSING_TYPE");
         long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
 
@@ -278,7 +281,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(jdbc.sql("SELECT housing_type_id, reason FROM announcement_supply_match_decisions")
                 .query((rs, rowNum) -> List.of(rs.getLong(1), rs.getString(2))).list())
                 .containsExactly(List.of(type.getId(), "공고문 PDF 4쪽에서 주택형 확인"));
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
 
         assertThat(supplies.findAll()).singleElement()
                 .satisfies(row -> assertThat(row.getHousingType().getId()).isEqualTo(type.getId()));
@@ -314,7 +317,7 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
             executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
     void PDF_보정에서_주택형_연결을_지우면_저장한_매칭도_해제한다() throws Exception {
-        mapping.mapAll();
+        owned(ownership, mapping::mapAll);
         long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
         correctFromPdf(announcementId, type);
         assertThat(jdbc.sql("SELECT count(*) FROM announcement_supply_match_decisions").query(Long.class).single())

@@ -44,6 +44,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
 
     @Transactional
     public LhHousingTypeHouseholdEnrichmentReport enrichAll() {
+        IngestExecutionScope.requireHeld();
         List<LhHouseholdEnrichmentFailure> failures = new ArrayList<>();
         Instant occurredAt = clock.instant();
         CurrentMatches current = matches.current(failures, occurredAt);

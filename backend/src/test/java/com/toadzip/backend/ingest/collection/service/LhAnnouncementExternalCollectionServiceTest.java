@@ -49,6 +49,7 @@ import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestExcept
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.MockClock;
 import io.micrometer.core.instrument.Timer;
@@ -90,6 +91,7 @@ import org.springframework.data.domain.Pageable;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+@ExtendWith(IngestExecutionExtension.class)
 @ExtendWith(MockitoExtension.class)
 class LhAnnouncementExternalCollectionServiceTest {
 
@@ -380,7 +382,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
         var monitor = mock(DataPipelineExecutionMonitor.class);
         ExternalDataCollectionReport result;
-        try (var scope = IngestExecutionScope.open(null, monitor)) {
+        try (var scope = IngestExecutionScope.open(IngestExecutionScope.current().orElseThrow(), monitor)) {
             result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
         }
         verify(monitor, times(2)).beginWork(any(), eq("요청"), eq(1L));
@@ -539,7 +541,8 @@ class LhAnnouncementExternalCollectionServiceTest {
         });
         when(sourceStore.replaceDetails(eq("200"), any(), any())).thenReturn(1);
         try (var caller = Executors.newSingleThreadExecutor()) {
-            var result = caller.submit(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL));
+            var result = caller.submit(IngestExecutionScope.propagate(
+                    () -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)));
             try {
                 assertThat(blocked.await(5, TimeUnit.SECONDS)).isTrue();
                 assertThatThrownBy(() -> result.get(100, TimeUnit.MILLISECONDS))
@@ -584,7 +587,7 @@ class LhAnnouncementExternalCollectionServiceTest {
             return null;
         }).when(progressStore).link(any(), eq("next-first"), any(), any());
 
-        try (var scope = IngestExecutionScope.open(null, monitor)) {
+        try (var scope = IngestExecutionScope.open(IngestExecutionScope.current().orElseThrow(), monitor)) {
             assertThatThrownBy(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL))
                     .isInstanceOf(IllegalStateException.class).hasMessage("중지 요청");
         }
@@ -619,7 +622,8 @@ class LhAnnouncementExternalCollectionServiceTest {
         });
         when(sourceStore.replaceDetails(any(), any(), any())).thenReturn(1);
         try (var caller = Executors.newSingleThreadExecutor()) {
-            var result = caller.submit(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL));
+            var result = caller.submit(IngestExecutionScope.propagate(
+                    () -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)));
             try {
                 assertThat(started.await(3, TimeUnit.SECONDS)).isTrue();
                 verify(externalRepository, times(8)).fetchDetail(any());
@@ -654,7 +658,8 @@ class LhAnnouncementExternalCollectionServiceTest {
         when(sourceStore.replaceDetails(any(), any(), any())).thenReturn(1);
 
         try (var caller = Executors.newSingleThreadExecutor()) {
-            var result = caller.submit(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL));
+            var result = caller.submit(IngestExecutionScope.propagate(
+                    () -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)));
             try {
                 assertThat(firstPairStarted.await(2, TimeUnit.SECONDS)).isTrue();
                 verify(externalRepository, times(2)).fetchDetail(any());
@@ -695,7 +700,8 @@ class LhAnnouncementExternalCollectionServiceTest {
         when(sourceStore.replaceDetails(any(), any(), any())).thenReturn(1);
 
         try (var caller = Executors.newSingleThreadExecutor()) {
-            var result = caller.submit(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL));
+            var result = caller.submit(IngestExecutionScope.propagate(
+                    () -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)));
             try {
                 assertThat(thirdRequestStarted.await(2, TimeUnit.SECONDS)).isTrue();
             }
@@ -810,7 +816,8 @@ class LhAnnouncementExternalCollectionServiceTest {
         });
         when(sourceStore.replaceDetails(eq("200"), any(), any())).thenReturn(1);
         try (var caller = Executors.newSingleThreadExecutor()) {
-            var result = caller.submit(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL));
+            var result = caller.submit(IngestExecutionScope.propagate(
+                    () -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)));
             try {
                 assertThat(failingStoreEntered.await(2, TimeUnit.SECONDS)).isTrue();
                 assertThatThrownBy(() -> result.get(100, TimeUnit.MILLISECONDS))
@@ -871,7 +878,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         when(sourceStore.replaceDetails(any(), any(), any())).thenReturn(1);
         var monitor = mock(DataPipelineExecutionMonitor.class);
 
-        try (var scope = IngestExecutionScope.open(null, monitor)) {
+        try (var scope = IngestExecutionScope.open(IngestExecutionScope.current().orElseThrow(), monitor)) {
             service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
         }
 

@@ -6,8 +6,8 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCandidateSelector.CandidateSelection;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
-import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Resolution;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Skipped;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.SourceResolution;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
@@ -45,6 +45,7 @@ public class LhAnnouncementExternalCollectionService {
     private final MeterRegistry meterRegistry;
 
     public ExternalDataCollectionReport collect(ExternalDataSource targetSource) {
+        IngestExecutionScope.requireHeld();
         validateTargetSource(targetSource);
         log.info("{} 수집을 시작합니다.", targetSource.operation());
         ExternalDataCollectionReport report = collectAnnouncements(targetSource);
@@ -66,6 +67,7 @@ public class LhAnnouncementExternalCollectionService {
 
     /** 공고목록에서 정한 수집 후보 하나를 다시 받는다. 마이홈 공고가 없는 LH 공고의 공급 교체 승인 뒤에 쓴다. */
     public ExternalDataCollectionReport refreshCatalogTarget(ExternalDataSource targetSource, String requestDescription) {
+        IngestExecutionScope.requireHeld();
         validateTargetSource(targetSource);
         List<Candidate> candidates = candidateResolver.resolveCatalogRequests().stream()
                 .filter(candidate -> candidate.requestDescription().equals(requestDescription))
@@ -79,6 +81,7 @@ public class LhAnnouncementExternalCollectionService {
     public ExternalDataCollectionReport refresh(
             ExternalDataSource targetSource, String pblancId, UUID sourceExecutionId
     ) {
+        IngestExecutionScope.requireHeld();
         validateTargetSource(targetSource);
         validatePblancId(pblancId);
         log.info("{} 강제 갱신을 시작합니다: pblancId={}", targetSource.operation(), pblancId);
@@ -231,12 +234,12 @@ public class LhAnnouncementExternalCollectionService {
         List<MyHomeAnnouncementSourceView> current = measurePreparation(
                 targetSource, forceRefresh, "current_source_selection", () -> currentSources(sources)
         );
-        List<Resolution> resolutions = measurePreparation(targetSource, forceRefresh, "candidate_resolution",
-                () -> candidateResolver.resolveAll(current));
-        resolutions.stream().filter(Candidate.class::isInstance).map(Candidate.class::cast)
-                .map(Candidate::requestDescription).forEach(myHomeRequests::add);
+        List<SourceResolution> resolutions = measurePreparation(targetSource, forceRefresh, "candidate_resolution",
+                () -> candidateResolver.resolveEach(current));
+        resolutions.stream().map(SourceResolution::resolution).filter(Candidate.class::isInstance)
+                .map(Candidate.class::cast).map(Candidate::requestDescription).forEach(myHomeRequests::add);
         CandidateSelection selection = measurePreparation(targetSource, forceRefresh, "candidate_selection",
-                () -> candidateSelector.select(current, resolutions, handledAnnouncementKeys, forceRefresh));
+                () -> candidateSelector.select(resolutions, handledAnnouncementKeys, forceRefresh));
         recordSelection(targetSource, forceRefresh, selection, sources.size() - current.size());
         ExternalDataCollectionReport report = selectionReport(targetSource, selection);
         return report.plus(collectCandidates(

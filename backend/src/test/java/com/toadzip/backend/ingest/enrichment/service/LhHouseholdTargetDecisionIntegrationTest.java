@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
+import static com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension.owned;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -19,6 +20,7 @@ import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSou
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdTargetDecisionView;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -47,6 +49,7 @@ class LhHouseholdTargetDecisionIntegrationTest {
     private static final List<String> COUNTS = List.of("116", "90", "57", "90");
     @Autowired private LhHousingTypeHouseholdEnrichmentService enrichment;
     @Autowired private LhHouseholdTargetDecisionService decisions;
+    @Autowired private IngestExecutionOwnershipService ownership;
     @Autowired private LhLeaseCatalogSourceFixtures lhSources;
     @Autowired private HousingComplexRepository complexes;
     @Autowired private HousingTypeRepository types;
@@ -78,7 +81,7 @@ class LhHouseholdTargetDecisionIntegrationTest {
         group("남해평리", COUNTS);
         group("남해평리(국민)", COUNTS);
 
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(pendingReasons()).isEmpty();
         assertThat(householdCounts()).containsExactly(116, 90, 57, 90);
@@ -88,7 +91,7 @@ class LhHouseholdTargetDecisionIntegrationTest {
     void 세대수가_다르면_두_묶음과_단지_주택형을_나란히_보여주고_고른_묶음을_다음_보강부터_쓴다() throws Exception {
         group("남해평리", COUNTS);
         group("남해평리(국민)", List.of("100", "90", "57", "106"));
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
         assertThat(pendingReasons()).containsExactly("DUPLICATE_TARGET_COMPLEX", "DUPLICATE_TARGET_COMPLEX");
 
         var view = view();
@@ -100,7 +103,7 @@ class LhHouseholdTargetDecisionIntegrationTest {
         String chosen = view.groups().stream().filter(group -> group.complexName().equals("남해평리")).findFirst()
                 .orElseThrow().sourceKey();
         save(view, "USE_SOURCE", chosen, "공고문 주택형별 세대수와 일치하는 묶음");
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(pendingReasons()).isEmpty();
         assertThat(householdCounts()).containsExactly(116, 90, 57, 90);
@@ -112,10 +115,10 @@ class LhHouseholdTargetDecisionIntegrationTest {
     void 보강하지_않음으로_정하면_세대수를_쓰지_않고_실패도_해결한다() throws Exception {
         group("남해평리", COUNTS);
         group("남해평리(국민)", List.of("100", "90", "57", "106"));
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         save(view(), "SKIP", null, "어느 묶음이 맞는지 공식 자료로 확인할 수 없음");
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(pendingReasons()).isEmpty();
         assertThat(householdCounts()).containsOnlyNulls();
@@ -125,13 +128,13 @@ class LhHouseholdTargetDecisionIntegrationTest {
     void 결정_이후_경쟁_묶음의_세대수가_바뀌면_결정을_쓰지_않고_재확인을_요구한다() throws Exception {
         group("남해평리", COUNTS);
         group("남해평리(국민)", List.of("100", "90", "57", "106"));
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
         var view = view();
         save(view, "USE_SOURCE", view.groups().getFirst().sourceKey(), "공고문 대조");
         jdbc.sql("UPDATE lh_lease_catalog_source_rows SET total_unit_count = '105' WHERE total_unit_count = '106'")
                 .update();
 
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(pendingReasons()).containsExactly("TARGET_DECISION_REVIEW_REQUIRED", "TARGET_DECISION_REVIEW_REQUIRED");
         assertThat(view().decision().reviewRequired()).isTrue();
@@ -142,13 +145,13 @@ class LhHouseholdTargetDecisionIntegrationTest {
     void 결정_이후_단지_주택형_면적이_바뀌면_결정을_쓰지_않고_재확인을_요구한다() throws Exception {
         group("남해평리", COUNTS);
         group("남해평리(국민)", List.of("100", "90", "57", "106"));
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
         var view = view();
         save(view, "USE_SOURCE", view.groups().getFirst().sourceKey(), "공고문 대조");
         jdbc.sql("UPDATE housing_types SET exclusive_area = exclusive_area + 1 WHERE id = (SELECT min(id) FROM housing_types)")
                 .update();
 
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(pendingReasons()).containsExactly("TARGET_DECISION_REVIEW_REQUIRED", "TARGET_DECISION_REVIEW_REQUIRED");
         assertThat(view().decision().reviewRequired()).isTrue();
@@ -159,12 +162,12 @@ class LhHouseholdTargetDecisionIntegrationTest {
     void 결정을_이유와_함께_해제하면_다음_보강부터_다시_중복_실패로_남긴다() throws Exception {
         group("남해평리", COUNTS);
         group("남해평리(국민)", List.of("100", "90", "57", "106"));
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
         var saved = save(view(), "SKIP", null, "확인 불가");
 
         decisions.release(failureId(), new LhHouseholdTargetDecisionView.ReleaseRequest(
                 saved.token(), "공식 자료를 찾아 다시 판단"), "operator");
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(jdbc.sql("SELECT count(*) FROM lh_household_target_decisions").query(Long.class).single()).isZero();
         assertThat(pendingReasons()).containsExactly("DUPLICATE_TARGET_COMPLEX", "DUPLICATE_TARGET_COMPLEX");
@@ -174,7 +177,7 @@ class LhHouseholdTargetDecisionIntegrationTest {
     void 경쟁_묶음에_없는_묶음이나_조회_후_바뀐_상태로는_저장하지_않는다() throws Exception {
         group("남해평리", COUNTS);
         group("남해평리(국민)", List.of("100", "90", "57", "106"));
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
         var view = view();
 
         assertThatThrownBy(() -> save(view, "USE_SOURCE", "다른 묶음", "대조"))
@@ -189,7 +192,7 @@ class LhHouseholdTargetDecisionIntegrationTest {
     void 결정_조회와_저장은_관리자와_CSRF를_요구한다() throws Exception {
         group("남해평리", COUNTS);
         group("남해평리(국민)", List.of("100", "90", "57", "106"));
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         mvc.perform(get(PATH + failureId() + "/target-decision")).andExpect(status().isUnauthorized());
         mvc.perform(post(PATH + failureId() + "/target-decision").with(user("operator").roles("ADMIN"))

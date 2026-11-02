@@ -56,6 +56,8 @@ import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFa
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension.AcquiresOwnExecution;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -65,6 +67,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -78,6 +81,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest(properties = {"app.notification.publisher-enabled=true",
         "app.notification.activation-at=2026-01-01T00:00:00Z"})
+@ExtendWith(IngestExecutionExtension.class)
 @ActiveProfiles("test")
 class MyHomeAnnouncementMappingServiceTest {
 
@@ -190,6 +194,7 @@ class MyHomeAnnouncementMappingServiceTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"21026", "missing"})
+    @AcquiresOwnExecution
     void 단건_비동기_실행은_지원을_종료해_실행_기록과_잠금_없이_거절한다(String identifier) {
         long executionCount = executions.count();
 
@@ -216,7 +221,7 @@ class MyHomeAnnouncementMappingServiceTest {
         collectedSourceStorage.complete(collectionHistory.start(request), request,
                 new MyHomeAnnouncementCollectedResponse(1, COLLECTED_AT.plusSeconds(60), List.of(row)));
 
-        try (var ignored = IngestExecutionScope.open(executionId, null, null, null)) {
+        try (var ignored = IngestExecutionScope.open(executionId, IngestExecutionScope.current().orElseThrow(), null, null)) {
             service.registerAnnouncement("21026");
         }
 
