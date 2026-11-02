@@ -1,6 +1,5 @@
 package com.toadzip.backend.ingest.mapping.service;
 
-import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.announcement.repository.SupplyRowGroupRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
@@ -62,17 +61,6 @@ class SupplyCorrectionSources {
         catch (MyHomeAnnouncementMappingRejectedException exception) {
             return Optional.empty();
         }
-    }
-
-    /** 여러 공급행으로 나눌 원천행. 조회 뒤 원천이나 분할 보정이 바뀌었으면 거절한다. */
-    MyHomeSupplyRowMappingData splitRow(ResolvedAnnouncement current, String rowIdentifier, String token) {
-        var data = current.data().supplyRows().stream()
-                .filter(value -> value.sourceSupplyRowIdentifier().equals(rowIdentifier)).findFirst()
-                .orElseThrow(() -> new InvalidIngestRequestException("해당 공고의 원천행이 아닙니다."));
-        if (!token(data).equals(token)) {
-            throw new AdminDataConflictException("원천 또는 보정이 변경되었습니다. 다시 조회해 주세요.");
-        }
-        return data;
     }
 
     boolean isSplit(MyHomeSupplyRowMappingData data) {
