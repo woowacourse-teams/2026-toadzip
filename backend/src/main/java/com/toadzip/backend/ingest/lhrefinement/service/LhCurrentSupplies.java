@@ -2,7 +2,6 @@ package com.toadzip.backend.ingest.lhrefinement.service;
 
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSourceView;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
-import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
@@ -24,13 +23,7 @@ public class LhCurrentSupplies {
         if (entries.size() != 1) {
             return List.of();
         }
-        LhAnnouncementRequest request = request(entries.getFirst());
-        return supplies.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(request.panId(),
-                LhAnnouncementQuery.requestHashOf(request.requestDescription()));
-    }
-
-    static LhAnnouncementRequest request(LhAnnouncementCatalogSourceView catalog) {
-        return new LhAnnouncementRequest(catalog.getPanId(), catalog.getConnectionSystemDivisionCode(),
-                catalog.getUpperAnnouncementTypeCode(), catalog.getAnnouncementTypeCode(), catalog.getSupplyInfoTypeCode());
+        LhAnnouncementRequest request = LhAnnouncementRequest.from(entries.getFirst());
+        return supplies.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(request.panId(), request.requestHash());
     }
 }

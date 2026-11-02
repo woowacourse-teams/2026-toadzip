@@ -53,9 +53,7 @@ public class LhAnnouncementCollectionCandidateResolver {
     }
 
     private Candidate catalogCandidate(LhAnnouncementCatalogSourceView source) {
-        LhAnnouncementRequest request = new LhAnnouncementRequest(source.getPanId(),
-                source.getConnectionSystemDivisionCode(), source.getUpperAnnouncementTypeCode(),
-                source.getAnnouncementTypeCode(), source.getSupplyInfoTypeCode());
+        LhAnnouncementRequest request = LhAnnouncementRequest.from(source);
         return new Candidate(CATALOG_SOURCE_PREFIX + source.getSourceKey(), "lhCatalogSource=" + source.getSourceKey(),
                 request, source.getChangedAt(), source.getCollectedAt());
     }
@@ -116,10 +114,7 @@ public class LhAnnouncementCollectionCandidateResolver {
             return candidate;
         }
         LhAnnouncementCatalogSourceView row = matches.getFirst();
-        LhAnnouncementRequest canonical = new LhAnnouncementRequest(
-                row.getPanId(), row.getConnectionSystemDivisionCode(), row.getUpperAnnouncementTypeCode(),
-                row.getAnnouncementTypeCode(), row.getSupplyInfoTypeCode()
-        );
+        LhAnnouncementRequest canonical = LhAnnouncementRequest.from(row);
         return new Candidate(candidate.sourceAnnouncementKey(), candidate.sourceDescription(), canonical,
                 row.getChangedAt(), row.getCollectedAt());
     }
