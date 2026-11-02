@@ -1,24 +1,47 @@
 package com.toadzip.backend.ingest.pipeline.domain;
 
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
+import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException.Retirement;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
 
 public enum DataPipelineType {
-    COMPLEX_COLLECTION("complex-collection"),
-    COMPLEX_REFINEMENT("complex-refinement"),
-    ANNOUNCEMENT_COLLECTION("announcement-collection"),
-    ANNOUNCEMENT_REFINEMENT("announcement-refinement"),
-    COMPLEX_SYNC("complex-sync"),
-    ANNOUNCEMENT_SYNC("announcement-sync"),
-    ANNOUNCEMENT_REGISTRATION("announcement-registration"),
-    SH_ANNOUNCEMENT_COLLECTION("sh-announcement-collection");
+    COMPLEX_COLLECTION("complex-collection", Domain.COMPLEX, true, false, null),
+    COMPLEX_REFINEMENT("complex-refinement", Domain.COMPLEX, false, false, Retirement.COMPLEX_REFINEMENT),
+    ANNOUNCEMENT_COLLECTION("announcement-collection", Domain.ANNOUNCEMENT, true, false, null),
+    ANNOUNCEMENT_REFINEMENT("announcement-refinement", Domain.ANNOUNCEMENT, false, false, null),
+    COMPLEX_SYNC("complex-sync", Domain.COMPLEX, true, true, Retirement.COMPLEX_REFINEMENT),
+    ANNOUNCEMENT_SYNC("announcement-sync", Domain.ANNOUNCEMENT, true, true, null),
+    ANNOUNCEMENT_REGISTRATION(
+            "announcement-registration", Domain.ANNOUNCEMENT, false, true, Retirement.MYHOME_ANNOUNCEMENT_REFINEMENT
+    ),
+    SH_ANNOUNCEMENT_COLLECTION("sh-announcement-collection", Domain.SH_ANNOUNCEMENT, false, false, null);
 
     private final String pathValue;
+    private final Domain domain;
+    private final boolean acceptsServiceKey;
+    private final boolean chainsCollectionToRefinement;
+    private final Retirement retirement;
 
-    DataPipelineType(String pathValue) {
+    /**
+     * @param chainsCollectionToRefinement 한 실행에서 수집 뒤 정제까지 이어 가서, 정제 단계가 앞선 수집의 성공을 요구한다.
+     * @param retirement 지원을 종료한 유형의 안내 종류. 실행할 수 있는 유형은 null이다.
+     *                   지난 실행 이력을 읽도록 종료한 유형과 단계 정의도 남긴다.
+     */
+    DataPipelineType(
+            String pathValue,
+            Domain domain,
+            boolean acceptsServiceKey,
+            boolean chainsCollectionToRefinement,
+            Retirement retirement
+    ) {
         this.pathValue = pathValue;
+        this.domain = domain;
+        this.acceptsServiceKey = acceptsServiceKey;
+        this.chainsCollectionToRefinement = chainsCollectionToRefinement;
+        this.retirement = retirement;
     }
 
     public static DataPipelineType fromPathValue(String pathValue) {
@@ -64,14 +87,24 @@ public enum DataPipelineType {
         };
     }
 
-    // 단지 정제와 마이홈 공고 단건 등록은 지원을 종료했다. 지난 실행 이력을 읽도록 유형과 단계 정의는 남긴다.
-    public boolean isRetired() {
-        return this == COMPLEX_REFINEMENT || this == COMPLEX_SYNC || this == ANNOUNCEMENT_REGISTRATION;
+    public static List<DataPipelineType> ofDomain(Domain domain) {
+        return Arrays.stream(values())
+                .filter(type -> type.domain == domain)
+                .toList();
+    }
+
+    public void rejectIfRetired() {
+        if (retirement != null) {
+            throw RetiredIngestOperationException.of(retirement);
+        }
+    }
+
+    public boolean acceptsServiceKey() {
+        return acceptsServiceKey;
     }
 
     public boolean requiresSuccessfulCollection(DataPipelineStep step) {
-        return (this == COMPLEX_SYNC || this == ANNOUNCEMENT_SYNC || this == ANNOUNCEMENT_REGISTRATION)
-                && !step.isCollection();
+        return chainsCollectionToRefinement && !step.isCollection();
     }
 
     public int sequenceOf(DataPipelineStep step) {
@@ -80,5 +113,12 @@ public enum DataPipelineType {
             throw new IllegalArgumentException("파이프라인 유형에 속하지 않는 단계입니다.");
         }
         return index + 1;
+    }
+
+    /** 실행 이력을 나눠 보는 구분. SH 공고 수집은 단지·공고 어느 이력에도 넣지 않는다. */
+    public enum Domain {
+        COMPLEX,
+        ANNOUNCEMENT,
+        SH_ANNOUNCEMENT
     }
 }

@@ -35,14 +35,12 @@ public class DataPipelineExecutionQueryService {
         if (domain == null) {
             return history(page, size);
         }
-        List<DataPipelineType> types = switch (domain) {
-            case "complex" -> List.of(DataPipelineType.COMPLEX_COLLECTION, DataPipelineType.COMPLEX_REFINEMENT,
-                    DataPipelineType.COMPLEX_SYNC);
-            case "announcement" -> List.of(DataPipelineType.ANNOUNCEMENT_COLLECTION,
-                    DataPipelineType.ANNOUNCEMENT_REFINEMENT, DataPipelineType.ANNOUNCEMENT_SYNC,
-                    DataPipelineType.ANNOUNCEMENT_REGISTRATION);
+        DataPipelineType.Domain historyDomain = switch (domain) {
+            case "complex" -> DataPipelineType.Domain.COMPLEX;
+            case "announcement" -> DataPipelineType.Domain.ANNOUNCEMENT;
             default -> throw new InvalidIngestRequestException("단지 또는 공고를 선택해 주세요.");
         };
+        List<DataPipelineType> types = DataPipelineType.ofDomain(historyDomain);
         recovery.recoverIfIdle();
         return executionRepository.findByTypeIn(types, PageRequest.of(page, size, Sort.by("id").descending()))
                 .stream().map(executionMapper::response).toList();

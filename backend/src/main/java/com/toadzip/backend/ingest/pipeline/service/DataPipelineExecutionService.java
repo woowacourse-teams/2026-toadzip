@@ -4,7 +4,6 @@ import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningExcept
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
-import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
@@ -70,9 +69,8 @@ public class DataPipelineExecutionService {
     }
 
     public DataPipelineExecutionResponse start(DataPipelineType type, String serviceKey) {
-        rejectRetired(type);
-        if (type != DataPipelineType.COMPLEX_COLLECTION && type != DataPipelineType.ANNOUNCEMENT_COLLECTION
-                && type != DataPipelineType.COMPLEX_SYNC && type != DataPipelineType.ANNOUNCEMENT_SYNC) {
+        type.rejectIfRetired();
+        if (!type.acceptsServiceKey()) {
             throw new InvalidIngestRequestException("수집 작업에만 서비스키를 입력할 수 있습니다.");
         }
         if (serviceKey == null || serviceKey.isBlank() || serviceKey.length() > 4096) {
@@ -82,7 +80,7 @@ public class DataPipelineExecutionService {
     }
 
     private DataPipelineExecutionResponse startExecution(DataPipelineType type, String serviceKey) {
-        rejectRetired(type);
+        type.rejectIfRetired();
         UUID executionId = UUID.randomUUID();
         DataPipelineExecutionLock.Lease lease = executionLock.tryAcquire(executionId)
                 .orElseThrow(() -> new IngestAlreadyRunningException(ALREADY_RUNNING_MESSAGE));
@@ -192,11 +190,5 @@ public class DataPipelineExecutionService {
             return;
         }
         MDC.put(key, value);
-    }
-
-    private static void rejectRetired(DataPipelineType type) {
-        if (type.isRetired()) {
-            throw RetiredIngestOperationException.of(type);
-        }
     }
 }
