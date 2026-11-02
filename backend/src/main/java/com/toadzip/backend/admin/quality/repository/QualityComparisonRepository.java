@@ -11,9 +11,7 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class QualityComparisonRepository {
-    private static final String NORMALIZED_PAYLOAD =
-            "raw_payload::jsonb - 'id' - 'source_id' - 'collected_at' - 'source_order' "
-                    + "- 'collection_record_id' - 'consecutive_miss_count' - 'last_seen_run_id' - 'last_seen_at'";
+    private static final String NORMALIZED_PAYLOAD = IngestSourceRows.withoutMetadata("raw_payload::jsonb");
     public static final String SOURCE_ROWS = Arrays.stream(IngestSourceCategory.values())
             .map(category -> "SELECT '" + category.name() + "'::text category, source_key, "
                     + NORMALIZED_PAYLOAD + " raw FROM ("

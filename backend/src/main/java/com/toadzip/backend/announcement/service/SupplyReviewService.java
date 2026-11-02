@@ -9,12 +9,12 @@ import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyReviewQueryRepository;
 import com.toadzip.backend.announcement.repository.SupplyReviewRecordRepository;
+import com.toadzip.backend.ingest.source.repository.IngestSourceRows;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -27,8 +27,6 @@ import tools.jackson.databind.ObjectMapper;
 @PreAuthorize("hasRole('ADMIN')")
 @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class SupplyReviewService {
-    private static final Set<String> METADATA = Set.of("id", "source_id", "collected_at", "source_order",
-            "collection_record_id", "consecutive_miss_count", "last_seen_run_id", "last_seen_at");
     private final SupplyCorrectionService corrections;
     private final AnnouncementRepository announcements;
     private final SupplyReviewRecordRepository records;
@@ -62,7 +60,7 @@ public class SupplyReviewService {
                     .orElseThrow(() -> new IllegalArgumentException("현재 비교 자료에 있는 원천을 선택하세요."));
             if (source.rows().isEmpty()) { throw new AdminDataConflictException("확인할 원천이 사라졌습니다."); }
             var fields = scope.fields().stream().distinct().sorted().toList();
-            if (fields.stream().anyMatch(field -> METADATA.contains(field)
+            if (fields.stream().anyMatch(field -> IngestSourceRows.METADATA_KEYS.contains(field)
                     || source.rows().stream().noneMatch(item -> item.raw().containsKey(field)))) {
                 throw new IllegalArgumentException("수집 메타정보를 제외한 실제 원천 항목을 선택하세요.");
             }
