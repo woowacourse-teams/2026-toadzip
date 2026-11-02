@@ -69,7 +69,6 @@ public class ExternalDataRetryExecutor {
             catch (ExternalDataRequestException exception) {
                 if (!canRetry(exception, attempt)) {
                     throw new ExternalDataCallFailureException(
-                            source,
                             requestDescription,
                             attempt,
                             exception

@@ -38,7 +38,6 @@ class ExternalDataFailureRecorderTest {
                 )
         );
         ExternalDataCallFailureException failure = new ExternalDataCallFailureException(
-                ExternalDataSource.MYHOME_COMPLEX,
                 "pageNo=1",
                 3,
                 requestFailure
