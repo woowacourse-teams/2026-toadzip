@@ -1,0 +1,6 @@
+.venv
+tests
+contract
+**/__pycache__
+.pytest_cache
+Dockerfile

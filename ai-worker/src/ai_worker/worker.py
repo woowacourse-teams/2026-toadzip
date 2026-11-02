@@ -2,10 +2,12 @@
 
 import json
 import logging
+import os
 import threading
 from collections.abc import Callable
 from contextlib import contextmanager
 from datetime import timedelta
+from pathlib import Path
 
 import psycopg
 
@@ -26,6 +28,19 @@ INTERNAL_ERROR_MESSAGE = "추출 중 알 수 없는 오류가 났습니다. 다�
 # 꺼낼 작업이 없을 때와 DB 연결이 끊겼을 때 기다리는 시간.
 IDLE = timedelta(seconds=5)
 RECONNECT = timedelta(seconds=10)
+# 설정하면 DB에 붙어 일하는 동안 이 파일을 계속 갱신한다. 컨테이너 healthcheck가 갱신 시각을 본다(Dockerfile).
+ALIVE_FILE = os.environ.get("AI_WORKER_ALIVE_FILE")
+
+
+def mark_alive() -> None:
+    """DB 접속이 실패하면 재연결만 되풀이해 프로세스는 살아 있으므로, 실제로 큐를 처리하고 있다는 신호를 따로 남긴다."""
+    if not ALIVE_FILE:
+        return
+    try:
+        Path(ALIVE_FILE).touch()
+    except OSError:
+        # heartbeat 안에서 터지면 lease 연장이 멈춰 다른 워커가 유료 호출을 다시 한다. 건강 신호만 놓치게 둔다.
+        log.exception("살아 있음 파일을 갱신하지 못했습니다.")
 
 
 def run(connect: Callable[[], psycopg.Connection], extractor: Extractor, stop: threading.Event) -> None:
@@ -64,6 +79,8 @@ def run_once(conn: psycopg.Connection, extractor: Extractor) -> bool:
 
     # 마감 전에 한 번의 추출을 끝낼 수 없는 작업은 꺼내지 않는다. 꺼내면 끝나도 마감 정리에 밀려 유료 호출만 버린다.
     job = jobs.claim(conn, LEASE, DEADLINE - ATTEMPT_BUDGET)
+    # 꺼내기까지 됐으면 접속과 큐 권한이 실제로 확인된 것이다. 첫 heartbeat 전에 긴 추출이 시작돼도 healthy로 보인다.
+    mark_alive()
     if job is None:
         return False
 
@@ -107,6 +124,8 @@ def heartbeat(conn: psycopg.Connection, job: jobs.Job):
                 if not jobs.extend_lease(conn, job, LEASE, DEADLINE):
                     log.warning("작업 %d lease를 늘리지 못했습니다. 빼앗겼거나 끝났거나 마감이 지났습니다.", job.id)
                     return
+                # 긴 추출 중에도 healthy로 보이게 한다.
+                mark_alive()
             except psycopg.Error:
                 # 일시적인 DB 오류로 멈추면 lease가 끝나 다른 워커가 같은 작업에 유료 호출을 다시 한다. 다음 박자에 다시 늘린다.
                 log.exception("작업 %d lease를 늘리다 오류가 났습니다. 다음 박자에 다시 시도합니다.", job.id)

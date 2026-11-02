@@ -9,6 +9,7 @@ from testcontainers.community.postgres import PostgresContainer
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = REPO_ROOT / "backend/src/main/resources/db/migration/V20261103_01__ai_jobs.sql"
+WORKER_ROLE_SQL = REPO_ROOT / "infra/db/create-ai-worker-role.sql"
 CONTRACT = REPO_ROOT / "ai-worker/contract/announcement-pdf-extraction"
 WORKER_ROLE = "toadzip_ai_worker"
 WORKER_PASSWORD = "worker-test-password"
@@ -21,9 +22,9 @@ def contract_example(name: str) -> dict:
 
 @pytest.fixture(scope="session")
 def postgres():
-    with PostgresContainer("postgres:17-alpine", driver=None) as container:
+    with PostgresContainer("postgres:17-alpine", dbname="toadzip", driver=None) as container:
         with psycopg.connect(container.get_connection_url(), autocommit=True) as conn:
-            # 마이그레이션이 참조하는 표만 최소로 만든다. 역할은 GRANT가 붙도록 마이그레이션 전에 만든다.
+            # 마이그레이션이 참조하는 표만 최소로 만든다.
             conn.execute("CREATE TABLE announcements (id BIGINT PRIMARY KEY)")
             conn.execute(
                 """
@@ -37,8 +38,11 @@ def postgres():
                 )
                 """
             )
-            conn.execute(f"CREATE ROLE {WORKER_ROLE} LOGIN PASSWORD '{WORKER_PASSWORD}'")
+            # 운영의 역할 생성 스크립트를 그대로 쓴다. 마이그레이션 뒤에 실행해, 역할이 나중에 생긴 DB에도
+            # 스크립트가 같은 권한을 주는지 확인한다(먼저 만든 경우의 마이그레이션 GRANT는 Spring 테스트가 확인한다).
             conn.execute(MIGRATION.read_text(encoding="utf-8"))
+            conn.execute(WORKER_ROLE_SQL.read_text(encoding="utf-8"))
+            conn.execute(f"ALTER ROLE {WORKER_ROLE} PASSWORD '{WORKER_PASSWORD}'")
         yield container
 
 

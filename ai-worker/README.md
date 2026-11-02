@@ -9,12 +9,22 @@ Postgres `ai_jobs` 작업 큐를 처리하는 Python 워커다. Spring은 작업
 - `src/ai_worker/prompts/`: 추출 프롬프트·응답 스키마와 텍스트 입력용 앞뒤 문구. 로컬 평가(lh-frame 변형)와 같은 글을 보낸다. 문구를 바꾸면 정확도를 다시 잰다.
 
 스키마는 Spring Flyway가 관리한다. 워커는 `toadzip_ai_worker` 역할로 접속하고, 이 역할은 `ai_jobs`를 읽고 상태·결과 열만 고칠 수 있다.
+역할은 [`infra/db/create-ai-worker-role.sql`](../infra/db/create-ai-worker-role.sql)로 만들고, 서버 배포는 [배포 운영의 AI 워커](../docs/operations/deployment.md#ai-워커)를 따른다.
 
 ## 실행
 
+로컬 DB(`compose.local.yaml`)에 역할을 한 번 만든다.
+
+```bash
+docker compose -f compose.yaml -f compose.local.yaml exec -T db psql -U toadzip -d toadzip < infra/db/create-ai-worker-role.sql
+docker compose -f compose.yaml -f compose.local.yaml exec db psql -U toadzip -d toadzip -c '\password toadzip_ai_worker'
+```
+
+컨테이너로 띄우려면 `.env`에 `AI_WORKER_DB_PASSWORD`·`DEEPSEEK_API_KEY`를 넣고 `docker compose -f compose.yaml -f compose.local.yaml --profile ai-worker up -d ai-worker`를 실행한다. 직접 띄울 때는 다음과 같다.
+
 ```bash
 cd ai-worker
-AI_WORKER_DATABASE_URL=postgresql://toadzip_ai_worker:<비밀번호>@localhost:5432/toadzip DEEPSEEK_API_KEY=<키> uv run python -m ai_worker
+PGHOST=localhost PGPORT=5433 PGDATABASE=toadzip PGUSER=toadzip_ai_worker PGPASSWORD=<비밀번호> DEEPSEEK_API_KEY=<키> uv run python -m ai_worker
 ```
 
 SIGTERM·SIGINT를 받으면 처리 중인 작업을 끝내고 멈춘다. 그 전에 강제로 끝나면 lease가 끝난 뒤 다른 워커가 그 작업을 다시 시도한다.

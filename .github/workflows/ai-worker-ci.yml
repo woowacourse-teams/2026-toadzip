@@ -1,11 +1,15 @@
 name: AI Worker CI
 
 on:
+  # 배포 워크플로가 워커 이미지를 빌드하기 전에 호출한다.
+  workflow_call:
   pull_request:
     paths:
       - 'ai-worker/**'
       # 워커 테스트는 Flyway의 ai_jobs 마이그레이션을 그대로 적용한다.
       - 'backend/src/main/resources/db/migration/**'
+      # 운영과 같은 역할 생성 스크립트로 제한 역할을 만든다.
+      - 'infra/db/create-ai-worker-role.sql'
       - '.github/workflows/ai-worker-ci.yml'
 
 permissions:

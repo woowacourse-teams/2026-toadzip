@@ -57,7 +57,7 @@
 - 일시 오류(네트워크, 429, 5xx, 시간 초과)만 1분, 5분 뒤 다시 시도하며 처리는 작업당 최대 3번(`max_attempts`)이다. 잘못된 PDF, 인증·잔액 오류는 바로 `FAILED`다. 한 번의 처리는 10분 안에 끝내며 마감까지 그만큼 남지 않은 작업은 꺼내지 않는다. 워커는 처리하는 동안 lease를 늘리고, 멈춘 워커의 작업은 lease(3분)가 끝나면 다른 워커가 다시 꺼낸다. 넣은 지 40분이 지난 작업은 상태와 관계없이 `FAILED`(`DEADLINE_EXCEEDED`)로 끝낸다. 큐 상태 전이 규칙은 [계약 예시](../../../ai-worker/contract/README.md)에 둔다.
 - 화면은 3초마다 작업 상태를 묻고, 재시도를 기다리는 동안 `retryReason`을 보여 준다. 워커 마감보다 조금 긴 45분이 지나면 기다리기를 멈춘다. 진행 중인 작업이 다른 PDF의 것이면 이어 기다리지 않고 알린다.
 - PDF는 처리 중에만 작업 행에 보관하고 `SUCCEEDED`·`FAILED`가 되면 비운다(DB 제약으로 강제). 공고 데이터에는 반영하지 않고, 공고를 지우면 작업도 함께 지운다.
-- 워커는 `ai_jobs`만 읽고 상태·결과 열만 고칠 수 있는 DB 역할 `toadzip_ai_worker`를 쓴다. 역할과 비밀번호는 DB 초기화 스크립트·운영 절차가 만들고, 마이그레이션은 역할이 있을 때만 권한을 준다. 역할을 마이그레이션 뒤에 만들면 `V20261103_01`의 GRANT를 다시 실행한다.
+- 워커는 `ai_jobs`만 읽고 상태·결과 열만 고칠 수 있는 DB 역할 `toadzip_ai_worker`를 쓴다. 역할은 [`infra/db/create-ai-worker-role.sql`](../../../infra/db/create-ai-worker-role.sql)과 [배포 운영](../../operations/deployment.md#ai-워커) 절차가 만든다. 마이그레이션은 역할이 있을 때만 권한을 주고, 스크립트는 이미 마이그레이션된 DB에도 같은 권한을 준다.
 - `GET /api/admin/announcements/{id}/pdf-extractions/latest`는 가장 최근에 성공한 작업의 결과를 모델 호출 없이 돌려준다. `data`는 `fileName`, `pdfSha256`(소문자 16진수), `createdAt`(작업이 끝난 시각), `extraction`이며 성공한 작업이 없으면 `null`이다. 예전 동기 추출 결과(`announcement_pdf_extractions`)는 `V20261103_01`에서 성공 작업으로 옮겼다.
 - 자동 테스트는 실제 모델을 부르지 않는다. 실제 호출은 키를 설정한 로컬 워커에서 확인한다.
 

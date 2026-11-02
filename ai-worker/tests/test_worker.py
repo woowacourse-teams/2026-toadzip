@@ -449,3 +449,93 @@ def test_run_reconnects_after_connection_failure_and_broken_connection(postgres,
 
     assert len(connections) == 3
     assert calls[0] is not calls[1]
+
+
+@pytest.mark.parametrize("statement", [
+    # 권한만 있으면 성공하는 행이어야 제약 위반이 아니라 권한 거절을 확인한다. 진행 중 작업은 공고마다 하나라 끝난 상태로 넣는다.
+    "INSERT INTO ai_jobs (kind, announcement_id, request_source, requested_by, status, attempts, max_attempts, next_attempt_at,"
+    " file_name, pdf_sha256, error_code, created_at, completed_at)"
+    " VALUES ('ANNOUNCEMENT_PDF_EXTRACTION', 1, 'ADMIN', 'admin', 'FAILED', 1, 3, now(), 'notice.pdf', repeat('a', 64), 'X', now(), now())",
+    "DELETE FROM ai_jobs",
+    "UPDATE ai_jobs SET input = '{}'::jsonb",
+    "SELECT id FROM announcements",
+])
+def test_worker_role_only_reads_jobs_and_writes_state_columns(owner, worker_conn, statement):
+    insert_job(owner)
+
+    with pytest.raises(psycopg.errors.InsufficientPrivilege):
+        worker_conn.execute(statement)
+
+
+def test_worker_role_has_statement_timeout(worker_conn):
+    assert worker_conn.execute("SHOW statement_timeout").fetchone()[0] == "30s"
+
+
+def test_run_marks_alive_only_while_connected(postgres, monkeypatch, tmp_path):
+    alive = tmp_path / "alive"
+    monkeypatch.setattr(worker, "ALIVE_FILE", str(alive))
+    monkeypatch.setattr(worker, "IDLE", timedelta(0))
+    monkeypatch.setattr(worker, "RECONNECT", timedelta(0))
+    stop = threading.Event()
+    attempts = []
+
+    def unreachable():
+        attempts.append(None)
+        if len(attempts) == 3:
+            stop.set()
+        raise psycopg.OperationalError("password authentication failed")
+
+    worker.run(unreachable, FakeExtractor(), stop)
+
+    assert not alive.exists()
+
+    stop = threading.Event()
+
+    def denied(*args):
+        stop.set()
+        raise psycopg.errors.InsufficientPrivilege("permission denied for table ai_jobs")
+
+    claim = worker.jobs.claim
+    monkeypatch.setattr(worker.jobs, "claim", denied)
+
+    worker.run(lambda: connect_worker(postgres), FakeExtractor(), stop)
+
+    assert not alive.exists()
+
+    stop = threading.Event()
+    monkeypatch.setattr(worker.jobs, "claim", claim)
+    once = worker.run_once
+    monkeypatch.setattr(worker, "run_once", lambda conn, extractor: stop.set() or once(conn, extractor))
+
+    worker.run(lambda: connect_worker(postgres), FakeExtractor(), stop)
+
+    assert alive.exists()
+
+
+def test_claimed_job_marks_alive_before_first_heartbeat(owner, worker_conn, monkeypatch, tmp_path):
+    alive = tmp_path / "alive"
+    monkeypatch.setattr(worker, "ALIVE_FILE", str(alive))
+    monkeypatch.setattr(worker, "HEARTBEAT", timedelta(minutes=10))
+    insert_job(owner)
+    seen = {}
+
+    run_once(worker_conn, FakeExtractor(during=lambda job: seen.setdefault("alive", alive.exists())))
+
+    assert seen["alive"] is True
+
+
+def test_heartbeat_marks_alive_during_long_extraction(owner, worker_conn, monkeypatch, tmp_path):
+    alive = tmp_path / "alive"
+    monkeypatch.setattr(worker, "ALIVE_FILE", str(alive))
+    monkeypatch.setattr(worker, "HEARTBEAT", timedelta(seconds=0.1))
+    insert_job(owner)
+    seen = {}
+
+    def long_extraction(job):
+        alive.unlink()
+        time.sleep(0.35)
+        seen["alive"] = alive.exists()
+
+    run_once(worker_conn, FakeExtractor(during=long_extraction))
+
+    assert seen["alive"] is True

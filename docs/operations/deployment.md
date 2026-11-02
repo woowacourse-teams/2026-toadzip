@@ -11,8 +11,8 @@
 | 운영 | `main` 푸시 | `main` | `toadzip-prod` | `PROD_DEPLOY_PATH` |
 
 [개발 배포](../../.github/workflows/deploy-dev.yml)와 [운영 배포](../../.github/workflows/deploy-prod.yml)는
-[백엔드 CI](../../.github/workflows/backend-ci.yml)·[프론트 CI](../../.github/workflows/frontend-ci.yml)를 호출한다.
-두 검사가 통과한 뒤 해당 서버의 Self-hosted Runner가 배포한다. PR 검사는 배포하지 않는다.
+[백엔드 CI](../../.github/workflows/backend-ci.yml)·[프론트 CI](../../.github/workflows/frontend-ci.yml)·[AI 워커 CI](../../.github/workflows/ai-worker-ci.yml)를 호출한다.
+세 검사가 통과한 뒤 해당 서버의 Self-hosted Runner가 배포한다. PR 검사는 배포하지 않는다.
 수동 실행도 위 브랜치 조건을 적용한다.
 
 서버의 Runner는 Git 저장소와 Docker를 실행할 수 있어야 한다. GitHub의 Actions 저장소 변수에
@@ -72,10 +72,11 @@ Runner에는 Git·Bash·`flock`·Python 3·Docker Compose가 필요하다. 서�
    해당 커밋으로 detached checkout한다. 최신 브랜치 커밋으로 대체하지 않는다. 기존 서버 환경 파일·개인 자료는 삭제하지 않는다.
 3. [`release-bluegreen.py`](../../scripts/release-bluegreen.py)가 체크아웃 SHA·깨끗한 작업 트리·환경 프로필·필수 런타임 설정을 확인한다.
    두 서비스의 현재 경로·응답과 Edge 정적 파일 제공까지 확인한 뒤 빌드한다.
-4. `toadzip-backend:<SHA>`와 `toadzip-frontend:<SHA>`를 순차 빌드한다. 기존 Compose 빌드 인자와 Dockerfile을 사용하고
-   이미지에 `org.opencontainers.image.revision`을 기록한다. 두 이미지의 빌드·라벨 검증이 모두 끝나야 배포한다.
-5. 고정된 이미지 ID로 백엔드 → 프론트 순서로 후보 기동·전환·요청 종료 대기·이전 컨테이너 정지를 실행한다.
-   Git 갱신부터 빌드·두 서비스 전환까지 같은 잠금을 유지한다.
+4. `toadzip-backend:<SHA>`, `toadzip-frontend:<SHA>`, `toadzip-ai-worker:<SHA>`를 순차 빌드한다. 기존 Compose 빌드 인자와 Dockerfile을 사용하고
+   이미지에 `org.opencontainers.image.revision`을 기록한다. 세 이미지의 빌드·라벨 검증이 모두 끝나야 배포한다.
+5. 고정된 이미지 ID로 백엔드 → 프론트 → AI 워커 순서로 배포한다. 백엔드·프론트는 후보 기동·전환·요청 종료 대기·이전 컨테이너 정지를 실행하고,
+   AI 워커는 트래픽을 받지 않아 마지막에 새 이미지로 다시 띄운다. 워커 배포가 실패해도 백엔드·프론트는 같은 새 버전으로 남는다(아래 [AI 워커](#ai-워커)).
+   Git 갱신부터 빌드·세 서비스 배포까지 같은 잠금을 유지한다.
 6. 성공·실패 단계, 완료한 서비스, 빌드 이미지 ID와 런타임 설정의 연결 색상을 Actions 로그·Step Summary 및
    런타임 `releases/<SHA>-<임의 ID>.json`에 남긴다. 실제 수신 경로가 확인되지 못한 실패에서는 로그·설정 백업도 함께 점검한다.
 
@@ -101,6 +102,25 @@ python3 -B scripts/release-bluegreen.py \
 CI에서 실행하는 빠른 배포 검사는 `tests/deployment/test_bluegreen.py`와 `test_release_bluegreen.py`다.
 실제 Linux 빌드·전환을 시험하는 격리 검증은 [검증 안내](../../tests/README.md#linux-릴리스-통합-검증)를 따른다.
 코드 변경·로컬 시험 성공은 실제 Actions 실행 또는 개발·운영 서버 적용 완료를 뜻하지 않는다.
+
+## AI 워커
+
+[AI 워커](../../ai-worker/README.md)는 Postgres `ai_jobs` 큐에서 공고문 PDF 추출 작업을 꺼내 처리한다. Compose 서비스 `ai-worker`는
+`ai-worker` 프로필에 있어 일반 `docker compose up`으로는 뜨지 않고, 릴리스 도구가 서비스 이름을 지정해 빌드·기동한다.
+
+서버마다 처음 한 번 준비한다. 워커 설정이 비어 있으면 릴리스는 사전 검사에서 빌드 전에 멈춘다.
+
+1. 주 DB(`toadzip`, `PRIMARY_DB_NAME`이 다르면 스크립트의 `GRANT CONNECT ON DATABASE` 이름도 바꾼다)에 관리자 계정으로 접속해 [`infra/db/create-ai-worker-role.sql`](../../infra/db/create-ai-worker-role.sql)을 실행하고
+   `\password toadzip_ai_worker`로 비밀번호를 정한다. 역할은 `ai_jobs`를 읽고 상태·결과 열만 고칠 수 있다.
+   `ai_jobs` 마이그레이션이 이미 적용된 DB에도 같은 권한을 준다.
+2. 서버 `.env`에 `AI_WORKER_DB_PASSWORD`(위 비밀번호)와 `DEEPSEEK_API_KEY`를 넣는다. 접속 주소는 백엔드와 같은 `PRIMARY_DB_*`를 쓴다.
+3. 워커 이미지의 healthcheck는 워커가 DB에서 작업 꺼내기에 성공하며 큐를 처리하는 동안만 healthy다. 비밀번호·역할·네트워크 문제로 접속하지 못하면 릴리스가 `deploy-ai-worker` 단계에서 실패한다.
+   그때는 릴리스와 같은 Compose 파일·프로젝트로 `logs ai-worker`를 열어 DB 연결·권한 오류를 확인한다. 백엔드·프론트는 이미 새 버전이다.
+
+- 종료 신호를 받으면 처리 중인 추출을 끝내고 멈춘다. `stop_grace_period`는 2분이며, 그 뒤 강제 종료된 작업은 lease(3분)가 끝나면 다음 시도로 다시 처리된다.
+  그래서 배포 중 추출 한 건이 유료 호출을 한 번 더 할 수 있다.
+- 롤백 워크플로는 백엔드·프론트만 되돌리고 워커는 그대로 둔다. 되돌린 백엔드가 `ai_jobs` 계약과 맞는지 확인한다.
+- 워커 이미지는 PyMuPDF 의존성(onnxruntime 등)으로 약 1.1GB다.
 
 ## 직전 배포 롤백
 

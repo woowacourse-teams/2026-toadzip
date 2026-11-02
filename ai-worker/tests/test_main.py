@@ -8,8 +8,9 @@ from ai_worker import __main__ as entry
 
 @pytest.fixture
 def environment(monkeypatch):
-    monkeypatch.setenv("AI_WORKER_DATABASE_URL", "postgresql://worker@localhost/toadzip")
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    for name, value in {"PGHOST": "localhost", "PGDATABASE": "toadzip", "PGUSER": "toadzip_ai_worker",
+                        "PGPASSWORD": "worker-test-password", "DEEPSEEK_API_KEY": "test-key"}.items():
+        monkeypatch.setenv(name, value)
     handlers = {name: signal.getsignal(name) for name in (signal.SIGTERM, signal.SIGINT)}
     yield
     for name, handler in handlers.items():
@@ -44,11 +45,12 @@ def test_stop_signal_ends_normally(environment, monkeypatch):
     assert stops[0].is_set()
 
 
-def test_missing_environment_exits(monkeypatch):
-    monkeypatch.delenv("AI_WORKER_DATABASE_URL", raising=False)
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+def test_missing_environment_exits(environment, monkeypatch):
+    monkeypatch.delenv("PGPASSWORD")
+    # 검사를 지나치면 실제 DB 재연결을 되풀이하지 않고 바로 끝나게 해, 빠진 검사가 멈춤이 아니라 실패로 보이게 한다.
+    monkeypatch.setattr(entry, "run", lambda connect, extractor, stop: stop.set())
 
     with pytest.raises(SystemExit) as exit_:
         entry.main()
 
-    assert "AI_WORKER_DATABASE_URL" in str(exit_.value.code)
+    assert "PGPASSWORD" in str(exit_.value.code)
