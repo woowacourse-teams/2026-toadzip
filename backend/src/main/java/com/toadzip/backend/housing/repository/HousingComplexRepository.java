@@ -10,10 +10,16 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface HousingComplexRepository extends JpaRepository<HousingComplex, Long> {
+    /**
+     * 단지명은 공백·'-'와 블록 접미어(BL·블록·블럭)를 빼고도 비교한다. 공고문은 "동탄2 A63BL", 단지는 "화성동탄2 A63블록"처럼
+     * 블록 표기가 달라서다. 키워드 패턴의 이스케이프(!)는 그대로 남는다.
+     */
     String ADMIN_SEARCH_FROM = " FROM housing_complexes c " + ComplexVerificationSql.LATEST_REVIEW + """
             WHERE c.admin_deleted = :deleted
               AND (:review = false OR c.source_review_required = true)
               AND (lower(c.name) LIKE :keyword ESCAPE '!' OR lower(c.road_address) LIKE :keyword ESCAPE '!'
+                  OR regexp_replace(lower(c.name), '[[:space:]-]', '', 'g') LIKE regexp_replace(
+                      regexp_replace(:keyword, '([0-9])(bl|블록|블럭)($|[^a-z])', '\\1\\3', 'g'), '[[:space:]-]', '', 'g') ESCAPE '!'
                   OR lower(c.source_complex_identifier) = :identifier)
               AND (:provider = '' OR c.provider IN (:provider, :providerLegacy))
               AND (:rental = '' OR c.supply_type IN (:rental, :rentalLegacy))

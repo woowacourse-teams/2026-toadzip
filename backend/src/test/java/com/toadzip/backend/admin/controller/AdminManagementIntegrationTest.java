@@ -253,6 +253,20 @@ class AdminManagementIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(0));
     }
 
+    @Test
+    void 단지명_검색은_공고문_블록_표기가_달라도_같은_블록을_찾는다() throws Exception {
+        long id = createComplex();
+        entityManager.createNativeQuery("UPDATE housing_complexes SET name = '화성동탄2 A63블록' WHERE id = :id")
+                .setParameter("id", id).executeUpdate();
+        for (String keyword : List.of("동탄2 A63BL", "A-63", "a63블럭")) {
+            mvc.perform(get("/api/admin/housing-complexes").param("keyword", keyword).with(user("admin").roles("ADMIN")))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(1))
+                    .andExpect(jsonPath("$.data.items[0].id").value(id));
+        }
+        mvc.perform(get("/api/admin/housing-complexes").param("keyword", "동탄2 A64BL").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(0));
+    }
+
 
     @Test
     void 공고_수정과_공급행_수정은_재정제에도_유지되고_단지_삭제를_막는다() throws Exception {

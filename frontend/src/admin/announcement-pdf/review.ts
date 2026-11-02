@@ -1,8 +1,9 @@
 import type { ExtractedAnnouncement, HousingTypeValue, JsonObject, JsonUpdateInput, JsonWorkspace } from '../announcement-json/api'
 import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type NewSupplyGroup } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, type Evidence, type Extraction } from './extraction'
-import { defaultTargetDestinations, missingHousingType, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
+import { defaultTargetDestinations, missingHousingType, originalDate, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
 import { housingTypeLabel } from '../ingest/housingTypeLabel'
+import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
 export type CellState = 'unresolved' | 'notApplicable' | 'invalid' | 'confirm' | 'same' | 'changed' | 'new'
@@ -20,8 +21,10 @@ export type RowReview = { proposal: RowProposal; include: boolean; reviewed: boo
   newHousingType?: boolean }
 export type ScheduleReview = { proposal: ScheduleProposal; include: boolean; reviewed: boolean; cells: Cell[] }
 export type Review = { extraction: Extraction; rows: RowReview[]; schedules: ScheduleReview[]; metadata: Cell[]; reception: Cell[]
-  /** LH 원천행에 맞추기 전 검토. 단지를 다시 고르면 여기서 다시 맞춘다. */
-  unaligned?: Review }
+  /** LH 원천행에 맞추기 전 검토. 이미 맞춘 단지를 다시 고르면 여기서 다시 맞춘다. */
+  unaligned?: Review
+  /** 지금까지 LH 원천행에 맞춘 단지명과 고른 단지. 다시 맞출 때 다른 단지명의 맞춤을 이 순서로 다시 적용한다. */
+  alignments?: { complexName: string; complex: { id: number; name: string }; candidates: MatchingHousingType[] }[] }
 export const cellStates: Record<Cell['state'], string> = { confirm: '확인 필요', unresolved: '미확인 · 현재값 유지', notApplicable: '해당 없음', invalid: '형식 확인 필요', same: '같음', changed: '변경', new: '추가' }
 /** 접수 방식·일정 유형의 화면 표기 */
 export const choices = {
@@ -61,12 +64,15 @@ export function validCellValue(kind: Kind, value: unknown): boolean {
   if (kind === 'url') { try { return ['http:', 'https:'].includes(new URL(value).protocol) && !/\s/.test(value) } catch { return false } }
   return true
 }
+const numberKey = (value: unknown) => typeof value === 'string' ? value.trim().replace(/\d+(?:\.\d+)?/g, number => String(Number(number))) : null
 function cells(extraction: Extraction, prefix: string, specs: FieldSpec[], source: JsonObject, before: JsonObject = {}): Cell[] {
   return specs.map(([field, label, kind, target = field]) => {
     const path = `${prefix}.${field}`, value = normalized(kind, source[field]), previous = normalized(kind, before[target])
     const missing = noteFor(extraction.unresolved, path), unused = noteFor(extraction.notApplicable, path)
     const areaOnly = field === 'sourceHousingTypeName' && areaOnlyTypeName(value)
-    let state: Cell['state'] = unused || areaOnly ? 'notApplicable' : missing || value === null ? 'unresolved' : !validCellValue(kind, value) ? 'invalid' : JSON.stringify(value) === JSON.stringify(previous) ? 'same' : previous === null ? 'new' : 'changed'
+    // 주택형 표기는 숫자 앞뒤의 0만 다르면(074.9900A ↔ 74.9900A) 같은 표기로 보고 기존 표기를 유지한다.
+    const sameValue = JSON.stringify(value) === JSON.stringify(previous) || field === 'sourceHousingTypeName' && numberKey(value) === numberKey(previous)
+    let state: Cell['state'] = unused || areaOnly ? 'notApplicable' : missing || value === null ? 'unresolved' : !validCellValue(kind, value) ? 'invalid' : sameValue ? 'same' : previous === null ? 'new' : 'changed'
     const evidence = evidenceFor(extraction.evidence, path)
     const moreDetailed = typeof previous === 'string' && typeof value === 'string' && previous.length > value.length && previous.includes(value) && prefix === 'receptionPlace'
     const foreign = kind === 'text' ? foreignCharacters(value) : ''
@@ -108,9 +114,12 @@ export function createRowReview(extraction: Extraction, index: number, proposal:
 }
 export function createReview(extraction: Extraction, workspace: JsonWorkspace, housing: HousingCandidates): Review {
   const metadata = cells(extraction, 'announcement', metadataFields, extraction.announcement, workspace.detail.data)
+  // 정정공고 PDF에는 원공고 공고일이 그대로 적혀 있는 경우가 많아, 다른 공고일은 기본으로 반영하지 않는다.
+  const posted = metadata.find(cell => cell.field === 'postedDate')
+  if (posted?.state === 'changed' && typeof posted.value === 'string' && originalDate(posted.value, workspace.detail.data)) Object.assign(posted, { selected: false, mode: 'keep', note: '정정공고는 PDF에 원공고 공고일이 적혀 있을 수 있어 기존 공고일을 유지합니다. 정정공고 공고일이 맞는지 확인하세요.' })
   if (workspace.detail.scheduleReviewed) metadata.filter(cell => ['applicationStartDate', 'applicationEndDate'].includes(cell.field)).forEach(cell => { cell.locked = true; cell.selected = false; cell.mode = 'keep'; cell.note = '확인된 접수 기간은 접수 일정에서 수정하세요.' })
   return { extraction, metadata, reception: cells(extraction, 'receptionPlace', receptionFields, extraction.receptionPlace, (workspace.detail.data.receptionPlace ?? {}) as JsonObject),
-    rows: proposeRows(extraction, workspace.supply.rows, housing).map((proposal, index) => createRowReview(extraction, index, proposal, workspace)),
+    rows: proposeRows(extraction, workspace.supply.rows, housing, workspace.supply.announcementComplexes).map((proposal, index) => createRowReview(extraction, index, proposal, workspace)),
     schedules: proposeSchedules(extraction, workspace.events).map((proposal, index) => {
       const values = cells(extraction, `schedules[${index}]`, scheduleFields, extraction.schedules[index], workspace.events.find(event => event.id === proposal.existingIds[0])?.data)
       return { proposal, cells: values, reviewed: false, include: !proposal.needsConfirmation && values.every(cell => validCellValue(cell.kind, cell.value) && !['notApplicable', 'unresolved'].includes(cell.state)) }

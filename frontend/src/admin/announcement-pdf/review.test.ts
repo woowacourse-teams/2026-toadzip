@@ -314,3 +314,26 @@ it('주택형 공고 값은 고른 이름·공급면적과 건설호수만 보�
   row.cells[area] = { ...row.cells[area], selected: false, state: 'changed' }
   expect(valueOf('row:22')).toBeUndefined()
 })
+
+it('정정공고는 PDF의 원공고 공고일로 기존 공고일을 덮지 않고, 일반 공고는 다른 공고일을 반영한다', () => {
+  const { review, workspace, housing } = scenario('hansville')
+  const posted = (name: string) => createReview(review.extraction, { ...workspace, detail: { ...workspace.detail, data: { ...workspace.detail.data, name, postedDate: '2026-10-10' } } }, housing)
+    .metadata.find(cell => cell.field === 'postedDate')!
+  expect(posted('[정정공고]익산한스빌 예비입주자 모집')).toMatchObject({ value: '2026-10-08', state: 'changed', selected: false, mode: 'keep' })
+  expect(posted('[정정공고]익산한스빌 예비입주자 모집').note).toContain('원공고 공고일')
+  expect(posted('익산한스빌 예비입주자 모집')).toMatchObject({ state: 'changed', selected: true, mode: 'extracted' })
+  // 정정공고라도 PDF 공고일이 더 늦으면 원공고 날짜가 아니므로 반영한다.
+  expect(createReview(review.extraction, { ...workspace, detail: { ...workspace.detail, data: { ...workspace.detail.data, name: '[정정공고]익산한스빌', postedDate: '2026-10-01' } } }, housing)
+    .metadata.find(cell => cell.field === 'postedDate')).toMatchObject({ selected: true })
+})
+
+it('숫자 앞뒤의 0만 다른 주택형 표기는 기존 표기를 유지한다', () => {
+  const { review, workspace, housing } = scenario('hansville')
+  const rows = workspace.supply.rows.map(row => ({ ...row, typeName: `0${String(review.extraction.supplyRows[0].typeName)}` }))
+  const cell = createReview(review.extraction, { ...workspace, supply: { ...workspace.supply, rows } }, housing).rows[0].cells.find(item => item.field === 'sourceHousingTypeName')!
+  expect(cell).toMatchObject({ state: 'same', selected: false })
+  // 대소문자처럼 숫자 밖의 표기 차이는 공고 표기로 바꾼다.
+  const lower = workspace.supply.rows.map(row => ({ ...row, typeName: String(review.extraction.supplyRows[0].typeName).toLowerCase() }))
+  const changed = createReview(review.extraction, { ...workspace, supply: { ...workspace.supply, rows: lower } }, housing).rows[0].cells.find(item => item.field === 'sourceHousingTypeName')!
+  expect(changed.state).not.toBe('same')
+})

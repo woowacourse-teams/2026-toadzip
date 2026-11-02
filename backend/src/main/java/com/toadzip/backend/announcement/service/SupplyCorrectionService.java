@@ -102,7 +102,7 @@ public class SupplyCorrectionService {
         var deletable = stored.stream().filter(SupplyCorrectionService::deletable).map(row -> "row:" + row.getId()).sorted().toList();
         var workspace = new SupplyCorrection.Workspace(hash(List.of(comparison.snapshotToken(), currentRows)),
                 announcement.getVersion(), currentRows, comparison.sources(), sourceStatus.missingWarnings(id), rowSources,
-                deletable, unattachedLhSupplyRows(announcement, stored));
+                deletable, unattachedLhSupplyRows(announcement, stored), announcementComplexes(announcement));
         var snapshot = new Snapshot(workspace, comparison, currentRows);
         if (log.isDebugEnabled()) {
             var parts = tokenParts(snapshot);
@@ -111,6 +111,12 @@ public class SupplyCorrectionService {
                     shortToken(workspace.snapshotToken()), parts.get(0), parts.get(1), parts.get(2), parts.get(3));
         }
         return snapshot;
+    }
+
+    private List<SupplyCorrection.AnnouncementComplexView> announcementComplexes(Announcement announcement) {
+        return announcementComplexRepository.findAllByAnnouncementOrderByIdAsc(announcement).stream()
+                .map(complex -> new SupplyCorrection.AnnouncementComplexView(complex.getSourceComplexName(), complex.getRoadAddress()))
+                .toList();
     }
 
     /**

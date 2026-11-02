@@ -326,6 +326,64 @@ it('공급정보의 PDF 채우기는 작성 중인 행을 기준으로 대조하
   expect(api.applyJsonUpdate).not.toHaveBeenCalled()
 })
 
+it('저장할 위치는 추천 공급정보와 새 공급정보로 추가만 보여 준다', async () => {
+  const [first] = workspace.supply.rows
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, rows: [first, { ...first, id: 92, key: 'row:92', complexName: '다른 단지', housingComplexId: 999, housingComplexName: '다른 단지', displayOrder: 1 }] } })
+  await open()
+  const options = within(screen.getByRole('combobox', { name: '공급행 1 저장할 위치' })).getAllByRole('option').map(option => option.textContent)
+  expect(options).toHaveLength(2)
+  expect(options[0]).toMatch(/^추천: .*\(#90\) 수정$/)
+  expect(options[1]).toBe('새 공급정보로 추가')
+})
+
+it('단지 정하기에서 이미 공급정보가 연결된 단지를 고르면 새 행 대신 그 공급정보를 추천한다', async () => {
+  const [first] = workspace.supply.rows
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, rows: [{ ...first, complexName: '표기가 전혀 다른 원천 단지', housingComplexName: '등록 단지', housingComplexId: 7, householdCount: null }] } })
+  await open()
+  expect(screen.getByRole('combobox', { name: '공급행 1 저장할 위치' })).toHaveValue('new')
+  fireEvent.click(await within(screen.getByRole('region', { name: 'PDF 단지 정하기' })).findByRole('button', { name: '선택: 검색 단지' }))
+  // 표기·면적이 맞지 않는 행이라 고르지는 않고 추천으로만 보여 준다. 운영자가 직접 고른다.
+  const place = screen.getByRole('combobox', { name: '공급행 1 저장할 위치' })
+  await waitFor(() => expect(within(place).getAllByRole('option').some(option => option.textContent?.includes('(#90)'))).toBe(true))
+  expect(place).toHaveValue('')
+  expect(screen.queryByRole('region', { name: 'PDF 단지 정하기' })).not.toBeInTheDocument()
+  fireEvent.change(place, { target: { value: first.key } })
+  expect(place).toHaveValue(first.key)
+})
+
+it('단지 정하기에서 전용면적으로 고른 공급정보라도 표기가 다르면 대응을 확인하게 한다', async () => {
+  const [first] = workspace.supply.rows
+  const area = fixtures.hansville.extraction.data.supplyRows[0].exclusiveArea
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, rows: [{ ...first, complexName: '표기가 전혀 다른 원천 단지', housingComplexName: '등록 단지', housingComplexId: 7, householdCount: null, typeName: '다른 표기', exclusiveArea: area }] } })
+  await open()
+  fireEvent.click(await within(screen.getByRole('region', { name: 'PDF 단지 정하기' })).findByRole('button', { name: '선택: 검색 단지' }))
+  await waitFor(() => expect(screen.getByRole('combobox', { name: '공급행 1 저장할 위치' })).toHaveValue(first.key))
+  expect(screen.getByRole('button', { name: '공급행 1 대응 확인' })).toBeInTheDocument()
+})
+
+it('연결되지 않은 LH 행이 있어 새로 추가할 수 없고 추천도 없으면 같은 단지의 공급정보를 고를 수 있게 한다', async () => {
+  const [first] = workspace.supply.rows
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, unattachedLhSupplyRows: [{ rowIdentifier: 'LH:P:SUPPLY:9', complexLabel: '한스빌', typeName: '59A', exclusiveArea: null }],
+    rows: [first, { ...first, id: 93, key: 'row:93', typeName: '59.0000', exclusiveArea: 59, displayOrder: 1 }, { ...first, id: 94, key: 'row:94', complexName: '다른 단지', housingComplexId: 999, displayOrder: 2 }] } })
+  await open()
+  const options = within(screen.getByRole('combobox', { name: '공급행 2 저장할 위치' })).getAllByRole('option')
+  expect(options.map(option => option.textContent).filter(text => text?.includes('#93'))).toHaveLength(1)
+  expect(options.some(option => option.textContent?.includes('#94'))).toBe(false)
+  expect(options.find(option => option.textContent?.startsWith('새 공급정보로 추가'))).toBeDisabled()
+})
+
+it('단지 정하기는 다른 단지명의 PDF 행이 이미 저장할 위치로 고른 공급정보를 다시 추천하지 않는다', async () => {
+  const [first] = workspace.supply.rows
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, rows: [{ ...first, housingComplexId: 7 }] } })
+  const extraction = structuredClone(fixtures.hansville.extraction)
+  extraction.data.supplyRows[1].complexReference.sourceComplexName = '표기가 다른 PDF 단지'
+  await open(JSON.stringify(extraction))
+  expect(screen.getByRole('combobox', { name: '공급행 1 저장할 위치' })).toHaveValue(first.key)
+  fireEvent.click(await within(screen.getByRole('group', { name: 'PDF 단지 표기가 다른 PDF 단지' })).findByRole('button', { name: '선택: 검색 단지' }))
+  await waitFor(() => expect(screen.queryByRole('group', { name: 'PDF 단지 표기가 다른 PDF 단지' })).not.toBeInTheDocument())
+  expect(screen.getByRole('combobox', { name: '공급행 2 저장할 위치' })).toHaveValue('new')
+})
+
 it('빈 공고의 PDF 추출값은 단지를 검색해 선택한 뒤 첫 공급행으로 채운다', async () => {
   api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, rows: [] } })
   const onFill = vi.fn()

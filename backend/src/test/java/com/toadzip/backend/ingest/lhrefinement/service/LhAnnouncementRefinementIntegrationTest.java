@@ -331,6 +331,9 @@ class LhAnnouncementRefinementIntegrationTest {
         try {
             long id = announcements.findAllByLhPanIdOrderByIdAsc("P1").getFirst().getId();
             assertThat(supplyCorrections.workspace(id).unattachedLhSupplyRows()).isEmpty();
+            // 공급행의 원천 단지명이 공고 단지 이름이다. 화면은 이 주소로 PDF 단지를 공고 단지에 대응한다.
+            assertThat(supplyCorrections.workspace(id).announcementComplexes())
+                    .containsExactly(new SupplyCorrection.AnnouncementComplexView("동탄 행복주택 단지", ADDRESS));
 
             supplies("P1", supply("동탄 행복주택 단지", "59A", "59.9800", "10", "30000000", "200000"),
                     supply("동탄 행복주택 단지", "84A", "84.9600", "2", "40000000", "300000"));
