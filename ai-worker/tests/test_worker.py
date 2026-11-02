@@ -10,7 +10,7 @@ import pytest
 
 from ai_worker import jobs, worker
 from ai_worker.extraction import PermanentError, TransientError
-from ai_worker.worker import DEADLINE, INTERNAL_ERROR_CODE, LEASE, run_once
+from ai_worker.worker import DEADLINE, INTERNAL_ERROR_CODE, LEASE, MAX_ATTEMPTS, run_once
 from conftest import PDF, connect_worker, contract_example, insert_job, job_row
 
 
@@ -151,11 +151,11 @@ def test_unexpected_error_fails_with_public_message(owner, worker_conn):
 
 def test_expired_lease_is_reclaimed_and_old_lease_cannot_write(postgres, owner, worker_conn):
     job_id = insert_job(owner)
-    first = jobs.claim(worker_conn, LEASE, DEADLINE)
+    first = jobs.claim(worker_conn, LEASE, DEADLINE, MAX_ATTEMPTS)
     owner.execute("UPDATE ai_jobs SET lease_until = now() - interval '1 second' WHERE id = %s", (job_id,))
 
     with connect_worker(postgres) as second_conn:
-        second = jobs.claim(second_conn, LEASE, DEADLINE)
+        second = jobs.claim(second_conn, LEASE, DEADLINE, MAX_ATTEMPTS)
         assert second is not None, "lease가 끝난 RUNNING은 다시 꺼낸다"
         assert (second.id, second.attempts) == (job_id, 2)
         assert second.lease_token != first.lease_token
@@ -243,7 +243,7 @@ def test_expired_lease_without_attempts_left_is_never_claimed(owner, worker_conn
     insert_job(owner, status="RUNNING", attempts=3, lease_expired=True)
 
     try:
-        claimed = jobs.claim(worker_conn, LEASE, DEADLINE)
+        claimed = jobs.claim(worker_conn, LEASE, DEADLINE, MAX_ATTEMPTS)
     except psycopg.errors.CheckViolation:
         pytest.fail("시도를 다 쓴 작업을 다시 꺼내려 했다")
     assert claimed is None
@@ -354,12 +354,12 @@ def test_job_without_attempt_budget_left_waits_for_deadline_cleanup(owner, worke
 def test_claim_skips_job_past_deadline(owner, worker_conn):
     insert_job(owner, age_minutes=41)
 
-    assert jobs.claim(worker_conn, LEASE, DEADLINE) is None
+    assert jobs.claim(worker_conn, LEASE, DEADLINE, MAX_ATTEMPTS) is None
 
 
 def test_lease_is_not_extended_past_deadline(owner, worker_conn):
     job_id = insert_job(owner)
-    job = jobs.claim(worker_conn, LEASE, DEADLINE)
+    job = jobs.claim(worker_conn, LEASE, DEADLINE, MAX_ATTEMPTS)
     owner.execute("UPDATE ai_jobs SET created_at = now() - interval '41 minutes' WHERE id = %s", (job_id,))
 
     assert jobs.extend_lease(worker_conn, job, LEASE, DEADLINE) is False
@@ -466,9 +466,9 @@ def test_run_reconnects_after_connection_failure_and_broken_connection(postgres,
 
 @pytest.mark.parametrize("statement", [
     # 권한만 있으면 성공하는 행이어야 제약 위반이 아니라 권한 거절을 확인한다. 진행 중 작업은 공고마다 하나라 끝난 상태로 넣는다.
-    "INSERT INTO ai_jobs (kind, announcement_id, request_source, requested_by, status, attempts, max_attempts, next_attempt_at,"
+    "INSERT INTO ai_jobs (kind, announcement_id, request_source, requested_by, status, attempts, next_attempt_at,"
     " file_name, pdf_sha256, error_code, created_at, completed_at)"
-    " VALUES ('ANNOUNCEMENT_PDF_EXTRACTION', 1, 'ADMIN', 'admin', 'FAILED', 1, 3, now(), 'notice.pdf', repeat('a', 64), 'X', now(), now())",
+    " VALUES ('ANNOUNCEMENT_PDF_EXTRACTION', 1, 'ADMIN', 'admin', 'FAILED', 1, now(), 'notice.pdf', repeat('a', 64), 'X', now(), now())",
     "DELETE FROM ai_jobs",
     "UPDATE ai_jobs SET input = '{}'::jsonb",
     "SELECT id FROM announcements",

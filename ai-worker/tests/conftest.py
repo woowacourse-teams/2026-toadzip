@@ -80,9 +80,9 @@ def insert_job(owner: psycopg.Connection, announcement_id: int = 1, *, status: s
     running = status == "RUNNING"
     return owner.execute(
         f"""
-        INSERT INTO ai_jobs (kind, announcement_id, request_source, requested_by, status, attempts, max_attempts,
+        INSERT INTO ai_jobs (kind, announcement_id, request_source, requested_by, status, attempts,
             next_attempt_at, lease_token, lease_until, file_name, pdf_sha256, pdf, input, created_at)
-        VALUES ('ANNOUNCEMENT_PDF_EXTRACTION', %s, 'ADMIN', 'admin', %s, %s, 3, now(),
+        VALUES ('ANNOUNCEMENT_PDF_EXTRACTION', %s, 'ADMIN', 'admin', %s, %s, now(),
             {"gen_random_uuid()" if running else "NULL"}, {lease_until if running else "NULL"},
             'notice.pdf', repeat('a', 64), %s, %s, now() - make_interval(mins => %s))
         RETURNING id

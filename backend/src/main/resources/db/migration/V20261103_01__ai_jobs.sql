@@ -9,7 +9,6 @@ CREATE TABLE ai_jobs (
     requested_by VARCHAR(255),
     status VARCHAR(20) NOT NULL,
     attempts INTEGER NOT NULL DEFAULT 0,
-    max_attempts INTEGER NOT NULL,
     next_attempt_at TIMESTAMPTZ NOT NULL,
     lease_token UUID,
     lease_until TIMESTAMPTZ,
@@ -26,7 +25,7 @@ CREATE TABLE ai_jobs (
     CONSTRAINT ck_ai_jobs_kind CHECK (kind IN ('ANNOUNCEMENT_PDF_EXTRACTION')),
     CONSTRAINT ck_ai_jobs_request_source CHECK (request_source IN ('ADMIN', 'BATCH')),
     CONSTRAINT ck_ai_jobs_status CHECK (status IN ('PENDING', 'RUNNING', 'RETRY', 'SUCCEEDED', 'FAILED')),
-    CONSTRAINT ck_ai_jobs_attempts CHECK (attempts >= 0 AND max_attempts > 0 AND attempts <= max_attempts),
+    CONSTRAINT ck_ai_jobs_attempts CHECK (attempts >= 0),
     CONSTRAINT ck_ai_jobs_lease CHECK (status <> 'RUNNING' OR (lease_token IS NOT NULL AND lease_until IS NOT NULL)),
     CONSTRAINT ck_ai_jobs_pdf_cleared CHECK (status NOT IN ('SUCCEEDED', 'FAILED') OR pdf IS NULL),
     CONSTRAINT ck_ai_jobs_pdf_pending CHECK (status IN ('SUCCEEDED', 'FAILED') OR pdf IS NOT NULL),
@@ -50,9 +49,9 @@ CREATE INDEX idx_ai_jobs_latest_succeeded
 
 -- 예전 동기 추출 결과를 성공 작업으로 옮긴다. 입력 스냅숏은 없어서 NULL이다.
 -- announcement_pdf_extractions는 공유 DB 데이터를 지우지 않는 규칙에 따라 남기고, 애플리케이션은 더 읽지 않는다.
-INSERT INTO ai_jobs (kind, announcement_id, request_source, status, attempts, max_attempts, next_attempt_at,
+INSERT INTO ai_jobs (kind, announcement_id, request_source, status, attempts, next_attempt_at,
         file_name, pdf_sha256, result, created_at, completed_at)
-SELECT 'ANNOUNCEMENT_PDF_EXTRACTION', announcement_id, 'ADMIN', 'SUCCEEDED', 1, 1, created_at,
+SELECT 'ANNOUNCEMENT_PDF_EXTRACTION', announcement_id, 'ADMIN', 'SUCCEEDED', 1, created_at,
         file_name, pdf_sha256, result::jsonb, created_at, created_at
 FROM announcement_pdf_extractions
 ORDER BY id;

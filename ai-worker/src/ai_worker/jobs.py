@@ -31,20 +31,19 @@ class Job:
     pdf: bytes
     input: dict | None
     attempts: int
-    max_attempts: int
     lease_token: UUID
 
 
-def fail_exhausted_leases(conn: psycopg.Connection) -> int:
+def fail_exhausted_leases(conn: psycopg.Connection, max_attempts: int) -> int:
     """lease가 끝났는데 시도를 다 쓴 RUNNING을 FAILED로 끝낸다. 꺼내기는 이 작업을 건너뛴다."""
     cursor = conn.execute(
         """
         UPDATE ai_jobs
         SET status = 'FAILED', pdf = NULL, error_code = %s, error_message = %s,
             lease_token = NULL, lease_until = NULL, completed_at = now()
-        WHERE status = 'RUNNING' AND lease_until <= now() AND attempts >= max_attempts
+        WHERE status = 'RUNNING' AND lease_until <= now() AND attempts >= %s
         """,
-        (LEASE_EXPIRED_CODE, LEASE_EXPIRED_MESSAGE),
+        (LEASE_EXPIRED_CODE, LEASE_EXPIRED_MESSAGE, max_attempts),
     )
     return cursor.rowcount
 
@@ -63,7 +62,7 @@ def fail_overdue(conn: psycopg.Connection, deadline: timedelta) -> int:
     return cursor.rowcount
 
 
-def claim(conn: psycopg.Connection, lease: timedelta, deadline: timedelta) -> Job | None:
+def claim(conn: psycopg.Connection, lease: timedelta, deadline: timedelta, max_attempts: int) -> Job | None:
     """마감 전인 작업 하나를 잡아 RUNNING으로 바꾸고 시도 횟수를 하나 올린다. 없으면 None.
     started_at은 첫 시작 시각을 남기고, 직전 재시도 사유(error_code·error_message)는 다음 기록까지 둔다."""
     with conn.cursor(row_factory=class_row(Job)) as cursor:
@@ -72,7 +71,7 @@ def claim(conn: psycopg.Connection, lease: timedelta, deadline: timedelta) -> Jo
             WITH next AS (
                 SELECT id FROM ai_jobs
                 WHERE ((status IN ('PENDING', 'RETRY') AND next_attempt_at <= now())
-                   OR (status = 'RUNNING' AND lease_until <= now() AND attempts < max_attempts))
+                   OR (status = 'RUNNING' AND lease_until <= now() AND attempts < %s))
                   AND created_at > now() - %s
                 ORDER BY id
                 LIMIT 1
@@ -84,9 +83,9 @@ def claim(conn: psycopg.Connection, lease: timedelta, deadline: timedelta) -> Jo
             FROM next
             WHERE job.id = next.id
             RETURNING job.id, job.kind, job.announcement_id, job.file_name, job.pdf, job.input,
-                job.attempts, job.max_attempts, job.lease_token
+                job.attempts, job.lease_token
             """,
-            (deadline, lease),
+            (max_attempts, deadline, lease),
         )
         return cursor.fetchone()
 

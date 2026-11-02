@@ -39,7 +39,7 @@ class FakeModel:
 
 def job(content: bytes, job_input=None, kind=announcement.KIND) -> Job:
     return Job(id=31, kind=kind, announcement_id=1, file_name="notice.pdf", pdf=content, input=job_input,
-               attempts=1, max_attempts=3, lease_token=uuid4())
+               attempts=1, lease_token=uuid4())
 
 
 def test_result_has_contract_keys_and_original_page_numbers():

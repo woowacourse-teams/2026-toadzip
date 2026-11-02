@@ -23,7 +23,8 @@ HEARTBEAT = timedelta(minutes=1)
 DEADLINE = timedelta(minutes=40)
 # 마감 전에 한 번의 추출을 끝낼 수 없는 작업은 꺼내지 않는다. 꺼내면 끝나도 마감 정리에 밀려 유료 호출만 버린다.
 CLAIM_WINDOW = DEADLINE - ATTEMPT_BUDGET
-# n번째 시도가 일시 오류면 BACKOFF[n-1] 뒤에 다시 꺼낸다.
+# 작업 하나를 처리하는 최대 횟수. n번째 시도가 일시 오류면 BACKOFF[n-1] 뒤에 다시 꺼낸다.
+MAX_ATTEMPTS = 3
 BACKOFF = (timedelta(minutes=1), timedelta(minutes=5))
 INTERNAL_ERROR_CODE = "INTERNAL_ERROR"
 INTERNAL_ERROR_MESSAGE = "추출 중 알 수 없는 오류가 났습니다. 다시 요청해 주세요."
@@ -75,11 +76,11 @@ def run_once(conn: psycopg.Connection, extractor: Extractor) -> bool:
     overdue = jobs.fail_overdue(conn, DEADLINE)
     if overdue:
         log.warning("마감이 지난 작업 %d건을 실패로 끝냈습니다.", overdue)
-    expired = jobs.fail_exhausted_leases(conn)
+    expired = jobs.fail_exhausted_leases(conn, MAX_ATTEMPTS)
     if expired:
         log.warning("lease가 끝난 채 시도를 다 쓴 작업 %d건을 실패로 끝냈습니다.", expired)
 
-    job = jobs.claim(conn, LEASE, CLAIM_WINDOW)
+    job = jobs.claim(conn, LEASE, CLAIM_WINDOW, MAX_ATTEMPTS)
     # 꺼내기까지 됐으면 접속과 큐 권한이 실제로 확인된 것이다. 첫 heartbeat 전에 긴 추출이 시작돼도 healthy로 보인다.
     mark_alive()
     if job is None:
@@ -90,7 +91,7 @@ def run_once(conn: psycopg.Connection, extractor: Extractor) -> bool:
             result = serialize(extractor.extract(job))
     except TransientError as error:
         delay = BACKOFF[min(job.attempts, len(BACKOFF)) - 1]
-        if job.attempts < job.max_attempts and jobs.retry(conn, job, delay, CLAIM_WINDOW, error.code, error.message):
+        if job.attempts < MAX_ATTEMPTS and jobs.retry(conn, job, delay, CLAIM_WINDOW, error.code, error.message):
             log.warning("작업 %d 시도 %d 일시 오류(%s), 재시도합니다.", job.id, job.attempts, error.code)
             written = True
         else:

@@ -25,9 +25,9 @@ class PdfExtractionJobMigrationTest {
     private static final String SCHEMA = "ai_jobs_migration_test";
     private static final String WORKER = "toadzip_ai_worker";
     private static final String JOB = """
-            INSERT INTO ai_jobs (kind, announcement_id, request_source, status, max_attempts, next_attempt_at,
+            INSERT INTO ai_jobs (kind, announcement_id, request_source, status, next_attempt_at,
                 file_name, pdf_sha256, pdf, created_at)
-            VALUES ('ANNOUNCEMENT_PDF_EXTRACTION', 1, 'ADMIN', '%s', 3, now(), 'a.pdf', 'ab', '\\x25', now())
+            VALUES ('ANNOUNCEMENT_PDF_EXTRACTION', 1, 'ADMIN', '%s', now(), 'a.pdf', 'ab', '\\x25', now())
             """;
 
     @Autowired

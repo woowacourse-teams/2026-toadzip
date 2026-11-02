@@ -9,13 +9,13 @@ Spring 테스트(`PdfExtractionContractTest`)와 워커 테스트가 같은 파�
 
 ## 큐 상태 전이 (워커가 지킬 것)
 
-DB 제약(`V20261103_01__ai_jobs.sql`)이 아래 규칙을 강제하므로 어기면 UPDATE가 거절된다.
+DB 제약(`V20261103_01__ai_jobs.sql`)이 아래 상태별 열 규칙을 강제하므로 어기면 UPDATE가 거절된다. 시도 횟수와 마감은 워커가 지킨다.
 
 - 꺼내기: `PENDING`·`RETRY` 중 `next_attempt_at <= now()`인 것, 또는 `RUNNING` 중 `lease_until <= now()`인 것을 `FOR UPDATE SKIP LOCKED`로 하나 잡는다. 이때 `status='RUNNING'`, 새 `lease_token`, `lease_until`, `attempts = attempts + 1`을 쓰고, `started_at`은 비어 있을 때만(첫 시작) 쓴다.
 - 처리하는 동안 1분마다 `WHERE id = ? AND lease_token = ?`로 `lease_until`을 늘린다(lease 3분). 워커가 죽으면 늘리기가 멈춰 다른 워커가 다시 꺼낸다. 마감이 지난 작업은 늘리지 않는다.
 - 마감: `created_at`부터 40분이 지난 `PENDING`·`RUNNING`·`RETRY`는 꺼내지 않고 `FAILED`(`DEADLINE_EXCEEDED`)로 끝낸다. 관리자 화면은 45분까지 기다린다.
 - 꺼내기 기한: 한 번의 시도(10분)를 마감 전에 끝낼 수 없는 작업, 곧 `created_at`부터 30분이 지난 작업은 꺼내지 않는다.
-- `attempts`는 `max_attempts`를 넘을 수 없다. lease가 끝난 `RUNNING`이 이미 `attempts = max_attempts`면 다시 꺼내지 않고 `FAILED`로 끝낸다.
+- 작업 하나는 최대 3번(워커 `MAX_ATTEMPTS`) 처리한다. lease가 끝난 `RUNNING`이 이미 3번을 썼으면 다시 꺼내지 않고 `FAILED`로 끝낸다.
 - 완료·실패·재시도 쓰기는 `WHERE id = ? AND lease_token = ?`로 한다. lease를 빼앗긴 이전 워커의 쓰기는 0행이 된다.
 - `SUCCEEDED`: `result`(JSON 객체), `completed_at`을 쓰고 `pdf = NULL`, 재시도 사유(`error_code`·`error_message`)는 비운다.
 - `FAILED`: `error_code`, 관리자에게 보일 공개 문구 `error_message`, `completed_at`을 쓰고 `pdf = NULL`.

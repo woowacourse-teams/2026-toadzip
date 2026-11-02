@@ -26,7 +26,6 @@ import static lombok.AccessLevel.PROTECTED;
 @NoArgsConstructor(access = PROTECTED)
 public class PdfExtractionJob {
     public static final String KIND = "ANNOUNCEMENT_PDF_EXTRACTION";
-    public static final int MAX_ATTEMPTS = 3;
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(nullable = false, length = 50) private String kind;
@@ -35,7 +34,6 @@ public class PdfExtractionJob {
     private String requestedBy;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) private PdfExtractionJobStatus status;
     @Column(nullable = false) private int attempts;
-    @Column(nullable = false) private int maxAttempts;
     @Column(nullable = false) private Instant nextAttemptAt;
     private UUID leaseToken;
     private Instant leaseUntil;
@@ -57,7 +55,6 @@ public class PdfExtractionJob {
         requestSource = "ADMIN";
         this.requestedBy = requestedBy;
         status = PdfExtractionJobStatus.PENDING;
-        maxAttempts = MAX_ATTEMPTS;
         nextAttemptAt = now;
         fileName = source.fileName();
         pdfSha256 = source.sha256();
