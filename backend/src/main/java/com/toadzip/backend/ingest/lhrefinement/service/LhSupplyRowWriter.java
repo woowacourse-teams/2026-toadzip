@@ -17,16 +17,11 @@ import com.toadzip.backend.ingest.domain.SourceArea;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport.SupplyCounts;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
@@ -115,25 +110,6 @@ class LhSupplyRowWriter {
                         && complex.linkedComplex().getId().equals(rowComplex.getId()))
                 .toList();
         return linked.size() == 1 ? Optional.of(linked.getFirst()) : Optional.empty();
-    }
-
-    /** 재확인 기준 지문: 공고 단지 순서와 각 행의 주택형명·대표 면적·공급면적·모집수·보증금·임대료 원문. */
-    String fingerprint(List<String> complexNames, List<LhAnnouncementSupplySourceView> supplies) {
-        List<Object> parts = new ArrayList<>(complexNames);
-        for (LhAnnouncementSupplySourceView row : supplies) {
-            parts.add(String.join("\u001f", Objects.toString(row.getComplexLabel(), ""),
-                    Objects.toString(row.getTypeName(), ""), Objects.toString(row.getExclusiveArea(), ""),
-                    Objects.toString(row.getSupplyArea(), ""), Objects.toString(row.getSuppliedUnitCount(), ""),
-                    Objects.toString(row.getDepositText(), ""), Objects.toString(row.getMonthlyRentText(), "")));
-        }
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(String.join("\u001e", parts.stream().map(String::valueOf).toList())
-                            .getBytes(StandardCharsets.UTF_8)));
-        }
-        catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException(impossible);
-        }
     }
 
     private void writeTarget(SupplyRow row, String key, LhSupplyData data, Tally tally) {

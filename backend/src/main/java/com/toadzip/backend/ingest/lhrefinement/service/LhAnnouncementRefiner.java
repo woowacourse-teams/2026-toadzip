@@ -27,11 +27,15 @@ import com.toadzip.backend.ingest.lhrefinement.service.LhSupplyRowWriter.SupplyL
 import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -125,7 +129,7 @@ class LhAnnouncementRefiner {
             supplyRowWriter.fillDocumentOwned(announcement, complexes, tally.supplies);
             tally.documentOwned++;
         }
-        if (announcement.observeLhSupply(supplyRowWriter.fingerprint(List.copyOf(complexes.keySet()), supplies))) {
+        if (announcement.observeLhSupply(fingerprint(List.copyOf(complexes.keySet()), supplies))) {
             tally.recheckRequired++;
         }
         return created ? Outcome.CREATED : Outcome.ADOPTED;
@@ -202,6 +206,25 @@ class LhAnnouncementRefiner {
         }
         if (revision.linkLhRevision(newest.getFirst(), type.get())) {
             tally.revisionsLinked++;
+        }
+    }
+
+    /** 재확인 기준 지문: 공고 단지 순서와 각 행의 주택형명·대표 면적·공급면적·모집수·보증금·임대료 원문. */
+    private String fingerprint(List<String> complexNames, List<LhAnnouncementSupplySourceView> supplies) {
+        List<Object> parts = new ArrayList<>(complexNames);
+        for (LhAnnouncementSupplySourceView row : supplies) {
+            parts.add(String.join("\u001f", Objects.toString(row.getComplexLabel(), ""),
+                    Objects.toString(row.getTypeName(), ""), Objects.toString(row.getExclusiveArea(), ""),
+                    Objects.toString(row.getSupplyArea(), ""), Objects.toString(row.getSuppliedUnitCount(), ""),
+                    Objects.toString(row.getDepositText(), ""), Objects.toString(row.getMonthlyRentText(), "")));
+        }
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(String.join("\u001e", parts.stream().map(String::valueOf).toList())
+                            .getBytes(StandardCharsets.UTF_8)));
+        }
+        catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
         }
     }
 
