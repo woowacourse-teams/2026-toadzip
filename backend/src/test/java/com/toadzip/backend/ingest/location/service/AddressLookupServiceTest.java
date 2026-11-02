@@ -42,6 +42,31 @@ class AddressLookupServiceTest {
     }
 
     @Test
+    void 좌표_변환에_실패한_후보는_좌표만_비우고_나머지_후보와_함께_돌려준다() {
+        var unconvertible = new JusoAddress("인천광역시 부평구 부평대로 1", "인천광역시 부평구 부평동 65-17", "2823710100",
+                "282373154001", false, 1, 0, false, 65, 17);
+        var convertible = new JusoAddress("인천광역시 부평구 부평대로 2", "인천광역시 부평구 부평동 65-18", "2823710100",
+                "282373154001", false, 2, 0, false, 65, 18);
+        when(client.search("부평대로", 5)).thenReturn(List.of(unconvertible, convertible));
+        when(client.coordinate(unconvertible)).thenReturn(Optional.of(new UtmKCoordinate(
+                new BigDecimal("1E+1000"), new BigDecimal("1E+1000"))));
+        when(client.coordinate(convertible)).thenReturn(Optional.of(new UtmKCoordinate(
+                new BigDecimal("937500"), new BigDecimal("1943000"))));
+
+        var result = service.lookup("부평대로");
+
+        assertThat(result).hasSize(2);
+        assertThat(result.getFirst()).satisfies(candidate -> {
+            assertThat(candidate.roadAddress()).isEqualTo("인천광역시 부평구 부평대로 1");
+            assertThat(candidate.pnu()).isEqualTo("2823710100100650017");
+            assertThat(candidate.legalDongCode()).isEqualTo("2823710100");
+            assertThat(candidate.latitude()).isNull();
+            assertThat(candidate.longitude()).isNull();
+        });
+        assertThat(result.get(1).latitude()).isBetween(new BigDecimal("37"), new BigDecimal("38"));
+    }
+
+    @Test
     void 법정동코드가_없는_결과는_돌려주지_않는다() {
         when(client.search(any(), any(Integer.class))).thenReturn(List.of(new JusoAddress("", "", "", "", false, 0, 0, false, 0, 0)));
 
