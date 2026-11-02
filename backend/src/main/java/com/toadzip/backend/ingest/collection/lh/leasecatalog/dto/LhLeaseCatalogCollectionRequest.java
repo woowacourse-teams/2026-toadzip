@@ -17,7 +17,8 @@ public record LhLeaseCatalogCollectionRequest(
 
     public LhLeaseCatalogCollectionRequest {
         if (pageSize < 1 || pageSize > MAX_PAGE_SIZE || maxPages < 1 || maxPages > MAX_PAGES) {
-            throw new IllegalArgumentException("페이지 크기는 1~9,999, 최대 페이지 수는 1~1,000이어야 합니다.");
+            throw new IllegalArgumentException(
+                    "페이지 크기는 1~" + MAX_PAGE_SIZE + ", 최대 페이지 수는 1~" + MAX_PAGES + "이어야 합니다.");
         }
         startedAt = Objects.requireNonNull(startedAt, "요청 시작 시각은 필수입니다.").truncatedTo(ChronoUnit.MICROS);
     }
