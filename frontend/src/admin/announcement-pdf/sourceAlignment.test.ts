@@ -87,6 +87,7 @@ describe('최초 입주자 공고의 LH 원천행 맞추기', () => {
 })
 
 describe('미연결 단지가 여럿인 공고의 LH 원천행 맞추기', () => {
+  const announcementComplex = (roadAddress: string) => ({ id: 186, name: '화성동탄(2)A48(공임리츠) A48', roadAddress, housingComplexId: null, housingComplexName: null, linkMethod: null, rowCount: 1 })
   // 화성동탄2 리츠 공고 114: 공고문 "동탄2 A48BL"·"동탄2 A63BL"이 각각 단지에 연결되지 않은 LH 공고 단지 행을 가리킨다.
   function setup() {
     const row = (complexName: string, typeName: string, exclusiveArea: number) => ({ complexReference: { sourceComplexName: complexName }, sourceHousingTypeName: typeName,
@@ -98,7 +99,7 @@ describe('미연결 단지가 여럿인 공고의 LH 원천행 맞추기', () =>
     const { workspace } = scenario('hansville')
     const lh = (id: number, complexName: string, typeName: string) => ({ ...blankRow(id), id, key: `row:${id}`, complexName, typeName, householdCount: 0, areaOverride: false })
     workspace.supply.rows = [lh(642, '화성동탄(2)A48(공임리츠) A48', '59.5500A'), lh(655, '화성동탄2A-63(공임리츠) A63', '59.9800A')]
-    workspace.supply.announcementComplexes = [{ name: '화성동탄(2)A48(공임리츠) A48', roadAddress: '경기도 화성시 동탄순환대로20길 69' }]
+    workspace.supply.announcementComplexes = [announcementComplex('경기도 화성시 동탄순환대로20길 69')]
     return { review: createReview(extraction.value, workspace, {}), workspace }
   }
 
@@ -119,7 +120,7 @@ describe('미연결 단지가 여럿인 공고의 LH 원천행 맞추기', () =>
     const candidates = [{ id: 1, name: '059.5500A', exclusiveArea: 59.55, supplyArea: null, householdCount: null }]
     const confirm = (typeName: string, roadAddress = '경기도 화성시 동탄순환대로20길 69') => {
       const rows = workspace.supply.rows.map(row => row.id === 642 ? { ...row, typeName } : row)
-      const supply = { ...workspace.supply, rows, announcementComplexes: [{ name: '화성동탄(2)A48(공임리츠) A48', roadAddress }] }
+      const supply = { ...workspace.supply, rows, announcementComplexes: [announcementComplex(roadAddress)] }
       return alignSourceRows(review, { ...workspace, supply }, '동탄2 A48BL', { id: 1724, name: '화성동탄2 A48BL' }, candidates)?.rows[0].proposal.needsConfirmation
     }
     expect(confirm('59.5500A')).toBe(false)

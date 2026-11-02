@@ -102,6 +102,27 @@ class AnnouncementComplexAdminLinkIntegrationTest {
     }
 
     @Test
+    void 연결은_그대로이고_단지_없던_행만_붙여도_그_행의_이전_이후를_이력으로_남긴다() throws Exception {
+        long id = announcement.getId();
+        var first = request(id);
+        select(rowOf(first, linkedRow), chosen.getId(), chosenType.getId());
+        apply(id, first, preview(id, first)).andExpect(status().isOk());
+        // 다음 정제 전 단지가 비어 들어온 같은 공고 단지 행을 흉내 낸다.
+        jdbc.update("UPDATE supply_rows SET housing_complex_id = NULL, housing_type_id = NULL WHERE id = ?", emptyRow.getId());
+        jdbc.update("DELETE FROM supply_row_housing_types WHERE supply_row_id = ?", emptyRow.getId());
+        entities.clear();
+
+        var second = request(id);
+        rowOf(second, linkedRow).put("householdCount", 7);
+        apply(id, second, preview(id, second)).andExpect(status().isOk());
+
+        var history = jdbc.queryForList("SELECT after_value FROM admin_data_changes WHERE resource_type = 'ANNOUNCEMENT_COMPLEX' "
+                + "AND resource_id = ? ORDER BY id", String.class, announcementComplex.getId());
+        assertThat(history).hasSize(2);
+        assertThat(history.get(1)).contains("\"id\":" + emptyRow.getId()).contains("\"housingComplexId\":" + chosen.getId());
+    }
+
+    @Test
     void 자동_연결과_같은_단지로_저장해도_관리자가_확인한_연결이_된다() throws Exception {
         long id = announcement.getId();
         var request = request(id);

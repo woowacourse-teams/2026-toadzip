@@ -82,7 +82,7 @@ const addressKey = (value: unknown) => (text(value) ?? '').normalize('NFKC').rep
  * 둘 다 있으면 둘이 함께 가리키는 공고 단지여야 하고, 후보가 하나일 때만 정한다.
  * certain은 이름이나 블록 번호·주소가 함께 맞았는지다. 한쪽만 맞았으면 화면에서 대응을 확인하게 한다.
  */
-export function sourceComplexNames(extraction: Extraction, pdfName: string | null, names: string[], complexes: AnnouncementComplex[] = []) {
+export function sourceComplexNames(extraction: Extraction, pdfName: string | null, names: string[], complexes: Pick<AnnouncementComplex, 'name' | 'roadAddress'>[] = []) {
   const byName = names.filter(name => sameComplex(pdfName, name))
   if (byName.length) return { names: byName, certain: true }
   const block = blockKey(pdfName), address = addressKey(extraction.complexes.find(item => item.name === pdfName)?.address)
@@ -156,7 +156,7 @@ export function chooseRow(row: Extraction['supplyRows'][number], related: Correc
   return { chosen, recommended, destination: chosen?.key ?? (recommended.length ? '' : 'new') }
 }
 
-export function proposeRows(extraction: Extraction, all: CorrectionRow[], housing: HousingCandidates, complexes: AnnouncementComplex[] = []): RowProposal[] {
+export function proposeRows(extraction: Extraction, all: CorrectionRow[], housing: HousingCandidates, complexes: Pick<AnnouncementComplex, 'name' | 'roadAddress'>[] = []): RowProposal[] {
   const used = new Set<string>()
   // 단지가 연결되지 않은 기존 행은 단지를 정한 뒤 LH 원천행 맞추기(sourceAlignment)에서 연결·분할한다.
   const current = all.filter(item => !emptyRow(item) && !item.excluded)

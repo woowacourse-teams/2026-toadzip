@@ -25,7 +25,10 @@ public final class SupplyCorrection {
     public record Workspace(String snapshotToken, long version, List<Row> rows, List<Source> sources, List<String> sourceWarnings,
             List<RowSource> rowSources, List<String> deletableRowKeys, List<LhSupplyRow> unattachedLhSupplyRows,
             List<AnnouncementComplexView> announcementComplexes) { }
-    public record AnnouncementComplexView(String name, String roadAddress) { }
+    /** linkMethod는 AUTO·ADMIN·MIGRATED, 연결이 없으면(휴지통 단지 포함) null이다. rowCount는 이 공고 단지의 제외하지 않은 공급행 수다. */
+    public record AnnouncementComplexView(long id, String name, String roadAddress, Long housingComplexId, String housingComplexName,
+            String linkMethod, int rowCount) { }
+    public record ComplexLinkRequest(@NotBlank @Size(max = 200) String snapshotToken, @Positive long housingComplexId) { }
     public record LhSupplyRow(String rowIdentifier, String complexLabel, String typeName, String exclusiveArea) { }
     /** 공급행이 기록한 원천행. 작업실의 sources에서 같은 분류·키의 원천을 찾아 행 옆에 보여준다. */
     public record RowSource(String rowKey, String category, String sourceKey) { }
