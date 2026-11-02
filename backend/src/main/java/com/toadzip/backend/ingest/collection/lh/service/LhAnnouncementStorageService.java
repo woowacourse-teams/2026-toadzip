@@ -9,6 +9,7 @@ import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncement
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuerySource;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.HeldLhSupplyReplacement;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplyRow;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
@@ -137,7 +138,8 @@ public class LhAnnouncementStorageService {
         if (rows.isEmpty()) {
             throw new EmptyLhSupplyReplacementException();
         }
-        throw new IncompleteLhSupplyReplacementException(missing, fingerprint);
+        throw new IncompleteLhSupplyReplacementException(
+                HeldLhSupplyReplacement.incompleteReason(missing, fingerprint));
     }
 
     private void requireTime(LhAnnouncementCollectionRequest request, Instant collectedAt) {

@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.quality.repository;
 
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhSupplySnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.HeldLhSupplyReplacement;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.CollectionCoverage;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.Connection;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.Coverage;
@@ -16,15 +16,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class LhAnnouncementQualityStore {
-
-    private static final Pattern FINGERPRINT = Pattern.compile("proposedFingerprint=([0-9a-f]{64})");
 
     private static final String UNLINKED_LH_LEASE_CATALOG = """
             FROM lh_announcement_catalog_entries catalog
@@ -139,9 +135,8 @@ public class LhAnnouncementQualityStore {
         return jdbc.sql("""
                 SELECT COUNT(*) FROM external_data_collection_failures failure
                 WHERE failure.source = 'LH_ANNOUNCEMENT_SUPPLY' AND failure.status = 'PENDING'
-                  AND failure.error_type IN ('IncompleteLhSupplyReplacementException',
-                                             'EmptyLhSupplyReplacementException')
-                """).query(Long.class).single();
+                  AND failure.error_type IN (:errorTypes)
+                """).param("errorTypes", HeldLhSupplyReplacement.errorTypes()).query(Long.class).single();
     }
 
     private Map<String, Long> preservedReasons() {
@@ -150,10 +145,9 @@ public class LhAnnouncementQualityStore {
                 SELECT failure.error_type, COUNT(*) AS request_count
                 FROM external_data_collection_failures failure
                 WHERE failure.source = 'LH_ANNOUNCEMENT_SUPPLY' AND failure.status = 'PENDING'
-                  AND failure.error_type IN ('IncompleteLhSupplyReplacementException',
-                                             'EmptyLhSupplyReplacementException')
+                  AND failure.error_type IN (:errorTypes)
                 GROUP BY failure.error_type ORDER BY failure.error_type
-                """).query((result, index) -> {
+                """).param("errorTypes", HeldLhSupplyReplacement.errorTypes()).query((result, index) -> {
             reasons.put(result.getString("error_type"), result.getLong("request_count"));
             return true;
         }).list();
@@ -217,24 +211,17 @@ public class LhAnnouncementQualityStore {
                 SELECT request_description, reason, error_type, last_occurred_at
                 FROM external_data_collection_failures
                 WHERE source = 'LH_ANNOUNCEMENT_SUPPLY' AND status = 'PENDING'
-                  AND error_type IN ('IncompleteLhSupplyReplacementException',
-                                     'EmptyLhSupplyReplacementException')
+                  AND error_type IN (:errorTypes)
                 ORDER BY last_occurred_at DESC, id DESC LIMIT 50
-                """).query((result, index) -> new HeldRequest(
+                """).param("errorTypes", HeldLhSupplyReplacement.errorTypes()).query((result, index) -> new HeldRequest(
                 result.getString("request_description"), result.getString("reason"),
                 instant(result, "last_occurred_at"), fingerprint(result)
         )).list();
     }
 
     private String fingerprint(ResultSet result) throws SQLException {
-        if ("EmptyLhSupplyReplacementException".equals(result.getString("error_type"))) {
-            return LhSupplySnapshot.fingerprint(List.of());
-        }
-        Matcher matcher = FINGERPRINT.matcher(result.getString("reason"));
-        if (matcher.find()) {
-            return matcher.group(1);
-        }
-        return null;
+        return HeldLhSupplyReplacement.proposedFingerprint(result.getString("error_type"), result.getString("reason"))
+                .orElse(null);
     }
 
     private Instant instant(ResultSet result, String column) throws SQLException {
