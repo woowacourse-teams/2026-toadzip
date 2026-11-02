@@ -21,6 +21,8 @@ LEASE = timedelta(minutes=3)
 HEARTBEAT = timedelta(minutes=1)
 # 넣은 지 이만큼 지난 작업은 어느 상태든 실패로 끝낸다. 관리자 화면은 이보다 조금 더 기다린다(extractionApi.ts JOB_WAIT_LIMIT_MS).
 DEADLINE = timedelta(minutes=40)
+# 마감 전에 한 번의 추출을 끝낼 수 없는 작업은 꺼내지 않는다. 꺼내면 끝나도 마감 정리에 밀려 유료 호출만 버린다.
+CLAIM_WINDOW = DEADLINE - ATTEMPT_BUDGET
 # n번째 시도가 일시 오류면 BACKOFF[n-1] 뒤에 다시 꺼낸다.
 BACKOFF = (timedelta(minutes=1), timedelta(minutes=5))
 INTERNAL_ERROR_CODE = "INTERNAL_ERROR"
@@ -77,8 +79,7 @@ def run_once(conn: psycopg.Connection, extractor: Extractor) -> bool:
     if expired:
         log.warning("lease가 끝난 채 시도를 다 쓴 작업 %d건을 실패로 끝냈습니다.", expired)
 
-    # 마감 전에 한 번의 추출을 끝낼 수 없는 작업은 꺼내지 않는다. 꺼내면 끝나도 마감 정리에 밀려 유료 호출만 버린다.
-    job = jobs.claim(conn, LEASE, DEADLINE - ATTEMPT_BUDGET)
+    job = jobs.claim(conn, LEASE, CLAIM_WINDOW)
     # 꺼내기까지 됐으면 접속과 큐 권한이 실제로 확인된 것이다. 첫 heartbeat 전에 긴 추출이 시작돼도 healthy로 보인다.
     mark_alive()
     if job is None:
@@ -88,11 +89,13 @@ def run_once(conn: psycopg.Connection, extractor: Extractor) -> bool:
         with heartbeat(conn, job):
             result = serialize(extractor.extract(job))
     except TransientError as error:
-        if job.attempts < job.max_attempts:
+        delay = BACKOFF[min(job.attempts, len(BACKOFF)) - 1]
+        if job.attempts < job.max_attempts and jobs.retry(conn, job, delay, CLAIM_WINDOW, error.code, error.message):
             log.warning("작업 %d 시도 %d 일시 오류(%s), 재시도합니다.", job.id, job.attempts, error.code)
-            written = jobs.retry(conn, job, BACKOFF[min(job.attempts, len(BACKOFF)) - 1], error.code, error.message)
+            written = True
         else:
-            log.warning("작업 %d 시도 %d 일시 오류(%s), 시도를 다 써서 실패로 끝냅니다.", job.id, job.attempts, error.code)
+            # 시도를 다 썼거나 예약 시각이 꺼내기 기한을 넘었다. 마감까지 기다리게 두지 않고 지금 이 오류로 끝낸다.
+            log.warning("작업 %d 시도 %d 일시 오류(%s), 다시 꺼낼 수 없어 실패로 끝냅니다.", job.id, job.attempts, error.code)
             written = jobs.fail(conn, job, error.code, error.message)
     except PermanentError as error:
         log.warning("작업 %d 실패(%s).", job.id, error.code)

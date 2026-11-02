@@ -130,17 +130,19 @@ def fail(conn: psycopg.Connection, job: Job, code: str, message: str) -> bool:
     return cursor.rowcount == 1
 
 
-def retry(conn: psycopg.Connection, job: Job, delay: timedelta, code: str, message: str) -> bool:
-    """PDF를 남긴 채 delay 뒤에 다시 꺼내게 한다. 재시도 사유는 관리자 화면이 기다리는 동안 보여 준다."""
+def retry(conn: psycopg.Connection, job: Job, delay: timedelta, claim_window: timedelta, code: str, message: str) -> bool:
+    """PDF를 남긴 채 delay 뒤에 다시 꺼내게 한다. 재시도 사유는 관리자 화면이 기다리는 동안 보여 준다.
+    예약 시각이 꺼내기 기한(넣은 뒤 claim_window)을 넘으면 claim이 다시 꺼내지 않으므로 쓰지 않고 False다.
+    lease를 빼앗겼거나 작업이 지워졌어도 False."""
     code, message = public_text(code, ERROR_CODE_MAX), public_text(message, ERROR_MESSAGE_MAX)
     cursor = conn.execute(
         """
         UPDATE ai_jobs
         SET status = 'RETRY', next_attempt_at = now() + %s, lease_token = NULL, lease_until = NULL,
             error_code = %s, error_message = %s
-        WHERE id = %s AND lease_token = %s
+        WHERE id = %s AND lease_token = %s AND now() + %s < created_at + %s
         """,
-        (delay, code, message, job.id, job.lease_token),
+        (delay, code, message, job.id, job.lease_token, delay, claim_window),
     )
     return cursor.rowcount == 1
 

@@ -162,7 +162,7 @@ def test_expired_lease_is_reclaimed_and_old_lease_cannot_write(postgres, owner, 
 
         assert jobs.complete(worker_conn, first, json.dumps({"stale": True})) is False
         assert jobs.fail(worker_conn, first, "STALE", "stale") is False
-        assert jobs.retry(worker_conn, first, timedelta(minutes=1), "STALE", "stale") is False
+        assert jobs.retry(worker_conn, first, timedelta(minutes=1), worker.CLAIM_WINDOW, "STALE", "stale") is False
         assert job_row(owner, job_id)["status"] == "RUNNING"
 
         assert jobs.complete(second_conn, second, json.dumps({"fresh": True})) is True
