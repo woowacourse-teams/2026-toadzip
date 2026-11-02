@@ -40,7 +40,7 @@ export const JOB_POLL_MS = 3000
 export const JOB_WAIT_LIMIT_MS = 45 * 60 * 1000
 /** 워커는 대기 작업을 몇 초 안에 꺼내므로, 이만큼 PENDING이면 워커가 멈춘 것으로 보고 알린다. */
 export const NOT_STARTED_NOTICE_MS = 3 * 60 * 1000
-const NOT_STARTED_NOTICE = '아직 처리가 시작되지 않았습니다. 잠시 뒤에도 그대로면 관리자에게 알려 주세요.'
+const NOT_STARTED_NOTICE = '아직 처리가 시작되지 않았습니다. AI 워커가 실행 중인지 확인해 주세요.'
 
 type Reason = { code: string; message: string }
 type ExtractionJob = { jobId: number; status: string; fileName: string; pdfSha256: string; failure: Reason | null; retryReason: Reason | null; extraction: unknown }

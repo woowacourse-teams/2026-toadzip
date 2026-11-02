@@ -59,7 +59,7 @@ test('처리가 시작되지 않은 채 오래 기다리면 알리고, 워커가
   await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3)
 
   await expect(result).resolves.toEqual(extraction)
-  expect(onNotice.mock.calls).toEqual([['아직 처리가 시작되지 않았습니다. 잠시 뒤에도 그대로면 관리자에게 알려 주세요.'], [null]])
+  expect(onNotice.mock.calls).toEqual([['아직 처리가 시작되지 않았습니다. AI 워커가 실행 중인지 확인해 주세요.'], [null]])
 })
 
 test('작업이 실패하면 워커가 남긴 사유로 실패한다', async () => {
