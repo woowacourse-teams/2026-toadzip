@@ -1,12 +1,14 @@
 package com.toadzip.backend.ingest.location.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.location.domain.JusoAddress;
 import com.toadzip.backend.ingest.location.domain.UtmKCoordinate;
+import com.toadzip.backend.ingest.location.exception.AddressLookupException;
 import com.toadzip.backend.ingest.location.repository.external.JusoAddressClient;
 import java.math.BigDecimal;
 import java.util.List;
@@ -64,6 +66,17 @@ class AddressLookupServiceTest {
             assertThat(candidate.longitude()).isNull();
         });
         assertThat(result.get(1).latitude()).isBetween(new BigDecimal("37"), new BigDecimal("38"));
+    }
+
+    @Test
+    void 좌표_변환_실패가_아닌_좌표_조회_오류는_그대로_던진다() {
+        var address = new JusoAddress("인천광역시 부평구 부평대로 1", "인천광역시 부평구 부평동 65-17", "2823710100",
+                "282373154001", false, 1, 0, false, 65, 17);
+        var failure = new AddressLookupException("주소 검색을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.", true);
+        when(client.search("부평대로", 5)).thenReturn(List.of(address));
+        when(client.coordinate(address)).thenThrow(failure);
+
+        assertThatThrownBy(() -> service.lookup("부평대로")).isSameAs(failure);
     }
 
     @Test

@@ -201,6 +201,9 @@ class QualityComparisonIntegrationTest {
                                 "evidenceNote", "오래된 단지 비교 확인"))))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"))
                 .andExpect(jsonPath("$.message").value("단지 등록값 또는 원천이 변경되었습니다. 다시 비교해 주세요."));
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM admin_data_changes WHERE resource_type = 'COMPLEX' "
+                + "AND resource_id = ? AND action = 'CHECK_COMPARISON_SOURCES'", Integer.class, id)).isZero();
     }
 
     @Test
