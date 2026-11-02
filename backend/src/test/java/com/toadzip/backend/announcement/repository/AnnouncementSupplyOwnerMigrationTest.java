@@ -60,7 +60,7 @@ class AnnouncementSupplyOwnerMigrationTest {
                             (15, 'ANNOUNCEMENT', 15, 'EXCLUDE_SUPPLY_ROW'), (16, 'ANNOUNCEMENT', 16, 'INCLUDE_SUPPLY_ROW');
                         """);
                 ScriptUtils.executeSqlScript(connection, new ClassPathResource(
-                        "db/migration/V20261101_03__announcement_supply_owner.sql"));
+                        "db/migration/V20261101_02__announcement_supply_owner.sql"));
 
                 assertThat(rows(statement, "SELECT id || ':' || supply_owner FROM announcements WHERE id <= 16 ORDER BY id"))
                         .containsExactly("1:LH_SOURCE", "2:LH_SOURCE", "3:ANNOUNCEMENT_DOCUMENT",

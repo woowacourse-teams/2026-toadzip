@@ -39,7 +39,7 @@ class SupplyRowHousingTypesMigrationTest {
                         INSERT INTO supply_rows VALUES (1, 100), (2, NULL), (3, 200), (4, 200);
                         """);
                 ScriptUtils.executeSqlScript(connection, new ClassPathResource(
-                        "db/migration/V20261101_04__supply_row_housing_types.sql"));
+                        "db/migration/V20261101_03__supply_row_housing_types.sql"));
 
                 assertThat(rows(statement, """
                         SELECT supply_row_id || ':' || housing_type_id FROM supply_row_housing_types

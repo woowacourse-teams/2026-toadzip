@@ -24,7 +24,7 @@ class HousingTypeFieldProtectionMigrationTest {
         try (Connection admin = connect("postgres"); Statement statement = admin.createStatement()) {
             statement.execute("CREATE DATABASE " + database);
             try {
-                migration(database).target("20261101.06").load().migrate();
+                migration(database).target("20261101.05").load().migrate();
                 try (Connection connection = connect(database); Statement seed = connection.createStatement()) {
                     seed.execute("""
                             INSERT INTO housing_complexes (id, name, source_complex_identifier,

@@ -42,7 +42,7 @@ class PublicRentalTermMergeMigrationTest {
                             (13, '5년임대'), (14, '10년임대');
                         """);
                 ScriptUtils.executeSqlScript(connection, new ClassPathResource(
-                        "db/migration/V20261101_02__merge_public_rental_terms.sql"));
+                        "db/migration/V20261101_01__merge_public_rental_terms.sql"));
 
                 assertThat(rows(statement, "SELECT id || ':' || supply_type FROM housing_complexes ORDER BY id"))
                         .containsExactly("1:PUBLIC_RENTAL", "2:PUBLIC_RENTAL", "3:PUBLIC_RENTAL_50Y", "4:PUBLIC_RENTAL", "5:PUBLIC_RENTAL");
