@@ -8,6 +8,7 @@ import com.toadzip.backend.ingest.location.dto.LocationSummaryImportReport;
 import com.toadzip.backend.ingest.location.repository.LocationSummaryStore;
 import com.toadzip.backend.ingest.location.repository.external.LocationSummaryFileParseResult;
 import com.toadzip.backend.ingest.location.repository.external.LocationSummaryFileParser;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -63,6 +64,7 @@ public class LocationSummaryImportService {
     }
 
     public LocationSummaryImportReport importMatches(String sourceFileName, InputStream input) {
+        IngestExecutionScope.requireHeld();
         Set<String> targetAddresses = normalizedTargetAddresses();
         if (targetAddresses.isEmpty()) {
             throw new InvalidIngestRequestException(

@@ -71,8 +71,18 @@ public final class IngestExecutionScope implements AutoCloseable {
         return Optional.ofNullable(currentState().lease());
     }
 
+    /** 실행 소유권을 잡았으면 아직 잡고 있는지 확인한다. 소유권 밖의 호출은 확인하지 않는다. */
     public static void verifyHeld() {
         current().ifPresent(Lease::verifyHeld);
+    }
+
+    /**
+     * 수집·정제 진입점은 실행 소유권 안에서만 돈다. 관리자 요청은 웹 인터셉터가, 파이프라인은 실행 서비스가 소유권을 잡는다.
+     * 소유권 없이 부르면 다른 실행과 겹쳐 쓸 수 있으므로 거절한다.
+     */
+    public static void requireHeld() {
+        current().orElseThrow(() -> new IllegalStateException("수집·정제는 실행 소유권 안에서만 실행할 수 있습니다."))
+                .verifyHeld();
     }
 
     /** 다음 외부 요청이나 쓰기 전에 실행 소유권과 중지 요청을 확인한다. */

@@ -115,7 +115,8 @@ class PagedSourceCollectorTest {
                 argThat(failure -> failure instanceof ExternalDataCallFailureException call
                         && call.getRequestDescription().equals("PAGE=1")
                         && call.getCause() instanceof ExternalDataRequestException cause
-                        && cause.getMessage().equals(conflict.getMessage())), any(), eq("시험 원천 수집 실패"));
+                        && cause.getMessage().equals(conflict.getMessage())
+                        && cause.getCause() == conflict), any(), eq("시험 원천 수집 실패"));
     }
 
     @Test

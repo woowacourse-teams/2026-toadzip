@@ -2,14 +2,14 @@ package com.toadzip.backend.ingest.failure.dto;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
-import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
+import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import java.time.Instant;
 import java.util.UUID;
 
 public record ExternalDataCollectionFailureResponse(
         ExternalDataSource source,
         String requestDescription,
-        IngestFailureStatus status,
+        ExternalDataFailureStatus status,
         int attemptCount,
         String errorType,
         String reason,
@@ -28,19 +28,19 @@ public record ExternalDataCollectionFailureResponse(
     ) {
         return new ExternalDataCollectionFailureResponse(
                 failure.getSource(),
-                failure.getSourceKey(),
+                failure.getRequestDescription(),
                 failure.getStatus(),
                 failure.getAttemptCount(),
                 failure.getErrorType(),
-                failure.getDetail(),
+                failure.getReason(),
                 failure.getOccurredAt(),
                 failure.getLastOccurredAt(),
                 failure.getOccurrenceCount(),
                 failure.getRecurrenceCount(),
-                failure.getLastResolvedAt(),
+                failure.getResolvedAt(),
                 failure.getFirstExecutionId(),
                 failure.getLastExecutionId(),
-                failure.getLastResolvedExecutionId()
+                failure.getResolvedExecutionId()
         );
     }
 }

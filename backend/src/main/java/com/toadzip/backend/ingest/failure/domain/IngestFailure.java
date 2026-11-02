@@ -57,7 +57,7 @@ public abstract class IngestFailure<T extends IngestFailure<T>> {
     /** 관리자가 공고를 보정해 해결로 바꾼 경우의 관리자. 정제가 해결하면 비운다. */
     private String lastResolvedBy;
 
-    protected IngestFailure(String sourceKey, Object reason, String detail, Instant occurredAt) {
+    protected IngestFailure(String sourceKey, Enum<?> reason, String detail, Instant occurredAt) {
         requireText(sourceKey, "원천 키");
         require(reason, "실패 사유");
         requireText(detail, "실패 상세");
@@ -70,8 +70,7 @@ public abstract class IngestFailure<T extends IngestFailure<T>> {
         status = IngestFailureStatus.PENDING;
     }
 
-    /** 같은 원천 키의 실패를 구분하는 실패 종류다. */
-    public abstract Object getReason();
+    public abstract Enum<?> getReason();
 
     public void observe(T observed, UUID executionId) {
         require(observed, "관찰한 실패");
@@ -79,7 +78,7 @@ public abstract class IngestFailure<T extends IngestFailure<T>> {
         detail = observed.getDetail();
         lastOccurredAt = observed.getOccurredAt();
         occurrenceCount++;
-        if (status != IngestFailureStatus.PENDING) {
+        if (status == IngestFailureStatus.RESOLVED) {
             recurrenceCount++;
         }
         status = IngestFailureStatus.PENDING;
@@ -100,17 +99,6 @@ public abstract class IngestFailure<T extends IngestFailure<T>> {
         }
         status = IngestFailureStatus.RESOLVED;
         lastResolvedAt = resolvedAt;
-        lastResolvedExecutionId = executionId;
-        lastResolvedBy = null;
-    }
-
-    /** 처리 대상이 아니라서 건너뛴다. 해결과 같이 닫지만 다시 실패하면 재발로 센다. */
-    protected void markSkipped(Instant skippedAt, String skipDetail, UUID executionId) {
-        require(skippedAt, "건너뛴 시각");
-        requireText(skipDetail, "건너뛴 사유");
-        status = IngestFailureStatus.SKIPPED;
-        detail = skipDetail;
-        lastResolvedAt = skippedAt;
         lastResolvedExecutionId = executionId;
         lastResolvedBy = null;
     }

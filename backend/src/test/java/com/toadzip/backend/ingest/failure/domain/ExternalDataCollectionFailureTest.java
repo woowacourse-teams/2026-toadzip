@@ -20,23 +20,23 @@ class ExternalDataCollectionFailureTest {
         UUID skippedBy = UUID.randomUUID();
         failure.skip(SKIPPED, "수집 대상이 아닙니다.", skippedBy);
 
-        assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.SKIPPED);
-        assertThat(failure.getReason()).isEqualTo("NOT_APPLICABLE");
-        assertThat(failure.getDetail()).isEqualTo("수집 대상이 아닙니다.");
-        assertThat(failure.getLastResolvedAt()).isEqualTo(SKIPPED);
-        assertThat(failure.getLastResolvedExecutionId()).isEqualTo(skippedBy);
+        assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.SKIPPED);
+        assertThat(failure.getErrorType()).isEqualTo("NOT_APPLICABLE");
+        assertThat(failure.getReason()).isEqualTo("수집 대상이 아닙니다.");
+        assertThat(failure.getResolvedAt()).isEqualTo(SKIPPED);
+        assertThat(failure.getResolvedExecutionId()).isEqualTo(skippedBy);
 
         UUID observedBy = UUID.randomUUID();
         failure.observe(ExternalDataCollectionFailure.create(
                 ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "panId=1", AGAIN, 3, "IOException", "연결 끊김"), observedBy);
 
-        assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.PENDING);
+        assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.PENDING);
         assertThat(failure.getRecurrenceCount()).isOne();
         assertThat(failure.getOccurrenceCount()).isEqualTo(2);
         assertThat(failure.getLastOccurredAt()).isEqualTo(AGAIN);
         assertThat(failure.getAttemptCount()).isEqualTo(3);
-        assertThat(failure.getReason()).isEqualTo("IOException");
-        assertThat(failure.getDetail()).isEqualTo("연결 끊김");
+        assertThat(failure.getErrorType()).isEqualTo("IOException");
+        assertThat(failure.getReason()).isEqualTo("연결 끊김");
         assertThat(failure.getLastExecutionId()).isEqualTo(observedBy);
     }
 }

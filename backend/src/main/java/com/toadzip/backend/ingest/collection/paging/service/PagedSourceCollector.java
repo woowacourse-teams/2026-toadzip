@@ -153,7 +153,7 @@ public class PagedSourceCollector {
 
         private ExternalDataCallFailureException failure(RuntimeException cause) {
             return new ExternalDataCallFailureException(source.source(), request.pageDescription(lastPage),
-                    lastAttemptCount, new ExternalDataRequestException(cause.getMessage()));
+                    lastAttemptCount, new ExternalDataRequestException(cause.getMessage(), cause));
         }
     }
 }

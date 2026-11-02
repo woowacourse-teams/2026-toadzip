@@ -126,7 +126,7 @@ describe('useComplexResults', () => {
       appliedMap: individualMap(['1'], VIEWPORT, originalFilters),
     })
     await act(async () => result.current.request(VIEWPORT))
-    expect(result.current.state).toMatchObject({ status: 'error', errorMessage: '조회 실패' })
+    expect(result.current.state).toMatchObject({ status: 'error', errorMessage: '잠시 후 다시 시도해 주세요.' })
     rerender({
       filters: { regionCode: '41' },
       appliedMap: individualMap(['1', '2', '3'], VIEWPORT, originalFilters),

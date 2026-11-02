@@ -66,6 +66,14 @@ public class LhAnnouncementEnrichmentWriter implements MappedAnnouncementLhEnric
         supplyAmounts.release(announcement);
     }
 
+    @Override
+    @Transactional
+    public void releaseMovedLhRows(
+            Announcement announcement, Map<String, String> resolvedSourceRows, Set<String> movedLhRows
+    ) {
+        supplyAmounts.releaseMovedLhRows(announcement, resolvedSourceRows, movedLhRows);
+    }
+
     /** 공급행 매칭 실패는 결과로 돌려준다. 확인된 공고의 LH 원천과 보강 대상이 다르면 쓰기 전에 거절한다. */
     @Transactional
     public LhAnnouncementEnrichmentWriteResult write(

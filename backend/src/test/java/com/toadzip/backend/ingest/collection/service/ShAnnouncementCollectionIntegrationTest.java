@@ -9,17 +9,20 @@ import static org.mockito.Mockito.when;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.ShAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.ShAnnouncementSourceRepository;
-import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
+import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import org.jsoup.Jsoup;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+@ExtendWith(IngestExecutionExtension.class)
 @SpringBootTest(properties = {"ingest.sh.request-interval=0s", "ingest.sh.lookback-days=0"})
 @ActiveProfiles("test")
 class ShAnnouncementCollectionIntegrationTest {
@@ -61,16 +64,16 @@ class ShAnnouncementCollectionIntegrationTest {
         assertThat(preserved.getBodyText()).isEqualTo(first.getBodyText());
         assertThat(preserved.getAttachments()).isEqualTo(first.getAttachments());
         assertThat(preserved.getCollectedAt()).isEqualTo(first.getCollectedAt());
-        assertThat(failures.findAllBySourceAndSourceKeyAndStatus(
-                ExternalDataSource.SH_ANNOUNCEMENT, "seq=100", IngestFailureStatus.PENDING)).hasSize(1);
+        assertThat(failures.findAllBySourceAndRequestDescriptionAndStatus(
+                ExternalDataSource.SH_ANNOUNCEMENT, "seq=100", ExternalDataFailureStatus.PENDING)).hasSize(1);
 
         doReturn(detail).when(externalRepository).fetchDetail("100");
         assertThat(service.collect().failedRequestCount()).isZero();
         var refreshed = sources.findBySourceKey("SH:100").orElseThrow();
         assertThat(refreshed.getId()).isEqualTo(sourceId);
         assertThat(refreshed.getBodyText()).isEqualTo(first.getBodyText());
-        assertThat(failures.findAllBySourceAndSourceKeyAndStatus(
-                ExternalDataSource.SH_ANNOUNCEMENT, "seq=100", IngestFailureStatus.RESOLVED)).hasSize(1);
+        assertThat(failures.findAllBySourceAndRequestDescriptionAndStatus(
+                ExternalDataSource.SH_ANNOUNCEMENT, "seq=100", ExternalDataFailureStatus.RESOLVED)).hasSize(1);
         assertThat(count("announcements")).isEqualTo(announcementCount);
         assertThat(count("housing_complexes")).isEqualTo(housingCount);
     }

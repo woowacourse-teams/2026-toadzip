@@ -36,6 +36,7 @@ import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.ComplexLinkMethod;
 import com.toadzip.backend.announcement.domain.LhSupplyMatchStatus;
 import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -45,6 +46,7 @@ import java.util.List;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -54,6 +56,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
 @ActiveProfiles("test")
+@ExtendWith(IngestExecutionExtension.class)
 class LhAnnouncementRefinementIntegrationTest {
 
     private static final DateTimeFormatter CATALOG_DATE = DateTimeFormatter.ofPattern("yyyy.MM.dd");

@@ -31,6 +31,8 @@ import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReas
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingFailureRepository;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -39,6 +41,7 @@ import java.util.Comparator;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -47,6 +50,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+@ExtendWith(IngestExecutionExtension.class)
 @SpringBootTest
 @ActiveProfiles("test")
 class MyHomeComplexMappingServiceTest {
@@ -110,6 +114,18 @@ class MyHomeComplexMappingServiceTest {
                 new BigDecimal("37.56620552"),
                 new BigDecimal("126.97770648")
         ));
+    }
+
+    @Test
+    void 실행_소유권_밖에서_부른_전체_정제는_아무것도_저장하지_않고_거절한다() {
+        sourceRepository.save(source("46A", "46.8000", "20.2000"));
+
+        try (var ignored = IngestExecutionScope.open(null)) {
+            assertThatThrownBy(() -> service.mapAll()).isInstanceOf(IllegalStateException.class)
+                    .hasMessage("수집·정제는 실행 소유권 안에서만 실행할 수 있습니다.");
+        }
+
+        assertThat(complexRepository.count()).isZero();
     }
 
     @Test

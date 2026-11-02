@@ -45,7 +45,7 @@ public class LhAnnouncementRefinementService {
     }
 
     public LhAnnouncementRefinementReport refineAll() {
-        IngestExecutionScope.verifyHeld();
+        IngestExecutionScope.requireHeld();
         List<LhAnnouncementCatalogSourceView> targets = catalog.findAllPresentRentalHousingAnnouncements().stream()
                 .sorted(Comparator.comparing((LhAnnouncementCatalogSourceView view) -> view.noticeLocalDate()
                                 .orElse(LocalDate.MIN))

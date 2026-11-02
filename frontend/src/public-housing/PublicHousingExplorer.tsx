@@ -1,4 +1,5 @@
 import { clearMyPageReturnState, myPageReturnPath } from '../user/mypage/mypageNavigation'
+import { RequestError } from './components/RequestError'
 import { MyPageView } from '../user/mypage/MyPageView'
 import { lastExplorerPath } from '../user/auth/loginReturn'
 import { useExplorerReturn } from './navigation/ExplorerReturnContext'
@@ -1615,7 +1616,7 @@ export function PublicHousingExplorer({
           />
         </div>
         <HousingResultsPanel visible={showListPage && activeResultTab !== 'mypage'} onCollapse={collapseResults}
-          initialMobileHeightPercent={activeResultTab === 'complexes' ? 25 : 50}
+          initialMobileHeightPercent={activeResultTab === 'complexes' && complexResults.status !== 'error' ? 25 : 50}
           headerActions={mobile && activeResultTab === 'complexes' ? regionControl('mobile-header') : undefined}
           title={mobile && activeResultTab === 'complexes' ? mobileRegionTitle : activeResultTab === 'recent' ? '최근 본 단지' : activeResultTab === 'complexes' ? '단지 목록' : '공고 목록'}>
           <div className="housing-results__browse">
@@ -1941,11 +1942,7 @@ function AnnouncementResultContent({
 
   if (state.status === 'error' && state.items.length === 0) {
     return (
-      <div className="housing-results__state housing-results__state--error" role="alert">
-        <strong>공고 목록을 불러오지 못했어요.</strong>
-        <span>{state.errorMessage}</span>
-        <button type="button" onClick={onRetry}>다시 시도</button>
-      </div>
+      <RequestError title="공고 목록을 불러오지 못했어요." onRetry={onRetry} retryLabel="다시 시도" />
     )
   }
 
@@ -1973,10 +1970,7 @@ function AnnouncementResultContent({
         ))}
       </ul>
       {state.status === 'error' && (
-        <div className="housing-results__inline-error" role="alert">
-          <span>{state.errorMessage}</span>
-          <button type="button" onClick={onRetry}>다시 시도</button>
-        </div>
+        <RequestError title="공고를 더 불러오지 못했어요." onRetry={onRetry} />
       )}
     </>
   )
@@ -2072,7 +2066,6 @@ function mapFilterResultCountLabel({
 }
 
 function HousingMapRequestFeedback({
-  errorMessage,
   onRetry,
   status,
 }: {
@@ -2084,11 +2077,7 @@ function HousingMapRequestFeedback({
     return null
   }
   return (
-    <div className="housing-results__inline-error" role="alert">
-      <strong>지도 정보를 불러오지 못했어요.</strong>
-      <span>{errorMessage}</span>
-      <button type="button" onClick={onRetry}>지도 다시 시도</button>
-    </div>
+    <RequestError title="지도 정보를 불러오지 못했어요." onRetry={onRetry} />
   )
 }
 
@@ -2101,11 +2090,7 @@ function ComplexRequestFeedback({
 }) {
   if (state.status === 'error') {
     return (
-      <div className="housing-results__inline-error" role="alert">
-        <strong>단지 목록을 불러오지 못했어요.</strong>
-        <span>{state.errorMessage}</span>
-        <button type="button" onClick={onRetry}>다시 시도</button>
-      </div>
+      <RequestError title="단지 목록을 불러오지 못했어요." onRetry={onRetry} retryLabel="다시 시도" />
     )
   }
 
@@ -2279,10 +2264,7 @@ function toDetailMapTarget(
   return { latitude, longitude }
 }
 
-function detailErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message
-  }
+function detailErrorMessage(_error: unknown) {
   return '잠시 후 다시 시도해 주세요.'
 }
 
