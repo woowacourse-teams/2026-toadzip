@@ -201,7 +201,9 @@ class LhAnnouncementStorageIntegrationTest {
         expect(request, "dsList01", List.of(supplyWire(supply("단지", "A")), supplyWire(supply("단지", "C"))));
 
         assertThatThrownBy(() -> collect(request))
-                .isInstanceOf(IncompleteLhSupplyReplacementException.class);
+                .isInstanceOf(IncompleteLhSupplyReplacementException.class)
+                .hasMessage("LH 공급 수집 결과에 기존 공급행 1건이 누락되어 원천을 교체하지 않습니다. proposedFingerprint="
+                        + fingerprint(request, supply("단지", "A"), supply("단지", "C")));
 
         assertThat(view()).isEqualTo(previous);
         assertFailed();
@@ -372,13 +374,18 @@ class LhAnnouncementStorageIntegrationTest {
     }
 
     private long approve(LhAnnouncementCollectionRequest request, LhAnnouncementSupplySourceSnapshot... snapshots) {
+        return approvals.approve(request.requestHash(), fingerprint(request, snapshots),
+                "https://apply.lh.or.kr/evidence", "공식 근거 확인", "test-admin");
+    }
+
+    private String fingerprint(
+            LhAnnouncementCollectionRequest request, LhAnnouncementSupplySourceSnapshot... snapshots) {
         List<LhAnnouncementSupplySourceView> views = new ArrayList<>();
         for (int index = 0; index < snapshots.length; index++) {
             views.add(LhAnnouncementSupplySourceView.read(null, index, request.query().panId(),
                     request.requestHash(), null, snapshots[index]));
         }
-        return approvals.approve(request.requestHash(), LhSupplySnapshot.fingerprint(views),
-                "https://apply.lh.or.kr/evidence", "공식 근거 확인", "test-admin");
+        return LhSupplySnapshot.fingerprint(views);
     }
 
     private Timestamp consumed(long id) {
