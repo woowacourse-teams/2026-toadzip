@@ -72,6 +72,7 @@ public class AnnouncementSupplyCandidateService {
                 .sorted(Comparator.comparing(HousingType::getId))
                 .map(value -> new HousingTypeOption(value.getId(), value.getName(),
                         value.getExclusiveArea(), value.getSupplyArea(), value.getTotalHouseholdCount(),
-                        fingerprints.target(value))).toList();
+                        fingerprints.target(value), value.announcementValues().basicDeposit(),
+                        value.announcementValues().basicMonthlyRent(), value.getRentalConditionSource())).toList();
     }
 }

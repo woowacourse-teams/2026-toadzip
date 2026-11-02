@@ -36,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * PDF 보정 저장에서 공고문의 주택형 이름·공급면적·세대수를 공급행이 고른 주택형에 반영한다.
+ * PDF 보정 저장에서 공고문의 주택형 이름·공급면적·세대수와 기본 보증금·월 임대료를 공급행이 고른 주택형에 반영한다.
  * 관리자가 직접 고친 필드와 더 이른 공고 값은 주택형이 걸러 낸다({@link HousingType#afterAnnouncement}).
  */
 @Service
@@ -77,7 +77,8 @@ public class AnnouncementHousingTypeWriter {
             var created = row.newHousingType();
             result.add(new HousingTypeChange(row.key(), null, created.name(), null,
                     new TypeValues(firstPresent(incoming.name(), created.name()),
-                            firstPresent(incoming.supplyArea(), created.supplyArea()), incoming.householdCount())));
+                            firstPresent(incoming.supplyArea(), created.supplyArea()), incoming.householdCount(),
+                            incoming.basicDeposit(), incoming.basicMonthlyRent())));
         }
         return List.copyOf(result);
     }
@@ -158,7 +159,12 @@ public class AnnouncementHousingTypeWriter {
             if (row.excluded() || row.housingTypeId() == null && row.newHousingType() == null) {
                 throw new IllegalArgumentException(row.typeName() + ": 제외하지 않고 주택형을 정한 공급행에만 공고 값을 반영합니다.");
             }
-            var incoming = new AnnouncementValues(blankToNull(value.name()), value.supplyArea(), value.householdCount());
+            // 한쪽만 바꾸면 공고 보증금과 마이홈 월 임대료가 섞인 채 공고문 출처로 남는다.
+            if ((value.basicDeposit() == null) != (value.basicMonthlyRent() == null)) {
+                throw new IllegalArgumentException(row.typeName() + ": 기본 보증금과 월 임대료는 함께 보내야 합니다.");
+            }
+            var incoming = new AnnouncementValues(blankToNull(value.name()), value.supplyArea(), value.householdCount(),
+                    value.basicDeposit(), value.basicMonthlyRent());
             String typeKey = row.housingTypeId() != null ? "type:" + row.housingTypeId()
                     : "new:" + row.newHousingTypeKey();
             var previous = result.get(typeKey);
@@ -171,10 +177,15 @@ public class AnnouncementHousingTypeWriter {
             if (differs(merged.name(), incoming.name())) { kept.add("이름"); }
             if (differs(merged.supplyArea(), incoming.supplyArea())) { kept.add("공급면적"); }
             if (differs(merged.householdCount(), incoming.householdCount())) { kept.add("세대수"); }
+            if (differs(merged.basicDeposit(), incoming.basicDeposit())
+                    || differs(merged.basicMonthlyRent(), incoming.basicMonthlyRent())) { kept.add("기본 임대조건"); }
+            boolean keepPrice = kept.contains("기본 임대조건");
             result.put(typeKey, new Target(previous.row(), new AnnouncementValues(
                     kept.contains("이름") ? null : firstPresent(merged.name(), incoming.name()),
                     kept.contains("공급면적") ? null : firstPresent(merged.supplyArea(), incoming.supplyArea()),
-                    kept.contains("세대수") ? null : firstPresent(merged.householdCount(), incoming.householdCount()))));
+                    kept.contains("세대수") ? null : firstPresent(merged.householdCount(), incoming.householdCount()),
+                    keepPrice ? null : firstPresent(merged.basicDeposit(), incoming.basicDeposit()),
+                    keepPrice ? null : firstPresent(merged.basicMonthlyRent(), incoming.basicMonthlyRent()))));
         }
         conflicts.forEach((key, fields) -> {
             if (!fields.isEmpty()) {
@@ -225,17 +236,23 @@ public class AnnouncementHousingTypeWriter {
         data.put("exclusiveArea", type.getExclusiveArea());
         data.put("supplyArea", type.getSupplyArea());
         data.put("householdCount", type.getTotalHouseholdCount());
+        var price = type.announcementValues();
+        data.put("basicDeposit", price.basicDeposit());
+        data.put("basicMonthlyRent", price.basicMonthlyRent());
         data.put("announcementId", announcement.getId());
         data.put("announcementPostedDate", postedDate);
         return data;
     }
 
     private static TypeValues values(AnnouncementValues values) {
-        return new TypeValues(values.name(), values.supplyArea(), values.householdCount());
+        return new TypeValues(values.name(), values.supplyArea(), values.householdCount(), values.basicDeposit(),
+                values.basicMonthlyRent());
     }
 
     private static boolean same(TypeValues left, TypeValues right) {
         return Objects.equals(left.name(), right.name()) && Objects.equals(left.householdCount(), right.householdCount())
+                && Objects.equals(left.basicDeposit(), right.basicDeposit())
+                && Objects.equals(left.basicMonthlyRent(), right.basicMonthlyRent())
                 && (left.supplyArea() == null ? right.supplyArea() == null
                         : right.supplyArea() != null && left.supplyArea().compareTo(right.supplyArea()) == 0);
     }

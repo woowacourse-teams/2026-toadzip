@@ -122,6 +122,18 @@ public class MyHomeComplexMergeStore {
     }
 
     private String withCompatibleHousingTypeSnapshot(String current, String expected) {
+        // 기본 임대조건 출처 열을 더하기 전에 만든 스냅숏과는 그 열을 빼고 비교한다.
+        boolean hasSource = jdbc.sql("""
+                SELECT COALESCE(jsonb_exists(CAST(:state AS jsonb)->'housing_types'->0, 'rental_condition_source'), true)
+                """).param("state", expected).query(Boolean.class).single();
+        if (!hasSource) {
+            current = jdbc.sql("""
+                    SELECT jsonb_set(CAST(:state AS jsonb), '{housing_types}', COALESCE((
+                        SELECT jsonb_agg(housing_type - 'rental_condition_source' ORDER BY (housing_type->>'id')::bigint)
+                        FROM jsonb_array_elements(CAST(:state AS jsonb)->'housing_types') housing_type
+                    ), '[]'::jsonb))::text
+                    """).param("state", current).query(String.class).single();
+        }
         boolean hasPrices = jdbc.sql("""
                 SELECT COALESCE(jsonb_exists(CAST(:state AS jsonb)->'housing_types'->0, 'basic_deposit'), false)
                 """).param("state", expected).query(Boolean.class).single();

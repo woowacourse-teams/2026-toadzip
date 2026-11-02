@@ -15,6 +15,7 @@ public record HousingTypeDetailRow(
         Long basicDeposit,
         Long basicMonthlyRent,
         Instant rentalConditionCollectedAt,
+        String rentalConditionSource,
         String sourceHousingTypeIdentifier
 ) {
 }

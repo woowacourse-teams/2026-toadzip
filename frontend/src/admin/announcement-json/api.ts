@@ -7,9 +7,9 @@ export type ExtractedAnnouncement = { schemaVersion: string; source: JsonObject;
 export type JsonWorkspace = { snapshotToken: string; detail: ManagementDetailData; supply: SupplyWorkspace; events: { id: number; data: JsonObject; complexName: string | null }[] }
 export type Selection = { inputIndex: number; existingId: number | null }
 /** 공고문에서 읽은 공급행 주택형의 값. 저장하면 그 행이 고른 주택형에 반영한다. */
-export type HousingTypeValue = { rowKey: string; name: string | null; supplyArea: number | null; householdCount: number | null }
+export type HousingTypeValue = { rowKey: string; name: string | null; supplyArea: number | null; householdCount: number | null; basicDeposit?: number | null; basicMonthlyRent?: number | null }
 export type JsonUpdateInput = { snapshotToken: string; document: ExtractedAnnouncement; fields: string[]; schedules: Selection[]; attachments: Selection[]; correction: SupplyCorrectionInput; housingTypeValues?: HousingTypeValue[] }
-export type TypeValues = { name: string; supplyArea: number | null; householdCount: number | null }
+export type TypeValues = { name: string; supplyArea: number | null; householdCount: number | null; basicDeposit?: number | null; basicMonthlyRent?: number | null }
 /** housingTypeId가 null이면 이 저장에서 새로 만드는 주택형이다. */
 export type HousingTypeChange = { rowKey: string; housingTypeId: number | null; typeName: string; before: TypeValues | null; after: TypeValues }
 export type JsonChange = { field: string; before: unknown; after: unknown }

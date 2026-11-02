@@ -222,6 +222,30 @@ export function pathCovers(pattern: string, path: string) {
 }
 export function noteFor(notes: ExtractionNote[], path: string) { return notes.find(note => pathCovers(note.path, path)) ?? null }
 
+/**
+ * PDF에서 강조할 문구. 네 자리 이상 금액 칸(money)은 원·천원·만원 표기(쉼표 있음·없음) 중 인용문에 낱말로 있는 것을 쓴다.
+ * 인용문에 없으면(전환보증금 칸이 인용에 빠진 경우) PDF가 어느 단위로 적었는지 알 수 없어 원·천원·만원 표기를 함께 찾는다.
+ * 금액은 배열로 돌려줘 PDF에서도 낱말 단위로 찾게 한다(8,100이 18,100 안에서 맞지 않게).
+ * 그 밖의 값은 인용문에 그대로 있으면 그 값만, 없으면 인용문에서 고른 검색어를 강조한다.
+ */
+export function evidenceQuery(quote: string, value?: unknown, money = false): string | string[] {
+  const text = typeof value === 'string' || typeof value === 'number' ? String(value).trim() : ''
+  if (money && /^\d{4,}$/.test(text)) {
+    const amount = Number(text), forms = (unit: number) => amount % unit === 0 ? [(amount / unit).toLocaleString('en-US'), String(amount / unit)] : []
+    // 세 자리 이하로 줄어든 숫자(150)는 세대수 등으로 쪽 곳곳에 있어 '만'이 붙은 표기로만 찾는다.
+    const numbers = [1, 1000, 10000].flatMap(forms).filter(form => form.replace(/\D/g, '').length >= 4)
+    // 표 칸에는 (+)·(-)·원이 붙기도 해서 떼고 낱말 단위로 비교한다. 8,100이 8,100,000 안에서 맞지 않게 한다.
+    const words = quote.split(/\s+/).map(word => word.replace(/^[(+\-)]+|[원)]+$/g, ''))
+    const found = [...numbers, ...forms(10000).map(form => `${form}만`)].find(form => words.includes(form))
+    // PDF 글자에서 '150만원'의 '만' 뒤는 낱말 경계가 아니어서 '만원' 표기도 함께 찾는다.
+    if (found) return found.endsWith('만') ? [`${found}원`, found] : [found]
+    const alternatives = [...new Set([1, 1000, 10000].flatMap(unit => forms(unit).slice(0, 1)))].filter(form => form.replace(/\D/g, '').length >= 4)
+    return forms(10000).length ? [...alternatives, `${forms(10000)[0]}만원`] : alternatives
+  }
+  // 세 자리 이하 숫자(세대수 등)는 쪽 곳곳에 있어 값만 강조하면 엉뚱한 곳이 강조된다.
+  return text && !/^\d+$/.test(text) && quote.includes(text) ? text : searchText(quote)
+}
+
 /** 같은 경로 → 가까운 상위 경로 → 첫 하위 경로 순으로 근거를 찾는다. */
 export function evidenceFor(evidence: Evidence[], path: string): Evidence | null {
   const exact = evidence.find(item => item.path === path)

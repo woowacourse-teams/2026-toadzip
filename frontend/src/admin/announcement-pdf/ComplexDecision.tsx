@@ -6,10 +6,9 @@ import { getManagementDetail } from '../management/api'
 import { isRecord } from '../management/managementContract'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
 import { createRowReview, editCell, preserveCellChoice, type Review, type RowReview } from './review'
-import { missingHousingType, pickHousingType } from './matching'
+import { chooseRow, missingHousingType, pickHousingType, sameComplex, typeKey } from './matching'
 import { NewComplexRegistration, type MyHomeComplexOverview } from './NewComplexRegistration'
 import { alignSourceRows, emptySourceRows } from './sourceAlignment'
-import { sameComplex } from './matching'
 import { createPdfHousingTypes } from './pdfHousingTypes'
 import type { ExtractedRow } from './extraction'
 import styles from './PdfCorrection.module.css'
@@ -56,7 +55,7 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
   const selected = review.rows[indexes[0]].proposal.newComplex
   const decided = indexes.every(index => review.rows[index].proposal.newComplex?.id === selected?.id) ? selected : undefined
   const types = indexes.map(index => review.extraction.supplyRows[index].typeName ?? `공급행 ${index + 1}`).join(' · ')
-  const sources = emptySourceRows(workspace, name)
+  const sources = emptySourceRows(workspace, review.extraction, name)
   const unmatched = decided ? sources.filter(source => !review.rows.some(row => row.proposal.destination === source.key)) : []
   const missingTypes = decided ? indexes.filter(index => review.rows[index].newHousingType).map(index => review.extraction.supplyRows[index]) : []
   async function choose(id: number, complexName: string, created: boolean, createTypes: ExtractedRow[] = []) {
@@ -73,9 +72,24 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
       const aligned = alignSourceRows(review, workspace, name, { id, name: complexName }, candidates)
       if (aligned) { onChange(aligned); setRegistering(false); return }
       const pnu = isRecord(detail.data.address) && typeof detail.data.address.pnu === 'string' ? detail.data.address.pnu : ''
+      // 고른 단지에 이미 연결된 공급행이 있으면 새 행을 만들지 않고 그 행을 추천한다. 다른 PDF 행이 저장할 위치로 고른 행은 빼고 고른다.
+      const linked = workspace.supply.rows.filter(item => !item.excluded && item.housingComplexId === id)
+      const used = new Set(review.rows.filter((_, index) => !indexes.includes(index)).map(row => row.proposal.destination))
       const rows = review.rows.map((old, index) => {
         if (!indexes.includes(index)) return old
         const source = review.extraction.supplyRows[index], picked = pickHousingType(review.extraction, index, candidates)
+        if (linked.length) {
+          const { chosen, recommended, destination } = chooseRow(source, linked, used, picked.housingTypeId, false)
+          if (chosen) used.add(chosen.key)
+          const housingTypeId = picked.housingTypeId ?? chosen?.housingTypeId ?? null
+          const next = createRowReview(review.extraction, index, { ...old.proposal, destination,
+            anchorKey: chosen?.key ?? linked[0].key, newComplex: undefined, complexId: id, candidates, recommended, housingTypeId,
+            reason: `${complexName}에 이미 연결된 공급정보 중에서 추천했습니다. · ${picked.reason}`,
+            needsConfirmation: !chosen || typeKey(chosen.typeName) !== typeKey(source.typeName) || housingTypeId === null }, workspace)
+          const oldCells = [...old.cells, ...old.targets.flatMap(target => target.cells)]
+          const retain = (cell: RowReview['cells'][number]) => cell.field === 'housingTypeId' ? cell : preserveCellChoice(cell, oldCells.find(item => item.path === cell.path))
+          return { ...next, include: old.include, reviewed: false, cells: next.cells.map(retain), targets: next.targets.map(target => ({ ...target, cells: target.cells.map(retain) })) }
+        }
         const next = createRowReview(review.extraction, index, { ...old.proposal, complexId: id, candidates, housingTypeId: picked.housingTypeId, reason: picked.reason,
           newComplex: { id, name: complexName, pnu, category: created ? 'NEW_SUPPLY' : old.proposal.newComplex?.category ?? 'RESUPPLY' } }, workspace)
         const oldCells = [...old.cells, ...old.targets.flatMap(target => target.cells)]

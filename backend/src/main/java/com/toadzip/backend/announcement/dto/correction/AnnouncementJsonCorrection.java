@@ -37,8 +37,19 @@ public final class AnnouncementJsonCorrection {
     public record HousingTypeValue(@NotBlank @Size(max = 64) String rowKey,
             @Size(max = 255) String name,
             @PositiveOrZero @Digits(integer = 6, fraction = 4) BigDecimal supplyArea,
-            @PositiveOrZero Integer householdCount) { }
-    public record TypeValues(String name, BigDecimal supplyArea, Integer householdCount) { }
+            @PositiveOrZero Integer householdCount,
+            @PositiveOrZero Long basicDeposit,
+            @PositiveOrZero Long basicMonthlyRent) {
+        public HousingTypeValue(String rowKey, String name, BigDecimal supplyArea, Integer householdCount) {
+            this(rowKey, name, supplyArea, householdCount, null, null);
+        }
+    }
+    public record TypeValues(String name, BigDecimal supplyArea, Integer householdCount, Long basicDeposit,
+            Long basicMonthlyRent) {
+        public TypeValues(String name, BigDecimal supplyArea, Integer householdCount) {
+            this(name, supplyArea, householdCount, null, null);
+        }
+    }
     /** 저장하면 바뀌는 주택형 값. housingTypeId가 없으면 이 저장에서 새로 만드는 주택형이다. */
     public record HousingTypeChange(String rowKey, Long housingTypeId, String typeName, TypeValues before,
             TypeValues after) { }

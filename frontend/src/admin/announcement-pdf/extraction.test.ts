@@ -6,9 +6,38 @@ import { describe, expect, it } from 'vitest'
 import fixtures from './fixtures/scenarios.json'
 // 백엔드가 모델에 보내는 프롬프트의 응답 예제를 이 화면이 그대로 읽는지 확인한다.
 const prompt = readFileSync(resolve(process.cwd(), '../backend/src/main/resources/announcement/pdf-extraction-prompt.txt'), 'utf8')
-import { evidenceFor, noteFor, pathCovers, readExtraction, type Extraction } from './extraction'
+import { evidenceFor, evidenceQuery, noteFor, pathCovers, readExtraction, searchText, type Extraction } from './extraction'
 
 describe('AI 추출 응답 읽기', () => {
+  it('PDF에서 강조할 문구는 금액 칸이면 그 금액 표기를 낱말 단위로, 글자면 인용문에 있는 값을 고른다', () => {
+    const quote = '2,395,000 119,750 2,275,250 47,630'
+    // 금액은 배열로 돌려줘 PDF에서도 낱말 단위로 찾는다.
+    expect(evidenceQuery(quote, '2395000', true)).toEqual(['2,395,000'])
+    expect(evidenceQuery(quote, '47630', true)).toEqual(['47,630'])
+    expect(evidenceQuery('연락처 055-954-9818', '055-954-9818')).toBe('055-954-9818')
+    // 금액이 인용문에 없으면(전환보증금 칸이 인용에 빠진 경우) PDF 단위를 알 수 없어 원·천원·만원 표기를 함께 찾는다.
+    // 공고 187은 전환보증금을 천원 단위 '(+) 4,000'으로만 적어 원 단위만 찾으면 강조되지 않았다.
+    expect(evidenceQuery('대학생 180 12,920 646 12,274 80,750', '4000000', true)).toEqual(['4,000,000', '4,000', '400만원'])
+    expect(evidenceQuery(quote, '16000000', true)).toEqual(['16,000,000', '16,000', '1,600', '1,600만원'])
+    expect(evidenceQuery('보증금 2395000원', '2395000', true)).toEqual(['2395000'])
+    // 공고문이 천원·만원 단위로 적으면 그 표기로 찾는다. 원 단위 표기가 다른 금액 안에 겹쳐 있어도 낱말로만 맞춘다.
+    expect(evidenceQuery('8,100 405 7,695 156', '8100000', true)).toEqual(['8,100'])
+    expect(evidenceQuery('(+)1,500 (-)300', '15000000', true)).toEqual(['1,500'])
+    expect(evidenceQuery('81,000,000 8,100', '8100000', true)).toEqual(['8,100'])
+    // '150만원'의 '만' 뒤는 PDF 낱말 경계가 아니라 '만원' 표기도 함께 찾는다.
+    expect(evidenceQuery('보증금 810만원 임대료 15.6만원', '8100000', true)).toEqual(['810만원', '810만'])
+    // 세 자리 이하로 줄어든 숫자는 세대수 등과 겹쳐 그대로 찾지 않고 '만원'이 붙은 표기로만 찾는다(대학생 150명, 청년 20세대).
+    expect(evidenceQuery('보증금 810 월 15', '8100000', true)).toEqual(['8,100,000', '8,100', '810만원'])
+    expect(evidenceQuery('대학생 150 12,920 646', '1500000', true)).toEqual(['1,500,000', '1,500', '150만원'])
+    expect(evidenceQuery('청년 20 1 3,000 120', '20000', true)).toEqual(['20,000', '2만원'])
+    // 금액 칸이 아닌 숫자(세대수 1200)는 단위를 바꿔 찾지 않고 인용문에서 고른 검색어로 강조한다.
+    expect(evidenceQuery('일반 1200 3,000', 1200)).toBe(searchText('일반 1200 3,000'))
+    // 글자 값이 인용문에 없거나 짧은 숫자면 인용문에서 고른 검색어로 강조한다. 짧은 숫자는 쪽 곳곳에 있어 엉뚱한 곳을 강조한다.
+    expect(evidenceQuery(quote, '공공임대')).toBe(searchText(quote))
+    expect(searchText(quote)).toBe('2,395,000')
+    expect(evidenceQuery('26A 16 26.70 17.6211', 16)).toBe('17.6211')
+    expect(evidenceQuery(quote)).toBe('2,395,000')
+  })
   it('단지 개요는 이름이 있는 항목만 읽고, 없는 응답(v4)도 그대로 읽는다', () => {
     const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: Record<string, unknown> }
     input.data.complexes = [{ sourceComplexName: ' 인천부평 ', address: '인천광역시 부평구 부평동 65-17', totalHouseholdCount: 350, parkingCount: '112대' }, { address: '이름 없음' }]

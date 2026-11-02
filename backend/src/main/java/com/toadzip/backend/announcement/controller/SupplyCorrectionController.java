@@ -48,6 +48,15 @@ public class SupplyCorrectionController {
         return new ApiResponse<>(service.preview(id, request));
     }
 
+    /** 공고 단지 하나의 연결 단지를 관리자가 바꾼다. 그 공고 단지의 공급행도 새 단지로 옮긴다. */
+    @PostMapping("/announcement-complexes/{announcementComplexId}/link")
+    public ApiResponse<SupplyCorrection.Workspace> linkAnnouncementComplex(@PathVariable long id, @PathVariable long announcementComplexId,
+            @Valid @RequestBody SupplyCorrection.ComplexLinkRequest request, Principal principal) {
+        try (var lease = ownership.acquire()) {
+            return new ApiResponse<>(service.linkAnnouncementComplex(id, announcementComplexId, request, principal.getName()));
+        }
+    }
+
     @PostMapping
     public ApiResponse<SupplyCorrection.Applied> apply(@PathVariable long id,
             @Valid @RequestBody SupplyCorrection.Apply request, Principal principal) {

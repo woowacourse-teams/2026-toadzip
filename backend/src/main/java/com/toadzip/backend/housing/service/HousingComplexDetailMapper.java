@@ -162,9 +162,11 @@ public class HousingComplexDetailMapper {
         if (row.rentalConditionCollectedAt() == null) {
             return null;
         }
+        // PDF 보정이 공고 값으로 바꾼 조건은 출처가 공고문이고 날짜는 공고 게시일이다. 마이홈 링크는 마이홈 조건에만 둔다.
+        boolean announcement = "ANNOUNCEMENT".equals(row.rentalConditionSource());
         return new BasicRentalConditionResponse(
-                row.basicDeposit(), row.basicMonthlyRent(), "MYHOME",
-                MyHomeRentalHouseUrl.fromSourceIdentifier(row.sourceHousingTypeIdentifier()),
+                row.basicDeposit(), row.basicMonthlyRent(), announcement ? "ANNOUNCEMENT" : "MYHOME",
+                announcement ? null : MyHomeRentalHouseUrl.fromSourceIdentifier(row.sourceHousingTypeIdentifier()),
                 row.rentalConditionCollectedAt());
     }
 

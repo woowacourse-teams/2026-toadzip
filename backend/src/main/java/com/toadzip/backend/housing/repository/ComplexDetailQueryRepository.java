@@ -60,6 +60,7 @@ public class ComplexDetailQueryRepository {
                    housing_type.basic_deposit,
                    housing_type.basic_monthly_rent,
                    housing_type.rental_condition_collected_at,
+                   housing_type.rental_condition_source,
                    housing_type.source_housing_type_identifier
             FROM housing_types housing_type
             WHERE housing_type.housing_complex_id = :complexId AND housing_type.admin_deleted = false
@@ -246,6 +247,7 @@ public class ComplexDetailQueryRepository {
                 resultSet.getObject("basic_deposit", Long.class),
                 resultSet.getObject("basic_monthly_rent", Long.class),
                 readInstant(resultSet, "rental_condition_collected_at"),
+                resultSet.getString("rental_condition_source"),
                 resultSet.getString("source_housing_type_identifier")
         );
     }

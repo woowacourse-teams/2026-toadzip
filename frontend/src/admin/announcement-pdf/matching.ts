@@ -1,7 +1,7 @@
 import { isRecord } from '../management/managementContract'
 import type { JsonObject, JsonWorkspace } from '../announcement-json/api'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
-import type { CorrectionRow } from '../supply/supplyCorrectionApi'
+import type { AnnouncementComplex, CorrectionRow } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, text, type Extraction } from './extraction'
 
 export type HousingCandidates = Record<number, MatchingHousingType[]>
@@ -13,6 +13,8 @@ export type RowProposal = {
   complexId: number | null
   housingTypeId: number | null
   candidates: MatchingHousingType[]
+  /** 저장할 위치로 보여 줄 기존 공급행. 같은 단지에서 주택형 표기·전용면적이 맞는 행이다. */
+  recommended: string[]
   reason: string
   needsConfirmation: boolean
   sharedIndex: number | null
@@ -44,6 +46,11 @@ function sameTitle(pdf: unknown, current: unknown) {
   const within = (small: Set<string>, large: Set<string>) => [...small].every(word => [...large].some(other => sameTitleWord(word, other)))
   return within(pdfWords, currentWords) || within(currentWords, pdfWords)
 }
+/** 정정공고 PDF에 적힌 앞선 공고일은 원공고 공고일일 수 있어 다른 공고의 PDF라고 판단하지 않는다. */
+export function originalDate(pdfDate: string, current: JsonObject) {
+  const currentDate = text(current.postedDate)
+  return /정정/.test(text(current.name) ?? '') && !!currentDate && pdfDate.slice(0, 10) < currentDate.slice(0, 10)
+}
 export type AnnouncementCheck = { label: '공고명' | '공고일'; pdf: string | null; current: string | null; matches: boolean | null }
 /** 붙여넣은 응답이 지금 공고의 PDF에서 나온 것인지 공고명·공고일로 확인한다. 어느 한쪽 값이 없으면 판단하지 않는다. */
 export function checkAnnouncement(extraction: Extraction, current: JsonObject): AnnouncementCheck[] {
@@ -51,12 +58,38 @@ export function checkAnnouncement(extraction: Extraction, current: JsonObject): 
   const pdfDate = text(extraction.announcement.postedDate), currentDate = text(current.postedDate)
   return [
     { label: '공고명', pdf: pdfName, current: currentName, matches: titleKey(pdfName) && titleKey(currentName) ? sameTitle(pdfName, currentName) : null },
-    { label: '공고일', pdf: pdfDate, current: currentDate, matches: pdfDate && currentDate ? pdfDate.slice(0, 10) === currentDate.slice(0, 10) : null },
+    { label: '공고일', pdf: pdfDate, current: currentDate, matches: !pdfDate || !currentDate || originalDate(pdfDate, current) ? null : pdfDate.slice(0, 10) === currentDate.slice(0, 10) },
   ]
 }
 export function sameComplex(left: unknown, right: unknown) {
   const a = normalizedName(left), b = normalizedName(right)
   return !!a && !!b && (a.includes(b) || b.includes(a))
+}
+/** 주택형 표기 비교용. 숫자 앞뒤의 0만 다른 표기(공고문 074.9900A ↔ LH 74.9900A)는 같다. */
+export function typeKey(value: unknown) {
+  return normalizedName(value).replace(/\d+(?:\.\d+)?/g, number => String(Number(number)))
+}
+/** 블록 번호(A40BL·A-40·A40블록·(2)A48 → a40). 블록 표기가 없거나 서로 다른 블록이 섞이면 null. */
+export function blockKey(value: unknown) {
+  const matches = (text(value) ?? '').normalize('NFKC').toLowerCase().matchAll(/(?<![a-z])([a-z])-?(\d{1,3})(?=bl|블록|블럭|[^a-z0-9]|$)/g)
+  const keys = new Set([...matches].map(match => match[1] + String(Number(match[2]))))
+  return keys.size === 1 ? [...keys][0] : null
+}
+const addressKey = (value: unknown) => (text(value) ?? '').normalize('NFKC').replace(/\s+/g, '')
+/**
+ * PDF 단지명이 가리키는 원천 단지명(공고 단지 이름). 이름이 포함 관계면 그 이름들이다.
+ * 이름으로 찾지 못하면 공고문 블록 번호(동탄2 A40BL ↔ 화성동탄2A-40(공임리츠) A-40)와 공고문 단지 주소 ↔ 공고 단지 주소로 찾는다.
+ * 둘 다 있으면 둘이 함께 가리키는 공고 단지여야 하고, 후보가 하나일 때만 정한다.
+ * certain은 이름이나 블록 번호·주소가 함께 맞았는지다. 한쪽만 맞았으면 화면에서 대응을 확인하게 한다.
+ */
+export function sourceComplexNames(extraction: Extraction, pdfName: string | null, names: string[], complexes: Pick<AnnouncementComplex, 'name' | 'roadAddress'>[] = []) {
+  const byName = names.filter(name => sameComplex(pdfName, name))
+  if (byName.length) return { names: byName, certain: true }
+  const block = blockKey(pdfName), address = addressKey(extraction.complexes.find(item => item.name === pdfName)?.address)
+  const byBlock = block ? names.filter(name => blockKey(name) === block) : []
+  const byAddress = address ? names.filter(name => addressKey(complexes.find(item => item.name === name)?.roadAddress) === address) : []
+  const matched = byBlock.length && byAddress.length ? byBlock.filter(name => byAddress.includes(name)) : byBlock.length ? byBlock : byAddress
+  return matched.length === 1 ? { names: matched, certain: byBlock.length > 0 && byAddress.length > 0 } : { names: [], certain: false }
 }
 function equalArea(left: unknown, right: unknown) {
   return typeof left === 'number' && typeof right === 'number' && Math.abs(left - right) < 0.00005
@@ -80,7 +113,7 @@ export function pickHousingType(extraction: Extraction, index: number, allTypes:
     if (byArea.length) { candidates = byArea; reason += ' · 공급면적 일치' }
   }
   if (candidates.length > 1) {
-    const byName = candidates.filter(type => normalizedName(type.name) === normalizedName(row.typeName))
+    const byName = candidates.filter(type => typeKey(type.name) === typeKey(row.typeName))
     if (byName.length) candidates = byName
   }
   const housingTypeId = candidates.length === 1 ? candidates[0].id : null
@@ -107,35 +140,52 @@ function sameRecruitment(row: Extraction['supplyRows'][number], current: Correct
   return matched.length === 1 ? matched : []
 }
 
-export function proposeRows(extraction: Extraction, all: CorrectionRow[], housing: HousingCandidates): RowProposal[] {
+/**
+ * 같은 단지의 기존 공급행 중 이 PDF 행을 저장할 행. 주택형 표기 → 전용면적(또는 연결 주택형) → 남은 행 하나 순서로 하나를 고르고,
+ * 하나로 좁히지 못하면 전용면적이 맞는 행들을 추천으로 돌려준다. 다른 PDF 행이 이미 고른 행(used)은 고르지 않는다.
+ * 저장할 위치 기본값은 고른 행, 추천이 여럿이면 미선택, 추천이 없으면 새 공급정보로 추가다.
+ * lastRow가 false면 표기·면적이 맞지 않는 남은 행 하나를 고르지 않고, 남은 행 모두를 추천해 운영자가 고르게 한다(단지 정하기에서 고른 단지의 행).
+ */
+export function chooseRow(row: Extraction['supplyRows'][number], related: CorrectionRow[], used: Set<string>, housingTypeId: number | null, lastRow = true) {
+  const available = related.filter(item => !used.has(item.key))
+  const byName = available.filter(item => typeKey(item.typeName) === typeKey(row.typeName))
+  const byArea = available.filter(item => equalArea(item.exclusiveArea, row.values.exclusiveArea)
+    || housingTypeId !== null && item.housingTypeId === housingTypeId)
+  const chosen = byName.length === 1 ? byName[0] : byArea.length === 1 ? byArea[0] : lastRow && available.length === 1 ? available[0] : undefined
+  const recommended = (chosen ? [chosen] : byArea.length || lastRow ? byArea : available).map(item => item.key)
+  return { chosen, recommended, destination: chosen?.key ?? (recommended.length ? '' : 'new') }
+}
+
+export function proposeRows(extraction: Extraction, all: CorrectionRow[], housing: HousingCandidates, complexes: Pick<AnnouncementComplex, 'name' | 'roadAddress'>[] = []): RowProposal[] {
   const used = new Set<string>()
-  // 단지가 연결되지 않은 기존 행은 단지를 정한 뒤 LH 원천행 맞추기(sourceAlignment)에서 연결·분할한다. 관리자가 직접 고를 수는 있다.
-  const current = all.filter(item => !emptyRow(item))
+  // 단지가 연결되지 않은 기존 행은 단지를 정한 뒤 LH 원천행 맞추기(sourceAlignment)에서 연결·분할한다.
+  const current = all.filter(item => !emptyRow(item) && !item.excluded)
+  const names = [...new Set(all.filter(item => !item.excluded).map(item => item.complexName))]
   return extraction.supplyRows.map((row, index) => {
-    const byComplexName = current.filter(item => !item.excluded && (sameComplex(row.complexName, item.complexName)
-      || sameComplex(row.complexName, item.housingComplexName)))
-    const byRecruitment = byComplexName.length ? [] : sameRecruitment(row, current)
+    const named = current.filter(item => sameComplex(row.complexName, item.complexName) || sameComplex(row.complexName, item.housingComplexName))
+    const source = named.length ? { names: [], certain: true } : sourceComplexNames(extraction, row.complexName, names, complexes), sourceNames = source.names
+    const byComplexName = named.length ? named : current.filter(item => sourceNames.includes(item.complexName))
+    // 공고 단지는 찾았지만 아직 단지에 연결되지 않았으면 다른 단지의 행을 모집수로 고르지 않는다.
+    const byRecruitment = byComplexName.length || sourceNames.length ? [] : sameRecruitment(row, current)
     const related = byComplexName.length ? byComplexName : byRecruitment
     const complexIds = [...new Set(related.map(item => item.housingComplexId).filter(id => id !== null))]
     const complexId = complexIds.length === 1 ? complexIds[0] : null
     const allTypes = complexId === null ? [] : housing[complexId] ?? []
     const picked = pickHousingType(extraction, index, allTypes)
     const housingTypeId = picked.housingTypeId
-    const available = related.filter(item => !used.has(item.key))
-    const byName = available.filter(item => normalizedName(item.typeName) === normalizedName(row.typeName))
-    const byArea = available.filter(item => equalArea(item.exclusiveArea, row.values.exclusiveArea)
-      || housingTypeId !== null && item.housingTypeId === housingTypeId)
+    const { chosen, recommended, destination } = chooseRow(row, related, used, housingTypeId)
     const sharedIndex = extraction.sharedCounts.findIndex(group => group.paths.includes(`supplyRows[${index}].totalSupplyHouseholdCount`))
-    const chosen = byName.length === 1 ? byName[0] : byArea.length === 1 ? byArea[0] : available.length === 1 ? available[0] : undefined
     if (chosen) used.add(chosen.key)
     const anchor = chosen ?? (complexId === null ? undefined : related[0])
-    const destination = chosen?.key ?? (!current.length || anchor && available.length === 0 ? 'new' : '')
-    const changedName = !!chosen && normalizedName(chosen.typeName) !== normalizedName(row.typeName)
+    const changedName = !!chosen && typeKey(chosen.typeName) !== typeKey(row.typeName)
     const recruitmentNote = byRecruitment.length ? `단지명 표기가 달라 이번 모집수 ${String(row.values.totalSupplyHouseholdCount)}세대가 같은 기존 행을 제안했습니다. · ` : ''
+    const blockNote = !sourceNames.length ? '' : source.certain ? `공고 단지 '${sourceNames[0]}'에 대응했습니다. · `
+      : `공고 단지 '${sourceNames[0]}'에 블록 번호나 주소 한쪽만 맞아 대응했습니다. 같은 단지인지 확인하세요. · `
     return {
-      destination, anchorKey: anchor?.key ?? '', complexId, housingTypeId: housingTypeId ?? chosen?.housingTypeId ?? null, candidates: allTypes,
-      reason: complexId === null ? '단지를 하나로 특정하지 못했습니다.' : recruitmentNote + picked.reason,
-      needsConfirmation: !chosen || changedName || housingTypeId === null || byRecruitment.length > 0 || sharedIndex >= 0 && chosen.groupId === null,
+      destination, anchorKey: anchor?.key ?? '', complexId, housingTypeId: housingTypeId ?? chosen?.housingTypeId ?? null, candidates: allTypes, recommended,
+      reason: complexId === null ? sourceNames.length ? `공고 단지 '${sourceNames[0]}'가 아직 단지에 연결되지 않았습니다. 단지 정하기에서 정하세요.` : '단지를 하나로 특정하지 못했습니다.'
+        : blockNote + recruitmentNote + picked.reason,
+      needsConfirmation: !chosen || changedName || housingTypeId === null || byRecruitment.length > 0 || !source.certain || sharedIndex >= 0 && chosen.groupId === null,
       sharedIndex: sharedIndex < 0 ? null : sharedIndex,
     }
   })

@@ -11,6 +11,7 @@ import { rebaseCorrection, resolveConflict, type CorrectionConflict } from './re
 import { applySupply, blankRow, loadSupplyWorkspace, nextDisplayOrder, previewSupply, type CorrectionRow, type SupplyCorrectionInput, type NewSupplyGroup, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
 import { mergeInto, possibleLhDuplicates, unattachedLhNotice, unattachedLhRows } from './lhSupplyOwnership'
 import { SupplyMergePanel } from './SupplyMergePanel'
+import { AnnouncementComplexLinks } from './AnnouncementComplexLinks'
 import styles from './SupplyCorrection.module.css'
 
 // 다시 조회하면 풀리는 충돌만 '최신값 비교'로 안내한다. 일정 참조 같은 규칙 위반은 서버 문구를 그대로 보여 준다.
@@ -135,6 +136,8 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     </div></div>
     {notice && <p role="status">{notice}</p>}
     {lhLocked && <p role="note">{unattachedLhNotice(workspace)}</p>}
+    <AnnouncementComplexLinks id={id} workspace={workspace} disabled={rowsDirty || busy || uncertain} onBusyChange={setBusy}
+      onLinked={(next, message) => { setWorkspace(next); setRows(next.rows); setPreview(null); setNotice(message); onChanged() }} />
     <form onSubmit={event => { event.preventDefault(); void inspect() }}>
       <fieldset disabled={busy || uncertain} className={styles.editor}><legend className={styles.srOnly}>공고별 공급정보 편집</legend>
         <div className={styles.tableScroll}><table aria-label="공급정보 표"><thead><tr><th scope="col">단지</th><th scope="col">주택형</th><th scope="col">모집수</th><th scope="col">임대조건</th><th scope="col">확인할 항목</th><th scope="col">편집</th></tr></thead><tbody>

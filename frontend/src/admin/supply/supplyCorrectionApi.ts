@@ -22,7 +22,13 @@ export type LhSupplyRow = { rowIdentifier: string; complexLabel: string | null; 
  * deletableRowKeys: 지울 수 있는 행(원천 없이 관리자가 추가한 행). 원천행은 제외만 할 수 있다.
  * unattachedLhSupplyRows: LH 원천 소유 공고에서 아직 공급행이 되지 않은 LH 공급 원본 행. 있으면 서버가 새 공급행 추가를 거절한다.
  */
-export type SupplyWorkspace = { snapshotToken: string; version: number; rows: CorrectionRow[]; sources: CorrectionSource[]; sourceWarnings?: string[]; rowSources?: RowSource[]; deletableRowKeys?: string[]; unattachedLhSupplyRows?: LhSupplyRow[] }
+/**
+ * 공고 단지. 공급행의 complexName이 이 name이며, PDF 단지를 주소로 대응할 때 쓴다.
+ * linkMethod는 연결 방법(AUTO 주소 규칙·ADMIN 관리자·MIGRATED 기존 공급행 이관), 연결이 없으면 null이다. rowCount는 제외하지 않은 공급행 수다.
+ */
+export type ComplexLinkMethod = 'AUTO' | 'ADMIN' | 'MIGRATED'
+export type AnnouncementComplex = { id: number; name: string; roadAddress: string | null; housingComplexId: number | null; housingComplexName: string | null; linkMethod: ComplexLinkMethod | null; rowCount: number }
+export type SupplyWorkspace = { snapshotToken: string; version: number; rows: CorrectionRow[]; sources: CorrectionSource[]; sourceWarnings?: string[]; rowSources?: RowSource[]; deletableRowKeys?: string[]; unattachedLhSupplyRows?: LhSupplyRow[]; announcementComplexes?: AnnouncementComplex[] }
 export type NewSupplyGroup = { sourceRowId: number; rowKeys: string[]; sharedHouseholdCount: number }
 export type SupplyCorrectionInput = { operationId: string; snapshotToken: string; reason: string; sourceUrl: string; sourcePage: string | null; rows: CorrectionRow[]; newGroups?: NewSupplyGroup[]; deletedRowKeys?: string[] }
 export type SupplyPreview = { confirmationToken: string; before: CorrectionRow[]; after: CorrectionRow[]; warnings: string[]; newGroups?: NewSupplyGroup[] }
@@ -70,12 +76,19 @@ export function parseSupplyWorkspace(value: unknown): SupplyWorkspace {
     && typeof item.rowKey === 'string' && typeof item.category === 'string' && typeof item.sourceKey === 'string'))) invalid()
   if (value.deletableRowKeys !== undefined && (!Array.isArray(value.deletableRowKeys) || !value.deletableRowKeys.every(item => typeof item === 'string'))) invalid()
   if (value.unattachedLhSupplyRows !== undefined && (!Array.isArray(value.unattachedLhSupplyRows) || !value.unattachedLhSupplyRows.every(item => isRecord(item) && typeof item.rowIdentifier === 'string'))) invalid()
-  return { sourceWarnings: (value.sourceWarnings ?? []) as string[], rowSources: (value.rowSources ?? []) as RowSource[], deletableRowKeys: (value.deletableRowKeys ?? []) as string[], unattachedLhSupplyRows: (value.unattachedLhSupplyRows ?? []) as LhSupplyRow[], snapshotToken: value.snapshotToken,
+  if (value.announcementComplexes !== undefined && (!Array.isArray(value.announcementComplexes) || !value.announcementComplexes.every(item => isRecord(item)
+    && count(item.id) && item.id > 0 && typeof item.name === 'string' && nullableText(item.roadAddress) && nullableId(item.housingComplexId)
+    && nullableText(item.housingComplexName) && [null, 'AUTO', 'ADMIN', 'MIGRATED'].includes(item.linkMethod as string | null) && count(item.rowCount)))) invalid()
+  return { announcementComplexes: (value.announcementComplexes ?? []) as AnnouncementComplex[], sourceWarnings: (value.sourceWarnings ?? []) as string[], rowSources: (value.rowSources ?? []) as RowSource[], deletableRowKeys: (value.deletableRowKeys ?? []) as string[], unattachedLhSupplyRows: (value.unattachedLhSupplyRows ?? []) as LhSupplyRow[], snapshotToken: value.snapshotToken,
     version: value.version, rows: value.rows.map(row), sources: value.sources as CorrectionSource[] }
 }
 const path = (id: string) => `/api/admin/announcements/${encodeURIComponent(id)}/supply-corrections`
 export async function loadSupplyWorkspace(id: string, signal?: AbortSignal): Promise<SupplyWorkspace> {
   return parseSupplyWorkspace(await requestManagementApi(path(id), 'GET', undefined, signal))
+}
+/** 공고 단지 하나를 관리자가 정한 단지에 연결하고 그 공고 단지의 공급행도 옮긴다. 화면이 본 뒤 공급정보가 바뀌었으면 409(ADMIN_DATA_STALE)다. */
+export async function linkAnnouncementComplex(id: string, announcementComplexId: number, input: { snapshotToken: string; housingComplexId: number }): Promise<SupplyWorkspace> {
+  return parseSupplyWorkspace(await requestManagementApi(`${path(id)}/announcement-complexes/${announcementComplexId}/link`, 'POST', input))
 }
 export async function previewSupply(id: string, input: SupplyCorrectionInput): Promise<SupplyPreview> {
   return parseSupplyPreview(await requestManagementApi(`${path(id)}/preview`, 'POST', input))

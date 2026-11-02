@@ -7,7 +7,6 @@ import com.toadzip.backend.admin.quality.domain.QualityResource;
 import com.toadzip.backend.admin.quality.service.QualityComparisonService;
 import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
 import com.toadzip.backend.announcement.domain.Announcement;
-import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.SupplyCorrectionRecord;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
@@ -36,7 +35,6 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -47,7 +45,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -79,7 +76,7 @@ public class SupplyCorrectionService {
     private final LhCurrentSupplies lhSupplies;
     private final CorrectedSupplyLinkService correctedLinks;
     private final ObjectMapper json;
-    private final Clock clock;
+    private final AnnouncementComplexAdminLinks adminLinks;
     private final AnnouncementComplexRepository announcementComplexRepository;
 
     public SupplyCorrection.Workspace workspace(long id) {
@@ -100,9 +97,11 @@ public class SupplyCorrectionService {
                 .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
                 .flatMap(row -> rowSources(row, comparison.sources()).stream()).toList();
         var deletable = stored.stream().filter(SupplyCorrectionService::deletable).map(row -> "row:" + row.getId()).sorted().toList();
-        var workspace = new SupplyCorrection.Workspace(hash(List.of(comparison.snapshotToken(), currentRows)),
+        // 공고 단지 연결은 공급행이 없는 공고 단지도 있어 토큰에 함께 넣는다. 화면이 본 뒤 연결이 바뀌면 연결 변경을 거절한다.
+        var announcementComplexes = announcementComplexes(announcement, stored);
+        var workspace = new SupplyCorrection.Workspace(hash(List.of(comparison.snapshotToken(), currentRows, announcementComplexes)),
                 announcement.getVersion(), currentRows, comparison.sources(), sourceStatus.missingWarnings(id), rowSources,
-                deletable, unattachedLhSupplyRows(announcement, stored));
+                deletable, unattachedLhSupplyRows(announcement, stored), announcementComplexes);
         var snapshot = new Snapshot(workspace, comparison, currentRows);
         if (log.isDebugEnabled()) {
             var parts = tokenParts(snapshot);
@@ -111,6 +110,32 @@ public class SupplyCorrectionService {
                     shortToken(workspace.snapshotToken()), parts.get(0), parts.get(1), parts.get(2), parts.get(3));
         }
         return snapshot;
+    }
+
+    private List<SupplyCorrection.AnnouncementComplexView> announcementComplexes(Announcement announcement, List<SupplyRow> stored) {
+        return announcementComplexRepository.findAllByAnnouncementOrderByIdAsc(announcement).stream().map(complex -> {
+            var linked = complex.linkedComplex();
+            int rowCount = (int) stored.stream().filter(row -> !row.isAdminExcluded() && row.getAnnouncementComplex() != null
+                    && row.getAnnouncementComplex().getId().equals(complex.getId())).count();
+            return new SupplyCorrection.AnnouncementComplexView(complex.getId(), complex.getSourceComplexName(), complex.getRoadAddress(),
+                    linked == null ? null : linked.getId(), complexName(linked), linked == null ? null : complex.getLinkMethod().name(), rowCount);
+        }).toList();
+    }
+
+    /**
+     * 공고 단지 하나의 연결 단지를 관리자가 바꾼다(ADMIN). 그 공고 단지의 공급행도 새 단지로 옮긴다(AnnouncementComplexAdminLinks.relink).
+     * 공급정보 소유는 바꾸지 않는다. LH 원천 소유 공고는 정제가 이 연결로 공급행을 다시 맞춘다. 화면이 본 뒤 공급정보나 연결이 바뀌었으면 거절한다.
+     */
+    @Transactional
+    public SupplyCorrection.Workspace linkAnnouncementComplex(long id, long announcementComplexId, SupplyCorrection.ComplexLinkRequest request,
+            String actor) {
+        var announcement = find(id);
+        if (!snapshot(id).workspace().snapshotToken().equals(request.snapshotToken())) {
+            throw new AdminDataStaleException("공급정보가 바뀌었습니다. 최신 값을 다시 불러온 뒤 연결하세요.");
+        }
+        adminLinks.relink(announcement, announcementComplexId, request.housingComplexId(), actor);
+        announcements.flush();
+        return workspace(id);
     }
 
     /**
@@ -181,7 +206,7 @@ public class SupplyCorrectionService {
         var groupPlans = groupCorrections.plan(announcement, planned, request.newGroups());
         checkNewTypes(planned);
         var warnings = new ArrayList<>(validateSchedulesAndCounts(id, planned, request.newGroups()));
-        warnings.addAll(linkWarnings(complexLinks(announcement, before.rows(), planned)));
+        warnings.addAll(adminLinks.warnings(adminLinks.plan(announcement, before.rows(), planned)));
         if (groupPlans.isEmpty() && same(before.rows(), planned)) {
             throw new IllegalArgumentException("변경한 공급정보가 없습니다.");
         }
@@ -277,9 +302,9 @@ public class SupplyCorrectionService {
             }
             written.put(row.key(), saved);
         }
-        var links = complexLinks(announcement, preview.before(), preview.after());
+        var links = adminLinks.plan(announcement, preview.before(), preview.after());
         groupCorrections.apply(announcement, groupPlans, written, request.correction(), actor);
-        linkAnnouncementComplexes(announcement, links, preview.after(), written, actor);
+        adminLinks.apply(announcement, links, preview.after(), written, actor);
         for (var key : request.correction().deletedRowKeys()) {
             var row = preview.before().stream().filter(item -> item.key().equals(key)).findFirst().map(item -> stored.get(item.id()))
                     .orElseThrow();
@@ -292,99 +317,6 @@ public class SupplyCorrectionService {
         announcement.recordAdminSupplyChange();
         announcements.flush();
         return written;
-    }
-
-    /** 이 저장이 관리자 연결로 정하는 공고 단지와 단지, 그 자리에서 같은 면적 주택형으로 맞출 단지 없는 행의 작업 키. */
-    private record ComplexLink(AnnouncementComplex target, HousingComplex complex, List<String> fillRowKeys) { }
-
-    /**
-     * 이번 요청에서 바꾼 기존 행이 속한 공고 단지만 정한다. 관리자가 손대지 않은 공고 단지의 연결은 그대로 둔다.
-     * 그 공고 단지에서 제외하지 않은 행이 고른 단지는 하나여야 한다. 맞출 행은 저장 전에도 요청에도 단지가 없는 행이라,
-     * 관리자가 이번에 단지를 비운 행은 다시 채우지 않는다.
-     */
-    private List<ComplexLink> complexLinks(Announcement announcement, List<Row> before, List<Row> planned) {
-        var stored = rows.findAllByAnnouncement(announcement).stream()
-                .collect(Collectors.toMap(SupplyRow::getId, Function.identity()));
-        var beforeById = before.stream().collect(Collectors.toMap(Row::id, Function.identity()));
-        Map<Long, AnnouncementComplex> touched = new TreeMap<>();
-        for (var row : planned) {
-            var saved = row.id() == null ? null : stored.get(row.id());
-            if (saved != null && saved.getAnnouncementComplex() != null && !same(beforeById.get(row.id()), row)) {
-                touched.put(saved.getAnnouncementComplex().getId(), saved.getAnnouncementComplex());
-            }
-        }
-        List<ComplexLink> result = new ArrayList<>();
-        touched.forEach((targetId, target) -> {
-            var members = planned.stream().filter(row -> row.id() != null && !row.excluded()
-                    && stored.get(row.id()).getAnnouncementComplex() != null
-                    && stored.get(row.id()).getAnnouncementComplex().getId().equals(targetId)).toList();
-            var chosen = members.stream().map(Row::housingComplexId).filter(Objects::nonNull).distinct().toList();
-            if (chosen.size() > 1) {
-                throw new IllegalArgumentException(target.getSourceComplexName() + ": 공고문의 한 단지에 속한 공급행은 같은 단지로 "
-                        + "연결하세요. 공통 모집 묶음 행의 단지는 원천별 공급행 보정에서 함께 바꾸세요.");
-            }
-            if (chosen.isEmpty()) { return; }
-            var fill = members.stream().filter(row -> row.housingComplexId() == null && row.groupId() == null
-                    && beforeById.get(row.id()).housingComplexId() == null).map(Row::key).toList();
-            result.add(new ComplexLink(target, complex(chosen.getFirst()), fill));
-        });
-        return result;
-    }
-
-    private List<String> linkWarnings(List<ComplexLink> links) {
-        return links.stream().map(link -> link.target().getSourceComplexName() + ": 공고 단지를 " + link.complex().getName()
-                + "에 관리자 연결합니다." + (link.fillRowKeys().isEmpty() ? ""
-                : " 단지가 없는 같은 단지 행 " + link.fillRowKeys().size() + "개도 이 단지에 연결하고, 같은 전용면적 주택형이 하나면 그 주택형으로 맞춥니다.")).toList();
-    }
-
-    /**
-     * 정한 단지를 공고 단지의 관리자 연결로 저장하고 그 자리에서 공급행에 반영한다. 정제를 기다리지 않는다.
-     * 단지 없는 행은 연결 단지에서 LH 대표 전용면적(없으면 공고 면적)과 같은 주택형(하나일 때)으로 맞추고,
-     * 새로 추가한 행은 공고에서 그 단지에 연결된 공고 단지가 하나일 때 그 공고 단지를 가리킨다. 연결 변경은 이력으로 남긴다.
-     */
-    private void linkAnnouncementComplexes(Announcement announcement, List<ComplexLink> links, List<Row> planned,
-            Map<String, SupplyRow> written, String actor) {
-        var now = clock.instant();
-        for (var link : links) {
-            var target = link.target();
-            String before = linkData(target);
-            if (target.linkByAdmin(link.complex(), actor, now)) {
-                changes.save(new AdminDataChange("ANNOUNCEMENT_COMPLEX", target.getId(), "LINK_BY_ADMIN", actor,
-                        before, linkData(target)));
-            }
-            for (var key : link.fillRowKeys()) {
-                var row = written.get(key);
-                BigDecimal area = row.getLhExclusiveArea() != null ? row.getLhExclusiveArea() : row.effectiveExclusiveArea();
-                row.relinkByAdminMatch(link.complex(), sameAreaType(link.complex(), area));
-            }
-        }
-        var announcementComplexes = announcementComplexRepository.findAllByAnnouncementOrderByIdAsc(announcement);
-        for (var row : planned) {
-            var saved = written.get(row.key());
-            if (row.id() != null || saved.getAnnouncementComplex() != null || saved.getHousingComplex() == null) { continue; }
-            var linked = announcementComplexes.stream().filter(target -> target.linkedComplex() != null
-                    && target.linkedComplex().getId().equals(saved.getHousingComplex().getId())).toList();
-            if (linked.size() == 1) { saved.fillAnnouncementComplex(linked.getFirst()); }
-        }
-    }
-
-    private String linkData(AnnouncementComplex target) {
-        var data = new LinkedHashMap<String, Object>();
-        data.put("announcementId", target.getAnnouncement().getId());
-        data.put("sourceComplexName", target.getSourceComplexName());
-        data.put("housingComplexId", target.getHousingComplex() == null ? null : target.getHousingComplex().getId());
-        data.put("linkMethod", target.getLinkMethod());
-        data.put("linkedBy", target.getLinkedBy());
-        data.put("linkedAt", target.getLinkedAt());
-        return json.writeValueAsString(data);
-    }
-
-    private HousingType sameAreaType(HousingComplex complex, BigDecimal exclusiveArea) {
-        if (exclusiveArea == null) { return null; }
-        var matches = types.findAllByHousingComplex(complex).stream()
-                .filter(type -> type.getExclusiveArea() != null && type.getExclusiveArea().compareTo(exclusiveArea) == 0)
-                .toList();
-        return matches.size() == 1 ? matches.getFirst() : null;
     }
 
     /** 기존 행 중 주택형 연결이 바뀐 행. 연결은 정제의 저장 매칭이 소유하므로 원천행 식별자로 넘긴다. */

@@ -591,7 +591,9 @@ function HousingTypePanel({
 
 function BasicRentalCondition({ condition }: { condition: ComplexBasicRentalCondition | null }) {
   const sourceUrl = toHttpUrl(condition?.sourceUrl ?? null)
-  const sourceLabel = condition?.source === 'MYHOME' ? '마이홈' : condition?.source
+  // PDF 보정이 공고 값으로 바꾼 조건은 출처가 공고문이고 날짜는 공고일이다.
+  const announcement = condition?.source === 'ANNOUNCEMENT'
+  const sourceLabel = condition?.source === 'MYHOME' ? '마이홈' : announcement ? '공고문' : condition?.source
   const collectedAt = condition?.collectedAt ?? null
   const collectedDateLabel = formatRentalConditionCollectedDate(collectedAt)
 
@@ -608,7 +610,7 @@ function BasicRentalCondition({ condition }: { condition: ComplexBasicRentalCond
             ? <a href={sourceUrl} target="_blank" rel="noopener noreferrer">{sourceLabel}</a>
             : <span>{sourceLabel}</span>}</>}
           {sourceLabel && collectedDateLabel && ' · '}
-          {collectedDateLabel && <>수집일: <time dateTime={collectedAt ?? undefined}>{collectedDateLabel}</time></>}
+          {collectedDateLabel && <>{announcement ? '공고일' : '수집일'}: <time dateTime={collectedAt ?? undefined}>{collectedDateLabel}</time></>}
         </p>
       )}
     </>

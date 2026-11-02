@@ -74,6 +74,33 @@ class HousingTypeTest {
     }
 
     @Test
+    void 공고의_기본_임대조건은_공고일과_공고문_출처로_갱신하고_더_이른_공고나_빈_값은_지금_값을_둔다() {
+        HousingType type = HousingType.createFromMyHome(
+                createHousingComplex(), "source-type", "24", new BigDecimal("24.72"), null);
+        Instant myhome = Instant.parse("2026-10-20T00:00:00Z");
+        type.updateBasicRentalCondition(new MyHomeRentalCondition(7_900_000L, 150_000L, myhome));
+        assertEquals("MYHOME", type.getRentalConditionSource());
+
+        assertTrue(type.observeAnnouncement(new AnnouncementValues(null, null, null, 8_100_000L, 156_230L), POSTED));
+        assertAll(
+                () -> assertEquals(new MyHomeRentalCondition(8_100_000L, 156_230L, POSTED), type.getBasicRentalCondition()),
+                () -> assertEquals("ANNOUNCEMENT", type.getRentalConditionSource())
+        );
+        // 금액을 보내지 않은 공고와 더 이른 공고는 지금 값을 바꾸지 않는다.
+        assertFalse(type.observeAnnouncement(new AnnouncementValues("24", null, null), POSTED.plusSeconds(86_400)));
+        assertFalse(type.observeAnnouncement(new AnnouncementValues(null, null, null, 1L, 1L), POSTED.minusSeconds(86_400)));
+        assertEquals(8_100_000L, type.getBasicRentalCondition().deposit());
+        assertThrows(IllegalArgumentException.class,
+                () -> type.observeAnnouncement(new AnnouncementValues(null, null, null, -1L, 0L), POSTED.plusSeconds(172_800)));
+        // 마이홈 단지 정제가 다시 돌아도 공고 값으로 바꾼 조건은 덮지 않는다.
+        assertFalse(type.updateBasicRentalCondition(new MyHomeRentalCondition(7_900_000L, 150_000L, myhome.plusSeconds(60))));
+        assertAll(
+                () -> assertEquals(8_100_000L, type.getBasicRentalCondition().deposit()),
+                () -> assertEquals("ANNOUNCEMENT", type.getRentalConditionSource())
+        );
+    }
+
+    @Test
     void 관리자가_이름을_바꾸면_공고가_이름을_덮지_않고_세대수는_갱신한다() {
         HousingType type = HousingType.createFromMyHome(
                 createHousingComplex(), "source-type", "46A", new BigDecimal("46.8"), null);

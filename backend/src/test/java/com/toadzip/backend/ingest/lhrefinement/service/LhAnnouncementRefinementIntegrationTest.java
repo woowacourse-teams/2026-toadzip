@@ -2,11 +2,13 @@ package com.toadzip.backend.ingest.lhrefinement.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.toadzip.backend.admin.exception.AdminDataStaleException;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementOrigin;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
@@ -331,6 +333,11 @@ class LhAnnouncementRefinementIntegrationTest {
         try {
             long id = announcements.findAllByLhPanIdOrderByIdAsc("P1").getFirst().getId();
             assertThat(supplyCorrections.workspace(id).unattachedLhSupplyRows()).isEmpty();
+            // 공급행의 원천 단지명이 공고 단지 이름이다. 화면은 이 주소로 PDF 단지를 공고 단지에 대응한다.
+            assertThat(supplyCorrections.workspace(id).announcementComplexes()).singleElement().satisfies(view -> {
+                assertThat(view.name()).isEqualTo("동탄 행복주택 단지");
+                assertThat(view.roadAddress()).isEqualTo(ADDRESS);
+            });
 
             supplies("P1", supply("동탄 행복주택 단지", "59A", "59.9800", "10", "30000000", "200000"),
                     supply("동탄 행복주택 단지", "84A", "84.9600", "2", "40000000", "300000"));
@@ -351,6 +358,97 @@ class LhAnnouncementRefinementIntegrationTest {
                     .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("아직 공급행이 되지 않았습니다");
             jdbc.sql("UPDATE announcements SET supply_owner = 'ANNOUNCEMENT_DOCUMENT' WHERE id = :id").param("id", id).update();
             assertThat(supplyCorrections.workspace(id).unattachedLhSupplyRows()).isEmpty();
+        } finally {
+            if (comparisonTables) { jdbc.sql("DROP TABLE admin_comparison_checks, admin_comparison_sources").update(); }
+        }
+    }
+
+    @Test
+    @WithMockUser(username = "operator", roles = "ADMIN")
+    void 관리자가_자동_연결된_공고_단지를_다른_단지로_바꾸면_공급행도_같은_전용면적_주택형으로_옮기고_정제가_되돌리지_않는다() throws Exception {
+        publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
+        details("P1", "동탄 행복주택 단지", ADDRESS);
+        supplies("P1", supply("동탄 행복주택 단지", "59A", "59.9800", "10", "30000000", "200000"),
+                supply("동탄 행복주택 단지", "84A", "84.9600", "2", "40000000", "300000"));
+        publish("P2", "다른 행복주택 입주자 모집", today().minusDays(1));
+        details("P2", "다른 행복주택 단지", "경기도 화성시 동탄대로 900");
+        supplies("P2", supply("다른 행복주택 단지", "59A", "59.9800", "5", "30000000", "200000"));
+        refinement.refineAll();
+        HousingComplex other = complex("동탄 행복주택 2단지", "complex-2", "경기도 화성시 동탄대로 200", "HAPPY_HOUSING");
+        HousingType other59 = types.save(HousingType.createFromMyHome(other, "complex-2:59", "59A", new BigDecimal("59.9800"), null));
+        HousingType other84 = types.save(HousingType.createFromMyHome(other, "complex-2:84", "84A", new BigDecimal("84.9600"), null));
+        boolean comparisonTables = jdbc.sql("SELECT to_regclass('admin_comparison_sources') IS NULL").query(Boolean.class).single();
+        if (comparisonTables) {
+            jdbc.sql(new String(new ClassPathResource("db/migration/V20261016_01__quality_comparison_workflow.sql")
+                    .getInputStream().readAllBytes(), StandardCharsets.UTF_8)).update();
+        }
+        try {
+            long id = announcements.findAllByLhPanIdOrderByIdAsc("P1").getFirst().getId();
+            var before = supplyCorrections.workspace(id);
+            var view = before.announcementComplexes().getFirst();
+            assertThat(view.linkMethod()).isEqualTo("AUTO");
+            assertThat(view.housingComplexId()).isEqualTo(complex.getId());
+            assertThat(view.rowCount()).isEqualTo(2);
+
+            // 같은 단지로 확인만 하면 공급행의 주택형 연결은 그대로 둔다. 같은 면적 주택형이 둘이 되어 면적으로 다시 고르면 지워질 행이다.
+            types.save(HousingType.createFromMyHome(complex, "complex-1:59B", "59B", new BigDecimal("59.9800"), null));
+            var confirmed = supplyCorrections.linkAnnouncementComplex(id, view.id(),
+                    new SupplyCorrection.ComplexLinkRequest(before.snapshotToken(), complex.getId()), "operator");
+            assertThat(confirmed.announcementComplexes().getFirst().linkMethod()).isEqualTo("ADMIN");
+            assertThat(confirmed.rows()).extracting(SupplyCorrection.Row::housingTypeId).contains(area59.getId());
+            // 공급행이 그대로여도 연결이 바뀌었으므로 확인 전에 받은 토큰으로는 더 바꾸지 못한다.
+            assertThatThrownBy(() -> supplyCorrections.linkAnnouncementComplex(id, view.id(),
+                    new SupplyCorrection.ComplexLinkRequest(before.snapshotToken(), other.getId()), "operator")).isInstanceOf(AdminDataStaleException.class);
+            HousingComplex trashed = complex("휴지통 단지", "complex-3", "경기도 화성시 동탄대로 300", "HAPPY_HOUSING");
+            jdbc.sql("UPDATE housing_complexes SET admin_deleted = true WHERE id = :id").param("id", trashed.getId()).update();
+            assertThatThrownBy(() -> supplyCorrections.linkAnnouncementComplex(id, view.id(),
+                    new SupplyCorrection.ComplexLinkRequest(confirmed.snapshotToken(), trashed.getId()), "operator"))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("휴지통");
+
+            assertThatThrownBy(() -> supplyCorrections.linkAnnouncementComplex(id, view.id(),
+                    new SupplyCorrection.ComplexLinkRequest("stale", other.getId()), "operator")).isInstanceOf(AdminDataStaleException.class);
+            var after = supplyCorrections.linkAnnouncementComplex(id, view.id(),
+                    new SupplyCorrection.ComplexLinkRequest(confirmed.snapshotToken(), other.getId()), "operator");
+
+            assertThat(after.announcementComplexes().getFirst()).satisfies(changed -> {
+                assertThat(changed.linkMethod()).isEqualTo("ADMIN");
+                assertThat(changed.housingComplexId()).isEqualTo(other.getId());
+                assertThat(changed.housingComplexName()).isEqualTo("동탄 행복주택 2단지");
+            });
+            assertThat(after.rows()).extracting(SupplyCorrection.Row::housingComplexId, SupplyCorrection.Row::housingTypeId)
+                    .containsExactlyInAnyOrder(tuple(other.getId(), other59.getId()), tuple(other.getId(), other84.getId()));
+            // 확인 한 번, 변경 한 번. 변경 이력에는 옮긴 공급행의 이전·이후 단지도 남는다.
+            var history = jdbc.sql("SELECT before_value, after_value FROM admin_data_changes WHERE action = 'LINK_BY_ADMIN' AND actor = 'operator' "
+                    + "ORDER BY id").query((rs, index) -> List.of(rs.getString(1), rs.getString(2))).list();
+            assertThat(history).hasSize(2);
+            assertThat(history.get(1).get(0)).contains("\"housingComplexId\":" + complex.getId()).contains("\"rows\":[{");
+            assertThat(history.get(1).get(1)).contains("\"housingTypeId\":" + other59.getId());
+            // 연결만 바꿨으므로 공급정보는 계속 LH 원천 소유이고, 다시 정제해도 관리자 연결과 옮긴 공급행이 유지된다.
+            assertThat(announcements.findById(id).orElseThrow().suppliedByLh()).isTrue();
+            refinement.refineAll();
+            assertThat(supplyCorrections.workspace(id).rows()).extracting(SupplyCorrection.Row::housingComplexId)
+                    .containsOnly(other.getId());
+
+            long foreign = announcementComplexes.findAll().stream().filter(item -> !item.getAnnouncement().getId().equals(id))
+                    .findFirst().orElseThrow().getId();
+            var latest = supplyCorrections.workspace(id).snapshotToken();
+            assertThatThrownBy(() -> supplyCorrections.linkAnnouncementComplex(id, foreign,
+                    new SupplyCorrection.ComplexLinkRequest(latest, complex.getId()), "operator"))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("이 공고의 공고 단지가 아닙니다");
+
+            // 공통 모집 묶음 행은 묶음째 옮길 수 없으므로 거절하고 연결을 바꾸지 않는다.
+            long group = jdbc.sql("""
+                    INSERT INTO supply_row_groups(version, announcement_id, source_row_identifier, source_fingerprint, source_url, reason, actor,
+                        updated_at, review_required)
+                    VALUES (0, :id, 'GROUP', 'f', 'https://example.com', '묶음', 'operator', CURRENT_TIMESTAMP, false) RETURNING id
+                    """).param("id", id).query(Long.class).single();
+            jdbc.sql("UPDATE supply_rows SET supply_group_id = :group, total_supply_household_count = NULL WHERE announcement_id = :id")
+                    .param("group", group).param("id", id).update();
+            var grouped = supplyCorrections.workspace(id).snapshotToken();
+            assertThatThrownBy(() -> supplyCorrections.linkAnnouncementComplex(id, view.id(),
+                    new SupplyCorrection.ComplexLinkRequest(grouped, complex.getId()), "operator"))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("공통 모집 묶음");
+            assertThat(supplyCorrections.workspace(id).announcementComplexes().getFirst().housingComplexId()).isEqualTo(other.getId());
         } finally {
             if (comparisonTables) { jdbc.sql("DROP TABLE admin_comparison_checks, admin_comparison_sources").update(); }
         }

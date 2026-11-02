@@ -248,6 +248,27 @@ class MyHomeComplexMergeIntegrationTest {
     }
 
     @Test
+    void 기본_임대조건_출처_열을_더하기_전_통합_이력도_복구한다() throws Exception {
+        jdbc.sql("UPDATE myhome_complex_source_rows SET bass_rent_gtn = 10000000, bass_mt_rntchrg = 200000")
+                .update();
+        owned(ownership, mapping::mapAll);
+        JsonNode merged = merge();
+        jdbc.sql("""
+                UPDATE myhome_complex_merges
+                SET before_state = jsonb_set(before_state, '{housing_types}', (
+                    SELECT jsonb_agg(t - 'rental_condition_source') FROM jsonb_array_elements(before_state->'housing_types') t)),
+                    after_state = jsonb_set(after_state, '{housing_types}', (
+                    SELECT jsonb_agg(t - 'rental_condition_source') FROM jsonb_array_elements(after_state->'housing_types') t))
+                """).update();
+
+        postJson(ENDPOINT + "/" + merged.get("operationId").asText() + "/revert", Map.of());
+
+        assertThat(complexes.count()).isEqualTo(3);
+        assertThat(housingTypes.findAll()).allSatisfy(type ->
+                assertThat(type.getBasicRentalCondition().deposit()).isEqualTo(10_000_000L));
+    }
+
+    @Test
     void 주택형_금액_추가_전_통합_이력도_금액을_보존하며_복구한다() throws Exception {
         jdbc.sql("UPDATE myhome_complex_source_rows SET bass_rent_gtn = 10000000, bass_mt_rntchrg = 200000")
                 .update();

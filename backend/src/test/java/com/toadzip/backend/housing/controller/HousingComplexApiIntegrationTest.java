@@ -204,6 +204,27 @@ class HousingComplexApiIntegrationTest {
     }
 
     @Test
+    void PDF_보정이_공고_값으로_바꾼_기본_금액은_출처를_공고문으로_마이홈_링크_없이_공고일과_함께_반환한다() throws Exception {
+        HousingType type = HousingType.createFromMyHome(
+                outsideComplex, "8:3147381019:11110101001000100004:행복주택3:59A5:59.97-1:",
+                "59A", new BigDecimal("59.97"), null);
+        type.updateBasicRentalCondition(new MyHomeRentalCondition(
+                31_650_000L, 0L, Instant.parse("2026-10-05T10:40:16Z")));
+        type.observeAnnouncement(new HousingType.AnnouncementValues(null, null, null, 32_000_000L, 10_000L),
+                Instant.parse("2026-10-20T15:00:00Z"));
+        entityManager.persist(type);
+        entityManager.flush();
+
+        mockMvc.perform(get("/api/v1/complexes/{id}", outsideComplex.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.housingTypes[0].basicRentalCondition.deposit").value(32_000_000))
+                .andExpect(jsonPath("$.data.housingTypes[0].basicRentalCondition.source").value("ANNOUNCEMENT"))
+                .andExpect(jsonPath("$.data.housingTypes[0].basicRentalCondition.sourceUrl").value(nullValue()))
+                .andExpect(jsonPath("$.data.housingTypes[0].basicRentalCondition.collectedAt")
+                        .value("2026-10-20T15:00:00Z"));
+    }
+
+    @Test
     void 같은_단지의_주택형도_원래_마이홈_단지별_출처로_연결한다() throws Exception {
         for (String complexNumber : List.of("31473810", "31473811")) {
             HousingType type = HousingType.createFromMyHome(outsideComplex,

@@ -27,7 +27,7 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
   const [outline, setOutline] = useState<readonly PdfOutlineEntry[]>([])
   const [location, setLocation] = useState<PdfLocation>({ pageNumber: 1, top: Infinity })
   const runtime = useRef<{ viewer: PDFViewer; events: EventBus; linkService: PDFLinkService } | null>(null)
-  const queryRef = useRef('')
+  const queryRef = useRef<string | string[]>('')
   const searchPageRef = useRef<number | null>(null)
   const scaleRef = useRef('page-width')
 
@@ -50,11 +50,9 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
       const linkService = new PDFLinkService({ eventBus: events, externalLinkTarget: LinkTarget.BLANK,
         externalLinkRel: 'noopener noreferrer', ignoreDestinationZoom: true })
       // Restrict evidence highlighting to its stated page. A normal find may
-      // otherwise navigate to the same number on an unrelated page.
+      // otherwise navigate to the same number on an unrelated page. Matches stay
+      // on that page, so scrolling to the match brings the evidence into view.
       class EvidenceFindController extends PDFFindController {
-        override scrollMatchIntoView(options: Parameters<InstanceType<typeof PDFFindController>['scrollMatchIntoView']>[0]) {
-          if (searchPageRef.current === null) super.scrollMatchIntoView(options)
-        }
         override match(query: string | string[], content: string, pageIndex: number) {
           if (searchPageRef.current !== null && pageIndex + 1 !== searchPageRef.current) return []
           return super.match(query, content, pageIndex)
@@ -88,7 +86,7 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
         if (!lifecycle.signal.aborted && queryRef.current) setResult((previous) => ({ ...previous, ...matchesCount }))
       })
       events.on('updatefindcontrolstate', ({ state, matchesCount, rawQuery }: {
-        state: number; matchesCount: { current: number; total: number }; rawQuery: string
+        state: number; matchesCount: { current: number; total: number }; rawQuery: string | string[]
       }) => {
         if (!lifecycle.signal.aborted && rawQuery === queryRef.current && rawQuery) {
           setResult({ ...matchesCount, pending: state === FindState.PENDING, notFound: state === FindState.NOT_FOUND })
@@ -129,13 +127,15 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
     }
   }, [url, containerRef, viewerRef, telemetry])
 
-  const search = useCallback((query: string, again = false, previous = false, pageNumber: number | null = null) => {
+  // 검색어 여러 개(근거 금액의 원·천원·만원 표기)는 그중 하나와 맞으면 되고, 다른 숫자 안에서 맞지 않게 낱말 단위로 찾는다.
+  const search = useCallback((query: string | readonly string[], again = false, previous = false, pageNumber: number | null = null) => {
     searchPageRef.current = pageNumber
-    queryRef.current = query
-    if (!query) setResult(emptyResult)
+    const terms = typeof query === 'string' ? query : [...query]
+    queryRef.current = terms
+    if (!terms.length) setResult(emptyResult)
     runtime.current?.events.dispatch('find', {
-      source: containerRef.current, type: again ? 'again' : '', query,
-      caseSensitive: false, entireWord: false, highlightAll: true,
+      source: containerRef.current, type: again ? 'again' : '', query: terms,
+      caseSensitive: false, entireWord: typeof terms !== 'string', highlightAll: true,
       findPrevious: previous, matchDiacritics: false,
     })
   }, [containerRef])

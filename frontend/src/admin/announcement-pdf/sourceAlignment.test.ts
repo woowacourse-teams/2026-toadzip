@@ -21,17 +21,18 @@ describe('최초 입주자 공고의 LH 원천행 맞추기', () => {
     sourceHousingTypeName: name, expectedMoveInMonth: null, totalSupplyHouseholdCount: total, exclusiveArea, commonArea: null, supplyArea: null, constructedHouseholdCount: null, subtypes: [], targets: targets.map(target) })
   const source = (id: number, typeName: string, householdCount: number) => ({ ...blankRow(id), id, key: `row:${id}`, complexName: '인천부평(도시재생뉴딜)',
     typeName, householdCount, pnu: '2823710100100650017', category: 'NEW_SUPPLY' as const, areaOverride: false })
-  function setup() {
+  function setup(firstName = '16A', firstArea: number | null = null, secondName = '26A', secondArea = 26.01) {
     const base = structuredClone(fixtures.hansville.extraction) as unknown as Record<string, unknown> & { data: Record<string, unknown> }
-    base.data.supplyRows = [pdfRow('16A', 16.37, ['대학생', '청년 소득(×)', '기존거주자(철거민)'], 78),
-      pdfRow('26A', 26.01, ['고령자', '주거급여수급자', '기존거주자(철거민)'], null), pdfRow('26B', 26.1, ['고령자', '주거급여수급자', '기존거주자(철거민)'], null)]
+    base.data.supplyRows = [pdfRow(firstName, 16.37, ['대학생', '청년 소득(×)', '기존거주자(철거민)'], 78),
+      pdfRow(secondName, secondArea, ['고령자', '주거급여수급자', '기존거주자(철거민)'], null), pdfRow('26B', 26.1, ['고령자', '주거급여수급자', '기존거주자(철거민)'], null)]
     base.sharedCounts = [{ paths: ['supplyRows[1].totalSupplyHouseholdCount', 'supplyRows[2].totalSupplyHouseholdCount'], count: 46, page: 3, quote: '26A/B/C 46' }]
     base.notApplicable = [{ path: 'supplyRows[1].targets[2].supplyRank', reason: '순위 없음' }]
-    base.evidence = [0, 1, 2].map(index => ({ path: `supplyRows[${index}]`, page: 3, quote: `행 ${index}` }))
+    // 공급 표 한 줄 인용처럼 주택형 표기를 담는다.
+    base.evidence = [firstName, secondName, '26B'].map((name, index) => ({ path: `supplyRows[${index}]`, page: 3, quote: `${name} 행 ${index}` }))
     const extraction = readExtraction(JSON.stringify(base))
     if (!extraction.ok) throw new Error(extraction.error)
     const { workspace } = scenario('hansville')
-    workspace.supply.rows = [source(10, '16A(대학생/청년)', 78), source(11, '26A/B(고령자)', 4), source(12, '26A/B(주거급여수급자)', 42), source(13, '44A/B(신혼부부·한부모)', 86)]
+    workspace.supply.rows = [{ ...source(10, '16A(대학생/청년)', 78), exclusiveArea: firstArea }, source(11, '26A/B(고령자)', 4), source(12, '26A/B(주거급여수급자)', 42), source(13, '44A/B(신혼부부·한부모)', 86)]
     const review = createReview(extraction.value, workspace, {})
     const candidates = [{ id: 1, name: '16A', exclusiveArea: 16.37, supplyArea: null, householdCount: null }, { id: 2, name: '26A', exclusiveArea: 26.01, supplyArea: null, householdCount: null },
       { id: 3, name: '26B', exclusiveArea: 26.1, supplyArea: null, householdCount: null }]
@@ -50,6 +51,18 @@ describe('최초 입주자 공고의 LH 원천행 맞추기', () => {
       [['supplyRows[1].totalSupplyHouseholdCount', 'supplyRows[3].totalSupplyHouseholdCount'], 4],
       [['supplyRows[2].totalSupplyHouseholdCount', 'supplyRows[4].totalSupplyHouseholdCount'], 42]])
     expect(aligned.rows.map(row => row.newHousingType)).toEqual([false, false, false, false, false])
+    // 형명이 하나로 맞고 주택형도 정한 1:1 연결(16A)만 확인 없이 두고, 나눈 행은 확인하게 한다.
+    expect(aligned.rows.map(row => row.proposal.needsConfirmation)).toEqual([false, true, true, true, true])
+  })
+
+  it('LH 이름과 공고문 표기가 달라도(16A(대학생/청년) ↔ 16) 아직 맞추지 않은 행 중 전용면적이 하나만 같으면 맞추고 확인하게 한다', () => {
+    const { aligned } = setup('16', 16.37)
+    expect(aligned.rows[0].proposal.destination).toBe('row:10')
+    expect(aligned.rows[0].proposal.needsConfirmation).toBe(true)
+    expect(aligned.rows[0].proposal.reason).toContain("형명이 달라(LH '16A(대학생/청년)', 공고문 '16') 전용면적으로 맞췄습니다")
+    // LH 면적을 모르거나 같은 면적의 공고문 행이 둘 이상이면 맞추지 않는다.
+    expect(setup('16').aligned.rows[0].proposal.destination).not.toBe('row:10')
+    expect(setup('16', 16.37, '16B', 16.37).aligned.rows[0].proposal.destination).not.toBe('row:10')
   })
 
   it('공급대상 묶음마다 행을 복사하고 대상은 묶음 이름으로 나누며, 묶음에 없는 대상은 첫 묶음에 넣고 확인하게 한다', () => {
@@ -60,7 +73,7 @@ describe('최초 입주자 공고의 LH 원천행 맞추기', () => {
     expect(aligned.rows[1].proposal.needsConfirmation).toBe(true)
     // 대상 경로의 메모와 공급행 근거도 복사한 행의 새 번호로 옮긴다.
     expect(noteFor(aligned.extraction.notApplicable, 'supplyRows[1].targets[1].supplyRank')?.reason).toBe('순위 없음')
-    expect(evidenceFor(aligned.extraction.evidence, 'supplyRows[4].targets[0].rentalDeposit')?.quote).toBe('행 2')
+    expect(evidenceFor(aligned.extraction.evidence, 'supplyRows[4].targets[0].rentalDeposit')?.quote).toBe('26B 행 2')
   })
 
   it('저장하면 LH 행을 그 단지·주택형으로 고치고 나눈 행과 LH 공급 수로 공통 모집 묶음을 만든다. 맞는 공고문 행이 없는 LH 행은 그대로 둔다', () => {
@@ -81,5 +94,49 @@ describe('최초 입주자 공고의 LH 원천행 맞추기', () => {
     const again = alignSourceRows(aligned, workspace, '인천부평(도시재생뉴딜) 행복주택', { id: 8, name: '다른 단지' }, [])!
     expect(again.rows).toHaveLength(5)
     expect(again.rows.every(row => row.proposal.newComplex?.id === 8)).toBe(true)
+  })
+})
+
+describe('미연결 단지가 여럿인 공고의 LH 원천행 맞추기', () => {
+  const announcementComplex = (roadAddress: string) => ({ id: 186, name: '화성동탄(2)A48(공임리츠) A48', roadAddress, housingComplexId: null, housingComplexName: null, linkMethod: null, rowCount: 1 })
+  // 화성동탄2 리츠 공고 114: 공고문 "동탄2 A48BL"·"동탄2 A63BL"이 각각 단지에 연결되지 않은 LH 공고 단지 행을 가리킨다.
+  function setup() {
+    const row = (complexName: string, typeName: string, exclusiveArea: number) => ({ complexReference: { sourceComplexName: complexName }, sourceHousingTypeName: typeName,
+      exclusiveArea, supplyArea: null, totalSupplyHouseholdCount: 3, expectedMoveInMonth: null, targets: [] })
+    const extraction = readExtraction(JSON.stringify({ data: { announcement: {}, receptionPlace: null, schedules: [], unresolvedFields: [],
+      complexes: [{ sourceComplexName: '동탄2 A48BL', address: '경기도 화성시 동탄순환대로20길 69' }],
+      supplyRows: [row('동탄2 A48BL', '059.5500A', 59.55), row('동탄2 A63BL', '059.9800A', 59.98)] }, notApplicable: [], evidence: [], sharedCounts: [] }))
+    if (!extraction.ok) throw new Error(extraction.error)
+    const { workspace } = scenario('hansville')
+    const lh = (id: number, complexName: string, typeName: string) => ({ ...blankRow(id), id, key: `row:${id}`, complexName, typeName, householdCount: 0, areaOverride: false })
+    workspace.supply.rows = [lh(642, '화성동탄(2)A48(공임리츠) A48', '59.5500A'), lh(655, '화성동탄2A-63(공임리츠) A63', '59.9800A')]
+    workspace.supply.announcementComplexes = [announcementComplex('경기도 화성시 동탄순환대로20길 69')]
+    return { review: createReview(extraction.value, workspace, {}), workspace }
+  }
+
+  it('블록 표기가 다른 단지를 차례로 정해도 앞서 맞춘 단지가 풀리지 않고, 같은 단지를 다시 정하면 다른 단지의 맞춤을 유지한다', () => {
+    const { review, workspace } = setup()
+    const aligned = alignSourceRows(review, workspace, '동탄2 A48BL', { id: 1724, name: '화성동탄2 A48BL' }, [])
+    expect(aligned?.rows[0].proposal.destination).toBe('row:642')
+    // 첫 단지를 맞춘 뒤 고친 선택(A48 행 제외)도 다음 단지를 맞출 때 남아야 한다.
+    const first = { ...aligned!, rows: aligned!.rows.map((row, index) => index === 0 ? { ...row, include: false } : row) }
+    const both = alignSourceRows(first, workspace, '동탄2 A63BL', { id: 1621, name: '화성동탄2 A63블록' }, [])!
+    expect(both.rows.map(row => [row.proposal.destination, row.proposal.newComplex?.id, row.include])).toEqual([['row:642', 1724, false], ['row:655', 1621, true]])
+    const again = alignSourceRows(both, workspace, '동탄2 A48BL', { id: 9, name: '다른 단지' }, [])!
+    expect(again.rows.map(row => [row.proposal.destination, row.proposal.newComplex?.id])).toEqual([['row:642', 9], ['row:655', 1621]])
+  })
+
+  it('형이 하나인 LH 행에 1:1로 맞으면 확인 없이 두고, 여러 형을 묶은 LH 행에 한 형만 맞으면 확인하게 한다', () => {
+    const { review, workspace } = setup()
+    const candidates = [{ id: 1, name: '059.5500A', exclusiveArea: 59.55, supplyArea: null, householdCount: null }]
+    const confirm = (typeName: string, roadAddress = '경기도 화성시 동탄순환대로20길 69') => {
+      const rows = workspace.supply.rows.map(row => row.id === 642 ? { ...row, typeName } : row)
+      const supply = { ...workspace.supply, rows, announcementComplexes: [announcementComplex(roadAddress)] }
+      return alignSourceRows(review, { ...workspace, supply }, '동탄2 A48BL', { id: 1724, name: '화성동탄2 A48BL' }, candidates)?.rows[0].proposal.needsConfirmation
+    }
+    expect(confirm('59.5500A')).toBe(false)
+    expect(confirm('59.5500A/59.9200C')).toBe(true)
+    // LH 주소가 공고문 주소와 달라 블록 번호로만 대응한 단지면 1:1이어도 확인하게 한다.
+    expect(confirm('59.5500A', '경기도 화성시 산척동')).toBe(true)
   })
 })
