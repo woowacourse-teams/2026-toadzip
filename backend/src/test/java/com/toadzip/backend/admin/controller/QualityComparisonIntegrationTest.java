@@ -173,13 +173,34 @@ class QualityComparisonIntegrationTest {
 
         mvc.perform(post(root(id) + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(stale))
-                .andExpect(status().isConflict()).andExpect(jsonPath("$.message").value(message));
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"))
+                .andExpect(jsonPath("$.message").value(message));
         mvc.perform(delete(root(id) + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(stale))
-                .andExpect(status().isConflict()).andExpect(jsonPath("$.message").value(message));
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"))
+                .andExpect(jsonPath("$.message").value(message));
 
         assertThat(detail(id, target).get("snapshotToken")).isEqualTo(linked.get("snapshotToken"));
         assertThat(actions(id)).containsExactly("LINK_COMPARISON_SOURCE");
+    }
+
+    @Test
+    void 오래된_단지_기본_비교로는_원천_확인을_기록하지_않는다() throws Exception {
+        long id = type().getHousingComplex().getId();
+        String basicPath = "/api/admin/housing-complexes/" + id + "/verification/comparison";
+        var before = json.readTree(mvc.perform(get(basicPath).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+        mvc.perform(post(basicPath + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "snapshotToken", before.get("snapshotToken").asText(), "category", "MYHOME_COMPLEX",
+                        "sourceKey", source(), "evidenceNote", "단지 원천 연결")))).andExpect(status().isOk());
+
+        mvc.perform(post(root(id) + "/checks/legacy").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                                "target", "basic", "snapshotToken", before.get("snapshotToken").asText(),
+                                "evidenceNote", "오래된 단지 비교 확인"))))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"))
+                .andExpect(jsonPath("$.message").value("단지 등록값 또는 원천이 변경되었습니다. 다시 비교해 주세요."));
     }
 
     @Test
@@ -197,7 +218,7 @@ class QualityComparisonIntegrationTest {
         mvc.perform(delete(root(id) + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(linkBody(target, unlinked, "MYHOME_COMPLEX", key)))
-                .andExpect(status().isConflict())
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_CONFLICT"))
                 .andExpect(jsonPath("$.message").value("직접 연결한 원천만 해제할 수 있습니다."));
 
         assertThat(unlinked.get("sources").findValuesAsString("sourceKey")).doesNotContain(key);
