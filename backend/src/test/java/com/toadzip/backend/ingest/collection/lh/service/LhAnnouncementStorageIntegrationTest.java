@@ -18,7 +18,6 @@ import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuerySource;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQueryApiRepository;
-import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceReader;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhAnnouncementCircuitBreaker;
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
@@ -92,8 +91,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Import({LhAnnouncementQueryCollector.class, LhAnnouncementStorageService.class, SourceCollectionRecordService.class,
         LhAnnouncementQueryApiRepository.class, LhSupplyResponseParser.class, LhDetailResponseParser.class,
         VerifiedLhSupplyReplacementStore.class, IngestWriteOwnershipGuard.class,
-        IngestExecutionOwnershipRepository.class, LhAnnouncementSupplySourceReader.class,
-        LhAnnouncementQuerySourceReader.class})
+        IngestExecutionOwnershipRepository.class, LhAnnouncementSupplySourceReader.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
