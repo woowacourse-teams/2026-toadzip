@@ -73,7 +73,7 @@ export function PreparationFooter({ ready, onReview }: { ready: boolean; onRevie
 function ExtractionStatus({ extraction, hasPdf, parsed, checks, onExtract, samePdf }: { extraction: ExtractionState; hasPdf: boolean; parsed: ReturnType<typeof readExtraction>; checks: AnnouncementCheck[]; onExtract: () => void; samePdf: boolean }) {
   const retry = <Button data-design-system className={styles.secondaryButton} onClick={onExtract}>다시 추출</Button>
   if (extraction.status === 'idle') return hasPdf
-    ? <div className={styles.extractionStart}><p className={styles.hint}>제목을 확인했으면 추출을 시작하세요. 보통 10~40초 걸립니다.</p><Button data-design-system className={samePdf ? styles.secondaryButton : undefined} onClick={onExtract}>PDF에서 값 추출</Button></div>
+    ? <div className={styles.extractionStart}><p className={styles.hint}>제목을 확인했으면 추출을 시작하세요. 보통 1~3분 걸립니다.</p><Button data-design-system className={samePdf ? styles.secondaryButton : undefined} onClick={onExtract}>PDF에서 값 추출</Button></div>
     : <p role="status" className={styles.hint}>PDF를 고르면 추출할 수 있습니다.</p>
   if (extraction.status === 'running') return <>
     <Elapsed startedAt={extraction.startedAt} />
@@ -114,7 +114,7 @@ function Elapsed({ startedAt }: { startedAt: number }) {
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer) }, [])
   const seconds = Math.max(0, Math.floor((now - startedAt) / 1000))
   return <div className={styles.extractionProgress}>
-    <p role="status">PDF에서 값을 추출하는 중… {seconds}초 · 보통 10~40초 걸립니다.</p>
+    <p role="status">PDF에서 값을 추출하는 중… {seconds}초 · 보통 1~3분 걸립니다.</p>
     <div role="progressbar" aria-label="추출 진행" className={styles.loadingBar}><span /></div>
   </div>
 }
