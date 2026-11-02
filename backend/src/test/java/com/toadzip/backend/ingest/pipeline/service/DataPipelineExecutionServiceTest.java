@@ -235,6 +235,23 @@ class DataPipelineExecutionServiceTest {
         verify(executionLock, never()).tryAcquire(any(UUID.class));
     }
 
+    @ParameterizedTest
+    @EnumSource(value = DataPipelineType.class, names = {"COMPLEX_COLLECTION", "ANNOUNCEMENT_COLLECTION", "ANNOUNCEMENT_SYNC"})
+    void 수집을_포함한_실행은_입력키를_받아_수집_스레드에_전달한다(DataPipelineType type) {
+        configureStoredExecution();
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        AtomicReference<Optional<String>> observedKey = new AtomicReference<>();
+        doAnswer(invocation -> {
+            observedKey.set(IngestServiceKeyContext.current());
+            return null;
+        }).when(runner).run(any(), any());
+
+        service.start(type, "runtime-test-key");
+
+        assertThat(observedKey.get()).contains("runtime-test-key");
+        verify(runner).run(eq(type), any());
+    }
+
     @Test
     void 비동기_수집이_실패해도_실행키를_스레드에서_제거한다() {
         configureStoredExecution();
