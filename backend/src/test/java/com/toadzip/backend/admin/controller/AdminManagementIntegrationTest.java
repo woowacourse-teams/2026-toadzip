@@ -571,6 +571,48 @@ class AdminManagementIntegrationTest {
     }
 
     @Test
+    void 주택형_면적_수정과_복구도_같은_전용면적_주택형을_단지에_둘_만들지_않는다() throws Exception {
+        long id = createComplex();
+        long first = createHousingType(id);
+        var second = HousingType.createFromMyHome(complexes.findById(id).orElseThrow(), "TYPE-59-" + id, "59A", new BigDecimal("59.5"), null);
+        entityManager.persist(second);
+        entityManager.flush();
+        String path = "/api/admin/housing-complexes/" + id;
+        String secondPath = path + "/housing-types/" + second.getId();
+        String areaBody = """
+                {"version": %d, "name": "59A", "exclusiveArea": %s, "householdCount": null}
+                """;
+        mvc.perform(put(secondPath).with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(areaBody.formatted(getData(path).get("data").get("version").asLong(), "46.8000")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("이 단지에 같은 전용면적")));
+        // 면적을 그대로 두는 수정은 막지 않는다.
+        mvc.perform(put(secondPath).with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(areaBody.formatted(getData(path).get("data").get("version").asLong(), "59.5").replace("\"59A\"", "\"59B\"")))
+                .andExpect(status().isOk());
+
+        mvc.perform(delete(path + "/housing-types/" + first).param("version", String.valueOf(getData(path).get("data").get("version").asLong()))
+                .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isOk());
+        mvc.perform(put(secondPath).with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(areaBody.formatted(getData(path).get("data").get("version").asLong(), "46.8").replace("\"59A\"", "\"59B\"")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("휴지통에 같은 전용면적")));
+
+        // 휴지통 주택형과 같은 면적의 주택형이 그사이 생겼으면 복구하지 않는다.
+        var legacy = HousingType.createFromMyHome(complexes.findById(id).orElseThrow(), "TYPE-46B-" + id, "46B", new BigDecimal("46.8"), null);
+        entityManager.persist(legacy);
+        entityManager.flush();
+        mvc.perform(post(path + "/housing-types/" + first + "/restore").param("version", String.valueOf(getData(path).get("data").get("version").asLong()))
+                        .with(user("admin").roles("ADMIN")).with(csrf()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("복구할 수 없습니다")));
+        // 이미 같은 면적 주택형이 겹친 기존 단지라도 면적을 바꾸지 않는 이름 수정은 막지 않는다.
+        mvc.perform(put(path + "/housing-types/" + legacy.getId()).with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(areaBody.formatted(getData(path).get("data").get("version").asLong(), "46.8").replace("\"59A\"", "\"46C\"")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void 공급행이_연결된_주택형은_휴지통으로_옮기지_않는다() throws Exception {
         long id = createComplex();
         long typeId = createHousingType(id);
