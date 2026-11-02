@@ -1,6 +1,8 @@
 """DeepSeek 채팅 API 호출. 키와 응답 원문은 로그와 오류 문구에 남기지 않는다."""
 
 import json
+import socket
+import threading
 import time
 from dataclasses import dataclass
 
@@ -61,21 +63,40 @@ class DeepSeek:
 
     def post(self, body: dict, deadline: float) -> tuple[int, bytes]:
         """DeepSeek은 응답을 기다리는 동안 빈 줄을 보내기도 하지만 1분 넘게 조용할 때도 있다(실측). 읽기 제한을 고정하면
-        늦은 응답마다 시간 초과로 다시 시도해 유료 호출이 겹치므로, 읽기 제한을 남은 마감 시간으로 두고 전체 시간도 따로 잰다."""
+        늦은 응답마다 시간 초과로 다시 시도해 유료 호출이 겹치므로, 읽기 제한을 남은 마감 시간으로 둔다.
+        읽기 제한은 읽을 때마다 새로 걸려 마감 직전 조각 뒤로 조용하면 마감을 넘기므로, 본문은 마감에 연결을 끊어 끝낸다."""
         timeout = httpx.Timeout(max(deadline - time.monotonic(), 0.001), connect=CONNECT_TIMEOUT)
         try:
             with self.client.stream("POST", "/chat/completions", json=body, timeout=timeout) as response:
-                chunks = []
-                for chunk in response.iter_bytes():
-                    if time.monotonic() > deadline:
-                        raise TransientError("MODEL_TIMEOUT", "AI 모델 응답이 늦습니다.")
-                    chunks.append(chunk)
-                return response.status_code, b"".join(chunks)
+                cutoff = threading.Timer(max(deadline - time.monotonic(), 0), cut_off, (response,))
+                cutoff.start()
+                try:
+                    payload = b"".join(response.iter_bytes())
+                finally:
+                    cutoff.cancel()
+                if time.monotonic() > deadline:
+                    raise TransientError("MODEL_TIMEOUT", "AI 모델 응답이 늦습니다.")
+                return response.status_code, payload
         except httpx.TimeoutException as error:
             raise TransientError("MODEL_TIMEOUT", "AI 모델 응답이 늦습니다.") from error
         # 연결 실패와 압축이 깨진 응답(DecodingError)처럼 요청 단계의 오류는 다시 하면 될 수 있다.
         except httpx.RequestError as error:
+            if time.monotonic() > deadline:
+                raise TransientError("MODEL_TIMEOUT", "AI 모델 응답이 늦습니다.") from error
             raise TransientError("MODEL_UNAVAILABLE", "AI 모델에 연결하지 못했습니다.") from error
+
+
+def cut_off(response: httpx.Response) -> None:
+    """다른 스레드에서 막힌 읽기는 소켓을 닫아도(close) 풀리지 않을 수 있어 shutdown으로 끊는다."""
+    stream = response.extensions.get("network_stream")
+    sock = stream.get_extra_info("socket") if stream is not None else None
+    if sock is None:
+        return
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except OSError:
+        # 그사이 응답을 다 받아 연결이 닫혔다.
+        pass
 
 
 def usage_of(usage: object) -> dict:
