@@ -20,6 +20,7 @@ import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMap
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import com.toadzip.backend.ingest.enrichment.service.LhScheduleAttachmentWriter;
 import com.toadzip.backend.ingest.lhrefinement.domain.LhRentalTypes;
+import com.toadzip.backend.ingest.lhrefinement.domain.LhRevisionName;
 import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementComplexLinker.DetailComplex;
 import com.toadzip.backend.ingest.lhrefinement.service.LhSupplyRowWriter.SupplyLine;
 import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
@@ -36,8 +37,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -51,8 +50,6 @@ class LhAnnouncementRefiner {
 
     private static final String COMPLEX_DATASET = "COMPLEX";
     private static final int LATE_ARRIVAL_DAYS = 7;
-    static final Pattern REVISION_PREFIX = Pattern.compile("^\\s*\\[(정정|취소)공고\\]\\s*");
-    private static final Pattern SPACES = Pattern.compile("\\s+");
 
     private final AnnouncementRepository announcements;
     private final LhAnnouncementSupplySourceReader supplySources;
@@ -101,7 +98,7 @@ class LhAnnouncementRefiner {
             }
             announcement = announcements.save(Announcement.createFromLh(request.panId(), values.get()));
             // 정정·취소공고는 원공고를 찾지 못해도 새 공고로 알리지 않는다.
-            if (revisionType(values.get().name()).isEmpty()
+            if (!new LhRevisionName(values.get().name()).isRevision()
                     && !values.get().postedDate().isBefore(LocalDate.now(clock).minusDays(LATE_ARRIVAL_DAYS))) {
                 notificationOutbox.appendNewAnnouncement(announcement);
             }
@@ -180,18 +177,19 @@ class LhAnnouncementRefiner {
      * 이전 LH 공고 중 가장 최근 공고가 하나일 때 잇는다. 이미 다른 공고가 이은 공고는 고르지 않는다.
      */
     private void linkRevision(Announcement revision, Tally tally) {
-        Optional<AnnouncementPublicationType> type = revisionType(revision.getName());
+        LhRevisionName name = new LhRevisionName(revision.getName());
+        Optional<AnnouncementPublicationType> type = name.publicationType();
         if (type.isEmpty() || revision.getPreviousAnnouncement() != null) {
             return;
         }
-        String base = baseName(revision.getName());
+        String base = name.baseName();
         List<Announcement> lh = announcements.findAllByLhPanIdIsNotNullAndAdminDeletedFalse();
         List<Long> taken = lh.stream().map(Announcement::getPreviousAnnouncement).filter(Objects::nonNull)
                 .map(Announcement::getId).toList();
         List<Announcement> candidates = lh.stream()
                 .filter(candidate -> !candidate.getId().equals(revision.getId()) && !taken.contains(candidate.getId()))
                 .filter(candidate -> !candidate.getPostedDate().isAfter(revision.getPostedDate()))
-                .filter(candidate -> baseName(candidate.getName()).equals(base))
+                .filter(candidate -> new LhRevisionName(candidate.getName()).baseName().equals(base))
                 .toList();
         Optional<LocalDate> latest = candidates.stream().map(Announcement::getPostedDate).max(Comparator.naturalOrder());
         List<Announcement> newest = candidates.stream()
@@ -203,28 +201,6 @@ class LhAnnouncementRefiner {
         if (revision.linkLhRevision(newest.getFirst(), type.get())) {
             tally.revisionsLinked++;
         }
-    }
-
-    private Optional<AnnouncementPublicationType> revisionType(String name) {
-        Matcher matcher = REVISION_PREFIX.matcher(name);
-        if (!matcher.find()) {
-            return Optional.empty();
-        }
-        if ("취소".equals(matcher.group(1))) {
-            return Optional.of(AnnouncementPublicationType.CANCELLATION);
-        }
-        return Optional.of(AnnouncementPublicationType.CORRECTION);
-    }
-
-    /** 머리말을 모두 떼고 공백을 하나로 맞춘 이름. */
-    private String baseName(String name) {
-        String stripped = name;
-        Matcher matcher = REVISION_PREFIX.matcher(stripped);
-        while (matcher.find()) {
-            stripped = stripped.substring(matcher.end());
-            matcher = REVISION_PREFIX.matcher(stripped);
-        }
-        return SPACES.matcher(stripped.strip()).replaceAll(" ");
     }
 
     /** 같은 단지의 상세 행 중 주소·세대수가 있는 첫 값을 쓴다. 상세 행의 일부만 주소를 가진다. */

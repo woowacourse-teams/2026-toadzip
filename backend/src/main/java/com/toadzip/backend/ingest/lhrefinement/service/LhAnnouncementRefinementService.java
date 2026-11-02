@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.lhrefinement.service;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSourceView;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
+import com.toadzip.backend.ingest.lhrefinement.domain.LhRevisionName;
 import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport;
 import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport.ComplexCounts;
 import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport.SupplyCounts;
@@ -93,6 +94,6 @@ public class LhAnnouncementRefinementService {
     /** 같은 공고일이면 원공고를 먼저 정제해 정정·취소공고가 원공고와 그 공고 단지 연결을 찾게 한다. */
     private static boolean isRevision(LhAnnouncementCatalogSourceView view) {
         String name = view.getAnnouncementName();
-        return name != null && LhAnnouncementRefiner.REVISION_PREFIX.matcher(name).find();
+        return name != null && new LhRevisionName(name).isRevision();
     }
 }
