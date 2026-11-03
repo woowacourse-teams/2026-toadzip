@@ -271,6 +271,15 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     const context = cell && review ? evidenceContext(review.extraction, cell.path) : []
     setFocus(previous => ({ page: item.page, query: evidenceQuery(item.quote, cell ? cell.extracted.value : undefined, cell?.kind === 'money', context), context, quote: item.quote, nonce: (previous?.nonce ?? 0) + 1 })); setMobileView('pdf')
   }
+  // 목록에서 공급행을 고르면 그 행의 주택형 표기 근거로 PDF를 옮겨, 표의 어느 줄인지 바로 대조하게 한다.
+  // 좁은 화면에서는 편집 영역을 그대로 두도록 PDF 보기로 바꾸지 않는다.
+  function selectRow(index: number) {
+    setSelectedRow(index)
+    const cell = review?.rows[index]?.cells.find(item => item.field === 'sourceHousingTypeName')
+    if (!review || !cell?.evidence) return
+    const context = evidenceContext(review.extraction, cell.path), item = cell.evidence
+    setFocus(previous => ({ page: item.page, query: evidenceQuery(item.quote, cell.extracted.value, false, context), context, quote: item.quote, nonce: (previous?.nonce ?? 0) + 1 }))
+  }
   // 복원한 초안처럼 추출 상태 없이 검토 중인 입력이 있으면, 같은 PDF·응답일 때 다시 추출하지 않고 그 입력으로 돌아간다.
   const resumable = Boolean(review && pdf && reviewedWith === `${pdf.url}\n${text}`)
   function change(next: Review) { setReview(next); setError('') }
@@ -385,7 +394,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
         </div>
         {checked && <ApplySummaryPanel summary={summarizePreview(checked.preview, housing, workspace.supply.lhSupplyRows ?? [])} busy={busy} onApply={() => void confirmApply()} onBack={() => setChecked(null)} />}
         <fieldset disabled={busy || blocked} hidden={Boolean(checked)} className={styles.reviewFields}><div role="tabpanel" id="pdf-review-panel" aria-labelledby="pdf-review-tab-active">
-          {section === 'supply' && <ReviewSupply savesHousingTypes={!supplyDraft} warnings={workerWarnings} editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} selected={selectedRow} onSelect={setSelectedRow} onJump={goTo} />}
+          {section === 'supply' && <ReviewSupply savesHousingTypes={!supplyDraft} warnings={workerWarnings} editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} selected={selectedRow} onSelect={selectRow} onJump={goTo} />}
           {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.extraction.undatedSchedules.length > 0 && <p className={styles.hint}>날짜 없이 안내한 일정: {review.extraction.undatedSchedules.join(' · ')}</p>}{review.schedules.map((schedule, index) => scheduleMatches(schedule) && <section className={styles.supplyBlock} key={index} data-review-id={`schedule:${index}`} tabIndex={-1}><header><h3>{shown(schedule.cells.find(cell => cell.field === 'name')?.value)}</h3><label><input type="checkbox" checked={schedule.include} onChange={event => updateSchedule(index, { include: event.target.checked, reviewed: true })} />일정 {index + 1} 적용</label></header>
             {pendingSchedule(schedule) && <div className={styles.pending}><p><strong>확인 필요</strong> {schedule.proposal.reason}</p><div className={styles.actions}><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: true, reviewed: true })}>{`일정 ${index + 1} 적용`}</Button><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: false, reviewed: true })}>{`일정 ${index + 1} 적용 안 함`}</Button></div></div>}
             <p>{pendingSchedule(schedule) ? '' : schedule.proposal.reason || (schedule.proposal.existingIds.length ? '기존 일정 갱신' : '새 일정 추가')}{schedule.proposal.existingIds.map(existingId => { const event = workspace.events.find(item => item.id === existingId); return <small className={styles.scheduleBefore} key={existingId}>#{existingId} · {event?.complexName ?? '공고 전체'} · {shown(event?.data.name)} · {shown(event?.data.startAt)} ~ {shown(event?.data.endAt)}</small> })}</p>

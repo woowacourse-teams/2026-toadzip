@@ -921,6 +921,18 @@ it('공급정보는 PDF 단지마다 탭으로 나누고, 탭 이름에 단지 �
   expect(screen.getByRole('region', { name: '공급행 1 검토' })).toHaveFocus()
 })
 
+it('공급행 목록에서 행을 고르면 PDF를 그 행의 주택형 표기 근거 쪽으로 옮겨 강조한다', async () => {
+  await open(JSON.stringify(fixtures.gwangju.extraction))
+  fireEvent.click(screen.getByRole('tab', { name: /^첨단H-3BL/ }))
+  const list = screen.getByRole('region', { name: '공급행 목록' })
+  const button = within(list).getAllByRole('button', { name: /^공급행 \d+ 편집$/ }).at(-1)!
+  fireEvent.click(button)
+  // 좁은 화면에서는 편집 영역을 그대로 두므로 PDF 영역을 열어 확인한다.
+  expect(screen.getByRole('region', { name: /^공급행 \d+ 검토$/ })).toBeVisible()
+  showPdf()
+  expect(await screen.findByText(/^PDF \d+쪽 · 강조 (?!없음)/)).toBeVisible()
+})
+
 it('공급정보 편집표의 PDF 채우기도 단지마다 탭으로 나눠 다른 단지 행을 고를 수 있다', async () => {
   extracts(JSON.stringify(fixtures.gwangju.extraction))
   render(<MemoryRouter><PdfCorrectionWorkspace id="29" supplyDraft={{ rows: structuredClone(workspace.supply.rows), onFill: vi.fn(), onCancel: vi.fn() }} /></MemoryRouter>)
