@@ -898,6 +898,16 @@ it('공급정보는 PDF 단지마다 탭으로 나누고, 탭 이름에 단지 �
   expect(screen.getByRole('region', { name: '공급행 1 검토' })).toHaveFocus()
 })
 
+it('공급정보 편집표의 PDF 채우기도 단지마다 탭으로 나눠 다른 단지 행을 고를 수 있다', async () => {
+  extracts(JSON.stringify(fixtures.gwangju.extraction))
+  render(<MemoryRouter><PdfCorrectionWorkspace id="29" supplyDraft={{ rows: structuredClone(workspace.supply.rows), onFill: vi.fn(), onCancel: vi.fn() }} /></MemoryRouter>)
+  await review()
+  const tabs = within(screen.getByRole('tablist', { name: 'PDF 보정 영역' })).getAllByRole('tab')
+  expect(tabs.map(tab => tab.textContent?.split(' · ')[0])).toEqual(['첨단H-1BL', '첨단H-2BL', '첨단H-3BL'])
+  fireEvent.click(tabs[2])
+  expect(screen.getByRole('region', { name: '공급행 4 검토' })).toBeVisible()
+})
+
 it('임시저장본은 열어 둔 단지 탭과 고른 공급행을 함께 저장하고 복원한다', async () => {
   await open(JSON.stringify(fixtures.gwangju.extraction))
   fireEvent.click(screen.getByRole('tab', { name: /^첨단H-3BL/ }))

@@ -31,12 +31,13 @@ type SectionTab = { key: string; label: string; count: number; section: ReviewSe
  * 검토 영역 탭. 공급정보는 PDF 단지마다 한 탭이고(고른 행이 속한 단지가 열린 탭), 그 뒤에 일정·접수처·기본정보가 온다.
  * 공급행이 없으면 공급정보 탭 하나를 둔다. 확인 수는 그 단지 행의 남은 확인 항목이다.
  */
-function sectionTabs(review: Review, section: ReviewSection, selectedRow: number, pending: { id: string; section: ReviewSection }[]): SectionTab[] {
+function sectionTabs(review: Review, section: ReviewSection, selectedRow: number, pending: { id: string; section: ReviewSection }[], supplyOnly = false): SectionTab[] {
   const groups = complexGroups(review), active = groups.find(group => group.indexes.includes(selectedRow)) ?? groups[0]
   const count = (key: ReviewSection) => pending.filter(item => item.section === key).length
   const supply: SectionTab[] = groups.length ? groups.map(group => ({ key: `supply:${group.name}`, label: group.name, section: 'supply', selected: section === 'supply' && group === active,
     row: group.indexes.includes(selectedRow) ? selectedRow : group.indexes[0], count: pending.filter(item => item.section === 'supply' && group.indexes.includes(rowOfReviewId(item.id) ?? -1)).length }))
     : [{ key: 'supply', label: '공급정보', section: 'supply', selected: section === 'supply', count: count('supply') }]
+  if (supplyOnly) return supply
   return [...supply, { key: 'schedule', label: '일정', section: 'schedule', selected: section === 'schedule', count: count('schedule') },
     { key: 'reception', label: '접수처·기본정보', section: 'reception', selected: section === 'reception', count: count('reception') }]
 }
@@ -379,11 +380,11 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       <div ref={reviewPane} className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="review">
         {checks.some(check => check.matches === false) && <p className={styles.error}>PDF의 {checks.filter(check => check.matches === false).map(check => `${check.label}(${check.pdf})`).join('·')}이 현재 공고와 다릅니다. 이 공고의 PDF로 받은 응답인지 확인하세요.</p>}
         <div className={styles.reviewTop}>
-          {!supplyDraft && <SectionTabs tabs={sectionTabs(review, section, selectedRow, pending)} onSelect={tab => { setSection(tab.section); if (tab.row !== undefined) setSelectedRow(tab.row) }} />}
+          {<SectionTabs tabs={sectionTabs(review, section, selectedRow, pending, Boolean(supplyDraft))} onSelect={tab => { setSection(tab.section); if (tab.row !== undefined) setSelectedRow(tab.row) }} />}
           <div className={styles.filters} role="group" aria-label="검토 항목 필터">{filterLabels.map(([key, label]) => <Button data-design-system key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}{key !== 'all' && ` ${key === 'pending' ? pending.length : counts[key]}`}</Button>)}</div>
         </div>
         {checked && <ApplySummaryPanel summary={summarizePreview(checked.preview, housing, workspace.supply.lhSupplyRows ?? [])} busy={busy} onApply={() => void confirmApply()} onBack={() => setChecked(null)} />}
-        <fieldset disabled={busy || blocked} hidden={Boolean(checked)} className={styles.reviewFields}><div role={supplyDraft ? undefined : 'tabpanel'} id="pdf-review-panel" aria-labelledby={supplyDraft ? undefined : 'pdf-review-tab-active'}>
+        <fieldset disabled={busy || blocked} hidden={Boolean(checked)} className={styles.reviewFields}><div role="tabpanel" id="pdf-review-panel" aria-labelledby="pdf-review-tab-active">
           {section === 'supply' && <ReviewSupply savesHousingTypes={!supplyDraft} warnings={workerWarnings} editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} selected={selectedRow} onSelect={setSelectedRow} onJump={goTo} />}
           {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.extraction.undatedSchedules.length > 0 && <p className={styles.hint}>날짜 없이 안내한 일정: {review.extraction.undatedSchedules.join(' · ')}</p>}{review.schedules.map((schedule, index) => scheduleMatches(schedule) && <section className={styles.supplyBlock} key={index} data-review-id={`schedule:${index}`} tabIndex={-1}><header><h3>{shown(schedule.cells.find(cell => cell.field === 'name')?.value)}</h3><label><input type="checkbox" checked={schedule.include} onChange={event => updateSchedule(index, { include: event.target.checked, reviewed: true })} />일정 {index + 1} 적용</label></header>
             {pendingSchedule(schedule) && <div className={styles.pending}><p><strong>확인 필요</strong> {schedule.proposal.reason}</p><div className={styles.actions}><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: true, reviewed: true })}>{`일정 ${index + 1} 적용`}</Button><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: false, reviewed: true })}>{`일정 ${index + 1} 적용 안 함`}</Button></div></div>}
