@@ -22,6 +22,7 @@ public class GhAnnouncementStore {
 
     private final GhAnnouncementSourceRepository repository;
     private final Clock clock;
+    private final GhHousingTypeDetails housingTypeDetails;
 
     @Transactional
     public void store(GhAnnouncementSnapshot snapshot) {
@@ -31,7 +32,11 @@ public class GhAnnouncementStore {
             repository.save(GhAnnouncementSource.from(snapshot, now));
             return;
         }
-        existing.orElseThrow().updateFrom(snapshot, now);
+        GhAnnouncementSource source = existing.orElseThrow();
+        if (source.getTitle().equals(snapshot.title()) && source.getPostedDate().equals(snapshot.postedDate())) {
+            snapshot = snapshot.withDistricts(housingTypeDetails.carryOver(snapshot.districts(), source.getDistricts()));
+        }
+        source.updateFrom(snapshot, now);
     }
 
     @Transactional

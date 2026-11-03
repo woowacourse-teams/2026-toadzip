@@ -79,6 +79,30 @@ public class GhHousingTypeDetails {
         return JSON.writeValueAsString(root);
     }
 
+    /**
+     * 같은 판을 다시 받으며 팝업을 못 받은 주택형에는 저장돼 있던 detail을 옮긴다.
+     * 같은 지구·주택형 위치에 팝업 요청 값이 같을 때만 같은 주택형으로 본다.
+     */
+    public String carryOver(String districts, String stored) {
+        if (districts == null || stored == null) {
+            return districts;
+        }
+        JsonNode current = read(districts);
+        JsonNode previous = read(stored);
+        for (int district = 0; district < current.size() && district < previous.size(); district++) {
+            JsonNode types = current.get(district).path("housingTypes");
+            JsonNode oldTypes = previous.get(district).path("housingTypes");
+            for (int index = 0; index < types.size() && index < oldTypes.size(); index++) {
+                JsonNode type = types.get(index);
+                JsonNode old = oldTypes.get(index);
+                if (!type.has("detail") && old.has("detail") && type.path("detailRequest").equals(old.path("detailRequest"))) {
+                    ((ObjectNode) type).set("detail", old.get("detail"));
+                }
+            }
+        }
+        return JSON.writeValueAsString(current);
+    }
+
     private JsonNode read(String districts) {
         try {
             return JSON.readTree(districts);

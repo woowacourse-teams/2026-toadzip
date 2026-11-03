@@ -118,12 +118,35 @@ class GhAnnouncementStoreTest {
         assertThat(store(FIRST).findUnchangedPbancNos(board, List.of(entry("801", "[정정] 제목", "2026-10-02")))).isEmpty();
     }
 
+    @Test
+    void 같은_판에서_팝업을_못_받은_주택형은_저장돼_있던_상세를_유지한다() {
+        var board = GhAnnouncementBoard.RENTAL_HOUSE;
+        String request = "\"detailRequest\":{\"houseTyCd\":\"33A\"}";
+        String withDetail = "[{\"name\":\"다산\",\"housingTypes\":[{" + request + ",\"detail\":{\"supplyArea\":\"48.8\"}}]}]";
+        String withoutDetail = "[{\"name\":\"다산\",\"housingTypes\":[{" + request + "}]}]";
+        store(FIRST).store(districts(board, "제목", withDetail));
+        store(FIRST.plusSeconds(60)).store(districts(board, "제목", withoutDetail));
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(repository.findBySourceKey("GH:801").orElseThrow().getDistricts()).contains("\"supplyArea\":\"48.8\"");
+
+        store(FIRST.plusSeconds(120)).store(districts(board, "[정정] 제목", withoutDetail));
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(repository.findBySourceKey("GH:801").orElseThrow().getDistricts()).doesNotContain("supplyArea");
+    }
+
+    private GhAnnouncementSnapshot districts(GhAnnouncementBoard board, String title, String districts) {
+        return new GhAnnouncementSnapshot(board, "801", "01", title, "국민임대", "남양주시", LocalDate.parse("2026-10-02"),
+                null, "접수중", board.detailUrl("801", "01"), board.listUrl(1), districts, "{}", "", "", "[]");
+    }
+
     private Entry entry(String pbancNo, String title, String postedDate) {
         return new Entry(pbancNo, "01", "국민임대", title, "남양주시", LocalDate.parse(postedDate), null, null);
     }
 
     private GhAnnouncementStore store(Instant now) {
-        return new GhAnnouncementStore(repository, Clock.fixed(now, ZoneOffset.UTC));
+        return new GhAnnouncementStore(repository, Clock.fixed(now, ZoneOffset.UTC), new GhHousingTypeDetails());
     }
 
     private GhAnnouncementSnapshot snapshot(String pbancNo, String title, String status, String notice) {

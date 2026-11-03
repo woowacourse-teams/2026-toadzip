@@ -19,6 +19,11 @@ public record GhAnnouncementSnapshot(
         }
     }
 
+    public GhAnnouncementSnapshot withDistricts(String districts) {
+        return new GhAnnouncementSnapshot(board, pbancNo, kindCode, title, supplyType, region, postedDate, closingDate,
+                status, originalUrl, listUrl, districts, reception, notice, otherNotes, attachments);
+    }
+
     public String sourceKey() {
         return "GH:" + pbancNo;
     }
