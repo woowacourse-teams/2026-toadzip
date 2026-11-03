@@ -2,6 +2,7 @@ import type { DocumentPreviewTelemetry } from './documentAnalytics'
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { AnnotationMode, getDocument, GlobalWorkerOptions, version, type PDFDocumentProxy, type PDFDocumentLoadingTask } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { EventBus, PDFViewer, PDFLinkService } from 'pdfjs-dist/legacy/web/pdf_viewer.mjs'
+import { matchesInContext } from './pdfFindContext.ts'
 import { activePdfOutlineId, readPdfOutline, type PdfLocation, type PdfOutlineEntry } from './pdfOutline.ts'
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 
@@ -26,9 +27,10 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
   const [result, setResult] = useState(emptyResult)
   const [outline, setOutline] = useState<readonly PdfOutlineEntry[]>([])
   const [location, setLocation] = useState<PdfLocation>({ pageNumber: 1, top: Infinity })
-  const runtime = useRef<{ viewer: PDFViewer; events: EventBus; linkService: PDFLinkService } | null>(null)
+  const runtime = useRef<{ viewer: PDFViewer; events: EventBus; linkService: PDFLinkService; findController: { _dirtyMatch?: boolean } } | null>(null)
   const queryRef = useRef<string | string[]>('')
   const searchPageRef = useRef<number | null>(null)
+  const contextRef = useRef<readonly string[] | null>(null)
   const scaleRef = useRef('page-width')
 
   useEffect(() => {
@@ -55,7 +57,9 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
       class EvidenceFindController extends PDFFindController {
         override match(query: string | string[], content: string, pageIndex: number) {
           if (searchPageRef.current !== null && pageIndex + 1 !== searchPageRef.current) return []
-          return super.match(query, content, pageIndex)
+          // 근거 문맥(주택형·면적)이 있으면 같은 줄에 그 표기가 있는 값만 강조한다. 없으면 아무것도 강조하지 않는다.
+          const matches = super.match(query, content, pageIndex)
+          return matches && matchesInContext(content, matches, contextRef.current)
         }
       }
       const findController = new EvidenceFindController({ eventBus: events, linkService })
@@ -65,7 +69,7 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
       viewer = new PDFViewer(options)
       viewer.scrollMode = ScrollMode.VERTICAL
       linkService.setViewer(viewer)
-      runtime.current = { viewer, events, linkService }
+      runtime.current = { viewer, events, linkService, findController: findController as unknown as { _dirtyMatch?: boolean } }
       events.on('pagesinit', () => {
         if (lifecycle.signal.aborted || !viewer) return
         viewer.currentScaleValue = scaleRef.current
@@ -128,8 +132,11 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
   }, [url, containerRef, viewerRef, telemetry])
 
   // 검색어 여러 개(근거 금액의 원·천원·만원 표기)는 그중 하나와 맞으면 되고, 다른 숫자 안에서 맞지 않게 낱말 단위로 찾는다.
-  const search = useCallback((query: string | readonly string[], again = false, previous = false, pageNumber: number | null = null) => {
+  const search = useCallback((query: string | readonly string[], again = false, previous = false, pageNumber: number | null = null, context: readonly string[] | null = null) => {
     searchPageRef.current = pageNumber
+    // 같은 검색어라도 쪽·문맥이 다를 수 있고, 같은 근거를 다시 눌러도 그 위치로 다시 가도록 이전 결과를 버린다.
+    if (!again && runtime.current) runtime.current.findController._dirtyMatch = true
+    contextRef.current = context
     const terms = typeof query === 'string' ? query : [...query]
     queryRef.current = terms
     if (!terms.length) setResult(emptyResult)

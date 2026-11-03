@@ -9,7 +9,7 @@ import type { CorrectionRow, SupplyCorrectionInput } from '../supply/supplyCorre
 import { getManagementDetail, ManagementError } from '../management/api'
 import { labels } from '../management/fields'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
-import { evidenceQuery, readExtraction, type Evidence } from './extraction'
+import { evidenceContext, evidenceQuery, readExtraction, type Evidence } from './extraction'
 import { extractAnnouncementPdf, loadLatestExtraction, pdfFileProblem, pdfSha256, preferredPdf, type ExtractionState, type SavedExtraction } from './extractionApi'
 import { checkAnnouncement, type ComplexLabels, type HousingCandidates } from './matching'
 import { applicableCells, assembleReview, cellMatches, createReview, pendingChanges, pendingItems, pendingSchedule, rebaseReview, remapSchedule, ReviewError, reviewSection, shown, type Cell, type PendingChange, type Review, type ReviewFilter, type ReviewSection, type ScheduleReview } from './review'
@@ -177,7 +177,10 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     if (problem) return
     setFocus(null); setLocalPdf({ url: URL.createObjectURL(file), name: file.name, file })
   }
-  function evidence(item: Evidence, cell?: Cell) { setFocus(previous => ({ page: item.page, query: evidenceQuery(item.quote, cell?.value, cell?.kind === 'money'), nonce: (previous?.nonce ?? 0) + 1 })); setMobileView('pdf') }
+  function evidence(item: Evidence, cell?: Cell) {
+    const context = cell && review ? evidenceContext(review.extraction, cell.path) : []
+    setFocus(previous => ({ page: item.page, query: evidenceQuery(item.quote, cell ? cell.extracted.value : undefined, cell?.kind === 'money', context), context, quote: item.quote, nonce: (previous?.nonce ?? 0) + 1 })); setMobileView('pdf')
+  }
   function change(next: Review) { setReview(next); setError('') }
   function start() {
     if (!parsed.ok || !workspace || !pdf) return
