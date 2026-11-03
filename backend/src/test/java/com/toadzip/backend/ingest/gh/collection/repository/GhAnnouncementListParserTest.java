@@ -46,8 +46,8 @@ class GhAnnouncementListParserTest {
 
     @Test
     void 빈_목록은_안내_행을_공고로_읽지_않는다() {
-        var page = parser.parseList(list(GhAnnouncementBoard.PURCHASE_RENTAL, 1, 0),
-                GhAnnouncementBoard.PURCHASE_RENTAL, 1);
+        var page = parser.parseList(list(GhAnnouncementBoard.RENTAL_HOUSE, 1, 0),
+                GhAnnouncementBoard.RENTAL_HOUSE, 1);
 
         assertThat(page.totalCount()).isZero();
         assertThat(page.entries()).isEmpty();
@@ -57,7 +57,8 @@ class GhAnnouncementListParserTest {
     void 다른_게시판이나_다른_페이지_응답은_거절한다() {
         String rental = list(GhAnnouncementBoard.RENTAL_HOUSE, 1, 1, ROW);
 
-        assertThatThrownBy(() -> parser.parseList(rental, GhAnnouncementBoard.PURCHASE_RENTAL, 1))
+        String otherBoard = rental.replace("sr7150", "sr7155");
+        assertThatThrownBy(() -> parser.parseList(otherBoard, GhAnnouncementBoard.RENTAL_HOUSE, 1))
                 .isInstanceOf(ExternalDataRequestException.class);
         assertThatThrownBy(() -> parser.parseList(rental, GhAnnouncementBoard.RENTAL_HOUSE, 2))
                 .isInstanceOf(ExternalDataRequestException.class);

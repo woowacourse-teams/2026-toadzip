@@ -1,6 +1,5 @@
 package com.toadzip.backend.ingest.gh.collection.service;
 
-import static com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementBoard.PURCHASE_RENTAL;
 import static com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementBoard.RENTAL_HOUSE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -61,7 +60,6 @@ class GhAnnouncementCollectionIntegrationTest {
     void 수집한_원천은_파싱_실패에도_보존되고_다시_성공하면_실패가_해소된다() {
         String detail = GhAnnouncementFixtures.detail(RENTAL_HOUSE, ROW);
         when(externalRepository.fetchList(RENTAL_HOUSE, 1)).thenReturn(GhAnnouncementFixtures.list(RENTAL_HOUSE, 1, 1, ROW));
-        when(externalRepository.fetchList(PURCHASE_RENTAL, 1)).thenReturn(GhAnnouncementFixtures.list(PURCHASE_RENTAL, 1, 0));
         when(externalRepository.fetchDetail(RENTAL_HOUSE, "801", "01")).thenReturn(detail);
         long announcementCount = count("announcements");
         long housingCount = count("housing_complexes");
@@ -104,7 +102,6 @@ class GhAnnouncementCollectionIntegrationTest {
     void 일부만_읽어_저장한_공고는_다음_실행에서_다시_받고_바뀌지_않은_공고는_건너뛴다() {
         String detail = GhAnnouncementFixtures.detail(RENTAL_HOUSE, ROW);
         when(externalRepository.fetchList(RENTAL_HOUSE, 1)).thenReturn(GhAnnouncementFixtures.list(RENTAL_HOUSE, 1, 1, ROW));
-        when(externalRepository.fetchList(PURCHASE_RENTAL, 1)).thenReturn(GhAnnouncementFixtures.list(PURCHASE_RENTAL, 1, 0));
         when(externalRepository.fetchDetail(RENTAL_HOUSE, "801", "01"))
                 .thenReturn(detail.replace("pbancNo=801&atchFileSn", "pbancNo=900&atchFileSn"));
 
@@ -125,7 +122,7 @@ class GhAnnouncementCollectionIntegrationTest {
                 .replace("<td>접수마감", "<td>접수중").replace("<td>2026-10-20", "<td>2026-10-25"));
         var skipped = service.collect();
         assertThat(skipped.skippedRequestCount()).isOne();
-        assertThat(skipped.externalApiCallCount()).isEqualTo(2);
+        assertThat(skipped.externalApiCallCount()).isOne();
         var refreshed = sources.findBySourceKey("GH:801").orElseThrow();
         assertThat(refreshed.getStatus()).isEqualTo("접수중");
         assertThat(refreshed.getClosingDate()).isEqualTo(LocalDate.parse("2026-10-25"));

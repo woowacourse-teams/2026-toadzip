@@ -36,7 +36,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.node.ObjectNode;
 
-/** GH주택청약센터 임대주택·매입임대 게시판을 차례로 돌며 공고 원천을 수집한다. */
+/** GH주택청약센터 임대주택 게시판을 돌며 공고 원천을 수집한다. */
 @Slf4j
 @Service
 public class GhAnnouncementCollectionService {
@@ -85,7 +85,6 @@ public class GhAnnouncementCollectionService {
             cutoff = LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))).minusDays(lookbackDays);
         }
         Progress progress = new Progress();
-        // 공고 번호는 두 게시판이 함께 쓰는 번호라서 게시판을 넘어 중복을 확인한다.
         Set<String> seen = new HashSet<>();
         IngestExecutionScope.beginWork("GH 공고 원천", "공고", -1);
         for (GhAnnouncementBoard board : GhAnnouncementBoard.values()) {

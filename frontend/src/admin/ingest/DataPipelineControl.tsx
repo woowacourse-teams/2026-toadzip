@@ -45,8 +45,8 @@ const boardSources = [
   },
   {
     type: 'GH_ANNOUNCEMENT_COLLECTION', id: 'gh', title: 'GH',
-    description: 'GH주택청약센터 임대주택·매입임대 공고의 지구·주택형·일정·공고문을 원천으로 저장합니다. 서비스 공고 등록·정제는 포함하지 않습니다.',
-    groupDescription: 'GH주택청약센터 임대주택·매입임대 공고에서 지구·주택형·공급일정·접수처·공고문 정보를 나눠 저장합니다. API 키 없이 실행합니다.',
+    description: 'GH주택청약센터 임대주택(건설임대) 공고의 지구·주택형·일정·공고문을 원천으로 저장합니다. 서비스 공고 등록·정제는 포함하지 않습니다.',
+    groupDescription: 'GH주택청약센터 임대주택(건설임대) 공고에서 지구·주택형·공급일정·접수처·공고문 정보를 나눠 저장합니다. API 키 없이 실행합니다.',
   },
 ] as const satisfies readonly {
   type: DataPipelineType; id: string; title: string; description: string; groupDescription: string

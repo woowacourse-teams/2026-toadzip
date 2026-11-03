@@ -79,12 +79,12 @@ class GhAnnouncementHtmlParserTest {
     }
 
     @Test
-    void 공급정보가_없는_매입임대_공고는_빈_지구_목록과_빈_구획으로_읽는다() {
-        var document = Jsoup.parse(detail(GhAnnouncementBoard.PURCHASE_RENTAL, ROW));
+    void 공급정보가_없는_공고는_빈_지구_목록과_빈_구획으로_읽는다() {
+        var document = Jsoup.parse(detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW));
         document.select("h5:containsOwn(공급정보), ul.tab_box, div#tab1, div#tab2").remove();
         document.select("h5:containsOwn(기타사항), div.bg_txt_box").remove();
 
-        var content = parser.parse(document.html(), GhAnnouncementBoard.PURCHASE_RENTAL, entry(ROW));
+        var content = parser.parse(document.html(), GhAnnouncementBoard.RENTAL_HOUSE, entry(ROW));
 
         assertThat(content.districts()).isEqualTo("[]");
         assertThat(content.otherNotes()).isEmpty();
@@ -157,10 +157,10 @@ class GhAnnouncementHtmlParserTest {
 
     @Test
     void 공고문_행이_없으면_첨부가_없는_공고로_본다() {
-        var document = Jsoup.parse(detail(GhAnnouncementBoard.PURCHASE_RENTAL, ROW));
+        var document = Jsoup.parse(detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW));
         document.select("th:containsOwn(공고문)").first().parent().remove();
 
-        var content = parser.parse(document.html(), GhAnnouncementBoard.PURCHASE_RENTAL, entry(ROW));
+        var content = parser.parse(document.html(), GhAnnouncementBoard.RENTAL_HOUSE, entry(ROW));
 
         assertThat(content.attachments()).isEqualTo("[]");
     }
@@ -180,9 +180,9 @@ class GhAnnouncementHtmlParserTest {
 
     @Test
     void 다른_게시판의_상세는_거절한다() {
-        String rental = detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW);
+        String otherBoard = detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW).replace("sr7150", "sr7155");
 
-        assertThatThrownBy(() -> parser.parse(rental, GhAnnouncementBoard.PURCHASE_RENTAL, entry(ROW)))
+        assertThatThrownBy(() -> parser.parse(otherBoard, GhAnnouncementBoard.RENTAL_HOUSE, entry(ROW)))
                 .isInstanceOf(ExternalDataRequestException.class);
     }
 

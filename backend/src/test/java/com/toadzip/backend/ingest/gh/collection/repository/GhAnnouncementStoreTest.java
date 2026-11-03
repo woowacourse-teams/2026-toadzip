@@ -76,7 +76,7 @@ class GhAnnouncementStoreTest {
     }
 
     @Test
-    void 같은_게시판에서_제목과_게시일이_같은_공고만_바뀌지_않은_공고로_본다() {
+    void 제목과_게시일이_같은_공고만_바뀌지_않은_공고로_본다() {
         store(FIRST).store(snapshot("801", "제목", "접수중", "원문"));
         store(FIRST).store(snapshot("802", "제목", "접수중", "원문"));
         store(FIRST).store(snapshot("803", "제목", "접수중", "원문"));
@@ -85,7 +85,6 @@ class GhAnnouncementStoreTest {
 
         assertThat(store(FIRST).findUnchangedPbancNos(GhAnnouncementBoard.RENTAL_HOUSE, entries))
                 .containsExactly("801");
-        assertThat(store(FIRST).findUnchangedPbancNos(GhAnnouncementBoard.PURCHASE_RENTAL, entries)).isEmpty();
     }
 
     @Test

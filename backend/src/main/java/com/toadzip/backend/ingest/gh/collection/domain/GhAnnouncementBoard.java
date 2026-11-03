@@ -1,9 +1,8 @@
 package com.toadzip.backend.ingest.gh.collection.domain;
 
-/** GH주택청약센터의 청약공고 게시판. 임대상가 게시판은 수집하지 않는다. */
+/** GH주택청약센터의 청약공고 게시판. 건설임대만 다루므로 매입임대·임대상가 게시판은 수집하지 않는다. */
 public enum GhAnnouncementBoard {
-    RENTAL_HOUSE("sr7150", "임대주택"),
-    PURCHASE_RENTAL("sr7155", "매입임대");
+    RENTAL_HOUSE("sr7150", "임대주택");
 
     public static final String SITE_URL = "https://apply.gh.or.kr";
     private static final String FILE_URL = "https://apply-cdn.gh.or.kr";

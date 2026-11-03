@@ -25,17 +25,17 @@ class GhAnnouncementExternalRepositoryTest {
 
     @Test
     void 게시판별_고정된_공식_목록과_상세_주소만_조회한다() {
-        server.expect(requestTo("https://apply.gh.or.kr/sb/sr/sr7155/selectPbancRentHouseList.do?pageIndex=2"))
+        server.expect(requestTo("https://apply.gh.or.kr/sb/sr/sr7150/selectPbancRentHouseList.do?pageIndex=2"))
                 .andExpect(method(HttpMethod.GET))
-                .andExpect(header("Referer", GhAnnouncementBoard.PURCHASE_RENTAL.listUrl()))
+                .andExpect(header("Referer", GhAnnouncementBoard.RENTAL_HOUSE.listUrl()))
                 .andExpect(header("Accept", "text/html"))
-                .andRespond(withSuccess("<html>GH 매입임대</html>", MediaType.TEXT_HTML));
+                .andRespond(withSuccess("<html>GH 임대주택</html>", MediaType.TEXT_HTML));
         server.expect(requestTo(
                         "https://apply.gh.or.kr/sb/sr/sr7150/selectPbancDetailView.do?pbancNo=801&pbancKndCd=02&previewYn=N"))
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess("<html>GH 상세</html>", MediaType.TEXT_HTML));
 
-        assertThat(repository.fetchList(GhAnnouncementBoard.PURCHASE_RENTAL, 2)).isEqualTo("<html>GH 매입임대</html>");
+        assertThat(repository.fetchList(GhAnnouncementBoard.RENTAL_HOUSE, 2)).isEqualTo("<html>GH 임대주택</html>");
         assertThat(repository.fetchDetail(GhAnnouncementBoard.RENTAL_HOUSE, "801", "02")).isEqualTo("<html>GH 상세</html>");
         server.verify();
     }

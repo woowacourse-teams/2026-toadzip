@@ -1,6 +1,5 @@
 package com.toadzip.backend.ingest.gh.collection.service;
 
-import static com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementBoard.PURCHASE_RENTAL;
 import static com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementBoard.RENTAL_HOUSE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -63,20 +62,17 @@ class GhAnnouncementCollectionServiceTest {
     }
 
     @Test
-    void 두_게시판의_최근_공고를_상세까지_읽어_게시판과_함께_저장한다() {
+    void 최근_공고를_상세까지_읽어_게시판과_함께_저장한다() {
         Row rental = row(801, RECENT);
-        Row purchase = row(795, RECENT);
         list(RENTAL_HOUSE, 1, 1, rental);
-        list(PURCHASE_RENTAL, 1, 1, purchase);
         detail(RENTAL_HOUSE, rental);
-        detail(PURCHASE_RENTAL, purchase);
 
         var report = service.collect();
 
-        assertThat(report.storedRowCount()).isEqualTo(2);
-        // 목록 2 + 상세 2 + 주택형 팝업(상세마다 2)
-        assertThat(report.externalApiCallCount()).isEqualTo(8);
-        assertThat(report.successfulRequestCount()).isEqualTo(4);
+        assertThat(report.storedRowCount()).isOne();
+        // 목록 1 + 상세 1 + 주택형 팝업 2
+        assertThat(report.externalApiCallCount()).isEqualTo(4);
+        assertThat(report.successfulRequestCount()).isEqualTo(2);
         assertThat(report.failedRequestCount()).isZero();
         verify(store).store(argThat(snapshot -> snapshot.board() == RENTAL_HOUSE && snapshot.pbancNo().equals("801")
                 && snapshot.region().equals("남양주시") && snapshot.status().equals("접수마감")
@@ -85,9 +81,7 @@ class GhAnnouncementCollectionServiceTest {
                 && snapshot.listUrl().equals(RENTAL_HOUSE.listUrl(1))
                 && snapshot.districts().contains("\"supplyCount\":\"120\"") && snapshot.reception().contains("다산 임대센터")
                 && snapshot.notice().equals("※ 첫 줄\n※ 둘째 줄") && snapshot.attachments().contains("모집공고문.pdf")));
-        verify(store).store(argThat(snapshot -> snapshot.board() == PURCHASE_RENTAL
-                && snapshot.pbancNo().equals("795")));
-        verify(failures).resolve(ExternalDataSource.GH_ANNOUNCEMENT, "board=sr7155&page=1");
+        verify(failures).resolve(ExternalDataSource.GH_ANNOUNCEMENT, "board=sr7150&page=1");
         verify(failures).resolve(ExternalDataSource.GH_ANNOUNCEMENT, "pbancNo=801");
     }
 
@@ -98,14 +92,13 @@ class GhAnnouncementCollectionServiceTest {
         Row laterRecent = row(800, "2026-07-07");
         list(RENTAL_HOUSE, 1, 11, first);
         list(RENTAL_HOUSE, 2, 11, laterRecent);
-        list(PURCHASE_RENTAL, 1, 0);
         detail(RENTAL_HOUSE, first[0]);
         detail(RENTAL_HOUSE, laterRecent);
 
         var report = service.collect();
 
         assertThat(report.storedRowCount()).isEqualTo(2);
-        assertThat(report.externalApiCallCount()).isEqualTo(9);
+        assertThat(report.externalApiCallCount()).isEqualTo(8);
         verify(externalRepository, never()).fetchDetail(RENTAL_HOUSE, "899", "01");
     }
 
@@ -114,7 +107,6 @@ class GhAnnouncementCollectionServiceTest {
         service = service(0);
         Row old = row(801, OLD);
         list(RENTAL_HOUSE, 1, 1, old);
-        list(PURCHASE_RENTAL, 1, 0);
         detail(RENTAL_HOUSE, old);
 
         assertThat(service.collect().storedRowCount()).isOne();
@@ -125,7 +117,6 @@ class GhAnnouncementCollectionServiceTest {
         Row broken = row(802, RECENT);
         Row next = row(801, RECENT);
         list(RENTAL_HOUSE, 1, 2, broken, next);
-        list(PURCHASE_RENTAL, 1, 0);
         when(externalRepository.fetchDetail(RENTAL_HOUSE, "802", "01")).thenReturn("<html>오류 페이지</html>");
         detail(RENTAL_HOUSE, next);
 
@@ -138,21 +129,19 @@ class GhAnnouncementCollectionServiceTest {
     }
 
     @Test
-    void 목록_실패는_그_게시판만_멈추고_다른_게시판은_계속_수집한다() {
-        Row purchase = row(795, RECENT);
+    void 목록_실패는_요청_단위로_기록하고_상세를_요청하지_않는다() {
         when(externalRepository.fetchList(RENTAL_HOUSE, 1)).thenThrow(ExternalDataRequestException.retryable("503"));
-        list(PURCHASE_RENTAL, 1, 1, purchase);
-        detail(PURCHASE_RENTAL, purchase);
 
         var report = service.collect();
 
-        assertThat(report.storedRowCount()).isOne();
+        assertThat(report.storedRowCount()).isZero();
         assertThat(report.failedRequestCount()).isOne();
         verify(failures).record(eq(ExternalDataSource.GH_ANNOUNCEMENT), eq("board=sr7150&page=1"), any(), any(), any());
+        verify(externalRepository, never()).fetchDetail(any(), any(), any());
     }
 
     @Test
-    void 호출_제한에_걸리면_남은_요청과_다음_게시판을_멈춘다() {
+    void 호출_제한에_걸리면_남은_요청을_멈춘다() {
         list(RENTAL_HOUSE, 1, 2, row(802, RECENT), row(801, RECENT));
         when(externalRepository.fetchDetail(RENTAL_HOUSE, "802", "01"))
                 .thenThrow(ExternalDataRequestException.rateLimited("429"));
@@ -162,7 +151,6 @@ class GhAnnouncementCollectionServiceTest {
         assertThat(report.rateLimitedRequestCount()).isOne();
         assertThat(report.externalApiCallCount()).isEqualTo(2);
         verify(externalRepository, never()).fetchDetail(RENTAL_HOUSE, "801", "01");
-        verify(externalRepository, never()).fetchList(eq(PURCHASE_RENTAL), any(Integer.class));
         verify(store, never()).store(any());
     }
 
@@ -170,24 +158,24 @@ class GhAnnouncementCollectionServiceTest {
     void 수집_중_전체_건수가_바뀌면_다음_페이지_공고를_수집하지_않는다() {
         list(RENTAL_HOUSE, 1, 11, IntStream.range(0, 10).mapToObj(index -> row(900 - index, OLD)).toArray(Row[]::new));
         list(RENTAL_HOUSE, 2, 12, row(800, RECENT), row(799, RECENT));
-        list(PURCHASE_RENTAL, 1, 0);
 
         assertThat(service.collect().failedRequestCount()).isOne();
         verify(externalRepository, never()).fetchDetail(RENTAL_HOUSE, "800", "01");
     }
 
     @Test
-    void 두_게시판에_같은_공고_번호가_있으면_뒤_게시판_목록을_실패로_기록한다() {
-        Row rental = row(801, RECENT);
-        list(RENTAL_HOUSE, 1, 1, rental);
-        list(PURCHASE_RENTAL, 1, 1, rental);
-        detail(RENTAL_HOUSE, rental);
+    void 페이지_사이에_같은_공고_번호가_있으면_뒤_페이지를_실패로_기록한다() {
+        Row[] first = IntStream.range(0, 10).mapToObj(index -> row(900 - index, index == 0 ? RECENT : OLD))
+                .toArray(Row[]::new);
+        list(RENTAL_HOUSE, 1, 11, first);
+        list(RENTAL_HOUSE, 2, 11, first[0]);
+        detail(RENTAL_HOUSE, first[0]);
 
         var report = service.collect();
 
         assertThat(report.storedRowCount()).isOne();
-        verify(failures).record(eq(ExternalDataSource.GH_ANNOUNCEMENT), eq("board=sr7155&page=1"), any(), any(), any());
-        verify(externalRepository, never()).fetchDetail(eq(PURCHASE_RENTAL), any(), any());
+        verify(failures).record(eq(ExternalDataSource.GH_ANNOUNCEMENT), eq("board=sr7150&page=2"), any(), any(), any());
+        verify(externalRepository).fetchDetail(RENTAL_HOUSE, "900", "01");
     }
 
     @Test
@@ -206,7 +194,6 @@ class GhAnnouncementCollectionServiceTest {
         Row unchanged = row(802, RECENT);
         Row pending = row(801, RECENT);
         list(RENTAL_HOUSE, 1, 2, unchanged, pending);
-        list(PURCHASE_RENTAL, 1, 0);
         when(store.findUnchangedPbancNos(eq(RENTAL_HOUSE), any())).thenReturn(Set.of("802", "801"));
         when(failures.findPendingRequestDescriptions(eq(ExternalDataSource.GH_ANNOUNCEMENT), any()))
                 .thenReturn(Set.of("pbancNo=801"));
@@ -226,7 +213,6 @@ class GhAnnouncementCollectionServiceTest {
     void 정체성이_맞은_상세는_첨부를_못_읽어도_저장하고_실패를_열어_둔다() {
         Row rental = row(801, RECENT);
         list(RENTAL_HOUSE, 1, 1, rental);
-        list(PURCHASE_RENTAL, 1, 0);
         when(externalRepository.fetchDetail(RENTAL_HOUSE, "801", "01")).thenReturn(GhAnnouncementFixtures
                 .detail(RENTAL_HOUSE, rental).replace("pbancNo=801&atchFileSn", "pbancNo=900&atchFileSn"));
 
@@ -244,7 +230,6 @@ class GhAnnouncementCollectionServiceTest {
     void 주택형마다_상세공급정보_팝업을_받아_면적과_세대수를_붙인다() {
         Row rental = row(801, RECENT);
         list(RENTAL_HOUSE, 1, 1, rental);
-        list(PURCHASE_RENTAL, 1, 0);
         detail(RENTAL_HOUSE, rental);
 
         assertThat(service.collect().failedRequestCount()).isZero();
@@ -260,7 +245,6 @@ class GhAnnouncementCollectionServiceTest {
     void 팝업을_못_받은_주택형은_상세_없이_저장하고_공고_실패를_열어_둔다() {
         Row rental = row(801, RECENT);
         list(RENTAL_HOUSE, 1, 1, rental);
-        list(PURCHASE_RENTAL, 1, 0);
         detail(RENTAL_HOUSE, rental);
         when(externalRepository.fetchHousingTypeDetail(eq(RENTAL_HOUSE), argThat(form -> form != null
                 && "33A".equals(form.get("houseTyCd"))))).thenReturn("<html>다른 주택형</html>");
@@ -286,7 +270,6 @@ class GhAnnouncementCollectionServiceTest {
 
         assertThat(report.rateLimitedRequestCount()).isOne();
         verify(externalRepository).fetchHousingTypeDetail(eq(RENTAL_HOUSE), any());
-        verify(externalRepository, never()).fetchList(eq(PURCHASE_RENTAL), any(Integer.class));
     }
 
     private GhAnnouncementCollectionService service(int days) {
