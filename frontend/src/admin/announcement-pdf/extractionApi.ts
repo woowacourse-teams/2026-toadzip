@@ -115,6 +115,8 @@ export async function extractAnnouncementPdf(id: string, file: Blob, fileName: s
     await wait(JOB_POLL_MS, signal)
     job = parseJob(await requestManagementApi(`${path}/jobs/${job.jobId}`, 'GET', undefined, signal))
   }
+  // 공고 첨부는 서버가 따로 받으므로, 미리 본 뒤 첨부가 바뀌었으면 결과의 쪽·인용이 화면의 PDF와 맞지 않는다.
+  if (job.pdfSha256 !== await pdfSha256(file)) throw new Error('추출한 첨부 PDF가 화면에서 미리 본 파일과 다릅니다. 그사이 첨부가 바뀌었을 수 있으니 PDF를 다시 고른 뒤 다시 추출해 주세요.')
   return parsePdfExtraction(job.extraction)
 }
 
