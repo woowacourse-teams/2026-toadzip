@@ -763,6 +763,67 @@ class SupplyCorrectionIntegrationTest {
         assertThat(linkedTypeIds(added.getId())).containsExactlyInAnyOrder(row.getHousingType().getId(), created.getFirst());
     }
 
+    @Test
+    void 한_행의_새_대표_주택형과_다른_행이_함께_모집하는_새_주택형이_같은_단지_면적이면_하나를_함께_쓴다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId(); long existingTypeId = row.getHousingType().getId();
+        var request = request(id);
+        var first = (ObjectNode) request.get("rows").get(0);
+        var extra = first.deepCopy().putNull("id").put("key", "new-row").put("typeName", "26").put("displayOrder", 1);
+        ((ObjectNode) extra.get("targets").get(0)).putNull("id").put("key", "new-target");
+        extra.putArray("linkedHousingTypes").addObject().putObject("newHousingType").put("name", "26C")
+                .put("exclusiveArea", new BigDecimal("26.90"));
+        first.putNull("housingTypeId").put("typeName", "26C").remove("linkedHousingTypes");
+        first.putObject("newHousingType").put("name", "26C").put("exclusiveArea", new BigDecimal("26.9"));
+        ((ArrayNode) request.get("rows")).add(extra);
+
+        apply(id, request, preview(id, request)).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+
+        var created = jdbc.queryForList("SELECT id FROM housing_types WHERE housing_complex_id = ? AND exclusive_area = 26.9",
+                Long.class, row.getHousingComplex().getId());
+        assertThat(created).hasSize(1);
+        var added = rows.findAllByAnnouncement(row.getAnnouncement()).stream()
+                .filter(item -> !item.getId().equals(row.getId())).findFirst().orElseThrow();
+        assertThat(jdbc.queryForObject("SELECT housing_type_id FROM supply_rows WHERE id = ?", Long.class, row.getId()))
+                .isEqualTo(created.getFirst());
+        assertThat(linkedTypeIds(row.getId())).containsExactly(created.getFirst());
+        assertThat(linkedTypeIds(added.getId())).containsExactlyInAnyOrder(existingTypeId, created.getFirst());
+    }
+
+    @Test
+    void 연결을_검토한_공급행에_함께_모집하는_주택형을_더하면_재검토로_판정한다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        mvc.perform(post(root(id) + "/reviews").with(user("reviewer").roles("ADMIN")).with(csrf())
+                .contentType("application/json").content(json.writeValueAsString(reviewRequest(row, "connection"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.records[0].status").value("VERIFIED"))
+                .andExpect(jsonPath("$.data.records[0].checkedValues.connection.typeIds").value(String.valueOf(row.getHousingType().getId())));
+        entities.clear();
+
+        var joint = housingType(row, "26B", "26.7000");
+        var request = request(id);
+        ((ObjectNode) request.get("rows").get(0)).putArray("linkedHousingTypes").addObject().put("housingTypeId", joint.getId());
+        apply(id, request, preview(id, request)).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+
+        long low = Math.min(row.getHousingType().getId(), joint.getId()), high = Math.max(row.getHousingType().getId(), joint.getId());
+        reviews(id).andExpect(jsonPath("$.data.records[0].status").value("STALE"))
+                .andExpect(jsonPath("$.data.records[0].currentValues.connection.typeIds").value(low + "," + high));
+    }
+
+    @Test
+    void 함께_모집하는_주택형_목록이_없던_연결_검토는_그대로_검토_완료다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        mvc.perform(post(root(id) + "/reviews").with(user("reviewer").roles("ADMIN")).with(csrf())
+                .contentType("application/json").content(json.writeValueAsString(reviewRequest(row, "connection"))))
+                .andExpect(status().isOk());
+        jdbc.update("UPDATE admin_supply_reviews SET checked_values = (checked_values::jsonb #- '{connection,typeIds}')::text");
+        jdbc.update("INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id) VALUES (?, ?)",
+                row.getId(), housingType(row, "26B", "26.7000").getId());
+
+        reviews(id).andExpect(jsonPath("$.data.records[0].status").value("VERIFIED"))
+                .andExpect(jsonPath("$.data.records[0].checkedValues.connection.typeIds").doesNotExist());
+    }
+
     private void rejectLinks(long id, java.util.function.Consumer<ArrayNode> links, String message) throws Exception {
         var request = request(id);
         links.accept(((ObjectNode) request.get("rows").get(0)).putArray("linkedHousingTypes"));
