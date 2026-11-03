@@ -70,7 +70,7 @@ def test_unknown_usage_is_none():
     assert reply.usage == {"promptTokens": None, "outputTokens": None, "thinkingTokens": None}
 
 
-@pytest.mark.parametrize("status", [429, 500, 502, 503])
+@pytest.mark.parametrize("status", [408, 429, 500, 502, 503])
 def test_rate_limit_and_server_errors_are_transient(status):
     with pytest.raises(TransientError) as error:
         client(lambda request: httpx.Response(status, text="raw upstream body")).chat("p", later())

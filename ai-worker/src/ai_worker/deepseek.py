@@ -43,7 +43,7 @@ class DeepSeek:
             "reasoning_effort": "low",
         }
         status, payload = self.post(body, deadline)
-        if status == 429 or status >= 500:
+        if status in (408, 429) or status >= 500:
             raise TransientError("MODEL_UNAVAILABLE", "AI 모델이 잠시 요청을 받지 못합니다.")
         if status != 200:
             raise PermanentError("MODEL_REJECTED", f"AI 모델이 요청을 거절했습니다(HTTP {status}).")
