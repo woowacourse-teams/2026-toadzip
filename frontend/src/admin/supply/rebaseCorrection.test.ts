@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { blankRow, blankTarget } from './supplyCorrectionApi'
+import { blankRow, blankTarget, parseSupplyWorkspace, type CorrectionRow } from './supplyCorrectionApi'
 import { rebaseCorrection, resolveConflict } from './rebaseCorrection'
 
 it('다른 필드 변경은 병합하고 겹치는 대상 조건은 명시적으로 선택한다', () => {
@@ -28,11 +28,10 @@ it('수정 중인 행이나 조건이 사라지면 입력을 조용히 버리지
 
 it('대표 주택형을 바꾸며 함께 모집하는 주택형 목록을 비운 행은 최신값의 목록으로 되돌리지 않는다', () => {
   const base = { ...blankRow(0), id: 1, key: 'row:1', housingComplexId: 7, housingTypeId: 2, linkedHousingTypes: [{ housingTypeId: 3 }] }
-  const mine = { ...base, housingTypeId: 4, linkedHousingTypes: undefined }
+  const mine = { ...base, housingTypeId: 4, linkedHousingTypes: [] }
   const latest = { ...base, householdCount: 20 }
   const sent = JSON.parse(JSON.stringify(rebaseCorrection([base], [mine], [latest]).rows[0])) as Record<string, unknown>
-  expect(sent).toMatchObject({ housingTypeId: 4, householdCount: 20 })
-  expect(sent).not.toHaveProperty('linkedHousingTypes')
+  expect(sent).toMatchObject({ housingTypeId: 4, householdCount: 20, linkedHousingTypes: [] })
 })
 
 it('PDF로 채운 함께 모집하는 주택형 목록은 최신값 위에 다시 맞춰도 유지한다', () => {
@@ -42,4 +41,14 @@ it('PDF로 채운 함께 모집하는 주택형 목록은 최신값 위에 다�
   const result = rebaseCorrection([base], [mine], [{ ...base, householdCount: 20 }])
   expect(result.rows[0]).toMatchObject({ householdCount: 20, linkedHousingTypes: linked })
   expect(result.conflicts).toEqual([])
+})
+
+it('조회한 연결을 뺐다가 같은 주택형을 다시 넣은 행은 다른 사람이 바꾼 연결과 충돌하지 않는다', () => {
+  const stored = (row: CorrectionRow) => parseSupplyWorkspace(structuredClone({ snapshotToken: 't', version: 1, rows: [row], sources: [] })).rows[0]
+  const base = stored({ ...blankRow(0), id: 1, key: 'row:1', housingComplexId: 7, housingTypeId: 2, linkedHousingTypes: [{ housingTypeId: 3, newHousingType: null }] })
+  const mine = { ...base, linkedHousingTypes: [{ housingTypeId: 3 }] }
+  const latest = stored({ ...base, linkedHousingTypes: [{ housingTypeId: 4, newHousingType: null }] })
+  const result = rebaseCorrection([base], [mine], [latest])
+  expect(result.conflicts).toEqual([])
+  expect(result.rows[0].linkedHousingTypes).toEqual([{ housingTypeId: 4 }])
 })

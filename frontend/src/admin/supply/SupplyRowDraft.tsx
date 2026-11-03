@@ -52,8 +52,8 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
       if (controller.signal.aborted) return
       const address = detail.data.address
       const pnu = address && typeof address === 'object' && !Array.isArray(address) ? address.pnu : null
-      // 대표·단지를 바꾸면 조회한 함께 모집하는 주택형을 돌려보내지 않는다. 생략하면 서버가 대표만 남긴다.
-      onChange({ ...value, housingComplexId: id, housingComplexName: name, housingTypeId: null, newHousingType: null, linkedHousingTypes: undefined,
+      // 대표·단지를 바꾸면 빈 목록으로 연결을 비운다. 생략하면 대표를 원래대로 되돌렸을 때 서버가 이전 연결을 유지한다.
+      onChange({ ...value, housingComplexId: id, housingComplexName: name, housingTypeId: null, newHousingType: null, linkedHousingTypes: [],
         complexName: value.complexName || name, pnu: typeof pnu === 'string' ? pnu : value.pnu })
       setTypes(candidates); setCandidateComplex(detail); setLookup(true)
     } catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '단지를 조회하지 못했습니다.') }
@@ -88,12 +88,12 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
         {/* 연결 확인과 해제는 같은 단지 연결에 대한 동작이라 한 줄에 둔다. */}
         {(value.housingComplexId || !value.groupId) && <div className={styles.actions}>
           {value.housingComplexId && <button type="button" onClick={() => setLookup(true)}>이 단지의 주택형 확인</button>}
-          {!value.groupId && <button type="button" onClick={() => { setTypes([]); setLookup(false); onChange({ ...value, housingComplexId: null, housingComplexName: null, housingTypeId: null, newHousingType: null, linkedHousingTypes: undefined }) }}>단지·주택형 연결 해제</button>}
+          {!value.groupId && <button type="button" onClick={() => { setTypes([]); setLookup(false); onChange({ ...value, housingComplexId: null, housingComplexName: null, housingTypeId: null, newHousingType: null, linkedHousingTypes: [] }) }}>단지·주택형 연결 해제</button>}
         </div>}
         {value.housingComplexId && <>
           {lookup && <label>공통 주택형<select value={value.newHousingType ? 'new' : value.housingTypeId ?? ''} onChange={event => {
-            if (event.target.value === 'new') onChange({ ...value, housingTypeId: null, newHousingType: { name: value.typeName, exclusiveArea: value.exclusiveArea ?? 0, supplyArea: value.supplyArea }, linkedHousingTypes: undefined })
-            else onChange({ ...value, housingTypeId: event.target.value ? Number(event.target.value) : null, newHousingType: null, linkedHousingTypes: undefined })
+            if (event.target.value === 'new') onChange({ ...value, housingTypeId: null, newHousingType: { name: value.typeName, exclusiveArea: value.exclusiveArea ?? 0, supplyArea: value.supplyArea }, linkedHousingTypes: [] })
+            else onChange({ ...value, housingTypeId: event.target.value ? Number(event.target.value) : null, newHousingType: null, linkedHousingTypes: [] })
           }}><option value="">미연결</option>{types.map(type => <option key={type.id} value={type.id}>{type.name} · 전용 {type.exclusiveArea}㎡ · #{type.id}</option>)}<option value="new">누락된 주택형 만들기</option></select></label>}</>}
         {value.newHousingType && <div className={styles.fields}>
           <label>새 공통 주택형 이름<input required maxLength={255} value={value.newHousingType.name} onChange={event => field('newHousingType', { ...value.newHousingType!, name: event.target.value })} /></label>
@@ -113,6 +113,7 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
           <p>이름·주소·면적은 비교 근거입니다. 같은 이름도 별개 주택형일 수 있으므로 공식 원문으로 대응을 확인하세요. 공고 모집수와 주택형 전체 세대수는 다른 범위입니다.</p>
         </section>}
         {value.housingComplexId && (value.housingTypeId || value.newHousingType) && <LinkedHousingTypesDraft value={value} types={types} lookup={lookup}
+          typesLoaded={lookup && candidateComplex?.summary.id === complexId}
           shared={!!value.groupId || sharedCount !== undefined} onLookup={() => setLookup(true)} onChange={links => field('linkedHousingTypes', links)} />}
       </fieldset>
       {error && <p role="alert">{error}</p>}
@@ -158,8 +159,8 @@ const blankNewType: NewHousingType = { name: '', exclusiveArea: 0, supplyArea: n
  * 대표 주택형과 함께 모집하는 주택형(세부 타입 26B·26C) 목록. 고치면 고친 목록 전체를 보내고, 손대지 않으면 조회한 값을 그대로 둔다.
  * 한 행에는 전용면적마다 주택형 하나만 연결하므로 대표·이미 연결한 면적과 같은 주택형은 고를 수 없다.
  */
-function LinkedHousingTypesDraft({ value, types, lookup, shared, onLookup, onChange }: {
-  value: CorrectionRow; types: MatchingHousingType[]; lookup: boolean; shared: boolean
+function LinkedHousingTypesDraft({ value, types, lookup, typesLoaded, shared, onLookup, onChange }: {
+  value: CorrectionRow; types: MatchingHousingType[]; lookup: boolean; typesLoaded: boolean; shared: boolean
   onLookup: () => void; onChange: (links: LinkedHousingType[]) => void
 }) {
   const [draft, setDraft] = useState<NewHousingType | null>(null)
@@ -190,10 +191,11 @@ function LinkedHousingTypesDraft({ value, types, lookup, shared, onLookup, onCha
         <label>새 주택형 전용면적 (㎡)<input type="number" min="0.0001" step="0.0001" value={draft.exclusiveArea || ''} onChange={event => setDraft({ ...draft, exclusiveArea: Number(event.target.value) })} /></label>
         <label>새 주택형 공급면적 (㎡)<input type="number" min="0" step="0.0001" value={draft.supplyArea ?? ''} onChange={event => setDraft({ ...draft, supplyArea: event.target.value === '' ? null : Number(event.target.value) })} /></label>
         {draftConflict && <p role="alert">{draftConflict}</p>}
-        <div className={styles.actions}><button type="button" disabled={!draft.name.trim() || !(draft.exclusiveArea > 0) || !!draftConflict}
+        {/* 단지 주택형을 불러와야 같은 전용면적 주택형이 있는지 확인할 수 있다. */}
+        <div className={styles.actions}><button type="button" disabled={!typesLoaded || !draft.name.trim() || !(draft.exclusiveArea > 0) || !!draftConflict}
           onClick={() => { onChange(sortLinks([...links, { newHousingType: { ...draft, name: draft.name.trim() } }])); setDraft(null) }}>새 주택형 연결</button>
           <button type="button" onClick={() => setDraft(null)}>취소</button></div>
-      </div> : <div className={styles.actions}><button type="button" onClick={() => setDraft(blankNewType)}>새 주택형 만들어 연결</button></div>}
+      </div> : <div className={styles.actions}><button type="button" onClick={() => { setDraft(blankNewType); onLookup() }}>새 주택형 만들어 연결</button></div>}
     </>}
   </fieldset>
 }

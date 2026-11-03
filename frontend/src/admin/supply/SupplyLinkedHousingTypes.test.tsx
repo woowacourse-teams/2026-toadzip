@@ -3,10 +3,10 @@ import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { SupplyCorrectionWorkbench } from './SupplyCorrectionWorkbench'
 import { SupplyCorrectionPreview } from './SupplyCorrectionPreview'
-import { blankRow, loadSupplyWorkspace, previewSupply, type CorrectionRow } from './supplyCorrectionApi'
+import { blankRow, loadSupplyWorkspace, parseSupplyWorkspace, previewSupply, type CorrectionRow } from './supplyCorrectionApi'
 import { getManagementDetail } from '../management/api'
 import type { ManagementDetailData } from '../management/managementContract'
-import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
+import { getMatchingHousingTypes, type MatchingHousingType } from '../ingest/supplyMatchingApi'
 
 vi.mock('./SupplyReviewPanel', () => ({ SupplyReviewPanel: () => null }))
 vi.mock('./supplyCorrectionApi', async original => ({ ...await original<typeof import('./supplyCorrectionApi')>(), loadSupplyWorkspace: vi.fn(), previewSupply: vi.fn(), applySupply: vi.fn() }))
@@ -25,13 +25,14 @@ beforeEach(() => {
   vi.mocked(loadSupplyWorkspace).mockResolvedValue(structuredClone({ snapshotToken: 'before', version: 1, rows: [linked, untouched, grouped], sources: [] }))
   vi.mocked(previewSupply).mockImplementation(async (_id, input) => ({ confirmationToken: 'confirmed', before: [linked, untouched, grouped], after: input.rows, warnings: [] }))
   vi.mocked(getManagementDetail).mockResolvedValue(detail)
-  vi.mocked(getMatchingHousingTypes).mockResolvedValue([
-    { id: 8, name: '26A', exclusiveArea: 26.1, supplyArea: 40 }, { id: 9, name: '26B', exclusiveArea: 26.3, supplyArea: 41 },
-    { id: 10, name: '26C', exclusiveArea: 26.5, supplyArea: 42 }, { id: 11, name: '26A 다른 이름', exclusiveArea: 26.1, supplyArea: 40 },
-  ])
+  vi.mocked(getMatchingHousingTypes).mockResolvedValue(complexTypes)
 })
-async function open(name: string) {
-  render(<MemoryRouter><SupplyCorrectionWorkbench id="21" sourceUrl="https://example.com/notice.pdf" onChanged={vi.fn()} onBusyChange={vi.fn()} onDirtyChange={vi.fn()} /></MemoryRouter>)
+const complexTypes: MatchingHousingType[] = [
+  { id: 8, name: '26A', exclusiveArea: 26.1, supplyArea: 40 }, { id: 9, name: '26B', exclusiveArea: 26.3, supplyArea: 41 },
+  { id: 10, name: '26C', exclusiveArea: 26.5, supplyArea: 42 }, { id: 11, name: '26A 다른 이름', exclusiveArea: 26.1, supplyArea: 40 },
+]
+async function open(name: string, onDirtyChange = vi.fn()) {
+  render(<MemoryRouter><SupplyCorrectionWorkbench id="21" sourceUrl="https://example.com/notice.pdf" onChanged={vi.fn()} onBusyChange={vi.fn()} onDirtyChange={onDirtyChange} /></MemoryRouter>)
   await screen.findByRole('table', { name: '공급정보 표' })
   fireEvent.click(screen.getByRole('button', { name: `한스빌 ${name} 편집` }))
   return screen.getByRole('group', { name: '함께 모집하는 주택형' })
@@ -74,6 +75,49 @@ it('새 주택형을 이름·전용·공급면적으로 만들어 연결하고, 
   const rows = await saved()
   expect(rows.find(row => row.key === 'row:1')?.linkedHousingTypes).toEqual([{ housingTypeId: 10, newHousingType: null },
     { newHousingType: { name: '26D', exclusiveArea: 26.7, supplyArea: 43.2 } }])
+})
+it('연결이 없던 행에서 새 주택형을 만들면 단지 주택형을 불러와 같은 면적을 막고, 불러오기 전에는 연결하지 않는다', async () => {
+  let resolve!: (types: MatchingHousingType[]) => void
+  vi.mocked(getMatchingHousingTypes).mockReturnValue(new Promise(done => { resolve = done }))
+  const section = await open('36')
+  fireEvent.click(within(section).getByRole('button', { name: '새 주택형 만들어 연결' }))
+  expect(getMatchingHousingTypes).toHaveBeenCalledWith(7, expect.anything())
+  expect(within(section).getByRole('button', { name: '새 주택형 연결' })).toBeDisabled()
+  resolve(complexTypes)
+  await waitFor(() => expect(within(section).getByLabelText('새 주택형 전용면적 (㎡)')).toBeEnabled())
+  fireEvent.change(within(section).getByLabelText('함께 모집할 새 주택형 이름'), { target: { value: '26B' } })
+  fireEvent.change(within(section).getByLabelText('새 주택형 전용면적 (㎡)'), { target: { value: '26.3' } })
+  expect(within(section).getByRole('alert')).toHaveTextContent('이 단지에 같은 전용면적 주택형이 있습니다')
+  expect(within(section).getByRole('button', { name: '새 주택형 연결' })).toBeDisabled()
+  fireEvent.change(within(section).getByLabelText('새 주택형 전용면적 (㎡)'), { target: { value: '26.7' } })
+  expect(within(section).getByRole('button', { name: '새 주택형 연결' })).toBeEnabled()
+})
+it('단지 주택형을 불러오지 못하면 같은 면적을 확인할 수 없으므로 새 주택형을 연결하지 않는다', async () => {
+  vi.mocked(getMatchingHousingTypes).mockRejectedValue(new Error('주택형 조회 실패'))
+  const section = await open('36')
+  fireEvent.click(within(section).getByRole('button', { name: '새 주택형 만들어 연결' }))
+  expect(await screen.findByText('주택형 조회 실패')).toBeVisible()
+  fireEvent.change(within(section).getByLabelText('함께 모집할 새 주택형 이름'), { target: { value: '26D' } })
+  fireEvent.change(within(section).getByLabelText('새 주택형 전용면적 (㎡)'), { target: { value: '26.7' } })
+  expect(within(section).getByRole('button', { name: '새 주택형 연결' })).toBeDisabled()
+})
+it('대표 주택형을 바꿨다가 되돌리면 빈 목록을 보내 화면에 보인 대로 대표만 남긴다', async () => {
+  const section = await open('26A/B/C')
+  await within(section).findByText(/26C · 전용 26.5㎡ · #10/)
+  fireEvent.change(screen.getByLabelText('공통 주택형'), { target: { value: '9' } })
+  fireEvent.change(screen.getByLabelText('공통 주택형'), { target: { value: '8' } })
+  expect(within(screen.getByRole('group', { name: '함께 모집하는 주택형' })).getByText('대표 주택형만 연결되어 있습니다.')).toBeVisible()
+  const rows = await saved()
+  expect(rows.find(row => row.key === 'row:1')?.linkedHousingTypes).toEqual([])
+})
+it('조회한 연결을 뺐다가 같은 주택형을 다시 넣으면 바뀌지 않은 것으로 본다', async () => {
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue(parseSupplyWorkspace(structuredClone({ snapshotToken: 'before', version: 1, rows: [linked, untouched, grouped], sources: [] })))
+  const onDirtyChange = vi.fn()
+  const section = await open('26A/B/C', onDirtyChange)
+  fireEvent.click(await within(section).findByRole('button', { name: /26C · 전용 26.5㎡ · #10 빼기/ }))
+  expect(onDirtyChange).toHaveBeenLastCalledWith(true)
+  fireEvent.change(within(section).getByLabelText('기존 주택형 추가'), { target: { value: '10' } })
+  expect(onDirtyChange).toHaveBeenLastCalledWith(false)
 })
 it('손대지 않은 행은 조회한 연결 값을 그대로 보내고, 필드가 없던 행은 계속 생략한다', async () => {
   await open('36')

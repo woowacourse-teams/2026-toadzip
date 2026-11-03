@@ -12,7 +12,7 @@ export type LinkedHousingType = { housingTypeId: number; newHousingType?: null }
 /**
  * linkedHousingTypes는 대표(housingTypeId·newHousingType) 밖의 함께 모집하는 주택형(세부 타입 26B·26C)이다. 조회는 지금 연결을 주고,
  * 요청에서 생략하면 대표가 그대로일 때 지금 연결을 유지하고 대표가 바뀌면 대표만 남긴다. 빈 목록은 대표만 남긴다.
- * 대표나 단지를 바꾸는 화면은 조회한 목록을 그대로 돌려보내지 않고 생략한다.
+ * 대표나 단지를 바꾸는 화면은 빈 목록을 보낸다. 생략하면 대표를 원래대로 되돌렸을 때 이전 연결이 남는다.
  */
 export type CorrectionRow = {
   id: number | null; key: string; housingComplexId: number | null; housingComplexName: string | null;
@@ -72,7 +72,10 @@ function row(value: unknown): CorrectionRow {
   if (value.newHousingType !== null && !newType(value.newHousingType)) invalid()
   if (value.linkedHousingTypes != null && (!Array.isArray(value.linkedHousingTypes) || !value.linkedHousingTypes.every(linkedType))) invalid()
   // 지번을 모르는 공급행은 PNU가 null이다. 화면은 빈 칸으로 다루고, 서버는 빈 PNU를 null로 받는다.
-  return { ...value, pnu: value.pnu ?? '', targets: value.targets.map(target), linkedHousingTypes: value.linkedHousingTypes ?? undefined } as CorrectionRow
+  // 조회 응답은 비어 있는 쪽을 null로 함께 주므로 화면이 만드는 항목과 같은 모양으로 맞춰, 뺐다가 다시 넣은 연결을 바뀐 값으로 보지 않게 한다.
+  const linkedHousingTypes = (value.linkedHousingTypes as LinkedHousingType[] | null | undefined)
+    ?.map(link => link.housingTypeId != null ? { housingTypeId: link.housingTypeId } : { newHousingType: link.newHousingType })
+  return { ...value, pnu: value.pnu ?? '', targets: value.targets.map(target), linkedHousingTypes } as CorrectionRow
 }
 export function parseSupplyWorkspace(value: unknown): SupplyWorkspace {
   if (!isRecord(value) || typeof value.snapshotToken !== 'string' || !count(value.version)
