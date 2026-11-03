@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { expect, it } from 'vitest'
-import { AnnouncementOwnership } from './ManagementStatus'
+import { AnnouncementOwnership, ManagementStatus } from './ManagementStatus'
 import type { ManagementSummary } from './managementContract'
 
 const summary: ManagementSummary = {
@@ -35,4 +35,12 @@ it('출처와 공급정보 주인이 없는 이전 응답에는 표시하지 않
   render(<AnnouncementOwnership summary={{ ...summary, announcement: { ...summary.announcement!,
     origin: undefined, supplyOwner: undefined } }} />)
   expect(screen.queryByText(/출처:|공급정보:/)).not.toBeInTheDocument()
+})
+
+it('미확정 공고는 사용자에게 보이지 않는다고 표시하고 공개된 공고는 표시하지 않는다', () => {
+  const { rerender } = render(<ManagementStatus summary={{ ...summary, announcement: { ...summary.announcement!,
+    releaseStatus: 'UNCONFIRMED' } }} />)
+  expect(screen.getByText('미확정')).toHaveAttribute('title', expect.stringContaining('사용자에게 보이지 않습니다'))
+  rerender(<ManagementStatus summary={{ ...summary, announcement: { ...summary.announcement!, releaseStatus: 'PUBLISHED' } }} />)
+  expect(screen.queryByText('미확정')).not.toBeInTheDocument()
 })

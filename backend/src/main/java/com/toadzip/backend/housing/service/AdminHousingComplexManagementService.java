@@ -94,14 +94,14 @@ public class AdminHousingComplexManagementService {
         var announcements = rows.findAllByHousingComplexId(id).stream().map(row -> row.getAnnouncement())
                 .distinct().map(announcement -> new AdminDataSummary(announcement.getId(), announcement.getName(),
                         announcement.getPostedDate().toString(), announcement.getProvider().name(),
-                        announcement.getSupplyType().name(), announcement.isAdminDeleted(),
+                        enumName(announcement.getSupplyType()), announcement.isAdminDeleted(),
                         announcement.isAdminModified(), announcement.isSourceReviewRequired(),
                         announcement.getAdminUpdatedAt(), null, new AdminDataSummary.AnnouncementSummary(
                                 announcement.getSourceAnnouncementIdentifier(), announcement.getOriginalUrl(),
-                                announcement.getRecruitmentType().name(), announcement.getPostedDate(),
+                                enumName(announcement.getRecruitmentType()), announcement.getPostedDate(),
                                 announcement.getApplicationStartDate(), announcement.getApplicationEndDate(),
                                 announcement.getWinnerAnnouncementDate(), announcement.getStatus().name(),
-                                announcement.origin().name(), announcement.getSupplyOwner().name()))).toList();
+                                announcement.origin().name(), announcement.getSupplyOwner().name(), announcement.getReleaseStatus().name()))).toList();
         return new AdminHousingComplexDetail(summary(complex), complex.getSourceComplexIdentifier(),
                 data(complex), housingTypes, announcements);
     }
@@ -301,5 +301,9 @@ public class AdminHousingComplexManagementService {
                 complex.getHeatingType(), complex.getHousingType(), complex.getCorridorType(),
                 complex.getElevatorInstalled(), complex.getParkingSpaceCount(), complex.getImageUrl(),
                 complex.getRecentOneYearMoveOutCount());
+    }
+
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 }

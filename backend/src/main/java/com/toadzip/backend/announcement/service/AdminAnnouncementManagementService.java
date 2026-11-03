@@ -32,6 +32,7 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -56,11 +57,13 @@ public class AdminAnnouncementManagementService {
     private final AnnouncementApplicationScheduleRepository schedules;
     private final SupplyTargetRepository targets;
     private final AnnouncementAttachmentRepository attachments;
+    private final NotificationOutboxRepository notificationOutbox;
 
     public AdminAnnouncementManagementService(AnnouncementRepository announcements, SupplyRowRepository rows,
             HousingComplexRepository complexes, HousingTypeRepository types,
             AdminDataChangeRepository changes, ObjectMapper json, AnnouncementApplicationScheduleRepository schedules,
-            SupplyTargetRepository targets, AnnouncementAttachmentRepository attachments) {
+            SupplyTargetRepository targets, AnnouncementAttachmentRepository attachments,
+            NotificationOutboxRepository notificationOutbox) {
         this.announcements = announcements;
         this.rows = rows;
         this.complexes = complexes;
@@ -70,6 +73,7 @@ public class AdminAnnouncementManagementService {
         this.schedules = schedules;
         this.targets = targets;
         this.attachments = attachments;
+        this.notificationOutbox = notificationOutbox;
     }
 
     public AdminPage<AdminDataSummary> search(AdminSearch search, long complexId) {
@@ -158,7 +162,9 @@ public class AdminAnnouncementManagementService {
                 request.name(), AnnouncementPublicationType.ORIGINAL, request.rentalType(), request.recruitmentType(),
                 request.agencyCode(), request.postedDate(), request.applicationStartDate(), request.applicationEndDate(),
                 request.winnerAnnouncementDate(), request.originalUrl(), null, 0, reception);
-        announcement.reviseByAdmin(incoming);
+        if (announcement.reviseByAdmin(incoming)) {
+            notificationOutbox.appendNewAnnouncement(announcement);
+        }
         announcements.flush();
         changes.save(new AdminDataChange("ANNOUNCEMENT", id, "UPDATE", actor, before,
                 auditedData(data(announcement), request.documentEvidence())));
@@ -282,14 +288,14 @@ public class AdminAnnouncementManagementService {
     private AdminDataSummary summary(Announcement announcement) {
         return new AdminDataSummary(announcement.getId(), announcement.getName(),
                 announcement.getPostedDate().toString(), announcement.getProvider().name(),
-                announcement.getSupplyType().name(), announcement.isAdminDeleted(), announcement.isAdminModified(),
+                enumName(announcement.getSupplyType()), announcement.isAdminDeleted(), announcement.isAdminModified(),
                 announcement.isSourceReviewRequired(), announcement.getAdminUpdatedAt(), null,
                 new AdminDataSummary.AnnouncementSummary(announcement.getSourceAnnouncementIdentifier(),
-                        announcement.getOriginalUrl(), announcement.getRecruitmentType().name(),
+                        announcement.getOriginalUrl(), enumName(announcement.getRecruitmentType()),
                         announcement.getPostedDate(), announcement.getApplicationStartDate(),
                         announcement.getApplicationEndDate(), announcement.getWinnerAnnouncementDate(),
                         announcement.getStatus().name(), announcement.origin().name(),
-                        announcement.getSupplyOwner().name()));
+                        announcement.getSupplyOwner().name(), announcement.getReleaseStatus().name()));
     }
 
     private AdminAnnouncementUpdateRequest data(Announcement announcement) {
@@ -331,5 +337,9 @@ public class AdminAnnouncementManagementService {
                 new AdminSupplyRowUpdateRequest.SupplyData(row.displayHousingTypeName(),
                         row.getSupplyPnu(), row.getExpectedMoveInMonth(), row.getSupplyCategory(),
                         row.getTotalSupplyHouseholdCount()), shared);
+    }
+
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 }

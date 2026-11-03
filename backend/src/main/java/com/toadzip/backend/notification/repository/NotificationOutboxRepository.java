@@ -34,7 +34,8 @@ public class NotificationOutboxRepository {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public boolean appendNewAnnouncement(Announcement announcement) {
-        if (!properties.publisherEnabled() || !policy.isCandidate(announcement.getCreatedAt(),
+        // 미확정 공고로 쌓으면 발송 때 건너뛰고, 같은 이벤트 키 때문에 공개된 뒤에도 다시 쌓이지 않는다.
+        if (!announcement.isPublished() || !properties.publisherEnabled() || !policy.isCandidate(announcement.getCreatedAt(),
                 announcement.getPostedDate(), announcement.getStatus(), properties.activationAt())) {
             return false;
         }

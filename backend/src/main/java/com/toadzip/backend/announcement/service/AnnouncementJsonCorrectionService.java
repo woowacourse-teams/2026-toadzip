@@ -28,6 +28,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureStore;
+import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import jakarta.validation.Validator;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -68,6 +69,7 @@ public class AnnouncementJsonCorrectionService {
     private final LhAnnouncementEnrichmentFailureStore enrichmentFailures;
     private final ObjectMapper json;
     private final Validator validator;
+    private final NotificationOutboxRepository notificationOutbox;
 
     public Workspace workspace(long id) {
         find(id);
@@ -101,8 +103,8 @@ public class AnnouncementJsonCorrectionService {
         if (!request.housingTypeValues().isEmpty()) {
             housingTypes.apply(announcement, plan.metadata().postedDate(), plan.planned(), request.housingTypeValues(), written, actor);
         }
-        if (!plan.preview().fields().isEmpty()) {
-            announcement.reviseByAdmin(incoming(announcement, plan.metadata()));
+        if (!plan.preview().fields().isEmpty() && announcement.reviseByAdmin(incoming(announcement, plan.metadata()))) {
+            notificationOutbox.appendNewAnnouncement(announcement);
         }
         announcement.recordAdminSupplyChange();
         writeEvents(announcement, plan.preview().schedules());
@@ -162,7 +164,11 @@ public class AnnouncementJsonCorrectionService {
                 && typeChanges.isEmpty() && !housingTypes.advancesObservation(postedDate, planned, request.housingTypeValues())) {
             throw new IllegalArgumentException("적용할 변경이 없습니다. 현재값과 다른 항목을 선택하세요.");
         }
-        warnings.add("JSON에 없는 기존 행·조건·일정·첨부파일은 유지합니다. 새 공고·신규 공고 알림을 만들지 않습니다.");
+        if (find(id).isPublished()) {
+            warnings.add("JSON에 없는 기존 행·조건·일정·첨부파일은 유지합니다. 새 공고·신규 공고 알림을 만들지 않습니다.");
+        } else {
+            warnings.add("JSON에 없는 기존 행·조건·일정·첨부파일은 유지합니다. 미확정 공고라 적용하면 사용자에게 공개되고 신규 공고 알림이 나갑니다.");
+        }
         if (before.detail().scheduleReviewed()) {
             warnings.add("단지·순위별로 확인된 접수 일정은 유지합니다. JSON의 일반 일정은 해당 확인 기록을 대신하지 않습니다.");
         }

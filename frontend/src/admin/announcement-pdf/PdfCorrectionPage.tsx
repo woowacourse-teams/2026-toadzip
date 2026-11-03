@@ -159,7 +159,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     setPdf(null); setPdfError(''); setFocus(null)
     if (!attachmentId) return
     const attachment = workspace?.detail.attachments?.find(item => String(item.attachmentId) === attachmentId)
-    const pending = loadAnnouncementAttachment(id, attachmentId, false, controller.signal)
+    const pending = loadAnnouncementAttachment(id, attachmentId, false, controller.signal, true)
     void pending.then(blob => {
       if (controller.signal.aborted) return
       objectUrl = URL.createObjectURL(blob); setPdf({ url: objectUrl, name: attachment?.fileName ?? '공고문 PDF', file: blob, attachmentId })

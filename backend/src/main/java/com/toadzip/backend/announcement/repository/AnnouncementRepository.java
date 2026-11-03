@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.repository;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementReleaseStatus;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -39,6 +40,8 @@ public interface AnnouncementRepository extends JpaRepository<Announcement, Long
     List<Announcement> findAllByLhPanIdIsNotNullAndAdminDeletedFalse();
 
     boolean existsByOriginalUrl(String originalUrl);
+
+    boolean existsByIdAndReleaseStatus(long id, AnnouncementReleaseStatus releaseStatus);
 
     boolean existsByPreviousAnnouncementAndAdminDeletedFalse(Announcement previousAnnouncement);
 

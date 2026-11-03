@@ -3,7 +3,6 @@ package com.toadzip.backend.announcement.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -143,7 +142,7 @@ class AnnouncementPdfExtractionServiceTest {
         AtomicBoolean closed = new AtomicBoolean();
         when(announcements.existsById(7L)).thenReturn(true);
         when(inputs.read(7L)).thenReturn(INPUT);
-        when(attachments.read(7L, 68L, false)).thenReturn(new AttachmentContent("모집공고문.pdf", file(pdf, closed)));
+        when(attachments.readForAdmin(7L, 68L)).thenReturn(new AttachmentContent("모집공고문.pdf", file(pdf, closed)));
         when(jobs.saveAndFlush(any())).thenAnswer(invocation -> {
             PdfExtractionJob job = invocation.getArgument(0);
             ReflectionTestUtils.setField(job, "id", 31L);
@@ -168,14 +167,14 @@ class AnnouncementPdfExtractionServiceTest {
 
         assertThatThrownBy(() -> service.requestAttachment(7L, "admin", 68L))
                 .isInstanceOf(PdfExtractionInProgressException.class);
-        verify(attachments, never()).read(anyLong(), anyLong(), anyBoolean());
+        verify(attachments, never()).readForAdmin(anyLong(), anyLong());
     }
 
     @Test
     void 첨부가_30MB를_넘으면_작업을_넣지_않고_임시_파일을_닫는다() throws Exception {
         AtomicBoolean closed = new AtomicBoolean();
         when(announcements.existsById(7L)).thenReturn(true);
-        when(attachments.read(7L, 68L, false)).thenReturn(new AttachmentContent("공고문.pdf",
+        when(attachments.readForAdmin(7L, 68L)).thenReturn(new AttachmentContent("공고문.pdf",
                 file(new byte[(int) AnnouncementPdfExtractionService.MAX_PDF_BYTES + 1], closed)));
 
         assertThatThrownBy(() -> service.requestAttachment(7L, "admin", 68L))
@@ -188,7 +187,7 @@ class AnnouncementPdfExtractionServiceTest {
     @Test
     void 첨부를_받지_못하면_그_오류를_그대로_알린다() {
         when(announcements.existsById(7L)).thenReturn(true);
-        when(attachments.read(7L, 68L, false))
+        when(attachments.readForAdmin(7L, 68L))
                 .thenThrow(new AttachmentUnavailableException(AttachmentUnavailableException.Reason.NOT_PDF));
 
         assertThatThrownBy(() -> service.requestAttachment(7L, "admin", 68L))

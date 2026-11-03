@@ -113,12 +113,10 @@ public class Announcement {
     @JdbcType(LegacyEnumVarcharJdbcType.class)
     private AnnouncementPublicationType status;
 
-    @Column(nullable = false)
     @Convert(converter = RentalTypeConverter.class)
     @JdbcType(LegacyEnumVarcharJdbcType.class)
     private RentalType supplyType;
 
-    @Column(nullable = false)
     @Convert(converter = RecruitmentTypeConverter.class)
     @JdbcType(LegacyEnumVarcharJdbcType.class)
     private RecruitmentType recruitmentType;
@@ -131,13 +129,10 @@ public class Announcement {
     @Column(nullable = false)
     private LocalDate postedDate;
 
-    @Column(nullable = false)
     private LocalDate applicationStartDate;
 
-    @Column(nullable = false)
     private LocalDate applicationEndDate;
 
-    @Column(nullable = false)
     private LocalDate winnerAnnouncementDate;
 
     @Column(nullable = false)
@@ -182,6 +177,11 @@ public class Announcement {
             @AttributeOverride(name = "url", column = @Column(name = "reception_url"))
     })
     private ReceptionPlace receptionPlace;
+
+    @Enumerated(EnumType.STRING)
+    @org.hibernate.annotations.ColumnDefault("'PUBLISHED'")
+    @Column(nullable = false, length = 20)
+    private AnnouncementReleaseStatus releaseStatus = AnnouncementReleaseStatus.PUBLISHED;
 
     private Announcement(
             String sourceAnnouncementIdentifier,
@@ -327,6 +327,32 @@ public class Announcement {
                 null,
                 receptionPlace
         );
+    }
+
+    /**
+     * 원천에서 일정·유형을 아직 읽지 못한 공고를 미확정으로 만든다. 사용자에게 보이지 않고, 관리자가 필수값을 채워 보정하면 공개된다.
+     */
+    public static Announcement createUnconfirmed(String sourceAnnouncementIdentifier, String name, AgencyCode provider,
+            LocalDate postedDate, String originalUrl) {
+        Announcement announcement = new Announcement();
+        announcement.validateNotBlank(sourceAnnouncementIdentifier, "원천 공고 식별자");
+        announcement.validateNotBlank(name, "공고명");
+        announcement.validateRequired(provider, "공급기관");
+        announcement.validateRequired(postedDate, "게시일");
+        announcement.validateNotBlank(originalUrl, "원문 URL");
+        announcement.sourceAnnouncementIdentifier = sourceAnnouncementIdentifier;
+        announcement.name = name;
+        announcement.status = AnnouncementPublicationType.ORIGINAL;
+        announcement.provider = provider;
+        announcement.postedDate = postedDate;
+        announcement.originalUrl = originalUrl;
+        announcement.supplyOwner = SupplyOwner.ANNOUNCEMENT_DOCUMENT;
+        announcement.releaseStatus = AnnouncementReleaseStatus.UNCONFIRMED;
+        return announcement;
+    }
+
+    public boolean isPublished() {
+        return releaseStatus == AnnouncementReleaseStatus.PUBLISHED;
     }
 
     public boolean updateFromMyHome(
@@ -498,7 +524,8 @@ public class Announcement {
         }
     }
 
-    public void reviseByAdmin(Announcement incoming) {
+    /** 관리자 보정 값은 필수값을 모두 갖추므로 미확정 공고는 이때 공개된다. 이번 보정으로 공개됐으면 true다. */
+    public boolean reviseByAdmin(Announcement incoming) {
         validateAdminRevision(incoming);
         name = incoming.name;
         supplyType = incoming.supplyType;
@@ -513,6 +540,11 @@ public class Announcement {
         adminModified = true;
         sourceReviewRequired = false;
         adminUpdatedAt = java.time.Instant.now();
+        if (isPublished()) {
+            return false;
+        }
+        releaseStatus = AnnouncementReleaseStatus.PUBLISHED;
+        return true;
     }
 
     private boolean hasSameSourceValues(Announcement incoming) {
@@ -524,9 +556,9 @@ public class Announcement {
                 && recruitmentType == incoming.recruitmentType
                 && provider == incoming.provider
                 && postedDate.equals(incoming.postedDate)
-                && applicationStartDate.equals(incoming.applicationStartDate)
-                && applicationEndDate.equals(incoming.applicationEndDate)
-                && winnerAnnouncementDate.equals(incoming.winnerAnnouncementDate)
+                && Objects.equals(applicationStartDate, incoming.applicationStartDate)
+                && Objects.equals(applicationEndDate, incoming.applicationEndDate)
+                && Objects.equals(winnerAnnouncementDate, incoming.winnerAnnouncementDate)
                 && originalUrl.equals(incoming.originalUrl)
                 && Objects.equals(correctionCancellationReason, incoming.correctionCancellationReason)
                 && hasSameReceptionPlace(incoming.receptionPlace);

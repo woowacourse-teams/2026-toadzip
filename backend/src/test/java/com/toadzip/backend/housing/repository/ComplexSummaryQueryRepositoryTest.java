@@ -364,6 +364,39 @@ class ComplexSummaryQueryRepositoryTest {
     }
 
     @Test
+    void 미확정_공고는_단지_대표가_되지_않고_미확정_정정공고가_공개된_이전_공고를_가리지_않는다() {
+        HousingComplex corrected = persistComplex("정정 대기 단지", "37.500000", "126.900000");
+        Announcement original = persistAnnouncement(null, "ORIGINAL", LocalDate.of(2026, 7, 1), "published");
+        Announcement correction = persistAnnouncement(original, "CORRECTION", LocalDate.of(2026, 7, 2), "pending");
+        persistSupplyRow(original, corrected, null, "published-row", 1);
+        persistSupplyRow(correction, corrected, null, "pending-row", 1);
+        HousingComplex onlyUnconfirmed = persistComplex("미확정 단지", "37.510000", "126.910000");
+        Announcement unconfirmed = Announcement.createUnconfirmed("SH:1", "미확정 공고", AgencyCode.SH,
+                LocalDate.of(2026, 7, 3), "https://example.com/sh/1");
+        entityManager.persist(unconfirmed);
+        persistSupplyRow(unconfirmed, onlyUnconfirmed, null, "unconfirmed-row", 1);
+        entityManager.flush();
+        markUnconfirmed(correction);
+
+        var rows = repository.findAll(noFilters(SEOUL_BOUNDS));
+
+        assertAll(
+                () -> assertEquals(original.getId(), rowOf(rows, corrected).announcementId()),
+                () -> assertNull(rowOf(rows, onlyUnconfirmed).announcementId())
+        );
+    }
+
+    private void markUnconfirmed(Announcement announcement) {
+        entityManager.createNativeQuery("UPDATE announcements SET release_status = 'UNCONFIRMED' WHERE id = :id")
+                .setParameter("id", announcement.getId()).executeUpdate();
+        entityManager.clear();
+    }
+
+    private ComplexSummaryRow rowOf(List<ComplexSummaryRow> rows, HousingComplex complex) {
+        return rows.stream().filter(row -> row.complexId() == complex.getId()).findFirst().orElseThrow();
+    }
+
+    @Test
     void 취소_상태로_검색하면_최신_취소_공고가_연결된_단지만_조회한다() {
         HousingComplex cancelled = persistComplex("취소 단지", "37.500000", "126.900000");
         HousingComplex active = persistComplex("정상 단지", "37.510000", "126.910000");

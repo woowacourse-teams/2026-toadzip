@@ -298,6 +298,34 @@ class AnnouncementQueryRepositoryTest {
     }
 
     @Test
+    void 검색_조회는_미확정_공고를_제외하고_미확정_정정공고가_공개된_이전_공고를_가리지_않는다() {
+        Announcement pendingCorrection = persist(createAnnouncement(
+                "pending-correction",
+                olderLeafAnnouncement,
+                "older-leaf",
+                AnnouncementPublicationType.CORRECTION,
+                LocalDate.of(2026, 8, 4)
+        ));
+        Announcement unconfirmed = persist(Announcement.createUnconfirmed("SH:1", "미확정 공고", AgencyCode.SH,
+                LocalDate.of(2026, 8, 6), "https://example.com/sh/1"));
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE announcements SET release_status = 'UNCONFIRMED' WHERE id = :id")
+                .setParameter("id", pendingCorrection.getId())
+                .executeUpdate();
+        entityManager.clear();
+
+        List<Long> announcementIds = search(noFilters(), null, null, 20).stream()
+                .map(Announcement::getId)
+                .toList();
+
+        assertFalse(announcementIds.contains(unconfirmed.getId()));
+        assertEquals(
+                List.of(sameDateLeafAnnouncement.getId(), olderLeafAnnouncement.getId()),
+                announcementIds
+        );
+    }
+
+    @Test
     void 검색_조회는_같은_게시일에서_더_작은_ID를_커서_다음_페이지로_조회한다() {
         Announcement cursorAnnouncement = persist(createAnnouncement(
                 "search-same-date-cursor",
