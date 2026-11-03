@@ -1,8 +1,9 @@
 import { isRecord } from '../management/managementContract'
 import type { JsonObject, JsonWorkspace } from '../announcement-json/api'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
-import type { AnnouncementComplex, CorrectionRow } from '../supply/supplyCorrectionApi'
-import { evidenceFor, noteFor, text, type Extraction } from './extraction'
+import type { AnnouncementComplex, CorrectionRow, SupplyWorkspace } from '../supply/supplyCorrectionApi'
+import { evidenceFor, noteFor, text, type Extraction, type Subtype } from './extraction'
+import { alignToSource, foldRows, inGroup, matchNote, normalizedName, parseSourceLabel, pdfTypes, sameTargets, targetOwners, type FoldGroup, type SourceMatch } from './subtypes'
 
 export type HousingCandidates = Record<number, MatchingHousingType[]>
 /** 단지 ID별 표시 이름(단지명 · 임대유형) */
@@ -21,10 +22,20 @@ export type RowProposal = {
   newComplex?: { id: number; name: string; pnu: string; category: CorrectionRow['category'] }
 }
 export type ScheduleProposal = { existingIds: number[]; needsConfirmation: boolean; reason: string }
+/** 행 키별 LH 원천행의 주택형 표기("26A/B/C(고령자)"). 단지에 연결된 행의 typeName은 단지 주택형 이름("26A")이라 공급대상 묶음을 읽을 수 없다. */
+export type SourceLabels = ReadonlyMap<string, string>
 
-export function normalizedName(value: unknown) {
-  return (text(value) ?? '').normalize('NFKC').toLowerCase().replace(/형|[\s·,]/g, '')
+export function lhSourceLabels(supply: Pick<SupplyWorkspace, 'sources' | 'rowSources'>): SourceLabels {
+  return new Map((supply.rowSources ?? []).filter(link => link.category === 'LH_ANNOUNCEMENT_SUPPLY').flatMap(link => {
+    const rows = supply.sources.find(source => source.category === link.category && source.sourceKey === link.sourceKey)?.rows ?? []
+    const names = [...new Set(rows.flatMap(row => isRecord(row.raw) && typeof row.raw.type_name === 'string' && row.raw.type_name.trim() ? [row.raw.type_name.trim()] : []))]
+    return names.length === 1 ? [[link.rowKey, names[0]] as const] : []
+  }))
 }
+const sourceLabel = (row: CorrectionRow, labels: SourceLabels) => labels.get(row.key) ?? row.typeName
+/** 같은 단지에서 같은 세부 타입 묶음을 가진 LH 행끼리 같은 키다. 공급대상 묶음만 다른 LH 행("26A/B(고령자)"·"26A/B(주거급여수급자)")을 찾는다. */
+const subtypeSetKey = (row: CorrectionRow, labels: SourceLabels) => `${row.housingComplexId}|${parseSourceLabel(sourceLabel(row, labels)).types.map(typeKey).sort().join('/')}`
+
 /** 수집된 공고명에는 공고일·"공고" 표기가 붙어 있어 날짜·공고·기호를 지우고 포함 관계로 비교한다. */
 function titleKey(value: unknown) {
   return titleWords(value).join('')
@@ -95,29 +106,43 @@ function equalArea(left: unknown, right: unknown) {
   return typeof left === 'number' && typeof right === 'number' && Math.abs(left - right) < 0.00005
 }
 
-/** PDF 행의 전용면적 → 건설호수 → 공급면적 → 이름 순서로 단지 주택형 후보를 좁힌다. */
-export function pickHousingType(extraction: Extraction, index: number, allTypes: MatchingHousingType[]) {
-  const row = extraction.supplyRows[index]
-  let candidates = allTypes.filter(type => equalArea(type.exclusiveArea, row.values.exclusiveArea))
-  if (!candidates.length && row.values.exclusiveArea == null) {
-    candidates = allTypes.filter(type => normalizedName(type.name) === normalizedName(row.typeName))
+export type TypePick = { housingTypeId: number | null; reason: string; options: MatchingHousingType[] }
+/** 형명·면적 하나의 전용면적 → 건설호수 → 공급면적 → 이름 순서로 단지 주택형 후보를 좁힌다. options는 전용면적(면적이 없으면 이름)이 맞는 후보다. */
+function pickType(extraction: Extraction, path: string, type: Subtype, allTypes: MatchingHousingType[]): TypePick {
+  let candidates = allTypes.filter(item => equalArea(item.exclusiveArea, type.exclusiveArea))
+  if (!candidates.length && type.exclusiveArea == null) {
+    candidates = allTypes.filter(item => normalizedName(item.name) === normalizedName(type.name))
   }
-  let reason = candidates.length ? `전용면적 ${String(row.values.exclusiveArea ?? '')}㎡`
-    : allTypes.length && typeof row.values.exclusiveArea === 'number' ? `이 단지에 PDF 전용 ${row.values.exclusiveArea}㎡와 맞는 주택형이 없습니다.` : '전용면적에 맞는 주택형을 확인해 주세요.'
-  if (candidates.length > 1 && typeof row.values.constructedHouseholdCount === 'number') {
-    const byCount = candidates.filter(type => type.householdCount === row.values.constructedHouseholdCount)
-    if (byCount.length) { candidates = byCount; reason += ` · 건설호수 ${row.values.constructedHouseholdCount}세대` }
+  const options = candidates
+  let reason = candidates.length ? `전용면적 ${String(type.exclusiveArea ?? '')}㎡`
+    : allTypes.length && typeof type.exclusiveArea === 'number' ? `이 단지에 PDF 전용 ${type.exclusiveArea}㎡와 맞는 주택형이 없습니다.` : '전용면적에 맞는 주택형을 확인해 주세요.'
+  if (candidates.length > 1 && typeof type.constructedHouseholdCount === 'number') {
+    const byCount = candidates.filter(item => item.householdCount === type.constructedHouseholdCount)
+    if (byCount.length) { candidates = byCount; reason += ` · 건설호수 ${type.constructedHouseholdCount}세대` }
   }
-  if (candidates.length > 1 && !noteFor(extraction.unresolved, `supplyRows[${index}].supplyArea`)) {
-    const byArea = candidates.filter(type => equalArea(type.supplyArea, row.values.supplyArea))
+  if (candidates.length > 1 && !noteFor(extraction.unresolved, `${path}.supplyArea`)) {
+    const byArea = candidates.filter(item => equalArea(item.supplyArea, type.supplyArea))
     if (byArea.length) { candidates = byArea; reason += ' · 공급면적 일치' }
   }
   if (candidates.length > 1) {
-    const byName = candidates.filter(type => typeKey(type.name) === typeKey(row.typeName))
+    const byName = candidates.filter(item => typeKey(item.name) === typeKey(type.name))
     if (byName.length) candidates = byName
   }
   const housingTypeId = candidates.length === 1 ? candidates[0].id : null
-  return { housingTypeId, reason: housingTypeId === null && candidates.length ? `${reason} · 주택형을 하나로 특정하지 못했습니다.` : reason }
+  return { housingTypeId, options, reason: housingTypeId === null && candidates.length ? `${reason} · 주택형을 하나로 특정하지 못했습니다.` : reason }
+}
+
+/** 세부 타입 묶음 행의 세부 타입마다 단지 주택형을 고른다. */
+export function pickSubtypes(extraction: Extraction, index: number, allTypes: MatchingHousingType[]) {
+  return extraction.supplyRows[index].subtypes.map((type, at) => pickType(extraction, `supplyRows[${index}].subtypes[${at}]`, type, allTypes))
+}
+
+/** PDF 행이 연결할 단지 주택형. 세부 타입 묶음 행은 첫 세부 타입의 주택형이고, 안내에 세부 타입마다 고른 근거를 적는다. */
+export function pickHousingType(extraction: Extraction, index: number, allTypes: MatchingHousingType[]) {
+  const row = extraction.supplyRows[index]
+  if (!row.subtypes.length) return pickType(extraction, `supplyRows[${index}]`, pdfTypes(row)[0], allTypes)
+  const picks = pickSubtypes(extraction, index, allTypes)
+  return { ...picks[0], reason: `세부 타입 ${picks.length}개 · ${picks.map((pick, at) => `${row.subtypes[at].name}: ${pick.reason}`).join(' · ')}` }
 }
 
 /**
@@ -146,17 +171,17 @@ function sameRecruitment(row: Extraction['supplyRows'][number], current: Correct
  * 저장할 위치 기본값은 고른 행, 추천이 여럿이면 미선택, 추천이 없으면 새 공급정보로 추가다.
  * lastRow가 false면 표기·면적이 맞지 않는 남은 행 하나를 고르지 않고, 남은 행 모두를 추천해 운영자가 고르게 한다(단지 정하기에서 고른 단지의 행).
  */
-export function chooseRow(row: Extraction['supplyRows'][number], related: CorrectionRow[], used: Set<string>, housingTypeId: number | null, lastRow = true) {
+export function chooseRow(row: Extraction['supplyRows'][number], related: CorrectionRow[], used: Set<string>, housingTypeId: number | null, lastRow = true, labels: SourceLabels = new Map()) {
   const available = related.filter(item => !used.has(item.key))
-  const byName = available.filter(item => typeKey(item.typeName) === typeKey(row.typeName))
-  const byArea = available.filter(item => equalArea(item.exclusiveArea, row.values.exclusiveArea)
+  const byName = available.filter(item => [item.typeName, sourceLabel(item, labels)].some(name => typeKey(name) === typeKey(row.typeName)))
+  const byArea = available.filter(item => pdfTypes(row).some(type => equalArea(item.exclusiveArea, type.exclusiveArea))
     || housingTypeId !== null && item.housingTypeId === housingTypeId)
   const chosen = byName.length === 1 ? byName[0] : byArea.length === 1 ? byArea[0] : lastRow && available.length === 1 ? available[0] : undefined
   const recommended = (chosen ? [chosen] : byArea.length || lastRow ? byArea : available).map(item => item.key)
   return { chosen, recommended, destination: chosen?.key ?? (recommended.length ? '' : 'new') }
 }
 
-export function proposeRows(extraction: Extraction, all: CorrectionRow[], housing: HousingCandidates, complexes: Pick<AnnouncementComplex, 'name' | 'roadAddress'>[] = []): RowProposal[] {
+export function proposeRows(extraction: Extraction, all: CorrectionRow[], housing: HousingCandidates, complexes: Pick<AnnouncementComplex, 'name' | 'roadAddress'>[] = [], labels: SourceLabels = new Map()): RowProposal[] {
   const used = new Set<string>()
   // 단지가 연결되지 않은 기존 행은 단지를 정한 뒤 LH 원천행 맞추기(sourceAlignment)에서 연결·분할한다.
   const current = all.filter(item => !emptyRow(item) && !item.excluded)
@@ -173,7 +198,7 @@ export function proposeRows(extraction: Extraction, all: CorrectionRow[], housin
     const allTypes = complexId === null ? [] : housing[complexId] ?? []
     const picked = pickHousingType(extraction, index, allTypes)
     const housingTypeId = picked.housingTypeId
-    const { chosen, recommended, destination } = chooseRow(row, related, used, housingTypeId)
+    const { chosen, recommended, destination } = chooseRow(row, related, used, housingTypeId, true, labels)
     const sharedIndex = extraction.sharedCounts.findIndex(group => group.paths.includes(`supplyRows[${index}].totalSupplyHouseholdCount`))
     if (chosen) used.add(chosen.key)
     const anchor = chosen ?? (complexId === null ? undefined : related[0])
@@ -188,6 +213,89 @@ export function proposeRows(extraction: Extraction, all: CorrectionRow[], housin
       needsConfirmation: !chosen || changedName || housingTypeId === null || byRecruitment.length > 0 || !source.certain || sharedIndex >= 0 && chosen.groupId === null,
       sharedIndex: sharedIndex < 0 ? null : sharedIndex,
     }
+  })
+}
+
+/** 접은 행의 모집수. 공고문이 접는 행끼리만 묶은 공통 모집수가 있으면 그 수, 행마다 모집수가 모두 있으면 합이다. */
+export function foldedCount(extraction: Extraction, indexes: number[]) {
+  const paths = indexes.map(index => `supplyRows[${index}].totalSupplyHouseholdCount`)
+  const shared = extraction.sharedCounts.find(group => group.paths.length === paths.length && paths.every(path => group.paths.includes(path)))
+  if (shared) return shared.count
+  const counts = indexes.map(index => extraction.supplyRows[index].values.totalSupplyHouseholdCount)
+  return counts.every(value => typeof value === 'number') ? (counts as number[]).reduce((sum, value) => sum + value, 0) : null
+}
+
+/**
+ * 단지에 연결된 기존 LH 행 하나("26A/B(고령자)")를 공고문이 세부 타입 행 여럿(26A·26B)으로 적었으면, 그 행들을 그 LH 행 표기의 세부 타입 묶음 행 하나로 접는다.
+ * 대상·금액이 행마다 다르면 접지 않고 행마다 둔다(저장할 위치를 확인하게 된다).
+ * LH 행이 공급대상 묶음("26A/B(고령자)")이면 공고문 행의 대상이 모두 그 묶음일 때만 접는다. 같은 세부 타입을 가진 LH 행이 여럿인데
+ * 묶음으로 나눌 수 없으면 어느 LH 행의 대상·모집수인지 알 수 없어 접지 않는다.
+ */
+export function foldSameSourceRows(extraction: Extraction, rows: CorrectionRow[], labels: SourceLabels): Extraction {
+  const used = new Set<number>(), groups: FoldGroup[] = []
+  const linked = rows.filter(row => !row.excluded && !emptyRow(row))
+  const sameComplexRow = (pdf: Extraction['supplyRows'][number], row: CorrectionRow) => sameComplex(pdf.complexName, row.complexName) || sameComplex(pdf.complexName, row.housingComplexName)
+  for (const row of linked) {
+    const label = parseSourceLabel(sourceLabel(row, labels)), types = label.types.map(typeKey)
+    if (types.length < 2) continue
+    const indexes = extraction.supplyRows.flatMap((pdf, index) => !used.has(index) && !pdf.subtypes.length && types.includes(typeKey(pdf.typeName))
+      && sameComplexRow(pdf, row) ? [index] : [])
+    const siblings = linked.filter(other => other !== row && subtypeSetKey(other, labels) === subtypeSetKey(row, labels))
+    const owned = label.group ? indexes.every(index => extraction.supplyRows[index].targets.every(target => inGroup(target.target, label.group!))) : !siblings.length
+    if (indexes.length < 2 || !owned || !sameTargets(indexes.map(index => extraction.supplyRows[index]))) continue
+    indexes.forEach(index => used.add(index))
+    groups.push({ indexes, typeName: sourceLabel(row, labels), count: foldedCount(extraction, indexes) })
+  }
+  return groups.length ? foldRows(extraction, groups).extraction : extraction
+}
+
+/**
+ * 단지에 연결된 LH 행이 같은 주택형을 공급대상 묶음마다 따로 두면("26A/B/C(고령자)"·"26A/B/C(주거급여수급자)") 공급행은 주택형 × 공급대상 묶음이다.
+ * 공고문 행 하나의 대상이 두 묶음 이상에 들면 그 주택형의 공고문 행을 LH 원천행 맞추기와 같은 규칙(alignToSource)으로 LH 행마다 나눈다.
+ * 나눈 행의 형명(typeName)은 LH 행 표기라 저장할 위치가 그 LH 행으로 정해진다. 저장하는 공고 표기는 공고문 표기 그대로다. 대상을 받지 못한 LH 행은 건드리지 않는다.
+ * 나눈 뒤 대상·금액이 달라 LH 행 하나로 접을 수 없는 주택형은 나누지 않는다. notes는 나눈 행 번호별 안내다.
+ */
+export function splitSameSourceRows(extraction: Extraction, rows: CorrectionRow[], labels: SourceLabels) {
+  const label = (row: CorrectionRow) => parseSourceLabel(sourceLabel(row, labels))
+  const linked = rows.filter(row => !row.excluded && !emptyRow(row) && label(row).group !== null)
+  const clusters = new Map<string, CorrectionRow[]>()
+  for (const row of linked) {
+    const key = subtypeSetKey(row, labels)
+    clusters.set(key, [...clusters.get(key) ?? [], row])
+  }
+  type Match = SourceMatch & { cluster: number }
+  const candidates = [...clusters.values()].filter(cluster => cluster.length > 1).flatMap((cluster, at): Match[] => {
+    const types = label(cluster[0]).types.map(typeKey), groups = cluster.map(row => label(row).group)
+    const indexes = extraction.supplyRows.flatMap((pdf, index) => cluster.some(row => sameComplex(pdf.complexName, row.complexName) || sameComplex(pdf.complexName, row.housingComplexName))
+      && [pdf.typeName, ...pdf.subtypes.map(subtype => subtype.name)].some(name => types.includes(typeKey(name))) ? [index] : [])
+    const owners = new Map(indexes.map(index => [index, new Set(targetOwners(extraction.supplyRows[index], groups))]))
+    if (![...owners.values()].some(owner => owner.size > 1)) return []
+    return cluster.map((row, order) => ({ cluster: at, group: groups[order], typeName: sourceLabel(row, labels), count: row.householdCount,
+      rows: indexes.filter(index => owners.get(index)!.has(order)) })).filter(match => match.rows.length > 0)
+  })
+  const first = alignToSource(extraction, candidates)
+  const unfoldable = new Set(first.split.map(match => match.cluster))
+  const result = unfoldable.size ? alignToSource(extraction, candidates.filter(match => !unfoldable.has(match.cluster))) : first
+  const notes = new Map(result.plans.flatMap((plan, index) => plan.match
+    ? [[index, [`같은 주택형의 LH 행이 공급대상 묶음마다 있어 공고문 행의 대상을 묶음별로 나눠 LH 행 '${plan.match.typeName}'에 맞췄습니다. 모집수는 이 LH 행의 이번 공급 ${plan.match.count ?? '미확인'}세대입니다.`, matchNote(plan)].filter(Boolean).join(' ')] as const]
+    : []))
+  return { extraction: result.extraction, notes }
+}
+
+/**
+ * 공고문이 행 모집수를 공통 모집수로 묶은 행들이 기존 공급행 하나와 새로 추가할 행뿐이고 대상·금액이 같으면, LH 한 행을 세부 타입으로 나눠 적은 것으로 보고 접을 묶음을 돌려준다.
+ * 기존 행 표기로 세부 타입을 읽을 수 없는 경우(한스빌 '아파트' ↔ 공고문 26A·26B)다. 저장할 위치는 proposeRows가 고른 결과를 그대로 쓴다.
+ */
+export function sharedFoldGroups(extraction: Extraction, proposals: RowProposal[], rows: CorrectionRow[]): FoldGroup[] {
+  return extraction.sharedCounts.flatMap((group, at) => {
+    const indexes = proposals.flatMap((proposal, index) => proposal.sharedIndex === at ? [index] : [])
+    const existing = indexes.filter(index => proposals[index].destination !== 'new')
+    const destination = rows.find(row => row.key === proposals[existing[0]]?.destination)
+    const complexIds = new Set(indexes.map(index => proposals[index].complexId))
+    if (indexes.length < 2 || group.paths.length !== indexes.length || !group.paths.every(path => path.endsWith('.totalSupplyHouseholdCount'))
+      || existing.length !== 1 || !destination || destination.groupId !== null || complexIds.size !== 1 || complexIds.has(null)
+      || !sameTargets(indexes.map(index => extraction.supplyRows[index]))) return []
+    return [{ indexes, typeName: indexes.flatMap(index => pdfTypes(extraction.supplyRows[index]).map(type => type.name)).join('/'), count: foldedCount(extraction, indexes) }]
   })
 }
 

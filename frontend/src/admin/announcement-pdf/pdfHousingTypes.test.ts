@@ -14,7 +14,7 @@ beforeEach(() => {
 })
 
 test('공고문 행으로 만든 주택형은 공고 값으로 표시해 관리자 수정 보호를 받지 않게 한다', async () => {
-  const row = { typeName: '059.6300A', values: { exclusiveArea: 59.63, supplyArea: 78.9091 } } as unknown as ExtractedRow
+  const row = { typeName: '059.6300A', values: { exclusiveArea: 59.63, supplyArea: 78.9091 }, subtypes: [] } as unknown as ExtractedRow
   await createPdfHousingTypes(3506, [row], [], new AbortController().signal)
   expect(mocks.requestManagementApi).toHaveBeenCalledWith('/api/admin/housing-complexes/3506/housing-types', 'POST',
     { version: 3, name: '059.6300A', exclusiveArea: 59.63, supplyArea: 78.9091, householdCount: null, fromAnnouncement: true },

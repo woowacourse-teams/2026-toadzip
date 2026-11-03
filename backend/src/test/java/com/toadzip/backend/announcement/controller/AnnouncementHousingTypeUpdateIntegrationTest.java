@@ -422,6 +422,70 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("이 단지에 있습니다")));
     }
 
+    @Test
+    void 공급행이_함께_모집하는_주택형마다_공고_값을_따로_반영한다() throws Exception {
+        var joint = HousingType.createFromMyHome(complex, "source-46", "46", new BigDecimal("46.5"), null);
+        entities.persist(joint); entities.flush();
+        var request = request();
+        var links = ((ObjectNode) request.path("correction").path("rows").get(0)).putArray("linkedHousingTypes");
+        links.addObject().put("housingTypeId", joint.getId());
+        links.addObject().putObject("newHousingType").put("name", "59").put("exclusiveArea", new BigDecimal("59.9"));
+        String key = "row:" + row.getId();
+        value(request, key, "36A", null, 120);
+        value(request, key, "46A", null, 30).put("linkedHousingTypeId", joint.getId());
+        value(request, key, "59A", null, 44).put("linkedNewHousingTypeArea", new BigDecimal("59.90"));
+
+        var preview = preview(request);
+        assertThat(preview.path("housingTypes")).hasSize(3);
+        apply(request, preview).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+
+        assertThat(entities.find(HousingType.class, type.getId())).extracting(HousingType::getName, HousingType::getTotalHouseholdCount)
+                .containsExactly("36A", 120);
+        assertThat(entities.find(HousingType.class, joint.getId())).extracting(HousingType::getName, HousingType::getTotalHouseholdCount)
+                .containsExactly("46A", 30);
+        var created = entities.find(SupplyRow.class, row.getId()).getHousingTypes().stream()
+                .filter(linked -> linked.getExclusiveArea().compareTo(new BigDecimal("59.9")) == 0).findFirst().orElseThrow();
+        assertThat(created).extracting(HousingType::getName, HousingType::getTotalHouseholdCount).containsExactly("59A", 44);
+    }
+
+    @Test
+    void 공급행이_함께_모집하지_않는_주택형이나_같은_주택형에_두_번_보낸_공고_값은_거절한다() throws Exception {
+        var joint = HousingType.createFromMyHome(complex, "source-46", "46", new BigDecimal("46.5"), null);
+        entities.persist(joint); entities.flush();
+        var request = request();
+        value(request, "row:" + row.getId(), "46A", null, 30).put("linkedHousingTypeId", joint.getId());
+        mvc.perform(post(root() + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType("application/json").content(request.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("함께 모집하지 않습니다")));
+
+        var duplicate = request();
+        value(duplicate, "row:" + row.getId(), "36A", null, 120);
+        value(duplicate, "row:" + row.getId(), "36B", null, 121);
+        mvc.perform(post(root() + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType("application/json").content(duplicate.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("중복")));
+    }
+
+    @Test
+    void 함께_모집하는_주택형을_생략한_공급행은_바뀐_공급행으로_보지_않고_연결을_유지한다() throws Exception {
+        var joint = HousingType.createFromMyHome(complex, "source-46", "46", new BigDecimal("46.5"), null);
+        entities.persist(joint); entities.flush();
+        jdbc.update("INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id) VALUES (?, ?)", row.getId(), joint.getId());
+        entities.clear();
+        var request = request();
+        ((ObjectNode) request.path("correction").path("rows").get(0)).remove("linkedHousingTypes");
+        request.withArray("fields").add("name");
+
+        var preview = preview(request);
+        assertThat(preview.path("supply").isNull()).isTrue();
+        apply(request, preview).andExpect(status().isOk());
+        assertThat(jdbc.queryForList("SELECT housing_type_id FROM supply_row_housing_types WHERE supply_row_id = ?", Long.class,
+                row.getId())).containsExactlyInAnyOrder(type.getId(), joint.getId());
+    }
+
     private String root() {
         return "/api/admin/announcements/" + announcement.getId() + "/json-corrections";
     }

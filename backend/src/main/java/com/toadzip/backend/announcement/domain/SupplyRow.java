@@ -22,6 +22,8 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.YearMonth;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -99,6 +101,24 @@ public class SupplyRow {
 
     public Set<HousingType> getHousingTypes() {
         return Set.copyOf(housingTypes);
+    }
+
+    /** 관리자가 정한 함께 모집하는 주택형으로 연결을 맞춘다. 대표 주택형은 항상 포함하고, 나머지는 같은 단지의 주택형이어야 한다. */
+    public void linkHousingTypesByAdmin(Collection<HousingType> others) {
+        if (!others.isEmpty() && (housingType == null || others.stream()
+                .anyMatch(type -> !Objects.equals(idOf(type.getHousingComplex()), idOf(housingComplex))))) {
+            throw new IllegalArgumentException("함께 모집하는 주택형은 대표 주택형과 같은 단지의 주택형이어야 합니다.");
+        }
+        var next = new ArrayList<HousingType>(others);
+        if (housingType != null) {
+            next.add(housingType);
+        }
+        housingTypes.removeIf(linked -> next.stream().noneMatch(type -> sameType(linked, type)));
+        for (var type : next) {
+            if (housingTypes.stream().noneMatch(linked -> sameType(linked, type))) {
+                housingTypes.add(type);
+            }
+        }
     }
 
     /**
@@ -221,7 +241,7 @@ public class SupplyRow {
     @JoinColumn(name = "housing_type_id")
     private HousingType housingType;
 
-    /** 함께 모집하는 주택형. 대표 주택형도 포함한다. 지금은 대표 주택형 하나만 연결한다. */
+    /** 함께 모집하는 주택형. 대표 주택형도 포함한다. 대표 외 주택형은 관리자 보정만 연결한다. */
     @Getter(AccessLevel.NONE)
     @ManyToMany(fetch = LAZY)
     @JoinTable(name = "supply_row_housing_types",
