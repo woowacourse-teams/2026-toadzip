@@ -58,6 +58,8 @@ export function SourceDataPage() {
   const firstFields = category ? sourcePresentation[category].firstFields.filter(key => paths.has(key)) : []
   const columns = [...firstFields, ...[...paths].filter(path => !firstFields.includes(path)).sort()]
   const metadata = category ? sourcePresentation[category] : null
+  // SH·GH 공고는 공식 게시판을 API 키 없이 수집한다.
+  const board = category === 'SH_ANNOUNCEMENT' || category === 'GH_ANNOUNCEMENT' ? category : null
 
   return <section className={`management-page ${styles.page}`}>
     <header className="management-heading"><div><h1>원천 데이터</h1>
@@ -81,9 +83,9 @@ export function SourceDataPage() {
     </div>
     <div id="source-panel" role="tabpanel" aria-labelledby={category ? `source-tab-${category}` : undefined}>
     {metadata ? <div className={styles.sourceInfo}>
-      <p><strong>{metadata.provider}</strong><a href={metadata.documentationUrl} target="_blank" rel="noreferrer">{category === 'SH_ANNOUNCEMENT' ? '공식 게시판' : 'API 설명·키 발급'}</a>
-        <Link to={params.get('failureReturnTo') ? failureReturnUrl('/admin/ingest', params.get('failureReturnTo')!) : '/admin/ingest'}>{category === 'SH_ANNOUNCEMENT' ? '키 없이 SH 공고 수집' : 'API 키 입력하고 수집'}</Link></p>
-      {result?.items[0] ? <p><span>{category === 'SH_ANNOUNCEMENT' ? '수집 목록 URL' : '수집 API URL'}</span><SourceUrl url={result.items[0].sourceUrl} /></p> : null}
+      <p><strong>{metadata.provider}</strong><a href={metadata.documentationUrl} target="_blank" rel="noreferrer">{board ? '공식 게시판' : 'API 설명·키 발급'}</a>
+        <Link to={params.get('failureReturnTo') ? failureReturnUrl('/admin/ingest', params.get('failureReturnTo')!) : '/admin/ingest'}>{board ? `키 없이 ${sourceCategories[board]} 수집` : 'API 키 입력하고 수집'}</Link></p>
+      {result?.items[0] ? <p><span>{board ? '수집 목록 URL' : '수집 API URL'}</span><SourceUrl url={result.items[0].sourceUrl} /></p> : null}
     </div> : null}
     <form key={search} className="management-filters" onSubmit={event => {
       event.preventDefault()

@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.gh.service.GhAnnouncementCollectionService;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.api.LhLeaseCatalogCollectionCommand;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCatalogCollectionService;
@@ -32,10 +33,12 @@ class DataPipelineStepExecutor {
     private final LhAnnouncementRefinementService lhAnnouncementRefinementService;
     private final DataPipelineStepResultAdapter resultAdapter;
     private final ShAnnouncementCollectionService shAnnouncementCollectionService;
+    private final GhAnnouncementCollectionService ghAnnouncementCollectionService;
 
     DataPipelineStepResult execute(DataPipelineStep step) {
         return switch (step) {
             case COLLECT_SH_ANNOUNCEMENTS -> resultAdapter.adapt(shAnnouncementCollectionService.collect());
+            case COLLECT_GH_ANNOUNCEMENTS -> resultAdapter.adapt(ghAnnouncementCollectionService.collect());
             case COLLECT_MYHOME_COMPLEXES -> resultAdapter.adapt(myHomeComplexCollectionService.collect(
                     MyHomeComplexCollectionCommand.allRegions(500, 1_000)
             ));

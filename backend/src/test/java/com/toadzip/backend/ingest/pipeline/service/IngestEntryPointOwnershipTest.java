@@ -9,6 +9,7 @@ import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCata
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
+import com.toadzip.backend.ingest.collection.gh.service.GhAnnouncementCollectionService;
 import com.toadzip.backend.ingest.collection.sh.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
 import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementRefinementService;
@@ -36,6 +37,7 @@ class IngestEntryPointOwnershipTest {
                 Arguments.of(MyHomeAnnouncementCollectionService.class, "collect", 1),
                 Arguments.of(MyHomeComplexCollectionService.class, "collect", 1),
                 Arguments.of(ShAnnouncementCollectionService.class, "collect", 0),
+                Arguments.of(GhAnnouncementCollectionService.class, "collect", 0),
                 Arguments.of(LhHousingTypeHouseholdEnrichmentService.class, "enrichAll", 0),
                 Arguments.of(LocationSummaryImportService.class, "importMatches", 2),
                 Arguments.of(MyHomeComplexMappingService.class, "mapAll", 0),

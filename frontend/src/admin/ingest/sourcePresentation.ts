@@ -71,6 +71,14 @@ const fieldLabels: Record<SourceCategory, Record<string, string>> = {
     brdId: '첨부 게시판 코드', fileSeq: '첨부파일 식별자', fileSize: '파일 크기(바이트)',
     fileTp: '첨부 유형 코드', oriFileNm: '첨부파일명', previewUrl: '첨부 미리보기 URL',
   },
+  GH_ANNOUNCEMENT: {
+    pbanc_no: '공고 번호', board: '게시판', kind_code: '공고 종류 코드', title: '공고명', supply_type: '공급유형',
+    region: '지역', posted_date: '게시일', closing_date: '마감일', status: '공고 상태',
+    original_url: '공고 원문 URL', list_url: '수집 목록 URL', body_text: '본문 텍스트',
+    attachments: '공고문 첨부 메타데이터',
+    atchFileSn: '첨부 묶음 식별자', atchFileDtlSn: '첨부파일 식별자', fileName: '첨부파일명',
+    fileSize: '파일 크기(바이트)', downloadUrl: '첨부 다운로드 URL',
+  },
 }
 
 export const sourcePresentation: Record<SourceCategory, {
@@ -81,6 +89,12 @@ export const sourcePresentation: Record<SourceCategory, {
     documentationUrl: 'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=1,2,4,8,16,32,64,128,256,512,1024',
     firstFields: ['title', 'registered_date', 'department', 'attachments',
       'body_text', 'seq', 'original_url'],
+  },
+  GH_ANNOUNCEMENT: {
+    provider: '경기주택도시공사 · GH주택청약센터',
+    documentationUrl: 'https://apply.gh.or.kr/sb/sr/sr7150/selectPbancRentHouseList.do',
+    firstFields: ['title', 'supply_type', 'region', 'posted_date', 'closing_date', 'status', 'attachments',
+      'body_text', 'pbanc_no', 'board', 'original_url'],
   },
   MYHOME_COMPLEX: {
     provider: '국토교통부 · 마이홈', documentationUrl: 'https://www.data.go.kr/data/15110581/openapi.do',

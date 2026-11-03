@@ -44,6 +44,13 @@ public final class IngestSourceRows {
                                AS raw_payload
                     FROM sh_announcement_source source
                     """;
+            case GH_ANNOUNCEMENT -> """
+                    SELECT source.id, source.source_key, source.title AS name, source.original_url,
+                           source.collected_at, NULL::timestamptz AS updated_at,
+                           (to_jsonb(source) || jsonb_build_object('attachments', source.attachments::jsonb))::text
+                               AS raw_payload
+                    FROM gh_announcement_source source
+                    """;
             case MYHOME_COMPLEX -> myHomeComplex();
             case MYHOME_ANNOUNCEMENT -> myHomeAnnouncement();
             case LH_LEASE_CATALOG -> """

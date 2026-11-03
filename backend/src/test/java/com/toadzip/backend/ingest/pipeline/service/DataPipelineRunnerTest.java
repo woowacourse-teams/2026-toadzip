@@ -21,6 +21,7 @@ import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCata
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
+import com.toadzip.backend.ingest.collection.gh.service.GhAnnouncementCollectionService;
 import com.toadzip.backend.ingest.collection.sh.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.domain.IngestStepReport;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
@@ -80,6 +81,8 @@ class DataPipelineRunnerTest {
 
     private final ShAnnouncementCollectionService shAnnouncementCollectionService =
             org.mockito.Mockito.mock(ShAnnouncementCollectionService.class);
+    private final GhAnnouncementCollectionService ghAnnouncementCollectionService =
+            org.mockito.Mockito.mock(GhAnnouncementCollectionService.class);
 
     private DataPipelineStepResultAdapter resultAdapter;
     private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
@@ -99,11 +102,24 @@ class DataPipelineRunnerTest {
                         householdEnrichmentService,
                         lhAnnouncementRefinementService,
                         resultAdapter,
-                        shAnnouncementCollectionService
+                        shAnnouncementCollectionService,
+                        ghAnnouncementCollectionService
                 ),
                 executionStateService,
                 meterRegistry
         );
+    }
+
+    @Test
+    void GH_수집은_GH_원천_수집만_실행한다() {
+        when(ghAnnouncementCollectionService.collect()).thenReturn(collectionReport("gh-announcement"));
+
+        runner.run(DataPipelineType.GH_ANNOUNCEMENT_COLLECTION, executionId);
+
+        verify(ghAnnouncementCollectionService).collect();
+        org.mockito.Mockito.verifyNoInteractions(shAnnouncementCollectionService, myHomeAnnouncementCollectionService,
+                lhAnnouncementCatalogCollectionService, collectionService);
+        verify(executionStateService).completeStep(eq(executionId), eq(DataPipelineStep.COLLECT_GH_ANNOUNCEMENTS), any());
     }
 
     @Test

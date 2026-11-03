@@ -8,6 +8,7 @@ export type DataPipelineType =
   | 'ANNOUNCEMENT_SYNC'
   | 'ANNOUNCEMENT_REGISTRATION'
   | 'SH_ANNOUNCEMENT_COLLECTION'
+  | 'GH_ANNOUNCEMENT_COLLECTION'
 
 export type DataPipelineExecutionStatus =
   | 'IDLE'
@@ -420,6 +421,7 @@ function isDataPipelineType(value: unknown): value is DataPipelineType {
     || value === 'ANNOUNCEMENT_SYNC'
     || value === 'ANNOUNCEMENT_REGISTRATION'
     || value === 'SH_ANNOUNCEMENT_COLLECTION'
+    || value === 'GH_ANNOUNCEMENT_COLLECTION'
 }
 
 function isExecutionStatus(value: unknown): value is DataPipelineExecutionStatus {
@@ -446,6 +448,7 @@ function pipelinePath(type: DataPipelineType): string {
     ANNOUNCEMENT_SYNC: 'announcement-sync',
     ANNOUNCEMENT_REGISTRATION: 'announcement-registration',
     SH_ANNOUNCEMENT_COLLECTION: 'sh-announcement-collection',
+    GH_ANNOUNCEMENT_COLLECTION: 'gh-announcement-collection',
   }
   return `/api/admin/ingest/pipelines/${paths[type]}`
 }

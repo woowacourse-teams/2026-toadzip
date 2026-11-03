@@ -31,6 +31,15 @@ public class ExternalDataIngestConfiguration {
     }
 
     @Bean
+    RestClient ghAnnouncementRestClient() {
+        HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
+                .followRedirects(HttpClient.Redirect.NEVER).build();
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+        factory.setReadTimeout(Duration.ofSeconds(30));
+        return RestClient.builder().requestFactory(factory).build();
+    }
+
+    @Bean
     RestClient externalDataRestClient() {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(10));
