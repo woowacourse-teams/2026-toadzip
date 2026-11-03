@@ -13,7 +13,7 @@ function renderSupply(name: Parameters<typeof scenario>[0], prepare: (review: Re
   const changed = vi.fn<(review: Review) => void>()
   function Test() {
     const [current, setCurrent] = useState(review)
-    return <ReviewSupply review={current} workspace={workspace} housing={housing} complexes={{}} filter={filter} savesHousingTypes={savesHousingTypes} warnings={warnings} empty="없음" onChange={next => { setCurrent(next); changed(next) }} onEvidence={() => {}} />
+    return <ReviewSupply review={current} workspace={workspace} housing={housing} complexes={{}} filter={filter} savesHousingTypes={savesHousingTypes} warnings={warnings} empty="없음" onChange={next => { setCurrent(next); changed(next) }} onEvidence={() => {}} selected={0} onSelect={() => {}} />
   }
   render(<MemoryRouter><Test /></MemoryRouter>)
   return changed

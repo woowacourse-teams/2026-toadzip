@@ -240,6 +240,11 @@ export function reviewSection(reviewId: string): ReviewSection {
   if (reviewId.startsWith('cell:announcement') || reviewId.startsWith('cell:receptionPlace')) return 'reception'
   return 'supply'
 }
+/** 확인 항목 ID(row:2, cell:supplyRows[2].…, target:2:0, subtype:2:1, price:2, placement:2)가 가리키는 공급행 번호. 공급행 밖이면 null */
+export function rowOfReviewId(reviewId: string): number | null {
+  const match = /^(?:(?:row|target|subtype|price|placement):(\d+)|cell:supplyRows\[(\d+)\])/.exec(reviewId)
+  return match ? Number(match[1] ?? match[2]) : null
+}
 export type ReviewFilter = 'all' | 'pending' | 'changed' | 'new'
 export type PendingItem = { id: string; section: ReviewSection }
 /** 사람이 아직 판단하지 않은 확인 필요·형식 오류 값. 직접 입력값은 형식이 맞을 때까지 남는다. */
@@ -727,3 +732,15 @@ export function rebaseReview(previous: Review, workspace: JsonWorkspace, housing
   })
   return next
 }
+
+type Status = { label: string; tone: 'error' | 'warning' | 'pending' | 'muted' | 'done' }
+/** 행 상태. 적용 제외 → 오류 → 확인 필요 → 경고 → 주택형 미연결 → 준비됨 순서로 하나만 보인다. */
+export function rowStatus(row: RowReview, problem: PlacementProblem | undefined, pendingCells: boolean): Status {
+  if (!row.include) return { label: '적용 제외', tone: 'muted' }
+  if (problem?.level === 'error') return { label: '오류', tone: 'error' }
+  if (pendingRow(row) || pendingSubtypes(row).length || pendingCells) return { label: '확인 필요', tone: 'pending' }
+  if (problem) return { label: '경고', tone: 'warning' }
+  if (linkedHousingTypeId(row) === null && !newRepresentative(row)) return { label: '주택형 미연결', tone: 'warning' }
+  return { label: '준비됨', tone: 'done' }
+}
+

@@ -262,3 +262,40 @@
 .summaryColumns li[data-change=new], .summaryColumns li[data-change=changed] { border-color:var(--ds-color-action); }
 .summaryColumns li[data-change=excluded] { border-color:var(--ds-color-muted); color:var(--ds-color-muted); text-decoration:line-through; }
 .summaryColumns li small { color:var(--ds-color-action); }
+/* 공급정보 작업 영역: 위는 행 요약 목록, 아래는 고른 행 편집, 옆(넓을 때)은 단지 주택형 패널 */
+.supplyLayout { display:grid; grid-template-columns:minmax(0,1fr); gap:var(--ds-space-3); }
+.supplyLayout[data-panel=true] { grid-template-columns:minmax(0,1fr) minmax(240px,320px); }
+.supplyLayout[data-panel=true] > .rowListScroll { grid-column:1 / -1; }
+@container(max-width:700px) { .supplyLayout[data-panel=true] { grid-template-columns:minmax(0,1fr); } }
+.rowListScroll { max-height:32vh; overflow:auto; border:1px solid var(--ds-color-divider); scrollbar-width:thin; }
+.rowList { width:100%; border-collapse:collapse; font-size:var(--ds-text-caption); font-variant-numeric:tabular-nums; }
+.rowList thead th { position:sticky; top:0; z-index:1; background:var(--ds-color-table-heading, var(--ds-color-surface-subtle)); text-align:left; font-weight:500; color:var(--ds-color-label); }
+.rowList :is(th,td) { padding:var(--ds-space-1) var(--ds-space-2); border-bottom:1px solid var(--ds-color-table-line, var(--ds-color-divider)); vertical-align:top; overflow-wrap:anywhere; }
+.rowList .rowListGroup { background:var(--ds-color-surface-subtle); font-weight:600; color:var(--ds-color-text); }
+.rowList tr[aria-current=true] { background:var(--ds-color-action-selected, var(--ds-color-action-soft)); }
+.rowList tr[data-excluded] { color:var(--ds-color-muted); }
+.page .rowListButton { all:unset; cursor:pointer; color:var(--ds-color-action); font-weight:500; overflow-wrap:anywhere; }
+.page .rowListButton:focus-visible { outline:2px solid var(--ds-color-action); outline-offset:2px; }
+.statusBadge { display:inline-block; padding:0 var(--ds-space-2); border-radius:var(--ds-status-badge-radius, 999px); border:1px solid currentColor; font-size:11px; line-height:1.7; white-space:nowrap; }
+.statusBadge[data-tone=error] { color:var(--ds-color-deadline); }
+.statusBadge[data-tone=pending] { color:var(--ds-color-deadline); background:var(--ds-color-surface-subtle); }
+.statusBadge[data-tone=warning] { color:var(--ds-color-status-upcoming); background:var(--ds-color-status-upcoming-surface); }
+.statusBadge[data-tone=muted] { color:var(--ds-color-muted); }
+.statusBadge[data-tone=done] { color:var(--ds-color-action); background:var(--ds-color-action-soft); }
+.rowEditor { min-width:0; }
+.rowEditor > .supplyBlock { border-top:0; padding-top:var(--ds-space-2); }
+.typesPanel { position:sticky; top:var(--ds-space-2); align-self:start; max-height:calc(100dvh - 260px); overflow:auto; display:grid; gap:var(--ds-space-2); padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); background:var(--ds-color-surface); font-size:var(--ds-text-caption); scrollbar-width:thin; }
+.typesPanel > header { display:flex; justify-content:space-between; align-items:baseline; gap:var(--ds-space-2); flex-wrap:wrap; }
+.page .typesPanel h3, .page .typesPanel h4 { margin:0; }
+.typeList { list-style:none; margin:0; padding:0; display:grid; gap:var(--ds-space-2); }
+.typeList > li { display:grid; gap:var(--ds-space-1); padding:var(--ds-space-2); border-left:3px solid var(--ds-color-divider); background:var(--ds-color-surface-subtle); }
+.typeList > li[data-linked] { border-color:var(--ds-color-action); }
+.typeHead { display:flex; flex-wrap:wrap; gap:var(--ds-space-1) var(--ds-space-2); align-items:baseline; overflow-wrap:anywhere; }
+.typeList dl { margin:0; display:grid; gap:2px; }
+.typeList dl div { display:flex; gap:var(--ds-space-2); justify-content:space-between; }
+.typeList dt { color:var(--ds-color-muted-base); }
+.typeList dd { margin:0; text-align:right; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.badgeWarning, .badgeMuted { padding:0 var(--ds-space-1); border:1px solid currentColor; border-radius:999px; font-size:11px; }
+.badgeWarning { color:var(--ds-color-status-upcoming); }
+.badgeMuted { color:var(--ds-color-muted); }
+.page .heading .progress { margin:var(--ds-space-1) 0 0; color:var(--ds-color-label); font-variant-numeric:tabular-nums; }

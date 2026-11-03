@@ -91,13 +91,19 @@ function subtypeExtraction() {
   return extraction
 }
 /** 공급행 저장 방식에서 고른 방식(기존 행 수정·통합행 분리·LH 행에 연결·별도 추가). 고르지 않았으면 null */
+/** 공급행 목록에서 그 행을 골라 편집 영역에 연다. */
+function showRow(row: number) {
+  fireEvent.click(within(screen.getByRole('region', { name: '공급행 목록' })).getByRole('button', { name: `공급행 ${row} 편집` }))
+}
 function modeOf(row: number) {
+  showRow(row)
   return within(screen.getByRole('group', { name: `공급행 ${row} 저장 방식` })).getAllByRole('radio').find(radio => (radio as HTMLInputElement).checked)?.parentElement?.textContent ?? null
 }
 function chooseMode(row: number, mode: string) {
+  showRow(row)
   fireEvent.click(within(screen.getByRole('group', { name: `공급행 ${row} 저장 방식` })).getByRole('radio', { name: mode }))
 }
-const updateTarget = (row: number) => screen.getByRole('combobox', { name: `공급행 ${row} 수정할 기존 행` })
+const updateTarget = (row: number) => { showRow(row); return screen.getByRole('combobox', { name: `공급행 ${row} 수정할 기존 행` }) }
 function manual(scope: string, label: string) {
   fireEvent.click(within(screen.getByRole('group', { name: `${scope} ${label} 반영 방법` })).getByRole('button', { name: '직접 입력' }))
 }
@@ -154,10 +160,16 @@ it('AI 워커가 원문과 대조한 경고를 검토 화면의 검산 확인에
 
 it('공급행을 PDF 단지 이름별로 묶어 한 단지의 주택형을 한곳에 보여 주고, 쓰지 않는 변경 목록은 두지 않는다', async () => {
   await open(JSON.stringify(separateHansville()))
+  // 목록은 단지별로 모든 공급행을 한 줄씩 요약하고, 편집 영역은 고른 행 하나만 보인다.
+  const list = screen.getByRole('region', { name: '공급행 목록' })
+  expect(within(list).getByRole('rowheader', { name: '익산한스빌' })).toBeVisible()
+  expect(within(list).getAllByRole('button', { name: /^공급행 \d 편집$/ }).map(button => button.textContent)).toEqual(['1. 26A', '2. 26B'])
   const group = screen.getByRole('region', { name: '익산한스빌 주택형' })
-  expect(within(group).getByRole('heading', { name: '익산한스빌주택형 2개' })).toBeVisible()
+  expect(within(group).getByRole('heading', { name: '익산한스빌주택형 2개 중 공급행 1' })).toBeVisible()
   expect(within(group).getByRole('region', { name: '공급행 1 검토' })).toBeVisible()
-  expect(within(group).getByRole('region', { name: '공급행 2 검토' })).toBeVisible()
+  expect(screen.queryByRole('region', { name: '공급행 2 검토' })).not.toBeInTheDocument()
+  showRow(2)
+  expect(screen.getByRole('region', { name: '공급행 2 검토' })).toBeVisible()
   expect(screen.queryByText(/반영할 변경 \d+개 보기/)).not.toBeInTheDocument()
 })
 it('형식 오류와 셀 수정·조건 제외를 제공하고 PDF 근거 쪽으로 이동해 그 값을 강조한다', async () => {
@@ -357,7 +369,7 @@ it('확인 필요 항목을 세고 하단 버튼으로 다음 항목에 이동�
   onTestFinished(() => { delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView })
   await open(JSON.stringify(separateHansville()))
   expect(screen.getByRole('button', { name: '일정 · 확인 1' })).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: '확인 필요 3개 남음 ↓' }))
+  fireEvent.click(screen.getByRole('button', { name: '미해결 3개 ↓' }))
   expect(screen.getByRole('region', { name: '공급행 1 검토' })).toHaveFocus()
   expect(scroll).toHaveBeenCalledWith({ block: 'start' })
   fireEvent.click(screen.getByRole('button', { name: '공급행 1 대응 확인' }))
@@ -366,7 +378,7 @@ it('확인 필요 항목을 세고 하단 버튼으로 다음 항목에 이동�
   expect(screen.getByRole('region', { name: '공급행 2 검토' })).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '공급행 2 대응 확인' }))
   expect(screen.getByText('이 영역에는 ‘확인 필요’ 항목이 없습니다.')).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: '확인 필요 1개 남음 ↓' }))
+  fireEvent.click(screen.getByRole('button', { name: '미해결 1개 ↓' }))
   expect(screen.getByRole('heading', { name: '일정' })).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '일정 2 적용 안 함' }))
   expect(screen.getByText('확인 필요 없음')).toBeVisible()
@@ -543,7 +555,7 @@ it('단지에 맞는 주택형이 없으면 따로 알리고 PDF 형명·면적�
   extraction.sharedCounts = []
   await open(JSON.stringify(extraction))
   // 모집수·표기 근거가 없어 모호로 남은 저장 방식을 운영자가 정한다.
-  chooseMode(1, '기존 행 수정'); chooseMode(2, '별도 추가')
+  chooseMode(1, '기존 행 수정'); chooseMode(2, '별도 추가'); showRow(1)
   const block = screen.getByRole('region', { name: '공급행 1 검토' })
   expect(within(block).getByText('맞는 주택형 없음')).toBeVisible()
   expect(within(block).getByText(/PDF 전용 99.1234㎡ 주택형이 없습니다/)).toBeVisible()
@@ -614,11 +626,13 @@ it('공고에는 있지만 단지 DB에 없는 단지는 공고문 단지 개요
   // 새로 등록한 단지에는 공고문 주택형을 함께 만든다.
   expect(pdfTypes.createPdfHousingTypes).toHaveBeenCalledWith(7, [expect.objectContaining({ typeName: '26A' }), expect.objectContaining({ typeName: '26B' })], [], expect.any(AbortSignal))
   for (const index of [1, 2]) {
+    showRow(index)
     const block = within(screen.getByRole('region', { name: `공급행 ${index} 검토` }))
     expect(block.getByText('선택 단지: 익산한스빌')).toBeVisible()
     // 새 단지에는 주택형이 없으므로 PDF 형명·면적으로 새 주택형을 추가하도록 미리 고른다.
     expect(block.getByText(/주택형을 이 단지에 추가합니다/)).toBeVisible()
   }
+  showRow(1)
   expect(screen.getByLabelText('공급행 1 공급 구분')).toHaveValue('NEW_SUPPLY')
 })
 
@@ -673,7 +687,7 @@ it('같은 면적 주택형이 여럿인 세부 타입은 고를 때까지 확�
   await open(JSON.stringify(subtypeExtraction()))
   const choice = screen.getByRole('combobox', { name: '공급행 1 세부 타입 26A 연결 주택형' })
   expect(choice).toHaveValue('')
-  expect(screen.getByRole('button', { name: /확인 필요 \d+개 남음/ })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /미해결 \d+개/ })).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('공급행 1: 세부 타입 26A의 연결 주택형을 고르세요.')
   expect(api.previewJsonUpdate).not.toHaveBeenCalled()
@@ -823,4 +837,23 @@ it('적용 전 확인은 통합행 분리 결과와 단지별 변경 전후 합�
   fireEvent.click(within(summary).getByRole('button', { name: '돌아가서 수정' }))
   expect(screen.queryByRole('region', { name: '적용 전 확인' })).not.toBeInTheDocument()
   expect(api.applyJsonUpdate).not.toHaveBeenCalled()
+})
+
+it('공급행 목록은 행마다 저장 방식과 상태를 요약하고, 단지 주택형 패널에서 기존 주택형을 고른 행에 연결해도 패널을 닫았다 열면 그대로다', async () => {
+  await open(JSON.stringify(separateHansville()))
+  const list = screen.getByRole('region', { name: '공급행 목록' })
+  expect(within(list).getAllByRole('row').slice(2).map(row => row.textContent)).toEqual(['1. 26A26.5195㎡170기존 행 수정확인 필요', '2. 26B26.4673㎡미확인별도 추가확인 필요'])
+  fireEvent.click(screen.getByRole('button', { name: '단지 주택형 보기' }))
+  const panel = screen.getByRole('complementary', { name: '익산한스빌 · 국민임대 주택형' })
+  const types = within(panel).getAllByRole('listitem')
+  expect(types[1]).toHaveTextContent('단지 정보 · 건설호수486세대')
+  expect(types[1]).toHaveTextContent('이번 공고 · 모집수없음')
+  expect(within(panel).getByRole('heading', { name: '새 주택형 생성' })).toBeVisible()
+  fireEvent.click(within(panel).getByRole('button', { name: '26 · 전용 26.4673㎡를 공급행 1에 연결' }))
+  expect(screen.getByRole('combobox', { name: '공급행 1 연결 주택형 수정' })).toHaveValue('10352')
+  fireEvent.click(within(panel).getByRole('button', { name: '주택형 패널 닫기' }))
+  expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '단지 주택형 보기' }))
+  expect(within(screen.getByRole('complementary')).getByText('공급행 1에 연결함')).toBeVisible()
+  expect(screen.getByRole('combobox', { name: '공급행 1 연결 주택형 수정' })).toHaveValue('10352')
 })
