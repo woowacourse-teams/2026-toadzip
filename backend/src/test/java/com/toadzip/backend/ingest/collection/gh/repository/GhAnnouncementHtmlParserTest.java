@@ -39,6 +39,9 @@ class GhAnnouncementHtmlParserTest {
         assertThat(first.path("expectedMoveIn").asString()).isEqualTo("2027.03");
         assertThat(first.path("notice").asString()).isEqualTo("자세한 사항은 공고문을 확인해 주시기 바랍니다.");
         assertThat(first.has("reception")).isFalse();
+        assertThat(first.path("images")).hasSize(2);
+        assertThat(first.path("images").get(1).path("name").asString()).isEqualTo("단지배치도");
+        assertThat(first.path("images").get(1).path("url").asString()).endsWith("atchFileSn=2");
         var housingType = first.path("housingTypes").get(1);
         assertThat(first.path("housingTypes")).hasSize(2);
         assertThat(housingType.path("name").asString()).isEqualTo("36A 청년");
@@ -56,6 +59,7 @@ class GhAnnouncementHtmlParserTest {
         var second = districts.get(1);
         assertThat(second.path("address").asString()).isEqualTo("경기도 안양시 동안구 관양동 1498-21");
         assertThat(second.path("housingTypes")).isEmpty();
+        assertThat(second.path("images")).isEmpty();
         assertThat(second.path("reception").path("address").asString()).isEqualTo("관양 임대센터");
     }
 
@@ -94,6 +98,30 @@ class GhAnnouncementHtmlParserTest {
         assertThat(content.districts()).isNull();
         assertThat(content.unreadParts()).containsExactly("공급정보");
         assertThat(content.reception()).contains("다산 임대센터");
+    }
+
+    @Test
+    void 구획_제목은_있는데_주택형_표나_지구를_못_찾으면_빈_값이_아니라_읽지_못한_공급정보로_남긴다() {
+        String renamedTable = detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW).replace("tb_house\"", "tb_house_v2\"");
+        var document = Jsoup.parse(detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW));
+        document.select("ul.tab_box, div#tab1, div#tab2").remove();
+
+        for (String html : new String[]{renamedTable, document.html()}) {
+            var content = parser.parse(html, GhAnnouncementBoard.RENTAL_HOUSE, entry(ROW));
+            assertThat(content.districts()).isNull();
+            assertThat(content.unreadParts()).containsExactly("공급정보");
+        }
+    }
+
+    @Test
+    void 지구_구획이_공고_단위에_나오면_읽지_못한_구획으로_남긴다() {
+        String html = detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW).replace(
+                "<h5 class=\"subcont_title\">기타사항</h5>", "<h5 class=\"subcont_title\">공급일정</h5><ul></ul>"
+                        + "<h5 class=\"subcont_title\">기타사항</h5>");
+
+        var content = parser.parse(html, GhAnnouncementBoard.RENTAL_HOUSE, entry(ROW));
+
+        assertThat(content.unreadParts()).containsExactly("알 수 없는 구획(공급일정)");
     }
 
     @Test

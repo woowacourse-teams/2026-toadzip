@@ -68,6 +68,8 @@ class GhAnnouncementStoreTest {
 
         var source = repository.findBySourceKey("GH:801").orElseThrow();
         assertThat(source.getNotice()).isEqualTo("원문");
+        assertThat(source.getReception()).isEqualTo("{}");
+        assertThat(source.getOtherNotes()).isEmpty();
         assertThat(source.getDistricts()).isEqualTo("[]");
         assertThat(source.getAttachments()).isEqualTo("[]");
         assertThat(source.getStatus()).isEqualTo("접수마감");
@@ -84,6 +86,16 @@ class GhAnnouncementStoreTest {
         assertThat(store(FIRST).findUnchangedPbancNos(GhAnnouncementBoard.RENTAL_HOUSE, entries))
                 .containsExactly("801");
         assertThat(store(FIRST).findUnchangedPbancNos(GhAnnouncementBoard.PURCHASE_RENTAL, entries)).isEmpty();
+    }
+
+    @Test
+    void 일부_구획을_읽지_못한_채_저장된_공고는_바뀌지_않은_공고로_보지_않는다() {
+        var board = GhAnnouncementBoard.RENTAL_HOUSE;
+        store(FIRST).store(new GhAnnouncementSnapshot(board, "801", "01", "제목", "국민임대", "남양주시",
+                LocalDate.parse("2026-10-02"), null, "접수중", board.detailUrl("801", "01"), board.listUrl(1),
+                "[]", "{}", "원문", "", null));
+
+        assertThat(store(FIRST).findUnchangedPbancNos(board, List.of(entry("801", "제목", "2026-10-02")))).isEmpty();
     }
 
     private Entry entry(String pbancNo, String title, String postedDate) {

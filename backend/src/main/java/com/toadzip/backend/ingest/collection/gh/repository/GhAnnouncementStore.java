@@ -43,7 +43,7 @@ public class GhAnnouncementStore {
         }
     }
 
-    /** 같은 게시판에 저장돼 있고 목록의 제목·게시일이 저장값과 같은 공고 번호. */
+    /** 같은 게시판에 모든 구획을 읽어 저장했고 목록의 제목·게시일이 저장값과 같은 공고 번호. */
     @Transactional(readOnly = true)
     public Set<String> findUnchangedPbancNos(GhAnnouncementBoard board, List<Entry> entries) {
         Map<String, GhAnnouncementSource> stored = repository.findAllByPbancNoIn(
@@ -53,7 +53,7 @@ public class GhAnnouncementStore {
         for (Entry entry : entries) {
             GhAnnouncementSource source = stored.get(entry.pbancNo());
             if (source != null && source.getBoard() == board && source.getTitle().equals(entry.title())
-                    && source.getPostedDate().equals(entry.postedDate())) {
+                    && source.getPostedDate().equals(entry.postedDate()) && source.hasAllSections()) {
                 unchanged.add(entry.pbancNo());
             }
         }

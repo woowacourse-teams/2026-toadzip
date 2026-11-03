@@ -20,9 +20,11 @@ final class GhAnnouncementSectionReader {
     private static final String DISTRICT_CAPTION = "사업지구별 공급정보";
     private static final List<String> HOUSING_TYPE_HEADERS = List.of(
             "주택형", "전용면적(m²)", "금회공급 세대수", "임대보증금(원)", "월임대료(원)", "인터넷청약");
-    /** 읽는 구획과 읽지 않아도 되는 안내 구획. 모르는 구획이 생기면 사이트 구조가 바뀐 것으로 본다. */
-    private static final Set<String> KNOWN_SECTIONS = Set.of(
-            "상세정보", "공급정보", "단지 관련 이미지 정보", "주택형 안내", "안내사항", "공급일정", "접수처 정보", "기타사항");
+    private static final String DISTRICT_PANEL = "div[id~=^tab[0-9]+$]";
+    /** 공고 단위와 지구 탭 안에서 읽는 구획. 이 밖의 제목이나 다른 위치에 나온 제목은 사이트 구조가 바뀐 것으로 본다. */
+    private static final Set<String> ANNOUNCEMENT_SECTIONS = Set.of("상세정보", "공급정보", "접수처 정보", "안내사항", "기타사항");
+    private static final Set<String> DISTRICT_SECTIONS = Set.of(
+            "단지 관련 이미지 정보", "주택형 안내", "안내사항", "공급일정", "접수처 정보");
 
     private final Element content;
 
@@ -32,14 +34,18 @@ final class GhAnnouncementSectionReader {
 
     /** 사이트가 새로 추가한 구획 제목. 비어 있지 않으면 저장값만으로는 공고를 다 담지 못한다. */
     List<String> unknownSections() {
-        return content.select("h5.subcont_title").stream().map(Element::text)
-                .filter(title -> !KNOWN_SECTIONS.contains(title)).distinct().toList();
+        return content.select("h5.subcont_title").stream()
+                .filter(heading -> !(heading.closest(DISTRICT_PANEL) == null ? ANNOUNCEMENT_SECTIONS : DISTRICT_SECTIONS)
+                        .contains(heading.text()))
+                .map(Element::text).distinct().toList();
     }
 
     String districts() {
         var tabs = content.select("ul.tab_box > li.pbancTab");
-        var panels = content.select("div[id~=^tab[0-9]+$]");
+        var panels = content.select(DISTRICT_PANEL);
         require(tabs.size() == panels.size(), "GH 공급정보 탭과 지구 수가 다릅니다.");
+        // 공급정보 제목이 있는데 지구를 못 찾으면 빈 목록이 아니라 구조가 바뀐 것이다.
+        require(hasSection(content, "공급정보") == !panels.isEmpty(), "GH 공급정보 구획과 지구가 맞지 않습니다.");
         ArrayNode districts = JSON.createArrayNode();
         for (int index = 0; index < panels.size(); index++) {
             Element panel = panels.get(index);
@@ -73,6 +79,7 @@ final class GhAnnouncementSectionReader {
         district.put("recruitmentCount", value(table, "모집호수"));
         district.put("heatingType", value(table, "난방방식"));
         district.put("expectedMoveIn", value(table, "입주예정월"));
+        district.set("images", images(panel));
         district.set("housingTypes", housingTypes(panel));
         district.set("schedules", schedules(panel));
         district.put("notice", text(sectionContent(panel, "안내사항", "div.bg_box")));
@@ -83,10 +90,26 @@ final class GhAnnouncementSectionReader {
         return district;
     }
 
+    /** 단지 관련 이미지(평면도·조감도·배치도). 이름 버튼이 가리키는 칸의 이미지 주소를 짝짓는다. */
+    private ArrayNode images(Element panel) {
+        ArrayNode images = JSON.createArrayNode();
+        var buttons = panel.select(".ltab_box button[data-show]");
+        require(hasSection(panel, "단지 관련 이미지 정보") == !buttons.isEmpty(), "GH 단지 이미지 구획과 이미지가 맞지 않습니다.");
+        for (Element button : buttons) {
+            Element frame = panel.getElementById(button.attr("data-show"));
+            Element image = frame == null ? null : frame.selectFirst("img[src]");
+            require(image != null && !button.text().isBlank(), "GH 단지 이미지가 이름과 짝지어지지 않습니다.");
+            ObjectNode item = images.addObject();
+            item.put("name", button.text());
+            item.put("url", image.attr("src"));
+        }
+        return images;
+    }
+
     private ArrayNode housingTypes(Element panel) {
         ArrayNode housingTypes = JSON.createArrayNode();
         var bodies = panel.select("tbody.tb_house");
-        require(bodies.size() <= 1, "GH 주택형 표가 여러 개입니다.");
+        require(bodies.size() == (hasSection(panel, "주택형 안내") ? 1 : 0), "GH 주택형 구획과 주택형 표가 맞지 않습니다.");
         if (bodies.isEmpty()) {
             return housingTypes;
         }
@@ -144,7 +167,7 @@ final class GhAnnouncementSectionReader {
     private Element sectionContent(Element scope, String title, String selector) {
         var headings = scope.select("h5.subcont_title").stream()
                 .filter(heading -> heading.text().equals(title))
-                .filter(heading -> scope != content || heading.closest("div[id~=^tab[0-9]+$]") == null)
+                .filter(heading -> scope != content || heading.closest(DISTRICT_PANEL) == null)
                 .toList();
         require(headings.size() <= 1, "GH 구획이 중복됐습니다: " + title);
         if (headings.isEmpty()) {
@@ -153,6 +176,11 @@ final class GhAnnouncementSectionReader {
         Element next = headings.getFirst().nextElementSibling();
         require(next != null && next.is(selector), "GH 구획 내용이 없습니다: " + title);
         return next;
+    }
+
+    private boolean hasSection(Element scope, String title) {
+        return scope.select("h5.subcont_title").stream().anyMatch(heading -> heading.text().equals(title)
+                && (scope != content || heading.closest(DISTRICT_PANEL) == null));
     }
 
     private Element captioned(Element scope, String caption) {

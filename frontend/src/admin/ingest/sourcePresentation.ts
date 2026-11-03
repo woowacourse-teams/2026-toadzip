@@ -83,7 +83,7 @@ const fieldLabels: Record<SourceCategory, Record<string, string>> = {
     houseTypeCode: '주택형 코드', businessCode: '사업 코드', recruitmentRound: '모집 회차',
     exclusiveArea: '전용면적', supplyCount: '금회공급 세대수', rentalDeposit: '임대보증금 원천값',
     monthlyRent: '월임대료 원천값', applicationStatus: '인터넷청약 상태', schedules: '공급일정',
-    label: '일정 이름', value: '일정 값', phone: '전화번호', operatingPeriod: '접수처 운영기간',
+    images: '단지 관련 이미지', url: '이미지 주소', label: '일정 이름', value: '일정 값', phone: '전화번호', operatingPeriod: '접수처 운영기간',
     atchFileSn: '첨부 묶음 식별자', atchFileDtlSn: '첨부파일 식별자', fileName: '첨부파일명',
     fileSize: '파일 크기(바이트)', downloadUrl: '첨부 다운로드 URL',
   },

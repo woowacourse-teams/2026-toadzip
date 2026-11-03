@@ -89,6 +89,11 @@ public class GhAnnouncementSource {
         return source;
     }
 
+    /** 일부 구획만 읽어 저장한 공고는 실패 기록이 없어도 다시 받아야 한다. */
+    public boolean hasAllSections() {
+        return districts != null && reception != null && notice != null && otherNotes != null && attachments != null;
+    }
+
     /** 상세를 다시 받지 않은 공고도 목록에서 바뀌는 지역·마감일·공고 상태는 맞춘다. 수집 시각은 상세 기준이라 두지 않는다. */
     public void updateListValues(String region, LocalDate closingDate, String status) {
         this.region = region;

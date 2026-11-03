@@ -84,6 +84,13 @@ public final class GhAnnouncementFixtures {
                         </tbody></table>
                         <h5 class="subcont_title">단지 관련 이미지 정보</h5>
                         <div class="caption_tbl"><button type="button" class="down_btn">다운로드</button></div>
+                        <div class="left_tab_box"><div class="ltab_box"><ul>
+                            <li><button type="button" data-show="img1tab1" class="active">33A 평면도</button></li>
+                            <li><button type="button" data-show="img2tab1">단지배치도</button></li>
+                        </ul></div><div class="ltab_content">
+                            <div id="img1tab1"><img src="https://apply-cdn.gh.or.kr/sb/sr/sr7150/selectAtchImage.do?atchFileSn=1" alt="평면도 설명"></div>
+                            <div id="img2tab1"><img src="https://apply-cdn.gh.or.kr/sb/sr/sr7150/selectAtchImage.do?atchFileSn=2" alt="배치도 설명"></div>
+                        </div></div>
                         <h5 class="subcont_title">주택형 안내</h5>
                         <ul class="bul_list"><li>상세공급정보를 확인하시려면 표에서 주택형을 클릭해주세요.</li></ul>
                         <div class="tbl_scroll"><table><caption>주택형 안내 테이블</caption><tbody class="tb_house">
