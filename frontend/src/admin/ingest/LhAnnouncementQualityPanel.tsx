@@ -124,7 +124,7 @@ export function LhAnnouncementQualityPanel({ collectionExecution }: {
                 <small>확인한 접수 일정 {quality.schedules.withApplicationSchedule}건</small></div>
             </div>
           </section>
-          <p className="ingest-meta">원천 확보는 현재 수집 대상의 조회 조건에 맞는 성공 원천 유무입니다. 과거 성공도 포함하며 이번 실행의 성공률이나 현재 값의 최신성을 뜻하지 않습니다. 가장 최근 실제 수집 시각은 대상 중 최댓값입니다. 금액 확보는 공급행에 보증금·월세 숫자 쌍이 하나 이상 있는 경우입니다.</p>
+          <p className="ingest-meta">원천 확보는 최신 LH 공고목록의 수집 대상 공고가 현재 조회 조건에 맞는 성공 원천을 가졌는지입니다. 과거 성공도 포함하며 이번 실행의 성공률이나 현재 값의 최신성을 뜻하지 않습니다. 가장 최근 실제 수집 시각은 대상 중 최댓값입니다. 금액 확보는 공급행에 보증금·월세 숫자 쌍이 하나 이상 있는 경우입니다.</p>
           <div className="lh-quality-review-grid">
             <section className="lh-quality-summary">
               <h4>연결되지 않은 공급행 사유</h4>
@@ -149,9 +149,9 @@ export function LhAnnouncementQualityPanel({ collectionExecution }: {
             </section>
           </div>
           <details className="lh-quality-candidates">
-            <summary><span>미연결 LH 임대 공고 조사 후보 {quality.unlinkedLhLeaseCatalogCount}건</span><span>목록 보기</span></summary>
-            <p className="ingest-meta">LH 단독 모집인지 기존 공고의 정정인지 확인할 대상입니다. 관계 확인 전에는 제품 공고 수로 보지 않습니다.</p>
-            <div className="lh-quality-candidate-scroll" tabIndex={0} aria-label="미연결 LH 공고 후보 목록">
+            <summary><span>미수집 LH 임대 공고 조사 후보 {quality.unlinkedLhLeaseCatalogCount}건</span><span>목록 보기</span></summary>
+            <p className="ingest-meta">최신 LH 공고목록의 수집 대상 중 공급·상세 원천이 현재 조회 조건으로 아직 수집되지 않은 공고입니다. 수집에 실패했거나 아직 수집 전인지 확인합니다.</p>
+            <div className="lh-quality-candidate-scroll" tabIndex={0} aria-label="미수집 LH 공고 후보 목록">
               <ul>{quality.unlinkedLhCandidates.map((candidate) => (
                 <li key={candidate.sourceKey}>
                   <strong>{candidate.panId}</strong>

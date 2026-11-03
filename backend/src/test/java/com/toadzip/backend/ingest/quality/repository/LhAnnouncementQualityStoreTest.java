@@ -101,8 +101,7 @@ class LhAnnouncementQualityStoreTest {
                         :occurredAt, 1, 0, 'IncompleteLhSupplyReplacementException', '공급행 감소')
                 """).param("occurredAt", Timestamp.from(OBSERVED_AT)).update();
         catalog("quality-pan", OBSERVED_AT.minusSeconds(86400));
-        source("myhome-1", "quality-pan", null);
-        progressStore.save(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "myhome-1",
+        progressStore.save(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, catalogKey("quality-pan"),
                 request("previous-pan").requestDescription(), "previous-pan");
 
         LhAnnouncementQualityResponse result = service.snapshot();
@@ -123,7 +122,7 @@ class LhAnnouncementQualityStoreTest {
         assertThat(result.heldRequests()).extracting(LhAnnouncementQualityResponse.HeldRequest::requestDescription)
                 .contains("quality-held-request");
 
-        progressStore.save(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "myhome-1",
+        progressStore.save(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, catalogKey("quality-pan"),
                 request("quality-pan").requestDescription(), "quality-pan");
         assertThat(service.snapshot().unlinkedLhLeaseCatalogCount()).isZero();
     }
@@ -161,48 +160,89 @@ class LhAnnouncementQualityStoreTest {
     }
 
     @Test
-    void 원천_확보는_현재_요청을_중복없이_세고_최초_실패도_분모에_포함한다() {
-        source("current", "current-pan", null);
-        source("same-request", "current-pan", null);
-        source("never-successful", "missing-pan", null);
-        source("ended", "ended-pan", "20260101");
-        source("inactive", "inactive-pan", null);
-        jdbc.sql("UPDATE myhome_announcement_source_rows SET active = false WHERE pblanc_id = 'inactive'").update();
+    void 마이홈_원천이_없는_LH_공고도_분모에_넣고_수집_연결되면_조사_후보에서_뺀다() {
+        catalog("lh-only-pan", OBSERVED_AT.minusSeconds(86400));
+
+        LhAnnouncementQualityResponse before = service.snapshot();
+        assertThat(before.supplyCollection()).isEqualTo(
+                new LhAnnouncementQualityResponse.CollectionCoverage(1, 0, null));
+        assertThat(before.unlinkedLhCandidates())
+                .extracting(LhAnnouncementQualityResponse.UnlinkedLhCandidate::panId)
+                .containsExactly("lh-only-pan");
+
+        checkpoint("lh-only-pan", OBSERVED_AT.minusSeconds(600));
+        progressStore.save(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, catalogKey("lh-only-pan"),
+                request("lh-only-pan").requestDescription(), "lh-only-pan");
+
+        LhAnnouncementQualityResponse after = service.snapshot();
+        assertThat(after.supplyCollection()).isEqualTo(
+                new LhAnnouncementQualityResponse.CollectionCoverage(1, 1, OBSERVED_AT.minusSeconds(600)));
+        assertThat(after.unlinkedLhLeaseCatalogCount()).isZero();
+        assertThat(after.unlinkedLhCandidates()).isEmpty();
+    }
+
+    @Test
+    void 지난_마이홈_공고_원천과_연결은_원천_확보와_조사_후보에_쓰지_않는다() {
+        source("myhome-only", "myhome-pan", null);
+        checkpoint("myhome-pan", OBSERVED_AT.minusSeconds(600));
+        catalog("catalog-pan", OBSERVED_AT.minusSeconds(86400));
+        source("myhome-linked", "catalog-pan", null);
+        progressStore.save(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "myhome-linked",
+                request("catalog-pan").requestDescription(), "catalog-pan");
+
+        LhAnnouncementQualityResponse result = service.snapshot();
+
+        assertThat(result.supplyCollection()).isEqualTo(
+                new LhAnnouncementQualityResponse.CollectionCoverage(1, 0, null));
+        assertThat(result.unlinkedLhCandidates())
+                .extracting(LhAnnouncementQualityResponse.UnlinkedLhCandidate::panId)
+                .containsExactly("catalog-pan");
+    }
+
+    @Test
+    void 원천_확보는_공고목록_수집_대상_요청만_세고_최초_실패도_분모에_포함한다() {
+        catalog("current-pan", OBSERVED_AT.minusSeconds(86400));
+        catalog("missing-pan", OBSERVED_AT.minusSeconds(86400));
+        catalog("ended-pan", OBSERVED_AT.minusSeconds(86400), "2026.01.01", "062", true);
+        catalog("removed-pan", OBSERVED_AT.minusSeconds(86400), null, "062", false);
+        catalog("daycare-pan", OBSERVED_AT.minusSeconds(86400), null, "064", true);
         checkpoint("current-pan", OBSERVED_AT.minusSeconds(600));
         checkpoint("ended-pan", OBSERVED_AT.minusSeconds(600));
-        checkpoint("inactive-pan", OBSERVED_AT.minusSeconds(600));
+        checkpoint("removed-pan", OBSERVED_AT.minusSeconds(600));
 
-        assertThat(service.snapshot().supplyCollection()).isEqualTo(
+        LhAnnouncementQualityResponse result = service.snapshot();
+
+        assertThat(result.supplyCollection()).isEqualTo(
                 new LhAnnouncementQualityResponse.CollectionCoverage(2, 1, OBSERVED_AT.minusSeconds(600)));
-        assertThat(service.snapshot().detailCollection()).isEqualTo(
+        assertThat(result.detailCollection()).isEqualTo(
                 new LhAnnouncementQualityResponse.CollectionCoverage(2, 0, null));
+        assertThat(result.unlinkedLhCandidates())
+                .extracting(LhAnnouncementQualityResponse.UnlinkedLhCandidate::sourceKey)
+                .containsExactlyInAnyOrder(sourceKey("current-pan"), sourceKey("missing-pan"));
     }
 
     @Test
     void 최근_종료_공고의_원천_확보는_실제_수집_시각으로_확인한다() {
-        source("recent-ended", "recent-pan", "20260927");
+        catalog("recent-pan", OBSERVED_AT.minusSeconds(86400), "2026.09.27", "062", true);
         checkpoint("recent-pan", OBSERVED_AT.minusSeconds(43200));
 
         assertThat(service.snapshot().supplyCollection().collectedRequests()).isOne();
     }
 
     @Test
-    void 현재_회차의_원천만_사용하고_충돌하는_공고는_연결_성공으로_세지_않는다() {
-        source("changed", "old-pan", null);
-        jdbc.sql("UPDATE myhome_announcement_source_rows SET collected_at = :oldAt, last_seen_run_id = 'old'")
-                .param("oldAt", Timestamp.from(OBSERVED_AT.minusSeconds(86400))).update();
-        source("changed", "new-pan", null);
-        checkpoint("old-pan", OBSERVED_AT.minusSeconds(60));
-        source("conflict", "conflict-a", null);
-        source("conflict", "conflict-b", null);
+    void 연결_기록의_조회_조건이_현재_목록과_다르면_연결_성공으로_세지_않는다() {
+        catalog("changed-pan", OBSERVED_AT.minusSeconds(86400));
+        progressStore.save(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, catalogKey("changed-pan"),
+                new LhAnnouncementRequest("changed-pan", "03", "06", "07", "061").requestDescription(),
+                "changed-pan");
 
-        assertThat(service.snapshot().supplyCollection()).isEqualTo(
-                new LhAnnouncementQualityResponse.CollectionCoverage(1, 0, null));
+        assertThat(service.snapshot().unlinkedLhCandidates())
+                .extracting(LhAnnouncementQualityResponse.UnlinkedLhCandidate::panId)
+                .containsExactly("changed-pan");
     }
 
     @Test
     void 목록이_변경돼도_기존_성공_원천_확보와_수집_시각은_보존한다() {
-        source("stable", "stable-pan", "20261020");
         catalog("stable-pan", OBSERVED_AT.minusSeconds(86400));
         checkpoint("stable-pan", OBSERVED_AT.minusSeconds(43200));
 
@@ -212,17 +252,6 @@ class LhAnnouncementQualityStoreTest {
                 .param("changedAt", Timestamp.from(OBSERVED_AT.minusSeconds(60))).update();
         entityManager.clear();
         assertThat(service.snapshot().supplyCollection().collectedRequests()).isOne();
-    }
-
-    @Test
-    void 같은_요청을_여러_공고가_사용해도_성공_원천은_한_번만_센다() {
-        source("stable", "shared-pan", "20261020");
-        source("urgent", "shared-pan", "20260929");
-        catalog("shared-pan", OBSERVED_AT.minusSeconds(86400));
-        checkpoint("shared-pan", OBSERVED_AT.minusSeconds(43200));
-
-        assertThat(service.snapshot().supplyCollection()).isEqualTo(
-                new LhAnnouncementQualityResponse.CollectionCoverage(1, 1, OBSERVED_AT.minusSeconds(43200)));
     }
 
     private void failure(String source, String request, String status, String errorType, String reason,
@@ -238,16 +267,36 @@ class LhAnnouncementQualityStoreTest {
     }
 
     private void catalog(String panId, Instant changedAt) {
+        catalog(panId, changedAt, null, "062", true);
+    }
+
+    private void catalog(String panId, Instant changedAt, String closingDate, String supplyInfoTypeCode,
+            boolean present) {
+        var values = new HashMap<String, Object>();
+        values.put("sourceKey", sourceKey(panId));
+        values.put("panId", panId);
+        values.put("supplyInfoTypeCode", supplyInfoTypeCode);
+        values.put("closingDate", closingDate);
+        values.put("present", present);
+        values.put("record", fixtures.record("LH_ANNOUNCEMENT_CATALOG"));
+        values.put("changedAt", Timestamp.from(changedAt));
+        values.put("now", Timestamp.from(OBSERVED_AT));
         jdbc.sql("""
                 INSERT INTO lh_announcement_catalog_entries
                     (source_key, pan_id, connection_system_division_code, upper_announcement_type_code,
-                     announcement_type_code, supply_info_type_code, raw_payload,
+                     announcement_type_code, supply_info_type_code, closing_date, raw_payload,
                      changed_at, collected_at, present_in_latest_catalog, version, query_start_date, query_end_date, last_collection_record_id)
-                VALUES (:panId, :panId, '03', '06', '07', '062', '{}', :changedAt, :now, true, 0, '20260901', '20260928', :record)
-                """).param("panId", panId)
-                .param("record", fixtures.record("LH_ANNOUNCEMENT_CATALOG"))
-                .param("changedAt", Timestamp.from(changedAt))
-                .param("now", Timestamp.from(OBSERVED_AT)).update();
+                VALUES (:sourceKey, :panId, '03', '06', '07', :supplyInfoTypeCode, :closingDate, '{}',
+                        :changedAt, :now, :present, 0, '20260901', '20260928', :record)
+                """).params(values).update();
+    }
+
+    private String sourceKey(String panId) {
+        return "03:06:07:" + panId;
+    }
+
+    private String catalogKey(String panId) {
+        return LhAnnouncementCollectionCandidateResolver.CATALOG_SOURCE_PREFIX + sourceKey(panId);
     }
 
     private void source(String pblancId, String panId, String endDate) {

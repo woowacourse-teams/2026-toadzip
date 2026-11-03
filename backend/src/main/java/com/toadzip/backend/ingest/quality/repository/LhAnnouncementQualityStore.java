@@ -22,11 +22,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class LhAnnouncementQualityStore {
 
-    private static final String UNLINKED_LH_LEASE_CATALOG = """
-            FROM lh_announcement_catalog_entries catalog
-            WHERE catalog.present_in_latest_catalog AND catalog.upper_announcement_type_code = '06'
-            """;
-
     private final JdbcClient jdbc;
 
     public LhAnnouncementQualityStore(JdbcClient jdbc) {
@@ -34,7 +29,8 @@ public class LhAnnouncementQualityStore {
     }
 
     public LhAnnouncementQualityResponse snapshot(Instant observedAt, CollectionCoverage supplyCollectionCoverage,
-            CollectionCoverage detailCollectionCoverage, Set<String> linkedPanIds, Set<String> currentSourceKeys) {
+            CollectionCoverage detailCollectionCoverage, Set<String> unlinkedCatalogSourceKeys,
+            Set<String> currentSourceKeys) {
         Map<String, Long> amountReasons = preservedAmountReasons(currentSourceKeys);
         return new LhAnnouncementQualityResponse(
                 observedAt,
@@ -43,8 +39,8 @@ public class LhAnnouncementQualityStore {
                 schedules(),
                 supplyCollectionCoverage,
                 detailCollectionCoverage,
-                unlinkedLhLeaseCatalogCount(linkedPanIds),
-                unlinkedLhCandidates(linkedPanIds),
+                unlinkedCatalogSourceKeys.size(),
+                unlinkedLhCandidates(unlinkedCatalogSourceKeys),
                 preservedSourceRequestCount(),
                 preservedReasons(),
                 amountReasons.values().stream().mapToLong(Long::longValue).sum(),
@@ -111,24 +107,19 @@ public class LhAnnouncementQualityStore {
         )).single();
     }
 
-    private long unlinkedLhLeaseCatalogCount(Set<String> linkedPanIds) {
-        return unlinkedCatalogQuery("SELECT COUNT(*) ", "", linkedPanIds).query(Long.class).single();
-    }
-
-    private List<UnlinkedLhCandidate> unlinkedLhCandidates(Set<String> linkedPanIds) {
-        return unlinkedCatalogQuery("SELECT catalog.pan_id, catalog.source_key, catalog.changed_at ",
-                " ORDER BY catalog.changed_at DESC, catalog.id DESC LIMIT 50", linkedPanIds)
+    private List<UnlinkedLhCandidate> unlinkedLhCandidates(Set<String> unlinkedCatalogSourceKeys) {
+        if (unlinkedCatalogSourceKeys.isEmpty()) {
+            return List.of();
+        }
+        return jdbc.sql("""
+                SELECT catalog.pan_id, catalog.source_key, catalog.changed_at
+                FROM lh_announcement_catalog_entries catalog
+                WHERE catalog.source_key IN (:sourceKeys)
+                ORDER BY catalog.changed_at DESC, catalog.id DESC LIMIT 50
+                """).param("sourceKeys", unlinkedCatalogSourceKeys)
                 .query((result, index) -> new UnlinkedLhCandidate(
                         result.getString("pan_id"), result.getString("source_key"), instant(result, "changed_at")
                 )).list();
-    }
-
-    private JdbcClient.StatementSpec unlinkedCatalogQuery(String select, String suffix, Set<String> linkedPanIds) {
-        if (linkedPanIds.isEmpty()) {
-            return jdbc.sql(select + UNLINKED_LH_LEASE_CATALOG + suffix);
-        }
-        return jdbc.sql(select + UNLINKED_LH_LEASE_CATALOG + " AND catalog.pan_id NOT IN (:linkedPanIds)" + suffix)
-                .param("linkedPanIds", linkedPanIds);
     }
 
     private long preservedSourceRequestCount() {

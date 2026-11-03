@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * LH 공고 수집 요청을 정한다. 공고 수집은 최신 LH 공고목록에서 후보를 만든다.
- * 마이홈 공고 원천의 해석({@link #resolveAll})은 지난 마이홈 공고 데이터를 읽는 품질·보정 화면만 쓴다.
+ * 마이홈 공고 원천의 해석({@link #resolveAll})은 지난 마이홈 공고 데이터를 읽는 보정 화면만 쓴다.
  */
 @Component
 @RequiredArgsConstructor
