@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { useEffect, useRef, useState } from 'react'
 import {
   DataPipelineApiError,
+  getDataPipelineReadiness,
   getDataPipelineStatus,
   startDataPipeline,
   stopDataPipeline,
@@ -14,14 +15,14 @@ import { PipelineResult, type PipelineViewState } from './PipelineResult'
 import { LhAnnouncementQualityPanel } from './LhAnnouncementQualityPanel'
 import { PipelineExecutionSteps } from './PipelineExecutionSteps'
 import { Button } from '../../design-system/components/Button'
-import styles from './CollectionStartForm.module.css'
 import workflow from './PipelineWorkflow.module.css'
 import { ComplexIngestStages } from './ComplexIngestStages'
 import { pipelineStepSequences } from './pipelineSteps'
 
 type DataPipelineType = SharedDataPipelineType
 
-type CollectionType = 'COMPLEX_COLLECTION' | 'ANNOUNCEMENT_COLLECTION' | 'COMPLEX_SYNC' | 'ANNOUNCEMENT_SYNC'
+// 공공데이터포털을 호출해 서버의 수집 키가 있어야 시작할 수 있는 실행이다.
+const keyRequiredTypes: readonly DataPipelineType[] = ['COMPLEX_COLLECTION', 'ANNOUNCEMENT_COLLECTION', 'ANNOUNCEMENT_SYNC']
 
 const pollIntervalMilliseconds = 1_000
 const pipelineTypes: readonly DataPipelineType[] = [
@@ -44,7 +45,7 @@ const pipelineGroups = [
   {
     id: 'announcement-pipelines',
     title: '공고 데이터',
-    description: '공고 갱신은 수집 후 정제까지 이어서 실행합니다. 단지가 준비되어 있다면 여기서 시작하세요.',
+    description: 'LH 공고 갱신은 LH 공고 수집 후 정제까지 이어서 실행합니다. 단지가 준비되어 있다면 여기서 시작하세요.',
     types: ['ANNOUNCEMENT_SYNC', 'ANNOUNCEMENT_COLLECTION', 'ANNOUNCEMENT_REFINEMENT'],
   },
 ] as const satisfies readonly {
@@ -60,7 +61,7 @@ export function DataPipelineControl({ domain, compact = false }: {
   const [selectedType, setSelectedType] = useState<DataPipelineType | null>(null)
   const [pipelineStates, setPipelineStates] = useState(initialPipelineStates)
   const [stopping, setStopping] = useState<Partial<Record<DataPipelineType, boolean>>>({})
-  const [pendingCollection, setPendingCollection] = useState<CollectionType | null>(null)
+  const [serviceKeyConfigured, setServiceKeyConfigured] = useState<boolean | null>(null)
   const [startingType, setStartingType] = useState<DataPipelineType | null>(null)
   const starting = useRef<DataPipelineType | null>(null)
   const [checking, setChecking] = useState(true)
@@ -89,10 +90,13 @@ export function DataPipelineControl({ domain, compact = false }: {
     .some((state) => state.execution.status === 'RUNNING')
   const isAnyPipelineRunning = internalRunning || startingType !== null || uploadBusy || (compact && checking)
 
-  useEffect(() => { setPendingCollection(null) }, [domain])
-
   useEffect(() => {
     mounted.current = true
+    // 확인하지 못하면 막지 않는다. 키가 없으면 서버가 시작을 거절하고 그 안내를 보여 준다.
+    void getDataPipelineReadiness().then(
+      readiness => { if (mounted.current) setServiceKeyConfigured(readiness.serviceKeyConfigured) },
+      () => undefined,
+    )
     void Promise.all(pipelineTypes.map(type => refresh(type, true, true))).finally(() => {
       if (mounted.current) setChecking(false)
     })
@@ -102,19 +106,13 @@ export function DataPipelineControl({ domain, compact = false }: {
     }
   }, [])
 
-  useEffect(() => {
-    if (isAnyPipelineRunning) setPendingCollection(null)
-  }, [isAnyPipelineRunning])
+  const serviceKeyMissing = serviceKeyConfigured === false
+  const blockedByServiceKey = (type: DataPipelineType) => serviceKeyMissing && keyRequiredTypes.includes(type)
 
   function handleRun(type: DataPipelineType) {
-    if (isAnyPipelineRunning) {
+    if (isAnyPipelineRunning || blockedByServiceKey(type)) {
       return
     }
-    if (type === 'COMPLEX_COLLECTION' || type === 'ANNOUNCEMENT_COLLECTION' || type === 'COMPLEX_SYNC' || type === 'ANNOUNCEMENT_SYNC') {
-      setPendingCollection(type)
-      return
-    }
-    setPendingCollection(null)
     void execute(type)
   }
 
@@ -137,7 +135,7 @@ export function DataPipelineControl({ domain, compact = false }: {
     }
   }
 
-  async function execute(type: DataPipelineType, serviceKey?: string) {
+  async function execute(type: DataPipelineType) {
     if (starting.current || isAnyPipelineRunning) return
     starting.current = type
     setStartingType(type)
@@ -150,7 +148,7 @@ export function DataPipelineControl({ domain, compact = false }: {
       errorResponse: null,
     })
     try {
-      const execution = await (serviceKey === undefined ? startDataPipeline(type) : startDataPipeline(type, serviceKey))
+      const execution = await startDataPipeline(type)
       if (mounted.current && isLatestGeneration(type, generation)) {
         applyExecution(type, execution)
       }
@@ -269,7 +267,7 @@ export function DataPipelineControl({ domain, compact = false }: {
 
   const visibleTypes: readonly DataPipelineType[] = domain === 'complex' ? pipelineGroups[0].types
     : [...pipelineGroups[1].types, 'SH_ANNOUNCEMENT_COLLECTION'] as const
-  const activeType = pendingCollection ?? (selectedType && visibleTypes.includes(selectedType) ? selectedType : null)
+  const activeType = selectedType && visibleTypes.includes(selectedType) ? selectedType : null
   const runningElsewhere = pipelineTypes.find(type => !visibleTypes.includes(type)
     && pipelineStates[type].execution.status === 'RUNNING')
   const lockNotice = runningElsewhere ? <p role="status" className={workflow.notice}>
@@ -278,14 +276,20 @@ export function DataPipelineControl({ domain, compact = false }: {
     {runningElsewhere !== 'ANNOUNCEMENT_REGISTRATION' && <>{' '}
       <Link to={`/admin/ingest/${domain === 'complex' ? 'announcements' : 'complexes'}`}>실행 중인 작업 보기</Link></>}
   </p> : null
+  const serviceKeyNotice = serviceKeyMissing ? <div role="alert" className={workflow.notice}>
+    <strong>서버 수집 키 미설정</strong>
+    <p>서버 환경변수 DATA_GO_KR_SERVICE_KEY가 설정되지 않아 공공데이터포털 수집을 실행할 수 없습니다. 서버 설정 후 다시 확인해 주세요. 정제와 SH 수집은 실행할 수 있습니다.</p>
+  </div> : null
   if (domain === 'complex') return <section aria-label="단지 수집 작업">
     {lockNotice}
+    {serviceKeyNotice}
     {checking && <p role="status">진행 중인 작업과 마지막 결과를 확인하고 있습니다…</p>}
     {pipelineTypes.filter(type => !visibleTypes.includes(type)).map(type => pipelineStates[type].requestError && <p role="alert" key={type}>
       {pipelineLabels[type]} 상태 확인 실패: {pipelineStates[type].requestError}
     </p>)}
-    <ComplexIngestStages states={pipelineStates} disabled={isAnyPipelineRunning} startingType={startingType} stopping={stopping}
-      onStart={(type, key) => void execute(type, key)} onStop={type => void stop(type)}
+    <ComplexIngestStages states={pipelineStates} disabled={isAnyPipelineRunning} collectionBlocked={serviceKeyMissing}
+      startingType={startingType} stopping={stopping}
+      onStart={type => handleRun(type)} onStop={type => void stop(type)}
       onRefresh={type => void refresh(type, true)} onUploadBusy={setUploadBusy} />
   </section>
   function recent(types: readonly DataPipelineType[]) {
@@ -295,24 +299,22 @@ export function DataPipelineControl({ domain, compact = false }: {
       {latest ? <><span>{pipelineLabels[latest.type]}</span>
         <strong className={`pipeline-badge pipeline-${latest.status.toLowerCase()}`}>{pipelineStatusLabels[latest.status]}</strong>
         <span>{latest.startedAt ? new Date(latest.startedAt).toLocaleString('ko-KR') : '시각 기록 없음'}</span>
-        <button type="button" onClick={() => { setPendingCollection(null); setSelectedType(latest.type) }}>실행 결과 보기</button></>
+        <button type="button" onClick={() => setSelectedType(latest.type)}>실행 결과 보기</button></>
         : <span>{checking ? '최근 실행 확인 중…' : types.some(type => pipelineStates[type].requestError)
           ? '최근 실행을 확인하지 못했습니다.' : '아직 실행 이력이 없습니다.'}</span>}
     </div>
   }
   if (compact && domain) return <section className={`registration-card ${workflow.workspace}`} aria-label="데이터 실행">
     {lockNotice}
+    {serviceKeyNotice}
     {activeType ? <>
-      <button type="button" className={workflow.back} onClick={() => { setPendingCollection(null); setSelectedType(null) }}>
+      <button type="button" className={workflow.back} onClick={() => setSelectedType(null)}>
         공고 수집 개요로 돌아가기
       </button>
-      <PipelineExecutionSteps focused pending={startingType === activeType} key={activeType} execution={pendingCollection ? idleExecution(pendingCollection) : pipelineStates[activeType].execution}
+      <PipelineExecutionSteps focused pending={startingType === activeType} key={activeType} execution={pipelineStates[activeType].execution}
         stopping={stopping[activeType]} onStop={() => void stop(activeType)} recoveryDisabled={isAnyPipelineRunning}
         onRefine={() => handleRun('ANNOUNCEMENT_REFINEMENT')}>
-        {pendingCollection ? <CollectionStartForm key={pendingCollection} type={pendingCollection}
-          onCancel={() => { setPendingCollection(null); setSelectedType(null) }}
-          onStart={serviceKey => { const type = pendingCollection; setPendingCollection(null); void execute(type, serviceKey) }} />
-          : startingType === activeType ? <div role="status"><h4>실행 접수를 확인하고 있습니다</h4>
+        {startingType === activeType ? <div role="status"><h4>실행 접수를 확인하고 있습니다</h4>
             <p>서버에서 실행을 받아들였는지 확인 중입니다. 확인 전에는 다시 실행할 수 없습니다.</p></div> : null}
       </PipelineExecutionSteps>
       {pipelineStates[activeType].requestError && <div role="alert" className={workflow.notice}>
@@ -324,15 +326,16 @@ export function DataPipelineControl({ domain, compact = false }: {
     </> : <>
       <>
         <div className={workflow.sources}>
-          <section aria-labelledby="myhome-source" className={workflow.source}>
-            <header><h2 id="myhome-source">마이홈</h2><span>LH 공고 정제 포함</span></header>
-            <p>마이홈 공고와 LH 목록·공급·상세를 수집한 뒤 LH 공고를 정제합니다. 마이홈 공고는 수집만 합니다.</p>
+          <section aria-labelledby="lh-source" className={workflow.source}>
+            <header><h2 id="lh-source">LH</h2><span>LH 공고 정제 포함</span></header>
+            <p>LH 공고 목록·공급·상세를 수집한 뒤 LH 공고를 정제합니다. 수집 키는 서버 설정을 사용합니다.</p>
             {recent(pipelineGroups[1].types)}
-            <Button data-design-system disabled={isAnyPipelineRunning} onClick={() => handleRun('ANNOUNCEMENT_SYNC')}>마이홈 다건 갱신</Button>
+            <Button data-design-system disabled={isAnyPipelineRunning || blockedByServiceKey('ANNOUNCEMENT_SYNC')}
+              onClick={() => handleRun('ANNOUNCEMENT_SYNC')}>{pipelineLabels.ANNOUNCEMENT_SYNC}</Button>
             <details className={workflow.additional}><summary>수집·정제 따로 실행</summary>
               <p>정제는 이전 수집을 포함한 저장 원천 전체에 적용합니다.</p>
               <div className={workflow.actions}>{pipelineGroups[1].types.slice(1).map(type => <button key={type} type="button"
-                disabled={isAnyPipelineRunning} onClick={() => handleRun(type)}>{pipelineLabels[type]}</button>)}</div>
+                disabled={isAnyPipelineRunning || blockedByServiceKey(type)} onClick={() => handleRun(type)}>{pipelineLabels[type]}</button>)}</div>
             </details>
           </section>
           <section aria-labelledby="sh-source" className={workflow.source}>
@@ -356,6 +359,7 @@ export function DataPipelineControl({ domain, compact = false }: {
 
   return (
     <section className="registration-card data-pipeline-card" aria-label={compact ? '데이터 실행' : '데이터 수집·정제'}>
+      {serviceKeyNotice}
       {!compact && <div className="data-pipeline-heading">
         <div>
           <h2 id="data-pipeline-title">데이터 수집·정제</h2>
@@ -378,7 +382,8 @@ export function DataPipelineControl({ domain, compact = false }: {
                 <p>{group.description}</p>
               </div>
               <div className={workflow.actions}>
-                {group.id === 'announcement-pipelines' && <Button data-design-system disabled={isAnyPipelineRunning}
+                {group.id === 'announcement-pipelines' && <Button data-design-system
+                  disabled={isAnyPipelineRunning || blockedByServiceKey('ANNOUNCEMENT_SYNC')}
                   onClick={() => handleRun('ANNOUNCEMENT_SYNC')}>
                   {buttonLabel('ANNOUNCEMENT_SYNC', pipelineStates.ANNOUNCEMENT_SYNC.execution.status)}
                 </Button>}
@@ -386,7 +391,8 @@ export function DataPipelineControl({ domain, compact = false }: {
             </div>
             {group.id === 'complex-pipelines' && <ol className={workflow.preparation} aria-label="단지 준비 순서">
               <li><strong>1. 단지 원천 수집</strong><p>마이홈 단지와 LH 임대 카탈로그를 가져옵니다.</p>
-                <Button data-design-system disabled={isAnyPipelineRunning} onClick={() => handleRun('COMPLEX_COLLECTION')}>
+                <Button data-design-system disabled={isAnyPipelineRunning || blockedByServiceKey('COMPLEX_COLLECTION')}
+                  onClick={() => handleRun('COMPLEX_COLLECTION')}>
                   {buttonLabel('COMPLEX_COLLECTION', pipelineStates.COMPLEX_COLLECTION.execution.status)}</Button></li>
               <li><strong>2. 주소에 맞는 좌표 적재</strong><p>새 단지 주소가 있다면 ZIP을 업로드합니다. 준비된 좌표는 그대로 사용합니다.</p>
                 <Link to="/admin/locations">위치정보 ZIP 업로드</Link></li>
@@ -401,20 +407,12 @@ export function DataPipelineControl({ domain, compact = false }: {
                 : '수집만 다시 하거나, 외부 호출 없이 저장된 공고 원천 전체를 정제할 수 있습니다. 이전 수집의 원천도 포함됩니다.'}</p>
               <div className={workflow.actions}>
                 {(group.id === 'complex-pipelines' ? [group.types[0]] : [group.types[1], group.types[2]]).map(type =>
-                  <button type="button" key={type} disabled={isAnyPipelineRunning || retiredPipelineTypes.includes(type)}
+                  <button type="button" key={type}
+                    disabled={isAnyPipelineRunning || retiredPipelineTypes.includes(type) || blockedByServiceKey(type)}
                     onClick={() => handleRun(type)}>
                     {buttonLabel(type, pipelineStates[type].execution.status)}</button>)}
               </div>
             </details>
-            {pendingCollection !== null && group.types.some(type => type === pendingCollection) && !isAnyPipelineRunning ? (
-              <CollectionStartForm key={pendingCollection} type={pendingCollection}
-                onCancel={() => setPendingCollection(null)}
-                onStart={serviceKey => {
-                  if (isAnyPipelineRunning) return
-                  setPendingCollection(null)
-                  void execute(pendingCollection, serviceKey)
-                }} />
-            ) : null}
             <div className={compact ? undefined : 'data-pipeline-results'}>
               {group.types.map((type) => (
                 <PipelineResult key={type} type={type} state={pipelineStates[type]}
@@ -465,44 +463,6 @@ export function DataPipelineControl({ domain, compact = false }: {
 function latestCollectionExecution(combined: DataPipelineExecution, collection: DataPipelineExecution): DataPipelineExecution {
   return (Date.parse(combined.startedAt ?? '') || 0) > (Date.parse(collection.startedAt ?? '') || 0)
     ? combined : collection
-}
-
-function CollectionStartForm({ type, onStart, onCancel }: {
-  type: CollectionType; onStart: (serviceKey: string) => void; onCancel: () => void
-}) {
-  const [serviceKey, setServiceKey] = useState('')
-  const [showKey, setShowKey] = useState(false)
-  const [error, setError] = useState('')
-  const input = useRef<HTMLInputElement>(null)
-  const label = pipelineLabels[type]
-  const inputId = `${type}-service-key`
-  useEffect(() => { input.current?.focus() }, [])
-  return <form className={styles.form} aria-label={`${label} API 키 입력`} onSubmit={event => {
-    event.preventDefault()
-    const executionKey = serviceKey.trim()
-    if (!executionKey) {
-      setError('공공데이터포털 API 키를 입력해 주세요.')
-      input.current?.focus()
-      return
-    }
-    setServiceKey('')
-    onStart(executionKey)
-  }}>
-    <h4>API 키 입력</h4>
-    {type === 'ANNOUNCEMENT_SYNC' && <p>마이홈과 LH 수집 후 자동 정제까지 진행합니다. 수집 실패·호출 제한이 있으면 자동 정제를 멈춥니다. 정제에는 이전에 저장한 원천도 포함됩니다.</p>}
-    <p id={`${inputId}-help`}>공공데이터포털 일반 인증키를 입력해 주세요. Decoding·Encoding 키 모두 사용할 수 있으며 이번 실행에만 사용합니다.</p>
-    <a href="https://www.data.go.kr/" target="_blank" rel="noreferrer">공공데이터포털에서 API 키 발급</a>
-    <label htmlFor={inputId}>공공데이터포털 API 키</label>
-    <div className={styles.keyInput}><input ref={input} id={inputId} type={showKey ? 'text' : 'password'} maxLength={4096} autoComplete="off" spellCheck={false}
-      aria-describedby={`${inputId}-help${error ? ` ${inputId}-error` : ''}`} aria-invalid={error ? true : undefined}
-      value={serviceKey} onChange={event => { setServiceKey(event.currentTarget.value); setError('') }} />
-      <button type="button" aria-label={showKey ? 'API 키 숨기기' : 'API 키 보기'} onClick={() => setShowKey(value => !value)}>{showKey ? '숨기기' : '보기'}</button></div>
-    {error ? <p id={`${inputId}-error`} className={styles.error} role="alert">{error}</p> : null}
-    <div className={styles.actions}>
-      <button className="admin-primary" type="submit">{label} 시작</button>
-      <button type="button" onClick={onCancel}>취소</button>
-    </div>
-  </form>
 }
 
 function initialPipelineStates(): Record<DataPipelineType, PipelineViewState> {

@@ -109,7 +109,7 @@ export async function getLhAnnouncementQuality(): Promise<LhAnnouncementQuality>
   return body
 }
 
-export async function applyVerifiedLhSupplyReplacement(pblancId: string, request: {
+export async function applyVerifiedLhSupplyReplacement(panId: string, request: {
   requestDescription: string
   proposedFingerprint: string
   evidenceUrl: string
@@ -117,7 +117,7 @@ export async function applyVerifiedLhSupplyReplacement(pblancId: string, request
 }): Promise<void> {
   const csrfToken = await requestCsrfToken()
   const response = await fetch(
-    `${apiBaseUrl}/api/admin/ingest/lh/announcements/supplies/${encodeURIComponent(pblancId)}/verified-replacement`,
+    `${apiBaseUrl}/api/admin/ingest/lh/announcements/supplies/${encodeURIComponent(panId)}/verified-replacement`,
     {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json', [csrfToken.headerName]: csrfToken.token },
@@ -202,11 +202,11 @@ export type ExternalDataCollectionReport = {
 }
 
 export async function refreshLhAnnouncement(
-  source: LhRefreshSource, pblancId: string,
+  source: LhRefreshSource, panId: string,
 ): Promise<ExternalDataCollectionReport> {
   const csrfToken = await requestCsrfToken()
   const response = await fetch(
-    `${apiBaseUrl}/api/admin/ingest/lh/announcements/${source}/${encodeURIComponent(pblancId)}/refresh`,
+    `${apiBaseUrl}/api/admin/ingest/lh/announcements/${source}/${encodeURIComponent(panId)}/refresh`,
     { method: 'POST', credentials: 'include', headers: { [csrfToken.headerName]: csrfToken.token } },
   )
   const body = await readJson(response)
@@ -223,23 +223,25 @@ export function isExternalDataCollectionReport(value: unknown): value is Externa
     )
 }
 
-export async function startDataPipeline(
-  type: DataPipelineType,
-  serviceKey?: string,
-): Promise<DataPipelineExecution> {
-  const executionKey = serviceKey?.trim()
-  if (executionKey === '') throw new Error('공공데이터포털 API 키를 입력해 주세요.')
+export async function startDataPipeline(type: DataPipelineType): Promise<DataPipelineExecution> {
   const csrfToken = await requestCsrfToken()
   const response = await fetch(`${apiBaseUrl}${pipelinePath(type)}`, {
     method: 'POST',
     credentials: 'include',
-    headers: {
-      [csrfToken.headerName]: csrfToken.token,
-      ...(executionKey === undefined ? {} : { 'Content-Type': 'application/json' }),
-    },
-    ...(executionKey === undefined ? {} : { body: JSON.stringify({ serviceKey: executionKey }) }),
+    headers: { [csrfToken.headerName]: csrfToken.token },
   })
   return readExecutionResponse(response)
+}
+
+/** 서버가 공공데이터포털 수집 키를 설정했는지 알려 준다. 키 값은 받지 않는다. */
+export async function getDataPipelineReadiness(): Promise<{ serviceKeyConfigured: boolean }> {
+  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/readiness`, { credentials: 'include' })
+  const body = await readJson(response)
+  if (!response.ok) throw apiError(response.status, body)
+  if (!isRecord(body) || typeof body.serviceKeyConfigured !== 'boolean') {
+    throw new Error('수집 준비 상태 응답 형식이 올바르지 않습니다.')
+  }
+  return { serviceKeyConfigured: body.serviceKeyConfigured }
 }
 
 export async function getDataPipelineStatus(

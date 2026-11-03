@@ -44,15 +44,23 @@ describe('v2 공통 단계 표시', () => {
     expect(screen.getByRole('note')).toHaveTextContent('마이홈 공고 단건 등록은 지원을 종료했습니다. 공고는 LH 공고 정제와 PDF 보정으로만 바뀝니다.')
   })
 
-  it('공고 정제는 LH 공고 정제 한 단계이고 공고 수집·정제는 수집 네 단계 뒤에 이어진다', () => {
+  it('공고 정제는 LH 공고 정제 한 단계이고 LH 공고 갱신은 LH 수집 세 단계 뒤에 이어진다', () => {
     show(execution({ type: 'ANNOUNCEMENT_REFINEMENT', currentStepName: 'LH 공고 정제', totalStepCount: 1 }))
     const refinement = screen.getByRole('list', { name: '실행 단계' })
     expect(within(refinement).getAllByRole('listitem')).toHaveLength(1)
     expect(within(refinement).getByRole('button', { name: 'LH 공고 정제 진행' })).toHaveAttribute('aria-current', 'step')
     cleanup()
-    show(execution({ type: 'ANNOUNCEMENT_SYNC', totalStepCount: 5 }))
+    show(execution({ type: 'ANNOUNCEMENT_SYNC', currentStepName: 'LH 공고 목록 수집', totalStepCount: 4 }))
     expect(within(screen.getByRole('list', { name: '실행 단계' })).getAllByRole('button').map(item => item.getAttribute('aria-label'))).toEqual([
-      '마이홈 공고 수집 진행', 'LH 공고 목록 수집 대기', 'LH 공고 공급 원본 수집 대기', 'LH 공고 상세 원본 수집 대기', 'LH 공고 정제 대기',
+      'LH 공고 목록 수집 진행', 'LH 공고 공급 원본 수집 대기', 'LH 공고 상세 원본 수집 대기', 'LH 공고 정제 대기',
+    ])
+  })
+
+  it('마이홈 공고 수집으로 시작한 지난 공고 수집 이력은 그 단계를 앞에 보여 준다', () => {
+    show(execution({ type: 'ANNOUNCEMENT_COLLECTION', status: 'COMPLETED', currentStepName: null, totalStepCount: 3,
+      completedSteps: ['마이홈 공고 수집', 'LH 공고 목록 수집', 'LH 공고 공급 원본 수집', 'LH 공고 상세 원본 수집'] }))
+    expect(within(screen.getByRole('list', { name: '실행 단계' })).getAllByRole('button').map(item => item.getAttribute('aria-label'))).toEqual([
+      '마이홈 공고 수집 성공', 'LH 공고 목록 수집 성공', 'LH 공고 공급 원본 수집 성공', 'LH 공고 상세 원본 수집 성공',
     ])
   })
 
