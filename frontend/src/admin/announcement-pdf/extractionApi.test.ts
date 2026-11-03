@@ -26,7 +26,7 @@ test('작업을 넣고 성공할 때까지 작업 상태를 다시 물어 결과
 
   await expect(result).resolves.toEqual(extraction)
   expect(mocks.request).toHaveBeenNthCalledWith(1, PATH, 'POST', expect.any(FormData), undefined)
-  expect(mocks.request).toHaveBeenNthCalledWith(3, `${PATH}/jobs/31`, 'GET', undefined, undefined)
+  expect(mocks.request).toHaveBeenNthCalledWith(3, `${PATH}/jobs/31`, 'GET', undefined, expect.any(AbortSignal))
 })
 
 test('공고 첨부면 파일을 올리지 않고 서버가 그 첨부를 받게 한다', async () => {
@@ -116,6 +116,22 @@ test('기다리는 시간이 상한을 넘으면 더 묻지 않고 이어서 기
   await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3)
 
   expect(mocks.request).toHaveBeenCalledTimes(calls)
+})
+
+test('상태 조회가 응답 없이 멈추면 남은 기다리기 시간에 끊고 상한 초과로 알린다', async () => {
+  const signals: AbortSignal[] = []
+  mocks.request.mockResolvedValueOnce(job('PENDING')).mockImplementation((_path, _method, _body, signal: AbortSignal) => {
+    signals.push(signal)
+    return new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
+  })
+
+  const result = extractAnnouncementPdf('29', pdf, '공고문.pdf')
+  const settled = expect(result).rejects.toThrow('추출이 아직 끝나지 않았습니다.')
+  await vi.advanceTimersByTimeAsync(JOB_WAIT_LIMIT_MS)
+  await settled
+
+  expect(signals).toHaveLength(1)
+  expect(signals[0].aborted).toBe(true)
 })
 
 test('공고 첨부가 미리 본 파일과 다른 PDF로 추출되면 결과를 쓰지 않고 다시 추출하게 한다', async () => {

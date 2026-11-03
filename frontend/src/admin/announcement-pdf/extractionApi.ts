@@ -111,13 +111,33 @@ export async function extractAnnouncementPdf(id: string, file: Blob, fileName: s
     if (!pendingStatuses.has(job.status)) throw new Error('추출 작업 상태를 알 수 없습니다.')
     const nextNotice = waitingNotice(job, Date.now() - waitStart)
     if (nextNotice !== notice) { notice = nextNotice; options.onNotice?.(notice) }
-    if (Date.now() >= deadline) throw new Error('추출이 아직 끝나지 않았습니다. 잠시 뒤 다시 추출을 누르면 이어서 기다립니다.')
+    if (Date.now() >= deadline) throw new Error(WAIT_LIMIT_MESSAGE)
     await wait(JOB_POLL_MS, signal)
-    job = parseJob(await requestManagementApi(`${path}/jobs/${job.jobId}`, 'GET', undefined, signal))
+    job = parseJob(await requestBefore(deadline, `${path}/jobs/${job.jobId}`, signal))
   }
   // 공고 첨부는 서버가 따로 받으므로, 미리 본 뒤 첨부가 바뀌었으면 결과의 쪽·인용이 화면의 PDF와 맞지 않는다.
   if (job.pdfSha256 !== await pdfSha256(file)) throw new Error('추출한 첨부 PDF가 화면에서 미리 본 파일과 다릅니다. 그사이 첨부가 바뀌었을 수 있으니 PDF를 다시 고른 뒤 다시 추출해 주세요.')
   return parsePdfExtraction(job.extraction)
+}
+
+const WAIT_LIMIT_MESSAGE = '추출이 아직 끝나지 않았습니다. 잠시 뒤 다시 추출을 누르면 이어서 기다립니다.'
+
+/** 상태 조회가 응답 없이 멈춰도 기다리기 상한에서 끝나도록, 남은 시간이 지나면 요청을 끊고 상한 초과로 알린다. */
+async function requestBefore(deadline: number, path: string, signal?: AbortSignal) {
+  const controller = new AbortController()
+  const expired = new Error(WAIT_LIMIT_MESSAGE)
+  const abort = () => controller.abort(signal?.reason)
+  if (signal?.aborted) abort()
+  signal?.addEventListener('abort', abort, { once: true })
+  const timer = setTimeout(() => controller.abort(expired), Math.max(deadline - Date.now(), 0))
+  try {
+    return await requestManagementApi(path, 'GET', undefined, controller.signal)
+  } catch (error) {
+    throw controller.signal.reason === expired ? expired : error
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', abort)
+  }
 }
 
 function waitingNotice(job: ExtractionJob, waited: number) {
