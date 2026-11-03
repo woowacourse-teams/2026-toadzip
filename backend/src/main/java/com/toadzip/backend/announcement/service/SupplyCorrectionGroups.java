@@ -35,11 +35,16 @@ class SupplyCorrectionGroups {
 
     List<Plan> plan(Announcement announcement, List<Row> planned, List<NewGroup> requested) {
         if (requested.isEmpty()) { return List.of(); }
+        var currentSources = sources.findAllByPblancIdOrderByIdAsc(announcement.getSourceAnnouncementIdentifier());
+        // 묶음은 마이홈 원천 행이 묶음 키와 지문이다. LH 목록으로만 만든 공고는 공급행 하나에 여러 주택형을 연결해 모집수를 한 번만 둔다.
+        if (currentSources.isEmpty()) {
+            throw new IllegalArgumentException("마이홈 공고 원천이 없는 공고는 공통 모집 묶음을 만들 수 없습니다. "
+                    + "여러 주택형이 함께 모집하면 공급행 하나에 모집수를 두고 함께 모집하는 주택형(linkedHousingTypes)을 연결하세요.");
+        }
         var stored = rows.findAllByAnnouncement(announcement);
         var bySource = MyHomeAnnouncementSupplyRowGroups.byMyHomeSource(
                 announcement.getSourceAnnouncementIdentifier(), stored);
         var byKey = planned.stream().collect(Collectors.toMap(Row::key, Function.identity()));
-        var currentSources = sources.findAllByPblancIdOrderByIdAsc(announcement.getSourceAnnouncementIdentifier());
         Set<String> usedMembers = new HashSet<>();
         Set<String> usedSources = new HashSet<>();
         List<Plan> result = new ArrayList<>();

@@ -374,15 +374,17 @@ class LhAnnouncementRefinementIntegrationTest {
                 assertThat(row.rowIdentifier()).isEqualTo(LhSourceIdentifier.supply("P1", 1));
                 assertThat(row.typeName()).isEqualTo("84A");
             });
-            // 아직 공급행이 되지 않은 LH 행이 있으면 서버도 새 공급행 추가를 거절한다.
+            // 아직 공급행이 되지 않은 LH 행이 있어도 LH 원천과 무관한 새 공급행을 추가할 수 있다. 미리보기는 남는 LH 행을 경고로 알린다.
             var first = workspace.rows().getFirst();
             var added = new SupplyCorrection.Row(null, "new-84", first.housingComplexId(), first.housingComplexName(),
                     null, null, null, null, false, false, 9, first.complexName(), "84A", null, null, first.category(), 2,
-                    false, null, null, List.of(), false, null);
+                    false, null, null, List.of(), false, null, null, null);
             var request = new SupplyCorrection.Request(UUID.randomUUID(), workspace.snapshotToken(), "공고문 확인",
                     "https://example.com/notice", null, List.of(first, added));
-            assertThatThrownBy(() -> supplyCorrections.preview(id, request))
-                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("아직 공급행이 되지 않았습니다");
+            var preview = supplyCorrections.preview(id, request);
+            assertThat(preview.unattachedLhSupplyRows()).extracting(SupplyCorrection.LhSupplyRow::rowIdentifier)
+                    .containsExactly(LhSourceIdentifier.supply("P1", 1));
+            assertThat(preview.warnings()).anyMatch(warning -> warning.contains("LH 공급 원본 1행이 아직 공급행이 되지 않았습니다"));
             jdbc.sql("UPDATE announcements SET supply_owner = 'ANNOUNCEMENT_DOCUMENT' WHERE id = :id").param("id", id).update();
             assertThat(supplyCorrections.workspace(id).unattachedLhSupplyRows()).isEmpty();
         } finally {

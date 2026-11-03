@@ -176,10 +176,14 @@ public class AnnouncementJsonCorrectionService {
                 eventChanges, attachmentChanges, typeChanges, List.copyOf(typeWarnings), warnings));
     }
 
-    /** 함께 모집하는 주택형을 생략하거나 순서만 다르게 준 행은 저장된 연결과 같으므로 공급행을 바꾼 요청으로 보지 않는다. */
+    /**
+     * 함께 모집하는 주택형을 생략하거나 순서만 다르게 준 행은 저장된 연결과 같으므로 공급행을 바꾼 요청으로 보지 않는다.
+     * 저장 방식(saveMode)만 적은 행도 값이 같으면 바꾼 요청이 아니다.
+     */
     private static List<SupplyCorrection.Row> withLinks(List<SupplyCorrection.Row> before, List<SupplyCorrection.Row> requested) {
         var byId = before.stream().collect(Collectors.toMap(SupplyCorrection.Row::id, Function.identity()));
-        return requested.stream().map(row -> row.withLinksFrom(row.id() == null ? null : byId.get(row.id()))).toList();
+        return requested.stream().map(row -> row.withLinksFrom(row.id() == null ? null : byId.get(row.id())).withoutSaveMode())
+                .toList();
     }
 
     private void validateDocument(Request request) {
