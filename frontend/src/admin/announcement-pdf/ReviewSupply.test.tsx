@@ -7,13 +7,13 @@ import { scenario, separateHansville } from './fixtures/workspace'
 import fixtures from './fixtures/scenarios.json'
 import type { Review, ReviewFilter } from './review'
 
-function renderSupply(name: Parameters<typeof scenario>[0], prepare: (review: Review) => void, filter: ReviewFilter = 'all', savesHousingTypes = true, extraction?: unknown) {
+function renderSupply(name: Parameters<typeof scenario>[0], prepare: (review: Review) => void, filter: ReviewFilter = 'all', savesHousingTypes = true, extraction?: unknown, warnings: string[] = []) {
   const { review, workspace, housing } = scenario(name, extraction)
   prepare(review)
   const changed = vi.fn<(review: Review) => void>()
   function Test() {
     const [current, setCurrent] = useState(review)
-    return <ReviewSupply review={current} workspace={workspace} housing={housing} complexes={{}} filter={filter} savesHousingTypes={savesHousingTypes} empty="없음" onChange={next => { setCurrent(next); changed(next) }} onEvidence={() => {}} />
+    return <ReviewSupply review={current} workspace={workspace} housing={housing} complexes={{}} filter={filter} savesHousingTypes={savesHousingTypes} warnings={warnings} empty="없음" onChange={next => { setCurrent(next); changed(next) }} onEvidence={() => {}} />
   }
   render(<MemoryRouter><Test /></MemoryRouter>)
   return changed
@@ -47,6 +47,13 @@ it('PDF로 공급정보 편집표만 채울 때는 저장하지 않는 주택형
   renderSupply('hansville', () => {}, 'all', false)
   expect(screen.queryByRole('region', { name: '공급행 1 주택형 가격' })).not.toBeInTheDocument()
   expect(screen.queryByText(/연결한 단지 주택형 이름도 이 표기로 갱신합니다/)).not.toBeInTheDocument()
+})
+
+it('AI 워커 경고는 필터와 관계없이 보이고, 화면 검산은 전체 보기에서만 보인다', () => {
+  renderSupply('hansville', review => { review.extraction.checks = ['화면 합계 검산 불일치'] }, 'pending', true, undefined, ['supplyRows[0]: 워커 경고'])
+  const note = screen.getByRole('note', { name: '검산 결과' })
+  expect(within(note).getByText('supplyRows[0]: 워커 경고')).toBeInTheDocument()
+  expect(within(note).queryByText('화면 합계 검산 불일치')).not.toBeInTheDocument()
 })
 
 it('세부 타입 묶음 행이 든 공통 모집수는 저장하지 못하는 까닭과 직접 입력할 모집수를 알린다', () => {

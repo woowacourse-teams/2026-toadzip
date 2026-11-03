@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import fixtures from './fixtures/scenarios.json'
-// 백엔드가 모델에 보내는 프롬프트의 응답 예제를 이 화면이 그대로 읽는지 확인한다.
-const prompt = readFileSync(resolve(process.cwd(), '../backend/src/main/resources/announcement/pdf-extraction-prompt.txt'), 'utf8')
+// AI 워커가 모델에 보내는 프롬프트의 응답 예제를 이 화면이 그대로 읽는지 확인한다.
+const prompt = readFileSync(resolve(process.cwd(), '../ai-worker/src/ai_worker/prompts/announcement-pdf-extraction.txt'), 'utf8')
 import { evidenceFor, evidenceQuery, noteFor, pathCovers, readExtraction, searchText, type Extraction } from './extraction'
 
 describe('AI 추출 응답 읽기', () => {

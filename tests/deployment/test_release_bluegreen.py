@@ -37,7 +37,22 @@ class Runner:
         self.events = events
         self.failure = failure
 
-    def compose(self, *arguments):
+    def compose(self, *arguments, environment=None, timeout=30):
+        if arguments[0] == 'up':
+            self.events.append('deploy-' + arguments[-1])
+            # --wait가 빠지면 unhealthy 워커도 릴리스를 통과한다.
+            self.events.append('wait-' + str('--wait' in arguments and '--no-build' in arguments))
+            self.events.append('image-' + environment['AI_WORKER_IMAGE'])
+            if self.failure() == 'deploy-' + arguments[-1]:
+                raise bluegreen.DeploymentError('Docker command failed: compose up')
+            return ''
+        if arguments[-1] == 'ai-worker':
+            environment = {'PGPASSWORD': 'never-log-this-fixture', 'DEEPSEEK_API_KEY': 'never-log-this-fixture'}
+            if (self.failure() or '').startswith('worker-secret-'):
+                environment[self.failure().removeprefix('worker-secret-')] = ''
+            if self.failure() == 'worker-missing':
+                return json.dumps({'services': {}})
+            return json.dumps({'services': {'ai-worker': {'environment': environment}}})
         base = {'SPRING_PROFILES_ACTIVE': 'dev', 'SPRING_DATASOURCE_PASSWORD': 'never-log-this-fixture'}
         services = {name: {'environment': copy.deepcopy(base), 'volumes': []}
                     for name in ('backend', 'backend-blue', 'backend-green')}
@@ -96,6 +111,7 @@ class ReleaseTests(unittest.TestCase):
         self.release = module.Release(self.options)
         self.release.git = lambda *args: ('b' * 40 if self.failure == 'revision' else SHA) if args[0] == 'rev-parse' else ('dirty' if self.failure == 'dirty' else '')
         self.release.build_image = self.build_image
+        self.release.check_worker_database = self.check_worker_database
         self.metadata = patch.object(bluegreen, 'docker', side_effect=self.inspect_image)
         self.metadata.start()
         self.output = io.StringIO()
@@ -119,14 +135,29 @@ class ReleaseTests(unittest.TestCase):
         if self.failure == 'build-' + service:
             raise bluegreen.DeploymentError('image build failed')
 
+    def check_worker_database(self, arguments, environment):
+        self.events.append('check-' + ' '.join(arguments[arguments.index('run') + 1:]))
+        self.events.append('image-' + environment['AI_WORKER_IMAGE'])
+        if self.failure == 'check-ai-worker':
+            return subprocess.CompletedProcess(arguments, 1, '', 'Container started\n'
+                                               'toadzip_ai_worker 역할에 없는 ai_jobs 권한: UPDATE(lease_until)\n')
+        return subprocess.CompletedProcess(arguments, 0, '', '')
+
     def inspect_image(self, *arguments, **kwargs):
-        return json.dumps({'Id': 'sha256:' + '1' * 64,
+        # A distinct ID per image so a wrong image passed to a deployment is caught.
+        digit = {'backend': '1', 'frontend': '2', 'ai-worker': '3'}[arguments[-1].split(':')[0].removeprefix('toadzip-')]
+        return json.dumps({'Id': 'sha256:' + digit * 64,
             'Config': {'Labels': {'org.opencontainers.image.revision': 'wrong' if self.failure == 'label' else SHA}}})
 
-    def test_preflight_and_both_builds_finish_before_backend_then_frontend(self):
+    def test_preflight_and_all_builds_finish_before_backend_then_frontend_then_worker(self):
         result = self.release.run()
-        self.assertEqual(self.events, ['preflight-backend', 'preflight-frontend', 'build-backend', 'build-frontend', 'deploy-backend', 'deploy-frontend'])
-        self.assertEqual(result['completed'], ['backend', 'frontend'])
+        self.assertEqual(self.events, ['preflight-backend', 'preflight-frontend', 'build-backend', 'build-frontend',
+                                       'build-ai-worker', 'deploy-backend', 'deploy-frontend',
+                                       'check---rm -T --no-deps --pull never ai-worker --check',
+                                       'image-sha256:' + '3' * 64, 'deploy-ai-worker', 'wait-True',
+                                       'image-sha256:' + '3' * 64])
+        self.assertEqual(result['completed'], ['backend', 'frontend', 'ai-worker'])
+        self.assertEqual(result['images']['ai-worker'], 'sha256:' + '3' * 64)
         self.assertEqual(result['route_source'], 'runtime-config')
         self.assertTrue(result['routes_verified'])
         self.assertEqual(result['routes'], {'backend': 'backend-green', 'frontend': 'frontend-green'})
@@ -140,13 +171,16 @@ class ReleaseTests(unittest.TestCase):
                     self.release.run()
                 self.assertEqual(self.events, [])
 
-    def test_profile_overlay_and_candidate_ports_fail_closed(self):
-        for failure in ('profile', 'overlay', 'ports'):
+    def test_profile_overlay_candidate_ports_and_missing_worker_secrets_fail_closed(self):
+        for failure in ('profile', 'overlay', 'ports', 'worker-missing', 'worker-secret-PGPASSWORD',
+                        'worker-secret-DEEPSEEK_API_KEY'):
             with self.subTest(failure=failure):
                 self.failure = failure
+                self.events.clear()
                 with self.assertRaises(bluegreen.DeploymentError):
                     self.release.run()
-                self.assertEqual(self.events, [])
+                self.assertFalse(any(event.startswith(('build-', 'deploy-')) for event in self.events))
+        self.assertNotIn('never-log-this-fixture', self.output.getvalue())
 
     def test_missing_frontend_runtime_prevents_backend_deployment_and_build(self):
         self.failure = 'preflight-frontend'
@@ -161,8 +195,14 @@ class ReleaseTests(unittest.TestCase):
         self.assertFalse(any(event.startswith('deploy-') for event in self.events))
         self.assertEqual((self.runtime / 'edge/default.conf').read_text(), CONFIG)
 
+    def test_worker_build_failure_never_deploys_backend(self):
+        self.failure = 'build-ai-worker'
+        with self.assertRaises(bluegreen.DeploymentError):
+            self.release.run()
+        self.assertFalse(any(event.startswith('deploy-') for event in self.events))
+
     def test_failed_backend_prevents_frontend_and_failed_frontend_reports_partial_release(self):
-        for failure in ('deploy-backend', 'deploy-frontend'):
+        for failure in ('deploy-backend', 'deploy-ai-worker', 'deploy-frontend'):
             with self.subTest(failure=failure):
                 self.events.clear()
                 self.release.completed.clear()
@@ -175,9 +215,24 @@ class ReleaseTests(unittest.TestCase):
                 self.assertFalse(report['routes_verified'])
                 if failure == 'deploy-backend':
                     self.assertNotIn('deploy-frontend', self.events)
-                else:
+                    self.assertNotIn('deploy-ai-worker', self.events)
+                elif failure == 'deploy-frontend':
                     self.assertEqual(report['completed'], ['backend'])
+                    self.assertNotIn('deploy-ai-worker', self.events)
                     self.assertEqual(report['routes'], {'backend': 'backend-green', 'frontend': 'frontend-blue'})
+                else:
+                    # A worker failure leaves the backend and frontend on the same new release.
+                    self.assertEqual(report['completed'], ['backend', 'frontend'])
+                    self.assertEqual(report['routes'], {'backend': 'backend-green', 'frontend': 'frontend-green'})
+
+    def test_worker_database_check_failure_leaves_running_worker_untouched(self):
+        self.failure = 'check-ai-worker'
+        with self.assertRaisesRegex(bluegreen.DeploymentError, 'running worker was left as is: '
+                                    'toadzip_ai_worker 역할에 없는 ai_jobs 권한: UPDATE\\(lease_until\\)'):
+            self.release.run()
+        self.assertNotIn('deploy-ai-worker', self.events)
+        report = json.loads(self.output.getvalue().split('Release result: ')[-1])
+        self.assertEqual((report['stage'], report['completed']), ('deploy-ai-worker', ['backend', 'frontend']))
 
     def test_checkout_change_during_build_stops_before_deployment(self):
         build = self.release.build_image
@@ -221,7 +276,7 @@ class WorkflowTests(unittest.TestCase):
     def test_ci_release_uses_exact_revision_under_lock_and_preserves_existing_ci_gates(self):
         for environment, branch, prefix in [('dev', 'develop', 'DEV'), ('prod', 'main', 'PROD')]:
             text = (ROOT / '.github/workflows' / ('deploy-' + environment + '.yml')).read_text()
-            self.assertIn('needs: [backend, frontend]', text)
+            self.assertIn('needs: [backend, frontend, ai-worker]', text)
             self.assertIn('cancel-in-progress: false', text)
             self.assertIn('DEPLOY_BRANCH: ' + branch, text)
             self.assertIn('vars.' + prefix + '_BLUEGREEN_URL', text)

@@ -46,6 +46,11 @@ services:
       db-shared:
         condition: service_healthy
 
+  ai-worker:
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   postgres_shared_data:

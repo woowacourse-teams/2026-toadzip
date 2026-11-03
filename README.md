@@ -18,6 +18,7 @@
 | --- | --- |
 | [frontend/](frontend/README.md) | 공공주택 지도·검색, 공고·단지 상세, 사용자·관리자 화면을 제공하는 프론트엔드입니다. |
 | [backend/](backend/README.md) | 공공주택·공고 조회, 데이터 수집·정제, 로그인·알림 신청을 처리하는 백엔드입니다. |
+| [ai-worker/](ai-worker/README.md) | 공고문 PDF 추출처럼 AI를 쓰는 작업을 Postgres 작업 큐에서 꺼내 처리하는 Python 워커입니다. |
 | [infra/](infra/README.md) | DB, HTTPS 인증서, 로그·메트릭 모니터링 구성을 관리합니다. |
 | [docs/](docs/README.md) | 환경별 실행 방법, 서비스 정책, API 안내와 운영용 SQL·예시 데이터를 관리합니다. |
 | [scripts/](scripts/README.md) | Flyway 마이그레이션 검사, HTTPS·DB 점검과 운영 보조 스크립트를 관리합니다. |

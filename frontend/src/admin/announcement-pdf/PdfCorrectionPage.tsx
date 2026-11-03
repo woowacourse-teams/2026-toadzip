@@ -20,7 +20,8 @@ import styles from './PdfCorrection.module.css'
 
 const PdfDocumentPreview = lazy(() => import('../../public-housing/components/PdfDocumentPreview'))
 type Phase = 'prepare' | 'review' | 'result'
-type SelectedPdf = { url: string; name: string; file: Blob }
+// attachmentId가 있으면 공고 첨부라 추출 때 서버가 같은 첨부를 받는다.
+type SelectedPdf = { url: string; name: string; file: Blob; attachmentId?: string }
 const sectionLabels: [ReviewSection, string][] = [['supply', '공급정보'], ['schedule', '일정'], ['reception', '접수처·기본정보']]
 const filterLabels: [ReviewFilter, string][] = [['all', '전체'], ['pending', '확인 필요'], ['changed', '변경'], ['new', '추가']]
 function validEvidenceUrl(value: string) {
@@ -113,7 +114,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     const pending = loadAnnouncementAttachment(id, attachmentId, false, controller.signal)
     void pending.then(blob => {
       if (controller.signal.aborted) return
-      objectUrl = URL.createObjectURL(blob); setPdf({ url: objectUrl, name: attachment?.fileName ?? '공고문 PDF', file: blob })
+      objectUrl = URL.createObjectURL(blob); setPdf({ url: objectUrl, name: attachment?.fileName ?? '공고문 PDF', file: blob, attachmentId })
     }).catch(cause => { if (!controller.signal.aborted) setPdfError(attachmentErrorMessage(cause)) })
     return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl) }
   }, [id, attachmentId, workspace?.detail.attachments])
@@ -143,7 +144,10 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     extractionRun.current?.abort()
     const controller = new AbortController(); extractionRun.current = controller
     setExtraction({ status: 'running', startedAt: Date.now() }); setText('')
-    void extractAnnouncementPdf(id, pdf.file, pdf.name, controller.signal).then(result => {
+    const onNotice = (message: string | null) => {
+      if (!controller.signal.aborted) setExtraction(previous => previous.status === 'running' ? { ...previous, notice: message ?? undefined } : previous)
+    }
+    void extractAnnouncementPdf(id, pdf.file, pdf.name, controller.signal, { attachmentId: pdf.attachmentId, onNotice }).then(result => {
       if (controller.signal.aborted) return
       setText(result.json); setExtraction({ status: 'done', result })
       if (pdfHash) setSaved({ fileName: pdf.name, pdfSha256: pdfHash, createdAt: new Date().toISOString(), extraction: result })
@@ -252,7 +256,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
           <div className={styles.filters} role="group" aria-label="검토 항목 필터">{filterLabels.map(([key, label]) => <Button data-design-system key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}{key !== 'all' && ` ${key === 'pending' ? pending.length : counts[key]}`}</Button>)}</div>
         </div>
         <fieldset disabled={busy || blocked} className={styles.reviewFields}>
-          {section === 'supply' && <ReviewSupply savesHousingTypes={!supplyDraft} editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} />}
+          {section === 'supply' && <ReviewSupply savesHousingTypes={!supplyDraft} warnings={extraction.status === 'done' ? extraction.result.warnings : []} editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} />}
           {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.extraction.undatedSchedules.length > 0 && <p className={styles.hint}>날짜 없이 안내한 일정: {review.extraction.undatedSchedules.join(' · ')}</p>}{review.schedules.map((schedule, index) => scheduleMatches(schedule) && <section className={styles.supplyBlock} key={index} data-review-id={`schedule:${index}`} tabIndex={-1}><header><h3>{shown(schedule.cells.find(cell => cell.field === 'name')?.value)}</h3><label><input type="checkbox" checked={schedule.include} onChange={event => updateSchedule(index, { include: event.target.checked, reviewed: true })} />일정 {index + 1} 적용</label></header>
             {pendingSchedule(schedule) && <div className={styles.pending}><p><strong>확인 필요</strong> {schedule.proposal.reason}</p><div className={styles.actions}><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: true, reviewed: true })}>{`일정 ${index + 1} 적용`}</Button><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: false, reviewed: true })}>{`일정 ${index + 1} 적용 안 함`}</Button></div></div>}
             <p>{pendingSchedule(schedule) ? '' : schedule.proposal.reason || (schedule.proposal.existingIds.length ? '기존 일정 갱신' : '새 일정 추가')}{schedule.proposal.existingIds.map(existingId => { const event = workspace.events.find(item => item.id === existingId); return <small className={styles.scheduleBefore} key={existingId}>#{existingId} · {event?.complexName ?? '공고 전체'} · {shown(event?.data.name)} · {shown(event?.data.startAt)} ~ {shown(event?.data.endAt)}</small> })}</p>

@@ -1,0 +1,11 @@
+{
+  "json": "{\"data\":{\"announcement\":{\"name\":\"인천부평 행복주택 입주자 모집\"},\"complexes\":[],\"supplyRows\":[],\"schedules\":[]},\"sharedCounts\":[],\"notApplicable\":[],\"evidence\":[]}",
+  "pages": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35],
+  "totalPages": 35,
+  "warnings": ["공급표·임대조건표 쪽을 찾지 못해 전체 35쪽을 보냈습니다."],
+  "usage": {
+    "promptTokens": 9000,
+    "outputTokens": 3000,
+    "thinkingTokens": 500
+  }
+}

@@ -28,7 +28,7 @@
 
 공고 관리 상세는 기존 `announcement_attachments`의 파일 식별자·이름·종류·URL을 표시순서로 반환한다.
 첨부파일 본문은 기존 공개 공고 첨부 미리보기·다운로드 API를 사용한다. 휴지통 공고는 공식 원문 링크로 안내한다.
-PDF 추출(`POST /api/admin/announcements/{id}/pdf-extractions`)은 업로드한 PDF를 외부 AI 모델로 추출하고 결과와 PDF의 SHA-256만 `announcement_pdf_extractions`에 저장한다. PDF 원본은 보관하지 않는다. 공유 초안 API와 로컬 폴더 연동은 없다.
+PDF 추출(`POST /api/admin/announcements/{id}/pdf-extractions`, 공고 첨부는 `.../attachments/{attachmentId}`)은 업로드하거나 서버가 받은 첨부 PDF를 AI 작업(`ai_jobs`)으로 넣고, AI 워커가 외부 AI 모델로 추출한 결과와 PDF의 SHA-256을 작업 행에 남긴다. PDF 원본은 처리 중에만 보관하고 작업이 끝나면 비운다. 공유 초안 API와 로컬 폴더 연동은 없다.
 과거 원본·초안·담당 업무 테이블을 만든 마이그레이션과 기존 데이터는 보존한다. 기능 제거를 위해 공유 DB 데이터를 삭제하지 않는다.
 비교 연결·확인 스냅샷은 `V20261016_01`을 계속 사용한다.
 

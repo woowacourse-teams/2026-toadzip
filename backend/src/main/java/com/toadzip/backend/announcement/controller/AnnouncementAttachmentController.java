@@ -62,6 +62,11 @@ public class AnnouncementAttachmentController {
             AttachmentUnavailableException exception,
             HttpServletRequest request
     ) {
+        return response(exception, request);
+    }
+
+    /** 첨부를 받다 실패했을 때의 응답. PDF 추출 작업이 첨부를 받을 때도 같은 응답을 쓴다. */
+    static ResponseEntity<ErrorResponse> response(AttachmentUnavailableException exception, HttpServletRequest request) {
         HttpStatus status = switch (exception.reason()) {
             case NOT_FOUND -> HttpStatus.NOT_FOUND;
             case UNSUPPORTED_SOURCE, NOT_PDF -> HttpStatus.UNPROCESSABLE_CONTENT;

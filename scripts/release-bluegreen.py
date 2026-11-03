@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a verified Git revision, then deploy backend and frontend under one lock."""
+"""Build a verified Git revision, then deploy backend, AI worker and frontend under one lock."""
 
 import argparse
 import contextlib
@@ -13,6 +13,11 @@ import tempfile
 import uuid
 
 import bluegreen
+
+# Built and labelled with the same revision. The worker takes no traffic, so it is recreated instead of Blue/Green.
+IMAGES = ('backend', 'frontend', 'ai-worker')
+WORKER = 'ai-worker'
+WORKER_SECRETS = ('PGPASSWORD', 'DEEPSEEK_API_KEY')
 
 
 class Release:
@@ -67,11 +72,22 @@ class Release:
                 runner.wait_workers(draining)
             runner.check_http()
             runner.verify_route(runner.container(bluegreen.active_service(runner.config.read_text(), service)))
+        self.check_worker()
+
+    def check_worker(self):
+        # Naming the profiled service includes it; secrets are only checked for presence and never printed.
+        worker = json.loads(self.runners['frontend'].compose('config', '--format', 'json', WORKER)).get('services', {}).get(WORKER)
+        if worker is None:
+            raise bluegreen.DeploymentError('Compose configuration has no ai-worker service')
+        missing = [name for name in WORKER_SECRETS if not worker.get('environment', {}).get(name)]
+        if missing:
+            raise bluegreen.DeploymentError('AI worker is missing server settings: ' + ', '.join(missing)
+                                            + ' (set AI_WORKER_DB_PASSWORD and DEEPSEEK_API_KEY)')
 
     def build(self):
         runner = self.runners['frontend']
         services = {}
-        for service in ('backend', 'frontend'):
+        for service in IMAGES:
             services[service] = {
                 'image': 'toadzip-' + service + ':' + self.options.revision,
                 'build': {'labels': {'org.opencontainers.image.revision': self.options.revision}},
@@ -81,7 +97,7 @@ class Release:
                                          dir=runner.runtime) as override:
             json.dump({'services': services}, override)
             override.flush()
-            for service in ('backend', 'frontend'):
+            for service in IMAGES:
                 self.stage = 'build-' + service
                 print('Release stage: ' + self.stage, flush=True)
                 self.build_image(['docker', 'compose', '--project-name', self.options.project, *runner.files,
@@ -91,6 +107,26 @@ class Release:
                         or metadata.get('Config', {}).get('Labels', {}).get('org.opencontainers.image.revision') != self.options.revision):
                     raise bluegreen.DeploymentError('Built image is missing the expected revision label')
                 self.images[service] = metadata['Id']
+
+    def deploy_worker(self):
+        runner = self.runners['frontend']
+        environment = dict(runner.environment, AI_WORKER_IMAGE=self.images[WORKER])
+        # A wrong password or missing ai_jobs grant would otherwise surface only after the running worker was replaced.
+        check = self.check_worker_database(['docker', 'compose', '--project-name', self.options.project, *runner.files,
+                                            '--profile', 'bluegreen', 'run', '--rm', '-T', '--no-deps', '--pull', 'never',
+                                            WORKER, '--check'], environment)
+        if check.returncode:
+            # The worker prints only fixed text and the database error, never the password.
+            reason = (check.stderr.strip().splitlines() or ['no output'])[-1]
+            raise bluegreen.DeploymentError('AI worker database check failed with the new image; the running worker'
+                                            ' was left as is: ' + reason)
+        # Stopping waits up to stop_grace_period (2m) for the running extraction to finish. --wait needs the image
+        # healthcheck, so a worker that later loses the database fails the release instead of looking up.
+        runner.compose('up', '-d', '--no-deps', '--no-build', '--pull', 'never', '--force-recreate',
+                       '--wait', '--wait-timeout', '60', WORKER, environment=environment, timeout=240)
+
+    def check_worker_database(self, arguments, environment):
+        return subprocess.run(arguments, cwd=bluegreen.ROOT, env=environment, text=True, capture_output=True, timeout=120)
 
     def build_image(self, arguments, environment):
         subprocess.run(arguments, cwd=bluegreen.ROOT, env=environment, check=True, timeout=1200)
@@ -127,11 +163,15 @@ class Release:
                 self.preflight()
                 self.build()
                 self.check_revision()
-                for service in ('backend', 'frontend'):
+                for service in ('backend', 'frontend', WORKER):
                     self.stage = 'deploy-' + service
                     print('Release stage: ' + self.stage, flush=True)
-                    self.runners[service].options.image = self.images[service]
-                    self.runners[service].run_locked()
+                    if service == WORKER:
+                        # Last, after the backend migrated the schema; a worker failure leaves backend and frontend matched.
+                        self.deploy_worker()
+                    else:
+                        self.runners[service].options.image = self.images[service]
+                        self.runners[service].run_locked()
                     self.completed.append(service)
                 self.stage = 'complete'
             except BaseException:
