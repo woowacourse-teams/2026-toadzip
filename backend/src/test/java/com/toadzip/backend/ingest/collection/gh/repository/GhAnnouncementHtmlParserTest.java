@@ -105,8 +105,10 @@ class GhAnnouncementHtmlParserTest {
         String renamedTable = detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW).replace("tb_house\"", "tb_house_v2\"");
         var document = Jsoup.parse(detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW));
         document.select("ul.tab_box, div#tab1, div#tab2").remove();
+        var noImages = Jsoup.parse(detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW));
+        noImages.select(".ltab_box").remove();
 
-        for (String html : new String[]{renamedTable, document.html()}) {
+        for (String html : new String[]{renamedTable, document.html(), noImages.html()}) {
             var content = parser.parse(html, GhAnnouncementBoard.RENTAL_HOUSE, entry(ROW));
             assertThat(content.districts()).isNull();
             assertThat(content.unreadParts()).containsExactly("공급정보");

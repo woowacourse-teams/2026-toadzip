@@ -94,8 +94,28 @@ class GhAnnouncementStoreTest {
         store(FIRST).store(new GhAnnouncementSnapshot(board, "801", "01", "제목", "국민임대", "남양주시",
                 LocalDate.parse("2026-10-02"), null, "접수중", board.detailUrl("801", "01"), board.listUrl(1),
                 "[]", "{}", "원문", "", null));
+        store(FIRST).store(new GhAnnouncementSnapshot(board, "802", "01", "제목", "국민임대", "남양주시",
+                LocalDate.parse("2026-10-02"), null, "접수중", board.detailUrl("802", "01"), board.listUrl(1),
+                null, "{}", "원문", "", "[]"));
 
-        assertThat(store(FIRST).findUnchangedPbancNos(board, List.of(entry("801", "제목", "2026-10-02")))).isEmpty();
+        assertThat(store(FIRST).findUnchangedPbancNos(board,
+                List.of(entry("801", "제목", "2026-10-02"), entry("802", "제목", "2026-10-02")))).isEmpty();
+    }
+
+    @Test
+    void 제목이_바뀐_새_판에서_못_읽은_구획은_옛_판_값을_남기지_않는다() {
+        store(FIRST).store(snapshot("801", "제목", "접수중", "원문"));
+        var board = GhAnnouncementBoard.RENTAL_HOUSE;
+        store(FIRST.plusSeconds(60)).store(new GhAnnouncementSnapshot(board, "801", "01", "[정정] 제목", "국민임대",
+                "남양주시", LocalDate.parse("2026-10-02"), null, "접수중", board.detailUrl("801", "01"),
+                board.listUrl(1), null, "{}", "정정 원문", "", "[]"));
+        entityManager.flush();
+        entityManager.clear();
+
+        var source = repository.findBySourceKey("GH:801").orElseThrow();
+        assertThat(source.getDistricts()).isNull();
+        assertThat(source.getNotice()).isEqualTo("정정 원문");
+        assertThat(store(FIRST).findUnchangedPbancNos(board, List.of(entry("801", "[정정] 제목", "2026-10-02")))).isEmpty();
     }
 
     private Entry entry(String pbancNo, String title, String postedDate) {

@@ -105,6 +105,8 @@ public class GhAnnouncementSource {
         if (!sourceKey.equals(snapshot.sourceKey())) {
             throw new IllegalArgumentException("다른 GH 공고 원천으로 변경할 수 없습니다.");
         }
+        // 제목·공고일이 바뀐 새 판에서 못 읽은 구획은 옛 판 값을 남기지 않고 비워 다시 받게 한다.
+        boolean revised = title != null && (!title.equals(snapshot.title()) || !postedDate.equals(snapshot.postedDate()));
         board = snapshot.board();
         kindCode = snapshot.kindCode();
         title = snapshot.title();
@@ -115,19 +117,19 @@ public class GhAnnouncementSource {
         status = snapshot.status();
         originalUrl = snapshot.originalUrl();
         listUrl = snapshot.listUrl();
-        if (snapshot.districts() != null) {
+        if (revised || snapshot.districts() != null) {
             districts = snapshot.districts();
         }
-        if (snapshot.reception() != null) {
+        if (revised || snapshot.reception() != null) {
             reception = snapshot.reception();
         }
-        if (snapshot.notice() != null) {
+        if (revised || snapshot.notice() != null) {
             notice = snapshot.notice();
         }
-        if (snapshot.otherNotes() != null) {
+        if (revised || snapshot.otherNotes() != null) {
             otherNotes = snapshot.otherNotes();
         }
-        if (snapshot.attachments() != null) {
+        if (revised || snapshot.attachments() != null) {
             attachments = snapshot.attachments();
         }
         collectedAt = now;
