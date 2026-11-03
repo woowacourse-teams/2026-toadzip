@@ -6,7 +6,7 @@ import { type Evidence } from './extraction'
 import { cellMatches, chooseSubtype, complexDecisionCount, complexGroups, housingTypePrice, pendingItems, rowOfReviewId, placementProblems, linkedHousingType, linkedHousingTypeId, newRepresentative, pendingPrice, pendingSubtypes, editCell, representativeSubtype, sharedGroupStorable, pdfOrderChanges, pendingRow, pendingTarget, remapTarget, shown, type Cell, type Review, type ReviewFilter, type RowReview, type SubtypeChoice, type TargetReview } from './review'
 import { ComplexDecisions } from './ComplexDecision'
 import { missingHousingType, splittableLhRows, type ComplexLabels, type HousingCandidates } from './matching'
-import { includeRow, placeRow, type Placement } from './placement'
+import { choosePdfCounts, includeRow, placeRow, type Placement } from './placement'
 import { complexCorrespondence, groupOf, placementDoubt } from './correspondence'
 import { ComplexMatch } from './ComplexMatch'
 import { PlacementChooser } from './PlacementChooser'
@@ -50,7 +50,7 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
     const lh = splittableLhRows(workspace.supply).find(item => item.attachedRowKey === key)
     if (!lh) return
     const members = review.rows.flatMap((row, at) => row.include && row.proposal.destination === key && !row.proposal.saveMode ? [at] : [])
-    onChange(members.reduce((next, at) => placeRow(next, at, { mode: 'SPLIT', lhRow: lh.rowIdentifier }, workspace, housing), review))
+    onChange(choosePdfCounts(members.reduce((next, at) => placeRow(next, at, { mode: 'SPLIT', lhRow: lh.rowIdentifier }, workspace, housing), review), members))
   }
   const shownChecks = [...filter === 'all' ? review.extraction.checks : [], ...warnings]
   const decisions = filter === 'all' ? complexDecisionCount(review, workspace, group?.indexes) : 0

@@ -154,9 +154,11 @@ it('LH대로 1행 유지를 고르면 첫 PDF 행이 #747을 고치고 나머지
   expect(kept.rows.map(row => row.include)).toEqual([true, false, false])
   const offer = complexCorrespondence(kept, workspace, 0).offers[0]
   expect(offer.choice).toBe('keep')
-  expect(offerResult(kept, offer)).toBe('#747(240세대)을 051.9800A 행 값으로 고칩니다. 059.9100A · 059.9300B 행은 이번 보정에서 반영하지 않습니다.')
+  expect(offerResult(kept, offer)).toBe('#747(240세대)을 051.9800A 행 값으로 고칩니다. 저장하면 모집수는 200세대입니다. 059.9100A · 059.9300B 행은 이번 보정에서 반영하지 않습니다.')
   expect(placementProblems(kept, workspace).size).toBe(0)
   const rows = assembleReview(kept, workspace, evidence).correction.rows
+  // 문장에 보인 모집수가 실제로 보내는 값이다.
+  expect(rows.find(row => row.id === 747)?.householdCount).toBe(200)
   expect(rows.filter(row => row.id === null || row.saveMode)).toEqual([])
   const again = splitMerged(kept, 'LH:P:SUPPLY:1', offer.members, workspace, housing)
   expect(modes(again)).toEqual([['SPLIT', 'row:747'], ['SPLIT', 'new'], ['SPLIT', 'new']])
@@ -181,4 +183,13 @@ it('대응이 의심스러울 때만 까닭을 돌려준다: AI 표시와 다른
   expect(placementDoubt(attached, 2, open.workspace)).toBe("PDF는 전용 59.93㎡인데 LH 행 '84 5세대'의 전용면적은 84㎡입니다.")
   const empty = { ...open.workspace, supply: { ...open.workspace.supply, lhSupplyRows: open.workspace.supply.lhSupplyRows!.map(lh => lh.rowIdentifier === 'LH:P:SUPPLY:2' ? { ...lh, householdCount: 0 } : lh) } }
   expect(placementDoubt(attached, 2, empty)).toBe("LH 행 '84 0세대'의 이번 공급 수가 0세대입니다. 이 PDF 행이 그 LH 행에서 나온 것이 맞는지 공고문과 대조하세요.")
+})
+
+it('나누기를 고르면 고르지 않은 모집수는 PDF 값으로 정하되 직접 입력한 값은 두고, 근거가 약한 칸의 확인 필요는 남긴다', () => {
+  const { review, workspace, housing } = daegu({ unresolvedCount: true })
+  const typed = countCell(review, 1, cell => ({ ...chooseCellValue(cell, 'manual'), input: '26', manualInput: '26', value: 26 }))
+  const split = splitMerged(typed, 'LH:P:SUPPLY:1', [0, 1, 2], workspace, housing)
+  const request = assembleReview(split, workspace, evidence)
+  expect(request.correction.rows.filter(row => row.saveMode === 'SPLIT').map(row => [row.id, row.householdCount])).toEqual([[747, 200], [null, 26], [null, 15]])
+  expect(pendingItems(split, true, workspace).map(item => item.id)).toContain('cell:supplyRows[0].totalSupplyHouseholdCount')
 })

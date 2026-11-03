@@ -152,7 +152,7 @@ it('LH대로 1행 유지를 고르면 첫 PDF 행이 #747을 고치고 나머지
   const decision = within(match()).getByRole('group', { name: "LH 행 '공공임대 240세대' 대응" })
   fireEvent.click(within(decision).getByRole('button', { name: 'LH대로 1행 유지' }))
   expect(within(decision).getByRole('button', { name: 'LH대로 1행 유지' })).toHaveAttribute('aria-pressed', 'true')
-  expect(decision).toHaveTextContent('#747(240세대)을 051.9800A 행 값으로 고칩니다. 059.9100A · 059.9300B 행은 이번 보정에서 반영하지 않습니다.')
+  expect(decision).toHaveTextContent('#747(240세대)을 051.9800A 행 값으로 고칩니다. 저장하면 모집수는 200세대입니다. 059.9100A · 059.9300B 행은 이번 보정에서 반영하지 않습니다.')
   expect(within(match()).getByRole('list', { name: 'PDF 행' })).toHaveTextContent('2. 059.9100A · 전용 59.91㎡ · 25세대 · 반영 안 함')
   expect(placeOf(1)).toBe('기존 공급정보 #747(공공임대)을 고칩니다.')
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()

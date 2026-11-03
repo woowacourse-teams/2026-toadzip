@@ -115,7 +115,8 @@ export function offerResult(review: Review, offer: SplitOffer) {
   if (offer.choice === 'keep') {
     const kept = offer.members.find(index => review.rows[index].include && !review.rows[index].proposal.saveMode && review.rows[index].proposal.destination === merged.key)!
     const dropped = offer.members.filter(index => !review.rows[index].include)
-    return `${name}을 ${pdfType(review, kept)} 행 값으로 고칩니다.${dropped.length ? ` ${dropped.map(index => pdfType(review, index)).join(' · ')} 행은 이번 보정에서 반영하지 않습니다.` : ''}`
+    const saved = assembledCount(review.rows[kept])
+    return `${name}을 ${pdfType(review, kept)} 행 값으로 고칩니다. 저장하면 모집수는 ${saved === null ? '미확인' : `${saved}세대`}입니다.${dropped.length ? ` ${dropped.map(index => pdfType(review, index)).join(' · ')} 행은 이번 보정에서 반영하지 않습니다.` : ''}`
   }
   return ''
 }

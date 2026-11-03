@@ -59,7 +59,8 @@ function remember(review: Review, members: number[], lhRow: string): Review {
 /** PDF대로 나누는 행들의 모집수를 PDF 추출값으로 정한다. 운영자가 직접 입력한 칸은 그대로 둔다. */
 export function choosePdfCounts(review: Review, members: number[]): Review {
   return { ...review, rows: review.rows.map((row, at) => !members.includes(at) ? row : { ...row, cells: row.cells.map(cell =>
-    cell.field === 'totalSupplyHouseholdCount' && cell.mode !== 'manual' ? chooseCellValue(cell, 'extracted') : cell) }) }
+    // 값만 고르고 확인 여부는 그대로 둔다. 근거가 약한 값은 고른 뒤에도 운영자가 칸에서 확인해야 한다.
+    cell.field === 'totalSupplyHouseholdCount' && cell.mode !== 'manual' ? { ...chooseCellValue(cell, 'extracted'), reviewed: cell.reviewed } : cell) }) }
 }
 /**
  * 단지 대응에서 'PDF대로 나누기'. 후보 행 모두를 그 LH 통합행의 분리 묶음으로 두고(첫 행이 통합행을 이어받는다) 확인한 것으로 본다.

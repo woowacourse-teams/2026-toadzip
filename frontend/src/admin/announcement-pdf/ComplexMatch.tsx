@@ -23,7 +23,7 @@ export function ComplexMatch({ review, workspace, housing, groupIndex, onChange 
   // 직접 입력한 칸은 운영자가 정한 값이므로 PDF 값과 달라도 다시 묻지 않는다.
   const countsDiffer = (members: number[]) => members.some(index => {
     const row = review.rows[index], cell = row.cells.find(item => item.field === 'totalSupplyHouseholdCount')
-    return row.include && row.proposal.saveMode === 'SPLIT' && cell?.mode !== 'manual' && pdfCount(review, index) !== null && assembledCount(row) !== pdfCount(review, index)
+    return row.include && row.proposal.saveMode === 'SPLIT' && cell?.mode !== 'manual' && !['invalid', 'unresolved', 'notApplicable'].includes(cell?.extracted.state ?? '') && pdfCount(review, index) !== null && assembledCount(row) !== pdfCount(review, index)
   })
   function leftover({ lh, attachedTo, kept }: LeftoverLh) {
     const name = `LH 행 '${lhName(lh)}'`
