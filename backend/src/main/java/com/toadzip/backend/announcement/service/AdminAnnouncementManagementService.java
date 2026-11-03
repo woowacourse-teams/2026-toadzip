@@ -172,7 +172,7 @@ public class AdminAnnouncementManagementService {
         if (announcement.isAdminDeleted()) { throw new AdminDataConflictException("공고를 복구한 뒤 수정해 주세요."); }
         var row = rows.findById(rowId).filter(value -> value.getAnnouncement().getId().equals(id))
                 .orElseThrow(AnnouncementNotFoundException::new);
-        String before = json.writeValueAsString(rowData(row));
+        String before = json.writeValueAsString(auditedRow(row));
         HousingComplex complex = null;
         HousingType type = null;
         if (request.housingComplexId() != null) {
@@ -200,7 +200,7 @@ public class AdminAnnouncementManagementService {
         announcement.recordAdminSupplyChange();
         announcements.flush();
         changes.save(new AdminDataChange("ANNOUNCEMENT", id, "UPDATE_SUPPLY", actor, before,
-                auditedData(rowData(row), request.documentEvidence())));
+                auditedData(auditedRow(row), request.documentEvidence())));
         return detail(id);
     }
 
@@ -303,6 +303,14 @@ public class AdminAnnouncementManagementService {
                 announcement.getSupplyType(), announcement.getRecruitmentType(), announcement.getProvider(),
                 announcement.getPostedDate(), announcement.getApplicationStartDate(), announcement.getApplicationEndDate(),
                 announcement.getWinnerAnnouncementDate(), announcement.getOriginalUrl(), reception);
+    }
+
+    /** 대표를 바꾸면 함께 모집하던 주택형이 빠지므로, 이력에는 그 연결(대표 포함)도 남긴다. */
+    private ObjectNode auditedRow(SupplyRow row) {
+        var result = (ObjectNode) json.valueToTree(rowData(row));
+        var ids = result.putArray("housingTypeIds");
+        row.getHousingTypes().stream().map(HousingType::getId).sorted().forEach(ids::add);
+        return result;
     }
 
     private AdminAnnouncementDetail.SupplyRowItem rowData(SupplyRow row) {

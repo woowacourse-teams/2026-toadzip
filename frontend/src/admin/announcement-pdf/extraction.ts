@@ -1,13 +1,16 @@
 import { isRecord } from '../management/managementContract'
 import type { JsonObject } from '../announcement-json/api'
-import { expandSubtypes, subtypesOf, supplyArea } from './subtypeExpansion'
+import { readSubtypes, subtypesOf, supplyArea } from './subtypes'
 
 export type ExtractionNote = { path: string; reason: string }
 export type SharedCount = { paths: string[]; count: number | null; page: number | null; quote: string }
 export type Evidence = { path: string; page: number; quote: string }
 /** 공고문 단지 개요. 단지를 찾거나 새로 등록할 때 쓰며, 없거나 형식이 틀리면 비워 둔다. */
 export type ExtractedComplex = { name: string; address: string | null; totalHouseholdCount: number | null; parkingCount: number | null }
-export type ExtractedRow = { complexName: string | null; typeName: string | null; values: JsonObject; targets: JsonObject[] }
+/** 세부 타입 묶음 행(26A/B/C)의 세부 타입 하나. 공급면적은 전용 + 공용으로 계산한 값이다. */
+export type Subtype = { name: string; exclusiveArea: number | null; supplyArea: number | null; constructedHouseholdCount: number | null }
+/** subtypes는 LH 한 행이 여러 전용면적을 함께 모집하는 묶음일 때만 둘 이상이고, 그 밖에는 비어 있다. */
+export type ExtractedRow = { complexName: string | null; typeName: string | null; values: JsonObject; targets: JsonObject[]; subtypes: Subtype[] }
 export type Extraction = {
   announcement: JsonObject
   receptionPlace: JsonObject
@@ -124,18 +127,17 @@ function extraction(value: unknown): Extraction | string {
     notApplicable: notes(value.notApplicable).filter(note => note.path !== 'schedules'),
     evidence: (value.evidence as Record<string, unknown>[]).map(item => ({ path: normalizePath(item.path as string), page: page(item.page)!, quote: text(item.quote) ?? '' })),
   }
-  const expanded = expandSubtypes(data.supplyRows, parsed)
-  if (expanded.rows.length > 200) return '세부 타입으로 펼친 공급행이 200개를 넘습니다. 한 공고의 응답만 붙여넣어 주세요.'
+  const read = readSubtypes(data.supplyRows, parsed)
   return {
     announcement: data.announcement,
     receptionPlace: isRecord(data.receptionPlace) ? data.receptionPlace : {},
     complexes,
-    supplyRows: expanded.rows,
+    supplyRows: read.rows,
     schedules: data.schedules,
-    unresolved: expanded.unresolved,
-    notApplicable: expanded.notApplicable,
-    sharedCounts: expanded.sharedCounts,
-    evidence: expanded.evidence,
+    unresolved: read.unresolved,
+    notApplicable: read.notApplicable,
+    sharedCounts: read.sharedCounts,
+    evidence: read.evidence,
     checks: checks(data.supplyRows, complexes, parsed.sharedCounts),
     undatedSchedules: notes(value.notApplicable).filter(note => note.path === 'schedules' && note.reason).map(note => note.reason),
   }

@@ -87,6 +87,9 @@ class SupplyCorrectionGroups {
                     || member.householdCount() != null || !types.add(member.housingTypeId())) {
                 throw new IllegalArgumentException("공통 모집 묶음에는 모집수를 중복 기입하지 않은 서로 다른 기존 주택형을 선택하세요.");
             }
+            if (!member.linkedHousingTypes().isEmpty()) {
+                throw new IllegalArgumentException("공통 모집 묶음 행에는 함께 모집하는 주택형을 연결할 수 없습니다.");
+            }
             if (member.id() != null && !member.id().equals(original.getId())) {
                 throw new IllegalArgumentException("다른 기존 공급행의 조건은 새 묶음으로 이동할 수 없습니다.");
             }

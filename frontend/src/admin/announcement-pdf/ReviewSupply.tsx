@@ -3,10 +3,11 @@ import { Link } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import type { JsonWorkspace } from '../announcement-json/api'
 import { type Evidence } from './extraction'
-import { cellMatches, complexGroups, createRowReview, housingTypePrice, linkedHousingType, linkedHousingTypeId, pendingPrice, destinationLabel, editCell, sharedGroupStorable, pdfOrderChanges, pendingRow, pendingTarget, preserveCellChoice, remapTarget, shown, type Cell, type Review, type ReviewFilter, type RowReview, type TargetReview } from './review'
+import { cellMatches, chooseSubtype, complexGroups, createRowReview, housingTypePrice, linkedHousingType, linkedHousingTypeId, newRepresentative, pendingPrice, pendingSubtypes, destinationLabel, editCell, representativeSubtype, sharedGroupStorable, pdfOrderChanges, pendingRow, pendingTarget, preserveCellChoice, remapTarget, shown, type Cell, type Review, type ReviewFilter, type RowReview, type SubtypeChoice, type TargetReview } from './review'
 import { ComplexDecisions } from './ComplexDecision'
 import { missingHousingType, pickHousingType, type ComplexLabels, type HousingCandidates } from './matching'
 import { ReviewCells } from './ReviewCells'
+import { housingTypeLabel } from '../ingest/housingTypeLabel'
 import { possibleLhDuplicates, unattachedLhRows } from '../supply/lhSupplyOwnership'
 import styles from './PdfCorrection.module.css'
 
@@ -57,7 +58,7 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
     {shownChecks.length > 0 && <div className={`${styles.pending} ${styles.checks}`} role="note" aria-label="검산 결과"><p><strong>검산 확인</strong> 합계·면적·원문 대조가 맞지 않는 항목입니다. 공고문과 대조하세요.</p><ul>{shownChecks.map(check => <li key={check}>{check}</li>)}</ul></div>}
     {filter === 'all' && duplicates.length > 0 && <div className={styles.pending} role="note" aria-label="LH 원본과 중복 가능"><p><strong>LH 원본과 중복 가능</strong> LH 공급 원본으로 펼친 행이 있는 단지에 직접 추가한 행이 있습니다. 같은 주택형이면 공급정보 편집표의 ‘펼친 행으로 합치기’로 임대조건과 표기를 옮긴 뒤 지우세요.{editorHref && <> <Link to={editorHref}>공급정보 편집표 열기</Link></>}</p><ul>{duplicates.map(row => <li key={row.key}>{row.housingComplexName ?? row.complexName} · {row.typeName} (#{row.id})</li>)}</ul></div>}
     {filter === 'all' && <ComplexDecisions review={review} workspace={workspace} onChange={onChange} />}
-    {filter === 'all' && review.extraction.sharedCounts.map((group, index) => <div className={styles.shared} key={index}><strong>공통 모집 {group.count}세대</strong><span>{sharedLabel(review, group.paths)}{group.paths.every(path => path.endsWith('.totalSupplyHouseholdCount')) && !sharedGroupStorable(review, index) ? ' 기존 공급행 없이 새로 만드는 행끼리는 공통 모집수를 저장할 수 없어 각 행을 비워 둡니다.' : ''}</span>{group.page && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence({ page: group.page!, quote: group.quote, path: group.paths[0] })}>PDF {group.page}쪽 보기</Button>}</div>)}
+    {filter === 'all' && review.extraction.sharedCounts.map((group, index) => <div className={styles.shared} key={index}><strong>공통 모집 {group.count}세대</strong><span>{sharedLabel(review, group.paths)}{group.paths.every(path => path.endsWith('.totalSupplyHouseholdCount')) && !sharedGroupStorable(review, index) ? sharedUnstorable(review, index) : ''}</span>{group.page && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence({ page: group.page!, quote: group.quote, path: group.paths[0] })}>PDF {group.page}쪽 보기</Button>}</div>)}
     {/* 한 단지의 주택형을 한곳에서 대조하도록 PDF 단지 이름별로 묶는다. 저장 순서는 PDF 표 순서 그대로이고, 확인 필요 이동은 이 묶음 순서를 따른다. */}
     {complexGroups(review).map(group => {
       const visible = group.indexes.filter(index => rowMatches(review.rows[index], filter, savesHousingTypes))
@@ -70,7 +71,8 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
   function supplyRow(row: RowReview, index: number) {
       const source = review.extraction.supplyRows[index], current = workspace.supply.rows.find(item => item.key === row.proposal.destination)
       const complexId = current?.housingComplexId ?? workspace.supply.rows.find(item => item.key === row.proposal.anchorKey)?.housingComplexId ?? row.proposal.newComplex?.id ?? row.proposal.complexId
-      const missing = row.include ? missingHousingType(complexId, row.proposal.candidates, String(row.cells.find(cell => cell.field === 'sourceHousingTypeName')?.value ?? source.typeName ?? ''), source.values.exclusiveArea, source.values.supplyArea) : null
+      // 세부 타입 묶음 행은 세부 타입마다 새 주택형을 정하므로(SubtypeLinks) 행 단위 '맞는 주택형 없음'을 두지 않는다.
+      const missing = row.include && !row.subtypes ? missingHousingType(complexId, row.proposal.candidates, String(row.cells.find(cell => cell.field === 'sourceHousingTypeName')?.value ?? source.typeName ?? ''), source.values.exclusiveArea, source.values.supplyArea) : null
       const missingLabel = missing ? `${missing.name || '형명 없음'} · 전용 ${missing.exclusiveArea}㎡` : ''
       // 새 주택형은 연결 주택형을 직접 수정·미연결로 둔 동안만 유지한다. 다른 주택형이나 기존 값을 고르면 풀린다.
       const keepsNewType = (cells: typeof row.cells) => cells.some(cell => cell.field === 'housingTypeId' && cell.mode === 'manual' && cell.value === null)
@@ -96,6 +98,7 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
             newType={missing && missing.name ? { label: missingLabel, selected: Boolean(row.newHousingType), onSelect: chooseNewType } : undefined}
             onChange={cells => update(index, { ...row, cells, newHousingType: Boolean(row.newHousingType && missing && keepsNewType(cells)),
               ...(linkedHousingTypeId({ ...row, cells }) !== linkedHousingTypeId(row) ? { priceTarget: undefined } : {}) })} onEvidence={onEvidence} />
+          <SubtypeLinks row={row} index={index} update={next => update(index, next)} />
           <TargetBlock review={review} index={index} workspace={workspace} filter={filter} update={next => update(index, next)} onEvidence={onEvidence} />
           {/* 저장하면 주택형 가격이 바뀔 수 있으므로 어느 필터에서 저장해도 관리자가 고른 값을 보이게 한다. */}
           {savesHousingTypes && <HousingTypePrice row={row} index={index} update={next => update(index, next)} />}
@@ -110,7 +113,7 @@ function targetMatches(target: TargetReview, filter: ReviewFilter) {
 }
 function rowMatches(row: RowReview, filter: ReviewFilter, savesHousingTypes: boolean) {
   if (filter === 'all') return true
-  return row.include && (filter === 'pending' && (pendingRow(row) || savesHousingTypes && pendingPrice(row)) || row.cells.some(cell => cellMatches(cell, filter)) || row.targets.some(target => targetMatches(target, filter)))
+  return row.include && (filter === 'pending' && (pendingRow(row) || pendingSubtypes(row).length > 0 || savesHousingTypes && pendingPrice(row)) || row.cells.some(cell => cellMatches(cell, filter)) || row.targets.some(target => targetMatches(target, filter)))
 }
 
 function TargetBlock({ review, index, workspace, filter, update, onEvidence }: { review: Review; index: number; workspace: JsonWorkspace; filter: ReviewFilter; update: (row: RowReview) => void; onEvidence: (evidence: Evidence, cell?: Cell) => void }) {
@@ -143,7 +146,7 @@ function TargetBlock({ review, index, workspace, filter, update, onEvidence }: {
 function HousingTypePrice({ row, index, update }: { row: RowReview; index: number; update: (row: RowReview) => void }) {
   // 화면과 저장이 같은 주택형을 보도록 저장 기준(연결 주택형 칸 → 저장 위치의 주택형)으로 고른다.
   const type = linkedHousingType(row), price = housingTypePrice(row, type)
-  if (!price.options.length || linkedHousingTypeId(row) === null && !row.newHousingType) return null
+  if (!price.options.length || linkedHousingTypeId(row) === null && !newRepresentative(row)) return null
   const won = (value: number | null | undefined) => typeof value === 'number' ? `${value.toLocaleString('ko-KR')}원` : '미확인'
   const current = `보증금 ${won(type?.basicDeposit)} · 월 ${won(type?.basicMonthlyRent)}`
   const chosen = price.chosen === null ? null : price.options[price.chosen]
@@ -161,6 +164,39 @@ function HousingTypePrice({ row, index, update }: { row: RowReview; index: numbe
   </section>
 }
 
+/**
+ * 세부 타입 묶음 행(26A/B/C)이 세부 타입마다 연결할 주택형. 전용면적으로 하나가 정해지면 읽기만 하고, 같은 면적 후보가 둘 이상이거나
+ * 면적이 없을 때만 고르게 한다. 정하지 못한 세부 타입은 확인 필요로 남아 저장을 막는다.
+ */
+function SubtypeLinks({ row, index, update }: { row: RowReview; index: number; update: (row: RowReview) => void }) {
+  if (!row.subtypes) return null
+  const candidates = row.proposal.candidates, representative = representativeSubtype(row)
+  const typeName = (id: number) => { const type = candidates.find(item => item.id === id); return type ? housingTypeLabel(type, candidates) : `#${id}` }
+  const result = (choice: SubtypeChoice) => typeof choice === 'number' ? typeName(choice) : choice === 'new' ? '새 주택형 추가' : choice === 'none' ? '연결 안 함'
+    : row.proposal.complexId === null ? '단지를 정하면 연결합니다' : '연결할 주택형을 고르세요'
+  const count = row.cells.find(cell => cell.field === 'totalSupplyHouseholdCount')
+  return <section className={styles.subtypeLinks} aria-label={`공급행 ${index + 1} 세부 타입 연결`}>
+    <h4>함께 모집하는 주택형</h4>
+    <p className={styles.hint}>{`모집수 ${shown(count?.mode === 'keep' ? count.before : count?.value)}세대는 이 공급행 하나에 두고, 세부 타입 주택형을 모두 이 행에 연결합니다. 공통 모집수로 나누지 않습니다.`}</p>
+    <ul>{row.subtypes.map((subtype, at) => {
+      const selectable = subtype.options.length > 1 || subtype.exclusiveArea === null
+      const options = subtype.exclusiveArea === null ? candidates.map(type => type.id) : subtype.options
+      const label = `${subtype.name} · 전용 ${subtype.exclusiveArea ?? '미확인'}㎡`
+      return <li key={at} data-review-id={`subtype:${index}:${at}`} tabIndex={-1} data-pending={subtype.choice === null || undefined}>
+        {selectable ? <label>{`${label} → `}<select aria-label={`공급행 ${index + 1} 세부 타입 ${subtype.name} 연결 주택형`} value={subtype.choice === null ? '' : String(subtype.choice)}
+          onChange={event => update(chooseSubtype(row, at, event.target.value === 'new' || event.target.value === 'none' ? event.target.value : Number(event.target.value)))}>
+          {subtype.choice === null && <option value="" disabled>주택형을 고르세요</option>}
+          {options.map(id => <option key={id} value={id}>{typeName(id)}</option>)}
+          {subtype.exclusiveArea !== null && !subtype.options.length && <option value="new">새 주택형 추가</option>}
+          <option value="none">연결 안 함</option>
+        </select></label> : `${label} → ${result(subtype.choice)}`}
+        {at === representative && <small className={styles.pendingDone}> 대표 주택형</small>}
+        {subtype.choice === null && <small className={styles.pendingLabel}>확인 필요 · {result(null)}</small>}
+      </li>
+    })}</ul>
+  </section>
+}
+
 // 단지는 위 '단지 정하기'에서 단지명마다 한 번 정한다. 여기서는 정한 단지와 이 행의 PNU·공급 구분만 확인한다.
 function NewSupplyComplex({ row, index, onChange }: { row: RowReview; index: number; onChange: (row: RowReview) => void }) {
   const selected = row.proposal.newComplex
@@ -172,6 +208,12 @@ function NewSupplyComplex({ row, index, onChange }: { row: RowReview; index: num
   </section>
 }
 
+/** 공통 모집수를 저장하지 못하는 까닭. 세부 타입 묶음 행이 들었으면 그 행의 모집수를 직접 받는다. */
+function sharedUnstorable(review: Review, index: number) {
+  return review.rows.some(row => row.include && row.proposal.sharedIndex === index && row.subtypes)
+    ? ' 세부 타입 묶음 행은 공통 모집 묶음에 넣을 수 없어 공통 모집수를 저장하지 않습니다. 세부 타입 묶음 행의 모집수는 직접 입력하고, 나머지 행의 모집수는 비워 둡니다.'
+    : ' 기존 공급행 없이 새로 만드는 행끼리는 공통 모집수를 저장할 수 없어 각 행을 비워 둡니다.'
+}
 /** 공통 모집수가 묶은 대상을 읽기 쉽게 적는다. 대상별 묶음은 저장할 곳이 없어 각 대상의 모집수를 비워 둔다. */
 function sharedLabel(review: Review, paths: string[]) {
   const at = paths.map(path => /^supplyRows\[(\d+)\](?:\.targets\[(\d+)\])?/.exec(path)).filter(match => match !== null)

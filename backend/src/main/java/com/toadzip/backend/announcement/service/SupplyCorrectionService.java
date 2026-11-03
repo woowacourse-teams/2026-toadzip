@@ -16,6 +16,7 @@ import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
 import com.toadzip.backend.ingest.lhrefinement.service.LhCurrentSupplies;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
+import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.LinkedHousingType;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.Row;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.Target;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
@@ -396,15 +397,47 @@ public class SupplyCorrectionService {
         var result = new Row(row.id(), row.key(), row.housingComplexId(), complexName(complex), row.housingTypeId(),
                 row.newHousingType(), row.groupId(), row.sharedHouseholdCount(), modified, row.excluded(), row.displayOrder(),
                 complexName, row.typeName(), pnu, row.moveInMonth(), row.category(), row.householdCount(),
-                row.areaOverride(), decimal(exclusiveArea), decimal(supplyArea), plannedTargets, row.targetCountsComparable());
+                row.areaOverride(), decimal(exclusiveArea), decimal(supplyArea), plannedTargets, row.targetCountsComparable(),
+                linkedTypes(old, row, complex, type));
         if (old != null && !same(old, result) && !modified) {
             return new Row(result.id(), result.key(), result.housingComplexId(), result.housingComplexName(),
                     result.housingTypeId(), result.newHousingType(), result.groupId(), result.sharedHouseholdCount(), true,
                     result.excluded(), result.displayOrder(), result.complexName(), result.typeName(), result.pnu(),
                     result.moveInMonth(), result.category(), result.householdCount(), result.areaOverride(),
-                    result.exclusiveArea(), result.supplyArea(), result.targets(), result.targetCountsComparable());
+                    result.exclusiveArea(), result.supplyArea(), result.targets(), result.targetCountsComparable(),
+                    result.linkedHousingTypes());
         }
         return result;
+    }
+
+    /**
+     * 대표와 함께 모집하는 주택형(대표 제외). 생략하면 {@link Row#withLinksFrom}으로 채운다.
+     * 한 행에는 전용면적마다 주택형 하나만 연결한다. 세부 타입은 전용면적마다 하나이고, 이 저장에서 만들 새 주택형과
+     * 그 공고 값(linkedNewHousingTypeArea)은 행 안에서 전용면적으로 찾기 때문이다.
+     */
+    private List<LinkedHousingType> linkedTypes(Row old, Row row, HousingComplex complex, HousingType representative) {
+        if (row.linkedHousingTypes() == null) { return row.withLinksFrom(old).linkedHousingTypes(); }
+        if (row.linkedHousingTypes().isEmpty()) { return List.of(); }
+        if (row.groupId() != null) {
+            throw new IllegalArgumentException("공통 모집 묶음 행에는 함께 모집하는 주택형을 연결할 수 없습니다.");
+        }
+        if (representative == null) {
+            throw new IllegalArgumentException(row.typeName() + ": 대표 주택형을 정한 뒤 함께 모집하는 주택형을 연결하세요.");
+        }
+        Set<BigDecimal> areas = new HashSet<>();
+        areas.add(representative.getExclusiveArea().stripTrailingZeros());
+        for (var link : row.linkedHousingTypes()) {
+            if ((link.housingTypeId() == null) == (link.newHousingType() == null)) {
+                throw new IllegalArgumentException("함께 모집하는 주택형은 기존 주택형이나 새 주택형 중 하나로 지정하세요.");
+            }
+            BigDecimal area = link.newHousingType() == null ? existingType(link.housingTypeId(), complex).getExclusiveArea()
+                    : link.newHousingType().exclusiveArea();
+            if (!areas.add(area.stripTrailingZeros())) {
+                throw new IllegalArgumentException(row.typeName() + ": 한 공급행에는 전용면적마다 주택형 하나만 연결하세요. "
+                        + "대표 주택형과 같은 주택형이나 면적도 연결할 수 없습니다.");
+            }
+        }
+        return row.withLinksFrom(old).linkedHousingTypes();
     }
 
     private List<Target> planTargets(SupplyRow row, Row old, List<Target> requested) {
@@ -480,16 +513,14 @@ public class SupplyCorrectionService {
     private SupplyRow writeRow(Announcement announcement, SupplyRow stored, Row input, SupplyCorrection.Request request,
             Map<String, HousingType> createdTypes) {
         var complex = complex(input.housingComplexId());
-        HousingType type;
-        if (input.newHousingType() == null) {
-            type = type(input, complex, null);
-        } else {
-            // 한 저장에서 같은 단지·전용면적의 새 주택형을 고른 행들은 주택형 하나를 함께 쓴다.
-            type = createdTypes.get(input.newHousingTypeKey());
-            if (type == null) {
-                type = types.save(type(input, complex, "MANUAL:" + request.operationId() + ":" + input.key()));
-                createdTypes.put(input.newHousingTypeKey(), type);
-            }
+        String identifier = "MANUAL:" + request.operationId() + ":" + input.key();
+        var type = input.newHousingType() == null ? type(input, complex, null)
+                : newType(complex, input, input.newHousingType(), identifier, createdTypes);
+        List<HousingType> linked = new ArrayList<>();
+        for (var link : input.linkedHousingTypes()) {
+            var value = link.newHousingType();
+            linked.add(value == null ? existingType(link.housingTypeId(), complex) : newType(complex, input, value,
+                    identifier + ":" + value.exclusiveArea().stripTrailingZeros().toPlainString(), createdTypes));
         }
         if (stored == null) {
             // 원천이 없는 직접 추가 행은 처음 입력한 표기를 원천 이름으로 남긴다.
@@ -499,6 +530,7 @@ public class SupplyCorrectionService {
         }
         stored.reviseByAdmin(complex, type, input.typeName(), input.pnu(), input.moveInMonth(),
                 input.category(), input.householdCount());
+        stored.linkHousingTypesByAdmin(linked);
         stored.correctPresentation(input.excluded(), input.displayOrder(), input.areaOverride(),
                 input.exclusiveArea(), input.supplyArea());
         stored.confirmTargetCountScope(input.targetCountsComparable());
@@ -519,6 +551,13 @@ public class SupplyCorrectionService {
         return stored;
     }
 
+    /** 한 저장에서 같은 단지·전용면적의 새 주택형은 대표든 함께 모집하는 주택형이든 행이 달라도 하나를 만들어 함께 쓴다. */
+    private HousingType newType(HousingComplex complex, Row input, SupplyCorrection.NewType value, String identifier,
+            Map<String, HousingType> createdTypes) {
+        return createdTypes.computeIfAbsent(input.newHousingTypeKey(value), key -> types.save(HousingType.createFromAnnouncement(
+                complex, identifier, value.name(), value.exclusiveArea(), value.supplyArea(), null)));
+    }
+
     private HousingComplex complex(Long id) {
         if (id == null) { return null; }
         return complexes.findById(id).filter(value -> !value.isAdminDeleted())
@@ -535,8 +574,11 @@ public class SupplyCorrectionService {
                     input.supplyArea(), null);
         }
         if (row.housingTypeId() == null) { return null; }
-        var type = types.findById(row.housingTypeId()).orElseThrow(
-                () -> new AdminDataConflictException("연결할 주택형을 찾을 수 없습니다."));
+        return existingType(row.housingTypeId(), complex);
+    }
+
+    private HousingType existingType(long id, HousingComplex complex) {
+        var type = types.findById(id).orElseThrow(() -> new AdminDataConflictException("연결할 주택형을 찾을 수 없습니다."));
         if (complex == null || !type.getHousingComplex().getId().equals(complex.getId())) {
             throw new IllegalArgumentException("선택한 단지에 속한 주택형을 선택하세요.");
         }
@@ -549,16 +591,21 @@ public class SupplyCorrectionService {
      */
     private void checkNewTypes(List<Row> planned) {
         for (var row : planned) {
-            if (row.newHousingType() == null || row.housingComplexId() == null) { continue; }
-            var area = row.newHousingType().exclusiveArea();
-            var same = types.findAllIncludingTrashByHousingComplexId(row.housingComplexId()).stream()
-                    .filter(type -> type.getExclusiveArea().compareTo(area) == 0).toList();
-            String label = row.typeName() + ": 전용 " + area.stripTrailingZeros().toPlainString() + "㎡ 주택형이 ";
-            if (same.stream().anyMatch(type -> !type.isAdminDeleted())) {
-                throw new IllegalArgumentException(label + "이 단지에 있습니다. 새로 만들지 말고 그 주택형을 선택하세요.");
-            }
-            if (!same.isEmpty()) {
-                throw new IllegalArgumentException(label + "휴지통에 있습니다. 단지 상세에서 복구한 뒤 연결하세요.");
+            if (row.housingComplexId() == null) { continue; }
+            var created = new ArrayList<SupplyCorrection.NewType>();
+            if (row.newHousingType() != null) { created.add(row.newHousingType()); }
+            row.linkedHousingTypes().stream().map(LinkedHousingType::newHousingType).filter(Objects::nonNull).forEach(created::add);
+            for (var input : created) {
+                var area = input.exclusiveArea();
+                var same = types.findAllIncludingTrashByHousingComplexId(row.housingComplexId()).stream()
+                        .filter(type -> type.getExclusiveArea().compareTo(area) == 0).toList();
+                String label = row.typeName() + ": 전용 " + area.stripTrailingZeros().toPlainString() + "㎡ 주택형이 ";
+                if (same.stream().anyMatch(type -> !type.isAdminDeleted())) {
+                    throw new IllegalArgumentException(label + "이 단지에 있습니다. 새로 만들지 말고 그 주택형을 선택하세요.");
+                }
+                if (!same.isEmpty()) {
+                    throw new IllegalArgumentException(label + "휴지통에 있습니다. 단지 상세에서 복구한 뒤 연결하세요.");
+                }
             }
         }
     }
@@ -568,13 +615,17 @@ public class SupplyCorrectionService {
         for (var row : planned) {
             var complex = complex(row.housingComplexId());
             if (complex != null) { result.add(List.of(complex.getId(), complex.getVersion(), complex.getName())); }
-            if (row.housingTypeId() == null) { continue; }
-            var type = types.findById(row.housingTypeId()).orElseThrow();
-            var value = new LinkedHashMap<String, Object>();
-            value.put("id", type.getId()); value.put("name", type.getName());
-            value.put("exclusiveArea", type.getExclusiveArea()); value.put("supplyArea", type.getSupplyArea());
-            value.put("householdCount", type.getTotalHouseholdCount());
-            result.add(value);
+            var typeIds = new ArrayList<Long>();
+            if (row.housingTypeId() != null) { typeIds.add(row.housingTypeId()); }
+            row.linkedHousingTypes().stream().map(LinkedHousingType::housingTypeId).filter(Objects::nonNull).forEach(typeIds::add);
+            for (var typeId : typeIds) {
+                var type = types.findById(typeId).orElseThrow();
+                var value = new LinkedHashMap<String, Object>();
+                value.put("id", type.getId()); value.put("name", type.getName());
+                value.put("exclusiveArea", type.getExclusiveArea()); value.put("supplyArea", type.getSupplyArea());
+                value.put("householdCount", type.getTotalHouseholdCount());
+                result.add(value);
+            }
         }
         return result;
     }
@@ -589,6 +640,7 @@ public class SupplyCorrectionService {
         if (row.getHousingComplex() != null) { complexId = row.getHousingComplex().getId(); }
         if (row.getHousingType() != null) { typeId = row.getHousingType().getId(); }
         if (row.getSupplyGroup() != null) { groupId = row.getSupplyGroup().getId(); shared = row.getSupplyGroup().getSharedHouseholdCount(); }
+        Long representativeId = typeId;
         return new Row(row.getId(), "row:" + row.getId(), complexId, complexName(row.getHousingComplex()), typeId, null,
                 groupId, shared, row.isAdminModified(), row.isAdminExcluded(), row.getDisplayOrder(),
                 row.getSourceComplexName(), row.displayHousingTypeName(), row.getSupplyPnu(), row.getExpectedMoveInMonth(),
@@ -596,7 +648,9 @@ public class SupplyCorrectionService {
                 decimal(row.effectiveExclusiveArea()), decimal(row.effectiveSupplyArea()),
                 targets.findAllBySupplyRow(row).stream().sorted(Comparator.comparingInt(SupplyTarget::getDisplayOrder)
                         .thenComparing(SupplyTarget::getId)).map(this::targetData)
-                        .sorted(Comparator.comparingInt(Target::displayOrder).thenComparing(Target::key)).toList(), row.isTargetCountsComparable());
+                        .sorted(Comparator.comparingInt(Target::displayOrder).thenComparing(Target::key)).toList(), row.isTargetCountsComparable(),
+                row.getHousingTypes().stream().map(HousingType::getId).filter(id -> !id.equals(representativeId)).sorted()
+                        .map(id -> new LinkedHousingType(id, null)).toList());
     }
 
     private Target targetData(SupplyTarget target) {

@@ -13,6 +13,10 @@ import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.AttachmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
+import com.toadzip.backend.announcement.domain.SupplyCategory;
+import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import com.toadzip.backend.notification.NotificationFixtures;
 import jakarta.persistence.EntityManager;
@@ -35,6 +39,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
@@ -127,6 +132,36 @@ class AnnouncementJsonCorrectionIntegrationTest {
                 UNION ALL
                 SELECT status FROM lh_announcement_enrichment_failures WHERE source_announcement_identifier = 'other'
                 """, String.class)).containsOnly("PENDING").hasSize(2);
+    }
+
+    @Test
+    void 함께_모집하는_주택형을_순서만_바꿔_보내면_공급행을_바꾼_요청으로_보지_않는다() throws Exception {
+        var fixtures = new NotificationFixtures(entities, jdbc);
+        var announcement = fixtures.announcement();
+        var complex = fixtures.complex("11140", "1114010100");
+        var representative = type(complex, "26A", "26.4673");
+        var row = SupplyRow.create(announcement, complex, representative, UUID.randomUUID().toString(), 0, complex.getName(),
+                "26A/B/C", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null, 10);
+        entities.persist(row); entities.flush();
+        for (var joint : new HousingType[] {type(complex, "26B", "26.7000"), type(complex, "26C", "26.9000")}) {
+            jdbc.update("INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id) VALUES (?, ?)", row.getId(), joint.getId());
+        }
+        entities.clear();
+        long id = announcement.getId();
+        var request = request(id);
+        var links = (ArrayNode) request.path("correction").path("rows").get(0).path("linkedHousingTypes");
+        assertThat(links).hasSize(2);
+        var reversed = json.createArrayNode().add(links.get(1)).add(links.get(0));
+        ((ObjectNode) request.path("correction").path("rows").get(0)).set("linkedHousingTypes", reversed);
+
+        var supply = preview(id, request).path("supply");
+        assertThat(supply.isNull() || supply.isMissingNode()).isTrue();
+    }
+
+    private HousingType type(HousingComplex complex, String name, String area) {
+        var type = HousingType.createFromMyHome(complex, UUID.randomUUID().toString(), name, new BigDecimal(area), null);
+        entities.persist(type); entities.flush();
+        return type;
     }
 
     private Announcement fixture() {

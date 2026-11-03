@@ -36,6 +36,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -142,7 +144,7 @@ public class AnnouncementJsonCorrectionService {
         find(id).validateAdminRevision(incoming(find(id), metadata));
         SupplyCorrection.Preview supply = null;
         if (!request.correction().newGroups().isEmpty()
-                || !hash(before.supply().rows()).equals(hash(request.correction().rows()))) {
+                || !hash(before.supply().rows()).equals(hash(withLinks(before.supply().rows(), request.correction().rows())))) {
             supply = supplies.preview(id, before.supply(), request.correction());
         }
         if (supply == null && !before.supply().snapshotToken().equals(request.correction().snapshotToken())) {
@@ -172,6 +174,12 @@ public class AnnouncementJsonCorrectionService {
         String token = hash(List.of(request, fieldChanges, eventChanges, attachmentChanges, supplyToken, typeChanges));
         return new Prepared(before, metadata, planned, new Preview(token, fieldChanges, supply,
                 eventChanges, attachmentChanges, typeChanges, List.copyOf(typeWarnings), warnings));
+    }
+
+    /** 함께 모집하는 주택형을 생략하거나 순서만 다르게 준 행은 저장된 연결과 같으므로 공급행을 바꾼 요청으로 보지 않는다. */
+    private static List<SupplyCorrection.Row> withLinks(List<SupplyCorrection.Row> before, List<SupplyCorrection.Row> requested) {
+        var byId = before.stream().collect(Collectors.toMap(SupplyCorrection.Row::id, Function.identity()));
+        return requested.stream().map(row -> row.withLinksFrom(row.id() == null ? null : byId.get(row.id()))).toList();
     }
 
     private void validateDocument(Request request) {

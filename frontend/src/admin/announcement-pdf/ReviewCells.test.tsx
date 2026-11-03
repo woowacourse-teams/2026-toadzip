@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import { ReviewCells } from './ReviewCells'
-import { scenario } from './fixtures/workspace'
+import { scenario, separateHansville } from './fixtures/workspace'
 import type { Cell } from './review'
 
 function renderCell(initial: Cell) {
@@ -15,7 +15,7 @@ function renderCell(initial: Cell) {
   return changed
 }
 it('기본은 값을 비교하고 직접 수정을 선택할 때만 입력칸을 연다', () => {
-  const cell = scenario('hansville').review.rows[0].cells.find(item => item.field === 'sourceHousingTypeName')!
+  const cell = scenario('hansville', separateHansville()).review.rows[0].cells.find(item => item.field === 'sourceHousingTypeName')!
   const changed = renderCell(cell)
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: '보정된 값 사용' })).toHaveAttribute('aria-pressed', 'true')
@@ -43,7 +43,7 @@ it('PDF에서 미확인한 면적도 관리자가 입력하고 잘못된 값은 
   expect(changed.mock.lastCall?.[0]).toMatchObject({ selected: true, value: 39.84, mode: 'manual', extracted: { value: null } })
 })
 it('묶음에서 관리하는 모집수에는 불필요한 입력칸이나 값 선택을 만들지 않는다', () => {
-  const cell = scenario('hansville').review.rows[0].cells.find(item => item.field === 'totalSupplyHouseholdCount')!
+  const cell = scenario('hansville', separateHansville()).review.rows[0].cells.find(item => item.field === 'totalSupplyHouseholdCount')!
   renderCell(cell)
   expect(screen.getByText('공통 모집수는 묶음에 한 번만 기록합니다.')).toBeVisible()
   expect(screen.queryByRole('group')).not.toBeInTheDocument()
@@ -51,7 +51,7 @@ it('묶음에서 관리하는 모집수에는 불필요한 입력칸이나 값 �
 })
 
 it('현재값이 비어 있으면 기존 값 선택을 비워 두기나 미연결 유지로 표시한다', () => {
-  const row = scenario('hansville').review.rows[0]
+  const row = scenario('hansville', separateHansville()).review.rows[0]
   const type = { ...row.cells.find(item => item.field === 'housingTypeId')!, before: null, mode: 'keep' as const, selected: false }
   renderCell(type)
   expect(screen.getByRole('button', { name: '기존 값 사용' })).toHaveTextContent('미연결 유지')

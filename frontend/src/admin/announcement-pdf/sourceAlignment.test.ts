@@ -3,8 +3,10 @@ import { blankRow } from '../supply/supplyCorrectionApi'
 import { scenario } from './fixtures/workspace'
 import fixtures from './fixtures/scenarios.json'
 import { evidenceFor, noteFor, readExtraction } from './extraction'
-import { assembleReview, createReview } from './review'
-import { alignSourceRows, parseSourceLabel } from './sourceAlignment'
+import type { JsonWorkspace } from '../announcement-json/api'
+import { assembleReview, chooseCellValue, createReview, linkedHousingTypeId } from './review'
+import { alignSourceRows } from './sourceAlignment'
+import { parseSourceLabel } from './subtypes'
 
 describe('LH 원천행 표기 읽기', () => {
   it.each([
@@ -21,10 +23,11 @@ describe('최초 입주자 공고의 LH 원천행 맞추기', () => {
     sourceHousingTypeName: name, expectedMoveInMonth: null, totalSupplyHouseholdCount: total, exclusiveArea, commonArea: null, supplyArea: null, constructedHouseholdCount: null, subtypes: [], targets: targets.map(target) })
   const source = (id: number, typeName: string, householdCount: number) => ({ ...blankRow(id), id, key: `row:${id}`, complexName: '인천부평(도시재생뉴딜)',
     typeName, householdCount, pnu: '2823710100100650017', category: 'NEW_SUPPLY' as const, areaOverride: false })
-  function setup(firstName = '16A', firstArea: number | null = null, secondName = '26A', secondArea = 26.01) {
+  function setup(firstName = '16A', firstArea: number | null = null, secondName = '26A', secondArea = 26.01, thirdDeposit = 10000000) {
     const base = structuredClone(fixtures.hansville.extraction) as unknown as Record<string, unknown> & { data: Record<string, unknown> }
     base.data.supplyRows = [pdfRow(firstName, 16.37, ['대학생', '청년 소득(×)', '기존거주자(철거민)'], 78),
-      pdfRow(secondName, secondArea, ['고령자', '주거급여수급자', '기존거주자(철거민)'], null), pdfRow('26B', 26.1, ['고령자', '주거급여수급자', '기존거주자(철거민)'], null)]
+      pdfRow(secondName, secondArea, ['고령자', '주거급여수급자', '기존거주자(철거민)'], null),
+      { ...pdfRow('26B', 26.1, ['고령자', '주거급여수급자', '기존거주자(철거민)'], null), targets: ['고령자', '주거급여수급자', '기존거주자(철거민)'].map(name => ({ ...target(name), rentalDeposit: thirdDeposit })) }]
     base.sharedCounts = [{ paths: ['supplyRows[1].totalSupplyHouseholdCount', 'supplyRows[2].totalSupplyHouseholdCount'], count: 46, page: 3, quote: '26A/B/C 46' }]
     base.notApplicable = [{ path: 'supplyRows[1].targets[2].supplyRank', reason: '순위 없음' }]
     // 공급 표 한 줄 인용처럼 주택형 표기를 담는다.
@@ -37,22 +40,29 @@ describe('최초 입주자 공고의 LH 원천행 맞추기', () => {
     const candidates = [{ id: 1, name: '16A', exclusiveArea: 16.37, supplyArea: null, householdCount: null }, { id: 2, name: '26A', exclusiveArea: 26.01, supplyArea: null, householdCount: null },
       { id: 3, name: '26B', exclusiveArea: 26.1, supplyArea: null, householdCount: null }]
     const aligned = alignSourceRows(review, workspace, '인천부평(도시재생뉴딜) 행복주택', { id: 7, name: '인천부평' }, candidates as never)!
-    return { aligned, workspace, review }
+    return { aligned, workspace, review, extraction: extraction.value }
   }
 
-  it('하나에 맞는 LH 행은 연결하고, 여러 세부 타입에 맞는 LH 행은 첫 타입으로 고쳐 쓰고 나머지를 새 행으로 나눈다', () => {
+  /** 단지에 연결된 행의 typeName은 단지 주택형 이름("26A")이고, LH 표기는 행이 기록한 LH 원천행(rowSources → sources)에만 있다. */
+  function linkTo7(workspace: JsonWorkspace) {
+    const linked = workspace.supply.rows.filter(row => [11, 12].includes(row.id!))
+    workspace.supply.rowSources = linked.map(row => ({ rowKey: row.key, category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: `lh:${row.id}` }))
+    workspace.supply.sources = [...workspace.supply.sources, ...linked.map(row => ({ category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: `lh:${row.id}`, rows: [{ raw: { type_name: row.typeName } }] }))]
+    workspace.supply.rows = workspace.supply.rows.map(row => [11, 12].includes(row.id!) ? { ...row, typeName: '26A', housingComplexId: 7, housingComplexName: '인천부평', housingTypeId: 2 } : row)
+  }
+
+  it('하나에 맞는 LH 행은 연결하고, 여러 세부 타입에 맞는 LH 행은 공고문 행들을 그 LH 행 하나의 세부 타입 묶음으로 접는다', () => {
     const { aligned } = setup()
-    expect(aligned.extraction.supplyRows.map(row => row.typeName)).toEqual(['16A', '26A', '26A', '26B', '26B'])
-    expect(aligned.rows.map(row => [row.proposal.destination, row.proposal.housingTypeId, row.proposal.newComplex?.pnu])).toEqual([
-      ['row:10', 1, '2823710100100650017'], ['row:11', 2, '2823710100100650017'], ['row:12', 2, '2823710100100650017'],
-      ['new', 3, '2823710100100650017'], ['new', 3, '2823710100100650017']])
-    // 공고문의 26A/B 공통 46 대신 LH 행 단위 공통 모집수(고령자 4, 주거급여수급자 42)로 묶는다.
-    expect(aligned.extraction.sharedCounts.map(group => [group.paths, group.count])).toEqual([
-      [['supplyRows[1].totalSupplyHouseholdCount', 'supplyRows[3].totalSupplyHouseholdCount'], 4],
-      [['supplyRows[2].totalSupplyHouseholdCount', 'supplyRows[4].totalSupplyHouseholdCount'], 42]])
-    expect(aligned.rows.map(row => row.newHousingType)).toEqual([false, false, false, false, false])
-    // 형명이 하나로 맞고 주택형도 정한 1:1 연결(16A)만 확인 없이 두고, 나눈 행은 확인하게 한다.
-    expect(aligned.rows.map(row => row.proposal.needsConfirmation)).toEqual([false, true, true, true, true])
+    expect(aligned.extraction.supplyRows.map(row => [row.typeName, row.values.totalSupplyHouseholdCount, row.subtypes.map(subtype => subtype.name)])).toEqual([
+      ['16A', 78, []], ['26A/B(고령자)', 4, ['26A', '26B']], ['26A/B(주거급여수급자)', 42, ['26A', '26B']]])
+    expect(aligned.rows.map(row => [row.proposal.destination, row.proposal.newComplex?.pnu, row.subtypes?.map(subtype => subtype.choice)])).toEqual([
+      ['row:10', '2823710100100650017', undefined], ['row:11', '2823710100100650017', [2, 3]], ['row:12', '2823710100100650017', [2, 3]]])
+    expect(aligned.rows.map(row => linkedHousingTypeId(row))).toEqual([1, 2, 2])
+    // 공고문의 26A/B 공통 46은 서로 다른 LH 행에 걸쳐 있어 쓰지 않고, LH 행마다 그 행의 이번 공급 수를 모집수로 둔다.
+    expect(aligned.extraction.sharedCounts).toEqual([])
+    // 형명이 하나로 맞고 주택형도 정한 1:1 연결(16A)만 확인 없이 두고, 접은 행은 확인하게 한다.
+    expect(aligned.rows.map(row => row.proposal.needsConfirmation)).toEqual([false, true, true])
+    expect(aligned.rows[1].proposal.reason).toContain("LH 원천 '26A/B(고령자)' 한 행에 공고문 26A·26B를 세부 타입으로 함께 연결합니다.")
   })
 
   it('LH 이름과 공고문 표기가 달라도(16A(대학생/청년) ↔ 16) 아직 맞추지 않은 행 중 전용면적이 하나만 같으면 맞추고 확인하게 한다', () => {
@@ -68,31 +78,123 @@ describe('최초 입주자 공고의 LH 원천행 맞추기', () => {
   it('공급대상 묶음마다 행을 복사하고 대상은 묶음 이름으로 나누며, 묶음에 없는 대상은 첫 묶음에 넣고 확인하게 한다', () => {
     const { aligned } = setup()
     expect(aligned.extraction.supplyRows.map(row => row.targets.map(item => item.target))).toEqual([
-      ['대학생', '청년 소득(×)', '기존거주자(철거민)'], ['고령자', '기존거주자(철거민)'], ['주거급여수급자'], ['고령자', '기존거주자(철거민)'], ['주거급여수급자']])
+      ['대학생', '청년 소득(×)', '기존거주자(철거민)'], ['고령자', '기존거주자(철거민)'], ['주거급여수급자']])
     expect(aligned.rows[1].proposal.reason).toContain('기존거주자(철거민)은(는) LH 공급대상 묶음에 없어 이 행에 넣었습니다.')
     expect(aligned.rows[1].proposal.needsConfirmation).toBe(true)
-    // 대상 경로의 메모와 공급행 근거도 복사한 행의 새 번호로 옮긴다.
+    // 대상 경로의 메모와 공고문 행 근거도 접은 행의 새 번호·세부 타입으로 옮긴다.
     expect(noteFor(aligned.extraction.notApplicable, 'supplyRows[1].targets[1].supplyRank')?.reason).toBe('순위 없음')
-    expect(evidenceFor(aligned.extraction.evidence, 'supplyRows[4].targets[0].rentalDeposit')?.quote).toBe('26B 행 2')
+    expect(evidenceFor(aligned.extraction.evidence, 'supplyRows[2].subtypes[1].exclusiveArea')?.quote).toBe('26B 행 2')
+    expect(evidenceFor(aligned.extraction.evidence, 'supplyRows[2].targets[0].rentalDeposit')?.quote).toBe('26A 행 1')
   })
 
-  it('저장하면 LH 행을 그 단지·주택형으로 고치고 나눈 행과 LH 공급 수로 공통 모집 묶음을 만든다. 맞는 공고문 행이 없는 LH 행은 그대로 둔다', () => {
+  it('저장하면 LH 행 하나에 모집수를 두고 세부 타입 주택형을 모두 연결하며 공통 모집 묶음을 만들지 않는다. 맞는 공고문 행이 없는 LH 행은 그대로 둔다', () => {
     const { aligned, workspace } = setup()
+    // 접은 행의 공고 표기는 LH 표기가 아니라 공고문 행의 형명을 이은 것이다. 근거 인용이 행마다 따로라 관리자가 받아들여야 쓴다.
+    for (const row of aligned.rows.slice(1)) {
+      const label = row.cells.findIndex(cell => cell.field === 'sourceHousingTypeName')
+      expect(row.cells[label]).toMatchObject({ value: '26A/26B', state: 'confirm' })
+      row.cells[label] = chooseCellValue(row.cells[label], 'extracted')
+    }
     const input = assembleReview(aligned, workspace, { reason: 'PDF 대조', sourceUrl: 'https://example.com/notice.pdf', sourcePage: '3' })
     const rows = input.correction.rows
-    expect(rows.find(row => row.key === 'row:11')).toEqual(expect.objectContaining({ housingComplexId: 7, housingTypeId: 2, typeName: '26A', householdCount: null, excluded: false }))
+    expect(rows.find(row => row.key === 'row:11')).toEqual(expect.objectContaining({ housingComplexId: 7, housingTypeId: 2, typeName: '26A/26B', householdCount: 4, excluded: false, linkedHousingTypes: [{ housingTypeId: 3 }] }))
+    expect(rows.find(row => row.key === 'row:12')).toEqual(expect.objectContaining({ housingTypeId: 2, typeName: '26A/26B', householdCount: 42, linkedHousingTypes: [{ housingTypeId: 3 }] }))
     expect(rows.find(row => row.key === 'row:13')).toEqual(expect.objectContaining({ housingComplexId: null, excluded: false }))
-    const added = rows.filter(row => row.id === null)
-    expect(added.map(row => [row.typeName, row.housingTypeId, row.pnu, row.category, row.targets.map(item => item.target)])).toEqual([
-      ['26B', 3, '2823710100100650017', 'NEW_SUPPLY', ['고령자', '기존거주자(철거민)']], ['26B', 3, '2823710100100650017', 'NEW_SUPPLY', ['주거급여수급자']]])
+    expect(rows.filter(row => row.id === null)).toEqual([])
+    expect(input.correction.newGroups).toEqual([])
+    // 주택형 값은 세부 타입마다 그 이름으로 보내고, 대표가 아닌 세부 타입은 함께 모집하는 주택형으로 가리킨다.
+    expect(input.housingTypeValues?.filter(value => value.rowKey === 'row:11').map(value => [value.name, value.linkedHousingTypeId])).toEqual([['26A', undefined], ['26B', 3]])
+  })
+
+  it('LH 한 행에 맞춘 공고문 행들의 대상·금액이 다르면 접지 않고 행마다 둔 뒤 LH 공급 수를 공통 모집수로 묶는다', () => {
+    const { aligned, workspace } = setup('16A', null, '26A', 26.01, 20000000)
+    expect(aligned.extraction.supplyRows.map(row => row.typeName)).toEqual(['16A', '26A', '26A', '26B', '26B'])
+    expect(aligned.rows.map(row => row.proposal.destination)).toEqual(['row:10', 'row:11', 'row:12', 'new', 'new'])
+    expect(aligned.rows.slice(1).every(row => row.proposal.needsConfirmation)).toBe(true)
+    const input = assembleReview(aligned, workspace, { reason: 'PDF 대조', sourceUrl: 'https://example.com/notice.pdf', sourcePage: '3' })
+    const added = input.correction.rows.filter(row => row.id === null)
     expect(input.correction.newGroups).toEqual([{ sourceRowId: 11, rowKeys: ['row:11', added[0].key], sharedHouseholdCount: 4 },
       { sourceRowId: 12, rowKeys: ['row:12', added[1].key], sharedHouseholdCount: 42 }])
+  })
+
+  it('같은 세부 타입을 가진 LH 행이 공급대상 묶음마다 단지에 연결돼 있으면 공고문 행의 대상을 묶음별로 나눠 LH 행마다 접고, 한 LH 행이 다른 묶음 대상을 받지 않는다', () => {
+    const { workspace, extraction } = setup()
+    // 앞선 보정으로 26A/B(고령자)·26A/B(주거급여수급자)가 단지 7에 연결된 상태에서 같은 PDF로 다시 보정한다.
+    linkTo7(workspace)
+    const review = createReview(extraction, workspace, { 7: [] })
+    expect(review.extraction.supplyRows.map(row => [row.typeName, row.subtypes.map(subtype => subtype.name)])).toEqual([['16A', []], ['26A/B(고령자)', ['26A', '26B']], ['26A/B(주거급여수급자)', ['26A', '26B']]])
+    expect(review.rows.slice(1).map(row => [row.proposal.destination, row.proposal.needsConfirmation])).toEqual([['row:11', true], ['row:12', true]])
+    expect(review.rows[2].targets.map(target => target.cells.find(cell => cell.field === 'target')?.value)).toEqual(['주거급여수급자'])
+    const toEleven = review.rows.filter(row => row.proposal.destination === 'row:11')
+    expect(toEleven.flatMap(row => row.targets.map(target => target.cells.find(cell => cell.field === 'target')?.value))).not.toContain('주거급여수급자')
+    expect(toEleven.map(row => row.cells.find(cell => cell.field === 'totalSupplyHouseholdCount')?.value)).not.toContain(46)
+  })
+
+  it('공급대상 묶음으로 나눈 뒤 LH 행 하나에 들어갈 공고문 행들의 대상·금액이 달라 접을 수 없으면 연결된 LH 행 기준으로 나누지 않는다', () => {
+    const { workspace, extraction } = setup('16A', null, '26A', 26.01, 20000000)
+    linkTo7(workspace)
+    expect(createReview(extraction, workspace, { 7: [] }).extraction.supplyRows.map(row => row.typeName)).toEqual(['16A', '26A', '26B'])
+  })
+
+  // 공고 49: LH는 26A/B/C를 공급계층마다 두 행(#243 고령자 4, #244 주거급여수급자 42)으로 주고, 공고문은 세부 타입 묶음 한 행에 대상 셋을 적는다.
+  function fortyNine(linkedTo: number | null) {
+    const base = structuredClone(fixtures.hansville.extraction) as unknown as Record<string, unknown> & { data: Record<string, unknown> }
+    const subtype = (name: string, exclusiveArea: number) => ({ name, exclusiveArea, commonArea: null, supplyArea: null, constructedHouseholdCount: null })
+    base.data.supplyRows = [{ ...pdfRow('26A/B/C', 26.01, ['고령자', '주거급여수급자', '기존거주자(철거민)'], 46), subtypes: [subtype('26A', 26.01), subtype('26B', 26.1), subtype('26C', 26.2)] }]
+    base.sharedCounts = []
+    base.notApplicable = []
+    base.evidence = [{ path: 'supplyRows[0]', page: 3, quote: '26A/B/C 46' }]
+    const extraction = readExtraction(JSON.stringify(base))
+    if (!extraction.ok) throw new Error(extraction.error)
+    const { workspace } = scenario('hansville')
+    // 단지에 연결된 행의 typeName은 단지 주택형 이름이고, LH 표기는 행이 기록한 LH 원천행(rowSources → sources)에만 있다.
+    const row = (id: number, typeName: string, householdCount: number) => linkedTo === null ? source(id, typeName, householdCount)
+      : { ...source(id, '26A', householdCount), housingComplexId: linkedTo, housingComplexName: '인천부평', housingTypeId: 2, exclusiveArea: 26.01 }
+    const labels = [[243, '26A/B/C(고령자)', 4], [244, '26A/B/C(주거급여수급자)', 42]] as const
+    workspace.supply.rows = labels.map(([id, typeName, count]) => row(id, typeName, count))
+    workspace.supply.rowSources = labels.map(([id], order) => ({ rowKey: `row:${id}`, category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: `2015122300020925:hash:${order + 2}` }))
+    workspace.supply.sources = [...workspace.supply.sources, ...labels.map(([, typeName], order) => ({ category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: `2015122300020925:hash:${order + 2}`,
+      rows: [{ raw: { type_name: typeName, exclusive_area: '26.01', source_order: order + 2 } }] }))]
+    const candidates = [{ id: 2, name: '26A', exclusiveArea: 26.01, supplyArea: null, householdCount: null }, { id: 3, name: '26B', exclusiveArea: 26.1, supplyArea: null, householdCount: null },
+      { id: 4, name: '26C', exclusiveArea: 26.2, supplyArea: null, householdCount: null }]
+    return { extraction: extraction.value, workspace, candidates }
+  }
+  const cellValue = (cells: { field: string; value: unknown }[], field: string) => cells.find(cell => cell.field === field)?.value
+
+  it('같은 세부 타입을 공급대상 묶음마다 따로 둔 연결된 LH 행이면 세부 타입 묶음 공고문 행의 대상을 묶음별로 나눠 LH 행마다 저장한다', () => {
+    const { extraction, workspace, candidates } = fortyNine(7)
+    const review = createReview(extraction, workspace, { 7: candidates })
+    expect(review.rows.map(row => [row.proposal.destination, row.targets.map(target => cellValue(target.cells, 'target')), cellValue(row.cells, 'totalSupplyHouseholdCount')])).toEqual([
+      ['row:243', ['고령자', '기존거주자(철거민)'], 4], ['row:244', ['주거급여수급자'], 42]])
+    expect(review.rows.map(row => row.proposal.needsConfirmation)).toEqual([true, true])
+    expect(review.rows[0].proposal.reason).toContain('기존거주자(철거민)은(는) LH 공급대상 묶음에 없어 이 행에 넣었습니다.')
+    const input = assembleReview(review, workspace, { reason: 'PDF 대조', sourceUrl: 'https://example.com/notice.pdf', sourcePage: '3' })
+    const saved = (id: number) => input.correction.rows.find(row => row.id === id)!
+    expect([243, 244].map(id => saved(id).targets.filter(target => !target.excluded).map(target => target.target))).toEqual([['고령자', '기존거주자(철거민)'], ['주거급여수급자']])
+    // 공고 표기는 LH 행 표기('26A/B/C(고령자)')가 아니라 공고문 표기 그대로이고, 단지 주택형은 세부 타입마다 따로 연결한다.
+    expect([243, 244].map(id => saved(id).typeName)).toEqual(['26A/B/C', '26A/B/C'])
+    expect(input.housingTypeValues?.map(value => [value.rowKey, value.name])).toEqual([['row:243', '26A'], ['row:243', '26B'], ['row:243', '26C'], ['row:244', '26A'], ['row:244', '26B'], ['row:244', '26C']])
+    expect([243, 244].map(id => [saved(id).housingTypeId, saved(id).householdCount, saved(id).linkedHousingTypes])).toEqual([
+      [2, 4, [{ housingTypeId: 3 }, { housingTypeId: 4 }]], [2, 42, [{ housingTypeId: 3 }, { housingTypeId: 4 }]]])
+    expect(input.correction.rows.filter(row => row.id === null)).toEqual([])
+    expect(input.correction.newGroups).toEqual([])
+  })
+
+  it('단지에 연결되지 않은 LH 행에 맞출 때도 공고문 행 하나를 공급대상 묶음마다 나누면 각 행은 공고문 표기와 LH 행의 이번 공급 수를 쓴다', () => {
+    const { extraction, workspace, candidates } = fortyNine(null)
+    const aligned = alignSourceRows(createReview(extraction, workspace, {}), workspace, '인천부평(도시재생뉴딜) 행복주택', { id: 7, name: '인천부평' }, candidates as never)!
+    // 공고문 모집수 46은 두 묶음을 합친 수라 어느 LH 행의 모집수도 아니다.
+    expect(aligned.rows.map(row => [row.proposal.destination, cellValue(row.cells, 'sourceHousingTypeName'), cellValue(row.cells, 'totalSupplyHouseholdCount'),
+      row.targets.map(target => cellValue(target.cells, 'target'))])).toEqual([
+      ['row:243', '26A/B/C', 4, ['고령자', '기존거주자(철거민)']], ['row:244', '26A/B/C', 42, ['주거급여수급자']]])
+    const input = assembleReview(aligned, workspace, { reason: 'PDF 대조', sourceUrl: 'https://example.com/notice.pdf', sourcePage: '3' })
+    expect([243, 244].map(id => input.correction.rows.find(row => row.id === id)?.typeName)).toEqual(['26A/B/C', '26A/B/C'])
   })
 
   it('단지를 다시 고르면 맞추기 전 검토에서 다시 맞춰 행을 거듭 복사하지 않는다', () => {
     const { aligned, workspace } = setup()
     const again = alignSourceRows(aligned, workspace, '인천부평(도시재생뉴딜) 행복주택', { id: 8, name: '다른 단지' }, [])!
-    expect(again.rows).toHaveLength(5)
+    expect(again.rows).toHaveLength(3)
     expect(again.rows.every(row => row.proposal.newComplex?.id === 8)).toBe(true)
   })
 })
