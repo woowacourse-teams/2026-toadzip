@@ -190,7 +190,7 @@ class ShAnnouncementCollectionServiceTest {
 
     @Test
     void rateLimitStopsRemainingRequestsWithoutRetrying() {
-        when(externalRepository.fetchList(1)).thenReturn(list(1, 2, 100, 101));
+        when(externalRepository.fetchList(1)).thenReturn(list(1, 11, 100, 101));
         when(externalRepository.fetchDetail("100")).thenThrow(ExternalDataRequestException.rateLimited("429"));
 
         var report = service.collect();
@@ -198,6 +198,7 @@ class ShAnnouncementCollectionServiceTest {
         assertThat(report.rateLimitedRequestCount()).isOne();
         assertThat(report.externalApiCallCount()).isEqualTo(2);
         verify(externalRepository, never()).fetchDetail("101");
+        verify(externalRepository, never()).fetchList(2);
         verify(store, never()).store(any());
     }
 

@@ -2,8 +2,8 @@
 -- 수집이 그 밖의 행을 더 저장하지 않으므로 이전에 쌓인 토지·상가·분양·매입임대 행을 지운다. 이 표를 참조하는 FK는 없다.
 DELETE FROM lh_announcement_catalog_entries
 WHERE NOT (
-    (btrim(coalesce(upper_announcement_type_code, '')) = '06'
-        AND btrim(coalesce(supply_info_type_code, '')) IN ('060', '061', '062', '063'))
-    OR (btrim(coalesce(upper_announcement_type_code, '')) = '39'
-        AND btrim(coalesce(announcement_type_code, '')) IN ('42', '51'))
+    (btrim(coalesce(upper_announcement_type_code, ''), E' \t\r\n') = '06'
+        AND btrim(coalesce(supply_info_type_code, ''), E' \t\r\n') IN ('060', '061', '062', '063'))
+    OR (btrim(coalesce(upper_announcement_type_code, ''), E' \t\r\n') = '39'
+        AND btrim(coalesce(announcement_type_code, ''), E' \t\r\n') IN ('42', '51'))
 );

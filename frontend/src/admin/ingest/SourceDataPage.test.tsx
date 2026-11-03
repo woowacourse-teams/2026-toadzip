@@ -27,7 +27,7 @@ it('SH 원천은 공식 게시판과 키 없는 수집으로 안내하고 HTML�
   renderPage('/admin/sources?category=SH_ANNOUNCEMENT')
   const table = await screen.findByRole('table', { name: 'SH 공고 원천 목록 · 1페이지' })
   expect(screen.getByRole('link', { name: '공식 게시판' })).toHaveAttribute('href',
-    'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=1,2,4,8,16,32,64,128,256,512,1024')
+    'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=2')
   expect(screen.getByRole('link', { name: '키 없이 SH 공고 수집' })).toHaveAttribute('href', '/admin/ingest')
   expect(screen.queryByRole('link', { name: 'API 설명·키 발급' })).not.toBeInTheDocument()
   expect(table).toHaveTextContent('<script>window.shUnsafe = true</script>')

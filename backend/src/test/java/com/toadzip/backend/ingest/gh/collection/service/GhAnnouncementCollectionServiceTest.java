@@ -141,8 +141,10 @@ class GhAnnouncementCollectionServiceTest {
     }
 
     @Test
-    void 호출_제한에_걸리면_남은_요청을_멈춘다() {
-        list(RENTAL_HOUSE, 1, 2, row(802, RECENT), row(801, RECENT));
+    void 호출_제한에_걸리면_남은_요청과_다음_페이지를_멈춘다() {
+        Row[] first = IntStream.range(0, 10).mapToObj(index -> row(802 - index, index < 2 ? RECENT : OLD))
+                .toArray(Row[]::new);
+        list(RENTAL_HOUSE, 1, 11, first);
         when(externalRepository.fetchDetail(RENTAL_HOUSE, "802", "01"))
                 .thenThrow(ExternalDataRequestException.rateLimited("429"));
 
@@ -151,6 +153,7 @@ class GhAnnouncementCollectionServiceTest {
         assertThat(report.rateLimitedRequestCount()).isOne();
         assertThat(report.externalApiCallCount()).isEqualTo(2);
         verify(externalRepository, never()).fetchDetail(RENTAL_HOUSE, "801", "01");
+        verify(externalRepository, never()).fetchList(RENTAL_HOUSE, 2);
         verify(store, never()).store(any());
     }
 
@@ -261,7 +264,8 @@ class GhAnnouncementCollectionServiceTest {
     @Test
     void 팝업이_호출_제한에_걸리면_남은_팝업과_다음_요청을_멈춘다() {
         Row rental = row(801, RECENT);
-        list(RENTAL_HOUSE, 1, 1, rental);
+        Row next = row(800, RECENT);
+        list(RENTAL_HOUSE, 1, 2, rental, next);
         detail(RENTAL_HOUSE, rental);
         when(externalRepository.fetchHousingTypeDetail(eq(RENTAL_HOUSE), any()))
                 .thenThrow(ExternalDataRequestException.rateLimited("429"));
@@ -270,6 +274,7 @@ class GhAnnouncementCollectionServiceTest {
 
         assertThat(report.rateLimitedRequestCount()).isOne();
         verify(externalRepository).fetchHousingTypeDetail(eq(RENTAL_HOUSE), any());
+        verify(externalRepository, never()).fetchDetail(RENTAL_HOUSE, "800", "01");
     }
 
     private GhAnnouncementCollectionService service(int days) {

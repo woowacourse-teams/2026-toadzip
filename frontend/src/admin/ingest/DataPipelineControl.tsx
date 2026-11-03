@@ -40,8 +40,8 @@ const pipelineTypes: readonly DataPipelineType[] = [
 const boardSources = [
   {
     type: 'SH_ANNOUNCEMENT_COLLECTION', id: 'sh', title: 'SH',
-    description: '‘모집’ 검색 결과의 제목·본문·첨부를 원천으로 저장합니다. 서비스 공고 등록·정제는 포함하지 않습니다.',
-    groupDescription: 'SH의 ‘모집’ 검색 결과에서 제목·본문 텍스트·첨부 정보를 추출해 저장합니다. API 키 없이 실행합니다.',
+    description: '주택임대(건설임대) 분류의 ‘모집’ 검색 결과에서 제목·본문·첨부를 원천으로 저장합니다. 서비스 공고 등록·정제는 포함하지 않습니다.',
+    groupDescription: 'SH 주택임대(건설임대) 분류의 ‘모집’ 검색 결과에서 제목·본문 텍스트·첨부 정보를 추출해 저장합니다. 매입임대·전세임대 글은 받지 않으며 API 키 없이 실행합니다.',
   },
   {
     type: 'GH_ANNOUNCEMENT_COLLECTION', id: 'gh', title: 'GH',

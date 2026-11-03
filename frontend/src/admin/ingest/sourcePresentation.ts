@@ -97,7 +97,7 @@ export const sourcePresentation: Record<SourceCategory, {
 }> = {
   SH_ANNOUNCEMENT: {
     provider: '서울주택도시개발공사 · SH 게시판',
-    documentationUrl: 'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=1,2,4,8,16,32,64,128,256,512,1024',
+    documentationUrl: 'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=2',
     firstFields: ['title', 'registered_date', 'department', 'attachments',
       'body_text', 'seq', 'original_url'],
   },

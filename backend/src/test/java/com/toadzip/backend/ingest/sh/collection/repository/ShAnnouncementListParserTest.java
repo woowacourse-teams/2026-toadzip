@@ -100,6 +100,9 @@ class ShAnnouncementListParserTest {
         assertThat(page.entries()).extracting(entry -> entry.seq()).contains("200");
         assertThatThrownBy(() -> parser.parseList(html.replace("value=\"모집\"", "value=\"다른검색\""), 1))
                 .isInstanceOf(ExternalDataRequestException.class).hasMessageContaining("검색 조건");
+        assertThatThrownBy(() -> parser.parseList(html.replace(
+                "name=\"multi_itm_seqsStr\" value=\"2\"", "name=\"multi_itm_seqsStr\" value=\"1,2,4\""), 1))
+                .isInstanceOf(ExternalDataRequestException.class).hasMessageContaining("검색 조건");
     }
 
     private String fixture() {

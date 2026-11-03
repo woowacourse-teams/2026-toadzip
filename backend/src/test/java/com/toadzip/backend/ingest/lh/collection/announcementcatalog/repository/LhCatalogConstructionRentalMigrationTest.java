@@ -34,6 +34,7 @@ class LhCatalogConstructionRentalMigrationTest {
                             upper_announcement_type_code text, announcement_type_code text, supply_info_type_code text);
                         INSERT INTO lh_announcement_catalog_entries VALUES
                             ('rental', '06', '07', '062'), ('rental-padded', ' 06 ', '10', '063 '),
+                            ('rental-tab', E'06\\t', '07', E'\\n061'),
                             ('newlywed-rental', '39', '42', '390'), ('newlywed-integrated', '39', '51', '390'),
                             ('land', '01', '01', '010'), ('commercial', '22', '22', '220'),
                             ('sale', '05', '05', '050'), ('purchase', '13', '26', '130'),
@@ -50,7 +51,8 @@ class LhCatalogConstructionRentalMigrationTest {
                         kept.add(result.getString(1));
                     }
                 }
-                assertThat(kept).containsExactly("newlywed-integrated", "newlywed-rental", "rental", "rental-padded");
+                assertThat(kept).containsExactly("newlywed-integrated", "newlywed-rental", "rental", "rental-padded",
+                        "rental-tab");
             }
             finally {
                 statement.execute("RESET search_path");
