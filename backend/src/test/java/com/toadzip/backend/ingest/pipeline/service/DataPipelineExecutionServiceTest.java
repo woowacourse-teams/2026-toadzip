@@ -351,10 +351,10 @@ class DataPipelineExecutionServiceTest {
         assertThat(started.scheduledAt()).isNull();
         assertThat(started.upstreamExecutionId()).isNull();
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
-        assertThat(status.completedSteps()).hasSize(4);
+        assertThat(status.completedSteps()).hasSize(3);
         verify(lease).close();
-        verify(executionStateService, times(4)).startStep(any(), any());
-        verify(executionStateService, times(4)).completeStep(any(), any(), any());
+        verify(executionStateService, times(3)).startStep(any(), any());
+        verify(executionStateService, times(3)).completeStep(any(), any(), any());
         verify(executionStateService).complete(any(), any());
     }
 
@@ -501,18 +501,12 @@ class DataPipelineExecutionServiceTest {
         String serverResponse = "{\"rateLimitedRequestCount\":1}";
         doAnswer(invocation -> {
             UUID executionId = invocation.getArgument(1);
-            executionStateService.startStep(executionId, DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+            executionStateService.startStep(executionId, DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
             executionStateService.skipStep(
                     executionId,
-                    DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                    DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
                     "외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.",
                     serverResponse
-            );
-            executionStateService.startStep(executionId, DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
-            executionStateService.completeStep(
-                    executionId,
-                    DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
-                    "{\"collectedSourceRowCount\":1}"
             );
             executionStateService.startStep(executionId, DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
             executionStateService.completeStep(
@@ -533,12 +527,12 @@ class DataPipelineExecutionServiceTest {
         var status = query.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS);
-        assertThat(status.completedSteps()).hasSize(3);
-        assertThat(status.completedStepResults()).hasSize(3);
+        assertThat(status.completedSteps()).hasSize(2);
+        assertThat(status.completedStepResults()).hasSize(2);
         assertThat(status.completedStepResults().getFirst().report())
                 .isEqualTo(Map.of("collectedSourceRowCount", 1));
         assertThat(status.skippedSteps()).singleElement().satisfies(skipped -> {
-            assertThat(skipped.stepName()).isEqualTo("마이홈 공고 수집");
+            assertThat(skipped.stepName()).isEqualTo("LH 공고 목록 수집");
             assertThat(skipped.reason()).contains("호출 제한");
             assertThat(skipped.serverResponse())
                     .isEqualTo(Map.of("rateLimitedRequestCount", 1));
@@ -551,8 +545,6 @@ class DataPipelineExecutionServiceTest {
         when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
         doAnswer(invocation -> {
             UUID executionId = invocation.getArgument(1);
-            executionStateService.startStep(executionId, DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
-            executionStateService.completeStep(executionId, DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS, "{}");
             executionStateService.startStep(executionId, DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
             throw new LhAnnouncementUnavailableException(
                     "LH 공고 API 장애로 호출을 잠시 중단했습니다. 잠시 후 재실행해주세요.");
@@ -602,7 +594,7 @@ class DataPipelineExecutionServiceTest {
                 DataPipelineType.ANNOUNCEMENT_COLLECTION,
                 Instant.parse("2026-09-02T11:00:00Z")
         );
-        staleExecution.startStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+        staleExecution.startStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
         when(executionRepository.findFirstByTypeOrderByIdDesc(any()))
                 .thenReturn(Optional.of(staleExecution));
         when(executionStateService.recoverInterruptedBefore(any(), any(), any()))
@@ -621,7 +613,7 @@ class DataPipelineExecutionServiceTest {
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         assertThat(status.failure().message()).contains("중단");
         assertThat(status.failure().stepName())
-                .isEqualTo(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS.displayName());
+                .isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG.displayName());
     }
 
     @Test

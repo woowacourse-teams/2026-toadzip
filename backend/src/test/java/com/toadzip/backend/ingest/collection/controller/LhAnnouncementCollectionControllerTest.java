@@ -128,29 +128,30 @@ class LhAnnouncementCollectionControllerTest {
     }
 
     @Test
-    void 공고_식별자로_LH_상세와_공급을_강제_갱신한다() throws Exception {
-        when(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, "announcement-100"))
+    void LH_공고_ID로_LH_상세와_공급을_강제_갱신한다() throws Exception {
+        when(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, "2026000123"))
                 .thenReturn(new ExternalDataCollectionReport("lh-announcement-detail", 1, 0, 1));
-        when(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "announcement-100"))
+        when(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "2026000123"))
                 .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 2, 0, 1));
 
-        mockMvc.perform(post("/api/admin/ingest/lh/announcements/details/announcement-100/refresh"))
+        mockMvc.perform(post("/api/admin/ingest/lh/announcements/details/2026000123/refresh"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.externalApiCallCount").value(1));
 
-        mockMvc.perform(post("/api/admin/ingest/lh/announcements/supplies/announcement-100/refresh"))
+        mockMvc.perform(post("/api/admin/ingest/lh/announcements/supplies/2026000123/refresh"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.externalApiCallCount").value(1));
     }
 
     @Test
     void 확인한_공급_감소를_승인한_뒤_즉시_재조회한다() throws Exception {
-        when(replacementService.approve(eq("announcement-100"), any(), eq("operator"))).thenReturn(1L);
+        when(replacementService.approve(eq("100"), any(), eq("operator"))).thenReturn(1L);
         when(replacementService.finish(1L)).thenReturn(true);
-        when(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "announcement-100"))
+        when(collectionService.refreshCatalogTarget(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "PAN_ID=100&COLLECTION_VERSION=6"))
                 .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 1, 0, 1, 0, 0, 1));
 
-        mockMvc.perform(post("/api/admin/ingest/lh/announcements/supplies/announcement-100/verified-replacement")
+        mockMvc.perform(post("/api/admin/ingest/lh/announcements/supplies/100/verified-replacement")
                         .principal(() -> "operator")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -169,8 +170,6 @@ class LhAnnouncementCollectionControllerTest {
         when(replacementService.finish(1L)).thenReturn(true);
         when(collectionService.refreshCatalogTarget(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
                 "PAN_ID=100&COLLECTION_VERSION=6"))
-                .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 1, 0, 1, 0, 0, 1));
-        lenient().when(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "LH:100"))
                 .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 1, 0, 1, 0, 0, 1));
 
         mockMvc.perform(post("/api/admin/ingest/lh/announcements/supplies/LH:100/verified-replacement")
@@ -198,12 +197,13 @@ class LhAnnouncementCollectionControllerTest {
 
     @Test
     void 감소하지_않은_새_응답도_정상_재조회_결과로_반환한다() throws Exception {
-        when(replacementService.approve(eq("announcement-100"), any(), eq("operator"))).thenReturn(1L);
+        when(replacementService.approve(eq("100"), any(), eq("operator"))).thenReturn(1L);
         when(replacementService.finish(1L)).thenReturn(false);
-        when(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "announcement-100"))
+        when(collectionService.refreshCatalogTarget(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "PAN_ID=100&COLLECTION_VERSION=6"))
                 .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 2, 0, 1, 0, 0, 1));
 
-        mockMvc.perform(post("/api/admin/ingest/lh/announcements/supplies/announcement-100/verified-replacement")
+        mockMvc.perform(post("/api/admin/ingest/lh/announcements/supplies/100/verified-replacement")
                         .principal(() -> "operator")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""

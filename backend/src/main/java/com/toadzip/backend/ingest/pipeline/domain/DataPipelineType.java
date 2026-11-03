@@ -78,7 +78,6 @@ public enum DataPipelineType {
                     DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS
             );
             case ANNOUNCEMENT_COLLECTION -> List.of(
-                    DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS

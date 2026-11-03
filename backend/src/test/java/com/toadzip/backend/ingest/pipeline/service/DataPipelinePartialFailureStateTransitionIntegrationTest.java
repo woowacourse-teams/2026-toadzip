@@ -16,7 +16,6 @@ import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRec
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
 import com.toadzip.backend.ingest.collection.sh.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
@@ -86,6 +85,24 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
 
         assertThat(response.currentStepIndex()).isZero();
         assertThat(response.totalStepCount()).isOne();
+    }
+
+    @Test
+    void 마이홈_공고_수집_단계에서_실패한_지난_공고_수집도_응답으로_읽는다() {
+        UUID executionId = UUID.randomUUID();
+        executionStateService.create(executionId, DataPipelineType.ANNOUNCEMENT_COLLECTION, STARTED_AT);
+        // 공고 수집에서 마이홈 공고 수집을 빼기 전에 그 단계에서 실패한 실행.
+        jdbc.sql("UPDATE data_pipeline_executions SET status = 'FAILED', current_step = 'COLLECT_MYHOME_ANNOUNCEMENTS',"
+                + " failed_step = 'COLLECT_MYHOME_ANNOUNCEMENTS', failure_message = '마이홈 공고 수집 실패'"
+                + " WHERE execution_id = ?").param(executionId).update();
+
+        var response = new DataPipelineExecutionMapper(JsonMapper.builder().build())
+                .response(executionRepository.findByExecutionId(executionId).orElseThrow());
+
+        assertThat(response.currentStepName()).isEqualTo("마이홈 공고 수집");
+        assertThat(response.currentStepIndex()).isZero();
+        assertThat(response.totalStepCount()).isEqualTo(3);
+        assertThat(response.failure().stepName()).isEqualTo("마이홈 공고 수집");
     }
 
     @Test
@@ -177,13 +194,12 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
     }
 
     @Test
-    void 네_단계_파이프라인의_첫_단계가_부분_실패해도_나머지_단계를_모두_완료한다() {
-        MyHomeAnnouncementCollectionService myHomeService =
-                mock(MyHomeAnnouncementCollectionService.class);
+    void 공고_수집의_첫_단계가_부분_실패해도_나머지_단계를_모두_완료한다() {
+        LhAnnouncementCatalogCollectionService catalogService = mock(LhAnnouncementCatalogCollectionService.class);
         LhAnnouncementExternalCollectionService collectionService =
                 mock(LhAnnouncementExternalCollectionService.class);
-        when(myHomeService.collect(any())).thenReturn(
-                new ExternalDataCollectionReport("myhome-announcement", 2, 1, 3)
+        when(catalogService.collect()).thenReturn(
+                new ExternalDataCollectionReport("lh-announcement-catalog", 2, 1, 3)
         );
         when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY)).thenReturn(
                 ExternalDataCollectionReport.empty("lh-announcement-supply")
@@ -191,7 +207,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)).thenReturn(
                 ExternalDataCollectionReport.empty("lh-announcement-detail")
         );
-        DataPipelineRunner runner = runner(myHomeService, collectionService);
+        DataPipelineRunner runner = runner(catalogService, collectionService);
         DataPipelineExecutionLock.Lease lease = mock(DataPipelineExecutionLock.Lease.class);
         DataPipelineExecutionService service = service(runner, lease);
 
@@ -202,11 +218,10 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 .orElseThrow();
         assertThat(execution.getStatus()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         assertThat(execution.getFailedStep())
-                .isEqualTo(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+                .isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
         assertThat(execution.getFailureServerResponse())
                 .contains("\"failedRequestCount\":1");
         assertThat(execution.getCompletedSteps()).containsExactly(
-                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
                 DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
                 DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS
         );
@@ -217,13 +232,12 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
 
     @Test
     void 여러_부분_실패를_저장하고_다음_실행에는_실패_상태를_넘기지_않는다() {
-        MyHomeAnnouncementCollectionService myHomeService =
-                mock(MyHomeAnnouncementCollectionService.class);
+        LhAnnouncementCatalogCollectionService catalogService = mock(LhAnnouncementCatalogCollectionService.class);
         LhAnnouncementExternalCollectionService collectionService =
                 mock(LhAnnouncementExternalCollectionService.class);
-        when(myHomeService.collect(any())).thenReturn(
-                new ExternalDataCollectionReport("myhome-announcement", 0, 1, 1),
-                ExternalDataCollectionReport.empty("myhome-announcement")
+        when(catalogService.collect()).thenReturn(
+                new ExternalDataCollectionReport("lh-announcement-catalog", 0, 1, 1),
+                ExternalDataCollectionReport.empty("lh-announcement-catalog")
         );
         when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY)).thenReturn(
                 new ExternalDataCollectionReport("lh-announcement-supply", 0, 1, 1),
@@ -234,7 +248,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 ExternalDataCollectionReport.empty("lh-announcement-detail")
         );
         DataPipelineExecutionService service = service(
-                runner(myHomeService, collectionService),
+                runner(catalogService, collectionService),
                 mock(DataPipelineExecutionLock.Lease.class)
         );
 
@@ -242,13 +256,13 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         var first = executionRepository.findByExecutionId(failed.executionId()).orElseThrow();
 
         assertThat(first.getStatus()).isEqualTo(DataPipelineExecutionStatus.FAILED);
-        assertThat(first.getFailedStep()).isEqualTo(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+        assertThat(first.getFailedStep()).isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
         assertThat(first.getPartiallyFailedSteps()).extracting("step").containsExactly(
-                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
                 DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
                 DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS
         );
-        assertThat(first.getCompletedSteps()).containsExactly(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
+        assertThat(first.getCompletedSteps()).isEmpty();
 
         var completed = service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
         var second = executionRepository.findByExecutionId(completed.executionId()).orElseThrow();
@@ -261,23 +275,22 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
 
     @Test
     void 마지막_수집_부분_실패는_통합_정제를_막고_독립_정제로_복구할_수_있다() {
-        var myHomeService = mock(MyHomeAnnouncementCollectionService.class);
+        var catalogService = successfulCatalogService();
         var collectionService = mock(LhAnnouncementExternalCollectionService.class);
         var refinementService = mock(LhAnnouncementRefinementService.class);
-        when(myHomeService.collect(any())).thenReturn(ExternalDataCollectionReport.empty("myhome-announcement"));
         when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY))
                 .thenReturn(ExternalDataCollectionReport.empty("lh-announcement-supply"));
         when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL))
                 .thenReturn(new ExternalDataCollectionReport("lh-announcement-detail", 1, 1, 1));
-        var service = service(runner(myHomeService, collectionService, refinementService),
+        var service = service(runner(catalogService, collectionService, refinementService),
                 mock(DataPipelineExecutionLock.Lease.class));
 
         var accepted = service.start(DataPipelineType.ANNOUNCEMENT_SYNC);
         var failed = query().find(accepted.executionId());
 
         assertThat(failed.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
-        assertThat(failed.currentStepIndex()).isEqualTo(4);
-        assertThat(failed.totalStepCount()).isEqualTo(5);
+        assertThat(failed.currentStepIndex()).isEqualTo(3);
+        assertThat(failed.totalStepCount()).isEqualTo(4);
         assertThat(failed.partiallyFailedSteps()).singleElement()
                 .extracting("step").isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
         verifyNoInteractions(refinementService);
@@ -288,7 +301,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         assertThat(recovered.executionId()).isNotEqualTo(failed.executionId());
         assertThat(query().find(recovered.executionId()).status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
         assertThat(query().find(failed.executionId()).status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
-        verify(myHomeService).collect(any());
+        verify(catalogService).collect();
         verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
         verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
         verify(refinementService).refineAll();
@@ -296,16 +309,12 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
 
     @Test
     void 통합_수집_호출_제한은_정제_건너뜀_사유와_부분_완료를_저장한다() {
-        var myHomeService = mock(MyHomeAnnouncementCollectionService.class);
+        var catalogService = mock(LhAnnouncementCatalogCollectionService.class);
         var collectionService = mock(LhAnnouncementExternalCollectionService.class);
         var refinementService = mock(LhAnnouncementRefinementService.class);
-        when(myHomeService.collect(any()))
-                .thenReturn(new ExternalDataCollectionReport("myhome-announcement", 0, 1, 0, 0, 1));
-        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY))
-                .thenReturn(ExternalDataCollectionReport.empty("lh-announcement-supply"));
-        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL))
-                .thenReturn(ExternalDataCollectionReport.empty("lh-announcement-detail"));
-        var service = service(runner(myHomeService, collectionService, refinementService),
+        when(catalogService.collect())
+                .thenReturn(new ExternalDataCollectionReport("lh-announcement-catalog", 0, 1, 0, 0, 1));
+        var service = service(runner(catalogService, collectionService, refinementService),
                 mock(DataPipelineExecutionLock.Lease.class));
 
         var accepted = service.start(DataPipelineType.ANNOUNCEMENT_SYNC);
@@ -313,13 +322,13 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
 
         assertThat(result.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS);
         assertThat(result.skippedSteps()).extracting("stepName").containsExactly(
-                "마이홈 공고 수집", "LH 공고 정제");
-        assertThat(result.skippedSteps().get(1).reason()).contains("자동 정제를 실행하지 않았습니다");
-        verifyNoInteractions(refinementService);
+                "LH 공고 목록 수집", "LH 공고 공급 원본 수집", "LH 공고 상세 원본 수집", "LH 공고 정제");
+        assertThat(result.skippedSteps().get(3).reason()).contains("자동 정제를 실행하지 않았습니다");
+        verifyNoInteractions(collectionService, refinementService);
     }
 
     @ParameterizedTest
-    @CsvSource({"COMPLEX_SYNC, 3, 4", "ANNOUNCEMENT_SYNC, 5, 5"})
+    @CsvSource({"COMPLEX_SYNC, 3, 4", "ANNOUNCEMENT_SYNC, 4, 4"})
     void 통합_실행의_정제_순서와_완료를_저장하고_조회한다(
             DataPipelineType type, int refinementIndex, int totalSteps
     ) {
@@ -397,7 +406,6 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 new DataPipelineStepExecutor(
                         mock(MyHomeComplexCollectionService.class),
                         mock(LhLeaseCatalogCollectionService.class),
-                        mock(MyHomeAnnouncementCollectionService.class),
                         mock(LhAnnouncementCatalogCollectionService.class),
                         mock(LhAnnouncementExternalCollectionService.class),
                         mappingService,
@@ -412,14 +420,14 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
     }
 
     private DataPipelineRunner runner(
-            MyHomeAnnouncementCollectionService myHomeService,
+            LhAnnouncementCatalogCollectionService catalogService,
             LhAnnouncementExternalCollectionService collectionService
     ) {
-        return runner(myHomeService, collectionService, mock(LhAnnouncementRefinementService.class));
+        return runner(catalogService, collectionService, mock(LhAnnouncementRefinementService.class));
     }
 
     private DataPipelineRunner runner(
-            MyHomeAnnouncementCollectionService myHomeService,
+            LhAnnouncementCatalogCollectionService catalogService,
             LhAnnouncementExternalCollectionService collectionService,
             LhAnnouncementRefinementService refinementService
     ) {
@@ -427,8 +435,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 new DataPipelineStepExecutor(
                         mock(MyHomeComplexCollectionService.class),
                         mock(LhLeaseCatalogCollectionService.class),
-                        myHomeService,
-                        successfulCatalogService(),
+                        catalogService,
                         collectionService,
                         mock(MyHomeComplexMappingService.class),
                         mock(LhHousingTypeHouseholdEnrichmentService.class),
