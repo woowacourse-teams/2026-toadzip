@@ -33,13 +33,22 @@ beforeEach(() => {
   vi.stubGlobal('URL', class extends URL { static createObjectURL = () => 'blob:pdf'; static revokeObjectURL = vi.fn() })
   api.loadJsonWorkspace.mockResolvedValue(workspace)
   api.applyJsonUpdate.mockResolvedValue(workspace)
-  api.previewJsonUpdate.mockResolvedValue({ confirmationToken: 'confirmed', housingTypes: [], housingTypeWarnings: [] })
+  api.previewJsonUpdate.mockResolvedValue(previewResult())
   extracts(JSON.stringify(fixtures.hansville.extraction))
   extractor.loadLatestExtraction.mockResolvedValue(null)
   draftApi.loadCorrectionDraft.mockResolvedValue(null)
   draftApi.saveCorrectionDraft.mockImplementation(async () => ({ revision: draftApi.saveCorrectionDraft.mock.calls.length, updatedAt: '2026-11-03T03:00:00Z' }))
   draftApi.deleteCorrectionDraft.mockResolvedValue(undefined)
 })
+/** 서버 미리보기 응답. 적용 전 확인에 쓴다. */
+function previewResult(more: Partial<JsonPreview> = {}): JsonPreview {
+  return { confirmationToken: 'confirmed', fields: [], supply: null, schedules: [], attachments: [], housingTypes: [], housingTypeWarnings: [], warnings: [], ...more }
+}
+/** 적용 전 확인을 열고 이대로 적용한다. */
+async function applyCorrection() {
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  fireEvent.click(await within(await screen.findByRole('region', { name: '적용 전 확인' })).findByRole('button', { name: '이대로 적용' }))
+}
 /** 빈 Blob(첨부 PDF 목)의 SHA-256 */
 const EMPTY_PDF_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
 function savedResult(pdfSha256: string) {
@@ -92,8 +101,8 @@ const updateTarget = (row: number) => screen.getByRole('combobox', { name: `공�
 function manual(scope: string, label: string) {
   fireEvent.click(within(screen.getByRole('group', { name: `${scope} ${label} 반영 방법` })).getByRole('button', { name: '직접 입력' }))
 }
-it('추가 확인 체크나 미리보기 화면 없이 서버 검증을 마친 같은 보정안만 한 번 저장한다', async () => {
-  let finish!: (value: Pick<JsonPreview, 'confirmationToken' | 'housingTypes' | 'housingTypeWarnings'>) => void
+it('서버 검증을 마친 보정안을 적용 전 확인으로 보여 주고, 확인한 같은 보정안만 한 번 저장한다', async () => {
+  let finish!: (value: JsonPreview) => void
   api.previewJsonUpdate.mockImplementation(() => new Promise(resolve => { finish = resolve }))
   await open()
   expect(screen.queryByRole('checkbox', { name: /확인함|대조함/ })).not.toBeInTheDocument()
@@ -107,8 +116,12 @@ it('추가 확인 체크나 미리보기 화면 없이 서버 검증을 마친 �
   expect(input.correction.newGroups).toEqual([])
   expect(input.correction.rows).toEqual([expect.objectContaining({ id: 90, householdCount: 170, housingTypeId: 10353, linkedHousingTypes: [{ housingTypeId: 10352 }] })])
   expect(input.housingTypeValues?.map(value => [value.name, value.linkedHousingTypeId])).toEqual([['26A', undefined], ['26B', 10352]])
-  await act(async () => finish({ confirmationToken: 'confirmed', housingTypeWarnings: ['26: 관리자가 고친 세대수를 유지합니다.'],
-    housingTypes: [{ rowKey: 'row:1', housingTypeId: 10353, typeName: '26', before: { name: '26', supplyArea: null, householdCount: null }, after: { name: '26A', supplyArea: 52.5, householdCount: 120 } }] }))
+  await act(async () => finish(previewResult({ housingTypeWarnings: ['26: 관리자가 고친 세대수를 유지합니다.'],
+    housingTypes: [{ rowKey: 'row:1', housingTypeId: 10353, typeName: '26', before: { name: '26', supplyArea: null, householdCount: null }, after: { name: '26A', supplyArea: 52.5, householdCount: 120 } }] })))
+  const summary = await screen.findByRole('region', { name: '적용 전 확인' })
+  expect(within(summary).getByRole('note', { name: '적용 경고' })).toHaveTextContent('26: 관리자가 고친 세대수를 유지합니다.')
+  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
+  fireEvent.click(within(summary).getByRole('button', { name: '이대로 적용' }))
   await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })
   expect(api.applyJsonUpdate).toHaveBeenCalledExactlyOnceWith('29', input, 'confirmed')
   expect(screen.queryByRole('heading', { name: '적용할 변경' })).not.toBeInTheDocument()
@@ -182,7 +195,7 @@ it.each(['preview', 'apply'])('%s의 409는 저장을 반복하지 않고 최신
   await open()
   manual('공급행 1', '이 공고의 주택형 표기')
   fireEvent.change(screen.getByRole('textbox', { name: '공급행 1 이 공고의 주택형 표기 수정' }), { target: { value: '26A 수동 보정' } })
-  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  if (stage === 'apply') await applyCorrection(); else fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
   const reload = await screen.findByRole('button', { name: '입력을 유지하고 최신값 비교' })
   expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeDisabled()
   if (stage === 'preview') expect(api.applyJsonUpdate).not.toHaveBeenCalled()
@@ -194,7 +207,7 @@ it.each(['preview', 'apply'])('%s의 409는 저장을 반복하지 않고 최신
 it('저장 응답을 잃으면 자동 재적용하지 않고 최신값 확인을 요구한다', async () => {
   api.applyJsonUpdate.mockRejectedValue(new TypeError('network'))
   await open()
-  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  await applyCorrection()
   expect(await screen.findByRole('alert')).toHaveTextContent('저장 응답을 받지 못했습니다.')
   expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeDisabled()
   expect(api.applyJsonUpdate).toHaveBeenCalledOnce()
@@ -489,7 +502,8 @@ it('마이홈 원천 공고도 보정 결과에서 다시 정제를 실행하지
   api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, rowSources: [{ rowKey: first.key, category: 'MYHOME_ANNOUNCEMENT', sourceKey: '5:213951:1' }] } })
   render(<MemoryRouter initialEntries={['/admin/announcements/29/pdf-correction?failureCount=2&failureReturnTo=%2Fadmin%2Ffailures']}><Routes><Route path="/admin/announcements/:id/pdf-correction" element={<PdfCorrectionPage />} /></Routes></MemoryRouter>)
   await review()
-  fireEvent.click(await screen.findByRole('button', { name: '보정 내용 적용' }))
+  await screen.findByRole('button', { name: '보정 내용 적용' })
+  await applyCorrection()
   const result = (await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })).closest('section')!
   expect(result).toHaveTextContent('이 공고의 오류 2건을 포함해 이 공고의 미해결 오류를 해결로 바꿨습니다.')
   expect(result).not.toHaveTextContent('정제')
@@ -749,10 +763,10 @@ it('저장된 초안이 있으면 바로 적용하지 않고, 공고가 바뀐 �
   expect(screen.getByLabelText('공급행 1 이 공고의 주택형 표기 수정')).toHaveValue('26A 초안')
   expect(screen.getByText(/최신 공고 값에 맞춰 복원했습니다/)).toBeVisible()
   api.applyJsonUpdate.mockRejectedValueOnce(new ManagementError('잘못된 요청', 400))
-  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  await applyCorrection()
   await screen.findByText('잘못된 요청')
   expect(draftApi.deleteCorrectionDraft).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  await applyCorrection()
   await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })
   await waitFor(() => expect(draftApi.deleteCorrectionDraft).toHaveBeenCalledWith('29', expect.any(Number)))
 })
@@ -768,4 +782,45 @@ it('저장된 초안을 폐기하면 그 revision으로 지우고 새 작업을 
   fireEvent.click(screen.getByRole('button', { name: '임시저장' }))
   await waitFor(() => expect(draftApi.saveCorrectionDraft).toHaveBeenCalled())
   expect(draftApi.saveCorrectionDraft.mock.calls[0][1].expectedRevision).toBeNull()
+})
+
+it('같은 보정 요청을 다시 보내 409(ADMIN_DATA_CONFLICT)를 받으면 최신값을 조회해 이미 반영됐는지 알린다', async () => {
+  await open()
+  let sent: JsonUpdateInput | undefined
+  api.applyJsonUpdate.mockImplementationOnce(async (_id: string, input: JsonUpdateInput) => { sent = input; throw new ManagementError('이미 처리한 요청입니다.', 409, {}, 'ADMIN_DATA_CONFLICT') })
+  api.loadJsonWorkspace.mockImplementation(async () => ({ ...workspace, supply: { ...workspace.supply, rows: sent!.correction.rows } }))
+  await applyCorrection()
+  expect(await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })).toBeVisible()
+  expect(screen.getByText('이 보정은 이미 반영돼 있습니다. 같은 요청을 다시 저장하지 않았습니다.')).toBeVisible()
+  expect(api.applyJsonUpdate).toHaveBeenCalledOnce()
+})
+
+it('409(ADMIN_DATA_CONFLICT) 뒤 최신값에 이 변경이 없으면 반영되지 않았다고 알리고 다시 비교하게 한다', async () => {
+  await open()
+  manual('공급행 1', '이 공고의 주택형 표기')
+  fireEvent.change(screen.getByRole('textbox', { name: '공급행 1 이 공고의 주택형 표기 수정' }), { target: { value: '26A 새 표기' } })
+  api.applyJsonUpdate.mockRejectedValueOnce(new ManagementError('이미 처리한 요청입니다.', 409, {}, 'ADMIN_DATA_CONFLICT'))
+  await applyCorrection()
+  expect(await screen.findByRole('alert')).toHaveTextContent('이 변경은 반영되지 않았습니다')
+  expect(screen.getByRole('button', { name: '입력을 유지하고 최신값 비교' })).toBeEnabled()
+})
+
+it('적용 전 확인은 통합행 분리 결과와 단지별 변경 전후 합계, 남는 LH 행을 보여 준다', async () => {
+  const [first] = workspace.supply.rows
+  const lh = { rowIdentifier: 'LH:P:SUPPLY:1', complexLabel: '익산한스빌', typeName: '아파트', exclusiveArea: null, householdCount: 170, attachedRowKey: first.key, splitRowKeys: [] }
+  const after = [{ ...first, typeName: '26A', householdCount: 120, housingTypeId: 10353 }, { ...first, id: null, key: 'new-26b', typeName: '26B', householdCount: 50, housingTypeId: 10352 }]
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, lhSupplyRows: [lh] } })
+  api.previewJsonUpdate.mockResolvedValue(previewResult({ supply: { confirmationToken: 's', before: [first], after, warnings: ['남은 LH 행이 있습니다.'],
+    splits: [{ lhSourceRowIdentifier: 'LH:P:SUPPLY:1', rowKeys: [first.key, 'new-26b'], householdCount: 170, lhHouseholdCount: 170 }],
+    unattachedLhSupplyRows: [{ rowIdentifier: 'LH:P:SUPPLY:2', complexLabel: '익산한스빌', typeName: '36', exclusiveArea: null, householdCount: 4 }] } }))
+  await open()
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  const summary = await screen.findByRole('region', { name: '적용 전 확인' })
+  expect(within(summary).getByRole('group', { name: /^통합행 분리/ })).toHaveTextContent('통합행 #90 아파트 · 모집 170 → 첫 분리행 26A 120세대(ID 유지) · 새 분리행 26B 50세대분리 합계 170세대 / LH 170세대 · 일치')
+  expect(within(summary).getByRole('region', { name: '익산한스빌 적용 전후' })).toHaveTextContent('모집수 합계 170세대 → 170세대')
+  expect(within(summary).getByRole('list', { name: '익산한스빌 변경 후' })).toHaveTextContent('26B50세대')
+  expect(within(summary).getByRole('note', { name: '남는 LH 행' })).toHaveTextContent('LH 행 2 · 익산한스빌 · 36')
+  fireEvent.click(within(summary).getByRole('button', { name: '돌아가서 수정' }))
+  expect(screen.queryByRole('region', { name: '적용 전 확인' })).not.toBeInTheDocument()
+  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
 })

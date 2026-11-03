@@ -3,7 +3,9 @@ import { Link, useParams, useSearchParams } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import { attachmentErrorMessage, loadAnnouncementAttachment } from '../../public-housing/api/announcementAttachments'
 import type { PdfFocus } from '../../public-housing/components/PdfDocumentPreview'
-import { applyJsonUpdate, loadJsonWorkspace, previewJsonUpdate, type JsonPreview, type JsonWorkspace } from '../announcement-json/api'
+import { applyJsonUpdate, loadJsonWorkspace, previewJsonUpdate, type JsonPreview, type JsonUpdateInput, type JsonWorkspace } from '../announcement-json/api'
+import { correctionReflected, summarizePreview } from './applySummary'
+import { ApplySummaryPanel } from './ApplySummaryPanel'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
 import type { CorrectionRow, SupplyCorrectionInput } from '../supply/supplyCorrectionApi'
 import { getManagementDetail, ManagementError } from '../management/api'
@@ -86,6 +88,11 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   const [storedDraft, setStoredDraft] = useState<CorrectionDraft | null>(null), [draftChecked, setDraftChecked] = useState(Boolean(supplyDraft))
   const [draftTick, setDraftTick] = useState(0), [draftError, setDraftError] = useState('')
   const restoredText = useRef('')
+  // 적용 전 확인: 서버 미리보기를 받은 보정안. 화면을 고치면 다시 확인해야 한다. lastInput은 응답이 불분명했던 적용 요청이다.
+  const [checked, setChecked] = useState<{ input: JsonUpdateInput; preview: JsonPreview } | null>(null)
+  const lastInput = useRef<JsonUpdateInput | null>(null)
+  useEffect(() => setChecked(null), [review, reason, sourceUrl, sourcePage])
+  useEffect(() => { if (checked) reviewPane.current?.querySelector<HTMLElement>('[aria-label="적용 전 확인"]')?.focus() }, [checked])
   const reviewPane = useRef<HTMLDivElement>(null)
   const reasonProblem = !reason.trim() ? '보정 이유를 입력하세요.' : !validEvidenceUrl(sourceUrl.trim()) ? '공식 근거 URL에 올바른 http 또는 https 주소를 입력하세요.' : ''
   // 긴 응답을 입력마다 다시 읽지 않도록 검토 버튼을 누를 때만 읽는다.
@@ -239,39 +246,65 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     setSourcePage([...new Set(parsed.value.evidence.map(item => item.page))].sort((a, b) => a - b).join(', ').slice(0, 100))
     setPhase('review'); setSection('supply'); setFilter('all'); setError(''); setNotice('')
   }
+  /** 1단계: 보정안을 만들고 서버 미리보기로 검증해 적용 전 확인을 연다. 공급정보 편집표 채우기는 바로 돌려준다. */
   async function apply() {
     if (!review || !workspace || blocked || busy || !supplyDraft && reasonProblem) return
     setBusy(true); setError('')
-    let saving = false
     try {
       const input = assembleReview(review, workspace, { reason: reason.trim(), sourceUrl: sourceUrl.trim(), sourcePage: sourcePage.trim() || null })
       if (supplyDraft) { supplyDraft.onFill(input.correction); return }
-      const checked = await previewJsonUpdate(id, input)
-      saving = true
-      const latest = await applyJsonUpdate(id, input, checked.confirmationToken)
-      setTypeResult({ housingTypes: checked.housingTypes, housingTypeWarnings: checked.housingTypeWarnings }); setWorkspace(latest); setPhase('result'); setText(''); setBlocked(false); setUncertain(false)
-      // 적용을 확인한 뒤에만 초안을 지운다. 지우지 못해도 적용은 끝났고, 다음에 열면 이미 적용한 초안(stale)으로 보인다.
-      void drafts.remove().catch(() => setDraftError('보정은 적용했지만 임시저장본을 지우지 못했습니다. 다음에 열 때 폐기하세요.'))
+      const preview = await previewJsonUpdate(id, input)
+      setChecked({ input, preview })
+    } catch (cause) { fail(cause, false) } finally { setBusy(false) }
+  }
+  /** 2단계: 확인한 미리보기 그대로 저장한다. */
+  async function confirmApply() {
+    if (!checked || busy || blocked) return
+    setBusy(true); setError('')
+    const { input, preview } = checked
+    lastInput.current = input
+    try {
+      const latest = await applyJsonUpdate(id, input, preview.confirmationToken)
+      finishApplied(latest, preview)
     } catch (cause) {
-      const rejected = cause instanceof ManagementError && cause.status >= 400 && cause.status < 500
-      const uncertainSave = saving && !rejected
-      setUncertain(uncertainSave); setBlocked(uncertainSave || cause instanceof ManagementError && cause.status === 409)
-      setError(uncertainSave ? '저장 응답을 받지 못했습니다. 최신 저장값을 조회해 적용 여부를 확인한 뒤 다시 비교하세요.' : cause instanceof Error ? cause.message : '보정 내용을 적용하지 못했습니다. 다시 시도하세요.')
-      setMobileView('review')
-      // 적용 전 검증에 걸리면 문제 항목으로 바로 이동한다.
-      if (cause instanceof ReviewError && cause.reviewId) {
-        const id = cause.reviewId
-        setSection(reviewSection(id)); setFilter('all'); setJump(previous => ({ id, nonce: (previous?.nonce ?? 0) + 1 }))
+      // 이미 처리한 요청을 다시 보냈다는 409는 아무것도 바꾸지 않았으므로, 최신값에 이 변경이 들어 있는지 확인해 알린다.
+      if (cause instanceof ManagementError && cause.status === 409 && cause.code === 'ADMIN_DATA_CONFLICT') {
+        try {
+          const latest = await loadJsonWorkspace(id)
+          if (correctionReflected(input.correction.rows, latest.supply.rows)) { finishApplied(latest, preview); setNotice('이 보정은 이미 반영돼 있습니다. 같은 요청을 다시 저장하지 않았습니다.'); return }
+          setError('같은 보정 요청을 이미 처리했다는 응답을 받았지만 저장된 공급정보가 이 화면의 변경과 다릅니다. 이 변경은 반영되지 않았습니다. 최신값을 불러와 비교한 뒤 다시 적용하세요.')
+          setBlocked(true); setChecked(null); return
+        } catch { /* 최신값을 못 읽으면 일반 실패로 알린다. */ }
       }
+      fail(cause, true)
     } finally { setBusy(false) }
+  }
+  function finishApplied(latest: JsonWorkspace, preview: JsonPreview) {
+    setTypeResult({ housingTypes: preview.housingTypes, housingTypeWarnings: preview.housingTypeWarnings }); setWorkspace(latest); setPhase('result'); setText(''); setBlocked(false); setUncertain(false); setChecked(null)
+    // 적용을 확인한 뒤에만 초안을 지운다. 지우지 못해도 적용은 끝났고, 다음에 열면 이미 적용한 초안(stale)으로 보인다.
+    void drafts.remove().catch(() => setDraftError('보정은 적용했지만 임시저장본을 지우지 못했습니다. 다음에 열 때 폐기하세요.'))
+  }
+  function fail(cause: unknown, saving: boolean) {
+    const rejected = cause instanceof ManagementError && cause.status >= 400 && cause.status < 500
+    const uncertainSave = saving && !rejected
+    setUncertain(uncertainSave); setBlocked(uncertainSave || cause instanceof ManagementError && cause.status === 409)
+    setError(uncertainSave ? '저장 응답을 받지 못했습니다. 최신 저장값을 조회해 적용 여부를 확인한 뒤 다시 비교하세요.' : cause instanceof Error ? cause.message : '보정 내용을 적용하지 못했습니다. 다시 시도하세요.')
+    setMobileView('review'); setChecked(null)
+    // 적용 전 검증에 걸리면 문제 항목으로 바로 이동한다.
+    if (cause instanceof ReviewError && cause.reviewId) {
+      const target = cause.reviewId
+      setSection(reviewSection(target)); setFilter('all'); setJump(previous => ({ id: target, nonce: (previous?.nonce ?? 0) + 1 }))
+    }
   }
   async function reload() {
     setBusy(true); setError('')
     try {
       const latest = await loadJsonWorkspace(id), [nextHousing, names] = await Promise.all([candidates(latest), complexLabels(latest)])
+      const reflected = uncertain && lastInput.current !== null && correctionReflected(lastInput.current.correction.rows, latest.supply.rows)
       if (review) setReview(rebaseReview(review, latest, nextHousing))
       setWorkspace(latest); setHousing(nextHousing); setComplexes(names); setBlocked(false); setUncertain(false); setPhase('review')
-      setNotice('최신 저장값을 불러왔습니다. 수동 입력은 유지했습니다. 달라진 기존 값과 선택 항목을 비교한 뒤 다시 적용하세요.')
+      setNotice(reflected ? '최신 저장값에 이 보정이 이미 반영돼 있습니다. 다시 적용하지 마세요. 결과를 확인한 뒤 화면을 닫으세요.'
+        : '최신 저장값을 불러왔습니다. 수동 입력은 유지했습니다. 달라진 기존 값과 선택 항목을 비교한 뒤 다시 적용하세요.')
     } catch (cause) { setError(cause instanceof Error ? cause.message : '최신값을 불러오지 못했습니다.') }
     finally { setBusy(false) }
   }
@@ -311,7 +344,8 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
           {!supplyDraft && <nav className={styles.sections} aria-label="PDF 보정 영역">{sectionLabels.map(([key, label]) => { const count = pending.filter(item => item.section === key).length; return <Button data-design-system key={key} aria-label={count > 0 ? `${label} · 확인 ${count}` : undefined} aria-pressed={section === key} onClick={() => setSection(key)}>{label}{count > 0 && <span className={styles.sectionCount}>{` · 확인 ${count}`}</span>}</Button> })}</nav>}
           <div className={styles.filters} role="group" aria-label="검토 항목 필터">{filterLabels.map(([key, label]) => <Button data-design-system key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}{key !== 'all' && ` ${key === 'pending' ? pending.length : counts[key]}`}</Button>)}</div>
         </div>
-        <fieldset disabled={busy || blocked} className={styles.reviewFields}>
+        {checked && <ApplySummaryPanel summary={summarizePreview(checked.preview, housing, workspace.supply.lhSupplyRows ?? [])} busy={busy} onApply={() => void confirmApply()} onBack={() => setChecked(null)} />}
+        <fieldset disabled={busy || blocked} hidden={Boolean(checked)} className={styles.reviewFields}>
           {section === 'supply' && <ReviewSupply savesHousingTypes={!supplyDraft} warnings={extraction.status === 'done' ? extraction.result.warnings : []} editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} />}
           {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.extraction.undatedSchedules.length > 0 && <p className={styles.hint}>날짜 없이 안내한 일정: {review.extraction.undatedSchedules.join(' · ')}</p>}{review.schedules.map((schedule, index) => scheduleMatches(schedule) && <section className={styles.supplyBlock} key={index} data-review-id={`schedule:${index}`} tabIndex={-1}><header><h3>{shown(schedule.cells.find(cell => cell.field === 'name')?.value)}</h3><label><input type="checkbox" checked={schedule.include} onChange={event => updateSchedule(index, { include: event.target.checked, reviewed: true })} />일정 {index + 1} 적용</label></header>
             {pendingSchedule(schedule) && <div className={styles.pending}><p><strong>확인 필요</strong> {schedule.proposal.reason}</p><div className={styles.actions}><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: true, reviewed: true })}>{`일정 ${index + 1} 적용`}</Button><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: false, reviewed: true })}>{`일정 ${index + 1} 적용 안 함`}</Button></div></div>}
