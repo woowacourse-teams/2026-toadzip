@@ -2,6 +2,7 @@
 
 import logging
 import re
+import time
 from dataclasses import dataclass
 
 import pymupdf
@@ -13,6 +14,8 @@ log = logging.getLogger(__name__)
 UNREADABLE_CODE = "PDF_UNREADABLE"
 UNREADABLE_MESSAGE = "PDF를 읽지 못했습니다. 손상되었거나 암호가 걸린 파일인지 확인해 주세요."
 EMPTY_MESSAGE = "쪽이 없는 PDF입니다."
+SLOW_CODE = "PDF_TOO_SLOW"
+SLOW_MESSAGE = "PDF 쪽을 읽는 데 시간이 너무 오래 걸려 추출하지 못했습니다."
 
 # 굵은 제목이 "공공공용용용"처럼 같은 글자가 겹쳐 추출되는 경우를 한 글자로 줄인다.
 # 숫자는 2,520,000처럼 같은 숫자가 이어지는 값이 많아 줄이지 않는다.
@@ -116,8 +119,19 @@ def open_pdf(content: bytes) -> pymupdf.Document:
     return document
 
 
-def page_texts(document: pymupdf.Document) -> list[str]:
-    return [page.get_text("text") for page in document]
+def page_texts(document: pymupdf.Document, deadline: float) -> list[str]:
+    """deadline(time.monotonic() 기준)은 모델을 부를 시간이 남는 마지막 시각이다. 쪽마다 확인해 큰 PDF가 시도 예산을 다 쓰기 전에 멈춘다."""
+    texts = []
+    for page in document:
+        texts.append(page.get_text("text"))
+        check_deadline(deadline)
+    return texts
+
+
+def check_deadline(deadline: float) -> None:
+    """같은 PDF는 다시 해도 느리므로 PermanentError다."""
+    if time.monotonic() > deadline:
+        raise PermanentError(SLOW_CODE, SLOW_MESSAGE)
 
 
 @dataclass(frozen=True)
@@ -127,14 +141,16 @@ class PromptPages:
     rental_rows: int
 
 
-def prompt_pages(document: pymupdf.Document, pages: list[int]) -> PromptPages:
-    """고른 쪽을 [첨부 N쪽] 순서로 잇는다. 모델은 이 N을 근거 쪽 번호로 쓰고, 결과에서 원본 쪽 번호로 되돌린다."""
+def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) -> PromptPages:
+    """고른 쪽을 [첨부 N쪽] 순서로 잇는다. 모델은 이 N을 근거 쪽 번호로 쓰고, 결과에서 원본 쪽 번호로 되돌린다.
+    deadline은 page_texts와 같다. 표 찾기가 쪽마다 1초 안팎이라 쪽마다 확인한다."""
     parts, rental = [], set()
     for index, number in enumerate(pages, 1):
         text, tables = page_with_tables(document[number - 1])
         parts.append(f"[첨부 {index}쪽]\n{text}")
         for cells in tables:
             rental |= rental_keys(cells)
+        check_deadline(deadline)
     return PromptPages("\n\n".join(parts), len(rental))
 
 

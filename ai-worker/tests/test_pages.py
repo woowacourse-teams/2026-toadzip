@@ -1,3 +1,4 @@
+import time
 from types import SimpleNamespace
 
 import pymupdf
@@ -67,15 +68,49 @@ def test_finds_sections_with_spaced_or_doubled_letters():
 
 def test_reads_text_of_each_page():
     with pages.open_pdf(pdf(COVER, SUPPLY, CONTACT)) as document:
-        texts = pages.page_texts(document)
+        texts = pages.page_texts(document, later())
 
     assert len(texts) == 3
     assert "공용" in texts[1]
 
 
+def later() -> float:
+    return time.monotonic() + 600
+
+
+class Clock:
+    """쪽 하나를 처리할 때마다 10초가 지난 것처럼 시각을 돌려준다."""
+
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        self.now += 10
+        return self.now
+
+
+@pytest.mark.parametrize("read", [
+    lambda document, deadline: pages.page_texts(document, deadline),
+    lambda document, deadline: pages.prompt_pages(document, [1, 2, 3], deadline),
+])
+def test_stops_reading_pages_once_deadline_passes(monkeypatch, read):
+    clock = Clock()
+    monkeypatch.setattr(pages.time, "monotonic", clock)
+    read_pages = []
+    original = pymupdf.Page.get_text
+    monkeypatch.setattr(pymupdf.Page, "get_text", lambda page, *args: read_pages.append(page.number) or original(page, *args))
+
+    with pages.open_pdf(pdf(COVER, SUPPLY, RENT)) as document:
+        with pytest.raises(PermanentError) as error:
+            read(document, 1015)
+
+    assert error.value.code == "PDF_TOO_SLOW"
+    assert read_pages == [0, 1]
+
+
 def test_prompt_numbers_selected_pages_in_order():
     with pages.open_pdf(pdf("cover", "notice", "supply", "contact")) as document:
-        text = pages.prompt_pages(document, [1, 3, 4]).text
+        text = pages.prompt_pages(document, [1, 3, 4], later()).text
 
     assert text.index("[첨부 1쪽]\ncover") < text.index("[첨부 2쪽]\nsupply") < text.index("[첨부 3쪽]\ncontact")
     assert "notice" not in text
@@ -108,7 +143,7 @@ def test_rental_rows_are_counted_once_across_selected_pages(monkeypatch):
     calls = []
     monkeypatch.setattr(pymupdf.Page, "find_tables", lambda page: calls.append(page.number) or SimpleNamespace(tables=[table]))
     with pymupdf.open(stream=pdf("cover", "rent", "rent again"), filetype="pdf") as document:
-        assert pages.prompt_pages(document, [1, 2, 3]).rental_rows == 4
+        assert pages.prompt_pages(document, [1, 2, 3], later()).rental_rows == 4
     # 표 찾기는 쪽마다 1초 안팎이라 프롬프트와 검산이 한 번의 결과를 같이 쓴다.
     assert calls == [0, 1, 2]
 
