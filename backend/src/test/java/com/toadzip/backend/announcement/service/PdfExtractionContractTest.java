@@ -7,6 +7,7 @@ import com.toadzip.backend.announcement.dto.response.AnnouncementPdfExtraction;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.json.JsonTest;
@@ -49,7 +50,7 @@ class PdfExtractionContractTest {
         assertThat(mapper.readValue(example, AnnouncementPdfExtraction.class)).isEqualTo(result);
 
         assertThat(result.json()).startsWith("{\"data\"");
-        assertThat(result.pages()).containsExactly(1, 3, 4);
+        assertThat(result.pages()).isEqualTo(IntStream.rangeClosed(1, 35).boxed().toList());
         assertThat(result.totalPages()).isEqualTo(35);
         assertThat(result.warnings()).hasSize(1);
         assertThat(result.usage()).isEqualTo(new AnnouncementPdfExtraction.Usage(9000, 3000, 500));
