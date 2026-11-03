@@ -1,6 +1,6 @@
 import { isRecord } from '../management/managementContract'
 import type { JsonObject } from '../announcement-json/api'
-import type { Evidence, ExtractedRow, Extraction, ExtractionNote, SharedCount, Subtype } from './extraction'
+import { evidenceFor, type Evidence, type ExtractedRow, type Extraction, type ExtractionNote, type SharedCount, type Subtype } from './extraction'
 
 export type Notes = { sharedCounts: SharedCount[]; unresolved: ExtractionNote[]; notApplicable: ExtractionNote[]; evidence: Evidence[] }
 const groupedAreaNote = '세부 타입마다 면적이 달라 공급행 면적은 대표 주택형을 따릅니다.'
@@ -124,6 +124,85 @@ export function foldRows(extraction: Extraction, groups: FoldGroup[]) {
   return { position, remap, extraction: { ...extraction, supplyRows: rows, sharedCounts, unresolved: extraction.unresolved.flatMap(note),
     notApplicable: [...extraction.notApplicable.flatMap(note).filter(item => !notApplicable.some(added => added.path === item.path)), ...notApplicable],
     evidence: extraction.evidence.flatMap(item => remap(item.path).map(path => ({ ...item, path }))) } satisfies Extraction }
+}
+
+/** 공고문 행을 맞출 LH 행 하나(주택형 × 공급대상 묶음). rows는 그 LH 행에 맞춘 공고문 행 번호, typeName·count는 LH 행의 표기와 이번 공급 수다. */
+export type SourceMatch = { rows: number[]; group: string | null; typeName: string; count: number | null }
+/** 맞춘 뒤 행 하나의 출처. copied는 공고문 행 하나를 공급대상 묶음마다 나눴는지, extraTargets는 어느 묶음에도 없어 이 행에 넣은 대상이다. */
+export type MatchPlan<T> = { from: number; match: T | null; extraTargets: string[]; copied: boolean }
+
+/** 대상마다 맡을 LH 공급대상 묶음 순번. 묶음이 하나면 모두 그 묶음이고, 어느 묶음에도 없는 대상은 첫 묶음이 맡는다. */
+export function targetOwners(row: ExtractedRow, groups: (string | null)[]) {
+  return row.targets.map(target => groups.length === 1 ? 0 : Math.max(0, groups.findIndex(group => group !== null && inGroup(target.target, group))))
+}
+
+/**
+ * 공고문 행을 LH 행(주택형 × 공급대상 묶음)에 맞춘다. LH 원천행 맞추기(alignOn)와 단지에 연결된 LH 행 나누기(splitSameSourceRows)가 같은 규칙을 쓴다.
+ * - 공고문 행 하나가 여러 LH 행에 맞으면 행을 LH 행마다 복사하고 대상은 묶음 이름으로 나눈다. 공고문 모집수는 묶음을 합친 수라
+ *   공고문 행 하나가 LH 행 하나 전체인 복사본은 LH 행의 표기와 이번 공급 수를 쓴다.
+ * - LH 행 하나에 맞춘 공고문 행 여럿은 대상·금액이 같으면 세부 타입 묶음 행 하나로 접고(모집수는 LH 행의 이번 공급 수),
+ *   다르면 행마다 두고 LH 공급 수를 공통 모집수로 묶는다. split은 그렇게 묶은 LH 행이다.
+ * 맞춘 행이 걸린 공고문 공통 모집수는 LH 행 단위 모집수로 바뀌므로 지운다. 행 번호가 바뀌어 메모·근거 경로를 옮긴다.
+ */
+export function alignToSource<T extends SourceMatch>(source: Extraction, matches: T[]) {
+  const rows: ExtractedRow[] = [], copies = new Map<number, { index: number; targets: number[] }[]>(), plans: MatchPlan<T>[] = []
+  source.supplyRows.forEach((row, from) => {
+    const matched = matches.filter(match => match.rows.includes(from))
+    if (!matched.length) {
+      copies.set(from, [{ index: rows.length, targets: row.targets.map((_, at) => at) }])
+      rows.push(row); plans.push({ from, match: null, extraTargets: [], copied: false })
+      return
+    }
+    const owners = targetOwners(row, matched.map(match => match.group)), copied = matched.length > 1
+    const extraTargets = copied ? row.targets.filter(target => !matched.some(match => match.group && inGroup(target.target, match.group))).map(target => String(target.target ?? '')) : []
+    copies.set(from, matched.map((match, order) => {
+      const kept = owners.flatMap((owner, at) => owner === order ? [at] : [])
+      const whole = copied && match.rows.length === 1
+      const values: JsonObject = match.rows.length > 1 ? { ...row.values, totalSupplyHouseholdCount: null }
+        : whole ? { ...row.values, sourceHousingTypeName: match.typeName, totalSupplyHouseholdCount: match.count } : { ...row.values }
+      rows.push({ ...row, typeName: whole ? match.typeName : row.typeName, values, targets: kept.map(at => row.targets[at]) })
+      plans.push({ from, match, extraTargets: order === 0 ? extraTargets : [], copied })
+      return { index: rows.length - 1, targets: row.targets.map((_, at) => kept.indexOf(at)) }
+    }))
+  })
+  const remap = (path: string): string[] => {
+    const match = /^supplyRows\[(\d+)\](?:\.targets\[(\d+|\*)\])?(.*)$/.exec(path)
+    if (!match) return [path]
+    return (copies.get(Number(match[1])) ?? []).flatMap(copy => {
+      if (match[2] === undefined) return [`supplyRows[${copy.index}]${match[3]}`]
+      if (match[2] === '*') return [`supplyRows[${copy.index}].targets[*]${match[3]}`]
+      const target = copy.targets[Number(match[2])]
+      return target === undefined || target < 0 ? [] : [`supplyRows[${copy.index}].targets[${target}]${match[3]}`]
+    })
+  }
+  const aligned = new Set(matches.flatMap(match => match.rows))
+  // LH 행에 맞춘 행은 공고문의 묶음 대신 LH 행 단위 묶음을 쓴다. 한 행이 두 묶음에 들어갈 수 없다.
+  const kept = source.sharedCounts.filter(group => !group.paths.some(path => {
+    const row = Number(/^supplyRows\[(\d+)\]/.exec(path)?.[1])
+    return aligned.has(row) && (path.endsWith('.totalSupplyHouseholdCount') || (copies.get(row)?.length ?? 0) > 1)
+  })).map(group => ({ ...group, paths: group.paths.flatMap(remap) }))
+  const planIndexes = (match: T) => match.rows.map(from => plans.findIndex(plan => plan.from === from && plan.match === match))
+  const divided = matches.filter(match => match.rows.length > 1)
+  const folds = divided.filter(match => sameTargets(planIndexes(match).map(index => rows[index])))
+  const split = divided.filter(match => !folds.includes(match))
+  const splitCounts: SharedCount[] = split.map(match => {
+    const evidence = evidenceFor(source.evidence, `supplyRows[${match.rows[0]}]`)
+    return { paths: planIndexes(match).map(index => `supplyRows[${index}].totalSupplyHouseholdCount`), count: match.count, page: evidence?.page ?? null, quote: evidence?.quote ?? '' }
+  })
+  const note = (item: ExtractionNote) => remap(item.path).map(path => ({ ...item, path }))
+  const unfolded: Extraction = { ...source, supplyRows: rows, sharedCounts: [...kept, ...splitCounts],
+    unresolved: source.unresolved.flatMap(note), notApplicable: source.notApplicable.flatMap(note),
+    evidence: source.evidence.flatMap(item => remap(item.path).map(path => ({ ...item, path }))) }
+  const folded = foldRows(unfolded, folds.map(match => ({ indexes: planIndexes(match), typeName: match.typeName, count: match.count })))
+  // 접은 행은 첫 공고문 행의 계획만 남긴다.
+  return { extraction: folded.extraction, plans: plans.filter((_, at) => folded.position.indexOf(folded.position[at]) === at), folds, split,
+    remap: (path: string) => remap(path).flatMap(folded.remap) }
+}
+
+/** 공급대상 묶음으로 나눈 행의 안내 */
+export function matchNote(plan: MatchPlan<SourceMatch>) {
+  return [plan.copied && plan.match?.group ? `대상은 '${plan.match.group}' 묶음만 넣었습니다.` : '',
+    plan.extraTargets.length ? `${plan.extraTargets.join(', ')}은(는) LH 공급대상 묶음에 없어 이 행에 넣었습니다. 확인하세요.` : ''].filter(Boolean).join(' ')
 }
 
 function text(value: unknown): string | null { return typeof value === 'string' && value.trim() ? value.trim() : null }

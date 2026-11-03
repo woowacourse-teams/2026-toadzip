@@ -3,7 +3,7 @@ import type { JsonObject, JsonWorkspace } from '../announcement-json/api'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 import type { AnnouncementComplex, CorrectionRow } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, text, type Extraction, type Subtype } from './extraction'
-import { foldRows, inGroup, normalizedName, parseSourceLabel, pdfTypes, sameTargets, type FoldGroup } from './subtypes'
+import { alignToSource, foldRows, inGroup, matchNote, normalizedName, parseSourceLabel, pdfTypes, sameTargets, targetOwners, type FoldGroup, type SourceMatch } from './subtypes'
 
 export type HousingCandidates = Record<number, MatchingHousingType[]>
 /** 단지 ID별 표시 이름(단지명 · 임대유형) */
@@ -235,6 +235,38 @@ export function foldSameSourceRows(extraction: Extraction, rows: CorrectionRow[]
     groups.push({ indexes, typeName: row.typeName, count: foldedCount(extraction, indexes) })
   }
   return groups.length ? foldRows(extraction, groups).extraction : extraction
+}
+
+/**
+ * 단지에 연결된 LH 행이 같은 주택형을 공급대상 묶음마다 따로 두면("26A/B/C(고령자)"·"26A/B/C(주거급여수급자)") 공급행은 주택형 × 공급대상 묶음이다.
+ * 공고문 행 하나의 대상이 두 묶음 이상에 들면 그 주택형의 공고문 행을 LH 원천행 맞추기와 같은 규칙(alignToSource)으로 LH 행마다 나눈다.
+ * 나눈 행은 LH 행 표기를 써서 저장할 위치가 그 LH 행으로 정해진다. 대상을 받지 못한 LH 행은 건드리지 않는다.
+ * 나눈 뒤 대상·금액이 달라 LH 행 하나로 접을 수 없는 주택형은 나누지 않는다. notes는 나눈 행 번호별 안내다.
+ */
+export function splitSameSourceRows(extraction: Extraction, rows: CorrectionRow[]) {
+  const linked = rows.filter(row => !row.excluded && !emptyRow(row) && parseSourceLabel(row.typeName).group !== null)
+  const clusters = new Map<string, CorrectionRow[]>()
+  for (const row of linked) {
+    const key = `${row.housingComplexId}|${parseSourceLabel(row.typeName).types.map(typeKey).sort().join('/')}`
+    clusters.set(key, [...clusters.get(key) ?? [], row])
+  }
+  type Match = SourceMatch & { cluster: number }
+  const candidates = [...clusters.values()].filter(cluster => cluster.length > 1).flatMap((cluster, at): Match[] => {
+    const types = parseSourceLabel(cluster[0].typeName).types.map(typeKey), groups = cluster.map(row => parseSourceLabel(row.typeName).group)
+    const indexes = extraction.supplyRows.flatMap((pdf, index) => cluster.some(row => sameComplex(pdf.complexName, row.complexName) || sameComplex(pdf.complexName, row.housingComplexName))
+      && [pdf.typeName, ...pdf.subtypes.map(subtype => subtype.name)].some(name => types.includes(typeKey(name))) ? [index] : [])
+    const owners = new Map(indexes.map(index => [index, new Set(targetOwners(extraction.supplyRows[index], groups))]))
+    if (![...owners.values()].some(owner => owner.size > 1)) return []
+    return cluster.map((row, order) => ({ cluster: at, group: groups[order], typeName: row.typeName, count: row.householdCount,
+      rows: indexes.filter(index => owners.get(index)!.has(order)) })).filter(match => match.rows.length > 0)
+  })
+  const first = alignToSource(extraction, candidates)
+  const unfoldable = new Set(first.split.map(match => match.cluster))
+  const result = unfoldable.size ? alignToSource(extraction, candidates.filter(match => !unfoldable.has(match.cluster))) : first
+  const notes = new Map(result.plans.flatMap((plan, index) => plan.match
+    ? [[index, [`같은 주택형의 LH 행이 공급대상 묶음마다 있어 공고문 행의 대상을 묶음별로 나눠 LH 행 '${plan.match.typeName}'에 맞췄습니다. 모집수는 이 LH 행의 이번 공급 ${plan.match.count ?? '미확인'}세대입니다.`, matchNote(plan)].filter(Boolean).join(' ')] as const]
+    : []))
+  return { extraction: result.extraction, notes }
 }
 
 /**

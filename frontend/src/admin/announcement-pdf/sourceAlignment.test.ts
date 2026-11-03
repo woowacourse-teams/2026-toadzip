@@ -102,15 +102,68 @@ describe('최초 입주자 공고의 LH 원천행 맞추기', () => {
       { sourceRowId: 12, rowKeys: ['row:12', added[1].key], sharedHouseholdCount: 42 }])
   })
 
-  it('같은 세부 타입을 가진 LH 행이 공급대상 묶음마다 단지에 연결돼 있으면 묶음에 없는 대상이 섞인 공고문 행을 한 LH 행으로 접지 않는다', () => {
+  it('같은 세부 타입을 가진 LH 행이 공급대상 묶음마다 단지에 연결돼 있으면 공고문 행의 대상을 묶음별로 나눠 LH 행마다 접고, 한 LH 행이 다른 묶음 대상을 받지 않는다', () => {
     const { workspace, extraction } = setup()
     // 앞선 보정으로 26A/B(고령자)·26A/B(주거급여수급자)가 단지 7에 연결된 상태에서 같은 PDF로 다시 보정한다.
     workspace.supply.rows = workspace.supply.rows.map(row => [11, 12].includes(row.id!) ? { ...row, housingComplexId: 7, housingComplexName: '인천부평' } : row)
     const review = createReview(extraction, workspace, { 7: [] })
-    expect(review.extraction.supplyRows.map(row => row.typeName)).toEqual(['16A', '26A', '26B'])
+    expect(review.extraction.supplyRows.map(row => [row.typeName, row.subtypes.map(subtype => subtype.name)])).toEqual([['16A', []], ['26A/B(고령자)', ['26A', '26B']], ['26A/B(주거급여수급자)', ['26A', '26B']]])
+    expect(review.rows.slice(1).map(row => [row.proposal.destination, row.proposal.needsConfirmation])).toEqual([['row:11', true], ['row:12', true]])
+    expect(review.rows[2].targets.map(target => target.cells.find(cell => cell.field === 'target')?.value)).toEqual(['주거급여수급자'])
     const toEleven = review.rows.filter(row => row.proposal.destination === 'row:11')
     expect(toEleven.flatMap(row => row.targets.map(target => target.cells.find(cell => cell.field === 'target')?.value))).not.toContain('주거급여수급자')
     expect(toEleven.map(row => row.cells.find(cell => cell.field === 'totalSupplyHouseholdCount')?.value)).not.toContain(46)
+  })
+
+  it('공급대상 묶음으로 나눈 뒤 LH 행 하나에 들어갈 공고문 행들의 대상·금액이 달라 접을 수 없으면 연결된 LH 행 기준으로 나누지 않는다', () => {
+    const { workspace, extraction } = setup('16A', null, '26A', 26.01, 20000000)
+    workspace.supply.rows = workspace.supply.rows.map(row => [11, 12].includes(row.id!) ? { ...row, housingComplexId: 7, housingComplexName: '인천부평' } : row)
+    expect(createReview(extraction, workspace, { 7: [] }).extraction.supplyRows.map(row => row.typeName)).toEqual(['16A', '26A', '26B'])
+  })
+
+  // 공고 49: LH는 26A/B/C를 공급계층마다 두 행(#243 고령자 4, #244 주거급여수급자 42)으로 주고, 공고문은 세부 타입 묶음 한 행에 대상 셋을 적는다.
+  function fortyNine(linkedTo: number | null) {
+    const base = structuredClone(fixtures.hansville.extraction) as unknown as Record<string, unknown> & { data: Record<string, unknown> }
+    const subtype = (name: string, exclusiveArea: number) => ({ name, exclusiveArea, commonArea: null, supplyArea: null, constructedHouseholdCount: null })
+    base.data.supplyRows = [{ ...pdfRow('26A/B/C', 26.01, ['고령자', '주거급여수급자', '기존거주자(철거민)'], 46), subtypes: [subtype('26A', 26.01), subtype('26B', 26.1), subtype('26C', 26.2)] }]
+    base.sharedCounts = []
+    base.notApplicable = []
+    base.evidence = [{ path: 'supplyRows[0]', page: 3, quote: '26A/B/C 46' }]
+    const extraction = readExtraction(JSON.stringify(base))
+    if (!extraction.ok) throw new Error(extraction.error)
+    const { workspace } = scenario('hansville')
+    const row = (id: number, typeName: string, householdCount: number) => linkedTo === null ? source(id, typeName, householdCount)
+      : { ...source(id, typeName, householdCount), housingComplexId: linkedTo, housingComplexName: '인천부평', housingTypeId: 2, exclusiveArea: 26.01 }
+    workspace.supply.rows = [row(243, '26A/B/C(고령자)', 4), row(244, '26A/B/C(주거급여수급자)', 42)]
+    const candidates = [{ id: 2, name: '26A', exclusiveArea: 26.01, supplyArea: null, householdCount: null }, { id: 3, name: '26B', exclusiveArea: 26.1, supplyArea: null, householdCount: null },
+      { id: 4, name: '26C', exclusiveArea: 26.2, supplyArea: null, householdCount: null }]
+    return { extraction: extraction.value, workspace, candidates }
+  }
+  const cellValue = (cells: { field: string; value: unknown }[], field: string) => cells.find(cell => cell.field === field)?.value
+
+  it('같은 세부 타입을 공급대상 묶음마다 따로 둔 연결된 LH 행이면 세부 타입 묶음 공고문 행의 대상을 묶음별로 나눠 LH 행마다 저장한다', () => {
+    const { extraction, workspace, candidates } = fortyNine(7)
+    const review = createReview(extraction, workspace, { 7: candidates })
+    expect(review.rows.map(row => [row.proposal.destination, row.targets.map(target => cellValue(target.cells, 'target')), cellValue(row.cells, 'totalSupplyHouseholdCount')])).toEqual([
+      ['row:243', ['고령자', '기존거주자(철거민)'], 4], ['row:244', ['주거급여수급자'], 42]])
+    expect(review.rows.map(row => row.proposal.needsConfirmation)).toEqual([true, true])
+    expect(review.rows[0].proposal.reason).toContain('기존거주자(철거민)은(는) LH 공급대상 묶음에 없어 이 행에 넣었습니다.')
+    const input = assembleReview(review, workspace, { reason: 'PDF 대조', sourceUrl: 'https://example.com/notice.pdf', sourcePage: '3' })
+    const saved = (id: number) => input.correction.rows.find(row => row.id === id)!
+    expect([243, 244].map(id => saved(id).targets.filter(target => !target.excluded).map(target => target.target))).toEqual([['고령자', '기존거주자(철거민)'], ['주거급여수급자']])
+    expect([243, 244].map(id => [saved(id).housingTypeId, saved(id).householdCount, saved(id).linkedHousingTypes])).toEqual([
+      [2, 4, [{ housingTypeId: 3 }, { housingTypeId: 4 }]], [2, 42, [{ housingTypeId: 3 }, { housingTypeId: 4 }]]])
+    expect(input.correction.rows.filter(row => row.id === null)).toEqual([])
+    expect(input.correction.newGroups).toEqual([])
+  })
+
+  it('단지에 연결되지 않은 LH 행에 맞출 때도 공고문 행 하나를 공급대상 묶음마다 나누면 각 행은 LH 행의 표기와 이번 공급 수를 쓴다', () => {
+    const { extraction, workspace, candidates } = fortyNine(null)
+    const aligned = alignSourceRows(createReview(extraction, workspace, {}), workspace, '인천부평(도시재생뉴딜) 행복주택', { id: 7, name: '인천부평' }, candidates as never)!
+    // 공고문 모집수 46은 두 묶음을 합친 수라 어느 LH 행의 모집수도 아니다.
+    expect(aligned.rows.map(row => [row.proposal.destination, cellValue(row.cells, 'sourceHousingTypeName'), cellValue(row.cells, 'totalSupplyHouseholdCount'),
+      row.targets.map(target => cellValue(target.cells, 'target'))])).toEqual([
+      ['row:243', '26A/B/C(고령자)', 4, ['고령자', '기존거주자(철거민)']], ['row:244', '26A/B/C(주거급여수급자)', 42, ['주거급여수급자']]])
   })
 
   it('단지를 다시 고르면 맞추기 전 검토에서 다시 맞춰 행을 거듭 복사하지 않는다', () => {

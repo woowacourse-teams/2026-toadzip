@@ -2,7 +2,7 @@ import type { ExtractedAnnouncement, HousingTypeValue, JsonObject, JsonUpdateInp
 import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type LinkedHousingType, type NewSupplyGroup } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, type Evidence, type Extraction, type Subtype } from './extraction'
 import { foldRows } from './subtypes'
-import { defaultTargetDestinations, foldSameSourceRows, missingHousingType, originalDate, pickSubtypes, proposeRows, proposeSchedules, sharedFoldGroups, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
+import { defaultTargetDestinations, foldSameSourceRows, missingHousingType, originalDate, pickSubtypes, proposeRows, proposeSchedules, sharedFoldGroups, splitSameSourceRows, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
@@ -176,21 +176,26 @@ export function createRowReview(extraction: Extraction, index: number, proposal:
 }
 /**
  * fold가 true면 같은 기존 LH 행을 가리키는 공고문 행들을 세부 타입 묶음 행 하나로 접는다. 이미 접은 검토를 다시 만들 때는 접지 않는다.
+ * 같은 주택형의 LH 행이 공급대상 묶음마다 있으면 공고문 행의 대상을 묶음별로 나눈다(splitSameSourceRows).
  * LH 표기로 고를 수 없는 행은 저장할 위치를 한 번 제안한 뒤, 기존 행 하나와 새 행만 묶은 공통 모집수(sharedFoldGroups)를 접고 다시 제안한다.
  */
 export function createReview(source: Extraction, workspace: JsonWorkspace, housing: HousingCandidates, fold = true): Review {
   const propose = (value: Extraction) => proposeRows(value, workspace.supply.rows, housing, workspace.supply.announcementComplexes)
-  let extraction = fold ? foldSameSourceRows(source, workspace.supply.rows) : source, proposals = propose(extraction)
+  const split = fold ? splitSameSourceRows(foldSameSourceRows(source, workspace.supply.rows), workspace.supply.rows) : { extraction: source, notes: new Map<number, string>() }
+  let extraction = split.extraction, proposals = propose(extraction), notes = split.notes
   const groups = fold ? sharedFoldGroups(extraction, proposals, workspace.supply.rows) : []
   if (groups.length) {
     const folded = foldRows(extraction, groups)
     extraction = folded.extraction; proposals = propose(extraction)
+    notes = new Map([...notes].map(([index, note]) => [folded.position[index], note]))
     for (const group of groups) {
       const proposal = proposals[folded.position[group.indexes[0]]]
       // 공통 모집수만 보고 LH 한 행으로 판단해 접었으므로 저장할 위치를 확인하게 한다.
       Object.assign(proposal, { needsConfirmation: true, reason: `공고문 ${group.typeName.split('/').join('·')}가 공통 모집수 ${group.count ?? '미확인'}세대를 함께 적어 공급행 하나의 세부 타입으로 접었습니다. · ${proposal.reason}` })
     }
   }
+  // 공급대상 묶음으로 나눈 행은 대상 몫과 모집수를 확인하게 한다.
+  notes.forEach((note, index) => Object.assign(proposals[index], { needsConfirmation: true, reason: `${note} · ${proposals[index].reason}` }))
   const metadata = cells(extraction, 'announcement', metadataFields, extraction.announcement, workspace.detail.data)
   // 정정공고 PDF에는 원공고 공고일이 그대로 적혀 있는 경우가 많아, 다른 공고일은 기본으로 반영하지 않는다.
   const posted = metadata.find(cell => cell.field === 'postedDate')
