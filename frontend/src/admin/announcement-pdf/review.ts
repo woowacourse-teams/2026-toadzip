@@ -756,3 +756,15 @@ export function rowStatus(row: RowReview, problem: PlacementProblem | undefined,
   return { label: '준비됨', tone: 'done' }
 }
 
+
+/** 단지 DB에 연결되지 않은 공급행(새 행 또는 단지가 비어 있는 기존 행)인지. 단지를 정하면 newComplex가 생긴다. */
+export function needsComplex(row: RowReview, workspace: JsonWorkspace) {
+  if (!row.include) return false
+  if (row.proposal.destination === 'new') return !row.proposal.anchorKey
+  return workspace.supply.rows.find(item => item.key === row.proposal.destination)?.housingComplexId === null
+}
+
+/** 단지를 정해야 하는 PDF 단지 수 */
+export function complexDecisionCount(review: Review, workspace: JsonWorkspace) {
+  return new Set(review.rows.flatMap((row, index) => needsComplex(row, workspace) ? [review.extraction.supplyRows[index].complexName ?? ''] : [])).size
+}

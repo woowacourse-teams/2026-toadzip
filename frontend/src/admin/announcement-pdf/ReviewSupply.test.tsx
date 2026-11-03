@@ -51,6 +51,10 @@ it('PDF로 공급정보 편집표만 채울 때는 저장하지 않는 주택형
 
 it('AI 워커 경고는 필터와 관계없이 보이고, 화면 검산은 전체 보기에서만 보인다', () => {
   renderSupply('hansville', review => { review.extraction.checks = ['화면 합계 검산 불일치'] }, 'pending', true, undefined, ['supplyRows[0]: 워커 경고'])
+  // 안내는 접힌 한 줄 요약으로 시작하고, 접혀 있어도 워커 경고 건수를 보인다.
+  expect(screen.getByRole('list', { name: '안내 요약' })).toHaveTextContent('검산 확인 1건')
+  expect(screen.queryByRole('note', { name: '검산 결과' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
   const note = screen.getByRole('note', { name: '검산 결과' })
   expect(within(note).getByText('supplyRows[0]: 워커 경고')).toBeInTheDocument()
   expect(within(note).queryByText('화면 합계 검산 불일치')).not.toBeInTheDocument()
@@ -64,6 +68,30 @@ it('세부 타입 묶음 행이 든 공통 모집수는 저장하지 못하는 �
     { name: '26B', exclusiveArea: 26.4673, commonArea: null, supplyArea: null, constructedHouseholdCount: null }] },
   { ...first, sourceHousingTypeName: '36', exclusiveArea: 36.1, targets: [{ ...(first.targets as Record<string, unknown>[])[0], rentalDeposit: 9000000 }] }]
   renderSupply('hansville', () => {}, 'all', true, extraction)
+  fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
   expect(screen.getByText(/세부 타입 묶음 행은 공통 모집 묶음에 넣을 수 없어 공통 모집수를 저장하지 않습니다\. 세부 타입 묶음 행의 모집수는 직접 입력하고/)).toBeInTheDocument()
   expect(screen.queryByText(/기존 공급행 없이 새로 만드는 행끼리는/)).not.toBeInTheDocument()
+})
+
+it('여러 단지 공고는 목록에 모든 단지를 묶음별 주택형 수와 함께 보이고, 다른 단지 행을 고르면 편집 영역과 주택형 패널이 그 단지로 바뀌며 앞 행의 편집은 남는다', () => {
+  const { review, workspace, housing } = scenario('gwangju')
+  function Test() {
+    const [current, setCurrent] = useState(review), [selected, setSelected] = useState(0)
+    return <ReviewSupply review={current} workspace={workspace} housing={housing} complexes={{}} filter="all" empty="없음" onChange={setCurrent} onEvidence={() => {}} selected={selected} onSelect={setSelected} />
+  }
+  render(<MemoryRouter><Test /></MemoryRouter>)
+  const list = screen.getByRole('region', { name: '공급행 목록' })
+  expect([...list.querySelectorAll('th[scope=rowgroup]')].map(header => header.textContent?.split(' · ')[0])).toEqual(['첨단H-1BL', '첨단H-2BL', '첨단H-3BL'])
+  expect(within(list).getByRole('rowheader', { name: /^첨단H-3BL/ })).toHaveTextContent('주택형 4개')
+  const first = within(screen.getByRole('region', { name: '공급행 1 검토' })).getByRole('group', { name: '공급행 1 이 공고의 주택형 표기 반영 방법' })
+  fireEvent.click(within(first).getByRole('button', { name: '직접 입력' }))
+  fireEvent.change(screen.getByRole('textbox', { name: '공급행 1 이 공고의 주택형 표기 수정' }), { target: { value: '39 관리자' } })
+  fireEvent.click(screen.getByRole('button', { name: '단지 주택형 보기' }))
+  const panelTitle = () => screen.getByRole('button', { name: '주택형 패널 닫기' }).closest('aside')!.getAttribute('aria-label')
+  const before = panelTitle()
+  fireEvent.click(within(list).getByRole('button', { name: '공급행 4 편집' }))
+  expect(screen.getByRole('heading', { name: /^첨단H-3BL주택형 4개 중 공급행 4/ })).toBeVisible()
+  expect(panelTitle()).not.toBe(before)
+  fireEvent.click(within(list).getByRole('button', { name: '공급행 1 편집' }))
+  expect(screen.getByRole('textbox', { name: '공급행 1 이 공고의 주택형 표기 수정' })).toHaveValue('39 관리자')
 })

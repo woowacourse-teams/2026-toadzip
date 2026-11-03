@@ -273,6 +273,7 @@
 .rowList { width:100%; border-collapse:collapse; font-size:var(--ds-text-caption); font-variant-numeric:tabular-nums; }
 .rowList thead th { position:sticky; top:0; z-index:1; background:var(--ds-color-table-heading, var(--ds-color-surface-subtle)); text-align:left; font-weight:500; color:var(--ds-color-label); }
 .rowList :is(th,td) { padding:var(--ds-space-1) var(--ds-space-2); border-bottom:1px solid var(--ds-color-table-line, var(--ds-color-divider)); vertical-align:top; overflow-wrap:anywhere; }
+.rowList .rowListGroup small { font-weight:400; color:var(--ds-color-label); }
 .rowList .rowListGroup { background:var(--ds-color-surface-subtle); font-weight:600; color:var(--ds-color-text); }
 .rowList tr[aria-current=true] { background:var(--ds-color-action-selected, var(--ds-color-action-soft)); }
 .rowList tr[data-excluded] { color:var(--ds-color-muted); }
@@ -301,3 +302,9 @@
 .badgeWarning { color:var(--ds-color-status-upcoming); }
 .badgeMuted { color:var(--ds-color-muted); }
 .page .heading .progress { margin:var(--ds-space-1) 0 0; color:var(--ds-color-label); font-variant-numeric:tabular-nums; }
+/* 공급정보 안내 한 줄 요약. 펼쳐야 내용이 보여 목록·편집 영역 높이를 지킨다. */
+.noticeStrip { display:grid; gap:var(--ds-space-2); margin-bottom:var(--ds-space-2); padding:var(--ds-space-1) var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); background:var(--ds-color-surface-subtle); font-size:var(--ds-text-caption); }
+.noticeSummary { display:flex; flex-wrap:wrap; align-items:center; gap:var(--ds-space-1) var(--ds-space-3); }
+.noticeSummary ul { display:flex; flex-wrap:wrap; gap:var(--ds-space-1) var(--ds-space-3); list-style:none; margin:0; padding:0; }
+.noticeSummary li[data-tone=warning] { color:var(--ds-color-status-upcoming); font-weight:600; }
+.noticeBody { max-height:40vh; overflow:auto; }

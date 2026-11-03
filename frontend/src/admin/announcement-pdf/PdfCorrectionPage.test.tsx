@@ -154,6 +154,7 @@ it('AI 워커가 원문과 대조한 경고를 검토 화면의 검산 확인에
   extractor.extractAnnouncementPdf.mockResolvedValue({ json: JSON.stringify(fixtures.hansville.extraction), pages: [1, 2], totalPages: 3, warnings: ['supplyRows[0].sourceHousingTypeName: 근거 인용에 없는 LH 주택형 이름(24A)'], usage: { promptTokens: 100, outputTokens: 50, thinkingTokens: null } })
   renderPage()
   await review()
+  fireEvent.click(await screen.findByRole('button', { name: '안내 펼치기' }))
   const checks = await screen.findByRole('note', { name: '검산 결과' })
   expect(checks).toHaveTextContent('근거 인용에 없는 LH 주택형 이름(24A)')
 })
@@ -162,7 +163,7 @@ it('공급행을 PDF 단지 이름별로 묶어 한 단지의 주택형을 한�
   await open(JSON.stringify(separateHansville()))
   // 목록은 단지별로 모든 공급행을 한 줄씩 요약하고, 편집 영역은 고른 행 하나만 보인다.
   const list = screen.getByRole('region', { name: '공급행 목록' })
-  expect(within(list).getByRole('rowheader', { name: '익산한스빌' })).toBeVisible()
+  expect(within(list).getByRole('rowheader', { name: /^익산한스빌/ })).toHaveTextContent('익산한스빌 · 주택형 2개 · 모집 합')
   expect(within(list).getAllByRole('button', { name: /^공급행 \d 편집$/ }).map(button => button.textContent)).toEqual(['1. 26A', '2. 26B'])
   const group = screen.getByRole('region', { name: '익산한스빌 주택형' })
   expect(within(group).getByRole('heading', { name: '익산한스빌주택형 2개 중 공급행 1' })).toBeVisible()
@@ -587,6 +588,7 @@ it('대상들이 함께 쓰는 모집수는 안내만 하고 대상별 모집수
   extraction.data.supplyRows[0].targets.push({ ...extraction.data.supplyRows[0].targets[0], target: '청년' })
   extraction.sharedCounts = [{ paths: ['supplyRows[0].targets[0].supplyHouseholdCount', 'supplyRows[0].targets[1].supplyHouseholdCount'], count: 39, page: 3, quote: '대학생 청년 39' }]
   await open(JSON.stringify(extraction))
+  fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
   expect(screen.getByText('26A에서 일반 · 청년 대상이 함께 쓰는 모집수입니다. 대상별 모집수는 비워 둡니다.')).toBeVisible()
   chooseMode(1, '기존 행 수정'); chooseMode(2, '별도 추가')
   fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
@@ -712,6 +714,7 @@ it('검산에서 맞지 않은 합계를 공급정보 위에 보여 준다', asy
   const extraction = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: Record<string, unknown>[] } }
   Object.assign(extraction.data.supplyRows[0], { exclusiveArea: 26.37, commonArea: 15.1, supplyArea: 42 })
   await open(JSON.stringify(extraction))
+  fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
   expect(screen.getByRole('note', { name: '검산 결과' })).toHaveTextContent('공급면적 42㎡가 전용 + 공용 41.47㎡와 달라 계산값을 씁니다.')
 })
 
@@ -779,6 +782,7 @@ it('저장된 초안이 있으면 바로 적용하지 않고, 공고가 바뀐 �
   expect(screen.getByLabelText('공급행 1 이 공고의 주택형 표기 수정')).toHaveValue('26A 초안')
   // 복원 안내는 배너로 쌓이지 않고 상단 임시저장 상태 옆에 짧게 남는다.
   expect(within(screen.getByLabelText('검토 진행')).getByRole('status')).toHaveTextContent('최신 공고 값에 맞춰 복원함')
+  fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
   expect(screen.getByRole('note', { name: '검산 결과' })).toHaveTextContent('LH 공급 1행(익산한스빌, 모집 170)을 PDF 주택형별 2행으로 나눴습니다.')
   api.applyJsonUpdate.mockRejectedValueOnce(new ManagementError('잘못된 요청', 400))
   await applyCorrection()

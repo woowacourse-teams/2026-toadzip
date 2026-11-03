@@ -9,7 +9,9 @@ export function SupplyRowList({ review, problems, pending, selected, visible, on
     {complexGroups(review).map(group => {
       const indexes = group.indexes.filter(visible)
       if (!indexes.length) return null
-      return <tbody key={group.name}><tr><th colSpan={5} scope="rowgroup" className={styles.rowListGroup}>{group.name}</th></tr>
+      const counts = group.indexes.filter(index => review.rows[index].include).map(index => assembledCount(review.rows[index]))
+      const sum = counts.every(count => count !== null) ? (counts as number[]).reduce((total, count) => total + count, 0) : null
+      return <tbody key={group.name}><tr><th colSpan={5} scope="rowgroup" className={styles.rowListGroup}>{group.name}<small>{` · 주택형 ${group.indexes.length}개 · 모집 합 ${sum ?? '미확인'}`}</small></th></tr>
         {indexes.map(index => {
           const row = review.rows[index], source = review.extraction.supplyRows[index], mode = placementMode(row.proposal)
           const status = rowStatus(row, problems.get(index), pending.has(index)), area = source.values.exclusiveArea

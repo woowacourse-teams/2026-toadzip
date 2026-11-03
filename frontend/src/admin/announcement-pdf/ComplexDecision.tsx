@@ -5,20 +5,13 @@ import { ComplexPicker } from '../management/ComplexPicker'
 import { getManagementDetail } from '../management/api'
 import { isRecord } from '../management/managementContract'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
-import { createRowReview, editCell, newRepresentative, preserveCellChoice, type Review, type RowReview } from './review'
+import { createRowReview, editCell, needsComplex, newRepresentative, preserveCellChoice, type Review, type RowReview } from './review'
 import { chooseRow, missingHousingType, pickHousingType, sameComplex, typeKey } from './matching'
 import { NewComplexRegistration, type MyHomeComplexOverview } from './NewComplexRegistration'
 import { alignSourceRows, emptySourceRows } from './sourceAlignment'
 import { createPdfHousingTypes } from './pdfHousingTypes'
 import type { ExtractedRow } from './extraction'
 import styles from './PdfCorrection.module.css'
-
-/** 단지 DB에 연결되지 않은 공급행(새 행 또는 단지가 비어 있는 기존 행)인지. 단지를 정하면 newComplex가 생긴다. */
-function needsComplex(row: RowReview, workspace: JsonWorkspace) {
-  if (!row.include) return false
-  if (row.proposal.destination === 'new') return !row.proposal.anchorKey
-  return workspace.supply.rows.find(item => item.key === row.proposal.destination)?.housingComplexId === null
-}
 
 /**
  * PDF 단지명마다 한 번 단지를 정한다. 새로 등록하면 공고문 주택형도 함께 만든다.
