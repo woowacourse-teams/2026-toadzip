@@ -48,11 +48,13 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
     const complexId = workspace.supply.rows.find(item => item.key === key)?.housingComplexId
     return anchors.find(item => item.housingComplexId === complexId)?.key ?? ''
   }
+  const shownChecks = [...filter === 'all' ? review.extraction.checks : [], ...warnings]
   return <>
     <div className={styles.sectionHeading}><div><h2>공급정보</h2><p>기존 값과 PDF에서 가져온 값을 비교하고, 반영할 항목을 고르세요.</p></div></div>
     {filter === 'all' && review.rows.filter(row => row.include).length > 1 && pdfOrderChanges(review, workspace) && <p className={styles.notice}>저장하면 공급행을 PDF 공급 표 순서({review.rows.flatMap((row, index) => row.include ? [review.extraction.supplyRows[index].typeName ?? `공급행 ${index + 1}`] : []).join(' → ')})로 표시합니다. PDF에 없는 기존 공급행은 그 뒤에 원래 순서대로 둡니다.</p>}
-    {/* 화면이 계산한 합계·면적 검산과 AI 워커가 원문과 대조한 경고(근거 인용·LH 주택형 이름·모집수)를 함께 보여 준다. */}
-    {filter === 'all' && review.extraction.checks.length + warnings.length > 0 && <div className={`${styles.pending} ${styles.checks}`} role="note" aria-label="검산 결과"><p><strong>검산 확인</strong> 합계·면적·원문 대조가 맞지 않는 항목입니다. 공고문과 대조하세요.</p><ul>{[...review.extraction.checks, ...warnings].map(check => <li key={check}>{check}</li>)}</ul></div>}
+    {/* 화면이 계산한 합계·면적 검산과 AI 워커가 원문과 대조한 경고(근거 인용·LH 주택형 이름·모집수)를 함께 보여 준다.
+        워커 경고는 확인할 행으로 잡히지 않아 필터로 가리면 확인 필요만 보는 동안 놓치므로 늘 보인다. */}
+    {shownChecks.length > 0 && <div className={`${styles.pending} ${styles.checks}`} role="note" aria-label="검산 결과"><p><strong>검산 확인</strong> 합계·면적·원문 대조가 맞지 않는 항목입니다. 공고문과 대조하세요.</p><ul>{shownChecks.map(check => <li key={check}>{check}</li>)}</ul></div>}
     {filter === 'all' && duplicates.length > 0 && <div className={styles.pending} role="note" aria-label="LH 원본과 중복 가능"><p><strong>LH 원본과 중복 가능</strong> LH 공급 원본으로 펼친 행이 있는 단지에 직접 추가한 행이 있습니다. 같은 주택형이면 공급정보 편집표의 ‘펼친 행으로 합치기’로 임대조건과 표기를 옮긴 뒤 지우세요.{editorHref && <> <Link to={editorHref}>공급정보 편집표 열기</Link></>}</p><ul>{duplicates.map(row => <li key={row.key}>{row.housingComplexName ?? row.complexName} · {row.typeName} (#{row.id})</li>)}</ul></div>}
     {filter === 'all' && <ComplexDecisions review={review} workspace={workspace} onChange={onChange} />}
     {filter === 'all' && review.extraction.sharedCounts.map((group, index) => <div className={styles.shared} key={index}><strong>공통 모집 {group.count}세대</strong><span>{sharedLabel(review, group.paths)}{group.paths.every(path => path.endsWith('.totalSupplyHouseholdCount')) && !sharedGroupStorable(review, index) ? ' 기존 공급행 없이 새로 만드는 행끼리는 공통 모집수를 저장할 수 없어 각 행을 비워 둡니다.' : ''}</span>{group.page && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence({ page: group.page!, quote: group.quote, path: group.paths[0] })}>PDF {group.page}쪽 보기</Button>}</div>)}
