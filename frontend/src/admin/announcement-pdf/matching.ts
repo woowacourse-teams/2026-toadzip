@@ -1,7 +1,7 @@
 import { isRecord } from '../management/managementContract'
 import type { JsonObject, JsonWorkspace } from '../announcement-json/api'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
-import type { AnnouncementComplex, CorrectionRow } from '../supply/supplyCorrectionApi'
+import type { AnnouncementComplex, CorrectionRow, SupplyWorkspace } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, text, type Extraction, type Subtype } from './extraction'
 import { alignToSource, foldRows, inGroup, matchNote, normalizedName, parseSourceLabel, pdfTypes, sameTargets, targetOwners, type FoldGroup, type SourceMatch } from './subtypes'
 
@@ -22,6 +22,17 @@ export type RowProposal = {
   newComplex?: { id: number; name: string; pnu: string; category: CorrectionRow['category'] }
 }
 export type ScheduleProposal = { existingIds: number[]; needsConfirmation: boolean; reason: string }
+/** 행 키별 LH 원천행의 주택형 표기("26A/B/C(고령자)"). 단지에 연결된 행의 typeName은 단지 주택형 이름("26A")이라 공급대상 묶음을 읽을 수 없다. */
+export type SourceLabels = ReadonlyMap<string, string>
+
+export function lhSourceLabels(supply: Pick<SupplyWorkspace, 'sources' | 'rowSources'>): SourceLabels {
+  return new Map((supply.rowSources ?? []).filter(link => link.category === 'LH_ANNOUNCEMENT_SUPPLY').flatMap(link => {
+    const rows = supply.sources.find(source => source.category === link.category && source.sourceKey === link.sourceKey)?.rows ?? []
+    const names = [...new Set(rows.flatMap(row => isRecord(row.raw) && typeof row.raw.type_name === 'string' && row.raw.type_name.trim() ? [row.raw.type_name.trim()] : []))]
+    return names.length === 1 ? [[link.rowKey, names[0]] as const] : []
+  }))
+}
+const sourceLabel = (row: CorrectionRow, labels: SourceLabels) => labels.get(row.key) ?? row.typeName
 
 /** 수집된 공고명에는 공고일·"공고" 표기가 붙어 있어 날짜·공고·기호를 지우고 포함 관계로 비교한다. */
 function titleKey(value: unknown) {
@@ -158,9 +169,9 @@ function sameRecruitment(row: Extraction['supplyRows'][number], current: Correct
  * 저장할 위치 기본값은 고른 행, 추천이 여럿이면 미선택, 추천이 없으면 새 공급정보로 추가다.
  * lastRow가 false면 표기·면적이 맞지 않는 남은 행 하나를 고르지 않고, 남은 행 모두를 추천해 운영자가 고르게 한다(단지 정하기에서 고른 단지의 행).
  */
-export function chooseRow(row: Extraction['supplyRows'][number], related: CorrectionRow[], used: Set<string>, housingTypeId: number | null, lastRow = true) {
+export function chooseRow(row: Extraction['supplyRows'][number], related: CorrectionRow[], used: Set<string>, housingTypeId: number | null, lastRow = true, labels: SourceLabels = new Map()) {
   const available = related.filter(item => !used.has(item.key))
-  const byName = available.filter(item => typeKey(item.typeName) === typeKey(row.typeName))
+  const byName = available.filter(item => [item.typeName, sourceLabel(item, labels)].some(name => typeKey(name) === typeKey(row.typeName)))
   const byArea = available.filter(item => pdfTypes(row).some(type => equalArea(item.exclusiveArea, type.exclusiveArea))
     || housingTypeId !== null && item.housingTypeId === housingTypeId)
   const chosen = byName.length === 1 ? byName[0] : byArea.length === 1 ? byArea[0] : lastRow && available.length === 1 ? available[0] : undefined
@@ -168,7 +179,7 @@ export function chooseRow(row: Extraction['supplyRows'][number], related: Correc
   return { chosen, recommended, destination: chosen?.key ?? (recommended.length ? '' : 'new') }
 }
 
-export function proposeRows(extraction: Extraction, all: CorrectionRow[], housing: HousingCandidates, complexes: Pick<AnnouncementComplex, 'name' | 'roadAddress'>[] = []): RowProposal[] {
+export function proposeRows(extraction: Extraction, all: CorrectionRow[], housing: HousingCandidates, complexes: Pick<AnnouncementComplex, 'name' | 'roadAddress'>[] = [], labels: SourceLabels = new Map()): RowProposal[] {
   const used = new Set<string>()
   // 단지가 연결되지 않은 기존 행은 단지를 정한 뒤 LH 원천행 맞추기(sourceAlignment)에서 연결·분할한다.
   const current = all.filter(item => !emptyRow(item) && !item.excluded)
@@ -185,7 +196,7 @@ export function proposeRows(extraction: Extraction, all: CorrectionRow[], housin
     const allTypes = complexId === null ? [] : housing[complexId] ?? []
     const picked = pickHousingType(extraction, index, allTypes)
     const housingTypeId = picked.housingTypeId
-    const { chosen, recommended, destination } = chooseRow(row, related, used, housingTypeId)
+    const { chosen, recommended, destination } = chooseRow(row, related, used, housingTypeId, true, labels)
     const sharedIndex = extraction.sharedCounts.findIndex(group => group.paths.includes(`supplyRows[${index}].totalSupplyHouseholdCount`))
     if (chosen) used.add(chosen.key)
     const anchor = chosen ?? (complexId === null ? undefined : related[0])
@@ -218,13 +229,13 @@ export function foldedCount(extraction: Extraction, indexes: number[]) {
  * LH 행이 공급대상 묶음("26A/B(고령자)")이면 공고문 행의 대상이 모두 그 묶음일 때만 접는다. 같은 세부 타입을 가진 LH 행이 여럿인데
  * 묶음으로 나눌 수 없으면 어느 LH 행의 대상·모집수인지 알 수 없어 접지 않는다.
  */
-export function foldSameSourceRows(extraction: Extraction, rows: CorrectionRow[]): Extraction {
+export function foldSameSourceRows(extraction: Extraction, rows: CorrectionRow[], labels: SourceLabels): Extraction {
   const used = new Set<number>(), groups: FoldGroup[] = []
   const linked = rows.filter(row => !row.excluded && !emptyRow(row))
-  const typesOf = (row: CorrectionRow) => parseSourceLabel(row.typeName).types.map(typeKey).sort().join('/')
+  const typesOf = (row: CorrectionRow) => parseSourceLabel(sourceLabel(row, labels)).types.map(typeKey).sort().join('/')
   const sameComplexRow = (pdf: Extraction['supplyRows'][number], row: CorrectionRow) => sameComplex(pdf.complexName, row.complexName) || sameComplex(pdf.complexName, row.housingComplexName)
   for (const row of linked) {
-    const label = parseSourceLabel(row.typeName), types = label.types.map(typeKey)
+    const label = parseSourceLabel(sourceLabel(row, labels)), types = label.types.map(typeKey)
     if (types.length < 2) continue
     const indexes = extraction.supplyRows.flatMap((pdf, index) => !used.has(index) && !pdf.subtypes.length && types.includes(typeKey(pdf.typeName))
       && sameComplexRow(pdf, row) ? [index] : [])
@@ -232,7 +243,7 @@ export function foldSameSourceRows(extraction: Extraction, rows: CorrectionRow[]
     const owned = label.group ? indexes.every(index => extraction.supplyRows[index].targets.every(target => inGroup(target.target, label.group!))) : !siblings.length
     if (indexes.length < 2 || !owned || !sameTargets(indexes.map(index => extraction.supplyRows[index]))) continue
     indexes.forEach(index => used.add(index))
-    groups.push({ indexes, typeName: row.typeName, count: foldedCount(extraction, indexes) })
+    groups.push({ indexes, typeName: sourceLabel(row, labels), count: foldedCount(extraction, indexes) })
   }
   return groups.length ? foldRows(extraction, groups).extraction : extraction
 }
@@ -243,21 +254,22 @@ export function foldSameSourceRows(extraction: Extraction, rows: CorrectionRow[]
  * 나눈 행은 LH 행 표기를 써서 저장할 위치가 그 LH 행으로 정해진다. 대상을 받지 못한 LH 행은 건드리지 않는다.
  * 나눈 뒤 대상·금액이 달라 LH 행 하나로 접을 수 없는 주택형은 나누지 않는다. notes는 나눈 행 번호별 안내다.
  */
-export function splitSameSourceRows(extraction: Extraction, rows: CorrectionRow[]) {
-  const linked = rows.filter(row => !row.excluded && !emptyRow(row) && parseSourceLabel(row.typeName).group !== null)
+export function splitSameSourceRows(extraction: Extraction, rows: CorrectionRow[], labels: SourceLabels) {
+  const label = (row: CorrectionRow) => parseSourceLabel(sourceLabel(row, labels))
+  const linked = rows.filter(row => !row.excluded && !emptyRow(row) && label(row).group !== null)
   const clusters = new Map<string, CorrectionRow[]>()
   for (const row of linked) {
-    const key = `${row.housingComplexId}|${parseSourceLabel(row.typeName).types.map(typeKey).sort().join('/')}`
+    const key = `${row.housingComplexId}|${label(row).types.map(typeKey).sort().join('/')}`
     clusters.set(key, [...clusters.get(key) ?? [], row])
   }
   type Match = SourceMatch & { cluster: number }
   const candidates = [...clusters.values()].filter(cluster => cluster.length > 1).flatMap((cluster, at): Match[] => {
-    const types = parseSourceLabel(cluster[0].typeName).types.map(typeKey), groups = cluster.map(row => parseSourceLabel(row.typeName).group)
+    const types = label(cluster[0]).types.map(typeKey), groups = cluster.map(row => label(row).group)
     const indexes = extraction.supplyRows.flatMap((pdf, index) => cluster.some(row => sameComplex(pdf.complexName, row.complexName) || sameComplex(pdf.complexName, row.housingComplexName))
       && [pdf.typeName, ...pdf.subtypes.map(subtype => subtype.name)].some(name => types.includes(typeKey(name))) ? [index] : [])
     const owners = new Map(indexes.map(index => [index, new Set(targetOwners(extraction.supplyRows[index], groups))]))
     if (![...owners.values()].some(owner => owner.size > 1)) return []
-    return cluster.map((row, order) => ({ cluster: at, group: groups[order], typeName: row.typeName, count: row.householdCount,
+    return cluster.map((row, order) => ({ cluster: at, group: groups[order], typeName: sourceLabel(row, labels), count: row.householdCount,
       rows: indexes.filter(index => owners.get(index)!.has(order)) })).filter(match => match.rows.length > 0)
   })
   const first = alignToSource(extraction, candidates)

@@ -2,7 +2,7 @@ import type { ExtractedAnnouncement, HousingTypeValue, JsonObject, JsonUpdateInp
 import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type LinkedHousingType, type NewSupplyGroup } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, type Evidence, type Extraction, type Subtype } from './extraction'
 import { foldRows } from './subtypes'
-import { defaultTargetDestinations, foldSameSourceRows, missingHousingType, originalDate, pickSubtypes, proposeRows, proposeSchedules, sharedFoldGroups, splitSameSourceRows, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
+import { defaultTargetDestinations, foldSameSourceRows, lhSourceLabels, missingHousingType, originalDate, pickSubtypes, proposeRows, proposeSchedules, sharedFoldGroups, splitSameSourceRows, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
@@ -180,8 +180,9 @@ export function createRowReview(extraction: Extraction, index: number, proposal:
  * LH 표기로 고를 수 없는 행은 저장할 위치를 한 번 제안한 뒤, 기존 행 하나와 새 행만 묶은 공통 모집수(sharedFoldGroups)를 접고 다시 제안한다.
  */
 export function createReview(source: Extraction, workspace: JsonWorkspace, housing: HousingCandidates, fold = true): Review {
-  const propose = (value: Extraction) => proposeRows(value, workspace.supply.rows, housing, workspace.supply.announcementComplexes)
-  const split = fold ? splitSameSourceRows(foldSameSourceRows(source, workspace.supply.rows), workspace.supply.rows) : { extraction: source, notes: new Map<number, string>() }
+  const labels = lhSourceLabels(workspace.supply)
+  const propose = (value: Extraction) => proposeRows(value, workspace.supply.rows, housing, workspace.supply.announcementComplexes, labels)
+  const split = fold ? splitSameSourceRows(foldSameSourceRows(source, workspace.supply.rows, labels), workspace.supply.rows, labels) : { extraction: source, notes: new Map<number, string>() }
   let extraction = split.extraction, proposals = propose(extraction), notes = split.notes
   const groups = fold ? sharedFoldGroups(extraction, proposals, workspace.supply.rows) : []
   if (groups.length) {

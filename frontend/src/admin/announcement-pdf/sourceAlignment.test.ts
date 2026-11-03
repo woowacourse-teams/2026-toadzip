@@ -132,9 +132,14 @@ describe('최초 입주자 공고의 LH 원천행 맞추기', () => {
     const extraction = readExtraction(JSON.stringify(base))
     if (!extraction.ok) throw new Error(extraction.error)
     const { workspace } = scenario('hansville')
+    // 단지에 연결된 행의 typeName은 단지 주택형 이름이고, LH 표기는 행이 기록한 LH 원천행(rowSources → sources)에만 있다.
     const row = (id: number, typeName: string, householdCount: number) => linkedTo === null ? source(id, typeName, householdCount)
-      : { ...source(id, typeName, householdCount), housingComplexId: linkedTo, housingComplexName: '인천부평', housingTypeId: 2, exclusiveArea: 26.01 }
-    workspace.supply.rows = [row(243, '26A/B/C(고령자)', 4), row(244, '26A/B/C(주거급여수급자)', 42)]
+      : { ...source(id, '26A', householdCount), housingComplexId: linkedTo, housingComplexName: '인천부평', housingTypeId: 2, exclusiveArea: 26.01 }
+    const labels = [[243, '26A/B/C(고령자)', 4], [244, '26A/B/C(주거급여수급자)', 42]] as const
+    workspace.supply.rows = labels.map(([id, typeName, count]) => row(id, typeName, count))
+    workspace.supply.rowSources = labels.map(([id], order) => ({ rowKey: `row:${id}`, category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: `2015122300020925:hash:${order + 2}` }))
+    workspace.supply.sources = [...workspace.supply.sources, ...labels.map(([, typeName], order) => ({ category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: `2015122300020925:hash:${order + 2}`,
+      rows: [{ raw: { type_name: typeName, exclusive_area: '26.01', source_order: order + 2 } }] }))]
     const candidates = [{ id: 2, name: '26A', exclusiveArea: 26.01, supplyArea: null, householdCount: null }, { id: 3, name: '26B', exclusiveArea: 26.1, supplyArea: null, householdCount: null },
       { id: 4, name: '26C', exclusiveArea: 26.2, supplyArea: null, householdCount: null }]
     return { extraction: extraction.value, workspace, candidates }
