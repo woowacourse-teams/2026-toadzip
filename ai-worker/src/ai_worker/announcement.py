@@ -1,6 +1,6 @@
 """공고문 PDF 추출기. 고른 쪽의 텍스트와 표를 DeepSeek에 보내고, 결과를 PDF 보정 화면이 읽는 형식(result.example.json)으로 만든다.
 
-평가(.local/pdf-extraction-eval, lh-frame 변형)와 같은 순서로 프롬프트를 만든다. 문구를 바꾸면 정확도를 다시 재야 한다.
+정확도를 평가한 프롬프트(LH 공급행 틀을 주는 변형)와 같은 순서로 프롬프트를 만든다. 문구를 바꾸면 정확도를 다시 재야 한다.
 """
 
 import json
