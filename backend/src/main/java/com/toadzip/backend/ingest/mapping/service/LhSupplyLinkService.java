@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.announcement.repository.SupplyRowGroupRepository;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
+import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;

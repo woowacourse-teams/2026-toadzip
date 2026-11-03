@@ -3,9 +3,9 @@ package com.toadzip.backend.ingest.collection.repository.external;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSourceSnapshot;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.dto.LhLeaseCatalogCollectionRequest;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.repository.LhLeaseCatalogPageParser;
+import com.toadzip.backend.ingest.lh.collection.leasecatalog.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.lh.collection.leasecatalog.dto.LhLeaseCatalogCollectionRequest;
+import com.toadzip.backend.ingest.lh.collection.leasecatalog.repository.LhLeaseCatalogPageParser;
 import com.toadzip.backend.ingest.collection.paging.domain.PagedCollectionBuffer;
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import java.time.Instant;

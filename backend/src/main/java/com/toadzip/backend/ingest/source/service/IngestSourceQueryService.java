@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.source.service;
 
-import com.toadzip.backend.ingest.collection.gh.domain.GhAnnouncementBoard;
-import com.toadzip.backend.ingest.collection.sh.repository.ShAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementBoard;
+import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
 import com.toadzip.backend.ingest.source.dto.IngestSourcePageResponse;
 import com.toadzip.backend.ingest.source.repository.IngestSourceQueryRepository;

@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.configuration;
 
-import com.toadzip.backend.ingest.collection.lh.configuration.LhAnnouncementClientProperties;
-import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
+import com.toadzip.backend.ingest.lh.collection.configuration.LhAnnouncementClientProperties;
+import com.toadzip.backend.ingest.lh.collection.repository.external.LhResponseStatusValidator;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeResponseStatusValidator;
 import java.net.CookieManager;

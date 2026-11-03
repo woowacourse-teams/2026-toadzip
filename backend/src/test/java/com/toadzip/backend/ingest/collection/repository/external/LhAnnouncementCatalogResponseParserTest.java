@@ -3,7 +3,7 @@ package com.toadzip.backend.ingest.collection.repository.external;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogPageParser;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.repository.LhAnnouncementCatalogPageParser;
 import java.io.IOException;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;

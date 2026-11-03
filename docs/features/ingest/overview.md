@@ -17,7 +17,7 @@ Spring은 생성자 주입으로 객체를 연결한다. `DataPipelineRunner.run
 | 단지 수집 | [MyHomeComplexCollectionService](../../../backend/src/main/java/com/toadzip/backend/ingest/collection/myhome/complex/service/MyHomeComplexCollectionService.java) → LH 임대목록 수집 |
 | 단지 정제 | [MyHomeComplexMappingService](../../../backend/src/main/java/com/toadzip/backend/ingest/mapping/service/MyHomeComplexMappingService.java) → LH 세대수 보강 |
 | 공고 수집 | [MyHomeAnnouncementCollectionService](../../../backend/src/main/java/com/toadzip/backend/ingest/collection/myhome/announcement/service/MyHomeAnnouncementCollectionService.java) → LH 목록 → 공급 → 상세 수집 |
-| 공고 정제 | [LhAnnouncementRefinementService](../../../backend/src/main/java/com/toadzip/backend/ingest/lhrefinement/service/LhAnnouncementRefinementService.java) → LH 공고 정제 |
+| 공고 정제 | [LhAnnouncementRefinementService](../../../backend/src/main/java/com/toadzip/backend/ingest/lh/refinement/service/LhAnnouncementRefinementService.java) → LH 공고 정제 |
 
 수집은 응답·식별·조회 조건·실제 수집 시각을 원천에 보관하고, 요청의 실행 시각·결과는 `collection/history`에 분리한다. 정제·보강은 원천을 읽어 단지·주택형·공고에 반영한다.
 원천 조회·매핑·보강은 `collection` 저장 구조를 사용한다. 정제·보강은 저장 행을 읽기 전용 원천 View(`MyHomeAnnouncementSourceView`, `LhAnnouncementSupplySourceView` 등)로 읽는다. View는 저장 행과 그 행을 조회한 원천 요청으로 `of`/`read`에서만 만든다.
@@ -38,7 +38,7 @@ MyHome은 `MyHomeAnnouncementCollectionService.collect()` → `PagedSourceCollec
 페이지로 받는 원천(마이홈 단지·공고, LH 임대·공고 목록)의 `*Collector`는 `PagedSource`로 페이지 조회·검증·저장 방법만 정한다. 재시도, 수집 이력, 실행 확인과 실패 기록은 `PagedSourceCollector`가 맡는다. 수집 이력 하나의 생명주기(실행 확인 → 요청 생성 → 이력 시작 → 수집 → 저장 직전 소유권 재확인, 실패 시 이력 실패 마감)는 `SourceCollectionAttempt`가 맡고, `PagedSourceCollector`와 LH 공급·상세의 `LhAnnouncementQueryCollector`가 함께 쓴다. 페이지 응답 검증 실패와 저장된 원천과의 충돌(`CollectedSourceConflictException`, 마이홈 단지의 지역 충돌)은 마지막 페이지의 외부 호출 실패로 기록하고 다른 요청을 계속한다. 응답 검증을 마친 뒤 저장하다 난 그 밖의 오류는 내부 오류로 실행을 실패시키며 외부 수집 실패로 기록하지 않는다.
 7개 공급유형별 모든 페이지가 유효할 때 원천과 성공 기록을 함께 저장한다. 전체 유형 성공 후 `MyHomeAnnouncementLifecycleService.completeRun()`으로 미조회를 판정한다. 호출 제한은 남은 유형을 중단한다.
 
-LH 공급·상세는 [LhAnnouncementExternalCollectionService](../../../backend/src/main/java/com/toadzip/backend/ingest/collection/lh/service/LhAnnouncementExternalCollectionService.java)의 `collect()`에서 시작한다.
+LH 공급·상세는 [LhAnnouncementExternalCollectionService](../../../backend/src/main/java/com/toadzip/backend/ingest/lh/collection/service/LhAnnouncementExternalCollectionService.java)의 `collect()`에서 시작한다.
 `collectAnnouncements()` → `collectBatch()`에서 대상을 고르고 `LhAnnouncementSharedRequestCollector.collect()`에서 병렬 실행과 결과를 회수한다.
 요청 하나는 `LhAnnouncementCandidateCollector.collect()` → `LhAnnouncementQueryCollector.collect()` → `LhAnnouncementStorageService.completeSupply()/completeDetail()`에서 조회·검증·저장을 처리한다.
 장애 차단기가 요청 전에 거절하면 `ExternalDataRequestRejectedException`(LH는 `LhAnnouncementUnavailableException`)으로 끝나고, 재시도와 호출 수 집계에서 빠진다. 호출 한도로 닫힌 차단기의 거절은 그 요청의 실패로 보고하고, 장애로 닫힌 차단기의 거절은 실행을 `FAILED`로 끝낸다.

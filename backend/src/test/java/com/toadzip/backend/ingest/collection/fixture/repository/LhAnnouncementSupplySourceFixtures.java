@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.fixture.repository;
 
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
+import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceView;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;

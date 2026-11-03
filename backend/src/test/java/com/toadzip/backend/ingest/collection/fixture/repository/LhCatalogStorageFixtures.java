@@ -2,11 +2,11 @@ package com.toadzip.backend.ingest.collection.fixture.repository;
 
 import com.toadzip.backend.ingest.collection.fixture.dto.LhAnnouncementCatalogPage.Entry;
 import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecordService;
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogRow;
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.dto.LhAnnouncementCatalogCollectedResponse;
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.dto.LhAnnouncementCatalogCollectionRequest;
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.service.LhAnnouncementCatalogStorageService;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.domain.LhAnnouncementCatalogRow;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.dto.LhAnnouncementCatalogCollectedResponse;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.dto.LhAnnouncementCatalogCollectionRequest;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.service.LhAnnouncementCatalogStorageService;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;

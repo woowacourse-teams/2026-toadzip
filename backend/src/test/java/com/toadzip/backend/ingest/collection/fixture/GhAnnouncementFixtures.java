@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.collection.fixture;
 
-import com.toadzip.backend.ingest.collection.gh.domain.GhAnnouncementBoard;
+import com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementBoard;
 
 /** GH주택청약센터 목록·상세 응답에서 수집이 읽는 구조만 남긴 HTML. */
 public final class GhAnnouncementFixtures {

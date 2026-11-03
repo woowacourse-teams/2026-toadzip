@@ -2,8 +2,8 @@ package com.toadzip.backend.ingest.enrichment.service;
 
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.repository.LhLeaseCatalogSourceReader;
+import com.toadzip.backend.ingest.lh.collection.leasecatalog.domain.LhLeaseCatalogSourceView;
+import com.toadzip.backend.ingest.lh.collection.leasecatalog.repository.LhLeaseCatalogSourceReader;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdComplexLink;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailureReason;

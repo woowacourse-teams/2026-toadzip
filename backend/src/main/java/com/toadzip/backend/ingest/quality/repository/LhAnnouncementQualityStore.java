@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.quality.repository;
 
-import com.toadzip.backend.ingest.collection.lh.supply.domain.HeldLhSupplyReplacement;
+import com.toadzip.backend.ingest.lh.collection.supply.domain.HeldLhSupplyReplacement;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.CollectionCoverage;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.Connection;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.Coverage;

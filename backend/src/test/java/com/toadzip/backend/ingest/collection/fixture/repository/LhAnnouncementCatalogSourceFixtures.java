@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.fixture.repository;
 
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSourceView;
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogEntryRepository;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.domain.LhAnnouncementCatalogSourceView;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.repository.LhAnnouncementCatalogEntryRepository;
 import java.util.Collection;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
