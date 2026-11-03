@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.collection.lh.announcementcatalog.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
@@ -215,11 +216,24 @@ class LhAnnouncementCatalogStorageIntegrationTest {
     @Test
     void collectionTargetsAreRentalEntriesPresentInLatestCatalog() {
         seed(rental("PAN-OLD"));
-        expectPage(1, page(1, 2, rental("PAN-NEW"), row("PAN-SALE", "분양")));
+        expectPage(1, page(1, 2, rental("PAN-NEW"), land("PAN-LAND")));
         collect(request(2));
 
         assertThat(new LhAnnouncementCatalogSourceReader(sources).findAllPresentRentalHousingAnnouncements())
                 .extracting(LhAnnouncementCatalogSourceView::getPanId).containsExactly("PAN-NEW");
+    }
+
+    @Test
+    void storesOnlyConstructionRentalEntriesAndDropsEarlierLandEntryFromLatestCatalog() {
+        seedWithoutRentalFilter(land("PAN-LAND"));
+        expectPage(1, page(1, 3, rental("PAN-RENT"), land("PAN-LAND")));
+        expectPage(2, page(2, 3, commercial("PAN-SHOP")));
+
+        int stored = collect(request(2));
+
+        assertThat(stored).isOne();
+        assertThat(view()).extracting(source -> source.snapshot().panId(), SourceView::present)
+                .containsExactly(tuple("PAN-LAND", false), tuple("PAN-RENT", true));
     }
 
     @Test
@@ -343,6 +357,19 @@ class LhAnnouncementCatalogStorageIntegrationTest {
                 COLLECTED_AT, List.of(new LhAnnouncementCatalogRow(snapshot, "{}"))));
     }
 
+    /** 건설임대만 저장하기 전에 쌓인 토지·상가 행처럼 저장 규칙을 거치지 않은 행을 둔다. */
+    private void seedWithoutRentalFilter(LhAnnouncementCatalogSnapshot snapshot) {
+        LhAnnouncementCatalogCollectionRequest request = request(2);
+        UUID id = history.start(request);
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            LhAnnouncementCatalogEntry entry = LhAnnouncementCatalogEntry.create(snapshot.sourceKey());
+            entry.replace(new LhAnnouncementCatalogRow(snapshot, "{}"), "20241004", "20261004", COLLECTED_AT,
+                    history.requireRunning(id, request));
+            sources.save(entry);
+            history.complete(id, request, 1);
+        });
+    }
+
     private List<SourceView> view() {
         return new TransactionTemplate(transactionManager).execute(status -> sources.findAll().stream()
                 .sorted(Comparator.comparing(LhAnnouncementCatalogEntry::getSourceKey))
@@ -398,8 +425,18 @@ class LhAnnouncementCatalogStorageIntegrationTest {
                 "공고중", "2026.10.01", "2026.10.01", "2026.10.31", "https://apply.lh.or.kr/a", "https://apply.lh.or.kr/m");
     }
 
+    private LhAnnouncementCatalogSnapshot land(String panId) {
+        return new LhAnnouncementCatalogSnapshot(panId, "01", "01", "01", "010", "토지 " + panId,
+                "공고중", "2026.10.01", "2026.10.01", "2026.10.31", "https://apply.lh.or.kr/a", "https://apply.lh.or.kr/m");
+    }
+
+    private LhAnnouncementCatalogSnapshot commercial(String panId) {
+        return new LhAnnouncementCatalogSnapshot(panId, "01", "22", "22", "220", "상가 " + panId,
+                "공고중", "2026.10.01", "2026.10.01", "2026.10.31", "https://apply.lh.or.kr/a", "https://apply.lh.or.kr/m");
+    }
+
     private LhAnnouncementCatalogSnapshot row(String panId, String name) {
-        return new LhAnnouncementCatalogSnapshot(panId, "01", "06", "10", "050", name,
+        return new LhAnnouncementCatalogSnapshot(panId, "01", "06", "10", "062", name,
                 "공고중", "20261001", "20261001", "20261031", "https://apply.lh.or.kr/a", "https://apply.lh.or.kr/m");
     }
 

@@ -46,13 +46,15 @@ public class LhAnnouncementCatalogStorageService {
                 || sources.existsByCollectedAtAfter(response.collectedAt())) {
             throw new IllegalArgumentException("LH 공고 목록의 수집 시각이 올바르지 않습니다.");
         }
-        List<String> keys = response.rows().stream().map(row -> row.snapshot().sourceKey()).toList();
+        List<LhAnnouncementCatalogRow> rentals = response.rows().stream()
+                .filter(row -> row.snapshot().isRentalHousingAnnouncement()).toList();
+        List<String> keys = rentals.stream().map(row -> row.snapshot().sourceKey()).toList();
         sources.markAbsent(keys);
         var stored = sources.findAllBySourceKeyIn(keys).stream()
                 .collect(Collectors.toMap(LhAnnouncementCatalogEntry::getSourceKey, Function.identity()));
         int created = 0;
         int changed = 0;
-        for (LhAnnouncementCatalogRow row : response.rows()) {
+        for (LhAnnouncementCatalogRow row : rentals) {
             String key = row.snapshot().sourceKey();
             LhAnnouncementCatalogEntry source = stored.get(key);
             if (source == null) {
@@ -66,8 +68,8 @@ public class LhAnnouncementCatalogStorageService {
             sources.save(source);
         }
         sources.flush();
-        records.complete(recordId, request, response.rows().size());
-        return new StoreResult(response.rows().size(), created, changed);
+        records.complete(recordId, request, rentals.size());
+        return new StoreResult(rentals.size(), created, changed);
     }
 
     public record StoreResult(int storedRowCount, int newRowCount, int changedRowCount) {
