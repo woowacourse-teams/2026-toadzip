@@ -295,6 +295,34 @@ class AnnouncementComplexAdminLinkIntegrationTest {
         assertThat(stored.getHousingComplex().getId()).isEqualTo(chosen.getId());
     }
 
+    @Test
+    void 공고_단지를_다른_단지로_다시_연결하면_함께_모집하던_주택형은_빠지고_대표만_남는다() throws Exception {
+        long id = announcement.getId();
+        var joint = type(entities.find(HousingComplex.class, autoComplex.getId()), "36", "36.9100");
+        entities.flush();
+        jdbc.update("INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id) VALUES (?, ?)", linkedRow.getId(), joint.getId());
+        entities.clear();
+        var workspace = json.readTree(mvc.perform(get(root(id)).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+        var body = json.createObjectNode().put("snapshotToken", workspace.get("snapshotToken").asText())
+                .put("housingComplexId", chosen.getId());
+
+        mvc.perform(post(root(id) + "/announcement-complexes/" + announcementComplex.getId() + "/link")
+                .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
+                .content(body.toString())).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+
+        assertThat(jdbc.queryForList("SELECT housing_type_id FROM supply_row_housing_types WHERE supply_row_id = ?", Long.class,
+                linkedRow.getId())).containsExactly(chosenType.getId());
+        var before = json.readTree(jdbc.queryForObject("SELECT before_value FROM admin_data_changes WHERE resource_type = "
+                + "'ANNOUNCEMENT_COMPLEX' AND resource_id = ?", String.class, announcementComplex.getId()));
+        var linkedBefore = new java.util.ArrayList<Long>();
+        for (var row : before.get("rows")) {
+            if (row.get("id").asLong() == linkedRow.getId()) { row.get("housingTypeIds").forEach(item -> linkedBefore.add(item.asLong())); }
+        }
+        assertThat(linkedBefore).containsExactlyInAnyOrder(linkedRow.getHousingType().getId(), joint.getId());
+    }
+
     private HousingType type(HousingComplex complex, String name, String area) {
         var type = HousingType.createFromMyHome(complex, UUID.randomUUID().toString(), name, new BigDecimal(area), null);
         entities.persist(type);

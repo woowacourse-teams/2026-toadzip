@@ -378,7 +378,7 @@ class LhAnnouncementRefinementIntegrationTest {
             var first = workspace.rows().getFirst();
             var added = new SupplyCorrection.Row(null, "new-84", first.housingComplexId(), first.housingComplexName(),
                     null, null, null, null, false, false, 9, first.complexName(), "84A", null, null, first.category(), 2,
-                    false, null, null, List.of(), false);
+                    false, null, null, List.of(), false, null);
             var request = new SupplyCorrection.Request(UUID.randomUUID(), workspace.snapshotToken(), "공고문 확인",
                     "https://example.com/notice", null, List.of(first, added));
             assertThatThrownBy(() -> supplyCorrections.preview(id, request))

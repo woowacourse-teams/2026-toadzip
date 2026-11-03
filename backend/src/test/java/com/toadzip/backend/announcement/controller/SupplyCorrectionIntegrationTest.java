@@ -614,6 +614,158 @@ class SupplyCorrectionIntegrationTest {
         assertThat(row.getSupplyGroup()).isNull();
     }
 
+    @Test
+    void 함께_모집하는_주택형을_연결하면_대표와_함께_저장하고_작업실이_돌려준다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        var joint = housingType(row, "26B", "26.7000");
+        var request = request(id);
+        var links = ((ObjectNode) request.get("rows").get(0)).putArray("linkedHousingTypes");
+        links.addObject().putObject("newHousingType").put("name", "26C").put("exclusiveArea", new BigDecimal("26.9"));
+        links.addObject().put("housingTypeId", joint.getId());
+
+        var preview = preview(id, request);
+        assertThat(linkedTypeIds(row.getId())).containsExactly(row.getHousingType().getId());
+        assertThat(preview.at("/after/0/linkedHousingTypes/0/housingTypeId").asLong()).isEqualTo(joint.getId());
+        apply(id, request, preview).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+
+        long created = jdbc.queryForObject("SELECT id FROM housing_types WHERE housing_complex_id = ? AND exclusive_area = 26.9",
+                Long.class, row.getHousingComplex().getId());
+        assertThat(linkedTypeIds(row.getId())).containsExactlyInAnyOrder(row.getHousingType().getId(), joint.getId(), created);
+        mvc.perform(get(root(id)).with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rows[0].housingTypeId").value(row.getHousingType().getId()))
+                .andExpect(jsonPath("$.data.rows[0].linkedHousingTypes.length()").value(2))
+                .andExpect(jsonPath("$.data.rows[0].linkedHousingTypes[0].housingTypeId").value(Math.min(joint.getId(), created)))
+                .andExpect(jsonPath("$.data.rows[0].linkedHousingTypes[1].housingTypeId").value(Math.max(joint.getId(), created)));
+    }
+
+    @Test
+    void 함께_모집하는_주택형을_생략하면_저장된_연결을_유지하고_빈_목록이면_대표만_남긴다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        var joint = housingType(row, "26B", "26.7000");
+        jdbc.update("INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id) VALUES (?, ?)", row.getId(), joint.getId());
+        entities.clear();
+
+        var untouched = request(id);
+        ((ObjectNode) untouched.get("rows").get(0)).remove("linkedHousingTypes");
+        mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType("application/json").content(json.writeValueAsString(untouched)))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("변경한 공급정보가 없습니다."));
+
+        var omitted = request(id);
+        ((ObjectNode) omitted.get("rows").get(0)).put("householdCount", 12).remove("linkedHousingTypes");
+        apply(id, omitted, preview(id, omitted)).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+        assertThat(linkedTypeIds(row.getId())).containsExactlyInAnyOrder(row.getHousingType().getId(), joint.getId());
+
+        var cleared = request(id);
+        ((ObjectNode) cleared.get("rows").get(0)).putArray("linkedHousingTypes");
+        apply(id, cleared, preview(id, cleared)).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+        assertThat(linkedTypeIds(row.getId())).containsExactly(row.getHousingType().getId());
+    }
+
+    @Test
+    void 화면을_연_뒤_함께_모집하는_주택형이_바뀌면_오래된_작업실로_저장하지_않는다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        var joint = housingType(row, "26B", "26.7000");
+        var request = request(id);
+        ((ObjectNode) request.get("rows").get(0)).put("typeName", "26A");
+        jdbc.update("INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id) VALUES (?, ?)", row.getId(), joint.getId());
+        entities.clear();
+
+        mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType("application/json").content(json.writeValueAsString(request)))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"));
+    }
+
+    @Test
+    void 미리보기_후_함께_모집하는_주택형이_바뀌면_적용을_거절한다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        var joint = housingType(row, "26B", "26.7000");
+        var request = request(id);
+        ((ObjectNode) request.get("rows").get(0)).putArray("linkedHousingTypes").addObject().put("housingTypeId", joint.getId());
+        var preview = preview(id, request);
+        joint.reviseByAdmin("바뀐 함께 모집형", new BigDecimal("26.7000"), null);
+        entities.flush();
+
+        apply(id, request, preview).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"));
+        assertThat(linkedTypeIds(row.getId())).containsExactly(row.getHousingType().getId());
+    }
+
+    @Test
+    void 다른_단지_주택형이나_면적이_겹치는_주택형은_함께_모집하는_주택형으로_연결하지_않는다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        var otherComplexType = housingType(fixture(), "27", "27.1000");
+        var sameArea = housingType(row, "26B", "26.4673");
+        rejectLinks(id, links -> links.addObject().put("housingTypeId", otherComplexType.getId()),
+                "선택한 단지에 속한 주택형을 선택하세요.");
+        rejectLinks(id, links -> links.addObject().put("housingTypeId", row.getHousingType().getId()), "전용면적마다");
+        rejectLinks(id, links -> links.addObject().put("housingTypeId", sameArea.getId()), "전용면적마다");
+        rejectLinks(id, links -> {
+            links.addObject().putObject("newHousingType").put("name", "26C").put("exclusiveArea", new BigDecimal("26.9"));
+            links.addObject().putObject("newHousingType").put("name", "26D").put("exclusiveArea", new BigDecimal("26.90"));
+        }, "전용면적마다");
+        housingType(row, "27", "27.5000");
+        rejectLinks(id, links -> links.addObject().putObject("newHousingType").put("name", "27A")
+                .put("exclusiveArea", new BigDecimal("27.5")), "이 단지에 있습니다");
+        assertThat(linkedTypeIds(row.getId())).containsExactly(row.getHousingType().getId());
+    }
+
+    @Test
+    void 공통_모집_묶음_행에는_함께_모집하는_주택형을_연결하지_않는다() throws Exception {
+        var row = groupedFixture();
+        var joint = housingType(row, "26C", "26.9000");
+        var request = groupRequest(row);
+        ((ObjectNode) request.get("rows").get(0)).putArray("linkedHousingTypes").addObject().put("housingTypeId", joint.getId());
+        mvc.perform(post(root(row.getAnnouncement().getId()) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType("application/json").content(json.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("공통 모집 묶음 행에는 함께 모집하는 주택형")));
+    }
+
+    @Test
+    void 한_저장에서_여러_행이_같은_단지_면적의_새_주택형을_함께_모집하면_주택형_하나를_함께_쓴다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        var request = request(id);
+        var first = (ObjectNode) request.get("rows").get(0);
+        first.putArray("linkedHousingTypes").addObject().putObject("newHousingType").put("name", "26C")
+                .put("exclusiveArea", new BigDecimal("26.9"));
+        var extra = first.deepCopy().putNull("id").put("key", "new-row").put("typeName", "26C").put("displayOrder", 1);
+        ((ObjectNode) extra.get("targets").get(0)).putNull("id").put("key", "new-target");
+        ((ArrayNode) request.get("rows")).add(extra);
+
+        apply(id, request, preview(id, request)).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+
+        var created = jdbc.queryForList("SELECT id FROM housing_types WHERE housing_complex_id = ? AND exclusive_area = 26.9",
+                Long.class, row.getHousingComplex().getId());
+        assertThat(created).hasSize(1);
+        var added = rows.findAllByAnnouncement(row.getAnnouncement()).stream()
+                .filter(item -> !item.getId().equals(row.getId())).findFirst().orElseThrow();
+        assertThat(linkedTypeIds(row.getId())).contains(created.getFirst());
+        assertThat(linkedTypeIds(added.getId())).containsExactlyInAnyOrder(row.getHousingType().getId(), created.getFirst());
+    }
+
+    private void rejectLinks(long id, java.util.function.Consumer<ArrayNode> links, String message) throws Exception {
+        var request = request(id);
+        links.accept(((ObjectNode) request.get("rows").get(0)).putArray("linkedHousingTypes"));
+        mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType("application/json").content(json.writeValueAsString(request)))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value(containsString(message)));
+    }
+
+    private HousingType housingType(SupplyRow row, String name, String area) {
+        var type = HousingType.createFromMyHome(row.getHousingComplex(), UUID.randomUUID().toString(), name,
+                new BigDecimal(area), null);
+        entities.persist(type); entities.flush();
+        return type;
+    }
+
+    private java.util.List<Long> linkedTypeIds(long rowId) {
+        return jdbc.queryForList("SELECT housing_type_id FROM supply_row_housing_types WHERE supply_row_id = ?", Long.class, rowId);
+    }
+
     private SupplyRow groupedFixture() {
         var row = fixture();
         var source = MyHomeSourceViews.announcement(1,
