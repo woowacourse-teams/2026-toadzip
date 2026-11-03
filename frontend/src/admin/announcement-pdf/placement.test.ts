@@ -146,3 +146,12 @@ it('AI가 이 행에 표시한 LH 행이 있으면 통합행 분리를 고를 �
   const away = placeRow(moved, 0, { mode: 'UPDATE', rowKey: 'row:748' }, workspace, housing)
   expect(splitLhRowFor(away, 0, workspace)).toBe('LH:P:SUPPLY:1')
 })
+
+it('통합행이 둘인 공고에서 한 묶음의 행을 옮겼다 되돌리면 다른 묶음이 아니라 처음 제안한 LH 행으로 돌아간다', () => {
+  const { review, workspace, housing } = daegu()
+  // 다른 단지 통합행 묶음이 앞에 있는 것처럼, 행 1·2를 다른 LH 행으로 나누는 중이라고 둔다.
+  const other = { ...review, rows: review.rows.map((row, at) => at === 0 ? row : { ...row, proposal: { ...row.proposal, lhRow: 'LH:P:SUPPLY:2' } }) }
+  const away = placeRow(other, 0, { mode: 'UPDATE', rowKey: 'row:748' }, workspace, housing)
+  expect(away.rows[0].proposal.proposedLhRow).toBe('LH:P:SUPPLY:1')
+  expect(splitLhRowFor(away, 0, workspace)).toBe('LH:P:SUPPLY:1')
+})

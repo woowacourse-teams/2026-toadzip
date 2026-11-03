@@ -26,6 +26,8 @@ export type RowProposal = {
    */
   saveMode?: 'SPLIT' | 'ATTACH'
   lhRow?: string
+  /** 처음 제안한 통합행 분리의 LH 행. 운영자가 저장 방식을 바꿔도 남아, 분리로 되돌릴 때 이 LH 행을 먼저 고른다. */
+  proposedLhRow?: string
   /** 표기·면적 근거 없이 남은 행 하나만 있어 자동으로 고르지 않은 경우 */
   ambiguous?: boolean
 }
@@ -430,7 +432,7 @@ export function proposePlacements(extraction: Extraction, proposals: RowProposal
       const counts = indexes.map(index => rowCount(extraction.supplyRows[index]))
       const sum = counts.every(count => count !== null) ? (counts as number[]).reduce((total, count) => total + count, 0) : null
       const check = sum === null ? '모집수 합계를 확인하세요' : sum === lh.householdCount ? `모집수 합 ${sum} = LH ${lh.householdCount}` : `모집수 합 ${sum}이 LH ${lh.householdCount ?? '미확인'}과 다릅니다`
-      indexes.forEach(index => join(index, { saveMode: 'SPLIT', lhRow: identifier, ...typed(index, row) }, `AI가 ${label}을(를) 주택형별로 나눈 행으로 표시해 통합행 분리를 제안합니다(${check})`))
+      indexes.forEach(index => join(index, { saveMode: 'SPLIT', lhRow: identifier, proposedLhRow: identifier, ...typed(index, row) }, `AI가 ${label}을(를) 주택형별로 나눈 행으로 표시해 통합행 분리를 제안합니다(${check})`))
     } else if (unattached.has(identifier)) {
       join(indexes[0], { saveMode: 'ATTACH', lhRow: identifier, destination: 'new' }, `AI가 공급행이 없는 ${label}에서 나온 행으로 표시해 LH 행에 연결을 제안합니다`)
     } else if (lh.attachedRowKey && indexes.length === 1 && ['', 'new', lh.attachedRowKey].includes(next[indexes[0]].destination)) {
@@ -443,7 +445,7 @@ export function proposePlacements(extraction: Extraction, proposals: RowProposal
       || proposal.recommended.includes(row.key) && ['', 'new'].includes(proposal.destination)) ? [index] : [])
     const counts = members.map(index => rowCount(extraction.supplyRows[index]))
     if (members.length < 2 || counts.some(count => count === null) || (counts as number[]).reduce((total, count) => total + count, 0) !== lh.householdCount) continue
-    members.forEach(index => join(index, { saveMode: 'SPLIT', lhRow: lh.rowIdentifier }, `PDF 행 ${members.length}개의 모집수 합 ${(counts as number[]).join(' + ')} = ${lh.householdCount}이 ${lhRowLabel(lh)}(통합행 #${String(row.id)})과 같아 통합행 분리를 제안합니다`))
+    members.forEach(index => join(index, { saveMode: 'SPLIT', lhRow: lh.rowIdentifier, proposedLhRow: lh.rowIdentifier }, `PDF 행 ${members.length}개의 모집수 합 ${(counts as number[]).join(' + ')} = ${lh.householdCount}이 ${lhRowLabel(lh)}(통합행 #${String(row.id)})과 같아 통합행 분리를 제안합니다`))
   }
   assignSplitDestinations(next, () => true, supply)
   return next
