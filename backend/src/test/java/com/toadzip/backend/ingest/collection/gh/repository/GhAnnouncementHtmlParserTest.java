@@ -71,14 +71,31 @@ class GhAnnouncementHtmlParserTest {
     }
 
     @Test
-    void 다른_게시판이나_다른_공고의_첨부_링크는_거절한다() {
+    void 다른_게시판의_상세는_거절한다() {
         String rental = detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW);
 
         assertThatThrownBy(() -> parser.parse(rental, GhAnnouncementBoard.PURCHASE_RENTAL, entry(ROW)))
                 .isInstanceOf(ExternalDataRequestException.class);
-        assertThatThrownBy(() -> parser.parse(rental.replace("pbancNo=801&atchFileSn=1604944&atchFileDtlSn=13",
-                        "pbancNo=802&atchFileSn=1604944&atchFileDtlSn=13"), GhAnnouncementBoard.RENTAL_HOUSE, entry(ROW)))
-                .isInstanceOf(ExternalDataRequestException.class);
+    }
+
+    @Test
+    void 다른_공고의_첨부_링크가_섞이면_첨부만_비우고_본문은_읽는다() {
+        String html = detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW).replace(
+                "pbancNo=801&atchFileSn=1604944&atchFileDtlSn=13", "pbancNo=802&atchFileSn=1604944&atchFileDtlSn=13");
+
+        var content = parser.parse(html, GhAnnouncementBoard.RENTAL_HOUSE, entry(ROW));
+
+        assertThat(content.attachments()).isNull();
+        assertThat(content.unreadParts()).containsExactly("첨부");
+        assertThat(content.bodyText()).contains("모집호수 280");
+    }
+
+    @Test
+    void 모두_읽은_상세는_읽지_못한_부분이_없다() {
+        var content = parser.parse(detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW), GhAnnouncementBoard.RENTAL_HOUSE,
+                entry(ROW));
+
+        assertThat(content.unreadParts()).isEmpty();
     }
 
     @Test

@@ -56,6 +56,7 @@ class IngestSourceControllerIntegrationTest {
     @BeforeEach
     void storeSources() {
         storeShSource();
+        storeGhSource();
         for (String category : List.of("MYHOME_COMPLEX", "MYHOME_ANNOUNCEMENT", "LH_LEASE_CATALOG",
                 "LH_ANNOUNCEMENT_CATALOG", "LH_ANNOUNCEMENT_DETAIL", "LH_ANNOUNCEMENT_SUPPLY")) {
             storeCurrentSource(category);
@@ -180,6 +181,17 @@ class IngestSourceControllerIntegrationTest {
                 """).param("collectedAt", Timestamp.from(Instant.parse("2026-10-02T01:00:00Z"))).update();
     }
 
+    private void storeGhSource() {
+        jdbc.sql("""
+                INSERT INTO gh_announcement_source (source_key,pbanc_no,board,kind_code,title,supply_type,region,
+                posted_date,original_url,list_url,body_text,attachments,collected_at)
+                VALUES ('GH:801','801','RENTAL_HOUSE','01','두꺼비 GH 공고','국민임대','남양주시','2026-10-02',
+                'https://apply.gh.or.kr/sb/sr/sr7150/selectPbancDetailView.do?pbancNo=801&pbancKndCd=01&previewYn=N',
+                'https://apply.gh.or.kr/sb/sr/sr7150/selectPbancRentHouseList.do?pageIndex=1','모집호수 280',
+                '[{"fileName":"모집공고문.pdf","atchFileDtlSn":"13"}]', :collectedAt)
+                """).param("collectedAt", Timestamp.from(Instant.parse("2026-10-02T01:00:00Z"))).update();
+    }
+
     private void storeCurrentSource(String category) {
         UUID record = UUID.randomUUID();
         jdbc.sql("""
@@ -269,7 +281,8 @@ class IngestSourceControllerIntegrationTest {
             "LH_ANNOUNCEMENT_SUPPLY, 두꺼비 공급, complex_label, "
                     + "https://example.test/lh/lhLeaseNoticeSplInfo1/getLeaseNoticeSplInfo1",
             "SH_ANNOUNCEMENT, 두꺼비 SH 공고, title, "
-                    + "'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=1,2,4,8,16,32,64,128,256,512,1024'"
+                    + "'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=1,2,4,8,16,32,64,128,256,512,1024'",
+            "GH_ANNOUNCEMENT, 두꺼비 GH 공고, title, https://apply.gh.or.kr"
     })
     void 관리자는_저장된_원천을_출처_URL과_함께_조회한다(
             String category, String name, String rawField, String sourceUrl
@@ -317,6 +330,18 @@ class IngestSourceControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.items[0].raw.attachments[0].fileSeq").value("7"))
                 .andExpect(jsonPath("$.data.items[0].raw.detail_fragment_html").doesNotExist())
                 .andExpect(jsonPath("$.data.items[0].raw.raw_detail_html").doesNotExist());
+    }
+
+    @Test
+    void GH_원천은_공고문_첨부를_배열로_반환하고_공고_원문_URL을_보존한다() throws Exception {
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("category", "GH_ANNOUNCEMENT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].sourceKey").value("GH:801"))
+                .andExpect(jsonPath("$.data.items[0].originalUrl").value(
+                        "https://apply.gh.or.kr/sb/sr/sr7150/selectPbancDetailView.do?pbancNo=801&pbancKndCd=01&previewYn=N"))
+                .andExpect(jsonPath("$.data.items[0].raw.board").value("RENTAL_HOUSE"))
+                .andExpect(jsonPath("$.data.items[0].raw.body_text").value("모집호수 280"))
+                .andExpect(jsonPath("$.data.items[0].raw.attachments[0].fileName").value("모집공고문.pdf"));
     }
 
     @Test

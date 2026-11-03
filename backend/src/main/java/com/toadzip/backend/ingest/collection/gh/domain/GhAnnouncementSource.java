@@ -61,10 +61,10 @@ public class GhAnnouncementSource {
     @Column(nullable = false, columnDefinition = "text")
     private String listUrl;
 
-    @Column(nullable = false, columnDefinition = "text")
+    @Column(columnDefinition = "text")
     private String bodyText;
 
-    @Column(nullable = false, columnDefinition = "text")
+    @Column(columnDefinition = "text")
     private String attachments;
 
     @Column(nullable = false)
@@ -76,6 +76,13 @@ public class GhAnnouncementSource {
         source.pbancNo = snapshot.pbancNo();
         source.updateFrom(snapshot, now);
         return source;
+    }
+
+    /** 상세를 다시 받지 않은 공고도 목록에서 바뀌는 지역·마감일·공고 상태는 맞춘다. 수집 시각은 상세 기준이라 두지 않는다. */
+    public void updateListValues(String region, LocalDate closingDate, String status) {
+        this.region = region;
+        this.closingDate = closingDate;
+        this.status = status;
     }
 
     public void updateFrom(GhAnnouncementSnapshot snapshot, Instant now) {
@@ -92,8 +99,12 @@ public class GhAnnouncementSource {
         status = snapshot.status();
         originalUrl = snapshot.originalUrl();
         listUrl = snapshot.listUrl();
-        bodyText = snapshot.bodyText();
-        attachments = snapshot.attachments();
+        if (snapshot.bodyText() != null) {
+            bodyText = snapshot.bodyText();
+        }
+        if (snapshot.attachments() != null) {
+            attachments = snapshot.attachments();
+        }
         collectedAt = now;
     }
 }

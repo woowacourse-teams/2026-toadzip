@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.ingest.collection.gh.domain.GhAnnouncementBoard;
 import com.toadzip.backend.ingest.collection.gh.domain.GhAnnouncementSnapshot;
+import com.toadzip.backend.ingest.collection.gh.dto.GhAnnouncementPage.Entry;
 import jakarta.persistence.EntityManager;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -52,6 +54,39 @@ class GhAnnouncementStoreTest {
 
         assertThat(repository.count()).isEqualTo(2);
         assertThat(repository.findBySourceKey("GH:802").orElseThrow().getCollectedAt()).isEqualTo(FIRST);
+    }
+
+    @Test
+    void 읽지_못한_본문과_첨부는_저장값을_덮지_않는다() {
+        store(FIRST).store(snapshot("801", "제목", "접수중", "원문"));
+        var board = GhAnnouncementBoard.RENTAL_HOUSE;
+        store(FIRST.plusSeconds(60)).store(new GhAnnouncementSnapshot(board, "801", "01", "제목", "국민임대", "남양주시",
+                LocalDate.parse("2026-10-02"), null, "접수마감", board.detailUrl("801", "01"), board.listUrl(1),
+                null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        var source = repository.findBySourceKey("GH:801").orElseThrow();
+        assertThat(source.getBodyText()).isEqualTo("원문");
+        assertThat(source.getAttachments()).isEqualTo("[]");
+        assertThat(source.getStatus()).isEqualTo("접수마감");
+    }
+
+    @Test
+    void 같은_게시판에서_제목과_게시일이_같은_공고만_바뀌지_않은_공고로_본다() {
+        store(FIRST).store(snapshot("801", "제목", "접수중", "원문"));
+        store(FIRST).store(snapshot("802", "제목", "접수중", "원문"));
+        store(FIRST).store(snapshot("803", "제목", "접수중", "원문"));
+        var entries = List.of(entry("801", "제목", "2026-10-02"), entry("802", "정정 제목", "2026-10-02"),
+                entry("803", "제목", "2026-10-03"), entry("804", "제목", "2026-10-02"));
+
+        assertThat(store(FIRST).findUnchangedPbancNos(GhAnnouncementBoard.RENTAL_HOUSE, entries))
+                .containsExactly("801");
+        assertThat(store(FIRST).findUnchangedPbancNos(GhAnnouncementBoard.PURCHASE_RENTAL, entries)).isEmpty();
+    }
+
+    private Entry entry(String pbancNo, String title, String postedDate) {
+        return new Entry(pbancNo, "01", "국민임대", title, "남양주시", LocalDate.parse(postedDate), null, null);
     }
 
     private GhAnnouncementStore store(Instant now) {

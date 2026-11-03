@@ -13,8 +13,8 @@ CREATE TABLE gh_announcement_source (
     status text,
     original_url text NOT NULL,
     list_url text NOT NULL,
-    body_text text NOT NULL,
-    attachments text NOT NULL CHECK (jsonb_typeof(attachments::jsonb) = 'array'),
+    body_text text,
+    attachments text CHECK (jsonb_typeof(attachments::jsonb) = 'array'),
     collected_at timestamp with time zone NOT NULL
 );
 CREATE INDEX idx_gh_announcement_collected_at ON gh_announcement_source (collected_at DESC, id DESC);

@@ -3,6 +3,9 @@ package com.toadzip.backend.ingest.pipeline.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import java.sql.SQLException;
 import java.util.List;
 import javax.sql.DataSource;
@@ -72,16 +75,30 @@ class GhAnnouncementMigrationTest {
                     assertThatThrownBy(() -> statement.execute("INSERT INTO " + table + " VALUES ('UNKNOWN')"))
                             .isInstanceOf(SQLException.class);
                 }
-                statement.execute("INSERT INTO external_data_collection_failures VALUES ('GH_ANNOUNCEMENT')");
+                // 마이그레이션이 다시 선언한 CHECK가 지금 코드의 모든 유형·단계·실패 원천을 허용해야 지난 이력과 새 기록이 저장된다.
+                for (DataPipelineType type : DataPipelineType.values()) {
+                    statement.execute("INSERT INTO data_pipeline_executions(type) VALUES ('" + type.name() + "')");
+                }
+                for (DataPipelineStep step : DataPipelineStep.values()) {
+                    statement.execute("INSERT INTO data_pipeline_executions(current_step, failed_step) VALUES ('"
+                            + step.name() + "', '" + step.name() + "')");
+                    for (String table : STEP_TABLES) {
+                        statement.execute("INSERT INTO " + table + " VALUES ('" + step.name() + "')");
+                    }
+                }
+                for (ExternalDataSource source : ExternalDataSource.values()) {
+                    statement.execute("INSERT INTO external_data_collection_failures VALUES ('" + source.name() + "')");
+                }
                 assertThatThrownBy(() -> statement.execute(
                         "INSERT INTO external_data_collection_failures VALUES ('UNKNOWN')"))
                         .isInstanceOf(SQLException.class);
                 assertThatThrownBy(() -> statement.execute(
                         "INSERT INTO data_pipeline_executions(type) VALUES ('UNKNOWN')"))
                         .isInstanceOf(SQLException.class);
-                try (var rows = statement.executeQuery("SELECT count(*) FROM data_pipeline_executions")) {
+                try (var rows = statement.executeQuery("SELECT count(*) FROM data_pipeline_executions "
+                        + "WHERE type = 'SH_ANNOUNCEMENT_COLLECTION' AND current_step = 'MAP_LH_ANNOUNCEMENTS'")) {
                     rows.next();
-                    assertThat(rows.getInt(1)).isEqualTo(2);
+                    assertThat(rows.getInt(1)).isOne();
                 }
 
                 statement.execute(insertSource("GH:801", "RENTAL_HOUSE", "[]"));

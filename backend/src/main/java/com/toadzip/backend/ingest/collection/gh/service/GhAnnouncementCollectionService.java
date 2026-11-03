@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
@@ -97,11 +98,20 @@ public class GhAnnouncementCollectionService {
                 return;
             }
             totalCount = page.totalCount();
-            for (Entry entry : page.entries()) {
-                if (entry.postedDate().isBefore(cutoff)) {
-                    continue;
+            List<Entry> selected = page.entries().stream()
+                    .filter(entry -> !entry.postedDate().isBefore(cutoff)).toList();
+            Set<String> collected = alreadyCollected(board, selected);
+            if (!collected.isEmpty()) {
+                IngestExecutionScope.verifyCanContinue();
+                store.updateListValues(selected.stream().filter(entry -> collected.contains(entry.pbancNo())).toList());
+            }
+            for (Entry entry : selected) {
+                if (collected.contains(entry.pbancNo())) {
+                    progress.skipped++;
                 }
-                collectDetail(board, entry, page, progress);
+                else {
+                    collectDetail(board, entry, page, progress);
+                }
                 IngestExecutionScope.workCompleted();
                 if (progress.rateLimited > 0) {
                     return;
@@ -115,6 +125,25 @@ public class GhAnnouncementCollectionService {
                         new ExternalDataRequestException("GH 목록이 최대 페이지 수를 초과했습니다."), progress);
             }
         }
+    }
+
+    /** 제목·게시일이 그대로이고 열린 실패가 없는 공고는 다시 받지 않는다. 일부만 읽어 저장한 공고는 실패가 열려 있어 다시 받는다. */
+    private Set<String> alreadyCollected(GhAnnouncementBoard board, List<Entry> entries) {
+        if (entries.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> unchanged = new HashSet<>(store.findUnchangedPbancNos(board, entries));
+        if (unchanged.isEmpty()) {
+            return unchanged;
+        }
+        Set<String> pending = failureRecorder.findPendingRequestDescriptions(SOURCE,
+                unchanged.stream().map(GhAnnouncementCollectionService::detailRequest).toList());
+        unchanged.removeIf(pbancNo -> pending.contains(detailRequest(pbancNo)));
+        return unchanged;
+    }
+
+    private static String detailRequest(String pbancNo) {
+        return "pbancNo=" + pbancNo;
     }
 
     private GhAnnouncementPage fetchPage(
@@ -144,7 +173,7 @@ public class GhAnnouncementCollectionService {
     }
 
     private void collectDetail(GhAnnouncementBoard board, Entry entry, GhAnnouncementPage page, Progress progress) {
-        String request = "pbancNo=" + entry.pbancNo();
+        String request = detailRequest(entry.pbancNo());
         GhAnnouncementContent content;
         try {
             String html = request(request,
@@ -160,8 +189,13 @@ public class GhAnnouncementCollectionService {
                 content.supplyType(), entry.region(), content.postedDate(), entry.closingDate(), entry.status(),
                 board.detailUrl(entry.pbancNo(), entry.kindCode()), board.listUrl(page.page()),
                 content.bodyText(), content.attachments()));
-        failureRecorder.resolve(SOURCE, request);
         progress.stored++;
+        if (!content.unreadParts().isEmpty()) {
+            recordFailure(request, new ExternalDataRequestException("GH 상세 일부를 읽지 못해 읽은 내용만 저장했습니다: "
+                    + String.join(", ", content.unreadParts())), progress);
+            return;
+        }
+        failureRecorder.resolve(SOURCE, request);
         progress.successful++;
     }
 
@@ -195,10 +229,11 @@ public class GhAnnouncementCollectionService {
         private int successful;
         private int failed;
         private int rateLimited;
+        private int skipped;
 
         private ExternalDataCollectionReport report() {
             return new ExternalDataCollectionReport(SOURCE.operation(), stored, failed, calls.count(),
-                    0, rateLimited, successful);
+                    skipped, rateLimited, successful);
         }
     }
 }

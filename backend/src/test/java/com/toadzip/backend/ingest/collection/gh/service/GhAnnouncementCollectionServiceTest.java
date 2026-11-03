@@ -30,6 +30,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.Set;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -193,6 +194,45 @@ class GhAnnouncementCollectionServiceTest {
 
         assertThatThrownBy(service::collect).isInstanceOf(DataPipelineStoppedException.class);
         verify(failures, never()).record(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void 저장된_공고와_제목_게시일이_같고_열린_실패가_없으면_상세를_다시_받지_않는다() {
+        Row unchanged = row(802, RECENT);
+        Row pending = row(801, RECENT);
+        list(RENTAL_HOUSE, 1, 2, unchanged, pending);
+        list(PURCHASE_RENTAL, 1, 0);
+        when(store.findUnchangedPbancNos(eq(RENTAL_HOUSE), any())).thenReturn(Set.of("802", "801"));
+        when(failures.findPendingRequestDescriptions(eq(ExternalDataSource.GH_ANNOUNCEMENT), any()))
+                .thenReturn(Set.of("pbancNo=801"));
+        detail(RENTAL_HOUSE, pending);
+
+        var report = service.collect();
+
+        assertThat(report.skippedRequestCount()).isOne();
+        assertThat(report.storedRowCount()).isOne();
+        verify(externalRepository, never()).fetchDetail(RENTAL_HOUSE, "802", "01");
+        verify(externalRepository).fetchDetail(RENTAL_HOUSE, "801", "01");
+        verify(store).updateListValues(argThat(entries -> entries.size() == 1
+                && entries.getFirst().pbancNo().equals("802")));
+    }
+
+    @Test
+    void 정체성이_맞은_상세는_첨부를_못_읽어도_저장하고_실패를_열어_둔다() {
+        Row rental = row(801, RECENT);
+        list(RENTAL_HOUSE, 1, 1, rental);
+        list(PURCHASE_RENTAL, 1, 0);
+        when(externalRepository.fetchDetail(RENTAL_HOUSE, "801", "01")).thenReturn(GhAnnouncementFixtures
+                .detail(RENTAL_HOUSE, rental).replace("pbancNo=801&atchFileSn", "pbancNo=900&atchFileSn"));
+
+        var report = service.collect();
+
+        assertThat(report.storedRowCount()).isOne();
+        assertThat(report.failedRequestCount()).isOne();
+        verify(store).store(argThat(snapshot -> snapshot.pbancNo().equals("801") && snapshot.attachments() == null
+                && snapshot.bodyText().contains("모집호수 280")));
+        verify(failures).record(eq(ExternalDataSource.GH_ANNOUNCEMENT), eq("pbancNo=801"), any(), any(), any());
+        verify(failures, never()).resolve(ExternalDataSource.GH_ANNOUNCEMENT, "pbancNo=801");
     }
 
     private GhAnnouncementCollectionService service(int days) {

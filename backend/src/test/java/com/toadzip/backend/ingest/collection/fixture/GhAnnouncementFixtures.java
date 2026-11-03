@@ -80,8 +80,13 @@ public final class GhAnnouncementFixtures {
                     <script>noise()</script>
                 </div>
                 <footer>푸터</footer>
+                <script>
+                $('#btn_submit').on('click', function() {
+                    $net.href("/sb/sr/%s/selectPbancRentHouseList.do");
+                });
+                </script>
                 </body></html>
                 """.formatted(row.title(), row.supplyType(), postedDate,
-                board.code(), row.pbancNo(), board.code(), row.pbancNo());
+                board.code(), row.pbancNo(), board.code(), row.pbancNo(), board.code());
     }
 }

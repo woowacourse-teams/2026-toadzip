@@ -7,7 +7,10 @@ import com.toadzip.backend.ingest.collection.repository.external.ExternalDataReq
 import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.jsoup.Jsoup;
@@ -37,12 +40,34 @@ public class GhAnnouncementHtmlParser {
             LocalDate postedDate = LocalDate.parse(labelledValue(table, "공고일").text(), POSTED_DATE);
             require(title.equals(entry.title()) && supplyType.equals(entry.supplyType())
                     && postedDate.equals(entry.postedDate()), "GH 상세의 제목·유형·공고일이 목록과 다릅니다.");
-            String attachments = attachments(table, board, entry.pbancNo());
-            return new GhAnnouncementContent(title, supplyType, postedDate, bodyText(content), attachments);
+            requireBoard(document, board);
+            List<String> unread = new ArrayList<>();
+            String bodyText = readPart(() -> bodyText(content), "본문", unread);
+            String attachments = readPart(() -> attachments(table, board, entry.pbancNo()), "첨부", unread);
+            return new GhAnnouncementContent(title, supplyType, postedDate, bodyText, attachments, List.copyOf(unread));
         }
         catch (DateTimeException | IllegalArgumentException exception) {
             throw new ExternalDataRequestException("GH 상세의 날짜 또는 원천 필드가 올바르지 않습니다.", exception);
         }
+    }
+
+    /** 정체성(게시판·제목·유형·공고일)이 맞은 뒤에는 본문·첨부를 따로 읽어, 읽지 못한 쪽만 비운다. */
+    private String readPart(Supplier<String> reader, String name, List<String> unread) {
+        try {
+            return reader.get();
+        }
+        catch (ExternalDataRequestException | IllegalArgumentException exception) {
+            unread.add(name);
+            return null;
+        }
+    }
+
+    // 목록으로 버튼이 요청한 게시판의 목록 주소로 이동해야 그 게시판의 상세다. 메뉴의 링크는 작은따옴표로 적혀 있다.
+    private void requireBoard(Document document, GhAnnouncementBoard board) {
+        String listTarget = "\"/sb/sr/" + board.code() + "/selectPbancRentHouseList.do\"";
+        require(document.select("script:not([src])").stream().map(Element::data)
+                        .anyMatch(script -> script.contains("#btn_submit") && script.contains(listTarget)),
+                "GH " + board.displayName() + " 게시판 상세가 아닙니다.");
     }
 
     private Element detailTable(Element content) {

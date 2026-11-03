@@ -85,11 +85,13 @@ DB 초기화와 마이그레이션은 [Flyway 도입 절차](../../operations/da
 
 `POST /api/admin/ingest/pipelines/gh-announcement-collection`은 API 키 없이 GH주택청약센터(`apply.gh.or.kr`)의 청약공고 원천을 수집한다. 서비스 공고·공급행 생성, 매핑, 정제는 수행하지 않는다. `www.gh.or.kr`의 분양/임대 공고 게시판은 `robots.txt`가 전체 수집을 막고 있어 쓰지 않는다.
 
-임대주택(`sr7150`)과 매입임대(`sr7155`) 게시판을 차례로 수집한다. 임대상가(`sr7170`)는 수집하지 않는다. 목록은 `selectPbancRentHouseList.do?pageIndex={page}`, 상세는 `selectPbancDetailView.do?pbancNo=…&pbancKndCd=…&previewYn=N`을 GET으로 읽고, 요청마다 `ingest.gh.request-interval`(기본 1초) 간격을 둔다.
+임대주택(`sr7150`)과 매입임대(`sr7155`) 게시판을 차례로 수집한다. 임대상가(`sr7170`)는 수집하지 않는다. 목록은 `selectPbancRentHouseList.do?pageIndex={page}`, 상세는 `selectPbancDetailView.do?pbancNo=…&pbancKndCd=…&previewYn=N`을 GET으로 읽고, 재시도를 포함한 모든 요청 앞에 `ingest.gh.request-interval`(기본 1초) 간격을 둔다.
 
 상세의 공고명·유형·공고일을 목록 값과 대조한 뒤 게시판, 공고 번호, 공고 종류 코드, 공고명, 공급유형, 지역, 게시일, 마감일, 공고 상태, 본문 텍스트와 공고문 첨부 메타데이터를 `gh_announcement_source`에 저장한다. 본문은 상세정보 표를 뺀 공급정보·주택형·공급일정·접수처·안내사항을 문단과 표 행 구분을 유지한 텍스트로 정리한다. 첨부에는 첨부 묶음·파일 식별자, 파일명, 크기와 다운로드 URL이 포함된다. 목록·상세 HTML은 DB에 저장하지 않는다.
 
 - 게시글 키는 `GH:{pbancNo}`다. 공고 번호는 두 게시판이 함께 쓰는 번호이므로 한 실행에서 게시판을 넘어 중복되면 뒤 목록 페이지를 실패로 기록한다. 같은 공고를 다시 수집하면 기존 행을 갱신한다.
 - 목록에 `-`로 표시된 마감일·공고 상태는 `NULL`로 저장한다. `attachments = []`는 공고문 행이 없는 공고다.
+- 같은 게시판에 저장된 공고의 제목·게시일이 목록과 같고 그 공고(`pbancNo=…`)에 열린 수집 실패가 없으면 상세를 다시 요청하지 않고 `skippedRequestCount`에 센다. 이때도 목록에서 바뀌는 지역·마감일·공고 상태는 저장값에 맞추고 수집 시각은 그대로 둔다.
+- 상세는 게시판·공고명·유형·공고일이 목록과 맞을 때만 저장한다. 본문·첨부 가운데 읽지 못한 부분은 저장값을 덮지 않고(새 공고면 `NULL`), 읽지 못한 부분을 사유로 실패를 열어 두어 다음 실행에서 다시 받는다.
 - 실패는 목록 `board={게시판 코드}&page={page}`, 상세 `pbancNo={공고 번호}` 단위로 기록하고 기존 값을 보존한다. 목록 실패는 그 게시판만 멈추고 다음 게시판은 계속 수집한다. 호출 제한(429)을 받으면 남은 요청을 모두 멈춘다.
 - 기본 수집 대상은 게시일 기준 최근 90일이다. 전체 과거 공고가 필요하면 `ingest.gh.lookback-days=0`으로 실행한다. HTML을 보관하지 않으므로 파서 수정 후에는 다시 수집한다.

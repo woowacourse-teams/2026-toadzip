@@ -14,6 +14,7 @@ import com.toadzip.backend.ingest.collection.gh.repository.GhAnnouncementSourceR
 import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
+import java.time.LocalDate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -62,6 +63,9 @@ class GhAnnouncementCollectionIntegrationTest {
         assertThat(first.getBodyText()).contains("모집호수 280").doesNotContain("<", "\t", "\r");
         assertThat(first.getAttachments()).contains("atchFileDtlSn", "모집공고문.pdf");
 
+        // 정정으로 목록 제목이 바뀌면 다시 받는다. 이때 상세 구조가 바뀌어 읽지 못하면 저장값을 그대로 둔다.
+        when(externalRepository.fetchList(RENTAL_HOUSE, 1)).thenReturn(GhAnnouncementFixtures.list(RENTAL_HOUSE, 1, 1,
+                new Row("801", ROW.supplyType(), "[정정] " + ROW.title(), ROW.postedDate())));
         when(externalRepository.fetchDetail(RENTAL_HOUSE, "801", "01")).thenReturn("<html>변경된 구조</html>");
         assertThat(service.collect().failedRequestCount()).isOne();
         var preserved = sources.findBySourceKey("GH:801").orElseThrow();
@@ -71,13 +75,49 @@ class GhAnnouncementCollectionIntegrationTest {
         assertThat(failures.findAllBySourceAndRequestDescriptionAndStatus(
                 ExternalDataSource.GH_ANNOUNCEMENT, "pbancNo=801", ExternalDataFailureStatus.PENDING)).hasSize(1);
 
+        doReturn(GhAnnouncementFixtures.list(RENTAL_HOUSE, 1, 1, ROW)).when(externalRepository).fetchList(RENTAL_HOUSE, 1);
         doReturn(detail).when(externalRepository).fetchDetail(RENTAL_HOUSE, "801", "01");
-        assertThat(service.collect().failedRequestCount()).isZero();
+        var retried = service.collect();
+        assertThat(retried.failedRequestCount()).isZero();
+        assertThat(retried.skippedRequestCount()).isZero();
         assertThat(sources.findBySourceKey("GH:801").orElseThrow().getId()).isEqualTo(first.getId());
         assertThat(failures.findAllBySourceAndRequestDescriptionAndStatus(
                 ExternalDataSource.GH_ANNOUNCEMENT, "pbancNo=801", ExternalDataFailureStatus.RESOLVED)).hasSize(1);
         assertThat(count("announcements")).isEqualTo(announcementCount);
         assertThat(count("housing_complexes")).isEqualTo(housingCount);
+    }
+
+    @Test
+    void 일부만_읽어_저장한_공고는_다음_실행에서_다시_받고_바뀌지_않은_공고는_건너뛴다() {
+        String detail = GhAnnouncementFixtures.detail(RENTAL_HOUSE, ROW);
+        when(externalRepository.fetchList(RENTAL_HOUSE, 1)).thenReturn(GhAnnouncementFixtures.list(RENTAL_HOUSE, 1, 1, ROW));
+        when(externalRepository.fetchList(PURCHASE_RENTAL, 1)).thenReturn(GhAnnouncementFixtures.list(PURCHASE_RENTAL, 1, 0));
+        when(externalRepository.fetchDetail(RENTAL_HOUSE, "801", "01"))
+                .thenReturn(detail.replace("pbancNo=801&atchFileSn", "pbancNo=900&atchFileSn"));
+
+        assertThat(service.collect().failedRequestCount()).isOne();
+        var partial = sources.findBySourceKey("GH:801").orElseThrow();
+        assertThat(partial.getBodyText()).contains("모집호수 280");
+        assertThat(partial.getAttachments()).isNull();
+
+        doReturn(detail).when(externalRepository).fetchDetail(RENTAL_HOUSE, "801", "01");
+        var retried = service.collect();
+        assertThat(retried.skippedRequestCount()).isZero();
+        assertThat(sources.findBySourceKey("GH:801").orElseThrow().getAttachments()).contains("모집공고문.pdf");
+        assertThat(failures.findAllBySourceAndRequestDescriptionAndStatus(
+                ExternalDataSource.GH_ANNOUNCEMENT, "pbancNo=801", ExternalDataFailureStatus.RESOLVED)).hasSize(1);
+
+        String collectedAt = sources.findBySourceKey("GH:801").orElseThrow().getCollectedAt().toString();
+        when(externalRepository.fetchList(RENTAL_HOUSE, 1)).thenReturn(GhAnnouncementFixtures.list(RENTAL_HOUSE, 1, 1, ROW)
+                .replace("<td>접수마감", "<td>접수중").replace("<td>2026-10-20", "<td>2026-10-25"));
+        var skipped = service.collect();
+        assertThat(skipped.skippedRequestCount()).isOne();
+        assertThat(skipped.externalApiCallCount()).isEqualTo(2);
+        var refreshed = sources.findBySourceKey("GH:801").orElseThrow();
+        assertThat(refreshed.getStatus()).isEqualTo("접수중");
+        assertThat(refreshed.getClosingDate()).isEqualTo(LocalDate.parse("2026-10-25"));
+        assertThat(refreshed.getCollectedAt().toString()).isEqualTo(collectedAt);
+        assertThat(refreshed.getAttachments()).contains("모집공고문.pdf");
     }
 
     private long count(String table) {
