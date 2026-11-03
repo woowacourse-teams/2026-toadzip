@@ -666,6 +666,22 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
+    void 함께_모집하는_주택형을_생략하고_대표를_바꾸면_새_대표만_남긴다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        var joint = housingType(row, "26B", "26.7000");
+        var replacement = housingType(row, "27", "27.1000");
+        jdbc.update("INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id) VALUES (?, ?)", row.getId(), joint.getId());
+        entities.clear();
+
+        var request = request(id);
+        ((ObjectNode) request.get("rows").get(0)).put("housingTypeId", replacement.getId()).remove("linkedHousingTypes");
+        apply(id, request, preview(id, request)).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+
+        assertThat(linkedTypeIds(row.getId())).containsExactly(replacement.getId());
+    }
+
+    @Test
     void 화면을_연_뒤_함께_모집하는_주택형이_바뀌면_오래된_작업실로_저장하지_않는다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId();
         var joint = housingType(row, "26B", "26.7000");

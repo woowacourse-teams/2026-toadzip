@@ -13,6 +13,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import java.time.YearMonth;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -107,11 +108,14 @@ public final class SupplyCorrection {
         }
 
         /**
-         * 함께 모집하는 주택형을 생략한 요청 행을 저장된 행 기준으로 채운다. 대표 주택형이 그대로면 저장된 연결을 유지하고
+         * 함께 모집하는 주택형을 저장 기준으로 맞춘다. 생략한 요청 행은 대표 주택형이 그대로면 저장된 연결을 유지하고
          * 바뀌면 대표만 남긴다. 대표를 바꾸면 연결을 대표 하나로 맞추던 기존 저장과 같게 하려는 것이다.
+         * 준 목록은 작업실과 같은 순서로 정렬해, 순서만 다른 요청을 바뀐 행으로 보지 않게 한다.
          */
-        public Row withOmittedLinksFrom(Row before) {
-            if (linkedHousingTypes != null) { return this; }
+        public Row withLinksFrom(Row before) {
+            if (linkedHousingTypes != null) {
+                return withLinkedHousingTypes(linkedHousingTypes.stream().sorted(LinkedHousingType.ORDER).toList());
+            }
             boolean sameRepresentative = before != null && newHousingType == null
                     && Objects.equals(before.housingTypeId(), housingTypeId);
             return withLinkedHousingTypes(sameRepresentative ? before.linkedHousingTypes() : List.of());
@@ -125,7 +129,13 @@ public final class SupplyCorrection {
     }
 
     /** 공급행이 대표 주택형과 함께 모집하는 주택형 하나. 기존 주택형 id나 이 저장에서 만들 새 주택형 중 하나만 준다. */
-    public record LinkedHousingType(@Positive Long housingTypeId, @Valid NewType newHousingType) { }
+    public record LinkedHousingType(@Positive Long housingTypeId, @Valid NewType newHousingType) {
+        /** 작업실 순서. 기존 주택형은 id 순, 새 주택형은 그 뒤에 전용면적 순이다. */
+        static final Comparator<LinkedHousingType> ORDER = Comparator.comparing(LinkedHousingType::housingTypeId,
+                        Comparator.nullsLast(Comparator.<Long>naturalOrder()))
+                .thenComparing(link -> link.newHousingType() == null ? null : link.newHousingType().exclusiveArea(),
+                        Comparator.nullsLast(Comparator.<BigDecimal>naturalOrder()));
+    }
 
     public record Target(
             @Positive Long id,

@@ -411,11 +411,11 @@ public class SupplyCorrectionService {
     }
 
     /**
-     * 대표와 함께 모집하는 주택형(대표 제외). 생략하면 {@link Row#withOmittedLinksFrom}으로 채운다.
+     * 대표와 함께 모집하는 주택형(대표 제외). 생략하면 {@link Row#withLinksFrom}으로 채운다.
      * 단지 상세가 (단지, 전용면적)으로 공급행을 찾으므로 한 행에는 전용면적마다 주택형 하나만 연결한다.
      */
     private List<LinkedHousingType> linkedTypes(Row old, Row row, HousingComplex complex, HousingType representative) {
-        if (row.linkedHousingTypes() == null) { return row.withOmittedLinksFrom(old).linkedHousingTypes(); }
+        if (row.linkedHousingTypes() == null) { return row.withLinksFrom(old).linkedHousingTypes(); }
         if (row.linkedHousingTypes().isEmpty()) { return List.of(); }
         if (row.groupId() != null) {
             throw new IllegalArgumentException("공통 모집 묶음 행에는 함께 모집하는 주택형을 연결할 수 없습니다.");
@@ -436,10 +436,7 @@ public class SupplyCorrectionService {
                         + "대표 주택형과 같은 주택형이나 면적도 연결할 수 없습니다.");
             }
         }
-        return row.linkedHousingTypes().stream().sorted(Comparator.comparing(LinkedHousingType::housingTypeId,
-                        Comparator.nullsLast(Comparator.<Long>naturalOrder()))
-                .thenComparing(link -> link.newHousingType() == null ? null : link.newHousingType().exclusiveArea(),
-                        Comparator.nullsLast(Comparator.<BigDecimal>naturalOrder()))).toList();
+        return row.withLinksFrom(old).linkedHousingTypes();
     }
 
     private List<Target> planTargets(SupplyRow row, Row old, List<Target> requested) {
