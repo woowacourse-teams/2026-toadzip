@@ -25,3 +25,21 @@ it('수정 중인 행이나 조건이 사라지면 입력을 조용히 버리지
   const missingTarget = rebaseCorrection([base], [mine], [{ ...base, targets: [] }])
   expect(resolveConflict(missingTarget.rows, missingTarget.conflicts[0], false)[0].targets).toEqual([])
 })
+
+it('대표 주택형을 바꾸며 함께 모집하는 주택형 목록을 비운 행은 최신값의 목록으로 되돌리지 않는다', () => {
+  const base = { ...blankRow(0), id: 1, key: 'row:1', housingComplexId: 7, housingTypeId: 2, linkedHousingTypes: [{ housingTypeId: 3 }] }
+  const mine = { ...base, housingTypeId: 4, linkedHousingTypes: undefined }
+  const latest = { ...base, householdCount: 20 }
+  const sent = JSON.parse(JSON.stringify(rebaseCorrection([base], [mine], [latest]).rows[0])) as Record<string, unknown>
+  expect(sent).toMatchObject({ housingTypeId: 4, householdCount: 20 })
+  expect(sent).not.toHaveProperty('linkedHousingTypes')
+})
+
+it('PDF로 채운 함께 모집하는 주택형 목록은 최신값 위에 다시 맞춰도 유지한다', () => {
+  const base = { ...blankRow(0), id: 1, key: 'row:1', housingComplexId: 7, housingTypeId: 2 }
+  const linked = [{ housingTypeId: 3 }, { newHousingType: { name: '26C', exclusiveArea: 26.2, supplyArea: null } }]
+  const mine = { ...base, linkedHousingTypes: linked }
+  const result = rebaseCorrection([base], [mine], [{ ...base, householdCount: 20 }])
+  expect(result.rows[0]).toMatchObject({ householdCount: 20, linkedHousingTypes: linked })
+  expect(result.conflicts).toEqual([])
+})
