@@ -6,7 +6,6 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
-import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.net.URI;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,48 +22,87 @@ import tools.jackson.databind.json.JsonMapper;
 class DataGoKrOpenApiClientTest {
 
     @Test
-    void 실행키가_설정키보다_우선하고_실행_종료_후_설정키를_다시_사용한다() {
-        DataGoKrOpenApiClient client = new DataGoKrOpenApiClient(null, JsonMapper.builder().build(),
-                "https://example.com", "configured-test-key", "마이홈 단지", new MyHomeResponseStatusValidator());
-        try (var ignored = IngestExecutionScope.open(null, null, null, "a+b/c==")) {
-            assertThat(client.buildUri("list", new LinkedMultiValueMap<>()))
-                    .hasToString("https://example.com/list?serviceKey=a%2Bb%2Fc%3D%3D");
-        }
-        assertThat(client.buildUri("list", new LinkedMultiValueMap<>()))
-                .hasToString("https://example.com/list?serviceKey=configured-test-key");
-    }
-
-    @Test
-    void 설정키가_없어도_해당_실행의_입력키로_수집한다() {
+    void 서버_설정_키를_요청_URL의_서비스키로만_보낸다() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(request -> assertThat(request.getURI())
-                        .hasToString("https://example.com/list?serviceKey=runtime-test-key"))
+                        .hasToString("https://example.com/list?serviceKey=configured-test-key"))
                 .andRespond(withSuccess("{\"response\":{\"header\":{\"resultCode\":\"00\"}}}",
                         MediaType.APPLICATION_JSON));
-        DataGoKrOpenApiClient client = new DataGoKrOpenApiClient(builder.build(), JsonMapper.builder().build(),
-                "https://example.com", "", "마이홈 단지", new MyHomeResponseStatusValidator());
-        try (var ignored = IngestExecutionScope.open(null, null, null, "runtime-test-key")) {
-            client.get("list", new LinkedMultiValueMap<>());
-        }
+
+        client(builder, "configured-test-key").get("list", new LinkedMultiValueMap<>());
+
+        server.verify();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", " "})
+    void 서버_설정_키가_없으면_외부_호출_없이_키_설정을_안내한다(String configuredKey) {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+
+        assertThatThrownBy(() -> client(builder, configuredKey).get("list", new LinkedMultiValueMap<>()))
+                .isInstanceOf(ExternalDataRequestException.class)
+                .hasMessage("서버 수집 키가 설정되지 않았습니다. 서버 환경변수 DATA_GO_KR_SERVICE_KEY를 확인해 주세요.");
+        server.verify();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {401, 403})
+    void 공공데이터포털이_키를_거부한_HTTP_응답은_키와_URL_없이_키_확인을_안내한다(int statusCode) {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(request -> { }).andRespond(withStatus(HttpStatus.valueOf(statusCode))
+                .body("Unauthorized serviceKey=rejected-test-key").contentType(MediaType.TEXT_PLAIN));
+
+        assertThatThrownBy(() -> client(builder, "rejected-test-key").get("list", new LinkedMultiValueMap<>()))
+                .isInstanceOfSatisfying(ExternalDataRequestException.class, failure -> {
+                    assertThat(failure.getMessage()).isEqualTo("마이홈 단지 외부 API가 서버 수집 키를 거부했습니다(HTTP "
+                            + statusCode + "). 서버 환경변수 DATA_GO_KR_SERVICE_KEY 값과 공공데이터포털 활용 신청 상태를 확인해 주세요.");
+                    assertThat(failure.toString()).doesNotContain("rejected-test-key", "example.com");
+                    assertThat(failure.getCause()).isNull();
+                    assertThat(failure.isRetryable()).isFalse();
+                    assertThat(failure.isRateLimited()).isFalse();
+                });
+        server.verify();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"OpenAPI_ServiceResponse\":{\"cmmMsgHeader\":{\"returnReasonCode\":\"30\","
+                    + "\"returnAuthMsg\":\"SERVICE_KEY_IS_NOT_REGISTERED_ERROR rejected-test-key\"}}}",
+            "<OpenAPI_ServiceResponse><cmmMsgHeader><returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</returnAuthMsg>"
+                    + "<returnReasonCode>30</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>"
+    })
+    void 게이트웨이의_미등록_키_응답은_키_없이_키_확인을_안내한다(String payload) {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(request -> { }).andRespond(withSuccess(payload, MediaType.TEXT_PLAIN));
+
+        assertThatThrownBy(() -> new DataGoKrOpenApiClient(builder.build(), JsonMapper.builder().build(),
+                "https://example.com", "rejected-test-key", "LH 공고", new LhResponseStatusValidator())
+                .get("list", new LinkedMultiValueMap<>()))
+                .isInstanceOfSatisfying(ExternalDataRequestException.class, failure -> {
+                    assertThat(failure.getMessage()).startsWith("LH 공고 외부 API가 서버 수집 키를 거부했습니다(resultCode=30)");
+                    assertThat(failure.toString()).doesNotContain("rejected-test-key");
+                    assertThat(failure.isRateLimited()).isFalse();
+                });
         server.verify();
     }
 
     @Test
-    void 외부_실패_메시지와_원인에는_입력키나_URL을_남기지_않는다() {
+    void 외부_실패_메시지와_원인에는_설정키나_URL을_남기지_않는다() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(request -> { }).andRespond(withSuccess(
-                "{\"response\":{\"header\":{\"resultCode\":\"30\",\"resultMsg\":\"runtime-test-key 인증 실패\"}}}",
+                "{\"response\":{\"header\":{\"resultCode\":\"99\",\"resultMsg\":\"configured-test-key 실패\"}}}",
                 MediaType.APPLICATION_JSON));
-        DataGoKrOpenApiClient client = client(builder);
-        try (var ignored = IngestExecutionScope.open(null, null, null, "runtime-test-key")) {
-            assertThatThrownBy(() -> client.get("list", new LinkedMultiValueMap<>()))
-                    .isInstanceOfSatisfying(ExternalDataRequestException.class, exception -> {
-                        assertThat(exception.getMessage()).doesNotContain("runtime-test-key");
-                        assertThat(exception.getCause()).isNull();
-                    });
-        }
+
+        assertThatThrownBy(() -> client(builder, "configured-test-key").get("list", new LinkedMultiValueMap<>()))
+                .isInstanceOfSatisfying(ExternalDataRequestException.class, exception -> {
+                    assertThat(exception.getMessage()).doesNotContain("configured-test-key");
+                    assertThat(exception.getCause()).isNull();
+                });
         server.verify();
     }
 
@@ -75,43 +113,38 @@ class DataGoKrOpenApiClientTest {
         server.expect(request -> { }).andRespond(request -> {
             throw new ResourceAccessException("failure at " + request.getURI());
         });
-        DataGoKrOpenApiClient client = client(builder);
-        try (var ignored = IngestExecutionScope.open(null, null, null, "runtime-test-key")) {
-            assertThatThrownBy(() -> client.get("list", new LinkedMultiValueMap<>()))
-                    .isInstanceOfSatisfying(ExternalDataRequestException.class, exception -> {
-                        assertThat(exception.isRetryable()).isTrue();
-                        assertThat(exception.toString()).doesNotContain("runtime-test-key");
-                        assertThat(exception.getCause()).isNull();
-                    });
-        }
+
+        assertThatThrownBy(() -> client(builder, "configured-test-key").get("list", new LinkedMultiValueMap<>()))
+                .isInstanceOfSatisfying(ExternalDataRequestException.class, exception -> {
+                    assertThat(exception.isRetryable()).isTrue();
+                    assertThat(exception.toString()).doesNotContain("configured-test-key");
+                    assertThat(exception.getCause()).isNull();
+                });
         server.verify();
     }
 
     @Test
-    void 인코딩된_입력키가_디코딩되어_외부_오류에_나타나도_제거한다() {
+    void 인코딩된_설정키가_디코딩되어_외부_오류에_나타나도_제거한다() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(request -> assertThat(request.getURI())
                         .hasToString("https://example.com/list?serviceKey=a%2Bb%2Fc%3D%3D"))
                 .andRespond(withSuccess(
-                        "{\"response\":{\"header\":{\"resultCode\":\"30\",\"resultMsg\":\"a+b/c== 인증 실패\"}}}",
+                        "{\"response\":{\"header\":{\"resultCode\":\"99\",\"resultMsg\":\"a+b/c== 실패\"}}}",
                         MediaType.APPLICATION_JSON));
-        DataGoKrOpenApiClient client = client(builder);
-        try (var ignored = IngestExecutionScope.open(null, null, null, "a%2Bb%2Fc%3D%3D")) {
-            assertThatThrownBy(() -> client.get("list", new LinkedMultiValueMap<>()))
-                    .hasMessageNotContaining("a+b/c==").hasMessageNotContaining("a%2Bb%2Fc%3D%3D");
-        }
+
+        assertThatThrownBy(() -> client(builder, "a%2Bb%2Fc%3D%3D").get("list", new LinkedMultiValueMap<>()))
+                .hasMessageNotContaining("a+b/c==").hasMessageNotContaining("a%2Bb%2Fc%3D%3D");
         server.verify();
     }
 
     @Test
     void 인코딩된_키에_포함된_문자를_조회_조건으로_삽입하지_않는다() {
         DataGoKrOpenApiClient client = new DataGoKrOpenApiClient(null, JsonMapper.builder().build(),
-                "https://example.com", "configured-test-key", "마이홈 단지", new MyHomeResponseStatusValidator());
-        try (var ignored = IngestExecutionScope.open(null, null, null, "a%2B&PG_SZ=999")) {
-            assertThat(client.buildUri("list", new LinkedMultiValueMap<>()))
-                    .hasToString("https://example.com/list?serviceKey=a%2B%26PG_SZ%3D999");
-        }
+                "https://example.com", "a%2B&PG_SZ=999", "마이홈 단지", new MyHomeResponseStatusValidator());
+
+        assertThat(client.buildUri("list", new LinkedMultiValueMap<>()))
+                .hasToString("https://example.com/list?serviceKey=a%2B%26PG_SZ%3D999");
     }
 
     @ParameterizedTest
@@ -337,11 +370,15 @@ class DataGoKrOpenApiClientTest {
     }
 
     private DataGoKrOpenApiClient client(RestClient.Builder builder) {
+        return client(builder, "key");
+    }
+
+    private DataGoKrOpenApiClient client(RestClient.Builder builder, String serviceKey) {
         return new DataGoKrOpenApiClient(
                 builder.build(),
                 JsonMapper.builder().build(),
                 "https://example.com",
-                "key",
+                serviceKey,
                 "마이홈 단지",
                 new MyHomeResponseStatusValidator()
         );

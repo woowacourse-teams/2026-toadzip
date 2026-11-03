@@ -191,7 +191,7 @@ class MyHomeAnnouncementStorageIntegrationTest {
             httpServer.expect(requestTo(url)).andRespond(withSuccess(
                     pageJson(1, row(announcementId, 1, "새 공고", "서울특별시")), MediaType.APPLICATION_JSON));
         }
-        try (var ignored = IngestExecutionScope.open(runId, IngestExecutionScope.current().orElseThrow(), null, null)) {
+        try (var ignored = IngestExecutionScope.open(runId, IngestExecutionScope.current().orElseThrow(), null)) {
             var result = batch.collect(new MyHomeAnnouncementCollectionCommand(2, 10));
             assertThat(result.storedRowCount()).isEqualTo(6);
             assertThat(result.failedRequestCount()).isOne();

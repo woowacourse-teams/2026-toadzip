@@ -605,7 +605,7 @@ class MyHomeComplexCollectionServiceTest {
                 });
 
         MDC.put("executionId", executionId.toString());
-        try (var scope = IngestExecutionScope.open(executionId, IngestExecutionScope.current().orElseThrow(), null, null)) {
+        try (var scope = IngestExecutionScope.open(executionId, IngestExecutionScope.current().orElseThrow(), null)) {
             concurrentService.collect(request);
         }
         finally {

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.collection.configuration.ExternalDataIngestProperties;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionStatus;
 import com.toadzip.backend.ingest.collection.history.domain.SourceCollectionRecord;
@@ -562,6 +563,7 @@ class SourceCollectionRecoveryIntegrationTest {
                 new DataPipelineExecutionRecovery(lock, states,
                         new SourceCollectionRecoveryService(records, transactionManager, clock), clock),
                 new DataPipelineHeartbeat(heartbeatExecutor, states, failures, clock), failures,
-                Runnable::run, clock, new DataPipelineExecutionMapper(JsonMapper.builder().build()));
+                Runnable::run, clock, new DataPipelineExecutionMapper(JsonMapper.builder().build()),
+                new ExternalDataIngestProperties("test-service-key", null));
     }
 }

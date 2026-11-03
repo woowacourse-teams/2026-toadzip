@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.collection.configuration.ExternalDataIngestProperties;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecoveryService;
@@ -387,7 +388,8 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 failures,
                 Runnable::run,
                 clock,
-                new DataPipelineExecutionMapper(JsonMapper.builder().build())
+                new DataPipelineExecutionMapper(JsonMapper.builder().build()),
+                new ExternalDataIngestProperties("test-service-key", null)
         );
     }
 
