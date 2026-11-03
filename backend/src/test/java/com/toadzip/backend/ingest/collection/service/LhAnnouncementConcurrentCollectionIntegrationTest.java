@@ -8,9 +8,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
+import com.toadzip.backend.ingest.collection.fixture.dto.LhAnnouncementCatalogPage.Entry;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementCatalogSourceFixtures;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhCatalogStorageFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementDetailSourceFixtures;
-import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
 import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
@@ -19,8 +20,7 @@ import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollect
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQueryApiRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
@@ -49,7 +49,10 @@ class LhAnnouncementConcurrentCollectionIntegrationTest {
     private LhAnnouncementExternalCollectionService service;
 
     @Autowired
-    private MyHomeAnnouncementSourceFixtures sources;
+    private LhCatalogStorageFixtures catalogStore;
+
+    @Autowired
+    private LhAnnouncementCatalogSourceFixtures catalog;
 
     @Autowired
     private LhAnnouncementDetailSourceFixtures details;
@@ -91,12 +94,12 @@ class LhAnnouncementConcurrentCollectionIntegrationTest {
         links.deleteAllInBatch();
         details.deleteAllInBatch();
         failures.deleteAllInBatch();
-        sources.deleteAllInBatch();
+        catalog.deleteAllInBatch();
     }
 
     @Test
     void 병렬_수집은_독립_트랜잭션으로_성공_연결을_저장하고_다음_실행에서_모든_대상을_재조회한다() {
-        sources.saveAll(List.of(source("a", "100"), source("b", "200"), source("c", "100")));
+        catalogStore.store(List.of(entry("100"), entry("200")));
         CountDownLatch started = new CountDownLatch(2);
         when(externalRepository.detail(any())).thenAnswer(invocation -> {
             LhAnnouncementQuery request = invocation.getArgument(0);
@@ -115,8 +118,7 @@ class LhAnnouncementConcurrentCollectionIntegrationTest {
         assertThat(first.externalApiCallCount()).isEqualTo(2);
         assertThat(currentDetails()).extracting(detail -> detail.getPanId()).containsExactly("100");
         assertThat(querySources.count()).isOne();
-        assertThat(links.findAll()).extracting(link -> link.getSourceAnnouncementKey())
-                .containsExactlyInAnyOrder("a", "c");
+        assertThat(links.findAll()).extracting(link -> link.getPanId()).containsExactly("100");
         assertThat(failures.count()).isOne();
 
         clearInvocations(externalRepository);
@@ -128,16 +130,16 @@ class LhAnnouncementConcurrentCollectionIntegrationTest {
         assertThat(currentDetails()).extracting(detail -> detail.getPanId())
                 .containsExactlyInAnyOrder("100", "200");
         assertThat(querySources.count()).isEqualTo(2);
-        assertThat(links.count()).isEqualTo(3);
+        assertThat(links.count()).isEqualTo(2);
         assertThat(meterRegistry.get("ingest.announcement.store")
                 .tag("source", "LH_ANNOUNCEMENT_DETAIL").timer().count()).isEqualTo(3);
         assertThat(meterRegistry.get("ingest.external.request")
                 .tags("source", "LH_ANNOUNCEMENT_DETAIL", "result", "completed").timer().count()).isEqualTo(3);
         assertThat(meterRegistry.get("ingest.external.request")
                 .tags("source", "LH_ANNOUNCEMENT_DETAIL", "result", "failed").timer().count()).isOne();
-        assertThat(meterRegistry.get("ingest.announcement.source.rows")
-                .tags("source", "LH_ANNOUNCEMENT_DETAIL", "mode", "scheduled", "result", "read")
-                .counter().count()).isEqualTo(6);
+        assertThat(meterRegistry.get("ingest.announcement.candidates")
+                .tags("source", "LH_ANNOUNCEMENT_DETAIL", "mode", "scheduled", "result", "refresh")
+                .counter().count()).isEqualTo(4);
         assertThat(meterRegistry.get("ingest.announcement.requests")
                 .tags("source", "LH_ANNOUNCEMENT_DETAIL", "mode", "scheduled", "result", "refresh")
                 .counter().count()).isEqualTo(4);
@@ -160,13 +162,9 @@ class LhAnnouncementConcurrentCollectionIntegrationTest {
                         source.getPanId(), source.getRequestHash()).stream()).toList();
     }
 
-    private MyHomeAnnouncementSourceView source(String id, String panId) {
-        String payload = """
-                {"pblancId":"%s","houseSn":1,"suplyInsttNm":"한국토지주택공사","suplyTyNm":"행복주택",
-                 "url":"https://apply.lh.or.kr/panDetail?panId=%s&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"}
-                """.formatted(id, panId);
-        return MyHomeSourceViews.announcement(0, JsonMapper.builder().build()
-                .readValue(payload, MyHomeAnnouncementSourceSnapshot.class));
+    private Entry entry(String panId) {
+        return new Entry(new LhAnnouncementCatalogSnapshot(panId, "03", "06", "06", "063",
+                "공고", "공고중", "", "", "", "", ""), "{}");
     }
 
     private JsonNode response() {

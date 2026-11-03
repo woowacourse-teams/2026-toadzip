@@ -174,11 +174,11 @@ it('공고 표기가 달라도 연결한 단지 이름으로 보여 같은 단�
   expect(within(table).getAllByRole('rowheader')[1]).toHaveAttribute('title', '공고 표기: 익산 한스빌 국민임대')
 })
 
-it('LH 공급 원본 행이 공급행에 없으면 직접 추가를 막고 이유를 알린다', async () => {
+it('LH 공급 원본 행이 공급행에 없어도 직접 추가를 막지 않고 저장하면 남는 LH 행을 알린다', async () => {
   vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...structuredClone(workspace), unattachedLhSupplyRows: [{ rowIdentifier: 'LH:P:SUPPLY:1', complexLabel: '한스빌', typeName: '26B', exclusiveArea: null }] })
   await setup(false)
-  expect(screen.getByRole('button', { name: '직접 추가' })).toBeDisabled()
-  expect(screen.getByRole('note')).toHaveTextContent('LH 공급 원본 1행(한스빌 · 26B)이 아직 공급행이 되지 않았습니다. 새 공급정보로 추가할 수 없으니 공고 정제를 다시 실행하거나 기존 공급정보 행을 고르세요.')
+  expect(screen.getByRole('button', { name: '직접 추가' })).toBeEnabled()
+  expect(screen.getByRole('note')).toHaveTextContent('LH 공급 원본 1행(한스빌 · 26B)이 아직 공급행이 되지 않았습니다. 저장하면 정제가 이 행을 공급행으로 만들지 않으니')
   expect(screen.getByRole('note')).not.toHaveTextContent('LH 행 연결')
 })
 

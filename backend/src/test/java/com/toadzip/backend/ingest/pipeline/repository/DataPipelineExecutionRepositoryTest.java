@@ -41,12 +41,12 @@ class DataPipelineExecutionRepositoryTest {
         DataPipelineExecution olderExecution = executionAt("2026-09-03T03:00:00Z");
         executionRepository.saveAndFlush(olderExecution);
         DataPipelineExecution latestExecution = executionAt("2026-09-03T02:00:00Z");
-        latestExecution.startStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+        latestExecution.startStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
         latestExecution.completeStep(
-                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
                 "{\"collectedSourceRowCount\":3}"
         );
-        latestExecution.startStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
+        latestExecution.startStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
         executionRepository.saveAndFlush(latestExecution);
         entityManager.clear();
 
@@ -57,11 +57,11 @@ class DataPipelineExecutionRepositoryTest {
         assertThat(found.getExecutionId()).isEqualTo(latestExecution.getExecutionId());
         assertThat(found.getStatus()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
         assertThat(found.getCurrentStep())
-                .isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
+                .isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
         assertThat(found.getCompletedSteps())
-                .containsExactly(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+                .containsExactly(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
         assertThat(found.getCompletedStepResults()).singleElement().satisfies(result -> {
-            assertThat(result.getStep()).isEqualTo(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+            assertThat(result.getStep()).isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
             assertThat(result.getReport()).isEqualTo("{\"collectedSourceRowCount\":3}");
         });
     }
@@ -199,21 +199,21 @@ class DataPipelineExecutionRepositoryTest {
         executionStateService.create(executionId, DataPipelineType.ANNOUNCEMENT_COLLECTION, startedAt);
         executionStateService.startStep(
                 executionId,
-                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS
-        );
-        executionStateService.recordPartialFailure(
-                executionId,
-                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
-                "{\"failedPageCount\":1}"
-        );
-        executionStateService.startStepAfterPartialFailure(
-                executionId,
-                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
                 DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG
         );
         executionStateService.recordPartialFailure(
                 executionId,
                 DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
+                "{\"failedPageCount\":1}"
+        );
+        executionStateService.startStepAfterPartialFailure(
+                executionId,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES
+        );
+        executionStateService.recordPartialFailure(
+                executionId,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
                 "{\"failedRequestCount\":2}"
         );
 
@@ -223,11 +223,11 @@ class DataPipelineExecutionRepositoryTest {
                 .extracting(result -> result.getStep(), result -> result.getReport())
                 .containsExactly(
                         org.assertj.core.groups.Tuple.tuple(
-                                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
                                 "{\"failedPageCount\":1}"
                         ),
                         org.assertj.core.groups.Tuple.tuple(
-                                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
+                                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
                                 "{\"failedRequestCount\":2}"
                         )
                 );

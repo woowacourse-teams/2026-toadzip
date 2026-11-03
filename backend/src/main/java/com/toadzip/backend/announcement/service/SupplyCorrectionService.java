@@ -13,8 +13,6 @@ import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
 import com.toadzip.backend.admin.quality.dto.QualityComparison;
 import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
-import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
-import com.toadzip.backend.ingest.lhrefinement.service.LhCurrentSupplies;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.LinkedHousingType;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.Row;
@@ -63,6 +61,8 @@ import tools.jackson.databind.ObjectMapper;
 @PreAuthorize("hasRole('ADMIN')")
 @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class SupplyCorrectionService {
+    /** 작업실 rowSources의 분류. 원천 키는 나눈 LH 공급 원본 행 식별자 "LH:{panId}:SUPPLY:{순번}"이다. */
+    static final String LH_SPLIT = "LH_SPLIT";
     private final AnnouncementRepository announcements;
     private final SupplyRowRepository rows;
     private final SupplyTargetRepository targets;
@@ -74,7 +74,7 @@ public class SupplyCorrectionService {
     private final AdminDataChangeRepository changes;
     private final QualityComparisonService comparisons;
     private final SupplyCorrectionGroups groupCorrections;
-    private final LhCurrentSupplies lhSupplies;
+    private final SupplyCorrectionPlacements placements;
     private final CorrectedSupplyLinkService correctedLinks;
     private final ObjectMapper json;
     private final AnnouncementComplexAdminLinks adminLinks;
@@ -100,9 +100,13 @@ public class SupplyCorrectionService {
         var deletable = stored.stream().filter(SupplyCorrectionService::deletable).map(row -> "row:" + row.getId()).sorted().toList();
         // 공고 단지 연결은 공급행이 없는 공고 단지도 있어 토큰에 함께 넣는다. 화면이 본 뒤 연결이 바뀌면 연결 변경을 거절한다.
         var announcementComplexes = announcementComplexes(announcement, stored);
-        var workspace = new SupplyCorrection.Workspace(hash(List.of(comparison.snapshotToken(), currentRows, announcementComplexes)),
-                announcement.getVersion(), currentRows, comparison.sources(), sourceStatus.missingWarnings(id), rowSources,
-                deletable, unattachedLhSupplyRows(announcement, stored), announcementComplexes);
+        var lhSupplyRows = placements.lhSupplyRows(announcement, stored);
+        // 분리 계보는 행 값에 없어 LH 행별 연결과 함께 토큰에 넣는다. 화면이 본 뒤 다른 저장이 나누면 그 화면의 저장을 거절한다.
+        var lineage = lhSupplyRows.stream().map(row -> List.of(row.rowIdentifier(), Objects.toString(row.attachedRowKey(), ""),
+                row.splitRowKeys())).toList();
+        var workspace = new SupplyCorrection.Workspace(hash(List.of(comparison.snapshotToken(), currentRows, announcementComplexes,
+                lineage)), announcement.getVersion(), currentRows, comparison.sources(), sourceStatus.missingWarnings(id),
+                rowSources, deletable, unattachedLhSupplyRows(announcement, lhSupplyRows), announcementComplexes, lhSupplyRows);
         var snapshot = new Snapshot(workspace, comparison, currentRows);
         if (log.isDebugEnabled()) {
             var parts = tokenParts(snapshot);
@@ -141,18 +145,13 @@ public class SupplyCorrectionService {
 
     /**
      * LH 원천 소유 공고에서 아직 공급행이 되지 않은 LH 공급 원천 행. LH 공고 정제가 LH 공급 한 행마다 공급행을 만들므로,
-     * 원천이 정제 뒤에 바뀌었으면 여기 남는다. 공고문 소유 공고는 정제가 공급행을 만들지 않으므로 보지 않는다.
+     * 원천이 정제 뒤에 바뀌었으면 여기 남는다. LH 행 식별자나 분리 원천으로 가리키는 공급행이 있으면 붙은 행이다.
+     * 공고문 소유 공고는 정제가 공급행을 만들지 않으므로 보지 않는다.
      */
-    private List<SupplyCorrection.LhSupplyRow> unattachedLhSupplyRows(Announcement announcement,
-            List<SupplyRow> stored) {
-        String panId = announcement.getLhPanId();
-        if (panId == null || panId.isBlank() || !announcement.suppliedByLh()) { return List.of(); }
-        var attached = stored.stream().map(SupplyRow::getLhSourceSupplyRowIdentifier).filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        return lhSupplies.of(panId).stream()
-                .filter(supply -> !attached.contains(LhSupplyRowLinks.identifier(supply)))
-                .map(supply -> new SupplyCorrection.LhSupplyRow(LhSupplyRowLinks.identifier(supply), supply.getComplexLabel(),
-                        supply.getTypeName(), supply.getExclusiveArea())).toList();
+    private static List<SupplyCorrection.LhSupplyRow> unattachedLhSupplyRows(Announcement announcement,
+            List<SupplyCorrection.LhSupplyRow> lhSupplyRows) {
+        if (!announcement.suppliedByLh()) { return List.of(); }
+        return lhSupplyRows.stream().filter(SupplyCorrectionPlacements::unattached).toList();
     }
 
     /**
@@ -180,6 +179,10 @@ public class SupplyCorrectionService {
                         candidates.isEmpty() ? recorded : candidates.getFirst()));
             }
         });
+        // 관리자가 LH 행 하나를 주택형별로 나눈 행은 그 LH 행 식별자를 준다. 같은 키의 형제행은 중복이 아니라 의도한 분리다.
+        if (row.getLhSplitSourceIdentifier() != null) {
+            result.add(new SupplyCorrection.RowSource(key, LH_SPLIT, row.getLhSplitSourceIdentifier()));
+        }
         return result;
     }
 
@@ -199,20 +202,24 @@ public class SupplyCorrectionService {
         var announcement = find(id);
         var planned = plan(announcement, before.rows(), request.rows(), Set.copyOf(before.deletableRowKeys()),
                 request.deletedRowKeys());
-        if (!before.unattachedLhSupplyRows().isEmpty() && planned.stream().anyMatch(row -> row.id() == null)) {
-            throw new IllegalArgumentException("LH 공급 원본 " + before.unattachedLhSupplyRows().size()
-                    + "행이 아직 공급행이 되지 않았습니다. 새 공급행을 추가하지 말고 공고 정제를 다시 실행해 "
-                    + "LH 공급행을 만든 뒤 보정하세요.");
-        }
+        var placementPlan = placementPlan(announcement, before, request, planned);
         var groupPlans = groupCorrections.plan(announcement, planned, request.newGroups());
         checkNewTypes(planned);
         var warnings = new ArrayList<>(validateSchedulesAndCounts(id, planned, request.newGroups()));
         warnings.addAll(adminLinks.warnings(adminLinks.plan(announcement, before.rows(), planned)));
-        if (groupPlans.isEmpty() && same(before.rows(), planned)) {
+        warnings.addAll(placementPlan.warnings());
+        if (groupPlans.isEmpty() && !placementPlan.changesLineage() && same(before.rows(), planned)) {
             throw new IllegalArgumentException("변경한 공급정보가 없습니다.");
         }
-        return new SupplyCorrection.Preview(hash(List.of(request, planned, candidateValues(planned), groupPlans)),
-                before.rows(), planned, List.copyOf(warnings), request.newGroups());
+        return new SupplyCorrection.Preview(hash(List.of(request, planned, candidateValues(planned), groupPlans,
+                placementPlan.splits())), before.rows(), planned, List.copyOf(warnings), request.newGroups(),
+                placementPlan.splits(), placementPlan.unattached());
+    }
+
+    private SupplyCorrectionPlacements.Plan placementPlan(Announcement announcement, SupplyCorrection.Workspace before,
+            SupplyCorrection.Request request, List<Row> planned) {
+        return placements.plan(announcement, rows.findAllByAnnouncement(announcement), request.rows(), before.rows(), planned,
+                request.deletedRowKeys(), before.unattachedLhSupplyRows());
     }
 
     @Transactional
@@ -267,6 +274,7 @@ public class SupplyCorrectionService {
         audit.put("operationId", correction.operationId());
         if (!correction.deletedRowKeys().isEmpty()) { audit.put("deletedRowKeys", correction.deletedRowKeys()); }
         audit.put("sources", after.sources());
+        if (!after.lhSupplyRows().isEmpty()) { audit.put("lhSupplyRows", after.lhSupplyRows()); }
         return audit;
     }
 
@@ -290,20 +298,27 @@ public class SupplyCorrectionService {
 
     private Map<String, SupplyRow> writePlanned(Announcement announcement, SupplyCorrection.Preview preview,
             SupplyCorrection.Apply request, String actor) {
-        var stored = rows.findAllByAnnouncement(announcement).stream()
-                .collect(Collectors.toMap(SupplyRow::getId, Function.identity()));
+        var storedRows = rows.findAllByAnnouncement(announcement);
+        var stored = storedRows.stream().collect(Collectors.toMap(SupplyRow::getId, Function.identity()));
         var groupPlans = groupCorrections.plan(announcement, preview.after(), request.correction().newGroups());
+        var placementPlan = placements.plan(announcement, storedRows, request.correction().rows(), preview.before(),
+                preview.after(), request.correction().deletedRowKeys(), List.of());
         Map<String, SupplyRow> written = new LinkedHashMap<>();
         Map<String, HousingType> createdTypes = new HashMap<>();
         var beforeById = preview.before().stream().collect(Collectors.toMap(Row::id, Function.identity()));
         for (var row : preview.after()) {
             var saved = stored.get(row.id());
-            if (row.id() == null || !same(beforeById.get(row.id()), row)) {
+            var before = beforeById.get(row.id());
+            // 순서만 밀린 행은 값과 관리자 수정 표시를 그대로 두고 순서만 옮긴다.
+            if (row.id() != null && !same(before, row) && same(before.withDisplayOrder(row.displayOrder()), row)) {
+                saved.reorder(row.displayOrder());
+            } else if (row.id() == null || !same(before, row)) {
                 saved = writeRow(announcement, saved, row, request.correction(), createdTypes);
             }
             written.put(row.key(), saved);
         }
         var links = adminLinks.plan(announcement, preview.before(), preview.after());
+        placements.apply(placementPlan, written);
         groupCorrections.apply(announcement, groupPlans, written, request.correction(), actor);
         adminLinks.apply(announcement, links, preview.after(), written, actor);
         for (var key : request.correction().deletedRowKeys()) {
@@ -398,14 +413,15 @@ public class SupplyCorrectionService {
                 row.newHousingType(), row.groupId(), row.sharedHouseholdCount(), modified, row.excluded(), row.displayOrder(),
                 complexName, row.typeName(), pnu, row.moveInMonth(), row.category(), row.householdCount(),
                 row.areaOverride(), decimal(exclusiveArea), decimal(supplyArea), plannedTargets, row.targetCountsComparable(),
-                linkedTypes(old, row, complex, type));
-        if (old != null && !same(old, result) && !modified) {
+                linkedTypes(old, row, complex, type), null, null);
+        // 앞에 끼어든 행 때문에 표시 순서만 밀린 행은 관리자가 값을 고친 행이 아니다.
+        if (old != null && !same(old, result.withDisplayOrder(old.displayOrder())) && !modified) {
             return new Row(result.id(), result.key(), result.housingComplexId(), result.housingComplexName(),
                     result.housingTypeId(), result.newHousingType(), result.groupId(), result.sharedHouseholdCount(), true,
                     result.excluded(), result.displayOrder(), result.complexName(), result.typeName(), result.pnu(),
                     result.moveInMonth(), result.category(), result.householdCount(), result.areaOverride(),
                     result.exclusiveArea(), result.supplyArea(), result.targets(), result.targetCountsComparable(),
-                    result.linkedHousingTypes());
+                    result.linkedHousingTypes(), null, null);
         }
         return result;
     }
@@ -650,7 +666,7 @@ public class SupplyCorrectionService {
                         .thenComparing(SupplyTarget::getId)).map(this::targetData)
                         .sorted(Comparator.comparingInt(Target::displayOrder).thenComparing(Target::key)).toList(), row.isTargetCountsComparable(),
                 row.getHousingTypes().stream().map(HousingType::getId).filter(id -> !id.equals(representativeId)).sorted()
-                        .map(id -> new LinkedHousingType(id, null)).toList());
+                        .map(id -> new LinkedHousingType(id, null)).toList(), null, null);
     }
 
     private Target targetData(SupplyTarget target) {

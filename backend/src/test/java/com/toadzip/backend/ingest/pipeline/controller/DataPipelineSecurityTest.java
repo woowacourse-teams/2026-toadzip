@@ -131,23 +131,21 @@ class DataPipelineSecurityTest {
             "complex-collection, COMPLEX_COLLECTION", "announcement-collection, ANNOUNCEMENT_COLLECTION",
             "announcement-sync, ANNOUNCEMENT_SYNC"
     })
-    void 관리자는_CSRF와_입력키로_수집을_접수하며_키는_응답에_없다(
+    void 관리자가_CSRF와_함께_본문으로_키를_보내면_키를_쓰거나_되돌리지_않고_거절한다(
             String pathValue, DataPipelineType type
     ) throws Exception {
-        when(service.start(type, "runtime-test-key"))
-                .thenReturn(DataPipelineExecutionResponse.idle(type));
         var result = mockMvc.perform(post("/api/admin/ingest/pipelines/{type}", pathValue)
                         .with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.serviceKey").doesNotExist()).andReturn();
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INGEST_REQUEST")).andReturn();
         org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentAsString())
                 .doesNotContain("runtime-test-key");
-        verify(service).start(type, "runtime-test-key");
+        verifyNoInteractions(service);
     }
 
     @Test
-    void 관리자의_기존_본문_없는_요청도_설정키_방식으로_접수한다() throws Exception {
+    void 관리자의_본문_없는_요청은_서버_수집_키로_접수한다() throws Exception {
         mockMvc.perform(post(ENDPOINT).with(user("admin").roles("ADMIN")).with(csrf()))
                 .andExpect(status().isAccepted());
         verify(service).start(DataPipelineType.COMPLEX_COLLECTION);

@@ -11,9 +11,9 @@ import styles from './ComplexIngest.module.css'
 import { ComplexStageHelp } from './ComplexStageHelp'
 import { ComplexStatusBadge } from './ComplexStatusBadge'
 
-export function ComplexIngestStages({ states, disabled, startingType, stopping, onStart, onStop, onRefresh, onUploadBusy }: {
-  states: Record<DataPipelineType, PipelineViewState>; disabled: boolean; startingType: DataPipelineType | null
-  stopping: Partial<Record<DataPipelineType, boolean>>; onStart: (type: DataPipelineType, key?: string) => void
+export function ComplexIngestStages({ states, disabled, collectionBlocked = false, startingType, stopping, onStart, onStop, onRefresh, onUploadBusy }: {
+  states: Record<DataPipelineType, PipelineViewState>; disabled: boolean; collectionBlocked?: boolean; startingType: DataPipelineType | null
+  stopping: Partial<Record<DataPipelineType, boolean>>; onStart: (type: DataPipelineType) => void
   onStop: (type: DataPipelineType) => void; onRefresh: (type: DataPipelineType) => void; onUploadBusy: (busy: boolean) => void
 }) {
   const location = useLocation()
@@ -81,7 +81,7 @@ export function ComplexIngestStages({ states, disabled, startingType, stopping, 
         <ComplexStageHelp stage="단지 원천 수집">마이홈 단지와 LH 임대 카탈로그를 수집해 원본을 저장합니다.</ComplexStageHelp></div></div>
         <ComplexExecutionSummary execution={latest('COMPLEX_COLLECTION')} pending={startingType === 'COMPLEX_COLLECTION'} stopping={stopping[latest('COMPLEX_COLLECTION').type]} /></header>
       <div className={styles.executionActions} role="group" aria-label="단지 원천 수집 실행 제어">
-        <Button data-design-system className={styles.collectionButton} disabled={disabled} onClick={() => onStart('COMPLEX_COLLECTION')}>단지 원천 수집 실행</Button>
+        <Button data-design-system className={styles.collectionButton} disabled={disabled || collectionBlocked} onClick={() => onStart('COMPLEX_COLLECTION')}>단지 원천 수집 실행</Button>
         {isRunning(0) && <ComplexExecutionStop execution={latest('COMPLEX_COLLECTION')} label="수집 중지" stopping={stopping[latest('COMPLEX_COLLECTION').type]} onStop={() => onStop(latest('COMPLEX_COLLECTION').type)} />}
       </div>
       {result('COMPLEX_COLLECTION')}

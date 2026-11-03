@@ -154,7 +154,7 @@ it('원천별 탭을 키보드로 이동하고 선택한 분류를 조회한다'
 it('마이홈 공고의 최소 월임대료를 단지의 기본 월임대료와 구분한다', async () => {
   fetchSources.mockResolvedValueOnce({ ...fixture, items: [{ ...fixture.items[0], raw: { pblanc_nm: '두꺼비 공고', mt_rntchrg: '12300' } }] })
   renderPage('/admin/sources?category=MYHOME_ANNOUNCEMENT')
-  const table = await screen.findByRole('table', { name: '마이홈 공고 원천 목록 · 1페이지' })
+  const table = await screen.findByRole('table', { name: '마이홈 공고(수집 중단) 원천 목록 · 1페이지' })
   expect(within(table).getByRole('columnheader', { name: '최소 월임대료 (mt_rntchrg)' })).toBeVisible()
   expect(within(table).getByRole('cell', { name: '12300' })).toBeVisible()
 })

@@ -5,20 +5,20 @@ const definitions = {
   COLLECT_LH_LEASE_CATALOG: 'LH 임대 카탈로그 수집',
   MAP_MYHOME_COMPLEXES: '마이홈 단지 정제',
   ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS: 'LH 주택형 세대수 보강',
-  COLLECT_MYHOME_ANNOUNCEMENTS: '마이홈 공고 수집',
   COLLECT_SH_ANNOUNCEMENTS: 'SH 공고 원천 수집',
   COLLECT_LH_ANNOUNCEMENT_CATALOG: 'LH 공고 목록 수집',
   COLLECT_LH_ANNOUNCEMENT_SUPPLIES: 'LH 공고 공급 원본 수집',
   COLLECT_LH_ANNOUNCEMENT_DETAILS: 'LH 공고 상세 원본 수집',
   MAP_LH_ANNOUNCEMENTS: 'LH 공고 정제',
   // 지원 종료한 단계다. 지난 실행 이력의 단계 이름을 읽도록 남긴다.
+  COLLECT_MYHOME_ANNOUNCEMENTS: '마이홈 공고 수집',
   MAP_MYHOME_ANNOUNCEMENTS: '마이홈 공고 정제',
   ENRICH_LH_ANNOUNCEMENTS: 'LH 공고 상세·공급 정보 보강',
 } as const
 type Step = keyof typeof definitions
 const complexCollection: Step[] = ['COLLECT_MYHOME_COMPLEXES', 'COLLECT_LH_LEASE_CATALOG']
 const complexRefinement: Step[] = ['MAP_MYHOME_COMPLEXES', 'ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS']
-const announcementCollection: Step[] = ['COLLECT_MYHOME_ANNOUNCEMENTS', 'COLLECT_LH_ANNOUNCEMENT_CATALOG',
+const announcementCollection: Step[] = ['COLLECT_LH_ANNOUNCEMENT_CATALOG',
   'COLLECT_LH_ANNOUNCEMENT_SUPPLIES', 'COLLECT_LH_ANNOUNCEMENT_DETAILS']
 const announcementRefinement: Step[] = ['MAP_LH_ANNOUNCEMENTS']
 const sequences: Record<DataPipelineType, Step[]> = {
@@ -33,14 +33,19 @@ const sequences: Record<DataPipelineType, Step[]> = {
 }
 // 공고 정제가 LH 공고 정제 한 단계로 바뀌기 전의 실행 이력은 기록된 옛 정제 단계로 보여 준다.
 const legacyAnnouncementRefinement: Step[] = ['MAP_MYHOME_ANNOUNCEMENTS', 'ENRICH_LH_ANNOUNCEMENTS']
+// 공고 수집에서 마이홈 공고 수집을 빼기 전의 실행 이력은 그 단계를 맨 앞에 보여 준다.
+const legacyAnnouncementCollection: Step = 'COLLECT_MYHOME_ANNOUNCEMENTS'
 function sequenceOf(execution: DataPipelineExecution): Step[] {
   const steps = sequences[execution.type]
-  if (!steps.includes('MAP_LH_ANNOUNCEMENTS')) return steps
+  if (!steps.includes('COLLECT_LH_ANNOUNCEMENT_CATALOG') && !steps.includes('MAP_LH_ANNOUNCEMENTS')) return steps
   const recorded = new Set([...execution.completedSteps, execution.currentStepName, execution.failure?.stepName,
     ...execution.skippedSteps.map(item => item.stepName),
     ...[...execution.partiallyFailedSteps, ...(execution.completedStepResults ?? [])].flatMap(item => [item.step, item.stepName])])
-  const legacy = legacyAnnouncementRefinement.some(step => recorded.has(step) || recorded.has(definitions[step]))
-  return legacy ? [...steps.filter(step => step !== 'MAP_LH_ANNOUNCEMENTS'), ...legacyAnnouncementRefinement] : steps
+  const wasRecorded = (step: Step) => recorded.has(step) || recorded.has(definitions[step])
+  const collection = steps.includes('COLLECT_LH_ANNOUNCEMENT_CATALOG') && wasRecorded(legacyAnnouncementCollection)
+    ? [legacyAnnouncementCollection, ...steps] : steps
+  if (!steps.includes('MAP_LH_ANNOUNCEMENTS') || !legacyAnnouncementRefinement.some(wasRecorded)) return collection
+  return [...collection.filter(step => step !== 'MAP_LH_ANNOUNCEMENTS'), ...legacyAnnouncementRefinement]
 }
 const states = {
   waiting: ['○', '대기'], running: ['●', '진행'], success: ['✓', '성공'],

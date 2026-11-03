@@ -21,11 +21,12 @@ public enum DataPipelineType {
 
     private final String pathValue;
     private final Domain domain;
-    private final boolean acceptsServiceKey;
+    private final boolean requiresServiceKey;
     private final boolean chainsCollectionToRefinement;
     private final Retirement retirement;
 
     /**
+     * @param requiresServiceKey 공공데이터포털 API를 호출해 서버의 수집 키가 있어야 시작할 수 있다.
      * @param chainsCollectionToRefinement 한 실행에서 수집 뒤 정제까지 이어 가서, 정제 단계가 앞선 수집의 성공을 요구한다.
      * @param retirement 지원을 종료한 유형의 안내 종류. 실행할 수 있는 유형은 null이다.
      *                   지난 실행 이력을 읽도록 종료한 유형과 단계 정의도 남긴다.
@@ -33,13 +34,13 @@ public enum DataPipelineType {
     DataPipelineType(
             String pathValue,
             Domain domain,
-            boolean acceptsServiceKey,
+            boolean requiresServiceKey,
             boolean chainsCollectionToRefinement,
             Retirement retirement
     ) {
         this.pathValue = pathValue;
         this.domain = domain;
-        this.acceptsServiceKey = acceptsServiceKey;
+        this.requiresServiceKey = requiresServiceKey;
         this.chainsCollectionToRefinement = chainsCollectionToRefinement;
         this.retirement = retirement;
     }
@@ -78,7 +79,6 @@ public enum DataPipelineType {
                     DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS
             );
             case ANNOUNCEMENT_COLLECTION -> List.of(
-                    DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS
@@ -99,8 +99,8 @@ public enum DataPipelineType {
         }
     }
 
-    public boolean acceptsServiceKey() {
-        return acceptsServiceKey;
+    public boolean requiresServiceKey() {
+        return requiresServiceKey;
     }
 
     public boolean requiresSuccessfulCollection(DataPipelineStep step) {

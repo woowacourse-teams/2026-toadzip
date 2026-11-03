@@ -117,7 +117,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     edit(() => input.rows); setNewGroups(input.newGroups ?? []); setReason(input.reason); setUrl(input.sourceUrl); setPage(input.sourcePage ?? '')
     setExpanded(null); setPdfOpen(false); setNotice('PDF에서 확인한 값을 편집표에 채웠습니다. 필요한 항목을 수정하고 저장하세요.')
   } }} />
-  const lhLocked = unattachedLhRows(workspace).length > 0, duplicateKeys = new Set(possibleLhDuplicates(workspace).map(row => row.key))
+  const unattached = unattachedLhRows(workspace).length > 0, duplicateKeys = new Set(possibleLhDuplicates(workspace).map(row => row.key))
   function merge(duplicate: CorrectionRow, target: CorrectionRow) {
     edit(current => current.map(item => item.key === target.key ? mergeInto(item, duplicate) : item))
     setMerges(current => ({ ...current, [duplicate.key]: target }))
@@ -132,10 +132,10 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
   return <section className={styles.workspace} aria-label="공급정보 편집">
     <div className={styles.toolbar}><p>단지·주택형별 모집수와 임대조건을 확인하고 채우세요.</p><div className={styles.actions}>
       <button type="button" disabled={busy || uncertain || newGroups.length > 0} onClick={() => setPdfOpen(true)}>PDF로 채우기</button>
-      <button type="button" disabled={busy || uncertain || lhLocked} onClick={addRow}>직접 추가</button>
+      <button type="button" disabled={busy || uncertain} onClick={addRow}>직접 추가</button>
     </div></div>
     {notice && <p role="status">{notice}</p>}
-    {lhLocked && <p role="note">{unattachedLhNotice(workspace)}</p>}
+    {unattached && <p role="note">{unattachedLhNotice(workspace)}</p>}
     <AnnouncementComplexLinks id={id} workspace={workspace} disabled={rowsDirty || busy || uncertain} onBusyChange={setBusy}
       onLinked={(next, message) => { setWorkspace(next); setRows(next.rows); setPreview(null); setNotice(message); onChanged() }} />
     <form onSubmit={event => { event.preventDefault(); void inspect() }}>

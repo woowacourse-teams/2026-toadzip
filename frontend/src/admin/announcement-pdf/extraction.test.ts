@@ -4,9 +4,10 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import fixtures from './fixtures/scenarios.json'
+import { daegu } from './fixtures/workspace'
 // AI 워커가 모델에 보내는 프롬프트의 응답 예제를 이 화면이 그대로 읽는지 확인한다.
 const prompt = readFileSync(resolve(process.cwd(), '../ai-worker/src/ai_worker/prompts/announcement-pdf-extraction.txt'), 'utf8')
-import { evidenceFor, evidenceQuery, noteFor, pathCovers, readExtraction, searchText, type Extraction } from './extraction'
+import { evidenceContext, evidenceFor, evidenceQuery, noteFor, pathCovers, readExtraction, searchText, type Extraction } from './extraction'
 
 describe('AI 추출 응답 읽기', () => {
   it('PDF에서 강조할 문구는 금액 칸이면 그 금액 표기를 낱말 단위로, 글자면 인용문에 있는 값을 고른다', () => {
@@ -224,4 +225,14 @@ describe('AI 추출 응답 읽기', () => {
       expect(readExtraction(JSON.stringify(input))).toEqual(expect.objectContaining({ ok: false, error: expect.stringContaining('supplyRows[0].subtypes') }))
     })
   })
+})
+
+it('공급행 칸의 근거는 그 행의 주택형 표기·전용면적을 문맥으로 두고, 세 자리 이하 값도 인용문의 다른 숫자 대신 그 값을 찾는다', () => {
+  const { review } = daegu()
+  expect(evidenceContext(review.extraction, 'supplyRows[0].totalSupplyHouseholdCount')).toEqual(['051.9800A', '51.98'])
+  expect(evidenceContext(review.extraction, 'supplyRows[0].targets[0].rentalDeposit')).toEqual([])
+  expect(evidenceContext(review.extraction, 'schedules[0].startAt')).toEqual([])
+  // 문맥이 없으면 예전처럼 인용문에서 가장 긴 숫자를 쓰고, 문맥이 있으면 모집수 200을 같은 줄에서 찾는다.
+  expect(evidenceQuery('051.9800A 468 200', 200)).toBe('051.9800')
+  expect(evidenceQuery('051.9800A 468 200', 200, false, ['051.9800A'])).toEqual(['200'])
 })

@@ -16,7 +16,6 @@ import com.toadzip.backend.announcement.exception.InvalidAnnouncementPdfExceptio
 import com.toadzip.backend.announcement.exception.PdfExtractionInProgressException;
 import com.toadzip.backend.announcement.exception.PdfExtractionJobNotFoundException;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
-import com.toadzip.backend.announcement.repository.PdfExtractionInputQueryRepository;
 import com.toadzip.backend.announcement.repository.PdfExtractionJobRepository;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -44,7 +43,7 @@ public class AnnouncementPdfExtractionService {
 
     private final AnnouncementRepository announcements;
     private final PdfExtractionJobRepository jobs;
-    private final PdfExtractionInputQueryRepository inputs;
+    private final PdfExtractionInputs inputs;
     private final AnnouncementAttachmentService attachments;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -52,7 +51,7 @@ public class AnnouncementPdfExtractionService {
     public AnnouncementPdfExtractionService(
             AnnouncementRepository announcements,
             PdfExtractionJobRepository jobs,
-            PdfExtractionInputQueryRepository inputs,
+            PdfExtractionInputs inputs,
             AnnouncementAttachmentService attachments,
             ObjectMapper objectMapper,
             Clock clock

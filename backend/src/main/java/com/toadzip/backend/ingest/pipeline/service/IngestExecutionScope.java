@@ -1,6 +1,5 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
-import com.toadzip.backend.ingest.collection.repository.external.IngestServiceKeyContext;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
 import java.util.Map;
 import java.util.Optional;
@@ -8,10 +7,7 @@ import java.util.UUID;
 import java.util.concurrent.Callable;
 import org.slf4j.MDC;
 
-/**
- * 수집·정제 실행의 ID, 소유권, 진행 모니터와 서비스키를 스레드 범위로 보관한다. MDC는 로그 출력에만 쓴다.
- * 서비스키는 외부 API 클라이언트가 읽으므로 repository 계층의 {@link IngestServiceKeyContext}에 둔다.
- */
+/** 수집·정제 실행의 ID, 소유권, 진행 모니터를 스레드 범위로 보관한다. MDC는 로그 출력에만 쓴다. */
 public final class IngestExecutionScope implements AutoCloseable {
 
     private static final ThreadLocal<State> CURRENT = new ThreadLocal<>();
@@ -25,18 +21,16 @@ public final class IngestExecutionScope implements AutoCloseable {
 
     public static IngestExecutionScope open(Lease lease) {
         State current = currentState();
-        return new IngestExecutionScope(new State(current.executionId(), lease, current.monitor(), current.serviceKey()));
+        return new IngestExecutionScope(new State(current.executionId(), lease, current.monitor()));
     }
 
     public static IngestExecutionScope open(Lease lease, DataPipelineExecutionMonitor monitor) {
         State current = currentState();
-        return new IngestExecutionScope(new State(current.executionId(), lease, monitor, current.serviceKey()));
+        return new IngestExecutionScope(new State(current.executionId(), lease, monitor));
     }
 
-    public static IngestExecutionScope open(
-            UUID executionId, Lease lease, DataPipelineExecutionMonitor monitor, String serviceKey
-    ) {
-        return new IngestExecutionScope(new State(executionId, lease, monitor, serviceKey));
+    public static IngestExecutionScope open(UUID executionId, Lease lease, DataPipelineExecutionMonitor monitor) {
+        return new IngestExecutionScope(new State(executionId, lease, monitor));
     }
 
     public static Optional<UUID> currentExecutionId() {
@@ -121,7 +115,6 @@ public final class IngestExecutionScope implements AutoCloseable {
     }
 
     private static void set(State state) {
-        IngestServiceKeyContext.set(state == null ? null : state.serviceKey());
         if (state == null || state.equals(State.EMPTY)) {
             CURRENT.remove();
             return;
@@ -142,8 +135,8 @@ public final class IngestExecutionScope implements AutoCloseable {
         set(previous);
     }
 
-    private record State(UUID executionId, Lease lease, DataPipelineExecutionMonitor monitor, String serviceKey) {
+    private record State(UUID executionId, Lease lease, DataPipelineExecutionMonitor monitor) {
 
-        private static final State EMPTY = new State(null, null, null, null);
+        private static final State EMPTY = new State(null, null, null);
     }
 }

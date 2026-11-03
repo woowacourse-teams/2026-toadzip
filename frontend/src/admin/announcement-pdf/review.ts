@@ -2,7 +2,7 @@ import type { ExtractedAnnouncement, HousingTypeValue, JsonObject, JsonUpdateInp
 import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type LinkedHousingType, type NewSupplyGroup } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, type Evidence, type Extraction, type Subtype } from './extraction'
 import { foldRows } from './subtypes'
-import { defaultTargetDestinations, foldSameSourceRows, lhSourceLabels, missingHousingType, originalDate, pickSubtypes, proposeRows, proposeSchedules, sharedFoldGroups, splitSameSourceRows, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
+import { attachableLhRows, defaultTargetDestinations, foldSameSourceRows, lhName, lhSourceLabels, missingHousingType, originalDate, pickSubtypes, proposePlacements, proposeRows, proposeSchedules, sharedFoldGroups, splitSameSourceRows, splittableLhRows, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
@@ -35,7 +35,9 @@ export type Review = { extraction: Extraction; rows: RowReview[]; schedules: Sch
   /** LH 원천행에 맞추기 전 검토. 이미 맞춘 단지를 다시 고르면 여기서 다시 맞춘다. */
   unaligned?: Review
   /** 지금까지 LH 원천행에 맞춘 단지명과 고른 단지. 다시 맞출 때 다른 단지명의 맞춤을 이 순서로 다시 적용한다. */
-  alignments?: { complexName: string; complex: { id: number; name: string }; candidates: MatchingHousingType[] }[] }
+  alignments?: { complexName: string; complex: { id: number; name: string }; candidates: MatchingHousingType[] }[]
+  /** 단지 대응에서 이번 보정에서 그대로 두기로 한 공급행 없는 LH 행. 화면 질문만 접고 저장 요청에는 쓰지 않는다. */
+  keptLhRows?: string[] }
 export const cellStates: Record<Cell['state'], string> = { confirm: '확인 필요', unresolved: '미확인 · 현재값 유지', notApplicable: '해당 없음', invalid: '형식 확인 필요', same: '같음', changed: '변경', new: '추가' }
 /** 접수 방식·일정 유형의 화면 표기 */
 export const choices = {
@@ -82,23 +84,33 @@ const numberKey = (value: unknown) => typeof value === 'string' ? value.trim().r
 function cells(extraction: Extraction, prefix: string, specs: FieldSpec[], source: JsonObject, before: JsonObject = {}): Cell[] {
   return specs.map(([field, label, kind, target = field]) => {
     const path = `${prefix}.${field}`, value = normalized(kind, source[field]), previous = normalized(kind, before[target])
-    const missing = noteFor(extraction.unresolved, path), unused = noteFor(extraction.notApplicable, path)
+    const unused = noteFor(extraction.notApplicable, path), evidence = evidenceFor(extraction.evidence, path)
+    // 미확인으로 적혔어도 근거와 올바른 값이 있으면(목록 모집수와 다름 같은 참고) 막지 않고 확인 후 고르게 한다. 안내는 칸 옆에 남긴다.
+    const unresolvedNote = noteFor(extraction.unresolved, path)
+    const informational = unresolvedNote && evidence !== null && value !== null && validCellValue(kind, value) ? unresolvedNote : null
+    const missing = informational ? null : unresolvedNote
     const areaOnly = field === 'sourceHousingTypeName' && areaOnlyTypeName(value)
     // 주택형 표기는 숫자 앞뒤의 0만 다르면(074.9900A ↔ 74.9900A) 같은 표기로 보고 기존 표기를 유지한다.
     const sameValue = JSON.stringify(value) === JSON.stringify(previous) || field === 'sourceHousingTypeName' && numberKey(value) === numberKey(previous)
     let state: Cell['state'] = unused || areaOnly ? 'notApplicable' : missing || value === null ? 'unresolved' : !validCellValue(kind, value) ? 'invalid' : sameValue ? 'same' : previous === null ? 'new' : 'changed'
-    const evidence = evidenceFor(extraction.evidence, path)
     const moreDetailed = typeof previous === 'string' && typeof value === 'string' && previous.length > value.length && previous.includes(value) && prefix === 'receptionPlace'
     const foreign = kind === 'text' ? foreignCharacters(value) : ''
     // 모델이 PDF 공급 표 대신 함께 보낸 LH 주택형 이름(24 → 24A)을 쓰기도 한다. 근거 인용에 없는 표기는 사람이 대조한다.
     // 하위 항목(임대조건 행)에서 빌려 온 근거에는 주택형이 원래 없으므로, 공급행 자기 근거나 이 칸의 근거일 때만 본다.
     const unquoted = field === 'sourceHousingTypeName' && typeof value === 'string' && evidence !== null && [prefix, path].includes(evidence.path) && !compact(evidence.quote).includes(typeCore(value))
-    if (['changed', 'new'].includes(state) && (!evidence || moreDetailed || foreign || unquoted)) state = 'confirm'
-    const note = unused?.reason ?? (areaOnly ? '면적만 적힌 값이라 주택형 표기로 쓰지 않습니다.' : undefined)
+    if (['changed', 'new'].includes(state) && (!evidence || moreDetailed || foreign || unquoted || informational)) state = 'confirm'
+    const note = (informational ? `참고: ${informational.reason}` : undefined) ?? unused?.reason ?? (areaOnly ? '면적만 적힌 값이라 주택형 표기로 쓰지 않습니다.' : undefined)
       ?? (foreign && ['confirm'].includes(state) ? `한자·외국 문자(${foreign})가 섞여 있습니다. 원문과 대조해 직접 수정하세요.` : undefined) ?? missing?.reason ?? (moreDetailed ? '현재값이 더 자세합니다.' : !evidence ? '이 항목의 PDF 근거를 직접 확인하세요.' : unquoted && state === 'confirm' ? `PDF 근거 인용에 '${String(value)}'가 없습니다. LH 주택형 이름일 수 있으니 공급 표 표기와 대조하세요.` : '')
     const selected = state === 'changed' || state === 'new'
     return { path, field, label, kind, before: previous, value, selected, edited: false, reviewed: false, mode: selected ? 'extracted' : 'keep', extracted: { value, state, note }, locked: false, note, state, evidence }
   })
+}
+/** PDF 추출값을 고를 수 없는 까닭. 해당 없음과 고를 수 있는 값은 빈 문자열이다. */
+export function extractedBlockReason(cell: Cell) {
+  if (cell.locked || cell.kind === 'housingType') return ''
+  if (cell.extracted.state === 'invalid') return '형식이 올바르지 않습니다. 원문과 대조해 직접 입력하세요.'
+  if (cell.extracted.state !== 'unresolved') return ''
+  return cell.extracted.value == null ? 'PDF에서 값을 읽지 못했습니다.' : '근거 인용이 없어 원문 위치를 확인할 수 없습니다.'
 }
 export function editCell(cell: Cell, input: string): Cell {
   const value = input === '' ? null : cell.kind === 'area' || cell.kind === 'count' || cell.kind === 'housingType' ? Number(input) : input
@@ -197,6 +209,7 @@ export function createReview(source: Extraction, workspace: JsonWorkspace, housi
   }
   // 공급대상 묶음으로 나눈 행은 대상 몫과 모집수를 확인하게 한다.
   notes.forEach((note, index) => Object.assign(proposals[index], { needsConfirmation: true, reason: `${note} · ${proposals[index].reason}` }))
+  if (fold) proposals = proposePlacements(extraction, proposals, workspace.supply, housing)
   const metadata = cells(extraction, 'announcement', metadataFields, extraction.announcement, workspace.detail.data)
   // 정정공고 PDF에는 원공고 공고일이 그대로 적혀 있는 경우가 많아, 다른 공고일은 기본으로 반영하지 않는다.
   const posted = metadata.find(cell => cell.field === 'postedDate')
@@ -229,6 +242,11 @@ export function reviewSection(reviewId: string): ReviewSection {
   if (reviewId.startsWith('cell:announcement') || reviewId.startsWith('cell:receptionPlace')) return 'reception'
   return 'supply'
 }
+/** 확인 항목 ID(row:2, cell:supplyRows[2].…, target:2:0, subtype:2:1, price:2, placement:2)가 가리키는 공급행 번호. 공급행 밖이면 null */
+export function rowOfReviewId(reviewId: string): number | null {
+  const match = /^(?:(?:row|target|subtype|price|placement):(\d+)|cell:supplyRows\[(\d+)\])/.exec(reviewId)
+  return match ? Number(match[1] ?? match[2]) : null
+}
 export type ReviewFilter = 'all' | 'pending' | 'changed' | 'new'
 export type PendingItem = { id: string; section: ReviewSection }
 /** 사람이 아직 판단하지 않은 확인 필요·형식 오류 값. 직접 입력값은 형식이 맞을 때까지 남는다. */
@@ -257,12 +275,12 @@ export function complexGroups(review: Review) {
 }
 /** 화면에 보이는 순서(공급정보 단지 묶음 → 일정 → 접수처·기본정보)로 남은 확인 항목을 돌려준다. */
 /** savesHousingTypes가 false면(PDF로 공급정보 편집표만 채울 때) 주택형 값을 저장하지 않으므로 주택형 가격 확인을 넣지 않는다. */
-export function pendingItems(review: Review, savesHousingTypes = true): PendingItem[] {
-  const items: PendingItem[] = []
+export function pendingItems(review: Review, savesHousingTypes = true, workspace?: JsonWorkspace): PendingItem[] {
+  const items: PendingItem[] = [], problems = workspace ? placementProblems(review, workspace) : new Map<number, PlacementProblem>()
   complexGroups(review).flatMap(group => group.indexes).forEach(index => {
     const row = review.rows[index]
     if (!row?.include) return
-    if (pendingRow(row)) items.push({ id: `row:${index}`, section: 'supply' })
+    if (pendingRow(row) || problems.get(index)?.level === 'error') items.push({ id: `row:${index}`, section: 'supply' })
     pendingSubtypes(row).forEach(at => items.push({ id: `subtype:${index}:${at}`, section: 'supply' }))
     row.cells.filter(pendingCell).forEach(cell => items.push({ id: `cell:${cell.path}`, section: 'supply' }))
     row.targets.forEach((target, at) => { if (pendingTarget(target)) items.push({ id: `target:${index}:${at}`, section: 'supply' }) })
@@ -310,7 +328,7 @@ export function pendingChanges(review: Review): PendingChange[] {
 export function destinationLabel(row: CorrectionRow) {
   const count = row.householdCount != null ? `모집 ${row.householdCount}세대` : row.groupId !== null ? '공통 모집' : '모집수 미확인'
   const area = row.exclusiveArea != null ? `전용 ${row.exclusiveArea}㎡` : '면적 미확인'
-  return `${row.housingComplexName ?? row.complexName} · ${row.typeName} · ${count} · ${area} (#${String(row.id)}) 수정`
+  return `#${String(row.id)} · ${row.housingComplexName ?? row.complexName} · ${row.typeName} · ${count} · ${area}`
 }
 
 export function applicableCells(review: Review) {
@@ -326,17 +344,92 @@ export function sharedGroupStorable(review: Review, groupIndex: number) {
   const members = review.rows.filter(row => row.include && row.proposal.sharedIndex === groupIndex)
   return members.filter(row => row.proposal.destination !== 'new').length === 1 && !members.some(row => row.newHousingType || row.subtypes)
 }
+/** 운영자에게 보일 PDF 행 이름. 1부터 센 번호와 주택형 표기다. */
+export function rowName(review: Review, index: number) { return `공급행 ${index + 1}(${review.extraction.supplyRows[index]?.typeName ?? '주택형 미확인'})` }
+/** 추출 행의 저장 방식. 저장 위치가 비어 있으면 null이다. */
+export type PlacementMode = 'UPDATE' | 'SPLIT' | 'ATTACH' | 'ADD'
+export function placementMode(proposal: RowProposal): PlacementMode | null {
+  if (proposal.saveMode) return proposal.saveMode
+  return !proposal.destination ? null : proposal.destination === 'new' ? 'ADD' : 'UPDATE'
+}
+/** focus는 문제를 고칠 항목의 화면 위치(data-review-id)다. 있으면 화면이 그 항목으로 이동하는 해결 동작을 보인다. */
+export type PlacementProblem = { level: 'error' | 'warning'; message: string; kind: 'duplicate' | 'split' | 'attach'; focus?: string }
+/**
+ * 저장 방식 검사. 같은 기존 행을 둘 이상 수정하면 중복 오류, 분리 묶음 행이 하나뿐이거나 나눌 수 없는 LH 행이면 오류,
+ * 첫 분리행(통합행)이 통합 모집수를 그대로 둔 채 다른 분리행에 모집수가 있으면 두 번 집계되므로 오류(서버도 거절한다),
+ * 분리 합계가 LH 이번 공급 수와 다르면 경고다. 공급행 없는 LH 행은 단지 대응(correspondence)이 따로 묻는다. 저장(assembleReview)과 화면이 같은 결과를 쓴다.
+ * 문구는 운영자가 보는 이름(공급행 번호·주택형 표기, 기존 공급정보 #ID, LH 행 '표기 세대')으로 적는다.
+ */
+export function placementProblems(review: Review, workspace: JsonWorkspace): Map<number, PlacementProblem> {
+  const problems = new Map<number, PlacementProblem>(), lhRows = workspace.supply.lhSupplyRows ?? []
+  const splittable = new Set(splittableLhRows(workspace.supply).map(lh => lh.rowIdentifier))
+  const included = review.rows.flatMap((row, index) => row.include ? [index] : [])
+  const updates = new Map<string, number[]>()
+  for (const index of included) {
+    const proposal = review.rows[index].proposal, mode = placementMode(proposal)
+    if (mode === 'UPDATE' || mode === 'SPLIT' && proposal.destination !== 'new') updates.set(proposal.destination, [...updates.get(proposal.destination) ?? [], index])
+  }
+  for (const [key, indexes] of updates) {
+    if (indexes.length < 2) continue
+    const row = workspace.supply.rows.find(item => item.key === key)
+    const canSplit = lhRows.some(lh => lh.attachedRowKey === key && splittable.has(lh.rowIdentifier))
+    const name = row ? `#${String(row.id)}(${row.typeName})` : key
+    for (const index of indexes) problems.set(index, { level: 'error', kind: 'duplicate', message: `${indexes.filter(other => other !== index).map(other => rowName(review, other)).join(' · ')}도 같은 기존 공급정보 ${name}을 고칩니다. 기존 공급정보 하나에는 PDF 행 하나만 저장할 수 있습니다.${canSplit ? ` ${name}은 LH가 여러 주택형을 합친 행이라 PDF 행마다 나눌 수 있습니다.` : ' 한쪽의 저장할 곳을 바꾸세요.'}` })
+  }
+  const groups = new Map<string, number[]>()
+  for (const index of included) {
+    const proposal = review.rows[index].proposal
+    if (proposal.saveMode === 'SPLIT' && proposal.lhRow) groups.set(proposal.lhRow, [...groups.get(proposal.lhRow) ?? [], index])
+  }
+  for (const [identifier, indexes] of groups) {
+    const lh = lhRows.find(item => item.rowIdentifier === identifier)
+    const set = (problem: PlacementProblem) => indexes.forEach(index => { if (!problems.has(index)) problems.set(index, problem) })
+    if (!lh || !splittable.has(identifier)) { set({ level: 'error', kind: 'split', message: 'LH 행이 이미 나뉘었거나 합친 기존 공급정보가 없어 나눌 수 없습니다. 저장할 곳을 다시 고르세요.' }); continue }
+    if (indexes.length < 2) { set({ level: 'error', kind: 'split', message: `LH 행 '${lhName(lh)}' 나누기에는 PDF 행이 둘 이상 필요한데 지금은 ${rowName(review, indexes[0])} 하나뿐입니다. 'LH대로 1행 유지'를 고르거나 나눌 행을 다시 포함하세요.` }); continue }
+    const merged = workspace.supply.rows.find(row => row.key === lh.attachedRowKey)
+    const head = indexes.find(index => review.rows[index].proposal.destination === lh.attachedRowKey)
+    if (merged?.householdCount != null && head !== undefined && assembledCount(review.rows[head]) === merged.householdCount
+      && indexes.some(index => index !== head && assembledCount(review.rows[index]) !== null)) {
+      const count = review.rows[head].cells.find(cell => cell.field === 'totalSupplyHouseholdCount')
+      set({ level: 'error', kind: 'split', focus: count ? `cell:${count.path}` : `row:${head}`,
+        message: `${rowName(review, head)}은 #${String(merged.id)}을 이어받는 첫 행인데 모집수가 합친 ${merged.householdCount}세대 그대로라, 나머지 행의 모집수와 두 번 셉니다. ${rowName(review, head)} 모집수를 공고문의 그 주택형 모집수로 바꾸세요.` })
+      continue
+    }
+    const counts = indexes.map(index => assembledCount(review.rows[index]))
+    const sum = counts.every(count => count !== null) ? (counts as number[]).reduce((total, count) => total + count, 0) : null
+    if (sum !== lh.householdCount) set({ level: 'warning', kind: 'split', message: `나눈 행의 모집수 합 ${sum ?? '미확인'}세대가 LH 이번 공급 ${lh.householdCount ?? '미확인'}세대와 다릅니다. 공고문과 대조하세요.` })
+  }
+  const attaches = new Map<string, number[]>()
+  for (const index of included) {
+    const proposal = review.rows[index].proposal
+    if (proposal.saveMode === 'ATTACH' && proposal.lhRow) attaches.set(proposal.lhRow, [...attaches.get(proposal.lhRow) ?? [], index])
+  }
+  const attachable = new Set(attachableLhRows(workspace.supply).map(lh => lh.rowIdentifier))
+  for (const [identifier, indexes] of attaches) {
+    const lh = lhRows.find(item => item.rowIdentifier === identifier), label = lh ? `LH 행 '${lhName(lh)}'` : 'LH 행'
+    const message = !attachable.has(identifier) ? `${label}에는 이미 공급정보가 있어 붙일 수 없습니다. 저장할 곳을 다시 고르세요.` : indexes.length > 1 ? `${label}에는 PDF 행 하나만 붙입니다. ${indexes.map(index => rowName(review, index)).join(' · ')}이 같은 LH 행을 골랐습니다.` : ''
+    if (message) indexes.forEach(index => { if (!problems.has(index)) problems.set(index, { level: 'error', kind: 'attach', message }) })
+  }
+  return problems
+}
+/** 저장하면 이 행에 들어갈 모집수. 반영을 고른 칸은 그 값, 아니면 저장 위치의 지금 값이다. */
+export function assembledCount(row: RowReview): number | null {
+  const cell = row.cells.find(item => item.field === 'totalSupplyHouseholdCount')
+  const value = cell?.selected && !cell.locked ? cell.value : cell?.before
+  return typeof value === 'number' ? value : null
+}
 export function assembleReview(review: Review, workspace: JsonWorkspace, evidence: { reason: string; sourceUrl: string; sourcePage: string | null }): JsonUpdateInput {
   const rows = structuredClone(workspace.supply.rows), taken = new Map<string, number>(), newGroups: NewSupplyGroup[] = []
   const housingTypeValues: HousingTypeValue[] = []
   for (const [index, entry] of review.rows.entries()) {
     if (!entry.include) continue
-    if (!entry.proposal.destination) throw new ReviewError(`공급행 ${index + 1}에서 수정할 기존 공급정보를 선택하거나 새 공급정보로 추가하세요.`, `row:${index}`)
-    if (entry.proposal.destination === 'new' && workspace.supply.unattachedLhSupplyRows?.length) throw new ReviewError(`공급행 ${index + 1}: 아직 공급행이 되지 않은 LH 공급 원본이 있어 새 공급정보로 추가할 수 없습니다. 공고 정제를 다시 실행하거나 기존 공급정보 행을 고르세요.`, `row:${index}`)
+    if (!entry.proposal.destination) throw new ReviewError(`${rowName(review, index)}을 저장할 곳을 고르세요. 고칠 기존 공급정보를 고르거나 새 공급정보로 추가하세요.`, `row:${index}`)
+    const problem = placementProblems(review, workspace).get(index)
+    if (problem?.level === 'error') throw new ReviewError(`${rowName(review, index)}: ${problem.message}`, problem.focus ?? `row:${index}`)
     const anchor = rows.find(row => row.key === entry.proposal.anchorKey)
     const existing = entry.proposal.destination === 'new' ? undefined : rows.find(row => row.key === entry.proposal.destination)
     if ((!anchor && !entry.proposal.newComplex) || entry.proposal.destination !== 'new' && !existing) throw new ReviewError(`공급행 ${index + 1}의 기존 단지·원천행을 선택하세요.`, `row:${index}`)
-    if (existing && taken.has(existing.key)) throw new ReviewError(`공급행 ${taken.get(existing.key)! + 1}과 공급행 ${index + 1}이 같은 기존 공급정보(${existing.complexName} · ${existing.typeName})에 연결돼 있습니다. 한쪽의 저장할 위치를 바꾸세요.`, `row:${index}`)
+    if (existing && taken.has(existing.key)) throw new ReviewError(`${rowName(review, taken.get(existing.key)!)}과 ${rowName(review, index)}이 같은 기존 공급정보 #${String(existing.id)}(${existing.typeName})을 고칩니다. 한쪽의 저장할 곳을 바꾸세요.`, `row:${index}`)
     if (existing) taken.set(existing.key, index)
     const complex = entry.proposal.newComplex
     const row: CorrectionRow = existing ?? { ...blankRow(nextDisplayOrder(rows)), key: entry.key,
@@ -348,6 +441,7 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
       if (!row.pnu.trim()) row.pnu = complex.pnu
     }
     applyCells(row as unknown as JsonObject, entry.cells, rowFields)
+    if (entry.proposal.saveMode) { row.saveMode = entry.proposal.saveMode; row.lhSourceRowIdentifier = entry.proposal.lhRow }
     const subtypes = entry.subtypes && subtypeLinks(entry, index, row)
     // 공고에 주택형 표기가 없으면 새 행은 연결한 단지 주택형 이름으로 표시한다.
     if (!row.typeName.trim()) row.typeName = entry.proposal.candidates.find(type => type.id === row.housingTypeId)?.name ?? ''
@@ -622,7 +716,7 @@ export function rebaseReview(previous: Review, workspace: JsonWorkspace, housing
   const next = createReview(previous.extraction, workspace, housing, false)
   const oldCells = new Map(allCells(previous).map(cell => [cell.path, cell]))
   function retain(cell: Cell): Cell { return preserveCellChoice(cell, oldCells.get(cell.path)) }
-  next.metadata = next.metadata.map(retain); next.reception = next.reception.map(retain)
+  next.metadata = next.metadata.map(retain); next.reception = next.reception.map(retain); next.keptLhRows = previous.keptLhRows
   next.rows = next.rows.map((row, index) => {
     const old = previous.rows[index], anchor = workspace.supply.rows.find(item => item.key === old.proposal.anchorKey)
     if ((anchor || old.proposal.newComplex) && (old.proposal.destination === 'new' || workspace.supply.rows.some(item => item.key === old.proposal.destination))) {
@@ -650,4 +744,28 @@ export function rebaseReview(previous: Review, workspace: JsonWorkspace, housing
     return { ...schedule, include: old.include, reviewed: old.reviewed, cells: schedule.cells.map(retain) }
   })
   return next
+}
+
+type Status = { label: string; tone: 'error' | 'warning' | 'pending' | 'muted' | 'done' }
+/** 행 상태. 적용 제외 → 오류 → 확인 필요 → 경고 → 주택형 미연결 → 준비됨 순서로 하나만 보인다. */
+export function rowStatus(row: RowReview, problem: PlacementProblem | undefined, pendingCells: boolean): Status {
+  if (!row.include) return { label: '적용 제외', tone: 'muted' }
+  if (problem?.level === 'error') return { label: '오류', tone: 'error' }
+  if (pendingRow(row) || pendingSubtypes(row).length || pendingCells) return { label: '확인 필요', tone: 'pending' }
+  if (problem) return { label: '경고', tone: 'warning' }
+  if (linkedHousingTypeId(row) === null && !newRepresentative(row)) return { label: '주택형 미연결', tone: 'warning' }
+  return { label: '준비됨', tone: 'done' }
+}
+
+
+/** 단지 DB에 연결되지 않은 공급행(새 행 또는 단지가 비어 있는 기존 행)인지. 단지를 정하면 newComplex가 생긴다. */
+export function needsComplex(row: RowReview, workspace: JsonWorkspace) {
+  if (!row.include) return false
+  if (row.proposal.destination === 'new') return !row.proposal.anchorKey
+  return workspace.supply.rows.find(item => item.key === row.proposal.destination)?.housingComplexId === null
+}
+
+/** 단지를 정해야 하는 PDF 단지 수 */
+export function complexDecisionCount(review: Review, workspace: JsonWorkspace, only?: number[]) {
+  return new Set(review.rows.flatMap((row, index) => needsComplex(row, workspace) && (!only || only.includes(index)) ? [review.extraction.supplyRows[index].complexName ?? ''] : [])).size
 }

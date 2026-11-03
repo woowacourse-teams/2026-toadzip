@@ -59,7 +59,10 @@ class AnnouncementComplexAdminLinks {
         Map<Long, AnnouncementComplex> touched = new TreeMap<>();
         for (var row : planned) {
             var saved = row.id() == null ? null : stored.get(row.id());
-            if (saved != null && saved.getAnnouncementComplex() != null && !same(beforeById.get(row.id()), row)) {
+            // 앞에 행이 끼어 표시 순서만 밀린 행은 관리자가 손댄 행이 아니다.
+            var previous = row.id() == null ? null : beforeById.get(row.id());
+            if (saved != null && saved.getAnnouncementComplex() != null
+                    && (previous == null || !same(previous.withDisplayOrder(row.displayOrder()), row))) {
                 touched.put(saved.getAnnouncementComplex().getId(), saved.getAnnouncementComplex());
             }
         }

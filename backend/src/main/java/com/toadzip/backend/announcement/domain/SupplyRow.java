@@ -190,6 +190,11 @@ public class SupplyRow {
         adminModified = true;
     }
 
+    public void reorder(int order) {
+        validateNonNegative(order, "표시 순서");
+        displayOrder = order;
+    }
+
     public BigDecimal effectiveExclusiveArea() {
         if (areaOverride) { return announcementExclusiveArea; }
         if (housingType == null) { return null; }
@@ -311,6 +316,30 @@ public class SupplyRow {
     }
 
     private String lhSourceSupplyRowIdentifier;
+
+    /** 관리자가 LH 공급 원본 한 행을 주택형별로 나눈 공급행이 가리키는 그 LH 행 식별자. 나누지 않은 행은 null이다. */
+    private String lhSplitSourceIdentifier;
+
+    /**
+     * 관리자가 LH 공급 원본 한 행을 주택형별 공급행으로 나눈 행으로 기록한다. 통합행은 그 LH 행 대응을 유지한 채 첫 분리행이 되므로
+     * 다른 LH 행에 붙은 공급행은 나눌 수 없다.
+     */
+    public void splitFromLhSource(String lhSupplyIdentifier) {
+        validateNotBlank(lhSupplyIdentifier, "분리 원천 LH 공급행 식별자");
+        if (lhSourceSupplyRowIdentifier != null && !lhSourceSupplyRowIdentifier.equals(lhSupplyIdentifier)) {
+            throw new IllegalArgumentException("다른 LH 공급 원본에 붙은 공급행은 이 LH 행으로 나눌 수 없습니다.");
+        }
+        lhSplitSourceIdentifier = lhSupplyIdentifier;
+    }
+
+    /** 아직 공급행이 되지 않은 LH 공급 원본 행에 관리자가 만든 공급행을 붙인다. 이미 다른 LH 행에 붙은 행은 옮기지 않는다. */
+    public void attachToLhSource(String lhSupplyIdentifier) {
+        validateNotBlank(lhSupplyIdentifier, "LH 공급행 식별자");
+        if (lhSourceSupplyRowIdentifier != null) {
+            throw new IllegalArgumentException("이미 LH 공급 원본에 붙은 공급행입니다.");
+        }
+        lhSourceSupplyRowIdentifier = lhSupplyIdentifier;
+    }
 
     @Column(nullable = false)
     private boolean lhTotalSupplyHouseholdCountOwned;

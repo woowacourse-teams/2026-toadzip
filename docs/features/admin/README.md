@@ -10,6 +10,7 @@
 | [데이터 관리](data-management.md) | 단지·주택형·공고의 수정 API와 수동 수정 보호 |
 | [비교·검토 API](review-api.md) | 원천 비교, 변경 미리보기·확인 범위와 재검토 상태 |
 | [공고 JSON 가져오기](announcement-import.md) | 공식 원문 기반 JSON 검증·신규 등록·기존 공고 선택 갱신 |
+| [PDF 보정 초안](correction-drafts.md) | 관리자별·공고별 작업 임시저장, revision 충돌과 기준 변경 표시 |
 | [회원 알림 신청 관리](notifications.md) | 신청 상태·대상·기간별 읽기 전용 조회 |
 | [사용자 의견](feedback.md) | 의견 접수·관리자 조회와 배포·복구 조건 |
 

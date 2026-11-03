@@ -34,7 +34,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
-@SpringBootTest
+@SpringBootTest(properties = "ingest.service-key=test-service-key")
 @ActiveProfiles("test")
 @Import(IngestExecutionOwnershipIntegrationTest.ProbeConfiguration.class)
 class IngestExecutionOwnershipIntegrationTest {

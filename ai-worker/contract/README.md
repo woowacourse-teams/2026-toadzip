@@ -4,8 +4,17 @@
 Spring 테스트(`PdfExtractionContractTest`)와 워커 테스트가 같은 파일을 읽어 두 쪽 형식이 어긋나지 않게 한다.
 필드를 바꾸면 이 예시와 양쪽 코드를 함께 고친다.
 
-- `announcement-pdf-extraction/input.example.json`: LH 공급 API 행(LH가 보낸 문자열 그대로).
+- `announcement-pdf-extraction/input.example.json`: LH 공급 API 행(LH가 보낸 문자열 그대로)과 그 행의 식별자(`rowIdentifier`).
 - `announcement-pdf-extraction/result.example.json`: PDF 보정 화면이 읽는 추출 결과. `json`은 추출 JSON을 문자열로 담고, 근거 쪽 번호는 원본 PDF 기준이다.
+
+### 공급행의 LH 원천 행 (`data.supplyRows[n].lhSourceRow`)
+
+- 그 공급행이 나온 LH 공급 API 행의 식별자(`input.lhSupplyRows[].rowIdentifier`, `LH:{panId}:SUPPLY:{order}`)다. 공급 보정 작업실의 `lhSupplyRows[].rowIdentifier`와 같은 값이라 화면은 목록 위치가 아니라 이 식별자로 LH 행을 맞춘다. Spring은 작업실과 같은 LH 공급 원천(최신 공고목록 요청의 원천)으로 입력을 만든다.
+- 모델은 프롬프트의 LH 행 목록 번호(1부터)를 쓰고, 워커가 결과를 쓰기 전에 그 번호를 그 행의 식별자로 바꾼다. 번호가 없거나 범위를 벗어나면 `null`이다. 식별자를 모르는 이전 결과(정수)는 화면이 LH 행에 맞추지 않는다.
+- LH가 여러 주택형을 한 행으로 합쳐 보냈는데 PDF 공급 표가 주택형마다 이번 모집수를 따로 적으면, 공급행이 주택형마다 나뉘고 모두 같은 `lhSourceRow`를 쓴다. 건설호수만 주택형별로 있으면 나누지 않는다.
+- PDF가 여러 주택형을 모집수 하나로만 안내하면 공급행 하나에 `subtypes`로 두고 모집수를 나누거나 복제하지 않는다.
+- LH 공급 API 행이 없는 공고(입력 `lhSupplyRows`가 빔)는 이 필드가 없거나 `null`이다. 필드를 모르는 이전 결과도 그대로 읽을 수 있어야 한다.
+- PDF 모집수가 LH 모집수와 달라도 그 필드를 `unresolvedFields`에 넣지 않고 `warnings`로만 알린다. 워커는 값을 고치지 않고 다음을 `warnings`에 남긴다: 번호가 없거나 범위를 벗어난 공급행, 공급행이 하나도 나오지 않은 LH 행, LH 모집수와 다른 PDF 모집수(나뉜 행은 합계로 비교하고, 모집수가 빈 행이 있거나 LH 모집수가 0이면 비교하지 않음).
 
 ## 큐 상태 전이 (워커가 지킬 것)
 

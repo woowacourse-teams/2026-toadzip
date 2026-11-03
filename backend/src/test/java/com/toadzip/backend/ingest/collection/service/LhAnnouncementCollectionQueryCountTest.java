@@ -8,18 +8,18 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.CollectedSourceRows;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementCatalogSourceFixtures;
-import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
+import com.toadzip.backend.ingest.collection.fixture.dto.LhAnnouncementCatalogPage.Entry;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhCatalogStorageFixtures;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementCollectionLink;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionLinkRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQueryApiRepository;
 import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
@@ -36,7 +36,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -58,7 +57,7 @@ class LhAnnouncementCollectionQueryCountTest {
     private LhAnnouncementExternalCollectionService service;
 
     @Autowired
-    private MyHomeAnnouncementSourceFixtures sources;
+    private LhCatalogStorageFixtures catalogStore;
 
     @Autowired
     private LhAnnouncementCollectionLinkRepository links;
@@ -107,35 +106,27 @@ class LhAnnouncementCollectionQueryCountTest {
         failures.deleteAllInBatch();
         links.deleteAllInBatch();
         catalog.deleteAllInBatch();
-        sources.deleteAllInBatch();
     }
 
-    @ParameterizedTest
-    // 건수별 요청 중복 제거는 단위 테스트에서 검증하고, 실제 저장은 배치 경계와 개별 요청을 검증한다.
-    @CsvSource({"501,true", "32,false"})
-    void 최근_성공_원천이_있어도_배치에_걸친_공유_요청은_실행마다_한_번_조회한다(
-            int count, boolean sharedRequest
-    ) {
-        prepareCache(count, sharedRequest);
+    @Test
+    void 최근_성공_원천이_있어도_공고목록의_공고마다_실행마다_한_번_조회한다() {
+        prepareCache(32);
         when(external.detail(any())).thenReturn(response());
-        int requestCount = count;
-        if (sharedRequest) {
-            requestCount = 1;
-        }
 
         for (int execution = 1; execution <= 2; execution++) {
             var result = service.collect(DETAIL);
             assertThat(result.failedRequestCount()).isZero();
-            assertThat(result.externalApiCallCount()).isEqualTo(requestCount);
-            assertThat(result.successfulRequestCount()).isEqualTo(requestCount);
-            assertThat(recordCount("SUCCESS")).isEqualTo((long) requestCount * execution);
-            assertThat(links.count()).isEqualTo(count);
+            assertThat(result.externalApiCallCount()).isEqualTo(32);
+            assertThat(result.successfulRequestCount()).isEqualTo(32);
+            assertThat(recordCount("SUCCESS")).isEqualTo(32L * execution);
+            assertThat(links.count()).isEqualTo(32);
         }
-        verify(external, times(requestCount * 2)).detail(any());
+        verify(external, times(64)).detail(any());
     }
+
     @Test
-    void 배치를_넘는_공유_요청의_실패는_한_번_기록하고_다음_실행에서_재조회한다() {
-        prepareCache(501, true);
+    void 요청_실패는_한_번_기록하고_성공_원천과_연결을_보존한_뒤_다음_실행에서_재조회한다() {
+        prepareCache(1);
         when(clock.instant()).thenReturn(NOW.plusSeconds(1));
         when(external.detail(any())).thenThrow(new ExternalDataRequestException("응답 검증 실패"));
 
@@ -144,19 +135,18 @@ class LhAnnouncementCollectionQueryCountTest {
         assertThat(failed.externalApiCallCount()).isOne();
         assertThat(failed.failedRequestCount()).isOne();
         assertThat(recordCount("FAILED")).isOne();
-        assertThat(links.findAll()).hasSize(501).allSatisfy(link ->
+        assertThat(links.findAll()).singleElement().satisfies(link ->
                 assertThat(link.getCompletedAt()).isEqualTo(NOW));
         assertThat(querySources.findAll()).singleElement().satisfies(checkpoint ->
                 assertThat(checkpoint.getCollectedAt()).isEqualTo(NOW));
         assertThat(jdbc.sql("SELECT COUNT(*) FROM lh_announcement_detail_rows").query(Long.class).single()).isOne();
-        assertThat(jdbc.sql("SELECT COUNT(*) FROM lh_announcement_query_sources").query(Long.class).single()).isOne();
 
         doReturn(response()).when(external).detail(any());
         var recovered = service.collect(DETAIL);
         assertThat(recovered.externalApiCallCount()).isOne();
         assertThat(recordCount("FAILED")).isOne();
         assertThat(recordCount("SUCCESS")).isOne();
-        assertThat(links.findAll()).hasSize(501).allSatisfy(link ->
+        assertThat(links.findAll()).singleElement().satisfies(link ->
                 assertThat(link.getCompletedAt()).isEqualTo(NOW.plusSeconds(1)));
         verify(external, times(2)).detail(any());
     }
@@ -164,7 +154,7 @@ class LhAnnouncementCollectionQueryCountTest {
     @ParameterizedTest
     @EnumSource(value = ExternalDataSource.class, names = {"LH_ANNOUNCEMENT_SUPPLY", "LH_ANNOUNCEMENT_DETAIL"})
     void 성공_직후_재실행_실패는_성공_원천과_기록을_보존한다(ExternalDataSource target) {
-        prepareCache(1, true);
+        prepareCache(1);
         when(external.detail(any())).thenReturn(response());
         when(external.supply(any())).thenReturn(response());
         assertThat(service.collect(target).successfulRequestCount()).isOne();
@@ -204,23 +194,21 @@ class LhAnnouncementCollectionQueryCountTest {
                 """);
     }
 
-    private void prepareCache(int count, boolean sharedRequest) {
-        List<MyHomeAnnouncementSourceView> rows = new ArrayList<>();
+    private void prepareCache(int count) {
+        List<Entry> entries = new ArrayList<>();
         List<LhAnnouncementCollectionLink> completedLinks = new ArrayList<>();
         Map<String, String> completedRequests = new LinkedHashMap<>();
         for (int index = 0; index < count; index++) {
-            String identifier = "announcement-" + index;
-            String panId = "100";
-            if (!sharedRequest) {
-                panId = Integer.toString(100 + index);
-            }
+            String panId = Integer.toString(100 + index);
             String request = new LhAnnouncementRequest(panId, "03", "06", "06", "063").requestDescription();
-            rows.add(source(identifier, panId));
-            completedLinks.add(LhAnnouncementCollectionLink.complete(DETAIL, identifier, request, panId, NOW));
-            completedRequests.putIfAbsent(request,
-                    panId);
+            entries.add(new Entry(new LhAnnouncementCatalogSnapshot(panId, "03", "06", "06", "063",
+                    "공고", "공고중", "", "", "2026.10.30", "", ""), "{}"));
+            completedLinks.add(LhAnnouncementCollectionLink.complete(DETAIL,
+                    LhAnnouncementCollectionCandidateResolver.CATALOG_SOURCE_PREFIX + "03:06:06:" + panId,
+                    request, panId, NOW));
+            completedRequests.put(request, panId);
         }
-        sources.saveAll(rows);
+        catalogStore.store(entries);
         links.saveAll(completedLinks);
         completedRequests.forEach((request, pan) -> {
             long parent = fixtures.querySource(DETAIL.name(), request, NOW);
@@ -230,15 +218,4 @@ class LhAnnouncementCollectionQueryCountTest {
         });
         baselineSuccessCount = completedRequests.size();
     }
-
-    private MyHomeAnnouncementSourceView source(String identifier, String panId) {
-        String payload = """
-                {"pblancId":"%s","houseSn":1,"suplyInsttNm":"LH","suplyTyNm":"행복주택",
-                 "endDe":"20261030",
-                 "url":"https://apply.lh.or.kr/panDetail?panId=%s&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"}
-                """.formatted(identifier, panId);
-        return MyHomeSourceViews.announcement(0,
-                JsonMapper.builder().build().readValue(payload, MyHomeAnnouncementSourceSnapshot.class));
-    }
-
 }

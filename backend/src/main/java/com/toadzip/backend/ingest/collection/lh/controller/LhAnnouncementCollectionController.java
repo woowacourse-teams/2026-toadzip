@@ -44,27 +44,25 @@ public class LhAnnouncementCollectionController {
         return responseOf(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY));
     }
 
-    @PostMapping("/details/{pblancId}/refresh")
-    public ResponseEntity<ExternalDataCollectionReport> refreshDetails(@PathVariable String pblancId) {
-        return responseOf(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, pblancId));
+    @PostMapping("/details/{panId}/refresh")
+    public ResponseEntity<ExternalDataCollectionReport> refreshDetails(@PathVariable String panId) {
+        return responseOf(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, panId));
     }
 
-    @PostMapping("/supplies/{pblancId}/refresh")
-    public ResponseEntity<ExternalDataCollectionReport> refreshSupplies(@PathVariable String pblancId) {
-        return responseOf(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, pblancId));
+    @PostMapping("/supplies/{panId}/refresh")
+    public ResponseEntity<ExternalDataCollectionReport> refreshSupplies(@PathVariable String panId) {
+        return responseOf(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, panId));
     }
 
-    @PostMapping("/supplies/{pblancId}/verified-replacement")
+    @PostMapping("/supplies/{panId}/verified-replacement")
     public ResponseEntity<ExternalDataCollectionReport> approveSupplyReplacement(
-            @PathVariable String pblancId,
+            @PathVariable String panId,
             @Valid @RequestBody VerifiedLhSupplyReplacementRequest request, Principal principal) {
-        long approvalId = replacementService.approve(pblancId, request, principal.getName());
+        long approvalId = replacementService.approve(panId, request, principal.getName());
         ExternalDataCollectionReport report;
         try {
-            report = VerifiedLhSupplyReplacementService.isLhAnnouncementKey(pblancId)
-                    ? collectionService.refreshCatalogTarget(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
-                            request.requestDescription())
-                    : collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, pblancId);
+            report = collectionService.refreshCatalogTarget(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                    request.requestDescription());
         }
         catch (RuntimeException exception) {
             replacementService.finish(approvalId);

@@ -59,7 +59,7 @@ def review(tree: dict, pages: list[int], texts: list[str], lh_types: list[str], 
     for index, row in enumerate(rows):
         check_supply_row(row, f"supplyRows[{index}]", text(announcement.get("postedDate")), set(lh_types), warnings)
     check_lh_type_names(rows, evidence, set(lh_types), warnings)
-    check_lh_counts(rows, lh_counts, warnings)
+    check_lh_counts(rows, lh_types, lh_counts, warnings)
     check_target_count(rows, rental_rows, warnings)
     return warnings
 
@@ -99,19 +99,36 @@ def check_quotes(evidence: list[dict], texts: list[str], warnings: list[str]) ->
             warnings.append(f"{label(item)}: 근거 인용문의 {', '.join(missing[:3])}이(가) {page}쪽 원문에 없음")
 
 
-def check_lh_counts(rows: list[dict], lh_counts: list[int | None], warnings: list[str]) -> None:
-    """LH 공고는 LH API 행을 공급행 틀로 주므로 행 수와 행 모집수가 API와 같아야 한다. 다르면 PDF와 API 중 하나를 확인해야 한다."""
+def check_lh_counts(rows: list[dict], lh_types: list[str], lh_counts: list[int | None], warnings: list[str]) -> None:
+    """공급행은 lhSourceRow(LH API 행의 1부터 센 번호)로 LH 행을 가리킨다. 통합된 LH 행 하나가 PDF에서 주택형별로 나뉘면
+    여러 공급행이 같은 번호를 쓴다. 번호가 없거나 범위 밖인 행, 공급행이 없는 LH 행, LH 모집수와 다른 PDF 모집수(나뉜 행은 합계)를
+    경고로 알린다. 모집수 차이는 PDF와 API 중 하나를 확인할 일이지 PDF 값을 못 쓰는 것은 아니다."""
     if not lh_counts:
         return
-    if len(rows) != len(lh_counts):
-        warnings.append(f"supplyRows: LH API 공급행 {len(lh_counts)}개와 개수가 다름({len(rows)}개)")
-        return
-    for index, (row, expected) in enumerate(zip(rows, lh_counts)):
-        count = row.get("totalSupplyHouseholdCount")
-        # 행 모집수가 비어 있으면 공통 모집수(sharedCounts)로 묶인 행이라 행 단위로 맞대지 않는다.
-        # LH API는 모집수를 모르면 0을 보낸다.
-        if expected and isinstance(count, int) and count != expected:
-            warnings.append(f"supplyRows[{index}].totalSupplyHouseholdCount: LH API 모집수 {expected}와 다름({count})")
+    groups: dict[int, list[int]] = {}
+    for index, row in enumerate(rows):
+        number = row.get("lhSourceRow")
+        if not isinstance(number, int) or isinstance(number, bool) or not 1 <= number <= len(lh_counts):
+            warnings.append(f"supplyRows[{index}].lhSourceRow: LH API 공급행 번호가 없거나 범위를 벗어남({number})")
+            continue
+        groups.setdefault(number, []).append(index)
+    for number, (type_name, expected) in enumerate(zip(lh_types, lh_counts, strict=True), start=1):
+        indexes = groups.get(number)
+        if not indexes:
+            warnings.append(f"LH API 공급행 {number}({type_name}): 이 행에서 나온 공급행이 없음")
+            continue
+        counts = [rows[index].get("totalSupplyHouseholdCount") for index in indexes]
+        # 행 모집수가 비어 있으면 공통 모집수(sharedCounts)로 묶인 행이라 맞대지 않는다. LH API는 모집수를 모르면 0을 보낸다.
+        if not expected or not all(isinstance(count, int) and not isinstance(count, bool) for count in counts):
+            continue
+        total = sum(counts)
+        if total == expected:
+            continue
+        if len(indexes) == 1:
+            warnings.append(f"supplyRows[{indexes[0]}].totalSupplyHouseholdCount: LH API 공급행 {number} 모집수 {expected}와 다름({total})")
+        else:
+            paths = ", ".join(f"supplyRows[{index}]" for index in indexes)
+            warnings.append(f"{paths}: 나뉜 공급행 모집수 합계 {total}이(가) LH API 공급행 {number} 모집수 {expected}와 다름")
 
 
 def check_target_count(rows: list[dict], rental_rows: int, warnings: list[str]) -> None:

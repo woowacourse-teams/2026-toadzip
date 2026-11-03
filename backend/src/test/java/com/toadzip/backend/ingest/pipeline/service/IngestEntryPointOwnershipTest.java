@@ -31,7 +31,7 @@ class IngestEntryPointOwnershipTest {
                 Arguments.of(LhAnnouncementCatalogCollectionService.class, "collect", 0),
                 Arguments.of(LhLeaseCatalogCollectionService.class, "collect", 1),
                 Arguments.of(LhAnnouncementExternalCollectionService.class, "collect", 1),
-                Arguments.of(LhAnnouncementExternalCollectionService.class, "refresh", 3),
+                Arguments.of(LhAnnouncementExternalCollectionService.class, "refresh", 2),
                 Arguments.of(LhAnnouncementExternalCollectionService.class, "refreshCatalogTarget", 2),
                 Arguments.of(MyHomeAnnouncementCollectionService.class, "collect", 1),
                 Arguments.of(MyHomeComplexCollectionService.class, "collect", 1),

@@ -14,8 +14,13 @@ PRIMARY_DB_PASSWORD=
 SHARED_DB_HOST=<DB 서버 사설 IP>
 SHARED_DB_PORT=5434
 SHARED_DB_PASSWORD=
+DATA_GO_KR_SERVICE_KEY=
 VITE_NAVER_MAPS_CLIENT_ID=
 ```
+
+`DATA_GO_KR_SERVICE_KEY`는 공공데이터포털 일반 인증키다. 관리자 화면은 키를 입력받지 않으므로 공고·단지 수집을 하려면
+서버 `.env`에 반드시 넣는다. 비어 있으면 수집 시작이 거절되고 관리자 화면에 "서버 수집 키 미설정"이 표시된다.
+값을 바꾼 뒤에는 백엔드를 다시 시작해야 반영된다.
 
 공통 설정에 아래의 `SPRING_PROFILES_ACTIVE`와 `PRIMARY_DB_PORT`를 해당 환경 값으로 반드시 추가한다.
 

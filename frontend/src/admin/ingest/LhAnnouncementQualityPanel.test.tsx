@@ -35,8 +35,9 @@ it('수집 성공률과 제품 충족률 및 보류 사유를 서로 구분해 �
   expect(screen.getByText(/과거 성공도 포함하며 이번 실행의 성공률이나 현재 값의 최신성을 뜻하지 않습니다/)).toBeVisible()
   expect(screen.getAllByText(/^가장 최근 실제 수집 /)).toHaveLength(2)
   expect(screen.getByText('주택형·공고 매핑 보류: 1건')).toBeVisible()
-  expect(screen.getByText('미연결 LH 임대 공고 조사 후보 4건')).toBeVisible()
-  fireEvent.click(screen.getByText('미연결 LH 임대 공고 조사 후보 4건'))
+  expect(screen.getByText('미수집 LH 임대 공고 조사 후보 4건')).toBeVisible()
+  fireEvent.click(screen.getByText('미수집 LH 임대 공고 조사 후보 4건'))
+  expect(screen.getByText(/수집 대상 중 공급·상세 원천이 현재 조회 조건으로 아직 수집되지 않은 공고입니다/)).toBeVisible()
   expect(screen.getByText('pan-2')).toBeVisible()
   expect(screen.getByText('03:06:063:pan-2')).toBeVisible()
 })
@@ -44,7 +45,7 @@ it('수집 성공률과 제품 충족률 및 보류 사유를 서로 구분해 �
 it('공식 근거 확인 후 선택한 지문의 공급 재조회만 요청한다', async () => {
   render(<MemoryRouter><LhAnnouncementQualityPanel collectionExecution={collectionExecution()} /></MemoryRouter>)
   fireEvent.click(await screen.findByRole('button', { name: '확인한 정정 반영' }))
-  fireEvent.change(screen.getByLabelText('마이홈 공고 ID 또는 LH:공고 ID'), { target: { value: 'myhome-1' } })
+  fireEvent.change(screen.getByLabelText('LH 공고 ID'), { target: { value: '2026000123' } })
   fireEvent.change(screen.getByLabelText('LH 공식 공고문 URL'), {
     target: { value: 'https://apply.lh.or.kr/notice' },
   })
@@ -53,7 +54,7 @@ it('공식 근거 확인 후 선택한 지문의 공급 재조회만 요청한�
   fireEvent.click(screen.getByLabelText('공고문에서 실제 철회·정정을 확인했습니다.'))
   fireEvent.click(screen.getByRole('button', { name: '승인하고 공급 다시 조회' }))
 
-  await waitFor(() => expect(apiMocks.applyVerifiedLhSupplyReplacement).toHaveBeenCalledWith('myhome-1', {
+  await waitFor(() => expect(apiMocks.applyVerifiedLhSupplyReplacement).toHaveBeenCalledWith('2026000123', {
     requestDescription: 'PAN_ID=pan-1',
     proposedFingerprint: 'a'.repeat(64),
     evidenceUrl: 'https://apply.lh.or.kr/notice',
@@ -82,7 +83,7 @@ it('승인 대상을 바꾸면 이전 대상의 근거와 확인 상태를 초�
   render(<MemoryRouter><LhAnnouncementQualityPanel collectionExecution={collectionExecution()} /></MemoryRouter>)
   const choices = await screen.findAllByRole('button', { name: '확인한 정정 반영' })
   fireEvent.click(choices[0])
-  fireEvent.change(screen.getByLabelText('마이홈 공고 ID 또는 LH:공고 ID'), { target: { value: 'myhome-1' } })
+  fireEvent.change(screen.getByLabelText('LH 공고 ID'), { target: { value: '2026000123' } })
   fireEvent.change(screen.getByLabelText('LH 공식 공고문 URL'), {
     target: { value: 'https://apply.lh.or.kr/notice-1' },
   })
@@ -92,7 +93,7 @@ it('승인 대상을 바꾸면 이전 대상의 근거와 확인 상태를 초�
   fireEvent.click(choices[1])
 
   expect(screen.getByText('선택한 요청: PAN_ID=pan-2')).toBeVisible()
-  expect(screen.getByLabelText('마이홈 공고 ID 또는 LH:공고 ID')).toHaveValue('')
+  expect(screen.getByLabelText('LH 공고 ID')).toHaveValue('')
   expect(screen.getByLabelText('LH 공식 공고문 URL')).toHaveValue('')
   expect(screen.getByLabelText('철회·정정 확인 사유')).toHaveValue('')
   expect(screen.getByLabelText('공고문에서 실제 철회·정정을 확인했습니다.')).not.toBeChecked()
@@ -103,7 +104,7 @@ it('승인 대상을 바꾸면 이전 대상의 근거와 확인 상태를 초�
 it('동일한 요청의 승인 지문이 바뀌면 다시 선택하고 근거를 확인해야 한다', async () => {
   render(<MemoryRouter><LhAnnouncementQualityPanel collectionExecution={collectionExecution()} /></MemoryRouter>)
   fireEvent.click(await screen.findByRole('button', { name: '확인한 정정 반영' }))
-  fireEvent.change(screen.getByLabelText('마이홈 공고 ID 또는 LH:공고 ID'), { target: { value: 'myhome-1' } })
+  fireEvent.change(screen.getByLabelText('LH 공고 ID'), { target: { value: '2026000123' } })
   fireEvent.change(screen.getByLabelText('LH 공식 공고문 URL'), { target: { value: 'https://apply.lh.or.kr/notice' } })
   fireEvent.change(screen.getByLabelText('철회·정정 확인 사유'), { target: { value: '기존 지문 확인' } })
   fireEvent.click(screen.getByLabelText('공고문에서 실제 철회·정정을 확인했습니다.'))
@@ -116,7 +117,7 @@ it('동일한 요청의 승인 지문이 바뀌면 다시 선택하고 근거를
   expect(screen.queryByRole('button', { name: '승인하고 공급 다시 조회' })).not.toBeInTheDocument()
 
   fireEvent.click(screen.getByRole('button', { name: '확인한 정정 반영' }))
-  expect(screen.getByLabelText('마이홈 공고 ID 또는 LH:공고 ID')).toHaveValue('')
+  expect(screen.getByLabelText('LH 공고 ID')).toHaveValue('')
   expect(screen.getByLabelText('LH 공식 공고문 URL')).toHaveValue('')
   expect(screen.getByLabelText('철회·정정 확인 사유')).toHaveValue('')
   expect(screen.getByLabelText('공고문에서 실제 철회·정정을 확인했습니다.')).not.toBeChecked()

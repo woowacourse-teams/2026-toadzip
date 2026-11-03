@@ -24,7 +24,6 @@ import com.toadzip.backend.announcement.exception.AttachmentUnavailableException
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementPdfException;
 import com.toadzip.backend.announcement.exception.PdfExtractionInProgressException;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
-import com.toadzip.backend.announcement.repository.PdfExtractionInputQueryRepository;
 import com.toadzip.backend.announcement.repository.PdfExtractionJobRepository;
 import java.nio.ByteBuffer;
 import java.sql.SQLException;
@@ -50,11 +49,11 @@ class AnnouncementPdfExtractionServiceTest {
             "usage":{"promptTokens":1,"outputTokens":2,"thinkingTokens":null}}
             """;
     private static final PdfExtractionInput INPUT = new PdfExtractionInput(
-            List.of(new PdfExtractionInput.LhSupplyRow(0, "부평", "16A", "16.37", "27.6", "78", "78")));
+            List.of(new PdfExtractionInput.LhSupplyRow(0, "LH:P:SUPPLY:0", "부평", "16A", "16.37", "27.6", "78", "78")));
 
     private final AnnouncementRepository announcements = mock(AnnouncementRepository.class);
     private final PdfExtractionJobRepository jobs = mock(PdfExtractionJobRepository.class);
-    private final PdfExtractionInputQueryRepository inputs = mock(PdfExtractionInputQueryRepository.class);
+    private final PdfExtractionInputs inputs = mock(PdfExtractionInputs.class);
     private final AnnouncementAttachmentService attachments = mock(AnnouncementAttachmentService.class);
     private final AnnouncementPdfExtractionService service = new AnnouncementPdfExtractionService(
             announcements, jobs, inputs, attachments, JsonMapper.builder().build(), Clock.fixed(NOW, ZoneOffset.UTC));

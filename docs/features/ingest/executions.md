@@ -37,13 +37,13 @@
 
 - 수집·정제는 관리자 요청으로만 시작한다. 서버 부팅·예약·장애 복구는 새 ingest 실행을 만들지 않는다.
 - 알림 보관 기간 정리는 공통 스케줄링으로 실행하는 별도 작업이다.
-- 관리자가 `POST /api/admin/ingest/pipelines/{type}`으로 직접 시작한다. `announcement-sync`는 하나의 실행 ID·잠금으로 수집 후 정제를 수행한다.
+- 관리자가 `POST /api/admin/ingest/pipelines/{type}`으로 본문 없이 직접 시작한다. 공공데이터포털 수집 키는 서버 설정만 쓴다([수집 키](../../operations/ingest/execution-controls.md#수집-키)). `announcement-sync`(화면 이름 LH 공고 갱신)는 하나의 실행 ID·잠금으로 LH 공고 수집 후 정제를 수행한다.
 - 단지 정제는 지원을 종료했다. 단지는 원천 수집(`complex-collection`)만 실행하고, 이후 단지·주택형은 공고와 PDF 보정으로만 바뀐다. `complex-refinement`·`complex-sync` 시작, `POST /api/admin/ingest/myhome/complex-mappings`, LH 세대수 보강(`/api/admin/ingest/lh/housing-type-households`)의 실행·단지 연결·대상 결정 `POST`는 `410 INGEST_OPERATION_RETIRED`로 거절하고 실행을 만들지 않는다. 지난 실행 이력과 실패·비교 조회(`GET`)는 그대로 쓴다.
 - 통합 실행에서 수집 부분 실패가 있으면 수집 구간 뒤 `FAILED`로 끝내고 정제를 시작하지 않는다. 호출 제한만 있으면 정제 단계를 사유와 함께 건너뛰어 `COMPLETED_WITH_SKIPS`로 끝낸다.
 - 정제 전에 멈춘 공고 통합 실행 결과의 `저장된 원천으로 정제 실행`은 기존 정제 단독 API로 새 실행을 만든다. 이전 원천이 포함될 수 있고, 원래 실패 이력은 보존한다.
 - 단지 화면의 실행 진입점과 좌표 업로드 후 동작은 [관리자 가이드](../admin/guide.md#단지-수집)를 따른다.
 - `complex-collection`, `announcement-collection`, `announcement-refinement`의 기존 단계·동작을 보존한다.
-- 마이홈 공고 한 건 등록(`announcement-registration`)은 지원을 종료했다. `POST /api/admin/ingest/pipelines/announcement-registration`은 다른 실행 유형과 같은 경로로 받아 본문 없이 부르면 `410 INGEST_OPERATION_RETIRED`로 거절하고(예전 `pblancId` 본문은 서비스키 검증에서 400이 된다) URL 등록 API는 없앴다. 지난 등록 실행 이력은 그대로 읽는다.
+- 마이홈 공고 한 건 등록(`announcement-registration`)은 지원을 종료했다. `POST /api/admin/ingest/pipelines/announcement-registration`은 다른 실행 유형과 같은 경로로 받아 본문 없이 부르면 `410 INGEST_OPERATION_RETIRED`로 거절하고(본문을 보내면 400이 된다) URL 등록 API는 없앴다. 지난 등록 실행 이력은 그대로 읽는다.
 - 새 실행은 `MANUAL`로 기록한다. 과거 자동 실행의 `SCHEDULED`·`RECOVERY` 트리거와
   예정 시각·상위 실행 ID는 기존 실행 이력 조회를 위해 읽을 수 있다.
 

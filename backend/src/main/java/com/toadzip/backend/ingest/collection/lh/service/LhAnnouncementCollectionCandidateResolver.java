@@ -14,6 +14,10 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+/**
+ * LH 공고 수집 요청을 정한다. 공고 수집은 최신 LH 공고목록에서 후보를 만든다.
+ * 마이홈 공고 원천의 해석({@link #resolveAll})은 지난 마이홈 공고 데이터를 읽는 보정 화면만 쓴다.
+ */
 @Component
 @RequiredArgsConstructor
 public class LhAnnouncementCollectionCandidateResolver {
@@ -45,7 +49,7 @@ public class LhAnnouncementCollectionCandidateResolver {
                 .toList();
     }
 
-    /** 종료 정책과 관계없이 최신 공고목록의 임대주택 공고 요청. 관리자 승인·강제 재조회는 마이홈 경로처럼 종료 정책을 건너뛴다. */
+    /** 종료 정책과 관계없이 최신 공고목록의 임대주택 공고 요청. 관리자 승인·강제 재조회는 종료 정책을 건너뛴다. */
     public List<Candidate> resolveCatalogRequests() {
         return catalogRepository.findAllPresentRentalHousingAnnouncements().stream()
                 .map(this::catalogCandidate)
@@ -63,16 +67,8 @@ public class LhAnnouncementCollectionCandidateResolver {
     }
 
     public List<Resolution> resolveAll(List<MyHomeAnnouncementSourceView> sources) {
-        return resolveEach(sources).stream().map(SourceResolution::resolution).toList();
-    }
-
-    /** 원천마다 해석한 결과를 그 원천과 함께 돌려준다. */
-    public List<SourceResolution> resolveEach(List<MyHomeAnnouncementSourceView> sources) {
-        List<SourceResolution> resolutions = sources.stream()
-                .map(source -> new SourceResolution(source, infer(source)))
-                .toList();
+        List<Resolution> resolutions = sources.stream().map(this::infer).toList();
         List<String> panIds = resolutions.stream()
-                .map(SourceResolution::resolution)
                 .filter(Candidate.class::isInstance)
                 .map(Candidate.class::cast)
                 .map(Candidate::panId)
@@ -84,12 +80,12 @@ public class LhAnnouncementCollectionCandidateResolver {
         Map<String, List<LhAnnouncementCatalogSourceView>> catalogByPanId = catalogRepository
                 .findAllByPanIdInAndPresentInLatestCatalogTrue(panIds)
                 .stream().collect(Collectors.groupingBy(LhAnnouncementCatalogSourceView::getPanId));
-        return resolutions.stream().map(resolved -> {
-            if (resolved.resolution() instanceof Candidate candidate) {
-                return new SourceResolution(resolved.source(),
-                        resolveFromCatalog(candidate, catalogByPanId.getOrDefault(candidate.panId(), List.of())));
+        return resolutions.stream().map(resolution -> {
+            if (resolution instanceof Candidate candidate) {
+                return (Resolution) resolveFromCatalog(
+                        candidate, catalogByPanId.getOrDefault(candidate.panId(), List.of()));
             }
-            return resolved;
+            return resolution;
         }).toList();
     }
 
@@ -171,9 +167,6 @@ public class LhAnnouncementCollectionCandidateResolver {
             return "source:" + source.getSourceKey();
         }
         return pblancId;
-    }
-
-    public record SourceResolution(MyHomeAnnouncementSourceView source, Resolution resolution) {
     }
 
     public sealed interface Resolution permits Candidate, Skipped {

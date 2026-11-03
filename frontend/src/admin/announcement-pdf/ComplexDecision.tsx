@@ -5,7 +5,7 @@ import { ComplexPicker } from '../management/ComplexPicker'
 import { getManagementDetail } from '../management/api'
 import { isRecord } from '../management/managementContract'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
-import { createRowReview, editCell, newRepresentative, preserveCellChoice, type Review, type RowReview } from './review'
+import { createRowReview, editCell, needsComplex, newRepresentative, preserveCellChoice, type Review, type RowReview } from './review'
 import { chooseRow, missingHousingType, pickHousingType, sameComplex, typeKey } from './matching'
 import { NewComplexRegistration, type MyHomeComplexOverview } from './NewComplexRegistration'
 import { alignSourceRows, emptySourceRows } from './sourceAlignment'
@@ -13,21 +13,16 @@ import { createPdfHousingTypes } from './pdfHousingTypes'
 import type { ExtractedRow } from './extraction'
 import styles from './PdfCorrection.module.css'
 
-/** 단지 DB에 연결되지 않은 공급행(새 행 또는 단지가 비어 있는 기존 행)인지. 단지를 정하면 newComplex가 생긴다. */
-function needsComplex(row: RowReview, workspace: JsonWorkspace) {
-  if (!row.include) return false
-  if (row.proposal.destination === 'new') return !row.proposal.anchorKey
-  return workspace.supply.rows.find(item => item.key === row.proposal.destination)?.housingComplexId === null
-}
-
 /**
  * PDF 단지명마다 한 번 단지를 정한다. 새로 등록하면 공고문 주택형도 함께 만든다.
  * 단지에 연결되지 않은 LH 원천행이 있으면 공고문 행에 맞춰 연결·분할하고(sourceAlignment), 없으면 같은 단지명의 공급행 전체를
  * 그 단지에 연결하며 주택형은 전용면적으로 맞춘다. 맞는 주택형이 없으면 PDF 형명·면적으로 새 주택형을 추가하도록 고른다.
  */
-export function ComplexDecisions({ review, workspace, onChange }: { review: Review; workspace: JsonWorkspace; onChange: (review: Review) => void }) {
+export function ComplexDecisions({ review, workspace, only, onChange }: { review: Review; workspace: JsonWorkspace; onChange: (review: Review) => void
+  /** 이 공급행들(한 단지 탭)의 단지만 정한다. 없으면 모든 행이다. */
+  only?: number[] }) {
   const groups = new Map<string, number[]>()
-  review.rows.forEach((row, index) => { if (needsComplex(row, workspace)) groups.set(review.extraction.supplyRows[index].complexName ?? '', [...groups.get(review.extraction.supplyRows[index].complexName ?? '') ?? [], index]) })
+  review.rows.forEach((row, index) => { if (needsComplex(row, workspace) && (!only || only.includes(index))) groups.set(review.extraction.supplyRows[index].complexName ?? '', [...groups.get(review.extraction.supplyRows[index].complexName ?? '') ?? [], index]) })
   if (!groups.size) return null
   return <section className={styles.complexDecisions} aria-label="PDF 단지 정하기">
     <h3>단지 정하기</h3>

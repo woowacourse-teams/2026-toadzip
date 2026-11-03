@@ -121,26 +121,37 @@ describe('관리자 데이터 수집·정제 API', () => {
 
   it.each([
     ['COMPLEX_COLLECTION', 'complex-collection'], ['ANNOUNCEMENT_COLLECTION', 'announcement-collection'],
-    ['COMPLEX_SYNC', 'complex-sync'], ['ANNOUNCEMENT_SYNC', 'announcement-sync'],
-  ] as const)('%s 실행 키를 URL 대신 JSON 본문으로 전송한다', async (type, path) => {
+    ['ANNOUNCEMENT_SYNC', 'announcement-sync'],
+  ] as const)('%s 수집은 키를 보내지 않고 본문 없이 시작한다', async (type, path) => {
     const fetchMock = prepareFetch(execution(type, 'RUNNING'))
     const { startDataPipeline } = await import('./api.ts')
-    await startDataPipeline(type, '  fixture-execution-key  ')
+    await startDataPipeline(type)
     expect(fetchMock).toHaveBeenLastCalledWith(
       `http://localhost:8080/api/admin/ingest/pipelines/${path}`,
-      {
-        method: 'POST', credentials: 'include',
-        headers: { 'X-CUSTOM-CSRF': 'csrf-token', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serviceKey: 'fixture-execution-key' }),
-      },
+      { method: 'POST', credentials: 'include', headers: { 'X-CUSTOM-CSRF': 'csrf-token' } },
     )
   })
 
-  it('공백뿐인 키는 요청 전에 거절한다', async () => {
-    const fetchMock = prepareFetch(execution('COMPLEX_COLLECTION', 'RUNNING'))
-    const { startDataPipeline } = await import('./api.ts')
-    await expect(startDataPipeline('COMPLEX_COLLECTION', '   ')).rejects.toThrow('공공데이터포털 API 키를 입력해 주세요.')
-    expect(fetchMock).not.toHaveBeenCalled()
+  it.each([true, false])('서버 수집 키 설정 여부(%s)를 읽는다', async (configured) => {
+    vi.stubEnv('DEV', true)
+    vi.stubEnv('VITE_API_BASE_URL', '')
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ serviceKeyConfigured: configured }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { getDataPipelineReadiness } = await import('./api.ts')
+
+    await expect(getDataPipelineReadiness()).resolves.toEqual({ serviceKeyConfigured: configured })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8080/api/admin/ingest/pipelines/readiness', { credentials: 'include' },
+    )
+  })
+
+  it('준비 상태 응답에 설정 여부가 없으면 형식 오류로 본다', async () => {
+    vi.stubEnv('DEV', true)
+    vi.stubEnv('VITE_API_BASE_URL', '')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ serviceKeyConfigured: 'yes' })))
+    const { getDataPipelineReadiness } = await import('./api.ts')
+
+    await expect(getDataPipelineReadiness()).rejects.toThrow('수집 준비 상태 응답 형식이 올바르지 않습니다.')
   })
 
   it('행별 누락을 담은 완료·주의 응답을 읽는다', async () => {

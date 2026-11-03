@@ -24,7 +24,7 @@ test('작업을 넣고 성공할 때까지 작업 상태를 다시 물어 결과
   const result = extractAnnouncementPdf('29', new Blob(['%PDF']), '공고문.pdf')
   await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 2)
 
-  await expect(result).resolves.toEqual(extraction)
+  await expect(result).resolves.toEqual({ ...extraction, jobId: expect.any(Number) })
   expect(mocks.request).toHaveBeenNthCalledWith(1, PATH, 'POST', expect.any(FormData), undefined)
   expect(mocks.request).toHaveBeenNthCalledWith(3, `${PATH}/jobs/31`, 'GET', undefined, expect.any(AbortSignal))
 })
@@ -32,7 +32,7 @@ test('작업을 넣고 성공할 때까지 작업 상태를 다시 물어 결과
 test('공고 첨부면 파일을 올리지 않고 서버가 그 첨부를 받게 한다', async () => {
   mocks.request.mockResolvedValueOnce(job('SUCCEEDED', { extraction }))
 
-  await expect(extractAnnouncementPdf('29', pdf, '공고문.pdf', undefined, { attachmentId: '68' })).resolves.toEqual(extraction)
+  await expect(extractAnnouncementPdf('29', pdf, '공고문.pdf', undefined, { attachmentId: '68' })).resolves.toEqual({ ...extraction, jobId: expect.any(Number) })
   expect(mocks.request).toHaveBeenCalledWith(`${PATH}/attachments/68`, 'POST', undefined, undefined)
 })
 
@@ -45,7 +45,7 @@ test('재시도를 기다리는 동안 사유가 바뀔 때만 알리고, 다시
   const result = extractAnnouncementPdf('29', pdf, '공고문.pdf', undefined, { onNotice })
   await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3)
 
-  await expect(result).resolves.toEqual(extraction)
+  await expect(result).resolves.toEqual({ ...extraction, jobId: expect.any(Number) })
   expect(onNotice.mock.calls).toEqual([['잠시 뒤 다시 시도합니다 · 추출 서비스 응답이 늦습니다.'], [null]])
 })
 
@@ -60,7 +60,7 @@ test('처리가 시작되지 않은 채 오래 기다리면 알리고, 워커가
   expect(onNotice).not.toHaveBeenCalled()
   await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3)
 
-  await expect(result).resolves.toEqual(extraction)
+  await expect(result).resolves.toEqual({ ...extraction, jobId: expect.any(Number) })
   expect(onNotice.mock.calls).toEqual([['아직 처리가 시작되지 않았습니다. 앞선 추출을 처리 중일 수 있으니, 계속 그대로면 AI 워커가 실행 중인지 확인해 주세요.'], [null]])
 })
 
@@ -79,7 +79,7 @@ test('같은 PDF의 진행 중 작업이 있으면 새로 넣지 않고 그 작�
   await vi.waitFor(() => expect(vi.getTimerCount()).toBe(1))
   await vi.advanceTimersByTimeAsync(JOB_POLL_MS)
 
-  await expect(result).resolves.toEqual(extraction)
+  await expect(result).resolves.toEqual({ ...extraction, jobId: expect.any(Number) })
   expect(mocks.request).toHaveBeenNthCalledWith(2, `${PATH}/jobs/active`, 'GET', undefined, undefined)
 })
 
@@ -147,7 +147,7 @@ test('상한 직전에 기다리기 시작한 마지막 조회가 성공을 받�
   const result = extractAnnouncementPdf('29', pdf, '공고문.pdf')
   await vi.advanceTimersByTimeAsync(JOB_WAIT_LIMIT_MS + 100)
 
-  await expect(result).resolves.toEqual(extraction)
+  await expect(result).resolves.toEqual({ ...extraction, jobId: expect.any(Number) })
 })
 
 test('공고 첨부가 미리 본 파일과 다른 PDF로 추출되면 결과를 쓰지 않고 다시 추출하게 한다', async () => {

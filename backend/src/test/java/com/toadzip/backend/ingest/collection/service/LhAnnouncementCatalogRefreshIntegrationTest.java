@@ -107,12 +107,11 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
 
     @Test
     void 목록이_같고_방금_성공했어도_다음_수집에서_공급상세를_실제_조회한다() {
-        sources.saveAll(List.of(source("100", 1, "20261030"), source("200", 1, "20261030")));
-        catalogStore.store(List.of(entry("공고중")));
+        catalogStore.store(List.of(entry("100", "공고중"), entry("200", "공고중")));
         assertThat(service.collect(DETAIL).externalApiCallCount()).isEqualTo(2);
 
         Instant nextCollection = FIRST.plusSeconds(1);
-        observeAgain(nextCollection, "공고중");
+        observeAgain(nextCollection, "공고중", "100", "200");
         assertThat(service.collect(DETAIL).externalApiCallCount()).isEqualTo(2);
         assertThat(querySources.findAll().stream().filter(row -> row.getPanId().equals("100")).toList())
                 .singleElement().satisfies(row -> assertThat(row.getCollectedAt()).isEqualTo(nextCollection));
@@ -120,18 +119,17 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
         assertThat(querySources.findAll()).filteredOn(source -> source.getPanId().equals("100"))
                 .singleElement().extracting(source -> source.getCollectedAt()).isEqualTo(nextCollection);
 
-        observeAgain(FIRST.plus(Duration.ofHours(24)).plusSeconds(1), "공고중");
+        observeAgain(FIRST.plus(Duration.ofHours(24)).plusSeconds(1), "공고중", "100", "200");
         assertThat(service.collect(DETAIL).externalApiCallCount()).isEqualTo(2);
     }
 
     @Test
     void 목록_변경은_즉시_조회하고_실패하면_기존_원천과_성공시각을_보존하여_다시_시도한다() {
-        sources.save(source("100", 1, "20261030"));
-        catalogStore.store(List.of(entry("공고중")));
+        catalogStore.store(List.of(entry("100", "공고중")));
         assertThat(service.collect(DETAIL).externalApiCallCount()).isOne();
         Long originalId = currentDetails().getFirst().getId();
         Instant changedAt = FIRST.plusSeconds(60);
-        observeAgain(changedAt, "정정공고중");
+        observeAgain(changedAt, "정정공고중", "100");
         when(external.detail(any())).thenThrow(new ExternalDataRequestException("불완전 응답"));
 
         assertThat(service.collect(DETAIL).failedRequestCount()).isOne();
@@ -147,19 +145,9 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
     }
 
     @Test
-    void 같은_공고의_한_단지라도_마감이_가까우면_6시간_주기를_적용한다() {
-        sources.saveAll(List.of(source("100", 1, "20261030"), source("100", 2, "20260927")));
-        catalogStore.store(List.of(entry("공고중")));
-        assertThat(service.collect(DETAIL).externalApiCallCount()).isOne();
-
-        observeAgain(FIRST.plus(Duration.ofHours(6)).plusSeconds(1), "공고중");
-        assertThat(service.collect(DETAIL).externalApiCallCount()).isOne();
-    }
-
-    @Test
     void 조회_유형이_바뀐_경우_이전_목록_행은_후보_연결에_사용하지_않는다() {
         MyHomeAnnouncementSourceView source = sources.save(source("100", 1, "20261030"));
-        catalogStore.store(List.of(entry("공고중")));
+        catalogStore.store(List.of(entry("100", "공고중")));
         assertThat(candidateResolver.resolve(source)).isInstanceOfSatisfying(Candidate.class, candidate ->
                 assertThat(candidate.catalogCollectedAt()).isEqualTo(FIRST)
         );
@@ -179,12 +167,11 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
     }
 
     @Test
-    void 목록으로_보정된_조회코드는_실제_호출과_체크포인트와_원천_연결에_동일하게_사용된다() {
-        sources.save(source("100", 1, "20261030"));
+    void 공고목록의_조회코드는_실제_호출과_체크포인트와_원천_연결에_동일하게_사용된다() {
         catalogStore.store(List.of(new Entry(new LhAnnouncementCatalogSnapshot(
-                "100", "03", "06", "06", "064", "공고", "공고중", "", "", "20261030", "", ""
+                "100", "03", "06", "06", "062", "공고", "공고중", "", "", "2026.10.30", "", ""
         ), "{}")));
-        var expectedRequest = new LhAnnouncementRequest("100", "03", "06", "06", "064");
+        var expectedRequest = new LhAnnouncementRequest("100", "03", "06", "06", "062");
         String description = expectedRequest.requestDescription();
         String requestHash = LhAnnouncementQuery.requestHashOf(description);
 
@@ -214,16 +201,14 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
                         source.getPanId(), source.getRequestHash()).stream()).toList();
     }
 
-    private void observeAgain(Instant now, String status) {
+    private void observeAgain(Instant now, String status, String... panIds) {
         when(clock.instant()).thenReturn(now);
-        sources.saveAll(sources.findAll().stream()
-                .map(source -> MyHomeSourceViews.collectedAt(source, now)).toList());
-        catalogStore.store(List.of(entry(status)));
+        catalogStore.store(java.util.Arrays.stream(panIds).map(panId -> entry(panId, status)).toList());
     }
 
-    private Entry entry(String status) {
-        return new Entry(new LhAnnouncementCatalogSnapshot("100", "03", "06", "06", "063",
-                "공고", status, "", "", "20261030", "", ""), "{}");
+    private Entry entry(String panId, String status) {
+        return new Entry(new LhAnnouncementCatalogSnapshot(panId, "03", "06", "06", "063",
+                "공고", status, "", "", "2026.10.30", "", ""), "{}");
     }
 
     private MyHomeAnnouncementSourceView source(String panId, int houseSn, String endDate) {

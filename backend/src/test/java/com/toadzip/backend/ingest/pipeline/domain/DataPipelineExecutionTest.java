@@ -27,10 +27,10 @@ class DataPipelineExecutionTest {
     @Test
     void 실행_중인_단계가_있으면_같거나_다른_단계를_다시_시작할_수_없다() {
         DataPipelineExecution execution = execution(DataPipelineType.ANNOUNCEMENT_COLLECTION);
-        execution.startStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+        execution.startStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
 
         assertThatThrownBy(() -> execution.startStep(
-                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG
         ))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("실행 중인 단계를 완료하거나 건너뛴 뒤 다음 단계를 시작할 수 있습니다.");
@@ -44,11 +44,11 @@ class DataPipelineExecutionTest {
     @Test
     void 완료한_단계를_다시_시작할_수_없다() {
         DataPipelineExecution execution = execution(DataPipelineType.ANNOUNCEMENT_COLLECTION);
-        execution.startStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
-        execution.completeStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS, "{}");
+        execution.startStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
+        execution.completeStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG, "{}");
 
         assertThatThrownBy(() -> execution.startStep(
-                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG
         ))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("다음 순서의 단계만 시작할 수 있습니다.");
@@ -67,40 +67,40 @@ class DataPipelineExecutionTest {
     @Test
     void 부분_실패한_단계의_바로_다음_단계를_시작할_수_있다() {
         DataPipelineExecution execution = execution(DataPipelineType.ANNOUNCEMENT_COLLECTION);
-        execution.startStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+        execution.startStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
 
         execution.startStepAfterPartialFailure(
-                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
-                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES
         );
-
-        assertThat(execution.getCurrentStep())
-                .isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
-    }
-
-    @Test
-    void 부분_실패_후_완료한_단계의_다음_단계를_시작할_수_있다() {
-        DataPipelineExecution execution = execution(DataPipelineType.ANNOUNCEMENT_COLLECTION);
-        execution.startStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
-        execution.startStepAfterPartialFailure(
-                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
-                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG
-        );
-        execution.completeStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG, "{}");
-
-        execution.startStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
 
         assertThat(execution.getCurrentStep())
                 .isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
     }
 
     @Test
+    void 부분_실패_후_완료한_단계의_다음_단계를_시작할_수_있다() {
+        DataPipelineExecution execution = execution(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+        execution.startStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
+        execution.startStepAfterPartialFailure(
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES
+        );
+        execution.completeStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES, "{}");
+
+        execution.startStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
+
+        assertThat(execution.getCurrentStep())
+                .isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
+    }
+
+    @Test
     void 부분_실패한_단계를_건너뛰어_다음다음_단계를_시작할_수_없다() {
         DataPipelineExecution execution = execution(DataPipelineType.ANNOUNCEMENT_COLLECTION);
-        execution.startStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+        execution.startStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
 
         assertThatThrownBy(() -> execution.startStepAfterPartialFailure(
-                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
                 DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS
         ))
                 .isInstanceOf(IllegalStateException.class)

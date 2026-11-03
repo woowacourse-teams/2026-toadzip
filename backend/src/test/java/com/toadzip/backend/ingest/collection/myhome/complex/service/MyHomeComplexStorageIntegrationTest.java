@@ -202,7 +202,7 @@ class MyHomeComplexStorageIntegrationTest {
     void administratorRegionExecutionUsesOneOperationLockAndPropagatesExecutionId() {
         httpServer.expect(requestTo(apiUrl(1))).andRespond(withSuccess(
                 pageJson(1, row(100L, "11", "680", "59A", 100000L)), MediaType.APPLICATION_JSON));
-        try (var ignored = IngestExecutionScope.open(EXECUTION_ID, IngestExecutionScope.current().orElseThrow(), null, null)) {
+        try (var ignored = IngestExecutionScope.open(EXECUTION_ID, IngestExecutionScope.current().orElseThrow(), null)) {
             var result = batch.collect(new MyHomeComplexCollectionCommand(
                     "11", "680", 2, 10));
             assertThat(result.storedRowCount()).isOne();
@@ -228,7 +228,7 @@ class MyHomeComplexStorageIntegrationTest {
                     return withSuccess(pageJson(1, row(100L, "11", "680", "59A", 100000L)),
                             MediaType.APPLICATION_JSON).createResponse(request);
                 });
-        try (var ignored = IngestExecutionScope.open(EXECUTION_ID, IngestExecutionScope.current().orElseThrow(), null, null)) {
+        try (var ignored = IngestExecutionScope.open(EXECUTION_ID, IngestExecutionScope.current().orElseThrow(), null)) {
             var result = batch.collect(MyHomeComplexCollectionCommand.allRegions(2, 10));
             assertThat(result.storedRowCount()).isEqualTo(2);
             assertThat(result.failedRequestCount()).isZero();
@@ -258,7 +258,7 @@ class MyHomeComplexStorageIntegrationTest {
                 });
         clock.set(FINISHED_AT.plusSeconds(60));
 
-        try (var ignored = IngestExecutionScope.open(EXECUTION_ID, IngestExecutionScope.current().orElseThrow(), null, null)) {
+        try (var ignored = IngestExecutionScope.open(EXECUTION_ID, IngestExecutionScope.current().orElseThrow(), null)) {
             var result = batch.collect(MyHomeComplexCollectionCommand.allRegions(2, 10));
             assertThat(result.storedRowCount()).isEqualTo(2);
             assertThat(result.failedRequestCount()).isOne();

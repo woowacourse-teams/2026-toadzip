@@ -230,8 +230,10 @@ export function noteFor(notes: ExtractionNote[], path: string) { return notes.fi
  * 금액은 배열로 돌려줘 PDF에서도 낱말 단위로 찾게 한다(8,100이 18,100 안에서 맞지 않게).
  * 그 밖의 값은 인용문에 그대로 있으면 그 값만, 없으면 인용문에서 고른 검색어를 강조한다.
  */
-export function evidenceQuery(quote: string, value?: unknown, money = false): string | string[] {
+export function evidenceQuery(quote: string, value?: unknown, money = false, context: readonly string[] = []): string | string[] {
   const text = typeof value === 'string' || typeof value === 'number' ? String(value).trim() : ''
+  // 행 문맥(주택형·면적)이 있으면 같은 줄의 그 값만 찾으므로, 세 자리 이하 숫자도 다른 숫자로 바꾸지 않고 낱말 단위로 찾는다.
+  if (context.length && /^\d{1,3}$/.test(text)) return [text]
   if (money && /^\d{4,}$/.test(text)) {
     const amount = Number(text), forms = (unit: number) => amount % unit === 0 ? [(amount / unit).toLocaleString('en-US'), String(amount / unit)] : []
     // 세 자리 이하로 줄어든 숫자(150)는 세대수 등으로 쪽 곳곳에 있어 '만'이 붙은 표기로만 찾는다.
@@ -246,6 +248,18 @@ export function evidenceQuery(quote: string, value?: unknown, money = false): st
   }
   // 세 자리 이하 숫자(세대수 등)는 쪽 곳곳에 있어 값만 강조하면 엉뚱한 곳이 강조된다.
   return text && !/^\d+$/.test(text) && quote.includes(text) ? text : searchText(quote)
+}
+
+/**
+ * 공급행 칸(대상별 임대조건 제외)의 근거를 찾을 때 같은 줄에 있어야 하는 표기. 공고문 주택형 표기와 전용면적(051.9800A · 51.98)이다.
+ * 공급행 밖의 칸은 문맥 없이 찾는다.
+ */
+export function evidenceContext(extraction: Pick<Extraction, 'supplyRows'>, path: string): string[] {
+  const match = /^supplyRows\[(\d+)\](?:\.(?!targets)[A-Za-z]+)?$/.exec(path)
+  const row = match ? extraction.supplyRows[Number(match[1])] : undefined
+  if (!row) return []
+  const area = row.values.exclusiveArea
+  return [...new Set([row.typeName, ...row.subtypes.map(subtype => subtype.name), typeof area === 'number' ? String(area) : null].filter((item): item is string => Boolean(item?.trim())))]
 }
 
 /** 같은 경로 → 가까운 상위 경로 → 첫 하위 경로 순으로 근거를 찾는다. */

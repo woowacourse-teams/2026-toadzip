@@ -78,7 +78,7 @@ class IngestExecutionScopeTest {
         Callable<String> task = captureInScope(captured, () -> MDC.get("traceId"));
 
         MDC.put("traceId", "worker-trace");
-        try (var ignored = IngestExecutionScope.open(current, null, null, null)) {
+        try (var ignored = IngestExecutionScope.open(current, null, null)) {
             assertThat(task.call()).isEqualTo("request-trace");
             assertThat(IngestExecutionScope.currentExecutionId()).contains(current);
             assertThat(MDC.get("traceId")).isEqualTo("worker-trace");
@@ -88,7 +88,7 @@ class IngestExecutionScopeTest {
 
     private Callable<String> captureInScope(UUID executionId, Callable<String> work) {
         MDC.put("traceId", "request-trace");
-        try (var ignored = IngestExecutionScope.open(executionId, null, null, null)) {
+        try (var ignored = IngestExecutionScope.open(executionId, null, null)) {
             return IngestExecutionScope.propagate(work);
         }
         finally {
