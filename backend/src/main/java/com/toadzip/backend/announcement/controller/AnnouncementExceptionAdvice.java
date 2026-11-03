@@ -1,6 +1,9 @@
 package com.toadzip.backend.announcement.controller;
 
+import com.toadzip.backend.announcement.dto.response.CorrectionDraftConflictResponse;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
+import com.toadzip.backend.announcement.exception.CorrectionDraftConflictException;
+import com.toadzip.backend.announcement.exception.CorrectionDraftTooLargeException;
 import com.toadzip.backend.announcement.exception.AnnouncementImportDuplicatedException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementImportException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementCursorException;
@@ -36,6 +39,36 @@ public class AnnouncementExceptionAdvice {
     private static final String ANNOUNCEMENT_PDF_INVALID = "ANNOUNCEMENT_PDF_INVALID";
     private static final String PDF_EXTRACTION_IN_PROGRESS = "ANNOUNCEMENT_PDF_EXTRACTION_IN_PROGRESS";
     private static final String PDF_EXTRACTION_JOB_NOT_FOUND = "ANNOUNCEMENT_PDF_EXTRACTION_JOB_NOT_FOUND";
+    private static final String CORRECTION_DRAFT_CONFLICT = "ANNOUNCEMENT_CORRECTION_DRAFT_CONFLICT";
+    private static final String CORRECTION_DRAFT_TOO_LARGE = "ANNOUNCEMENT_CORRECTION_DRAFT_TOO_LARGE";
+
+    @ExceptionHandler(CorrectionDraftConflictException.class)
+    public ResponseEntity<CorrectionDraftConflictResponse> handleCorrectionDraftConflict(
+            CorrectionDraftConflictException exception,
+            HttpServletRequest request
+    ) {
+        CorrectionDraftConflictResponse response = new CorrectionDraftConflictResponse(
+                CORRECTION_DRAFT_CONFLICT,
+                exception.getMessage(),
+                traceIdOf(request),
+                exception.currentRevision(),
+                exception.currentUpdatedAt()
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+
+    @ExceptionHandler(CorrectionDraftTooLargeException.class)
+    public ResponseEntity<ErrorResponse> handleCorrectionDraftTooLarge(
+            CorrectionDraftTooLargeException exception,
+            HttpServletRequest request
+    ) {
+        ErrorResponse response = new ErrorResponse(
+                CORRECTION_DRAFT_TOO_LARGE,
+                exception.getMessage(),
+                traceIdOf(request)
+        );
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).body(response);
+    }
 
     @ExceptionHandler(InvalidAnnouncementPdfException.class)
     public ResponseEntity<ErrorResponse> handleInvalidAnnouncementPdf(
