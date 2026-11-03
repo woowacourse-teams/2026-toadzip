@@ -785,6 +785,18 @@ it('저장된 초안이 있으면 바로 적용하지 않고, 공고가 바뀐 �
   await waitFor(() => expect(draftApi.deleteCorrectionDraft).toHaveBeenCalledWith('29', expect.any(Number)))
 })
 
+it('복원한 초안으로 검토하다 응답 준비로 돌아가도 다시 추출하지 않고 복원한 입력으로 돌아온다', async () => {
+  draftApi.loadCorrectionDraft.mockResolvedValue(storedDraft())
+  renderPage()
+  fireEvent.click(within(await screen.findByRole('region', { name: '임시저장한 작업' })).getByRole('button', { name: '임시저장본 복원' }))
+  await screen.findByRole('heading', { name: '공급정보' })
+  fireEvent.click(screen.getByRole('button', { name: '응답 준비로 돌아가기' }))
+  fireEvent.click(await screen.findByRole('button', { name: '추출 결과 검토하기' }))
+  await screen.findByRole('heading', { name: '공급정보' })
+  expect(screen.getByLabelText('공급행 1 이 공고의 주택형 표기 수정')).toHaveValue('26A 초안')
+  expect(extractor.extractAnnouncementPdf).not.toHaveBeenCalled()
+})
+
 it('저장된 초안을 폐기하면 그 revision으로 지우고 새 작업을 첫 저장으로 시작한다', async () => {
   draftApi.loadCorrectionDraft.mockResolvedValue(storedDraft())
   extracts(JSON.stringify(fixtures.hansville.extraction))

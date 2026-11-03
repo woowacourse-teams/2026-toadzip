@@ -239,6 +239,8 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     const context = cell && review ? evidenceContext(review.extraction, cell.path) : []
     setFocus(previous => ({ page: item.page, query: evidenceQuery(item.quote, cell ? cell.extracted.value : undefined, cell?.kind === 'money', context), context, quote: item.quote, nonce: (previous?.nonce ?? 0) + 1 })); setMobileView('pdf')
   }
+  // 복원한 초안처럼 추출 상태 없이 검토 중인 입력이 있으면, 같은 PDF·응답일 때 다시 추출하지 않고 그 입력으로 돌아간다.
+  const resumable = Boolean(review && pdf && reviewedWith === `${pdf.url}\n${text}`)
   function change(next: Review) { setReview(next); setError('') }
   function start() {
     if (!parsed.ok || !workspace || !pdf) return
@@ -340,7 +342,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     {drafts.status.state === 'conflict' && <div role="alert" className={styles.error}><p>다른 탭/세션에서 더 최신 초안이 저장됐습니다. 이 화면의 편집은 임시저장하지 않았고 화면에는 그대로 남아 있습니다.</p><Button data-design-system className={styles.secondaryButton} onClick={() => void reloadDraft()}>최신 초안 불러오기</Button></div>}
     {phase === 'prepare' && <><div className={styles.mobileSwitch}><Button data-design-system aria-pressed={mobileView === 'pdf'} onClick={() => setMobileView('pdf')}>PDF 보기</Button><Button data-design-system aria-pressed={mobileView === 'review'} onClick={() => setMobileView('review')}>추출 보기</Button></div><div className={styles.workbench}>{pdfPane}
       <div className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="prepare"><RequestPreparation announcementName={workspace.detail.summary.name} pdf={pdf} extraction={extraction} onExtract={extract} parsed={parsed} checks={checks} saved={saved} samePdf={Boolean(saved && pdfHash && saved.pdfSha256 === pdfHash)} onLoadSaved={loadSaved} /></div>
-    </div><PreparationFooter ready={extraction.status === 'done' && parsed.ok && Boolean(pdf)} onReview={start} /></>}
+    </div><PreparationFooter ready={Boolean(pdf) && parsed.ok && (extraction.status === 'done' || resumable)} onReview={start} /></>}
     {active && review && <><div className={styles.mobileSwitch}><Button data-design-system aria-pressed={mobileView === 'pdf'} onClick={() => setMobileView('pdf')}>PDF 보기</Button><Button data-design-system aria-pressed={mobileView === 'review'} onClick={() => setMobileView('review')}>검토표 보기</Button></div><div className={styles.workbench}>{pdfPane}
       <div ref={reviewPane} className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="review">
         {checks.some(check => check.matches === false) && <p className={styles.error}>PDF의 {checks.filter(check => check.matches === false).map(check => `${check.label}(${check.pdf})`).join('·')}이 현재 공고와 다릅니다. 이 공고의 PDF로 받은 응답인지 확인하세요.</p>}
