@@ -283,7 +283,7 @@ class IngestSourceControllerIntegrationTest {
             "LH_ANNOUNCEMENT_SUPPLY, 두꺼비 공급, complex_label, "
                     + "https://example.test/lh/lhLeaseNoticeSplInfo1/getLeaseNoticeSplInfo1",
             "SH_ANNOUNCEMENT, 두꺼비 SH 공고, title, "
-                    + "'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=1,2,4,8,16,32,64,128,256,512,1024'",
+                    + "'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=2'",
             "GH_ANNOUNCEMENT, 두꺼비 GH 공고, title, https://apply.gh.or.kr"
     })
     void 관리자는_저장된_원천을_출처_URL과_함께_조회한다(

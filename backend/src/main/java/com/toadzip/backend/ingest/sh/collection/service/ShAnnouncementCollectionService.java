@@ -111,7 +111,8 @@ public class ShAnnouncementCollectionService {
     }
 
     private List<Entry> select(ShAnnouncementPage page, LocalDate cutoff) {
-        return page.entries().stream().filter(entry -> !entry.registeredDate().isBefore(cutoff)).toList();
+        return page.entries().stream().filter(entry -> !entry.registeredDate().isBefore(cutoff))
+                .filter(entry -> !entry.isPurchaseOrJeonseRental()).toList();
     }
 
     /** 제목·등록일이 그대로이고 열린 실패가 없는 게시글은 다시 받지 않는다. 일부만 읽어 저장한 글은 실패가 열려 있어 다시 받는다. */

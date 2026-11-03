@@ -15,7 +15,8 @@ public class ShAnnouncementExternalRepository {
 
     public static final String BOARD_URL =
             "https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/";
-    public static final String BOARD_TYPES = "1,2,4,8,16,32,64,128,256,512,1024";
+    /** 통합 게시판 분류 중 주택임대(2)만 읽는다. 분양·토지·상가/공장·주택매입·채용 등은 건설임대가 아니다. */
+    public static final String BOARD_TYPES = "2";
     public static final String LIST_URL = BOARD_URL + "list.do?multi_itm_seqs=" + BOARD_TYPES;
     private static final int MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 

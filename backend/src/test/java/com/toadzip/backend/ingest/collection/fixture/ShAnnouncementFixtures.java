@@ -9,7 +9,7 @@ public final class ShAnnouncementFixtures {
         return """
                 <form id="mainform">
                     <input name="itm_seq_1" value="1"><input name="srchWord" value="모집">
-                    <input name="multi_itm_seqsStr" value="1,2,4,8,16,32,64,128,256,512,1024">
+                    <input name="multi_itm_seqsStr" value="2">
                     <div class="topTxt"><div class="mentcount">총 <strong>2</strong> 건 [1/1페이지]</div></div>
                 </form>
                 <div class="topTxt"><p>우편번호 검색: 총 <strong>529</strong> 건 [1/53페이지]</p></div>
@@ -25,7 +25,7 @@ public final class ShAnnouncementFixtures {
     public static String detail() {
         return """
                 <input name="multi_itm_seq" value="0">
-                <input name="multi_itm_seqs" value="1,2,4,8,16,32,64,128,256,512,1024">
+                <input name="multi_itm_seqs" value="2">
                 <div class="detailTable gs0401Table firgs0401Table"><table>
                     <thead><tr><th>주택 입주자 모집</th></tr></thead>
                     <tbody>

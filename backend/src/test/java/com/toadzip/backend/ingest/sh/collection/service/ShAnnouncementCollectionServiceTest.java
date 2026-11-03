@@ -79,6 +79,20 @@ class ShAnnouncementCollectionServiceTest {
     }
 
     @Test
+    void 매입임대와_전세임대_게시글은_상세를_받지_않는다() {
+        when(externalRepository.fetchList(1)).thenReturn(list(1, 3, 100, 101, 102)
+                .replace("공고 101</a>", "청년 매입임대주택 입주자 모집</a>")
+                .replace("공고 102</a>", "기존주택 전세임대 입주자 모집</a>"));
+        when(externalRepository.fetchDetail("100")).thenReturn(detail("100"));
+
+        var report = service.collect();
+
+        assertThat(report.storedRowCount()).isOne();
+        verify(externalRepository, never()).fetchDetail("101");
+        verify(externalRepository, never()).fetchDetail("102");
+    }
+
+    @Test
     void savesSelectedPostsOnEveryPageAndResolvesTheirFailures() {
         when(externalRepository.fetchList(1)).thenReturn(list(1, 11, 100));
         when(externalRepository.fetchList(2)).thenReturn(list(2, 11, 110));

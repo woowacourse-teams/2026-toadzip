@@ -36,7 +36,7 @@ class ShAnnouncementExternalRepositoryTest {
         expected.add("annType1", "on");
         expected.add("srchTp", "0");
         expected.add("srchWord", "모집");
-        server.expect(requestTo(ShAnnouncementExternalRepository.LIST_URL))
+        server.expect(requestTo("https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=2"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(content().formData(expected))
                 .andExpect(header("Referer", ShAnnouncementExternalRepository.LIST_URL))
