@@ -41,16 +41,18 @@ class Model(Protocol):
 
 @dataclass(frozen=True)
 class LhSupplyRow:
-    """Spring이 input.lhSupplyRows에 담은 LH 공급 API 행. 값은 LH가 보낸 문자열 그대로다."""
+    """Spring이 input.lhSupplyRows에 담은 LH 공급 API 행. 값은 LH가 보낸 문자열 그대로다.
+    row_identifier는 공급 보정 작업실의 LH 행 식별자(LH:{panId}:SUPPLY:{order})다. 식별자를 담기 전에 넣은 작업이면 없다."""
 
     type_name: str
     exclusive_area: str
     supply_area: str
     supplied_unit_count: str
+    row_identifier: str | None
 
     @classmethod
     def of(cls, row: dict) -> "LhSupplyRow":
-        return cls(row["typeName"], row["exclusiveArea"], row["supplyArea"], row["suppliedUnitCount"])
+        return cls(row["typeName"], row["exclusiveArea"], row["supplyArea"], row["suppliedUnitCount"], row.get("rowIdentifier"))
 
     def count(self) -> int | None:
         try:
@@ -63,9 +65,20 @@ def lh_rows(job_input: dict | None) -> list[LhSupplyRow]:
     return [LhSupplyRow.of(row) for row in (job_input or {}).get("lhSupplyRows", [])]
 
 
+def link_lh_rows(tree: dict, rows: list[LhSupplyRow]) -> None:
+    """모델은 공급행이 나온 LH 행을 프롬프트 목록의 번호(1부터)로 쓴다. 결과에는 그 번호 대신 Spring이 준 LH 행 식별자를 담아,
+    화면이 목록 위치가 아니라 식별자로 작업실의 LH 행을 맞추게 한다. 번호가 없거나 범위를 벗어나면(검산이 경고함) null이다."""
+    for row in checks.objects(tree["data"].get("supplyRows")):
+        if "lhSourceRow" not in row:
+            continue
+        number = row["lhSourceRow"]
+        valid = isinstance(number, int) and not isinstance(number, bool) and 1 <= number <= len(rows)
+        row["lhSourceRow"] = rows[number - 1].row_identifier if valid else None
+
+
 def build_prompt(rows: list[LhSupplyRow], page_text: str) -> str:
     """LH 공고면 이미 수집한 LH API 행을 공급행 틀로 함께 준다. 행이 없으면(LH가 아닌 공고) 틀 지시도 빼고 보낸다.
-    행 번호는 input.lhSupplyRows에서의 1부터 센 위치이고, 모델은 이 번호를 공급행의 lhSourceRow로 돌려준다."""
+    행 번호는 input.lhSupplyRows에서의 1부터 센 위치이고, 모델은 이 번호를 공급행의 lhSourceRow로 돌려준다(결과에서는 link_lh_rows가 식별자로 바꾼다)."""
     if not rows:
         return TEXT_PREFACE + INSTRUCTIONS + SCHEMA_SUFFIX + SCHEMA + "\n\n" + page_text
     frame = "\n".join(
@@ -101,6 +114,7 @@ class AnnouncementPdfExtractor:
             warnings.append(f"공급표·임대조건표 쪽을 찾지 못해 전체 {len(texts)}쪽을 보냈습니다.")
         warnings += checks.review(tree, selection.pages, texts, [row.type_name for row in rows],
                                   [row.count() for row in rows], selected.rental_rows)
+        link_lh_rows(tree, rows)
         log.info("작업 %d 추출 완료 pages=%d/%d lhRows=%d warnings=%d usage=%s", job.id, len(selection.pages),
                  len(texts), len(rows), len(warnings), reply.usage)
         return {
