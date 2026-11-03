@@ -3,7 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { expect, it, vi } from 'vitest'
 import { ReviewSupply } from './ReviewSupply'
-import { scenario, separateHansville } from './fixtures/workspace'
+import { daegu, scenario, separateHansville } from './fixtures/workspace'
 import fixtures from './fixtures/scenarios.json'
 import type { Review, ReviewFilter } from './review'
 
@@ -98,4 +98,74 @@ it('공급정보는 고른 행이 속한 단지의 행만 목록·편집 영역�
   expect(panelTitle()).not.toBe(before)
   fireEvent.click(screen.getByRole('button', { name: '다른 단지 탭' }))
   expect(screen.getByRole('textbox', { name: '공급행 1 이 공고의 주택형 표기 수정' })).toHaveValue('39 관리자')
+})
+
+/** 대구 공고: LH가 통합행 #747(240세대, 면적 없음) 하나로 준 단지를 PDF는 051.9800A 200 · 059.9100A 25 · 059.9300B 15로 적었다. */
+function renderDaegu(options: Parameters<typeof daegu>[0] = {}) {
+  const { review, workspace, housing } = daegu(options)
+  const jump = vi.fn<(target: string) => void>()
+  function Test() {
+    const [current, setCurrent] = useState(review), [selected, setSelected] = useState(0)
+    return <ReviewSupply review={current} workspace={workspace} housing={housing} complexes={{}} filter="all" empty="없음" onChange={setCurrent} onEvidence={() => {}} selected={selected} onSelect={setSelected} onJump={jump} />
+  }
+  render(<MemoryRouter><Test /></MemoryRouter>)
+  const show = (row: number) => fireEvent.click(within(screen.getByRole('region', { name: '공급행 목록' })).getByRole('button', { name: `공급행 ${row} 편집` }))
+  const placeOf = (row: number) => { show(row); return screen.getByLabelText(`공급행 ${row} 저장할 곳`).textContent }
+  return { jump, show, placeOf, match: () => screen.getByRole('region', { name: 'LH·PDF 대응' }) }
+}
+
+it('LH 통합행 240세대를 PDF가 세 행으로 적은 단지는 탭 위 대응에서 LH와 PDF 행을 나란히 두고 권장 나누기를 물으며, 고르면 결과를 쉬운 말로 보인다', () => {
+  const { jump, placeOf, match } = renderDaegu()
+  expect(within(match()).getByRole('list', { name: 'LH가 준 행' })).toHaveTextContent('공공임대 · 면적 없음 · 240세대')
+  expect(within(match()).getAllByRole('listitem').filter(item => item.closest('ul')?.getAttribute('aria-label') === 'PDF 행').map(item => item.textContent))
+    .toEqual(['1. 051.9800A · 전용 51.98㎡ · 200세대', '2. 059.9100A · 전용 59.91㎡ · 25세대', '3. 059.9300B · 전용 59.93㎡ · 15세대'])
+  const decision = within(match()).getByRole('group', { name: "LH 행 '공공임대 240세대' 대응" })
+  expect(decision).toHaveTextContent("LH는 '공공임대' 주택형을 1행(240세대, 면적 없음)으로, PDF는 3행(200·25·15, 합계 240)으로 적었습니다.")
+  // 행마다 고르던 저장 방식 라디오와 AI 대응 문장은 보이지 않는다.
+  expect(screen.queryByRole('radio')).not.toBeInTheDocument()
+  expect(screen.queryByText(/AI가|통합행 분리를 제안/)).not.toBeVisible()
+  expect(screen.getByRole('region', { name: '공급행 1 검토' })).toHaveTextContent('위 LH·PDF 대응에서 나눌지 1행으로 둘지 고르세요.')
+  fireEvent.click(within(screen.getByRole('region', { name: '공급행 1 검토' })).getByRole('button', { name: 'LH·PDF 대응 보기' }))
+  expect(jump).toHaveBeenLastCalledWith('match:0')
+  fireEvent.click(within(decision).getByRole('button', { name: 'PDF대로 3행으로 나누기 (권장)' }))
+  expect(within(decision).getByRole('button', { name: 'PDF대로 3행으로 나누기 (권장)' })).toHaveAttribute('aria-pressed', 'true')
+  expect(decision).toHaveTextContent('#747(240세대)이 051.9800A 200세대가 되고 059.9100A 25세대 · 059.9300B 15세대가 새로 생깁니다.')
+  // 나누기를 고르면 세 행 모두 대응을 확인한 것으로 본다.
+  expect(screen.queryByRole('button', { name: /^공급행 \d 대응 확인$/ })).not.toBeInTheDocument()
+  expect(placeOf(1)).toBe('#747(240세대)을 나눈 첫 행입니다. 저장하면 #747이 이 주택형이 됩니다.')
+  expect(placeOf(2)).toBe('#747(240세대)을 나눈 행입니다. 새 공급정보로 저장합니다.')
+  expect(within(screen.getByRole('region', { name: '공급행 목록' })).getAllByRole('row').slice(2).map(row => row.children[3].textContent)).toEqual(['#747 나눔', '#747 나눔', '#747 나눔'])
+})
+
+it('LH대로 1행 유지를 고르면 첫 PDF 행이 #747을 고치고 나머지 행은 반영하지 않는다고 보이며, 첫 행 모집수를 그대로 두면 두 번 세지 않아 오류가 없다', () => {
+  const { placeOf, match } = renderDaegu()
+  const decision = within(match()).getByRole('group', { name: "LH 행 '공공임대 240세대' 대응" })
+  fireEvent.click(within(decision).getByRole('button', { name: 'LH대로 1행 유지' }))
+  expect(within(decision).getByRole('button', { name: 'LH대로 1행 유지' })).toHaveAttribute('aria-pressed', 'true')
+  expect(decision).toHaveTextContent('#747(240세대)을 051.9800A 행 값으로 고칩니다. 059.9100A · 059.9300B 행은 이번 보정에서 반영하지 않습니다.')
+  expect(within(match()).getByRole('list', { name: 'PDF 행' })).toHaveTextContent('2. 059.9100A · 전용 59.91㎡ · 25세대 · 반영 안 함')
+  expect(placeOf(1)).toBe('기존 공급정보 #747(공공임대)을 고칩니다.')
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(screen.getByRole('checkbox', { name: '공급행 1 적용' })).toBeChecked()
+})
+
+it('나누는 첫 행이 합친 모집수 240을 그대로 두면 두 번 센다고 쉬운 말로 알리고 그 행 모집수 칸으로 보낸다', () => {
+  const { jump, show } = renderDaegu()
+  show(1)
+  fireEvent.click(within(screen.getByRole('group', { name: '공급행 1 모집수 반영 방법' })).getByRole('button', { name: '기존 값 사용' }))
+  show(2)
+  const alert = within(screen.getByRole('region', { name: '공급행 2 검토' })).getByRole('alert')
+  expect(alert).toHaveTextContent('공급행 1(051.9800A)은 #747을 이어받는 첫 행인데 모집수가 합친 240세대 그대로라, 나머지 행의 모집수와 두 번 셉니다.')
+  fireEvent.click(within(alert).getByRole('button', { name: '공급행 1(051.9800A) 모집수 고치기' }))
+  expect(jump).toHaveBeenLastCalledWith('cell:supplyRows[0].totalSupplyHouseholdCount')
+})
+
+it('대응 확인 안내는 의심스러울 때만 까닭과 함께 보인다: AI 표시와 같은 곳이면 없고, 바꾸기로 다른 기존 행을 고르면 그 까닭을 보인다', () => {
+  const { placeOf } = renderDaegu({ lhSourceRow: true })
+  expect(screen.queryByText(/이 대응이 맞는지 확인하세요/)).not.toBeInTheDocument()
+  placeOf(3)
+  fireEvent.click(screen.getByRole('button', { name: '공급행 3 저장할 곳 바꾸기' }))
+  fireEvent.click(within(screen.getByRole('group', { name: '공급행 3 저장할 곳 고르기' })).getByRole('button', { name: /#748 · / }))
+  expect(placeOf(3)).toBe('기존 공급정보 #748(39)을 고칩니다.')
+  expect(screen.getByRole('region', { name: '공급행 3 검토' })).toHaveTextContent("이 대응이 맞는지 확인하세요. AI는 이 행을 LH 행 '공공임대 240세대'에서 나온 행으로 봤지만, 지금은 LH 행 '84 5세대'에 저장합니다.")
 })

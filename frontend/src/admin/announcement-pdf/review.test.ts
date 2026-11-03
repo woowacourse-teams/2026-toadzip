@@ -4,6 +4,7 @@ import fixtures from './fixtures/scenarios.json'
 import { readExtraction } from './extraction'
 import { blankTarget } from '../supply/supplyCorrectionApi'
 import type { JsonWorkspace } from '../announcement-json/api'
+import { complexCorrespondence } from './correspondence'
 import { areaOnlyTypeName, createRowReview, destinationLabel, housingTypePrice, linkedHousingTypeId, pendingPrice, foreignCharacters, shownDateTime, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, placementProblems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
 
 
@@ -43,14 +44,15 @@ it('지번을 모르는 단지의 공급행은 소재지 PNU 없이 저장하고
   expect(request.document.supplyRows.map(row => (row.complexReference as { pnu: unknown }).pnu)).toEqual(request.document.supplyRows.map(() => null))
 })
 
-it('연결되지 않은 LH 행이 있어도 새 공급정보 추가를 막지 않고 별도 추가 행에 남는 LH 행을 경고한다', () => {
+it('연결되지 않은 LH 행이 있어도 새 공급정보 추가를 막지 않고, 그 LH 행은 행마다 경고하지 않고 단지 대응에서 맞는 PDF 행을 묻는다', () => {
   const { review, workspace } = scenario('hansville', separateHansville())
   const index = review.rows.findIndex(row => row.include && row.proposal.destination === 'new')
   expect(index).toBeGreaterThanOrEqual(0)
   const lh = { rowIdentifier: 'LH:P:SUPPLY:1', complexLabel: '한스빌', typeName: '26B', exclusiveArea: null, householdCount: null, attachedRowKey: null, splitRowKeys: [] }
   const unattached = { ...workspace, supply: { ...workspace.supply, lhSupplyRows: [lh], unattachedLhSupplyRows: [lh] } }
   expect(assembleReview(review, unattached, evidence).correction.rows.filter(row => row.id === null)).toHaveLength(1)
-  expect(placementProblems(review, unattached).get(index)).toMatchObject({ level: 'warning', kind: 'unattached' })
+  expect(placementProblems(review, unattached).get(index)).toBeUndefined()
+  expect(complexCorrespondence(review, unattached, 0).leftovers).toEqual([{ lh, attachedTo: null, kept: false }])
 })
 
 it('광주첨단의 단지별 일정은 기존 ID마다 복사하고 새 방문접수도 추가한다', () => {
@@ -81,7 +83,7 @@ it('저장 위치 누락과 공통 모집 묶음 일부 제외를 검증한다',
   const { review, workspace } = scenario('hansville', separateHansville())
   const destination = review.rows[0].proposal.destination
   review.rows[0].proposal.destination = ''
-  expect(() => assembleReview(review, workspace, evidence)).toThrow('저장 방식을 고르세요')
+  expect(() => assembleReview(review, workspace, evidence)).toThrow('저장할 곳을 고르세요')
   review.rows[0].proposal.destination = destination; review.rows[1].include = false
   expect(() => assembleReview(review, workspace, evidence)).toThrow('모든 행을 함께')
 })
@@ -92,7 +94,7 @@ it('같은 기존 행에 두 번 대응하거나 기존 조건을 임의로 제�
   workspace.supply.rows[0].targets.push(old)
   expect(assembleReview(review, workspace, evidence).correction.rows[0].targets[0]).toEqual(old)
   review.rows[1].proposal.destination = review.rows[0].proposal.destination
-  expect(() => assembleReview(review, workspace, evidence)).toThrow(expect.objectContaining({ message: expect.stringContaining('중복 연결: 공급행 2도 같은 기존 행'), reviewId: 'row:0' }))
+  expect(() => assembleReview(review, workspace, evidence)).toThrow(expect.objectContaining({ message: expect.stringContaining('공급행 2(26B)도 같은 기존 공급정보 #'), reviewId: 'row:0' }))
 })
 
 it('잘못된 금액·날짜·코드는 자동으로 보정하지 않는다', () => {
@@ -318,7 +320,7 @@ it('저장 전 변경 목록은 실제로 바뀌는 값만 영역별로 모으�
 it('저장 위치 선택지는 연결 단지·표시 이름·모집수·전용면적으로 구분한다', () => {
   const { workspace } = scenario('gongju')
   const row = { ...workspace.supply.rows[0], housingComplexName: '평화주공1단지', typeName: '26', householdCount: 450, exclusiveArea: 26.37 }
-  expect(destinationLabel(row)).toBe(`평화주공1단지 · 26 · 모집 450세대 · 전용 26.37㎡ (#${String(row.id)}) 수정`)
+  expect(destinationLabel(row)).toBe(`#${String(row.id)} · 평화주공1단지 · 26 · 모집 450세대 · 전용 26.37㎡`)
   expect(destinationLabel({ ...row, householdCount: null, groupId: 3, exclusiveArea: null })).toContain('공통 모집 · 면적 미확인')
 })
 

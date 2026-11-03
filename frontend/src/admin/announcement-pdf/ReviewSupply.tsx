@@ -3,17 +3,18 @@ import { Link } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import type { JsonWorkspace } from '../announcement-json/api'
 import { type Evidence } from './extraction'
-import { cellMatches, chooseSubtype, complexDecisionCount, complexGroups, housingTypePrice, pendingItems, rowOfReviewId, placementLabels, placementMode, placementProblems, linkedHousingType, linkedHousingTypeId, newRepresentative, pendingPrice, pendingSubtypes, editCell, representativeSubtype, sharedGroupStorable, pdfOrderChanges, pendingRow, pendingTarget, remapTarget, shown, type Cell, type Review, type ReviewFilter, type RowReview, type SubtypeChoice, type TargetReview } from './review'
+import { cellMatches, chooseSubtype, complexDecisionCount, complexGroups, housingTypePrice, pendingItems, rowOfReviewId, placementProblems, linkedHousingType, linkedHousingTypeId, newRepresentative, pendingPrice, pendingSubtypes, editCell, representativeSubtype, sharedGroupStorable, pdfOrderChanges, pendingRow, pendingTarget, remapTarget, shown, type Cell, type Review, type ReviewFilter, type RowReview, type SubtypeChoice, type TargetReview } from './review'
 import { ComplexDecisions } from './ComplexDecision'
 import { missingHousingType, splittableLhRows, type ComplexLabels, type HousingCandidates } from './matching'
-import { includeRow, placeRow, splitLhRowFor, type Placement } from './placement'
+import { includeRow, placeRow, type Placement } from './placement'
+import { complexCorrespondence, groupOf, placementDoubt } from './correspondence'
+import { ComplexMatch } from './ComplexMatch'
 import { PlacementChooser } from './PlacementChooser'
 import { SupplyRowList } from './SupplyRowList'
 import { ComplexTypesPanel } from './ComplexTypesPanel'
 import { ReviewCells } from './ReviewCells'
 import { housingTypeLabel } from '../ingest/housingTypeLabel'
 import { possibleLhDuplicates } from '../supply/lhSupplyOwnership'
-import type { CorrectionRow } from '../supply/supplyCorrectionApi'
 import styles from './PdfCorrection.module.css'
 
 // 표기 변경을 반영할 때만 공개 화면에 보일 이름을 미리 알려 준다.
@@ -34,7 +35,9 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
   const [panelOpen, setPanelOpen] = useState(false), [noticesChoice, setNoticesOpen] = useState<boolean | null>(null)
   const pendingRows = new Set(pendingItems(review, savesHousingTypes, workspace).flatMap(item => { const at = rowOfReviewId(item.id); return at === null ? [] : [at] }))
   // 공급정보는 PDF 단지마다 탭으로 나뉜다. 고른 행이 속한 단지의 행만 목록·편집 영역에 둔다.
-  const group = complexGroups(review).find(item => item.indexes.includes(selected)) ?? complexGroups(review)[0]
+  const groupIndex = Math.max(0, groupOf(review, selected)), group = complexGroups(review)[groupIndex]
+  const matched = group ? complexCorrespondence(review, workspace, groupIndex) : null
+  const showMatch = matched?.lhRows.length ? () => onJump?.(`match:${groupIndex}`) : undefined
   const visible = (index: number) => (!group || group.indexes.includes(index)) && rowMatches(review.rows[index], filter, savesHousingTypes)
   // 고른 행이 필터에 맞지 않으면 필터에 맞는 첫 행을 편집 영역에 둔다.
   const shown = review.rows.flatMap((_, index) => visible(index) ? [index] : [])
@@ -72,8 +75,9 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
       <div id="supply-notices" className={styles.noticeBody} hidden={!noticesOpen}>{notices.map(notice => <div key={notice.key}>{notice.body}</div>)}</div>
     </div>}
     {/* 한 단지의 주택형을 한곳에서 대조하도록 PDF 단지 이름별로 묶는다. 저장 순서는 PDF 표 순서 그대로이고, 확인 필요 이동은 이 묶음 순서를 따른다. */}
+    {group && <ComplexMatch review={review} workspace={workspace} housing={housing} groupIndex={groupIndex} onChange={onChange} />}
     {review.rows.length > 0 && <div className={styles.supplyLayout} data-panel={panelOpen}>
-      <SupplyRowList review={review} problems={problems} pending={pendingRows} selected={current} visible={visible} onSelect={onSelect} />
+      <SupplyRowList review={review} workspace={workspace} problems={problems} pending={pendingRows} selected={current} visible={visible} onSelect={onSelect} />
       <div className={styles.rowEditor}>{complexGroups(review).filter(group => group.indexes.includes(current)).map(group =>
         <section className={styles.complexGroup} key={group.name} aria-label={`${group.name} 주택형`}><h3 className={styles.complexGroupTitle}>{group.name}<small>{`주택형 ${group.indexes.length}개 중 공급행 ${current + 1}`}</small></h3>{supplyRow(review.rows[current], current)}</section>)}</div>
       {panelOpen && current >= 0 && typesPanel(current)}
@@ -101,17 +105,24 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
   }
   function supplyRow(row: RowReview, index: number) {
       const { source, current, missing, missingLabel, chooseNewType } = rowContext(row, index)
+      const doubt = placementDoubt(review, index, workspace)
+      const inOffer = matched?.offers.some(offer => offer.members.includes(index))
       // 새 주택형은 연결 주택형을 직접 수정·미연결로 둔 동안만 유지한다. 다른 주택형이나 기존 값을 고르면 풀린다.
       const keepsNewType = (cells: typeof row.cells) => cells.some(cell => cell.field === 'housingTypeId' && cell.mode === 'manual' && cell.value === null)
       return <section className={styles.supplyBlock} key={index} aria-label={`공급행 ${index + 1} 검토`} data-review-id={`row:${index}`} tabIndex={-1}>
-        <header><div><h4>{source.typeName ?? `공급행 ${index + 1}`}</h4><p>{placementSummary(row, current)}</p></div><div className={styles.actions}><Button data-design-system className={styles.quietButton} aria-expanded={panelOpen} onClick={() => setPanelOpen(open => !open)}>{panelOpen ? '단지 주택형 닫기' : '단지 주택형 보기'}</Button><label><input type="checkbox" checked={row.include} onChange={event => onChange(includeRow(review, index, event.target.checked, workspace, housing))} />공급행 {index + 1} 적용</label></div></header>
-        {pendingRow(row) && <div className={styles.pending}><p><strong>확인 필요</strong> {row.proposal.reason}</p><Button data-design-system className={styles.secondaryButton} disabled={!row.proposal.destination} onClick={() => update(index, { ...row, reviewed: true })}>{`공급행 ${index + 1} 대응 확인`}</Button></div>}
+        <header><div><h4>{source.typeName ?? `공급행 ${index + 1}`}</h4></div><div className={styles.actions}><Button data-design-system className={styles.quietButton} aria-expanded={panelOpen} onClick={() => setPanelOpen(open => !open)}>{panelOpen ? '단지 주택형 닫기' : '단지 주택형 보기'}</Button><label><input type="checkbox" checked={row.include} onChange={event => onChange(includeRow(review, index, event.target.checked, workspace, housing))} />공급행 {index + 1} 적용</label></div></header>
+        {/* 자동 대응 근거(AI 표시·모집수 합 등)는 접어 두고, 대응이 의심스러울 때만 그 까닭을 쉬운 말로 보인다. */}
+        {pendingRow(row) && <div className={styles.pending}><p><strong>확인 필요</strong> {doubt ? `이 대응이 맞는지 확인하세요. ${doubt}` : inOffer ? '위 LH·PDF 대응에서 나눌지 1행으로 둘지 고르세요.' : !row.proposal.destination ? '저장할 곳을 고르세요.' : '저장할 곳이 맞는지 확인하세요.'}</p>
+          <div className={styles.actions}>{inOffer && showMatch && <Button data-design-system className={styles.quietButton} onClick={showMatch}>LH·PDF 대응 보기</Button>}
+            <Button data-design-system className={styles.secondaryButton} disabled={!row.proposal.destination} onClick={() => update(index, { ...row, reviewed: true })}>{`공급행 ${index + 1} 대응 확인`}</Button></div></div>}
+        {!pendingRow(row) && doubt && <p className={styles.warningNote} role="note"><strong>이 대응이 맞는지 확인하세요.</strong> {doubt}</p>}
         {!row.include ? <p className={styles.hint}>이 행의 추출값을 제외합니다. 기존 공급정보는 유지합니다.</p> : <>
-          <PlacementChooser row={row} index={index} workspace={workspace} complexes={complexes} problem={problems.get(index)} splitLhRow={splitLhRowFor(review, index, workspace)} onPlace={placement => place(index, placement)} onFocusProblem={onJump}
+          <PlacementChooser review={review} index={index} workspace={workspace} complexes={complexes} problem={problems.get(index)} onShowMatch={pendingRow(row) && inOffer ? undefined : showMatch} onPlace={placement => place(index, placement)} onFocusProblem={onJump}
             onFixDuplicate={splittableLhRows(workspace.supply).some(lh => lh.attachedRowKey === row.proposal.destination) ? () => splitDuplicates(index) : undefined} />
           {/* 단지에 연결되지 않은 기존 공급행도 위 '단지 정하기'에서 단지를 정한다. */}
           {(current && current.housingComplexId === null || row.proposal.destination === 'new' && !row.proposal.anchorKey) && <NewSupplyComplex row={row} index={index} onChange={next => update(index, next)} />}
-          <p className={styles.hint}>{row.proposal.reason}{source.values.constructedHouseholdCount != null ? ` · PDF 건설호수 ${String(source.values.constructedHouseholdCount)}세대` : ''}</p>
+          {source.values.constructedHouseholdCount != null && <p className={styles.hint}>{`PDF 건설호수 ${String(source.values.constructedHouseholdCount)}세대`}</p>}
+          {row.proposal.reason && <details className={styles.conditions}><summary>자동 대응 근거</summary><p className={styles.hint}>{row.proposal.reason}</p></details>}
           {savesHousingTypes && typeof shownTypeName(row) === 'string' && <p className={styles.hint}>{`저장하면 이 공고의 공개 화면에 '${String(shownTypeName(row))}'(으)로 표시됩니다. 연결한 단지 주택형 이름도 이 표기로 갱신합니다(끝 괄호는 떼고, 면적만 남으면 갱신하지 않음). 관리자가 고친 이름과 더 최근 공고의 이름은 유지합니다.`}</p>}
           {missing && <div className={styles.pending}><p><strong>맞는 주택형 없음</strong> 연결할 단지에 PDF 전용 {missing.exclusiveArea}㎡ 주택형이 없습니다.{row.newHousingType ? ` 저장하면 '${missingLabel}' 주택형을 이 단지에 추가합니다.` : ''}</p>
             {!row.newHousingType && <Button data-design-system className={styles.secondaryButton} disabled={!missing.name} onClick={chooseNewType}>PDF 형명·면적으로 새 주택형 추가</Button>}</div>}
@@ -128,14 +139,6 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
   }
 }
 
-
-/** 행 머리의 저장 방식 요약. 분리 묶음의 첫 행은 통합행을 이어받는다고 적는다. */
-function placementSummary(row: RowReview, current: CorrectionRow | undefined) {
-  const mode = placementMode(row.proposal)
-  if (!mode) return '저장 방식을 고르세요'
-  if (mode === 'SPLIT') return current ? `통합행 분리 · 통합행 #${String(current.id)}(${current.typeName}) → 첫 분리행` : '통합행 분리 · 새 분리행'
-  return current ? `${placementLabels[mode]} · 현재: ${current.complexName} · ${current.typeName}` : placementLabels[mode]
-}
 
 function targetMatches(target: TargetReview, filter: ReviewFilter) {
   return filter === 'all' || target.cells.some(cell => cellMatches(cell, filter)) || filter === 'pending' && pendingTarget(target)

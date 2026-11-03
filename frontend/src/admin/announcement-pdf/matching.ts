@@ -112,7 +112,7 @@ export function sourceComplexNames(extraction: Extraction, pdfName: string | nul
   const matched = byBlock.length && byAddress.length ? byBlock.filter(name => byAddress.includes(name)) : byBlock.length ? byBlock : byAddress
   return matched.length === 1 ? { names: matched, certain: byBlock.length > 0 && byAddress.length > 0 } : { names: [], certain: false }
 }
-function equalArea(left: unknown, right: unknown) {
+export function equalArea(left: unknown, right: unknown) {
   return typeof left === 'number' && typeof right === 'number' && Math.abs(left - right) < 0.00005
 }
 
@@ -220,7 +220,8 @@ export function proposeRows(extraction: Extraction, all: CorrectionRow[], housin
     const anchor = chosen ?? (complexId === null ? undefined : related[0])
     const changedName = !!chosen && typeKey(chosen.typeName) !== typeKey(row.typeName)
     const recruitmentNote = byRecruitment.length ? `단지명 표기가 달라 이번 모집수 ${String(row.values.totalSupplyHouseholdCount)}세대가 같은 기존 행을 제안했습니다. · ` : ''
-    const ambiguousNote = ambiguous ? `모호: 표기·전용면적이 맞는 기존 행이 없어 남은 행(${recommended.length}개)을 고르지 않았습니다. 기존 행 수정·통합행 분리·별도 추가 중에서 정하세요. · ` : ''
+    // 제안 근거에 덧붙여도 떼어 낼 수 있게(proposePlacements) 문장 안에 '·'를 쓰지 않는다.
+    const ambiguousNote = ambiguous ? `모호: 표기와 전용면적이 맞는 기존 행이 없어 남은 행(${recommended.length}개)을 고르지 않았습니다. 고칠 기존 공급정보를 고르거나 새 공급정보로 추가하세요. · ` : ''
     const blockNote = !sourceNames.length ? '' : source.certain ? `공고 단지 '${sourceNames[0]}'에 대응했습니다. · `
       : `공고 단지 '${sourceNames[0]}'에 블록 번호나 주소 한쪽만 맞아 대응했습니다. 같은 단지인지 확인하세요. · `
     return {
@@ -377,6 +378,10 @@ export function lhRowLabel(lh: LhSupplyRow) {
   const order = /:(\d+)$/.exec(lh.rowIdentifier)?.[1]
   return [`LH 행 ${order === undefined ? lh.rowIdentifier : Number(order) + 1}`, lh.complexLabel, lh.typeName, lh.exclusiveArea ? `전용 ${lh.exclusiveArea}㎡` : '면적 미확인',
     lh.householdCount != null ? `모집 ${lh.householdCount}` : '모집수 미확인'].filter(Boolean).join(' · ')
+}
+/** 운영자에게 보일 LH 행 이름. 주택형 표기와 이번 공급 수다('59.19B 5세대'). */
+export function lhName(lh: LhSupplyRow) {
+  return `${lh.typeName?.trim() || '표기 없음'} ${lh.householdCount != null ? `${lh.householdCount}세대` : '모집수 미확인'}`
 }
 const rowCount = (row: Extraction['supplyRows'][number]) => typeof row.values.totalSupplyHouseholdCount === 'number' ? row.values.totalSupplyHouseholdCount : null
 

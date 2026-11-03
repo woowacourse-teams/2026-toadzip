@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest'
 import { daegu } from './fixtures/workspace'
 import { chooseCellValue, assembleReview, createReview, pendingItems, placementMode, placementProblems, rebaseReview, ReviewError, type Review } from './review'
-import { includeRow, placeRow, splitLhRowFor } from './placement'
+import { includeRow, keepMerged, placeRow, splitMerged } from './placement'
+import { complexCorrespondence, offerResult, offerSummary, placementDoubt } from './correspondence'
 
 const evidence = { reason: '공고문과 대조', sourceUrl: 'https://example.com/daegu', sourcePage: '3' }
 const modes = (review: Review) => review.rows.map(row => [placementMode(row.proposal), row.proposal.destination === 'new' ? 'new' : row.proposal.destination])
@@ -45,17 +46,17 @@ it('분리 합계가 LH 공급 수와 다르면 경고로 알리고 분리 행�
   const picked = pickCounts(review)
   expect(placementProblems(picked, workspace).size).toBe(0)
   const typed = countCell(picked, 1, cell => ({ ...chooseCellValue(cell, 'manual'), input: '26', manualInput: '26', value: 26 }))
-  expect(placementProblems(typed, workspace).get(0)).toMatchObject({ level: 'warning', kind: 'split', message: expect.stringContaining('분리 합계 241세대') })
+  expect(placementProblems(typed, workspace).get(0)).toMatchObject({ level: 'warning', kind: 'split', message: expect.stringContaining('나눈 행의 모집수 합 241세대가 LH 이번 공급 240세대와 다릅니다') })
   const one = includeRow(includeRow(picked, 1, false, workspace, housing), 2, false, workspace, housing)
   expect(placementProblems(one, workspace).get(0)).toMatchObject({ level: 'error', kind: 'split' })
-  expect(() => assembleReview(one, workspace, evidence)).toThrow('통합행 분리에는 같은 LH 행')
+  expect(() => assembleReview(one, workspace, evidence)).toThrow("LH 행 '공공임대 240세대' 나누기에는 PDF 행이 둘 이상 필요한데 지금은 공급행 1(051.9800A) 하나뿐입니다")
 })
 
 it('첫 분리행이 통합 모집수 240을 그대로 두고 다른 분리행에 모집수가 있으면 두 번 집계되므로 오류로 막고 첫 분리행 모집수 칸으로 이동하게 한다', () => {
   const { review, workspace } = daegu()
   const kept = countCell(pickCounts(review), 0, cell => chooseCellValue(cell, 'keep'))
   const problem = placementProblems(kept, workspace).get(1)
-  expect(problem).toMatchObject({ level: 'error', kind: 'split', focus: 'cell:supplyRows[0].totalSupplyHouseholdCount', message: expect.stringContaining('두 번 집계됩니다') })
+  expect(problem).toMatchObject({ level: 'error', kind: 'split', focus: 'cell:supplyRows[0].totalSupplyHouseholdCount', message: expect.stringContaining('공급행 1(051.9800A)은 #747을 이어받는 첫 행인데 모집수가 합친 240세대 그대로라, 나머지 행의 모집수와 두 번 셉니다') })
   let error: unknown
   try { assembleReview(kept, workspace, evidence) } catch (cause) { error = cause }
   expect(error).toBeInstanceOf(ReviewError)
@@ -100,17 +101,19 @@ it('여러 PDF 행이 같은 기존 행을 수정하면 중복 연결 오류와 
   next = placeRow(next, 1, { mode: 'UPDATE', rowKey: 'row:747' }, workspace, housing)
   const problem = placementProblems(next, workspace).get(1)
   expect(problem).toMatchObject({ level: 'error', kind: 'duplicate' })
-  expect(problem?.message).toContain('통합행 분리로 나눌 수 있습니다')
+  expect(problem?.message).toBe('공급행 1(051.9800A) · 공급행 3(059.9300B)도 같은 기존 공급정보 #747(공공임대)을 고칩니다. 기존 공급정보 하나에는 PDF 행 하나만 저장할 수 있습니다. #747(공공임대)은 LH가 여러 주택형을 합친 행이라 PDF 행마다 나눌 수 있습니다.')
   expect(pendingItems(next, true, workspace).map(item => item.id)).toContain('row:1')
-  expect(() => assembleReview(next, workspace, evidence)).toThrow('중복 연결')
+  expect(() => assembleReview(next, workspace, evidence)).toThrow('같은 기존 공급정보 #747(공공임대)을 고칩니다')
 })
 
-it('공급행이 없는 LH 행이 남아도 별도 추가를 막지 않고 경고만 하며, LH 행에 연결하면 그 LH 행 식별자를 보낸다', () => {
+it('공급행이 없는 LH 행이 남아도 별도 추가를 막지 않고 단지 대응에 남기며, LH 행에 붙이면 그 LH 행 식별자를 보낸다', () => {
   const { review, workspace, housing } = daegu({ unattached: true })
   let next = pickCounts(review)
   next = placeRow(next, 2, { mode: 'ADD', anchorKey: 'row:747' }, workspace, housing)
-  expect(placementProblems(next, workspace).get(2)).toMatchObject({ level: 'warning', kind: 'unattached' })
+  expect(placementProblems(next, workspace).get(2)).toBeUndefined()
+  expect(complexCorrespondence(next, workspace, 0).leftovers.map(item => [item.lh.rowIdentifier, item.attachedTo])).toEqual([['LH:P:SUPPLY:2', null]])
   next = placeRow(next, 2, { mode: 'ATTACH', lhRow: 'LH:P:SUPPLY:2', anchorKey: 'row:747' }, workspace, housing)
+  expect(complexCorrespondence(next, workspace, 0).leftovers.map(item => [item.lh.rowIdentifier, item.attachedTo])).toEqual([['LH:P:SUPPLY:2', 2]])
   const rows = assembleReview(next, workspace, evidence).correction.rows
   expect(rows.find(row => row.saveMode === 'ATTACH')).toMatchObject({ id: null, lhSourceRowIdentifier: 'LH:P:SUPPLY:2', householdCount: 15 })
 })
@@ -127,31 +130,55 @@ it('운영자가 고른 저장 방식과 값 선택은 최신값을 다시 불�
   expect(rebased.rows[0].cells.find(cell => cell.field === 'totalSupplyHouseholdCount')).toMatchObject({ mode: 'extracted', before: 230, value: 200 })
 })
 
-it('분리 행을 다른 단지 행 수정으로 옮겼다가 통합행 분리로 되돌리면 처음 제안한 LH 행과 첫 분리행(통합행)으로 돌아간다', () => {
-  // 다른 단지 행 #748도 나눌 수 있는 LH 행(LH:P:SUPPLY:0)에 붙어 있어, 지금 수정 대상의 LH 행을 고르면 엉뚱한 통합행이 된다.
-  const { review, workspace, housing } = daegu({ leadingLhRow: true })
-  let next = placeRow(pickCounts(review), 0, { mode: 'UPDATE', rowKey: 'row:748' }, workspace, housing)
-  expect(modes(next)).toEqual([['UPDATE', 'row:748'], ['SPLIT', 'row:747'], ['SPLIT', 'new']])
-  const lhRow = splitLhRowFor(next, 0, workspace)
-  expect(lhRow).toBe('LH:P:SUPPLY:1')
-  next = placeRow(next, 0, { mode: 'SPLIT', lhRow: lhRow! }, workspace, housing)
-  expect(modes(next)).toEqual([['SPLIT', 'row:747'], ['SPLIT', 'new'], ['SPLIT', 'new']])
-  expect(assembleReview(next, workspace, evidence).correction.rows.filter(row => row.saveMode === 'SPLIT').map(row => [row.id, row.householdCount, row.housingTypeId]))
-    .toEqual([[747, 200, 501], [null, 25, 502], [null, 15, 503]])
-})
-
-it('AI가 이 행에 표시한 LH 행이 있으면 통합행 분리를 고를 때 그 LH 행을 먼저 둔다', () => {
-  const { review, workspace, housing } = daegu({ leadingLhRow: true, lhSourceRow: true })
-  const moved = placeRow(placeRow(review, 1, { mode: 'ADD', anchorKey: 'row:747' }, workspace, housing), 2, { mode: 'ADD', anchorKey: 'row:747' }, workspace, housing)
-  const away = placeRow(moved, 0, { mode: 'UPDATE', rowKey: 'row:748' }, workspace, housing)
-  expect(splitLhRowFor(away, 0, workspace)).toBe('LH:P:SUPPLY:1')
-})
-
-it('통합행이 둘인 공고에서 한 묶음의 행을 옮겼다 되돌리면 다른 묶음이 아니라 처음 제안한 LH 행으로 돌아간다', () => {
+it('LH 통합행 240을 PDF가 200·25·15로 적으면 단지 대응이 근거와 함께 나누기를 권하고, 나누면 #747이 첫 행이 되고 나머지는 새로 생긴다', () => {
   const { review, workspace, housing } = daegu()
-  // 다른 단지 통합행 묶음이 앞에 있는 것처럼, 행 1·2를 다른 LH 행으로 나누는 중이라고 둔다.
-  const other = { ...review, rows: review.rows.map((row, at) => at === 0 ? row : { ...row, proposal: { ...row.proposal, lhRow: 'LH:P:SUPPLY:2' } }) }
-  const away = placeRow(other, 0, { mode: 'UPDATE', rowKey: 'row:748' }, workspace, housing)
-  expect(away.rows[0].proposal.proposedLhRow).toBe('LH:P:SUPPLY:1')
-  expect(splitLhRowFor(away, 0, workspace)).toBe('LH:P:SUPPLY:1')
+  // 운영자가 한 행을 다른 단지 행으로 옮겨 둔 뒤에도 단지 대응은 처음 제안한 세 행을 같은 통합행의 후보로 남긴다.
+  const away = placeRow(pickCounts(review), 0, { mode: 'UPDATE', rowKey: 'row:748' }, workspace, housing)
+  const [offer] = complexCorrespondence(away, workspace, 0).offers
+  expect([offer.lh.rowIdentifier, offer.members, offer.recommended]).toEqual(['LH:P:SUPPLY:1', [0, 1, 2], true])
+  expect(offerSummary(away, offer, false)).toBe("LH는 '공공임대' 주택형을 1행(240세대, 면적 없음)으로, PDF는 3행(200·25·15, 합계 240)으로 적었습니다.")
+  const split = splitMerged(away, offer.lh.rowIdentifier, offer.members, workspace, housing)
+  expect(modes(split)).toEqual([['SPLIT', 'row:747'], ['SPLIT', 'new'], ['SPLIT', 'new']])
+  expect(split.rows.every(row => row.reviewed)).toBe(true)
+  const decided = complexCorrespondence(split, workspace, 0).offers[0]
+  expect(decided.choice).toBe('split')
+  expect(offerResult(split, decided)).toBe('#747(240세대)이 051.9800A 200세대가 되고 059.9100A 25세대 · 059.9300B 15세대가 새로 생깁니다.')
+  expect(assembleReview(split, workspace, evidence).correction.rows.filter(row => row.saveMode === 'SPLIT').map(row => [row.id, row.householdCount, row.lhSourceRowIdentifier]))
+    .toEqual([[747, 200, 'LH:P:SUPPLY:1'], [null, 25, 'LH:P:SUPPLY:1'], [null, 15, 'LH:P:SUPPLY:1']])
+})
+
+it('LH대로 1행 유지를 고르면 첫 PDF 행이 #747을 고치고 나머지 행은 반영하지 않아 두 번 세지 않으며, 다시 나누면 세 행이 돌아온다', () => {
+  const { review, workspace, housing } = daegu()
+  const kept = keepMerged(pickCounts(review), 'LH:P:SUPPLY:1', [0, 1, 2], workspace, housing)
+  expect(modes(kept)).toEqual([['UPDATE', 'row:747'], ['ADD', 'new'], ['ADD', 'new']])
+  expect(kept.rows.map(row => row.include)).toEqual([true, false, false])
+  const offer = complexCorrespondence(kept, workspace, 0).offers[0]
+  expect(offer.choice).toBe('keep')
+  expect(offerResult(kept, offer)).toBe('#747(240세대)을 051.9800A 행 값으로 고칩니다. 059.9100A · 059.9300B 행은 이번 보정에서 반영하지 않습니다.')
+  expect(placementProblems(kept, workspace).size).toBe(0)
+  const rows = assembleReview(kept, workspace, evidence).correction.rows
+  expect(rows.filter(row => row.id === null || row.saveMode)).toEqual([])
+  const again = splitMerged(kept, 'LH:P:SUPPLY:1', offer.members, workspace, housing)
+  expect(modes(again)).toEqual([['SPLIT', 'row:747'], ['SPLIT', 'new'], ['SPLIT', 'new']])
+  expect(again.rows.every(row => row.include)).toBe(true)
+})
+
+it('AI 표시도 없고 모집수 합도 LH와 다르면 나누기를 권하지 않는다', () => {
+  const { review, workspace, housing } = daegu()
+  // 다른 LH 통합행(84 5세대)을 같은 세 행이 나누는 중이라고 둔다. 처음 제안한 240 통합행만 근거가 있다.
+  const other = splitMerged(review, 'LH:P:SUPPLY:2', [0, 1, 2], workspace, housing)
+  const offers = complexCorrespondence(other, workspace, 0).offers
+  expect(offers.map(offer => [offer.lh.rowIdentifier, offer.recommended, offer.choice])).toEqual([['LH:P:SUPPLY:1', true, null], ['LH:P:SUPPLY:2', false, 'split']])
+})
+
+it('대응이 의심스러울 때만 까닭을 돌려준다: AI 표시와 다른 저장 위치, 면적이 다른 LH 행, 이번 공급 0세대 LH 행', () => {
+  const { review, workspace, housing } = daegu({ lhSourceRow: true })
+  expect(review.rows.map((_, index) => placementDoubt(review, index, workspace))).toEqual([null, null, null])
+  const moved = placeRow(review, 2, { mode: 'UPDATE', rowKey: 'row:748' }, workspace, housing)
+  expect(placementDoubt(moved, 2, workspace)).toBe("AI는 이 행을 LH 행 '공공임대 240세대'에서 나온 행으로 봤지만, 지금은 LH 행 '84 5세대'에 저장합니다.")
+  const open = daegu({ unattached: true })
+  const attached = placeRow(open.review, 2, { mode: 'ATTACH', lhRow: 'LH:P:SUPPLY:2', anchorKey: 'row:747' }, open.workspace, open.housing)
+  expect(placementDoubt(attached, 2, open.workspace)).toBe("PDF는 전용 59.93㎡인데 LH 행 '84 5세대'의 전용면적은 84㎡입니다.")
+  const empty = { ...open.workspace, supply: { ...open.workspace.supply, lhSupplyRows: open.workspace.supply.lhSupplyRows!.map(lh => lh.rowIdentifier === 'LH:P:SUPPLY:2' ? { ...lh, householdCount: 0 } : lh) } }
+  expect(placementDoubt(attached, 2, empty)).toBe("LH 행 '84 0세대'의 이번 공급 수가 0세대입니다. 이 PDF 행이 그 LH 행에서 나온 것이 맞는지 공고문과 대조하세요.")
 })

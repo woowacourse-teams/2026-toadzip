@@ -1,5 +1,5 @@
 import type { JsonWorkspace } from '../announcement-json/api'
-import { assignSplitDestinations, pickHousingType, splittableLhRows, type HousingCandidates, type RowProposal } from './matching'
+import { assignSplitDestinations, pickHousingType, type HousingCandidates, type RowProposal } from './matching'
 import { createRowReview, preserveCellChoice, type Review, type RowReview } from './review'
 
 /** 운영자가 고른 저장 방식. UPDATE는 수정할 기존 행, SPLIT·ATTACH는 LH 행, ADD는 기준 단지(그 단지의 공급행 키, 없으면 '')다. */
@@ -40,18 +40,6 @@ export function placeRow(review: Review, index: number, placement: Placement, wo
   return { ...review, rows: review.rows.map((row, at) => changed.has(at) ? rebuild(review, at, proposals[at], workspace, housing, at === index || row.reviewed) : row) }
 }
 
-/**
- * 통합행 분리를 고를 때 먼저 둘 LH 행. AI가 이 행에 표시한 LH 행, 처음 제안한 LH 행, 다른 분리행이 쓰는 LH 행, 지금 수정 대상이 붙은 LH 행 순이다.
- * 다른 단지 행으로 옮겼다가 돌아와도 처음 제안한 통합행으로 돌아가게 한다.
- */
-export function splitLhRowFor(review: Review, index: number, workspace: JsonWorkspace): string | undefined {
-  const splittable = splittableLhRows(workspace.supply)
-  const others = review.rows.flatMap((row, at) => at !== index && row.include && row.proposal.saveMode === 'SPLIT' && row.proposal.lhRow ? [row.proposal.lhRow] : [])
-  const attached = splittable.find(lh => lh.attachedRowKey === review.rows[index].proposal.destination)?.rowIdentifier
-  return [review.extraction.supplyRows[index].values.lhSourceRow, review.rows[index].proposal.proposedLhRow, ...others, attached, splittable[0]?.rowIdentifier]
-    .find((identifier): identifier is string => typeof identifier === 'string' && splittable.some(lh => lh.rowIdentifier === identifier))
-}
-
 /** 행 포함·제외를 바꾼다. 분리 묶음 행이면 통합행을 이어받는 첫 행을 포함한 행으로 다시 맞춘다. */
 export function includeRow(review: Review, index: number, include: boolean, workspace: JsonWorkspace, housing: HousingCandidates): Review {
   const rows = review.rows.map((row, at) => at === index ? { ...row, include, reviewed: true } : row)
@@ -59,4 +47,33 @@ export function includeRow(review: Review, index: number, include: boolean, work
   const changed = assignSplitDestinations(proposals, at => rows[at].include, workspace.supply)
   const next = { ...review, rows }
   return { ...next, rows: rows.map((row, at) => changed.includes(at) ? rebuild(next, at, proposals[at], workspace, housing, row.reviewed) : row) }
+}
+
+/**
+ * 분리 묶음 후보 행에 이 LH 행을 남겨, 나누기와 1행 유지를 오가도 같은 행들이 그 LH 행의 후보로 남게 한다.
+ * 처음 제안한 LH 행이 이미 있으면 그대로 둬, 다른 통합행으로 나눠 봤다가도 처음 제안으로 돌아갈 수 있게 한다.
+ */
+function remember(review: Review, members: number[], lhRow: string): Review {
+  return { ...review, rows: review.rows.map((row, at) => members.includes(at) ? { ...row, include: true, proposal: { ...row.proposal, proposedLhRow: row.proposal.proposedLhRow ?? lhRow } } : row) }
+}
+/** 단지 대응에서 'PDF대로 나누기'. 후보 행 모두를 그 LH 통합행의 분리 묶음으로 두고(첫 행이 통합행을 이어받는다) 확인한 것으로 본다. */
+export function splitMerged(review: Review, lhRow: string, members: number[], workspace: JsonWorkspace, housing: HousingCandidates): Review {
+  return members.reduce((next, at) => placeRow(next, at, { mode: 'SPLIT', lhRow }, workspace, housing), remember(review, members, lhRow))
+}
+/**
+ * 단지 대응에서 'LH대로 1행 유지'. 첫 후보 행이 통합행을 고치고, 나머지 후보 행은 새 공급정보로 돌리고 이번 보정에서 제외한다.
+ * 같은 통합행에 두 번 저장(중복)하거나 통합 모집수와 두 번 집계되지 않게 한다. 제외한 행은 운영자가 다시 포함할 수 있다.
+ */
+export function keepMerged(review: Review, lhRow: string, members: number[], workspace: JsonWorkspace, housing: HousingCandidates): Review {
+  const merged = workspace.supply.lhSupplyRows?.find(lh => lh.rowIdentifier === lhRow)?.attachedRowKey
+  if (!merged) return review
+  const [first, ...rest] = members
+  let next = placeRow(remember(review, members, lhRow), first, { mode: 'UPDATE', rowKey: merged }, workspace, housing)
+  for (const at of rest) next = includeRow(placeRow(next, at, { mode: 'ADD', anchorKey: merged }, workspace, housing), at, false, workspace, housing)
+  return next
+}
+/** 공급행이 없는 LH 행을 이번 보정에서 그대로 두거나(kept) 그 결정을 거둔다. 저장 요청에는 들어가지 않고 화면 질문만 접는다. */
+export function keepLeftover(review: Review, lhRow: string, kept: boolean): Review {
+  const rest = (review.keptLhRows ?? []).filter(item => item !== lhRow)
+  return { ...review, keptLhRows: kept ? [...rest, lhRow] : rest }
 }
