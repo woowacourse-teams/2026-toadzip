@@ -74,8 +74,16 @@ const fieldLabels: Record<SourceCategory, Record<string, string>> = {
   GH_ANNOUNCEMENT: {
     pbanc_no: '공고 번호', board: '게시판', kind_code: '공고 종류 코드', title: '공고명', supply_type: '공급유형',
     region: '지역', posted_date: '게시일', closing_date: '마감일', status: '공고 상태',
-    original_url: '공고 원문 URL', list_url: '수집 목록 URL', body_text: '본문 텍스트',
+    original_url: '공고 원문 URL', list_url: '수집 목록 URL',
+    districts: '공급정보 지구', reception: '공고 접수처', notice: '안내사항', other_notes: '기타사항',
     attachments: '공고문 첨부 메타데이터',
+    // 지구·주택형·공급일정·접수처 안의 항목. 같은 키는 지구와 주택형, 지구와 접수처에서 함께 쓴다.
+    name: '이름', address: '소재지', exclusiveAreaRange: '전용면적 범위', recruitmentCount: '모집호수',
+    heatingType: '난방방식', expectedMoveIn: '입주예정월', housingTypes: '주택형',
+    houseTypeCode: '주택형 코드', businessCode: '사업 코드', recruitmentRound: '모집 회차',
+    exclusiveArea: '전용면적', supplyCount: '금회공급 세대수', rentalDeposit: '임대보증금 원천값',
+    monthlyRent: '월임대료 원천값', applicationStatus: '인터넷청약 상태', schedules: '공급일정',
+    label: '일정 이름', value: '일정 값', phone: '전화번호', operatingPeriod: '접수처 운영기간',
     atchFileSn: '첨부 묶음 식별자', atchFileDtlSn: '첨부파일 식별자', fileName: '첨부파일명',
     fileSize: '파일 크기(바이트)', downloadUrl: '첨부 다운로드 URL',
   },
@@ -93,8 +101,8 @@ export const sourcePresentation: Record<SourceCategory, {
   GH_ANNOUNCEMENT: {
     provider: '경기주택도시공사 · GH주택청약센터',
     documentationUrl: 'https://apply.gh.or.kr/sb/sr/sr7150/selectPbancRentHouseList.do',
-    firstFields: ['title', 'supply_type', 'region', 'posted_date', 'closing_date', 'status', 'attachments',
-      'body_text', 'pbanc_no', 'board', 'original_url'],
+    firstFields: ['title', 'supply_type', 'region', 'posted_date', 'closing_date', 'status', 'notice',
+      'other_notes', 'pbanc_no', 'board', 'original_url'],
   },
   MYHOME_COMPLEX: {
     provider: '국토교통부 · 마이홈', documentationUrl: 'https://www.data.go.kr/data/15110581/openapi.do',

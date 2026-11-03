@@ -119,9 +119,9 @@ class GhAnnouncementMigrationTest {
     private String insertSource(String sourceKey, String board, String attachments) {
         return """
                 INSERT INTO gh_announcement_source (source_key, pbanc_no, board, kind_code, title, supply_type, region,
-                posted_date, original_url, list_url, body_text, attachments, collected_at)
-                VALUES ('%s', '801', '%s', '01', '공고', '국민임대', '남양주시', '2026-07-10', 'url', 'list', '본문',
-                '%s', now())
+                posted_date, original_url, list_url, districts, reception, notice, attachments, collected_at)
+                VALUES ('%s', '801', '%s', '01', '공고', '국민임대', '남양주시', '2026-07-10', 'url', 'list', '[]', '{}',
+                '안내', '%s', now())
                 """.formatted(sourceKey, board, attachments);
     }
 }

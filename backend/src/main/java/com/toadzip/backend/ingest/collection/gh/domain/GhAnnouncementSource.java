@@ -61,8 +61,19 @@ public class GhAnnouncementSource {
     @Column(nullable = false, columnDefinition = "text")
     private String listUrl;
 
+    /** 공급정보 지구 JSON 배열. 지구마다 주택형·공급일정·안내사항(행복주택은 접수처까지)을 담는다. */
     @Column(columnDefinition = "text")
-    private String bodyText;
+    private String districts;
+
+    /** 공고 단위 접수처 JSON 객체. 없으면 빈 객체다. */
+    @Column(columnDefinition = "text")
+    private String reception;
+
+    @Column(columnDefinition = "text")
+    private String notice;
+
+    @Column(columnDefinition = "text")
+    private String otherNotes;
 
     @Column(columnDefinition = "text")
     private String attachments;
@@ -99,8 +110,17 @@ public class GhAnnouncementSource {
         status = snapshot.status();
         originalUrl = snapshot.originalUrl();
         listUrl = snapshot.listUrl();
-        if (snapshot.bodyText() != null) {
-            bodyText = snapshot.bodyText();
+        if (snapshot.districts() != null) {
+            districts = snapshot.districts();
+        }
+        if (snapshot.reception() != null) {
+            reception = snapshot.reception();
+        }
+        if (snapshot.notice() != null) {
+            notice = snapshot.notice();
+        }
+        if (snapshot.otherNotes() != null) {
+            otherNotes = snapshot.otherNotes();
         }
         if (snapshot.attachments() != null) {
             attachments = snapshot.attachments();

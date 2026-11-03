@@ -184,10 +184,12 @@ class IngestSourceControllerIntegrationTest {
     private void storeGhSource() {
         jdbc.sql("""
                 INSERT INTO gh_announcement_source (source_key,pbanc_no,board,kind_code,title,supply_type,region,
-                posted_date,original_url,list_url,body_text,attachments,collected_at)
+                posted_date,original_url,list_url,districts,reception,notice,attachments,collected_at)
                 VALUES ('GH:801','801','RENTAL_HOUSE','01','두꺼비 GH 공고','국민임대','남양주시','2026-10-02',
                 'https://apply.gh.or.kr/sb/sr/sr7150/selectPbancDetailView.do?pbancNo=801&pbancKndCd=01&previewYn=N',
-                'https://apply.gh.or.kr/sb/sr/sr7150/selectPbancRentHouseList.do?pageIndex=1','모집호수 280',
+                'https://apply.gh.or.kr/sb/sr/sr7150/selectPbancRentHouseList.do?pageIndex=1',
+                '[{"name":"다산 센트럴파크6단지","housingTypes":[{"name":"33A","supplyCount":"120"}]}]',
+                '{"phone":"031-510-7100"}','안내',
                 '[{"fileName":"모집공고문.pdf","atchFileDtlSn":"13"}]', :collectedAt)
                 """).param("collectedAt", Timestamp.from(Instant.parse("2026-10-02T01:00:00Z"))).update();
     }
@@ -333,14 +335,15 @@ class IngestSourceControllerIntegrationTest {
     }
 
     @Test
-    void GH_원천은_공고문_첨부를_배열로_반환하고_공고_원문_URL을_보존한다() throws Exception {
+    void GH_원천은_지구_접수처_첨부를_구조로_반환하고_공고_원문_URL을_보존한다() throws Exception {
         mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("category", "GH_ANNOUNCEMENT"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].sourceKey").value("GH:801"))
                 .andExpect(jsonPath("$.data.items[0].originalUrl").value(
                         "https://apply.gh.or.kr/sb/sr/sr7150/selectPbancDetailView.do?pbancNo=801&pbancKndCd=01&previewYn=N"))
                 .andExpect(jsonPath("$.data.items[0].raw.board").value("RENTAL_HOUSE"))
-                .andExpect(jsonPath("$.data.items[0].raw.body_text").value("모집호수 280"))
+                .andExpect(jsonPath("$.data.items[0].raw.districts[0].housingTypes[0].supplyCount").value("120"))
+                .andExpect(jsonPath("$.data.items[0].raw.reception.phone").value("031-510-7100"))
                 .andExpect(jsonPath("$.data.items[0].raw.attachments[0].fileName").value("모집공고문.pdf"));
     }
 

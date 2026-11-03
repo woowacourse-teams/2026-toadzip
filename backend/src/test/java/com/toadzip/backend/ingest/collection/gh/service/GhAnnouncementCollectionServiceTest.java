@@ -79,7 +79,8 @@ class GhAnnouncementCollectionServiceTest {
                 && snapshot.closingDate().equals(LocalDate.parse("2026-10-20"))
                 && snapshot.originalUrl().equals(RENTAL_HOUSE.detailUrl("801", "01"))
                 && snapshot.listUrl().equals(RENTAL_HOUSE.listUrl(1))
-                && snapshot.bodyText().contains("모집호수 280") && snapshot.attachments().contains("모집공고문.pdf")));
+                && snapshot.districts().contains("\"supplyCount\":\"120\"") && snapshot.reception().contains("다산 임대센터")
+                && snapshot.notice().equals("※ 첫 줄\n※ 둘째 줄") && snapshot.attachments().contains("모집공고문.pdf")));
         verify(store).store(argThat(snapshot -> snapshot.board() == PURCHASE_RENTAL
                 && snapshot.pbancNo().equals("795")));
         verify(failures).resolve(ExternalDataSource.GH_ANNOUNCEMENT, "board=sr7155&page=1");
@@ -230,7 +231,7 @@ class GhAnnouncementCollectionServiceTest {
         assertThat(report.storedRowCount()).isOne();
         assertThat(report.failedRequestCount()).isOne();
         verify(store).store(argThat(snapshot -> snapshot.pbancNo().equals("801") && snapshot.attachments() == null
-                && snapshot.bodyText().contains("모집호수 280")));
+                && snapshot.districts().contains("다산 센트럴파크6단지")));
         verify(failures).record(eq(ExternalDataSource.GH_ANNOUNCEMENT), eq("pbancNo=801"), any(), any(), any());
         verify(failures, never()).resolve(ExternalDataSource.GH_ANNOUNCEMENT, "pbancNo=801");
     }

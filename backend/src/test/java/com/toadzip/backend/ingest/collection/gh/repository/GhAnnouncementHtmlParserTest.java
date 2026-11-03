@@ -16,20 +16,96 @@ import tools.jackson.databind.json.JsonMapper;
 class GhAnnouncementHtmlParserTest {
 
     private static final Row ROW = new Row("801", "국민임대", "다산 국민임대주택 예비입주자 모집공고", "2026-07-10");
+    private static final JsonMapper JSON = JsonMapper.builder().build();
     private final GhAnnouncementHtmlParser parser = new GhAnnouncementHtmlParser();
 
     @Test
-    void 상세의_공급정보와_일정을_줄_구분이_있는_본문으로_정리한다() {
+    void 숨은_탭까지_지구마다_공급정보와_주택형_일정을_원문_값으로_나눈다() throws Exception {
         var content = parser.parse(detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW), GhAnnouncementBoard.RENTAL_HOUSE,
                 entry(ROW));
 
         assertThat(content.title()).isEqualTo(ROW.title());
         assertThat(content.supplyType()).isEqualTo("국민임대");
         assertThat(content.postedDate()).isEqualTo(LocalDate.parse("2026-07-10"));
-        assertThat(content.bodyText()).contains("공급정보", "지구명 다산 센트럴파크6단지 소재지 경기도 남양주시 다산동 6107",
-                "모집호수 280", "온라인접수기간 : 2026.07.21 10:00 ~ 2026.07.24 17:00", "첫 줄\n둘째 줄");
-        assertThat(content.bodyText()).doesNotContain("<", "noise", "푸터", "메뉴", "청약공고 상세정보", "공고명",
-                "사업지구별 공급정보", "다운로드", "\t", "\r", "\n\n\n", "  ");
+        assertThat(content.unreadParts()).isEmpty();
+        var districts = JSON.readTree(content.districts());
+        assertThat(districts).hasSize(2);
+        var first = districts.get(0);
+        assertThat(first.path("name").asString()).isEqualTo("다산 센트럴파크6단지");
+        assertThat(first.path("address").asString()).isEqualTo("경기도 남양주시 다산동 6107");
+        assertThat(first.path("exclusiveAreaRange").asString()).isEqualTo("33.71 ~ 46.5");
+        assertThat(first.path("recruitmentCount").asString()).isEqualTo("280");
+        assertThat(first.path("heatingType").asString()).isEmpty();
+        assertThat(first.path("expectedMoveIn").asString()).isEqualTo("2027.03");
+        assertThat(first.path("notice").asString()).isEqualTo("자세한 사항은 공고문을 확인해 주시기 바랍니다.");
+        assertThat(first.has("reception")).isFalse();
+        var housingType = first.path("housingTypes").get(1);
+        assertThat(first.path("housingTypes")).hasSize(2);
+        assertThat(housingType.path("name").asString()).isEqualTo("36A 청년");
+        assertThat(housingType.path("houseTypeCode").asString()).isEqualTo("36A");
+        assertThat(housingType.path("businessCode").asString()).isEqualTo("2011002");
+        assertThat(housingType.path("recruitmentRound").asString()).isEqualTo("8");
+        assertThat(housingType.path("exclusiveArea").asString()).isEqualTo("36.8");
+        assertThat(housingType.path("supplyCount").asString()).isEqualTo("60");
+        assertThat(housingType.path("rentalDeposit").asString()).isEqualTo("12,000,000");
+        assertThat(housingType.path("monthlyRent").asString()).isEqualTo("150,000");
+        assertThat(housingType.path("applicationStatus").asString()).isEqualTo("접수마감");
+        assertThat(first.path("schedules").get(0).path("label").asString()).isEqualTo("온라인접수기간");
+        assertThat(first.path("schedules").get(0).path("value").asString())
+                .isEqualTo("2026.07.21 10:00 ~ 2026.07.24 17:00");
+        var second = districts.get(1);
+        assertThat(second.path("address").asString()).isEqualTo("경기도 안양시 동안구 관양동 1498-21");
+        assertThat(second.path("housingTypes")).isEmpty();
+        assertThat(second.path("reception").path("address").asString()).isEqualTo("관양 임대센터");
+    }
+
+    @Test
+    void 공고_단위_접수처_기타사항_안내사항을_지구_구획과_섞지_않고_읽는다() throws Exception {
+        var content = parser.parse(detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW), GhAnnouncementBoard.RENTAL_HOUSE,
+                entry(ROW));
+
+        var reception = JSON.readTree(content.reception());
+        assertThat(reception.path("address").asString()).isEqualTo("다산 임대센터");
+        assertThat(reception.path("phone").asString()).isEqualTo("031-510-7100");
+        assertThat(reception.path("operatingPeriod").asString()).isEqualTo("2026.07.20~2026.07.22");
+        assertThat(content.otherNotes()).isEqualTo("기타 사항은 공고문을 확인해 주시기 바랍니다.");
+        assertThat(content.notice()).isEqualTo("※ 첫 줄\n※ 둘째 줄");
+    }
+
+    @Test
+    void 공급정보가_없는_매입임대_공고는_빈_지구_목록과_빈_구획으로_읽는다() {
+        var document = Jsoup.parse(detail(GhAnnouncementBoard.PURCHASE_RENTAL, ROW));
+        document.select("h5:containsOwn(공급정보), ul.tab_box, div#tab1, div#tab2").remove();
+        document.select("h5:containsOwn(기타사항), div.bg_txt_box").remove();
+
+        var content = parser.parse(document.html(), GhAnnouncementBoard.PURCHASE_RENTAL, entry(ROW));
+
+        assertThat(content.districts()).isEqualTo("[]");
+        assertThat(content.otherNotes()).isEmpty();
+        assertThat(content.unreadParts()).isEmpty();
+    }
+
+    @Test
+    void 주택형_표_열이_바뀌면_공급정보만_비우고_나머지_구획은_읽는다() {
+        String html = detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW).replace("금회공급 세대수", "공급 세대수");
+
+        var content = parser.parse(html, GhAnnouncementBoard.RENTAL_HOUSE, entry(ROW));
+
+        assertThat(content.districts()).isNull();
+        assertThat(content.unreadParts()).containsExactly("공급정보");
+        assertThat(content.reception()).contains("다산 임대센터");
+    }
+
+    @Test
+    void 모르는_구획이_생기면_읽지_못한_부분으로_남긴다() {
+        String html = detail(GhAnnouncementBoard.RENTAL_HOUSE, ROW).replace(
+                "<h5 class=\"subcont_title\">기타사항</h5>", "<h5 class=\"subcont_title\">임대조건</h5><p>표</p>"
+                        + "<h5 class=\"subcont_title\">기타사항</h5>");
+
+        var content = parser.parse(html, GhAnnouncementBoard.RENTAL_HOUSE, entry(ROW));
+
+        assertThat(content.unreadParts()).containsExactly("알 수 없는 구획(임대조건)");
+        assertThat(content.districts()).isNotNull();
     }
 
     @Test
@@ -87,7 +163,7 @@ class GhAnnouncementHtmlParserTest {
 
         assertThat(content.attachments()).isNull();
         assertThat(content.unreadParts()).containsExactly("첨부");
-        assertThat(content.bodyText()).contains("모집호수 280");
+        assertThat(content.districts()).contains("다산 센트럴파크6단지");
     }
 
     @Test

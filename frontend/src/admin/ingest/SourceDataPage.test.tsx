@@ -36,14 +36,16 @@ it('SH 원천은 공식 게시판과 키 없는 수집으로 안내하고 HTML�
 })
 it('GH 원천은 GH주택청약센터 게시판과 키 없는 수집으로 안내한다', async () => {
   fetchSources.mockResolvedValue({ ...fixture, items: [{ ...fixture.items[0], name: 'GH 공고',
-    raw: { title: 'GH 공고', supply_type: '국민임대', body_text: '모집호수 280' } }] })
+    raw: { title: 'GH 공고', supply_type: '국민임대',
+      districts: [{ name: '다산 센트럴파크6단지', housingTypes: [{ name: '33A', supplyCount: '120' }] }] } }] })
   renderPage('/admin/sources?category=GH_ANNOUNCEMENT')
   const table = await screen.findByRole('table', { name: 'GH 공고 원천 목록 · 1페이지' })
   expect(screen.getByRole('link', { name: '공식 게시판' })).toHaveAttribute('href',
     'https://apply.gh.or.kr/sb/sr/sr7150/selectPbancRentHouseList.do')
   expect(screen.getByRole('link', { name: '키 없이 GH 공고 수집' })).toHaveAttribute('href', '/admin/ingest')
   expect(within(table).getByRole('columnheader', { name: '공급유형 (supply_type)' })).toBeVisible()
-  expect(table).toHaveTextContent('모집호수 280')
+  expect(within(table).getByRole('columnheader', { name: '금회공급 세대수 (districts[0].housingTypes[0].supplyCount)' })).toBeVisible()
+  expect(table).toHaveTextContent('120')
 })
 
 function renderPage(entry = '/admin/sources') {

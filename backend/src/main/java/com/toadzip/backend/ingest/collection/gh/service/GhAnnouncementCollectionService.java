@@ -188,7 +188,8 @@ public class GhAnnouncementCollectionService {
         store.store(new GhAnnouncementSnapshot(board, entry.pbancNo(), entry.kindCode(), content.title(),
                 content.supplyType(), entry.region(), content.postedDate(), entry.closingDate(), entry.status(),
                 board.detailUrl(entry.pbancNo(), entry.kindCode()), board.listUrl(page.page()),
-                content.bodyText(), content.attachments()));
+                content.districts(), content.reception(), content.notice(), content.otherNotes(),
+                content.attachments()));
         progress.stored++;
         if (!content.unreadParts().isEmpty()) {
             recordFailure(request, new ExternalDataRequestException("GH 상세 일부를 읽지 못해 읽은 내용만 저장했습니다: "

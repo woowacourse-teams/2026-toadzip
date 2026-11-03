@@ -40,7 +40,7 @@ class GhAnnouncementStoreTest {
             assertThat(source.getBoard()).isEqualTo(GhAnnouncementBoard.RENTAL_HOUSE);
             assertThat(source.getTitle()).isEqualTo("정정 제목");
             assertThat(source.getStatus()).isEqualTo("접수마감");
-            assertThat(source.getBodyText()).isEqualTo("정정 원문");
+            assertThat(source.getNotice()).isEqualTo("정정 원문");
             assertThat(source.getAttachments()).isEqualTo("[]");
             assertThat(source.getCollectedAt()).isEqualTo(FIRST.plusSeconds(60));
         });
@@ -57,17 +57,18 @@ class GhAnnouncementStoreTest {
     }
 
     @Test
-    void 읽지_못한_본문과_첨부는_저장값을_덮지_않는다() {
+    void 읽지_못한_구획은_저장값을_덮지_않는다() {
         store(FIRST).store(snapshot("801", "제목", "접수중", "원문"));
         var board = GhAnnouncementBoard.RENTAL_HOUSE;
         store(FIRST.plusSeconds(60)).store(new GhAnnouncementSnapshot(board, "801", "01", "제목", "국민임대", "남양주시",
                 LocalDate.parse("2026-10-02"), null, "접수마감", board.detailUrl("801", "01"), board.listUrl(1),
-                null, null));
+                null, null, null, null, null));
         entityManager.flush();
         entityManager.clear();
 
         var source = repository.findBySourceKey("GH:801").orElseThrow();
-        assertThat(source.getBodyText()).isEqualTo("원문");
+        assertThat(source.getNotice()).isEqualTo("원문");
+        assertThat(source.getDistricts()).isEqualTo("[]");
         assertThat(source.getAttachments()).isEqualTo("[]");
         assertThat(source.getStatus()).isEqualTo("접수마감");
     }
@@ -93,10 +94,10 @@ class GhAnnouncementStoreTest {
         return new GhAnnouncementStore(repository, Clock.fixed(now, ZoneOffset.UTC));
     }
 
-    private GhAnnouncementSnapshot snapshot(String pbancNo, String title, String status, String body) {
+    private GhAnnouncementSnapshot snapshot(String pbancNo, String title, String status, String notice) {
         var board = GhAnnouncementBoard.RENTAL_HOUSE;
         return new GhAnnouncementSnapshot(board, pbancNo, "01", title, "국민임대", "남양주시",
                 LocalDate.parse("2026-10-02"), null, status, board.detailUrl(pbancNo, "01"), board.listUrl(1),
-                body, "[]");
+                "[]", "{}", notice, "", "[]");
     }
 }

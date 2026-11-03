@@ -2,11 +2,12 @@ package com.toadzip.backend.ingest.collection.gh.domain;
 
 import java.time.LocalDate;
 
-/** bodyText·attachments가 null이면 이번 수집에서 읽지 못한 부분이라 저장값을 덮지 않는다. */
+/** 구획(districts·reception·notice·otherNotes·attachments)이 null이면 이번 수집에서 읽지 못해 저장값을 덮지 않는다. */
 public record GhAnnouncementSnapshot(
         GhAnnouncementBoard board, String pbancNo, String kindCode, String title, String supplyType,
         String region, LocalDate postedDate, LocalDate closingDate, String status,
-        String originalUrl, String listUrl, String bodyText, String attachments
+        String originalUrl, String listUrl,
+        String districts, String reception, String notice, String otherNotes, String attachments
 ) {
 
     public GhAnnouncementSnapshot {

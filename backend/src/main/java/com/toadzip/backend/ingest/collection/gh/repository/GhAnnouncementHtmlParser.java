@@ -12,11 +12,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
-import org.jsoup.nodes.TextNode;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
 import tools.jackson.databind.json.JsonMapper;
@@ -41,17 +39,23 @@ public class GhAnnouncementHtmlParser {
             require(title.equals(entry.title()) && supplyType.equals(entry.supplyType())
                     && postedDate.equals(entry.postedDate()), "GH 상세의 제목·유형·공고일이 목록과 다릅니다.");
             requireBoard(document, board);
+            var sections = new GhAnnouncementSectionReader(content);
             List<String> unread = new ArrayList<>();
-            String bodyText = readPart(() -> bodyText(content), "본문", unread);
+            sections.unknownSections().forEach(section -> unread.add("알 수 없는 구획(" + section + ")"));
+            String districts = readPart(sections::districts, "공급정보", unread);
+            String reception = readPart(sections::reception, "접수처", unread);
+            String notice = readPart(sections::notice, "안내사항", unread);
+            String otherNotes = readPart(sections::otherNotes, "기타사항", unread);
             String attachments = readPart(() -> attachments(table, board, entry.pbancNo()), "첨부", unread);
-            return new GhAnnouncementContent(title, supplyType, postedDate, bodyText, attachments, List.copyOf(unread));
+            return new GhAnnouncementContent(title, supplyType, postedDate, districts, reception, notice, otherNotes,
+                    attachments, List.copyOf(unread));
         }
         catch (DateTimeException | IllegalArgumentException exception) {
             throw new ExternalDataRequestException("GH 상세의 날짜 또는 원천 필드가 올바르지 않습니다.", exception);
         }
     }
 
-    /** 정체성(게시판·제목·유형·공고일)이 맞은 뒤에는 본문·첨부를 따로 읽어, 읽지 못한 쪽만 비운다. */
+    /** 정체성(게시판·제목·유형·공고일)이 맞은 뒤에는 구획마다 따로 읽어, 읽지 못한 구획만 비운다. */
     private String readPart(Supplier<String> reader, String name, List<String> unread) {
         try {
             return reader.get();
@@ -120,35 +124,6 @@ public class GhAnnouncementHtmlParser {
             attachment.put("downloadUrl", url);
         }
         return JSON.writeValueAsString(result);
-    }
-
-    private String bodyText(Element content) {
-        Element body = content.clone();
-        body.select("script, style, noscript, button.down_btn").remove();
-        body.select("table").stream()
-                .filter(table -> table.selectFirst("> caption") != null
-                        && table.selectFirst("> caption").text().equals(DETAIL_CAPTION))
-                .forEach(Element::remove);
-        // 표 제목(caption)은 화면에 보이지 않는 설명이라 본문에서 뺀다.
-        body.select("caption").remove();
-        for (Element element : body.getAllElements()) {
-            if (element.closest("pre") == null) {
-                for (var text : element.textNodes()) {
-                    text.text(text.getWholeText().replaceAll("\\s+", " "));
-                }
-            }
-        }
-        for (Element block : body.select("p, div, section, article, h1, h2, h3, h4, h5, h6, li, tr")) {
-            block.before(new TextNode("\n"));
-            block.after(new TextNode("\n"));
-        }
-        for (Element cell : body.select("th, td")) {
-            cell.after(new TextNode(" "));
-        }
-        return body.wholeText().replace("\r\n", "\n").replace('\r', '\n')
-                .lines().map(line -> line.replaceAll("[\\p{Zs}\\t\\x0B\\f]+", " ").strip())
-                .collect(Collectors.joining("\n"))
-                .replaceAll("\n{3,}", "\n\n").strip();
     }
 
     private Element required(Element element, String selector) {

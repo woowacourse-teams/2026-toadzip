@@ -60,7 +60,9 @@ class GhAnnouncementCollectionIntegrationTest {
         assertThat(service.collect().storedRowCount()).isOne();
         var first = sources.findBySourceKey("GH:801").orElseThrow();
         assertThat(first.getBoard()).isEqualTo(RENTAL_HOUSE);
-        assertThat(first.getBodyText()).contains("모집호수 280").doesNotContain("<", "\t", "\r");
+        assertThat(first.getDistricts()).contains("\"recruitmentCount\":\"280\"").doesNotContain("<");
+        assertThat(first.getReception()).contains("031-510-7100");
+        assertThat(first.getOtherNotes()).isEqualTo("기타 사항은 공고문을 확인해 주시기 바랍니다.");
         assertThat(first.getAttachments()).contains("atchFileDtlSn", "모집공고문.pdf");
 
         // 정정으로 목록 제목이 바뀌면 다시 받는다. 이때 상세 구조가 바뀌어 읽지 못하면 저장값을 그대로 둔다.
@@ -69,7 +71,8 @@ class GhAnnouncementCollectionIntegrationTest {
         when(externalRepository.fetchDetail(RENTAL_HOUSE, "801", "01")).thenReturn("<html>변경된 구조</html>");
         assertThat(service.collect().failedRequestCount()).isOne();
         var preserved = sources.findBySourceKey("GH:801").orElseThrow();
-        assertThat(preserved.getBodyText()).isEqualTo(first.getBodyText());
+        assertThat(preserved.getDistricts()).isEqualTo(first.getDistricts());
+        assertThat(preserved.getNotice()).isEqualTo(first.getNotice());
         assertThat(preserved.getAttachments()).isEqualTo(first.getAttachments());
         assertThat(preserved.getCollectedAt()).isEqualTo(first.getCollectedAt());
         assertThat(failures.findAllBySourceAndRequestDescriptionAndStatus(
@@ -97,7 +100,7 @@ class GhAnnouncementCollectionIntegrationTest {
 
         assertThat(service.collect().failedRequestCount()).isOne();
         var partial = sources.findBySourceKey("GH:801").orElseThrow();
-        assertThat(partial.getBodyText()).contains("모집호수 280");
+        assertThat(partial.getDistricts()).contains("다산 센트럴파크6단지");
         assertThat(partial.getAttachments()).isNull();
 
         doReturn(detail).when(externalRepository).fetchDetail(RENTAL_HOUSE, "801", "01");
