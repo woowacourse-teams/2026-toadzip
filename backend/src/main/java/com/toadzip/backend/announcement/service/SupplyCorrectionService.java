@@ -308,7 +308,11 @@ public class SupplyCorrectionService {
         var beforeById = preview.before().stream().collect(Collectors.toMap(Row::id, Function.identity()));
         for (var row : preview.after()) {
             var saved = stored.get(row.id());
-            if (row.id() == null || !same(beforeById.get(row.id()), row)) {
+            var before = beforeById.get(row.id());
+            // 순서만 밀린 행은 값과 관리자 수정 표시를 그대로 두고 순서만 옮긴다.
+            if (row.id() != null && !same(before, row) && same(before.withDisplayOrder(row.displayOrder()), row)) {
+                saved.reorder(row.displayOrder());
+            } else if (row.id() == null || !same(before, row)) {
                 saved = writeRow(announcement, saved, row, request.correction(), createdTypes);
             }
             written.put(row.key(), saved);
@@ -410,7 +414,8 @@ public class SupplyCorrectionService {
                 complexName, row.typeName(), pnu, row.moveInMonth(), row.category(), row.householdCount(),
                 row.areaOverride(), decimal(exclusiveArea), decimal(supplyArea), plannedTargets, row.targetCountsComparable(),
                 linkedTypes(old, row, complex, type), null, null);
-        if (old != null && !same(old, result) && !modified) {
+        // 앞에 끼어든 행 때문에 표시 순서만 밀린 행은 관리자가 값을 고친 행이 아니다.
+        if (old != null && !same(old, result.withDisplayOrder(old.displayOrder())) && !modified) {
             return new Row(result.id(), result.key(), result.housingComplexId(), result.housingComplexName(),
                     result.housingTypeId(), result.newHousingType(), result.groupId(), result.sharedHouseholdCount(), true,
                     result.excluded(), result.displayOrder(), result.complexName(), result.typeName(), result.pnu(),

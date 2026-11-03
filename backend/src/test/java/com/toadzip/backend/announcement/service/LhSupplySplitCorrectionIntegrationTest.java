@@ -161,6 +161,30 @@ class LhSupplySplitCorrectionIntegrationTest {
     }
 
     @Test
+    void 통합행을_나눠_뒤쪽_공급행의_표시_순서만_밀리면_그_행은_순서만_바뀌고_관리자_수정으로_표시되지_않는다() {
+        types.save(HousingType.createFromMyHome(complex, "complex-747:84", "084.0000A", new BigDecimal("84.0000"), null));
+        long id = refinedAnnouncement(supply("공공임대", "", "240"), supply("084.0000A", "84.0000", "10"));
+        var workspace = supplyCorrections.workspace(id);
+        var merged = workspace.rows().getFirst();
+        var other = workspace.rows().get(1);
+        assertThat(other.housingTypeId()).isNotNull();
+        var rows = new ArrayList<>(splitRows(merged));
+        rows.add(other.withDisplayOrder(3));
+
+        applySupply(id, request(workspace, rows));
+
+        assertThat(jdbc.sql("""
+                SELECT display_order, admin_modified, area_override, announcement_exclusive_area IS NULL,
+                    announcement_supply_area IS NULL, total_supply_household_count FROM supply_rows WHERE id = :row""")
+                .param("row", other.id())
+                .query((rs, index) -> tuple(rs.getInt(1), rs.getBoolean(2), rs.getBoolean(3), rs.getBoolean(4),
+                        rs.getBoolean(5), rs.getInt(6))).single())
+                .isEqualTo(tuple(3, false, false, true, true, 10));
+        assertThat(supplyCorrections.workspace(id).rows()).filteredOn(row -> row.id().equals(other.id())).singleElement()
+                .satisfies(row -> assertThat(row.withDisplayOrder(other.displayOrder())).isEqualTo(other));
+    }
+
+    @Test
     void PDF_보정에서_저장_방식만_적은_기존_행은_공급정보를_바꾼_요청으로_보지_않는다() throws Exception {
         long id = refinedAnnouncement(supply("공공임대", "", "240"));
         var workspace = jsonCorrections.workspace(id);

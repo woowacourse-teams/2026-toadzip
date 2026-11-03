@@ -134,6 +134,13 @@ public final class SupplyCorrection {
             return withLinkedHousingTypes(sameRepresentative ? before.linkedHousingTypes() : List.of());
         }
 
+        public Row withDisplayOrder(int order) {
+            return new Row(id, key, housingComplexId, housingComplexName, housingTypeId, newHousingType, groupId,
+                    sharedHouseholdCount, protectedValues, excluded, order, complexName, typeName, pnu, moveInMonth,
+                    category, householdCount, areaOverride, exclusiveArea, supplyArea, targets, targetCountsComparable,
+                    linkedHousingTypes, saveMode, lhSourceRowIdentifier);
+        }
+
         public Row withLinkedHousingTypes(List<LinkedHousingType> links) {
             return new Row(id, key, housingComplexId, housingComplexName, housingTypeId, newHousingType, groupId,
                     sharedHouseholdCount, protectedValues, excluded, displayOrder, complexName, typeName, pnu, moveInMonth,

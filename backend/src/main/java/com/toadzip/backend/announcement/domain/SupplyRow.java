@@ -190,6 +190,11 @@ public class SupplyRow {
         adminModified = true;
     }
 
+    public void reorder(int order) {
+        validateNonNegative(order, "표시 순서");
+        displayOrder = order;
+    }
+
     public BigDecimal effectiveExclusiveArea() {
         if (areaOverride) { return announcementExclusiveArea; }
         if (housingType == null) { return null; }
