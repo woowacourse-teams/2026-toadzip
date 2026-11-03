@@ -228,3 +228,20 @@
 .housingTypePrice h4, .subtypeLinks h4 { margin:0 0 var(--ds-space-1); }
 .subtypeLinks ul { margin:0; padding-left:var(--ds-space-4); font-size:var(--ds-text-caption); }
 .subtypeLinks li { line-height:1.7; margin-block:var(--ds-space-1); }
+/* 저장 방식: 네 가지 중 하나를 고르고 그 대상만 아래에 보인다. */
+.placement { display:grid; gap:var(--ds-space-2); margin-block:var(--ds-space-3); }
+.placementModes { display:flex; flex-wrap:wrap; gap:var(--ds-space-2); border:0; padding:0; margin:0; }
+.placementModes legend { font-size:var(--ds-text-caption); color:var(--ds-color-label); margin-bottom:var(--ds-space-1); }
+.page .placementModes label { flex-direction:row; align-items:center; gap:var(--ds-space-1); padding:var(--ds-space-1) var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); cursor:pointer; }
+.page .placementModes label:has(input:checked) { border-color:var(--ds-color-action); background:var(--ds-color-action-soft); color:var(--ds-color-action); font-weight:600; }
+.page .placementModes label[data-disabled] { color:var(--ds-color-muted); cursor:not-allowed; }
+.page .placementModes input { width:auto; min-height:auto; }
+/* 경고는 저장을 막지 않는 확인(앰버), 오류는 저장을 막는 문제(마감색)다. */
+.warningNote, .errorNote { padding:var(--ds-space-2) var(--ds-space-3); border-left:3px solid; font-size:var(--ds-text-caption); background:var(--ds-color-surface-subtle); }
+.warningNote { border-color:var(--ds-color-status-upcoming); }
+.warningNote strong { color:var(--ds-color-status-upcoming); }
+.errorNote { border-color:var(--ds-color-deadline); }
+.errorNote strong { color:var(--ds-color-deadline); }
+.page .warningNote p, .page .errorNote p { margin:0 0 var(--ds-space-1); }
+.blockReason { display:flex; flex-wrap:wrap; align-items:center; gap:var(--ds-space-1) var(--ds-space-2); margin-top:var(--ds-space-1); }
+.blockReason small { color:var(--ds-color-deadline); flex-basis:100%; }

@@ -20,6 +20,24 @@ it('LH로 펼친 행이 있는 단지에 직접 추가한 행만 중복 후보�
   expect(unattachedLhNotice(workspace)).toBe('')
 })
 
+it('LH 한 행을 주택형별로 나눈 분리 형제행은 같은 단지에 직접 만든 행이어도 중복 후보로 보지 않는다', () => {
+  const workspace: SupplyWorkspace = { snapshotToken: 't', version: 1, sources: [],
+    rows: [row(747, 1, '051.9800A'), row(900, 1, '059.9100A'), row(901, 1, '059.9300B'), row(256, 1, '55B-1')],
+    rowSources: [{ rowKey: 'row:747', category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: 'LH:P:SUPPLY:0' },
+      { rowKey: 'row:747', category: 'LH_SPLIT', sourceKey: 'LH:P:SUPPLY:0' }, { rowKey: 'row:900', category: 'LH_SPLIT', sourceKey: 'LH:P:SUPPLY:0' },
+      { rowKey: 'row:901', category: 'LH_SPLIT', sourceKey: 'LH:P:SUPPLY:0' }],
+    deletableRowKeys: ['row:900', 'row:901', 'row:256'] }
+
+  expect(possibleLhDuplicates(workspace).map(item => item.id)).toEqual([256])
+})
+
+it('남은 LH 원본 행은 추가를 막는다고 안내하지 않고 연결 방법을 알린다', () => {
+  const workspace: SupplyWorkspace = { snapshotToken: 't', version: 1, sources: [], rows: [],
+    unattachedLhSupplyRows: [{ rowIdentifier: 'LH:P:SUPPLY:2', complexLabel: '대구테크노폴리스4', typeName: '59', exclusiveArea: null }] }
+  expect(unattachedLhNotice(workspace)).not.toContain('추가할 수 없')
+  expect(unattachedLhNotice(workspace)).toContain('LH 행에 연결')
+})
+
 const target = (rent: string, excluded = false) => ({ id: 9, key: `target:${rent}`, excluded, protectedValues: false, displayOrder: 0, target: '일반', supplyRank: null,
   householdCount: null, reserveCount: null, deposit: '9330000', rent, convertedDeposit: null, condition: null })
 

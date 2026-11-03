@@ -1,7 +1,7 @@
 import { isRecord } from '../management/managementContract'
 import type { JsonObject, JsonWorkspace } from '../announcement-json/api'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
-import type { AnnouncementComplex, CorrectionRow, SupplyWorkspace } from '../supply/supplyCorrectionApi'
+import type { AnnouncementComplex, CorrectionRow, LhSupplyRow, SupplyWorkspace } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, text, type Extraction, type Subtype } from './extraction'
 import { alignToSource, foldRows, inGroup, matchNote, normalizedName, parseSourceLabel, pdfTypes, sameTargets, targetOwners, type FoldGroup, type SourceMatch } from './subtypes'
 
@@ -20,6 +20,14 @@ export type RowProposal = {
   needsConfirmation: boolean
   sharedIndex: number | null
   newComplex?: { id: number; name: string; pnu: string; category: CorrectionRow['category'] }
+  /**
+   * LH 공급 원본 행에 놓는 방식. SPLIT은 통합 LH 행을 주택형별로 나누고(분리 묶음의 첫 행이 통합행 destination을 이어받고 나머지는 'new'),
+   * ATTACH는 공급행이 없는 LH 행에 새 행을 붙인다(destination 'new'). 없으면 destination이 기존 행 키면 수정, 'new'면 별도 추가다.
+   */
+  saveMode?: 'SPLIT' | 'ATTACH'
+  lhRow?: string
+  /** 표기·면적 근거 없이 남은 행 하나만 있어 자동으로 고르지 않은 경우 */
+  ambiguous?: boolean
 }
 export type ScheduleProposal = { existingIds: number[]; needsConfirmation: boolean; reason: string }
 /** 행 키별 LH 원천행의 주택형 표기("26A/B/C(고령자)"). 단지에 연결된 행의 typeName은 단지 주택형 이름("26A")이라 공급대상 묶음을 읽을 수 없다. */
@@ -166,19 +174,23 @@ function sameRecruitment(row: Extraction['supplyRows'][number], current: Correct
 }
 
 /**
- * 같은 단지의 기존 공급행 중 이 PDF 행을 저장할 행. 주택형 표기 → 전용면적(또는 연결 주택형) → 남은 행 하나 순서로 하나를 고르고,
+ * 같은 단지의 기존 공급행 중 이 PDF 행을 저장할 행. 주택형 표기 → 전용면적(또는 연결 주택형) 순서로 하나를 고르고,
  * 하나로 좁히지 못하면 전용면적이 맞는 행들을 추천으로 돌려준다. 다른 PDF 행이 이미 고른 행(used)은 고르지 않는다.
  * 저장할 위치 기본값은 고른 행, 추천이 여럿이면 미선택, 추천이 없으면 새 공급정보로 추가다.
- * lastRow가 false면 표기·면적이 맞지 않는 남은 행 하나를 고르지 않고, 남은 행 모두를 추천해 운영자가 고르게 한다(단지 정하기에서 고른 단지의 행).
+ * 표기·면적 근거 없이 남은 행이 하나뿐이면 고르지 않고 그 행을 추천만 하며 ambiguous로 알린다(통합 LH 행 하나에 여러 PDF 행이 몰리는 경우).
+ * lastRow가 false면 표기·면적이 맞지 않는 남은 행 모두를 추천해 운영자가 고르게 한다(단지 정하기에서 고른 단지의 행).
  */
-export function chooseRow(row: Extraction['supplyRows'][number], related: CorrectionRow[], used: Set<string>, housingTypeId: number | null, lastRow = true, labels: SourceLabels = new Map()) {
+export function chooseRow(row: Extraction['supplyRows'][number], related: CorrectionRow[], used: Set<string>, housingTypeId: number | null, lastRow = true, labels: SourceLabels = new Map(), count: number | null = null) {
   const available = related.filter(item => !used.has(item.key))
   const byName = available.filter(item => [item.typeName, sourceLabel(item, labels)].some(name => typeKey(name) === typeKey(row.typeName)))
   const byArea = available.filter(item => pdfTypes(row).some(type => equalArea(item.exclusiveArea, type.exclusiveArea))
     || housingTypeId !== null && item.housingTypeId === housingTypeId)
-  const chosen = byName.length === 1 ? byName[0] : byArea.length === 1 ? byArea[0] : lastRow && available.length === 1 ? available[0] : undefined
-  const recommended = (chosen ? [chosen] : byArea.length || lastRow ? byArea : available).map(item => item.key)
-  return { chosen, recommended, destination: chosen?.key ?? (recommended.length ? '' : 'new') }
+  // 남은 행 하나는 모집수(행 모집수나 공통 모집수)가 같을 때만 근거로 본다.
+  const sameCount = lastRow && available.length === 1 && count !== null && available[0].householdCount === count
+  const chosen = byName.length === 1 ? byName[0] : byArea.length === 1 ? byArea[0] : sameCount ? available[0] : undefined
+  const ambiguous = !chosen && !byName.length && !byArea.length && lastRow && available.length === 1
+  const recommended = (chosen ? [chosen] : byArea.length ? byArea : ambiguous || !lastRow ? available : []).map(item => item.key)
+  return { chosen, recommended, ambiguous, destination: chosen?.key ?? (recommended.length ? '' : 'new') }
 }
 
 export function proposeRows(extraction: Extraction, all: CorrectionRow[], housing: HousingCandidates, complexes: Pick<AnnouncementComplex, 'name' | 'roadAddress'>[] = [], labels: SourceLabels = new Map()): RowProposal[] {
@@ -198,18 +210,21 @@ export function proposeRows(extraction: Extraction, all: CorrectionRow[], housin
     const allTypes = complexId === null ? [] : housing[complexId] ?? []
     const picked = pickHousingType(extraction, index, allTypes)
     const housingTypeId = picked.housingTypeId
-    const { chosen, recommended, destination } = chooseRow(row, related, used, housingTypeId, true, labels)
     const sharedIndex = extraction.sharedCounts.findIndex(group => group.paths.includes(`supplyRows[${index}].totalSupplyHouseholdCount`))
+    const ownCount = row.values.totalSupplyHouseholdCount
+    const evidenceCount = sharedIndex >= 0 ? extraction.sharedCounts[sharedIndex].count : typeof ownCount === 'number' ? ownCount : null
+    const { chosen, recommended, destination, ambiguous } = chooseRow(row, related, used, housingTypeId, true, labels, evidenceCount)
     if (chosen) used.add(chosen.key)
     const anchor = chosen ?? (complexId === null ? undefined : related[0])
     const changedName = !!chosen && typeKey(chosen.typeName) !== typeKey(row.typeName)
     const recruitmentNote = byRecruitment.length ? `단지명 표기가 달라 이번 모집수 ${String(row.values.totalSupplyHouseholdCount)}세대가 같은 기존 행을 제안했습니다. · ` : ''
+    const ambiguousNote = ambiguous ? `모호: 표기·전용면적이 맞는 기존 행이 없어 남은 행(${recommended.length}개)을 고르지 않았습니다. 기존 행 수정·통합행 분리·별도 추가 중에서 정하세요. · ` : ''
     const blockNote = !sourceNames.length ? '' : source.certain ? `공고 단지 '${sourceNames[0]}'에 대응했습니다. · `
       : `공고 단지 '${sourceNames[0]}'에 블록 번호나 주소 한쪽만 맞아 대응했습니다. 같은 단지인지 확인하세요. · `
     return {
       destination, anchorKey: anchor?.key ?? '', complexId, housingTypeId: housingTypeId ?? chosen?.housingTypeId ?? null, candidates: allTypes, recommended,
       reason: complexId === null ? sourceNames.length ? `공고 단지 '${sourceNames[0]}'가 아직 단지에 연결되지 않았습니다. 단지 정하기에서 정하세요.` : '단지를 하나로 특정하지 못했습니다.'
-        : blockNote + recruitmentNote + picked.reason,
+        : ambiguousNote + blockNote + recruitmentNote + picked.reason, ...(ambiguous ? { ambiguous } : {}),
       needsConfirmation: !chosen || changedName || housingTypeId === null || byRecruitment.length > 0 || !source.certain || sharedIndex >= 0 && chosen.groupId === null,
       sharedIndex: sharedIndex < 0 ? null : sharedIndex,
     }
@@ -341,4 +356,89 @@ export function defaultTargetDestinations(input: JsonObject, row: CorrectionRow 
     if (matches.length === 1) return matches[0].id ? String(matches[0].id) : matches[0].key
     return matches.length === 0 ? 'new' : ''
   })
+}
+
+/** 통합행을 나눌 수 있는 LH 행. 공급행 하나(통합행)가 붙어 있고 아직 나눈 적이 없어야 한다. */
+export function splittableLhRows(supply: Pick<SupplyWorkspace, 'lhSupplyRows' | 'rows'>): LhSupplyRow[] {
+  return (supply.lhSupplyRows ?? []).filter(lh => lh.attachedRowKey && !lh.splitRowKeys?.length
+    && supply.rows.some(row => row.key === lh.attachedRowKey && !row.excluded))
+}
+/** LH 행 표기. 단지 · 주택형 · 면적 · 이번 공급 수 */
+export function lhRowLabel(lh: LhSupplyRow) {
+  const order = /:(\d+)$/.exec(lh.rowIdentifier)?.[1]
+  return [`LH 행 ${order ?? lh.rowIdentifier}`, lh.complexLabel, lh.typeName, lh.exclusiveArea ? `전용 ${lh.exclusiveArea}㎡` : '면적 미확인',
+    lh.householdCount != null ? `모집 ${lh.householdCount}` : '모집수 미확인'].filter(Boolean).join(' · ')
+}
+const rowCount = (row: Extraction['supplyRows'][number]) => typeof row.values.totalSupplyHouseholdCount === 'number' ? row.values.totalSupplyHouseholdCount : null
+
+/**
+ * 분리 묶음의 저장 위치를 맞춘다. 통합행을 이어받는 첫 행(head)은 이미 통합행을 가리키는 포함 행, 없으면 포함 행 중 첫 행이고
+ * 나머지는 새 행('new')이다. 모두 통합행을 기준 단지로 쓴다. 바뀐 행 번호를 돌려준다.
+ */
+export function assignSplitDestinations(proposals: RowProposal[], include: (index: number) => boolean, supply: Pick<SupplyWorkspace, 'lhSupplyRows'>): number[] {
+  const changed: number[] = []
+  for (const lh of supply.lhSupplyRows ?? []) {
+    const merged = lh.attachedRowKey
+    const members = proposals.flatMap((proposal, index) => proposal.saveMode === 'SPLIT' && proposal.lhRow === lh.rowIdentifier ? [index] : [])
+    if (!merged || !members.length) continue
+    const included = members.filter(include)
+    const head = included.find(index => proposals[index].destination === merged) ?? included[0]
+    for (const index of members) {
+      const destination = index === head ? merged : 'new'
+      if (proposals[index].destination === destination && proposals[index].anchorKey === merged) continue
+      proposals[index] = { ...proposals[index], destination, anchorKey: merged }
+      changed.push(index)
+    }
+  }
+  return changed
+}
+
+/**
+ * LH 공급 원본 행에 맞춰 저장 방식을 미리 고른다. 추출 행의 lhSourceRow(AI 워커가 받은 LH 목록의 1부터 센 위치)를 lhSupplyRows 순서로 찾는다.
+ * 두 목록은 같은 LH 공급 원천을 source_order 순서로 읽는다. 같은 LH 통합행을 가리키는 행이 둘 이상이면 통합행 분리,
+ * 공급행이 없는 LH 행이면 LH 행에 연결로 둔다. lhSourceRow가 없으면, 근거 없이 같은 단지의 통합행 하나에 몰린 행들의 모집수 합이
+ * 그 LH 행의 이번 공급 수와 같을 때만(240 = 200 + 25 + 15) 분리를 제안한다. 모두 운영자가 확인하게 한다.
+ */
+export function proposePlacements(extraction: Extraction, proposals: RowProposal[], supply: Pick<SupplyWorkspace, 'lhSupplyRows' | 'unattachedLhSupplyRows' | 'rows'>, housing: HousingCandidates): RowProposal[] {
+  const next = [...proposals], lhRows = supply.lhSupplyRows ?? []
+  const splittable = new Set(splittableLhRows(supply).map(lh => lh.rowIdentifier))
+  const unattached = new Set((supply.unattachedLhSupplyRows ?? []).map(lh => lh.rowIdentifier))
+  const decided = new Set<number>()
+  const join = (index: number, patch: Partial<RowProposal>, note: string) => {
+    const reason = next[index].ambiguous ? next[index].reason.replace(/^모호: [^·]*· /, '') : next[index].reason
+    next[index] = { ...next[index], ambiguous: false, ...patch, needsConfirmation: true, reason: `${note} · ${reason}` }
+    decided.add(index)
+  }
+  const merged = (lh: LhSupplyRow) => supply.rows.find(row => row.key === lh.attachedRowKey)
+  const typed = (index: number, row: CorrectionRow | undefined) => next[index].complexId !== null || !row?.housingComplexId ? {}
+    : { complexId: row.housingComplexId, candidates: housing[row.housingComplexId] ?? [] }
+  const pointed = new Map<string, number[]>()
+  extraction.supplyRows.forEach((row, index) => {
+    const order = row.values.lhSourceRow
+    const lh = typeof order === 'number' && Number.isSafeInteger(order) && order >= 1 ? lhRows[order - 1] : undefined
+    if (lh) pointed.set(lh.rowIdentifier, [...pointed.get(lh.rowIdentifier) ?? [], index])
+  })
+  for (const [identifier, indexes] of pointed) {
+    const lh = lhRows.find(item => item.rowIdentifier === identifier)!, row = merged(lh), label = lhRowLabel(lh)
+    if (splittable.has(identifier) && indexes.length > 1) {
+      const counts = indexes.map(index => rowCount(extraction.supplyRows[index]))
+      const sum = counts.every(count => count !== null) ? (counts as number[]).reduce((total, count) => total + count, 0) : null
+      const check = sum === null ? '모집수 합계를 확인하세요' : sum === lh.householdCount ? `모집수 합 ${sum} = LH ${lh.householdCount}` : `모집수 합 ${sum}이 LH ${lh.householdCount ?? '미확인'}과 다릅니다`
+      indexes.forEach(index => join(index, { saveMode: 'SPLIT', lhRow: identifier, ...typed(index, row) }, `AI가 ${label}을(를) 주택형별로 나눈 행으로 표시해 통합행 분리를 제안합니다(${check})`))
+    } else if (unattached.has(identifier)) {
+      join(indexes[0], { saveMode: 'ATTACH', lhRow: identifier, destination: 'new' }, `AI가 공급행이 없는 ${label}에서 나온 행으로 표시해 LH 행에 연결을 제안합니다`)
+    } else if (lh.attachedRowKey && indexes.length === 1 && ['', 'new', lh.attachedRowKey].includes(next[indexes[0]].destination)) {
+      join(indexes[0], { destination: lh.attachedRowKey, anchorKey: lh.attachedRowKey, ...typed(indexes[0], row) }, `AI가 ${label}에서 나온 행으로 표시했습니다`)
+    }
+  }
+  for (const lh of lhRows.filter(item => splittable.has(item.rowIdentifier) && item.householdCount != null && !pointed.has(item.rowIdentifier))) {
+    const row = merged(lh)!
+    const members = next.flatMap((proposal, index) => !decided.has(index) && !proposal.saveMode && (proposal.destination === row.key
+      || proposal.recommended.includes(row.key) && ['', 'new'].includes(proposal.destination)) ? [index] : [])
+    const counts = members.map(index => rowCount(extraction.supplyRows[index]))
+    if (members.length < 2 || counts.some(count => count === null) || (counts as number[]).reduce((total, count) => total + count, 0) !== lh.householdCount) continue
+    members.forEach(index => join(index, { saveMode: 'SPLIT', lhRow: lh.rowIdentifier }, `PDF 행 ${members.length}개의 모집수 합 ${(counts as number[]).join(' + ')} = ${lh.householdCount}이 ${lhRowLabel(lh)}(통합행 #${String(row.id)})과 같아 통합행 분리를 제안합니다`))
+  }
+  assignSplitDestinations(next, () => true, supply)
+  return next
 }

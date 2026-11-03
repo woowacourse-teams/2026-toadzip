@@ -3,10 +3,11 @@ import { Button } from '../../design-system/components/Button'
 import { housingTypeLabel } from '../ingest/housingTypeLabel'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 import type { Evidence } from './extraction'
-import { cellMatches, cellStates, choices, chooseCellValue, editCell, pendingCell, shown, shownDateTime, validCellValue, type Cell, type ReviewFilter, type ValueMode } from './review'
+import { cellMatches, cellStates, choices, chooseCellValue, editCell, extractedBlockReason, pendingCell, shown, shownDateTime, validCellValue, type Cell, type ReviewFilter, type ValueMode } from './review'
 import styles from './PdfCorrection.module.css'
 
-const modes: [ValueMode, string, string][] = [['keep', '기존 값', '기존 값 사용'], ['extracted', '보정 값', '보정된 값 사용'], ['manual', '직접 수정', '직접 수정']]
+// 기존 값(지금 저장값) · PDF 추출값(추출 원본) · 직접 입력(운영자 값)을 고르고, 반영값 칸은 저장에 보낼 값을 그대로 보여 준다.
+const modes: [ValueMode, string, string][] = [['keep', '기존 값', '기존 값 사용'], ['extracted', 'PDF 추출값', 'PDF 추출값 사용'], ['manual', '직접 입력', '직접 입력']]
 
 /** 단지에 맞는 주택형이 없을 때 연결 주택형에서 고를 수 있는 'PDF 형명·면적으로 새 주택형 추가' */
 export type NewHousingTypeChoice = { label: string; selected: boolean; onSelect: (selected: true) => void }
@@ -38,18 +39,22 @@ export function ReviewCells({ cells, scope, housingTypes = [], newType, filter =
   }
   if (!visible.length && !quiet.length) return null
   return <div className={styles.cells}>
-    <div className={styles.cellHead}><span>항목</span><span>기존 값</span><span>보정된 값</span><span>반영할 값</span><span>PDF</span></div>
+    <div className={styles.cellHead}><span>항목</span><span>기존 값</span><span>PDF 추출값</span><span>반영값</span><span>PDF</span></div>
     {visible.map(cell => {
       const canUseExtracted = validCellValue(cell.kind, cell.extracted.value) && !['invalid', 'unresolved', 'notApplicable'].includes(cell.extracted.state)
+      const blocked = extractedBlockReason(cell)
       return <div key={cell.path} className={styles.cell} data-state={cell.state} data-pending={pendingCell(cell) || undefined} data-review-id={`cell:${cell.path}`} tabIndex={-1}>
         <div className={styles.cellLabel}><strong>{cell.label}</strong><small>{pendingCell(cell) && cell.mode !== 'manual' ? `${cellStates[cell.extracted.state]} · 선택 전` : cellStates[cell.state]}</small></div>
         <div className={styles.before}><span className={styles.mobileLabel}>기존 값</span>{display(cell, cell.before)}</div>
-        <div className={styles.extracted}><span className={styles.mobileLabel}>보정된 값</span>{display(cell, cell.extracted.value)}</div>
+        <div className={styles.extracted}><span className={styles.mobileLabel}>PDF 추출값</span>{display(cell, cell.extracted.value)}</div>
         <div className={styles.cellResult}>{cell.locked ? <span>{cell.note || '기존 값 유지'}</span> : <>
           <div role="group" aria-label={`${scope} ${cell.label} 반영 방법`} className={styles.valueChoices}>{modes.map(([mode, label, name]) => <Button data-design-system key={mode} aria-label={name} aria-pressed={cell.mode === mode} disabled={mode === 'extracted' && !canUseExtracted}
             onClick={() => update(cell.path, chooseCellValue(cell, mode))}>{mode === 'keep' && cell.before == null ? emptyKeepLabel(cell) : label}</Button>)}</div>
           {cell.kind === 'housingType' && newType?.selected && cell.mode !== 'manual' ? <strong className={styles.resultValue}>새 주택형 추가 · {newType.label}</strong> : cell.mode === 'manual' ? manualField(cell) : <strong className={styles.resultValue}>{cell.mode === 'keep' && cell.before == null ? emptyKeepResult(cell) : display(cell, cell.mode === 'keep' ? cell.before : cell.value)}</strong>}
           {cell.note && <small>{cell.note}</small>}
+          {!canUseExtracted && blocked && <div className={styles.blockReason}><small>{`PDF 추출값을 고를 수 없음: ${blocked}`}</small>
+            {cell.evidence && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence(cell.evidence!, cell)}>{`근거 p.${cell.evidence.page} 열기`}</Button>}
+            {cell.mode !== 'manual' && <Button data-design-system className={styles.quietButton} onClick={() => update(cell.path, chooseCellValue(cell, 'manual'))}>{cell.extracted.value != null ? '추출값으로 직접 입력' : '값 직접 입력'}</Button>}</div>}
         </>}</div>
         <div className={styles.cellEvidence}>{cell.evidence && <Button data-design-system className={styles.evidenceButton} aria-label={`PDF ${cell.evidence.page}쪽 보기`} onClick={() => onEvidence(cell.evidence!, cell)} title={cell.evidence.quote}>p.{cell.evidence.page}</Button>}</div>
       </div>

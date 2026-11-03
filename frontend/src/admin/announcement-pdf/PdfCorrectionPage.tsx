@@ -165,7 +165,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   }, [jump])
   function nextPending() {
     if (!review) return
-    const [item] = pendingItems(review, !supplyDraft)
+    const [item] = pendingItems(review, !supplyDraft, workspace ?? undefined)
     if (!item) return
     if (filter !== 'pending') setFilter('all')
     setSection(item.section); setMobileView('review'); setJump(previous => ({ id: item.id, nonce: (previous?.nonce ?? 0) + 1 }))
@@ -224,7 +224,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   }
   if (!workspace) return <section className={styles.page}><h1>PDF로 공고 보정</h1>{error ? <div role="alert"><p>{error}</p><Button onClick={() => setAttempt(value => value + 1)}>다시 불러오기</Button></div> : <p role="status">공고와 연결 주택형을 불러오는 중…</p>}</section>
   if (workspace.detail.summary.deleted) return <section className={styles.page}><h1>휴지통의 공고입니다.</h1><p>공고를 복구한 뒤 보정하세요.</p><Link to={back}>공고 상세로 돌아가기</Link></section>
-  const pending = review ? pendingItems(review, !supplyDraft) : []
+  const pending = review ? pendingItems(review, !supplyDraft, workspace ?? undefined) : []
   const changes = review ? pendingChanges(review) : []
   const counts = { changed: 0, new: 0 }
   if (review) for (const cell of applicableCells(review)) if (cell.extracted.state === 'changed' || cell.extracted.state === 'new') counts[cell.extracted.state] += 1

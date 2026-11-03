@@ -3,12 +3,15 @@ import { Link } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import type { JsonWorkspace } from '../announcement-json/api'
 import { type Evidence } from './extraction'
-import { cellMatches, chooseSubtype, complexGroups, createRowReview, housingTypePrice, linkedHousingType, linkedHousingTypeId, newRepresentative, pendingPrice, pendingSubtypes, destinationLabel, editCell, representativeSubtype, sharedGroupStorable, pdfOrderChanges, pendingRow, pendingTarget, preserveCellChoice, remapTarget, shown, type Cell, type Review, type ReviewFilter, type RowReview, type SubtypeChoice, type TargetReview } from './review'
+import { cellMatches, chooseSubtype, complexGroups, housingTypePrice, placementLabels, placementMode, placementProblems, linkedHousingType, linkedHousingTypeId, newRepresentative, pendingPrice, pendingSubtypes, editCell, representativeSubtype, sharedGroupStorable, pdfOrderChanges, pendingRow, pendingTarget, remapTarget, shown, type Cell, type Review, type ReviewFilter, type RowReview, type SubtypeChoice, type TargetReview } from './review'
 import { ComplexDecisions } from './ComplexDecision'
-import { missingHousingType, pickHousingType, type ComplexLabels, type HousingCandidates } from './matching'
+import { missingHousingType, splittableLhRows, type ComplexLabels, type HousingCandidates } from './matching'
+import { includeRow, placeRow, type Placement } from './placement'
+import { PlacementChooser } from './PlacementChooser'
 import { ReviewCells } from './ReviewCells'
 import { housingTypeLabel } from '../ingest/housingTypeLabel'
-import { possibleLhDuplicates, unattachedLhRows } from '../supply/lhSupplyOwnership'
+import { possibleLhDuplicates } from '../supply/lhSupplyOwnership'
+import type { CorrectionRow } from '../supply/supplyCorrectionApi'
 import styles from './PdfCorrection.module.css'
 
 // 표기 변경을 반영할 때만 공개 화면에 보일 이름을 미리 알려 준다.
@@ -20,34 +23,16 @@ function shownTypeName(row: RowReview) {
 export function ReviewSupply({ review, workspace, housing, complexes, filter, empty, onChange, onEvidence, editorHref, warnings = [], savesHousingTypes = true }: { editorHref?: string; warnings?: string[]
   /** PDF로 공급정보 편집표만 채울 때는 false. 주택형 이름·가격을 저장하지 않으므로 그 안내와 가격 칸을 보이지 않는다. */
   savesHousingTypes?: boolean; review: Review; workspace: JsonWorkspace; housing: HousingCandidates; complexes: ComplexLabels; filter: ReviewFilter; empty: string; onChange: (review: Review) => void; onEvidence: (evidence: Evidence, cell?: Cell) => void }) {
-  // 공급정보에 연결되지 않은 LH 공급 원본 행이 있으면 새 공급정보로 추가하지 않는다.
-  const lhLocked = unattachedLhRows(workspace.supply).length > 0, duplicates = possibleLhDuplicates(workspace.supply)
+  const duplicates = possibleLhDuplicates(workspace.supply), problems = placementProblems(review, workspace)
   function update(index: number, next: RowReview) { onChange({ ...review, rows: review.rows.map((row, at) => at === index ? next : row) }) }
-  function mapping(index: number, destination: string, anchorKey: string) {
-    const old = review.rows[index], anchor = workspace.supply.rows.find(row => row.key === anchorKey)
-    const candidates = housing[anchor?.housingComplexId ?? 0] ?? []
-    // 직접 고른 위치에 맞춰 주택형 후보와 안내를 다시 계산한다. 처음 제안의 실패 문구를 남기지 않는다.
-    const picked = pickHousingType(review.extraction, index, candidates)
-    const proposal = { ...old.proposal, destination, anchorKey, newComplex: undefined, complexId: anchor?.housingComplexId ?? null,
-      housingTypeId: picked.housingTypeId, candidates, needsConfirmation: true,
-      reason: anchor ? `저장 위치를 직접 선택했습니다. · ${picked.reason}` : old.proposal.reason }
-    const next = createRowReview(review.extraction, index, proposal, workspace)
-    const oldCells = [...old.cells, ...old.targets.flatMap(target => target.cells)]
-    const retain = (cell: typeof next.cells[number]) => { const previous = oldCells.find(item => item.path === cell.path); return preserveCellChoice(cell, previous) }
-    next.cells = next.cells.map(retain); next.targets = next.targets.map(target => ({ ...target, cells: target.cells.map(retain) }))
-    update(index, { ...next, include: old.include, reviewed: true })
-  }
-  // 저장할 위치는 추천 공급정보와 새 공급정보로 추가만 보여 준다. 단지 정하기·LH 원천행 맞추기로 정한 행도 함께 보인다.
-  // 연결되지 않은 LH 행이 있어 새로 추가할 수 없는데 추천도 없으면, 같은 단지의 공급정보를 추천으로 넓혀 고를 수 있게 한다.
-  const destinations = (row: RowReview) => workspace.supply.rows.filter(item => !item.excluded
-    && (row.proposal.recommended.includes(item.key) || item.key === row.proposal.destination
-      || lhLocked && !row.proposal.recommended.length && row.proposal.complexId !== null && item.housingComplexId === row.proposal.complexId))
-  // 같은 단지의 공급행은 하나의 기준 단지로 묶는다. 값은 그 단지의 첫 공급행이며 PNU·공급 구분을 가져온다.
-  const linked = workspace.supply.rows.filter(item => !item.excluded && item.housingComplexId !== null)
-  const anchors = linked.filter((item, at) => linked.findIndex(other => other.housingComplexId === item.housingComplexId) === at)
-  const anchorFor = (key: string) => {
-    const complexId = workspace.supply.rows.find(item => item.key === key)?.housingComplexId
-    return anchors.find(item => item.housingComplexId === complexId)?.key ?? ''
+  function place(index: number, placement: Placement) { onChange(placeRow(review, index, placement, workspace, housing)) }
+  /** 같은 LH 통합행을 수정하려던 행들을 그 통합행의 분리 묶음으로 바꾼다. */
+  function splitDuplicates(index: number) {
+    const key = review.rows[index].proposal.destination
+    const lh = splittableLhRows(workspace.supply).find(item => item.attachedRowKey === key)
+    if (!lh) return
+    const members = review.rows.flatMap((row, at) => row.include && row.proposal.destination === key && !row.proposal.saveMode ? [at] : [])
+    onChange(members.reduce((next, at) => placeRow(next, at, { mode: 'SPLIT', lhRow: lh.rowIdentifier }, workspace, housing), review))
   }
   const shownChecks = [...filter === 'all' ? review.extraction.checks : [], ...warnings]
   return <>
@@ -78,18 +63,13 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
       const keepsNewType = (cells: typeof row.cells) => cells.some(cell => cell.field === 'housingTypeId' && cell.mode === 'manual' && cell.value === null)
       const chooseNewType = () => update(index, { ...row, reviewed: true, newHousingType: true, cells: row.cells.map(cell => cell.field === 'housingTypeId' ? editCell(cell, '') : cell) })
       return <section className={styles.supplyBlock} key={index} aria-label={`공급행 ${index + 1} 검토`} data-review-id={`row:${index}`} tabIndex={-1}>
-        <header><div><h4>{source.typeName ?? `공급행 ${index + 1}`}</h4><p>{row.proposal.destination === 'new' ? '새 공급정보로 추가' : current ? `현재: ${current.complexName} · ${current.typeName}` : '수정할 기존 공급정보를 선택하세요'}</p></div><label><input type="checkbox" checked={row.include} onChange={event => update(index, { ...row, include: event.target.checked, reviewed: true })} />공급행 {index + 1} 적용</label></header>
+        <header><div><h4>{source.typeName ?? `공급행 ${index + 1}`}</h4><p>{placementSummary(row, current)}</p></div><label><input type="checkbox" checked={row.include} onChange={event => onChange(includeRow(review, index, event.target.checked, workspace, housing))} />공급행 {index + 1} 적용</label></header>
         {pendingRow(row) && <div className={styles.pending}><p><strong>확인 필요</strong> {row.proposal.reason}</p><Button data-design-system className={styles.secondaryButton} disabled={!row.proposal.destination} onClick={() => update(index, { ...row, reviewed: true })}>{`공급행 ${index + 1} 대응 확인`}</Button></div>}
         {!row.include ? <p className={styles.hint}>이 행의 추출값을 제외합니다. 기존 공급정보는 유지합니다.</p> : <>
-          <div className={styles.mapping}>
-            <label>공급행 {index + 1} 저장할 위치<select value={row.proposal.destination} onChange={event => mapping(index, event.target.value, event.target.value === 'new' ? row.proposal.anchorKey : event.target.value)}>{!row.proposal.destination && <option value="">추천 공급정보 중에서 고르세요</option>}{destinations(row).map(item => <option key={item.key} value={item.key}>추천: {destinationLabel(item)}</option>)}<option value="new" disabled={lhLocked}>{lhLocked ? '새 공급정보로 추가 (연결되지 않은 LH 행이 있어 불가)' : '새 공급정보로 추가'}</option></select></label>
-            {/* 단지에 연결되지 않은 기존 공급행도 위 '단지 정하기'에서 단지를 정한다. */}
-            {current && current.housingComplexId === null && <NewSupplyComplex row={row} index={index} onChange={next => update(index, next)} />}
-            {row.proposal.destination === 'new' && <div>
-              {anchors.length > 0 && <label>공급행 {index + 1} 기준 단지<select value={anchorFor(row.proposal.anchorKey)} onChange={event => mapping(index, 'new', event.target.value)}><option value="">다른 단지 찾기</option>{anchors.map(item => <option key={item.key} value={item.key}>{complexes[item.housingComplexId!] ?? item.housingComplexName ?? `단지 #${item.housingComplexId}`}</option>)}</select></label>}
-              {!row.proposal.anchorKey && <NewSupplyComplex row={row} index={index} onChange={next => update(index, next)} />}
-            </div>}
-          </div>
+          <PlacementChooser row={row} index={index} workspace={workspace} complexes={complexes} problem={problems.get(index)} onPlace={placement => place(index, placement)}
+            onFixDuplicate={splittableLhRows(workspace.supply).some(lh => lh.attachedRowKey === row.proposal.destination) ? () => splitDuplicates(index) : undefined} />
+          {/* 단지에 연결되지 않은 기존 공급행도 위 '단지 정하기'에서 단지를 정한다. */}
+          {(current && current.housingComplexId === null || row.proposal.destination === 'new' && !row.proposal.anchorKey) && <NewSupplyComplex row={row} index={index} onChange={next => update(index, next)} />}
           <p className={styles.hint}>{row.proposal.reason}{source.values.constructedHouseholdCount != null ? ` · PDF 건설호수 ${String(source.values.constructedHouseholdCount)}세대` : ''}</p>
           {savesHousingTypes && typeof shownTypeName(row) === 'string' && <p className={styles.hint}>{`저장하면 이 공고의 공개 화면에 '${String(shownTypeName(row))}'(으)로 표시됩니다. 연결한 단지 주택형 이름도 이 표기로 갱신합니다(끝 괄호는 떼고, 면적만 남으면 갱신하지 않음). 관리자가 고친 이름과 더 최근 공고의 이름은 유지합니다.`}</p>}
           {missing && <div className={styles.pending}><p><strong>맞는 주택형 없음</strong> 연결할 단지에 PDF 전용 {missing.exclusiveArea}㎡ 주택형이 없습니다.{row.newHousingType ? ` 저장하면 '${missingLabel}' 주택형을 이 단지에 추가합니다.` : ''}</p>
@@ -107,6 +87,14 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
   }
 }
 
+
+/** 행 머리의 저장 방식 요약. 분리 묶음의 첫 행은 통합행을 이어받는다고 적는다. */
+function placementSummary(row: RowReview, current: CorrectionRow | undefined) {
+  const mode = placementMode(row.proposal)
+  if (!mode) return '저장 방식을 고르세요'
+  if (mode === 'SPLIT') return current ? `통합행 분리 · 통합행 #${String(current.id)}(${current.typeName}) → 첫 분리행` : '통합행 분리 · 새 분리행'
+  return current ? `${placementLabels[mode]} · 현재: ${current.complexName} · ${current.typeName}` : placementLabels[mode]
+}
 
 function targetMatches(target: TargetReview, filter: ReviewFilter) {
   return filter === 'all' || target.cells.some(cell => cellMatches(cell, filter)) || filter === 'pending' && pendingTarget(target)
