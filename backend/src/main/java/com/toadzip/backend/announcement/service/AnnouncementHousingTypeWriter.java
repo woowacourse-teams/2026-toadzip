@@ -8,6 +8,7 @@ import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.HousingTypeChange;
 import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.HousingTypeValue;
 import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.TypeValues;
+import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.NewType;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.Row;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.HousingType.AnnouncementValues;
@@ -60,8 +61,8 @@ public class AnnouncementHousingTypeWriter {
         for (var target : targets(planned, values, warnings)) {
             var row = target.row();
             var incoming = target.values();
-            if (row.housingTypeId() != null) {
-                var type = types.findById(row.housingTypeId())
+            if (target.housingTypeId() != null) {
+                var type = types.findById(target.housingTypeId())
                         .orElseThrow(() -> new AdminDataConflictException("연결할 주택형을 찾을 수 없습니다."));
                 if (type.getHousingComplex().isAdminDeleted()) {
                     throw new IllegalArgumentException(row.typeName() + ": 휴지통 단지의 주택형에는 공고 값을 반영할 수 없습니다.");
@@ -74,7 +75,7 @@ public class AnnouncementHousingTypeWriter {
                 }
                 continue;
             }
-            var created = row.newHousingType();
+            var created = target.created();
             result.add(new HousingTypeChange(row.key(), null, created.name(), null,
                     new TypeValues(firstPresent(incoming.name(), created.name()),
                             firstPresent(incoming.supplyArea(), created.supplyArea()), incoming.householdCount(),
@@ -93,9 +94,10 @@ public class AnnouncementHousingTypeWriter {
             Map<String, SupplyRow> written, String actor) {
         Map<HousingType, AnnouncementValues> targets = new LinkedHashMap<>();
         for (var target : targets(planned, values, new ArrayList<>())) {
-            var row = target.row();
-            var type = row.housingTypeId() == null ? written.get(row.key()).getHousingType()
-                    : types.findById(row.housingTypeId()).orElseThrow();
+            var type = target.housingTypeId() != null ? types.findById(target.housingTypeId()).orElseThrow()
+                    : written.get(target.row().key()).getHousingTypes().stream()
+                            .filter(linked -> linked.getExclusiveArea().compareTo(target.created().exclusiveArea()) == 0)
+                            .findFirst().orElseThrow();
             targets.put(type, target.values());
         }
         var complexIds = new TreeSet<Long>();
@@ -134,13 +136,20 @@ public class AnnouncementHousingTypeWriter {
     public boolean advancesObservation(LocalDate postedDate, List<Row> planned, List<HousingTypeValue> values) {
         var postedAt = postedAt(postedDate);
         return targets(planned, values, new ArrayList<>()).stream()
-                .map(target -> target.row().housingTypeId()).filter(Objects::nonNull)
+                .map(Target::housingTypeId).filter(Objects::nonNull)
                 .map(id -> types.findById(id).orElseThrow())
                 .anyMatch(type -> type.getAnnouncementObservedAt() == null || postedAt.isAfter(type.getAnnouncementObservedAt()));
     }
 
-    /** 주택형 하나에 반영할 공고 값과 그 값을 처음 보낸 공급행 */
-    private record Target(Row row, AnnouncementValues values) { }
+    /**
+     * 주택형 하나에 반영할 공고 값과 그 값을 처음 보낸 공급행. 주택형은 그 행의 대표나 함께 모집하는 주택형이고,
+     * housingTypeId가 없으면 이 저장에서 만드는 created다.
+     */
+    private record Target(Row row, Long housingTypeId, NewType created, AnnouncementValues values) {
+        String typeKey() { return housingTypeId != null ? "type:" + housingTypeId : "new:" + row.newHousingTypeKey(created); }
+
+        Target with(AnnouncementValues merged) { return new Target(row, housingTypeId, created, merged); }
+    }
 
     /**
      * 공고 값을 주택형마다 하나로 모은다. 같은 주택형을 고른 행들이 한 필드에 서로 다른 값을 주면 어느 쪽이 맞는지
@@ -148,16 +157,21 @@ public class AnnouncementHousingTypeWriter {
      */
     private List<Target> targets(List<Row> planned, List<HousingTypeValue> values, List<String> warnings) {
         var rowsByKey = planned.stream().collect(Collectors.toMap(Row::key, Function.identity()));
-        var seenRows = new HashSet<String>();
+        var seen = new HashSet<String>();
         Map<String, Target> result = new LinkedHashMap<>();
         Map<String, Set<String>> conflicts = new HashMap<>();
         for (var value : values) {
             var row = rowsByKey.get(value.rowKey());
-            if (row == null || !seenRows.add(value.rowKey())) {
+            if (row == null) {
                 throw new IllegalArgumentException("주택형 공고 값의 공급행이 없거나 중복입니다: " + value.rowKey());
             }
             if (row.excluded() || row.housingTypeId() == null && row.newHousingType() == null) {
                 throw new IllegalArgumentException(row.typeName() + ": 제외하지 않고 주택형을 정한 공급행에만 공고 값을 반영합니다.");
+            }
+            var addressed = addressed(row, value);
+            String typeKey = addressed.typeKey();
+            if (!seen.add(value.rowKey() + "|" + typeKey)) {
+                throw new IllegalArgumentException("주택형 공고 값의 공급행이 없거나 중복입니다: " + value.rowKey());
             }
             // 한쪽만 바꾸면 공고 보증금과 마이홈 월 임대료가 섞인 채 공고문 출처로 남는다.
             if ((value.basicDeposit() == null) != (value.basicMonthlyRent() == null)) {
@@ -165,11 +179,9 @@ public class AnnouncementHousingTypeWriter {
             }
             var incoming = new AnnouncementValues(blankToNull(value.name()), value.supplyArea(), value.householdCount(),
                     value.basicDeposit(), value.basicMonthlyRent());
-            String typeKey = row.housingTypeId() != null ? "type:" + row.housingTypeId()
-                    : "new:" + row.newHousingTypeKey();
             var previous = result.get(typeKey);
             if (previous == null) {
-                result.put(typeKey, new Target(row, incoming));
+                result.put(typeKey, addressed.with(incoming));
                 continue;
             }
             var kept = conflicts.computeIfAbsent(typeKey, key -> new LinkedHashSet<>());
@@ -180,7 +192,7 @@ public class AnnouncementHousingTypeWriter {
             if (differs(merged.basicDeposit(), incoming.basicDeposit())
                     || differs(merged.basicMonthlyRent(), incoming.basicMonthlyRent())) { kept.add("기본 임대조건"); }
             boolean keepPrice = kept.contains("기본 임대조건");
-            result.put(typeKey, new Target(previous.row(), new AnnouncementValues(
+            result.put(typeKey, previous.with(new AnnouncementValues(
                     kept.contains("이름") ? null : firstPresent(merged.name(), incoming.name()),
                     kept.contains("공급면적") ? null : firstPresent(merged.supplyArea(), incoming.supplyArea()),
                     kept.contains("세대수") ? null : firstPresent(merged.householdCount(), incoming.householdCount()),
@@ -194,6 +206,23 @@ public class AnnouncementHousingTypeWriter {
             }
         });
         return List.copyOf(result.values());
+    }
+
+    /** 공고 값이 가리키는 그 행의 주택형. 연결 주소가 없으면 대표, 있으면 그 행이 함께 모집하는 주택형 중 하나여야 한다. */
+    private static Target addressed(Row row, HousingTypeValue value) {
+        if (value.linkedHousingTypeId() == null && value.linkedNewHousingTypeArea() == null) {
+            return new Target(row, row.housingTypeId(), row.newHousingType(), null);
+        }
+        if (value.linkedHousingTypeId() != null && value.linkedNewHousingTypeArea() != null) {
+            throw new IllegalArgumentException(row.typeName() + ": 주택형 공고 값은 함께 모집하는 기존 주택형이나 새 주택형 중 하나만 가리키세요.");
+        }
+        return row.linkedHousingTypes().stream()
+                .filter(link -> value.linkedHousingTypeId() != null ? value.linkedHousingTypeId().equals(link.housingTypeId())
+                        : link.newHousingType() != null
+                                && link.newHousingType().exclusiveArea().compareTo(value.linkedNewHousingTypeArea()) == 0)
+                .findFirst().map(link -> new Target(row, link.housingTypeId(), link.newHousingType(), null))
+                .orElseThrow(() -> new IllegalArgumentException(row.typeName() + ": 주택형 공고 값이 가리키는 주택형을 "
+                        + "이 공급행이 함께 모집하지 않습니다."));
     }
 
     private static <T> T firstPresent(T first, T second) {
