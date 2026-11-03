@@ -10,8 +10,11 @@ import java.util.List;
  */
 public record PdfExtractionInput(List<LhSupplyRow> lhSupplyRows) {
 
-    /** LH가 보낸 값 그대로(문자열)다. order는 원천 순번이다. */
-    public record LhSupplyRow(int order, String complexLabel, String typeName, String exclusiveArea,
+    /**
+     * LH가 보낸 값 그대로(문자열)다. order는 원천 순번, rowIdentifier는 공급 보정 작업실의 lhSupplyRows[].rowIdentifier와 같은
+     * LH 행 식별자(LH:{panId}:SUPPLY:{order})다. 워커는 공급행이 나온 LH 행을 이 식별자로 돌려준다.
+     */
+    public record LhSupplyRow(int order, String rowIdentifier, String complexLabel, String typeName, String exclusiveArea,
             String supplyArea, String suppliedUnitCount, String totalUnitCount) {
     }
 }

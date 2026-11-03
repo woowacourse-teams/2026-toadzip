@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.admin.exception.AdminDataStaleException;
+import com.toadzip.backend.announcement.domain.PdfExtractionInput;
 import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.LinkedHousingType;
@@ -76,6 +77,7 @@ class LhSupplySplitCorrectionIntegrationTest {
     @Autowired private HousingTypeRepository types;
     @Autowired private AnnouncementRepository announcements;
     @Autowired private JdbcClient jdbc;
+    @Autowired private PdfExtractionInputs extractionInputs;
     @Autowired private ObjectMapper json;
     @MockitoSpyBean private NotificationOutboxRepository outbox;
     @MockitoSpyBean private LhScheduleAttachmentWriter scheduleWriter;
@@ -244,6 +246,56 @@ class LhSupplySplitCorrectionIntegrationTest {
         rejects(id, workspace, List.of(kept, edit(merged, null, "f", "059.9100A", type5991, 25, SaveMode.ADD, MERGED)),
                 "분리(SPLIT)나 붙이기(ATTACH)에서만");
         assertThat(rowCount(id)).isOne();
+    }
+
+    @Test
+    void 처음_나누는_통합행이_통합_모집수를_그대로_두고_다른_분리행에_모집수가_있으면_두_번_집계되므로_거절한다() {
+        long id = refinedAnnouncement(supply("공공임대", "", "240"));
+        var workspace = supplyCorrections.workspace(id);
+        var merged = workspace.rows().getFirst();
+
+        rejects(id, workspace, List.of(
+                edit(merged, merged.id(), merged.key(), "051.9800A", type5198, 240, SaveMode.SPLIT, MERGED),
+                edit(merged, null, "split-25", "059.9100A", type5991, 25, SaveMode.SPLIT, MERGED),
+                edit(merged, null, "split-15", "059.9300B", type5993, 15, SaveMode.SPLIT, MERGED)),
+                "첫 분리행의 모집수를 공고문의 그 주택형 모집수로 바꾸세요");
+        assertThat(rowCount(id)).isOne();
+    }
+
+    @Test
+    void LH_원천_없이_관리자가_추가한_공급행은_LH_통합행의_분리_묶음에_넣을_수_없다() {
+        long id = refinedAnnouncement(supply("공공임대", "", "240"));
+        var workspace = supplyCorrections.workspace(id);
+        var merged = workspace.rows().getFirst();
+        applySupply(id, request(workspace, List.of(edit(merged, merged.id(), merged.key(), merged.typeName(), null, 240, null, null),
+                edit(merged, null, "added", "059.9100A", type5991, 25, SaveMode.ADD, null))));
+        var after = supplyCorrections.workspace(id);
+        var added = after.rows().stream().filter(row -> !row.id().equals(merged.id())).findFirst().orElseThrow();
+
+        rejects(id, after, List.of(
+                edit(merged, merged.id(), merged.key(), "051.9800A", type5198, 200, SaveMode.SPLIT, MERGED),
+                edit(added, added.id(), added.key(), "059.9100A", type5991, 25, SaveMode.SPLIT, MERGED),
+                edit(merged, null, "split-15", "059.9300B", type5993, 15, SaveMode.SPLIT, MERGED)),
+                "이 LH 공급 원본에 붙은 공급행만 그 행에서 나눌 수 있습니다");
+        assertThat(rowCount(id)).isEqualTo(2);
+    }
+
+    @Test
+    void PDF_추출_입력은_작업실과_같은_LH_공급_원천_행을_같은_행_식별자로_담는다() {
+        long id = refinedAnnouncement(supply("공공임대", "", "240"), supply("059.9300B", "59.9300", "15"));
+        // 공고목록 조건과 다른 요청으로 나중에 받은 공급 원천은 정제와 작업실이 쓰지 않으므로 추출 입력에도 담지 않는다.
+        lhStorage.replaceSupplies(PAN_ID, new LhAnnouncementRequest(PAN_ID, "03", "06", "10", "064").requestDescription(),
+                List.of(LhSourceViews.supply(0, PAN_ID, supply("다른 요청", "84.0000", "9"))));
+
+        var input = extractionInputs.read(id);
+
+        String second = LhSourceIdentifier.supply(PAN_ID, 1);
+        assertThat(input.lhSupplyRows()).extracting(PdfExtractionInput.LhSupplyRow::rowIdentifier,
+                PdfExtractionInput.LhSupplyRow::typeName, PdfExtractionInput.LhSupplyRow::suppliedUnitCount)
+                .containsExactly(tuple(MERGED, "공공임대", "240"), tuple(second, "059.9300B", "15"));
+        assertThat(supplyCorrections.workspace(id).lhSupplyRows()).extracting(SupplyCorrection.LhSupplyRow::rowIdentifier)
+                .containsExactly(MERGED, second);
+        assertThat(extractionInputs.read(-1L).lhSupplyRows()).isEmpty();
     }
 
     @Test

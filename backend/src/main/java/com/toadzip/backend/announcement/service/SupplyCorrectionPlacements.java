@@ -165,6 +165,7 @@ class SupplyCorrectionPlacements {
         Integer total = total(context.planned(), members);
         if (requested) {
             checkRequestedSplit(lhRow, name, members, attachedTargets.contains(target));
+            if (lhRow != null && storedSiblings.isEmpty()) { checkMergedCountChanged(lhRow, name, members, context); }
             if (total != null && lhCount != null && !total.equals(lhCount)) {
                 warnings.add(name + ": 나눈 공급행 모집수 합계 " + total + "가 LH 공급 수 " + lhCount + "와 다릅니다. "
                         + "공고문과 다시 대조하세요.");
@@ -191,6 +192,26 @@ class SupplyCorrectionPlacements {
         }
         if (members.size() < 2) {
             throw new IllegalArgumentException(name + ": 분리는 같은 LH 공급 원본에서 나온 공급행 둘 이상으로 저장하세요.");
+        }
+    }
+
+    /**
+     * 처음 나누는 통합행이 LH 합계로 저장된 모집수를 그대로 두고 다른 분리행이 모집수를 가지면, 그 합계를 분리행과 함께 두 번 센다.
+     * 이미 나눈 묶음을 다시 고치는 저장은 통합행 모집수가 이미 주택형 하나의 값이라 보지 않는다.
+     */
+    private static void checkMergedCountChanged(LhSupplyRow lhRow, String name, List<String> members, Context context) {
+        String merged = lhRow.attachedRowKey();
+        var before = context.before().stream().filter(row -> row.key().equals(merged)).findFirst().orElse(null);
+        var after = context.planned().stream().filter(row -> row.key().equals(merged)).findFirst().orElse(null);
+        if (before == null || after == null || after.excluded() || after.householdCount() == null
+                || !after.householdCount().equals(before.householdCount())) {
+            return;
+        }
+        boolean siblingCounted = context.planned().stream().anyMatch(row -> !row.key().equals(merged)
+                && members.contains(row.key()) && !row.excluded() && row.householdCount() != null);
+        if (siblingCounted) {
+            throw new IllegalArgumentException(name + ": 첫 분리행(통합행)의 모집수가 통합 모집수 " + before.householdCount()
+                    + "세대 그대로라 다른 분리행 모집수와 두 번 집계됩니다. 첫 분리행의 모집수를 공고문의 그 주택형 모집수로 바꾸세요.");
         }
     }
 
