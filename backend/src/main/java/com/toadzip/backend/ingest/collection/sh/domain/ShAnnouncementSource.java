@@ -65,15 +65,18 @@ public class ShAnnouncementSource {
         if (!sourceKey.equals(snapshot.sourceKey())) {
             throw new IllegalArgumentException("다른 SH 게시글 원천으로 변경할 수 없습니다.");
         }
+        // 제목·등록일이 바뀐 새 판에서 못 읽은 부분은 옛 판 값을 남기지 않고 비워 다시 받게 한다.
+        boolean revised = title != null
+                && (!title.equals(snapshot.title()) || !registeredDate.equals(snapshot.registeredDate()));
         title = snapshot.title();
         department = snapshot.department();
         registeredDate = snapshot.registeredDate();
         originalUrl = snapshot.originalUrl();
         listUrl = snapshot.listUrl();
-        if (snapshot.bodyText() != null) {
+        if (revised || snapshot.bodyText() != null) {
             bodyText = snapshot.bodyText();
         }
-        if (snapshot.attachments() != null) {
+        if (revised || snapshot.attachments() != null) {
             attachments = snapshot.attachments();
         }
         collectedAt = now;

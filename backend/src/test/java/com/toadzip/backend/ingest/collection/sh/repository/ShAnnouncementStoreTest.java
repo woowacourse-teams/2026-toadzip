@@ -68,18 +68,49 @@ class ShAnnouncementStoreTest {
     }
 
     @Test
+    void 제목이_바뀐_새_판에서_못_읽은_본문과_첨부는_옛_판_값을_남기지_않는다() {
+        store(FIRST).store(snapshot("100", "제목", "원문"));
+        store(FIRST.plusSeconds(60)).store(new ShAnnouncementSnapshot("100", "[정정] 제목", "공급부",
+                LocalDate.parse("2026-10-02"), ShAnnouncementExternalRepository.detailUrl("100"),
+                ShAnnouncementExternalRepository.LIST_URL, null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        var source = repository.findBySourceKey("SH:100").orElseThrow();
+        assertThat(source.getTitle()).isEqualTo("[정정] 제목");
+        assertThat(source.getBodyText()).isNull();
+        assertThat(source.getAttachments()).isNull();
+    }
+
+    @Test
+    void 등록일이_바뀐_새_판에서_못_읽은_첨부는_옛_판_값을_남기지_않는다() {
+        store(FIRST).store(snapshot("100", "제목", "원문"));
+        store(FIRST.plusSeconds(60)).store(new ShAnnouncementSnapshot("100", "제목", "공급부",
+                LocalDate.parse("2026-10-03"), ShAnnouncementExternalRepository.detailUrl("100"),
+                ShAnnouncementExternalRepository.LIST_URL, "새 원문", null));
+        entityManager.flush();
+        entityManager.clear();
+
+        var source = repository.findBySourceKey("SH:100").orElseThrow();
+        assertThat(source.getBodyText()).isEqualTo("새 원문");
+        assertThat(source.getAttachments()).isNull();
+    }
+
+    @Test
     void 제목과_등록일이_같고_본문과_첨부를_가진_게시글만_그대로인_게시글로_본다() {
         store(FIRST).store(snapshot("100", "제목", "원문"));
         store(FIRST).store(snapshot("200", "옛 제목", "원문"));
         store(FIRST).store(snapshot("400", "제목", "원문"));
-        store(FIRST).store(new ShAnnouncementSnapshot("500", "본문 없는 옛 행", "공급부", LocalDate.parse("2026-10-02"),
-                ShAnnouncementExternalRepository.detailUrl("500"), ShAnnouncementExternalRepository.LIST_URL, null, null));
+        store(FIRST).store(new ShAnnouncementSnapshot("500", "본문 없는 행", "공급부", LocalDate.parse("2026-10-02"),
+                ShAnnouncementExternalRepository.detailUrl("500"), ShAnnouncementExternalRepository.LIST_URL, null, "[]"));
+        store(FIRST).store(new ShAnnouncementSnapshot("600", "첨부 없는 행", "공급부", LocalDate.parse("2026-10-02"),
+                ShAnnouncementExternalRepository.detailUrl("600"), ShAnnouncementExternalRepository.LIST_URL, "원문", null));
         LocalDate date = LocalDate.parse("2026-10-02");
 
         var unchanged = store(FIRST).findUnchangedSeqs(List.of(new Entry("100", "제목", "공급부", date),
                 new Entry("200", "정정 제목", "공급부", date), new Entry("300", "새 글", "공급부", date),
                 new Entry("400", "제목", "공급부", date.plusDays(1)),
-                new Entry("500", "본문 없는 옛 행", "공급부", date)));
+                new Entry("500", "본문 없는 행", "공급부", date), new Entry("600", "첨부 없는 행", "공급부", date)));
 
         assertThat(unchanged).containsExactly("100");
     }
