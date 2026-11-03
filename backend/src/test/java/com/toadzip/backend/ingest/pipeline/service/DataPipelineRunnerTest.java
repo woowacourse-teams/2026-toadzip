@@ -82,7 +82,7 @@ class DataPipelineRunnerTest {
     private final ShAnnouncementCollectionService shAnnouncementCollectionService =
             org.mockito.Mockito.mock(ShAnnouncementCollectionService.class);
     private final GhAnnouncementCollectionService ghAnnouncementCollectionService =
-            org.mockito.Mockito.mock(GhAnnouncementCollectionService.class);
+            mock(GhAnnouncementCollectionService.class);
 
     private DataPipelineStepResultAdapter resultAdapter;
     private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
@@ -117,8 +117,7 @@ class DataPipelineRunnerTest {
         runner.run(DataPipelineType.GH_ANNOUNCEMENT_COLLECTION, executionId);
 
         verify(ghAnnouncementCollectionService).collect();
-        org.mockito.Mockito.verifyNoInteractions(shAnnouncementCollectionService, myHomeAnnouncementCollectionService,
-                lhAnnouncementCatalogCollectionService, collectionService);
+        verifyNoInteractions(shAnnouncementCollectionService, lhAnnouncementCatalogCollectionService, collectionService);
         verify(executionStateService).completeStep(eq(executionId), eq(DataPipelineStep.COLLECT_GH_ANNOUNCEMENTS), any());
     }
 
