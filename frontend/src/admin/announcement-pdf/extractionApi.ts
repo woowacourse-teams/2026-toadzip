@@ -122,14 +122,17 @@ export async function extractAnnouncementPdf(id: string, file: Blob, fileName: s
 
 const WAIT_LIMIT_MESSAGE = '추출이 아직 끝나지 않았습니다. 잠시 뒤 다시 추출을 누르면 이어서 기다립니다.'
 
-/** 상태 조회가 응답 없이 멈춰도 기다리기 상한에서 끝나도록, 남은 시간이 지나면 요청을 끊고 상한 초과로 알린다. */
+/**
+ * 상태 조회가 응답 없이 멈춰도 기다리기 상한에서 끝나도록, 남은 시간이 지나면 요청을 끊고 상한 초과로 알린다.
+ * 상한 직전에 기다리기를 시작한 마지막 조회도 결과를 받을 수 있게 조회 간격만큼은 기다린다.
+ */
 async function requestBefore(deadline: number, path: string, signal?: AbortSignal) {
   const controller = new AbortController()
   const expired = new Error(WAIT_LIMIT_MESSAGE)
   const abort = () => controller.abort(signal?.reason)
   if (signal?.aborted) abort()
   signal?.addEventListener('abort', abort, { once: true })
-  const timer = setTimeout(() => controller.abort(expired), Math.max(deadline - Date.now(), 0))
+  const timer = setTimeout(() => controller.abort(expired), Math.max(deadline - Date.now(), JOB_POLL_MS))
   try {
     return await requestManagementApi(path, 'GET', undefined, controller.signal)
   } catch (error) {

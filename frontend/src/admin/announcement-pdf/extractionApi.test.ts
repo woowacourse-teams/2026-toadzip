@@ -134,6 +134,22 @@ test('상태 조회가 응답 없이 멈추면 남은 기다리기 시간에 끊
   expect(signals[0].aborted).toBe(true)
 })
 
+test('상한 직전에 기다리기 시작한 마지막 조회가 성공을 받으면 그 결과를 쓴다', async () => {
+  const polls = JOB_WAIT_LIMIT_MS / JOB_POLL_MS
+  mocks.request.mockResolvedValueOnce(job('PENDING'))
+  for (let poll = 1; poll < polls; poll++) mocks.request.mockResolvedValueOnce(job('PENDING'))
+  // 마지막 조회는 상한 시각에 시작해 100ms 뒤에 응답한다. 응답 전에 요청을 끊으면 결과를 놓친다.
+  mocks.request.mockImplementationOnce((_path, _method, _body, signal: AbortSignal) => new Promise((resolve, reject) => {
+    setTimeout(() => resolve(job('SUCCEEDED', { extraction })), 100)
+    signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+  }))
+
+  const result = extractAnnouncementPdf('29', pdf, '공고문.pdf')
+  await vi.advanceTimersByTimeAsync(JOB_WAIT_LIMIT_MS + 100)
+
+  await expect(result).resolves.toEqual(extraction)
+})
+
 test('공고 첨부가 미리 본 파일과 다른 PDF로 추출되면 결과를 쓰지 않고 다시 추출하게 한다', async () => {
   mocks.request.mockResolvedValueOnce(job('SUCCEEDED', { pdfSha256: 'changed', extraction }))
 
