@@ -29,6 +29,8 @@ PGHOST=localhost PGPORT=5433 PGDATABASE=toadzip PGUSER=toadzip_ai_worker PGPASSW
 
 SIGTERM·SIGINT를 받으면 처리 중인 작업을 끝내고 멈춘다. 그 전에 강제로 끝나면 lease가 끝난 뒤 다른 워커가 그 작업을 다시 시도한다.
 
+끝에 `--check`를 붙이면 작업을 꺼내지 않고 DB 접속과 `ai_jobs` 권한만 확인한 뒤 끝난다. 릴리스가 워커를 바꾸기 전에 이 확인을 실행한다.
+
 ## 테스트
 
 Docker가 켜져 있어야 한다. 테스트는 DeepSeek을 부르지 않는다(`httpx.MockTransport`). 큐 테스트는 Postgres 17 컨테이너에 Flyway 마이그레이션 `V20261103_01__ai_jobs.sql`을 그대로 적용하고, 워커를 제한 역할로 접속시켜 확인한다.

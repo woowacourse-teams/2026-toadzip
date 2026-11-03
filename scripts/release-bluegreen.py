@@ -110,11 +110,23 @@ class Release:
 
     def deploy_worker(self):
         runner = self.runners['frontend']
+        environment = dict(runner.environment, AI_WORKER_IMAGE=self.images[WORKER])
+        # A wrong password or missing ai_jobs grant would otherwise surface only after the running worker was replaced.
+        check = self.check_worker_database(['docker', 'compose', '--project-name', self.options.project, *runner.files,
+                                            '--profile', 'bluegreen', 'run', '--rm', '-T', '--no-deps', '--pull', 'never',
+                                            WORKER, '--check'], environment)
+        if check.returncode:
+            # The worker prints only fixed text and the database error, never the password.
+            reason = (check.stderr.strip().splitlines() or ['no output'])[-1]
+            raise bluegreen.DeploymentError('AI worker database check failed with the new image; the running worker'
+                                            ' was left as is: ' + reason)
         # Stopping waits up to stop_grace_period (2m) for the running extraction to finish. --wait needs the image
-        # healthcheck, so a worker that cannot reach the database fails the release instead of looking up.
+        # healthcheck, so a worker that later loses the database fails the release instead of looking up.
         runner.compose('up', '-d', '--no-deps', '--no-build', '--pull', 'never', '--force-recreate',
-                       '--wait', '--wait-timeout', '60', WORKER,
-                       environment=dict(runner.environment, AI_WORKER_IMAGE=self.images[WORKER]), timeout=240)
+                       '--wait', '--wait-timeout', '60', WORKER, environment=environment, timeout=240)
+
+    def check_worker_database(self, arguments, environment):
+        return subprocess.run(arguments, cwd=bluegreen.ROOT, env=environment, text=True, capture_output=True, timeout=120)
 
     def build_image(self, arguments, environment):
         subprocess.run(arguments, cwd=bluegreen.ROOT, env=environment, check=True, timeout=1200)

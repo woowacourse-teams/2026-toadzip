@@ -1,4 +1,5 @@
 """`python -m ai_worker`로 워커를 띄운다. SIGTERM·SIGINT를 받으면 처리 중인 작업을 끝내고 멈춘다.
+`python -m ai_worker --check`는 DB 접속과 ai_jobs 권한만 확인하고 끝난다. 릴리스가 실행 중인 워커를 바꾸기 전에 새 이미지로 부른다.
 
 환경변수
 - PGHOST·PGPORT·PGDATABASE·PGUSER·PGPASSWORD: toadzip_ai_worker 역할의 Postgres 접속 정보(libpq 표준).
@@ -6,6 +7,7 @@
 - DEEPSEEK_API_KEY: DeepSeek API 키
 """
 
+import argparse
 import logging
 import os
 import signal
@@ -14,6 +16,7 @@ import threading
 
 import psycopg
 
+from ai_worker import jobs
 from ai_worker.announcement import AnnouncementPdfExtractor
 from ai_worker.deepseek import DeepSeek
 from ai_worker.worker import run
@@ -30,11 +33,29 @@ def connect() -> psycopg.Connection:
                            keepalives_interval=10, keepalives_count=3, options="-c statement_timeout=30000")
 
 
-def main() -> None:
+def check() -> None:
+    """실패하면 이유를 남기고 0이 아닌 코드로 끝난다. psycopg 오류 문구에는 비밀번호가 들어가지 않는다."""
+    try:
+        with connect() as conn:
+            missing = jobs.missing_privileges(conn)
+    except psycopg.Error as error:
+        sys.exit(f"DB 접속 또는 ai_jobs 확인에 실패했습니다: {str(error).strip().splitlines()[0]}")
+    if missing:
+        sys.exit(f"{os.environ['PGUSER']} 역할에 없는 ai_jobs 권한: {', '.join(missing)}")
+    log.info("DB 접속과 ai_jobs 권한을 확인했습니다.")
+
+
+def main(argv: list[str]) -> None:
+    parser = argparse.ArgumentParser(prog="python -m ai_worker")
+    parser.add_argument("--check", action="store_true", help="DB 접속과 ai_jobs 권한만 확인하고 끝낸다")
+    options = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     missing = [name for name in REQUIRED if not os.environ.get(name)]
     if missing:
         sys.exit(f"환경변수가 없습니다: {', '.join(missing)}")
+    if options.check:
+        check()
+        return
     extractor = AnnouncementPdfExtractor(DeepSeek(os.environ["DEEPSEEK_API_KEY"]))
 
     stop = threading.Event()
@@ -60,4 +81,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

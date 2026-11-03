@@ -111,6 +111,7 @@ class ReleaseTests(unittest.TestCase):
         self.release = module.Release(self.options)
         self.release.git = lambda *args: ('b' * 40 if self.failure == 'revision' else SHA) if args[0] == 'rev-parse' else ('dirty' if self.failure == 'dirty' else '')
         self.release.build_image = self.build_image
+        self.release.check_worker_database = self.check_worker_database
         self.metadata = patch.object(bluegreen, 'docker', side_effect=self.inspect_image)
         self.metadata.start()
         self.output = io.StringIO()
@@ -134,6 +135,14 @@ class ReleaseTests(unittest.TestCase):
         if self.failure == 'build-' + service:
             raise bluegreen.DeploymentError('image build failed')
 
+    def check_worker_database(self, arguments, environment):
+        self.events.append('check-' + ' '.join(arguments[arguments.index('run') + 1:]))
+        self.events.append('image-' + environment['AI_WORKER_IMAGE'])
+        if self.failure == 'check-ai-worker':
+            return subprocess.CompletedProcess(arguments, 1, '', 'Container started\n'
+                                               'toadzip_ai_worker 역할에 없는 ai_jobs 권한: UPDATE(lease_until)\n')
+        return subprocess.CompletedProcess(arguments, 0, '', '')
+
     def inspect_image(self, *arguments, **kwargs):
         # A distinct ID per image so a wrong image passed to a deployment is caught.
         digit = {'backend': '1', 'frontend': '2', 'ai-worker': '3'}[arguments[-1].split(':')[0].removeprefix('toadzip-')]
@@ -143,8 +152,10 @@ class ReleaseTests(unittest.TestCase):
     def test_preflight_and_all_builds_finish_before_backend_then_frontend_then_worker(self):
         result = self.release.run()
         self.assertEqual(self.events, ['preflight-backend', 'preflight-frontend', 'build-backend', 'build-frontend',
-                                       'build-ai-worker', 'deploy-backend', 'deploy-frontend', 'deploy-ai-worker',
-                                       'wait-True', 'image-sha256:' + '3' * 64])
+                                       'build-ai-worker', 'deploy-backend', 'deploy-frontend',
+                                       'check---rm -T --no-deps --pull never ai-worker --check',
+                                       'image-sha256:' + '3' * 64, 'deploy-ai-worker', 'wait-True',
+                                       'image-sha256:' + '3' * 64])
         self.assertEqual(result['completed'], ['backend', 'frontend', 'ai-worker'])
         self.assertEqual(result['images']['ai-worker'], 'sha256:' + '3' * 64)
         self.assertEqual(result['route_source'], 'runtime-config')
@@ -213,6 +224,15 @@ class ReleaseTests(unittest.TestCase):
                     # A worker failure leaves the backend and frontend on the same new release.
                     self.assertEqual(report['completed'], ['backend', 'frontend'])
                     self.assertEqual(report['routes'], {'backend': 'backend-green', 'frontend': 'frontend-green'})
+
+    def test_worker_database_check_failure_leaves_running_worker_untouched(self):
+        self.failure = 'check-ai-worker'
+        with self.assertRaisesRegex(bluegreen.DeploymentError, 'running worker was left as is: '
+                                    'toadzip_ai_worker 역할에 없는 ai_jobs 권한: UPDATE\\(lease_until\\)'):
+            self.release.run()
+        self.assertNotIn('deploy-ai-worker', self.events)
+        report = json.loads(self.output.getvalue().split('Release result: ')[-1])
+        self.assertEqual((report['stage'], report['completed']), ('deploy-ai-worker', ['backend', 'frontend']))
 
     def test_checkout_change_during_build_stops_before_deployment(self):
         build = self.release.build_image

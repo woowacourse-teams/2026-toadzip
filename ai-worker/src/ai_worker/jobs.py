@@ -18,6 +18,9 @@ LEASE_EXPIRED_CODE = "LEASE_EXPIRED"
 LEASE_EXPIRED_MESSAGE = "처리 시간이 초과되어 작업을 끝냈습니다. 다시 요청해 주세요."
 DEADLINE_EXCEEDED_CODE = "DEADLINE_EXCEEDED"
 DEADLINE_EXCEEDED_MESSAGE = "요청한 지 오래되어 작업을 끝냈습니다. 다시 요청해 주세요."
+# 아래 문장들이 고치는 열. infra/db/create-ai-worker-role.sql과 ai_jobs 마이그레이션이 워커 역할에 주는 열과 같다.
+UPDATED_COLUMNS = ("status", "attempts", "next_attempt_at", "lease_token", "lease_until", "pdf", "result",
+                   "error_code", "error_message", "started_at", "completed_at")
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,19 @@ class Job:
     input: dict | None
     attempts: int
     lease_token: UUID
+
+
+def missing_privileges(conn: psycopg.Connection) -> list[str]:
+    """접속한 역할에 없는 ai_jobs 권한을 돌려준다. 작업 행은 읽지도 고치지도 않는다. ai_jobs가 없으면 psycopg 오류가 난다."""
+    can_select, columns = conn.execute(
+        """
+        SELECT has_table_privilege('ai_jobs', 'SELECT'),
+            array(SELECT name FROM unnest(%s::text[]) WITH ORDINALITY AS c(name, at)
+                  WHERE NOT has_column_privilege('ai_jobs', name, 'UPDATE') ORDER BY at)
+        """,
+        (list(UPDATED_COLUMNS),),
+    ).fetchone()
+    return ([] if can_select else ["SELECT"]) + [f"UPDATE({column})" for column in columns]
 
 
 def fail_exhausted_leases(conn: psycopg.Connection, max_attempts: int) -> int:
