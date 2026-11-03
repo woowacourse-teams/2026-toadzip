@@ -14,7 +14,7 @@ from ai_worker import deepseek
 from ai_worker.extraction import ATTEMPT_BUDGET, PermanentError
 from ai_worker.jobs import Job
 from conftest import contract_example
-from test_pages import COVER, NOTICE, RENT, SUPPLY, pdf
+from test_pages import COVER, NOTICE, RENT, RENT_CELLS, SUPPLY, pdf
 
 USAGE = {"promptTokens": 9000, "outputTokens": 3000, "thinkingTokens": 500}
 EXTRACTION = {
@@ -156,6 +156,15 @@ def test_table_conversion_failure_sends_page_text_only(monkeypatch):
     assert result["pages"] == [1, 2, 3]
     assert "[첨부 2쪽]\n" + SUPPLY in model.prompts[0]
     assert "[표 1]" not in model.prompts[0]
+
+
+def test_missing_targets_against_rent_table_is_warning_not_failure(monkeypatch):
+    table = SimpleNamespace(to_markdown=lambda: "|표|", extract=lambda: RENT_CELLS)
+    monkeypatch.setattr(pymupdf.Page, "find_tables", lambda page: SimpleNamespace(tables=[table]))
+
+    result = AnnouncementPdfExtractor(FakeModel()).extract(job(pdf(COVER, SUPPLY, RENT)))
+
+    assert "supplyRows: 공급대상 0개가 임대조건표 4줄보다 적어 빠진 대상이 있을 수 있음" in result["warnings"]
 
 
 def test_prompt_order_matches_evaluation():

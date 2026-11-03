@@ -26,6 +26,10 @@ AREA = re.compile(r"\d{2,3}\.\d{2,4}")
 # 천원 단위 표(67,400)도 있어 콤마가 하나 이상인 금액을 센다. 임대보증금·임대료 낱말이 함께 있어야 한다.
 MONEY = re.compile(r"\d{1,3}(?:,\d{3})+")
 DATE = re.compile(r"\d{2}\.\d{1,2}\.\d{1,2}")
+# 표 칸 글자는 콤마가 줄바꿈 뒤로 밀려 "41854000\n, ,"처럼 나와 숫자·콤마·공백만으로 된 칸을 금액으로 본다.
+AMOUNT_CELL = re.compile(r"[\d,\s]+")
+DIGIT = re.compile(r"\d")
+RENT_HEADER = re.compile(r"임대조건|월임대료")
 PHONE = re.compile(r"\d{2,4}-\d{3,4}-\d{4}|1\d{3}-\d{4}")
 
 
@@ -116,19 +120,57 @@ def page_texts(document: pymupdf.Document) -> list[str]:
     return [page.get_text("text") for page in document]
 
 
-def prompt_pages(document: pymupdf.Document, pages: list[int]) -> str:
+@dataclass(frozen=True)
+class PromptPages:
+    text: str
+    # 임대조건표에서 센 서로 다른 (주택형, 공급계층) 줄 수. 결과의 공급대상 수는 이보다 적을 수 없다.
+    rental_rows: int
+
+
+def prompt_pages(document: pymupdf.Document, pages: list[int]) -> PromptPages:
     """고른 쪽을 [첨부 N쪽] 순서로 잇는다. 모델은 이 N을 근거 쪽 번호로 쓰고, 결과에서 원본 쪽 번호로 되돌린다."""
-    return "\n\n".join(f"[첨부 {index}쪽]\n{page_with_tables(document[number - 1])}"
-                       for index, number in enumerate(pages, 1))
+    parts, rental = [], set()
+    for index, number in enumerate(pages, 1):
+        text, tables = page_with_tables(document[number - 1])
+        parts.append(f"[첨부 {index}쪽]\n{text}")
+        for cells in tables:
+            rental |= rental_keys(cells)
+    return PromptPages("\n\n".join(parts), len(rental))
 
 
-def page_with_tables(page: pymupdf.Page) -> str:
-    """쪽 텍스트와 PyMuPDF가 찾은 표(마크다운)를 함께 준다. 표 셀 병합은 마크다운에서 빈 칸으로 보인다."""
-    parts = [page.get_text("text")]
+def page_with_tables(page: pymupdf.Page) -> tuple[str, list[list[list[str | None]]]]:
+    """쪽 텍스트와 PyMuPDF가 찾은 표(마크다운)를 함께 준다. 표 셀 병합은 마크다운에서 빈 칸으로 보인다.
+    검산에 쓰도록 표 칸도 돌려준다. 표 찾기는 쪽마다 1초 안팎 걸려 한 번만 한다."""
+    text = page.get_text("text")
     try:
-        parts += [f"[표 {index}]\n{table.to_markdown()}" for index, table in enumerate(page.find_tables().tables, 1)]
+        tables = page.find_tables().tables
+        markdown = [f"[표 {index}]\n{table.to_markdown()}" for index, table in enumerate(tables, 1)]
+        cells = [table.extract() for table in tables]
     except Exception:
         # 표 인식 실패는 그 쪽 텍스트만으로 진행한다. 평가는 실패 문구를 프롬프트에 붙였지만 예외 내용은 모델에 보내지 않는다.
         log.warning("%d쪽 표 인식에 실패해 텍스트만 보냅니다.", page.number + 1, exc_info=True)
-        return parts[0]
-    return "\n".join(parts)
+        return text, []
+    return "\n".join([text, *markdown]), cells
+
+
+def rental_keys(cells: list[list[str | None]]) -> set[tuple[str, str]]:
+    """임대조건표에서 금액이 있는 줄의 (첫 칸, 둘째 칸)을 모은다. 병합 칸은 None이라 위 줄 값을 이어 쓴다.
+    표마다 칸 구성이 달라 정확한 대상 수가 아니라 하한이다. 한 대상이 전환 조건으로 두 줄이어도 하나로 센다."""
+    if not any(RENT_HEADER.search(compact(cell)) for row in cells[:3] for cell in row):
+        return set()
+    keys, last = set(), ["", ""]
+    for row in cells:
+        # 머리글 줄은 금액이 없어 건너뛰므로 주택형 자리에 머리글 낱말이 들어가지 않는다.
+        if len(row) < 3 or not any(cell and AMOUNT_CELL.fullmatch(cell) and len(DIGIT.findall(cell)) >= 5 for cell in row):
+            continue
+        for column in (0, 1):
+            if row[column]:
+                last[column] = compact(row[column])
+        # 쪽을 넘어 이어진 표는 첫 줄의 주택형 칸이 비어 나올 수 있다. 하한이 넘치지 않게 주택형을 모르는 줄은 세지 않는다.
+        if last[0]:
+            keys.add((last[0], last[1]))
+    return keys
+
+
+def compact(cell: str | None) -> str:
+    return WHITESPACE.sub("", cell or "")

@@ -26,9 +26,9 @@ def response(rows=None, evidence=(), shared_counts=(), announcement=None, comple
     }
 
 
-def review(tree, pages=(1, 2, 10), texts=None, lh_types=(), lh_counts=()):
+def review(tree, pages=(1, 2, 10), texts=None, lh_types=(), lh_counts=(), rental_rows=0):
     texts = texts if texts is not None else [""] * 10
-    return checks.review(tree, list(pages), texts, list(lh_types), list(lh_counts))
+    return checks.review(tree, list(pages), texts, list(lh_types), list(lh_counts), rental_rows)
 
 
 def test_remaps_evidence_and_shared_count_pages_to_original_pdf():
@@ -144,6 +144,13 @@ def test_lh_row_count_mismatch_is_warned_once():
 
 def test_without_lh_rows_counts_are_not_compared():
     assert review(response(rows=[row(count=20)])) == []
+
+
+def test_fewer_targets_than_rental_rows_is_warned():
+    tree = response(rows=[row(target="대학생"), row(target="청년")])
+
+    assert review(tree, rental_rows=3) == ["supplyRows: 공급대상 2개가 임대조건표 3줄보다 적어 빠진 대상이 있을 수 있음"]
+    assert review(response(rows=[row(target="대학생"), row(target="청년")]), rental_rows=2) == []
 
 
 def test_malformed_items_do_not_stop_review():

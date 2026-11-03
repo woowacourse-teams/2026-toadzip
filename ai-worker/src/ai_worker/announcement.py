@@ -89,7 +89,8 @@ class AnnouncementPdfExtractor:
         with document:
             texts = pages.page_texts(document)
             selection = pages.select(texts)
-            prompt = build_prompt(rows, pages.prompt_pages(document, selection.pages))
+            selected = pages.prompt_pages(document, selection.pages)
+            prompt = build_prompt(rows, selected.text)
         if deadline - time.monotonic() < MIN_MODEL_TIME:
             raise PermanentError("PDF_TOO_SLOW", "PDF 쪽을 읽는 데 시간이 너무 오래 걸려 추출하지 못했습니다.")
         # 응답 뒤 검산·결과 정리에 쓸 여유로 deepseek.READ_TIMEOUT만큼 일찍 끝낸다.
@@ -99,7 +100,7 @@ class AnnouncementPdfExtractor:
         if selection.whole_document:
             warnings.append(f"공급표·임대조건표 쪽을 찾지 못해 전체 {len(texts)}쪽을 보냈습니다.")
         warnings += checks.review(tree, selection.pages, texts, [row.type_name for row in rows],
-                                  [row.count() for row in rows])
+                                  [row.count() for row in rows], selected.rental_rows)
         log.info("작업 %d 추출 완료 pages=%d/%d lhRows=%d warnings=%d usage=%s", job.id, len(selection.pages),
                  len(texts), len(rows), len(warnings), reply.usage)
         return {

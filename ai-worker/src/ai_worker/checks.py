@@ -37,9 +37,11 @@ def reject_constant(name: str):
     raise ValueError(f"JSON이 아닌 값: {name}")
 
 
-def review(tree: dict, pages: list[int], texts: list[str], lh_types: list[str], lh_counts: list[int | None]) -> list[str]:
+def review(tree: dict, pages: list[int], texts: list[str], lh_types: list[str], lh_counts: list[int | None],
+           rental_rows: int) -> list[str]:
     """tree의 쪽 번호를 원본 기준으로 바꾸고 경고를 돌려준다.
-    texts는 원본 PDF 전체 쪽 텍스트, lh_types·lh_counts는 공급행 틀로 준 LH API 행의 주택형과 모집수다."""
+    texts는 원본 PDF 전체 쪽 텍스트, lh_types·lh_counts는 공급행 틀로 준 LH API 행의 주택형과 모집수,
+    rental_rows는 임대조건표에서 센 (주택형, 공급계층) 줄 수다."""
     warnings: list[str] = []
     evidence = remap_pages(objects(tree.get("evidence")), pages, warnings)
     remap_pages(objects(tree.get("sharedCounts")), pages, warnings)
@@ -53,6 +55,7 @@ def review(tree: dict, pages: list[int], texts: list[str], lh_types: list[str], 
         check_supply_row(row, f"supplyRows[{index}]", text(announcement.get("postedDate")), set(lh_types), warnings)
     check_lh_type_names(rows, evidence, set(lh_types), warnings)
     check_lh_counts(rows, lh_counts, warnings)
+    check_target_count(rows, rental_rows, warnings)
     return warnings
 
 
@@ -104,6 +107,14 @@ def check_lh_counts(rows: list[dict], lh_counts: list[int | None], warnings: lis
         # LH API는 모집수를 모르면 0을 보낸다.
         if expected and isinstance(count, int) and count != expected:
             warnings.append(f"supplyRows[{index}].totalSupplyHouseholdCount: LH API 모집수 {expected}와 다름({count})")
+
+
+def check_target_count(rows: list[dict], rental_rows: int, warnings: list[str]) -> None:
+    """추론을 낮추면 모델이 한 공급계층(예: 기존거주자)을 모든 행에서 통째로 빠뜨린다. 그래도 값은 맞아 보여
+    다른 검산에 걸리지 않으므로, 공급대상 수가 임대조건표 줄 수보다 적으면 경고한다."""
+    targets = sum(len(objects(row.get("targets"))) for row in rows)
+    if targets < rental_rows:
+        warnings.append(f"supplyRows: 공급대상 {targets}개가 임대조건표 {rental_rows}줄보다 적어 빠진 대상이 있을 수 있음")
 
 
 def check_announcement(announcement: dict, warnings: list[str]) -> None:
