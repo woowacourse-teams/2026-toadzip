@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.collection.repository.external;
+package com.toadzip.backend.ingest.lh.collection.repository.external;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 
 class LhAnnouncementCatalogResponseParserTest {
 

@@ -43,7 +43,7 @@ import com.toadzip.backend.announcement.domain.LhSupplyMatchStatus;
 import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
 import com.toadzip.backend.announcement.service.SupplyCorrectionService;
-import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.lh.refinement.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.lh.refinement.service.LhScheduleAttachmentWriter;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import org.junit.jupiter.api.extension.ExtendWith;

@@ -11,7 +11,7 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
 import com.toadzip.backend.ingest.lh.collection.supply.domain.EmptyLhSupplyReplacementException;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.lh.collection.supply.domain.IncompleteLhSupplyReplacementException;
-import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
+import com.toadzip.backend.ingest.lh.collection.repository.external.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import lombok.RequiredArgsConstructor;

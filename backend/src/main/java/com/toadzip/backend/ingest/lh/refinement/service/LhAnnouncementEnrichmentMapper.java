@@ -6,7 +6,7 @@ import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.ingest.lh.collection.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceView;
-import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.lh.refinement.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;

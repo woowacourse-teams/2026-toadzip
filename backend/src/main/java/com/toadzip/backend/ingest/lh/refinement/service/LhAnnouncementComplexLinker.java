@@ -10,7 +10,7 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceView;
-import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.lh.refinement.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.lh.refinement.dto.LhAnnouncementRefinementReport.ComplexCounts;
 import java.time.Clock;
 import java.util.HashSet;

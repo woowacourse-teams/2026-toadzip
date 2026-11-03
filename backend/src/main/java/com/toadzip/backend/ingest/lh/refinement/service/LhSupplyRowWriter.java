@@ -12,7 +12,7 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceView;
-import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.lh.refinement.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.domain.SourceArea;
 import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import com.toadzip.backend.ingest.lh.refinement.dto.LhAnnouncementRefinementReport.SupplyCounts;

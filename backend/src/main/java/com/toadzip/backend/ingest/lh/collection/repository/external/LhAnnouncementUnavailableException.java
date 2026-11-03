@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.exception.exception;
+package com.toadzip.backend.ingest.lh.collection.repository.external;
 
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestRejectedException;
 

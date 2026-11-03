@@ -38,7 +38,7 @@ import com.toadzip.backend.ingest.lh.collection.supply.domain.IncompleteLhSupply
 import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
-import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
+import com.toadzip.backend.ingest.lh.collection.repository.external.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;

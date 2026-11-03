@@ -6,7 +6,7 @@ import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFo
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.IngestServiceKeyMissingException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
-import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
+import com.toadzip.backend.ingest.lh.collection.repository.external.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
 import com.toadzip.backend.ingest.failure.exception.IngestFailureReviewNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;

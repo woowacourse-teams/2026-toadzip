@@ -7,7 +7,7 @@ import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupp
 import com.toadzip.backend.ingest.lh.collection.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
-import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.lh.refinement.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.domain.SourceText;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.enrichment.domain.LhEnrichmentTargetSources;

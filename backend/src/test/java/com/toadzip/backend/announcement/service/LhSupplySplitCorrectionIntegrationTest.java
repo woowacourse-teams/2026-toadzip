@@ -29,7 +29,7 @@ import com.toadzip.backend.ingest.lh.collection.detail.domain.LhAnnouncementDeta
 import com.toadzip.backend.ingest.lh.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceView;
-import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.lh.refinement.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.lh.refinement.service.LhScheduleAttachmentWriter;
 import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;

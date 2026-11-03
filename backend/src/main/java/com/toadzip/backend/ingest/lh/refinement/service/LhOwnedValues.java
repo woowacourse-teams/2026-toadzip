@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.lh.refinement.service;
 
-import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.lh.refinement.domain.LhSourceIdentifier;
 import java.util.Collection;
 
 /**

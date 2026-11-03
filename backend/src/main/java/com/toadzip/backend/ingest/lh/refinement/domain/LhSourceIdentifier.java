@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.domain;
+package com.toadzip.backend.ingest.lh.refinement.domain;
 
 import java.util.Collection;
 import java.util.Optional;
