@@ -11,6 +11,7 @@ import com.toadzip.backend.ingest.collection.gh.repository.GhAnnouncementExterna
 import com.toadzip.backend.ingest.collection.gh.repository.GhAnnouncementHtmlParser;
 import com.toadzip.backend.ingest.collection.gh.repository.GhAnnouncementListParser;
 import com.toadzip.backend.ingest.collection.gh.repository.GhAnnouncementStore;
+import com.toadzip.backend.ingest.collection.gh.repository.GhHousingTypeDetails;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallCounter;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallFailureException;
@@ -23,13 +24,17 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.node.ObjectNode;
 
 /** GH주택청약센터 임대주택·매입임대 게시판을 차례로 돌며 공고 원천을 수집한다. */
 @Slf4j
@@ -43,6 +48,7 @@ public class GhAnnouncementCollectionService {
     private final GhAnnouncementListParser parser;
     private final GhAnnouncementHtmlParser detailParser;
     private final GhAnnouncementStore store;
+    private final GhHousingTypeDetails housingTypeDetails;
     private final ExternalDataRetryExecutor retryExecutor;
     private final ExternalDataFailureRecorder failureRecorder;
     private final Clock clock;
@@ -52,7 +58,7 @@ public class GhAnnouncementCollectionService {
     public GhAnnouncementCollectionService(
             GhAnnouncementExternalRepository externalRepository, GhAnnouncementListParser parser,
             GhAnnouncementHtmlParser detailParser,
-            GhAnnouncementStore store, ExternalDataRetryExecutor retryExecutor,
+            GhAnnouncementStore store, GhHousingTypeDetails housingTypeDetails, ExternalDataRetryExecutor retryExecutor,
             ExternalDataFailureRecorder failureRecorder, Clock clock,
             @Value("${ingest.gh.lookback-days:90}") int lookbackDays,
             @Value("${ingest.gh.request-interval:1s}") Duration requestInterval
@@ -64,6 +70,7 @@ public class GhAnnouncementCollectionService {
         this.parser = parser;
         this.detailParser = detailParser;
         this.store = store;
+        this.housingTypeDetails = housingTypeDetails;
         this.retryExecutor = retryExecutor;
         this.failureRecorder = failureRecorder;
         this.clock = clock;
@@ -184,20 +191,50 @@ public class GhAnnouncementCollectionService {
             recordFailure(request, exception, progress);
             return;
         }
+        List<String> unread = new ArrayList<>(content.unreadParts());
+        String districts = content.districts() == null ? null
+                : withHousingTypeDetails(board, request, content.districts(), unread, progress);
         IngestExecutionScope.verifyCanContinue();
         store.store(new GhAnnouncementSnapshot(board, entry.pbancNo(), entry.kindCode(), content.title(),
                 content.supplyType(), entry.region(), content.postedDate(), entry.closingDate(), entry.status(),
                 board.detailUrl(entry.pbancNo(), entry.kindCode()), board.listUrl(page.page()),
-                content.districts(), content.reception(), content.notice(), content.otherNotes(),
+                districts, content.reception(), content.notice(), content.otherNotes(),
                 content.attachments()));
         progress.stored++;
-        if (!content.unreadParts().isEmpty()) {
+        if (!unread.isEmpty()) {
             recordFailure(request, new ExternalDataRequestException("GH 상세 일부를 읽지 못해 읽은 내용만 저장했습니다: "
-                    + String.join(", ", content.unreadParts())), progress);
+                    + String.join(", ", unread)), progress);
             return;
         }
         failureRecorder.resolve(SOURCE, request);
         progress.successful++;
+    }
+
+    /**
+     * 주택형마다 상세공급정보 팝업을 받아 붙인다. 팝업을 못 받은 주택형은 detail 없이 두고 공고 실패 사유에 남긴다.
+     * 호출 제한에 걸리면 남은 팝업을 받지 않는다(실패 기록은 공고 단위로 한 번 남는다).
+     */
+    private String withHousingTypeDetails(
+            GhAnnouncementBoard board, String request, String districts, List<String> unread, Progress progress
+    ) {
+        Map<GhHousingTypeDetails.Request, ObjectNode> details = new LinkedHashMap<>();
+        for (GhHousingTypeDetails.Request housingType : housingTypeDetails.requests(districts)) {
+            try {
+                String html = request(request, () -> externalRepository.fetchHousingTypeDetail(board, housingType.form()),
+                        progress);
+                details.put(housingType, housingTypeDetails.parse(html, housingType));
+            }
+            catch (ExternalDataCallFailureException | ExternalDataRequestException | IllegalArgumentException exception) {
+                unread.add("주택형 상세(" + housingType.label() + ")");
+                int rateLimited = ExternalDataRateLimit.count(exception);
+                if (rateLimited > 0) {
+                    progress.rateLimited += rateLimited;
+                    unread.add("호출 제한으로 남은 주택형 상세");
+                    break;
+                }
+            }
+        }
+        return housingTypeDetails.withDetails(districts, details);
     }
 
     private String pageRequest(GhAnnouncementBoard board, int pageNumber) {

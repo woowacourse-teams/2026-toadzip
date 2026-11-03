@@ -37,6 +37,10 @@ public enum GhAnnouncementBoard {
                 + "&pbancKndCd=" + kindCode + "&previewYn=N";
     }
 
+    public String housingTypeDetailUrl() {
+        return SITE_URL + "/sb/sr/" + code + "/selectPblancHouseTyDetail.do";
+    }
+
     /** 공고문 다운로드 URL 앞부분. 쿼리의 공고 번호까지 맞아야 이 게시판의 첨부다. */
     public String fileDownloadPrefix(String pbancNo) {
         return FILE_URL + "/sr/" + code + "/selectFileDown.do?pbancNo=" + pbancNo + "&";

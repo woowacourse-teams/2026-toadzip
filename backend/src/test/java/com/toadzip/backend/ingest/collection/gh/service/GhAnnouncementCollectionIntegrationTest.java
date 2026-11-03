@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.collection.gh.service;
 import static com.toadzip.backend.ingest.collection.gh.domain.GhAnnouncementBoard.PURCHASE_RENTAL;
 import static com.toadzip.backend.ingest.collection.gh.domain.GhAnnouncementBoard.RENTAL_HOUSE;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 
@@ -15,7 +16,9 @@ import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import java.time.LocalDate;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,6 +45,12 @@ class GhAnnouncementCollectionIntegrationTest {
     @MockitoBean
     private GhAnnouncementExternalRepository externalRepository;
 
+    @BeforeEach
+    void housingTypeDetails() {
+        when(externalRepository.fetchHousingTypeDetail(any(), any())).thenAnswer(invocation ->
+                GhAnnouncementFixtures.housingTypeDetail(invocation.<Map<String, String>>getArgument(1).get("houseTyCd")));
+    }
+
     @AfterEach
     void cleanUp() {
         sources.deleteAll();
@@ -62,6 +71,7 @@ class GhAnnouncementCollectionIntegrationTest {
         assertThat(first.getBoard()).isEqualTo(RENTAL_HOUSE);
         assertThat(first.getDistricts()).contains("\"recruitmentCount\":\"280\"").doesNotContain("<");
         assertThat(first.getReception()).contains("031-510-7100");
+        assertThat(first.getDistricts()).contains("\"contractArea\":\"67.8448\"");
         assertThat(first.getOtherNotes()).isEqualTo("기타 사항은 공고문을 확인해 주시기 바랍니다.");
         assertThat(first.getAttachments()).contains("atchFileDtlSn", "모집공고문.pdf");
 

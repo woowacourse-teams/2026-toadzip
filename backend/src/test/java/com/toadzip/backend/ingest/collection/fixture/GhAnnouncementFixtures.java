@@ -97,10 +97,12 @@ public final class GhAnnouncementFixtures {
                             <tr><th scope="col">주택형</th><th scope="col">전용면적(m²)</th><th scope="col">금회공급 세대수</th>
                                 <th scope="col">임대보증금(원)</th><th scope="col">월임대료(원)</th><th scope="col">인터넷청약</th></tr>
                             <tr class="tb_house_con"><td><button type="button" data-bizCd="2011002" data-rcritNmtm="8"
-                                data-houseTyCd="33A">33A </button></td><td>33.71</td><td>120</td>
+                                data-bizTyCd="02" data-gnrlDrwtYn="" data-priorDrwtYn="" data-gnrlDrwtGroupTyCd=""
+                                data-priorDrwtGroupTyCd="" data-splySlsrtCd="" data-houseTyCd="33A">33A </button></td><td>33.71</td><td>120</td>
                                 <td>공고문 확인</td><td>공고문 확인</td><td>접수마감</td></tr>
                             <tr class="tb_house_con"><td><button type="button" data-bizCd="2011002" data-rcritNmtm="8"
-                                data-houseTyCd="36A">36A 청년</button></td><td>36.8</td><td>60</td>
+                                data-bizTyCd="02" data-gnrlDrwtYn="" data-priorDrwtYn="" data-gnrlDrwtGroupTyCd=""
+                                data-priorDrwtGroupTyCd="" data-splySlsrtCd="30050" data-houseTyCd="36A">36A 청년</button></td><td>36.8</td><td>60</td>
                                 <td>12,000,000</td><td>150,000</td><td>접수마감</td></tr>
                         </tbody></table></div>
                         <h5 class="subcont_title refer_title"><i class="xi-error-o"></i> 안내사항</h5>
@@ -150,5 +152,25 @@ public final class GhAnnouncementFixtures {
                 </body></html>
                 """.formatted(row.title(), row.supplyType(), postedDate,
                 board.code(), row.pbancNo(), board.code(), row.pbancNo(), board.code());
+    }
+
+    /** 주택형 상세공급정보 팝업 응답. */
+    public static String housingTypeDetail(String houseTypeCode) {
+        return """
+                <html><body><div class="sub_content"><div class="sub_textbox"><div class="guide">
+                    <table><caption>주택형</caption><tbody><tr><th>주택형</th><td>%s</td></tr></tbody></table>
+                    <table><caption>면적</caption><tbody>
+                        <tr><th>전용면적(m²)</th><td>33.71</td><th>공급면적(m²)</th><td>48.8048</td></tr>
+                        <tr><th>주거공용면적(m²)</th><td>15.0948</td><th>기타공용면적(m²)</th><td>1.9698</td></tr>
+                        <tr><th>지하주차장면적(m²)</th><td>17.0702</td><th>계약면적(m²)</th><td>67.8448</td></tr>
+                        <tr><th>세대수</th><td>522</td><th>금회분양 세대수</th><td>120</td></tr>
+                    </tbody></table>
+                    <table><caption>금액</caption><tbody>
+                        <tr><th>임대보증금(원)</th><td>공고문 확인</td></tr><tr><th>월임대료(원)</th><td>공고문 확인</td></tr>
+                    </tbody></table>
+                    <h5 class="subcont_title">주택형 관련 이미지 정보</h5>
+                    <div><img src="/sb/sr/sr7150/selectAtchImage.do?atchFileSn=9&atchFlag=gp" alt="주택형 이미지"></div>
+                </div></div></div></body></html>
+                """.formatted(houseTypeCode);
     }
 }

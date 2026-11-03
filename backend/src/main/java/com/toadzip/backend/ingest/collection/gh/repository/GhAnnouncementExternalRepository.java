@@ -4,8 +4,12 @@ import com.toadzip.backend.ingest.collection.gh.domain.GhAnnouncementBoard;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Repository;
+import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
@@ -34,9 +38,25 @@ public class GhAnnouncementExternalRepository {
         return fetch(board.detailUrl(pbancNo, kindCode), board);
     }
 
+    /** 주택형 상세공급정보 팝업. 상세 화면이 보내는 폼 값만 그대로 보낸다. */
+    public String fetchHousingTypeDetail(GhAnnouncementBoard board, Map<String, String> form) {
+        if (!form.keySet().equals(Set.copyOf(GhHousingTypeDetails.REQUEST_FIELDS))
+                || !form.getOrDefault("houseTyCd", "").matches("[0-9A-Za-z,\\-]+")) {
+            throw new IllegalArgumentException("GH 주택형 상세 요청 값이 올바르지 않습니다.");
+        }
+        var body = new LinkedMultiValueMap<String, String>();
+        form.forEach(body::add);
+        return fetch(client.post().uri(URI.create(board.housingTypeDetailUrl()))
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED).body(body), board);
+    }
+
     private String fetch(String url, GhAnnouncementBoard board) {
+        return fetch(client.get().uri(URI.create(url)), board);
+    }
+
+    private String fetch(RestClient.RequestHeadersSpec<?> spec, GhAnnouncementBoard board) {
         try {
-            return client.get().uri(URI.create(url))
+            return spec
                     .header("Accept", "text/html")
                     .header("User-Agent", "Mozilla/5.0 (compatible; Toadzip/1.0)")
                     .header("Referer", board.listUrl())

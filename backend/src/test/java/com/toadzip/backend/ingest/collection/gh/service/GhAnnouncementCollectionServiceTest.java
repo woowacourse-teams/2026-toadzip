@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -20,6 +21,7 @@ import com.toadzip.backend.ingest.collection.gh.repository.GhAnnouncementExterna
 import com.toadzip.backend.ingest.collection.gh.repository.GhAnnouncementHtmlParser;
 import com.toadzip.backend.ingest.collection.gh.repository.GhAnnouncementListParser;
 import com.toadzip.backend.ingest.collection.gh.repository.GhAnnouncementStore;
+import com.toadzip.backend.ingest.collection.gh.repository.GhHousingTypeDetails;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
@@ -30,6 +32,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,7 +74,8 @@ class GhAnnouncementCollectionServiceTest {
         var report = service.collect();
 
         assertThat(report.storedRowCount()).isEqualTo(2);
-        assertThat(report.externalApiCallCount()).isEqualTo(4);
+        // 목록 2 + 상세 2 + 주택형 팝업(상세마다 2)
+        assertThat(report.externalApiCallCount()).isEqualTo(8);
         assertThat(report.successfulRequestCount()).isEqualTo(4);
         assertThat(report.failedRequestCount()).isZero();
         verify(store).store(argThat(snapshot -> snapshot.board() == RENTAL_HOUSE && snapshot.pbancNo().equals("801")
@@ -101,7 +105,7 @@ class GhAnnouncementCollectionServiceTest {
         var report = service.collect();
 
         assertThat(report.storedRowCount()).isEqualTo(2);
-        assertThat(report.externalApiCallCount()).isEqualTo(5);
+        assertThat(report.externalApiCallCount()).isEqualTo(9);
         verify(externalRepository, never()).fetchDetail(RENTAL_HOUSE, "899", "01");
     }
 
@@ -236,9 +240,58 @@ class GhAnnouncementCollectionServiceTest {
         verify(failures, never()).resolve(ExternalDataSource.GH_ANNOUNCEMENT, "pbancNo=801");
     }
 
+    @Test
+    void 주택형마다_상세공급정보_팝업을_받아_면적과_세대수를_붙인다() {
+        Row rental = row(801, RECENT);
+        list(RENTAL_HOUSE, 1, 1, rental);
+        list(PURCHASE_RENTAL, 1, 0);
+        detail(RENTAL_HOUSE, rental);
+
+        assertThat(service.collect().failedRequestCount()).isZero();
+
+        verify(externalRepository).fetchHousingTypeDetail(eq(RENTAL_HOUSE), argThat(form ->
+                form.get("houseTyCd").equals("36A") && form.get("splySlsrtCd").equals("30050")
+                        && form.get("bizCd").equals("2011002") && form.get("rcritNmtm").equals("8")));
+        verify(store).store(argThat(snapshot -> snapshot.districts().contains("\"supplyArea\":\"48.8048\"")
+                && snapshot.districts().contains("\"householdCount\":\"522\"")));
+    }
+
+    @Test
+    void 팝업을_못_받은_주택형은_상세_없이_저장하고_공고_실패를_열어_둔다() {
+        Row rental = row(801, RECENT);
+        list(RENTAL_HOUSE, 1, 1, rental);
+        list(PURCHASE_RENTAL, 1, 0);
+        detail(RENTAL_HOUSE, rental);
+        when(externalRepository.fetchHousingTypeDetail(eq(RENTAL_HOUSE), argThat(form -> form != null
+                && "33A".equals(form.get("houseTyCd"))))).thenReturn("<html>다른 주택형</html>");
+
+        var report = service.collect();
+
+        assertThat(report.storedRowCount()).isOne();
+        assertThat(report.failedRequestCount()).isOne();
+        verify(store).store(argThat(snapshot -> snapshot.districts().contains("\"supplyArea\"")));
+        verify(failures).record(eq(ExternalDataSource.GH_ANNOUNCEMENT), eq("pbancNo=801"), argThat(error ->
+                error.getMessage().contains("주택형 상세(다산 센트럴파크6단지 33A)")), any(), any());
+    }
+
+    @Test
+    void 팝업이_호출_제한에_걸리면_남은_팝업과_다음_요청을_멈춘다() {
+        Row rental = row(801, RECENT);
+        list(RENTAL_HOUSE, 1, 1, rental);
+        detail(RENTAL_HOUSE, rental);
+        when(externalRepository.fetchHousingTypeDetail(eq(RENTAL_HOUSE), any()))
+                .thenThrow(ExternalDataRequestException.rateLimited("429"));
+
+        var report = service.collect();
+
+        assertThat(report.rateLimitedRequestCount()).isOne();
+        verify(externalRepository).fetchHousingTypeDetail(eq(RENTAL_HOUSE), any());
+        verify(externalRepository, never()).fetchList(eq(PURCHASE_RENTAL), any(Integer.class));
+    }
+
     private GhAnnouncementCollectionService service(int days) {
         return new GhAnnouncementCollectionService(externalRepository, new GhAnnouncementListParser(),
-                new GhAnnouncementHtmlParser(), store, CollectionServiceTestFixture.retryWithoutDelay(), failures,
+                new GhAnnouncementHtmlParser(), store, new GhHousingTypeDetails(), CollectionServiceTestFixture.retryWithoutDelay(), failures,
                 Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), days, Duration.ZERO);
     }
 
@@ -253,5 +306,7 @@ class GhAnnouncementCollectionServiceTest {
     private void detail(GhAnnouncementBoard board, Row row) {
         when(externalRepository.fetchDetail(board, row.pbancNo(), "01"))
                 .thenReturn(GhAnnouncementFixtures.detail(board, row));
+        lenient().when(externalRepository.fetchHousingTypeDetail(eq(board), any())).thenAnswer(invocation ->
+                GhAnnouncementFixtures.housingTypeDetail(invocation.<Map<String, String>>getArgument(1).get("houseTyCd")));
     }
 }

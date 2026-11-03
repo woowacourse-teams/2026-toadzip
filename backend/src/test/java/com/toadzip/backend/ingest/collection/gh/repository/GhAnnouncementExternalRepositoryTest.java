@@ -41,6 +41,35 @@ class GhAnnouncementExternalRepositoryTest {
     }
 
     @Test
+    void 주택형_상세_팝업은_상세_화면의_폼_값만_POST로_보낸다() {
+        var form = new java.util.LinkedHashMap<String, String>();
+        for (String field : GhHousingTypeDetails.REQUEST_FIELDS) {
+            form.put(field, "");
+        }
+        form.put("bizCd", "2011002");
+        form.put("houseTyCd", "36A");
+        var expected = new org.springframework.util.LinkedMultiValueMap<String, String>();
+        form.forEach(expected::add);
+        server.expect(requestTo("https://apply.gh.or.kr/sb/sr/sr7150/selectPblancHouseTyDetail.do"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers.content().formData(expected))
+                .andRespond(withSuccess("<html>팝업</html>", MediaType.TEXT_HTML));
+
+        assertThat(repository.fetchHousingTypeDetail(GhAnnouncementBoard.RENTAL_HOUSE, form)).isEqualTo("<html>팝업</html>");
+        server.verify();
+        server.reset();
+        server.expect(requestTo("https://apply.gh.or.kr/sb/sr/sr7150/selectPblancHouseTyDetail.do"))
+                .andRespond(withSuccess("<html>팝업</html>", MediaType.TEXT_HTML));
+        form.put("houseTyCd", "24A,B,C");
+        assertThat(repository.fetchHousingTypeDetail(GhAnnouncementBoard.RENTAL_HOUSE, form)).isEqualTo("<html>팝업</html>");
+        form.put("houseTyCd", "36A&x=1");
+        assertThatThrownBy(() -> repository.fetchHousingTypeDetail(GhAnnouncementBoard.RENTAL_HOUSE, form))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> repository.fetchHousingTypeDetail(GhAnnouncementBoard.RENTAL_HOUSE,
+                java.util.Map.of("houseTyCd", "36A"))).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void 호출_제한은_재시도하지_않고_서버_오류는_재시도_대상으로_바꾼다() {
         String url = GhAnnouncementBoard.RENTAL_HOUSE.listUrl(1);
         server.expect(requestTo(url)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));

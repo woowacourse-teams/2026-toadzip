@@ -130,6 +130,10 @@ final class GhAnnouncementSectionReader {
             housingType.put("rentalDeposit", cells.get(3).text());
             housingType.put("monthlyRent", cells.get(4).text());
             housingType.put("applicationStatus", cells.get(5).text());
+            ObjectNode detailRequest = housingType.putObject("detailRequest");
+            for (String field : GhHousingTypeDetails.REQUEST_FIELDS) {
+                detailRequest.put(field, button.attr("data-" + field.toLowerCase()));
+            }
         }
         return housingTypes;
     }

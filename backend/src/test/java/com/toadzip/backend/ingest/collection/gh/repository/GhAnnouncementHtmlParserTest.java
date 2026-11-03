@@ -53,6 +53,8 @@ class GhAnnouncementHtmlParserTest {
         assertThat(housingType.path("rentalDeposit").asString()).isEqualTo("12,000,000");
         assertThat(housingType.path("monthlyRent").asString()).isEqualTo("150,000");
         assertThat(housingType.path("applicationStatus").asString()).isEqualTo("접수마감");
+        assertThat(housingType.path("detailRequest").path("splySlsrtCd").asString()).isEqualTo("30050");
+        assertThat(housingType.path("detailRequest").path("bizTyCd").asString()).isEqualTo("02");
         assertThat(first.path("schedules").get(0).path("label").asString()).isEqualTo("온라인접수기간");
         assertThat(first.path("schedules").get(0).path("value").asString())
                 .isEqualTo("2026.07.21 10:00 ~ 2026.07.24 17:00");
