@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import { attachmentErrorMessage, loadAnnouncementAttachment } from '../../public-housing/api/announcementAttachments'
@@ -16,7 +16,7 @@ import { useCorrectionDraft, type DraftStatus } from './useCorrectionDraft'
 import { evidenceContext, evidenceQuery, readExtraction, type Evidence } from './extraction'
 import { extractAnnouncementPdf, loadLatestExtraction, pdfFileProblem, pdfSha256, preferredPdf, type ExtractionState, type SavedExtraction } from './extractionApi'
 import { checkAnnouncement, type ComplexLabels, type HousingCandidates } from './matching'
-import { applicableCells, assembleReview, pendingRow, rowOfReviewId, cellMatches, createReview, pendingChanges, pendingItems, pendingSchedule, rebaseReview, remapSchedule, ReviewError, reviewSection, shown, type Cell, type PendingChange, type Review, type ReviewFilter, type ReviewSection, type ScheduleReview } from './review'
+import { applicableCells, assembleReview, complexGroups, pendingRow, rowOfReviewId, cellMatches, createReview, pendingChanges, pendingItems, pendingSchedule, rebaseReview, remapSchedule, ReviewError, reviewSection, shown, type Cell, type PendingChange, type Review, type ReviewFilter, type ReviewSection, type ScheduleReview } from './review'
 import { ReviewCells } from './ReviewCells'
 import { ReviewSupply } from './ReviewSupply'
 import { PdfSource, PreparationFooter, RequestPreparation } from './RequestPreparation'
@@ -26,7 +26,33 @@ const PdfDocumentPreview = lazy(() => import('../../public-housing/components/Pd
 type Phase = 'prepare' | 'review' | 'result'
 // attachmentId가 있으면 공고 첨부라 추출 때 서버가 같은 첨부를 받는다.
 type SelectedPdf = { url: string; name: string; file: Blob; attachmentId?: string }
-const sectionLabels: [ReviewSection, string][] = [['supply', '공급정보'], ['schedule', '일정'], ['reception', '접수처·기본정보']]
+type SectionTab = { key: string; label: string; count: number; section: ReviewSection; row?: number; selected: boolean }
+/**
+ * 검토 영역 탭. 공급정보는 PDF 단지마다 한 탭이고(고른 행이 속한 단지가 열린 탭), 그 뒤에 일정·접수처·기본정보가 온다.
+ * 공급행이 없으면 공급정보 탭 하나를 둔다. 확인 수는 그 단지 행의 남은 확인 항목이다.
+ */
+function sectionTabs(review: Review, section: ReviewSection, selectedRow: number, pending: { id: string; section: ReviewSection }[]): SectionTab[] {
+  const groups = complexGroups(review), active = groups.find(group => group.indexes.includes(selectedRow)) ?? groups[0]
+  const count = (key: ReviewSection) => pending.filter(item => item.section === key).length
+  const supply: SectionTab[] = groups.length ? groups.map(group => ({ key: `supply:${group.name}`, label: group.name, section: 'supply', selected: section === 'supply' && group === active,
+    row: group.indexes.includes(selectedRow) ? selectedRow : group.indexes[0], count: pending.filter(item => item.section === 'supply' && group.indexes.includes(rowOfReviewId(item.id) ?? -1)).length }))
+    : [{ key: 'supply', label: '공급정보', section: 'supply', selected: section === 'supply', count: count('supply') }]
+  return [...supply, { key: 'schedule', label: '일정', section: 'schedule', selected: section === 'schedule', count: count('schedule') },
+    { key: 'reception', label: '접수처·기본정보', section: 'reception', selected: section === 'reception', count: count('reception') }]
+}
+/** 탭 목록. 화살표·Home·End로 탭 사이를 옮기며 바로 연다(자동 활성화). */
+function SectionTabs({ tabs, onSelect }: { tabs: SectionTab[]; onSelect: (tab: SectionTab) => void }) {
+  const list = useRef<HTMLDivElement>(null)
+  function move(event: KeyboardEvent<HTMLDivElement>) {
+    const at = tabs.findIndex(tab => tab.selected), last = tabs.length - 1
+    const next = event.key === 'ArrowRight' ? (at + 1) % tabs.length : event.key === 'ArrowLeft' ? (at - 1 + tabs.length) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? last : null
+    if (next === null) return
+    event.preventDefault(); onSelect(tabs[next])
+    requestAnimationFrame(() => list.current?.querySelectorAll<HTMLElement>('[role=tab]')[next]?.focus())
+  }
+  return <div ref={list} role="tablist" aria-label="PDF 보정 영역" className={styles.sections} onKeyDown={move}>{tabs.map(tab => <button type="button" role="tab" key={tab.key} id={tab.selected ? 'pdf-review-tab-active' : undefined}
+    aria-selected={tab.selected} aria-controls="pdf-review-panel" tabIndex={tab.selected ? 0 : -1} title={tab.label} aria-label={tab.count > 0 ? `${tab.label} · 확인 ${tab.count}` : undefined} onClick={() => onSelect(tab)}>{tab.label}{tab.count > 0 && <span className={styles.sectionCount}>{` · 확인 ${tab.count}`}</span>}</button>)}</div>
+}
 const filterLabels: [ReviewFilter, string][] = [['all', '전체'], ['pending', '확인 필요'], ['changed', '변경'], ['new', '추가']]
 function validEvidenceUrl(value: string) {
   try { return ['http:', 'https:'].includes(new URL(value).protocol) && !/\s/.test(value) } catch { return false }
@@ -164,10 +190,10 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   useEffect(() => {
     if (supplyDraft || !draftChecked || phase !== 'review' || !review || !workspace) return
     drafts.schedule({ baseSnapshotToken: workspace.snapshotToken, ...(pdfHash ? { pdfSha256: pdfHash } : {}), ...(extractionId ? { extractionId } : {}),
-      payload: { version: 1, text: text || restoredText.current, review, reason, sourceUrl, sourcePage, section, pdfName: pdf?.name ?? '', baseRows: draftBaseRows(workspace.supply.rows), warnings: workerWarnings } })
+      payload: { version: 1, text: text || restoredText.current, review, reason, sourceUrl, sourcePage, section, pdfName: pdf?.name ?? '', baseRows: draftBaseRows(workspace.supply.rows), warnings: workerWarnings, selectedRow } })
     // 편집 내용이 바뀔 때만 저장을 예약한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [review, reason, sourceUrl, sourcePage, draftChecked, draftTick])
+  }, [review, reason, sourceUrl, sourcePage, section, selectedRow, draftChecked, draftTick])
   function restoreDraft() {
     if (!storedDraft || !workspace) return
     const value = storedDraft.payload
@@ -175,7 +201,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     try { if (storedDraft.stale) next = rebaseReview(value.review, workspace, housing) } catch { setDraftError('임시저장본을 최신 공고 값에 맞추지 못해 저장 당시 그대로 복원했습니다. 기존 값을 다시 확인하세요.') }
     restoredText.current = value.text; setRestoredWarnings(value.warnings ?? [])
     setText(value.text); setReview(next); setReviewedWith(pdf ? `${pdf.url}\n${value.text}` : ''); setReason(value.reason); setSourceUrl(value.sourceUrl); setSourcePage(value.sourcePage)
-    setSection(value.section); setFilter('all'); setPhase('review'); setError('')
+    setSection(value.section); setSelectedRow(typeof value.selectedRow === 'number' && value.selectedRow >= 0 && value.selectedRow < next.rows.length ? value.selectedRow : 0); setFilter('all'); setPhase('review'); setError('')
     drafts.adopt(storedDraft.revision); setStoredDraft(null); setDraftChecked(true)
     setRestoredNote(storedDraft.stale ? '최신 공고 값에 맞춰 복원함 · 바뀐 기존 값을 확인하세요' : '임시저장본 복원함')
   }
@@ -353,11 +379,11 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       <div ref={reviewPane} className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="review">
         {checks.some(check => check.matches === false) && <p className={styles.error}>PDF의 {checks.filter(check => check.matches === false).map(check => `${check.label}(${check.pdf})`).join('·')}이 현재 공고와 다릅니다. 이 공고의 PDF로 받은 응답인지 확인하세요.</p>}
         <div className={styles.reviewTop}>
-          {!supplyDraft && <nav className={styles.sections} aria-label="PDF 보정 영역">{sectionLabels.map(([key, label]) => { const count = pending.filter(item => item.section === key).length; return <Button data-design-system key={key} aria-label={count > 0 ? `${label} · 확인 ${count}` : undefined} aria-pressed={section === key} onClick={() => setSection(key)}>{label}{count > 0 && <span className={styles.sectionCount}>{` · 확인 ${count}`}</span>}</Button> })}</nav>}
+          {!supplyDraft && <SectionTabs tabs={sectionTabs(review, section, selectedRow, pending)} onSelect={tab => { setSection(tab.section); if (tab.row !== undefined) setSelectedRow(tab.row) }} />}
           <div className={styles.filters} role="group" aria-label="검토 항목 필터">{filterLabels.map(([key, label]) => <Button data-design-system key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}{key !== 'all' && ` ${key === 'pending' ? pending.length : counts[key]}`}</Button>)}</div>
         </div>
         {checked && <ApplySummaryPanel summary={summarizePreview(checked.preview, housing, workspace.supply.lhSupplyRows ?? [])} busy={busy} onApply={() => void confirmApply()} onBack={() => setChecked(null)} />}
-        <fieldset disabled={busy || blocked} hidden={Boolean(checked)} className={styles.reviewFields}>
+        <fieldset disabled={busy || blocked} hidden={Boolean(checked)} className={styles.reviewFields}><div role={supplyDraft ? undefined : 'tabpanel'} id="pdf-review-panel" aria-labelledby={supplyDraft ? undefined : 'pdf-review-tab-active'}>
           {section === 'supply' && <ReviewSupply savesHousingTypes={!supplyDraft} warnings={workerWarnings} editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} selected={selectedRow} onSelect={setSelectedRow} onJump={goTo} />}
           {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.extraction.undatedSchedules.length > 0 && <p className={styles.hint}>날짜 없이 안내한 일정: {review.extraction.undatedSchedules.join(' · ')}</p>}{review.schedules.map((schedule, index) => scheduleMatches(schedule) && <section className={styles.supplyBlock} key={index} data-review-id={`schedule:${index}`} tabIndex={-1}><header><h3>{shown(schedule.cells.find(cell => cell.field === 'name')?.value)}</h3><label><input type="checkbox" checked={schedule.include} onChange={event => updateSchedule(index, { include: event.target.checked, reviewed: true })} />일정 {index + 1} 적용</label></header>
             {pendingSchedule(schedule) && <div className={styles.pending}><p><strong>확인 필요</strong> {schedule.proposal.reason}</p><div className={styles.actions}><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: true, reviewed: true })}>{`일정 ${index + 1} 적용`}</Button><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: false, reviewed: true })}>{`일정 ${index + 1} 적용 안 함`}</Button></div></div>}
@@ -366,7 +392,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
               <ReviewCells cells={schedule.cells} scope={`일정 ${index + 1}`} filter={filter} onChange={cells => updateSchedule(index, { cells })} onEvidence={evidence} /></>}
           </section>)}{!review.schedules.some(scheduleMatches) && <p className={styles.hint}>{empty}</p>}</>}
           {section === 'reception' && <><h2>접수처·기본정보</h2><p>임대유형·모집유형·기관·공고명은 현재값을 유지합니다. 접수처는 한 곳만 저장할 수 있으므로 온라인·현장 병행 여부를 확인하세요.</p>{visibleIn(review.reception) && <h3>접수처</h3>}<ReviewCells cells={review.reception} scope="접수처" filter={filter} onChange={reception => change({ ...review, reception })} onEvidence={evidence} />{visibleIn(review.metadata) && <h3>공고 기본 일정</h3>}<ReviewCells cells={review.metadata} scope="기본정보" filter={filter} onChange={metadata => change({ ...review, metadata })} onEvidence={evidence} />{!visibleIn(review.reception) && !visibleIn(review.metadata) && <p className={styles.hint}>{empty}</p>}</>}
-        </fieldset>
+        </div></fieldset>
       </div></div>
       <footer className={styles.footer}><div><strong>{changes.length}개 값 반영</strong><span>{changeSummary(changes)} · 선택하지 않은 값은 유지합니다.</span></div><div className={styles.actions}>{!supplyDraft && <><Button data-design-system className={styles.secondaryButton} disabled={!draftChecked || drafts.status.state === 'saving' || drafts.status.state === 'conflict'} onClick={() => void drafts.saveNow()}>임시저장</Button></>}{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`미해결 ${pending.length}개 ↓`}</Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}<Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => { setPhase('prepare'); setError('') }}>응답 준비로 돌아가기</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
       {/* 근거는 추출할 때 자동으로 채운다. 원문 URL이 없을 때처럼 저장을 막는 값만 직접 입력하게 한다. */}

@@ -765,6 +765,6 @@ export function needsComplex(row: RowReview, workspace: JsonWorkspace) {
 }
 
 /** 단지를 정해야 하는 PDF 단지 수 */
-export function complexDecisionCount(review: Review, workspace: JsonWorkspace) {
-  return new Set(review.rows.flatMap((row, index) => needsComplex(row, workspace) ? [review.extraction.supplyRows[index].complexName ?? ''] : [])).size
+export function complexDecisionCount(review: Review, workspace: JsonWorkspace, only?: number[]) {
+  return new Set(review.rows.flatMap((row, index) => needsComplex(row, workspace) && (!only || only.includes(index)) ? [review.extraction.supplyRows[index].complexName ?? ''] : [])).size
 }

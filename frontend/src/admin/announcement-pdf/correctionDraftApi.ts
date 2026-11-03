@@ -11,7 +11,9 @@ export type DraftBaseRow = { key: string; id: number | null; label: string; hous
  */
 export type DraftPayload = { version: 1; text: string; review: Review; reason: string; sourceUrl: string; sourcePage: string; section: ReviewSection; pdfName: string; baseRows: DraftBaseRow[]
   /** 추출할 때 AI 워커가 남긴 경고(LH 행 분리 등). 이 필드 전에 저장한 초안에는 없다. */
-  warnings?: string[] }
+  warnings?: string[]
+  /** 편집 영역에 보이던 공급행 번호. 이 행이 속한 단지 탭으로 복원한다. 이 필드 전에 저장한 초안에는 없다. */
+  selectedRow?: number }
 export type CorrectionDraft = { payload: DraftPayload; revision: number; baseSnapshotToken: string; pdfSha256: string | null; extractionId: number | null; updatedAt: string; stale: boolean }
 export type DraftSaveInput = { expectedRevision: number | null; baseSnapshotToken: string; pdfSha256?: string; extractionId?: number; payload: DraftPayload }
 export const draftConflictCode = 'ANNOUNCEMENT_CORRECTION_DRAFT_CONFLICT'

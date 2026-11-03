@@ -18,9 +18,11 @@ import styles from './PdfCorrection.module.css'
  * 단지에 연결되지 않은 LH 원천행이 있으면 공고문 행에 맞춰 연결·분할하고(sourceAlignment), 없으면 같은 단지명의 공급행 전체를
  * 그 단지에 연결하며 주택형은 전용면적으로 맞춘다. 맞는 주택형이 없으면 PDF 형명·면적으로 새 주택형을 추가하도록 고른다.
  */
-export function ComplexDecisions({ review, workspace, onChange }: { review: Review; workspace: JsonWorkspace; onChange: (review: Review) => void }) {
+export function ComplexDecisions({ review, workspace, only, onChange }: { review: Review; workspace: JsonWorkspace; onChange: (review: Review) => void
+  /** 이 공급행들(한 단지 탭)의 단지만 정한다. 없으면 모든 행이다. */
+  only?: number[] }) {
   const groups = new Map<string, number[]>()
-  review.rows.forEach((row, index) => { if (needsComplex(row, workspace)) groups.set(review.extraction.supplyRows[index].complexName ?? '', [...groups.get(review.extraction.supplyRows[index].complexName ?? '') ?? [], index]) })
+  review.rows.forEach((row, index) => { if (needsComplex(row, workspace) && (!only || only.includes(index))) groups.set(review.extraction.supplyRows[index].complexName ?? '', [...groups.get(review.extraction.supplyRows[index].complexName ?? '') ?? [], index]) })
   if (!groups.size) return null
   return <section className={styles.complexDecisions} aria-label="PDF 단지 정하기">
     <h3>단지 정하기</h3>

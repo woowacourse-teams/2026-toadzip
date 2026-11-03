@@ -33,7 +33,9 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
   // 주택형 패널은 편집 상태를 갖지 않아 닫았다 열어도 고른 값이 그대로다.
   const [panelOpen, setPanelOpen] = useState(false), [noticesChoice, setNoticesOpen] = useState<boolean | null>(null)
   const pendingRows = new Set(pendingItems(review, savesHousingTypes, workspace).flatMap(item => { const at = rowOfReviewId(item.id); return at === null ? [] : [at] }))
-  const visible = (index: number) => rowMatches(review.rows[index], filter, savesHousingTypes)
+  // 공급정보는 PDF 단지마다 탭으로 나뉜다. 고른 행이 속한 단지의 행만 목록·편집 영역에 둔다.
+  const group = complexGroups(review).find(item => item.indexes.includes(selected)) ?? complexGroups(review)[0]
+  const visible = (index: number) => (!group || group.indexes.includes(index)) && rowMatches(review.rows[index], filter, savesHousingTypes)
   // 고른 행이 필터에 맞지 않으면 필터에 맞는 첫 행을 편집 영역에 둔다.
   const shown = review.rows.flatMap((_, index) => visible(index) ? [index] : [])
   const current = shown.includes(selected) ? selected : shown[0] ?? -1
@@ -48,12 +50,12 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
     onChange(members.reduce((next, at) => placeRow(next, at, { mode: 'SPLIT', lhRow: lh.rowIdentifier }, workspace, housing), review))
   }
   const shownChecks = [...filter === 'all' ? review.extraction.checks : [], ...warnings]
-  const decisions = filter === 'all' ? complexDecisionCount(review, workspace) : 0
+  const decisions = filter === 'all' ? complexDecisionCount(review, workspace, group?.indexes) : 0
   const ordered = filter === 'all' && review.rows.filter(row => row.include).length > 1 && pdfOrderChanges(review, workspace)
   // 단지를 정해야 저장할 수 있으므로 그 안내가 있으면 처음에는 펼쳐 둔다. 운영자가 접거나 펼친 뒤에는 그 선택을 따른다.
   const noticesOpen = noticesChoice ?? decisions > 0
   const notices: { key: string; label: string; tone: 'info' | 'warning'; body: ReactNode }[] = [
-    ...decisions ? [{ key: 'complex', label: `단지 정하기 필요 ${decisions}곳`, tone: 'warning' as const, body: <ComplexDecisions review={review} workspace={workspace} onChange={onChange} /> }] : [],
+    ...decisions ? [{ key: 'complex', label: `단지 정하기 필요 ${decisions}곳`, tone: 'warning' as const, body: <ComplexDecisions review={review} workspace={workspace} only={group?.indexes} onChange={onChange} /> }] : [],
     ...shownChecks.length ? [{ key: 'checks', label: `검산 확인 ${shownChecks.length}건`, tone: 'warning' as const, body: <div className={`${styles.pending} ${styles.checks}`} role="note" aria-label="검산 결과"><p><strong>검산 확인</strong> 합계·면적·원문 대조가 맞지 않는 항목입니다. 공고문과 대조하세요.</p><ul>{shownChecks.map(check => <li key={check}>{check}</li>)}</ul></div> }] : [],
     ...filter === 'all' && duplicates.length ? [{ key: 'duplicates', label: `LH 원본과 중복 가능 ${duplicates.length}행`, tone: 'warning' as const, body: <div className={styles.pending} role="note" aria-label="LH 원본과 중복 가능"><p><strong>LH 원본과 중복 가능</strong> LH 공급 원본으로 펼친 행이 있는 단지에 직접 추가한 행이 있습니다. 같은 주택형이면 공급정보 편집표의 ‘펼친 행으로 합치기’로 임대조건과 표기를 옮긴 뒤 지우세요.{editorHref && <> <Link to={editorHref}>공급정보 편집표 열기</Link></>}</p><ul>{duplicates.map(row => <li key={row.key}>{row.housingComplexName ?? row.complexName} · {row.typeName} (#{row.id})</li>)}</ul></div> }] : [],
     ...filter === 'all' ? review.extraction.sharedCounts.map((group, index) => ({ key: `shared:${index}`, label: `공통 모집 ${group.count}세대`, tone: 'info' as const, body: <div className={styles.shared}><strong>공통 모집 {group.count}세대</strong><span>{sharedLabel(review, group.paths)}{group.paths.every(path => path.endsWith('.totalSupplyHouseholdCount')) && !sharedGroupStorable(review, index) ? sharedUnstorable(review, index) : ''}</span>{group.page && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence({ page: group.page!, quote: group.quote, path: group.paths[0] })}>PDF {group.page}쪽 보기</Button>}</div> })) : [],
@@ -76,7 +78,7 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
         <section className={styles.complexGroup} key={group.name} aria-label={`${group.name} 주택형`}><h3 className={styles.complexGroupTitle}>{group.name}<small>{`주택형 ${group.indexes.length}개 중 공급행 ${current + 1}`}</small></h3>{supplyRow(review.rows[current], current)}</section>)}</div>
       {panelOpen && current >= 0 && typesPanel(current)}
     </div>}
-    {!review.rows.length ? <p>추출된 공급행이 없습니다. 현재 공급정보를 유지합니다.</p> : !review.rows.some(row => rowMatches(row, filter, savesHousingTypes)) && <p className={styles.hint}>{empty}</p>}
+    {!review.rows.length ? <p>추출된 공급행이 없습니다. 현재 공급정보를 유지합니다.</p> : !shown.length && <p className={styles.hint}>{empty}</p>}
   </>
 
   function rowContext(row: RowReview, index: number) {

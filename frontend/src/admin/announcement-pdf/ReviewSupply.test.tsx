@@ -73,25 +73,29 @@ it('세부 타입 묶음 행이 든 공통 모집수는 저장하지 못하는 �
   expect(screen.queryByText(/기존 공급행 없이 새로 만드는 행끼리는/)).not.toBeInTheDocument()
 })
 
-it('여러 단지 공고는 목록에 모든 단지를 묶음별 주택형 수와 함께 보이고, 다른 단지 행을 고르면 편집 영역과 주택형 패널이 그 단지로 바뀌며 앞 행의 편집은 남는다', () => {
+it('공급정보는 고른 행이 속한 단지의 행만 목록·편집 영역에 두고, 다른 단지 행을 고르면 편집 영역과 주택형 패널이 그 단지로 바뀌며 앞 행의 편집은 남는다', () => {
   const { review, workspace, housing } = scenario('gwangju')
   function Test() {
     const [current, setCurrent] = useState(review), [selected, setSelected] = useState(0)
-    return <ReviewSupply review={current} workspace={workspace} housing={housing} complexes={{}} filter="all" empty="없음" onChange={setCurrent} onEvidence={() => {}} selected={selected} onSelect={setSelected} />
+    return <><button type="button" onClick={() => setSelected(selected === 0 ? 3 : 0)}>다른 단지 탭</button>
+      <ReviewSupply review={current} workspace={workspace} housing={housing} complexes={{}} filter="all" empty="없음" onChange={setCurrent} onEvidence={() => {}} selected={selected} onSelect={setSelected} /></>
   }
   render(<MemoryRouter><Test /></MemoryRouter>)
   const list = screen.getByRole('region', { name: '공급행 목록' })
-  expect([...list.querySelectorAll('th[scope=rowgroup]')].map(header => header.textContent?.split(' · ')[0])).toEqual(['첨단H-1BL', '첨단H-2BL', '첨단H-3BL'])
-  expect(within(list).getByRole('rowheader', { name: /^첨단H-3BL/ })).toHaveTextContent('주택형 4개')
+  const groups = () => [...list.querySelectorAll('th[scope=rowgroup]')].map(header => header.textContent)
+  expect(groups()).toHaveLength(1)
+  expect(groups()[0]).toMatch(/^첨단H-1BL · 주택형 1개 · 모집 합/)
   const first = within(screen.getByRole('region', { name: '공급행 1 검토' })).getByRole('group', { name: '공급행 1 이 공고의 주택형 표기 반영 방법' })
   fireEvent.click(within(first).getByRole('button', { name: '직접 입력' }))
   fireEvent.change(screen.getByRole('textbox', { name: '공급행 1 이 공고의 주택형 표기 수정' }), { target: { value: '39 관리자' } })
   fireEvent.click(screen.getByRole('button', { name: '단지 주택형 보기' }))
   const panelTitle = () => screen.getByRole('button', { name: '주택형 패널 닫기' }).closest('aside')!.getAttribute('aria-label')
   const before = panelTitle()
-  fireEvent.click(within(list).getByRole('button', { name: '공급행 4 편집' }))
+  fireEvent.click(screen.getByRole('button', { name: '다른 단지 탭' }))
+  expect(groups()[0]).toMatch(/^첨단H-3BL · 주택형 4개/)
+  expect(within(list).getAllByRole('button', { name: /^공급행 \d 편집$/ }).map(button => button.textContent?.split('.')[0])).toEqual(['4', '5', '6', '7'])
   expect(screen.getByRole('heading', { name: /^첨단H-3BL주택형 4개 중 공급행 4/ })).toBeVisible()
   expect(panelTitle()).not.toBe(before)
-  fireEvent.click(within(list).getByRole('button', { name: '공급행 1 편집' }))
+  fireEvent.click(screen.getByRole('button', { name: '다른 단지 탭' }))
   expect(screen.getByRole('textbox', { name: '공급행 1 이 공고의 주택형 표기 수정' })).toHaveValue('39 관리자')
 })

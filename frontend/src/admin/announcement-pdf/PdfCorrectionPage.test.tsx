@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from 'vitest'
 import { PdfCorrectionPage, PdfCorrectionWorkspace } from './PdfCorrectionPage'
@@ -369,7 +369,7 @@ it('확인 필요 항목을 세고 하단 버튼으로 다음 항목에 이동�
   Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scroll })
   onTestFinished(() => { delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView })
   await open(JSON.stringify(separateHansville()))
-  expect(screen.getByRole('button', { name: '일정 · 확인 1' })).toBeVisible()
+  expect(screen.getByRole('tab', { name: '일정 · 확인 1' })).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '미해결 3개 ↓' }))
   expect(screen.getByRole('region', { name: '공급행 1 검토' })).toHaveFocus()
   expect(scroll).toHaveBeenCalledWith({ block: 'start' })
@@ -486,6 +486,7 @@ it('단지 정하기는 다른 단지명의 PDF 행이 이미 저장할 위치�
   extraction.data.supplyRows[1].complexReference.sourceComplexName = '표기가 다른 PDF 단지'
   await open(JSON.stringify(extraction))
   expect(updateTarget(1)).toHaveValue(first.key)
+  fireEvent.click(screen.getByRole('tab', { name: /^표기가 다른 PDF 단지/ }))
   fireEvent.click(await within(screen.getByRole('group', { name: 'PDF 단지 표기가 다른 PDF 단지' })).findByRole('button', { name: '선택: 검색 단지' }))
   await waitFor(() => expect(screen.queryByRole('group', { name: 'PDF 단지 표기가 다른 PDF 단지' })).not.toBeInTheDocument())
   expect(modeOf(2)).toBe('별도 추가')
@@ -877,4 +878,37 @@ it('공급행 목록은 행마다 저장 방식과 상태를 요약하고, 단�
   fireEvent.click(screen.getByRole('button', { name: '단지 주택형 보기' }))
   expect(within(screen.getByRole('complementary')).getByText('공급행 1에 연결함')).toBeVisible()
   expect(screen.getByRole('combobox', { name: '공급행 1 연결 주택형 수정' })).toHaveValue('10352')
+})
+
+it('공급정보는 PDF 단지마다 탭으로 나누고, 탭 이름에 단지 이름과 그 단지의 확인 수를 보이며 화살표로 옮기고 미해결 이동은 그 행의 단지 탭을 연다', async () => {
+  await open(JSON.stringify(fixtures.gwangju.extraction))
+  const tabs = within(screen.getByRole('tablist', { name: 'PDF 보정 영역' })).getAllByRole('tab')
+  expect(tabs.map(tab => tab.textContent?.split(' · ')[0])).toEqual(['첨단H-1BL', '첨단H-2BL', '첨단H-3BL', '일정', '접수처·기본정보'])
+  expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
+  expect(tabs[2].textContent).toMatch(/^첨단H-3BL · 확인 \d+$/)
+  expect(screen.getByRole('tabpanel')).toHaveAccessibleName(tabs[0].textContent!)
+  fireEvent.keyDown(tabs[0], { key: 'ArrowRight' })
+  expect(screen.getByRole('tab', { name: /^첨단H-2BL/ })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('region', { name: '공급행 2 검토' })).toBeVisible()
+  fireEvent.click(screen.getByRole('tab', { name: /^첨단H-3BL/ }))
+  expect(screen.getByRole('region', { name: '공급행 4 검토' })).toBeVisible()
+  expect(screen.queryByRole('button', { name: '공급행 1 편집' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /^미해결 \d+개/ }))
+  expect(screen.getByRole('tab', { name: /^첨단H-1BL/ })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('region', { name: '공급행 1 검토' })).toHaveFocus()
+})
+
+it('임시저장본은 열어 둔 단지 탭과 고른 공급행을 함께 저장하고 복원한다', async () => {
+  await open(JSON.stringify(fixtures.gwangju.extraction))
+  fireEvent.click(screen.getByRole('tab', { name: /^첨단H-3BL/ }))
+  fireEvent.click(screen.getByRole('button', { name: '공급행 5 편집' }))
+  fireEvent.click(screen.getByRole('button', { name: '임시저장' }))
+  await waitFor(() => expect(draftApi.saveCorrectionDraft.mock.lastCall?.[1].payload).toMatchObject({ section: 'supply', selectedRow: 4 }))
+  cleanup()
+  const saved = draftApi.saveCorrectionDraft.mock.lastCall![1]
+  draftApi.loadCorrectionDraft.mockResolvedValue({ revision: 2, baseSnapshotToken: 'current', pdfSha256: null, extractionId: null, updatedAt: '2026-11-03T03:00:00Z', stale: false, payload: saved.payload })
+  renderPage()
+  fireEvent.click(within(await screen.findByRole('region', { name: '임시저장한 작업' })).getByRole('button', { name: '임시저장본 복원' }))
+  expect(await screen.findByRole('tab', { name: /^첨단H-3BL/ })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('region', { name: '공급행 5 검토' })).toBeVisible()
 })
