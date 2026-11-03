@@ -28,8 +28,13 @@ def first_json_object(reply: str) -> dict:
         tree, _ = json.JSONDecoder(parse_constant=reject_constant).raw_decode(reply, start)
     except (json.JSONDecodeError, ValueError) as error:
         raise PermanentError(INVALID_CODE, "AI 모델 응답을 JSON으로 읽지 못했습니다.") from error
-    if not isinstance(tree.get("data"), dict):
+    data = tree.get("data")
+    if not isinstance(data, dict):
         raise PermanentError(INVALID_CODE, "AI 모델 응답에 추출 결과(data)가 없습니다.")
+    # 화면은 이 모양이 아니면 결과 전체를 읽지 못하므로 성공으로 넘기지 않는다.
+    if not isinstance(data.get("announcement"), dict) or not all(
+            isinstance(data.get(name), list) for name in ("supplyRows", "schedules")):
+        raise PermanentError(INVALID_CODE, "AI 모델 응답의 공고·공급행·일정 형식이 맞지 않습니다.")
     return tree
 
 
@@ -47,7 +52,7 @@ def review(tree: dict, pages: list[int], texts: list[str], lh_types: list[str], 
     remap_pages(objects(tree.get("sharedCounts")), pages, warnings)
     check_quotes(evidence, texts, warnings)
     data = tree["data"]
-    announcement = data.get("announcement") if isinstance(data.get("announcement"), dict) else {}
+    announcement = data["announcement"]
     check_announcement(announcement, warnings)
     check_complexes(announcement, objects(data.get("complexes")), warnings)
     rows = objects(data.get("supplyRows"))

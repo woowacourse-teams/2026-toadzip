@@ -19,7 +19,7 @@ from test_pages import COVER, NOTICE, RENT, RENT_CELLS, SUPPLY, pdf
 USAGE = {"promptTokens": 9000, "outputTokens": 3000, "thinkingTokens": 500}
 EXTRACTION = {
     "data": {"announcement": {"name": "여수미평1 영구임대주택 예비입주자 모집"}, "complexes": [],
-             "supplyRows": [{"sourceHousingTypeName": "16A", "totalSupplyHouseholdCount": 78}]},
+             "supplyRows": [{"sourceHousingTypeName": "16A", "totalSupplyHouseholdCount": 78}], "schedules": []},
     "sharedCounts": [], "notApplicable": [],
     "evidence": [{"path": "supplyRows[0]", "page": 2, "quote": "공용 26.37 298"}],
 }

@@ -19,6 +19,7 @@ def response(rows=None, evidence=(), shared_counts=(), announcement=None, comple
                                              "applicationEndDate": "2026-11-12", "winnerAnnouncementDate": None},
             "complexes": complexes or [{"sourceComplexName": "여수미평1"}],
             "supplyRows": rows if rows is not None else [row(target="가군(생계·의료급여수급자 등)")],
+            "schedules": [],
         },
         "sharedCounts": list(shared_counts),
         "notApplicable": [],
@@ -172,5 +173,22 @@ def test_reads_first_json_object_and_ignores_trailing_text():
 def test_reply_without_extraction_object_is_permanent_error(reply):
     with pytest.raises(PermanentError) as error:
         checks.first_json_object(reply)
+
+    assert error.value.code == checks.INVALID_CODE
+
+
+@pytest.mark.parametrize("field, value", [
+    ("announcement", None), ("announcement", []), ("supplyRows", None), ("supplyRows", {}), ("schedules", None),
+    ("schedules", "없음"),
+])
+def test_reply_with_wrong_data_shape_is_permanent_error(field, value):
+    tree = response()
+    if value is None:
+        del tree["data"][field]
+    else:
+        tree["data"][field] = value
+
+    with pytest.raises(PermanentError) as error:
+        checks.first_json_object(json.dumps(tree, ensure_ascii=False))
 
     assert error.value.code == checks.INVALID_CODE
