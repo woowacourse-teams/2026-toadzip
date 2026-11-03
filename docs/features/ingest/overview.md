@@ -8,7 +8,7 @@
 1. [DataPipelineType](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/domain/DataPipelineType.java)의 `steps()`: 독립·통합 작업의 단계와 순서.
 2. [DataPipelineStepExecutor](../../../backend/src/main/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineStepExecutor.java)의 `execute()`: 단계별로 실제 호출하는 서비스.
 
-Spring은 생성자 주입으로 객체를 연결한다. `DataPipelineRunner.run()`에서 단계 실행 → `DataPipelineExecutionStateService` 결과 저장을 따라간다. 단계별 부분 실패·호출 제한·중단 확인은 `DataPipelineRunner`, 실행 전체의 시작·완료·실패·잠금은 `DataPipelineExecutionService`, 끝나지 못한 실행 복구는 `DataPipelineExecutionRecovery`, 이력·상태 조회는 `DataPipelineExecutionQueryService`가 맡는다. 실행 ID·잠금 lease·진행 모니터·서비스키는 `IngestExecutionScope`가 스레드 범위로 보관한다. `verifyCanContinue()`가 실행 소유권과 중지 요청을 확인하고, `propagate()`가 작업 스레드에 이 맥락과 로그 MDC를 넘긴다. 중단된 파이프라인 복구는 같은 실행의 진행 중 수집 기록도 실패로 마감하며 성공 원천을 보존한다.
+Spring은 생성자 주입으로 객체를 연결한다. `DataPipelineRunner.run()`에서 단계 실행 → `DataPipelineExecutionStateService` 결과 저장을 따라간다. 단계별 부분 실패·호출 제한·중단 확인은 `DataPipelineRunner`, 실행 전체의 시작·완료·실패·잠금은 `DataPipelineExecutionService`, 끝나지 못한 실행 복구는 `DataPipelineExecutionRecovery`, 이력·상태 조회는 `DataPipelineExecutionQueryService`가 맡는다. 실행 ID·잠금 lease·진행 모니터는 `IngestExecutionScope`가 스레드 범위로 보관한다. 공공데이터포털 수집 키는 서버 설정만 쓰며 실행마다 넘기지 않는다. `verifyCanContinue()`가 실행 소유권과 중지 요청을 확인하고, `propagate()`가 작업 스레드에 이 맥락과 로그 MDC를 넘긴다. 중단된 파이프라인 복구는 같은 실행의 진행 중 수집 기록도 실패로 마감하며 성공 원천을 보존한다.
 
 ## 작업을 고른 뒤 내려갈 곳
 
@@ -88,7 +88,7 @@ LH 공급·상세는 TTL로 호출을 생략하지 않으며 TTL 환경 설정�
 ## 운영 문제를 볼 때
 
 관리자 화면에서 처음 상태 조회가 실패하면 재조회한다. 승인할 공급 요청을 바꾸면 이전 요청의 공고 ID·근거·사유·확인 체크를 초기화한다.
-실패 요청 화면의 공고별 LH 강제 재조회는 **마이홈 공고 ID**를 받는다. 공급 또는 상세를 선택해 오래된 종료 공고 제외를 우회한다. 응답 검증·빈 응답 보호·공급행 누락 승인 규칙은 유지한다. 원천 반영 후에는 공고 정제를 실행한다. 조회 대상 없음과 부분 실패는 결과에서 구분한다.
+공고별 LH 강제 재조회는 **LH 공고 ID(`panId`)**를 받는다. 공급 또는 상세를 선택해 오래된 종료 공고 제외를 우회한다. 응답 검증·빈 응답 보호·공급행 누락 승인 규칙은 유지한다. 원천 반영 후에는 공고 정제를 실행한다. 조회 대상 없음과 부분 실패는 결과에서 구분한다.
 이력·상태 조회는 실행 잠금이 없는 만료 파이프라인을 복구한다. 빠른 재시작으로 최신 실행에 가려진 이전 실행도 대상이다. 종료된 실행에 남은 `RUNNING` 수집 기록은 별도 트랜잭션으로 실패 마감하고, 기존 실행 결과·성공 기록·성공 원천은 보존한다. DB 오류로 마감하지 못하면 다음 조회·실행 시작에서 다시 복구한다.
 개별 API의 파이프라인 미연결 수집 이력도 이력·상태 조회와 새 파이프라인 시작 시 복구한다. 개별 수집도 전역 실행 잠금 안에서만 실행되므로, 복구는 이 잠금을 확보한 동안에만 수행하고 파이프라인이나 개별 수집이 실행 중이면 다음 조회로 미룬다. 실행 ID가 없거나 대응하는 파이프라인 실행이 없는 `RUNNING` 이력을 실패 마감하며, 기존 성공 이력·성공 원천은 보존한다. DB 오류·실행 잠금 소유권 소실 시 복구 트랜잭션을 롤백하고 다음 조회·실행 시작에서 다시 복구한다.
 실제 HTTP 시도는 실패·재시도도 호출수에 포함한다. 서킷이 HTTP 호출 전에 거절한 요청은 보고서와 실행 호출수에서 모두 제외한다.
