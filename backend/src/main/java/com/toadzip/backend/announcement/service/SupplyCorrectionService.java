@@ -412,7 +412,8 @@ public class SupplyCorrectionService {
 
     /**
      * 대표와 함께 모집하는 주택형(대표 제외). 생략하면 {@link Row#withLinksFrom}으로 채운다.
-     * 단지 상세가 (단지, 전용면적)으로 공급행을 찾으므로 한 행에는 전용면적마다 주택형 하나만 연결한다.
+     * 한 행에는 전용면적마다 주택형 하나만 연결한다. 세부 타입은 전용면적마다 하나이고, 이 저장에서 만들 새 주택형과
+     * 그 공고 값(linkedNewHousingTypeArea)은 행 안에서 전용면적으로 찾기 때문이다.
      */
     private List<LinkedHousingType> linkedTypes(Row old, Row row, HousingComplex complex, HousingType representative) {
         if (row.linkedHousingTypes() == null) { return row.withLinksFrom(old).linkedHousingTypes(); }
@@ -512,32 +513,14 @@ public class SupplyCorrectionService {
     private SupplyRow writeRow(Announcement announcement, SupplyRow stored, Row input, SupplyCorrection.Request request,
             Map<String, HousingType> createdTypes) {
         var complex = complex(input.housingComplexId());
-        HousingType type;
-        if (input.newHousingType() == null) {
-            type = type(input, complex, null);
-        } else {
-            // 한 저장에서 같은 단지·전용면적의 새 주택형을 고른 행들은 주택형 하나를 함께 쓴다.
-            type = createdTypes.get(input.newHousingTypeKey());
-            if (type == null) {
-                type = types.save(type(input, complex, "MANUAL:" + request.operationId() + ":" + input.key()));
-                createdTypes.put(input.newHousingTypeKey(), type);
-            }
-        }
+        String identifier = "MANUAL:" + request.operationId() + ":" + input.key();
+        var type = input.newHousingType() == null ? type(input, complex, null)
+                : newType(complex, input, input.newHousingType(), identifier, createdTypes);
         List<HousingType> linked = new ArrayList<>();
         for (var link : input.linkedHousingTypes()) {
-            if (link.newHousingType() == null) {
-                linked.add(existingType(link.housingTypeId(), complex));
-                continue;
-            }
-            var created = createdTypes.get(input.newHousingTypeKey(link.newHousingType()));
-            if (created == null) {
-                var value = link.newHousingType();
-                created = types.save(HousingType.createFromAnnouncement(complex, "MANUAL:" + request.operationId() + ":"
-                        + input.key() + ":" + value.exclusiveArea().stripTrailingZeros().toPlainString(), value.name(),
-                        value.exclusiveArea(), value.supplyArea(), null));
-                createdTypes.put(input.newHousingTypeKey(value), created);
-            }
-            linked.add(created);
+            var value = link.newHousingType();
+            linked.add(value == null ? existingType(link.housingTypeId(), complex) : newType(complex, input, value,
+                    identifier + ":" + value.exclusiveArea().stripTrailingZeros().toPlainString(), createdTypes));
         }
         if (stored == null) {
             // 원천이 없는 직접 추가 행은 처음 입력한 표기를 원천 이름으로 남긴다.
@@ -566,6 +549,13 @@ public class SupplyCorrectionService {
             condition.correctPresentation(target.excluded(), target.displayOrder());
         }
         return stored;
+    }
+
+    /** 한 저장에서 같은 단지·전용면적의 새 주택형은 대표든 함께 모집하는 주택형이든 행이 달라도 하나를 만들어 함께 쓴다. */
+    private HousingType newType(HousingComplex complex, Row input, SupplyCorrection.NewType value, String identifier,
+            Map<String, HousingType> createdTypes) {
+        return createdTypes.computeIfAbsent(input.newHousingTypeKey(value), key -> types.save(HousingType.createFromAnnouncement(
+                complex, identifier, value.name(), value.exclusiveArea(), value.supplyArea(), null)));
     }
 
     private HousingComplex complex(Long id) {
