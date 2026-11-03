@@ -9,6 +9,8 @@ import type { CorrectionRow, SupplyCorrectionInput } from '../supply/supplyCorre
 import { getManagementDetail, ManagementError } from '../management/api'
 import { labels } from '../management/fields'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
+import { baseRowChanges, draftBaseRows, loadCorrectionDraft, type CorrectionDraft } from './correctionDraftApi'
+import { useCorrectionDraft, type DraftStatus } from './useCorrectionDraft'
 import { evidenceContext, evidenceQuery, readExtraction, type Evidence } from './extraction'
 import { extractAnnouncementPdf, loadLatestExtraction, pdfFileProblem, pdfSha256, preferredPdf, type ExtractionState, type SavedExtraction } from './extractionApi'
 import { checkAnnouncement, type ComplexLabels, type HousingCandidates } from './matching'
@@ -79,6 +81,11 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   const [typeResult, setTypeResult] = useState<Pick<JsonPreview, 'housingTypes' | 'housingTypeWarnings'>>({ housingTypes: [], housingTypeWarnings: [] })
   const [filter, setFilter] = useState<ReviewFilter>('all'), [jump, setJump] = useState<{ id: string; nonce: number } | null>(null)
   const heading = useRef<HTMLHeadingElement>(null)
+  // 서버 임시저장. 저장된 초안이 있으면 복원·폐기를 고르기 전에는 자동 저장하지 않는다(덮어쓰지 않게).
+  const drafts = useCorrectionDraft(id, !supplyDraft)
+  const [storedDraft, setStoredDraft] = useState<CorrectionDraft | null>(null), [draftChecked, setDraftChecked] = useState(Boolean(supplyDraft))
+  const [draftTick, setDraftTick] = useState(0), [draftError, setDraftError] = useState('')
+  const restoredText = useRef('')
   const reviewPane = useRef<HTMLDivElement>(null)
   const reasonProblem = !reason.trim() ? '보정 이유를 입력하세요.' : !validEvidenceUrl(sourceUrl.trim()) ? '공식 근거 URL에 올바른 http 또는 https 주소를 입력하세요.' : ''
   // 긴 응답을 입력마다 다시 읽지 않도록 검토 버튼을 누를 때만 읽는다.
@@ -95,7 +102,9 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   const active = phase === 'review'
   // 준비와 검토는 같은 작업대 배치를 써서 단계를 넘어가도 PDF 뷰어 크기가 그대로다.
   const focused = phase !== 'result'
-  useUnsavedChanges(phase !== 'result' && Boolean(text.trim() || uncertain))
+  // 임시저장이 끝나지 않았거나 실패·충돌한 편집이 있으면 떠나기 전에 묻는다. 서버에 저장된 편집은 다시 열어 이어 갈 수 있다.
+  const unsavedDraft = Boolean(review) && drafts.status.state !== 'saved'
+  useUnsavedChanges(phase !== 'result' && (supplyDraft ? Boolean(text.trim() || uncertain) : uncertain || unsavedDraft || !review && Boolean(text.trim())))
   useEffect(() => {
     const controller = new AbortController(); setWorkspace(null); setError('')
     if (!/^[1-9]\d*$/.test(id)) { setError('올바른 공고 주소가 아닙니다.'); return }
@@ -129,6 +138,45 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     void loadLatestExtraction(id, controller.signal).then(value => { if (!controller.signal.aborted) setSaved(value) }).catch(() => {})
     return () => controller.abort()
   }, [id])
+  useEffect(() => {
+    if (supplyDraft || !workspace || draftChecked || storedDraft) return
+    const controller = new AbortController()
+    void loadCorrectionDraft(id, controller.signal).then(draft => {
+      if (controller.signal.aborted) return
+      if (draft) setStoredDraft(draft); else { drafts.adopt(null); setDraftChecked(true) }
+    }).catch(cause => { if (!controller.signal.aborted) { setDraftError(`임시저장본을 확인하지 못했습니다. ${cause instanceof Error ? cause.message : ''}`.trim()); setDraftChecked(true) } })
+    return () => controller.abort()
+  }, [id, workspace, supplyDraft, draftChecked, storedDraft, drafts])
+  const extractionId = extraction.status === 'done' ? extraction.result.jobId : undefined
+  useEffect(() => {
+    if (supplyDraft || !draftChecked || phase !== 'review' || !review || !workspace) return
+    drafts.schedule({ baseSnapshotToken: workspace.snapshotToken, ...(pdfHash ? { pdfSha256: pdfHash } : {}), ...(extractionId ? { extractionId } : {}),
+      payload: { version: 1, text: text || restoredText.current, review, reason, sourceUrl, sourcePage, section, pdfName: pdf?.name ?? '', baseRows: draftBaseRows(workspace.supply.rows) } })
+    // 편집 내용이 바뀔 때만 저장을 예약한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [review, reason, sourceUrl, sourcePage, draftChecked, draftTick])
+  function restoreDraft() {
+    if (!storedDraft || !workspace) return
+    const value = storedDraft.payload
+    let next = value.review
+    try { if (storedDraft.stale) next = rebaseReview(value.review, workspace, housing) } catch { setDraftError('임시저장본을 최신 공고 값에 맞추지 못해 저장 당시 그대로 복원했습니다. 기존 값을 다시 확인하세요.') }
+    restoredText.current = value.text
+    setText(value.text); setReview(next); setReviewedWith(pdf ? `${pdf.url}\n${value.text}` : ''); setReason(value.reason); setSourceUrl(value.sourceUrl); setSourcePage(value.sourcePage)
+    setSection(value.section); setFilter('all'); setPhase('review'); setError('')
+    drafts.adopt(storedDraft.revision); setStoredDraft(null); setDraftChecked(true)
+    setNotice(storedDraft.stale ? '임시저장한 작업을 최신 공고 값에 맞춰 복원했습니다. 바뀐 기존 값을 확인한 뒤 적용하세요.' : '임시저장한 작업을 복원했습니다.')
+  }
+  async function discardDraft() {
+    if (!storedDraft) return
+    try {
+      await drafts.remove(storedDraft.revision); drafts.adopt(null)
+      setStoredDraft(null); setDraftChecked(true); setDraftTick(value => value + 1); setDraftError('')
+    } catch (cause) { setDraftError(cause instanceof ManagementError && cause.status === 409 ? '그사이 다른 탭에서 초안이 바뀌어 폐기하지 않았습니다. 최신 초안을 다시 불러오세요.' : '임시저장본을 폐기하지 못했습니다. 다시 시도하세요.') }
+  }
+  async function reloadDraft() {
+    try { const draft = await loadCorrectionDraft(id); if (draft) setStoredDraft(draft); else { drafts.adopt(null); setDraftTick(value => value + 1) } }
+    catch { setDraftError('최신 초안을 불러오지 못했습니다. 다시 시도하세요.') }
+  }
   useEffect(() => {
     let current = true; setPdfHash('')
     if (pdf) void pdfSha256(pdf.file).then(hash => { if (current) setPdfHash(hash) }).catch(() => {})
@@ -202,6 +250,8 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       saving = true
       const latest = await applyJsonUpdate(id, input, checked.confirmationToken)
       setTypeResult({ housingTypes: checked.housingTypes, housingTypeWarnings: checked.housingTypeWarnings }); setWorkspace(latest); setPhase('result'); setText(''); setBlocked(false); setUncertain(false)
+      // 적용을 확인한 뒤에만 초안을 지운다. 지우지 못해도 적용은 끝났고, 다음에 열면 이미 적용한 초안(stale)으로 보인다.
+      void drafts.remove().catch(() => setDraftError('보정은 적용했지만 임시저장본을 지우지 못했습니다. 다음에 열 때 폐기하세요.'))
     } catch (cause) {
       const rejected = cause instanceof ManagementError && cause.status >= 400 && cause.status < 500
       const uncertainSave = saving && !rejected
@@ -248,6 +298,9 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     {supplyDraft ? <header className={styles.heading}><div><h2>PDF로 공급정보 채우기</h2><p>PDF와 대조한 공급정보를 편집표에 채웁니다. 저장 전까지 등록값은 유지됩니다.</p></div><Button data-design-system className={styles.secondaryButton} onClick={() => { if (!text.trim() || window.confirm('PDF 검토를 취소하고 편집표로 돌아갈까요?')) supplyDraft.onCancel() }}>편집표로 돌아가기</Button></header> : <header className={styles.heading}><div><Link to={back}>공고 상세로 돌아가기</Link><h1 ref={heading} tabIndex={-1}>PDF로 공고 보정</h1><p>#{id} · {workspace.detail.summary.name}</p>{phase !== 'result' && <FailureTargets rows={failureRows} workspace={workspace} />}</div><ol aria-label="보정 진행"><li aria-current={phase === 'prepare' ? 'step' : undefined}>요청 준비</li><li aria-current={phase === 'review' ? 'step' : undefined}>비교·보정</li><li aria-current={phase === 'result' ? 'step' : undefined}>적용 결과</li></ol></header>}
     {error && <div role="alert" className={styles.error}><p>{error}</p>{blocked && <Button data-design-system onClick={() => void reload()} disabled={busy}>입력을 유지하고 최신값 비교</Button>}</div>}
     {notice && <p role="status" className={styles.notice}>{notice}</p>}
+    {draftError && <p role="alert" className={styles.error}>{draftError}</p>}
+    {storedDraft && <DraftOffer draft={storedDraft} workspace={workspace} pdfHash={pdfHash} onRestore={restoreDraft} onDiscard={() => void discardDraft()} />}
+    {drafts.status.state === 'conflict' && <div role="alert" className={styles.error}><p>다른 탭/세션에서 더 최신 초안이 저장됐습니다. 이 화면의 편집은 임시저장하지 않았고 화면에는 그대로 남아 있습니다.</p><Button data-design-system className={styles.secondaryButton} onClick={() => void reloadDraft()}>최신 초안 불러오기</Button></div>}
     {phase === 'prepare' && <><div className={styles.mobileSwitch}><Button data-design-system aria-pressed={mobileView === 'pdf'} onClick={() => setMobileView('pdf')}>PDF 보기</Button><Button data-design-system aria-pressed={mobileView === 'review'} onClick={() => setMobileView('review')}>추출 보기</Button></div><div className={styles.workbench}>{pdfPane}
       <div className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="prepare"><RequestPreparation announcementName={workspace.detail.summary.name} pdf={pdf} extraction={extraction} onExtract={extract} parsed={parsed} checks={checks} saved={saved} samePdf={Boolean(saved && pdfHash && saved.pdfSha256 === pdfHash)} onLoadSaved={loadSaved} /></div>
     </div><PreparationFooter ready={extraction.status === 'done' && parsed.ok && Boolean(pdf)} onReview={start} /></>}
@@ -269,7 +322,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
           {section === 'reception' && <><h2>접수처·기본정보</h2><p>임대유형·모집유형·기관·공고명은 현재값을 유지합니다. 접수처는 한 곳만 저장할 수 있으므로 온라인·현장 병행 여부를 확인하세요.</p>{visibleIn(review.reception) && <h3>접수처</h3>}<ReviewCells cells={review.reception} scope="접수처" filter={filter} onChange={reception => change({ ...review, reception })} onEvidence={evidence} />{visibleIn(review.metadata) && <h3>공고 기본 일정</h3>}<ReviewCells cells={review.metadata} scope="기본정보" filter={filter} onChange={metadata => change({ ...review, metadata })} onEvidence={evidence} />{!visibleIn(review.reception) && !visibleIn(review.metadata) && <p className={styles.hint}>{empty}</p>}</>}
         </fieldset>
       </div></div>
-      <footer className={styles.footer}><div><strong>{changes.length}개 값 반영</strong><span>{changeSummary(changes)} · 선택하지 않은 값은 유지합니다.</span></div><div className={styles.actions}>{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`확인 필요 ${pending.length}개 남음 ↓`}</Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}<Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => { setPhase('prepare'); setError('') }}>응답 준비로 돌아가기</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
+      <footer className={styles.footer}><div><strong>{changes.length}개 값 반영</strong><span>{changeSummary(changes)} · 선택하지 않은 값은 유지합니다.</span></div><div className={styles.actions}>{!supplyDraft && <><DraftState status={drafts.status} onRetry={() => void drafts.saveNow()} /><Button data-design-system className={styles.secondaryButton} disabled={!draftChecked || drafts.status.state === 'saving' || drafts.status.state === 'conflict'} onClick={() => void drafts.saveNow()}>임시저장</Button></>}{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`확인 필요 ${pending.length}개 남음 ↓`}</Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}<Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => { setPhase('prepare'); setError('') }}>응답 준비로 돌아가기</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
       {/* 근거는 추출할 때 자동으로 채운다. 원문 URL이 없을 때처럼 저장을 막는 값만 직접 입력하게 한다. */}
       {phase === 'review' && !supplyDraft && (reasonInput || reasonProblem) && <section className={styles.reason} aria-label="적용 근거 입력"><p role="status" className={styles.error}>{reasonProblem}</p><label>보정 이유<textarea value={reason} maxLength={2000} disabled={busy || blocked} onChange={event => { setReason(event.target.value) }} /></label><label>공식 근거 URL<input value={sourceUrl} maxLength={2048} disabled={busy || blocked} onChange={event => { setSourceUrl(event.target.value) }} /></label><label>근거 쪽<input value={sourcePage} maxLength={100} disabled={busy || blocked} onChange={event => { setSourcePage(event.target.value) }} /></label></section>}
     </>}
@@ -307,4 +360,25 @@ function FailureTargets({ rows, workspace }: { rows: string[]; workspace: JsonWo
     const row = workspace.supply.rows.find(item => item.key === rowKey)
     return <li key={value}>{row ? `${row.housingComplexName ?? row.complexName} · ${row.typeName} (#${String(row.id)})` : `원천 공급행 ${sourceKey}`}: {failureReasons[reason] ?? reason}. 이 행의 연결 주택형을 정하면 다음 정제에서 다시 판정합니다.</li>
   })}</ul></div>
+}
+
+function DraftState({ status, onRetry }: { status: DraftStatus; onRetry: () => void }) {
+  const time = (value: string) => new Date(value).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+  if (status.state === 'failed') return <span className={styles.draftFailed}>임시저장 실패 <Button data-design-system className={styles.quietButton} onClick={onRetry}>다시 시도</Button></span>
+  const label = status.state === 'saving' ? '저장 중…' : status.state === 'saved' ? `저장됨 ${time(status.at)}` : status.state === 'pending' ? '저장 대기' : status.state === 'conflict' ? '저장 멈춤 · 더 최신 초안 있음' : '임시저장 전'
+  return <span className={styles.draftState} aria-label={`임시저장 상태: ${label}`}>{label}</span>
+}
+
+/** 저장된 초안을 복원할지 폐기할지 고르게 한다. 초안 뒤 공고가 바뀌었거나 다른 PDF였으면 무엇이 다른지 먼저 보여 준다. */
+function DraftOffer({ draft, workspace, pdfHash, onRestore, onDiscard }: { draft: CorrectionDraft; workspace: JsonWorkspace; pdfHash: string; onRestore: () => void; onDiscard: () => void }) {
+  const changes = draft.stale ? baseRowChanges(draft.payload.baseRows, workspace.supply.rows) : []
+  const otherPdf = Boolean(draft.pdfSha256 && pdfHash && draft.pdfSha256 !== pdfHash)
+  const at = new Date(draft.updatedAt).toLocaleString('ko-KR')
+  return <section className={styles.draftOffer} role="region" aria-label="임시저장한 작업">
+    <p><strong>임시저장한 작업이 있습니다.</strong> {at} 저장 · {draft.payload.pdfName || 'PDF 이름 없음'} · 공급행 {draft.payload.review.rows.length}개</p>
+    {draft.stale && <div className={styles.warningNote}><p><strong>경고</strong> 초안을 저장한 뒤 공고 데이터가 바뀌었습니다{changes.length ? '.' : '(공급행 밖의 기본정보·일정·원천이 바뀌었거나 이미 적용한 초안입니다).'} 복원하면 최신 기존 값에 맞춰 다시 비교합니다.</p>
+      {changes.length > 0 && <ul aria-label="초안 뒤 바뀐 공급행">{changes.map(change => <li key={change}>{change}</li>)}</ul>}</div>}
+    {otherPdf && <div className={styles.warningNote}><p><strong>경고</strong> {`초안은 지금 열린 PDF와 다른 파일(SHA-256 ${draft.pdfSha256!.slice(0, 8)}…)로 작업했습니다. 근거 쪽 번호가 맞지 않을 수 있습니다.`}</p></div>}
+    <div className={styles.actions}><Button data-design-system onClick={onRestore}>임시저장본 복원</Button><Button data-design-system className={styles.secondaryButton} onClick={onDiscard}>임시저장본 폐기</Button></div>
+  </section>
 }

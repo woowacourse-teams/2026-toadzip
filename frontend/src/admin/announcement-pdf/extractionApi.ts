@@ -12,6 +12,8 @@ export type PdfExtraction = {
   totalPages: number
   warnings: string[]
   usage: { promptTokens: number | null; outputTokens: number | null; thinkingTokens: number | null }
+  /** 이 결과를 만든 추출 작업 ID. 초안에 어느 추출로 작업했는지 남긴다. */
+  jobId?: number
 }
 
 /** 서버에 남겨 둔 이전 추출 결과. pdfSha256으로 지금 고른 PDF와 같은 파일인지 비교한다. */
@@ -100,7 +102,7 @@ export async function extractAnnouncementPdf(id: string, file: Blob, fileName: s
   } catch (error) {
     if (!(error instanceof ManagementError && error.code === 'ANNOUNCEMENT_PDF_EXTRACTION_IN_PROGRESS')) throw error
     const joined = await joinActiveJob(id, await pdfSha256(file), signal)
-    if (!('jobId' in joined)) return joined
+    if (!('status' in joined)) return joined
     job = joined
   }
   const waitStart = Date.now()
@@ -117,7 +119,7 @@ export async function extractAnnouncementPdf(id: string, file: Blob, fileName: s
   }
   // 공고 첨부는 서버가 따로 받으므로, 미리 본 뒤 첨부가 바뀌었으면 결과의 쪽·인용이 화면의 PDF와 맞지 않는다.
   if (job.pdfSha256 !== await pdfSha256(file)) throw new Error('추출한 첨부 PDF가 화면에서 미리 본 파일과 다릅니다. 그사이 첨부가 바뀌었을 수 있으니 PDF를 다시 고른 뒤 다시 추출해 주세요.')
-  return parsePdfExtraction(job.extraction)
+  return { ...parsePdfExtraction(job.extraction), jobId: job.jobId }
 }
 
 const WAIT_LIMIT_MESSAGE = '추출이 아직 끝나지 않았습니다. 잠시 뒤 다시 추출을 누르면 이어서 기다립니다.'

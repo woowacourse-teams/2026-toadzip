@@ -245,3 +245,8 @@
 .page .warningNote p, .page .errorNote p { margin:0 0 var(--ds-space-1); }
 .blockReason { display:flex; flex-wrap:wrap; align-items:center; gap:var(--ds-space-1) var(--ds-space-2); margin-top:var(--ds-space-1); }
 .blockReason small { color:var(--ds-color-deadline); flex-basis:100%; }
+.draftOffer { display:grid; gap:var(--ds-space-2); padding:var(--ds-space-3) var(--ds-space-4); margin-bottom:var(--ds-space-3); border:1px solid var(--ds-color-action); border-radius:var(--ds-radius-control); background:var(--ds-color-action-soft); font-size:var(--ds-text-caption); }
+.page .draftOffer p { margin:0; }
+.draftOffer ul { margin:0; padding-left:var(--ds-space-5); }
+.draftState { color:var(--ds-color-muted-base); font-size:var(--ds-text-caption); font-variant-numeric:tabular-nums; }
+.draftFailed { display:inline-flex; align-items:center; gap:var(--ds-space-2); color:var(--ds-color-deadline); font-size:var(--ds-text-caption); }

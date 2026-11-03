@@ -16,6 +16,8 @@ const pdfTypes = vi.hoisted(() => ({ createPdfHousingTypes: vi.fn(async () => {}
 vi.mock('./pdfHousingTypes', () => pdfTypes)
 const extractor = vi.hoisted(() => ({ extractAnnouncementPdf: vi.fn(), loadLatestExtraction: vi.fn() }))
 vi.mock('./extractionApi', async original => ({ ...await original<typeof import('./extractionApi')>(), ...extractor }))
+const draftApi = vi.hoisted(() => ({ loadCorrectionDraft: vi.fn(), saveCorrectionDraft: vi.fn(), deleteCorrectionDraft: vi.fn() }))
+vi.mock('./correctionDraftApi', async original => ({ ...await original<typeof import('./correctionDraftApi')>(), ...draftApi }))
 const matchingTypes = vi.hoisted(() => ({ getMatchingHousingTypes: vi.fn() }))
 vi.mock('../ingest/supplyMatchingApi', () => matchingTypes)
 vi.mock('../../public-housing/api/announcementAttachments', () => ({ loadAnnouncementAttachment: async () => new Blob(), attachmentErrorMessage: () => 'PDF 열기 실패' }))
@@ -34,6 +36,9 @@ beforeEach(() => {
   api.previewJsonUpdate.mockResolvedValue({ confirmationToken: 'confirmed', housingTypes: [], housingTypeWarnings: [] })
   extracts(JSON.stringify(fixtures.hansville.extraction))
   extractor.loadLatestExtraction.mockResolvedValue(null)
+  draftApi.loadCorrectionDraft.mockResolvedValue(null)
+  draftApi.saveCorrectionDraft.mockImplementation(async () => ({ revision: draftApi.saveCorrectionDraft.mock.calls.length, updatedAt: '2026-11-03T03:00:00Z' }))
+  draftApi.deleteCorrectionDraft.mockResolvedValue(undefined)
 })
 /** 빈 Blob(첨부 PDF 목)의 SHA-256 */
 const EMPTY_PDF_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
@@ -690,4 +695,77 @@ it('LH 공급 원본 행이 공급행에 없어도 지원 종료한 LH 행 연�
   expect(screen.queryByRole('link', { name: 'LH 행 연결로 이동' })).not.toBeInTheDocument()
   expect(within(screen.getByRole('group', { name: '공급행 1 저장 방식' })).getByRole('radio', { name: '별도 추가' })).toBeEnabled()
   expect(within(screen.getByRole('group', { name: '공급행 1 저장 방식' })).getByRole('radio', { name: 'LH 행에 연결' })).toBeEnabled()
+})
+
+/** 저장해 둔 초안. 검토 화면에서 공급행 1의 주택형 표기를 직접 입력한 상태다. */
+function storedDraft(overrides: Record<string, unknown> = {}) {
+  const { review } = scenario('hansville')
+  review.rows[0].cells = review.rows[0].cells.map(cell => cell.field === 'sourceHousingTypeName' ? { ...cell, mode: 'manual', input: '26A 초안', manualInput: '26A 초안', value: '26A 초안', state: 'changed', selected: true, edited: true, reviewed: true } : cell)
+  return { revision: 4, baseSnapshotToken: 'current', pdfSha256: EMPTY_PDF_SHA256, extractionId: 31, updatedAt: '2026-11-03T03:00:00Z', stale: false,
+    payload: { version: 1, text: JSON.stringify(fixtures.hansville.extraction), review, reason: '초안 이유', sourceUrl: 'https://example.com/notice', sourcePage: '4', section: 'supply', pdfName: '공고문.pdf',
+      baseRows: [{ key: 'row:90', id: 90, label: '익산한스빌 · 아파트', householdCount: 160, exclusiveArea: null, excluded: false }] }, ...overrides }
+}
+
+it('편집을 멈추면 잠시 뒤 작업 상태 전체를 임시저장하고, 실패하면 편집을 유지한 채 다시 시도할 수 있다', async () => {
+  draftApi.saveCorrectionDraft.mockRejectedValueOnce(new Error('네트워크 오류'))
+  await open()
+  manual('공급행 1', '이 공고의 주택형 표기')
+  fireEvent.change(screen.getByLabelText('공급행 1 이 공고의 주택형 표기 수정'), { target: { value: '26A 관리자' } })
+  await waitFor(() => expect(screen.getByText('임시저장 실패')).toBeVisible(), { timeout: 3000 })
+  expect(screen.getByLabelText('공급행 1 이 공고의 주택형 표기 수정')).toHaveValue('26A 관리자')
+  fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+  await waitFor(() => expect(screen.getByLabelText(/^임시저장 상태: 저장됨/)).toBeInTheDocument())
+  const saved = draftApi.saveCorrectionDraft.mock.lastCall!
+  expect(saved[0]).toBe('29')
+  expect(saved[1]).toMatchObject({ expectedRevision: null, baseSnapshotToken: 'current', pdfSha256: EMPTY_PDF_SHA256, payload: { version: 1, reason: expect.any(String), section: 'supply' } })
+  const cell = saved[1].payload.review.rows[0].cells.find((item: { field: string }) => item.field === 'sourceHousingTypeName')
+  expect(cell).toMatchObject({ mode: 'manual', manualInput: '26A 관리자' })
+  expect(saved[1].payload.review.rows[0].proposal.destination).toBe('row:90')
+})
+
+it('다른 탭이 더 최신 초안을 저장했으면 덮어쓰지 않고 알린 뒤 최신 초안을 불러올지 고르게 한다', async () => {
+  draftApi.saveCorrectionDraft.mockRejectedValue(new ManagementError('충돌', 409, {}, 'ANNOUNCEMENT_CORRECTION_DRAFT_CONFLICT'))
+  await open()
+  fireEvent.click(screen.getByRole('button', { name: '임시저장' }))
+  expect(await screen.findByText(/다른 탭\/세션에서 더 최신 초안이 저장됐습니다/)).toBeVisible()
+  const calls = draftApi.saveCorrectionDraft.mock.calls.length
+  manual('공급행 1', '이 공고의 주택형 표기')
+  await new Promise(resolve => setTimeout(resolve, 1700))
+  expect(draftApi.saveCorrectionDraft).toHaveBeenCalledTimes(calls)
+  draftApi.loadCorrectionDraft.mockResolvedValue(storedDraft({ revision: 9 }))
+  fireEvent.click(screen.getByRole('button', { name: '최신 초안 불러오기' }))
+  expect(await screen.findByRole('region', { name: '임시저장한 작업' })).toBeVisible()
+})
+
+it('저장된 초안이 있으면 바로 적용하지 않고, 공고가 바뀐 내용을 보여 준 뒤 복원하면 선택을 이어 가고 적용 성공 뒤에만 초안을 지운다', async () => {
+  draftApi.loadCorrectionDraft.mockResolvedValue(storedDraft({ stale: true }))
+  renderPage()
+  const offer = await screen.findByRole('region', { name: '임시저장한 작업' })
+  expect(within(offer).getByRole('list', { name: '초안 뒤 바뀐 공급행' })).toHaveTextContent('익산한스빌 · 아파트 (#90): 모집수 160 → 170')
+  expect(screen.queryByRole('heading', { name: '공급정보' })).not.toBeInTheDocument()
+  expect(draftApi.saveCorrectionDraft).not.toHaveBeenCalled()
+  fireEvent.click(within(offer).getByRole('button', { name: '임시저장본 복원' }))
+  expect(await screen.findByRole('heading', { name: '공급정보' })).toBeVisible()
+  expect(screen.getByLabelText('공급행 1 이 공고의 주택형 표기 수정')).toHaveValue('26A 초안')
+  expect(screen.getByText(/최신 공고 값에 맞춰 복원했습니다/)).toBeVisible()
+  api.applyJsonUpdate.mockRejectedValueOnce(new ManagementError('잘못된 요청', 400))
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  await screen.findByText('잘못된 요청')
+  expect(draftApi.deleteCorrectionDraft).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })
+  await waitFor(() => expect(draftApi.deleteCorrectionDraft).toHaveBeenCalledWith('29', expect.any(Number)))
+})
+
+it('저장된 초안을 폐기하면 그 revision으로 지우고 새 작업을 첫 저장으로 시작한다', async () => {
+  draftApi.loadCorrectionDraft.mockResolvedValue(storedDraft())
+  extracts(JSON.stringify(fixtures.hansville.extraction))
+  renderPage()
+  fireEvent.click(within(await screen.findByRole('region', { name: '임시저장한 작업' })).getByRole('button', { name: '임시저장본 폐기' }))
+  await waitFor(() => expect(draftApi.deleteCorrectionDraft).toHaveBeenCalledWith('29', 4))
+  await review()
+  await screen.findByRole('heading', { name: '공급정보' })
+  fireEvent.click(screen.getByRole('button', { name: '임시저장' }))
+  await waitFor(() => expect(draftApi.saveCorrectionDraft).toHaveBeenCalled())
+  expect(draftApi.saveCorrectionDraft.mock.calls[0][1].expectedRevision).toBeNull()
 })
