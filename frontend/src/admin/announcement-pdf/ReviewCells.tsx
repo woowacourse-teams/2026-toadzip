@@ -12,15 +12,19 @@ const modes: [ValueMode, string, string][] = [['keep', '기존 값', '기존 값
 /** 단지에 맞는 주택형이 없을 때 연결 주택형에서 고를 수 있는 'PDF 형명·면적으로 새 주택형 추가' */
 export type NewHousingTypeChoice = { label: string; selected: boolean; onSelect: (selected: true) => void }
 
-export function ReviewCells({ cells, scope, housingTypes = [], newType, filter = 'all', onChange, onEvidence }: { cells: Cell[]; scope: string; housingTypes?: MatchingHousingType[]; newType?: NewHousingTypeChoice; filter?: ReviewFilter; onChange: (cells: Cell[]) => void; onEvidence: (evidence: Evidence, cell?: Cell) => void }) {
+/**
+ * housingTypes는 이 행의 단지에서 고를 수 있는 주택형, otherHousingTypes는 다른 단지 주택형이다. 저장 위치를 다른 단지 행으로 바꾸면
+ * 기존·추출 값이 그 단지에 없는 주택형일 수 있어, 번호 대신 이름과 다른 단지라는 표시를 보인다.
+ */
+export function ReviewCells({ cells, scope, housingTypes = [], otherHousingTypes = [], newType, filter = 'all', onChange, onEvidence }: { cells: Cell[]; scope: string; housingTypes?: MatchingHousingType[]; otherHousingTypes?: MatchingHousingType[]; newType?: NewHousingTypeChoice; filter?: ReviewFilter; onChange: (cells: Cell[]) => void; onEvidence: (evidence: Evidence, cell?: Cell) => void }) {
   const [all, setAll] = useState(false)
   const quiet = filter === 'all' ? cells.filter(cell => cell.mode !== 'manual' && (cell.state === 'same' || cell.state === 'notApplicable')) : []
   const visible = cells.filter(cell => cellMatches(cell, filter) && (all || !quiet.includes(cell)))
   function update(path: string, next: Cell) { onChange(cells.map(cell => cell.path === path ? next : cell)) }
   function display(cell: Cell, value: unknown) {
     if (cell.kind === 'housingType') {
-      const type = housingTypes.find(item => item.id === value)
-      return value == null ? '미연결' : type ? housingTypeLabel(type, housingTypes) : `#${String(value)}`
+      const type = housingTypes.find(item => item.id === value), other = otherHousingTypes.find(item => item.id === value)
+      return value == null ? '미연결' : type ? housingTypeLabel(type, housingTypes) : other ? `${housingTypeLabel(other)} · 다른 단지` : `#${String(value)}`
     }
     if (cell.kind === 'method' || cell.kind === 'scheduleType') return choices[cell.kind].find(([key]) => key === value)?.[1] ?? shown(value)
     if (cell.kind === 'datetime') return shownDateTime(value)
@@ -48,7 +52,7 @@ export function ReviewCells({ cells, scope, housingTypes = [], newType, filter =
         <div className={styles.before}><span className={styles.mobileLabel}>기존 값</span>{display(cell, cell.before)}</div>
         <div className={styles.extracted}><span className={styles.mobileLabel}>PDF 추출값</span>{display(cell, cell.extracted.value)}</div>
         <div className={styles.cellResult}>{cell.locked ? <span>{cell.note || '기존 값 유지'}</span> : <>
-          <div role="group" aria-label={`${scope} ${cell.label} 반영 방법`} className={styles.valueChoices}>{modes.map(([mode, label, name]) => <Button data-design-system key={mode} aria-label={name} aria-pressed={cell.mode === mode} disabled={mode === 'extracted' && !canUseExtracted}
+          <div role="group" aria-label={`${scope} ${cell.label} 반영 방법`} className={styles.valueChoices}>{modes.map(([mode, label, name]) => <Button data-design-system key={mode} aria-label={mode === 'keep' && cell.before == null ? undefined : name} aria-pressed={cell.mode === mode} disabled={mode === 'extracted' && !canUseExtracted}
             onClick={() => update(cell.path, chooseCellValue(cell, mode))}>{mode === 'keep' && cell.before == null ? emptyKeepLabel(cell) : label}</Button>)}</div>
           {cell.kind === 'housingType' && newType?.selected && cell.mode !== 'manual' ? <strong className={styles.resultValue}>새 주택형 추가 · {newType.label}</strong> : cell.mode === 'manual' ? manualField(cell) : <strong className={styles.resultValue}>{cell.mode === 'keep' && cell.before == null ? emptyKeepResult(cell) : display(cell, cell.mode === 'keep' ? cell.before : cell.value)}</strong>}
           {cell.note && <small>{cell.note}</small>}

@@ -17,7 +17,9 @@ function rowText(row: CorrectionRow) {
  * 추출 행 하나의 저장 방식(기존 행 수정 · 통합행 분리 · LH 행에 연결 · 별도 추가)과 그 대상을 고른다.
  * 기존 행 수정은 추천 행을 먼저 두고 이 공고의 제외하지 않은 공급행 전체를 단지·주택형·면적·모집수로 찾을 수 있다.
  */
-export function PlacementChooser({ row, index, workspace, complexes, problem, onPlace, onFixDuplicate, onFocusProblem }: { row: RowReview; index: number; workspace: JsonWorkspace; complexes: ComplexLabels
+export function PlacementChooser({ row, index, workspace, complexes, problem, splitLhRow, onPlace, onFixDuplicate, onFocusProblem }: { row: RowReview; index: number; workspace: JsonWorkspace; complexes: ComplexLabels
+  /** 통합행 분리를 고르면 먼저 둘 LH 행(splitLhRowFor) */
+  splitLhRow?: string
   problem?: PlacementProblem; onPlace: (placement: Placement) => void; onFixDuplicate?: () => void; onFocusProblem?: (target: string) => void }) {
   const [query, setQuery] = useState('')
   const proposal = row.proposal, mode = placementMode(proposal), label = `공급행 ${index + 1}`
@@ -38,7 +40,7 @@ export function PlacementChooser({ row, index, workspace, complexes, problem, on
   }
   function choose(next: PlacementMode) {
     if (next === 'UPDATE') onPlace({ mode: 'UPDATE', rowKey: proposal.recommended[0] ?? rows[0].key })
-    else if (next === 'SPLIT') onPlace({ mode: 'SPLIT', lhRow: (splittable.find(lh => lh.attachedRowKey === proposal.destination) ?? splittable[0]).rowIdentifier })
+    else if (next === 'SPLIT') onPlace({ mode: 'SPLIT', lhRow: splitLhRow ?? splittable[0].rowIdentifier })
     else if (next === 'ATTACH') onPlace({ mode: 'ATTACH', lhRow: unattached[0].rowIdentifier, anchorKey: proposal.anchorKey })
     else onPlace({ mode: 'ADD', anchorKey: proposal.anchorKey })
   }

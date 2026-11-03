@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { daegu } from './fixtures/workspace'
 import { chooseCellValue, assembleReview, createReview, pendingItems, placementMode, placementProblems, rebaseReview, ReviewError, type Review } from './review'
-import { includeRow, placeRow } from './placement'
+import { includeRow, placeRow, splitLhRowFor } from './placement'
 
 const evidence = { reason: '공고문과 대조', sourceUrl: 'https://example.com/daegu', sourcePage: '3' }
 const modes = (review: Review) => review.rows.map(row => [placementMode(row.proposal), row.proposal.destination === 'new' ? 'new' : row.proposal.destination])
@@ -125,4 +125,24 @@ it('운영자가 고른 저장 방식과 값 선택은 최신값을 다시 불�
   expect(modes(rebased)).toEqual([['SPLIT', 'row:747'], ['SPLIT', 'new'], ['ADD', 'new']])
   expect(rebased.rows[1].cells.find(cell => cell.field === 'totalSupplyHouseholdCount')).toMatchObject({ mode: 'manual', manualInput: '26' })
   expect(rebased.rows[0].cells.find(cell => cell.field === 'totalSupplyHouseholdCount')).toMatchObject({ mode: 'extracted', before: 230, value: 200 })
+})
+
+it('분리 행을 다른 단지 행 수정으로 옮겼다가 통합행 분리로 되돌리면 처음 제안한 LH 행과 첫 분리행(통합행)으로 돌아간다', () => {
+  // 다른 단지 행 #748도 나눌 수 있는 LH 행(LH:P:SUPPLY:0)에 붙어 있어, 지금 수정 대상의 LH 행을 고르면 엉뚱한 통합행이 된다.
+  const { review, workspace, housing } = daegu({ leadingLhRow: true })
+  let next = placeRow(pickCounts(review), 0, { mode: 'UPDATE', rowKey: 'row:748' }, workspace, housing)
+  expect(modes(next)).toEqual([['UPDATE', 'row:748'], ['SPLIT', 'row:747'], ['SPLIT', 'new']])
+  const lhRow = splitLhRowFor(next, 0, workspace)
+  expect(lhRow).toBe('LH:P:SUPPLY:1')
+  next = placeRow(next, 0, { mode: 'SPLIT', lhRow: lhRow! }, workspace, housing)
+  expect(modes(next)).toEqual([['SPLIT', 'row:747'], ['SPLIT', 'new'], ['SPLIT', 'new']])
+  expect(assembleReview(next, workspace, evidence).correction.rows.filter(row => row.saveMode === 'SPLIT').map(row => [row.id, row.householdCount, row.housingTypeId]))
+    .toEqual([[747, 200, 501], [null, 25, 502], [null, 15, 503]])
+})
+
+it('AI가 이 행에 표시한 LH 행이 있으면 통합행 분리를 고를 때 그 LH 행을 먼저 둔다', () => {
+  const { review, workspace, housing } = daegu({ leadingLhRow: true, lhSourceRow: true })
+  const moved = placeRow(placeRow(review, 1, { mode: 'ADD', anchorKey: 'row:747' }, workspace, housing), 2, { mode: 'ADD', anchorKey: 'row:747' }, workspace, housing)
+  const away = placeRow(moved, 0, { mode: 'UPDATE', rowKey: 'row:748' }, workspace, housing)
+  expect(splitLhRowFor(away, 0, workspace)).toBe('LH:P:SUPPLY:1')
 })

@@ -55,8 +55,19 @@ it('현재값이 비어 있으면 기존 값 선택을 비워 두기나 미연�
   const row = scenario('hansville', separateHansville()).review.rows[0]
   const type = { ...row.cells.find(item => item.field === 'housingTypeId')!, before: null, mode: 'keep' as const, selected: false }
   renderCell(type)
-  expect(screen.getByRole('button', { name: '기존 값 사용' })).toHaveTextContent('미연결 유지')
+  // 보이는 이름과 접근 가능한 이름이 같아야 화면 읽기·음성 명령 사용자가 같은 버튼을 찾는다.
+  expect(screen.getByRole('button', { name: '미연결 유지' })).toBeVisible()
+  expect(screen.queryByRole('button', { name: '기존 값 사용' })).not.toBeInTheDocument()
   expect(screen.queryByText('추가 안 함')).not.toBeInTheDocument()
+})
+
+it('저장 위치를 다른 단지 행으로 옮겨 그 단지에 없는 주택형이 남으면 번호 대신 이름과 다른 단지 표시를 보인다', () => {
+  const { review, housing } = daegu()
+  const type = { ...review.rows[0].cells.find(item => item.field === 'housingTypeId')!, before: null, mode: 'extracted' as const, selected: true }
+  render(<ReviewCells cells={[type]} scope="공급행 1" housingTypes={[]} otherHousingTypes={Object.values(housing).flat()} onChange={() => {}} onEvidence={() => {}} />)
+  expect(type.extracted.value).toBe(501)
+  expect(screen.getAllByText('51A · 전용 51.98㎡ · 공급 72.1㎡ · 468세대 · 다른 단지').length).toBeGreaterThan(0)
+  expect(screen.queryByText('#501')).not.toBeInTheDocument()
 })
 
 it('근거 없는 추출값은 고를 수 없는 이유를 칸 옆에 두고, 추출값을 채운 직접 입력으로 바꾼 뒤 모드를 바꿔도 추출 원본과 직접 입력을 지킨다', () => {

@@ -755,7 +755,7 @@ it('다른 탭이 더 최신 초안을 저장했으면 덮어쓰지 않고 알�
   draftApi.saveCorrectionDraft.mockRejectedValue(new ManagementError('충돌', 409, {}, 'ANNOUNCEMENT_CORRECTION_DRAFT_CONFLICT'))
   await open()
   fireEvent.click(screen.getByRole('button', { name: '임시저장' }))
-  expect(await screen.findByText(/다른 탭\/세션에서 더 최신 초안이 저장됐습니다/)).toBeVisible()
+  expect(await within(screen.getByLabelText('검토 진행')).findByRole('alert')).toHaveTextContent('다른 탭/세션에서 더 최신 초안이 저장됐습니다')
   const calls = draftApi.saveCorrectionDraft.mock.calls.length
   manual('공급행 1', '이 공고의 주택형 표기')
   await new Promise(resolve => setTimeout(resolve, 1700))
@@ -766,7 +766,9 @@ it('다른 탭이 더 최신 초안을 저장했으면 덮어쓰지 않고 알�
 })
 
 it('저장된 초안이 있으면 바로 적용하지 않고, 공고가 바뀐 내용을 보여 준 뒤 복원하면 선택을 이어 가고 적용 성공 뒤에만 초안을 지운다', async () => {
-  draftApi.loadCorrectionDraft.mockResolvedValue(storedDraft({ stale: true }))
+  const stored = storedDraft({ stale: true })
+  stored.payload = { ...stored.payload, warnings: ['LH 공급 1행(익산한스빌, 모집 170)을 PDF 주택형별 2행으로 나눴습니다.'] } as typeof stored.payload
+  draftApi.loadCorrectionDraft.mockResolvedValue(stored)
   renderPage()
   const offer = await screen.findByRole('region', { name: '임시저장한 작업' })
   expect(within(offer).getByRole('list', { name: '초안 뒤 바뀐 공급행' })).toHaveTextContent('익산한스빌 · 아파트 (#90): 모집수 160 → 170')
@@ -775,13 +777,16 @@ it('저장된 초안이 있으면 바로 적용하지 않고, 공고가 바뀐 �
   fireEvent.click(within(offer).getByRole('button', { name: '임시저장본 복원' }))
   expect(await screen.findByRole('heading', { name: '공급정보' })).toBeVisible()
   expect(screen.getByLabelText('공급행 1 이 공고의 주택형 표기 수정')).toHaveValue('26A 초안')
-  expect(screen.getByText(/최신 공고 값에 맞춰 복원했습니다/)).toBeVisible()
+  // 복원 안내는 배너로 쌓이지 않고 상단 임시저장 상태 옆에 짧게 남는다.
+  expect(within(screen.getByLabelText('검토 진행')).getByRole('status')).toHaveTextContent('최신 공고 값에 맞춰 복원함')
+  expect(screen.getByRole('note', { name: '검산 결과' })).toHaveTextContent('LH 공급 1행(익산한스빌, 모집 170)을 PDF 주택형별 2행으로 나눴습니다.')
   api.applyJsonUpdate.mockRejectedValueOnce(new ManagementError('잘못된 요청', 400))
   await applyCorrection()
   await screen.findByText('잘못된 요청')
   expect(draftApi.deleteCorrectionDraft).not.toHaveBeenCalled()
   await applyCorrection()
   await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })
+  expect(screen.queryByText(/복원/)).not.toBeInTheDocument()
   await waitFor(() => expect(draftApi.deleteCorrectionDraft).toHaveBeenCalledWith('29', expect.any(Number)))
 })
 
@@ -845,7 +850,7 @@ it('적용 전 확인은 통합행 분리 결과와 단지별 변경 전후 합�
   expect(within(summary).getByRole('group', { name: /^통합행 분리/ })).toHaveTextContent('통합행 #90 아파트 · 모집 170 → 첫 분리행 26A 120세대(ID 유지) · 새 분리행 26B 50세대분리 합계 170세대 / LH 170세대 · 일치')
   expect(within(summary).getByRole('region', { name: '익산한스빌 적용 전후' })).toHaveTextContent('모집수 합계 170세대 → 170세대')
   expect(within(summary).getByRole('list', { name: '익산한스빌 변경 후' })).toHaveTextContent('26B50세대')
-  expect(within(summary).getByRole('note', { name: '남는 LH 행' })).toHaveTextContent('LH 행 2 · 익산한스빌 · 36')
+  expect(within(summary).getByRole('note', { name: '남는 LH 행' })).toHaveTextContent('LH 행 3 · 익산한스빌 · 36')
   fireEvent.click(within(summary).getByRole('button', { name: '돌아가서 수정' }))
   expect(screen.queryByRole('region', { name: '적용 전 확인' })).not.toBeInTheDocument()
   expect(api.applyJsonUpdate).not.toHaveBeenCalled()

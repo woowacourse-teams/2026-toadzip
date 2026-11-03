@@ -9,7 +9,9 @@ export type DraftBaseRow = { key: string; id: number | null; label: string; hous
  * 화면 작업 상태. review에 행 포함·제외, 칸마다 기존·추출·직접 입력 선택과 미완성 입력, 저장 방식(분리·연결·추가), 단지·주택형 연결,
  * 일정·접수처 선택, 확인 진행이 모두 들어 있다. text는 추출 응답 원문, reason·sourceUrl·sourcePage는 적용 근거다.
  */
-export type DraftPayload = { version: 1; text: string; review: Review; reason: string; sourceUrl: string; sourcePage: string; section: ReviewSection; pdfName: string; baseRows: DraftBaseRow[] }
+export type DraftPayload = { version: 1; text: string; review: Review; reason: string; sourceUrl: string; sourcePage: string; section: ReviewSection; pdfName: string; baseRows: DraftBaseRow[]
+  /** 추출할 때 AI 워커가 남긴 경고(LH 행 분리 등). 이 필드 전에 저장한 초안에는 없다. */
+  warnings?: string[] }
 export type CorrectionDraft = { payload: DraftPayload; revision: number; baseSnapshotToken: string; pdfSha256: string | null; extractionId: number | null; updatedAt: string; stale: boolean }
 export type DraftSaveInput = { expectedRevision: number | null; baseSnapshotToken: string; pdfSha256?: string; extractionId?: number; payload: DraftPayload }
 export const draftConflictCode = 'ANNOUNCEMENT_CORRECTION_DRAFT_CONFLICT'
@@ -20,7 +22,8 @@ const positive = (value: unknown): value is number => typeof value === 'number' 
 
 function payload(value: unknown): DraftPayload {
   if (!isRecord(value) || value.version !== 1 || typeof value.text !== 'string' || !isRecord(value.review) || !Array.isArray(value.review.rows)
-    || !Array.isArray(value.review.schedules) || !Array.isArray(value.baseRows) || typeof value.reason !== 'string' || typeof value.sourceUrl !== 'string') invalid()
+    || !Array.isArray(value.review.schedules) || !Array.isArray(value.baseRows) || typeof value.reason !== 'string' || typeof value.sourceUrl !== 'string'
+    || value.warnings !== undefined && !(Array.isArray(value.warnings) && value.warnings.every(item => typeof item === 'string'))) invalid()
   return value as DraftPayload
 }
 

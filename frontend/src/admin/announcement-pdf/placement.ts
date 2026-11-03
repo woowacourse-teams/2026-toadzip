@@ -1,5 +1,5 @@
 import type { JsonWorkspace } from '../announcement-json/api'
-import { assignSplitDestinations, pickHousingType, type HousingCandidates, type RowProposal } from './matching'
+import { assignSplitDestinations, pickHousingType, splittableLhRows, type HousingCandidates, type RowProposal } from './matching'
 import { createRowReview, preserveCellChoice, type Review, type RowReview } from './review'
 
 /** 운영자가 고른 저장 방식. UPDATE는 수정할 기존 행, SPLIT·ATTACH는 LH 행, ADD는 기준 단지(그 단지의 공급행 키, 없으면 '')다. */
@@ -38,6 +38,18 @@ export function placeRow(review: Review, index: number, placement: Placement, wo
   const proposals = review.rows.map((row, at) => at === index ? proposal : row.proposal)
   const changed = new Set([index, ...assignSplitDestinations(proposals, at => review.rows[at].include, workspace.supply)])
   return { ...review, rows: review.rows.map((row, at) => changed.has(at) ? rebuild(review, at, proposals[at], workspace, housing, at === index || row.reviewed) : row) }
+}
+
+/**
+ * 통합행 분리를 고를 때 먼저 둘 LH 행. AI가 이 행에 표시한 LH 행, 같은 묶음의 다른 분리행이 쓰는 LH 행, 지금 수정 대상이 붙은 LH 행 순이다.
+ * 다른 단지 행으로 옮겼다가 돌아와도 처음 제안한 통합행으로 돌아가게 한다.
+ */
+export function splitLhRowFor(review: Review, index: number, workspace: JsonWorkspace): string | undefined {
+  const splittable = splittableLhRows(workspace.supply)
+  const others = review.rows.flatMap((row, at) => at !== index && row.include && row.proposal.saveMode === 'SPLIT' && row.proposal.lhRow ? [row.proposal.lhRow] : [])
+  const attached = splittable.find(lh => lh.attachedRowKey === review.rows[index].proposal.destination)?.rowIdentifier
+  return [review.extraction.supplyRows[index].values.lhSourceRow, ...others, attached, splittable[0]?.rowIdentifier]
+    .find((identifier): identifier is string => typeof identifier === 'string' && splittable.some(lh => lh.rowIdentifier === identifier))
 }
 
 /** 행 포함·제외를 바꾼다. 분리 묶음 행이면 통합행을 이어받는 첫 행을 포함한 행으로 다시 맞춘다. */

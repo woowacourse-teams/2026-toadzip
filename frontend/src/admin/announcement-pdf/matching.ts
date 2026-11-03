@@ -370,17 +370,17 @@ export function splittableLhRows(supply: Pick<SupplyWorkspace, 'lhSupplyRows' | 
 export function attachableLhRows(supply: Pick<SupplyWorkspace, 'lhSupplyRows'>): LhSupplyRow[] {
   return (supply.lhSupplyRows ?? []).filter(lh => lh.attachedRowKey == null && !lh.splitRowKeys?.length)
 }
-/** LH 행 표기. 단지 · 주택형 · 면적 · 이번 공급 수 */
+/** LH 행 표기. LH 목록 몇 번째 행(1부터) · 단지 · 주택형 · 면적 · 이번 공급 수 */
 export function lhRowLabel(lh: LhSupplyRow) {
   const order = /:(\d+)$/.exec(lh.rowIdentifier)?.[1]
-  return [`LH 행 ${order ?? lh.rowIdentifier}`, lh.complexLabel, lh.typeName, lh.exclusiveArea ? `전용 ${lh.exclusiveArea}㎡` : '면적 미확인',
+  return [`LH 행 ${order === undefined ? lh.rowIdentifier : Number(order) + 1}`, lh.complexLabel, lh.typeName, lh.exclusiveArea ? `전용 ${lh.exclusiveArea}㎡` : '면적 미확인',
     lh.householdCount != null ? `모집 ${lh.householdCount}` : '모집수 미확인'].filter(Boolean).join(' · ')
 }
 const rowCount = (row: Extraction['supplyRows'][number]) => typeof row.values.totalSupplyHouseholdCount === 'number' ? row.values.totalSupplyHouseholdCount : null
 
 /**
- * 분리 묶음의 저장 위치를 맞춘다. 통합행을 이어받는 첫 행(head)은 이미 통합행을 가리키는 포함 행, 없으면 포함 행 중 첫 행이고
- * 나머지는 새 행('new')이다. 모두 통합행을 기준 단지로 쓴다. 바뀐 행 번호를 돌려준다.
+ * 분리 묶음의 저장 위치를 맞춘다. 통합행을 이어받는 첫 행(head)은 포함 행 중 PDF 순서로 첫 행이고 나머지는 새 행('new')이다.
+ * 편집 순서와 관계없이 같은 묶음이면 같은 행이 통합행을 이어받는다. 모두 통합행을 기준 단지로 쓴다. 바뀐 행 번호를 돌려준다.
  */
 export function assignSplitDestinations(proposals: RowProposal[], include: (index: number) => boolean, supply: Pick<SupplyWorkspace, 'lhSupplyRows'>): number[] {
   const changed: number[] = []
@@ -388,8 +388,7 @@ export function assignSplitDestinations(proposals: RowProposal[], include: (inde
     const merged = lh.attachedRowKey
     const members = proposals.flatMap((proposal, index) => proposal.saveMode === 'SPLIT' && proposal.lhRow === lh.rowIdentifier ? [index] : [])
     if (!merged || !members.length) continue
-    const included = members.filter(include)
-    const head = included.find(index => proposals[index].destination === merged) ?? included[0]
+    const head = members.find(include)
     for (const index of members) {
       const destination = index === head ? merged : 'new'
       if (proposals[index].destination === destination && proposals[index].anchorKey === merged) continue
