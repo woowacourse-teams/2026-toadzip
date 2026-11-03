@@ -19,7 +19,7 @@ from test_pages import COVER, NOTICE, RENT, RENT_CELLS, SUPPLY, pdf
 USAGE = {"promptTokens": 9000, "outputTokens": 3000, "thinkingTokens": 500}
 EXTRACTION = {
     "data": {"announcement": {"name": "여수미평1 영구임대주택 예비입주자 모집"}, "complexes": [],
-             "supplyRows": [{"sourceHousingTypeName": "16A", "totalSupplyHouseholdCount": 78}], "schedules": []},
+             "supplyRows": [{"sourceHousingTypeName": "16A", "lhSourceRow": 1, "totalSupplyHouseholdCount": 78}], "schedules": []},
     "sharedCounts": [], "notApplicable": [],
     "evidence": [{"path": "supplyRows[0]", "page": 2, "quote": "공용 26.37 298"}],
 }
@@ -67,7 +67,7 @@ def test_lh_rows_are_sent_as_supply_row_frame_and_counts_are_checked():
 
     [prompt] = model.prompts
     assert announcement.LH_FRAME in prompt
-    assert "[LH 공급 API 행]\n0. 주택형=16A(대학생/청년) | 전용=16.37 | 공급=27.6384 | 모집수=78\n\n[첨부 1쪽]" in prompt
+    assert "[LH 공급 API 행]\n1. 주택형=16A(대학생/청년) | 전용=16.37 | 공급=27.6384 | 모집수=78\n\n[첨부 1쪽]" in prompt
     assert result["warnings"] == []
 
 
@@ -78,7 +78,58 @@ def test_lh_count_mismatch_is_warning_not_failure():
 
     # 가짜 공급 표에는 "16A"가 없어, LH 이름을 옮긴 경우로도 경고한다.
     assert result["warnings"] == ["supplyRows[0].sourceHousingTypeName: 근거 인용에 없는 LH 주택형 이름(16A)",
-                                  "supplyRows[0].totalSupplyHouseholdCount: LH API 모집수 80와 다름(78)"]
+                                  "supplyRows[0].totalSupplyHouseholdCount: LH API 공급행 1 모집수 80와 다름(78)"]
+
+
+def split_row(housing_type, count, constructed, lh_row=1, subtypes=()):
+    return {"complexReference": {"sourceComplexName": "대구테크노폴리스4"}, "sourceHousingTypeName": housing_type,
+            "lhSourceRow": lh_row, "totalSupplyHouseholdCount": count, "constructedHouseholdCount": constructed,
+            "subtypes": list(subtypes), "targets": [{"target": "일반", "supplyHouseholdCount": None}]}
+
+
+MERGED_LH_INPUT = {"lhSupplyRows": [{"order": 0, "complexLabel": "대구테크노폴리스4", "typeName": "51", "exclusiveArea": "",
+                                     "supplyArea": "", "suppliedUnitCount": "240", "totalUnitCount": "719"}]}
+
+
+def test_merged_lh_row_split_by_pdf_housing_types_keeps_counts_and_source_row():
+    # LH는 모집 240 한 행만 보내고, 공급 표는 주택형마다 이번 모집수(200·25·15)를 따로 적는다. 건설호수(468·183·68)는 모집수가 아니다.
+    extraction = dict(EXTRACTION, data=dict(EXTRACTION["data"], supplyRows=[
+        split_row("051.9800A", 200, 468), split_row("059.9100A", 25, 183), split_row("059.9300B", 15, 68)]), evidence=[])
+    model = FakeModel(json.dumps(extraction, ensure_ascii=False))
+
+    result = AnnouncementPdfExtractor(model).extract(job(pdf(COVER, SUPPLY, RENT), MERGED_LH_INPUT))
+
+    assert "[LH 공급 API 행]\n1. 주택형=51 | 전용= | 공급= | 모집수=240\n\n" in model.prompts[0]
+    rows = json.loads(result["json"])["data"]["supplyRows"]
+    assert [(row["sourceHousingTypeName"], row["lhSourceRow"], row["totalSupplyHouseholdCount"]) for row in rows] == [
+        ("051.9800A", 1, 200), ("059.9100A", 1, 25), ("059.9300B", 1, 15)]
+    assert result["warnings"] == []
+
+
+def test_split_rows_not_adding_up_to_lh_count_are_warned_without_changing_values():
+    extraction = dict(EXTRACTION, data=dict(EXTRACTION["data"], supplyRows=[
+        split_row("051.9800A", 200, 468), split_row("059.9100A", 25, 183)]), evidence=[])
+
+    result = AnnouncementPdfExtractor(FakeModel(json.dumps(extraction, ensure_ascii=False))).extract(
+        job(pdf(COVER, SUPPLY, RENT), MERGED_LH_INPUT))
+
+    assert [row["totalSupplyHouseholdCount"] for row in json.loads(result["json"])["data"]["supplyRows"]] == [200, 25]
+    assert result["warnings"] == ["supplyRows[0], supplyRows[1]: 나뉜 공급행 모집수 합계 225이(가) LH API 공급행 1 모집수 240와 다름"]
+
+
+def test_shared_count_for_several_types_stays_one_row_without_warning():
+    # 공급 표가 두 주택형을 모집수 하나로만 안내하면 한 공급행에 subtypes로 두고 수를 나누거나 복제하지 않는다.
+    subtypes = [{"name": "051.9800A", "exclusiveArea": 51.98, "commonArea": None, "constructedHouseholdCount": 468},
+                {"name": "059.9100A", "exclusiveArea": 59.91, "commonArea": None, "constructedHouseholdCount": 183}]
+    extraction = dict(EXTRACTION, data=dict(EXTRACTION["data"], supplyRows=[split_row("051.9800A/059.9100A", 240, None, subtypes=subtypes)]),
+                      evidence=[])
+
+    result = AnnouncementPdfExtractor(FakeModel(json.dumps(extraction, ensure_ascii=False))).extract(
+        job(pdf(COVER, SUPPLY, RENT), MERGED_LH_INPUT))
+
+    [row] = json.loads(result["json"])["data"]["supplyRows"]
+    assert (row["lhSourceRow"], row["totalSupplyHouseholdCount"], len(row["subtypes"])) == (1, 240, 2)
+    assert result["warnings"] == []
 
 
 def test_without_lh_rows_frame_is_not_sent():
@@ -174,6 +225,6 @@ def test_prompt_order_matches_evaluation():
     assert announcement.build_prompt([], "[첨부 1쪽]\n쪽") == "".join(parts) + "\n\n[첨부 1쪽]\n쪽"
     assert announcement.build_prompt(rows, "[첨부 1쪽]\n쪽") == (
         parts[0] + parts[1] + announcement.LH_FRAME + parts[2] + parts[3] + "\n\n[LH 공급 API 행]\n"
-        "0. 주택형=39 | 전용=39.95 | 공급=55.10 | 모집수=20\n"
-        "1. 주택형=51A | 전용=51.84 | 공급=71.0 | 모집수=0\n\n[첨부 1쪽]\n쪽"
+        "1. 주택형=39 | 전용=39.95 | 공급=55.10 | 모집수=20\n"
+        "2. 주택형=51A | 전용=51.84 | 공급=71.0 | 모집수=0\n\n[첨부 1쪽]\n쪽"
     )

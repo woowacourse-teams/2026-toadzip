@@ -6,9 +6,10 @@ from ai_worker import checks
 from ai_worker.extraction import PermanentError
 
 
-def row(housing_type="26A", common_area=13.5, supply_area=None, move_in=None, target="일반", count=None):
-    return {"sourceHousingTypeName": housing_type, "expectedMoveInMonth": move_in, "commonArea": common_area,
-            "supplyArea": supply_area, "totalSupplyHouseholdCount": count, "targets": [{"target": target}]}
+def row(housing_type="26A", common_area=13.5, supply_area=None, move_in=None, target="일반", count=None, lh_row=None):
+    return {"sourceHousingTypeName": housing_type, "lhSourceRow": lh_row, "expectedMoveInMonth": move_in,
+            "commonArea": common_area, "supplyArea": supply_area, "totalSupplyHouseholdCount": count,
+            "targets": [{"target": target}]}
 
 
 def response(rows=None, evidence=(), shared_counts=(), announcement=None, complexes=None):
@@ -87,17 +88,64 @@ def test_quote_of_table_row_matches_cells_extracted_in_other_order():
     assert review(tree, pages=[1], texts=texts) == []
 
 
-def test_lh_row_counts_must_match_supply_rows():
-    tree = response(rows=[row(count=20), row(count=None), row(count=7), row(count=45)])
+def test_lh_row_count_mismatch_is_warning_with_lh_row_number():
+    tree = response(rows=[row(count=20, lh_row=1), row(count=None, lh_row=2), row(count=7, lh_row=3), row(count=45, lh_row=4)])
 
     # 비어 있는 행 모집수는 공통 모집수로 묶인 행이고, LH API 0은 모집수를 모른다는 뜻이라 맞대지 않는다.
-    assert review(tree, lh_counts=[20, 15, 8, 0]) == [
-        "supplyRows[2].totalSupplyHouseholdCount: LH API 모집수 8와 다름(7)",
+    assert review(tree, lh_types=["39", "46", "51", "59"], lh_counts=[20, 15, 8, 0]) == [
+        "supplyRows[2].totalSupplyHouseholdCount: LH API 공급행 3 모집수 8와 다름(7)",
+    ]
+
+
+def test_merged_lh_row_split_by_housing_type_is_not_warned_when_counts_add_up():
+    # 대구테크노폴리스4: LH는 모집 240 한 행만 보내고 공급 표는 주택형마다 모집수를 따로 적는다(건설호수 468·183·68은 모집수가 아니다).
+    rows = [dict(row("051.9800A", count=200, lh_row=1), constructedHouseholdCount=468),
+            dict(row("059.9100A", count=25, lh_row=1), constructedHouseholdCount=183),
+            dict(row("059.9300B", count=15, lh_row=1), constructedHouseholdCount=68)]
+
+    assert review(response(rows=rows), lh_types=["51"], lh_counts=[240]) == []
+
+
+def test_split_rows_whose_sum_differs_from_lh_row_are_warned_once():
+    rows = [row("051.9800A", count=200, lh_row=1), row("059.9100A", count=25, lh_row=1), row("059.9300B", count=10, lh_row=1)]
+
+    assert review(response(rows=rows), lh_types=["51"], lh_counts=[240]) == [
+        "supplyRows[0], supplyRows[1], supplyRows[2]: 나뉜 공급행 모집수 합계 235이(가) LH API 공급행 1 모집수 240와 다름",
+    ]
+
+
+def test_split_rows_with_shared_count_are_not_summed():
+    rows = [row("051.9800A", count=None, lh_row=1), row("059.9100A", count=None, lh_row=1)]
+
+    assert review(response(rows=rows), lh_types=["51"], lh_counts=[240]) == []
+
+
+def test_shared_count_of_several_types_stays_one_row_with_subtypes():
+    # 공급 표가 여러 주택형을 모집수 하나로만 안내하면 공급행 하나에 subtypes로 두고 수를 나누지 않는다.
+    shared = dict(row("51A/B", count=240, lh_row=1),
+                  subtypes=[{"name": "51A", "exclusiveArea": 51.98, "commonArea": None, "constructedHouseholdCount": 468},
+                            {"name": "51B", "exclusiveArea": 51.91, "commonArea": None, "constructedHouseholdCount": 183}])
+
+    assert review(response(rows=[shared]), lh_types=["51"], lh_counts=[240]) == []
+
+
+def test_lh_row_without_supply_row_is_warned():
+    tree = response(rows=[row(count=20, lh_row=1)])
+
+    assert review(tree, lh_types=["39", "46"], lh_counts=[20, 15]) == ["LH API 공급행 2(46): 이 행에서 나온 공급행이 없음"]
+
+
+@pytest.mark.parametrize("number", [None, 0, 3, True, "1"])
+def test_supply_row_without_valid_lh_row_number_is_warned(number):
+    tree = response(rows=[row(count=20, lh_row=1), row(count=15, lh_row=2), row(count=5, lh_row=number)])
+
+    assert review(tree, lh_types=["39", "46"], lh_counts=[20, 15]) == [
+        f"supplyRows[2].lhSourceRow: LH API 공급행 번호가 없거나 범위를 벗어남({number})",
     ]
 
 
 def test_numeric_housing_type_copied_from_lh_api_is_not_warned():
-    tree = response(rows=[row(housing_type="39"), row(housing_type="26.37")])
+    tree = response(rows=[row(housing_type="39", lh_row=1), row(housing_type="26.37", lh_row=2)])
 
     assert review(tree, lh_types=["39", "51"], lh_counts=[None, None]) == [
         "supplyRows[1].sourceHousingTypeName: 면적 숫자만 있음(26.37)",
@@ -106,14 +154,14 @@ def test_numeric_housing_type_copied_from_lh_api_is_not_warned():
 
 def test_integer_housing_type_from_pdf_is_not_area_even_if_lh_names_it_differently():
     # 공급 표가 "24", LH API가 "24A"인 공고. 정수는 흔한 주택형 이름이라 면적으로 경고하지 않는다.
-    tree = response(rows=[row(housing_type="24")])
+    tree = response(rows=[row(housing_type="24", lh_row=1)])
 
     assert review(tree, lh_types=["24A"], lh_counts=[None]) == []
 
 
 def test_lh_housing_type_name_missing_from_row_quote_is_warned():
     # 모델이 PDF 공급 표의 "24" 대신 틀로 받은 LH 이름 "24A"를 옮긴 경우. 근거 인용에 그 이름이 있으면 경고하지 않는다.
-    tree = response(rows=[row(housing_type="24A"), row(housing_type="26")],
+    tree = response(rows=[row(housing_type="24A", lh_row=1), row(housing_type="26", lh_row=2)],
                     evidence=[{"path": "supplyRows[0]", "page": 1, "quote": "24 24.7200 12.6758 50"},
                               {"path": "supplyRows[1]", "page": 1, "quote": "26 26.8300 13.7 40"}])
 
@@ -124,7 +172,7 @@ def test_lh_housing_type_name_missing_from_row_quote_is_warned():
 
 def test_lh_housing_type_target_parentheses_need_not_be_in_quote():
     # 공급대상 괄호는 병합 셀이라 표 한 줄 인용에 없을 수 있다. 괄호 앞 표기(16A)가 있으면 경고하지 않는다.
-    tree = response(rows=[row(housing_type="16A(대학생/청년)")],
+    tree = response(rows=[row(housing_type="16A(대학생/청년)", lh_row=1)],
                     evidence=[{"path": "supplyRows[0]", "page": 1, "quote": "16A 16.37 27.6384 78"}])
 
     assert review(tree, texts=["16A 16.37 27.6384 78"] + [""] * 9, lh_types=["16A(대학생/청년)"], lh_counts=[None]) == []
@@ -132,15 +180,9 @@ def test_lh_housing_type_target_parentheses_need_not_be_in_quote():
 
 def test_housing_type_not_from_lh_is_not_checked_against_quote():
     # LH 이름이 아니면(모델이 공급 표에서 읽은 표기) 인용에 없어도 이 경고는 내지 않는다. 화면이 근거와 대조한다.
-    tree = response(rows=[row(housing_type="26B")], evidence=[{"path": "supplyRows[0]", "page": 1, "quote": "26 26.10 40"}])
+    tree = response(rows=[row(housing_type="26B", lh_row=1)], evidence=[{"path": "supplyRows[0]", "page": 1, "quote": "26 26.10 40"}])
 
     assert review(tree, texts=["26 26.10 40"] + [""] * 9, lh_types=["26A"], lh_counts=[None]) == []
-
-
-def test_lh_row_count_mismatch_is_warned_once():
-    tree = response(rows=[row(count=20)])
-
-    assert review(tree, lh_counts=[20, 15]) == ["supplyRows: LH API 공급행 2개와 개수가 다름(1개)"]
 
 
 def test_without_lh_rows_counts_are_not_compared():

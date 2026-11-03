@@ -64,12 +64,13 @@ def lh_rows(job_input: dict | None) -> list[LhSupplyRow]:
 
 
 def build_prompt(rows: list[LhSupplyRow], page_text: str) -> str:
-    """LH 공고면 이미 수집한 LH API 행을 공급행 틀로 함께 준다. 행이 없으면(LH가 아닌 공고) 틀 지시도 빼고 보낸다."""
+    """LH 공고면 이미 수집한 LH API 행을 공급행 틀로 함께 준다. 행이 없으면(LH가 아닌 공고) 틀 지시도 빼고 보낸다.
+    행 번호는 input.lhSupplyRows에서의 1부터 센 위치이고, 모델은 이 번호를 공급행의 lhSourceRow로 돌려준다."""
     if not rows:
         return TEXT_PREFACE + INSTRUCTIONS + SCHEMA_SUFFIX + SCHEMA + "\n\n" + page_text
     frame = "\n".join(
-        f"{index}. 주택형={row.type_name} | 전용={row.exclusive_area} | 공급={row.supply_area} | 모집수={row.supplied_unit_count}"
-        for index, row in enumerate(rows)
+        f"{number}. 주택형={row.type_name} | 전용={row.exclusive_area} | 공급={row.supply_area} | 모집수={row.supplied_unit_count}"
+        for number, row in enumerate(rows, start=1)
     )
     return (TEXT_PREFACE + INSTRUCTIONS + LH_FRAME + SCHEMA_SUFFIX + SCHEMA + "\n\n"
             + "[LH 공급 API 행]\n" + frame + "\n\n" + page_text)
