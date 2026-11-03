@@ -3,7 +3,7 @@ import type { JsonObject, JsonWorkspace } from '../announcement-json/api'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 import type { AnnouncementComplex, CorrectionRow } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, text, type Extraction, type Subtype } from './extraction'
-import { foldRows, parseSourceLabel, pdfTypes, sameTargets, type FoldGroup } from './subtypes'
+import { foldRows, inGroup, normalizedName, parseSourceLabel, pdfTypes, sameTargets, type FoldGroup } from './subtypes'
 
 export type HousingCandidates = Record<number, MatchingHousingType[]>
 /** 단지 ID별 표시 이름(단지명 · 임대유형) */
@@ -23,9 +23,6 @@ export type RowProposal = {
 }
 export type ScheduleProposal = { existingIds: number[]; needsConfirmation: boolean; reason: string }
 
-export function normalizedName(value: unknown) {
-  return (text(value) ?? '').normalize('NFKC').toLowerCase().replace(/형|[\s·,]/g, '')
-}
 /** 수집된 공고명에는 공고일·"공고" 표기가 붙어 있어 날짜·공고·기호를 지우고 포함 관계로 비교한다. */
 function titleKey(value: unknown) {
   return titleWords(value).join('')
@@ -218,16 +215,22 @@ export function foldedCount(extraction: Extraction, indexes: number[]) {
 /**
  * 단지에 연결된 기존 LH 행 하나("26A/B(고령자)")를 공고문이 세부 타입 행 여럿(26A·26B)으로 적었으면, 그 행들을 그 LH 행 표기의 세부 타입 묶음 행 하나로 접는다.
  * 대상·금액이 행마다 다르면 접지 않고 행마다 둔다(저장할 위치를 확인하게 된다).
+ * LH 행이 공급대상 묶음("26A/B(고령자)")이면 공고문 행의 대상이 모두 그 묶음일 때만 접는다. 같은 세부 타입을 가진 LH 행이 여럿인데
+ * 묶음으로 나눌 수 없으면 어느 LH 행의 대상·모집수인지 알 수 없어 접지 않는다.
  */
 export function foldSameSourceRows(extraction: Extraction, rows: CorrectionRow[]): Extraction {
   const used = new Set<number>(), groups: FoldGroup[] = []
-  for (const row of rows) {
-    if (row.excluded || emptyRow(row)) continue
-    const types = parseSourceLabel(row.typeName).types.map(typeKey)
+  const linked = rows.filter(row => !row.excluded && !emptyRow(row))
+  const typesOf = (row: CorrectionRow) => parseSourceLabel(row.typeName).types.map(typeKey).sort().join('/')
+  const sameComplexRow = (pdf: Extraction['supplyRows'][number], row: CorrectionRow) => sameComplex(pdf.complexName, row.complexName) || sameComplex(pdf.complexName, row.housingComplexName)
+  for (const row of linked) {
+    const label = parseSourceLabel(row.typeName), types = label.types.map(typeKey)
     if (types.length < 2) continue
     const indexes = extraction.supplyRows.flatMap((pdf, index) => !used.has(index) && !pdf.subtypes.length && types.includes(typeKey(pdf.typeName))
-      && (sameComplex(pdf.complexName, row.complexName) || sameComplex(pdf.complexName, row.housingComplexName)) ? [index] : [])
-    if (indexes.length < 2 || !sameTargets(indexes.map(index => extraction.supplyRows[index]))) continue
+      && sameComplexRow(pdf, row) ? [index] : [])
+    const siblings = linked.filter(other => other !== row && other.housingComplexId === row.housingComplexId && typesOf(other) === typesOf(row))
+    const owned = label.group ? indexes.every(index => extraction.supplyRows[index].targets.every(target => inGroup(target.target, label.group!))) : !siblings.length
+    if (indexes.length < 2 || !owned || !sameTargets(indexes.map(index => extraction.supplyRows[index]))) continue
     indexes.forEach(index => used.add(index))
     groups.push({ indexes, typeName: row.typeName, count: foldedCount(extraction, indexes) })
   }

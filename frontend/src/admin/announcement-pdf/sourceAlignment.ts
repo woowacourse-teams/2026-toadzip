@@ -2,9 +2,9 @@ import type { JsonObject, JsonWorkspace } from '../announcement-json/api'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 import type { CorrectionRow } from '../supply/supplyCorrectionApi'
 import { evidenceFor, type Evidence, type ExtractedRow, type Extraction, type ExtractionNote, type SharedCount } from './extraction'
-import { normalizedName, pickHousingType, sourceComplexNames, typeKey } from './matching'
+import { pickHousingType, sourceComplexNames, typeKey } from './matching'
 import { createRowReview, editCell, preserveCellChoice, type Review, type RowReview } from './review'
-import { foldRows, parseSourceLabel, pdfTypes, sameTargets, type SourceLabel } from './subtypes'
+import { foldRows, inGroup, parseSourceLabel, pdfTypes, sameTargets, type SourceLabel } from './subtypes'
 
 /**
  * 최초 입주자 공고처럼 단지 DB에 없던 LH 원천행을 공고문 행에 맞춘다.
@@ -30,12 +30,6 @@ export function emptySourceRows(workspace: JsonWorkspace, extraction: Extraction
 type Alignment = { source: CorrectionRow; label: SourceLabel; rows: number[]; byArea?: boolean }
 type Copy = { index: number; targets: number[] }
 type Plan = { from: number; alignment: Alignment | null; extraTargets: string[] }
-
-/** 대상 이름이 LH 공급대상 묶음("대학생/청년", "신혼부부·한부모")에 속하는지 */
-function inGroup(target: unknown, group: string) {
-  const name = normalizedName(target)
-  return group.split('/').map(normalizedName).filter(Boolean).some(token => name.includes(token) || token.includes(name))
-}
 
 export function sourceAlignments(review: Review, workspace: JsonWorkspace, indexes: number[], complexName: string): Alignment[] {
   const named = emptySourceRows(workspace, review.extraction, complexName).map(source => {

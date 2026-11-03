@@ -62,6 +62,15 @@ export function parseSourceLabel(label: string): SourceLabel {
   return { types: tokens.map((token, at) => at > 0 && /^[A-Za-z]+$/.test(token) ? prefix + token : token), group: match?.[2]?.trim() || null }
 }
 
+/** 대상 이름이 LH 공급대상 묶음("대학생/청년", "신혼부부·한부모")에 속하는지 */
+export function inGroup(target: unknown, group: string) {
+  const name = normalizedName(target)
+  return group.split('/').map(normalizedName).filter(Boolean).some(token => name.includes(token) || token.includes(name))
+}
+export function normalizedName(value: unknown) {
+  return (text(value) ?? '').normalize('NFKC').toLowerCase().replace(/형|[\s·,]/g, '')
+}
+
 const targetKeys = ['target', 'supplyRank', 'rentalDeposit', 'monthlyRent', 'convertedDeposit', 'applicationCondition']
 /** 대상·순위·금액·신청 조건이 행마다 같은지. 모집수는 세부 타입마다 다를 수 있어 비교하지 않는다. */
 export function sameTargets(rows: ExtractedRow[]) {

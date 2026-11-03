@@ -39,7 +39,7 @@ describe('최초 입주자 공고의 LH 원천행 맞추기', () => {
     const candidates = [{ id: 1, name: '16A', exclusiveArea: 16.37, supplyArea: null, householdCount: null }, { id: 2, name: '26A', exclusiveArea: 26.01, supplyArea: null, householdCount: null },
       { id: 3, name: '26B', exclusiveArea: 26.1, supplyArea: null, householdCount: null }]
     const aligned = alignSourceRows(review, workspace, '인천부평(도시재생뉴딜) 행복주택', { id: 7, name: '인천부평' }, candidates as never)!
-    return { aligned, workspace, review }
+    return { aligned, workspace, review, extraction: extraction.value }
   }
 
   it('하나에 맞는 LH 행은 연결하고, 여러 세부 타입에 맞는 LH 행은 공고문 행들을 그 LH 행 하나의 세부 타입 묶음으로 접는다', () => {
@@ -100,6 +100,17 @@ describe('최초 입주자 공고의 LH 원천행 맞추기', () => {
     const added = input.correction.rows.filter(row => row.id === null)
     expect(input.correction.newGroups).toEqual([{ sourceRowId: 11, rowKeys: ['row:11', added[0].key], sharedHouseholdCount: 4 },
       { sourceRowId: 12, rowKeys: ['row:12', added[1].key], sharedHouseholdCount: 42 }])
+  })
+
+  it('같은 세부 타입을 가진 LH 행이 공급대상 묶음마다 단지에 연결돼 있으면 묶음에 없는 대상이 섞인 공고문 행을 한 LH 행으로 접지 않는다', () => {
+    const { workspace, extraction } = setup()
+    // 앞선 보정으로 26A/B(고령자)·26A/B(주거급여수급자)가 단지 7에 연결된 상태에서 같은 PDF로 다시 보정한다.
+    workspace.supply.rows = workspace.supply.rows.map(row => [11, 12].includes(row.id!) ? { ...row, housingComplexId: 7, housingComplexName: '인천부평' } : row)
+    const review = createReview(extraction, workspace, { 7: [] })
+    expect(review.extraction.supplyRows.map(row => row.typeName)).toEqual(['16A', '26A', '26B'])
+    const toEleven = review.rows.filter(row => row.proposal.destination === 'row:11')
+    expect(toEleven.flatMap(row => row.targets.map(target => target.cells.find(cell => cell.field === 'target')?.value))).not.toContain('주거급여수급자')
+    expect(toEleven.map(row => row.cells.find(cell => cell.field === 'totalSupplyHouseholdCount')?.value)).not.toContain(46)
   })
 
   it('단지를 다시 고르면 맞추기 전 검토에서 다시 맞춰 행을 거듭 복사하지 않는다', () => {
