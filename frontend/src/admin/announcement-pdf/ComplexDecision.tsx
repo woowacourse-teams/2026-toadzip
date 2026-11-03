@@ -5,7 +5,7 @@ import { ComplexPicker } from '../management/ComplexPicker'
 import { getManagementDetail } from '../management/api'
 import { isRecord } from '../management/managementContract'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
-import { createRowReview, editCell, preserveCellChoice, type Review, type RowReview } from './review'
+import { createRowReview, editCell, newRepresentative, preserveCellChoice, type Review, type RowReview } from './review'
 import { chooseRow, missingHousingType, pickHousingType, sameComplex, typeKey } from './matching'
 import { NewComplexRegistration, type MyHomeComplexOverview } from './NewComplexRegistration'
 import { alignSourceRows, emptySourceRows } from './sourceAlignment'
@@ -57,7 +57,15 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
   const types = indexes.map(index => review.extraction.supplyRows[index].typeName ?? `공급행 ${index + 1}`).join(' · ')
   const sources = emptySourceRows(workspace, review.extraction, name)
   const unmatched = decided ? sources.filter(source => !review.rows.some(row => row.proposal.destination === source.key)) : []
-  const missingTypes = decided ? indexes.filter(index => review.rows[index].newHousingType).map(index => review.extraction.supplyRows[index]) : []
+  // 새로 만들 주택형 이름. 세부 타입 묶음 행은 새로 만들 세부 타입마다 센다. 이미 있는 이름은 만들 때 건너뛴다.
+  const missingNames = (index: number) => review.rows[index].subtypes?.filter(subtype => subtype.choice === 'new').map(subtype => subtype.name)
+    ?? (newRepresentative(review.rows[index]) ? [review.extraction.supplyRows[index].typeName ?? ''] : [])
+  const missingIndexes = decided ? indexes.filter(index => missingNames(index).length) : []
+  // 세부 타입 묶음 행은 새로 만들 세부 타입만 넘긴다. 면적으로 연결한 세부 타입을 이름이 다르다고 또 만들지 않게 한다.
+  const missingTypes = missingIndexes.map(index => {
+    const row = review.extraction.supplyRows[index], subtypes = review.rows[index].subtypes
+    return subtypes ? { ...row, subtypes: row.subtypes.filter((_, at) => subtypes[at]?.choice === 'new') } : row
+  }), missingLabels = missingIndexes.flatMap(missingNames)
   async function choose(id: number, complexName: string, created: boolean, createTypes: ExtractedRow[] = []) {
     request.current?.abort()
     const controller = new AbortController(); request.current = controller
@@ -94,7 +102,7 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
           newComplex: { id, name: complexName, pnu, category: created ? 'NEW_SUPPLY' : old.proposal.newComplex?.category ?? 'RESUPPLY' } }, workspace)
         const oldCells = [...old.cells, ...old.targets.flatMap(target => target.cells)]
         const retain = (cell: RowReview['cells'][number]) => cell.field === 'housingTypeId' ? cell : preserveCellChoice(cell, oldCells.find(item => item.path === cell.path))
-        const newType = picked.housingTypeId === null && Boolean(missingHousingType(id, candidates, source.typeName ?? '', source.values.exclusiveArea, source.values.supplyArea)?.name)
+        const newType = !source.subtypes.length && picked.housingTypeId === null && Boolean(missingHousingType(id, candidates, source.typeName ?? '', source.values.exclusiveArea, source.values.supplyArea)?.name)
         return { ...next, key: old.key, include: old.include, reviewed: true, newHousingType: newType,
           cells: next.cells.map(retain).map(cell => newType && cell.field === 'housingTypeId' ? editCell(cell, '') : cell),
           targets: next.targets.map(target => ({ ...target, cells: target.cells.map(retain) })) }
@@ -107,8 +115,8 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
     <header><strong>{name || '단지명 없음'}</strong><span>{overview?.address ?? '주소 미확인'} · 공급행 {indexes.length}개 ({types})</span></header>
     {decided ? <p className={styles.decided}>연결 단지: {decided.name} · 같은 단지명의 공급행 {indexes.length}개에 연결했습니다.</p>
       : <p className={styles.hint}>{sources.length ? `단지에 연결되지 않은 LH 원천행 ${sources.length}개가 있습니다. 단지를 정하면 공고문 주택형에 맞춰 연결하거나 나눕니다.` : `기존 단지를 고르거나, 없으면 새 단지로 등록하세요. 고른 단지는 공급행 ${indexes.length}개에 함께 연결됩니다.`}</p>}
-    {missingTypes.length > 0 && decided && <div className={styles.pending}><p><strong>주택형 없음</strong> {missingTypes.map(row => row.typeName).join(' · ')} 주택형이 단지에 없어 공통 모집수로 묶을 수 없습니다.</p>
-      <Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => void choose(decided.id, decided.name, false, missingTypes)}>{`공고문 주택형 ${missingTypes.length}개 추가`}</Button></div>}
+    {missingTypes.length > 0 && decided && <div className={styles.pending}><p><strong>주택형 없음</strong> {missingLabels.join(' · ')} 주택형이 단지에 없습니다. 저장하면 새로 만들며, 공통 모집수로 묶으려면 먼저 추가하세요.</p>
+      <Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => void choose(decided.id, decided.name, false, missingTypes)}>{`공고문 주택형 ${missingLabels.length}개 추가`}</Button></div>}
     {unmatched.length > 0 && <p className={styles.hint}>{`공고문에 대응하는 행이 없는 LH 원천행 ${unmatched.length}개(${unmatched.map(row => row.typeName).join(' · ')})는 그대로 둡니다.`}</p>}
     <ComplexPicker disabled={busy} initialQuery={name} onSelect={item => void choose(item.id, item.name, false)} />
     {error && <p role="alert" className={styles.error}>{error}</p>}

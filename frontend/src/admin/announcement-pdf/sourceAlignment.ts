@@ -4,23 +4,16 @@ import type { CorrectionRow } from '../supply/supplyCorrectionApi'
 import { evidenceFor, type Evidence, type ExtractedRow, type Extraction, type ExtractionNote, type SharedCount } from './extraction'
 import { normalizedName, pickHousingType, sourceComplexNames, typeKey } from './matching'
 import { createRowReview, editCell, preserveCellChoice, type Review, type RowReview } from './review'
+import { foldRows, parseSourceLabel, pdfTypes, sameTargets, type SourceLabel } from './subtypes'
 
 /**
  * 최초 입주자 공고처럼 단지 DB에 없던 LH 원천행을 공고문 행에 맞춘다.
  * LH는 "26A/B/C(고령자)"처럼 주택형 묶음 × 공급대상으로 행을 주고, 공고문은 세부 타입(26A·26B·26C)마다 행을 준다.
- * - LH 행 하나가 공고문 행 여럿에 대응하면 그 LH 행을 첫 세부 타입으로 고쳐 쓰고 나머지를 새 행으로 더한 뒤,
- *   LH 행의 이번 공급 수를 공통 모집수로 묶는다(원천행 분할). 다음 정제에서도 LH 행 단위 묶음으로 유지된다.
+ * - LH 행 하나가 공고문 행 여럿에 대응하면 그 공고문 행들을 LH 행 하나의 세부 타입 묶음 행으로 접는다. 모집수는 LH 행의 이번 공급 수이고
+ *   세부 타입 주택형을 모두 그 행에 연결한다. 대상·금액이 행마다 다르면 접지 않고, LH 행을 첫 세부 타입으로 고쳐 쓰고 나머지를 새 행으로 더한 뒤
+ *   LH 행의 이번 공급 수를 공통 모집수로 묶는다(원천행 분할). 확인을 받는다.
  * - 공고문 행 하나가 여러 LH 행(공급대상 묶음)에 대응하면 행을 묶음마다 복사하고, 대상은 묶음 이름으로 나눈다.
  */
-export type SourceLabel = { types: string[]; group: string | null }
-
-/** "26A/B/C(고령자)" → 26A·26B·26C와 공급대상 묶음 "고령자". "26A,B"처럼 쉼표로 묶어도 같다. */
-export function parseSourceLabel(label: string): SourceLabel {
-  const match = /^(.*?)\s*(?:\(([^)]*)\))?\s*$/.exec(label.trim())
-  const tokens = (match?.[1] ?? '').split(/[/,]/).map(token => token.trim()).filter(Boolean)
-  const prefix = /^\d+/.exec(tokens[0] ?? '')?.[0] ?? ''
-  return { types: tokens.map((token, at) => at > 0 && /^[A-Za-z]+$/.test(token) ? prefix + token : token), group: match?.[2]?.trim() || null }
-}
 
 function sourceComplex(workspace: JsonWorkspace, extraction: Extraction, complexName: string) {
   return sourceComplexNames(extraction, complexName, [...new Set(workspace.supply.rows.filter(row => !row.excluded).map(row => row.complexName))],
@@ -47,16 +40,18 @@ function inGroup(target: unknown, group: string) {
 export function sourceAlignments(review: Review, workspace: JsonWorkspace, indexes: number[], complexName: string): Alignment[] {
   const named = emptySourceRows(workspace, review.extraction, complexName).map(source => {
     const label = parseSourceLabel(source.typeName)
-    return { source, label, rows: indexes.filter(index => label.types.some(type => typeKey(type) === typeKey(review.extraction.supplyRows[index].typeName))) }
+    // 공고문 행이 세부 타입 묶음(26A/B)이면 세부 타입 이름으로도 맞춘다.
+    const names = (index: number) => [review.extraction.supplyRows[index].typeName, ...review.extraction.supplyRows[index].subtypes.map(subtype => subtype.name)].map(typeKey)
+    return { source, label, rows: indexes.filter(index => label.types.some(type => names(index).includes(typeKey(type)))) }
   })
   // 공고문은 PDF 공급 표 표기(24)를 쓰고 LH는 다른 이름(24A)을 쓰기도 한다. 형명으로 못 맞춘 LH 행은
   // 아직 맞추지 않은 공고문 행 중 전용면적이 같은 행이 하나뿐일 때만 그 행에 맞추고, 확인을 받는다.
   const claimed = new Set(named.flatMap(item => item.rows))
-  const area = (index: number) => Number(review.extraction.supplyRows[index].values.exclusiveArea)
+  const areas = (index: number) => pdfTypes(review.extraction.supplyRows[index]).map(type => type.exclusiveArea)
   return named.flatMap(item => {
     if (item.rows.length) return [item]
     const lhArea = item.source.exclusiveArea
-    const byArea = lhArea == null ? [] : indexes.filter(index => !claimed.has(index) && Math.abs(area(index) - lhArea) < 0.005)
+    const byArea = lhArea == null ? [] : indexes.filter(index => !claimed.has(index) && areas(index).some(area => area !== null && Math.abs(area - lhArea) < 0.005))
     if (byArea.length !== 1) return []
     claimed.add(byArea[0])
     return [{ ...item, rows: byArea, byArea: true }]
@@ -120,33 +115,45 @@ function alignOn(review: Review, workspace: JsonWorkspace, complexName: string, 
     const row = Number(/^supplyRows\[(\d+)\]/.exec(path)?.[1])
     return aligned.has(row) && (path.endsWith('.totalSupplyHouseholdCount') || (copies.get(row)?.length ?? 0) > 1)
   })).map(group => ({ ...group, paths: group.paths.flatMap(remap) }))
-  const split: SharedCount[] = alignments.filter(alignment => alignment.rows.length > 1).map(alignment => {
-    const paths = alignment.rows.map(from => plans.findIndex(plan => plan.from === from && plan.alignment === alignment)).map(index => `supplyRows[${index}].totalSupplyHouseholdCount`)
+  const planIndexes = (alignment: Alignment) => alignment.rows.map(from => plans.findIndex(plan => plan.from === from && plan.alignment === alignment))
+  // LH 한 행에 맞춘 공고문 행 여럿은 대상·금액이 같으면 세부 타입 묶음 행 하나로 접고, 다르면 행마다 두고 LH 공급 수를 공통 모집수로 묶는다.
+  const divided = alignments.filter(alignment => alignment.rows.length > 1)
+  const folds = divided.filter(alignment => sameTargets(planIndexes(alignment).map(index => rows[index])))
+  const split: SharedCount[] = divided.filter(alignment => !folds.includes(alignment)).map(alignment => {
+    const paths = planIndexes(alignment).map(index => `supplyRows[${index}].totalSupplyHouseholdCount`)
     const evidence = evidenceFor(source.evidence, `supplyRows[${alignment.rows[0]}]`)
     return { paths, count: alignment.source.householdCount, page: evidence?.page ?? null, quote: evidence?.quote ?? '' }
   })
   const note = (item: ExtractionNote) => remap(item.path).map(path => ({ ...item, path }))
-  const extraction: Extraction = { ...source, supplyRows: rows, sharedCounts: [...kept, ...split],
+  const unfolded: Extraction = { ...source, supplyRows: rows, sharedCounts: [...kept, ...split],
     unresolved: source.unresolved.flatMap(note), notApplicable: source.notApplicable.flatMap(note),
     evidence: source.evidence.flatMap((item: Evidence) => remap(item.path).map(path => ({ ...item, path }))) }
+  const folded = foldRows(unfolded, folds.map(alignment => ({ indexes: planIndexes(alignment), typeName: alignment.source.typeName, count: alignment.source.householdCount })))
+  const extraction = folded.extraction
   const sharedIndex = (index: number) => {
     const at = extraction.sharedCounts.findIndex(group => group.paths.includes(`supplyRows[${index}].totalSupplyHouseholdCount`))
     return at < 0 ? null : at
   }
-  return { ...review, extraction, rows: plans.map((plan, index) => {
+  // 접은 행은 첫 공고문 행의 계획만 남긴다.
+  const keptPlans = plans.filter((_, at) => folded.position.indexOf(folded.position[at]) === at)
+  return { ...review, extraction, rows: keptPlans.map((plan, index) => {
     const old = review.rows[plan.from]
-    const pathOf = (path: string) => remap(path).find(next => next.startsWith(`supplyRows[${index}]`))
+    const pathOf = (path: string) => remap(path).flatMap(folded.remap).find(next => next.startsWith(`supplyRows[${index}].`))
     const retain = (cell: RowReview['cells'][number]) => preserveCellChoice(cell, [...old.cells, ...old.targets.flatMap(target => target.cells)].find(item => pathOf(item.path) === cell.path))
     if (!plan.alignment) {
       const next = createRowReview(extraction, index, { ...old.proposal, sharedIndex: sharedIndex(index) }, workspace)
       return { ...next, key: old.key, include: old.include, reviewed: old.reviewed, newHousingType: old.newHousingType,
         cells: next.cells.map(retain), targets: next.targets.map(target => ({ ...target, cells: target.cells.map(retain) })) }
     }
-    const { alignment } = plan, first = alignment.rows[0] === plan.from
+    const { alignment } = plan, first = alignment.rows[0] === plan.from, grouped = extraction.supplyRows[index].subtypes.length > 0
     const name = typeKey(extraction.supplyRows[index].typeName)
-    const housingTypeId = candidates.find(type => typeKey(type.name) === name)?.id ?? pickHousingType(extraction, index, candidates).housingTypeId
+    // 세부 타입 묶음 행은 세부 타입마다 주택형을 고르고(createRowReview) 대표를 정한다.
+    const housingTypeId = grouped ? null : candidates.find(type => typeKey(type.name) === name)?.id ?? pickHousingType(extraction, index, candidates).housingTypeId
+    const pdfNames = alignment.rows.map(from => source.supplyRows[from].typeName).join('·')
     const reason = [alignment.rows.length > 1
-      ? `LH 원천 '${alignment.source.typeName}'을(를) 공고문 ${alignment.rows.map(from => source.supplyRows[from].typeName).join('·')}로 나눕니다. 이번 공급 ${alignment.source.householdCount ?? '미확인'}세대를 공통 모집수로 둡니다.`
+      ? folds.includes(alignment)
+        ? `LH 원천 '${alignment.source.typeName}' 한 행에 공고문 ${pdfNames}를 세부 타입으로 함께 연결합니다. 이번 공급 ${alignment.source.householdCount ?? '미확인'}세대는 이 공급행 하나의 모집수입니다.`
+        : `LH 원천 '${alignment.source.typeName}'을(를) 공고문 ${pdfNames}로 나눕니다. 대상·금액이 행마다 달라 한 행으로 합치지 않고 이번 공급 ${alignment.source.householdCount ?? '미확인'}세대를 공통 모집수로 둡니다.`
       : `LH 원천 '${alignment.source.typeName}'에 연결합니다.`,
     alignment.byArea ? `형명이 달라(LH '${alignment.source.typeName}', 공고문 '${source.supplyRows[alignment.rows[0]].typeName ?? ''}') 전용면적으로 맞췄습니다. 확인하세요.` : '',
     (copies.get(plan.from)?.length ?? 0) > 1 && alignment.label.group ? `대상은 '${alignment.label.group}' 묶음만 넣었습니다.` : '',
@@ -157,7 +164,7 @@ function alignOn(review: Review, workspace: JsonWorkspace, complexName: string, 
       needsConfirmation: !certain || Boolean(alignment.byArea) || alignment.rows.length > 1 || alignment.label.types.length > 1 || (copies.get(plan.from)?.length ?? 0) > 1 || plan.extraTargets.length > 0 || housingTypeId === null,
       // 새 행은 LH 행과 같은 소재지·공급 구분이어야 공통 모집 묶음으로 저장된다.
       newComplex: { id: complex.id, name: complex.name, pnu: alignment.source.pnu, category: alignment.source.category } }, workspace)
-    const newType = housingTypeId === null && Boolean(extraction.supplyRows[index].typeName)
+    const newType = !grouped && housingTypeId === null && Boolean(extraction.supplyRows[index].typeName)
     // 연결 주택형은 맞춘 LH 행 기준으로 새로 정하므로 맞추기 전 선택을 이어받지 않는다.
     return { ...next, include: old.include, reviewed: false, newHousingType: newType,
       cells: next.cells.map(cell => cell.field === 'housingTypeId' ? cell : retain(cell)).map(cell => newType && cell.field === 'housingTypeId' ? editCell(cell, '') : cell),

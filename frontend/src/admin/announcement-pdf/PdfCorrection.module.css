@@ -224,5 +224,7 @@
 .complexDecision :global(.complex-picker) { margin:0; }
 .decided { margin:0; font-weight:var(--ds-weight-strong); }
 .checks ul { margin:0; padding-left:1.2em; }
-.housingTypePrice { margin-top:var(--ds-space-4); padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); }
-.housingTypePrice h4 { margin:0 0 var(--ds-space-1); }
+.housingTypePrice, .subtypeLinks { margin-top:var(--ds-space-4); padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); }
+.housingTypePrice h4, .subtypeLinks h4 { margin:0 0 var(--ds-space-1); }
+.subtypeLinks ul { margin:0; padding-left:var(--ds-space-4); font-size:var(--ds-text-caption); }
+.subtypeLinks li { line-height:1.7; margin-block:var(--ds-space-1); }

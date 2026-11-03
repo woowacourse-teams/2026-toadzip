@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { scenario } from './fixtures/workspace'
+import fixtures from './fixtures/scenarios.json'
+import { readExtraction } from './extraction'
 import { blankTarget } from '../supply/supplyCorrectionApi'
 import { areaOnlyTypeName, createRowReview, destinationLabel, housingTypePrice, linkedHousingTypeId, pendingPrice, foreignCharacters, shownDateTime, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
 
@@ -451,4 +453,32 @@ describe('주택형 기본 임대조건으로 쓸 공급대상', () => {
     // 금액이 모두 같아도 관리자가 지금 값 유지를 고를 수 있다.
     expect(housingTypePrice(row([target('대학생', 12_308_000, 76_920), target('청년', 12_308_000, 76_920)], null)).chosen).toBeNull()
   })
+})
+
+it('단지에 연결된 LH 행 하나("26A/B")를 공고문이 세부 타입 행 여럿으로 적으면 그 행 하나로 접어 공통 모집수 없이 저장한다', () => {
+  const { workspace, housing } = scenario('hansville')
+  workspace.supply.rows[0].typeName = '26A/B'
+  const extracted = readExtraction(JSON.stringify(fixtures.hansville.extraction))
+  if (!extracted.ok) throw new Error(extracted.error)
+  const review = createReview(extracted.value, workspace, housing)
+  expect(review.rows.map(row => [row.proposal.destination, row.subtypes?.map(subtype => subtype.choice)])).toEqual([['row:90', [10353, 10352]]])
+  expect(review.extraction.sharedCounts).toEqual([])
+  const request = assembleReview(review, workspace, evidence)
+  expect(request.correction.newGroups).toEqual([])
+  // 공고문이 두 행에 걸쳐 적은 공통 모집수 170은 이 공급행 하나의 모집수다.
+  expect(request.correction.rows).toEqual([expect.objectContaining({ id: 90, householdCount: 170, housingTypeId: 10353, linkedHousingTypes: [{ housingTypeId: 10352 }] })])
+  expect(request.housingTypeValues?.map(value => [value.name, value.linkedHousingTypeId])).toEqual([['26A', undefined], ['26B', 10352]])
+})
+
+it('조회한 함께 모집하는 주택형을 그대로 둔 행이라도 PDF가 대표 주택형을 바꾸면 그 목록을 보내지 않는다', () => {
+  const { workspace, housing } = scenario('gongju')
+  workspace.supply.rows[0] = { ...workspace.supply.rows[0], housingTypeId: 8577, linkedHousingTypes: [{ housingTypeId: 8576 }] }
+  const extracted = readExtraction(JSON.stringify(fixtures.gongju.extraction))
+  if (!extracted.ok) throw new Error(extracted.error)
+  const review = createReview(extracted.value, workspace, housing)
+  const position = review.rows[0].cells.findIndex(cell => cell.field === 'housingTypeId')
+  review.rows[0].cells[position] = editCell(review.rows[0].cells[position], '8575')
+  const sent = JSON.parse(JSON.stringify(assembleReview(review, workspace, evidence).correction.rows[0])) as Record<string, unknown>
+  expect(sent).toMatchObject({ housingTypeId: 8575 })
+  expect(sent).not.toHaveProperty('linkedHousingTypes')
 })

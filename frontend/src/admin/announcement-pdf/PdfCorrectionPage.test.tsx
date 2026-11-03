@@ -67,6 +67,15 @@ async function open(text = JSON.stringify(fixtures.hansville.extraction)) {
   await review()
   await screen.findByRole('heading', { name: '공급정보' })
 }
+/** 한스빌 26A·26B를 공고문이 "26A/B" 한 행(세부 타입 묶음, 모집수 170)으로 적은 응답 */
+function subtypeExtraction() {
+  const extraction = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: Record<string, unknown>[] }; sharedCounts: unknown[] }
+  extraction.data.supplyRows = [{ ...extraction.data.supplyRows[0], sourceHousingTypeName: '26A/B', totalSupplyHouseholdCount: 170, exclusiveArea: null, supplyArea: null, subtypes: [
+    { name: '26A', exclusiveArea: 26.5195, commonArea: null, supplyArea: 52.5, constructedHouseholdCount: 120 },
+    { name: '26B', exclusiveArea: 26.4673, commonArea: null, supplyArea: 52.4, constructedHouseholdCount: 50 }] }]
+  extraction.sharedCounts = []
+  return extraction
+}
 function manual(scope: string, label: string) {
   fireEvent.click(within(screen.getByRole('group', { name: `${scope} ${label} 반영 방법` })).getByRole('button', { name: '직접 수정' }))
 }
@@ -547,7 +556,7 @@ it('공고에는 있지만 단지 DB에 없는 단지는 공고문 단지 개요
   expect(screen.getByLabelText('공급행 1 공급 구분')).toHaveValue('NEW_SUPPLY')
 })
 
-it('단지가 연결되지 않은 LH 원천행은 단지를 고르면 공고문 주택형에 맞춰 나누고 LH 공급 수를 공통 모집수로 저장한다', async () => {
+it('단지가 연결되지 않은 LH 원천행은 단지를 고르면 공고문 세부 타입 행들을 그 LH 행 하나로 접어 LH 공급 수와 세부 타입 주택형을 모두 그 행에 저장한다', async () => {
   const [first] = workspace.supply.rows
   const source = { ...first, id: 11, key: 'row:11', housingComplexId: null, housingComplexName: null, housingTypeId: null, groupId: null, sharedHouseholdCount: null,
     typeName: '26A,B(고령자)', householdCount: 4, category: 'NEW_SUPPLY' as const, targets: [] }
@@ -559,16 +568,60 @@ it('단지가 연결되지 않은 LH 원천행은 단지를 고르면 공고문 
   expect(screen.getByText('단지에 연결되지 않은 LH 원천행 1개가 있습니다. 단지를 정하면 공고문 주택형에 맞춰 연결하거나 나눕니다.')).toBeVisible()
   fireEvent.click(await within(screen.getByRole('region', { name: 'PDF 단지 정하기' })).findByRole('button', { name: '선택: 검색 단지' }))
   const block = screen.getByRole('region', { name: '공급행 1 검토' })
-  expect((await within(block).findAllByText(/LH 원천 '26A,B\(고령자\)'을\(를\) 공고문 26A·26B로 나눕니다\. 이번 공급 4세대를 공통 모집수로 둡니다\./))[0]).toBeVisible()
+  expect((await within(block).findAllByText(/LH 원천 '26A,B\(고령자\)' 한 행에 공고문 26A·26B를 세부 타입으로 함께 연결합니다\. 이번 공급 4세대는 이 공급행 하나의 모집수입니다\./))[0]).toBeVisible()
+  expect(screen.queryByRole('region', { name: '공급행 2 검토' })).not.toBeInTheDocument()
   expect(within(block).getByLabelText('공급행 1 저장할 위치')).toHaveValue('row:11')
-  for (const index of [1, 2]) fireEvent.click(within(screen.getByRole('region', { name: `공급행 ${index} 검토` })).getByRole('button', { name: `공급행 ${index} 대응 확인` }))
+  expect(within(within(block).getByRole('region', { name: '공급행 1 세부 타입 연결' })).getAllByRole('listitem').map(item => item.textContent)).toEqual([
+    '26A · 전용 26.5195㎡ → 26A · 전용 26.5195㎡ · 공급 40.6486㎡ 대표 주택형', '26B · 전용 26.4673㎡ → 26B · 전용 26.4673㎡ · 공급 40.5686㎡'])
+  fireEvent.click(within(block).getByRole('button', { name: '공급행 1 대응 확인' }))
   fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
   await waitFor(() => expect(api.previewJsonUpdate).toHaveBeenCalled())
-  const correction = (api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput).correction
-  const added = correction.rows.filter(row => row.id === null)
-  expect(correction.rows.find(row => row.key === 'row:11')).toEqual(expect.objectContaining({ housingComplexId: 7, housingTypeId: 21, typeName: '26A', excluded: false }))
-  expect(added).toEqual([expect.objectContaining({ housingComplexId: 7, housingTypeId: 22, typeName: '26B', category: 'NEW_SUPPLY' })])
-  expect(correction.newGroups).toEqual([{ sourceRowId: 11, rowKeys: ['row:11', added[0].key], sharedHouseholdCount: 4 }])
+  const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
+  expect(input.correction.rows).toEqual([expect.objectContaining({ key: 'row:11', housingComplexId: 7, housingTypeId: 21, typeName: '26A,B(고령자)', householdCount: 4, excluded: false, linkedHousingTypes: [{ housingTypeId: 22 }] })])
+  expect(input.correction.newGroups).toEqual([])
+  expect(input.housingTypeValues?.map(value => [value.rowKey, value.name, value.linkedHousingTypeId])).toEqual([['row:11', '26A', undefined], ['row:11', '26B', 22]])
+})
+
+it('세부 타입 묶음 행은 공급행 하나로 저장하고 행 모집수를 지키며 세부 타입 주택형을 모두 그 행에 연결한다', async () => {
+  await open(JSON.stringify(subtypeExtraction()))
+  const links = screen.getByRole('region', { name: '공급행 1 세부 타입 연결' })
+  expect(links).toHaveTextContent('모집수 170세대는 이 공급행 하나에 두고')
+  expect(screen.queryByText(/공통 모집 \d+세대/)).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  await waitFor(() => expect(api.previewJsonUpdate).toHaveBeenCalled())
+  const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
+  expect(input.correction.newGroups ?? []).toEqual([])
+  expect(input.correction.rows).toEqual([expect.objectContaining({ id: 90, householdCount: 170, housingTypeId: 10353, newHousingType: null, linkedHousingTypes: [{ housingTypeId: 10352 }] })])
+  expect(input.housingTypeValues).toEqual([
+    expect.objectContaining({ rowKey: 'row:90', name: '26A', supplyArea: 52.5, householdCount: 120 }),
+    expect.objectContaining({ rowKey: 'row:90', name: '26B', supplyArea: 52.4, householdCount: 50, linkedHousingTypeId: 10352 })])
+  expect(input.housingTypeValues?.[0]).not.toHaveProperty('linkedHousingTypeId')
+})
+
+it('같은 면적 주택형이 여럿인 세부 타입은 고를 때까지 확인 필요로 남기고 저장하지 않는다', async () => {
+  matchingTypes.getMatchingHousingTypes.mockResolvedValue([...fixtures.hansville.complexes[0].housingTypes, { id: 10354, name: '26 복제', exclusiveArea: 26.5195, supplyArea: null, householdCount: null }])
+  await open(JSON.stringify(subtypeExtraction()))
+  const choice = screen.getByRole('combobox', { name: '공급행 1 세부 타입 26A 연결 주택형' })
+  expect(choice).toHaveValue('')
+  expect(screen.getByRole('button', { name: /확인 필요 \d+개 남음/ })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('공급행 1: 세부 타입 26A의 연결 주택형을 고르세요.')
+  expect(api.previewJsonUpdate).not.toHaveBeenCalled()
+  fireEvent.change(choice, { target: { value: '10354' } })
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  await waitFor(() => expect(api.previewJsonUpdate).toHaveBeenCalled())
+  expect((api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput).correction.rows[0]).toMatchObject({ housingTypeId: 10354, linkedHousingTypes: [{ housingTypeId: 10352 }] })
+})
+
+it('PDF로 공급정보 편집표를 채울 때도 세부 타입 묶음 행의 함께 모집하는 주택형을 넘긴다', async () => {
+  const onFill = vi.fn()
+  extracts(JSON.stringify(subtypeExtraction()))
+  render(<MemoryRouter><PdfCorrectionWorkspace id="29" supplyDraft={{ rows: structuredClone(workspace.supply.rows), onFill, onCancel: vi.fn() }} /></MemoryRouter>)
+  await review()
+  fireEvent.click(screen.getByRole('button', { name: '공급정보 편집표에 채우기' }))
+  await waitFor(() => expect(onFill).toHaveBeenCalledOnce())
+  expect(onFill.mock.calls[0][0].rows).toEqual([expect.objectContaining({ id: 90, housingTypeId: 10353, householdCount: 170, linkedHousingTypes: [{ housingTypeId: 10352 }] })])
+  expect(onFill.mock.calls[0][0].newGroups).toEqual([])
 })
 
 it('검산에서 맞지 않은 합계를 공급정보 위에 보여 준다', async () => {

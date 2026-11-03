@@ -6,9 +6,17 @@ export type CorrectionTarget = {
   target: string; supplyRank: string | null; householdCount: number | null; reserveCount: number | null;
   deposit: string | null; rent: string | null; convertedDeposit: string | null; condition: string | null;
 }
+export type NewHousingType = { name: string; exclusiveArea: number; supplyArea: number | null }
+/** 공급행이 대표 주택형과 함께 모집하는 주택형 하나. 같은 단지의 기존 주택형이나 이 저장에서 만들 새 주택형 중 하나다. */
+export type LinkedHousingType = { housingTypeId: number; newHousingType?: null } | { housingTypeId?: null; newHousingType: NewHousingType }
+/**
+ * linkedHousingTypes는 대표(housingTypeId·newHousingType) 밖의 함께 모집하는 주택형(세부 타입 26B·26C)이다. 조회는 지금 연결을 주고,
+ * 요청에서 생략하면 대표가 그대로일 때 지금 연결을 유지하고 대표가 바뀌면 대표만 남긴다. 빈 목록은 대표만 남긴다.
+ * 대표나 단지를 바꾸는 화면은 조회한 목록을 그대로 돌려보내지 않고 생략한다.
+ */
 export type CorrectionRow = {
   id: number | null; key: string; housingComplexId: number | null; housingComplexName: string | null;
-  housingTypeId: number | null; newHousingType: { name: string; exclusiveArea: number; supplyArea: number | null } | null;
+  housingTypeId: number | null; newHousingType: NewHousingType | null; linkedHousingTypes?: LinkedHousingType[];
   groupId: number | null; sharedHouseholdCount: number | null; protectedValues: boolean; excluded: boolean;
   displayOrder: number; complexName: string; typeName: string; pnu: string; moveInMonth: string | null;
   category: 'NEW_SUPPLY' | 'RESUPPLY'; householdCount: number | null; areaOverride: boolean;
@@ -39,6 +47,9 @@ const nullableCount = (value: unknown) => value === null || count(value)
 const nullableText = (value: unknown) => value === null || typeof value === 'string'
 const area = (value: unknown) => value === null || typeof value === 'number' && Number.isFinite(value) && value >= 0
 const money = (value: unknown) => value === null || typeof value === 'string' && /^\d+$/.test(value)
+const newType = (value: unknown) => isRecord(value) && typeof value.name === 'string' && typeof value.exclusiveArea === 'number' && area(value.exclusiveArea) && area(value.supplyArea)
+const linkedType = (value: unknown) => isRecord(value) && (count(value.housingTypeId) && value.housingTypeId > 0 && value.newHousingType == null
+  || value.housingTypeId == null && newType(value.newHousingType))
 function invalid(): never { throw new Error('공급정보 보정 응답이 올바르지 않습니다.') }
 function target(value: unknown): CorrectionTarget {
   if (!isRecord(value) || !nullableId(value.id) || typeof value.key !== 'string'
@@ -58,11 +69,10 @@ function row(value: unknown): CorrectionRow {
     || !nullableCount(value.householdCount) || typeof value.areaOverride !== 'boolean'
     || !area(value.exclusiveArea) || !area(value.supplyArea) || !Array.isArray(value.targets)
     || typeof value.targetCountsComparable !== 'boolean') invalid()
-  if (value.newHousingType !== null && (!isRecord(value.newHousingType) || typeof value.newHousingType.name !== 'string'
-    || typeof value.newHousingType.exclusiveArea !== 'number' || !area(value.newHousingType.exclusiveArea)
-    || !area(value.newHousingType.supplyArea))) invalid()
+  if (value.newHousingType !== null && !newType(value.newHousingType)) invalid()
+  if (value.linkedHousingTypes != null && (!Array.isArray(value.linkedHousingTypes) || !value.linkedHousingTypes.every(linkedType))) invalid()
   // 지번을 모르는 공급행은 PNU가 null이다. 화면은 빈 칸으로 다루고, 서버는 빈 PNU를 null로 받는다.
-  return { ...value, pnu: value.pnu ?? '', targets: value.targets.map(target) } as CorrectionRow
+  return { ...value, pnu: value.pnu ?? '', targets: value.targets.map(target), linkedHousingTypes: value.linkedHousingTypes ?? undefined } as CorrectionRow
 }
 export function parseSupplyWorkspace(value: unknown): SupplyWorkspace {
   if (!isRecord(value) || typeof value.snapshotToken !== 'string' || !count(value.version)

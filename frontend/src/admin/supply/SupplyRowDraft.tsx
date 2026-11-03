@@ -51,7 +51,8 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
       if (controller.signal.aborted) return
       const address = detail.data.address
       const pnu = address && typeof address === 'object' && !Array.isArray(address) ? address.pnu : null
-      onChange({ ...value, housingComplexId: id, housingComplexName: name, housingTypeId: null, newHousingType: null,
+      // 대표·단지를 바꾸면 조회한 함께 모집하는 주택형을 돌려보내지 않는다. 생략하면 서버가 대표만 남긴다.
+      onChange({ ...value, housingComplexId: id, housingComplexName: name, housingTypeId: null, newHousingType: null, linkedHousingTypes: undefined,
         complexName: value.complexName || name, pnu: typeof pnu === 'string' ? pnu : value.pnu })
       setTypes(candidates); setCandidateComplex(detail); setLookup(true)
     } catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '단지를 조회하지 못했습니다.') }
@@ -86,12 +87,12 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
         {/* 연결 확인과 해제는 같은 단지 연결에 대한 동작이라 한 줄에 둔다. */}
         {(value.housingComplexId || !value.groupId) && <div className={styles.actions}>
           {value.housingComplexId && <button type="button" onClick={() => setLookup(true)}>이 단지의 주택형 확인</button>}
-          {!value.groupId && <button type="button" onClick={() => { setTypes([]); setLookup(false); onChange({ ...value, housingComplexId: null, housingComplexName: null, housingTypeId: null, newHousingType: null }) }}>단지·주택형 연결 해제</button>}
+          {!value.groupId && <button type="button" onClick={() => { setTypes([]); setLookup(false); onChange({ ...value, housingComplexId: null, housingComplexName: null, housingTypeId: null, newHousingType: null, linkedHousingTypes: undefined }) }}>단지·주택형 연결 해제</button>}
         </div>}
         {value.housingComplexId && <>
           {lookup && <label>공통 주택형<select value={value.newHousingType ? 'new' : value.housingTypeId ?? ''} onChange={event => {
-            if (event.target.value === 'new') onChange({ ...value, housingTypeId: null, newHousingType: { name: value.typeName, exclusiveArea: value.exclusiveArea ?? 0, supplyArea: value.supplyArea } })
-            else onChange({ ...value, housingTypeId: event.target.value ? Number(event.target.value) : null, newHousingType: null })
+            if (event.target.value === 'new') onChange({ ...value, housingTypeId: null, newHousingType: { name: value.typeName, exclusiveArea: value.exclusiveArea ?? 0, supplyArea: value.supplyArea }, linkedHousingTypes: undefined })
+            else onChange({ ...value, housingTypeId: event.target.value ? Number(event.target.value) : null, newHousingType: null, linkedHousingTypes: undefined })
           }}><option value="">미연결</option>{types.map(type => <option key={type.id} value={type.id}>{type.name} · 전용 {type.exclusiveArea}㎡ · #{type.id}</option>)}<option value="new">누락된 주택형 만들기</option></select></label>}</>}
         {value.newHousingType && <div className={styles.fields}>
           <label>새 공통 주택형 이름<input required maxLength={255} value={value.newHousingType.name} onChange={event => field('newHousingType', { ...value.newHousingType!, name: event.target.value })} /></label>

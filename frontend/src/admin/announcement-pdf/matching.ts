@@ -2,7 +2,8 @@ import { isRecord } from '../management/managementContract'
 import type { JsonObject, JsonWorkspace } from '../announcement-json/api'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 import type { AnnouncementComplex, CorrectionRow } from '../supply/supplyCorrectionApi'
-import { evidenceFor, noteFor, text, type Extraction } from './extraction'
+import { evidenceFor, noteFor, text, type Extraction, type Subtype } from './extraction'
+import { foldRows, parseSourceLabel, pdfTypes, sameTargets, type FoldGroup } from './subtypes'
 
 export type HousingCandidates = Record<number, MatchingHousingType[]>
 /** 단지 ID별 표시 이름(단지명 · 임대유형) */
@@ -95,29 +96,43 @@ function equalArea(left: unknown, right: unknown) {
   return typeof left === 'number' && typeof right === 'number' && Math.abs(left - right) < 0.00005
 }
 
-/** PDF 행의 전용면적 → 건설호수 → 공급면적 → 이름 순서로 단지 주택형 후보를 좁힌다. */
-export function pickHousingType(extraction: Extraction, index: number, allTypes: MatchingHousingType[]) {
-  const row = extraction.supplyRows[index]
-  let candidates = allTypes.filter(type => equalArea(type.exclusiveArea, row.values.exclusiveArea))
-  if (!candidates.length && row.values.exclusiveArea == null) {
-    candidates = allTypes.filter(type => normalizedName(type.name) === normalizedName(row.typeName))
+export type TypePick = { housingTypeId: number | null; reason: string; options: MatchingHousingType[] }
+/** 형명·면적 하나의 전용면적 → 건설호수 → 공급면적 → 이름 순서로 단지 주택형 후보를 좁힌다. options는 전용면적(면적이 없으면 이름)이 맞는 후보다. */
+function pickType(extraction: Extraction, path: string, type: Subtype, allTypes: MatchingHousingType[]): TypePick {
+  let candidates = allTypes.filter(item => equalArea(item.exclusiveArea, type.exclusiveArea))
+  if (!candidates.length && type.exclusiveArea == null) {
+    candidates = allTypes.filter(item => normalizedName(item.name) === normalizedName(type.name))
   }
-  let reason = candidates.length ? `전용면적 ${String(row.values.exclusiveArea ?? '')}㎡`
-    : allTypes.length && typeof row.values.exclusiveArea === 'number' ? `이 단지에 PDF 전용 ${row.values.exclusiveArea}㎡와 맞는 주택형이 없습니다.` : '전용면적에 맞는 주택형을 확인해 주세요.'
-  if (candidates.length > 1 && typeof row.values.constructedHouseholdCount === 'number') {
-    const byCount = candidates.filter(type => type.householdCount === row.values.constructedHouseholdCount)
-    if (byCount.length) { candidates = byCount; reason += ` · 건설호수 ${row.values.constructedHouseholdCount}세대` }
+  const options = candidates
+  let reason = candidates.length ? `전용면적 ${String(type.exclusiveArea ?? '')}㎡`
+    : allTypes.length && typeof type.exclusiveArea === 'number' ? `이 단지에 PDF 전용 ${type.exclusiveArea}㎡와 맞는 주택형이 없습니다.` : '전용면적에 맞는 주택형을 확인해 주세요.'
+  if (candidates.length > 1 && typeof type.constructedHouseholdCount === 'number') {
+    const byCount = candidates.filter(item => item.householdCount === type.constructedHouseholdCount)
+    if (byCount.length) { candidates = byCount; reason += ` · 건설호수 ${type.constructedHouseholdCount}세대` }
   }
-  if (candidates.length > 1 && !noteFor(extraction.unresolved, `supplyRows[${index}].supplyArea`)) {
-    const byArea = candidates.filter(type => equalArea(type.supplyArea, row.values.supplyArea))
+  if (candidates.length > 1 && !noteFor(extraction.unresolved, `${path}.supplyArea`)) {
+    const byArea = candidates.filter(item => equalArea(item.supplyArea, type.supplyArea))
     if (byArea.length) { candidates = byArea; reason += ' · 공급면적 일치' }
   }
   if (candidates.length > 1) {
-    const byName = candidates.filter(type => typeKey(type.name) === typeKey(row.typeName))
+    const byName = candidates.filter(item => typeKey(item.name) === typeKey(type.name))
     if (byName.length) candidates = byName
   }
   const housingTypeId = candidates.length === 1 ? candidates[0].id : null
-  return { housingTypeId, reason: housingTypeId === null && candidates.length ? `${reason} · 주택형을 하나로 특정하지 못했습니다.` : reason }
+  return { housingTypeId, options, reason: housingTypeId === null && candidates.length ? `${reason} · 주택형을 하나로 특정하지 못했습니다.` : reason }
+}
+
+/** 세부 타입 묶음 행의 세부 타입마다 단지 주택형을 고른다. */
+export function pickSubtypes(extraction: Extraction, index: number, allTypes: MatchingHousingType[]) {
+  return extraction.supplyRows[index].subtypes.map((type, at) => pickType(extraction, `supplyRows[${index}].subtypes[${at}]`, type, allTypes))
+}
+
+/** PDF 행이 연결할 단지 주택형. 세부 타입 묶음 행은 첫 세부 타입의 주택형이고, 안내에 세부 타입마다 고른 근거를 적는다. */
+export function pickHousingType(extraction: Extraction, index: number, allTypes: MatchingHousingType[]) {
+  const row = extraction.supplyRows[index]
+  if (!row.subtypes.length) return pickType(extraction, `supplyRows[${index}]`, pdfTypes(row)[0], allTypes)
+  const picks = pickSubtypes(extraction, index, allTypes)
+  return { ...picks[0], reason: `세부 타입 ${picks.length}개 · ${picks.map((pick, at) => `${row.subtypes[at].name}: ${pick.reason}`).join(' · ')}` }
 }
 
 /**
@@ -149,7 +164,7 @@ function sameRecruitment(row: Extraction['supplyRows'][number], current: Correct
 export function chooseRow(row: Extraction['supplyRows'][number], related: CorrectionRow[], used: Set<string>, housingTypeId: number | null, lastRow = true) {
   const available = related.filter(item => !used.has(item.key))
   const byName = available.filter(item => typeKey(item.typeName) === typeKey(row.typeName))
-  const byArea = available.filter(item => equalArea(item.exclusiveArea, row.values.exclusiveArea)
+  const byArea = available.filter(item => pdfTypes(row).some(type => equalArea(item.exclusiveArea, type.exclusiveArea))
     || housingTypeId !== null && item.housingTypeId === housingTypeId)
   const chosen = byName.length === 1 ? byName[0] : byArea.length === 1 ? byArea[0] : lastRow && available.length === 1 ? available[0] : undefined
   const recommended = (chosen ? [chosen] : byArea.length || lastRow ? byArea : available).map(item => item.key)
@@ -189,6 +204,34 @@ export function proposeRows(extraction: Extraction, all: CorrectionRow[], housin
       sharedIndex: sharedIndex < 0 ? null : sharedIndex,
     }
   })
+}
+
+/** 접은 행의 모집수. 공고문이 접는 행끼리만 묶은 공통 모집수가 있으면 그 수, 행마다 모집수가 모두 있으면 합이다. */
+export function foldedCount(extraction: Extraction, indexes: number[]) {
+  const paths = indexes.map(index => `supplyRows[${index}].totalSupplyHouseholdCount`)
+  const shared = extraction.sharedCounts.find(group => group.paths.length === paths.length && paths.every(path => group.paths.includes(path)))
+  if (shared) return shared.count
+  const counts = indexes.map(index => extraction.supplyRows[index].values.totalSupplyHouseholdCount)
+  return counts.every(value => typeof value === 'number') ? (counts as number[]).reduce((sum, value) => sum + value, 0) : null
+}
+
+/**
+ * 단지에 연결된 기존 LH 행 하나("26A/B(고령자)")를 공고문이 세부 타입 행 여럿(26A·26B)으로 적었으면, 그 행들을 그 LH 행 표기의 세부 타입 묶음 행 하나로 접는다.
+ * 대상·금액이 행마다 다르면 접지 않고 행마다 둔다(저장할 위치를 확인하게 된다).
+ */
+export function foldSameSourceRows(extraction: Extraction, rows: CorrectionRow[]): Extraction {
+  const used = new Set<number>(), groups: FoldGroup[] = []
+  for (const row of rows) {
+    if (row.excluded || emptyRow(row)) continue
+    const types = parseSourceLabel(row.typeName).types.map(typeKey)
+    if (types.length < 2) continue
+    const indexes = extraction.supplyRows.flatMap((pdf, index) => !used.has(index) && !pdf.subtypes.length && types.includes(typeKey(pdf.typeName))
+      && (sameComplex(pdf.complexName, row.complexName) || sameComplex(pdf.complexName, row.housingComplexName)) ? [index] : [])
+    if (indexes.length < 2 || !sameTargets(indexes.map(index => extraction.supplyRows[index]))) continue
+    indexes.forEach(index => used.add(index))
+    groups.push({ indexes, typeName: row.typeName, count: foldedCount(extraction, indexes) })
+  }
+  return groups.length ? foldRows(extraction, groups).extraction : extraction
 }
 
 const day = (value: unknown) => typeof value === 'string' ? value.slice(0, 10) : ''
