@@ -1,7 +1,8 @@
 import type { ExtractedAnnouncement, HousingTypeValue, JsonObject, JsonUpdateInput, JsonWorkspace } from '../announcement-json/api'
 import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type LinkedHousingType, type NewSupplyGroup } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, type Evidence, type Extraction, type Subtype } from './extraction'
-import { defaultTargetDestinations, foldSameSourceRows, missingHousingType, originalDate, pickSubtypes, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
+import { foldRows } from './subtypes'
+import { defaultTargetDestinations, foldSameSourceRows, missingHousingType, originalDate, pickSubtypes, proposeRows, proposeSchedules, sharedFoldGroups, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
@@ -155,6 +156,7 @@ export function chooseSubtype(row: RowReview, at: number, choice: SubtypeChoice)
   const next = syncRepresentative({ ...row, subtypes: row.subtypes?.map((subtype, item) => item === at ? { ...subtype, choice } : subtype) })
   return linkedHousingTypeId(next) === linkedHousingTypeId(row) && newRepresentative(next) === newRepresentative(row) ? next : { ...next, priceTarget: undefined }
 }
+const sharedSubtypeNote = '공고문이 이 행의 모집수를 다른 공급행과 합쳐 적었습니다. 세부 타입 묶음 행은 공통 모집수로 묶을 수 없으니 이 공급행의 모집수를 직접 입력하세요.'
 export function createRowReview(extraction: Extraction, index: number, proposal: RowProposal, workspace: JsonWorkspace): RowReview {
   const source = extraction.supplyRows[index], current = workspace.supply.rows.find(row => row.key === proposal.destination)
   const targets = defaultTargetDestinations({ targets: source.targets }, current)
@@ -162,24 +164,40 @@ export function createRowReview(extraction: Extraction, index: number, proposal:
   const choice = subtypes?.[representativeOf(subtypes, current?.housingTypeId)]?.choice
   const housingTypeId = subtypes ? typeof choice === 'number' ? choice : null : proposal.housingTypeId
   const rowCells = cells(extraction, `supplyRows[${index}]`, rowFields, { ...source.values, housingTypeId }, current as unknown as JsonObject)
-  if (proposal.sharedIndex !== null || current?.groupId) {
-    const count = rowCells.find(cell => cell.field === 'totalSupplyHouseholdCount')!
+  const count = rowCells.find(cell => cell.field === 'totalSupplyHouseholdCount')!
+  // 세부 타입 묶음 행은 공통 모집 묶음에 넣을 수 없어, 공고문이 다른 LH 행과 합쳐 적은 모집수 대신 이 행의 모집수를 직접 받는다.
+  if (subtypes && proposal.sharedIndex !== null) Object.assign(count, { state: 'confirm', extracted: { ...count.extracted, state: 'confirm' }, note: sharedSubtypeNote })
+  else if (proposal.sharedIndex !== null || current?.groupId) {
     count.locked = true; count.selected = false; count.mode = 'keep'; count.note = '공통 모집수는 묶음에 한 번만 기록합니다.'
   }
   return syncRepresentative({ proposal, include: true, reviewed: false, key: current?.key ?? crypto.randomUUID(), cells: rowCells, subtypes,
     targets: source.targets.map((target, at) => ({ destination: targets[at], cells: cells(extraction, `supplyRows[${index}].targets[${at}]`, targetFields, target,
       current?.targets.find(item => (item.id ? String(item.id) : item.key) === targets[at]) as unknown as JsonObject) })) })
 }
-/** fold가 true면 같은 기존 LH 행을 가리키는 공고문 행들을 세부 타입 묶음 행 하나로 접는다. 이미 접은 검토를 다시 만들 때는 접지 않는다. */
+/**
+ * fold가 true면 같은 기존 LH 행을 가리키는 공고문 행들을 세부 타입 묶음 행 하나로 접는다. 이미 접은 검토를 다시 만들 때는 접지 않는다.
+ * LH 표기로 고를 수 없는 행은 저장할 위치를 한 번 제안한 뒤, 기존 행 하나와 새 행만 묶은 공통 모집수(sharedFoldGroups)를 접고 다시 제안한다.
+ */
 export function createReview(source: Extraction, workspace: JsonWorkspace, housing: HousingCandidates, fold = true): Review {
-  const extraction = fold ? foldSameSourceRows(source, workspace.supply.rows) : source
+  const propose = (value: Extraction) => proposeRows(value, workspace.supply.rows, housing, workspace.supply.announcementComplexes)
+  let extraction = fold ? foldSameSourceRows(source, workspace.supply.rows) : source, proposals = propose(extraction)
+  const groups = fold ? sharedFoldGroups(extraction, proposals, workspace.supply.rows) : []
+  if (groups.length) {
+    const folded = foldRows(extraction, groups)
+    extraction = folded.extraction; proposals = propose(extraction)
+    for (const group of groups) {
+      const proposal = proposals[folded.position[group.indexes[0]]]
+      // 공통 모집수만 보고 LH 한 행으로 판단해 접었으므로 저장할 위치를 확인하게 한다.
+      Object.assign(proposal, { needsConfirmation: true, reason: `공고문 ${group.typeName.split('/').join('·')}가 공통 모집수 ${group.count ?? '미확인'}세대를 함께 적어 공급행 하나의 세부 타입으로 접었습니다. · ${proposal.reason}` })
+    }
+  }
   const metadata = cells(extraction, 'announcement', metadataFields, extraction.announcement, workspace.detail.data)
   // 정정공고 PDF에는 원공고 공고일이 그대로 적혀 있는 경우가 많아, 다른 공고일은 기본으로 반영하지 않는다.
   const posted = metadata.find(cell => cell.field === 'postedDate')
   if (posted?.state === 'changed' && typeof posted.value === 'string' && originalDate(posted.value, workspace.detail.data)) Object.assign(posted, { selected: false, mode: 'keep', note: '정정공고는 PDF에 원공고 공고일이 적혀 있을 수 있어 기존 공고일을 유지합니다. 정정공고 공고일이 맞는지 확인하세요.' })
   if (workspace.detail.scheduleReviewed) metadata.filter(cell => ['applicationStartDate', 'applicationEndDate'].includes(cell.field)).forEach(cell => { cell.locked = true; cell.selected = false; cell.mode = 'keep'; cell.note = '확인된 접수 기간은 접수 일정에서 수정하세요.' })
   return { extraction, metadata, reception: cells(extraction, 'receptionPlace', receptionFields, extraction.receptionPlace, (workspace.detail.data.receptionPlace ?? {}) as JsonObject),
-    rows: proposeRows(extraction, workspace.supply.rows, housing, workspace.supply.announcementComplexes).map((proposal, index) => createRowReview(extraction, index, proposal, workspace)),
+    rows: proposals.map((proposal, index) => createRowReview(extraction, index, proposal, workspace)),
     schedules: proposeSchedules(extraction, workspace.events).map((proposal, index) => {
       const values = cells(extraction, `schedules[${index}]`, scheduleFields, extraction.schedules[index], workspace.events.find(event => event.id === proposal.existingIds[0])?.data)
       return { proposal, cells: values, reviewed: false, include: !proposal.needsConfirmation && values.every(cell => validCellValue(cell.kind, cell.value) && !['notApplicable', 'unresolved'].includes(cell.state)) }
@@ -338,7 +356,10 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
     // 세부 타입을 함께 연결하지 않는 행은 대표가 그대로면 저장된 연결을 유지하고 바뀌면 대표만 남기도록 목록을 보내지 않는다.
     if (!subtypes) row.linkedHousingTypes = undefined
     if (entry.cells.some(cell => ['exclusiveArea', 'supplyArea'].includes(cell.field) && cell.selected)) row.areaOverride = true
-    if (entry.proposal.sharedIndex !== null) row.householdCount = null
+    if (entry.proposal.sharedIndex !== null && subtypes) {
+      const count = entry.cells.find(cell => cell.field === 'totalSupplyHouseholdCount')!
+      if (count.mode !== 'manual' || typeof count.value !== 'number') throw new ReviewError(`공급행 ${index + 1}: ${sharedSubtypeNote}`, `cell:${count.path}`)
+    } else if (entry.proposal.sharedIndex !== null) row.householdCount = null
     const selectedTargets = new Set<string>()
     for (const target of entry.targets) {
       if (target.destination === 'exclude') continue
@@ -356,8 +377,7 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
     if (!existing) rows.push(row)
     if (subtypes) housingTypeValues.push(...subtypes.flatMap(item => {
       const path = `supplyRows[${index}].subtypes[${item.at}]`, subtype = entry.subtypes![item.at]
-      const value = housingTypeValue(entry, row.key, linkedHousingType(entry), { name: subtype.name, householdCount: subtype.constructedHouseholdCount,
-        supplyArea: noteFor(review.extraction.unresolved, `${path}.supplyArea`) ? null : subtype.supplyArea }, item.address)
+      const value = housingTypeValue(entry, row.key, linkedHousingType(entry), subtypeTypeValues(entry, subtype, Boolean(noteFor(review.extraction.unresolved, `${path}.supplyArea`))), item.address)
       return !row.excluded && value ? [value] : []
     }))
     else if (!row.excluded && (row.housingTypeId !== null || row.newHousingType)) {
@@ -434,11 +454,19 @@ type TypeAddress = Pick<HousingTypeValue, 'linkedHousingTypeId' | 'linkedNewHous
 function rowTypeValues(entry: RowReview, source: Extraction['supplyRows'][number]): TypeValueInput {
   const accepted = (field: string, extracted: unknown) => {
     const cell = entry.cells.find(item => item.field === field)
-    if (!cell) return extracted
-    if (cell.selected && !cell.locked) return cell.value
-    return cell.state === 'same' ? extracted : null
+    return cell?.selected && !cell.locked ? cell.value : acceptedCell(cell) ? extracted : null
   }
   return { name: accepted('sourceHousingTypeName', source.typeName), supplyArea: accepted('supplyArea', source.values.supplyArea), householdCount: source.values.constructedHouseholdCount }
+}
+/** 관리자가 이 칸의 값을 받아들였는지. 칸이 없거나, 반영을 골랐거나, 현재값과 같으면 받아들인 것이다. */
+function acceptedCell(cell: Cell | undefined) { return !cell || cell.selected && !cell.locked || cell.state === 'same' }
+/**
+ * 세부 타입 묶음 행의 세부 타입 하나의 주택형 값. 이름은 관리자가 공급행의 주택형 표기를 받아들였을 때만 세부 타입 이름을 쓴다(rowTypeValues와 같은 기준).
+ * 세부 타입 공급면적은 공급행 칸이 해당 없음이라, 공고문에서 읽지 못한 값만 뺀다. 세대수는 공고문의 건설호수다.
+ */
+function subtypeTypeValues(entry: RowReview, subtype: Subtype, supplyAreaUnresolved: boolean): TypeValueInput {
+  return { name: acceptedCell(entry.cells.find(item => item.field === 'sourceHousingTypeName')) ? subtype.name : null,
+    supplyArea: supplyAreaUnresolved ? null : subtype.supplyArea, householdCount: subtype.constructedHouseholdCount }
 }
 /**
  * 공급행이 고른 주택형에 반영할 공고 값. 면적만 적힌 표기는 주택형 이름이 아니라 보내지 않는다. 세대수는 공고문의 건설호수다.
@@ -596,10 +624,10 @@ export function rebaseReview(previous: Review, workspace: JsonWorkspace, housing
       row = createRowReview(next.extraction, index, { ...old.proposal, candidates, housingTypeId: candidates.some(type => type.id === old.proposal.housingTypeId) ? old.proposal.housingTypeId : null }, workspace)
     }
     row.include = old.include; row.reviewed = old.reviewed; row.newHousingType = old.newHousingType; row.cells = row.cells.map(retain)
-    // 직접 고른 세부 타입 연결은 그 주택형이 아직 후보에 있으면 유지한다.
-    row.subtypes?.forEach((_, at) => {
+    // 직접 고른 세부 타입 연결은 그 주택형이 아직 후보에 있으면 유지한다. 새 주택형 추가는 같은 면적 주택형이 여전히 없을 때만 유지한다.
+    row.subtypes?.forEach((subtype, at) => {
       const choice = old.subtypes?.[at]?.choice
-      if (choice === 'none' || choice === 'new' || typeof choice === 'number' && row.proposal.candidates.some(type => type.id === choice)) row = chooseSubtype(row, at, choice)
+      if (choice === 'none' || choice === 'new' && !subtype.options.length || typeof choice === 'number' && row.proposal.candidates.some(type => type.id === choice)) row = chooseSubtype(row, at, choice)
     })
     row.priceTarget = linkedHousingTypeId(row) === linkedHousingTypeId(old) ? old.priceTarget : undefined
     next.rows[index] = row

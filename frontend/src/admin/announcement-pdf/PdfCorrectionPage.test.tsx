@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from 'vitest'
 import { PdfCorrectionPage, PdfCorrectionWorkspace } from './PdfCorrectionPage'
-import { scenario } from './fixtures/workspace'
+import { scenario, separateHansville } from './fixtures/workspace'
 import fixtures from './fixtures/scenarios.json'
 import type { JsonPreview, JsonUpdateInput } from '../announcement-json/api'
 import { ManagementError } from '../management/api'
@@ -85,12 +85,15 @@ it('추가 확인 체크나 미리보기 화면 없이 서버 검증을 마친 �
   await open()
   expect(screen.queryByRole('checkbox', { name: /확인함|대조함/ })).not.toBeInTheDocument()
   expect(api.applyJsonUpdate).not.toHaveBeenCalled()
+  fireEvent.click(within(screen.getByRole('group', { name: '공급행 1 이 공고의 주택형 표기 반영 방법' })).getByRole('button', { name: '보정된 값 사용' }))
   fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
   expect(screen.getByRole('button', { name: '적용 중…' })).toBeDisabled()
   expect(api.applyJsonUpdate).not.toHaveBeenCalled()
   const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
-  expect(input.correction.newGroups).toEqual([expect.objectContaining({ sourceRowId: 90, sharedHouseholdCount: 170 })])
-  expect(input.housingTypeValues?.map(value => value.name)).toEqual(expect.arrayContaining(['26A', '26B']))
+  // 한스빌 26A·26B는 기존 행 하나와 공통 모집수 170을 함께 적은 LH 한 행이라 공급행 하나로 접어 저장한다.
+  expect(input.correction.newGroups).toEqual([])
+  expect(input.correction.rows).toEqual([expect.objectContaining({ id: 90, householdCount: 170, housingTypeId: 10353, linkedHousingTypes: [{ housingTypeId: 10352 }] })])
+  expect(input.housingTypeValues?.map(value => [value.name, value.linkedHousingTypeId])).toEqual([['26A', undefined], ['26B', 10352]])
   await act(async () => finish({ confirmationToken: 'confirmed', housingTypeWarnings: ['26: 관리자가 고친 세대수를 유지합니다.'],
     housingTypes: [{ rowKey: 'row:1', housingTypeId: 10353, typeName: '26', before: { name: '26', supplyArea: null, householdCount: null }, after: { name: '26A', supplyArea: 52.5, householdCount: 120 } }] }))
   await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })
@@ -112,7 +115,7 @@ it('저장할 위치가 없는 공급정보는 오류를 알리고 서버에 보
   expect(api.applyJsonUpdate).not.toHaveBeenCalled()
 })
 it('공급행을 PDF 단지 이름별로 묶어 한 단지의 주택형을 한곳에 보여 주고, 쓰지 않는 변경 목록은 두지 않는다', async () => {
-  await open()
+  await open(JSON.stringify(separateHansville()))
   const group = screen.getByRole('region', { name: '익산한스빌 주택형' })
   expect(within(group).getByRole('heading', { name: '익산한스빌주택형 2개' })).toBeVisible()
   expect(within(group).getByRole('region', { name: '공급행 1 검토' })).toBeVisible()
@@ -305,7 +308,7 @@ it('확인 필요 항목을 세고 하단 버튼으로 다음 항목에 이동�
   const scroll = vi.fn()
   Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scroll })
   onTestFinished(() => { delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView })
-  await open()
+  await open(JSON.stringify(separateHansville()))
   expect(screen.getByRole('button', { name: '일정 · 확인 1' })).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '확인 필요 3개 남음 ↓' }))
   expect(screen.getByRole('region', { name: '공급행 1 검토' })).toHaveFocus()
@@ -347,6 +350,7 @@ it('공급정보의 PDF 채우기는 작성 중인 행을 기준으로 대조하
   const onFill = vi.fn()
   const draft = structuredClone(workspace.supply.rows)
   draft[0].moveInMonth = '2027-03'
+  extracts(JSON.stringify(separateHansville()))
   render(<MemoryRouter><PdfCorrectionWorkspace id="29" supplyDraft={{ rows: draft, onFill, onCancel: vi.fn() }} /></MemoryRouter>)
   await review()
   expect(screen.queryByRole('navigation', { name: 'PDF 보정 영역' })).not.toBeInTheDocument()
@@ -587,6 +591,8 @@ it('세부 타입 묶음 행은 공급행 하나로 저장하고 행 모집수�
   const links = screen.getByRole('region', { name: '공급행 1 세부 타입 연결' })
   expect(links).toHaveTextContent('모집수 170세대는 이 공급행 하나에 두고')
   expect(screen.queryByText(/공통 모집 \d+세대/)).not.toBeInTheDocument()
+  // 세부 타입 주택형 이름은 관리자가 공급행의 주택형 표기를 받아들였을 때만 보낸다.
+  fireEvent.click(within(screen.getByRole('group', { name: '공급행 1 이 공고의 주택형 표기 반영 방법' })).getByRole('button', { name: '보정된 값 사용' }))
   fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
   await waitFor(() => expect(api.previewJsonUpdate).toHaveBeenCalled())
   const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput

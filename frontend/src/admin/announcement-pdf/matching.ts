@@ -237,6 +237,23 @@ export function foldSameSourceRows(extraction: Extraction, rows: CorrectionRow[]
   return groups.length ? foldRows(extraction, groups).extraction : extraction
 }
 
+/**
+ * 공고문이 행 모집수를 공통 모집수로 묶은 행들이 기존 공급행 하나와 새로 추가할 행뿐이고 대상·금액이 같으면, LH 한 행을 세부 타입으로 나눠 적은 것으로 보고 접을 묶음을 돌려준다.
+ * 기존 행 표기로 세부 타입을 읽을 수 없는 경우(한스빌 '아파트' ↔ 공고문 26A·26B)다. 저장할 위치는 proposeRows가 고른 결과를 그대로 쓴다.
+ */
+export function sharedFoldGroups(extraction: Extraction, proposals: RowProposal[], rows: CorrectionRow[]): FoldGroup[] {
+  return extraction.sharedCounts.flatMap((group, at) => {
+    const indexes = proposals.flatMap((proposal, index) => proposal.sharedIndex === at ? [index] : [])
+    const existing = indexes.filter(index => proposals[index].destination !== 'new')
+    const destination = rows.find(row => row.key === proposals[existing[0]]?.destination)
+    const complexIds = new Set(indexes.map(index => proposals[index].complexId))
+    if (indexes.length < 2 || group.paths.length !== indexes.length || !group.paths.every(path => path.endsWith('.totalSupplyHouseholdCount'))
+      || existing.length !== 1 || !destination || destination.groupId !== null || complexIds.size !== 1 || complexIds.has(null)
+      || !sameTargets(indexes.map(index => extraction.supplyRows[index]))) return []
+    return [{ indexes, typeName: indexes.flatMap(index => pdfTypes(extraction.supplyRows[index]).map(type => type.name)).join('/'), count: foldedCount(extraction, indexes) }]
+  })
+}
+
 const day = (value: unknown) => typeof value === 'string' ? value.slice(0, 10) : ''
 function samePeriod(left: JsonObject, right: JsonObject) {
   return !!day(left.startAt) && day(left.startAt) === day(right.startAt) && day(left.endAt ?? left.startAt) === day(right.endAt ?? right.startAt)

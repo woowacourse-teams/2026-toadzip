@@ -4,8 +4,18 @@ import { blankRow } from '../../supply/supplyCorrectionApi'
 import { readExtraction } from '../extraction'
 import { createReview, validCellValue } from '../review'
 
-export function scenario(name: keyof typeof fixtures) {
-  const fixture = fixtures[name], extracted = readExtraction(JSON.stringify(fixture.extraction))
+/**
+ * 한스빌 26B의 전환보증금만 다르게 한 추출 응답. 대상 조건이 달라 두 행을 하나로 접지 않고 공통 모집수 170으로 묶은 채 둔다.
+ * 공통 모집 묶음과 행 여럿을 다루는 검토를 시험할 때 쓴다.
+ */
+export function separateHansville() {
+  const extraction = structuredClone(fixtures.hansville.extraction)
+  extraction.data.supplyRows[1].targets[0].convertedDeposit = 2000000
+  return extraction
+}
+
+export function scenario(name: keyof typeof fixtures, extraction: unknown = fixtures[name].extraction) {
+  const fixture = fixtures[name], extracted = readExtraction(JSON.stringify(extraction))
   if (!extracted.ok) throw new Error(extracted.error)
   const rows = fixture.rows.map(row => ({ ...blankRow(row.displayOrder), id: row.id, key: `row:${row.id}`,
     complexName: row.sourceComplexName, typeName: row.housingTypeName, pnu: row.pnu, category: 'RESUPPLY' as const,
