@@ -642,6 +642,39 @@ class AdminManagementIntegrationTest {
         assertThat(getData(path).get("housingTypes").get(0).get("deleted").asBoolean()).isFalse();
     }
 
+    @Test
+    void 공급행_대표를_바꾸면_함께_모집하던_주택형을_변경_전_이력에_남긴다() throws Exception {
+        long complexId = createComplex();
+        long representativeId = createHousingType(complexId);
+        var joint = HousingType.createFromMyHome(complexes.findById(complexId).orElseThrow(), "JOINT-" + complexId,
+                "59A", new BigDecimal("59.9"), null);
+        entityManager.persist(joint); entityManager.flush();
+        long id = createAnnouncement(complexId);
+        entityManager.createNativeQuery("UPDATE supply_rows SET housing_type_id = :typeId WHERE announcement_id = :id")
+                .setParameter("typeId", representativeId).setParameter("id", id).executeUpdate();
+        entityManager.createNativeQuery("""
+                        INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id)
+                        SELECT id, unnest(ARRAY[:representative, :joint]) FROM supply_rows WHERE announcement_id = :id
+                        """).setParameter("representative", representativeId).setParameter("joint", joint.getId())
+                .setParameter("id", id).executeUpdate();
+        entityManager.clear();
+        String path = "/api/admin/announcements/" + id;
+        var current = getData(path);
+        long rowId = current.get("supplyRows").get(0).get("id").asLong();
+
+        mvc.perform(put(path + "/supply-rows/" + rowId).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"version\":" + current.get("data").get("version").asLong()
+                                + ",\"housingComplexId\":" + complexId + ",\"supplyRow\":" + current.get("supplyRows").get(0).get("data") + "}"))
+                .andExpect(status().isOk());
+        entityManager.flush();
+
+        var change = (Object[]) entityManager.createNativeQuery("SELECT before_value, after_value FROM admin_data_changes "
+                + "WHERE resource_id = :id AND action = 'UPDATE_SUPPLY'").setParameter("id", id).getSingleResult();
+        assertThat(json.readTree((String) change[0]).get("housingTypeIds").toString())
+                .isEqualTo("[" + Math.min(representativeId, joint.getId()) + "," + Math.max(representativeId, joint.getId()) + "]");
+        assertThat(json.readTree((String) change[1]).get("housingTypeIds").toString()).isEqualTo("[]");
+    }
+
     private long createHousingType(long complexId) {
         var type = HousingType.createFromMyHome(
                 complexes.findById(complexId).orElseThrow(), "TYPE-" + complexId,

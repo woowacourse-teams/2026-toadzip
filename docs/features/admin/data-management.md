@@ -29,7 +29,7 @@
 | `POST /{id}/restore?version=...` | 복원 |
 | `GET /{id}/changes?page=...` | 변경 전후 값·작업자·시각 이력 |
 
-- 공고의 `PUT /{id}/supply-rows/{rowId}`로 공급정보와 연결 대상을 수정한다. `supplyRow`에는 원천 이름 대신 선택적 `announcementHousingTypeName`을 보낸다.
+- 공고의 `PUT /{id}/supply-rows/{rowId}`로 공급정보와 연결 대상을 수정한다. `supplyRow`에는 원천 이름 대신 선택적 `announcementHousingTypeName`을 보낸다. 대표 주택형을 바꾸면 함께 모집하던 주택형은 빠지고 새 대표만 남는다. 이력의 변경 전후 값에는 연결 전체(대표 포함)를 `housingTypeIds`로 남긴다.
 - 단지의 `POST /{id}/housing-types`는 단지 `version`, `name`, `exclusiveArea`와 선택값 `supplyArea`, `householdCount`로 주택형을 추가한다. 같은 이름은 409로 거절한다. PDF 보정의 새 단지 등록처럼 공고문 값으로 만들 때는 `fromAnnouncement: true`를 보내 관리자 수정으로 보호하지 않는다.
 - 단지의 `PUT /{id}/housing-types/{typeId}`는 단지 `version`, `name`, `exclusiveArea`, `householdCount`를 받는다. 면적은 소수점 네 자리까지, 세대수는 `null`(미확인)과 0을 구분한다.
 - 단지의 `DELETE /{id}/housing-types/{typeId}?version=...`과 `POST /{id}/housing-types/{typeId}/restore?version=...`은 주택형 하나를 휴지통으로 옮기거나 복구하고 단지 상세를 반환한다. 공급행이나 공급 매칭 판단이 가리키는 주택형은 409로 거절한다. 휴지통 주택형은 기록을 보존하고 관리자 상세에만 `deleted: true`로 남으며 공개 상세·면적 필터·매칭 후보에서 빠진다. 마이홈 재정제는 같은 원천 주택형을 다시 만들지 않는다. `DELETE_HOUSING_TYPE`·`RESTORE_HOUSING_TYPE` 이력을 기록한다.
