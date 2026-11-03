@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -125,6 +126,55 @@ class ShAnnouncementCollectionServiceTest {
     }
 
     @Test
+    void 제목과_등록일이_그대로인_수집된_게시글은_상세를_다시_받지_않는다() {
+        when(externalRepository.fetchList(1)).thenReturn(list(1, 2, 100, 101));
+        when(store.findUnchangedSeqs(any())).thenReturn(Set.of("100"));
+        when(externalRepository.fetchDetail("101")).thenReturn(detail("101"));
+
+        var report = service.collect();
+
+        verify(externalRepository, never()).fetchDetail("100");
+        assertThat(report.skippedRequestCount()).isOne();
+        assertThat(report.storedRowCount()).isOne();
+        assertThat(report.externalApiCallCount()).isEqualTo(2);
+        verify(failures, never()).resolve(ExternalDataSource.SH_ANNOUNCEMENT, "seq=100");
+    }
+
+    @Test
+    void 실패가_열려_있는_게시글은_제목이_같아도_다시_받는다() {
+        when(externalRepository.fetchList(1)).thenReturn(list(1, 1, 100));
+        when(store.findUnchangedSeqs(any())).thenReturn(Set.of("100"));
+        when(failures.findPendingRequestDescriptions(ExternalDataSource.SH_ANNOUNCEMENT, List.of("seq=100")))
+                .thenReturn(Set.of("seq=100"));
+        when(externalRepository.fetchDetail("100")).thenReturn(detail("100"));
+
+        var report = service.collect();
+
+        assertThat(report.skippedRequestCount()).isZero();
+        assertThat(report.storedRowCount()).isOne();
+        verify(failures).resolve(ExternalDataSource.SH_ANNOUNCEMENT, "seq=100");
+    }
+
+    @Test
+    void 첨부를_읽지_못한_상세는_읽은_내용만_저장하고_실패를_열어_둔다() {
+        when(externalRepository.fetchList(1)).thenReturn(list(1, 1, 100));
+        when(externalRepository.fetchDetail("100")).thenReturn(detail("100")
+                .replace("<script>initParam.downList = [];</script>", "")
+                .replace("<ul class='personInfo'><li><span>담당부서</span>공급부</li></ul>", ""));
+
+        var report = service.collect();
+
+        assertThat(report.storedRowCount()).isOne();
+        assertThat(report.failedRequestCount()).isOne();
+        verify(store).store(org.mockito.ArgumentMatchers.argThat(snapshot -> snapshot.seq().equals("100")
+                && snapshot.bodyText().equals("공고 100 원문") && snapshot.attachments() == null
+                && snapshot.department().equals("목록부")));
+        verify(failures).record(eq(ExternalDataSource.SH_ANNOUNCEMENT), eq("seq=100"),
+                org.mockito.ArgumentMatchers.argThat(exception -> exception.getMessage().contains("첨부")), any(), any());
+        verify(failures, never()).resolve(ExternalDataSource.SH_ANNOUNCEMENT, "seq=100");
+    }
+
+    @Test
     void rateLimitStopsRemainingRequestsWithoutRetrying() {
         when(externalRepository.fetchList(1)).thenReturn(list(1, 2, 100, 101));
         when(externalRepository.fetchDetail("100")).thenThrow(ExternalDataRequestException.rateLimited("429"));
@@ -203,7 +253,7 @@ class ShAnnouncementCollectionServiceTest {
             }
             rows.append("<tr><td>123</td><td class='txtL'><a onclick=\"getDetailView('%d')\">공고 %d</a></td>"
                     .formatted(seq, seq));
-            rows.append("<td>공급부</td><td>" + date + "</td><td>100</td></tr>");
+            rows.append("<td>목록부</td><td>" + date + "</td><td>100</td></tr>");
         }
         return "<input name='multi_itm_seq' value='2'><div class='topTxt'><p>총 <strong>%d</strong> 건 [%d/%d페이지]"
                 .formatted(total, page, Math.max(1, (total + 9) / 10))

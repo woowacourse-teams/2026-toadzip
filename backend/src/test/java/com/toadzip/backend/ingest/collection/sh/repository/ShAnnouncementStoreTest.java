@@ -8,6 +8,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
+import com.toadzip.backend.ingest.collection.sh.dto.ShAnnouncementPage.Entry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -49,6 +51,37 @@ class ShAnnouncementStoreTest {
 
         assertThat(repository.count()).isEqualTo(2);
         assertThat(repository.findBySourceKey("SH:200").orElseThrow().getCollectedAt()).isEqualTo(FIRST);
+    }
+
+    @Test
+    void 다시_읽지_못한_본문과_첨부는_기존_값을_지킨다() {
+        store(FIRST).store(snapshot("100", "제목", "원문"));
+        store(FIRST.plusSeconds(60)).store(new ShAnnouncementSnapshot("100", "제목", "공급부",
+                LocalDate.parse("2026-10-02"), ShAnnouncementExternalRepository.detailUrl("100"),
+                ShAnnouncementExternalRepository.LIST_URL, null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        var source = repository.findBySourceKey("SH:100").orElseThrow();
+        assertThat(source.getBodyText()).isEqualTo("원문");
+        assertThat(source.getAttachments()).isEqualTo("[]");
+    }
+
+    @Test
+    void 제목과_등록일이_같고_본문과_첨부를_가진_게시글만_그대로인_게시글로_본다() {
+        store(FIRST).store(snapshot("100", "제목", "원문"));
+        store(FIRST).store(snapshot("200", "옛 제목", "원문"));
+        store(FIRST).store(snapshot("400", "제목", "원문"));
+        store(FIRST).store(new ShAnnouncementSnapshot("500", "본문 없는 옛 행", "공급부", LocalDate.parse("2026-10-02"),
+                ShAnnouncementExternalRepository.detailUrl("500"), ShAnnouncementExternalRepository.LIST_URL, null, null));
+        LocalDate date = LocalDate.parse("2026-10-02");
+
+        var unchanged = store(FIRST).findUnchangedSeqs(List.of(new Entry("100", "제목", "공급부", date),
+                new Entry("200", "정정 제목", "공급부", date), new Entry("300", "새 글", "공급부", date),
+                new Entry("400", "제목", "공급부", date.plusDays(1)),
+                new Entry("500", "본문 없는 옛 행", "공급부", date)));
+
+        assertThat(unchanged).containsExactly("100");
     }
 
     private ShAnnouncementStore store(Instant now) {

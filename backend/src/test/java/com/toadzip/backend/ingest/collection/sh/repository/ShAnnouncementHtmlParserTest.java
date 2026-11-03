@@ -37,14 +37,14 @@ class ShAnnouncementHtmlParserTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"0", "2"})
-    void parsesDetailAndRejectsDifferentSequence(String boardType) {
+    void 다른_게시글의_첨부는_첨부를_읽지_못한_것으로_본다(String boardType) {
         String html = detail().replace("name=\"multi_itm_seq\" value=\"0\"",
                 "name=\"multi_itm_seq\" value=\"" + boardType + "\"");
         var result = parseDetail(html, listEntry("100"));
         assertThat(result.bodyText()).isEqualTo("입주자 모집 안내\n\n신청 안내\n서류를 제출하세요.");
         assertThat(result.attachments()).contains("공고문.pdf", "신청서.zip");
-        assertThatThrownBy(() -> parser.parse(html, "123", result.title(), result.registeredDate()))
-                .isInstanceOf(ExternalDataRequestException.class);
+        assertThat(parser.parse(html, "123", result.title(), result.registeredDate()).unreadParts())
+                .singleElement().asString().contains("식별자");
     }
 
     @Test
@@ -60,18 +60,39 @@ class ShAnnouncementHtmlParserTest {
         assertThat(parsed.title()).isEqualTo(entry.title());
         assertThat(parsed.bodyText()).isEmpty();
         assertThat(parsed.attachments()).isEqualTo("[]");
+        assertThat(parsed.unreadParts()).isEmpty();
     }
 
     @Test
-    void mismatchedAttachmentButtonsAndMalformedMetadataAreFailures() {
+    void 첨부를_읽지_못해도_본문은_남기고_못읽은_이유를_알린다() {
         var entry = listEntry("100");
         String html = detail();
         var document = Jsoup.parse(html);
         document.select("a.btnAttach").first().remove();
-        assertThatThrownBy(() -> parser.parse(document.html(), entry.seq(), entry.title(), entry.registeredDate()))
-                .isInstanceOf(ExternalDataRequestException.class).hasMessageContaining("개수");
-        assertThatThrownBy(() -> parser.parse(html.replace("initParam.downList = [", "initParam.downList = [INVALID"),
-                entry.seq(), entry.title(), entry.registeredDate())).isInstanceOf(ExternalDataRequestException.class);
+
+        var mismatched = parseDetail(document.html(), entry);
+        var malformed = parseDetail(html.replace("initParam.downList = [", "initParam.downList = [INVALID"), entry);
+
+        assertThat(mismatched.attachments()).isNull();
+        assertThat(mismatched.bodyText()).isEqualTo("입주자 모집 안내\n\n신청 안내\n서류를 제출하세요.");
+        assertThat(mismatched.unreadParts()).singleElement().asString().startsWith("첨부").contains("개수");
+        assertThat(malformed.attachments()).isNull();
+        assertThat(malformed.unreadParts()).singleElement().asString().startsWith("첨부");
+    }
+
+    @Test
+    void 본문_영역이나_담당부서가_없으면_그_값만_비워_둔다() {
+        var entry = listEntry("100");
+        var document = Jsoup.parse(detail());
+        document.select("td.cont").first().removeClass("cont");
+        document.select("ul.personInfo").remove();
+
+        var parsed = parseDetail(document.html(), entry);
+
+        assertThat(parsed.bodyText()).isNull();
+        assertThat(parsed.department()).isNull();
+        assertThat(parsed.attachments()).contains("공고문.pdf");
+        assertThat(parsed.unreadParts()).singleElement().asString().startsWith("본문");
     }
 
     @Test
@@ -96,9 +117,11 @@ class ShAnnouncementHtmlParserTest {
             assertThat(file.path("brdId").asString()).isEqualTo(board);
             assertThat(file.path("seq").asString()).isEqualTo(entry.seq());
             assertThat(file.path("previewUrl").asString()).contains("brd_id=" + board + "&seq=" + entry.seq());
+            assertThat(file.path("downloadUrl").asString()).isEqualTo("https://www.i-sh.co.kr/main/com/file/innoFD.do"
+                    + "?brdId=" + board + "&seq=" + entry.seq() + "&fileTp=A&fileSeq=" + file.path("fileSeq").asString());
         }
-        assertThatThrownBy(() -> parseDetail(html.replace(board, "UNKNOWN"), entry))
-                .isInstanceOf(ExternalDataRequestException.class).hasMessageContaining("식별자");
+        assertThat(parseDetail(html.replace(board, "UNKNOWN"), entry).unreadParts())
+                .singleElement().asString().contains("식별자");
     }
 
     @Test
@@ -133,17 +156,16 @@ class ShAnnouncementHtmlParserTest {
     }
 
     @Test
-    void rejectsDetailForAnotherPostAndMissingAttachmentMetadata() {
+    void 다른_게시글_상세는_거절하고_첨부_메타데이터만_틀리면_첨부만_비운다() {
         var entry = listEntry("100");
         var otherEntry = listEntry("200");
         String detail = detail();
         assertThatThrownBy(() -> parseDetail(detail, otherEntry))
                 .isInstanceOf(ExternalDataRequestException.class).hasMessageContaining("목록과 다릅니다");
-        assertThatThrownBy(() -> parseDetail(detail.replace("initParam.downList", "removed"), entry))
-                .isInstanceOf(ExternalDataRequestException.class);
-        assertThatThrownBy(() -> parseDetail(detail.replace("\"seq\":\"100\"", "\"seq\":\"999\""), entry))
-                .isInstanceOf(ExternalDataRequestException.class)
-                .hasMessageContaining("식별자");
+        assertThat(parseDetail(detail.replace("initParam.downList", "removed"), entry).attachments()).isNull();
+        var otherPostFiles = parseDetail(detail.replace("\"seq\":\"100\"", "\"seq\":\"999\""), entry);
+        assertThat(otherPostFiles.attachments()).isNull();
+        assertThat(otherPostFiles.unreadParts()).singleElement().asString().contains("식별자");
     }
 
     @Test

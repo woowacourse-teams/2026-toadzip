@@ -70,8 +70,12 @@ public class ShAnnouncementSource {
         registeredDate = snapshot.registeredDate();
         originalUrl = snapshot.originalUrl();
         listUrl = snapshot.listUrl();
-        bodyText = snapshot.bodyText();
-        attachments = snapshot.attachments();
+        if (snapshot.bodyText() != null) {
+            bodyText = snapshot.bodyText();
+        }
+        if (snapshot.attachments() != null) {
+            attachments = snapshot.attachments();
+        }
         collectedAt = now;
     }
 }

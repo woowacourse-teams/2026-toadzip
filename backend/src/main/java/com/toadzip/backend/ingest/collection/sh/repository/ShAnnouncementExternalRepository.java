@@ -58,6 +58,11 @@ public class ShAnnouncementExternalRepository {
         return BOARD_URL + "view.do?seq=" + seq + "&multi_itm_seqs=" + BOARD_TYPES;
     }
 
+    public static String attachmentUrl(String board, String seq, String fileSeq) {
+        return "https://www.i-sh.co.kr/main/com/file/innoFD.do?brdId=" + board + "&seq=" + seq
+                + "&fileTp=A&fileSeq=" + fileSeq;
+    }
+
     private String fetch(String url, LinkedMultiValueMap<String, String> form) {
         try {
             RestClient.RequestHeadersSpec<?> requestSpec = form == null

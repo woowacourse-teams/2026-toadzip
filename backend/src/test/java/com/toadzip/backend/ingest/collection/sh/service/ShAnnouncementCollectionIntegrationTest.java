@@ -4,6 +4,8 @@ import static com.toadzip.backend.ingest.collection.fixture.ShAnnouncementFixtur
 import static com.toadzip.backend.ingest.collection.fixture.ShAnnouncementFixtures.mainList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
@@ -45,37 +47,49 @@ class ShAnnouncementCollectionIntegrationTest {
     }
 
     @Test
-    void collectionStoresContentAndParsingFailurePreservesItUntilSuccessfulRetry() {
+    void 일부만_읽은_공고는_다음_수집에서_다시_받고_다_받은_뒤에는_건너뛴다() {
         String detail = detail();
+        String withoutAttachments = detail.replace("initParam.downList", "removed");
         when(externalRepository.fetchList(1)).thenReturn(singlePostList());
-        when(externalRepository.fetchDetail("100")).thenReturn(detail);
+        when(externalRepository.fetchDetail("100")).thenReturn(withoutAttachments);
         long announcementCount = count("announcements");
         long housingCount = count("housing_complexes");
 
-        assertThat(service.collect().storedRowCount()).isOne();
+        var partial = service.collect();
+        assertThat(partial.storedRowCount()).isOne();
+        assertThat(partial.failedRequestCount()).isOne();
         var first = sources.findBySourceKey("SH:100").orElseThrow();
         Long sourceId = first.getId();
         assertThat(first.getBodyText()).contains("입주자 모집 안내", "신청 안내").doesNotContain("<", "\t", "\r");
-        assertThat(first.getAttachments()).contains("fileSeq", "공고문");
+        assertThat(first.getAttachments()).isNull();
+        assertThat(pending()).hasSize(1);
 
-        when(externalRepository.fetchDetail("100")).thenReturn("<html>변경된 구조</html>");
+        doReturn("<html>변경된 구조</html>").when(externalRepository).fetchDetail("100");
         assertThat(service.collect().failedRequestCount()).isOne();
         var preserved = sources.findBySourceKey("SH:100").orElseThrow();
         assertThat(preserved.getBodyText()).isEqualTo(first.getBodyText());
-        assertThat(preserved.getAttachments()).isEqualTo(first.getAttachments());
         assertThat(preserved.getCollectedAt()).isEqualTo(first.getCollectedAt());
-        assertThat(failures.findAllBySourceAndRequestDescriptionAndStatus(
-                ExternalDataSource.SH_ANNOUNCEMENT, "seq=100", ExternalDataFailureStatus.PENDING)).hasSize(1);
+        assertThat(pending()).hasSize(1);
 
         doReturn(detail).when(externalRepository).fetchDetail("100");
         assertThat(service.collect().failedRequestCount()).isZero();
         var refreshed = sources.findBySourceKey("SH:100").orElseThrow();
         assertThat(refreshed.getId()).isEqualTo(sourceId);
         assertThat(refreshed.getBodyText()).isEqualTo(first.getBodyText());
-        assertThat(failures.findAllBySourceAndRequestDescriptionAndStatus(
-                ExternalDataSource.SH_ANNOUNCEMENT, "seq=100", ExternalDataFailureStatus.RESOLVED)).hasSize(1);
+        assertThat(refreshed.getAttachments()).contains("fileSeq", "공고문", "innoFD.do");
+        assertThat(pending()).isEmpty();
+
+        var skipped = service.collect();
+        assertThat(skipped.skippedRequestCount()).isOne();
+        assertThat(skipped.externalApiCallCount()).isOne();
+        verify(externalRepository, times(3)).fetchDetail("100");
         assertThat(count("announcements")).isEqualTo(announcementCount);
         assertThat(count("housing_complexes")).isEqualTo(housingCount);
+    }
+
+    private java.util.List<?> pending() {
+        return failures.findAllBySourceAndRequestDescriptionAndStatus(
+                ExternalDataSource.SH_ANNOUNCEMENT, "seq=100", ExternalDataFailureStatus.PENDING);
     }
 
     private long count(String table) {

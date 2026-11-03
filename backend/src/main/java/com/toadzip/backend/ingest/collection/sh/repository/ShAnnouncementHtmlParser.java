@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.jsoup.Jsoup;
@@ -29,6 +30,7 @@ public class ShAnnouncementHtmlParser {
     private static final String DETAIL_TABLE = ".detailTable.gs0401Table.firgs0401Table > table";
     private static final Set<String> ATTACHMENT_BOARDS = Set.of("GS0401", "DBGS01", "GWJGS01", "GNGS01");
 
+    /** 제목·등록일이 목록과 같아야 저장할 수 있고, 담당부서·본문·첨부는 읽지 못하면 null로 두고 이유를 함께 돌려준다. */
     public ShAnnouncementContent parse(String html, String seq, String expectedTitle, LocalDate expectedDate) {
         try {
             Document document = document(html);
@@ -39,14 +41,28 @@ public class ShAnnouncementHtmlParser {
             LocalDate registeredDate = LocalDate.parse(date);
             require(title.equals(expectedTitle) && registeredDate.equals(expectedDate),
                     "SH 상세의 제목 또는 등록일이 목록과 다릅니다.");
-            String department = labelledValue(document.select("ul.personInfo > li"), "span", "담당부서");
-            Element body = required(table, "> tbody > tr > td.cont");
-            String attachments = attachments(document, table, seq);
-            return new ShAnnouncementContent(title, department, registeredDate,
-                    bodyText(body), attachments);
+            List<String> unreadParts = new ArrayList<>();
+            String department = readable(unreadParts, null,
+                    () -> labelledValue(document.select("ul.personInfo > li"), "span", "담당부서"));
+            String bodyText = readable(unreadParts, "본문", () -> bodyText(required(table, "> tbody > tr > td.cont")));
+            String attachments = readable(unreadParts, "첨부", () -> attachments(document, table, seq));
+            return new ShAnnouncementContent(title, department, registeredDate, bodyText, attachments,
+                    List.copyOf(unreadParts));
         }
         catch (DateTimeException | JacksonException | IllegalArgumentException exception) {
             throw new ExternalDataRequestException("SH 상세의 날짜 또는 원천 필드가 올바르지 않습니다.", exception);
+        }
+    }
+
+    private String readable(List<String> unreadParts, String part, Supplier<String> reader) {
+        try {
+            return reader.get();
+        }
+        catch (ExternalDataRequestException | JacksonException | IllegalArgumentException exception) {
+            if (part != null) {
+                unreadParts.add(part + "(" + exception.getMessage() + ")");
+            }
+            return null;
         }
     }
 
@@ -130,6 +146,7 @@ public class ShAnnouncementHtmlParser {
             for (String key : List.of("brdId", "seq", "fileSeq", "fileSize", "oriFileNm", "fileTp")) {
                 attachment.put(key, file.path(key).asString(""));
             }
+            attachment.put("downloadUrl", ShAnnouncementExternalRepository.attachmentUrl(board, seq, fileSeq));
             attachment.put("previewUrl", "https://www.i-sh.co.kr/app/com/util/htmlConverter.do?brd_id="
                     + board + "&seq="
                     + seq + "&data_tp=A&file_seq=" + fileSeq);

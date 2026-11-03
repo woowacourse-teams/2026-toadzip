@@ -86,8 +86,14 @@ public class ShAnnouncementCollectionService {
             }
             totalCount = page.totalCount();
             var selected = select(page, cutoff);
+            Set<String> collected = alreadyCollected(selected);
             for (Entry entry : selected) {
-                collectDetail(entry, page, progress);
+                if (collected.contains(entry.seq())) {
+                    progress.skipped++;
+                }
+                else {
+                    collectDetail(entry, page, progress);
+                }
                 IngestExecutionScope.workCompleted();
                 if (progress.rateLimited > 0) {
                     return progress.report();
@@ -106,6 +112,25 @@ public class ShAnnouncementCollectionService {
 
     private List<Entry> select(ShAnnouncementPage page, LocalDate cutoff) {
         return page.entries().stream().filter(entry -> !entry.registeredDate().isBefore(cutoff)).toList();
+    }
+
+    /** 제목·등록일이 그대로이고 열린 실패가 없는 게시글은 다시 받지 않는다. 일부만 읽어 저장한 글은 실패가 열려 있어 다시 받는다. */
+    private Set<String> alreadyCollected(List<Entry> entries) {
+        if (entries.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> unchanged = new HashSet<>(store.findUnchangedSeqs(entries));
+        if (unchanged.isEmpty()) {
+            return unchanged;
+        }
+        Set<String> pending = failureRecorder.findPendingRequestDescriptions(SOURCE,
+                unchanged.stream().map(ShAnnouncementCollectionService::detailRequest).toList());
+        unchanged.removeIf(seq -> pending.contains(detailRequest(seq)));
+        return unchanged;
+    }
+
+    private static String detailRequest(String seq) {
+        return "seq=" + seq;
     }
 
     private ShAnnouncementPage fetchPage(int pageNumber, int totalCount, Set<String> seen, Progress progress) {
@@ -132,7 +157,7 @@ public class ShAnnouncementCollectionService {
     }
 
     private void collectDetail(Entry entry, ShAnnouncementPage page, Progress progress) {
-        String request = "seq=" + entry.seq();
+        String request = detailRequest(entry.seq());
         ShAnnouncementContent content;
         try {
             String html = request(request, () -> externalRepository.fetchDetail(entry.seq()), progress);
@@ -143,11 +168,17 @@ public class ShAnnouncementCollectionService {
             return;
         }
         IngestExecutionScope.verifyCanContinue();
-        store.store(new ShAnnouncementSnapshot(entry.seq(), content.title(), content.department(), content.registeredDate(),
+        String department = content.department() == null ? entry.department() : content.department();
+        store.store(new ShAnnouncementSnapshot(entry.seq(), content.title(), department, content.registeredDate(),
                 ShAnnouncementExternalRepository.detailUrl(entry.seq()),
                 ShAnnouncementExternalRepository.LIST_URL + "&page=" + page.page(), content.bodyText(), content.attachments()));
-        failureRecorder.resolve(SOURCE, request);
         progress.stored++;
+        if (!content.unreadParts().isEmpty()) {
+            recordFailure(request, new ExternalDataRequestException("SH 상세 일부를 읽지 못해 읽은 내용만 저장했습니다: "
+                    + String.join(", ", content.unreadParts())), progress);
+            return;
+        }
+        failureRecorder.resolve(SOURCE, request);
         progress.successful++;
     }
 
@@ -177,10 +208,11 @@ public class ShAnnouncementCollectionService {
         private int successful;
         private int failed;
         private int rateLimited;
+        private int skipped;
 
         private ExternalDataCollectionReport report() {
             return new ExternalDataCollectionReport(SOURCE.operation(), stored, failed, calls.count(),
-                    0, rateLimited, successful);
+                    skipped, rateLimited, successful);
         }
     }
 }
