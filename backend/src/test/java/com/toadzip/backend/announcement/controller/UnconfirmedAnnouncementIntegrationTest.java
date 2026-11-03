@@ -21,6 +21,7 @@ import com.toadzip.backend.interest.domain.BookmarkType;
 import com.toadzip.backend.interest.repository.BookmarkRepository;
 import com.toadzip.backend.notification.repository.NotificationAudienceRepository;
 import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
+import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,7 @@ class UnconfirmedAnnouncementIntegrationTest {
     @Autowired private AnnouncementRepository announcements;
     @Autowired private BookmarkRepository bookmarks;
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private EntityManager entityManager;
     @Autowired private AnnouncementAttachmentRepository attachments;
     @Autowired private NotificationAudienceRepository audiences;
     @Autowired private NotificationOutboxRepository outbox;
@@ -56,6 +58,19 @@ class UnconfirmedAnnouncementIntegrationTest {
     @BeforeEach
     void isolateOwnershipFromTestTransaction() {
         when(ownership.acquire()).thenAnswer(invocation -> mock(IngestExecutionOwnershipService.Execution.class));
+    }
+
+    @Test
+    void 값을_모두_가진_공고도_미확정이면_공개_상세와_북마크에서_숨긴다() throws Exception {
+        LocalDate date = LocalDate.of(2026, 11, 2);
+        Announcement announcement = announcements.saveAndFlush(Announcement.create("SH:900002", null, null,
+                "SH 값이 있는 미확정 공고", "원공고", "행복주택", "신규모집", "SH", date, date, date.plusDays(4),
+                date.plusDays(30), "https://example.com/sh/900002", null, 0L, null));
+        jdbc.update("UPDATE announcements SET release_status = 'UNCONFIRMED' WHERE id = ?", announcement.getId());
+        entityManager.clear();
+
+        mvc.perform(get("/api/v1/announcements/" + announcement.getId())).andExpect(status().isNotFound());
+        assertThat(bookmarks.save(member(), BookmarkType.ANNOUNCEMENT, announcement.getId())).isFalse();
     }
 
     @Test
@@ -72,7 +87,7 @@ class UnconfirmedAnnouncementIntegrationTest {
         assertThat(attachments.findAdminSource(unconfirmed.getId(), attachment.getId())).isPresent();
         assertThat(audiences.visibleTitle(unconfirmed.getId())).isEmpty();
         assertThat(outbox.appendNewAnnouncement(unconfirmed)).isFalse();
-        assertThat(bookmarks.save(1L, BookmarkType.ANNOUNCEMENT, unconfirmed.getId())).isFalse();
+        assertThat(bookmarks.save(member(), BookmarkType.ANNOUNCEMENT, unconfirmed.getId())).isFalse();
         var detail = json.readTree(mvc.perform(get(adminPath).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.summary.announcement.releaseStatus").value("UNCONFIRMED"))
@@ -97,5 +112,12 @@ class UnconfirmedAnnouncementIntegrationTest {
         assertThat(audiences.visibleTitle(unconfirmed.getId())).contains("SH 공개 공고");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox_events WHERE source_identifier = ?",
                 Long.class, "SH:900001")).isOne();
+    }
+
+    private long member() {
+        return jdbc.queryForObject("""
+                INSERT INTO users (login_identifier, created_at) VALUES ('unconfirmed-member', CURRENT_TIMESTAMP)
+                RETURNING id
+                """, Long.class);
     }
 }
