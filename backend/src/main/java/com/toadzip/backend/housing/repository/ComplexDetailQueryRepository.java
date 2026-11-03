@@ -81,6 +81,10 @@ public class ComplexDetailQueryRepository {
             )
             """.formatted(ApplicationScheduleSql.status("announcement", ":complexId"));
 
+    /**
+     * 공급행은 대표와 함께 모집하는 주택형(supply_row_housing_types, 대표 포함) 모두의 공급조건으로 보인다.
+     * 연결 표의 기본 키가 (공급행, 주택형)이라 한 주택형 아래 같은 공급행은 한 번만 나온다.
+     */
     private static final String FIND_CURRENT_SUPPLY_CONDITIONS = CURRENT_LEAF_CTE + """
             SELECT announcement.id AS announcement_id,
                    supply_row.id AS supply_row_id,
@@ -94,8 +98,9 @@ public class ComplexDetailQueryRepository {
             JOIN supply_rows supply_row
               ON supply_row.announcement_id = announcement.id AND supply_row.admin_excluded = false
              AND supply_row.housing_complex_id = :complexId
+            JOIN supply_row_housing_types linked_type ON linked_type.supply_row_id = supply_row.id
             JOIN housing_types housing_type
-              ON housing_type.id = supply_row.housing_type_id
+              ON housing_type.id = linked_type.housing_type_id
              AND housing_type.housing_complex_id = :complexId
             JOIN supply_targets supply_target ON supply_target.supply_row_id = supply_row.id AND supply_target.admin_excluded = false
             ORDER BY announcement.posted_date DESC,
@@ -103,7 +108,8 @@ public class ComplexDetailQueryRepository {
                      supply_row.display_order,
                      supply_row.id,
                      supply_target.display_order,
-                     supply_target.id
+                     supply_target.id,
+                     housing_type.id
             """;
 
     private static final String FIND_CURRENT_ANNOUNCEMENTS = CURRENT_LEAF_CTE + """

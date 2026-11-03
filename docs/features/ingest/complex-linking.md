@@ -181,11 +181,13 @@ LH 임대 목록에는 같은 단지가 이름만 다른 묶음으로 두 번 �
 
 ### 공급행이 함께 모집하는 주택형
 
-공급행이 함께 모집하는 주택형(`supply_row_housing_types`)은 `V20261101_03`가 만들고 대표 주택형으로 채운다. 대표 주택형도 연결에 들어 있다.
-- 연결을 모르는 이전 애플리케이션이 함께 돌거나 그 버전으로 롤백되면, 대표를 바꿔도 이전 연결이 남는다. 그러면 그 주택형의 면적 수정·휴지통 이동이 409로 막힌다.
+공급행이 함께 모집하는 주택형(`supply_row_housing_types`)은 `V20261101_03`가 만들고 대표 주택형으로 채운다. 대표 주택형도 연결에 들어 있다. 관리자 공급 보정·PDF 보정이 대표 밖의 세부 타입 주택형을 연결한다([공급정보 보정 API](../admin/review-api.md)).
+- 공개 단지 상세의 주택형별 `currentSupplyConditions`는 이 연결을 따른다. 세부 타입 26A·B·C를 함께 모집하는 공급행의 공급대상·임대조건은 세 주택형 아래에 모두 보이고, 한 주택형 아래 같은 공급행은 한 번만 나온다.
+- 공개 공고 상세는 공급행 하나를 공고 표기(`26A/B/C`)와 모집수 한 줄로 보이며, 주택형·면적은 대표 주택형 기준이다.
+- 연결을 모르는 이전 애플리케이션이 함께 돌거나 그 버전으로 롤백되면, 대표를 바꿔도 이전 연결이 남는다. 그러면 그 주택형의 면적 수정·휴지통 이동이 409로 막히고, 단지 상세는 남은 연결의 주택형에도 그 공급행을 보인다.
 - 그 버전이 주택형을 지우면 연결도 함께 지워진다.
-- 다시 배포한 뒤 다면적 연결이 생기기 전(S2 전)이면 아래 SQL로 연결을 대표에 맞춘다.
-  `DELETE FROM supply_row_housing_types link USING supply_rows row WHERE row.id = link.supply_row_id AND link.housing_type_id IS DISTINCT FROM row.housing_type_id;`
+- 롤백한 버전이 대표를 바꾼 공급행만 아래 SQL로 고친다. 대표 밖 연결을 모두 지우면 관리자가 연결한 세부 타입까지 사라지므로, 롤백 중 대표가 바뀐 공급행 ID로 범위를 좁힌다.
+  `DELETE FROM supply_row_housing_types link USING supply_rows row WHERE row.id = link.supply_row_id AND row.id IN (:rowIds) AND link.housing_type_id IS DISTINCT FROM row.housing_type_id;`
   `INSERT INTO supply_row_housing_types SELECT id, housing_type_id FROM supply_rows WHERE housing_type_id IS NOT NULL ON CONFLICT DO NOTHING;`
 
 ## 검증 근거

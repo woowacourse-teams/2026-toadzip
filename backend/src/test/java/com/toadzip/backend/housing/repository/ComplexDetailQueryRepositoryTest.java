@@ -245,6 +245,33 @@ class ComplexDetailQueryRepositoryTest {
         ), rows);
     }
 
+    @Test
+    void 현재공급조건은_공급행이_함께_모집하는_주택형마다_한_번씩_보인다() {
+        HousingComplex complex = persistComplex("세부 타입 단지", null);
+        HousingType typeA = persistHousingType(complex, "26A", "26.46", null, "floor-a", false, null);
+        HousingType typeB = persistHousingType(complex, "26B", "26.70", null, "floor-b", false, null);
+        HousingType typeC = persistHousingType(complex, "26C", "26.90", null, "floor-c", false, null);
+        HousingType other = persistHousingType(complex, "44", "44.87", null, "floor-d", false, null);
+        Announcement active = persistAnnouncement(
+                null, "ORIGINAL", "subtypes", TODAY, TODAY, TODAY.plusDays(2)
+        );
+        SupplyRow jointRow = persistSupplyRow(active, complex, typeA, "joint-row", 1);
+        jointRow.linkHousingTypesByAdmin(List.of(typeB, typeC));
+        SupplyTarget jointTarget = persistSupplyTarget(jointRow, "청년", "10", "100", null, 1);
+        SupplyRow otherRow = persistSupplyRow(active, complex, other, "other-row", 2);
+        SupplyTarget otherTarget = persistSupplyTarget(otherRow, "신혼부부", "20", "200", null, 1);
+        entityManager.flush();
+
+        List<CurrentSupplyConditionRow> rows = repository.findCurrentSupplyConditions(complex.getId(), TODAY);
+
+        assertEquals(List.of(
+                condition(active, jointRow, typeA, jointTarget, "10", "100", null),
+                condition(active, jointRow, typeB, jointTarget, "10", "100", null),
+                condition(active, jointRow, typeC, jointTarget, "10", "100", null),
+                condition(active, otherRow, other, otherTarget, "20", "200", null)
+        ), rows);
+    }
+
     private ComplexDetailRow expectedComplex(long complexId) {
         return new ComplexDetailRow(
                 complexId,
