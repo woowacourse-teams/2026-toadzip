@@ -716,8 +716,8 @@ it('검산에서 맞지 않은 합계를 공급정보 위에 보여 준다', asy
 })
 
 it('LH 공급 원본 행이 공급행에 없어도 지원 종료한 LH 행 연결로 안내하지 않고 별도 추가를 막지 않는다', async () => {
-  const lh = [{ rowIdentifier: 'LH:P:SUPPLY:1', complexLabel: '익산한스빌', typeName: '26B', exclusiveArea: '26.41' }]
-  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, unattachedLhSupplyRows: lh } })
+  const lh = [{ rowIdentifier: 'LH:P:SUPPLY:1', complexLabel: '익산한스빌', typeName: '26B', exclusiveArea: '26.41', householdCount: null, attachedRowKey: null, splitRowKeys: [] }]
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, lhSupplyRows: lh, unattachedLhSupplyRows: lh } })
   await open()
   expect(screen.queryByText('LH 행 연결 필요')).not.toBeInTheDocument()
   expect(screen.queryByRole('link', { name: 'LH 행 연결로 이동' })).not.toBeInTheDocument()

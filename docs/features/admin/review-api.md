@@ -45,7 +45,7 @@ PDF 추출(`POST /api/admin/announcements/{id}/pdf-extractions`, 공고 첨부�
 - 요청 행의 선택적 `saveMode`와 `lhSourceRowIdentifier`(`lhSupplyRows[].rowIdentifier` 값)로 LH 공급 원본 행에 놓는 방식을 정한다. `saveMode`를 생략하면 `id`가 있는 행은 `UPDATE`, 없는 행은 `ADD`이므로 기존 요청과 같다.
   - `UPDATE`: 기존 행 수정. `ADD`: LH 원천과 무관한 새 행. 두 방식은 `lhSourceRowIdentifier`를 받지 않는다.
   - `ATTACH`: 아직 공급행이 되지 않은 LH 행에 새 행을 붙여 그 행에 LH 행 식별자를 기록한다. 이미 공급행이나 분리행이 있는 LH 행, 한 요청에서 같은 LH 행에 두 번 붙이기, 기존 행은 400이다.
-  - `SPLIT`: LH 한 행(예: 모집 240, 면적 미확인)을 주택형별 행으로 나눈다. 그 LH 행에 붙은 통합행은 ID와 LH 행 대응을 유지한 채 첫 분리행으로 넣어야 하고, 나머지는 `id` 없는 새 행이다. 같은 `lhSourceRowIdentifier`의 행이 둘 이상이어야 하며 모든 분리행에 분리 원천(`supply_rows.lh_split_source_identifier`, `V20261103_02`)을 기록한다. 합계는 분리행 합으로만 센다. 통합행을 빼거나, 다른 LH 행에 붙은 기존 행·공통 모집 묶음 행을 넣거나, 최신 LH 공급 원본에 없는 행을 지정하면 400이다.
+  - `SPLIT`: LH 한 행(예: 모집 240, 면적 미확인)을 주택형별 행으로 나눈다. 그 LH 행에 붙은 통합행은 ID와 LH 행 대응을 유지한 채 첫 분리행으로 넣어야 하고, 나머지는 `id` 없는 새 행이다. 같은 `lhSourceRowIdentifier`의 행이 둘 이상이어야 하며 모든 분리행에 분리 원천(`supply_rows.lh_split_source_identifier`, `V20261103_02`)을 기록한다. 합계는 분리행 합으로만 센다. 통합행을 빼거나, 다른 LH 행에 붙은 기존 행·LH 원천 없이 추가한 행·공통 모집 묶음 행을 넣거나, 최신 LH 공급 원본에 없는 행을 지정하면 400이다. 처음 나누는 요청에서 통합행이 저장된 모집수를 그대로 두고 다른 분리행에 모집수가 있으면 그 합계를 두 번 세므로 400이다(첫 분리행 모집수를 그 주택형 값으로 바꿔야 한다).
   - 미리보기의 `splits: [{lhSourceRowIdentifier, rowKeys, householdCount, lhHouseholdCount}]`는 저장 뒤 분리 묶음이다. `householdCount`는 제외하지 않은 분리행 합계(미확정이 있으면 null)다. 이번에 나눈 합계가 LH 공급 수와 다를 때와 분리 형제행을 지우거나 제외해 합계가 바뀔 때 경고한다.
 - POST `/preview`: 전체 행·하위 조건 변경안과 UUID 작업 번호, 근거·이유를 검증하여 변경 전후와 confirmationToken 반환. 저장하지 않는다.
 - 행의 `typeName`은 이 공고의 주택형 표기다. 조회는 공개 화면에 보이는 이름을 주고, 저장은 공고 표기로만 한다. 기존 행의 `complexName`은 원천 단지명이라 요청 값과 관계없이 유지한다. 원천이 없는 새 행만 입력값을 원천 이름으로 남긴다.

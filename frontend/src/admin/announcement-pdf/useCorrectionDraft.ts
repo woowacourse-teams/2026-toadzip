@@ -16,6 +16,8 @@ export function useCorrectionDraft(id: string, enabled: boolean) {
   const latest = useRef<Omit<DraftSaveInput, 'expectedRevision'> | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const running = useRef(false), again = useRef(false), stopped = useRef(false)
+  // 진행 중인 저장. 지우기는 이 저장이 끝나 revision이 정해진 뒤에 그 revision으로 지운다.
+  const inflight = useRef<Promise<void> | null>(null)
 
   const flush = useCallback(async () => {
     if (timer.current) { clearTimeout(timer.current); timer.current = null }
@@ -23,6 +25,8 @@ export function useCorrectionDraft(id: string, enabled: boolean) {
     if (running.current) { again.current = true; return }
     running.current = true; setStatus({ state: 'saving' })
     const input = latest.current
+    let done = () => {}
+    inflight.current = new Promise(resolve => { done = resolve })
     try {
       const saved = await saveCorrectionDraft(id, { ...input, expectedRevision: revision.current })
       revision.current = saved.revision
@@ -33,7 +37,7 @@ export function useCorrectionDraft(id: string, enabled: boolean) {
       else setStatus({ state: 'failed', message: cause instanceof Error ? cause.message : '임시저장하지 못했습니다.' })
       again.current = false
     } finally {
-      running.current = false
+      running.current = false; inflight.current = null; done()
       if (again.current && !stopped.current) { again.current = false; void flush() }
     }
   }, [id])
@@ -49,11 +53,16 @@ export function useCorrectionDraft(id: string, enabled: boolean) {
 
   /** 서버에서 읽은 초안을 이어서 쓰거나(revision) 초안 없이 새로 시작한다(null). 충돌로 멈춘 저장을 다시 연다. */
   const adopt = useCallback((next: number | null) => { revision.current = next; stopped.current = false; setStatus({ state: 'idle' }) }, [])
-  /** 적용 성공 뒤나 폐기할 때 지운다. 지운 뒤 같은 화면의 편집은 첫 저장으로 다시 저장한다. */
-  const remove = useCallback(async (expected = revision.current) => {
+  /**
+   * 적용 성공 뒤나 폐기할 때 지운다. 진행 중인 저장이 있으면 끝나기를 기다려 그 저장이 만든 revision으로 지운다(expected를 주지 않은 경우).
+   * 지운 뒤 같은 화면의 편집은 첫 저장으로 다시 저장한다.
+   */
+  const remove = useCallback(async (expected?: number | null) => {
     if (timer.current) { clearTimeout(timer.current); timer.current = null }
     latest.current = null
-    if (expected !== null) await deleteCorrectionDraft(id, expected)
+    while (inflight.current) await inflight.current
+    const target = expected === undefined ? revision.current : expected
+    if (target !== null) await deleteCorrectionDraft(id, target)
     revision.current = null; setStatus({ state: 'idle' })
   }, [id])
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])

@@ -363,6 +363,13 @@ export function splittableLhRows(supply: Pick<SupplyWorkspace, 'lhSupplyRows' | 
   return (supply.lhSupplyRows ?? []).filter(lh => lh.attachedRowKey && !lh.splitRowKeys?.length
     && supply.rows.some(row => row.key === lh.attachedRowKey && !row.excluded))
 }
+/**
+ * 새 공급행을 연결할 수 있는 LH 행. 어떤 공급행도 붙거나 나뉘지 않은 행이다. 공고문 소유 공고는 작업실의 unattachedLhSupplyRows가
+ * 비어 있지만 서버는 같은 기준(lhSupplyRows)으로 연결을 받으므로 이 목록으로 고른다.
+ */
+export function attachableLhRows(supply: Pick<SupplyWorkspace, 'lhSupplyRows'>): LhSupplyRow[] {
+  return (supply.lhSupplyRows ?? []).filter(lh => lh.attachedRowKey == null && !lh.splitRowKeys?.length)
+}
 /** LH 행 표기. 단지 · 주택형 · 면적 · 이번 공급 수 */
 export function lhRowLabel(lh: LhSupplyRow) {
   const order = /:(\d+)$/.exec(lh.rowIdentifier)?.[1]
@@ -394,15 +401,15 @@ export function assignSplitDestinations(proposals: RowProposal[], include: (inde
 }
 
 /**
- * LH 공급 원본 행에 맞춰 저장 방식을 미리 고른다. 추출 행의 lhSourceRow(AI 워커가 받은 LH 목록의 1부터 센 위치)를 lhSupplyRows 순서로 찾는다.
- * 두 목록은 같은 LH 공급 원천을 source_order 순서로 읽는다. 같은 LH 통합행을 가리키는 행이 둘 이상이면 통합행 분리,
+ * LH 공급 원본 행에 맞춰 저장 방식을 미리 고른다. 추출 행의 lhSourceRow(AI 워커가 돌려준 LH 행 식별자)를 lhSupplyRows[].rowIdentifier로 찾고,
+ * 이 공고의 LH 행에 없는 식별자나 식별자가 아닌 이전 결과(목록 번호)는 쓰지 않는다. 같은 LH 통합행을 가리키는 행이 둘 이상이면 통합행 분리,
  * 공급행이 없는 LH 행이면 LH 행에 연결로 둔다. lhSourceRow가 없으면, 근거 없이 같은 단지의 통합행 하나에 몰린 행들의 모집수 합이
  * 그 LH 행의 이번 공급 수와 같을 때만(240 = 200 + 25 + 15) 분리를 제안한다. 모두 운영자가 확인하게 한다.
  */
-export function proposePlacements(extraction: Extraction, proposals: RowProposal[], supply: Pick<SupplyWorkspace, 'lhSupplyRows' | 'unattachedLhSupplyRows' | 'rows'>, housing: HousingCandidates): RowProposal[] {
+export function proposePlacements(extraction: Extraction, proposals: RowProposal[], supply: Pick<SupplyWorkspace, 'lhSupplyRows' | 'rows'>, housing: HousingCandidates): RowProposal[] {
   const next = [...proposals], lhRows = supply.lhSupplyRows ?? []
   const splittable = new Set(splittableLhRows(supply).map(lh => lh.rowIdentifier))
-  const unattached = new Set((supply.unattachedLhSupplyRows ?? []).map(lh => lh.rowIdentifier))
+  const unattached = new Set(attachableLhRows(supply).map(lh => lh.rowIdentifier))
   const decided = new Set<number>()
   const join = (index: number, patch: Partial<RowProposal>, note: string) => {
     const reason = next[index].ambiguous ? next[index].reason.replace(/^모호: [^·]*· /, '') : next[index].reason
@@ -414,8 +421,8 @@ export function proposePlacements(extraction: Extraction, proposals: RowProposal
     : { complexId: row.housingComplexId, candidates: housing[row.housingComplexId] ?? [] }
   const pointed = new Map<string, number[]>()
   extraction.supplyRows.forEach((row, index) => {
-    const order = row.values.lhSourceRow
-    const lh = typeof order === 'number' && Number.isSafeInteger(order) && order >= 1 ? lhRows[order - 1] : undefined
+    const identifier = row.values.lhSourceRow
+    const lh = typeof identifier === 'string' ? lhRows.find(item => item.rowIdentifier === identifier) : undefined
     if (lh) pointed.set(lh.rowIdentifier, [...pointed.get(lh.rowIdentifier) ?? [], index])
   })
   for (const [identifier, indexes] of pointed) {

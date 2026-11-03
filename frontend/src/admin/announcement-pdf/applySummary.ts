@@ -1,5 +1,5 @@
 import type { JsonPreview } from '../announcement-json/api'
-import type { CorrectionRow, CorrectionTarget, LhSupplyRow } from '../supply/supplyCorrectionApi'
+import type { CorrectionRow, CorrectionTarget, LhSupplyRow, SupplyWorkspace } from '../supply/supplyCorrectionApi'
 import { lhRowLabel, type HousingCandidates } from './matching'
 
 export type SummaryRow = { key: string; id: number | null; typeName: string; householdCount: number | null; housingType: string; linked: string[]
@@ -82,13 +82,17 @@ export function summarizePreview(preview: JsonPreview, housing: HousingCandidate
 
 /**
  * 같은 요청을 다시 보내 409(ADMIN_DATA_CONFLICT)를 받았을 때, 보내려던 공급행이 최신 공급행에 이미 들어 있는지.
- * 새 행은 저장 후 키가 바뀔 수 있어 단지·표기·모집수·전용면적·주택형으로 대응한다.
+ * 새 행은 저장 후 키가 바뀔 수 있어 단지·표기·모집수·전용면적·주택형으로 대응한다. 분리(SPLIT)·연결(ATTACH) 행은 값만 같아서는 안 되고,
+ * 대응한 행이 최신 lhSupplyRows에서 그 LH 행의 분리행(splitRowKeys)이거나 붙은 행(attachedRowKey)이어야 한다.
  */
-export function correctionReflected(intended: CorrectionRow[], latest: CorrectionRow[]) {
+export function correctionReflected(intended: CorrectionRow[], latest: Pick<SupplyWorkspace, 'rows' | 'lhSupplyRows'>) {
   const signature = (row: CorrectionRow) => JSON.stringify([row.housingComplexId, row.typeName, row.householdCount, row.exclusiveArea, row.housingTypeId, row.excluded])
-  const pool = latest.map(signature)
+  const lh = (identifier: string | undefined) => (latest.lhSupplyRows ?? []).find(row => row.rowIdentifier === identifier)
+  const lineage = (row: CorrectionRow, saved: CorrectionRow) => row.saveMode === 'SPLIT' ? Boolean(lh(row.lhSourceRowIdentifier)?.splitRowKeys?.includes(saved.key))
+    : row.saveMode === 'ATTACH' ? lh(row.lhSourceRowIdentifier)?.attachedRowKey === saved.key : true
+  const pool = [...latest.rows]
   return intended.every(row => {
-    const at = pool.indexOf(signature(row))
+    const at = pool.findIndex(saved => signature(saved) === signature(row) && lineage(row, saved))
     if (at < 0) return false
     pool.splice(at, 1)
     return true

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button } from '../../design-system/components/Button'
 import type { JsonWorkspace } from '../announcement-json/api'
 import type { CorrectionRow } from '../supply/supplyCorrectionApi'
-import { lhRowLabel, splittableLhRows, type ComplexLabels } from './matching'
+import { attachableLhRows, lhRowLabel, splittableLhRows, type ComplexLabels } from './matching'
 import type { Placement } from './placement'
 import { destinationLabel, placementLabels, placementMode, type PlacementMode, type PlacementProblem, type RowReview } from './review'
 import styles from './PdfCorrection.module.css'
@@ -17,12 +17,12 @@ function rowText(row: CorrectionRow) {
  * 추출 행 하나의 저장 방식(기존 행 수정 · 통합행 분리 · LH 행에 연결 · 별도 추가)과 그 대상을 고른다.
  * 기존 행 수정은 추천 행을 먼저 두고 이 공고의 제외하지 않은 공급행 전체를 단지·주택형·면적·모집수로 찾을 수 있다.
  */
-export function PlacementChooser({ row, index, workspace, complexes, problem, onPlace, onFixDuplicate }: { row: RowReview; index: number; workspace: JsonWorkspace; complexes: ComplexLabels
-  problem?: PlacementProblem; onPlace: (placement: Placement) => void; onFixDuplicate?: () => void }) {
+export function PlacementChooser({ row, index, workspace, complexes, problem, onPlace, onFixDuplicate, onFocusProblem }: { row: RowReview; index: number; workspace: JsonWorkspace; complexes: ComplexLabels
+  problem?: PlacementProblem; onPlace: (placement: Placement) => void; onFixDuplicate?: () => void; onFocusProblem?: (target: string) => void }) {
   const [query, setQuery] = useState('')
   const proposal = row.proposal, mode = placementMode(proposal), label = `공급행 ${index + 1}`
   const rows = workspace.supply.rows.filter(item => !item.excluded)
-  const splittable = splittableLhRows(workspace.supply), unattached = workspace.supply.unattachedLhSupplyRows ?? []
+  const splittable = splittableLhRows(workspace.supply), unattached = attachableLhRows(workspace.supply)
   const linked = rows.filter(item => item.housingComplexId !== null)
   const anchors = linked.filter((item, at) => linked.findIndex(other => other.housingComplexId === item.housingComplexId) === at)
   const anchorFor = (key: string) => {
@@ -73,6 +73,7 @@ export function PlacementChooser({ row, index, workspace, complexes, problem, on
     {problem && <div className={problem.level === 'error' ? styles.errorNote : styles.warningNote} role={problem.level === 'error' ? 'alert' : 'note'}>
       <p><strong>{problem.level === 'error' ? '오류' : '경고'}</strong> {problem.message}</p>
       {problem.kind === 'duplicate' && onFixDuplicate && <Button data-design-system className={styles.secondaryButton} onClick={onFixDuplicate}>{`${label} 통합행 분리로 바꾸기`}</Button>}
+      {problem.focus && onFocusProblem && <Button data-design-system className={styles.secondaryButton} onClick={() => onFocusProblem(problem.focus!)}>첫 분리행 모집수 고치기</Button>}
     </div>}
   </div>
 }

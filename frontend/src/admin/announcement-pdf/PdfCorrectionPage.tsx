@@ -276,7 +276,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       if (cause instanceof ManagementError && cause.status === 409 && cause.code === 'ADMIN_DATA_CONFLICT') {
         try {
           const latest = await loadJsonWorkspace(id)
-          if (correctionReflected(input.correction.rows, latest.supply.rows)) { finishApplied(latest, preview); setNotice('이 보정은 이미 반영돼 있습니다. 같은 요청을 다시 저장하지 않았습니다.'); return }
+          if (correctionReflected(input.correction.rows, latest.supply)) { finishApplied(latest, preview); setNotice('이 보정은 이미 반영돼 있습니다. 같은 요청을 다시 저장하지 않았습니다.'); return }
           setError('같은 보정 요청을 이미 처리했다는 응답을 받았지만 저장된 공급정보가 이 화면의 변경과 다릅니다. 이 변경은 반영되지 않았습니다. 최신값을 불러와 비교한 뒤 다시 적용하세요.')
           setBlocked(true); setChecked(null); return
         } catch { /* 최신값을 못 읽으면 일반 실패로 알린다. */ }
@@ -296,17 +296,18 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     setError(uncertainSave ? '저장 응답을 받지 못했습니다. 최신 저장값을 조회해 적용 여부를 확인한 뒤 다시 비교하세요.' : cause instanceof Error ? cause.message : '보정 내용을 적용하지 못했습니다. 다시 시도하세요.')
     setMobileView('review'); setChecked(null)
     // 적용 전 검증에 걸리면 문제 항목으로 바로 이동한다.
-    if (cause instanceof ReviewError && cause.reviewId) {
-      const target = cause.reviewId, row = rowOfReviewId(target)
-      if (row !== null) setSelectedRow(row)
-      setSection(reviewSection(target)); setFilter('all'); setJump(previous => ({ id: target, nonce: (previous?.nonce ?? 0) + 1 }))
-    }
+    if (cause instanceof ReviewError && cause.reviewId) goTo(cause.reviewId)
+  }
+  function goTo(target: string) {
+    const row = rowOfReviewId(target)
+    if (row !== null) setSelectedRow(row)
+    setSection(reviewSection(target)); setFilter('all'); setJump(previous => ({ id: target, nonce: (previous?.nonce ?? 0) + 1 }))
   }
   async function reload() {
     setBusy(true); setError('')
     try {
       const latest = await loadJsonWorkspace(id), [nextHousing, names] = await Promise.all([candidates(latest), complexLabels(latest)])
-      const reflected = uncertain && lastInput.current !== null && correctionReflected(lastInput.current.correction.rows, latest.supply.rows)
+      const reflected = uncertain && lastInput.current !== null && correctionReflected(lastInput.current.correction.rows, latest.supply)
       if (review) setReview(rebaseReview(review, latest, nextHousing))
       setWorkspace(latest); setHousing(nextHousing); setComplexes(names); setBlocked(false); setUncertain(false); setPhase('review')
       setNotice(reflected ? '최신 저장값에 이 보정이 이미 반영돼 있습니다. 다시 적용하지 마세요. 결과를 확인한 뒤 화면을 닫으세요.'
@@ -352,7 +353,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
         </div>
         {checked && <ApplySummaryPanel summary={summarizePreview(checked.preview, housing, workspace.supply.lhSupplyRows ?? [])} busy={busy} onApply={() => void confirmApply()} onBack={() => setChecked(null)} />}
         <fieldset disabled={busy || blocked} hidden={Boolean(checked)} className={styles.reviewFields}>
-          {section === 'supply' && <ReviewSupply savesHousingTypes={!supplyDraft} warnings={extraction.status === 'done' ? extraction.result.warnings : []} editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} selected={selectedRow} onSelect={setSelectedRow} />}
+          {section === 'supply' && <ReviewSupply savesHousingTypes={!supplyDraft} warnings={extraction.status === 'done' ? extraction.result.warnings : []} editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} selected={selectedRow} onSelect={setSelectedRow} onJump={goTo} />}
           {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.extraction.undatedSchedules.length > 0 && <p className={styles.hint}>날짜 없이 안내한 일정: {review.extraction.undatedSchedules.join(' · ')}</p>}{review.schedules.map((schedule, index) => scheduleMatches(schedule) && <section className={styles.supplyBlock} key={index} data-review-id={`schedule:${index}`} tabIndex={-1}><header><h3>{shown(schedule.cells.find(cell => cell.field === 'name')?.value)}</h3><label><input type="checkbox" checked={schedule.include} onChange={event => updateSchedule(index, { include: event.target.checked, reviewed: true })} />일정 {index + 1} 적용</label></header>
             {pendingSchedule(schedule) && <div className={styles.pending}><p><strong>확인 필요</strong> {schedule.proposal.reason}</p><div className={styles.actions}><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: true, reviewed: true })}>{`일정 ${index + 1} 적용`}</Button><Button data-design-system className={styles.secondaryButton} onClick={() => updateSchedule(index, { include: false, reviewed: true })}>{`일정 ${index + 1} 적용 안 함`}</Button></div></div>}
             <p>{pendingSchedule(schedule) ? '' : schedule.proposal.reason || (schedule.proposal.existingIds.length ? '기존 일정 갱신' : '새 일정 추가')}{schedule.proposal.existingIds.map(existingId => { const event = workspace.events.find(item => item.id === existingId); return <small className={styles.scheduleBefore} key={existingId}>#{existingId} · {event?.complexName ?? '공고 전체'} · {shown(event?.data.name)} · {shown(event?.data.startAt)} ~ {shown(event?.data.endAt)}</small> })}</p>

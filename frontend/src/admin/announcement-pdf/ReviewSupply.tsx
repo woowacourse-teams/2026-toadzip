@@ -22,7 +22,9 @@ function shownTypeName(row: RowReview) {
   return cell?.selected && typeof cell.value === 'string' ? cell.value : null
 }
 
-export function ReviewSupply({ review, workspace, housing, complexes, filter, empty, onChange, onEvidence, editorHref, warnings = [], savesHousingTypes = true, selected, onSelect }: { editorHref?: string; warnings?: string[]
+export function ReviewSupply({ review, workspace, housing, complexes, filter, empty, onChange, onEvidence, editorHref, warnings = [], savesHousingTypes = true, selected, onSelect, onJump }: { editorHref?: string; warnings?: string[]
+  /** 검토 항목(data-review-id)으로 이동한다. 저장 방식 문제의 해결 동작이 쓴다. */
+  onJump?: (target: string) => void
   /** 편집 영역에 보일 공급행 번호. 확인 필요 이동·오류 이동이 이 값을 바꾼다. */
   selected: number; onSelect: (index: number) => void
   /** PDF로 공급정보 편집표만 채울 때는 false. 주택형 이름·가격을 저장하지 않으므로 그 안내와 가격 칸을 보이지 않는다. */
@@ -91,7 +93,7 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
         <header><div><h4>{source.typeName ?? `공급행 ${index + 1}`}</h4><p>{placementSummary(row, current)}</p></div><div className={styles.actions}><Button data-design-system className={styles.quietButton} aria-expanded={panelOpen} onClick={() => setPanelOpen(open => !open)}>{panelOpen ? '단지 주택형 닫기' : '단지 주택형 보기'}</Button><label><input type="checkbox" checked={row.include} onChange={event => onChange(includeRow(review, index, event.target.checked, workspace, housing))} />공급행 {index + 1} 적용</label></div></header>
         {pendingRow(row) && <div className={styles.pending}><p><strong>확인 필요</strong> {row.proposal.reason}</p><Button data-design-system className={styles.secondaryButton} disabled={!row.proposal.destination} onClick={() => update(index, { ...row, reviewed: true })}>{`공급행 ${index + 1} 대응 확인`}</Button></div>}
         {!row.include ? <p className={styles.hint}>이 행의 추출값을 제외합니다. 기존 공급정보는 유지합니다.</p> : <>
-          <PlacementChooser row={row} index={index} workspace={workspace} complexes={complexes} problem={problems.get(index)} onPlace={placement => place(index, placement)}
+          <PlacementChooser row={row} index={index} workspace={workspace} complexes={complexes} problem={problems.get(index)} onPlace={placement => place(index, placement)} onFocusProblem={onJump}
             onFixDuplicate={splittableLhRows(workspace.supply).some(lh => lh.attachedRowKey === row.proposal.destination) ? () => splitDuplicates(index) : undefined} />
           {/* 단지에 연결되지 않은 기존 공급행도 위 '단지 정하기'에서 단지를 정한다. */}
           {(current && current.housingComplexId === null || row.proposal.destination === 'new' && !row.proposal.anchorKey) && <NewSupplyComplex row={row} index={index} onChange={next => update(index, next)} />}
