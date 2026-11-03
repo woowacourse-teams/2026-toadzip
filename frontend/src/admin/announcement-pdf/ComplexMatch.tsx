@@ -4,7 +4,7 @@ import type { JsonWorkspace } from '../announcement-json/api'
 import type { LhSupplyRow } from '../supply/supplyCorrectionApi'
 import { complexCorrespondence, offerResult, offerSummary, pdfCount, pdfType, type LeftoverLh } from './correspondence'
 import { lhName, type HousingCandidates } from './matching'
-import { keepLeftover, keepMerged, placeRow, splitMerged } from './placement'
+import { keepLeftover, keepMerged, placeRow, splitMerged, choosePdfCounts } from './placement'
 import { assembledCount, complexGroups, rowName, type Review } from './review'
 import styles from './PdfCorrection.module.css'
 
@@ -20,6 +20,11 @@ export function ComplexMatch({ review, workspace, housing, groupIndex, onChange 
   const { lhRows, offers, leftovers } = complexCorrespondence(review, workspace, groupIndex)
   if (!lhRows.length) return null
   const indexes = complexGroups(review)[groupIndex].indexes, included = indexes.filter(index => review.rows[index].include)
+  // 직접 입력한 칸은 운영자가 정한 값이므로 PDF 값과 달라도 다시 묻지 않는다.
+  const countsDiffer = (members: number[]) => members.some(index => {
+    const row = review.rows[index], cell = row.cells.find(item => item.field === 'totalSupplyHouseholdCount')
+    return row.include && row.proposal.saveMode === 'SPLIT' && cell?.mode !== 'manual' && pdfCount(review, index) !== null && assembledCount(row) !== pdfCount(review, index)
+  })
   function leftover({ lh, attachedTo, kept }: LeftoverLh) {
     const name = `LH 행 '${lhName(lh)}'`
     const reopen = <Button data-design-system className={styles.quietButton} onClick={() => onChange(attachedTo === null ? keepLeftover(review, lh.rowIdentifier, false)
@@ -44,7 +49,7 @@ export function ComplexMatch({ review, workspace, housing, groupIndex, onChange 
         <p>{`합계 ${sum(lhRows.map(lh => lh.householdCount)) ?? '미확인'}세대`}</p></div>
       <div><h4>{`PDF 행 ${indexes.length}개`}</h4><ul aria-label="PDF 행">{indexes.map(index => { const area = review.extraction.supplyRows[index].values.exclusiveArea
         return <li key={index} data-excluded={!review.rows[index].include || undefined}>{`${index + 1}. ${pdfType(review, index)} · ${typeof area === 'number' ? `전용 ${area}㎡` : '면적 없음'} · ${pdfCount(review, index) ?? '미확인'}세대${review.rows[index].include ? '' : ' · 반영 안 함'}`}</li> })}</ul>
-        <p>{`합계 ${sum(included.map(index => assembledCount(review.rows[index]) ?? pdfCount(review, index))) ?? '미확인'}세대`}</p></div>
+        <p>{`합계 ${sum(included.map(index => pdfCount(review, index))) ?? '미확인'}세대`}</p></div>
     </div>
     {offers.map(offer => <div key={offer.lh.rowIdentifier} className={styles.matchDecision} role="group" aria-label={`LH 행 '${lhName(offer.lh)}' 대응`}>
       <p>{offerSummary(review, offer, lhRows.length === 1)}</p>
@@ -52,6 +57,8 @@ export function ComplexMatch({ review, workspace, housing, groupIndex, onChange 
         <Button data-design-system className={styles.secondaryButton} aria-pressed={offer.choice === 'split'} onClick={() => onChange(splitMerged(review, offer.lh.rowIdentifier, offer.members, workspace, housing))}>{`PDF대로 ${offer.members.length}행으로 나누기${offer.recommended ? ' (권장)' : ''}`}</Button>
         <Button data-design-system className={styles.secondaryButton} aria-pressed={offer.choice === 'keep'} onClick={() => onChange(keepMerged(review, offer.lh.rowIdentifier, offer.members, workspace, housing))}>LH대로 1행 유지</Button>
       </div>
+      {offer.choice === 'split' && countsDiffer(offer.members) && <p className={styles.hint}>{'나눌 행 중 모집수를 아직 PDF 값으로 정하지 않은 행이 있습니다. '}
+        <Button data-design-system className={styles.quietButton} onClick={() => onChange(choosePdfCounts(review, offer.members))}>PDF 모집수로 정하기</Button></p>}
       {offer.choice ? <p className={styles.decided}>{offerResult(review, offer)}</p> : !offer.recommended && <p className={styles.hint}>AI 표시가 없고 PDF 모집수 합이 LH와 같지 않아 권장하지 않습니다. 공고문과 대조해 고르세요.</p>}
     </div>)}
     {leftovers.map(item => <div key={item.lh.rowIdentifier} className={styles.matchDecision} role="group" aria-label={`LH 행 '${lhName(item.lh)}' 대응`}>{leftover(item)}</div>)}

@@ -94,6 +94,11 @@ export function offerSummary(review: Review, offer: SplitOffer, single: boolean)
     + `PDF는 ${offer.members.length}행(${counts.map(count => count ?? '미확인').join('·')}, 합계 ${sum ?? '미확인'})으로 적었습니다.`
 }
 
+/** 받침 유무로 조사를 붙인다. 숫자·영문으로 끝나면 한글 읽기를 알 수 없어 받침 없는 쪽(가)으로 둔다. */
+function subject(word: string, withFinal: string, withoutFinal: string) {
+  const last = word.charCodeAt(word.length - 1)
+  return `${word}${last >= 0xac00 && last <= 0xd7a3 && (last - 0xac00) % 28 !== 0 ? withFinal : withoutFinal}`
+}
 /** 고른 결정이 저장하면 어떻게 되는지 적는다. 모집수는 저장할 값(assembledCount)이다. */
 export function offerResult(review: Review, offer: SplitOffer) {
   const { merged, lh } = offer
@@ -104,7 +109,8 @@ export function offerResult(review: Review, offer: SplitOffer) {
     const head = split.find(index => review.rows[index].proposal.destination === merged.key)
     const rest = split.filter(index => index !== head)
     if (head === undefined) return ''
-    return `${name}이 ${counted(head)}가 되고${rest.length ? ` ${rest.map(counted).join(' · ')}가 새로 생깁니다.` : ' 나눌 다른 행이 없습니다.'}`
+    const added = rest.map(counted).join(' · ')
+    return `${name}이 ${subject(counted(head), '이', '가')} 되고${rest.length ? ` ${subject(added, '이', '가')} 새로 생깁니다.` : ' 나눌 다른 행이 없습니다.'}`
   }
   if (offer.choice === 'keep') {
     const kept = offer.members.find(index => review.rows[index].include && !review.rows[index].proposal.saveMode && review.rows[index].proposal.destination === merged.key)!

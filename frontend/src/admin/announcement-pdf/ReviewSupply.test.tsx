@@ -114,6 +114,16 @@ function renderDaegu(options: Parameters<typeof daegu>[0] = {}) {
   return { jump, show, placeOf, match: () => screen.getByRole('region', { name: 'LH·PDF 대응' }) }
 }
 
+it('모집수가 아직 PDF 값으로 정해지지 않았어도 대응의 PDF 합계는 PDF 값으로 세고, 나누기를 고르면 나눌 행의 모집수를 PDF 값으로 정한다', () => {
+  const { match } = renderDaegu({ unresolvedCount: true, lhSourceRow: true })
+  expect(within(match()).getByRole('list', { name: 'PDF 행' }).nextElementSibling).toHaveTextContent('합계 240세대')
+  const decision = within(match()).getByRole('group', { name: "LH 행 '공공임대 240세대' 대응" })
+  const fix = within(decision).queryByRole('button', { name: 'PDF 모집수로 정하기' })
+  fireEvent.click(fix ?? within(decision).getByRole('button', { name: 'PDF대로 3행으로 나누기 (권장)' }))
+  expect(decision).toHaveTextContent('#747(240세대)이 051.9800A 200세대가 되고 059.9100A 25세대 · 059.9300B 15세대가 새로 생깁니다.')
+  expect(within(decision).queryByRole('button', { name: 'PDF 모집수로 정하기' })).not.toBeInTheDocument()
+})
+
 it('LH 통합행 240세대를 PDF가 세 행으로 적은 단지는 탭 위 대응에서 LH와 PDF 행을 나란히 두고 권장 나누기를 물으며, 고르면 결과를 쉬운 말로 보인다', () => {
   const { jump, placeOf, match } = renderDaegu()
   expect(within(match()).getByRole('list', { name: 'LH가 준 행' })).toHaveTextContent('공공임대 · 면적 없음 · 240세대')

@@ -1,6 +1,6 @@
 import type { JsonWorkspace } from '../announcement-json/api'
 import { assignSplitDestinations, pickHousingType, type HousingCandidates, type RowProposal } from './matching'
-import { createRowReview, preserveCellChoice, type Review, type RowReview } from './review'
+import { chooseCellValue, createRowReview, preserveCellChoice, type Review, type RowReview } from './review'
 
 /** 운영자가 고른 저장 방식. UPDATE는 수정할 기존 행, SPLIT·ATTACH는 LH 행, ADD는 기준 단지(그 단지의 공급행 키, 없으면 '')다. */
 export type Placement =
@@ -56,9 +56,17 @@ export function includeRow(review: Review, index: number, include: boolean, work
 function remember(review: Review, members: number[], lhRow: string): Review {
   return { ...review, rows: review.rows.map((row, at) => members.includes(at) ? { ...row, include: true, proposal: { ...row.proposal, proposedLhRow: row.proposal.proposedLhRow ?? lhRow } } : row) }
 }
-/** 단지 대응에서 'PDF대로 나누기'. 후보 행 모두를 그 LH 통합행의 분리 묶음으로 두고(첫 행이 통합행을 이어받는다) 확인한 것으로 본다. */
+/** PDF대로 나누는 행들의 모집수를 PDF 추출값으로 정한다. 운영자가 직접 입력한 칸은 그대로 둔다. */
+export function choosePdfCounts(review: Review, members: number[]): Review {
+  return { ...review, rows: review.rows.map((row, at) => !members.includes(at) ? row : { ...row, cells: row.cells.map(cell =>
+    cell.field === 'totalSupplyHouseholdCount' && cell.mode !== 'manual' ? chooseCellValue(cell, 'extracted') : cell) }) }
+}
+/**
+ * 단지 대응에서 'PDF대로 나누기'. 후보 행 모두를 그 LH 통합행의 분리 묶음으로 두고(첫 행이 통합행을 이어받는다) 확인한 것으로 본다.
+ * PDF대로 나눈다는 결정이므로 모집수도 PDF 값으로 정한다. 그러지 않으면 첫 행에 통합 모집수가 남아 두 번 집계된다.
+ */
 export function splitMerged(review: Review, lhRow: string, members: number[], workspace: JsonWorkspace, housing: HousingCandidates): Review {
-  return members.reduce((next, at) => placeRow(next, at, { mode: 'SPLIT', lhRow }, workspace, housing), remember(review, members, lhRow))
+  return choosePdfCounts(members.reduce((next, at) => placeRow(next, at, { mode: 'SPLIT', lhRow }, workspace, housing), remember(review, members, lhRow)), members)
 }
 /**
  * 단지 대응에서 'LH대로 1행 유지'. 첫 후보 행이 통합행을 고치고, 나머지 후보 행은 새 공급정보로 돌리고 이번 보정에서 제외한다.
