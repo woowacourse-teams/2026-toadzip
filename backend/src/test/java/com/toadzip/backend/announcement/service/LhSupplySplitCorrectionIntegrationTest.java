@@ -25,6 +25,7 @@ import com.toadzip.backend.ingest.collection.fixture.repository.LhCatalogStorage
 import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
 import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
 import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
@@ -67,6 +68,8 @@ class LhSupplySplitCorrectionIntegrationTest {
     private static final String ADDRESS = "대구광역시 달성군 현풍읍 테크노대로 100";
     private static final String PAN_ID = "P747";
     private static final String MERGED = LhSourceIdentifier.supply(PAN_ID, 0);
+    private static final String OTHER_COMPLEX = "대구옥포";
+    private static final String OTHER_ADDRESS = "대구광역시 달성군 옥포읍 강림로 100";
 
     @Autowired private LhAnnouncementRefinementService refinement;
     @Autowired private SupplyCorrectionService supplyCorrections;
@@ -84,6 +87,7 @@ class LhSupplySplitCorrectionIntegrationTest {
 
     private final List<Entry> catalogEntries = new ArrayList<>();
     private boolean comparisonTables;
+    private boolean otherComplex;
     private HousingComplex complex;
     private HousingType type5198;
     private HousingType type5991;
@@ -161,13 +165,21 @@ class LhSupplySplitCorrectionIntegrationTest {
     }
 
     @Test
-    void 통합행을_나눠_뒤쪽_공급행의_표시_순서만_밀리면_그_행은_순서만_바뀌고_관리자_수정으로_표시되지_않는다() {
-        types.save(HousingType.createFromMyHome(complex, "complex-747:84", "084.0000A", new BigDecimal("84.0000"), null));
-        long id = refinedAnnouncement(supply("공공임대", "", "240"), supply("084.0000A", "84.0000", "10"));
+    void 통합행을_나눠_다른_단지_공급행의_표시_순서만_밀리면_순서만_바뀌고_값과_공고_단지_연결은_그대로_둔다() {
+        var okpo = complexes.save(HousingComplex.createFromMyHome(OTHER_COMPLEX, "complex-okpo", "HAPPY_HOUSING",
+                Address.create(OTHER_ADDRESS, "2771025322100010000", "2771025322", "27", "27710",
+                        new BigDecimal("35.70"), new BigDecimal("128.40")),
+                500, "LH", null, "INDIVIDUAL", "APARTMENT", "CORRIDOR", true, 80));
+        types.save(HousingType.createFromMyHome(okpo, "complex-okpo:84", "084.0000A", new BigDecimal("84.0000"), null));
+        otherComplex = true;
+        long id = refinedAnnouncement(supply("공공임대", "", "240"),
+                new LhAnnouncementSupplySourceSnapshot(OTHER_COMPLEX, "084.0000A", "84.0000", "", "500", "10", "30000000", "200000"));
         var workspace = supplyCorrections.workspace(id);
         var merged = workspace.rows().getFirst();
         var other = workspace.rows().get(1);
+        assertThat(other.housingComplexId()).isEqualTo(okpo.getId());
         assertThat(other.housingTypeId()).isNotNull();
+        var linkBefore = otherLink(id);
         var rows = new ArrayList<>(splitRows(merged));
         rows.add(other.withDisplayOrder(3));
 
@@ -182,6 +194,25 @@ class LhSupplySplitCorrectionIntegrationTest {
                 .isEqualTo(tuple(3, false, false, true, true, 10));
         assertThat(supplyCorrections.workspace(id).rows()).filteredOn(row -> row.id().equals(other.id())).singleElement()
                 .satisfies(row -> assertThat(row.withDisplayOrder(other.displayOrder())).isEqualTo(other));
+        assertThat(otherLink(id)).isEqualTo(linkBefore);
+        assertThat(jdbc.sql("SELECT count(*) FROM admin_data_changes WHERE action = 'LINK_BY_ADMIN' AND resource_id IN "
+                + "(SELECT id FROM announcement_complexes WHERE announcement_id = :id AND source_complex_name = :name)")
+                .param("id", id).param("name", OTHER_COMPLEX).query(Long.class).single()).isZero();
+    }
+
+    @Test
+    void 기존_행이_값과_표시_순서를_함께_바꾸면_값을_저장하고_관리자_수정으로_표시한다() {
+        long id = refinedAnnouncement(supply("공공임대", "", "240"), supply("059.9300B", "59.9300", "15"));
+        var workspace = supplyCorrections.workspace(id);
+        var first = workspace.rows().getFirst();
+        var second = workspace.rows().get(1);
+
+        applySupply(id, request(workspace, List.of(first.withDisplayOrder(1),
+                edit(second, second.id(), second.key(), second.typeName(), null, 16, null, null).withDisplayOrder(0))));
+
+        assertThat(jdbc.sql("SELECT display_order, admin_modified, total_supply_household_count FROM supply_rows WHERE id = :row")
+                .param("row", second.id()).query((rs, index) -> tuple(rs.getInt(1), rs.getBoolean(2), rs.getInt(3))).single())
+                .isEqualTo(tuple(0, true, 16));
     }
 
     @Test
@@ -474,6 +505,13 @@ class LhSupplySplitCorrectionIntegrationTest {
                         rs.getInt(5), rs.getBoolean(6), rs.getString(7))).list();
     }
 
+    private List<Object> otherLink(long id) {
+        return jdbc.sql("""
+                SELECT coalesce(housing_complex_id, 0), coalesce(link_method, ''), coalesce(linked_by, '') FROM announcement_complexes
+                WHERE announcement_id = :id AND source_complex_name = :name""").param("id", id).param("name", OTHER_COMPLEX)
+                .query((rs, index) -> List.<Object>of(rs.getLong(1), rs.getString(2), rs.getString(3))).single();
+    }
+
     private long rowCount(long id) {
         return jdbc.sql("SELECT count(*) FROM supply_rows WHERE announcement_id = :id").param("id", id).query(Long.class).single();
     }
@@ -501,13 +539,19 @@ class LhSupplySplitCorrectionIntegrationTest {
         String start = LocalDate.now().plusDays(1).format(COMPACT_DATE);
         String end = LocalDate.now().plusDays(3).format(COMPACT_DATE);
         String winner = LocalDate.now().plusDays(20).format(COMPACT_DATE);
-        lhStorage.replaceDetails(panId, request(panId).requestDescription(), List.of(
+        List<LhAnnouncementDetailSourceView> views = new ArrayList<>(List.of(
                 LhSourceViews.detail(0, panId, new LhAnnouncementDetailSourceSnapshot("COMPLEX", COMPLEX_NAME, ADDRESS,
                         null, "1000", null, null, null, null, null, null, null, null, null, null, null, null, null, null,
                         null, null, null, null, null, null, null, null, null, null, null)),
                 LhSourceViews.detail(1, panId, new LhAnnouncementDetailSourceSnapshot("SCHEDULE", COMPLEX_NAME, null,
                         null, null, null, null, null, null, null, start, end, winner, null, null, null, null, null,
                         null, null, null, null, null, null, null, null, null, null, null, null))));
+        if (otherComplex) {
+            views.add(LhSourceViews.detail(2, panId, new LhAnnouncementDetailSourceSnapshot("COMPLEX", OTHER_COMPLEX, OTHER_ADDRESS,
+                    null, "500", null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                    null, null, null, null, null, null, null, null, null, null, null)));
+        }
+        lhStorage.replaceDetails(panId, request(panId).requestDescription(), views);
     }
 
     private void supplies(LhAnnouncementSupplySourceSnapshot... rows) {
