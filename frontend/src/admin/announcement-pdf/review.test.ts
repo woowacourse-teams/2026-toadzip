@@ -3,6 +3,7 @@ import { scenario, separateHansville } from './fixtures/workspace'
 import fixtures from './fixtures/scenarios.json'
 import { readExtraction } from './extraction'
 import { blankTarget } from '../supply/supplyCorrectionApi'
+import type { JsonWorkspace } from '../announcement-json/api'
 import { areaOnlyTypeName, createRowReview, destinationLabel, housingTypePrice, linkedHousingTypeId, pendingPrice, foreignCharacters, shownDateTime, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
 
 
@@ -466,18 +467,30 @@ describe('주택형 기본 임대조건으로 쓸 공급대상', () => {
   })
 })
 
+/** 단지에 연결된 행의 typeName은 단지 주택형 이름("26")이고, LH 표기는 행이 기록한 LH 원천행(rowSources → sources)에만 있다. */
+function linkedLhRow(workspace: JsonWorkspace, label: string) {
+  const row = workspace.supply.rows[0]
+  Object.assign(row, { typeName: '26', housingTypeId: 10353 })
+  workspace.supply.rowSources = [{ rowKey: row.key, category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: 'lh:90' }]
+  workspace.supply.sources = [...workspace.supply.sources, { category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: 'lh:90', rows: [{ raw: { type_name: label } }] }]
+}
+
 it('단지에 연결된 LH 행 하나("26A/B")를 공고문이 세부 타입 행 여럿으로 적으면 그 행 하나로 접어 공통 모집수 없이 저장한다', () => {
   const { workspace, housing } = scenario('hansville')
-  workspace.supply.rows[0].typeName = '26A/B'
+  linkedLhRow(workspace, '26A/B')
   const extracted = readExtraction(JSON.stringify(fixtures.hansville.extraction))
   if (!extracted.ok) throw new Error(extracted.error)
   const review = createReview(extracted.value, workspace, housing)
   expect(review.rows.map(row => [row.proposal.destination, row.subtypes?.map(subtype => subtype.choice)])).toEqual([['row:90', [10353, 10352]]])
   expect(review.extraction.sharedCounts).toEqual([])
+  // 공고 표기는 LH 표기가 아니라 접은 공고문 행의 형명이다. 근거 인용이 행마다 따로라 관리자가 받아들여야 쓴다.
+  const label = review.rows[0].cells.findIndex(cell => cell.field === 'sourceHousingTypeName')
+  expect(review.rows[0].cells[label]).toMatchObject({ value: '26A/26B', state: 'confirm' })
+  review.rows[0].cells[label] = chooseCellValue(review.rows[0].cells[label], 'extracted')
   const request = assembleReview(review, workspace, evidence)
   expect(request.correction.newGroups).toEqual([])
   // 공고문이 두 행에 걸쳐 적은 공통 모집수 170은 이 공급행 하나의 모집수다.
-  expect(request.correction.rows).toEqual([expect.objectContaining({ id: 90, householdCount: 170, housingTypeId: 10353, linkedHousingTypes: [{ housingTypeId: 10352 }] })])
+  expect(request.correction.rows).toEqual([expect.objectContaining({ id: 90, typeName: '26A/26B', householdCount: 170, housingTypeId: 10353, linkedHousingTypes: [{ housingTypeId: 10352 }] })])
   expect(request.housingTypeValues?.map(value => [value.name, value.linkedHousingTypeId])).toEqual([['26A', undefined], ['26B', 10352]])
 })
 
@@ -496,9 +509,9 @@ it('조회한 함께 모집하는 주택형을 그대로 둔 행이라도 PDF가
 
 describe('세부 타입 묶음 행으로 접기', () => {
   type Input = { data: { supplyRows: Record<string, unknown>[] }; sharedCounts: unknown[] }
-  function fold(typeName: string, edit: (input: Input) => void = () => {}, housing?: Record<number, unknown[]>) {
+  function fold(label: string, edit: (input: Input) => void = () => {}, housing?: Record<number, unknown[]>) {
     const { workspace, housing: all } = scenario('hansville')
-    workspace.supply.rows[0].typeName = typeName
+    linkedLhRow(workspace, label)
     const input = structuredClone(fixtures.hansville.extraction) as unknown as Input
     edit(input)
     const extracted = readExtraction(JSON.stringify(input))

@@ -78,11 +78,12 @@ export function sameTargets(rows: ExtractedRow[]) {
   return rows.every(row => key(row) === key(rows[0]))
 }
 
-/** 공고문 행 여럿을 접을 LH 한 행. typeName은 접은 행의 표기, count는 그 행의 모집수다. */
+/** 공고문 행 여럿을 접을 LH 한 행. typeName은 저장할 위치를 고를 때 쓰는 접은 행의 형명, count는 그 행의 모집수다. */
 export type FoldGroup = { indexes: number[]; typeName: string; count: number | null }
 
 /**
  * 같은 LH 행을 가리키는 공고문 행 여럿(26A·26B)을 세부 타입 묶음 행 하나로 접는다. 대상은 첫 행의 것을 쓰고 대상별 수는 모두 있으면 더한다.
+ * 공고 표기(sourceHousingTypeName)는 LH 행 표기가 아니라 접은 공고문 행의 형명을 이은 것("26A/26B")이다. 단지 주택형은 세부 타입마다 따로 연결한다.
  * 행 번호가 바뀌므로 근거·메모·공통 모집수 경로를 옮긴다. 접은 행의 형명·면적·건설호수 경로는 세부 타입 경로가 되고,
  * 그 밖의 경로는 첫 행 것만 남긴다(대상이 같아 나머지는 겹친다). 접은 행 안에서만 쓰던 공통 모집수는 행 모집수가 되어 지운다.
  */
@@ -99,8 +100,9 @@ export function foldRows(extraction: Extraction, groups: FoldGroup[]) {
     const members = at.group.indexes.map(item => extraction.supplyRows[item])
     const sum = (values: unknown[]) => values.every(value => typeof value === 'number') ? (values as number[]).reduce((total, value) => total + value, 0) : null
     position[index] = rows.length
-    rows.push({ ...row, typeName: at.group.typeName, subtypes: members.flatMap(pdfTypes),
-      values: { ...row.values, sourceHousingTypeName: at.group.typeName, totalSupplyHouseholdCount: at.group.count, exclusiveArea: null, commonArea: null, supplyArea: null, constructedHouseholdCount: null },
+    const subtypes = members.flatMap(pdfTypes)
+    rows.push({ ...row, typeName: at.group.typeName, subtypes,
+      values: { ...row.values, sourceHousingTypeName: subtypes.map(subtype => subtype.name).join('/'), totalSupplyHouseholdCount: at.group.count, exclusiveArea: null, commonArea: null, supplyArea: null, constructedHouseholdCount: null },
       targets: row.targets.map((target, item) => ({ ...target, supplyHouseholdCount: sum(members.map(member => member.targets[item]?.supplyHouseholdCount)),
         reserveCount: sum(members.map(member => member.targets[item]?.reserveCount)) })) })
   })
@@ -139,7 +141,8 @@ export function targetOwners(row: ExtractedRow, groups: (string | null)[]) {
 /**
  * 공고문 행을 LH 행(주택형 × 공급대상 묶음)에 맞춘다. LH 원천행 맞추기(alignOn)와 단지에 연결된 LH 행 나누기(splitSameSourceRows)가 같은 규칙을 쓴다.
  * - 공고문 행 하나가 여러 LH 행에 맞으면 행을 LH 행마다 복사하고 대상은 묶음 이름으로 나눈다. 공고문 모집수는 묶음을 합친 수라
- *   공고문 행 하나가 LH 행 하나 전체인 복사본은 LH 행의 표기와 이번 공급 수를 쓴다.
+ *   공고문 행 하나가 LH 행 하나 전체인 복사본은 LH 행의 이번 공급 수를 쓰고, 형명(typeName)은 저장할 LH 행을 고르도록 LH 행 표기로 둔다.
+ *   공고 표기(sourceHousingTypeName)는 공고문 표기 그대로다.
  * - LH 행 하나에 맞춘 공고문 행 여럿은 대상·금액이 같으면 세부 타입 묶음 행 하나로 접고(모집수는 LH 행의 이번 공급 수),
  *   다르면 행마다 두고 LH 공급 수를 공통 모집수로 묶는다. split은 그렇게 묶은 LH 행이다.
  * 맞춘 행이 걸린 공고문 공통 모집수는 LH 행 단위 모집수로 바뀌므로 지운다. 행 번호가 바뀌어 메모·근거 경로를 옮긴다.
@@ -159,7 +162,7 @@ export function alignToSource<T extends SourceMatch>(source: Extraction, matches
       const kept = owners.flatMap((owner, at) => owner === order ? [at] : [])
       const whole = copied && match.rows.length === 1
       const values: JsonObject = match.rows.length > 1 ? { ...row.values, totalSupplyHouseholdCount: null }
-        : whole ? { ...row.values, sourceHousingTypeName: match.typeName, totalSupplyHouseholdCount: match.count } : { ...row.values }
+        : whole ? { ...row.values, totalSupplyHouseholdCount: match.count } : { ...row.values }
       rows.push({ ...row, typeName: whole ? match.typeName : row.typeName, values, targets: kept.map(at => row.targets[at]) })
       plans.push({ from, match, extraTargets: order === 0 ? extraTargets : [], copied })
       return { index: rows.length - 1, targets: row.targets.map((_, at) => kept.indexOf(at)) }

@@ -578,10 +578,12 @@ it('단지가 연결되지 않은 LH 원천행은 단지를 고르면 공고문 
   expect(within(within(block).getByRole('region', { name: '공급행 1 세부 타입 연결' })).getAllByRole('listitem').map(item => item.textContent)).toEqual([
     '26A · 전용 26.5195㎡ → 26A · 전용 26.5195㎡ · 공급 40.6486㎡ 대표 주택형', '26B · 전용 26.4673㎡ → 26B · 전용 26.4673㎡ · 공급 40.5686㎡'])
   fireEvent.click(within(block).getByRole('button', { name: '공급행 1 대응 확인' }))
+  // 공고 표기는 LH 표기가 아니라 접은 공고문 행의 형명(26A/26B)이다. 근거 인용이 행마다 따로라 받아들여야 쓴다.
+  fireEvent.click(within(screen.getByRole('group', { name: '공급행 1 이 공고의 주택형 표기 반영 방법' })).getByRole('button', { name: '보정된 값 사용' }))
   fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
   await waitFor(() => expect(api.previewJsonUpdate).toHaveBeenCalled())
   const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
-  expect(input.correction.rows).toEqual([expect.objectContaining({ key: 'row:11', housingComplexId: 7, housingTypeId: 21, typeName: '26A,B(고령자)', householdCount: 4, excluded: false, linkedHousingTypes: [{ housingTypeId: 22 }] })])
+  expect(input.correction.rows).toEqual([expect.objectContaining({ key: 'row:11', housingComplexId: 7, housingTypeId: 21, typeName: '26A/26B', householdCount: 4, excluded: false, linkedHousingTypes: [{ housingTypeId: 22 }] })])
   expect(input.correction.newGroups).toEqual([])
   expect(input.housingTypeValues?.map(value => [value.rowKey, value.name, value.linkedHousingTypeId])).toEqual([['row:11', '26A', undefined], ['row:11', '26B', 22]])
 })
