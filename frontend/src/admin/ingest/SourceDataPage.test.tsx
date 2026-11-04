@@ -27,13 +27,27 @@ it('SH 원천은 공식 게시판과 키 없는 수집으로 안내하고 HTML�
   renderPage('/admin/sources?category=SH_ANNOUNCEMENT')
   const table = await screen.findByRole('table', { name: 'SH 공고 원천 목록 · 1페이지' })
   expect(screen.getByRole('link', { name: '공식 게시판' })).toHaveAttribute('href',
-    'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=1,2,4,8,16,32,64,128,256,512,1024')
+    'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=2')
   expect(screen.getByRole('link', { name: '키 없이 SH 공고 수집' })).toHaveAttribute('href', '/admin/ingest')
   expect(screen.queryByRole('link', { name: 'API 설명·키 발급' })).not.toBeInTheDocument()
   expect(table).toHaveTextContent('<script>window.shUnsafe = true</script>')
   expect(table).toHaveTextContent('본문 텍스트')
   expect(table.querySelector('script')).toBeNull()
 })
+it('GH 원천은 GH주택청약센터 게시판과 키 없는 수집으로 안내한다', async () => {
+  fetchSources.mockResolvedValue({ ...fixture, items: [{ ...fixture.items[0], name: 'GH 공고',
+    raw: { title: 'GH 공고', supply_type: '국민임대',
+      districts: [{ name: '다산 센트럴파크6단지', housingTypes: [{ name: '33A', supplyCount: '120' }] }] } }] })
+  renderPage('/admin/sources?category=GH_ANNOUNCEMENT')
+  const table = await screen.findByRole('table', { name: 'GH 공고 원천 목록 · 1페이지' })
+  expect(screen.getByRole('link', { name: '공식 게시판' })).toHaveAttribute('href',
+    'https://apply.gh.or.kr/sb/sr/sr7150/selectPbancRentHouseList.do')
+  expect(screen.getByRole('link', { name: '키 없이 GH 공고 수집' })).toHaveAttribute('href', '/admin/ingest')
+  expect(within(table).getByRole('columnheader', { name: '공급유형 (supply_type)' })).toBeVisible()
+  expect(within(table).getByRole('columnheader', { name: '금회공급 세대수 (districts[0].housingTypes[0].supplyCount)' })).toBeVisible()
+  expect(table).toHaveTextContent('120')
+})
+
 function renderPage(entry = '/admin/sources') {
   return render(<MemoryRouter initialEntries={[entry]}><SourceDataPage /></MemoryRouter>)
 }
@@ -139,7 +153,7 @@ it.each(['분류', '검색어'])('%s 변경 후 새 조회 중에는 이전 원�
 it('원천별 탭을 키보드로 이동하고 선택한 분류를 조회한다', async () => {
   renderPage()
   await screen.findByText('두꺼비 단지')
-  expect(screen.getAllByRole('tab')).toHaveLength(7)
+  expect(screen.getAllByRole('tab')).toHaveLength(8)
   const first = screen.getByRole('tab', { name: '마이홈 단지' })
   expect(first).toHaveAttribute('aria-selected', 'true')
   fireEvent.keyDown(first, { key: 'ArrowRight' })
@@ -148,7 +162,7 @@ it('원천별 탭을 키보드로 이동하고 선택한 분류를 조회한다'
   expect(next).toHaveAttribute('aria-selected', 'true')
   expect(next).toHaveFocus()
   fireEvent.keyDown(next, { key: 'End' })
-  await waitFor(() => expect(fetchSources).toHaveBeenLastCalledWith('SH_ANNOUNCEMENT', '', 0, expect.any(AbortSignal)))
+  await waitFor(() => expect(fetchSources).toHaveBeenLastCalledWith('GH_ANNOUNCEMENT', '', 0, expect.any(AbortSignal)))
 })
 
 it('마이홈 공고의 최소 월임대료를 단지의 기본 월임대료와 구분한다', async () => {

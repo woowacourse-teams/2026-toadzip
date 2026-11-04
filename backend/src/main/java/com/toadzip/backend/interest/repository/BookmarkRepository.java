@@ -64,13 +64,13 @@ public class BookmarkRepository {
         String favorites = favoriteTable(type);
         int inserted = jdbc.sql("INSERT INTO " + favorites + " (user_id, " + column + ", created_at) "
                 + "SELECT :userId, target.id, CURRENT_TIMESTAMP FROM " + table + " target "
-                + "WHERE target.id = :targetId AND target.admin_deleted = false AND NOT EXISTS "
+                + "WHERE target.id = :targetId AND target.admin_deleted = false" + visible(type, "target") + " AND NOT EXISTS "
                 + "(SELECT 1 FROM " + favorites + " WHERE user_id = :userId AND " + column + " = :targetId)")
                 .param("userId", userId).param("targetId", targetId).update();
         if (inserted > 0) {
             return true;
         }
-        return jdbc.sql("SELECT id FROM " + table + " WHERE id = :id AND admin_deleted = false")
+        return jdbc.sql("SELECT id FROM " + table + " target WHERE id = :id AND admin_deleted = false" + visible(type, "target"))
                 .param("id", targetId).query(Long.class).optional().isPresent();
     }
 
@@ -91,6 +91,14 @@ public class BookmarkRepository {
             return "housing_complexes";
         }
         return "announcements";
+    }
+
+    /** 미확정 공고는 사용자에게 보이지 않으므로 찜할 수 없다. */
+    private String visible(BookmarkType type, String alias) {
+        if (type == BookmarkType.COMPLEX) {
+            return "";
+        }
+        return " AND " + alias + ".release_status = 'PUBLISHED'";
     }
 
     private String targetColumn(BookmarkType type) {

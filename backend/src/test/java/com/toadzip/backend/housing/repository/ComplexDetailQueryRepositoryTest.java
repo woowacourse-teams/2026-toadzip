@@ -10,6 +10,7 @@ import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.housing.domain.Address;
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import jakarta.persistence.EntityManager;
@@ -166,6 +167,31 @@ class ComplexDetailQueryRepositoryTest {
                 () -> assertEquals(new BigDecimal("2.5000"), rows.getFirst().actualCompetitionRate()),
                 () -> assertNull(rows.get(1).actualCompetitionRate())
         );
+    }
+
+    @Test
+    void 미확정_공고는_현재공고가_아니고_미확정_정정공고가_공개된_이전_공고를_가리지_않는다() {
+        HousingComplex complex = persistComplex("미확정 단지", null);
+        HousingType housingType = persistHousingType(complex, "36A", "36.12", null, "floor", false, null);
+        Announcement original = persistAnnouncement(
+                null, "ORIGINAL", "published", TODAY.minusDays(3), TODAY.minusDays(2), TODAY.plusDays(2)
+        );
+        persistSupplyRow(original, complex, housingType, "published-row", 1);
+        Announcement correction = persistAnnouncement(
+                original, "CORRECTION", "pending", TODAY, TODAY, TODAY.plusDays(3), null
+        );
+        persistSupplyRow(correction, complex, housingType, "pending-row", 1);
+        Announcement unconfirmed = Announcement.createUnconfirmed("SH:1", "미확정 공고", AgencyCode.SH,
+                TODAY, "https://example.com/sh/1");
+        entityManager.persist(unconfirmed);
+        persistSupplyRow(unconfirmed, complex, housingType, "unconfirmed-row", 1);
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE announcements SET release_status = 'UNCONFIRMED' WHERE id = :id")
+                .setParameter("id", correction.getId()).executeUpdate();
+
+        List<CurrentAnnouncementRow> rows = repository.findCurrentAnnouncements(complex.getId(), TODAY);
+
+        assertEquals(List.of(original.getId()), announcementIds(rows));
     }
 
     @Test

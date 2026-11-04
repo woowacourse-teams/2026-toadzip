@@ -18,7 +18,7 @@ public class AnnouncementViewRepository {
     public Optional<Long> lockViewCount(long announcementId) {
         return jdbc.sql("""
                 SELECT view_count FROM announcements
-                WHERE id = :id AND admin_deleted = false
+                WHERE id = :id AND admin_deleted = false AND release_status = 'PUBLISHED'
                 FOR UPDATE
                 """).param("id", announcementId).query(Long.class).optional();
     }

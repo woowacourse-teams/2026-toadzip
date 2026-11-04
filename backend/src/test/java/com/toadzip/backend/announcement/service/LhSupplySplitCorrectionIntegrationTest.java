@@ -23,15 +23,15 @@ import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.dto.LhAnnouncementCatalogPage.Entry;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhCatalogStorageFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceSnapshot;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
-import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
-import com.toadzip.backend.ingest.domain.LhSourceIdentifier;
-import com.toadzip.backend.ingest.enrichment.service.LhScheduleAttachmentWriter;
-import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementRefinementService;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
+import com.toadzip.backend.ingest.lh.collection.detail.domain.LhAnnouncementDetailSourceSnapshot;
+import com.toadzip.backend.ingest.lh.collection.detail.domain.LhAnnouncementDetailSourceView;
+import com.toadzip.backend.ingest.lh.collection.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceView;
+import com.toadzip.backend.ingest.lh.refinement.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.lh.refinement.service.LhScheduleAttachmentWriter;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import java.math.BigDecimal;
@@ -475,7 +475,7 @@ class LhSupplySplitCorrectionIntegrationTest {
         var document = json.readValue(new ClassPathResource("announcement/import-v1-valid.json").getInputStream(),
                 AdminAnnouncementImportRequest.class);
         return new AnnouncementJsonCorrection.Request(workspace.snapshotToken(), document, List.of(), List.of(), List.of(),
-                request(workspace.supply(), rows), List.of());
+                request(workspace.supply(), rows), List.of(), false);
     }
 
     private void applySupply(long id, SupplyCorrection.Request request) {

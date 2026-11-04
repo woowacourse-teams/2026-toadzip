@@ -7,7 +7,8 @@ export type ManagementSummary = {
   name: string
   subtitle: string
   provider: string
-  rental: string
+  /** 미확정 공고는 공급유형이 아직 없다. */
+  rental: string | null
   deleted: boolean
   modified: boolean
   reviewRequired: boolean
@@ -34,17 +35,20 @@ export type ManagementComplexSummary = {
 export type ManagementAnnouncementSummary = {
   sourceIdentifier: string
   originalUrl: string
-  recruitmentType: string
+  /** 미확정 공고는 모집유형·일정이 아직 없다. */
+  recruitmentType: string | null
   postedDate: string
-  applicationStartDate: string
-  applicationEndDate: string
-  winnerAnnouncementDate: string
+  applicationStartDate: string | null
+  applicationEndDate: string | null
+  winnerAnnouncementDate: string | null
   /** ORIGINAL·CORRECTION·CANCELLATION. 이전 서버 응답에는 없다. */
   publicationType?: string
-  /** LH_SOURCE·ADMIN_ENTRY·MYHOME_LEGACY. 이전 서버 응답에는 없다. */
+  /** LH_SOURCE·ADMIN_ENTRY·GH_SOURCE·SH_SOURCE·MYHOME_LEGACY. 이전 서버 응답에는 없다. */
   origin?: string
   /** LH_SOURCE·ANNOUNCEMENT_DOCUMENT. 이전 서버 응답에는 없다. */
   supplyOwner?: string
+  /** UNCONFIRMED·PUBLISHED. 미확정 공고는 사용자에게 보이지 않는다. 이전 서버 응답에는 없다. */
+  releaseStatus?: string
 }
 
 export type JsonValue = string | number | boolean | null | { [key: string]: JsonValue } | JsonValue[]
@@ -227,7 +231,7 @@ function isNullableNumber(value: unknown): value is number | null {
 
 function isManagementSummary(value: unknown): value is ManagementSummary {
   return isRecord(value) && typeof value.id === 'number' && typeof value.name === 'string'
-    && typeof value.subtitle === 'string' && typeof value.provider === 'string' && typeof value.rental === 'string'
+    && typeof value.subtitle === 'string' && typeof value.provider === 'string' && isNullableString(value.rental)
     && typeof value.deleted === 'boolean' && typeof value.modified === 'boolean' && typeof value.reviewRequired === 'boolean'
     && (value.updatedAt === null || typeof value.updatedAt === 'string')
     && (value.complex === undefined || value.complex === null || isManagementComplexSummary(value.complex))
@@ -254,12 +258,13 @@ function isManagementComplexSummary(value: unknown): value is ManagementComplexS
 
 function isManagementAnnouncementSummary(value: unknown): value is ManagementAnnouncementSummary {
   return isRecord(value) && typeof value.sourceIdentifier === 'string' && typeof value.originalUrl === 'string'
-    && typeof value.recruitmentType === 'string' && typeof value.postedDate === 'string'
-    && typeof value.applicationStartDate === 'string' && typeof value.applicationEndDate === 'string'
-    && typeof value.winnerAnnouncementDate === 'string'
+    && isNullableString(value.recruitmentType) && typeof value.postedDate === 'string'
+    && isNullableString(value.applicationStartDate) && isNullableString(value.applicationEndDate)
+    && isNullableString(value.winnerAnnouncementDate)
     && (value.publicationType === undefined || typeof value.publicationType === 'string')
     && (value.origin === undefined || typeof value.origin === 'string')
     && (value.supplyOwner === undefined || typeof value.supplyOwner === 'string')
+    && (value.releaseStatus === undefined || typeof value.releaseStatus === 'string')
 }
 
 function isJsonValue(value: unknown): value is JsonValue {

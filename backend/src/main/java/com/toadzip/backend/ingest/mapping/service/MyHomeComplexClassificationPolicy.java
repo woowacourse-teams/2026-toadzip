@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.mapping.service;
 
-import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
+import com.toadzip.backend.ingest.lh.collection.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import java.util.Set;
 

@@ -2,8 +2,8 @@ package com.toadzip.backend.ingest.enrichment.service;
 
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
+import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceView;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +11,8 @@ import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentRejectedException;
 
 /**
  * 관리자 화면에서 현재 원천과 등록된 공급행으로 LH 보강 공급행 매칭을 다시 해 보고, 실패한 LH 행마다

@@ -162,6 +162,17 @@ class DataPipelineSecurityTest {
         verify(service).start(DataPipelineType.SH_ANNOUNCEMENT_COLLECTION);
     }
 
+    @Test
+    void GH_수집은_관리자가_CSRF와_함께_본문_없이_접수한다() throws Exception {
+        when(service.start(DataPipelineType.GH_ANNOUNCEMENT_COLLECTION))
+                .thenReturn(DataPipelineExecutionResponse.idle(DataPipelineType.GH_ANNOUNCEMENT_COLLECTION));
+        mockMvc.perform(post("/api/admin/ingest/pipelines/gh-announcement-collection")
+                        .with(user("admin").roles("ADMIN")).with(csrf()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.type").value("GH_ANNOUNCEMENT_COLLECTION"));
+        verify(service).start(DataPipelineType.GH_ANNOUNCEMENT_COLLECTION);
+    }
+
     @ParameterizedTest
     @CsvSource({"anonymous,true,401", "USER,true,403", "ADMIN,false,403"})
     void SH_수집에도_관리자_권한과_CSRF가_필요하다(

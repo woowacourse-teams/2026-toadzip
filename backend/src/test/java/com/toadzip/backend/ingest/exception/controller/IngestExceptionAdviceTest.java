@@ -7,7 +7,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 
 import com.toadzip.backend.global.exception.RequestTraceIdResolver;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
-import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
+import com.toadzip.backend.ingest.lh.collection.repository.external.LhAnnouncementUnavailableException;
 
 class IngestExceptionAdviceTest {
 

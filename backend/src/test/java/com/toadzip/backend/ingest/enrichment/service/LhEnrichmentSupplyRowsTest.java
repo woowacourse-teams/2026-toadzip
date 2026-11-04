@@ -7,7 +7,7 @@ import static org.mockito.Mockito.mock;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyRowGroup;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -50,6 +50,6 @@ class LhEnrichmentSupplyRowsTest {
     }
 
     static LhSupplyData supply(String complexName, String housingTypeName) {
-        return new LhSupplyData("LH:100:SUPPLY:0", complexName, housingTypeName, null, null, null, null, null);
+        return new LhSupplyData("LH:100:SUPPLY:0", complexName, housingTypeName, null, null, null, null, null, null);
     }
 }

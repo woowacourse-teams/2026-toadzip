@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.collection.fixture.repository.external;
 
-import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.lh.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalResponseRows;
 import java.util.List;

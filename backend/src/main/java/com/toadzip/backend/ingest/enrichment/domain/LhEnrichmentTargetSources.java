@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.enrichment.domain;
 
-import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
+import com.toadzip.backend.ingest.lh.collection.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import java.util.List;

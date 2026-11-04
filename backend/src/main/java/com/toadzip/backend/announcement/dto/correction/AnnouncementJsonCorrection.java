@@ -28,9 +28,12 @@ public final class AnnouncementJsonCorrection {
             @NotNull @Size(max = 100) List<@NotNull @Valid Selection> schedules,
             @NotNull @Size(max = 100) List<@NotNull @Valid Selection> attachments,
             @NotNull @Valid SupplyCorrection.Request correction,
-            @Size(max = 500) List<@NotNull @Valid HousingTypeValue> housingTypeValues) implements RejectUnknownJsonFields {
+            @Size(max = 500) List<@NotNull @Valid HousingTypeValue> housingTypeValues,
+            Boolean publish) implements RejectUnknownJsonFields {
+        /** publish는 관리자가 단지를 확인하고 미확정 공고를 공개하겠다는 요청이다. 생략하면 공개하지 않는다. */
         public Request {
             if (housingTypeValues == null) { housingTypeValues = List.of(); }
+            if (publish == null) { publish = false; }
         }
     }
     /**
@@ -65,5 +68,5 @@ public final class AnnouncementJsonCorrection {
     public record AttachmentChange(int inputIndex, Long existingId, AttachmentRequest before, AttachmentRequest after) { }
     public record Preview(String confirmationToken, List<Change> fields, SupplyCorrection.Preview supply,
             List<EventChange> schedules, List<AttachmentChange> attachments, List<HousingTypeChange> housingTypes,
-            List<String> housingTypeWarnings, List<String> warnings) { }
+            List<String> housingTypeWarnings, List<String> warnings, boolean publishes) { }
 }

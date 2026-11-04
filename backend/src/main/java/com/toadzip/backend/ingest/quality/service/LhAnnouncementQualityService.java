@@ -1,10 +1,10 @@
 package com.toadzip.backend.ingest.quality.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectedAtReader;
-import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionLinkRepository;
-import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
-import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
+import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementCollectedAtReader;
+import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementCollectionLinkRepository;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;

@@ -17,7 +17,7 @@ Spring은 생성자 주입으로 객체를 연결한다. `DataPipelineRunner.run
 | 단지 수집 | [MyHomeComplexCollectionService](../../../backend/src/main/java/com/toadzip/backend/ingest/collection/myhome/complex/service/MyHomeComplexCollectionService.java) → LH 임대목록 수집 |
 | 단지 정제 | [MyHomeComplexMappingService](../../../backend/src/main/java/com/toadzip/backend/ingest/mapping/service/MyHomeComplexMappingService.java) → LH 세대수 보강 |
 | 공고 수집 | [MyHomeAnnouncementCollectionService](../../../backend/src/main/java/com/toadzip/backend/ingest/collection/myhome/announcement/service/MyHomeAnnouncementCollectionService.java) → LH 목록 → 공급 → 상세 수집 |
-| 공고 정제 | [LhAnnouncementRefinementService](../../../backend/src/main/java/com/toadzip/backend/ingest/lhrefinement/service/LhAnnouncementRefinementService.java) → LH 공고 정제 |
+| 공고 정제 | [LhAnnouncementRefinementService](../../../backend/src/main/java/com/toadzip/backend/ingest/lh/refinement/service/LhAnnouncementRefinementService.java) → LH 공고 정제 |
 
 수집은 응답·식별·조회 조건·실제 수집 시각을 원천에 보관하고, 요청의 실행 시각·결과는 `collection/history`에 분리한다. 정제·보강은 원천을 읽어 단지·주택형·공고에 반영한다.
 원천 조회·매핑·보강은 `collection` 저장 구조를 사용한다. 정제·보강은 저장 행을 읽기 전용 원천 View(`MyHomeAnnouncementSourceView`, `LhAnnouncementSupplySourceView` 등)로 읽는다. View는 저장 행과 그 행을 조회한 원천 요청으로 `of`/`read`에서만 만든다.
@@ -38,7 +38,7 @@ MyHome은 `MyHomeAnnouncementCollectionService.collect()` → `PagedSourceCollec
 페이지로 받는 원천(마이홈 단지·공고, LH 임대·공고 목록)의 `*Collector`는 `PagedSource`로 페이지 조회·검증·저장 방법만 정한다. 재시도, 수집 이력, 실행 확인과 실패 기록은 `PagedSourceCollector`가 맡는다. 수집 이력 하나의 생명주기(실행 확인 → 요청 생성 → 이력 시작 → 수집 → 저장 직전 소유권 재확인, 실패 시 이력 실패 마감)는 `SourceCollectionAttempt`가 맡고, `PagedSourceCollector`와 LH 공급·상세의 `LhAnnouncementQueryCollector`가 함께 쓴다. 페이지 응답 검증 실패와 저장된 원천과의 충돌(`CollectedSourceConflictException`, 마이홈 단지의 지역 충돌)은 마지막 페이지의 외부 호출 실패로 기록하고 다른 요청을 계속한다. 응답 검증을 마친 뒤 저장하다 난 그 밖의 오류는 내부 오류로 실행을 실패시키며 외부 수집 실패로 기록하지 않는다.
 7개 공급유형별 모든 페이지가 유효할 때 원천과 성공 기록을 함께 저장한다. 전체 유형 성공 후 `MyHomeAnnouncementLifecycleService.completeRun()`으로 미조회를 판정한다. 호출 제한은 남은 유형을 중단한다.
 
-LH 공급·상세는 [LhAnnouncementExternalCollectionService](../../../backend/src/main/java/com/toadzip/backend/ingest/collection/lh/service/LhAnnouncementExternalCollectionService.java)의 `collect()`에서 시작한다.
+LH 공급·상세는 [LhAnnouncementExternalCollectionService](../../../backend/src/main/java/com/toadzip/backend/ingest/lh/collection/service/LhAnnouncementExternalCollectionService.java)의 `collect()`에서 시작한다.
 `collectAnnouncements()` → `collectBatch()`에서 대상을 고르고 `LhAnnouncementSharedRequestCollector.collect()`에서 병렬 실행과 결과를 회수한다.
 요청 하나는 `LhAnnouncementCandidateCollector.collect()` → `LhAnnouncementQueryCollector.collect()` → `LhAnnouncementStorageService.completeSupply()/completeDetail()`에서 조회·검증·저장을 처리한다.
 장애 차단기가 요청 전에 거절하면 `ExternalDataRequestRejectedException`(LH는 `LhAnnouncementUnavailableException`)으로 끝나고, 재시도와 호출 수 집계에서 빠진다. 호출 한도로 닫힌 차단기의 거절은 그 요청의 실패로 보고하고, 장애로 닫힌 차단기의 거절은 실행을 `FAILED`로 끝낸다.
@@ -63,9 +63,9 @@ LH 공급 연결의 판정·지문 규칙(`LhSupplyRowLinks`)과 저장소는 en
 
 ## LH 공고 목록 단독 수집
 
-`POST /api/admin/ingest/lh/announcements/catalog`는 목록 원천만 갱신한다. 공급·상세 조회와 제품 공고 생성·정제는 실행하지 않는다. 전체 페이지 검증 후 한 번에 저장하며, 조회 범위 밖의 기존 행과 조회·검증 실패 시의 기존 원천을 보존한다.
+`POST /api/admin/ingest/lh/announcements/catalog`는 목록 원천만 갱신한다. 공급·상세 조회와 제품 공고 생성·정제는 실행하지 않는다. 전체 페이지 검증 후 건설임대 행만 한 번에 저장하며, 조회 범위 밖의 기존 행과 조회·검증 실패 시의 기존 원천을 보존한다.
 
-목록의 `sourceKey`로 신규·기존을 구분한다. 기존 행은 현재 목록에서 빠졌다 다시 나타나거나 공고 ID·조회 코드·공고명·상태·공고일·게시일·마감일·URL이 달라지면 `changedAt`을 갱신한다. `RNUM`·`ALL_CNT` 같은 페이지 메타데이터 변경은 제외한다. 완료 응답은 전체 저장 행 수이며 신규·변경·동일 건수는 로그와 `ingest.announcement.catalog.rows`에서 확인한다.
+목록의 `sourceKey`로 신규·기존을 구분한다. 기존 행은 현재 목록에서 빠졌다 다시 나타나거나 공고 ID·조회 코드·공고명·상태·공고일·게시일·마감일·URL이 달라지면 `changedAt`을 갱신한다. `RNUM`·`ALL_CNT` 같은 페이지 메타데이터 변경은 제외한다. 완료 응답은 저장한 건설임대 행 수이며 신규·변경·동일 건수는 로그와 `ingest.announcement.catalog.rows`에서 확인한다.
 
 ## 실제 재조회와 저장 원천 재사용
 
@@ -82,7 +82,18 @@ LH 공급 연결의 판정·지문 규칙(`LhSupplyRowLinks`)과 저장소는 en
 
 종료 후 30일 기준은 수집 대상의 범위를 정하는 운영 정책이며 공식 갱신 주기가 아니다. 시간 경과만으로 자동 실행되지 않는다. 응답 검증·빈 응답 보호·공급행 누락 승인 규칙은 모든 재조회에 적용한다.
 
-LH 공급·상세는 TTL로 호출을 생략하지 않으며 TTL 환경 설정을 사용하지 않는다. 동시성·타임아웃과 운영 메트릭은 [공고 수집 동시성과 계측](../../operations/ingest/collection-performance.md)을 따른다.
+LH 공급·상세는 TTL로 호출을 생략하지 않으며 TTL 환경 설정을 사용하지 않는다.
+
+기관마다 상세를 다시 받는 규칙은 하나다. 목록 값이 바뀌었거나, 일부만 읽었거나 실패가 열려 있거나, 마지막 수집 뒤 기관별 기한이 지났으면 다시 받는다. SH·GH 게시판은 한 수집기(`BoardSourceCollector`)가 이 판단을 맡는다.
+
+| 기관 | 기한 | 다시 받지 않는 글 |
+|---|---|---|
+| LH | 0일 | 없음. 수집 대상의 공급·상세를 실행마다 받는다. |
+| SH·GH | 7일(`ingest.board-announcement.refetch-after`) | 목록 값이 저장값과 같고 다 읽었으며 열린 실패가 없고 마지막 수집이 7일 안인 글. 목록 값은 SH 제목·등록일, GH 제목·게시일이다. |
+
+기관이 목록에 드러내지 않고 상세나 첨부를 고쳐도 SH·GH는 7일 안에 따라잡는다. 기관별 세부 조건은 [SH 공고 수집·정제](executions.md#sh-공고-수집정제)와 [GH 공고 수집](executions.md#gh-공고-수집)을 따른다.
+
+동시성·타임아웃과 운영 메트릭은 [공고 수집 동시성과 계측](../../operations/ingest/collection-performance.md)을 따른다.
 품질 응답의 `collectedRequests`는 현재 조회 조건의 성공 원천 확보 수이며 과거 성공도 포함한다. `latestCollectedAt`은 그중 최댓값이므로 전체 대상의 최신성이나 이번 실행의 성공률을 뜻하지 않는다.
 
 ## 운영 문제를 볼 때

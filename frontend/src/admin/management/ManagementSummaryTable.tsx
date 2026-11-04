@@ -28,7 +28,7 @@ export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight 
       <tbody>{items.map(item => <tr key={item.id} data-selected={selected === String(item.id) || undefined} data-checked={selection?.ids.has(item.id) || undefined}>
         {selection && <td className={styles.check}><input type="checkbox" aria-label={`${item.name} 선택`} disabled={selection.disabled} checked={selection.ids.has(item.id)} onChange={() => toggle(item.id)} /></td>}
         <th scope="row">{onEdit ? <button type="button" data-admin-navigation disabled={editDisabled} className={styles.inlineEdit} aria-label={`${item.name} 수정`} title={item.name} onClick={() => onEdit(item)}>{item.name}</button> : <Link data-management-id={item.id} aria-current={selected === String(item.id) ? 'page' : undefined} title={item.name} to={`/admin/${resource}/${item.id}${inlineSearch !== undefined ? inlineSearch ? `?${inlineSearch}` : '' : returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`}>{item.name}</Link>}
-          {compact ? <><span className={styles.rowSubtitle}>{item.subtitle}</span><div className={styles.rowMeta}><span>{labels[item.provider] ?? item.provider}</span><span>{labels[item.rental] ?? item.rental}</span><ManagementStatus summary={item} />{resource === 'complexes' && <ComplexVerificationBadge status={item.complex?.verificationStatus ?? 'UNREVIEWED'} count={item.complex?.reviewedFieldCount} />}</div></> : null}
+          {compact ? <><span className={styles.rowSubtitle}>{item.subtitle}</span><div className={styles.rowMeta}><span>{labels[item.provider] ?? item.provider}</span><span>{labels[item.rental ?? ''] ?? item.rental}</span><ManagementStatus summary={item} />{resource === 'complexes' && <ComplexVerificationBadge status={item.complex?.verificationStatus ?? 'UNREVIEWED'} count={item.complex?.reviewedFieldCount} />}</div></> : null}
         </th>
         {columns.map(column => <td key={column.key} data-field={column.key} className={column.kind === 'number' ? styles.number : undefined}>
           {column.kind === 'status' ? <ManagementStatus summary={item} placeholder="—" /> : column.kind === 'publication' ? <PublicationType summary={item} /> : column.kind === 'verification' ? <ComplexVerificationBadge status={item.complex?.verificationStatus ?? 'UNREVIEWED'} count={item.complex?.reviewedFieldCount} /> : <TextValue value={column.read(item)} />}
@@ -44,7 +44,7 @@ const announcementColumns: Column[] = [
   { key: 'recruitmentType', label: '모집 유형', width: 110, read: item => item.announcement?.recruitmentType },
   { key: 'publicationType', label: '공고 구분', width: 100, read: () => null, kind: 'publication' },
   { key: 'postedDate', label: '게시일', width: 110, read: item => item.announcement ? item.announcement.postedDate : item.subtitle },
-  { key: 'applicationPeriod', label: '접수 기간', width: 205, read: item => item.announcement ? `${item.announcement.applicationStartDate} ~ ${item.announcement.applicationEndDate}` : null },
+  { key: 'applicationPeriod', label: '접수 기간', width: 205, read: item => item.announcement?.applicationStartDate ? `${item.announcement.applicationStartDate} ~ ${item.announcement.applicationEndDate}` : null },
 ]
 function TextValue({ value }: { value: string | number | boolean | null | undefined }) {
   const text = value === null || value === undefined || value === '' ? '미확인' : labels[String(value)] ?? String(value)

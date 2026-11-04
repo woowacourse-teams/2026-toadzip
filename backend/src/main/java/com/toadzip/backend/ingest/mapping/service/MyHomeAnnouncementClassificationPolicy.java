@@ -6,7 +6,7 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
-import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
+import com.toadzip.backend.ingest.lh.collection.domain.LhProviderPolicy;
 import java.util.Map;
 import java.util.Set;
 

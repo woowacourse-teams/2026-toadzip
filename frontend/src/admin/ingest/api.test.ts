@@ -45,6 +45,7 @@ describe('관리자 데이터 수집·정제 API', () => {
   it.each([
     ['COMPLEX_SYNC', 'complex-sync'], ['ANNOUNCEMENT_SYNC', 'announcement-sync'],
     ['SH_ANNOUNCEMENT_COLLECTION', 'sh-announcement-collection'],
+    ['GH_ANNOUNCEMENT_COLLECTION', 'gh-announcement-collection'],
   ] as const)('%s 실행은 기존 세션과 CSRF 계약으로 시작한다', async (type, path) => {
     const fetchMock = prepareFetch(execution(type, 'RUNNING'))
     const { startDataPipeline } = await import('./api.ts')

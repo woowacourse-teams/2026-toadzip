@@ -1,0 +1,35 @@
+package com.toadzip.backend.ingest.lh.collection.dto;
+
+import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
+import com.toadzip.backend.ingest.collection.history.dto.SourceCollectionRequest;
+import com.toadzip.backend.ingest.lh.collection.domain.LhAnnouncementQuery;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Map;
+import java.util.UUID;
+
+public record LhAnnouncementCollectionRequest(
+        UUID executionId, CollectionSource source, LhAnnouncementQuery query, int collectionVersion, Instant startedAt
+) implements SourceCollectionRequest {
+
+    public LhAnnouncementCollectionRequest {
+        if (source != CollectionSource.LH_ANNOUNCEMENT_SUPPLY && source != CollectionSource.LH_ANNOUNCEMENT_DETAIL
+                || query == null || collectionVersion < 1 || startedAt == null) {
+            throw new IllegalArgumentException("LH 공고 수집 조건이 올바르지 않습니다.");
+        }
+        startedAt = startedAt.truncatedTo(ChronoUnit.MICROS);
+    }
+
+    @Override
+    public Map<String, String> parameters() {
+        return query.parameters(collectionVersion);
+    }
+
+    public String description() {
+        return query.description(collectionVersion);
+    }
+
+    public String requestHash() {
+        return LhAnnouncementQuery.requestHashOf(description());
+    }
+}

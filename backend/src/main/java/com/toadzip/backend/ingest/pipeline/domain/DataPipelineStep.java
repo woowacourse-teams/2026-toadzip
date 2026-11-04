@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.pipeline.domain;
 
 public enum DataPipelineStep {
     COLLECT_SH_ANNOUNCEMENTS("SH 공고 원천 수집", Kind.COLLECTION),
+    COLLECT_GH_ANNOUNCEMENTS("GH 공고 원천 수집", Kind.COLLECTION),
     COLLECT_MYHOME_COMPLEXES("마이홈 단지 수집", Kind.COLLECTION),
     COLLECT_LH_LEASE_CATALOG("LH 임대 카탈로그 수집", Kind.COLLECTION),
     MAP_MYHOME_COMPLEXES("마이홈 단지 정제", Kind.REFINEMENT),

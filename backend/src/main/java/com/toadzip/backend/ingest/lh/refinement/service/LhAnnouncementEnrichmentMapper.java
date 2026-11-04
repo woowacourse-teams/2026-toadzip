@@ -1,0 +1,335 @@
+package com.toadzip.backend.ingest.lh.refinement.service;
+
+import com.toadzip.backend.announcement.domain.AttachmentType;
+import com.toadzip.backend.announcement.domain.ReceptionMethod;
+import com.toadzip.backend.announcement.domain.ReceptionPlace;
+import com.toadzip.backend.announcement.domain.ScheduleType;
+import com.toadzip.backend.ingest.lh.collection.detail.domain.LhAnnouncementDetailSourceView;
+import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceView;
+import com.toadzip.backend.ingest.lh.refinement.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import org.springframework.stereotype.Component;
+import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
+
+@Component
+public class LhAnnouncementEnrichmentMapper {
+
+    private static final int MAX_RECEPTION_NAME_LENGTH = 255;
+
+    private final LhAnnouncementValueParser parser = new LhAnnouncementValueParser();
+
+    public LhAnnouncementEnrichmentData map(
+            String panId,
+            List<LhAnnouncementDetailSourceView> details,
+            List<LhAnnouncementSupplySourceView> supplies
+    ) {
+        List<LhScheduleData> schedules = new ArrayList<>();
+        List<LhAttachmentData> attachments = new ArrayList<>();
+        List<LhComplexData> complexes = new ArrayList<>();
+        String correctionReason = null;
+        ReceptionPlace receptionPlace = null;
+        for (LhAnnouncementDetailSourceView detail : details) {
+            if ("ETC_INFO".equals(detail.getDatasetType()) && detail.getCorrectionReason() != null) {
+                correctionReason = detail.getCorrectionReason();
+            }
+            if ("RECEPTION".equals(detail.getDatasetType()) && receptionPlace == null) {
+                receptionPlace = receptionOf(detail);
+            }
+            if ("SCHEDULE".equals(detail.getDatasetType())) {
+                schedules.addAll(schedulesOf(panId, detail));
+            }
+            if ("ANNOUNCEMENT_FILE".equals(detail.getDatasetType())) {
+                attachments.add(attachmentOf(panId, detail));
+            }
+            if ("COMPLEX".equals(detail.getDatasetType())) {
+                complexes.add(new LhComplexData(detail.getComplexName(), detail.getExpectedMoveInYearMonth()));
+            }
+        }
+        return new LhAnnouncementEnrichmentData(
+                panId, correctionReason, receptionPlace, schedules, attachments,
+                supplies.stream()
+                        .map(source -> supplyOf(panId, source, expectedMoveInMonthOf(source, complexes)))
+                        .toList(),
+                false
+        );
+    }
+
+    private YearMonth expectedMoveInMonthOf(
+            LhAnnouncementSupplySourceView supply,
+            List<LhComplexData> complexes
+    ) {
+        List<LhComplexData> matches = complexes.stream()
+                .filter(complex -> sameComplex(complex.name(), supply.getComplexLabel()))
+                .toList();
+        if (matches.size() == 1) {
+            return parser.yearMonth(matches.getFirst().expectedMoveInYearMonth(), "입주예정월");
+        }
+        return null;
+    }
+
+    private boolean sameComplex(String left, String right) {
+        return SupplyNameNormalizer.sameComplex(left, right);
+    }
+
+    private ReceptionPlace receptionOf(LhAnnouncementDetailSourceView detail) {
+        String address = joined(detail.getReceptionAddress(), detail.getReceptionDetailAddress());
+        String name = textWithin(detail.getReceptionGuidance(), MAX_RECEPTION_NAME_LENGTH);
+        if (name == null || name.isBlank()) {
+            name = "LH 접수처";
+        }
+        return ReceptionPlace.create(name, ReceptionMethod.VISIT, address, detail.getPhone(), null);
+    }
+
+    private String textWithin(String value, int maximumLength) {
+        if (value == null || value.length() > maximumLength) {
+            return null;
+        }
+        return value;
+    }
+
+    private List<LhScheduleData> schedulesOf(String panId, LhAnnouncementDetailSourceView source) {
+        List<LhScheduleData> schedules = new ArrayList<>();
+        addApplication(schedules, panId, source);
+        addDate(
+                schedules,
+                panId,
+                source,
+                ScheduleType.ETC,
+                "서류제출 대상자 발표",
+                source.getDocumentTargetAnnouncementDate()
+        );
+        addDate(schedules, panId, source, ScheduleType.WINNER_ANNOUNCEMENT, "당첨자 발표",
+                source.getWinnerAnnouncementDate());
+        addRange(
+                schedules, panId, source, ScheduleType.DOCUMENT_SUBMISSION, "서류제출",
+                source.getDocumentSubmissionBeginDate(), source.getDocumentSubmissionEndDate()
+        );
+        addRange(
+                schedules,
+                panId,
+                source,
+                ScheduleType.CONTRACT,
+                "계약",
+                source.getContractBeginDate(),
+                source.getContractEndDate()
+        );
+        return schedules;
+    }
+
+    private void addApplication(List<LhScheduleData> schedules, String panId, LhAnnouncementDetailSourceView source) {
+        if (!parser.unavailable(source.getApplicationPeriod())) {
+            addRange(schedules, panId, source, ScheduleType.APPLICATION, "접수", source.getApplicationPeriod());
+            return;
+        }
+        addRange(schedules, panId, source, ScheduleType.APPLICATION, "접수",
+                source.getApplicationBeginDate(), source.getApplicationEndDate());
+    }
+
+    private void addRange(
+            List<LhScheduleData> schedules,
+            String panId,
+            LhAnnouncementDetailSourceView source,
+            ScheduleType type,
+            String name,
+            String range
+    ) {
+        if (parser.unavailable(range)) {
+            return;
+        }
+        List<LocalDateTime> values = parser.dateTimes(range, name);
+        if (values.size() < 2) {
+            throw parser.invalid(name + " 기간의 시작·종료 시각을 해석할 수 없습니다.");
+        }
+        schedules.add(schedule(panId, source, type, name, values.getFirst(), values.get(1)));
+    }
+
+    private void addRange(
+            List<LhScheduleData> schedules,
+            String panId,
+            LhAnnouncementDetailSourceView source,
+            ScheduleType type,
+            String name,
+            String begin,
+            String end
+    ) {
+        if (parser.unavailable(begin) && parser.unavailable(end)) {
+            return;
+        }
+        if (parser.unavailable(begin) || parser.unavailable(end)) {
+            throw parser.invalid(name + " 기간의 시작 또는 종료 시각이 없습니다.");
+        }
+        schedules.add(schedule(
+                panId,
+                source,
+                type,
+                name,
+                parser.dateTime(begin, name),
+                parser.dateTime(end, name)
+        ));
+    }
+
+    private void addDate(
+            List<LhScheduleData> schedules,
+            String panId,
+            LhAnnouncementDetailSourceView source,
+            ScheduleType type,
+            String name,
+            String value
+    ) {
+        if (!parser.unavailable(value)) {
+            LocalDateTime at = parser.dateTime(value, name);
+            schedules.add(schedule(panId, source, type, name, at, at));
+        }
+    }
+
+    private LhScheduleData schedule(
+            String panId,
+            LhAnnouncementDetailSourceView source,
+            ScheduleType type,
+            String name,
+            LocalDateTime startAt,
+            LocalDateTime endAt
+    ) {
+        if (endAt.isBefore(startAt)) {
+            throw parser.invalid(name + " 종료 시각이 시작 시각보다 빠릅니다.");
+        }
+        return new LhScheduleData(
+                identifier(panId, "SCHEDULE", source.getSourceOrder(), type.name()), type, name, startAt, endAt,
+                source.getComplexName()
+        );
+    }
+
+    private LhAttachmentData attachmentOf(String panId, LhAnnouncementDetailSourceView source) {
+        if (parser.blank(source.getName()) || parser.blank(source.getUrl())) {
+            throw parser.invalid("첨부파일명 또는 URL이 없습니다.");
+        }
+        return new LhAttachmentData(
+                identifier(panId, "ANNOUNCEMENT_FILE", source.getSourceOrder(), null), source.getName(),
+                attachmentTypeOf(source.getKind()), source.getUrl()
+        );
+    }
+
+    private AttachmentType attachmentTypeOf(String kind) {
+        if (kind != null && kind.contains("취소")) {
+            return AttachmentType.CANCELLATION;
+        }
+        if (kind != null && kind.contains("정정")) {
+            return AttachmentType.CORRECTION;
+        }
+        if (kind != null && kind.contains("공고")) {
+            return AttachmentType.ANNOUNCEMENT;
+        }
+        return AttachmentType.REFERENCE;
+    }
+
+    private LhSupplyData supplyOf(String panId, LhAnnouncementSupplySourceView source, YearMonth expectedMoveInMonth) {
+        if (parser.blank(source.getComplexLabel()) || parser.blank(source.getTypeName())) {
+            throw parser.invalid("LH 공급 원본의 단지명 또는 주택형명이 없습니다.");
+        }
+        return new LhSupplyData(
+                LhSourceIdentifier.supply(panId, source.getSourceOrder()), source.getComplexLabel(),
+                source.getTypeName(),
+                expectedMoveInMonth,
+                parser.integer(source.getTotalUnitCount(), "전체 세대수"),
+                parser.integer(source.getSuppliedUnitCount(), "공급 세대수"),
+                parser.amount(source.getDepositText(), "임대보증금"),
+                parser.amount(source.getMonthlyRentText(), "월 임대료")
+        );
+    }
+
+    private String identifier(String panId, String datasetType, Integer sourceOrder, String suffix) {
+        String identifier = LhSourceIdentifier.source(panId, datasetType, sourceOrder);
+        if (suffix == null) {
+            return identifier;
+        }
+        return identifier + ":" + suffix;
+    }
+
+    private String joined(String first, String second) {
+        if (parser.blank(first)) {
+            return second;
+        }
+        if (parser.blank(second)) {
+            return first;
+        }
+        return first + " " + second;
+    }
+
+    public record LhAnnouncementEnrichmentData(
+            String panId,
+            String correctionReason,
+            ReceptionPlace receptionPlace,
+            List<LhScheduleData> schedules,
+            List<LhAttachmentData> attachments,
+            List<LhSupplyData> supplies,
+            boolean verifiedEmptySupply
+    ) {
+
+        /** 관리자가 저장한 LH 공급 연결을 LH 행 식별자로 붙인다. */
+        public LhAnnouncementEnrichmentData withSupplyLinks(Map<String, LhSupplyRowLinks.State> supplyLinks) {
+            return new LhAnnouncementEnrichmentData(panId, correctionReason, receptionPlace, schedules, attachments,
+                    supplies.stream().map(supply -> supply.withLinkedRow(
+                            LinkedMyHomeRow.of(supplyLinks.get(supply.sourceIdentifier())))).toList(),
+                    verifiedEmptySupply);
+        }
+
+    }
+
+    public record LhScheduleData(
+            String sourceIdentifier,
+            ScheduleType type,
+            String name,
+            LocalDateTime startAt,
+            LocalDateTime endAt,
+            String complexName
+    ) {
+    }
+
+    public record LhAttachmentData(String sourceIdentifier, String name, AttachmentType type, String url) {
+    }
+
+    private record LhComplexData(String name, String expectedMoveInYearMonth) {
+    }
+
+    public record LhSupplyData(
+            String sourceIdentifier,
+            String complexName,
+            String housingTypeName,
+            YearMonth expectedMoveInMonth,
+            Integer totalHouseholdCount,
+            Integer supplyHouseholdCount,
+            BigDecimal rentalDeposit,
+            BigDecimal monthlyRent,
+            LinkedMyHomeRow linkedRow
+    ) {
+
+        LhSupplyData(String sourceIdentifier, String complexName, String housingTypeName,
+                YearMonth expectedMoveInMonth, Integer totalHouseholdCount, Integer supplyHouseholdCount,
+                BigDecimal rentalDeposit, BigDecimal monthlyRent) {
+            this(sourceIdentifier, complexName, housingTypeName, expectedMoveInMonth, totalHouseholdCount,
+                    supplyHouseholdCount, rentalDeposit, monthlyRent, null);
+        }
+
+        public LhSupplyData withLinkedRow(LinkedMyHomeRow linkedRow) {
+            return new LhSupplyData(sourceIdentifier, complexName, housingTypeName, expectedMoveInMonth,
+                    totalHouseholdCount, supplyHouseholdCount, rentalDeposit, monthlyRent, linkedRow);
+        }
+    }
+
+    /** 저장 연결이 가리키는 마이홈 원천행이다. 원천이 저장 당시와 다르면 재확인이 필요하다. */
+    public record LinkedMyHomeRow(String sourceRowIdentifier, boolean reviewRequired) {
+
+        static LinkedMyHomeRow of(LhSupplyRowLinks.State state) {
+            if (state == null) {
+                return null;
+            }
+            return new LinkedMyHomeRow(state.myhomeSourceRowIdentifier(), !state.valid());
+        }
+    }
+}

@@ -157,6 +157,26 @@ class NotificationScheduleIntegrationTest {
     }
 
     @Test
+    void 미확정_공고의_일정은_알리지_않는다() {
+        schedule(ScheduleType.APPLICATION);
+        schedule(ScheduleType.DOCUMENT_SUBMISSION);
+        jdbc.update("UPDATE announcements SET release_status='UNCONFIRMED' WHERE id=?", announcement.getId());
+
+        assertThat(schedules.publishDue(NOW)).isZero();
+    }
+
+    @Test
+    void 미확정_정정공고가_있어도_공개된_공고의_일정은_알린다() {
+        schedule(ScheduleType.APPLICATION);
+        schedule(ScheduleType.DOCUMENT_SUBMISSION);
+        Announcement correction = fixtures.announcement();
+        jdbc.update("UPDATE announcements SET release_status='UNCONFIRMED', previous_announcement_id=? WHERE id=?",
+                announcement.getId(), correction.getId());
+
+        assertThat(schedules.publishDue(NOW)).isEqualTo(2);
+    }
+
+    @Test
     void 원천_시각이_없는_저장용_자정은_확정시각으로_표시하지_않는다() {
         rawSchedule(ScheduleType.CONTRACT);
         jdbc.update("UPDATE announcement_schedules SET start_at='2026-10-14 00:00:00',end_at='2026-10-14 00:00:00' WHERE announcement_id=?", announcement.getId());

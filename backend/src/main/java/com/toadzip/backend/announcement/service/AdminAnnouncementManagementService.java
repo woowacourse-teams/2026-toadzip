@@ -282,14 +282,14 @@ public class AdminAnnouncementManagementService {
     private AdminDataSummary summary(Announcement announcement) {
         return new AdminDataSummary(announcement.getId(), announcement.getName(),
                 announcement.getPostedDate().toString(), announcement.getProvider().name(),
-                announcement.getSupplyType().name(), announcement.isAdminDeleted(), announcement.isAdminModified(),
+                enumName(announcement.getSupplyType()), announcement.isAdminDeleted(), announcement.isAdminModified(),
                 announcement.isSourceReviewRequired(), announcement.getAdminUpdatedAt(), null,
                 new AdminDataSummary.AnnouncementSummary(announcement.getSourceAnnouncementIdentifier(),
-                        announcement.getOriginalUrl(), announcement.getRecruitmentType().name(),
+                        announcement.getOriginalUrl(), enumName(announcement.getRecruitmentType()),
                         announcement.getPostedDate(), announcement.getApplicationStartDate(),
                         announcement.getApplicationEndDate(), announcement.getWinnerAnnouncementDate(),
                         announcement.getStatus().name(), announcement.origin().name(),
-                        announcement.getSupplyOwner().name()));
+                        announcement.getSupplyOwner().name(), announcement.getReleaseStatus().name()));
     }
 
     private AdminAnnouncementUpdateRequest data(Announcement announcement) {
@@ -331,5 +331,9 @@ public class AdminAnnouncementManagementService {
                 new AdminSupplyRowUpdateRequest.SupplyData(row.displayHousingTypeName(),
                         row.getSupplyPnu(), row.getExpectedMoveInMonth(), row.getSupplyCategory(),
                         row.getTotalSupplyHouseholdCount()), shared);
+    }
+
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 }

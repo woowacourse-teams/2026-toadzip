@@ -42,6 +42,13 @@ class AnnouncementSupplyOwnerTest {
         assertThat(admin.origin()).isEqualTo(AnnouncementOrigin.LH_SOURCE);
     }
 
+    @Test
+    void GH와_SH_원천으로_만든_공고는_기관_원천_출처다() {
+        assertThat(announcement("GH:801").origin()).isEqualTo(AnnouncementOrigin.GH_SOURCE);
+        assertThat(announcement("SH:309337").origin()).isEqualTo(AnnouncementOrigin.SH_SOURCE);
+        assertThat(announcement("GHX801").origin()).isEqualTo(AnnouncementOrigin.MYHOME_LEGACY);
+    }
+
     private Announcement announcement(String identifier) {
         return Announcement.create(identifier, null, null, "공고", AnnouncementPublicationType.ORIGINAL,
                 RentalType.NATIONAL_RENTAL, RecruitmentType.NEW, AgencyCode.LH, LocalDate.of(2026, 8, 1),

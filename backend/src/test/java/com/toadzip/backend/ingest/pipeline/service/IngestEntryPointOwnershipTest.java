@@ -4,14 +4,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
 
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCatalogCollectionService;
-import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
+import com.toadzip.backend.ingest.lh.collection.leasecatalog.service.LhLeaseCatalogCollectionService;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
-import com.toadzip.backend.ingest.collection.sh.service.ShAnnouncementCollectionService;
+import com.toadzip.backend.ingest.gh.collection.service.GhAnnouncementCollectionService;
+import com.toadzip.backend.ingest.gh.refinement.service.GhAnnouncementRefinementService;
+import com.toadzip.backend.ingest.sh.collection.service.ShAnnouncementCollectionService;
+import com.toadzip.backend.ingest.sh.refinement.service.ShAnnouncementRefinementService;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
-import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementRefinementService;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.location.service.LocationSummaryImportService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMergeService;
@@ -36,6 +39,9 @@ class IngestEntryPointOwnershipTest {
                 Arguments.of(MyHomeAnnouncementCollectionService.class, "collect", 1),
                 Arguments.of(MyHomeComplexCollectionService.class, "collect", 1),
                 Arguments.of(ShAnnouncementCollectionService.class, "collect", 0),
+                Arguments.of(GhAnnouncementCollectionService.class, "collect", 0),
+                Arguments.of(GhAnnouncementRefinementService.class, "refineAll", 0),
+                Arguments.of(ShAnnouncementRefinementService.class, "refineAll", 0),
                 Arguments.of(LhHousingTypeHouseholdEnrichmentService.class, "enrichAll", 0),
                 Arguments.of(LocationSummaryImportService.class, "importMatches", 2),
                 Arguments.of(MyHomeComplexMappingService.class, "mapAll", 0),

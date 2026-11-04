@@ -81,7 +81,7 @@ public class AnnouncementPdfExtractionService {
     public PdfExtractionJobResponse requestAttachment(long announcementId, String admin, long attachmentId) {
         requireAnnouncement(announcementId);
         requireNoActiveJob(announcementId);
-        AttachmentContent content = attachments.read(announcementId, attachmentId, false);
+        AttachmentContent content = attachments.readForAdmin(announcementId, attachmentId);
         return request(announcementId, admin, content.fileName(), bytesOf(content.file()));
     }
 

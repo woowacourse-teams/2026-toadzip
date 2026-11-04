@@ -14,7 +14,7 @@ import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -24,6 +24,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper;
+import com.toadzip.backend.ingest.lh.refinement.service.LhScheduleAttachmentWriter;
 
 @SpringBootTest
 @ActiveProfiles("test")

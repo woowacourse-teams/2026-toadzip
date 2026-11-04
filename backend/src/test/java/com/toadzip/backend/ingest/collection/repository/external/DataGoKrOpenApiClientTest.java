@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
-import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
+import com.toadzip.backend.ingest.lh.collection.repository.external.LhResponseStatusValidator;
 import java.net.URI;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

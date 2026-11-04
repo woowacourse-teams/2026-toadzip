@@ -1,0 +1,227 @@
+package com.toadzip.backend.ingest.lh.collection.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.domain.LhAnnouncementCatalogSourceView;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver.Skipped;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
+import com.toadzip.backend.ingest.lh.collection.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionPolicy;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.Period;
+import java.time.ZoneOffset;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+class LhAnnouncementCollectionCandidateResolverTest {
+
+    private final LhAnnouncementCatalogSourceReader catalogRepository =
+            mock(LhAnnouncementCatalogSourceReader.class);
+    private static final Instant NOW = Instant.parse("2026-09-26T00:00:00Z");
+
+    private final LhAnnouncementCollectionCandidateResolver resolver = new LhAnnouncementCollectionCandidateResolver(
+            catalogRepository, new LhAnnouncementCollectionPolicy(Clock.fixed(NOW, ZoneOffset.UTC), Period.ofDays(30)));
+
+    @Test
+    void 공고목록의_임대주택_공고를_목록의_조회코드로_수집_후보로_만든다() {
+        var announcement = catalogAnnouncement("06", "07", "062", "2026.09.20");
+        when(catalogRepository.findAllPresentRentalHousingAnnouncements()).thenReturn(List.of(announcement));
+
+        List<Candidate> candidates = resolver.resolveCatalogTargets();
+
+        assertThat(candidates).singleElement().satisfies(candidate -> {
+            assertThat(candidate.sourceAnnouncementKey()).isEqualTo("lh-catalog:" + announcement.getSourceKey());
+            assertThat(candidate.request()).isEqualTo(new LhAnnouncementRequest("200", "03", "06", "07", "062"));
+            assertThat(candidate.catalogCollectedAt()).isEqualTo(NOW);
+        });
+    }
+
+    @Test
+    void 종료_후_수집_기간이_지난_공고목록_공고는_후보에서_빼되_관리자_승인용_요청에는_남긴다() {
+        when(catalogRepository.findAllPresentRentalHousingAnnouncements())
+                .thenReturn(List.of(catalogAnnouncement("06", "07", "062", "2026.08.01")));
+
+        assertThat(resolver.resolveCatalogTargets()).isEmpty();
+        assertThat(resolver.resolveCatalogRequests()).extracting(Candidate::panId).containsExactly("200");
+    }
+
+    @Test
+    void 임대주택_공고와_신혼희망타운_임대_공고만_공고목록_수집_대상이다() {
+        assertThat(catalogAnnouncement("06", "07", "062", "").isRentalHousingAnnouncement()).isTrue();
+        assertThat(catalogAnnouncement("06", "10", "063", "").isRentalHousingAnnouncement()).isTrue();
+        assertThat(catalogAnnouncement("39", "42", "063", "").isRentalHousingAnnouncement()).isTrue();
+        assertThat(catalogAnnouncement("39", "51", "390", "").isRentalHousingAnnouncement()).isTrue();
+        // 어린이집 운영자 모집, 신혼희망타운 공공분양, 분양주택은 받지 않는다.
+        assertThat(catalogAnnouncement("06", "40", "064", "").isRentalHousingAnnouncement()).isFalse();
+        assertThat(catalogAnnouncement("39", "39", "390", "").isRentalHousingAnnouncement()).isFalse();
+        assertThat(catalogAnnouncement("05", "05", "050", "").isRentalHousingAnnouncement()).isFalse();
+    }
+
+    private LhAnnouncementCatalogSourceView catalogAnnouncement(String upper, String type, String supply, String closingDate) {
+        return LhSourceViews.announcementCatalog(NOW, new LhAnnouncementCatalogSnapshot(
+                "200", "03", upper, type, supply, "공고", "공고중", "2026.09.01", "2026.09.01", closingDate, "", ""));
+    }
+
+    @Test
+    void LH_공고의_공급유형과_URL로_수집_후보를_만든다() {
+        MyHomeAnnouncementSourceView source = source(
+                "LH",
+                "행복주택",
+                "https://apply.lh.or.kr/panDetail?panId=100"
+                        + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=48"
+        );
+
+        var resolution = resolver.resolve(source);
+
+        assertThat(resolution).isInstanceOfSatisfying(Candidate.class, candidate -> {
+            assertThat(candidate.sourceAnnouncementKey()).isEqualTo("100");
+            assertThat(candidate.panId()).isEqualTo("100");
+            assertThat(candidate.request().supplyInfoTypeCode()).isEqualTo("063");
+        });
+    }
+
+    @Test
+    void LH가_아닌_공고는_건너뛸_대상으로_분류한다() {
+        MyHomeAnnouncementSourceView source = source(
+                "서울주택도시공사",
+                "행복주택",
+                "https://apply.lh.or.kr/panDetail?panId=100"
+                        + "&ccrCnntSysDsCd=03&uppAisTpCd=06"
+        );
+
+        var resolution = resolver.resolve(source);
+
+        assertThat(resolution).isInstanceOfSatisfying(Skipped.class, skipped ->
+                assertThat(skipped.reason()).isEqualTo(
+                        "LH 공급기관이 아닌 마이홈 공고라서 수집 대상이 아닙니다."
+                ));
+    }
+
+    @Test
+    void 목록에서_유일하게_연결되면_공식_공급코드와_변경시각을_사용한다() {
+        Instant observedAt = Instant.parse("2026-09-25T00:00:00Z");
+        var row = LhSourceViews.announcementCatalog(observedAt, new LhAnnouncementCatalogSnapshot(
+                "100", "03", "06", "48", "064", "공고", "공고중", "", "", "", "", ""
+        ));
+        when(catalogRepository.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100")))
+                .thenReturn(List.of(row));
+        var source = source("LH", "행복주택",
+                "https://apply.lh.or.kr/panDetail?panId=100&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=48");
+
+        var resolutions = resolver.resolveAll(List.of(source, source));
+
+        assertThat(resolutions).allSatisfy(resolution ->
+                assertThat(resolution).isInstanceOfSatisfying(Candidate.class, candidate -> {
+                    assertThat(candidate.request().supplyInfoTypeCode()).isEqualTo("064");
+                    assertThat(candidate.catalogChangedAt()).isEqualTo(observedAt);
+                    assertThat(candidate.catalogCollectedAt()).isEqualTo(observedAt);
+                }));
+        verify(catalogRepository).findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100"));
+    }
+
+    @Test
+    void URL에_공고유형이_없으면_유일하게_연결된_목록의_조회코드로_보완한다() {
+        Instant collectedAt = Instant.parse("2026-09-25T00:00:00Z");
+        var row = LhSourceViews.announcementCatalog(collectedAt, new LhAnnouncementCatalogSnapshot(
+                "100", "03", "06", "48", "064", "공고", "공고중", "", "", "", "", ""
+        ));
+        when(catalogRepository.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100")))
+                .thenReturn(List.of(row));
+
+        var resolution = resolver.resolve(source("LH", "행복주택",
+                "https://apply.lh.or.kr/panDetail?panId=100&ccrCnntSysDsCd=03&uppAisTpCd=06"));
+
+        assertThat(resolution).isInstanceOfSatisfying(Candidate.class, candidate -> {
+            assertThat(candidate.request().announcementTypeCode()).isEqualTo("48");
+            assertThat(candidate.request().supplyInfoTypeCode()).isEqualTo("064");
+            assertThat(candidate.catalogCollectedAt()).isEqualTo(collectedAt);
+        });
+    }
+
+    @Test
+    void 같은_공고ID여도_유형이_다르면_기존_마이홈_조회조건을_유지한다() {
+        var row = LhSourceViews.announcementCatalog(Instant.now(), new LhAnnouncementCatalogSnapshot(
+                "100", "03", "06", "10", "061", "공고", "공고중", "", "", "", "", ""
+        ));
+        when(catalogRepository.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100")))
+                .thenReturn(List.of(row));
+
+        var resolution = resolver.resolve(source("LH", "행복주택",
+                "https://apply.lh.or.kr/panDetail?panId=100&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=48"));
+
+        assertThat(resolution).isInstanceOfSatisfying(Candidate.class, candidate -> {
+            assertThat(candidate.request().supplyInfoTypeCode()).isEqualTo("063");
+            assertThat(candidate.catalogCollectedAt()).isNull();
+        });
+    }
+
+    @Test
+    void 후보와_건너뛸_원천이_섞여도_입력_순서와_중복을_보존한다() {
+        var candidate = source("LH", "행복주택",
+                "https://apply.lh.or.kr/panDetail?panId=100&ccrCnntSysDsCd=03&uppAisTpCd=06");
+        var otherProvider = source("서울주택도시공사", "행복주택", candidate.getUrl());
+        var invalidUrl = source("LH", "행복주택", "invalid URL");
+
+        var resolutions = resolver.resolveAll(List.of(candidate, otherProvider, invalidUrl, candidate));
+
+        assertThat(resolutions).hasSize(4);
+        assertThat(resolutions.get(0)).isInstanceOf(Candidate.class);
+        assertThat(resolutions.get(1)).isInstanceOfSatisfying(Skipped.class, skipped ->
+                assertThat(skipped.reason()).contains("LH 공급기관이 아닌"));
+        assertThat(resolutions.get(2)).isInstanceOfSatisfying(Skipped.class, skipped ->
+                assertThat(skipped.reason()).contains("조회 조건을 지원하지 않아"));
+        assertThat(resolutions.get(3)).isEqualTo(resolutions.get(0));
+        verify(catalogRepository).findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100"));
+    }
+
+    @Test
+    void 수집_후보가_없으면_목록을_조회하지_않는다() {
+        var invalidUrl = source("LH", "행복주택", "invalid URL");
+        var unsupportedType = source("LH", "미지원", "https://apply.lh.or.kr/panDetail");
+
+        assertThat(resolver.resolveAll(List.of(invalidUrl, unsupportedType)))
+                .hasSize(2).allMatch(Skipped.class::isInstance);
+        assertThat(resolver.resolveAll(List.of())).isEmpty();
+        verifyNoInteractions(catalogRepository);
+    }
+
+    @Test
+    void 목록의_조회조건이_여러_개와_일치하면_추론한_공급코드를_유지한다() {
+        var rows = List.of("48", "49").stream()
+                .map(type -> LhSourceViews.announcementCatalog(Instant.now(), new LhAnnouncementCatalogSnapshot(
+                        "100", "03", "06", type, "064", "공고", "공고중", "", "", "", "", ""
+                )))
+                .toList();
+        when(catalogRepository.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100")))
+                .thenReturn(rows);
+
+        var resolution = resolver.resolve(source("LH", "행복주택",
+                "https://apply.lh.or.kr/panDetail?panId=100&ccrCnntSysDsCd=03&uppAisTpCd=06"));
+
+        assertThat(resolution).isInstanceOfSatisfying(Candidate.class, candidate -> {
+            assertThat(candidate.request().supplyInfoTypeCode()).isEqualTo("063");
+            assertThat(candidate.catalogCollectedAt()).isNull();
+        });
+    }
+
+    private MyHomeAnnouncementSourceView source(String provider, String supplyType, String url) {
+        MyHomeAnnouncementSourceSnapshot snapshot = new MyHomeAnnouncementSourceSnapshot(
+                "100", 1, null, "공고", provider, null, supplyType, null, null, null,
+                null, null, null, url, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null
+        );
+        return MyHomeSourceViews.announcement(0, snapshot);
+    }
+}

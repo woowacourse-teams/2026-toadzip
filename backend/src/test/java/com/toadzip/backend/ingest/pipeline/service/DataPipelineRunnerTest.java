@@ -16,18 +16,19 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCatalogCollectionService;
-import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
+import com.toadzip.backend.ingest.lh.collection.leasecatalog.service.LhLeaseCatalogCollectionService;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
-import com.toadzip.backend.ingest.collection.sh.service.ShAnnouncementCollectionService;
+import com.toadzip.backend.ingest.gh.collection.service.GhAnnouncementCollectionService;
+import com.toadzip.backend.ingest.sh.collection.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.domain.IngestStepReport;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
-import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport;
-import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementRefinementService;
+import com.toadzip.backend.ingest.lh.refinement.dto.LhAnnouncementRefinementReport;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
@@ -80,6 +81,8 @@ class DataPipelineRunnerTest {
 
     private final ShAnnouncementCollectionService shAnnouncementCollectionService =
             org.mockito.Mockito.mock(ShAnnouncementCollectionService.class);
+    private final GhAnnouncementCollectionService ghAnnouncementCollectionService =
+            mock(GhAnnouncementCollectionService.class);
 
     private DataPipelineStepResultAdapter resultAdapter;
     private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
@@ -99,11 +102,23 @@ class DataPipelineRunnerTest {
                         householdEnrichmentService,
                         lhAnnouncementRefinementService,
                         resultAdapter,
-                        shAnnouncementCollectionService
+                        shAnnouncementCollectionService,
+                        ghAnnouncementCollectionService
                 ),
                 executionStateService,
                 meterRegistry
         );
+    }
+
+    @Test
+    void GH_수집은_GH_원천_수집만_실행한다() {
+        when(ghAnnouncementCollectionService.collect()).thenReturn(collectionReport("gh-announcement"));
+
+        runner.run(DataPipelineType.GH_ANNOUNCEMENT_COLLECTION, executionId);
+
+        verify(ghAnnouncementCollectionService).collect();
+        verifyNoInteractions(shAnnouncementCollectionService, lhAnnouncementCatalogCollectionService, collectionService);
+        verify(executionStateService).completeStep(eq(executionId), eq(DataPipelineStep.COLLECT_GH_ANNOUNCEMENTS), any());
     }
 
     @Test
