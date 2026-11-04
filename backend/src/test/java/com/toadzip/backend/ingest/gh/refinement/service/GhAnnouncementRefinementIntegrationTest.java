@@ -19,6 +19,7 @@ import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -56,6 +57,8 @@ class GhAnnouncementRefinementIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        jdbc.update("DELETE FROM supply_rows WHERE announcement_id IN "
+                + "(SELECT id FROM announcements WHERE source_announcement_identifier LIKE 'GH:%')");
         jdbc.update("DELETE FROM announcement_complexes WHERE announcement_id IN "
                 + "(SELECT id FROM announcements WHERE source_announcement_identifier LIKE 'GH:%')");
         jdbc.update("DELETE FROM announcement_attachments WHERE announcement_id IN "
@@ -213,6 +216,67 @@ class GhAnnouncementRefinementIntegrationTest {
                 SELECT present_in_source FROM announcement_complexes c JOIN announcements a ON a.id = c.announcement_id
                 WHERE a.source_announcement_identifier = 'GH:801'
                 """, Boolean.class)).containsOnly(true).hasSize(2);
+    }
+
+    @Test
+    void 지구의_주택형마다_미리_고른_단지를_가리키는_공급행_틀을_만들고_같은_원천이면_다시_쓰지_않는다() {
+        long dasan = complex("다산 센트럴파크 6단지", "경기도 남양주시 다산순환로 20", "4136010100161070000", "GH",
+                "NATIONAL_RENTAL");
+        collect(ROW);
+
+        refinement.refineAll();
+
+        var rows = supplyRows("GH:801");
+        assertThat(rows).extracting(row -> row.get("source_supply_row_identifier"))
+                .containsExactly("GH:801:다산 센트럴파크6단지:33A", "GH:801:다산 센트럴파크6단지:36A");
+        assertThat(rows).extracting(row -> row.get("source_housing_type_name")).containsExactly("33A", "36A 청년");
+        assertThat(rows).extracting(row -> row.get("total_supply_household_count")).containsExactly(120, 60);
+        assertThat(rows).extracting(row -> row.get("housing_complex_id")).containsOnly(dasan);
+        assertThat(rows).extracting(row -> row.get("housing_type_id")).containsOnly((Object) null);
+
+        refinement.refineAll();
+        assertThat(supplyRows("GH:801")).extracting(row -> row.get("id"))
+                .containsExactlyElementsOf(rows.stream().map(row -> row.get("id")).toList());
+    }
+
+    @Test
+    void 관리자가_PDF_보정을_한_공고는_원천_주택형이_바뀌어도_공급행_틀을_다시_쓰지_않는다() {
+        collect(ROW);
+        refinement.refineAll();
+        jdbc.update("UPDATE announcements SET admin_updated_at = now() WHERE source_announcement_identifier = 'GH:801'");
+        jdbc.update("""
+                UPDATE gh_announcement_source SET districts = replace(districts, '"supplyCount":"120"',
+                    '"supplyCount":"90"') WHERE pbanc_no = '801'
+                """);
+
+        refinement.refineAll();
+
+        assertThat(supplyRows("GH:801")).extracting(row -> row.get("total_supply_household_count"))
+                .containsExactly(120, 60);
+    }
+
+    @Test
+    void 관리자가_손대지_않은_공고는_원천_세대수가_바뀌면_틀을_원천에_맞춘다() {
+        collect(ROW);
+        refinement.refineAll();
+        jdbc.update("""
+                UPDATE gh_announcement_source SET districts = replace(districts, '"supplyCount":"120"',
+                    '"supplyCount":"90"') WHERE pbanc_no = '801'
+                """);
+
+        refinement.refineAll();
+
+        assertThat(supplyRows("GH:801")).extracting(row -> row.get("total_supply_household_count"))
+                .containsExactly(90, 60);
+    }
+
+    private List<Map<String, Object>> supplyRows(String identifier) {
+        return jdbc.queryForList("""
+                SELECT r.id, r.source_supply_row_identifier, r.source_housing_type_name, r.total_supply_household_count,
+                    r.housing_complex_id, r.housing_type_id
+                FROM supply_rows r JOIN announcements a ON a.id = r.announcement_id
+                WHERE a.source_announcement_identifier = ? ORDER BY r.display_order
+                """, identifier);
     }
 
     private long complex(String name, String roadAddress, String pnu, String provider, String supplyType) {
