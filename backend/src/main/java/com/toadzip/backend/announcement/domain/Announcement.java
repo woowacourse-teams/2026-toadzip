@@ -512,6 +512,29 @@ public class Announcement {
         return true;
     }
 
+    /**
+     * GH 원천 값으로 미확정 공고의 공고명·게시일·원문 URL을 맞춘다. 공개됐거나 관리자가 고친 공고는 덮지 않고, 원천 값이
+     * 다르면 원천 검토 대상으로 표시한다. 휴지통 공고는 바꾸지 않는다. 값을 바꿨으면 true다.
+     */
+    public boolean updateFromGh(String name, LocalDate postedDate, String originalUrl) {
+        validateNotBlank(name, "공고명");
+        validateRequired(postedDate, "게시일");
+        validateNotBlank(originalUrl, "원문 URL");
+        boolean same = this.name.equals(name) && this.postedDate.equals(postedDate)
+                && this.originalUrl.equals(originalUrl);
+        if (same || adminDeleted) {
+            return false;
+        }
+        if (adminModified || isPublished()) {
+            sourceReviewRequired = true;
+            return false;
+        }
+        this.name = name;
+        this.postedDate = postedDate;
+        this.originalUrl = originalUrl;
+        return true;
+    }
+
     private LocalDate unlessReviewed(LocalDate source, LocalDate current) {
         if (applicationScheduleReviewed) {
             return current;
