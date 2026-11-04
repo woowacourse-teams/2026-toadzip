@@ -334,7 +334,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       const latest = await applyJsonUpdate(id, input, preview.confirmationToken)
       finishApplied(latest, preview)
     } catch (cause) {
-      // 스냅숏 충돌도 같은 409를 쓴다. 미확정 공고의 필수값·공개 여부는 공급행만으로 확인할 수 없어 재비교한다.
+      // 스냅숏 충돌도 같은 409를 쓴다. 공개 요청은 공개 여부를 공급행·문서로 확인할 수 없어 반영됐다고 보지 않고 재비교한다.
       if (cause instanceof ManagementError && cause.status === 409 && cause.code === 'ADMIN_DATA_CONFLICT') {
         try {
           const latest = await loadJsonWorkspace(id)

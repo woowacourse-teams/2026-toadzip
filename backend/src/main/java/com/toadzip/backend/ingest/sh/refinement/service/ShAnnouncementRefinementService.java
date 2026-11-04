@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.sh.refinement.service;
 
+import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import com.toadzip.backend.ingest.sh.collection.domain.ShAnnouncementSource;
@@ -55,6 +56,9 @@ public class ShAnnouncementRefinementService {
                     ownershipGuard.verifyWrite();
                     return refiner.refine(target);
                 }), 1, Integer::sum);
+            }
+            catch (IngestOwnershipLostException lost) {
+                throw lost;
             }
             catch (RuntimeException failure) {
                 failed++;

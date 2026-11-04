@@ -5,6 +5,7 @@ import com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementSource;
 import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.gh.refinement.dto.GhAnnouncementRefinementReport;
 import com.toadzip.backend.ingest.gh.refinement.service.GhAnnouncementRefiner.Outcome;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import java.util.Comparator;
@@ -61,6 +62,9 @@ public class GhAnnouncementRefinementService {
                     ownershipGuard.verifyWrite();
                     return refiner.refine(target, index, () -> recheck[0]++);
                 }), 1, Integer::sum);
+            }
+            catch (IngestOwnershipLostException lost) {
+                throw lost;
             }
             catch (RuntimeException failure) {
                 failed++;

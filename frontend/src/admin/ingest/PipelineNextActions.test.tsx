@@ -38,7 +38,7 @@ it.each([
   expect(screen.getByText(/PDF 보정에서 단지를 확인하고 공개를 요청해야 사용자에게 보입니다/)).toBeVisible()
 })
 
-it.each(['IDLE', 'RUNNING', 'FAILED', 'STOPPED'] as const)('SH 수집이 %s이면 공개 전 확인 안내를 보이지 않는다', status => {
+it.each(['IDLE', 'RUNNING', 'FAILED', 'STOPPED', 'COMPLETED_WITH_SKIPS'] as const)('SH 수집이 %s이면 공개 전 확인 안내를 보이지 않는다', status => {
   render(<MemoryRouter><PipelineNextActions execution={execution('SH_ANNOUNCEMENT_COLLECTION', status)} /></MemoryRouter>)
   expect(screen.queryByRole('link', { name: '공개 전 확인이 필요한 공고 보기' })).not.toBeInTheDocument()
 })
