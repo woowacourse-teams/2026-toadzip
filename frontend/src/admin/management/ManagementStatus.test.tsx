@@ -29,6 +29,12 @@ it('LH 공고 정제가 다루지 않는 공고에는 공급정보 주인을 표
     origin: 'MYHOME_LEGACY', supplyOwner: 'LH_SOURCE' } }} />)
   expect(screen.getByText('출처: 마이홈(과거)')).toBeInTheDocument()
   expect(screen.queryByText(/공급정보:/)).not.toBeInTheDocument()
+  rerender(<AnnouncementOwnership summary={{ ...summary, announcement: { ...summary.announcement!,
+    origin: 'GH_SOURCE', supplyOwner: 'ANNOUNCEMENT_DOCUMENT' } }} />)
+  expect(screen.getByText('출처: GH 원천')).toBeInTheDocument()
+  rerender(<AnnouncementOwnership summary={{ ...summary, announcement: { ...summary.announcement!,
+    origin: 'SH_SOURCE', supplyOwner: 'ANNOUNCEMENT_DOCUMENT' } }} />)
+  expect(screen.getByText('출처: SH 원천')).toBeInTheDocument()
 })
 
 it('출처와 공급정보 주인이 없는 이전 응답에는 표시하지 않는다', () => {

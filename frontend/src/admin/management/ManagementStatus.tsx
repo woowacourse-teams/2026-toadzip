@@ -9,7 +9,7 @@ export function PublicationType({ summary }: { summary: ManagementSummary }) {
   return <span>{publication[type]}</span>
 }
 
-const origins: Record<string, string> = { LH_SOURCE: '출처: LH 원천', ADMIN_ENTRY: '출처: 직접 등록', MYHOME_LEGACY: '출처: 마이홈(과거)' }
+const origins: Record<string, string> = { LH_SOURCE: '출처: LH 원천', ADMIN_ENTRY: '출처: 직접 등록', GH_SOURCE: '출처: GH 원천', SH_SOURCE: '출처: SH 원천', MYHOME_LEGACY: '출처: 마이홈(과거)' }
 const supplyOwners: Record<string, { label: string; title: string }> = {
   LH_SOURCE: { label: '공급정보: 원천 반영', title: '관리자가 공급정보를 고친 적이 없습니다. LH 공고 정제로 바꾼 뒤에는 정제가 원천 값으로 공급행을 다시 만듭니다.' },
   ANNOUNCEMENT_DOCUMENT: { label: '공급정보: 공고문 확정', title: '관리자가 공급정보를 고쳤습니다. LH 공고 정제로 바꾼 뒤에는 정제가 이 공고의 공급행을 다시 만들지 않습니다.' },

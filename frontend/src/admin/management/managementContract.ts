@@ -43,7 +43,7 @@ export type ManagementAnnouncementSummary = {
   winnerAnnouncementDate: string | null
   /** ORIGINAL·CORRECTION·CANCELLATION. 이전 서버 응답에는 없다. */
   publicationType?: string
-  /** LH_SOURCE·ADMIN_ENTRY·MYHOME_LEGACY. 이전 서버 응답에는 없다. */
+  /** LH_SOURCE·ADMIN_ENTRY·GH_SOURCE·SH_SOURCE·MYHOME_LEGACY. 이전 서버 응답에는 없다. */
   origin?: string
   /** LH_SOURCE·ANNOUNCEMENT_DOCUMENT. 이전 서버 응답에는 없다. */
   supplyOwner?: string
