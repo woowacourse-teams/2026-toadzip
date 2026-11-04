@@ -2,7 +2,7 @@ import type { ExtractedAnnouncement, HousingTypeValue, JsonObject, JsonUpdateInp
 import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type LinkedHousingType, type NewSupplyGroup } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, type Evidence, type Extraction, type Subtype } from './extraction'
 import { foldRows } from './subtypes'
-import { attachableLhRows, defaultTargetDestinations, foldSameSourceRows, lhName, lhSourceLabels, missingHousingType, originalDate, pickSubtypes, proposePlacements, proposeRows, proposeSchedules, sharedFoldGroups, splitSameSourceRows, splittableLhRows, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
+import { areaValue, attachableLhRows, defaultTargetDestinations, equalArea, foldSameSourceRows, lhName, lhSourceLabels, missingHousingType, originalDate, pickSubtypes, proposePlacements, proposeRows, proposeSchedules, sharedFoldGroups, splitSameSourceRows, splittableLhRows, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
@@ -53,17 +53,20 @@ export function shownDateTime(value: unknown) {
 }
 export function shown(value: unknown) { return value === null || value === undefined || value === '' ? '미확인' : String(value) }
 
+/** 저장된 일시는 초까지(10:00:00), PDF와 입력칸은 분까지(10:00) 적으므로 초를 붙여 같은 시각을 변경으로 보지 않는다. */
+const fullDateTime = (value: string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) ? `${value}:00` : value
 function normalized(kind: Kind, value: unknown): unknown {
   if (value === null || value === undefined || value === '') return null
   if (kind === 'money' && typeof value === 'number' && Number.isSafeInteger(value)) return String(value)
-  return typeof value === 'string' ? value.trim() : value
+  if (typeof value !== 'string') return value
+  return kind === 'datetime' ? fullDateTime(value.trim()) : value.trim()
 }
 export function validCellValue(kind: Kind, value: unknown): boolean {
   if (kind === 'housingType' && value === null) return true
   if (value === null || value === undefined || value === '') return false
   if (kind === 'count') return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 2147483647
   if (kind === 'housingType') return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= 2147483647
-  if (kind === 'area') return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 999999.9999 && Math.abs(value * 10000 - Math.round(value * 10000)) < .00001
+  if (kind === 'area') return areaValue(value)
   if (kind === 'money') return typeof value === 'string' && /^\d{1,18}$/.test(value)
   if (typeof value !== 'string' || !value.trim() || value.length > 255) return false
   if (kind === 'date' || kind === 'datetime') {
@@ -75,7 +78,8 @@ export function validCellValue(kind: Kind, value: unknown): boolean {
   if (kind === 'month') return /^\d{4}-(0[1-9]|1[0-2])$/.test(value)
   if (kind === 'method') return ['ONLINE', 'VISIT', 'MAIL', 'ETC'].includes(value)
   if (kind === 'scheduleType') return ['APPLICATION', 'DOCUMENT_SUBMISSION', 'WINNER_ANNOUNCEMENT', 'CONTRACT', 'MOVE_IN', 'ETC'].includes(value)
-  if (kind === 'url') { try { return ['http:', 'https:'].includes(new URL(value).protocol) && !/\s/.test(value) } catch { return false } }
+  // 서버 검증(^https?://[^\s]+$)과 같이 소문자 http(s)://로 시작하고 공백이 없어야 한다.
+  if (kind === 'url') { try { return /^https?:\/\/\S+$/.test(value) && Boolean(new URL(value)) } catch { return false } }
   return true
 }
 const compact = (text: string) => text.replace(/\s+/g, '')
@@ -114,7 +118,7 @@ export function extractedBlockReason(cell: Cell) {
   return cell.extracted.value == null ? 'PDF에서 값을 읽지 못했습니다.' : '근거 인용이 없어 원문 위치를 확인할 수 없습니다.'
 }
 export function editCell(cell: Cell, input: string): Cell {
-  const value = input === '' ? null : cell.kind === 'area' || cell.kind === 'count' || cell.kind === 'housingType' ? Number(input) : input
+  const value = input === '' ? null : cell.kind === 'area' || cell.kind === 'count' || cell.kind === 'housingType' ? Number(input) : cell.kind === 'datetime' ? fullDateTime(input) : input
   const state = value === null && cell.kind !== 'housingType' ? 'unresolved' : !validCellValue(cell.kind, value) ? 'invalid' : JSON.stringify(value) === JSON.stringify(cell.before) ? 'same' : cell.before === null ? 'new' : 'changed'
   return { ...cell, input, manualInput: input, value, state, mode: 'manual', selected: state === 'changed' || state === 'new', edited: true, reviewed: true, note: '' }
 }
@@ -254,6 +258,8 @@ export type PendingItem = { id: string; section: ReviewSection }
 export function pendingCell(cell: Cell) {
   return !cell.locked && (cell.mode === 'manual' ? cell.state === 'invalid' : !cell.reviewed && ['confirm', 'invalid'].includes(cell.extracted.state))
 }
+/** 칸 하나가 확인 필요인지. needs는 칸끼리 함께 맞춰야 하는 확인(fieldNeeds)이다. 개수·표시·필터가 모두 이 판정을 쓴다. */
+export function pendingField(cell: Cell, needs?: Map<string, string>) { return pendingCell(cell) || Boolean(needs?.has(cell.path)) }
 /** 필터는 추출 당시 상태로 고정해 값을 고르는 동안 항목이 사라지지 않게 한다. */
 export function cellMatches(cell: Cell, filter: ReviewFilter) {
   return filter === 'all' || (filter === 'pending' ? pendingCell(cell) : cell.extracted.state === filter)
@@ -266,9 +272,80 @@ function unnamedNewTarget(target: TargetReview) {
   const name = target.cells.find(cell => cell.field === 'target')
   return target.destination === 'new' && !(name?.selected && !name.locked && String(name.value ?? '').trim())
 }
-export function pendingSchedule(schedule: ScheduleReview) { return schedule.proposal.needsConfirmation && !schedule.reviewed }
+/**
+ * 칸마다 값은 맞아도 함께 저장하면 서버가 거절하는 접수처·기본정보 칸과 안내. 칸 경로로 찾는다.
+ * 접수처는 접수처명·접수 방식이 있어야 저장되어, 접수처가 없던 공고에 PDF의 주소·연락처만 고르면 이름 없는 접수처가 된다.
+ * 접수 종료일은 시작일보다 빠를 수 없어, 한쪽만 PDF 값으로 바꾸면 기존 값과 앞뒤가 뒤집힐 수 있다.
+ */
+/** 저장(assembleReview)과 같이 반영을 고른 칸은 그 값, 아니면 기존 값 */
+export function savedValue(cell: Cell) { return cell.selected && !cell.locked ? cell.value : cell.before }
+export function fieldNeeds({ reception, metadata }: Pick<Review, 'reception' | 'metadata'>): Map<string, string> {
+  const saved = savedValue
+  const needs = new Map<string, string>()
+  if (reception.some(cell => saved(cell) != null)) {
+    for (const cell of reception.filter(item => ['name', 'method'].includes(item.field) && !validCellValue(item.kind, saved(item)))) {
+      needs.set(cell.path, `접수처를 저장하려면 ${cell.label}이 필요합니다. 직접 입력하거나, 접수처를 바꾸지 않으려면 다른 접수처 항목을 비워 두세요.`)
+    }
+  }
+  const start = metadata.find(cell => cell.field === 'applicationStartDate'), end = metadata.find(cell => cell.field === 'applicationEndDate')
+  if (start && end && typeof saved(start) === 'string' && typeof saved(end) === 'string' && String(saved(end)) < String(saved(start))) {
+    for (const cell of [start, end]) needs.set(cell.path, `접수 종료일(${String(saved(end))})이 시작일(${String(saved(start))})보다 빠릅니다. 원문과 대조해 두 날짜를 맞추세요.`)
+  }
+  return needs
+}
+/**
+ * 서버 요청값 검증(400)이 돌려준 필드 경로(correction.rows[7].targets[3].deposit)를 공급행 이름으로 바꿔 알리고 그 행으로 옮긴다.
+ * 요청의 rows 순서는 화면 순서와 달라 행 key로 찾는다. 찾지 못한 경로는 그대로 보인다.
+ */
+export function serverFieldsError(review: Review, input: Pick<JsonUpdateInput, 'correction'>, fields: Record<string, string>) {
+  let reviewId: string | null = null
+  const lines = Object.entries(fields).map(([field, reason]) => {
+    const match = /(?:^|\.)correction\.rows\[(\d+)\]\.?(.*)$/.exec(field)
+    // 기존 행을 고치면 요청 행 key는 저장된 행 key(저장 위치)이고, 새 행은 검토 행 key다.
+    const key = match ? input.correction.rows[Number(match[1])]?.key : undefined
+    const at = key === undefined ? -1 : review.rows.findIndex(row => row.key === key || row.proposal.destination === key)
+    if (at < 0) return `${field}: ${reason}`
+    reviewId ??= `row:${at}`
+    return `${rowName(review, at)}${match![2] ? ` ${match![2]}` : ''}: ${reason}`
+  })
+  return { message: `서버가 요청값을 받지 않았습니다. ${lines.join(' / ')}`, reviewId }
+}
+/** 서버가 속성 경로로 돌려준 기본정보·접수처 검증 메시지("receptionPlace.name: 필수 값입니다.")를 화면 칸 이름과 위치로 바꾼다. */
+export function serverFieldError(review: Pick<Review, 'reception' | 'metadata'>, message: string) {
+  const match = /^([\w.]+): (.+?)(?: \/ |$)/.exec(message)
+  if (!match) return null
+  const path = match[1].startsWith('receptionPlace.') ? match[1] : `announcement.${match[1]}`
+  const cell = [...review.reception, ...review.metadata].find(item => item.path === path)
+  return cell ? { message: `${cell.label}: ${match[2]}`, reviewId: `cell:${cell.path}` } : null
+}
+/** 적용하기로 한 일정이 확인 필요인지. 대응 확인이 남았거나, 저장할 유형·이름·시작·종료 중 빈 값이 있으면 확인 필요다. */
+export function pendingSchedule(schedule: ScheduleReview) {
+  if (schedule.proposal.undated) return false
+  return schedule.proposal.needsConfirmation && !schedule.reviewed || schedule.include && !scheduleStorable(schedule)
+}
+/** 저장(assembleReview)과 같이 반영을 고른 칸은 그 값, 아니면 기존 일정 값으로 유형·이름·시작·종료가 모두 있는지 */
+export function scheduleStorable(schedule: ScheduleReview) {
+  return schedule.cells.every(cell => validCellValue(cell.kind, savedValue(cell)))
+}
 /** 연결 주택형을 아직 정하지 못한 세부 타입 번호 */
-export function pendingSubtypes(row: RowReview) { return row.include ? (row.subtypes ?? []).flatMap((subtype, at) => subtype.choice === null ? [at] : []) : [] }
+export function pendingSubtypes(row: RowReview) {
+  if (!row.include) return []
+  const sameArea = sameAreaSubtypes(row)
+  return (row.subtypes ?? []).flatMap((subtype, at) => subtype.choice === null || sameArea.includes(at) ? [at] : [])
+}
+export const sameAreaNote = '앞 세부 타입과 연결 주택형의 전용면적이 같습니다. 한 공급행에는 전용면적마다 주택형 하나만 연결할 수 있으니 하나를 \'연결 안 함\'으로 두세요.'
+/** 앞 세부 타입과 같은 전용면적의 주택형을 연결한 세부 타입 번호. 서버는 한 공급행에 전용면적마다 주택형 하나만 연결한다. */
+export function sameAreaSubtypes(row: RowReview): number[] {
+  const seen: number[] = []
+  return (row.subtypes ?? []).flatMap((subtype, at) => {
+    const area = typeof subtype.choice === 'number' ? row.proposal.candidates.find(type => type.id === subtype.choice)?.exclusiveArea
+      : subtype.choice === 'new' ? subtype.exclusiveArea : null
+    if (typeof area !== 'number') return []
+    if (seen.some(value => equalArea(value, area))) return [at]
+    seen.push(area)
+    return []
+  })
+}
 /** PDF 단지 이름별 공급행 번호. 처음 나온 단지 순서를 따른다. 공급정보 화면은 이 묶음대로 보여 준다. */
 export function complexGroups(review: Review) {
   const groups: { name: string; indexes: number[] }[] = []
@@ -296,7 +373,8 @@ export function pendingItems(review: Review, savesHousingTypes = true, workspace
     if (pendingSchedule(schedule)) items.push({ id: `schedule:${index}`, section: 'schedule' })
     if (schedule.include) schedule.cells.filter(pendingCell).forEach(cell => items.push({ id: `cell:${cell.path}`, section: 'schedule' }))
   })
-  for (const cell of [...review.reception, ...review.metadata].filter(pendingCell)) items.push({ id: `cell:${cell.path}`, section: 'reception' })
+  const needs = fieldNeeds(review)
+  for (const cell of [...review.reception, ...review.metadata].filter(cell => pendingField(cell, needs))) items.push({ id: `cell:${cell.path}`, section: 'reception' })
   return items
 }
 /** 추출 응답의 한글 문장에 섞인 한자·가나·키릴 문자를 찾는다(生계 ↔ 생계). 보정 값으로 그대로 저장하지 않게 한다. */
@@ -457,8 +535,10 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
       if (!existing) row.areaOverride = false
     } else if (entry.newHousingType) {
       const source = review.extraction.supplyRows[index]
-      const created = missingHousingType(row.housingComplexId, entry.proposal.candidates, row.typeName || source.typeName || '', source.values.exclusiveArea, source.values.supplyArea)
-      if (!created || !created.name) throw new ReviewError(`공급행 ${index + 1}: PDF 형명과 전용면적이 있어야 새 주택형을 추가할 수 있습니다.`, `row:${index}`)
+      // 운영자가 면적 칸을 고쳤으면 고친 값으로 새 주택형을 만든다.
+      const area = (field: string) => { const cell = entry.cells.find(item => item.field === field); return cell?.selected && !cell.locked ? cell.value : source.values[field] }
+      const created = missingHousingType(row.housingComplexId, entry.proposal.candidates, row.typeName || source.typeName || '', area('exclusiveArea'), area('supplyArea'))
+      if (!created || !created.name) throw new ReviewError(`공급행 ${index + 1}: PDF 형명과 올바른 전용면적(0보다 크고 소수 넷째 자리까지)이 있어야 새 주택형을 추가할 수 있습니다.`, `row:${index}`)
       row.housingTypeId = null; row.newHousingType = created
     } else if (entry.cells.some(cell => cell.field === 'housingTypeId' && cell.selected && cell.value !== null) && !entry.proposal.candidates.some(type => type.id === row.housingTypeId)) throw new ReviewError('연결 주택형이 선택한 단지에 없습니다. 주택형을 다시 선택하세요.', `row:${index}`)
     // 세부 타입을 함께 연결하지 않는 행은 대표가 그대로면 저장된 연결을 유지하고 바뀌면 대표만 남기도록 목록을 보내지 않는다.
@@ -481,6 +561,11 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
       if (!next.target?.trim()) throw new ReviewError(`${row.housingComplexName ?? row.complexName} ${rowName(review, index)} 조건 ${at + 1}: 공급 대상 이름을 입력하세요.`, `target:${index}:${at}`)
       if (!stored) row.targets.push(next)
     }
+    // 대상별 모집수를 합해 볼 수 있는 행은 합계가 행 모집수를 넘으면 서버가 거절한다. 같은 대상을 새 임대조건으로 겹쳐 넣었을 때 생긴다.
+    const targetSum = row.targets.filter(target => !target.excluded).reduce((sum, target) => sum + (target.householdCount ?? 0), 0)
+    if (row.targetCountsComparable && row.householdCount !== null && targetSum > row.householdCount) {
+      throw new ReviewError(`${rowName(review, index)}: 대상별 모집수 합계 ${targetSum}세대가 행 모집수 ${row.householdCount}세대를 넘습니다. 같은 대상을 새 임대조건으로 겹쳐 추가하지 않았는지 확인하세요.`, `row:${index}`)
+    }
     if (!row.typeName) throw new ReviewError('새 공급행의 주택형명을 확인하세요.', `row:${index}`)
     if (!existing) rows.push(row)
     if (subtypes) housingTypeValues.push(...subtypes.flatMap(item => {
@@ -496,22 +581,29 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
   for (const [index, group] of review.extraction.sharedCounts.entries()) {
     const members = review.rows.filter(row => row.proposal.sharedIndex === index)
     if (members.every(row => !row.include)) continue
-    if (members.some(row => !row.include)) throw new Error('공통 모집 묶음은 모든 행을 함께 적용하거나 함께 제외하세요.')
+    const at = `row:${review.rows.indexOf(members[0])}`
+    if (members.some(row => !row.include)) throw new ReviewError('공통 모집 묶음은 모든 행을 함께 적용하거나 함께 제외하세요.', at)
     const current = members.map(row => rows.find(item => item.key === row.key)!)
-    if (current.some(row => !row)) throw new Error('공통 모집 묶음의 행 대응을 확인하세요.')
+    if (current.some(row => !row)) throw new ReviewError('공통 모집 묶음의 행 대응을 확인하세요.', at)
     if (current.every(row => row.groupId !== null && row.groupId === current[0].groupId)) {
-      if (current[0].sharedHouseholdCount !== group.count) throw new Error('기존 공통 모집수가 PDF와 다릅니다. 공통 모집수는 PDF 보정에서 바꿀 수 없습니다.')
+      if (current[0].sharedHouseholdCount !== group.count) throw new ReviewError('기존 공통 모집수가 PDF와 다릅니다. 공통 모집수는 PDF 보정에서 바꿀 수 없습니다.', at)
       continue
     }
     const original = current.filter(row => row.id !== null)
     // 공통 모집 묶음은 기존 원천행 하나를 기준으로만 만들 수 있다. 새 단지·새 주택형만으로 된 묶음은 저장할 곳이 없어 각 행의 모집수를 비워 둔다.
     if (!sharedGroupStorable(review, index)) continue
-    if (original.length !== 1 || group.count === null || current.some(row => row.housingTypeId === null)) throw new Error('새 공통 모집 묶음은 기존 한 행과 서로 다른 주택형에 연결한 새 행으로 구성하세요.')
+    if (original.length !== 1 || group.count === null || current.some(row => row.housingTypeId === null)) throw new ReviewError('새 공통 모집 묶음은 기존 한 행과 서로 다른 주택형에 연결한 새 행으로 구성하세요.', at)
+    // 서버는 묶음 행마다 다른 주택형과, 기준 행과 같은 단지·소재지(PNU)·공급구분을 요구한다.
+    if (new Set(current.map(row => row.housingTypeId)).size !== current.length) throw new ReviewError('공통 모집 묶음의 행마다 서로 다른 주택형을 연결하세요.', at)
+    const stored = workspace.supply.rows.find(row => row.id === original[0].id) ?? original[0]
+    if (current.some(row => row.housingComplexId !== original[0].housingComplexId || row.pnu !== stored.pnu || row.category !== stored.category)) throw new ReviewError(`공통 모집 묶음은 기존 행 #${String(original[0].id)}과 같은 단지·소재지(PNU)·공급구분이어야 합니다. 새 행의 단지와 PNU를 맞추세요.`, at)
     newGroups.push({ sourceRowId: original[0].id!, rowKeys: current.map(row => row.key), sharedHouseholdCount: group.count })
   }
   const ordered = applyPdfOrder(review, rows)
   const announcement: JsonObject = Object.fromEntries(['name', 'rentalType', 'recruitmentType', 'agencyCode', ...metadataFields.map(([field]) => field)].map(field => [field, workspace.detail.data[field] ?? null]))
   applyCells(announcement, review.metadata, metadataFields)
+  const [need] = fieldNeeds(review)
+  if (need) throw new ReviewError(need[1], `cell:${need[0]}`)
   const reception = { ...((workspace.detail.data.receptionPlace ?? {}) as JsonObject) }
   applyCells(reception, review.reception, receptionFields)
   const document: ExtractedAnnouncement = { schemaVersion: 'admin-announcement-import/v1', source: { originalUrl: workspace.detail.data.originalUrl, sourceDocumentId: workspace.detail.sourceIdentifier, extractedAt: new Date().toISOString() }, announcement, receptionPlace: reception, supplyRows: ordered.filter(row => review.rows.some(entry => entry.include && entry.key === row.key)).map(row => ({
@@ -590,7 +682,7 @@ function housingTypeValue(entry: RowReview, rowKey: string, current: MatchingHou
   const price = housingTypePrice(entry, current)
   const chosen = price.chosen === null ? null : price.options[price.chosen]
   const value: HousingTypeValue = { rowKey, name: typeName && !areaOnlyTypeName(typeName) ? typeName : null,
-    supplyArea: typeof area === 'number' && area >= 0 ? area : null,
+    supplyArea: validCellValue('area', area) ? area as number : null,
     householdCount: typeof count === 'number' && Number.isSafeInteger(count) && count >= 0 ? count : null,
     basicDeposit: chosen?.deposit ?? null, basicMonthlyRent: chosen?.monthlyRent ?? null, ...address }
   return value.name === null && value.supplyArea === null && value.householdCount === null && chosen === null ? null : value
@@ -616,6 +708,8 @@ function subtypeLinks(entry: RowReview, index: number, row: CorrectionRow): { at
   })
   const chosen = links.flatMap(link => link?.housingTypeId ? [link.housingTypeId] : [])
   if (new Set(chosen).size !== chosen.length) throw new ReviewError(`${label}: 세부 타입마다 다른 주택형을 연결하세요.`, `row:${index}`)
+  const [sameArea] = sameAreaSubtypes(entry)
+  if (sameArea !== undefined) throw new ReviewError(`${label}: 세부 타입 ${subtypes[sameArea].name}은(는) ${sameAreaNote}`, `subtype:${index}:${sameArea}`)
   const representative = representativeSubtype(entry), first = links[representative]
   if (!first) throw new ReviewError(`${label}: 세부 타입 하나 이상에 주택형을 연결하세요.`, `row:${index}`)
   row.housingTypeId = first.housingTypeId ?? null; row.newHousingType = first.newHousingType ?? null

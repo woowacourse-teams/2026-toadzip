@@ -5,7 +5,7 @@ import { readExtraction } from './extraction'
 import { blankTarget } from '../supply/supplyCorrectionApi'
 import type { JsonWorkspace } from '../announcement-json/api'
 import { complexCorrespondence } from './correspondence'
-import { areaOnlyTypeName, createRowReview, destinationLabel, housingTypePrice, linkedHousingTypeId, pendingPrice, foreignCharacters, shownDateTime, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, placementProblems, rebaseReview, remapSchedule, remapTarget, validCellValue } from './review'
+import { areaOnlyTypeName, createRowReview, destinationLabel, housingTypePrice, linkedHousingTypeId, pendingPrice, foreignCharacters, shownDateTime, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, placementProblems, rebaseReview, remapSchedule, remapTarget, serverFieldError, serverFieldsError, pendingSubtypes, validCellValue } from './review'
 
 
 const evidence = { reason: '공고문과 대조', sourceUrl: 'https://example.com/notice', sourcePage: '4' }
@@ -34,6 +34,13 @@ it('대상 조건이 달라 접지 않은 한스빌의 공통 모집수는 묶�
   expect(request.document.announcement.name).toBe('기존 공고')
   expect(request.document.announcement.rentalType).toBe('NATIONAL_RENTAL')
   expect(workspace.supply.rows[0].householdCount).toBe(170)
+})
+
+it('새 공통 모집 묶음의 두 행이 같은 주택형을 연결하면 서버에 보내기 전에 그 행으로 안내한다', () => {
+  const { review, workspace } = scenario('hansville', separateHansville())
+  const first = assembleReview(review, workspace, evidence).correction.rows[0].housingTypeId!
+  review.rows[1].cells = review.rows[1].cells.map(cell => cell.field === 'housingTypeId' ? editCell(cell, String(first)) : cell)
+  expect(() => assembleReview(review, workspace, evidence)).toThrow(expect.objectContaining({ reviewId: 'row:0', message: '공통 모집 묶음의 행마다 서로 다른 주택형을 연결하세요.' }))
 })
 
 it('지번을 모르는 단지의 공급행은 소재지 PNU 없이 저장하고 문서 PNU도 비운다', () => {
@@ -204,7 +211,9 @@ it('단지에 맞는 주택형이 없을 때 새 주택형 추가를 고르면 P
   const source = review.extraction.supplyRows[0]
   row.newHousingType = true
   expect(() => assembleReview(review, workspace, evidence)).toThrow('새 주택형')
-  source.values = { ...source.values, exclusiveArea: 99.1234, supplyArea: 120.5 }
+  // 운영자가 면적 칸에 직접 넣은 값이 원본 추출값보다 앞선다.
+  source.values = { ...source.values, exclusiveArea: 26.37125 }
+  row.cells = row.cells.map(cell => cell.field === 'exclusiveArea' ? editCell(cell, '99.1234') : cell.field === 'supplyArea' ? editCell(cell, '120.5') : cell)
   const saved = assembleReview(review, workspace, evidence).correction.rows.find(item => item.key === existing.key)!
   expect(saved.housingTypeId).toBeNull()
   expect(saved.newHousingType).toEqual({ name: saved.typeName, exclusiveArea: 99.1234, supplyArea: 120.5 })
@@ -270,6 +279,97 @@ it('공급 순위는 PDF에서 가져오지 않아 확인할 칸이 없고, 기�
   expect(targets.map(target => [target.target, target.supplyRank])).toEqual([['가군 (생계·의료급여수급자 등)', '전체'], ['나군 (일반 등)', null]])
 })
 
+it('접수처가 없던 공고에 PDF가 접수처명 없이 연락처·방식만 주면 접수처명을 확인 필요로 잡고, 입력하거나 접수처 값을 고르지 않으면 풀린다', () => {
+  const extraction = structuredClone(fixtures.gongju.extraction)
+  extraction.data.receptionPlace.name = null as unknown as string
+  extraction.evidence = extraction.evidence.filter(item => item.path !== 'receptionPlace.name')
+  const { review, workspace } = scenario('gongju', extraction)
+  review.rows[0].reviewed = true
+  review.schedules.forEach(schedule => { schedule.reviewed = true })
+  const reception = () => review.reception.find(cell => cell.field === 'name')!
+  expect(review.reception.filter(cell => cell.selected).map(cell => cell.field)).toEqual(['method', 'contact'])
+  expect(pendingItems(review).map(item => item.id)).toContain('cell:receptionPlace.name')
+  expect(() => assembleReview(review, workspace, evidence)).toThrow(expect.objectContaining({ reviewId: 'cell:receptionPlace.name', message: expect.stringContaining('접수처명이 필요합니다') }))
+  const typed = review.reception.map(cell => cell.field === 'name' ? editCell(cell, 'LH 청약플러스') : cell)
+  expect(pendingItems({ ...review, reception: typed }).map(item => item.id)).not.toContain('cell:receptionPlace.name')
+  expect(assembleReview({ ...review, reception: typed }, workspace, evidence).document.receptionPlace).toMatchObject({ name: 'LH 청약플러스', method: 'VISIT', contact: '1600-1004' })
+  const skipped = review.reception.map(cell => cell.selected ? chooseCellValue(cell, 'keep') : cell)
+  expect(pendingItems({ ...review, reception: skipped }).map(item => item.id)).not.toContain('cell:receptionPlace.name')
+  expect(assembleReview({ ...review, reception: skipped }, workspace, evidence).fields.filter(field => field.startsWith('receptionPlace.'))).toEqual([])
+  expect(reception().before).toBeNull()
+})
+
+it('저장된 일시(초까지)와 PDF·입력값(분까지)이 같은 시각이면 바뀐 값으로 보지 않는다', () => {
+  const extraction = structuredClone(fixtures.gongju.extraction)
+  extraction.data.schedules[1] = { ...extraction.data.schedules[1], name: '당첨자 발표', startAt: '2027-02-26T00:00', endAt: '2027-02-26T00:00' }
+  const { review } = scenario('gongju', extraction)
+  const start = review.schedules[1].cells.find(cell => cell.field === 'startAt')!
+  expect([start.before, start.value, start.state]).toEqual(['2027-02-26T00:00:00', '2027-02-26T00:00:00', 'same'])
+  expect(editCell(start, '2027-02-26T00:00').state).toBe('same')
+  expect(editCell(start, '2027-02-26T14:00')).toMatchObject({ value: '2027-02-26T14:00:00', state: 'changed' })
+})
+
+it('접수 시작일만 PDF 값으로 바꿔 기존 종료일보다 늦어지면 두 날짜를 확인 필요로 잡고 적용을 막는다', () => {
+  const { review, workspace } = scenario('gongju')
+  review.rows[0].reviewed = true
+  review.schedules.forEach(schedule => { schedule.reviewed = true })
+  review.metadata = review.metadata.map(cell => cell.field === 'applicationEndDate' ? { ...cell, before: '2026-10-20', selected: false, mode: 'keep' as const } : cell)
+  expect(pendingItems(review).map(item => item.id)).toEqual(expect.arrayContaining(['cell:announcement.applicationStartDate', 'cell:announcement.applicationEndDate']))
+  expect(() => assembleReview(review, workspace, evidence)).toThrow(expect.objectContaining({ reviewId: 'cell:announcement.applicationStartDate', message: expect.stringContaining('접수 종료일(2026-10-20)이 시작일(2026-10-27)보다 빠릅니다') }))
+  review.metadata = review.metadata.map(cell => cell.field === 'applicationEndDate' ? chooseCellValue(cell, 'extracted') : cell)
+  expect(pendingItems(review).map(item => item.id)).not.toContain('cell:announcement.applicationEndDate')
+})
+
+it('URL은 서버와 같이 소문자 http(s)://로 시작하고 공백이 없어야 한다', () => {
+  expect(validCellValue('url', 'https://apply.lh.or.kr')).toBe(true)
+  expect(validCellValue('url', 'HTTPS://apply.lh.or.kr')).toBe(false)
+  expect(validCellValue('url', 'https:apply.lh.or.kr')).toBe(false)
+  expect(validCellValue('url', 'apply.lh.or.kr')).toBe(false)
+})
+
+it('서버가 칸 경로로 돌려준 기본정보·접수처 검증 메시지를 화면 칸 이름과 위치로 바꾼다', () => {
+  const { review } = scenario('gongju')
+  expect(serverFieldError(review, 'receptionPlace.name: 필수 값입니다.')).toEqual({ message: '접수처명: 필수 값입니다.', reviewId: 'cell:receptionPlace.name' })
+  expect(serverFieldError(review, 'applicationEndDate: 필수 값입니다. / receptionPlace.name: 필수 값입니다.')).toEqual({ message: '접수 종료일: 필수 값입니다.', reviewId: 'cell:announcement.applicationEndDate' })
+  expect(serverFieldError(review, 'originalUrl: HTTP(S) URL이어야 합니다.')).toBeNull()
+  expect(serverFieldError(review, '적용할 변경이 없습니다. 현재값과 다른 항목을 선택하세요.')).toBeNull()
+})
+
+it('세부 타입 둘이 같은 전용면적의 주택형을 연결하면 확인 필요로 잡고, 하나를 연결 안 함으로 두면 풀린다', () => {
+  const { review, workspace } = scenario('hansville')
+  const row = review.rows[0]
+  row.reviewed = true
+  row.subtypes = row.subtypes!.map(subtype => ({ ...subtype, choice: 'new' as const, exclusiveArea: 77.7, options: [] }))
+  expect(pendingSubtypes(row)).toEqual([1])
+  expect(() => assembleReview(review, workspace, evidence)).toThrow(expect.objectContaining({ reviewId: 'subtype:0:1', message: expect.stringContaining('전용면적마다 주택형 하나만') }))
+  row.subtypes[1] = { ...row.subtypes[1], choice: 'none' }
+  expect(pendingSubtypes(row)).toEqual([])
+})
+
+it('대상별 모집수를 합해 볼 수 있는 행에 같은 대상을 새로 겹쳐 넣어 합계가 행 모집수를 넘으면 적용 전에 막는다', () => {
+  const { review, workspace } = scenario('gongju')
+  const stored = workspace.supply.rows.find(row => row.key === review.rows[0].proposal.destination)!
+  Object.assign(stored, { targetCountsComparable: true, householdCount: 70, targets: [{ ...blankTarget(0), id: 13, target: '기존 일반', householdCount: 70 }] })
+  review.rows[0].reviewed = true
+  review.rows[0].targets = review.rows[0].targets.map((_, at) => remapTarget(review, 0, at, 'new', workspace))
+  review.rows[0].cells = review.rows[0].cells.map(cell => cell.field === 'totalSupplyHouseholdCount' ? chooseCellValue(cell, 'keep') : cell)
+  review.rows[0].targets[0].cells = review.rows[0].targets[0].cells.map(cell => cell.field === 'supplyHouseholdCount' ? editCell(cell, '5') : cell)
+  expect(() => assembleReview(review, workspace, evidence)).toThrow(expect.objectContaining({ reviewId: 'row:0', message: expect.stringContaining('대상별 모집수 합계 75세대가 행 모집수 70세대를 넘습니다') }))
+})
+
+it('서버 요청값 검증이 돌려준 공급행 경로를 화면의 공급행 이름으로 바꾸고 그 행으로 옮긴다', () => {
+  const { review, workspace } = scenario('gongju')
+  review.rows[0].reviewed = true
+  const input = assembleReview(review, workspace, evidence)
+  const at = input.correction.rows.findIndex(row => row.key === review.rows[0].proposal.destination)
+  expect(at).toBeGreaterThanOrEqual(0)
+  const result = serverFieldsError(review, input,
+    { [`request.correction.rows[${at}].targets[1].deposit`]: '0 이상이어야 합니다', 'housingTypeValues[0].supplyArea': '숫자 형식이 맞지 않습니다' })
+  expect(result.reviewId).toBe('row:0')
+  expect(result.message).toContain(`공급행 1(26) targets[1].deposit: 0 이상이어야 합니다`)
+  expect(result.message).toContain('housingTypeValues[0].supplyArea: 숫자 형식이 맞지 않습니다')
+})
+
 it('공급행 확인 필요 항목은 화면처럼 PDF 단지 이름별 묶음 순서로 모은다', () => {
   const { review } = scenario('gwangju')
   const names = ['A단지', 'B단지', 'A단지', 'B단지', 'A단지', 'B단지', 'A단지']
@@ -281,10 +381,14 @@ it('공급행 확인 필요 항목은 화면처럼 PDF 단지 이름별 묶음 �
 
 it('확인 필요 항목은 화면 순서로 모으고 사람이 고르거나 대응을 확인하면 사라진다', () => {
   const { review, workspace, housing } = scenario('gongju')
-  expect(pendingItems(review).map(item => item.id)).toEqual(['row:0', 'schedule:2'])
+  // 날짜 없는 '계약안내(개별안내)'는 일정으로 저장하지 않으므로 확인 필요로 세지 않는다.
+  expect(review.schedules[2]).toMatchObject({ include: false, proposal: { undated: true } })
+  expect(pendingItems(review).map(item => item.id)).toEqual(['row:0'])
   review.rows[0].reviewed = true
-  review.schedules[2].reviewed = true
   expect(pendingItems(review).map(item => item.id)).toEqual([])
+  // 적용하기로 한 일정에 빈 값이 있으면 저장 전에 확인 필요로 잡는다.
+  review.schedules[0] = { ...review.schedules[0], include: true, cells: review.schedules[0].cells.map(cell => cell.field === 'endAt' ? { ...cell, value: null, selected: false, before: null } : cell) }
+  expect(pendingItems(review).map(item => item.id)).toEqual(['schedule:0'])
   const deposit = review.rows[0].targets[0].cells.find(cell => cell.field === 'rentalDeposit')!
   expect(pendingCell(editCell(deposit, '1,000'))).toBe(true)
   expect(pendingCell(editCell(deposit, '1000'))).toBe(false)

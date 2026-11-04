@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { blankRow, blankTarget, type CorrectionRow } from '../supply/supplyCorrectionApi'
-import { correctionReflected, summarizePreview } from './applySummary'
+import { correctionReflected, documentReflected, summarizePreview } from './applySummary'
 
 const row = (id: number | null, key: string, typeName: string, householdCount: number, housingTypeId: number | null): CorrectionRow =>
   ({ ...blankRow(0), id, key, typeName, householdCount, housingTypeId, housingComplexId: 41, housingComplexName: '대구테크노폴리스4', complexName: '대구테크노폴리스4' })
@@ -36,4 +36,14 @@ it('분리·연결 행은 값이 같아도 최신 LH 행의 분리행·연결행
   // 다른 저장이 같은 값으로 고쳤지만 나누지 않았으면 이 분리는 반영되지 않았다.
   expect(correctionReflected(intended, { rows, lhSupplyRows: [lh('LH:P:SUPPLY:1', 'row:747', []), lh('LH:P:SUPPLY:2', 'row:901', [])] })).toBe(false)
   expect(correctionReflected(intended, { rows, lhSupplyRows: [lh('LH:P:SUPPLY:1', 'row:747', ['row:747', 'row:900']), lh('LH:P:SUPPLY:2', null, [])] })).toBe(false)
+})
+
+it('이미 처리했다는 응답에서 기본정보는 같아도 고른 일정이 최신값에 없으면 반영되지 않은 것으로 본다', () => {
+  const schedule = { scheduleType: 'APPLICATION', name: '접수', startAt: '2026-10-27T10:00:00', endAt: '2026-10-29T17:00:00' }
+  const input = { fields: ['applicationStartDate', 'receptionPlace.name'], schedules: [{ inputIndex: 0, existingId: 14 }],
+    document: { announcement: { applicationStartDate: '2026-10-27' }, receptionPlace: { name: 'LH 청약플러스' }, schedules: [schedule] } } as unknown as Parameters<typeof documentReflected>[0]
+  const detail = { data: { applicationStartDate: '2026-10-27', receptionPlace: { name: 'LH 청약플러스' } } } as unknown as Parameters<typeof documentReflected>[1]['detail']
+  expect(documentReflected(input, { detail, events: [{ id: 14, data: schedule, complexName: null }] })).toBe(true)
+  expect(documentReflected(input, { detail, events: [{ id: 14, data: { ...schedule, name: '이전 접수' }, complexName: null }] })).toBe(false)
+  expect(documentReflected(input, { detail: { ...detail, data: { ...detail.data, receptionPlace: null } }, events: [{ id: 14, data: schedule, complexName: null }] })).toBe(false)
 })
