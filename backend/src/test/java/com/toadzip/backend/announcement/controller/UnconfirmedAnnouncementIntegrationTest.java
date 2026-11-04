@@ -159,6 +159,31 @@ class UnconfirmedAnnouncementIntegrationTest {
     }
 
     @Test
+    void 연결_없이_들어온_공급행을_같은_보정에서_단지에_연결하며_공개를_요청하면_공개한다() throws Exception {
+        var fixtures = new NotificationFixtures(entityManager, jdbc);
+        Announcement announcement = unconfirmedWithValues();
+        fixtures.link(announcement, null);
+        var complex = fixtures.complex("11140", "1114010100");
+        entityManager.clear();
+        long id = announcement.getId();
+
+        var rename = request(id);
+        rename.withArray("fields").add("name");
+        preview(id, rename).andExpect(status().isOk()).andExpect(jsonPath("$.data.publishes").value(false));
+
+        var request = request(id);
+        ((ObjectNode) request.path("correction").path("rows").get(0)).put("housingComplexId", complex.getId());
+        request.put("publish", true);
+        preview(id, request).andExpect(status().isOk()).andExpect(jsonPath("$.data.publishes").value(true));
+        apply(id, request).andExpect(status().isOk());
+
+        assertThat(releaseStatus(id)).isEqualTo("PUBLISHED");
+        assertThat(outboxCount(announcement.getSourceAnnouncementIdentifier())).isOne();
+        assertThat(jdbc.queryForObject("SELECT housing_complex_id FROM supply_rows WHERE announcement_id = ?",
+                Long.class, id)).isEqualTo(complex.getId());
+    }
+
+    @Test
     void 단지가_미리_연결돼_있어도_관리자가_공개를_요청한_보정에서만_공개하고_새공고_알림은_한_번만_쌓는다()
             throws Exception {
         var fixtures = new NotificationFixtures(entityManager, jdbc);
