@@ -475,7 +475,7 @@ class LhSupplySplitCorrectionIntegrationTest {
         var document = json.readValue(new ClassPathResource("announcement/import-v1-valid.json").getInputStream(),
                 AdminAnnouncementImportRequest.class);
         return new AnnouncementJsonCorrection.Request(workspace.snapshotToken(), document, List.of(), List.of(), List.of(),
-                request(workspace.supply(), rows), List.of());
+                request(workspace.supply(), rows), List.of(), false);
     }
 
     private void applySupply(long id, SupplyCorrection.Request request) {

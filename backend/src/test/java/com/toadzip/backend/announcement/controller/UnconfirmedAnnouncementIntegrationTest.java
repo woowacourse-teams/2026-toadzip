@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -28,6 +29,8 @@ import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -116,38 +119,74 @@ class UnconfirmedAnnouncementIntegrationTest {
     }
 
     @Test
-    void 단지에_연결한_공급행_없이_PDF_보정을_적용하면_미확정으로_남는다() throws Exception {
+    void 단지에_연결한_공급행_없이_공개를_요청하면_거절하고_미확정으로_둔다() throws Exception {
         long id = unconfirmedWithValues().getId();
 
         var request = request(id);
         request.withArray("fields").add("name");
-        apply(id, request).andExpect(status().isOk());
+        request.put("publish", true);
+        preview(id, request).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("단지에 연결")));
 
         assertThat(releaseStatus(id)).isEqualTo("UNCONFIRMED");
-        mvc.perform(get("/api/v1/announcements/" + id)).andExpect(status().isNotFound());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox_events", Long.class)).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"excluded", "deletedComplex"})
+    void 남는_연결_공급행이_없으면_공개를_요청해도_거절한다(String change) throws Exception {
+        var fixtures = new NotificationFixtures(entityManager, jdbc);
+        Announcement announcement = unconfirmedWithValues();
+        var complex = fixtures.complex("11140", "1114010100");
+        fixtures.link(announcement, complex);
+        if (change.equals("deletedComplex")) {
+            jdbc.update("UPDATE housing_complexes SET admin_deleted = true WHERE id = ?", complex.getId());
+        }
+        entityManager.clear();
+        long id = announcement.getId();
+
+        var request = request(id);
+        request.put("publish", true);
+        var row = (ObjectNode) request.path("correction").path("rows").get(0);
+        if (change.equals("excluded")) {
+            row.put("excluded", true);
+        }
+        preview(id, request).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("단지에 연결")));
+
+        assertThat(releaseStatus(id)).isEqualTo("UNCONFIRMED");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox_events", Long.class)).isZero();
     }
 
     @Test
-    void 단지에_연결한_공급행이_있으면_필드를_고치지_않은_PDF_보정에서도_공개하고_새공고_알림은_한_번만_쌓는다()
+    void 단지가_미리_연결돼_있어도_관리자가_공개를_요청한_보정에서만_공개하고_새공고_알림은_한_번만_쌓는다()
             throws Exception {
         var fixtures = new NotificationFixtures(entityManager, jdbc);
         Announcement announcement = unconfirmedWithValues();
         fixtures.link(announcement, fixtures.complex("11140", "1114010100"));
         entityManager.clear();
         long id = announcement.getId();
-
-        var supplyOnly = request(id);
-        ((ObjectNode) supplyOnly.path("correction").path("rows").get(0)).put("householdCount", 3);
-        apply(id, supplyOnly).andExpect(status().isOk());
-        assertThat(releaseStatus(id)).isEqualTo("PUBLISHED");
-        mvc.perform(get("/api/v1/announcements/" + id)).andExpect(status().isOk());
-        assertThat(audiences.visibleTitle(id)).isPresent();
+        String identifier = announcement.getSourceAnnouncementIdentifier();
 
         var rename = request(id);
         rename.withArray("fields").add("name");
         apply(id, rename).andExpect(status().isOk());
-        assertThat(outboxCount(announcement.getSourceAnnouncementIdentifier())).isOne();
+        assertThat(releaseStatus(id)).isEqualTo("UNCONFIRMED");
+        assertThat(outboxCount(identifier)).isZero();
+
+        var publishOnly = request(id);
+        publishOnly.put("publish", true);
+        apply(id, publishOnly).andExpect(status().isOk());
+        assertThat(releaseStatus(id)).isEqualTo("PUBLISHED");
+        assertThat(outboxCount(identifier)).isOne();
+        mvc.perform(get("/api/v1/announcements/" + id)).andExpect(status().isOk());
+        assertThat(audiences.visibleTitle(id)).isPresent();
+
+        var supplyOnly = request(id);
+        ((ObjectNode) supplyOnly.path("correction").path("rows").get(0)).put("householdCount", 3);
+        supplyOnly.put("publish", true);
+        apply(id, supplyOnly).andExpect(status().isOk());
+        assertThat(outboxCount(identifier)).isOne();
     }
 
     private Announcement unconfirmedWithValues() {
@@ -178,10 +217,14 @@ class UnconfirmedAnnouncementIntegrationTest {
         return request;
     }
 
+    private ResultActions preview(long id, ObjectNode request) throws Exception {
+        return mvc.perform(post("/api/admin/announcements/" + id + "/json-corrections/preview")
+                .with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(request.toString()));
+    }
+
     private ResultActions apply(long id, ObjectNode request) throws Exception {
-        String token = json.readTree(mvc.perform(post("/api/admin/announcements/" + id + "/json-corrections/preview")
-                        .with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content(request.toString())).andExpect(status().isOk()).andReturn().getResponse()
+        String token = json.readTree(preview(id, request).andExpect(status().isOk()).andReturn().getResponse()
                 .getContentAsString()).path("data").path("confirmationToken").asText();
         var body = json.createObjectNode();
         body.set("request", request);

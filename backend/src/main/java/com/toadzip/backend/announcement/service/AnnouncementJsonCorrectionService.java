@@ -27,6 +27,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementAttachmentReposit
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureStore;
 import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
@@ -72,6 +73,7 @@ public class AnnouncementJsonCorrectionService {
     private final Validator validator;
     private final NotificationOutboxRepository notificationOutbox;
     private final SupplyRowRepository supplyRows;
+    private final HousingComplexRepository complexes;
 
     public Workspace workspace(long id) {
         find(id);
@@ -111,7 +113,9 @@ public class AnnouncementJsonCorrectionService {
         announcement.recordAdminSupplyChange();
         writeEvents(announcement, plan.preview().schedules());
         writeAttachments(announcement, plan.preview().attachments());
-        publishIfConfirmed(announcement);
+        if (plan.preview().publishes()) {
+            publish(announcement);
+        }
         announcements.flush();
         var after = workspace(id);
         // PDF 보정 한 번은 공급행·기본정보·일정 변경을 이력 한 건으로 남긴다.
@@ -163,15 +167,18 @@ public class AnnouncementJsonCorrectionService {
         // 게시일도 이 저장에서 고칠 수 있으므로 고친 뒤의 게시일로 공고 순서를 판단한다.
         var postedDate = metadata.postedDate();
         var typeChanges = housingTypes.plan(postedDate, planned, request.housingTypeValues(), typeWarnings);
-        if (fieldChanges.isEmpty() && supply == null && eventChanges.isEmpty() && attachmentChanges.isEmpty()
+        boolean publishes = request.publish() && !find(id).isPublished();
+        if (publishes) {
+            verifyLinkedToComplex(planned);
+        }
+        if (!publishes && fieldChanges.isEmpty() && supply == null && eventChanges.isEmpty() && attachmentChanges.isEmpty()
                 && typeChanges.isEmpty() && !housingTypes.advancesObservation(postedDate, planned, request.housingTypeValues())) {
             throw new IllegalArgumentException("적용할 변경이 없습니다. 현재값과 다른 항목을 선택하세요.");
         }
         if (find(id).isPublished()) {
             warnings.add("JSON에 없는 기존 행·조건·일정·첨부파일은 유지합니다. 새 공고·신규 공고 알림을 만들지 않습니다.");
         } else {
-            warnings.add("JSON에 없는 기존 행·조건·일정·첨부파일은 유지합니다. 미확정 공고입니다. 적용 뒤 단지에 연결한 공급행이 있고 "
-                    + "접수·발표 일정과 공급·모집유형이 모두 있으면 사용자에게 공개되고 신규 공고 알림이 나갑니다.");
+            warnings.add(unconfirmedWarning(publishes));
         }
         if (before.detail().scheduleReviewed()) {
             warnings.add("단지·순위별로 확인된 접수 일정은 유지합니다. JSON의 일반 일정은 해당 확인 기록을 대신하지 않습니다.");
@@ -181,9 +188,10 @@ public class AnnouncementJsonCorrectionService {
         }
         String supplyToken = "";
         if (supply != null) { supplyToken = supply.confirmationToken(); }
-        String token = hash(List.of(request, fieldChanges, eventChanges, attachmentChanges, supplyToken, typeChanges));
+        String token = hash(List.of(request, fieldChanges, eventChanges, attachmentChanges, supplyToken, typeChanges,
+                publishes));
         return new Prepared(before, metadata, planned, new Preview(token, fieldChanges, supply,
-                eventChanges, attachmentChanges, typeChanges, List.copyOf(typeWarnings), warnings));
+                eventChanges, attachmentChanges, typeChanges, List.copyOf(typeWarnings), warnings, publishes));
     }
 
     /**
@@ -338,13 +346,28 @@ public class AnnouncementJsonCorrectionService {
                 request.winnerAnnouncementDate(), request.originalUrl(), null, 0, reception);
     }
 
-    /**
-     * 미확정 공고는 관리자가 PDF 보정에서 단지에 연결한 공급행을 남기고 필수값을 채워 적용하면 공개한다. 공개와 새 공고
-     * 알림 적재는 여기서만 함께 일어나며, 이미 공개된 공고는 다시 적재하지 않는다.
-     */
-    private void publishIfConfirmed(Announcement announcement) {
-        if (announcement.isPublished() || !announcement.hasPublishRequirements() || !linkedToComplex(announcement)) {
-            return;
+    private String unconfirmedWarning(boolean publishes) {
+        String kept = "JSON에 없는 기존 행·조건·일정·첨부파일은 유지합니다. ";
+        if (publishes) {
+            return kept + "미확정 공고를 공개합니다. 적용하면 사용자에게 보이고 신규 공고 알림이 나갑니다.";
+        }
+        return kept + "미확정 공고입니다. 공개를 요청하지 않았으므로 적용해도 사용자에게 보이지 않습니다.";
+    }
+
+    /** 공개는 관리자가 단지를 확인했다는 뜻이므로, 남는 공급행 중 삭제되지 않은 단지에 연결된 행이 있어야 한다. */
+    private void verifyLinkedToComplex(List<SupplyCorrection.Row> planned) {
+        var complexIds = planned.stream().filter(row -> !row.excluded() && row.housingComplexId() != null)
+                .map(SupplyCorrection.Row::housingComplexId).collect(Collectors.toSet());
+        boolean linked = complexes.findAllById(complexIds).stream().anyMatch(complex -> !complex.isAdminDeleted());
+        if (!linked) {
+            throw new IllegalArgumentException("공개하려면 제외하지 않은 공급행을 삭제되지 않은 단지에 연결해야 합니다.");
+        }
+    }
+
+    /** 공개와 새 공고 알림 적재는 여기서만 함께 일어난다. 적용한 결과로 다시 확인해 미리보기와 어긋나면 저장하지 않는다. */
+    private void publish(Announcement announcement) {
+        if (!linkedToComplex(announcement)) {
+            throw new AdminDataConflictException("단지 연결이 미리보기와 달라졌습니다. 다시 미리보기 하세요.");
         }
         announcement.publish();
         notificationOutbox.appendNewAnnouncement(announcement);
