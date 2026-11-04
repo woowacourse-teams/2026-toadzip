@@ -7,9 +7,17 @@ export function PipelineNextActions({ execution, onRefine, disabled = false }: {
   execution: DataPipelineExecution; onRefine?: () => void; disabled?: boolean
 }) {
   const { type, status } = execution
-  if (status === 'IDLE' || status === 'RUNNING'
-    || type === 'ANNOUNCEMENT_REGISTRATION' || type === 'SH_ANNOUNCEMENT_COLLECTION'
-    || type === 'GH_ANNOUNCEMENT_COLLECTION') return null
+  if (status === 'IDLE' || status === 'RUNNING' || type === 'ANNOUNCEMENT_REGISTRATION') return null
+  if (type === 'SH_ANNOUNCEMENT_COLLECTION' || type === 'GH_ANNOUNCEMENT_COLLECTION') {
+    if (!status.startsWith('COMPLETED')) return null
+    const provider = type === 'SH_ANNOUNCEMENT_COLLECTION' ? 'SH' : 'GH'
+    return <div className={styles.nextActions} aria-label="다음 작업">
+      <p>정제로 만든 공고는 미확정이라 사용자에게 보이지 않습니다. PDF 보정에서 단지를 확인하고 공개를 요청해야 사용자에게 보입니다.</p>
+      <div className={styles.actions}>
+        <Link to={`/admin/announcements?unconfirmed=true&provider=${provider}`}>공개 전 확인이 필요한 공고 보기</Link>
+      </div>
+    </div>
+  }
 
   const complex = type.startsWith('COMPLEX_')
   const collection = type.endsWith('_COLLECTION')

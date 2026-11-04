@@ -119,6 +119,26 @@ class UnconfirmedAnnouncementIntegrationTest {
     }
 
     @Test
+    void 관리자_공고_목록은_미확정_공고만_골라_볼_수_있다() throws Exception {
+        Announcement unconfirmed = announcements.saveAndFlush(Announcement.createUnconfirmed("GH:900010",
+                "GH 미확정 공고", AgencyCode.GH, LocalDate.of(2026, 11, 2), "https://example.com/gh/900010"));
+        LocalDate date = LocalDate.of(2026, 11, 2);
+        Announcement published = announcements.saveAndFlush(Announcement.create("LH:900011", null, null,
+                "LH 공개 공고", "원공고", "행복주택", "신규모집", "LH", date, date, date.plusDays(4),
+                date.plusDays(30), "https://example.com/lh/900011", null, 0L, null));
+        entityManager.clear();
+
+        mvc.perform(get("/api/admin/announcements").param("unconfirmed", "true").param("size", "100")
+                        .with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[?(@.id == " + unconfirmed.getId() + ")]").isNotEmpty())
+                .andExpect(jsonPath("$.data.items[?(@.id == " + published.getId() + ")]").isEmpty())
+                .andExpect(jsonPath("$.data.items[?(@.announcement.releaseStatus != 'UNCONFIRMED')]").isEmpty());
+        mvc.perform(get("/api/admin/announcements").param("size", "100").with(user("admin").roles("ADMIN")))
+                .andExpect(jsonPath("$.data.items[?(@.id == " + published.getId() + ")]").isNotEmpty());
+    }
+
+    @Test
     void 단지에_연결한_공급행_없이_공개를_요청하면_거절하고_미확정으로_둔다() throws Exception {
         long id = unconfirmedWithValues().getId();
 

@@ -200,3 +200,16 @@ it('휴지통 탭으로 지운 항목을 보고, 검색해도 휴지통 조건�
   await waitFor(() => expect(mocks.getManagementPage.mock.lastCall?.[1].get('deleted')).toBe('true'))
   expect(screen.queryByLabelText('보관 상태')).not.toBeInTheDocument()
 })
+
+it('공고 목록은 미확정 공고만 보는 필터를 서버로 보내고 단지 목록에는 두지 않는다', async () => {
+  mocks.getManagementPage.mockResolvedValue(page(announcement))
+  const view = render(<MemoryRouter initialEntries={['/admin/announcements?unconfirmed=true&provider=GH']}><ManagementList resource="announcements" /></MemoryRouter>)
+  const checkbox = await screen.findByRole('checkbox', { name: '공개 전 확인 필요(미확정)' })
+  expect(checkbox).toBeChecked()
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('unconfirmed')).toBe('true')
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('provider')).toBe('GH')
+  view.unmount()
+  render(<MemoryRouter><ManagementList resource="complexes" /></MemoryRouter>)
+  await screen.findByRole('region', { name: '정제 단지 목록 가로 스크롤' })
+  expect(screen.queryByRole('checkbox', { name: '공개 전 확인 필요(미확정)' })).not.toBeInTheDocument()
+})

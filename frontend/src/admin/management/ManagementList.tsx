@@ -20,7 +20,7 @@ export function ManagementList({ resource, embedded = false, compact = false, re
   const [bulkNotice, setBulkNotice] = useState('')
   const search = (embedded ? managementListParams(params, resource) : params).toString()
   const activeParams = new URLSearchParams(search)
-  const [moreOpen, setMoreOpen] = useState(() => activeParams.has('rental') || activeParams.has('review') || activeParams.has('verification'))
+  const [moreOpen, setMoreOpen] = useState(() => activeParams.has('rental') || activeParams.has('review') || activeParams.has('unconfirmed') || activeParams.has('verification'))
   const filterParams = new URLSearchParams(search)
   filterParams.delete('page')
   filterParams.sort()
@@ -98,6 +98,7 @@ export function ManagementList({ resource, embedded = false, compact = false, re
         {resource === 'complexes' ? <label>검토 상태<select name="verification" defaultValue={activeParams.get('verification') ?? ''}><option value="">전체 상태</option>
           {verificationStatuses.map(status => <option key={status} value={status}>{verificationStatusLabels[status]}</option>)}</select></label> : null}
         <label className={styles.review}><input name="review" type="checkbox" value="true" defaultChecked={activeParams.get('review') === 'true'} />원천 변경 확인 필요</label>
+        {resource === 'announcements' ? <label className={styles.review}><input name="unconfirmed" type="checkbox" value="true" defaultChecked={activeParams.get('unconfirmed') === 'true'} />공개 전 확인 필요(미확정)</label> : null}
       </div>
       {trashView && <input type="hidden" name="deleted" value="true" />}
       {managementListParams(params, resource).get('complexId') ? <input type="hidden" name="complexId" value={managementListParams(params, resource).get('complexId') ?? ''} /> : null}

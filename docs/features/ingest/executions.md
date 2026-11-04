@@ -69,7 +69,7 @@ DB 초기화와 마이그레이션은 [Flyway 도입 절차](../../operations/da
 
 ## SH 공고 수집·정제
 
-`POST /api/admin/ingest/pipelines/sh-announcement-collection`은 API 키 없이 SH 검색·상세 원천 수집 뒤 미확정 공고 정제를 실행한다. 두 단계 결과는 같은 실행 ID에 보존한다. 수집 부분 실패면 정제를 시작하지 않고 실패로 끝나며, 호출 제한이면 정제를 건너뛴다. 결과를 확인한 뒤 같은 기관의 수집을 다시 실행한다. 통합 게시판(`m_241`)에 `모집` 검색 폼을 POST한다. 건설임대만 다루므로 주택임대 분류(`multi_itm_seqs=2`)만, `itm_seq_1=1`, `notType1=0`, `annType1=on`, `srchTp=0`과 폼의 페이지 번호를 사용한다. 첫 GET으로 세션을 확보하고 쿠키·Referer를 유지한다.
+`POST /api/admin/ingest/pipelines/sh-announcement-collection`은 API 키 없이 SH 검색·상세 원천 수집 뒤 미확정 공고 정제를 실행한다. 실행 결과 화면은 완료 뒤 공개 전 확인이 필요한 공고 목록(`/admin/announcements?unconfirmed=true&provider=SH`)으로 안내하고, GH도 `provider=GH`로 같다. 두 단계 결과는 같은 실행 ID에 보존한다. 수집 부분 실패면 정제를 시작하지 않고 실패로 끝나며, 호출 제한이면 정제를 건너뛴다. 결과를 확인한 뒤 같은 기관의 수집을 다시 실행한다. 통합 게시판(`m_241`)에 `모집` 검색 폼을 POST한다. 건설임대만 다루므로 주택임대 분류(`multi_itm_seqs=2`)만, `itm_seq_1=1`, `notType1=0`, `annType1=on`, `srchTp=0`과 폼의 페이지 번호를 사용한다. 첫 GET으로 세션을 확보하고 쿠키·Referer를 유지한다.
 
 상세 제목·등록일을 목록 값과 대조한 뒤 제목, 담당부서, 등록일, 본문 텍스트와 첨부 메타데이터를 `sh_announcement_source`에 저장한다. 본문은 공백·빈 줄을 정리하고 문단과 표의 행 구분을 유지한다. 첨부에는 게시판 코드·게시글 ID·실제 파일 ID·파일명·크기·미리보기 URL이 포함된다. PDF 외 첨부도 보존한다. 목록·상세 HTML과 HTML 조각은 DB에 저장하지 않는다.
 
