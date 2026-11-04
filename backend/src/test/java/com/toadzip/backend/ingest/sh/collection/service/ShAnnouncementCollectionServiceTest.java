@@ -246,6 +246,20 @@ class ShAnnouncementCollectionServiceTest {
     }
 
     @Test
+    void 받지_않는_매입임대_글이_페이지_사이에_겹쳐도_뒤_페이지를_실패로_기록한다() {
+        String purchase = "청년 매입임대주택 입주자 모집";
+        when(externalRepository.fetchList(1)).thenReturn(list(1, 11, 100).replace("공고 101</a>", purchase + "</a>"));
+        when(externalRepository.fetchList(2)).thenReturn(list(2, 11, 110)
+                .replace("getDetailView('110')\">공고 110", "getDetailView('101')\">" + purchase));
+        when(externalRepository.fetchDetail("100")).thenReturn(detail("100"));
+
+        service.collect();
+
+        verify(failures).record(eq(ExternalDataSource.SH_ANNOUNCEMENT), eq("page=2"), any(), any(), any());
+        verify(externalRepository, never()).fetchDetail("101");
+    }
+
+    @Test
     void stopDuringStorePropagatesInsteadOfBecomingCollectionFailure() {
         when(externalRepository.fetchList(1)).thenReturn(list(1, 1, 100));
         when(externalRepository.fetchDetail("100")).thenReturn(detail("100"));
@@ -257,7 +271,7 @@ class ShAnnouncementCollectionServiceTest {
 
     private ShAnnouncementCollectionService service(int days) {
         return new ShAnnouncementCollectionService(
-                new ShAnnouncementCollector(externalRepository, new ShAnnouncementListParser(), detailParser, store),
+                new ShAnnouncementBoardSource(externalRepository, new ShAnnouncementListParser(), detailParser, store),
                 new BoardSourceCollector(CollectionServiceTestFixture.retryWithoutDelay(), failures,
                         Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), Duration.ofDays(7)),
                 days, Duration.ZERO);

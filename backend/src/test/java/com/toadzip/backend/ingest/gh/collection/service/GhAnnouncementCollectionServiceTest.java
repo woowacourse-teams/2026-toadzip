@@ -184,6 +184,18 @@ class GhAnnouncementCollectionServiceTest {
     }
 
     @Test
+    void 조회_기간_밖이라_거르는_공고가_페이지_사이에_겹쳐도_뒤_페이지를_실패로_기록한다() {
+        Row[] first = IntStream.range(0, 10).mapToObj(index -> row(900 - index, OLD)).toArray(Row[]::new);
+        list(RENTAL_HOUSE, 1, 11, first);
+        list(RENTAL_HOUSE, 2, 11, first[1], row(800, RECENT));
+
+        service.collect();
+
+        verify(failures).record(eq(ExternalDataSource.GH_ANNOUNCEMENT), eq("board=sr7150&page=2"), any(), any(), any());
+        verify(externalRepository, never()).fetchDetail(RENTAL_HOUSE, "800", "01");
+    }
+
+    @Test
     void 저장_중_중지는_수집_실패가_아니라_그대로_전파한다() {
         Row rental = row(801, RECENT);
         list(RENTAL_HOUSE, 1, 1, rental);
@@ -211,8 +223,7 @@ class GhAnnouncementCollectionServiceTest {
         assertThat(report.storedRowCount()).isOne();
         verify(externalRepository, never()).fetchDetail(RENTAL_HOUSE, "802", "01");
         verify(externalRepository).fetchDetail(RENTAL_HOUSE, "801", "01");
-        verify(store).updateListValues(argThat(entries -> entries.size() == 1
-                && entries.getFirst().pbancNo().equals("802")));
+        verify(store).updateListValues(argThat(entries -> entries.size() == 2));
     }
 
     @Test
@@ -282,7 +293,7 @@ class GhAnnouncementCollectionServiceTest {
 
     private GhAnnouncementCollectionService service(int days) {
         return new GhAnnouncementCollectionService(
-                new GhAnnouncementCollector(externalRepository, new GhAnnouncementListParser(),
+                new GhAnnouncementBoardSource(externalRepository, new GhAnnouncementListParser(),
                         new GhAnnouncementHtmlParser(), store, new GhHousingTypeDetails()),
                 new BoardSourceCollector(CollectionServiceTestFixture.retryWithoutDelay(), failures,
                         Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), Duration.ofDays(7)),

@@ -100,11 +100,8 @@ public class BoardSourceCollector {
         private boolean collectPage(BoardPage<E> page, LocalDate cutoff) {
             List<E> selected = page.entries().stream().filter(entry -> !entry.postedDate().isBefore(cutoff))
                     .filter(board::isTarget).toList();
-            Set<String> skippable = skippable(selected);
-            if (!skippable.isEmpty()) {
-                IngestExecutionScope.verifyCanContinue();
-                board.updateListValues(selected.stream().filter(entry -> skippable.contains(entry.key())).toList());
-            }
+            Map<String, Instant> unchanged = unchanged(selected);
+            Set<String> skippable = skippable(unchanged);
             for (E entry : selected) {
                 collectEntry(entry, skippable, page.page());
                 IngestExecutionScope.workCompleted();
@@ -123,13 +120,26 @@ public class BoardSourceCollector {
             collectDetail(entry, page);
         }
 
-        /** 상세를 다시 받지 않을 글이다. 일부만 읽어 저장한 글은 실패가 열려 있어 다시 받는다. */
-        private Set<String> skippable(List<E> entries) {
+        /**
+         * 목록 값이 저장값과 같고 다 읽은 글의 마지막 수집 시각이다. 이 글들은 상세를 다시 받다 실패해도 목록에서 바뀌는
+         * 값을 놓치지 않도록 먼저 목록 값을 반영한다.
+         */
+        private Map<String, Instant> unchanged(List<E> entries) {
             if (entries.isEmpty()) {
-                return Set.of();
+                return Map.of();
             }
+            Map<String, Instant> unchanged = board.findUnchangedCollectedAt(entries);
+            if (!unchanged.isEmpty()) {
+                IngestExecutionScope.verifyCanContinue();
+                board.updateListValues(entries.stream().filter(entry -> unchanged.containsKey(entry.key())).toList());
+            }
+            return unchanged;
+        }
+
+        /** 상세를 다시 받지 않을 글이다. 일부만 읽어 저장한 글은 실패가 열려 있어 다시 받는다. */
+        private Set<String> skippable(Map<String, Instant> unchanged) {
             Instant refetchFrom = clock.instant().minus(refetchAfter);
-            Set<String> skippable = board.findUnchangedCollectedAt(entries).entrySet().stream()
+            Set<String> skippable = unchanged.entrySet().stream()
                     .filter(collected -> collected.getValue().isAfter(refetchFrom)).map(Map.Entry::getKey)
                     .collect(Collectors.toCollection(HashSet::new));
             if (skippable.isEmpty()) {

@@ -76,6 +76,7 @@ class ShAnnouncementCollectionIntegrationTest {
         assertThat(pending()).hasSize(1);
 
         doReturn("<html>변경된 구조</html>").when(externalRepository).fetchDetail("100");
+        clock.advance(Duration.ofMinutes(1));
         assertThat(service.collect().failedRequestCount()).isOne();
         var preserved = sources.findBySourceKey("SH:100").orElseThrow();
         assertThat(preserved.getBodyText()).isEqualTo(first.getBodyText());

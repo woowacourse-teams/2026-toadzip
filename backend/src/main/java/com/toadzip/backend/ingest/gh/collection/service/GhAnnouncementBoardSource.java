@@ -30,7 +30,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** GH주택청약센터 임대주택 게시판이다. 상세의 주택형마다 상세공급정보 팝업을 더 받는다. */
 @Service
 @RequiredArgsConstructor
-public class GhAnnouncementCollector implements BoardSource<Entry, GhAnnouncementSnapshot> {
+public class GhAnnouncementBoardSource implements BoardSource<Entry, GhAnnouncementSnapshot> {
 
     private final GhAnnouncementExternalRepository externalRepository;
     private final GhAnnouncementListParser parser;

@@ -4,6 +4,7 @@ import com.toadzip.backend.ingest.collection.board.dto.BoardDetail;
 import com.toadzip.backend.ingest.collection.board.dto.BoardEntry;
 import com.toadzip.backend.ingest.collection.board.dto.BoardPage;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -41,11 +42,14 @@ public interface BoardSource<E extends BoardEntry, S> {
     /** 목록 값이 저장값과 같고 모든 부분을 읽어 저장한 글의 key와 마지막 수집 시각이다. */
     Map<String, Instant> findUnchangedCollectedAt(List<E> entries);
 
-    /** 상세를 다시 받지 않는 글의 목록 값을 저장값에 반영한다. */
+    /** 목록 값이 저장값과 같고 다 읽은 글의 목록에서만 바뀌는 값을 저장값에 반영한다. 상세를 다시 받기 전에 부른다. */
     default void updateListValues(List<E> entries) {
     }
 
-    /** 상세를 받아 읽는다. 외부 호출은 모두 requests로 보내고, 상세를 읽지 못하면 저장하지 않도록 예외를 던진다. */
+    /**
+     * 상세를 받아 읽는다. 외부 호출은 모두 requests로 보낸다. 상세를 읽지 못하면 {@link ExternalDataRequestException}을
+     * 던져 그 글만 실패로 기록하게 한다. 다른 예외는 실행 전체를 멈춘다.
+     */
     BoardDetail<S> readDetail(E entry, int page, BoardRequests requests);
 
     void store(S snapshot);

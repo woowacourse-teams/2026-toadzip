@@ -11,27 +11,27 @@ import org.springframework.stereotype.Service;
 @Service
 public class GhAnnouncementCollectionService {
 
-    private final GhAnnouncementCollector collector;
-    private final BoardSourceCollector boardCollector;
+    private final GhAnnouncementBoardSource board;
+    private final BoardSourceCollector collector;
     private final int lookbackDays;
     private final Duration requestInterval;
 
     public GhAnnouncementCollectionService(
-            GhAnnouncementCollector collector, BoardSourceCollector boardCollector,
+            GhAnnouncementBoardSource board, BoardSourceCollector collector,
             @Value("${ingest.gh.lookback-days:90}") int lookbackDays,
             @Value("${ingest.gh.request-interval:1s}") Duration requestInterval
     ) {
         if (lookbackDays < 0 || requestInterval.isNegative()) {
             throw new IllegalArgumentException("GH 조회 기간과 요청 간격은 음수일 수 없습니다.");
         }
+        this.board = board;
         this.collector = collector;
-        this.boardCollector = boardCollector;
         this.lookbackDays = lookbackDays;
         this.requestInterval = requestInterval;
     }
 
     public ExternalDataCollectionReport collect() {
         IngestExecutionScope.requireHeld();
-        return boardCollector.collect(collector, lookbackDays, requestInterval);
+        return collector.collect(board, lookbackDays, requestInterval);
     }
 }

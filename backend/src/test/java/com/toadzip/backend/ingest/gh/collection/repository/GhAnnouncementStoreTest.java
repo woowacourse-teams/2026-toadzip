@@ -115,7 +115,8 @@ class GhAnnouncementStoreTest {
         var source = repository.findBySourceKey("GH:801").orElseThrow();
         assertThat(source.getDistricts()).isNull();
         assertThat(source.getNotice()).isEqualTo("정정 원문");
-        assertThat(store(FIRST).findUnchangedCollectedAt(board, List.of(entry("801", "[정정] 제목", "2026-10-02")))).isEmpty();
+        assertThat(store(FIRST).findUnchangedCollectedAt(board, List.of(entry("801", "[정정] 제목", "2026-10-02"))))
+                .isEmpty();
     }
 
     @Test

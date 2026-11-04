@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
 /** SH 인터넷청약 주택임대 분류 게시판이다. 매입임대·전세임대 글은 건설임대가 아니라 받지 않는다. */
 @Service
 @RequiredArgsConstructor
-public class ShAnnouncementCollector implements BoardSource<Entry, ShAnnouncementSnapshot> {
+public class ShAnnouncementBoardSource implements BoardSource<Entry, ShAnnouncementSnapshot> {
 
     private final ShAnnouncementExternalRepository externalRepository;
     private final ShAnnouncementListParser parser;

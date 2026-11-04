@@ -90,6 +90,7 @@ class GhAnnouncementCollectionIntegrationTest {
         when(externalRepository.fetchList(RENTAL_HOUSE, 1)).thenReturn(GhAnnouncementFixtures.list(RENTAL_HOUSE, 1, 1,
                 new Row("801", ROW.supplyType(), "[정정] " + ROW.title(), ROW.postedDate())));
         when(externalRepository.fetchDetail(RENTAL_HOUSE, "801", "01")).thenReturn("<html>변경된 구조</html>");
+        clock.advance(Duration.ofMinutes(1));
         assertThat(service.collect().failedRequestCount()).isOne();
         var preserved = sources.findBySourceKey("GH:801").orElseThrow();
         assertThat(preserved.getDistricts()).isEqualTo(first.getDistricts());
@@ -133,6 +134,7 @@ class GhAnnouncementCollectionIntegrationTest {
         String collectedAt = sources.findBySourceKey("GH:801").orElseThrow().getCollectedAt().toString();
         when(externalRepository.fetchList(RENTAL_HOUSE, 1)).thenReturn(GhAnnouncementFixtures.list(RENTAL_HOUSE, 1, 1, ROW)
                 .replace("<td>접수마감", "<td>접수중").replace("<td>2026-10-20", "<td>2026-10-25"));
+        clock.advance(Duration.ofMinutes(1));
         var skipped = service.collect();
         assertThat(skipped.skippedRequestCount()).isOne();
         assertThat(skipped.externalApiCallCount()).isOne();
@@ -145,7 +147,8 @@ class GhAnnouncementCollectionIntegrationTest {
 
     @Test
     void 다_받은_공고도_마지막_수집_뒤_7일이_지나면_상세를_다시_받는다() {
-        when(externalRepository.fetchList(RENTAL_HOUSE, 1)).thenReturn(GhAnnouncementFixtures.list(RENTAL_HOUSE, 1, 1, ROW));
+        when(externalRepository.fetchList(RENTAL_HOUSE, 1))
+                .thenReturn(GhAnnouncementFixtures.list(RENTAL_HOUSE, 1, 1, ROW));
         when(externalRepository.fetchDetail(RENTAL_HOUSE, "801", "01"))
                 .thenReturn(GhAnnouncementFixtures.detail(RENTAL_HOUSE, ROW));
         assertThat(service.collect().storedRowCount()).isOne();
@@ -161,6 +164,26 @@ class GhAnnouncementCollectionIntegrationTest {
         verify(externalRepository, times(2)).fetchDetail(RENTAL_HOUSE, "801", "01");
         assertThat(sources.findBySourceKey("GH:801").orElseThrow().getCollectedAt()).isEqualTo(clock.instant());
         assertThat(service.collect().skippedRequestCount()).isOne();
+    }
+
+    @Test
+    void 기한이_지나_다시_받는_공고는_상세를_못_읽어도_목록의_상태와_마감일을_반영한다() {
+        when(externalRepository.fetchList(RENTAL_HOUSE, 1))
+                .thenReturn(GhAnnouncementFixtures.list(RENTAL_HOUSE, 1, 1, ROW));
+        when(externalRepository.fetchDetail(RENTAL_HOUSE, "801", "01"))
+                .thenReturn(GhAnnouncementFixtures.detail(RENTAL_HOUSE, ROW));
+        assertThat(service.collect().storedRowCount()).isOne();
+
+        clock.advance(Duration.ofDays(8));
+        when(externalRepository.fetchList(RENTAL_HOUSE, 1))
+                .thenReturn(GhAnnouncementFixtures.list(RENTAL_HOUSE, 1, 1, ROW)
+                .replace("<td>접수마감", "<td>접수중").replace("<td>2026-10-20", "<td>2026-10-25"));
+        when(externalRepository.fetchDetail(RENTAL_HOUSE, "801", "01")).thenReturn("<html>변경된 구조</html>");
+
+        assertThat(service.collect().failedRequestCount()).isOne();
+        var source = sources.findBySourceKey("GH:801").orElseThrow();
+        assertThat(source.getStatus()).isEqualTo("접수중");
+        assertThat(source.getClosingDate()).isEqualTo(LocalDate.parse("2026-10-25"));
     }
 
     private long count(String table) {
