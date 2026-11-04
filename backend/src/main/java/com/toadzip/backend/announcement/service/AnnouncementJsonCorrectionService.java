@@ -354,7 +354,10 @@ public class AnnouncementJsonCorrectionService {
         return kept + "미확정 공고입니다. 공개를 요청하지 않았으므로 적용해도 사용자에게 보이지 않습니다.";
     }
 
-    /** 공개는 관리자가 단지를 확인했다는 뜻이므로, 남는 공급행 중 삭제되지 않은 단지에 연결된 행이 있어야 한다. */
+    /**
+     * 공개는 관리자가 단지를 확인했다는 뜻이므로, 남는 공급행 중 삭제되지 않은 단지에 연결된 행이 있어야 한다.
+     * 저장한 뒤의 같은 판단은 {@link #linkedToComplex}가 하므로 규칙을 바꾸면 둘을 함께 고친다.
+     */
     private void verifyLinkedToComplex(List<SupplyCorrection.Row> planned) {
         var complexIds = planned.stream().filter(row -> !row.excluded() && row.housingComplexId() != null)
                 .map(SupplyCorrection.Row::housingComplexId).collect(Collectors.toSet());
@@ -373,6 +376,7 @@ public class AnnouncementJsonCorrectionService {
         notificationOutbox.appendNewAnnouncement(announcement);
     }
 
+    /** 저장된 공급행으로 하는 {@link #verifyLinkedToComplex}와 같은 판단이다. */
     private boolean linkedToComplex(Announcement announcement) {
         return supplyRows.findAllByAnnouncement(announcement).stream().anyMatch(row -> !row.isAdminExcluded()
                 && row.getHousingComplex() != null && !row.getHousingComplex().isAdminDeleted());

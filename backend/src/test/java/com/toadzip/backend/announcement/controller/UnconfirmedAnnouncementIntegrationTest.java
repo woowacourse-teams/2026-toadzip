@@ -184,6 +184,33 @@ class UnconfirmedAnnouncementIntegrationTest {
     }
 
     @Test
+    void 일정과_유형이_빈_미확정_공고는_필수값을_고르고_단지를_연결해_공개를_요청해야_공개한다() throws Exception {
+        var fixtures = new NotificationFixtures(entityManager, jdbc);
+        Announcement announcement = announcements.saveAndFlush(Announcement.createUnconfirmed("SH:900003",
+                "SH 일정 없는 미확정 공고", AgencyCode.SH, LocalDate.of(2026, 11, 2), "https://example.com/sh/900003"));
+        fixtures.link(announcement, null);
+        var complex = fixtures.complex("11140", "1114010100");
+        entityManager.clear();
+        long id = announcement.getId();
+
+        var withoutValues = request(id);
+        ((ObjectNode) withoutValues.path("correction").path("rows").get(0)).put("housingComplexId", complex.getId());
+        withoutValues.put("publish", true);
+        preview(id, withoutValues).andExpect(status().isBadRequest());
+        assertThat(releaseStatus(id)).isEqualTo("UNCONFIRMED");
+
+        var request = request(id);
+        ((ObjectNode) request.path("correction").path("rows").get(0)).put("housingComplexId", complex.getId());
+        request.withArray("fields").add("rentalType").add("recruitmentType").add("applicationStartDate")
+                .add("applicationEndDate").add("winnerAnnouncementDate");
+        request.put("publish", true);
+        apply(id, request).andExpect(status().isOk());
+
+        assertThat(releaseStatus(id)).isEqualTo("PUBLISHED");
+        assertThat(outboxCount("SH:900003")).isOne();
+    }
+
+    @Test
     void 단지가_미리_연결돼_있어도_관리자가_공개를_요청한_보정에서만_공개하고_새공고_알림은_한_번만_쌓는다()
             throws Exception {
         var fixtures = new NotificationFixtures(entityManager, jdbc);
