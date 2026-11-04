@@ -1,18 +1,16 @@
 package com.toadzip.backend.ingest.gh.refinement.service;
 
 import com.toadzip.backend.announcement.domain.Announcement;
-import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementComplex;
-import com.toadzip.backend.announcement.domain.AttachmentType;
-import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementSource;
-import java.util.Locale;
+import com.toadzip.backend.ingest.refinement.service.SourceAttachmentWriter;
+import com.toadzip.backend.ingest.refinement.service.SourceAttachmentWriter.SourceAttachment;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -31,7 +29,7 @@ class GhAnnouncementRefiner {
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final AnnouncementRepository announcements;
-    private final AnnouncementAttachmentRepository attachments;
+    private final SourceAttachmentWriter attachmentWriter;
     private final GhAnnouncementComplexLinker complexLinker;
     private final GhSupplyRowWriter supplyRowWriter;
 
@@ -58,14 +56,14 @@ class GhAnnouncementRefiner {
             supplyRowWriter.write(announcement, source.getTitle(), districts, complexes);
         }
         if (source.getAttachments() != null) {
-            writeAttachments(announcement, JSON.readTree(source.getAttachments()));
+            attachmentWriter.write(announcement, attachments(JSON.readTree(source.getAttachments())));
         }
         return outcome;
     }
 
     private Outcome update(Announcement announcement, GhAnnouncementSource source) {
         boolean reviewBefore = announcement.isSourceReviewRequired();
-        if (announcement.updateFromGh(source.getTitle(), source.getPostedDate(), source.getOriginalUrl())) {
+        if (announcement.updateFromAgencySource(source.getTitle(), source.getPostedDate(), source.getOriginalUrl())) {
             return Outcome.UPDATED;
         }
         if (!reviewBefore && announcement.isSourceReviewRequired()) {
@@ -74,29 +72,13 @@ class GhAnnouncementRefiner {
         return Outcome.UNCHANGED;
     }
 
-    private void writeAttachments(Announcement announcement, JsonNode sourceAttachments) {
-        Map<String, AnnouncementAttachment> stored = attachments.findAllByAnnouncement(announcement).stream()
-                .filter(attachment -> attachment.getSourceAttachmentIdentifier() != null)
-                .collect(Collectors.toMap(AnnouncementAttachment::getSourceAttachmentIdentifier, Function.identity(),
-                        (first, second) -> first));
-        int order = 0;
+    private static List<SourceAttachment> attachments(JsonNode sourceAttachments) {
+        List<SourceAttachment> files = new ArrayList<>();
         for (JsonNode file : sourceAttachments) {
-            String fileName = file.path("fileName").asText();
-            if (!fileName.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
-                continue;
-            }
-            String identifier = file.path("atchFileSn").asText() + ":" + file.path("atchFileDtlSn").asText();
-            String url = file.path("downloadUrl").asText();
-            AnnouncementAttachment found = stored.get(identifier);
-            if (found == null) {
-                attachments.save(AnnouncementAttachment.createFromSource(announcement, identifier, fileName,
-                        AttachmentType.ANNOUNCEMENT, url, order));
-            }
-            else {
-                found.updateFromSource(fileName, AttachmentType.ANNOUNCEMENT, url, order);
-            }
-            order++;
+            files.add(new SourceAttachment(file.path("atchFileSn").asText() + ":" + file.path("atchFileDtlSn").asText(),
+                    file.path("fileName").asText(), file.path("downloadUrl").asText()));
         }
+        return files;
     }
 
     enum Outcome {

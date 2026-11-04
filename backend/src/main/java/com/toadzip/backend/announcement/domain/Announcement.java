@@ -330,7 +330,8 @@ public class Announcement {
     }
 
     /**
-     * 원천에서 일정·유형을 아직 읽지 못한 공고를 미확정으로 만든다. 사용자에게 보이지 않고, 관리자가 PDF 보정에서 단지를 확인하고 필수값을 채워 적용하면 공개된다.
+     * 원천에서 일정·유형을 다 읽지 못한 공고를 미확정으로 만든다. 원천이 읽은 일정 후보는 {@link #observeSourceSchedule}로 채운다.
+     * 사용자에게 보이지 않고, 관리자가 PDF 보정에서 단지를 확인하고 필수값을 채워 공개를 요청하면 공개된다.
      */
     public static Announcement createUnconfirmed(String sourceAnnouncementIdentifier, String name, AgencyCode provider,
             LocalDate postedDate, String originalUrl) {
@@ -513,10 +514,10 @@ public class Announcement {
     }
 
     /**
-     * GH 원천 값으로 미확정 공고의 공고명·게시일·원문 URL을 맞춘다. 공개됐거나 관리자가 고친 공고는 덮지 않고, 원천 값이
+     * GH·SH 원천 값으로 미확정 공고의 공고명·게시일·원문 URL을 맞춘다. 공개됐거나 관리자가 고친 공고는 덮지 않고, 원천 값이
      * 다르면 원천 검토 대상으로 표시한다. 휴지통 공고는 바꾸지 않는다. 값을 바꿨으면 true다.
      */
-    public boolean updateFromGh(String name, LocalDate postedDate, String originalUrl) {
+    public boolean updateFromAgencySource(String name, LocalDate postedDate, String originalUrl) {
         validateNotBlank(name, "공고명");
         validateRequired(postedDate, "게시일");
         validateNotBlank(originalUrl, "원문 URL");
@@ -532,6 +533,35 @@ public class Announcement {
         this.name = name;
         this.postedDate = postedDate;
         this.originalUrl = originalUrl;
+        return true;
+    }
+
+    /**
+     * 원천 본문에서 읽은 접수기간·당첨자 발표일 후보를 미확정 공고에 채운다. 관리자가 고치거나 일정을 확인하기 전까지는 원천이 이 값을
+     * 가지므로 원천을 따라 바꾸고(읽지 못한 값은 비운다), 그 뒤나 공개된 공고는 덮지 않고 원천이 읽은 값이 다르면 원천 검토 대상으로
+     * 표시한다. 휴지통 공고는 바꾸지 않는다. 시작일이 종료일보다 늦은 기간은 버린다. 값을 바꿨으면 true다.
+     */
+    public boolean observeSourceSchedule(LocalDate startDate, LocalDate endDate, LocalDate winnerDate) {
+        if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+            startDate = null;
+            endDate = null;
+        }
+        boolean same = Objects.equals(applicationStartDate, startDate) && Objects.equals(applicationEndDate, endDate)
+                && Objects.equals(winnerAnnouncementDate, winnerDate);
+        if (same || adminDeleted) {
+            return false;
+        }
+        if (adminModified || applicationScheduleReviewed || isPublished()) {
+            // 원천이 읽지 못한 값은 관리자가 채운 값과 다르다고 보지 않는다.
+            boolean readDifferently = startDate != null && !startDate.equals(applicationStartDate)
+                    || endDate != null && !endDate.equals(applicationEndDate)
+                    || winnerDate != null && !winnerDate.equals(winnerAnnouncementDate);
+            sourceReviewRequired = sourceReviewRequired || readDifferently;
+            return false;
+        }
+        applicationStartDate = startDate;
+        applicationEndDate = endDate;
+        winnerAnnouncementDate = winnerDate;
         return true;
     }
 
