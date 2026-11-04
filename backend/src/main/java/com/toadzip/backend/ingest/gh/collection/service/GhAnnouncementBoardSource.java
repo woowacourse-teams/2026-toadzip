@@ -8,7 +8,6 @@ import com.toadzip.backend.ingest.collection.board.service.BoardSource;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallFailureException;
-import com.toadzip.backend.ingest.collection.service.ExternalDataRateLimit;
 import com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementSnapshot;
 import com.toadzip.backend.ingest.gh.collection.dto.GhAnnouncementContent;
 import com.toadzip.backend.ingest.gh.collection.dto.GhAnnouncementPage;
@@ -108,7 +107,8 @@ public class GhAnnouncementBoardSource implements BoardSource<Entry, GhAnnouncem
 
     /**
      * 주택형마다 상세공급정보 팝업을 받아 붙인다. 팝업을 못 받은 주택형은 detail 없이 두고 공고 실패 사유에 남긴다.
-     * 호출 제한에 걸리면 남은 팝업을 받지 않는다(실패 기록은 공고 단위로 한 번 남는다).
+     * 호출 제한이나 연속 실패로 수집이 멈춰야 하면 남은 팝업을 받지 않는다. 호출 상한은 공고 경계에서 확인하므로
+     * 성공이 이어지는 한 공고의 팝업은 끝까지 받는다(실패 기록은 공고 단위로 한 번 남는다).
      */
     private String withHousingTypeDetails(
             String request, String districts, List<String> unread, BoardRequests requests
@@ -123,8 +123,8 @@ public class GhAnnouncementBoardSource implements BoardSource<Entry, GhAnnouncem
             catch (ExternalDataCallFailureException | ExternalDataRequestException
                     | IllegalArgumentException exception) {
                 unread.add("주택형 상세(" + housingType.label() + ")");
-                if (ExternalDataRateLimit.count(exception) > 0) {
-                    unread.add("호출 제한으로 남은 주택형 상세");
+                if (requests.halted()) {
+                    unread.add("수집 중단으로 남은 주택형 상세");
                     break;
                 }
             }

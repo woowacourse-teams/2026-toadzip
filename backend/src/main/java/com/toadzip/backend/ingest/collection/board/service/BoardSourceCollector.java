@@ -27,7 +27,7 @@ import org.springframework.stereotype.Component;
  * 기관 게시판을 첫 페이지부터 넘기며 조회 기간 안의 대상 글을 상세까지 받아 저장한다. 목록 값이 저장값과 같고 다 읽었으며
  * 열린 실패가 없고 마지막 수집 뒤 재수집 기한이 지나지 않은 글은 상세를 다시 받지 않는다. 수집 중 전체 건수가 바뀌거나
  * 페이지 사이에 같은 글이 나오면 그 페이지에서 멈춘다. 요청 실패는 요청 단위로 기록하고 다음 글을 계속하며, 호출 제한에
- * 걸리면 남은 요청을 보내지 않는다.
+ * 걸리거나 요청이 연속으로 실패하거나 호출 수가 상한에 닿으면 남은 요청을 보내지 않는다.
  */
 @Slf4j
 @Component
@@ -105,7 +105,14 @@ public class BoardSourceCollector {
             for (E entry : selected) {
                 collectEntry(entry, skippable, page.page());
                 IngestExecutionScope.workCompleted();
-                if (requests.rateLimited()) {
+                if (requests.halted()) {
+                    log.warn("{} 공고 수집을 중단합니다: {}, 호출 {}회", board.agency(), requests.haltReason(),
+                            requests.callCount());
+                    if (requests.callLimitReached()) {
+                        // 429와 연속 실패는 실패 기록·호출 제한 수로 드러나지만 호출 상한은 그렇지 않아 따로 남긴다.
+                        recordFailure(board.pageRequest(page.page()), new ExternalDataRequestException(board.agency()
+                                + " 호출 상한에 닿아 남은 글을 수집하지 않았습니다. 다시 실행하면 이어서 받습니다."));
+                    }
                     return false;
                 }
             }
