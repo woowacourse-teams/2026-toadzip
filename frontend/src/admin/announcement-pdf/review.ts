@@ -259,7 +259,12 @@ export function cellMatches(cell: Cell, filter: ReviewFilter) {
 }
 export function pendingRow(row: RowReview) { return row.include && (!row.proposal.destination || row.proposal.needsConfirmation && !row.reviewed) }
 export function pendingPrice(row: RowReview) { return row.include && housingTypePrice(row, linkedHousingType(row)).confirm }
-export function pendingTarget(target: TargetReview) { return !target.destination || target.destination !== 'exclude' && target.cells.some(pendingCell) }
+export function pendingTarget(target: TargetReview) { return !target.destination || target.destination !== 'exclude' && (target.cells.some(pendingCell) || unnamedNewTarget(target)) }
+/** 새로 추가할 공급대상은 이름이 있어야 저장된다. 적용 전에 확인 필요로 보여 적용 단계에서야 막히지 않게 한다. */
+function unnamedNewTarget(target: TargetReview) {
+  const name = target.cells.find(cell => cell.field === 'target')
+  return target.destination === 'new' && !(name?.selected && !name.locked && String(name.value ?? '').trim())
+}
 export function pendingSchedule(schedule: ScheduleReview) { return schedule.proposal.needsConfirmation && !schedule.reviewed }
 /** 연결 주택형을 아직 정하지 못한 세부 타입 번호 */
 export function pendingSubtypes(row: RowReview) { return row.include ? (row.subtypes ?? []).flatMap((subtype, at) => subtype.choice === null ? [at] : []) : [] }
@@ -461,7 +466,7 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
       if (count.mode !== 'manual' || typeof count.value !== 'number') throw new ReviewError(`공급행 ${index + 1}: ${sharedSubtypeNote}`, `cell:${count.path}`)
     } else if (entry.proposal.sharedIndex !== null) row.householdCount = null
     const selectedTargets = new Set<string>()
-    for (const target of entry.targets) {
+    for (const [at, target] of entry.targets.entries()) {
       if (target.destination === 'exclude') continue
       if (!target.destination) throw new ReviewError(`${row.typeName}: 수정할 기존 임대조건을 선택하거나 새 임대조건으로 추가하세요.`, `row:${index}`)
       if (target.destination !== 'new' && selectedTargets.has(target.destination)) throw new ReviewError('같은 기존 공급대상을 두 번 갱신할 수 없습니다.', `row:${index}`)
@@ -470,7 +475,7 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
       if (target.destination !== 'new' && !stored) throw new ReviewError('선택한 공급대상이 현재 행에 없습니다.', `row:${index}`)
       const next: CorrectionTarget = stored ?? blankTarget(row.targets.length)
       applyCells(next as unknown as JsonObject, target.cells, targetFields)
-      if (!next.target) throw new ReviewError(`${row.typeName}: 새 공급대상의 이름을 확인하세요.`, `row:${index}`)
+      if (!next.target?.trim()) throw new ReviewError(`${row.housingComplexName ?? row.complexName} ${rowName(review, index)} 조건 ${at + 1}: 공급 대상 이름을 입력하세요.`, `target:${index}:${at}`)
       if (!stored) row.targets.push(next)
     }
     if (!row.typeName) throw new ReviewError('새 공급행의 주택형명을 확인하세요.', `row:${index}`)

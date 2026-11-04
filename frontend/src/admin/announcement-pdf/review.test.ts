@@ -240,6 +240,23 @@ it('수동으로 작성 중인 행과 조건도 PDF 대응에 사용하여 중�
   expect(result[0].targets[0].key).toBe('draft-target-0')
 })
 
+it('이름 없이 새로 추가할 공급대상은 확인 필요로 남고, 적용은 그 대상으로 안내하며 이름을 넣으면 풀린다', () => {
+  const { review, workspace } = scenario('gongju')
+  review.rows[0].reviewed = true
+  review.rows[0].targets = review.rows[0].targets.map((_, at) => remapTarget(review, 0, at, 'new', workspace))
+  review.rows[0].targets.forEach(target => { target.cells = target.cells.map(cell => pendingCell(cell) ? chooseCellValue(cell, 'keep') : cell) })
+  expect(pendingItems(review, false).filter(item => item.id.startsWith('target:'))).toEqual([])
+  const name = review.rows[0].targets[1].cells.findIndex(cell => cell.field === 'target')
+  review.rows[0].targets[1].cells[name] = chooseCellValue(review.rows[0].targets[1].cells[name], 'keep')
+  expect(pendingItems(review, false).map(item => item.id)).toContain('target:0:1')
+  expect(() => assembleReview(review, workspace, evidence)).toThrow(expect.objectContaining({ reviewId: 'target:0:1', message: `공주옥룡1 공급행 1(${review.extraction.supplyRows[0].typeName}) 조건 2: 공급 대상 이름을 입력하세요.` }))
+  review.rows[0].targets[1].cells[name] = editCell(review.rows[0].targets[1].cells[name], '   ')
+  expect(pendingItems(review, false).map(item => item.id)).toContain('target:0:1')
+  review.rows[0].targets[1].cells[name] = editCell(review.rows[0].targets[1].cells[name], '일반공급')
+  expect(pendingItems(review, false).map(item => item.id)).not.toContain('target:0:1')
+  expect(assembleReview(review, workspace, evidence).correction.rows[0].targets.map(target => target.target)).toContain('일반공급')
+})
+
 it('공급행 확인 필요 항목은 화면처럼 PDF 단지 이름별 묶음 순서로 모은다', () => {
   const { review } = scenario('gwangju')
   const names = ['A단지', 'B단지', 'A단지', 'B단지', 'A단지', 'B단지', 'A단지']
