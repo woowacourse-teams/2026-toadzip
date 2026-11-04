@@ -38,6 +38,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.jdbc.Sql;
+import org.springframework.test.context.jdbc.Sql.ExecutionPhase;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -49,7 +50,10 @@ import tools.jackson.databind.node.ObjectNode;
         "app.notification.activation-at=2026-01-01T00:00:00Z"})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+// 트랜잭션 없이 커밋하는 테스트라, 보정 화면이 쓰는 품질 비교 표를 만든 뒤 지워 다른 테스트의 같은 스크립트와 겹치지 않게 한다.
 @Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
+@Sql(statements = {"DROP TABLE IF EXISTS admin_comparison_checks", "DROP TABLE IF EXISTS admin_comparison_sources"},
+        executionPhase = ExecutionPhase.AFTER_TEST_METHOD)
 class GhAnnouncementPublishFlowIntegrationTest {
 
     private static final Row ROW = new Row("801", "국민임대", "다산 국민임대주택 예비입주자 모집공고", "2026-07-10");
