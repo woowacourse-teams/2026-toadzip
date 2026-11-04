@@ -1,18 +1,20 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
+import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
+import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
 import com.toadzip.backend.ingest.gh.collection.service.GhAnnouncementCollectionService;
+import com.toadzip.backend.ingest.gh.refinement.service.GhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.lh.collection.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
 import com.toadzip.backend.ingest.lh.collection.leasecatalog.dto.api.LhLeaseCatalogCollectionCommand;
 import com.toadzip.backend.ingest.lh.collection.leasecatalog.service.LhLeaseCatalogCollectionService;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
-import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
-import com.toadzip.backend.ingest.sh.collection.service.ShAnnouncementCollectionService;
-import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
 import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
+import com.toadzip.backend.ingest.sh.collection.service.ShAnnouncementCollectionService;
+import com.toadzip.backend.ingest.sh.refinement.service.ShAnnouncementRefinementService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -34,9 +36,13 @@ class DataPipelineStepExecutor {
     private final DataPipelineStepResultAdapter resultAdapter;
     private final ShAnnouncementCollectionService shAnnouncementCollectionService;
     private final GhAnnouncementCollectionService ghAnnouncementCollectionService;
+    private final ShAnnouncementRefinementService shAnnouncementRefinementService;
+    private final GhAnnouncementRefinementService ghAnnouncementRefinementService;
 
     DataPipelineStepResult execute(DataPipelineStep step) {
         return switch (step) {
+            case MAP_GH_ANNOUNCEMENTS -> resultAdapter.adapt(ghAnnouncementRefinementService.refineAll());
+            case MAP_SH_ANNOUNCEMENTS -> resultAdapter.adapt(shAnnouncementRefinementService.refineAll());
             case COLLECT_SH_ANNOUNCEMENTS -> resultAdapter.adapt(shAnnouncementCollectionService.collect());
             case COLLECT_GH_ANNOUNCEMENTS -> resultAdapter.adapt(ghAnnouncementCollectionService.collect());
             case COLLECT_MYHOME_COMPLEXES -> resultAdapter.adapt(myHomeComplexCollectionService.collect(

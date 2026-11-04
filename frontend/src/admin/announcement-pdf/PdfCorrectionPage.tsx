@@ -126,7 +126,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   // 적용 전 확인: 서버 미리보기를 받은 보정안. 화면을 고치면 다시 확인해야 한다. lastInput은 응답이 불분명했던 적용 요청이다.
   const [checked, setChecked] = useState<{ input: JsonUpdateInput; preview: JsonPreview } | null>(null)
   const lastInput = useRef<JsonUpdateInput | null>(null)
-  useEffect(() => setChecked(null), [review, reason, sourceUrl, sourcePage])
+  useEffect(() => setChecked(null), [review, reason, sourceUrl, sourcePage, release])
   useEffect(() => { if (checked) reviewPane.current?.querySelector<HTMLElement>('[aria-label="적용 전 확인"]')?.focus() }, [checked])
   const reviewPane = useRef<HTMLDivElement>(null)
   const reasonProblem = !reason.trim() ? '보정 이유를 입력하세요.' : !validEvidenceUrl(sourceUrl.trim()) ? '공식 근거 URL에 올바른 http 또는 https 주소를 입력하세요.' : ''
@@ -334,12 +334,14 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       const latest = await applyJsonUpdate(id, input, preview.confirmationToken)
       finishApplied(latest, preview)
     } catch (cause) {
-      // 이미 처리한 요청을 다시 보냈다는 409는 아무것도 바꾸지 않았으므로, 최신값에 이 변경이 들어 있는지 확인해 알린다.
+      // 스냅숏 충돌도 같은 409를 쓴다. 미확정 공고의 필수값·공개 여부는 공급행만으로 확인할 수 없어 재비교한다.
       if (cause instanceof ManagementError && cause.status === 409 && cause.code === 'ADMIN_DATA_CONFLICT') {
         try {
           const latest = await loadJsonWorkspace(id)
-          if (correctionReflected(input.correction.rows, latest.supply) && documentReflected(input, latest)) { finishApplied(latest, preview); setNotice('이 보정은 이미 반영돼 있습니다. 같은 요청을 다시 저장하지 않았습니다.'); return }
-          setError('같은 보정 요청을 이미 처리했다는 응답을 받았지만 저장된 공급정보·기본정보·일정이 이 화면의 변경과 다릅니다. 이 변경은 반영되지 않았습니다. 최신값을 불러와 비교한 뒤 다시 적용하세요.')
+          if (!input.publish && correctionReflected(input.correction.rows, latest.supply) && documentReflected(input, latest)) { finishApplied(latest, preview); setNotice('이 보정은 이미 반영돼 있습니다. 같은 요청을 다시 저장하지 않았습니다.'); return }
+          setError(input.publish
+            ? '현재값이 바뀌었거나 같은 보정 요청을 이미 처리했다는 응답을 받았습니다. 공개 요청이 반영됐는지 확인하지 못했습니다. 입력을 유지하고 최신값의 공급정보·기본정보·공개 상태를 비교하세요.'
+            : '같은 보정 요청을 이미 처리했다는 응답을 받았지만 저장된 공급정보·기본정보·일정이 이 화면의 변경과 다릅니다. 이 변경은 반영되지 않았습니다. 최신값을 불러와 비교한 뒤 다시 적용하세요.')
           setBlocked(true); setChecked(null); return
         } catch { /* 최신값을 못 읽으면 일반 실패로 알린다. */ }
       }
@@ -373,7 +375,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     setBusy(true); setError('')
     try {
       const latest = await loadJsonWorkspace(id), [nextHousing, names] = await Promise.all([candidates(latest), complexLabels(latest)])
-      const reflected = uncertain && lastInput.current !== null && correctionReflected(lastInput.current.correction.rows, latest.supply)
+      const reflected = uncertain && !unconfirmed(workspace) && lastInput.current !== null && !lastInput.current.publish && correctionReflected(lastInput.current.correction.rows, latest.supply)
       if (review) setReview(rebaseReview(review, latest, nextHousing))
       setWorkspace(latest); setHousing(nextHousing); setComplexes(names); setBlocked(false); setUncertain(false); setPhase('review')
       setNotice(reflected ? '최신 저장값에 이 보정이 이미 반영돼 있습니다. 다시 적용하지 마세요. 결과를 확인한 뒤 화면을 닫으세요.'
@@ -418,10 +420,11 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
         <fieldset disabled={busy || blocked} hidden={Boolean(checked)} className={styles.reviewFields}><div role="tabpanel" id="pdf-review-panel" aria-labelledby="pdf-review-tab-active">
           {section === 'supply' && <ReviewSupply savesHousingTypes={!supplyDraft} warnings={workerWarnings} editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} selected={selectedRow} onSelect={selectRow} onJump={goTo} />}
           {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.extraction.undatedSchedules.length > 0 && <p className={styles.hint}>날짜 없이 안내한 일정: {review.extraction.undatedSchedules.join(' · ')}</p>}<ReviewSchedules review={review} workspace={workspace} filter={filter} empty={empty} onChange={change} onEvidence={evidence} /></>}
-          {section === 'reception' && <><h2>접수처·기본정보</h2><p>임대유형·모집유형·기관·공고명은 현재값을 유지합니다. 접수처는 한 곳만 저장할 수 있으므로 온라인·현장 병행 여부를 확인하세요.</p>{visibleIn(review.reception) && <h3>접수처</h3>}<ReviewCells cells={review.reception} scope="접수처" needs={fieldNeed} filter={filter} onChange={reception => change({ ...review, reception })} onEvidence={evidence} />{visibleIn(review.metadata) && <h3>공고 기본 일정</h3>}<ReviewCells cells={review.metadata} scope="기본정보" needs={fieldNeed} filter={filter} onChange={metadata => change({ ...review, metadata })} onEvidence={evidence} />{!visibleIn(review.reception) && !visibleIn(review.metadata) && <p className={styles.hint}>{empty}</p>}</>}
+          {section === 'reception' && <><h2>접수처·기본정보</h2><p>{unconfirmed(workspace) ? '미확정 공고는 접수 시작일·접수 종료일·당첨자 발표일을 모두 채워야 저장됩니다. 공급·모집 유형은 공개 전 확인에서 선택하세요.' : '임대유형·모집유형·기관·공고명은 현재값을 유지합니다.'} 접수처는 한 곳만 저장할 수 있으므로 온라인·현장 병행 여부를 확인하세요.</p>{visibleIn(review.reception) && <h3>접수처</h3>}<ReviewCells cells={review.reception} scope="접수처" needs={fieldNeed} filter={filter} onChange={reception => change({ ...review, reception })} onEvidence={evidence} />{visibleIn(review.metadata) && <h3>공고 기본 일정</h3>}<ReviewCells cells={review.metadata} scope="기본정보" needs={fieldNeed} filter={filter} onChange={metadata => change({ ...review, metadata })} onEvidence={evidence} />{!visibleIn(review.reception) && !visibleIn(review.metadata) && <p className={styles.hint}>{empty}</p>}</>}
         </div></fieldset>
+        {!supplyDraft && unconfirmed(workspace) && <ReleaseCheck value={release} disabled={busy || blocked} onChange={setRelease} />}
       </div></div>
-      {!supplyDraft && unconfirmed(workspace) && <ReleaseCheck value={release} disabled={busy || blocked} onChange={setRelease} />}<footer className={styles.footer}><div><strong>{changes.length}개 값 반영</strong><span>{changeSummary(changes)} · 선택하지 않은 값은 유지합니다.</span></div><div className={styles.actions}>{!supplyDraft && <><Button data-design-system className={styles.secondaryButton} disabled={!draftChecked || drafts.status.state === 'saving' || drafts.status.state === 'conflict'} onClick={() => void drafts.saveNow()}>임시저장</Button></>}{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`미해결 ${pending.length}개 ↓`}</Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}<Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => { setPhase('prepare'); setError('') }}>응답 준비로 돌아가기</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
+      <footer className={styles.footer}><div><strong>{changes.length}개 값 반영</strong><span>{changeSummary(changes)} · 선택하지 않은 값은 유지합니다.</span></div><div className={styles.actions}>{!supplyDraft && <><Button data-design-system className={styles.secondaryButton} disabled={!draftChecked || drafts.status.state === 'saving' || drafts.status.state === 'conflict'} onClick={() => void drafts.saveNow()}>임시저장</Button></>}{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`미해결 ${pending.length}개 ↓`}</Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}<Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => { setPhase('prepare'); setError('') }}>응답 준비로 돌아가기</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
       {/* 근거는 추출할 때 자동으로 채운다. 원문 URL이 없을 때처럼 저장을 막는 값만 직접 입력하게 한다. */}
       {phase === 'review' && !supplyDraft && (reasonInput || reasonProblem) && <section className={styles.reason} aria-label="적용 근거 입력"><p role="status" className={styles.error}>{reasonProblem}</p><label>보정 이유<textarea value={reason} maxLength={2000} disabled={busy || blocked} onChange={event => { setReason(event.target.value) }} /></label><label>공식 근거 URL<input value={sourceUrl} maxLength={2048} disabled={busy || blocked} onChange={event => { setSourceUrl(event.target.value) }} /></label><label>근거 쪽<input value={sourcePage} maxLength={100} disabled={busy || blocked} onChange={event => { setSourcePage(event.target.value) }} /></label></section>}
     </>}
@@ -489,10 +492,10 @@ function unconfirmed(workspace: JsonWorkspace | null) {
 }
 
 function ReleaseCheck({ value, disabled, onChange }: { value: ReleaseChoice; disabled: boolean; onChange: (next: ReleaseChoice) => void }) {
-  return <section className={styles.reason} aria-label="공개 전 확인"><h2>공개 전 확인</h2>
-    <p className={styles.hint}>미확정 공고라 사용자에게 보이지 않습니다. 비어 있는 공급·모집 유형을 정하고, 공급행이 가리키는 단지가 맞는지 확인했으면 공개를 요청하세요. 공개하면 신규 공고 알림이 나갑니다.</p>
+  return <section className={styles.releaseCheck} aria-label="공개 전 확인"><h2>공개 전 확인</h2>
+    <p className={styles.hint}>미확정 공고라 사용자에게 보이지 않습니다. 저장하려면 접수처·기본정보에서 접수 시작일·접수 종료일·당첨자 발표일을 채우고, 여기서 공급·모집 유형을 정해야 합니다. 공급행에 연결된 단지를 확인한 뒤 공개를 요청하세요. 공개하면 신규 공고 알림이 나갑니다.</p>
     <label>공급 유형<select value={value.rentalType} disabled={disabled} onChange={event => onChange({ ...value, rentalType: event.target.value })}><option value="">현재값 유지</option>{rentals.map(type => <option key={type} value={type}>{labels[type] ?? type}</option>)}</select></label>
     <label>모집 유형<select value={value.recruitmentType} disabled={disabled} onChange={event => onChange({ ...value, recruitmentType: event.target.value })}><option value="">현재값 유지</option>{['NEW', 'WAITLIST', 'ETC'].map(type => <option key={type} value={type}>{labels[type] ?? type}</option>)}</select></label>
-    <label><input type="checkbox" checked={value.publish} disabled={disabled} onChange={event => onChange({ ...value, publish: event.target.checked })} />단지를 확인했고 이 보정과 함께 공개합니다</label>
+    <label className={styles.releaseConfirmation}><input type="checkbox" checked={value.publish} disabled={disabled} onChange={event => onChange({ ...value, publish: event.target.checked })} />단지를 확인했고 이 보정과 함께 공개합니다</label>
   </section>
 }

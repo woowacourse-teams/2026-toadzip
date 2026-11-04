@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.sh.refinement.service;
 
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
+import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import com.toadzip.backend.ingest.sh.collection.domain.ShAnnouncementSource;
 import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.sh.refinement.dto.ShAnnouncementRefinementReport;
@@ -26,11 +27,13 @@ public class ShAnnouncementRefinementService {
     private final ShAnnouncementSourceRepository sources;
     private final ShAnnouncementRefiner refiner;
     private final TransactionTemplate transactions;
+    private final IngestWriteOwnershipGuard ownershipGuard;
 
     public ShAnnouncementRefinementService(ShAnnouncementSourceRepository sources, ShAnnouncementRefiner refiner,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager, IngestWriteOwnershipGuard ownershipGuard) {
         this.sources = sources;
         this.refiner = refiner;
+        this.ownershipGuard = ownershipGuard;
         transactions = new TransactionTemplate(transactionManager);
         // 원천마다 따로 커밋해 한 원천의 실패가 앞서 정제한 공고를 되돌리지 않게 한다.
         transactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -48,7 +51,10 @@ public class ShAnnouncementRefinementService {
         for (ShAnnouncementSource target : targets) {
             IngestExecutionScope.checkStopRequested();
             try {
-                outcomes.merge(transactions.execute(status -> refiner.refine(target)), 1, Integer::sum);
+                outcomes.merge(transactions.execute(status -> {
+                    ownershipGuard.verifyWrite();
+                    return refiner.refine(target);
+                }), 1, Integer::sum);
             }
             catch (RuntimeException failure) {
                 failed++;

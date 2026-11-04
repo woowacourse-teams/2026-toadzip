@@ -114,7 +114,7 @@ describe('DataPipelineControl', () => {
 
   it.each([
     ['SH', 'SH_ANNOUNCEMENT_COLLECTION'], ['GH', 'GH_ANNOUNCEMENT_COLLECTION'],
-  ] as const)('v2 공고 화면에서 %s 수집을 키 없이 실행하고 한 단계 결과를 표시한다', async (agency, type) => {
+  ] as const)('v2 공고 화면에서 %s 수집을 키 없이 실행하고 수집·정제 두 단계를 표시한다', async (agency, type) => {
     apiMocks.startDataPipeline.mockResolvedValue(execution(type, 'COMPLETED'))
     render(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
     await act(async () => {})
@@ -122,7 +122,7 @@ describe('DataPipelineControl', () => {
     fireEvent.click(screen.getByRole('button', { name: `${agency} 공고 수집` }))
     expect(apiMocks.startDataPipeline).toHaveBeenCalledWith(type)
     const result = await screen.findByRole('article', { name: '현재 작업 단계' })
-    expect(within(result).getByRole('list', { name: '실행 단계' }).children).toHaveLength(1)
+    expect(within(result).getByRole('list', { name: '실행 단계' }).children).toHaveLength(2)
     fireEvent.click(screen.getByRole('button', { name: '공고 수집 개요로 돌아가기' }))
     await waitFor(() => expect(screen.getByRole('button', { name: `${agency} 공고 수집` })).toBeEnabled())
   })
@@ -744,7 +744,7 @@ function execution(
 }
 
 function stepCount(type: DataPipelineType): number {
-  if (type === 'SH_ANNOUNCEMENT_COLLECTION' || type === 'GH_ANNOUNCEMENT_COLLECTION') return 1
+  if (type === 'SH_ANNOUNCEMENT_COLLECTION' || type === 'GH_ANNOUNCEMENT_COLLECTION') return 2
   if (type === 'ANNOUNCEMENT_SYNC') return 5
   if (type === 'COMPLEX_SYNC' || type === 'ANNOUNCEMENT_COLLECTION') return 4
   if (type === 'ANNOUNCEMENT_REFINEMENT') return 1

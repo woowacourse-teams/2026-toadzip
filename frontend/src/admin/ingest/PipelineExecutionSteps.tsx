@@ -65,8 +65,8 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
         : `단계 상태: ${states[stepState(execution, selected)][1]}`)}</p>
       {(partial || failure || skipped) && <Link to={`/admin/failures?domain=${domain}&category=${category}&executionId=${encodeURIComponent(execution.executionId ?? '')}`}>
         실패 대상 확인</Link>}
-      {report != null && <details><summary>상세 보고서</summary><PipelineReport report={report} />
-        <StoredDataTable data={report} label={`${selectedName} 실행 보고서`} /></details>}
+      {report != null && <><PipelineReport report={report} /><details><summary>상세 보고서</summary>
+        <StoredDataTable data={report} label={`${selectedName} 실행 보고서`} /></details></>}
     </section>}
     {execution.type === 'ANNOUNCEMENT_REGISTRATION' && execution.status.startsWith('COMPLETED')
       && <p role="status">공고 {execution.targetAnnouncementIdentifier} 등록이 완료되었습니다.{' '}

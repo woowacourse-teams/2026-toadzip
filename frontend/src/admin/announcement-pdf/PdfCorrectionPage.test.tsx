@@ -186,6 +186,30 @@ it('공개된 공고에는 공개 전 확인을 보이지 않는다', async () =
   await open()
   expect(screen.queryByRole('region', { name: '공개 전 확인' })).not.toBeInTheDocument()
 })
+it.each(['공개 요청', '공급 유형', '모집 유형'])('미리보기 뒤 %s을 바꾸면 이전 확인을 버리고 바뀐 선택으로 다시 검증한다', async field => {
+  api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
+  await open()
+  const release = screen.getByRole('region', { name: '공개 전 확인' })
+  fireEvent.change(within(release).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
+  fireEvent.change(within(release).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
+  fireEvent.click(within(release).getByRole('checkbox'))
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  await screen.findByRole('region', { name: '적용 전 확인' })
+
+  if (field === '공개 요청') fireEvent.click(within(release).getByRole('checkbox'))
+  else fireEvent.change(within(release).getByLabelText(field), { target: { value: field === '공급 유형' ? 'HAPPY_HOUSING' : 'NEW' } })
+
+  expect(screen.queryByRole('region', { name: '적용 전 확인' })).not.toBeInTheDocument()
+  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  await screen.findByRole('region', { name: '적용 전 확인' })
+  const input = api.previewJsonUpdate.mock.calls[1][1] as JsonUpdateInput
+  expect(input.publish).toBe(field === '공개 요청' ? undefined : true)
+  expect(input.document.announcement).toEqual(expect.objectContaining({
+    rentalType: field === '공급 유형' ? 'HAPPY_HOUSING' : 'NATIONAL_RENTAL',
+    recruitmentType: field === '모집 유형' ? 'NEW' : 'WAITLIST',
+  }))
+})
 it('저장할 곳을 정하지 않은 공급행은 까닭을 쉬운 말로 알리고 서버에 보내지 않는다', async () => {
   const extraction = structuredClone(fixtures.hansville.extraction)
   extraction.sharedCounts = []
@@ -947,8 +971,53 @@ it('409(ADMIN_DATA_CONFLICT) 뒤 최신값에 이 변경이 없으면 반영되�
   fireEvent.change(screen.getByRole('textbox', { name: '공급행 1 이 공고의 주택형 표기 수정' }), { target: { value: '26A 새 표기' } })
   api.applyJsonUpdate.mockRejectedValueOnce(new ManagementError('이미 처리한 요청입니다.', 409, {}, 'ADMIN_DATA_CONFLICT'))
   await applyCorrection()
-  expect(await screen.findByRole('alert')).toHaveTextContent('이 변경은 반영되지 않았습니다')
+  expect(await screen.findByRole('alert')).toHaveTextContent('이 변경이 반영됐는지 확인하지 못했습니다')
   expect(screen.getByRole('button', { name: '입력을 유지하고 최신값 비교' })).toBeEnabled()
+})
+
+it.each([true, false])('미확정 공고 저장이 충돌하고 공급행만 같으면 완료 처리하거나 초안을 지우지 않는다 (공개 요청 %s)', async publish => {
+  api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
+  api.previewJsonUpdate.mockResolvedValue(previewResult({ publishes: publish }))
+  await open()
+  const release = screen.getByRole('region', { name: '공개 전 확인' })
+  fireEvent.change(within(release).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
+  fireEvent.change(within(release).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
+  if (publish) fireEvent.click(within(release).getByRole('checkbox'))
+  let sent: JsonUpdateInput | undefined
+  api.applyJsonUpdate.mockImplementationOnce(async (_id: string, input: JsonUpdateInput) => {
+    sent = input
+    throw new ManagementError('현재값이 변경되었습니다.', 409, {}, 'ADMIN_DATA_CONFLICT')
+  })
+  api.loadJsonWorkspace.mockImplementation(async () => ({ ...unconfirmedWorkspace(),
+    supply: { ...workspace.supply, rows: sent!.correction.rows } }))
+
+  await applyCorrection()
+
+  await screen.findByRole('button', { name: '입력을 유지하고 최신값 비교' })
+  expect(screen.queryByRole('heading', { name: '공고를 공개했습니다.' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '입력을 유지하고 최신값 비교' })).toBeEnabled()
+  expect(draftApi.deleteCorrectionDraft).not.toHaveBeenCalled()
+})
+
+it.each([true, false])('미확정 공고 저장 응답을 잃고 공급행만 같으면 재조회 뒤에도 성공을 추정하지 않는다 (공개 요청 %s)', async publish => {
+  api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
+  api.previewJsonUpdate.mockResolvedValue(previewResult({ publishes: publish }))
+  await open()
+  if (publish) fireEvent.click(within(screen.getByRole('region', { name: '공개 전 확인' })).getByRole('checkbox'))
+  let sent: JsonUpdateInput | undefined
+  api.applyJsonUpdate.mockImplementationOnce(async (_id: string, input: JsonUpdateInput) => {
+    sent = input
+    throw new Error('응답 유실')
+  })
+  api.loadJsonWorkspace.mockImplementation(async () => ({ ...unconfirmedWorkspace(),
+    supply: { ...workspace.supply, rows: sent!.correction.rows } }))
+
+  await applyCorrection()
+  fireEvent.click(await screen.findByRole('button', { name: '입력을 유지하고 최신값 비교' }))
+
+  expect(await screen.findByText(/최신 저장값을 불러왔습니다. 수동 입력은 유지했습니다/)).toBeVisible()
+  expect(screen.queryByText(/최신 저장값에 이 보정이 이미 반영/)).not.toBeInTheDocument()
+  expect(draftApi.deleteCorrectionDraft).not.toHaveBeenCalled()
 })
 
 it('적용 전 확인은 통합행 분리 결과와 단지별 변경 전후 합계, 남는 LH 행을 보여 준다', async () => {
