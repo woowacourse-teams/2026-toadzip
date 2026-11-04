@@ -12,6 +12,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.collection.board.service.BoardSourceCollector;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures;
 import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures.Row;
@@ -278,9 +279,11 @@ class GhAnnouncementCollectionServiceTest {
     }
 
     private GhAnnouncementCollectionService service(int days) {
-        return new GhAnnouncementCollectionService(externalRepository, new GhAnnouncementListParser(),
-                new GhAnnouncementHtmlParser(), store, new GhHousingTypeDetails(), CollectionServiceTestFixture.retryWithoutDelay(), failures,
-                Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), days, Duration.ZERO);
+        return new GhAnnouncementCollectionService(
+                new GhAnnouncementCollector(externalRepository, new GhAnnouncementListParser(),
+                        new GhAnnouncementHtmlParser(), store, new GhHousingTypeDetails()),
+                new BoardSourceCollector(CollectionServiceTestFixture.retryWithoutDelay(), failures,
+                        Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC)), days, Duration.ZERO);
     }
 
     private Row row(int pbancNo, String postedDate) {

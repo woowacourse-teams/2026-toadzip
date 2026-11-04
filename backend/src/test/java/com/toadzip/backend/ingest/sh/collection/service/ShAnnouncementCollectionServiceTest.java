@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.collection.board.service.BoardSourceCollector;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementStore;
@@ -252,9 +253,10 @@ class ShAnnouncementCollectionServiceTest {
     }
 
     private ShAnnouncementCollectionService service(int days) {
-        return new ShAnnouncementCollectionService(externalRepository, new ShAnnouncementListParser(), detailParser, store,
-                CollectionServiceTestFixture.retryWithoutDelay(), failures,
-                Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), days, Duration.ZERO);
+        return new ShAnnouncementCollectionService(
+                new ShAnnouncementCollector(externalRepository, new ShAnnouncementListParser(), detailParser, store),
+                new BoardSourceCollector(CollectionServiceTestFixture.retryWithoutDelay(), failures,
+                        Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC)), days, Duration.ZERO);
     }
 
     private String list(int page, int total, Integer... recentIds) {
