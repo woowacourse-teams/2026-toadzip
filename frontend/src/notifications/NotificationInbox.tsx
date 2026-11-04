@@ -7,6 +7,7 @@ import { NotificationDialog } from './NotificationDialog'
 import { NotificationScheduleDetails } from './NotificationScheduleDetails'
 import { NotificationApiError, type NotificationItem, type NotificationPageResult, type NotificationSchedule } from './notificationRepository'
 import styles from './NotificationInbox.module.css'
+import { captureCampaignStat } from '../analytics/campaignStats'
 
 const empty: NotificationPageResult = { items: [], nextCursor: null, readThrough: '0', totalCount: 0 }
 interface EditSelection { readonly userId: string; readonly bound: string; readonly total: number; readonly all: boolean; readonly ids: ReadonlySet<string> }
@@ -31,6 +32,7 @@ export function NotificationInbox({ onNavigate }: { readonly onNavigate?: () => 
   const controller = useRef<AbortController | null>(null)
   const requestId = useRef(0)
   const allCheckbox = useRef<HTMLInputElement>(null)
+  const countedView = useRef(false)
   const page = state.userId === userId ? state.page : empty
   const loading = state.userId !== userId || state.loading
   const edit = selection?.userId === userId ? selection : null
@@ -70,6 +72,14 @@ export function NotificationInbox({ onNavigate }: { readonly onNavigate?: () => 
     return () => { abort.abort() }
   }, [loadPage, revision, count, retry, editBound])
   useEffect(() => { if (allCheckbox.current) allCheckbox.current.indeterminate = selectedCount > 0 && !allSelected }, [selectedCount, allSelected])
+  useEffect(() => {
+    if (!userId || loading || state.error || countedView.current) return
+    let cancelled = false
+    queueMicrotask(() => {
+      if (!cancelled && !countedView.current) countedView.current = captureCampaignStat('notification_inbox_viewed')
+    })
+    return () => { cancelled = true }
+  }, [userId, loading, state.error])
   async function read(item?: NotificationItem) {
     const signal = controller.current?.signal
     if (!repository || !signal || busy || edit) return
@@ -79,6 +89,7 @@ export function NotificationInbox({ onNavigate }: { readonly onNavigate?: () => 
       if (item) await repository.read(item.id, signal)
       else await repository.readAll(page.readThrough, signal)
       if (signal.aborted || version !== generation.current) return
+      if (item) captureCampaignStat('notification_opened')
       const now = new Date().toISOString()
       setState(current => ({ ...current, page: { ...current.page, items: current.page.items.map(value =>
         (!item && BigInt(value.id) <= BigInt(page.readThrough)) || value.id === item?.id ? { ...value, readAt: value.readAt ?? now } : value) } }))

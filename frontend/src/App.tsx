@@ -27,6 +27,7 @@ import { OperationsHome } from './admin/operations/OperationsHome'
 import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
 import { PrivacyBoundary, PrivacyPolicyPage, PrivacySettingsPage } from './privacy/Privacy'
 import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
+import { CampaignStatsBoundary } from './analytics/CampaignStatsBoundary'
 import { PublicNotificationLayout } from './notifications/PublicNotificationLayout'
 import { LandingPage } from './landing/LandingPage'
 import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
@@ -152,6 +153,7 @@ export default function App() {
     <MobileInstallProvider>
     {pathname !== '/' && <PrivacyBoundary />}
     <ProductAnalyticsBoundary />
+    <CampaignStatsBoundary />
     <Routes location={background ?? location}>
       <Route path="/" element={<LandingEntry />} />
       <Route element={<PublicNotificationLayout />}>

@@ -7,6 +7,8 @@ import { BROWSER_IDENTITY_PREFIX, clearBrowserAnalyticsIdentities, loadBrowserAn
   readBrowserAnalyticsIdentity, removeBrowserAnalyticsIdentity, type BrowserAnalyticsIdentity } from './browserAnalyticsIdentity'
 export { maskReplayAttribute } from './replayPrivacy'
 import { isProductEvent, sanitizeProductProperties, type ProductProperties, type SafeProperties } from './productEvents'
+import { captureCampaignStat } from './campaignStats'
+import { campaignEntry } from './campaignAttribution'
 
 const EXCLUSION_KEY = 'toadzip.analytics.disabled'
 const DEDUPLICATION_KEY = 'toadzip.posthog.sent-actions.v1'
@@ -415,6 +417,7 @@ function queueCoreEvent(event: PendingEvent, options: CaptureOptions, queue = co
 /** Accepted means queued locally. Core deduplication is committed only after HTTP acceptance. */
 export function captureProductEvent(name: string, properties: ProductProperties = {}, options: CaptureOptions = {}): boolean {
   if (!isProductEvent(name)) return false
+  if (!['page_view', 'view_complex', 'view_announcement'].includes(name)) captureCampaignStat(name, properties)
   return captureEvent(name, properties, options)
 }
 
@@ -472,6 +475,8 @@ export function prepareMarkerHoverCompletion(): PreparedMarkerHoverCompletion | 
 
 /** Create once per original business action, and reuse for idempotent action retries. */
 export function prepareNotificationCompletion(): (properties: ProductProperties, options?: CaptureOptions) => boolean {
+  const campaign = campaignEntry()
+  let counted = false
   const permitted = !!configuration() && collectionAllowed()
   const expected = corePermissionGeneration
   const config = configuration()
@@ -480,6 +485,7 @@ export function prepareNotificationCompletion(): (properties: ProductProperties,
   const originalPage = safePageName()
   return (properties, options = {}) => {
     try {
+      if (!counted) counted = captureCampaignStat('notification_preregistration_completed', properties, campaign)
       const current = configuration()
       if (!permitted || expected !== corePermissionGeneration || Date.now() >= expiresAt
         || !current || current.key !== config?.key || current.environment !== config.environment
