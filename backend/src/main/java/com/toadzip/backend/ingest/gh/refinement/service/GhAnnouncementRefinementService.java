@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.gh.refinement.service;
 
+import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementSource;
 import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.gh.refinement.dto.GhAnnouncementRefinementReport;
@@ -24,12 +25,15 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class GhAnnouncementRefinementService {
 
     private final GhAnnouncementSourceRepository sources;
+    private final HousingComplexRepository housingComplexes;
     private final GhAnnouncementRefiner refiner;
     private final TransactionTemplate transactions;
 
-    public GhAnnouncementRefinementService(GhAnnouncementSourceRepository sources, GhAnnouncementRefiner refiner,
+    public GhAnnouncementRefinementService(GhAnnouncementSourceRepository sources,
+            HousingComplexRepository housingComplexes, GhAnnouncementRefiner refiner,
             PlatformTransactionManager transactionManager) {
         this.sources = sources;
+        this.housingComplexes = housingComplexes;
         this.refiner = refiner;
         transactions = new TransactionTemplate(transactionManager);
         // 원천마다 따로 커밋해 한 원천의 실패가 앞서 정제한 공고를 되돌리지 않게 한다.
@@ -42,13 +46,14 @@ public class GhAnnouncementRefinementService {
                 .sorted(Comparator.comparing(GhAnnouncementSource::getPostedDate)
                         .thenComparing(GhAnnouncementSource::getPbancNo))
                 .toList();
+        GhComplexIndex index = transactions.execute(status -> GhComplexIndex.of(housingComplexes.findAll()));
         IngestExecutionScope.beginWork("GH 공고 정제", "공고", targets.size());
         Map<Outcome, Integer> outcomes = new EnumMap<>(Outcome.class);
         int failed = 0;
         for (GhAnnouncementSource target : targets) {
             IngestExecutionScope.checkStopRequested();
             try {
-                outcomes.merge(transactions.execute(status -> refiner.refine(target)), 1, Integer::sum);
+                outcomes.merge(transactions.execute(status -> refiner.refine(target, index)), 1, Integer::sum);
             }
             catch (RuntimeException failure) {
                 failed++;

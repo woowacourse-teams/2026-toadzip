@@ -20,7 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * GH 원천 하나를 미확정 공고로 정제한다. 식별자는 원천 키(`GH:{공고 번호}`)다. 공개는 관리자가 PDF 보정에서 요청할 때만 하므로
  * 정제는 공개하지 않고 새 공고 알림도 쌓지 않는다. 공고문 PDF는 원천 첨부 식별자로 한 번만 붙이고, 첨부를 못 읽은 원천은 이미 붙인
- * 첨부를 그대로 둔다.
+ * 첨부를 그대로 둔다. 지구는 공고 단지로 맞추고 GH 제품 단지를 미리 고르며, 지구를 못 읽은 원천은 공고 단지를 그대로 둔다.
  */
 @Component
 @RequiredArgsConstructor
@@ -30,8 +30,9 @@ class GhAnnouncementRefiner {
 
     private final AnnouncementRepository announcements;
     private final AnnouncementAttachmentRepository attachments;
+    private final GhAnnouncementComplexLinker complexLinker;
 
-    Outcome refine(GhAnnouncementSource source) {
+    Outcome refine(GhAnnouncementSource source, GhComplexIndex index) {
         Optional<Announcement> existing = announcements.findBySourceAnnouncementIdentifier(source.getSourceKey())
                 .flatMap(found -> announcements.findByIdForUpdate(found.getId()));
         if (existing.isPresent() && existing.get().isAdminDeleted()) {
@@ -46,6 +47,10 @@ class GhAnnouncementRefiner {
         else {
             announcement = existing.get();
             outcome = update(announcement, source);
+        }
+        if (source.getDistricts() != null) {
+            complexLinker.observe(announcement, JSON.readTree(source.getDistricts()),
+                    GhComplexIndex.rentalType(source.getSupplyType()), index);
         }
         if (source.getAttachments() != null) {
             writeAttachments(announcement, JSON.readTree(source.getAttachments()));

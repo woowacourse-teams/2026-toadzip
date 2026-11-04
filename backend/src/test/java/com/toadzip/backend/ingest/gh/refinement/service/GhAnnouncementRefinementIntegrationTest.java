@@ -6,6 +6,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.housing.domain.Address;
+import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures;
 import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures.Row;
 import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementExternalRepository;
@@ -13,7 +16,11 @@ import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementSourceR
 import com.toadzip.backend.ingest.gh.collection.service.GhAnnouncementCollectionService;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +45,7 @@ class GhAnnouncementRefinementIntegrationTest {
     @Autowired private ExternalDataCollectionFailureRepository failures;
     @Autowired private AnnouncementRepository announcements;
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private HousingComplexRepository complexes;
     @MockitoBean private GhAnnouncementExternalRepository externalRepository;
 
     @BeforeEach
@@ -48,9 +56,13 @@ class GhAnnouncementRefinementIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        jdbc.update("DELETE FROM announcement_complexes WHERE announcement_id IN "
+                + "(SELECT id FROM announcements WHERE source_announcement_identifier LIKE 'GH:%')");
         jdbc.update("DELETE FROM announcement_attachments WHERE announcement_id IN "
                 + "(SELECT id FROM announcements WHERE source_announcement_identifier LIKE 'GH:%')");
         jdbc.update("DELETE FROM announcements WHERE source_announcement_identifier LIKE 'GH:%'");
+        jdbc.update("DELETE FROM housing_complexes WHERE name IN "
+                + "('다산 센트럴파크 6단지', '다른 시의 같은 지번', '같은 지번 영구임대', 'LH 단지', '다산 센트럴파크 6단지 2')");
         sources.deleteAll();
         failures.deleteAll();
     }
@@ -152,6 +164,75 @@ class GhAnnouncementRefinementIntegrationTest {
         assertThat(report.created()).isOne();
         assertThat(announcements.findBySourceAnnouncementIdentifier("GH:801")).isEmpty();
         assertThat(announcements.findBySourceAnnouncementIdentifier("GH:802")).isPresent();
+    }
+
+    @Test
+    void 지구의_지번_시군구_공급유형이_맞는_GH_단지가_하나뿐이면_공고_단지에_미리_고른다() {
+        long dasan = complex("다산 센트럴파크 6단지", "경기도 남양주시 다산순환로 20", "4136010100161070000", "GH",
+                "NATIONAL_RENTAL");
+        complex("다른 시의 같은 지번", "경기도 구리시 갈매순환로 1", "4131010100161070000", "GH", "NATIONAL_RENTAL");
+        complex("같은 지번 영구임대", "경기도 남양주시 다산순환로 20", "4136010100161070000", "GH", "PERMANENT_RENTAL");
+        complex("LH 단지", "경기도 안양시 동안구 관양로 1", "4117310400114980021", "LH", "NATIONAL_RENTAL");
+        collect(ROW);
+
+        refinement.refineAll();
+
+        var linked = linkedComplexes("GH:801");
+        assertThat(linked).containsEntry("다산 센트럴파크6단지", dasan);
+        assertThat(linked).containsEntry("안양관양 경기행복주택", null);
+        assertThat(jdbc.queryForObject("""
+                SELECT link_method FROM announcement_complexes c JOIN announcements a ON a.id = c.announcement_id
+                WHERE a.source_announcement_identifier = 'GH:801' AND c.source_complex_name = '다산 센트럴파크6단지'
+                """, String.class)).isEqualTo("AUTO");
+        assertThat(jdbc.queryForObject("""
+                SELECT total_household_count FROM announcement_complexes c JOIN announcements a ON a.id = c.announcement_id
+                WHERE a.source_announcement_identifier = 'GH:801' AND c.source_complex_name = '다산 센트럴파크6단지'
+                """, Integer.class)).isNull();
+    }
+
+    @Test
+    void 같은_조건의_GH_단지가_둘이면_고르지_않는다() {
+        complex("다산 센트럴파크 6단지", "경기도 남양주시 다산순환로 20", "4136010100161070000", "GH", "NATIONAL_RENTAL");
+        complex("다산 센트럴파크 6단지 2", "경기도 남양주시 다산순환로 22", "4136010200161070000", "GH", "NATIONAL_RENTAL");
+        collect(ROW);
+
+        refinement.refineAll();
+
+        assertThat(linkedComplexes("GH:801")).containsEntry("다산 센트럴파크6단지", null);
+    }
+
+    @Test
+    void 지구를_못_읽은_원천은_공고_단지를_빠진_것으로_보지_않고_다시_정제해도_바꾸지_않는다() {
+        collect(ROW);
+        refinement.refineAll();
+        jdbc.update("UPDATE gh_announcement_source SET districts = NULL WHERE pbanc_no = '801'");
+
+        refinement.refineAll();
+
+        assertThat(jdbc.queryForList("""
+                SELECT present_in_source FROM announcement_complexes c JOIN announcements a ON a.id = c.announcement_id
+                WHERE a.source_announcement_identifier = 'GH:801'
+                """, Boolean.class)).containsOnly(true).hasSize(2);
+    }
+
+    private long complex(String name, String roadAddress, String pnu, String provider, String supplyType) {
+        var complex = HousingComplex.create(name, UUID.randomUUID().toString(), supplyType,
+                Address.create(roadAddress, pnu, pnu.substring(0, 10), pnu.substring(0, 2), pnu.substring(0, 5),
+                        new BigDecimal("37.600000"), new BigDecimal("127.150000")),
+                100, provider, LocalDate.of(2020, 6, 30), "INDIVIDUAL", "APARTMENT", "STAIR", true, 80, null, 0);
+        return complexes.saveAndFlush(complex).getId();
+    }
+
+    private Map<String, Long> linkedComplexes(String identifier) {
+        Map<String, Long> linked = new LinkedHashMap<>();
+        jdbc.query("""
+                SELECT c.source_complex_name, c.housing_complex_id FROM announcement_complexes c
+                JOIN announcements a ON a.id = c.announcement_id WHERE a.source_announcement_identifier = ?
+                ORDER BY c.id
+                """, row -> {
+            linked.put(row.getString(1), (Long) row.getObject(2));
+        }, identifier);
+        return linked;
     }
 
     private void collect(Row... rows) {
