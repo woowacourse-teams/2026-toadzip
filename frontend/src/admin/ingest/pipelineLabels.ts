@@ -9,6 +9,7 @@ export const pipelineLabels: Record<DataPipelineType, string> = {
   ANNOUNCEMENT_SYNC: 'LH 공고 갱신',
   ANNOUNCEMENT_REGISTRATION: '공고 단건 등록',
   SH_ANNOUNCEMENT_COLLECTION: 'SH 공고 수집',
+  GH_ANNOUNCEMENT_COLLECTION: 'GH 공고 수집',
 }
 
 // 단지 정제는 지원을 종료했다. 지난 실행 이력과 결과는 계속 보여 준다.

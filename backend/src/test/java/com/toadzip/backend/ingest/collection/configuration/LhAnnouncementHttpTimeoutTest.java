@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpServer;
-import com.toadzip.backend.ingest.collection.lh.configuration.LhAnnouncementClientProperties;
-import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
+import com.toadzip.backend.ingest.lh.collection.configuration.LhAnnouncementClientProperties;
+import com.toadzip.backend.ingest.lh.collection.repository.external.LhResponseStatusValidator;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import java.net.InetSocketAddress;
 import java.time.Duration;

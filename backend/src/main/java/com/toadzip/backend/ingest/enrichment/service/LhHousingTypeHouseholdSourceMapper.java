@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhLeaseCatalogSourceView;
+import com.toadzip.backend.ingest.lh.collection.leasecatalog.domain.LhLeaseCatalogSourceView;
 import com.toadzip.backend.ingest.domain.SourceArea;
 import java.math.BigDecimal;
 import java.util.ArrayList;

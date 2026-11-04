@@ -3,9 +3,10 @@ package com.toadzip.backend.ingest.enrichment.service;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import java.util.List;
 import org.springframework.stereotype.Component;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper;
 
 @Component
 class LhAnnouncementSupplyMatcher {

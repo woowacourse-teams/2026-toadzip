@@ -5,6 +5,7 @@ import com.toadzip.backend.announcement.domain.AnnouncementSort;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
+import com.toadzip.backend.announcement.domain.AnnouncementReleaseStatus;
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -207,6 +208,7 @@ public class AnnouncementSearchRepository {
             List<Predicate> predicates
     ) {
         predicates.add(criteriaBuilder.isFalse(announcement.get("adminDeleted")));
+        predicates.add(criteriaBuilder.equal(announcement.get("releaseStatus"), AnnouncementReleaseStatus.PUBLISHED));
         predicates.add(storedValueIn(
                 criteriaBuilder,
                 announcement.get("status"),
@@ -225,7 +227,8 @@ public class AnnouncementSearchRepository {
         Root<Announcement> successor = successorQuery.from(Announcement.class);
         successorQuery.select(successor.get("id"))
                 .where(criteriaBuilder.equal(successor.get("previousAnnouncement"), announcement),
-                        criteriaBuilder.isFalse(successor.get("adminDeleted")));
+                        criteriaBuilder.isFalse(successor.get("adminDeleted")),
+                        criteriaBuilder.equal(successor.get("releaseStatus"), AnnouncementReleaseStatus.PUBLISHED));
         predicates.add(criteriaBuilder.not(criteriaBuilder.exists(successorQuery)));
     }
 

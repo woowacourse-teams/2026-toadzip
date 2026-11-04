@@ -17,7 +17,8 @@ public enum DataPipelineType {
     ANNOUNCEMENT_REGISTRATION(
             "announcement-registration", Domain.ANNOUNCEMENT, false, true, Retirement.MYHOME_ANNOUNCEMENT_REFINEMENT
     ),
-    SH_ANNOUNCEMENT_COLLECTION("sh-announcement-collection", Domain.SH_ANNOUNCEMENT, false, false, null);
+    SH_ANNOUNCEMENT_COLLECTION("sh-announcement-collection", Domain.SH_ANNOUNCEMENT, false, false, null),
+    GH_ANNOUNCEMENT_COLLECTION("gh-announcement-collection", Domain.GH_ANNOUNCEMENT, false, false, null);
 
     private final String pathValue;
     private final Domain domain;
@@ -69,6 +70,7 @@ public enum DataPipelineType {
                     ANNOUNCEMENT_COLLECTION.steps().stream(), ANNOUNCEMENT_REFINEMENT.steps().stream()
             ).toList();
             case SH_ANNOUNCEMENT_COLLECTION -> List.of(DataPipelineStep.COLLECT_SH_ANNOUNCEMENTS);
+            case GH_ANNOUNCEMENT_COLLECTION -> List.of(DataPipelineStep.COLLECT_GH_ANNOUNCEMENTS);
             case COMPLEX_COLLECTION -> List.of(
                     DataPipelineStep.COLLECT_MYHOME_COMPLEXES,
                     DataPipelineStep.COLLECT_LH_LEASE_CATALOG
@@ -115,10 +117,11 @@ public enum DataPipelineType {
         return index + 1;
     }
 
-    /** 실행 이력을 나눠 보는 구분. SH 공고 수집은 단지·공고 어느 이력에도 넣지 않는다. */
+    /** 실행 이력을 나눠 보는 구분. SH·GH 공고 수집은 단지·공고 어느 이력에도 넣지 않는다. */
     public enum Domain {
         COMPLEX,
         ANNOUNCEMENT,
-        SH_ANNOUNCEMENT
+        SH_ANNOUNCEMENT,
+        GH_ANNOUNCEMENT
     }
 }

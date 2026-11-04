@@ -492,7 +492,9 @@ export function assembledCount(row: RowReview): number | null {
   const value = cell?.selected && !cell.locked ? cell.value : cell?.before
   return typeof value === 'number' ? value : null
 }
-export function assembleReview(review: Review, workspace: JsonWorkspace, evidence: { reason: string; sourceUrl: string; sourcePage: string | null }): JsonUpdateInput {
+/** 미확정 공고의 공개 전 확인. 비어 있는 임대·모집 유형을 정하고, 단지를 확인했으면 이 보정과 함께 공개를 요청한다. */
+export type ReleaseChoice = { rentalType: string; recruitmentType: string; publish: boolean }
+export function assembleReview(review: Review, workspace: JsonWorkspace, evidence: { reason: string; sourceUrl: string; sourcePage: string | null }, release?: ReleaseChoice): JsonUpdateInput {
   const rows = structuredClone(workspace.supply.rows), taken = new Map<string, number>(), newGroups: NewSupplyGroup[] = []
   const housingTypeValues: HousingTypeValue[] = []
   for (const [index, entry] of review.rows.entries()) {
@@ -618,7 +620,10 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
     }
   }
   const fields = [...review.metadata.filter(cell => cell.selected && !cell.locked).map(cell => cell.field), ...review.reception.filter(cell => cell.selected).map(cell => `receptionPlace.${cell.field}`)]
-  return { snapshotToken: workspace.snapshotToken, document, fields, schedules, attachments: [], correction: { operationId: crypto.randomUUID(), snapshotToken: workspace.supply.snapshotToken, rows: ordered, newGroups, ...evidence }, housingTypeValues }
+  for (const field of ['rentalType', 'recruitmentType'] as const) {
+    if (release?.[field]) { announcement[field] = release[field]; fields.push(field) }
+  }
+  return { snapshotToken: workspace.snapshotToken, document, fields, schedules, attachments: [], correction: { operationId: crypto.randomUUID(), snapshotToken: workspace.supply.snapshotToken, rows: ordered, newGroups, ...evidence }, housingTypeValues, ...release?.publish ? { publish: true } : {} }
 }
 
 /** 끝에 붙은 괄호 묶음(중첩 포함)만 뗀다. "26(고령(주거약자용))" → "26", "(구)36(청년)" → "(구)36" */

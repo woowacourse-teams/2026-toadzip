@@ -4,7 +4,7 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.PdfExtractionInput;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
-import com.toadzip.backend.ingest.lhrefinement.service.LhCurrentSupplies;
+import com.toadzip.backend.ingest.lh.refinement.service.LhCurrentSupplies;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

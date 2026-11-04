@@ -6,8 +6,8 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LinkedMyHomeRow;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper.LinkedMyHomeRow;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementSupplyMatcher.LhSupplyMatchResult;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -200,7 +200,7 @@ class LhAnnouncementSupplyMatcherTest {
 
     private LhSupplyData source(String complexName, String housingTypeName) {
         return new LhSupplyData(
-                "lh-supply-row", complexName, housingTypeName, null, null, null, null, null
+                "lh-supply-row", complexName, housingTypeName, null, null, null, null, null, null
         );
     }
 }

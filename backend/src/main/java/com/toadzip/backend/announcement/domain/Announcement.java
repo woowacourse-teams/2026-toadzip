@@ -113,12 +113,10 @@ public class Announcement {
     @JdbcType(LegacyEnumVarcharJdbcType.class)
     private AnnouncementPublicationType status;
 
-    @Column(nullable = false)
     @Convert(converter = RentalTypeConverter.class)
     @JdbcType(LegacyEnumVarcharJdbcType.class)
     private RentalType supplyType;
 
-    @Column(nullable = false)
     @Convert(converter = RecruitmentTypeConverter.class)
     @JdbcType(LegacyEnumVarcharJdbcType.class)
     private RecruitmentType recruitmentType;
@@ -131,13 +129,10 @@ public class Announcement {
     @Column(nullable = false)
     private LocalDate postedDate;
 
-    @Column(nullable = false)
     private LocalDate applicationStartDate;
 
-    @Column(nullable = false)
     private LocalDate applicationEndDate;
 
-    @Column(nullable = false)
     private LocalDate winnerAnnouncementDate;
 
     @Column(nullable = false)
@@ -153,7 +148,7 @@ public class Announcement {
     @Column(nullable = false, length = 30)
     private SupplyOwner supplyOwner;
 
-    /** 공고문 소유 공고가 확정할 때 본 LH 공급 원천 지문. 그 뒤 원천이 바뀌었는지 판단하는 기준이다. */
+    /** 공고문 소유 공고가 확정할 때 본 LH·GH 공급 원천 지문. 그 뒤 원천이 바뀌었는지 판단하는 기준이다. 한 공고는 한 기관 원천만 가진다. */
     @Column(length = 64)
     private String lhSupplyFingerprint;
 
@@ -182,6 +177,11 @@ public class Announcement {
             @AttributeOverride(name = "url", column = @Column(name = "reception_url"))
     })
     private ReceptionPlace receptionPlace;
+
+    @Enumerated(EnumType.STRING)
+    @org.hibernate.annotations.ColumnDefault("'PUBLISHED'")
+    @Column(nullable = false, length = 20)
+    private AnnouncementReleaseStatus releaseStatus = AnnouncementReleaseStatus.PUBLISHED;
 
     private Announcement(
             String sourceAnnouncementIdentifier,
@@ -329,6 +329,51 @@ public class Announcement {
         );
     }
 
+    /**
+     * 원천에서 일정·유형을 다 읽지 못한 공고를 미확정으로 만든다. 원천이 읽은 일정 후보는 {@link #observeSourceSchedule}로 채운다.
+     * 사용자에게 보이지 않고, 관리자가 PDF 보정에서 단지를 확인하고 필수값을 채워 공개를 요청하면 공개된다.
+     */
+    public static Announcement createUnconfirmed(String sourceAnnouncementIdentifier, String name, AgencyCode provider,
+            LocalDate postedDate, String originalUrl) {
+        Announcement announcement = new Announcement();
+        announcement.validateNotBlank(sourceAnnouncementIdentifier, "원천 공고 식별자");
+        announcement.validateNotBlank(name, "공고명");
+        announcement.validateRequired(provider, "공급기관");
+        announcement.validateRequired(postedDate, "게시일");
+        announcement.validateNotBlank(originalUrl, "원문 URL");
+        announcement.sourceAnnouncementIdentifier = sourceAnnouncementIdentifier;
+        announcement.name = name;
+        announcement.status = AnnouncementPublicationType.ORIGINAL;
+        announcement.provider = provider;
+        announcement.postedDate = postedDate;
+        announcement.originalUrl = originalUrl;
+        announcement.supplyOwner = SupplyOwner.ANNOUNCEMENT_DOCUMENT;
+        announcement.releaseStatus = AnnouncementReleaseStatus.UNCONFIRMED;
+        return announcement;
+    }
+
+    public boolean isPublished() {
+        return releaseStatus == AnnouncementReleaseStatus.PUBLISHED;
+    }
+
+    /** 공개 공고가 반드시 가져야 하는 접수·발표 일정과 공급·모집유형을 모두 가졌는지 본다. */
+    public boolean hasPublishRequirements() {
+        return applicationStartDate != null && applicationEndDate != null && winnerAnnouncementDate != null
+                && supplyType != null && recruitmentType != null;
+    }
+
+    /** 관리자가 단지를 확인한 미확정 공고를 공개한다. 이번에 공개됐으면 true다. */
+    public boolean publish() {
+        if (isPublished()) {
+            return false;
+        }
+        if (!hasPublishRequirements()) {
+            throw new IllegalStateException("접수·발표 일정과 공급·모집유형을 모두 채운 뒤 공개할 수 있습니다.");
+        }
+        releaseStatus = AnnouncementReleaseStatus.PUBLISHED;
+        return true;
+    }
+
     public boolean updateFromMyHome(
             String previousSourceAnnouncementIdentifier,
             Announcement previousAnnouncement,
@@ -419,6 +464,20 @@ public class Announcement {
     }
 
     /**
+     * GH 공급행 틀의 원천 지문을 본다. 관리자가 공급행을 맡기 전에는 정제가 틀을 원천에 맞추므로 기준만 바꾸고, 맡은 뒤 원천이 바뀌면 공급
+     * 재확인 대상으로 표시한다. 기준이 없던 공고는 이번 지문을 기준으로 남긴다. 재확인이 새로 켜졌을 때 true다.
+     */
+    public boolean observeAgencySupply(String fingerprint, boolean adminOwned) {
+        String previous = lhSupplyFingerprint;
+        lhSupplyFingerprint = fingerprint;
+        if (!adminOwned || previous == null || previous.equals(fingerprint) || supplyRecheckRequired) {
+            return false;
+        }
+        supplyRecheckRequired = true;
+        return true;
+    }
+
+    /**
      * 매 정제가 이번 LH 원천 공급의 지문을 받는다. LH 소유 공고는 지문을 기준으로 남기기만 한다. 공고문 소유 공고는 기준과 다르면 재확인
      * 대상이 되고 기준을 이번 지문으로 바꾼다. 기준이 없던 공고는 이번 지문을 기준으로 남긴다. 재확인이 새로 켜졌을 때 true다.
      */
@@ -468,6 +527,58 @@ public class Announcement {
         return true;
     }
 
+    /**
+     * GH·SH 원천 값으로 미확정 공고의 공고명·게시일·원문 URL을 맞춘다. 공개됐거나 관리자가 고친 공고는 덮지 않고, 원천 값이
+     * 다르면 원천 검토 대상으로 표시한다. 휴지통 공고는 바꾸지 않는다. 값을 바꿨으면 true다.
+     */
+    public boolean updateFromAgencySource(String name, LocalDate postedDate, String originalUrl) {
+        validateNotBlank(name, "공고명");
+        validateRequired(postedDate, "게시일");
+        validateNotBlank(originalUrl, "원문 URL");
+        boolean same = this.name.equals(name) && this.postedDate.equals(postedDate)
+                && this.originalUrl.equals(originalUrl);
+        if (same || adminDeleted) {
+            return false;
+        }
+        if (adminModified || isPublished()) {
+            sourceReviewRequired = true;
+            return false;
+        }
+        this.name = name;
+        this.postedDate = postedDate;
+        this.originalUrl = originalUrl;
+        return true;
+    }
+
+    /**
+     * 원천 본문에서 읽은 접수기간·당첨자 발표일 후보를 미확정 공고에 채운다. 관리자가 고치거나 일정을 확인하기 전까지는 원천이 이 값을
+     * 가지므로 원천을 따라 바꾸고(읽지 못한 값은 비운다), 그 뒤나 공개된 공고는 덮지 않고 원천이 읽은 값이 다르면 원천 검토 대상으로
+     * 표시한다. 휴지통 공고는 바꾸지 않는다. 시작일이 종료일보다 늦은 기간은 버린다. 값을 바꿨으면 true다.
+     */
+    public boolean observeSourceSchedule(LocalDate startDate, LocalDate endDate, LocalDate winnerDate) {
+        if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+            startDate = null;
+            endDate = null;
+        }
+        boolean same = Objects.equals(applicationStartDate, startDate) && Objects.equals(applicationEndDate, endDate)
+                && Objects.equals(winnerAnnouncementDate, winnerDate);
+        if (same || adminDeleted) {
+            return false;
+        }
+        if (adminModified || applicationScheduleReviewed || isPublished()) {
+            // 원천이 읽지 못한 값은 관리자가 채운 값과 다르다고 보지 않는다.
+            boolean readDifferently = startDate != null && !startDate.equals(applicationStartDate)
+                    || endDate != null && !endDate.equals(applicationEndDate)
+                    || winnerDate != null && !winnerDate.equals(winnerAnnouncementDate);
+            sourceReviewRequired = sourceReviewRequired || readDifferently;
+            return false;
+        }
+        applicationStartDate = startDate;
+        applicationEndDate = endDate;
+        winnerAnnouncementDate = winnerDate;
+        return true;
+    }
+
     private LocalDate unlessReviewed(LocalDate source, LocalDate current) {
         if (applicationScheduleReviewed) {
             return current;
@@ -498,6 +609,7 @@ public class Announcement {
         }
     }
 
+    /** 관리자 보정 값으로 기본정보를 바꾼다. 미확정 공고의 공개는 단지를 확인한 PDF 보정에서 {@link #publish()}로 한다. */
     public void reviseByAdmin(Announcement incoming) {
         validateAdminRevision(incoming);
         name = incoming.name;
@@ -524,9 +636,9 @@ public class Announcement {
                 && recruitmentType == incoming.recruitmentType
                 && provider == incoming.provider
                 && postedDate.equals(incoming.postedDate)
-                && applicationStartDate.equals(incoming.applicationStartDate)
-                && applicationEndDate.equals(incoming.applicationEndDate)
-                && winnerAnnouncementDate.equals(incoming.winnerAnnouncementDate)
+                && Objects.equals(applicationStartDate, incoming.applicationStartDate)
+                && Objects.equals(applicationEndDate, incoming.applicationEndDate)
+                && Objects.equals(winnerAnnouncementDate, incoming.winnerAnnouncementDate)
                 && originalUrl.equals(incoming.originalUrl)
                 && Objects.equals(correctionCancellationReason, incoming.correctionCancellationReason)
                 && hasSameReceptionPlace(incoming.receptionPlace);

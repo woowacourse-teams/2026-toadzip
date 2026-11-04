@@ -33,8 +33,24 @@ const pipelineTypes: readonly DataPipelineType[] = [
   'COMPLEX_SYNC',
   'ANNOUNCEMENT_SYNC',
   'SH_ANNOUNCEMENT_COLLECTION',
+  'GH_ANNOUNCEMENT_COLLECTION',
   'ANNOUNCEMENT_REGISTRATION',
 ]
+// 공식 게시판을 API 키 없이 읽어 원천만 저장하는 공급기관별 수집이다.
+const boardSources = [
+  {
+    type: 'SH_ANNOUNCEMENT_COLLECTION', id: 'sh', title: 'SH',
+    description: '주택임대(건설임대) 분류의 ‘모집’ 검색 결과에서 제목·본문·첨부를 원천으로 저장합니다. 서비스 공고 등록·정제는 포함하지 않습니다.',
+    groupDescription: 'SH 주택임대(건설임대) 분류의 ‘모집’ 검색 결과에서 제목·본문 텍스트·첨부 정보를 추출해 저장합니다. 매입임대·전세임대 글은 받지 않으며 API 키 없이 실행합니다.',
+  },
+  {
+    type: 'GH_ANNOUNCEMENT_COLLECTION', id: 'gh', title: 'GH',
+    description: 'GH주택청약센터 임대주택(건설임대) 공고의 지구·주택형·일정·공고문을 원천으로 저장합니다. 서비스 공고 등록·정제는 포함하지 않습니다.',
+    groupDescription: 'GH주택청약센터 임대주택(건설임대) 공고에서 지구·주택형·공급일정·접수처·공고문 정보를 나눠 저장합니다. API 키 없이 실행합니다.',
+  },
+] as const satisfies readonly {
+  type: DataPipelineType; id: string; title: string; description: string; groupDescription: string
+}[]
 const pipelineGroups = [
   {
     id: 'complex-pipelines',
@@ -76,6 +92,7 @@ export function DataPipelineControl({ domain, compact = false }: {
     COMPLEX_SYNC: 0,
     ANNOUNCEMENT_SYNC: 0,
     SH_ANNOUNCEMENT_COLLECTION: 0,
+    GH_ANNOUNCEMENT_COLLECTION: 0,
     ANNOUNCEMENT_REGISTRATION: 0,
   })
   const mounted = useRef(true)
@@ -266,7 +283,7 @@ export function DataPipelineControl({ domain, compact = false }: {
   }
 
   const visibleTypes: readonly DataPipelineType[] = domain === 'complex' ? pipelineGroups[0].types
-    : [...pipelineGroups[1].types, 'SH_ANNOUNCEMENT_COLLECTION'] as const
+    : [...pipelineGroups[1].types, ...boardSources.map(source => source.type)]
   const activeType = selectedType && visibleTypes.includes(selectedType) ? selectedType : null
   const runningElsewhere = pipelineTypes.find(type => !visibleTypes.includes(type)
     && pipelineStates[type].execution.status === 'RUNNING')
@@ -338,12 +355,14 @@ export function DataPipelineControl({ domain, compact = false }: {
                 disabled={isAnyPipelineRunning || blockedByServiceKey(type)} onClick={() => handleRun(type)}>{pipelineLabels[type]}</button>)}</div>
             </details>
           </section>
-          <section aria-labelledby="sh-source" className={workflow.source}>
-            <header><h2 id="sh-source">SH</h2><span>API 키 불필요</span></header>
-            <p>‘모집’ 검색 결과의 제목·본문·첨부를 원천으로 저장합니다. 서비스 공고 등록·정제는 포함하지 않습니다.</p>
-            {recent(['SH_ANNOUNCEMENT_COLLECTION'])}
-            <button type="button" disabled={isAnyPipelineRunning} onClick={() => handleRun('SH_ANNOUNCEMENT_COLLECTION')}>SH 공고 수집</button>
-          </section>
+          {boardSources.map(source => <section key={source.type} aria-labelledby={`${source.id}-source`}
+            className={workflow.source}>
+            <header><h2 id={`${source.id}-source`}>{source.title}</h2><span>API 키 불필요</span></header>
+            <p>{source.description}</p>
+            {recent([source.type])}
+            <button type="button" disabled={isAnyPipelineRunning} onClick={() => handleRun(source.type)}>
+              {pipelineLabels[source.type]}</button>
+          </section>)}
         </div>
         <details className={workflow.additional} onToggle={event => setQualityOpen(event.currentTarget.open)}>
           <summary>LH 데이터 품질·공급 감소 보류 확인</summary>
@@ -427,31 +446,32 @@ export function DataPipelineControl({ domain, compact = false }: {
             </div>
           </section>
         ))}
-        {<section aria-labelledby="sh-pipelines" className="data-pipeline-group">
+        {boardSources.map(source => <section key={source.type} aria-labelledby={`${source.id}-pipelines`}
+          className="data-pipeline-group">
           <div className="data-pipeline-group-heading">
             <div>
-              <h3 id="sh-pipelines">SH 공고 원천</h3>
-              <p>SH의 ‘모집’ 검색 결과에서 제목·본문 텍스트·첨부 정보를 추출해 저장합니다. API 키 없이 실행합니다.</p>
+              <h3 id={`${source.id}-pipelines`}>{source.title} 공고 원천</h3>
+              <p>{source.groupDescription}</p>
             </div>
             <button type="button" disabled={isAnyPipelineRunning}
-              onClick={() => handleRun('SH_ANNOUNCEMENT_COLLECTION')}>
-              {buttonLabel('SH_ANNOUNCEMENT_COLLECTION', pipelineStates.SH_ANNOUNCEMENT_COLLECTION.execution.status)}
+              onClick={() => handleRun(source.type)}>
+              {buttonLabel(source.type, pipelineStates[source.type].execution.status)}
             </button>
           </div>
           <div className={compact ? undefined : 'data-pipeline-results'}>
             {compact ? <>
-              {selectedType === 'SH_ANNOUNCEMENT_COLLECTION'
-                && pipelineStates.SH_ANNOUNCEMENT_COLLECTION.execution.status !== 'IDLE'
-                && <PipelineExecutionSteps execution={pipelineStates.SH_ANNOUNCEMENT_COLLECTION.execution}
-                  stopping={stopping.SH_ANNOUNCEMENT_COLLECTION}
-                  onStop={() => void stop('SH_ANNOUNCEMENT_COLLECTION')} />}
-              {pipelineStates.SH_ANNOUNCEMENT_COLLECTION.requestError
-                && <p role="alert" className="form-error">{pipelineStates.SH_ANNOUNCEMENT_COLLECTION.requestError}</p>}
-            </> : <PipelineResult type="SH_ANNOUNCEMENT_COLLECTION" state={pipelineStates.SH_ANNOUNCEMENT_COLLECTION}
-              stopping={stopping.SH_ANNOUNCEMENT_COLLECTION ?? false}
-              onStop={() => void stop('SH_ANNOUNCEMENT_COLLECTION')} />}
+              {selectedType === source.type
+                && pipelineStates[source.type].execution.status !== 'IDLE'
+                && <PipelineExecutionSteps execution={pipelineStates[source.type].execution}
+                  stopping={stopping[source.type]}
+                  onStop={() => void stop(source.type)} />}
+              {pipelineStates[source.type].requestError
+                && <p role="alert" className="form-error">{pipelineStates[source.type].requestError}</p>}
+            </> : <PipelineResult type={source.type} state={pipelineStates[source.type]}
+              stopping={stopping[source.type] ?? false}
+              onStop={() => void stop(source.type)} />}
           </div>
-        </section>}
+        </section>)}
       </div>
       {!compact && <LhAnnouncementQualityPanel collectionExecution={latestCollectionExecution(
         pipelineStates.ANNOUNCEMENT_SYNC.execution, pipelineStates.ANNOUNCEMENT_COLLECTION.execution,
@@ -474,6 +494,7 @@ function initialPipelineStates(): Record<DataPipelineType, PipelineViewState> {
     COMPLEX_SYNC: viewState(idleExecution('COMPLEX_SYNC')),
     ANNOUNCEMENT_SYNC: viewState(idleExecution('ANNOUNCEMENT_SYNC')),
     SH_ANNOUNCEMENT_COLLECTION: viewState(idleExecution('SH_ANNOUNCEMENT_COLLECTION')),
+    GH_ANNOUNCEMENT_COLLECTION: viewState(idleExecution('GH_ANNOUNCEMENT_COLLECTION')),
     ANNOUNCEMENT_REGISTRATION: viewState(idleExecution('ANNOUNCEMENT_REGISTRATION')),
   }
 }

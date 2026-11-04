@@ -8,7 +8,8 @@ export function PipelineNextActions({ execution, onRefine, disabled = false }: {
 }) {
   const { type, status } = execution
   if (status === 'IDLE' || status === 'RUNNING'
-    || type === 'ANNOUNCEMENT_REGISTRATION' || type === 'SH_ANNOUNCEMENT_COLLECTION') return null
+    || type === 'ANNOUNCEMENT_REGISTRATION' || type === 'SH_ANNOUNCEMENT_COLLECTION'
+    || type === 'GH_ANNOUNCEMENT_COLLECTION') return null
 
   const complex = type.startsWith('COMPLEX_')
   const collection = type.endsWith('_COLLECTION')

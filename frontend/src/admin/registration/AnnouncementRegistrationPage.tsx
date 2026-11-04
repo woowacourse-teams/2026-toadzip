@@ -70,7 +70,7 @@ function DirectAnnouncement({ complexId, submitting, onSubmittingChange, onSelec
           housingComplexId: Number(complexId), name: found.summary.name,
           roadAddress: found.summary.subtitle,
           agencyCode: found.summary.provider,
-          rentalType: found.summary.rental,
+          rentalType: found.summary.rental ?? undefined,
           pnu: address && typeof address === 'object' && !Array.isArray(address) && typeof address.pnu === 'string' ? address.pnu : undefined,
         })
       } catch (cause) {

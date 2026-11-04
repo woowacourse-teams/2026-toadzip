@@ -32,7 +32,7 @@ class DataPipelineTypeTest {
     @ParameterizedTest
     @EnumSource(value = DataPipelineType.class, names = {
             "COMPLEX_COLLECTION", "ANNOUNCEMENT_COLLECTION", "ANNOUNCEMENT_REFINEMENT", "ANNOUNCEMENT_SYNC",
-            "SH_ANNOUNCEMENT_COLLECTION"
+            "SH_ANNOUNCEMENT_COLLECTION", "GH_ANNOUNCEMENT_COLLECTION"
     })
     void 실행할_수_있는_유형은_거절하지_않는다(DataPipelineType type) {
         assertThatCode(type::rejectIfRetired).doesNotThrowAnyException();
@@ -60,6 +60,8 @@ class DataPipelineTypeTest {
         );
         assertThat(DataPipelineType.ofDomain(DataPipelineType.Domain.SH_ANNOUNCEMENT))
                 .containsExactly(DataPipelineType.SH_ANNOUNCEMENT_COLLECTION);
+        assertThat(DataPipelineType.ofDomain(DataPipelineType.Domain.GH_ANNOUNCEMENT))
+                .containsExactly(DataPipelineType.GH_ANNOUNCEMENT_COLLECTION);
     }
 
     @Test
@@ -84,7 +86,8 @@ class DataPipelineTypeTest {
             "COMPLEX_SYNC, true",
             "ANNOUNCEMENT_SYNC, true",
             "ANNOUNCEMENT_REGISTRATION, true",
-            "SH_ANNOUNCEMENT_COLLECTION, false"
+            "SH_ANNOUNCEMENT_COLLECTION, false",
+            "GH_ANNOUNCEMENT_COLLECTION, false"
     })
     void 수집과_정제를_잇는_유형만_정제_단계에_수집_성공을_요구한다(DataPipelineType type, boolean required) {
         assertThat(type.requiresSuccessfulCollection(DataPipelineStep.MAP_LH_ANNOUNCEMENTS)).isEqualTo(required);
@@ -99,6 +102,7 @@ class DataPipelineTypeTest {
 
         assertThat(collections).containsExactly(
                 DataPipelineStep.COLLECT_SH_ANNOUNCEMENTS,
+                DataPipelineStep.COLLECT_GH_ANNOUNCEMENTS,
                 DataPipelineStep.COLLECT_MYHOME_COMPLEXES,
                 DataPipelineStep.COLLECT_LH_LEASE_CATALOG,
                 DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,

@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.fixture;
 
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSourceView;
-import com.toadzip.backend.ingest.collection.lh.detail.repository.LhDetailResponseParser;
+import com.toadzip.backend.ingest.lh.collection.detail.domain.LhAnnouncementDetailSourceView;
+import com.toadzip.backend.ingest.lh.collection.detail.repository.LhDetailResponseParser;
 import java.util.List;
 import java.util.stream.IntStream;
 import tools.jackson.databind.JsonNode;

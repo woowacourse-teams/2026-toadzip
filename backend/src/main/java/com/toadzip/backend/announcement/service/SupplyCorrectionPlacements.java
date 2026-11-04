@@ -6,9 +6,9 @@ import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.LhSupply
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.Row;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.SaveMode;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.Split;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceView;
+import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
-import com.toadzip.backend.ingest.lhrefinement.service.LhCurrentSupplies;
+import com.toadzip.backend.ingest.lh.refinement.service.LhCurrentSupplies;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;

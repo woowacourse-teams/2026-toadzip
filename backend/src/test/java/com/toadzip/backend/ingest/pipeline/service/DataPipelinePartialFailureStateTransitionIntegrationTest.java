@@ -14,16 +14,17 @@ import com.toadzip.backend.ingest.collection.configuration.ExternalDataIngestPro
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecoveryService;
-import com.toadzip.backend.ingest.collection.lh.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCatalogCollectionService;
-import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
+import com.toadzip.backend.ingest.lh.collection.leasecatalog.service.LhLeaseCatalogCollectionService;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
-import com.toadzip.backend.ingest.collection.sh.service.ShAnnouncementCollectionService;
+import com.toadzip.backend.ingest.gh.collection.service.GhAnnouncementCollectionService;
+import com.toadzip.backend.ingest.sh.collection.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
 import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
-import com.toadzip.backend.ingest.lhrefinement.dto.LhAnnouncementRefinementReport;
-import com.toadzip.backend.ingest.lhrefinement.service.LhAnnouncementRefinementService;
+import com.toadzip.backend.ingest.lh.refinement.dto.LhAnnouncementRefinementReport;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
@@ -414,7 +415,8 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                         enrichmentService,
                         mock(LhAnnouncementRefinementService.class),
                         new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
-                        mock(ShAnnouncementCollectionService.class)
+                        mock(ShAnnouncementCollectionService.class),
+                        mock(GhAnnouncementCollectionService.class)
                 ),
                 executionStateService,
                 new SimpleMeterRegistry()
@@ -443,7 +445,8 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                         mock(LhHousingTypeHouseholdEnrichmentService.class),
                         refinementService,
                         new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
-                        mock(ShAnnouncementCollectionService.class)
+                        mock(ShAnnouncementCollectionService.class),
+                        mock(GhAnnouncementCollectionService.class)
                 ),
                 executionStateService,
                 new SimpleMeterRegistry()

@@ -265,6 +265,7 @@ const exclusionLabels: Record<string,string> = {
   ADMIN_DELETED:'휴지통 보관으로 목록 제외', MISSING_COORDINATES:'지도 좌표가 없어 지도 목록 제외',
   NOT_LISTABLE_PUBLICATION_TYPE:'공고 종류상 기본 목록 제외', MISSING_PREVIOUS_ANNOUNCEMENT:'정정 공고의 이전 공고 연결 없음',
   HAS_SUCCESSOR:'후속 공고가 있어 기본 목록 제외',
+  UNCONFIRMED:'미확정 공고라 사용자에게 숨김',
 }
 // 정제가 아니라 관리자가 공고를 보정해 해결한 기록이면 누가 해결했는지 보여 준다.
 function resolvedByLabel(row: FailureReview) { return row.status === 'RESOLVED' && row.lastResolvedBy ? `관리자 ${row.lastResolvedBy}가 공고 보정으로 해결` : '' }

@@ -123,6 +123,17 @@ describe('API 기본 주소 정책', () => {
     expect(fetcher.mock.calls[0]?.[0]).toBe('https://changed.example.test/api/v1/announcements/1/attachments/2/content?download=false')
   })
 
+  it('관리자 화면의 첨부는 로그인한 관리자 경로로 받는다', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://admin.example.test')
+    const { loadAnnouncementAttachment } = await import('../public-housing/api/announcementAttachments')
+    const fetcher = vi.fn().mockRejectedValue(new Error('요청 경로 확인'))
+    vi.stubGlobal('fetch', fetcher)
+
+    await expect(loadAnnouncementAttachment('1', '2', false, new AbortController().signal, true)).rejects.toThrow()
+    expect(fetcher.mock.calls[0]?.[0]).toBe('https://admin.example.test/api/admin/announcements/1/attachments/2/content?download=false')
+    expect(fetcher.mock.calls[0]?.[1]).toMatchObject({ credentials: 'include' })
+  })
+
   it('회원 조회는 호출 시점의 빈 환경값을 개발 기본값으로 해석한다', async () => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://initial.example.test')
     const { getCurrentUser } = await import('../user/auth/api')

@@ -22,6 +22,7 @@ public final class ApplicationScheduleSql {
                         WHERE %3$s AND schedule.start_date > :today) THEN 'BEFORE_APPLICATION'
                       ELSE 'CLOSED'
                     END
+                  WHEN %1$s.application_start_date IS NULL OR %1$s.application_end_date IS NULL THEN NULL
                   WHEN %1$s.application_start_date > :today THEN 'BEFORE_APPLICATION'
                   WHEN %1$s.application_end_date < :today THEN 'CLOSED'
                   ELSE 'APPLYING'

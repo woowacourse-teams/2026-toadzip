@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.configuration;
 
-import com.toadzip.backend.ingest.collection.lh.configuration.LhAnnouncementClientProperties;
-import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
+import com.toadzip.backend.ingest.lh.collection.configuration.LhAnnouncementClientProperties;
+import com.toadzip.backend.ingest.lh.collection.repository.external.LhResponseStatusValidator;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeResponseStatusValidator;
 import java.net.CookieManager;
@@ -24,6 +24,15 @@ public class ExternalDataIngestConfiguration {
     RestClient shAnnouncementRestClient() {
         HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
                 .cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER))
+                .followRedirects(HttpClient.Redirect.NEVER).build();
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+        factory.setReadTimeout(Duration.ofSeconds(30));
+        return RestClient.builder().requestFactory(factory).build();
+    }
+
+    @Bean
+    RestClient ghAnnouncementRestClient() {
+        HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
                 .followRedirects(HttpClient.Redirect.NEVER).build();
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
         factory.setReadTimeout(Duration.ofSeconds(30));

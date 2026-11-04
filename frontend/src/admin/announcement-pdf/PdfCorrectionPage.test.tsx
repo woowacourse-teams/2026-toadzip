@@ -145,6 +145,47 @@ it('서버 검증을 마친 보정안을 적용 전 확인으로 보여 주고, 
   expect(screen.getByRole('link', { name: '출처·수정 이력 보기' }).getAttribute('href')).toContain('section=history')
   expect(within(screen.getByRole('region', { name: '공고로 갱신한 주택형' })).getAllByRole('listitem').map(item => item.textContent)).toEqual(['#10353 「26」 → 이름 26A · 공급면적 52.5㎡ · 세대수 120', '26: 관리자가 고친 세대수를 유지합니다.'])
 })
+/** GH·SH 원천으로 만든 미확정 공고. 임대·모집 유형이 비어 있고 사용자에게 보이지 않는다. */
+function unconfirmedWorkspace() {
+  return { ...workspace, detail: { ...workspace.detail,
+    summary: { ...workspace.detail.summary, announcement: { ...(workspace.detail.summary as { announcement?: object }).announcement, releaseStatus: 'UNCONFIRMED' } },
+    data: { ...workspace.detail.data, rentalType: null, recruitmentType: null } } }
+}
+it('미확정 공고는 임대·모집 유형을 고르고 단지를 확인했다고 공개를 요청해야 공개 요청을 보내고 결과에 공개를 알린다', async () => {
+  api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
+  api.previewJsonUpdate.mockResolvedValue(previewResult({ publishes: true, warnings: ['미확정 공고를 공개합니다. 적용하면 사용자에게 보이고 신규 공고 알림이 나갑니다.'] }))
+  await open()
+  const release = screen.getByRole('region', { name: '공개 전 확인' })
+  fireEvent.change(within(release).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
+  fireEvent.change(within(release).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
+  fireEvent.click(within(release).getByRole('checkbox', { name: /단지를 확인했고 이 보정과 함께 공개합니다/ }))
+
+  await applyCorrection()
+
+  const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
+  expect(input.publish).toBe(true)
+  expect(input.fields).toEqual(expect.arrayContaining(['rentalType', 'recruitmentType']))
+  expect(input.document.announcement).toEqual(expect.objectContaining({ rentalType: 'NATIONAL_RENTAL', recruitmentType: 'WAITLIST' }))
+  expect(await screen.findByRole('heading', { name: '공고를 공개했습니다.' })).toBeInTheDocument()
+})
+it('미확정 공고라도 공개를 요청하지 않으면 공개 요청을 보내지 않고 아직 보이지 않는다고 알린다', async () => {
+  api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
+  api.applyJsonUpdate.mockResolvedValue(unconfirmedWorkspace())
+  await open()
+  expect(within(screen.getByRole('region', { name: '공개 전 확인' })).getByRole('checkbox')).not.toBeChecked()
+
+  await applyCorrection()
+
+  const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
+  expect(input.publish).toBeFalsy()
+  expect(input.fields).not.toContain('rentalType')
+  const result = (await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })).closest('section')!
+  expect(result).toHaveTextContent('아직 미확정이라 사용자에게 보이지 않습니다')
+})
+it('공개된 공고에는 공개 전 확인을 보이지 않는다', async () => {
+  await open()
+  expect(screen.queryByRole('region', { name: '공개 전 확인' })).not.toBeInTheDocument()
+})
 it('저장할 곳을 정하지 않은 공급행은 까닭을 쉬운 말로 알리고 서버에 보내지 않는다', async () => {
   const extraction = structuredClone(fixtures.hansville.extraction)
   extraction.sharedCounts = []

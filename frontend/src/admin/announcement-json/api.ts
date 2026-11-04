@@ -12,13 +12,13 @@ export type Selection = { inputIndex: number; existingId: number | null }
  */
 export type HousingTypeValue = { rowKey: string; name: string | null; supplyArea: number | null; householdCount: number | null; basicDeposit?: number | null; basicMonthlyRent?: number | null
   linkedHousingTypeId?: number; linkedNewHousingTypeArea?: number }
-export type JsonUpdateInput = { snapshotToken: string; document: ExtractedAnnouncement; fields: string[]; schedules: Selection[]; attachments: Selection[]; correction: SupplyCorrectionInput; housingTypeValues?: HousingTypeValue[] }
+export type JsonUpdateInput = { snapshotToken: string; document: ExtractedAnnouncement; fields: string[]; schedules: Selection[]; attachments: Selection[]; correction: SupplyCorrectionInput; housingTypeValues?: HousingTypeValue[]; publish?: boolean }
 export type TypeValues = { name: string; supplyArea: number | null; householdCount: number | null; basicDeposit?: number | null; basicMonthlyRent?: number | null }
 /** housingTypeId가 null이면 이 저장에서 새로 만드는 주택형이다. */
 export type HousingTypeChange = { rowKey: string; housingTypeId: number | null; typeName: string; before: TypeValues | null; after: TypeValues }
 export type JsonChange = { field: string; before: unknown; after: unknown }
 export type ChildChange = { inputIndex: number; existingId: number | null; before: JsonObject | null; after: JsonObject }
-export type JsonPreview = { confirmationToken: string; fields: JsonChange[]; supply: SupplyPreview | null; schedules: ChildChange[]; attachments: ChildChange[]; housingTypes: HousingTypeChange[]; housingTypeWarnings: string[]; warnings: string[] }
+export type JsonPreview = { confirmationToken: string; fields: JsonChange[]; supply: SupplyPreview | null; schedules: ChildChange[]; attachments: ChildChange[]; housingTypes: HousingTypeChange[]; housingTypeWarnings: string[]; warnings: string[]; publishes?: boolean }
 const path = (id: string) => `/api/admin/announcements/${encodeURIComponent(id)}/json-corrections`
 function objectArray(value: unknown): value is JsonObject[] { return Array.isArray(value) && value.every(isRecord) }
 function invalid(): never { throw new Error('공고 보정 응답이 올바르지 않습니다.') }

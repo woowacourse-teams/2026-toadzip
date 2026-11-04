@@ -153,7 +153,9 @@ it('새 요약 데이터는 검증하고 이전 응답의 누락 필드는 호�
   for (const complexValue of [{ ...complex.complex, totalParkingCount: -1 }, { ...complex.complex, hasElevator: 'false' }, { ...complex.complex, totalHouseholdCount: '0' }, { ...complex.complex, completionDate: 2020 }]) {
     expect(() => parseManagementDetail(detail({ ...legacy, complex: complexValue }))).toThrow('상세 응답이 올바르지 않습니다.')
   }
-  expect(() => parseManagementDetail(detail({ ...legacy, announcement: { ...announcement.announcement, applicationStartDate: null } }))).toThrow('상세 응답이 올바르지 않습니다.')
+  const unconfirmed = { ...announcement.announcement, recruitmentType: null, applicationStartDate: null, applicationEndDate: null, winnerAnnouncementDate: null, releaseStatus: 'UNCONFIRMED' }
+  expect(parseManagementDetail(detail({ ...legacy, rental: null, announcement: unconfirmed })).summary.announcement?.releaseStatus).toBe('UNCONFIRMED')
+  expect(() => parseManagementDetail(detail({ ...legacy, announcement: { ...announcement.announcement, applicationStartDate: 20261001 } }))).toThrow('상세 응답이 올바르지 않습니다.')
 })
 
 it('현재 페이지 번호를 다시 누르면 같은 조건으로 새로 조회한다', async () => {

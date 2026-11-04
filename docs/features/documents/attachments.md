@@ -4,7 +4,8 @@
 
 - `download=false` (기본): 실제 본문이 `%PDF-`로 시작하는 파일만 `application/pdf`, `Content-Disposition: inline`으로 반환한다.
 - `download=true`: 원본 바이트를 `application/octet-stream`, `Content-Disposition: attachment`로 반환한다.
-- ID는 공개 공고와 소속 첨부파일을 함께 조회한다. 삭제된 공고나 다른 공고의 첨부파일은 404다.
+- ID는 공개 공고와 소속 첨부파일을 함께 조회한다. 삭제된 공고, 미확정 공고, 다른 공고의 첨부파일은 404다.
+- 관리자 PDF 보정은 `GET /api/admin/announcements/{announcementId}/attachments/{attachmentId}/content`로 같은 파일을 PDF 미리보기로 읽는다. 관리자 권한이 필요하고, 공개 전인 미확정 공고의 첨부도 읽는다. `download`는 받지 않는다.
 - 브라우저에서 원본 URL을 전달받지 않는다. 저장된 URL의 정확한 호스트 `apply.lh.or.kr`, `www.i-sh.co.kr`, `www.gh.or.kr`만 허용한다. 기존 HTTP 링크도 HTTPS로 요청한다. 비표준 포트, 사용자 정보, fragment와 리다이렉트는 거절한다. 사용자 쿠키나 인증 헤더를 전달하지 않는다.
 - 파일 전송은 프로세스당 4개, 파일은 기본 100 MiB까지다. `ANNOUNCEMENT_ATTACHMENT_MAX_SIZE=100MB`로 크기를 설정한다. 연결 타임아웃은 5초, 헤더 수신과 본문 완료를 포함한 전체 제한시간은 120초다. 시간 초과나 인터럽트 시 HTTP 요청을 취소한다. 크기 제한은 헤더가 없어도 본문을 수신하면서 적용한다. HTML 응답은 다운로드에서도 거절한다. DB 트랜잭션을 외부 요청 동안 유지하지 않는다. 본문은 임시파일로 수신한 뒤 스트림으로 응답해 전체 파일을 Java 힙에 올리지 않는다. 정상 전송·오류·클라이언트 연결 종료 시 파일을 삭제하고 슬롯을 반환한다. 임시 디스크에 동시 4개 파일의 최대 합계 약 400 MiB와 여유 공간을 확보한다.
 - 응답은 `no-store`, 파일은 `nosniff`다. 별도 파일 저장소나 캐시를 만들지 않는다.

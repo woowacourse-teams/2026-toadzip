@@ -152,6 +152,24 @@ class NotificationInterestIntegrationTest {
     }
 
     @Test
+    void 미확정_공고는_알림을_신청할_수_없다() throws Exception {
+        LocalDate today = LocalDate.ofInstant(clock.instant(), ZoneId.of("Asia/Seoul"));
+        Announcement announcement = announcements.saveAndFlush(Announcement.create(
+                "notification-unconfirmed", null, null, "미확정 공고", "원공고", "행복주택", "신규모집", "SH",
+                today, today, today.plusDays(2), today.plusDays(10), "https://example.com/notice", null, 0L, null));
+        jdbc.update("UPDATE announcements SET release_status = 'UNCONFIRMED' WHERE id = ?", announcement.getId());
+        String body = request("CONFIRMED", 0).replace("\"targetType\":\"REGION\",\"targetId\":\"11\"",
+                "\"targetType\":\"ANNOUNCEMENT\",\"targetId\":\"" + announcement.getId() + "\"");
+
+        mockMvc.perform(post(ENDPOINT).with(user(Long.toString(MEMBER)).roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM notification_subscriptions WHERE user_id = ?",
+                Integer.class, MEMBER));
+    }
+
+    @Test
     void 북마크하지_않은_공고_알림도_접수상태와_일정을_조회한다() throws Exception {
         LocalDate today = LocalDate.ofInstant(clock.instant(), ZoneId.of("Asia/Seoul"));
         Announcement announcement = announcements.saveAndFlush(Announcement.create(

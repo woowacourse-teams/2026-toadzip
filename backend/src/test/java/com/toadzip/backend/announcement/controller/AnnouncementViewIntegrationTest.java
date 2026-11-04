@@ -175,6 +175,15 @@ class AnnouncementViewIntegrationTest {
     }
 
     @Test
+    void 미확정_공고는_집계하지_않는다() throws Exception {
+        jdbc.update("UPDATE announcements SET release_status = 'UNCONFIRMED' WHERE id = ?", announcementId);
+
+        record(announcementId, UUID.randomUUID().toString()).andExpect(status().isNotFound());
+
+        assertEquals(0, count());
+    }
+
+    @Test
     void 없는_공고와_삭제된_공고는_집계하지_않는다() throws Exception {
         String viewer = UUID.randomUUID().toString();
         record(Long.MAX_VALUE, viewer).andExpect(status().isNotFound());
