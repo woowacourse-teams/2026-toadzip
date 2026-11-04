@@ -3,7 +3,7 @@ import { Button } from '../../design-system/components/Button'
 import { housingTypeLabel } from '../ingest/housingTypeLabel'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 import type { Evidence } from './extraction'
-import { cellMatches, cellStates, choices, chooseCellValue, editCell, extractedBlockReason, pendingCell, shown, shownDateTime, validCellValue, type Cell, type ReviewFilter, type ValueMode } from './review'
+import { cellMatches, cellStates, choices, chooseCellValue, editCell, extractedBlockReason, pendingCell, pendingField, shown, shownDateTime, validCellValue, type Cell, type ReviewFilter, type ValueMode } from './review'
 import styles from './PdfCorrection.module.css'
 
 // 기존 값(지금 저장값) · PDF 추출값(추출 원본) · 직접 입력(운영자 값)을 고르고, 반영값 칸은 저장에 보낼 값을 그대로 보여 준다.
@@ -16,10 +16,10 @@ export type NewHousingTypeChoice = { label: string; selected: boolean; onSelect:
  * housingTypes는 이 행의 단지에서 고를 수 있는 주택형, otherHousingTypes는 다른 단지 주택형이다. 저장 위치를 다른 단지 행으로 바꾸면
  * 기존·추출 값이 그 단지에 없는 주택형일 수 있어, 번호 대신 이름과 다른 단지라는 표시를 보인다.
  */
-export function ReviewCells({ cells, scope, housingTypes = [], otherHousingTypes = [], newType, filter = 'all', onChange, onEvidence }: { cells: Cell[]; scope: string; housingTypes?: MatchingHousingType[]; otherHousingTypes?: MatchingHousingType[]; newType?: NewHousingTypeChoice; filter?: ReviewFilter; onChange: (cells: Cell[]) => void; onEvidence: (evidence: Evidence, cell?: Cell) => void }) {
+export function ReviewCells({ cells, scope, housingTypes = [], otherHousingTypes = [], newType, needs, filter = 'all', onChange, onEvidence }: { cells: Cell[]; scope: string; housingTypes?: MatchingHousingType[]; otherHousingTypes?: MatchingHousingType[]; newType?: NewHousingTypeChoice; needs?: Map<string, string>; filter?: ReviewFilter; onChange: (cells: Cell[]) => void; onEvidence: (evidence: Evidence, cell?: Cell) => void }) {
   const [all, setAll] = useState(false)
-  const quiet = filter === 'all' ? cells.filter(cell => cell.mode !== 'manual' && (cell.state === 'same' || cell.state === 'notApplicable')) : []
-  const visible = cells.filter(cell => cellMatches(cell, filter) && (all || !quiet.includes(cell)))
+  const quiet = filter === 'all' ? cells.filter(cell => cell.mode !== 'manual' && !needs?.has(cell.path) && (cell.state === 'same' || cell.state === 'notApplicable')) : []
+  const visible = cells.filter(cell => (cellMatches(cell, filter) || filter === 'pending' && pendingField(cell, needs)) && (all || !quiet.includes(cell)))
   function update(path: string, next: Cell) { onChange(cells.map(cell => cell.path === path ? next : cell)) }
   function display(cell: Cell, value: unknown) {
     if (cell.kind === 'housingType') {
@@ -47,8 +47,9 @@ export function ReviewCells({ cells, scope, housingTypes = [], otherHousingTypes
     {visible.map(cell => {
       const canUseExtracted = validCellValue(cell.kind, cell.extracted.value) && !['invalid', 'unresolved', 'notApplicable'].includes(cell.extracted.state)
       const blocked = extractedBlockReason(cell)
-      return <div key={cell.path} className={styles.cell} data-state={cell.state} data-pending={pendingCell(cell) || undefined} data-review-id={`cell:${cell.path}`} tabIndex={-1}>
-        <div className={styles.cellLabel}><strong>{cell.label}</strong><small>{pendingCell(cell) && cell.mode !== 'manual' ? `${cellStates[cell.extracted.state]} · 선택 전` : cellStates[cell.state]}</small></div>
+      const need = needs?.get(cell.path)
+      return <div key={cell.path} className={styles.cell} data-state={cell.state} data-pending={pendingField(cell, needs) || undefined} data-review-id={`cell:${cell.path}`} tabIndex={-1}>
+        <div className={styles.cellLabel}><strong>{cell.label}</strong><small>{pendingCell(cell) && cell.mode !== 'manual' ? `${cellStates[cell.extracted.state]} · 선택 전` : need ? '확인 필요' : cellStates[cell.state]}</small></div>
         <div className={styles.before}><span className={styles.mobileLabel}>기존 값</span>{display(cell, cell.before)}</div>
         <div className={styles.extracted}><span className={styles.mobileLabel}>PDF 추출값</span>{display(cell, cell.extracted.value)}</div>
         <div className={styles.cellResult}>{cell.locked ? <span>{cell.note || '기존 값 유지'}</span> : <>
@@ -56,6 +57,7 @@ export function ReviewCells({ cells, scope, housingTypes = [], otherHousingTypes
             onClick={() => update(cell.path, chooseCellValue(cell, mode))}>{mode === 'keep' && cell.before == null ? emptyKeepLabel(cell) : label}</Button>)}</div>
           {cell.kind === 'housingType' && newType?.selected && cell.mode !== 'manual' ? <strong className={styles.resultValue}>새 주택형 추가 · {newType.label}</strong> : cell.mode === 'manual' ? manualField(cell) : <strong className={styles.resultValue}>{cell.mode === 'keep' && cell.before == null ? emptyKeepResult(cell) : display(cell, cell.mode === 'keep' ? cell.before : cell.value)}</strong>}
           {cell.note && <small>{cell.note}</small>}
+          {need && <div className={styles.blockReason}><small>{need}</small></div>}
           {!canUseExtracted && blocked && <div className={styles.blockReason}><small>{`PDF 추출값을 고를 수 없음: ${blocked}`}</small>
             {cell.evidence && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence(cell.evidence!, cell)}>{`근거 p.${cell.evidence.page} 열기`}</Button>}
             {cell.mode !== 'manual' && <Button data-design-system className={styles.quietButton} onClick={() => update(cell.path, chooseCellValue(cell, 'manual'))}>{cell.extracted.value != null ? '추출값으로 직접 입력' : '값 직접 입력'}</Button>}</div>}

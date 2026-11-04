@@ -162,9 +162,13 @@ export function pickHousingType(extraction: Extraction, index: number, allTypes:
 /** 단지에 연결되지 않은 기존 공급행(최초 입주자 공고처럼 등록 단지가 없던 원천행). */
 export function emptyRow(row: CorrectionRow) { return !row.excluded && row.housingComplexId === null && row.groupId === null }
 
+/** 서버의 주택형 면적 형식(0 이상, 정수 6자리·소수 4자리까지) */
+export const areaValue = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 999999.9999
+  && Math.abs(value * 10000 - Math.round(value * 10000)) < .00001
 export function missingHousingType(complexId: number | null, candidates: MatchingHousingType[], typeName: string, exclusiveArea: unknown, supplyArea: unknown) {
-  if (complexId === null || typeof exclusiveArea !== 'number' || candidates.some(type => equalArea(type.exclusiveArea, exclusiveArea))) return null
-  return { name: typeName.trim(), exclusiveArea, supplyArea: typeof supplyArea === 'number' ? supplyArea : null }
+  // 새 주택형의 전용면적은 0보다 커야 한다. 공급면적은 형식이 맞지 않으면 비워 둔다.
+  if (complexId === null || !areaValue(exclusiveArea) || exclusiveArea === 0 || candidates.some(type => equalArea(type.exclusiveArea, exclusiveArea))) return null
+  return { name: typeName.trim(), exclusiveArea, supplyArea: areaValue(supplyArea) ? supplyArea : null }
 }
 
 // 공고문과 수집 원천의 단지명 표기가 다를 때(전주평화1단지 ↔ 평화주공1단지) 이번 모집수가 유일하게 같은 기존 행을 제안한다.

@@ -123,6 +123,10 @@ it('단지를 정했는데 같은 전용면적 주택형이 없을 때만 새 �
   expect(missingHousingType(7, types, '26', 26.37, null)).toBeNull()
   expect(missingHousingType(null, types, '39', 39.85, null)).toBeNull()
   expect(missingHousingType(7, types, '39', null, null)).toBeNull()
+  // 서버 주택형 면적 형식: 전용면적은 0보다 크고 소수 넷째 자리까지, 공급면적은 형식이 맞지 않으면 비운다.
+  expect(missingHousingType(7, types, '39', 0, null)).toBeNull()
+  expect(missingHousingType(7, types, '39', 39.85125, null)).toBeNull()
+  expect(missingHousingType(7, types, '39', 39.85, 55.21255)).toEqual({ name: '39', exclusiveArea: 39.85, supplyArea: null })
 })
 
 // 화성동탄2 리츠 정정공고(공고 162): 공고문은 "동탄2 A40BL", LH 공고 단지는 "화성동탄2A-40(공임리츠) A-40"으로 적는다.

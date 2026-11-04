@@ -241,6 +241,13 @@ it('저장 전 검증 요청 실패는 저장 응답 유실과 구분하고 재�
   expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeEnabled()
   expect(api.applyJsonUpdate).not.toHaveBeenCalled()
 })
+it('서버가 칸 경로로 거절하면 화면 칸 이름으로 알리고 그 칸이 있는 접수처·기본정보로 옮긴다', async () => {
+  api.previewJsonUpdate.mockRejectedValue(new ManagementError('receptionPlace.name: 필수 값입니다.', 400, {}, 'INVALID_REQUEST'))
+  await open()
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('접수처명: 필수 값입니다.')
+  expect(screen.getByRole('heading', { name: '접수처·기본정보' })).toBeVisible()
+})
 it('등록된 PDF를 자동으로 고르고 추출 버튼을 누를 때만 서버에서 추출한다', async () => {
   renderPage()
   await screen.findByRole('button', { name: 'PDF에서 값 추출' })
@@ -847,11 +854,31 @@ it('같은 보정 요청을 다시 보내 409(ADMIN_DATA_CONFLICT)를 받으면 
   await open()
   let sent: JsonUpdateInput | undefined
   api.applyJsonUpdate.mockImplementationOnce(async (_id: string, input: JsonUpdateInput) => { sent = input; throw new ManagementError('이미 처리한 요청입니다.', 409, {}, 'ADMIN_DATA_CONFLICT') })
-  api.loadJsonWorkspace.mockImplementation(async () => ({ ...workspace, supply: { ...workspace.supply, rows: sent!.correction.rows } }))
+  // 최신값에 공급행·기본정보·일정이 모두 이 요청대로 들어 있다.
+  api.loadJsonWorkspace.mockImplementation(async () => {
+    const data = structuredClone(workspace.detail.data) as Record<string, unknown>
+    for (const field of sent!.fields) {
+      const [head, tail] = field.split('.')
+      if (tail) data[head] = { ...(data[head] as object | null), [tail]: (sent!.document.receptionPlace as Record<string, unknown>)[tail] }
+      else data[field] = sent!.document.announcement[field]
+    }
+    const events = sent!.schedules.map((selection, at) => ({ id: selection.existingId ?? 9000 + at, data: sent!.document.schedules[selection.inputIndex], complexName: null }))
+    return { ...workspace, detail: { ...workspace.detail, data }, events, supply: { ...workspace.supply, rows: sent!.correction.rows } }
+  })
   await applyCorrection()
   expect(await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })).toBeVisible()
   expect(screen.getByText('이 보정은 이미 반영돼 있습니다. 같은 요청을 다시 저장하지 않았습니다.')).toBeVisible()
   expect(api.applyJsonUpdate).toHaveBeenCalledOnce()
+})
+
+it('409(ADMIN_DATA_CONFLICT) 뒤 공급행은 같아도 고른 기본정보·일정이 최신값에 없으면 반영됐다고 하지 않는다', async () => {
+  await open()
+  let sent: JsonUpdateInput | undefined
+  api.applyJsonUpdate.mockImplementationOnce(async (_id: string, input: JsonUpdateInput) => { sent = input; throw new ManagementError('이미 처리한 요청입니다.', 409, {}, 'ADMIN_DATA_CONFLICT') })
+  api.loadJsonWorkspace.mockImplementation(async () => ({ ...workspace, supply: { ...workspace.supply, rows: sent!.correction.rows } }))
+  await applyCorrection()
+  expect(sent!.fields.length + sent!.schedules.length).toBeGreaterThan(0)
+  expect(await screen.findByRole('alert')).toHaveTextContent('이 변경은 반영되지 않았습니다')
 })
 
 it('409(ADMIN_DATA_CONFLICT) 뒤 최신값에 이 변경이 없으면 반영되지 않았다고 알리고 다시 비교하게 한다', async () => {
