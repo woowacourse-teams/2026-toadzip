@@ -31,7 +31,8 @@ export type RowProposal = {
   /** 표기·면적 근거 없이 남은 행 하나만 있어 자동으로 고르지 않은 경우 */
   ambiguous?: boolean
 }
-export type ScheduleProposal = { existingIds: number[]; needsConfirmation: boolean; reason: string }
+/** undated는 시작일이 없는 안내(계약 개별안내 등)라 일정으로 저장하지 않는다는 뜻이다. */
+export type ScheduleProposal = { existingIds: number[]; needsConfirmation: boolean; reason: string; undated?: boolean }
 /** 행 키별 LH 원천행의 주택형 표기("26A/B/C(고령자)"). 단지에 연결된 행의 typeName은 단지 주택형 이름("26A")이라 공급대상 묶음을 읽을 수 없다. */
 export type SourceLabels = ReadonlyMap<string, string>
 
@@ -334,6 +335,7 @@ function overlaps(left: JsonObject, right: JsonObject) {
 export function proposeSchedules(extraction: Extraction, events: JsonWorkspace['events']): ScheduleProposal[] {
   const used = new Set<number>()
   return extraction.schedules.map((schedule, index) => {
+    if (!day(schedule.startAt)) return { existingIds: [], needsConfirmation: false, undated: true, reason: '날짜가 없는 안내라 일정으로 저장하지 않습니다.' }
     const sameType = events.filter(event => !used.has(event.id) && event.data.scheduleType === schedule.scheduleType)
     const exact = sameType.filter(event => samePeriod(event.data, schedule))
     const matches = exact.length ? exact : sameType.filter(event => overlaps(event.data, schedule))

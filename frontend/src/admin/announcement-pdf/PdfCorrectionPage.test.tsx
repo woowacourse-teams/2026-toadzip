@@ -439,7 +439,8 @@ it('확인 필요 항목을 세고 하단 버튼으로 다음 항목에 이동�
   fireEvent.click(screen.getByRole('button', { name: '일정 2 적용 안 함' }))
   expect(screen.getByText('확인 필요 없음')).toBeVisible()
   fireEvent.click(within(screen.getByRole('group', { name: '검토 항목 필터' })).getByRole('button', { name: '전체' }))
-  expect(screen.getByRole('checkbox', { name: '일정 2 적용' })).not.toBeChecked()
+  expect(screen.getByRole('button', { name: '일정 2 적용 안 함' })).toHaveAttribute('aria-pressed', 'true')
+  expect(within(screen.getByRole('list', { name: '일정 대조표' })).getByText('적용 안 함', { selector: 'span' })).toBeVisible()
 })
 
 it('기준 단지는 원천 공급행이 아니라 단지명·임대유형으로 한 번씩 보여준다', async () => {

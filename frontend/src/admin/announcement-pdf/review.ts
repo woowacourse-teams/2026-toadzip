@@ -277,8 +277,10 @@ function unnamedNewTarget(target: TargetReview) {
  * 접수처는 접수처명·접수 방식이 있어야 저장되어, 접수처가 없던 공고에 PDF의 주소·연락처만 고르면 이름 없는 접수처가 된다.
  * 접수 종료일은 시작일보다 빠를 수 없어, 한쪽만 PDF 값으로 바꾸면 기존 값과 앞뒤가 뒤집힐 수 있다.
  */
+/** 저장(assembleReview)과 같이 반영을 고른 칸은 그 값, 아니면 기존 값 */
+export function savedValue(cell: Cell) { return cell.selected && !cell.locked ? cell.value : cell.before }
 export function fieldNeeds({ reception, metadata }: Pick<Review, 'reception' | 'metadata'>): Map<string, string> {
-  const saved = (cell: Cell) => cell.selected && !cell.locked ? cell.value : cell.before
+  const saved = savedValue
   const needs = new Map<string, string>()
   if (reception.some(cell => saved(cell) != null)) {
     for (const cell of reception.filter(item => ['name', 'method'].includes(item.field) && !validCellValue(item.kind, saved(item)))) {
@@ -316,7 +318,15 @@ export function serverFieldError(review: Pick<Review, 'reception' | 'metadata'>,
   const cell = [...review.reception, ...review.metadata].find(item => item.path === path)
   return cell ? { message: `${cell.label}: ${match[2]}`, reviewId: `cell:${cell.path}` } : null
 }
-export function pendingSchedule(schedule: ScheduleReview) { return schedule.proposal.needsConfirmation && !schedule.reviewed }
+/** 적용하기로 한 일정이 확인 필요인지. 대응 확인이 남았거나, 저장할 유형·이름·시작·종료 중 빈 값이 있으면 확인 필요다. */
+export function pendingSchedule(schedule: ScheduleReview) {
+  if (schedule.proposal.undated) return false
+  return schedule.proposal.needsConfirmation && !schedule.reviewed || schedule.include && !scheduleStorable(schedule)
+}
+/** 저장(assembleReview)과 같이 반영을 고른 칸은 그 값, 아니면 기존 일정 값으로 유형·이름·시작·종료가 모두 있는지 */
+export function scheduleStorable(schedule: ScheduleReview) {
+  return schedule.cells.every(cell => validCellValue(cell.kind, savedValue(cell)))
+}
 /** 연결 주택형을 아직 정하지 못한 세부 타입 번호 */
 export function pendingSubtypes(row: RowReview) {
   if (!row.include) return []

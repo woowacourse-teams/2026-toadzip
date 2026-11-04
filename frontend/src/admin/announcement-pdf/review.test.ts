@@ -381,10 +381,14 @@ it('공급행 확인 필요 항목은 화면처럼 PDF 단지 이름별 묶음 �
 
 it('확인 필요 항목은 화면 순서로 모으고 사람이 고르거나 대응을 확인하면 사라진다', () => {
   const { review, workspace, housing } = scenario('gongju')
-  expect(pendingItems(review).map(item => item.id)).toEqual(['row:0', 'schedule:2'])
+  // 날짜 없는 '계약안내(개별안내)'는 일정으로 저장하지 않으므로 확인 필요로 세지 않는다.
+  expect(review.schedules[2]).toMatchObject({ include: false, proposal: { undated: true } })
+  expect(pendingItems(review).map(item => item.id)).toEqual(['row:0'])
   review.rows[0].reviewed = true
-  review.schedules[2].reviewed = true
   expect(pendingItems(review).map(item => item.id)).toEqual([])
+  // 적용하기로 한 일정에 빈 값이 있으면 저장 전에 확인 필요로 잡는다.
+  review.schedules[0] = { ...review.schedules[0], include: true, cells: review.schedules[0].cells.map(cell => cell.field === 'endAt' ? { ...cell, value: null, selected: false, before: null } : cell) }
+  expect(pendingItems(review).map(item => item.id)).toEqual(['schedule:0'])
   const deposit = review.rows[0].targets[0].cells.find(cell => cell.field === 'rentalDeposit')!
   expect(pendingCell(editCell(deposit, '1,000'))).toBe(true)
   expect(pendingCell(editCell(deposit, '1000'))).toBe(false)
