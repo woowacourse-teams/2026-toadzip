@@ -33,7 +33,7 @@ class GhAnnouncementRefiner {
     private final GhAnnouncementComplexLinker complexLinker;
     private final GhSupplyRowWriter supplyRowWriter;
 
-    Outcome refine(GhAnnouncementSource source, GhComplexIndex index) {
+    Outcome refine(GhAnnouncementSource source, GhComplexIndex index, Runnable recheck) {
         Optional<Announcement> existing = announcements.findBySourceAnnouncementIdentifier(source.getSourceKey())
                 .flatMap(found -> announcements.findByIdForUpdate(found.getId()));
         if (existing.isPresent() && existing.get().isAdminDeleted()) {
@@ -53,7 +53,9 @@ class GhAnnouncementRefiner {
             JsonNode districts = JSON.readTree(source.getDistricts());
             Map<String, AnnouncementComplex> complexes = complexLinker.observe(announcement, districts,
                     GhComplexIndex.rentalType(source.getSupplyType()), index);
-            supplyRowWriter.write(announcement, source.getTitle(), districts, complexes);
+            if (supplyRowWriter.write(announcement, source.getTitle(), districts, complexes)) {
+                recheck.run();
+            }
         }
         if (source.getAttachments() != null) {
             attachmentWriter.write(announcement, attachments(JSON.readTree(source.getAttachments())));

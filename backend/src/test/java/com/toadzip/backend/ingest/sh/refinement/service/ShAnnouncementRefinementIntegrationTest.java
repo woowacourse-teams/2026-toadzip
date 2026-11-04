@@ -96,6 +96,11 @@ class ShAnnouncementRefinementIntegrationTest {
         setBody(SCHEDULE.replace("2027.01.29.", "2027.02.05."));
         assertThat(refinement.refineAll().updated()).isOne();
         assertThat(sh100().getWinnerAnnouncementDate()).isEqualTo(LocalDate.of(2027, 2, 5));
+
+        setBody(SCHEDULE.replace("■ 당첨자발표: 2027.01.29.(금) 예정\n", ""));
+        refinement.refineAll();
+        assertThat(sh100().getWinnerAnnouncementDate()).isNull();
+        assertThat(sh100().getApplicationStartDate()).isEqualTo(LocalDate.of(2026, 9, 9));
     }
 
     @Test
@@ -126,9 +131,11 @@ class ShAnnouncementRefinementIntegrationTest {
         setBody(SCHEDULE.replace("2026. 9. 9.(수)", "2026. 9. 1.(화)"));
         refinement.refineAll();
         assertThat(sh100().getApplicationStartDate()).isEqualTo(LocalDate.of(2026, 9, 9));
+        assertThat(sh100().isSourceReviewRequired()).isTrue();
 
         jdbc.update("""
-                UPDATE announcements SET application_schedule_reviewed = false, release_status = 'PUBLISHED',
+                UPDATE announcements SET application_schedule_reviewed = false, source_review_required = false,
+                    release_status = 'PUBLISHED',
                     supply_type = 'HAPPY_HOUSING', recruitment_type = 'NEW'
                 WHERE source_announcement_identifier = 'SH:100'
                 """);

@@ -114,7 +114,7 @@ class GhAnnouncementPublishFlowIntegrationTest {
         owned(ownership, refinement::refineAll);
         assertThat(supplyRecheckRequired(id)).isFalse();
         changeSourceSupplyCount();
-        owned(ownership, refinement::refineAll);
+        assertThat(owned(ownership, refinement::refineAll).supplyRecheckRequired()).isOne();
         assertThat(rows(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(right);
         assertThat(rows(id)).extracting(row -> row.get("total_supply_household_count")).containsExactly(120, 60);
         assertThat(supplyRecheckRequired(id)).isTrue();
@@ -125,6 +125,7 @@ class GhAnnouncementPublishFlowIntegrationTest {
         correction.put("publish", true);
         apply(id, correction);
         assertThat(releaseStatus(id)).isEqualTo("PUBLISHED");
+        assertThat(supplyRecheckRequired(id)).isFalse();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox_events WHERE source_identifier = 'GH:801'",
                 Long.class)).isOne();
 
@@ -137,6 +138,7 @@ class GhAnnouncementPublishFlowIntegrationTest {
                 Boolean.class, id)).isTrue();
         assertThat(rows(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(right);
         assertThat(rows(id)).extracting(row -> row.get("total_supply_household_count")).containsExactly(120, 60);
+        assertThat(supplyRecheckRequired(id)).isFalse();
     }
 
     private long complex(String name) {

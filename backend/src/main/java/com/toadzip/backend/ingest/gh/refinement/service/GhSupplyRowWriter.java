@@ -39,17 +39,18 @@ class GhSupplyRowWriter {
     private final AnnouncementComplexRepository announcementComplexes;
     private final EntityManager entityManager;
 
-    void write(Announcement announcement, String title, JsonNode districts, Map<String, AnnouncementComplex> complexes) {
+    /** 관리자가 맡은 공고의 원천 공급이 바뀌어 공급 재확인이 새로 켜졌으면 true다. */
+    boolean write(Announcement announcement, String title, JsonNode districts, Map<String, AnnouncementComplex> complexes) {
         List<Line> planned = planned(announcement.getSourceAnnouncementIdentifier(), category(title), districts,
                 complexes);
         boolean adminOwned = adminOwned(announcement);
-        announcement.observeAgencySupply(fingerprint(planned), adminOwned);
+        boolean recheck = announcement.observeAgencySupply(fingerprint(planned), adminOwned);
         if (adminOwned) {
-            return;
+            return recheck;
         }
         List<SupplyRow> stored = supplyRows.findAllByAnnouncement(announcement);
         if (stored.stream().map(Line::of).toList().equals(planned)) {
-            return;
+            return false;
         }
         supplyRows.deleteAll(stored);
         entityManager.flush();
@@ -59,6 +60,7 @@ class GhSupplyRowWriter {
             row.fillAnnouncementComplex(line.announcementComplex());
             supplyRows.save(row);
         }
+        return false;
     }
 
     /** 원천에서 빠진 공고 단지를 포함해 관리자가 연결한 공고 단지가 하나라도 있으면 관리자가 공급행을 맡은 것으로 본다. */

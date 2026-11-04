@@ -50,10 +50,11 @@ public class GhAnnouncementRefinementService {
         IngestExecutionScope.beginWork("GH 공고 정제", "공고", targets.size());
         Map<Outcome, Integer> outcomes = new EnumMap<>(Outcome.class);
         int failed = 0;
+        int[] recheck = {0};
         for (GhAnnouncementSource target : targets) {
             IngestExecutionScope.checkStopRequested();
             try {
-                outcomes.merge(transactions.execute(status -> refiner.refine(target, index)), 1, Integer::sum);
+                outcomes.merge(transactions.execute(status -> refiner.refine(target, index, () -> recheck[0]++)), 1, Integer::sum);
             }
             catch (RuntimeException failure) {
                 failed++;
@@ -63,7 +64,7 @@ public class GhAnnouncementRefinementService {
         }
         return new GhAnnouncementRefinementReport(targets.size(), count(outcomes, Outcome.CREATED),
                 count(outcomes, Outcome.UPDATED), count(outcomes, Outcome.UNCHANGED),
-                count(outcomes, Outcome.REVIEW_REQUIRED), count(outcomes, Outcome.TRASHED), failed);
+                count(outcomes, Outcome.REVIEW_REQUIRED), count(outcomes, Outcome.TRASHED), recheck[0], failed);
     }
 
     private static int count(Map<Outcome, Integer> outcomes, Outcome outcome) {
