@@ -347,15 +347,14 @@ export function proposeSchedules(extraction: Extraction, events: JsonWorkspace['
   })
 }
 
-/** 이름·순위가 유일하게 대응할 때만 기존 조건을 갱신한다. 미저장 조건도 key로 대응한다. */
+/** 이름이 유일하게 대응할 때만 기존 조건을 갱신한다. PDF 보정은 공급 순위를 가져오지 않아 순위로 가르지 않는다. 미저장 조건도 key로 대응한다. */
 export function defaultTargetDestinations(input: JsonObject, row: CorrectionRow | undefined) {
   const normalize = (value: unknown) => typeof value === 'string' ? value.normalize('NFKC').replace(/\s+/g, '').toLowerCase() : ''
   const targets = Array.isArray(input.targets) ? input.targets : []
   return targets.map((value: unknown) => {
     if (!isRecord(value) || !normalize(value.target)) return ''
     if (!row) return 'new'
-    const matches = row.targets.filter(target => !target.excluded && normalize(target.target) === normalize(value.target)
-      && normalize(target.supplyRank) === normalize(value.supplyRank))
+    const matches = row.targets.filter(target => !target.excluded && normalize(target.target) === normalize(value.target))
     if (matches.length === 1) return matches[0].id ? String(matches[0].id) : matches[0].key
     return matches.length === 0 ? 'new' : ''
   })

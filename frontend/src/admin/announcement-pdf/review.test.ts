@@ -257,6 +257,19 @@ it('이름 없이 새로 추가할 공급대상은 확인 필요로 남고, 적�
   expect(assembleReview(review, workspace, evidence).correction.rows[0].targets.map(target => target.target)).toContain('일반공급')
 })
 
+it('공급 순위는 PDF에서 가져오지 않아 확인할 칸이 없고, 기존 조건의 순위는 그대로 둔다', () => {
+  const { review, workspace } = scenario('gongju')
+  review.rows[0].reviewed = true
+  expect(review.extraction.supplyRows[0].targets[0].supplyRank).toBe(1)
+  expect(review.rows[0].targets.flatMap(target => target.cells.map(cell => cell.field))).not.toContain('supplyRank')
+  const stored = { ...blankTarget(0), target: '가군 (생계·의료급여수급자 등)', supplyRank: '전체' }
+  workspace.supply.rows.find(row => row.key === review.rows[0].proposal.destination)!.targets = [stored]
+  review.rows[0].targets[0] = remapTarget(review, 0, 0, stored.key, workspace)
+  review.rows[0].targets[1] = remapTarget(review, 0, 1, 'new', workspace)
+  const targets = assembleReview(review, workspace, evidence).correction.rows.find(row => row.key === review.rows[0].proposal.destination)!.targets
+  expect(targets.map(target => [target.target, target.supplyRank])).toEqual([['가군 (생계·의료급여수급자 등)', '전체'], ['나군 (일반 등)', null]])
+})
+
 it('공급행 확인 필요 항목은 화면처럼 PDF 단지 이름별 묶음 순서로 모은다', () => {
   const { review } = scenario('gwangju')
   const names = ['A단지', 'B단지', 'A단지', 'B단지', 'A단지', 'B단지', 'A단지']
@@ -268,11 +281,10 @@ it('공급행 확인 필요 항목은 화면처럼 PDF 단지 이름별 묶음 �
 
 it('확인 필요 항목은 화면 순서로 모으고 사람이 고르거나 대응을 확인하면 사라진다', () => {
   const { review, workspace, housing } = scenario('gongju')
-  expect(pendingItems(review).map(item => item.id)).toEqual(['row:0', 'target:0:0', 'target:0:1', 'schedule:2'])
+  expect(pendingItems(review).map(item => item.id)).toEqual(['row:0', 'schedule:2'])
   review.rows[0].reviewed = true
-  review.rows[0].targets[0].cells = review.rows[0].targets[0].cells.map(cell => pendingCell(cell) ? chooseCellValue(cell, 'keep') : cell)
   review.schedules[2].reviewed = true
-  expect(pendingItems(review).map(item => item.id)).toEqual(['target:0:1'])
+  expect(pendingItems(review).map(item => item.id)).toEqual([])
   const deposit = review.rows[0].targets[0].cells.find(cell => cell.field === 'rentalDeposit')!
   expect(pendingCell(editCell(deposit, '1,000'))).toBe(true)
   expect(pendingCell(editCell(deposit, '1000'))).toBe(false)

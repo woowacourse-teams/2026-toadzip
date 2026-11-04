@@ -157,9 +157,9 @@ function TargetBlock({ review, index, workspace, filter, update, onEvidence }: {
   return <>
     <h4>대상별 임대조건</h4>
     <div className={styles.targetScroll} role="region" aria-label={`공급행 ${index + 1} 임대조건 표`} tabIndex={0}><table className={styles.targetTable}>
-      <caption>PDF 표의 대상 순서 · 금액 단위 원</caption><thead><tr><th>공급대상·순위</th><th>보증금</th><th>월 임대료</th><th>전환보증금</th><th>대조·수정</th></tr></thead>
+      <caption>PDF 표의 대상 순서 · 금액 단위 원</caption><thead><tr><th>공급대상</th><th>보증금</th><th>월 임대료</th><th>전환보증금</th><th>대조·수정</th></tr></thead>
       <tbody>{row.targets.map((target, at) => targetMatches(target, filter) && <tr key={at} data-excluded={target.destination === 'exclude'} data-pending={pendingTarget(target) || undefined} data-review-id={`target:${index}:${at}`} tabIndex={-1}>
-        <th scope="row">{shown(target.cells.find(cell => cell.field === 'target')?.value)}<small>{target.cells.find(cell => cell.field === 'supplyRank')?.value as string ?? '순위 없음'}</small></th>
+        <th scope="row">{shown(target.cells.find(cell => cell.field === 'target')?.value)}</th>
         {['rentalDeposit', 'monthlyRent', 'convertedDeposit'].map(field => { const cell = target.cells.find(item => item.field === field)!; return <td key={field}><strong>{shown(cell.value)}</strong><small>{cell.before != null && cell.before !== cell.value ? `현재 ${shown(cell.before)}` : cell.state === 'notApplicable' ? '해당 없음' : cell.state === 'same' ? '같음' : cell.selected ? '적용 선택' : '적용 안 함'}</small>
           {cell.evidence && cell.value != null && <Button data-design-system className={styles.evidenceButton} aria-label={`PDF ${cell.evidence.page}쪽에서 조건 ${at + 1} ${cell.label} 보기`} title={cell.evidence.quote} onClick={() => onEvidence(cell.evidence!, cell)}>p.{cell.evidence.page}</Button>}</td> })}
         <td><Button data-design-system className={styles.quietButton} aria-expanded={expanded === at} onClick={() => setExpanded(expanded === at ? null : at)}>{`조건 ${at + 1} ${target.destination === 'exclude' ? '제외됨' : '대조·수정'}`}</Button>{pendingTarget(target) && <small className={styles.pendingLabel}>확인 필요</small>}</td>

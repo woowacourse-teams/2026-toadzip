@@ -71,8 +71,8 @@ export function normalizedName(value: unknown) {
   return (text(value) ?? '').normalize('NFKC').toLowerCase().replace(/형|[\s·,]/g, '')
 }
 
-const targetKeys = ['target', 'supplyRank', 'rentalDeposit', 'monthlyRent', 'convertedDeposit', 'applicationCondition']
-/** 대상·순위·금액·신청 조건이 행마다 같은지. 모집수는 세부 타입마다 다를 수 있어 비교하지 않는다. */
+const targetKeys = ['target', 'rentalDeposit', 'monthlyRent', 'convertedDeposit', 'applicationCondition']
+/** 대상·금액·신청 조건이 행마다 같은지. 모집수는 세부 타입마다 다를 수 있고, 공급 순위는 PDF 보정이 가져오지 않아 비교하지 않는다. */
 export function sameTargets(rows: ExtractedRow[]) {
   const key = (row: ExtractedRow) => JSON.stringify(row.targets.map(target => targetKeys.map(field => target[field] ?? null)))
   return rows.every(row => key(row) === key(rows[0]))
