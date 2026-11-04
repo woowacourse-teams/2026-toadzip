@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
 public record GhLotAddress(String cityCountyDistrict, boolean mountain, int mainNumber, int subNumber) {
 
     private static final Pattern LOT = Pattern.compile("^(산)?(\\d{1,4})(?:-(\\d{1,4}))?$");
-    private static final Pattern UNRESOLVABLE = Pattern.compile("일원|필지|블록|\\s외\\s");
+    private static final Pattern UNRESOLVABLE = Pattern.compile("일원|일대|필지|블록|\\s외(\\s|$)");
     private static final int PNU_LENGTH = 19;
     private static final char MOUNTAIN_PNU = '2';
 

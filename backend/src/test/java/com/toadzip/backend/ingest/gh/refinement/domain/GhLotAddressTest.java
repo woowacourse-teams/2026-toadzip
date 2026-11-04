@@ -28,6 +28,8 @@ class GhLotAddressTest {
     void 여러_필지나_블록이라_한_지번으로_정할_수_없는_소재지는_읽지_않는다() {
         assertThat(GhLotAddress.parse("경기도 하남시 덕풍동 656-6 일원")).isEmpty();
         assertThat(GhLotAddress.parse("경기도 하남시 덕풍동 656-6 외 3필지")).isEmpty();
+        assertThat(GhLotAddress.parse("경기도 하남시 덕풍동 1352 외")).isEmpty();
+        assertThat(GhLotAddress.parse("경기도 하남시 덕풍동 123 일대")).isEmpty();
         assertThat(GhLotAddress.parse("경기도 남양주시 진건읍 다산지금 A3블록")).isEmpty();
         assertThat(GhLotAddress.parse("경기도 남양주시")).isEmpty();
         assertThat(GhLotAddress.parse(null)).isEmpty();

@@ -31,16 +31,26 @@ class GhAnnouncementComplexLinker {
     private final HousingComplexRepository housingComplexes;
     private final Clock clock;
 
-    /** 이 공고의 공고 단지를 지구 순서대로 돌려준다. 원천에서 빠진 지구의 공고 단지는 빠진 것으로 표시한다. */
+    /**
+     * 이 공고의 공고 단지를 지구 순서대로 돌려준다. 같은 이름의 지구는 처음 나온 소재지로 한 공고 단지로 보고, 이름이 빈 지구는 건너뛴다.
+     * 원천에서 빠진 지구의 공고 단지는 빠진 것으로 표시한다.
+     */
     Map<String, AnnouncementComplex> observe(Announcement announcement, JsonNode districts,
             Optional<RentalType> supplyType, GhComplexIndex index) {
         Map<String, AnnouncementComplex> stored = announcementComplexes.findAllByAnnouncementOrderByIdAsc(announcement)
                 .stream().collect(Collectors.toMap(AnnouncementComplex::getSourceComplexName, Function.identity(),
                         (first, second) -> first, LinkedHashMap::new));
-        Map<String, AnnouncementComplex> result = new LinkedHashMap<>();
+        Map<String, String> observed = new LinkedHashMap<>();
         for (JsonNode district : districts) {
-            String name = district.path("name").asText();
-            String location = district.path("address").asText(null);
+            String name = district.path("name").asText("").strip();
+            if (!name.isEmpty()) {
+                observed.putIfAbsent(name, district.path("address").asText(null));
+            }
+        }
+        Map<String, AnnouncementComplex> result = new LinkedHashMap<>();
+        for (Map.Entry<String, String> district : observed.entrySet()) {
+            String name = district.getKey();
+            String location = district.getValue();
             AnnouncementComplex complex = stored.remove(name);
             if (complex == null) {
                 complex = announcementComplexes.save(AnnouncementComplex.observe(announcement, name, location, null));
@@ -49,7 +59,7 @@ class GhAnnouncementComplexLinker {
             else {
                 complex.observeAgain(location, null);
             }
-            result.putIfAbsent(name, complex);
+            result.put(name, complex);
         }
         stored.values().forEach(AnnouncementComplex::markAbsentFromSource);
         return result;

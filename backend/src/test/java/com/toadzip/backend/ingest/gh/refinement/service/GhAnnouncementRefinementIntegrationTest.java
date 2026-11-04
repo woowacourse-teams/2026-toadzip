@@ -121,12 +121,50 @@ class GhAnnouncementRefinementIntegrationTest {
                 WHERE source_announcement_identifier = 'GH:801'
                 """);
 
+        changeSupplyCount();
         collect(new Row("801", ROW.supplyType(), "[정정] " + ROW.title(), ROW.postedDate()));
-        assertThat(refinement.refineAll().updated()).isZero();
+        var report = refinement.refineAll();
+        assertThat(report.updated()).isZero();
+        assertThat(report.reviewRequired()).isOne();
 
         var announcement = announcements.findBySourceAnnouncementIdentifier("GH:801").orElseThrow();
         assertThat(announcement.getName()).isEqualTo(ROW.title());
         assertThat(announcement.isSourceReviewRequired()).isTrue();
+        assertThat(supplyRows("GH:801")).extracting(row -> row.get("total_supply_household_count"))
+                .containsExactly(120, 60);
+    }
+
+    @Test
+    void 공개_전이라도_관리자가_고친_공고는_정정된_제목으로_덮지_않는다() {
+        collect(ROW);
+        refinement.refineAll();
+        jdbc.update("UPDATE announcements SET admin_modified = true WHERE source_announcement_identifier = 'GH:801'");
+
+        collect(new Row("801", ROW.supplyType(), "[정정] " + ROW.title(), ROW.postedDate()));
+        refinement.refineAll();
+
+        var announcement = announcements.findBySourceAnnouncementIdentifier("GH:801").orElseThrow();
+        assertThat(announcement.getName()).isEqualTo(ROW.title());
+        assertThat(announcement.isSourceReviewRequired()).isTrue();
+    }
+
+    @Test
+    void 같은_이름의_지구가_두_번_나와도_한_공고_단지로_보고_원천에서_빠진_지구는_표시하고_그_행을_없앤다() {
+        collect(ROW);
+        refinement.refineAll();
+        jdbc.update("""
+                UPDATE gh_announcement_source SET districts = replace(districts, '"안양관양 경기행복주택"',
+                    '"다산 센트럴파크6단지"') WHERE pbanc_no = '801'
+                """);
+
+        assertThat(refinement.refineAll().failed()).isZero();
+
+        assertThat(jdbc.queryForList("""
+                SELECT c.source_complex_name || ':' || c.present_in_source FROM announcement_complexes c
+                JOIN announcements a ON a.id = c.announcement_id
+                WHERE a.source_announcement_identifier = 'GH:801' ORDER BY c.id
+                """, String.class)).containsExactly("다산 센트럴파크6단지:true", "안양관양 경기행복주택:false");
+        assertThat(supplyRows("GH:801")).hasSize(2);
     }
 
     @Test
@@ -268,6 +306,13 @@ class GhAnnouncementRefinementIntegrationTest {
 
         assertThat(supplyRows("GH:801")).extracting(row -> row.get("total_supply_household_count"))
                 .containsExactly(90, 60);
+    }
+
+    private void changeSupplyCount() {
+        jdbc.update("""
+                UPDATE gh_announcement_source SET districts = replace(districts, '"supplyCount":"120"',
+                    '"supplyCount":"90"') WHERE pbanc_no = '801'
+                """);
     }
 
     private List<Map<String, Object>> supplyRows(String identifier) {
