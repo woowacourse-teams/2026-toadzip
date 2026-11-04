@@ -323,3 +323,21 @@
 .noticeSummary ul { display:flex; flex-wrap:wrap; gap:var(--ds-space-1) var(--ds-space-3); list-style:none; margin:0; padding:0; }
 .noticeSummary li[data-tone=warning] { color:var(--ds-color-status-upcoming); font-weight:600; }
 .noticeBody { max-height:40vh; overflow:auto; }
+
+/* 일정 대조: 일정마다 이름·결정 한 줄, PDF·기존 값 한 줄씩. 좁은 검토 패널에서도 줄바꿈 없이 읽힌다. */
+.scheduleList { list-style:none; margin:var(--ds-space-3) 0 0; padding:0; display:grid; gap:var(--ds-space-2); }
+.scheduleList > li { padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); font-size:var(--ds-text-caption); }
+.scheduleList > li[data-pending=true] { border-left:3px solid var(--ds-color-deadline); }
+.scheduleList > li[data-excluded=true] { background:var(--ds-color-surface-subtle); color:var(--ds-color-muted-base); }
+.scheduleHead { display:flex; justify-content:space-between; gap:var(--ds-space-2); }
+.scheduleHead { align-items:flex-start; }
+.scheduleList dl { display:grid; grid-template-columns:2.5em 1fr; gap:var(--ds-space-1) var(--ds-space-2); margin:var(--ds-space-2) 0; font-variant-numeric:tabular-nums; }
+.scheduleList dt { color:var(--ds-color-muted-base); }
+.scheduleList dd { margin:0; }
+.scheduleList dd > span { display:block; }
+/* 결정 배지는 이 화면의 핵심 정보라 흐린 배지도 본문 대비(4.5:1 이상)를 지킨다. */
+.scheduleList .statusBadge[data-tone=muted] { color:var(--ds-color-muted-base); }
+.scheduleList .pendingLabel { font-size:var(--ds-text-caption); color:var(--ds-color-deadline); margin:0 0 var(--ds-space-1); }
+.period { white-space:nowrap; }
+.scheduleList .valueChoices button[aria-pressed=true] { background:var(--ds-color-action-soft); border-color:var(--ds-color-action); color:var(--ds-color-action); }
+.scheduleActions { display:flex; flex-wrap:wrap; align-items:center; gap:var(--ds-space-2); }

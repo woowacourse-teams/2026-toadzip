@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import type { JsonWorkspace } from '../announcement-json/api'
 import { type Evidence } from './extraction'
-import { cellMatches, chooseSubtype, complexDecisionCount, complexGroups, housingTypePrice, pendingItems, rowOfReviewId, placementProblems, linkedHousingType, linkedHousingTypeId, newRepresentative, pendingPrice, pendingSubtypes, editCell, representativeSubtype, sharedGroupStorable, pdfOrderChanges, pendingRow, pendingTarget, remapTarget, shown, type Cell, type Review, type ReviewFilter, type RowReview, type SubtypeChoice, type TargetReview } from './review'
+import { cellMatches, chooseSubtype, sameAreaNote, sameAreaSubtypes, complexDecisionCount, complexGroups, housingTypePrice, pendingItems, rowOfReviewId, placementProblems, linkedHousingType, linkedHousingTypeId, newRepresentative, pendingPrice, pendingSubtypes, editCell, representativeSubtype, sharedGroupStorable, pdfOrderChanges, pendingRow, pendingTarget, remapTarget, shown, type Cell, type Review, type ReviewFilter, type RowReview, type SubtypeChoice, type TargetReview } from './review'
 import { ComplexDecisions } from './ComplexDecision'
 import { missingHousingType, splittableLhRows, type ComplexLabels, type HousingCandidates } from './matching'
 import { choosePdfCounts, includeRow, placeRow, type Placement } from './placement'
@@ -207,14 +207,15 @@ function SubtypeLinks({ row, index, update }: { row: RowReview; index: number; u
   const result = (choice: SubtypeChoice) => typeof choice === 'number' ? typeName(choice) : choice === 'new' ? '새 주택형 추가' : choice === 'none' ? '연결 안 함'
     : row.proposal.complexId === null ? '단지를 정하면 연결합니다' : '연결할 주택형을 고르세요'
   const count = row.cells.find(cell => cell.field === 'totalSupplyHouseholdCount')
+  const sameArea = sameAreaSubtypes(row)
   return <section className={styles.subtypeLinks} aria-label={`공급행 ${index + 1} 세부 타입 연결`}>
     <h4>함께 모집하는 주택형</h4>
     <p className={styles.hint}>{`모집수 ${shown(count?.mode === 'keep' ? count.before : count?.value)}세대는 이 공급행 하나에 두고, 세부 타입 주택형을 모두 이 행에 연결합니다. 공통 모집수로 나누지 않습니다.`}</p>
     <ul>{row.subtypes.map((subtype, at) => {
-      const selectable = subtype.options.length > 1 || subtype.exclusiveArea === null
+      const selectable = subtype.options.length > 1 || subtype.exclusiveArea === null || sameArea.includes(at)
       const options = subtype.exclusiveArea === null ? candidates.map(type => type.id) : subtype.options
       const label = `${subtype.name} · 전용 ${subtype.exclusiveArea ?? '미확인'}㎡`
-      return <li key={at} data-review-id={`subtype:${index}:${at}`} tabIndex={-1} data-pending={subtype.choice === null || undefined}>
+      return <li key={at} data-review-id={`subtype:${index}:${at}`} tabIndex={-1} data-pending={subtype.choice === null || sameArea.includes(at) || undefined}>
         {selectable ? <label>{`${label} → `}<select aria-label={`공급행 ${index + 1} 세부 타입 ${subtype.name} 연결 주택형`} value={subtype.choice === null ? '' : String(subtype.choice)}
           onChange={event => update(chooseSubtype(row, at, event.target.value === 'new' || event.target.value === 'none' ? event.target.value : Number(event.target.value)))}>
           {subtype.choice === null && <option value="" disabled>주택형을 고르세요</option>}
@@ -224,6 +225,7 @@ function SubtypeLinks({ row, index, update }: { row: RowReview; index: number; u
         </select></label> : `${label} → ${result(subtype.choice)}`}
         {at === representative && <small className={styles.pendingDone}> 대표 주택형</small>}
         {subtype.choice === null && <small className={styles.pendingLabel}>확인 필요 · {result(null)}</small>}
+        {sameArea.includes(at) && <small className={styles.pendingLabel}>확인 필요 · {sameAreaNote}</small>}
       </li>
     })}</ul>
   </section>

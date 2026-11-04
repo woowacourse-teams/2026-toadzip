@@ -31,7 +31,8 @@ export type RowProposal = {
   /** 표기·면적 근거 없이 남은 행 하나만 있어 자동으로 고르지 않은 경우 */
   ambiguous?: boolean
 }
-export type ScheduleProposal = { existingIds: number[]; needsConfirmation: boolean; reason: string }
+/** undated는 시작일이 없는 안내(계약 개별안내 등)라 일정으로 저장하지 않는다는 뜻이다. */
+export type ScheduleProposal = { existingIds: number[]; needsConfirmation: boolean; reason: string; undated?: boolean }
 /** 행 키별 LH 원천행의 주택형 표기("26A/B/C(고령자)"). 단지에 연결된 행의 typeName은 단지 주택형 이름("26A")이라 공급대상 묶음을 읽을 수 없다. */
 export type SourceLabels = ReadonlyMap<string, string>
 
@@ -162,9 +163,13 @@ export function pickHousingType(extraction: Extraction, index: number, allTypes:
 /** 단지에 연결되지 않은 기존 공급행(최초 입주자 공고처럼 등록 단지가 없던 원천행). */
 export function emptyRow(row: CorrectionRow) { return !row.excluded && row.housingComplexId === null && row.groupId === null }
 
+/** 서버의 주택형 면적 형식(0 이상, 정수 6자리·소수 4자리까지) */
+export const areaValue = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 999999.9999
+  && Math.abs(value * 10000 - Math.round(value * 10000)) < .00001
 export function missingHousingType(complexId: number | null, candidates: MatchingHousingType[], typeName: string, exclusiveArea: unknown, supplyArea: unknown) {
-  if (complexId === null || typeof exclusiveArea !== 'number' || candidates.some(type => equalArea(type.exclusiveArea, exclusiveArea))) return null
-  return { name: typeName.trim(), exclusiveArea, supplyArea: typeof supplyArea === 'number' ? supplyArea : null }
+  // 새 주택형의 전용면적은 0보다 커야 한다. 공급면적은 형식이 맞지 않으면 비워 둔다.
+  if (complexId === null || !areaValue(exclusiveArea) || exclusiveArea === 0 || candidates.some(type => equalArea(type.exclusiveArea, exclusiveArea))) return null
+  return { name: typeName.trim(), exclusiveArea, supplyArea: areaValue(supplyArea) ? supplyArea : null }
 }
 
 // 공고문과 수집 원천의 단지명 표기가 다를 때(전주평화1단지 ↔ 평화주공1단지) 이번 모집수가 유일하게 같은 기존 행을 제안한다.
@@ -330,6 +335,7 @@ function overlaps(left: JsonObject, right: JsonObject) {
 export function proposeSchedules(extraction: Extraction, events: JsonWorkspace['events']): ScheduleProposal[] {
   const used = new Set<number>()
   return extraction.schedules.map((schedule, index) => {
+    if (!day(schedule.startAt)) return { existingIds: [], needsConfirmation: false, undated: true, reason: '날짜가 없는 안내라 일정으로 저장하지 않습니다.' }
     const sameType = events.filter(event => !used.has(event.id) && event.data.scheduleType === schedule.scheduleType)
     const exact = sameType.filter(event => samePeriod(event.data, schedule))
     const matches = exact.length ? exact : sameType.filter(event => overlaps(event.data, schedule))

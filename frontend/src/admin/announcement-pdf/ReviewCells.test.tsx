@@ -5,11 +5,11 @@ import { ReviewCells } from './ReviewCells'
 import { daegu, scenario, separateHansville } from './fixtures/workspace'
 import type { Cell } from './review'
 
-function renderCell(initial: Cell) {
+function renderCell(initial: Cell, needs?: Map<string, string>) {
   const changed = vi.fn()
   function Test() {
     const [cells, setCells] = useState([initial])
-    return <ReviewCells cells={cells} scope="공급정보" onChange={next => { setCells(next); changed(next[0]) }} onEvidence={() => {}} />
+    return <ReviewCells cells={cells} scope="공급정보" needs={needs} onChange={next => { setCells(next); changed(next[0]) }} onEvidence={() => {}} />
   }
   render(<Test />)
   return changed
@@ -92,4 +92,13 @@ it('목록 모집수와 다르다는 참고는 막지 않고 근거가 있는 PD
   expect(screen.getByText('참고: 목록 모집수 240과 다름')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'PDF 추출값 사용' }))
   expect(changed.mock.lastCall?.[0]).toMatchObject({ mode: 'extracted', selected: true, value: 200 })
+})
+
+it('함께 맞춰야 하는 확인이 걸린 칸은 해당 없음이어도 접히지 않고 확인 필요와 까닭을 보인다', () => {
+  const cell = scenario('gongju').review.reception.find(item => item.field === 'name')!
+  renderCell({ ...cell, state: 'notApplicable', extracted: { ...cell.extracted, state: 'notApplicable' } }, new Map([[cell.path, '접수처를 저장하려면 접수처명이 필요합니다.']]))
+  expect(screen.getByText('접수처명')).toBeVisible()
+  expect(screen.getByText('확인 필요')).toBeVisible()
+  expect(screen.getByText('접수처를 저장하려면 접수처명이 필요합니다.')).toBeVisible()
+  expect(screen.getByText('접수처명').closest('[data-review-id]')).toHaveAttribute('data-pending', 'true')
 })
