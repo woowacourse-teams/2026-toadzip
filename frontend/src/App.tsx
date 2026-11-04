@@ -19,6 +19,9 @@ import { UserListPage } from './admin/users/UserListPage'
 import { UserDetailPage } from './admin/users/UserDetailPage'
 import { NotificationManagementPage } from './admin/notifications/NotificationSubscriptions'
 import { FeedbackPage } from './feedback/FeedbackPage'
+import { FeedbackLink } from './feedback/FeedbackLink'
+import { feedbackBackground } from './feedback/feedbackNavigation'
+import { FeedbackPrompt } from './feedback/FeedbackPrompt'
 import { NotificationDeliveriesPage } from './admin/notifications/NotificationDeliveriesPage'
 import { OperationsHome } from './admin/operations/OperationsHome'
 import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
@@ -61,8 +64,9 @@ function Home() {
     <ExplorerReturnContext value={returnUrl}>
       <div className="app-shell">
         <div className="service-rail-brand"><BrandLink /></div>
-        <div className="service-rail-account"><Link className="service-feedback-link" to="/feedback">의견 보내기</Link><NotificationInterestSessionControl presentation="rail" /></div>
+        <div className="service-rail-account"><FeedbackLink className="service-feedback-link">의견 보내기</FeedbackLink><NotificationInterestSessionControl presentation="rail" /></div>
         <main className="map-main"><DefaultPublicHousingExplorer showWelcome={false} /></main>
+        <FeedbackPrompt />
       </div>
     </ExplorerReturnContext>
   )
@@ -136,7 +140,9 @@ function AdminRoutes() {
 }
 
 export default function App() {
-  const { pathname, search, hash, state } = useLocation()
+  const location = useLocation()
+  const { pathname, search, hash, state } = location
+  const background = pathname === '/feedback' ? feedbackBackground(state) : null
   // Use the same matching rules as Routes, including encoded paths, before
   // mounting privacy and analytics on the canonical public path.
   if (pathname !== '/explore' && matchRoutes([{ path: '/explore' }], { pathname })) {
@@ -146,7 +152,7 @@ export default function App() {
     <MobileInstallProvider>
     {pathname !== '/' && <PrivacyBoundary />}
     <ProductAnalyticsBoundary />
-    <Routes>
+    <Routes location={background ?? location}>
       <Route path="/" element={<LandingEntry />} />
       <Route element={<PublicNotificationLayout />}>
         <Route path="/explore" element={<Home />} />
@@ -162,6 +168,7 @@ export default function App() {
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
+    {background && <FeedbackPage />}
     </MobileInstallProvider>
   )
 }

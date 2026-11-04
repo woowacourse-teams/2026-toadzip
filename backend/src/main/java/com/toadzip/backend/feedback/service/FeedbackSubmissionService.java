@@ -1,6 +1,7 @@
 package com.toadzip.backend.feedback.service;
 
 import com.toadzip.backend.feedback.domain.Feedback;
+import com.toadzip.backend.feedback.domain.FeedbackSurveyAnswer;
 import com.toadzip.backend.feedback.repository.FeedbackRepository;
 import java.time.Clock;
 import org.springframework.stereotype.Service;
@@ -18,8 +19,8 @@ public class FeedbackSubmissionService {
         this.clock = clock;
     }
 
-    public long submit(String content) {
-        Feedback feedback = Feedback.submit(content, clock.instant());
+    public long submit(String content, FeedbackSurveyAnswer surveyAnswer) {
+        Feedback feedback = Feedback.submit(content, surveyAnswer, clock.instant());
         return repository.save(feedback).getId();
     }
 }

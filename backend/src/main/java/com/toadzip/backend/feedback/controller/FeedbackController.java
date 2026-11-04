@@ -25,6 +25,6 @@ public class FeedbackController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<FeedbackSubmissionResponse> submit(@Valid @RequestBody FeedbackSubmissionRequest request) {
-        return new ApiResponse<>(new FeedbackSubmissionResponse(service.submit(request.content())));
+        return new ApiResponse<>(new FeedbackSubmissionResponse(service.submit(request.content(), request.surveyAnswer())));
     }
 }

@@ -5,7 +5,7 @@ import { FeedbackProcessingPanel } from './FeedbackProcessingPanel'
 import { getFeedback, saveFeedback, type FeedbackEntry } from './api'
 import { ManagementError } from '../management/api'
 vi.mock('./api', async original => ({ ...await original<typeof import('./api')>(), getFeedback: vi.fn(), saveFeedback: vi.fn() }))
-const entry: FeedbackEntry = { id: 1, content: '공고 조건 확인 요청', createdAt: '2026-10-19T00:00:00Z', version: 0, status: 'OPEN', note: '', relatedResource: '', relatedId: null, actor: null, processedAt: null }
+const entry: FeedbackEntry = { surveyAnswer: null, id: 1, content: '공고 조건 확인 요청', createdAt: '2026-10-19T00:00:00Z', version: 0, status: 'OPEN', note: '', relatedResource: '', relatedId: null, actor: null, processedAt: null }
 beforeEach(() => { vi.clearAllMocks() })
 it('완료 근거를 저장하고 동시 변경 거절에는 입력을 보존하며 실제 처리자를 보여준다', async () => {
   const onSaved = vi.fn()

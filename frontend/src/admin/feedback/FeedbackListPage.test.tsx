@@ -6,7 +6,7 @@ import { listFeedback, type FeedbackPage } from './api'
 
 vi.mock('./api', async original => ({ ...await original<typeof import('./api')>(), listFeedback: vi.fn() }))
 beforeEach(() => { vi.mocked(listFeedback).mockReset() })
-const entry = { version: 0, status: 'OPEN' as const, note: '', relatedResource: '' as const, relatedId: null, actor: null, processedAt: null, id: 7, content: '지도에서 단지를 찾기 어려워요.\n검색을 개선해 주세요.', createdAt: '2026-10-07T01:00:00Z' }
+const entry = { surveyAnswer: null, version: 0, status: 'OPEN' as const, note: '', relatedResource: '' as const, relatedId: null, actor: null, processedAt: null, id: 7, content: '지도에서 단지를 찾기 어려워요.\n검색을 개선해 주세요.', createdAt: '2026-10-07T01:00:00Z' }
 const page = (content = entry.content): FeedbackPage => ({ items: [{ ...entry, content }], page: 0, hasNext: false, totalElements: 1, totalPages: 1 })
 function setup(path = '/admin/feedback') { render(<MemoryRouter initialEntries={[path]}><FeedbackListPage /></MemoryRouter>) }
 
@@ -103,4 +103,15 @@ it('사용자 입력 HTML을 실행하지 않고 텍스트로 표시한다', asy
   const body = screen.getByRole('region', { name: '의견 7 전체 내용' })
   expect(body).toHaveTextContent('<script>alert("test")</script>')
   expect(body.querySelector('script')).toBeNull()
+})
+
+it('설문 답변과 기존 의견의 미응답을 구분하고 선택 의견이 없음을 표시한다', async () => {
+  vi.mocked(listFeedback).mockResolvedValue({ ...page(), items: [
+    { ...entry, surveyAnswer: 'SOMEWHAT_DISAPPOINTED', content: '' },
+    { ...entry, id: 8 },
+  ], totalElements: 2 })
+  setup()
+  expect(await screen.findByText('제품을 더 이상 쓸 수 없다면: 약간 실망')).toBeVisible()
+  expect(screen.getByText('제품을 더 이상 쓸 수 없다면: 미응답')).toBeVisible()
+  expect(screen.getByText('추가 의견 없음', { selector: 'article > p' })).toBeVisible()
 })

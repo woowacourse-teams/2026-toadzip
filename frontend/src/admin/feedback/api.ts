@@ -1,9 +1,10 @@
+import { surveyAnswers, type SurveyAnswer } from '../../feedback/survey'
 import { requestManagementApi } from '../management/api'
 import { isRecord } from '../management/managementContract'
 
 export const feedbackStates = { OPEN: '접수', IN_PROGRESS: '처리 중', ON_HOLD: '보류', DONE: '처리 완료' } as const
 export type FeedbackState = keyof typeof feedbackStates
-export type FeedbackEntry = { id: number; content: string; createdAt: string; version: number; status: FeedbackState;
+export type FeedbackEntry = { id: number; content: string; surveyAnswer: SurveyAnswer | null; createdAt: string; version: number; status: FeedbackState;
   note: string; relatedResource: '' | 'COMPLEX' | 'ANNOUNCEMENT'; relatedId: number | null;
   actor: string | null; processedAt: string | null }
 export type FeedbackInput = { version: number; status: FeedbackState; note: string;
@@ -38,7 +39,11 @@ function parseEntry(value: unknown): FeedbackEntry {
     || !(value.processedAt === null || typeof value.processedAt === 'string' && Number.isFinite(Date.parse(value.processedAt)))) {
     throw new Error('의견 처리 응답이 올바르지 않습니다.')
   }
-  return value as FeedbackEntry
+  if (value.surveyAnswer !== undefined && value.surveyAnswer !== null
+    && (typeof value.surveyAnswer !== 'string' || !Object.hasOwn(surveyAnswers, value.surveyAnswer))) {
+    throw new Error('설문 응답이 올바르지 않습니다.')
+  }
+  return { ...value, surveyAnswer: value.surveyAnswer ?? null } as FeedbackEntry
 }
 
 export async function saveFeedback(id: number, input: FeedbackInput): Promise<FeedbackEntry> {

@@ -1,3 +1,4 @@
+import { surveyAnswers } from '../../feedback/survey'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { Button } from '../../design-system/components/Button'
@@ -92,9 +93,10 @@ export function FeedbackListPage() {
         {data.items.length > 0 ? <ol className={styles.list} aria-label="사용자 의견 목록">
           {data.items.map(entry => <li key={entry.id}><article className={styles.card}>
             <header className={styles.cardHeading}><h2>의견 #{entry.id}</h2><time dateTime={entry.createdAt}>{receivedAt.format(new Date(entry.createdAt))}</time></header>
-            <p className={styles.preview}>{entry.content.slice(0, 120)}{entry.content.length > 120 ? '…' : ''}</p>
+            <p className={styles.meta}>제품을 더 이상 쓸 수 없다면: {entry.surveyAnswer ? surveyAnswers[entry.surveyAnswer] : '미응답'}</p>
+            <p className={styles.preview}>{entry.content ? entry.content.slice(0, 120) : '추가 의견 없음'}{entry.content.length > 120 ? '…' : ''}</p>
             <details><summary>전체 내용 보기<svg className={styles.chevron} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m5 7.5 5 5 5-5" /></svg></summary><div role="region" aria-label={`의견 ${entry.id} 전체 내용`}>
-              <p className={styles.content}>{entry.content}</p>
+              <p className={styles.content}>{entry.content || '추가 의견 없음'}</p>
             </div></details>
             <p>{feedbackStates[entry.status ?? 'OPEN']}{entry.note ? ` · ${entry.note}` : ''}</p>
             {entry.processedAt && <p className={styles.meta}>최근 처리: {entry.actor} · <time dateTime={entry.processedAt}>{receivedAt.format(new Date(entry.processedAt))}</time></p>}

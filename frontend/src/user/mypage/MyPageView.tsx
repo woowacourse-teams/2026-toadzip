@@ -1,3 +1,4 @@
+import { FeedbackLink } from '../../feedback/FeedbackLink'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { Button } from '../../design-system/components/Button'
@@ -157,7 +158,7 @@ export function MyPageView({ onOpenComplex, onOpenAnnouncement, onBrowseAnnounce
             value={alarms ? `${alarms.length}개` : '—'} detail={alarms ? breakdown(alarms, ['COMPLEX', 'ANNOUNCEMENT', 'REGION']) : undefined} />
         </nav>
         <nav className={`${styles.card} ${styles.feedback}`} aria-label="서비스">
-          <Link className={styles.row} to="/feedback" state={returnState}><span className={styles.rowLabel}>의견 보내기</span><Chevron /></Link>
+          <FeedbackLink className={styles.row} state={returnState}><span className={styles.rowLabel}>의견 보내기</span><Chevron /></FeedbackLink>
         </nav>
         <footer className={styles.privacy}><PrivacyLinks /></footer>
       </aside>

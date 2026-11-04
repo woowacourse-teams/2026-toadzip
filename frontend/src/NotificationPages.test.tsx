@@ -251,7 +251,7 @@ it('마이페이지에서 의견 화면으로 이동하면 마이페이지로 �
   render(<MemoryRouter initialEntries={['/mypage/account']}><App /></MemoryRouter>)
   fireEvent.click(within(await screen.findByRole('navigation', { name: '서비스' })).getByRole('link', { name: '의견 보내기' }))
   expect(await screen.findByRole('heading', { name: '의견 보내기' })).toBeVisible()
-  fireEvent.click(screen.getByRole('link', { name: '마이페이지로 돌아가기' }))
+  fireEvent.click(screen.getByRole('button', { name: '의견 보내기 닫기' }))
   await screen.findByRole('button', { name: '로그아웃' })
   expect(screen.getByRole('heading', { name: '마이페이지' })).toBeVisible()
 })
