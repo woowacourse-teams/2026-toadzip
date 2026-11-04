@@ -34,6 +34,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -223,7 +224,8 @@ class GhAnnouncementCollectionServiceTest {
         assertThat(report.storedRowCount()).isOne();
         verify(externalRepository, never()).fetchDetail(RENTAL_HOUSE, "802", "01");
         verify(externalRepository).fetchDetail(RENTAL_HOUSE, "801", "01");
-        verify(store).updateListValues(argThat(entries -> entries.size() == 2));
+        verify(store).updateListValues(argThat(entries -> entries.stream().map(entry -> entry.pbancNo())
+                .collect(Collectors.toSet()).equals(Set.of("801", "802"))));
     }
 
     @Test
