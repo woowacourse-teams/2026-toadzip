@@ -3,6 +3,7 @@ import fixtures from './fixtures/scenarios.json'
 import { blankRow, blankTarget } from '../supply/supplyCorrectionApi'
 import { readExtraction } from './extraction'
 import { blockKey, checkAnnouncement, defaultTargetDestinations, missingHousingType, proposeRows, proposeSchedules, sourceComplexNames } from './matching'
+import { sameTargets } from './subtypes'
 
 function scenario(name: keyof typeof fixtures) {
   const fixture = fixtures[name]
@@ -44,6 +45,20 @@ describe('공고 보정 대응 제안', () => {
     row.targets = [{ ...blankTarget(0), key: 'draft-target', target: '가형', supplyRank: '1순위' }]
     expect(defaultTargetDestinations({ targets: [{ target: '가', supplyRank: '1순위' }] }, row)).toEqual(['new'])
     expect(defaultTargetDestinations({ targets: [{ target: '가 형', supplyRank: '1 순위' }] }, row)).toEqual(['draft-target'])
+  })
+
+  it('공급 순위만 다른 공고문 행도 대상이 같다고 보아 접기 제안을 막지 않는다', () => {
+    const row = (supplyRank: unknown) => ({ complexName: null, typeName: null, values: {}, subtypes: [], targets: [{ target: '가군', supplyRank, rentalDeposit: 2520000, monthlyRent: 49180 }] })
+    expect(sameTargets([row(1), row(null)])).toBe(true)
+    expect(sameTargets([row(1), { ...row(1), targets: [{ target: '가군', supplyRank: 1, rentalDeposit: 2520001, monthlyRent: 49180 }] }])).toBe(false)
+  })
+
+  it('공급 순위는 대응에 쓰지 않아 순위 표기가 달라도 같은 이름의 기존 조건을 고치고, 같은 이름이 둘이면 고르게 둔다', () => {
+    const row = blankRow(0)
+    row.targets = [{ ...blankTarget(0), id: 13, target: '가군', supplyRank: '전체' }]
+    expect(defaultTargetDestinations({ targets: [{ target: '가군', supplyRank: 1 }] }, row)).toEqual(['13'])
+    row.targets.push({ ...blankTarget(1), id: 14, target: '가군', supplyRank: '2순위' })
+    expect(defaultTargetDestinations({ targets: [{ target: '가군', supplyRank: 1 }] }, row)).toEqual([''])
   })
 
   it('한스빌의 한 행을 두 행으로 제안하고 서로 다른 면적의 주택형을 연결한다', () => {
