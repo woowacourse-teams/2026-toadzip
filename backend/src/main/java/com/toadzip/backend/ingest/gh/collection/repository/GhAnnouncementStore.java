@@ -6,10 +6,9 @@ import com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementSource;
 import com.toadzip.backend.ingest.gh.collection.dto.GhAnnouncementPage.Entry;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -48,18 +47,18 @@ public class GhAnnouncementStore {
         }
     }
 
-    /** 같은 게시판에 모든 구획을 읽어 저장했고 목록의 제목·게시일이 저장값과 같은 공고 번호. */
+    /** 같은 게시판에 모든 구획을 읽어 저장했고 목록의 제목·게시일이 저장값과 같은 공고 번호와 마지막 수집 시각. */
     @Transactional(readOnly = true)
-    public Set<String> findUnchangedPbancNos(GhAnnouncementBoard board, List<Entry> entries) {
+    public Map<String, Instant> findUnchangedCollectedAt(GhAnnouncementBoard board, List<Entry> entries) {
         Map<String, GhAnnouncementSource> stored = repository.findAllByPbancNoIn(
                         entries.stream().map(Entry::pbancNo).toList())
                 .stream().collect(Collectors.toMap(GhAnnouncementSource::getPbancNo, Function.identity()));
-        Set<String> unchanged = new HashSet<>();
+        Map<String, Instant> unchanged = new HashMap<>();
         for (Entry entry : entries) {
             GhAnnouncementSource source = stored.get(entry.pbancNo());
             if (source != null && source.getBoard() == board && source.getTitle().equals(entry.title())
                     && source.getPostedDate().equals(entry.postedDate()) && source.hasAllSections()) {
-                unchanged.add(entry.pbancNo());
+                unchanged.put(entry.pbancNo(), source.getCollectedAt());
             }
         }
         return unchanged;

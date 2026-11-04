@@ -18,11 +18,11 @@ import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementHtmlPar
 import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementListParser;
 import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementStore;
 import com.toadzip.backend.ingest.gh.collection.repository.GhHousingTypeDetails;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.node.ObjectNode;
@@ -74,8 +74,8 @@ public class GhAnnouncementCollector implements BoardSource<Entry, GhAnnouncemen
     }
 
     @Override
-    public Set<String> findUnchanged(List<Entry> entries) {
-        return store.findUnchangedPbancNos(RENTAL_HOUSE, entries);
+    public Map<String, Instant> findUnchangedCollectedAt(List<Entry> entries) {
+        return store.findUnchangedCollectedAt(RENTAL_HOUSE, entries);
     }
 
     /** 접수 상태·마감일·지역은 상세를 다시 받지 않아도 목록 값으로 갱신한다. */

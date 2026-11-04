@@ -12,8 +12,9 @@ import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementExterna
 import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementHtmlParser;
 import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementListParser;
 import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementStore;
+import java.time.Instant;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -68,8 +69,8 @@ public class ShAnnouncementCollector implements BoardSource<Entry, ShAnnouncemen
     }
 
     @Override
-    public Set<String> findUnchanged(List<Entry> entries) {
-        return store.findUnchangedSeqs(entries);
+    public Map<String, Instant> findUnchangedCollectedAt(List<Entry> entries) {
+        return store.findUnchangedCollectedAt(entries);
     }
 
     @Override

@@ -47,6 +47,7 @@ class GhAnnouncementCollectionServiceTest {
 
     private static final String RECENT = "2026-10-02";
     private static final String OLD = "2026-01-01";
+    private static final Instant RECENTLY_COLLECTED = Instant.parse("2026-10-04T00:00:00Z");
 
     @Mock
     private GhAnnouncementExternalRepository externalRepository;
@@ -198,7 +199,8 @@ class GhAnnouncementCollectionServiceTest {
         Row unchanged = row(802, RECENT);
         Row pending = row(801, RECENT);
         list(RENTAL_HOUSE, 1, 2, unchanged, pending);
-        when(store.findUnchangedPbancNos(eq(RENTAL_HOUSE), any())).thenReturn(Set.of("802", "801"));
+        when(store.findUnchangedCollectedAt(eq(RENTAL_HOUSE), any()))
+                .thenReturn(Map.of("802", RECENTLY_COLLECTED, "801", RECENTLY_COLLECTED));
         when(failures.findPendingRequestDescriptions(eq(ExternalDataSource.GH_ANNOUNCEMENT), any()))
                 .thenReturn(Set.of("pbancNo=801"));
         detail(RENTAL_HOUSE, pending);
@@ -283,7 +285,8 @@ class GhAnnouncementCollectionServiceTest {
                 new GhAnnouncementCollector(externalRepository, new GhAnnouncementListParser(),
                         new GhAnnouncementHtmlParser(), store, new GhHousingTypeDetails()),
                 new BoardSourceCollector(CollectionServiceTestFixture.retryWithoutDelay(), failures,
-                        Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC)), days, Duration.ZERO);
+                        Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), Duration.ofDays(7)),
+                days, Duration.ZERO);
     }
 
     private Row row(int pbancNo, String postedDate) {

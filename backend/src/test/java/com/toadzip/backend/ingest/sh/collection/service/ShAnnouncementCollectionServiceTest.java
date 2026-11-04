@@ -25,6 +25,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(IngestExecutionExtension.class)
 @ExtendWith(MockitoExtension.class)
 class ShAnnouncementCollectionServiceTest {
+
+    private static final Instant RECENTLY_COLLECTED = Instant.parse("2026-10-04T00:00:00Z");
 
     private final ShAnnouncementHtmlParser detailParser =
             new ShAnnouncementHtmlParser();
@@ -143,7 +146,7 @@ class ShAnnouncementCollectionServiceTest {
     @Test
     void 제목과_등록일이_그대로인_수집된_게시글은_상세를_다시_받지_않는다() {
         when(externalRepository.fetchList(1)).thenReturn(list(1, 2, 100, 101));
-        when(store.findUnchangedSeqs(any())).thenReturn(Set.of("100"));
+        when(store.findUnchangedCollectedAt(any())).thenReturn(Map.of("100", RECENTLY_COLLECTED));
         when(externalRepository.fetchDetail("101")).thenReturn(detail("101"));
 
         var report = service.collect();
@@ -158,7 +161,7 @@ class ShAnnouncementCollectionServiceTest {
     @Test
     void 실패가_열려_있는_게시글은_제목이_같아도_다시_받는다() {
         when(externalRepository.fetchList(1)).thenReturn(list(1, 1, 100));
-        when(store.findUnchangedSeqs(any())).thenReturn(Set.of("100"));
+        when(store.findUnchangedCollectedAt(any())).thenReturn(Map.of("100", RECENTLY_COLLECTED));
         when(failures.findPendingRequestDescriptions(ExternalDataSource.SH_ANNOUNCEMENT, List.of("seq=100")))
                 .thenReturn(Set.of("seq=100"));
         when(externalRepository.fetchDetail("100")).thenReturn(detail("100"));
@@ -256,7 +259,8 @@ class ShAnnouncementCollectionServiceTest {
         return new ShAnnouncementCollectionService(
                 new ShAnnouncementCollector(externalRepository, new ShAnnouncementListParser(), detailParser, store),
                 new BoardSourceCollector(CollectionServiceTestFixture.retryWithoutDelay(), failures,
-                        Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC)), days, Duration.ZERO);
+                        Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), Duration.ofDays(7)),
+                days, Duration.ZERO);
     }
 
     private String list(int page, int total, Integer... recentIds) {

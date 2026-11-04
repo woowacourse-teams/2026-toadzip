@@ -4,8 +4,9 @@ import com.toadzip.backend.ingest.collection.board.dto.BoardDetail;
 import com.toadzip.backend.ingest.collection.board.dto.BoardEntry;
 import com.toadzip.backend.ingest.collection.board.dto.BoardPage;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import java.time.Instant;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 /**
  * 목록 하나를 넘기며 글마다 상세를 받는 기관 게시판이다. 게시판은 목록과 상세를 받아 읽고 저장하는 방법, 저장된 원천과
@@ -37,8 +38,8 @@ public interface BoardSource<E extends BoardEntry, S> {
         return true;
     }
 
-    /** 목록 값이 저장값과 같고 모든 부분을 읽어 저장한 글의 key다. */
-    Set<String> findUnchanged(List<E> entries);
+    /** 목록 값이 저장값과 같고 모든 부분을 읽어 저장한 글의 key와 마지막 수집 시각이다. */
+    Map<String, Instant> findUnchangedCollectedAt(List<E> entries);
 
     /** 상세를 다시 받지 않는 글의 목록 값을 저장값에 반영한다. */
     default void updateListValues(List<E> entries) {

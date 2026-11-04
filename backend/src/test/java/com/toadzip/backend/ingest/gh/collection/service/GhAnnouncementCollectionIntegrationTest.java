@@ -4,16 +4,21 @@ import static com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementBoar
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures;
 import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures.Row;
+import com.toadzip.backend.ingest.collection.fixture.MutableClock;
 import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -22,11 +27,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @ExtendWith(IngestExecutionExtension.class)
+@Import(GhAnnouncementCollectionIntegrationTest.ClockConfiguration.class)
 @SpringBootTest(properties = {"ingest.gh.request-interval=0s", "ingest.gh.lookback-days=0"})
 @ActiveProfiles("test")
 class GhAnnouncementCollectionIntegrationTest {
@@ -41,6 +51,8 @@ class GhAnnouncementCollectionIntegrationTest {
     private ExternalDataCollectionFailureRepository failures;
     @Autowired
     private JdbcClient jdbc;
+    @Autowired
+    private MutableClock clock;
     @MockitoBean
     private GhAnnouncementExternalRepository externalRepository;
 
@@ -54,6 +66,7 @@ class GhAnnouncementCollectionIntegrationTest {
     void cleanUp() {
         sources.deleteAll();
         failures.deleteAll();
+        clock.reset();
     }
 
     @Test
@@ -130,7 +143,37 @@ class GhAnnouncementCollectionIntegrationTest {
         assertThat(refreshed.getAttachments()).contains("모집공고문.pdf");
     }
 
+    @Test
+    void 다_받은_공고도_마지막_수집_뒤_7일이_지나면_상세를_다시_받는다() {
+        when(externalRepository.fetchList(RENTAL_HOUSE, 1)).thenReturn(GhAnnouncementFixtures.list(RENTAL_HOUSE, 1, 1, ROW));
+        when(externalRepository.fetchDetail(RENTAL_HOUSE, "801", "01"))
+                .thenReturn(GhAnnouncementFixtures.detail(RENTAL_HOUSE, ROW));
+        assertThat(service.collect().storedRowCount()).isOne();
+
+        clock.advance(Duration.ofDays(6));
+        assertThat(service.collect().skippedRequestCount()).isOne();
+        verify(externalRepository, times(1)).fetchDetail(RENTAL_HOUSE, "801", "01");
+
+        clock.advance(Duration.ofDays(2));
+        var refetched = service.collect();
+        assertThat(refetched.skippedRequestCount()).isZero();
+        assertThat(refetched.storedRowCount()).isOne();
+        verify(externalRepository, times(2)).fetchDetail(RENTAL_HOUSE, "801", "01");
+        assertThat(sources.findBySourceKey("GH:801").orElseThrow().getCollectedAt()).isEqualTo(clock.instant());
+        assertThat(service.collect().skippedRequestCount()).isOne();
+    }
+
     private long count(String table) {
         return jdbc.sql("SELECT count(*) FROM " + table).query(Long.class).single();
+    }
+
+    @TestConfiguration
+    static class ClockConfiguration {
+
+        @Bean
+        @Primary
+        MutableClock collectionClock() {
+            return new MutableClock(Instant.parse("2026-10-05T00:00:00Z"));
+        }
     }
 }

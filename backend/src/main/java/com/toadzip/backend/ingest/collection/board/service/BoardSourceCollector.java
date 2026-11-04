@@ -11,23 +11,26 @@ import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
-import lombok.RequiredArgsConstructor;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
  * 기관 게시판을 첫 페이지부터 넘기며 조회 기간 안의 대상 글을 상세까지 받아 저장한다. 목록 값이 저장값과 같고 다 읽었으며
- * 열린 실패가 없는 글은 상세를 다시 받지 않는다. 수집 중 전체 건수가 바뀌거나 페이지 사이에 같은 글이 나오면 그 페이지에서
- * 멈춘다. 요청 실패는 요청 단위로 기록하고 다음 글을 계속하며, 호출 제한에 걸리면 남은 요청을 보내지 않는다.
+ * 열린 실패가 없고 마지막 수집 뒤 재수집 기한이 지나지 않은 글은 상세를 다시 받지 않는다. 수집 중 전체 건수가 바뀌거나
+ * 페이지 사이에 같은 글이 나오면 그 페이지에서 멈춘다. 요청 실패는 요청 단위로 기록하고 다음 글을 계속하며, 호출 제한에
+ * 걸리면 남은 요청을 보내지 않는다.
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class BoardSourceCollector {
 
     private static final int MAX_PAGES = 1_000;
@@ -36,6 +39,21 @@ public class BoardSourceCollector {
     private final ExternalDataRetryExecutor retryExecutor;
     private final ExternalDataFailureRecorder failureRecorder;
     private final Clock clock;
+    private final Duration refetchAfter;
+
+    /** refetchAfter는 목록 값이 그대로여도 상세를 다시 받는 기한이다. 기관이 목록에 드러내지 않고 고친 상세를 따라잡는다. */
+    public BoardSourceCollector(
+            ExternalDataRetryExecutor retryExecutor, ExternalDataFailureRecorder failureRecorder, Clock clock,
+            @Value("${ingest.board-announcement.refetch-after:7d}") Duration refetchAfter
+    ) {
+        if (refetchAfter.isNegative()) {
+            throw new IllegalArgumentException("게시판 공고 재수집 기한은 음수일 수 없습니다.");
+        }
+        this.retryExecutor = retryExecutor;
+        this.failureRecorder = failureRecorder;
+        this.clock = clock;
+        this.refetchAfter = refetchAfter;
+    }
 
     /** lookbackDays가 0이면 게시일과 관계없이 모든 글을 본다. */
     public <E extends BoardEntry, S> ExternalDataCollectionReport collect(
@@ -82,13 +100,13 @@ public class BoardSourceCollector {
         private boolean collectPage(BoardPage<E> page, LocalDate cutoff) {
             List<E> selected = page.entries().stream().filter(entry -> !entry.postedDate().isBefore(cutoff))
                     .filter(board::isTarget).toList();
-            Set<String> unchanged = unchanged(selected);
-            if (!unchanged.isEmpty()) {
+            Set<String> skippable = skippable(selected);
+            if (!skippable.isEmpty()) {
                 IngestExecutionScope.verifyCanContinue();
-                board.updateListValues(selected.stream().filter(entry -> unchanged.contains(entry.key())).toList());
+                board.updateListValues(selected.stream().filter(entry -> skippable.contains(entry.key())).toList());
             }
             for (E entry : selected) {
-                collectEntry(entry, unchanged, page.page());
+                collectEntry(entry, skippable, page.page());
                 IngestExecutionScope.workCompleted();
                 if (requests.rateLimited()) {
                     return false;
@@ -97,27 +115,30 @@ public class BoardSourceCollector {
             return true;
         }
 
-        private void collectEntry(E entry, Set<String> unchanged, int page) {
-            if (unchanged.contains(entry.key())) {
+        private void collectEntry(E entry, Set<String> skippable, int page) {
+            if (skippable.contains(entry.key())) {
                 skipped++;
                 return;
             }
             collectDetail(entry, page);
         }
 
-        /** 일부만 읽어 저장한 글은 실패가 열려 있어 다시 받는다. */
-        private Set<String> unchanged(List<E> entries) {
+        /** 상세를 다시 받지 않을 글이다. 일부만 읽어 저장한 글은 실패가 열려 있어 다시 받는다. */
+        private Set<String> skippable(List<E> entries) {
             if (entries.isEmpty()) {
                 return Set.of();
             }
-            Set<String> unchanged = new HashSet<>(board.findUnchanged(entries));
-            if (unchanged.isEmpty()) {
-                return unchanged;
+            Instant refetchFrom = clock.instant().minus(refetchAfter);
+            Set<String> skippable = board.findUnchangedCollectedAt(entries).entrySet().stream()
+                    .filter(collected -> collected.getValue().isAfter(refetchFrom)).map(Map.Entry::getKey)
+                    .collect(Collectors.toCollection(HashSet::new));
+            if (skippable.isEmpty()) {
+                return skippable;
             }
             Set<String> pending = failureRecorder.findPendingRequestDescriptions(board.source(),
-                    unchanged.stream().map(board::detailRequest).toList());
-            unchanged.removeIf(key -> pending.contains(board.detailRequest(key)));
-            return unchanged;
+                    skippable.stream().map(board::detailRequest).toList());
+            skippable.removeIf(key -> pending.contains(board.detailRequest(key)));
+            return skippable;
         }
 
         private BoardPage<E> fetchPage(int pageNumber) {

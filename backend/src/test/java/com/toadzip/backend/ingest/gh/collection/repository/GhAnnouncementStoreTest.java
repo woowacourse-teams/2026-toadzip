@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -83,8 +84,8 @@ class GhAnnouncementStoreTest {
         var entries = List.of(entry("801", "제목", "2026-10-02"), entry("802", "정정 제목", "2026-10-02"),
                 entry("803", "제목", "2026-10-03"), entry("804", "제목", "2026-10-02"));
 
-        assertThat(store(FIRST).findUnchangedPbancNos(GhAnnouncementBoard.RENTAL_HOUSE, entries))
-                .containsExactly("801");
+        assertThat(store(FIRST).findUnchangedCollectedAt(GhAnnouncementBoard.RENTAL_HOUSE, entries))
+                .containsOnly(Map.entry("801", FIRST));
     }
 
     @Test
@@ -97,7 +98,7 @@ class GhAnnouncementStoreTest {
                 LocalDate.parse("2026-10-02"), null, "접수중", board.detailUrl("802", "01"), board.listUrl(1),
                 null, "{}", "원문", "", "[]"));
 
-        assertThat(store(FIRST).findUnchangedPbancNos(board,
+        assertThat(store(FIRST).findUnchangedCollectedAt(board,
                 List.of(entry("801", "제목", "2026-10-02"), entry("802", "제목", "2026-10-02")))).isEmpty();
     }
 
@@ -114,7 +115,7 @@ class GhAnnouncementStoreTest {
         var source = repository.findBySourceKey("GH:801").orElseThrow();
         assertThat(source.getDistricts()).isNull();
         assertThat(source.getNotice()).isEqualTo("정정 원문");
-        assertThat(store(FIRST).findUnchangedPbancNos(board, List.of(entry("801", "[정정] 제목", "2026-10-02")))).isEmpty();
+        assertThat(store(FIRST).findUnchangedCollectedAt(board, List.of(entry("801", "[정정] 제목", "2026-10-02")))).isEmpty();
     }
 
     @Test

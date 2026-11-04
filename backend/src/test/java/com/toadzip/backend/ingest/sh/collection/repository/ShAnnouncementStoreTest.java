@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.sh.collection.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 
 import com.toadzip.backend.ingest.sh.collection.domain.ShAnnouncementSnapshot;
 import jakarta.persistence.EntityManager;
@@ -107,12 +108,12 @@ class ShAnnouncementStoreTest {
                 ShAnnouncementExternalRepository.detailUrl("600"), ShAnnouncementExternalRepository.LIST_URL, "원문", null));
         LocalDate date = LocalDate.parse("2026-10-02");
 
-        var unchanged = store(FIRST).findUnchangedSeqs(List.of(new Entry("100", "제목", "공급부", date),
+        var unchanged = store(FIRST).findUnchangedCollectedAt(List.of(new Entry("100", "제목", "공급부", date),
                 new Entry("200", "정정 제목", "공급부", date), new Entry("300", "새 글", "공급부", date),
                 new Entry("400", "제목", "공급부", date.plusDays(1)),
                 new Entry("500", "본문 없는 행", "공급부", date), new Entry("600", "첨부 없는 행", "공급부", date)));
 
-        assertThat(unchanged).containsExactly("100");
+        assertThat(unchanged).containsOnly(entry("100", FIRST));
     }
 
     private ShAnnouncementStore store(Instant now) {
