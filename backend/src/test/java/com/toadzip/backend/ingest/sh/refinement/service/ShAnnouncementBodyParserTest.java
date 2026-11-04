@@ -99,6 +99,66 @@ class ShAnnouncementBodyParserTest {
     }
 
     @Test
+    void 장기전세의_대괄호_인터넷청약_줄을_읽고_방문청약은_읽지_않는다() {
+        var values = parser.parse("""
+                ○ [인터넷청약] 2026. 5. 6.(수) 10:00 ~ 2026. 5. 8.(금) 17:00
+                ○ [방문청약] 2026. 5. 8.(금) 10:00 ~ 17:00
+                """);
+
+        assertThat(values.applicationStartDate()).isEqualTo(LocalDate.of(2026, 5, 6));
+        assertThat(values.applicationEndDate()).isEqualTo(LocalDate.of(2026, 5, 8));
+    }
+
+    @Test
+    void 순위별로_나눈_접수일정은_접수기간으로_쓰지_않는다() {
+        var values = parser.parse("""
+                ■ 청약신청 일정(인터넷 및 방문)
+                ○ [1순위] 2026. 1. 8.(목) 10:00 ~ 2026. 1. 9.(금) 17:00 (방문 청약: 10:00 ~ 17:00)
+                ○ [2순위] 2026. 1. 12.(월) 10:00 ~ 17:00 (12:00 ~ 13:00 점심시간 제외)
+                ■ 접수일
+                ○ 인터넷접수
+                - 일반공급 1순위(소득 50%이하), 우선공급 1,2순위(소득 70%이하): 2026. 8. 18.(화) 10:00 ~ 2026. 8. 19.(수) 17:00
+                - 일반공급 2순위(소득 70%이하) : 2026. 8. 20.(목) 10:00 ~ 17:00
+                """);
+
+        assertThat(values.applicationStartDate()).isNull();
+        assertThat(values.applicationEndDate()).isNull();
+    }
+
+    @Test
+    void 한_줄에_날짜나_기간이_둘이면_고치기_전후를_구분하지_못하므로_비운다() {
+        var values = parser.parse("""
+                ○ 인터넷 접수: 2026. 1. 16.(금) ~ 1. 20.(화) → 2026. 1. 23.(금) ~ 1. 27.(화)
+                ■ 당첨자 발표: 2026. 7. 3.(금) → 2026. 7. 10.(금)
+                """);
+
+        assertThat(values).isEqualTo(new ShAnnouncementBodyValues(null, null, null, null));
+    }
+
+    @Test
+    void 같은_항목이_같은_값으로_다시_나오면_채운다() {
+        var values = parser.parse("""
+                ■ 당첨자발표: 2027.01.29.(금)
+                ■ 당첨자 발표: 2027. 1. 29.(금) 16:00 이후
+                """);
+
+        assertThat(values.winnerAnnouncementDate()).isEqualTo(LocalDate.of(2027, 1, 29));
+    }
+
+    @Test
+    void 종료일이_시작일보다_앞서면_해가_바뀌는_12월_1월만_다음_해로_보고_나머지는_비운다() {
+        assertThat(parser.parse("○ 인터넷 접수: 2026. 9. 21.(월) 10:00 ~ 9. 2.(수) 17:00").applicationEndDate())
+                .isNull();
+        assertThat(parser.parse("○ 인터넷 접수: 2026. 9. 21.(월) 10:00 ~ 2026. 9. 2.(수) 17:00").applicationEndDate())
+                .isNull();
+    }
+
+    @Test
+    void 수_없이_쉼표와_세대만_있는_문구는_비운다() {
+        assertThat(parser.parse("□ 금회 모집세대수 : 무주택세대구성원, 세대당 1인").totalSupplyCount()).isNull();
+    }
+
+    @Test
     void 본문이_없으면_모두_비운다() {
         assertThat(parser.parse(null)).isEqualTo(new ShAnnouncementBodyValues(null, null, null, null));
     }

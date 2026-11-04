@@ -14,22 +14,24 @@ import org.springframework.stereotype.Component;
 
 /**
  * SH 게시글 본문 요약에서 인터넷 접수기간, 당첨자 발표일, 총 공급호수를 후보로 읽는다. 본문은 글마다 형식이 달라
- * 틀린 값을 채우느니 비우도록, 라벨이 붙은 한 줄만 읽고 같은 항목이 다른 값으로 두 번 나오면 비운다. 방문·우편 접수와
- * 표로 적은 순위별 일정은 읽지 않는다. 단지·주택형·세대수 같은 공급행은 본문에 없으므로 PDF 보정에 맡긴다.
+ * 틀린 값을 채우느니 비우도록, 라벨이 붙은 한 줄만 읽고 한 줄에 값이 둘이거나(정정 전후, 순위별) 같은 항목이 다른 값으로
+ * 두 번 나오면 비운다. 방문·우편 접수와 순위별로 나눈 일정은 읽지 않는다. 단지·주택형·세대수 같은 공급행은 본문에
+ * 없으므로 PDF 보정에 맡긴다.
  */
 @Component
 public class ShAnnouncementBodyParser {
 
-    private static final Pattern APPLICATION = label("인터넷\\s*접수|청약\\s*접수일");
-    private static final Pattern WINNER = label("당첨자\\s*발표일?|예비입주자\\s*발표");
-    private static final Pattern SUPPLY = label("공급호수|금회\\s*공급단지|금회\\s*모집세대수");
+    private static final Pattern APPLICATION = label("인터넷\\s*접수\\s*:|청약\\s*접수일\\s*:|\\[인터넷청약\\]");
+    private static final Pattern WINNER = label("(?:당첨자\\s*발표일?|예비입주자\\s*발표)\\s*:");
+    private static final Pattern SUPPLY = label("(?:공급호수|금회\\s*공급단지|금회\\s*모집세대수)\\s*:");
+    private static final String NUMBER = "(\\d{1,3}(?:,\\d{3})+|\\d+)";
     private static final String YEAR_MONTH_DAY = "(\\d{4})\\s*[.년]\\s*(\\d{1,2})\\s*[.월]\\s*(\\d{1,2})";
     private static final Pattern DATE = Pattern.compile(YEAR_MONTH_DAY);
     private static final Pattern PERIOD = Pattern.compile(YEAR_MONTH_DAY
             + "[^~]*~\\s*(?:(\\d{4})\\s*[.년]\\s*)?(\\d{1,2})\\s*[.월]\\s*(\\d{1,2})");
     private static final Pattern NEW_AND_RESUPPLY = Pattern.compile(
-            "신규공급\\s*([\\d,]+)\\s*(?:호|세대)\\s*,\\s*재공급\\s*([\\d,]+)\\s*(?:호|세대)");
-    private static final Pattern COUNT = Pattern.compile("([\\d,]+)\\s*(?:호|세대)");
+            "신규공급\\s*" + NUMBER + "\\s*(?:호|세대)\\s*,\\s*재공급\\s*" + NUMBER + "\\s*(?:호|세대)");
+    private static final Pattern COUNT = Pattern.compile(NUMBER + "\\s*(?:호|세대)");
 
     public ShAnnouncementBodyValues parse(String bodyText) {
         if (bodyText == null) {
@@ -44,7 +46,7 @@ public class ShAnnouncementBodyParser {
     }
 
     private static Pattern label(String names) {
-        return Pattern.compile("^[■□○]?\\s*(?:" + names + ")\\s*:\\s*(.+)$");
+        return Pattern.compile("^[■□○]?\\s*(?:" + names + ")\\s*(.+)$");
     }
 
     private <T> Set<T> values(List<String> lines, Pattern label, Function<String, T> reader) {
@@ -66,16 +68,15 @@ public class ShAnnouncementBodyParser {
     }
 
     private LocalDate date(String value) {
-        Matcher matcher = DATE.matcher(value);
-        if (!matcher.find()) {
-            return null;
-        }
-        return localDate(matcher.group(1), matcher.group(2), matcher.group(3));
+        Set<LocalDate> dates = new LinkedHashSet<>();
+        DATE.matcher(value).results().forEach(result ->
+                dates.add(localDate(result.group(1), result.group(2), result.group(3))));
+        return single(dates).orElse(null);
     }
 
     private Period period(String value) {
         Matcher matcher = PERIOD.matcher(value);
-        if (!matcher.find()) {
+        if (value.chars().filter(character -> character == '~').count() != 1 || !matcher.find()) {
             return null;
         }
         LocalDate start = localDate(matcher.group(1), matcher.group(2), matcher.group(3));
@@ -84,7 +85,7 @@ public class ShAnnouncementBodyParser {
         if (start == null || end == null) {
             return null;
         }
-        if (matcher.group(4) == null && end.isBefore(start)) {
+        if (matcher.group(4) == null && start.getMonthValue() == 12 && end.getMonthValue() == 1) {
             end = end.plusYears(1);
         }
         if (end.isBefore(start)) {
