@@ -15,7 +15,7 @@ import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import { baseRowChanges, draftBaseRows, loadCorrectionDraft, type CorrectionDraft } from './correctionDraftApi'
 import { useCorrectionDraft, type DraftStatus } from './useCorrectionDraft'
 import { evidenceContext, evidenceQuery, readExtraction, type Evidence } from './extraction'
-import { extractAnnouncementPdf, loadLatestExtraction, pdfFileProblem, pdfSha256, preferredPdf, type ExtractionState, type SavedExtraction } from './extractionApi'
+import { cancelExtraction, extractAnnouncementPdf, loadLatestExtraction, pdfFileProblem, pdfSha256, preferredPdf, type ExtractionState, type SavedExtraction } from './extractionApi'
 import { checkAnnouncement, type ComplexLabels, type HousingCandidates } from './matching'
 import { applicableCells, assembleReview, fieldNeeds, pendingField, serverFieldError, serverFieldsError, complexGroups, pendingRow, rowOfReviewId, cellMatches, createReview, pendingChanges, pendingItems, rebaseReview, ReviewError, reviewSection, type Cell, type ReleaseChoice, type PendingChange, type Review, type ReviewFilter, type ReviewSection } from './review'
 import { ReviewCells } from './ReviewCells'
@@ -238,11 +238,28 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     const onNotice = (message: string | null) => {
       if (!controller.signal.aborted) setExtraction(previous => previous.status === 'running' ? { ...previous, notice: message ?? undefined } : previous)
     }
-    void extractAnnouncementPdf(id, pdf.file, pdf.name, controller.signal, { attachmentId: pdf.attachmentId, onNotice }).then(result => {
+    const onJob = (jobId: number) => {
+      if (!controller.signal.aborted) setExtraction(previous => previous.status === 'running' ? { ...previous, jobId } : previous)
+    }
+    void extractAnnouncementPdf(id, pdf.file, pdf.name, controller.signal, { attachmentId: pdf.attachmentId, onNotice, onJob }).then(result => {
       if (controller.signal.aborted) return
       setText(result.json); setExtraction({ status: 'done', result })
       if (pdfHash) setSaved({ fileName: pdf.name, pdfSha256: pdfHash, createdAt: new Date().toISOString(), extraction: result })
     }).catch(cause => { if (!controller.signal.aborted) setExtraction({ status: 'failed', message: cause instanceof Error ? cause.message : 'PDF에서 값을 추출하지 못했습니다.' }) })
+  }
+  /** 진행 중인 추출을 서버에서 끝내고 기다림을 멈춘다. 그사이 끝난 작업이면 기다리던 결과를 그대로 받는다. */
+  async function cancelExtract() {
+    if (extraction.status !== 'running' || extraction.jobId === undefined) return
+    // 응답을 기다리는 사이 PDF를 바꾸거나 다시 추출했으면, 늦은 응답이 새 실행을 끊거나 덮지 않게 한다.
+    const run = extractionRun.current
+    const current = () => run !== null && extractionRun.current === run && !run.signal.aborted
+    try {
+      const message = await cancelExtraction(id, extraction.jobId)
+      if (message === null || !current()) return
+      run!.abort(); setExtraction({ status: 'failed', message })
+    } catch (cause) {
+      if (current()) setExtraction(previous => previous.status === 'running' ? { ...previous, notice: cause instanceof Error ? `추출을 취소하지 못했습니다. ${cause.message}` : '추출을 취소하지 못했습니다.' } : previous)
+    }
   }
   useEffect(() => {
     heading.current?.focus()
@@ -388,7 +405,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     {draftError && <div role="alert" className={`${styles.error} ${styles.dismissible}`}><p>{draftError}</p><Button data-design-system className={styles.quietButton} onClick={() => setDraftError('')}>알림 닫기</Button></div>}
     {storedDraft && <DraftOffer draft={storedDraft} workspace={workspace} pdfHash={pdfHash} onRestore={restoreDraft} onDiscard={() => void discardDraft()} />}
     {phase === 'prepare' && <><div className={styles.mobileSwitch}><Button data-design-system aria-pressed={mobileView === 'pdf'} onClick={() => setMobileView('pdf')}>PDF 보기</Button><Button data-design-system aria-pressed={mobileView === 'review'} onClick={() => setMobileView('review')}>추출 보기</Button></div><div className={styles.workbench}>{pdfPane}
-      <div className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="prepare"><RequestPreparation announcementName={workspace.detail.summary.name} pdf={pdf} extraction={extraction} onExtract={extract} parsed={parsed} checks={checks} saved={saved} samePdf={Boolean(saved && pdfHash && saved.pdfSha256 === pdfHash)} onLoadSaved={loadSaved} /></div>
+      <div className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="prepare"><RequestPreparation announcementName={workspace.detail.summary.name} pdf={pdf} extraction={extraction} onExtract={extract} onCancel={() => void cancelExtract()} parsed={parsed} checks={checks} saved={saved} samePdf={Boolean(saved && pdfHash && saved.pdfSha256 === pdfHash)} onLoadSaved={loadSaved} /></div>
     </div><PreparationFooter ready={Boolean(pdf) && parsed.ok && (extraction.status === 'done' || resumable)} onReview={start} /></>}
     {active && review && <><div className={styles.mobileSwitch}><Button data-design-system aria-pressed={mobileView === 'pdf'} onClick={() => setMobileView('pdf')}>PDF 보기</Button><Button data-design-system aria-pressed={mobileView === 'review'} onClick={() => setMobileView('review')}>검토표 보기</Button></div><div className={styles.workbench}>{pdfPane}
       <div ref={reviewPane} className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="review">

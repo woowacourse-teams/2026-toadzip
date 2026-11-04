@@ -9,7 +9,7 @@ const attachments = [{ attachmentId: 1, fileName: '공고문.pdf', fileType: 'AN
 const json = JSON.stringify(fixtures.hansville.extraction)
 const done: ExtractionState = { status: 'done', result: { json, pages: [1, 2, 10], totalPages: 35, warnings: ['supplyRows[0].targets[0].target: 표기 규칙 위반(「가」군)'], usage: { promptTokens: 7291, outputTokens: 1766, thinkingTokens: null } } }
 function props(extraction: ExtractionState = done) {
-  return { announcementName: '익산한스빌 예비입주자 모집', pdf: { url: 'blob:notice', name: '공고문.pdf' }, extraction, onExtract: vi.fn(),
+  return { announcementName: '익산한스빌 예비입주자 모집', pdf: { url: 'blob:notice', name: '공고문.pdf' }, extraction, onExtract: vi.fn(), onCancel: vi.fn(),
     parsed: readExtraction(extraction.status === 'done' ? json : ''), checks: [], saved: null, samePdf: false, onLoadSaved: vi.fn() }
 }
 function sourceProps() {
@@ -99,4 +99,14 @@ it('파일 목록은 키보드로 선택하고 Escape나 바깥 클릭으로 닫
   fireEvent.click(picker)
   fireEvent.mouseDown(screen.getByText('바깥'))
   expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+})
+
+it('추출을 기다리는 동안 서버가 작업을 받았으면 추출 취소를 누를 수 있다', () => {
+  const waiting = props({ status: 'running', startedAt: Date.now() })
+  const { rerender } = render(<RequestPreparation {...waiting} />)
+  expect(screen.queryByRole('button', { name: '추출 취소' })).not.toBeInTheDocument()
+  const accepted = props({ status: 'running', startedAt: Date.now(), jobId: 31 })
+  rerender(<RequestPreparation {...accepted} />)
+  fireEvent.click(screen.getByRole('button', { name: '추출 취소' }))
+  expect(accepted.onCancel).toHaveBeenCalledOnce()
 })

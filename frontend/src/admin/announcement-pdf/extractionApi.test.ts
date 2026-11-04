@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({ request: vi.fn() }))
 vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(), requestManagementApi: mocks.request }))
 
 import { ManagementError } from '../management/api'
-import { JOB_POLL_MS, JOB_WAIT_LIMIT_MS, NOT_STARTED_NOTICE_MS, extractAnnouncementPdf, pdfSha256 } from './extractionApi'
+import { JOB_POLL_MS, JOB_WAIT_LIMIT_MS, NOT_STARTED_NOTICE_MS, cancelExtraction, extractAnnouncementPdf, pdfSha256 } from './extractionApi'
 
 const PATH = '/api/admin/announcements/29/pdf-extractions'
 const extraction = { json: '{"data":{}}', pages: [1, 3], totalPages: 9, warnings: [], usage: { promptTokens: 10, outputTokens: 5, thinkingTokens: null } }
@@ -61,7 +61,7 @@ test('처리가 시작되지 않은 채 오래 기다리면 알리고, 워커가
   await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3)
 
   await expect(result).resolves.toEqual({ ...extraction, jobId: expect.any(Number) })
-  expect(onNotice.mock.calls).toEqual([['아직 처리가 시작되지 않았습니다. 앞선 추출을 처리 중일 수 있으니, 계속 그대로면 AI 워커가 실행 중인지 확인해 주세요.'], [null]])
+  expect(onNotice.mock.calls).toEqual([['아직 처리가 시작되지 않았습니다. 앞선 추출을 처리 중일 수 있으니, 계속 그대로면 AI 워커가 실행 중인지 확인하거나 추출 취소 후 다시 요청해 주세요.'], [null]])
 })
 
 test('작업이 실패하면 워커가 남긴 사유로 실패한다', async () => {
@@ -175,4 +175,20 @@ test('기다리는 중에 취소하면 더 묻지 않는다', async () => {
   await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3)
 
   expect(mocks.request).toHaveBeenCalledOnce()
+})
+
+test('작업을 받으면 번호를 알리고, 취소는 서버가 끝냈을 때만 실패 안내를 돌려준다', async () => {
+  const onJob = vi.fn()
+  mocks.request.mockResolvedValueOnce(job('PENDING')).mockResolvedValueOnce(job('FAILED', { failure: { code: 'CANCELLED_BY_ADMIN', message: '관리자가 추출을 취소했습니다. 다시 요청할 수 있습니다.' } }))
+  const result = extractAnnouncementPdf('29', pdf, '공고문.pdf', undefined, { onJob })
+  const settled = expect(result).rejects.toThrow('관리자가 추출을 취소했습니다.')
+  await vi.advanceTimersByTimeAsync(JOB_POLL_MS)
+  await settled
+  expect(onJob).toHaveBeenCalledWith(31)
+
+  mocks.request.mockReset().mockResolvedValueOnce(job('FAILED', { failure: { code: 'CANCELLED_BY_ADMIN', message: '관리자가 추출을 취소했습니다. 다시 요청할 수 있습니다.' } }))
+  await expect(cancelExtraction('29', 31)).resolves.toBe('관리자가 추출을 취소했습니다. 다시 요청할 수 있습니다.')
+  expect(mocks.request).toHaveBeenCalledWith(`${PATH}/jobs/31/cancel`, 'POST')
+  mocks.request.mockResolvedValueOnce(job('SUCCEEDED', { extraction }))
+  await expect(cancelExtraction('29', 31)).resolves.toBeNull()
 })

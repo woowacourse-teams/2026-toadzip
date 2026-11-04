@@ -122,6 +122,20 @@ class AnnouncementPdfExtractionControllerTest {
     }
 
     @Test
+    void 추출을_취소하면_POST_cancel이_끝낸_작업의_실패_사유를_돌려준다() throws Exception {
+        when(service.cancel(7L, 31L)).thenReturn(new PdfExtractionJobResponse(31L, "FAILED", "공고문.pdf",
+                "ab".repeat(32), 0, CREATED, CREATED.plusSeconds(60),
+                new PdfExtractionJobResponse.Failure("CANCELLED_BY_ADMIN", "관리자가 추출을 취소했습니다. 다시 요청할 수 있습니다."),
+                null, null));
+
+        mockMvc.perform(post(PATH + "/jobs/31/cancel"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("FAILED"))
+                .andExpect(jsonPath("$.data.failure.code").value("CANCELLED_BY_ADMIN"));
+        verify(service).cancel(7L, 31L);
+    }
+
+    @Test
     void 재시도_대기_작업은_재시도_사유를_돌려준다() throws Exception {
         when(service.job(7L, 31L)).thenReturn(new PdfExtractionJobResponse(31L, "RETRY", "공고문.pdf",
                 "ab".repeat(32), 1, CREATED, null, null,

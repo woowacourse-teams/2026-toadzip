@@ -9,7 +9,7 @@
 - 값이 없으면 null로 두고, 이유에 따라 한 곳에 path와 reason을 적으세요.
   - data.unresolvedFields: 있을 값인데 확인하지 못함. 첨부되지 않은 쪽에 있을 수 있으면 reason을 "첨부된 쪽에서 확인하지 못함"으로 쓰세요.
   - notApplicable: 이 공고에 원래 없는 항목. 첨부된 쪽의 문구로 확인한 경우에만 쓰세요.
-- 여러 행·대상에 똑같이 해당하면 번호 대신 [*]로 한 번만 적으세요(예: supplyRows[*].targets[*].supplyRank).
+- 여러 행·대상에 똑같이 해당하면 번호 대신 [*]로 한 번만 적으세요(예: supplyRows[*].targets[*].reserveCount).
 - 금액은 원 단위 정수(천원 단위 표는 ×1000), 면적은 ㎡ 숫자, 날짜 YYYY-MM-DD, 연월 YYYY-MM, 일시 YYYY-MM-DDTHH:mm:ss.
 
 [공고·접수처]
@@ -45,7 +45,6 @@
 - applicationCondition: 공고문에 그 target의 자격 설명(예: "「나」군 해당자 : …")이 있으면 반드시 요약하세요. 설명이 없을 때만 null.
 - rentalDeposit은 기본 임대조건의 임대보증금 계(계약금+잔금), monthlyRent는 기본 월임대료. 최대전환 시 조건은 쓰지 마세요.
 - convertedDeposit: 전환가능 보증금 한도액 중 (+) 증액 한도. 전환 제도 안내가 없으면 null과 notApplicable. 한도액은 없고 전환 선택지(예: "전환1", "전환2"의 보증금)만 있으면 차이를 계산하지 말고 null과 unresolvedFields.
-- supplyRank: target별 공급 순위. 공고문의 1·2순위가 신분별 순위라 target 구분과 대응하지 않으면 null과 notApplicable이고, reason에 그 사실을 쓰세요.
 
 [모집수]
 - totalSupplyHouseholdCount: 이번 공고에서 뽑는 수. 예비자만 뽑아도 그 수입니다("금회 모집", "금회 모집 예비자", "모집호수", "공급호수", "모집인원(예비자포함)").
@@ -66,14 +65,14 @@
 "complexes":[{"sourceComplexName":"두꺼비","address":"충청북도 청주시 서원구 두꺼비로 1","totalHouseholdCount":220,"parkingCount":null}],
 "supplyRows":[
 {"complexReference":{"sourceComplexName":"두꺼비"},"sourceHousingTypeName":"36A","expectedMoveInMonth":null,"totalSupplyHouseholdCount":40,"exclusiveArea":36.5,"commonArea":13.3,"supplyArea":null,"constructedHouseholdCount":120,"subtypes":[],"targets":[
-{"target":"가군(생계·의료급여수급자 등)","supplyRank":null,"supplyHouseholdCount":null,"reserveCount":null,"rentalDeposit":2520000,"monthlyRent":50160,"convertedDeposit":null,"applicationCondition":"생계·의료급여 수급자, 소득 인정액이 수급자 기준 이하인 국가유공자 등"},
-{"target":"나군(일반 등)","supplyRank":null,"supplyHouseholdCount":null,"reserveCount":null,"rentalDeposit":3522000,"monthlyRent":78340,"convertedDeposit":null,"applicationCondition":"가군 해당자 이외의 영구임대 입주 가능한 자"}]},
+{"target":"가군(생계·의료급여수급자 등)","supplyHouseholdCount":null,"reserveCount":null,"rentalDeposit":2520000,"monthlyRent":50160,"convertedDeposit":null,"applicationCondition":"생계·의료급여 수급자, 소득 인정액이 수급자 기준 이하인 국가유공자 등"},
+{"target":"나군(일반 등)","supplyHouseholdCount":null,"reserveCount":null,"rentalDeposit":3522000,"monthlyRent":78340,"convertedDeposit":null,"applicationCondition":"가군 해당자 이외의 영구임대 입주 가능한 자"}]},
 {"complexReference":{"sourceComplexName":"두꺼비"},"sourceHousingTypeName":"26A/B","expectedMoveInMonth":null,"totalSupplyHouseholdCount":77,"exclusiveArea":null,"commonArea":null,"supplyArea":null,"constructedHouseholdCount":null,
 "subtypes":[{"name":"26A","exclusiveArea":26.37,"commonArea":15.1,"constructedHouseholdCount":50},{"name":"26B","exclusiveArea":26.41,"commonArea":15.12,"constructedHouseholdCount":50}],"targets":[
-{"target":"대학생","supplyRank":null,"supplyHouseholdCount":null,"reserveCount":null,"rentalDeposit":9000000,"monthlyRent":180000,"convertedDeposit":5000000,"applicationCondition":null},
-{"target":"청년","supplyRank":null,"supplyHouseholdCount":null,"reserveCount":null,"rentalDeposit":10000000,"monthlyRent":200000,"convertedDeposit":5000000,"applicationCondition":null}]}],
+{"target":"대학생","supplyHouseholdCount":null,"reserveCount":null,"rentalDeposit":9000000,"monthlyRent":180000,"convertedDeposit":5000000,"applicationCondition":null},
+{"target":"청년","supplyHouseholdCount":null,"reserveCount":null,"rentalDeposit":10000000,"monthlyRent":200000,"convertedDeposit":5000000,"applicationCondition":null}]}],
 "schedules":[{"scheduleType":"APPLICATION","name":"인터넷 접수","startAt":"2026-09-10T10:00:00","endAt":"2026-09-12T17:00:00"},{"scheduleType":"WINNER_ANNOUNCEMENT","name":"예비입주자 발표","startAt":"2026-10-01T14:00:00","endAt":"2026-10-01T14:00:00"}],
 "unresolvedFields":[{"path":"complexes[0].parkingCount","reason":"공고문에 주차대수가 없음"}]},
 "sharedCounts":[{"paths":["supplyRows[1].targets[0].supplyHouseholdCount","supplyRows[1].targets[1].supplyHouseholdCount"],"count":77,"page":3,"quote":"대학생·청년 통합 77"}],
-"notApplicable":[{"path":"supplyRows[0].targets[*].supplyHouseholdCount","reason":"모집수를 주택형별로만 안내하고 가군·나군별 수는 없음"},{"path":"supplyRows[0].targets[*].convertedDeposit","reason":"가군·나군 임대보증금 전환 제도를 안내하지 않음"},{"path":"supplyRows[*].targets[*].supplyRank","reason":"1·2순위는 신분별 순위로 target 구분과 대응하지 않음"},{"path":"supplyRows[*].targets[*].reserveCount","reason":"대기 중인 예비자수 항목이 없음"},{"path":"supplyRows[*].expectedMoveInMonth","reason":"기존 주택이라 입주예정월을 안내하지 않음"},{"path":"schedules","reason":"계약 일정은 예비입주자 순번에 따라 개별안내"}],
+"notApplicable":[{"path":"supplyRows[0].targets[*].supplyHouseholdCount","reason":"모집수를 주택형별로만 안내하고 가군·나군별 수는 없음"},{"path":"supplyRows[0].targets[*].convertedDeposit","reason":"가군·나군 임대보증금 전환 제도를 안내하지 않음"},{"path":"supplyRows[*].targets[*].reserveCount","reason":"대기 중인 예비자수 항목이 없음"},{"path":"supplyRows[*].expectedMoveInMonth","reason":"기존 주택이라 입주예정월을 안내하지 않음"},{"path":"schedules","reason":"계약 일정은 예비입주자 순번에 따라 개별안내"}],
 "evidence":[{"path":"announcement.name","page":1,"quote":"두꺼비 공공임대주택 예비입주자 모집"},{"path":"announcement.postedDate","page":1,"quote":"모집공고일 : 2026.09.01"},{"path":"announcement.applicationStartDate","page":5,"quote":"2026.09.10(목) 10:00 ~ 09.12(토) 17:00"},{"path":"announcement.applicationEndDate","page":5,"quote":"2026.09.10(목) 10:00 ~ 09.12(토) 17:00"},{"path":"announcement.winnerAnnouncementDate","page":5,"quote":"2026.10.01(목) 14:00 이후"},{"path":"supplyRows[0]","page":3,"quote":"36A 36.5000 13.3000 120 40"},{"path":"supplyRows[0].targets[0]","page":4,"quote":"2,520,000 126,000 2,394,000 50,160"}]}

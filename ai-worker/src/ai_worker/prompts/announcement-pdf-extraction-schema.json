@@ -187,10 +187,6 @@
                     "target": {
                       "type": "string"
                     },
-                    "supplyRank": {
-                      "type": "integer",
-                      "nullable": true
-                    },
                     "supplyHouseholdCount": {
                       "type": "integer",
                       "nullable": true
@@ -218,7 +214,6 @@
                   },
                   "required": [
                     "target",
-                    "supplyRank",
                     "supplyHouseholdCount",
                     "reserveCount",
                     "rentalDeposit",

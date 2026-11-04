@@ -20,6 +20,8 @@ import com.toadzip.backend.announcement.repository.PdfExtractionJobRepository;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.EnumSet;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +42,12 @@ public class AnnouncementPdfExtractionService {
     private static final Set<PdfExtractionJobStatus> ACTIVE = EnumSet.of(
             PdfExtractionJobStatus.PENDING, PdfExtractionJobStatus.RUNNING, PdfExtractionJobStatus.RETRY);
     private static final String ACTIVE_JOB_INDEX = "ux_ai_jobs_active";
+    /** 워커의 마감(ai-worker worker.DEADLINE)과 같다. 워커가 멈춰도 오래된 작업이 끝나지 않은 채 새 추출을 막지 않게 한다. */
+    static final Duration DEADLINE = Duration.ofMinutes(40);
+    static final String DEADLINE_EXCEEDED_CODE = "DEADLINE_EXCEEDED";
+    static final String DEADLINE_EXCEEDED_MESSAGE = "요청한 지 오래되어 작업을 끝냈습니다. 다시 요청해 주세요.";
+    static final String CANCELLED_CODE = "CANCELLED_BY_ADMIN";
+    static final String CANCELLED_MESSAGE = "관리자가 추출을 취소했습니다. 다시 요청할 수 있습니다.";
 
     private final AnnouncementRepository announcements;
     private final PdfExtractionJobRepository jobs;
@@ -67,6 +75,7 @@ public class AnnouncementPdfExtractionService {
     public PdfExtractionJobResponse request(long announcementId, String admin, String fileName, byte[] pdf) {
         requireAnnouncement(announcementId);
         AnnouncementPdfDocument.requireReadable(pdf);
+        failOverdue(announcementId);
         requireNoActiveJob(announcementId);
         PdfExtractionInput input = inputs.read(announcementId);
         PdfExtractionJob job = PdfExtractionJob.requestedByAdmin(announcementId, admin,
@@ -80,6 +89,7 @@ public class AnnouncementPdfExtractionService {
     /** 공고 첨부 PDF를 서버가 받아 작업을 넣는다. 진행 중 작업이 있으면 내려받지 않는다. */
     public PdfExtractionJobResponse requestAttachment(long announcementId, String admin, long attachmentId) {
         requireAnnouncement(announcementId);
+        failOverdue(announcementId);
         requireNoActiveJob(announcementId);
         AttachmentContent content = attachments.readForAdmin(announcementId, attachmentId);
         return request(announcementId, admin, content.fileName(), bytesOf(content.file()));
@@ -101,6 +111,7 @@ public class AnnouncementPdfExtractionService {
 
     public PdfExtractionJobResponse job(long announcementId, long jobId) {
         requireAnnouncement(announcementId);
+        failOverdue(announcementId);
         return jobs.findView(PdfExtractionJob.KIND, announcementId, jobId)
                 .map(this::response)
                 .orElseThrow(PdfExtractionJobNotFoundException::new);
@@ -109,10 +120,24 @@ public class AnnouncementPdfExtractionService {
     /** 진행 중인 작업. 없으면 null이다. */
     public PdfExtractionJobResponse active(long announcementId) {
         requireAnnouncement(announcementId);
+        failOverdue(announcementId);
         return jobs.findViewsByStatusIn(PdfExtractionJob.KIND, announcementId, ACTIVE, Limit.of(1)).stream()
                 .findFirst()
                 .map(this::response)
                 .orElse(null);
+    }
+
+    /**
+     * 관리자가 진행 중인 추출을 끝낸다. 워커가 작업을 가져가지 않아도 운영자가 기다림을 멈추고 다시 요청할 수 있게 한다.
+     * 이미 끝난 작업은 그대로 두고 현재 상태를 돌려준다.
+     */
+    public PdfExtractionJobResponse cancel(long announcementId, long jobId) {
+        requireAnnouncement(announcementId);
+        if (jobs.failActive(PdfExtractionJob.KIND, announcementId, jobId, ACTIVE, PdfExtractionJobStatus.FAILED,
+                CANCELLED_CODE, CANCELLED_MESSAGE, clock.instant()) > 0) {
+            log.info("event=announcement.pdf_extraction.cancelled announcementId={} jobId={}", announcementId, jobId);
+        }
+        return job(announcementId, jobId);
     }
 
     /** 가장 최근에 성공한 추출 결과. 없으면 null이다. */
@@ -147,6 +172,16 @@ public class AnnouncementPdfExtractionService {
             }
         }
         return false;
+    }
+
+    /** 넣은 지 마감이 지난 진행 중 작업을 실패로 끝낸다. 워커가 돌면 워커가 먼저 끝내므로 0행이다. */
+    private void failOverdue(long announcementId) {
+        Instant now = clock.instant();
+        int overdue = jobs.failActiveCreatedBefore(PdfExtractionJob.KIND, announcementId, now.minus(DEADLINE), ACTIVE,
+                PdfExtractionJobStatus.FAILED, DEADLINE_EXCEEDED_CODE, DEADLINE_EXCEEDED_MESSAGE, now);
+        if (overdue > 0) {
+            log.warn("event=announcement.pdf_extraction.overdue announcementId={} jobs={}", announcementId, overdue);
+        }
     }
 
     private void requireNoActiveJob(long announcementId) {

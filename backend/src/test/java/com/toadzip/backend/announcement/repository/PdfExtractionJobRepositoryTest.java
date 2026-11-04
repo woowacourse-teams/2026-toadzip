@@ -91,6 +91,64 @@ class PdfExtractionJobRepositoryTest {
                 .extracting("constraintName").isEqualTo("ux_ai_jobs_active");
     }
 
+    @Test
+    void 진행_중_작업을_끝내면_PDF와_lease를_비워_처리_중인_워커의_완료_쓰기가_0행이_된다() {
+        // 운영 스키마의 상태 제약을 이 트랜잭션 안에서만 만들어, 끝낸 행이 제약을 지키는지 함께 본다.
+        entityManager.createNativeQuery("""
+                ALTER TABLE ai_jobs
+                    ADD CONSTRAINT ck_pdf_cleared CHECK (status NOT IN ('SUCCEEDED', 'FAILED') OR pdf IS NULL),
+                    ADD CONSTRAINT ck_failure CHECK (status <> 'FAILED' OR error_code IS NOT NULL),
+                    ADD CONSTRAINT ck_completed CHECK ((status IN ('SUCCEEDED', 'FAILED')) = (completed_at IS NOT NULL)),
+                    ADD CONSTRAINT ck_lease CHECK (status <> 'RUNNING' OR (lease_token IS NOT NULL AND lease_until IS NOT NULL))
+                """).executeUpdate();
+        long running = jobs.saveAndFlush(job(ANNOUNCEMENT)).getId();
+        entityManager.createNativeQuery("""
+                UPDATE ai_jobs SET status = 'RUNNING', attempts = 1, lease_token = CAST('00000000-0000-0000-0000-000000000001' AS uuid),
+                    lease_until = CAST('2026-11-01T00:03:00Z' AS timestamptz) WHERE id = :id
+                """).setParameter("id", running).executeUpdate();
+        long done = finished(ANNOUNCEMENT, "SUCCEEDED", "2026-11-01T01:00:00Z");
+        Instant now = Instant.parse("2026-11-01T00:10:00Z");
+
+        assertThat(jobs.failActive(PdfExtractionJob.KIND, ANNOUNCEMENT, done, ACTIVE, PdfExtractionJobStatus.FAILED,
+                "CANCELLED_BY_ADMIN", "취소", now)).isZero();
+        assertThat(jobs.failActive(PdfExtractionJob.KIND, ANNOUNCEMENT + 1, running, ACTIVE,
+                PdfExtractionJobStatus.FAILED, "CANCELLED_BY_ADMIN", "취소", now)).isZero();
+        assertThat(jobs.failActive(PdfExtractionJob.KIND, ANNOUNCEMENT, running, ACTIVE, PdfExtractionJobStatus.FAILED,
+                "CANCELLED_BY_ADMIN", "취소", now)).isOne();
+
+        Object[] row = (Object[]) entityManager.createNativeQuery("""
+                SELECT status, pdf IS NULL, lease_token IS NULL, error_code, completed_at = CAST('2026-11-01T00:10:00Z' AS timestamptz)
+                FROM ai_jobs WHERE id = :id
+                """).setParameter("id", running).getSingleResult();
+        assertThat(row).containsExactly("FAILED", true, true, "CANCELLED_BY_ADMIN", true);
+        // 워커(jobs.complete)는 자기 lease_token일 때만 쓴다.
+        int workerWrite = entityManager.createNativeQuery("""
+                UPDATE ai_jobs SET status = 'SUCCEEDED', result = CAST('{}' AS jsonb)
+                WHERE id = :id AND lease_token = CAST('00000000-0000-0000-0000-000000000001' AS uuid)
+                """).setParameter("id", running).executeUpdate();
+        assertThat(workerWrite).isZero();
+    }
+
+    @Test
+    void 마감_전에_넣은_진행_중_작업만_끝낸다() {
+        long old = jobs.saveAndFlush(PdfExtractionJob.requestedByAdmin(ANNOUNCEMENT, "admin",
+                PdfExtractionSource.of("a.pdf", new byte[] {1}), "{}", Instant.parse("2026-11-01T00:00:00Z"))).getId();
+        long other = jobs.saveAndFlush(PdfExtractionJob.requestedByAdmin(ANNOUNCEMENT + 1, "admin",
+                PdfExtractionSource.of("a.pdf", new byte[] {1}), "{}", Instant.parse("2026-11-01T00:00:00Z"))).getId();
+        Instant now = Instant.parse("2026-11-01T00:40:00Z");
+
+        assertThat(jobs.failActiveCreatedBefore(PdfExtractionJob.KIND, ANNOUNCEMENT, Instant.parse("2026-10-31T23:59:59Z"),
+                ACTIVE, PdfExtractionJobStatus.FAILED, "DEADLINE_EXCEEDED", "마감", now)).isZero();
+        assertThat(jobs.failActiveCreatedBefore(PdfExtractionJob.KIND, ANNOUNCEMENT, Instant.parse("2026-11-01T00:00:00Z"),
+                ACTIVE, PdfExtractionJobStatus.FAILED, "DEADLINE_EXCEEDED", "마감", now)).isOne();
+
+        assertThat(jobs.findView(PdfExtractionJob.KIND, ANNOUNCEMENT, old)).get()
+                .extracting(PdfExtractionJobView::status, PdfExtractionJobView::errorCode)
+                .containsExactly(PdfExtractionJobStatus.FAILED, "DEADLINE_EXCEEDED");
+        assertThat(jobs.findView(PdfExtractionJob.KIND, ANNOUNCEMENT + 1, other)).get()
+                .extracting(PdfExtractionJobView::status).isEqualTo(PdfExtractionJobStatus.PENDING);
+    }
+
     private static PdfExtractionJob job(long announcementId) {
         return PdfExtractionJob.requestedByAdmin(announcementId, "admin",
                 PdfExtractionSource.of("a.pdf", new byte[] {1}), "{}", Instant.parse("2026-11-01T00:00:00Z"));

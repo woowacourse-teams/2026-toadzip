@@ -1,6 +1,6 @@
 # AI 워커
 
-Postgres `ai_jobs` 작업 큐를 처리하는 Python 워커다. Spring은 작업을 넣고 결과를 읽기만 하고, 꺼내기·lease·재시도·완료·실패와 PDF 비우기는 워커가 한다. 상태 전이 규칙과 Spring과 맞춘 JSON 형식은 [contract/README.md](contract/README.md)에 있다.
+Postgres `ai_jobs` 작업 큐를 처리하는 Python 워커다. Spring은 작업을 넣고 결과를 읽으며, 관리자 취소와 마감 정리로만 진행 중 작업을 실패로 끝낸다. 꺼내기·lease·재시도·완료·실패와 PDF 비우기는 워커가 한다. 상태 전이 규칙과 Spring과 맞춘 JSON 형식은 [contract/README.md](contract/README.md)에 있다.
 
 - `src/ai_worker/jobs.py`: `ai_jobs` SQL 전부. 연결은 autocommit이고 시각은 DB `now()`를 쓴다.
 - `src/ai_worker/extraction.py`: 추출기 계약. 일시 오류(`TransientError`)는 시도가 남았으면 재시도하고, 그 밖의 오류는 바로 실패로 끝낸다.
