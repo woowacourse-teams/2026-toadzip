@@ -971,7 +971,7 @@ it('409(ADMIN_DATA_CONFLICT) 뒤 최신값에 이 변경이 없으면 반영되�
   fireEvent.change(screen.getByRole('textbox', { name: '공급행 1 이 공고의 주택형 표기 수정' }), { target: { value: '26A 새 표기' } })
   api.applyJsonUpdate.mockRejectedValueOnce(new ManagementError('이미 처리한 요청입니다.', 409, {}, 'ADMIN_DATA_CONFLICT'))
   await applyCorrection()
-  expect(await screen.findByRole('alert')).toHaveTextContent('이 변경이 반영됐는지 확인하지 못했습니다')
+  expect(await screen.findByRole('alert')).toHaveTextContent('이 변경은 반영되지 않았습니다')
   expect(screen.getByRole('button', { name: '입력을 유지하고 최신값 비교' })).toBeEnabled()
 })
 
