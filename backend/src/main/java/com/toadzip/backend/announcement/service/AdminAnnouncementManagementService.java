@@ -32,7 +32,6 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -57,13 +56,11 @@ public class AdminAnnouncementManagementService {
     private final AnnouncementApplicationScheduleRepository schedules;
     private final SupplyTargetRepository targets;
     private final AnnouncementAttachmentRepository attachments;
-    private final NotificationOutboxRepository notificationOutbox;
 
     public AdminAnnouncementManagementService(AnnouncementRepository announcements, SupplyRowRepository rows,
             HousingComplexRepository complexes, HousingTypeRepository types,
             AdminDataChangeRepository changes, ObjectMapper json, AnnouncementApplicationScheduleRepository schedules,
-            SupplyTargetRepository targets, AnnouncementAttachmentRepository attachments,
-            NotificationOutboxRepository notificationOutbox) {
+            SupplyTargetRepository targets, AnnouncementAttachmentRepository attachments) {
         this.announcements = announcements;
         this.rows = rows;
         this.complexes = complexes;
@@ -73,7 +70,6 @@ public class AdminAnnouncementManagementService {
         this.schedules = schedules;
         this.targets = targets;
         this.attachments = attachments;
-        this.notificationOutbox = notificationOutbox;
     }
 
     public AdminPage<AdminDataSummary> search(AdminSearch search, long complexId) {
@@ -162,9 +158,7 @@ public class AdminAnnouncementManagementService {
                 request.name(), AnnouncementPublicationType.ORIGINAL, request.rentalType(), request.recruitmentType(),
                 request.agencyCode(), request.postedDate(), request.applicationStartDate(), request.applicationEndDate(),
                 request.winnerAnnouncementDate(), request.originalUrl(), null, 0, reception);
-        if (announcement.reviseByAdmin(incoming)) {
-            notificationOutbox.appendNewAnnouncement(announcement);
-        }
+        announcement.reviseByAdmin(incoming);
         announcements.flush();
         changes.save(new AdminDataChange("ANNOUNCEMENT", id, "UPDATE", actor, before,
                 auditedData(data(announcement), request.documentEvidence())));

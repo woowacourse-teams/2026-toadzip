@@ -330,7 +330,7 @@ public class Announcement {
     }
 
     /**
-     * 원천에서 일정·유형을 아직 읽지 못한 공고를 미확정으로 만든다. 사용자에게 보이지 않고, 관리자가 필수값을 채워 보정하면 공개된다.
+     * 원천에서 일정·유형을 아직 읽지 못한 공고를 미확정으로 만든다. 사용자에게 보이지 않고, 관리자가 PDF 보정에서 단지를 확인하고 필수값을 채워 적용하면 공개된다.
      */
     public static Announcement createUnconfirmed(String sourceAnnouncementIdentifier, String name, AgencyCode provider,
             LocalDate postedDate, String originalUrl) {
@@ -353,6 +353,24 @@ public class Announcement {
 
     public boolean isPublished() {
         return releaseStatus == AnnouncementReleaseStatus.PUBLISHED;
+    }
+
+    /** 공개 공고가 반드시 가져야 하는 접수·발표 일정과 공급·모집유형을 모두 가졌는지 본다. */
+    public boolean hasPublishRequirements() {
+        return applicationStartDate != null && applicationEndDate != null && winnerAnnouncementDate != null
+                && supplyType != null && recruitmentType != null;
+    }
+
+    /** 관리자가 단지를 확인한 미확정 공고를 공개한다. 이번에 공개됐으면 true다. */
+    public boolean publish() {
+        if (isPublished()) {
+            return false;
+        }
+        if (!hasPublishRequirements()) {
+            throw new IllegalStateException("접수·발표 일정과 공급·모집유형을 모두 채운 뒤 공개할 수 있습니다.");
+        }
+        releaseStatus = AnnouncementReleaseStatus.PUBLISHED;
+        return true;
     }
 
     public boolean updateFromMyHome(
@@ -524,8 +542,8 @@ public class Announcement {
         }
     }
 
-    /** 관리자 보정 값은 필수값을 모두 갖추므로 미확정 공고는 이때 공개된다. 이번 보정으로 공개됐으면 true다. */
-    public boolean reviseByAdmin(Announcement incoming) {
+    /** 관리자 보정 값으로 기본정보를 바꾼다. 미확정 공고의 공개는 단지를 확인한 PDF 보정에서 {@link #publish()}로 한다. */
+    public void reviseByAdmin(Announcement incoming) {
         validateAdminRevision(incoming);
         name = incoming.name;
         supplyType = incoming.supplyType;
@@ -540,11 +558,6 @@ public class Announcement {
         adminModified = true;
         sourceReviewRequired = false;
         adminUpdatedAt = java.time.Instant.now();
-        if (isPublished()) {
-            return false;
-        }
-        releaseStatus = AnnouncementReleaseStatus.PUBLISHED;
-        return true;
     }
 
     private boolean hasSameSourceValues(Announcement incoming) {

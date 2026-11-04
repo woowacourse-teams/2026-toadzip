@@ -24,22 +24,35 @@ class AnnouncementReleaseStatusTest {
     }
 
     @Test
-    void 관리자가_필수값을_채워_보정하면_한_번만_공개된다() {
+    void 관리자가_필수값을_채워도_미확정_공고는_그대로_두고_공개는_따로_한_번만_한다() {
         Announcement announcement = unconfirmed();
 
-        assertThat(announcement.reviseByAdmin(revision())).isTrue();
-        assertThat(announcement.isPublished()).isTrue();
+        announcement.reviseByAdmin(revision());
+        assertThat(announcement.isPublished()).isFalse();
         assertThat(announcement.getApplicationEndDate()).isEqualTo(LocalDate.of(2026, 8, 14));
-        assertThat(announcement.reviseByAdmin(revision())).isFalse();
+        assertThat(announcement.hasPublishRequirements()).isTrue();
+
+        assertThat(announcement.publish()).isTrue();
         assertThat(announcement.isPublished()).isTrue();
+        assertThat(announcement.publish()).isFalse();
     }
 
     @Test
-    void 공개된_공고의_관리자_보정은_공개_전이가_아니다() {
+    void 필수값이_빈_미확정_공고는_공개하지_못한다() {
+        Announcement announcement = unconfirmed();
+
+        assertThat(announcement.hasPublishRequirements()).isFalse();
+        assertThatThrownBy(announcement::publish).isInstanceOf(IllegalStateException.class);
+        assertThat(announcement.isPublished()).isFalse();
+    }
+
+    @Test
+    void 공개된_공고의_관리자_보정은_공개_상태를_바꾸지_않는다() {
         Announcement published = revision();
 
+        published.reviseByAdmin(revision());
         assertThat(published.isPublished()).isTrue();
-        assertThat(published.reviseByAdmin(revision())).isFalse();
+        assertThat(published.publish()).isFalse();
     }
 
     private Announcement unconfirmed() {
