@@ -47,6 +47,7 @@ class AnnouncementAttachmentClientTest {
         ArgumentCaptor<HttpRequest> request = ArgumentCaptor.forClass(HttpRequest.class);
         verify(http).sendAsync(request.capture(), any());
         assertEquals(URI.create(SOURCE), request.getValue().uri());
+        assertTrue(request.getValue().headers().firstValue("User-Agent").isEmpty());
         assertTrue(request.getValue().headers().firstValue("Cookie").isEmpty());
         assertTrue(request.getValue().headers().firstValue("Authorization").isEmpty());
     }
@@ -55,7 +56,8 @@ class AnnouncementAttachmentClientTest {
     void 임의_호스트와_포트_자격증명은_연결하기_전에_거절한다() {
         for (String source : List.of("http://127.0.0.1/a", "https://apply.lh.or.kr.evil.test/a",
                 "https://user@apply.lh.or.kr/a", "https://apply.lh.or.kr:444/a", "file:///etc/passwd",
-                "https://[::1]/a", "not a url")) {
+                "https://[::1]/a", "not a url", "https://apply-cdn.gh.or.kr.evil.test/a",
+                "https://user@apply-cdn.gh.or.kr/a", "https://apply-cdn.gh.or.kr:444/a")) {
             assertEquals(Reason.UNSUPPORTED_SOURCE,
                     assertThrows(AttachmentUnavailableException.class, () -> client.read(source)).reason());
         }
@@ -63,8 +65,38 @@ class AnnouncementAttachmentClientTest {
     }
 
     @Test
+    void GH_공식_CDN_공고문을_지정된_호스트에서_받는다() throws Exception {
+        String source = "https://apply-cdn.gh.or.kr/sr/sr7150/selectFileDown.do?pbancNo=839&atchFileSn=1780638";
+        byte[] bytes = "%PDF-1.7 GH".getBytes(StandardCharsets.US_ASCII);
+        respond(200, Map.of(), bytes);
+        try (var file = client.read(source)) {
+            assertArrayEquals(bytes, file.prefix());
+        }
+        ArgumentCaptor<HttpRequest> request = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http).sendAsync(request.capture(), any());
+        assertEquals(URI.create(source), request.getValue().uri());
+        assertTrue(request.getValue().headers().firstValue("User-Agent").isEmpty());
+    }
+
+    @Test
+    void SH_공고문은_파일_서버가_받는_브라우저_UserAgent로_요청한다() throws Exception {
+        byte[] bytes = "%PDF-1.7 SH".getBytes(StandardCharsets.US_ASCII);
+        respond(200, Map.of(), bytes);
+        try (var file = client.read("https://www.i-sh.co.kr/main/com/file/innoFD.do?brdId=GS0401&seq=310673")) {
+            assertArrayEquals(bytes, file.prefix());
+        }
+        ArgumentCaptor<HttpRequest> request = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http).sendAsync(request.capture(), any());
+        String userAgent = request.getValue().headers().firstValue("User-Agent").orElse("");
+        assertTrue(userAgent.startsWith("Mozilla/5.0"));
+        assertTrue(userAgent.contains("Toadzip/1.0"));
+        assertTrue(request.getValue().headers().firstValue("Cookie").isEmpty());
+        assertTrue(request.getValue().headers().firstValue("Authorization").isEmpty());
+    }
+
+    @Test
     void 리다이렉트와_오류_응답은_본문을_읽지_않는다() {
-        for (int status : List.of(302, 404, 500)) {
+        for (int status : List.of(302, 307, 404, 500)) {
             respond(status, Map.of(), new byte[] {1});
             assertEquals(Reason.UPSTREAM_FAILURE,
                     assertThrows(AttachmentUnavailableException.class, () -> client.read(SOURCE)).reason());

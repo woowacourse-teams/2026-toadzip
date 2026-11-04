@@ -61,6 +61,8 @@ PDF 보정은 마이홈 원천행이 기록된 기존 공급행을 다루려고 
 관리자가 원천 공급행마다 저장한 매칭의 지문 기반 유효성 판정·확정·해제·단지 통합 때의 이동은 `SavedSupplyMatches`만 안다.
 LH 공급 연결의 판정·지문 규칙(`LhSupplyRowLinks`)과 저장소는 enrichment에 둔다. 마이홈 원천 해석과 PDF 보정이 이 규칙을 쓰고, `LhSupplyLinkService`는 연결 상태와 매칭 진단(`LhSupplyMatchDiagnostics`)을 조회만 한다. LH 원천 식별자 형식은 `LhSourceIdentifier`만 알고, LH 공고 정제가 고치거나 지울 수 있는 일정·첨부(관리자가 고치지 않은 LH 값)는 `LhOwnedValues`가 판정한다.
 
+기관별 SH·GH 버튼은 원천 수집 성공 뒤 미확정 공고 정제까지 같은 실행으로 수행한다. 수집 실패·호출 제한이면 자동 정제를 막고 해당 기관 수집을 다시 실행한다. 정제 결과는 단계별 실행 보고서에서 확인하며 공개는 PDF 보정에서 별도로 요청한다.
+
 ## LH 공고 목록 단독 수집
 
 `POST /api/admin/ingest/lh/announcements/catalog`는 목록 원천만 갱신한다. 공급·상세 조회와 제품 공고 생성·정제는 실행하지 않는다. 전체 페이지 검증 후 건설임대 행만 한 번에 저장하며, 조회 범위 밖의 기존 행과 조회·검증 실패 시의 기존 원천을 보존한다.

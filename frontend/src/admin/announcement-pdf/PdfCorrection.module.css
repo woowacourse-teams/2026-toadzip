@@ -323,3 +323,9 @@
 .noticeSummary ul { display:flex; flex-wrap:wrap; gap:var(--ds-space-1) var(--ds-space-3); list-style:none; margin:0; padding:0; }
 .noticeSummary li[data-tone=warning] { color:var(--ds-color-status-upcoming); font-weight:600; }
 .noticeBody { max-height:40vh; overflow:auto; }
+
+.releaseCheck { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--ds-space-3); border-top:1px solid var(--ds-color-divider); padding-top:var(--ds-space-4); margin-top:var(--ds-space-5); }
+.releaseCheck > :is(h2,p,.releaseConfirmation) { grid-column:1 / -1; }
+.page .releaseConfirmation { flex-direction:row; align-items:center; }
+.releaseConfirmation input[type=checkbox] { width:auto; flex:none; }
+@container (max-width:360px) { .releaseCheck { grid-template-columns:minmax(0,1fr); } }
