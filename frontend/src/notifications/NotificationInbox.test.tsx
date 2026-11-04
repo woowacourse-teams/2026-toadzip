@@ -22,6 +22,32 @@ it('열면 목록만 조회하고 항목을 눌러야 읽음 처리 후 상세�
   expect(repository.read).toHaveBeenCalledWith('10', expect.any(AbortSignal))
   expect(repository.readAll).not.toHaveBeenCalled()
 })
+
+it('출처별 보관함 조회와 알림 열기만 집계하고 회원·알림 식별값을 보내지 않는다', async () => {
+  vi.stubEnv('MODE', 'development')
+  vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testpublictoken')
+  vi.stubEnv('VITE_POSTHOG_HOST', 'https://us.i.posthog.com')
+  vi.stubEnv('VITE_ANALYTICS_ENV', 'dev')
+  vi.stubEnv('VITE_POSTHOG_LOCAL_ENABLED', 'true')
+  const network = vi.fn().mockResolvedValue(new Response('{}'))
+  vi.stubGlobal('fetch', network)
+  localStorage.clear(); sessionStorage.clear()
+  history.replaceState({}, '', '/notifications?utm_source=community_a')
+  const attribution = await import('../analytics/campaignAttribution')
+  attribution.consumeCampaignEntry()
+  try {
+    setup()
+    const button = await screen.findByRole('button', { name: /서울 새 공고/ })
+    await waitFor(() => expect(network).toHaveBeenCalledOnce())
+    fireEvent.click(button)
+    await waitFor(() => expect(network).toHaveBeenCalledTimes(2))
+    const properties = network.mock.calls.map(([, options]) => JSON.parse(options.body).properties)
+    expect(properties.map(value => value.action)).toEqual(['notification_inbox_viewed', 'notification_opened'])
+    expect(JSON.stringify(properties)).not.toMatch(/user_id|notification_id|announcement_id|서울|title|readThrough/)
+  } finally {
+    sessionStorage.clear(); attribution.campaignEntry(); vi.unstubAllEnvs(); vi.unstubAllGlobals()
+  }
+})
 it('읽음 실패는 오류와 별도 공고 이동을 제공하고 읽음으로 표시하지 않는다', async () => {
   setup({ read: vi.fn(async () => { throw new Error('network') }) })
   fireEvent.click(await screen.findByRole('button', { name: /서울 새 공고/ }))

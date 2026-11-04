@@ -58,6 +58,36 @@ beforeEach(() => {
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
 })
 
+it('비동의 상세 조회도 출처별 건수에 넣고 동의 변경으로 중복 집계하지 않는다', async () => {
+  vi.stubEnv('MODE', 'development')
+  vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testpublictoken')
+  vi.stubEnv('VITE_POSTHOG_HOST', 'https://us.i.posthog.com')
+  vi.stubEnv('VITE_ANALYTICS_ENV', 'dev')
+  vi.stubEnv('VITE_POSTHOG_LOCAL_ENABLED', 'true')
+  localStorage.clear(); sessionStorage.clear()
+  history.replaceState({}, '', '/explore?utm_source=community_a&utm_content=post_1')
+  const attribution = await import('../../analytics/campaignAttribution')
+  attribution.consumeCampaignEntry()
+  const network = vi.fn().mockResolvedValue(new Response('{}'))
+  vi.stubGlobal('fetch', network)
+  consent.allowed = false
+  const view = render(<Probe location={{ kind: 'complex', complexId: '12' }} ready={null} />, { wrapper: wrap })
+  expect(network).not.toHaveBeenCalled()
+  view.rerender(<Probe location={{ kind: 'complex', complexId: '12' }} ready="12" />)
+  await waitFor(() => expect(network).toHaveBeenCalledOnce())
+  expect(JSON.parse(network.mock.calls[0][1].body).properties).toMatchObject({
+    action: 'view_complex', complex_id: '12', utm_source: 'community_a', utm_content: 'post_1',
+  })
+  expect(collected('view_complex')).toHaveLength(0)
+  await setConsent(true)
+  await act(async () => notifyStop('reset'))
+  expect(network).toHaveBeenCalledOnce()
+  view.rerender(<Probe location={{ kind: 'announcement', announcementId: '22' }} ready="22" />)
+  await waitFor(() => expect(network).toHaveBeenCalledTimes(2))
+  expect(JSON.parse(network.mock.calls[1][1].body).properties).toMatchObject({ action: 'view_announcement', announcement_id: '22' })
+  sessionStorage.clear(); attribution.campaignEntry()
+})
+
 describe('직접 마커 호버와 실제 상세 표시 연결', () => {
   function hover(complexId = '12'): MarkerHoverAttribution {
     return { complex_id: complexId, exploration_id: crypto.randomUUID(), hover_id: crypto.randomUUID(), measurement_version: 'marker_hover_v1' }
