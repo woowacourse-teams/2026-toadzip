@@ -68,6 +68,11 @@ public class AnnouncementPdfExtractionController {
         return new ApiResponse<>(service.job(id, jobId));
     }
 
+    @PostMapping("/jobs/{jobId}/cancel")
+    public ApiResponse<PdfExtractionJobResponse> cancel(@PathVariable long id, @PathVariable long jobId) {
+        return new ApiResponse<>(service.cancel(id, jobId));
+    }
+
     @GetMapping("/jobs/active")
     public ApiResponse<PdfExtractionJobResponse> active(@PathVariable long id) {
         return new ApiResponse<>(service.active(id));

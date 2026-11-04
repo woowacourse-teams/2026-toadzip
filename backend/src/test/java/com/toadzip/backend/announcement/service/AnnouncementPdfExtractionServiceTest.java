@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.domain.PdfExtractionInput;
@@ -223,6 +224,62 @@ class AnnouncementPdfExtractionServiceTest {
         TemporaryAttachment file = new TemporaryAttachment(() -> closed.set(true));
         file.append(ByteBuffer.wrap(content));
         return file;
+    }
+
+    @Test
+    void 관리자가_취소하면_진행_중_작업을_실패로_끝내고_현재_상태를_돌려준다() {
+        when(announcements.existsById(7L)).thenReturn(true);
+        when(jobs.failActive(eq(PdfExtractionJob.KIND), eq(7L), eq(31L), any(), eq(PdfExtractionJobStatus.FAILED),
+                eq("CANCELLED_BY_ADMIN"), any(), eq(NOW))).thenReturn(1);
+        when(jobs.findView(PdfExtractionJob.KIND, 7L, 31L)).thenReturn(Optional.of(new PdfExtractionJobView(31L,
+                PdfExtractionJobStatus.FAILED, "공고문.pdf", "ab".repeat(32), 0, NOW, NOW, "CANCELLED_BY_ADMIN",
+                "관리자가 추출을 취소했습니다. 다시 요청할 수 있습니다.", null)));
+
+        PdfExtractionJobResponse response = service.cancel(7L, 31L);
+
+        assertThat(response.status()).isEqualTo("FAILED");
+        assertThat(response.failure().code()).isEqualTo("CANCELLED_BY_ADMIN");
+        verify(jobs).failActive(eq(PdfExtractionJob.KIND), eq(7L), eq(31L), eq(EnumSet.of(PdfExtractionJobStatus.PENDING,
+                PdfExtractionJobStatus.RUNNING, PdfExtractionJobStatus.RETRY)), eq(PdfExtractionJobStatus.FAILED),
+                eq("CANCELLED_BY_ADMIN"), any(), eq(NOW));
+    }
+
+    @Test
+    void 새_추출을_넣기_전에_넣은_지_40분이_지난_진행_중_작업을_먼저_끝내_새_요청을_막지_않는다() throws Exception {
+        byte[] pdf = AnnouncementPdfDocumentTest.pdf("cover");
+        when(announcements.existsById(7L)).thenReturn(true);
+        when(inputs.read(7L)).thenReturn(INPUT);
+        when(jobs.saveAndFlush(any())).thenAnswer(invocation -> {
+            PdfExtractionJob job = invocation.getArgument(0);
+            ReflectionTestUtils.setField(job, "id", 31L);
+            return job;
+        });
+
+        service.request(7L, "admin", "공고문.pdf", pdf);
+
+        var order = inOrder(jobs);
+        order.verify(jobs).failActiveCreatedBefore(eq(PdfExtractionJob.KIND), eq(7L), eq(NOW.minusSeconds(40 * 60)), any(),
+                eq(PdfExtractionJobStatus.FAILED), eq("DEADLINE_EXCEEDED"), any(), eq(NOW));
+        order.verify(jobs).existsByKindAndAnnouncementIdAndStatusIn(eq(PdfExtractionJob.KIND), eq(7L), any());
+    }
+
+    @Test
+    void 작업과_진행_중_작업을_조회하기_전에도_마감이_지난_작업을_끝내_워커가_없어도_화면이_실패를_받는다() {
+        when(announcements.existsById(7L)).thenReturn(true);
+        when(jobs.findView(PdfExtractionJob.KIND, 7L, 31L)).thenReturn(Optional.of(new PdfExtractionJobView(31L,
+                PdfExtractionJobStatus.FAILED, "공고문.pdf", "ab".repeat(32), 0, NOW, NOW, "DEADLINE_EXCEEDED",
+                "요청한 지 오래되어 작업을 끝냈습니다. 다시 요청해 주세요.", null)));
+
+        assertThat(service.job(7L, 31L).failure().code()).isEqualTo("DEADLINE_EXCEEDED");
+        service.active(7L);
+
+        var order = inOrder(jobs);
+        order.verify(jobs).failActiveCreatedBefore(eq(PdfExtractionJob.KIND), eq(7L), eq(NOW.minusSeconds(40 * 60)), any(),
+                eq(PdfExtractionJobStatus.FAILED), eq("DEADLINE_EXCEEDED"), any(), eq(NOW));
+        order.verify(jobs).findView(PdfExtractionJob.KIND, 7L, 31L);
+        order.verify(jobs).failActiveCreatedBefore(eq(PdfExtractionJob.KIND), eq(7L), eq(NOW.minusSeconds(40 * 60)), any(),
+                eq(PdfExtractionJobStatus.FAILED), eq("DEADLINE_EXCEEDED"), any(), eq(NOW));
+        order.verify(jobs).findViewsByStatusIn(eq(PdfExtractionJob.KIND), eq(7L), any(), any());
     }
 
     @Test

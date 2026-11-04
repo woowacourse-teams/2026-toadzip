@@ -19,7 +19,8 @@ export type PdfExtraction = {
 /** 서버에 남겨 둔 이전 추출 결과. pdfSha256으로 지금 고른 PDF와 같은 파일인지 비교한다. */
 export type SavedExtraction = { fileName: string; pdfSha256: string; createdAt: string; extraction: PdfExtraction }
 
-export type ExtractionState = { status: 'idle' } | { status: 'running'; startedAt: number; notice?: string }
+/** running의 jobId는 서버가 작업을 받은 뒤에 생기고, 추출 취소에 쓴다. */
+export type ExtractionState = { status: 'idle' } | { status: 'running'; startedAt: number; notice?: string; jobId?: number }
   | { status: 'done'; result: PdfExtraction; saved?: SavedExtraction } | { status: 'failed'; message: string }
 
 const count = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null
@@ -42,13 +43,13 @@ export const JOB_POLL_MS = 3000
 export const JOB_WAIT_LIMIT_MS = 45 * 60 * 1000
 /** 워커는 한 번에 작업 하나만 처리해, 앞선 작업이 길면 정상이어도 이만큼 PENDING일 수 있다. 그래서 멈췄다고 단정하지 않고 확인을 권한다. */
 export const NOT_STARTED_NOTICE_MS = 3 * 60 * 1000
-const NOT_STARTED_NOTICE = '아직 처리가 시작되지 않았습니다. 앞선 추출을 처리 중일 수 있으니, 계속 그대로면 AI 워커가 실행 중인지 확인해 주세요.'
+const NOT_STARTED_NOTICE = '아직 처리가 시작되지 않았습니다. 앞선 추출을 처리 중일 수 있으니, 계속 그대로면 AI 워커가 실행 중인지 확인하거나 추출 취소 후 다시 요청해 주세요.'
 
 type Reason = { code: string; message: string }
 type ExtractionJob = { jobId: number; status: string; fileName: string; pdfSha256: string; failure: Reason | null; retryReason: Reason | null; extraction: unknown }
 
 /** attachmentId가 있으면 서버가 그 공고 첨부를 받아 작업을 넣는다. onNotice는 기다리는 동안 보일 안내(재시도 사유, 처리 미시작)가 바뀔 때마다 받는다. */
-export type ExtractionOptions = { attachmentId?: string; onNotice?: (message: string | null) => void }
+export type ExtractionOptions = { attachmentId?: string; onNotice?: (message: string | null) => void; onJob?: (jobId: number) => void }
 
 const pendingStatuses = new Set(['PENDING', 'RUNNING', 'RETRY'])
 
@@ -105,6 +106,7 @@ export async function extractAnnouncementPdf(id: string, file: Blob, fileName: s
     if (!('status' in joined)) return joined
     job = joined
   }
+  options.onJob?.(job.jobId)
   const waitStart = Date.now()
   const deadline = waitStart + JOB_WAIT_LIMIT_MS
   let notice: string | null = null
@@ -155,6 +157,15 @@ function upload(file: Blob, fileName: string) {
   const form = new FormData()
   form.append('file', file, fileName)
   return form
+}
+
+/**
+ * 진행 중인 추출을 끝낸다. 워커가 작업을 가져가지 않아도 기다림을 멈추고 다시 요청할 수 있다.
+ * 이미 끝난 작업이면 서버가 바꾸지 않고 그 상태를 돌려준다. 끝냈으면 실패 안내를, 아니면 null을 돌려준다.
+ */
+export async function cancelExtraction(id: string, jobId: number): Promise<string | null> {
+  const job = parseJob(await requestManagementApi(`/api/admin/announcements/${encodeURIComponent(id)}/pdf-extractions/jobs/${jobId}/cancel`, 'POST'))
+  return job.status === 'FAILED' ? job.failure?.message ?? '추출을 취소했습니다.' : null
 }
 
 /** 공고에 가장 최근에 저장한 추출 결과. 없으면 null이다. 모델을 다시 부르지 않는다. */

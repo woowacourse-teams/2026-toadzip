@@ -17,8 +17,8 @@ import org.hibernate.type.SqlTypes;
 import static lombok.AccessLevel.PROTECTED;
 
 /**
- * 공고문 PDF 추출 작업(ai_jobs의 한 행). Spring은 작업을 넣고 상태와 결과를 읽기만 한다.
- * 꺼내기·lease·재시도·완료·실패와 PDF 비우기는 Python AI 워커가 쓴다.
+ * 공고문 PDF 추출 작업(ai_jobs의 한 행). Spring은 작업을 넣고 상태와 결과를 읽으며, 관리자 취소와 마감 정리로만
+ * 진행 중 작업을 실패로 끝낸다(PdfExtractionJobRepository.failActive). 꺼내기·lease·재시도·완료와 그 밖의 실패는 Python AI 워커가 쓴다.
  */
 @Getter
 @Entity

@@ -22,7 +22,8 @@ DB 제약(`V20261103_01__ai_jobs.sql`)이 아래 상태별 열 규칙을 강제�
 
 - 꺼내기: `PENDING`·`RETRY` 중 `next_attempt_at <= now()`인 것, 또는 `RUNNING` 중 `lease_until <= now()`인 것을 `FOR UPDATE SKIP LOCKED`로 하나 잡는다. 이때 `status='RUNNING'`, 새 `lease_token`, `lease_until`, `attempts = attempts + 1`을 쓰고, `started_at`은 비어 있을 때만(첫 시작) 쓴다.
 - 처리하는 동안 1분마다 `WHERE id = ? AND lease_token = ?`로 `lease_until`을 늘린다(lease 3분). 워커가 죽으면 늘리기가 멈춰 다른 워커가 다시 꺼낸다. 마감이 지난 작업은 늘리지 않는다.
-- 마감: `created_at`부터 40분이 지난 `PENDING`·`RUNNING`·`RETRY`는 꺼내지 않고 `FAILED`(`DEADLINE_EXCEEDED`)로 끝낸다. 관리자 화면은 45분까지 기다린다.
+- 마감: `created_at`부터 40분이 지난 `PENDING`·`RUNNING`·`RETRY`는 꺼내지 않고 `FAILED`(`DEADLINE_EXCEEDED`)로 끝낸다. 관리자 화면은 45분까지 기다린다. 워커가 멈춰도 Spring이 작업을 넣거나 상태를 읽기 전에 같은 마감·문구로 끝낸다(`AnnouncementPdfExtractionService.DEADLINE`). 마감을 바꾸면 두 곳을 함께 바꾼다.
+- 관리자 취소: Spring이 진행 중 작업을 `FAILED`(`CANCELLED_BY_ADMIN`)로 끝낸다. 마감과 같이 `pdf`·`lease_token`·`lease_until`을 비우므로 그 작업을 처리 중인 워커의 이후 쓰기는 0행이 된다.
 - 꺼내기 기한: 한 번의 시도(10분)를 마감 전에 끝낼 수 없는 작업, 곧 `created_at`부터 30분이 지난 작업은 꺼내지 않는다.
 - 작업 하나는 최대 3번(워커 `MAX_ATTEMPTS`) 처리한다. lease가 끝난 `RUNNING`이 이미 3번을 썼으면 다시 꺼내지 않고 `FAILED`로 끝낸다.
 - 완료·실패·재시도 쓰기는 `WHERE id = ? AND lease_token = ?`로 한다. lease를 빼앗긴 이전 워커의 쓰기는 0행이 된다.
