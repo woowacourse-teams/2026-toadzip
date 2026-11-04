@@ -11,6 +11,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.Objects;
 
 @Entity
 @Table(name = "feedback")
@@ -37,6 +38,10 @@ public class Feedback {
     private String actor;
     private Instant processedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(length = 30)
+    private FeedbackSurveyAnswer surveyAnswer;
+
     @Embedded
     private FeedbackContent content;
 
@@ -46,14 +51,17 @@ public class Feedback {
     protected Feedback() {
     }
 
-    private Feedback(FeedbackContent content, Instant createdAt) {
+    private Feedback(FeedbackContent content, FeedbackSurveyAnswer surveyAnswer, Instant createdAt) {
         this.content = content;
+        this.surveyAnswer = Objects.requireNonNull(surveyAnswer, "설문 답변을 선택해 주세요.");
         this.createdAt = createdAt;
     }
 
-    public static Feedback submit(String content, Instant createdAt) {
-        return new Feedback(FeedbackContent.of(content), createdAt);
+    public static Feedback submit(String content, FeedbackSurveyAnswer surveyAnswer, Instant createdAt) {
+        return new Feedback(FeedbackContent.of(content), surveyAnswer, createdAt);
     }
+
+    public FeedbackSurveyAnswer getSurveyAnswer() { return surveyAnswer; }
 
     public Long getId() {
         return id;

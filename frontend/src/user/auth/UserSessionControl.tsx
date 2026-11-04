@@ -1,3 +1,4 @@
+import { FeedbackLink } from '../../feedback/FeedbackLink'
 import { captureProductEvent, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
@@ -124,7 +125,7 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
       if (memberView !== 'account') memberTrigger.current = event.currentTarget
       setMemberView('settings')
     }}>알림 관리</button>
-    <Link className="service-account-feedback" to="/feedback">제보/의견 보내기</Link>
+    <FeedbackLink className="service-account-feedback">제보/의견 보내기</FeedbackLink>
     {mobile && <PrivacyLinks />}
     <span className="service-login-status"><span aria-hidden="true" />로그인됨</span>
     <button className="service-logout-button" type="button" disabled={isLoggingOut}

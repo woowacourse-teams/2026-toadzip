@@ -44,6 +44,7 @@ class AdminFeedbackControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].id").value(latest))
                 .andExpect(jsonPath("$.data.items[0].content").value("최신 의견\n두 번째 줄"))
+                .andExpect(jsonPath("$.data.items[0].surveyAnswer").isEmpty())
                 .andExpect(jsonPath("$.data.items[0].createdAt").value("2026-10-07T10:00:00Z"))
                 .andExpect(jsonPath("$.data.totalElements").value(3))
                 .andExpect(jsonPath("$.data.totalPages").value(3))
@@ -134,6 +135,9 @@ class AdminFeedbackControllerIntegrationTest {
     @Test
     void 인증된_처리자와_결과를_기록하고_상태로_검색하며_오래된_수정을_거절한다() throws Exception {
         long id = feedback("연결 오류", "2026-10-07T10:00:00Z");
+        jdbc.sql("UPDATE feedback SET survey_answer='NOT_DISAPPOINTED' WHERE id=:id").param("id", id).update();
+        mockMvc.perform(get(ENDPOINT + "/" + id).with(user("operator").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.surveyAnswer").value("NOT_DISAPPOINTED"));
         String body = """
                 {"version":0,"status":"DONE","note":"공고 연결을 수정하고 공개 결과 확인",
                  "relatedResource":"","relatedId":null}
@@ -142,7 +146,10 @@ class AdminFeedbackControllerIntegrationTest {
                         .contentType("application/json").content(body))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("DONE"))
                 .andExpect(jsonPath("$.data.version").value(1)).andExpect(jsonPath("$.data.actor").value("operator"))
-                .andExpect(jsonPath("$.data.processedAt").isNotEmpty());
+                .andExpect(jsonPath("$.data.processedAt").isNotEmpty())
+                .andExpect(jsonPath("$.data.surveyAnswer").value("NOT_DISAPPOINTED"));
+        mockMvc.perform(get(ENDPOINT + "/" + id).with(user("operator").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.surveyAnswer").value("NOT_DISAPPOINTED"));
         mockMvc.perform(get(ENDPOINT).with(user("operator").roles("ADMIN")).param("status", "DONE"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1));
         mockMvc.perform(get(ENDPOINT).with(user("operator").roles("ADMIN")).param("status", "OPEN"))

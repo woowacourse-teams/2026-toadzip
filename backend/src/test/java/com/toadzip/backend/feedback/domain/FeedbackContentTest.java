@@ -11,8 +11,8 @@ class FeedbackContentTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"\u00a0", "\u202f", "\ufeff", " \n\t"})
-    void 공백만_있는_의견을_도메인에서도_거절한다(String content) {
-        assertThatThrownBy(() -> FeedbackContent.of(content)).isInstanceOf(IllegalArgumentException.class);
+    void 선택_의견의_공백을_빈_문자열로_저장한다(String content) {
+        assertThat(FeedbackContent.of(content).value()).isEmpty();
     }
 
     @Test

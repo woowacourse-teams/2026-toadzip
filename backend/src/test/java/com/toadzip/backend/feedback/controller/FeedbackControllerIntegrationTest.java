@@ -48,10 +48,10 @@ class FeedbackControllerIntegrationTest {
     @ParameterizedTest
     @NullAndEmptySource
     @ValueSource(strings = {" ", "\n\t", "\u2003", "\u00a0", "\u202f", "\ufeff"})
-    void 내용이_없으면_저장하지_않는다(String content) throws Exception {
+    void 의견이_없어도_설문을_저장한다(String content) throws Exception {
         mockMvc.perform(post(ENDPOINT).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body(content)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+                .andExpect(status().isCreated());
+        assertThat(jdbc.sql("SELECT content FROM feedback").query(String.class).single()).isEmpty();
     }
 
     @Test
@@ -84,10 +84,34 @@ class FeedbackControllerIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    private String body(String content) {
-        return objectMapper.writeValueAsString(new Submission(content));
+    @ParameterizedTest
+    @ValueSource(strings = {"VERY_DISAPPOINTED", "SOMEWHAT_DISAPPOINTED", "NOT_DISAPPOINTED", "NO_LONGER_USING"})
+    void 설문_답변을_저장하고_관리자가_조회한다(String answer) throws Exception {
+        mockMvc.perform(post(ENDPOINT).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new Submission(null, answer))))
+                .andExpect(status().isCreated());
+        assertThat(jdbc.sql("SELECT survey_answer FROM feedback").query(String.class).single()).isEqualTo(answer);
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/admin/feedback")
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                .user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].surveyAnswer").value(answer))
+                .andExpect(jsonPath("$.data.items[0].content").value(""));
     }
 
-    private record Submission(String content) {
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"content\":\"의견\"}", "{\"surveyAnswer\":null}",
+            "{\"surveyAnswer\":\"UNKNOWN\"}", "{\"surveyAnswer\":1}"})
+    void 설문_답변이_없거나_유효하지_않으면_저장하지_않는다(String body) throws Exception {
+        mockMvc.perform(post(ENDPOINT).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM feedback").query(Long.class).single()).isZero();
+    }
+
+    private String body(String content) {
+        return objectMapper.writeValueAsString(new Submission(content, "VERY_DISAPPOINTED"));
+    }
+
+    private record Submission(String content, String surveyAnswer) {
     }
 }
