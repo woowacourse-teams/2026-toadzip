@@ -153,8 +153,12 @@ class GhAnnouncementRefinementIntegrationTest {
         collect(ROW);
         refinement.refineAll();
         jdbc.update("""
-                UPDATE gh_announcement_source SET districts = replace(districts, '"안양관양 경기행복주택"',
-                    '"다산 센트럴파크6단지"') WHERE pbanc_no = '801'
+                UPDATE gh_announcement_source SET districts = ? WHERE pbanc_no = '801'
+                """, """
+                [{"name":"다산 센트럴파크6단지","address":"경기도 남양주시 다산동 6107",
+                  "housingTypes":[{"houseTypeCode":"33A","name":"33A","supplyCount":"120"}]},
+                 {"name":"다산 센트럴파크6단지","address":"경기도 남양주시 다산동 6107",
+                  "housingTypes":[{"houseTypeCode":"46A","name":"46A","supplyCount":"30"}]}]
                 """);
 
         assertThat(refinement.refineAll().failed()).isZero();
@@ -164,7 +168,14 @@ class GhAnnouncementRefinementIntegrationTest {
                 JOIN announcements a ON a.id = c.announcement_id
                 WHERE a.source_announcement_identifier = 'GH:801' ORDER BY c.id
                 """, String.class)).containsExactly("다산 센트럴파크6단지:true", "안양관양 경기행복주택:false");
-        assertThat(supplyRows("GH:801")).hasSize(2);
+        var rows = supplyRows("GH:801");
+        assertThat(rows).extracting(row -> row.get("source_supply_row_identifier"))
+                .containsExactly("GH:801:다산 센트럴파크6단지:33A", "GH:801:다산 센트럴파크6단지:46A");
+        assertThat(rows).extracting(row -> row.get("total_supply_household_count")).containsExactly(120, 30);
+        assertThat(rows).extracting(row -> row.get("announcement_complex_id")).containsOnly(jdbc.queryForObject("""
+                SELECT c.id FROM announcement_complexes c JOIN announcements a ON a.id = c.announcement_id
+                WHERE a.source_announcement_identifier = 'GH:801' AND c.source_complex_name = '다산 센트럴파크6단지'
+                """, Long.class));
     }
 
     @Test
@@ -291,6 +302,22 @@ class GhAnnouncementRefinementIntegrationTest {
 
         assertThat(supplyRows("GH:801")).extracting(row -> row.get("total_supply_household_count"))
                 .containsExactly(120, 60);
+        assertThat(jdbc.queryForObject("""
+                SELECT supply_recheck_required FROM announcements WHERE source_announcement_identifier = 'GH:801'
+                """, Boolean.class)).isTrue();
+    }
+
+    @Test
+    void 관리자가_공급행을_맡은_뒤_원천이_그대로면_공급_재확인을_켜지_않는다() {
+        collect(ROW);
+        refinement.refineAll();
+        jdbc.update("UPDATE announcements SET admin_updated_at = now() WHERE source_announcement_identifier = 'GH:801'");
+
+        refinement.refineAll();
+
+        assertThat(jdbc.queryForObject("""
+                SELECT supply_recheck_required FROM announcements WHERE source_announcement_identifier = 'GH:801'
+                """, Boolean.class)).isFalse();
     }
 
     @Test
@@ -318,7 +345,7 @@ class GhAnnouncementRefinementIntegrationTest {
     private List<Map<String, Object>> supplyRows(String identifier) {
         return jdbc.queryForList("""
                 SELECT r.id, r.source_supply_row_identifier, r.source_housing_type_name, r.total_supply_household_count,
-                    r.housing_complex_id, r.housing_type_id
+                    r.housing_complex_id, r.housing_type_id, r.announcement_complex_id
                 FROM supply_rows r JOIN announcements a ON a.id = r.announcement_id
                 WHERE a.source_announcement_identifier = ? ORDER BY r.display_order
                 """, identifier);

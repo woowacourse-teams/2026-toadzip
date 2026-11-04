@@ -148,7 +148,7 @@ public class Announcement {
     @Column(nullable = false, length = 30)
     private SupplyOwner supplyOwner;
 
-    /** 공고문 소유 공고가 확정할 때 본 LH 공급 원천 지문. 그 뒤 원천이 바뀌었는지 판단하는 기준이다. */
+    /** 공고문 소유 공고가 확정할 때 본 LH·GH 공급 원천 지문. 그 뒤 원천이 바뀌었는지 판단하는 기준이다. 한 공고는 한 기관 원천만 가진다. */
     @Column(length = 64)
     private String lhSupplyFingerprint;
 
@@ -467,6 +467,20 @@ public class Announcement {
      * 매 정제가 이번 LH 원천 공급의 지문을 받는다. LH 소유 공고는 지문을 기준으로 남기기만 한다. 공고문 소유 공고는 기준과 다르면 재확인
      * 대상이 되고 기준을 이번 지문으로 바꾼다. 기준이 없던 공고는 이번 지문을 기준으로 남긴다. 재확인이 새로 켜졌을 때 true다.
      */
+    /**
+     * GH 공급행 틀의 원천 지문을 본다. 관리자가 공급행을 맡기 전에는 정제가 틀을 원천에 맞추므로 기준만 바꾸고, 맡은 뒤 원천이 바뀌면 공급
+     * 재확인 대상으로 표시한다. 기준이 없던 공고는 이번 지문을 기준으로 남긴다. 재확인이 새로 켜졌을 때 true다.
+     */
+    public boolean observeAgencySupply(String fingerprint, boolean adminOwned) {
+        String previous = lhSupplyFingerprint;
+        lhSupplyFingerprint = fingerprint;
+        if (!adminOwned || previous == null || previous.equals(fingerprint) || supplyRecheckRequired) {
+            return false;
+        }
+        supplyRecheckRequired = true;
+        return true;
+    }
+
     public boolean observeLhSupply(String fingerprint) {
         if (suppliedByLh() || lhSupplyFingerprint == null || lhSupplyFingerprint.equals(fingerprint)) {
             lhSupplyFingerprint = fingerprint;

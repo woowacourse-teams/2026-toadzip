@@ -111,10 +111,13 @@ class GhAnnouncementPublishFlowIntegrationTest {
                 .andExpect(status().isOk());
         assertThat(rows(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(right);
 
+        owned(ownership, refinement::refineAll);
+        assertThat(supplyRecheckRequired(id)).isFalse();
         changeSourceSupplyCount();
         owned(ownership, refinement::refineAll);
         assertThat(rows(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(right);
         assertThat(rows(id)).extracting(row -> row.get("total_supply_household_count")).containsExactly(120, 60);
+        assertThat(supplyRecheckRequired(id)).isTrue();
 
         var correction = request(id);
         correction.withArray("fields").add("rentalType").add("recruitmentType").add("applicationStartDate")
@@ -173,6 +176,10 @@ class GhAnnouncementPublishFlowIntegrationTest {
                 SELECT housing_complex_id, announcement_complex_id, total_supply_household_count, supply_category
                 FROM supply_rows WHERE announcement_id = ? ORDER BY display_order
                 """, id);
+    }
+
+    private boolean supplyRecheckRequired(long id) {
+        return jdbc.queryForObject("SELECT supply_recheck_required FROM announcements WHERE id = ?", Boolean.class, id);
     }
 
     private String releaseStatus(long id) {
