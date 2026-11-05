@@ -20,7 +20,7 @@
 
 - `housing`: 주택 위치와 기본 정보
 - `announcement`: 공고, 일정, 원문과 주택 연결
-- `eligibility`: 공급 유형과 자격 판단 보조
+- `basiccomparison`: 개인 공고의 기본 조건 비교와 직접 확인 안내
 - `interest`: 관심 조건 저장과 알림 요청
 
 ## 신뢰성 원칙
