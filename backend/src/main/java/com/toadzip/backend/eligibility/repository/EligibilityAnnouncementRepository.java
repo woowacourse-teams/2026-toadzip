@@ -1,5 +1,6 @@
 package com.toadzip.backend.eligibility.repository;
 
+import com.toadzip.backend.announcement.repository.ApplicationScheduleSql;
 import com.toadzip.backend.eligibility.exception.EligibilityNotFoundException;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -7,11 +8,14 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 
 @Repository
 public class EligibilityAnnouncementRepository {
+    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
     private final JdbcClient jdbc;
 
     public EligibilityAnnouncementRepository(JdbcClient jdbc) {
@@ -61,6 +65,27 @@ public class EligibilityAnnouncementRepository {
                 .query(this::map)
                 .optional()
                 .orElseThrow(EligibilityNotFoundException::new);
+    }
+
+    /** Keyset batches using the same verified-date policy as announcement search. */
+    public List<Current> activeAfter(long afterId, Instant now, int batchSize) {
+        return jdbc.sql(
+                        """
+                        SELECT a.*, r.id AS rule_set_id, r.version AS rule_set_version, r.evaluation_snapshot::text AS
+                        snapshot
+                        FROM announcements a JOIN announcement_rule_sets r ON r.announcement_id = a.id AND r.status =
+                        'PUBLISHED'
+                        WHERE a.id > :after AND a.release_status = 'PUBLISHED' AND NOT a.admin_deleted
+                            AND NOT EXISTS (SELECT 1 FROM announcements next WHERE next.previous_announcement_id = a.id)
+                            AND %s = 'APPLYING'
+                        ORDER BY a.id LIMIT :limit
+                        """
+                                .formatted(ApplicationScheduleSql.status("a", null)))
+                .param("after", afterId)
+                .param("today", now.atZone(SEOUL).toLocalDate())
+                .param("limit", batchSize)
+                .query(this::map)
+                .list();
     }
 
     private Current map(ResultSet result, int index) throws SQLException {
