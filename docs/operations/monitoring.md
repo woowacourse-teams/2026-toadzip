@@ -181,6 +181,19 @@ MBean 활성화를 확인할 수 없다. 전체 환경변수·비밀번호를 �
 `infra/alloy/config.alloy`를 각 애플리케이션 서버에 반영한 뒤 Alloy 컨테이너를 재생성한다.
 `DEPLOY_ENVIRONMENT`는 서버별 dev·prod 값을 유지한다. 실제 서비스 배포와 Alloy 재시작은 함께 확인한다.
 
+Blue/Green 서버에서는 실행 중인 두 색상의 로그를 모두 수집한다. 메트릭의 활성 색상 선택과 별개다.
+
+- Docker 서비스 필터는 기존 `backend`, `frontend`와 각각의 `-blue`, `-green`만 선택한다.
+- 백엔드는 `service=backend`, 프론트는 `service=nginx`로 정규화하여 기존 Grafana 조회식과 로그 처리 규칙을 유지한다.
+  필터만 늘리고 서비스 이름을 그대로 두면 색상별 예외 묶기와 Nginx stderr 제외 규칙이 적용되지 않는다.
+- 색상별 서비스에는 `color=blue|green`을 추가하고 기존 `container` 라벨도 유지한다. 기존 서비스에는 색상 라벨을 강제하지 않는다.
+  기존 조회식으로 두 색상을 함께 볼 수 있고 필요할 때만 색상이나 컨테이너로 좁힌다.
+
+설정 파일 반영 후에는 실제 서버의 기존 프로젝트와 Compose 파일 조합에서 `alloy`만
+`up -d --no-deps --no-build --pull never --force-recreate`한다. 파일 bind mount가 이전 파일을 가리키는 경우를
+피하도록 재생성하며 `alloy_data` 볼륨은 유지한다. 이후 새 로그가 올바른 환경과 기존 서비스 라벨로 Loki에 도착하는지 확인한다.
+이 설정은 이미 누락된 과거 로그의 복구를 보장하지 않는다.
+
 - 백엔드 예외와 스택은 최대 256줄·3초 범위에서 한 이벤트로 묶는다. 과거 로그는 다시 묶이지 않는다.
 - Nginx는 method·URI·status·전체 시간·upstream 시간을 전송한다. URI의 쿼리 값은 제외한다.
 - 쿼리 값이 포함될 수 있는 Nginx stderr는 Loki로 전송하지 않는다. 상세 프록시 오류는 서버의 Docker 로그에서 확인한다.
