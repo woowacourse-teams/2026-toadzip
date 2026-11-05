@@ -4,6 +4,7 @@ import com.toadzip.backend.eligibility.dto.EligibilityRequests.SaveProfile;
 import com.toadzip.backend.eligibility.dto.EligibilityResponses.Catalog;
 import com.toadzip.backend.eligibility.dto.EligibilityResponses.Detail;
 import com.toadzip.backend.eligibility.dto.EligibilityResponses.Profile;
+import com.toadzip.backend.eligibility.dto.EligibilityResponses.Summary;
 import com.toadzip.backend.eligibility.service.EligibilityProfileService;
 import com.toadzip.backend.eligibility.service.EligibilityQueryService;
 import com.toadzip.backend.global.response.ApiResponse;
@@ -52,6 +53,11 @@ public class EligibilityController {
     public ResponseEntity<ApiResponse<Detail>> detail(
             Authentication authentication, @PathVariable long announcementId) {
         return privateResponse(queries.detail(userId(authentication), announcementId));
+    }
+
+    @GetMapping("/eligibility/summary")
+    public ResponseEntity<ApiResponse<Summary>> summary(Authentication authentication) {
+        return privateResponse(queries.summary(userId(authentication)));
     }
 
     private long userId(Authentication authentication) {

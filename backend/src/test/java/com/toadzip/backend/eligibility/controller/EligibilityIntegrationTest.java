@@ -34,6 +34,7 @@ class EligibilityIntegrationTest extends EligibilityIntegrationSupport {
     @Test
     void 로그인과_관리자_권한과_CSRF를_실제_보안_필터로_검증한다() throws Exception {
         mvc.perform(get(PROFILE)).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/eligibility/summary")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/v1/announcements/1/eligibility"))
                 .andExpect(status().isUnauthorized());
         mvc.perform(get(PROFILE).with(user("admin").roles("ADMIN")))
@@ -102,7 +103,7 @@ class EligibilityIntegrationTest extends EligibilityIntegrationSupport {
     }
 
     @Test
-    void 초안은_평가에서_제외하고_B의_자산_수정마다_현재_공개본으로_상세를_재계산한다() throws Exception {
+    void 초안은_평가에서_제외하고_B의_자산_수정마다_현재_공개본으로_상세와_N_M을_재계산한다() throws Exception {
         long announcement = announcement();
         JsonNode draft = saveDraft(announcement, null, 0, DongtanFixtures.content());
         detail(announcement).andExpect(jsonPath("$.data.availability").value("NOT_STRUCTURED"));
@@ -116,6 +117,7 @@ class EligibilityIntegrationTest extends EligibilityIntegrationSupport {
                 .andExpect(
                         jsonPath("$.data.result.options[0].missingFactCodes[0]")
                                 .value("HOUSEHOLD_ASSETS"));
+        summary(0, 1).andExpect(jsonPath("$.data.singleInputCounts.HOUSEHOLD_ASSETS").value(1));
         saveProfile(
                         1,
                         ProfileFixtures.with(
@@ -124,6 +126,7 @@ class EligibilityIntegrationTest extends EligibilityIntegrationSupport {
                 .andExpect(status().isOk());
         detail(announcement)
                 .andExpect(jsonPath("$.data.result.summary").value("HAS_CONFIRMATION_ONLY"));
+        summary(1, 0);
         saveProfile(
                         2,
                         ProfileFixtures.with(
@@ -131,6 +134,7 @@ class EligibilityIntegrationTest extends EligibilityIntegrationSupport {
                                 .facts())
                 .andExpect(status().isOk());
         detail(announcement).andExpect(jsonPath("$.data.result.summary").value("NONE_ELIGIBLE"));
+        summary(0, 0);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM announcement_rule_sets", Long.class))
                 .isEqualTo(1);
         assertThat(
@@ -139,6 +143,55 @@ class EligibilityIntegrationTest extends EligibilityIntegrationSupport {
                                 Long.class,
                                 USER))
                 .isEqualTo(1);
+    }
+
+    @Test
+    void 접수중인_공고가_한_조회묶음을_넘어도_모두_한번씩_집계한다() throws Exception {
+        saveProfile(
+                        0,
+                        ProfileFixtures.with(
+                                        ProfileFixtures.b(), InputFact.HOUSEHOLD_ASSETS, 379000000)
+                                .facts())
+                .andExpect(status().isOk());
+        for (int index = 0; index < 33; index++) {
+            long announcement = announcement();
+            publish(announcement, saveDraft(announcement, null, 0, DongtanFixtures.content()))
+                    .andExpect(status().isOk());
+        }
+
+        summary(33, 0).andExpect(jsonPath("$.data.evaluatedAnnouncementCount").value(33));
+    }
+
+    @Test
+    void D05의_24개_선택지는_한_공고로_세며_확인된_접수일정을_공고_날짜보다_우선한다() throws Exception {
+        long announcement = announcement();
+        publish(announcement, saveDraft(announcement, null, 0, SacheonFixtures.content()))
+                .andExpect(status().isOk());
+        saveProfile(0, ProfileFixtures.c().facts()).andExpect(status().isOk());
+        detail(announcement)
+                .andExpect(jsonPath("$.data.result.options.length()").value(24))
+                .andExpect(jsonPath("$.data.result.summary").value("HAS_CONFIRMATION_ONLY"));
+        summary(1, 0);
+        jdbc.update(
+                "UPDATE announcements SET application_schedule_reviewed = true WHERE id = ?",
+                announcement);
+        jdbc.update(
+                """
+                INSERT INTO announcement_application_schedules (announcement_id, state, start_date, end_date, source_url)
+                VALUES (?, 'CONFIRMED', '2026-10-28', '2026-10-30', 'https://example.com/verified-notice')
+                """,
+                announcement);
+        // Verified schedules override the coarse source interval.
+        jdbc.update(
+                "UPDATE announcements SET application_start_date = '2026-01-01',"
+                        + " application_end_date = '2026-01-02' WHERE id = ?",
+                announcement);
+        summary(1, 0);
+        jdbc.update(
+                "UPDATE announcement_application_schedules SET state = 'CONDITIONAL',"
+                        + " application_condition = '잔여 물량 발생 시' WHERE announcement_id = ?",
+                announcement);
+        summary(0, 0);
     }
 
     @Test
@@ -174,6 +227,7 @@ class EligibilityIntegrationTest extends EligibilityIntegrationSupport {
         detail(original)
                 .andExpect(jsonPath("$.data.availability").value("CANCELLED"))
                 .andExpect(jsonPath("$.data.result").isEmpty());
+        summary(0, 0);
     }
 
     @Test
@@ -239,5 +293,15 @@ class EligibilityIntegrationTest extends EligibilityIntegrationSupport {
                         get("/api/v1/announcements/" + announcement + "/eligibility")
                                 .with(user(Long.toString(USER)).roles("USER")))
                 .andExpect(status().isOk());
+    }
+
+    private org.springframework.test.web.servlet.ResultActions summary(int qualified, int missing)
+            throws Exception {
+        return mvc.perform(
+                        get("/api/v1/eligibility/summary")
+                                .with(user(Long.toString(USER)).roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.qualifiedAnnouncementCount").value(qualified))
+                .andExpect(jsonPath("$.data.additionalInputAnnouncementCount").value(missing));
     }
 }
