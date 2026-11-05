@@ -25,7 +25,7 @@ docker compose --env-file infra/monitoring/.env -f compose.monitoring.yaml down
 
 Prometheus는 기존 애플리케이션 서버의 `8081/actuator/prometheus`를 계속 수집한다.
 Edge Nginx가 이 요청을 현재 API 요청을 받는 백엔드의 관리 포트 `8081`로 전달한다.
-메트릭은 Caddy를 거치지 않으며, 두 색상이 모두 실행 중이어도 활성 색상 한쪽만 수집한다.
+메트릭은 Caddy를 거치지 않으며 두 색상이 모두 실행 중이어도 활성 색상 한쪽만 수집한다.
 기존 대상 주소와 `job`·`environment`·`application`·`instance` 라벨을 유지하므로 Grafana 조회식은 변경하지 않는다.
 
 ### 설정의 역할

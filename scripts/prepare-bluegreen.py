@@ -46,7 +46,7 @@ def prepare(runtime, source, upgrade=False):
         except BlockingIOError as error:
             raise bluegreen.DeploymentError('Another deployment is running') from error
         try:
-            # 기본 준비는 기존 상태를 보존하고, 명시적 갱신도 같은 잠금 안에서 수행한다.
+            # 기본 준비는 기존 상태를 보존하고 명시적 갱신도 같은 잠금 안에서 수행한다.
             if not destination.exists():
                 with destination.open('x') as output:
                     output.write(text)
