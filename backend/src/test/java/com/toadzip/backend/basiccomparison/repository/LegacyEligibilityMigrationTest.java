@@ -1,4 +1,4 @@
-package com.toadzip.backend.eligibility.repository;
+package com.toadzip.backend.basiccomparison.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -23,7 +23,7 @@ import javax.sql.DataSource;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @ActiveProfiles("test")
-class EligibilityMigrationTest {
+class LegacyEligibilityMigrationTest {
     private static final String RULE_SET =
             """
             INSERT INTO announcement_rule_sets (id, announcement_id, status, recruitment_kind, applicant_kind,
