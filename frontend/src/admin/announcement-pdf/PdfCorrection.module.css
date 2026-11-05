@@ -346,3 +346,12 @@
 .page .releaseConfirmation { flex-direction:row; align-items:center; }
 .releaseConfirmation input[type=checkbox] { width:auto; flex:none; }
 @container (max-width:360px) { .releaseCheck { grid-template-columns:minmax(0,1fr); } }
+
+.sharedRepair { display:grid; min-width:0; gap:var(--ds-space-3); padding:var(--ds-space-4); overflow-wrap:anywhere; }
+.sharedRepair fieldset { min-width:0; margin:0; padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); display:grid; gap:var(--ds-space-3); }
+.sharedRepair label { display:grid; gap:var(--ds-space-1); }
+.sharedRepair code { overflow-wrap:anywhere; }
+.sharedRepair .repairChoice { display:flex; flex-direction:row; align-items:center; gap:var(--ds-space-2); min-height:var(--admin-control-height,36px); }
+.sharedRepair .repairChoice input { width:auto; flex:none; }
+.repairMember { display:flex; align-items:end; gap:var(--ds-space-2); min-width:0; }
+.repairMember label { flex:1; min-width:0; }

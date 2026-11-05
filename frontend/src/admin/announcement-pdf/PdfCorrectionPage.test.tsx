@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, onTestFinished, vi } from 'vitest'
 import { PdfCorrectionPage, PdfCorrectionWorkspace } from './PdfCorrectionPage'
 import { scenario, separateHansville } from './fixtures/workspace'
 import fixtures from './fixtures/scenarios.json'
+import ghExtraction from './fixtures/gh-839-extraction.json'
 import type { JsonPreview, JsonUpdateInput } from '../announcement-json/api'
 import { ManagementError } from '../management/api'
 const api = vi.hoisted(() => ({ loadJsonWorkspace: vi.fn(), previewJsonUpdate: vi.fn(), applyJsonUpdate: vi.fn() }))
@@ -172,13 +173,16 @@ it('미확정 공고라도 공개를 요청하지 않으면 공개 요청을 보
   api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
   api.applyJsonUpdate.mockResolvedValue(unconfirmedWorkspace())
   await open()
+  const release = screen.getByRole('region', { name: '공개 전 확인' })
+  fireEvent.change(within(release).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
+  fireEvent.change(within(release).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
   expect(within(screen.getByRole('region', { name: '공개 전 확인' })).getByRole('checkbox')).not.toBeChecked()
 
   await applyCorrection()
 
   const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
   expect(input.publish).toBeFalsy()
-  expect(input.fields).not.toContain('rentalType')
+  expect(input.document.announcement).toMatchObject({ rentalType: 'NATIONAL_RENTAL', recruitmentType: 'WAITLIST' })
   const result = (await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })).closest('section')!
   expect(result).toHaveTextContent('아직 미확정이라 사용자에게 보이지 않습니다')
 })
@@ -600,8 +604,9 @@ it('단지 정하기는 다른 단지명의 PDF 행이 이미 저장할 위치�
   expect(placeOf(2)).toBe('새 공급정보로 추가합니다.')
 })
 
-it('빈 공고의 PDF 추출값은 단지를 검색해 선택한 뒤 첫 공급행으로 채운다', async () => {
-  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, rows: [] } })
+it.each([false, true])('빈 공고의 PDF 추출값은 단지를 검색해 선택한 뒤 첫 공급행으로 채운다 (미확정 %s)', async unconfirmed => {
+  const current = unconfirmed ? unconfirmedWorkspace() : workspace
+  api.loadJsonWorkspace.mockResolvedValue({ ...current, supply: { ...workspace.supply, rows: [] } })
   const onFill = vi.fn()
   const extraction = structuredClone(fixtures.hansville.extraction)
   extraction.data.supplyRows = extraction.data.supplyRows.slice(0, 1)
@@ -617,6 +622,7 @@ it('빈 공고의 PDF 추출값은 단지를 검색해 선택한 뒤 첫 공급�
   await waitFor(() => expect(onFill).toHaveBeenCalledOnce())
   expect(onFill.mock.calls[0][0].rows).toEqual([expect.objectContaining({ id: null, housingComplexId: 7, category: 'NEW_SUPPLY', typeName: '26A' })])
   expect(api.applyJsonUpdate).not.toHaveBeenCalled()
+  expect(api.previewJsonUpdate).not.toHaveBeenCalled()
 })
 
 it('마이홈 원천 공고도 보정 결과에서 다시 정제를 실행하지 않고 해결한 오류만 알린다', async () => {
@@ -1003,6 +1009,9 @@ it.each([true, false])('미확정 공고 저장 응답을 잃고 공급행만 �
   api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
   api.previewJsonUpdate.mockResolvedValue(previewResult({ publishes: publish }))
   await open()
+  const release = screen.getByRole('region', { name: '공개 전 확인' })
+  fireEvent.change(within(release).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
+  fireEvent.change(within(release).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
   if (publish) fireEvent.click(within(screen.getByRole('region', { name: '공개 전 확인' })).getByRole('checkbox'))
   let sent: JsonUpdateInput | undefined
   api.applyJsonUpdate.mockImplementationOnce(async (_id: string, input: JsonUpdateInput) => {
@@ -1112,4 +1121,42 @@ it('임시저장본은 열어 둔 단지 탭과 고른 공급행을 함께 저�
   fireEvent.click(within(await screen.findByRole('region', { name: '임시저장한 작업' })).getByRole('button', { name: '임시저장본 복원' }))
   expect(await screen.findByRole('tab', { name: /^첨단H-3BL/ })).toHaveAttribute('aria-selected', 'true')
   expect(screen.getByRole('region', { name: '공급행 5 검토' })).toBeVisible()
+})
+
+
+it('미확정 공고의 필수값 누락은 미해결로 표시하고 해당 칸으로 안내해 서버에 보내지 않는다', async () => {
+  const initial = unconfirmedWorkspace()
+  const empty = { ...initial, detail: { ...initial.detail, data: { ...initial.detail.data, applicationStartDate: null, applicationEndDate: null, winnerAnnouncementDate: null } } }
+  api.loadJsonWorkspace.mockResolvedValue(empty)
+  const sample = fixtures.hansville.extraction
+  const missing = { ...sample, data: { ...sample.data, announcement: { ...sample.data.announcement, applicationStartDate: null, applicationEndDate: null, winnerAnnouncementDate: null } } }
+  await open(JSON.stringify(missing))
+  expect(screen.getByLabelText('공급 유형')).toHaveAttribute('aria-invalid', 'true')
+  expect(screen.getByLabelText('모집 유형')).toHaveAttribute('aria-invalid', 'true')
+  expect(screen.queryByText('확인 필요 없음')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('접수 시작일')
+  expect(screen.getByRole('tab', { name: /접수처·기본정보/ })).toHaveAttribute('aria-selected', 'true')
+  expect(api.previewJsonUpdate).not.toHaveBeenCalled()
+})
+
+
+it('실제 GH 워커 응답의 잘못된 다섯 공통 모집 묶음을 모두 보여 주고, 명시적으로 교정한 뒤에만 검토로 이동한다', async () => {
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, detail: { ...workspace.detail, summary: { ...workspace.detail.summary, name: ghExtraction.data.announcement.name },
+    data: { ...workspace.detail.data, name: ghExtraction.data.announcement.name, postedDate: ghExtraction.data.announcement.postedDate } } })
+  extracts(JSON.stringify(ghExtraction))
+  renderPage()
+  await startExtraction()
+  const repair = await screen.findByRole('region', { name: '공통 모집수 수정' })
+  expect(within(repair).getAllByRole('group', { name: /^공통 모집수 / })).toHaveLength(5)
+  expect(screen.getByRole('button', { name: '추출 결과 검토하기' })).toBeDisabled()
+  // 이 테스트는 운영자 명시 선택에 따른 묶음 해제 경로다. 정상 묶음이나 공급행을 자동 삭제하지 않는다.
+  for (const checkbox of within(repair).getAllByRole('checkbox', { name: /이 묶음 해제/ })) fireEvent.click(checkbox)
+  fireEvent.click(within(repair).getByRole('button', { name: '수정한 묶음 확인' }))
+  expect(await screen.findByRole('button', { name: '추출 결과 검토하기' })).toBeEnabled()
+  expect(screen.getByText(/공급행 56개/)).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '추출 결과 검토하기' }))
+  expect(await screen.findByRole('heading', { name: '공급정보' })).toBeVisible()
+  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
+  expect(extractor.extractAnnouncementPdf).toHaveBeenCalledTimes(1)
 })

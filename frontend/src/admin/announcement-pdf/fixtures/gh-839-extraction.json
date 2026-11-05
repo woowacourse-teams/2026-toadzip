@@ -1,0 +1,3044 @@
+{
+  "data": {
+    "announcement": {
+      "name": "2026년 하반기 경기행복주택 예비입주자 추가모집 공고",
+      "postedDate": "2026-10-16",
+      "applicationStartDate": "2026-10-26",
+      "applicationEndDate": "2026-10-28",
+      "winnerAnnouncementDate": "2026-11-04"
+    },
+    "receptionPlace": {
+      "name": "경기주택도시공사 GH 주택청약센터",
+      "method": "ONLINE",
+      "address": null,
+      "contact": null,
+      "url": "https://apply.gh.or.kr"
+    },
+    "complexes": [
+      {
+        "sourceComplexName": "다산역 A2",
+        "address": "경기 남양주시 다산중앙로145번길 38",
+        "totalHouseholdCount": 970,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "수원광교",
+        "address": "경기 수원시 영통구 창룡대로 250",
+        "totalHouseholdCount": 204,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "안양관양",
+        "address": "경기 안양시 동안구 관양로 277",
+        "totalHouseholdCount": 56,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "화성진안1",
+        "address": "경기 화성시 병점구 효행로 1",
+        "totalHouseholdCount": 16,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "화성진안2",
+        "address": null,
+        "totalHouseholdCount": 15,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "수원영통",
+        "address": "경기 수원시 영통구 동탄지성로470번길 34",
+        "totalHouseholdCount": 100,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "양평공흥",
+        "address": "경기 양평군 양평읍 남북로 70",
+        "totalHouseholdCount": 40,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "파주병원복합",
+        "address": "경기 파주시 황골로 90",
+        "totalHouseholdCount": 50,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "광교원천",
+        "address": "경기 수원시 영통구 광교중앙로49번길 40",
+        "totalHouseholdCount": 300,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "다산지금A5",
+        "address": "경기 남양주시 다산중앙로82번길 106",
+        "totalHouseholdCount": 2078,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "동탄호수공원",
+        "address": "경기 화성시 동탄구 동탄순환대로10길 20",
+        "totalHouseholdCount": 995,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "경기광주역",
+        "address": null,
+        "totalHouseholdCount": 500,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "안산스마트허브",
+        "address": "경기 안산시 단원구 산단로 104",
+        "totalHouseholdCount": 232,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "평택BIX",
+        "address": null,
+        "totalHouseholdCount": 330,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "오산가장",
+        "address": "경기 오산시 가장산업동로 38",
+        "totalHouseholdCount": 50,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "의왕역",
+        "address": null,
+        "totalHouseholdCount": 50,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "성남판교",
+        "address": "경기 성남시 분당구 판교로319번길 14",
+        "totalHouseholdCount": 300,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "판교밸리2",
+        "address": null,
+        "totalHouseholdCount": 300,
+        "parkingCount": null
+      },
+      {
+        "sourceComplexName": "평택고덕",
+        "address": null,
+        "totalHouseholdCount": 800,
+        "parkingCount": null
+      }
+    ],
+    "supplyRows": [
+      {
+        "complexReference": {
+          "sourceComplexName": "다산역 A2"
+        },
+        "sourceHousingTypeName": "24ABC",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 20,
+        "exclusiveArea": 24.97,
+        "commonArea": 15.37,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 46920000,
+            "monthlyRent": 178670,
+            "convertedDeposit": 61920000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 49680000,
+            "monthlyRent": 189910,
+            "convertedDeposit": 65680000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "다산역 A2"
+        },
+        "sourceHousingTypeName": "24B",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 3,
+        "exclusiveArea": 24.97,
+        "commonArea": 15.37,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "주거급여수급자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 3,
+            "reserveCount": null,
+            "rentalDeposit": 41400000,
+            "monthlyRent": 158250,
+            "convertedDeposit": 54400000,
+            "applicationCondition": "무주택세대구성원인 「주거급여법」 제2조제2호·제3호에 따른 수급권자 또는 수급자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "다산역 A2"
+        },
+        "sourceHousingTypeName": "24C",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 3,
+        "exclusiveArea": 24.97,
+        "commonArea": 15.37,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "고령자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 3,
+            "reserveCount": null,
+            "rentalDeposit": 52440000,
+            "monthlyRent": 200370,
+            "convertedDeposit": 69440000,
+            "applicationCondition": "만 65세 이상(1961.10.16 이전 출생) 무주택세대구성원"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "수원광교"
+        },
+        "sourceHousingTypeName": "36A",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 5,
+        "exclusiveArea": 36.7,
+        "commonArea": 22.69,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 75253000,
+            "monthlyRent": 365500,
+            "convertedDeposit": 106253000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 79680000,
+            "monthlyRent": 387000,
+            "convertedDeposit": 112680000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "수원광교"
+        },
+        "sourceHousingTypeName": "36C",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 12,
+        "exclusiveArea": 36.83,
+        "commonArea": 22.26,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "고령자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 12,
+            "reserveCount": null,
+            "rentalDeposit": 84108000,
+            "monthlyRent": 408500,
+            "convertedDeposit": 119108000,
+            "applicationCondition": "만 65세 이상(1961.10.16 이전 출생) 무주택세대구성원"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "수원광교"
+        },
+        "sourceHousingTypeName": "38A",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 5,
+        "exclusiveArea": 38.0,
+        "commonArea": 22.98,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 79433000,
+            "monthlyRent": 378250,
+            "convertedDeposit": 111433000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 84106000,
+            "monthlyRent": 400500,
+            "convertedDeposit": 118106000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "안양관양"
+        },
+        "sourceHousingTypeName": "36A",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 10,
+        "exclusiveArea": 36.4,
+        "commonArea": 18.1,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 70136000,
+            "monthlyRent": 310250,
+            "convertedDeposit": 96136000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 74262000,
+            "monthlyRent": 328500,
+            "convertedDeposit": 102262000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "안양관양"
+        },
+        "sourceHousingTypeName": "36C",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 3,
+        "exclusiveArea": 36.9,
+        "commonArea": 18.67,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "고령자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 3,
+            "reserveCount": null,
+            "rentalDeposit": 78387000,
+            "monthlyRent": 346750,
+            "convertedDeposit": 107387000,
+            "applicationCondition": "만 65세 이상(1961.10.16 이전 출생) 무주택세대구성원"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "안양관양"
+        },
+        "sourceHousingTypeName": "36D",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 5,
+        "exclusiveArea": 36.39,
+        "commonArea": 18.11,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "주거급여수급자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 5,
+            "reserveCount": null,
+            "rentalDeposit": 61885000,
+            "monthlyRent": 273750,
+            "convertedDeposit": 84885000,
+            "applicationCondition": "무주택세대구성원인 「주거급여법」 제2조제2호·제3호에 따른 수급권자 또는 수급자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "화성진안1"
+        },
+        "sourceHousingTypeName": "20A",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 8,
+        "exclusiveArea": 20.33,
+        "commonArea": 16.23,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 26551000,
+            "monthlyRent": 199890,
+            "convertedDeposit": 43551000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 28113000,
+            "monthlyRent": 211650,
+            "convertedDeposit": 46113000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "화성진안2"
+        },
+        "sourceHousingTypeName": "17A",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 1,
+        "exclusiveArea": 17.12,
+        "commonArea": 14.15,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 22569000,
+            "monthlyRent": 178210,
+            "convertedDeposit": 37569000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 23897000,
+            "monthlyRent": 188700,
+            "convertedDeposit": 39897000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "화성진안2"
+        },
+        "sourceHousingTypeName": "20A",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 4,
+        "exclusiveArea": 20.02,
+        "commonArea": 15.68,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 26551000,
+            "monthlyRent": 209520,
+            "convertedDeposit": 43551000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 28113000,
+            "monthlyRent": 221850,
+            "convertedDeposit": 47113000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "수원영통"
+        },
+        "sourceHousingTypeName": "22A1",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 5,
+        "exclusiveArea": 22.3962,
+        "commonArea": 14.3013,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "대학생",
+            "supplyRank": null,
+            "supplyHouseholdCount": 5,
+            "reserveCount": null,
+            "rentalDeposit": 24140000,
+            "monthlyRent": 149320,
+            "convertedDeposit": 36140000,
+            "applicationCondition": "대학에 재학 중이거나 다음 학기 입·복학 예정인 사람 또는 대학·고등학교 졸업·중퇴 후 2년 이내 취업준비생"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "수원영통"
+        },
+        "sourceHousingTypeName": "22B",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 3,
+        "exclusiveArea": 22.0642,
+        "commonArea": 13.9778,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "고령자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 3,
+            "reserveCount": null,
+            "rentalDeposit": 26980000,
+            "monthlyRent": 167190,
+            "convertedDeposit": 40980000,
+            "applicationCondition": "만 65세 이상(1961.10.16 이전 출생) 무주택세대구성원"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "수원영통"
+        },
+        "sourceHousingTypeName": "26A1",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 10,
+        "exclusiveArea": 26.0522,
+        "commonArea": 16.3687,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "대학생",
+            "supplyRank": null,
+            "supplyHouseholdCount": 10,
+            "reserveCount": null,
+            "rentalDeposit": 28560000,
+            "monthlyRent": 168460,
+            "convertedDeposit": 42560000,
+            "applicationCondition": "대학에 재학 중이거나 다음 학기 입·복학 예정인 사람 또는 대학·고등학교 졸업·중퇴 후 2년 이내 취업준비생"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "양평공흥"
+        },
+        "sourceHousingTypeName": "34B",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 3,
+        "exclusiveArea": 34.16,
+        "commonArea": 18.31,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "고령자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 3,
+            "reserveCount": null,
+            "rentalDeposit": 30400000,
+            "monthlyRent": 160810,
+            "convertedDeposit": 43400000,
+            "applicationCondition": "만 65세 이상(1961.10.16 이전 출생) 무주택세대구성원"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "파주병원복합"
+        },
+        "sourceHousingTypeName": "26A",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 10,
+        "exclusiveArea": 26.79,
+        "commonArea": 18.82,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 24140000,
+            "monthlyRent": 138800,
+            "convertedDeposit": 35140000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 25560000,
+            "monthlyRent": 146970,
+            "convertedDeposit": 37560000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "파주병원복합"
+        },
+        "sourceHousingTypeName": "35A1,B1",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 10,
+        "exclusiveArea": 35.02,
+        "commonArea": 24.48,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 30940000,
+            "monthlyRent": 177900,
+            "convertedDeposit": 45940000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 32760000,
+            "monthlyRent": 188370,
+            "convertedDeposit": 48760000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "파주병원복합"
+        },
+        "sourceHousingTypeName": "35AB",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 10,
+        "exclusiveArea": 35.02,
+        "commonArea": 24.48,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "고령자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 10,
+            "reserveCount": null,
+            "rentalDeposit": 34580000,
+            "monthlyRent": 198830,
+            "convertedDeposit": 51580000,
+            "applicationCondition": "만 65세 이상(1961.10.16 이전 출생) 무주택세대구성원"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "광교원천"
+        },
+        "sourceHousingTypeName": "16A1",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": null,
+        "exclusiveArea": 16.9,
+        "commonArea": 9.9466,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "대학생",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 34680000,
+            "monthlyRent": 144500,
+            "convertedDeposit": 46680000,
+            "applicationCondition": "대학에 재학 중이거나 다음 학기 입·복학 예정인 사람 또는 대학·고등학교 졸업·중퇴 후 2년 이내 취업준비생"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "광교원천"
+        },
+        "sourceHousingTypeName": "16A2",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": null,
+        "exclusiveArea": 16.9,
+        "commonArea": 9.9466,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 34680000,
+            "monthlyRent": 144500,
+            "convertedDeposit": 46680000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 36720000,
+            "monthlyRent": 153000,
+            "convertedDeposit": 49720000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "광교원천"
+        },
+        "sourceHousingTypeName": "26A",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 15,
+        "exclusiveArea": 26.25,
+        "commonArea": 14.6914,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 51680000,
+            "monthlyRent": 215330,
+            "convertedDeposit": 69680000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 54720000,
+            "monthlyRent": 228000,
+            "convertedDeposit": 73720000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "광교원천"
+        },
+        "sourceHousingTypeName": "26C",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 7,
+        "exclusiveArea": 26.5,
+        "commonArea": 14.8757,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "고령자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 7,
+            "reserveCount": null,
+            "rentalDeposit": 57760000,
+            "monthlyRent": 240660,
+            "convertedDeposit": 77760000,
+            "applicationCondition": "만 65세 이상(1961.10.16 이전 출생) 무주택세대구성원"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "다산지금A5"
+        },
+        "sourceHousingTypeName": "18A1",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": null,
+        "exclusiveArea": 18.9415,
+        "commonArea": 9.9229,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "고령자",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 34641000,
+            "monthlyRent": 134920,
+            "convertedDeposit": 45641000,
+            "applicationCondition": "만 65세 이상(1961.10.16 이전 출생) 무주택세대구성원"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "다산지금A5"
+        },
+        "sourceHousingTypeName": "18A2",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": null,
+        "exclusiveArea": 18.9415,
+        "commonArea": 9.9229,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "주거급여수급자",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 27348000,
+            "monthlyRent": 106960,
+            "convertedDeposit": 36348000,
+            "applicationCondition": "무주택세대구성원인 「주거급여법」 제2조제2호·제3호에 따른 수급권자 또는 수급자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "다산지금A5"
+        },
+        "sourceHousingTypeName": "26A6",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 1,
+        "exclusiveArea": 26.9625,
+        "commonArea": 14.1249,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "주거급여수급자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 1,
+            "reserveCount": null,
+            "rentalDeposit": 38288000,
+            "monthlyRent": 149500,
+            "convertedDeposit": 50288000,
+            "applicationCondition": "무주택세대구성원인 「주거급여법」 제2조제2호·제3호에 따른 수급권자 또는 수급자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "다산지금A5"
+        },
+        "sourceHousingTypeName": "26B",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 2,
+        "exclusiveArea": 26.7959,
+        "commonArea": 14.0376,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "고령자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 2,
+            "reserveCount": null,
+            "rentalDeposit": 48498000,
+            "monthlyRent": 189610,
+            "convertedDeposit": 64498000,
+            "applicationCondition": "만 65세 이상(1961.10.16 이전 출생) 무주택세대구성원"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "동탄호수공원"
+        },
+        "sourceHousingTypeName": "18A3",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 1,
+        "exclusiveArea": 18.4624,
+        "commonArea": 10.6433,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "고령자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 1,
+            "reserveCount": null,
+            "rentalDeposit": 24799000,
+            "monthlyRent": 102100,
+            "convertedDeposit": 32799000,
+            "applicationCondition": "만 65세 이상(1961.10.16 이전 출생) 무주택세대구성원"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "동탄호수공원"
+        },
+        "sourceHousingTypeName": "18A4",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 2,
+        "exclusiveArea": 18.4624,
+        "commonArea": 10.6433,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "주거급여수급자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 2,
+            "reserveCount": null,
+            "rentalDeposit": 19578000,
+            "monthlyRent": 80400,
+            "convertedDeposit": 25578000,
+            "applicationCondition": "무주택세대구성원인 「주거급여법」 제2조제2호·제3호에 따른 수급권자 또는 수급자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "동탄호수공원"
+        },
+        "sourceHousingTypeName": "26B",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 39,
+        "exclusiveArea": null,
+        "commonArea": null,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 32050000,
+            "monthlyRent": 132590,
+            "convertedDeposit": 43050000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 33936000,
+            "monthlyRent": 140390,
+            "convertedDeposit": 45936000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "동탄호수공원"
+        },
+        "sourceHousingTypeName": "26AB",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 4,
+        "exclusiveArea": null,
+        "commonArea": null,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "고령자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 4,
+            "reserveCount": null,
+            "rentalDeposit": 35822000,
+            "monthlyRent": 148040,
+            "convertedDeposit": 47822000,
+            "applicationCondition": "만 65세 이상(1961.10.16 이전 출생) 무주택세대구성원"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "동탄호수공원"
+        },
+        "sourceHousingTypeName": "36AB",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": null,
+        "exclusiveArea": 36.1396,
+        "commonArea": 20.8339,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "신혼부부, 한부모가족",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 52211000,
+            "monthlyRent": 216960,
+            "convertedDeposit": 70211000,
+            "applicationCondition": "공고일 현재 혼인중이며 혼인기간 7년 이내이거나 6세 이하 자녀를 둔 사람, 6세 이하 자녀를 둔 한부모"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "동탄호수공원"
+        },
+        "sourceHousingTypeName": "36AB1",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": null,
+        "exclusiveArea": 36.2643,
+        "commonArea": 20.9058,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 44379000,
+            "monthlyRent": 184420,
+            "convertedDeposit": 59379000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 46990000,
+            "monthlyRent": 195270,
+            "convertedDeposit": 62990000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "동탄호수공원"
+        },
+        "sourceHousingTypeName": "44",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 1,
+        "exclusiveArea": null,
+        "commonArea": null,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "주거급여수급자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 1,
+            "reserveCount": null,
+            "rentalDeposit": 47860000,
+            "monthlyRent": 199090,
+            "convertedDeposit": 64860000,
+            "applicationCondition": "무주택세대구성원인 「주거급여법」 제2조제2호·제3호에 따른 수급권자 또는 수급자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "동탄호수공원"
+        },
+        "sourceHousingTypeName": "44ABC",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": null,
+        "exclusiveArea": null,
+        "commonArea": null,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "신혼부부, 한부모가족",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 63814000,
+            "monthlyRent": 265460,
+            "convertedDeposit": 85814000,
+            "applicationCondition": "공고일 현재 혼인중이며 혼인기간 7년 이내이거나 6세 이하 자녀를 둔 사람, 6세 이하 자녀를 둔 한부모"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "동탄호수공원"
+        },
+        "sourceHousingTypeName": "44ABC1",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": null,
+        "exclusiveArea": 44.7345,
+        "commonArea": 25.7887,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 54241000,
+            "monthlyRent": 225630,
+            "convertedDeposit": 73241000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 57432000,
+            "monthlyRent": 238910,
+            "convertedDeposit": 77432000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "경기광주역"
+        },
+        "sourceHousingTypeName": "36A1",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 20,
+        "exclusiveArea": 36.9369,
+        "commonArea": 17.8208,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 57444000,
+            "monthlyRent": 222130,
+            "convertedDeposit": 76444000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 60823000,
+            "monthlyRent": 235190,
+            "convertedDeposit": 80823000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "경기광주역"
+        },
+        "sourceHousingTypeName": "44A",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 30,
+        "exclusiveArea": 44.6973,
+        "commonArea": 21.5347,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "신혼부부, 한부모가족",
+            "supplyRank": null,
+            "supplyHouseholdCount": 30,
+            "reserveCount": null,
+            "rentalDeposit": 80223000,
+            "monthlyRent": 309630,
+            "convertedDeposit": 106223000,
+            "applicationCondition": "공고일 현재 혼인중이며 혼인기간 7년 이내이거나 6세 이하 자녀를 둔 사람, 6세 이하 자녀를 둔 한부모"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "안산스마트허브"
+        },
+        "sourceHousingTypeName": "16A3",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 10,
+        "exclusiveArea": 16.74,
+        "commonArea": 12.681,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 17273000,
+            "monthlyRent": 71280,
+            "convertedDeposit": 23273000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 18290000,
+            "monthlyRent": 75480,
+            "convertedDeposit": 24290000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "안산스마트허브"
+        },
+        "sourceHousingTypeName": "21B",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 5,
+        "exclusiveArea": 21.8,
+        "commonArea": 15.9496,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "고령자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 5,
+            "reserveCount": null,
+            "rentalDeposit": 25357000,
+            "monthlyRent": 104530,
+            "convertedDeposit": 33357000,
+            "applicationCondition": "만 65세 이상(1961.10.16 이전 출생) 무주택세대구성원"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "평택BIX"
+        },
+        "sourceHousingTypeName": "16A3",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 22,
+        "exclusiveArea": 16.61,
+        "commonArea": 10.0013,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 8840000,
+            "monthlyRent": 37190,
+            "convertedDeposit": 11840000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 9360000,
+            "monthlyRent": 39380,
+            "convertedDeposit": 12360000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "평택BIX"
+        },
+        "sourceHousingTypeName": "21A1",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 19,
+        "exclusiveArea": 21.84,
+        "commonArea": 13.1504,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 11560000,
+            "monthlyRent": 54520,
+            "convertedDeposit": 15560000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 12240000,
+            "monthlyRent": 57730,
+            "convertedDeposit": 16240000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "평택BIX"
+        },
+        "sourceHousingTypeName": "36ABC1",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 12,
+        "exclusiveArea": null,
+        "commonArea": null,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 19040000,
+            "monthlyRent": 84940,
+            "convertedDeposit": 26040000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 20160000,
+            "monthlyRent": 89940,
+            "convertedDeposit": 27160000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "오산가장"
+        },
+        "sourceHousingTypeName": "21AB",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 11,
+        "exclusiveArea": null,
+        "commonArea": null,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 26180000,
+            "monthlyRent": 122170,
+            "convertedDeposit": 36180000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 27720000,
+            "monthlyRent": 129360,
+            "convertedDeposit": 38720000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "의왕역"
+        },
+        "sourceHousingTypeName": "29B",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 3,
+        "exclusiveArea": 29.46,
+        "commonArea": 14.18,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "고령자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 3,
+            "reserveCount": null,
+            "rentalDeposit": 48640000,
+            "monthlyRent": 231000,
+            "convertedDeposit": 67640000,
+            "applicationCondition": "만 65세 이상(1961.10.16 이전 출생) 무주택세대구성원"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "성남판교"
+        },
+        "sourceHousingTypeName": "16A",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 60,
+        "exclusiveArea": 16.39,
+        "commonArea": 13.9491,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 46443000,
+            "monthlyRent": 175950,
+            "convertedDeposit": 61443000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 49175000,
+            "monthlyRent": 186300,
+            "convertedDeposit": 64175000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "성남판교"
+        },
+        "sourceHousingTypeName": "26A2B",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": null,
+        "exclusiveArea": 26.18,
+        "commonArea": 21.4414,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 72813000,
+            "monthlyRent": 277950,
+            "convertedDeposit": 95813000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 77097000,
+            "monthlyRent": 294300,
+            "convertedDeposit": 102097000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "성남판교"
+        },
+        "sourceHousingTypeName": "26A1",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": null,
+        "exclusiveArea": 26.18,
+        "commonArea": 21.4414,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "고령자",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 81381000,
+            "monthlyRent": 310650,
+            "convertedDeposit": 107381000,
+            "applicationCondition": "만 65세 이상(1961.10.16 이전 출생) 무주택세대구성원"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "판교밸리2"
+        },
+        "sourceHousingTypeName": "26C",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 3,
+        "exclusiveArea": 26.748,
+        "commonArea": 20.034,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "고령자",
+            "supplyRank": null,
+            "supplyHouseholdCount": 3,
+            "reserveCount": null,
+            "rentalDeposit": 80560000,
+            "monthlyRent": 303020,
+            "convertedDeposit": 105560000,
+            "applicationCondition": "만 65세 이상(1961.10.16 이전 출생) 무주택세대구성원"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "판교밸리2"
+        },
+        "sourceHousingTypeName": "35B1",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 5,
+        "exclusiveArea": 35.134,
+        "commonArea": 26.226,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 94180000,
+            "monthlyRent": 350140,
+            "convertedDeposit": 124180000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 99720000,
+            "monthlyRent": 370730,
+            "convertedDeposit": 130720000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "판교밸리2"
+        },
+        "sourceHousingTypeName": "35C1",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 2,
+        "exclusiveArea": 35.046,
+        "commonArea": 26.192,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 94180000,
+            "monthlyRent": 350140,
+            "convertedDeposit": 124180000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 99720000,
+            "monthlyRent": 370730,
+            "convertedDeposit": 130720000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "판교밸리2"
+        },
+        "sourceHousingTypeName": "35D1",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 2,
+        "exclusiveArea": 35.159,
+        "commonArea": 26.437,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 94180000,
+            "monthlyRent": 350140,
+            "convertedDeposit": 124180000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 99720000,
+            "monthlyRent": 370730,
+            "convertedDeposit": 130720000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "평택고덕"
+        },
+        "sourceHousingTypeName": "18A",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 2,
+        "exclusiveArea": 18.57,
+        "commonArea": 9.0857,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "대학생",
+            "supplyRank": null,
+            "supplyHouseholdCount": 2,
+            "reserveCount": null,
+            "rentalDeposit": 19837000,
+            "monthlyRent": 89260,
+            "convertedDeposit": 26837000,
+            "applicationCondition": "대학에 재학 중이거나 다음 학기 입·복학 예정인 사람 또는 대학·고등학교 졸업·중퇴 후 2년 이내 취업준비생"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "평택고덕"
+        },
+        "sourceHousingTypeName": "18A1",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 68,
+        "exclusiveArea": 18.57,
+        "commonArea": 9.0857,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 19837000,
+            "monthlyRent": 89260,
+            "convertedDeposit": 26837000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 21003000,
+            "monthlyRent": 94510,
+            "convertedDeposit": 29003000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "평택고덕"
+        },
+        "sourceHousingTypeName": "18A2",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 3,
+        "exclusiveArea": 18.56,
+        "commonArea": 9.0808,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 주거약자 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 19837000,
+            "monthlyRent": 89260,
+            "convertedDeposit": 26837000,
+            "applicationCondition": "청년 일반공급 요건을 모두 갖춘 장애인·국가유공자 등 주거약자"
+          },
+          {
+            "target": "청년 주거약자 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 21003000,
+            "monthlyRent": 94510,
+            "convertedDeposit": 29003000,
+            "applicationCondition": "청년 일반공급 요건을 모두 갖춘 장애인·국가유공자 등 주거약자"
+          }
+        ]
+      },
+      {
+        "complexReference": {
+          "sourceComplexName": "평택고덕"
+        },
+        "sourceHousingTypeName": "26A1",
+        "expectedMoveInMonth": null,
+        "totalSupplyHouseholdCount": 40,
+        "exclusiveArea": 26.73,
+        "commonArea": 13.0781,
+        "supplyArea": null,
+        "constructedHouseholdCount": null,
+        "subtypes": [],
+        "targets": [
+          {
+            "target": "청년 소득 없음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 28102000,
+            "monthlyRent": 126460,
+            "convertedDeposit": 38102000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          },
+          {
+            "target": "청년 소득 있음",
+            "supplyRank": null,
+            "supplyHouseholdCount": null,
+            "reserveCount": null,
+            "rentalDeposit": 29755000,
+            "monthlyRent": 133900,
+            "convertedDeposit": 40755000,
+            "applicationCondition": "만 19세 이상 39세 이하(1986.10.17~2007.10.16 출생) 혼인중이 아닌 무주택자"
+          }
+        ]
+      }
+    ],
+    "schedules": [
+      {
+        "scheduleType": "APPLICATION",
+        "name": "인터넷 청약 접수",
+        "startAt": "2026-10-26T10:00:00",
+        "endAt": "2026-10-28T17:00:00"
+      },
+      {
+        "scheduleType": "WINNER_ANNOUNCEMENT",
+        "name": "예비입주자 발표",
+        "startAt": "2026-11-04T17:00:00",
+        "endAt": "2026-11-04T17:00:00"
+      },
+      {
+        "scheduleType": "DOCUMENT_SUBMISSION",
+        "name": "서류접수",
+        "startAt": "2026-11-05T00:00:00",
+        "endAt": "2026-11-13T00:00:00"
+      },
+      {
+        "scheduleType": "ETC",
+        "name": "예비입주 적격자 발표",
+        "startAt": "2027-02-24T00:00:00",
+        "endAt": "2027-02-24T00:00:00"
+      }
+    ],
+    "unresolvedFields": [
+      {
+        "path": "receptionPlace.contact",
+        "reason": "첨부된 쪽에서 확인하지 못함"
+      },
+      {
+        "path": "receptionPlace.address",
+        "reason": "첨부된 쪽에서 확인하지 못함"
+      },
+      {
+        "path": "complexes[4].address",
+        "reason": "첨부된 쪽에서 확인하지 못함"
+      },
+      {
+        "path": "complexes[11].address",
+        "reason": "첨부된 쪽에서 확인하지 못함"
+      },
+      {
+        "path": "complexes[13].address",
+        "reason": "첨부된 쪽에서 확인하지 못함"
+      },
+      {
+        "path": "complexes[15].address",
+        "reason": "첨부된 쪽에서 확인하지 못함"
+      },
+      {
+        "path": "complexes[17].address",
+        "reason": "첨부된 쪽에서 확인하지 못함"
+      },
+      {
+        "path": "complexes[18].address",
+        "reason": "첨부된 쪽에서 확인하지 못함"
+      },
+      {
+        "path": "complexes[*].parkingCount",
+        "reason": "첨부된 쪽에서 확인하지 못함"
+      },
+      {
+        "path": "supplyRows[*].constructedHouseholdCount",
+        "reason": "첨부된 쪽에서 확인하지 못함"
+      },
+      {
+        "path": "supplyRows[29].exclusiveArea",
+        "reason": "첨부된 쪽에서 확인하지 못함"
+      },
+      {
+        "path": "supplyRows[30].exclusiveArea",
+        "reason": "첨부된 쪽에서 확인하지 못함"
+      },
+      {
+        "path": "supplyRows[33].exclusiveArea",
+        "reason": "첨부된 쪽에서 확인하지 못함"
+      },
+      {
+        "path": "supplyRows[34].exclusiveArea",
+        "reason": "첨부된 쪽에서 확인하지 못함"
+      },
+      {
+        "path": "supplyRows[42].exclusiveArea",
+        "reason": "첨부된 쪽에서 확인하지 못함"
+      },
+      {
+        "path": "supplyRows[43].exclusiveArea",
+        "reason": "첨부된 쪽에서 확인하지 못함"
+      }
+    ]
+  },
+  "sharedCounts": [
+    {
+      "paths": [
+        "supplyRows[0].targets[0].supplyHouseholdCount",
+        "supplyRows[0].targets[1].supplyHouseholdCount"
+      ],
+      "count": 20,
+      "page": 4,
+      "quote": "24ABC 청년 20"
+    },
+    {
+      "paths": [
+        "supplyRows[3].targets[0].supplyHouseholdCount",
+        "supplyRows[3].targets[1].supplyHouseholdCount"
+      ],
+      "count": 5,
+      "page": 4,
+      "quote": "36A 청년 5"
+    },
+    {
+      "paths": [
+        "supplyRows[5].targets[0].supplyHouseholdCount",
+        "supplyRows[5].targets[1].supplyHouseholdCount"
+      ],
+      "count": 5,
+      "page": 4,
+      "quote": "38A 청년 5"
+    },
+    {
+      "paths": [
+        "supplyRows[6].targets[0].supplyHouseholdCount",
+        "supplyRows[6].targets[1].supplyHouseholdCount"
+      ],
+      "count": 10,
+      "page": 4,
+      "quote": "36A 청년 10"
+    },
+    {
+      "paths": [
+        "supplyRows[9].targets[0].supplyHouseholdCount",
+        "supplyRows[9].targets[1].supplyHouseholdCount"
+      ],
+      "count": 8,
+      "page": 4,
+      "quote": "20A 청년 8"
+    },
+    {
+      "paths": [
+        "supplyRows[10].targets[0].supplyHouseholdCount",
+        "supplyRows[10].targets[1].supplyHouseholdCount"
+      ],
+      "count": 1,
+      "page": 4,
+      "quote": "17A 청년 1"
+    },
+    {
+      "paths": [
+        "supplyRows[11].targets[0].supplyHouseholdCount",
+        "supplyRows[11].targets[1].supplyHouseholdCount"
+      ],
+      "count": 4,
+      "page": 4,
+      "quote": "20A 청년 4"
+    },
+    {
+      "paths": [
+        "supplyRows[16].targets[0].supplyHouseholdCount",
+        "supplyRows[16].targets[1].supplyHouseholdCount"
+      ],
+      "count": 10,
+      "page": 4,
+      "quote": "26A 청년 10"
+    },
+    {
+      "paths": [
+        "supplyRows[17].targets[0].supplyHouseholdCount",
+        "supplyRows[17].targets[1].supplyHouseholdCount"
+      ],
+      "count": 10,
+      "page": 4,
+      "quote": "35A1,B1 청년 10"
+    },
+    {
+      "paths": [
+        "supplyRows[19].targets[0].supplyHouseholdCount",
+        "supplyRows[20].targets[0].supplyHouseholdCount",
+        "supplyRows[20].targets[1].supplyHouseholdCount"
+      ],
+      "count": 7,
+      "page": 4,
+      "quote": "16A1 대학생 7"
+    },
+    {
+      "paths": [
+        "supplyRows[21].targets[0].supplyHouseholdCount",
+        "supplyRows[21].targets[1].supplyHouseholdCount"
+      ],
+      "count": 15,
+      "page": 4,
+      "quote": "26A 청년 15"
+    },
+    {
+      "paths": [
+        "supplyRows[23].targets[0].supplyHouseholdCount",
+        "supplyRows[24].targets[0].supplyHouseholdCount"
+      ],
+      "count": 1,
+      "page": 4,
+      "quote": "18A1 고령자 1"
+    },
+    {
+      "paths": [
+        "supplyRows[29].targets[0].supplyHouseholdCount",
+        "supplyRows[29].targets[1].supplyHouseholdCount"
+      ],
+      "count": 39,
+      "page": 5,
+      "quote": "26B 청년 39"
+    },
+    {
+      "paths": [
+        "supplyRows[31].targets[0].supplyHouseholdCount",
+        "supplyRows[32].targets[0].supplyHouseholdCount",
+        "supplyRows[32].targets[1].supplyHouseholdCount"
+      ],
+      "count": 136,
+      "page": 5,
+      "quote": "36AB 신혼부부, 한부모가족 136"
+    },
+    {
+      "paths": [
+        "supplyRows[34].targets[0].supplyHouseholdCount",
+        "supplyRows[35].targets[0].supplyHouseholdCount",
+        "supplyRows[35].targets[1].supplyHouseholdCount"
+      ],
+      "count": 120,
+      "page": 5,
+      "quote": "44ABC 신혼부부, 한부모가족 120"
+    },
+    {
+      "paths": [
+        "supplyRows[36].targets[0].supplyHouseholdCount",
+        "supplyRows[36].targets[1].supplyHouseholdCount"
+      ],
+      "count": 20,
+      "page": 5,
+      "quote": "36A1 청년 20"
+    },
+    {
+      "paths": [
+        "supplyRows[38].targets[0].supplyHouseholdCount",
+        "supplyRows[38].targets[1].supplyHouseholdCount"
+      ],
+      "count": 10,
+      "page": 5,
+      "quote": "16A3 청년 10"
+    },
+    {
+      "paths": [
+        "supplyRows[40].targets[0].supplyHouseholdCount",
+        "supplyRows[40].targets[1].supplyHouseholdCount"
+      ],
+      "count": 22,
+      "page": 5,
+      "quote": "16A3 청년 22"
+    },
+    {
+      "paths": [
+        "supplyRows[41].targets[0].supplyHouseholdCount",
+        "supplyRows[41].targets[1].supplyHouseholdCount"
+      ],
+      "count": 19,
+      "page": 5,
+      "quote": "21A1 청년 19"
+    },
+    {
+      "paths": [
+        "supplyRows[42].targets[0].supplyHouseholdCount",
+        "supplyRows[42].targets[1].supplyHouseholdCount"
+      ],
+      "count": 12,
+      "page": 5,
+      "quote": "36ABC1 청년 12"
+    },
+    {
+      "paths": [
+        "supplyRows[43].targets[0].supplyHouseholdCount",
+        "supplyRows[43].targets[1].supplyHouseholdCount"
+      ],
+      "count": 11,
+      "page": 5,
+      "quote": "21AB 청년 11"
+    },
+    {
+      "paths": [
+        "supplyRows[45].targets[0].supplyHouseholdCount",
+        "supplyRows[45].targets[1].supplyHouseholdCount"
+      ],
+      "count": 60,
+      "page": 5,
+      "quote": "16A 청년 60"
+    },
+    {
+      "paths": [
+        "supplyRows[46].targets[0].supplyHouseholdCount",
+        "supplyRows[46].targets[1].supplyHouseholdCount",
+        "supplyRows[47].targets[0].supplyHouseholdCount"
+      ],
+      "count": 7,
+      "page": 5,
+      "quote": "26A2B 청년 7"
+    },
+    {
+      "paths": [
+        "supplyRows[49].targets[0].supplyHouseholdCount",
+        "supplyRows[49].targets[1].supplyHouseholdCount"
+      ],
+      "count": 5,
+      "page": 5,
+      "quote": "35B1 청년 5"
+    },
+    {
+      "paths": [
+        "supplyRows[50].targets[0].supplyHouseholdCount",
+        "supplyRows[50].targets[1].supplyHouseholdCount"
+      ],
+      "count": 2,
+      "page": 5,
+      "quote": "35C1 청년 2"
+    },
+    {
+      "paths": [
+        "supplyRows[51].targets[0].supplyHouseholdCount",
+        "supplyRows[51].targets[1].supplyHouseholdCount"
+      ],
+      "count": 2,
+      "page": 5,
+      "quote": "35D1 청년 2"
+    },
+    {
+      "paths": [
+        "supplyRows[53].targets[0].supplyHouseholdCount",
+        "supplyRows[53].targets[1].supplyHouseholdCount"
+      ],
+      "count": 68,
+      "page": 5,
+      "quote": "18A1 청년 68"
+    },
+    {
+      "paths": [
+        "supplyRows[54].targets[0].supplyHouseholdCount",
+        "supplyRows[54].targets[1].supplyHouseholdCount"
+      ],
+      "count": 3,
+      "page": 5,
+      "quote": "18A2 청년 주거약자 3"
+    },
+    {
+      "paths": [
+        "supplyRows[55].targets[0].supplyHouseholdCount",
+        "supplyRows[55].targets[1].supplyHouseholdCount"
+      ],
+      "count": 40,
+      "page": 5,
+      "quote": "26A1 청년 40"
+    }
+  ],
+  "notApplicable": [
+    {
+      "path": "supplyRows[*].targets[*].reserveCount",
+      "reason": "대기 중인 예비자수를 안내하는 항목이 없음"
+    },
+    {
+      "path": "supplyRows[*].targets[*].supplyRank",
+      "reason": "예비입주자를 전산추첨으로 선정하여 공급순위가 없음"
+    },
+    {
+      "path": "supplyRows[*].expectedMoveInMonth",
+      "reason": "예비입주자 모집으로 입주예정월을 안내하지 않음"
+    },
+    {
+      "path": "schedules",
+      "reason": "입주자격 조사는 약 3개월 소요로 날짜가 없음"
+    },
+    {
+      "path": "schedules",
+      "reason": "입주안내는 공실 발생 시 개별안내로 날짜가 없음"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "announcement.name",
+      "page": 2,
+      "quote": "경기행복주택 예비입주자 추가모집 공고"
+    },
+    {
+      "path": "announcement.postedDate",
+      "page": 2,
+      "quote": "입주자모집공고일 : 2026. 10. 16."
+    },
+    {
+      "path": "announcement.applicationStartDate",
+      "page": 23,
+      "quote": "10.26.(월) 10:00 ~ 10.28.(수) 17:00"
+    },
+    {
+      "path": "announcement.applicationEndDate",
+      "page": 23,
+      "quote": "10.26.(월) 10:00 ~ 10.28.(수) 17:00"
+    },
+    {
+      "path": "announcement.winnerAnnouncementDate",
+      "page": 23,
+      "quote": "11.04.(수) 이후 17:00"
+    },
+    {
+      "path": "receptionPlace",
+      "page": 23,
+      "quote": "경기주택도시공사 주택청약센터"
+    },
+    {
+      "path": "schedules[0]",
+      "page": 23,
+      "quote": "10.26.(월) 10:00 ~ 10.28.(수) 17:00"
+    },
+    {
+      "path": "schedules[1]",
+      "page": 23,
+      "quote": "11.04.(수) 이후 17:00"
+    },
+    {
+      "path": "schedules[2]",
+      "page": 23,
+      "quote": "11.05.(목) ~ 11.13.(금)"
+    },
+    {
+      "path": "schedules[3]",
+      "page": 23,
+      "quote": "‘27.02.24.(수)까지"
+    },
+    {
+      "path": "complexes[0]",
+      "page": 2,
+      "quote": "경기 남양주시 다산중앙로"
+    },
+    {
+      "path": "complexes[1]",
+      "page": 2,
+      "quote": "경기 수원시 영통구 창룡대로"
+    },
+    {
+      "path": "complexes[2]",
+      "page": 2,
+      "quote": "경기 안양시 동안구 관양로"
+    },
+    {
+      "path": "complexes[3]",
+      "page": 2,
+      "quote": "경기 화성시 병점구 효행로"
+    },
+    {
+      "path": "complexes[4]",
+      "page": 2,
+      "quote": "경기 화성시 병점구 효행로"
+    },
+    {
+      "path": "complexes[5]",
+      "page": 2,
+      "quote": "경기 수원시 영통구 동탄지성로"
+    },
+    {
+      "path": "complexes[6]",
+      "page": 2,
+      "quote": "경기 양평군 양평읍 남북로"
+    },
+    {
+      "path": "complexes[7]",
+      "page": 2,
+      "quote": "경기 파주시 황골로"
+    },
+    {
+      "path": "complexes[8]",
+      "page": 2,
+      "quote": "경기 수원시 영통구 광교중앙로"
+    },
+    {
+      "path": "complexes[9]",
+      "page": 2,
+      "quote": "경기 남양주시 다산중앙로"
+    },
+    {
+      "path": "complexes[10]",
+      "page": 2,
+      "quote": "경기 화성시 동탄구 동탄순환대로"
+    },
+    {
+      "path": "complexes[11]",
+      "page": 2,
+      "quote": "경기 광주시 광주역로"
+    },
+    {
+      "path": "complexes[12]",
+      "page": 2,
+      "quote": "경기 안산시 단원구 산단로"
+    },
+    {
+      "path": "complexes[13]",
+      "page": 2,
+      "quote": "경기 평택시 황해희곡로"
+    },
+    {
+      "path": "complexes[14]",
+      "page": 2,
+      "quote": "경기 오산시 가장산업동로"
+    },
+    {
+      "path": "complexes[15]",
+      "page": 2,
+      "quote": "경기 의왕시 부곡시장길"
+    },
+    {
+      "path": "complexes[16]",
+      "page": 2,
+      "quote": "경기 성남시 분당구 판교로"
+    },
+    {
+      "path": "complexes[17]",
+      "page": 2,
+      "quote": "경기 성남시 수정구 금토로"
+    },
+    {
+      "path": "complexes[18]",
+      "page": 2,
+      "quote": "경기 평택시 고덕갈평로"
+    },
+    {
+      "path": "supplyRows[0]",
+      "page": 4,
+      "quote": "24ABC 청년 20"
+    },
+    {
+      "path": "supplyRows[0].targets[0]",
+      "page": 8,
+      "quote": "46,920 1,000 45,920 178,670"
+    },
+    {
+      "path": "supplyRows[0].targets[1]",
+      "page": 8,
+      "quote": "49,680 1,000 48,680 189,910"
+    },
+    {
+      "path": "supplyRows[1]",
+      "page": 4,
+      "quote": "24B 주거급여수급자 3"
+    },
+    {
+      "path": "supplyRows[1].targets[0]",
+      "page": 8,
+      "quote": "41,400 1,000 40,400 158,250"
+    },
+    {
+      "path": "supplyRows[2]",
+      "page": 4,
+      "quote": "24C 고령자 3"
+    },
+    {
+      "path": "supplyRows[2].targets[0]",
+      "page": 8,
+      "quote": "52,440 1,000 51,440 200,370"
+    },
+    {
+      "path": "supplyRows[3]",
+      "page": 4,
+      "quote": "36A 청년 5"
+    },
+    {
+      "path": "supplyRows[3].targets[0]",
+      "page": 8,
+      "quote": "75,253 1,000 74,253 365,500"
+    },
+    {
+      "path": "supplyRows[3].targets[1]",
+      "page": 8,
+      "quote": "79,680 1,000 78,680 387,000"
+    },
+    {
+      "path": "supplyRows[4]",
+      "page": 4,
+      "quote": "36C 고령자 12"
+    },
+    {
+      "path": "supplyRows[4].targets[0]",
+      "page": 8,
+      "quote": "84,108 1,000 83,108 408,500"
+    },
+    {
+      "path": "supplyRows[5]",
+      "page": 4,
+      "quote": "38A 청년 5"
+    },
+    {
+      "path": "supplyRows[5].targets[0]",
+      "page": 8,
+      "quote": "79,433 1,000 78,433 378,250"
+    },
+    {
+      "path": "supplyRows[5].targets[1]",
+      "page": 8,
+      "quote": "84,106 1,000 83,106 400,500"
+    },
+    {
+      "path": "supplyRows[6]",
+      "page": 4,
+      "quote": "36A 청년 10"
+    },
+    {
+      "path": "supplyRows[6].targets[0]",
+      "page": 8,
+      "quote": "70,136 1,000 69,136 310,250"
+    },
+    {
+      "path": "supplyRows[6].targets[1]",
+      "page": 8,
+      "quote": "74,262 1,000 73,262 328,500"
+    },
+    {
+      "path": "supplyRows[7]",
+      "page": 4,
+      "quote": "36C 고령자 3"
+    },
+    {
+      "path": "supplyRows[7].targets[0]",
+      "page": 8,
+      "quote": "78,387 1,000 77,387 346,750"
+    },
+    {
+      "path": "supplyRows[8]",
+      "page": 4,
+      "quote": "36D 주거급여수급자 5"
+    },
+    {
+      "path": "supplyRows[8].targets[0]",
+      "page": 8,
+      "quote": "61,885 1,000 60,885 273,750"
+    },
+    {
+      "path": "supplyRows[9]",
+      "page": 4,
+      "quote": "20A 청년 8"
+    },
+    {
+      "path": "supplyRows[9].targets[0]",
+      "page": 8,
+      "quote": "26,551 1,000 25,551 199,890"
+    },
+    {
+      "path": "supplyRows[9].targets[1]",
+      "page": 8,
+      "quote": "28,113 1,000 27,113 211,650"
+    },
+    {
+      "path": "supplyRows[10]",
+      "page": 4,
+      "quote": "17A 청년 1"
+    },
+    {
+      "path": "supplyRows[10].targets[0]",
+      "page": 8,
+      "quote": "22,569 1,000 21,569 178,210"
+    },
+    {
+      "path": "supplyRows[10].targets[1]",
+      "page": 8,
+      "quote": "23,897 1,000 22,897 188,700"
+    },
+    {
+      "path": "supplyRows[11]",
+      "page": 4,
+      "quote": "20A 청년 4"
+    },
+    {
+      "path": "supplyRows[11].targets[0]",
+      "page": 8,
+      "quote": "26,551 1,000 25,551 209,520"
+    },
+    {
+      "path": "supplyRows[11].targets[1]",
+      "page": 9,
+      "quote": "28,113 1,000 27,113 221,850"
+    },
+    {
+      "path": "supplyRows[12]",
+      "page": 4,
+      "quote": "22A1 대학생 5"
+    },
+    {
+      "path": "supplyRows[12].targets[0]",
+      "page": 9,
+      "quote": "24,140 1,000 23,140 149,320"
+    },
+    {
+      "path": "supplyRows[13]",
+      "page": 4,
+      "quote": "22B 고령자 3"
+    },
+    {
+      "path": "supplyRows[13].targets[0]",
+      "page": 9,
+      "quote": "26,980 1,000 25,980 167,190"
+    },
+    {
+      "path": "supplyRows[14]",
+      "page": 4,
+      "quote": "26A1 대학생 10"
+    },
+    {
+      "path": "supplyRows[14].targets[0]",
+      "page": 9,
+      "quote": "28,560 1,000 27,560 168,460"
+    },
+    {
+      "path": "supplyRows[15]",
+      "page": 4,
+      "quote": "34B 고령자 3"
+    },
+    {
+      "path": "supplyRows[15].targets[0]",
+      "page": 9,
+      "quote": "30,400 1,000 29,400 160,810"
+    },
+    {
+      "path": "supplyRows[16]",
+      "page": 4,
+      "quote": "26A 청년 10"
+    },
+    {
+      "path": "supplyRows[16].targets[0]",
+      "page": 9,
+      "quote": "24,140 1,000 23,140 138,800"
+    },
+    {
+      "path": "supplyRows[16].targets[1]",
+      "page": 9,
+      "quote": "25,560 1,000 24,560 146,970"
+    },
+    {
+      "path": "supplyRows[17]",
+      "page": 4,
+      "quote": "35A1,B1 청년 10"
+    },
+    {
+      "path": "supplyRows[17].targets[0]",
+      "page": 9,
+      "quote": "30,940 1,000 29,940 177,900"
+    },
+    {
+      "path": "supplyRows[17].targets[1]",
+      "page": 9,
+      "quote": "32,760 1,000 31,760 188,370"
+    },
+    {
+      "path": "supplyRows[18]",
+      "page": 4,
+      "quote": "35AB 고령자 10"
+    },
+    {
+      "path": "supplyRows[18].targets[0]",
+      "page": 9,
+      "quote": "34,580 1,000 33,580 198,830"
+    },
+    {
+      "path": "supplyRows[19]",
+      "page": 4,
+      "quote": "16A1 대학생 7"
+    },
+    {
+      "path": "supplyRows[19].targets[0]",
+      "page": 9,
+      "quote": "34,680 1,000 33,680 144,500"
+    },
+    {
+      "path": "supplyRows[20]",
+      "page": 4,
+      "quote": "16A2 청년"
+    },
+    {
+      "path": "supplyRows[20].targets[0]",
+      "page": 9,
+      "quote": "34,680 1,000 33,680 144,500"
+    },
+    {
+      "path": "supplyRows[20].targets[1]",
+      "page": 9,
+      "quote": "36,720 1,000 35,720 153,000"
+    },
+    {
+      "path": "supplyRows[21]",
+      "page": 4,
+      "quote": "26A 청년 15"
+    },
+    {
+      "path": "supplyRows[21].targets[0]",
+      "page": 9,
+      "quote": "51,680 1,000 50,680 215,330"
+    },
+    {
+      "path": "supplyRows[21].targets[1]",
+      "page": 9,
+      "quote": "54,720 1,000 53,720 228,000"
+    },
+    {
+      "path": "supplyRows[22]",
+      "page": 4,
+      "quote": "26C 고령자 7"
+    },
+    {
+      "path": "supplyRows[22].targets[0]",
+      "page": 9,
+      "quote": "57,760 1,000 56,760 240,660"
+    },
+    {
+      "path": "supplyRows[23]",
+      "page": 4,
+      "quote": "18A1 고령자 1"
+    },
+    {
+      "path": "supplyRows[23].targets[0]",
+      "page": 9,
+      "quote": "34,641 1,000 33,641 134,920"
+    },
+    {
+      "path": "supplyRows[24]",
+      "page": 4,
+      "quote": "18A2 주거급여수급자 1"
+    },
+    {
+      "path": "supplyRows[24].targets[0]",
+      "page": 9,
+      "quote": "27,348 1,000 26,348 106,960"
+    },
+    {
+      "path": "supplyRows[25]",
+      "page": 4,
+      "quote": "26A6 주거급여수급자 1"
+    },
+    {
+      "path": "supplyRows[25].targets[0]",
+      "page": 10,
+      "quote": "38,288 1,000 37,288 149,500"
+    },
+    {
+      "path": "supplyRows[26]",
+      "page": 4,
+      "quote": "26B 고령자 2"
+    },
+    {
+      "path": "supplyRows[26].targets[0]",
+      "page": 10,
+      "quote": "48,498 1,000 47,498 189,610"
+    },
+    {
+      "path": "supplyRows[27]",
+      "page": 4,
+      "quote": "18A3 고령자 1"
+    },
+    {
+      "path": "supplyRows[27].targets[0]",
+      "page": 10,
+      "quote": "24,799 1,000 23,799 102,100"
+    },
+    {
+      "path": "supplyRows[28]",
+      "page": 4,
+      "quote": "18A4 주거급여수급자 2"
+    },
+    {
+      "path": "supplyRows[28].targets[0]",
+      "page": 10,
+      "quote": "19,578 1,000 18,578 80,400"
+    },
+    {
+      "path": "supplyRows[29]",
+      "page": 5,
+      "quote": "26B 청년 39"
+    },
+    {
+      "path": "supplyRows[29].targets[0]",
+      "page": 10,
+      "quote": "32,050 1,000 31,050 132,590"
+    },
+    {
+      "path": "supplyRows[29].targets[1]",
+      "page": 10,
+      "quote": "33,936 1,000 32,936 140,390"
+    },
+    {
+      "path": "supplyRows[30]",
+      "page": 5,
+      "quote": "26AB 고령자 4"
+    },
+    {
+      "path": "supplyRows[30].targets[0]",
+      "page": 10,
+      "quote": "35,822 1,000 34,822 148,040"
+    },
+    {
+      "path": "supplyRows[31]",
+      "page": 5,
+      "quote": "36AB 신혼부부, 한부모가족 136"
+    },
+    {
+      "path": "supplyRows[31].targets[0]",
+      "page": 10,
+      "quote": "52,211 1,000 51,211 216,960"
+    },
+    {
+      "path": "supplyRows[32]",
+      "page": 5,
+      "quote": "36AB1 청년"
+    },
+    {
+      "path": "supplyRows[32].targets[0]",
+      "page": 10,
+      "quote": "44,379 1,000 43,379 184,420"
+    },
+    {
+      "path": "supplyRows[32].targets[1]",
+      "page": 10,
+      "quote": "46,990 1,000 45,990 195,270"
+    },
+    {
+      "path": "supplyRows[33]",
+      "page": 5,
+      "quote": "44 주거급여수급자 1"
+    },
+    {
+      "path": "supplyRows[33].targets[0]",
+      "page": 10,
+      "quote": "47,860 1,000 46,860 199,090"
+    },
+    {
+      "path": "supplyRows[34]",
+      "page": 5,
+      "quote": "44ABC 신혼부부, 한부모가족 120"
+    },
+    {
+      "path": "supplyRows[34].targets[0]",
+      "page": 10,
+      "quote": "63,814 1,000 62,814 265,460"
+    },
+    {
+      "path": "supplyRows[35]",
+      "page": 5,
+      "quote": "44ABC1 청년"
+    },
+    {
+      "path": "supplyRows[35].targets[0]",
+      "page": 10,
+      "quote": "54,241 1,000 53,241 225,630"
+    },
+    {
+      "path": "supplyRows[35].targets[1]",
+      "page": 10,
+      "quote": "57,432 1,000 56,432 238,910"
+    },
+    {
+      "path": "supplyRows[36]",
+      "page": 5,
+      "quote": "36A1 청년 20"
+    },
+    {
+      "path": "supplyRows[36].targets[0]",
+      "page": 10,
+      "quote": "57,444 1,000 56,444 222,130"
+    },
+    {
+      "path": "supplyRows[36].targets[1]",
+      "page": 10,
+      "quote": "60,823 1,000 59,823 235,190"
+    },
+    {
+      "path": "supplyRows[37]",
+      "page": 5,
+      "quote": "44A 신혼부부, 한부모가족 30"
+    },
+    {
+      "path": "supplyRows[37].targets[0]",
+      "page": 10,
+      "quote": "80,223 1,000 79,223 309,630"
+    },
+    {
+      "path": "supplyRows[38]",
+      "page": 5,
+      "quote": "16A3 청년 10"
+    },
+    {
+      "path": "supplyRows[38].targets[0]",
+      "page": 10,
+      "quote": "17,273 1,000 16,273 71,280"
+    },
+    {
+      "path": "supplyRows[38].targets[1]",
+      "page": 10,
+      "quote": "18,290 1,000 17,290 75,480"
+    },
+    {
+      "path": "supplyRows[39]",
+      "page": 5,
+      "quote": "21B 고령자 5"
+    },
+    {
+      "path": "supplyRows[39].targets[0]",
+      "page": 11,
+      "quote": "25,357 1,000 24,357 104,530"
+    },
+    {
+      "path": "supplyRows[40]",
+      "page": 5,
+      "quote": "16A3 청년 22"
+    },
+    {
+      "path": "supplyRows[40].targets[0]",
+      "page": 11,
+      "quote": "8,840 1,000 7,840 37,190"
+    },
+    {
+      "path": "supplyRows[40].targets[1]",
+      "page": 11,
+      "quote": "9,360 1,000 8,360 39,380"
+    },
+    {
+      "path": "supplyRows[41]",
+      "page": 5,
+      "quote": "21A1 청년 19"
+    },
+    {
+      "path": "supplyRows[41].targets[0]",
+      "page": 11,
+      "quote": "11,560 1,000 10,560 54,520"
+    },
+    {
+      "path": "supplyRows[41].targets[1]",
+      "page": 11,
+      "quote": "12,240 1,000 11,240 57,730"
+    },
+    {
+      "path": "supplyRows[42]",
+      "page": 5,
+      "quote": "36ABC1 청년 12"
+    },
+    {
+      "path": "supplyRows[42].targets[0]",
+      "page": 11,
+      "quote": "19,040 1,000 18,040 84,940"
+    },
+    {
+      "path": "supplyRows[42].targets[1]",
+      "page": 11,
+      "quote": "20,160 1,000 19,160 89,940"
+    },
+    {
+      "path": "supplyRows[43]",
+      "page": 5,
+      "quote": "21AB 청년 11"
+    },
+    {
+      "path": "supplyRows[43].targets[0]",
+      "page": 11,
+      "quote": "26,180 1,000 25,180 122,170"
+    },
+    {
+      "path": "supplyRows[43].targets[1]",
+      "page": 11,
+      "quote": "27,720 1,000 26,720 129,360"
+    },
+    {
+      "path": "supplyRows[44]",
+      "page": 5,
+      "quote": "29B 고령자 3"
+    },
+    {
+      "path": "supplyRows[44].targets[0]",
+      "page": 11,
+      "quote": "48,640 1,000 47,640 231,000"
+    },
+    {
+      "path": "supplyRows[45]",
+      "page": 5,
+      "quote": "16A 청년 60"
+    },
+    {
+      "path": "supplyRows[45].targets[0]",
+      "page": 11,
+      "quote": "46,443 1,000 45,443 175,950"
+    },
+    {
+      "path": "supplyRows[45].targets[1]",
+      "page": 11,
+      "quote": "49,175 1,000 48,175 186,300"
+    },
+    {
+      "path": "supplyRows[46]",
+      "page": 5,
+      "quote": "26A2B 청년 7"
+    },
+    {
+      "path": "supplyRows[46].targets[0]",
+      "page": 11,
+      "quote": "72,813 1,000 71,813 277,950"
+    },
+    {
+      "path": "supplyRows[46].targets[1]",
+      "page": 11,
+      "quote": "77,097 1,000 76,097 294,300"
+    },
+    {
+      "path": "supplyRows[47]",
+      "page": 5,
+      "quote": "26A1 고령자 7"
+    },
+    {
+      "path": "supplyRows[47].targets[0]",
+      "page": 11,
+      "quote": "81,381 1,000 80,381 310,650"
+    },
+    {
+      "path": "supplyRows[48]",
+      "page": 5,
+      "quote": "26C 고령자 3"
+    },
+    {
+      "path": "supplyRows[48].targets[0]",
+      "page": 11,
+      "quote": "80,560 1,000 79,560 303,020"
+    },
+    {
+      "path": "supplyRows[49]",
+      "page": 5,
+      "quote": "35B1 청년 5"
+    },
+    {
+      "path": "supplyRows[49].targets[0]",
+      "page": 11,
+      "quote": "94,180 1,000 93,180 350,140"
+    },
+    {
+      "path": "supplyRows[49].targets[1]",
+      "page": 11,
+      "quote": "99,720 1,000 98,720 370,730"
+    },
+    {
+      "path": "supplyRows[50]",
+      "page": 5,
+      "quote": "35C1 청년 2"
+    },
+    {
+      "path": "supplyRows[50].targets[0]",
+      "page": 11,
+      "quote": "94,180 1,000 93,180 350,140"
+    },
+    {
+      "path": "supplyRows[50].targets[1]",
+      "page": 11,
+      "quote": "99,720 1,000 98,720 370,730"
+    },
+    {
+      "path": "supplyRows[51]",
+      "page": 5,
+      "quote": "35D1 청년 2"
+    },
+    {
+      "path": "supplyRows[51].targets[0]",
+      "page": 11,
+      "quote": "94,180 1,000 93,180 350,140"
+    },
+    {
+      "path": "supplyRows[51].targets[1]",
+      "page": 11,
+      "quote": "99,720 1,000 98,720 370,730"
+    },
+    {
+      "path": "supplyRows[52]",
+      "page": 5,
+      "quote": "18A 대학생 2"
+    },
+    {
+      "path": "supplyRows[52].targets[0]",
+      "page": 12,
+      "quote": "19,837 1,000 18,837 89,260"
+    },
+    {
+      "path": "supplyRows[53]",
+      "page": 5,
+      "quote": "18A1 청년 68"
+    },
+    {
+      "path": "supplyRows[53].targets[0]",
+      "page": 12,
+      "quote": "19,837 1,000 18,837 89,260"
+    },
+    {
+      "path": "supplyRows[53].targets[1]",
+      "page": 12,
+      "quote": "21,003 1,000 20,003 94,510"
+    },
+    {
+      "path": "supplyRows[54]",
+      "page": 5,
+      "quote": "18A2 청년 주거약자 3"
+    },
+    {
+      "path": "supplyRows[54].targets[0]",
+      "page": 12,
+      "quote": "19,837 1,000 18,837 89,260"
+    },
+    {
+      "path": "supplyRows[54].targets[1]",
+      "page": 12,
+      "quote": "21,003 1,000 20,003 94,510"
+    },
+    {
+      "path": "supplyRows[55]",
+      "page": 5,
+      "quote": "26A1 청년 40"
+    },
+    {
+      "path": "supplyRows[55].targets[0]",
+      "page": 12,
+      "quote": "28,102 1,000 27,102 126,460"
+    },
+    {
+      "path": "supplyRows[55].targets[1]",
+      "page": 12,
+      "quote": "29,755 1,000 28,755 133,900"
+    }
+  ]
+}

@@ -20,6 +20,7 @@ import { checkAnnouncement, type ComplexLabels, type HousingCandidates } from '.
 import { applicableCells, assembleReview, fieldNeeds, pendingField, serverFieldError, serverFieldsError, complexGroups, pendingRow, rowOfReviewId, cellMatches, createReview, pendingChanges, pendingItems, rebaseReview, ReviewError, reviewSection, type Cell, type ReleaseChoice, type PendingChange, type Review, type ReviewFilter, type ReviewSection } from './review'
 import { ReviewCells } from './ReviewCells'
 import { ReviewSupply } from './ReviewSupply'
+import { SharedCountsRepair } from './SharedCountsRepair'
 import { PdfSource, PreparationFooter, RequestPreparation } from './RequestPreparation'
 import styles from './PdfCorrection.module.css'
 
@@ -273,7 +274,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   }, [jump])
   function nextPending() {
     if (!review) return
-    const [item] = pendingItems(review, !supplyDraft, workspace ?? undefined)
+    const [item] = pendingItems(review, !supplyDraft, workspace ?? undefined, release)
     if (!item) return
     if (filter !== 'pending') setFilter('all')
     const row = rowOfReviewId(item.id)
@@ -318,7 +319,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     setBusy(true); setError('')
     let input: JsonUpdateInput | undefined
     try {
-      input = assembleReview(review, workspace, { reason: reason.trim(), sourceUrl: sourceUrl.trim(), sourcePage: sourcePage.trim() || null }, unconfirmed(workspace) ? release : undefined)
+      input = assembleReview(review, workspace, { reason: reason.trim(), sourceUrl: sourceUrl.trim(), sourcePage: sourcePage.trim() || null }, !supplyDraft && unconfirmed(workspace) ? release : undefined)
       if (supplyDraft) { supplyDraft.onFill(input.correction); return }
       const preview = await previewJsonUpdate(id, input)
       setChecked({ input, preview })
@@ -385,12 +386,12 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   }
   if (!workspace) return <section className={styles.page}><h1>PDF로 공고 보정</h1>{error ? <div role="alert"><p>{error}</p><Button onClick={() => setAttempt(value => value + 1)}>다시 불러오기</Button></div> : <p role="status">공고와 연결 주택형을 불러오는 중…</p>}</section>
   if (workspace.detail.summary.deleted) return <section className={styles.page}><h1>휴지통의 공고입니다.</h1><p>공고를 복구한 뒤 보정하세요.</p><Link to={back}>공고 상세로 돌아가기</Link></section>
-  const pending = review ? pendingItems(review, !supplyDraft, workspace ?? undefined) : []
+  const pending = review ? pendingItems(review, !supplyDraft, workspace ?? undefined, release) : []
   const changes = review ? pendingChanges(review) : []
   const counts = { changed: 0, new: 0 }
   if (review) for (const cell of applicableCells(review)) if (cell.extracted.state === 'changed' || cell.extracted.state === 'new') counts[cell.extracted.state] += 1
   const empty = `이 영역에는 ‘${filterLabels.find(([key]) => key === filter)?.[1]}’ 항목이 없습니다.`
-  const fieldNeed = review ? fieldNeeds(review) : new Map<string, string>()
+  const fieldNeed = review ? fieldNeeds(review, supplyDraft ? undefined : workspace, release) : new Map<string, string>()
   const visibleIn = (cells: Review['metadata']) => filter === 'all' || cells.some(cell => cellMatches(cell, filter) || filter === 'pending' && pendingField(cell, fieldNeed))
 
   const dropProps = phase === 'prepare' ? {
@@ -407,8 +408,10 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     {draftError && <div role="alert" className={`${styles.error} ${styles.dismissible}`}><p>{draftError}</p><Button data-design-system className={styles.quietButton} onClick={() => setDraftError('')}>알림 닫기</Button></div>}
     {storedDraft && <DraftOffer draft={storedDraft} workspace={workspace} pdfHash={pdfHash} onRestore={restoreDraft} onDiscard={() => void discardDraft()} />}
     {phase === 'prepare' && <><div className={styles.mobileSwitch}><Button data-design-system aria-pressed={mobileView === 'pdf'} onClick={() => setMobileView('pdf')}>PDF 보기</Button><Button data-design-system aria-pressed={mobileView === 'review'} onClick={() => setMobileView('review')}>추출 보기</Button></div><div className={styles.workbench}>{pdfPane}
-      <div className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="prepare"><RequestPreparation announcementName={workspace.detail.summary.name} pdf={pdf} extraction={extraction} onExtract={extract} onCancel={() => void cancelExtract()} parsed={parsed} checks={checks} saved={saved} samePdf={Boolean(saved && pdfHash && saved.pdfSha256 === pdfHash)} onLoadSaved={loadSaved} /></div>
-    </div><PreparationFooter ready={Boolean(pdf) && parsed.ok && (extraction.status === 'done' || resumable)} onReview={start} /></>}
+      <div className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="prepare"><RequestPreparation announcementName={workspace.detail.summary.name} pdf={pdf} extraction={extraction} onExtract={extract} onCancel={() => void cancelExtract()} parsed={parsed} checks={checks} saved={saved} samePdf={Boolean(saved && pdfHash && saved.pdfSha256 === pdfHash)} onLoadSaved={loadSaved} />{!parsed.ok && extraction.status === 'done' && <SharedCountsRepair text={text} onEvidence={evidence} onRepair={value => {
+        setText(value); setNotice('공통 모집수 교정본을 확인했습니다. 저장된 추출 원본은 유지합니다. 묶음을 해제했다면 개별 모집수를 확인하세요.')
+      }} />}</div>
+    </div><PreparationFooter ready={Boolean(pdf) && parsed.ok && (extraction.status === 'done' || resumable)} needsRepair={extraction.status === 'done' && !parsed.ok} onReview={start} /></>}
     {active && review && <><div className={styles.mobileSwitch}><Button data-design-system aria-pressed={mobileView === 'pdf'} onClick={() => setMobileView('pdf')}>PDF 보기</Button><Button data-design-system aria-pressed={mobileView === 'review'} onClick={() => setMobileView('review')}>검토표 보기</Button></div><div className={styles.workbench}>{pdfPane}
       <div ref={reviewPane} className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="review">
         {checks.some(check => check.matches === false) && <p className={styles.error}>PDF의 {checks.filter(check => check.matches === false).map(check => `${check.label}(${check.pdf})`).join('·')}이 현재 공고와 다릅니다. 이 공고의 PDF로 받은 응답인지 확인하세요.</p>}
@@ -422,7 +425,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
           {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.extraction.undatedSchedules.length > 0 && <p className={styles.hint}>날짜 없이 안내한 일정: {review.extraction.undatedSchedules.join(' · ')}</p>}<ReviewSchedules review={review} workspace={workspace} filter={filter} empty={empty} onChange={change} onEvidence={evidence} /></>}
           {section === 'reception' && <><h2>접수처·기본정보</h2><p>{unconfirmed(workspace) ? '미확정 공고는 접수 시작일·접수 종료일·당첨자 발표일을 모두 채워야 저장됩니다. 공급·모집 유형은 공개 전 확인에서 선택하세요.' : '임대유형·모집유형·기관·공고명은 현재값을 유지합니다.'} 접수처는 한 곳만 저장할 수 있으므로 온라인·현장 병행 여부를 확인하세요.</p>{visibleIn(review.reception) && <h3>접수처</h3>}<ReviewCells cells={review.reception} scope="접수처" needs={fieldNeed} filter={filter} onChange={reception => change({ ...review, reception })} onEvidence={evidence} />{visibleIn(review.metadata) && <h3>공고 기본 일정</h3>}<ReviewCells cells={review.metadata} scope="기본정보" needs={fieldNeed} filter={filter} onChange={metadata => change({ ...review, metadata })} onEvidence={evidence} />{!visibleIn(review.reception) && !visibleIn(review.metadata) && <p className={styles.hint}>{empty}</p>}</>}
         </div></fieldset>
-        {!supplyDraft && unconfirmed(workspace) && <ReleaseCheck value={release} disabled={busy || blocked} onChange={setRelease} />}
+        {!supplyDraft && unconfirmed(workspace) && <ReleaseCheck value={release} needs={fieldNeed} disabled={busy || blocked} onChange={setRelease} />}
       </div></div>
       <footer className={styles.footer}><div><strong>{changes.length}개 값 반영</strong><span>{changeSummary(changes)} · 선택하지 않은 값은 유지합니다.</span></div><div className={styles.actions}>{!supplyDraft && <><Button data-design-system className={styles.secondaryButton} disabled={!draftChecked || drafts.status.state === 'saving' || drafts.status.state === 'conflict'} onClick={() => void drafts.saveNow()}>임시저장</Button></>}{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`미해결 ${pending.length}개 ↓`}</Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}<Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => { setPhase('prepare'); setError('') }}>응답 준비로 돌아가기</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
       {/* 근거는 추출할 때 자동으로 채운다. 원문 URL이 없을 때처럼 저장을 막는 값만 직접 입력하게 한다. */}
@@ -491,11 +494,11 @@ function unconfirmed(workspace: JsonWorkspace | null) {
   return workspace?.detail.summary.announcement?.releaseStatus === 'UNCONFIRMED'
 }
 
-function ReleaseCheck({ value, disabled, onChange }: { value: ReleaseChoice; disabled: boolean; onChange: (next: ReleaseChoice) => void }) {
+function ReleaseCheck({ value, needs, disabled, onChange }: { value: ReleaseChoice; needs: Map<string, string>; disabled: boolean; onChange: (next: ReleaseChoice) => void }) {
   return <section className={styles.releaseCheck} aria-label="공개 전 확인"><h2>공개 전 확인</h2>
     <p className={styles.hint}>미확정 공고라 사용자에게 보이지 않습니다. 저장하려면 접수처·기본정보에서 접수 시작일·접수 종료일·당첨자 발표일을 채우고, 여기서 공급·모집 유형을 정해야 합니다. 공급행에 연결된 단지를 확인한 뒤 공개를 요청하세요. 공개하면 신규 공고 알림이 나갑니다.</p>
-    <label>공급 유형<select value={value.rentalType} disabled={disabled} onChange={event => onChange({ ...value, rentalType: event.target.value })}><option value="">현재값 유지</option>{rentals.map(type => <option key={type} value={type}>{labels[type] ?? type}</option>)}</select></label>
-    <label>모집 유형<select value={value.recruitmentType} disabled={disabled} onChange={event => onChange({ ...value, recruitmentType: event.target.value })}><option value="">현재값 유지</option>{['NEW', 'WAITLIST', 'ETC'].map(type => <option key={type} value={type}>{labels[type] ?? type}</option>)}</select></label>
+    <label>공급 유형<select data-review-id="release:rentalType" aria-invalid={needs.has('release:rentalType')} title={needs.get('release:rentalType')} value={value.rentalType} disabled={disabled} onChange={event => onChange({ ...value, rentalType: event.target.value })}><option value="">현재값 유지</option>{rentals.map(type => <option key={type} value={type}>{labels[type] ?? type}</option>)}</select></label>
+    <label>모집 유형<select data-review-id="release:recruitmentType" aria-invalid={needs.has('release:recruitmentType')} title={needs.get('release:recruitmentType')} value={value.recruitmentType} disabled={disabled} onChange={event => onChange({ ...value, recruitmentType: event.target.value })}><option value="">현재값 유지</option>{['NEW', 'WAITLIST', 'ETC'].map(type => <option key={type} value={type}>{labels[type] ?? type}</option>)}</select></label>
     <label className={styles.releaseConfirmation}><input type="checkbox" checked={value.publish} disabled={disabled} onChange={event => onChange({ ...value, publish: event.target.checked })} />단지를 확인했고 이 보정과 함께 공개합니다</label>
   </section>
 }

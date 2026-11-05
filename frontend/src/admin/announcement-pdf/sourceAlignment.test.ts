@@ -4,7 +4,7 @@ import { scenario } from './fixtures/workspace'
 import fixtures from './fixtures/scenarios.json'
 import { evidenceFor, noteFor, readExtraction } from './extraction'
 import type { JsonWorkspace } from '../announcement-json/api'
-import { assembleReview, chooseCellValue, createReview, linkedHousingTypeId } from './review'
+import { assembleReview, chooseCellValue, createReview, editCell, linkedHousingTypeId } from './review'
 import { alignSourceRows } from './sourceAlignment'
 import { parseSourceLabel } from './subtypes'
 
@@ -226,6 +226,22 @@ describe('미연결 단지가 여럿인 공고의 LH 원천행 맞추기', () =>
     expect(both.rows.map(row => [row.proposal.destination, row.proposal.newComplex?.id, row.include])).toEqual([['row:642', 1724, false], ['row:655', 1621, true]])
     const again = alignSourceRows(both, workspace, '동탄2 A48BL', { id: 9, name: '다른 단지' }, [])!
     expect(again.rows.map(row => [row.proposal.destination, row.proposal.newComplex?.id])).toEqual([['row:642', 9], ['row:655', 1621]])
+  })
+
+  it.each([1724, 9])('단지를 다시 고를 때(%s) 수동 값·제외·다른 단지 확인과 기본정보 결정을 보존한다', selectedId => {
+    const { review, workspace } = setup()
+    const first = alignSourceRows(review, workspace, '동탄2 A48BL', { id: 1724, name: 'A48' }, [])!
+    const both = alignSourceRows(first, workspace, '동탄2 A63BL', { id: 1621, name: 'A63' }, [])!
+    const edited = { ...both, metadata: both.metadata.map(cell => cell.field === 'postedDate' ? editCell(cell, '2026-10-01') : cell),
+      rows: both.rows.map((row, index) => ({ ...row, reviewed: true, include: index === 0,
+        cells: row.cells.map(cell => cell.field === 'totalSupplyHouseholdCount' ? editCell(cell, '17') : cell) })) }
+    const next = alignSourceRows(edited, workspace, '동탄2 A48BL', { id: selectedId, name: 'A48' }, [])!
+    expect(next.rows.map(row => row.cells.find(cell => cell.field === 'totalSupplyHouseholdCount')?.value)).toEqual([17, 17])
+    expect(next.rows.map(row => row.include)).toEqual([true, false])
+    expect(next.rows[1]).toEqual(edited.rows[1])
+    expect(next.metadata).toEqual(edited.metadata)
+    expect(next.rows[0].proposal.newComplex?.id).toBe(selectedId)
+    if (selectedId === 1724) expect(next).toEqual(edited)
   })
 
   it('형이 하나인 LH 행에 1:1로 맞으면 확인 없이 두고, 여러 형을 묶은 LH 행에 한 형만 맞으면 확인하게 한다', () => {
