@@ -16,7 +16,8 @@ class CaddyCheck(module.BackendCheck):
     def __init__(self):
         super().__init__('nginx:stable-alpine')
         self.environment['TOADZIP_CADDY_DOMAIN'] = 'localhost'
-        self.original = self.original.replace('server backend-blue:8080;', 'server backend:8080;')
+        self.environment['BLUEGREEN_METRICS_BIND_ADDRESS'] = '127.0.0.1'
+        self.original = self.original.replace('server backend-blue:', 'server backend:')
         self.config.write_text(self.original)
         (self.runtime / 'assets/chunk-old.mjs').write_text('export default "old"')
         for name, version in [('backend', 'old'), ('green', 'green')]:
@@ -118,7 +119,7 @@ class CaddyCheck(module.BackendCheck):
             assert '308' in response and 'location: https://localhost/' in response
             print('PASS: verified TLS, HTTP redirect, frontend/API/assets, HTTPS forwarding without a redirect loop', flush=True)
             temporary = self.directory / 'switch.tmp'
-            temporary.write_text(self.config.read_text().replace('server backend:8080;', 'server backend-green:8080;'))
+            temporary.write_text(self.config.read_text().replace('server backend:', 'server backend-green:'))
             temporary.replace(self.config)
             self.docker('exec', self.container('edge-nginx'), 'nginx', '-t')
             self.docker('exec', self.container('edge-nginx'), 'nginx', '-s', 'reload')

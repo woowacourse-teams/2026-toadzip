@@ -1,5 +1,9 @@
 # Application-server ingress. Use instead of compose.https.yaml after the initial port cutover.
 services:
+  # Edge owns the stable management port; legacy backend remains reachable inside Docker.
+  backend:
+    ports: !reset []
+
   frontend:
     ports: !reset []
     command: [nginx, -c, /etc/nginx/nginx.conf, -g, 'daemon off;']
@@ -8,6 +12,8 @@ services:
     volumes: !reset []
 
   edge-nginx:
+    ports:
+      - "${BLUEGREEN_METRICS_BIND_ADDRESS:?Set the application server private IP}:${MANAGEMENT_PORT:-8081}:8081"
     volumes:
       - type: bind
         source: "${EDGE_NGINX_CONF_DIR:-./infra/runtime/bluegreen/edge}"

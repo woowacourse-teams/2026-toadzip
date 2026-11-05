@@ -13,6 +13,7 @@ FIXTURE = {'PRIMARY_DB_HOST': 'fixture', 'PRIMARY_DB_PASSWORD': 'fixture-only',
            'SHARED_DB_HOST': 'fixture', 'SHARED_DB_PASSWORD': 'fixture-only',
            'SPRING_PROFILES_ACTIVE': 'dev', 'LOKI_PUSH_URL': 'http://fixture.invalid',
            'TOADZIP_CADDY_DOMAIN': 'dev.bokduckbang.com',
+           'BLUEGREEN_METRICS_BIND_ADDRESS': '127.0.0.1',
            'EDGE_NGINX_CONF_DIR': '/tmp/ingress-fixture/edge',
            'EDGE_NGINX_ASSET_DIR': '/tmp/ingress-fixture/assets'}
 
@@ -72,6 +73,14 @@ class CaddyIngressTests(unittest.TestCase):
         self.assertEqual(len(ports), 1)
         self.assertEqual((ports[0]['host_ip'], str(ports[0]['published']), ports[0]['target']), ('127.0.0.1', '18443', 443))
         self.assertTrue(services['frontend']['ports'])
+
+    def test_edge_owns_management_port_on_explicit_address_without_legacy_conflict(self):
+        services = json.loads(configuration({'BLUEGREEN_METRICS_BIND_ADDRESS': '10.1.0.8'}).stdout)['services']
+        self.assertFalse(services['backend'].get('ports'))
+        ports = [port for port in services['edge-nginx']['ports'] if port['target'] == 8081]
+        self.assertEqual(len(ports), 1)
+        self.assertEqual((ports[0]['host_ip'], str(ports[0]['published'])), ('10.1.0.8', '8081'))
+        self.assertNotEqual(configuration({'BLUEGREEN_METRICS_BIND_ADDRESS': ''}, check=False).returncode, 0)
 
     def test_legacy_frontend_tls_is_not_retained_by_server_overlay(self):
         settings = configuration({'TOADZIP_TLS_DOMAIN': 'dev.bokduckbang.com', 'TOADZIP_TLS_GID': '42424'},

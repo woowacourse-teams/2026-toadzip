@@ -5,12 +5,29 @@ import argparse
 import fcntl
 import os
 from pathlib import Path
+import re
 import sys
+import tempfile
+import uuid
 
 import bluegreen
 
 
-def prepare(runtime, source):
+def upgrade_metrics(text):
+    active = bluegreen.active_service(text, 'backend')
+    if 'backend_metrics_active' in text:
+        bluegreen.metrics_service(text)
+        return text
+    if re.search(r'\blisten\s+(?:[^;\s]+:)?8081\b', text):
+        raise bluegreen.DeploymentError('Runtime already has a management listener; review it before upgrading')
+    template = (bluegreen.ROOT / 'infra/nginx/edge/default.conf').read_text()
+    block = template.split('# BEGIN backend metrics\n', 1)[1].split('# END backend metrics', 1)[0]
+    block = bluegreen.upstream_pattern('backend_metrics').sub(
+        lambda match: match.group(1) + active + match.group(3), block)
+    return text.rstrip() + '\n\n# BEGIN backend metrics\n' + block + '# END backend metrics\n'
+
+
+def prepare(runtime, source, upgrade=False):
     runtime = runtime.resolve()
     edge = runtime / 'edge'
     destination = edge / 'default.conf'
@@ -29,13 +46,34 @@ def prepare(runtime, source):
         except BlockingIOError as error:
             raise bluegreen.DeploymentError('Another deployment is running') from error
         try:
-            # Recheck under the shared lock; never overwrite an existing live configuration.
+            # Default preparation preserves existing state; the explicit upgrade below holds the same lock.
             if not destination.exists():
                 with destination.open('x') as output:
                     output.write(text)
                     os.fchmod(output.fileno(), 0o644)
                     output.flush()
                     os.fsync(output.fileno())
+            if upgrade:
+                current = destination.read_text()
+                updated = upgrade_metrics(current)
+                if updated != current:
+                    backup = edge.resolve().parent / ('before-metrics-' + uuid.uuid4().hex + '.conf.bak')
+                    with backup.open('x') as output:
+                        os.fchmod(output.fileno(), destination.stat().st_mode & 0o777)
+                        output.write(current)
+                        output.flush()
+                        os.fsync(output.fileno())
+                    descriptor, temporary = tempfile.mkstemp(dir=edge, prefix='metrics-', suffix='.tmp')
+                    try:
+                        with os.fdopen(descriptor, 'w') as output:
+                            os.fchmod(output.fileno(), destination.stat().st_mode & 0o777)
+                            output.write(updated)
+                            output.flush()
+                            os.fsync(output.fileno())
+                        os.replace(temporary, destination)
+                    finally:
+                        Path(temporary).unlink(missing_ok=True)
+                    print('Previous configuration: ' + str(backup))
             assets = edge.resolve().parent / 'assets'
             assets.mkdir(exist_ok=True, mode=0o755)
             assets.chmod(0o755)
@@ -43,7 +81,7 @@ def prepare(runtime, source):
             fcntl.flock(handle, fcntl.LOCK_UN)
     print('Prepared deployment runtime: ' + str(runtime))
     print('Configuration: ' + str(destination))
-    print('Existing configuration and assets were preserved')
+    print('Active colors and assets were preserved; Docker was not reloaded')
     return destination
 
 
@@ -52,9 +90,11 @@ def main():
     parser.add_argument('--runtime', type=Path, default=bluegreen.DEFAULT_RUNTIME)
     parser.add_argument('--from-config', type=Path, default=bluegreen.ROOT / 'infra/nginx/edge/default.conf',
                         help='Existing runtime configuration to copy on first initialization, without moving it')
+    parser.add_argument('--upgrade-metrics', action='store_true',
+                        help='Back up and add metrics routing to the runtime, preserving active colors; does not reload Nginx')
     options = parser.parse_args()
     try:
-        prepare(options.runtime, options.from_config)
+        prepare(options.runtime, options.from_config, options.upgrade_metrics)
     except (OSError, bluegreen.DeploymentError) as error:
         print('ERROR: ' + str(error), file=sys.stderr)
         return 1
