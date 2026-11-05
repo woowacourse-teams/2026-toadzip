@@ -117,6 +117,89 @@ public final class ComparisonFixtures {
         return ordinary("D05", "사천벌리1", "48240", LocalDate.of(2026, 10, 16), 1, 50, 245000000L);
     }
 
+    /** D05 PDF pp1-2,10; only the 26 square metre application unit is represented. */
+    public static ComparisonContent sacheonWithInformation() {
+        ComparisonContent content = sacheon();
+        return new ComparisonContent(
+                content.metadata(),
+                content.documents(),
+                content.evidences(),
+                List.of(
+                        new SupplyUnit(
+                                "unit",
+                                "사천벌리1 26형",
+                                List.of(
+                                        new PhysicalHousing(
+                                                "type26",
+                                                "사천벌리1",
+                                                "26",
+                                                "영구임대",
+                                                new java.math.BigDecimal("26.37"),
+                                                null,
+                                                null)))),
+                content.paths(),
+                content.options(),
+                content.guidances(),
+                List.of(
+                        new Quantity(
+                                "built",
+                                "건설 세대수",
+                                QuantityKind.CONSTRUCTED,
+                                new java.math.BigDecimal("298"),
+                                List.of("unit"),
+                                List.of("source")),
+                        new Quantity(
+                                "vacant",
+                                "현재 공가",
+                                QuantityKind.VACANT,
+                                new java.math.BigDecimal("77"),
+                                List.of("unit"),
+                                List.of("source")),
+                        new Quantity(
+                                "recruit",
+                                "금회 모집 예비자",
+                                QuantityKind.WAITLIST_RECRUITED,
+                                new java.math.BigDecimal("110"),
+                                List.of("unit"),
+                                List.of("source"))),
+                List.of(
+                        new RentOffer(
+                                "rent-a",
+                                "26형 가군",
+                                "생계·의료급여수급자 등: 원문 가군 해당 여부 확인",
+                                2520000L,
+                                2520000L,
+                                50160L,
+                                50160L,
+                                true,
+                                null,
+                                List.of("unit"),
+                                List.of("source")),
+                        new RentOffer(
+                                "rent-b",
+                                "26형 나군",
+                                "가군 해당자 이외의 영구임대 입주 가능한 자",
+                                7648000L,
+                                7648000L,
+                                115940L,
+                                115940L,
+                                true,
+                                null,
+                                List.of("unit"),
+                                List.of("source"))),
+                List.of(
+                        new Schedule(
+                                "apply",
+                                "현장 신청",
+                                "신청 구분별 지정일 확인, 선순위 초과 시 후순위 미접수",
+                                java.time.OffsetDateTime.parse("2026-10-28T09:00:00+09:00"),
+                                java.time.OffsetDateTime.parse("2026-10-30T18:00:00+09:00"),
+                                "거주지 관할 읍·면·동 주민센터; 점심 12~13시 제외",
+                                null,
+                                List.of("unit"),
+                                List.of("source"))));
+    }
+
     public static ComparisonContent asan() {
         return ordinary("D18", "아산읍내", "44200", LocalDate.of(2026, 10, 6), 1, 50, 245000000L);
     }
