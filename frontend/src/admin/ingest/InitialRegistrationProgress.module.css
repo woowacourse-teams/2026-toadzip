@@ -31,9 +31,11 @@
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-4); margin-bottom: var(--ds-space-4); }
 .toolbar h3 { display: flex; align-items: center; gap: var(--ds-space-2); margin: 0; font-size: var(--ds-text-section); font-weight: 600; }
 .toolbar h3 > span { color: var(--ds-color-muted); font-size: var(--ds-text-caption); font-weight: 400; font-variant-numeric: tabular-nums; }
+.filters { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--ds-space-4); }
 .panel .filter { display: flex; flex-direction: row; align-items: center; gap: var(--ds-space-3); color: var(--ds-color-label); font-size: var(--ds-text-caption); font-weight: 400; }
 .selectWrap { position: relative; display: inline-flex; }
 .panel .selectWrap select { box-sizing: border-box; min-width: 148px; height: 40px; padding: 0 36px 0 var(--ds-space-3); appearance: none; border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-text); font: inherit; cursor: pointer; }
+.panel .selectWrap .pageSizeSelect { width: 104px; min-width: 104px; }
 .selectWrap select:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
 .selectWrap select:disabled { cursor: not-allowed; opacity: 0.5; }
 .selectWrap > svg { position: absolute; top: 12px; right: 12px; width: 16px; height: 16px; pointer-events: none; }
@@ -79,8 +81,10 @@
   .counts dt { gap: var(--ds-space-1); font-size: 12px; }
   .counts dd { font-size: 24px; }
   .toolbar { align-items: flex-start; flex-wrap: wrap; gap: var(--ds-space-3); }
-  .panel .filter { margin-left: auto; gap: var(--ds-space-2); }
-  .panel .selectWrap select { min-width: 136px; }
+  .filters { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; gap: var(--ds-space-3); }
+  .panel .filter { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .selectWrap { width: 100%; }
+  .panel .selectWrap select { width: 100%; min-width: 0; }
   .targets > li { padding: var(--ds-space-4); }
   .targetHeading { gap: var(--ds-space-2); }
   .metadata { row-gap: 6px; }

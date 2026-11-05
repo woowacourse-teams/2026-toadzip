@@ -8,11 +8,24 @@ const labels: Record<InitialRegistrationStatus, string> = {
   READY: '등록 가능', FAILED: '등록 실패', COMPLETED: '등록 완료',
 }
 
+const pageSizes = [10, 20, 50, 100] as const
+const pageSizeStorageKey = 'toadzip:admin:initial-registration:page-size'
+
+function readPageSize(): typeof pageSizes[number] {
+  try {
+    const stored = localStorage.getItem(pageSizeStorageKey)
+    return pageSizes.find(size => String(size) === stored) ?? 20
+  } catch {
+    return 20
+  }
+}
+
 export function InitialRegistrationProgress({ disabled, revision, onBusyChange }: {
   disabled: boolean; revision: string; onBusyChange: (busy: boolean) => void
 }) {
   const [status, setStatus] = useState<InitialRegistrationStatus | ''>('')
   const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(readPageSize)
   const [result, setResult] = useState<InitialRegistrationResponse | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -23,13 +36,25 @@ export function InitialRegistrationProgress({ disabled, revision, onBusyChange }
     let active = true
     setLoading(true)
     setError('')
-    void getInitialRegistration(status, page).then(value => {
+    void getInitialRegistration(status, page, pageSize).then(value => {
       if (active) setResult(value)
     }).catch((cause: unknown) => {
       if (active) setError(cause instanceof Error ? cause.message : '진행 상태를 조회하지 못했습니다.')
     }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [status, page, revision, reload])
+  }, [status, page, pageSize, revision, reload])
+
+  function changePageSize(value: string) {
+    const selected = pageSizes.find(size => String(size) === value)
+    if (selected === undefined) return
+    setPageSize(selected)
+    setPage(0)
+    try {
+      localStorage.setItem(pageSizeStorageKey, String(selected))
+    } catch {
+      // 저장소가 차단되어도 현재 화면에서는 선택한 건수로 조회한다.
+    }
+  }
 
   async function refresh() {
     if (disabled || pending.current) return
@@ -73,14 +98,24 @@ export function InitialRegistrationProgress({ disabled, revision, onBusyChange }
     </dl>}
     <div className={styles.toolbar}>
       <h3>대상 목록{!loading && !error && result && <span>{result.totalElements}곳</span>}</h3>
-      <label className={styles.filter}><span>진행 상태</span>
-        <span className={styles.selectWrap}><select value={status} disabled={refreshing} onChange={event => {
-          const selected = initialRegistrationStatuses.find(value => value === event.target.value) ?? ''
-          setStatus(selected); setPage(0)
-        }}><option value="">전체</option>{initialRegistrationStatuses.map(value => <option key={value} value={value}>{labels[value]}</option>)}</select>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
-        </span>
-      </label>
+      <div className={styles.filters}>
+        <label className={styles.filter}><span>진행 상태</span>
+          <span className={styles.selectWrap}><select value={status} disabled={refreshing} onChange={event => {
+            const selected = initialRegistrationStatuses.find(value => value === event.target.value) ?? ''
+            setStatus(selected); setPage(0)
+          }}><option value="">전체</option>{initialRegistrationStatuses.map(value => <option key={value} value={value}>{labels[value]}</option>)}</select>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
+          </span>
+        </label>
+        <label className={styles.filter}><span>표시 건수</span>
+          <span className={styles.selectWrap}><select className={styles.pageSizeSelect} value={pageSize}
+            disabled={refreshing} onChange={event => changePageSize(event.target.value)}>
+            {pageSizes.map(size => <option key={size} value={size}>{size}건씩</option>)}
+          </select>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
+          </span>
+        </label>
+      </div>
     </div>
     {loading && <p className={styles.empty} role="status">진행 상태를 불러오고 있습니다.</p>}
     {!loading && !error && result && <>

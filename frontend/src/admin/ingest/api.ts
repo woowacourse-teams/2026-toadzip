@@ -312,8 +312,8 @@ export type InitialRegistrationResponse = {
 }
 const initialRegistrationPath = '/api/admin/ingest/myhome/initial-registration'
 
-export async function getInitialRegistration(status: InitialRegistrationStatus | '', page: number): Promise<InitialRegistrationResponse> {
-  const query = new URLSearchParams({ page: String(page), size: '50' })
+export async function getInitialRegistration(status: InitialRegistrationStatus | '', page: number, size: number): Promise<InitialRegistrationResponse> {
+  const query = new URLSearchParams({ page: String(page), size: String(size) })
   if (status) query.set('status', status)
   const response = await fetch(`${apiBaseUrl}${initialRegistrationPath}?${query}`, { credentials: 'include' })
   const body = await readJson(response)
