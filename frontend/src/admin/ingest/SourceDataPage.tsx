@@ -5,6 +5,8 @@ import { SourceUrl } from '../shared/SourceUrl'
 import { storedDataRows, storedDataValue } from '../shared/storedDataPresentation'
 import { getSourceData, isSourceCategory, sourceCategories, type SourceCategory, type SourcePage } from './sourceApi'
 import { sourceFieldLabel, sourcePresentation } from './sourcePresentation'
+import { GhSupplyTable } from './GhSupplyTable'
+import { isGhSupplyTablePath } from './ghSupplyColumns'
 import styles from './SourceDataPage.module.css'
 import { failureReturnUrl } from './failureNavigation'
 
@@ -54,7 +56,9 @@ export function SourceDataPage() {
   }
 
   const rows = result?.items.map(row => ({ row, fields: new Map(storedDataRows(row.raw).map(field => [field.path, field.value])) })) ?? []
-  const paths = new Set(rows.flatMap(row => [...row.fields.keys()]).filter(path => path !== 'source_key' && path !== 'collected_at'))
+  // GH의 지구·주택형 값은 주택형별 공급 표에서 보므로 공고 목록의 열로 펼치지 않는다.
+  const paths = new Set(rows.flatMap(row => [...row.fields.keys()]).filter(path => path !== 'source_key'
+    && path !== 'collected_at' && !(category === 'GH_ANNOUNCEMENT' && isGhSupplyTablePath(path))))
   const firstFields = category ? sourcePresentation[category].firstFields.filter(key => paths.has(key)) : []
   const columns = [...firstFields, ...[...paths].filter(path => !firstFields.includes(path)).sort()]
   const metadata = category ? sourcePresentation[category] : null
@@ -134,6 +138,7 @@ export function SourceDataPage() {
               <td title={row.sourceKey}>{row.sourceKey}</td><td className={styles.url}><SourceUrl url={row.originalUrl} /></td>
             </tr>)}</tbody>
           </table></div>}
+      {category === 'GH_ANNOUNCEMENT' && result.items.length > 0 ? <GhSupplyTable items={result.items} /> : null}
       <ListPagination page={result.page} totalPages={result.totalPages} onMove={move} disabled={pending} />
     </> : null}
     </div>

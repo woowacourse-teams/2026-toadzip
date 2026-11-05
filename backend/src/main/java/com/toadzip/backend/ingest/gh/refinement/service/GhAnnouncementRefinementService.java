@@ -1,11 +1,15 @@
 package com.toadzip.backend.ingest.gh.refinement.service;
 
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.ingest.domain.SourceRefinementFailure;
 import com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementSource;
 import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.gh.refinement.dto.GhAnnouncementRefinementReport;
 import com.toadzip.backend.ingest.gh.refinement.service.GhAnnouncementRefiner.Outcome;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
+import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
@@ -28,13 +32,15 @@ public class GhAnnouncementRefinementService {
     private final HousingComplexRepository housingComplexes;
     private final GhAnnouncementRefiner refiner;
     private final TransactionTemplate transactions;
+    private final IngestWriteOwnershipGuard ownershipGuard;
 
     public GhAnnouncementRefinementService(GhAnnouncementSourceRepository sources,
             HousingComplexRepository housingComplexes, GhAnnouncementRefiner refiner,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager, IngestWriteOwnershipGuard ownershipGuard) {
         this.sources = sources;
         this.housingComplexes = housingComplexes;
         this.refiner = refiner;
+        this.ownershipGuard = ownershipGuard;
         transactions = new TransactionTemplate(transactionManager);
         // 원천마다 따로 커밋해 한 원천의 실패가 앞서 정제한 공고를 되돌리지 않게 한다.
         transactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -49,22 +55,28 @@ public class GhAnnouncementRefinementService {
         GhComplexIndex index = transactions.execute(status -> GhComplexIndex.of(housingComplexes.findAll()));
         IngestExecutionScope.beginWork("GH 공고 정제", "공고", targets.size());
         Map<Outcome, Integer> outcomes = new EnumMap<>(Outcome.class);
-        int failed = 0;
+        List<SourceRefinementFailure> failures = new ArrayList<>();
         int[] recheck = {0};
         for (GhAnnouncementSource target : targets) {
             IngestExecutionScope.checkStopRequested();
             try {
-                outcomes.merge(transactions.execute(status -> refiner.refine(target, index, () -> recheck[0]++)), 1, Integer::sum);
+                outcomes.merge(transactions.execute(status -> {
+                    ownershipGuard.verifyWrite();
+                    return refiner.refine(target, index, () -> recheck[0]++);
+                }), 1, Integer::sum);
+            }
+            catch (IngestOwnershipLostException lost) {
+                throw lost;
             }
             catch (RuntimeException failure) {
-                failed++;
+                failures.add(SourceRefinementFailure.of(target.getSourceKey(), failure));
                 log.warn("GH 공고 정제에 실패했습니다. sourceKey={}", target.getSourceKey(), failure);
             }
             IngestExecutionScope.workCompleted();
         }
         return new GhAnnouncementRefinementReport(targets.size(), count(outcomes, Outcome.CREATED),
                 count(outcomes, Outcome.UPDATED), count(outcomes, Outcome.UNCHANGED),
-                count(outcomes, Outcome.REVIEW_REQUIRED), count(outcomes, Outcome.TRASHED), recheck[0], failed);
+                count(outcomes, Outcome.REVIEW_REQUIRED), count(outcomes, Outcome.TRASHED), recheck[0], failures.size(), List.copyOf(failures));
     }
 
     private static int count(Map<Outcome, Integer> outcomes, Outcome outcome) {

@@ -172,14 +172,6 @@ export function missingHousingType(complexId: number | null, candidates: Matchin
   return { name: typeName.trim(), exclusiveArea, supplyArea: areaValue(supplyArea) ? supplyArea : null }
 }
 
-// 공고문과 수집 원천의 단지명 표기가 다를 때(전주평화1단지 ↔ 평화주공1단지) 이번 모집수가 유일하게 같은 기존 행을 제안한다.
-function sameRecruitment(row: Extraction['supplyRows'][number], current: CorrectionRow[]) {
-  const count = row.values.totalSupplyHouseholdCount
-  if (typeof count !== 'number') return []
-  const matched = current.filter(item => !item.excluded && item.groupId === null && item.householdCount === count)
-  return matched.length === 1 ? matched : []
-}
-
 /**
  * 같은 단지의 기존 공급행 중 이 PDF 행을 저장할 행. 주택형 표기 → 전용면적(또는 연결 주택형) 순서로 하나를 고르고,
  * 하나로 좁히지 못하면 전용면적이 맞는 행들을 추천으로 돌려준다. 다른 PDF 행이 이미 고른 행(used)은 고르지 않는다.
@@ -192,9 +184,10 @@ export function chooseRow(row: Extraction['supplyRows'][number], related: Correc
   const byName = available.filter(item => [item.typeName, sourceLabel(item, labels)].some(name => typeKey(name) === typeKey(row.typeName)))
   const byArea = available.filter(item => pdfTypes(row).some(type => equalArea(item.exclusiveArea, type.exclusiveArea))
     || housingTypeId !== null && item.housingTypeId === housingTypeId)
-  // 남은 행 하나는 모집수(행 모집수나 공통 모집수)가 같을 때만 근거로 본다.
-  const sameCount = lastRow && available.length === 1 && count !== null && available[0].householdCount === count
-  const chosen = byName.length === 1 ? byName[0] : byArea.length === 1 ? byArea[0] : sameCount ? available[0] : undefined
+  // 구형 마이홈의 '아파트' 통합행만 모집수로 이어받는다. 구체적인 주택형이 다른 행은 수가 같아도 고르지 않는다.
+  const legacyAggregate = lastRow && available.length === 1 && normalizedName(sourceLabel(available[0], labels)) === '아파트'
+    && count !== null && available[0].householdCount === count
+  const chosen = byName.length === 1 ? byName[0] : byArea.length === 1 ? byArea[0] : legacyAggregate ? available[0] : undefined
   const ambiguous = !chosen && !byName.length && !byArea.length && lastRow && available.length === 1
   const recommended = (chosen ? [chosen] : byArea.length ? byArea : ambiguous || !lastRow ? available : []).map(item => item.key)
   return { chosen, recommended, ambiguous, destination: chosen?.key ?? (recommended.length ? '' : 'new') }
@@ -209,9 +202,8 @@ export function proposeRows(extraction: Extraction, all: CorrectionRow[], housin
     const named = current.filter(item => sameComplex(row.complexName, item.complexName) || sameComplex(row.complexName, item.housingComplexName))
     const source = named.length ? { names: [], certain: true } : sourceComplexNames(extraction, row.complexName, names, complexes), sourceNames = source.names
     const byComplexName = named.length ? named : current.filter(item => sourceNames.includes(item.complexName))
-    // 공고 단지는 찾았지만 아직 단지에 연결되지 않았으면 다른 단지의 행을 모집수로 고르지 않는다.
-    const byRecruitment = byComplexName.length || sourceNames.length ? [] : sameRecruitment(row, current)
-    const related = byComplexName.length ? byComplexName : byRecruitment
+    // 모집수는 다른 주택형·단지에서도 같을 수 있어 행 대응의 근거로 쓰지 않는다.
+    const related = byComplexName
     const complexIds = [...new Set(related.map(item => item.housingComplexId).filter(id => id !== null))]
     const complexId = complexIds.length === 1 ? complexIds[0] : null
     const allTypes = complexId === null ? [] : housing[complexId] ?? []
@@ -224,7 +216,6 @@ export function proposeRows(extraction: Extraction, all: CorrectionRow[], housin
     if (chosen) used.add(chosen.key)
     const anchor = chosen ?? (complexId === null ? undefined : related[0])
     const changedName = !!chosen && typeKey(chosen.typeName) !== typeKey(row.typeName)
-    const recruitmentNote = byRecruitment.length ? `단지명 표기가 달라 이번 모집수 ${String(row.values.totalSupplyHouseholdCount)}세대가 같은 기존 행을 제안했습니다. · ` : ''
     // 제안 근거에 덧붙여도 떼어 낼 수 있게(proposePlacements) 문장 안에 '·'를 쓰지 않는다.
     const ambiguousNote = ambiguous ? `모호: 표기와 전용면적이 맞는 기존 행이 없어 남은 행(${recommended.length}개)을 고르지 않았습니다. 고칠 기존 공급정보를 고르거나 새 공급정보로 추가하세요. · ` : ''
     const blockNote = !sourceNames.length ? '' : source.certain ? `공고 단지 '${sourceNames[0]}'에 대응했습니다. · `
@@ -232,8 +223,8 @@ export function proposeRows(extraction: Extraction, all: CorrectionRow[], housin
     return {
       destination, anchorKey: anchor?.key ?? '', complexId, housingTypeId: housingTypeId ?? chosen?.housingTypeId ?? null, candidates: allTypes, recommended,
       reason: complexId === null ? sourceNames.length ? `공고 단지 '${sourceNames[0]}'가 아직 단지에 연결되지 않았습니다. 단지 정하기에서 정하세요.` : '단지를 하나로 특정하지 못했습니다.'
-        : ambiguousNote + blockNote + recruitmentNote + picked.reason, ...(ambiguous ? { ambiguous } : {}),
-      needsConfirmation: !chosen || changedName || housingTypeId === null || byRecruitment.length > 0 || !source.certain || sharedIndex >= 0 && chosen.groupId === null,
+        : ambiguousNote + blockNote + picked.reason, ...(ambiguous ? { ambiguous } : {}),
+      needsConfirmation: !chosen || changedName || housingTypeId === null || !source.certain || sharedIndex >= 0 && chosen.groupId === null,
       sharedIndex: sharedIndex < 0 ? null : sharedIndex,
     }
   })

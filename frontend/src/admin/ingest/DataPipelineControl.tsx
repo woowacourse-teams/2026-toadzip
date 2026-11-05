@@ -36,17 +36,17 @@ const pipelineTypes: readonly DataPipelineType[] = [
   'GH_ANNOUNCEMENT_COLLECTION',
   'ANNOUNCEMENT_REGISTRATION',
 ]
-// 공식 게시판을 API 키 없이 읽어 원천만 저장하는 공급기관별 수집이다.
+// 공식 게시판을 API 키 없이 읽어 원천 저장 뒤 미확정 공고로 정제한다.
 const boardSources = [
   {
     type: 'SH_ANNOUNCEMENT_COLLECTION', id: 'sh', title: 'SH',
-    description: '주택임대(건설임대) 분류의 ‘모집’ 검색 결과에서 제목·본문·첨부를 원천으로 저장합니다. 서비스 공고 등록·정제는 포함하지 않습니다.',
-    groupDescription: 'SH 주택임대(건설임대) 분류의 ‘모집’ 검색 결과에서 제목·본문 텍스트·첨부 정보를 추출해 저장합니다. 매입임대·전세임대 글은 받지 않으며 API 키 없이 실행합니다.',
+    description: '주택임대(건설임대) 분류의 ‘모집’ 검색 결과에서 제목·본문·첨부를 원천으로 저장합니다. 수집 성공 뒤 미확정 공고로 정제합니다. 공개는 PDF 보정에서 단지를 확인한 뒤 요청합니다.',
+    groupDescription: 'SH 주택임대(건설임대) 분류의 ‘모집’ 검색 결과에서 제목·본문 텍스트·첨부 정보를 추출해 저장합니다. 매입임대·전세임대 글은 받지 않습니다. 수집 성공 뒤 미확정 공고로 정제하며 API 키 없이 실행합니다.',
   },
   {
     type: 'GH_ANNOUNCEMENT_COLLECTION', id: 'gh', title: 'GH',
-    description: 'GH주택청약센터 임대주택(건설임대) 공고의 지구·주택형·일정·공고문을 원천으로 저장합니다. 서비스 공고 등록·정제는 포함하지 않습니다.',
-    groupDescription: 'GH주택청약센터 임대주택(건설임대) 공고에서 지구·주택형·공급일정·접수처·공고문 정보를 나눠 저장합니다. API 키 없이 실행합니다.',
+    description: 'GH주택청약센터 임대주택(건설임대) 공고의 지구·주택형·일정·공고문을 원천으로 저장합니다. 수집 성공 뒤 미확정 공고로 정제합니다. 공개는 PDF 보정에서 단지를 확인한 뒤 요청합니다.',
+    groupDescription: 'GH주택청약센터 임대주택(건설임대) 공고에서 지구·주택형·공급일정·접수처·공고문 정보를 나눠 저장합니다. 수집 성공 뒤 미확정 공고로 정제하며 API 키 없이 실행합니다.',
   },
 ] as const satisfies readonly {
   type: DataPipelineType; id: string; title: string; description: string; groupDescription: string

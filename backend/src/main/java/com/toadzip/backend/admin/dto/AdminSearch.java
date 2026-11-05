@@ -10,10 +10,12 @@ import java.util.Locale;
 
 public record AdminSearch(@Size(max = 200) String keyword, AgencyCode provider, RentalType rental,
         @Pattern(regexp = "[0-9]{0,10}") String region, Boolean deleted, Boolean review,
+        Boolean unconfirmed,
         @Min(0) @Max(100000) Integer page, @Min(1) @Max(100) Integer size) {
     public AdminSearch {
         if (deleted == null) { deleted = false; }
         if (review == null) { review = false; }
+        if (unconfirmed == null) { unconfirmed = false; }
         if (page == null) { page = 0; }
     }
     public String pattern() {

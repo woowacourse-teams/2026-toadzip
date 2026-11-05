@@ -67,6 +67,8 @@ function remainingTime(work: DataPipelineWorkProgress, now: number): string {
 export function PipelineReport({ report }: { report: unknown }) {
   if (typeof report !== 'object' || report === null) return null
   const labels: Record<string, string> = {
+    targetCount: '대상 공고', created: '신규 공고', updated: '갱신 공고', unchanged: '변경 없는 공고',
+    reviewRequired: '원천 검토 필요', trashed: '휴지통 공고', supplyRecheckRequired: '공급 재확인 필요', failed: '정제 실패',
     createdComplexCount: '신규 단지', updatedComplexCount: '갱신 단지', unchangedComplexCount: '변경 없는 단지',
     createdHousingTypeCount: '신규 주택형', createdAnnouncementCount: '신규 공고', updatedAnnouncementCount: '갱신 공고',
     unchangedAnnouncementCount: '변경 없는 공고', createdSupplyRowCount: '신규 공급행', updatedSupplyRowCount: '갱신 공급행',

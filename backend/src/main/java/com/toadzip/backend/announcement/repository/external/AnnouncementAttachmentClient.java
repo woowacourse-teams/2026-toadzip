@@ -24,7 +24,7 @@ import org.springframework.util.unit.DataSize;
 
 @Repository
 public class AnnouncementAttachmentClient {
-    private static final Set<String> HOSTS = Set.of("apply.lh.or.kr", "www.i-sh.co.kr", "www.gh.or.kr");
+    private static final Set<String> HOSTS = Set.of("apply.lh.or.kr", "www.i-sh.co.kr", "apply-cdn.gh.or.kr");
 
     private final Semaphore requests = new Semaphore(4);
     private final HttpClient client;
@@ -113,8 +113,12 @@ public class AnnouncementAttachmentClient {
     }
 
     private TemporaryAttachment request(URI uri, TemporaryAttachment file) {
-        HttpRequest request = HttpRequest.newBuilder(uri).timeout(timeout)
-                .header("Accept-Encoding", "identity").GET().build();
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri).timeout(timeout)
+                .header("Accept-Encoding", "identity");
+        if ("www.i-sh.co.kr".equals(uri.getHost())) {
+            builder.header("User-Agent", "Mozilla/5.0 (compatible; Toadzip/1.0)");
+        }
+        HttpRequest request = builder.GET().build();
         CompletableFuture<HttpResponse<TemporaryAttachment>> response = client.sendAsync(request,
                 info -> bodySubscriber(info, file));
         try {

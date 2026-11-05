@@ -6,12 +6,13 @@ import static org.mockito.Mockito.doThrow;
 
 import com.toadzip.backend.global.config.ClockConfig;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.pending.PendingCollectionTargets;
+import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.lh.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementCollectionLinkRepository;
 import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionProgressManager;
-import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +40,9 @@ class LhAnnouncementCollectionProgressTransactionTest {
 
     @MockitoBean
     private ExternalDataFailureRecorder failureRecorder;
+
+    @MockitoBean
+    private PendingCollectionTargets pending;
 
     @AfterEach
     void cleanUp() {

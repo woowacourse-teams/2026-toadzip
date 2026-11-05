@@ -14,15 +14,15 @@ import com.toadzip.backend.ingest.collection.configuration.ExternalDataIngestPro
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecoveryService;
-import com.toadzip.backend.ingest.lh.collection.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
-import com.toadzip.backend.ingest.lh.collection.leasecatalog.service.LhLeaseCatalogCollectionService;
-import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
-import com.toadzip.backend.ingest.gh.collection.service.GhAnnouncementCollectionService;
-import com.toadzip.backend.ingest.sh.collection.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
 import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
+import com.toadzip.backend.ingest.gh.collection.service.GhAnnouncementCollectionService;
+import com.toadzip.backend.ingest.gh.refinement.service.GhAnnouncementRefinementService;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
+import com.toadzip.backend.ingest.lh.collection.leasecatalog.service.LhLeaseCatalogCollectionService;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.lh.refinement.dto.LhAnnouncementRefinementReport;
 import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
@@ -32,6 +32,8 @@ import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
+import com.toadzip.backend.ingest.sh.collection.service.ShAnnouncementCollectionService;
+import com.toadzip.backend.ingest.sh.refinement.service.ShAnnouncementRefinementService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Instant;
@@ -416,7 +418,9 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                         mock(LhAnnouncementRefinementService.class),
                         new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
                         mock(ShAnnouncementCollectionService.class),
-                        mock(GhAnnouncementCollectionService.class)
+                        mock(GhAnnouncementCollectionService.class),
+                        mock(ShAnnouncementRefinementService.class),
+                        mock(GhAnnouncementRefinementService.class)
                 ),
                 executionStateService,
                 new SimpleMeterRegistry()
@@ -446,7 +450,9 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                         refinementService,
                         new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
                         mock(ShAnnouncementCollectionService.class),
-                        mock(GhAnnouncementCollectionService.class)
+                        mock(GhAnnouncementCollectionService.class),
+                        mock(ShAnnouncementRefinementService.class),
+                        mock(GhAnnouncementRefinementService.class)
                 ),
                 executionStateService,
                 new SimpleMeterRegistry()

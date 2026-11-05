@@ -18,6 +18,8 @@ public interface BoardSource<E extends BoardEntry, S> {
 
     ExternalDataSource source();
 
+    Class<E> entryType();
+
     /** 진행 표시와 실패 사유에 쓰는 기관 이름이다. */
     String agency();
 

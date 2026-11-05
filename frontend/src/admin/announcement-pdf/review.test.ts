@@ -734,3 +734,19 @@ describe('세부 타입 묶음 행으로 접기', () => {
     expect(request.correction.rows.map(row => [row.id, row.householdCount])).toEqual([[90, 150], [91, null]])
   })
 })
+
+
+it('미확정 공고의 필수 일정·유형이 비면 확인 필요로 표시하고 서버 요청 전에 해당 입력을 안내한다', () => {
+  const { review, workspace } = scenario('hansville')
+  workspace.detail.summary.announcement = { ...workspace.detail.summary.announcement!, releaseStatus: 'UNCONFIRMED' }
+  workspace.detail.data.rentalType = null
+  workspace.detail.data.recruitmentType = null
+  review.metadata = review.metadata.map(cell => ['applicationStartDate', 'applicationEndDate', 'winnerAnnouncementDate'].includes(cell.field)
+    ? { ...cell, before: null, selected: false } : cell)
+  const release = { rentalType: '', recruitmentType: '', publish: false }
+  expect(pendingItems(review, true, workspace, release).map(item => item.id)).toEqual(expect.arrayContaining([
+    'cell:announcement.applicationStartDate', 'cell:announcement.applicationEndDate', 'cell:announcement.winnerAnnouncementDate',
+    'release:rentalType', 'release:recruitmentType',
+  ]))
+  expect(() => assembleReview(review, workspace, evidence, release)).toThrow(/접수 시작일/)
+})
