@@ -10,8 +10,11 @@ import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -29,6 +32,29 @@ class InitialRegistrationTargetRepositoryTest {
     @Autowired private EntityManager entityManager;
     @Autowired private InitialRegistrationTargetRepository targets;
     @Autowired private InitialRegistrationProductStore products;
+
+    @ParameterizedTest
+    @CsvSource({"255, 500", "256, 500", "255, 501", "1024, 2048"})
+    void 긴_원천_단지명과_주소도_다른_대상과_함께_잘라내지_않고_저장한다(int nameLength, int addressLength) {
+        String name = "가".repeat(nameLength);
+        String address = "나".repeat(addressLength);
+        var existing = InitialRegistrationTarget.create("1:HAPPY_HOUSING");
+        existing.assess("기존 단지", "기존 주소", InitialRegistrationStatus.READY, "준비됨", null, NOW);
+        existing.complete(10, NOW);
+        var target = InitialRegistrationTarget.create("2:HAPPY_HOUSING");
+        target.assess(name, address, InitialRegistrationStatus.INFORMATION_REQUIRED, "원천 확인 필요", null, NOW);
+
+        targets.saveAll(List.of(existing, target));
+        entityManager.flush();
+        entityManager.clear();
+
+        var restored = targets.findById("2:HAPPY_HOUSING").orElseThrow();
+        assertThat(restored.getName()).isEqualTo(name);
+        assertThat(restored.getRoadAddress()).isEqualTo(address);
+        assertThat(restored.getStatus()).isEqualTo(InitialRegistrationStatus.INFORMATION_REQUIRED);
+        assertThat(targets.findById("1:HAPPY_HOUSING").orElseThrow().getHousingComplexId()).isEqualTo(10);
+        assertThat(targets.findTargets(null, PageRequest.of(0, 20)).getTotalElements()).isEqualTo(2);
+    }
 
     @Test
     void 백_곳_중_완료한_아흔_곳과_남은_열_곳을_다시_읽고_필터와_정렬로_조회한다() {

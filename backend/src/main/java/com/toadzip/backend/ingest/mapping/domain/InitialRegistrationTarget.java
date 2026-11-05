@@ -21,8 +21,9 @@ public class InitialRegistrationTarget {
     @Id
     @Column(length = 255)
     private String sourceComplexIdentifier;
+    @Column(columnDefinition = "text")
     private String name;
-    @Column(length = 500)
+    @Column(columnDefinition = "text")
     private String roadAddress;
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
