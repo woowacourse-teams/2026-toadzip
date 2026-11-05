@@ -10,6 +10,7 @@ const apiMocks = vi.hoisted(() => ({
   startDataPipeline: vi.fn(),
   stopDataPipeline: vi.fn(),
   getLhAnnouncementQuality: vi.fn(),
+  getInitialRegistration: vi.fn(),
 }))
 
 vi.mock('./api', async (importOriginal) => ({
@@ -18,6 +19,10 @@ vi.mock('./api', async (importOriginal) => ({
 }))
 
 beforeEach(() => {
+  apiMocks.getInitialRegistration.mockResolvedValue({
+    counts: { EXISTING: 0, LOCATION_REQUIRED: 0, INFORMATION_REQUIRED: 0, READY: 0, FAILED: 0, COMPLETED: 0 },
+    targets: [], totalElements: 0, page: 0, totalPages: 0,
+  })
   apiMocks.getDataPipelineReadiness.mockReset()
   apiMocks.getDataPipelineReadiness.mockResolvedValue({ serviceKeyConfigured: true })
   apiMocks.getDataPipelineStatus.mockReset()
@@ -161,7 +166,7 @@ describe('DataPipelineControl', () => {
     expect(screen.queryByRole('article', { name: '현재 작업 단계' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('tab', { name: '3 정제·저장' }))
     expect(screen.getByRole('button', { name: '단지 정제·저장 실행' })).toBeDisabled()
-    expect(screen.getByRole('status')).toHaveTextContent('한 번에 한 작업')
+    expect(screen.getByText(/한 번에 한 작업/)).toHaveAttribute('role', 'status')
     view.rerender(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
     const stopLabel = runningType === 'SH_ANNOUNCEMENT_COLLECTION'
       ? 'SH 공고 수집 실행 중지' : 'LH 공고 갱신 실행 중지'

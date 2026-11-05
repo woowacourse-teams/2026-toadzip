@@ -10,6 +10,7 @@ import { retiredComplexRefinementNotice } from './pipelineLabels'
 import styles from './ComplexIngest.module.css'
 import { ComplexStageHelp } from './ComplexStageHelp'
 import { ComplexStatusBadge } from './ComplexStatusBadge'
+import { InitialRegistrationProgress } from './InitialRegistrationProgress'
 
 export function ComplexIngestStages({ states, disabled, collectionBlocked = false, startingType, stopping, onStart, onStop, onRefresh, onUploadBusy }: {
   states: Record<DataPipelineType, PipelineViewState>; disabled: boolean; collectionBlocked?: boolean; startingType: DataPipelineType | null
@@ -102,5 +103,7 @@ export function ComplexIngestStages({ states, disabled, collectionBlocked = fals
       </div>
       {result('COMPLEX_REFINEMENT')}
     </section>
+    <InitialRegistrationProgress disabled={disabled} onBusyChange={onUploadBusy}
+      revision={`${latest('COMPLEX_COLLECTION').finishedAt ?? ''}-${uploading}`} />
   </div>
 }
