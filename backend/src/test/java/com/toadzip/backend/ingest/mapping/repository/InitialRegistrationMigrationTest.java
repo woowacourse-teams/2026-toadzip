@@ -30,7 +30,7 @@ class InitialRegistrationMigrationTest {
             statement.execute("SET search_path TO initial_registration_migration_test");
             try {
                 ScriptUtils.executeSqlScript(connection, new ClassPathResource(
-                        "db/migration/V20261104_06__initial_registration_targets.sql"));
+                        "db/migration/V20261105_02__initial_registration_targets.sql"));
                 statement.execute("""
                         INSERT INTO initial_registration_targets
                             (source_complex_identifier, status, detail, housing_complex_id, checked_at)
