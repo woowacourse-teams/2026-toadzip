@@ -11,7 +11,7 @@ vi.mock('../ingest/supplyMatchingApi', () => ({ getMatchingHousingTypes: api.typ
 vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(),
   getManagementDetail: async () => ({ data: { address: { pnu: '1114010100100010000' } } }) }))
 vi.mock('../management/ComplexPicker', () => ({ ComplexPicker: ({ onSelect }: { onSelect: (item: { id: number; name: string }) => void }) =>
-  <button onClick={() => onSelect({ id: 7, name: '선택 단지' })}>단지 선택</button> }))
+  <><button onClick={() => onSelect({ id: 7, name: '선택 단지' })}>단지 선택</button><button onClick={() => onSelect({ id: 8, name: '다른 단지' })}>다른 단지 선택</button></> }))
 
 beforeEach(() => vi.clearAllMocks())
 
@@ -40,7 +40,7 @@ it('단지 조회 응답을 기다리는 동안 고친 다른 값은 응답 완�
 })
 
 
-it('원천 정렬이 없는 빈 공고도 같은 단지를 다시 고르면 제외한 임대조건을 보존한다', async () => {
+it.each(['동일 단지', '다른 단지', '후보 갱신'])('원천 정렬이 없는 빈 공고도 %s 선택 후 제외한 임대조건을 보존한다', async mode => {
   api.types.mockResolvedValue([])
   const { review, workspace } = scenario('hansville')
   workspace.supply.rows = []
@@ -58,7 +58,9 @@ it('원천 정렬이 없는 빈 공고도 같은 단지를 다시 고르면 제�
   fireEvent.click(screen.getByRole('button', { name: '단지 선택' }))
   await screen.findByText(/연결 단지: 선택 단지/)
   fireEvent.click(screen.getByRole('button', { name: '조건 제외' }))
-  fireEvent.click(screen.getByRole('button', { name: '단지 선택' }))
+  if (mode === '후보 갱신') api.types.mockResolvedValue([{ id: 71, name: '26A', exclusiveArea: 26, supplyArea: null }])
+  fireEvent.click(screen.getByRole('button', { name: mode === '다른 단지' ? '다른 단지 선택' : '단지 선택' }))
   await waitFor(() => expect(api.types).toHaveBeenCalledTimes(2))
+  await act(async () => {})
   expect(screen.getByLabelText('조건 결정')).toHaveTextContent('exclude')
 })

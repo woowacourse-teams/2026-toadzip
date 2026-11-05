@@ -5,7 +5,7 @@ import { ComplexPicker } from '../management/ComplexPicker'
 import { getManagementDetail } from '../management/api'
 import { isRecord } from '../management/managementContract'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
-import { createRowReview, editCell, needsComplex, newRepresentative, preserveCellChoice, type Review, type RowReview } from './review'
+import { createRowReview, editCell, needsComplex, newRepresentative, preserveCellChoice, remapTarget, type Review, type RowReview } from './review'
 import { chooseRow, missingHousingType, pickHousingType, sameComplex, typeKey } from './matching'
 import { NewComplexRegistration, type MyHomeComplexOverview } from './NewComplexRegistration'
 import { alignSourceRows, emptySourceRows } from './sourceAlignment'
@@ -88,6 +88,18 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
       const rows = current.rows.map((old, index) => {
         if (!currentIndexes.includes(index)) return old
         const source = current.extraction.supplyRows[index], picked = pickHousingType(current.extraction, index, candidates)
+        const oldCells = [...old.cells, ...old.targets.flatMap(target => target.cells)]
+        const retain = (cell: RowReview['cells'][number]) => cell.field === 'housingTypeId' ? cell : preserveCellChoice(cell, oldCells.find(item => item.path === cell.path))
+        const retainTargets = (next: RowReview) => {
+          const saved = workspace.supply.rows.find(row => row.key === next.proposal.destination)?.targets ?? []
+          const nextReview = { ...current, rows: current.rows.map((row, at) => at === index ? { ...next, targets: old.targets } : row) }
+          return next.targets.map((target, at) => {
+            const previous = old.targets[at]?.destination
+            return previous === 'exclude' || (previous === 'new' && old.proposal.destination === next.proposal.destination) || saved.some(item => (item.id ? String(item.id) : item.key) === previous)
+              ? remapTarget(nextReview, index, at, previous, workspace)
+              : { ...target, cells: target.cells.map(retain) }
+          })
+        }
         if (linked.length) {
           const { chosen, recommended, destination } = chooseRow(source, linked, used, picked.housingTypeId, false)
           if (chosen) used.add(chosen.key)
@@ -96,18 +108,16 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
             anchorKey: chosen?.key ?? linked[0].key, newComplex: undefined, complexId: id, candidates, recommended, housingTypeId,
             reason: `${complexName}에 이미 연결된 공급정보 중에서 추천했습니다. · ${picked.reason}`,
             needsConfirmation: !chosen || typeKey(chosen.typeName) !== typeKey(source.typeName) || housingTypeId === null }, workspace)
-          const oldCells = [...old.cells, ...old.targets.flatMap(target => target.cells)]
-          const retain = (cell: RowReview['cells'][number]) => cell.field === 'housingTypeId' ? cell : preserveCellChoice(cell, oldCells.find(item => item.path === cell.path))
-          return { ...next, include: old.include, reviewed: false, cells: next.cells.map(retain), targets: next.targets.map(target => ({ ...target, cells: target.cells.map(retain) })) }
+
+          return { ...next, include: old.include, reviewed: false, cells: next.cells.map(retain), targets: retainTargets(next) }
         }
         const next = createRowReview(current.extraction, index, { ...old.proposal, complexId: id, candidates, housingTypeId: picked.housingTypeId, reason: picked.reason,
           newComplex: { id, name: complexName, pnu, category: created ? 'NEW_SUPPLY' : old.proposal.newComplex?.category ?? 'RESUPPLY' } }, workspace)
-        const oldCells = [...old.cells, ...old.targets.flatMap(target => target.cells)]
-        const retain = (cell: RowReview['cells'][number]) => cell.field === 'housingTypeId' ? cell : preserveCellChoice(cell, oldCells.find(item => item.path === cell.path))
+
         const newType = !source.subtypes.length && picked.housingTypeId === null && Boolean(missingHousingType(id, candidates, source.typeName ?? '', source.values.exclusiveArea, source.values.supplyArea)?.name)
         return { ...next, key: old.key, include: old.include, reviewed: true, newHousingType: newType,
           cells: next.cells.map(retain).map(cell => newType && cell.field === 'housingTypeId' ? editCell(cell, '') : cell),
-          targets: next.targets.map(target => ({ ...target, cells: target.cells.map(retain) })) }
+          targets: retainTargets(next) }
       })
       onChange({ ...current, rows }); setRegistering(false)
     } catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '단지를 불러오지 못했습니다.') }
