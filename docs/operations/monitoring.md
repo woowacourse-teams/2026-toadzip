@@ -23,10 +23,10 @@ docker compose --env-file infra/monitoring/.env -f compose.monitoring.yaml down
 
 ## Blue/Green 메트릭 수집
 
-Prometheus는 기존 애플리케이션 서버의 `8081/actuator/prometheus`를 계속 수집한다.
+Prometheus는 애플리케이션 서버의 `8081/actuator/prometheus`에서 메트릭을 수집한다.
 Edge Nginx가 이 요청을 현재 API 요청을 받는 백엔드의 관리 포트 `8081`로 전달한다.
 메트릭은 Caddy를 거치지 않으며 두 색상이 모두 실행 중이어도 활성 색상 한쪽만 수집한다.
-기존 대상 주소와 `job`·`environment`·`application`·`instance` 라벨을 유지하므로 Grafana 조회식은 변경하지 않는다.
+색상 전환 중에도 대상 주소와 `job`·`environment`·`application`·`instance` 라벨을 유지한다.
 
 ### 설정의 역할
 
@@ -34,7 +34,7 @@ Edge Nginx가 이 요청을 현재 API 요청을 받는 백엔드의 관리 포�
 |---|---|
 | 애플리케이션 서버 `.env`의 `BLUEGREEN_METRICS_BIND_ADDRESS` | 모니터링 서버가 접근하는 **애플리케이션 서버 자신의 사설 IP**다. 모니터링 서버 IP나 공개 IP, `0.0.0.0`을 넣지 않는다. 서버 overlay에서 필수이며 미설정 시 Compose 구성을 중단한다. 보안 그룹의 포트 소스도 모니터링 서버로 제한해야 한다. |
 | `MANAGEMENT_PORT` | 호스트 수집 포트다. 기본값 `8081`을 유지한다. 기존 Prometheus 대상과 다른 값으로 바꾸지 않는다. |
-| `compose.caddy-server.yaml` | Edge에 위 주소·포트를 연결한다. legacy `backend`의 호스트 `8080`·`8081` 공개는 제거하여 포트 충돌을 방지한다. 컨테이너 내부 포트와 일반 로컬 Compose 구성은 유지한다. |
+| `compose.caddy-server.yaml` | Edge에 위 주소·포트를 연결하고 legacy `backend`의 호스트 `8080`·`8081` 포트는 공개하지 않는다. 컨테이너 내부 포트와 일반 로컬 Compose 구성은 유지한다. |
 | `backend_metrics_active` | API용 `backend_active`와 같은 컨테이너를 가리키고 관리 포트만 `8081`을 사용한다. 배포·색상 전환·수동 롤백에서 두 경로를 하나의 설정 파일로 함께 바꾼다. |
 | 메트릭 전용 listener | `8081`에서 정확히 `/actuator/prometheus`만 전달하고 다른 경로는 404로 거부한다. 공개 HTTP·HTTPS 경로에 관리 API를 추가하지 않는다. |
 | `keepalive_timeout 0` | 메트릭 클라이언트 연결을 계속 유지하지 않아 전환 후 이전 worker에 수집 요청이 머무르는 것을 방지한다. |
@@ -44,31 +44,6 @@ Edge Nginx가 이 요청을 현재 API 요청을 받는 백엔드의 관리 포�
 배포 전에는 서버 Compose가 요구하는 Edge 관리 포트가 실제로 같은 주소·포트에 연결됐는지 확인한다.
 전환 후에는 실제 API 도착과 함께 메트릭의 upstream·Content-Type·Prometheus 형식을 확인한다.
 후보 메트릭 검증에 실패하면 이전 API·메트릭 설정으로 함께 복구하고 기존 컨테이너를 정지하지 않는다.
-
-### 기존 서버 최초 적용
-
-다음은 기존 Blue/Green 서버에 필요한 한 번의 준비 작업이다. 새 배포 도구는 메트릭 경로가 없는 구형
-런타임에서 사전 검사를 중단한다. 수정본 병합에 따른 자동 배포와 준비 작업이 겹치지 않도록 적용 시간을 조율한다.
-
-1. 현재 런타임과 Edge의 이미지·마운트·포트 구성, 이전 Compose 버전을 복구할 수 있도록 보관한다.
-   실제 프로젝트명·추가 Compose 파일·런타임 경로를 그대로 사용하며 비밀값을 로그에 출력하지 않는다.
-2. 서버 `.env`에 위 사설 IP를 설정하고 모니터링 서버만 접근하도록 기존 보안 그룹 제한을 유지한다.
-   실행 중인 legacy `backend`가 아직 호스트 `8081`을 사용하면 별도의 포트 소유권 전환이 필요하다.
-   활성 백엔드를 단순히 정지해 포트만 확보하지 않는다.
-3. 저장소 루트에서 `python3 -B scripts/prepare-bluegreen.py --upgrade-metrics`를 실행한다.
-   기본 런타임 경로가 아니면 기존 `--runtime`도 지정한다. 공통 잠금 안에서 기존 활성 색상·추가 설정을
-   보존하고 메트릭 블록만 추가한다. 이전 설정은 런타임의 `before-metrics-*.conf.bak`에 남긴다.
-   재실행은 같은 블록을 중복 추가하지 않는다. 이미 다른 `8081` listener가 있거나 API·메트릭 색상이
-   다르면 자동 수정하지 않고 중단하므로 기존 설정을 검토한다.
-4. 준비 명령은 Docker를 실행하거나 Nginx를 reload하지 않는다. 호스트 포트 추가는 **Edge 컨테이너 재생성**이
-   필요하며 reload만으로는 반영되지 않는다. 이 최초 작업에는 짧은 진입점 중단이 생길 수 있다.
-   배포가 실행되지 않는 작업창에서 공통 `deploy.lock`을 잡고, 기존 프로젝트와 실제 Compose 파일 조합으로
-   `edge-nginx`만 `up -d --no-deps --no-build --pull never --force-recreate`한다.
-   전체 스택을 내리거나 DB·볼륨·Caddy·애플리케이션을 일괄 재생성하지 않는다.
-5. 실제 모니터링 서버에서 기존 대상의 `/actuator/prometheus`와 여러 수집 주기의 `up=1`, 기존 Grafana 지표를
-   확인한다. 외부 API 응답도 확인하고, 이후 배포와 호환성이 확인된 버전의 롤백에서 같은 검증을 수행한다.
-6. 최초 적용 검증에 실패하면 새 앱 배포를 진행하지 않는다. 런타임 백업과 이전 Edge Compose 구성을 복원해
-   Edge만 다시 기동하고 API를 확인한다. 자동 배포는 정상 경로를 확인한 후 재개한다.
 
 활성 백엔드만 수집하므로 후보의 전환 전 지표와 이전 백엔드가 마무리하는 요청의 최종 지표는 모두 보존되지
 않을 수 있다. 전환 시 JVM 값과 누적 카운터의 출처도 바뀌므로 전환 구간의 요청률·지연은 배포 기록과 함께
@@ -192,7 +167,6 @@ Blue/Green 서버에서는 실행 중인 두 색상의 로그를 모두 수집�
 설정 파일 반영 후에는 실제 서버의 기존 프로젝트와 Compose 파일 조합에서 `alloy`만
 `up -d --no-deps --no-build --pull never --force-recreate`한다. 파일 bind mount가 이전 파일을 가리키는 경우를
 피하도록 재생성하며 `alloy_data` 볼륨은 유지한다. 이후 새 로그가 올바른 환경과 기존 서비스 라벨로 Loki에 도착하는지 확인한다.
-이 설정은 이미 누락된 과거 로그의 복구를 보장하지 않는다.
 
 - 백엔드 예외와 스택은 최대 256줄·3초 범위에서 한 이벤트로 묶는다. 과거 로그는 다시 묶이지 않는다.
 - Nginx는 method·URI·status·전체 시간·upstream 시간을 전송한다. URI의 쿼리 값은 제외한다.

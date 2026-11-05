@@ -8,7 +8,7 @@
 | --- | --- |
 | [`check-flyway-migrations.py`](check-flyway-migrations.py) | Git에 커밋된 Flyway SQL의 버전 중복, develop보다 낮거나 같은 신규 버전, 기존 SQL의 수정·삭제·이름 변경을 검사합니다. |
 | [`test-https.py`](test-https.py) | 임시 인증서로 로컬 HTTPS·Nginx 갱신 hook을 검증합니다. `--config-only`는 Compose 설정과 hook 검사만 수행합니다. |
-| [`prepare-bluegreen.py`](prepare-bluegreen.py) | 런타임을 준비합니다. 기본 실행은 기존 상태를 보존하고 `--upgrade-metrics`는 백업 후 현재 색상에 맞는 메트릭 블록만 추가합니다. |
+| [`prepare-bluegreen.py`](prepare-bluegreen.py) | 런타임 설정과 정적 파일 디렉터리를 준비합니다. 기본 실행은 기존 연결 색상과 파일을 보존합니다. |
 | [`release-bluegreen.py`](release-bluegreen.py) | CI 커밋·서버 준비·AI 워커 설정을 확인하고 세 이미지를 빌드한 뒤 공통 잠금 안에서 백엔드·프론트·AI 워커를 순차 배포합니다. [CI 운영 절차](../docs/operations/deployment.md)를 따릅니다. |
 | [`rollback-bluegreen.py`](rollback-bluegreen.py) | 보관된 프론트·백엔드 이미지의 지정 커밋을 확인하고 복구합니다. [수동 실행·기록·제약](../docs/operations/deployment.md#직전-배포-롤백)을 따릅니다. |
 | [`deploy-bluegreen.sh`](deploy-bluegreen.sh), [`switch-frontend.sh`](switch-frontend.sh), [`switch-backend.sh`](switch-backend.sh) | Linux/POSIX용 프론트·백엔드 배포·전환 명령입니다. [`bluegreen.py`](bluegreen.py)의 공통 잠금·복구 로직을 사용합니다. |
@@ -99,8 +99,8 @@ Edge에는 설정 디렉터리와 별도로 `/var/cache/toadzip/assets` 읽기 �
   `--compose-override`는 여러 번 지정할 수 있습니다. 예: `--compose-override compose.local.yaml`.
   인증서 검증을 생략하는 옵션은 제공하지 않으며, 확인 주소의 리다이렉트를 따라가지 않습니다.
 - 배포·롤백 도구는 공통 잠금을 사용합니다. 도구 실행 중에는 런타임 설정을 수동으로 변경하지 않습니다.
-- 백엔드 전환은 API와 메트릭을 같은 색상으로 함께 변경·복구합니다. 기존 런타임의
-  `--upgrade-metrics`와 Edge 포트 최초 적용은 [모니터링 운영](../docs/operations/monitoring.md#bluegreen-메트릭-수집)을 따릅니다.
+- 백엔드 전환은 API와 메트릭을 같은 색상으로 함께 변경·복구합니다.
+  수집 경로와 검증은 [모니터링 운영](../docs/operations/monitoring.md#bluegreen-메트릭-수집)을 따릅니다.
 - 회귀 검사는 저장소 루트에서 `python3 -B tests/deployment/test_bluegreen.py`로 실행합니다.
   Docker·실제 `.env`를 사용하지 않고 후보 실패·전환 실패·원복·프론트/백엔드 잠금 경합을 검사합니다.
   실제 Linux 컨테이너에서 Bash 명령을 실행하는 백엔드 통합 시험은 [검증 안내](../tests/README.md#실제-백엔드-bluegreen-로컬-검증)를 따릅니다.
