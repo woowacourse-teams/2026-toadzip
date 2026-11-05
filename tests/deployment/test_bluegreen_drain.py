@@ -165,7 +165,7 @@ scrape_configs:
         args = ['docker', 'run', '-d', '--name', self.cli, '--network', self.project + '_default',
                 '-v', '/var/run/docker.sock:/var/run/docker.sock', '-v', f'{ROOT}:{ROOT}:ro',
                 '-v', f'{self.runtime}:{self.runtime}', '-w', str(ROOT)]
-        # Mask a real .env, but do not create a missing mountpoint under a read-only checkout.
+        # 실제 .env는 가리되 읽기 전용 체크아웃 아래에 없는 마운트 지점을 만들지 않는다.
         if (ROOT / '.env').exists() or (ROOT / '.env').is_symlink():
             args += ['-v', f'{empty}:{ROOT}/.env:ro']
         for key, value in self.environment.items():
@@ -324,7 +324,7 @@ scrape_configs:
             self.check_metrics('blue')
             assert self.running('backend-blue')
             failure_file.unlink()
-            # Keep healthy Green running while the active Blue is unavailable.
+            # 활성 Blue가 중지된 동안 정상 대기 중인 Green을 유지한다.
             self.docker('stop', '--time', '10', self.container('backend-blue'))
             self.until(lambda: self.metrics_query('up{job="backend",environment="dev"}')[0]['value'][1] == '0')
             self.docker('start', self.container('backend-blue'))

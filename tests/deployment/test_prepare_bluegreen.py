@@ -62,10 +62,10 @@ class PrepareTests(unittest.TestCase):
         self.assertFalse(self.runtime.exists())
 
     def test_upgrade_adds_only_metrics_with_active_colors_backup_and_idempotency(self):
-        legacy = self.source.read_text().split('# BEGIN backend metrics')[0]
+        legacy = self.source.read_text().split('# 백엔드 메트릭 설정 시작')[0]
         legacy = legacy.replace('server backend:8080;', 'server backend-green:8080;')
         source = self.folder / 'legacy.conf'
-        source.write_text(legacy + '\n# retained custom configuration\n')
+        source.write_text(legacy + '\n# 유지할 사용자 설정\n')
         destination = module.prepare(self.runtime, source)
         module.prepare(self.runtime, source, upgrade=True)
         changed = destination.read_text()
@@ -80,7 +80,7 @@ class PrepareTests(unittest.TestCase):
 
     def test_upgrade_rejects_existing_management_listener_without_modifying_runtime(self):
         source = self.folder / 'conflict.conf'
-        source.write_text(self.source.read_text().split('# BEGIN backend metrics')[0] + '\nserver { listen 8081; }\n')
+        source.write_text(self.source.read_text().split('# 백엔드 메트릭 설정 시작')[0] + '\nserver { listen 8081; }\n')
         destination = module.prepare(self.runtime, source)
         with self.assertRaisesRegex(bluegreen.DeploymentError, 'management listener'):
             module.prepare(self.runtime, source, upgrade=True)

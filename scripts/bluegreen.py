@@ -186,7 +186,7 @@ class Deployment:
         configuration = json.loads(self.compose("config", "--format", "json"))
         required = [port for port in configuration["services"]["edge-nginx"].get("ports", []) if port["target"] == 8081]
         if not required:
-            return  # Local fixtures may use only the Docker-internal management listener.
+            return  # 로컬 검증에서는 Docker 내부 관리 포트만 사용할 수 있다.
         actual = json.loads(docker("inspect", "--format", "{{json .NetworkSettings.Ports}}", self.edge))
         for port in required:
             if not any(binding["HostIp"] == port.get("host_ip", "0.0.0.0")
@@ -254,6 +254,7 @@ class Deployment:
         ) from request_failure
 
     def verify_metrics(self, target):
+        # 단순한 성공 응답이 아니라 선택한 컨테이너의 실제 주소와 메트릭 형식을 확인한다.
         networks = json.loads(docker("inspect", "--format", "{{json .NetworkSettings.Networks}}", target))
         expected = {network["IPAddress"] + ":8081" for network in networks.values() if network.get("IPAddress")}
         response = docker("exec", self.edge, "sh", "-c",

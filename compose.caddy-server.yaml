@@ -1,6 +1,6 @@
 # Application-server ingress. Use instead of compose.https.yaml after the initial port cutover.
 services:
-  # Edge owns the stable management port; legacy backend remains reachable inside Docker.
+  # 고정 관리 포트는 Edge가 맡고, 기존 백엔드는 Docker 내부에서 접근한다.
   backend:
     ports: !reset []
 

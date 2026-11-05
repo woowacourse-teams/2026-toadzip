@@ -21,10 +21,10 @@ def upgrade_metrics(text):
     if re.search(r'\blisten\s+(?:[^;\s]+:)?8081\b', text):
         raise bluegreen.DeploymentError('Runtime already has a management listener; review it before upgrading')
     template = (bluegreen.ROOT / 'infra/nginx/edge/default.conf').read_text()
-    block = template.split('# BEGIN backend metrics\n', 1)[1].split('# END backend metrics', 1)[0]
+    block = template.split('# 백엔드 메트릭 설정 시작\n', 1)[1].split('# 백엔드 메트릭 설정 끝', 1)[0]
     block = bluegreen.upstream_pattern('backend_metrics').sub(
         lambda match: match.group(1) + active + match.group(3), block)
-    return text.rstrip() + '\n\n# BEGIN backend metrics\n' + block + '# END backend metrics\n'
+    return text.rstrip() + '\n\n# 백엔드 메트릭 설정 시작\n' + block + '# 백엔드 메트릭 설정 끝\n'
 
 
 def prepare(runtime, source, upgrade=False):
@@ -46,7 +46,7 @@ def prepare(runtime, source, upgrade=False):
         except BlockingIOError as error:
             raise bluegreen.DeploymentError('Another deployment is running') from error
         try:
-            # Default preparation preserves existing state; the explicit upgrade below holds the same lock.
+            # 기본 준비는 기존 상태를 보존하고, 명시적 갱신도 같은 잠금 안에서 수행한다.
             if not destination.exists():
                 with destination.open('x') as output:
                     output.write(text)
