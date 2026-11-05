@@ -35,22 +35,23 @@ public record RuleReading(
     }
 
     public static RuleReading combine(List<RuleReading> readings, boolean all) {
+        Map<String, Object> compared = Map.of("children", List.copyOf(readings));
         if (!all && readings.stream().anyMatch(reading -> reading.status == Status.SATISFIED)) {
-            return new RuleReading(Status.SATISFIED, Set.of(), Map.of());
+            return new RuleReading(Status.SATISFIED, Set.of(), compared);
         }
         Set<ProfileField> missing = new LinkedHashSet<>();
         for (RuleReading reading : readings) {
             missing.addAll(reading.missingInputs);
         }
         if (all && readings.stream().anyMatch(reading -> reading.status == Status.NOT_SATISFIED)) {
-            return new RuleReading(Status.NOT_SATISFIED, missing, Map.of());
+            return new RuleReading(Status.NOT_SATISFIED, missing, compared);
         }
         if (readings.stream().anyMatch(reading -> reading.status == Status.DIRECT_CHECK_REQUIRED)) {
-            return new RuleReading(Status.DIRECT_CHECK_REQUIRED, missing, Map.of());
+            return new RuleReading(Status.DIRECT_CHECK_REQUIRED, missing, compared);
         }
         if (!missing.isEmpty()) {
-            return missing(missing);
+            return new RuleReading(Status.INPUT_NEEDED, missing, compared);
         }
-        return matched(all, Map.of());
+        return matched(all, compared);
     }
 }

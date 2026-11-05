@@ -2,6 +2,7 @@ package com.toadzip.backend.basiccomparison.service;
 
 import com.toadzip.backend.basiccomparison.domain.ComparisonContent;
 import com.toadzip.backend.basiccomparison.domain.ComparisonContentValidator;
+import com.toadzip.backend.basiccomparison.domain.IncomeStandard;
 import com.toadzip.backend.basiccomparison.domain.StoredComparison;
 import com.toadzip.backend.basiccomparison.dto.ComparisonRequests.DraftVersion;
 import com.toadzip.backend.basiccomparison.dto.ComparisonRequests.SaveDraft;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -47,6 +49,12 @@ public class ComparisonManagementService {
         this.regions = regions;
         this.codec = codec;
         this.clock = clock;
+    }
+
+    public List<IncomeStandard> incomeStandards() {
+        return references.incomeStandards().values().stream()
+                .sorted(Comparator.comparingLong(IncomeStandard::id))
+                .toList();
     }
 
     public RuleSet draft(long announcementId) {
