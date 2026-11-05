@@ -56,7 +56,7 @@ class AnnouncementAttachmentClientTest {
     void 임의_호스트와_포트_자격증명은_연결하기_전에_거절한다() {
         for (String source : List.of("http://127.0.0.1/a", "https://apply.lh.or.kr.evil.test/a",
                 "https://user@apply.lh.or.kr/a", "https://apply.lh.or.kr:444/a", "file:///etc/passwd",
-                "https://[::1]/a", "not a url", "https://apply-cdn.gh.or.kr.evil.test/a",
+                "https://[::1]/a", "not a url", "https://apply-cdn.gh.or.kr.evil.test/a", "https://www.gh.or.kr/a",
                 "https://user@apply-cdn.gh.or.kr/a", "https://apply-cdn.gh.or.kr:444/a")) {
             assertEquals(Reason.UNSUPPORTED_SOURCE,
                     assertThrows(AttachmentUnavailableException.class, () -> client.read(source)).reason());

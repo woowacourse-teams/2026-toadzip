@@ -24,9 +24,7 @@ import org.springframework.util.unit.DataSize;
 
 @Repository
 public class AnnouncementAttachmentClient {
-    private static final Set<String> HOSTS = Set.of(
-            "apply.lh.or.kr", "www.i-sh.co.kr", "www.gh.or.kr", "apply-cdn.gh.or.kr"
-    );
+    private static final Set<String> HOSTS = Set.of("apply.lh.or.kr", "www.i-sh.co.kr", "apply-cdn.gh.or.kr");
 
     private final Semaphore requests = new Semaphore(4);
     private final HttpClient client;
