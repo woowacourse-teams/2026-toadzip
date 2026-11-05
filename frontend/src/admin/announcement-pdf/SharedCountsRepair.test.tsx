@@ -23,6 +23,7 @@ it('실제 응답의 다섯 오류를 모두 표시하고 미수정 상태에서
   expect(onRepair).not.toHaveBeenCalled()
 })
 
+// 실제 응답 전체(56행)를 렌더하고 수십 번 입력하므로 병렬 실행하는 CI에서 기본 5초를 넘긴다.
 it('운영자가 입력한 유효한 묶음으로만 교정하며 정상 24개·56행·근거·미확인·큰 금액을 보존한다', () => {
   const text = JSON.stringify(original).replace(/"rentalDeposit":\d+/, '"rentalDeposit":123456789012345678')
   const before = readExtractionDocument(text)
@@ -53,7 +54,7 @@ it('운영자가 입력한 유효한 묶음으로만 교정하며 정상 24개·
   if (!checked.ok) throw new Error(checked.error)
   expect(checked.value.supplyRows).toHaveLength(56)
   expect(checked.value.supplyRows[0].targets[0].rentalDeposit).toBe('123456789012345678')
-})
+}, 20_000)
 
 it('개별 묶음 형식이 맞아도 다른 정상 묶음과 경로가 겹치면 교정을 완료하지 않는다', () => {
   const { onRepair, panel } = open()
