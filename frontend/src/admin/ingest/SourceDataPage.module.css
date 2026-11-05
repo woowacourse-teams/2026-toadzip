@@ -23,6 +23,11 @@
 .table tbody tr:hover > * { background: var(--ds-color-action-soft); }
 .table .time { width: 210px; min-width: 210px; max-width: 210px; }
 .table .url { width: 300px; min-width: 300px; max-width: 300px; }
+.supply { margin-top: var(--ds-space-6); }
+.supply h2 { margin: 0 0 var(--ds-space-2); font-size: var(--ds-text-body); }
+.supply p { margin: 0 0 var(--ds-space-3); font-size: var(--ds-text-caption); color: var(--ds-color-label); }
+.supply .scroll { height: auto; max-height: 65vh; }
+.supply .table tr[data-status="미수집"] td:last-child { color: var(--ds-color-deadline); font-weight: var(--ds-weight-strong); }
 .table a { color: var(--ds-color-action); text-underline-offset: 3px; }
 .page :is(button, a, input, .scroll):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
 @media (max-width: 700px) {

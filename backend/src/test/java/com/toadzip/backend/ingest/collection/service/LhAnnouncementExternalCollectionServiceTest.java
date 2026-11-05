@@ -17,6 +17,10 @@ import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
+import com.toadzip.backend.ingest.collection.pending.PendingCollectionTargets;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.lh.collection.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
 import com.toadzip.backend.ingest.lh.collection.announcementcatalog.domain.LhAnnouncementCatalogSourceView;
 import com.toadzip.backend.ingest.lh.collection.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
@@ -25,6 +29,7 @@ import com.toadzip.backend.ingest.lh.collection.detail.domain.LhAnnouncementDeta
 import com.toadzip.backend.ingest.lh.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.lh.collection.repository.external.LhAnnouncementCircuitBreaker;
+import com.toadzip.backend.ingest.lh.collection.repository.external.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.lh.collection.service.EmptyLhDetailReplacementException;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCandidateCollector;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver;
@@ -36,10 +41,6 @@ import com.toadzip.backend.ingest.lh.collection.supply.domain.EmptyLhSupplyRepla
 import com.toadzip.backend.ingest.lh.collection.supply.domain.HeldLhSupplyReplacement;
 import com.toadzip.backend.ingest.lh.collection.supply.domain.IncompleteLhSupplyReplacementException;
 import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceView;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
-import com.toadzip.backend.ingest.lh.collection.repository.external.LhAnnouncementUnavailableException;
-import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
@@ -113,7 +114,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         LhAnnouncementCollectionProgressManager progressManager =
                 new LhAnnouncementCollectionProgressManager(
                         progressStore,
-                        failureRecorder
+                        failureRecorder, mock(PendingCollectionTargets.class)
                 );
         var fixture = new CollectionServiceTestFixture();
         LhAnnouncementCandidateCollector candidateCollector = new LhAnnouncementCandidateCollector(
@@ -128,7 +129,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                 new LhAnnouncementSharedRequestCollector(candidateCollector, progressManager,
                         new LhAnnouncementClientProperties(
                                 maxConcurrentRequests, Duration.ofSeconds(3), Duration.ofSeconds(10))),
-                meterRegistry
+                meterRegistry, mock(PendingCollectionTargets.class)
         );
     }
 

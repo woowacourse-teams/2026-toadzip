@@ -4,10 +4,11 @@ import { captureProductEvent, createAnalyticsId } from '../../analytics/productA
 import type { MarkerHoverAttribution } from '../../analytics/markerHoverAnalytics'
 import { useAnalyticsConsent } from '../../analytics/useAnalyticsConsent'
 import { consentStore } from '../../privacy/consentStore'
+import { captureCampaignStat } from '../../analytics/campaignStats'
 import type { DetailEntryPoint } from '../../analytics/googleAnalytics'
 import type { DetailLocationResult } from '../navigation/detailLocation'
 
-interface Visit { key: string | null; id: string; entry: DetailEntryPoint; sent: boolean; hover?: MarkerHoverAttribution }
+interface Visit { key: string | null; id: string; entry: DetailEntryPoint; sent: boolean; counted?: boolean; hover?: MarkerHoverAttribution }
 
 /** Data loaded behind another dialog is not an active visit until the user can see it. */
 export function useProductDetailAnalytics({ detailLocation, readyComplexId, readyAnnouncementId }: {
@@ -59,7 +60,12 @@ export function useProductDetailAnalytics({ detailLocation, readyComplexId, read
         ? '.housing-detail-layer[aria-label^="단지 상세"]'
         : '.housing-detail-layer[aria-label^="공고 상세"]')
       if (dialog) dialog.dataset.detailVisitId = current.id
-      if (!allowed || !ready || current.sent || !dialog || !isForegroundElement(dialog)) return
+      if (!ready || !dialog || !isForegroundElement(dialog)) return
+      if (!current.counted) {
+        current.counted = captureCampaignStat(kind === 'complex' ? 'view_complex' : 'view_announcement',
+          { [kind === 'complex' ? 'complex_id' : 'announcement_id']: id })
+      }
+      if (!allowed || current.sent) return
       current.sent = captureProductEvent(kind === 'complex' ? 'view_complex' : 'view_announcement', {
         ...current.hover,
         [kind === 'complex' ? 'complex_id' : 'announcement_id']: id,

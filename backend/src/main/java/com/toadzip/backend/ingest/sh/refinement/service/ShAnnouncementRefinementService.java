@@ -1,10 +1,14 @@
 package com.toadzip.backend.ingest.sh.refinement.service;
 
+import com.toadzip.backend.ingest.domain.SourceRefinementFailure;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
+import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import com.toadzip.backend.ingest.sh.collection.domain.ShAnnouncementSource;
 import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.sh.refinement.dto.ShAnnouncementRefinementReport;
 import com.toadzip.backend.ingest.sh.refinement.service.ShAnnouncementRefiner.Outcome;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
@@ -26,11 +30,13 @@ public class ShAnnouncementRefinementService {
     private final ShAnnouncementSourceRepository sources;
     private final ShAnnouncementRefiner refiner;
     private final TransactionTemplate transactions;
+    private final IngestWriteOwnershipGuard ownershipGuard;
 
     public ShAnnouncementRefinementService(ShAnnouncementSourceRepository sources, ShAnnouncementRefiner refiner,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager, IngestWriteOwnershipGuard ownershipGuard) {
         this.sources = sources;
         this.refiner = refiner;
+        this.ownershipGuard = ownershipGuard;
         transactions = new TransactionTemplate(transactionManager);
         // 원천마다 따로 커밋해 한 원천의 실패가 앞서 정제한 공고를 되돌리지 않게 한다.
         transactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -44,21 +50,27 @@ public class ShAnnouncementRefinementService {
                 .toList();
         IngestExecutionScope.beginWork("SH 공고 정제", "게시글", targets.size());
         Map<Outcome, Integer> outcomes = new EnumMap<>(Outcome.class);
-        int failed = 0;
+        List<SourceRefinementFailure> failures = new ArrayList<>();
         for (ShAnnouncementSource target : targets) {
             IngestExecutionScope.checkStopRequested();
             try {
-                outcomes.merge(transactions.execute(status -> refiner.refine(target)), 1, Integer::sum);
+                outcomes.merge(transactions.execute(status -> {
+                    ownershipGuard.verifyWrite();
+                    return refiner.refine(target);
+                }), 1, Integer::sum);
+            }
+            catch (IngestOwnershipLostException lost) {
+                throw lost;
             }
             catch (RuntimeException failure) {
-                failed++;
+                failures.add(SourceRefinementFailure.of(target.getSourceKey(), failure));
                 log.warn("SH 공고 정제에 실패했습니다. sourceKey={}", target.getSourceKey(), failure);
             }
             IngestExecutionScope.workCompleted();
         }
         return new ShAnnouncementRefinementReport(targets.size(), count(outcomes, Outcome.CREATED),
                 count(outcomes, Outcome.UPDATED), count(outcomes, Outcome.UNCHANGED),
-                count(outcomes, Outcome.REVIEW_REQUIRED), count(outcomes, Outcome.TRASHED), failed);
+                count(outcomes, Outcome.REVIEW_REQUIRED), count(outcomes, Outcome.TRASHED), failures.size(), List.copyOf(failures));
     }
 
     private static int count(Map<Outcome, Integer> outcomes, Outcome outcome) {

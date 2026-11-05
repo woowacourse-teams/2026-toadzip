@@ -2,15 +2,17 @@ package com.toadzip.backend.ingest.lh.collection.service;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.pending.PendingCollectionTargets;
+import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.lh.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionProgressManager;
-import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,7 +35,7 @@ class LhAnnouncementCollectionProgressManagerTest {
     void setUp() {
         progressManager = new LhAnnouncementCollectionProgressManager(
                 progressStore,
-                failureRecorder
+                failureRecorder, mock(PendingCollectionTargets.class)
         );
     }
 

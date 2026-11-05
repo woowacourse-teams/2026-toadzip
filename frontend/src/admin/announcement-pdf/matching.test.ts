@@ -81,6 +81,20 @@ describe('공고 보정 대응 제안', () => {
     expect(proposeRows(extraction, rows, housing)[0]).toMatchObject({ destination: 'row:131', housingTypeId: null, needsConfirmation: true })
   })
 
+  it('GH PDF 24B는 모집수가 같아도 다른 주택형인 마지막 기존 행을 고침으로 정하지 않는다', () => {
+    const { extraction } = scenario('hansville')
+    const source = extraction.supplyRows[0]
+    const pdf = { ...extraction, sharedCounts: [], supplyRows: [{ ...source, complexName: 'GH 단지', typeName: '24B',
+      values: { ...source.values, exclusiveArea: 24.2, totalSupplyHouseholdCount: 3 } }] }
+    const existing = { ...blankRow(1), id: 34, key: 'row:34', complexName: 'GH 단지', typeName: '29B 고령자',
+      housingComplexId: 7, householdCount: 3, exclusiveArea: 29.1 }
+    const [proposal] = proposeRows(pdf, [existing], {})
+    expect(proposal.destination).toBe('')
+    expect(proposal.recommended).toEqual(['row:34'])
+    expect(proposal.needsConfirmation).toBe(true)
+    expect(proposal.ambiguous).toBe(true)
+  })
+
   it('같은 면적일 때 건설호수로 주택형을 구분한다', () => {
     const { extraction, rows, housing } = scenario('gongju')
     housing[2467][0].householdCount = 443
@@ -104,14 +118,14 @@ describe('공고 보정 대응 제안', () => {
     expect(proposeSchedules(extraction, events)[1]).toMatchObject({ existingIds: [], needsConfirmation: true })
   })
 
-  it('단지명 표기가 달라도 이번 모집수가 유일하게 같은 기존 행을 확인 필요로 제안한다', () => {
+  it('단지명 대응이 없으면 모집수가 유일하게 같아도 기존 행을 고침으로 제안하지 않는다', () => {
     const { extraction, rows, housing } = scenario('gongju')
     const source = extraction.supplyRows[0]
     const renamed = { ...extraction, supplyRows: [{ ...source, complexName: '표기가 다른 단지', values: { ...source.values, totalSupplyHouseholdCount: 450 } }] }
     const current = rows.map((row, at) => ({ ...row, householdCount: at === 0 ? 450 : 999 }))
     const [proposal] = proposeRows(renamed, current, housing)
-    expect(proposal).toMatchObject({ destination: current[0].key, needsConfirmation: true })
-    expect(proposal.reason).toContain('이번 모집수 450세대가 같은 기존 행')
+    expect(proposal).toMatchObject({ destination: 'new', needsConfirmation: true, complexId: null })
+    expect(proposal.reason).toBe('단지를 하나로 특정하지 못했습니다.')
     const twins = [current[0], { ...current[0], id: 9999, key: 'row:9999' }]
     expect(proposeRows(renamed, twins, housing)[0].reason).toBe('단지를 하나로 특정하지 못했습니다.')
   })

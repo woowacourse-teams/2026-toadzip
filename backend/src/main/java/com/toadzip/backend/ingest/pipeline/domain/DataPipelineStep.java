@@ -13,6 +13,8 @@ public enum DataPipelineStep {
     COLLECT_LH_ANNOUNCEMENT_DETAILS("LH 공고 상세 원본 수집", Kind.LH_ANNOUNCEMENT_COLLECTION),
     MAP_MYHOME_ANNOUNCEMENTS("마이홈 공고 정제", Kind.REFINEMENT),
     ENRICH_LH_ANNOUNCEMENTS("LH 공고 상세·공급 정보 보강", Kind.REFINEMENT),
+    MAP_SH_ANNOUNCEMENTS("SH 공고 정제", Kind.REFINEMENT),
+    MAP_GH_ANNOUNCEMENTS("GH 공고 정제", Kind.REFINEMENT),
     MAP_LH_ANNOUNCEMENTS("LH 공고 정제", Kind.REFINEMENT);
 
     private final String displayName;

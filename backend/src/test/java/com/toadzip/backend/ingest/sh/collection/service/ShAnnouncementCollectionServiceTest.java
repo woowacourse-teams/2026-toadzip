@@ -5,21 +5,23 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.board.service.BoardSourceCollector;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementExternalRepository;
-import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementStore;
+import com.toadzip.backend.ingest.collection.pending.PendingCollectionTargets;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementListParser;
-import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementHtmlParser;
 import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
+import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementHtmlParser;
+import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementListParser;
+import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementStore;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -207,6 +209,42 @@ class ShAnnouncementCollectionServiceTest {
     }
 
     @Test
+    void 요청이_연속으로_실패하면_남은_글의_상세를_요청하지_않는다() {
+        Integer[] ids = {100, 101, 102, 103, 104, 105, 106, 107, 108, 109};
+        when(externalRepository.fetchList(1)).thenReturn(list(1, 10, ids));
+        for (int id = 100; id <= 104; id++) {
+            when(externalRepository.fetchDetail(Integer.toString(id))).thenThrow(ExternalDataRequestException.retryable("503"));
+        }
+
+        var report = service.collect();
+
+        assertThat(report.failedRequestCount()).isEqualTo(5);
+        verify(externalRepository, never()).fetchDetail("105");
+        verify(store, never()).store(any());
+    }
+
+    @Test
+    void 실패가_이어져도_중간에_성공하면_수집을_멈추지_않는다() {
+        Integer[] ids = {100, 101, 102, 103, 104, 105, 106, 107, 108, 109};
+        when(externalRepository.fetchList(1)).thenReturn(list(1, 10, ids));
+        for (int id : ids) {
+            String seq = Integer.toString(id);
+            if (id == 104 || id == 109) {
+                when(externalRepository.fetchDetail(seq)).thenReturn(detail(seq));
+            }
+            else {
+                when(externalRepository.fetchDetail(seq)).thenThrow(new ExternalDataRequestException("HTTP 404"));
+            }
+        }
+
+        var report = service.collect();
+
+        assertThat(report.storedRowCount()).isEqualTo(2);
+        assertThat(report.failedRequestCount()).isEqualTo(8);
+        verify(externalRepository).fetchDetail("109");
+    }
+
+    @Test
     void cutoffIsInclusiveAndOldListPageDoesNotHideRecentPostOnLaterPage() {
         String first = list(1, 11).replace("2026-01-01", "2026-07-06");
         when(externalRepository.fetchList(1)).thenReturn(first);
@@ -273,7 +311,7 @@ class ShAnnouncementCollectionServiceTest {
         return new ShAnnouncementCollectionService(
                 new ShAnnouncementBoardSource(externalRepository, new ShAnnouncementListParser(), detailParser, store),
                 new BoardSourceCollector(CollectionServiceTestFixture.retryWithoutDelay(), failures,
-                        Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), Duration.ofDays(7)),
+                        Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), mock(PendingCollectionTargets.class), Duration.ofDays(7)),
                 days, Duration.ZERO);
     }
 

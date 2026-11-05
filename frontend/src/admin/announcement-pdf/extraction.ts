@@ -26,7 +26,9 @@ export type Extraction = {
   /** 날짜 없이 개별안내한 일정(notApplicable의 path "schedules")의 이유. 받은 일정 값에는 적용하지 않는다. */
   undatedSchedules: string[]
 }
-export type ReadResult = { ok: true; value: Extraction; repairs: string[] } | { ok: false; error: string; repairs: string[] }
+type ReadFailure = { ok: false; error: string; repairs: string[] }
+export type ReadResult = { ok: true; value: Extraction; repairs: string[] } | ReadFailure
+type DocumentResult = { ok: true; value: JsonObject; repairs: string[] } | ReadFailure
 
 const jsonEscapes = new Set(['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'])
 // 채팅 화면에서 복사하면 공백이 &#x20; 같은 HTML 문자 코드로 붙어 오는 경우가 있다.
@@ -35,6 +37,15 @@ const maximumBytes = 1_000_000
 
 /** AI 추출 응답에서 JSON 객체를 읽는다. 값은 바꾸지 않고 형식 문제만 고치며 고친 내용을 모두 돌려준다. */
 export function readExtraction(text: string): ReadResult {
+  const document = readExtractionDocument(text)
+  if (!document.ok) return document
+  const shape = extraction(document.value)
+  if (typeof shape === 'string') return { ok: false, error: shape, repairs: document.repairs }
+  return { ok: true, value: shape, repairs: document.repairs }
+}
+
+/** 원문 교정도 같은 크기 제한·금액 정밀도 보존을 거친 JSON을 사용한다. */
+export function readExtractionDocument(text: string): DocumentResult {
   const repairs: string[] = []
   let source = text.replace(/^﻿/, '').trim()
   if (!source) return { ok: false, error: '추출 결과가 비어 있습니다. 다시 추출하세요.', repairs }
@@ -77,9 +88,8 @@ export function readExtraction(text: string): ReadResult {
     const near = Number.isFinite(position) ? ` ${position}번째 글자 근처: “${source.slice(Math.max(0, position - 20), position + 20)}”` : ''
     return { ok: false, error: `JSON 문법 오류입니다.${near}`, repairs }
   }
-  const shape = extraction(value)
-  if (typeof shape === 'string') return { ok: false, error: shape, repairs }
-  return { ok: true, value: shape, repairs }
+  if (!isRecord(value)) return { ok: false, error: '응답에 data 객체가 없습니다. 화면의 프롬프트로 받은 응답인지 확인해 주세요.', repairs }
+  return { ok: true, value, repairs }
 }
 
 function extraction(value: unknown): Extraction | string {
@@ -178,6 +188,26 @@ function notes(value: unknown): ExtractionNote[] {
   return Array.isArray(value) ? value.filter(isRecord).flatMap(item => typeof item.path === 'string'
     ? [{ path: normalizePath(item.path), reason: text(item.reason) ?? '' }] : []) : []
 }
+/** 교정 화면에 모든 잘못된 묶음을 표시한다. 개별 검사와 경로 중복 규칙은 엄격한 읽기와 같다. */
+export function sharedCountIssues(document: JsonObject): { index: number; message: string }[] {
+  if (!isRecord(document.data) || !Array.isArray(document.data.supplyRows) || !Array.isArray(document.sharedCounts)
+    || document.sharedCounts.length > 200) return []
+  const targets = document.data.supplyRows.map(row => isRecord(row) && Array.isArray(row.targets) ? row.targets.length : 0)
+  const seen = new Set<string>()
+  return document.sharedCounts.flatMap((item, index) => {
+    let message = sharedCountProblem([item], targets)?.replace('sharedCounts[0]', `sharedCounts[${index}]`) ?? null
+    if (isRecord(item) && Array.isArray(item.paths)) {
+      for (const path of item.paths) {
+        if (typeof path !== 'string') continue
+        const normalized = normalizePath(path)
+        if (seen.has(normalized)) message ??= `sharedCounts[${index}]: 한 공급행을 여러 공통 모집수에 넣을 수 없습니다.`
+        seen.add(normalized)
+      }
+    }
+    return message ? [{ index, message }] : []
+  })
+}
+
 /** sharedCounts에서 처음 걸린 항목과 이유를 돌려준다. 값은 고치지 않고 다시 추출할 수 있게 위치를 알린다. */
 /**
  * 공통 모집수는 두 가지다. 여러 공급행이 함께 쓰는 모집수(supplyRows[n].totalSupplyHouseholdCount)와,

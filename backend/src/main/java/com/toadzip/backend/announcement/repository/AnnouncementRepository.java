@@ -15,6 +15,7 @@ public interface AnnouncementRepository extends JpaRepository<Announcement, Long
             SELECT c.* FROM announcements c
             WHERE c.admin_deleted = :deleted
               AND (:review = false OR c.source_review_required = true)
+              AND (:unconfirmed = false OR c.release_status = 'UNCONFIRMED')
               AND (lower(c.name) LIKE :keyword ESCAPE '!'
                   OR lower(c.source_announcement_identifier) = :identifier)
               AND (:provider = '' OR c.provider IN (:provider, :providerLegacy))
@@ -28,8 +29,8 @@ public interface AnnouncementRepository extends JpaRepository<Announcement, Long
             ORDER BY c.created_at DESC NULLS LAST, c.id DESC
             """, nativeQuery = true)
     org.springframework.data.domain.Page<Announcement> searchAdmin(String keyword, String identifier, String provider, String providerLegacy,
-            String rental, String rentalLegacy, String region, boolean deleted, boolean review, long complexId,
-            org.springframework.data.domain.Pageable pageable);
+            String rental, String rentalLegacy, String region, boolean deleted, boolean review, boolean unconfirmed,
+            long complexId, org.springframework.data.domain.Pageable pageable);
 
 
     Optional<Announcement> findBySourceAnnouncementIdentifier(String sourceAnnouncementIdentifier);

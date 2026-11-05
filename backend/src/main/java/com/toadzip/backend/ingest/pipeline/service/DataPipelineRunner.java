@@ -113,6 +113,11 @@ public class DataPipelineRunner {
             DataPipelineType type, DataPipelineStep step, boolean collectionRateLimited, boolean lhRateLimited
     ) {
         if (type.requiresSuccessfulCollection(step) && collectionRateLimited) {
+            if (type == DataPipelineType.SH_ANNOUNCEMENT_COLLECTION
+                    || type == DataPipelineType.GH_ANNOUNCEMENT_COLLECTION) {
+                return "수집이 호출 제한으로 완료되지 않아 자동 정제를 실행하지 않았습니다. "
+                        + "수집 결과를 확인한 뒤 해당 기관의 수집을 다시 실행하세요.";
+            }
             return "수집이 호출 제한으로 완료되지 않아 자동 정제를 실행하지 않았습니다. "
                     + "수집 결과를 확인한 뒤 저장된 원천으로 정제를 실행할 수 있습니다.";
         }

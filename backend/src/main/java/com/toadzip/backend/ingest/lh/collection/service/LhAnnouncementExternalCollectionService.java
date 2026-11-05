@@ -2,8 +2,9 @@ package com.toadzip.backend.ingest.lh.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
+import com.toadzip.backend.ingest.collection.pending.PendingCollectionTargets;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.LinkedHashMap;
@@ -27,6 +28,7 @@ public class LhAnnouncementExternalCollectionService {
     private final LhAnnouncementCollectionCandidateResolver candidateResolver;
     private final LhAnnouncementSharedRequestCollector sharedRequests;
     private final MeterRegistry meterRegistry;
+    private final PendingCollectionTargets pending;
 
     public ExternalDataCollectionReport collect(ExternalDataSource targetSource) {
         IngestExecutionScope.requireHeld();
@@ -35,7 +37,13 @@ public class LhAnnouncementExternalCollectionService {
         List<Candidate> candidates = measurePreparation(
                 targetSource, false, candidateResolver::resolveCatalogTargets
         );
-        ExternalDataCollectionReport report = collectCandidates(targetSource, candidates, false);
+        Map<String, Candidate> selected = new LinkedHashMap<>();
+        candidates.forEach(candidate -> selected.put(candidate.sourceAnnouncementKey(), candidate));
+        pending.rememberAll(targetSource, selected, 0);
+        pending.find(targetSource).stream().map(target -> pending.read(target, Candidate.class))
+                .forEach(candidate -> selected.putIfAbsent(candidate.sourceAnnouncementKey(), candidate));
+        List<Candidate> remaining = List.copyOf(selected.values());
+        ExternalDataCollectionReport report = collectCandidates(targetSource, remaining, false);
         log.info(
                 "{} 수집을 완료했습니다: storedRowCount={}, failedRequestCount={}, "
                         + "externalApiCallCount={}, skippedRequestCount={}",

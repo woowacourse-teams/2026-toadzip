@@ -9,13 +9,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures;
 import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures.Row;
+import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures;
 import com.toadzip.backend.ingest.collection.fixture.MutableClock;
-import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementExternalRepository;
-import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
+import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import java.time.Duration;
 import java.time.Instant;
@@ -64,6 +64,7 @@ class GhAnnouncementCollectionIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        jdbc.sql("DELETE FROM pending_collection_targets").update();
         sources.deleteAll();
         failures.deleteAll();
         clock.reset();

@@ -33,9 +33,9 @@ export type RowReview = { proposal: RowProposal; include: boolean; reviewed: boo
   newHousingType?: boolean }
 export type ScheduleReview = { proposal: ScheduleProposal; include: boolean; reviewed: boolean; cells: Cell[] }
 export type Review = { extraction: Extraction; rows: RowReview[]; schedules: ScheduleReview[]; metadata: Cell[]; reception: Cell[]
-  /** LH 원천행에 맞추기 전 검토. 이미 맞춘 단지를 다시 고르면 여기서 다시 맞춘다. */
+  /** 과거 초안에 저장된 원본 검토. 현재 단지 재선택에서는 편집 중인 검토를 사용한다. */
   unaligned?: Review
-  /** 지금까지 LH 원천행에 맞춘 단지명과 고른 단지. 다시 맞출 때 다른 단지명의 맞춤을 이 순서로 다시 적용한다. */
+  /** 단지명별로 고른 단지·주택형 후보. 동일한 재선택은 검토를 다시 만들지 않는다. */
   alignments?: { complexName: string; complex: { id: number; name: string }; candidates: MatchingHousingType[] }[]
   /** 단지 대응에서 이번 보정에서 그대로 두기로 한 공급행 없는 LH 행. 화면 질문만 접고 저장 요청에는 쓰지 않는다. */
   keptLhRows?: string[] }
@@ -244,7 +244,7 @@ export class ReviewError extends Error {
 }
 export function reviewSection(reviewId: string): ReviewSection {
   if (reviewId.startsWith('schedule:') || reviewId.startsWith('cell:schedules[')) return 'schedule'
-  if (reviewId.startsWith('cell:announcement') || reviewId.startsWith('cell:receptionPlace')) return 'reception'
+  if (reviewId.startsWith('release:') || reviewId.startsWith('cell:announcement') || reviewId.startsWith('cell:receptionPlace')) return 'reception'
   return 'supply'
 }
 /** 확인 항목 ID(row:2, cell:supplyRows[2].…, target:2:0, subtype:2:1, price:2, placement:2)가 가리키는 공급행 번호. 공급행 밖이면 null */
@@ -279,7 +279,7 @@ function unnamedNewTarget(target: TargetReview) {
  */
 /** 저장(assembleReview)과 같이 반영을 고른 칸은 그 값, 아니면 기존 값 */
 export function savedValue(cell: Cell) { return cell.selected && !cell.locked ? cell.value : cell.before }
-export function fieldNeeds({ reception, metadata }: Pick<Review, 'reception' | 'metadata'>): Map<string, string> {
+export function fieldNeeds({ reception, metadata }: Pick<Review, 'reception' | 'metadata'>, workspace?: JsonWorkspace, release?: ReleaseChoice): Map<string, string> {
   const saved = savedValue
   const needs = new Map<string, string>()
   if (reception.some(cell => saved(cell) != null)) {
@@ -290,6 +290,14 @@ export function fieldNeeds({ reception, metadata }: Pick<Review, 'reception' | '
   const start = metadata.find(cell => cell.field === 'applicationStartDate'), end = metadata.find(cell => cell.field === 'applicationEndDate')
   if (start && end && typeof saved(start) === 'string' && typeof saved(end) === 'string' && String(saved(end)) < String(saved(start))) {
     for (const cell of [start, end]) needs.set(cell.path, `접수 종료일(${String(saved(end))})이 시작일(${String(saved(start))})보다 빠릅니다. 원문과 대조해 두 날짜를 맞추세요.`)
+  }
+  if (workspace?.detail.summary.announcement?.releaseStatus === 'UNCONFIRMED') {
+    for (const cell of metadata.filter(item => ['applicationStartDate', 'applicationEndDate', 'winnerAnnouncementDate'].includes(item.field))) {
+      if (!validCellValue(cell.kind, saved(cell))) needs.set(cell.path, `미확정 공고를 저장하려면 ${cell.label}이 필요합니다. 공고문을 확인해 입력하세요.`)
+    }
+    for (const [field, label] of [['rentalType', '공급 유형'], ['recruitmentType', '모집 유형']] as const) {
+      if (!(release?.[field] || workspace.detail.data[field])) needs.set(`release:${field}`, `미확정 공고를 저장하려면 ${label}을 선택하세요.`)
+    }
   }
   return needs
 }
@@ -358,7 +366,7 @@ export function complexGroups(review: Review) {
 }
 /** 화면에 보이는 순서(공급정보 단지 묶음 → 일정 → 접수처·기본정보)로 남은 확인 항목을 돌려준다. */
 /** savesHousingTypes가 false면(PDF로 공급정보 편집표만 채울 때) 주택형 값을 저장하지 않으므로 주택형 가격 확인을 넣지 않는다. */
-export function pendingItems(review: Review, savesHousingTypes = true, workspace?: JsonWorkspace): PendingItem[] {
+export function pendingItems(review: Review, savesHousingTypes = true, workspace?: JsonWorkspace, release?: ReleaseChoice): PendingItem[] {
   const items: PendingItem[] = [], problems = workspace ? placementProblems(review, workspace) : new Map<number, PlacementProblem>()
   complexGroups(review).flatMap(group => group.indexes).forEach(index => {
     const row = review.rows[index]
@@ -373,7 +381,8 @@ export function pendingItems(review: Review, savesHousingTypes = true, workspace
     if (pendingSchedule(schedule)) items.push({ id: `schedule:${index}`, section: 'schedule' })
     if (schedule.include) schedule.cells.filter(pendingCell).forEach(cell => items.push({ id: `cell:${cell.path}`, section: 'schedule' }))
   })
-  const needs = fieldNeeds(review)
+  const needs = fieldNeeds(review, savesHousingTypes ? workspace : undefined, release)
+  for (const path of needs.keys()) if (path.startsWith('release:')) items.push({ id: path, section: 'reception' })
   for (const cell of [...review.reception, ...review.metadata].filter(cell => pendingField(cell, needs))) items.push({ id: `cell:${cell.path}`, section: 'reception' })
   return items
 }
@@ -602,8 +611,8 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
   const ordered = applyPdfOrder(review, rows)
   const announcement: JsonObject = Object.fromEntries(['name', 'rentalType', 'recruitmentType', 'agencyCode', ...metadataFields.map(([field]) => field)].map(field => [field, workspace.detail.data[field] ?? null]))
   applyCells(announcement, review.metadata, metadataFields)
-  const [need] = fieldNeeds(review)
-  if (need) throw new ReviewError(need[1], `cell:${need[0]}`)
+  const [need] = fieldNeeds(review, release ? workspace : undefined, release)
+  if (need) throw new ReviewError(need[1], need[0].startsWith('release:') ? need[0] : `cell:${need[0]}`)
   const reception = { ...((workspace.detail.data.receptionPlace ?? {}) as JsonObject) }
   applyCells(reception, review.reception, receptionFields)
   const document: ExtractedAnnouncement = { schemaVersion: 'admin-announcement-import/v1', source: { originalUrl: workspace.detail.data.originalUrl, sourceDocumentId: workspace.detail.sourceIdentifier, extractedAt: new Date().toISOString() }, announcement, receptionPlace: reception, supplyRows: ordered.filter(row => review.rows.some(entry => entry.include && entry.key === row.key)).map(row => ({

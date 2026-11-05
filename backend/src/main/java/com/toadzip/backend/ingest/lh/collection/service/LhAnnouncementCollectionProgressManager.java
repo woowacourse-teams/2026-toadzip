@@ -1,9 +1,10 @@
 package com.toadzip.backend.ingest.lh.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.pending.PendingCollectionTargets;
+import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
-import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,6 +15,7 @@ public class LhAnnouncementCollectionProgressManager {
 
     private final LhAnnouncementCollectionProgressStore progressStore;
     private final ExternalDataFailureRecorder failureRecorder;
+    private final PendingCollectionTargets pending;
 
     @Transactional
     public void recordLinked(ExternalDataSource targetSource, Candidate candidate) {
@@ -24,6 +26,7 @@ public class LhAnnouncementCollectionProgressManager {
                 candidate.panId()
         );
         resolveFailures(targetSource, candidate);
+        pending.complete(targetSource, candidate.sourceAnnouncementKey());
     }
 
     private void resolveFailures(ExternalDataSource targetSource, Candidate candidate) {

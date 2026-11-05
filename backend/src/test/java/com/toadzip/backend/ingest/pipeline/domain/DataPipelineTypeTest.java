@@ -86,8 +86,8 @@ class DataPipelineTypeTest {
             "COMPLEX_SYNC, true",
             "ANNOUNCEMENT_SYNC, true",
             "ANNOUNCEMENT_REGISTRATION, true",
-            "SH_ANNOUNCEMENT_COLLECTION, false",
-            "GH_ANNOUNCEMENT_COLLECTION, false"
+            "SH_ANNOUNCEMENT_COLLECTION, true",
+            "GH_ANNOUNCEMENT_COLLECTION, true"
     })
     void 수집과_정제를_잇는_유형만_정제_단계에_수집_성공을_요구한다(DataPipelineType type, boolean required) {
         assertThat(type.requiresSuccessfulCollection(DataPipelineStep.MAP_LH_ANNOUNCEMENTS)).isEqualTo(required);

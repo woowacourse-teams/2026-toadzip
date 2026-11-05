@@ -14,15 +14,15 @@ import com.toadzip.backend.ingest.lh.collection.detail.repository.LhAnnouncement
 import com.toadzip.backend.ingest.lh.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.lh.collection.supply.repository.LhAnnouncementSupplySourceReader;
-import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper;
-import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
-import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper.LhScheduleData;
-import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
-import com.toadzip.backend.ingest.lh.refinement.service.LhScheduleAttachmentWriter;
 import com.toadzip.backend.ingest.lh.refinement.domain.LhRentalTypes;
 import com.toadzip.backend.ingest.lh.refinement.domain.LhRevisionName;
 import com.toadzip.backend.ingest.lh.refinement.dto.LhAnnouncementRefinementReport;
 import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementComplexLinker.DetailComplex;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper.LhScheduleData;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
+import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper;
+import com.toadzip.backend.ingest.lh.refinement.service.LhScheduleAttachmentWriter;
 import com.toadzip.backend.ingest.lh.refinement.service.LhSupplyRowWriter.SupplyLine;
 import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import jakarta.persistence.EntityManager;
@@ -160,7 +160,7 @@ class LhAnnouncementRefiner {
         Optional<String> url = Optional.ofNullable(catalog.getDetailUrl()).filter(text -> !text.isBlank())
                 .or(() -> existing.map(Announcement::getOriginalUrl));
         Optional<LocalDate> start = applicationDate(data, LhScheduleData::startAt, Comparator.naturalOrder())
-                .or(catalog::noticeLocalDate).or(() -> existing.map(Announcement::getApplicationStartDate));
+                .or(() -> existing.map(Announcement::getApplicationStartDate));
         Optional<LocalDate> end = applicationDate(data, this::endOf, Comparator.reverseOrder())
                 .or(catalog::closingLocalDate).or(() -> existing.map(Announcement::getApplicationEndDate));
         if (name.isEmpty() || posted.isEmpty() || url.isEmpty() || start.isEmpty() || end.isEmpty()

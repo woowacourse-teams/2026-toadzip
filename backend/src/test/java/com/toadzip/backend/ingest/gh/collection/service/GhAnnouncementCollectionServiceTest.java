@@ -8,23 +8,25 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.board.service.BoardSourceCollector;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures;
 import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures.Row;
+import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures;
+import com.toadzip.backend.ingest.collection.pending.PendingCollectionTargets;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
+import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementBoard;
 import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementHtmlParser;
 import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementListParser;
 import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementStore;
 import com.toadzip.backend.ingest.gh.collection.repository.GhHousingTypeDetails;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
-import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import java.time.Clock;
@@ -298,7 +300,7 @@ class GhAnnouncementCollectionServiceTest {
                 new GhAnnouncementBoardSource(externalRepository, new GhAnnouncementListParser(),
                         new GhAnnouncementHtmlParser(), store, new GhHousingTypeDetails()),
                 new BoardSourceCollector(CollectionServiceTestFixture.retryWithoutDelay(), failures,
-                        Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), Duration.ofDays(7)),
+                        Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), mock(PendingCollectionTargets.class), Duration.ofDays(7)),
                 days, Duration.ZERO);
     }
 

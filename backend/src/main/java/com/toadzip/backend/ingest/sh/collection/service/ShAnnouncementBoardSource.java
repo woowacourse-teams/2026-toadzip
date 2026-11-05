@@ -6,8 +6,8 @@ import com.toadzip.backend.ingest.collection.board.service.BoardSource;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.sh.collection.domain.ShAnnouncementSnapshot;
 import com.toadzip.backend.ingest.sh.collection.dto.ShAnnouncementContent;
-import com.toadzip.backend.ingest.sh.collection.dto.ShAnnouncementPage;
 import com.toadzip.backend.ingest.sh.collection.dto.ShAnnouncementPage.Entry;
+import com.toadzip.backend.ingest.sh.collection.dto.ShAnnouncementPage;
 import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementHtmlParser;
 import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementListParser;
@@ -27,6 +27,11 @@ public class ShAnnouncementBoardSource implements BoardSource<Entry, ShAnnouncem
     private final ShAnnouncementListParser parser;
     private final ShAnnouncementHtmlParser detailParser;
     private final ShAnnouncementStore store;
+
+    @Override
+    public Class<Entry> entryType() {
+        return Entry.class;
+    }
 
     @Override
     public ExternalDataSource source() {

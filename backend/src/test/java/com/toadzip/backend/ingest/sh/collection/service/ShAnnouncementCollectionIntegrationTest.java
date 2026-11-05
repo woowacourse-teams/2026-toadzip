@@ -10,11 +10,11 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.fixture.MutableClock;
-import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementExternalRepository;
-import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
+import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementSourceRepository;
 import java.time.Duration;
 import java.time.Instant;
 import org.jsoup.Jsoup;
@@ -52,6 +52,7 @@ class ShAnnouncementCollectionIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        jdbc.sql("DELETE FROM pending_collection_targets").update();
         sources.deleteAll();
         failures.deleteAll();
         clock.reset();

@@ -2,7 +2,7 @@ import type { JsonWorkspace } from '../announcement-json/api'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 import type { CorrectionRow } from '../supply/supplyCorrectionApi'
 import type { Extraction } from './extraction'
-import { pickHousingType, sourceComplexNames, typeKey } from './matching'
+import { missingHousingType, pickHousingType, sourceComplexNames, typeKey } from './matching'
 import { createRowReview, editCell, preserveCellChoice, type Review, type RowReview } from './review'
 import { alignToSource, matchNote, parseSourceLabel, pdfTypes, type SourceLabel, type SourceMatch } from './subtypes'
 
@@ -53,16 +53,32 @@ export function sourceAlignments(review: Review, workspace: JsonWorkspace, index
 /**
  * 고른 단지로 공고문 행과 LH 원천행을 맞춘 검토를 만든다. 맞출 LH 행이 없으면 null을 돌려준다.
  * 처음 고르는 단지명은 지금 검토 위에서 맞춰 다른 단지명의 맞춤과 선택을 그대로 둔다.
- * 이미 맞춘 단지명을 다시 고르면 맞추기 전 검토에서 다른 단지명의 맞춤부터 다시 적용한다. 이미 복사한 행끼리 다시 맞추지 않는다.
+ * 같은 선택은 그대로 두고, 다른 단지를 고르면 현재 검토에서 해당 단지만 다시 맞춘다.
  */
 export function alignSourceRows(current: Review, workspace: JsonWorkspace, complexName: string,
   complex: { id: number; name: string }, candidates: MatchingHousingType[]): Review | null {
-  const choice = { complexName, complex, candidates }, base = current.unaligned ?? current
+  const previous = current.alignments?.find(item => item.complexName === complexName)
+  if (previous?.complex.id === complex.id && JSON.stringify(previous.candidates) === JSON.stringify(candidates)) return current
   const others = (current.alignments ?? []).filter(item => item.complexName !== complexName)
-  const start = others.length === current.alignments?.length ? current
-    : others.reduce((review, item) => alignOn(review, workspace, item.complexName, item.complex, item.candidates) ?? review, base)
-  const aligned = alignOn(start, workspace, complexName, complex, candidates)
-  return aligned && { ...aligned, unaligned: base, alignments: [...others, choice] }
+  // 이미 원천행에 맞춘 공급행은 다시 복사하지 않고 단지·주택형 연결만 바꾼다.
+  if (previous) {
+    const rows = current.rows.map((old, index) => {
+      const source = current.extraction.supplyRows[index]
+      if (source.complexName !== complexName) return old
+      const picked = pickHousingType(current.extraction, index, candidates)
+      const next = createRowReview(current.extraction, index, { ...old.proposal, complexId: complex.id, candidates,
+        housingTypeId: picked.housingTypeId, newComplex: { ...old.proposal.newComplex!, ...complex } }, workspace)
+      const retain = (cell: RowReview['cells'][number]) => cell.field === 'housingTypeId' ? cell
+        : preserveCellChoice(cell, [...old.cells, ...old.targets.flatMap(target => target.cells)].find(item => item.path === cell.path))
+      const newType = !source.subtypes.length && Boolean(missingHousingType(complex.id, candidates, source.typeName ?? '', source.values.exclusiveArea, source.values.supplyArea))
+      return { ...next, key: old.key, include: old.include, reviewed: false, newHousingType: newType,
+        cells: next.cells.map(retain).map(cell => newType && cell.field === 'housingTypeId' ? editCell(cell, '') : cell),
+        targets: next.targets.map((target, at) => ({ ...target, destination: old.targets[at]?.destination ?? target.destination, cells: target.cells.map(retain) })) }
+    })
+    return { ...current, rows, alignments: [...others, { complexName, complex, candidates }] }
+  }
+  const aligned = alignOn(current, workspace, complexName, complex, candidates)
+  return aligned && { ...aligned, alignments: [...others, { complexName, complex, candidates }] }
 }
 
 /** 이 검토 위에서 한 단지명의 공고문 행을 LH 원천행에 맞춘다. 행 번호가 바뀌므로 메모·근거·공통 모집수 경로를 새 번호로 옮기고, 다른 행의 선택은 그대로 유지한다. */
@@ -83,8 +99,8 @@ function alignOn(review: Review, workspace: JsonWorkspace, complexName: string, 
     const retain = (cell: RowReview['cells'][number]) => preserveCellChoice(cell, [...old.cells, ...old.targets.flatMap(target => target.cells)].find(item => pathOf(item.path) === cell.path))
     if (!plan.match) {
       const next = createRowReview(extraction, index, { ...old.proposal, sharedIndex: sharedIndex(index) }, workspace)
-      return { ...next, key: old.key, include: old.include, reviewed: old.reviewed, newHousingType: old.newHousingType,
-        cells: next.cells.map(retain), targets: next.targets.map(target => ({ ...target, cells: target.cells.map(retain) })) }
+      return { ...old, proposal: { ...old.proposal, sharedIndex: sharedIndex(index) },
+        cells: next.cells.map(retain), targets: next.targets.map((target, at) => ({ ...target, destination: old.targets[at]?.destination ?? target.destination, cells: target.cells.map(retain) })) }
     }
     const alignment = plan.match, first = alignment.rows[0] === plan.from, grouped = extraction.supplyRows[index].subtypes.length > 0
     const name = typeKey(source.supplyRows[plan.from].typeName)

@@ -65,9 +65,9 @@ export function RequestPreparation({ announcementName, pdf, extraction, onExtrac
 }
 
 /** 검토 단계와 같은 자리의 하단 버튼 줄. 추출이 끝나야 검토 버튼을 누를 수 있다. */
-export function PreparationFooter({ ready, onReview }: { ready: boolean; onReview: () => void }) {
+export function PreparationFooter({ ready, needsRepair = false, onReview }: { ready: boolean; needsRepair?: boolean; onReview: () => void }) {
   return <footer className={`${styles.footer} ${styles.prepareFooter}`}>
-    <div><strong>{ready ? '추출을 마쳤습니다' : '추출 전입니다'}</strong><span>{ready ? '다음 화면에서 기존 값과 비교하고 반영할 값을 고릅니다.' : 'PDF 제목을 확인하고 추출하면 검토할 수 있습니다.'}</span></div>
+    <div><strong>{ready ? '추출을 마쳤습니다' : needsRepair ? '추출 결과를 수정해야 합니다' : '추출 전입니다'}</strong><span>{ready ? '다음 화면에서 기존 값과 비교하고 반영할 값을 고릅니다.' : needsRepair ? '표시된 오류를 확인하고 수정한 묶음을 검증하세요.' : 'PDF 제목을 확인하고 추출하면 검토할 수 있습니다.'}</span></div>
     <Button data-design-system disabled={!ready} onClick={onReview}>추출 결과 검토하기</Button>
   </footer>
 }

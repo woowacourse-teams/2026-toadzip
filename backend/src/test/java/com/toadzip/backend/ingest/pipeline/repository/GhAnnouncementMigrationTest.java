@@ -75,7 +75,9 @@ class GhAnnouncementMigrationTest {
                     assertThatThrownBy(() -> statement.execute("INSERT INTO " + table + " VALUES ('UNKNOWN')"))
                             .isInstanceOf(SQLException.class);
                 }
-                // 마이그레이션이 다시 선언한 CHECK가 지금 코드의 모든 유형·단계·실패 원천을 허용해야 지난 이력과 새 기록이 저장된다.
+                ScriptUtils.executeSqlScript(connection, new ClassPathResource(
+                        "db/migration/V20261104_06__board_announcement_refinement_steps.sql"));
+                // 후속 정제 단계까지 적용한 CHECK가 현재 코드와 지난 이력을 모두 허용해야 한다.
                 for (DataPipelineType type : DataPipelineType.values()) {
                     statement.execute("INSERT INTO data_pipeline_executions(type) VALUES ('" + type.name() + "')");
                 }
