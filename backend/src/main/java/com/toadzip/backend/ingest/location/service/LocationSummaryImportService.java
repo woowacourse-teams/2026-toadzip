@@ -8,6 +8,7 @@ import com.toadzip.backend.ingest.location.dto.LocationSummaryImportReport;
 import com.toadzip.backend.ingest.location.repository.LocationSummaryStore;
 import com.toadzip.backend.ingest.location.repository.external.LocationSummaryFileParseResult;
 import com.toadzip.backend.ingest.location.repository.external.LocationSummaryFileParser;
+import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationService;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -51,16 +52,20 @@ public class LocationSummaryImportService {
 
     private final TransactionTemplate transactionTemplate;
 
+    private final MyHomeInitialRegistrationService registration;
+
     public LocationSummaryImportService(
             LocationSummaryFileParser parser,
             LocationSummaryStore locationStore,
             MyHomeComplexSourceReader sourceRepository,
-            TransactionTemplate transactionTemplate
+            TransactionTemplate transactionTemplate,
+            MyHomeInitialRegistrationService registration
     ) {
         this.parser = parser;
         this.locationStore = locationStore;
         this.sourceRepository = sourceRepository;
         this.transactionTemplate = transactionTemplate;
+        this.registration = registration;
     }
 
     public LocationSummaryImportReport importMatches(String sourceFileName, InputStream input) {
@@ -143,6 +148,7 @@ public class LocationSummaryImportService {
             selectedRecords.forEach(writer::write);
             storedLocationCount = writer.complete();
         }
+        registration.refresh();
         return new ReplacementResult(storedLocationCount, replacedRowCount);
     }
 

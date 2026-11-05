@@ -27,6 +27,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComple
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexStorageService;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
+import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
@@ -64,6 +65,9 @@ import tools.jackson.databind.json.JsonMapper;
 class MyHomeComplexCollectionServiceTest {
 
     @Mock
+    private MyHomeInitialRegistrationService registration;
+
+    @Mock
     private MyHomeComplexExternalRepository externalRepository;
 
     @Mock
@@ -81,7 +85,7 @@ class MyHomeComplexCollectionServiceTest {
     void setUp() {
         var regionCollector = new CollectionServiceTestFixture().complex(externalRepository, regionCatalog,
                 storage, failureRecorder, new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry()));
-        service = new MyHomeComplexCollectionService(regionCatalog, regionCollector);
+        service = new MyHomeComplexCollectionService(regionCatalog, regionCollector, registration);
     }
 
     @Test
@@ -95,6 +99,7 @@ class MyHomeComplexCollectionServiceTest {
 
         var result = service.collect(request());
 
+        verify(registration).refresh();
         ArgumentCaptor<MyHomeComplexCollectedResponse> snapshots = ArgumentCaptor.captor();
         verify(storage).complete(any(), argThat(r -> r.provinceCode().equals(region.provinceCode())
                         && r.districtCode().equals(region.districtCode())), snapshots.capture());
@@ -593,7 +598,7 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeComplexRegionCollectionService concurrentCollector = mock(MyHomeComplexRegionCollectionService.class);
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
                 regionCatalog,
-                concurrentCollector
+                concurrentCollector, registration
         );
         UUID executionId = UUID.randomUUID();
         when(regionCatalog.findAll()).thenReturn(List.of(seoul, busan));
@@ -692,7 +697,7 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeComplexRegionCollectionService concurrentCollector = mock(MyHomeComplexRegionCollectionService.class);
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
                 regionCatalog,
-                concurrentCollector
+                concurrentCollector, registration
         );
         CountDownLatch slowWorkerStarted = new CountDownLatch(1);
         CountDownLatch rateLimitReturned = new CountDownLatch(1);
@@ -755,7 +760,7 @@ class MyHomeComplexCollectionServiceTest {
         var retryingCollector = new CollectionServiceTestFixture().complex(externalRepository, regionCatalog,
                 storage, failureRecorder, new ExternalDataRetryExecutor(Duration.ofSeconds(30), new SimpleMeterRegistry()));
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
-                regionCatalog, retryingCollector);
+                regionCatalog, retryingCollector, registration);
         CountDownLatch retryRequestStarted = new CountDownLatch(1);
         when(regionCatalog.findAll()).thenReturn(List.of(retryingRegion, rateLimitedRegion));
         when(externalRepository.fetch(retryingRegion, request, 1))
@@ -793,7 +798,7 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeComplexRegionCollectionService concurrentCollector = mock(MyHomeComplexRegionCollectionService.class);
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
                 regionCatalog,
-                concurrentCollector
+                concurrentCollector, registration
         );
         CountDownLatch slowWorkerStarted = new CountDownLatch(1);
         CountDownLatch slowWorkerInterrupted = new CountDownLatch(1);

@@ -45,6 +45,7 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataCallFailureExce
 import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
+import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationService;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
 import com.toadzip.backend.ingest.pipeline.repository.IngestExecutionOwnershipRepository;
@@ -127,6 +128,9 @@ import tools.jackson.databind.json.JsonMapper;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MyHomeComplexStorageIntegrationTest {
+
+    @MockitoBean
+    private MyHomeInitialRegistrationService registration;
 
     private static final Instant STARTED_AT = Instant.parse("2026-10-04T00:00:00Z");
     private static final Instant COLLECTED_AT = STARTED_AT.plusSeconds(1);

@@ -12,6 +12,7 @@
 | [원천 생명주기](source-lifecycle.md) | 재수집·미조회 시 원천 보존과 비활성화 기준 |
 | [LH 공고 연결](lh-linking.md) | 연결 조회·재정제, 불완전한 공급 응답 보존과 복구 |
 | [단지 연결·통합](complex-linking.md) | 마이홈 원천 연결, 확인된 단지 통합과 주택형 보존 |
+| [최초 등록 진행 상태](initial-registration.md) | 신규 등록 대상, 기존 단지 판별과 상태·사유·목록 조회 |
 | [공고 일정 대상](announcement-mapping.md) | 일정의 단지 연결 기준과 확인하지 못한 대상 처리 |
 
 ## 관련 문서

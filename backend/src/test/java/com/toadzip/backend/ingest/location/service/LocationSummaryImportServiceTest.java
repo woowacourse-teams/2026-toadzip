@@ -12,6 +12,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeCom
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.location.repository.LocationSummaryStore;
 import com.toadzip.backend.ingest.location.repository.external.LocationSummaryFileParser;
+import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationService;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import java.io.IOException;
 import java.util.List;
@@ -25,6 +26,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 @ExtendWith(IngestExecutionExtension.class)
 @ExtendWith(MockitoExtension.class)
 class LocationSummaryImportServiceTest {
+
+    @Mock
+    private MyHomeInitialRegistrationService registration;
 
     @Mock
     private LocationSummaryStore locationStore;
@@ -42,7 +46,7 @@ class LocationSummaryImportServiceTest {
         when(sourceRepository.findDistinctRoadAddresses())
                 .thenReturn(List.of("서울특별시 종로구 테스트로 1 (테스트동)"));
         service = new LocationSummaryImportService(
-                new LocationSummaryFileParser(), locationStore, sourceRepository, transactionTemplate
+                new LocationSummaryFileParser(), locationStore, sourceRepository, transactionTemplate, registration
         );
     }
 

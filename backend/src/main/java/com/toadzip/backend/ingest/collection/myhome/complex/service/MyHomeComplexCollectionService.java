@@ -4,6 +4,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeRegionCatalog;
+import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.ArrayList;
@@ -32,6 +33,8 @@ public class MyHomeComplexCollectionService {
 
     private final MyHomeComplexRegionCollectionService regionCollector;
 
+    private final MyHomeInitialRegistrationService registration;
+
     public MyHomeComplexCollectionReport collect(MyHomeComplexCollectionCommand request) {
         IngestExecutionScope.requireHeld();
         log.info(
@@ -44,6 +47,7 @@ public class MyHomeComplexCollectionService {
         List<MyHomeRegion> regions = regionsFor(request);
         IngestExecutionScope.beginWork("마이홈 단지 · 전체 지역", "지역", regions.size());
         MyHomeComplexCollectionReport report = collectRegions(regions, request);
+        registration.refresh();
         log.info(
                 "마이홈 단지 수집을 완료했습니다: storedRowCount={}, failedRequestCount={}, externalApiCallCount={}",
                 report.storedRowCount(),
