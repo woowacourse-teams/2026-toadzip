@@ -300,6 +300,52 @@ async function requestCsrfToken(): Promise<CsrfToken> {
   return body
 }
 
+export const initialRegistrationStatuses = ['EXISTING', 'LOCATION_REQUIRED', 'INFORMATION_REQUIRED', 'READY', 'FAILED', 'COMPLETED'] as const
+export type InitialRegistrationStatus = typeof initialRegistrationStatuses[number]
+export type InitialRegistrationTarget = {
+  sourceComplexIdentifier: string; name: string | null; roadAddress: string | null
+  status: InitialRegistrationStatus; detail: string; housingComplexId: number | null; checkedAt: string
+}
+export type InitialRegistrationResponse = {
+  counts: Record<InitialRegistrationStatus, number>; targets: InitialRegistrationTarget[]
+  totalElements: number; page: number; totalPages: number
+}
+const initialRegistrationPath = '/api/admin/ingest/myhome/initial-registration'
+
+export async function getInitialRegistration(status: InitialRegistrationStatus | '', page: number, size: number): Promise<InitialRegistrationResponse> {
+  const query = new URLSearchParams({ page: String(page), size: String(size) })
+  if (status) query.set('status', status)
+  const response = await fetch(`${apiBaseUrl}${initialRegistrationPath}?${query}`, { credentials: 'include' })
+  const body = await readJson(response)
+  if (!response.ok) throw apiError(response.status, body)
+  const counts = isRecord(body) ? body.counts : null
+  if (!isRecord(body) || !isRecord(counts) || !initialRegistrationStatuses.every(status => isCount(counts[status]))
+    || !isCount(body.totalElements) || !isCount(body.page) || !isCount(body.totalPages)
+    || !Array.isArray(body.targets) || !body.targets.every(isInitialRegistrationTarget)) {
+    throw new Error('단지 등록 현황 응답 형식이 올바르지 않습니다.')
+  }
+  return body as InitialRegistrationResponse
+}
+
+export async function refreshInitialRegistration(): Promise<void> {
+  const token = await requestCsrfToken()
+  const response = await fetch(`${apiBaseUrl}${initialRegistrationPath}/refresh`, {
+    method: 'POST', credentials: 'include', headers: { [token.headerName]: token.token },
+  })
+  if (!response.ok) throw apiError(response.status, await readJson(response))
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+}
+function isInitialRegistrationTarget(value: unknown): value is InitialRegistrationTarget {
+  return isRecord(value) && typeof value.sourceComplexIdentifier === 'string'
+    && (value.name === null || typeof value.name === 'string') && (value.roadAddress === null || typeof value.roadAddress === 'string')
+    && initialRegistrationStatuses.some(status => status === value.status) && typeof value.detail === 'string'
+    && (value.housingComplexId === null || isCount(value.housingComplexId))
+    && typeof value.checkedAt === 'string' && Number.isFinite(Date.parse(value.checkedAt))
+}
+
 async function readExecutionResponse(response: Response): Promise<DataPipelineExecution> {
   const body = await readJson(response)
   if (!response.ok) {

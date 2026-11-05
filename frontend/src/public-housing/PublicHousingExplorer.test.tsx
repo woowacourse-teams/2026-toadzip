@@ -2683,24 +2683,24 @@ describe('PublicHousingExplorer', () => {
         supplyRows: announcement.supplyRows.map((row) => ({ ...row, complex: { ...row.complex, complexId: '18', name: '다른 단지' } })),
       })
       renderExplorer(repository)
-      fireEvent.click(screen.getByRole('button', { name: '최근 본 단지' }))
-      fireEvent.click(within(screen.getByRole('region', { name: '최근 본 단지' })).getByRole('button', { name: /서울가람/ }))
-      fireEvent.click(await screen.findByRole('button', { name: '단지 상세 펼치기' }))
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '최근 본 단지' })) })
+      await act(async () => { fireEvent.click(within(screen.getByRole('region', { name: '최근 본 단지' })).getByRole('button', { name: /서울가람/ })) })
+      await act(async () => { fireEvent.click(await screen.findByRole('button', { name: '단지 상세 펼치기' })) })
       const openAnnouncement = await screen.findByRole('button', { name: '성남 청년 행복주택 입주자 모집 공고 상세 보기' })
       openAnnouncement.focus()
-      fireEvent.click(openAnnouncement)
+      await act(async () => { fireEvent.click(openAnnouncement) })
       const openOther = await screen.findByRole('button', { name: '다른 단지 단지 상세 보기' })
       openOther.focus()
-      fireEvent.click(openOther)
+      await act(async () => { fireEvent.click(openOther) })
       await screen.findByRole('region', { name: '다른 단지 단지 상세 내용' })
       expect(screen.getByText('카메라 35.2,129.1')).toBeInTheDocument()
       act(() => { mobile = false; listeners.forEach((listener) => listener()) })
-      fireEvent.click(screen.getByRole('button', { name: '← 공고로 돌아가기' }))
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '← 공고로 돌아가기' })) })
       await screen.findByRole('region', { name: /공고 상세 내용$/ })
       act(() => { mobile = true; listeners.forEach((listener) => listener()) })
-      fireEvent.click(screen.getByRole('button', { name: '← 단지로 돌아가기' }))
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '← 단지로 돌아가기' })) })
       await screen.findByRole('region', { name: '서울가람 행복주택 단지 상세 내용' })
-      fireEvent.click(screen.getByRole('button', { name: '단지 요약으로 돌아가기' }))
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '단지 요약으로 돌아가기' })) })
       expect(screen.getByRole('region', { name: '단지 요약' })).toHaveTextContent('서울가람 행복주택')
       expect(screen.getByText('카메라 37.5,126.9')).toBeVisible()
     } finally { vi.unstubAllGlobals() }
@@ -2859,8 +2859,10 @@ describe('PublicHousingExplorer', () => {
     expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '마이페이지로 돌아가기' })).not.toBeInTheDocument()
     expect(screen.queryByRole('navigation', { name: '마이페이지 복귀' })).not.toBeInTheDocument()
-    if (action === 'Escape') fireEvent.keyDown(close, { key: 'Escape' })
-    else fireEvent.click(close)
+    await act(async () => {
+      if (action === 'Escape') fireEvent.keyDown(close, { key: 'Escape' })
+      else fireEvent.click(close)
+    })
     expect(await screen.findByRole('heading', { name: '돌아온 북마크' })).toBeVisible()
     expect(screen.getByTestId('location-search')).toHaveTextContent('?type=ANNOUNCEMENT')
   })
@@ -2876,7 +2878,7 @@ describe('PublicHousingExplorer', () => {
     </Routes></MemoryRouter>)
     const close = await screen.findByRole('button', { name: '마이페이지로 돌아가기' })
     expect(screen.queryByRole('button', { name: closeLabel })).not.toBeInTheDocument()
-    fireEvent.click(close)
+    await act(async () => { fireEvent.click(close) })
     expect(await screen.findByRole('heading', { name: '돌아온 알림 관리' })).toBeVisible()
     expect(screen.getByTestId('location-search').textContent).toBe(origin.includes('?') ? '?type=ANNOUNCEMENT' : '')
   })
@@ -3466,31 +3468,31 @@ describe('PublicHousingExplorer', () => {
   it('공고 상세에서 단지를 열어도 공고 목록을 유지하고 명시적으로 공고로 돌아간다', async () => {
     const repository = createRepository()
     renderExplorer(repository)
-    fireEvent.click(screen.getByRole('button', { name: '공고 목록' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '공고 목록' })) })
     const openButton = await screen.findByRole('button', {
       name: '성남 청년 행복주택 입주자 모집 공고 상세 보기',
     })
     openButton.focus()
-    fireEvent.click(openButton)
+    await act(async () => { fireEvent.click(openButton) })
 
     const openComplex = await screen.findByRole('button', {
       name: '서울가람 행복주택 단지 상세 보기',
     })
     openComplex.focus()
-    fireEvent.click(openComplex)
+    await act(async () => { fireEvent.click(openComplex) })
     expect(await screen.findByRole('complementary', {
       name: '서울가람 행복주택 단지 상세 정보',
     })).toBeVisible()
     expect(screen.getByTestId('location-search')).toHaveTextContent('complexId=17')
     expect(screen.getByRole('button', { name: '공고 목록' })).toHaveAttribute('aria-expanded', 'true')
 
-    fireEvent.click(screen.getByRole('button', { name: '정밀 영역 알림' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '정밀 영역 알림' })) })
     const cameraRequest = screen.getByTestId('map-camera-request').textContent
     const back = screen.getByRole('button', { name: '← 공고로 돌아가기' })
     expect(back).toHaveTextContent('←')
     expect(back).not.toHaveTextContent('공고로 돌아가기')
     expect(back.closest('header')).toContainElement(screen.getByRole('button', { name: '단지 상세 닫기' }))
-    fireEvent.click(back)
+    await act(async () => { fireEvent.click(back) })
     expect(await screen.findByRole('complementary', {
       name: '성남 청년 행복주택 입주자 모집 공고 상세 정보',
     })).toBeVisible()
@@ -3502,7 +3504,7 @@ describe('PublicHousingExplorer', () => {
       'announcementId=201',
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '공고 상세 닫기' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '공고 상세 닫기' })) })
     await waitFor(() => expect(openButton).toHaveFocus())
     expect(screen.getByTestId('location-search')).toBeEmptyDOMElement()
     expect(screen.getByText('카메라 37.5666103,126.9783882')).toBeVisible()
@@ -3510,22 +3512,50 @@ describe('PublicHousingExplorer', () => {
     expect(screen.getByTestId('map-camera-request')).toHaveTextContent(cameraRequest ?? '')
   })
 
+  it('부모 상세의 응답이 로딩 최소 표시 중에 끝나도 화면 표시 후 호출 버튼에 포커스를 돌려준다', async () => {
+    vi.useFakeTimers()
+    const repository = createRepository()
+    const view = renderExplorer(repository, '/?announcementId=201')
+    try {
+      await act(async () => {})
+      const openComplex = screen.getByRole('button', { name: '서울가람 행복주택 단지 상세 보기' })
+      act(() => openComplex.focus())
+      await act(async () => { fireEvent.click(openComplex) })
+      expect(screen.getByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })).toBeVisible()
+      const response = createDeferred<AnnouncementDetail>()
+      repository.findAnnouncementDetail.mockReturnValueOnce(response.promise)
+
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '← 공고로 돌아가기' })) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+      expect(screen.getByText('공고 상세를 불러오고 있어요.')).toBeVisible()
+      await act(async () => response.resolve(announcementDetail()))
+      expect(screen.getByText('공고 상세를 불러오고 있어요.')).toBeVisible()
+      await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+
+      expect(screen.getByRole('button', { name: '서울가람 행복주택 단지 상세 보기' })).toHaveFocus()
+    } finally {
+      view.unmount()
+      vi.useRealTimers()
+    }
+  })
+
   it('공고에서 연 단지의 닫기는 부모 공고를 다시 열지 않고 현재 지도와 공고 목록을 유지한다', async () => {
     const repository = createRepository()
     renderExplorer(repository, '/?source=shared')
-    fireEvent.click(screen.getByRole('button', { name: '공고 목록' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '공고 목록' })) })
     const announcementAction = await screen.findByRole('button', { name: '성남 청년 행복주택 입주자 모집 공고 상세 보기' })
     announcementAction.focus()
-    fireEvent.click(announcementAction)
+    await act(async () => { fireEvent.click(announcementAction) })
     const complexAction = await screen.findByRole('button', { name: '서울가람 행복주택 단지 상세 보기' })
     complexAction.focus()
-    fireEvent.click(complexAction)
+    await act(async () => { fireEvent.click(complexAction) })
     await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
     expect(screen.getByRole('button', { name: '← 공고로 돌아가기' })).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: '정밀 영역 알림' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '정밀 영역 알림' })) })
     const cameraRequest = screen.getByTestId('map-camera-request').textContent
 
-    fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' })) })
 
     await waitFor(() => expectCurrentSearch({ source: 'shared' }))
     expect(screen.queryByRole('complementary', { name: /상세 정보/ })).not.toBeInTheDocument()
@@ -3622,7 +3652,7 @@ describe('PublicHousingExplorer', () => {
   it('교차 상세을 두 번 중첩해도 각 부모 상세의 호출 버튼으로 차례로 돌아간다', async () => {
     const repository = createRepository()
     renderSearchedExplorer(repository)
-    fireEvent.click(screen.getByRole('button', { name: '공고 목록' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '공고 목록' })) })
     fireEvent.click(await screen.findByRole('button', {
       name: '성남 청년 행복주택 입주자 모집 공고 상세 보기',
     }))
@@ -3631,22 +3661,22 @@ describe('PublicHousingExplorer', () => {
       name: '서울가람 행복주택 단지 상세 보기',
     })
     firstOpenComplex.focus()
-    fireEvent.click(firstOpenComplex)
+    await act(async () => { fireEvent.click(firstOpenComplex) })
     const complexPanel = await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
     const firstOpenAnnouncement = within(complexPanel).getByRole('button', {
       name: '성남 청년 행복주택 입주자 모집 공고 상세 보기',
     })
     firstOpenAnnouncement.focus()
-    fireEvent.click(firstOpenAnnouncement)
+    await act(async () => { fireEvent.click(firstOpenAnnouncement) })
 
-    fireEvent.click(screen.getByRole('button', { name: '← 단지로 돌아가기' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '← 단지로 돌아가기' })) })
     const restoredComplexPanel = await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
     const restoredOpenAnnouncement = within(restoredComplexPanel).getByRole('button', {
       name: '성남 청년 행복주택 입주자 모집 공고 상세 보기',
     })
     await waitFor(() => expect(restoredOpenAnnouncement).toHaveFocus())
 
-    fireEvent.click(screen.getByRole('button', { name: '← 공고로 돌아가기' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '← 공고로 돌아가기' })) })
     const restoredOpenComplex = await screen.findByRole('button', {
       name: '서울가람 행복주택 단지 상세 보기',
     })

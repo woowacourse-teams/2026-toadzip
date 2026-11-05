@@ -8,6 +8,34 @@ afterEach(() => {
 })
 
 describe('관리자 데이터 수집·정제 API', () => {
+  it.each([10, 20, 50, 100])('최초 등록 상태 필터와 페이지를 %d건씩 세션으로 조회한다', async size => {
+    const result = { counts: { EXISTING: 0, LOCATION_REQUIRED: 10, INFORMATION_REQUIRED: 0, READY: 0, FAILED: 0, COMPLETED: 90 },
+      targets: [], totalElements: 10, page: 1, totalPages: 2 }
+    const fetchMock = prepareFetch(result)
+    fetchMock.mockReset().mockResolvedValue(jsonResponse(result))
+    const { getInitialRegistration } = await import('./api.ts')
+    await expect(getInitialRegistration('LOCATION_REQUIRED', 1, size)).resolves.toEqual(result)
+    expect(fetchMock).toHaveBeenCalledWith(
+      `http://localhost:8080/api/admin/ingest/myhome/initial-registration?page=1&size=${size}&status=LOCATION_REQUIRED`,
+      { credentials: 'include' },
+    )
+  })
+  it('최초 등록 상태 재확인은 CSRF를 전달하며 204 빈 응답을 허용한다', async () => {
+    const fetchMock = prepareFetch(null, 204)
+    const { refreshInitialRegistration } = await import('./api.ts')
+    await expect(refreshInitialRegistration()).resolves.toBeUndefined()
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:8080/api/admin/ingest/myhome/initial-registration/refresh',
+      { method: 'POST', credentials: 'include', headers: { 'X-CUSTOM-CSRF': 'csrf-token' } },
+    )
+  })
+  it('불완전하거나 음수인 상태 집계는 성공으로 읽지 않는다', async () => {
+    const fetchMock = prepareFetch(null)
+    fetchMock.mockReset().mockResolvedValue(jsonResponse({ counts: { COMPLETED: -1 }, targets: [],
+      totalElements: 0, page: 0, totalPages: 0 }))
+    const { getInitialRegistration } = await import('./api.ts')
+    await expect(getInitialRegistration('', 0, 20)).rejects.toThrow('단지 등록 현황 응답 형식')
+  })
   it('실행 ID로 접수한 실행의 상태를 조회한다', async () => {
     const fetchMock = prepareFetch(execution('ANNOUNCEMENT_REGISTRATION', 'RUNNING'))
     fetchMock.mockReset().mockResolvedValue(jsonResponse(execution('ANNOUNCEMENT_REGISTRATION', 'RUNNING')))

@@ -47,7 +47,7 @@ describe('데이터 실행 이력', () => {
     await screen.findAllByRole('button', { name: /상세 (펼치기|접기)/ })
     expect(getHistory.mock.calls).toEqual([[0, 'complex'], [1, 'complex'], [0, 'complex'], [0, 'complex']])
   })
-  it('단지 이력 상세는 저장된 단계별 결과만 표시하고 당시 상태가 아닌 오류 조회는 제공하지 않는다', async () => {
+  it('단지 이력에서 과거 정제 결과와 해당 실행에 연결된 오류의 현재 상태를 조회한다', async () => {
     getHistory.mockResolvedValue([execution({ type: 'COMPLEX_REFINEMENT', completedStepResults: [
       { step: 'MAP_MYHOME_COMPLEXES', stepName: '마이홈 단지 정제', report: { createdComplexCount: 4, updatedComplexCount: 7, failedSourceCount: 2 } },
     ] })])
@@ -57,9 +57,12 @@ describe('데이터 실행 이력', () => {
     expect(within(detail).getByText('신규 단지').nextSibling).toHaveTextContent('4')
     expect(within(detail).getByText('갱신 단지').nextSibling).toHaveTextContent('7')
     expect(within(detail).getByText('실패한 원천').nextSibling).toHaveTextContent('2')
-    expect(screen.queryByRole('button', { name: '결과 오류 조회' })).not.toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: '오류 종류' })).not.toBeInTheDocument()
     expect(getFailureReviews).not.toHaveBeenCalled()
+    expect(detail).toHaveTextContent('현재 검토 상태')
+    fireEvent.click(within(detail).getByRole('button', { name: '결과 오류 조회' }))
+    await screen.findByRole('region', { name: '결과 오류' })
+    expect(getFailureReviews).toHaveBeenCalledWith('complex', 'complex', 'ALL', 0, expect.any(AbortSignal), { executionId: 'run-1', keyword: '' })
     expect(screen.queryByRole('button', { name: /실행 중지|정제 실행|수정|보정/ })).not.toBeInTheDocument()
   })
   it('v2 이력 상세에도 같은 단계 표시를 쓰며 진행 중 이력에서 중지하지 않는다', async () => {

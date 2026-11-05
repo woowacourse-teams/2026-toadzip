@@ -865,27 +865,6 @@ export function PublicHousingExplorer({
         .find((entry) => sameDetailLocation(entry, currentDetail)) ?? null
   }, [detailLocation, detailReturnFocusStack])
 
-  useEffect(() => {
-    const pending = pendingDetailReturnFocusRef.current
-    if (!pending || !isReadyDetailReturnTarget({
-      announcementDetail,
-      complexDetail,
-      location: detailLocation,
-      pending,
-    })) {
-      return
-    }
-    const timeout = window.setTimeout(() => {
-      const target = findDetailReturnFocusTarget(pending.actionKey)
-      if (!isAvailableFocusTarget(target)) {
-        return
-      }
-      target.focus({ preventScroll: true })
-      pendingDetailReturnFocusRef.current = null
-    }, 0)
-    return () => window.clearTimeout(timeout)
-  }, [announcementDetail, complexDetail, detailLocation])
-
   const openDetail = useCallback((kind: ResultTab, id: string, entryPoint: DetailEntryPoint, hover?: MarkerHoverAttribution) => {
     cancelCurrentLocation()
     closeStreetView('TARGET_CHANGED', false)
@@ -1492,6 +1471,28 @@ export function PublicHousingExplorer({
   )
   const hasDetail = detailView.complexDetail.status !== 'closed'
     || detailView.announcementDetail.status !== 'closed'
+
+  useEffect(() => {
+    const pending = pendingDetailReturnFocusRef.current
+    if (!pending || !isReadyDetailReturnTarget({
+      announcementDetail: detailView.announcementDetail,
+      complexDetail: detailView.complexDetail,
+      location: detailLocation,
+      pending,
+    })) {
+      return
+    }
+    const timeout = window.setTimeout(() => {
+      const target = findDetailReturnFocusTarget(pending.actionKey)
+      if (!isAvailableFocusTarget(target)) {
+        return
+      }
+      target.focus({ preventScroll: true })
+      pendingDetailReturnFocusRef.current = null
+    }, 0)
+    return () => window.clearTimeout(timeout)
+  }, [detailView, detailLocation])
+
   const selectedRegionName = findRegionBoundaryName(boundaryRegionCode ?? '') ?? selectedBoundarySearchItem?.title ?? '선택한 지역'
   const mobileRegionTitle = <span className="housing-results__region-title">
     <span title={selectedRegionName}>{selectedRegionName.split(' ').at(-1)}</span>

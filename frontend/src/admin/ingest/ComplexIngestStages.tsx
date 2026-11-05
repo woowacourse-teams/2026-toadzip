@@ -6,10 +6,10 @@ import type { PipelineViewState } from './PipelineResult'
 import { ComplexExecutionResult, ComplexExecutionSummary, ComplexExecutionStop } from './ComplexExecutionResult'
 import { LocationSummaryUpload } from './LocationSummaryUpload'
 import { pipelineStepDefinitions, pipelineStepSequences } from './pipelineSteps'
-import { retiredComplexRefinementNotice } from './pipelineLabels'
 import styles from './ComplexIngest.module.css'
 import { ComplexStageHelp } from './ComplexStageHelp'
 import { ComplexStatusBadge } from './ComplexStatusBadge'
+import { InitialRegistrationProgress } from './InitialRegistrationProgress'
 
 export function ComplexIngestStages({ states, disabled, collectionBlocked = false, startingType, stopping, onStart, onStop, onRefresh, onUploadBusy }: {
   states: Record<DataPipelineType, PipelineViewState>; disabled: boolean; collectionBlocked?: boolean; startingType: DataPipelineType | null
@@ -24,9 +24,10 @@ export function ComplexIngestStages({ states, disabled, collectionBlocked = fals
   const steps = [
     { id: 'complex-collection', label: '1 원천 수집' },
     { id: 'complex-location', label: '2 좌표 적재' },
-    { id: 'complex-refinement', label: '3 정제·저장' },
+    { id: 'complex-registration', label: '3 단지 등록' },
   ]
-  const selected = Math.max(0, steps.findIndex(step => location.hash === `#${step.id}`))
+  const selected = location.hash === '#complex-refinement' ? 2
+    : Math.max(0, steps.findIndex(step => location.hash === `#${step.id}`))
   function select(index: number) {
     void navigate({ search: location.search, hash: `#${steps[index].id}` }, { replace: true, preventScrollReset: true })
   }
@@ -48,12 +49,15 @@ export function ComplexIngestStages({ states, disabled, collectionBlocked = fals
   }
   function isRunning(index: number) {
     if (index === 1) return uploading
-    const type = index === 0 ? 'COMPLEX_COLLECTION' : 'COMPLEX_REFINEMENT'
-    const execution = latest(type)
+    if (index !== 0) return false
+    const execution = latest('COMPLEX_COLLECTION')
     return execution.status === 'RUNNING' && (execution.type !== 'COMPLEX_SYNC'
-      || pipelineStepSequences[type].some(step => pipelineStepDefinitions[step] === execution.currentStepName)
+      || pipelineStepSequences.COMPLEX_COLLECTION.some(step => pipelineStepDefinitions[step] === execution.currentStepName)
       || (!execution.currentStepName && index === 0))
   }
+  const refinement = latest('COMPLEX_REFINEMENT')
+  const refining = refinement.status === 'RUNNING' && (refinement.type === 'COMPLEX_REFINEMENT'
+    || pipelineStepSequences.COMPLEX_REFINEMENT.some(step => pipelineStepDefinitions[step] === refinement.currentStepName))
   function result(type: 'COMPLEX_COLLECTION' | 'COMPLEX_REFINEMENT') {
     const execution = latest(type)
     return <>
@@ -66,6 +70,11 @@ export function ComplexIngestStages({ states, disabled, collectionBlocked = fals
     </>
   }
   return <div className={styles.stages}>
+    {refining && <section className={styles.stage} aria-label="이전 정제 실행">
+      <header><h2>이전 정제 실행</h2><ComplexExecutionSummary execution={refinement} stopping={stopping[refinement.type]} /></header>
+      <ComplexExecutionStop execution={refinement} label="정제 중지" stopping={stopping[refinement.type]} onStop={() => onStop(refinement.type)} />
+      {result('COMPLEX_REFINEMENT')}
+    </section>}
     <div className={styles.tabs} role="tablist" aria-label="단지 수집 단계">
       {steps.map((step, index) => <button data-design-system key={step.id} type="button" role="tab" id={`${tabId}-${index}`}
         ref={element => { tabs.current[index] = element }} aria-selected={selected === index}
@@ -91,16 +100,9 @@ export function ComplexIngestStages({ states, disabled, collectionBlocked = fals
         <ComplexStageHelp stage="주소에 맞는 좌표 적재">위치정보요약DB 월 전체분 ZIP을 업로드해 저장된 단지 원본의 주소에 맞는 좌표를 준비합니다.</ComplexStageHelp></div></div></header>
       <LocationSummaryUpload embedded disabled={disabled} onBusyChange={busy => { setUploading(busy); onUploadBusy(busy) }} />
     </section>
-    <section className={styles.stage} id="complex-refinement" role="tabpanel" hidden={selected !== 2} aria-labelledby={`${tabId}-2`}>
-      <header><div className={styles.stageTitle}><span className={styles.number}>3</span><div className={styles.helpLabel}><h2 id="complex-refinement-title">단지 정제·저장</h2>
-        <ComplexStageHelp stage="단지 정제·저장">단지 원본을 단지·주택형으로 정제하던 단계입니다. 지금은 지난 실행 결과만 볼 수 있습니다.</ComplexStageHelp></div></div>
-        <ComplexExecutionSummary execution={latest('COMPLEX_REFINEMENT')} pending={startingType === 'COMPLEX_REFINEMENT'} stopping={stopping[latest('COMPLEX_REFINEMENT').type]} /></header>
-      <div className={styles.executionActions} role="group" aria-label="단지 정제·저장 실행 제어">
-        <Button data-design-system disabled aria-describedby="complex-refinement-retired">단지 정제·저장 실행</Button>
-        {isRunning(2) && <ComplexExecutionStop execution={latest('COMPLEX_REFINEMENT')} label="정제 중지" stopping={stopping[latest('COMPLEX_REFINEMENT').type]} onStop={() => onStop(latest('COMPLEX_REFINEMENT').type)} />}
-        <p id="complex-refinement-retired" role="note">{retiredComplexRefinementNotice}</p>
-      </div>
-      {result('COMPLEX_REFINEMENT')}
+    <section id="complex-registration" role="tabpanel" hidden={selected !== 2} aria-labelledby={`${tabId}-2`}>
+      <InitialRegistrationProgress disabled={disabled} onBusyChange={onUploadBusy}
+        revision={`${latest('COMPLEX_COLLECTION').finishedAt ?? ''}-${uploading}`} />
     </section>
   </div>
 }
