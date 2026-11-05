@@ -45,6 +45,43 @@ class BasicComparisonTest {
     }
 
     @Test
+    void 복합_조건의_미충족에도_실제_하위_비교값을_근거로_남긴다() {
+        var rule =
+                new BasicRule(
+                        BasicRule.Operator.ALL,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        List.of(income(1, 50), equal(FAMILY_OWNS_HOUSE, "false")));
+        var content =
+                withPaths(
+                        sacheon(),
+                        List.of(
+                                new ComparisonPath(
+                                        "ordinary",
+                                        "소득과 주택 기본 조건",
+                                        PathKind.GENERAL,
+                                        List.of(check("combined", rule)))));
+        var result = evaluate(content, with(b(), HOUSEHOLD_MONTHLY_INCOME, 4000000L));
+        var reading = result.options().getFirst().checks().getFirst().reading();
+        assertThat(reading.status()).isEqualTo(RuleReading.Status.NOT_SATISFIED);
+        assertThat(reading.comparedValues().get("children"))
+                .asList()
+                .hasSize(2)
+                .first()
+                .isInstanceOfSatisfying(
+                        RuleReading.class,
+                        income ->
+                                assertThat(income.comparedValues())
+                                        .containsEntry("providedValue", 4000000L)
+                                        .containsEntry(
+                                                "comparisonLimit", new BigDecimal("3519762")));
+    }
+
+    @Test
     void 세대_합산_소득으로_일반_기본조건을_비교하고_미수집_신분과_이력은_안내한다() {
         var result = evaluate(sacheon(), b());
         var option = result.options().getFirst();
@@ -178,8 +215,12 @@ class BasicComparisonTest {
             var result = evaluate(classification(document, "산업단지 일자리연계형 일반 개인 모집"), b());
             assertThat(result.scope()).isEqualTo(ComparisonResult.Scope.INDIVIDUAL);
             assertThat(result.options()).hasSize(1);
-            assertThat(result.directChecks())
-                    .anyMatch(guidance -> guidance.kind() == GuidanceKind.OTHER_ROUTE);
+            if (document.equals("D08") || document.equals("D09")) {
+                assertThat(result.directChecks())
+                        .anyMatch(guidance -> guidance.kind() == GuidanceKind.OTHER_ROUTE);
+                continue;
+            }
+            assertThat(result.directChecks()).isEmpty();
         }
     }
 

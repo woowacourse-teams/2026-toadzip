@@ -113,6 +113,7 @@ public record ComparisonProfile(
         }
         validateVehicle(APPLICANT_OWNS_CAR, APPLICANT_CAR_VALUE);
         validateVehicle(FAMILY_OWNS_CAR, FAMILY_CAR_VALUE);
+        validateFamilyTotals();
         if (provided(HAS_CHILDREN_OR_PREGNANCY, false)) {
             if (value(CHILDREN_COUNT_INCLUDING_FETUS).value() instanceof Long count && count != 0) {
                 throw new InvalidComparisonException("자녀 없음과 자녀 수가 일치하지 않습니다.");
@@ -124,6 +125,26 @@ public record ComparisonProfile(
         if (provided(HAS_CHILDREN_OR_PREGNANCY, true)
                 && provided(CHILDREN_COUNT_INCLUDING_FETUS, 0L)) {
             throw new InvalidComparisonException("자녀 또는 태아가 있으면 자녀 수는 1 이상이어야 합니다.");
+        }
+    }
+
+    private void validateFamilyTotals() {
+        validateFamilyOwnership(APPLICANT_OWNS_HOUSE, FAMILY_OWNS_HOUSE);
+        validateFamilyOwnership(APPLICANT_OWNS_CAR, FAMILY_OWNS_CAR);
+        validateFamilyAmount(APPLICANT_CAR_VALUE, FAMILY_CAR_VALUE);
+    }
+
+    private void validateFamilyOwnership(ProfileField applicant, ProfileField family) {
+        if (provided(applicant, true) && provided(family, false)) {
+            throw new InvalidComparisonException("본인 소유 항목은 본인 포함 가족 보유 정보와 일치해야 합니다.");
+        }
+    }
+
+    private void validateFamilyAmount(ProfileField applicant, ProfileField family) {
+        if (value(applicant).value() instanceof Long applicantAmount
+                && value(family).value() instanceof Long familyAmount
+                && familyAmount < applicantAmount) {
+            throw new InvalidComparisonException("본인 포함 가족 금액은 입력한 본인 금액보다 작을 수 없습니다.");
         }
     }
 

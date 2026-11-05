@@ -354,6 +354,13 @@ public final class ComparisonFixtures {
     }
 
     public static ComparisonContent classification(String document, String label) {
+        List<Guidance> guides = List.of();
+        if (document.equals("D08") || document.equals("D09")) {
+            guides =
+                    List.of(
+                            guidance(
+                                    "other", GuidanceKind.OTHER_ROUTE, "이번 모집의 특수 경로 요건은 원문에서 확인"));
+        }
         return content(
                 document,
                 label,
@@ -362,7 +369,7 @@ public final class ComparisonFixtures {
                 List.of(
                         new ComparisonPath(
                                 "general", "이번 모집의 일반 개인 경로", PathKind.GENERAL, List.of())),
-                List.of(guidance("other", GuidanceKind.OTHER_ROUTE, "특수 경로의 요건은 해당 원문에서 확인")));
+                guides);
     }
 
     public static ComparisonContent content(

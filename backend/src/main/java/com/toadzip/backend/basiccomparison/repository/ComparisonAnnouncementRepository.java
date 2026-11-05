@@ -56,6 +56,7 @@ public class ComparisonAnnouncementRepository {
                             JOIN chain c ON a.previous_announcement_id = c.id WHERE NOT a.id = ANY(c.visited)
                         )
                         SELECT a.*, r.id AS rule_set_id, r.version AS rule_set_version,
+                            r.schema_version AS content_schema_version,
                             r.content::text AS snapshot
                         FROM announcements a JOIN chain c ON c.id = a.id
                         LEFT JOIN basic_comparison_rule_sets r ON r.announcement_id = a.id AND r.status = 'PUBLISHED'
@@ -71,11 +72,10 @@ public class ComparisonAnnouncementRepository {
     public List<Current> activeAfter(long afterId, Instant now, int batchSize) {
         return jdbc.sql(
                         """
-                        SELECT a.*, r.id AS rule_set_id, r.version AS rule_set_version, r.content::text AS
-                        snapshot
+                        SELECT a.*, r.id AS rule_set_id, r.version AS rule_set_version,
+                            r.schema_version AS content_schema_version, r.content::text AS snapshot
                         FROM announcements a LEFT JOIN basic_comparison_rule_sets r
-                            ON r.announcement_id = a.id AND r.status =
-                        'PUBLISHED'
+                            ON r.announcement_id = a.id AND r.status = 'PUBLISHED'
                         WHERE a.id > :after AND a.release_status = 'PUBLISHED' AND NOT a.admin_deleted
                             AND NOT EXISTS (SELECT 1 FROM announcements next WHERE next.previous_announcement_id = a.id)
                             AND %s = 'APPLYING'
@@ -100,6 +100,7 @@ public class ComparisonAnnouncementRepository {
                 result.getObject("application_end_date", LocalDate.class),
                 result.getObject("rule_set_id", Long.class),
                 result.getObject("rule_set_version", Long.class),
+                result.getObject("content_schema_version", Integer.class),
                 result.getString("snapshot"));
     }
 
@@ -113,6 +114,7 @@ public class ComparisonAnnouncementRepository {
             LocalDate endsOn,
             Long ruleSetId,
             Long ruleSetVersion,
+            Integer contentSchemaVersion,
             String snapshot) {
         public String availability() {
             if (deleted || !"PUBLISHED".equals(releaseStatus)) {
