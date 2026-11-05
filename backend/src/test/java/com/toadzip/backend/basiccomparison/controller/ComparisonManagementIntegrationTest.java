@@ -123,8 +123,9 @@ class ComparisonManagementIntegrationTest extends ComparisonIntegrationSupport {
         assertThat(count(announcement, "DRAFT")).isZero();
     }
 
-    @Test
-    void 정정공개는_이전공개를_대체하고_취소와_이전공고_재공개는_거부한다() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"취소공고", "CANCELLATION"})
+    void 정정공개는_이전공개를_대체하고_취소와_이전공고_재공개는_거부한다(String cancelledStatus) throws Exception {
         long original = announcement();
         publish(original, saveDraft(original, null, 0, ComparisonFixtures.sacheon()))
                 .andExpect(status().isOk());
@@ -142,9 +143,9 @@ class ComparisonManagementIntegrationTest extends ComparisonIntegrationSupport {
         JsonNode draft = copy(corrected);
         long cancelled = announcement();
         jdbc.update(
-                "UPDATE announcements SET previous_announcement_id = ?, status = '취소공고' WHERE id ="
-                        + " ?",
+                "UPDATE announcements SET previous_announcement_id = ?, status = ? WHERE id = ?",
                 corrected,
+                cancelledStatus,
                 cancelled);
         publish(corrected, draft).andExpect(status().isConflict());
         publish(cancelled, saveDraft(cancelled, null, 0, ComparisonFixtures.sacheon()))

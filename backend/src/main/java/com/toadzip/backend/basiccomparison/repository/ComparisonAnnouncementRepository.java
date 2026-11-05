@@ -118,13 +118,17 @@ public class ComparisonAnnouncementRepository {
             if (deleted || !"PUBLISHED".equals(releaseStatus)) {
                 return "NOT_PUBLISHED";
             }
-            if ("취소공고".equals(publicationType)) {
+            if (cancelled()) {
                 return "CANCELLED";
             }
             if (ruleSetId == null) {
                 return "NOT_STRUCTURED";
             }
             return "AVAILABLE";
+        }
+
+        public boolean cancelled() {
+            return "취소공고".equals(publicationType) || "CANCELLATION".equals(publicationType);
         }
     }
 }

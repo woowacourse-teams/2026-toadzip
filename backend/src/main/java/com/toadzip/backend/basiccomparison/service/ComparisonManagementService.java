@@ -96,7 +96,7 @@ public class ComparisonManagementService {
         if (latest.id() != announcementId
                 || latest.deleted()
                 || !"PUBLISHED".equals(latest.releaseStatus())
-                || "취소공고".equals(latest.publicationType())) {
+                || latest.cancelled()) {
             throw new ComparisonConflictException();
         }
         StoredComparison draft = requireVersion(ruleSets.lockDraft(announcementId), request);
