@@ -34,7 +34,7 @@ describe('관리자 데이터 수집·정제 API', () => {
     fetchMock.mockReset().mockResolvedValue(jsonResponse({ counts: { COMPLETED: -1 }, targets: [],
       totalElements: 0, page: 0, totalPages: 0 }))
     const { getInitialRegistration } = await import('./api.ts')
-    await expect(getInitialRegistration('', 0, 20)).rejects.toThrow('진행 상태 응답 형식')
+    await expect(getInitialRegistration('', 0, 20)).rejects.toThrow('단지 등록 현황 응답 형식')
   })
   it('실행 ID로 접수한 실행의 상태를 조회한다', async () => {
     const fetchMock = prepareFetch(execution('ANNOUNCEMENT_REGISTRATION', 'RUNNING'))

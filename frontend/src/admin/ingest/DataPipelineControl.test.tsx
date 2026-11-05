@@ -164,8 +164,8 @@ describe('DataPipelineControl', () => {
     await screen.findByRole('article', { name: '현재 작업 단계' })
     view.rerender(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
     expect(screen.queryByRole('article', { name: '현재 작업 단계' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('tab', { name: '3 정제·저장' }))
-    expect(screen.getByRole('button', { name: '단지 정제·저장 실행' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('tab', { name: '3 단지 등록' }))
+    expect(screen.getByRole('button', { name: '대상 상태 확인' })).toBeDisabled()
     expect(screen.getByText(/한 번에 한 작업/)).toHaveAttribute('role', 'status')
     view.rerender(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
     const stopLabel = runningType === 'SH_ANNOUNCEMENT_COLLECTION'
@@ -611,15 +611,15 @@ describe('DataPipelineControl', () => {
     expect(apiMocks.startDataPipeline).toHaveBeenCalledExactlyOnceWith('COMPLEX_COLLECTION')
   })
 
-  it('지난 단지 정제 결과는 다른 메뉴로 안내하지 않고 해당 단계에 남긴다', async () => {
+  it('단지 등록 단계에 지난 정제 결과를 섞지 않는다', async () => {
     apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
       type === 'COMPLEX_REFINEMENT' ? execution(type, 'COMPLETED_WARNINGS') : execution(type, 'IDLE'),
     ))
     render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
     await act(async () => {})
-    fireEvent.click(screen.getByRole('tab', { name: '3 정제·저장' }))
-    await screen.findByText('일부 실패')
-    expect(screen.getByRole('tabpanel')).toHaveTextContent('일부 실패')
+    fireEvent.click(screen.getByRole('tab', { name: '3 단지 등록' }))
+    expect(screen.getByRole('heading', { name: '단지 등록' })).toBeVisible()
+    expect(screen.queryByText('일부 실패')).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '단지 저장 결과 확인' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('tab', { name: '2 좌표 적재' }))
     expect(screen.getByLabelText('위치정보요약DB 월 전체분 ZIP')).toBeVisible()

@@ -23,7 +23,7 @@ beforeEach(() => {
 it('90곳 완료와 남은 10곳의 필요한 작업을 구분해 표시한다', async () => {
   render(<InitialRegistrationProgress disabled={false} revision="" onBusyChange={vi.fn()} />)
   await screen.findByText('남은 단지')
-  const summary = screen.getByLabelText('상태별 단지 수')
+  const summary = screen.getByLabelText('등록 현황')
   expect(within(summary).getByText('90')).toHaveTextContent('90곳')
   expect(within(summary).getByText('10')).toHaveTextContent('10곳')
   expect(screen.getByText('주소·좌표 확인 필요')).toBeVisible()

@@ -322,7 +322,7 @@ export async function getInitialRegistration(status: InitialRegistrationStatus |
   if (!isRecord(body) || !isRecord(counts) || !initialRegistrationStatuses.every(status => isCount(counts[status]))
     || !isCount(body.totalElements) || !isCount(body.page) || !isCount(body.totalPages)
     || !Array.isArray(body.targets) || !body.targets.every(isInitialRegistrationTarget)) {
-    throw new Error('최초 등록 진행 상태 응답 형식이 올바르지 않습니다.')
+    throw new Error('단지 등록 현황 응답 형식이 올바르지 않습니다.')
   }
   return body as InitialRegistrationResponse
 }

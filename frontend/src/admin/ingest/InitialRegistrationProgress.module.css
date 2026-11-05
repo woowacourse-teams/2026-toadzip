@@ -1,7 +1,7 @@
 .panel {
   min-width: 0;
-  padding: 28px;
-  border: 1px solid var(--ds-color-divider);
+  padding: 32px;
+  border: 1px solid color-mix(in srgb, var(--ds-color-action) 20%, var(--ds-color-divider));
   border-radius: 12px;
   background: var(--ds-color-surface);
   color: var(--ds-color-text);
@@ -12,7 +12,6 @@
 }
 .header { display: flex; justify-content: space-between; align-items: center; gap: var(--ds-space-6); }
 .panel h2 { margin: 0; font-size: var(--ds-text-title); font-weight: 700; line-height: var(--ds-line-height-title); }
-.description { margin: var(--ds-space-2) 0 0; color: var(--ds-color-muted); font-size: var(--ds-text-caption); }
 .refreshButton[class], .pageButton[class] { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: var(--ds-space-2); white-space: nowrap; }
 .refreshButton svg { width: 16px; height: 16px; }
 

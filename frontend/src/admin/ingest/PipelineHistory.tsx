@@ -99,9 +99,9 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
         <section id={detailId} className="pipeline-history-detail" aria-label="선택한 실행 상세">
           <header><h3 ref={detailHeading} tabIndex={readOnlyComplex ? -1 : undefined}>선택한 실행 상세</h3>{readOnlyComplex ? <ComplexIconButton icon="close" label="닫기" onClick={() => { setSelected(null); detailTrigger.current?.focus() }} />
             : <button type="button" onClick={() => setSelected(null)}>닫기</button>}</header>
-          <p>{readOnlyComplex ? '선택한 실행에 저장된 단계별 결과입니다. 최근 실행의 오류는 각 단계의 결과 오류 조회에서 확인하세요.'
+          <p>{readOnlyComplex ? '선택한 실행에 저장된 단계별 결과입니다. 오류 조회는 이 실행에 연결된 대상의 현재 검토 상태를 보여줍니다.'
             : '선택 시점의 실행 기록입니다. 실행 중인 작업의 최신 상태와 중지는 상단에서 확인해 주세요.'}</p>
-          {readOnlyComplex ? <ComplexExecutionResult key={selected.executionId} execution={selected} showErrors={false} />
+          {readOnlyComplex ? <ComplexExecutionResult key={selected.executionId} execution={selected} />
             : compact ? <PipelineExecutionSteps key={selected.executionId} execution={selected} />
             : <PipelineResult type={selected.type} state={{ execution: selected, requestError: null, errorResponse: null }}
               stopping={true} onStop={() => {}} />}

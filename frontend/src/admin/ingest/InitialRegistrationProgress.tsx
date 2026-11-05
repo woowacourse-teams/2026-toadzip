@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Button } from '../../design-system/components/Button'
 import { getInitialRegistration, initialRegistrationStatuses, refreshInitialRegistration, type InitialRegistrationResponse, type InitialRegistrationStatus } from './api'
 import styles from './InitialRegistrationProgress.module.css'
+import stageStyles from './ComplexIngest.module.css'
+import { ComplexStageHelp } from './ComplexStageHelp'
 
 const labels: Record<InitialRegistrationStatus, string> = {
   EXISTING: '기존 단지', LOCATION_REQUIRED: '좌표 준비 필요', INFORMATION_REQUIRED: '정보 보완 필요',
@@ -77,8 +79,11 @@ export function InitialRegistrationProgress({ disabled, revision, onBusyChange }
 
   return <section className={styles.panel} aria-labelledby="initial-registration-title" aria-busy={loading || refreshing}>
     <header className={styles.header}>
-      <div><h2 id="initial-registration-title">최초 등록 진행 상태</h2>
-        <p className={styles.description}>단지별 등록 여부와 다음에 필요한 작업을 확인하세요.</p></div>
+      <div className={stageStyles.stageTitle}><span className={stageStyles.number}>3</span>
+        <div className={stageStyles.helpLabel}><h2 id="initial-registration-title">단지 등록</h2>
+          <ComplexStageHelp stage="단지 등록">단지별 등록 여부와 다음에 필요한 작업을 확인하세요.</ComplexStageHelp>
+        </div>
+      </div>
       <Button data-design-system variant="secondary" className={styles.refreshButton}
         disabled={disabled || refreshing} onClick={() => void refresh()}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
@@ -90,14 +95,14 @@ export function InitialRegistrationProgress({ disabled, revision, onBusyChange }
     {error && <div role="alert" className={styles.error}>
       <p>{error}</p><Button data-design-system variant="secondary" onClick={() => setReload(value => value + 1)}>상태 다시 조회</Button>
     </div>}
-    {result && <dl className={styles.counts} aria-label="상태별 단지 수">
+    {result && <dl className={styles.counts} aria-label="등록 현황">
       {initialRegistrationStatuses.map(value => <div key={value} data-status={value}>
         <dt><span className={styles.dot} aria-hidden="true" />{labels[value]}</dt>
         <dd>{result.counts[value]}<span>곳</span></dd>
       </div>)}
     </dl>}
     <div className={styles.toolbar}>
-      <h3>대상 목록{!loading && !error && result && <span>{result.totalElements}곳</span>}</h3>
+      <h3>등록 대상{!loading && !error && result && <span>{result.totalElements}곳</span>}</h3>
       <div className={styles.filters}>
         <label className={styles.filter}><span>진행 상태</span>
           <span className={styles.selectWrap}><select value={status} disabled={refreshing} onChange={event => {
