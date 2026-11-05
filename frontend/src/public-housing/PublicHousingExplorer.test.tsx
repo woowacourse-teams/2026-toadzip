@@ -3510,6 +3510,34 @@ describe('PublicHousingExplorer', () => {
     expect(screen.getByTestId('map-camera-request')).toHaveTextContent(cameraRequest ?? '')
   })
 
+  it('부모 상세의 응답이 로딩 최소 표시 중에 끝나도 화면 표시 후 호출 버튼에 포커스를 돌려준다', async () => {
+    vi.useFakeTimers()
+    const repository = createRepository()
+    const view = renderExplorer(repository, '/?announcementId=201')
+    try {
+      await act(async () => {})
+      const openComplex = screen.getByRole('button', { name: '서울가람 행복주택 단지 상세 보기' })
+      act(() => openComplex.focus())
+      await act(async () => { fireEvent.click(openComplex) })
+      expect(screen.getByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })).toBeVisible()
+      const response = createDeferred<AnnouncementDetail>()
+      repository.findAnnouncementDetail.mockReturnValueOnce(response.promise)
+
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '← 공고로 돌아가기' })) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+      expect(screen.getByText('공고 상세를 불러오고 있어요.')).toBeVisible()
+      await act(async () => response.resolve(announcementDetail()))
+      expect(screen.getByText('공고 상세를 불러오고 있어요.')).toBeVisible()
+      await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+
+      expect(screen.getByRole('button', { name: '서울가람 행복주택 단지 상세 보기' })).toHaveFocus()
+    } finally {
+      view.unmount()
+      vi.useRealTimers()
+    }
+  })
+
   it('공고에서 연 단지의 닫기는 부모 공고를 다시 열지 않고 현재 지도와 공고 목록을 유지한다', async () => {
     const repository = createRepository()
     renderExplorer(repository, '/?source=shared')
