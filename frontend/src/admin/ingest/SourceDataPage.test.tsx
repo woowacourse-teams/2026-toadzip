@@ -64,7 +64,7 @@ it('GH 공급 표는 주택형당 한 행으로 펼치고 팝업을 못 받은 �
   renderPage('/admin/sources?category=GH_ANNOUNCEMENT')
   const supply = await screen.findByRole('table', { name: 'GH 주택형별 공급 정보' })
   const rows = within(supply).getAllByRole('row').slice(1)
-  expect(rows).toHaveLength(2)
+  expect(rows).toHaveLength(3)
   const headers = within(supply).getAllByRole('columnheader').map(header => header.textContent)
   const values = (row: HTMLElement) => Object.fromEntries(
     [...row.children].map((cell, index) => [headers[index], cell.textContent]))
@@ -73,6 +73,7 @@ it('GH 공급 표는 주택형당 한 행으로 펼치고 팝업을 못 받은 �
     주택형: '33A', 전용면적: '33.1', 금회공급: '120', 보증금: '1,000,000', 월임대료: '90,000',
     '모집 회차': '1', 난방방식: '개별난방', '팝업 공급면적': '45.2', '팝업 계약면적': '60.1', '상세 수집 상태': '수집됨' })
   expect(values(rows[1])).toMatchObject({ 주택형: '46B', 금회공급: '30', '팝업 공급면적': '기록 없음', '상세 수집 상태': '미수집' })
+  expect(values(rows[2])).toMatchObject({ 지구: '의정부 장암', '지번 주소': '의정부시 장암동 2', '상세 수집 상태': '주택형 없음' })
   expect(rows[0]).not.toHaveTextContent('미수집')
 })
 it('GH 공고에 주택형이 없거나 공급정보가 없으면 그 사실을 한 행으로 표시한다', async () => {
@@ -84,7 +85,9 @@ it('GH 공고에 주택형이 없거나 공급정보가 없으면 그 사실을 
   const supply = await screen.findByRole('table', { name: 'GH 주택형별 공급 정보' })
   const rows = within(supply).getAllByRole('row').slice(1)
   expect(rows).toHaveLength(2)
-  rows.forEach(row => expect(row).toHaveTextContent('공급정보 없음'))
+  expect(rows[0]).toHaveTextContent('지구')
+  expect(rows[0]).toHaveTextContent('주택형 없음')
+  expect(rows[1]).toHaveTextContent('공급정보 없음')
 })
 it('GH가 아닌 원천에는 주택형별 공급 표를 두지 않는다', async () => {
   renderPage('/admin/sources?category=SH_ANNOUNCEMENT')

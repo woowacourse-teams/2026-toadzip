@@ -5,21 +5,23 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.board.service.BoardSourceCollector;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementExternalRepository;
-import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementStore;
+import com.toadzip.backend.ingest.collection.pending.PendingCollectionTargets;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementListParser;
-import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementHtmlParser;
 import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
+import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementHtmlParser;
+import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementListParser;
+import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementStore;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -309,7 +311,7 @@ class ShAnnouncementCollectionServiceTest {
         return new ShAnnouncementCollectionService(
                 new ShAnnouncementBoardSource(externalRepository, new ShAnnouncementListParser(), detailParser, store),
                 new BoardSourceCollector(CollectionServiceTestFixture.retryWithoutDelay(), failures,
-                        Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), Duration.ofDays(7)),
+                        Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), mock(PendingCollectionTargets.class), Duration.ofDays(7)),
                 days, Duration.ZERO);
     }
 

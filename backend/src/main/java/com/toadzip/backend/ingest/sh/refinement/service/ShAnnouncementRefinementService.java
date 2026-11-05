@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.sh.refinement.service;
 
+import com.toadzip.backend.ingest.domain.SourceRefinementFailure;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
@@ -7,6 +8,7 @@ import com.toadzip.backend.ingest.sh.collection.domain.ShAnnouncementSource;
 import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.sh.refinement.dto.ShAnnouncementRefinementReport;
 import com.toadzip.backend.ingest.sh.refinement.service.ShAnnouncementRefiner.Outcome;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
@@ -48,7 +50,7 @@ public class ShAnnouncementRefinementService {
                 .toList();
         IngestExecutionScope.beginWork("SH 공고 정제", "게시글", targets.size());
         Map<Outcome, Integer> outcomes = new EnumMap<>(Outcome.class);
-        int failed = 0;
+        List<SourceRefinementFailure> failures = new ArrayList<>();
         for (ShAnnouncementSource target : targets) {
             IngestExecutionScope.checkStopRequested();
             try {
@@ -61,14 +63,14 @@ public class ShAnnouncementRefinementService {
                 throw lost;
             }
             catch (RuntimeException failure) {
-                failed++;
+                failures.add(SourceRefinementFailure.of(target.getSourceKey(), failure));
                 log.warn("SH 공고 정제에 실패했습니다. sourceKey={}", target.getSourceKey(), failure);
             }
             IngestExecutionScope.workCompleted();
         }
         return new ShAnnouncementRefinementReport(targets.size(), count(outcomes, Outcome.CREATED),
                 count(outcomes, Outcome.UPDATED), count(outcomes, Outcome.UNCHANGED),
-                count(outcomes, Outcome.REVIEW_REQUIRED), count(outcomes, Outcome.TRASHED), failed);
+                count(outcomes, Outcome.REVIEW_REQUIRED), count(outcomes, Outcome.TRASHED), failures.size(), List.copyOf(failures));
     }
 
     private static int count(Map<Outcome, Integer> outcomes, Outcome outcome) {

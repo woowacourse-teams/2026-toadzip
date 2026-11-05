@@ -183,3 +183,28 @@ it.each(['SH', 'GH'] as const)('%s의 정제 연결 전 성공 이력은 수행�
   expect(screen.getByRole('list', { name: '실행 단계' }).children).toHaveLength(1)
   expect(screen.queryByRole('button', { name: `${agency} 공고 정제 미실행` })).not.toBeInTheDocument()
 })
+
+
+it.each(['SH', 'GH'] as const)('%s 정제 실패는 대상·원인과 해당 기관 원천을 보여 주고 LH 정제로 보내지 않는다', agency => {
+  show(execution({ type: `${agency}_ANNOUNCEMENT_COLLECTION`, status: 'FAILED', totalStepCount: 2,
+    failure: { stepName: `${agency} 공고 정제`, message: '정제 실패', serverResponse: {
+      failed: 1, failures: [{ sourceKey: `${agency}:100`, detail: '원천 확인 필요' }],
+    } } }))
+  fireEvent.click(screen.getByRole('button', { name: `${agency} 공고 정제 실패` }))
+  expect(screen.getByRole('list', { name: '정제 실패 원천' })).toHaveTextContent('원천 확인 필요')
+  expect(screen.getByRole('link', { name: `${agency}:100` })).toHaveAttribute('href',
+    `/admin/sources?category=${agency}_ANNOUNCEMENT&keyword=${agency}%3A100`)
+  expect(screen.queryByRole('link', { name: '실패 대상 확인' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: '실패 내역 확인' })).not.toBeInTheDocument()
+  expect(screen.getByText(new RegExp(`위의 ${agency} 공고 수집`))).toBeVisible()
+})
+
+it('성공한 GH 정제에는 실패 재실행 안내를 표시하지 않는다', () => {
+  show(execution({ type: 'GH_ANNOUNCEMENT_COLLECTION', status: 'COMPLETED', totalStepCount: 2,
+    completedSteps: ['GH 공고 원천 수집', 'GH 공고 정제'],
+    completedStepResults: [{ step: 'MAP_GH_ANNOUNCEMENTS', stepName: 'GH 공고 정제', report: { created: 1, failed: 0, failures: [] } }],
+  }))
+  fireEvent.click(screen.getByRole('button', { name: 'GH 공고 정제 성공' }))
+  expect(screen.queryByText(/실패한 원천을 확인한 뒤/)).not.toBeInTheDocument()
+  expect(screen.queryByRole('list', { name: '정제 실패 원천' })).not.toBeInTheDocument()
+})

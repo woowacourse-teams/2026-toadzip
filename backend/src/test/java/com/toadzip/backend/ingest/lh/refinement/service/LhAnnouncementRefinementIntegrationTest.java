@@ -12,14 +12,20 @@ import static org.mockito.Mockito.verify;
 
 import com.toadzip.backend.admin.exception.AdminDataStaleException;
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.AnnouncementOrigin;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
+import com.toadzip.backend.announcement.domain.ComplexLinkMethod;
+import com.toadzip.backend.announcement.domain.LhSupplyMatchStatus;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyOwner;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
+import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.announcement.service.SupplyCorrectionService;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -36,18 +42,10 @@ import com.toadzip.backend.ingest.lh.collection.detail.domain.LhAnnouncementDeta
 import com.toadzip.backend.ingest.lh.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceView;
-import com.toadzip.backend.ingest.lh.refinement.dto.LhAnnouncementRefinementReport;
-import com.toadzip.backend.announcement.domain.AnnouncementComplex;
-import com.toadzip.backend.announcement.domain.ComplexLinkMethod;
-import com.toadzip.backend.announcement.domain.LhSupplyMatchStatus;
-import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
-import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
-import com.toadzip.backend.announcement.service.SupplyCorrectionService;
 import com.toadzip.backend.ingest.lh.refinement.domain.LhSourceIdentifier;
+import com.toadzip.backend.ingest.lh.refinement.dto.LhAnnouncementRefinementReport;
 import com.toadzip.backend.ingest.lh.refinement.service.LhScheduleAttachmentWriter;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.springframework.security.test.context.support.WithMockUser;
 import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -60,10 +58,12 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -504,6 +504,36 @@ class LhAnnouncementRefinementIntegrationTest {
         });
     }
 
+    @Test
+    void 접수_시작일이_별도안내인_신규공고는_공고일로_대체하지_않고_보류하며_일정_확인후_등록한다() {
+        publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
+        details("P1", "동탄 행복주택 단지", ADDRESS, "별도 안내");
+
+        var held = refinement.refineAll();
+        assertThat(held.failedAnnouncementCount()).isZero();
+        assertThat(held.heldAnnouncementCounts()).containsEntry("VALUES_MISSING", 1);
+        assertThat(announcements.count()).isZero();
+        assertThat(supplyRows.count()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM notification_outbox_events").query(Long.class).single()).isZero();
+        verify(outbox, never()).appendNewAnnouncement(any());
+
+        details("P1", "동탄 행복주택 단지", ADDRESS);
+        assertThat(refinement.refineAll().createdAnnouncementCount()).isOne();
+        assertThat(announcements.findAll()).singleElement().satisfies(announcement ->
+                assertThat(announcement.getApplicationStartDate()).isEqualTo(today().plusDays(1)));
+    }
+
+    @Test
+    void 기존_공고는_원천_접수시작일이_없어져도_이미_확인한_시작일을_공고일로_바꾸지_않는다() {
+        publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
+        details("P1", "동탄 행복주택 단지", ADDRESS);
+        refinement.refineAll();
+        details("P1", "동탄 행복주택 단지", ADDRESS, "별도 안내");
+        assertThat(refinement.refineAll().failedAnnouncementCount()).isZero();
+        assertThat(announcements.findAll()).singleElement().satisfies(announcement ->
+                assertThat(announcement.getApplicationStartDate()).isEqualTo(today().plusDays(1)));
+    }
+
     private void publish(String panId, String name, LocalDate noticeDate) {
         catalogEntries.removeIf(entry -> entry.snapshot().panId().equals(panId));
         catalogEntries.add(new Entry(new LhAnnouncementCatalogSnapshot(panId, "03", "06", "10", "063", name, "공고중",
@@ -513,8 +543,14 @@ class LhAnnouncementRefinementIntegrationTest {
     }
 
     private void details(String panId, String complexName, String address) {
-        String start = today().plusDays(1).format(COMPACT_DATE);
+        details(panId, complexName, address, today().plusDays(1).format(COMPACT_DATE));
+    }
+
+    private void details(String panId, String complexName, String address, String start) {
         String end = today().plusDays(3).format(COMPACT_DATE);
+        if ("별도 안내".equals(start)) {
+            end = "별도 안내";
+        }
         String winner = today().plusDays(20).format(COMPACT_DATE);
         lhStorage.replaceDetails(panId, request(panId).requestDescription(), List.of(
                 LhSourceViews.detail(0, panId, new LhAnnouncementDetailSourceSnapshot("COMPLEX", complexName, address,

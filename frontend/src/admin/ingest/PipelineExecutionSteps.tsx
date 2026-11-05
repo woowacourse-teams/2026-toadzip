@@ -6,6 +6,7 @@ import { DataPipelineProgress, PipelineReport } from './DataPipelineProgress'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import { pipelineLabels, pipelineStatusLabels, retiredAnnouncementRegistrationNotice } from './pipelineLabels'
 import styles from './PipelineExecutionSteps.module.css'
+import { isRecord } from '../management/managementContract'
 import { PipelineNextActions } from './PipelineNextActions'
 
 export function PipelineExecutionSteps({ execution, onStop, stopping = false, onRefine, recoveryDisabled, focused = false, pending = false, children }: {
@@ -15,6 +16,8 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
   const [selected, setSelected] = useState<Step | null>(null)
   const label = pipelineLabels[execution.type]
   const domain = execution.type.startsWith('COMPLEX_') ? 'complex' : 'announcement'
+  const board = execution.type === 'SH_ANNOUNCEMENT_COLLECTION' ? 'SH' : execution.type === 'GH_ANNOUNCEMENT_COLLECTION' ? 'GH' : null
+  const boardRefinement = selected === 'MAP_SH_ANNOUNCEMENTS' || selected === 'MAP_GH_ANNOUNCEMENTS'
   const selectedName = selected ? definitions[selected] : null
   const skipped = execution.skippedSteps.find(item => item.stepName === selectedName)
   const partial = execution.partiallyFailedSteps.find(item => item.stepName === selectedName)
@@ -57,14 +60,22 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
     {execution.stopRequested && execution.status === 'RUNNING' && <p role="status">현재 처리가 끝나면 중지합니다. 이미 저장한 데이터는 유지됩니다.</p>}
     <PipelineNextActions execution={execution} onRefine={onRefine} disabled={recoveryDisabled} />
     {execution.status !== 'IDLE' && execution.status !== 'RUNNING' && execution.type !== 'ANNOUNCEMENT_REGISTRATION'
-      && <p><Link to={`/admin/failures?domain=${domain}&category=all&executionId=${encodeURIComponent(execution.executionId ?? '')}`}>
+      && !board && <p><Link to={`/admin/failures?domain=${domain}&category=all&executionId=${encodeURIComponent(execution.executionId ?? '')}`}>
         실패 내역 확인</Link></p>}
     {selected && <section className={styles.detail} aria-label="단계 상세">
       <header className={styles.heading}><h4>{selectedName}</h4><button type="button" onClick={() => setSelected(null)}>접기</button></header>
       <p>{failure?.message ?? skipped?.reason ?? (partial ? '일부 대상 처리에 실패했습니다. 상세 보고서와 실패 대상을 확인해 주세요.'
         : `단계 상태: ${states[stepState(execution, selected)][1]}`)}</p>
-      {(partial || failure || skipped) && <Link to={`/admin/failures?domain=${domain}&category=${category}&executionId=${encodeURIComponent(execution.executionId ?? '')}`}>
+      {(partial || failure || skipped) && !boardRefinement && <Link to={`/admin/failures?domain=${domain}&category=${category}&executionId=${encodeURIComponent(execution.executionId ?? '')}`}>
         실패 대상 확인</Link>}
+      {boardRefinement && board && (partial || failure || skipped) && <>
+        <p>실패한 원천을 확인한 뒤 위의 {board} 공고 수집을 다시 실행하세요. 저장된 원천을 다시 정제하며 관리자 보정값은 유지합니다.</p>
+        {isRecord(report) && Array.isArray(report.failures) && <ul aria-label="정제 실패 원천">
+          {report.failures.filter(isRecord).filter(item => typeof item.sourceKey === 'string' && typeof item.detail === 'string').map((item, index) =>
+            <li key={index}><Link to={`/admin/sources?category=${board}_ANNOUNCEMENT&keyword=${encodeURIComponent(String(item.sourceKey))}`}>
+              {String(item.sourceKey)}</Link>: {String(item.detail)}</li>)}
+        </ul>}
+      </>}
       {report != null && <><PipelineReport report={report} /><details><summary>상세 보고서</summary>
         <StoredDataTable data={report} label={`${selectedName} 실행 보고서`} /></details></>}
     </section>}

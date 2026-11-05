@@ -1,6 +1,8 @@
 package com.toadzip.backend.ingest.gh.refinement.dto;
 
 import com.toadzip.backend.ingest.domain.IngestStepReport;
+import com.toadzip.backend.ingest.domain.SourceRefinementFailure;
+import java.util.List;
 
 /**
  * GH 공고 정제 한 번의 결과. reviewRequired는 공개됐거나 관리자가 고친 공고라 원천 값을 덮지 않고 검토로 넘긴 수, supplyRecheckRequired는
@@ -8,7 +10,7 @@ import com.toadzip.backend.ingest.domain.IngestStepReport;
  */
 public record GhAnnouncementRefinementReport(
         int targetCount, int created, int updated, int unchanged, int reviewRequired, int trashed,
-        int supplyRecheckRequired, int failed
+        int supplyRecheckRequired, int failed, List<SourceRefinementFailure> failures
 ) implements IngestStepReport {
 
     @Override

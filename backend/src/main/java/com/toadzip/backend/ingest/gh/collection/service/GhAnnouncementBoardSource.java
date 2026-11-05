@@ -10,8 +10,8 @@ import com.toadzip.backend.ingest.collection.repository.external.ExternalDataReq
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementSnapshot;
 import com.toadzip.backend.ingest.gh.collection.dto.GhAnnouncementContent;
-import com.toadzip.backend.ingest.gh.collection.dto.GhAnnouncementPage;
 import com.toadzip.backend.ingest.gh.collection.dto.GhAnnouncementPage.Entry;
+import com.toadzip.backend.ingest.gh.collection.dto.GhAnnouncementPage;
 import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementHtmlParser;
 import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementListParser;
@@ -36,6 +36,11 @@ public class GhAnnouncementBoardSource implements BoardSource<Entry, GhAnnouncem
     private final GhAnnouncementHtmlParser detailParser;
     private final GhAnnouncementStore store;
     private final GhHousingTypeDetails housingTypeDetails;
+
+    @Override
+    public Class<Entry> entryType() {
+        return Entry.class;
+    }
 
     @Override
     public ExternalDataSource source() {

@@ -4,6 +4,7 @@ import com.toadzip.backend.ingest.collection.board.dto.BoardDetail;
 import com.toadzip.backend.ingest.collection.board.dto.BoardEntry;
 import com.toadzip.backend.ingest.collection.board.dto.BoardPage;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
+import com.toadzip.backend.ingest.collection.pending.PendingCollectionTargets;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.service.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
@@ -39,11 +40,12 @@ public class BoardSourceCollector {
     private final ExternalDataRetryExecutor retryExecutor;
     private final ExternalDataFailureRecorder failureRecorder;
     private final Clock clock;
+    private final PendingCollectionTargets pending;
     private final Duration refetchAfter;
 
     /** refetchAfter는 목록 값이 그대로여도 상세를 다시 받는 기한이다. 기관이 목록에 드러내지 않고 고친 상세를 따라잡는다. */
     public BoardSourceCollector(
-            ExternalDataRetryExecutor retryExecutor, ExternalDataFailureRecorder failureRecorder, Clock clock,
+            ExternalDataRetryExecutor retryExecutor, ExternalDataFailureRecorder failureRecorder, Clock clock, PendingCollectionTargets pending,
             @Value("${ingest.board-announcement.refetch-after:7d}") Duration refetchAfter
     ) {
         if (refetchAfter.isNegative()) {
@@ -52,6 +54,7 @@ public class BoardSourceCollector {
         this.retryExecutor = retryExecutor;
         this.failureRecorder = failureRecorder;
         this.clock = clock;
+        this.pending = pending;
         this.refetchAfter = refetchAfter;
     }
 
@@ -66,6 +69,7 @@ public class BoardSourceCollector {
         Run<E, S> run = new Run<>(board, new BoardRequests(board.source(), retryExecutor, requestInterval));
         IngestExecutionScope.beginWork(board.agency() + " 공고 원천", board.unit(), -1);
         run.collect(cutoff);
+        run.collectPending();
         return run.report();
     }
 
@@ -75,6 +79,7 @@ public class BoardSourceCollector {
         private final BoardRequests requests;
         private final Set<String> seen = new HashSet<>();
         private int totalCount = -1;
+        private final Set<String> attempted = new HashSet<>();
         private int stored;
         private int successful;
         private int failed;
@@ -100,8 +105,29 @@ public class BoardSourceCollector {
         private boolean collectPage(BoardPage<E> page, LocalDate cutoff) {
             List<E> selected = page.entries().stream().filter(entry -> !entry.postedDate().isBefore(cutoff))
                     .filter(board::isTarget).toList();
+            Set<String> outstanding = pending.find(board.source()).stream()
+                    .map(target -> target.getTargetKey()).collect(Collectors.toSet());
+            // 조회 기간 밖으로 밀린 미완료 요청도 현재 목록에서 확인한 최신 값으로 갱신한다.
+            for (E entry : page.entries()) {
+                if (outstanding.contains(entry.key())) {
+                    if (board.isTarget(entry)) {
+                        pending.remember(board.source(), entry.key(), entry, page.page());
+                    }
+                    else {
+                        pending.complete(board.source(), entry.key());
+                    }
+                }
+            }
             Map<String, Instant> unchanged = unchanged(selected);
             Set<String> skippable = skippable(unchanged);
+            for (E entry : selected) {
+                if (!skippable.contains(entry.key())) {
+                    pending.remember(board.source(), entry.key(), entry, page.page());
+                }
+                else {
+                    pending.complete(board.source(), entry.key());
+                }
+            }
             for (E entry : selected) {
                 collectEntry(entry, skippable, page.page());
                 IngestExecutionScope.workCompleted();
@@ -117,6 +143,18 @@ public class BoardSourceCollector {
                 }
             }
             return true;
+        }
+
+        private void collectPending() {
+            for (var target : pending.find(board.source())) {
+                if (requests.halted()) {
+                    return;
+                }
+                if (!attempted.contains(target.getTargetKey())) {
+                    collectDetail(pending.read(target, board.entryType()), target.getListPage());
+                    IngestExecutionScope.workCompleted();
+                }
+            }
         }
 
         private void collectEntry(E entry, Set<String> skippable, int page) {
@@ -188,6 +226,7 @@ public class BoardSourceCollector {
         }
 
         private void collectDetail(E entry, int page) {
+            attempted.add(entry.key());
             String request = board.detailRequest(entry.key());
             BoardDetail<S> detail;
             try {
@@ -206,6 +245,7 @@ public class BoardSourceCollector {
                 return;
             }
             failureRecorder.resolve(board.source(), request);
+            pending.complete(board.source(), entry.key());
             successful++;
         }
 

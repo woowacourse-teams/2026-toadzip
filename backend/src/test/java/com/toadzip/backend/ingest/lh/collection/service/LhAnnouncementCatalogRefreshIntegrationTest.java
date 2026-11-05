@@ -14,6 +14,10 @@ import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementDe
 import com.toadzip.backend.ingest.collection.fixture.repository.LhCatalogStorageFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.lh.collection.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
 import com.toadzip.backend.ingest.lh.collection.detail.domain.LhAnnouncementDetailSourceView;
 import com.toadzip.backend.ingest.lh.collection.detail.repository.LhAnnouncementDetailSourceReader;
@@ -25,10 +29,6 @@ import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementQuerySo
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import java.time.Clock;
 import java.time.Duration;
@@ -38,6 +38,8 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -86,6 +88,7 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        jdbc.sql("DELETE FROM pending_collection_targets").update();
         jdbc.sql("DELETE FROM lh_announcement_supply_rows").update();
         jdbc.sql("DELETE FROM lh_announcement_detail_rows").update();
         jdbc.sql("DELETE FROM lh_announcement_query_parameters").update();
@@ -192,6 +195,29 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
             assertThat(link.getRequestHash()).isEqualTo(requestHash);
         });
         assertThat(service.collect(DETAIL).externalApiCallCount()).isOne();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void 실패한_요청은_최신_목록에서_사라져도_다시_수집한다(boolean hasNew) {
+        catalogStore.store(List.of(entry("100", "공고중")));
+        when(external.detail(any())).thenThrow(new ExternalDataRequestException("불완전 응답"));
+        assertThat(service.collect(DETAIL).failedRequestCount()).isOne();
+        assertThat(jdbc.sql("SELECT count(*) FROM pending_collection_targets").query(Long.class).single()).isOne();
+
+        catalogStore.store(List.of(entry("200", "공고중")));
+        int expected = 2;
+        if (!hasNew) {
+            // 현재 목록 후보가 없어도 과거에 발견한 미완료 요청은 남는다.
+            jdbc.sql("UPDATE lh_announcement_catalog_entries SET present_in_latest_catalog = false").update();
+            expected = 1;
+        }
+        doReturn(response()).when(external).detail(any());
+        assertThat(service.collect(DETAIL).successfulRequestCount()).isEqualTo(expected);
+        assertThat(querySources.findAll()).extracting(row -> row.getPanId()).contains("100");
+        assertThat(querySources.count()).isEqualTo(expected);
+        assertThat(jdbc.sql("SELECT count(*) FROM pending_collection_targets").query(Long.class).single()).isZero();
+        assertThat(failures.findAll()).allSatisfy(failure -> assertThat(failure.getStatus().name()).isEqualTo("RESOLVED"));
     }
 
     private List<LhAnnouncementDetailSourceView> currentDetails() {

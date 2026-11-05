@@ -4,16 +4,21 @@ import static com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementBoar
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures;
 import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures.Row;
+import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures;
 import com.toadzip.backend.ingest.collection.fixture.ShAnnouncementFixtures;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementExternalRepository;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
@@ -62,11 +67,12 @@ class BoardAnnouncementPipelineIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        jdbc.update("DELETE FROM pending_collection_targets");
         for (String table : List.of("supply_rows", "announcement_complexes", "announcement_attachments")) {
             jdbc.update("DELETE FROM " + table + " WHERE announcement_id IN "
-                    + "(SELECT id FROM announcements WHERE source_announcement_identifier IN ('GH:801', 'GH:802', 'SH:100', 'SH:200'))");
+                    + "(SELECT id FROM announcements WHERE source_announcement_identifier IN ('GH:801', 'GH:802', 'SH:100', 'SH:200', 'SH:300', 'SH:400', 'GH:100', 'GH:200', 'GH:300', 'GH:400'))");
         }
-        jdbc.update("DELETE FROM announcements WHERE source_announcement_identifier IN ('GH:801', 'GH:802', 'SH:100', 'SH:200')");
+        jdbc.update("DELETE FROM announcements WHERE source_announcement_identifier IN ('GH:801', 'GH:802', 'SH:100', 'SH:200', 'SH:300', 'SH:400', 'GH:100', 'GH:200', 'GH:300', 'GH:400')");
         jdbc.update("DELETE FROM gh_announcement_source");
         jdbc.update("DELETE FROM sh_announcement_source");
         jdbc.update("DELETE FROM external_data_collection_failures");
@@ -148,7 +154,8 @@ class BoardAnnouncementPipelineIntegrationTest {
 
             assertThat(result.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
             assertThat(result.failure().stepName()).isEqualTo(agency(type) + " 공고 정제");
-            assertThat(result.failure().serverResponse().toString()).contains("failed=1", "created=1");
+            assertThat(result.failure().serverResponse().toString()).contains("failed=1", "created=1", rejected, "원천 정제를 완료하지 못했습니다")
+                    .doesNotContain("board_pipeline_test_failure", "SQL");
             assertThat(count("announcements")).isOne();
             assertThat(jdbc.queryForObject("SELECT release_status FROM announcements", String.class))
                     .isEqualTo("UNCONFIRMED");
@@ -201,6 +208,108 @@ class BoardAnnouncementPipelineIntegrationTest {
         finally {
             jdbc.execute("DROP TRIGGER IF EXISTS board_pipeline_lose_lease ON announcements");
             jdbc.execute("DROP FUNCTION board_pipeline_lose_lease()");
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DataPipelineType.class, names = {"SH_ANNOUNCEMENT_COLLECTION", "GH_ANNOUNCEMENT_COLLECTION"})
+    void 실패와_미시도는_목록에서_사라져도_다음_신규_수집과_함께_처리한다(DataPipelineType type) {
+        boardEntries(type, 100, 200, 300);
+        if (type == DataPipelineType.SH_ANNOUNCEMENT_COLLECTION) {
+            when(shExternal.fetchDetail("200")).thenThrow(ExternalDataRequestException.rateLimited("호출 제한"));
+        }
+        else {
+            when(ghExternal.fetchDetail(RENTAL_HOUSE, "200", "01"))
+                    .thenThrow(ExternalDataRequestException.rateLimited("호출 제한"));
+        }
+        var first = service.start(type);
+        task.get().run();
+        assertThat(count("pending_collection_targets")).isEqualTo(2);
+        if (type == DataPipelineType.SH_ANNOUNCEMENT_COLLECTION) {
+            verify(shExternal, never()).fetchDetail("300");
+        }
+        else {
+            verify(ghExternal, never()).fetchDetail(RENTAL_HOUSE, "300", "01");
+        }
+        // 이전 목록 없이 신규 공고만 보인다. 200 실패와 300 미시도 요청은 DB 입력으로 복구한다.
+        boardEntries(type, 400);
+        boardDetail(type, 200);
+        var second = service.start(type);
+        task.get().run();
+        assertThat(query.find(second.executionId()).status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
+        assertThat(count("pending_collection_targets")).isZero();
+        assertThat(count("announcements")).isEqualTo(4);
+        if (type == DataPipelineType.SH_ANNOUNCEMENT_COLLECTION) {
+            verify(shExternal, times(1)).fetchDetail("100");
+            verify(shExternal, times(2)).fetchDetail("200");
+            verify(shExternal, times(1)).fetchDetail("300");
+        }
+        else {
+            verify(ghExternal, times(1)).fetchDetail(RENTAL_HOUSE, "100", "01");
+            verify(ghExternal, times(2)).fetchDetail(RENTAL_HOUSE, "200", "01");
+            verify(ghExternal, times(1)).fetchDetail(RENTAL_HOUSE, "300", "01");
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DataPipelineType.class, names = {"SH_ANNOUNCEMENT_COLLECTION", "GH_ANNOUNCEMENT_COLLECTION"})
+    void 원천_저장에_실패하면_미완료_대상을_보존하고_복구_후에만_완료한다(DataPipelineType type) {
+        boardEntries(type, 100, 200, 300);
+        String table = agency(type).toLowerCase() + "_announcement_source";
+        jdbc.execute("ALTER TABLE " + table + " ADD CONSTRAINT pending_store_failure CHECK (source_key <> '"
+                + agency(type) + ":200') NOT VALID");
+        try {
+            var first = service.start(type);
+            task.get().run();
+            assertThat(query.find(first.executionId()).status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
+            assertThat(count(table)).isOne();
+            assertThat(count("pending_collection_targets")).isEqualTo(2);
+        }
+        finally {
+            jdbc.execute("ALTER TABLE " + table + " DROP CONSTRAINT pending_store_failure");
+        }
+        boardEntries(type, 400);
+        var next = service.start(type);
+        task.get().run();
+        assertThat(query.find(next.executionId()).status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
+        assertThat(count(table)).isEqualTo(4);
+        assertThat(count("pending_collection_targets")).isZero();
+    }
+
+    private void boardEntries(DataPipelineType type, int... ids) {
+        if (type == DataPipelineType.SH_ANNOUNCEMENT_COLLECTION) {
+            var list = Jsoup.parse(ShAnnouncementFixtures.mainList());
+            var template = list.selectFirst("#listTb tbody > tr").clone();
+            list.selectFirst("#listTb tbody").empty();
+            list.selectFirst("#mainform .mentcount strong").text(Integer.toString(ids.length));
+            for (int id : ids) {
+                var row = template.clone();
+                row.selectFirst("a").attr("onclick", "getDetailView('" + id + "')");
+                list.selectFirst("#listTb tbody").appendChild(row);
+                boardDetail(type, id);
+            }
+            when(shExternal.fetchList(1)).thenReturn(list.html());
+        }
+        else {
+            var rows = Arrays.stream(ids).mapToObj(id -> new Row(Integer.toString(id), GH_ROW.supplyType(),
+                    GH_ROW.title(), GH_ROW.postedDate())).toArray(Row[]::new);
+            when(ghExternal.fetchList(RENTAL_HOUSE, 1))
+                    .thenReturn(GhAnnouncementFixtures.list(RENTAL_HOUSE, 1, ids.length, rows));
+            for (int id : ids) {
+                boardDetail(type, id);
+            }
+        }
+    }
+
+    private void boardDetail(DataPipelineType type, int id) {
+        if (type == DataPipelineType.SH_ANNOUNCEMENT_COLLECTION) {
+            doReturn(ShAnnouncementFixtures.detail().replace("\"100\"", "\"" + id + "\""))
+                    .when(shExternal).fetchDetail(Integer.toString(id));
+        }
+        else {
+            var row = new Row(Integer.toString(id), GH_ROW.supplyType(), GH_ROW.title(), GH_ROW.postedDate());
+            doReturn(GhAnnouncementFixtures.detail(RENTAL_HOUSE, row))
+                    .when(ghExternal).fetchDetail(RENTAL_HOUSE, Integer.toString(id), "01");
         }
     }
 

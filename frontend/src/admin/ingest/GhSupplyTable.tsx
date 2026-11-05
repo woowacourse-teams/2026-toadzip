@@ -12,6 +12,11 @@ function ghSupplyRows(items: SourceRow[]): SupplyRow[] {
     const districts = Array.isArray(item.raw.districts) ? item.raw.districts.filter(isRecord) : []
     const rows = districts.flatMap((district, districtIndex) => {
       const types = Array.isArray(district.housingTypes) ? district.housingTypes.filter(isRecord) : []
+      if (types.length === 0) {
+        return [{ key: `${item.sourceKey}:${districtIndex}:none`, announcement: item.name,
+          values: ghSupplyValueColumns.map(column => column.scope === 'district' ? district[column.key] : undefined),
+          status: '주택형 없음' }]
+      }
       return types.map((type, typeIndex): SupplyRow => {
         // 팝업을 받지 못한 주택형은 detail 키 자체가 없다. 빈칸과 구분해 드러낸다.
         const detail = isRecord(type.detail) ? type.detail : null
