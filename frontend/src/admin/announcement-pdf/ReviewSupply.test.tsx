@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { expect, it, vi } from 'vitest'
 import { ReviewSupply } from './ReviewSupply'
@@ -93,8 +93,8 @@ it('공급정보는 고른 행이 속한 단지의 행만 목록·편집 영역�
   const before = panelTitle()
   fireEvent.click(screen.getByRole('button', { name: '다른 단지 탭' }))
   expect(groups()[0]).toMatch(/^첨단H-3BL · 주택형 4개/)
-  expect(within(list).getAllByRole('button', { name: /^공급행 \d 편집$/ }).map(button => button.textContent?.split('.')[0])).toEqual(['4', '5', '6', '7'])
-  expect(screen.getByRole('heading', { name: /^첨단H-3BL주택형 4개 중 공급행 4/ })).toBeVisible()
+  expect(within(list).getAllByRole('button', { name: /^\d+\. / }).map(button => button.textContent?.split('.')[0])).toEqual(['4', '5', '6', '7'])
+  expect(screen.getByRole('heading', { name: '4. 16(대학생,청년)' })).toBeVisible()
   expect(panelTitle()).not.toBe(before)
   fireEvent.click(screen.getByRole('button', { name: '다른 단지 탭' }))
   expect(screen.getByRole('textbox', { name: '공급행 1 이 공고의 주택형 표기 수정' })).toHaveValue('39 관리자')
@@ -109,7 +109,7 @@ function renderDaegu(options: Parameters<typeof daegu>[0] = {}) {
     return <ReviewSupply review={current} workspace={workspace} housing={housing} complexes={{}} filter="all" empty="없음" onChange={setCurrent} onEvidence={() => {}} selected={selected} onSelect={setSelected} onJump={jump} />
   }
   render(<MemoryRouter><Test /></MemoryRouter>)
-  const show = (row: number) => fireEvent.click(within(screen.getByRole('region', { name: '공급행 목록' })).getByRole('button', { name: `공급행 ${row} 편집` }))
+  const show = (row: number) => fireEvent.click(within(screen.getByRole('region', { name: '공급행 목록' })).getByRole('button', { name: new RegExp(`^${row}\\. `) }))
   const placeOf = (row: number) => { show(row); return screen.getByLabelText(`공급행 ${row} 저장할 곳`).textContent }
   return { jump, show, placeOf, match: () => screen.getByRole('region', { name: 'LH·PDF 대응' }) }
 }
@@ -178,4 +178,59 @@ it('대응 확인 안내는 의심스러울 때만 까닭과 함께 보인다: A
   fireEvent.click(within(screen.getByRole('group', { name: '공급행 3 저장할 곳 고르기' })).getByRole('button', { name: /#748 · / }))
   expect(placeOf(3)).toBe('기존 공급정보 #748(39)을 고칩니다.')
   expect(screen.getByRole('region', { name: '공급행 3 검토' })).toHaveTextContent("이 대응이 맞는지 확인하세요. AI는 이 행을 LH 행 '공공임대 240세대'에서 나온 행으로 봤지만, 지금은 LH 행 '84 5세대'에 저장합니다.")
+})
+
+it('금액은 임대조건 표와 조건 대조 칸 모두 세 자리마다 쉼표를 넣어 보이고, 직접 입력 칸에는 쉼표 없는 원 단위 값을 둔다', () => {
+  renderSupply('gwangju', () => {})
+  const table = screen.getByRole('region', { name: '공급행 1 임대조건 표' })
+  expect(within(table).getAllByText('41,848,000').length).toBeGreaterThan(0)
+  expect(within(table).queryByText('41848000')).not.toBeInTheDocument()
+  expect(within(table).getAllByText('226,670').length).toBeGreaterThan(0)
+  fireEvent.click(within(table).getByRole('button', { name: '조건 1 대조·수정' }))
+  const condition = screen.getByRole('region', { name: '공급행 1 조건 1 수정' })
+  expect(within(condition).getAllByText('41,848,000').length).toBeGreaterThan(0)
+  fireEvent.click(within(within(condition).getByRole('group', { name: '공급행 1 조건 1 보증금 (원) 반영 방법' })).getByRole('button', { name: '직접 입력' }))
+  expect(within(condition).getByRole('textbox', { name: '공급행 1 조건 1 보증금 (원) 수정' })).toHaveValue('41848000')
+})
+
+it('저장할 곳 확인이 단지 단위 결정을 기다리면 상태 배지는 그 결정으로 옮긴다: LH 통합행 나누기는 LH·PDF 대응, 단지 미정은 단지 정하기', () => {
+  const { jump } = renderDaegu()
+  fireEvent.click(within(screen.getByRole('region', { name: '공급행 목록' })).getByRole('button', { name: '공급행 1 확인 필요: LH·PDF 대응 확인하러 가기' }))
+  expect(jump).toHaveBeenLastCalledWith('match:0')
+  cleanup()
+  const { review, workspace, housing } = scenario('gwangju')
+  workspace.supply.rows.forEach(row => { row.housingComplexId = null })
+  const moved = vi.fn<(target: string) => void>()
+  // 확인 필요 필터에서도 단지 정하기는 숨기지 않는다(접는 안내가 아니라 단지 영역 맨 위에 늘 보인다).
+  render(<MemoryRouter><ReviewSupply review={review} workspace={workspace} housing={housing} complexes={{}} filter="pending" empty="없음" onChange={() => {}} onEvidence={() => {}} selected={0} onSelect={() => {}} onJump={moved} /></MemoryRouter>)
+  expect(screen.getByRole('region', { name: 'PDF 단지 정하기' })).toBeVisible()
+  fireEvent.click(within(screen.getByRole('region', { name: '공급행 목록' })).getByRole('button', { name: '공급행 1 확인 필요: 단지 정하기 확인하러 가기' }))
+  expect(moved).toHaveBeenLastCalledWith('complex')
+})
+
+it('상태 배지는 남은 확인을 종류별 개수로 알리고, 누르면 편집 영역 순서로 첫 확인 항목(값 칸)으로 옮긴다', () => {
+  const { review, workspace, housing } = scenario('gwangju')
+  const row = review.rows[0]
+  row.reviewed = true
+  const [first, second] = row.cells.filter(cell => !cell.locked && cell.field !== 'housingTypeId')
+  for (const cell of [first, second]) { cell.mode = 'extracted'; cell.reviewed = false; cell.extracted = { ...cell.extracted, state: 'confirm' } }
+  const moved = vi.fn<(target: string) => void>()
+  render(<MemoryRouter><ReviewSupply review={review} workspace={workspace} housing={housing} complexes={{}} filter="all" empty="없음" onChange={() => {}} onEvidence={() => {}} selected={0} onSelect={() => {}} onJump={moved} /></MemoryRouter>)
+  fireEvent.click(within(screen.getByRole('region', { name: '공급행 목록' })).getByRole('button', { name: '공급행 1 확인 필요: 값 2 확인하러 가기' }))
+  expect(moved).toHaveBeenLastCalledWith(`cell:${first.path}`)
+})
+
+it('공통 모집 안내는 지금 단지의 행이 든 묶음만 보인다', () => {
+  const extraction = structuredClone(fixtures.gwangju.extraction) as unknown as { sharedCounts: unknown[] }
+  extraction.sharedCounts = [{ count: 80, paths: ['supplyRows[1].totalSupplyHouseholdCount', 'supplyRows[2].totalSupplyHouseholdCount'], page: 2, quote: '80' }]
+  const { review, workspace, housing } = scenario('gwangju', extraction)
+  function Test() {
+    const [selected, setSelected] = useState(0)
+    return <><button type="button" onClick={() => setSelected(1)}>첨단H-2BL 보기</button>
+      <ReviewSupply review={review} workspace={workspace} housing={housing} complexes={{}} filter="all" empty="없음" onChange={() => {}} onEvidence={() => {}} selected={selected} onSelect={setSelected} /></>
+  }
+  render(<MemoryRouter><Test /></MemoryRouter>)
+  expect(screen.queryByText('공통 모집 80세대')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '첨단H-2BL 보기' }))
+  expect(within(screen.getByRole('list', { name: '안내 요약' })).getByText('공통 모집 80세대')).toBeVisible()
 })

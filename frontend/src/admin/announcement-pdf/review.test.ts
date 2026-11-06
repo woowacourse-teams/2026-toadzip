@@ -5,6 +5,7 @@ import { readExtraction } from './extraction'
 import { blankTarget } from '../supply/supplyCorrectionApi'
 import type { JsonWorkspace } from '../announcement-json/api'
 import { complexCorrespondence } from './correspondence'
+import { foldRows } from './subtypes'
 import { areaOnlyTypeName, createRowReview, destinationLabel, housingTypePrice, linkedHousingTypeId, pendingPrice, foreignCharacters, shownDateTime, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, placementProblems, rebaseReview, remapSchedule, remapTarget, serverFieldError, serverFieldsError, pendingSubtypes, validCellValue } from './review'
 
 
@@ -34,6 +35,23 @@ it('대상 조건이 달라 접지 않은 한스빌의 공통 모집수는 묶�
   expect(request.document.announcement.name).toBe('기존 공고')
   expect(request.document.announcement.rentalType).toBe('NATIONAL_RENTAL')
   expect(workspace.supply.rows[0].householdCount).toBe(170)
+})
+
+it('공통 수량과 겹친 대상별 수량은 미확인으로 남겨 대상별 값으로 저장하지 않는다', () => {
+  const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
+  input.data.supplyRows[0].targets.push({ ...input.data.supplyRows[0].targets[0], target: '청년', reserveCount: 20 })
+  input.data.supplyRows[0].targets.forEach(target => { target.reserveCount = 20 })
+  input.sharedCounts = [{ paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[0].targets[1].reserveCount'], count: 20, page: 3, quote: '대학생 청년 통합 20' }]
+  const parsed = readExtraction(JSON.stringify(input))
+  if (!parsed.ok) throw new Error(parsed.error)
+  const { workspace, housing } = scenario('hansville')
+  const review = createReview(parsed.value, workspace, housing)
+  expect(review.rows[0].targets.map(target => target.cells.find(cell => cell.field === 'reserveCount')?.state)).toEqual(['unresolved', 'unresolved'])
+  review.rows[0].proposal.destination = workspace.supply.rows[0].key
+  review.rows[1].include = false
+  const request = assembleReview(review, workspace, evidence)
+  expect(request.correction.rows.find(row => row.id === 90)?.targets.map(target => target.reserveCount)).toEqual([null, null])
+  expect(review.extraction.sharedCounts[0].count).toBe(20)
 })
 
 it('새 공통 모집 묶음의 두 행이 같은 주택형을 연결하면 서버에 보내기 전에 그 행으로 안내한다', () => {
@@ -670,6 +688,26 @@ describe('세부 타입 묶음 행으로 접기', () => {
     expect(fold('26A/B(고령자)').review.rows[0].proposal.reason).toContain('공통 모집수 170세대를 함께 적어')
   })
 
+  it('세부 타입을 접을 때 대상 하나로 합쳐지는 공통 예비자 모집수를 대상 필드에 보존한다', () => {
+    const { review } = fold('26A/B', input => {
+      input.sharedCounts = [{ paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[1].targets[0].reserveCount'], count: 20, page: 4, quote: '26A·26B 예비자 20' }]
+    })
+    expect(review.extraction.sharedCounts).toEqual([])
+    expect(review.extraction.supplyRows[0].targets[0].reserveCount).toBe(20)
+    expect(review.extraction.unresolved).toEqual([])
+  })
+
+  it('접은 대상의 기존 예비자 수가 공통 수량과 충돌하면 값을 비우고 확인 사유를 남긴다', () => {
+    const parsed = readExtraction(JSON.stringify(fixtures.hansville.extraction))
+    if (!parsed.ok) throw new Error(parsed.error)
+    const extraction = parsed.value
+    extraction.sharedCounts = [{ paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[1].targets[0].reserveCount'], count: 20, page: 4, quote: '26A·26B 예비자 20' }]
+    extraction.supplyRows.forEach(row => { row.targets[0].reserveCount = 5 })
+    const folded = foldRows(extraction, [{ indexes: [0, 1], typeName: '26A/B', count: 170 }]).extraction
+    expect(folded.supplyRows[0].targets[0].reserveCount).toBeNull()
+    expect(folded.unresolved).toEqual([expect.objectContaining({ path: 'supplyRows[0].targets[0].reserveCount', reason: expect.stringContaining('합친 값 10과 일치하지 않습니다') })])
+  })
+
   it('접은 행은 대상별 모집수·예비자 수를 더하고, 공통 모집수가 없으면 행 모집수를 더한다', () => {
     const { review } = fold('26A/B', input => {
       input.sharedCounts = []
@@ -749,4 +787,20 @@ it('미확정 공고의 필수 일정·유형이 비면 확인 필요로 표시�
     'release:rentalType', 'release:recruitmentType',
   ]))
   expect(() => assembleReview(review, workspace, evidence, release)).toThrow(/접수 시작일/)
+})
+
+it('단지를 정하지 않은 새 공급행은 대응을 확인해도 저장이 막히므로 단지를 정할 때까지 확인 필요로 남는다', () => {
+  const { review, workspace } = scenario('gwangju')
+  review.rows[0] = { ...review.rows[0], reviewed: true, proposal: { ...review.rows[0].proposal, destination: 'new', anchorKey: '', newComplex: undefined } }
+  expect(pendingItems(review, true, workspace).map(item => item.id)).toContain('row:0')
+  expect(() => assembleReview(review, workspace, { reason: '보정', sourceUrl: 'https://example.com', sourcePage: null })).toThrow(expect.objectContaining({ reviewId: 'row:0' }))
+  review.rows[0].proposal.newComplex = { id: 962, name: '광주첨단H-1BL', pnu: '1233011600106570004', category: 'RESUPPLY' } as NonNullable<typeof review.rows[0]['proposal']['newComplex']>
+  expect(pendingItems(review, true, workspace).map(item => item.id)).not.toContain('row:0')
+})
+
+it('단지가 비어 있는 기존 공급행도 단지 정하기 안내와 같게 단지를 정할 때까지 확인 필요로 남는다', () => {
+  const { review, workspace } = scenario('gwangju')
+  workspace.supply.rows.forEach(row => { row.housingComplexId = null })
+  review.rows[0].reviewed = true
+  expect(pendingItems(review, true, workspace).map(item => item.id)).toContain('row:0')
 })

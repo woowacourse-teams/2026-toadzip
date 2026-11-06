@@ -65,6 +65,9 @@ it('단지 출처 URL이 저장되지 않았으면 원천 식별자와 기록 �
   expect(screen.getByText('기록 없음')).toBeVisible()
   expect(screen.getByText('원천 식별자')).toBeVisible()
   expect(screen.getByText('TEST-7')).toBeVisible()
+
+  expect(screen.getByText('관리자 최종 변경')).toBeVisible()
+  expect(screen.getByText('변경 이력 없음')).toBeVisible()
 })
 it('삭제는 영향 확인 후 요청하고 복구 동선을 제공한다',async () => {
   mocks.requestManagementApi.mockResolvedValue(null)

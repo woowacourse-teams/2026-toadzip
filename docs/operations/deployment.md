@@ -55,6 +55,9 @@ Runner에는 Git·Bash·`flock`·Python 3·Docker Compose가 필요하다. 서�
 워크플로는 최초 컨테이너·TLS·Caddy·모니터링·DB를 생성하거나 공개 포트를 변경하지 않는다.
 기존 프론트 컨테이너가 진입점인 서버에서는 [Caddy 설정과 포트 전환](caddy-ingress.md)을 먼저 적용한다.
 
+API와 메트릭 upstream이 같은 색상이어야 하며 서버 overlay가 요구하는 Edge 관리 포트가 없거나 다른 주소에
+연결돼 있으면 배포를 중단한다. 메트릭 경로와 접근 제한은 [모니터링 설정](monitoring.md#bluegreen-메트릭-수집)을 따른다.
+
 기존 `.env`의 `COMPOSE_FILE`은 이 명령에서 자동 적용하지 않는다. Actions는 `compose.yaml`·`compose.bluegreen.yaml`에
 `compose.caddy-server.yaml`·`compose.notification-credentials.yaml`을 명시적으로 추가한다.
 서버에는 [Firebase 인증파일 경로와 읽기 권한](notifications.md#설정과-출시-순서)이 준비되어 있어야 한다.

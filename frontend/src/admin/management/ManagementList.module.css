@@ -1,50 +1,55 @@
-.page { min-width: 0; container-type: inline-size; }
-:global(.admin-content):has(> .page) { max-width: none; }
+/* 목록은 보관 탭·검색·표·페이지 이동을 흰 카드 하나에 담는다. 표는 카드 폭 끝까지 붙여 행 구분선이 이어지게 한다. */
+.page { --admin-list-inset: 24px; min-width: 0; container-type: inline-size; box-sizing: border-box; padding: 4px var(--admin-list-inset) 16px; background: var(--ds-color-surface); border-radius: var(--admin-radius-card, 16px); box-shadow: var(--admin-shadow-card); }
 .filters {
-  display: grid;
-  grid-template-columns: minmax(180px, 2fr) repeat(2, minmax(110px, 1fr)) auto auto;
-  align-items: end;
+  /* 필터 칸은 화면 폭을 채우지 않고 내용에 맞는 폭을 쓴다. 검색·초기화는 오른쪽 끝에 둔다. */
+  /* 줄바꿈은 각 칸의 최소 폭 기준으로 정하고 남는 폭에서 최대 폭까지 늘린다. 그래서 공간이 모자라도 검색칸·선택 상자가 먼저 줄어들고 버튼만 다음 줄로 밀리지 않는다. */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
   gap: 12px;
-  padding: 12px 16px;
-  margin-bottom: 12px;
-  background: var(--ds-color-surface);
-  border: 1px solid var(--ds-color-divider);
-  border-radius: 12px;
+  padding: 0;
+  margin-bottom: 16px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
 }
-.filters > label { min-width: 0; color: var(--ds-color-label); font-size: var(--admin-text-meta, 13px); }
+.filters > label { flex: 1 1 112px; max-width: 160px; min-width: 0; color: var(--ds-color-label); font-size: var(--admin-text-meta, 13px); }
+.filters > label.search { flex: 1 1 160px; max-width: 280px; }
+.moreToggle, .actions { flex: none; }
 .filters input::placeholder { color: var(--ds-color-muted); font-weight: 400; }
 .filters .review { flex-direction: row; align-items: center; min-height: 36px; font-weight: 400; }
 .review input { flex: none; accent-color: var(--ds-color-action); }
-.actions { order: 2; display: flex; justify-content: flex-end; gap: 8px; }
-
+.actions { order: 2; display: flex; justify-content: flex-end; gap: 8px; margin-left: auto; }
 .moreToggle { order: 1; display: inline-flex; align-items: center; gap: 6px; }
 .moreToggle[aria-expanded='true'] { color: var(--ds-color-action); }
 .moreToggle[aria-expanded='true'] .filterChevron { transform: rotate(180deg); }
-.morePanel { order: 3; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding-top: 12px; border-top: 1px solid var(--ds-color-divider); }
+/* 추가 필터는 한 줄에 선택 상자와 체크 항목을 나란히 둔다. */
+.morePanel { order: 3; flex: 1 0 100%; min-width: 0; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 20px; padding-top: 12px; border-top: 1px solid var(--ds-color-divider); }
 .morePanel[hidden] { display: none; }
-.morePanel:has(select[name="verification"]) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.morePanel .review { grid-column: 1 / -1; }
+.morePanel > label:not(.review) { width: 180px; color: var(--ds-color-label); font-size: var(--admin-text-meta, 13px); }
 @container (max-width: 640px) {
-  .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .search { grid-column: 1 / -1; }
-  .actions { grid-column: 1 / -1; }
-  .moreToggle { justify-self: start; }
-}
-@container (max-width: 560px) {
-  .morePanel:has(select[name="verification"]) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .filters { padding: 14px; }
-  .filters .review, .actions { grid-column: 1 / -1; }
+  .filters > label, .filters > label.search { flex: 1 1 100%; max-width: none; }
+
+  .morePanel > label:not(.review) { flex: 1 1 100%; width: auto; }
 }
 .results { position: relative; min-width: 0; }
 .results .resultCount { margin: 0 0 10px; font-size: 12px; color: var(--ds-color-muted); }
 .loading { position: absolute; top: 0; right: 0; z-index: 4; margin: 0; padding: 8px 12px; background: var(--ds-color-surface); color: var(--ds-color-label); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); font-size: var(--ds-text-caption); }
-.scroll { --name-width: 320px; max-width: 100%; max-height: 65vh; overflow: auto; border: 1px solid var(--ds-color-divider); border-radius: 12px; background: var(--ds-color-surface); scrollbar-color: var(--ds-color-border-base) var(--ds-color-surface-subtle); scrollbar-width: thin; }
+.scroll { --name-width: 240px; max-width: none; max-height: 65vh; overflow: auto; margin-inline: calc(var(--admin-list-inset) * -1); border: 0; border-top: 1px solid var(--ds-color-divider); border-bottom: 1px solid var(--ds-color-divider); border-radius: 0; background: var(--ds-color-surface); scrollbar-color: var(--ds-color-border-base) var(--ds-color-surface-subtle); scrollbar-width: thin; }
 .fixedHeight { min-height: 260px; }
-.table { width: 100%; min-width: 900px; border-collapse: separate; border-spacing: 0; table-layout: fixed; text-align: left; font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; color: var(--ds-color-text); }
-.nameColumn { width: var(--name-width); }
+/* 추가 필터를 펼치거나 화면이 낮아도 표가 몇 줄은 보이게 한다. */
+.scroll { min-height: 240px; }
+/* 좁은 화면에서 이름 열이 사라지지 않게 표 최소 폭을 두고 넘치면 가로로 스크롤한다. */
+.table { width: 100%; min-width: 1120px; border-collapse: separate; border-spacing: 0; table-layout: fixed; text-align: left; font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; color: var(--ds-color-text); }
+/* 단지명은 짧아 좁은 고정 폭을 쓰고 남는 폭은 주소가 가져간다. 공고명은 길어서 남는 폭을 모두 쓴다. */
+.nameColumn[data-resource='complexes'] { width: var(--name-width); }
 .table th, .table td { box-sizing: border-box; padding: 12px 16px; border-bottom: 1px solid var(--ds-color-divider); line-height: var(--ds-line-height-body); vertical-align: middle; }
-.table thead th { position: sticky; top: 0; z-index: 2; background: var(--ds-color-surface-subtle); color: var(--ds-color-label); font-size: 12px; font-weight: 500; }
-.table th:first-child { position: sticky; left: 0; z-index: 1; border-right: 1px solid var(--ds-color-divider); }
+.table thead th { position: sticky; top: 0; z-index: 2; background: var(--ds-color-surface); color: var(--ds-color-muted); font-size: 12px; font-weight: 500; }
+.table tr > :first-child { padding-left: var(--admin-list-inset); }
+.table tr > :last-child { padding-right: var(--admin-list-inset); }
+.table th:first-child { position: sticky; left: 0; z-index: 1; }
+/* 가로로 스크롤할 때 고정한 이름 열과 뒤 열이 섞여 보이지 않게 경계선을 둔다. */
+.table tbody th[scope=row], .table:has(.check) thead th:nth-child(2), .table:not(:has(.check)) thead th:first-child { box-shadow: inset -1px 0 var(--ds-color-divider); }
 .table thead th:first-child { z-index: 3; }
 .table tbody th { background: var(--ds-color-surface); font-weight: 600; }
 .table tbody th, .table tbody td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -66,7 +71,7 @@
 .rowSubtitle { display: block; color: var(--ds-color-muted); font-size: 12px; font-weight: 400; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rowMeta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; font-size: 11px; font-weight: 500; color: var(--ds-color-label); }
 .rowMeta > span:not(:global(.admin-status)) { padding: 2px 6px; border-radius: 4px; background: var(--ds-color-surface-subtle); }
-@media (max-width: 700px) { .scroll { --name-width: 220px; } }
+@media (max-width: 700px) { .page { --admin-list-inset: 16px; } .scroll { --name-width: 200px; } }
 .inlineEdit {
   display: block;
   max-width: 100%;
@@ -83,15 +88,18 @@
 /* 일괄 처리 줄과 선택 칸 */
 .bulkBar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; color: var(--ds-color-muted-base); font-size: var(--admin-text-meta, 13px); }
 .bulkBar[data-active] > span:first-child { color: var(--ds-color-action); font-weight: 700; }
-.checkColumn { width: 44px; }
-.table .check { width: 44px; padding-inline: 12px; text-align: center; }
+.checkColumn { width: calc(var(--admin-list-inset) + 32px); }
+.table .check { padding-right: 12px; text-align: left; }
 .table .check input { width: 17px; height: 17px; margin: 0; accent-color: var(--ds-color-action); }
 /* 선택 칸이 있으면 선택 칸과 이름 칸을 함께 왼쪽에 고정한다. */
 .table:has(.check) .check { position: sticky; left: 0; z-index: 1; background: var(--ds-color-surface); border-right: 0; }
-.table:has(.check) thead .check { z-index: 3; background: var(--ds-color-surface-subtle); }
-.table:has(.check) th[scope=row], .table:has(.check) thead th:nth-child(2) { position: sticky; left: 44px; z-index: 1; border-right: 1px solid var(--ds-color-divider); }
+.table:has(.check) thead .check { z-index: 3; background: var(--ds-color-surface); }
+.table:has(.check) th[scope=row], .table:has(.check) thead th:nth-child(2) { position: sticky; left: calc(var(--admin-list-inset) + 32px); z-index: 1; }
 .table:has(.check) thead th:nth-child(2) { z-index: 3; }
 .table:has(.check) tbody th[scope=row] { background: var(--ds-color-surface); }
 
 /* 고정 열의 흰 배경보다 뒤에 두어 강조할 때 체크·제목 칸까지 한 줄로 칠한다. */
 .scroll .table tbody tr:is(:hover, [data-selected], [data-checked]) > * { background: var(--ds-color-action-soft); }
+
+/* 빈 목록은 표 자리와 같은 모양(위아래 선, 카드 폭 끝까지)으로 두고 점선 상자는 쓰지 않는다. */
+.results :global(.admin-empty) { margin-inline: calc(var(--admin-list-inset) * -1); border: 0; border-top: 1px solid var(--ds-color-divider); border-bottom: 1px solid var(--ds-color-divider); border-radius: 0; background: var(--ds-color-surface); }

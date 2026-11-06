@@ -189,11 +189,13 @@
                     },
                     "supplyHouseholdCount": {
                       "type": "integer",
-                      "nullable": true
+                      "nullable": true,
+                      "description": "이번 공고의 대상별 당첨자 수"
                     },
                     "reserveCount": {
                       "type": "integer",
-                      "nullable": true
+                      "nullable": true,
+                      "description": "이번 공고에서 새로 모집하는 예비자 수. 기존 대기자 수는 제외"
                     },
                     "rentalDeposit": {
                       "type": "integer",
@@ -309,7 +311,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "같이 쓰는 totalSupplyHouseholdCount 경로 또는 여러 대상의 같은 supplyHouseholdCount/reserveCount 경로"
           },
           "count": {
             "type": "integer"

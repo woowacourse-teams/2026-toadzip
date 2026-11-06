@@ -6,7 +6,7 @@ import { evidenceFor, noteFor, readExtraction } from './extraction'
 import type { JsonWorkspace } from '../announcement-json/api'
 import { assembleReview, chooseCellValue, createReview, editCell, linkedHousingTypeId } from './review'
 import { alignSourceRows } from './sourceAlignment'
-import { parseSourceLabel } from './subtypes'
+import { alignToSource, foldRows, parseSourceLabel } from './subtypes'
 
 describe('LH 원천행 표기 읽기', () => {
   it.each([
@@ -23,6 +23,21 @@ describe('최초 입주자 공고의 LH 원천행 맞추기', () => {
     sourceHousingTypeName: name, expectedMoveInMonth: null, totalSupplyHouseholdCount: total, exclusiveArea, commonArea: null, supplyArea: null, constructedHouseholdCount: null, subtypes: [], targets: targets.map(target) })
   const source = (id: number, typeName: string, householdCount: number) => ({ ...blankRow(id), id, key: `row:${id}`, complexName: '인천부평(도시재생뉴딜)',
     typeName, householdCount, pnu: '2823710100100650017', category: 'NEW_SUPPLY' as const, areaOverride: false })
+
+  it('공급대상별로 행을 나눠도 여러 대상에 공통인 예비자 모집수를 보존한다', () => {
+    const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
+    input.data.supplyRows[0].targets.push({ ...input.data.supplyRows[0].targets[0], target: '청년', reserveCount: null })
+    input.sharedCounts = [{ paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[0].targets[1].reserveCount'], count: 20, page: 3, quote: '일반·청년 예비자 20' }]
+    const parsed = readExtraction(JSON.stringify(input))
+    if (!parsed.ok) throw new Error(parsed.error)
+    const aligned = alignToSource(parsed.value, [
+      { rows: [0], group: '일반', typeName: '26A(일반)', count: 5 },
+      { rows: [0], group: '청년', typeName: '26A(청년)', count: 7 },
+    ])
+    expect(aligned.extraction.supplyRows.slice(0, 2).map(row => row.targets.map(target => target.target))).toEqual([['일반'], ['청년']])
+    expect(aligned.extraction.sharedCounts).toEqual([{ paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[1].targets[0].reserveCount'], count: 20, page: 3, quote: '일반·청년 예비자 20' }])
+  })
+
   function setup(firstName = '16A', firstArea: number | null = null, secondName = '26A', secondArea = 26.01, thirdDeposit = 10000000) {
     const base = structuredClone(fixtures.hansville.extraction) as unknown as Record<string, unknown> & { data: Record<string, unknown> }
     base.data.supplyRows = [pdfRow(firstName, 16.37, ['대학생', '청년 소득(×)', '기존거주자(철거민)'], 78),
@@ -257,4 +272,20 @@ describe('미연결 단지가 여럿인 공고의 LH 원천행 맞추기', () =>
     // LH 주소가 공고문 주소와 달라 블록 번호로만 대응한 단지면 1:1이어도 확인하게 한다.
     expect(confirm('59.5500A', '경기도 화성시 산척동')).toBe(true)
   })
+})
+
+
+it('접힌 두 번째 행에만 있던 공통 예비자 수는 원문 수량과 근거를 포함한 미확인으로 남긴다', () => {
+  const row = (name: string, reserves: (number | null)[]) => ({
+    complexReference: { sourceComplexName: 'Test' }, sourceHousingTypeName: name,
+    targets: reserves.map((reserveCount, index) => ({ target: ['청년', '대학생'][index], reserveCount })),
+  })
+  const read = readExtraction(JSON.stringify({ data: { announcement: {}, receptionPlace: null, schedules: [], unresolvedFields: [],
+    supplyRows: [row('26A', [10, 20]), row('26B', [null, null])] }, notApplicable: [], evidence: [],
+    sharedCounts: [{ paths: ['supplyRows[1].targets[0].reserveCount', 'supplyRows[1].targets[1].reserveCount'], count: 30, page: 4, quote: '청년·대학생 통합 30명' }] }))
+  if (!read.ok) throw new Error(read.error)
+  const folded = foldRows(read.value, [{ indexes: [0, 1], typeName: '26A/B', count: 60 }]).extraction
+  expect(folded.supplyRows[0].targets.map(target => target.reserveCount)).toEqual([null, null])
+  expect(folded.unresolved).toEqual(expect.arrayContaining([expect.objectContaining({ path: 'supplyRows[0].targets[0].reserveCount', reason: expect.stringMatching(/30.*4.*청년·대학생 통합 30명/) })]))
+  expect(folded.evidence).toEqual(expect.arrayContaining([expect.objectContaining({ page: 4, quote: '청년·대학생 통합 30명' })]))
 })

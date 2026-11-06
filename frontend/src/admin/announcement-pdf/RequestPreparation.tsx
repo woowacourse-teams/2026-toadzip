@@ -65,9 +65,15 @@ export function RequestPreparation({ announcementName, pdf, extraction, onExtrac
 }
 
 /** 검토 단계와 같은 자리의 하단 버튼 줄. 추출이 끝나야 검토 버튼을 누를 수 있다. */
-export function PreparationFooter({ ready, needsRepair = false, onReview }: { ready: boolean; needsRepair?: boolean; onReview: () => void }) {
+/** 하단 상태는 오른쪽 추출 상태(status)와 같은 기준으로 적는다. 추출 중이나 실패 뒤에 '추출 전'이라고 하지 않는다. */
+export function PreparationFooter({ ready, needsRepair = false, status, onReview }: { ready: boolean; needsRepair?: boolean; status: ExtractionState['status']; onReview: () => void }) {
+  const [title, detail] = ready ? ['추출을 마쳤습니다', '다음 화면에서 기존 값과 비교하고 반영할 값을 고릅니다.']
+    : needsRepair ? ['추출 결과를 수정해야 합니다', '표시된 오류를 확인하고 수정한 묶음을 검증하세요.']
+    : status === 'running' ? ['추출 중입니다', '보통 1~3분 걸립니다. 끝나면 검토할 수 있습니다.']
+    : status === 'failed' ? ['추출하지 못했습니다', '오른쪽 안내를 확인하고 다시 추출하세요.']
+    : ['추출 전입니다', 'PDF 제목을 확인하고 추출하면 검토할 수 있습니다.']
   return <footer className={`${styles.footer} ${styles.prepareFooter}`}>
-    <div><strong>{ready ? '추출을 마쳤습니다' : needsRepair ? '추출 결과를 수정해야 합니다' : '추출 전입니다'}</strong><span>{ready ? '다음 화면에서 기존 값과 비교하고 반영할 값을 고릅니다.' : needsRepair ? '표시된 오류를 확인하고 수정한 묶음을 검증하세요.' : 'PDF 제목을 확인하고 추출하면 검토할 수 있습니다.'}</span></div>
+    <div><strong>{title}</strong><span>{detail}</span></div>
     <Button data-design-system disabled={!ready} onClick={onReview}>추출 결과 검토하기</Button>
   </footer>
 }

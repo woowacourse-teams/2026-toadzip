@@ -1,7 +1,7 @@
 .page { min-width: 0; color: var(--ds-color-text); font-family: var(--ds-font-family-ui); }
 .heading { margin-bottom: var(--ds-space-5); }
 .heading h1 { margin: 0; font-size: 24px; line-height: var(--ds-line-height-title); }
-.filters { display: flex; align-items: end; gap: var(--ds-space-3); padding-block: var(--ds-space-4); border-block: 1px solid var(--ds-color-divider); }
+.filters { display: flex; align-items: end; gap: var(--ds-space-3); padding-block: 0 var(--ds-space-4); }
 .filters label { display: flex; min-width: 0; flex-direction: column; gap: var(--ds-space-2); color: var(--ds-color-label); font-size: var(--ds-text-body); }
 .filters .search { flex: 1; }
 .filters input, .filters select { box-sizing: border-box; width: 100%; min-width: 0; height: var(--ds-control-height-md); padding: var(--ds-space-2) var(--ds-space-3); border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); color: var(--ds-color-text); background: var(--ds-color-surface); font: inherit; }
@@ -14,18 +14,21 @@
 .results { position: relative; min-width: 0; margin-top: var(--ds-space-3); }
 .meta { min-height: 24px; margin-block: 0 var(--ds-space-2); color: var(--ds-color-muted); font-size: var(--ds-text-caption); }
 .loading { position: absolute; top: 0; right: 0; z-index: 3; margin: 0; padding-inline: var(--ds-space-2); background: var(--ds-color-surface); font-size: var(--ds-text-caption); }
-.scroll { height: 65vh; overflow: auto; border: 1px solid var(--ds-color-table-line); background: var(--ds-color-surface); }
+/* 표는 카드 폭 끝까지 붙이고 위아래 선만 둔다. 빈 목록이 큰 빈 상자로 늘어나지 않게 높이는 내용에 맞춘다. */
+.scroll { max-height: 65vh; min-height: 200px; overflow: auto; margin-inline: -24px; border-block: 1px solid var(--ds-color-divider); background: var(--ds-color-surface); }
 .table { table-layout: fixed; width: 100%; min-width: 640px; border-collapse: separate; border-spacing: 0; font-size: var(--ds-text-body); line-height: var(--ds-line-height-body); }
 .idColumn { width: 100px; }
 .providerColumn { width: 132px; }
 .dateColumn { width: 224px; }
 .table th, .table td { padding: var(--ds-space-3) var(--ds-space-4); text-align: left; vertical-align: top; border-bottom: 1px solid var(--ds-color-table-line); overflow-wrap: anywhere; }
-.table thead th { position: sticky; top: 0; z-index: 2; background: var(--ds-color-table-heading); color: var(--ds-color-label); font-weight: var(--ds-weight-strong); }
+.table thead th { position: sticky; top: 0; z-index: 2; background: var(--ds-color-surface); color: var(--ds-color-muted); font-size: var(--ds-text-caption); font-weight: 500; }
+.table tr > :first-child { padding-left: 24px; }
+.table tr > :last-child { padding-right: 24px; }
 .table tbody th { position: sticky; left: 0; background: var(--ds-color-surface); font-weight: 400; }
 .table thead th:first-child { left: 0; z-index: 3; }
 .table tbody tr:hover > * { background: var(--ds-color-surface-subtle); }
 .table td:last-child { font-variant-numeric: tabular-nums; }
-.empty { padding: var(--ds-space-6); }
+.empty { padding: 56px 24px; text-align: center; }
 .empty h2 { margin-block: 0 var(--ds-space-2); font-size: var(--ds-text-section); }
 .empty p { margin: 0; color: var(--ds-color-muted); }
 .error { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ds-space-3); margin-top: var(--ds-space-3); color: var(--ds-color-deadline); }

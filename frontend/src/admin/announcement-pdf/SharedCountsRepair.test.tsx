@@ -1,16 +1,17 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import original from './fixtures/gh-839-extraction.json'
+import { withMixedSharedCounts } from './fixtures/mixedSharedCounts'
 import { readExtraction, readExtractionDocument, sharedCountIssues } from './extraction'
 import { SharedCountsRepair } from './SharedCountsRepair'
 
-function open(text = JSON.stringify(original)) {
+function open(text = JSON.stringify(withMixedSharedCounts())) {
   const onRepair = vi.fn()
   render(<SharedCountsRepair text={text} onRepair={onRepair} onEvidence={vi.fn()} />)
   return { onRepair, panel: screen.getByRole('region', { name: '공통 모집수 수정' }) }
 }
 
-it('실제 응답의 다섯 오류를 모두 표시하고 미수정 상태에서는 교정본을 받지 않는다', () => {
+it('실제 응답에 수량 종류를 섞은 다섯 오류를 모두 표시하고 미수정 상태에서는 교정본을 받지 않는다', () => {
   const { onRepair, panel } = open()
   const groups = within(panel).getAllByRole('group', { name: /^공통 모집수 / })
   expect(groups.map(group => group.querySelector('legend')?.textContent)).toEqual([
@@ -19,13 +20,13 @@ it('실제 응답의 다섯 오류를 모두 표시하고 미수정 상태에서
   expect(groups[0]).toHaveTextContent('16A1')
   expect(groups[0]).toHaveTextContent('16A2')
   fireEvent.click(within(panel).getByRole('button', { name: '수정한 묶음 확인' }))
-  expect(screen.getByRole('alert')).toHaveTextContent('같은 공급행의 대상끼리')
+  expect(screen.getByRole('alert')).toHaveTextContent('서로 다른 수량 필드')
   expect(onRepair).not.toHaveBeenCalled()
 })
 
 // 실제 응답 전체(56행)를 렌더하고 수십 번 입력하므로 병렬 실행하는 CI에서 기본 5초를 넘긴다.
 it('운영자가 입력한 유효한 묶음으로만 교정하며 정상 24개·56행·근거·미확인·큰 금액을 보존한다', () => {
-  const text = JSON.stringify(original).replace(/"rentalDeposit":\d+/, '"rentalDeposit":123456789012345678')
+  const text = JSON.stringify(withMixedSharedCounts()).replace(/"rentalDeposit":\d+/, '"rentalDeposit":123456789012345678')
   const before = readExtractionDocument(text)
   if (!before.ok) throw new Error(before.error)
   const issues = sharedCountIssues(before.value)
@@ -66,4 +67,9 @@ it('개별 묶음 형식이 맞아도 다른 정상 묶음과 경로가 겹치�
   fireEvent.click(within(panel).getByRole('button', { name: '수정한 묶음 확인' }))
   expect(screen.getByRole('alert')).toHaveTextContent('한 공급행을 여러 공통 모집수')
   expect(onRepair).not.toHaveBeenCalled()
+})
+
+it('여러 공급행에 걸친 실제 대상 공통 수량은 교정 없이 읽는다', () => {
+  expect(sharedCountIssues(original)).toEqual([])
+  expect(readExtraction(JSON.stringify(original)).ok).toBe(true)
 })

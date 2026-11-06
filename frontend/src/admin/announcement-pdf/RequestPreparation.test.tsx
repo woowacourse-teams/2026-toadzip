@@ -58,15 +58,26 @@ it('추출에 실패하면 이유를 알리고 다시 추출할 수 있다', () 
 
 it('하단 검토 버튼은 추출을 마쳐야 누를 수 있다', () => {
   const onReview = vi.fn()
-  const { rerender } = render(<PreparationFooter ready={false} onReview={onReview} />)
+  const { rerender } = render(<PreparationFooter ready={false} status="idle" onReview={onReview} />)
   expect(screen.getByRole('button', { name: '추출 결과 검토하기' })).toBeDisabled()
-  rerender(<PreparationFooter ready={false} needsRepair onReview={onReview} />)
+  rerender(<PreparationFooter ready={false} needsRepair status="done" onReview={onReview} />)
   expect(screen.getByText('추출 결과를 수정해야 합니다')).toBeInTheDocument()
   expect(screen.queryByText('추출 전입니다')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: '추출 결과 검토하기' })).toBeDisabled()
-  rerender(<PreparationFooter ready onReview={onReview} />)
+  rerender(<PreparationFooter ready status="done" onReview={onReview} />)
   fireEvent.click(screen.getByRole('button', { name: '추출 결과 검토하기' }))
   expect(onReview).toHaveBeenCalledOnce()
+})
+
+it('하단 상태는 오른쪽 추출 상태와 같은 기준으로 추출 중·실패를 알린다', () => {
+  const { rerender } = render(<PreparationFooter ready={false} status="running" onReview={() => {}} />)
+  expect(screen.getByText('추출 중입니다')).toBeInTheDocument()
+  expect(screen.queryByText('추출 전입니다')).not.toBeInTheDocument()
+  rerender(<PreparationFooter ready={false} status="failed" onReview={() => {}} />)
+  expect(screen.getByText('추출하지 못했습니다')).toBeInTheDocument()
+  expect(screen.queryByText('추출 전입니다')).not.toBeInTheDocument()
+  rerender(<PreparationFooter ready={false} status="idle" onReview={() => {}} />)
+  expect(screen.getByText('추출 전입니다')).toBeInTheDocument()
 })
 
 it('등록된 PDF가 있어도 내 PC의 PDF를 고를 수 있다', () => {

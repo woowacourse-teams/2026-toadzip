@@ -24,7 +24,7 @@ export function ComplexDecisions({ review, workspace, only, onChange }: { review
   const groups = new Map<string, number[]>()
   review.rows.forEach((row, index) => { if (needsComplex(row, workspace) && (!only || only.includes(index))) groups.set(review.extraction.supplyRows[index].complexName ?? '', [...groups.get(review.extraction.supplyRows[index].complexName ?? '') ?? [], index]) })
   if (!groups.size) return null
-  return <section className={styles.complexDecisions} aria-label="PDF 단지 정하기">
+  return <section className={styles.complexDecisions} aria-label="PDF 단지 정하기" data-review-id="complex" tabIndex={-1}>
     <h3>단지 정하기</h3>
     {[...groups].map(([name, indexes]) => <ComplexDecision key={name} name={name} indexes={indexes} review={review} workspace={workspace} onChange={onChange} />)}
   </section>

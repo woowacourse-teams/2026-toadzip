@@ -66,9 +66,7 @@ export function SourceDataPage() {
   const board = category === 'SH_ANNOUNCEMENT' || category === 'GH_ANNOUNCEMENT' ? category : null
 
   return <section className={`management-page ${styles.page}`}>
-    <header className="management-heading"><div><h1>원천 데이터</h1>
-      <p>원천별 저장 데이터를 한 행씩 비교합니다. 열 제목에 항목 뜻과 원천 키를 함께 표시합니다.</p>
-    </div><button type="button" disabled={pending} onClick={() => setAttempt(value => value + 1)}>목록 새로고침</button></header>
+    <header className="management-heading"><div><h1>원천 데이터</h1></div><button type="button" disabled={pending} onClick={() => setAttempt(value => value + 1)}>목록 새로고침</button></header>
     <div className={`${styles.tabs} admin-folder-tabs`} role="tablist" aria-label="원천 분류">
       {Object.entries(sourceCategories).map(([value, label], index, entries) => <button key={value} type="button"
         role="tab" id={`source-tab-${value}`} aria-selected={category === value} aria-controls="source-panel"
@@ -120,7 +118,7 @@ export function SourceDataPage() {
         : <div className={`admin-table-scroll ${styles.scroll}`} tabIndex={0} role="region" aria-label="원천 데이터 목록 가로 스크롤">
           <table className={styles.table}>
             <caption className="sr-only">{sourceCategories[category]} 원천 목록 · {result.page + 1}페이지</caption>
-            <thead><tr>{columns.map(path => <th key={path} scope="col" data-field={path}>{sourceFieldLabel(category, path)} <span>({path})</span></th>)}
+            <thead><tr>{columns.map(path => <th key={path} scope="col" data-field={path} title={`${sourceFieldLabel(category, path)} (${path})`}>{sourceFieldLabel(category, path)} <span>({path})</span></th>)}
               <th scope="col">수집 시각 <span>(collected_at)</span></th>
               {category === 'LH_ANNOUNCEMENT_CATALOG' ? <th scope="col">원천 변경 감지 <span>(changed_at)</span></th> : null}
               <th scope="col">원천 식별자 <span>(source_key)</span></th><th scope="col">공식 공고 URL <span>(originalUrl)</span></th>

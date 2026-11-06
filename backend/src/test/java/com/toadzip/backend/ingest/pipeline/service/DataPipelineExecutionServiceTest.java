@@ -203,14 +203,15 @@ class DataPipelineExecutionServiceTest {
     }
 
     @Test
-    void 공고_이력은_SH를_뺀_공고_유형만_조회한다() {
+    void 공고_이력은_LH와_함께_SH와_GH_공고_수집도_조회한다() {
         when(executionRepository.findByTypeIn(any(), any())).thenReturn(Page.empty());
 
         query.history(0, 20, "announcement");
 
         verify(executionRepository).findByTypeIn(
                 eq(List.of(DataPipelineType.ANNOUNCEMENT_COLLECTION, DataPipelineType.ANNOUNCEMENT_REFINEMENT,
-                        DataPipelineType.ANNOUNCEMENT_SYNC, DataPipelineType.ANNOUNCEMENT_REGISTRATION)),
+                        DataPipelineType.ANNOUNCEMENT_SYNC, DataPipelineType.ANNOUNCEMENT_REGISTRATION,
+                        DataPipelineType.SH_ANNOUNCEMENT_COLLECTION, DataPipelineType.GH_ANNOUNCEMENT_COLLECTION)),
                 any()
         );
     }

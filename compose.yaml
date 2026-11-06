@@ -106,8 +106,10 @@ services:
       PGDATABASE: "${PRIMARY_DB_NAME:-toadzip}"
       PGUSER: toadzip_ai_worker
       PGPASSWORD: "${AI_WORKER_DB_PASSWORD:-}"
-      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
-    # 종료 신호를 받으면 처리 중인 추출을 끝내고 멈춘다. 실측 응답 66~132초라 2분을 기다리고,
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      # 선택: 없으면 공급표를 늘 모델 단계로 처리한다.
+      TYPESAFE_API_KEY: "${TYPESAFE_API_KEY:-}"
+    # 종료 신호를 받으면 처리 중인 추출을 끝내도록 2분을 기다리고,
     # 그 뒤 강제 종료된 작업은 lease(3분)가 끝나면 다른 시도로 다시 처리된다.
     stop_grace_period: 2m
     restart: unless-stopped

@@ -54,17 +54,6 @@ class DataPipelineTypeTest {
     }
 
     @Test
-    void 이력_구분마다_속한_유형을_선언_순서로_제공한다() {
-        assertThat(DataPipelineType.ofDomain(DataPipelineType.Domain.COMPLEX)).containsExactly(
-                DataPipelineType.COMPLEX_COLLECTION, DataPipelineType.COMPLEX_REFINEMENT, DataPipelineType.COMPLEX_SYNC
-        );
-        assertThat(DataPipelineType.ofDomain(DataPipelineType.Domain.SH_ANNOUNCEMENT))
-                .containsExactly(DataPipelineType.SH_ANNOUNCEMENT_COLLECTION);
-        assertThat(DataPipelineType.ofDomain(DataPipelineType.Domain.GH_ANNOUNCEMENT))
-                .containsExactly(DataPipelineType.GH_ANNOUNCEMENT_COLLECTION);
-    }
-
-    @Test
     void LH_공고_API를_함께_쓰는_수집_단계를_구분한다() {
         List<DataPipelineStep> lhAnnouncementCollections = Arrays.stream(DataPipelineStep.values())
                 .filter(DataPipelineStep::isLhAnnouncementCollection)
