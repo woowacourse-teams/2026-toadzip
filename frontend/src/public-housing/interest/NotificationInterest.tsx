@@ -1,5 +1,4 @@
 import { createPortal } from 'react-dom'
-import { Link } from 'react-router'
 import { analyticsCollectionAllowed, consentStore } from '../../privacy/consentStore'
 import { usePrivacyNotices } from '../../privacy/usePrivacy'
 import { captureProductEvent, prepareNotificationCompletion, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
@@ -272,7 +271,6 @@ export function NotificationInterestProvider({ children, repository = notificati
         setMessage(`${action.target.name} 알림 설정을 해제했어요.`)
       } else {
         setDialog('completed')
-        setMessage(`${action.target.name} 알림 설정을 저장했어요.`)
       }
     } catch (error) {
       if (version !== requestVersion.current) return
@@ -437,14 +435,11 @@ export function NotificationInterestProvider({ children, repository = notificati
           void send(action)
         }}>신청하기</button>
       </div>
-      <Link className={styles.helpLink} to="/privacy">개인정보처리방침</Link>
       {!noticeVersion && <p className={styles.hint} role="status">신청 안내를 확인하고 있어요.</p>}
     </InterestDialog>}
-    {dialog === 'completed' && <InterestDialog onDismiss={dismiss}>
-      <h2 id="notification-interest-title">알림 신청을 완료했어요</h2>
-      <p className={styles.description}>{selection?.target.type === 'ANNOUNCEMENT' ? '확인된 일정의 시작·마감 전날 오전 9시에 알려 드려요. 당첨 발표는 발표 전날에 알려 드려요.' : '새 공고가 올라오면 알림 보관함에서 확인할 수 있어요.'}</p>
-      {selection?.target.type !== 'ANNOUNCEMENT' && <p className={styles.hint}>화면 밖에서도 받으려면 알림 설정에서 ‘이 기기 알림 받기’를 켜 주세요.</p>}
-      <p className={styles.hint} role="status">{message}</p>
+    {dialog === 'completed' && selection && <InterestDialog onDismiss={dismiss}>
+      <h2 id="notification-interest-title">알림을 설정했어요</h2>
+      <p className={styles.description} role="status">{selection.target.name}의 {selection.target.type === 'ANNOUNCEMENT' ? '주요 일정을' : '새 공고를'} 알림 보관함으로 알려드려요.</p>
       <div className={styles.actions}><button className={styles.submit} type="button" onClick={dismiss}>확인</button></div>
     </InterestDialog>}
     {failed && <InterestDialog label="알림 요청 오류" onDismiss={dismiss}>

@@ -25,6 +25,13 @@ function open(path: string) {
   </Routes></MemoryRouter>)
 }
 
+it('로그인 페이지에서 알림 개인정보 안내와 처리방침 링크를 제공한다', () => {
+  open('/login')
+  expect(screen.getByText('알림을 신청하면 회원 ID와 선택한 단지·공고·지역을 계정에 저장해요.')).toBeVisible()
+  expect(screen.getByRole('link', { name: '개인정보처리방침' })).toHaveAttribute('href', '/privacy')
+  expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+})
+
 it('복귀 정보 없이 직접 진입하거나 외부 주소를 주면 지도로 돌아간다', () => {
   open('/login?returnTo=https://example.com')
   fireEvent.click(screen.getByRole('link', { name: '지도로 돌아가기' }))
