@@ -80,7 +80,7 @@ export function AdminLayout() {
         </div>
         <button className={styles.menuButton} ref={menuButton} type="button" aria-expanded={menuOpen}
           aria-controls={menuId} onClick={() => setMenuOpen(value => !value)}>
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d={menuOpen ? 'M6 6l12 12M18 6 6 18' : 'M4 6h16M4 12h16M4 18h16'} /></svg>
           메뉴
         </button>
         <div className="admin-header-account">
@@ -96,8 +96,9 @@ export function AdminLayout() {
         </div>
         <details className={styles.navTools} {...groupProps('source')}><summary>수집·원천 도구</summary><div className="admin-nav-group">{sourceLinks.map(([path, label]) => <NavLink key={path} to={path} aria-label={label}><MenuIcon kind={extraIcons[label]} /><span className={styles.menuLabel}>{label}</span></NavLink>)}</div></details>
         <details className={styles.navTools} {...groupProps('member')}><summary>회원·알림</summary><div className="admin-nav-group">{memberLinks.map(([path, label]) => <NavLink key={path} to={path} aria-label={label}><MenuIcon kind={extraIcons[label]} /><span className={styles.menuLabel}>{label}</span></NavLink>)}</div></details>
-        <div className={styles.navFoot}>공공주택 복덕방<br /><span>데이터 운영 공간</span></div>
       </nav>
+      {/* 모바일 서랍 메뉴 뒤 배경. 누르면 메뉴를 닫는다(키보드는 Escape로 닫는다). */}
+      {menuOpen ? <div className={styles.backdrop} aria-hidden="true" onClick={() => { setMenuOpen(false); menuButton.current?.focus() }} /> : null}
       <main className="admin-content" id="admin-main">
         <FailureReturnLink />
         <Outlet />

@@ -50,11 +50,15 @@
 .navTools>summary::after { content:""; width:6px; height:6px; margin-right:2px; border:solid currentColor; border-width:0 1.5px 1.5px 0; transform:rotate(45deg) translateY(-2px); transition:transform .15s; }
 .navTools[open]>summary::after { transform:rotate(-135deg) translateY(-1px); }
 .navTools :global(.admin-nav-group) { margin-top:6px; }
-.navFoot { margin-top:auto; padding:16px 12px 0; border-top:1px solid var(--admin-line); color:var(--ds-color-label); font-size:12px; line-height:1.7; }
-.navFoot span { color:var(--ds-color-muted); font-size:12px; }
 /* 모든 관리자 화면이 같은 폭·같은 시작선을 쓴다. 화면별로 최대 폭을 따로 두지 않는다. */
 .layout :global(.admin-content) { box-sizing:border-box; width:100%; max-width:var(--admin-content-max); margin:0; padding:8px 32px 48px; min-width:0; }
 .layout :global(.admin-content) h1 { font-size:24px; line-height:1.4; font-weight:700; letter-spacing:-.03em; }
+/* 모든 화면의 제목 줄은 운영 홈과 같은 높이(36px)·같은 아래 간격(20px)을 써서 메뉴를 옮겨도 첫 카드가 같은 자리에서 시작한다. */
+.layout[class] :global(.admin-content) > * > header:has(> h1, > div > h1) { box-sizing:border-box; display:flex; align-items:center; justify-content:space-between; gap:16px; flex:none; height:36px; min-height:0; margin:0 0 20px; padding:0; }
+.layout[class] :global(.admin-content) > * > header:has(> h1, > div > h1) h1 { margin:0; }
+.layout[class] :global(.admin-content) > * > header:has(> h1, > div > h1) + * { margin-top:0; }
+/* 자식 사이를 grid 간격으로 띄우는 화면은 그 간격이 제목 줄 아래 여백에 더해지므로 차이만큼 줄인다. */
+.layout[class] :global(.admin-content) > :global(.admin-registration-page) > header:has(> h1, > div > h1) { margin-bottom:-4px; }
 .layout :global(.admin-content) h2 { letter-spacing:-.02em; }
 .layout :global(.admin-content) p { line-height:1.6; }
 .layout :global(.admin-content) button:not([data-design-system]) { border-color:var(--ds-color-divider); box-shadow:none; }
@@ -69,27 +73,35 @@
 .layout :global(.admin-content) :global(.admin-warning) { border-color:var(--ds-color-status-upcoming-surface); font-size:13px; }
 /* 입력 칸은 모든 관리자 화면에서 같은 안쪽 여백을 쓴다. 선택 상자는 화살표를 직접 그려 오른쪽 끝에 붙지 않게 하고, 숫자 칸의 위아래 버튼은 숨긴다. */
 .layout[class] :global(.admin-content) :is(input:not([type=checkbox]):not([type=radio]):not([type=file]), select) { border-radius:var(--ds-radius-control); }
-.layout[class] :global(.admin-content) input:not([type=checkbox]):not([type=radio]):not([type=file]) { padding-inline:12px; }
+/* 앞에 아이콘이 붙은 검색 칸은 아이콘 자리 여백을 그대로 둔다. */
+.layout[class] :global(.admin-content) input:not([type=checkbox]):not([type=radio]):not([type=file]):not(svg ~ input) { padding-inline:12px; }
 .layout[class] :global(.admin-content) select { padding-inline:12px; }
 .layout[class] :global(.admin-content) select:not([multiple]):not([size]) { appearance:none; padding-right:36px; background:var(--ds-color-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7079' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center; }
 .layout[class] :global(.admin-content) select:not([multiple]):disabled { background-color:var(--ds-color-surface-subtle); }
 .layout[class] :global(.admin-content) input[type=number] { appearance:textfield; -moz-appearance:textfield; }
 .layout[class] :global(.admin-content) input[type=number]::-webkit-inner-spin-button, .layout[class] :global(.admin-content) input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
 .layout :is(a,button,input,select,textarea,summary):focus-visible { outline:2px solid var(--ds-color-action); outline-offset:3px; }
+.backdrop { display:none; }
 .layout .menuButton { display:none; align-items:center; gap:7px; }
 @media(max-width:1100px) { .layout[class] { --admin-nav-width:216px; } .layout :global(.admin-content) { padding:8px 20px 48px; } .layout :global(.admin-brand) { width:155px; } }
 @media(max-width:760px) {
  .layout[class] { display:block; }
- .layout :global(.admin-header) { position:static; padding:12px 16px; gap:12px; flex-wrap:wrap; background:var(--ds-color-surface); border-bottom:1px solid var(--admin-line); }
+ /* 머리 띠는 위에 붙여 두고 메뉴 서랍은 그 아래에서 열어, 메뉴 버튼으로 언제든 닫을 수 있게 한다. */
+ .layout[class] { --admin-header-height:64px; }
+ .layout :global(.admin-header) { position:sticky; top:0; z-index:70; box-sizing:border-box; height:var(--admin-header-height); padding:0 16px; gap:12px; flex-wrap:nowrap; background:var(--ds-color-surface); border-bottom:1px solid var(--admin-line); }
  .layout :global(.admin-brand) { width:auto; }
  .layout :global(.admin-header-account) { width:auto; }
  .layout :global(.admin-header-account)>span { display:none; }
  .layout .menuButton { display:inline-flex; }
- .layout :global(.admin-navigation) { display:none; position:static; flex-direction:column; align-items:stretch; height:auto; gap:16px; margin:0; padding:12px 16px 16px; border-right:0; border-bottom:1px solid var(--admin-line); }
- .layout :global(.admin-navigation)[data-open=true] { display:flex; }
- .navFoot { display:none; }
+ /* 모바일 메뉴는 본문을 밀어내지 않고 왼쪽에서 덮는 서랍으로 연다. 항목 모양은 데스크톱 메뉴와 같다. */
+ .layout :global(.admin-navigation) { display:flex; position:fixed; inset:var(--admin-header-height) auto auto 0; z-index:60; width:min(300px, 85vw); height:calc(100dvh - var(--admin-header-height)); box-sizing:border-box; flex-direction:column; align-items:stretch; gap:16px; margin:0; padding:20px 16px; overflow-y:auto; border:0; box-shadow:0 0 32px rgb(15 23 42 / 18%); transform:translateX(-100%); visibility:hidden; transition:transform .2s ease, visibility .2s; }
+ .layout :global(.admin-navigation)[data-open=true] { transform:none; visibility:visible; }
+ .layout :global(.admin-nav-group) { flex-direction:column; align-items:stretch; }
+ .backdrop { display:block; position:fixed; inset:var(--admin-header-height) 0 0 0; z-index:55; background:rgb(15 23 42 / 30%); }
  .layout :global(.admin-nav-group)>span { display:block; }
  .layout :global(.admin-content) { padding:20px 16px 48px; }
  .layout :global(.admin-content) h1 { font-size:22px; }
 }
 
+
+@media (prefers-reduced-motion: reduce) { .layout :global(.admin-navigation) { transition:none; } }

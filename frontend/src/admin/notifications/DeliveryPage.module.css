@@ -1,5 +1,7 @@
 .page { display: grid; gap: var(--ds-space-5); }
 .page h1 { margin: 0 0 var(--ds-space-2); }
+/* 제목 줄 아래 간격은 관리자 공통(20px)을 grid 간격이 대신하므로 제목 줄 자체 여백은 없앤다. */
+:global(.admin-layout[class]) :global(.admin-content) > .page > header { margin-bottom: 0; }
 .filters { display: flex; flex-wrap: wrap; align-items: end; gap: var(--ds-space-3); }
 .filters label { display: grid; gap: var(--ds-space-2); flex: 1 1 12rem; }
 .filters input, .filters select { width: 100%; min-height: 2.75rem; padding: var(--ds-space-2) var(--ds-space-3); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); }
