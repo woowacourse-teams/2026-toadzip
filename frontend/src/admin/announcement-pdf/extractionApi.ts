@@ -41,8 +41,11 @@ export const JOB_POLL_MS = 3000
  * 보통은 이 상한 전에 성공이나 실패를 받는다. 상한은 워커가 멈춘 경우의 안전장치다.
  */
 export const JOB_WAIT_LIMIT_MS = 45 * 60 * 1000
-/** 워커는 한 번에 작업 하나만 처리해, 앞선 작업이 길면 정상이어도 이만큼 PENDING일 수 있다. 그래서 멈췄다고 단정하지 않고 확인을 권한다. */
-export const NOT_STARTED_NOTICE_MS = 3 * 60 * 1000
+/**
+ * 워커는 한 번에 작업 하나만 처리해, 앞선 작업이 길면 정상이어도 이만큼 PENDING일 수 있다. 그래서 멈췄다고 단정하지 않고 확인을 권한다.
+ * 추출이 보통 30초~1분 안에 끝나므로, 워커가 꺼져 있을 때 오래 기다리지 않도록 1분 뒤 알린다.
+ */
+export const NOT_STARTED_NOTICE_MS = 60 * 1000
 const NOT_STARTED_NOTICE = '아직 처리가 시작되지 않았습니다. 앞선 추출을 처리 중일 수 있으니, 계속 그대로면 AI 워커가 실행 중인지 확인하거나 추출 취소 후 다시 요청해 주세요.'
 
 type Reason = { code: string; message: string }

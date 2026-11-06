@@ -10,7 +10,7 @@ from conftest import WORKER_ROLE, insert_job, job_row
 @pytest.fixture
 def environment(monkeypatch):
     for name, value in {"PGHOST": "localhost", "PGDATABASE": "toadzip", "PGUSER": "toadzip_ai_worker",
-                        "PGPASSWORD": "worker-test-password", "DEEPSEEK_API_KEY": "test-key"}.items():
+                        "PGPASSWORD": "worker-test-password", "OPENAI_API_KEY": "test-key"}.items():
         monkeypatch.setenv(name, value)
     handlers = {name: signal.getsignal(name) for name in (signal.SIGTERM, signal.SIGINT)}
     yield
@@ -57,6 +57,17 @@ def test_missing_environment_exits(environment, monkeypatch):
     assert "PGPASSWORD" in str(exit_.value.code)
 
 
+def test_openai_key_is_required_even_if_a_legacy_provider_key_exists(environment, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "legacy-test-key")
+    monkeypatch.setattr(entry, "run", lambda connect, extractor, stop: stop.set())
+
+    with pytest.raises(SystemExit) as exit_:
+        entry.main([])
+
+    assert str(exit_.value.code) == "환경변수가 없습니다: OPENAI_API_KEY"
+
+
 @pytest.fixture
 def worker_database(environment, monkeypatch, postgres):
     for name, value in {"PGHOST": postgres.get_container_host_ip(), "PGPORT": str(postgres.get_exposed_port(5432)),
@@ -93,3 +104,23 @@ def test_check_fails_without_leaking_password_when_login_fails(worker_database, 
 
     assert str(exit_.value.code).startswith("DB 접속 또는 ai_jobs 확인에 실패했습니다: ")
     assert "wrong-secret-password" not in str(exit_.value.code)
+
+
+@pytest.mark.parametrize("key, judged", [("typesafe-test-key", True), (None, False)])
+def test_jev_column_judge_is_used_only_when_its_key_is_set(environment, monkeypatch, key, judged):
+    if key:
+        monkeypatch.setenv("TYPESAFE_API_KEY", key)
+    else:
+        monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    extractors = []
+
+    def until_stopped(connect, extractor, stop):
+        extractors.append(extractor)
+        signal.raise_signal(signal.SIGTERM)
+        stop.wait(5)
+
+    monkeypatch.setattr(entry, "run", until_stopped)
+
+    entry.main([])
+
+    assert (extractors[0].column_judge is not None) is judged

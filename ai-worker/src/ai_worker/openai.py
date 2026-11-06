@@ -1,4 +1,4 @@
-"""DeepSeek 채팅 API 호출. 키와 응답 원문은 로그와 오류 문구에 남기지 않는다."""
+"""OpenAI Luna 채팅 API 호출. 키와 응답 원문은 로그와 오류 문구에 남기지 않는다."""
 
 import json
 import socket
@@ -10,8 +10,8 @@ import httpx
 
 from ai_worker.extraction import MODEL_RESPONSE_INVALID, PermanentError, TransientError
 
-BASE_URL = "https://api.deepseek.com"
-MODEL = "deepseek-flash"
+BASE_URL = "https://api.openai.com/v1"
+MODEL = "gpt-6-luna"
 CONNECT_TIMEOUT = 10
 # 요청은 남은 마감 시간까지 기다리므로 마감을 넘기지 않는다. 호출하는 쪽은 응답 뒤 처리에 쓸 여유로 이만큼 일찍 마감을 잡는다.
 READ_TIMEOUT = 60
@@ -23,8 +23,12 @@ class Reply:
     usage: dict  # promptTokens, outputTokens, thinkingTokens. 모르는 값은 None
 
 
-class DeepSeek:
-    def __init__(self, api_key: str, base_url: str = BASE_URL, transport: httpx.BaseTransport | None = None):
+class OpenAI:
+    def __init__(self, api_key: str, base_url: str = BASE_URL, transport: httpx.BaseTransport | None = None,
+                 reasoning_effort: str = "none"):
+        if reasoning_effort not in {"none", "low", "medium", "high", "xhigh", "max"}:
+            raise ValueError("지원하지 않는 Luna reasoning effort입니다.")
+        self.reasoning_effort = reasoning_effort
         self.client = httpx.Client(
             base_url=base_url,
             headers={"Authorization": f"Bearer {api_key}"},
@@ -39,8 +43,8 @@ class DeepSeek:
             "messages": [{"role": "user", "content": content}],
             "response_format": {"type": "json_object"},
             "stream": False,
-            # 생각 토큰이 출력의 대부분(평가 86%)이라 낮춘다. 3건 평가에서 모집수는 같았다.
-            "reasoning_effort": "low",
+            "reasoning_effort": self.reasoning_effort,
+            "max_completion_tokens": 65536,
         }
         status, payload = self.post(body, deadline)
         if status in (408, 429) or status >= 500:
@@ -50,20 +54,24 @@ class DeepSeek:
         try:
             data = json.loads(payload)
             choice = data["choices"][0]
-            text = choice["message"]["content"]
+            message = choice["message"]
+            if not isinstance(choice, dict) or not isinstance(message, dict):
+                raise TypeError("invalid completion")
+            text = message.get("content")
         except (ValueError, KeyError, IndexError, TypeError) as error:
             raise PermanentError(MODEL_RESPONSE_INVALID, "AI 모델 응답 형식을 읽지 못했습니다.") from error
-        if choice.get("finish_reason") == "insufficient_system_resource":
-            raise TransientError("MODEL_UNAVAILABLE", "AI 모델이 잠시 요청을 받지 못합니다.")
+        if message.get("refusal") or choice.get("finish_reason") == "content_filter":
+            raise PermanentError("MODEL_REJECTED", "AI 모델이 추출 요청에 응답하지 못했습니다.")
         if choice.get("finish_reason") == "length":
             raise PermanentError("MODEL_RESPONSE_TRUNCATED", "AI 모델 응답이 길이 제한으로 잘렸습니다.")
+        if choice.get("finish_reason") != "stop":
+            raise PermanentError(MODEL_RESPONSE_INVALID, "AI 모델 응답이 정상적으로 끝나지 않았습니다.")
         if not isinstance(text, str) or not text.strip():
             raise PermanentError("MODEL_RESPONSE_EMPTY", "AI 모델이 빈 응답을 돌려줬습니다.")
         return Reply(text, usage_of(data.get("usage")))
 
     def post(self, body: dict, deadline: float) -> tuple[int, bytes]:
-        """DeepSeek은 응답을 기다리는 동안 빈 줄을 보내기도 하지만 1분 넘게 조용할 때도 있다(실측). 읽기 제한을 고정하면
-        늦은 응답마다 시간 초과로 다시 시도해 유료 호출이 겹치므로, 읽기 제한을 남은 마감 시간으로 둔다.
+        """읽기 제한을 고정하면 늦은 응답마다 시간 초과로 다시 시도해 유료 호출이 겹칠 수 있어 남은 마감 시간으로 둔다.
         읽기 제한은 읽을 때마다 새로 걸려 마감 직전 조각 뒤로 조용하면 마감을 넘기므로, 본문은 마감에 연결을 끊어 끝낸다."""
         timeout = httpx.Timeout(max(deadline - time.monotonic(), 0.001), connect=CONNECT_TIMEOUT)
         try:

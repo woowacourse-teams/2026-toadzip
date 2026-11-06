@@ -62,7 +62,12 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
     ...shownChecks.length ? [{ key: 'checks', label: `검산 확인 ${shownChecks.length}건`, tone: 'warning' as const, body: <div className={`${styles.pending} ${styles.checks}`} role="note" aria-label="검산 결과"><p><strong>검산 확인</strong> 합계·면적·원문 대조가 맞지 않는 항목입니다. 공고문과 대조하세요.</p><ul>{shownChecks.map(check => <li key={check}>{check}</li>)}</ul></div> }] : [],
     ...filter === 'all' && duplicates.length ? [{ key: 'duplicates', label: `LH 원본과 중복 가능 ${duplicates.length}행`, tone: 'warning' as const, body: <div className={styles.pending} role="note" aria-label="LH 원본과 중복 가능"><p><strong>LH 원본과 중복 가능</strong> LH 공급 원본으로 펼친 행이 있는 단지에 직접 추가한 행이 있습니다. 같은 주택형이면 공급정보 편집표의 ‘펼친 행으로 합치기’로 임대조건과 표기를 옮긴 뒤 지우세요.{editorHref && <> <Link to={editorHref}>공급정보 편집표 열기</Link></>}</p><ul>{duplicates.map(row => <li key={row.key}>{row.housingComplexName ?? row.complexName} · {row.typeName} (#{row.id})</li>)}</ul></div> }] : [],
     // 공통 모집 묶음은 공고 전체에 걸쳐 있으므로 지금 단지의 행이 든 묶음만 보인다.
-    ...filter === 'all' ? review.extraction.sharedCounts.flatMap((group, index) => !inGroup(group.paths) ? [] : [{ key: `shared:${index}`, label: `공통 모집 ${group.count}세대`, tone: 'info' as const, body: <div className={styles.shared}><strong>공통 모집 {group.count}세대</strong><span>{sharedLabel(review, group.paths)}{group.paths.every(path => path.endsWith('.totalSupplyHouseholdCount')) && !sharedGroupStorable(review, index) ? sharedUnstorable(review, index) : ''}</span>{group.page && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence({ page: group.page!, quote: group.quote, path: group.paths[0] })}>PDF {group.page}쪽 보기</Button>}</div> }]) : [],
+    ...filter === 'all' ? review.extraction.sharedCounts.flatMap((group, index) => {
+      if (!inGroup(group.paths)) return []
+      const reserve = group.paths.every(path => path.endsWith('.reserveCount'))
+      const label = `공통 ${reserve ? '예비자 모집' : '모집'} ${group.count}${reserve ? '명' : '세대'}`
+      return [{ key: `shared:${index}`, label, tone: 'info' as const, body: <div className={styles.shared}><strong>{label}</strong><span>{sharedLabel(review, group.paths)}{group.paths.every(path => path.endsWith('.totalSupplyHouseholdCount')) && !sharedGroupStorable(review, index) ? sharedUnstorable(review, index) : ''}</span>{group.page && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence({ page: group.page!, quote: group.quote, path: group.paths[0] })}>PDF {group.page}쪽 보기</Button>}</div> }]
+    }) : [],
     ...ordered ? [{ key: 'order', label: '저장하면 PDF 표 순서로 표시', tone: 'info' as const, body: <p className={styles.notice}>저장하면 공급행을 PDF 공급 표 순서({review.rows.flatMap((row, index) => row.include ? [review.extraction.supplyRows[index].typeName ?? `공급행 ${index + 1}`] : []).join(' → ')})로 표시합니다. PDF에 없는 기존 공급행은 그 뒤에 원래 순서대로 둡니다.</p> }] : [],
   ]
   return <>
@@ -254,10 +259,21 @@ function sharedUnstorable(review: Review, index: number) {
 /** 공통 모집수가 묶은 대상을 읽기 쉽게 적는다. 대상별 묶음은 저장할 곳이 없어 각 대상의 모집수를 비워 둔다. */
 function sharedLabel(review: Review, paths: string[]) {
   const at = paths.map(path => /^supplyRows\[(\d+)\](?:\.targets\[(\d+)\])?/.exec(path)).filter(match => match !== null)
-  const row = review.extraction.supplyRows[Number(at[0]?.[1])]
   if (at.length && at.every(match => match[2] !== undefined)) {
-    const targets = at.map(match => String(row?.targets[Number(match[2])]?.target ?? `대상 ${Number(match[2]) + 1}`))
-    return `${row?.typeName ?? '공급행'}에서 ${targets.join(' · ')} 대상이 함께 쓰는 모집수입니다. 대상별 모집수는 비워 둡니다.`
+    const reserve = paths.every(path => path.endsWith('.reserveCount'))
+    const byRow = new Map<number, string[]>()
+    for (const match of at) {
+      const rowIndex = Number(match[1]), row = review.extraction.supplyRows[rowIndex]
+      const targets = byRow.get(rowIndex) ?? []
+      targets.push(String(row?.targets[Number(match[2])]?.target ?? `대상 ${Number(match[2]) + 1}`))
+      byRow.set(rowIndex, targets)
+    }
+    const quantity = reserve ? '예비자 모집수' : '모집수'
+    const detail = [...byRow].map(([index, targets]) => {
+      const row = review.extraction.supplyRows[index]
+      return byRow.size === 1 ? `${row?.typeName ?? '공급행'}에서 ${targets.join(' · ')} 대상` : `${row?.typeName ?? '공급행'}의 ${targets.join(' · ')} 대상`
+    }).join('과 ')
+    return `${detail}이 함께 쓰는 ${quantity}입니다. 대상별 ${reserve ? '예비자 수' : '모집수'}는 비워 둡니다.`
   }
   return `${at.map(match => review.extraction.supplyRows[Number(match[1])]?.typeName).join(' · ')} 전체의 모집수입니다. 각 행에 나누거나 중복 기입하지 않습니다.`
 }

@@ -48,7 +48,7 @@ class Runner:
                 raise bluegreen.DeploymentError('Docker command failed: compose up')
             return ''
         if arguments[-1] == 'ai-worker':
-            environment = {'PGPASSWORD': 'never-log-this-fixture', 'DEEPSEEK_API_KEY': 'never-log-this-fixture'}
+            environment = {'PGPASSWORD': 'never-log-this-fixture', 'OPENAI_API_KEY': 'never-log-this-fixture'}
             if (self.failure() or '').startswith('worker-secret-'):
                 environment[self.failure().removeprefix('worker-secret-')] = ''
             if self.failure() == 'worker-missing':
@@ -175,7 +175,7 @@ class ReleaseTests(unittest.TestCase):
 
     def test_profile_overlay_candidate_ports_and_missing_worker_secrets_fail_closed(self):
         for failure in ('profile', 'overlay', 'ports', 'worker-missing', 'worker-secret-PGPASSWORD',
-                        'worker-secret-DEEPSEEK_API_KEY'):
+                        'worker-secret-OPENAI_API_KEY'):
             with self.subTest(failure=failure):
                 self.failure = failure
                 self.events.clear()
