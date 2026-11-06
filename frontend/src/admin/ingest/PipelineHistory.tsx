@@ -6,6 +6,7 @@ import { pipelineLabels as labels, pipelineStatusLabels } from './pipelineLabels
 import { ComplexExecutionResult } from './ComplexExecutionResult'
 import { ComplexIconButton } from './ComplexIconButton'
 import styles from './ComplexIngest.module.css'
+import listStyles from './PipelineHistory.module.css'
 import { ComplexStatusBadge } from './ComplexStatusBadge'
 export function PipelineHistory({ domain, compact = false, readOnlyComplex = false }: { domain?: 'complex' | 'announcement'; compact?: boolean; readOnlyComplex?: boolean } = {}) {
   const [page, setPage] = useState(0)
@@ -17,13 +18,16 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
   const detailId = useId()
   const detailHeading = useRef<HTMLHeadingElement>(null)
   const detailTrigger = useRef<HTMLButtonElement | null>(null)
+  // 공고 수집 화면은 이력과 실행 상세를 다른 관리자 목록처럼 각각 흰 카드로 둔다. 단지 수집은 이력 창 안에 그대로 둔다.
+  const listCard = compact && !readOnlyComplex
 
+  // 두 화면 모두 상세가 누른 행에서 떨어져 열리므로 상세 제목으로 옮긴다.
   useEffect(() => {
-    if (readOnlyComplex && selected) {
+    if ((compact || readOnlyComplex) && selected) {
       detailHeading.current?.focus({ preventScroll: true })
       detailHeading.current?.scrollIntoView?.({ block: 'start' })
     }
-  }, [readOnlyComplex, selected])
+  }, [compact, readOnlyComplex, selected])
 
   useEffect(() => {
     let active = true
@@ -40,8 +44,35 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
     return () => { active = false }
   }, [page, attempt, domain])
 
+  function closeDetail() {
+    setSelected(null)
+    detailTrigger.current?.focus()
+  }
+
+  const detail = selected ? listCard ? (
+    <section id={detailId} className={`admin-detail-section ${listStyles.detailCard}`} aria-labelledby={`${detailId}-title`}>
+      <header className={listStyles.detailHeading}>
+        <h2 id={`${detailId}-title`} ref={detailHeading} tabIndex={-1} className={listStyles.detailTitle}>실행 상세</h2>
+        <button type="button" onClick={closeDetail}>닫기</button>
+      </header>
+      {selected.status === 'RUNNING' && <p className={listStyles.meta}>선택 시점의 기록입니다. 최신 진행과 중지는 위 기관 카드의 실행 결과에서 확인해 주세요.</p>}
+      <PipelineExecutionSteps key={selected.executionId} execution={selected} focused />
+    </section>
+  ) : (
+    <section id={detailId} className="pipeline-history-detail" aria-label="선택한 실행 상세">
+      <header><h3 ref={detailHeading} tabIndex={readOnlyComplex ? -1 : undefined}>선택한 실행 상세</h3>{readOnlyComplex ? <ComplexIconButton icon="close" label="닫기" onClick={closeDetail} />
+        : <button type="button" onClick={() => setSelected(null)}>닫기</button>}</header>
+      <p>{readOnlyComplex ? '선택한 실행에 저장된 단계별 결과입니다. 오류 조회는 이 실행에 연결된 대상의 현재 검토 상태를 보여줍니다.'
+        : '선택 시점의 실행 기록입니다. 실행 중인 작업의 최신 상태와 중지는 상단에서 확인해 주세요.'}</p>
+      {readOnlyComplex ? <ComplexExecutionResult key={selected.executionId} execution={selected} />
+        : <PipelineResult type={selected.type} state={{ execution: selected, requestError: null, errorResponse: null }}
+          stopping={true} onStop={() => {}} />}
+    </section>
+  ) : null
+
   return (
-    <section className="admin-detail-section pipeline-history" aria-labelledby="pipeline-history-title">
+    <>
+    <section className={listCard ? `admin-list-card pipeline-history ${listStyles.listCard}` : 'admin-detail-section pipeline-history'} aria-labelledby="pipeline-history-title">
       <header className="pipeline-history-heading">
         <div>
           <h2 id="pipeline-history-title">실행 이력</h2>
@@ -61,7 +92,7 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
           <table className="admin-table">
             <thead><tr><th scope="col">작업</th><th scope="col">실행 시각</th><th scope="col">상태</th><th scope="col">결과</th></tr></thead>
             <tbody>{items.map((item) => (
-              <tr key={item.executionId} className={readOnlyComplex && selected?.executionId === item.executionId ? styles.selectedHistoryRow : undefined}>
+              <tr key={item.executionId} className={(compact || readOnlyComplex) && selected?.executionId === item.executionId ? styles.selectedHistoryRow : undefined}>
                 <td>{labels[item.type]}</td>
                 <td><time dateTime={item.startedAt ?? undefined}>
                   {item.startedAt ? new Date(item.startedAt).toLocaleString('ko-KR') : '기록 없음'}
@@ -95,18 +126,9 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
             : <button type="button" disabled={busy || items.length < 20} onClick={() => setPage((value) => value + 1)}>다음</button>}
         </nav>
       ) : null}
-      {selected ? (
-        <section id={detailId} className="pipeline-history-detail" aria-label="선택한 실행 상세">
-          <header><h3 ref={detailHeading} tabIndex={readOnlyComplex ? -1 : undefined}>선택한 실행 상세</h3>{readOnlyComplex ? <ComplexIconButton icon="close" label="닫기" onClick={() => { setSelected(null); detailTrigger.current?.focus() }} />
-            : <button type="button" onClick={() => setSelected(null)}>닫기</button>}</header>
-          <p>{readOnlyComplex ? '선택한 실행에 저장된 단계별 결과입니다. 오류 조회는 이 실행에 연결된 대상의 현재 검토 상태를 보여줍니다.'
-            : '선택 시점의 실행 기록입니다. 실행 중인 작업의 최신 상태와 중지는 상단에서 확인해 주세요.'}</p>
-          {readOnlyComplex ? <ComplexExecutionResult key={selected.executionId} execution={selected} />
-            : compact ? <PipelineExecutionSteps key={selected.executionId} execution={selected} />
-            : <PipelineResult type={selected.type} state={{ execution: selected, requestError: null, errorResponse: null }}
-              stopping={true} onStop={() => {}} />}
-        </section>
-      ) : null}
+      {listCard ? null : detail}
     </section>
+    {listCard ? detail : null}
+    </>
   )
 }
