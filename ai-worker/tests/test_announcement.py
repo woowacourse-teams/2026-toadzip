@@ -985,3 +985,70 @@ def test_jev_is_not_called_after_the_model_cutoff():
 
     assert AnnouncementPdfExtractor(FakeModel(), judge).counts_confirmed(grouped, [""], time.monotonic() - 1) is False
     assert judge.calls == []
+
+
+def test_each_value_gets_evidence_from_the_row_that_holds_its_cell():
+    selected = pages.PromptPages(
+        text="all", rental_rows=0, supply_text="table", supply_pages=[4, 13],
+        supply_row_ids=frozenset({"P4:T1:R4", "P13:T1:R3"}),
+        supply_row_text={"P4:T1:R4": "Test\t26A\t청년\t20\t26.73", "P13:T1:R3": "Test\t26A\t청년\t46,920\t178,670"},
+        notice_text="body", notice_pages=[1], complex_candidates=["Test"], table_structure_fallback=False,
+        ambiguous_supply_tables=False,
+        supply_row_values={
+            "P4:T1:R4": {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20",
+                          "exclusiveArea": "26.73"},
+            "P13:T1:R3": {"complexName": "Test", "housingType": "26A", "target": "청년", "rentalDeposit": "46,920",
+                           "rentalDepositUnit": "천원", "monthlyRent": "178,670", "monthlyRentUnit": "원"},
+        },
+    )
+    compact = {"data": {"rows": [{
+        "rowIds": ["P4:T1:R4", "P13:T1:R3"], "complexName": "Test", "housingType": "26A", "target": "청년",
+        "reserveCount": 20, "exclusiveArea": 26.73, "rentalDeposit": 46920000, "monthlyRent": 178670,
+    }]}}
+
+    tree = announcement.compact_supply_tree(compact, selected)
+
+    pages_by_path = {item["path"]: item["page"] for item in tree["evidence"]}
+    # 공급행·대상 근거가 두 쪽에 걸쳐도 값마다 그 칸이 있는 행의 쪽을 가리킨다(13쪽이 4쪽보다 글자순으로 앞서도).
+    assert pages_by_path["supplyRows[0].exclusiveArea"] == 4
+    assert pages_by_path["supplyRows[0].targets[0].reserveCount"] == 4
+    assert pages_by_path["supplyRows[0].targets[0].rentalDeposit"] == 13
+    assert pages_by_path["supplyRows[0].targets[0].monthlyRent"] == 13
+
+
+def test_notice_note_path_written_with_empty_brackets_reaches_the_result_readable():
+    notice = {
+        "data": {
+            "announcement": {"name": "Sample Notice"}, "receptionPlace": {}, "complexes": [], "schedules": [],
+            "unresolvedFields": [{"path": "complexes[].parkingCount", "reason": "주차대수를 확인하지 못함"}],
+        },
+        "notApplicable": [], "evidence": [],
+    }
+    model = FakeModel(stage_contents={"notice": json.dumps(notice, ensure_ascii=False)})
+
+    result = AnnouncementPdfExtractor(model, FakeJudge()).extract(job(structured_table_pdf()))
+
+    paths = [item["path"] for item in json.loads(result["json"])["data"]["unresolvedFields"]]
+    assert "complexes[*].parkingCount" in paths and "complexes[].parkingCount" not in paths
+
+
+def test_value_evidence_prefers_the_row_whose_cell_matches_the_value():
+    selected = pages.PromptPages(
+        text="all", rental_rows=0, supply_text="table", supply_pages=[8, 9],
+        supply_row_ids=frozenset({"P8:T1:R3", "P9:T1:R3"}),
+        supply_row_text={"P8:T1:R3": "Test\t26A\t청년\t소득 없음\t46,920", "P9:T1:R3": "\t\t\t소득 있음\t49,680"},
+        notice_text="body", notice_pages=[1], complex_candidates=["Test"], table_structure_fallback=False,
+        ambiguous_supply_tables=False,
+        supply_row_values={
+            "P8:T1:R3": {"complexName": "Test", "housingType": "26A", "target": "청년", "targetDetail": "소득 없음",
+                          "rentalDeposit": "46,920", "rentalDepositUnit": "천원"},
+            "P9:T1:R3": {"targetDetail": "소득 있음", "rentalDeposit": "49,680", "rentalDepositUnit": "천원"},
+        },
+    )
+    compact = {"data": {"rows": [{"rowIds": ["P8:T1:R3", "P9:T1:R3"], "complexName": "Test", "housingType": "26A",
+                                   "target": "청년(소득 있음)", "rentalDeposit": 49680000}]}}
+
+    tree = announcement.compact_supply_tree(compact, selected)
+
+    evidence = next(item for item in tree["evidence"] if item["path"] == "supplyRows[0].targets[0].rentalDeposit")
+    assert evidence["page"] == 9 and "49,680" in evidence["quote"]

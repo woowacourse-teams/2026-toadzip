@@ -274,6 +274,7 @@ def compact_supply_tree(compact: dict, selected: pages.PromptPages) -> dict:
         supply_rows.append(row)
         source_rows.append({"path": f"supplyRows[{index}]", "rowIds": row_ids})
         evidence.extend(compact_evidence(f"supplyRows[{index}]", row_ids, selected))
+        evidence.extend(value_evidence(f"supplyRows[{index}]", row, ROW_FIELDS, row_ids, selected))
         for target_index, target_values in enumerate(group["targets"]):
             target_row_ids = sorted(target_values.pop("rowIds"))
             target = {name: target_values[name] for name in (
@@ -284,6 +285,7 @@ def compact_supply_tree(compact: dict, selected: pages.PromptPages) -> dict:
             path = f"supplyRows[{index}].targets[{target_index}]"
             source_rows.append({"path": path, "rowIds": target_row_ids})
             evidence.extend(compact_evidence(path, target_row_ids, selected))
+            evidence.extend(value_evidence(path, target, TARGET_VALUE_FIELDS, target_row_ids, selected))
 
     complexes, complex_row_ids, complex_unresolved = compact_complexes(supply_rows, groups, selected)
     unresolved.extend(complex_unresolved)
@@ -439,6 +441,28 @@ def integer_cell(value: object) -> int | None:
         return None
 
 
+TARGET_VALUE_FIELDS = ("supplyHouseholdCount", "reserveCount", "rentalDeposit", "monthlyRent", "convertedDeposit")
+
+
+def value_evidence(path: str, values: dict, fields: tuple[str, ...], row_ids: list[str],
+                   selected: pages.PromptPages) -> list[dict]:
+    """공급행·대상 근거는 여러 쪽(공급표·임대조건표)에 걸칠 수 있다. 화면은 같은 경로의 첫 근거를 쓰므로,
+    값마다 그 칸이 적힌 행만 가리키는 근거를 따로 둔다(보증금 근거가 공급표 쪽을 가리키지 않게)."""
+    if len({row_id.split(":")[0] for row_id in row_ids}) <= 1:
+        return []  # 근거가 한 쪽뿐이면 상위 근거가 이미 그 쪽을 가리킨다. 근거 개수 상한(화면 5000개)을 아낀다.
+    result = []
+    for field in fields:
+        if values.get(field) is None:
+            continue
+        cells = {row_id: selected.supply_row_values.get(row_id, {}) for row_id in row_ids}
+        ids = [row_id for row_id, cell in cells.items() if cell.get(field)]
+        # 이름을 이어받으려고 넣은 다른 줄(예: 소득 없음 줄)도 같은 열에 값이 있어, 값이 실제로 맞는 줄을 먼저 쓴다.
+        matching = [row_id for row_id in ids if numeric_cell_matches(values[field], cells[row_id][field], field,
+                                                                      cells[row_id].get(f"{field}Unit"))]
+        result.extend(compact_evidence(f"{path}.{field}", matching or ids, selected)[:1])
+    return result
+
+
 def compact_evidence(path: str, row_ids: list[str], selected: pages.PromptPages) -> list[dict]:
     grouped: dict[int, list[str]] = {}
     for row_id in row_ids:
@@ -566,6 +590,7 @@ class AnnouncementPdfExtractor:
         warnings += checks.review(tree, list(range(1, len(texts) + 1)), texts, [row.type_name for row in rows],
                                   [row.count() for row in rows], selected.rental_rows)
         link_lh_rows(tree, rows)
+        checks.normalize_note_paths(tree, warnings)
         usage = combined_usage(*([supply_reply.usage] if supply_reply else []), notice_reply.usage)
         log.info("작업 %d 추출 완료 pages=%d/%d tableRows=%d lhRows=%d warnings=%d supply=%s usage=%s", job.id,
                  len(selection.pages), len(texts), len(selected.supply_row_ids), len(rows), len(warnings),

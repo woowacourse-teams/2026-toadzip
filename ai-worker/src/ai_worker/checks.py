@@ -181,3 +181,36 @@ def objects(value: object) -> list[dict]:
 
 def text(value: object) -> str:
     return value if isinstance(value, str) else ""
+
+
+# 관리자 화면(extraction.ts validPath)이 읽는 경로 형식. 하나라도 어긋나면 화면이 추출 결과 전체를 거부한다.
+NOTE_PATH = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:\[(?:\d+|\*)\]|\.[A-Za-z][A-Za-z0-9]*)*")
+
+
+def normalize_note_paths(tree: dict, warnings: list[str]) -> None:
+    """모델이 미확인·해당없음 경로를 complexes[].parkingCount처럼 쓰면 화면이 결과 전체를 읽지 못한다.
+    빈 순번은 전체([*])로 바꾼다. 그래도 읽을 수 없는 미확인 경로는 읽을 수 있는 앞부분까지 넓히고(범위가 넓어져도 보수적이다),
+    해당없음 경로는 넓히면 그 아래 값이 모두 반영에서 빠지므로 빼고 경고로 남긴다."""
+    for key, holder, widen in (("unresolvedFields", tree.get("data", {}), True), ("notApplicable", tree, False)):
+        kept = []
+        for item in objects(holder.get(key)):
+            original = item.get("path")
+            path = re.sub(r"^\$\.?|^data\.", "", original.strip()).replace("[]", "[*]") if isinstance(original, str) else ""
+            usable = path if NOTE_PATH.fullmatch(path) else (readable_prefix(path) if widen else "")
+            if not usable:
+                warnings.append(f"{key}: 경로를 읽을 수 없는 항목을 뺐습니다({original}: {item.get('reason')})")
+                continue
+            if usable != path:
+                warnings.append(f"{key}: 읽을 수 없는 경로 {original}를 {usable}로 넓혔습니다.")
+            kept.append({**item, "path": usable})
+        if key in holder or kept:
+            holder[key] = kept
+
+
+def readable_prefix(path: str) -> str:
+    """경로 앞에서 온전한 마디(. 이나 [ 앞)까지만 남긴다."""
+    match = NOTE_PATH.match(path)
+    prefix = match.group() if match else ""
+    if prefix and path[len(prefix):][:1] not in ".[":
+        prefix = re.sub(r"(?:\.[A-Za-z0-9]*|\[[^\]]*)$", "", prefix)
+    return prefix
