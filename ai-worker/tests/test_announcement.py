@@ -8,7 +8,7 @@ import pymupdf
 
 import pytest
 
-from ai_worker import announcement, checks, pages
+from ai_worker import announcement, checks, jev, pages, supply_grouping
 from ai_worker.announcement import AnnouncementPdfExtractor, LhSupplyRow
 from ai_worker.openai import Reply
 from ai_worker import openai
@@ -144,6 +144,29 @@ def compact_stage_output(tree, prompt):
                             if field in target and target[field] is not None})
             rows.append(compact)
     return {"data": {"rows": rows}}
+
+
+class FakeJudge:
+    """Jev 대역. 기본은 머리글대로(예비 → 새 예비자 수, 그 밖 → 당첨자 전체) 높은 확률로 답한다.
+    by_header로 특정 머리글에만 다른 뜻을 답하게 할 수 있다."""
+
+    def __init__(self, choice=None, probability=0.95, error=None, by_header=None):
+        self.choice, self.probability, self.error = choice, probability, error
+        self.by_header = by_header or {}
+        self.calls = []
+
+    def count_meanings(self, state, headers, reserve_only, timeout=None):
+        self.calls.append((state, headers, reserve_only))
+        if self.error:
+            raise self.error
+        result = {}
+        for key, header in headers.items():
+            choice = self.by_header.get(header) or self.choice or (
+                "new_reserve_this_notice" if "예비" in header else "winners_total_this_notice")
+            if reserve_only and choice in jev.WINNER_OPTIONS:
+                choice = "building_or_complex_size"  # 실제 Jev처럼 빠진 선택지는 답하지 않는다.
+            result[key] = jev.Meaning(choice, self.probability)
+        return result
 
 
 def stage_prompt(model, stage):
@@ -633,7 +656,7 @@ def test_supply_table_the_code_can_read_skips_the_supply_model_call():
     }
     model = FakeModel(stage_contents={"notice": json.dumps(notice, ensure_ascii=False)})
 
-    result = AnnouncementPdfExtractor(model).extract(job(structured_table_pdf()))
+    result = AnnouncementPdfExtractor(model, FakeJudge()).extract(job(structured_table_pdf()))
 
     tree = json.loads(result["json"])
     assert len(model.prompts) == 1 and "[추출 단계: 공고 본문]" in model.prompts[0]
@@ -672,7 +695,9 @@ def test_supply_table_continued_without_header_and_a_tableless_next_page_reach_t
     document.new_page().insert_text((20, 72), "주택형 36B 청년 5 36.91 18.05 공급대상", fontname="korea", fontsize=7)
     model = FakeModel()
 
-    result = AnnouncementPdfExtractor(model).extract(job(document.tobytes()))
+    judge = FakeJudge()
+
+    result = AnnouncementPdfExtractor(model, judge).extract(job(document.tobytes()))
 
     tree = json.loads(result["json"])
     assert len(model.prompts) == 1
@@ -680,6 +705,8 @@ def test_supply_table_continued_without_header_and_a_tableless_next_page_reach_t
              row["targets"][0]["reserveCount"], row["exclusiveArea"]) for row in tree["data"]["supplyRows"]] == [
         ("Alpha", "26A", 20, 26.73), ("Alpha", "36A", 3, 36.92), ("Beta", "44A", 4, 44.81)]
     assert "원본 3쪽의 공급표를 표로 읽지 못해 공급행이 빠졌을 수 있습니다. 원본을 확인해 주세요." in result["warnings"]
+    # 머리글 없는 이어짐 표는 앞 표와 같은 열이라 Jev에 다시 묻지 않는다.
+    assert len(judge.calls) == 1
 
 
 def test_complex_paths_are_remapped_before_stage_evidence_is_combined():
@@ -867,3 +894,94 @@ def test_model_target_with_income_split_column_is_accepted_as_the_combined_sourc
 
     assert [target["target"] for target in tree["data"]["supplyRows"][0]["targets"]] == ["청년(소득 없음)", ""]
     assert "supplyRows[0].targets[1].target" in {item["path"] for item in tree["data"]["unresolvedFields"]}
+
+
+@pytest.mark.parametrize("judge", [
+    None,
+    FakeJudge(choice="existing_waitlist"),
+    FakeJudge(probability=0.6),
+    FakeJudge(error=jev.JevError("Jev가 요청을 거절했습니다(HTTP 403).")),
+], ids=["no-key", "different-meaning", "low-probability", "jev-failed"])
+def test_supply_table_goes_to_the_model_unless_jev_confirms_the_count_column(judge):
+    model = FakeModel()
+
+    AnnouncementPdfExtractor(model, judge).extract(job(structured_table_pdf()))
+
+    assert len(model.prompts) == 2 and any("[추출 단계: 공급 표]" in prompt for prompt in model.prompts)
+
+
+def test_jev_is_asked_about_the_mapped_count_column_with_its_header_and_rows():
+    judge = FakeJudge()
+
+    AnnouncementPdfExtractor(FakeModel(), judge).extract(job(structured_table_pdf()))
+
+    (state, headers, reserve_only), = judge.calls
+    assert list(headers.values()) == ["모집호수"]
+    assert state["table"]["rows"][0]["모집호수"] == "20"
+    assert reserve_only is False
+
+
+def two_quantity_tables_pdf(title="Sample Notice"):
+    document = pymupdf.open()
+    page = grid_page(document, [
+        ["단지명", "주택형", "공급대상", "당첨자 수", "주거전용", "주거공용"],
+        ["Alpha", "26A", "청년", "20", "26.73", "13.07"],
+    ])
+    page.insert_text((20, 30), title, fontname="korea", fontsize=8)
+    grid_page(document, [
+        ["단지명", "주택형", "공급대상", "모집호수 예비자", "주거전용", "주거공용"],
+        ["Beta", "36A", "고령자", "3", "36.92", "18.06"],
+    ])
+    return document.tobytes()
+
+
+def test_one_count_column_judged_differently_sends_the_whole_supply_table_to_the_model():
+    model = FakeModel()
+    judge = FakeJudge(by_header={"모집호수 예비자": "existing_waitlist"})
+
+    AnnouncementPdfExtractor(model, judge).extract(job(two_quantity_tables_pdf()))
+
+    assert len(judge.calls) == 2
+    assert any("[추출 단계: 공급 표]" in prompt for prompt in model.prompts)
+
+
+def reserve_tables_pdf(first_header):
+    document = pymupdf.open()
+    page = grid_page(document, [
+        ["단지명", "주택형", "공급대상", first_header, "주거전용", "주거공용"],
+        ["Alpha", "26A", "청년", "20", "26.73", "13.07"],
+    ])
+    page.insert_text((20, 30), "2026 예비입주자 추가모집 공고", fontname="korea", fontsize=8)
+    return document.tobytes()
+
+
+def test_reserve_recruitment_notice_confirms_the_reserve_column_without_winner_options():
+    model = FakeModel()
+    judge = FakeJudge()
+
+    result = AnnouncementPdfExtractor(model, judge).extract(job(reserve_tables_pdf("모집호수 예비자")))
+
+    assert [reserve_only for _, _, reserve_only in judge.calls] == [True]
+    assert len(model.prompts) == 1
+    assert json.loads(result["json"])["data"]["supplyRows"][0]["targets"][0]["reserveCount"] == 20
+
+
+def test_winner_count_column_in_a_reserve_recruitment_notice_goes_to_the_model():
+    model = FakeModel()
+    judge = FakeJudge()
+
+    AnnouncementPdfExtractor(model, judge).extract(job(reserve_tables_pdf("당첨자 수")))
+
+    # 예비자만 모집하는 공고의 당첨자 열은 Jev에 물을 것도 없이 코드가 확정하지 않는다.
+    assert judge.calls == []
+    assert any("[추출 단계: 공급 표]" in prompt for prompt in model.prompts)
+
+
+def test_jev_is_not_called_after_the_model_cutoff():
+    judge = FakeJudge()
+    with pages.open_pdf(two_quantity_tables_pdf()) as document:
+        selected = pages.prompt_pages(document, [1, 2], time.monotonic() + 60)
+    grouped = supply_grouping.group(selected.supply_tables, selected.supply_row_values, [])
+
+    assert AnnouncementPdfExtractor(FakeModel(), judge).counts_confirmed(grouped, [""], time.monotonic() - 1) is False
+    assert judge.calls == []

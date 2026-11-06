@@ -13,7 +13,7 @@ from decimal import Decimal, InvalidOperation
 from importlib.resources import files
 from typing import Protocol
 
-from ai_worker import checks, openai, pages, supply_grouping
+from ai_worker import checks, jev, openai, pages, supply_grouping
 from ai_worker.openai import Reply
 from ai_worker.extraction import ATTEMPT_BUDGET, PermanentError
 from ai_worker.jobs import Job
@@ -457,9 +457,52 @@ def compact_evidence(path: str, row_ids: list[str], selected: pages.PromptPages)
     ]
 
 
+class ColumnJudge(Protocol):
+    def count_meanings(self, state: dict, headers: dict[str, str], reserve_only: bool,
+                       timeout: float = jev.TIMEOUT) -> dict[str, jev.Meaning]: ...
+
+
 class AnnouncementPdfExtractor:
-    def __init__(self, model: Model):
+    def __init__(self, model: Model, column_judge: ColumnJudge | None = None):
         self.model = model
+        # 없으면 코드가 읽은 수량 열의 뜻을 확인할 수 없어 공급표는 늘 모델 단계로 처리한다.
+        self.column_judge = column_judge
+
+    def counts_confirmed(self, grouped: supply_grouping.Grouped, first_pages: list[str], cutoff: float) -> bool:
+        """정규식이 고른 수량 열의 뜻을 Jev가 같은 뜻으로, 기준 확률 이상으로 판단할 때만 코드 경로를 쓴다.
+        Jev 호출 실패는 '다르다'가 아니라 판단 없음이라 모델 단계로 넘긴다.
+        cutoff(time.monotonic 기준)가 지나면 묻지 않는다. 공급 단계 모델 호출에 쓸 시간을 남긴다."""
+        if self.column_judge is None:
+            log.info("Jev 키가 없어 수량 열의 뜻을 확인하지 못하므로 공급표를 모델 단계로 처리합니다.")
+            return False
+        if not grouped.count_columns:
+            log.info("머리글 있는 수량표가 없어 수량 열의 뜻을 확인하지 못하므로 공급표를 모델 단계로 처리합니다.")
+            return False
+        reserve_only = jev.is_reserve_notice(first_pages)
+        for table, header_count, fields in grouped.count_columns:
+            if reserve_only and any(jev.FIELD_MEANING[name] in jev.WINNER_OPTIONS for name in fields):
+                log.info("예비자만 모집하는 공고의 원본 %d쪽 수량표에 당첨자 열이 있어 공급표를 모델 단계로 처리합니다.",
+                         table.page)
+                return False
+            remaining = cutoff - time.monotonic()
+            if remaining <= 0:
+                log.info("Jev에 물을 시간이 남지 않아 공급표를 모델 단계로 처리합니다.")
+                return False
+            state, paths = jev.table_state(table, header_count)
+            try:
+                meanings = self.column_judge.count_meanings(
+                    state, {f"column_{column}": paths[column] for column in fields.values()}, reserve_only,
+                    timeout=remaining)
+            except jev.JevError as error:
+                log.warning("%s 공급표를 모델 단계로 처리합니다.", error)
+                return False
+            for field_name, column in fields.items():
+                meaning = meanings[f"column_{column}"]
+                if meaning.choice != jev.FIELD_MEANING[field_name] or meaning.probability < jev.THRESHOLD:
+                    log.info("원본 %d쪽 '%s' 열을 Jev가 %s(%.2f)로 판단해 공급표를 모델 단계로 처리합니다.",
+                             table.page, paths[column], meaning.choice, meaning.probability)
+                    return False
+        return True
 
     def extract(self, job: Job) -> dict:
         if job.kind != KIND:
@@ -487,9 +530,12 @@ class AnnouncementPdfExtractor:
         # 두 역할은 서로 의존하지 않는다. 같은 남은 마감 안에서 병렬 호출해 분리 비용이 순차 지연으로 누적되지 않게 한다.
         model_deadline = deadline - openai.READ_TIMEOUT
         with ThreadPoolExecutor(max_workers=2, thread_name_prefix="announcement-extraction") as pool:
+            # 본문 단계는 공급표와 상관없이 늘 부르므로 먼저 보내고, 그동안 Jev로 수량 열의 뜻을 확인한다.
+            notice_future = pool.submit(self.model.chat, notice_prompt, model_deadline)
+            if grouped and not self.counts_confirmed(grouped, texts[:2], model_cutoff):
+                grouped = None
             supply_future = None if grouped else pool.submit(
                 self.model.chat, build_supply_prompt(rows, selected), model_deadline)
-            notice_future = pool.submit(self.model.chat, notice_prompt, model_deadline)
             supply_reply = supply_future.result() if supply_future else None
             notice_reply = notice_future.result()
         if grouped:

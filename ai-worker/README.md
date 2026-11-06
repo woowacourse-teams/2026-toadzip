@@ -20,7 +20,9 @@ docker compose -f compose.yaml -f compose.local.yaml exec -T db psql -U toadzip 
 docker compose -f compose.yaml -f compose.local.yaml exec db psql -U toadzip -d toadzip -c '\password toadzip_ai_worker'
 ```
 
-컨테이너로 띄우려면 `.env`에 `AI_WORKER_DB_PASSWORD`·`OPENAI_API_KEY`를 넣고 `docker compose -f compose.yaml -f compose.local.yaml --profile ai-worker up -d ai-worker`를 실행한다. 직접 띄울 때는 다음과 같다.
+공급표는 표 셀 구조로 코드가 묶고(`supply_grouping`), 수량 열의 뜻을 Jev로 확인한 경우에만 공급 단계 모델 호출을 생략한다(`jev`). `TYPESAFE_API_KEY`가 없거나 코드가 표 구조를 확신하지 못하면 공급표는 모델 단계로 처리한다.
+
+컨테이너로 띄우려면 `.env`에 `AI_WORKER_DB_PASSWORD`·`OPENAI_API_KEY`(선택 `TYPESAFE_API_KEY`)를 넣고 `docker compose -f compose.yaml -f compose.local.yaml --profile ai-worker up -d ai-worker`를 실행한다. 직접 띄울 때는 다음과 같다.
 
 ```bash
 cd ai-worker

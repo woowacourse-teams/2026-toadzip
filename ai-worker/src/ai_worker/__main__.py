@@ -5,6 +5,8 @@
 - PGHOST·PGPORT·PGDATABASE·PGUSER·PGPASSWORD: toadzip_ai_worker 역할의 Postgres 접속 정보(libpq 표준).
   주소 문자열 대신 쓰는 것은 비밀번호에 특수문자가 있어도 깨지지 않게 하려는 것이다.
 - OPENAI_API_KEY: OpenAI Luna API 키
+- TYPESAFE_API_KEY(선택): Jev API 키. 코드가 읽은 공급표 수량 열의 뜻을 Jev로 확인한 공고만 공급 단계 모델 호출을 생략한다.
+  없으면 공급표는 늘 모델 단계로 처리한다(느리지만 동작은 같다).
 """
 
 import argparse
@@ -18,6 +20,7 @@ import psycopg
 
 from ai_worker import jobs
 from ai_worker.announcement import AnnouncementPdfExtractor
+from ai_worker.jev import Jev
 from ai_worker.openai import OpenAI
 from ai_worker.worker import run
 
@@ -56,7 +59,11 @@ def main(argv: list[str]) -> None:
     if options.check:
         check()
         return
-    extractor = AnnouncementPdfExtractor(OpenAI(os.environ["OPENAI_API_KEY"]))
+    typesafe_key = os.environ.get("TYPESAFE_API_KEY")
+    if not typesafe_key:
+        log.warning("TYPESAFE_API_KEY가 없어 공급표를 늘 모델 단계로 처리합니다.")
+    extractor = AnnouncementPdfExtractor(OpenAI(os.environ["OPENAI_API_KEY"]),
+                                         Jev(typesafe_key) if typesafe_key else None)
 
     stop = threading.Event()
 

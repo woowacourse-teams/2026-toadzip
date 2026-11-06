@@ -66,6 +66,8 @@ class Grouped:
     compact: dict
     row_values: dict[str, dict[str, str]]
     warnings: list[str]
+    # 머리글이 있는 수량표마다 (표, 머리글 줄 수, 수량 필드 → 열). 열의 뜻은 호출하는 쪽이 Jev로 확인한다.
+    count_columns: list[tuple[SupplyTable, int, dict[str, int]]]
 
 
 def group(tables: list[SupplyTable], row_values: dict[str, dict[str, str]],
@@ -148,7 +150,13 @@ def group(tables: list[SupplyTable], row_values: dict[str, dict[str, str]],
     if total_pages:
         warnings.append(f"원본 {', '.join(map(str, total_pages))}쪽 전환보증금 열은 증액 한도가 아닌 전환 뒤 금액이라 "
                         "비워 두었습니다. 필요하면 원본에서 확인해 주세요.")
-    return Grouped({"data": {"rows": rows}, "sharedCounts": shared_counts}, row_values, warnings)
+    count_columns = []
+    for table in quantity_tables:
+        start = data_start(table.cells, table.columns)
+        if start > 0:  # 머리글 없는 이어짐 표는 앞 표와 같은 열이라 다시 묻지 않는다.
+            count_columns.append((table, start, {name: table.columns[name] for name in COUNT_FIELDS
+                                                 if name in table.columns}))
+    return Grouped({"data": {"rows": rows}, "sharedCounts": shared_counts}, row_values, warnings, count_columns)
 
 
 def assign_counts(quantities: list[SourceRow], rows: list[dict], item_indexes: dict[int, list[int]]) -> list[dict]:

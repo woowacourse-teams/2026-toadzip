@@ -104,3 +104,23 @@ def test_check_fails_without_leaking_password_when_login_fails(worker_database, 
 
     assert str(exit_.value.code).startswith("DB 접속 또는 ai_jobs 확인에 실패했습니다: ")
     assert "wrong-secret-password" not in str(exit_.value.code)
+
+
+@pytest.mark.parametrize("key, judged", [("typesafe-test-key", True), (None, False)])
+def test_jev_column_judge_is_used_only_when_its_key_is_set(environment, monkeypatch, key, judged):
+    if key:
+        monkeypatch.setenv("TYPESAFE_API_KEY", key)
+    else:
+        monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    extractors = []
+
+    def until_stopped(connect, extractor, stop):
+        extractors.append(extractor)
+        signal.raise_signal(signal.SIGTERM)
+        stop.wait(5)
+
+    monkeypatch.setattr(entry, "run", until_stopped)
+
+    entry.main([])
+
+    assert (extractors[0].column_judge is not None) is judged
