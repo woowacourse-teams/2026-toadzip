@@ -21,6 +21,39 @@ docker compose --env-file infra/monitoring/.env -f compose.monitoring.yaml up -d
 docker compose --env-file infra/monitoring/.env -f compose.monitoring.yaml down
 ```
 
+## Blue/Green 메트릭 수집
+
+Prometheus는 애플리케이션 서버의 `8081/actuator/prometheus`에서 메트릭을 수집한다.
+Edge Nginx가 이 요청을 현재 API 요청을 받는 백엔드의 관리 포트 `8081`로 전달한다.
+메트릭은 Caddy를 거치지 않으며 두 색상이 모두 실행 중이어도 활성 색상 한쪽만 수집한다.
+색상 전환 중에도 대상 주소와 `job`·`environment`·`application`·`instance` 라벨을 유지한다.
+
+### 설정의 역할
+
+| 설정 | 동작과 이유 |
+|---|---|
+| 애플리케이션 서버 `.env`의 `BLUEGREEN_METRICS_BIND_ADDRESS` | 모니터링 서버가 접근하는 **애플리케이션 서버 자신의 사설 IP**다. 모니터링 서버 IP나 공개 IP, `0.0.0.0`을 넣지 않는다. 서버 overlay에서 필수이며 미설정 시 Compose 구성을 중단한다. 보안 그룹의 포트 소스도 모니터링 서버로 제한해야 한다. |
+| `MANAGEMENT_PORT` | 호스트 수집 포트다. 기본값 `8081`을 유지한다. 기존 Prometheus 대상과 다른 값으로 바꾸지 않는다. |
+| `compose.caddy-server.yaml` | Edge에 위 주소·포트를 연결하고 legacy `backend`의 호스트 `8080`·`8081` 포트는 공개하지 않는다. 컨테이너 내부 포트와 일반 로컬 Compose 구성은 유지한다. |
+| `backend_metrics_active` | API용 `backend_active`와 같은 컨테이너를 가리키고 관리 포트만 `8081`을 사용한다. 배포·색상 전환·수동 롤백에서 두 경로를 하나의 설정 파일로 함께 바꾼다. |
+| 메트릭 전용 listener | `8081`에서 정확히 `/actuator/prometheus`만 전달하고 다른 경로는 404로 거부한다. 공개 HTTP·HTTPS 경로에 관리 API를 추가하지 않는다. |
+| `keepalive_timeout 0` | 메트릭 클라이언트 연결을 계속 유지하지 않아 전환 후 이전 worker에 수집 요청이 머무르는 것을 방지한다. |
+| 연결·응답 제한과 우회 금지 | 연결 3초·응답 대기 5초를 적용하고 proxy cache와 다음 upstream 재시도를 끈다. 활성 앱 장애를 이전 색상이나 캐시 응답으로 숨기지 않는다. |
+| `X-Toadzip-Metrics-Upstream` | 관리 응답에 실제 upstream 주소를 기록한다. 배포 도구가 선택한 컨테이너의 IP·포트와 비교해 잘못된 수집 대상을 거부한다. |
+
+배포 전에는 서버 Compose가 요구하는 Edge 관리 포트가 실제로 같은 주소·포트에 연결됐는지 확인한다.
+전환 후에는 실제 API 도착과 함께 메트릭의 upstream·Content-Type·Prometheus 형식을 확인한다.
+후보 메트릭 검증에 실패하면 이전 API·메트릭 설정으로 함께 복구하고 기존 컨테이너를 정지하지 않는다.
+
+활성 백엔드만 수집하므로 후보의 전환 전 지표와 이전 백엔드가 마무리하는 요청의 최종 지표는 모두 보존되지
+않을 수 있다. 전환 시 JVM 값과 누적 카운터의 출처도 바뀌므로 전환 구간의 요청률·지연은 배포 기록과 함께
+해석한다. `up=1`은 메트릭 수집 성공이며 사용자 요청의 정상 처리 여부는 API 확인과 함께 판단한다.
+
+로컬 회귀 검사는 `python3 -B tests/deployment/test_bluegreen.py`와 `test_rollback_bluegreen.py`로 실행한다.
+실제 Nginx·Prometheus 검사는 `python3 -B tests/deployment/test_bluegreen_drain.py`에 포함되어 있다.
+실행 조건과 격리·정리 범위는 [검증 안내](../../tests/README.md#긴-요청정적-파일-버전원복-통합-검증)를 따른다.
+로컬 검증은 실제 DEV·운영의 수집, 접근 제한과 DB 호환성 검증을 대신하지 않는다.
+
 ## API·부하테스트 대시보드
 
 `Toadzip API · 부하테스트`는 기존 Backend·Logs 대시보드와 별개다.
@@ -122,6 +155,18 @@ MBean 활성화를 확인할 수 없다. 전체 환경변수·비밀번호를 �
 프론트엔드 이미지를 다시 빌드·배포하면 Nginx access 로그가 JSON으로 기록된다.
 `infra/alloy/config.alloy`를 각 애플리케이션 서버에 반영한 뒤 Alloy 컨테이너를 재생성한다.
 `DEPLOY_ENVIRONMENT`는 서버별 dev·prod 값을 유지한다. 실제 서비스 배포와 Alloy 재시작은 함께 확인한다.
+
+Blue/Green 서버에서는 실행 중인 두 색상의 로그를 모두 수집한다. 메트릭의 활성 색상 선택과 별개다.
+
+- Docker 서비스 필터는 기존 `backend`, `frontend`와 각각의 `-blue`, `-green`만 선택한다.
+- 백엔드는 `service=backend`, 프론트는 `service=nginx`로 정규화하여 기존 Grafana 조회식과 로그 처리 규칙을 유지한다.
+  필터만 늘리고 서비스 이름을 그대로 두면 색상별 예외 묶기와 Nginx stderr 제외 규칙이 적용되지 않는다.
+- 색상별 서비스에는 `color=blue|green`을 추가하고 기존 `container` 라벨도 유지한다. 기존 서비스에는 색상 라벨을 강제하지 않는다.
+  기존 조회식으로 두 색상을 함께 볼 수 있고 필요할 때만 색상이나 컨테이너로 좁힌다.
+
+설정 파일 반영 후에는 실제 서버의 기존 프로젝트와 Compose 파일 조합에서 `alloy`만
+`up -d --no-deps --no-build --pull never --force-recreate`한다. 파일 bind mount가 이전 파일을 가리키는 경우를
+피하도록 재생성하며 `alloy_data` 볼륨은 유지한다. 이후 새 로그가 올바른 환경과 기존 서비스 라벨로 Loki에 도착하는지 확인한다.
 
 - 백엔드 예외와 스택은 최대 256줄·3초 범위에서 한 이벤트로 묶는다. 과거 로그는 다시 묶이지 않는다.
 - Nginx는 method·URI·status·전체 시간·upstream 시간을 전송한다. URI의 쿼리 값은 제외한다.

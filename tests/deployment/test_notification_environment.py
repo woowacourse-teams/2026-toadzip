@@ -81,6 +81,7 @@ class NotificationEnvironmentTests(unittest.TestCase):
     def test_credentials_reach_both_colors_with_caddy_server_overlay(self):
         services = configuration({**SERVER_PUSH,
                                   'TOADZIP_CADDY_DOMAIN': 'dev.bokduckbang.com',
+                                  'BLUEGREEN_METRICS_BIND_ADDRESS': '127.0.0.1',
                                   'SPRING_PROFILES_ACTIVE': 'dev',
                                   'NOTIFICATION_FIREBASE_CREDENTIALS_FILE': '/tmp/fixture-adc.json'},
                                  ('compose.bluegreen.yaml', 'compose.caddy-server.yaml',
@@ -119,6 +120,7 @@ class NotificationEnvironmentTests(unittest.TestCase):
                 services = configuration({**SERVER_PUSH,
                                           'SPRING_PROFILES_ACTIVE': environment,
                                           'TOADZIP_CADDY_DOMAIN': 'notification.example.invalid',
+                                          'BLUEGREEN_METRICS_BIND_ADDRESS': '127.0.0.1',
                                           'NOTIFICATION_FIREBASE_CREDENTIALS_FILE': '/tmp/fixture-adc.json'},
                                          ('compose.bluegreen.yaml', *overlays))
                 base = services['backend']

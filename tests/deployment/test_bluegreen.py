@@ -18,6 +18,9 @@ CONFIG = """upstream frontend_active {
 upstream backend_active {
     server backend-blue:8080;
 }
+upstream backend_metrics_active {
+    server backend-blue:8081;
+}
 """
 
 
@@ -38,6 +41,8 @@ class Harness(module.Deployment):
         self.commands.append(args)
         if args[0] == "ps":
             return args[-1]
+        if args[0] == "config":
+            return '{"services":{"edge-nginx":{}}}'
         if args[0] == "up":
             self.recreations.append((args[-1], environment))
             if self.failure == "candidate":
@@ -65,6 +70,9 @@ class Harness(module.Deployment):
 
     def docker(self, *args, **kwargs):
         self.commands.append(args)
+        if args[:3] == ("inspect", "--format", "{{json .NetworkSettings.Networks}}"):
+            address = "10.1.0.2" if args[-1].endswith("-blue") else "10.1.0.3"
+            return json.dumps({"fixture": {"IPAddress": address}})
         if args[:3] == ("inspect", "--format", "{{json .Mounts}}"):
             directory = str(self.directory)
             if self.failure == "mount":
@@ -98,6 +106,15 @@ class Harness(module.Deployment):
         if args[0] == "logs":
             return self.probe.get(args[-1], "")
         if args[0] == "exec":
+            if args[2:4] == ("sh", "-c"):
+                active = module.metrics_service(self.config.read_text())
+                address = "10.1.0.2" if active.endswith("-blue") else "10.1.0.3"
+                if self.failure == "metrics-route" and active.endswith("-green"):
+                    address = "10.1.0.2"
+                body = "# TYPE fixture_requests_total counter\nfixture_requests_total 1\n"
+                if self.failure == "metrics-body" and active.endswith("-green"):
+                    body = "not a metrics response"
+                return "  X-Toadzip-Metrics-Upstream: " + address + ":8081\n  Content-Type: text/plain; version=0.0.4\n" + body
             if args[2] == "cat":
                 return self.config.read_text()
             if args[2:4] == ("nginx", "-t"):
@@ -339,6 +356,46 @@ class FrontendAssetTests(unittest.TestCase):
 
 class BackendDeploymentTests(DeploymentTests):
     service = "backend"
+
+    def test_switch_updates_api_and_metrics_together(self):
+        changed = module.replace_service(CONFIG, 'backend-green', 'backend')
+        self.assertIn('server backend-green:8080;', changed)
+        self.assertIn('server backend-green:8081;', changed)
+
+    def test_missing_or_mismatched_metrics_configuration_blocks_candidate(self):
+        for configuration in (CONFIG.split('upstream backend_metrics_active')[0],
+                              CONFIG.replace('server backend-blue:8081;', 'server backend-green:8081;')):
+            self.runner.config.write_text(configuration)
+            with self.assertRaisesRegex(module.DeploymentError, 'metrics'):
+                self.runner.run()
+        self.assertEqual(self.runner.recreations, [])
+
+    def test_wrong_metrics_target_or_response_restores_both_paths(self):
+        for failure in ('metrics-route', 'metrics-body'):
+            with self.subTest(failure=failure):
+                self.runner.config.write_text(CONFIG)
+                self.runner.served = 'backend-blue'
+                self.runner.failure = failure
+                with self.assertRaisesRegex(module.DeploymentError, 'previous route restored'):
+                    self.runner.run()
+                self.assertEqual(self.runner.config.read_text(), CONFIG)
+                self.assertEqual(self.runner.stopped, set())
+
+    def test_missing_or_changed_management_binding_blocks_deployment(self):
+        self.runner.edge = 'edge-nginx'
+        configuration = {'services': {'edge-nginx': {'ports': [
+            {'target': 8081, 'published': '8081', 'host_ip': '10.1.0.8'}]}}}
+        for bindings in ({}, {'8081/tcp': [{'HostIp': '127.0.0.1', 'HostPort': '8081'}]},
+                         {'8081/tcp': [{'HostIp': '10.1.0.8', 'HostPort': '8082'}]}):
+            with self.subTest(bindings=bindings):
+                with patch.object(self.runner, 'compose', return_value=json.dumps(configuration)), \
+                     patch.object(module, 'docker', return_value=json.dumps(bindings)):
+                    with self.assertRaisesRegex(module.DeploymentError, 'binding'):
+                        self.runner.check_metrics_binding()
+        with patch.object(self.runner, 'compose', return_value=json.dumps(configuration)), \
+             patch.object(module, 'docker', return_value=json.dumps(
+                 {'8081/tcp': [{'HostIp': '10.1.0.8', 'HostPort': '8081'}]})):
+            self.runner.check_metrics_binding()
 
     def test_management_health_failure_prevents_switch(self):
         self.runner.failure = "management"

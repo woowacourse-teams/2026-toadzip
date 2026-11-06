@@ -7,13 +7,22 @@ discovery.relabel "backend" {
 
   rule {
     source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
-    regex         = "backend|frontend"
+    regex         = "(backend|frontend)(-(blue|green))?"
     action        = "keep"
   }
 
   rule {
     source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    regex         = "(backend|frontend)(-(blue|green))?"
     target_label  = "service"
+    replacement   = "$1"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    regex         = "(?:backend|frontend)-(blue|green)"
+    target_label  = "color"
+    replacement   = "$1"
   }
 
   rule {

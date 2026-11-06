@@ -22,6 +22,7 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 SHA = 'a' * 40
 CONFIG = 'upstream frontend_active { server frontend-blue:8080; }\nupstream backend_active { server backend-blue:8080; }\n'
+CONFIG += 'upstream backend_metrics_active { server backend-blue:8081; }\n'
 
 
 class Runner:
@@ -161,6 +162,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(result['route_source'], 'runtime-config')
         self.assertTrue(result['routes_verified'])
         self.assertEqual(result['routes'], {'backend': 'backend-green', 'frontend': 'frontend-green'})
+        self.assertEqual(bluegreen.metrics_service(self.release.runners['backend'].config.read_text()), 'backend-green')
         self.assertNotIn('never-log-this-fixture', self.output.getvalue())
 
     def test_invalid_revision_or_local_changes_stop_before_any_build(self):

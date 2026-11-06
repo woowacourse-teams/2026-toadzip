@@ -1,7 +1,8 @@
 # Caddy 서버 진입점
 
 개발·운영 EC2에서 `Client -> Caddy(:443) -> edge-nginx:81 -> frontend/backend:8080` 경로를 사용한다.
-[서버 overlay](../../compose.caddy-server.yaml)는 공개 80·443을 Caddy에 배정하고 프론트의 호스트 포트를 제거한다.
+[서버 overlay](../../compose.caddy-server.yaml)는 공개 80·443을 Caddy에 배정하고 프론트·legacy 백엔드의 호스트 포트를 제거한다.
+메트릭 수집 포트는 Edge에 연결한다. 수집 경로와 접근 제한은 [메트릭 수집 운영](monitoring.md#bluegreen-메트릭-수집)을 따른다.
 [로컬 overlay](../../compose.caddy.yaml)의 127.0.0.1:18443 설정은 그대로 유지한다.
 
 ## 설정
@@ -12,6 +13,7 @@
 ```dotenv
 SPRING_PROFILES_ACTIVE=dev
 TOADZIP_CADDY_DOMAIN=dev.bokduckbang.com
+BLUEGREEN_METRICS_BIND_ADDRESS=<application_private_ip>
 EDGE_NGINX_CONF_DIR=/absolute/checkout/infra/runtime/bluegreen/edge
 EDGE_NGINX_ASSET_DIR=/absolute/checkout/infra/runtime/bluegreen/assets
 COMPOSE_FILE=compose.yaml:compose.bluegreen.yaml:compose.caddy-server.yaml:compose.notification-credentials.yaml
@@ -24,6 +26,7 @@ ADMIN_CORS_ALLOWED_ORIGIN=https://dev.bokduckbang.com
 DB·OAuth·알림 등 기존 서버 값은 보존한다. Firebase 인증파일은 해당 환경의 기존 관리 파일 경로를 지정하고 backend UID 10001의 읽기 권한을 확인한다.
 다른 인증정보 overlay가 필요하면 해당 파일도 명시한다.
 기본 경로를 사용하면 위 `EDGE_NGINX_*` 두 항목은 생략할 수 있다.
+`BLUEGREEN_METRICS_BIND_ADDRESS`는 이 EC2의 사설 IP이며 서버 overlay에서 필수다.
 `python3 -B scripts/prepare-bluegreen.py`가 `infra/runtime/bluegreen/edge/default.conf`와 `assets/`를 준비한다.
 서버 overlay는 준비된 경로가 없으면 적용에 실패한다. 자세한 준비는 [배포 도구](../../scripts/README.md#linux-프론트백엔드-bluegreen-도구)를 따른다.
 동작 중인 런타임의 활성 색상을 Git 템플릿으로 덮어쓰지 않는다.

@@ -10,6 +10,7 @@ import shutil
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlencode
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('backend_check', ROOT / 'tests/deployment/test_backend_bluegreen.py')
@@ -36,12 +37,16 @@ class Handler(BaseHTTPRequestHandler):
             body = json.dumps({'color': os.environ['COLOR']}).encode()
         elif path in ('/api/health', '/actuator/health'):
             body = b'{"status":"UP"}'
+        elif path == '/actuator/prometheus':
+            if Path('/control/fail-metrics-' + os.environ['COLOR']).exists():
+                self.send_error(503); return
+            body = ('# TYPE fixture_backend gauge\\nfixture_backend{color="' + os.environ['COLOR'] + '"} 1\\n').encode()
         elif path == '/api/v1/announcements':
             body = b'{"data":{}}'
         else:
             self.send_error(404); return
         self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Type', 'text/plain; version=0.0.4' if path == '/actuator/prometheus' else 'application/json')
         self.send_header('Content-Length', str(len(body)))
         self.end_headers(); self.wfile.write(body)
     def log_message(self, fmt, *args):
@@ -100,6 +105,16 @@ class DrainCheck(module.BackendCheck):
             self.command(['docker', 'build', '--pull=false', '-f', str(build / 'Dockerfile.frontend'), '-t', tag, str(build)])
             self.frontends[version] = self.docker('image', 'inspect', '--format', '{{.Id}}', tag)
         self.environment.update(FRONTEND_BLUE_IMAGE=self.frontends['v1'], FRONTEND_GREEN_IMAGE=self.frontends['v2'])
+        (self.runtime / 'prometheus.yml').write_text('''global:
+  scrape_interval: 1s
+  scrape_timeout: 1s
+scrape_configs:
+  - job_name: backend
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['edge-nginx:8081']
+        labels: {environment: dev}
+''')
         self.fixture.write_text(f'''services:
   backend-blue:
     entrypoint: [python3, -u, /fixture-server.py]
@@ -134,6 +149,13 @@ class DrainCheck(module.BackendCheck):
       - target: 80
         published: '0'
         host_ip: 127.0.0.1
+  prometheus-fixture:
+    image: prom/prometheus:v3.14.0
+    volumes: ['{self.runtime}/prometheus.yml:/etc/prometheus/prometheus.yml:ro']
+    ports:
+      - target: 9090
+        published: '0'
+        host_ip: 127.0.0.1
 ''')
 
     def start_cli(self):
@@ -142,7 +164,10 @@ class DrainCheck(module.BackendCheck):
         empty.touch()
         args = ['docker', 'run', '-d', '--name', self.cli, '--network', self.project + '_default',
                 '-v', '/var/run/docker.sock:/var/run/docker.sock', '-v', f'{ROOT}:{ROOT}:ro',
-                '-v', f'{self.runtime}:{self.runtime}', '-v', f'{empty}:{ROOT}/.env:ro', '-w', str(ROOT)]
+                '-v', f'{self.runtime}:{self.runtime}', '-w', str(ROOT)]
+        # 실제 .env는 가리되 읽기 전용 체크아웃 아래에 없는 마운트 지점을 만들지 않는다.
+        if (ROOT / '.env').exists() or (ROOT / '.env').is_symlink():
+            args += ['-v', f'{empty}:{ROOT}/.env:ro']
         for key, value in self.environment.items():
             if key not in ('PATH', 'HOME', 'TMPDIR', 'DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_CONFIG'):
                 args += ['-e', key + '=' + value]
@@ -176,6 +201,21 @@ class DrainCheck(module.BackendCheck):
 
     def running(self, service):
         return self.docker('inspect', '--format', '{{.State.Running}}', self.container(service)) == 'true'
+
+    def metrics_query(self, expression):
+        with urllib.request.urlopen(self.prometheus + '/api/v1/query?' + urlencode({'query': expression}), timeout=5) as response:
+            return json.load(response)['data']['result']
+
+    def check_metrics(self, color):
+        def collected():
+            try:
+                result = self.metrics_query('up{job="backend",environment="dev"}')
+                return (len(result) == 1 and result[0]['value'][1] == '1'
+                        and result[0]['metric']['instance'] == 'edge-nginx:8081'
+                        and bool(self.metrics_query('fixture_backend{color="' + color + '"}')))
+            except (urllib.error.URLError, TimeoutError):
+                return False
+        self.until(collected)
 
     def begin_slow(self, name):
         for prefix in ('started-', 'release-'):
@@ -249,10 +289,13 @@ class DrainCheck(module.BackendCheck):
         try:
             print('Building isolated Linux fixtures', flush=True)
             self.build_fixtures()
-            self.compose('up', '-d', '--no-build', '--no-deps', '--wait', 'backend-blue', 'frontend-blue', 'edge-nginx')
+            self.compose('up', '-d', '--no-build', '--no-deps', '--wait', 'backend-blue', 'frontend-blue', 'edge-nginx', 'prometheus-fixture')
             binding = json.loads(self.docker('inspect', '--format', '{{json .NetworkSettings.Ports}}', self.container('edge-nginx')))['80/tcp'][0]
             self.url = 'http://127.0.0.1:' + binding['HostPort']
+            binding = json.loads(self.docker('inspect', '--format', '{{json .NetworkSettings.Ports}}', self.container('prometheus-fixture')))['9090/tcp'][0]
+            self.prometheus = 'http://127.0.0.1:' + binding['HostPort']
             self.start_cli()
+            self.check_metrics('blue')
             self.check_frontend_probe_log()
             self.long_deploy('frontend', self.frontends['v2'], lambda: self.version() == 'v2')
             self.check_assets(('v1', 'v2'))
@@ -266,9 +309,27 @@ class DrainCheck(module.BackendCheck):
             self.check_assets(('v1', 'v2', 'v3'))
             print('PASS: exact stopped image rollback and assets retained across three versions', flush=True)
             self.long_deploy('backend', self.image_id, lambda: json.loads(self.request('/api/color')[1])['color'] == 'green')
+            self.check_metrics('green')
             self.invoke('switch', 'backend', color='blue')
+            self.check_metrics('blue')
             assert not self.running('backend-green')
             print('PASS: long backend request completes before stop; stopped backend rollback', flush=True)
+            self.docker('start', self.container('backend-green'))
+            self.until(lambda: self.docker('inspect', '--format', '{{.State.Health.Status}}', self.container('backend-green')) == 'healthy')
+            self.check_metrics('blue')
+            failure_file = self.control / 'fail-metrics-green'
+            failure_file.touch()
+            rejected = self.invoke('switch', 'backend', color='green', check=False)
+            assert rejected.returncode != 0 and 'previous route restored' in rejected.stderr
+            self.check_metrics('blue')
+            assert self.running('backend-blue')
+            failure_file.unlink()
+            # 활성 Blue가 중지된 동안 정상 대기 중인 Green을 유지한다.
+            self.docker('stop', '--time', '10', self.container('backend-blue'))
+            self.until(lambda: self.metrics_query('up{job="backend",environment="dev"}')[0]['value'][1] == '0')
+            self.docker('start', self.container('backend-blue'))
+            self.check_metrics('blue')
+            print('PASS: one fixed scrape target follows active color, rejects bad metrics and exposes active failure with healthy standby', flush=True)
             pending = self.begin_slow('frontend')
             failure = self.invoke('deploy', 'frontend', image=self.frontends['v2'], timeout=1, check=False)
             assert failure.returncode != 0 and 'previous route restored' in failure.stderr

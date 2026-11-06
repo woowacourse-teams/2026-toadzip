@@ -11,7 +11,7 @@ python3 -B scripts/prepare-bluegreen.py
 
 | 경로 | 역할 |
 | --- | --- |
-| `bluegreen/edge/default.conf` | 현재 프론트·백엔드 연결 색상. Docker에 읽기 전용으로 연결 |
+| `bluegreen/edge/default.conf` | 현재 프론트·백엔드와 메트릭 연결 색상. Docker에 읽기 전용으로 연결 |
 | `bluegreen/assets/` | 이전·현재 프론트의 해시 정적 파일 |
 | `bluegreen/deploy.lock` | 수동·CI 배포의 공통 잠금 |
 | `bluegreen/*.conf.bak` | 전환 이전 Nginx 설정 |
