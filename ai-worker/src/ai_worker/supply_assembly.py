@@ -13,6 +13,7 @@ from ai_worker.source_check import (
 )
 
 
+_RESULT_FIELD = {"lhSourceRow": "sourceRow"}
 _ROW_FIELDS = ("totalSupplyHouseholdCount", "exclusiveArea", "commonArea", "supplyArea", "constructedHouseholdCount")
 
 
@@ -107,7 +108,8 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
                 group["rowValues"][field] = value
             elif group["rowValues"][field] != value:
                 group["rowValues"][field] = None
-                path = f"supplyRows[{group_index}].{field}"
+                # 모델의 LH 행 번호(lhSourceRow)는 결과에서 sourceRow다.
+                path = f"supplyRows[{group_index}].{_RESULT_FIELD.get(field, field)}"
                 unresolved.append({"path": path, "reason": "같은 주택형 행에서 서로 다른 값이 나와 미확인으로 남김"})
 
         # 코드가 표에서 읽을 때 하나로 정하지 못한 값은 그 경로의 미확인으로 남긴다.
@@ -145,7 +147,8 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
         row = {
             "complexReference": {"sourceComplexName": group["complexName"]},
             "sourceHousingTypeName": group["housingType"],
-            "lhSourceRow": group["rowValues"].get("lhSourceRow"),
+            # 모델은 LH 틀 목록 번호를 lhSourceRow로 쓴다. 결과의 sourceRow는 source_frame이 원천 행 식별자로 바꾼다.
+            "sourceRow": group["rowValues"].get("lhSourceRow"),
             "expectedMoveInMonth": group["rowValues"].get("expectedMoveInMonth"),
             "totalSupplyHouseholdCount": _compact_number(group["rowValues"].get("totalSupplyHouseholdCount"),
                                                          "totalSupplyHouseholdCount"),

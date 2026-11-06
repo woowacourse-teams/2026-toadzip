@@ -100,16 +100,16 @@ def _check_quotes(evidence: list[dict], texts: list[str], warnings: list[str]) -
 
 
 def _check_lh_counts(rows: list[dict], lh_types: list[str], lh_counts: list[int | None], warnings: list[str]) -> None:
-    """공급행은 lhSourceRow(LH API 행의 1부터 센 번호)로 LH 행을 가리킨다. 통합된 LH 행 하나가 PDF에서 주택형별로 나뉘면
+    """공급행은 sourceRow(식별자로 바꾸기 전의 LH API 행 1부터 센 번호)로 LH 행을 가리킨다. 통합된 LH 행 하나가 PDF에서 주택형별로 나뉘면
     여러 공급행이 같은 번호를 쓴다. 번호가 없거나 범위 밖인 행, 공급행이 없는 LH 행, LH 모집수와 다른 PDF 모집수(나뉜 행은 합계)를
     경고로 알린다. 모집수 차이는 PDF와 API 중 하나를 확인할 일이지 PDF 값을 못 쓰는 것은 아니다."""
     if not lh_counts:
         return
     groups: dict[int, list[int]] = {}
     for index, row in enumerate(rows):
-        number = row.get("lhSourceRow")
+        number = row.get("sourceRow")
         if not isinstance(number, int) or isinstance(number, bool) or not 1 <= number <= len(lh_counts):
-            warnings.append(f"supplyRows[{index}].lhSourceRow: LH API 공급행 번호가 없거나 범위를 벗어남({number})")
+            warnings.append(f"supplyRows[{index}].sourceRow: LH API 공급행 번호가 없거나 범위를 벗어남({number})")
             continue
         groups.setdefault(number, []).append(index)
     for number, (type_name, expected) in enumerate(zip(lh_types, lh_counts, strict=True), start=1):

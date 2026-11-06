@@ -66,7 +66,7 @@ def test_result_has_contract_keys_and_original_page_numbers():
     # LH 행 없이 모델이 쓴 LH 행 번호는 가리킬 LH 행이 없어 비운다.
     assert len(tree["data"]["supplyRows"]) == 1
     assert tree["data"]["supplyRows"][0]["sourceHousingTypeName"] is None
-    assert tree["data"]["supplyRows"][0]["lhSourceRow"] is None
+    assert tree["data"]["supplyRows"][0]["sourceRow"] is None
     assert tree["data"]["supplyRows"][0]["totalSupplyHouseholdCount"] is None
     assert tree["data"]["supplyRows"][0]["targets"] == []
     assert {key: value for key, value in tree["data"].items() if key not in ("supplyRows", "unresolvedFields")} == {
@@ -136,7 +136,7 @@ def test_merged_lh_row_split_by_pdf_housing_types_keeps_counts_and_source_row():
 
     assert "[LH 공급 API 행]\n1. 주택형=51 | 전용= | 공급= | 모집수=240" in stage_prompt(model, "supply")
     rows = json.loads(result["json"])["data"]["supplyRows"]
-    assert [(row["sourceHousingTypeName"], row["lhSourceRow"], row["totalSupplyHouseholdCount"]) for row in rows] == [
+    assert [(row["sourceHousingTypeName"], row["sourceRow"], row["totalSupplyHouseholdCount"]) for row in rows] == [
         (None, MERGED, None), (None, MERGED, None), (None, MERGED, None)]
     assert any("같은 의미의 원문 표 열에서 확인되지 않음" in item["reason"]
                for item in json.loads(result["json"])["data"]["unresolvedFields"])
@@ -170,8 +170,8 @@ def test_lh_source_row_number_is_returned_as_that_rows_identifier():
         job(pdf(COVER, SUPPLY, RENT), job_input))
 
     rows = json.loads(result["json"])["data"]["supplyRows"]
-    assert [row["lhSourceRow"] for row in rows] == ["LH:P:SUPPLY:3", "LH:P:SUPPLY:1", None]
-    assert "supplyRows[2].lhSourceRow: LH API 공급행 번호가 없거나 범위를 벗어남(3)" in result["warnings"]
+    assert [row["sourceRow"] for row in rows] == ["LH:P:SUPPLY:3", "LH:P:SUPPLY:1", None]
+    assert "supplyRows[2].sourceRow: LH API 공급행 번호가 없거나 범위를 벗어남(3)" in result["warnings"]
 
 
 def test_shared_count_for_several_types_stays_one_row_without_warning():
@@ -185,7 +185,7 @@ def test_shared_count_for_several_types_stays_one_row_without_warning():
         job(pdf(COVER, SUPPLY, RENT), MERGED_LH_INPUT))
 
     [row] = json.loads(result["json"])["data"]["supplyRows"]
-    assert (row["lhSourceRow"], row["totalSupplyHouseholdCount"], len(row["subtypes"])) == (MERGED, None, 2)
+    assert (row["sourceRow"], row["totalSupplyHouseholdCount"], len(row["subtypes"])) == (MERGED, None, 2)
     assert "supplyRows[0].totalSupplyHouseholdCount" in {
         item["path"] for item in json.loads(result["json"])["data"]["unresolvedFields"]
     }
@@ -423,6 +423,42 @@ def test_supply_table_the_code_can_read_skips_the_supply_model_call():
     assert result["usage"] == USAGE
 
 
+def test_gh_frame_rows_keep_the_code_path_and_link_the_grouped_row_by_district_and_type():
+    model = FakeModel()
+    job_input = {"sourceSupplyRows": [
+        {"source": "GH", "order": 0, "rowIdentifier": "GH:9:Test:26A", "complexLabel": "Test", "typeName": "26A 청년",
+         "exclusiveArea": "", "supplyArea": "", "suppliedUnitCount": "20", "totalUnitCount": ""},
+        {"source": "GH", "order": 1, "rowIdentifier": "GH:9:Test:36A", "complexLabel": "Test", "typeName": "36A",
+         "exclusiveArea": "", "supplyArea": "", "suppliedUnitCount": "5", "totalUnitCount": ""}]}
+
+    result = AnnouncementPdfExtractor(model, FakeJudge()).extract(job(structured_table_pdf(), job_input))
+
+    assert len(model.prompts) == 1 and "[추출 단계: 공고 본문]" in model.prompts[0]
+    assert [row["sourceRow"] for row in json.loads(result["json"])["data"]["supplyRows"]] == ["GH:9:Test:26A"]
+    assert "PDF에서 찾지 못한 GH 공급행 틀 1개: Test 36A" in result["warnings"]
+    assert not any("LH API" in warning for warning in result["warnings"])
+
+
+def test_gh_frame_is_not_sent_to_the_supply_model_and_a_model_row_number_is_not_kept():
+    # Jev가 수량 열을 확인하지 못해 공급표를 모델이 읽어도 GH 틀은 프롬프트에 넣지 않는다. 모델이 쓴 번호는 GH 행을 가리키지 않는다.
+    supply = {"data": {"complexes": [], "unresolvedFields": [], "supplyRows": [{
+        "complexReference": {"sourceComplexName": "Test"}, "sourceHousingTypeName": "26A", "lhSourceRow": 1,
+        "totalSupplyHouseholdCount": 20, "subtypes": [], "targets": [{"target": "청년"}]}]},
+        "sharedCounts": [], "notApplicable": [], "evidence": [],
+        "sourceRows": [{"path": "supplyRows[0]", "rowIds": ["P1:T1:R2"]},
+                       {"path": "supplyRows[0].targets[0]", "rowIds": ["P1:T1:R2"]}]}
+    model = FakeModel(stage_contents={"supply": json.dumps(supply, ensure_ascii=False)})
+    job_input = {"sourceSupplyRows": [
+        {"source": "GH", "order": 0, "rowIdentifier": "GH:9:Test:26A", "complexLabel": "Test", "typeName": "26A 청년",
+         "exclusiveArea": "", "supplyArea": "", "suppliedUnitCount": "20", "totalUnitCount": ""}]}
+
+    result = AnnouncementPdfExtractor(model, FakeJudge(choice="existing_waitlist")).extract(job(structured_table_pdf(), job_input))
+
+    assert "[LH 공급 API 행]" not in stage_prompt(model, "supply")
+    assert [row["sourceRow"] for row in json.loads(result["json"])["data"]["supplyRows"]] == ["GH:9:Test:26A"]
+    assert not any("LH API" in warning or "GH 공급행 틀" in warning for warning in result["warnings"])
+
+
 def test_supply_table_continued_without_header_and_a_tableless_next_page_reach_the_result():
     document = pymupdf.open()
     grid_page(document, [
@@ -552,7 +588,7 @@ SOURCE_CHECKED_TREE = {'data': {'announcement': {'name': 'Sample Notice'},
                          'parkingCount': 30}],
           'supplyRows': [{'complexReference': {'sourceComplexName': ''},
                           'sourceHousingTypeName': None,
-                          'lhSourceRow': None,
+                          'sourceRow': None,
                           'expectedMoveInMonth': None,
                           'totalSupplyHouseholdCount': None,
                           'exclusiveArea': None,
@@ -569,7 +605,7 @@ SOURCE_CHECKED_TREE = {'data': {'announcement': {'name': 'Sample Notice'},
                                        'applicationCondition': None}]},
                          {'complexReference': {'sourceComplexName': 'Test'},
                           'sourceHousingTypeName': '26A',
-                          'lhSourceRow': None,
+                          'sourceRow': None,
                           'expectedMoveInMonth': None,
                           'totalSupplyHouseholdCount': None,
                           'exclusiveArea': None,

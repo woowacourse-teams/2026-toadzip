@@ -13,7 +13,7 @@ Postgres `ai_jobs` 작업 큐를 처리하는 Python 워커다. Spring은 작업
 - `src/ai_worker/supply_assembly.py`: 짧은 공급행 목록을 관리자 계약의 공급행·단지로 조립하고(`assemble`), 값마다 그 칸이 있는 원문 표 행을 근거로 둔다. 원문 대조 검산(`source_check.py`)은 여기서 한 번만 한다.
 - `src/ai_worker/source_check.py`: 공급행 값을 같은 의미의 원문 표 칸과 대조하고(`check_source_rows`), 확인하지 못한 값은 비우고 미확인으로 남긴다.
 - `src/ai_worker/merge.py`: 공급 단계와 본문 단계 결과를 합치고(`merge`) 단지 경로를 합친 순번으로 고친다.
-- `src/ai_worker/lh.py`: Spring이 넘긴 LH 공급 API 행을 읽고, 결과의 LH 행 번호를 Spring 식별자로 바꾼다.
+- `src/ai_worker/source_frame.py`: Spring이 넘긴 기관 공급 원천 행(`SourceFrame`)을 읽는다. LH 행은 공급 단계 모델의 틀로 주고 결과의 LH 행 번호를 Spring 식별자로 바꾸며, GH 공급행 틀은 결과 공급행과 지구명·주택형으로 맞춰 식별자를 채운다(`sourceRow`).
 - `src/ai_worker/prompts/`: 추출 프롬프트·응답 스키마와 텍스트 입력용 앞뒤 문구. 모델·문구·쪽 입력을 바꾸면 대표 PDF로 정확도를 다시 확인한다.
 
 스키마는 Spring Flyway가 관리한다. 워커는 `toadzip_ai_worker` 역할로 접속하고, 이 역할은 `ai_jobs`를 읽고 상태·결과 열만 고칠 수 있다.

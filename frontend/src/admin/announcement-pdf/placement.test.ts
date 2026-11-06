@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { daegu } from './fixtures/workspace'
+import { daegu, ghFrame } from './fixtures/workspace'
 import { chooseCellValue, assembleReview, createReview, pendingItems, placementMode, placementProblems, rebaseReview, ReviewError, type Review } from './review'
 import { includeRow, keepMerged, placeRow, splitMerged } from './placement'
 import { complexCorrespondence, offerResult, offerSummary, placementDoubt } from './correspondence'
@@ -192,4 +192,53 @@ it('나누기를 고르면 고르지 않은 모집수는 PDF 값으로 정하되
   const request = assembleReview(split, workspace, evidence)
   expect(request.correction.rows.filter(row => row.saveMode === 'SPLIT').map(row => [row.id, row.householdCount])).toEqual([[747, 200], [null, 26], [null, 15]])
   expect(pendingItems(split, true, workspace).map(item => item.id)).toContain('cell:supplyRows[0].totalSupplyHouseholdCount')
+})
+
+it('기관 중립 이름(sourceRow)으로 받은 LH 행 식별자도 이전 결과(lhSourceRow)와 같이 통합행 분리로 둔다', () => {
+  const renamed = daegu({ lhSourceRow: true, sourceKey: 'sourceRow' }).review, legacy = daegu({ lhSourceRow: true }).review
+  expect(modes(renamed)).toEqual(modes(legacy))
+  expect(renamed.rows.map(row => [row.proposal.lhRow, row.proposal.reason])).toEqual(legacy.rows.map(row => [row.proposal.lhRow, row.proposal.reason]))
+})
+
+it('표기·면적으로 고를 수 없는 GH 공급행 틀은 그대로 두면 새 행으로 추가된다', () => {
+  const { review } = ghFrame()
+  expect(review.rows.map(row => row.proposal.destination)).not.toContain('row:901')
+})
+
+it('AI가 GH 틀 행 키로 표시한 PDF 행은 작업실의 그 틀 행을 고치는 것으로 제안하고 LH 문구를 쓰지 않는다', () => {
+  const { review, workspace } = ghFrame({ sourceRow: true })
+  expect(modes(review)).toEqual([['UPDATE', 'row:901'], ['UPDATE', 'row:902']])
+  expect(review.rows.every(row => row.proposal.needsConfirmation && row.proposal.reason.includes("GH 공급행 틀 '36") && !/LH/.test(row.proposal.reason))).toBe(true)
+  expect(review.rows.every(row => row.proposal.saveMode === undefined && row.proposal.lhRow === undefined)).toBe(true)
+  const request = assembleReview(pickCounts(review), workspace, evidence)
+  expect(request.correction.rows.map(row => [row.id, row.saveMode, row.householdCount])).toEqual([[901, undefined, 20], [902, undefined, 10]])
+})
+
+it('작업실에 없는 GH 틀 행 키는 쓰지 않는다', () => {
+  const { review } = ghFrame({ sourceRow: true })
+  const stale = structuredClone(review.extraction)
+  stale.supplyRows.forEach(row => { row.values.sourceRow = 'GH:801:없는 지구:36A' })
+  const { workspace, housing } = ghFrame()
+  expect(createReview(stale, workspace, housing).rows.map(row => row.proposal.destination)).not.toContain('row:901')
+})
+
+it('다른 PDF 행이 표기로 이미 고른 GH 틀 행은 AI가 가리켜도 한 틀 행을 두 행이 고치지 않게 따르지 않는다', () => {
+  const { review, workspace, housing } = ghFrame({ sourceRow: true })
+  const pointed = structuredClone(review.extraction)
+  pointed.supplyRows[0].typeName = '36A 청년'
+  delete pointed.supplyRows[0].values.sourceRow
+  pointed.supplyRows[1].values.sourceRow = 'GH:801:수원 광교:36A'
+  const destinations = createReview(pointed, workspace, housing).rows.map(row => row.proposal.destination)
+  expect(destinations[0]).toBe('row:901')
+  expect(destinations[1]).not.toBe('row:901')
+})
+
+it('표기 매칭이 다른 기존 행을 고른 PDF 행은 AI의 GH 지정을 따르지 않는다', () => {
+  const { review, workspace, housing } = ghFrame({ sourceRow: true })
+  const pointed = structuredClone(review.extraction)
+  pointed.supplyRows[0].typeName = '36C 신혼부부'
+  pointed.supplyRows[1].values.sourceRow = null
+  const rows = createReview(pointed, workspace, housing).rows
+  expect(rows[0].proposal.destination).toBe('row:902')
+  expect(rows[0].proposal.reason).not.toContain('GH 공급행 틀')
 })

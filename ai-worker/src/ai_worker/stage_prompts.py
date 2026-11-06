@@ -6,7 +6,8 @@
 import json
 from importlib.resources import files
 
-from ai_worker import lh, pages
+from ai_worker import pages
+from ai_worker.source_frame import SourceSupplyRow
 
 _PROMPTS = files("ai_worker") / "prompts"
 
@@ -49,7 +50,7 @@ def _project_complex_schema(schema: dict, fields: tuple[str, ...]) -> dict:
     return item
 
 
-def supply_prompt(rows: list[lh.LhSupplyRow], selected: pages.PromptPages) -> str:
+def supply_prompt(rows: list[SourceSupplyRow], selected: pages.PromptPages) -> str:
     lh_frame = ""
     if rows:
         frame = "\n".join(

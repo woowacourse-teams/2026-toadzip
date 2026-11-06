@@ -2,7 +2,7 @@
 
 이 모듈은 실행 흐름만 맡는다. 쪽 선택은 pages, 공급표를 코드와 모델 중 어디서 읽을지는 supply_sources,
 본문 단계 프롬프트는 stage_prompts, 두 단계 결과 합치기는 merge가 한다.
-LH 공고는 이미 수집한 공급행 틀을 함께 준다. 모델·문구·쪽 입력을 바꾸면 대표 PDF로 정확도를 다시 확인한다.
+LH·GH 공고는 이미 수집한 공급행 틀을 함께 준다(source_frame). 모델·문구·쪽 입력을 바꾸면 대표 PDF로 정확도를 다시 확인한다.
 """
 
 import json
@@ -10,7 +10,7 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from ai_worker import checks, lh, merge, openai, pages, stage_prompts, supply_sources
+from ai_worker import checks, merge, openai, pages, source_frame, stage_prompts, supply_sources
 from ai_worker.extraction import ATTEMPT_BUDGET, PermanentError
 from ai_worker.jobs import Job
 
@@ -34,7 +34,8 @@ class AnnouncementPdfExtractor:
             raise PermanentError("UNSUPPORTED_JOB", "이 워커가 처리하지 않는 작업입니다.")
         # 시도 예산은 PDF 처리부터 잰다. 모델 호출만 재면 큰 PDF의 쪽 처리 시간만큼 마감을 넘는다.
         deadline = time.monotonic() + ATTEMPT_BUDGET.total_seconds()
-        rows = lh.lh_rows(job.input)
+        frame = source_frame.SourceFrame.read(job.input)
+        rows = frame.lh_rows
         model_cutoff = deadline - MIN_MODEL_TIME
         document = pages.open_pdf(job.pdf)
         with document:
@@ -71,11 +72,11 @@ class AnnouncementPdfExtractor:
         warnings += merge_warnings
         warnings += checks.review(tree, list(range(1, len(texts) + 1)), texts, [row.type_name for row in rows],
                                   [row.count() for row in rows], selected.rental_rows)
-        lh.link_lh_rows(tree, rows)
+        warnings += frame.link(tree)
         checks.normalize_note_paths(tree, warnings)
         usage = _combined_usage(*supply.usage, notice_reply.usage)
-        log.info("작업 %d 추출 완료 pages=%d/%d tableRows=%d lhRows=%d warnings=%d supply=%s usage=%s", job.id,
-                 len(selection.pages), len(texts), len(selected.supply_row_ids), len(rows), len(warnings),
+        log.info("작업 %d 추출 완료 pages=%d/%d tableRows=%d frameRows=%d warnings=%d supply=%s usage=%s", job.id,
+                 len(selection.pages), len(texts), len(selected.supply_row_ids), len(frame), len(warnings),
                  supply.kind, usage)
         return {
             "json": json.dumps(tree, ensure_ascii=False),

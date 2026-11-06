@@ -81,8 +81,8 @@ public class AnnouncementPdfExtractionService {
         PdfExtractionJob job = PdfExtractionJob.requestedByAdmin(announcementId, admin,
                 PdfExtractionSource.of(fileName, pdf), objectMapper.writeValueAsString(input), clock.instant());
         PdfExtractionJob saved = save(job);
-        log.info("event=announcement.pdf_extraction.requested announcementId={} jobId={} lhSupplyRows={}",
-                announcementId, saved.getId(), input.lhSupplyRows().size());
+        log.info("event=announcement.pdf_extraction.requested announcementId={} jobId={} sourceSupplyRows={}",
+                announcementId, saved.getId(), input.sourceSupplyRows().size());
         return response(PdfExtractionJobView.of(saved));
     }
 

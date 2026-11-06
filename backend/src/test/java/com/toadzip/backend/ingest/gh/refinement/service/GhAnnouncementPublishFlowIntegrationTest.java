@@ -23,6 +23,7 @@ import com.toadzip.backend.ingest.gh.collection.service.GhAnnouncementCollection
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -139,6 +140,24 @@ class GhAnnouncementPublishFlowIntegrationTest {
         assertThat(rows(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(right);
         assertThat(rows(id)).extracting(row -> row.get("total_supply_household_count")).containsExactly(120, 60);
         assertThat(supplyRecheckRequired(id)).isFalse();
+    }
+
+    @Test
+    void GH_공급행_틀은_작업실에_GH_원천_행_키를_함께_내보낸다() throws Exception {
+        collect(ROW);
+        owned(ownership, refinement::refineAll);
+        long id = announcementId();
+
+        var workspace = data("/api/admin/announcements/" + id + "/supply-corrections");
+
+        var keys = new ArrayList<String>();
+        workspace.path("rows").forEach(row -> keys.add(row.path("key").asText()));
+        var sources = new ArrayList<List<String>>();
+        workspace.path("rowSources").forEach(source -> sources.add(List.of(source.path("rowKey").asText(),
+                source.path("category").asText(), source.path("sourceKey").asText())));
+        assertThat(sources).containsExactly(
+                List.of(keys.get(0), "GH_ANNOUNCEMENT", "GH:801:다산 센트럴파크6단지:33A"),
+                List.of(keys.get(1), "GH_ANNOUNCEMENT", "GH:801:다산 센트럴파크6단지:36A"));
     }
 
     private long complex(String name) {

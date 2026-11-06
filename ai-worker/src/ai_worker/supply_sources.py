@@ -11,8 +11,8 @@ from dataclasses import dataclass, replace
 from typing import Protocol
 
 from ai_worker import checks, jev, pages, stage_prompts, supply_grouping
-from ai_worker.lh import LhSupplyRow
 from ai_worker.openai import Reply
+from ai_worker.source_frame import SourceSupplyRow
 from ai_worker.supply_assembly import assemble
 
 log = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ class CodeSupply:
 class ModelSupply:
     """공급 단계 모델 호출. 만들 때 호출을 보내 본문 단계 호출과 같은 마감 안에서 병렬로 돈다."""
 
-    def __init__(self, model: Model, rows: list[LhSupplyRow], selected: pages.PromptPages, deadline: float,
+    def __init__(self, model: Model, rows: list[SourceSupplyRow], selected: pages.PromptPages, deadline: float,
                  pool: Executor):
         self._selected = selected
         self._future = pool.submit(model.chat, stage_prompts.supply_prompt(rows, selected), deadline)
@@ -85,14 +85,15 @@ class SupplyPlan:
     start에서 Jev로 수량 열의 뜻을 확인해 CodeSupply나 ModelSupply를 돌려준다.
     first_pages는 공고 앞 쪽 원문이다(예비자만 모집하는 공고인지 본다)."""
 
-    def __init__(self, model: Model, column_judge: ColumnJudge | None, rows: list[LhSupplyRow],
+    def __init__(self, model: Model, column_judge: ColumnJudge | None, rows: list[SourceSupplyRow],
                  selected: pages.PromptPages, first_pages: list[str]):
         self._model = model
         self._column_judge = column_judge
         self._rows = rows
         self._selected = selected
         self._first_pages = first_pages
-        # LH 공고는 모델이 LH API 행 번호(lhSourceRow)로 공급행을 나누고 맞추므로 모델 단계를 그대로 쓴다.
+        # LH 공고는 모델이 LH API 행 번호로 공급행을 나누고 맞추므로 모델 단계를 그대로 쓴다. rows는 LH 행만이다.
+        # GH 틀은 코드로 묶은 공급행에 결과를 만든 뒤 맞추므로(source_frame) 코드 경로를 막지 않는다.
         self._grouped = None if rows else supply_grouping.group(
             selected.supply_tables, selected.supply_row_values, selected.tableless_supply_pages)
 
