@@ -42,6 +42,7 @@ export function AdminLayout() {
   const menuId = useId()
   const menuButton = useRef<HTMLButtonElement>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => { setMenuOpen(false) }, [location.pathname])
   // 직접 펼친 메뉴 묶음은 다른 메뉴로 이동해도 접지 않는다. 현재 화면이 든 묶음은 이동할 때 펼친다.
@@ -49,8 +50,8 @@ export function AdminLayout() {
     : memberLinks.some(([path]) => location.pathname.startsWith(path)) ? 'member' : null
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => activeGroup ? { [activeGroup]: true } : {})
   useEffect(() => { if (activeGroup) setOpenGroups(groups => groups[activeGroup] ? groups : { ...groups, [activeGroup]: true }) }, [activeGroup])
-  const groupProps = (key: string) => ({ open: Boolean(openGroups[key]),
-    onToggle: (event: React.SyntheticEvent<HTMLDetailsElement>) => { const open = event.currentTarget.open; setOpenGroups(groups => groups[key] === open ? groups : { ...groups, [key]: open }) } })
+  const groupProps = (key: string) => ({ open: collapsed || Boolean(openGroups[key]),
+    onToggle: (event: React.SyntheticEvent<HTMLDetailsElement>) => { if (collapsed) return; const open = event.currentTarget.open; setOpenGroups(groups => groups[key] === open ? groups : { ...groups, [key]: open }) } })
 
   function handleLogout() {
     void signOut()
@@ -72,11 +73,19 @@ export function AdminLayout() {
   }
 
   return (
-    <div className={`admin-layout ${styles.layout}`}><a className="admin-skip" href="#admin-main">본문으로 건너뛰기</a>
+    <div className={`admin-layout ${styles.layout}`} data-collapsed={collapsed}><a className="admin-skip" href="#admin-main">본문으로 건너뛰기</a>
       <header className="admin-header">
         <div className="admin-brand">
           <BrandLink to="/admin/operations" label="관리자 운영 홈으로" />
           <span className="admin-brand-context">관리자 페이지</span>
+          {/* 메뉴 접기는 메뉴 폭과 같은 로고 줄 오른쪽 끝에 둔다. 메뉴 안에 따로 줄을 차지하지 않는다. */}
+          <button type="button" className={styles.collapseButton} aria-label={collapsed ? '메뉴 펼치기' : '메뉴 접기'}
+            title={collapsed ? '메뉴 펼치기' : '메뉴 접기'} aria-expanded={!collapsed} aria-controls={menuId} onClick={() => setCollapsed(value => !value)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" />
+              <path d={collapsed ? 'm13 9 3 3-3 3' : 'm16 9-3 3 3 3'} />
+            </svg>
+          </button>
         </div>
         <button className={styles.menuButton} ref={menuButton} type="button" aria-expanded={menuOpen}
           aria-controls={menuId} onClick={() => setMenuOpen(value => !value)}>

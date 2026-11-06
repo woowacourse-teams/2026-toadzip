@@ -152,9 +152,10 @@
   .editorBody > :global(.admin-registration-page) { padding: 20px 16px; }
   .editor :global(.registration-grid) { grid-template-columns: minmax(0, 1fr); }
   .editor :global(.admin-save-bar) { margin-inline: -16px; padding-inline: 16px; }
-  .editor :global(.management-heading) { flex-direction: row; padding: 22px 18px; }
   .editor :global(.management-heading) h2 { font-size: 20px; }
-  .editor :global(.management-detail[data-resource='announcements'] .management-heading) { padding: var(--ds-space-4); }
+  /* 좁은 화면에서는 제목을 한 줄 전체로 두고 작업 버튼은 그 아래로 내린다. */
+  .editor :global(.management-heading), .editor :global(.management-detail[data-resource='announcements'] .management-heading) { flex-direction: column; flex-wrap: wrap; padding: var(--ds-space-4); }
+  .editor :global(.management-heading) > div:first-child, .editor :global(.management-detail[data-resource='announcements'] .management-heading) > div:first-child { flex: none; width: 100%; }
   .editor :global(.admin-section-tabs) { flex-wrap: nowrap; padding: 0 18px; gap: 18px; }
   .editor :global(.management-detail-content) { padding: 22px 18px; }
 }

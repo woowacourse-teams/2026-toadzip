@@ -29,7 +29,7 @@
 .morePanel > label:not(.review) { width: 180px; color: var(--ds-color-label); font-size: var(--admin-text-meta, 13px); }
 @container (max-width: 640px) {
   .filters > label, .filters > label.search { flex: 1 1 100%; max-width: none; }
-  .actions { margin-left: 0; }
+
   .morePanel > label:not(.review) { flex: 1 1 100%; width: auto; }
 }
 .results { position: relative; min-width: 0; }
@@ -48,6 +48,8 @@
 .table tr > :first-child { padding-left: var(--admin-list-inset); }
 .table tr > :last-child { padding-right: var(--admin-list-inset); }
 .table th:first-child { position: sticky; left: 0; z-index: 1; }
+/* 가로로 스크롤할 때 고정한 이름 열과 뒤 열이 섞여 보이지 않게 경계선을 둔다. */
+.table tbody th[scope=row], .table:has(.check) thead th:nth-child(2), .table:not(:has(.check)) thead th:first-child { box-shadow: inset -1px 0 var(--ds-color-divider); }
 .table thead th:first-child { z-index: 3; }
 .table tbody th { background: var(--ds-color-surface); font-weight: 600; }
 .table tbody th, .table tbody td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

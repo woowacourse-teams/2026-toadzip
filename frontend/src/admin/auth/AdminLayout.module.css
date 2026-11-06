@@ -32,6 +32,26 @@
 .layout :global(.admin-header) { position:sticky; top:0; z-index:30; display:flex; flex-direction:row; align-items:center; gap:32px; padding:0 32px 0 24px; min-height:0; background:linear-gradient(90deg, var(--ds-color-surface) var(--admin-nav-width), var(--admin-canvas) var(--admin-nav-width)); border-bottom:0; }
 .layout :global(.admin-brand) { width:calc(var(--admin-nav-width) - 24px); box-sizing:border-box; flex:none; }
 .layout :global(.admin-brand-context) { font-size:13px; font-weight:650; color:var(--ds-color-label); }
+.collapseButton { display:flex; flex:none; align-items:center; justify-content:center; width:32px; height:32px; margin-left:auto; padding:0; border:0; border-radius:var(--ds-radius-control); background:transparent; color:var(--ds-color-muted); cursor:pointer; }
+.layout :global(.admin-header) .collapseButton { min-height:0; padding:0; border:0; background:transparent; }
+.collapseButton:hover, .layout :global(.admin-header) .collapseButton:hover { background:var(--ds-color-surface-subtle); color:var(--ds-color-text); }
+/* 접힌 메뉴: 아이콘 열만 남기고, 이름은 다른 메뉴에 잠시 머물렀을 때 말풍선으로 띄운다(지금 있는 메뉴는 띄우지 않는다). */
+@media(min-width:761px) {
+ .layout[class][data-collapsed=true] { --admin-nav-width:88px; }
+ .layout[data-collapsed=true] :global(.admin-header) { padding-left:28px; }
+ .layout[data-collapsed=true] :global(.admin-brand) { width:auto; }
+ .layout[data-collapsed=true] :global(.admin-brand) > :not(.collapseButton) { display:none; }
+ .layout[data-collapsed=true] :global(.admin-navigation) { gap:12px; padding:8px 10px 20px; overflow:visible; }
+ .layout[data-collapsed=true] :global(.admin-nav-group)>span, .layout[data-collapsed=true] .navTools>summary { display:none; }
+ .layout[data-collapsed=true] :global(.admin-navigation) a { position:relative; justify-content:center; padding:12px; }
+ .layout[data-collapsed=true] .menuLabel { display:none; position:absolute; z-index:20; left:calc(100% + 8px); padding:8px 12px; border-radius:var(--ds-radius-control); background:var(--ds-color-text); color:var(--ds-color-surface); font-weight:500; white-space:nowrap; box-shadow:0 4px 12px #0002; }
+ .layout[data-collapsed=true] a:not([aria-current=page]):hover .menuLabel { display:block; animation:menuLabelIn .12s ease-out .35s both; }
+ .layout[data-collapsed=true] a:focus-visible .menuLabel { display:block; }
+ .layout[data-collapsed=true] .navTools { border-top:1px solid var(--ds-color-divider); padding-top:12px; }
+ .layout[data-collapsed=true] .navTools :global(.admin-nav-group) { margin:0; }
+}
+@keyframes menuLabelIn { from { opacity:0; } to { opacity:1; } }
+@media (prefers-reduced-motion: reduce) { .layout[data-collapsed=true] a:not([aria-current=page]):hover .menuLabel { animation-duration:0s; } }
 .layout :global(.admin-header-account) { margin-left:auto; min-width:0; gap:12px; font-size:12px; }
 .layout :global(.admin-header-account)>span { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ds-color-muted); }
 .layout :global(.admin-header) button { min-height:36px; padding:7px 12px; border:1px solid var(--ds-color-border-base); border-radius:var(--ds-radius-control); background:var(--ds-color-surface); color:var(--ds-color-label); font:inherit; font-size:12px; cursor:pointer; }
@@ -93,6 +113,7 @@
  .layout :global(.admin-header-account) { width:auto; }
  .layout :global(.admin-header-account)>span { display:none; }
  .layout .menuButton { display:inline-flex; }
+ .collapseButton { display:none; }
  /* 모바일 메뉴는 본문을 밀어내지 않고 왼쪽에서 덮는 서랍으로 연다. 항목 모양은 데스크톱 메뉴와 같다. */
  .layout :global(.admin-navigation) { display:flex; position:fixed; inset:var(--admin-header-height) auto auto 0; z-index:60; width:min(300px, 85vw); height:calc(100dvh - var(--admin-header-height)); box-sizing:border-box; flex-direction:column; align-items:stretch; gap:16px; margin:0; padding:20px 16px; overflow-y:auto; border:0; box-shadow:0 0 32px rgb(15 23 42 / 18%); transform:translateX(-100%); visibility:hidden; transition:transform .2s ease, visibility .2s; }
  .layout :global(.admin-navigation)[data-open=true] { transform:none; visibility:visible; }
@@ -101,6 +122,8 @@
  .layout :global(.admin-nav-group)>span { display:block; }
  .layout :global(.admin-content) { padding:20px 16px 48px; }
  .layout :global(.admin-content) h1 { font-size:22px; }
+ /* 좁은 화면에서는 제목 줄 버튼이 다음 줄로 내려가므로 높이를 고정하지 않는다. */
+ .layout[class] :global(.admin-content) > * > header:has(> h1, > div > h1) { height:auto; min-height:36px; flex-wrap:wrap; }
 }
 
 
