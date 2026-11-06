@@ -1,6 +1,6 @@
 import json
-import re
 import time
+from importlib.resources import files
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -8,25 +8,15 @@ import pymupdf
 
 import pytest
 
-from ai_worker import announcement, checks, jev, pages, supply_grouping
-from ai_worker.announcement import AnnouncementPdfExtractor, LhSupplyRow
-from ai_worker.openai import Reply
+from ai_worker import announcement, jev, tables
+from ai_worker.announcement import AnnouncementPdfExtractor
 from ai_worker import openai
-from ai_worker.extraction import ATTEMPT_BUDGET, PermanentError
+from ai_worker.extraction import ATTEMPT_BUDGET, PermanentError, TransientError
 from ai_worker.jobs import Job
-from conftest import contract_example
-from test_pages import COVER, NOTICE, RENT, RENT_CELLS, SUPPLY, pdf as text_pdf
+from conftest import (COVER, EXTRACTION, NOTICE, RENT, RENT_CELLS, SUPPLY, USAGE, FakeJudge, FakeModel, contract_example,
+                      grid_page, text_pdf, two_quantity_tables_pdf)
 
-USAGE = {"promptTokens": 9000, "outputTokens": 3000, "thinkingTokens": 500}
-EXTRACTION = {
-    "data": {"announcement": {"name": "여수미평1 영구임대주택 예비입주자 모집"},
-             "receptionPlace": {"name": None, "method": None, "address": None, "contact": None, "url": None}, "complexes": [],
-             "supplyRows": [{"sourceHousingTypeName": "16A", "lhSourceRow": 1, "totalSupplyHouseholdCount": 78}], "schedules": []},
-    "sharedCounts": [], "notApplicable": [],
-    "evidence": [{"path": "supplyRows[0]", "page": 2, "quote": "공용 26.37 298"}],
-}
-
-
+LH_FRAME = (files("ai_worker") / "prompts" / "lh-frame.txt").read_text(encoding="utf-8")
 def pdf(*texts: str) -> bytes:
     document = pymupdf.open()
     for text in texts:
@@ -51,122 +41,6 @@ def draw_grid(page: pymupdf.Page, rows: list[list[str]]) -> None:
     for row_index, row in enumerate(rows):
         for column, value in enumerate(row):
             page.insert_text((xs[column] + 2, ys[row_index] + 18), value, fontname="korea", fontsize=6)
-
-
-class FakeModel:
-    def __init__(self, content=json.dumps(EXTRACTION, ensure_ascii=False) + "\n뒤에 붙은 글", stage_contents=None):
-        self.content = content
-        self.stage_contents = stage_contents or {}
-        self.prompts = []
-        self.deadlines = []
-
-    def chat(self, prompt, deadline):
-        self.prompts.append(prompt)
-        self.deadlines.append(deadline)
-        stage = "supply" if "[추출 단계: 공급 표]" in prompt else "notice"
-        if stage in self.stage_contents:
-            expected = ({"complexes": list, "supplyRows": list} if stage == "supply" else {
-                "announcement": dict, "receptionPlace": dict, "complexes": list,
-                "schedules": list, "unresolvedFields": list,
-            })
-            tree = checks.first_json_object(self.stage_contents[stage], expected)
-        else:
-            tree = stage_output(checks.first_json_object(self.content), stage, prompt)
-        if stage == "supply" and "rows" not in tree.get("data", {}):
-            tree = compact_stage_output(tree, prompt)
-        return Reply(json.dumps(tree, ensure_ascii=False) + "\n뒤에 붙은 글", USAGE)
-
-
-def stage_output(tree, stage, prompt):
-    data = tree["data"]
-    supply = stage == "supply"
-    fields = ("complexes", "supplyRows", "unresolvedFields") if supply else (
-        "announcement", "receptionPlace", "complexes", "schedules", "unresolvedFields")
-    result = {"data": {name: data.get(name, {} if name == "receptionPlace" else []) for name in fields}}
-    result["data"]["unresolvedFields"] = [
-        item for item in checks.objects(data.get("unresolvedFields"))
-        if ((supply and item.get("path", "").startswith(("supplyRows[", "complexes[")))
-            or (not supply and not item.get("path", "").startswith("supplyRows[")))
-    ]
-    root_fields = ("sharedCounts", "notApplicable", "evidence") if supply else ("notApplicable", "evidence")
-    for name in root_fields:
-        value = tree.get(name, [])
-        if name in ("notApplicable", "evidence"):
-            def belongs(item):
-                path = item.get("path", "")
-                is_supply_path = path.startswith("supplyRows[")
-                return is_supply_path if supply else not is_supply_path
-            value = [item for item in value if belongs(item)]
-        result[name] = value
-    if supply:
-        row_ids = re.findall(r"\[(P\d+:T\d+:R\d+)\]", prompt)
-        first_id = row_ids[:1]
-        source_rows = []
-        for index, row in enumerate(checks.objects(data.get("supplyRows"))):
-            source_rows.append({"path": f"supplyRows[{index}]", "rowIds": first_id})
-            for target_index, _ in enumerate(checks.objects(row.get("targets"))):
-                source_rows.append({"path": f"supplyRows[{index}].targets[{target_index}]", "rowIds": first_id})
-        result["sourceRows"] = source_rows
-    return result
-
-
-def compact_stage_output(tree, prompt):
-    data = tree["data"]
-    source_map = {item["path"]: item.get("rowIds", []) for item in tree.get("sourceRows", [])}
-    row_ids = re.findall(r"\[(P\d+:T\d+:R\d+)\]", prompt)
-    fallback_ids = row_ids[:1]
-    rows = []
-    base_fields = (
-        "totalSupplyHouseholdCount", "exclusiveArea", "commonArea", "supplyArea", "constructedHouseholdCount",
-        "expectedMoveInMonth", "lhSourceRow",
-    )
-    target_fields = (
-        "supplyHouseholdCount", "reserveCount", "rentalDeposit", "monthlyRent", "convertedDeposit",
-        "applicationCondition",
-    )
-    for index, row in enumerate(checks.objects(data.get("supplyRows"))):
-        base = {"rowIds": source_map.get(f"supplyRows[{index}]", fallback_ids)}
-        reference = row.get("complexReference")
-        if isinstance(reference, dict):
-            base["complexName"] = reference.get("sourceComplexName")
-        base["housingType"] = row.get("sourceHousingTypeName")
-        if row.get("subtypes"):
-            base["subtypes"] = row["subtypes"]
-        base.update({field: row[field] for field in base_fields if field in row and row[field] is not None})
-        targets = checks.objects(row.get("targets"))
-        if not targets:
-            rows.append(base)
-        for target_index, target in enumerate(targets):
-            compact = dict(base)
-            compact["rowIds"] = source_map.get(f"supplyRows[{index}].targets[{target_index}]", base["rowIds"])
-            compact["target"] = target.get("target")
-            compact.update({field: target[field] for field in target_fields
-                            if field in target and target[field] is not None})
-            rows.append(compact)
-    return {"data": {"rows": rows}}
-
-
-class FakeJudge:
-    """Jev 대역. 기본은 머리글대로(예비 → 새 예비자 수, 그 밖 → 당첨자 전체) 높은 확률로 답한다.
-    by_header로 특정 머리글에만 다른 뜻을 답하게 할 수 있다."""
-
-    def __init__(self, choice=None, probability=0.95, error=None, by_header=None):
-        self.choice, self.probability, self.error = choice, probability, error
-        self.by_header = by_header or {}
-        self.calls = []
-
-    def count_meanings(self, state, headers, reserve_only, timeout=None):
-        self.calls.append((state, headers, reserve_only))
-        if self.error:
-            raise self.error
-        result = {}
-        for key, header in headers.items():
-            choice = self.by_header.get(header) or self.choice or (
-                "new_reserve_this_notice" if "예비" in header else "winners_total_this_notice")
-            if reserve_only and choice in jev.WINNER_OPTIONS:
-                choice = "building_or_complex_size"  # 실제 Jev처럼 빠진 선택지는 답하지 않는다.
-            result[key] = jev.Meaning(choice, self.probability)
-        return result
 
 
 def stage_prompt(model, stage):
@@ -221,7 +95,7 @@ def test_lh_rows_are_sent_as_supply_row_frame_and_counts_are_checked():
     result = AnnouncementPdfExtractor(model).extract(job(pdf(COVER, SUPPLY, RENT), job_input))
 
     prompt = stage_prompt(model, "supply")
-    assert announcement.LH_FRAME in prompt
+    assert LH_FRAME in prompt
     assert "[LH 공급 API 행]\n1. 주택형=16A(대학생/청년) | 전용=16.37 | 공급=27.6384 | 모집수=78" in prompt
     assert any("LH API" in warning for warning in result["warnings"]) is False
 
@@ -323,7 +197,7 @@ def test_without_lh_rows_frame_is_not_sent():
     AnnouncementPdfExtractor(model).extract(job(pdf(COVER, SUPPLY, RENT), {"lhSupplyRows": []}))
 
     prompt = stage_prompt(model, "supply")
-    assert announcement.LH_FRAME not in prompt
+    assert LH_FRAME not in prompt
     assert "[LH 공급 API 행]" not in prompt
 
 
@@ -352,12 +226,6 @@ def test_other_job_kind_is_not_extracted():
     assert model.prompts == []
 
 
-def test_input_example_parses_as_lh_rows():
-    assert announcement.lh_rows(contract_example("input.example.json")) == [
-        LhSupplyRow("16A(대학생/청년)", "16.37", "27.6384", "78", "LH:2015122300018207:SUPPLY:0"),
-    ]
-
-
 def test_model_deadline_counts_from_attempt_start():
     model = FakeModel()
     started = time.monotonic()
@@ -367,6 +235,30 @@ def test_model_deadline_counts_from_attempt_start():
     assert len(model.deadlines) == 2
     budget = ATTEMPT_BUDGET.total_seconds() - openai.READ_TIMEOUT
     assert all(started + budget - 5 < deadline <= time.monotonic() + budget for deadline in model.deadlines)
+
+
+class StageFailingModel:
+    """공급 단계 호출은 일시 오류, 본문 단계 호출은 영구 오류로 끝나는 모델."""
+
+    def __init__(self):
+        self.prompts = []
+
+    def chat(self, prompt, deadline):
+        self.prompts.append(prompt)
+        if "[추출 단계: 공급 표]" in prompt:
+            raise TransientError("MODEL_TIMEOUT", "공급 단계 호출 시간 초과")
+        raise PermanentError("MODEL_REJECTED", "본문 단계 호출 거절")
+
+
+def test_supply_call_error_is_raised_before_the_notice_call_error():
+    # 공급 단계 호출 오류를 본문 단계 호출 오류보다 먼저 알려, 일시 오류인 작업이 재시도 없이 실패하지 않게 한다.
+    model = StageFailingModel()
+
+    with pytest.raises(TransientError) as error:
+        AnnouncementPdfExtractor(model).extract(job(pdf(COVER, SUPPLY, RENT)))
+
+    assert error.value.code == "MODEL_TIMEOUT"
+    assert len(model.prompts) == 2
 
 
 def test_slow_pdf_fails_before_paid_call(monkeypatch):
@@ -397,7 +289,7 @@ def test_unstructured_supply_table_fails_before_paid_call(monkeypatch):
 
 
 def test_text_only_supply_fallback_fails_before_paid_call(monkeypatch):
-    monkeypatch.setattr(pages, "detected_tables", lambda page: ([], False))
+    monkeypatch.setattr(tables, "detected_tables", lambda page: ([], False))
     model = FakeModel()
 
     with pytest.raises(PermanentError) as error:
@@ -409,153 +301,13 @@ def test_text_only_supply_fallback_fails_before_paid_call(monkeypatch):
 
 
 def test_missing_targets_against_rent_table_is_warning_not_failure(monkeypatch):
-    table = SimpleNamespace(to_markdown=lambda: "|표|", extract=lambda: RENT_CELLS)
-    monkeypatch.setattr(pymupdf.Page, "find_tables", lambda page: SimpleNamespace(tables=[table]))
-    monkeypatch.setattr(pages, "table_cells", lambda page, table: RENT_CELLS)
+    # 표 인식기가 쪽마다 좌표 없는 임대조건표 하나를 찾은 것처럼 한다(쪽 전체가 표 영역).
+    monkeypatch.setattr(tables, "detected_tables",
+                        lambda page: ([tables.DetectedTable(RENT_CELLS, tuple(page.rect))], False))
 
     result = AnnouncementPdfExtractor(FakeModel()).extract(job(pdf(COVER, SUPPLY, RENT)))
 
     assert "supplyRows: 공급대상 0개가 임대조건표 4줄보다 적어 빠진 대상이 있을 수 있음" in result["warnings"]
-
-
-def test_stage_prompts_include_projected_schema_and_separate_inputs():
-    rows = [LhSupplyRow("39", "39.95", "55.10", "20", "LH:P:SUPPLY:0"), LhSupplyRow("51A", "51.84", "71.0", "0", "LH:P:SUPPLY:1")]
-    selected = pages.PromptPages(text="all", rental_rows=0, supply_text="table rows", supply_pages=[4],
-                                 supply_row_ids=frozenset({"P4:T1:R2"}), supply_row_text={"P4:T1:R2": "row text"},
-                                 notice_text="body text", notice_pages=[1],
-                                 complex_candidates=["Complex 1"], table_structure_fallback=False,
-                                 ambiguous_supply_tables=False)
-
-    supply = announcement.build_supply_prompt(rows, selected)
-    notice = announcement.build_notice_prompt(selected)
-
-    assert "[추출 단계: 공급 표]" in supply and "[추출 단계: 공고 본문]" not in supply
-    assert "[공급 표에서 읽은 단지명 후보]\n- Complex 1" in notice
-    assert "[추출 단계: 공고 본문]" in notice and "table rows" not in notice
-    assert '"rowIds"' in supply and '"supplyRows"' not in supply and '"sourceRows"' not in supply
-    assert '"supplyRows"' not in notice
-    assert "1. 주택형=39 | 전용=39.95 | 공급=55.10 | 모집수=20" in supply
-
-
-def test_compact_supply_rows_are_assembled_from_cell_values_into_manager_contract():
-    selected = pages.PromptPages(
-        text="all", rental_rows=0, supply_text="table", supply_pages=[4],
-        supply_row_ids=frozenset({"P4:T1:R4", "P4:T1:R5"}),
-        supply_row_text={"P4:T1:R4": "Test\t26\t26A\t청년\t20", "P4:T1:R5": "Test\t26\t26A\t고령자\t3"},
-        notice_text="body", notice_pages=[1], complex_candidates=["Test"], table_structure_fallback=False,
-        ambiguous_supply_tables=False,
-        supply_row_values={
-            "P4:T1:R4": {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20",
-                          "exclusiveArea": "26", "commonArea": "15", "totalHouseholdCount": "100"},
-            "P4:T1:R5": {"complexName": "Test", "housingType": "26A", "target": "고령자", "reserveCount": "3",
-                          "totalHouseholdCount": "100"},
-        },
-    )
-    compact = {"data": {"rows": [
-        {"rowIds": ["P4:T1:R4"], "complexName": "Test", "housingType": "26A", "target": "청년",
-         "reserveCount": 20, "exclusiveArea": 26, "commonArea": 15},
-        {"rowIds": ["P4:T1:R5"], "complexName": "Test", "housingType": "26A", "target": "고령자", "reserveCount": 3},
-    ]}}
-
-    tree = announcement.compact_supply_tree(compact, selected)
-
-    assert len(tree["data"]["supplyRows"]) == 1
-    row = tree["data"]["supplyRows"][0]
-    assert row["complexReference"]["sourceComplexName"] == "Test"
-    assert row["sourceHousingTypeName"] == "26A"
-    assert [(target["target"], target["reserveCount"]) for target in row["targets"]] == [("청년", 20), ("고령자", 3)]
-    assert tree["data"]["complexes"] == [{
-        "sourceComplexName": "Test", "address": None, "totalHouseholdCount": 100, "parkingCount": None,
-    }]
-    assert {item["path"] for item in tree["evidence"]} >= {
-        "complexes[0]", "supplyRows[0]", "supplyRows[0].targets[0]", "supplyRows[0].targets[1]",
-    }
-
-
-def test_compact_target_removes_extraction_whitespace_around_parentheses():
-    selected = pages.PromptPages(
-        text="all", rental_rows=0, supply_text="table", supply_pages=[5],
-        supply_row_ids=frozenset({"P5:T1:R38"}),
-        supply_row_text={"P5:T1:R38": "Sample Complex\t18A2\t청년 ( 주거약자)\t3"},
-        notice_text="body", notice_pages=[1], complex_candidates=["Sample Complex"],
-        table_structure_fallback=False, ambiguous_supply_tables=False,
-        supply_row_values={"P5:T1:R38": {
-            "complexName": "Sample Complex", "housingType": "18A2", "target": "청년 ( 주거약자)",
-            "reserveCount": "3",
-        }},
-    )
-    compact = {"data": {"rows": [{
-        "rowIds": ["P5:T1:R38"], "complexName": "Sample Complex", "housingType": "18A2",
-        "target": "청년 ( 주거약자)", "reserveCount": 3,
-    }]}}
-
-    tree = announcement.compact_supply_tree(compact, selected)
-    row = tree["data"]["supplyRows"][0]
-    warnings = []
-    checks.check_supply_row(row, "supplyRows[0]", "", set(), warnings)
-
-    assert row["targets"][0]["target"] == "청년(주거약자)"
-    assert not any("target: 표기 규칙 위반" in warning for warning in warnings)
-
-
-def test_compact_supply_text_that_disagrees_with_source_cells_becomes_unresolved():
-    selected = pages.PromptPages(
-        text="all", rental_rows=0, supply_text="table", supply_pages=[4],
-        supply_row_ids=frozenset({"P4:T1:R4"}), supply_row_text={"P4:T1:R4": "Test\t26A\t청년\t20"},
-        notice_text="body", notice_pages=[1], complex_candidates=["Test"], table_structure_fallback=False,
-        ambiguous_supply_tables=False,
-        supply_row_values={"P4:T1:R4": {"complexName": "Test", "housingType": "26A", "target": "청년",
-                                         "reserveCount": "20"}},
-    )
-    compact = {"data": {"rows": [{"rowIds": ["P4:T1:R4"], "complexName": "Fake", "housingType": "26B",
-                                   "target": "고령자", "reserveCount": 99}]}}
-
-    tree = announcement.compact_supply_tree(compact, selected)
-
-    row = tree["data"]["supplyRows"][0]
-    assert row["complexReference"]["sourceComplexName"] == ""
-    assert row["sourceHousingTypeName"] is None
-    assert row["targets"][0]["target"] == ""
-    assert row["targets"][0]["reserveCount"] is None
-    assert {item["path"] for item in tree["data"]["unresolvedFields"]} >= {
-        "supplyRows[0].complexReference.sourceComplexName", "supplyRows[0].sourceHousingTypeName",
-        "supplyRows[0].targets[0].target", "supplyRows[0].targets[0].reserveCount",
-    }
-
-
-def test_compact_shared_count_is_mapped_to_each_target_without_copying_the_value():
-    selected = pages.PromptPages(
-        text="all", rental_rows=0, supply_text="table", supply_pages=[4],
-        supply_row_ids=frozenset({"P4:T1:R4", "P4:T1:R5", "P4:T1:R6"}),
-        supply_row_text={
-            "P4:T1:R4": "Test\t26A\t청년", "P4:T1:R5": "Test\t26A\t고령자",
-            "P4:T1:R6": "공통 예비입주자 모집수\t20",
-        },
-        notice_text="body", notice_pages=[1], complex_candidates=["Test"], table_structure_fallback=False,
-        ambiguous_supply_tables=False,
-        supply_row_values={
-            "P4:T1:R4": {"complexName": "Test", "housingType": "26A", "target": "청년"},
-            "P4:T1:R5": {"complexName": "Test", "housingType": "26A", "target": "고령자"},
-            "P4:T1:R6": {"reserveCount": "20"},
-        },
-    )
-    compact = {
-        "data": {"rows": [
-            {"rowIds": ["P4:T1:R4"], "complexName": "Test", "housingType": "26A", "target": "청년"},
-            {"rowIds": ["P4:T1:R5"], "complexName": "Test", "housingType": "26A", "target": "고령자"},
-        ]},
-        "sharedCounts": [{"rowIndexes": [0, 1], "field": "reserveCount", "count": 20,
-                          "rowIds": ["P4:T1:R6"]}],
-    }
-
-    tree = announcement.compact_supply_tree(compact, selected)
-
-    assert [target["reserveCount"] for target in tree["data"]["supplyRows"][0]["targets"]] == [None, None]
-    assert tree["sharedCounts"] == [{
-        "paths": ["supplyRows[0].targets[0].reserveCount", "supplyRows[0].targets[1].reserveCount"],
-        "count": 20, "page": 4, "quote": "공통 예비입주자 모집수\t20",
-    }]
-    assert not any(item["path"].endswith("reserveCount") for item in tree["data"]["unresolvedFields"])
 
 
 def structured_table_pdf():
@@ -670,20 +422,6 @@ def test_supply_table_the_code_can_read_skips_the_supply_model_call():
     assert result["usage"] == USAGE
 
 
-def grid_page(document, rows):
-    page = document.new_page()
-    xs = [20, 110, 200, 290, 380, 470, 575]
-    ys = [48 + 30 * index for index in range(len(rows) + 1)]
-    for x in xs:
-        page.draw_line((x, ys[0]), (x, ys[-1]))
-    for y in ys:
-        page.draw_line((xs[0], y), (xs[-1], y))
-    for row_index, row in enumerate(rows):
-        for column, value in enumerate(row):
-            page.insert_text((xs[column] + 2, ys[row_index] + 18), value, fontname="korea", fontsize=7)
-    return page
-
-
 def test_supply_table_continued_without_header_and_a_tableless_next_page_reach_the_result():
     document = pymupdf.open()
     grid_page(document, [
@@ -709,193 +447,6 @@ def test_supply_table_continued_without_header_and_a_tableless_next_page_reach_t
     assert len(judge.calls) == 1
 
 
-def test_complex_paths_are_remapped_before_stage_evidence_is_combined():
-    supply = {
-        "data": {
-            "announcement": {}, "receptionPlace": {}, "schedules": [], "unresolvedFields": [
-                {"path": "complexes[0].parkingCount", "reason": "공급 단계 확인 필요"}],
-            "complexes": [{"sourceComplexName": "Alpha", "totalHouseholdCount": 100, "parkingCount": None}],
-            "supplyRows": [{"complexReference": {"sourceComplexName": "Alpha"}, "targets": []}],
-        },
-        "sharedCounts": [],
-        "notApplicable": [{"path": "complexes[0].address", "reason": "공급 단계 주소 없음"}],
-        "evidence": [{"path": "complexes[0]", "page": 1, "quote": "Alpha"}],
-        "sourceRows": [],
-    }
-    notice = {
-        "data": {
-            "announcement": {"name": "Sample"}, "receptionPlace": {}, "schedules": [], "unresolvedFields": [
-                {"path": "complexes[0].parkingCount", "reason": "본문 확인 필요"}],
-            "complexes": [
-                {"sourceComplexName": "Beta", "address": "Beta Road", "totalHouseholdCount": 50, "parkingCount": 10},
-                {"sourceComplexName": "Alpha", "address": "Alpha Road", "totalHouseholdCount": 100, "parkingCount": 20},
-            ],
-        },
-        "notApplicable": [],
-        "evidence": [
-            {"path": "complexes[0]", "page": 1, "quote": "Beta"},
-            {"path": "complexes[1]", "page": 1, "quote": "Alpha"},
-        ],
-    }
-
-    tree, _ = announcement.merge_stages(supply, notice, {})
-
-    assert tree["data"]["complexes"][0]["sourceComplexName"] == "Alpha"
-    assert tree["data"]["complexes"][1]["sourceComplexName"] == "Beta"
-    assert {(item["path"], item["quote"]) for item in tree["evidence"]} == {
-        ("complexes[0]", "Alpha"), ("complexes[1]", "Beta"),
-    }
-    assert {item["path"] for item in tree["notApplicable"]} == {"complexes[0].address"}
-
-
-def test_missing_complex_values_are_reported_as_unresolved():
-    supply = {
-        "data": {
-            "complexes": [{"sourceComplexName": "Alpha", "totalHouseholdCount": None, "parkingCount": None}],
-            "supplyRows": [{"complexReference": {"sourceComplexName": "Alpha"}, "targets": []}],
-            "unresolvedFields": [],
-        },
-        "sharedCounts": [], "notApplicable": [], "evidence": [], "sourceRows": [],
-    }
-    notice = {
-        "data": {"announcement": {}, "receptionPlace": {}, "complexes": [], "schedules": [], "unresolvedFields": []},
-        "notApplicable": [], "evidence": [],
-    }
-
-    tree, _ = announcement.merge_stages(supply, notice, {})
-
-    assert {item["path"] for item in tree["data"]["unresolvedFields"]} >= {
-        "complexes[0].address", "complexes[0].totalHouseholdCount", "complexes[0].parkingCount",
-    }
-
-
-def test_supply_count_not_present_in_referenced_source_row_is_cleared_and_unresolved():
-    rows = [{"sourceHousingTypeName": "26A", "targets": [{"target": "청년", "reserveCount": 99}]}]
-    source_rows = {"supplyRows[0]": {"P1:T1:R2"}, "supplyRows[0].targets[0]": {"P1:T1:R2"}}
-    source_text = {"P1:T1:R2": "Test\t26A\t청년\t20"}
-    source_values = {"P1:T1:R2": {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20"}}
-    evidence = [
-        {"path": "supplyRows[0]", "page": 1, "quote": "Test 26A"},
-        {"path": "supplyRows[0].targets[0]", "page": 1, "quote": "26A 청년"},
-    ]
-    unresolved = []
-
-    warnings = announcement.check_source_rows(rows, source_rows, source_text, evidence, unresolved, source_values)
-
-    assert rows[0]["targets"][0]["reserveCount"] is None
-    assert {item["path"] for item in unresolved} == {"supplyRows[0].targets[0].reserveCount"}
-    assert any("reserveCount" in warning for warning in warnings)
-
-
-def test_supply_count_matching_a_different_source_cell_is_cleared_and_unresolved():
-    rows = [{"sourceHousingTypeName": "26A", "targets": [{"target": "청년", "reserveCount": 26}]}]
-    source_rows = {"supplyRows[0]": {"P1:T1:R2"}, "supplyRows[0].targets[0]": {"P1:T1:R2"}}
-    source_text = {"P1:T1:R2": "Test\t26A\t청년\t20"}
-    source_values = {"P1:T1:R2": {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20"}}
-    evidence = [
-        {"path": "supplyRows[0]", "page": 1, "quote": "Test 26A"},
-        {"path": "supplyRows[0].targets[0]", "page": 1, "quote": "26A 청년 20"},
-    ]
-    unresolved = []
-
-    warnings = announcement.check_source_rows(rows, source_rows, source_text, evidence, unresolved, source_values)
-
-    assert rows[0]["targets"][0]["reserveCount"] is None
-    assert "supplyRows[0].targets[0].reserveCount" in {item["path"] for item in unresolved}
-    assert any("reserveCount" in warning for warning in warnings)
-
-
-def test_non_numeric_supply_values_must_match_their_meaningful_source_cells():
-    rows = [{"complexReference": {"sourceComplexName": "Fake"}, "sourceHousingTypeName": "26B",
-             "targets": [{"target": "고령자", "reserveCount": 20}]}]
-    row_ids = {"P1:T1:R2"}
-    source_rows = {"supplyRows[0]": row_ids, "supplyRows[0].targets[0]": row_ids}
-    source_text = {"P1:T1:R2": "Test\t26A\t청년\t20"}
-    source_values = {"P1:T1:R2": {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20"}}
-    evidence = [
-        {"path": "supplyRows[0]", "page": 1, "quote": "Test 26A"},
-        {"path": "supplyRows[0].targets[0]", "page": 1, "quote": "청년 20"},
-    ]
-    unresolved = []
-
-    announcement.check_source_rows(rows, source_rows, source_text, evidence, unresolved, source_values)
-
-    assert rows[0]["complexReference"]["sourceComplexName"] == ""
-    assert rows[0]["sourceHousingTypeName"] is None
-    assert rows[0]["targets"][0]["target"] == ""
-    assert {item["path"] for item in unresolved} >= {
-        "supplyRows[0].complexReference.sourceComplexName", "supplyRows[0].sourceHousingTypeName",
-        "supplyRows[0].targets[0].target",
-    }
-
-
-def test_allowed_target_group_notation_normalization_is_preserved():
-    rows = [{"complexReference": {"sourceComplexName": "Test"}, "sourceHousingTypeName": "26A",
-             "targets": [{"target": "가군", "reserveCount": 20}]}]
-    row_ids = {"P1:T1:R2"}
-    source_rows = {"supplyRows[0]": row_ids, "supplyRows[0].targets[0]": row_ids}
-    source_text = {"P1:T1:R2": "Test\t26A\t「가」군\t20"}
-    source_values = {"P1:T1:R2": {
-        "complexName": "Test", "housingType": "26A", "target": "「가」군", "reserveCount": "20",
-    }}
-    evidence = [
-        {"path": "supplyRows[0]", "page": 1, "quote": "Test 26A"},
-        {"path": "supplyRows[0].targets[0]", "page": 1, "quote": "「가」군 20"},
-    ]
-    unresolved = []
-
-    announcement.check_source_rows(rows, source_rows, source_text, evidence, unresolved, source_values)
-
-    assert rows[0]["targets"][0]["target"] == "가군"
-    assert "supplyRows[0].targets[0].target" not in {item["path"] for item in unresolved}
-
-
-def test_unsupported_target_evidence_clears_numeric_values_and_marks_each_field_unresolved():
-    rows = [{"targets": [{"target": "청년", "reserveCount": 20, "rentalDeposit": 46920000}]}]
-    unresolved = []
-
-    announcement.check_source_rows(rows, {}, {}, [], unresolved)
-
-    assert rows[0]["targets"][0]["reserveCount"] is None
-    assert rows[0]["targets"][0]["rentalDeposit"] is None
-    assert {item["path"] for item in unresolved} >= {
-        "supplyRows[0].targets[0]", "supplyRows[0].targets[0].reserveCount", "supplyRows[0].targets[0].rentalDeposit",
-    }
-
-
-def test_three_conflicting_complex_values_remain_unresolved():
-    complexes = [
-        {"sourceComplexName": "Alpha", "address": "Road", "totalHouseholdCount": None, "parkingCount": None},
-        {"sourceComplexName": "Alpha", "address": "Other Road", "totalHouseholdCount": None, "parkingCount": None},
-        {"sourceComplexName": "Alpha", "address": "Third Road", "totalHouseholdCount": None, "parkingCount": None},
-    ]
-
-    merged, _, _, unresolved, _ = announcement.merge_complexes([], [], complexes)
-
-    assert merged[0]["address"] is None
-    assert {item["path"] for item in unresolved} == {"complexes[0].address"}
-
-
-def test_model_target_with_income_split_column_is_accepted_as_the_combined_source_name():
-    selected = pages.PromptPages(
-        text="all", rental_rows=0, supply_text="table", supply_pages=[8],
-        supply_row_ids=frozenset({"P8:T1:R3"}), supply_row_text={"P8:T1:R3": "Test\t24A\t청년\t소득 없음\t46,920"},
-        notice_text="body", notice_pages=[1], complex_candidates=["Test"], table_structure_fallback=False,
-        ambiguous_supply_tables=False,
-        supply_row_values={"P8:T1:R3": {"complexName": "Test", "housingType": "24A", "target": "청년",
-                                         "targetDetail": "소득 없음"}},
-    )
-    compact = {"data": {"rows": [
-        {"rowIds": ["P8:T1:R3"], "complexName": "Test", "housingType": "24A", "target": "청년(소득 없음)"},
-        {"rowIds": ["P8:T1:R3"], "complexName": "Test", "housingType": "24A", "target": "청년(소득 있음)"},
-    ]}}
-
-    tree = announcement.compact_supply_tree(compact, selected)
-
-    assert [target["target"] for target in tree["data"]["supplyRows"][0]["targets"]] == ["청년(소득 없음)", ""]
-    assert "supplyRows[0].targets[1].target" in {item["path"] for item in tree["data"]["unresolvedFields"]}
-
-
 @pytest.mark.parametrize("judge", [
     None,
     FakeJudge(choice="existing_waitlist"),
@@ -919,20 +470,6 @@ def test_jev_is_asked_about_the_mapped_count_column_with_its_header_and_rows():
     assert list(headers.values()) == ["모집호수"]
     assert state["table"]["rows"][0]["모집호수"] == "20"
     assert reserve_only is False
-
-
-def two_quantity_tables_pdf(title="Sample Notice"):
-    document = pymupdf.open()
-    page = grid_page(document, [
-        ["단지명", "주택형", "공급대상", "당첨자 수", "주거전용", "주거공용"],
-        ["Alpha", "26A", "청년", "20", "26.73", "13.07"],
-    ])
-    page.insert_text((20, 30), title, fontname="korea", fontsize=8)
-    grid_page(document, [
-        ["단지명", "주택형", "공급대상", "모집호수 예비자", "주거전용", "주거공용"],
-        ["Beta", "36A", "고령자", "3", "36.92", "18.06"],
-    ])
-    return document.tobytes()
 
 
 def test_one_count_column_judged_differently_sends_the_whole_supply_table_to_the_model():
@@ -977,45 +514,6 @@ def test_winner_count_column_in_a_reserve_recruitment_notice_goes_to_the_model()
     assert any("[추출 단계: 공급 표]" in prompt for prompt in model.prompts)
 
 
-def test_jev_is_not_called_after_the_model_cutoff():
-    judge = FakeJudge()
-    with pages.open_pdf(two_quantity_tables_pdf()) as document:
-        selected = pages.prompt_pages(document, [1, 2], time.monotonic() + 60)
-    grouped = supply_grouping.group(selected.supply_tables, selected.supply_row_values, [])
-
-    assert AnnouncementPdfExtractor(FakeModel(), judge).counts_confirmed(grouped, [""], time.monotonic() - 1) is False
-    assert judge.calls == []
-
-
-def test_each_value_gets_evidence_from_the_row_that_holds_its_cell():
-    selected = pages.PromptPages(
-        text="all", rental_rows=0, supply_text="table", supply_pages=[4, 13],
-        supply_row_ids=frozenset({"P4:T1:R4", "P13:T1:R3"}),
-        supply_row_text={"P4:T1:R4": "Test\t26A\t청년\t20\t26.73", "P13:T1:R3": "Test\t26A\t청년\t46,920\t178,670"},
-        notice_text="body", notice_pages=[1], complex_candidates=["Test"], table_structure_fallback=False,
-        ambiguous_supply_tables=False,
-        supply_row_values={
-            "P4:T1:R4": {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20",
-                          "exclusiveArea": "26.73"},
-            "P13:T1:R3": {"complexName": "Test", "housingType": "26A", "target": "청년", "rentalDeposit": "46,920",
-                           "rentalDepositUnit": "천원", "monthlyRent": "178,670", "monthlyRentUnit": "원"},
-        },
-    )
-    compact = {"data": {"rows": [{
-        "rowIds": ["P4:T1:R4", "P13:T1:R3"], "complexName": "Test", "housingType": "26A", "target": "청년",
-        "reserveCount": 20, "exclusiveArea": 26.73, "rentalDeposit": 46920000, "monthlyRent": 178670,
-    }]}}
-
-    tree = announcement.compact_supply_tree(compact, selected)
-
-    pages_by_path = {item["path"]: item["page"] for item in tree["evidence"]}
-    # 공급행·대상 근거가 두 쪽에 걸쳐도 값마다 그 칸이 있는 행의 쪽을 가리킨다(13쪽이 4쪽보다 글자순으로 앞서도).
-    assert pages_by_path["supplyRows[0].exclusiveArea"] == 4
-    assert pages_by_path["supplyRows[0].targets[0].reserveCount"] == 4
-    assert pages_by_path["supplyRows[0].targets[0].rentalDeposit"] == 13
-    assert pages_by_path["supplyRows[0].targets[0].monthlyRent"] == 13
-
-
 def test_notice_note_path_written_with_empty_brackets_reaches_the_result_readable():
     notice = {
         "data": {
@@ -1030,25 +528,3 @@ def test_notice_note_path_written_with_empty_brackets_reaches_the_result_readabl
 
     paths = [item["path"] for item in json.loads(result["json"])["data"]["unresolvedFields"]]
     assert "complexes[*].parkingCount" in paths and "complexes[].parkingCount" not in paths
-
-
-def test_value_evidence_prefers_the_row_whose_cell_matches_the_value():
-    selected = pages.PromptPages(
-        text="all", rental_rows=0, supply_text="table", supply_pages=[8, 9],
-        supply_row_ids=frozenset({"P8:T1:R3", "P9:T1:R3"}),
-        supply_row_text={"P8:T1:R3": "Test\t26A\t청년\t소득 없음\t46,920", "P9:T1:R3": "\t\t\t소득 있음\t49,680"},
-        notice_text="body", notice_pages=[1], complex_candidates=["Test"], table_structure_fallback=False,
-        ambiguous_supply_tables=False,
-        supply_row_values={
-            "P8:T1:R3": {"complexName": "Test", "housingType": "26A", "target": "청년", "targetDetail": "소득 없음",
-                          "rentalDeposit": "46,920", "rentalDepositUnit": "천원"},
-            "P9:T1:R3": {"targetDetail": "소득 있음", "rentalDeposit": "49,680", "rentalDepositUnit": "천원"},
-        },
-    )
-    compact = {"data": {"rows": [{"rowIds": ["P8:T1:R3", "P9:T1:R3"], "complexName": "Test", "housingType": "26A",
-                                   "target": "청년(소득 있음)", "rentalDeposit": 49680000}]}}
-
-    tree = announcement.compact_supply_tree(compact, selected)
-
-    evidence = next(item for item in tree["evidence"] if item["path"] == "supplyRows[0].targets[0].rentalDeposit")
-    assert evidence["page"] == 9 and "49,680" in evidence["quote"]

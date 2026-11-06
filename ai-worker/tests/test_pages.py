@@ -1,28 +1,15 @@
 import time
-from types import SimpleNamespace
 
 import pymupdf
 import pytest
 
-from ai_worker import pages
+from ai_worker import pages, tables
 from ai_worker.extraction import PermanentError
+from conftest import COVER, NOTICE, RENT, RENT_CELLS, SUPPLY, text_pdf as pdf
 
-COVER = "여수미평1 영구임대주택 예비입주자 모집 (입주자모집공고일 : 2026. 10. 20.)"
-SUPPLY = "형별 공급계획 전용 주거 공용 26.37 298 26.37 13.50 39.87 31.32 239 31.32 12.60 43.92"
-RENT = "임대조건 임대보증금 월 임대료 26.37 2,520,000 126,000 2,394,000 50,160"
 QUALIFICATION = "3. 신청자격 입주자 모집공고일 현재 무주택세대구성원"
 SCHEDULE = "5. 공급일정 및 세부절차 신청기간 ‘26.11.10(화)~11.12(목) 09:00~18:00"
 CONTACT = "12. 문의처 신청문의 여수미평1관리소 (061-652-4568)"
-NOTICE = "8. 유의사항 이 주택의 임대차 계약기간은 2년이며"
-
-
-def pdf(*texts: str) -> bytes:
-    document = pymupdf.open()
-    for text in texts:
-        document.new_page().insert_text((20, 72), text, fontname="korea", fontsize=6)
-    return document.tobytes()
-
-
 def test_selects_first_page_and_pages_with_sections():
     selection = pages.select([COVER, NOTICE, SUPPLY, NOTICE, RENT, NOTICE, SCHEDULE, NOTICE, CONTACT])
 
@@ -180,12 +167,13 @@ def alternative_supply_table_pdf():
 
 def test_real_table_keeps_decimal_amount_units_and_merged_cells():
     with pages.open_pdf(table_pdf()) as document:
-        prompt, tables = pages.page_with_tables(document[0])
+        split = pages.prompt_pages(document, [1], later())
 
-    assert "26.4422" in prompt and "46,920" in prompt
-    assert tables[0][0][2] == "임대보증금(천원)"
-    assert tables[0][1] == ["26A 26.4422", "청년 소득 없음", "46,920", "178,670"]
-    assert tables[0][2] == [None, "청년 소득 있음", "49,680", "189,910"]
+    assert "26.4422" in split.text and "46,920" in split.text
+    [table] = split.supply_tables
+    assert table.cells[0][2] == "임대보증금(천원)"
+    assert table.cells[1] == ["26A 26.4422", "청년 소득 없음", "46,920", "178,670"]
+    assert table.cells[2] == [None, "청년 소득 있음", "49,680", "189,910"]
 
 
 def test_alternate_supply_headers_are_routed_to_the_supply_stage():
@@ -198,50 +186,6 @@ def test_alternate_supply_headers_are_routed_to_the_supply_stage():
     assert "단지A" in split.complex_candidates
     assert "단지A" not in split.notice_text
     assert not split.table_structure_fallback
-
-
-def test_split_table_headers_map_reserve_count_to_its_own_column():
-    rows = [
-        ["단지명", "공급형", None, "공급 대상", "모집 호수", "세대 당 계약면적(㎡)", None],
-        [None, "주택 구분", "청약 구분", None, "예비자", "주거 전용", "주거 공용"],
-        [None, None, None, None, "일반 공급", None, None],
-        ["Test", "26", "26A", "청년", "20", "26.0000", "15.0000"],
-    ]
-
-    values = pages.table_row_field_values(rows, 3)
-
-    assert values == {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20",
-                      "exclusiveArea": "26.0000", "commonArea": "15.0000"}
-
-
-def test_table_header_mapping_distinguishes_base_rent_from_conversion_options():
-    rows = [
-        ["공급형", "공급대상", "임대조건", None, None, None, "임대보증금 최소화", "", "임대보증금 최대화", ""],
-        ["", "", "임대보증금", "", "", "월 임대료", "임대보증금", "월임대료", "임대보증금", "월임대료"],
-        ["39", "대학생", "계", "계약금", "잔금", None, None, None, None, None],
-        [None, None, "56,780,000", "2,839,000", "53,941,000", "260,240", "9,780,000", "397,320",
-         "87,780,000", "105,240"],
-    ]
-
-    columns = pages.table_field_columns(rows)
-
-    assert columns["rentalDeposit"] == 2
-    assert columns["monthlyRent"] == 5
-    assert columns["convertedDeposit"] == 8
-
-
-def test_continued_table_page_reuses_the_previous_page_header_columns():
-    headers = [
-        ["단지명", "공급형", None, "공급 대상", "모집 호수", "세대 당 계약면적(㎡)", None],
-        [None, "주택 구분", "청약 구분", None, "예비자", "주거 전용", "주거 공용"],
-        [None, None, None, None, "일반 공급", None, None],
-    ]
-    continuation_rows = [["Test", "26", "26A", "청년", "20", "26.0000", "15.0000"]]
-
-    values = pages.table_row_field_values(continuation_rows, 0, pages.table_field_columns(headers))
-
-    assert values == {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20",
-                      "exclusiveArea": "26.0000", "commonArea": "15.0000"}
 
 
 def test_prompt_pages_carries_header_columns_to_a_real_continuation_table_page(monkeypatch):
@@ -259,9 +203,9 @@ def test_prompt_pages_carries_header_columns_to_a_real_continuation_table_page(m
     matrix = {0: first_page, 1: continuation}
 
     def detected(page):
-        return [pages.DetectedTable(matrix[page.number], tuple(page.rect))], False
+        return [tables.DetectedTable(matrix[page.number], tuple(page.rect))], False
 
-    monkeypatch.setattr(pages, "detected_tables", detected)
+    monkeypatch.setattr(tables, "detected_tables", detected)
     with pages.open_pdf(continued_supply_pdf()) as document:
         split = pages.prompt_pages(document, [1, 2], time.monotonic() + 30)
 
@@ -311,10 +255,11 @@ def test_empty_coordinate_read_keeps_page_text_instead_of_a_table_with_missing_v
 
     monkeypatch.setattr(pymupdf.Page, "get_text", empty_cell)
     with pages.open_pdf(table_pdf()) as document:
-        prompt, tables = pages.page_with_tables(document[0])
+        split = pages.prompt_pages(document, [1], later())
 
-    assert "46,920" in prompt
-    assert tables == []
+    assert "46,920" in split.text and "46,920" in split.supply_text
+    assert split.supply_tables == [] and split.supply_row_values == {}
+    assert split.table_structure_fallback
 
 
 def test_reads_text_of_each_page():
@@ -367,43 +312,14 @@ def test_prompt_numbers_selected_pages_in_order():
     assert "notice" not in text
 
 
-# 인천부평 행복주택 공고의 임대조건표 칸을 PyMuPDF가 뽑은 모양 그대로 줄였다. 병합 칸은 None이다.
-RENT_CELLS = [
-    ["공급\n형별", "공급\n계층", "임대조건", None, None, None, "전환가능\n보증금\n한도액\n(원)"],
-    [None, None, "임대보증금(원)", None, None, "월\n임대료\n(원)", None],
-    ["16A", "대학생\n·\n청년(소득無)", "31786000\n, ,", "1589000\n, ,", "30197000\n, ,", "138640\n,", "(+) 9000000\n, ,"],
-    [None, "청년(소득有)", "33652000\n, ,", "1682000\n, ,", "31970000\n, ,", "146790\n,", "(+) 9000000\n, ,"],
-    [None, "기존거주자\n(철거민)", "37640000\n, ,", "1882000\n, ,", "35758000\n, ,", "163100\n,", "(+) 9000000\n, ,"],
-    [None, None, None, None, None, None, "( ) 31000000\n- , ,"],
-    ["21A", "기존거주자\n(철거민)", "49240000\n, ,", "2462000\n, ,", "46778000\n, ,", "213370\n,", "(+) 19000000\n, ,"],
-]
-
-
-def test_counts_rental_rows_by_housing_type_and_target_filling_merged_cells():
-    assert pages.rental_keys(RENT_CELLS) == {
-        ("16A", "대학생·청년(소득無)"), ("16A", "청년(소득有)"), ("16A", "기존거주자(철거민)"), ("21A", "기존거주자(철거민)"),
-    }
-
-
-def test_tables_without_rent_header_are_not_counted():
-    assert pages.rental_keys([["형별", "공급호수"], ["16A", "78", "31786000"]]) == set()
-
-
 def test_rental_rows_are_counted_once_across_selected_pages(monkeypatch):
-    table = SimpleNamespace(to_markdown=lambda: "|표|", extract=lambda: RENT_CELLS)
     calls = []
-    monkeypatch.setattr(pymupdf.Page, "find_tables", lambda page: calls.append(page.number) or SimpleNamespace(tables=[table]))
-    monkeypatch.setattr(pages, "table_cells", lambda page, table: RENT_CELLS)
+    monkeypatch.setattr(tables, "detected_tables", lambda page: calls.append(page.number) or (
+        [tables.DetectedTable(RENT_CELLS, tuple(page.rect))], False))
     with pymupdf.open(stream=pdf("cover", "rent", "rent again"), filetype="pdf") as document:
         assert pages.prompt_pages(document, [1, 2, 3], later()).rental_rows == 4
     # 표 찾기는 쪽마다 1초 안팎이라 프롬프트와 검산이 한 번의 결과를 같이 쓴다.
     assert calls == [0, 1, 2]
-
-
-def test_continued_table_rows_without_housing_type_are_not_counted():
-    continued = [RENT_CELLS[0], RENT_CELLS[1], [None, "고령자", "48000000\n, ,", None, None, "210000\n,", None]]
-
-    assert pages.rental_keys(continued) == set()
 
 
 @pytest.mark.parametrize("content", [b"<html>not a pdf</html>", b"", b"%PDF-1.7 broken"])

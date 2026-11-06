@@ -1,5 +1,5 @@
-from ai_worker import announcement, pages, supply_grouping
-from ai_worker.pages import SupplyTable
+from ai_worker import pages, supply_assembly, supply_grouping
+from ai_worker.tables import SupplyTable, source_row_id, table_field_columns, table_row_field_values
 
 QUANTITY_HEADER = [
     ["단지명", "청약구분", "공급대상", "모집호수 예비자", "주거전용", "주거공용"],
@@ -12,14 +12,14 @@ RENT_HEADER = [
 def table(page, cells, header=QUANTITY_HEADER, ambiguous=False, inherit=None):
     """표 인식기처럼 병합 칸은 None, 빈칸은 ''로 준다. inherit가 있으면 머리글 없는 이어짐 표다."""
     rows = cells if inherit else [*header, *cells]
-    columns = inherit.columns if inherit else pages.table_field_columns(rows)
+    columns = inherit.columns if inherit else table_field_columns(rows)
     return SupplyTable(page, 1, rows, columns, ambiguous)
 
 
 def row_values(tables):
     return {
-        pages.source_row_id(item.page, item.number, index + 1):
-            pages.table_row_field_values(item.cells, index, item.columns)
+        source_row_id(item.page, item.number, index + 1):
+            table_row_field_values(item.cells, index, item.columns)
         for item in tables for index in range(len(item.cells))
     }
 
@@ -34,7 +34,7 @@ def assemble(tables, tableless_pages=()):
         notice_text="", notice_pages=[], complex_candidates=[], table_structure_fallback=False,
         ambiguous_supply_tables=False, supply_row_values=grouped.row_values,
     )
-    return grouped, announcement.compact_supply_tree(grouped.compact, selected)
+    return grouped, supply_assembly.assemble(grouped.compact, selected)
 
 
 def targets(tree):
