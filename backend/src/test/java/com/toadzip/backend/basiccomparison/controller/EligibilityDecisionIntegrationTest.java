@@ -17,6 +17,9 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class EligibilityDecisionIntegrationTest extends ComparisonIntegrationSupport {
+    @org.springframework.beans.factory.annotation.Autowired
+    com.toadzip.backend.basiccomparison.service.EligibilityRecheckWorker worker;
+
     @Test
     void D05_수집_조건을_충족하면_지원_가능과_미수집_제한을_함께_반환한다() throws Exception {
         long announcement = announcement();
@@ -24,6 +27,7 @@ class EligibilityDecisionIntegrationTest extends ComparisonIntegrationSupport {
                 .andExpect(status().isOk());
         jdbc.update("INSERT INTO basic_comparison_profiles (user_id, version, profile) VALUES (?, 1, ?::jsonb)",
                 USER, json.writeValueAsString(ComparisonFixtures.b()));
+        completeProfile();
         mvc.perform(get("/api/v2/announcements/" + announcement + "/eligibility")
                         .with(user(Long.toString(USER)).roles("USER")))
                 .andExpect(status().isOk())
@@ -89,6 +93,11 @@ class EligibilityDecisionIntegrationTest extends ComparisonIntegrationSupport {
     private void profile(ComparisonProfile profile) {
         jdbc.update("INSERT INTO basic_comparison_profiles (user_id, version, profile) VALUES (?, 1, ?::jsonb)",
                 USER, json.writeValueAsString(profile));
+        completeProfile();
+    }
+
+    private void completeProfile() {
+        assertThat(worker.runOnce(com.toadzip.backend.basiccomparison.domain.EligibilityWork.Kind.PROFILE)).isTrue();
     }
 
 }

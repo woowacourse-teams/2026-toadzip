@@ -47,6 +47,18 @@ public class ComparisonAnnouncementRepository {
     }
 
     public Current latest(long announcementId) {
+        return latest(announcementId, true);
+    }
+
+    public Current latestMetadata(long announcementId) {
+        return latest(announcementId, false);
+    }
+
+    private Current latest(long announcementId, boolean includeContent) {
+        String contentColumn = "NULL::text";
+        if (includeContent) {
+            contentColumn = "r.content::text";
+        }
         return jdbc.sql(
                         """
                         WITH RECURSIVE chain AS (
@@ -57,11 +69,11 @@ public class ComparisonAnnouncementRepository {
                         )
                         SELECT a.*, r.id AS rule_set_id, r.version AS rule_set_version,
                             r.schema_version AS content_schema_version,
-                            r.content::text AS snapshot
+                            %s AS snapshot
                         FROM announcements a JOIN chain c ON c.id = a.id
                         LEFT JOIN basic_comparison_rule_sets r ON r.announcement_id = a.id AND r.status = 'PUBLISHED'
                         ORDER BY cardinality(c.visited) DESC LIMIT 1
-                        """)
+                        """.formatted(contentColumn))
                 .param(announcementId)
                 .query(this::map)
                 .optional()
@@ -87,6 +99,36 @@ public class ComparisonAnnouncementRepository {
                 .param("limit", batchSize)
                 .query(this::map)
                 .list();
+    }
+
+    public long rootId(long announcementId) {
+        return jdbc.sql("SELECT comparison_root_id(?)").param(announcementId).query(Long.class)
+                .optional().orElseThrow(ComparisonNotFoundException::new);
+    }
+
+    public String applicationStatus(long announcementId, LocalDate today) {
+        return jdbc.sql("SELECT COALESCE(" + ApplicationScheduleSql.status("a", null)
+                        + ", 'UNKNOWN') FROM announcements a WHERE a.id = :id")
+                .param("id", announcementId).param("today", today).query(String.class).single();
+    }
+
+    public List<Long> eligibleRootsAfter(long cursor, LocalDate today, int limit) {
+        return jdbc.sql("""
+                        WITH RECURSIVE chain AS (
+                            SELECT id, id AS root_id, ARRAY[id] AS visited FROM announcements
+                            WHERE previous_announcement_id IS NULL AND id > :cursor
+                            UNION ALL
+                            SELECT a.id, c.root_id, c.visited || a.id FROM announcements a
+                            JOIN chain c ON a.previous_announcement_id = c.id
+                            WHERE NOT a.id = ANY(c.visited) AND cardinality(c.visited) < 100
+                        )
+                        SELECT c.root_id FROM chain c JOIN announcements a ON a.id = c.id
+                        WHERE a.release_status = 'PUBLISHED' AND NOT a.admin_deleted
+                            AND NOT EXISTS (SELECT 1 FROM announcements next WHERE next.previous_announcement_id = a.id)
+                            AND %s IN ('APPLYING', 'BEFORE_APPLICATION', 'CONDITIONAL')
+                        ORDER BY c.root_id LIMIT :limit
+                        """.formatted(ApplicationScheduleSql.status("a", null)))
+                .param("cursor", cursor).param("today", today).param("limit", limit).query(Long.class).list();
     }
 
     private Current map(ResultSet result, int index) throws SQLException {

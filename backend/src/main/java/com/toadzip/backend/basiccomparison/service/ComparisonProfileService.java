@@ -12,6 +12,7 @@ import com.toadzip.backend.basiccomparison.exception.InvalidComparisonException;
 import com.toadzip.backend.basiccomparison.repository.ComparisonJsonCodec;
 import com.toadzip.backend.basiccomparison.repository.ComparisonProfileRepository;
 import com.toadzip.backend.basiccomparison.repository.ComparisonRegionMembership;
+import com.toadzip.backend.basiccomparison.repository.EligibilityWorkRepository;
 
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -33,20 +34,22 @@ public class ComparisonProfileService {
     private final ComparisonRegionMembership regions;
     private final ComparisonJsonCodec codec;
     private final Clock clock;
+    private final EligibilityWorkRepository work;
 
     public ComparisonProfileService(
             ComparisonProfileRepository profiles,
             ComparisonRegionMembership regions,
             ComparisonJsonCodec codec,
-            Clock clock) {
+            Clock clock, EligibilityWorkRepository work) {
         this.profiles = profiles;
         this.regions = regions;
         this.codec = codec;
         this.clock = clock;
+        this.work = work;
     }
 
     public Profile find(long userId) {
-        return Profile.of(profiles.find(userId));
+        return Profile.of(profiles.find(userId), work.profileProgress(userId).state());
     }
 
     @Transactional
@@ -57,9 +60,10 @@ public class ComparisonProfileService {
         if (residence instanceof String code && !regions.isKnown(code)) {
             throw new InvalidComparisonException("지역 카탈로그에 등록된 거주지역 코드를 입력해 주세요.");
         }
+        profiles.lockUser(userId);
         return Profile.of(
                 profiles.save(
-                        userId, request.expectedVersion(), codec.write(profile), clock.instant()));
+                        userId, request.expectedVersion(), codec.write(profile), clock.instant()), "PENDING");
     }
 
     public Catalog catalog() {

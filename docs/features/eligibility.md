@@ -1,7 +1,7 @@
 # 개인 공고의 기본 조건 비교와 직접 확인 안내
 
 > 최신 지원 가능 판정은 [신청자격 판정 API](eligibility-decisions.md)를 사용한다. 아래 기본 비교·요약 응답을 최종 지원 가능으로 해석하지 않는다.
-> 신청자격 경로 판정으로 확장 중이다. 공고·사용자·최신 결과의 새 저장 계약은
+> 신청자격 경로 판정으로 확장했다. 공고·사용자·최신 결과의 저장 계약은
 > [신청자격 데이터 모델](eligibility-storage.md)을 따른다. 아래 기본 비교 API의 기존 계약과 구분한다.
 
 회원이 입력한 현재 본인·가족 정보와 공고의 **기본 조건**을 비교한다. 입력받지 않는 자격은
@@ -81,8 +81,10 @@ UNKNOWN으로 바뀌며, 이 예시만으로 전체 기본 조건이 충족되�
 }
 ```
 
-조회 응답은 `version`, `inputContractVersion`, `updatedAt`, `profile`을 반환한다. 저장 성공 시 version이
-1 증가한다. 최초 저장은 expectedVersion 0, 이후에는 조회한 현재 버전을 사용한다. 동시 수정 중 하나만
+조회 응답은 `version`, `inputContractVersion`, `updatedAt`, `profile`, `reevaluationState`를 반환한다.
+저장 성공 시 version이 1 증가하고 reevaluationState는 PENDING이다. 이는 입력 저장 완료이며
+재판정 완료는 [처리 상태·최신 판정 API](eligibility-decisions.md)에서 확인한다.
+최초 저장은 expectedVersion 0, 이후에는 조회한 현재 버전을 사용한다. 동시 수정 중 하나만
 성공하며 다른 요청은 `409 BASIC_COMPARISON_CONFLICT`다. 다른 회원의 데이터와 섞지 않는다.
 
 - 값 상태는 `PROVIDED / UNKNOWN / NOT_APPLICABLE`이다. PROVIDED에만 값이 있어야 한다.
@@ -207,7 +209,9 @@ NOT_STRUCTURED/NOT_PUBLISHED/CANCELLED에는 result가 없다. 존재하지 않�
 
 ## 저장 구조와 전환
 
-현재 초안·공개 내용과 현재 프로필은 다음 두 신규 테이블에 저장한다. 결과·과거 판본·과거 프로필 테이블은 만들지 않는다.
+기본 비교의 초안·공개 내용과 현재 프로필은 아래 두 테이블에 저장한다. 신청자격 경로 판정은
+[새 데이터 모델](eligibility-storage.md)에 따라 관계형 공고 행과 최신 완료 결과·재판정 요청을 추가했다.
+과거 판본·과거 프로필·과거 판정 결과 전체는 저장하지 않는다.
 
 ```mermaid
 erDiagram
@@ -235,7 +239,8 @@ erDiagram
 ```
 
 공고×status는 유일하고 DRAFT의 version은 0, 공개 시각은 null이다. PUBLISHED의 version은 양수이며 공개 시각이 있다.
-공고·회원 물리 삭제에 새 데이터는 종속 삭제된다. 내용 schema_version과 입력 input_contract_version은 2다.
+공고·회원 물리 삭제에 새 데이터는 종속 삭제된다. 새 내용 schema_version과 입력 input_contract_version은
+3이며, 기존 저장된 버전 2는 읽기 호환한다.
 
 공개 내용은 타입이 정해진 JSONB 집합이다. 원문·근거·단위·경로·안내·물량·가격·일정을 한 번에 교체하므로 내부 참조는
 전체 내용 검증으로 지킨다. 소득 기준표 참조는 검증기가 확인한다. 물리 주택형의 기존 단지/형 ID는 선택적 표시 연결이며,

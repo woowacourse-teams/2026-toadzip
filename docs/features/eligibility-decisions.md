@@ -16,14 +16,64 @@
 |---|---|
 | requestedAnnouncementId / announcementId | 요청 ID와 정정 체인의 실제 최신 공고 ID |
 | availability | AVAILABLE / NOT_STRUCTURED / NOT_PUBLISHED / CANCELLED |
-| ruleSetId / profileVersion | 판정에 사용한 공개 내용 ID와 현재 사용자 입력 수정 식별값 |
-| result | 아래의 개인 판정. 공개된 구조가 없거나 공고 전체가 취소·비공개이면 null |
-| content | 판정과 같은 공개본의 구조화 내용. 근거·자격·물량·임대조건·일정은 여기서 연결 |
+| ruleSetId / profileVersion | 현재 공개 내용 ID와 현재 사용자 입력 수정 식별값 |
+| applicationStatus | 공통 접수 상태. APPLYING / BEFORE_APPLICATION / CONDITIONAL만 현재 재판정 대상 |
+| freshness | CURRENT(현재 기준 완료) / RECHECKING(현재 기준 처리 중) / NOT_AVAILABLE(대상 밖) |
+| staleReasons | PROFILE_CHANGED / NOTICE_CHANGED / NOT_EVALUATED_YET. 개인정보와 공고 변경을 구분 |
+| evaluatedAt / evaluatedProfileVersion | 마지막 완료 시각·당시 입력 버전. 완료 결과가 없으면 null |
+| result | 아래의 개인 판정. 현재 기준의 완료 결과만 반환하고 처리 중·대상 밖이면 null |
+| content | 현재 공개본의 구조화 내용. 근거·자격·물량·임대조건·일정 연결. 이전 결과와 섞지 않음 |
 | selectedRegion / eligibleOptionIdsInRegion | 선택한 지역 안에서 지원 가능한 실제 선택지 ID. 지역 생략 시 전체 지원 가능 선택지 |
 
-이 PR의 조회는 동일 DB 스냅샷으로 계산한다. 다음 최신 결과 PR에서 저장·재판정 상태를 연결한다.
+조회는 같은 DB 스냅샷에서 현재 기준과 저장된 최신 결과를 비교한다. 화면 요청에서 전체 판정을
+다시 실행하지 않는다. 프로필·정정·공개본·공개 상태·접수 상태·평가기 중 하나라도 달라졌으면
+이전 result를 숨긴다. RECHECKING을 정보 부족이나 직접 확인 필요로 표시하지 않는다.
+지역 안의 지원 가능 ID도 현재 완료 결과가 있을 때만 반환한다.
+
 기존 `/basic-comparison`과 `/eligibility/summary`는 이전 **기본 비교** 계약이며 최종 지원 가능
 여부나 건수로 사용하지 않는다. 새 화면은 이 문서의 판정 API를 사용한다.
+
+## 저장 완료·재판정 완료·새 지원 가능 안내
+
+`PUT /api/v2/me/eligibility-profile` 성공은 입력 저장 완료다. 응답의 새 `version`과
+`reevaluationState=PENDING`을 받아 “저장했어요. 현재 정보로 다시 확인하고 있어요”로 안내한다.
+판정은 백그라운드에서 처리하고 사용자·공고마다 최신 완료 결과 한 벌을 교체한다.
+연속 수정 시 오래된 작업은 결과나 새 지원 가능 안내를 덮어쓰지 못한다.
+
+| 메서드·경로 | 응답·동작 |
+|---|---|
+| `GET /api/v2/eligibility/processing` | profileVersion, requestedVersion, state(PENDING/RUNNING/DONE), failedAttempts |
+| `GET /api/v2/eligibility/discoveries?afterAnnouncementId=0&limit=25` | 현재 기준에서 아직 확인 처리하지 않은 새 지원 가능 선택지. limit은 1~100 |
+| `POST /api/v2/eligibility/discoveries/{rootAnnouncementId}/ack?eventId={UUID}` | CSRF 필요. 해당 발견 확인 처리, 204. 같은 eventId의 재시도는 성공, 오래된 ID·기준은 409 |
+
+모두 USER 인증과 no-store를 적용한다. 처리 상태는 **회원 정보 수정에 따른 순회 작업**의
+진행 상태다. DONE이어도 별도로 공고가 정정될 수 있으므로 상세의 freshness를 함께 확인한다.
+실패 횟수가 있어도 입력이 사라진 것은 아니며 서버가 재시도한다. 재입력을 복구 조건으로 안내하지 않는다.
+
+발견 응답은 다음 형식이며 일반 API와 같이 `data`로 감싼다.
+
+```json
+{
+  "items": [{
+    "eventId": "3268c64f-d389-478e-aae9-75504c633635",
+    "rootAnnouncementId": 100,
+    "announcementId": 103,
+    "optionIds": ["general-unit-a"],
+    "discoveredAt": "2026-11-06T10:00:00Z"
+  }],
+  "nextCursor": 100,
+  "hasMore": false
+}
+```
+
+상세 API의 content와 optionIds로 어떤 신청 단위·신청자격에 지원 가능한지 보여준다.
+목록의 개수는 해당 페이지의 발견 수이며 전체 공고 건수가 아니다. 기준이 바뀐 후보를 숨기므로
+items가 비어 있어도 hasMore이면 nextCursor로 계속 조회한다. 새로 확인할 때는 커서 0부터 시작한다.
+확인 처리 후에는 반복 안내에서 제외한다. 미충족이었다가 다시 가능해지거나 다른 선택지가 새로
+가능해지면 새 eventId를 생성하므로 사용자·공고 평생 1회로 제한하지 않는다.
+
+이 API는 화면 안내를 연결할 수 있는 기반이다. 푸시·이메일 등 발송, 관심 조건 구독과 전체 목록
+필터는 별도 구현 대상이다. 별도 발송을 연결할 때는 합의한 관심 조건과 알림 수신 설정을 적용한다.
 
 ## 결과와 표시
 
