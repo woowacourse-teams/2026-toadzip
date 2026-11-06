@@ -48,13 +48,13 @@ class AnnouncementPdfExtractor:
                 f"공급·임대 표 구조를 읽지 못해 추출을 중단했습니다. 원본 PDF {numbers}쪽을 확인해 주세요.",
             )
         notice_prompt = stage_prompts.notice_prompt(selected)
-        plan = supply_sources.SupplyPlan(rows, selected)
+        plan = supply_sources.SupplyPlan(self.model, self.column_judge, rows, selected, texts[:2])
         # 두 역할은 서로 의존하지 않는다. 같은 남은 마감 안에서 병렬 호출해 분리 비용이 순차 지연으로 누적되지 않게 한다.
         model_deadline = deadline - openai.READ_TIMEOUT
         with ThreadPoolExecutor(max_workers=2, thread_name_prefix="announcement-extraction") as pool:
             # 본문 단계는 공급표와 상관없이 늘 부르므로 먼저 보내고, 그동안 공급표를 읽을 곳을 정한다.
             notice_future = pool.submit(self.model.chat, notice_prompt, model_deadline)
-            source = plan.start(self.model, self.column_judge, texts[:2], model_cutoff, model_deadline, pool)
+            source = plan.start(model_cutoff, model_deadline, pool)
             source.wait()
             notice_reply = notice_future.result()
         supply = source.read()
@@ -62,14 +62,12 @@ class AnnouncementPdfExtractor:
             "announcement": dict, "receptionPlace": dict, "complexes": list, "schedules": list,
             "unresolvedFields": list,
         })
-        warnings = list(supply.table_warnings)
-        if selection.whole_document:
-            warnings.append(f"공급표·임대조건표 쪽을 찾지 못해 전체 {len(texts)}쪽을 보냈습니다.")
-        warnings += supply.input_warnings
+        warnings = [f"공급표·임대조건표 쪽을 찾지 못해 전체 {len(texts)}쪽을 보냈습니다."] if selection.whole_document else []
+        warnings += supply.warnings
         # 공급 근거는 원문 행 ID에서 원본 쪽을 복원하므로 첨부 쪽 번호 변환을 하지 않는다.
         warnings += _remap_stage_pages(notice_tree, selected.notice_pages)
         # merge는 페이지 변환 전에 tree를 만들므로, 최종 결과의 근거를 원본 PDF 쪽 번호로 변환한다.
-        tree, merge_warnings = merge.merge(supply.tree, notice_tree, selected.supply_row_text, supply.row_values)
+        tree, merge_warnings = merge.merge(supply.tree, notice_tree)
         warnings += merge_warnings
         warnings += checks.review(tree, list(range(1, len(texts) + 1)), texts, [row.type_name for row in rows],
                                   [row.count() for row in rows], selected.rental_rows)

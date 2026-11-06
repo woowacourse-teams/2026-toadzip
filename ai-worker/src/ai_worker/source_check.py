@@ -23,6 +23,9 @@ def source_row_map(source_rows: object) -> dict[str, set[str]]:
 def check_source_rows(supply_rows: list[dict], source_rows: dict[str, set[str]], source_row_text: dict[str, str],
                       evidence: list[dict], unresolved: list[dict],
                       source_row_values: dict[str, dict[str, str]] | None = None) -> list[str]:
+    """공급행·대상 경로마다 근거(행 ID·인용·쪽)를 원문 표 행에서 확인하고, 확인되면 값을 같은 의미의 원문 칸과 대조한다.
+    확인하지 못한 값은 비우고 unresolved에 사유를 남긴다. 경고는 근거를 확인하지 못한 경로마다 한 줄이고,
+    값마다의 사유는 unresolved에만 있다."""
     warnings = []
     expected = []
     for index, row in enumerate(supply_rows):
@@ -46,8 +49,8 @@ def check_source_rows(supply_rows: list[dict], source_rows: dict[str, set[str]],
         )
         if supported and (not source_pages or evidence_page in source_pages):
             values = source_row_values or {}
-            _check_string_source_values(path, supply_rows, row_ids, values, unresolved, warnings)
-            _check_numeric_source_values(path, supply_rows, row_ids, values, unresolved, warnings)
+            _check_string_source_values(path, supply_rows, row_ids, values, unresolved)
+            _check_numeric_source_values(path, supply_rows, row_ids, values, unresolved)
             continue
         if not row_ids:
             reason = "원문 표 행 ID를 확인하지 못함"
@@ -61,14 +64,14 @@ def check_source_rows(supply_rows: list[dict], source_rows: dict[str, set[str]],
             reason = "근거 쪽과 원문 표 행 ID의 쪽이 일치하지 않음"
         unresolved.append({"path": path, "reason": reason})
         warnings.append(f"{path}: {reason}")
-        _clear_unverified_string_values(path, supply_rows, unresolved, warnings, reason)
-        _clear_unverified_numeric_values(path, supply_rows, unresolved, warnings, reason)
+        _clear_unverified_string_values(path, supply_rows, unresolved, reason)
+        _clear_unverified_numeric_values(path, supply_rows, unresolved, reason)
     return warnings
 
 
 def _check_numeric_source_values(path: str, rows: list[dict], row_ids: set[str],
                                  source_row_values: dict[str, dict[str, str]],
-                                 unresolved: list[dict], warnings: list[str]) -> None:
+                                 unresolved: list[dict]) -> None:
     """표 근거가 같은 의미의 머리글 열을 지지하지 않으면 수치 값을 미확인으로 낮춘다."""
     match = re.fullmatch(r"supplyRows\[(\d+)\](?:\.targets\[(\d+)\])?", path)
     if not match:
@@ -88,12 +91,11 @@ def _check_numeric_source_values(path: str, rows: list[dict], row_ids: set[str],
         field_path = f"{path}.{field}"
         reason = "추출한 수치가 같은 의미의 원문 표 열에서 확인되지 않음"
         unresolved.append({"path": field_path, "reason": reason})
-        warnings.append(f"{field_path}: {reason}")
 
 
 def _check_string_source_values(path: str, rows: list[dict], row_ids: set[str],
                                 source_row_values: dict[str, dict[str, str]],
-                                unresolved: list[dict], warnings: list[str]) -> None:
+                                unresolved: list[dict]) -> None:
     """단지명·주택형·공급대상은 해당 의미의 원문 셀과 비교한다."""
     for values, field, source_field in _supply_string_fields_at_path(path, rows):
         value = values.get(field)
@@ -106,10 +108,9 @@ def _check_string_source_values(path: str, rows: list[dict], row_ids: set[str],
         field_path = f"{path}.complexReference.sourceComplexName" if field == "sourceComplexName" else f"{path}.{field}"
         reason = "추출한 값이 같은 의미의 원문 표 열에서 확인되지 않음"
         unresolved.append({"path": field_path, "reason": reason})
-        warnings.append(f"{field_path}: {reason}")
 
 
-def _clear_unverified_string_values(path: str, rows: list[dict], unresolved: list[dict], warnings: list[str],
+def _clear_unverified_string_values(path: str, rows: list[dict], unresolved: list[dict],
                                     reason: str) -> None:
     for values, field, _ in _supply_string_fields_at_path(path, rows):
         value = values.get(field)
@@ -119,7 +120,6 @@ def _clear_unverified_string_values(path: str, rows: list[dict], unresolved: lis
         field_path = f"{path}.complexReference.sourceComplexName" if field == "sourceComplexName" else f"{path}.{field}"
         field_reason = f"{reason}; 문자열 원문을 확인하지 못함"
         unresolved.append({"path": field_path, "reason": field_reason})
-        warnings.append(f"{field_path}: {field_reason}")
 
 
 def _supply_string_fields_at_path(path: str, rows: list[dict]) -> list[tuple[dict, str, str]]:
@@ -148,7 +148,7 @@ def normalize_source_text(value: str) -> str:
     return re.sub(r"[\s,，、․·]+", "", value)
 
 
-def _clear_unverified_numeric_values(path: str, rows: list[dict], unresolved: list[dict], warnings: list[str],
+def _clear_unverified_numeric_values(path: str, rows: list[dict], unresolved: list[dict],
                                      reason: str) -> None:
     values, fields = _supply_values_at_path(path, rows)
     if values is None:
@@ -160,7 +160,6 @@ def _clear_unverified_numeric_values(path: str, rows: list[dict], unresolved: li
         field_path = f"{path}.{field}"
         field_reason = f"{reason}; 수치 원문을 확인하지 못함"
         unresolved.append({"path": field_path, "reason": field_reason})
-        warnings.append(f"{field_path}: {field_reason}")
 
 
 def _supply_values_at_path(path: str, rows: list[dict]) -> tuple[dict | None, tuple[str, ...]]:

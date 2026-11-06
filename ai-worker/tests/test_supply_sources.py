@@ -15,8 +15,8 @@ def test_jev_is_not_called_after_the_model_cutoff():
     selected = selected_pages(two_quantity_tables_pdf(), [1, 2])
 
     with ThreadPoolExecutor(max_workers=1) as pool:
-        source = supply_sources.SupplyPlan([], selected).start(model, judge, [""], time.monotonic() - 1,
-                                                                time.monotonic() + 60, pool)
+        source = supply_sources.SupplyPlan(model, judge, [], selected, [""]).start(
+            time.monotonic() - 1, time.monotonic() + 60, pool)
         source.wait()
 
     assert judge.calls == []

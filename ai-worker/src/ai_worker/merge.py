@@ -1,18 +1,16 @@
 """공급 단계와 본문 단계의 부분 결과를 관리자 계약 하나로 합친다. 두 단계의 단지를 이름으로 맞추고
-단지 경로(complexes[N])를 합친 순번으로 고친 뒤, 원문 표 행 근거가 빠진 공급행 값은 미확인으로 남긴다."""
+단지 경로(complexes[N])를 합친 순번으로 고친다. 공급행 값의 원문 대조는 조립(supply_assembly)에서 이미 끝났다."""
 
 import json
 import re
 
 from ai_worker import checks
 from ai_worker.checks import deduplicate
-from ai_worker.source_check import check_source_rows, source_row_map
 from ai_worker.supply_assembly import add_complex_name, complex_key
 
 
-def merge(supply: dict, notice: dict, source_row_text: dict[str, str],
-                 source_row_values: dict[str, dict[str, str]] | None = None) -> tuple[dict, list[str]]:
-    """두 단계의 부분 결과를 관리자 계약으로 합치고, 원문 표 행 근거가 빠진 경로는 미확인으로 남긴다."""
+def merge(supply: dict, notice: dict) -> tuple[dict, list[str]]:
+    """두 단계의 부분 결과를 관리자 계약으로 합친다. 경고는 두 단계의 단지 값이 서로 다른 경우다."""
     supply_data, notice_data = supply["data"], notice["data"]
     supply_rows = checks.objects(supply_data.get("supplyRows"))
     supply_complexes = checks.objects(supply_data.get("complexes"))
@@ -39,13 +37,7 @@ def merge(supply: dict, notice: dict, source_row_text: dict[str, str],
 
     shared_counts = checks.objects(supply.get("sharedCounts"))
     _remap_complex_paths(shared_counts, supply_complexes, supply_indexes)
-    source_rows = source_row_map(supply.get("sourceRows"))
-    row_unresolved = []
-    source_warnings = check_source_rows(
-        supply_rows, source_rows, source_row_text, checks.objects(supply.get("evidence")), row_unresolved,
-        source_row_values,
-    )
-    unresolved = [*supply_unresolved, *notice_unresolved, *row_unresolved, *complex_unresolved]
+    unresolved = [*supply_unresolved, *notice_unresolved, *complex_unresolved]
     for index, complex_ in enumerate(complexes):
         for field in ("address", "totalHouseholdCount", "parkingCount"):
             path = f"complexes[{index}].{field}"
@@ -67,7 +59,7 @@ def merge(supply: dict, notice: dict, source_row_text: dict[str, str],
         "evidence": evidence,
     }
     checks.first_json_object(json.dumps(tree, ensure_ascii=False))
-    return tree, [*complex_warnings, *source_warnings]
+    return tree, complex_warnings
 
 
 def _merge_complexes(supply_rows: list[dict], supply: list[dict], notice: list[dict]):

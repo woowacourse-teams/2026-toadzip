@@ -28,6 +28,16 @@ _TABLE_HEADER_CELL = re.compile(
 
 
 @dataclass(frozen=True)
+class TableRow:
+    """공급표의 행 하나. 행 ID는 원본 쪽·표·행에서 정한다."""
+
+    id: str
+    text: str
+    # 머리글에서 바로 확인한 필드별 원문 셀
+    values: dict[str, str]
+
+
+@dataclass(frozen=True)
 class SupplyTable:
     page: int
     number: int
@@ -35,6 +45,17 @@ class SupplyTable:
     # 머리글이 없는 이어짐 표는 앞 공급표의 열 역할을 물려받는다.
     columns: dict[str, int]
     ambiguous: bool
+    rows: list[TableRow]
+
+    @classmethod
+    def of(cls, page: int, number: int, cells: list[list[str | None]], inherited_columns: dict[str, int] | None,
+           ambiguous: bool) -> "SupplyTable":
+        """셀에서 열 역할과 행 값을 읽어 공급표를 만든다. 머리글에서 열 역할을 찾지 못하면 inherited_columns를 쓴다."""
+        columns = _table_field_columns(cells) or inherited_columns or {}
+        rows = [TableRow(source_row_id(page, number, index), "\t".join(cell or "" for cell in row),
+                         _table_row_field_values(cells, index - 1, columns))
+                for index, row in enumerate(cells, 1)]
+        return cls(page, number, cells, columns, ambiguous, rows)
 
 
 @dataclass(frozen=True)
@@ -45,7 +66,7 @@ class DetectedTable:
     ambiguous: bool = False
 
 
-def table_field_columns(rows: list[list[str | None]], row_index: int | None = None) -> dict[str, int]:
+def _table_field_columns(rows: list[list[str | None]], row_index: int | None = None) -> dict[str, int]:
     """표 머리글 행을 열 위치로 바꾼다. 여러 열이 같은 뜻이면 그 필드는 일부러 매핑하지 않는다."""
     if not rows:
         return {}
@@ -127,7 +148,7 @@ def table_column_headers(rows: list[list[str | None]], column_count: int) -> lis
     return [re.sub(r"\s+", "", "".join(header)) for header in parts]
 
 
-def table_row_field_values(rows: list[list[str | None]], row_index: int,
+def _table_row_field_values(rows: list[list[str | None]], row_index: int,
                            inherited_columns: dict[str, int] | None = None) -> dict[str, str]:
     """표 머리글 행을 열 위치로 연결해, 모델이 낸 수치가 같은 의미의 원문 칸에 있는지 검증한다."""
     if not rows or row_index < 0 or row_index >= len(rows):
@@ -136,7 +157,7 @@ def table_row_field_values(rows: list[list[str | None]], row_index: int,
     nonempty = [cell for cell in row if cell and cell.strip()]
     if nonempty and all(_TABLE_HEADER_CELL.search(_compact(cell)) for cell in nonempty):
         return {}
-    columns = table_field_columns(rows, row_index)
+    columns = _table_field_columns(rows, row_index)
     for name, column in (inherited_columns or {}).items():
         columns.setdefault(name, column)
     values = {name: row[column] for name, column in columns.items() if column < len(row) and row[column]}
@@ -162,27 +183,14 @@ class SupplyContinuation:
 
 
 @dataclass(frozen=True)
-class TableRow:
-    """공급표의 행 하나. 행 ID는 원본 쪽·표·행에서 정한다."""
-
-    table: int
-    id: str
-    text: str
-    # 머리글에서 바로 확인한 필드별 원문 셀
-    values: dict[str, str]
-
-
-@dataclass(frozen=True)
 class PageTables:
     # 칸을 하나라도 읽지 못해 쪽 전체를 구조화하지 못했다. 이때 표는 하나도 없다.
     failed: bool
-    boxes: list[tuple[float, float, float, float]]
-    # 쪽의 모든 표, 그리고 본문 단계에 함께 보낼 표(공급표가 아니거나 공급표인지 불확실한 표)를 글로 옮긴 것
-    rendered: list[str]
+    # 쪽에서 찾은 표마다의 경계. 본문 단계 글에서 표 안 글자를 뺄 때 쓴다.
+    table_boxes: list[tuple[float, float, float, float]]
+    # 본문 단계에 함께 보낼 표(공급표가 아니거나 공급표인지 불확실한 표)를 글로 옮긴 것
     notice_rendered: list[str]
     supply_tables: list[SupplyTable]
-    supply_rows: list[TableRow]
-    ambiguous_supply: bool
     complex_candidates: list[str]
     rental_keys: set[tuple[str, str]]
     # 다음 쪽에 넘길 이어짐 상태. 이 쪽에 공급표가 없으면 None이다.
@@ -195,22 +203,15 @@ def page_tables(page: pymupdf.Page, page_number: int, previous: SupplyContinuati
     if not failed:
         detected = _mark_supply_tables(detected, page_number, previous)
     page_supply_tables = [table for table in detected if table.supply]
-    supply_tables, supply_rows, candidates, continuation = [], [], [], None
+    supply_tables, candidates, continuation = [], [], None
     if page_supply_tables:
         last_columns = previous.columns if previous and previous.page + 1 == page_number else {}
         for table_index, table in enumerate(detected, 1):
             if not table.supply:
                 continue
-            table_columns = table_field_columns(table.cells)
-            if table_columns:
-                last_columns = table_columns
-            else:
-                table_columns = last_columns
-            supply_tables.append(SupplyTable(page_number, table_index, table.cells, table_columns, table.ambiguous))
-            for row_index, row in enumerate(table.cells, 1):
-                supply_rows.append(TableRow(
-                    table_index, source_row_id(page_number, table_index, row_index), "\t".join(cell or "" for cell in row),
-                    table_row_field_values(table.cells, row_index - 1, table_columns)))
+            supply_table = SupplyTable.of(page_number, table_index, table.cells, last_columns, table.ambiguous)
+            last_columns = supply_table.columns
+            supply_tables.append(supply_table)
             candidates.extend(_complex_name_candidates(table.cells))
         continuation = SupplyContinuation(
             page_number, max(len(table.cells[0]) if table.cells else 0 for table in page_supply_tables), last_columns)
@@ -219,13 +220,10 @@ def page_tables(page: pymupdf.Page, page_number: int, previous: SupplyContinuati
         rental |= _rental_keys(table.cells)
     return PageTables(
         failed=failed,
-        boxes=[table.bbox for table in detected],
-        rendered=[_render_table(table.cells, index) for index, table in enumerate(detected, 1)],
+        table_boxes=[table.bbox for table in detected],
         notice_rendered=[_render_table(table.cells, index) for index, table in enumerate(detected, 1)
                          if not table.supply or table.ambiguous],
         supply_tables=supply_tables,
-        supply_rows=supply_rows,
-        ambiguous_supply=any(table.ambiguous for table in page_supply_tables),
         complex_candidates=candidates,
         rental_keys=rental,
         continuation=continuation,

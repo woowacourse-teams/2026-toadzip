@@ -16,8 +16,8 @@ from ai_worker.source_check import (
 _ROW_FIELDS = ("totalSupplyHouseholdCount", "exclusiveArea", "commonArea", "supplyArea", "constructedHouseholdCount")
 
 
-def assemble(compact: dict, selected: pages.PromptPages) -> dict:
-    """짧은 공급행 응답을 표 셀 근거에 맞춰 관리자 계약으로 조립한다."""
+def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str]]:
+    """짧은 공급행 응답을 표 셀 근거에 맞춰 관리자 계약으로 조립한다. 원문 대조 검산의 경고를 함께 돌려준다."""
     groups: list[dict] = []
     group_indexes: dict[tuple, int] = {}
     unresolved: list[dict] = []
@@ -235,10 +235,10 @@ def assemble(compact: dict, selected: pages.PromptPages) -> dict:
     }
     # 문자열·수치는 동일 의미의 머리글 열에서 확인할 수 있을 때만 유지한다.
     row_source_map = source_row_map(source_rows)
-    check_source_rows(supply_rows, row_source_map, selected.supply_row_text, evidence,
-                      tree["data"]["unresolvedFields"], selected.supply_row_values)
+    warnings = check_source_rows(supply_rows, row_source_map, selected.supply_row_text, evidence,
+                                 tree["data"]["unresolvedFields"], selected.supply_row_values)
     tree["data"]["unresolvedFields"] = deduplicate(tree["data"]["unresolvedFields"])
-    return tree
+    return tree, warnings
 
 
 def _compact_source_text(candidate: object, field: str, row_ids: list[str], selected: pages.PromptPages,

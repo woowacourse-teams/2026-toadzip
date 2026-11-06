@@ -13,6 +13,7 @@ from ai_worker.announcement import AnnouncementPdfExtractor
 from ai_worker import openai
 from ai_worker.extraction import ATTEMPT_BUDGET, PermanentError, TransientError
 from ai_worker.jobs import Job
+from ai_worker.openai import Reply
 from conftest import (COVER, EXTRACTION, NOTICE, RENT, RENT_CELLS, SUPPLY, USAGE, FakeJudge, FakeModel, contract_example,
                       grid_page, text_pdf, two_quantity_tables_pdf)
 
@@ -528,3 +529,121 @@ def test_notice_note_path_written_with_empty_brackets_reaches_the_result_readabl
 
     paths = [item["path"] for item in json.loads(result["json"])["data"]["unresolvedFields"]]
     assert "complexes[*].parkingCount" in paths and "complexes[].parkingCount" not in paths
+
+
+class StageReplyModel:
+    """단계마다 정해 둔 응답 JSON을 그대로 돌려주는 모델."""
+
+    def __init__(self, supply, notice):
+        self.replies = {"supply": supply, "notice": notice}
+
+    def chat(self, prompt, deadline):
+        stage = "supply" if "[추출 단계: 공급 표]" in prompt else "notice"
+        return Reply(json.dumps(self.replies[stage], ensure_ascii=False), USAGE)
+
+
+# 공급행 근거 행 ID가 입력 표에 없고(공급행 0), 다른 공급행은 표와 다른 모집수(99)를 냈으며,
+# 본문 단계는 같은 단지의 주소를 둘로 내고 범위 밖 근거 쪽(99)을 쓴 공고의 추출 결과(검산을 두 번 하던 때 그대로).
+SOURCE_CHECKED_TREE = {'data': {'announcement': {'name': 'Sample Notice'},
+          'receptionPlace': {},
+          'complexes': [{'sourceComplexName': 'Test',
+                         'address': None,
+                         'totalHouseholdCount': 100,
+                         'parkingCount': 30}],
+          'supplyRows': [{'complexReference': {'sourceComplexName': ''},
+                          'sourceHousingTypeName': None,
+                          'lhSourceRow': None,
+                          'expectedMoveInMonth': None,
+                          'totalSupplyHouseholdCount': None,
+                          'exclusiveArea': None,
+                          'commonArea': None,
+                          'supplyArea': None,
+                          'constructedHouseholdCount': None,
+                          'subtypes': [],
+                          'targets': [{'target': '',
+                                       'supplyHouseholdCount': None,
+                                       'reserveCount': None,
+                                       'rentalDeposit': None,
+                                       'monthlyRent': None,
+                                       'convertedDeposit': None,
+                                       'applicationCondition': None}]},
+                         {'complexReference': {'sourceComplexName': 'Test'},
+                          'sourceHousingTypeName': '26A',
+                          'lhSourceRow': None,
+                          'expectedMoveInMonth': None,
+                          'totalSupplyHouseholdCount': None,
+                          'exclusiveArea': None,
+                          'commonArea': None,
+                          'supplyArea': None,
+                          'constructedHouseholdCount': None,
+                          'subtypes': [],
+                          'targets': [{'target': '청년',
+                                       'supplyHouseholdCount': None,
+                                       'reserveCount': None,
+                                       'rentalDeposit': None,
+                                       'monthlyRent': None,
+                                       'convertedDeposit': None,
+                                       'applicationCondition': None}]}],
+          'schedules': [],
+          'unresolvedFields': [{'path': 'supplyRows[0].complexReference.sourceComplexName',
+                                'reason': '추출한 값이 같은 의미의 원문 표 열에서 확인되지 않음'},
+                               {'path': 'supplyRows[0].sourceHousingTypeName',
+                                'reason': '추출한 값이 같은 의미의 원문 표 열에서 확인되지 않음'},
+                               {'path': 'supplyRows[0].targets[0].target',
+                                'reason': '추출한 값이 같은 의미의 원문 표 열에서 확인되지 않음'},
+                               {'path': 'supplyRows[1].targets[0].reserveCount',
+                                'reason': '이번 공고의 예비자 모집수를 표에서 확인하지 못함'},
+                               {'path': 'supplyRows[0]', 'reason': '응답의 원문 표 행 ID가 입력 표와 일치하지 않음'},
+                               {'path': 'supplyRows[0].targets[0]', 'reason': '응답의 원문 표 행 ID가 입력 표와 일치하지 않음'},
+                               {'path': 'supplyRows[0].targets[0].reserveCount',
+                                'reason': '응답의 원문 표 행 ID가 입력 표와 일치하지 않음; 수치 원문을 확인하지 못함'},
+                               {'path': 'supplyRows[1].totalSupplyHouseholdCount',
+                                'reason': '추출한 수치가 같은 의미의 원문 표 열에서 확인되지 않음'},
+                               {'path': 'complexes[0].address', 'reason': '표·본문 단계의 값이 달라 미확인으로 남김'}]},
+ 'sharedCounts': [],
+ 'notApplicable': [],
+ 'evidence': [{'path': 'supplyRows[0]', 'page': 1, 'quote': ''},
+              {'path': 'supplyRows[0].targets[0]', 'page': 1, 'quote': ''},
+              {'path': 'supplyRows[1]', 'page': 1, 'quote': 'Test\t\t26A\t\t청년\t\t20\t\t46,920\t\t178,670'},
+              {'path': 'supplyRows[1].targets[0]',
+               'page': 1,
+               'quote': 'Test\t\t26A\t\t청년\t\t20\t\t46,920\t\t178,670'},
+              {'path': 'complexes[0]', 'page': 1, 'quote': 'Test\t\t26A\t\t청년\t\t20\t\t46,920\t\t178,670'},
+              {'path': 'announcement.name', 'page': 99, 'quote': 'Sample Notice'}]}
+
+SOURCE_CHECKED_WARNINGS = ['공급표·임대조건표 쪽을 찾지 못해 전체 1쪽을 보냈습니다.',
+ 'announcement.name: 첨부한 쪽 범위를 벗어난 근거 쪽 번호(99)',
+ 'complexes[0].address: 표·본문 단계의 값이 달라 미확인으로 남김',
+ 'supplyRows[0]: 응답의 원문 표 행 ID가 입력 표와 일치하지 않음',
+ 'supplyRows[0].targets[0]: 응답의 원문 표 행 ID가 입력 표와 일치하지 않음',
+ 'announcement.name: 첨부한 쪽 범위를 벗어난 근거 쪽 번호(99)']
+
+
+def test_source_check_findings_reach_the_result_once():
+    supply = {"data": {"rows": [
+        {"rowIds": ["P1:T1:R9"], "complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": 20},
+        {"rowIds": ["P1:T1:R2"], "complexName": "Test", "housingType": "26A", "target": "청년",
+         "totalSupplyHouseholdCount": 99},
+    ]}}
+    notice = {
+        "data": {"announcement": {"name": "Sample Notice"}, "receptionPlace": {}, "schedules": [], "unresolvedFields": [],
+                 "complexes": [
+                     {"sourceComplexName": "Test", "address": "A Road", "totalHouseholdCount": 100, "parkingCount": 30},
+                     {"sourceComplexName": "Test", "address": "B Road", "totalHouseholdCount": 100, "parkingCount": 30}]},
+        "notApplicable": [], "evidence": [{"path": "announcement.name", "page": 99, "quote": "Sample Notice"}],
+    }
+
+    result = AnnouncementPdfExtractor(StageReplyModel(supply, notice)).extract(job(structured_table_pdf()))
+
+    assert json.loads(result["json"]) == SOURCE_CHECKED_TREE
+    # 원문 대조 검산을 공급 단계 조립에서 한 번만 하므로 그 경고는 본문 쪽 번호·단지 병합 경고보다 앞에 온다.
+    # 내용과 개수는 두 번 검산하던 때(SOURCE_CHECKED_WARNINGS)와 같다.
+    assert sorted(result["warnings"]) == sorted(SOURCE_CHECKED_WARNINGS)
+    assert result["warnings"] == [
+        "공급표·임대조건표 쪽을 찾지 못해 전체 1쪽을 보냈습니다.",
+        "supplyRows[0]: 응답의 원문 표 행 ID가 입력 표와 일치하지 않음",
+        "supplyRows[0].targets[0]: 응답의 원문 표 행 ID가 입력 표와 일치하지 않음",
+        "announcement.name: 첨부한 쪽 범위를 벗어난 근거 쪽 번호(99)",
+        "complexes[0].address: 표·본문 단계의 값이 달라 미확인으로 남김",
+        "announcement.name: 첨부한 쪽 범위를 벗어난 근거 쪽 번호(99)",
+    ]

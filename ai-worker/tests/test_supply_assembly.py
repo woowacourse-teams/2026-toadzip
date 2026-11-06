@@ -7,7 +7,7 @@ from ai_worker import checks, pages, supply_assembly, tables
 
 def test_compact_supply_rows_are_assembled_from_cell_values_into_manager_contract():
     selected = pages.PromptPages(
-        text="all", rental_rows=0, supply_text="table", supply_pages=[4],
+        rental_rows=0, supply_text="table", supply_pages=[4],
         supply_row_ids=frozenset({"P4:T1:R4", "P4:T1:R5"}),
         supply_row_text={"P4:T1:R4": "Test\t26\t26A\t청년\t20", "P4:T1:R5": "Test\t26\t26A\t고령자\t3"},
         notice_text="body", notice_pages=[1], complex_candidates=["Test"], table_structure_fallback=False,
@@ -25,7 +25,7 @@ def test_compact_supply_rows_are_assembled_from_cell_values_into_manager_contrac
         {"rowIds": ["P4:T1:R5"], "complexName": "Test", "housingType": "26A", "target": "고령자", "reserveCount": 3},
     ]}}
 
-    tree = supply_assembly.assemble(compact, selected)
+    tree, _ = supply_assembly.assemble(compact, selected)
 
     assert len(tree["data"]["supplyRows"]) == 1
     row = tree["data"]["supplyRows"][0]
@@ -42,7 +42,7 @@ def test_compact_supply_rows_are_assembled_from_cell_values_into_manager_contrac
 
 def test_compact_target_removes_extraction_whitespace_around_parentheses():
     selected = pages.PromptPages(
-        text="all", rental_rows=0, supply_text="table", supply_pages=[5],
+        rental_rows=0, supply_text="table", supply_pages=[5],
         supply_row_ids=frozenset({"P5:T1:R38"}),
         supply_row_text={"P5:T1:R38": "Sample Complex\t18A2\t청년 ( 주거약자)\t3"},
         notice_text="body", notice_pages=[1], complex_candidates=["Sample Complex"],
@@ -57,7 +57,7 @@ def test_compact_target_removes_extraction_whitespace_around_parentheses():
         "target": "청년 ( 주거약자)", "reserveCount": 3,
     }]}}
 
-    tree = supply_assembly.assemble(compact, selected)
+    tree, _ = supply_assembly.assemble(compact, selected)
     row = tree["data"]["supplyRows"][0]
     warnings = reviewed(tree)
 
@@ -77,7 +77,7 @@ def reviewed(tree):
 
 def test_compact_supply_text_that_disagrees_with_source_cells_becomes_unresolved():
     selected = pages.PromptPages(
-        text="all", rental_rows=0, supply_text="table", supply_pages=[4],
+        rental_rows=0, supply_text="table", supply_pages=[4],
         supply_row_ids=frozenset({"P4:T1:R4"}), supply_row_text={"P4:T1:R4": "Test\t26A\t청년\t20"},
         notice_text="body", notice_pages=[1], complex_candidates=["Test"], table_structure_fallback=False,
         ambiguous_supply_tables=False,
@@ -87,7 +87,7 @@ def test_compact_supply_text_that_disagrees_with_source_cells_becomes_unresolved
     compact = {"data": {"rows": [{"rowIds": ["P4:T1:R4"], "complexName": "Fake", "housingType": "26B",
                                    "target": "고령자", "reserveCount": 99}]}}
 
-    tree = supply_assembly.assemble(compact, selected)
+    tree, _ = supply_assembly.assemble(compact, selected)
 
     row = tree["data"]["supplyRows"][0]
     assert row["complexReference"]["sourceComplexName"] == ""
@@ -102,7 +102,7 @@ def test_compact_supply_text_that_disagrees_with_source_cells_becomes_unresolved
 
 def test_compact_shared_count_is_mapped_to_each_target_without_copying_the_value():
     selected = pages.PromptPages(
-        text="all", rental_rows=0, supply_text="table", supply_pages=[4],
+        rental_rows=0, supply_text="table", supply_pages=[4],
         supply_row_ids=frozenset({"P4:T1:R4", "P4:T1:R5", "P4:T1:R6"}),
         supply_row_text={
             "P4:T1:R4": "Test\t26A\t청년", "P4:T1:R5": "Test\t26A\t고령자",
@@ -125,7 +125,7 @@ def test_compact_shared_count_is_mapped_to_each_target_without_copying_the_value
                           "rowIds": ["P4:T1:R6"]}],
     }
 
-    tree = supply_assembly.assemble(compact, selected)
+    tree, _ = supply_assembly.assemble(compact, selected)
 
     assert [target["reserveCount"] for target in tree["data"]["supplyRows"][0]["targets"]] == [None, None]
     assert tree["sharedCounts"] == [{
@@ -137,7 +137,7 @@ def test_compact_shared_count_is_mapped_to_each_target_without_copying_the_value
 
 def test_model_target_with_income_split_column_is_accepted_as_the_combined_source_name():
     selected = pages.PromptPages(
-        text="all", rental_rows=0, supply_text="table", supply_pages=[8],
+        rental_rows=0, supply_text="table", supply_pages=[8],
         supply_row_ids=frozenset({"P8:T1:R3"}), supply_row_text={"P8:T1:R3": "Test\t24A\t청년\t소득 없음\t46,920"},
         notice_text="body", notice_pages=[1], complex_candidates=["Test"], table_structure_fallback=False,
         ambiguous_supply_tables=False,
@@ -149,7 +149,7 @@ def test_model_target_with_income_split_column_is_accepted_as_the_combined_sourc
         {"rowIds": ["P8:T1:R3"], "complexName": "Test", "housingType": "24A", "target": "청년(소득 있음)"},
     ]}}
 
-    tree = supply_assembly.assemble(compact, selected)
+    tree, _ = supply_assembly.assemble(compact, selected)
 
     assert [target["target"] for target in tree["data"]["supplyRows"][0]["targets"]] == ["청년(소득 없음)", ""]
     assert "supplyRows[0].targets[1].target" in {item["path"] for item in tree["data"]["unresolvedFields"]}
@@ -157,7 +157,7 @@ def test_model_target_with_income_split_column_is_accepted_as_the_combined_sourc
 
 def test_each_value_gets_evidence_from_the_row_that_holds_its_cell():
     selected = pages.PromptPages(
-        text="all", rental_rows=0, supply_text="table", supply_pages=[4, 13],
+        rental_rows=0, supply_text="table", supply_pages=[4, 13],
         supply_row_ids=frozenset({"P4:T1:R4", "P13:T1:R3"}),
         supply_row_text={"P4:T1:R4": "Test\t26A\t청년\t20\t26.73", "P13:T1:R3": "Test\t26A\t청년\t46,920\t178,670"},
         notice_text="body", notice_pages=[1], complex_candidates=["Test"], table_structure_fallback=False,
@@ -174,7 +174,7 @@ def test_each_value_gets_evidence_from_the_row_that_holds_its_cell():
         "reserveCount": 20, "exclusiveArea": 26.73, "rentalDeposit": 46920000, "monthlyRent": 178670,
     }]}}
 
-    tree = supply_assembly.assemble(compact, selected)
+    tree, _ = supply_assembly.assemble(compact, selected)
 
     pages_by_path = {item["path"]: item["page"] for item in tree["evidence"]}
     # 공급행·대상 근거가 두 쪽에 걸쳐도 값마다 그 칸이 있는 행의 쪽을 가리킨다(13쪽이 4쪽보다 글자순으로 앞서도).
@@ -186,7 +186,7 @@ def test_each_value_gets_evidence_from_the_row_that_holds_its_cell():
 
 def test_value_evidence_prefers_the_row_whose_cell_matches_the_value():
     selected = pages.PromptPages(
-        text="all", rental_rows=0, supply_text="table", supply_pages=[8, 9],
+        rental_rows=0, supply_text="table", supply_pages=[8, 9],
         supply_row_ids=frozenset({"P8:T1:R3", "P9:T1:R3"}),
         supply_row_text={"P8:T1:R3": "Test\t26A\t청년\t소득 없음\t46,920", "P9:T1:R3": "\t\t\t소득 있음\t49,680"},
         notice_text="body", notice_pages=[1], complex_candidates=["Test"], table_structure_fallback=False,
@@ -200,7 +200,7 @@ def test_value_evidence_prefers_the_row_whose_cell_matches_the_value():
     compact = {"data": {"rows": [{"rowIds": ["P8:T1:R3", "P9:T1:R3"], "complexName": "Test", "housingType": "26A",
                                    "target": "청년(소득 있음)", "rentalDeposit": 49680000}]}}
 
-    tree = supply_assembly.assemble(compact, selected)
+    tree, _ = supply_assembly.assemble(compact, selected)
 
     evidence = next(item for item in tree["evidence"] if item["path"] == "supplyRows[0].targets[0].rentalDeposit")
     assert evidence["page"] == 9 and "49,680" in evidence["quote"]
@@ -208,17 +208,19 @@ def test_value_evidence_prefers_the_row_whose_cell_matches_the_value():
 
 # 같은 원문 셀에서 검증되지 않은 모델 수치를 확정하지 않는다.
 def extract(rows, item):
-    ids = [f'P1:T1:R{i + 1}' for i in range(1, len(rows))]
+    table_rows = tables.SupplyTable.of(1, 1, rows, None, False).rows[1:]
+    ids = [row.id for row in table_rows]
     selected = pages.PromptPages(
-        text='', rental_rows=0, supply_text='', supply_pages=[1], supply_row_ids=frozenset(ids),
-        supply_row_text={key: '\t'.join(row) for key, row in zip(ids, rows[1:])},
-        supply_row_values={key: tables.table_row_field_values(rows, i) for i, key in enumerate(ids, 1)},
+        rental_rows=0, supply_text='', supply_pages=[1], supply_row_ids=frozenset(ids),
+        supply_row_text={row.id: row.text for row in table_rows},
+        supply_row_values={row.id: row.values for row in table_rows},
         notice_text='', notice_pages=[], complex_candidates=[], table_structure_fallback=False,
         ambiguous_supply_tables=False,
     )
-    return supply_assembly.assemble({'data': {'rows': [{
+    tree, _ = supply_assembly.assemble({'data': {'rows': [{
         'rowIds': ids, 'complexName': 'Test', 'housingType': rows[1][1], 'target': '청년', **item,
     }]}}, selected)
+    return tree
 
 
 @pytest.mark.parametrize('header', ['잔여예비자', '기존예비자', '현재예비자', '대기예비자'])

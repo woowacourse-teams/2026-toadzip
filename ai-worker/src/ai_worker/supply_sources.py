@@ -32,12 +32,8 @@ class Supply:
     """공급 단계 결과. tree는 관리자 계약의 공급행·단지 부분이다."""
 
     tree: dict
-    # 검산이 대조할 원문 칸. 코드가 읽었으면 금액 단위를 보탠 행 값이다.
-    row_values: dict[str, dict[str, str]]
-    # 코드가 표를 읽으며 남긴 경고. 결과 경고에서 쪽 선택 경고보다 앞에 둔다.
-    table_warnings: list[str]
-    # 공급 단계 모델에 보낸 입력에 대한 안내. 결과 경고에서 쪽 선택 경고 뒤에 둔다.
-    input_warnings: list[str]
+    # 코드가 표를 읽으며 남긴 경고나 공급 단계에 보낸 입력에 대한 안내, 그다음 원문 대조 검산 경고
+    warnings: list[str]
     usage: list[dict]
     # 로그에 남기는 공급표 처리 방식(code·model)
     kind: str
@@ -54,8 +50,8 @@ class CodeSupply:
         """기다릴 모델 호출이 없다."""
 
     def read(self) -> Supply:
-        return Supply(assemble(self._grouped.compact, self._selected), self._selected.supply_row_values,
-                      list(self._grouped.warnings), [], [], "code")
+        tree, source_warnings = assemble(self._grouped.compact, self._selected)
+        return Supply(tree, [*self._grouped.warnings, *source_warnings], [], "code")
 
 
 class ModelSupply:
@@ -75,33 +71,37 @@ class ModelSupply:
         compact = checks.first_json_object(reply.content, {"rows": list})
         selected = self._selected
         # 코드가 공급표를 읽으면 공급 단계 호출이 없어 이 두 안내는 사실이 아니므로 모델 경로에만 둔다.
-        input_warnings = []
+        warnings = []
         if selected.table_structure_fallback:
-            input_warnings.append("표 셀 구조를 분리하지 못해 일부 쪽 텍스트를 공급 단계에도 전달했습니다.")
+            warnings.append("표 셀 구조를 분리하지 못해 일부 쪽 텍스트를 공급 단계에도 전달했습니다.")
         if selected.ambiguous_supply_tables:
-            input_warnings.append("공급 표인지 판단이 불확실한 표를 공급·본문 단계 양쪽에 전달했습니다.")
-        return Supply(assemble(compact, selected), selected.supply_row_values, [], input_warnings, [reply.usage],
-                      "model")
+            warnings.append("공급 표인지 판단이 불확실한 표를 공급·본문 단계 양쪽에 전달했습니다.")
+        tree, source_warnings = assemble(compact, selected)
+        return Supply(tree, [*warnings, *source_warnings], [reply.usage], "model")
 
 
 class SupplyPlan:
     """공급표를 읽을 곳을 정한다. 만들 때 외부 호출 없이 코드로 행을 묶어 두고(본문 단계 호출 전),
-    start에서 Jev로 수량 열의 뜻을 확인해 CodeSupply나 ModelSupply를 돌려준다."""
+    start에서 Jev로 수량 열의 뜻을 확인해 CodeSupply나 ModelSupply를 돌려준다.
+    first_pages는 공고 앞 쪽 원문이다(예비자만 모집하는 공고인지 본다)."""
 
-    def __init__(self, rows: list[LhSupplyRow], selected: pages.PromptPages):
+    def __init__(self, model: Model, column_judge: ColumnJudge | None, rows: list[LhSupplyRow],
+                 selected: pages.PromptPages, first_pages: list[str]):
+        self._model = model
+        self._column_judge = column_judge
         self._rows = rows
         self._selected = selected
+        self._first_pages = first_pages
         # LH 공고는 모델이 LH API 행 번호(lhSourceRow)로 공급행을 나누고 맞추므로 모델 단계를 그대로 쓴다.
         self._grouped = None if rows else supply_grouping.group(
             selected.supply_tables, selected.supply_row_values, selected.tableless_supply_pages)
 
-    def start(self, model: Model, column_judge: ColumnJudge | None, first_pages: list[str], cutoff: float,
-              deadline: float, pool: Executor) -> CodeSupply | ModelSupply:
+    def start(self, cutoff: float, deadline: float, pool: Executor) -> CodeSupply | ModelSupply:
         """본문 단계 호출을 보낸 뒤에 부른다. Jev 확인은 본문 단계 호출과 겹쳐 돈다.
-        first_pages는 공고 앞 쪽 원문, cutoff는 Jev에 물을 수 있는 마지막 시각, deadline은 모델 호출 마감이다."""
-        if self._grouped and _counts_confirmed(column_judge, self._grouped, first_pages, cutoff):
+        cutoff는 Jev에 물을 수 있는 마지막 시각, deadline은 모델 호출 마감이다."""
+        if self._grouped and _counts_confirmed(self._column_judge, self._grouped, self._first_pages, cutoff):
             return CodeSupply(self._grouped, self._selected)
-        return ModelSupply(model, self._rows, self._selected, deadline, pool)
+        return ModelSupply(self._model, self._rows, self._selected, deadline, pool)
 
 
 def _counts_confirmed(column_judge: ColumnJudge | None, grouped: supply_grouping.Grouped, first_pages: list[str],

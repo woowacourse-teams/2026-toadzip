@@ -15,8 +15,10 @@ def test_supply_count_not_present_in_referenced_source_row_is_cleared_and_unreso
     warnings = source_check.check_source_rows(rows, source_rows, source_text, evidence, unresolved, source_values)
 
     assert rows[0]["targets"][0]["reserveCount"] is None
-    assert {item["path"] for item in unresolved} == {"supplyRows[0].targets[0].reserveCount"}
-    assert any("reserveCount" in warning for warning in warnings)
+    assert unresolved == [{"path": "supplyRows[0].targets[0].reserveCount",
+                           "reason": "추출한 수치가 같은 의미의 원문 표 열에서 확인되지 않음"}]
+    # 근거는 확인됐으므로 경고는 없고, 값을 비운 사유는 미확인에만 남는다.
+    assert warnings == []
 
 
 def test_supply_count_matching_a_different_source_cell_is_cleared_and_unresolved():
@@ -33,8 +35,9 @@ def test_supply_count_matching_a_different_source_cell_is_cleared_and_unresolved
     warnings = source_check.check_source_rows(rows, source_rows, source_text, evidence, unresolved, source_values)
 
     assert rows[0]["targets"][0]["reserveCount"] is None
-    assert "supplyRows[0].targets[0].reserveCount" in {item["path"] for item in unresolved}
-    assert any("reserveCount" in warning for warning in warnings)
+    assert {"path": "supplyRows[0].targets[0].reserveCount",
+            "reason": "추출한 수치가 같은 의미의 원문 표 열에서 확인되지 않음"} in unresolved
+    assert warnings == []
 
 
 def test_non_numeric_supply_values_must_match_their_meaningful_source_cells():
@@ -86,8 +89,10 @@ def test_unsupported_target_evidence_clears_numeric_values_and_marks_each_field_
     rows = [{"targets": [{"target": "청년", "reserveCount": 20, "rentalDeposit": 46920000}]}]
     unresolved = []
 
-    source_check.check_source_rows(rows, {}, {}, [], unresolved)
+    warnings = source_check.check_source_rows(rows, {}, {}, [], unresolved)
 
+    # 경고는 근거를 확인하지 못한 경로마다 한 줄이다. 비운 값마다의 사유는 미확인에만 남는다.
+    assert warnings == ["supplyRows[0]: 원문 표 행 ID를 확인하지 못함", "supplyRows[0].targets[0]: 원문 표 행 ID를 확인하지 못함"]
     assert rows[0]["targets"][0]["reserveCount"] is None
     assert rows[0]["targets"][0]["rentalDeposit"] is None
     assert {item["path"] for item in unresolved} >= {

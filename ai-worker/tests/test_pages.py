@@ -65,15 +65,16 @@ def test_keeps_complete_sections_and_stops_before_other_sections_and_attached_fo
 
     with pages.open_pdf(pdf(*texts)) as document:
         selection = pages.select(pages.page_texts(document, later()))
-        prompt = pages.prompt_pages(document, selection.pages, later()).text
+        split = pages.prompt_pages(document, selection.pages, later())
 
     assert set(range(2, 11)).issubset(selection.pages)
     assert {12, 13}.issubset(selection.pages)
     assert 11 not in selection.pages
     assert 14 not in selection.pages
-    assert "36A2 청년 10" in prompt
-    assert "고령자 자격의 계속" in prompt
-    assert "031-8081-3500" in prompt
+    # 표 셀을 읽지 못한 쪽이라 공급 단계에는 고른 쪽 원문이, 본문 단계에는 본문이 간다.
+    assert "36A2 청년 10" in split.supply_text
+    assert "고령자 자격의 계속" in split.notice_text
+    assert "031-8081-3500" in split.notice_text
 
 
 def test_headerless_table_continues_for_more_than_one_following_page():
@@ -169,7 +170,7 @@ def test_real_table_keeps_decimal_amount_units_and_merged_cells():
     with pages.open_pdf(table_pdf()) as document:
         split = pages.prompt_pages(document, [1], later())
 
-    assert "26.4422" in split.text and "46,920" in split.text
+    assert "[P1:T1:R2] 26A 26.4422\t청년 소득 없음\t46,920\t178,670" in split.supply_text
     [table] = split.supply_tables
     assert table.cells[0][2] == "임대보증금(천원)"
     assert table.cells[1] == ["26A 26.4422", "청년 소득 없음", "46,920", "178,670"]
@@ -257,7 +258,7 @@ def test_empty_coordinate_read_keeps_page_text_instead_of_a_table_with_missing_v
     with pages.open_pdf(table_pdf()) as document:
         split = pages.prompt_pages(document, [1], later())
 
-    assert "46,920" in split.text and "46,920" in split.supply_text
+    assert "46,920" in split.notice_text and "46,920" in split.supply_text
     assert split.supply_tables == [] and split.supply_row_values == {}
     assert split.table_structure_fallback
 
@@ -306,10 +307,12 @@ def test_stops_reading_pages_once_deadline_passes(monkeypatch, read):
 
 def test_prompt_numbers_selected_pages_in_order():
     with pages.open_pdf(pdf("cover", "notice", "supply", "contact")) as document:
-        text = pages.prompt_pages(document, [1, 3, 4], later()).text
+        split = pages.prompt_pages(document, [1, 3, 4], later())
 
-    assert text.index("[첨부 1쪽]\ncover") < text.index("[첨부 2쪽]\nsupply") < text.index("[첨부 3쪽]\ncontact")
-    assert "notice" not in text
+    for text in (split.notice_text, split.supply_text):
+        assert (text.index("[첨부 1쪽 / 원본 1쪽]\ncover") < text.index("[첨부 2쪽 / 원본 3쪽]\nsupply")
+                < text.index("[첨부 3쪽 / 원본 4쪽]\ncontact"))
+        assert "notice" not in text
 
 
 def test_rental_rows_are_counted_once_across_selected_pages(monkeypatch):

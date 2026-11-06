@@ -12,7 +12,7 @@ def test_split_table_headers_map_reserve_count_to_its_own_column():
         ["Test", "26", "26A", "청년", "20", "26.0000", "15.0000"],
     ]
 
-    values = tables.table_row_field_values(rows, 3)
+    values = tables.SupplyTable.of(4, 1, rows, None, False).rows[3].values
 
     assert values == {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20",
                       "exclusiveArea": "26.0000", "commonArea": "15.0000"}
@@ -27,7 +27,7 @@ def test_table_header_mapping_distinguishes_base_rent_from_conversion_options():
          "87,780,000", "105,240"],
     ]
 
-    columns = tables.table_field_columns(rows)
+    columns = tables.SupplyTable.of(4, 1, rows, None, False).columns
 
     assert columns["rentalDeposit"] == 2
     assert columns["monthlyRent"] == 5
@@ -42,7 +42,8 @@ def test_continued_table_page_reuses_the_previous_page_header_columns():
     ]
     continuation_rows = [["Test", "26", "26A", "청년", "20", "26.0000", "15.0000"]]
 
-    values = tables.table_row_field_values(continuation_rows, 0, tables.table_field_columns(headers))
+    inherited = tables.SupplyTable.of(4, 1, headers, None, False).columns
+    values = tables.SupplyTable.of(5, 1, continuation_rows, inherited, False).rows[0].values
 
     assert values == {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20",
                       "exclusiveArea": "26.0000", "commonArea": "15.0000"}

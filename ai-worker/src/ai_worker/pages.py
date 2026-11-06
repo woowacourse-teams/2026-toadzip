@@ -187,8 +187,6 @@ def _check_deadline(deadline: float) -> None:
 
 @dataclass(frozen=True)
 class PromptPages:
-    # 이전 호출자가 쓰는 전체 원문. 화면용 추출 프롬프트 테스트와 진단에서 사용한다.
-    text: str
     # 임대조건표에서 센 서로 다른 (주택형, 공급계층) 줄 수. 결과의 공급대상 수는 이보다 적을 수 없다.
     rental_rows: int
     # 공급·임대 표 전용 입력. 행 ID는 원본 쪽·표·행에서 결정한다.
@@ -215,14 +213,14 @@ class PromptPages:
 def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) -> PromptPages:
     """고른 쪽을 [첨부 N쪽] 순서로 잇는다. 모델은 이 N을 근거 쪽 번호로 쓰고, 결과에서 원본 쪽 번호로 되돌린다.
     deadline은 page_texts와 같다. 표 찾기가 쪽마다 1초 안팎이라 쪽마다 확인한다."""
-    all_parts, notice_parts, supply_parts = [], [], []
+    notice_parts, supply_parts = [], []
     rental, supply_row_ids, supply_row_text, supply_row_values, candidates = set(), set(), {}, {}, []
     notice_pages, supply_pages, fallback_pages, unstructured_supply_pages = [], [], [], []
     supply_tables, tableless_supply_pages = [], []
     previous_supply: tables.SupplyContinuation | None = None
     ambiguous_table = False
 
-    for attachment_page, number in enumerate(pages, 1):
+    for number in pages:
         page = document[number - 1]
         text = page.get_text("text")
         found = tables.page_tables(page, number, previous_supply)
@@ -232,19 +230,16 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
             if _has_supply_table_text(text):
                 unstructured_supply_pages.append(number)
         else:
-            notice_body = _text_without_tables(page, found.boxes)
-            if not found.rendered and _has_supply_table_text(text):
+            notice_body = _text_without_tables(page, found.table_boxes)
+            if not found.table_boxes and _has_supply_table_text(text):
                 tableless_supply_pages.append(number)
-
-        combined = "\n".join([text, *found.rendered])
-        all_parts.append(f"[첨부 {attachment_page}쪽]\n{combined}")
 
         notice_content = "\n".join([notice_body, *found.notice_rendered]).strip()
         if notice_content:
             notice_pages.append(number)
             notice_parts.append(f"[첨부 {len(notice_pages)}쪽 / 원본 {number}쪽]\n{notice_content}")
 
-        ambiguous_table = ambiguous_table or found.ambiguous_supply
+        ambiguous_table = ambiguous_table or any(table.ambiguous for table in found.supply_tables)
         if found.supply_tables:
             if number not in supply_pages:
                 supply_pages.append(number)
@@ -252,9 +247,7 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
             for table in found.supply_tables:
                 supply_parts.append(f"[표 {table.number} / 원본 {number}쪽]")
                 supply_tables.append(table)
-                for row in found.supply_rows:
-                    if row.table != table.number:
-                        continue
+                for row in table.rows:
                     supply_row_ids.add(row.id)
                     supply_row_text[row.id] = row.text
                     supply_row_values[row.id] = row.values
@@ -281,7 +274,6 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
     supply_parts.extend(fallback_text)
 
     return PromptPages(
-        text="\n\n".join(all_parts),
         rental_rows=len(rental),
         supply_text="\n\n".join(supply_parts),
         supply_pages=supply_pages,
