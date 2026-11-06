@@ -36,7 +36,7 @@
 - 단지의 `DELETE /{id}/housing-types/{typeId}?version=...`과 `POST /{id}/housing-types/{typeId}/restore?version=...`은 주택형 하나를 휴지통으로 옮기거나 복구하고 단지 상세를 반환한다. 공급행이나 공급 매칭 판단이 가리키는 주택형은 409로 거절한다. 휴지통 주택형은 기록을 보존하고 관리자 상세에만 `deleted: true`로 남으며 공개 상세·면적 필터·매칭 후보에서 빠진다. 마이홈 재정제는 같은 원천 주택형을 다시 만들지 않는다. `DELETE_HOUSING_TYPE`·`RESTORE_HOUSING_TYPE` 이력을 기록한다.
 - 공고 수정의 접수처 연락처는 미확인이면 `null`을 유지한다. 접수처명·접수방식·URL 검증과 공고 신규 등록의 연락처 필수 규칙은 유지한다.
 - 기존 `PUT /{id}/application-schedules`는 선택적 `version` 쿼리로 충돌을 확인한다.
-- `/api/admin/ingest/pipelines/history?page=...&size=...`는 실행 이력을 제공한다.
+- `/api/admin/ingest/pipelines/history?page=...&size=...`는 실행 이력을 제공한다. `domain=complex`는 단지 실행만, `domain=announcement`는 LH 공고와 SH·GH 공고 수집 실행을 돌려준다.
 - `GET /api/admin/addresses?keyword=...`는 주소 후보(최대 5개)의 도로명·지번주소, PNU, 법정동·시도·시군구 코드, 위도·경도를 돌려준다. 좌표가 없는 주소(건물 없는 지번 등)나 좌표를 위경도로 변환하지 못한 후보는 위도·경도가 `null`이고 나머지 값은 그대로 돌려준다. 키는 `JUSO_ADDRESS_API_KEY`(도로명주소 검색), `JUSO_COORDINATE_API_KEY`(좌표제공)이고, 없거나 외부 API가 실패하면 503 `ADDRESS_LOOKUP_UNAVAILABLE`, 검색어 문제는 400 `INVALID_ADDRESS_KEYWORD`다. 요청은 연결 2초, 응답 3초 제한이며 재시도하지 않는다.
 - 세션 인증과 쓰기 요청의 CSRF 검증을 유지한다. 관리자 CORS는 PUT·DELETE도 허용한다.
 - 이름·주소는 부분 일치, 원천 식별자는 정확한 일치로 검색한다. 장기전세도 조회·수정한다.

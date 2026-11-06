@@ -97,6 +97,18 @@ describe('데이터 실행 이력', () => {
     expect(within(running).getByRole('button', { name: 'LH 공고 목록 수집 진행' })).toBeVisible()
     expect(within(running).queryByRole('button', { name: /실행 중지/ })).not.toBeInTheDocument()
   })
+  it('공고 이력에 함께 오는 GH 수집도 단계 결과와 공개 전 확인 안내를 보인다', async () => {
+    getHistory.mockResolvedValue([execution({ executionId: 'gh-1', type: 'GH_ANNOUNCEMENT_COLLECTION', totalStepCount: 2,
+      completedSteps: ['GH 공고 원천 수집', 'GH 공고 정제'] })])
+    render(<MemoryRouter><PipelineHistory domain="announcement" compact /></MemoryRouter>)
+    const row = (await screen.findByText('GH 공고 수집')).closest('tr')!
+    fireEvent.click(within(row).getByRole('button', { name: /상세 보기/ }))
+    const detail = screen.getByRole('region', { name: '실행 상세' })
+    expect(within(detail).getByRole('button', { name: 'GH 공고 원천 수집 성공' })).toBeVisible()
+    expect(within(detail).getByRole('button', { name: 'GH 공고 정제 성공' })).toBeVisible()
+    expect(within(detail).getByRole('link', { name: '공개 전 확인이 필요한 공고 보기' }))
+      .toHaveAttribute('href', '/admin/announcements?unconfirmed=true&provider=GH')
+  })
   it('v2는 도메인 조건을 서버로 보내 실행 이력을 분리한다', async () => {
     getHistory.mockResolvedValue([])
     render(<PipelineHistory domain="complex" />)
