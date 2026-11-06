@@ -54,7 +54,7 @@ export function ManagementWorkspace({ resource }: { resource: ManagementResource
 
   return <section ref={workspaceRef} className={styles.workspace}>
     {/* 상세를 열면 제목·목록 복귀·목록 펼치기·추가를 한 줄에 둔다. 상세 안의 별도 닫기 줄은 같은 일을 해서 두지 않는다. */}
-    <header className={styles.heading} data-detail={Boolean(id)}>
+    <header className={styles.heading}>
       <div className={styles.headingTitle}>
         <h1>{title} 관리</h1>
         {id && <Link className={styles.back} to={back}>
@@ -70,7 +70,6 @@ export function ManagementWorkspace({ resource }: { resource: ManagementResource
         </Link>
       </div>
     </header>
-    {!id && <p className={styles.description}>{title}를 선택해 정보를 확인하거나 공식 자료로 보완하세요.</p>}
     <div className={`${styles.body} ${id ? styles.withEditor : ''}`}>
       <div className={styles.listPane} hidden={Boolean(id) && !showList}><ManagementList resource={resource} embedded compact={false} refresh={revision} /></div>
       {id ? <section ref={editorRef} tabIndex={-1} className={styles.editor} aria-label={`${title} ${id === 'new' ? '추가' : '상세·수정'}`}>

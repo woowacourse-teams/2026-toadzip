@@ -11,6 +11,7 @@ function setup() {
     <Route path="/admin" element={<AdminLayout />}>
       <Route path="notification-subscriptions" element={<h1>알림 신청 관리</h1>} />
       <Route path="users" element={<h1>회원 관리</h1>} />
+      <Route path="sources" element={<h1>원천 데이터</h1>} />
     </Route>
     <Route path="/admin/login" element={<h1>관리자 로그인</h1>} />
   </Routes></MemoryRouter>)
@@ -22,6 +23,15 @@ it('매일 하는 작업은 바로 보이고 수집 도구는 펼쳐서 찾을 �
   expect(screen.getByRole('link', { name: '원천 데이터' })).not.toBeVisible()
   fireEvent.click(screen.getByText('수집·원천 도구'))
   expect(screen.getByRole('link', { name: '원천 데이터' })).toBeVisible()
+})
+it('펼쳐 둔 메뉴 묶음은 다른 묶음의 메뉴로 이동해도 접히지 않는다', async () => {
+  setup()
+  expect(screen.getByRole('link', { name: '회원 관리' })).toBeVisible()
+  fireEvent.click(screen.getByText('수집·원천 도구'))
+  fireEvent.click(screen.getByRole('link', { name: '원천 데이터' }))
+  expect(await screen.findByRole('heading', { name: '원천 데이터' })).toBeVisible()
+  expect(screen.getByRole('link', { name: '원천 데이터' })).toBeVisible()
+  expect(screen.getByRole('link', { name: '회원 관리' })).toBeVisible()
 })
 it('메뉴를 펼치고 닫을 수 있으며 Escape로 닫으면 버튼으로 포커스가 돌아간다', () => {
   setup()
@@ -37,7 +47,7 @@ it('메뉴를 펼치고 닫을 수 있으며 Escape로 닫으면 버튼으로 �
 })
 it('접힌 메뉴에도 모든 링크의 아이콘과 접근 가능한 이름, 선택 상태를 남긴다', () => {
   setup()
-  expect(screen.getByText('관리자 작업실')).toBeVisible()
+  expect(screen.getByText('관리자 페이지')).toBeVisible()
   expect(screen.queryByText('공식 근거로 신뢰할 수 있는 정보를 만듭니다.')).not.toBeInTheDocument()
   const collapse = screen.getByRole('button', { name: '메뉴 접기' })
   expect(collapse.textContent).toBe('')

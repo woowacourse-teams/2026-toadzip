@@ -36,7 +36,7 @@ export function NotificationDeliveriesPage() {
     return () => controller.abort()
   }, [query, valid, page, status, keyword, userId, announcementId, setParams])
   return <section className={styles.page}>
-    <header><h1>알림 발송 기록</h1><p>회원별 알림 생성, 기기별 발송 시도, 열람 여부를 확인합니다.</p></header>
+    <header><h1>알림 발송 기록</h1></header>
     {userId && <p><Link to={`/admin/users/${userId}`}>회원 #{userId} 정보·알림 신청</Link>의 발송 기록</p>}
     {announcementId && <p><Link to={workDetailUrl('ANNOUNCEMENT', Number(announcementId), `/admin/notification-deliveries?${params}`, 'info')}>공고 #{announcementId}</Link>의 발송 기록</p>}
     <form key={params.toString()} className={styles.filters} onSubmit={event => {

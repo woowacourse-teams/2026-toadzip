@@ -58,7 +58,7 @@ export function FeedbackListPage() {
   function move(next: number) { setParams(current => { current.set('page', String(next)); return current }) }
 
   return <section className={styles.page}>
-    <header className={styles.heading}><h1>사용자 의견</h1><p>접수된 의견을 확인하고 처리 상태와 결과를 기록합니다.</p></header>
+    <header className={styles.heading}><h1>사용자 의견</h1></header>
     <form data-admin-navigation key={search} className={styles.filters} aria-label="사용자 의견 검색" onSubmit={event => {
       event.preventDefault()
       const values = new FormData(event.currentTarget)

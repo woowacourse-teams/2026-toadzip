@@ -22,7 +22,7 @@ export function IngestPage({ domain }: { domain: 'complex' | 'announcement' }) {
       <h1>{domain === 'complex' ? '단지 수집' : '공고 수집'}</h1>
       {domain === 'complex' ? <button type="button" className={complexStyles.historyButton} onClick={() => {
         setHistoryOpen(true); dialog.current?.showModal()
-      }}>실행 이력</button> : <p>원천별로 공고를 갱신하고 실행 결과를 확인합니다.</p>}
+      }}>실행 이력</button> : null}
     </header>
     <DataPipelineControl key={`control-${domain}`} domain={domain} compact />
     {domain === 'complex' ? <dialog ref={dialog} className={complexStyles.historyDialog} aria-labelledby="complex-history-title"

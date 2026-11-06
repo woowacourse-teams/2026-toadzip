@@ -27,9 +27,10 @@ export function OperationsHome() {
     return () => controller.abort()
   }, [attempt])
   return <section className={styles.page}>
-    <header><div><h1>운영 홈</h1><p>처리할 업무를 고르고, 보정 후 실제 반영 결과까지 확인하세요.</p></div>
-      <button type="button" disabled={!counts} onClick={() => setAttempt(value => value + 1)}>현황 새로고침</button></header>
-    <p className={styles.checked} role="status">{counts ? `${checkedAt} 확인 · 한국 시각` : '운영 현황을 확인하는 중…'}</p>
+    <header><div><h1>운영 홈</h1></div>
+      {/* 확인 시각은 새로고침 버튼과 같은 일이라 버튼 바로 옆에 둔다. */}
+      <div className={styles.refresh}><p className={styles.checked} role="status">{counts ? `${checkedAt} 확인` : '운영 현황을 확인하는 중…'}</p>
+        <button type="button" disabled={!counts} onClick={() => setAttempt(value => value + 1)}>현황 새로고침</button></div></header>
     <ul className={styles.work}>{work.map((item, index) => <li key={item.href} className={counts?.[index].value ? styles.attention : undefined}>
       <div className={styles.cardHead}><h2>{item.title}</h2>
         <Link className={styles.go} to={item.href} aria-label={`${item.title} 목록으로 이동`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8" /></svg></Link></div>

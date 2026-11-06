@@ -6,60 +6,41 @@
   font-size: var(--ds-text-body);
   line-height: var(--ds-line-height-body);
 }
-:global(.admin-content):has(> .workspace) { max-width: 1920px; box-sizing: border-box; padding: 28px 32px 36px; }
-.heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 12px; }
-.heading h1 { margin: 0; font-size: 22px; letter-spacing: -.04em; line-height: 1.4; }
+/* 목록과 상세에서 제목 줄 높이를 같게 둬 상세를 열 때 본문이 위아래로 튀지 않게 한다. */
+.heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; min-height: 36px; margin-bottom: 12px; }
+.heading h1 { margin: 0; line-height: 1.4; }
 .headingTitle { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; min-width: 0; }
 .back { display: inline-flex; align-items: center; gap: 4px; font-size: var(--admin-text-body); font-weight: 600; text-decoration: none; }
 .back:hover { text-decoration: underline; text-underline-offset: 4px; }
-.body { display: grid; gap: var(--ds-space-4); align-items: start; min-width: 0; }
-.body > :global(.management-page) > form { margin-bottom: 0; }
-.withEditor { --management-pane-height: max(560px, calc(100dvh - 32px)); grid-template-columns: minmax(300px, .65fr) minmax(560px, 1.35fr); }
-.withEditor > :global(.management-page) { display: contents; container-type: normal; }
-.withEditor > :global(.management-page) > form { grid-column: 1 / -1; }
-.withEditor > :global(.management-page) > :global(.registration-error) { grid-column: 1 / -1; }
-.withEditor > :global(.management-page) > [aria-busy] {
-  grid-column: 1;
-  grid-row: 2;
-  display: flex;
-  flex-direction: column;
-  height: var(--management-pane-height);
-  min-height: 0;
-}
-.withEditor > :global(.management-page) > [aria-busy] > [role="region"] { flex: 1; min-height: 0; max-height: none; }
-.withEditor :global(.ingest-meta) { margin-top: 0; }
-.withEditor :global([aria-label="목록 페이지"]) { gap: 10px; padding: 12px 0 0; margin-top: 0; }
-.withEditor :global([aria-label="목록 페이지"]) > div:first-child { width: 100%; justify-content: center; }
-.withEditor :global([aria-label="목록 페이지"]) > span { margin: 0 auto; }
-.withEditor :global([aria-label="페이지 바로 이동"]) { display: none; }
-.withEditor :global([aria-label="목록 페이지"]) button { min-width: 30px; min-height: 32px; padding: 5px 7px; font-size: 11px; }
-.editor {
-  grid-column: 2;
-  grid-row: 2;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  height: var(--management-pane-height);
-  scroll-margin-top: 80px;
-  background: var(--ds-color-surface);
-  border: 1px solid var(--ds-color-border-base);
-  border-radius: var(--admin-radius-card, 16px);
-  box-shadow: 0 8px 28px rgb(25 45 35 / 5%);
-  overflow: hidden;
-}
-.editor:focus { outline: none; }
-.withEditor:has(> :global(.management-page) > :global(.registration-error)) > .editor,
-.withEditor:has(> :global(.management-page) > :global(.registration-error)) > :global(.management-page) > [aria-busy] { grid-row: 3; }
-.withEditor > :global(.management-page) > :global(.registration-error) { grid-row: 2; }
-.editor:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
-.editorBody { flex: 1; min-height: 0; overflow: hidden; }
-.editorBody > :global(.management-detail) { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.editor :global(.management-detail-content) { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 24px 0; scrollbar-gutter: stable; }
-.editorBody > :global(.admin-registration-page) { box-sizing: border-box; height: 100%; overflow-y: auto; padding: 24px; scrollbar-gutter: stable; }
-.editor :global(.management-detail) > :is(:global(.registration-error), :global(.registration-success), :global(.admin-warning), :global(.admin-confirm)) { flex: none; max-height: 180px; overflow-y: auto; margin: 8px 24px; }
-.editorBody h2 { font-size: 16px; }
 
-/* Controls are scoped to the complex and announcement workspaces. */
+/* 상세를 열면 상세가 본문 폭 전체를 쓰고, 펼친 목록은 그 위에 둔다. 목록은 닫혀도 마운트된 채 남는다. */
+.body { display: flex; flex-direction: column; gap: var(--ds-space-4); min-width: 0; }
+.body > :global(.management-page) > form { margin-bottom: 0; }
+.listPane { min-width: 0; width: 100%; }
+
+/* 전체 목록은 남은 화면 높이를 채워 표만 스크롤한다. 필터를 펼쳐 내용이 더 길면 표 최소 높이(240px)를 지키고 아래로 늘어난다.
+   표 높이를 0에서 키워 행 수만큼 늘어나지 않게 한다. */
+@media (min-width: 701px) {
+  .workspace:has(> .body:not(.withEditor)) { display: flex; flex-direction: column; height: max(560px, calc(100dvh - 148px)); }
+  .body:not(.withEditor),
+  .body:not(.withEditor) > .listPane,
+  .body:not(.withEditor) > .listPane > :global(.management-page),
+  .body:not(.withEditor) > .listPane > :global(.management-page) > [aria-busy] { flex: 1; display: flex; flex-direction: column; }
+  .body:not(.withEditor) > .listPane > :global(.management-page) > [aria-busy] > [role="region"] { flex: 1 1 0; height: 0; min-height: 240px; max-height: none; }
+  /* 빈 목록도 표와 같은 높이를 채워 탭을 바꿔도 페이지 이동 줄이 카드 아래 같은 자리에 있게 한다. */
+  .body:not(.withEditor) > .listPane > :global(.management-page) > [aria-busy] > :global(.admin-empty) { flex: 1 1 0; height: 0; min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+}
+
+/* 상세·추가 카드 */
+.editor { order: 1; display: flex; flex-direction: column; width: 100%; min-width: 0; scroll-margin-top: 80px; background: var(--ds-color-surface); border: 0; border-radius: var(--admin-radius-card, 16px); box-shadow: var(--admin-shadow-card); }
+/* 상세를 열 때 화면 낭독기를 위해 상세 영역으로 포커스를 옮긴다. 영역 전체에 초록 테두리가 생기지 않게 컨테이너에는 포커스 테두리를 그리지 않는다. */
+.editor:focus, .editor:focus-visible { outline: none; }
+.editorBody > :global(.management-detail) { display: flex; flex-direction: column; }
+.editorBody > :global(.admin-registration-page) { box-sizing: border-box; padding: 24px; }
+.editorBody h2 { font-size: 16px; }
+.editor :global(.management-detail) > :is(:global(.registration-error), :global(.registration-success), :global(.admin-warning), :global(.admin-confirm)) { flex: none; max-height: 180px; overflow-y: auto; margin: 8px 24px; }
+
+/* 작업공간 안의 입력·버튼 */
 .workspace :is(button, input, select, textarea) { font-size: var(--ds-text-body); }
 .workspace :is(button, a):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
 .workspace :global(.admin-primary) { border-radius: var(--ds-radius-control); background: var(--ds-color-action); border-color: var(--ds-color-action); color: var(--ds-color-surface); }
@@ -72,73 +53,77 @@
 .workspace input:read-only { background: var(--ds-color-surface-subtle); color: var(--ds-color-label); }
 .workspace :is(input, select)[aria-invalid="true"] { border-color: var(--ds-color-deadline); }
 .workspace :global(.admin-status) { padding: 3px 7px; font-size: 11px; font-weight: 500; border-radius: 999px; }
+@media (prefers-reduced-motion: reduce) { .workspace :is(input, select, textarea) { transition: none; } }
 
-.editor :global(.registration-card) { padding: 0; border: 0; border-radius: 0; box-shadow: none; }
-.editor :global(.registration-card) > h2 { font-size: 18px; margin-bottom: 20px; }
-.editor :global(.management-heading) { flex: none; margin: 0; padding: 20px 24px 16px; gap: 16px; align-items: flex-start; }
+/* 상세 머리: 탭에 따라 버튼이 빠져도 높이가 바뀌지 않게 최소 높이를 둔다. 버튼은 제목 오른쪽 위에 둔다. */
+.editor :global(.management-heading) { box-sizing: border-box; flex: none; min-height: 96px; margin: 0; padding: 16px 20px 12px; gap: 16px; align-items: flex-start; }
 .editor :global(.management-heading) > div:first-child { min-width: 0; }
-.editor :global(.management-heading) h2 { margin: 0; font-size: 19px; line-height: 1.5; letter-spacing: -.03em; overflow-wrap: anywhere; }
+.editor :global(.management-heading) h2 { margin: 0; font-size: 24px; line-height: 1.4; letter-spacing: -.03em; overflow-wrap: anywhere; }
 .editor :global(.management-heading) p { margin: 6px 0 8px; color: var(--ds-color-muted); font-size: var(--ds-text-caption); }
-.editor :global(.management-summary-meta) { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; }
+.editor :global(.management-summary-meta) { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; font-size: var(--admin-text-meta); }
 .editor :global(.management-summary-meta) p { margin: 0; }
-.editor :global(.admin-section-tabs) {
-  flex: none;
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 20px;
-  margin: 0;
-  padding: 0 24px;
-  background: var(--ds-color-surface);
-  border-bottom: 1px solid var(--ds-color-divider);
-  overflow-x: auto;
+/* 공고 제목과 작업 버튼을 분리해 긴 이름도 작업 영역을 밀어내지 않는다. */
+.editor :global(.management-detail[data-resource='announcements'] .management-heading) { gap: var(--ds-space-4); flex-wrap: nowrap; }
+.editor :global(.management-detail[data-resource='announcements'] .management-heading) > div:first-child { flex: 1 1 0; }
+.editor :global(.management-detail[data-resource='announcements'] .management-heading) h2 { word-break: keep-all; margin-bottom: var(--ds-space-2); }
+.editor :global(.management-detail[data-resource='announcements'] .management-heading .admin-inline) { flex-shrink: 0; align-self: flex-start; flex-wrap: wrap; }
+
+/* 상세 탭: 버튼 기본 테두리·둥근 모서리·그림자를 쓰지 않고 선택 밑줄만 둔다. */
+.editor :global(.admin-section-tabs) { flex: none; display: flex; flex-wrap: wrap; gap: 20px; margin: 0; padding: 0 20px; background: var(--ds-color-surface); border-top: 1px solid var(--ds-color-divider); border-bottom: 1px solid var(--ds-color-divider); border-radius: 0; overflow-x: auto; }
+.workspace .body .editor :global(.admin-section-tabs) button:not([data-design-system]) { flex: none; min-height: 40px; padding: 0; border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; box-shadow: none; font-size: var(--admin-text-body); white-space: nowrap; }
+.workspace .body .editor :global(.admin-section-tabs) button:not([data-design-system])[aria-pressed=true] { border-bottom-color: var(--ds-color-action); color: var(--ds-color-action); }
+
+/* 상세 본문: 탭마다 첫 제목 위치가 달라지지 않게 제목의 기본 위쪽 여백을 없애고 간격은 구역이 맡는다. */
+.editor :global(.management-detail-content) { padding: 16px 20px 20px; }
+.editor :global(.management-detail-content) :is(h2, h3) { margin-top: 0; }
+.editor :global(.management-detail-content) :is(h2, h3):not(:first-child) { margin-top: 16px; }
+.editor :global(.management-detail-content) h2 { font-size: var(--admin-text-heading); margin-bottom: 10px; line-height: 1.4; }
+.editor :global(.management-detail-content) :global(.admin-inline) > :is(h2, h3) { margin: 0 auto 0 0; }
+/* 버튼이 있는 제목 줄도 다른 탭의 제목과 같은 높이에서 시작하도록 버튼이 더 큰 만큼 위로 올린다. */
+.editor :global(.management-detail-content) :global(.admin-inline):has(> :is(h2, h3)) { margin: calc((var(--admin-text-heading) * 1.4 - var(--admin-control-height)) / 2) 0 10px; }
+.editor :global(.admin-section-intro) { display: grid; gap: 4px; padding: 0 0 12px; margin-bottom: 16px; border-bottom: 1px solid var(--ds-color-divider); }
+.editor :global(.admin-section-intro) > span { display: none; }
+.editor :global(.admin-section-intro) h2 { margin: 0; }
+.editor :global(.admin-section-intro) p { font-size: var(--admin-text-meta); color: var(--ds-color-muted); margin: 0; }
+
+/* 상세 묶음은 모두 같은 행 모양으로 둔다: 왼쪽 열에 묶음 제목, 오른쪽에 같은 4열 격자. 묶음이 달라도 값 열이 세로로 맞는다. */
+.editor :global(.admin-detail-sections) { display: block; margin: 0; }
+.editor :global(.management-detail-content) :global(.admin-detail-section) { display: grid; grid-template-columns: 180px minmax(0, 1fr); column-gap: 32px; row-gap: 0; margin: 0; padding: 20px 0; border: 0; border-top: 1px solid var(--ds-color-divider); border-radius: 0; background: transparent; box-shadow: none; }
+.editor :global(.management-detail-content) :global(.admin-detail-section):first-child { border-top: 0; padding-top: 4px; }
+.editor :global(.management-detail-content) :global(.admin-detail-section) > :is(h2, header) { grid-column: 1; grid-row: 1 / span 20; align-self: start; margin: 0; padding: 0; background: transparent; border: 0; }
+.editor :global(.management-detail-content) :global(.admin-detail-section) > header { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.editor :global(.management-detail-content) :global(.admin-detail-section) :is(h2, h3) { margin: 0; font-size: var(--admin-text-body); font-weight: 700; line-height: 1.5; color: var(--ds-color-text); }
+.editor :global(.management-detail-content) :global(.admin-detail-section) > :not(h2, header) { grid-column: 2; margin: 0 0 12px; }
+.editor :global(.management-detail-content) :global(.admin-detail-section) > :last-child:not(h2, header) { margin-bottom: 0; }
+.editor :global(.management-detail-content) :global(.admin-data-grid) { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 24px; margin-top: 0; }
+.editor :global(.management-detail-content) :global(.admin-data-grid) dt { font-size: var(--admin-text-meta); color: var(--ds-color-muted); margin-bottom: 2px; }
+.editor :global(.management-detail-content) :global(.admin-data-grid) dd { font-size: var(--admin-text-body); font-weight: 500; line-height: 1.45; color: var(--ds-color-text); font-variant-numeric: tabular-nums; }
+/* 긴 값은 좁은 칸에서 여러 줄로 깨지지 않게 넓힌다. 이름은 한 줄 전체, 19자리 PNU·URL·원천 식별자는 두 칸을 쓴다. */
+.editor :global(.management-detail-content) :global(.admin-data-grid) > [data-field='name'] { grid-column: 1 / -1; }
+.editor :global(.management-detail-content) :global(.admin-data-grid) > :is([data-field='address.pnu'], [data-field='supplyPnu'], [data-field='originalUrl'], [data-field='receptionPlace.url'], [data-field='sourceIdentifier']) { grid-column: span 2; }
+/* 긴 원문 URL은 한 줄로 줄여 세 줄을 차지하지 않게 한다. 주소 전체는 링크로 연다. */
+.editor :global(.management-detail-content) :global(.admin-data-grid) dd a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container (max-width: 900px) {
+  .editor :global(.management-detail-content) :global(.admin-detail-section) { grid-template-columns: minmax(0, 1fr); }
+  .editor :global(.management-detail-content) :global(.admin-detail-section) > :is(h2, header) { grid-row: auto; margin-bottom: 12px; }
+  .editor :global(.management-detail-content) :global(.admin-detail-section) > :not(h2, header) { grid-column: 1; }
+  .editor :global(.management-detail-content) :global(.admin-data-grid) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
-.editor :global(.admin-section-tabs) button { flex: none; min-height: 48px; padding: 12px 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--ds-color-label); font-size: 13px; white-space: nowrap; }
-.editor :global(.admin-section-tabs) button[aria-pressed="true"] { color: var(--ds-color-action); border-bottom-color: var(--ds-color-action); background: transparent; }
-.editor :global(.registration-form) { gap: 20px; }
-.editor :global(.management-page) fieldset, .editor :global(.registration-form) fieldset { min-width: 0; margin: 0 0 24px; padding: 18px; border: 1px solid var(--ds-color-divider); border-radius: 12px; background: var(--ds-color-surface-subtle); }
-.editor fieldset legend { padding: 0 6px; font-size: 14px; font-weight: 700; color: var(--ds-color-text); }
-.editor :global(.registration-grid), .editor :global(.admin-data-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-/* 입력 칸이 편집 영역 끝까지 늘어나지 않도록 폼 묶음 폭을 제한한다. */
-.editor fieldset:has(> :global(.registration-grid)) { max-width: 760px; }
-.editor :global(.registration-field):has([name="name"], [name="address.roadAddress"], [name="originalUrl"], [name="overviewImageUrl"], [name="receptionPlace.address"], input[type="url"]) { grid-column: 1 / -1; }
-.editor :global(.registration-field) label { display: block; font-size: 13px; font-weight: 600; color: var(--ds-color-label); }
-.editor :global(.registration-field) :global(.admin-required) { color: var(--ds-color-action); font-size: 10px; }
-.editor :global(.admin-detail-section), .editor :global(.admin-supply) { margin: 0 0 20px; padding: 20px; border-color: var(--ds-color-divider); border-radius: 12px; box-shadow: none; }
-.editor :global(.admin-detail-section) h2, .editor :global(.admin-supply) h3 { font-size: 15px; line-height: 1.5; }
-.editor :global(.admin-data-grid) { margin-top: 16px; gap: 18px; }
-.editor :global(.admin-data-grid) dt { font-size: 12px; color: var(--ds-color-muted); }
-.editor :global(.admin-data-grid) dd { font-size: 14px; font-weight: 500; color: var(--ds-color-text); }
+@container (max-width: 560px) {
+  .editor :global(.management-detail-content) :global(.admin-data-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+}
+
+/* 상세 안의 표·저장 줄·경고·전환 */
+.editor :global(.admin-supply) { margin: 0 0 20px; padding: 20px; border-color: var(--ds-color-divider); border-radius: 12px; box-shadow: none; }
+.editor :global(.admin-supply) h3 { font-size: 15px; line-height: 1.5; }
 .editor :global(.admin-table) { font-size: 13px; }
 .editor :global(.admin-table) :is(th, td) { padding: 12px; }
+.editor :global(.admin-change-values) { grid-template-columns: 1fr; }
 .editor :global(.admin-save-bar) { position: sticky; bottom: 0; z-index: 4; justify-content: flex-end; gap: 8px; margin: 0 -24px; padding: 14px 24px; border: 0; border-top: 1px solid var(--ds-color-divider); border-radius: 0; box-shadow: 0 -6px 16px rgb(30 40 35 / 4%); background: var(--ds-color-surface); }
-.editor :global(.registration-submit) { position: sticky; bottom: 12px; z-index: 4; width: 100%; background: var(--ds-color-action); border-color: var(--ds-color-action); border-radius: var(--ds-radius-control); min-height: var(--admin-control-height, 36px); }
 .editor :global(.admin-warning) { margin: 0 0 20px; padding: 12px 14px; font-size: 12px; border-color: var(--admin-warn-line); background: var(--ds-color-status-upcoming-surface); }
 .editor :global(.admin-mode-switch) { padding: 4px; border-radius: 12px; background: var(--ds-color-surface-subtle); }
 .editor :global(.admin-mode-switch) button { flex: 1; border: 0; background: transparent; }
 .editor :global(.admin-mode-switch) button[aria-pressed="true"] { background: var(--ds-color-surface); color: var(--ds-color-action); box-shadow: 0 1px 5px rgb(30 40 35 / 10%); }
-
-@media (max-width: 1180px) {
-  .withEditor { grid-template-columns: minmax(0, 1fr); }
-  .editor { grid-column: 1; grid-row: 1; }
-  .withEditor > :global(.management-page) > form { grid-row: 2; }
-  .withEditor > :global(.management-page) > [aria-busy] { grid-row: 3; }
-  .withEditor:has(> :global(.management-page) > :global(.registration-error)) > .editor { grid-row: 1; }
-  .withEditor > :global(.management-page) > :global(.registration-error) { grid-row: 3; }
-  .withEditor:has(> :global(.management-page) > :global(.registration-error)) > :global(.management-page) > [aria-busy] { grid-row: 4; }
-}
-@media (max-width: 700px) {
-  :global(.admin-content):has(> .workspace) { padding: 20px 14px; }
-  .heading h1 { font-size: 22px; }
-  .editor { border-radius: 12px; }
-  .editor :global(.management-detail-content) { padding: 20px 16px 0; }
-  .editorBody > :global(.admin-registration-page) { padding: 20px 16px; }
-  .editor :global(.registration-grid), .editor :global(.admin-data-grid) { grid-template-columns: minmax(0, 1fr); }
-  .editor :global(.admin-section-tabs) { gap: 16px; padding-inline: 16px; }
-  .editor :global(.admin-save-bar) { margin-inline: -16px; padding-inline: 16px; }
-  .editor :global(.management-heading) { flex-direction: row; padding: 20px 16px 12px; }
-  .editor :global(.management-heading) h2 { font-size: 17px; }
-}
-@media (prefers-reduced-motion: reduce) { .workspace :is(input, select, textarea) { transition: none; } }
 .editor :global(.admin-relations-section) { margin-bottom: 28px; min-width: 0; }
 .editor :global(.admin-relations-section) > h2 { margin-bottom: 14px; }
 .editor :global(.admin-relation-edit) { margin-top: 16px; padding: 20px; background: var(--ds-color-surface-subtle); border: 1px solid var(--ds-color-divider); border-radius: 12px; }
@@ -146,71 +131,30 @@
 .editor :global(.admin-linked-announcement) > header { justify-content: space-between; }
 .editor :global(.admin-linked-announcement) :global(.management-heading) { padding-inline: 0; }
 .editor :global(.admin-linked-announcement) :global(.admin-section-tabs) { padding-inline: 0; background: transparent; }
-.editor :global(.admin-linked-announcement) :global(.management-detail-content) { overflow: visible; padding: 20px 0 0; scrollbar-gutter: auto; }
+.editor :global(.admin-linked-announcement) :global(.management-detail-content) { padding: 20px 0 0; }
 .editor :global(.admin-linked-announcement) :global(.admin-save-bar) { margin-inline: -16px; padding-inline: 16px; }
 
-/* Opening a record gives the editor the entire content width; the list stays mounted. */
-/* 제목 줄의 아래 여백(12px)과 겹쳐 다른 화면처럼 제목과 8px 간격이 되게 한다. */
-.workspace .description { margin: -4px 0 12px; font-size: var(--admin-text-body); line-height: 1.6; color: var(--ds-color-muted-base); }
-.body.withEditor { display: flex; flex-direction: column; --management-pane-height: auto; }
-.listPane { min-width: 0; width: 100%; order: 0; }
-/* 전체 목록은 남은 화면 높이를 채워 표만 스크롤한다. 표 아래 행과 페이지 이동이 화면 밖으로 밀리지 않는다. */
-@media (min-width: 701px) {
-  .workspace:has(> .body:not(.withEditor)) { display: flex; flex-direction: column; height: max(560px, calc(100dvh - 148px)); }
-  .body:not(.withEditor) { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .body:not(.withEditor) > .listPane,
-  .body:not(.withEditor) > .listPane > :global(.management-page),
-  .body:not(.withEditor) > .listPane > :global(.management-page) > [aria-busy] { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .body:not(.withEditor) > .listPane > :global(.management-page) > [aria-busy] > [role="region"] { flex: 1; min-height: 0; max-height: none; }
-}
-.withEditor .editor { order: 1; width: 100%; height: auto; overflow: visible; }
-.withEditor .editorBody { overflow: visible; }
-.withEditor .editorBody > :global(.management-detail) { height: auto; }
-.withEditor .editor :global(.management-detail-content) { overflow: visible; padding: 28px; scrollbar-gutter: auto; }
-.withEditor .editor :global(.management-heading) { padding: 24px 28px 20px; }
-.withEditor .editor :global(.management-heading) h2 { font-size: 24px; }
-.withEditor .editor :global(.admin-section-tabs) { gap: 8px; padding: 12px 24px; background: var(--ds-color-surface-subtle); flex-wrap: wrap; }
-.withEditor .editor :global(.admin-section-tabs) button { padding: 9px 14px; min-height: 40px; border: 1px solid transparent; border-radius: 8px; }
-.withEditor .editor :global(.admin-section-tabs) button[aria-pressed=true] { background: var(--ds-color-surface); border-color: var(--ds-color-border-base); box-shadow: 0 1px 3px rgb(0 0 0 / 4%); color: var(--ds-color-action); }
-.withEditor .editorBody > :global(.admin-registration-page) { height: auto; overflow: visible; }
-.withEditor .editor :global(.admin-change-values) { grid-template-columns: 1fr; }
-@media (max-width: 700px) { .withEditor .editor :global(.management-detail-content) { padding: 18px; } .withEditor .editor :global(.management-heading) { padding: 20px 18px; } .withEditor .editor :global(.management-heading) h2 { font-size: 20px; } .withEditor .editor :global(.admin-section-tabs) { padding: 10px 14px; } }
-/* Read first, choose a focused tool, then edit. */
-.withEditor .editor { box-shadow:none; border-color:var(--ds-color-divider); border-radius:var(--admin-radius-card,16px); }
-/* 탭에 따라 버튼이 빠져도 제목 영역 높이가 바뀌지 않게 최소 높이를 둔다. 버튼은 단지·공고 모두 제목 오른쪽 위에 둔다. */
-.withEditor .editor :global(.management-heading) { box-sizing:border-box; min-height:96px; padding:16px 20px 12px; align-items:flex-start; }
-.withEditor .editor :global(.management-heading) h2 { font-size:22px; line-height:1.4; }
-.withEditor .editor :global(.management-summary-meta) { font-size:var(--admin-text-meta); }
-.withEditor .editor :global(.admin-section-tabs) { gap:20px; padding:0 20px; border-top:1px solid var(--ds-color-divider); border-bottom:1px solid var(--ds-color-divider); background:var(--ds-color-surface); border-radius:0; margin:0; }
-/* 탭은 버튼 기본 테두리·둥근 모서리·그림자를 쓰지 않고 선택 밑줄만 둔다. */
-.workspace .withEditor .editor :global(.admin-section-tabs) button:not([data-design-system]) { padding:0; border:0; border-bottom:3px solid transparent; border-radius:0; background:transparent; box-shadow:none; font-size:var(--admin-text-body); min-height:40px; }
-.workspace .withEditor .editor :global(.admin-section-tabs) button:not([data-design-system])[aria-pressed=true] { border-bottom-color:var(--ds-color-action); color:var(--ds-color-action); }
-.withEditor .editor :global(.management-detail-content) { padding:16px 20px 20px; }
-/* 탭마다 첫 제목 위치가 달라지지 않게 제목의 기본 위쪽 여백을 없애고 간격은 구역이 맡는다. */
-.withEditor .editor :global(.management-detail-content) :is(h2, h3) { margin-top:0; }
-.withEditor .editor :global(.management-detail-content) :is(h2, h3):not(:first-child) { margin-top:16px; }
-.withEditor .editor :global(.management-detail-content) h2 { font-size:var(--admin-text-heading); margin-bottom:10px; line-height:1.4; }
-.withEditor .editor :global(.management-detail-content) :global(.admin-inline) > :is(h2, h3) { margin:0 auto 0 0; }
-/* 버튼이 있는 제목 줄도 다른 탭의 제목과 같은 높이에서 시작하도록 버튼이 더 큰 만큼 위로 올린다. */
-.withEditor .editor :global(.management-detail-content) :global(.admin-inline):has(> :is(h2, h3)) { margin:calc((var(--admin-text-heading) * 1.4 - var(--admin-control-height)) / 2) 0 10px; }
-.withEditor .editor :global(.admin-detail-section) { border:0; border-bottom:1px solid var(--ds-color-divider); border-radius:0; padding:0 0 16px; margin:0 0 16px; }
-.withEditor .editor :global(.admin-data-grid) { grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px 24px; margin-top:0; }
-.withEditor .editor :global(.admin-data-grid) dt { font-size:var(--admin-text-meta); margin-bottom:2px; }
-.withEditor .editor :global(.admin-data-grid) dd { font-size:var(--admin-text-body); font-weight:500; line-height:1.45; }
-/* 긴 원문 URL은 한 줄로 줄여 세 줄을 차지하지 않게 한다. 주소 전체는 링크로 연다. */
-.withEditor .editor :global(.admin-data-grid) dd a { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.withEditor .editor :global(.admin-section-intro) { display:grid; gap:4px; padding:0 0 12px; margin-bottom:16px; border-bottom:1px solid var(--ds-color-divider); }
-.withEditor .editor :global(.admin-section-intro)>span { display:none; }
-.withEditor .editor :global(.admin-section-intro) h2 { margin:0; }
-.withEditor .editor :global(.admin-section-intro) p { font-size:var(--admin-text-meta); color:var(--ds-color-muted); margin:0; }
-@media(max-width:1000px) { .withEditor .editor :global(.admin-data-grid) { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-@media(max-width:700px) { .withEditor .editor :global(.admin-data-grid) { grid-template-columns:1fr; } .withEditor .editor :global(.management-heading) { padding:22px 18px; } .withEditor .editor :global(.management-heading) h2 { font-size:20px; } .withEditor .editor :global(.admin-section-tabs) { padding:0 18px; gap:18px; } .withEditor .editor :global(.management-detail-content) { padding:22px 18px; } }
-.workspace .heading[data-detail=true] h1 { font-size:var(--admin-text-body); color:var(--ds-color-muted); letter-spacing:0; }
-@media(max-width:700px) { .withEditor .editor :global(.admin-section-tabs) { flex-wrap:nowrap; overflow-x:auto; } .withEditor .editor :global(.admin-section-tabs) button { flex:none; white-space:nowrap; } }
+/* 상세 안의 추가·수정 폼 */
+.editor :global(.registration-card) { padding: 0; border: 0; border-radius: 0; box-shadow: none; }
+.editor :global(.registration-card) > h2 { font-size: 18px; margin-bottom: 20px; }
+.editor :global(.registration-form) { gap: 20px; }
+.editor :global(.management-page) fieldset, .editor :global(.registration-form) fieldset { min-width: 0; margin: 0 0 24px; padding: 18px; border: 1px solid var(--ds-color-divider); border-radius: 12px; background: var(--ds-color-surface-subtle); }
+.editor fieldset legend { padding: 0 6px; font-size: 14px; font-weight: 700; color: var(--ds-color-text); }
+.editor :global(.registration-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+/* 입력 칸이 편집 영역 끝까지 늘어나지 않도록 폼 묶음 폭을 제한한다. */
+.editor fieldset:has(> :global(.registration-grid)) { max-width: 760px; }
+.editor :global(.registration-field):has([name="name"], [name="address.roadAddress"], [name="originalUrl"], [name="overviewImageUrl"], [name="receptionPlace.address"], input[type="url"]) { grid-column: 1 / -1; }
+.editor :global(.registration-field) label { display: block; font-size: 13px; font-weight: 600; color: var(--ds-color-label); }
+.editor :global(.registration-field) :global(.admin-required) { color: var(--ds-color-action); font-size: 10px; }
+.editor :global(.registration-submit) { position: sticky; bottom: 12px; z-index: 4; width: 100%; background: var(--ds-color-action); border-color: var(--ds-color-action); border-radius: var(--ds-radius-control); min-height: var(--admin-control-height, 36px); }
 
-/* 공고 제목과 작업 버튼을 분리해 긴 이름도 작업 영역을 밀어내지 않는다. */
-.withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading) { gap:var(--ds-space-4); flex-wrap:nowrap; }
-.withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading) > div:first-child { flex:1 1 0; min-width:0; }
-.withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading) h2 { font-size:22px; line-height:1.4; word-break:keep-all; overflow-wrap:anywhere; margin-bottom:var(--ds-space-2); }
-.withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading .admin-inline) { flex-shrink:0; align-self:flex-start; flex-wrap:wrap; }
-@media(max-width:700px) { .withEditor .editor :global(.management-detail[data-resource='announcements'] .management-heading) { padding:var(--ds-space-4); } }
+@media (max-width: 700px) {
+  .editorBody > :global(.admin-registration-page) { padding: 20px 16px; }
+  .editor :global(.registration-grid) { grid-template-columns: minmax(0, 1fr); }
+  .editor :global(.admin-save-bar) { margin-inline: -16px; padding-inline: 16px; }
+  .editor :global(.management-heading) { flex-direction: row; padding: 22px 18px; }
+  .editor :global(.management-heading) h2 { font-size: 20px; }
+  .editor :global(.management-detail[data-resource='announcements'] .management-heading) { padding: var(--ds-space-4); }
+  .editor :global(.admin-section-tabs) { flex-wrap: nowrap; padding: 0 18px; gap: 18px; }
+  .editor :global(.management-detail-content) { padding: 22px 18px; }
+}

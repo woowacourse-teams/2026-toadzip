@@ -44,8 +44,14 @@ export function AdminLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const current = [...workLinks, ...sourceLinks, ...memberLinks].find(([path]) => location.pathname === path || location.pathname.startsWith(`${path}/`))
   useEffect(() => { setMenuOpen(false) }, [location.pathname])
+  // 직접 펼친 메뉴 묶음은 다른 메뉴로 이동해도 접지 않는다. 현재 화면이 든 묶음은 이동할 때 펼친다.
+  const activeGroup = sourceLinks.some(([path]) => location.pathname.startsWith(path)) ? 'source'
+    : memberLinks.some(([path]) => location.pathname.startsWith(path)) ? 'member' : null
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => activeGroup ? { [activeGroup]: true } : {})
+  useEffect(() => { if (activeGroup) setOpenGroups(groups => groups[activeGroup] ? groups : { ...groups, [activeGroup]: true }) }, [activeGroup])
+  const groupProps = (key: string) => ({ open: collapsed || Boolean(openGroups[key]),
+    onToggle: (event: React.SyntheticEvent<HTMLDetailsElement>) => { if (collapsed) return; const open = event.currentTarget.open; setOpenGroups(groups => groups[key] === open ? groups : { ...groups, [key]: open }) } })
 
   function handleLogout() {
     void signOut()
@@ -71,9 +77,8 @@ export function AdminLayout() {
       <header className="admin-header">
         <div className="admin-brand">
           <BrandLink to="/admin/operations" label="관리자 운영 홈으로" />
-          <span className="admin-brand-context">관리자 작업실</span>
+          <span className="admin-brand-context">관리자 페이지</span>
         </div>
-        <div className={styles.location}><span>관리자 작업공간</span><b>/</b><strong>{current?.[1] ?? '데이터 관리'}</strong></div>
         <button className={styles.menuButton} ref={menuButton} type="button" aria-expanded={menuOpen}
           aria-controls={menuId} onClick={() => setMenuOpen(value => !value)}>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
@@ -98,8 +103,8 @@ export function AdminLayout() {
         <div className="admin-nav-group"><span>매일 하는 작업</span>
           {workLinks.map(([path, label, icon]) => <NavLink key={path} to={path} aria-label={label}><MenuIcon kind={icon} /><span className={styles.menuLabel}>{label}</span></NavLink>)}
         </div>
-        <details className={styles.navTools} open={collapsed || sourceLinks.some(([path]) => location.pathname.startsWith(path))}><summary>수집·원천 도구</summary><div className="admin-nav-group">{sourceLinks.map(([path, label]) => <NavLink key={path} to={path} aria-label={label}><MenuIcon kind={extraIcons[label]} /><span className={styles.menuLabel}>{label}</span></NavLink>)}</div></details>
-        <details className={styles.navTools} open={collapsed || memberLinks.some(([path]) => location.pathname.startsWith(path))}><summary>회원·알림</summary><div className="admin-nav-group">{memberLinks.map(([path, label]) => <NavLink key={path} to={path} aria-label={label}><MenuIcon kind={extraIcons[label]} /><span className={styles.menuLabel}>{label}</span></NavLink>)}</div></details>
+        <details className={styles.navTools} {...groupProps('source')}><summary>수집·원천 도구</summary><div className="admin-nav-group">{sourceLinks.map(([path, label]) => <NavLink key={path} to={path} aria-label={label}><MenuIcon kind={extraIcons[label]} /><span className={styles.menuLabel}>{label}</span></NavLink>)}</div></details>
+        <details className={styles.navTools} {...groupProps('member')}><summary>회원·알림</summary><div className="admin-nav-group">{memberLinks.map(([path, label]) => <NavLink key={path} to={path} aria-label={label}><MenuIcon kind={extraIcons[label]} /><span className={styles.menuLabel}>{label}</span></NavLink>)}</div></details>
         <div className={styles.navFoot}>공공주택 복덕방<br /><span>데이터 운영 공간</span></div>
       </nav>
       <main className="admin-content" id="admin-main">

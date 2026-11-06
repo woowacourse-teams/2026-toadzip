@@ -31,7 +31,7 @@
 .management-heading p {margin:0;color:var(--ds-color-muted-base);font-size:var(--admin-text-body,15px);line-height:1.6;}
 .admin-registration-heading h1 {font-size:28px;line-height:1.3;margin:0;overflow-wrap:anywhere;}
 .admin-registration-heading p {color:var(--ds-color-label);line-height:1.6;}
-.management-filters {display:flex;align-items:flex-end;flex-wrap:wrap;gap:14px;padding:20px;background:var(--ds-color-surface);border:1px solid var(--admin-line,var(--ds-color-divider));border-radius:var(--admin-radius-card,16px);margin-bottom:20px;}
+.management-filters {display:flex;align-items:flex-end;flex-wrap:wrap;gap:14px;padding:20px;background:var(--ds-color-surface);border:0;border-radius:var(--admin-radius-card,16px);box-shadow:var(--admin-shadow-card);margin-bottom:20px;}
 .management-search {flex:1 1 250px;}
 .admin-content .admin-check {flex-direction:row;align-items:center;min-height:42px;}
 .admin-table-scroll {overflow-x:auto;border:1px solid var(--ds-color-divider);border-radius:var(--admin-radius-card,16px);background:var(--ds-color-surface);}
@@ -60,7 +60,7 @@
 .admin-inline > :is(h2,h3,h4) {margin:0 auto 0 0;}
 .admin-section-tabs {display:flex;gap:8px;border-bottom:1px solid var(--ds-color-divider);margin-bottom:20px;padding-bottom:12px;flex-wrap:wrap;}
 .admin-section-tabs button[aria-pressed=true] {background:var(--ds-color-action);color:var(--ds-color-surface);border-color:var(--ds-color-action);}
-.admin-detail-section,.admin-supply {background:var(--ds-color-surface);border:1px solid var(--ds-color-divider);border-radius:var(--admin-radius-card,16px);margin:16px 0;padding:24px;}
+.admin-detail-section,.admin-supply {background:var(--ds-color-surface);border:0;border-radius:var(--admin-radius-card,16px);box-shadow:var(--admin-shadow-card);margin:16px 0;padding:24px;}
 .admin-detail-section h2,.admin-supply h3 {font-size:18px;margin:0 0 18px;}
 .admin-data-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px 28px;margin:0;}
 .admin-data-grid dt {font-size:12px;color:var(--ds-color-label);margin-bottom:7px;}
@@ -197,10 +197,12 @@
 .admin-verification-review[open] > summary { margin-bottom: 10px; }
 .management-detail .admin-verification-group { border: 0; padding: 0; margin: 0; min-width: 0; background: transparent; }
 
-/* 화면 안에서 목록 자체를 바꾸는 탭은 모두 폴더 탭으로 그린다. 선택한 탭만 흰 바탕으로 아래 영역과 이어진다. */
-.admin-layout .admin-content .admin-folder-tabs {display:flex;width:fit-content;gap:4px;max-width:100%;overflow-x:auto;margin:0 0 16px;padding:4px;border:0;border-radius:12px;background:#e8eaee;}
-.admin-layout .admin-content .admin-folder-tabs button:not([data-design-system]) {flex:none;min-width:0;min-height:34px;margin:0;padding:0 18px;border:0;border-radius:9px;background:transparent;color:var(--ds-color-label);font-size:14px;font-weight:600;box-shadow:none;}
-.admin-layout .admin-content .admin-folder-tabs button:not([data-design-system]):is([aria-pressed=true],[aria-selected=true]) {background:var(--ds-color-surface);color:var(--ds-color-text);box-shadow:0 1px 3px #0000001a;}
+/* 화면 안에서 목록 자체를 바꾸는 탭은 상세 탭과 같은 밑줄 탭으로 그린다. 회색 바탕 칸은 쓰지 않는다. */
+.admin-layout .admin-content .admin-folder-tabs {display:flex;gap:24px;max-width:100%;overflow-x:auto;margin:0 0 16px;padding:0;border:0;border-bottom:1px solid var(--admin-line,var(--ds-color-divider));border-radius:0;background:transparent;}
+.admin-layout .admin-content .admin-folder-tabs button:not([data-design-system]):not(.admin-primary):not(.admin-tonal):not(.admin-danger) {flex:none;min-width:0;min-height:40px;margin:0 0 -1px;padding:0 2px;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--ds-color-muted);font-size:14px;font-weight:600;box-shadow:none;}
+/* 탭은 관리 화면 공통 버튼의 둥근 모서리·테두리·hover 바탕보다 우선해야 밑줄만 남는다. */
+.admin-layout .admin-content .admin-folder-tabs button:not([data-design-system]):not(.admin-primary):not(.admin-tonal):not(.admin-danger):hover:not(:disabled) {background:transparent;color:var(--ds-color-text);}
+.admin-layout .admin-content .admin-folder-tabs button:not([data-design-system]):not(.admin-primary):not(.admin-tonal):not(.admin-danger):is([aria-pressed=true],[aria-selected=true]) {background:transparent;color:var(--ds-color-action);border-bottom-color:var(--ds-color-action);box-shadow:none;}
 .admin-housing-type-create fieldset {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 12px;margin:0 0 8px;padding:12px;border:1px solid var(--ds-color-divider);border-radius:8px;}
 .admin-housing-type-create label {display:grid;gap:2px;font-size:var(--admin-text-meta,13px);}
 @media(max-width:700px){.admin-housing-type-create fieldset{grid-template-columns:1fr 1fr;}}
@@ -208,4 +210,3 @@
 .admin-content .registration-error {display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:0 0 16px;padding:14px 18px;border:1px solid var(--admin-danger-line);border-radius:var(--admin-radius-card,16px);background:var(--admin-danger-soft);color:var(--admin-danger);}
 .admin-content table input[type=checkbox] {width:18px;height:18px;accent-color:var(--ds-color-action);}
 .admin-empty {border-radius:var(--admin-radius-card,16px);}
-.admin-layout .admin-content .admin-folder-tabs button:not([data-design-system]) {min-height:36px;}

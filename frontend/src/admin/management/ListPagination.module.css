@@ -9,3 +9,8 @@
 .pagination .jump input { width: 80px; min-width: 0; min-height: 40px; padding: var(--ds-space-2); text-align: right; font-variant-numeric: tabular-nums; }
 .pagination .jump button { min-height: 40px; padding: var(--ds-space-2) var(--ds-space-3); font-size: inherit; }
 @media (max-width: 700px) { .pagination { gap: var(--ds-space-3); } .buttons { width: 100%; } .pagination .edge { display: none; } }
+/* 좁은 카드에서는 줄바꿈 대신 덜 중요한 것부터 숨겨 한 줄을 지킨다: 쪽수 표시 → 바로가기 → 처음·마지막. */
+.pagination { container-type: inline-size; }
+@container (max-width: 860px) { .count { display: none; } }
+@container (max-width: 640px) { .jump { display: none; } }
+@container (max-width: 480px) { .pagination .edge { display: none; } }

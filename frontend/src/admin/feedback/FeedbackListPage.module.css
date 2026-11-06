@@ -1,5 +1,5 @@
 :global(html):has(.page), :global(body):has(.page), :global(#root):has(.page) { min-width: 0; }
-.page { width: 100%; max-width: 1040px; min-width: 0; color: var(--ds-color-text); font-family: var(--ds-font-family-ui); }
+.page { width: 100%; min-width: 0; color: var(--ds-color-text); font-family: var(--ds-font-family-ui); }
 .heading { margin-bottom: var(--ds-space-6); }
 .heading h1 { font-size: 28px; line-height: 1.4; letter-spacing: -0.04em; }
 .page .heading p { margin-top: var(--ds-space-2); color: var(--ds-color-label); font-size: var(--ds-text-body); line-height: 1.7; word-break: keep-all; }
