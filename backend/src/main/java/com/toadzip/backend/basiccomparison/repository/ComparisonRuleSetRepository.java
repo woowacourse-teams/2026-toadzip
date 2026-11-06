@@ -56,7 +56,7 @@ public class ComparisonRuleSetRepository {
         return jdbc.sql(
                         """
                         UPDATE basic_comparison_rule_sets
-                        SET content = ?::jsonb, revision = revision + 1, updated_at = ?
+                        SET content = ?::jsonb, schema_version = 3, revision = revision + 1, updated_at = ?
                         WHERE id = ? AND status = 'DRAFT' RETURNING *
                         """)
                 .params(content, now.atOffset(ZoneOffset.UTC), id)

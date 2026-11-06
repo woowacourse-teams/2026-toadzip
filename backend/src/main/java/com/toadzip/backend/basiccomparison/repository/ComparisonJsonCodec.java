@@ -40,7 +40,7 @@ public class ComparisonJsonCodec {
     }
 
     public ComparisonContent content(String encoded, int schemaVersion) {
-        if (schemaVersion != ComparisonContent.SCHEMA_VERSION) {
+        if (schemaVersion != 2 && schemaVersion != ComparisonContent.SCHEMA_VERSION) {
             throw new IllegalStateException("Unsupported basic comparison content schema");
         }
         return json.readValue(encoded, ComparisonContent.class);

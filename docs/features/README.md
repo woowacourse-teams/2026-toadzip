@@ -19,3 +19,5 @@
 ## 관련 문서
 
 구현 방식은 [개발 기준](../development/README.md), 실제 배포·점검·복구는 [운영](../operations/README.md)을 따른다.
+
+- [신청자격 데이터 모델](eligibility-storage.md): 공고·사용자·최신 결과의 테이블과 갱신 경계.

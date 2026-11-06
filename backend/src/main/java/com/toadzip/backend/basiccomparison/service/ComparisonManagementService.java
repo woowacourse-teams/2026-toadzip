@@ -14,6 +14,7 @@ import com.toadzip.backend.basiccomparison.repository.ComparisonJsonCodec;
 import com.toadzip.backend.basiccomparison.repository.ComparisonReferenceRepository;
 import com.toadzip.backend.basiccomparison.repository.ComparisonRegionMembership;
 import com.toadzip.backend.basiccomparison.repository.ComparisonRuleSetRepository;
+import com.toadzip.backend.basiccomparison.repository.ComparisonStructureRepository;
 
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,7 @@ import java.util.Optional;
 public class ComparisonManagementService {
     private final ComparisonAnnouncementRepository announcements;
     private final ComparisonRuleSetRepository ruleSets;
+    private final ComparisonStructureRepository structures;
     private final ComparisonReferenceRepository references;
     private final ComparisonRegionMembership regions;
     private final ComparisonJsonCodec codec;
@@ -39,12 +41,14 @@ public class ComparisonManagementService {
     public ComparisonManagementService(
             ComparisonAnnouncementRepository announcements,
             ComparisonRuleSetRepository ruleSets,
+            ComparisonStructureRepository structures,
             ComparisonReferenceRepository references,
             ComparisonRegionMembership regions,
             ComparisonJsonCodec codec,
             Clock clock) {
         this.announcements = announcements;
         this.ruleSets = ruleSets;
+        this.structures = structures;
         this.references = references;
         this.regions = regions;
         this.codec = codec;
@@ -71,13 +75,13 @@ public class ComparisonManagementService {
         if (request.expectedRevision() == 0
                 && request.expectedDraftId() == null
                 && current.isEmpty()) {
-            return view(ruleSets.insertDraft(announcementId, encoded, clock.instant()));
+            return storeStructure(ruleSets.insertDraft(announcementId, encoded, clock.instant()));
         }
         StoredComparison draft =
                 requireVersion(
                         current,
                         new DraftVersion(request.expectedDraftId(), request.expectedRevision()));
-        return view(ruleSets.updateDraft(draft.id(), encoded, clock.instant()));
+        return storeStructure(ruleSets.updateDraft(draft.id(), encoded, clock.instant()));
     }
 
     @Transactional
@@ -89,7 +93,7 @@ public class ComparisonManagementService {
         StoredComparison published =
                 ruleSets.find(announcementId, "PUBLISHED")
                         .orElseThrow(ComparisonNotFoundException::new);
-        return view(ruleSets.insertDraft(announcementId, published.content(), clock.instant()));
+        return storeStructure(ruleSets.insertDraft(announcementId, published.content(), clock.instant()));
     }
 
     public void validate(long announcementId, DraftVersion request) {
@@ -133,6 +137,11 @@ public class ComparisonManagementService {
 
     private ComparisonContent content(StoredComparison stored) {
         return codec.content(stored.content(), stored.schemaVersion());
+    }
+
+    private RuleSet storeStructure(StoredComparison stored) {
+        structures.replace(stored.id());
+        return view(stored);
     }
 
     private RuleSet view(StoredComparison stored) {
