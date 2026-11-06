@@ -91,9 +91,14 @@ function subtypeExtraction() {
   extraction.sharedCounts = []
   return extraction
 }
+/** 고정 공급행 막대에서 PDF 단지를 고른다. */
+function chooseComplex(name: string) {
+  const select = screen.getByRole('combobox', { name: '단지' }) as HTMLSelectElement
+  fireEvent.change(select, { target: { value: [...select.options].find(option => option.textContent?.startsWith(`${name} · `))!.value } })
+}
 /** 공급행 목록에서 그 행을 골라 편집 영역에 연다. */
 function showRow(row: number) {
-  fireEvent.click(within(screen.getByRole('region', { name: '공급행 목록' })).getByRole('button', { name: `공급행 ${row} 편집` }))
+  fireEvent.click(within(screen.getByRole('region', { name: '공급행 목록' })).getByRole('button', { name: new RegExp(`^${row}\\. `) }))
 }
 /** 그 행이 저장될 곳을 적은 한 문장 */
 function placeOf(row: number) {
@@ -240,10 +245,11 @@ it('공급행을 PDF 단지 이름별로 묶어 한 단지의 주택형을 한�
   // 목록은 단지별로 모든 공급행을 한 줄씩 요약하고, 편집 영역은 고른 행 하나만 보인다.
   const list = screen.getByRole('region', { name: '공급행 목록' })
   expect(within(list).getByRole('rowheader', { name: /^익산한스빌/ })).toHaveTextContent('익산한스빌 · 주택형 2개 · 모집 합')
-  expect(within(list).getAllByRole('button', { name: /^공급행 \d 편집$/ }).map(button => button.textContent)).toEqual(['1. 26A', '2. 26B'])
-  const group = screen.getByRole('region', { name: '익산한스빌 주택형' })
-  expect(within(group).getByRole('heading', { name: '익산한스빌주택형 2개 중 공급행 1' })).toBeVisible()
-  expect(within(group).getByRole('region', { name: '공급행 1 검토' })).toBeVisible()
+  expect(within(list).getAllByRole('button', { name: /^\d+\. / }).map(button => button.textContent)).toEqual(['1. 26A', '2. 26B'])
+  // 편집 영역 머리는 목록과 같은 '번호. 형명'이고, 고정 공급행 막대도 같은 행을 보인다.
+  const block = screen.getByRole('region', { name: '공급행 1 검토' })
+  expect(within(block).getByRole('heading', { name: '1. 26A' })).toBeVisible()
+  expect(within(screen.getByRole('group', { name: '공급행 이동' })).getByText('1. 26A')).toBeVisible()
   expect(screen.queryByRole('region', { name: '공급행 2 검토' })).not.toBeInTheDocument()
   showRow(2)
   expect(screen.getByRole('region', { name: '공급행 2 검토' })).toBeVisible()
@@ -458,6 +464,8 @@ it('원문 URL이 없으면 근거 입력을 펼쳐 안내한다', async () => {
   expect(screen.getByRole('status')).toHaveTextContent('공식 근거 URL에 올바른 http 또는 https 주소를 입력하세요.')
   expect(screen.getByRole('textbox', { name: '공식 근거 URL' })).toBeVisible()
   expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeDisabled()
+  // 근거 입력은 화면에서 하단 버튼 위에 있으므로 Tab 순서도 버튼보다 앞이어야 한다.
+  expect(screen.getByRole('textbox', { name: '공식 근거 URL' }).compareDocumentPosition(screen.getByRole('button', { name: '보정 내용 적용' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   // 한 글자씩 입력하는 도중 값이 유효해져도 입력란이 사라지지 않아야 끝까지 칠 수 있다.
   const url = 'https://example.com/official-notice'
   for (let end = 1; end <= url.length; end++) fireEvent.change(screen.getByRole('textbox', { name: '공식 근거 URL' }), { target: { value: url.slice(0, end) } })
@@ -598,7 +606,7 @@ it('단지 정하기는 다른 단지명의 PDF 행이 이미 저장할 위치�
   extraction.data.supplyRows[1].complexReference.sourceComplexName = '표기가 다른 PDF 단지'
   await open(JSON.stringify(extraction))
   expect(placeOf(1)).toBe(`기존 공급정보 #90(${first.typeName})을 고칩니다.`)
-  fireEvent.click(screen.getByRole('tab', { name: /^표기가 다른 PDF 단지/ }))
+  chooseComplex('표기가 다른 PDF 단지')
   fireEvent.click(await within(screen.getByRole('group', { name: 'PDF 단지 표기가 다른 PDF 단지' })).findByRole('button', { name: '선택: 검색 단지' }))
   await waitFor(() => expect(screen.queryByRole('group', { name: 'PDF 단지 표기가 다른 PDF 단지' })).not.toBeInTheDocument())
   expect(placeOf(2)).toBe('새 공급정보로 추가합니다.')
@@ -1068,29 +1076,91 @@ it('공급행 목록은 행마다 저장할 곳과 상태를 요약하고, 단�
   expect(screen.getByRole('combobox', { name: '공급행 1 연결 주택형 수정' })).toHaveValue('10352')
 })
 
-it('공급정보는 PDF 단지마다 탭으로 나누고, 탭 이름에 단지 이름과 그 단지의 확인 수를 보이며 화살표로 옮기고 미해결 이동은 그 행의 단지 탭을 연다', async () => {
+it('검토 탭은 공급정보·일정·접수처 세 영역만 두고, 공급정보의 단지는 고정 막대에서 확인 수와 함께 고르며 이전·다음과 미해결 이동이 그 행의 단지를 연다', async () => {
   await open(JSON.stringify(fixtures.gwangju.extraction))
   const tabs = within(screen.getByRole('tablist', { name: 'PDF 보정 영역' })).getAllByRole('tab')
-  expect(tabs.map(tab => tab.textContent?.split(' · ')[0])).toEqual(['첨단H-1BL', '첨단H-2BL', '첨단H-3BL', '일정', '접수처·기본정보'])
+  expect(tabs.map(tab => tab.textContent?.split(' · ')[0])).toEqual(['공급정보', '일정', '접수처·기본정보'])
   expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
-  expect(tabs[2].textContent).toMatch(/^첨단H-3BL · 확인 \d+$/)
   expect(screen.getByRole('tabpanel')).toHaveAccessibleName(tabs[0].textContent!)
-  fireEvent.keyDown(tabs[0], { key: 'ArrowRight' })
-  expect(screen.getByRole('tab', { name: /^첨단H-2BL/ })).toHaveAttribute('aria-selected', 'true')
+  const select = screen.getByRole('combobox', { name: '단지' }) as HTMLSelectElement
+  expect([...select.options].map(option => option.textContent?.split(' · ').slice(0, 2).join(' · '))).toEqual(['첨단H-1BL · 1행', '첨단H-2BL · 2행', '첨단H-3BL · 4행'])
+  expect(select.options[2].textContent).toMatch(/^첨단H-3BL · 4행 · 확인 \d+$/)
+  // 고정 막대는 지금 편집 중인 행의 번호·형명을 보이고, 다음은 단지를 넘어 다음 단지의 첫 행으로 간다.
+  const bar = screen.getByRole('group', { name: '공급행 이동' })
+  expect(within(bar).getByText('1. 39(창업인)')).toBeVisible()
+  expect(within(bar).getByRole('button', { name: '이전 공급행' })).toBeDisabled()
+  fireEvent.click(within(bar).getByRole('button', { name: '다음 공급행' }))
+  expect(select).toHaveDisplayValue(/^첨단H-2BL/)
   expect(screen.getByRole('region', { name: '공급행 2 검토' })).toBeVisible()
-  fireEvent.click(screen.getByRole('tab', { name: /^첨단H-3BL/ }))
+  expect(within(bar).getByText('2. 16(대학생,청년)')).toBeVisible()
+  chooseComplex('첨단H-3BL')
   expect(screen.getByRole('region', { name: '공급행 4 검토' })).toBeVisible()
-  expect(screen.queryByRole('button', { name: '공급행 1 편집' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /^1\. / })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: /^미해결 \d+개/ }))
-  expect(screen.getByRole('tab', { name: /^첨단H-1BL/ })).toHaveAttribute('aria-selected', 'true')
+  expect(select).toHaveDisplayValue(/^첨단H-1BL/)
   expect(screen.getByRole('region', { name: '공급행 1 검토' })).toHaveFocus()
+  fireEvent.keyDown(screen.getByRole('tab', { name: /^공급정보/ }), { key: 'ArrowRight' })
+  expect(screen.getByRole('tab', { name: /^일정/ })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.queryByRole('group', { name: '공급행 이동' })).not.toBeInTheDocument()
+})
+
+it('공급행 상태의 확인 필요는 남은 종류를 알리고 누르면 그 행의 첫 확인 항목으로 옮기며, 고정 막대는 고른 행의 형명·전용·모집수·저장할 곳·위치를 보인다', async () => {
+  await open(JSON.stringify(fixtures.gwangju.extraction))
+  const bar = screen.getByRole('group', { name: '공급행 이동' })
+  expect(within(bar).getByText('1. 39(창업인)').nextElementSibling).toHaveTextContent(/^전용 39\.78㎡ · 모집 25세대 · 새로 추가$/)
+  expect(within(bar).getByLabelText('이 단지 1행 중 1번째')).toHaveTextContent('1/1')
+  // 이 행은 새로 추가할 행이라 단지를 아직 정하지 않았다. 배지 이름은 실제로 옮겨 갈 곳(단지 정하기)을 말한다.
+  const badge = within(screen.getByRole('region', { name: '공급행 목록' })).getByRole('button', { name: '공급행 1 확인 필요: 단지 정하기 확인하러 가기' })
+  expect(within(bar).getByRole('button', { name: '공급행 1 확인 필요: 단지 정하기 확인하러 가기' })).toHaveTextContent('확인 필요 · 단지 정하기')
+  fireEvent.click(within(screen.getByRole('group', { name: '검토 항목 필터' })).getByRole('button', { name: /^확인 필요/ }))
+  fireEvent.click(badge)
+  // 단지 정하기는 확인 필요 필터에서도 보이므로 필터를 끄지 않는다.
+  expect(within(screen.getByRole('group', { name: '검토 항목 필터' })).getByRole('button', { name: /^확인 필요/ })).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.click(within(screen.getByRole('group', { name: '검토 항목 필터' })).getByRole('button', { name: '전체' }))
+  expect(document.activeElement).toHaveAttribute('data-review-id', 'complex')
+  // 목록에서 다른 단지 행을 고르면 막대도 그 행으로 바뀐다.
+  chooseComplex('첨단H-3BL')
+  showRow(5)
+  expect(within(bar).getByText('5. 26(주거급여수급자)')).toBeVisible()
+  expect(within(bar).getByLabelText('이 단지 4행 중 2번째')).toHaveTextContent('2/4')
+})
+
+it('확인 필요 필터에서 이전·다음은 단지 순서대로 확인 행만 빠짐없이 지나고 마지막 행에서는 다음이 꺼진다', async () => {
+  await open(JSON.stringify(fixtures.gwangju.extraction))
+  fireEvent.click(within(screen.getByRole('group', { name: '검토 항목 필터' })).getByRole('button', { name: /^확인 필요/ }))
+  // 기대 순서: 단지마다 확인 필요 필터의 목록에 남는 행 번호를 단지 순서대로 이은 것
+  const select = screen.getByRole('combobox', { name: '단지' }) as HTMLSelectElement
+  const expected = [...select.options].flatMap(option => {
+    chooseComplex(option.textContent!.split(' · ')[0])
+    return within(screen.queryByRole('region', { name: '공급행 목록' }) ?? document.createElement('div')).queryAllByRole('button', { name: /^\d+\. / }).map(button => Number(button.textContent!.split('.')[0]))
+  })
+  expect(expected.length).toBeGreaterThan(1)
+  chooseComplex(select.options[0].textContent!.split(' · ')[0])
+  const bar = screen.getByRole('group', { name: '공급행 이동' })
+  const visited = [Number(within(bar).getByText(/^\d+\. /).textContent!.split('.')[0])]
+  while (!within(bar).getByRole('button', { name: '다음 공급행' }).hasAttribute('disabled') && visited.length < 20) {
+    fireEvent.click(within(bar).getByRole('button', { name: '다음 공급행' }))
+    visited.push(Number(within(bar).getByText(/^\d+\. /).textContent!.split('.')[0]))
+  }
+  expect(visited).toEqual(expected)
+})
+
+it('확인 필요 필터에서 한 단지의 마지막 확인 행을 해결해도 다음 단지의 확인 행으로 이어 간다', async () => {
+  await open(JSON.stringify(fixtures.gwangju.extraction))
+  fireEvent.click(within(screen.getByRole('group', { name: '검토 항목 필터' })).getByRole('button', { name: /^확인 필요/ }))
+  fireEvent.click(screen.getByRole('button', { name: '공급행 1 대응 확인' }))
+  const bar = screen.getByRole('group', { name: '공급행 이동' })
+  expect(within(bar).getByText(/^이 단지에는 지금 필터에 맞는 공급행이 없습니다\. 다른 단지에 \d+행 남음$/)).toBeVisible()
+  fireEvent.click(within(bar).getByRole('button', { name: '다음 공급행' }))
+  expect(screen.getByRole('combobox', { name: '단지' })).not.toHaveDisplayValue(/^첨단H-1BL/)
+  expect(within(bar).getByRole('button', { name: /^공급행 \d+ (확인 필요|오류): / })).toBeVisible()
 })
 
 it('공급행 목록에서 행을 고르면 PDF를 그 행의 주택형 표기 근거 쪽으로 옮겨 강조한다', async () => {
   await open(JSON.stringify(fixtures.gwangju.extraction))
-  fireEvent.click(screen.getByRole('tab', { name: /^첨단H-3BL/ }))
+  chooseComplex('첨단H-3BL')
   const list = screen.getByRole('region', { name: '공급행 목록' })
-  const button = within(list).getAllByRole('button', { name: /^공급행 \d+ 편집$/ }).at(-1)!
+  const button = within(list).getAllByRole('button', { name: /^\d+\. / }).at(-1)!
   fireEvent.click(button)
   // 좁은 화면에서는 편집 영역을 그대로 두므로 PDF 영역을 열어 확인한다.
   expect(screen.getByRole('region', { name: /^공급행 \d+ 검토$/ })).toBeVisible()
@@ -1098,20 +1168,20 @@ it('공급행 목록에서 행을 고르면 PDF를 그 행의 주택형 표기 �
   expect(await screen.findByText(/^PDF \d+쪽 · 강조 (?!없음)/)).toBeVisible()
 })
 
-it('공급정보 편집표의 PDF 채우기도 단지마다 탭으로 나눠 다른 단지 행을 고를 수 있다', async () => {
+it('공급정보 편집표의 PDF 채우기는 공급정보 탭 하나만 두고 단지 선택으로 다른 단지 행을 고를 수 있다', async () => {
   extracts(JSON.stringify(fixtures.gwangju.extraction))
   render(<MemoryRouter><PdfCorrectionWorkspace id="29" supplyDraft={{ rows: structuredClone(workspace.supply.rows), onFill: vi.fn(), onCancel: vi.fn() }} /></MemoryRouter>)
   await review()
   const tabs = within(screen.getByRole('tablist', { name: 'PDF 보정 영역' })).getAllByRole('tab')
-  expect(tabs.map(tab => tab.textContent?.split(' · ')[0])).toEqual(['첨단H-1BL', '첨단H-2BL', '첨단H-3BL'])
-  fireEvent.click(tabs[2])
+  expect(tabs.map(tab => tab.textContent?.split(' · ')[0])).toEqual(['공급정보'])
+  chooseComplex('첨단H-3BL')
   expect(screen.getByRole('region', { name: '공급행 4 검토' })).toBeVisible()
 })
 
-it('임시저장본은 열어 둔 단지 탭과 고른 공급행을 함께 저장하고 복원한다', async () => {
+it('임시저장본은 열어 둔 단지와 고른 공급행을 함께 저장하고 복원한다', async () => {
   await open(JSON.stringify(fixtures.gwangju.extraction))
-  fireEvent.click(screen.getByRole('tab', { name: /^첨단H-3BL/ }))
-  fireEvent.click(screen.getByRole('button', { name: '공급행 5 편집' }))
+  chooseComplex('첨단H-3BL')
+  showRow(5)
   fireEvent.click(screen.getByRole('button', { name: '임시저장' }))
   await waitFor(() => expect(draftApi.saveCorrectionDraft.mock.lastCall?.[1].payload).toMatchObject({ section: 'supply', selectedRow: 4 }))
   cleanup()
@@ -1119,7 +1189,7 @@ it('임시저장본은 열어 둔 단지 탭과 고른 공급행을 함께 저�
   draftApi.loadCorrectionDraft.mockResolvedValue({ revision: 2, baseSnapshotToken: 'current', pdfSha256: null, extractionId: null, updatedAt: '2026-11-03T03:00:00Z', stale: false, payload: saved.payload })
   renderPage()
   fireEvent.click(within(await screen.findByRole('region', { name: '임시저장한 작업' })).getByRole('button', { name: '임시저장본 복원' }))
-  expect(await screen.findByRole('tab', { name: /^첨단H-3BL/ })).toHaveAttribute('aria-selected', 'true')
+  expect(await screen.findByRole('combobox', { name: '단지' })).toHaveDisplayValue(/^첨단H-3BL/)
   expect(screen.getByRole('region', { name: '공급행 5 검토' })).toBeVisible()
 })
 
