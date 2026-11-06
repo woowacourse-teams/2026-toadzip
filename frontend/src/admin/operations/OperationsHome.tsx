@@ -29,13 +29,15 @@ export function OperationsHome() {
   return <section className={styles.page}>
     <header><div><h1>운영 홈</h1><p>처리할 업무를 고르고, 보정 후 실제 반영 결과까지 확인하세요.</p></div>
       <button type="button" disabled={!counts} onClick={() => setAttempt(value => value + 1)}>현황 새로고침</button></header>
-    <p role="status">{counts ? `${checkedAt} 확인 · 한국 시각` : '운영 현황을 확인하는 중…'}</p>
-    <ul className={styles.work}>{work.map((item, index) => <li key={item.href}>
-      <div><h2><Link to={item.href}>{item.title} →</Link></h2><p>{item.description}</p>
-        {counts?.[index].error && <p role="alert">조회 실패: {counts[index].error} 목록에서 다시 확인해 주세요.</p>}</div>
+    <p className={styles.checked} role="status">{counts ? `${checkedAt} 확인 · 한국 시각` : '운영 현황을 확인하는 중…'}</p>
+    <ul className={styles.work}>{work.map((item, index) => <li key={item.href} className={counts?.[index].value ? styles.attention : undefined}>
+      <div className={styles.cardHead}><h2>{item.title}</h2>
+        <Link className={styles.go} to={item.href} aria-label={`${item.title} 목록으로 이동`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8" /></svg></Link></div>
       <span className={styles.count} aria-label={`${item.title} 건수`}>{counts?.[index].value?.toLocaleString('ko-KR') ?? '—'}<small>건</small></span>
+      <p>{item.description}</p>
+      {counts?.[index].error && <p role="alert">조회 실패: {counts[index].error} 목록에서 다시 확인해 주세요.</p>}
     </li>)}</ul>
-    <section><h2>작업 도구</h2><nav className={styles.links} aria-label="운영 도구">
+    <section className={styles.tools}><h2>작업 도구</h2><nav className={styles.links} aria-label="운영 도구">
       <Link to="/admin/ingest">수집 실행·단계별 이력</Link>
       <Link to="/admin/complexes">단지 관리</Link><Link to="/admin/announcements">공고 관리</Link>
       <Link to="/admin/users">회원 조사</Link><Link to="/admin/notification-subscriptions">알림 신청·분석</Link>

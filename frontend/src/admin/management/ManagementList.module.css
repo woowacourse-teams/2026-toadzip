@@ -9,7 +9,7 @@
   margin-bottom: 12px;
   background: var(--ds-color-surface);
   border: 1px solid var(--ds-color-divider);
-  border-radius: 12px;
+  border-radius: var(--admin-radius-card, 16px);
 }
 .filters > label { min-width: 0; color: var(--ds-color-label); font-size: var(--admin-text-meta, 13px); }
 .filters input::placeholder { color: var(--ds-color-muted); font-weight: 400; }
@@ -38,7 +38,7 @@
 .results { position: relative; min-width: 0; }
 .results .resultCount { margin: 0 0 10px; font-size: 12px; color: var(--ds-color-muted); }
 .loading { position: absolute; top: 0; right: 0; z-index: 4; margin: 0; padding: 8px 12px; background: var(--ds-color-surface); color: var(--ds-color-label); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); font-size: var(--ds-text-caption); }
-.scroll { --name-width: 320px; max-width: 100%; max-height: 65vh; overflow: auto; border: 1px solid var(--ds-color-divider); border-radius: 12px; background: var(--ds-color-surface); scrollbar-color: var(--ds-color-border-base) var(--ds-color-surface-subtle); scrollbar-width: thin; }
+.scroll { --name-width: 320px; max-width: 100%; max-height: 65vh; overflow: auto; border: 1px solid var(--ds-color-divider); border-radius: var(--admin-radius-card, 16px); background: var(--ds-color-surface); scrollbar-color: var(--ds-color-border-base) var(--ds-color-surface-subtle); scrollbar-width: thin; }
 .fixedHeight { min-height: 260px; }
 .table { width: 100%; min-width: 900px; border-collapse: separate; border-spacing: 0; table-layout: fixed; text-align: left; font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; color: var(--ds-color-text); }
 .nameColumn { width: var(--name-width); }

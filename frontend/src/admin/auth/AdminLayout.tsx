@@ -12,11 +12,13 @@ const sourceLinks = [['/admin/ingest/announcements', '공고 수집'], ['/admin/
   ['/admin/sources', '원천 데이터'], ['/admin/locations', '주소 데이터']] as const
 const memberLinks = [['/admin/users', '회원 관리'], ['/admin/notification-subscriptions', '알림 신청 관리'], ['/admin/notification-deliveries', '알림 발송 기록'], ['/admin/feedback', '사용자 의견']] as const
 const extraIcons: Record<string, string> = {
-  '공고 수집': 'document', '단지 수집': 'building', '원천 데이터': 'database', '실패·검토 항목': 'warning',
+  '공고 수집': 'download', '단지 수집': 'layers', '원천 데이터': 'database', '실패·검토 항목': 'warning',
   '주소 데이터': 'pin', '회원 관리': 'users', '알림 신청 관리': 'bell', '알림 발송 기록': 'send', '사용자 의견': 'message',
 }
 function MenuIcon({ kind }: { kind: string }) {
   const paths: Record<string, string> = {
+    download: 'M12 3v11m0 0-4-4m4 4 4-4M4 17v3h16v-3',
+    layers: 'm12 3 9 5-9 5-9-5 9-5zM3 13l9 5 9-5',
     database: 'M4 6c0-4 16-4 16 0s-16 4-16 0v12c0 4 16 4 16 0V6M4 12c0 4 16 4 16 0',
     warning: 'M12 3 2 21h20L12 3zM12 9v5M12 17v1',
     pin: 'M12 22s8-8 8-14A8 8 0 0 0 4 8c0 6 8 14 8 14zM9 9a3 3 0 1 0 6 0 3 3 0 1 0-6 0',
