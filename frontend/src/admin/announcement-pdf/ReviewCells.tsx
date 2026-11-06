@@ -3,7 +3,7 @@ import { Button } from '../../design-system/components/Button'
 import { housingTypeLabel } from '../ingest/housingTypeLabel'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 import type { Evidence } from './extraction'
-import { cellMatches, cellStates, choices, chooseCellValue, editCell, extractedBlockReason, pendingCell, pendingField, shown, shownDateTime, validCellValue, type Cell, type ReviewFilter, type ValueMode } from './review'
+import { cellMatches, cellStates, choices, chooseCellValue, editCell, extractedBlockReason, pendingCell, pendingField, shown, shownDateTime, shownMoney, validCellValue, type Cell, type ReviewFilter, type ValueMode } from './review'
 import styles from './PdfCorrection.module.css'
 
 // 기존 값(지금 저장값) · PDF 추출값(추출 원본) · 직접 입력(운영자 값)을 고르고, 반영값 칸은 저장에 보낼 값을 그대로 보여 준다.
@@ -28,6 +28,7 @@ export function ReviewCells({ cells, scope, housingTypes = [], otherHousingTypes
     }
     if (cell.kind === 'method' || cell.kind === 'scheduleType') return choices[cell.kind].find(([key]) => key === value)?.[1] ?? shown(value)
     if (cell.kind === 'datetime') return shownDateTime(value)
+    if (cell.kind === 'money') return shownMoney(value)
     return shown(value)
   }
   function manualField(cell: Cell) {

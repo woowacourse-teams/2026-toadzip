@@ -1,10 +1,11 @@
 .page, .panel { min-width: 0; color: var(--ds-color-text); font-family: var(--ds-font-family-ui); }
 .heading { margin-bottom: var(--ds-space-6); }
 .heading h1 { margin: 0; font-size: 24px; line-height: var(--ds-line-height-title); }
-.tabs { display: inline-flex; flex-wrap: wrap; gap: var(--ds-space-1); padding: var(--ds-space-1); margin-bottom: var(--ds-space-6); border: 1px solid var(--ds-color-divider); border-radius: 12px; background: var(--ds-color-surface); }
-.tabs a { display: flex; align-items: center; justify-content: center; min-height: var(--ds-control-height-md); padding: var(--ds-space-2) var(--ds-space-4); border-radius: var(--ds-radius-control); color: var(--ds-color-label); font-size: var(--ds-text-body); text-decoration: none; }
-.tabs a:hover { background: var(--ds-color-surface-subtle); }
-.tabs a[aria-current="page"] { color: var(--ds-color-action); background: var(--ds-color-action-soft); font-weight: var(--ds-weight-strong); }
+/* 보기 전환은 다른 목록 화면의 탭과 같은 밑줄 탭으로 그린다. */
+.tabs { display: flex; flex-wrap: wrap; gap: 24px; margin-bottom: var(--ds-space-5); border-bottom: 1px solid var(--ds-color-divider); }
+.tabs a { display: flex; align-items: center; min-height: 40px; margin-bottom: -1px; padding: 0 2px; border-bottom: 2px solid transparent; color: var(--ds-color-muted); font-size: 14px; font-weight: 600; text-decoration: none; }
+.tabs a:hover { color: var(--ds-color-text); }
+.tabs a[aria-current="page"] { color: var(--ds-color-action); border-bottom-color: var(--ds-color-action); }
 .tabs a:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
 .insightHeading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-4); padding: var(--ds-space-5); border-bottom: 1px solid var(--ds-color-divider); }
 .insightHeading > div { flex: 1; min-width: 200px; }
@@ -69,7 +70,7 @@
 .badge { display: inline-block; white-space: nowrap; padding: var(--ds-space-1) var(--ds-space-2); border-radius: var(--ds-status-badge-radius); color: var(--ds-color-status-neutral); background: var(--ds-color-status-neutral-surface); }
 .badge[data-status="ACTIVE"] { color: var(--ds-color-action); background: var(--ds-color-action-soft); }
 .badge[data-status="EXPIRED"] { color: var(--ds-color-status-upcoming); background: var(--ds-color-status-upcoming-surface); }
-.empty { padding: 40px var(--ds-space-5); text-align: center; border-radius: var(--ds-radius-control); background: var(--ds-color-surface-subtle); color: var(--ds-color-muted); }
+.empty { padding: 48px var(--ds-space-5); text-align: center; border-block: 1px solid var(--ds-color-divider); background: var(--ds-color-surface); color: var(--ds-color-muted); }
 .empty h3 { margin-top: 0; color: var(--ds-color-text); font-size: var(--ds-text-section); }
 .empty p { line-height: var(--ds-line-height-body); }
 .empty button { min-height: var(--ds-control-height-md); padding-inline: var(--ds-space-4); border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-action); font: inherit; cursor: pointer; }

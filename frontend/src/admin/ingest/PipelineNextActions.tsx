@@ -40,7 +40,7 @@ export function PipelineNextActions({ execution, onRefine, disabled = false }: {
         <Link to={complex ? '/admin/complexes' : '/admin/announcements'}>{complex ? '단지' : '공고'} 저장 결과 확인</Link>
         {complex && <Link to="/admin/ingest/announcements">다음: 공고 갱신</Link>}
       </div>
-      {complex && <p className="ingest-meta">기존 공고의 단지 연결을 다시 시도하려면 공고 수집 화면의 ‘수집·정제 따로 실행’에서 공고 정제를 실행해 주세요.</p>}
+      {complex && <p className="ingest-meta">기존 공고의 단지 연결을 다시 시도하려면 공고 수집 화면에서 LH 공고 갱신을 실행해 주세요.</p>}
     </>}
   </div>
 }

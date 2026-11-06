@@ -16,7 +16,8 @@
 .steps .skipped { color: var(--ds-color-status-neutral); }
 .steps .stopped { color: var(--ds-color-text); }
 .steps .waiting, .steps .unexecuted { color: var(--ds-color-muted); }
-.detail { padding: var(--ds-space-4); border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); }
+/* 단계 상세는 카드 안에 다시 상자를 만들지 않고 위 구분선으로만 나눈다. */
+.detail { margin-top: var(--ds-space-4); padding-top: var(--ds-space-4); border-top: 1px solid var(--ds-color-divider); }
 
 .content { min-width: 0; }
 .focused .heading h3 { margin: 0; }

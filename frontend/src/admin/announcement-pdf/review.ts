@@ -52,6 +52,11 @@ export function shownDateTime(value: unknown) {
   return match[2] === '00' && match[3] === '00' ? match[1] : `${match[1]} ${match[2]}:${match[3]}`
 }
 export function shown(value: unknown) { return value === null || value === undefined || value === '' ? '미확인' : String(value) }
+/** 금액은 세 자리마다 쉼표를 넣어 기존 값·PDF 값의 자릿수를 바로 대조하게 한다. 숫자가 아니면 그대로 보인다. */
+export function shownMoney(value: unknown) {
+  const text = shown(value)
+  return /^\d+$/.test(text) ? Number(text).toLocaleString('ko-KR') : text
+}
 
 /** 저장된 일시는 초까지(10:00:00), PDF와 입력칸은 분까지(10:00) 적으므로 초를 붙여 같은 시각을 변경으로 보지 않는다. */
 const fullDateTime = (value: string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) ? `${value}:00` : value
@@ -253,6 +258,16 @@ export function rowOfReviewId(reviewId: string): number | null {
   return match ? Number(match[1] ?? match[2]) : null
 }
 export type ReviewFilter = 'all' | 'pending' | 'changed' | 'new'
+const pendingKinds: [prefix: string, label: string, counted: boolean][] = [['row:', '저장할 곳', false], ['cell:', '값', true], ['subtype:', '세부 타입', true], ['target:', '임대조건', true], ['price:', '주택형 가격', false]]
+/** 공급행 하나에 남은 확인 항목. pendingItems 순서(편집 영역 순서)를 그대로 따른다. */
+export function rowPendingItems(items: PendingItem[], index: number) { return items.filter(item => rowOfReviewId(item.id) === index) }
+/** 남은 확인을 종류별로 줄인 설명. 예: '저장할 곳 · 값 2 · 임대조건 1' */
+export function pendingSummary(items: PendingItem[]) {
+  return pendingKinds.flatMap(([prefix, label, counted]) => {
+    const count = items.filter(item => item.id.startsWith(prefix)).length
+    return count ? [counted ? `${label} ${count}` : label] : []
+  }).join(' · ')
+}
 export type PendingItem = { id: string; section: ReviewSection }
 /** 사람이 아직 판단하지 않은 확인 필요·형식 오류 값. 직접 입력값은 형식이 맞을 때까지 남는다. */
 export function pendingCell(cell: Cell) {
@@ -371,9 +386,10 @@ export function pendingItems(review: Review, savesHousingTypes = true, workspace
   complexGroups(review).flatMap(group => group.indexes).forEach(index => {
     const row = review.rows[index]
     if (!row?.include) return
+    // 편집 영역 순서(저장할 곳 → 값 비교 → 세부 타입 → 임대조건 → 주택형 가격)를 따른다.
     if (pendingRow(row) || problems.get(index)?.level === 'error') items.push({ id: `row:${index}`, section: 'supply' })
-    pendingSubtypes(row).forEach(at => items.push({ id: `subtype:${index}:${at}`, section: 'supply' }))
     row.cells.filter(pendingCell).forEach(cell => items.push({ id: `cell:${cell.path}`, section: 'supply' }))
+    pendingSubtypes(row).forEach(at => items.push({ id: `subtype:${index}:${at}`, section: 'supply' }))
     row.targets.forEach((target, at) => { if (pendingTarget(target)) items.push({ id: `target:${index}:${at}`, section: 'supply' }) })
     if (savesHousingTypes && pendingPrice(row)) items.push({ id: `price:${index}`, section: 'supply' })
   })

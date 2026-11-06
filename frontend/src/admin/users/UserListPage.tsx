@@ -44,6 +44,7 @@ export function UserListPage() {
   function move(next: number) { setParams(current => { current.set('page', String(next)); return current }) }
   return <section className={styles.page}>
     <header className={styles.heading}><h1>회원 관리</h1></header>
+    <div className="admin-list-card">
     <form key={search} className={styles.filters} aria-label="회원 검색" onSubmit={event => {
       event.preventDefault()
       const values = new FormData(event.currentTarget), next = new URLSearchParams()
@@ -75,6 +76,7 @@ export function UserListPage() {
         </table> : data ? <div className={styles.empty}><h2>표시할 회원이 없습니다.</h2><p>검색 조건을 바꿔 주세요.</p></div> : null}
       </div>
       {data ? <ListPagination page={data.page} totalPages={data.totalPages} onMove={move} disabled={pending} label="회원 목록 페이지" /> : null}
+    </div>
     </div>
   </section>
 }

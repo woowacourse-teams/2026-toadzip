@@ -1,7 +1,7 @@
 import type { JsonWorkspace } from '../announcement-json/api'
 import type { CorrectionRow, LhSupplyRow } from '../supply/supplyCorrectionApi'
 import { attachableLhRows, equalArea, lhName, sameComplex, splittableLhRows, typeKey } from './matching'
-import { assembledCount, complexGroups, placementMode, type Review } from './review'
+import { assembledCount, complexGroups, needsComplex, placementMode, type Review } from './review'
 
 /**
  * LH 통합행 하나와 그 행을 주택형별로 적은 PDF 행들. 나누기(split)와 LH대로 1행 유지(keep)는 단지 단위 결정이다.
@@ -172,4 +172,16 @@ export function placementShort(review: Review, index: number, workspace: JsonWor
   if (mode === 'SPLIT') return `#${String(id(workspace.supply.lhSupplyRows?.find(lh => lh.rowIdentifier === proposal.lhRow)?.attachedRowKey))} 나눔`
   if (mode === 'ATTACH') return 'LH 행에 붙임'
   return '미정'
+}
+
+/**
+ * 저장할 곳 확인을 어디서 푸는지. 대응이 의심스러우면 그 행에서 확인하고, 단지를 아직 정하지 않았으면 단지 정하기,
+ * LH 통합행을 나눌지 정하는 행이면 단지의 LH·PDF 대응에서 정한다(행마다가 아니라 단지에서 한 번에 정한다).
+ * 상태 배지의 이동과 행 안의 안내가 같은 규칙을 쓴다.
+ */
+export function placementTarget(review: Review, workspace: JsonWorkspace, index: number): 'row' | 'complex' | 'match' {
+  const row = review.rows[index], group = groupOf(review, index)
+  if (placementDoubt(review, index, workspace)) return 'row'
+  if (needsComplex(row, workspace) && !row.proposal.newComplex) return 'complex'
+  return group >= 0 && complexCorrespondence(review, workspace, group).offers.some(offer => offer.members.includes(index)) ? 'match' : 'row'
 }
