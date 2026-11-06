@@ -135,7 +135,7 @@ describe('HousingAnnouncementDetailPanel', () => {
     await waitFor(() => expect(record).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'CONFIRMED', source: 'ANNOUNCEMENT_DETAIL', targetType: 'ANNOUNCEMENT', targetId: '201',
     })))
-    expect(screen.getByRole('dialog', { name: '알림 신청을 완료했어요' })).toBeVisible()
+    expect(screen.getByRole('dialog', { name: '알림을 설정했어요' })).toBeVisible()
     localStorage.clear()
   })
 

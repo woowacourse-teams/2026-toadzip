@@ -33,6 +33,7 @@ function renderLogin(path = '/') {
 }
 
 function expectLegacyLoginLinks() {
+  expect(screen.getByRole('dialog', { name: '로그인' })).toHaveTextContent('알림을 신청하면 회원 ID와 선택한 단지·공고·지역을 계정에 저장해요.')
   for (const [name, provider] of [['카카오톡으로 로그인', 'kakao'], ['Google로 로그인', 'google']]) {
     const link = screen.getByRole('link', { name })
     expect(link).toHaveAttribute('href', `https://api.example.com/api/auth/oauth2/authorization/${provider}`)

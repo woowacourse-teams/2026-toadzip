@@ -49,6 +49,7 @@ export function LoginContent({ loginFailed, sessionError, titleId, descriptionId
             Google로 로그인
           </a>
         </div>
+        <p className={styles.policy}>알림을 신청하면 회원 ID와 선택한 단지·공고·지역을 계정에 저장해요.</p>
         {!page && <PrivacyLinks policyVersion={policyVersion} />}
         {noticeError && <p role="alert">개인정보처리방침 안내를 불러오지 못했어요. 로그인은 계속할 수 있어요. <button type="button" onClick={retryNotice}>다시 시도</button></p>}
   </>

@@ -82,6 +82,5 @@
   .dialog::backdrop { background: Canvas; opacity: .7; }
 }
 
-.policy { text-align: center; margin: 18px 0 0; font-size: 12px; }
-.policy a { color: var(--ds-color-label); text-underline-offset: 3px; }
+.policy { margin: 0; text-align: center; color: var(--ds-color-muted); font-size: var(--ds-text-caption); line-height: var(--ds-line-height-caption); word-break: keep-all; }
 .provider[aria-disabled="true"] { opacity: .5; cursor: wait; }
