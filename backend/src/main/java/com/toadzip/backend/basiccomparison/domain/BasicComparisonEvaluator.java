@@ -139,7 +139,7 @@ public final class BasicComparisonEvaluator {
                 directCheckIds);
     }
 
-    private CheckResult check(BasicCheck check, BasicRuleEvaluator evaluator) {
+    static CheckResult check(BasicCheck check, BasicRuleEvaluator evaluator) {
         if (check.appliesWhen() != null) {
             RuleReading applicability = evaluator.evaluate(check.appliesWhen());
             if (applicability.status() == RuleReading.Status.INPUT_NEEDED) {
