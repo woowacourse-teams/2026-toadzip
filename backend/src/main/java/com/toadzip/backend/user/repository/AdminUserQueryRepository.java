@@ -5,6 +5,7 @@ import com.toadzip.backend.user.dto.AdminUserProvider;
 import com.toadzip.backend.user.dto.AdminUserSummary;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
@@ -55,6 +56,24 @@ public class AdminUserQueryRepository {
         return new AdminPage<>(items, page, (long) page + 1 < totalPages, total, totalPages);
     }
 
+    public List<DailyRegistrations> countRegistrationsByDay(LocalDate start, LocalDate end, LocalDateTime asOf) {
+        return jdbc.sql("""
+                SELECT day::date AS day, COUNT(member.id) AS count
+                FROM generate_series(CAST(:start AS date), CAST(:end AS date), INTERVAL '1 day') day
+                LEFT JOIN users member ON member.created_at >= day AND member.created_at < day + INTERVAL '1 day'
+                    AND member.created_at <= :asOf
+                GROUP BY day ORDER BY day
+                """).param("start", start).param("end", end).param("asOf", asOf)
+                .query((row, index) -> new DailyRegistrations(row.getObject("day", LocalDate.class),
+                        row.getLong("count"))).list();
+    }
+
+    /** 가입 시각이 [start, end) 구간에 속하는 회원을 센다. */
+    public long countRegisteredBetween(LocalDateTime start, LocalDateTime end) {
+        return jdbc.sql("SELECT COUNT(*) FROM users WHERE created_at >= :start AND created_at < :end")
+                .param("start", start).param("end", end).query(Long.class).single();
+    }
+
     public Optional<AdminUserSummary> findById(long id) {
         return jdbc.sql(MEMBER_SELECT + " WHERE id = :id").param("id", id)
                 .query((row, index) -> summary(row)).optional();
@@ -96,5 +115,8 @@ public class AdminUserQueryRepository {
     }
 
     private record MemberRow(long total, AdminUserSummary member) {
+    }
+
+    public record DailyRegistrations(LocalDate day, long count) {
     }
 }

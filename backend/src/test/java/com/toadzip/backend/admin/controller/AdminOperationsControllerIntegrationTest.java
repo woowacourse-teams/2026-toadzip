@@ -149,6 +149,19 @@ class AdminOperationsControllerIntegrationTest {
                         .value(org.hamcrest.Matchers.contains(org.hamcrest.Matchers.nullValue())));
     }
 
+    @Test
+    void 늦게_저장된_과거_실행이_최근_실행을_덮어쓰지_않는다() throws Exception {
+        execution("COMPLETED", "2026-11-06T01:00:00Z");
+        execution("FAILED", "2026-11-05T01:00:00Z");
+
+        mockMvc.perform(get("/api/admin/operations/collections").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sources[?(@.agency=='LH')].latestStatus")
+                        .value(org.hamcrest.Matchers.contains("COMPLETED")))
+                .andExpect(jsonPath("$.data.sources[?(@.agency=='LH')].lastSuccessAt")
+                        .value(org.hamcrest.Matchers.contains("2026-11-06T01:00:00Z")));
+    }
+
     private HousingComplex complex(String provider) {
         var address = Address.create("테스트 도로 1", null, "1111010100", "11", "11110",
                 new BigDecimal("37.5"), new BigDecimal("127.0"));
