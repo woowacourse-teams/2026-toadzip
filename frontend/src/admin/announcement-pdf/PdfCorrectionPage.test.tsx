@@ -1,3 +1,4 @@
+import { withMixedSharedCounts } from './fixtures/mixedSharedCounts'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from 'vitest'
@@ -745,6 +746,25 @@ it('대상들이 함께 쓰는 모집수는 안내만 하고 대상별 모집수
   expect(input.correction.rows.find(row => row.typeName === '26A')?.targets.map(target => target.householdCount)).toEqual([null, null])
 })
 
+it('대상들이 함께 쓰는 이번 예비자 모집수는 명 단위로 안내하고 대상별 수를 만들지 않는다', async () => {
+  const extraction = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
+  extraction.data.supplyRows[0].targets.push({ ...extraction.data.supplyRows[0].targets[0], target: '청년', reserveCount: null })
+  extraction.sharedCounts = [{ paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[0].targets[1].reserveCount'], count: 20, page: 3, quote: '대학생 청년 예비자 20' }]
+  await open(JSON.stringify(extraction))
+  fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
+  expect(screen.getByText('공통 예비자 모집 20명', { selector: 'strong' })).toBeVisible()
+  expect(screen.getByText('26A에서 일반 · 청년 대상이 함께 쓰는 예비자 모집수입니다. 대상별 예비자 수는 비워 둡니다.')).toBeVisible()
+})
+
+it('서로 다른 공급행의 대상들이 함께 쓰는 예비자 모집수는 각 공급행 이름과 함께 안내한다', async () => {
+  const extraction = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
+  extraction.data.supplyRows[1].targets[0].rentalDeposit = 11100000
+  extraction.sharedCounts = [{ paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[1].targets[0].reserveCount'], count: 20, page: 3, quote: '26A·26B 예비자 20' }]
+  await open(JSON.stringify(extraction))
+  fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
+  expect(screen.getByText('26A의 일반 대상과 26B의 일반 대상이 함께 쓰는 예비자 모집수입니다. 대상별 예비자 수는 비워 둡니다.')).toBeVisible()
+})
+
 it('공고에는 있지만 단지 DB에 없는 단지는 공고문 단지 개요로 한 번 등록해 같은 단지 공급행 전체에 연결한다', async () => {
   registration.createHousingComplex.mockResolvedValue({ housingComplexId: 7, name: '익산한스빌', roadAddress: '전북특별자치도 익산시 목천동 1' })
   api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, rows: [] } })
@@ -1247,10 +1267,10 @@ it('미확정 공고의 필수값 누락은 미해결로 표시하고 해당 칸
 })
 
 
-it('실제 GH 워커 응답의 잘못된 다섯 공통 모집 묶음을 모두 보여 주고, 명시적으로 교정한 뒤에만 검토로 이동한다', async () => {
+it('GH 응답에 수량 종류를 섞은 다섯 공통 모집 묶음을 모두 보여 주고, 명시적으로 교정한 뒤에만 검토로 이동한다', async () => {
   api.loadJsonWorkspace.mockResolvedValue({ ...workspace, detail: { ...workspace.detail, summary: { ...workspace.detail.summary, name: ghExtraction.data.announcement.name },
     data: { ...workspace.detail.data, name: ghExtraction.data.announcement.name, postedDate: ghExtraction.data.announcement.postedDate } } })
-  extracts(JSON.stringify(ghExtraction))
+  extracts(JSON.stringify(withMixedSharedCounts()))
   renderPage()
   await startExtraction()
   const repair = await screen.findByRole('region', { name: '공통 모집수 수정' })

@@ -1,12 +1,9 @@
 /// <reference types="node" />
 
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import fixtures from './fixtures/scenarios.json'
 import { daegu } from './fixtures/workspace'
-// AI 워커가 모델에 보내는 프롬프트의 응답 예제를 이 화면이 그대로 읽는지 확인한다.
-const prompt = readFileSync(resolve(process.cwd(), '../ai-worker/src/ai_worker/prompts/announcement-pdf-extraction.txt'), 'utf8')
+import managerExample from './fixtures/manager-extraction-example.json'
 import { evidenceContext, evidenceFor, evidenceQuery, noteFor, pathCovers, readExtraction, searchText, type Extraction } from './extraction'
 
 describe('AI 추출 응답 읽기', () => {
@@ -99,8 +96,8 @@ describe('AI 추출 응답 읽기', () => {
     ['쪽 번호가 없으면', (item: Record<string, unknown>) => { item.page = null }, 'sharedCounts[0].page는 1 이상의 쪽 번호여야 합니다. 현재 값: null'],
     ['모집수가 문자열이면', (item: Record<string, unknown>) => { item.count = '170' }, 'sharedCounts[0].count는 0 이상의 정수여야 합니다. 현재 값: "170"'],
     ['공급행이 하나뿐이면', (item: Record<string, unknown>) => { item.paths = ['supplyRows[0].totalSupplyHouseholdCount'] }, 'sharedCounts[0].paths에는 모집수를 함께 쓰는 공급행이 2개 이상 있어야 합니다.'],
-    ['다른 공급행의 대상을 묶으면', (item: Record<string, unknown>) => { item.paths = ['supplyRows[0].targets[0].supplyHouseholdCount', 'supplyRows[1].targets[0].supplyHouseholdCount'] }, '같은 공급행의 대상끼리만 묶을 수 있습니다.'],
     ['공급행과 대상을 섞으면', (item: Record<string, unknown>) => { item.paths = ['supplyRows[0].totalSupplyHouseholdCount', 'supplyRows[0].targets[0].supplyHouseholdCount'] }, '공급행 모집수와 대상별 모집수가 섞여 있습니다.'],
+    ['당첨자 수와 예비자 수를 섞으면', (item: Record<string, unknown>) => { item.paths = ['supplyRows[0].targets[0].supplyHouseholdCount', 'supplyRows[1].targets[0].reserveCount'] }, '서로 다른 수량 필드가 섞여 있습니다.'],
     ['없는 대상을 가리키면', (item: Record<string, unknown>) => { item.paths = ['supplyRows[0].targets[0].supplyHouseholdCount', 'supplyRows[0].targets[5].supplyHouseholdCount'] }, 'supplyRows[0].targets[5]가 없습니다. 이 공급행의 대상은 1개입니다.'],
   ])('공통 모집수의 %s 어느 항목이 왜 틀렸는지 알린다', (_name, change, message) => {
     const input = structuredClone(fixtures.hansville.extraction) as unknown as { sharedCounts: Record<string, unknown>[] }
@@ -115,6 +112,37 @@ describe('AI 추출 응답 읽기', () => {
     const result = readExtraction(JSON.stringify(input))
     expect(result).toMatchObject({ ok: true })
     if (result.ok) expect(result.value.sharedCounts).toEqual([expect.objectContaining({ count: 39, paths: ['supplyRows[0].targets[0].supplyHouseholdCount', 'supplyRows[0].targets[1].supplyHouseholdCount'] })])
+  })
+
+  it('한 공급행 안의 대상들이 함께 쓰는 이번 예비자 모집수를 읽는다', () => {
+    const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
+    input.data.supplyRows[0].targets.push({ ...input.data.supplyRows[0].targets[0], target: '청년' })
+    input.sharedCounts = [{ paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[0].targets[1].reserveCount'], count: 20, page: 3, quote: '대학생 청년 예비자 20' }]
+    const result = readExtraction(JSON.stringify(input))
+    expect(result).toMatchObject({ ok: true })
+    if (result.ok) expect(result.value.sharedCounts).toEqual([expect.objectContaining({ count: 20, paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[0].targets[1].reserveCount'] })])
+  })
+
+  it('여러 공급행의 대상들이 함께 쓰는 같은 종류의 수량을 읽는다', () => {
+    const input = structuredClone(fixtures.hansville.extraction)
+    input.sharedCounts = [{ paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[1].targets[0].reserveCount'], count: 20, page: 3, quote: '두 주택형 예비자 통합 20' }]
+    const result = readExtraction(JSON.stringify(input))
+    expect(result).toMatchObject({ ok: true })
+    if (result.ok) expect(result.value.sharedCounts[0].paths).toHaveLength(2)
+  })
+
+  it.each(['supplyHouseholdCount', 'reserveCount'] as const)('공통 %s가 대상별 칸에도 반복되면 그 칸을 비우고 미확인으로 남긴다', field => {
+    const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
+    input.data.supplyRows[0].targets.push({ ...input.data.supplyRows[0].targets[0], target: '청년' })
+    input.data.supplyRows[0].targets.forEach(target => { target[field] = 20 })
+    input.sharedCounts = [{ paths: [`supplyRows[0].targets[0].${field}`, `supplyRows[0].targets[1].${field}`], count: 20, page: 3, quote: '대학생 청년 통합 20' }]
+    const result = readExtraction(JSON.stringify(input))
+    expect(result).toMatchObject({ ok: true })
+    if (result.ok) {
+      expect(result.value.supplyRows[0].targets.map(target => target[field])).toEqual([null, null])
+      expect(result.value.unresolved.map(note => note.path)).toEqual([`supplyRows[0].targets[0].${field}`, `supplyRows[0].targets[1].${field}`])
+      expect(result.value.sharedCounts[0].count).toBe(20)
+    }
   })
 
   it('v1 응답은 새 프롬프트로 다시 요청하도록 안내한다', () => {
@@ -135,8 +163,8 @@ describe('AI 추출 응답 읽기', () => {
     expect(evidenceFor([row, field], 'supplyRows[0].supplyArea')).toEqual(row)
   })
 
-  it('프롬프트의 응답 예제를 그대로 읽고 세부 타입 묶음은 한 행으로 둔다', () => {
-    const result = readExtraction(prompt.slice(prompt.indexOf('[응답 예제]')))
+  it('관리자 형식의 응답 예제를 읽고 세부 타입 묶음은 한 행으로 둔다', () => {
+    const result = readExtraction(JSON.stringify(managerExample))
     if (!result.ok) throw new Error(result.error)
     expect(result.value.supplyRows.map(row => [row.typeName, row.values.supplyArea, row.subtypes.map(subtype => [subtype.name, subtype.supplyArea])])).toEqual([
       ['36A', 49.8, []], ['26A/B', null, [['26A', 41.47], ['26B', 41.53]]]])
