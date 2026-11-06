@@ -54,7 +54,7 @@ class ComparisonProfileIntegrationTest extends ComparisonIntegrationSupport {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
                                         json.writeValueAsString(
-                                                new SaveProfile(0L, 2, ComparisonProfile.empty()))))
+                                                new SaveProfile(0L, 3, ComparisonProfile.empty()))))
                 .andExpect(status().isForbidden());
     }
 
@@ -67,8 +67,8 @@ class ComparisonProfileIntegrationTest extends ComparisonIntegrationSupport {
                                                 .with(user(Long.toString(USER)).roles("USER")))
                                 .andExpect(status().isOk())
                                 .andExpect(header().string("Cache-Control", "no-store"))
-                                .andExpect(jsonPath("$.data.inputContractVersion").value(2))
-                                .andExpect(jsonPath("$.data.fields.length()").value(23))
+                                .andExpect(jsonPath("$.data.inputContractVersion").value(3))
+                                .andExpect(jsonPath("$.data.fields.length()").value(25))
                                 .andExpect(
                                         jsonPath(
                                                         "$.data.fields[?(@.code =="
@@ -84,8 +84,7 @@ class ComparisonProfileIntegrationTest extends ComparisonIntegrationSupport {
                         "SUPPORTED_SINGLE_PARENT_FAMILY",
                         "IS_HOUSEHOLD_HEAD",
                         "SAVINGS_PAYMENT_COUNT",
-                        "UNIVERSITY_REGION",
-                        "LEASE_END_DATE");
+                        "UNIVERSITY_REGION");
     }
 
     @Test
@@ -154,7 +153,7 @@ class ComparisonProfileIntegrationTest extends ComparisonIntegrationSupport {
     @Test
     void 제외된_신분과_임의_회원ID와_잘못된_계약버전은_받지_않는다() throws Exception {
         ObjectNode valid =
-                (ObjectNode) json.valueToTree(new SaveProfile(0L, 2, ComparisonProfile.empty()));
+                (ObjectNode) json.valueToTree(new SaveProfile(0L, 3, ComparisonProfile.empty()));
         ObjectNode unsupported = valid.deepCopy();
         ((ObjectNode) unsupported.path("profile").path("facts"))
                 .putObject("SUPPORTED_SINGLE_PARENT_FAMILY")
@@ -294,7 +293,7 @@ class ComparisonProfileIntegrationTest extends ComparisonIntegrationSupport {
                         .with(user(Long.toString(member)).roles("USER"))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json.writeValueAsString(new SaveProfile(version, 2, profile))));
+                        .content(json.writeValueAsString(new SaveProfile(version, 3, profile))));
     }
 
     private ResultActions raw(ObjectNode request) throws Exception {

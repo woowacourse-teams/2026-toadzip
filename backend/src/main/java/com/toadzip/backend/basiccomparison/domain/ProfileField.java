@@ -4,6 +4,8 @@ package com.toadzip.backend.basiccomparison.domain;
 public enum ProfileField {
     BIRTH_DATE(Type.DATE, Flow.ALWAYS, "생년월일", "DATE"),
     RESIDENCE_REGION(Type.REGION, Flow.ALWAYS, "거주지역", "REGION_CODE"),
+    CURRENT_REGION_RESIDENCE_MONTHS(Type.MONTHS, Flow.ALWAYS, "현재 지역 거주기간", "MONTHS"),
+    CURRENT_LEASE_END_DATE(Type.DATE, Flow.ALWAYS, "현재 거주 집 계약 종료일", "DATE"),
     IS_UNIVERSITY_STUDENT(Type.BOOLEAN, Flow.ALWAYS, "대학생 여부", "BOOLEAN"),
     IS_JOB_SEEKER(Type.BOOLEAN, Flow.ALWAYS, "취업준비생 여부", "BOOLEAN"),
     APPLICANT_OWNS_HOUSE(Type.BOOLEAN, Flow.ALWAYS, "본인 주택 소유 여부", "BOOLEAN"),
@@ -64,6 +66,7 @@ public enum ProfileField {
         REGION,
         MONEY,
         COUNT,
+        MONTHS,
         FAMILY_TYPE,
         CHILD_DATE,
         MARRIAGE_DATE

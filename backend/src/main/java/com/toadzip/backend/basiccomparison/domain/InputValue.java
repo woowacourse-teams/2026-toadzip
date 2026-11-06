@@ -42,7 +42,7 @@ public record InputValue(ValueState state, Object value) {
             case BOOLEAN -> typed(Boolean.class);
             case DATE -> date();
             case REGION -> region();
-            case MONEY, COUNT -> number(field);
+            case MONEY, COUNT, MONTHS -> number(field);
             case FAMILY_TYPE -> code();
             case CHILD_DATE, MARRIAGE_DATE -> event(field);
         };
@@ -78,6 +78,9 @@ public record InputValue(ValueState state, Object value) {
         }
         if (field.type() == ProfileField.Type.COUNT && result > 100) {
             throw new InvalidComparisonException("인원수가 허용 범위를 벗어났습니다.");
+        }
+        if (field.type() == ProfileField.Type.MONTHS && result > 1800) {
+            throw new InvalidComparisonException("거주기간은 0~1800의 완료 개월 수로 입력해 주세요.");
         }
         return result;
     }
