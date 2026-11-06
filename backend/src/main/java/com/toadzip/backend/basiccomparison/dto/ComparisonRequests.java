@@ -14,7 +14,7 @@ public final class ComparisonRequests {
 
     public record SaveProfile(
             @NotNull @PositiveOrZero Long expectedVersion,
-            @NotNull @Min(2) @Max(2) Integer inputContractVersion,
+            @NotNull @Min(3) @Max(3) Integer inputContractVersion,
             @NotNull ComparisonProfile profile) {}
 
     public record SaveDraft(

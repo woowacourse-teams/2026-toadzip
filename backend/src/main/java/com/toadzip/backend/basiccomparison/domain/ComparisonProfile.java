@@ -15,7 +15,7 @@ import java.util.Set;
 
 public record ComparisonProfile(
         FamilyDetailsState familyDetailsState, Map<ProfileField, InputValue> facts) {
-    public static final int CONTRACT_VERSION = 2;
+    public static final int CONTRACT_VERSION = 3;
 
     public ComparisonProfile {
         if (familyDetailsState == null) {
@@ -154,7 +154,7 @@ public record ComparisonProfile(
         if (input.state() == ValueState.PROVIDED && access.state() != AccessState.ACTIVE) {
             throw new InvalidComparisonException(field + ": 현재 입력 흐름에서 수집하지 않는 항목입니다.");
         }
-        if (input.value() instanceof LocalDate date && date.isAfter(today)) {
+        if (field == BIRTH_DATE && input.value() instanceof LocalDate date && date.isAfter(today)) {
             throw new InvalidComparisonException("실제 생년월일은 미래일 수 없습니다.");
         }
         if (field == BIRTH_DATE
@@ -175,6 +175,9 @@ public record ComparisonProfile(
     }
 
     private boolean allowsNotApplicable(ProfileField field) {
+        if (field == CURRENT_LEASE_END_DATE) {
+            return true;
+        }
         if (field == APPLICANT_CAR_VALUE) {
             return provided(APPLICANT_OWNS_CAR, false);
         }

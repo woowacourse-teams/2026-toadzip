@@ -42,7 +42,7 @@ class ComparisonCutoverIntegrationTest extends ComparisonIntegrationSupport {
                         get("/api/v2/eligibility/input-catalog")
                                 .with(user(Long.toString(USER)).roles("USER")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.inputContractVersion").value(2));
+                .andExpect(jsonPath("$.data.inputContractVersion").value(3));
     }
 
     @Test

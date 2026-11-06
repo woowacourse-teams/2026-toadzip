@@ -355,7 +355,7 @@ class ComparisonQueryIntegrationTest extends ComparisonIntegrationSupport {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
                                         json.writeValueAsString(
-                                                new SaveProfile(version, 2, profile))))
+                                                new SaveProfile(version, 3, profile))))
                 .andExpect(status().isOk());
     }
 

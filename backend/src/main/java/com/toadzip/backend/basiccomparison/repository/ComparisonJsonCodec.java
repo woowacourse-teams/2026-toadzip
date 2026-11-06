@@ -47,7 +47,7 @@ public class ComparisonJsonCodec {
     }
 
     public ComparisonProfile profile(String encoded, int inputContractVersion) {
-        if (inputContractVersion != ComparisonProfile.CONTRACT_VERSION) {
+        if (inputContractVersion != 2 && inputContractVersion != ComparisonProfile.CONTRACT_VERSION) {
             throw new IllegalStateException("Unsupported basic comparison profile contract");
         }
         return json.readValue(encoded, ComparisonProfile.class);

@@ -45,7 +45,7 @@ public class ComparisonProfileRepository {
         }
         return jdbc.sql(
                         """
-                        UPDATE basic_comparison_profiles SET version = version + 1, profile = ?::jsonb, updated_at = ?
+                        UPDATE basic_comparison_profiles SET input_contract_version = 3, version = version + 1, profile = ?::jsonb, updated_at = ?
                         WHERE user_id = ? AND version = ? RETURNING *
                         """)
                 .params(encoded, now.atOffset(ZoneOffset.UTC), userId, expectedVersion)

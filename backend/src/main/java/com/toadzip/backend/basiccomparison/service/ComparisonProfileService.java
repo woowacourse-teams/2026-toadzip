@@ -107,6 +107,10 @@ public class ComparisonProfileService {
 
     private String note(ProfileField field) {
         return switch (field) {
+            case CURRENT_REGION_RESIDENCE_MONTHS ->
+                    "현재 거주지역 코드 범위에서 계속 거주한 완료 개월 수(0~1800)입니다. 현재 집 거주기간과 다릅니다.";
+            case CURRENT_LEASE_END_DATE ->
+                    "현재 거주 집의 계약 종료일입니다. 미래 날짜도 허용합니다. 종료일이 없는 거주는 NOT_APPLICABLE, 모르면 UNKNOWN입니다.";
             case REGISTERED_FAMILY_COUNT -> "본인을 포함한 등본상 가족 수이며 태아는 제외합니다. 세대주 여부를 뜻하지 않습니다.";
             case HOUSEHOLD_MONTHLY_INCOME -> "세대 합산 세전 월평균소득입니다. 선택 가족정보를 생략해도 유지됩니다.";
             case FAMILY_TOTAL_ASSETS, FAMILY_OWNS_HOUSE, FAMILY_OWNS_CAR ->
