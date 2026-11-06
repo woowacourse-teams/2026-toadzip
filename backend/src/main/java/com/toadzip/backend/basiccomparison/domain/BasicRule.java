@@ -21,6 +21,8 @@ public record BasicRule(
     public enum Operator {
         EQUALS,
         AGE_RANGE,
+        NUMBER_RANGE,
+        DAYS_FROM_REFERENCE,
         MONTHS_SINCE,
         REGION_IN,
         MONEY_CEILING,

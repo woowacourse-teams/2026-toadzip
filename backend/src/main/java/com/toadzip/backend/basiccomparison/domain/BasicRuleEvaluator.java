@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.Period;
+import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.Set;
 
@@ -44,6 +45,17 @@ public final class BasicRuleEvaluator {
         if (knownAbsentVehicle(rule)) {
             return RuleReading.matched(true, Map.of("field", rule.field(), "vehicleOwned", false));
         }
+        if (input.state() == ValueState.NOT_APPLICABLE
+                && rule.field() == CHILDREN_COUNT_INCLUDING_FETUS
+                && profile.provided(HAS_CHILDREN_OR_PREGNANCY, false)) {
+            if (rule.operator() == BasicRule.Operator.EQUALS) {
+                return equality(rule, 0L);
+            }
+            return range(rule, 0L);
+        }
+        if (input.state() == ValueState.NOT_APPLICABLE) {
+            return RuleReading.matched(false, Map.of("field", rule.field(), "inputState", input.state()));
+        }
         if (input.state() != ValueState.PROVIDED) {
             return RuleReading.missing(Set.of(rule.field()));
         }
@@ -51,6 +63,8 @@ public final class BasicRuleEvaluator {
         return switch (rule.operator()) {
             case EQUALS -> equality(rule, value);
             case AGE_RANGE -> age(rule, value);
+            case NUMBER_RANGE -> range(rule, (Long) value);
+            case DAYS_FROM_REFERENCE -> range(rule, ChronoUnit.DAYS.between(referenceDate, (LocalDate) value));
             case MONTHS_SINCE -> months(rule, value);
             case REGION_IN -> region(rule, (String) value);
             case MONEY_CEILING ->
@@ -80,7 +94,7 @@ public final class BasicRuleEvaluator {
     private RuleReading equality(BasicRule rule, Object value) {
         return RuleReading.matched(
                 value.toString().equals(rule.expected()),
-                Map.of("field", rule.field(), "providedValue", value, "expected", rule.expected()));
+                Map.of("field", rule.field(), "providedValue", value, "expected", rule.expected(), "operator", "EQ"));
     }
 
     private RuleReading age(BasicRule rule, Object value) {
@@ -112,6 +126,7 @@ public final class BasicRuleEvaluator {
                         rule.field(),
                         "providedValue",
                         marriage,
+                        "operator", "BETWEEN_INCLUSIVE",
                         "earliest",
                         earliest,
                         "latest",
@@ -134,6 +149,9 @@ public final class BasicRuleEvaluator {
                 Map.of(
                         "field",
                         rule.field(),
+                        "providedValue", suppliedRangeValue(rule, value),
+                        "operator", "BETWEEN_INCLUSIVE",
+                        "unit", comparisonUnit(rule),
                         "comparedValue",
                         value,
                         "minimum",
@@ -144,10 +162,29 @@ public final class BasicRuleEvaluator {
                         referenceDate));
     }
 
+    private Object suppliedRangeValue(BasicRule rule, long compared) {
+        Object value = profile.value(rule.field()).value();
+        if (value == null) {
+            return compared;
+        }
+        return value;
+    }
+
+    private String comparisonUnit(BasicRule rule) {
+        if (rule.operator() == BasicRule.Operator.AGE_RANGE) {
+            return "YEARS";
+        }
+        if (rule.operator() == BasicRule.Operator.DAYS_FROM_REFERENCE) {
+            return "DAYS";
+        }
+        return rule.field().unit();
+    }
+
     private RuleReading region(BasicRule rule, String value) {
         RegionMembership.Match match = regions.match(Set.copyOf(rule.regions()), value);
         if (match == RegionMembership.Match.INSUFFICIENT_PRECISION) {
-            return RuleReading.missing(Set.of(rule.field()));
+            return new RuleReading(RuleReading.Status.INPUT_NEEDED, Set.of(rule.field()),
+                    Map.of("reason", "REGION_PRECISION", "providedValue", value, "requiredRegions", rule.regions()));
         }
         return RuleReading.matched(
                 match == RegionMembership.Match.MATCH,
@@ -208,6 +245,8 @@ public final class BasicRuleEvaluator {
                         field,
                         "providedValue",
                         value,
+                        "fieldLabel", field.label(),
+                        "operator", "LTE",
                         "comparisonLimit",
                         ceiling,
                         "unit",

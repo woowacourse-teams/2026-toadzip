@@ -47,6 +47,17 @@ public final class BasicRuleValidator {
                         "나이 비교 항목이 아닙니다.");
                 range(rule, 150);
             }
+            case NUMBER_RANGE -> {
+                require(Set.of(ProfileField.Type.COUNT, ProfileField.Type.MONTHS).contains(rule.field().type()),
+                        "인원 또는 거주기간만 수치 범위로 비교합니다.");
+                range(rule, 1800);
+            }
+            case DAYS_FROM_REFERENCE -> {
+                require(rule.field() == ProfileField.CURRENT_LEASE_END_DATE, "계약 종료일 비교 항목이 아닙니다.");
+                require(rule.minimum() != null && rule.maximum() != null
+                                && rule.minimum() >= -36525 && rule.maximum() <= 36525
+                                && rule.minimum() <= rule.maximum(), "기준일 전후 일수 범위가 올바르지 않습니다.");
+            }
             case MONTHS_SINCE -> {
                 require(rule.field() == ProfileField.MARRIAGE_EVENT, "혼인신고일만 혼인기간으로 비교합니다.");
                 range(rule, 1800);
@@ -78,14 +89,17 @@ public final class BasicRuleValidator {
                 (rule.operator() == BasicRule.Operator.INCOME_CEILING)
                         == (rule.incomeLimit() != null),
                 "소득표 설정이 올바르지 않습니다.");
-        if (!Set.of(BasicRule.Operator.AGE_RANGE, BasicRule.Operator.MONTHS_SINCE)
+        if (!Set.of(BasicRule.Operator.AGE_RANGE, BasicRule.Operator.MONTHS_SINCE,
+                        BasicRule.Operator.NUMBER_RANGE, BasicRule.Operator.DAYS_FROM_REFERENCE)
                 .contains(rule.operator())) {
             require(rule.minimum() == null, "이 비교는 하한을 사용하지 않습니다.");
         }
         if (!Set.of(
                         BasicRule.Operator.AGE_RANGE,
                         BasicRule.Operator.MONTHS_SINCE,
-                        BasicRule.Operator.MONEY_CEILING)
+                        BasicRule.Operator.MONEY_CEILING,
+                        BasicRule.Operator.NUMBER_RANGE,
+                        BasicRule.Operator.DAYS_FROM_REFERENCE)
                 .contains(rule.operator())) {
             require(rule.maximum() == null, "이 비교는 고정 상한을 사용하지 않습니다.");
         }
