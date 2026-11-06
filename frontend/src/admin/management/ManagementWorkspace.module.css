@@ -43,7 +43,7 @@
   scroll-margin-top: 80px;
   background: var(--ds-color-surface);
   border: 1px solid var(--ds-color-border-base);
-  border-radius: 14px;
+  border-radius: var(--admin-radius-card, 16px);
   box-shadow: 0 8px 28px rgb(25 45 35 / 5%);
   overflow: hidden;
 }
@@ -71,7 +71,7 @@
 .workspace :is(input, select, textarea):focus { outline: 2px solid var(--ds-color-action); outline-offset: 1px; border-color: var(--ds-color-action); }
 .workspace input:read-only { background: var(--ds-color-surface-subtle); color: var(--ds-color-label); }
 .workspace :is(input, select)[aria-invalid="true"] { border-color: var(--ds-color-deadline); }
-.workspace :global(.admin-status) { padding: 3px 7px; font-size: 11px; font-weight: 500; border-radius: 5px; }
+.workspace :global(.admin-status) { padding: 3px 7px; font-size: 11px; font-weight: 500; border-radius: 999px; }
 
 .editor :global(.registration-card) { padding: 0; border: 0; border-radius: 0; box-shadow: none; }
 .editor :global(.registration-card) > h2 { font-size: 18px; margin-bottom: 20px; }
@@ -95,7 +95,7 @@
 .editor :global(.admin-section-tabs) button { flex: none; min-height: 48px; padding: 12px 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--ds-color-label); font-size: 13px; white-space: nowrap; }
 .editor :global(.admin-section-tabs) button[aria-pressed="true"] { color: var(--ds-color-action); border-bottom-color: var(--ds-color-action); background: transparent; }
 .editor :global(.registration-form) { gap: 20px; }
-.editor :global(.management-page) fieldset, .editor :global(.registration-form) fieldset { min-width: 0; margin: 0 0 24px; padding: 18px; border: 1px solid var(--ds-color-divider); border-radius: 10px; background: var(--ds-color-surface-subtle); }
+.editor :global(.management-page) fieldset, .editor :global(.registration-form) fieldset { min-width: 0; margin: 0 0 24px; padding: 18px; border: 1px solid var(--ds-color-divider); border-radius: 12px; background: var(--ds-color-surface-subtle); }
 .editor fieldset legend { padding: 0 6px; font-size: 14px; font-weight: 700; color: var(--ds-color-text); }
 .editor :global(.registration-grid), .editor :global(.admin-data-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 /* 입력 칸이 편집 영역 끝까지 늘어나지 않도록 폼 묶음 폭을 제한한다. */
@@ -103,7 +103,7 @@
 .editor :global(.registration-field):has([name="name"], [name="address.roadAddress"], [name="originalUrl"], [name="overviewImageUrl"], [name="receptionPlace.address"], input[type="url"]) { grid-column: 1 / -1; }
 .editor :global(.registration-field) label { display: block; font-size: 13px; font-weight: 600; color: var(--ds-color-label); }
 .editor :global(.registration-field) :global(.admin-required) { color: var(--ds-color-action); font-size: 10px; }
-.editor :global(.admin-detail-section), .editor :global(.admin-supply) { margin: 0 0 20px; padding: 20px; border-color: var(--ds-color-divider); border-radius: 10px; box-shadow: none; }
+.editor :global(.admin-detail-section), .editor :global(.admin-supply) { margin: 0 0 20px; padding: 20px; border-color: var(--ds-color-divider); border-radius: 12px; box-shadow: none; }
 .editor :global(.admin-detail-section) h2, .editor :global(.admin-supply) h3 { font-size: 15px; line-height: 1.5; }
 .editor :global(.admin-data-grid) { margin-top: 16px; gap: 18px; }
 .editor :global(.admin-data-grid) dt { font-size: 12px; color: var(--ds-color-muted); }
@@ -112,8 +112,8 @@
 .editor :global(.admin-table) :is(th, td) { padding: 12px; }
 .editor :global(.admin-save-bar) { position: sticky; bottom: 0; z-index: 4; justify-content: flex-end; gap: 8px; margin: 0 -24px; padding: 14px 24px; border: 0; border-top: 1px solid var(--ds-color-divider); border-radius: 0; box-shadow: 0 -6px 16px rgb(30 40 35 / 4%); background: var(--ds-color-surface); }
 .editor :global(.registration-submit) { position: sticky; bottom: 12px; z-index: 4; width: 100%; background: var(--ds-color-action); border-color: var(--ds-color-action); border-radius: var(--ds-radius-control); min-height: var(--admin-control-height, 36px); }
-.editor :global(.admin-warning) { margin: 0 0 20px; padding: 12px 14px; font-size: 12px; border-color: #ebdba9; background: #fffbef; }
-.editor :global(.admin-mode-switch) { padding: 4px; border-radius: 10px; background: var(--ds-color-surface-subtle); }
+.editor :global(.admin-warning) { margin: 0 0 20px; padding: 12px 14px; font-size: 12px; border-color: var(--admin-warn-line); background: var(--ds-color-status-upcoming-surface); }
+.editor :global(.admin-mode-switch) { padding: 4px; border-radius: 12px; background: var(--ds-color-surface-subtle); }
 .editor :global(.admin-mode-switch) button { flex: 1; border: 0; background: transparent; }
 .editor :global(.admin-mode-switch) button[aria-pressed="true"] { background: var(--ds-color-surface); color: var(--ds-color-action); box-shadow: 0 1px 5px rgb(30 40 35 / 10%); }
 
@@ -141,8 +141,8 @@
 @media (prefers-reduced-motion: reduce) { .workspace :is(input, select, textarea) { transition: none; } }
 .editor :global(.admin-relations-section) { margin-bottom: 28px; min-width: 0; }
 .editor :global(.admin-relations-section) > h2 { margin-bottom: 14px; }
-.editor :global(.admin-relation-edit) { margin-top: 16px; padding: 20px; background: var(--ds-color-surface-subtle); border: 1px solid var(--ds-color-divider); border-radius: 10px; }
-.editor :global(.admin-linked-announcement) { margin-top: 20px; padding: 16px; border: 1px solid var(--ds-color-divider); border-radius: 10px; background: var(--ds-color-surface-subtle); }
+.editor :global(.admin-relation-edit) { margin-top: 16px; padding: 20px; background: var(--ds-color-surface-subtle); border: 1px solid var(--ds-color-divider); border-radius: 12px; }
+.editor :global(.admin-linked-announcement) { margin-top: 20px; padding: 16px; border: 1px solid var(--ds-color-divider); border-radius: 12px; background: var(--ds-color-surface-subtle); }
 .editor :global(.admin-linked-announcement) > header { justify-content: space-between; }
 .editor :global(.admin-linked-announcement) :global(.management-heading) { padding-inline: 0; }
 .editor :global(.admin-linked-announcement) :global(.admin-section-tabs) { padding-inline: 0; background: transparent; }
@@ -176,7 +176,7 @@
 .withEditor .editor :global(.admin-change-values) { grid-template-columns: 1fr; }
 @media (max-width: 700px) { .withEditor .editor :global(.management-detail-content) { padding: 18px; } .withEditor .editor :global(.management-heading) { padding: 20px 18px; } .withEditor .editor :global(.management-heading) h2 { font-size: 20px; } .withEditor .editor :global(.admin-section-tabs) { padding: 10px 14px; } }
 /* Read first, choose a focused tool, then edit. */
-.withEditor .editor { box-shadow:none; border-color:var(--ds-color-divider); border-radius:14px; }
+.withEditor .editor { box-shadow:none; border-color:var(--ds-color-divider); border-radius:var(--admin-radius-card,16px); }
 /* 탭에 따라 버튼이 빠져도 제목 영역 높이가 바뀌지 않게 최소 높이를 둔다. 버튼은 단지·공고 모두 제목 오른쪽 위에 둔다. */
 .withEditor .editor :global(.management-heading) { box-sizing:border-box; min-height:96px; padding:16px 20px 12px; align-items:flex-start; }
 .withEditor .editor :global(.management-heading) h2 { font-size:22px; line-height:1.4; }
