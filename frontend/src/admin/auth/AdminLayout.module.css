@@ -1,84 +1,131 @@
 .layout[class] {
- /* 관리자 작업공간 전용 저채도 녹색 팔레트 */
- --ds-color-brand:#526d5b;
- --ds-color-brand-strong:#425d4b;
+ /* 관리자 작업공간: 흰 메뉴·흰 카드에 거의 흰 바탕을 쓰고 회색 채움 면은 두지 않는다. 카드는 테두리 대신 옅은 그림자로 나눈다. 강조색은 초록 하나다. */
+ /* 관리자 버튼은 15px 글자를 흰색으로 올리므로 대비 4.5:1 이상인 진한 초록을 채움색으로 쓴다(#17744a 5.78:1). */
+ --ds-color-brand:#17744a;
+ --ds-color-brand-strong:#125f3c;
  --ds-color-brand-hover:var(--ds-color-brand-strong);
- --ds-color-brand-tint:#d3ded5;
+ --ds-color-brand-tint:#e3f5ea;
  --ds-color-on-brand:#ffffff;
- --ds-color-action:#42614d;
- --ds-color-action-soft:#f1f5f1;
- --ds-color-action-selected:#e2ebe4;
+ --ds-color-action:#17744a;
+ --ds-color-action-soft:#f1f8f4;
+ --ds-color-action-selected:#e3f5ea;
+ --ds-color-text:#191c21;
+ --ds-color-label:#4b515a;
+ --ds-color-muted:#6b7079;
+ --ds-color-divider:#edf0f4;
+ --ds-color-border-base:#d8dde3;
+ --ds-color-surface-subtle:#f6f8fb;
  --brand:var(--ds-color-brand);
  --brand-dark:var(--ds-color-action);
  --focus:var(--ds-color-action);
- display:grid; grid-template-columns:236px minmax(0,1fr); grid-template-rows:72px 1fr; min-height:100dvh; background:var(--ds-color-surface-subtle); color:var(--ds-color-text); font-family:var(--ds-font-family-base);
+ --admin-canvas:#f8fafd; --admin-line:var(--ds-color-divider); --admin-radius-card:16px;
+ --admin-shadow-card:0 1px 2px rgb(15 23 42 / 4%), 0 6px 24px rgb(15 23 42 / 5%);
+ --admin-header-height:64px; --admin-content-max:1760px; --admin-nav-width:216px;
+ --admin-danger:#b42318; --admin-danger-soft:#fef3f2; --admin-danger-line:#fecdca; --admin-warn-line:#f5d9b5;
+ display:grid; grid-template-columns:var(--admin-nav-width) minmax(0,1fr); grid-template-rows:var(--admin-header-height) 1fr; min-height:100dvh; background:var(--admin-canvas); color:var(--ds-color-text); font-family:var(--ds-font-family-base);
 }
+/* 페이지마다 스크롤바가 생겼다 사라지며 본문이 좌우로 밀리지 않게 자리를 항상 잡아 둔다. */
+:global(html:has(.admin-layout)) { scrollbar-gutter:stable; }
 /* 관리자 화면은 작업 도구라 글씨는 키우고 여백은 줄인다. 버튼·입력은 모두 같은 높이를 쓴다. */
 .layout[class] { --admin-text-meta:13px; --admin-text-body:15px; --admin-text-heading:17px; --admin-control-height:36px; --ds-text-body:var(--admin-text-body); --ds-text-caption:var(--admin-text-meta); --ds-control-height-md:var(--admin-control-height); }
-.layout :global(.admin-header) { display:flex; flex-direction:row; gap:28px; padding:16px 28px; min-height:0; background:var(--ds-color-surface); border-bottom:1px solid var(--ds-color-divider); }
-.layout :global(.admin-brand) { width:180px; flex:none; }
-.layout :global(.admin-brand-context) { font-size:13px; font-weight:650; color:var(--ds-color-label); }
-.location { display:flex; align-items:center; gap:14px; font-size:13px; color:var(--ds-color-muted); }
-.location b { color:var(--ds-color-divider); font-weight:400; }
-.location strong { color:var(--ds-color-text); font-weight:600; }
+/* 머리 띠는 메뉴 폭만큼 흰색(로고 자리), 나머지는 본문 바탕색이라 메뉴와 본문이 위까지 한 면으로 이어진다. */
+.layout :global(.admin-header) { position:sticky; top:0; z-index:30; display:flex; flex-direction:row; align-items:center; gap:48px; padding:0 32px 0 24px; min-height:0; background:linear-gradient(90deg, var(--ds-color-surface) var(--admin-nav-width), var(--admin-canvas) var(--admin-nav-width)); border-bottom:0; }
+/* 로고 줄 폭은 메뉴 항목의 오른쪽 끝(메뉴 안쪽 여백 16px)에 맞춰, 접기 버튼이 메뉴 항목과 같은 선에 오게 한다. */
+.layout :global(.admin-brand) { width:calc(var(--admin-nav-width) - 40px); box-sizing:border-box; flex:none; gap:8px; }
+.layout :global(.admin-brand-context) { white-space:nowrap; font-size:13px; font-weight:650; color:var(--ds-color-label); }
+.collapseButton { display:flex; flex:none; align-items:center; justify-content:center; width:32px; height:32px; margin-left:auto; padding:0; border:0; border-radius:var(--ds-radius-control); background:transparent; color:var(--ds-color-muted); cursor:pointer; }
+.layout :global(.admin-header) .collapseButton { min-height:0; padding:0; border:0; background:transparent; }
+.collapseButton:hover, .layout :global(.admin-header) .collapseButton:hover { background:var(--ds-color-surface-subtle); color:var(--ds-color-text); }
+/* 접힌 메뉴: 아이콘 열만 남기고, 이름은 다른 메뉴에 잠시 머물렀을 때 말풍선으로 띄운다(지금 있는 메뉴는 띄우지 않는다). */
+@media(min-width:761px) {
+ .layout[class][data-collapsed=true] { --admin-nav-width:64px; }
+ .layout[data-collapsed=true] :global(.admin-header) { padding-left:16px; }
+ .layout[data-collapsed=true] :global(.admin-brand) { width:auto; }
+ .layout[data-collapsed=true] :global(.admin-brand) > :not(.collapseButton) { display:none; }
+ .layout[data-collapsed=true] :global(.admin-navigation) { gap:12px; padding:8px 8px 20px; overflow:visible; }
+ .layout[data-collapsed=true] :global(.admin-nav-group)>span, .layout[data-collapsed=true] .navTools>summary { display:none; }
+ .layout[data-collapsed=true] :global(.admin-navigation) a { position:relative; justify-content:center; padding:12px 0; }
+ .layout[data-collapsed=true] .menuLabel { display:none; position:absolute; z-index:20; left:calc(100% + 8px); padding:8px 12px; border-radius:var(--ds-radius-control); background:var(--ds-color-text); color:var(--ds-color-surface); font-weight:500; white-space:nowrap; box-shadow:0 4px 12px #0002; }
+ .layout[data-collapsed=true] a:not([aria-current=page]):hover .menuLabel { display:block; animation:menuLabelIn .12s ease-out .35s both; }
+ .layout[data-collapsed=true] a:focus-visible .menuLabel { display:block; }
+ .layout[data-collapsed=true] .navTools { border-top:1px solid var(--ds-color-divider); padding-top:12px; }
+ .layout[data-collapsed=true] .navTools :global(.admin-nav-group) { margin:0; }
+}
+@keyframes menuLabelIn { from { opacity:0; } to { opacity:1; } }
+@media (prefers-reduced-motion: reduce) { .layout[data-collapsed=true] a:not([aria-current=page]):hover .menuLabel { animation-duration:0s; } }
 .layout :global(.admin-header-account) { margin-left:auto; min-width:0; gap:12px; font-size:12px; }
 .layout :global(.admin-header-account)>span { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ds-color-muted); }
-.layout :global(.admin-header) button { min-height:36px; padding:7px 12px; border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); background:var(--ds-color-surface); color:var(--ds-color-label); font:inherit; font-size:12px; cursor:pointer; }
-.layout :global(.admin-navigation) { position:sticky; top:0; align-self:start; box-sizing:border-box; min-height:calc(100dvh - 72px); max-height:100dvh; overflow-y:auto; gap:28px; padding:28px 16px 20px; border-right:1px solid var(--ds-color-divider); border-bottom:0; background:var(--ds-color-surface); }
-.collapseButton { display:flex; align-items:center; justify-content:center; align-self:flex-end; width:36px; height:36px; padding:0; border:0; border-radius:var(--ds-radius-control); background:transparent; color:var(--ds-color-muted); cursor:pointer; }
-.collapseButton:hover { background:var(--ds-color-surface-subtle); color:var(--ds-color-text); }
+.layout :global(.admin-header) button { min-height:36px; padding:7px 12px; border:1px solid var(--ds-color-border-base); border-radius:var(--ds-radius-control); background:var(--ds-color-surface); color:var(--ds-color-label); font:inherit; font-size:12px; cursor:pointer; }
+/* 메뉴는 머리 띠 아래 화면 높이를 채우는 흰 띠로 붙인다. 본문 바탕과 색 차이로만 나누고 선은 긋지 않는다. */
+.layout :global(.admin-navigation) { position:sticky; top:var(--admin-header-height); align-self:start; box-sizing:border-box; height:calc(100dvh - var(--admin-header-height)); overflow-y:auto; gap:20px; margin:0; padding:8px 16px 20px; border:0; border-radius:0; background:var(--ds-color-surface); }
 .layout :global(.admin-navigation) svg { flex:none; }
-.layout :global(.admin-nav-group) { display:flex; flex-direction:column; gap:6px; }
-.layout :global(.admin-nav-group)>span { padding:0 14px 8px; font-size:11px; color:var(--ds-color-muted); font-weight:600; letter-spacing:0; }
-.layout :global(.admin-navigation) a { display:flex; align-items:center; gap:12px; padding:13px 14px; border-radius:8px; color:var(--ds-color-label); font-size:14px; font-weight:500; white-space:normal; text-decoration:none; }
+.layout :global(.admin-nav-group) { display:flex; flex-direction:column; gap:2px; }
+.layout :global(.admin-nav-group)>span, .navTools>summary { padding:0 12px 6px; color:var(--ds-color-muted); font-size:12px; font-weight:600; letter-spacing:0; }
+.layout :global(.admin-navigation) a { display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:10px; color:var(--ds-color-label); font-size:14px; font-weight:500; white-space:normal; text-decoration:none; }
 .layout :global(.admin-navigation) a:hover { background:var(--ds-color-surface-subtle); }
-.layout :global(.admin-navigation) a[aria-current=page] { color:var(--ds-color-action); background:var(--ds-color-action-soft); font-weight:700; box-shadow:none; }
-.navTools { padding-top:4px; }
-.navTools>summary { padding:8px 14px; color:var(--ds-color-muted); font-size:12px; font-weight:600; cursor:pointer; }
-.navTools :global(.admin-nav-group) { margin-top:8px; }
-.navTools :global(.admin-nav-group) a { padding-block:10px; padding-left:26px; font-size:13px; }
-.navFoot { margin-top:auto; padding:24px 14px 0; color:var(--ds-color-label); font-size:12px; line-height:1.8; }
-.navFoot span { color:var(--ds-color-muted); font-size:11px; }
-.layout :global(.admin-content) { box-sizing:border-box; width:100%; max-width:1500px; padding:20px 24px 40px; min-width:0; }
-.layout :global(.admin-content) h1 { font-size:30px; line-height:1.4; font-weight:750; letter-spacing:-.055em; }
-.layout :global(.admin-content) h2 { letter-spacing:-.035em; }
-.layout :global(.admin-content) p { line-height:1.75; }
+/* 현재 메뉴는 강조색으로 채워 어디에 있는지 한눈에 보이게 한다. */
+.layout :global(.admin-navigation) a[aria-current=page] { color:var(--ds-color-on-brand); background:var(--ds-color-action); font-weight:600; box-shadow:0 4px 12px rgb(23 116 74 / 22%); }
+.navTools { padding:0; }
+.navTools>summary { display:flex; align-items:center; justify-content:space-between; list-style:none; cursor:pointer; user-select:none; }
+.navTools>summary::-webkit-details-marker { display:none; }
+.navTools>summary::after { content:""; width:6px; height:6px; margin-right:2px; border:solid currentColor; border-width:0 1.5px 1.5px 0; transform:rotate(45deg) translateY(-2px); transition:transform .15s; }
+.navTools[open]>summary::after { transform:rotate(-135deg) translateY(-1px); }
+.navTools :global(.admin-nav-group) { margin-top:6px; }
+/* 모든 관리자 화면이 같은 폭·같은 시작선을 쓴다. 화면별로 최대 폭을 따로 두지 않는다. */
+.layout :global(.admin-content) { box-sizing:border-box; width:100%; max-width:var(--admin-content-max); margin:0; padding:8px 32px 48px; min-width:0; }
+.layout :global(.admin-content) h1 { font-size:24px; line-height:1.4; font-weight:700; letter-spacing:-.03em; }
+/* 모든 화면의 제목 줄은 운영 홈과 같은 높이(36px)·같은 아래 간격(20px)을 써서 메뉴를 옮겨도 첫 카드가 같은 자리에서 시작한다. */
+.layout[class] :global(.admin-content) > * > header:has(> h1, > div > h1) { box-sizing:border-box; display:flex; align-items:center; justify-content:space-between; gap:16px; flex:none; height:36px; min-height:0; margin:0 0 20px; padding:0; }
+.layout[class] :global(.admin-content) > * > header:has(> h1, > div > h1) h1 { margin:0; }
+.layout[class] :global(.admin-content) > * > header:has(> h1, > div > h1) + * { margin-top:0; }
+/* 자식 사이를 grid 간격으로 띄우는 화면은 그 간격이 제목 줄 아래 여백에 더해지므로 차이만큼 줄인다. */
+.layout[class] :global(.admin-content) > :global(.admin-registration-page) > header:has(> h1, > div > h1) { margin-bottom:-4px; }
+.layout :global(.admin-content) h2 { letter-spacing:-.02em; }
+.layout :global(.admin-content) p { line-height:1.6; }
 .layout :global(.admin-content) button:not([data-design-system]) { border-color:var(--ds-color-divider); box-shadow:none; }
 .layout :global(.admin-content) button[data-design-system] { font-weight:600; }
-.layout :global(.admin-content) :is(input,select,textarea) { border-color:var(--ds-color-divider); border-radius:8px; }
+.layout :global(.admin-content) :is(input,select,textarea) { border-color:var(--ds-color-border-base); border-radius:var(--ds-radius-control); }
 .layout :global(.admin-content) label:has(>input[type=checkbox]) { display:flex; flex-direction:row; align-items:center; gap:9px; }
 .layout :global(.admin-content) input[type=checkbox] { flex:none; width:17px; height:17px; margin:0; accent-color:var(--ds-color-action); }
 .layout :global(.admin-content) :global(.admin-primary) { background:var(--ds-color-action); border-color:var(--ds-color-action); color:var(--ds-color-surface); }
-.layout :global(.admin-content) :global(.admin-table-scroll) { border-color:var(--ds-color-divider); border-radius:12px; }
-.layout :global(.admin-content) :global(.admin-table) th { padding-block:13px; background:var(--ds-color-surface-subtle); color:var(--ds-color-muted); font-weight:600; }
-.layout :global(.admin-content) :global(.admin-table) td { padding-block:20px; border-color:var(--ds-color-divider); }
+.layout :global(.admin-content) :global(.admin-table-scroll) { border:0; border-radius:var(--admin-radius-card); box-shadow:var(--admin-shadow-card); }
+.layout :global(.admin-content) :global(.admin-table) th { padding-block:12px; background:var(--ds-color-surface); color:var(--ds-color-muted); font-weight:500; border-bottom:1px solid var(--admin-line); }
+.layout :global(.admin-content) :global(.admin-table) td { padding-block:12px; border-color:var(--admin-line); }
 .layout :global(.admin-content) :global(.admin-warning) { border-color:var(--ds-color-status-upcoming-surface); font-size:13px; }
+/* 입력 칸은 모든 관리자 화면에서 같은 안쪽 여백을 쓴다. 선택 상자는 화살표를 직접 그려 오른쪽 끝에 붙지 않게 하고, 숫자 칸의 위아래 버튼은 숨긴다. */
+.layout[class] :global(.admin-content) :is(input:not([type=checkbox]):not([type=radio]):not([type=file]), select) { border-radius:var(--ds-radius-control); }
+/* 앞에 아이콘이 붙은 검색 칸은 아이콘 자리 여백을 그대로 둔다. */
+.layout[class] :global(.admin-content) input:not([type=checkbox]):not([type=radio]):not([type=file]):not(svg ~ input) { padding-inline:12px; }
+.layout[class] :global(.admin-content) select { padding-inline:12px; }
+.layout[class] :global(.admin-content) select:not([multiple]):not([size]) { appearance:none; padding-right:36px; background:var(--ds-color-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7079' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center; }
+.layout[class] :global(.admin-content) select:not([multiple]):disabled { background-color:var(--ds-color-surface-subtle); }
+.layout[class] :global(.admin-content) input[type=number] { appearance:textfield; -moz-appearance:textfield; }
+.layout[class] :global(.admin-content) input[type=number]::-webkit-inner-spin-button, .layout[class] :global(.admin-content) input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
 .layout :is(a,button,input,select,textarea,summary):focus-visible { outline:2px solid var(--ds-color-action); outline-offset:3px; }
+.backdrop { display:none; }
 .layout .menuButton { display:none; align-items:center; gap:7px; }
-@media(min-width:761px) {
- .layout[class][data-collapsed=true] { grid-template-columns:76px minmax(0,1fr); }
- .layout[data-collapsed=true] :global(.admin-navigation) { gap:12px; padding:16px 10px; overflow:visible; max-height:none; }
- .layout[data-collapsed=true] .collapseButton { align-self:center; }
- .layout[data-collapsed=true] .navFoot, .layout[data-collapsed=true] :global(.admin-nav-group)>span, .layout[data-collapsed=true] .navTools>summary { display:none; }
- .layout[data-collapsed=true] :global(.admin-navigation) a { position:relative; justify-content:center; padding:12px; }
- .layout[data-collapsed=true] .menuLabel { display:none; position:absolute; z-index:20; left:calc(100% + 8px); padding:8px 12px; border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); background:var(--ds-color-text); color:var(--ds-color-surface); white-space:nowrap; box-shadow:0 4px 12px #0002; }
- .layout[data-collapsed=true] a:is(:hover,:focus-visible) .menuLabel { display:block; }
- .layout[data-collapsed=true] .navTools { border-top:1px solid var(--ds-color-divider); padding-top:12px; }
- .layout[data-collapsed=true] .navTools :global(.admin-nav-group) { margin:0; }
- .layout[data-collapsed=true] :global(.admin-navigation) a[aria-current=page] { box-shadow:inset 3px 0 var(--ds-color-action); }
-}
-@media(max-width:1100px) { .layout[class] { grid-template-columns:210px minmax(0,1fr); } .layout :global(.admin-content) { padding:28px 24px 48px; } .location>span,.location b { display:none; } .layout :global(.admin-brand) { width:155px; } }
+@media(max-width:1100px) { .layout :global(.admin-content) { padding:8px 20px 48px; } }
 @media(max-width:760px) {
  .layout[class] { display:block; }
- .layout :global(.admin-header) { padding:14px 16px; gap:12px; flex-wrap:wrap; }
+ /* 머리 띠는 위에 붙여 두고 메뉴 서랍은 그 아래에서 열어, 메뉴 버튼으로 언제든 닫을 수 있게 한다. */
+ .layout[class] { --admin-header-height:64px; }
+ .layout :global(.admin-header) { position:sticky; top:0; z-index:70; box-sizing:border-box; height:var(--admin-header-height); padding:0 16px; gap:12px; flex-wrap:nowrap; background:var(--ds-color-surface); border-bottom:1px solid var(--admin-line); }
  .layout :global(.admin-brand) { width:auto; }
  .layout :global(.admin-header-account) { width:auto; }
- .layout :global(.admin-header-account)>span,.location { display:none; }
+ .layout :global(.admin-header-account)>span { display:none; }
  .layout .menuButton { display:inline-flex; }
- .layout :global(.admin-navigation) { display:none; position:static; min-height:0; max-height:none; gap:20px; padding:20px 16px; border:0; border-bottom:1px solid var(--ds-color-divider); }
- .layout :global(.admin-navigation)[data-open=true] { display:flex; }
- .collapseButton,.navFoot { display:none; }
+ .collapseButton { display:none; }
+ /* 모바일 메뉴는 본문을 밀어내지 않고 왼쪽에서 덮는 서랍으로 연다. 항목 모양은 데스크톱 메뉴와 같다. */
+ .layout :global(.admin-navigation) { display:flex; position:fixed; inset:var(--admin-header-height) auto auto 0; z-index:60; width:min(300px, 85vw); height:calc(100dvh - var(--admin-header-height)); box-sizing:border-box; flex-direction:column; align-items:stretch; gap:16px; margin:0; padding:20px 16px; overflow-y:auto; border:0; box-shadow:0 0 32px rgb(15 23 42 / 18%); transform:translateX(-100%); visibility:hidden; transition:transform .2s ease, visibility .2s; }
+ .layout :global(.admin-navigation)[data-open=true] { transform:none; visibility:visible; }
+ .layout :global(.admin-nav-group) { flex-direction:column; align-items:stretch; }
+ .backdrop { display:block; position:fixed; inset:var(--admin-header-height) 0 0 0; z-index:55; background:rgb(15 23 42 / 30%); }
  .layout :global(.admin-nav-group)>span { display:block; }
- .layout :global(.admin-content) { padding:24px 16px 48px; }
- .layout :global(.admin-content) h1 { font-size:25px; }
+ .layout :global(.admin-content) { padding:20px 16px 48px; }
+ .layout :global(.admin-content) h1 { font-size:22px; }
+ /* 좁은 화면에서는 제목 줄 버튼이 다음 줄로 내려가므로 높이를 고정하지 않는다. */
+ .layout[class] :global(.admin-content) > * > header:has(> h1, > div > h1) { height:auto; min-height:36px; flex-wrap:wrap; }
 }
+
+
+@media (prefers-reduced-motion: reduce) { .layout :global(.admin-navigation) { transition:none; } }

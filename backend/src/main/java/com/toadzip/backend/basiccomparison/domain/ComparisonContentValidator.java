@@ -39,7 +39,8 @@ public final class ComparisonContentValidator {
         Map<String, SupplyUnit> units = index(content.supplyUnits(), SupplyUnit::id);
         Map<String, ComparisonPath> paths = index(content.paths(), ComparisonPath::id);
         Map<String, Guidance> guidances = index(content.guidances(), Guidance::id);
-        index(content.options(), ComparisonOption::id);
+        Map<String, ComparisonOption> choices = index(content.options(), ComparisonOption::id);
+        Map<String, Qualification> qualifications = index(content.qualifications(), Qualification::id);
         index(content.quantities(), Quantity::id);
         index(content.rentOffers(), RentOffer::id);
         index(content.schedules(), Schedule::id);
@@ -54,11 +55,19 @@ public final class ComparisonContentValidator {
         for (Guidance guidance : content.guidances()) {
             guidance(guidance, evidences, units, paths, combinations);
         }
+        for (Qualification qualification : content.qualifications()) {
+            qualification(qualification, evidences);
+        }
         for (ComparisonPath path : content.paths()) {
+            referencesIfPresent(path.qualificationIds(), qualifications, "경로 필수 자격");
             path(path, content, guidances, evidences);
         }
+        index(content.commonChecks(), BasicCheck::id);
+        for (BasicCheck check : content.commonChecks()) {
+            check(check, null, content, guidances, evidences);
+        }
         access(content);
-        information(content, units, evidences);
+        information(content, units, choices, evidences);
     }
 
     private void sources(
@@ -90,6 +99,10 @@ public final class ComparisonContentValidator {
     private void unit(SupplyUnit unit) {
         text(unit.label(), 300, "신청 단위명");
         index(unit.housingTypes(), PhysicalHousing::id);
+        require(new HashSet<>(unit.regionCodes()).size() == unit.regionCodes().size(), "신청 지역이 중복됩니다.");
+        for (String region : unit.regionCodes()) {
+            require(regions.isKnown(region), "알 수 없는 신청 단위 지역입니다.");
+        }
         for (PhysicalHousing housing : unit.housingTypes()) {
             text(housing.complexLabel(), 300, "단지명");
             text(housing.typeLabel(), 100, "주택형명");
@@ -176,20 +189,38 @@ public final class ComparisonContentValidator {
                 "신청 단위에 연결되지 않은 비교 경로입니다.");
         index(path.checks(), BasicCheck::id);
         for (BasicCheck check : path.checks()) {
-            text(check.label(), 300, "기본 조건 이름");
-            references(check.evidenceIds(), evidences, "기본 조건 근거");
-            rule(check.rule());
-            if (check.appliesWhen() != null) {
-                rule(check.appliesWhen());
-            }
-            require(
-                    check.appliesWhen() == null && !needsFallback(check.rule())
-                            || check.fallbackGuidanceId() != null,
-                    "자동 비교할 수 없는 경우의 직접 확인 안내가 필요합니다.");
-            if (check.fallbackGuidanceId() != null) {
-                fallback(check, path, content, guidances);
-            }
+            check(check, path, content, guidances, evidences);
         }
+    }
+
+    private void check(BasicCheck check, ComparisonPath path, ComparisonContent content,
+            Map<String, Guidance> guidances, Map<String, Evidence> evidences) {
+        text(check.label(), 300, "조건 이름");
+        references(check.evidenceIds(), evidences, "조건 근거");
+        rule(check.rule());
+        if (check.appliesWhen() != null) {
+            rule(check.appliesWhen());
+        }
+        require(check.appliesWhen() == null && !needsFallback(check.rule())
+                        || check.fallbackGuidanceId() != null,
+                "자동 판정할 수 없는 경우의 직접 확인 안내가 필요합니다.");
+        if (check.fallbackGuidanceId() != null) {
+            fallback(check, path, content, guidances);
+        }
+    }
+
+    private void qualification(Qualification qualification, Map<String, Evidence> evidences) {
+        text(qualification.exactName(), 300, "정확한 자격명");
+        text(qualification.conditionsAsWritten(), 10000, "자격이 요구하는 원문 조건");
+        if (qualification.legalBasis() != null) {
+            text(qualification.legalBasis(), 4000, "법적 근거");
+        }
+        require(new HashSet<>(qualification.categories()).size() == qualification.categories().size(),
+                "탐색 분류가 중복됩니다.");
+        for (String category : qualification.categories()) {
+            require(category != null && category.matches("[A-Z][A-Z0-9_]{0,99}"), "탐색 분류 코드가 올바르지 않습니다.");
+        }
+        references(qualification.evidenceIds(), evidences, "필수 자격 근거");
     }
 
     private void fallback(
@@ -203,7 +234,7 @@ public final class ComparisonContentValidator {
                 "비교 한계는 필수 확인 안내에 연결해야 합니다.");
         require(
                 content.options().stream()
-                        .filter(option -> option.pathId().equals(path.id()))
+                        .filter(option -> path == null || option.pathId().equals(path.id()))
                         .allMatch(guidance::appliesTo),
                 "비교 한계 안내가 해당 선택지에 적용되지 않습니다.");
     }
@@ -240,6 +271,17 @@ public final class ComparisonContentValidator {
                     "기업 신청 유형에 개인 비교 경로를 만들 수 없습니다.");
             return;
         }
+        if (content.metadata().accessMode() == AccessMode.APPLICATION_ROUTES) {
+            require(!content.paths().isEmpty()
+                            && content.paths().stream().allMatch(path -> path.kind() == PathKind.APPLICATION),
+                    "신청 경로 모드에는 실제 신청 경로를 구조화해야 합니다.");
+            for (ComparisonPath path : content.paths()) {
+                require(!path.checks().isEmpty() || !content.commonChecks().isEmpty()
+                                || !path.qualificationIds().isEmpty(),
+                        "아무 조건도 구조화하지 않은 경로를 신청 가능으로 판정할 수 없습니다.");
+            }
+            return;
+        }
         if (content.metadata().accessMode() == AccessMode.REQUIRED_QUALIFICATION) {
             require(
                     content.paths().stream().allMatch(path -> path.kind() == PathKind.COMMON_ONLY),
@@ -266,6 +308,7 @@ public final class ComparisonContentValidator {
     private void information(
             ComparisonContent content,
             Map<String, SupplyUnit> units,
+            Map<String, ComparisonOption> options,
             Map<String, Evidence> evidences) {
         for (Quantity quantity : content.quantities()) {
             text(quantity.label(), 300, "물량 이름");
@@ -282,7 +325,7 @@ public final class ComparisonContentValidator {
             if (quantity.kind() != QuantityKind.PERCENT) {
                 require(quantity.value().stripTrailingZeros().scale() <= 0, "물량은 정수여야 합니다.");
             }
-            references(quantity.supplyUnitIds(), units, "물량 단위");
+            scope(quantity.supplyUnitIds(), quantity.optionIds(), units, options, "물량");
             references(quantity.evidenceIds(), evidences, "물량 근거");
         }
         for (RentOffer rent : content.rentOffers()) {
@@ -296,7 +339,7 @@ public final class ComparisonContentValidator {
                                 && rent.monthlyRentMinimum().equals(rent.monthlyRentMaximum()),
                         "확정 조합에는 범위를 사용할 수 없습니다.");
             }
-            references(rent.supplyUnitIds(), units, "임대조건 단위");
+            scope(rent.supplyUnitIds(), rent.optionIds(), units, options, "임대조건");
             references(rent.evidenceIds(), evidences, "임대조건 근거");
         }
         for (Schedule schedule : content.schedules()) {
@@ -307,10 +350,22 @@ public final class ComparisonContentValidator {
                     schedule.endsAt() == null || !schedule.endsAt().isBefore(schedule.startsAt()),
                     "일정 종료 시각이 시작보다 빠릅니다.");
             url(schedule.applicationUrl(), true);
-            for (String unit : schedule.supplyUnitIds()) {
-                require(units.containsKey(unit), "일정의 신청 단위가 없습니다.");
-            }
+            referencesIfPresent(schedule.supplyUnitIds(), units, "일정 단위");
+            referencesIfPresent(schedule.optionIds(), options, "일정 선택지");
             references(schedule.evidenceIds(), evidences, "일정 근거");
+        }
+    }
+
+    private void scope(List<String> unitIds, List<String> optionIds,
+            Map<String, SupplyUnit> units, Map<String, ComparisonOption> options, String name) {
+        require(!unitIds.isEmpty() || !optionIds.isEmpty(), name + " 적용 범위가 필요합니다.");
+        referencesIfPresent(unitIds, units, name + " 단위");
+        referencesIfPresent(optionIds, options, name + " 선택지");
+    }
+
+    private <T> void referencesIfPresent(List<String> ids, Map<String, T> targets, String name) {
+        if (!ids.isEmpty()) {
+            references(ids, targets, name);
         }
     }
 

@@ -117,9 +117,9 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
           <QualityComparisonPanel key={`${resource}:${id}`} resource={resource} id={id} detail={value} onDirtyChange={setExtendedDirty} onBusyChange={setExtendedBusy}
             onChanged={() => { setAttempt(current => current + 1); onChanged?.() }} />
         </fieldset></details> : null}</> : null}
-      {section === 'info' && !editing ? <>{sections.map(group => <section className="admin-detail-section" key={group.title}><h2>{group.title}</h2>
-        <dl className={`admin-data-grid${group.fields.some(field => field.name === 'address.roadAddress') ? ' admin-location-grid' : ''}`}>{group.fields.map(field => <div key={field.name}><dt>{field.label}</dt><dd>{field.type === 'url'
-          ? <SourceUrl url={valueAt(value.data,field.name)} /> : display(valueAt(value.data,field.name))}</dd></div>)}</dl></section>)}</> : null}
+      {section === 'info' && !editing ? <div className="admin-detail-sections">{sections.map(group => <section className="admin-detail-section" key={group.title}><h2>{group.title}</h2>
+        <dl className={`admin-data-grid${group.fields.some(field => field.name === 'address.roadAddress') ? ' admin-location-grid' : ''}`}>{group.fields.map(field => <div key={field.name} data-field={field.name}><dt>{field.label}</dt><dd>{field.type === 'url'
+          ? <SourceUrl url={valueAt(value.data,field.name)} /> : display(valueAt(value.data,field.name))}</dd></div>)}</dl></section>)}</div> : null}
       {editing && section === 'info' ? <form ref={formRef} key={String(value.data.version)} onChange={() => setDirty(true)} onSubmit={event => {
         event.preventDefault();setBusy(true);setError('');setErrors({})
         const body = formValues(event.currentTarget,sections.flatMap(group => group.fields),value.data)
@@ -143,7 +143,7 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
           {!value.summary.deleted && <SupplyCorrectionWorkbench key={id} id={id} sourceUrl={String(value.data.originalUrl ?? '')}
             onChanged={reloadDetail}
             onBusyChange={setExtendedBusy} onDirtyChange={setExtendedDirty} />}</> : null}
-      {section === 'history' ? <><h2>출처</h2><dl className="admin-data-grid"><div className="admin-data-wide"><dt>공식 원문 URL</dt><dd><SourceUrl url={value.data.originalUrl} /></dd></div><div><dt>원천 식별자</dt><dd>{value.sourceIdentifier || '기록 없음'}</dd></div></dl><p>관리자 최종 변경: {value.summary.updatedAt ? new Date(value.summary.updatedAt).toLocaleString('ko-KR') : '변경 이력 없음'}</p>
+      {section === 'history' ? <><section className="admin-detail-section"><h2>출처</h2><dl className="admin-data-grid"><div className="admin-data-wide" data-field="originalUrl"><dt>공식 원문 URL</dt><dd><SourceUrl url={value.data.originalUrl} /></dd></div><div data-field="sourceIdentifier"><dt>원천 식별자</dt><dd>{value.sourceIdentifier || '기록 없음'}</dd></div><div><dt>관리자 최종 변경</dt><dd>{value.summary.updatedAt ? new Date(value.summary.updatedAt).toLocaleString('ko-KR') : '변경 이력 없음'}</dd></div></dl></section>
         {resource === 'announcements' && <details className="admin-verification-review" open={params.get('comparison') === 'source' || requestedSection === 'verification' || undefined}><summary>수집 원천과 비교</summary>
           <QualityComparisonPanel key={`${resource}:${id}`} resource={resource} id={id} detail={value} onDirtyChange={setExtendedDirty} onBusyChange={setExtendedBusy}
             onChanged={() => { setAttempt(current => current + 1); onChanged?.() }} />

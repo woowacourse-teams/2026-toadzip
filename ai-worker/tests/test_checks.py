@@ -234,3 +234,28 @@ def test_reply_with_wrong_data_shape_is_permanent_error(field, value):
         checks.first_json_object(json.dumps(tree, ensure_ascii=False))
 
     assert error.value.code == checks.INVALID_CODE
+
+
+def test_note_paths_are_made_readable_by_the_admin_screen():
+    tree = {"data": {"unresolvedFields": [
+        {"path": "complexes[].parkingCount", "reason": "a"},
+        {"path": "data.complexes[0].주차대수", "reason": "b"},
+        {"path": "schedules[1]", "reason": "c"},
+        {"path": "!!!", "reason": "d"},
+    ]}, "notApplicable": [{"path": "$.receptionPlace.address", "reason": "e"},
+                          {"path": "receptionPlace.주소", "reason": "f"}, {"path": None, "reason": "g"}]}
+    warnings = []
+
+    checks.normalize_note_paths(tree, warnings)
+
+    # 미확인은 범위를 넓혀도 보수적이라 앞부분까지 줄이고 경고한다.
+    assert [item["path"] for item in tree["data"]["unresolvedFields"]] == [
+        "complexes[*].parkingCount", "complexes[0]", "schedules[1]"]
+    # 해당 없음을 상위로 넓히면 그 아래 값이 모두 반영에서 빠지므로 줄이지 않고 뺀다.
+    assert [item["path"] for item in tree["notApplicable"]] == ["receptionPlace.address"]
+    assert warnings == [
+        "unresolvedFields: 읽을 수 없는 경로 data.complexes[0].주차대수를 complexes[0]로 넓혔습니다.",
+        "unresolvedFields: 경로를 읽을 수 없는 항목을 뺐습니다(!!!: d)",
+        "notApplicable: 경로를 읽을 수 없는 항목을 뺐습니다(receptionPlace.주소: f)",
+        "notApplicable: 경로를 읽을 수 없는 항목을 뺐습니다(None: g)",
+    ]

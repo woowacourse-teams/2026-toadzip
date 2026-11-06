@@ -86,6 +86,34 @@ class ComparisonMigrationTest {
                 });
     }
 
+    @Test
+    void 기존_구조를_투영하고_다른_판본의_단위_경로_참조를_거부한다() throws Exception {
+        inSchema(sql -> {
+            sql.execute("""
+                    INSERT INTO basic_comparison_rule_sets (announcement_id, content) VALUES
+                    (1, '{"supplyUnits":[{"id":"one","label":"단위1","housingTypes":[]}],
+                          "paths":[{"id":"path","label":"일반","kind":"GENERAL","checks":[]}],
+                          "options":[{"id":"choice","supplyUnitId":"one","pathId":"path",
+                                       "recruitmentStatus":"RECRUITING"}]}'),
+                    (2, '{"supplyUnits":[{"id":"two","label":"단위2","housingTypes":[]}],
+                          "paths":[{"id":"path","label":"일반","kind":"GENERAL","checks":[]}],
+                          "options":[]}')
+                    """);
+            sql.execute(new ClassPathResource(
+                    "db/migration/V20261106_03__comparison_application_structure.sql")
+                    .getContentAsString(StandardCharsets.UTF_8));
+            assertThat(count(sql, "comparison_supply_units")).isEqualTo(2);
+            assertThat(count(sql, "comparison_paths")).isEqualTo(2);
+            assertThat(count(sql, "comparison_options")).isOne();
+            rejected(sql, "UPDATE comparison_options SET unit_key = 'two'", "23503");
+            rejected(sql, "INSERT INTO comparison_options SELECT rule_set_id, 'duplicate',"
+                    + " unit_key, path_key, recruitment_status FROM comparison_options", "23505");
+            sql.execute("DELETE FROM announcements WHERE id = 1");
+            assertThat(count(sql, "comparison_supply_units")).isOne();
+            assertThat(count(sql, "comparison_options")).isZero();
+        });
+    }
+
     private void inSchema(SqlCheck check) throws Exception {
         String schema = "basic_comparison_migration_test";
         try (Connection connection = dataSource.getConnection();

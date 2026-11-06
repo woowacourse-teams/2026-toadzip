@@ -120,12 +120,38 @@ export function foldRows(extraction: Extraction, groups: FoldGroup[]) {
     return at.member === 0 ? [`${next}${rest}`] : []
   }
   const note = (item: ExtractionNote) => remap(item.path).map(path => ({ ...item, path }))
-  const sharedCounts = extraction.sharedCounts.map(group => ({ ...group, paths: [...new Set(group.paths.flatMap(remap))] })).filter(group => group.paths.length > 1)
+  const sharedCounts: SharedCount[] = [], collapsedShared: ExtractionNote[] = [], collapsedEvidence: Evidence[] = []
+  for (const group of extraction.sharedCounts) {
+    const paths = [...new Set(group.paths.flatMap(remap))]
+    // 행 모집수 공통값은 FoldGroup.count로 행 합계에 이미 옮긴다. 대상별 공통값은
+    // 접은 뒤 대상 하나에만 남으면 그 필드로 옮겨 검토 화면에서 사라지지 않게 한다.
+    if (paths.length > 1) { sharedCounts.push({ ...group, paths }); continue }
+    const lost = !paths.length && /^supplyRows\[(\d+)\](\.targets\[\d+\]\.(?:supplyHouseholdCount|reserveCount))$/.exec(group.paths[0])
+    if (lost) {
+      const path = `supplyRows[${position[Number(lost[1])]}]${lost[2]}`
+      collapsedShared.push({ path, reason: `세부 타입 행을 합치면서 공통 수량 ${group.count ?? '미확인'}을 보존하지 못했습니다. PDF ${group.page ?? '쪽 미상'}쪽 “${group.quote}”를 확인하세요.` })
+      if (group.page !== null) collapsedEvidence.push({ path, page: group.page, quote: group.quote })
+      continue
+    }
+    const path = paths[0]
+    const target = path && /^supplyRows\[(\d+)\]\.targets\[(\d+)\]\.(supplyHouseholdCount|reserveCount)$/.exec(path)
+    if (!target) continue
+    const row = rows[Number(target[1])], field = target[3]
+    const current = row?.targets[Number(target[2])]?.[field]
+    if (current == null || current === group.count) {
+      if (row?.targets[Number(target[2])]) row.targets[Number(target[2])][field] = group.count
+      if (group.page !== null) collapsedEvidence.push({ path, page: group.page, quote: group.quote })
+      continue
+    }
+    row.targets[Number(target[2])][field] = null
+    collapsedShared.push({ path, reason: `세부 타입 행을 합치면서 공통 수량 ${group.count ?? '미확인'}이 하나의 대상에 모였지만 합친 값 ${String(current)}과 일치하지 않습니다. PDF ${group.page ?? '쪽 미상'}쪽 “${group.quote}”를 확인하세요.` })
+    if (group.page !== null) collapsedEvidence.push({ path, page: group.page, quote: group.quote })
+  }
   const folded = groups.map(group => position[group.indexes[0]])
   const notApplicable = folded.flatMap(index => ['exclusiveArea', 'supplyArea'].map(field => ({ path: `supplyRows[${index}].${field}`, reason: groupedAreaNote })))
-  return { position, remap, extraction: { ...extraction, supplyRows: rows, sharedCounts, unresolved: extraction.unresolved.flatMap(note),
+  return { position, remap, extraction: { ...extraction, supplyRows: rows, sharedCounts, unresolved: [...extraction.unresolved.flatMap(note), ...collapsedShared],
     notApplicable: [...extraction.notApplicable.flatMap(note).filter(item => !notApplicable.some(added => added.path === item.path)), ...notApplicable],
-    evidence: extraction.evidence.flatMap(item => remap(item.path).map(path => ({ ...item, path }))) } satisfies Extraction }
+    evidence: [...extraction.evidence.flatMap(item => remap(item.path).map(path => ({ ...item, path }))), ...collapsedEvidence] } satisfies Extraction }
 }
 
 /** 공고문 행을 맞출 LH 행 하나(주택형 × 공급대상 묶음). rows는 그 LH 행에 맞춘 공고문 행 번호, typeName·count는 LH 행의 표기와 이번 공급 수다. */
@@ -145,7 +171,8 @@ export function targetOwners(row: ExtractedRow, groups: (string | null)[]) {
  *   공고 표기(sourceHousingTypeName)는 공고문 표기 그대로다.
  * - LH 행 하나에 맞춘 공고문 행 여럿은 대상·금액이 같으면 세부 타입 묶음 행 하나로 접고(모집수는 LH 행의 이번 공급 수),
  *   다르면 행마다 두고 LH 공급 수를 공통 모집수로 묶는다. split은 그렇게 묶은 LH 행이다.
- * 맞춘 행이 걸린 공고문 공통 모집수는 LH 행 단위 모집수로 바뀌므로 지운다. 행 번호가 바뀌어 메모·근거 경로를 옮긴다.
+ * 맞춘 행의 공고문 행 공통 모집수는 LH 행 단위 모집수로 바뀌므로 지운다. 대상별 공통 수량은 대상 경로를 따라 보존한다.
+ * 행 번호가 바뀌어 메모·근거 경로를 옮긴다.
  */
 export function alignToSource<T extends SourceMatch>(source: Extraction, matches: T[]) {
   const rows: ExtractedRow[] = [], copies = new Map<number, { index: number; targets: number[] }[]>(), plans: MatchPlan<T>[] = []
@@ -180,10 +207,27 @@ export function alignToSource<T extends SourceMatch>(source: Extraction, matches
   }
   const aligned = new Set(matches.flatMap(match => match.rows))
   // LH 행에 맞춘 행은 공고문의 묶음 대신 LH 행 단위 묶음을 쓴다. 한 행이 두 묶음에 들어갈 수 없다.
-  const kept = source.sharedCounts.filter(group => !group.paths.some(path => {
-    const row = Number(/^supplyRows\[(\d+)\]/.exec(path)?.[1])
-    return aligned.has(row) && (path.endsWith('.totalSupplyHouseholdCount') || (copies.get(row)?.length ?? 0) > 1)
-  })).map(group => ({ ...group, paths: group.paths.flatMap(remap) }))
+  const kept: SharedCount[] = [], alignedSharedNotes: ExtractionNote[] = [], alignedSharedEvidence: Evidence[] = []
+  for (const group of source.sharedCounts) {
+    const rowPaths = group.paths.every(path => path.endsWith('.totalSupplyHouseholdCount'))
+    // 행 합계는 정렬 뒤 LH 행 모집수로 대체한다. 대상별 공통 수량은 분할된 대상 경로로 옮긴다.
+    if (rowPaths && group.paths.some(path => aligned.has(Number(/^supplyRows\[(\d+)\]/.exec(path)?.[1])))) continue
+    const mapped = group.paths.map(path => remap(path)), paths = [...new Set(mapped.flat())]
+    if (mapped.every(items => items.length === 1) && paths.length > 1) { kept.push({ ...group, paths }); continue }
+    if (mapped.every(items => items.length === 1) && paths.length === 1) {
+      const path = paths[0], target = /^supplyRows\[(\d+)\]\.targets\[(\d+)\]\.(supplyHouseholdCount|reserveCount)$/.exec(path)
+      const row = target && rows[Number(target[1])], field = target?.[3], current = target && field ? row?.targets[Number(target[2])]?.[field] : undefined
+      if (target && row && field && (current == null || current === group.count)) {
+        row.targets[Number(target[2])][field] = group.count
+        if (group.page !== null) alignedSharedEvidence.push({ path, page: group.page, quote: group.quote })
+        continue
+      }
+      if (target && row && field) row.targets[Number(target[2])][field] = null
+    }
+    const path = paths[0] ?? group.paths[0]
+    alignedSharedNotes.push({ path, reason: `공급대상 행을 맞추면서 공통 수량 ${group.count ?? '미확인'}의 경로를 보존하지 못했습니다. PDF ${group.page ?? '쪽 미상'}쪽 “${group.quote}”를 확인하세요.` })
+    if (paths[0] && group.page !== null) alignedSharedEvidence.push({ path: paths[0], page: group.page, quote: group.quote })
+  }
   const planIndexes = (match: T) => match.rows.map(from => plans.findIndex(plan => plan.from === from && plan.match === match))
   const divided = matches.filter(match => match.rows.length > 1)
   const folds = divided.filter(match => sameTargets(planIndexes(match).map(index => rows[index])))
@@ -194,8 +238,8 @@ export function alignToSource<T extends SourceMatch>(source: Extraction, matches
   })
   const note = (item: ExtractionNote) => remap(item.path).map(path => ({ ...item, path }))
   const unfolded: Extraction = { ...source, supplyRows: rows, sharedCounts: [...kept, ...splitCounts],
-    unresolved: source.unresolved.flatMap(note), notApplicable: source.notApplicable.flatMap(note),
-    evidence: source.evidence.flatMap(item => remap(item.path).map(path => ({ ...item, path }))) }
+    unresolved: [...source.unresolved.flatMap(note), ...alignedSharedNotes], notApplicable: source.notApplicable.flatMap(note),
+    evidence: [...source.evidence.flatMap(item => remap(item.path).map(path => ({ ...item, path }))), ...alignedSharedEvidence] }
   const folded = foldRows(unfolded, folds.map(match => ({ indexes: planIndexes(match), typeName: match.typeName, count: match.count })))
   // 접은 행은 첫 공고문 행의 계획만 남긴다.
   return { extraction: folded.extraction, plans: plans.filter((_, at) => folded.position.indexOf(folded.position[at]) === at), folds, split,

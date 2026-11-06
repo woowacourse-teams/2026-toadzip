@@ -13,6 +13,7 @@ import {
   NaverMapsSdkError,
   subscribeToNaverMapsAuthenticationFailure,
 } from './loadNaverMapsSdk.ts'
+import { MARKER_HOVER_DELAY_MS } from './markerOverlays.ts'
 
 vi.mock('./loadNaverMapsSdk.ts', async () => {
   const actual = await vi.importActual<
@@ -301,6 +302,16 @@ function createDeferred<T>() {
   })
 
   return { promise, resolve: resolvePromise }
+}
+
+function focusWithKeyboard(element: HTMLElement) {
+  fireEvent.keyDown(document, { key: 'Tab' })
+  act(() => element.focus())
+}
+
+async function hoverWithMouse(element: HTMLElement) {
+  fireEvent.pointerEnter(element, { pointerType: 'mouse' })
+  await act(() => new Promise(resolve => setTimeout(resolve, MARKER_HOVER_DELAY_MS)))
 }
 
 function createdMarkerButton(
@@ -1516,7 +1527,7 @@ describe('NaverMap', () => {
     )
   })
 
-  it('모바일에서 이전 마커의 focus가 남아도 마지막 터치 마커만 최상단에 표시한다', async () => {
+  it.each(['pointerUp', 'pointerCancel'] as const)('모바일에서 누르는 동안만 마커를 펼치고 %s 뒤에는 접는다', async release => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })))
     const fakeSdk = createFakeSdk()
     const onHighlight = vi.fn()
@@ -1527,18 +1538,27 @@ describe('NaverMap', () => {
     await waitFor(() => expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2))
     const a = createdMarkerButton(fakeSdk, 0)
     const b = createdMarkerButton(fakeSdk, 1)
-    act(() => a.focus())
-    fireEvent.mouseEnter(a)
+    focusWithKeyboard(a)
+    expect(a).toHaveClass('is-previewing')
+
+    fireEvent.pointerEnter(b, { pointerType: 'touch' })
     fireEvent.pointerDown(b, { pointerType: 'touch' })
+    expect(a).not.toHaveClass('is-previewing')
+    expect(b).toHaveClass('is-previewing')
     expect(onHighlight).toHaveBeenLastCalledWith('b')
-    expect(fakeSdk.markerInstances[0].setZIndex).toHaveBeenLastCalledWith(10)
     expect(fakeSdk.markerInstances[1].setZIndex).toHaveBeenLastCalledWith(40)
-    fireEvent.mouseLeave(a)
-    act(() => a.blur())
-    expect(onHighlight).toHaveBeenLastCalledWith('b')
+
+    // After lifting, the emulated mouse events and focus of a tap must not expand it again.
+    fireEvent[release](b, { pointerType: 'touch' })
+    fireEvent.mouseEnter(b)
+    act(() => b.focus())
+    await act(() => new Promise(resolve => setTimeout(resolve, MARKER_HOVER_DELAY_MS)))
+    expect(b).not.toHaveClass('is-previewing')
+    expect(onHighlight).toHaveBeenLastCalledWith(null)
+    expect(fakeSdk.markerInstances[1].setZIndex).toHaveBeenLastCalledWith(10)
   })
 
-  it.each(['touch', 'pen'])('호버 수집이 연결되어도 모바일 %s 선택은 최상단 표시를 유지하고 호버 정보를 붙이지 않는다', async pointerType => {
+  it.each(['touch', 'pen'])('호버 수집이 연결되어도 모바일 %s 선택은 손을 떼면 접히고 호버 정보를 붙이지 않는다', async pointerType => {
     vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
     const fakeSdk = createFakeSdk()
     loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
@@ -1556,19 +1576,18 @@ describe('NaverMap', () => {
     await waitFor(() => expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2))
     const a = createdMarkerButton(fakeSdk, 0)
     const b = createdMarkerButton(fakeSdk, 1)
-    act(() => a.focus())
-    fireEvent.mouseEnter(a)
+    focusWithKeyboard(a)
     fireEvent.pointerDown(b, { pointerType })
+    expect(fakeSdk.markerInstances[0].setZIndex).toHaveBeenLastCalledWith(10)
+    expect(fakeSdk.markerInstances[1].setZIndex).toHaveBeenLastCalledWith(40)
+    fireEvent.pointerUp(b, { pointerType })
     const click = new MouseEvent('click', { bubbles: true, detail: 1 })
     Object.defineProperty(click, 'pointerType', { value: pointerType })
     fireEvent(b, click)
     expect(onSelect).toHaveBeenLastCalledWith('b')
     expect(attribution).not.toHaveBeenCalled()
-    expect(fakeSdk.markerInstances[0].setZIndex).toHaveBeenLastCalledWith(10)
-    expect(fakeSdk.markerInstances[1].setZIndex).toHaveBeenLastCalledWith(40)
-    fireEvent.mouseLeave(a)
-    act(() => a.blur())
-    expect(onHighlight).toHaveBeenLastCalledWith('b')
+    expect(b).not.toHaveClass('is-previewing')
+    expect(onHighlight).toHaveBeenLastCalledWith(null)
   })
 
   it('개별 marker hover와 focus를 카드에 전달하고 강조만 바뀌면 DOM을 유지한다', async () => {
@@ -1593,9 +1612,9 @@ describe('NaverMap', () => {
     )
     const markerButton = createdMarkerButton(fakeSdk, 0)
 
-    fireEvent.mouseEnter(markerButton)
-    markerButton.focus()
-    fireEvent.mouseLeave(markerButton)
+    await hoverWithMouse(markerButton)
+    focusWithKeyboard(markerButton)
+    fireEvent.pointerLeave(markerButton, { pointerType: 'mouse' })
 
     expect(onMarkerHighlight).toHaveBeenLastCalledWith('101')
 
@@ -1618,7 +1637,7 @@ describe('NaverMap', () => {
     expect(nextMarkerHighlight).toHaveBeenLastCalledWith(null)
 
     nextMarkerHighlight.mockClear()
-    fireEvent.mouseEnter(markerButton)
+    fireEvent.pointerEnter(markerButton, { pointerType: 'mouse' })
     rerender(
       <NaverMap representation="INDIVIDUAL"
         markers={[{ ...marker, latitude: 37.61 }]}
@@ -1847,10 +1866,10 @@ describe('NaverMap', () => {
     const { rerender } = render(<NaverMap representation="INDIVIDUAL" markers={[marker]} />)
     const button = await screen.findByRole('button', { name: /면적 확인 단지/ })
     expect(button).toHaveTextContent('전용 36㎡')
-    fireEvent.mouseEnter(button)
+    await hoverWithMouse(button)
     expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(40)
-    button.focus()
-    fireEvent.mouseLeave(button)
+    focusWithKeyboard(button)
+    fireEvent.pointerLeave(button, { pointerType: 'mouse' })
     expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(40)
     button.blur()
     expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(10)
@@ -2035,9 +2054,9 @@ describe('NaverMap', () => {
     const { rerender } = render(<HighlightedMap items={markers} />)
     const a = await screen.findByRole('button', { name: /^a 단지,/ })
     const b = screen.getByRole('button', { name: /^b 단지,/ })
-    act(() => a.focus())
+    focusWithKeyboard(a)
     expect(a).toHaveClass('is-highlighted')
-    fireEvent.mouseEnter(b)
+    await hoverWithMouse(b)
     expect(b).toHaveClass('is-highlighted')
     expect(a).not.toHaveClass('is-highlighted')
     rerender(<HighlightedMap items={[markers[0]]} />)
@@ -2045,6 +2064,51 @@ describe('NaverMap', () => {
     expect(a).toHaveFocus()
     expect(a).toHaveClass('is-highlighted')
     expect(b).not.toBeInTheDocument()
+  })
+
+  it('마우스로 상세를 닫아 포커스가 마커로 돌아오면 펼치지 않고 키보드로 돌아오면 펼친다', async () => {
+    const fakeSdk = createFakeSdk()
+    const onHighlight = vi.fn()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    render(<NaverMap representation="INDIVIDUAL" markers={[{
+      ...markerPresentation, id: 'a', latitude: 37.5, longitude: 127, name: 'a 단지',
+    }]} onMarkerHighlight={onHighlight} />)
+    const marker = await screen.findByRole('button', { name: /^a 단지,/ })
+
+    fireEvent.pointerDown(document.body, { pointerType: 'mouse' })
+    act(() => marker.focus())
+    expect(marker).not.toHaveClass('is-previewing')
+    expect(onHighlight).not.toHaveBeenCalled()
+
+    act(() => marker.blur())
+    fireEvent.keyDown(document, { key: 'Escape' })
+    act(() => marker.focus())
+    expect(marker).toHaveClass('is-previewing')
+    expect(onHighlight).toHaveBeenLastCalledWith('a')
+  })
+
+  it('마우스 호버는 잠시 머문 뒤에만 마커를 펼치고 지나가기만 하면 펼치지 않는다', async () => {
+    const fakeSdk = createFakeSdk()
+    const onHighlight = vi.fn()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    render(<NaverMap representation="INDIVIDUAL" markers={[{
+      ...markerPresentation, id: 'a', latitude: 37.5, longitude: 127, name: 'a 단지',
+    }]} onMarkerHighlight={onHighlight} />)
+    const marker = await screen.findByRole('button', { name: /^a 단지,/ })
+
+    fireEvent.pointerEnter(marker, { pointerType: 'mouse' })
+    expect(marker).not.toHaveClass('is-previewing')
+    fireEvent.pointerLeave(marker, { pointerType: 'mouse' })
+    await act(() => new Promise(resolve => setTimeout(resolve, MARKER_HOVER_DELAY_MS)))
+    expect(marker).not.toHaveClass('is-previewing')
+    expect(onHighlight).not.toHaveBeenCalled()
+
+    await hoverWithMouse(marker)
+    expect(marker).toHaveClass('is-previewing')
+    expect(onHighlight).toHaveBeenLastCalledWith('a')
+    fireEvent.pointerLeave(marker, { pointerType: 'mouse' })
+    expect(marker).not.toHaveClass('is-previewing')
+    expect(onHighlight).toHaveBeenLastCalledWith(null)
   })
 
   it('같은 집계의 값은 재등장 없이 갱신하고 다른 마커를 유지하며 최신 확대 정보를 전달한다', async () => {
@@ -2347,7 +2411,7 @@ describe('NaverMap', () => {
       const { rerender } = render(renderMap(true))
       await waitFor(() => expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce())
       const removedButton = createdMarkerButton(fakeSdk, 0)
-      fireEvent.mouseEnter(removedButton)
+      await hoverWithMouse(removedButton)
 
       rerender(renderMap(false))
       expect(removedButton).not.toBeInTheDocument()
@@ -2356,7 +2420,7 @@ describe('NaverMap', () => {
       }
       onMarkerHighlight.mockClear()
       fireEvent.click(removedButton)
-      fireEvent.mouseEnter(removedButton)
+      fireEvent.pointerEnter(removedButton, { pointerType: 'mouse' })
       fireEvent.focus(removedButton)
 
       expect(onMarkerSelect).not.toHaveBeenCalled()

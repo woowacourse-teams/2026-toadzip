@@ -1,10 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { IngestPage } from './IngestPage'
 import { getPipelineHistory } from './api'
 
-vi.mock('./DataPipelineControl', () => ({ DataPipelineControl: () => <section aria-label="단계 작업">단지 작업</section> }))
+vi.mock('./DataPipelineControl', () => ({ DataPipelineControl: ({ history }: { history?: ReactNode }) =>
+  <><section aria-label="단계 작업">단지 작업</section>{history}</> }))
 vi.mock('./api', async original => ({ ...await original<typeof import('./api')>(), getPipelineHistory: vi.fn().mockResolvedValue([]) }))
 beforeEach(() => vi.clearAllMocks())
 
@@ -22,6 +24,14 @@ it('이력은 제목 옆 버튼으로만 열고 본문의 마지막 결과는 �
   expect(close.querySelector('svg')).not.toBeNull()
   fireEvent.click(close)
   expect(screen.queryByRole('dialog', { name: '실행 이력' })).not.toBeInTheDocument()
+})
+
+it('공고 수집은 실행 이력을 창 없이 실행 작업 영역에 넘겨 바로 보인다', async () => {
+  render(<MemoryRouter><IngestPage domain="announcement" /></MemoryRouter>)
+  expect(await screen.findByText('실행 이력이 없습니다.')).toBeVisible()
+  expect(getPipelineHistory).toHaveBeenCalledExactlyOnceWith(0, 'announcement')
+  expect(screen.queryByRole('button', { name: '실행 이력' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
 it('모달 내부와 내부에서 시작한 드래그는 유지하고 바깥을 눌렀을 때만 닫는다', async () => {

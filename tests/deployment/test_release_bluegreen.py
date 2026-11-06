@@ -22,6 +22,7 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 SHA = 'a' * 40
 CONFIG = 'upstream frontend_active { server frontend-blue:8080; }\nupstream backend_active { server backend-blue:8080; }\n'
+CONFIG += 'upstream backend_metrics_active { server backend-blue:8081; }\n'
 
 
 class Runner:
@@ -47,7 +48,7 @@ class Runner:
                 raise bluegreen.DeploymentError('Docker command failed: compose up')
             return ''
         if arguments[-1] == 'ai-worker':
-            environment = {'PGPASSWORD': 'never-log-this-fixture', 'DEEPSEEK_API_KEY': 'never-log-this-fixture'}
+            environment = {'PGPASSWORD': 'never-log-this-fixture', 'OPENAI_API_KEY': 'never-log-this-fixture'}
             if (self.failure() or '').startswith('worker-secret-'):
                 environment[self.failure().removeprefix('worker-secret-')] = ''
             if self.failure() == 'worker-missing':
@@ -161,6 +162,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(result['route_source'], 'runtime-config')
         self.assertTrue(result['routes_verified'])
         self.assertEqual(result['routes'], {'backend': 'backend-green', 'frontend': 'frontend-green'})
+        self.assertEqual(bluegreen.metrics_service(self.release.runners['backend'].config.read_text()), 'backend-green')
         self.assertNotIn('never-log-this-fixture', self.output.getvalue())
 
     def test_invalid_revision_or_local_changes_stop_before_any_build(self):
@@ -173,7 +175,7 @@ class ReleaseTests(unittest.TestCase):
 
     def test_profile_overlay_candidate_ports_and_missing_worker_secrets_fail_closed(self):
         for failure in ('profile', 'overlay', 'ports', 'worker-missing', 'worker-secret-PGPASSWORD',
-                        'worker-secret-DEEPSEEK_API_KEY'):
+                        'worker-secret-OPENAI_API_KEY'):
             with self.subTest(failure=failure):
                 self.failure = failure
                 self.events.clear()

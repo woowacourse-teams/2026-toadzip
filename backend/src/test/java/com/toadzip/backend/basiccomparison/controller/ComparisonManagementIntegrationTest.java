@@ -43,7 +43,7 @@ class ComparisonManagementIntegrationTest extends ComparisonIntegrationSupport {
         JsonNode draft = saveDraft(announcement, null, 0, content);
         publish(announcement, draft)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.schemaVersion").value(2))
+                .andExpect(jsonPath("$.data.schemaVersion").value(3))
                 .andExpect(jsonPath("$.data.content.quantities[2].value").value(110))
                 .andExpect(jsonPath("$.data.content.rentOffers[1].depositMinimum").value(7648000))
                 .andExpect(

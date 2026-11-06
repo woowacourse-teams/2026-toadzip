@@ -22,6 +22,7 @@ spec.loader.exec_module(module)
 OLD = 'b' * 40
 NEW = 'a' * 40
 CONFIG = 'upstream frontend_active { server frontend-blue:8080; }\nupstream backend_active { server backend-blue:8080; }\n'
+CONFIG += 'upstream backend_metrics_active { server backend-blue:8081; }\n'
 
 
 class Runner:
@@ -140,6 +141,7 @@ class RollbackTests(unittest.TestCase):
         self.assertLess(self.events.index('drained'), self.events.index('retire-backend'))
         self.assertEqual(result['completed'], ['backend', 'frontend'])
         self.assertEqual(result['routes'], {'backend': 'backend-green', 'frontend': 'frontend-green'})
+        self.assertEqual(bluegreen.metrics_service(self.rollback.runners['backend'].config.read_text()), 'backend-green')
         self.assertTrue(result['routes_verified'])
         self.assertEqual(self.report(), result)
         started = datetime.datetime.fromisoformat(result['started_at'])
@@ -182,6 +184,7 @@ class RollbackTests(unittest.TestCase):
         self.assertEqual(report['routes'], {'backend': 'backend-blue', 'frontend': 'frontend-blue'})
         self.assertEqual(report['result'], 'failed')
         self.assertEqual(Path(report['backup']).read_text(), CONFIG)
+        self.assertEqual(bluegreen.metrics_service(self.rollback.runners['backend'].config.read_text()), 'backend-blue')
 
     def test_cleanup_failure_keeps_verified_target_routes_but_reports_failure(self):
         self.failure = 'retire-frontend'

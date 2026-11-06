@@ -44,11 +44,13 @@ def docker(*arguments, environment=None, timeout=30):
 
 
 def upstream_pattern(service):
-    if service not in ("frontend", "backend"):
+    if service not in ("frontend", "backend", "backend_metrics"):
         raise DeploymentError("Unsupported deployment service")
+    container_service = "backend" if service == "backend_metrics" else service
+    port = 8081 if service == "backend_metrics" else 8080
     return re.compile(
         rf"(?m)(^\s*upstream\s+{service}_active\s*\{{\s*server\s+)"
-        rf"({service}(?:-blue|-green)?)(:8080;\s*\}})"
+        rf"({container_service}(?:-blue|-green)?)(:{port};\s*\}})"
     )
 
 
@@ -59,10 +61,23 @@ def active_service(text, service):
     return matches[0].group(2)
 
 
+def metrics_service(text):
+    try:
+        target = active_service(text, "backend_metrics")
+    except DeploymentError as error:
+        raise DeploymentError("Expected exactly one supported backend metrics upstream; prepare runtime with --upgrade-metrics") from error
+    if target != active_service(text, "backend"):
+        raise DeploymentError("API and metrics upstreams point to different backends")
+    return target
+
+
 def replace_service(text, target, service):
     active_service(text, service)
     if target not in (service + "-blue", service + "-green"):
         raise DeploymentError("Unsupported switch target")
+    if service == "backend":
+        metrics_service(text)
+        text = upstream_pattern("backend_metrics").sub(lambda match: match.group(1) + target + match.group(3), text)
     return upstream_pattern(service).sub(lambda match: match.group(1) + target + match.group(3), text)
 
 
@@ -134,6 +149,7 @@ class Deployment:
         return ids[0]
 
     def check_mount(self):
+        metrics_service(self.config.read_text())
         self.edge = self.container("edge-nginx")
         mounts = json.loads(docker("inspect", "--format", "{{json .Mounts}}", self.edge))
         matches = [mount for mount in mounts if mount["Destination"] == "/etc/nginx/conf.d"]
@@ -147,6 +163,7 @@ class Deployment:
                     or Path(assets[0]["Source"]).resolve() != self.assets.resolve(strict=True)):
                 raise DeploymentError("Edge Nginx needs the matching read-only asset archive mount")
         self.check_mounted_text(self.config.read_text())
+        self.check_metrics_binding()
         if self.service == "frontend":
             self.assets.chmod(0o755)
             probe = self.assets / ("edge-archive-probe-" + uuid.uuid4().hex + ".js")
@@ -164,6 +181,18 @@ class Deployment:
         mounted = docker("exec", self.edge, "cat", "/etc/nginx/conf.d/default.conf")
         if mounted.strip() != expected.strip():
             raise DeploymentError("Mounted configuration differs from the runtime file")
+
+    def check_metrics_binding(self):
+        configuration = json.loads(self.compose("config", "--format", "json"))
+        required = [port for port in configuration["services"]["edge-nginx"].get("ports", []) if port["target"] == 8081]
+        if not required:
+            return  # 로컬 검증에서는 Docker 내부 관리 포트만 사용할 수 있다.
+        actual = json.loads(docker("inspect", "--format", "{{json .NetworkSettings.Ports}}", self.edge))
+        for port in required:
+            if not any(binding["HostIp"] == port.get("host_ip", "0.0.0.0")
+                       and (str(port["published"]) == "0" or binding["HostPort"] == str(port["published"]))
+                       for binding in (actual.get("8081/tcp") or [])):
+                raise DeploymentError("Edge management port binding is missing or outdated; apply server Compose configuration first")
 
     def request(self, path):
         url = self.options.url.rstrip("/") + path
@@ -215,12 +244,27 @@ class Deployment:
             if status == 404:
                 logs = docker("logs", "--since", since, "--tail", "100", target)
                 if probe in logs:
+                    if self.service == "backend":
+                        self.verify_metrics(target)
                     return
             time.sleep(0.5)
         raise DeploymentError(
             f"Could not verify requests reaching the selected {self.service} "
             f"(probe={probe}, last_status={status}, expected=404 with target log)"
         ) from request_failure
+
+    def verify_metrics(self, target):
+        # 단순한 성공 응답이 아니라 선택한 컨테이너의 실제 주소와 메트릭 형식을 확인한다.
+        networks = json.loads(docker("inspect", "--format", "{{json .NetworkSettings.Networks}}", target))
+        expected = {network["IPAddress"] + ":8081" for network in networks.values() if network.get("IPAddress")}
+        response = docker("exec", self.edge, "sh", "-c",
+                          "wget -S -O - -T 5 http://127.0.0.1:8081/actuator/prometheus 2>&1")
+        upstreams = re.findall(r"(?im)^\s*X-Toadzip-Metrics-Upstream:\s*([^\r\n]+)", response)
+        if len(upstreams) != 1 or upstreams[0].strip() not in expected:
+            raise DeploymentError("Metrics request did not reach the selected backend")
+        if (not re.search(r"(?im)^\s*Content-Type:\s*(?:text/plain|application/openmetrics-text)(?:;|\s|$)", response)
+                or not re.search(r"(?m)^# TYPE [a-zA-Z_:][a-zA-Z0-9_:]* ", response)):
+            raise DeploymentError("Backend metrics response is not Prometheus exposition")
 
     def check_target(self, service):
         target = self.container(service, include_stopped=True)
@@ -335,6 +379,7 @@ class Deployment:
         self.check_http()
 
     def write_config(self, text):
+        metrics_service(text)
         descriptor, temporary = tempfile.mkstemp(dir=self.directory, suffix=".tmp", prefix="switch-")
         try:
             with os.fdopen(descriptor, "w") as handle:

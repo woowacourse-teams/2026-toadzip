@@ -119,6 +119,18 @@ function extraction(value: unknown): Extraction | string {
   if (sharedProblem) return sharedProblem
   const sharedPaths = (value.sharedCounts as { paths: string[] }[]).flatMap(item => item.paths.map(normalizePath))
   if (new Set(sharedPaths).size !== sharedPaths.length) return '한 공급행을 여러 공통 모집수에 넣을 수 없습니다.'
+  const sharedValueNotes: ExtractionNote[] = []
+  for (const [groupIndex, group] of (value.sharedCounts as { paths: string[] }[]).entries()) {
+    for (const path of group.paths) {
+      const match = /^supplyRows\[(\d+)\]\.targets\[(\d+)\]\.(supplyHouseholdCount|reserveCount)$/.exec(normalizePath(path))
+      if (!match) continue
+      const row = data.supplyRows[Number(match[1])]
+      const target = isRecord(row) && Array.isArray(row.targets) ? row.targets[Number(match[2])] : undefined
+      if (!isRecord(target) || target[match[3]] == null) continue
+      target[match[3]] = null
+      sharedValueNotes.push({ path: normalizePath(path), reason: `공통 수량 묶음 sharedCounts[${groupIndex}]의 값과 대상별 수량이 함께 있어 대상별 수량은 미확인으로 남겼습니다.` })
+    }
+  }
   for (const [index, row] of data.supplyRows.entries()) {
     if (!Array.isArray(row.targets) || !row.targets.every(isRecord) || row.targets.length > 100) return '공급행마다 targets 객체 배열이 필요합니다.'
     if (row.subtypes != null && (!Array.isArray(row.subtypes) || !row.subtypes.every(item => isRecord(item) && text(item.name)))) {
@@ -133,8 +145,15 @@ function extraction(value: unknown): Extraction | string {
     sharedCounts: (value.sharedCounts as Record<string, unknown>[]).map(item => ({
       paths: (item.paths as string[]).map(normalizePath), count: count(item.count), page: page(item.page), quote: text(item.quote) ?? '',
     })),
-    unresolved: notes(data.unresolvedFields),
-    notApplicable: notes(value.notApplicable).filter(note => note.path !== 'schedules'),
+    unresolved: [...notes(data.unresolvedFields), ...sharedValueNotes].reduce((result, item) => {
+      const existing = result.find(note => note.path === item.path)
+      if (existing) existing.reason += ` ${item.reason}`
+      else result.push(item)
+      return result
+    }, [] as ExtractionNote[]),
+    // 공통 수량으로 지정된 경로에는 “이 공고에 이 필드가 없음”이라는 넓은 notApplicable 안내가 맞지 않는다.
+    // 겹치는 안내를 걷어 개별 대상 수량은 비어 있는 값(미확인)으로 검토하게 한다.
+    notApplicable: notes(value.notApplicable).filter(note => note.path !== 'schedules' && !sharedPaths.some(path => pathCovers(note.path, path))),
     evidence: (value.evidence as Record<string, unknown>[]).map(item => ({ path: normalizePath(item.path as string), page: page(item.page)!, quote: text(item.quote) ?? '' })),
   }
   const read = readSubtypes(data.supplyRows, parsed)
@@ -210,9 +229,8 @@ export function sharedCountIssues(document: JsonObject): { index: number; messag
 
 /** sharedCounts에서 처음 걸린 항목과 이유를 돌려준다. 값은 고치지 않고 다시 추출할 수 있게 위치를 알린다. */
 /**
- * 공통 모집수는 두 가지다. 여러 공급행이 함께 쓰는 모집수(supplyRows[n].totalSupplyHouseholdCount)와,
- * 한 공급행 안의 여러 대상이 함께 쓰는 모집수(supplyRows[n].targets[m].supplyHouseholdCount, 예: 대학생·청년 통합 추첨)다.
- * 한 묶음에는 한 종류만, 대상 묶음은 같은 공급행의 대상만 넣을 수 있다.
+ * 공통 모집수는 여러 공급행의 행 합계, 또는 여러 공급행에 걸친 대상들의 같은 당첨자 수·예비자 수다.
+ * 한 묶음에는 한 종류만 넣을 수 있다.
  */
 function sharedCountProblem(items: unknown, targetCounts: number[]): string | null {
   const rowCount = targetCounts.length
@@ -223,18 +241,19 @@ function sharedCountProblem(items: unknown, targetCounts: number[]): string | nu
     if (!isRecord(item)) return `${at}는 paths·count·page·quote를 가진 객체여야 합니다.`
     if (!Array.isArray(item.paths) || item.paths.length < 2) return `${at}.paths에는 모집수를 함께 쓰는 공급행이 2개 이상 있어야 합니다.`
     if (new Set(item.paths).size !== item.paths.length) return `${at}.paths에 같은 공급행이 두 번 들어 있습니다.`
-    const kinds = new Set<string>(), rows = new Set<number>()
+    const locations = new Set<string>(), fields = new Set<string>()
     for (const path of item.paths) {
       const normalized = typeof path === 'string' ? normalizePath(path) : ''
-      const match = /^supplyRows\[(\d+)\]\.(?:totalSupplyHouseholdCount|targets\[(\d+)\]\.supplyHouseholdCount)$/.exec(normalized)
-      if (!match) return `${at}.paths의 "${String(path)}"는 supplyRows[번호].totalSupplyHouseholdCount 또는 supplyRows[번호].targets[번호].supplyHouseholdCount 형식이어야 합니다.`
+      const match = /^supplyRows\[(\d+)\]\.(?:totalSupplyHouseholdCount|targets\[(\d+)\]\.(supplyHouseholdCount|reserveCount))$/.exec(normalized)
+      if (!match) return `${at}.paths의 "${String(path)}"는 supplyRows[번호].totalSupplyHouseholdCount 또는 supplyRows[번호].targets[번호].supplyHouseholdCount/reserveCount 형식이어야 합니다.`
       const row = Number(match[1])
       if (row >= rowCount) return `${at}.paths의 supplyRows[${row}]가 없습니다. 공급행은 ${rowCount}개(0~${rowCount - 1}번)입니다.`
       if (match[2] !== undefined && Number(match[2]) >= targetCounts[row]) return `${at}.paths의 supplyRows[${row}].targets[${match[2]}]가 없습니다. 이 공급행의 대상은 ${targetCounts[row]}개입니다.`
-      kinds.add(match[2] === undefined ? 'row' : 'target'); rows.add(row)
+      locations.add(match[2] === undefined ? 'row' : 'target')
+      fields.add(match[2] === undefined ? 'totalSupplyHouseholdCount' : match[3])
     }
-    if (kinds.size > 1) return `${at}.paths에 공급행 모집수와 대상별 모집수가 섞여 있습니다. 한 묶음에는 한 종류만 넣어 주세요.`
-    if (kinds.has('target') && rows.size > 1) return `${at}.paths의 대상별 모집수는 같은 공급행의 대상끼리만 묶을 수 있습니다.`
+    if (locations.size > 1) return `${at}.paths에 공급행 모집수와 대상별 모집수가 섞여 있습니다. 한 묶음에는 한 종류만 넣어 주세요.`
+    if (fields.size > 1) return `${at}.paths에 서로 다른 수량 필드가 섞여 있습니다. 당첨자 수와 예비자 수를 한 묶음에 넣지 마세요.`
     if (typeof item.count !== 'number' || !Number.isSafeInteger(item.count) || item.count < 0) return `${at}.count는 0 이상의 정수여야 합니다. 현재 값: ${JSON.stringify(item.count) ?? '없음'}`
     if (page(item.page) === null) return `${at}.page는 1 이상의 쪽 번호여야 합니다. 현재 값: ${JSON.stringify(item.page) ?? '없음'}`
     if (typeof item.quote !== 'string') return `${at}.quote에는 공고문에서 옮긴 근거 문구가 필요합니다.`

@@ -11,14 +11,15 @@
 .scroll { height: 65vh; overflow: auto; scrollbar-color: var(--ds-color-border-base) var(--ds-color-surface-subtle); border-radius: var(--ds-radius-control); }
 .table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; table-layout: fixed; text-align: left; font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; color: var(--ds-color-text); }
 .table th, .table td { box-sizing: border-box; width: 172px; min-width: 172px; max-width: 172px; padding: var(--ds-space-3); border-right: 1px solid var(--ds-color-divider); border-bottom: 1px solid var(--ds-color-divider); line-height: var(--ds-line-height-body); overflow-wrap: anywhere; white-space: pre-wrap; vertical-align: top; }
-.table thead th { position: sticky; top: 0; z-index: 2; color: var(--ds-color-label); background: var(--ds-color-surface-subtle); font-weight: var(--ds-weight-strong); }
-.table thead th span { display: block; margin-top: var(--ds-space-1); font-weight: 400; font-size: 12px; }
+/* 머리는 한글 이름 한 줄 + 원천 필드명 한 줄로 높이를 고정한다. 칸보다 길면 말줄임하고 전체는 title로 본다. */
+.table thead th { position: sticky; top: 0; z-index: 2; color: var(--ds-color-label); background: var(--ds-color-surface); font-weight: var(--ds-weight-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.table thead th span { display: block; margin-top: var(--ds-space-1); overflow: hidden; text-overflow: ellipsis; color: var(--ds-color-muted); font-weight: 400; font-size: 12px; }
 .table th:first-child { position: sticky; left: 0; z-index: 1; width: 220px; min-width: 220px; max-width: 220px; border-right-color: var(--ds-color-border-base); }
 .table thead th:first-child { z-index: 3; }
 .table tbody th { background: var(--ds-color-surface); font-size: inherit; font-weight: var(--ds-weight-strong); }
 .table tbody td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.table :is(th, td):is([data-field="suply_ty_nm"], [data-field="sttus_nm"], [data-field="suply_instt_nm"], [data-field="style_nm"], [data-field="suply_prvuse_ar"], [data-field="begin_de"], [data-field="end_de"]) { width: 120px; min-width: 120px; max-width: 120px; }
-.table :is(th, td):is([data-field="bass_rent_gtn"], [data-field="bass_mt_rntchrg"], [data-field="bass_cnvrs_gtn_lmt"], [data-field="rent_gtn"], [data-field="mt_rntchrg"]) { width: 144px; min-width: 144px; max-width: 144px; }
+.table :is(th, td):is([data-field="suply_ty_nm"], [data-field="sttus_nm"], [data-field="suply_instt_nm"], [data-field="style_nm"], [data-field="begin_de"], [data-field="end_de"]) { width: 120px; min-width: 120px; max-width: 120px; }
+.table :is(th, td):is([data-field="bass_rent_gtn"], [data-field="bass_mt_rntchrg"], [data-field="bass_cnvrs_gtn_lmt"], [data-field="rent_gtn"], [data-field="mt_rntchrg"], [data-field="suply_prvuse_ar"]) { width: 144px; min-width: 144px; max-width: 144px; }
 .table tbody td:is([data-field="bass_rent_gtn"], [data-field="bass_mt_rntchrg"], [data-field="bass_cnvrs_gtn_lmt"], [data-field="rent_gtn"], [data-field="mt_rntchrg"], [data-field="suply_prvuse_ar"]) { text-align: right; }
 .table tbody tr:hover > * { background: var(--ds-color-action-soft); }
 .table .time { width: 210px; min-width: 210px; max-width: 210px; }

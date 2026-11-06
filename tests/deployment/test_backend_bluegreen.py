@@ -26,7 +26,7 @@ class BackendCheck:
         (self.runtime / 'assets').mkdir()
         self.config = self.directory / 'default.conf'
         self.original = (ROOT / 'infra/nginx/edge/default.conf').read_text().replace(
-            'server backend:8080;', 'server backend-blue:8080;', 1)
+            'server backend:', 'server backend-blue:')
         if self.original.count('server backend-blue:8080;') != 1:
             raise RuntimeError('Expected the initial backend upstream exactly once')
         self.config.write_text(self.original)

@@ -17,7 +17,7 @@ import bluegreen
 # Built and labelled with the same revision. The worker takes no traffic, so it is recreated instead of Blue/Green.
 IMAGES = ('backend', 'frontend', 'ai-worker')
 WORKER = 'ai-worker'
-WORKER_SECRETS = ('PGPASSWORD', 'DEEPSEEK_API_KEY')
+WORKER_SECRETS = ('PGPASSWORD', 'OPENAI_API_KEY')
 
 
 class Release:
@@ -82,7 +82,7 @@ class Release:
         missing = [name for name in WORKER_SECRETS if not worker.get('environment', {}).get(name)]
         if missing:
             raise bluegreen.DeploymentError('AI worker is missing server settings: ' + ', '.join(missing)
-                                            + ' (set AI_WORKER_DB_PASSWORD and DEEPSEEK_API_KEY)')
+                                            + ' (set AI_WORKER_DB_PASSWORD and OPENAI_API_KEY)')
 
     def build(self):
         runner = self.runners['frontend']

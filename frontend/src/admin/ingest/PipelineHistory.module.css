@@ -1,0 +1,30 @@
+/* 공고 수집의 실행 이력은 목록 공통 카드(.admin-list-card) 안에서 표를 카드 폭 끝까지 붙이고 위아래 선만 둔다.
+   --inset은 공통 카드의 좌우 여백과 같다. */
+.listCard { --inset: 24px; }
+.listCard :global(.pipeline-history-heading) { align-items: center; margin-bottom: 12px; }
+.listCard :global(.pipeline-history-heading) h2 { font-size: 18px; }
+:global(.admin-content) .listCard :global(.pipeline-history-heading) p { font-size: 12px; color: var(--ds-color-muted); }
+:global(.admin-layout) :global(.admin-content) .listCard :global(.admin-table-scroll) { margin-inline: calc(var(--inset) * -1); border: 0; border-block: 1px solid var(--ds-color-divider); border-radius: 0; box-shadow: none; }
+.listCard :global(.admin-table) { font-size: var(--ds-text-caption); }
+.listCard :global(.admin-table) tbody tr:last-child > * { border-bottom: 0; }
+.listCard :global(.pipeline-history-empty) { padding: 56px var(--inset); background: transparent; color: var(--ds-color-muted); }
+.listCard :global(.pipeline-history-pagination) { padding-top: 12px; }
+
+/* 실행 상세는 이력 카드 바로 아래에 같은 모양의 카드로 연다. */
+.detailCard { margin: 0; padding: 20px 24px 24px; }
+.detailHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+:global(.admin-content) .detailHeading h2 { margin: 0; font-size: 18px; }
+.detailHeading h2:focus { outline: none; }
+/* 상세를 열면 제목으로 스크롤한다. 위에 붙은 관리자 머리 띠에 제목이 가리지 않게 띄운다. */
+.detailTitle { scroll-margin-top: 88px; }
+:global(.admin-content) .meta { margin: 8px 0 0; color: var(--ds-color-muted); font-size: 12px; }
+
+@media (min-width: 701px) {
+  .listCard :global(.admin-table) tr > :first-child { padding-left: var(--inset); }
+  .listCard :global(.admin-table) tr > :last-child { padding-right: var(--inset); }
+}
+/* 좁은 화면은 표가 행 카드로 바뀌므로 행 안쪽 여백을 카드 여백에 맞춘다. */
+@media (max-width: 700px) {
+  .listCard :global(.pipeline-history-table) tr { padding-inline: var(--inset); }
+  .detailCard { padding: 18px; }
+}

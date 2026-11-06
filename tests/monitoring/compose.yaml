@@ -22,6 +22,32 @@ services:
     ports:
       - "127.0.0.1:58082:8080"
 
+  backend-blue:
+    extends: {service: backend}
+    environment: {FIXTURE_COLOR: blue}
+    command:
+      - |
+        sleep 5
+        printf '%s\n' \
+          "2026-10-12T12:00:00Z ERROR 1 --- [backend] [fixture] [traceId=fixture-$${FIXTURE_COLOR}] Fixture : event=fixture.bluegreen color=$${FIXTURE_COLOR}" \
+          'java.lang.IllegalStateException: color fixture failure' \
+          '    at fixture.color(Fixture.java:1)'
+        sleep 300
+
+  backend-green:
+    extends: {service: backend-blue}
+    environment: {FIXTURE_COLOR: green}
+
+  frontend-blue:
+    extends: {service: frontend}
+    ports: !override
+      - target: 8080
+        published: '0'
+        host_ip: 127.0.0.1
+
+  frontend-green:
+    extends: {service: frontend-blue}
+
   loki:
     image: grafana/loki:3.7.8
     command: ["-config.file=/etc/loki/loki-config.yml"]
@@ -41,7 +67,7 @@ services:
       - ../../.local/verification/monitoring/fixture.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - alloy_data:/var/lib/alloy/data
-    depends_on: [backend, frontend, loki]
+    depends_on: [backend, backend-blue, backend-green, frontend, frontend-blue, frontend-green, loki]
 
 volumes:
   loki_data:

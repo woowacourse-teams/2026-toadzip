@@ -1,6 +1,6 @@
 import { pipelineLabels, pipelineStatusLabels, retiredComplexRefinementNotice, retiredPipelineTypes } from './pipelineLabels'
 import { Link } from 'react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   DataPipelineApiError,
   getDataPipelineReadiness,
@@ -40,16 +40,14 @@ const pipelineTypes: readonly DataPipelineType[] = [
 const boardSources = [
   {
     type: 'SH_ANNOUNCEMENT_COLLECTION', id: 'sh', title: 'SH',
-    description: '주택임대(건설임대) 분류의 ‘모집’ 검색 결과에서 제목·본문·첨부를 원천으로 저장합니다. 수집 성공 뒤 미확정 공고로 정제합니다. 공개는 PDF 보정에서 단지를 확인한 뒤 요청합니다.',
     groupDescription: 'SH 주택임대(건설임대) 분류의 ‘모집’ 검색 결과에서 제목·본문 텍스트·첨부 정보를 추출해 저장합니다. 매입임대·전세임대 글은 받지 않습니다. 수집 성공 뒤 미확정 공고로 정제하며 API 키 없이 실행합니다.',
   },
   {
     type: 'GH_ANNOUNCEMENT_COLLECTION', id: 'gh', title: 'GH',
-    description: 'GH주택청약센터 임대주택(건설임대) 공고의 지구·주택형·일정·공고문을 원천으로 저장합니다. 수집 성공 뒤 미확정 공고로 정제합니다. 공개는 PDF 보정에서 단지를 확인한 뒤 요청합니다.',
     groupDescription: 'GH주택청약센터 임대주택(건설임대) 공고에서 지구·주택형·공급일정·접수처·공고문 정보를 나눠 저장합니다. 수집 성공 뒤 미확정 공고로 정제하며 API 키 없이 실행합니다.',
   },
 ] as const satisfies readonly {
-  type: DataPipelineType; id: string; title: string; description: string; groupDescription: string
+  type: DataPipelineType; id: string; title: string; groupDescription: string
 }[]
 const pipelineGroups = [
   {
@@ -71,8 +69,15 @@ const pipelineGroups = [
   types: readonly DataPipelineType[]
 }[]
 
-export function DataPipelineControl({ domain, compact = false }: {
-  domain?: 'complex' | 'announcement'; compact?: boolean
+// 공고 수집 첫 화면은 기관마다 실행 버튼 하나와 마지막 결과만 보인다. LH 마지막 결과는 따로 실행했던 수집·정제 이력도 포함한다.
+const agencySources: readonly { id: string; title: string; runType: DataPipelineType; resultTypes: readonly DataPipelineType[] }[] = [
+  { id: 'lh', title: 'LH', runType: 'ANNOUNCEMENT_SYNC', resultTypes: pipelineGroups[1].types },
+  ...boardSources.map(source => ({ id: source.id, title: source.title, runType: source.type, resultTypes: [source.type] })),
+]
+
+export function DataPipelineControl({ domain, compact = false, history }: {
+  // 공고 수집 화면에서 실행 이력을 실행 카드와 접어 둔 LH 품질 확인 사이에 둔다.
+  domain?: 'complex' | 'announcement'; compact?: boolean; history?: ReactNode
 } = {}) {
   const [selectedType, setSelectedType] = useState<DataPipelineType | null>(null)
   const [pipelineStates, setPipelineStates] = useState(initialPipelineStates)
@@ -295,7 +300,7 @@ export function DataPipelineControl({ domain, compact = false }: {
   </p> : null
   const serviceKeyNotice = serviceKeyMissing ? <div role="alert" className={workflow.notice}>
     <strong>서버 수집 키 미설정</strong>
-    <p>서버 환경변수 DATA_GO_KR_SERVICE_KEY가 설정되지 않아 공공데이터포털 수집을 실행할 수 없습니다. 서버 설정 후 다시 확인해 주세요. 정제와 SH 수집은 실행할 수 있습니다.</p>
+    <p>서버 환경변수 DATA_GO_KR_SERVICE_KEY가 없어 공공데이터포털 수집을 실행할 수 없습니다.</p>
   </div> : null
   if (domain === 'complex') return <section aria-label="단지 수집 작업">
     {lockNotice}
@@ -309,19 +314,25 @@ export function DataPipelineControl({ domain, compact = false }: {
       onStart={type => handleRun(type)} onStop={type => void stop(type)}
       onRefresh={type => void refresh(type, true)} onUploadBusy={setUploadBusy} />
   </section>
-  function recent(types: readonly DataPipelineType[]) {
-    const latest = [...types].map(type => pipelineStates[type].execution)
+  function recent(source: typeof agencySources[number]) {
+    const latest = source.resultTypes.map(type => pipelineStates[type].execution)
       .filter(run => run.status !== 'IDLE').sort((a, b) => (Date.parse(b.startedAt ?? '') || 0) - (Date.parse(a.startedAt ?? '') || 0))[0]
     return <div className={workflow.recent}>
-      {latest ? <><span>{pipelineLabels[latest.type]}</span>
+      <div className={workflow.recentHeading}>
+        <span>마지막 결과</span>
+        {latest && <button type="button" className={workflow.resultLink} onClick={() => setSelectedType(latest.type)}>실행 결과 보기</button>}
+      </div>
+      {latest ? <div className={workflow.recentValue}>
         <strong className={`pipeline-badge pipeline-${latest.status.toLowerCase()}`}>{pipelineStatusLabels[latest.status]}</strong>
-        <span>{latest.startedAt ? new Date(latest.startedAt).toLocaleString('ko-KR') : '시각 기록 없음'}</span>
-        <button type="button" onClick={() => setSelectedType(latest.type)}>실행 결과 보기</button></>
-        : <span>{checking ? '최근 실행 확인 중…' : types.some(type => pipelineStates[type].requestError)
-          ? '최근 실행을 확인하지 못했습니다.' : '아직 실행 이력이 없습니다.'}</span>}
+        {/* 따로 실행했던 수집·정제가 마지막이면 어떤 실행인지 함께 적는다. */}
+        {latest.type !== source.runType && <span>{pipelineLabels[latest.type]}</span>}
+        <time dateTime={latest.startedAt ?? undefined}>{latest.startedAt ? new Date(latest.startedAt).toLocaleString('ko-KR') : '시각 기록 없음'}</time>
+      </div> : <span className={workflow.recentEmpty}>{checking ? '확인 중…' : source.resultTypes.some(type => pipelineStates[type].requestError)
+        ? '최근 실행을 확인하지 못했습니다.' : '아직 실행 이력이 없습니다.'}</span>}
     </div>
   }
-  if (compact && domain) return <section className={`registration-card ${workflow.workspace}`} aria-label="데이터 실행">
+  if (compact && domain) return <>
+  <section className={`registration-card ${workflow.workspace}`} aria-label="데이터 실행">
     {lockNotice}
     {serviceKeyNotice}
     {activeType ? <>
@@ -341,40 +352,28 @@ export function DataPipelineControl({ domain, compact = false }: {
       </div>}
       {pipelineStates[activeType].execution.status === 'RUNNING' && <p className="ingest-meta">다른 화면으로 이동해도 실행은 계속됩니다. 다시 들어오면 진행 상태를 확인할 수 있습니다.</p>}
     </> : <>
-      <>
-        <div className={workflow.sources}>
-          <section aria-labelledby="lh-source" className={workflow.source}>
-            <header><h2 id="lh-source">LH</h2><span>LH 공고 정제 포함</span></header>
-            <p>LH 공고 목록·공급·상세를 수집한 뒤 LH 공고를 정제합니다. 수집 키는 서버 설정을 사용합니다.</p>
-            {recent(pipelineGroups[1].types)}
-            <Button data-design-system disabled={isAnyPipelineRunning || blockedByServiceKey('ANNOUNCEMENT_SYNC')}
-              onClick={() => handleRun('ANNOUNCEMENT_SYNC')}>{pipelineLabels.ANNOUNCEMENT_SYNC}</Button>
-            <details className={workflow.additional}><summary>수집·정제 따로 실행</summary>
-              <p>정제는 이전 수집을 포함한 저장 원천 전체에 적용합니다.</p>
-              <div className={workflow.actions}>{pipelineGroups[1].types.slice(1).map(type => <button key={type} type="button"
-                disabled={isAnyPipelineRunning || blockedByServiceKey(type)} onClick={() => handleRun(type)}>{pipelineLabels[type]}</button>)}</div>
-            </details>
-          </section>
-          {boardSources.map(source => <section key={source.type} aria-labelledby={`${source.id}-source`}
-            className={workflow.source}>
-            <header><h2 id={`${source.id}-source`}>{source.title}</h2><span>API 키 불필요</span></header>
-            <p>{source.description}</p>
-            {recent([source.type])}
-            <button type="button" disabled={isAnyPipelineRunning} onClick={() => handleRun(source.type)}>
-              {pipelineLabels[source.type]}</button>
-          </section>)}
-        </div>
-        <details className={workflow.additional} onToggle={event => setQualityOpen(event.currentTarget.open)}>
-          <summary>LH 데이터 품질·공급 감소 보류 확인</summary>
-          <p className="ingest-meta">LH 공고만의 연결·금액·일정 상태입니다. 수집 실행의 성공 여부와 별도로 확인합니다.</p>
-          {qualityOpen && <LhAnnouncementQualityPanel collectionExecution={latestCollectionExecution(
-            pipelineStates.ANNOUNCEMENT_SYNC.execution, pipelineStates.ANNOUNCEMENT_COLLECTION.execution)} />}
-        </details>
-      </>
+      <div className={workflow.sources}>
+        {agencySources.map(source => <section key={source.id} aria-labelledby={`${source.id}-source`} className={workflow.source}>
+          <header>
+            <h2 id={`${source.id}-source`}>{source.title}</h2>
+            <Button data-design-system disabled={isAnyPipelineRunning || blockedByServiceKey(source.runType)}
+              onClick={() => handleRun(source.runType)}>{pipelineLabels[source.runType]}</Button>
+          </header>
+          {recent(source)}
+        </section>)}
+      </div>
       {visibleTypes.map(type => pipelineStates[type].requestError && <p key={type} role="alert" className="form-error">
         {pipelineLabels[type]}: {pipelineStates[type].requestError}</p>)}
     </>}
   </section>
+  {history}
+  {/* LH 공급 감소 보류 승인은 이 메뉴에서만 할 수 있어 지우지 않고 맨 아래에 접어 둔다. */}
+  {!activeType && <details className={workflow.quality} open={qualityOpen} onToggle={event => setQualityOpen(event.currentTarget.open)}>
+    <summary>LH 데이터 품질·공급 감소 보류 확인</summary>
+    {qualityOpen && <LhAnnouncementQualityPanel collectionExecution={latestCollectionExecution(
+      pipelineStates.ANNOUNCEMENT_SYNC.execution, pipelineStates.ANNOUNCEMENT_COLLECTION.execution)} />}
+  </details>}
+  </>
 
   return (
     <section className="registration-card data-pipeline-card" aria-label={compact ? '데이터 실행' : '데이터 수집·정제'}>

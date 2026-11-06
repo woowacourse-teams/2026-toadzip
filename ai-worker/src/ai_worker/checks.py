@@ -18,7 +18,7 @@ WHITESPACE = re.compile(r"\s+")
 DATE_FIELDS = ("postedDate", "applicationStartDate", "applicationEndDate", "winnerAnnouncementDate")
 
 
-def first_json_object(reply: str) -> dict:
+def first_json_object(reply: str, expected_data: dict[str, type] | None = None) -> dict:
     """응답 뒤에 글이 더 붙는 경우가 있어(평가의 Extra data 실패) 첫 JSON 객체만 읽는다.
     NaN·Infinity는 JSON이 아니어서 화면이 결과를 읽지 못하므로 받지 않는다."""
     start = reply.find("{")
@@ -31,10 +31,10 @@ def first_json_object(reply: str) -> dict:
     data = tree.get("data")
     if not isinstance(data, dict):
         raise PermanentError(INVALID_CODE, "AI 모델 응답에 추출 결과(data)가 없습니다.")
-    # 화면은 이 모양이 아니면 결과 전체를 읽지 못하므로 성공으로 넘기지 않는다.
-    if not isinstance(data.get("announcement"), dict) or not all(
-            isinstance(data.get(name), list) for name in ("supplyRows", "schedules")):
-        raise PermanentError(INVALID_CODE, "AI 모델 응답의 공고·공급행·일정 형식이 맞지 않습니다.")
+    # 단계별 응답은 관리자 계약의 일부만 갖고, 합친 뒤 최종 구조를 다시 확인한다.
+    expected = expected_data or {"announcement": dict, "supplyRows": list, "schedules": list}
+    if any(not isinstance(data.get(name), value_type) for name, value_type in expected.items()):
+        raise PermanentError(INVALID_CODE, "AI 모델 응답의 추출 단계 형식이 맞지 않습니다.")
     return tree
 
 
@@ -181,3 +181,36 @@ def objects(value: object) -> list[dict]:
 
 def text(value: object) -> str:
     return value if isinstance(value, str) else ""
+
+
+# 관리자 화면(extraction.ts validPath)이 읽는 경로 형식. 하나라도 어긋나면 화면이 추출 결과 전체를 거부한다.
+NOTE_PATH = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:\[(?:\d+|\*)\]|\.[A-Za-z][A-Za-z0-9]*)*")
+
+
+def normalize_note_paths(tree: dict, warnings: list[str]) -> None:
+    """모델이 미확인·해당없음 경로를 complexes[].parkingCount처럼 쓰면 화면이 결과 전체를 읽지 못한다.
+    빈 순번은 전체([*])로 바꾼다. 그래도 읽을 수 없는 미확인 경로는 읽을 수 있는 앞부분까지 넓히고(범위가 넓어져도 보수적이다),
+    해당없음 경로는 넓히면 그 아래 값이 모두 반영에서 빠지므로 빼고 경고로 남긴다."""
+    for key, holder, widen in (("unresolvedFields", tree.get("data", {}), True), ("notApplicable", tree, False)):
+        kept = []
+        for item in objects(holder.get(key)):
+            original = item.get("path")
+            path = re.sub(r"^\$\.?|^data\.", "", original.strip()).replace("[]", "[*]") if isinstance(original, str) else ""
+            usable = path if NOTE_PATH.fullmatch(path) else (readable_prefix(path) if widen else "")
+            if not usable:
+                warnings.append(f"{key}: 경로를 읽을 수 없는 항목을 뺐습니다({original}: {item.get('reason')})")
+                continue
+            if usable != path:
+                warnings.append(f"{key}: 읽을 수 없는 경로 {original}를 {usable}로 넓혔습니다.")
+            kept.append({**item, "path": usable})
+        if key in holder or kept:
+            holder[key] = kept
+
+
+def readable_prefix(path: str) -> str:
+    """경로 앞에서 온전한 마디(. 이나 [ 앞)까지만 남긴다."""
+    match = NOTE_PATH.match(path)
+    prefix = match.group() if match else ""
+    if prefix and path[len(prefix):][:1] not in ".[":
+        prefix = re.sub(r"(?:\.[A-Za-z0-9]*|\[[^\]]*)$", "", prefix)
+    return prefix
