@@ -2,6 +2,8 @@ package com.toadzip.backend.basiccomparison.repository;
 
 import com.toadzip.backend.basiccomparison.domain.ComparisonContent;
 import com.toadzip.backend.basiccomparison.domain.ComparisonProfile;
+import com.toadzip.backend.basiccomparison.domain.EligibilityDecision;
+import java.util.List;
 import com.toadzip.backend.basiccomparison.exception.InvalidComparisonException;
 
 import jakarta.validation.Validator;
@@ -51,6 +53,14 @@ public class ComparisonJsonCodec {
             throw new IllegalStateException("Unsupported basic comparison profile contract");
         }
         return json.readValue(encoded, ComparisonProfile.class);
+    }
+
+    public EligibilityDecision decision(String encoded) {
+        return json.readValue(encoded, EligibilityDecision.class);
+    }
+
+    public List<String> strings(String encoded) {
+        return List.of(json.readValue(encoded, String[].class));
     }
 
     public <T> T request(JsonNode node, Class<T> type) {

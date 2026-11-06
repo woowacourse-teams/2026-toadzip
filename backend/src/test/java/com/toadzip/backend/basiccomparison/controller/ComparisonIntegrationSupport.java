@@ -68,6 +68,12 @@ abstract class ComparisonIntegrationSupport {
                         + " CONFLICT DO NOTHING",
                 USER,
                 "basiccomparison-fixture-" + USER);
+        // Tests that physically remove a profile also reset its associated fixture job.
+        jdbc.update("UPDATE comparison_profile_rechecks SET requested_version = 0, cursor_announcement_id = 0,"
+                        + " state = 'PENDING', claim_token = NULL, lease_until = NULL,"
+                        + " next_attempt_at = '1970-01-01 UTC'"
+                        + " WHERE user_id = ? AND NOT EXISTS"
+                        + " (SELECT 1 FROM basic_comparison_profiles WHERE user_id = ?)", USER, USER);
     }
 
     long announcement() {

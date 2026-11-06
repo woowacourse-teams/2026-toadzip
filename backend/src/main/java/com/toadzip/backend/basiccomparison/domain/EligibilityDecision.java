@@ -4,6 +4,7 @@ import com.toadzip.backend.basiccomparison.domain.ComparisonContent.RecruitmentS
 import com.toadzip.backend.basiccomparison.domain.ComparisonResult.CheckResult;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 
 /** Compact personal readings. Shared notice/source data remains in the authored content. */
 public record EligibilityDecision(
@@ -49,7 +50,7 @@ public record EligibilityDecision(
     public List<String> eligibleOptionIdsIn(String regionCode, RegionMembership regions) {
         return options.stream().filter(option -> option.status() == Status.ELIGIBLE)
                 .filter(option -> option.regionCodes().stream().anyMatch(code ->
-                        regions.match(java.util.Set.of(regionCode), code) == RegionMembership.Match.MATCH))
+                        regions.match(Set.of(regionCode), code) == RegionMembership.Match.MATCH))
                 .map(OptionDecision::optionId).toList();
     }
 }

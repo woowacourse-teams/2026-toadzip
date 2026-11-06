@@ -17,13 +17,14 @@ public final class ComparisonResponses {
     private ComparisonResponses() {}
 
     public record Profile(
-            long version, int inputContractVersion, Instant updatedAt, ComparisonProfile profile) {
-        public static Profile of(StoredComparisonProfile stored) {
+            long version, int inputContractVersion, Instant updatedAt, ComparisonProfile profile,
+            String reevaluationState) {
+        public static Profile of(StoredComparisonProfile stored, String reevaluationState) {
             return new Profile(
                     stored.version(),
                     ComparisonProfile.CONTRACT_VERSION,
                     stored.updatedAt(),
-                    stored.profile());
+                    stored.profile(), reevaluationState);
         }
     }
 

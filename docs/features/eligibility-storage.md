@@ -42,15 +42,14 @@ erDiagram
     comparison_qualifications ||--o{ comparison_path_qualifications : required_by
     users ||--o| basic_comparison_profiles : provides
     users ||--o{ comparison_latest_results : receives
-    announcements ||--o{ comparison_latest_results : evaluated_for
+    comparison_notice_rechecks ||--o{ comparison_latest_results : evaluated_for
     users ||--o| comparison_profile_rechecks : requests
     announcements ||--o| comparison_notice_rechecks : requests
     comparison_latest_results ||--o| comparison_discoveries : may_produce
 ```
 
-공고·프로필 저장은 앞 PR에서, 최신 결과·복구 작업·새 지원 가능 발견은 후속 PR에서
-연결한다. 아래는 전체 계약이며 각 테이블의 실제 DDL과 실행 여부는 해당 마이그레이션과
-코드를 기준으로 확인한다.
+아래는 구현한 저장 계약이다. DDL은 `V20261106_03`(공고 관계), `V20261106_04`(입력 계약),
+`V20261106_05`(최신 결과·재판정)에 있다. 서비스 DB 적용 여부와 코드 구현 완료는 구분한다.
 
 ## 공고 구조화 테이블
 
@@ -139,17 +138,59 @@ erDiagram
 
 ## 최신 결과와 재판정 테이블
 
-이 절은 후속 PR의 구현 계약이다. 실제 DDL의 확정 컬럼·인덱스와 차이가 생기면 함께 갱신한다.
+### `comparison_latest_results` — 회원·공고의 최신 완료 결과
 
-| 테이블 | 키와 핵심 컬럼 | 제약과 목적 |
+| 컬럼 | 타입·제약 | 의미 |
 |---|---|---|
-| `comparison_latest_results` | PK(user_id, announcement_id), profile_version, rule_set_id, rule_set_revision, evaluator_version, status, result jsonb, evaluated_at | 사용자·공고 FK 삭제 연쇄. 한 쌍의 최신 완료 결과만 교체. rule_set_id는 판정 당시 식별값으로 보존하므로 이전 공개본 삭제에 연쇄되지 않음 |
-| `comparison_profile_rechecks` | user_id PK/FK, requested_version, cursor_announcement_id, state, claim_token, lease_until, next_attempt_at, attempts, last_error_code, updated_at | 회원당 한 작업을 합쳐 저장. 입력 저장과 같은 트랜잭션에서 갱신. 오래된 lease/버전은 진행·완료를 덮어쓰지 못함 |
-| `comparison_notice_rechecks` | announcement_id PK/FK, requested_generation, cursor_user_id, state, claim_token, lease_until, next_attempt_at, attempts, last_error_code, updated_at | 공고 변경당 회원을 작은 묶음으로 조회. 사용자×공고 전체에 대한 대기 행을 미리 생성하지 않음 |
-| `comparison_discoveries` | PK(user_id, announcement_id), generation, profile_version, rule_set_id, option_ids jsonb, discovered_at, acknowledged_at | Q8 전후 비교·반복 방지에 필요한 현재 발견만 보존. 한 공고 평생 1회가 아님. 현재 입력·공고와 어긋난 발견은 노출·발송 대상으로 사용하지 않음 |
+| user_id / announcement_id | bigint, 복합 PK. 사용자 / 공고 작업 기준 행 FK, 삭제 연쇄 | 정정 체인의 최초 공고 ID를 키로 사용 |
+| resolved_announcement_id | bigint NOT NULL | 판정 당시 최신 정정 공고 ID. 과거 식별값이므로 공고 삭제 FK 없음 |
+| profile_version / notice_generation | bigint ≥ 0 / bigint > 0 | 입력과 공고 변경 식별값. 프로필이 없으면 0 |
+| rule_set_id | nullable bigint | 판정 당시 공개본 ID. 공개본 교체·삭제에 연쇄되지 않음 |
+| availability / application_status | varchar(30) NOT NULL | 구조 공개 상태와 판정 당시 접수 상태 |
+| evaluator_version | varchar(100) NOT NULL | 평가 로직의 버전 |
+| status | varchar(30), 4개 판정 상태 CHECK | ELIGIBLE / INELIGIBLE / UNDETERMINED / NOT_EVALUATED |
+| result | nullable jsonb object | 조건·경로·실제 선택지 판정. 취소·마감 등 평가 대상 밖이면 null |
+| evaluated_at | timestamptz NOT NULL | 이 결과를 반영한 시각 |
 
-결과에는 원문의 전체 내용이나 과거 프로필을 넣지 않는다. 공통·경로 조건은 가능한 범위에서
-한 번 판독하고 선택지는 해당 판독을 참조한다. 부하 검증에서는 활성 공고 수 × 사용자 수,
+`(announcement_id, user_id)` 인덱스는 취소·은퇴 공고의 기존 결과만 순서대로 정리할 때 사용한다.
+공고 원문·전체 임대조건·과거 프로필은 결과에 복제하지 않는다.
+
+### `comparison_profile_rechecks` / `comparison_notice_rechecks` — 합쳐진 재판정 요청
+
+| 컬럼 | 타입·제약 | 의미 |
+|---|---|---|
+| user_id / announcement_id | 각 테이블 bigint PK/FK, 삭제 연쇄 | 회원당 또는 공고 root당 한 요청 |
+| requested_version / generation | bigint ≥ 0 / bigint > 0 | 처리할 최신 입력 버전 / 공고 변경 번호 |
+| cursor_announcement_id / cursor_user_id | bigint ≥ 0, 기본 0 | 마지막으로 처리한 대상. OFFSET 대신 키 순서로 이어감 |
+| state | varchar(16), PENDING / RUNNING / DONE | 대기·선점·전체 순회 완료 |
+| claim_token / lease_until | UUID / timestamptz | RUNNING일 때 둘 다 필수, 나머지 상태에서는 둘 다 null |
+| next_attempt_at | timestamptz NOT NULL | 재시도 가능 시각. 새 요청은 즉시 처리 대상 |
+| attempts / last_error_code | integer ≥ 0 / nullable varchar(100) | 연속 실패 횟수와 개인정보 없는 오류 코드 |
+| updated_at | timestamptz NOT NULL | 마지막 작업 변경 시각 |
+| retired | boolean NOT NULL, 공고 작업만 | 다른 정정 체인에 합쳐진 이전 root. 기존 결과를 지우는 작업으로 전환 |
+| observed_basis | nullable varchar(500), 공고 작업만 | 실제 확인한 최신 게시물·공개본·공개 상태·접수 상태·평가기 버전 |
+
+두 작업 테이블은 DONE을 제외한 `(next_attempt_at, 각 PK)` 부분 인덱스를 둔다. 공고 작업 행은
+완료 뒤에도 변경 식별 기준으로 남긴다. 사용자×공고의 대기 행을 미리 만들지 않는다.
+기존 회원과 최초 공고에는 마이그레이션이 요청을 생성하므로 재입력 없이 처리를 시작한다.
+
+### `comparison_discoveries` — 아직 안내할 새 지원 가능 선택지
+
+| 컬럼 | 타입·제약 | 의미 |
+|---|---|---|
+| user_id / announcement_id | 복합 PK/FK → 최신 결과, 삭제 연쇄 | 회원·공고마다 현재 발견 한 벌 |
+| event_id | UUID NOT NULL | 확인 처리와 재시도의 중복 방지 식별값 |
+| profile_version / notice_generation | bigint ≥ 0 / bigint > 0 | 발견이 유효한 입력·공고 기준 |
+| option_ids | 비어 있지 않은 jsonb array | 새로 지원 가능해진 실제 선택지 ID |
+| discovered_at / acknowledged_at | timestamptz, 확인 시각만 nullable | 발견 시점과 클라이언트의 확인 처리 시점 |
+
+같은 기준의 재시도는 event_id와 확인 상태를 보존한다. 미충족 뒤 다시 가능해지거나 다른
+선택지가 새로 가능해지면 새 event_id를 만든다. 공고별 평생 1회 정책이 아니다. 현재 기준과
+다르면 노출하지 않는다. 이는 화면 안내용 조회·확인 계약이며 외부 알림 발송 이력은 아니다.
+
+공통·경로 조건은 한 번 판독하고 선택지는 해당 판독을 참조한다. 공고 재판정의 한 묶음에서는
+구조화 내용과 소득표를 한 번 읽어 재사용하고, 반영 직전에는 식별값만 확인한다.
+부하 검증에서는 활성 공고 수 × 사용자 수,
 결과 평균 크기, 변경 빈도와 처리량을 함께 측정한다. 이 문서는 100만 명 성능의 실측 증거가 아니다.
 
 ### 갱신과 복구
@@ -165,13 +206,32 @@ erDiagram
 3. 저장한 입력·공고 기준으로 평가한 뒤 짧은 반영 트랜잭션에서 잠금/CAS로 현재 기준 확인과 결과·발견 저장을 원자화한다.
 4. 기준이 다르면 결과·발견을 반영하지 않고 현재 기준의 작업을 남긴다. 늦게 끝난 작업이 최신 작업보다 우선하지 않는다.
 5. 정상 완료 시 한 쌍의 결과를 교체한다. 이전 완료 결과와 비교해 새 지원 가능 발견의 최소 정보만 갱신한다.
-6. 커서·완료 갱신은 요청 version/generation과 claim token이 모두 같을 때만 허용한다. 새 요청은 커서를 시작점으로 되돌린다. 결과 저장 실패 시 커서를 진전시키지 않는다.
+6. 항목마다 결과 저장 뒤 커서를 기록한다. 요청 version/generation·claim token·lease가 맞을 때만 진행·완료를 갱신한다. 새 요청은 커서를 시작점으로 되돌리고 결과 저장 실패 시 커서를 진전시키지 않는다.
 7. 미시작·실패·lease 만료는 재선점할 수 있다. 재시도 간격에는 상한을 두되 필요 사실을 삭제하거나 사용자 재입력을 복구 조건으로 삼지 않는다.
 
 공고 정정 시 영향받는 선택지를 새 기준으로 판정하고 이전 기준의 안내는 보류한다.
 일부 취소는 해당 선택지에만 반영한다. 공고 전체 취소는 지원 가능 노출·대기 발송을 중단한다.
-이전 결과가 보이면 정보 또는 공고 변경 전 결과임을 명시한다. 처리 중을 정보 부족이나
-필수 자격 직접 확인으로 바꾸지 않는다.
+현재 API는 이전 결과 본문을 숨기고 마지막 완료 시각·입력 버전만 반환한다. 처리 중을
+정보 부족이나 필수 자격 직접 확인으로 바꾸지 않는다.
+
+### 실행 설정과 처리 범위
+
+| 설정 | 기본값 | 의미 |
+|---|---|---|
+| comparison.recheck.enabled | true | 재판정 스케줄러 실행. false여도 필요 사실은 DB에 남음 |
+| comparison.recheck.poll-milliseconds | 1000 | 한 회차가 끝난 뒤 다음 회차까지의 간격 |
+| comparison.recheck.batch-size | 32 | 회차별 키 조회 수. 1~1000으로 제한 |
+| comparison.recheck.lease-seconds | 120 | 선점 유효 시간. 최소 1초 |
+
+회차마다 공고 기준 대조·회원 작업 한 묶음·공고 작업 한 묶음을 실행한다. 전용 단일 스레드
+스케줄러를 사용해 기존 공통 예약 작업과 분리한다. 여러 인스턴스는 SKIP LOCKED로 선점한다.
+실패 시 간격을 지수적으로 늘리되 300초를 상한으로 두고 요청을 버리지 않는다.
+대조 커서는 프로세스 재시작 시 처음부터 돌며, 실제 기준·작업 커서는 DB에 남아 복구된다.
+
+현재 재판정 대상은 공통 접수 상태의 APPLYING / BEFORE_APPLICATION / CONDITIONAL이다.
+취소·비공개·마감·은퇴 공고는 기존 결과가 있는 회원만 정리한다. 세부 모집 예정 정책과
+결과 보존 기간은 후속 결정이다. 결과 건수는 여전히 활성 회원 수 × 공고 수에 비례하므로
+운영 용량·대기 시간·처리량은 별도 부하 검증과 조정이 필요하다.
 
 ## 검증과 전환
 
@@ -180,7 +240,7 @@ erDiagram
 투영, 프로필 충돌, 오래된 작업·중단 복구를 실제 격리 PostgreSQL에서 검증한다.
 
 기존 v2 경로를 소비하는 프론트 코드는 작업 시작 시 확인되지 않았다. 프론트팀이 연결할
-새 판정 API와 결과 형식은 구현 PR에서 문서화한다. 기존 공고·지도·알림·AI 추출 API를
+새 판정 API와 결과 형식은 [표시 계약](eligibility-decisions.md)에 문서화한다. 기존 공고·지도·알림·AI 추출 API를
 이 설계의 개편 대상과 섞지 않는다. 기존 마이그레이션과 구 데이터는 자동 삭제하지 않는다.
 공고 구조화 writer는 전환 동안 중단하고 새 writer와 마이그레이션을 함께 적용한다.
 v2 읽기 호환과 기존 행 투영을 검증한 뒤 관계형 조회를 사용한다. 구 writer를 계속 실행하며
@@ -189,3 +249,30 @@ v2 읽기 호환과 기존 행 투영을 검증한 뒤 관계형 조회를 사�
 검색·알림 전달 채널·상세 중복 정책, 모집 예정의 세부 범위와 결과 보존 기간, 부하 목표는
 기능 명세에서 남긴 후속 항목이다. 해당 선택이 필요한 단계에서 제안과 근거를 기록하며,
 미결을 이미 합의한 기능 동작으로 둔갑시키지 않는다.
+
+
+### 최신 결과 구현의 잠금 경계
+
+정정 체인의 최초 공고 ID를 안정적인 결과 키로 사용한다. `comparison_notice_rechecks`는
+이 키의 generation anchor로 계속 남기고, 최신 결과의 공고 FK는 이 anchor를 참조한다.
+announcements를 결과에서 직접 참조하면 결과 INSERT의 FK 검사 잠금과 기존 공고 writer의
+잠금 순서가 뒤집힐 수 있다. 삭제 관계는 공고 → anchor → 최신 결과 → 발견으로 연결한다.
+
+공고 관련 DB 트리거는 공개/취소/정정 연결/관리자 삭제/접수 날짜·검증 일정과 공개 구조 변경을
+같은 트랜잭션에서 작업에 남긴다. 조회수 증가는 제외한다. 정정으로 독립 공고가 다른 root에
+합쳐지면 이전 root는 은퇴시키고 새 root로만 반영·조회한다. 두 root 갱신은 ID 순으로 한다.
+
+worker는 선점 트랜잭션을 끝내고 읽기 스냅샷으로 계산한다. 반영 시 user → 해당 profile job →
+notice anchor 순으로 짧게 잠그며 공고 행을 다시 잠그지 않는다. 현재 profile/version, canonical
+root, generation, 공개본, 모집 상태와 claim token/lease가 맞을 때만 결과·발견을 교체한다.
+커서는 결과 저장 뒤 같은 요청·claim에 대한 CAS로 갱신한다. 같은 기준의 재시도는 no-op이며
+발견 식별값과 사용자 확인 상태를 보존한다.
+
+공고 내용에서 참조 중인 소득 기준표의 같은 ID는 불변으로 다룬다. 금액 변경·삭제·행 이동은
+DB에서 거부한다. 초안·공개본의 참조 저장은 해당 기준표 부모 행에 SHARE 잠금을 ID 순으로
+획득하고, 기준표·금액 변경은 같은 부모 행에 UPDATE 잠금을 얻은 뒤 참조를 확인한다.
+최초 참조 생성과 기준표 수정이 동시에 시작돼도 과거 기준값으로 판정한 결과가 현재로 남지 않는다.
+종류·연도의 유일 제약은 조회 인덱스로 바꿔 같은 연도의 정정표를 새 ID로
+추가할 수 있게 했다. 정정표를 참조하는 새 구조를 공개해 재판정한다. 공고 날짜 경과와
+평가기 변경은 작은 묶음의 대조 작업으로 감지하며,
+같은 기준을 반복 확인한 것만으로 진행 중 커서·claim을 초기화하지 않는다.

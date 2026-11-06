@@ -30,6 +30,15 @@ public class ComparisonProfileRepository {
                 .orElseGet(StoredComparisonProfile::empty);
     }
 
+    public long version(long userId) {
+        return jdbc.sql("SELECT version FROM basic_comparison_profiles WHERE user_id = ?")
+                .param(userId).query(Long.class).optional().orElse(0L);
+    }
+
+    public void lockUser(long userId) {
+        jdbc.sql("SELECT id FROM users WHERE id = ? FOR UPDATE").param(userId).query(Long.class).single();
+    }
+
     public StoredComparisonProfile save(
             long userId, long expectedVersion, String encoded, Instant now) {
         if (expectedVersion == 0) {
