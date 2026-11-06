@@ -35,8 +35,8 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
   // 주택형 패널은 편집 상태를 갖지 않아 닫았다 열어도 고른 값이 그대로다.
   const [panelOpen, setPanelOpen] = useState(false), [noticesChoice, setNoticesOpen] = useState<boolean | null>(null)
   const pending = pendingItems(review, savesHousingTypes, workspace)
+  const { groupIndex, group, shown, current, order } = supplyView(review, selected, filter, pending)
   // 공급정보는 위 고정 막대에서 고른 단지 하나씩 보인다. 그 단지의 행만 목록·편집 영역에 둔다.
-  const { groupIndex, group, shown, current, order } = supplyView(review, selected, filter, savesHousingTypes)
   // 편집을 마친 자리에서 바로 다음 행으로 넘어가게 한다. 좁은 화면에서는 위 이동 막대가 고정되지 않는다.
   const following = current >= 0 ? order[order.indexOf(current) + 1] : undefined
   const matched = group ? complexCorrespondence(review, workspace, groupIndex) : null

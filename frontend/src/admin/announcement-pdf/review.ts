@@ -387,7 +387,7 @@ export function pendingItems(review: Review, savesHousingTypes = true, workspace
     const row = review.rows[index]
     if (!row?.include) return
     // 편집 영역 순서(저장할 곳 → 값 비교 → 세부 타입 → 임대조건 → 주택형 가격)를 따른다.
-    if (pendingRow(row) || problems.get(index)?.level === 'error') items.push({ id: `row:${index}`, section: 'supply' })
+    if (pendingRow(row) || workspace !== undefined && undecidedComplex(row, workspace) || problems.get(index)?.level === 'error') items.push({ id: `row:${index}`, section: 'supply' })
     row.cells.filter(pendingCell).forEach(cell => items.push({ id: `cell:${cell.path}`, section: 'supply' }))
     pendingSubtypes(row).forEach(at => items.push({ id: `subtype:${index}:${at}`, section: 'supply' }))
     row.targets.forEach((target, at) => { if (pendingTarget(target)) items.push({ id: `target:${index}:${at}`, section: 'supply' }) })
@@ -894,6 +894,12 @@ export function needsComplex(row: RowReview, workspace: JsonWorkspace) {
   if (row.proposal.destination === 'new') return !row.proposal.anchorKey
   return workspace.supply.rows.find(item => item.key === row.proposal.destination)?.housingComplexId === null
 }
+
+/**
+ * 단지가 필요한데 아직 정하지 않은 행. 대응을 확인해도 확인 필요로 남긴다: 새 공급행은 저장도 막히고(assembleReview),
+ * 단지가 비어 있는 기존 공급행은 화면이 단지 정하기를 안내하므로 같은 기준으로 센다.
+ */
+export function undecidedComplex(row: RowReview, workspace: JsonWorkspace) { return needsComplex(row, workspace) && !row.proposal.newComplex }
 
 /** 단지를 정해야 하는 PDF 단지 수 */
 export function complexDecisionCount(review: Review, workspace: JsonWorkspace, only?: number[]) {

@@ -135,10 +135,13 @@ it('서버 검증을 마친 보정안을 적용 전 확인으로 보여 주고, 
   expect(input.correction.newGroups).toEqual([])
   expect(input.correction.rows).toEqual([expect.objectContaining({ id: 90, householdCount: 170, housingTypeId: 10353, linkedHousingTypes: [{ housingTypeId: 10352 }] })])
   expect(input.housingTypeValues?.map(value => [value.name, value.linkedHousingTypeId])).toEqual([['26A', undefined], ['26B', 10352]])
-  await act(async () => finish(previewResult({ housingTypeWarnings: ['26: 관리자가 고친 세대수를 유지합니다.'],
+  await act(async () => finish(previewResult({ housingTypeWarnings: ['26: 관리자가 고친 세대수를 유지합니다.'], fields: [{ field: 'applicationStartDate', before: '2026-10-20', after: '2026-10-27' }],
     housingTypes: [{ rowKey: 'row:1', housingTypeId: 10353, typeName: '26', before: { name: '26', supplyArea: null, householdCount: null }, after: { name: '26A', supplyArea: 52.5, householdCount: 120 } }] })))
   const summary = await screen.findByRole('region', { name: '적용 전 확인' })
   expect(within(summary).getByRole('note', { name: '적용 경고' })).toHaveTextContent('26: 관리자가 고친 세대수를 유지합니다.')
+  // 여러 탭에서 고른 값과 주택형 갱신을 개수가 아니라 변경 전후 값으로 보인다.
+  expect(within(summary).getByRole('region', { name: '기본정보·접수처 변경' })).toHaveTextContent('접수 시작일2026-10-20→2026-10-27')
+  expect(within(summary).getByRole('region', { name: '단지 주택형 갱신' })).toHaveTextContent('#10353 「26」이름 26 · 공급면적 없음 · 세대수 없음→이름 26A · 공급면적 52.5㎡ · 세대수 120')
   expect(api.applyJsonUpdate).not.toHaveBeenCalled()
   fireEvent.click(within(summary).getByRole('button', { name: '이대로 적용' }))
   await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })
@@ -173,6 +176,24 @@ it('미확정 공고는 임대·모집 유형을 고르고 단지를 확인했�
   expect(input.fields).toEqual(expect.arrayContaining(['rentalType', 'recruitmentType']))
   expect(input.document.announcement).toEqual(expect.objectContaining({ rentalType: 'NATIONAL_RENTAL', recruitmentType: 'WAITLIST' }))
   expect(await screen.findByRole('heading', { name: '공고를 공개했습니다.' })).toBeInTheDocument()
+})
+it('적용 전 확인을 연 뒤 공개 체크를 바꾸면 이전 보정안으로 적용하지 않고, 다시 확인한 보정안의 공개 여부로 적용한다', async () => {
+  api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
+  api.applyJsonUpdate.mockResolvedValue(unconfirmedWorkspace())
+  api.previewJsonUpdate.mockImplementation(async (_id: string, input: JsonUpdateInput) => previewResult({ publishes: Boolean(input.publish) }))
+  await open()
+  const release = () => screen.getByRole('region', { name: '공개 전 확인' })
+  fireEvent.change(within(release()).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
+  fireEvent.change(within(release()).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
+  fireEvent.click(within(release()).getByRole('checkbox', { name: /이 보정과 함께 공개합니다/ }))
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  await screen.findByRole('region', { name: '적용 전 확인' })
+  // 확인 화면이 열린 채 공개 체크를 끄면, 공개를 담은 이전 보정안은 더 이상 적용할 수 없어야 한다.
+  fireEvent.click(within(release()).getByRole('checkbox', { name: /이 보정과 함께 공개합니다/ }))
+  await waitFor(() => expect(screen.queryByRole('region', { name: '적용 전 확인' })).not.toBeInTheDocument())
+  await applyCorrection()
+  await waitFor(() => expect(api.applyJsonUpdate).toHaveBeenCalledTimes(1))
+  expect((api.applyJsonUpdate.mock.calls[0][1] as JsonUpdateInput).publish).toBeFalsy()
 })
 it('미확정 공고라도 공개를 요청하지 않으면 공개 요청을 보내지 않고 아직 보이지 않는다고 알린다', async () => {
   api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
@@ -325,6 +346,8 @@ it('기다리는 동안 추출 취소를 누르면 서버에서 작업을 끝내
   extractor.cancelExtraction.mockResolvedValueOnce(null).mockResolvedValueOnce('관리자가 추출을 취소했습니다. 다시 요청할 수 있습니다.')
   renderPage()
   await startExtraction()
+  // 하단 상태는 오른쪽 추출 상태와 같은 기준으로 추출 중·실패를 알린다.
+  expect(await screen.findByText('추출 중입니다')).toBeVisible()
   fireEvent.click(await screen.findByRole('button', { name: '추출 취소' }))
   await waitFor(() => expect(extractor.cancelExtraction).toHaveBeenCalledWith('29', 31))
   expect(screen.getByRole('button', { name: '추출 취소' })).toBeVisible()
@@ -333,6 +356,7 @@ it('기다리는 동안 추출 취소를 누르면 서버에서 작업을 끝내
   expect(await screen.findByText('관리자가 추출을 취소했습니다. 다시 요청할 수 있습니다.')).toBeVisible()
   expect(signal?.aborted).toBe(true)
   expect(screen.getByRole('button', { name: '다시 추출' })).toBeVisible()
+  expect(screen.getByText('추출하지 못했습니다')).toBeVisible()
 })
 it('서버가 칸 경로로 거절하면 화면 칸 이름으로 알리고 그 칸이 있는 접수처·기본정보로 옮긴다', async () => {
   api.previewJsonUpdate.mockRejectedValue(new ManagementError('receptionPlace.name: 필수 값입니다.', 400, {}, 'INVALID_REQUEST'))
@@ -1096,9 +1120,10 @@ it('검토 탭은 공급정보·일정·접수처 세 영역만 두고, 공급�
   chooseComplex('첨단H-3BL')
   expect(screen.getByRole('region', { name: '공급행 4 검토' })).toBeVisible()
   expect(screen.queryByRole('button', { name: /^1\. / })).not.toBeInTheDocument()
+  // 미해결 이동은 첫 확인 행의 단지를 열고, 그 행은 단지를 아직 정하지 않았으므로 단지 정하기로 간다(상태 배지와 같은 규칙).
   fireEvent.click(screen.getByRole('button', { name: /^미해결 \d+개/ }))
   expect(select).toHaveDisplayValue(/^첨단H-1BL/)
-  expect(screen.getByRole('region', { name: '공급행 1 검토' })).toHaveFocus()
+  expect(document.activeElement).toHaveAttribute('data-review-id', 'complex')
   fireEvent.keyDown(screen.getByRole('tab', { name: /^공급정보/ }), { key: 'ArrowRight' })
   expect(screen.getByRole('tab', { name: /^일정/ })).toHaveAttribute('aria-selected', 'true')
   expect(screen.queryByRole('group', { name: '공급행 이동' })).not.toBeInTheDocument()
@@ -1145,10 +1170,21 @@ it('확인 필요 필터에서 이전·다음은 단지 순서대로 확인 행�
   expect(visited).toEqual(expected)
 })
 
-it('확인 필요 필터에서 한 단지의 마지막 확인 행을 해결해도 다음 단지의 확인 행으로 이어 간다', async () => {
+it('확인 필요 필터에서 단지를 정하지 않은 행은 대응을 확인해도 목록에 남고, 상태는 단지 정하기로 옮긴다', async () => {
   await open(JSON.stringify(fixtures.gwangju.extraction))
   fireEvent.click(within(screen.getByRole('group', { name: '검토 항목 필터' })).getByRole('button', { name: /^확인 필요/ }))
   fireEvent.click(screen.getByRole('button', { name: '공급행 1 대응 확인' }))
+  const bar = screen.getByRole('group', { name: '공급행 이동' })
+  expect(within(bar).getByText('1. 39(창업인)')).toBeVisible()
+  fireEvent.click(within(bar).getByRole('button', { name: '공급행 1 확인 필요: 단지 정하기 확인하러 가기' }))
+  expect(document.activeElement).toHaveAttribute('data-review-id', 'complex')
+})
+
+it('확인 필요 필터에서 한 단지에 확인 행이 남지 않아도 다음 단지의 확인 행으로 이어 간다', async () => {
+  await open(JSON.stringify(fixtures.gwangju.extraction))
+  fireEvent.click(within(screen.getByRole('group', { name: '검토 항목 필터' })).getByRole('button', { name: /^확인 필요/ }))
+  // 첨단H-1BL의 유일한 확인 행을 적용에서 빼면 이 단지에는 확인 행이 남지 않는다.
+  fireEvent.click(screen.getByRole('checkbox', { name: '공급행 1 적용' }))
   const bar = screen.getByRole('group', { name: '공급행 이동' })
   expect(within(bar).getByText(/^이 단지에는 지금 필터에 맞는 공급행이 없습니다\. 다른 단지에 \d+행 남음$/)).toBeVisible()
   fireEvent.click(within(bar).getByRole('button', { name: '다음 공급행' }))

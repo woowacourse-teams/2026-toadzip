@@ -750,3 +750,19 @@ it('미확정 공고의 필수 일정·유형이 비면 확인 필요로 표시�
   ]))
   expect(() => assembleReview(review, workspace, evidence, release)).toThrow(/접수 시작일/)
 })
+
+it('단지를 정하지 않은 새 공급행은 대응을 확인해도 저장이 막히므로 단지를 정할 때까지 확인 필요로 남는다', () => {
+  const { review, workspace } = scenario('gwangju')
+  review.rows[0] = { ...review.rows[0], reviewed: true, proposal: { ...review.rows[0].proposal, destination: 'new', anchorKey: '', newComplex: undefined } }
+  expect(pendingItems(review, true, workspace).map(item => item.id)).toContain('row:0')
+  expect(() => assembleReview(review, workspace, { reason: '보정', sourceUrl: 'https://example.com', sourcePage: null })).toThrow(expect.objectContaining({ reviewId: 'row:0' }))
+  review.rows[0].proposal.newComplex = { id: 962, name: '광주첨단H-1BL', pnu: '1233011600106570004', category: 'RESUPPLY' } as NonNullable<typeof review.rows[0]['proposal']['newComplex']>
+  expect(pendingItems(review, true, workspace).map(item => item.id)).not.toContain('row:0')
+})
+
+it('단지가 비어 있는 기존 공급행도 단지 정하기 안내와 같게 단지를 정할 때까지 확인 필요로 남는다', () => {
+  const { review, workspace } = scenario('gwangju')
+  workspace.supply.rows.forEach(row => { row.housingComplexId = null })
+  review.rows[0].reviewed = true
+  expect(pendingItems(review, true, workspace).map(item => item.id)).toContain('row:0')
+})

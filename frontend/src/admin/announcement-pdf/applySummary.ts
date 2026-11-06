@@ -1,15 +1,19 @@
-import type { JsonPreview, JsonUpdateInput, JsonWorkspace } from '../announcement-json/api'
+import type { JsonPreview, JsonUpdateInput, JsonWorkspace, TypeValues } from '../announcement-json/api'
 import type { CorrectionRow, CorrectionTarget, LhSupplyRow, SupplyWorkspace } from '../supply/supplyCorrectionApi'
+import { labels } from '../management/fields'
 import { lhRowLabel, type HousingCandidates } from './matching'
+import { choices, metadataFields, receptionFields, shownDateTime } from './review'
 
 export type SummaryRow = { key: string; id: number | null; typeName: string; householdCount: number | null; housingType: string; linked: string[]
   change: 'same' | 'changed' | 'new' | 'excluded'; excluded: boolean }
 export type ComplexSummary = { name: string; before: SummaryRow[]; after: SummaryRow[]; beforeTotal: number | null; afterTotal: number | null; duplicates: string[] }
 export type SplitSummary = { label: string; merged: string; result: string; householdCount: number | null; lhHouseholdCount: number | null }
 export type TargetChange = { row: string; kind: 'new' | 'changed'; detail: string }
-export type ApplySummary = { complexes: ComplexSummary[]; splits: SplitSummary[]; targets: TargetChange[]; warnings: string[]; unattached: string[]; fieldCount: number; scheduleCount: number }
+/** 기본정보·접수처·일정·주택형 한 항목의 변경 전후. 값은 화면에 보일 글로 바꿔 둔다. */
+export type ValueChange = { label: string; before: string; after: string }
+export type ApplySummary = { complexes: ComplexSummary[]; splits: SplitSummary[]; targets: TargetChange[]; warnings: string[]; unattached: string[]
+  fields: ValueChange[]; schedules: ValueChange[]; housingTypes: ValueChange[] }
 
-const won = (value: string | null) => value === null ? '미확인' : `${Number(value).toLocaleString('ko-KR')}원`
 function typeLabel(row: CorrectionRow, housing: HousingCandidates) {
   const types = row.housingComplexId === null ? [] : housing[row.housingComplexId] ?? []
   const name = (id: number) => { const type = types.find(item => item.id === id); return type ? `${type.name} · 전용 ${type.exclusiveArea}㎡` : `주택형 #${id}` }
@@ -34,7 +38,43 @@ function total(rows: CorrectionRow[]) {
 }
 const comparable = (row: CorrectionRow) => JSON.stringify([row.typeName, row.householdCount, row.housingTypeId, row.newHousingType, row.linkedHousingTypes ?? null, row.exclusiveArea, row.supplyArea, row.moveInMonth, row.excluded, row.housingComplexId,
   row.targets.map(target => [target.target, target.supplyRank, target.householdCount, target.reserveCount, target.deposit, target.rent, target.convertedDeposit, target.condition, target.excluded])])
-const targetLabel = (target: CorrectionTarget) => `${target.target}${target.supplyRank ? ` ${target.supplyRank}` : ''} · 보증금 ${won(target.deposit)} · 월 ${won(target.rent)}`
+const amount = (value: string | number | null | undefined) => value === null || value === undefined || value === '' ? '없음' : `${Number(value).toLocaleString('ko-KR')}원`
+const plain = (value: unknown) => value === null || value === undefined || value === '' ? '없음' : String(value)
+/** 대상별 임대조건에서 비교하는 항목. 이름과 함께 바뀐 항목만 '이전 → 이후'로 적는다. */
+const targetParts: [label: string, read: (target: CorrectionTarget) => string][] = [['공급 대상', target => plain(target.target)], ['순위', target => plain(target.supplyRank)],
+  ['대상별 모집수', target => plain(target.householdCount)], ['예비자 수', target => plain(target.reserveCount)], ['보증금', target => amount(target.deposit)],
+  ['월 임대료', target => amount(target.rent)], ['전환보증금', target => amount(target.convertedDeposit)], ['신청 조건', target => plain(target.condition)]]
+const typeParts: [key: keyof TypeValues, read: (values: TypeValues) => string][] = [['name', values => `이름 ${values.name}`],
+  ['supplyArea', values => `공급면적 ${values.supplyArea == null ? '없음' : `${values.supplyArea}㎡`}`], ['householdCount', values => `세대수 ${values.householdCount ?? '없음'}`],
+  ['basicDeposit', values => `기본 보증금 ${amount(values.basicDeposit)}`], ['basicMonthlyRent', values => `기본 월 임대료 ${amount(values.basicMonthlyRent)}`]]
+const fieldLabels: Record<string, string> = Object.fromEntries([...metadataFields.map(([field, label]) => [field, label]), ...receptionFields.map(([field, label]) => [`receptionPlace.${field}`, label]),
+  ['rentalType', '공급 유형'], ['recruitmentType', '모집 유형'], ['name', '공고명']])
+function fieldValue(field: string, value: unknown) {
+  if (value === null || value === undefined || value === '') return '없음'
+  if (field === 'receptionPlace.method') return choices.method.find(([key]) => key === value)?.[1] ?? String(value)
+  return typeof value === 'string' && labels[value] ? labels[value] : shownDateTime(value)
+}
+const scheduleRange = (value: Record<string, unknown>) => `${shownDateTime(value.startAt)}${value.endAt ? ` ~ ${shownDateTime(value.endAt)}` : ''}`
+const scheduleType = (value: unknown) => choices.scheduleType.find(([key]) => key === value)?.[1] ?? plain(value)
+const scheduleName = (value: Record<string, unknown>) => plain(value.name ?? scheduleType(value.scheduleType))
+/** 미리보기의 기본정보·접수처·일정·주택형 갱신을 변경 전후 값으로 바꾼다. 주택형은 바뀐 값만, 새 주택형은 만들 값을 모두 적는다. */
+function valueChanges(preview: JsonPreview) {
+  const fields = preview.fields.map(change => ({ label: fieldLabels[change.field] ?? change.field, before: fieldValue(change.field, change.before), after: fieldValue(change.field, change.after) }))
+  // 일정은 이름·종류가 바뀌었으면 그 값도 전후 문구에 넣어, 날짜가 같아도 무엇이 바뀌는지 보이게 한다.
+  const schedules = preview.schedules.map(({ before, after }) => {
+    const named = before !== null && scheduleName(before) !== scheduleName(after), typed = before !== null && before.scheduleType !== after.scheduleType
+    const text = (value: Record<string, unknown>) => [named && scheduleName(value), typed && scheduleType(value.scheduleType), scheduleRange(value)].filter(Boolean).join(' · ')
+    return { label: scheduleName(after), before: before ? text(before) : '새 일정', after: text(after) }
+  })
+  const housingTypes = preview.housingTypes.map(change => {
+    const shown = change.before === null ? typeParts.filter(([key]) => key === 'name' || key === 'supplyArea' || key === 'householdCount' || change.after[key] != null)
+      : typeParts.filter(([key]) => (change.before![key] ?? null) !== (change.after[key] ?? null))
+    return { label: change.housingTypeId === null ? `새 주택형 「${change.after.name}」` : `#${change.housingTypeId} 「${change.typeName}」`,
+      before: change.before === null ? '없음' : shown.map(([, read]) => read(change.before!)).join(' · '), after: shown.map(([, read]) => read(change.after)).join(' · ') }
+  })
+  return { fields, schedules, housingTypes }
+}
+const targetLabel = (target: CorrectionTarget) => `${target.target}${target.supplyRank ? ` ${target.supplyRank}` : ''} · 보증금 ${amount(target.deposit)} · 월 ${amount(target.rent)}`
 
 /**
  * 적용 전 요약. 서버 미리보기의 변경 전후 공급행을 단지별로 묶어 모집수 합계와 같은 주택형 중복을 보이고,
@@ -72,12 +112,12 @@ export function summarizePreview(preview: JsonPreview, housing: HousingCandidate
     return row.targets.filter(target => !target.excluded).flatMap((target): TargetChange[] => {
       const old = target.id === null ? undefined : previous?.targets.find(item => item.id === target.id)
       if (!old) return [{ row: row.typeName, kind: 'new', detail: targetLabel(target) }]
-      return targetLabel(old) !== targetLabel(target) || old.householdCount !== target.householdCount || old.reserveCount !== target.reserveCount || old.condition !== target.condition
-        ? [{ row: row.typeName, kind: 'changed', detail: `${targetLabel(old)} → ${targetLabel(target)}` }] : []
+      const changed = targetParts.filter(([, read]) => read(old) !== read(target)).map(([label, read]) => `${label} ${read(old)} → ${read(target)}`)
+      return changed.length ? [{ row: row.typeName, kind: 'changed', detail: [target.target, ...changed].join(' · ') }] : []
     })
   })
   return { complexes, splits, targets, warnings: [...new Set([...preview.warnings, ...supply?.warnings ?? [], ...preview.housingTypeWarnings])],
-    unattached: (supply?.unattachedLhSupplyRows ?? []).map(lhRowLabel), fieldCount: preview.fields.length, scheduleCount: preview.schedules.length }
+    unattached: (supply?.unattachedLhSupplyRows ?? []).map(lhRowLabel), ...valueChanges(preview) }
 }
 
 /**

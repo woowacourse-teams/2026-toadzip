@@ -1,7 +1,7 @@
 import type { JsonWorkspace } from '../announcement-json/api'
 import type { CorrectionRow, LhSupplyRow } from '../supply/supplyCorrectionApi'
 import { attachableLhRows, equalArea, lhName, sameComplex, splittableLhRows, typeKey } from './matching'
-import { assembledCount, complexGroups, needsComplex, placementMode, type Review } from './review'
+import { assembledCount, complexGroups, placementMode, rowOfReviewId, undecidedComplex, type Review } from './review'
 
 /**
  * LH 통합행 하나와 그 행을 주택형별로 적은 PDF 행들. 나누기(split)와 LH대로 1행 유지(keep)는 단지 단위 결정이다.
@@ -182,6 +182,14 @@ export function placementShort(review: Review, index: number, workspace: JsonWor
 export function placementTarget(review: Review, workspace: JsonWorkspace, index: number): 'row' | 'complex' | 'match' {
   const row = review.rows[index], group = groupOf(review, index)
   if (placementDoubt(review, index, workspace)) return 'row'
-  if (needsComplex(row, workspace) && !row.proposal.newComplex) return 'complex'
+  if (undecidedComplex(row, workspace)) return 'complex'
   return group >= 0 && complexCorrespondence(review, workspace, group).offers.some(offer => offer.members.includes(index)) ? 'match' : 'row'
+}
+
+/** 확인 항목으로 옮길 곳. 저장할 곳 확인(row:i)은 그 확인을 푸는 곳(행·단지 정하기·LH·PDF 대응)으로 바꾼다. 상태 배지와 하단 미해결 이동이 같이 쓴다. */
+export function pendingJumpTarget(review: Review, workspace: JsonWorkspace, id: string) {
+  const index = rowOfReviewId(id)
+  if (index === null || !id.startsWith('row:')) return id
+  const place = placementTarget(review, workspace, index)
+  return place === 'complex' ? 'complex' : place === 'match' ? `match:${groupOf(review, index)}` : id
 }
