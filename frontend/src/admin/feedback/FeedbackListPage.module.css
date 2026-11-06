@@ -3,7 +3,7 @@
 .heading { margin-bottom: var(--ds-space-6); }
 .heading h1 { font-size: 28px; line-height: 1.4; letter-spacing: -0.04em; }
 .page .heading p { margin-top: var(--ds-space-2); color: var(--ds-color-label); font-size: var(--ds-text-body); line-height: 1.7; word-break: keep-all; }
-.filters { display: flex; margin-bottom: var(--ds-space-6); padding: var(--ds-space-5) var(--ds-space-6); align-items: end; gap: var(--ds-space-3); border: 1px solid var(--ds-color-divider); border-radius: 12px; background: var(--ds-color-surface); }
+.filters { display: flex; margin: 0; padding: 0 0 var(--ds-space-4); align-items: end; gap: var(--ds-space-3); }
 .filters .searchField { display: grid; flex: 1; min-width: 0; gap: var(--ds-space-2); color: var(--ds-color-label); font-size: var(--ds-text-caption); }
 .inputWrap { position: relative; display: block; }
 .inputWrap svg { position: absolute; top: 50%; left: var(--ds-space-3); width: 18px; height: 18px; transform: translateY(-50%); color: var(--ds-color-muted); pointer-events: none; }
@@ -13,7 +13,8 @@
 .actions button { min-width: 72px; min-height: var(--ds-control-height-md); }
 .page .resetButton { border-color: var(--ds-color-table-line); border-radius: var(--ds-radius-control); color: var(--ds-color-label); background: var(--ds-color-surface); }
 .page .resetButton:hover { background: var(--ds-color-surface-subtle); }
-.results { overflow: hidden; border: 1px solid var(--ds-color-divider); border-radius: 12px; background: var(--ds-color-surface); }
+/* 결과는 카드 폭 끝까지 붙이고 위 선으로만 필터와 나눈다. */
+.results { overflow: hidden; margin-inline: -24px; border: 0; border-top: 1px solid var(--ds-color-divider); border-radius: 0; background: var(--ds-color-surface); }
 .resultsHeading { display: flex; padding: var(--ds-space-5) var(--ds-space-6); align-items: center; justify-content: space-between; gap: var(--ds-space-3); border-bottom: 1px solid var(--ds-color-divider); }
 .page .meta { margin: 0; color: var(--ds-color-label); font-size: var(--ds-text-body); }
 .meta strong { margin-inline: var(--ds-space-1); color: var(--ds-color-action); font-size: var(--ds-text-title); font-weight: var(--ds-weight-strong); font-variant-numeric: tabular-nums; }

@@ -32,7 +32,7 @@
 .layout :global(.admin-header) { position:sticky; top:0; z-index:30; display:flex; flex-direction:row; align-items:center; gap:48px; padding:0 32px 0 24px; min-height:0; background:linear-gradient(90deg, var(--ds-color-surface) var(--admin-nav-width), var(--admin-canvas) var(--admin-nav-width)); border-bottom:0; }
 /* 로고 줄 폭은 메뉴 항목의 오른쪽 끝(메뉴 안쪽 여백 16px)에 맞춰, 접기 버튼이 메뉴 항목과 같은 선에 오게 한다. */
 .layout :global(.admin-brand) { width:calc(var(--admin-nav-width) - 40px); box-sizing:border-box; flex:none; }
-.layout :global(.admin-brand-context) { font-size:13px; font-weight:650; color:var(--ds-color-label); }
+.layout :global(.admin-brand-context) { white-space:nowrap; font-size:13px; font-weight:650; color:var(--ds-color-label); }
 .collapseButton { display:flex; flex:none; align-items:center; justify-content:center; width:32px; height:32px; margin-left:auto; padding:0; border:0; border-radius:var(--ds-radius-control); background:transparent; color:var(--ds-color-muted); cursor:pointer; }
 .layout :global(.admin-header) .collapseButton { min-height:0; padding:0; border:0; background:transparent; }
 .collapseButton:hover, .layout :global(.admin-header) .collapseButton:hover { background:var(--ds-color-surface-subtle); color:var(--ds-color-text); }

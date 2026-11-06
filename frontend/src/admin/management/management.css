@@ -210,3 +210,6 @@
 .admin-content .registration-error {display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:0 0 16px;padding:14px 18px;border:1px solid var(--admin-danger-line);border-radius:var(--admin-radius-card,16px);background:var(--admin-danger-soft);color:var(--admin-danger);}
 .admin-content table input[type=checkbox] {width:18px;height:18px;accent-color:var(--ds-color-action);}
 .admin-empty {border-radius:var(--admin-radius-card,16px);}
+
+/* 목록 화면 공통 카드: 필터·목록·페이지 이동을 흰 카드 하나에 담는다(단지·공고 목록과 같은 모양). */
+.admin-content .admin-list-card {box-sizing:border-box;min-width:0;padding:16px 24px;background:var(--ds-color-surface);border-radius:var(--admin-radius-card,16px);box-shadow:var(--admin-shadow-card);}

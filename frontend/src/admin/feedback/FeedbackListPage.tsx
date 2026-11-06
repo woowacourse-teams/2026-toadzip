@@ -59,6 +59,7 @@ export function FeedbackListPage() {
 
   return <section className={styles.page}>
     <header className={styles.heading}><h1>사용자 의견</h1></header>
+    <div className="admin-list-card">
     <form data-admin-navigation key={search} className={styles.filters} aria-label="사용자 의견 검색" onSubmit={event => {
       event.preventDefault()
       const values = new FormData(event.currentTarget)
@@ -106,6 +107,7 @@ export function FeedbackListPage() {
         </ol> : <p className={styles.empty}>{keyword.trim() ? '검색 결과가 없습니다.' : '접수된 의견이 없습니다.'}</p>}
         <div className={styles.pagination}><ListPagination page={data.page} totalPages={data.totalPages} onMove={move} disabled={pending} label="사용자 의견 목록 페이지" /></div>
       </>}
+    </div>
     </div>
   </section>
 }
