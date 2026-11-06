@@ -1,5 +1,5 @@
 import type { JsonWorkspace } from '../announcement-json/api'
-import { groupOf, placementShort, placementTarget } from './correspondence'
+import { pendingJumpTarget, placementShort } from './correspondence'
 import { complexGroups, assembledCount, pendingSummary, rowPendingItems, rowStatus, type PendingItem, type PlacementProblem, type Review } from './review'
 import styles from './PdfCorrection.module.css'
 
@@ -11,10 +11,9 @@ export function RowStatusBadge({ review, workspace, index, problem, pending, onJ
   pending: PendingItem[]; onJump?: (target: string) => void; detailed?: boolean }) {
   const items = rowPendingItems(pending, index), status = rowStatus(review.rows[index], problem, items.length > 0), summary = pendingSummary(items)
   // 저장할 곳 확인은 그 확인을 푸는 곳(행·단지 정하기·LH·PDF 대응)으로 옮긴다.
-  const place = items[0]?.id.startsWith('row:') ? placementTarget(review, workspace, index) : 'row'
-  const target = place === 'complex' ? 'complex' : place === 'match' ? `match:${groupOf(review, index)}` : items[0]?.id
+  const target = items[0] ? pendingJumpTarget(review, workspace, items[0].id) : undefined
   // 이름은 실제로 옮겨 가는 곳을 말한다.
-  const label = place === 'complex' ? summary.replace('저장할 곳', '단지 정하기') : place === 'match' ? summary.replace('저장할 곳', 'LH·PDF 대응') : summary
+  const label = target === 'complex' ? summary.replace('저장할 곳', '단지 정하기') : target?.startsWith('match:') ? summary.replace('저장할 곳', 'LH·PDF 대응') : summary
   if (!items.length || !onJump) return <span className={styles.statusBadge} data-tone={status.tone}>{status.label}</span>
   return <button type="button" data-design-system className={styles.statusBadge} data-tone={status.tone} title={label} aria-label={`공급행 ${index + 1} ${status.label}: ${label} 확인하러 가기`}
     onClick={() => onJump(target!)}>{detailed ? `${status.label} · ${label}` : status.label}</button>

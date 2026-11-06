@@ -20,7 +20,7 @@ import { checkAnnouncement, type ComplexLabels, type HousingCandidates } from '.
 import { applicableCells, assembleReview, fieldNeeds, pendingField, serverFieldError, serverFieldsError, placementProblems, rowPendingItems, rowOfReviewId, cellMatches, createReview, pendingChanges, pendingItems, rebaseReview, ReviewError, reviewSection, type Cell, type ReleaseChoice, type PendingChange, type Review, type ReviewFilter, type ReviewSection } from './review'
 import { ReviewCells } from './ReviewCells'
 import { ReviewSupply } from './ReviewSupply'
-import { groupOf } from './correspondence'
+import { groupOf, pendingJumpTarget } from './correspondence'
 import { supplyView } from './supplyView'
 import { SupplyNavigator } from './SupplyNavigator'
 import { SharedCountsRepair } from './SharedCountsRepair'
@@ -278,7 +278,9 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     if (filter !== 'pending') setFilter('all')
     const row = rowOfReviewId(item.id)
     if (row !== null) setSelectedRow(row)
-    setSection(item.section); setMobileView('review'); setJump(previous => ({ id: item.id, nonce: (previous?.nonce ?? 0) + 1 }))
+    // 저장할 곳 확인은 그 확인을 푸는 곳(단지 정하기·LH·PDF 대응)으로 간다. 상태 배지와 같은 규칙이다.
+    const target = workspace ? pendingJumpTarget(review, workspace, item.id) : item.id
+    setSection(item.section); setMobileView('review'); setJump(previous => ({ id: target, nonce: (previous?.nonce ?? 0) + 1 }))
   }
   function chooseLocalPdf(file: File | undefined) {
     if (!file) return
@@ -441,7 +443,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       <div className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="prepare"><RequestPreparation announcementName={workspace.detail.summary.name} pdf={pdf} extraction={extraction} onExtract={extract} onCancel={() => void cancelExtract()} parsed={parsed} checks={checks} saved={saved} samePdf={Boolean(saved && pdfHash && saved.pdfSha256 === pdfHash)} onLoadSaved={loadSaved} />{!parsed.ok && extraction.status === 'done' && <SharedCountsRepair text={text} onEvidence={evidence} onRepair={value => {
         setText(value); setNotice('공통 모집수 교정본을 확인했습니다. 저장된 추출 원본은 유지합니다. 묶음을 해제했다면 개별 모집수를 확인하세요.')
       }} />}</div>
-    </div><PreparationFooter ready={Boolean(pdf) && parsed.ok && (extraction.status === 'done' || resumable)} needsRepair={extraction.status === 'done' && !parsed.ok} onReview={start} /></>}
+    </div><PreparationFooter ready={Boolean(pdf) && parsed.ok && (extraction.status === 'done' || resumable)} needsRepair={extraction.status === 'done' && !parsed.ok} status={extraction.status} onReview={start} /></>}
     {active && review && <><div className={styles.mobileSwitch}><Button data-design-system aria-pressed={mobileView === 'pdf'} onClick={() => setMobileView('pdf')}>PDF 보기</Button><Button data-design-system aria-pressed={mobileView === 'review'} onClick={() => setMobileView('review')}>검토표 보기</Button></div><div className={styles.workbench}>{pdfPane}
       <div ref={reviewPane} className={styles.reviewPane} hidden={mobileView !== 'review'} data-pane="review">
         {checks.some(check => check.matches === false) && <p className={styles.error}>PDF의 {checks.filter(check => check.matches === false).map(check => `${check.label}(${check.pdf})`).join('·')}이 현재 공고와 다릅니다. 이 공고의 PDF로 받은 응답인지 확인하세요.</p>}
@@ -450,7 +452,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
             <SectionTabs tabs={sectionTabs(section, pending, Boolean(supplyDraft))} onSelect={tab => { setSection(tab.key); scrollReviewTop() }} />
             <div className={styles.filters} role="group" aria-label="검토 항목 필터">{filterLabels.map(([key, label]) => <Button data-design-system key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}{key !== 'all' && ` ${key === 'pending' ? pending.length : counts[key]}`}</Button>)}</div>
           </div>
-          {section === 'supply' && !checked && <SupplyNavigator review={review} workspace={workspace} view={supplyView(review, selectedRow, filter, !supplyDraft)} pending={pending} problems={placementProblems(review, workspace)}
+          {section === 'supply' && !checked && <SupplyNavigator review={review} workspace={workspace} view={supplyView(review, selectedRow, filter, pending)} pending={pending} problems={placementProblems(review, workspace)}
             onSelectComplex={index => { selectRow(index); scrollReviewTop() }} onSelectRow={stepRow} onJump={goTo} />}
         </div>
         {checked && <ApplySummaryPanel summary={summarizePreview(checked.preview, housing, workspace.supply.lhSupplyRows ?? [])} busy={busy} onApply={() => void confirmApply()} onBack={() => setChecked(null)} />}
