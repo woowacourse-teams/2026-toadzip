@@ -37,8 +37,6 @@
 .layout :global(.admin-header) button { min-height:36px; padding:7px 12px; border:1px solid var(--ds-color-border-base); border-radius:var(--ds-radius-control); background:var(--ds-color-surface); color:var(--ds-color-label); font:inherit; font-size:12px; cursor:pointer; }
 /* 메뉴는 머리 띠 아래 화면 높이를 채우는 흰 띠로 붙인다. 본문 바탕과 색 차이로만 나누고 선은 긋지 않는다. */
 .layout :global(.admin-navigation) { position:sticky; top:var(--admin-header-height); align-self:start; box-sizing:border-box; height:calc(100dvh - var(--admin-header-height)); overflow-y:auto; gap:20px; margin:0; padding:8px 16px 20px; border:0; border-radius:0; background:var(--ds-color-surface); }
-.collapseButton { display:flex; align-items:center; justify-content:center; align-self:flex-end; width:36px; height:36px; padding:0; border:0; border-radius:var(--ds-radius-control); background:transparent; color:var(--ds-color-muted); cursor:pointer; }
-.collapseButton:hover { background:var(--ds-color-surface-subtle); color:var(--ds-color-text); }
 .layout :global(.admin-navigation) svg { flex:none; }
 .layout :global(.admin-nav-group) { display:flex; flex-direction:column; gap:2px; }
 .layout :global(.admin-nav-group)>span, .navTools>summary { padding:0 12px 6px; color:var(--ds-color-muted); font-size:12px; font-weight:600; letter-spacing:0; }
@@ -79,21 +77,6 @@
 .layout[class] :global(.admin-content) input[type=number]::-webkit-inner-spin-button, .layout[class] :global(.admin-content) input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
 .layout :is(a,button,input,select,textarea,summary):focus-visible { outline:2px solid var(--ds-color-action); outline-offset:3px; }
 .layout .menuButton { display:none; align-items:center; gap:7px; }
-@media(min-width:761px) {
- .layout[class][data-collapsed=true] { --admin-nav-width:88px; }
- .layout[data-collapsed=true] :global(.admin-brand-context) { display:none; }
- .layout[data-collapsed=true] :global(.admin-navigation) { gap:12px; padding:16px 10px; overflow:visible; max-height:none; }
- .layout[data-collapsed=true] .collapseButton { align-self:center; }
- .layout[data-collapsed=true] .navFoot, .layout[data-collapsed=true] :global(.admin-nav-group)>span, .layout[data-collapsed=true] .navTools>summary { display:none; }
- .layout[data-collapsed=true] :global(.admin-navigation) a { position:relative; justify-content:center; padding:12px; }
- .layout[data-collapsed=true] .menuLabel { display:none; position:absolute; z-index:20; left:calc(100% + 8px); padding:8px 12px; border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); background:var(--ds-color-text); color:var(--ds-color-surface); white-space:nowrap; box-shadow:0 4px 12px #0002; }
- /* 이름 말풍선은 본문을 가리므로 지금 있는 메뉴에서는 띄우지 않고, 다른 메뉴도 잠시 머물렀을 때만 띄운다. 키보드 이동에는 바로 띄운다. */
- .layout[data-collapsed=true] a:not([aria-current=page]):hover .menuLabel { display:block; animation:menuLabelIn .12s ease-out .35s both; }
- .layout[data-collapsed=true] a:focus-visible .menuLabel { display:block; }
- .layout[data-collapsed=true] .navTools { border-top:1px solid var(--ds-color-divider); padding-top:12px; }
- .layout[data-collapsed=true] .navTools :global(.admin-nav-group) { margin:0; }
- .layout[data-collapsed=true] :global(.admin-navigation) a[aria-current=page] { box-shadow:inset 3px 0 var(--ds-color-action); }
-}
 @media(max-width:1100px) { .layout[class] { --admin-nav-width:216px; } .layout :global(.admin-content) { padding:8px 20px 48px; } .layout :global(.admin-brand) { width:155px; } }
 @media(max-width:760px) {
  .layout[class] { display:block; }
@@ -104,11 +87,9 @@
  .layout .menuButton { display:inline-flex; }
  .layout :global(.admin-navigation) { display:none; position:static; flex-direction:column; align-items:stretch; height:auto; gap:16px; margin:0; padding:12px 16px 16px; border-right:0; border-bottom:1px solid var(--admin-line); }
  .layout :global(.admin-navigation)[data-open=true] { display:flex; }
- .collapseButton,.navFoot { display:none; }
+ .navFoot { display:none; }
  .layout :global(.admin-nav-group)>span { display:block; }
  .layout :global(.admin-content) { padding:20px 16px 48px; }
  .layout :global(.admin-content) h1 { font-size:22px; }
 }
 
-@keyframes menuLabelIn { from { opacity:0; } to { opacity:1; } }
-@media (prefers-reduced-motion: reduce) { .layout[data-collapsed=true] a:not([aria-current=page]):hover .menuLabel { animation-duration:0s; } }

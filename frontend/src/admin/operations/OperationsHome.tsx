@@ -6,10 +6,10 @@ import { listDeliveries } from '../notifications/deliveryApi'
 import styles from './OperationsHome.module.css'
 
 const work = [
-  { title: '단지 수집·정제 실패', href: '/admin/failures?domain=complex&status=PENDING', description: '원천 수집, 주소·좌표와 주택형 정제 실패를 복구합니다.', load: (signal: AbortSignal) => getFailureReviews('complex', 'all', 'PENDING', 0, signal) },
-  { title: '공고 수집·정제 실패', href: '/admin/failures?domain=announcement&status=PENDING', description: '공고 수집, 단지 연결과 공급정보 보강 실패를 복구합니다.', load: (signal: AbortSignal) => getFailureReviews('announcement', 'all', 'PENDING', 0, signal) },
-  { title: '새 사용자 의견', href: '/admin/feedback?status=OPEN', description: '의견을 조사하고 처리 상태·결과·처리자를 확인합니다.', load: (signal: AbortSignal) => listFeedback(new URLSearchParams({ status: 'OPEN', size: '1' }), signal) },
-  { title: '알림 발송 실패', href: '/admin/notification-deliveries?status=FAILED', description: '발송 실패 원인을 회원의 알림 신청과 함께 확인합니다.', load: (signal: AbortSignal) => listDeliveries(new URLSearchParams({ status: 'FAILED', size: '1' }), signal) },
+  { title: '단지 수집·정제 실패', href: '/admin/failures?domain=complex&status=PENDING', load: (signal: AbortSignal) => getFailureReviews('complex', 'all', 'PENDING', 0, signal) },
+  { title: '공고 수집·정제 실패', href: '/admin/failures?domain=announcement&status=PENDING', load: (signal: AbortSignal) => getFailureReviews('announcement', 'all', 'PENDING', 0, signal) },
+  { title: '새 사용자 의견', href: '/admin/feedback?status=OPEN', load: (signal: AbortSignal) => listFeedback(new URLSearchParams({ status: 'OPEN', size: '1' }), signal) },
+  { title: '알림 발송 실패', href: '/admin/notification-deliveries?status=FAILED', load: (signal: AbortSignal) => listDeliveries(new URLSearchParams({ status: 'FAILED', size: '1' }), signal) },
 ]
 type Count = { value: number; error?: never } | { error: string; value?: never }
 export function OperationsHome() {
@@ -35,7 +35,6 @@ export function OperationsHome() {
       <div className={styles.cardHead}><h2>{item.title}</h2>
         <Link className={styles.go} to={item.href} aria-label={`${item.title} 목록으로 이동`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8" /></svg></Link></div>
       <span className={styles.count} aria-label={`${item.title} 건수`}>{counts?.[index].value?.toLocaleString('ko-KR') ?? '—'}<small>건</small></span>
-      <p>{item.description}</p>
       {counts?.[index].error && <p role="alert">조회 실패: {counts[index].error} 목록에서 다시 확인해 주세요.</p>}
     </li>)}</ul>
     <section className={styles.tools}><h2>작업 도구</h2><nav className={styles.links} aria-label="운영 도구">
