@@ -1,6 +1,18 @@
+vi.mock('./admin/operations/api', () => ({
+  loadComplexOverview: vi.fn(async () => ({ total: 0, recruiting: 0, missingCoordinates: 0, reviewRequired: 0, agencies: { LH: 0, SH: 0, GH: 0 }, asOf: '2026-11-06T00:00:00Z' })),
+  loadAnnouncementOverview: vi.fn(async () => ({ statuses: {}, attention: 0, reasons: {}, asOf: '2026-11-06T00:00:00Z' })),
+  loadUserOverview: vi.fn(async () => ({ total: 0, newUsers: 0, previousNewUsers: 0, trend: [], asOf: '2026-11-06T00:00:00Z' })),
+  loadCollectionOverview: vi.fn(async () => ({ sources: [], asOf: '2026-11-06T00:00:00Z' })),
+}))
 vi.mock('./admin/notifications/deliveryApi', async original => ({ ...await original<typeof import('./admin/notifications/deliveryApi')>(), listDeliveries: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })) }))
 vi.mock('./admin/feedback/api', async original => ({ ...await original<typeof import('./admin/feedback/api')>(), listFeedback: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })) }))
 vi.mock('./admin/ingest/failureReviewApi', async original => ({ ...await original<typeof import('./admin/ingest/failureReviewApi')>(), getFailureReviews: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })) }))
+vi.mock('./admin/notifications/api', async original => ({
+  ...await original<typeof import('./admin/notifications/api')>(),
+  loadNotificationSubscriptions: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0,
+    summary: { activeMembers: 0, activeSubscriptions: 0, asOf: '2026-11-06T00:00:00Z' } })),
+  loadNotificationTrend: vi.fn(async () => ({ days: [], collectionStartedAt: null, asOf: '2026-11-06T00:00:00Z' })),
+}))
 vi.mock('./admin/management/api', async importOriginal => ({
   ...(await importOriginal<typeof import('./admin/management/api')>()),
   getManagementPage: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })),
