@@ -18,7 +18,7 @@ WHITESPACE = re.compile(r"\s+")
 DATE_FIELDS = ("postedDate", "applicationStartDate", "applicationEndDate", "winnerAnnouncementDate")
 
 
-def first_json_object(reply: str) -> dict:
+def first_json_object(reply: str, expected_data: dict[str, type] | None = None) -> dict:
     """응답 뒤에 글이 더 붙는 경우가 있어(평가의 Extra data 실패) 첫 JSON 객체만 읽는다.
     NaN·Infinity는 JSON이 아니어서 화면이 결과를 읽지 못하므로 받지 않는다."""
     start = reply.find("{")
@@ -31,10 +31,10 @@ def first_json_object(reply: str) -> dict:
     data = tree.get("data")
     if not isinstance(data, dict):
         raise PermanentError(INVALID_CODE, "AI 모델 응답에 추출 결과(data)가 없습니다.")
-    # 화면은 이 모양이 아니면 결과 전체를 읽지 못하므로 성공으로 넘기지 않는다.
-    if not isinstance(data.get("announcement"), dict) or not all(
-            isinstance(data.get(name), list) for name in ("supplyRows", "schedules")):
-        raise PermanentError(INVALID_CODE, "AI 모델 응답의 공고·공급행·일정 형식이 맞지 않습니다.")
+    # 단계별 응답은 관리자 계약의 일부만 갖고, 합친 뒤 최종 구조를 다시 확인한다.
+    expected = expected_data or {"announcement": dict, "supplyRows": list, "schedules": list}
+    if any(not isinstance(data.get(name), value_type) for name, value_type in expected.items()):
+        raise PermanentError(INVALID_CODE, "AI 모델 응답의 추출 단계 형식이 맞지 않습니다.")
     return tree
 
 

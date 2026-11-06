@@ -6,7 +6,7 @@ import time
 import httpx
 import pytest
 
-from ai_worker import deepseek
+from ai_worker import openai
 from ai_worker.extraction import PermanentError, TransientError
 
 USAGE = {"prompt_tokens": 23790, "completion_tokens": 17819, "completion_tokens_details": {"reasoning_tokens": 13688}}
@@ -20,11 +20,12 @@ def later() -> float:
     return time.monotonic() + 60
 
 
-def client(handler) -> deepseek.DeepSeek:
-    return deepseek.DeepSeek("test-key", base_url="https://deepseek.test", transport=httpx.MockTransport(handler))
+def client(handler, reasoning_effort="none") -> openai.OpenAI:
+    return openai.OpenAI("test-key", base_url="https://openai.test/v1", transport=httpx.MockTransport(handler),
+                         reasoning_effort=reasoning_effort)
 
 
-def test_sends_prompt_with_low_reasoning_and_maps_usage():
+def test_sends_prompt_without_reasoning_and_maps_usage():
     requests = []
 
     def handler(request):
@@ -35,12 +36,27 @@ def test_sends_prompt_with_low_reasoning_and_maps_usage():
 
     [request] = requests
     body = json.loads(request.content)
-    assert request.url == "https://deepseek.test/chat/completions"
+    assert request.url == "https://openai.test/v1/chat/completions"
     assert request.headers["Authorization"] == "Bearer test-key"
-    assert body["model"] == deepseek.MODEL
+    assert body["model"] == "gpt-6-luna"
     assert body["messages"] == [{"role": "user", "content": "공고문 쪽 텍스트"}]
-    assert (body["reasoning_effort"], body["response_format"], body["stream"]) == ("low", {"type": "json_object"}, False)
-    assert reply == deepseek.Reply('{"data": {}}', {"promptTokens": 23790, "outputTokens": 4131, "thinkingTokens": 13688})
+    assert (body["reasoning_effort"], body["response_format"], body["stream"]) == ("none", {"type": "json_object"}, False)
+    assert body["max_completion_tokens"] == 65536
+    assert reply == openai.Reply('{"data": {}}', {"promptTokens": 23790, "outputTokens": 4131, "thinkingTokens": 13688})
+
+
+def test_sends_requested_luna_reasoning_effort():
+    requests = []
+    model = client(lambda request: (requests.append(request) or httpx.Response(200, json=completion())), "low")
+
+    model.chat("표에서 공급행을 정리", later())
+
+    assert json.loads(requests[0].content)["reasoning_effort"] == "low"
+
+
+def test_rejects_unsupported_reasoning_effort():
+    with pytest.raises(ValueError, match="Luna reasoning effort"):
+        openai.OpenAI("test-key", reasoning_effort="pro")
 
 
 def test_reads_reply_after_keep_alive_blank_lines():
@@ -49,11 +65,22 @@ def test_reads_reply_after_keep_alive_blank_lines():
     assert reply.content == '{"data": {}}'
 
 
-def test_insufficient_system_resource_is_transient():
-    with pytest.raises(TransientError) as error:
-        client(lambda request: httpx.Response(200, json=completion(finish_reason="insufficient_system_resource"))).chat("p", later())
+def test_unexpected_finish_reason_is_not_a_success():
+    with pytest.raises(PermanentError) as error:
+        client(lambda request: httpx.Response(200, json=completion(finish_reason="tool_calls"))).chat("p", later())
 
-    assert error.value.code == "MODEL_UNAVAILABLE"
+    assert error.value.code == "MODEL_RESPONSE_INVALID"
+
+
+def test_refusal_is_permanent_without_exposing_the_response():
+    response = completion(content=None)
+    response["choices"][0]["message"]["refusal"] = "private refusal text"
+
+    with pytest.raises(PermanentError) as error:
+        client(lambda request: httpx.Response(200, json=response)).chat("p", later())
+
+    assert error.value.code == "MODEL_REJECTED"
+    assert "private refusal text" not in error.value.message
 
 
 def test_unexpected_usage_details_keep_the_reply():
@@ -118,8 +145,8 @@ def test_reply_slower_than_deadline_is_timeout():
 
 
 def test_silence_shorter_than_deadline_is_not_timeout(monkeypatch):
-    # 실제 응답에서 DeepSeek이 빈 줄 없이 60초 넘게 조용했다. 시간 제한은 MockTransport가 아니라 실제 연결에서만 걸린다.
-    monkeypatch.setattr(deepseek, "READ_TIMEOUT", 0.1)
+    # 읽기 제한보다 늦어도 작업 마감 안에 도착한 응답은 받아야 한다. 시간 제한은 MockTransport가 아니라 실제 연결에서만 걸린다.
+    monkeypatch.setattr(openai, "READ_TIMEOUT", 0.1)
 
     class Slow(http.server.BaseHTTPRequestHandler):
         def do_POST(self):
@@ -137,7 +164,7 @@ def test_silence_shorter_than_deadline_is_not_timeout(monkeypatch):
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Slow)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
-        reply = deepseek.DeepSeek("test-key", base_url=f"http://127.0.0.1:{server.server_port}").chat("p", later())
+        reply = openai.OpenAI("test-key", base_url=f"http://127.0.0.1:{server.server_port}").chat("p", later())
     finally:
         server.shutdown()
 
@@ -172,7 +199,7 @@ def test_silence_after_a_chunk_near_deadline_still_times_out_at_deadline():
     started = time.monotonic()
     try:
         with pytest.raises(TransientError) as error:
-            deepseek.DeepSeek("test-key", base_url=f"http://127.0.0.1:{server.server_port}").chat("p", started + 1)
+            openai.OpenAI("test-key", base_url=f"http://127.0.0.1:{server.server_port}").chat("p", started + 1)
         elapsed = time.monotonic() - started
     finally:
         server.shutdown()
@@ -187,6 +214,8 @@ def test_silence_after_a_chunk_near_deadline_still_times_out_at_deadline():
     (completion(content="  "), "MODEL_RESPONSE_EMPTY"),
     (completion(content=None), "MODEL_RESPONSE_EMPTY"),
     ({"choices": []}, "MODEL_RESPONSE_INVALID"),
+    ({"choices": [{"message": "not an object"}]}, "MODEL_RESPONSE_INVALID"),
+    (completion(finish_reason="content_filter"), "MODEL_REJECTED"),
 ])
 def test_unusable_replies_are_permanent(payload, code):
     with pytest.raises(PermanentError) as error:

@@ -4,7 +4,7 @@
 환경변수
 - PGHOST·PGPORT·PGDATABASE·PGUSER·PGPASSWORD: toadzip_ai_worker 역할의 Postgres 접속 정보(libpq 표준).
   주소 문자열 대신 쓰는 것은 비밀번호에 특수문자가 있어도 깨지지 않게 하려는 것이다.
-- DEEPSEEK_API_KEY: DeepSeek API 키
+- OPENAI_API_KEY: OpenAI Luna API 키
 """
 
 import argparse
@@ -18,13 +18,13 @@ import psycopg
 
 from ai_worker import jobs
 from ai_worker.announcement import AnnouncementPdfExtractor
-from ai_worker.deepseek import DeepSeek
+from ai_worker.openai import OpenAI
 from ai_worker.worker import run
 
 log = logging.getLogger("ai_worker")
 
 
-REQUIRED = ("PGHOST", "PGDATABASE", "PGUSER", "PGPASSWORD", "DEEPSEEK_API_KEY")
+REQUIRED = ("PGHOST", "PGDATABASE", "PGUSER", "PGPASSWORD", "OPENAI_API_KEY")
 
 
 def connect() -> psycopg.Connection:
@@ -56,7 +56,7 @@ def main(argv: list[str]) -> None:
     if options.check:
         check()
         return
-    extractor = AnnouncementPdfExtractor(DeepSeek(os.environ["DEEPSEEK_API_KEY"]))
+    extractor = AnnouncementPdfExtractor(OpenAI(os.environ["OPENAI_API_KEY"]))
 
     stop = threading.Event()
 
