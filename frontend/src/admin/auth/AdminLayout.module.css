@@ -29,21 +29,22 @@
 /* 관리자 화면은 작업 도구라 글씨는 키우고 여백은 줄인다. 버튼·입력은 모두 같은 높이를 쓴다. */
 .layout[class] { --admin-text-meta:13px; --admin-text-body:15px; --admin-text-heading:17px; --admin-control-height:36px; --ds-text-body:var(--admin-text-body); --ds-text-caption:var(--admin-text-meta); --ds-control-height-md:var(--admin-control-height); }
 /* 머리 띠는 메뉴 폭만큼 흰색(로고 자리), 나머지는 본문 바탕색이라 메뉴와 본문이 위까지 한 면으로 이어진다. */
-.layout :global(.admin-header) { position:sticky; top:0; z-index:30; display:flex; flex-direction:row; align-items:center; gap:32px; padding:0 32px 0 24px; min-height:0; background:linear-gradient(90deg, var(--ds-color-surface) var(--admin-nav-width), var(--admin-canvas) var(--admin-nav-width)); border-bottom:0; }
-.layout :global(.admin-brand) { width:calc(var(--admin-nav-width) - 24px); box-sizing:border-box; flex:none; }
+.layout :global(.admin-header) { position:sticky; top:0; z-index:30; display:flex; flex-direction:row; align-items:center; gap:48px; padding:0 32px 0 24px; min-height:0; background:linear-gradient(90deg, var(--ds-color-surface) var(--admin-nav-width), var(--admin-canvas) var(--admin-nav-width)); border-bottom:0; }
+/* 로고 줄 폭은 메뉴 항목의 오른쪽 끝(메뉴 안쪽 여백 16px)에 맞춰, 접기 버튼이 메뉴 항목과 같은 선에 오게 한다. */
+.layout :global(.admin-brand) { width:calc(var(--admin-nav-width) - 40px); box-sizing:border-box; flex:none; }
 .layout :global(.admin-brand-context) { font-size:13px; font-weight:650; color:var(--ds-color-label); }
 .collapseButton { display:flex; flex:none; align-items:center; justify-content:center; width:32px; height:32px; margin-left:auto; padding:0; border:0; border-radius:var(--ds-radius-control); background:transparent; color:var(--ds-color-muted); cursor:pointer; }
 .layout :global(.admin-header) .collapseButton { min-height:0; padding:0; border:0; background:transparent; }
 .collapseButton:hover, .layout :global(.admin-header) .collapseButton:hover { background:var(--ds-color-surface-subtle); color:var(--ds-color-text); }
 /* 접힌 메뉴: 아이콘 열만 남기고, 이름은 다른 메뉴에 잠시 머물렀을 때 말풍선으로 띄운다(지금 있는 메뉴는 띄우지 않는다). */
 @media(min-width:761px) {
- .layout[class][data-collapsed=true] { --admin-nav-width:88px; }
- .layout[data-collapsed=true] :global(.admin-header) { padding-left:28px; }
+ .layout[class][data-collapsed=true] { --admin-nav-width:64px; }
+ .layout[data-collapsed=true] :global(.admin-header) { padding-left:16px; }
  .layout[data-collapsed=true] :global(.admin-brand) { width:auto; }
  .layout[data-collapsed=true] :global(.admin-brand) > :not(.collapseButton) { display:none; }
- .layout[data-collapsed=true] :global(.admin-navigation) { gap:12px; padding:8px 10px 20px; overflow:visible; }
+ .layout[data-collapsed=true] :global(.admin-navigation) { gap:12px; padding:8px 8px 20px; overflow:visible; }
  .layout[data-collapsed=true] :global(.admin-nav-group)>span, .layout[data-collapsed=true] .navTools>summary { display:none; }
- .layout[data-collapsed=true] :global(.admin-navigation) a { position:relative; justify-content:center; padding:12px; }
+ .layout[data-collapsed=true] :global(.admin-navigation) a { position:relative; justify-content:center; padding:12px 0; }
  .layout[data-collapsed=true] .menuLabel { display:none; position:absolute; z-index:20; left:calc(100% + 8px); padding:8px 12px; border-radius:var(--ds-radius-control); background:var(--ds-color-text); color:var(--ds-color-surface); font-weight:500; white-space:nowrap; box-shadow:0 4px 12px #0002; }
  .layout[data-collapsed=true] a:not([aria-current=page]):hover .menuLabel { display:block; animation:menuLabelIn .12s ease-out .35s both; }
  .layout[data-collapsed=true] a:focus-visible .menuLabel { display:block; }
@@ -103,7 +104,7 @@
 .layout :is(a,button,input,select,textarea,summary):focus-visible { outline:2px solid var(--ds-color-action); outline-offset:3px; }
 .backdrop { display:none; }
 .layout .menuButton { display:none; align-items:center; gap:7px; }
-@media(max-width:1100px) { .layout[class] { --admin-nav-width:216px; } .layout :global(.admin-content) { padding:8px 20px 48px; } .layout :global(.admin-brand) { width:155px; } }
+@media(max-width:1100px) { .layout[class] { --admin-nav-width:216px; } .layout :global(.admin-content) { padding:8px 20px 48px; } }
 @media(max-width:760px) {
  .layout[class] { display:block; }
  /* 머리 띠는 위에 붙여 두고 메뉴 서랍은 그 아래에서 열어, 메뉴 버튼으로 언제든 닫을 수 있게 한다. */
