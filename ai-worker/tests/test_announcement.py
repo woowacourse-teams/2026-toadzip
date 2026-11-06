@@ -620,6 +620,68 @@ def test_two_stage_extract_merges_fields_and_validates_row_ids_against_original_
     assert not any("원문 표 행 ID" in warning or "지정한 원문 표 행" in warning for warning in result["warnings"])
 
 
+def test_supply_table_the_code_can_read_skips_the_supply_model_call():
+    notice = {
+        "data": {
+            "announcement": {"name": "Sample Notice"}, "receptionPlace": {},
+            "complexes": [{"sourceComplexName": "Test", "address": "Test Road", "totalHouseholdCount": 100,
+                           "parkingCount": 30}],
+            "schedules": [], "unresolvedFields": [],
+        },
+        "notApplicable": [],
+        "evidence": [{"path": "announcement.name", "page": 1, "quote": "Sample Notice"}],
+    }
+    model = FakeModel(stage_contents={"notice": json.dumps(notice, ensure_ascii=False)})
+
+    result = AnnouncementPdfExtractor(model).extract(job(structured_table_pdf()))
+
+    tree = json.loads(result["json"])
+    assert len(model.prompts) == 1 and "[추출 단계: 공고 본문]" in model.prompts[0]
+    row = tree["data"]["supplyRows"][0]
+    assert (row["complexReference"]["sourceComplexName"], row["sourceHousingTypeName"],
+            row["totalSupplyHouseholdCount"]) == ("Test", "26A", 20)
+    assert (row["targets"][0]["target"], row["targets"][0]["rentalDeposit"],
+            row["targets"][0]["monthlyRent"]) == ("청년", 46920000, 178670)
+    assert {"path": "supplyRows[0].targets[0]", "page": 1} in [
+        {"path": item["path"], "page": item["page"]} for item in tree["evidence"]]
+    assert result["usage"] == USAGE
+
+
+def grid_page(document, rows):
+    page = document.new_page()
+    xs = [20, 110, 200, 290, 380, 470, 575]
+    ys = [48 + 30 * index for index in range(len(rows) + 1)]
+    for x in xs:
+        page.draw_line((x, ys[0]), (x, ys[-1]))
+    for y in ys:
+        page.draw_line((xs[0], y), (xs[-1], y))
+    for row_index, row in enumerate(rows):
+        for column, value in enumerate(row):
+            page.insert_text((xs[column] + 2, ys[row_index] + 18), value, fontname="korea", fontsize=7)
+    return page
+
+
+def test_supply_table_continued_without_header_and_a_tableless_next_page_reach_the_result():
+    document = pymupdf.open()
+    grid_page(document, [
+        ["단지명", "주택형", "공급대상", "모집호수 예비자", "주거전용", "주거공용"],
+        ["Alpha", "26A", "청년", "20", "26.73", "13.07"],
+    ])
+    # 다음 쪽 표는 머리글이 없고 첫 행 단지명이 빈칸이라 앞 쪽의 열 역할과 단지를 이어받는다.
+    grid_page(document, [["", "36A", "고령자", "3", "36.92", "18.06"], ["Beta", "44A", "청년", "4", "44.81", "21.92"]])
+    document.new_page().insert_text((20, 72), "주택형 36B 청년 5 36.91 18.05 공급대상", fontname="korea", fontsize=7)
+    model = FakeModel()
+
+    result = AnnouncementPdfExtractor(model).extract(job(document.tobytes()))
+
+    tree = json.loads(result["json"])
+    assert len(model.prompts) == 1
+    assert [(row["complexReference"]["sourceComplexName"], row["sourceHousingTypeName"],
+             row["targets"][0]["reserveCount"], row["exclusiveArea"]) for row in tree["data"]["supplyRows"]] == [
+        ("Alpha", "26A", 20, 26.73), ("Alpha", "36A", 3, 36.92), ("Beta", "44A", 4, 44.81)]
+    assert "원본 3쪽의 공급표를 표로 읽지 못해 공급행이 빠졌을 수 있습니다. 원본을 확인해 주세요." in result["warnings"]
+
+
 def test_complex_paths_are_remapped_before_stage_evidence_is_combined():
     supply = {
         "data": {
@@ -785,3 +847,23 @@ def test_three_conflicting_complex_values_remain_unresolved():
 
     assert merged[0]["address"] is None
     assert {item["path"] for item in unresolved} == {"complexes[0].address"}
+
+
+def test_model_target_with_income_split_column_is_accepted_as_the_combined_source_name():
+    selected = pages.PromptPages(
+        text="all", rental_rows=0, supply_text="table", supply_pages=[8],
+        supply_row_ids=frozenset({"P8:T1:R3"}), supply_row_text={"P8:T1:R3": "Test\t24A\t청년\t소득 없음\t46,920"},
+        notice_text="body", notice_pages=[1], complex_candidates=["Test"], table_structure_fallback=False,
+        ambiguous_supply_tables=False,
+        supply_row_values={"P8:T1:R3": {"complexName": "Test", "housingType": "24A", "target": "청년",
+                                         "targetDetail": "소득 없음"}},
+    )
+    compact = {"data": {"rows": [
+        {"rowIds": ["P8:T1:R3"], "complexName": "Test", "housingType": "24A", "target": "청년(소득 없음)"},
+        {"rowIds": ["P8:T1:R3"], "complexName": "Test", "housingType": "24A", "target": "청년(소득 있음)"},
+    ]}}
+
+    tree = announcement.compact_supply_tree(compact, selected)
+
+    assert [target["target"] for target in tree["data"]["supplyRows"][0]["targets"]] == ["청년(소득 없음)", ""]
+    assert "supplyRows[0].targets[1].target" in {item["path"] for item in tree["data"]["unresolvedFields"]}

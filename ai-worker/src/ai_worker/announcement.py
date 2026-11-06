@@ -8,12 +8,12 @@ import logging
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal, InvalidOperation
 from importlib.resources import files
 from typing import Protocol
 
-from ai_worker import checks, openai, pages
+from ai_worker import checks, openai, pages, supply_grouping
 from ai_worker.openai import Reply
 from ai_worker.extraction import ATTEMPT_BUDGET, PermanentError
 from ai_worker.jobs import Job
@@ -127,6 +127,9 @@ def build_notice_prompt(selected: pages.PromptPages) -> str:
             + stage_schema("notice") + "\n\n" + selected.notice_text)
 
 
+ROW_FIELDS = ("totalSupplyHouseholdCount", "exclusiveArea", "commonArea", "supplyArea", "constructedHouseholdCount")
+
+
 def compact_supply_tree(compact: dict, selected: pages.PromptPages) -> dict:
     """짧은 공급행 응답을 표 셀 근거에 맞춰 관리자 계약으로 조립한다."""
     groups: list[dict] = []
@@ -221,6 +224,11 @@ def compact_supply_tree(compact: dict, selected: pages.PromptPages) -> dict:
                 path = f"supplyRows[{group_index}].{field}"
                 unresolved.append({"path": path, "reason": "같은 주택형 행에서 서로 다른 값이 나와 미확인으로 남김"})
 
+        # 코드가 표에서 읽을 때 하나로 정하지 못한 값은 그 경로의 미확인으로 남긴다.
+        findings = [finding for finding in checks.objects(item.get("unresolved"))
+                    if isinstance(finding.get("field"), str) and isinstance(finding.get("reason"), str)]
+        unresolved.extend({"path": f"supplyRows[{group_index}].{finding['field']}", "reason": finding["reason"]}
+                          for finding in findings if finding["field"] in ROW_FIELDS)
         if has_target:
             target_values = {
                 "target": target,
@@ -236,6 +244,8 @@ def compact_supply_tree(compact: dict, selected: pages.PromptPages) -> dict:
             if target_values["reserveCount"] is None and target:
                 unresolved.append({"path": f"supplyRows[{group_index}].targets[{target_index}].reserveCount",
                                    "reason": "이번 공고의 예비자 모집수를 표에서 확인하지 못함"})
+            unresolved.extend({"path": f"supplyRows[{group_index}].targets[{target_index}].{finding['field']}",
+                               "reason": finding["reason"]} for finding in findings if finding["field"] in target_values)
             group["targets"].append(target_values)
             compact_paths[item_index] = (group_index, target_index)
         else:
@@ -346,9 +356,7 @@ def compact_supply_tree(compact: dict, selected: pages.PromptPages) -> dict:
 def compact_source_text(candidate: object, field: str, row_ids: list[str], selected: pages.PromptPages,
                         path: str, unresolved: list[dict], missing_value: str | None,
                         required: bool = True) -> str | None:
-    cells = [selected.supply_row_values[row_id].get(field) for row_id in row_ids
-             if row_id in selected.supply_row_values]
-    source_values = list(dict.fromkeys(value for value in cells if isinstance(value, str) and value.strip()))
+    source_values = source_texts(field, row_ids, selected.supply_row_values)
     if isinstance(candidate, str) and candidate.strip():
         matched = next((value for value in source_values
                         if normalize_source_text(value) == normalize_source_text(candidate)), None)
@@ -364,6 +372,17 @@ def compact_source_text(candidate: object, field: str, row_ids: list[str], selec
     elif len(source_values) > 1:
         unresolved.append({"path": path, "reason": "여러 원문 표 값이 있어 하나로 결정하지 못함"})
     return missing_value
+
+
+def source_texts(field: str, row_ids, row_values: dict[str, dict[str, str]]) -> list[str]:
+    """행 ID들의 같은 의미 원문 칸. 공급대상 머리글 아래 세부 구분 칸(소득 있음·없음)이 따로 있으면
+    공급대상은 둘을 합친 이름(청년(소득 없음))이다."""
+    values = [row_values.get(row_id, {}).get(field) for row_id in row_ids]
+    texts = [value for value in values if isinstance(value, str) and value.strip()]
+    if field == "target":
+        details = [row_values.get(row_id, {}).get("targetDetail") for row_id in row_ids]
+        texts += [f"{text}({detail})" for text in list(texts) for detail in details if detail]
+    return list(dict.fromkeys(texts))
 
 
 def compact_number(value: object, field: str) -> int | float | None:
@@ -460,27 +479,36 @@ class AnnouncementPdfExtractor:
                 SUPPLY_TABLE_UNSTRUCTURED,
                 f"공급·임대 표 구조를 읽지 못해 추출을 중단했습니다. 원본 PDF {numbers}쪽을 확인해 주세요.",
             )
-        supply_prompt = build_supply_prompt(rows, selected)
         notice_prompt = build_notice_prompt(selected)
+        # 공급표 구조를 코드가 확신하면 숫자를 셀에서 직접 읽고 공급 단계 모델 호출을 생략한다.
+        # LH 공고는 모델이 LH API 행 번호(lhSourceRow)로 공급행을 나누고 맞추므로 모델 단계를 그대로 쓴다.
+        grouped = None if rows else supply_grouping.group(
+            selected.supply_tables, selected.supply_row_values, selected.tableless_supply_pages)
         # 두 역할은 서로 의존하지 않는다. 같은 남은 마감 안에서 병렬 호출해 분리 비용이 순차 지연으로 누적되지 않게 한다.
         model_deadline = deadline - openai.READ_TIMEOUT
         with ThreadPoolExecutor(max_workers=2, thread_name_prefix="announcement-extraction") as pool:
-            supply_future = pool.submit(self.model.chat, supply_prompt, model_deadline)
+            supply_future = None if grouped else pool.submit(
+                self.model.chat, build_supply_prompt(rows, selected), model_deadline)
             notice_future = pool.submit(self.model.chat, notice_prompt, model_deadline)
-            supply_reply = supply_future.result()
+            supply_reply = supply_future.result() if supply_future else None
             notice_reply = notice_future.result()
-        compact_supply = checks.first_json_object(supply_reply.content, {"rows": list})
+        if grouped:
+            selected = replace(selected, supply_row_values=grouped.row_values)
+            compact_supply = grouped.compact
+        else:
+            compact_supply = checks.first_json_object(supply_reply.content, {"rows": list})
         supply_tree = compact_supply_tree(compact_supply, selected)
         notice_tree = checks.first_json_object(notice_reply.content, {
             "announcement": dict, "receptionPlace": dict, "complexes": list, "schedules": list,
             "unresolvedFields": list,
         })
-        warnings = []
+        warnings = list(grouped.warnings) if grouped else []
         if selection.whole_document:
             warnings.append(f"공급표·임대조건표 쪽을 찾지 못해 전체 {len(texts)}쪽을 보냈습니다.")
-        if selected.table_structure_fallback:
+        # 코드가 공급표를 읽었으면 공급 단계 호출이 없으므로 아래 두 안내는 사실이 아니다.
+        if selected.table_structure_fallback and not grouped:
             warnings.append("표 셀 구조를 분리하지 못해 일부 쪽 텍스트를 공급 단계에도 전달했습니다.")
-        if selected.ambiguous_supply_tables:
+        if selected.ambiguous_supply_tables and not grouped:
             warnings.append("공급 표인지 판단이 불확실한 표를 공급·본문 단계 양쪽에 전달했습니다.")
         # 공급 근거는 원문 행 ID에서 원본 쪽을 복원하므로 첨부 쪽 번호 변환을 하지 않는다.
         warnings += remap_stage_pages(notice_tree, selected.notice_pages)
@@ -492,9 +520,10 @@ class AnnouncementPdfExtractor:
         warnings += checks.review(tree, list(range(1, len(texts) + 1)), texts, [row.type_name for row in rows],
                                   [row.count() for row in rows], selected.rental_rows)
         link_lh_rows(tree, rows)
-        usage = combined_usage(supply_reply.usage, notice_reply.usage)
-        log.info("작업 %d 추출 완료 pages=%d/%d tableRows=%d lhRows=%d warnings=%d usage=%s", job.id,
-                 len(selection.pages), len(texts), len(selected.supply_row_ids), len(rows), len(warnings), usage)
+        usage = combined_usage(*([supply_reply.usage] if supply_reply else []), notice_reply.usage)
+        log.info("작업 %d 추출 완료 pages=%d/%d tableRows=%d lhRows=%d warnings=%d supply=%s usage=%s", job.id,
+                 len(selection.pages), len(texts), len(selected.supply_row_ids), len(rows), len(warnings),
+                 "code" if grouped else "model", usage)
         return {
             "json": json.dumps(tree, ensure_ascii=False),
             "pages": selection.pages,
@@ -736,9 +765,8 @@ def check_string_source_values(path: str, rows: list[dict], row_ids: set[str],
         value = values.get(field)
         if not isinstance(value, str) or not value:
             continue
-        cells = [source_row_values.get(row_id, {}).get(source_field) for row_id in row_ids]
         if any(normalize_source_text(cell) == normalize_source_text(value)
-               for cell in cells if isinstance(cell, str) and cell):
+               for cell in source_texts(source_field, row_ids, source_row_values)):
             continue
         values[field] = None if field == "sourceHousingTypeName" else ""
         field_path = f"{path}.complexReference.sourceComplexName" if field == "sourceComplexName" else f"{path}.{field}"

@@ -221,6 +221,20 @@ class PromptPages:
     supply_row_values: dict[str, dict[str, str]] = field(default_factory=dict)
     # 표 행을 만들지 못했지만 공급표로 보이는 쪽. 이 상태는 성공 결과로 조용히 내보내지 않는다.
     unstructured_supply_pages: list[int] = field(default_factory=list)
+    # 공급표의 셀 구조. 병합 칸(None)과 빈칸('')을 구분해 코드가 공급행을 묶는다.
+    supply_tables: list["SupplyTable"] = field(default_factory=list)
+    # 표를 찾지 못했지만 공급표 같은 본문이 있는 쪽. 선이 없는 표의 행이 빠졌을 수 있다.
+    tableless_supply_pages: list[int] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class SupplyTable:
+    page: int
+    number: int
+    cells: list[list[str | None]]
+    # 머리글이 없는 이어짐 표는 앞 공급표의 열 역할을 물려받는다.
+    columns: dict[str, int]
+    ambiguous: bool
 
 
 @dataclass(frozen=True)
@@ -237,6 +251,7 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
     all_parts, notice_parts, supply_parts = [], [], []
     rental, supply_row_ids, supply_row_text, supply_row_values, candidates = set(), set(), {}, {}, []
     notice_pages, supply_pages, fallback_pages, unstructured_supply_pages = [], [], [], []
+    supply_tables, tableless_supply_pages = [], []
     previous_supply: tuple[int, int, dict[str, int]] | None = None
     ambiguous_table = False
 
@@ -252,6 +267,8 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
         else:
             tables = mark_supply_tables(tables, number, previous_supply)
             notice_body = text_without_tables(page, [table.bbox for table in tables])
+            if not tables and has_supply_table_text(text):
+                tableless_supply_pages.append(number)
 
         rendered_tables = [render_table(table.cells, index) for index, table in enumerate(tables, 1)]
         combined = "\n".join([text, *rendered_tables])
@@ -281,6 +298,7 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
                 else:
                     table_columns = last_columns
                 supply_parts.append(f"[표 {table_index} / 원본 {number}쪽]")
+                supply_tables.append(SupplyTable(number, table_index, table.cells, table_columns, table.ambiguous))
                 for row_index, row in enumerate(table.cells, 1):
                     row_id = source_row_id(number, table_index, row_index)
                     supply_row_ids.add(row_id)
@@ -331,6 +349,8 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
         ambiguous_supply_tables=ambiguous_table,
         supply_row_values=supply_row_values,
         unstructured_supply_pages=list(dict.fromkeys(unstructured_supply_pages)),
+        supply_tables=supply_tables,
+        tableless_supply_pages=tableless_supply_pages,
     )
 
 
@@ -387,7 +407,21 @@ def table_field_columns(rows: list[list[str | None]], row_index: int | None = No
                 indexes.append(column)
         if len(indexes) == 1:
             columns[name] = indexes[0]
+    detail = target_detail_column(header_rows, columns)
+    if detail is not None:
+        columns["targetDetail"] = detail
     return columns
+
+
+def target_detail_column(header_rows: list[list[str | None]], columns: dict[str, int]) -> int | None:
+    """공급대상 머리글이 오른쪽 칸까지 병합돼 있으면 그 칸은 대상의 세부 구분(소득 있음·없음)이다."""
+    target = columns.get("target")
+    if target is None or target + 1 in columns.values():
+        return None
+    for row in header_rows:
+        if target + 1 < len(row) and row[target] and re.search(r"공급대상|공급계층|청약대상", compact(row[target])):
+            return target + 1 if row[target + 1] is None else None
+    return None
 
 
 def table_column_headers(rows: list[list[str | None]], column_count: int) -> list[str]:
