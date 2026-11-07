@@ -72,7 +72,7 @@ def reviewed(tree):
     """조립 결과를 본문 단계 없이 최종 검산(checks.review)에 넣어 경고를 받는다."""
     full = {**json.loads(json.dumps(tree)), "data": {**json.loads(json.dumps(tree["data"])), "announcement": {},
                                                      "schedules": []}}
-    return checks.review(full, [1, 2, 3, 4, 5], ["", "", "", "", "Sample Complex 18A2 청년 ( 주거약자) 3"], [], [], 0)
+    return checks.review(full, [1, 2, 3, 4, 5], ["", "", "", "", "Sample Complex 18A2 청년 ( 주거약자) 3"], [], 0)
 
 
 def test_compact_supply_text_that_disagrees_with_source_cells_becomes_unresolved():

@@ -21,23 +21,20 @@ export type CorrectionRow = {
   displayOrder: number; complexName: string; typeName: string; pnu: string; moveInMonth: string | null;
   category: 'NEW_SUPPLY' | 'RESUPPLY'; householdCount: number | null; areaOverride: boolean;
   exclusiveArea: number | null; supplyArea: number | null; targets: CorrectionTarget[]; targetCountsComparable: boolean;
-  /** 요청 전용. 생략하면 id가 있는 행은 UPDATE, 없는 행은 ADD다. SPLIT·ATTACH만 lhSourceRowIdentifier를 함께 보낸다. */
-  saveMode?: SaveMode; lhSourceRowIdentifier?: string;
 }
-/** 공급행을 LH 공급 원본 행에 놓는 방식. UPDATE 기존 행 수정, SPLIT 통합 LH 행을 주택형별로 분리, ATTACH 공급행이 없는 LH 행에 연결, ADD 별도 추가 */
-export type SaveMode = 'UPDATE' | 'SPLIT' | 'ATTACH' | 'ADD'
 export type CorrectionSource = { category: string; sourceKey: string; rows: { collectedAt?: string | null; raw: unknown }[] }
 /** 공급행이 기록한 원천행. sources에서 같은 분류·키의 원천을 찾는다. */
 export type RowSource = { rowKey: string; category: string; sourceKey: string }
 /**
- * LH 공급 원본 한 행(`LH:{panId}:SUPPLY:{n}`). householdCount는 LH 이번 공급 수(정수가 아니면 null),
- * attachedRowKey는 이 LH 행 식별자를 기록한 공급행(통합행), splitRowKeys는 이 LH 행에서 나눈 공급행이다.
+ * LH 공급 원본 한 행(`LH:{panId}:SUPPLY:{n}`). LH 행은 공급행을 정하지 않는 보조 원천으로 세대수 검산과 식별에만 쓴다.
+ * householdCount는 LH 이번 공급 수(정수가 아니면 null), attachedRowKey는 같은 공고 단지에서 전용면적(소수 둘째 자리)이 같아
+ * 서버가 이 LH 행을 붙인 공급행이다. ambiguous는 같은 면적 공급행이 여럿이라 표시 순서 첫 행에 붙였다는 뜻이다.
  */
 export type LhSupplyRow = { rowIdentifier: string; complexLabel: string | null; typeName: string | null; exclusiveArea: string | null
-  householdCount?: number | null; attachedRowKey?: string | null; splitRowKeys?: string[] }
+  householdCount?: number | null; attachedRowKey?: string | null; ambiguous?: boolean }
 /**
  * deletableRowKeys: 지울 수 있는 행(원천 없이 관리자가 추가한 행). 원천행은 제외만 할 수 있다.
- * lhSupplyRows: 이 공고의 최신 LH 공급 원본 행 전체. unattachedLhSupplyRows: 그중 어떤 공급행도 가리키지 않는 행. 있어도 새 공급행 추가는 막지 않는다.
+ * lhSupplyRows: 이 공고의 최신 LH 공급 원본 행 전체. unattachedLhSupplyRows: 그중 같은 전용면적 공급행이 없어 붙지 않은 행. 오류가 아니라 정보다.
  */
 /**
  * 공고 단지. 공급행의 complexName이 이 name이며, PDF 단지를 주소로 대응할 때 쓴다.
@@ -46,12 +43,10 @@ export type LhSupplyRow = { rowIdentifier: string; complexLabel: string | null; 
 export type ComplexLinkMethod = 'AUTO' | 'ADMIN' | 'MIGRATED'
 export type AnnouncementComplex = { id: number; name: string; roadAddress: string | null; housingComplexId: number | null; housingComplexName: string | null; linkMethod: ComplexLinkMethod | null; rowCount: number }
 export type SupplyWorkspace = { snapshotToken: string; version: number; rows: CorrectionRow[]; sources: CorrectionSource[]; sourceWarnings?: string[]; rowSources?: RowSource[]; deletableRowKeys?: string[]; lhSupplyRows?: LhSupplyRow[]; unattachedLhSupplyRows?: LhSupplyRow[]; announcementComplexes?: AnnouncementComplex[] }
-export type NewSupplyGroup = { sourceRowId: number; rowKeys: string[]; sharedHouseholdCount: number }
-export type SupplyCorrectionInput = { operationId: string; snapshotToken: string; reason: string; sourceUrl: string; sourcePage: string | null; rows: CorrectionRow[]; newGroups?: NewSupplyGroup[]; deletedRowKeys?: string[] }
-/** 저장 뒤 분리 묶음. householdCount는 제외하지 않은 분리행 합계(미확정이 있으면 null), lhHouseholdCount는 LH 이번 공급 수다. */
-export type SupplySplit = { lhSourceRowIdentifier: string; rowKeys: string[]; householdCount: number | null; lhHouseholdCount: number | null }
-export type SupplyPreview = { confirmationToken: string; before: CorrectionRow[]; after: CorrectionRow[]; warnings: string[]; newGroups?: NewSupplyGroup[]
-  splits?: SupplySplit[]; unattachedLhSupplyRows?: LhSupplyRow[] }
+/** 요청 행은 서버가 모르는 필드를 거절한다. 주택형을 비우고 전용면적만 준 단지 연결 행은 서버가 단지·전용면적으로 주택형을 정한다. */
+export type SupplyCorrectionInput = { operationId: string; snapshotToken: string; reason: string; sourceUrl: string; sourcePage: string | null; rows: CorrectionRow[]; deletedRowKeys?: string[] }
+/** after는 서버가 정한 주택형(housingTypeId 또는 newHousingType)이 담긴 저장 결과다. */
+export type SupplyPreview = { confirmationToken: string; before: CorrectionRow[]; after: CorrectionRow[]; warnings: string[] }
 export type SupplyApplied = { changeId: number; alreadyApplied: boolean; workspace: SupplyWorkspace }
 const count = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 const nullableId = (value: unknown) => value === null || count(value) && value > 0
@@ -64,7 +59,7 @@ const linkedType = (value: unknown) => isRecord(value) && (count(value.housingTy
   || value.housingTypeId == null && newType(value.newHousingType))
 const lhRows = (value: unknown) => Array.isArray(value) && value.every(item => isRecord(item) && typeof item.rowIdentifier === 'string'
   && (item.householdCount == null || count(item.householdCount)) && (item.attachedRowKey == null || typeof item.attachedRowKey === 'string')
-  && (item.splitRowKeys == null || Array.isArray(item.splitRowKeys) && item.splitRowKeys.every(key => typeof key === 'string')))
+  && (item.ambiguous == null || typeof item.ambiguous === 'boolean'))
 function invalid(): never { throw new Error('공급정보 보정 응답이 올바르지 않습니다.') }
 function target(value: unknown): CorrectionTarget {
   if (!isRecord(value) || !nullableId(value.id) || typeof value.key !== 'string'
@@ -125,15 +120,7 @@ export async function previewSupply(id: string, input: SupplyCorrectionInput): P
 export function parseSupplyPreview(value: unknown): SupplyPreview {
   if (!isRecord(value) || typeof value.confirmationToken !== 'string' || !Array.isArray(value.before)
     || !Array.isArray(value.after) || !Array.isArray(value.warnings) || !value.warnings.every(item => typeof item === 'string')) invalid()
-  if (value.newGroups !== undefined && (!Array.isArray(value.newGroups) || !value.newGroups.every(group => isRecord(group)
-    && count(group.sourceRowId) && group.sourceRowId > 0 && count(group.sharedHouseholdCount) && Array.isArray(group.rowKeys)
-    && group.rowKeys.length >= 2 && group.rowKeys.every(key => typeof key === 'string')))) invalid()
-  if (value.splits !== undefined && (!Array.isArray(value.splits) || !value.splits.every(split => isRecord(split) && typeof split.lhSourceRowIdentifier === 'string'
-    && Array.isArray(split.rowKeys) && split.rowKeys.every(key => typeof key === 'string') && nullableCount(split.householdCount) && nullableCount(split.lhHouseholdCount)))) invalid()
-  if (value.unattachedLhSupplyRows !== undefined && !lhRows(value.unattachedLhSupplyRows)) invalid()
-  return { ...(value.newGroups === undefined ? {} : { newGroups: value.newGroups as NewSupplyGroup[] }),
-    ...(value.splits === undefined ? {} : { splits: value.splits as SupplySplit[] }),
-    ...(value.unattachedLhSupplyRows === undefined ? {} : { unattachedLhSupplyRows: value.unattachedLhSupplyRows as LhSupplyRow[] }), confirmationToken: value.confirmationToken, before: value.before.map(row), after: value.after.map(row), warnings: value.warnings }
+  return { confirmationToken: value.confirmationToken, before: value.before.map(row), after: value.after.map(row), warnings: value.warnings }
 }
 export async function applySupply(id: string, correction: SupplyCorrectionInput, confirmationToken: string): Promise<SupplyApplied> {
   const value = await requestManagementApi(path(id), 'POST', { correction, confirmationToken })
@@ -158,5 +145,9 @@ export function blankRow(order: number): CorrectionRow {
 export function parseCorrectionInput(value: unknown): SupplyCorrectionInput {
   if (!isRecord(value) || !['operationId', 'snapshotToken', 'reason', 'sourceUrl'].every(key => typeof value[key] === 'string')
     || !nullableText(value.sourcePage) || !Array.isArray(value.rows)) invalid()
-  return { ...value, rows: value.rows.map(row) } as SupplyCorrectionInput
+  // 이전 화면이 남긴 보류 입력에는 지금 서버가 받지 않는 필드(newGroups, 행의 saveMode 등)가 있을 수 있어 아는 필드만 복원한다.
+  const known = { operationId: value.operationId, snapshotToken: value.snapshotToken, reason: value.reason, sourceUrl: value.sourceUrl,
+    sourcePage: value.sourcePage, rows: value.rows.map(item => { const { saveMode: _mode, lhSourceRowIdentifier: _lh, ...rest } = row(item) as CorrectionRow & { saveMode?: unknown; lhSourceRowIdentifier?: unknown }; return rest }),
+    ...(Array.isArray(value.deletedRowKeys) ? { deletedRowKeys: value.deletedRowKeys } : {}) }
+  return known as SupplyCorrectionInput
 }

@@ -37,16 +37,12 @@ def test_gh_rows_are_not_given_to_the_model():
     assert frame.lh_rows == []
 
 
-def test_lh_row_number_is_replaced_by_that_rows_identifier_and_out_of_range_is_cleared():
-    frame_rows = [{"source": "LH", "rowIdentifier": "LH:P:SUPPLY:1", "typeName": "51", "exclusiveArea": "", "supplyArea": "",
-                   "suppliedUnitCount": "200"}]
+def test_lh_rows_do_not_fill_source_row():
+    # LH 행은 공급행에 대응하지 않는 참고 자료다. 화면이 전용면적으로 따로 맞춘다.
+    frame_rows = [{"source": "LH", "rowIdentifier": "LH:P:SUPPLY:1", "complexLabel": "A", "typeName": "51",
+                   "exclusiveArea": "51.98", "supplyArea": "", "suppliedUnitCount": "200"}]
 
-    assert link(frame_rows, [supply_row("A", "51", source_row=1), supply_row("A", "59", source_row=2)]) == (
-        ["LH:P:SUPPLY:1", None], [])
-
-
-def test_model_number_without_lh_rows_is_cleared():
-    assert link([], [supply_row("A", "51", source_row=1)]) == ([None], [])
+    assert link(frame_rows, [supply_row("A", "51", 51.98)]) == ([None], [])
 
 
 def test_gh_frame_row_with_same_district_and_housing_type_token_is_linked():

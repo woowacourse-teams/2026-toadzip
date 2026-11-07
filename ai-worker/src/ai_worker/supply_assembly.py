@@ -13,7 +13,6 @@ from ai_worker.source_check import (
 )
 
 
-_RESULT_FIELD = {"lhSourceRow": "sourceRow"}
 _ROW_FIELDS = ("totalSupplyHouseholdCount", "exclusiveArea", "commonArea", "supplyArea", "constructedHouseholdCount")
 
 
@@ -39,8 +38,12 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
                                       "supplyRows[__item__].targets[__target__].target", unresolved,
                                       missing_value="", required=has_target) if has_target else None
 
-        if complex_name and housing_type:
-            key = ("valid", complex_key(complex_name), complex_key(housing_type))
+        # 공급행은 단지·주택형 하나다. 원문에서 확인하지 못한 이름도 같은 원문 칸이나 같은 표기면 한 행으로 모은다.
+        # 행마다 따로 두면 같은 표 행이 대상 수만큼 공급행으로 중복된다(사천벌리1에서 LH 행마다 같은 행이 나온 경우).
+        group_complex = _group_name(complex_name, item.get("complexName"), "complexName", row_ids, selected) or ""
+        group_type = _group_name(housing_type, item.get("housingType"), "housingType", row_ids, selected)
+        if group_type:
+            key = ("valid", complex_key(group_complex), complex_key(group_type))
         else:
             key = ("unresolved", item_index)
         group_index = group_indexes.get(key)
@@ -100,7 +103,7 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
                 unresolved.append({"path": f"supplyRows[{group_index}].subtypes",
                                    "reason": f"세부 주택형 {subtype_name} 값이 서로 달라 미확인으로 남김"})
         for field in ("totalSupplyHouseholdCount", "exclusiveArea", "commonArea", "supplyArea",
-                      "constructedHouseholdCount", "expectedMoveInMonth", "lhSourceRow"):
+                      "constructedHouseholdCount", "expectedMoveInMonth"):
             if item.get(field) is None:
                 continue
             value = item[field]
@@ -108,9 +111,8 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
                 group["rowValues"][field] = value
             elif group["rowValues"][field] != value:
                 group["rowValues"][field] = None
-                # 모델의 LH 행 번호(lhSourceRow)는 결과에서 sourceRow다.
-                path = f"supplyRows[{group_index}].{_RESULT_FIELD.get(field, field)}"
-                unresolved.append({"path": path, "reason": "같은 주택형 행에서 서로 다른 값이 나와 미확인으로 남김"})
+                unresolved.append({"path": f"supplyRows[{group_index}].{field}",
+                                   "reason": "같은 주택형 행에서 서로 다른 값이 나와 미확인으로 남김"})
 
         # 코드가 표에서 읽을 때 하나로 정하지 못한 값은 그 경로의 미확인으로 남긴다.
         findings = [finding for finding in checks.objects(item.get("unresolved"))
@@ -147,8 +149,8 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
         row = {
             "complexReference": {"sourceComplexName": group["complexName"]},
             "sourceHousingTypeName": group["housingType"],
-            # 모델은 LH 틀 목록 번호를 lhSourceRow로 쓴다. 결과의 sourceRow는 source_frame이 원천 행 식별자로 바꾼다.
-            "sourceRow": group["rowValues"].get("lhSourceRow"),
+            # 원천 행 식별자. GH 공급행 틀이 있으면 source_frame이 채운다. LH 행은 공급행에 대응하지 않는 참고 자료다.
+            "sourceRow": None,
             "expectedMoveInMonth": group["rowValues"].get("expectedMoveInMonth"),
             "totalSupplyHouseholdCount": _compact_number(group["rowValues"].get("totalSupplyHouseholdCount"),
                                                          "totalSupplyHouseholdCount"),
@@ -242,6 +244,21 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
                                  tree["data"]["unresolvedFields"], selected.supply_row_values)
     tree["data"]["unresolvedFields"] = deduplicate(tree["data"]["unresolvedFields"])
     return tree, warnings
+
+
+def _group_name(verified: str | None, candidate: object, field: str, row_ids: list[str],
+                selected: pages.PromptPages) -> str | None:
+    """공급행을 묶을 이름. 원문에서 확인한 값, 행 ID의 원문 칸 값이 하나뿐이면 그 값, 아니면 응답 표기 순이다.
+    입력 표에 없는 행 ID만 가진 항목은 무엇과 같은 행인지 알 수 없어 묶지 않는다(None)."""
+    if verified:
+        return verified
+    known = [row_id for row_id in row_ids if row_id in selected.supply_row_ids]
+    if not known:
+        return None
+    source_values = source_texts(field, known, selected.supply_row_values)
+    if len(source_values) == 1:
+        return source_values[0]
+    return _compact_string(candidate)
 
 
 def _compact_source_text(candidate: object, field: str, row_ids: list[str], selected: pages.PromptPages,

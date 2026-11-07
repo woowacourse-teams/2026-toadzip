@@ -14,6 +14,7 @@ import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.ComplexVerificationStatus;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.HousingTypeAreas;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexCreateRequest.AddressRequest;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexUpdateRequest;
@@ -244,7 +245,7 @@ public class AdminHousingComplexManagementService {
     }
 
     private static boolean sameArea(HousingType type, BigDecimal exclusiveArea) {
-        return type.getExclusiveArea() != null && type.getExclusiveArea().compareTo(exclusiveArea) == 0;
+        return HousingTypeAreas.sameArea(type.getExclusiveArea(), exclusiveArea);
     }
 
     private AdminHousingComplexDetail.HousingTypeItem housingTypeData(HousingType type) {

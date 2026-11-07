@@ -1,15 +1,24 @@
 import json
+from decimal import Decimal
 
 import pytest
 
 from ai_worker import checks
 from ai_worker.extraction import PermanentError
+from ai_worker.source_frame import SourceSupplyRow
 
 
-def row(housing_type="26A", common_area=13.5, supply_area=None, move_in=None, target="일반", count=None, lh_row=None):
-    return {"sourceHousingTypeName": housing_type, "sourceRow": lh_row, "expectedMoveInMonth": move_in,
+def row(housing_type="26A", common_area=13.5, supply_area=None, move_in=None, target="일반", count=None, area=None,
+        complex_name="여수미평1", subtypes=()):
+    return {"complexReference": {"sourceComplexName": complex_name}, "sourceHousingTypeName": housing_type,
+            "sourceRow": None, "expectedMoveInMonth": move_in, "exclusiveArea": area,
             "commonArea": common_area, "supplyArea": supply_area, "totalSupplyHouseholdCount": count,
+            "subtypes": [{"name": name, "exclusiveArea": value} for name, value in subtypes],
             "targets": [{"target": target}]}
+
+
+def lh(type_name="26", area="", count="", complex_label="여수미평1"):
+    return SourceSupplyRow("LH", None, complex_label, type_name, area, "", count)
 
 
 def response(rows=None, evidence=(), shared_counts=(), announcement=None, complexes=None):
@@ -28,9 +37,9 @@ def response(rows=None, evidence=(), shared_counts=(), announcement=None, comple
     }
 
 
-def review(tree, pages=(1, 2, 10), texts=None, lh_types=(), lh_counts=(), rental_rows=0):
+def review(tree, pages=(1, 2, 10), texts=None, lh_rows=(), rental_rows=0):
     texts = texts if texts is not None else [""] * 10
-    return checks.review(tree, list(pages), texts, list(lh_types), list(lh_counts), rental_rows)
+    return checks.review(tree, list(pages), texts, list(lh_rows), rental_rows)
 
 
 def test_remaps_evidence_and_shared_count_pages_to_original_pdf():
@@ -88,101 +97,127 @@ def test_quote_of_table_row_matches_cells_extracted_in_other_order():
     assert review(tree, pages=[1], texts=texts) == []
 
 
-def test_lh_row_count_mismatch_is_warning_with_lh_row_number():
-    tree = response(rows=[row(count=20, lh_row=1), row(count=None, lh_row=2), row(count=7, lh_row=3), row(count=45, lh_row=4)])
+@pytest.mark.parametrize(("value", "expected"), [
+    # 26.375·84.9600은 백엔드 HousingTypeAreas 단위 테스트와 같은 경계값이다. 26.125·26.365는 round()·float 오차로 틀어지는 값이다.
+    (26.375, Decimal("26.38")), ("26.375", Decimal("26.38")), ("84.9600", Decimal("84.96")), (84.96, Decimal("84.96")),
+    (26.125, Decimal("26.13")), (26.365, Decimal("26.37")),
+    (26.3749, Decimal("26.37")), (59, Decimal("59.00")), ("", None), ("면적", None), (None, None), (True, None),
+])
+def test_area_key_rounds_half_up_at_two_decimals(value, expected):
+    assert checks.area_key(value) == expected
 
-    # 비어 있는 행 모집수는 공통 모집수로 묶인 행이고, LH API 0은 모집수를 모른다는 뜻이라 맞대지 않는다.
-    assert review(tree, lh_types=["39", "46", "51", "59"], lh_counts=[20, 15, 8, 0]) == [
-        "supplyRows[2].totalSupplyHouseholdCount: LH API 공급행 3 모집수 8와 다름(7)",
+
+def test_several_lh_rows_of_one_area_attach_to_one_pdf_row_and_their_sum_is_compared():
+    # 사천벌리1처럼 LH가 같은 주택형을 신청자 구분(우선·일반)으로 나눠 보내도 PDF 공급행은 하나다. 줄 수가 달라도 오류가 아니다.
+    lh_rows = [lh("26(우선)", "26.37", "60"), lh("26(일반)", "26.3700", "50"), lh("31", "31.32", "30")]
+    rows = [row("26", area=26.37, count=110), row("31", area=31.32, count=30)]
+
+    assert review(response(rows=rows), lh_rows=lh_rows) == []
+    rows[0]["totalSupplyHouseholdCount"] = 100
+    assert review(response(rows=rows), lh_rows=lh_rows) == [
+        "supplyRows[0].totalSupplyHouseholdCount: 같은 전용면적(26.37) LH API 공급행 2줄의 모집수 합계 110와 다름(100)",
     ]
 
 
-def test_merged_lh_row_split_by_housing_type_is_not_warned_when_counts_add_up():
-    # 대구테크노폴리스4: LH는 모집 240 한 행만 보내고 공급 표는 주택형마다 모집수를 따로 적는다(건설호수 468·183·68은 모집수가 아니다).
-    rows = [dict(row("051.9800A", count=200, lh_row=1), constructedHouseholdCount=468),
-            dict(row("059.9100A", count=25, lh_row=1), constructedHouseholdCount=183),
-            dict(row("059.9300B", count=15, lh_row=1), constructedHouseholdCount=68)]
+def test_pdf_rows_of_one_area_with_different_type_names_are_compared_together_with_the_lh_rows_of_that_area():
+    # 같은 면적에 형명만 다른 PDF 행(26A 10 / 26B 5)은 화면이 공급행 하나로 접는다. 행마다 LH 합계와 맞대면 거짓 경고가 난다.
+    lh_rows = [lh("26A", "26.01", "10"), lh("26B", "26.01", "5")]
+    rows = [row("26A", area=26.01, count=10), row("26B", area=26.01, count=5)]
 
-    assert review(response(rows=rows), lh_types=["51"], lh_counts=[240]) == []
-
-
-def test_split_rows_whose_sum_differs_from_lh_row_are_warned_once():
-    rows = [row("051.9800A", count=200, lh_row=1), row("059.9100A", count=25, lh_row=1), row("059.9300B", count=10, lh_row=1)]
-
-    assert review(response(rows=rows), lh_types=["51"], lh_counts=[240]) == [
-        "supplyRows[0], supplyRows[1], supplyRows[2]: 나뉜 공급행 모집수 합계 235이(가) LH API 공급행 1 모집수 240와 다름",
+    assert review(response(rows=rows), lh_rows=lh_rows) == []
+    rows[1]["totalSupplyHouseholdCount"] = 4
+    assert review(response(rows=rows), lh_rows=lh_rows) == [
+        "supplyRows[0].totalSupplyHouseholdCount: 같은 전용면적(26.01) LH API 공급행 2줄의 모집수 합계 15와 "
+        "같은 면적 PDF 행 2개(supplyRows[0], supplyRows[1])의 합 14가 다름",
     ]
 
 
-def test_split_rows_with_shared_count_are_not_summed():
-    rows = [row("051.9800A", count=None, lh_row=1), row("059.9100A", count=None, lh_row=1)]
+def test_lh_area_is_compared_at_two_decimals_rounded_half_up():
+    lh_rows = [lh("26", "26.375", "10"), lh("84", "84.9600", "5")]
+    rows = [row("26", area=26.38, count=11), row("84", area=84.96, count=6)]
 
-    assert review(response(rows=rows), lh_types=["51"], lh_counts=[240]) == []
-
-
-def test_shared_count_of_several_types_stays_one_row_with_subtypes():
-    # 공급 표가 여러 주택형을 모집수 하나로만 안내하면 공급행 하나에 subtypes로 두고 수를 나누지 않는다.
-    shared = dict(row("51A/B", count=240, lh_row=1),
-                  subtypes=[{"name": "51A", "exclusiveArea": 51.98, "commonArea": None, "constructedHouseholdCount": 468},
-                            {"name": "51B", "exclusiveArea": 51.91, "commonArea": None, "constructedHouseholdCount": 183}])
-
-    assert review(response(rows=[shared]), lh_types=["51"], lh_counts=[240]) == []
+    assert review(response(rows=rows), lh_rows=lh_rows) == [
+        "supplyRows[0].totalSupplyHouseholdCount: 같은 전용면적(26.38) LH API 공급행 1줄의 모집수 합계 10와 다름(11)",
+        "supplyRows[1].totalSupplyHouseholdCount: 같은 전용면적(84.96) LH API 공급행 1줄의 모집수 합계 5와 다름(6)",
+    ]
 
 
-def test_lh_row_without_supply_row_is_warned():
-    tree = response(rows=[row(count=20, lh_row=1)])
+def test_subtype_areas_of_a_pdf_row_collect_lh_rows_of_each_area():
+    # 공급 표가 두 주택형을 모집수 하나로 안내하면 한 공급행의 세부 주택형 면적마다 LH 행이 붙는다.
+    shared = row("51A/B", count=240, subtypes=[("51A", 51.98), ("51B", 51.91)])
+    lh_rows = [lh("51A", "51.98", "200"), lh("51B", "51.91", "40")]
 
-    assert review(tree, lh_types=["39", "46"], lh_counts=[20, 15]) == ["LH API 공급행 2(46): 이 행에서 나온 공급행이 없음"]
+    assert review(response(rows=[shared]), lh_rows=lh_rows) == []
+    assert review(response(rows=[shared]), lh_rows=lh_rows[:1]) == [
+        "supplyRows[0].totalSupplyHouseholdCount: 같은 전용면적(51.98, 51.91) LH API 공급행 1줄의 모집수 합계 200와 다름(240)",
+    ]
 
 
-@pytest.mark.parametrize("number", [None, 0, 3, True, "1"])
-def test_supply_row_without_valid_lh_row_number_is_warned(number):
-    tree = response(rows=[row(count=20, lh_row=1), row(count=15, lh_row=2), row(count=5, lh_row=number)])
+def test_lh_rows_or_pdf_rows_without_a_comparable_value_are_skipped_silently():
+    # 면적 없는 LH 행, 모르는 LH 모집수(0·빈 값), 비어 있는 PDF 모집수(공통 모집수), 붙는 LH 행이 없는 PDF 행, PDF 행이 없는 LH 행
+    lh_rows = [lh("39", "", "20"), lh("46", "46.1", "0"), lh("51", "51.2", "8"), lh("59", "59.3", "10"), lh("74", "74.0", "3")]
+    rows = [row("39", count=7), row("46", area=46.1, count=7), row("51", area=51.2, count=None),
+            row("84", area=84.0, count=1), row("59", area=59.3, count=10)]
 
-    assert review(tree, lh_types=["39", "46"], lh_counts=[20, 15]) == [
-        f"supplyRows[2].sourceRow: LH API 공급행 번호가 없거나 범위를 벗어남({number})",
+    assert review(response(rows=rows), lh_rows=lh_rows) == []
+
+
+def test_lh_complex_is_matched_to_the_pdf_complex_name_it_contains():
+    lh_rows = [lh("26", "26.37", "10", "인천부평(도시재생뉴딜) 행복주택"), lh("26", "26.37", "20", "인천가정 행복주택")]
+    rows = [row("26", area=26.37, count=10, complex_name="인천부평"), row("26", area=26.37, count=21, complex_name="인천가정"),
+            row("26", area=26.37, count=99, complex_name="모르는 단지")]
+
+    assert review(response(rows=rows), lh_rows=lh_rows) == [
+        "supplyRows[1].totalSupplyHouseholdCount: 같은 전용면적(26.37) LH API 공급행 1줄의 모집수 합계 20와 다름(21)",
+    ]
+
+
+def test_one_lh_complex_and_one_pdf_complex_are_the_same_complex_even_if_named_differently():
+    assert review(response(rows=[row("26", area=26.37, count=9, complex_name="사천벌리1")]),
+                  lh_rows=[lh("26", "26.37", "10", "사천벌리 영구임대")]) == [
+        "supplyRows[0].totalSupplyHouseholdCount: 같은 전용면적(26.37) LH API 공급행 1줄의 모집수 합계 10와 다름(9)",
     ]
 
 
 def test_numeric_housing_type_copied_from_lh_api_is_not_warned():
-    tree = response(rows=[row(housing_type="39", lh_row=1), row(housing_type="26.37", lh_row=2)])
+    tree = response(rows=[row(housing_type="39"), row(housing_type="26.37")])
 
-    assert review(tree, lh_types=["39", "51"], lh_counts=[None, None]) == [
+    assert review(tree, lh_rows=[lh("39"), lh("51")]) == [
         "supplyRows[1].sourceHousingTypeName: 면적 숫자만 있음(26.37)",
     ]
 
 
 def test_integer_housing_type_from_pdf_is_not_area_even_if_lh_names_it_differently():
     # 공급 표가 "24", LH API가 "24A"인 공고. 정수는 흔한 주택형 이름이라 면적으로 경고하지 않는다.
-    tree = response(rows=[row(housing_type="24", lh_row=1)])
+    tree = response(rows=[row(housing_type="24")])
 
-    assert review(tree, lh_types=["24A"], lh_counts=[None]) == []
+    assert review(tree, lh_rows=[lh("24A")]) == []
 
 
 def test_lh_housing_type_name_missing_from_row_quote_is_warned():
     # 모델이 PDF 공급 표의 "24" 대신 틀로 받은 LH 이름 "24A"를 옮긴 경우. 근거 인용에 그 이름이 있으면 경고하지 않는다.
-    tree = response(rows=[row(housing_type="24A", lh_row=1), row(housing_type="26", lh_row=2)],
+    tree = response(rows=[row(housing_type="24A"), row(housing_type="26")],
                     evidence=[{"path": "supplyRows[0]", "page": 1, "quote": "24 24.7200 12.6758 50"},
                               {"path": "supplyRows[1]", "page": 1, "quote": "26 26.8300 13.7 40"}])
 
-    warnings = review(tree, texts=["24 24.7200 12.6758 50 26 26.8300 13.7 40"] + [""] * 9, lh_types=["24A", "26"], lh_counts=[None, None])
+    warnings = review(tree, texts=["24 24.7200 12.6758 50 26 26.8300 13.7 40"] + [""] * 9, lh_rows=[lh("24A"), lh("26")])
 
     assert warnings == ["supplyRows[0].sourceHousingTypeName: 근거 인용에 없는 LH 주택형 이름(24A)"]
 
 
 def test_lh_housing_type_target_parentheses_need_not_be_in_quote():
     # 공급대상 괄호는 병합 셀이라 표 한 줄 인용에 없을 수 있다. 괄호 앞 표기(16A)가 있으면 경고하지 않는다.
-    tree = response(rows=[row(housing_type="16A(대학생/청년)", lh_row=1)],
+    tree = response(rows=[row(housing_type="16A(대학생/청년)")],
                     evidence=[{"path": "supplyRows[0]", "page": 1, "quote": "16A 16.37 27.6384 78"}])
 
-    assert review(tree, texts=["16A 16.37 27.6384 78"] + [""] * 9, lh_types=["16A(대학생/청년)"], lh_counts=[None]) == []
+    assert review(tree, texts=["16A 16.37 27.6384 78"] + [""] * 9, lh_rows=[lh("16A(대학생/청년)")]) == []
 
 
 def test_housing_type_not_from_lh_is_not_checked_against_quote():
     # LH 이름이 아니면(모델이 공급 표에서 읽은 표기) 인용에 없어도 이 경고는 내지 않는다. 화면이 근거와 대조한다.
-    tree = response(rows=[row(housing_type="26B", lh_row=1)], evidence=[{"path": "supplyRows[0]", "page": 1, "quote": "26 26.10 40"}])
+    tree = response(rows=[row(housing_type="26B")], evidence=[{"path": "supplyRows[0]", "page": 1, "quote": "26 26.10 40"}])
 
-    assert review(tree, texts=["26 26.10 40"] + [""] * 9, lh_types=["26A"], lh_counts=[None]) == []
+    assert review(tree, texts=["26 26.10 40"] + [""] * 9, lh_rows=[lh("26A")]) == []
 
 
 def test_without_lh_rows_counts_are_not_compared():

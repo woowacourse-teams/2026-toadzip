@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { beforeEach, expect, it, vi } from 'vitest'
 import { ComplexDecisions } from './ComplexDecision'
 import { scenario } from './fixtures/workspace'
-import { createReview, rebaseReview, assembleReview, type Review } from './review'
+import { createReview, expectedHousingType, rebaseReview, assembleReview, type Review } from './review'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 
 const api = vi.hoisted(() => ({ requestManagementApi: vi.fn(), getManagementDetail: vi.fn(), getManagementPage: vi.fn() }))
@@ -20,11 +20,10 @@ it('단지 등록 후 주택형 일부 생성에 실패해도 생성한 단지�
   workspace.supply.rows = []
   const first = original.extraction.supplyRows[0]
   const name = first.complexName!
-  const extraction = { ...original.extraction, sharedCounts: [], supplyRows: [
-    { ...first, complexName: name, typeName: '26A', subtypes: [], values: { ...first.values, exclusiveArea: 26.12 } },
-    { ...first, complexName: name, typeName: '26A(고령자)', subtypes: [], values: { ...first.values, exclusiveArea: 26.12 } },
-    { ...first, complexName: name, typeName: '36A', subtypes: [], values: { ...first.values, exclusiveArea: 36.5 } },
-  ], complexes: [{ name, address: '서울특별시 중구 세종대로 110', totalHouseholdCount: null, parkingCount: null }] }
+  const pdfRow = (typeName: string, exclusiveArea: number, count: number) => ({ ...first, complexName: name, typeName, subtypes: [],
+    values: { ...first.values, sourceHousingTypeName: typeName, exclusiveArea, totalSupplyHouseholdCount: count } })
+  const extraction = { ...original.extraction, sharedCounts: [], notApplicable: [], supplyRows: [pdfRow('26A', 26.12, 10), pdfRow('26A(고령자)', 26.12, 5), pdfRow('36A', 36.5, 7)],
+    evidence: [0, 1, 2].map(index => ({ path: `supplyRows[${index}]`, page: 4, quote: ['26A 26.12 10', '26A 26.12 5', '36A 36.5 7'][index] })), complexes: [{ name, address: '서울특별시 중구 세종대로 110', totalHouseholdCount: null, parkingCount: null }] }
   let latest = createReview(extraction, workspace, {})
   const types: MatchingHousingType[] = [], createdNames: string[] = []
   let version = 0, fail = true
@@ -61,15 +60,13 @@ it('단지 등록 후 주택형 일부 생성에 실패해도 생성한 단지�
   // 서버 초안을 복원하듯 JSON으로 보존한 검토 상태를 다시 연다.
   latest = rebaseReview(JSON.parse(JSON.stringify(latest)) as Review, { ...workspace, snapshotToken: 'updated' }, { 99: structuredClone(types) })
   expect(latest.rows.every(row => row.proposal.createdComplex?.id === 99)).toBe(true)
-  // 다른 단지를 정렬할 때 미완료 A 단지까지 기준 검토에 보관한 상황.
-  latest = { ...latest, unaligned: structuredClone(latest) }
   render(<Test />)
   fireEvent.click(screen.getByRole('button', { name: '등록한 단지에 이어서 연결' }))
   await waitFor(() => expect(latest.rows.every(row => row.proposal.newComplex?.id === 99 && !row.proposal.createdComplex)).toBe(true))
   expect(createdNames).toEqual(['26A', '36A'])
-  expect(latest.unaligned?.rows.some(row => row.proposal.createdComplex)).toBe(false)
   expect(registration.createHousingComplex).toHaveBeenCalledTimes(1)
-  expect(latest.rows.map(row => row.proposal.housingTypeId)).toEqual([100, 100, 101])
+  // 같은 면적의 26A·26A(고령자)는 공급행 하나다. 주택형은 저장할 때 서버가 전용면적으로 정하며, 화면은 같은 규칙으로 고를 주택형을 미리 보인다.
+  expect(latest.rows.map(row => [row.proposal.destination, expectedHousingType(row)?.id])).toEqual([['new', 100], ['new', 101]])
   expect(within(screen.getByRole('group', { name: `PDF 단지 ${name}` })).getByText(/연결 단지:/)).toBeVisible()
 })
 

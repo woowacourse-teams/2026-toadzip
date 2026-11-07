@@ -1,5 +1,5 @@
 """추출 단계별 프롬프트를 만든다. 문구와 응답 스키마는 prompts/ 폴더의 파일이 원본이다.
-본문 단계에는 관리자 스키마에서 그 단계가 맡은 필드만 남겨 보내고, LH 공고의 공급 단계에는 LH 공급 API 행 틀을 함께 보낸다.
+본문 단계에는 관리자 스키마에서 그 단계가 맡은 필드만 남겨 보내고, LH 공고의 공급 단계에는 LH 공급 API 행을 참고 목록으로 함께 보낸다.
 모델·문구·쪽 입력을 바꾸면 대표 PDF로 정확도를 다시 확인한다.
 """
 
@@ -53,9 +53,11 @@ def _project_complex_schema(schema: dict, fields: tuple[str, ...]) -> dict:
 def supply_prompt(rows: list[SourceSupplyRow], selected: pages.PromptPages) -> str:
     lh_frame = ""
     if rows:
+        # 번호를 붙이면 모델이 목록 줄마다 공급행을 만들거나 번호로 맞추려 해서 참고 목록으로만 준다.
         frame = "\n".join(
-            f"{number}. 주택형={row.type_name} | 전용={row.exclusive_area} | 공급={row.supply_area} | 모집수={row.supplied_unit_count}"
-            for number, row in enumerate(rows, start=1)
+            f"- 단지={row.complex_label} | 주택형={row.type_name} | 전용={row.exclusive_area} | 공급={row.supply_area} "
+            f"| 모집수={row.supplied_unit_count}"
+            for row in rows
         )
         lh_frame = _LH_FRAME + "\n[LH 공급 API 행]\n" + frame + "\n\n"
     return _TEXT_PREFACE + "[추출 단계: 공급 표]\n" + _SUPPLY_INSTRUCTIONS + lh_frame + "\n\n" + selected.supply_text

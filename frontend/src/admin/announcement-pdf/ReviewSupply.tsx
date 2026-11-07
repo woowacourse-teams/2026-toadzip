@@ -3,13 +3,9 @@ import { Link } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import type { JsonWorkspace } from '../announcement-json/api'
 import { type Evidence } from './extraction'
-import { needsComplex, chooseSubtype, sameAreaNote, sameAreaSubtypes, complexDecisionCount, housingTypePrice, pendingItems, placementProblems, linkedHousingType, linkedHousingTypeId, newRepresentative, editCell, representativeSubtype, sharedGroupStorable, pdfOrderChanges, pendingRow, pendingTarget, remapTarget, shown, shownMoney, type Cell, type Review, type ReviewFilter, type RowReview, type SubtypeChoice } from './review'
+import { needsComplex, chooseSubtype, sameAreaNote, sameAreaSubtypes, complexDecisionCount, housingTypePrice, pendingItems, linkedHousingType, linkedHousingTypeId, newRepresentative, editCell, representativeSubtype, pdfOrderChanges, pendingRow, pendingTarget, remapTarget, shown, shownMoney, assembledCount, autoHousingType, destinationSentence, expectedHousingType, leftoverRows, savedValue, type Cell, type Review, type ReviewFilter, type RowReview, type SubtypeChoice } from './review'
 import { ComplexDecisions } from './ComplexDecision'
-import { missingHousingType, splittableLhRows, type ComplexLabels, type HousingCandidates } from './matching'
-import { choosePdfCounts, includeRow, placeRow, type Placement } from './placement'
-import { complexCorrespondence, placementDoubt, placementTarget } from './correspondence'
-import { ComplexMatch } from './ComplexMatch'
-import { PlacementChooser } from './PlacementChooser'
+import { lhCrossCheck, supersedeNote, type ComplexLabels, type HousingCandidates } from './matching'
 import { SupplyRowList } from './SupplyRowList'
 import { ComplexTypesPanel } from './ComplexTypesPanel'
 import { ReviewCells } from './ReviewCells'
@@ -25,33 +21,26 @@ function shownTypeName(row: RowReview) {
 }
 
 export function ReviewSupply({ review, workspace, housing, complexes, filter, empty, onChange, onEvidence, editorHref, warnings = [], savesHousingTypes = true, selected, onSelect, onJump }: { editorHref?: string; warnings?: string[]
-  /** 검토 항목(data-review-id)으로 이동한다. 저장 방식 문제의 해결 동작이 쓴다. */
+  /** 검토 항목(data-review-id)으로 이동한다. 상태 배지와 단지 정하기 안내가 쓴다. */
   onJump?: (target: string) => void
   /** 편집 영역에 보일 공급행 번호. 확인 필요 이동·오류 이동이 이 값을 바꾼다. */
   selected: number; onSelect: (index: number) => void
   /** PDF로 공급정보 편집표만 채울 때는 false. 주택형 이름·가격을 저장하지 않으므로 그 안내와 가격 칸을 보이지 않는다. */
   savesHousingTypes?: boolean; review: Review; workspace: JsonWorkspace; housing: HousingCandidates; complexes: ComplexLabels; filter: ReviewFilter; empty: string; onChange: (review: Review) => void; onEvidence: (evidence: Evidence, cell?: Cell) => void }) {
-  const duplicates = possibleLhDuplicates(workspace.supply), problems = placementProblems(review, workspace)
+  const duplicates = possibleLhDuplicates(workspace.supply)
   // 주택형 패널은 편집 상태를 갖지 않아 닫았다 열어도 고른 값이 그대로다.
   const [panelOpen, setPanelOpen] = useState(false), [noticesChoice, setNoticesOpen] = useState<boolean | null>(null)
   const pending = pendingItems(review, savesHousingTypes, workspace)
-  const { groupIndex, group, shown, current, order } = supplyView(review, selected, filter, pending)
+  const { group, shown, current, order } = supplyView(review, selected, filter, pending)
   // 공급정보는 위 고정 막대에서 고른 단지 하나씩 보인다. 그 단지의 행만 목록·편집 영역에 둔다.
   // 편집을 마친 자리에서 바로 다음 행으로 넘어가게 한다. 좁은 화면에서는 위 이동 막대가 고정되지 않는다.
   const following = current >= 0 ? order[order.indexOf(current) + 1] : undefined
-  const matched = group ? complexCorrespondence(review, workspace, groupIndex) : null
-  const showMatch = matched?.lhRows.length ? () => onJump?.(`match:${groupIndex}`) : undefined
   const visible = (index: number) => shown.includes(index)
   function update(index: number, next: RowReview) { onChange({ ...review, rows: review.rows.map((row, at) => at === index ? next : row) }) }
-  function place(index: number, placement: Placement) { onChange(placeRow(review, index, placement, workspace, housing)) }
-  /** 같은 LH 통합행을 수정하려던 행들을 그 통합행의 분리 묶음으로 바꾼다. */
-  function splitDuplicates(index: number) {
-    const key = review.rows[index].proposal.destination
-    const lh = splittableLhRows(workspace.supply).find(item => item.attachedRowKey === key)
-    if (!lh) return
-    const members = review.rows.flatMap((row, at) => row.include && row.proposal.destination === key && !row.proposal.saveMode ? [at] : [])
-    onChange(choosePdfCounts(members.reduce((next, at) => placeRow(next, at, { mode: 'SPLIT', lhRow: lh.rowIdentifier }, workspace, housing), review), members))
-  }
+  // 지금 단지의 PDF 행이 가리키지 않아 그대로 남을 기존 공급행. 전용면적을 몰라 맞추지 못한 통합행이면 두 번 셀 수 있다.
+  const groupComplexes = new Set((group?.indexes ?? []).flatMap(index => workspace.supply.rows.filter(row => [review.rows[index].proposal.anchorKey, review.rows[index].proposal.destination].includes(row.key)).map(row => row.complexName)))
+  const leftovers = leftoverRows(review, workspace).filter(row => groupComplexes.has(row.complexName)), excluded = new Set(review.excludedRows ?? [])
+  const toggleLeftover = (key: string) => onChange({ ...review, excludedRows: excluded.has(key) ? [...excluded].filter(item => item !== key) : [...excluded, key] })
   const shownChecks = [...filter === 'all' ? review.extraction.checks : [], ...warnings]
   const inGroup = (paths: string[]) => !group || paths.some(path => group.indexes.includes(Number(/^supplyRows\[(\d+)\]/.exec(path)?.[1] ?? -1)))
   // 단지를 정해야 저장할 수 있으므로 어느 필터에서도 단지 정하기를 숨기지 않는다.
@@ -66,8 +55,12 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
       if (!inGroup(group.paths)) return []
       const reserve = group.paths.every(path => path.endsWith('.reserveCount'))
       const label = `공통 ${reserve ? '예비자 모집' : '모집'} ${group.count}${reserve ? '명' : '세대'}`
-      return [{ key: `shared:${index}`, label, tone: 'info' as const, body: <div className={styles.shared}><strong>{label}</strong><span>{sharedLabel(review, group.paths)}{group.paths.every(path => path.endsWith('.totalSupplyHouseholdCount')) && !sharedGroupStorable(review, index) ? sharedUnstorable(review, index) : ''}</span>{group.page && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence({ page: group.page!, quote: group.quote, path: group.paths[0] })}>PDF {group.page}쪽 보기</Button>}</div> }]
+      return [{ key: `shared:${index}`, label, tone: 'info' as const, body: <div className={styles.shared}><strong>{label}</strong><span>{sharedLabel(review, group.paths)}{group.paths.every(path => path.endsWith('.totalSupplyHouseholdCount')) ? sharedUnstored : ''}</span>{group.page && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence({ page: group.page!, quote: group.quote, path: group.paths[0] })}>PDF {group.page}쪽 보기</Button>}</div> }]
     }) : [],
+    ...leftovers.length ? [{ key: 'leftovers', label: `PDF에 없는 기존 공급행 ${leftovers.length}행`, tone: 'warning' as const, body: <div className={styles.pending} role="note" aria-label="PDF에 없는 기존 공급행">
+      <p><strong>PDF에 없는 기존 공급행</strong> PDF 공급행과 전용면적이 맞지 않아 그대로 두는 행입니다. 전용면적을 모르는 통합행처럼 PDF 공급행과 같은 세대를 담은 행이면 두 번 세니 이번 보정에서 제외하세요.</p>
+      <ul>{leftovers.map(row => <li key={row.key}>{`#${String(row.id)} ${row.typeName} · ${row.householdCount ?? '모집수 미확인'}${row.householdCount == null ? '' : '세대'} · ${row.exclusiveArea == null ? '면적 미확인' : `전용 ${row.exclusiveArea}㎡`}`}
+        <Button data-design-system className={styles.quietButton} aria-pressed={excluded.has(row.key)} onClick={() => toggleLeftover(row.key)}>{excluded.has(row.key) ? `#${String(row.id)} 제외 취소` : `#${String(row.id)} 이번 보정에서 제외`}</Button></li>)}</ul></div> }] : [],
     ...ordered ? [{ key: 'order', label: '저장하면 PDF 표 순서로 표시', tone: 'info' as const, body: <p className={styles.notice}>저장하면 공급행을 PDF 공급 표 순서({review.rows.flatMap((row, index) => row.include ? [review.extraction.supplyRows[index].typeName ?? `공급행 ${index + 1}`] : []).join(' → ')})로 표시합니다. PDF에 없는 기존 공급행은 그 뒤에 원래 순서대로 둡니다.</p> }] : [],
   ]
   return <>
@@ -84,9 +77,8 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
     {/* 한 단지의 주택형을 한곳에서 대조하도록 PDF 단지 이름별로 묶는다. 저장 순서는 PDF 표 순서 그대로이고, 확인 필요 이동은 이 묶음 순서를 따른다. */}
     {/* 단지 정하기는 안내가 아니라 저장 전에 꼭 할 결정이라 접지 않고 단지 영역 맨 위에 둔다. */}
     {decisions > 0 && <ComplexDecisions review={review} workspace={workspace} only={group?.indexes} onChange={onChange} />}
-    {group && <ComplexMatch review={review} workspace={workspace} housing={housing} groupIndex={groupIndex} onChange={onChange} />}
     {review.rows.length > 0 && <div className={styles.supplyLayout} data-panel={panelOpen}>
-      <SupplyRowList review={review} workspace={workspace} problems={problems} pending={pending} selected={current} visible={visible} onSelect={onSelect} onJump={onJump} />
+      <SupplyRowList review={review} workspace={workspace} pending={pending} selected={current} visible={visible} onSelect={onSelect} onJump={onJump} />
       <div className={styles.rowEditor}>{current >= 0 && supplyRow(review.rows[current], current)}
         {following !== undefined && <div className={styles.rowFooter}><Button data-design-system className={styles.secondaryButton} onClick={() => onSelect(following)}>{`다음 공급행 · ${following + 1}. ${review.extraction.supplyRows[following].typeName ?? '주택형 미확인'}`}</Button></div>}</div>
       {panelOpen && current >= 0 && typesPanel(current)}
@@ -94,42 +86,36 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
     {!review.rows.length ? <p>추출된 공급행이 없습니다. 현재 공급정보를 유지합니다.</p> : !shown.length && <p className={styles.hint}>{empty}</p>}
   </>
 
-  function rowContext(row: RowReview, index: number) {
-    const source = review.extraction.supplyRows[index], current = workspace.supply.rows.find(item => item.key === row.proposal.destination)
-    const complexId = current?.housingComplexId ?? workspace.supply.rows.find(item => item.key === row.proposal.anchorKey)?.housingComplexId ?? row.proposal.newComplex?.id ?? row.proposal.complexId
-    // 세부 타입 묶음 행은 세부 타입마다 새 주택형을 정하므로(SubtypeLinks) 행 단위 '맞는 주택형 없음'을 두지 않는다.
-    const missing = row.include && !row.subtypes ? missingHousingType(complexId, row.proposal.candidates, String(row.cells.find(cell => cell.field === 'sourceHousingTypeName')?.value ?? source.typeName ?? ''), source.values.exclusiveArea, source.values.supplyArea) : null
-    const missingLabel = missing ? `${missing.name || '형명 없음'} · 전용 ${missing.exclusiveArea}㎡` : ''
-    const chooseNewType = () => update(index, { ...row, reviewed: true, newHousingType: true, cells: row.cells.map(cell => cell.field === 'housingTypeId' ? editCell(cell, '') : cell) })
-    return { source, current, complexId, missing, missingLabel, chooseNewType }
+  function complexOf(row: RowReview) {
+    const current = workspace.supply.rows.find(item => item.key === row.proposal.destination)
+    return current?.housingComplexId ?? workspace.supply.rows.find(item => item.key === row.proposal.anchorKey)?.housingComplexId ?? row.proposal.newComplex?.id ?? row.proposal.complexId
   }
   function typesPanel(index: number) {
-    const row = review.rows[index], { complexId, missing, missingLabel, chooseNewType } = rowContext(row, index)
+    const row = review.rows[index], complexId = complexOf(row)
     const name = complexId === null ? row.proposal.newComplex?.name ?? '단지 미정' : complexes[complexId] ?? workspace.supply.rows.find(item => item.housingComplexId === complexId)?.housingComplexName ?? `단지 #${complexId}`
-    const link = (typeId: number) => update(index, { ...row, reviewed: true, newHousingType: false, priceTarget: undefined,
+    const link = (typeId: number) => update(index, { ...row, reviewed: true, priceTarget: undefined,
       cells: row.cells.map(cell => cell.field === 'housingTypeId' ? editCell(cell, String(typeId)) : cell) })
     return <ComplexTypesPanel complexName={name} complexId={complexId} review={review} workspace={workspace} types={complexId === null ? [] : housing[complexId] ?? row.proposal.candidates}
-      rowIndex={index} linkedId={linkedHousingTypeId(row)} canLink={row.include && !row.subtypes} newType={missing?.name ? { label: missingLabel, selected: Boolean(row.newHousingType) } : null}
-      onLink={link} onNewType={chooseNewType} onClose={() => setPanelOpen(false)} />
+      rowIndex={index} linkedId={linkedHousingTypeId(row) ?? expectedHousingType(row)?.id ?? null} canLink={row.include && !row.subtypes}
+      onLink={link} onClose={() => setPanelOpen(false)} />
   }
   function supplyRow(row: RowReview, index: number) {
-      const { source, missing, missingLabel, chooseNewType } = rowContext(row, index)
-      const doubt = placementDoubt(review, index, workspace)
-      const inOffer = placementTarget(review, workspace, index) === 'match'
-      // 새 주택형은 연결 주택형을 직접 수정·미연결로 둔 동안만 유지한다. 다른 주택형이나 기존 값을 고르면 풀린다.
-      const keepsNewType = (cells: typeof row.cells) => cells.some(cell => cell.field === 'housingTypeId' && cell.mode === 'manual' && cell.value === null)
+      const source = review.extraction.supplyRows[index]
+      const superseded = supersedeNote(workspace.supply.rows, row.proposal.supersedes)
+      // LH 공급 원본 행은 저장할 곳과 같은 전용면적이라 붙은 줄을 검산 정보로만 보인다. 저장하면 함께 제외할 옛 행에 붙은 줄도 이 행의 몫이다.
+      const lh = row.proposal.destination === 'new' ? null : lhCrossCheck(workspace.supply.lhSupplyRows ?? [], [row.proposal.destination, ...row.proposal.supersedes ?? []], assembledCount(row))
+      const area = row.cells.find(cell => cell.field === 'exclusiveArea'), expected = expectedHousingType(row)
       return <section className={styles.supplyBlock} key={index} aria-label={`공급행 ${index + 1} 검토`} data-review-id={`row:${index}`} tabIndex={-1}>
-        <header><h3>{`${index + 1}. ${source.typeName ?? '주택형 미확인'}`}</h3><div className={styles.actions}><Button data-design-system className={styles.quietButton} aria-expanded={panelOpen} onClick={() => setPanelOpen(open => !open)}>{panelOpen ? '단지 주택형 닫기' : '단지 주택형 보기'}</Button><label className={styles.inlineCheck}><input type="checkbox" checked={row.include} onChange={event => onChange(includeRow(review, index, event.target.checked, workspace, housing))} />공급행 {index + 1} 적용</label></div></header>
+        <header><h3>{`${index + 1}. ${source.typeName ?? '주택형 미확인'}`}</h3><div className={styles.actions}><Button data-design-system className={styles.quietButton} aria-expanded={panelOpen} onClick={() => setPanelOpen(open => !open)}>{panelOpen ? '단지 주택형 닫기' : '단지 주택형 보기'}</Button><label className={styles.inlineCheck}><input type="checkbox" checked={row.include} onChange={event => update(index, { ...row, include: event.target.checked, reviewed: true })} />공급행 {index + 1} 적용</label></div></header>
         {/* 편집 영역은 저장할 곳 → 값 비교 → 세부 타입 → 대상별 임대조건 → 주택형 가격 순서의 같은 모양 구역으로 나눈다. */}
         <div className={styles.rowPart}><h4>저장할 곳</h4>
-          {/* 자동 대응 근거(AI 표시·모집수 합 등)는 접어 두고, 대응이 의심스러울 때만 그 까닭을 쉬운 말로 보인다. */}
-          {pendingRow(row) && <div className={styles.pending}><p><strong>확인 필요</strong> {doubt ? `이 대응이 맞는지 확인하세요. ${doubt}` : inOffer ? '위 LH·PDF 대응에서 나눌지 1행으로 둘지 고르세요.' : !row.proposal.destination ? '저장할 곳을 고르세요.' : '저장할 곳이 맞는지 확인하세요.'}</p>
-            <div className={styles.actions}>{inOffer && showMatch && <Button data-design-system className={styles.quietButton} onClick={showMatch}>LH·PDF 대응 보기</Button>}
-              <Button data-design-system className={styles.secondaryButton} disabled={!row.proposal.destination} onClick={() => update(index, { ...row, reviewed: true })}>{`공급행 ${index + 1} 대응 확인`}</Button></div></div>}
-          {!pendingRow(row) && doubt && <p className={styles.warningNote} role="note"><strong>이 대응이 맞는지 확인하세요.</strong> {doubt}</p>}
+          {/* 자동 대응 근거는 접어 두고, 사람이 확인해야 할 대응(GH 틀·블록 번호나 주소 한쪽만 맞은 단지)만 확인을 받는다. */}
+          {pendingRow(row) && <div className={styles.pending}><p><strong>확인 필요</strong> 저장할 곳이 맞는지 확인하세요.</p>
+            <div className={styles.actions}><Button data-design-system className={styles.secondaryButton} onClick={() => update(index, { ...row, reviewed: true })}>{`공급행 ${index + 1} 대응 확인`}</Button></div></div>}
           {!row.include ? <p className={styles.hint}>이 행의 추출값을 제외합니다. 기존 공급정보는 유지합니다.</p> : <>
-            <PlacementChooser review={review} index={index} workspace={workspace} complexes={complexes} problem={problems.get(index)} onShowMatch={pendingRow(row) && inOffer ? undefined : showMatch} onPlace={placement => place(index, placement)} onFocusProblem={onJump}
-              onFixDuplicate={splittableLhRows(workspace.supply).some(lh => lh.attachedRowKey === row.proposal.destination) ? () => splitDuplicates(index) : undefined} />
+            <p aria-label={`공급행 ${index + 1} 저장할 곳`}>{destinationSentence(review, index, workspace)}</p>
+            {superseded && <p className={styles.hint} role="note">{superseded}</p>}
+            {lh && <p className={styles.hint} role="note" aria-label={`공급행 ${index + 1} LH 검산`}>{lh.text}</p>}
             {/* 단지에 연결되지 않은 기존 공급행도 위 '단지 정하기'에서 단지를 정한다. */}
             {needsComplex(row, workspace) && <NewSupplyComplex row={row} index={index} onChange={next => update(index, next)} onJump={onJump} />}
             {row.proposal.reason && <details className={styles.conditions}><summary>자동 대응 근거</summary><p className={styles.hint}>{row.proposal.reason}</p></details>}
@@ -139,11 +125,12 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
           <div className={styles.rowPart}><h4>값 비교</h4>
             {source.values.constructedHouseholdCount != null && <p className={styles.hint}>{`PDF 건설호수 ${String(source.values.constructedHouseholdCount)}세대`}</p>}
             {savesHousingTypes && typeof shownTypeName(row) === 'string' && <p className={styles.hint}>{`저장하면 공개 화면에 '${String(shownTypeName(row))}'(으)로 표시하고, 연결한 단지 주택형 이름도 이 표기로 갱신합니다(끝 괄호는 떼고 면적만 남으면 갱신하지 않음 · 관리자가 고친 이름과 더 최근 공고 이름은 유지).`}</p>}
-            {missing && <div className={styles.pending}><p><strong>맞는 주택형 없음</strong> 연결할 단지에 PDF 전용 {missing.exclusiveArea}㎡ 주택형이 없습니다.{row.newHousingType ? ` 저장하면 '${missingLabel}' 주택형을 이 단지에 추가합니다.` : ''}</p>
-              {!row.newHousingType && <Button data-design-system className={styles.secondaryButton} disabled={!missing.name} onClick={chooseNewType}>PDF 형명·면적으로 새 주택형 추가</Button>}</div>}
+            {/* 주택형은 저장할 때 서버가 단지·전용면적으로 정한다. 화면은 같은 규칙으로 고를 주택형을 미리 알린다. */}
+            {autoHousingType(row) && complexOf(row) !== null && <p className={styles.hint}>{expected
+              ? `연결 주택형: 저장하면 같은 전용면적의 '${expected.name}'(전용 ${expected.exclusiveArea}㎡)에 연결합니다.`
+              : `연결 주택형: 이 단지에 전용 ${String(savedValue(area!))}㎡ 주택형이 없어 저장하면 새로 만듭니다.`}</p>}
             <ReviewCells housingTypes={row.proposal.candidates} otherHousingTypes={Object.values(housing).flat()} cells={row.cells} scope={`공급행 ${index + 1}`} filter={filter}
-              newType={missing && missing.name ? { label: missingLabel, selected: Boolean(row.newHousingType), onSelect: chooseNewType } : undefined}
-              onChange={cells => update(index, { ...row, cells, newHousingType: Boolean(row.newHousingType && missing && keepsNewType(cells)),
+              onChange={cells => update(index, { ...row, cells,
                 ...(linkedHousingTypeId({ ...row, cells }) !== linkedHousingTypeId(row) ? { priceTarget: undefined } : {}) })} onEvidence={onEvidence} />
           </div>
           <SubtypeLinks row={row} index={index} update={next => update(index, next)} />
@@ -186,7 +173,7 @@ function TargetBlock({ review, index, workspace, filter, update, onEvidence }: {
 function HousingTypePrice({ row, index, update }: { row: RowReview; index: number; update: (row: RowReview) => void }) {
   // 화면과 저장이 같은 주택형을 보도록 저장 기준(연결 주택형 칸 → 저장 위치의 주택형)으로 고른다.
   const type = linkedHousingType(row), price = housingTypePrice(row, type)
-  if (!price.options.length || linkedHousingTypeId(row) === null && !newRepresentative(row)) return null
+  if (!price.options.length || linkedHousingTypeId(row) === null && !newRepresentative(row) && !autoHousingType(row)) return null
   const won = (value: number | null | undefined) => typeof value === 'number' ? `${value.toLocaleString('ko-KR')}원` : '미확인'
   const current = `보증금 ${won(type?.basicDeposit)} · 월 ${won(type?.basicMonthlyRent)}`
   const chosen = price.chosen === null ? null : price.options[price.chosen]
@@ -250,12 +237,8 @@ function NewSupplyComplex({ row, index, onChange, onJump }: { row: RowReview; in
   </section>
 }
 
-/** 공통 모집수를 저장하지 못하는 까닭. 세부 타입 묶음 행이 들었으면 그 행의 모집수를 직접 받는다. */
-function sharedUnstorable(review: Review, index: number) {
-  return review.rows.some(row => row.include && row.proposal.sharedIndex === index && row.subtypes)
-    ? ' 세부 타입 묶음 행은 공통 모집 묶음에 넣을 수 없어 공통 모집수를 저장하지 않습니다. 세부 타입 묶음 행의 모집수는 직접 입력하고, 나머지 행의 모집수는 비워 둡니다.'
-    : ' 기존 공급행 없이 새로 만드는 행끼리는 공통 모집수를 저장할 수 없어 각 행을 비워 둡니다.'
-}
+/** 단지가 다른 공급행끼리 함께 쓰는 행 모집수는 공통 모집 묶음을 새로 만들지 않아 저장하지 않는다. 같은 단지의 행은 공급행 하나로 접힌다. */
+const sharedUnstored = ' 단지가 다른 공급행끼리 함께 쓰는 모집수라 공급행 모집수로 정하지 않습니다. 필요하면 행마다 직접 입력하세요.'
 /** 공통 모집수가 묶은 대상을 읽기 쉽게 적는다. 대상별 묶음은 저장할 곳이 없어 각 대상의 모집수를 비워 둔다. */
 function sharedLabel(review: Review, paths: string[]) {
   const at = paths.map(path => /^supplyRows\[(\d+)\](?:\.targets\[(\d+)\])?/.exec(path)).filter(match => match !== null)

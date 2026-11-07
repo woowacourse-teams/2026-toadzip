@@ -11,6 +11,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.HousingTypeAreas;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import java.math.BigDecimal;
@@ -131,13 +132,29 @@ class AnnouncementComplexAdminLinks {
         link(target, complex, confirmOnly ? List.of() : members, actor);
     }
 
-    /** 공급행 주택형은 LH 대표 전용면적(없으면 공고 면적)과 같은 주택형이 하나일 때만 정한다. */
+    /**
+     * 공급행 대표 주택형은 LH 대표 전용면적(없으면 공고 면적)으로, 함께 모집하는 주택형은 이전에 연결된 주택형 면적마다 새 단지에서
+     * {@link HousingTypeAreas#pick}으로 고른다. 면적이 여럿인 공급행(26A/B/C)을 다시 연결해도 나머지 면적 연결이 남게 하려는 것이다.
+     */
     private void link(AnnouncementComplex target, HousingComplex complex, Collection<SupplyRow> rows, String actor) {
         String before = linkData(target, rows);
         boolean changed = target.linkByAdmin(complex, actor, clock.instant());
+        var candidates = types.findAllByHousingComplex(complex);
         for (var row : rows) {
             BigDecimal area = row.getLhExclusiveArea() != null ? row.getLhExclusiveArea() : row.effectiveExclusiveArea();
-            changed |= row.relinkByAdminMatch(complex, sameAreaType(complex, area));
+            var previous = row.getHousingTypes();
+            HousingType representative = HousingTypeAreas.pick(candidates, area, row.displayHousingTypeName()).orElse(null);
+            changed |= row.relinkByAdminMatch(complex, representative);
+            if (representative != null && row.getSupplyGroup() == null) {
+                var others = previous.stream().map(type -> HousingTypeAreas.pick(candidates, type.getExclusiveArea(), type.getName()))
+                        .flatMap(java.util.Optional::stream).filter(type -> !type.getId().equals(representative.getId()))
+                        .distinct().toList();
+                if (!others.isEmpty()) {
+                    var linkedBefore = ids(row.getHousingTypes());
+                    row.linkHousingTypesByAdmin(others);
+                    changed |= !linkedBefore.equals(ids(row.getHousingTypes()));
+                }
+            }
         }
         if (changed) {
             changes.save(new AdminDataChange("ANNOUNCEMENT_COMPLEX", target.getId(), "LINK_BY_ADMIN", actor, before, linkData(target, rows)));
@@ -163,12 +180,8 @@ class AnnouncementComplexAdminLinks {
         return json.writeValueAsString(data);
     }
 
-    private HousingType sameAreaType(HousingComplex complex, BigDecimal exclusiveArea) {
-        if (exclusiveArea == null) { return null; }
-        var matches = types.findAllByHousingComplex(complex).stream()
-                .filter(type -> type.getExclusiveArea() != null && type.getExclusiveArea().compareTo(exclusiveArea) == 0)
-                .toList();
-        return matches.size() == 1 ? matches.getFirst() : null;
+    private static java.util.Set<Long> ids(Collection<HousingType> linked) {
+        return linked.stream().map(HousingType::getId).collect(java.util.stream.Collectors.toSet());
     }
 
     private boolean same(Object first, Object second) { return json.valueToTree(first).equals(json.valueToTree(second)); }

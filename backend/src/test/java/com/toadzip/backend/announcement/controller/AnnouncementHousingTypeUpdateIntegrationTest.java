@@ -343,27 +343,6 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     }
 
     @Test
-    void 한_저장에서_같은_단지_면적_새_주택형을_고른_행들은_주택형_하나를_함께_쓴다() throws Exception {
-        var second = SupplyRow.create(announcement, complex, type, UUID.randomUUID().toString(), 1, "알림 테스트 단지",
-                "59", null, null, SupplyCategory.NEW_SUPPLY, null, 5);
-        entities.persist(second);
-        entities.flush();
-        var request = request();
-        for (var node : request.path("correction").path("rows")) {
-            ((ObjectNode) node).putNull("housingTypeId");
-            ((ObjectNode) node).putObject("newHousingType").put("name", "59").put("exclusiveArea", new BigDecimal("59.9"));
-        }
-        apply(request, preview(request)).andExpect(status().isOk());
-        entities.flush(); entities.clear();
-
-        var first = entities.find(SupplyRow.class, row.getId()).getHousingType();
-        assertThat(first.getId()).isNotEqualTo(type.getId());
-        assertThat(entities.find(SupplyRow.class, second.getId()).getHousingType().getId()).isEqualTo(first.getId());
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM housing_types WHERE housing_complex_id=? AND exclusive_area=59.9",
-                Long.class, complex.getId())).isEqualTo(1);
-    }
-
-    @Test
     void 휴지통_단지의_주택형에는_공고_값을_반영하지_않는다() throws Exception {
         var request = request();
         value(request, "row:" + row.getId(), "36A", null, 120);

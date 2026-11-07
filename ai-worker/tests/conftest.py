@@ -141,7 +141,7 @@ USAGE = {"promptTokens": 9000, "outputTokens": 3000, "thinkingTokens": 500}
 EXTRACTION = {
     "data": {"announcement": {"name": "여수미평1 영구임대주택 예비입주자 모집"},
              "receptionPlace": {"name": None, "method": None, "address": None, "contact": None, "url": None}, "complexes": [],
-             "supplyRows": [{"sourceHousingTypeName": "16A", "lhSourceRow": 1, "totalSupplyHouseholdCount": 78}], "schedules": []},
+             "supplyRows": [{"sourceHousingTypeName": "16A", "totalSupplyHouseholdCount": 78}], "schedules": []},
     "sharedCounts": [], "notApplicable": [],
     "evidence": [{"path": "supplyRows[0]", "page": 2, "quote": "공용 26.37 298"}],
 }
@@ -212,7 +212,7 @@ def compact_stage_output(tree, prompt):
     rows = []
     base_fields = (
         "totalSupplyHouseholdCount", "exclusiveArea", "commonArea", "supplyArea", "constructedHouseholdCount",
-        "expectedMoveInMonth", "lhSourceRow",
+        "expectedMoveInMonth",
     )
     target_fields = (
         "supplyHouseholdCount", "reserveCount", "rentalDeposit", "monthlyRent", "convertedDeposit",

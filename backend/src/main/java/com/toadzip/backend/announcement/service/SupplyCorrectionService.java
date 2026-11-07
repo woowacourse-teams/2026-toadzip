@@ -27,6 +27,7 @@ import com.toadzip.backend.announcement.repository.SupplySourceQueryRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.HousingTypeAreas;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.mapping.service.CorrectedSupplyLinkService;
@@ -61,8 +62,6 @@ import tools.jackson.databind.ObjectMapper;
 @PreAuthorize("hasRole('ADMIN')")
 @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class SupplyCorrectionService {
-    /** 작업실 rowSources의 분류. 원천 키는 나눈 LH 공급 원본 행 식별자 "LH:{panId}:SUPPLY:{순번}"이다. */
-    static final String LH_SPLIT = "LH_SPLIT";
     private final AnnouncementRepository announcements;
     private final SupplyRowRepository rows;
     private final SupplyTargetRepository targets;
@@ -73,8 +72,7 @@ public class SupplyCorrectionService {
     private final SupplyCorrectionRecordRepository corrections;
     private final AdminDataChangeRepository changes;
     private final QualityComparisonService comparisons;
-    private final SupplyCorrectionGroups groupCorrections;
-    private final SupplyCorrectionPlacements placements;
+    private final SupplyCorrectionLhRows lhRows;
     private final CorrectedSupplyLinkService correctedLinks;
     private final ObjectMapper json;
     private final AnnouncementComplexAdminLinks adminLinks;
@@ -94,18 +92,19 @@ public class SupplyCorrectionService {
         var currentRows = stored.stream()
                 .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
                 .map(this::rowData).sorted(Comparator.comparingInt(Row::displayOrder).thenComparing(Row::key)).toList();
+        var lhSupplyRows = lhRows.of(announcement, stored);
+        var lhRowsByRowKey = lhSupplyRows.stream().filter(row -> row.attachedRowKey() != null)
+                .collect(Collectors.groupingBy(SupplyCorrection.LhSupplyRow::attachedRowKey, LinkedHashMap::new,
+                        Collectors.mapping(SupplyCorrection.LhSupplyRow::rowIdentifier, Collectors.toList())));
         var rowSources = stored.stream()
                 .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
-                .flatMap(row -> rowSources(row, comparison.sources()).stream()).toList();
-        var deletable = stored.stream().filter(SupplyCorrectionService::deletable).map(row -> "row:" + row.getId()).sorted().toList();
+                .flatMap(row -> rowSources(row, lhRowsByRowKey.getOrDefault(LhRowAttachments.key(row), List.of()),
+                        comparison.sources()).stream()).toList();
+        var deletable = stored.stream().filter(SupplyCorrectionService::deletable).map(row -> LhRowAttachments.key(row)).sorted().toList();
         // 공고 단지 연결은 공급행이 없는 공고 단지도 있어 토큰에 함께 넣는다. 화면이 본 뒤 연결이 바뀌면 연결 변경을 거절한다.
         var announcementComplexes = announcementComplexes(announcement, stored);
-        var lhSupplyRows = placements.lhSupplyRows(announcement, stored);
-        // 분리 계보는 행 값에 없어 LH 행별 연결과 함께 토큰에 넣는다. 화면이 본 뒤 다른 저장이 나누면 그 화면의 저장을 거절한다.
-        var lineage = lhSupplyRows.stream().map(row -> List.of(row.rowIdentifier(), Objects.toString(row.attachedRowKey(), ""),
-                row.splitRowKeys())).toList();
-        var workspace = new SupplyCorrection.Workspace(hash(List.of(comparison.snapshotToken(), currentRows, announcementComplexes,
-                lineage)), announcement.getVersion(), currentRows, comparison.sources(), sourceStatus.missingWarnings(id),
+        var workspace = new SupplyCorrection.Workspace(hash(List.of(comparison.snapshotToken(), currentRows, announcementComplexes)),
+                announcement.getVersion(), currentRows, comparison.sources(), sourceStatus.missingWarnings(id),
                 rowSources, deletable, unattachedLhSupplyRows(announcement, lhSupplyRows), announcementComplexes, lhSupplyRows);
         var snapshot = new Snapshot(workspace, comparison, currentRows);
         if (log.isDebugEnabled()) {
@@ -144,49 +143,45 @@ public class SupplyCorrectionService {
     }
 
     /**
-     * LH 원천 소유 공고에서 아직 공급행이 되지 않은 LH 공급 원천 행. LH 공고 정제가 LH 공급 한 행마다 공급행을 만들므로,
-     * 원천이 정제 뒤에 바뀌었으면 여기 남는다. LH 행 식별자나 분리 원천으로 가리키는 공급행이 있으면 붙은 행이다.
-     * 공고문 소유 공고는 정제가 공급행을 만들지 않으므로 보지 않는다.
+     * LH 원천 소유 공고에서 같은 전용면적 공급행이 없어 붙지 않은 LH 공급 원천 행. 오류가 아니라 정보로 보인다.
+     * 공고문 소유 공고는 공고문이 공급행을 정하므로 보지 않는다.
      */
     private static List<SupplyCorrection.LhSupplyRow> unattachedLhSupplyRows(Announcement announcement,
             List<SupplyCorrection.LhSupplyRow> lhSupplyRows) {
         if (!announcement.suppliedByLh()) { return List.of(); }
-        return lhSupplyRows.stream().filter(SupplyCorrectionPlacements::unattached).toList();
+        return lhSupplyRows.stream().filter(row -> row.attachedRowKey() == null).toList();
     }
 
     /**
-     * 공급행이 기록한 원천행. 마이홈은 원천 키를 그대로 기록한다. GH 공급행 틀은 틀 행 키다. LH는 "LH:{panId}:SUPPLY:{순번}"만 기록하므로
-     * 원천 키 "{panId}:{요청 해시}:{순번}" 중 공고 번호와 순번이 같은 것이 하나일 때만 대응한다.
-     * 맞는 원천이 없으면 기록값을 그대로 돌려 찾을 수 없음을 알리고, 여러 개면 추정하지 않는다.
+     * 공급행이 기록한 원천행. 마이홈은 원천 키를 그대로 기록한다. GH 공급행 틀은 틀 행 키다. LH는 면적으로 이 행에 붙은 LH 줄
+     * "LH:{panId}:SUPPLY:{순번}"마다 원천 키 "{panId}:{요청 해시}:{순번}" 중 공고 번호와 순번이 같은 것이 하나일 때만 대응한다.
+     * 맞는 원천이 없으면 LH 줄 식별자를 그대로 돌려 찾을 수 없음을 알리고, 여러 개면 추정하지 않는다.
      */
-    private List<SupplyCorrection.RowSource> rowSources(SupplyRow row, List<QualityComparison.Source> sources) {
+    private List<SupplyCorrection.RowSource> rowSources(SupplyRow row, List<String> lhRows, List<QualityComparison.Source> sources) {
         var result = new ArrayList<SupplyCorrection.RowSource>();
-        String key = "row:" + row.getId();
+        String key = LhRowAttachments.key(row);
         if (row.getMyhomeSourceRowIdentifier() != null) {
             result.add(new SupplyCorrection.RowSource(key, IngestSourceCategory.MYHOME_ANNOUNCEMENT.name(),
                     row.getMyhomeSourceRowIdentifier()));
         }
-        String recorded = row.getLhSourceSupplyRowIdentifier();
-        LhSourceIdentifier.parseSupply(recorded).ifPresent(supply -> {
-            var candidates = sources.stream()
-                    .filter(source -> source.category() == IngestSourceCategory.LH_ANNOUNCEMENT_SUPPLY)
-                    .map(QualityComparison.Source::sourceKey)
-                    .filter(sourceKey -> sourceKey.startsWith(supply.panId() + ":")
-                            && sourceKey.endsWith(":" + supply.sourceOrder()))
-                    .distinct().toList();
-            if (candidates.size() <= 1) {
-                result.add(new SupplyCorrection.RowSource(key, IngestSourceCategory.LH_ANNOUNCEMENT_SUPPLY.name(),
-                        candidates.isEmpty() ? recorded : candidates.getFirst()));
-            }
-        });
+        for (String recorded : lhRows) {
+            LhSourceIdentifier.parseSupply(recorded).ifPresent(supply -> {
+                var candidates = sources.stream()
+                        .filter(source -> source.category() == IngestSourceCategory.LH_ANNOUNCEMENT_SUPPLY)
+                        .map(QualityComparison.Source::sourceKey)
+                        .filter(sourceKey -> sourceKey.startsWith(supply.panId() + ":")
+                                && sourceKey.endsWith(":" + supply.sourceOrder()))
+                        .distinct().toList();
+                if (candidates.size() <= 1) {
+                    result.add(new SupplyCorrection.RowSource(key, IngestSourceCategory.LH_ANNOUNCEMENT_SUPPLY.name(),
+                            candidates.isEmpty() ? recorded : candidates.getFirst()));
+                }
+            });
+        }
         // GH 공급행 틀은 틀 행 키를 원천 키로 준다. PDF 추출 결과의 sourceRow가 이 키라 화면이 그 틀 행을 고친다.
         if (row.ghFrameRow()) {
             result.add(new SupplyCorrection.RowSource(key, IngestSourceCategory.GH_ANNOUNCEMENT.name(),
                     row.getSourceSupplyRowIdentifier()));
-        }
-        // 관리자가 LH 행 하나를 주택형별로 나눈 행은 그 LH 행 식별자를 준다. 같은 키의 형제행은 중복이 아니라 의도한 분리다.
-        if (row.getLhSplitSourceIdentifier() != null) {
-            result.add(new SupplyCorrection.RowSource(key, LH_SPLIT, row.getLhSplitSourceIdentifier()));
         }
         return result;
     }
@@ -207,24 +202,15 @@ public class SupplyCorrectionService {
         var announcement = find(id);
         var planned = plan(announcement, before.rows(), request.rows(), Set.copyOf(before.deletableRowKeys()),
                 request.deletedRowKeys());
-        var placementPlan = placementPlan(announcement, before, request, planned);
-        var groupPlans = groupCorrections.plan(announcement, planned, request.newGroups());
         checkNewTypes(planned);
-        var warnings = new ArrayList<>(validateSchedulesAndCounts(id, planned, request.newGroups()));
+        checkOneRowPerHousingType(before.rows(), planned, Set.copyOf(request.deletedRowKeys()));
+        var warnings = new ArrayList<>(validateSchedulesAndCounts(id, planned));
         warnings.addAll(adminLinks.warnings(adminLinks.plan(announcement, before.rows(), planned)));
-        warnings.addAll(placementPlan.warnings());
-        if (groupPlans.isEmpty() && !placementPlan.changesLineage() && same(before.rows(), planned)) {
+        if (same(before.rows(), planned)) {
             throw new IllegalArgumentException("변경한 공급정보가 없습니다.");
         }
-        return new SupplyCorrection.Preview(hash(List.of(request, planned, candidateValues(planned), groupPlans,
-                placementPlan.splits())), before.rows(), planned, List.copyOf(warnings), request.newGroups(),
-                placementPlan.splits(), placementPlan.unattached());
-    }
-
-    private SupplyCorrectionPlacements.Plan placementPlan(Announcement announcement, SupplyCorrection.Workspace before,
-            SupplyCorrection.Request request, List<Row> planned) {
-        return placements.plan(announcement, rows.findAllByAnnouncement(announcement), request.rows(), before.rows(), planned,
-                request.deletedRowKeys(), before.unattachedLhSupplyRows());
+        return new SupplyCorrection.Preview(hash(List.of(request, planned, candidateValues(planned))), before.rows(), planned,
+                List.copyOf(warnings));
     }
 
     @Transactional
@@ -305,9 +291,6 @@ public class SupplyCorrectionService {
             SupplyCorrection.Apply request, String actor) {
         var storedRows = rows.findAllByAnnouncement(announcement);
         var stored = storedRows.stream().collect(Collectors.toMap(SupplyRow::getId, Function.identity()));
-        var groupPlans = groupCorrections.plan(announcement, preview.after(), request.correction().newGroups());
-        var placementPlan = placements.plan(announcement, storedRows, request.correction().rows(), preview.before(),
-                preview.after(), request.correction().deletedRowKeys(), List.of());
         Map<String, SupplyRow> written = new LinkedHashMap<>();
         Map<String, HousingType> createdTypes = new HashMap<>();
         var beforeById = preview.before().stream().collect(Collectors.toMap(Row::id, Function.identity()));
@@ -315,7 +298,7 @@ public class SupplyCorrectionService {
             var saved = stored.get(row.id());
             var before = beforeById.get(row.id());
             // 순서만 밀린 행은 값과 관리자 수정 표시를 그대로 두고 순서만 옮긴다.
-            if (row.id() != null && !same(before, row) && same(before.withDisplayOrder(row.displayOrder()), row)) {
+            if (row.id() != null && !same(before, row) && untouched(before, row)) {
                 saved.reorder(row.displayOrder());
             } else if (row.id() == null || !same(before, row)) {
                 saved = writeRow(announcement, saved, row, request.correction(), createdTypes);
@@ -323,8 +306,6 @@ public class SupplyCorrectionService {
             written.put(row.key(), saved);
         }
         var links = adminLinks.plan(announcement, preview.before(), preview.after());
-        placements.apply(placementPlan, written);
-        groupCorrections.apply(announcement, groupPlans, written, request.correction(), actor);
         adminLinks.apply(announcement, links, preview.after(), written, actor);
         for (var key : request.correction().deletedRowKeys()) {
             var row = preview.before().stream().filter(item -> item.key().equals(key)).findFirst().map(item -> stored.get(item.id()))
@@ -379,12 +360,59 @@ public class SupplyCorrectionService {
                 }
                 if (!old.key().equals(row.key())) { throw new IllegalArgumentException("기존 공급행 키를 유지하세요."); }
             }
-            result.add(planRow(announcement, old, row));
+            result.add(planRow(announcement, old, withAreaHousingType(old, row)));
         }
         if (!seen.equals(known.keySet())) {
             throw new IllegalArgumentException("기존 공급행을 생략할 수 없습니다. 필요 없는 행은 제외로 표시하세요.");
         }
+        checkLeftGroups(known, result);
         return result.stream().sorted(Comparator.comparingInt(Row::displayOrder).thenComparing(Row::key)).toList();
+    }
+
+    /**
+     * 옛 공통 모집 묶음에서 한 행이라도 빠지면 그 묶음의 나머지 행도 함께 빠지거나 제외해야 한다. 묶음에 남은 행이 공통 모집수를
+     * 계속 세면 빠진 행의 모집수와 두 번 집계되기 때문이다.
+     */
+    private static void checkLeftGroups(Map<Long, Row> known, List<Row> planned) {
+        var left = planned.stream().filter(row -> row.id() != null && row.groupId() == null
+                && known.get(row.id()).groupId() != null).map(row -> known.get(row.id()).groupId()).collect(Collectors.toSet());
+        for (var row : planned) {
+            if (row.groupId() != null && left.contains(row.groupId()) && !row.excluded()) {
+                throw new IllegalArgumentException(row.typeName() + ": 같은 공통 모집 묶음의 다른 행이 묶음에서 빠졌습니다. "
+                        + "이 행도 묶음에서 빼거나 제외하세요.");
+            }
+        }
+    }
+
+    /**
+     * 주택형을 정하지 않고 전용면적만 준 행은 서버가 단지 주택형을 정한다. 같은 면적 주택형이 있으면 {@link HousingTypeAreas#pick}으로
+     * 고르고, 없으면 그 행의 형명·면적으로 새 주택형을 만든다. 관리자가 주택형을 직접 고르지 않아도 되게 하고, 화면과 서버가
+     * 면적 반올림을 따로 계산해 어긋나지 않게 하려는 것이다. 미리보기 결과(after)에 정한 주택형이 담긴다.
+     * 주택형이 있던 기존 행을 비워 보낸 요청은 관리자가 연결을 끊은 것이라 다시 채우지 않는다. 이번 저장에서 새로 넣거나 고친,
+     * 제외하지 않은 행에만 적용한다.
+     */
+    private Row withAreaHousingType(Row old, Row row) {
+        boolean clearsLink = old != null && old.housingTypeId() != null;
+        // 손대지 않은 행(표시 순서만 밀린 행 포함)과 제외한 행은 다른 행을 저장할 때 주택형이 생기거나 바뀌지 않게 한다.
+        boolean untouched = old != null && untouched(old, row.withLinksFrom(old));
+        if (clearsLink || untouched || row.excluded() || row.housingComplexId() == null || row.groupId() != null || row.housingTypeId() != null
+                || row.newHousingType() != null || row.exclusiveArea() == null || row.exclusiveArea().signum() <= 0) {
+            return row;
+        }
+        var complex = complex(row.housingComplexId());
+        var picked = HousingTypeAreas.pick(types.findAllByHousingComplex(complex), row.exclusiveArea(), row.typeName());
+        if (picked.isPresent()) { return row.withHousingType(picked.get().getId(), null); }
+        return row.withHousingType(null, new SupplyCorrection.NewType(newTypeName(row.typeName()), row.exclusiveArea(), row.supplyArea()));
+    }
+
+    /**
+     * 새 단지 주택형 이름. 단지 주택형은 다른 공고와 단지 상세가 함께 쓰므로 이 공고의 표기를 이어 적은 이름(26A·26B,
+     * "36A형(고령자) · 36A형(청년)")을 그대로 쓰지 않고 첫 표기에서 끝 괄호(신청자 구분)를 뗀 이름으로 만든다.
+     */
+    private static String newTypeName(String typeName) {
+        String first = typeName.split("[·]")[0].strip();
+        String core = first.replaceAll("\\s*\\([^()]*\\)\\s*$", "").strip();
+        return core.isEmpty() ? first : core;
     }
 
     private Row planRow(Announcement announcement, Row old, Row row) {
@@ -393,10 +421,12 @@ public class SupplyCorrectionService {
         }
         var complex = complex(row.housingComplexId());
         var type = type(row, complex, "PREVIEW:" + row.key());
-        if (old == null && row.groupId() != null || old != null && !Objects.equals(old.groupId(), row.groupId())) {
+        // 옛 공통 모집 묶음에서 빠지는 것(groupId를 비움)만 허용한다. 새 묶음을 만들거나 다른 묶음으로 옮길 수는 없다.
+        boolean leavesGroup = old != null && old.groupId() != null && row.groupId() == null;
+        if (old == null && row.groupId() != null || old != null && !leavesGroup && !Objects.equals(old.groupId(), row.groupId())) {
             throw new IllegalArgumentException("공통 모집 묶음은 원천별 공급행 보정에서 변경하세요.");
         }
-        if (old != null && old.groupId() != null && (!Objects.equals(old.sharedHouseholdCount(), row.sharedHouseholdCount())
+        if (old != null && old.groupId() != null && !leavesGroup && (!Objects.equals(old.sharedHouseholdCount(), row.sharedHouseholdCount())
                 || !Objects.equals(old.housingComplexId(), row.housingComplexId()) || row.householdCount() != null)) {
             throw new IllegalArgumentException("공통 모집수와 묶음 단지는 원천별 공급행 보정에서 함께 변경하세요.");
         }
@@ -418,15 +448,15 @@ public class SupplyCorrectionService {
                 row.newHousingType(), row.groupId(), row.sharedHouseholdCount(), modified, row.excluded(), row.displayOrder(),
                 complexName, row.typeName(), pnu, row.moveInMonth(), row.category(), row.householdCount(),
                 row.areaOverride(), decimal(exclusiveArea), decimal(supplyArea), plannedTargets, row.targetCountsComparable(),
-                linkedTypes(old, row, complex, type), null, null);
+                linkedTypes(old, row, complex, type));
         // 앞에 끼어든 행 때문에 표시 순서만 밀린 행은 관리자가 값을 고친 행이 아니다.
-        if (old != null && !same(old, result.withDisplayOrder(old.displayOrder())) && !modified) {
+        if (old != null && !untouched(old, result) && !modified) {
             return new Row(result.id(), result.key(), result.housingComplexId(), result.housingComplexName(),
                     result.housingTypeId(), result.newHousingType(), result.groupId(), result.sharedHouseholdCount(), true,
                     result.excluded(), result.displayOrder(), result.complexName(), result.typeName(), result.pnu(),
                     result.moveInMonth(), result.category(), result.householdCount(), result.areaOverride(),
                     result.exclusiveArea(), result.supplyArea(), result.targets(), result.targetCountsComparable(),
-                    result.linkedHousingTypes(), null, null);
+                    result.linkedHousingTypes());
         }
         return result;
     }
@@ -446,14 +476,14 @@ public class SupplyCorrectionService {
             throw new IllegalArgumentException(row.typeName() + ": 대표 주택형을 정한 뒤 함께 모집하는 주택형을 연결하세요.");
         }
         Set<BigDecimal> areas = new HashSet<>();
-        areas.add(representative.getExclusiveArea().stripTrailingZeros());
+        areas.add(HousingTypeAreas.key(representative.getExclusiveArea()));
         for (var link : row.linkedHousingTypes()) {
             if ((link.housingTypeId() == null) == (link.newHousingType() == null)) {
                 throw new IllegalArgumentException("함께 모집하는 주택형은 기존 주택형이나 새 주택형 중 하나로 지정하세요.");
             }
             BigDecimal area = link.newHousingType() == null ? existingType(link.housingTypeId(), complex).getExclusiveArea()
                     : link.newHousingType().exclusiveArea();
-            if (!areas.add(area.stripTrailingZeros())) {
+            if (!areas.add(HousingTypeAreas.key(area))) {
                 throw new IllegalArgumentException(row.typeName() + ": 한 공급행에는 전용면적마다 주택형 하나만 연결하세요. "
                         + "대표 주택형과 같은 주택형이나 면적도 연결할 수 없습니다.");
             }
@@ -489,14 +519,14 @@ public class SupplyCorrectionService {
         return result.stream().sorted(Comparator.comparingInt(Target::displayOrder).thenComparing(Target::key)).toList();
     }
 
-    private List<String> validateSchedulesAndCounts(long id, List<Row> planned, List<SupplyCorrection.NewGroup> newGroups) {
+    private List<String> validateSchedulesAndCounts(long id, List<Row> planned) {
         var linked = planned.stream().filter(row -> !row.excluded()).map(Row::housingComplexId)
                 .filter(Objects::nonNull).collect(Collectors.toSet());
         if (schedules.findAllByAnnouncementIdIn(List.of(id)).stream().anyMatch(schedule ->
                 schedule.getHousingComplex() != null && !linked.contains(schedule.getHousingComplex().getId()))) {
             throw new AdminDataConflictException("제외·연결 변경할 단지에 접수 일정이 있습니다. 일정 적용 단지를 먼저 수정하세요.");
         }
-        long totalCount = newGroups.stream().mapToLong(SupplyCorrection.NewGroup::sharedHouseholdCount).sum();
+        long totalCount = 0;
         Set<Long> countedGroups = new HashSet<>();
         for (var row : planned) {
             if (row.excluded()) { continue; }
@@ -541,13 +571,16 @@ public class SupplyCorrectionService {
         for (var link : input.linkedHousingTypes()) {
             var value = link.newHousingType();
             linked.add(value == null ? existingType(link.housingTypeId(), complex) : newType(complex, input, value,
-                    identifier + ":" + value.exclusiveArea().stripTrailingZeros().toPlainString(), createdTypes));
+                    identifier + ":" + HousingTypeAreas.key(value.exclusiveArea()).toPlainString(), createdTypes));
         }
         if (stored == null) {
             // 원천이 없는 직접 추가 행은 처음 입력한 표기를 원천 이름으로 남긴다.
             stored = rows.save(SupplyRow.create(announcement, complex, type,
                     "MANUAL:" + request.operationId() + ":" + input.key(), input.displayOrder(), input.complexName(),
                     input.typeName(), input.pnu(), input.moveInMonth(), input.category(), null, input.householdCount()));
+        }
+        if (input.groupId() == null && stored.getSupplyGroup() != null) {
+            stored.leaveGroupByAdmin();
         }
         stored.reviseByAdmin(complex, type, input.typeName(), input.pnu(), input.moveInMonth(),
                 input.category(), input.householdCount());
@@ -619,7 +652,7 @@ public class SupplyCorrectionService {
             for (var input : created) {
                 var area = input.exclusiveArea();
                 var same = types.findAllIncludingTrashByHousingComplexId(row.housingComplexId()).stream()
-                        .filter(type -> type.getExclusiveArea().compareTo(area) == 0).toList();
+                        .filter(type -> HousingTypeAreas.sameArea(type.getExclusiveArea(), area)).toList();
                 String label = row.typeName() + ": 전용 " + area.stripTrailingZeros().toPlainString() + "㎡ 주택형이 ";
                 if (same.stream().anyMatch(type -> !type.isAdminDeleted())) {
                     throw new IllegalArgumentException(label + "이 단지에 있습니다. 새로 만들지 말고 그 주택형을 선택하세요.");
@@ -629,6 +662,43 @@ public class SupplyCorrectionService {
                 }
             }
         }
+    }
+
+    /**
+     * 한 단지에서 공급행은 전용면적마다 하나다. 이번 저장에서 바꾸거나 새로 만든 행이 제외하지 않은 다른 행과 같은 주택형을
+     * 가리키면 거절한다. 다시 보정하지 않아 신청자 묶음마다 나뉜 채 남은 옛 공급행끼리는 손대지 않는 한 그대로 둔다.
+     */
+    private void checkOneRowPerHousingType(List<Row> before, List<Row> planned, Set<String> deleted) {
+        var beforeByKey = before.stream().collect(Collectors.toMap(Row::key, Function.identity()));
+        var active = planned.stream().filter(row -> !row.excluded() && !deleted.contains(row.key())).toList();
+        for (var row : active) {
+            // 앞에 끼어든 행 때문에 표시 순서만 밀린 행은 손대지 않은 행이다.
+            if (row.id() != null && untouched(beforeByKey.get(row.key()), row)) { continue; }
+            var mine = typeKeys(row);
+            for (var other : active) {
+                if (other == row) { continue; }
+                var shared = typeKeys(other).stream().filter(mine::contains).findFirst();
+                if (shared.isPresent()) {
+                    throw new IllegalArgumentException(row.typeName() + ": '" + other.typeName() + "' 공급행과 같은 주택형을 가리킵니다. "
+                            + "한 단지에서 공급행은 주택형(전용면적)마다 하나입니다. 한 행으로 합치고 나머지는 제외하거나 지우세요.");
+                }
+            }
+        }
+    }
+
+    /** 행이 가리키는 주택형 키. 단지와 전용면적(소수 둘째 자리)이다. 같은 면적의 다른 이름 주택형(101A1·101A9)도 같은 키다. */
+    private Set<String> typeKeys(Row row) {
+        var keys = new HashSet<String>();
+        if (row.housingComplexId() == null) { return keys; }
+        var areas = new ArrayList<BigDecimal>();
+        if (row.housingTypeId() != null) { types.findById(row.housingTypeId()).ifPresent(type -> areas.add(type.getExclusiveArea())); }
+        if (row.newHousingType() != null) { areas.add(row.newHousingType().exclusiveArea()); }
+        for (var link : row.linkedHousingTypes()) {
+            if (link.housingTypeId() != null) { types.findById(link.housingTypeId()).ifPresent(type -> areas.add(type.getExclusiveArea())); }
+            if (link.newHousingType() != null) { areas.add(link.newHousingType().exclusiveArea()); }
+        }
+        areas.forEach(area -> keys.add(row.housingComplexId() + ":" + HousingTypeAreas.key(area).toPlainString()));
+        return keys;
     }
 
     private List<Object> candidateValues(List<Row> planned) {
@@ -662,7 +732,7 @@ public class SupplyCorrectionService {
         if (row.getHousingType() != null) { typeId = row.getHousingType().getId(); }
         if (row.getSupplyGroup() != null) { groupId = row.getSupplyGroup().getId(); shared = row.getSupplyGroup().getSharedHouseholdCount(); }
         Long representativeId = typeId;
-        return new Row(row.getId(), "row:" + row.getId(), complexId, complexName(row.getHousingComplex()), typeId, null,
+        return new Row(row.getId(), LhRowAttachments.key(row), complexId, complexName(row.getHousingComplex()), typeId, null,
                 groupId, shared, row.isAdminModified(), row.isAdminExcluded(), row.getDisplayOrder(),
                 row.getSourceComplexName(), row.displayHousingTypeName(), row.getSupplyPnu(), row.getExpectedMoveInMonth(),
                 row.getSupplyCategory(), row.getTotalSupplyHouseholdCount(), row.isAreaOverride(),
@@ -671,7 +741,7 @@ public class SupplyCorrectionService {
                         .thenComparing(SupplyTarget::getId)).map(this::targetData)
                         .sorted(Comparator.comparingInt(Target::displayOrder).thenComparing(Target::key)).toList(), row.isTargetCountsComparable(),
                 row.getHousingTypes().stream().map(HousingType::getId).filter(id -> !id.equals(representativeId)).sorted()
-                        .map(id -> new LinkedHousingType(id, null)).toList(), null, null);
+                        .map(id -> new LinkedHousingType(id, null)).toList());
     }
 
     private Target targetData(SupplyTarget target) {
@@ -711,6 +781,11 @@ public class SupplyCorrectionService {
             throw new AdminDataStaleException("등록값이나 원천이 바뀌었습니다. 입력을 보관하고 최신 값과 다시 비교하세요.");
         }
         return current;
+    }
+
+    /** 앞에 끼어든 행 때문에 표시 순서만 밀린 행은 관리자가 손대지 않은 행이다. 표시 순서를 뺀 값이 저장값과 같으면 true다. */
+    private boolean untouched(Row before, Row row) {
+        return same(before.withDisplayOrder(row.displayOrder()), row);
     }
 
     private boolean same(Object first, Object second) { return json.valueToTree(first).equals(json.valueToTree(second)); }

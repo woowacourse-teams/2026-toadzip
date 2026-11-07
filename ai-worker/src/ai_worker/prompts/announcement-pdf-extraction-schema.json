@@ -122,10 +122,6 @@
                 "type": "string",
                 "nullable": true
               },
-              "lhSourceRow": {
-                "type": "integer",
-                "nullable": true
-              },
               "expectedMoveInMonth": {
                 "type": "string",
                 "nullable": true

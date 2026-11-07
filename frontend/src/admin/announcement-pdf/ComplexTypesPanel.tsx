@@ -12,9 +12,9 @@ const none = (value: number | null | undefined, unit = '') => value == null ? '�
  * 고른 공급행이 속한 단지의 주택형 전체. 단지 정보(면적·건설호수·기본 임대조건)와 이번 공고 값(모집수·예비자 수·연결 공급행)을 나눠 보이고,
  * 고른 행에 기존 주택형을 연결하거나 PDF 형명·면적으로 새 주택형을 만들게 한다. 닫아도 편집 중인 값은 그대로다.
  */
-export function ComplexTypesPanel({ complexName, complexId, review, workspace, types, rowIndex, linkedId, canLink, newType, onLink, onNewType, onClose }: {
+export function ComplexTypesPanel({ complexName, complexId, review, workspace, types, rowIndex, linkedId, canLink, onLink, onClose }: {
   complexName: string; complexId: number | null; review: Review; workspace: JsonWorkspace; types: MatchingHousingType[]; rowIndex: number; linkedId: number | null
-  canLink: boolean; newType: { label: string; selected: boolean } | null; onLink: (typeId: number) => void; onNewType: () => void; onClose: () => void }) {
+  canLink: boolean; onLink: (typeId: number) => void; onClose: () => void }) {
   const [query, setQuery] = useState('')
   const key = (value: string) => value.normalize('NFKC').replace(/\s+/g, '').toLowerCase()
   const views = complexTypeViews(complexId, review, workspace, types).filter(view => !query.trim() || key(`${view.type.name} ${view.type.exclusiveArea}`).includes(key(query)))
@@ -40,9 +40,7 @@ export function ComplexTypesPanel({ complexName, complexId, review, workspace, t
       </li>)}</ul>
       {!views.length && <p className={styles.hint}>맞는 주택형이 없습니다.</p>}
       <h4>새 주택형 생성</h4>
-      {newType ? <div><p className={styles.hint}>{`단지에 PDF 전용면적과 같은 주택형이 없을 때만 만듭니다. 저장하면 '${newType.label}' 주택형을 이 단지에 추가합니다.`}</p>
-        {newType.selected ? <small className={styles.pendingDone}>새 주택형으로 저장 예정</small> : <Button data-design-system className={styles.secondaryButton} onClick={onNewType}>PDF 형명·면적으로 새 주택형 추가</Button>}</div>
-        : <p className={styles.hint}>이 단지에 PDF 전용면적과 같은 주택형이 있어 새로 만들지 않습니다.</p>}
+      <p className={styles.hint}>연결 주택형을 비워 두면 저장할 때 같은 전용면적 주택형에 연결하고, 없으면 PDF 형명·면적으로 새로 만듭니다.</p>
     </>}
   </aside>
 }

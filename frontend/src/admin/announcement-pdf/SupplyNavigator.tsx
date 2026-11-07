@@ -1,8 +1,7 @@
 import { Button } from '../../design-system/components/Button'
 import type { JsonWorkspace } from '../announcement-json/api'
-import { placementShort } from './correspondence'
 import type { SupplyView } from './supplyView'
-import { assembledCount, rowOfReviewId, type PendingItem, type PlacementProblem, type Review } from './review'
+import { assembledCount, destinationShort, rowOfReviewId, type PendingItem, type Review } from './review'
 import { RowStatusBadge } from './SupplyRowList'
 import styles from './PdfCorrection.module.css'
 
@@ -10,8 +9,8 @@ import styles from './PdfCorrection.module.css'
  * 검토 영역 위에 고정되는 공급행 이동 막대. 단지를 고르고, 지금 편집 중인 공급행이 무엇인지(형명·전용·모집수·저장할 곳·상태)를
  * 아래로 내려도 계속 보이며, 이전·다음으로 단지 순서대로 행을 옮긴다.
  */
-export function SupplyNavigator({ review, workspace, view, pending, problems, onSelectComplex, onSelectRow, onJump }: { review: Review; workspace: JsonWorkspace; view: SupplyView
-  pending: PendingItem[]; problems: Map<number, PlacementProblem>; onSelectComplex: (row: number) => void; onSelectRow: (row: number) => void; onJump: (target: string) => void }) {
+export function SupplyNavigator({ review, workspace, view, pending, onSelectComplex, onSelectRow, onJump }: { review: Review; workspace: JsonWorkspace; view: SupplyView
+  pending: PendingItem[]; onSelectComplex: (row: number) => void; onSelectRow: (row: number) => void; onJump: (target: string) => void }) {
   const { groups, groupIndex, group, shown, current, order } = view
   if (!group) return null
   const pendingCount = (indexes: number[]) => pending.filter(item => item.section === 'supply' && indexes.includes(rowOfReviewId(item.id) ?? -1)).length
@@ -34,8 +33,8 @@ export function SupplyNavigator({ review, workspace, view, pending, problems, on
       {stepper('이전 공급행', previous, '‹')}
       {source && row ? <div className={styles.currentRowText}>
         <p aria-live="polite"><strong>{`${current + 1}. ${source.typeName ?? '주택형 미확인'}`}</strong>
-          <span>{[typeof area === 'number' ? `전용 ${area}㎡` : '전용 미확인', count === null ? '모집 미확인' : `모집 ${count}세대`, placementShort(review, current, workspace)].join(' · ')}</span></p>
-        <div className={styles.currentRowStatus}><RowStatusBadge review={review} workspace={workspace} index={current} problem={problems.get(current)} pending={pending} onJump={onJump} detailed />
+          <span>{[typeof area === 'number' ? `전용 ${area}㎡` : '전용 미확인', count === null ? '모집 미확인' : `모집 ${count}세대`, destinationShort(review, current, workspace)].join(' · ')}</span></p>
+        <div className={styles.currentRowStatus}><RowStatusBadge review={review} workspace={workspace} index={current} pending={pending} onJump={onJump} detailed />
           <span className={styles.rowPosition} aria-label={`이 단지 ${shown.length}행 중 ${shown.indexOf(current) + 1}번째`}>{`${shown.indexOf(current) + 1}/${shown.length}`}</span></div>
       </div> : <p className={`${styles.currentRowText} ${styles.hint}`}>{`이 단지에는 지금 필터에 맞는 공급행이 없습니다.${order.length ? ` 다른 단지에 ${order.length}행 남음` : ''}`}</p>}
       {stepper('다음 공급행', next, '›')}

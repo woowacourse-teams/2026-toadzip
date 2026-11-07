@@ -17,17 +17,13 @@ import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
-import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementSupplySourceFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
-import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceSnapshot;
-import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import com.toadzip.backend.notification.NotificationFixtures;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -64,7 +60,6 @@ class SupplyCorrectionIntegrationTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private SupplyRowRepository rows;
     @Autowired private MyHomeAnnouncementSourceFixtures myhomeSources;
-    @Autowired private LhAnnouncementSupplySourceFixtures lhSupplies;
     @MockitoBean private IngestExecutionOwnershipService ownership;
 
     @BeforeEach
@@ -124,7 +119,9 @@ class SupplyCorrectionIntegrationTest {
     void 같은_작업_재전송은_추가행과_이력을_중복생성하지_않는다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId(); var request = request(id);
         var extra = request.get("rows").get(0).deepCopy();
-        ((ObjectNode) extra).putNull("id").put("key", UUID.randomUUID().toString()).put("typeName", "26B");
+        // 같은 단지에서 공급행은 주택형마다 하나라 추가 행은 아직 주택형을 정하지 않은 행으로 둔다.
+        ((ObjectNode) extra).putNull("id").put("key", UUID.randomUUID().toString()).put("typeName", "26B")
+                .putNull("housingTypeId").putNull("exclusiveArea").remove("linkedHousingTypes");
         ((ObjectNode) extra.get("targets").get(0)).putNull("id").put("key", UUID.randomUUID().toString());
         ((ArrayNode) request.get("rows")).add(extra);
         var preview = preview(id, request);
@@ -154,7 +151,9 @@ class SupplyCorrectionIntegrationTest {
     void 관리자가_추가한_공급행만_지울_수_있고_원천행은_제외만_할_수_있다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId(); var request = request(id);
         var extra = request.get("rows").get(0).deepCopy();
-        ((ObjectNode) extra).putNull("id").put("key", UUID.randomUUID().toString()).put("typeName", "26B");
+        // 같은 단지에서 공급행은 주택형마다 하나라 추가 행은 아직 주택형을 정하지 않은 행으로 둔다.
+        ((ObjectNode) extra).putNull("id").put("key", UUID.randomUUID().toString()).put("typeName", "26B")
+                .putNull("housingTypeId").putNull("exclusiveArea").remove("linkedHousingTypes");
         ((ObjectNode) extra.get("targets").get(0)).putNull("id").put("key", UUID.randomUUID().toString());
         ((ArrayNode) request.get("rows")).add(extra);
         apply(id, request, preview(id, request)).andExpect(status().isOk());
@@ -456,46 +455,6 @@ class SupplyCorrectionIntegrationTest {
                 .andExpect(jsonPath("$.data.rowSources[0].sourceKey").value("12:source-key:1"));
     }
 
-    @Test
-    void 작업실은_LH_공급행을_공고번호와_순번이_유일하게_맞는_LH_공급_원천에만_대응한다() throws Exception {
-        var row = fixture();
-        row.recordMyHomeSource("12:myhome-key:1");
-        entities.flush();
-        long id = row.getAnnouncement().getId();
-        jdbc.update("UPDATE announcements SET lh_pan_id = 'PAN-77' WHERE id = ?", id);
-        jdbc.update("UPDATE supply_rows SET lh_source_supply_row_identifier = 'LH:PAN-77:SUPPLY:1' WHERE id = ?", row.getId());
-        entities.clear();
-        lhSupplies.save(lhSupply("hash-a", 0));
-        lhSupplies.save(lhSupply("hash-a", 1));
-        mvc.perform(get(root(id)).with(user("admin").roles("ADMIN")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.rowSources.length()").value(2))
-                .andExpect(jsonPath("$.data.rowSources[0].category").value("MYHOME_ANNOUNCEMENT"))
-                .andExpect(jsonPath("$.data.rowSources[1].rowKey").value("row:" + row.getId()))
-                .andExpect(jsonPath("$.data.rowSources[1].category").value("LH_ANNOUNCEMENT_SUPPLY"))
-                .andExpect(jsonPath("$.data.rowSources[1].sourceKey").value("PAN-77:hash-a:1"));
-
-        lhSupplies.save(lhSupply("hash-b", 0));
-        lhSupplies.save(lhSupply("hash-b", 1));
-        mvc.perform(get(root(id)).with(user("admin").roles("ADMIN")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.rowSources.length()").value(1))
-                .andExpect(jsonPath("$.data.rowSources[0].category").value("MYHOME_ANNOUNCEMENT"));
-
-        jdbc.update("UPDATE supply_rows SET lh_source_supply_row_identifier = 'LH:PAN-77:SUPPLY:9' WHERE id = ?", row.getId());
-        entities.clear();
-        mvc.perform(get(root(id)).with(user("admin").roles("ADMIN")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.rowSources[1].category").value("LH_ANNOUNCEMENT_SUPPLY"))
-                .andExpect(jsonPath("$.data.rowSources[1].sourceKey").value("LH:PAN-77:SUPPLY:9"));
-    }
-
-    private LhAnnouncementSupplySourceView lhSupply(String hash, int order) {
-        return LhAnnouncementSupplySourceView.read(null, order, "PAN-77", hash,
-                Instant.parse("2026-10-18T00:00:00Z"),
-                new LhAnnouncementSupplySourceSnapshot(
-                        "한스빌", "26", "26.4673", null, "300", "10", "1000000", "200000"));
-    }
 
     @Test
     void 원천이_사라진_보정행은_보존하고_작업실에_원천_경고를_표시한다() throws Exception {
@@ -530,88 +489,34 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
-    void PDF의_공통모집_분할과_임대조건을_함께_저장하고_미리보기는_원본을_유지한다() throws Exception {
-        var row = groupedFixture();
-        long id = row.getAnnouncement().getId();
-        var request = groupRequest(row);
-        var preview = preview(id, request);
-        assertThat(rows.findAllByAnnouncement(row.getAnnouncement())).hasSize(1);
-        assertThat(row.getSupplyGroup()).isNull();
-        assertThat(preview.has("newGroups")).isTrue();
-        assertThat(preview.get("newGroups").get(0).get("sharedHouseholdCount").asInt()).isEqualTo(170);
-
-        apply(id, request, preview).andExpect(status().isOk());
-        entities.flush(); entities.clear();
-        var original = rows.findById(row.getId()).orElseThrow();
-        var saved = rows.findAllByAnnouncement(original.getAnnouncement());
-        assertThat(saved).hasSize(2).allSatisfy(member -> {
-            assertThat(member.getSupplyGroup().getId()).isEqualTo(original.getSupplyGroup().getId());
-            assertThat(member.getSupplyGroup().getSharedHouseholdCount()).isEqualTo(170);
-            assertThat(member.getTotalSupplyHouseholdCount()).isNull();
-            assertThat(member.isAdminModified()).isTrue();
-        });
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM supply_targets WHERE supply_row_id = ?",
-                Long.class, row.getId())).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT rental_deposit FROM supply_targets WHERE supply_row_id = ?",
-                BigDecimal.class, row.getId())).isEqualByComparingTo("4076000");
-        apply(id, request, preview).andExpect(status().isOk()).andExpect(jsonPath("$.data.alreadyApplied").value(true));
-        assertThat(rows.findAllByAnnouncement(original.getAnnouncement())).hasSize(2);
+    void 새_공통_모집_묶음과_LH_행_분리_요청은_더_받지_않는다() throws Exception {
+        // 공급행은 주택형마다 하나이고 신청자 묶음은 대상이라, 공통 모집 묶음을 새로 만들거나 LH 행을 나누는 요청을 조용히 버리지 않고 거절한다.
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        var request = request(id);
+        request.putArray("newGroups").addObject().put("sourceRowId", row.getId()).put("sharedHouseholdCount", 170);
+        mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType("application/json").content(json.writeValueAsString(request)))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value(containsString("newGroups")));
+        request = request(id);
+        ((ObjectNode) request.get("rows").get(0)).put("saveMode", "SPLIT");
+        mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType("application/json").content(json.writeValueAsString(request)))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value(containsString("saveMode")));
     }
 
     @Test
-    void 같은_주택형으로_분할하거나_다른_공고의_원천행을_지정하면_아무것도_저장하지_않는다() throws Exception {
-        var row = groupedFixture();
-        var request = groupRequest(row);
-        ((ObjectNode) request.get("rows").get(1)).put("housingTypeId", row.getHousingType().getId());
-        mvc.perform(post(root(row.getAnnouncement().getId()) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
-                .contentType("application/json").content(json.writeValueAsString(request)))
-                .andExpect(status().isBadRequest());
-        request = groupRequest(row);
-        ((ObjectNode) request.get("newGroups").get(0)).put("sourceRowId", fixture().getId());
-        mvc.perform(post(root(row.getAnnouncement().getId()) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
-                .contentType("application/json").content(json.writeValueAsString(request)))
-                .andExpect(status().isBadRequest());
+    void 같은_단지에서_두_공급행이_같은_주택형을_가리키면_거절하고_아무것도_저장하지_않는다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        var request = request(id);
+        var extra = request.get("rows").get(0).deepCopy();
+        ((ObjectNode) extra).putNull("id").put("key", "new-row").put("typeName", "26B").put("displayOrder", 1);
+        ((ObjectNode) extra.get("targets").get(0)).putNull("id").put("key", "new-target");
+        ((ArrayNode) request.get("rows")).add(extra);
+        mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType("application/json").content(json.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("같은 주택형을 가리킵니다")));
         assertThat(rows.findAllByAnnouncement(row.getAnnouncement())).hasSize(1);
-        assertThat(row.getSupplyGroup()).isNull();
-    }
-
-    @Test
-    void 공고_JSON_갱신에서_새_공통모집과_기본정보를_함께_저장한다() throws Exception {
-        var row = groupedFixture();
-        String root = "/api/admin/announcements/" + row.getAnnouncement().getId() + "/json-corrections";
-        var state = json.readTree(mvc.perform(get(root).with(user("admin").roles("ADMIN")))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
-        var request = json.createObjectNode().put("snapshotToken", state.get("snapshotToken").asText());
-        var document = (ObjectNode) json.readTree(new ClassPathResource("announcement/import-v1-valid.json").getInputStream());
-        ((ObjectNode) document.get("announcement")).put("name", "PDF 보정 공고");
-        request.set("document", document);
-        request.putArray("fields").add("name"); request.putArray("schedules"); request.putArray("attachments");
-        request.set("correction", groupRequest(row));
-        var preview = json.readTree(mvc.perform(post(root + "/preview").with(user("admin").roles("ADMIN"))
-                .with(csrf()).contentType("application/json").content(request.toString()))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
-        var apply = json.createObjectNode().put("confirmationToken", preview.get("confirmationToken").asText());
-        apply.set("request", request);
-        mvc.perform(post(root).with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
-                .content(apply.toString())).andExpect(status().isOk());
-        entities.flush(); entities.clear();
-        var saved = rows.findById(row.getId()).orElseThrow();
-        assertThat(saved.getAnnouncement().getName()).isEqualTo("PDF 보정 공고");
-        assertThat(saved.getSupplyGroup().getSharedHouseholdCount()).isEqualTo(170);
-        assertThat(rows.findAllByAnnouncement(saved.getAnnouncement())).hasSize(2);
-    }
-
-    @Test
-    void 분할_미리보기_후_주택형이_바뀌면_409로_거절하고_저장하지_않는다() throws Exception {
-        var row = groupedFixture();
-        var request = groupRequest(row);
-        var preview = preview(row.getAnnouncement().getId(), request);
-        row.getHousingType().reviseByAdmin("변경된 주택형", new BigDecimal("29.1234"), null);
-        entities.flush();
-        apply(row.getAnnouncement().getId(), request, preview).andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"));
-        assertThat(rows.findAllByAnnouncement(row.getAnnouncement())).hasSize(1);
-        assertThat(row.getSupplyGroup()).isNull();
     }
 
     @Test
@@ -729,65 +634,24 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
-    void 공통_모집_묶음_행에는_함께_모집하는_주택형을_연결하지_않는다() throws Exception {
-        var row = groupedFixture();
+    void 이미_저장된_공통_모집_묶음_행에는_함께_모집하는_주택형을_연결하지_않는다() throws Exception {
+        var row = fixture();
         var joint = housingType(row, "26C", "26.9000");
-        var request = groupRequest(row);
+        // 새 묶음은 더 만들지 않지만 이전에 저장한 묶음은 남아 있다.
+        long groupId = jdbc.queryForObject("""
+                INSERT INTO supply_row_groups (announcement_id, source_row_identifier, shared_household_count, source_fingerprint,
+                    source_url, reason, actor, updated_at, review_required, version)
+                VALUES (?, 'old-group', 170, 'fingerprint', 'https://example.com', '이전 보정', 'admin', now(), false, 0) RETURNING id""",
+                Long.class, row.getAnnouncement().getId());
+        jdbc.update("UPDATE supply_rows SET supply_group_id = ?, total_supply_household_count = NULL WHERE id = ?", groupId,
+                row.getId());
+        entities.clear();
+        var request = request(row.getAnnouncement().getId());
         ((ObjectNode) request.get("rows").get(0)).putArray("linkedHousingTypes").addObject().put("housingTypeId", joint.getId());
         mvc.perform(post(root(row.getAnnouncement().getId()) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType("application/json").content(json.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(containsString("공통 모집 묶음 행에는 함께 모집하는 주택형")));
-    }
-
-    @Test
-    void 한_저장에서_여러_행이_같은_단지_면적의_새_주택형을_함께_모집하면_주택형_하나를_함께_쓴다() throws Exception {
-        var row = fixture(); long id = row.getAnnouncement().getId();
-        var request = request(id);
-        var first = (ObjectNode) request.get("rows").get(0);
-        first.putArray("linkedHousingTypes").addObject().putObject("newHousingType").put("name", "26C")
-                .put("exclusiveArea", new BigDecimal("26.9"));
-        var extra = first.deepCopy().putNull("id").put("key", "new-row").put("typeName", "26C").put("displayOrder", 1);
-        ((ObjectNode) extra.get("targets").get(0)).putNull("id").put("key", "new-target");
-        ((ArrayNode) request.get("rows")).add(extra);
-
-        apply(id, request, preview(id, request)).andExpect(status().isOk());
-        entities.flush(); entities.clear();
-
-        var created = jdbc.queryForList("SELECT id FROM housing_types WHERE housing_complex_id = ? AND exclusive_area = 26.9",
-                Long.class, row.getHousingComplex().getId());
-        assertThat(created).hasSize(1);
-        var added = rows.findAllByAnnouncement(row.getAnnouncement()).stream()
-                .filter(item -> !item.getId().equals(row.getId())).findFirst().orElseThrow();
-        assertThat(linkedTypeIds(row.getId())).contains(created.getFirst());
-        assertThat(linkedTypeIds(added.getId())).containsExactlyInAnyOrder(row.getHousingType().getId(), created.getFirst());
-    }
-
-    @Test
-    void 한_행의_새_대표_주택형과_다른_행이_함께_모집하는_새_주택형이_같은_단지_면적이면_하나를_함께_쓴다() throws Exception {
-        var row = fixture(); long id = row.getAnnouncement().getId(); long existingTypeId = row.getHousingType().getId();
-        var request = request(id);
-        var first = (ObjectNode) request.get("rows").get(0);
-        var extra = first.deepCopy().putNull("id").put("key", "new-row").put("typeName", "26").put("displayOrder", 1);
-        ((ObjectNode) extra.get("targets").get(0)).putNull("id").put("key", "new-target");
-        extra.putArray("linkedHousingTypes").addObject().putObject("newHousingType").put("name", "26C")
-                .put("exclusiveArea", new BigDecimal("26.90"));
-        first.putNull("housingTypeId").put("typeName", "26C").remove("linkedHousingTypes");
-        first.putObject("newHousingType").put("name", "26C").put("exclusiveArea", new BigDecimal("26.9"));
-        ((ArrayNode) request.get("rows")).add(extra);
-
-        apply(id, request, preview(id, request)).andExpect(status().isOk());
-        entities.flush(); entities.clear();
-
-        var created = jdbc.queryForList("SELECT id FROM housing_types WHERE housing_complex_id = ? AND exclusive_area = 26.9",
-                Long.class, row.getHousingComplex().getId());
-        assertThat(created).hasSize(1);
-        var added = rows.findAllByAnnouncement(row.getAnnouncement()).stream()
-                .filter(item -> !item.getId().equals(row.getId())).findFirst().orElseThrow();
-        assertThat(jdbc.queryForObject("SELECT housing_type_id FROM supply_rows WHERE id = ?", Long.class, row.getId()))
-                .isEqualTo(created.getFirst());
-        assertThat(linkedTypeIds(row.getId())).containsExactly(created.getFirst());
-        assertThat(linkedTypeIds(added.getId())).containsExactlyInAnyOrder(existingTypeId, created.getFirst());
     }
 
     @Test
@@ -843,39 +707,6 @@ class SupplyCorrectionIntegrationTest {
         return jdbc.queryForList("SELECT housing_type_id FROM supply_row_housing_types WHERE supply_row_id = ?", Long.class, rowId);
     }
 
-    private SupplyRow groupedFixture() {
-        var row = fixture();
-        var source = MyHomeSourceViews.announcement(1,
-                new MyHomeAnnouncementSourceSnapshot(
-                        row.getAnnouncement().getSourceAnnouncementIdentifier(), 1, "모집중", "국민임대 입주자 모집공고",
-                        "한국토지주택공사", "26A,B", "국민임대", null, "20261001", "20261106", "20261008", "20261015",
-                        null, "https://example.com/manual", null, null, row.getHousingComplex().getName(), "서울특별시", "중구",
-                        null, null, null, row.getSupplyPnu(), null, null, 170, null, null, null, null));
-        source = MyHomeSourceViews.collectedAt(source, Instant.parse("2026-10-08T00:00:00Z"));
-        myhomeSources.save(source);
-        row.recordMyHomeSource(source.getSourceKey());
-        row = rows.save(row);
-        entities.flush();
-        return row;
-    }
-
-    private ObjectNode groupRequest(SupplyRow row) throws Exception {
-        var type = HousingType.createFromMyHome(row.getHousingComplex(), UUID.randomUUID().toString(),
-                "26B", new BigDecimal("26.5195"), new BigDecimal("40.6486"));
-        entities.persist(type); entities.flush();
-        var request = request(row.getAnnouncement().getId());
-        var first = (ObjectNode) request.get("rows").get(0);
-        first.putNull("householdCount").put("typeName", "26A");
-        ((ObjectNode) first.get("targets").get(0)).put("deposit", "4076000").putNull("householdCount");
-        var second = first.deepCopy().putNull("id").put("key", "new-b").put("typeName", "26B")
-                .put("housingTypeId", type.getId()).put("displayOrder", 1);
-        ((ObjectNode) second.get("targets").get(0)).putNull("id").put("key", "new-target-b");
-        ((ArrayNode) request.get("rows")).add(second);
-        var group = request.putArray("newGroups").addObject().put("sourceRowId", row.getId())
-                .put("sharedHouseholdCount", 170);
-        group.putArray("rowKeys").add(first.get("key").asText()).add("new-b");
-        return request;
-    }
 
     private SupplyRow fixture() {
         var fixtures = new NotificationFixtures(entities, jdbc);

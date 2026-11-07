@@ -20,6 +20,10 @@ _SUPPLY_TABLE_HEADER = re.compile(r"공급형|공급유형|주택형|모집\s*(?
 _AREA_CELL = re.compile(r"\d{2,3}\.\d{2,4}")
 _MONEY_CELL = re.compile(r"\d{1,3}(?:,\d{3})+")
 _TABLE_HEADER = re.compile(r"단지명|공급형|주택형|공급대상|공급계층|청약구분|전용|임대조건|임대보증금|월임대료")
+# 머리글 줄 뒤에 데이터 줄 글자(26·31)가 이어 붙을 수 있어 앞에서부터 보고, 뒤에 한글 낱말이 붙은 "공급형별 임대보증금" 같은 열은 뺀다.
+_HOUSING_TYPE_FALLBACK = re.compile(r"공급형별?(?:\([^)]*\))?(?![가-힣])")
+# 오른쪽 하위 열까지 덮는 병합 머리글. 하위 열 이름만으로는 뜻이 모호하다(최소·최대 보증금, 계약면적·주거 아래 전용).
+_PARENT_HEADER = re.compile(r"최소|최대|전환|증액|계약면적|^주거$")
 _TABLE_HEADER_CELL = re.compile(
     r"단지명|공급형|주택형|주택구분|공급대상|공급계층|청약구분|모집(?:호수|세대수|인원|가구)|"
     r"일반공급|우선공급|예비자|당첨자|전용|공용|계약면적|건설(?:호수|세대수)|총세대수|"
@@ -83,7 +87,11 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
             re.search(r"모집\s*(?:호수|인원|세대수)", header)
             and not re.search(r"예비|당첨|우선|일반", header)
         ),
-        "exclusiveArea": lambda header: bool(re.search(r"주거전용|전용면적", header)),
+        # 계약면적·주거 아래의 "전용" 하위 머리글도 주거전용이다(사천벌리1: 세대별 계약면적 > 전용·주거 공용). 공용 열은 아니다.
+        "exclusiveArea": lambda header: bool(
+            re.search(r"주거전용|전용면적", header)
+            or (re.search(r"(?:계약면적|주거).*전용", header) and not re.search(r"공용", header))
+        ),
         "commonArea": lambda header: bool(re.search(r"주거공용", header)),
         "supplyArea": lambda header: bool(re.search(r"공급면적", header)),
         "constructedHouseholdCount": lambda header: bool(re.search(r"건설(?:호수|세대수)|주택형별세대수", header)),
@@ -106,11 +114,10 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
     columns: dict[str, int] = {}
     normalized_headers = table_column_headers(header_rows, column_count)
     for name, matches in fields.items():
-        indexes = []
-        for column in range(column_count):
-            header = normalized_headers[column]
-            if header and matches(header):
-                indexes.append(column)
+        indexes = _matching_columns(normalized_headers, matches)
+        # 주택형 열을 "공급형별(㎡)"로만 적은 표가 있다. "공급형"은 다른 머리글에도 섞여 다른 주택형 열이 없을 때만 본다.
+        if name == "housingType" and not indexes:
+            indexes = _matching_columns(normalized_headers, lambda header: bool(_HOUSING_TYPE_FALLBACK.match(header)))
         if len(indexes) == 1:
             columns[name] = indexes[0]
     # 단지명(소재지)처럼 한 열이 단지명이면서 위치이면 주소로 쓰지 않는다.
@@ -120,6 +127,10 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
     if detail is not None:
         columns["targetDetail"] = detail
     return columns
+
+
+def _matching_columns(headers: list[str], matches) -> list[int]:
+    return [column for column, header in enumerate(headers) if header and matches(header)]
 
 
 def _target_detail_column(header_rows: list[list[str | None]], columns: dict[str, int]) -> int | None:
@@ -140,7 +151,7 @@ def table_column_headers(rows: list[list[str | None]], column_count: int) -> lis
     for row in rows:
         cells = [(cell or "").strip() for cell in row]
         for column, cell in enumerate(cells[:column_count]):
-            if cell and re.search(r"최소|최대|전환|증액", cell):
+            if cell and _PARENT_HEADER.search(_compact(cell)):
                 contexts[column] = cell
                 following = column + 1
                 while following < column_count and (following >= len(cells) or not cells[following]):

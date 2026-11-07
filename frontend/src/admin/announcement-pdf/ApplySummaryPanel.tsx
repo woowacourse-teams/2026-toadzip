@@ -17,16 +17,12 @@ function ChangeList({ title, items, hint }: { title: string; items: ValueChange[
     <ul className={styles.changeList}>{items.map((item, index) => <li key={index}><strong>{item.label}</strong><span>{item.before}</span><span>→</span><span>{item.after}</span></li>)}</ul></section>
 }
 
-/** 서버 미리보기로 만든 적용 전 확인. 단지별 변경 전후 공급행, 모집수 합계·중복, 통합행 처리, 임대조건 변경과 경고를 보여 준다. */
+/** 서버 미리보기로 만든 적용 전 확인. 단지별 변경 전후 공급행(서버가 정한 주택형 포함), 모집수 합계·중복, 임대조건 변경과 경고를 보여 준다. */
 export function ApplySummaryPanel({ summary, busy, onApply, onBack }: { summary: ApplySummary; busy: boolean; onApply: () => void; onBack: () => void }) {
   return <section className={styles.applySummary} role="region" aria-label="적용 전 확인" tabIndex={-1}>
     <h2>적용 전 확인</h2>
     <p className={styles.hint}>서버가 검증한 저장 결과입니다. 여러 탭에서 고른 값이 실제로 어떻게 바뀌는지 여기서 한 번에 확인하세요.</p>
     {summary.warnings.length > 0 && <div className={styles.warningNote} role="note" aria-label="적용 경고"><p><strong>경고</strong> 저장은 되지만 확인할 내용입니다.</p><ul>{summary.warnings.map(item => <li key={item}>{item}</li>)}</ul></div>}
-    {summary.unattached.length > 0 && <div className={styles.warningNote} role="note" aria-label="남는 LH 행"><p><strong>미연결</strong> 저장 뒤에도 공급행이 없는 LH 행입니다. 공고문 소유가 되어 정제가 이 행을 공급행으로 만들지 않습니다.</p><ul>{summary.unattached.map(item => <li key={item}>{item}</li>)}</ul></div>}
-    {summary.splits.map(split => <div key={split.label} className={split.householdCount === split.lhHouseholdCount ? styles.notice : styles.warningNote} aria-label={`통합행 분리 ${split.label}`} role="group">
-      <p><strong>통합행 분리</strong> {split.label}</p><p>{`${split.merged} → ${split.result}`}</p>
-      <p>{`분리 합계 ${count(split.householdCount)} / LH ${count(split.lhHouseholdCount)}${split.householdCount === split.lhHouseholdCount ? ' · 일치' : ' · 다름'}`}</p></div>)}
     {summary.complexes.map(complex => <section key={complex.name} className={styles.summaryComplex} aria-label={`${complex.name} 적용 전후`}>
       <h3>{complex.name}<small>{`모집수 합계 ${count(complex.beforeTotal)} → ${count(complex.afterTotal)}`}</small></h3>
       <div className={styles.summaryColumns}><div><h4>변경 전</h4><RowList rows={complex.before} label={`${complex.name} 변경 전`} /></div><div><h4>변경 후</h4><RowList rows={complex.after} label={`${complex.name} 변경 후`} /></div></div>

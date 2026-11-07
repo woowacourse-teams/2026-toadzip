@@ -1,5 +1,4 @@
-import { groupOf } from './correspondence'
-import { cellMatches, complexGroups, pendingTarget, rowPendingItems, type PendingItem, type Review, type ReviewFilter, type RowReview, type TargetReview } from './review'
+import { cellMatches, complexGroups, groupOf, pendingTarget, rowPendingItems, type PendingItem, type Review, type ReviewFilter, type RowReview, type TargetReview } from './review'
 
 export type SupplyView = ReturnType<typeof supplyView>
 /**

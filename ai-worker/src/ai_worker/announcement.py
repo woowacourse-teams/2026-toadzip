@@ -2,7 +2,7 @@
 
 이 모듈은 실행 흐름만 맡는다. 쪽 선택은 pages, 공급표를 코드와 모델 중 어디서 읽을지는 supply_sources,
 본문 단계 프롬프트는 stage_prompts, 두 단계 결과 합치기는 merge가 한다.
-LH·GH 공고는 이미 수집한 공급행 틀을 함께 준다(source_frame). 모델·문구·쪽 입력을 바꾸면 대표 PDF로 정확도를 다시 확인한다.
+LH 공고는 이미 수집한 LH 행을 참고 목록·검산에, GH 공고는 공급행 틀을 식별자 맞추기에 쓴다(source_frame). 모델·문구·쪽 입력을 바꾸면 대표 PDF로 정확도를 다시 확인한다.
 """
 
 import json
@@ -70,8 +70,7 @@ class AnnouncementPdfExtractor:
         # merge는 페이지 변환 전에 tree를 만들므로, 최종 결과의 근거를 원본 PDF 쪽 번호로 변환한다.
         tree, merge_warnings = merge.merge(supply.tree, notice_tree)
         warnings += merge_warnings
-        warnings += checks.review(tree, list(range(1, len(texts) + 1)), texts, [row.type_name for row in rows],
-                                  [row.count() for row in rows], selected.rental_rows)
+        warnings += checks.review(tree, list(range(1, len(texts) + 1)), texts, rows, selected.rental_rows)
         warnings += frame.link(tree)
         checks.normalize_note_paths(tree, warnings)
         usage = _combined_usage(*supply.usage, notice_reply.usage)

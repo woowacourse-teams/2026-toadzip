@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from ai_worker import tables
 from conftest import RENT_CELLS
 
@@ -84,3 +86,50 @@ def test_complex_name_column_that_also_names_the_location_is_not_used_as_address
     rows = [["단지명(소재지)", "주택형", "공급대상", "모집호수"], ["Test(서울특별시 중구 세종대로 110)", "26A", "청년", "20"]]
 
     assert "address" not in tables.SupplyTable.of(4, 1, rows, None, False).columns
+
+
+# 사천벌리1 영구임대 예비입주자 공고 공급표를 PyMuPDF가 읽은 모양 그대로 옮겼다. 병합 칸은 None이다.
+SACHEON_SUPPLY_CELLS = [
+    ["공급 형별 (㎡)", "건설 세대수 (호)", "세대별 계약면적(㎡)", None, None, None, None, "현재 공가 호수", "금회 모집 예비자", "해당동",
+     "구조 및 난방"],
+    [None, None, "전용", "주거 공용", "그 밖의 공용면적", None, "합계", None, None, None, None],
+    [None, None, None, None, "기타 공용", "주차장", None, None, None, None, None],
+    ["26", "298", "26.37", "10.76", "-", "-", "37.13", "77", "110", "101,102", "복도식 개별난방"],
+    ["31", "149", "31.32", "10.87", "-", "-", "42.19", "9", "30", "103", None],
+]
+
+
+def test_supply_type_column_and_exclusive_sub_header_under_contract_area_are_read():
+    table = tables.SupplyTable.of(1, 1, SACHEON_SUPPLY_CELLS, None, False)
+
+    assert {name: table.columns.get(name) for name in ("housingType", "exclusiveArea", "commonArea")} == {
+        "housingType": 0, "exclusiveArea": 2, "commonArea": 3}
+    assert table.rows[3].values == {"housingType": "26", "constructedHouseholdCount": "298", "exclusiveArea": "26.37",
+                                    "commonArea": "10.76", "reserveCount": "110"}
+
+
+def test_exclusive_sub_header_under_a_merged_residential_parent_is_read_but_common_columns_are_not():
+    rows = [["주택형", "주거", None, "기타 공용", "모집호수"], [None, "전용", "공용", None, None], ["26A", "26.37", "10.76", "3.1", "20"]]
+
+    columns = tables.SupplyTable.of(1, 1, rows, None, False).columns
+
+    assert (columns["housingType"], columns["exclusiveArea"], columns["commonArea"]) == (0, 1, 2)
+
+
+def test_common_area_sub_header_that_mentions_exclusive_is_not_the_exclusive_area():
+    rows = [["주택형", "계약면적", None, "모집호수"], [None, "전용", "공용 (전용 외 면적)", None], ["26A", "26.37", "10.76", "20"]]
+
+    assert tables.SupplyTable.of(1, 1, rows, None, False).columns["exclusiveArea"] == 1
+
+
+@pytest.mark.parametrize(("header", "expected"), [
+    (["공급형", "공급대상", "모집호수"], 0),
+    (["공급\n형별", "공급대상", "모집호수"], 0),
+    # 다른 주택형 열이 있으면 "공급형"은 보지 않는다. 뒤에 다른 낱말이 붙은 머리글은 주택형 열이 아니다.
+    (["공급형", "주택형", "모집호수"], 1),
+    (["공급형별 임대보증금", "공급대상", "모집호수"], None),
+])
+def test_supply_type_header_is_the_housing_type_only_without_another_type_column(header, expected):
+    columns = tables.SupplyTable.of(1, 1, [header, ["26", "청년", "20"]], None, False).columns
+
+    assert columns.get("housingType") == expected

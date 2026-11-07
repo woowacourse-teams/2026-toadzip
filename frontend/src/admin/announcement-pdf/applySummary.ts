@@ -1,17 +1,16 @@
 import type { JsonPreview, JsonUpdateInput, JsonWorkspace, TypeValues } from '../announcement-json/api'
-import type { CorrectionRow, CorrectionTarget, LhSupplyRow, SupplyWorkspace } from '../supply/supplyCorrectionApi'
+import type { CorrectionRow, CorrectionTarget, SupplyWorkspace } from '../supply/supplyCorrectionApi'
 import { labels } from '../management/fields'
-import { lhRowLabel, type HousingCandidates } from './matching'
+import type { HousingCandidates } from './matching'
 import { choices, metadataFields, receptionFields, shownDateTime } from './review'
 
 export type SummaryRow = { key: string; id: number | null; typeName: string; householdCount: number | null; housingType: string; linked: string[]
   change: 'same' | 'changed' | 'new' | 'excluded'; excluded: boolean }
 export type ComplexSummary = { name: string; before: SummaryRow[]; after: SummaryRow[]; beforeTotal: number | null; afterTotal: number | null; duplicates: string[] }
-export type SplitSummary = { label: string; merged: string; result: string; householdCount: number | null; lhHouseholdCount: number | null }
 export type TargetChange = { row: string; kind: 'new' | 'changed'; detail: string }
 /** 기본정보·접수처·일정·주택형 한 항목의 변경 전후. 값은 화면에 보일 글로 바꿔 둔다. */
 export type ValueChange = { label: string; before: string; after: string }
-export type ApplySummary = { complexes: ComplexSummary[]; splits: SplitSummary[]; targets: TargetChange[]; warnings: string[]; unattached: string[]
+export type ApplySummary = { complexes: ComplexSummary[]; targets: TargetChange[]; warnings: string[]
   fields: ValueChange[]; schedules: ValueChange[]; housingTypes: ValueChange[] }
 
 function typeLabel(row: CorrectionRow, housing: HousingCandidates) {
@@ -78,9 +77,9 @@ const targetLabel = (target: CorrectionTarget) => `${target.target}${target.supp
 
 /**
  * 적용 전 요약. 서버 미리보기의 변경 전후 공급행을 단지별로 묶어 모집수 합계와 같은 주택형 중복을 보이고,
- * 통합행 분리 묶음이 통합행을 어떻게 바꾸는지, 추가·변경되는 임대조건과 서버 경고·남는 LH 행을 함께 돌려준다.
+ * 추가·변경되는 임대조건과 서버 경고를 함께 돌려준다. 변경 후 주택형은 서버가 단지·전용면적으로 정한 주택형이다.
  */
-export function summarizePreview(preview: JsonPreview, housing: HousingCandidates, lhRows: LhSupplyRow[]): ApplySummary {
+export function summarizePreview(preview: JsonPreview, housing: HousingCandidates): ApplySummary {
   const supply = preview.supply
   const before = supply?.before ?? [], after = supply?.after ?? []
   const complexKey = (row: CorrectionRow) => row.housingComplexId === null ? `name:${row.complexName}` : `id:${row.housingComplexId}`
@@ -97,16 +96,6 @@ export function summarizePreview(preview: JsonPreview, housing: HousingCandidate
         return summaryRow(row, row.excluded && !previous?.excluded ? 'excluded' : !previous ? 'new' : comparable(previous) !== comparable(row) ? 'changed' : 'same') }),
       duplicates: [...types].filter(([, names]) => names.length > 1).map(([id, names]) => `${typeLabel({ ...next[0], housingTypeId: id, newHousingType: null, linkedHousingTypes: [] }, housing).housingType}에 공급행 ${names.length}개(${names.join(', ')})가 연결됩니다.`) }
   })
-  const splits = (supply?.splits ?? []).map(split => {
-    const lh = lhRows.find(row => row.rowIdentifier === split.lhSourceRowIdentifier)
-    const merged = before.find(row => row.key === lh?.attachedRowKey)
-    const rows = split.rowKeys.map(key => after.find(row => row.key === key)).filter((row): row is CorrectionRow => Boolean(row))
-    const head = rows.find(row => row.key === merged?.key)
-    return { label: lh ? lhRowLabel(lh) : split.lhSourceRowIdentifier,
-      merged: merged ? `통합행 #${String(merged.id)} ${merged.typeName} · 모집 ${merged.householdCount ?? '미확인'}` : '통합행 없음',
-      result: [head ? `첫 분리행 ${head.typeName} ${head.householdCount ?? '미확인'}세대(ID 유지)` : '', ...rows.filter(row => row !== head).map(row => `새 분리행 ${row.typeName} ${row.householdCount ?? '미확인'}세대`)].filter(Boolean).join(' · '),
-      householdCount: split.householdCount, lhHouseholdCount: split.lhHouseholdCount }
-  })
   const targets = after.flatMap(row => {
     const previous = before.find(item => item.key === row.key)
     return row.targets.filter(target => !target.excluded).flatMap((target): TargetChange[] => {
@@ -116,23 +105,20 @@ export function summarizePreview(preview: JsonPreview, housing: HousingCandidate
       return changed.length ? [{ row: row.typeName, kind: 'changed', detail: [target.target, ...changed].join(' · ') }] : []
     })
   })
-  return { complexes, splits, targets, warnings: [...new Set([...preview.warnings, ...supply?.warnings ?? [], ...preview.housingTypeWarnings])],
-    unattached: (supply?.unattachedLhSupplyRows ?? []).map(lhRowLabel), ...valueChanges(preview) }
+  return { complexes, targets, warnings: [...new Set([...preview.warnings, ...supply?.warnings ?? [], ...preview.housingTypeWarnings])], ...valueChanges(preview) }
 }
 
 /**
  * 같은 요청을 다시 보내 409(ADMIN_DATA_CONFLICT)를 받았을 때, 보내려던 공급행이 최신 공급행에 이미 들어 있는지.
- * 새 행은 저장 후 키가 바뀔 수 있어 단지·표기·모집수·전용면적·주택형으로 대응한다. 분리(SPLIT)·연결(ATTACH) 행은 값만 같아서는 안 되고,
- * 대응한 행이 최신 lhSupplyRows에서 그 LH 행의 분리행(splitRowKeys)이거나 붙은 행(attachedRowKey)이어야 한다.
+ * 새 행은 저장 후 키가 바뀔 수 있어 단지·표기·모집수·전용면적·주택형으로 대응한다. 주택형을 비워 보낸 행은 서버가 전용면적으로 정하므로
+ * 주택형은 비교하지 않는다.
  */
-export function correctionReflected(intended: CorrectionRow[], latest: Pick<SupplyWorkspace, 'rows' | 'lhSupplyRows'>) {
-  const signature = (row: CorrectionRow) => JSON.stringify([row.housingComplexId, row.typeName, row.householdCount, row.exclusiveArea, row.housingTypeId, row.excluded])
-  const lh = (identifier: string | undefined) => (latest.lhSupplyRows ?? []).find(row => row.rowIdentifier === identifier)
-  const lineage = (row: CorrectionRow, saved: CorrectionRow) => row.saveMode === 'SPLIT' ? Boolean(lh(row.lhSourceRowIdentifier)?.splitRowKeys?.includes(saved.key))
-    : row.saveMode === 'ATTACH' ? lh(row.lhSourceRowIdentifier)?.attachedRowKey === saved.key : true
+export function correctionReflected(intended: CorrectionRow[], latest: Pick<SupplyWorkspace, 'rows'>) {
+  const signature = (row: CorrectionRow, typed: boolean) => JSON.stringify([row.housingComplexId, row.typeName, row.householdCount, row.exclusiveArea, typed ? row.housingTypeId : null, row.excluded])
   const pool = [...latest.rows]
   return intended.every(row => {
-    const at = pool.findIndex(saved => signature(saved) === signature(row) && lineage(row, saved))
+    const typed = row.housingTypeId !== null || row.newHousingType !== null
+    const at = pool.findIndex(saved => signature(saved, typed) === signature(row, typed))
     if (at < 0) return false
     pool.splice(at, 1)
     return true

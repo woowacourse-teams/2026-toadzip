@@ -45,9 +45,6 @@ export async function previewJsonUpdate(id: string, input: JsonUpdateInput): Pro
       && (item.housingTypeId === null || Number.isSafeInteger(item.housingTypeId)) && (item.before === null || isRecord(item.before)) && isRecord(item.after))
     || !Array.isArray(housingTypeWarnings) || !housingTypeWarnings.every(item => typeof item === 'string')) invalid()
   const supply = result.supply === null ? null : parseSupplyPreview(result.supply)
-  if (input.correction.newGroups?.length && JSON.stringify(input.correction.newGroups) !== JSON.stringify(supply?.newGroups)) {
-    throw new Error('서버가 공통 모집 묶음을 확인하지 못했습니다. PDF 보정을 지원하는 서버로 갱신한 뒤 다시 요청하세요.')
-  }
   return { ...result, supply, housingTypes, housingTypeWarnings } as JsonPreview
 }
 export async function applyJsonUpdate(id: string, request: JsonUpdateInput, confirmationToken: string) {

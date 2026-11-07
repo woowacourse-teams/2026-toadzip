@@ -9,7 +9,7 @@ export type Evidence = { path: string; page: number; quote: string }
 export type ExtractedComplex = { name: string; address: string | null; totalHouseholdCount: number | null; parkingCount: number | null }
 /** 세부 타입 묶음 행(26A/B/C)의 세부 타입 하나. 공급면적은 전용 + 공용으로 계산한 값이다. */
 export type Subtype = { name: string; exclusiveArea: number | null; supplyArea: number | null; constructedHouseholdCount: number | null }
-/** subtypes는 LH 한 행이 여러 전용면적을 함께 모집하는 묶음일 때만 둘 이상이고, 그 밖에는 비어 있다. */
+/** subtypes는 공급행 하나가 여러 전용면적을 모집수 하나로 함께 모집할 때만 둘 이상이고, 그 밖에는 비어 있다. */
 export type ExtractedRow = { complexName: string | null; typeName: string | null; values: JsonObject; targets: JsonObject[]; subtypes: Subtype[] }
 export type Extraction = {
   announcement: JsonObject
@@ -308,7 +308,8 @@ export function evidenceContext(extraction: Pick<Extraction, 'supplyRows'>, path
   const row = match ? extraction.supplyRows[Number(match[1])] : undefined
   if (!row) return []
   const area = row.values.exclusiveArea
-  return [...new Set([row.typeName, ...row.subtypes.map(subtype => subtype.name), typeof area === 'number' ? String(area) : null].filter((item): item is string => Boolean(item?.trim())))]
+  // 접은 행의 표기(26A·26B)는 공고문에 표기마다 따로 있다.
+  return [...new Set([...row.typeName?.split('·') ?? [], ...row.subtypes.flatMap(subtype => subtype.name.split('·')), typeof area === 'number' ? String(area) : null].filter((item): item is string => Boolean(item?.trim())))]
 }
 
 /** 같은 경로 → 가까운 상위 경로 → 첫 하위 경로 순으로 근거를 찾는다. */

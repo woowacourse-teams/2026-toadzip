@@ -15,10 +15,10 @@ function linkIssues(row: CorrectionRow): string[] {
   return [...(row.housingComplexId ? [] : ['단지 미연결']), ...(row.housingTypeId || row.newHousingType ? [] : ['주택형 미연결'])]
 }
 
-export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last, sources = [], inline = false, sharedCount, onDelete, deleted = false }: {
+export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last, sources = [], inline = false, onDelete, deleted = false }: {
   value: CorrectionRow; onChange: (value: CorrectionRow) => void; onRemove: () => void;
   onMove: (delta: number) => void; first: boolean; last: boolean
-  inline?: boolean; sharedCount?: number
+  inline?: boolean
   /** 저장된 행 중 관리자가 추가한 행(원천 없음)만 받는다. 누르면 삭제 예정으로 표시하고, 다시 누르면 취소한다. */
   onDelete?: () => void; deleted?: boolean
   /** 이 행이 기록한 원천행(마이홈·LH)과 작업실 원천 목록에서 찾은 값. */
@@ -114,10 +114,10 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
         </section>}
         {value.housingComplexId && (value.housingTypeId || value.newHousingType) && <LinkedHousingTypesDraft value={value} types={types} lookup={lookup}
           typesLoaded={lookup && candidateComplex?.summary.id === complexId}
-          shared={!!value.groupId || sharedCount !== undefined} onLookup={() => setLookup(true)} onChange={links => field('linkedHousingTypes', links)} />}
+          shared={!!value.groupId} onLookup={() => setLookup(true)} onChange={links => field('linkedHousingTypes', links)} />}
       </fieldset>
       {error && <p role="alert">{error}</p>}
-      {(value.groupId || sharedCount !== undefined) && <p>공통 모집수 {sharedCount ?? value.sharedHouseholdCount ?? '미확정'}세대는 묶음에 한 번만 보관합니다. 단지·공통 모집수는 여기서 바꿀 수 없습니다.</p>}
+      {value.groupId && <p>공통 모집수 {value.sharedHouseholdCount ?? '미확정'}세대는 묶음에 한 번만 보관합니다. 단지·공통 모집수는 여기서 바꿀 수 없습니다.</p>}
       <fieldset><legend>이 공고에만 적용할 공급정보</legend>
       {/* 기존 행의 원천 단지명은 정제가 관리한다. 원천이 없는 새 행만 처음 표기를 입력한다. */}
       {value.id ? <p className={styles.sourceName}>수집 원문 단지명: {value.complexName}</p> : null}
@@ -134,7 +134,7 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
         <label>공급 PNU<input maxLength={255} placeholder="지번을 모르면 비움" value={value.pnu} onChange={event => field('pnu', event.target.value)} /></label>
         <label>공급 구분<select value={value.category} onChange={event => field('category', event.target.value as CorrectionRow['category'])}><option value="NEW_SUPPLY">신규 공급</option><option value="RESUPPLY">재공급</option></select></label>
         <label>입주 예정 연월<input type="month" value={value.moveInMonth ?? ''} onChange={event => field('moveInMonth', event.target.value || null)} /></label>
-        <label>금회 모집수 (세대)<input type="number" min="0" step="1" disabled={!!value.groupId || sharedCount !== undefined} value={value.householdCount ?? ''} onChange={event => field('householdCount', event.target.value === '' ? null : Number(event.target.value))} /></label>
+        <label>금회 모집수 (세대)<input type="number" min="0" step="1" disabled={!!value.groupId} value={value.householdCount ?? ''} onChange={event => field('householdCount', event.target.value === '' ? null : Number(event.target.value))} /></label>
       </div><p>빈 수량·금액은 미확인, 숫자 0은 확인된 0입니다. 전체 세대수는 변경하지 않습니다.</p>
       <label className={styles.check}><input type="checkbox" checked={value.areaOverride} onChange={event => field('areaOverride', event.target.checked)} />이 공고의 면적을 별도로 보정·보호</label>
       <div className={styles.fields}>{(['exclusiveArea', 'supplyArea'] as const).map(key => <label key={key}>{key === 'exclusiveArea' ? '공고별 전용면적 (㎡)' : '공고별 공급면적 (㎡)'}<input type="number" min="0" step="0.0001" disabled={!value.areaOverride} value={value[key] ?? ''} onChange={event => field(key, event.target.value === '' ? null : Number(event.target.value))} /></label>)}</div>

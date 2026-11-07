@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import fixtures from './fixtures/scenarios.json'
-import { blankRow, blankTarget } from '../supply/supplyCorrectionApi'
-import { readExtraction } from './extraction'
-import { blockKey, checkAnnouncement, defaultTargetDestinations, missingHousingType, proposeRows, proposeSchedules, sourceComplexNames } from './matching'
-import { sameTargets } from './subtypes'
+import { blankRow, blankTarget, type CorrectionRow } from '../supply/supplyCorrectionApi'
+import { readExtraction, type Extraction } from './extraction'
+import { blockKey, checkAnnouncement, defaultTargetDestinations, lhCrossCheck, missingHousingType, proposeRows, proposeSchedules, sourceComplexNames, type HousingCandidates } from './matching'
+import { foldSameHousingType } from './subtypes'
 
 function scenario(name: keyof typeof fixtures) {
   const fixture = fixtures[name]
@@ -17,6 +17,9 @@ function scenario(name: keyof typeof fixtures) {
   const events = fixture.events.map(event => ({ id: event.id, data: event, complexName: event.complexName }))
   return { extraction: result.value, rows, housing, events }
 }
+// 화면과 같이 같은 주택형의 공고문 행을 접은 뒤 저장할 곳을 정한다.
+const propose = (extraction: Extraction, rows: CorrectionRow[], housing: HousingCandidates, announcementComplexes: { name: string; roadAddress: string | null }[] = []) =>
+  proposeRows(foldSameHousingType(extraction), { rows, announcementComplexes }, housing)
 
 describe('공고 보정 대응 제안', () => {
   it('수집 공고명의 공고일·공고 표기를 무시하고 PDF 공고명·공고일이 현재 공고와 같은지 확인한다', () => {
@@ -47,59 +50,43 @@ describe('공고 보정 대응 제안', () => {
     expect(defaultTargetDestinations({ targets: [{ target: '가 형', supplyRank: '1 순위' }] }, row)).toEqual(['draft-target'])
   })
 
-  it('공급 순위만 다른 공고문 행도 대상이 같다고 보아 접기 제안을 막지 않는다', () => {
-    const row = (supplyRank: unknown) => ({ complexName: null, typeName: null, values: {}, subtypes: [], targets: [{ target: '가군', supplyRank, rentalDeposit: 2520000, monthlyRent: 49180 }] })
-    expect(sameTargets([row(1), row(null)])).toBe(true)
-    expect(sameTargets([row(1), { ...row(1), targets: [{ target: '가군', supplyRank: 1, rentalDeposit: 2520001, monthlyRent: 49180 }] }])).toBe(false)
-  })
-
   it('공급 순위는 대응에 쓰지 않아 순위 표기가 달라도 같은 이름의 기존 조건을 고치고, 같은 이름이 둘이면 고르게 둔다', () => {
     const row = blankRow(0)
     row.targets = [{ ...blankTarget(0), id: 13, target: '가군', supplyRank: '전체' }]
     expect(defaultTargetDestinations({ targets: [{ target: '가군', supplyRank: 1 }] }, row)).toEqual(['13'])
+    // 접은 행처럼 같은 이름의 PDF 대상이 둘이면 앞 대상만 기존 조건을 고치고 뒤 대상은 새 조건으로 더한다.
+    expect(defaultTargetDestinations({ targets: [{ target: '가군' }, { target: '가군' }] }, row)).toEqual(['13', 'new'])
     row.targets.push({ ...blankTarget(1), id: 14, target: '가군', supplyRank: '2순위' })
     expect(defaultTargetDestinations({ targets: [{ target: '가군', supplyRank: 1 }] }, row)).toEqual([''])
   })
 
-  it('한스빌의 한 행을 두 행으로 제안하고 서로 다른 면적의 주택형을 연결한다', () => {
+  it('한스빌은 공고문이 모집수 170을 함께 적은 26A·26B를 공급행 하나로 접어 기존 아파트 통합행에 저장한다', () => {
     const { extraction, rows, housing } = scenario('hansville')
-    expect(proposeRows(extraction, rows, housing)).toMatchObject([
-      { destination: 'row:90', anchorKey: 'row:90', housingTypeId: 10353, sharedIndex: 0, needsConfirmation: true },
-      { destination: 'new', anchorKey: 'row:90', housingTypeId: 10352, sharedIndex: 0, needsConfirmation: true },
-    ])
+    expect(propose(extraction, rows, housing)).toMatchObject([{ destination: 'row:90', anchorKey: 'row:90', complexId: 3055, sharedIndex: null, needsConfirmation: false }])
   })
 
-  it('광주첨단은 단지 포함 관계와 이름으로 같은 26형의 반대 순서를 구분한다', () => {
+  it('광주첨단은 신청자 구분마다 나뉜 같은 면적 26형 PDF 행을 공급행 하나로 접고, 같은 면적의 옛 공급행 둘 중 앞 행을 고치며 뒤 행을 제외한다', () => {
     const { extraction, rows, housing } = scenario('gwangju')
-    const proposed = proposeRows(extraction, rows, housing)
-    expect(proposed.map(row => row.destination)).toEqual(['row:22', 'row:23', 'row:24', 'row:25', 'row:27', 'row:26', 'row:28'])
-    expect(proposed.map(row => row.housingTypeId)).toEqual([3039, 3032, 3034, 3035, 3036, 3036, 3037])
+    const proposed = propose(extraction, rows, housing)
+    expect(proposed.map(row => row.destination)).toEqual(['row:22', 'row:23', 'row:24', 'row:25', 'row:26', 'row:28'])
+    expect(proposed[4].supersedes).toEqual(['row:27'])
+    expect(proposed[4].reason).toContain('#27(26형(주거급여수급자))')
+    expect(proposed.every(row => !row.needsConfirmation)).toBe(true)
   })
 
-  it('공주옥룡1은 공급면적이 미확인인 같은 전용면적의 두 후보 중 하나를 추측하지 않는다', () => {
+  it('공주옥룡1은 같은 면적 주택형이 둘이어도 고르게 하지 않고 기존 아파트 통합행을 고친다', () => {
     const { extraction, rows, housing } = scenario('gongju')
-    expect(proposeRows(extraction, rows, housing)[0]).toMatchObject({ destination: 'row:131', housingTypeId: null, needsConfirmation: true })
+    expect(propose(extraction, rows, housing)[0]).toMatchObject({ destination: 'row:131', needsConfirmation: false })
   })
 
-  it('GH PDF 24B는 모집수가 같아도 다른 주택형인 마지막 기존 행을 고침으로 정하지 않는다', () => {
+  it('GH PDF 24B는 모집수가 같아도 전용면적이 다른 기존 행을 고치지 않고 확인 없이 새 공급정보로 추가한다', () => {
     const { extraction } = scenario('hansville')
     const source = extraction.supplyRows[0]
     const pdf = { ...extraction, sharedCounts: [], supplyRows: [{ ...source, complexName: 'GH 단지', typeName: '24B',
       values: { ...source.values, exclusiveArea: 24.2, totalSupplyHouseholdCount: 3 } }] }
     const existing = { ...blankRow(1), id: 34, key: 'row:34', complexName: 'GH 단지', typeName: '29B 고령자',
       housingComplexId: 7, householdCount: 3, exclusiveArea: 29.1 }
-    const [proposal] = proposeRows(pdf, [existing], {})
-    expect(proposal.destination).toBe('')
-    expect(proposal.recommended).toEqual(['row:34'])
-    expect(proposal.needsConfirmation).toBe(true)
-    expect(proposal.ambiguous).toBe(true)
-  })
-
-  it('같은 면적일 때 건설호수로 주택형을 구분한다', () => {
-    const { extraction, rows, housing } = scenario('gongju')
-    housing[2467][0].householdCount = 443
-    housing[2467][1].householdCount = 20
-    expect(proposeRows(extraction, rows, housing)[0].housingTypeId).toBe(8575)
+    expect(propose(pdf, [existing], {})[0]).toMatchObject({ destination: 'new', anchorKey: 'row:34', complexId: 7, needsConfirmation: false })
   })
 
   it('광주첨단의 단지별 일정을 이름이 아닌 유형과 기간으로 대응한다', () => {
@@ -123,11 +110,24 @@ describe('공고 보정 대응 제안', () => {
     const source = extraction.supplyRows[0]
     const renamed = { ...extraction, supplyRows: [{ ...source, complexName: '표기가 다른 단지', values: { ...source.values, totalSupplyHouseholdCount: 450 } }] }
     const current = rows.map((row, at) => ({ ...row, householdCount: at === 0 ? 450 : 999 }))
-    const [proposal] = proposeRows(renamed, current, housing)
-    expect(proposal).toMatchObject({ destination: 'new', needsConfirmation: true, complexId: null })
+    const [proposal] = propose(renamed, current, housing)
+    expect(proposal).toMatchObject({ destination: 'new', complexId: null })
     expect(proposal.reason).toBe('단지를 하나로 특정하지 못했습니다.')
     const twins = [current[0], { ...current[0], id: 9999, key: 'row:9999' }]
-    expect(proposeRows(renamed, twins, housing)[0].reason).toBe('단지를 하나로 특정하지 못했습니다.')
+    expect(propose(renamed, twins, housing)[0].reason).toBe('단지를 하나로 특정하지 못했습니다.')
+  })
+
+  it('공급행에 붙은 LH 줄은 줄 수·합계를 검산 정보로만 보이고, PDF 모집수와 다르면 차이를 알린다', () => {
+    const lh = (order: number, attachedRowKey: string | null, householdCount: number | null, ambiguous = false) =>
+      ({ rowIdentifier: `LH:P:SUPPLY:${order}`, complexLabel: '단지', typeName: '36A', exclusiveArea: '36.0', householdCount, attachedRowKey, ambiguous })
+    const rows = [lh(1, 'row:1', 300), lh(2, 'row:1', 200), lh(3, 'row:9', 66), lh(4, 'row:2', 10), lh(5, null, 7)]
+    expect(lhCrossCheck(rows, ['row:1', 'row:9'], 560)).toMatchObject({ sum: 566, text: 'LH 3줄 합 566세대 · PDF 모집수 560세대와 6세대 다릅니다. 공고문과 대조하세요(저장은 막지 않습니다).' })
+    expect(lhCrossCheck(rows, ['row:2'], 10)?.text).toBe('LH 1줄 합 10세대 · PDF 모집수와 같습니다.')
+    expect(lhCrossCheck([lh(1, 'row:1', null, true)], ['row:1'], 3)?.text).toContain('합계를 비교하지 않습니다')
+    expect(lhCrossCheck([lh(1, 'row:1', null, true)], ['row:1'], 3)?.text).toContain('첫 행에 붙인 LH 줄')
+    expect(lhCrossCheck(rows, ['row:7'], 3)).toBeNull()
+    // 예비자만 모집하는 공고처럼 LH가 이번 공급 수를 0으로 주면 차이를 알리지 않는다.
+    expect(lhCrossCheck([lh(1, 'row:1', 0)], ['row:1'], 34)?.text).toBe('LH 1줄 합 0세대 · LH가 이번 공급 수를 0으로 줘 비교하지 않습니다.')
   })
 })
 
@@ -179,12 +179,12 @@ describe('공고문과 LH의 블록 표기가 다른 단지', () => {
     expect(sourceComplexNames(extraction, '동탄2 A40BL', names, crossed.map(item => item.name.includes('A-40') ? { ...item, roadAddress: null } : item)).names).toEqual([])
   })
 
-  it('PDF 행마다 같은 공고 단지의 기존 공급행을 추천하고, 맞는 행이 없으면 새 공급정보로 추가한다', () => {
+  it('같은 면적의 다른 표기(084.9600A·084.9600B)는 공급행 하나로 접어 앞 기존 행을 고치고 같은 면적의 다른 기존 행을 제외하며, 맞는 행이 없으면 새 공급정보로 추가한다', () => {
     const { extraction, rows, complexes } = dongtan()
-    const proposed = proposeRows(extraction, rows, {}, complexes)
-    expect(proposed.map(item => item.destination)).toEqual(['row:881', 'row:882', 'row:903', 'new'])
-    expect(proposed.map(item => item.recommended)).toEqual([['row:881'], ['row:882'], ['row:903'], []])
-    expect(proposed[3]).toMatchObject({ anchorKey: 'row:881', complexId: 1723 })
+    const proposed = propose(extraction, rows, {}, complexes)
+    expect(proposed.map(item => item.destination)).toEqual(['row:881', 'row:903', 'new'])
+    expect(proposed.map(item => item.supersedes)).toEqual([['row:882'], undefined, undefined])
+    expect(proposed[2]).toMatchObject({ anchorKey: 'row:881', complexId: 1723 })
     expect(proposed[0].reason).toContain("공고 단지 '화성동탄2A-40(공임리츠) A-40'에 대응했습니다.")
   })
 
@@ -192,22 +192,22 @@ describe('공고문과 LH의 블록 표기가 다른 단지', () => {
     const { extraction, rows, complexes } = dongtan()
     const type = (id: number, name: string, exclusiveArea: number) => ({ id, name, exclusiveArea, supplyArea: null, householdCount: null })
     const housing = { 1723: [type(5823, '84.9600A', 84.96), type(5824, '84.9600B', 84.96)], 1621: [type(5705, '59.9800A', 59.98)] }
-    expect(proposeRows(extraction, rows, housing, complexes).slice(0, 3).map(item => item.needsConfirmation)).toEqual([false, false, true])
-    expect(proposeRows(extraction, rows, housing, complexes)[2].reason).toContain('한쪽만 맞아 대응했습니다')
+    expect(propose(extraction, rows, housing, complexes).map(item => item.needsConfirmation)).toEqual([false, true, false])
+    expect(propose(extraction, rows, housing, complexes)[1].reason).toContain('한쪽만 맞아 대응했습니다')
   })
 
-  it('같은 단지에 전용면적이 같은 행이 여럿이고 표기가 맞지 않으면 추천만 하고 저장할 위치는 고르게 한다', () => {
+  it('표기가 달라도 전용면적이 같으면(소수 둘째 자리) 같은 주택형의 기존 행을 고친다', () => {
     const { extraction, rows, complexes } = dongtan()
-    const renamed = { ...extraction, supplyRows: [{ ...extraction.supplyRows[0], typeName: '084.9600C' }] }
-    expect(proposeRows(renamed, rows, {}, complexes)[0]).toMatchObject({ destination: '', recommended: ['row:881', 'row:882'] })
+    const renamed = { ...extraction, supplyRows: [{ ...extraction.supplyRows[0], typeName: '084.9600C', values: { ...extraction.supplyRows[0].values, exclusiveArea: 84.9600 } }] }
+    expect(propose(renamed, rows, {}, complexes)[0]).toMatchObject({ destination: 'row:881', supersedes: ['row:882'] })
   })
 
   it('공고 단지가 아직 단지에 연결되지 않았으면 다른 단지의 행을 모집수로 추천하지 않고 단지 정하기로 보낸다', () => {
     const { extraction, rows, complexes } = dongtan()
     // A81 행만 이번 모집수(2세대)가 같아 모집수로 고르면 다른 단지 행을 추천하게 된다.
     const unlinked = rows.map(row => row.id === 903 ? { ...row, housingComplexId: null, housingTypeId: null } : row.id === 904 ? { ...row, householdCount: 2 } : row)
-    const proposed = proposeRows(extraction, unlinked, {}, complexes)[2]
-    expect(proposed).toMatchObject({ destination: 'new', anchorKey: '', recommended: [] })
+    const proposed = propose(extraction, unlinked, {}, complexes)[1]
+    expect(proposed).toMatchObject({ destination: 'new', anchorKey: '', complexId: null })
     expect(proposed.reason).toContain('아직 단지에 연결되지 않았습니다')
   })
 })

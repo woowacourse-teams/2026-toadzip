@@ -6,8 +6,13 @@
 
 import json
 import re
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from typing import TYPE_CHECKING
 
 from ai_worker.extraction import MODEL_RESPONSE_INVALID, PermanentError
+
+if TYPE_CHECKING:
+    from ai_worker.source_frame import SourceSupplyRow
 
 INVALID_CODE = MODEL_RESPONSE_INVALID
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -42,11 +47,12 @@ def _reject_constant(name: str):
     raise ValueError(f"JSON이 아닌 값: {name}")
 
 
-def review(tree: dict, pages: list[int], texts: list[str], lh_types: list[str], lh_counts: list[int | None],
+def review(tree: dict, pages: list[int], texts: list[str], lh_rows: list["SourceSupplyRow"],
            rental_rows: int) -> list[str]:
     """tree의 쪽 번호를 원본 기준으로 바꾸고 경고를 돌려준다.
-    texts는 원본 PDF 전체 쪽 텍스트, lh_types·lh_counts는 공급행 틀로 준 LH API 행의 주택형과 모집수,
+    texts는 원본 PDF 전체 쪽 텍스트, lh_rows는 참고 목록으로 준 LH API 행,
     rental_rows는 임대조건표에서 센 (주택형, 공급계층) 줄 수다."""
+    lh_types = [row.type_name for row in lh_rows]
     warnings: list[str] = []
     evidence = remap_pages(objects(tree.get("evidence")), pages, warnings)
     remap_pages(objects(tree.get("sharedCounts")), pages, warnings)
@@ -59,7 +65,7 @@ def review(tree: dict, pages: list[int], texts: list[str], lh_types: list[str], 
     for index, row in enumerate(rows):
         _check_supply_row(row, f"supplyRows[{index}]", _text(announcement.get("postedDate")), set(lh_types), warnings)
     _check_lh_type_names(rows, evidence, set(lh_types), warnings)
-    _check_lh_counts(rows, lh_types, lh_counts, warnings)
+    _check_lh_counts(rows, lh_rows, warnings)
     _check_target_count(rows, rental_rows, warnings)
     return warnings
 
@@ -99,36 +105,91 @@ def _check_quotes(evidence: list[dict], texts: list[str], warnings: list[str]) -
             warnings.append(f"{_label(item)}: 근거 인용문의 {', '.join(missing[:3])}이(가) {page}쪽 원문에 없음")
 
 
-def _check_lh_counts(rows: list[dict], lh_types: list[str], lh_counts: list[int | None], warnings: list[str]) -> None:
-    """공급행은 sourceRow(식별자로 바꾸기 전의 LH API 행 1부터 센 번호)로 LH 행을 가리킨다. 통합된 LH 행 하나가 PDF에서 주택형별로 나뉘면
-    여러 공급행이 같은 번호를 쓴다. 번호가 없거나 범위 밖인 행, 공급행이 없는 LH 행, LH 모집수와 다른 PDF 모집수(나뉜 행은 합계)를
-    경고로 알린다. 모집수 차이는 PDF와 API 중 하나를 확인할 일이지 PDF 값을 못 쓰는 것은 아니다."""
-    if not lh_counts:
+def _check_lh_counts(rows: list[dict], lh_rows: list["SourceSupplyRow"], warnings: list[str]) -> None:
+    """LH API 행은 공급행을 정하지 않는다. 같은 단지에서 전용면적(소수 둘째 자리)이 공급행의 면적(세부 주택형 포함) 가운데
+    하나와 같은 LH 행이 그 공급행에 붙는다. 신청자 구분으로 나뉜 여러 LH 행이 한 공급행에 붙으므로 모집수 합계를 PDF 모집수와 맞대고,
+    다르면 경고만 한다(PDF와 API 중 하나를 확인할 일이지 PDF 값을 못 쓰는 것은 아니다). LH 행 수와 공급행 수가 다른 것은 오류가 아니다.
+    면적이 없는 LH 행은 맞댈 수 없어 조용히 넘긴다."""
+    groups: dict[tuple[str, Decimal], list["SourceSupplyRow"]] = {}
+    for lh_row in lh_rows:
+        area = area_key(lh_row.exclusive_area)
+        if area is not None:
+            groups.setdefault((lh_row.complex_label, area), []).append(lh_row)
+    if not groups:
         return
-    groups: dict[int, list[int]] = {}
+    labels = list(dict.fromkeys(label for label, _ in groups))
+    pdf_complexes = {_complex_key(_complex_name(row)) for row in rows}
+    # 같은 단지에서 면적이 겹치는 PDF 행은 화면이 공급행 하나로 접는다(형명만 다른 26A·26B, 신청자 구분 행). 그 행들을 함께 맞댄다.
+    clusters: list[tuple[str, list[Decimal], list[int]]] = []
     for index, row in enumerate(rows):
-        number = row.get("sourceRow")
-        if not isinstance(number, int) or isinstance(number, bool) or not 1 <= number <= len(lh_counts):
-            warnings.append(f"supplyRows[{index}].sourceRow: LH API 공급행 번호가 없거나 범위를 벗어남({number})")
+        label = _lh_complex_label(_complex_name(row), labels, len(pdf_complexes) == 1)
+        areas = list(dict.fromkeys(_row_areas(row)))
+        if label is None or not areas:
             continue
-        groups.setdefault(number, []).append(index)
-    for number, (type_name, expected) in enumerate(zip(lh_types, lh_counts, strict=True), start=1):
-        indexes = groups.get(number)
-        if not indexes:
-            warnings.append(f"LH API 공급행 {number}({type_name}): 이 행에서 나온 공급행이 없음")
+        touching = [cluster for cluster in clusters if cluster[0] == label and set(cluster[1]) & set(areas)]
+        merged = (label, list(dict.fromkeys([*(area for cluster in touching for area in cluster[1]), *areas])),
+                  sorted([index, *(at for cluster in touching for at in cluster[2])]))
+        clusters = [cluster for cluster in clusters if cluster not in touching] + [merged]
+    for label, areas, indexes in sorted(clusters, key=lambda cluster: cluster[2][0]):
+        counts = [rows[at].get("totalSupplyHouseholdCount") for at in indexes]
+        # 행 모집수가 비어 있으면 공통 모집수(sharedCounts)로 묶인 행이라 맞대지 않는다.
+        if not all(isinstance(count, int) and not isinstance(count, bool) for count in counts):
             continue
-        counts = [rows[index].get("totalSupplyHouseholdCount") for index in indexes]
-        # 행 모집수가 비어 있으면 공통 모집수(sharedCounts)로 묶인 행이라 맞대지 않는다. LH API는 모집수를 모르면 0을 보낸다.
-        if not expected or not all(isinstance(count, int) and not isinstance(count, bool) for count in counts):
+        attached = [lh_row for area in areas for lh_row in groups.get((label, area), [])]
+        expected = [lh_row.count() for lh_row in attached]
+        # LH API는 모집수를 모르면 0을 보낸다. 하나라도 모르면 합계를 맞댈 수 없다.
+        if not attached or not all(expected):
             continue
-        total = sum(counts)
-        if total == expected:
+        total, count = sum(expected), sum(counts)
+        if total == count:
             continue
+        shown = ", ".join(str(area) for area in areas)
+        head = (f"supplyRows[{indexes[0]}].totalSupplyHouseholdCount: 같은 전용면적({shown}) LH API 공급행 "
+                f"{len(attached)}줄의 모집수 합계 {total}와 ")
         if len(indexes) == 1:
-            warnings.append(f"supplyRows[{indexes[0]}].totalSupplyHouseholdCount: LH API 공급행 {number} 모집수 {expected}와 다름({total})")
+            warnings.append(f"{head.removesuffix('와 ')}와 다름({count})")
         else:
-            paths = ", ".join(f"supplyRows[{index}]" for index in indexes)
-            warnings.append(f"{paths}: 나뉜 공급행 모집수 합계 {total}이(가) LH API 공급행 {number} 모집수 {expected}와 다름")
+            members = ", ".join(f"supplyRows[{at}]" for at in indexes)
+            warnings.append(f"{head}같은 면적 PDF 행 {len(indexes)}개({members})의 합 {count}가 다름")
+
+
+def area_key(value: object) -> Decimal | None:
+    """전용면적 비교 키. 소수 셋째 자리에서 반올림한다(HALF_UP, 백엔드 HousingTypeAreas와 같은 기준).
+    round()는 은행가 반올림으로 26.125를 26.12로, float를 그대로 Decimal로 바꾸면 이진 오차로 26.365를 26.36으로 만든다."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return None
+    try:
+        area = Decimal(str(value).strip())
+    except InvalidOperation:
+        return None
+    return area.quantize(Decimal("0.01"), ROUND_HALF_UP) if area.is_finite() else None
+
+
+def _row_areas(row: dict) -> list[Decimal]:
+    areas = [area_key(row.get("exclusiveArea")), *(area_key(subtype.get("exclusiveArea")) for subtype in objects(row.get("subtypes")))]
+    return list(dict.fromkeys(area for area in areas if area is not None))
+
+
+def _lh_complex_label(name: str, labels: list[str], single_pdf_complex: bool) -> str | None:
+    """PDF 단지명에 맞는 LH 단지 이름. LH 이름은 "인천부평(도시재생뉴딜) 행복주택"처럼 PDF 표기보다 길어,
+    같은 이름이 없으면 PDF 이름이 들어 있는 LH 단지가 하나뿐일 때만 고른다. 양쪽 모두 단지가 하나면 그 단지다."""
+    if len(labels) == 1 and single_pdf_complex:
+        return labels[0]
+    key = _complex_key(name)
+    if not key:
+        return None
+    found = [label for label in labels if _complex_key(label) == key] or [
+        label for label in labels if key in _complex_key(label)]
+    return found[0] if len(found) == 1 else None
+
+
+def _complex_name(row: dict) -> str:
+    reference = row.get("complexReference")
+    return _text(reference.get("sourceComplexName")) if isinstance(reference, dict) else ""
+
+
+def _complex_key(name: str) -> str:
+    return _WHITESPACE.sub("", name)
 
 
 def _check_target_count(rows: list[dict], rental_rows: int, warnings: list[str]) -> None:

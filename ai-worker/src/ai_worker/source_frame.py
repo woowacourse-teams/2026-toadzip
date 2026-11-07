@@ -1,8 +1,9 @@
-"""Spring이 input.sourceSupplyRows에 담아 보낸 기관 공급 원천 행(공급행 틀)을 읽고, 결과 공급행마다 그 행이 나온
-원천 행의 식별자(sourceRow)를 채운다. 화면은 목록 위치가 아니라 이 식별자로 공급 보정 작업실의 행을 맞춘다.
+"""Spring이 input.sourceSupplyRows에 담아 보낸 기관 공급 원천 행을 읽는다.
 
-LH 행은 공급 단계 모델에 틀로 주고, 모델이 쓴 목록 번호(1부터)를 그 행의 식별자로 바꾼다.
-GH 행은 모델에 주지 않는다. 묶은 공급행을 지구명·주택형으로 코드가 맞추고, 하나로 정할 수 없으면 비워 관리자가 확인하게 한다.
+LH 행은 공급행을 정하지 않는 참고 자료다. 공급 단계 모델에 참고 목록으로 주고, 같은 전용면적 공급행의 모집수 검산(checks)에만 쓴다.
+공급행에 LH 행 식별자를 채우지 않는다. LH 행과 공급행의 대응은 화면이 전용면적으로 따로 맞춘다.
+GH 행(공급행 틀)은 모델에 주지 않는다. 묶은 공급행을 지구명·주택형으로 코드가 맞춰 그 틀 행의 식별자(sourceRow)를 채우고,
+하나로 정할 수 없으면 비워 관리자가 확인하게 한다. 화면은 목록 위치가 아니라 이 식별자로 공급 보정 작업실의 행을 맞춘다.
 """
 
 import re
@@ -46,7 +47,7 @@ class SourceSupplyRow:
 
 
 class SourceFrame:
-    """한 작업의 원천 공급 행. lh_rows는 공급 단계 모델에 틀로 줄 행이고, link가 결과 공급행에 원천 행 식별자를 채운다."""
+    """한 작업의 원천 공급 행. lh_rows는 공급 단계 모델과 검산에 줄 참고 행이고, link가 결과 공급행에 GH 틀 행 식별자를 채운다."""
 
     def __init__(self, rows: list[SourceSupplyRow]):
         self._lh = [row for row in rows if row.source == _LH]
@@ -58,28 +59,15 @@ class SourceFrame:
 
     @property
     def lh_rows(self) -> list[SourceSupplyRow]:
-        """공급 단계 모델에 틀로 줄 LH 행. 이 행이 있으면 모델이 번호로 공급행을 나누고 맞추므로 공급표를 모델 단계로 읽는다."""
+        """공급 단계 모델에 참고 목록으로 주고 모집수 검산에 쓰는 LH 행. 공급표를 어디서 읽을지에는 영향을 주지 않는다."""
         return self._lh
 
     def __len__(self) -> int:
         return len(self._lh) + len(self._gh)
 
     def link(self, tree: dict) -> list[str]:
-        """결과 공급행의 sourceRow를 원천 행 식별자로 채우고, 맞추지 못한 행의 경고를 돌려준다.
-        LH 번호 검산(번호 없음·범위 밖·모집수)은 checks가 이미 했다."""
-        rows = checks.objects(tree["data"].get("supplyRows"))
-        _link_lh_numbers(rows, self._lh)
-        return self._gh.link(rows)
-
-
-def _link_lh_numbers(rows: list[dict], lh_rows: list[SourceSupplyRow]) -> None:
-    """모델은 공급행이 나온 LH 행을 프롬프트 목록의 번호(1부터)로 쓴다. 번호가 없거나 범위를 벗어나면(LH 행이 없을 때 포함) null이다."""
-    for row in rows:
-        if "sourceRow" not in row:
-            continue
-        number = row["sourceRow"]
-        valid = isinstance(number, int) and not isinstance(number, bool) and 1 <= number <= len(lh_rows)
-        row["sourceRow"] = lh_rows[number - 1].row_identifier if valid else None
+        """결과 공급행의 sourceRow를 GH 틀 행 식별자로 채우고, 맞추지 못한 행의 경고를 돌려준다. LH 행은 채우지 않는다."""
+        return self._gh.link(checks.objects(tree["data"].get("supplyRows")))
 
 
 class _GhFrame:

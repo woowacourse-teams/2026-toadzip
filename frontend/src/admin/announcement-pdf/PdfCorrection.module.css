@@ -264,36 +264,12 @@
 .checks ul { margin:0; padding-left:1.2em; }
 .subtypeLinks ul { margin:0; padding-left:var(--ds-space-4); font-size:var(--ds-text-caption); }
 .subtypeLinks li { line-height:1.7; margin-block:var(--ds-space-1); }
-/* 저장할 곳: 한 문장과 '바꾸기'. 바꾸기를 열면 기존 공급정보 검색 목록과 새 공급정보 추가를 보인다. */
-.placement { display:grid; gap:var(--ds-space-2); margin-block:var(--ds-space-3); }
-.placementSentence { display:flex; flex-wrap:wrap; align-items:center; gap:var(--ds-space-1) var(--ds-space-2); }
-.page .placementSentence p { margin:0; font-weight:var(--ds-weight-strong); }
-.placementPicker { display:grid; gap:var(--ds-space-2); padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); }
-.placementOptions { display:grid; max-height:240px; overflow:auto; margin:0; padding:0; list-style:none; border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); scrollbar-width:thin; }
-.placementOptions li + li { border-top:1px solid var(--ds-color-divider); }
-.placementOptions button { display:block; width:100%; padding:var(--ds-space-2) var(--ds-space-3); border:0; background:none; color:inherit; font:inherit; font-size:var(--ds-text-caption); text-align:left; cursor:pointer; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
-.placementOptions button:hover, .placementOptions button:focus-visible { background:var(--ds-color-control-hover); }
-.placementOptions button[aria-pressed=true] { background:var(--ds-color-action-soft); color:var(--ds-color-action); font-weight:600; }
-.placementOptions small { color:var(--ds-color-action); }
 .page .secondaryButton[aria-pressed=true] { border-color:var(--ds-color-action); background:var(--ds-color-action-soft); color:var(--ds-color-action); }
-/* 단지 탭 위 LH·PDF 대응: LH가 준 행과 PDF 행을 나란히 두고 그 아래에 단지 단위 결정을 묻는다. */
-.complexMatch { display:grid; gap:var(--ds-space-2); margin:0 0 var(--ds-space-3); padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); font-size:var(--ds-text-caption); }
-.page .complexMatch h3, .page .complexMatch h4, .page .complexMatch p { margin:0; }
-.complexMatch h3 { font-size:var(--ds-text-body); }
-.matchColumns { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:var(--ds-space-3); }
-.matchColumns > div { display:grid; gap:var(--ds-space-1); align-content:start; }
-.matchColumns ul { margin:0; padding:0; list-style:none; display:grid; gap:2px; font-variant-numeric:tabular-nums; }
-.matchColumns li { padding:var(--ds-space-1) var(--ds-space-2); border-left:3px solid var(--ds-color-divider); background:var(--ds-color-surface-subtle); overflow-wrap:anywhere; }
-.matchColumns li[data-excluded] { color:var(--pdf-quiet-text); }
-.matchColumns p { color:var(--ds-color-label); font-variant-numeric:tabular-nums; }
-.matchDecision { display:grid; gap:var(--ds-space-2); padding:var(--ds-space-2) var(--ds-space-3); border-left:3px solid var(--ds-color-action); background:var(--ds-color-surface-subtle); }
-/* 경고는 저장을 막지 않는 확인(앰버), 오류는 저장을 막는 문제(마감색)다. */
-.warningNote, .errorNote { padding:var(--ds-space-2) var(--ds-space-3); border-left:3px solid; font-size:var(--ds-text-caption); background:var(--ds-color-surface-subtle); }
+/* 경고는 저장을 막지 않는 확인(앰버)이다. */
+.warningNote { padding:var(--ds-space-2) var(--ds-space-3); border-left:3px solid; font-size:var(--ds-text-caption); background:var(--ds-color-surface-subtle); }
 .warningNote { border-color:var(--ds-color-status-upcoming); }
 .warningNote strong { color:var(--ds-color-status-upcoming); }
-.errorNote { border-color:var(--ds-color-deadline); }
-.errorNote strong { color:var(--pdf-alert-text); }
-.page .warningNote p, .page .errorNote p { margin:0 0 var(--ds-space-1); }
+.page .warningNote p { margin:0 0 var(--ds-space-1); }
 .blockReason { display:flex; flex-wrap:wrap; align-items:center; gap:var(--ds-space-1) var(--ds-space-2); margin-top:var(--ds-space-1); }
 .blockReason small { color:var(--pdf-alert-text); flex-basis:100%; }
 .draftOffer { display:grid; gap:var(--ds-space-2); padding:var(--ds-space-3) var(--ds-space-4); margin-bottom:var(--ds-space-3); border:1px solid var(--ds-color-action); border-radius:var(--ds-radius-control); background:var(--ds-color-action-soft); font-size:var(--ds-text-caption); }
