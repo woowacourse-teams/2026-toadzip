@@ -27,7 +27,7 @@
 | D14 다산지금A3 | 일반 경로 비교와 우선공급 대상 안내를 함께 제공. 사용자 우선 자격이나 순위는 계산하지 않음 |
 | D19 기업체 기숙사 | 기업이 신청·계약하는 유형이므로 OUT_OF_SCOPE. 개인 비교 집계에서 제외 |
 
-[D05/D11 등 재현 fixture](../../backend/src/test/java/com/toadzip/backend/basiccomparison/ComparisonFixtures.java)는
+[D05/D11 등 재현 fixture](../../backend/src/test/java/com/toadzip/backend/eligibility/BasicComparisonFixtures.java)는
 원문 일부를 사용한 테스트 자료이며 실제 공고 적재 데이터가 아니다. D06·D08·D09·D17 사례는 이번 모집의
 개인/일반 경로 분류를 확인한다. 전체 공고의 모든 조건을 구현했다는 뜻은 아니다.
 
@@ -56,7 +56,7 @@
 | 선택 가족정보 | 본인 포함 가족의 주택·자동차 보유, 최고 차량가액, 총자산 |
 | 부모 소득 예외 | 미혼 대학생이 세대분리했고 본인 소득이 0이라고 입력한 경우의 부모 소득 합계 |
 
-코드·타입 원본은 [ProfileField](../../backend/src/main/java/com/toadzip/backend/basiccomparison/domain/ProfileField.java)다.
+코드·타입 원본은 [ProfileField](../../backend/src/main/java/com/toadzip/backend/eligibility/domain/ProfileField.java)다.
 학교/근무지, 청약통장, 소득활동 이력, 우대·복지 신분은 현재 입력에서 제외한다.
 공고에 필요하면 직접 확인 안내에 남긴다.
 
@@ -188,8 +188,8 @@ NOT_STRUCTURED/NOT_PUBLISHED/CANCELLED에는 result가 없다. 존재하지 않�
 | POST `/publish` | 검증한 초안을 현재 공개본으로 교체 |
 | GET `/api/admin/basic-comparison/income-standards` | 실제 소득표 ID·종류·연도·금액·출처 조회 |
 
-내용의 타입 원본은 [ComparisonContent](../../backend/src/main/java/com/toadzip/backend/basiccomparison/domain/ComparisonContent.java),
-조건 원본은 [BasicRule](../../backend/src/main/java/com/toadzip/backend/basiccomparison/domain/BasicRule.java)다.
+내용의 타입 원본은 [EligibilityContent](../../backend/src/main/java/com/toadzip/backend/eligibility/domain/EligibilityContent.java),
+조건 원본은 [ProfileRule](../../backend/src/main/java/com/toadzip/backend/eligibility/domain/ProfileRule.java)다.
 현재 입력의 일치·나이·실제 날짜 경계·지역·금액·소득 상한과 제한된 ALL/ANY만 표현한다.
 소득표 100% 값에 비율과 가구원수 가산을 적용하고 원 단위 HALF_UP으로 반올림한다.
 
@@ -197,7 +197,7 @@ NOT_STRUCTURED/NOT_PUBLISHED/CANCELLED에는 result가 없다. 존재하지 않�
 `paths`는 GENERAL/COMMON_ONLY, `options`는 단위×경로다. 조건부 기본 비교에는 `appliesWhen`과
 직접 확인할 `fallbackGuidanceId`를 둔다. 날짜가 예정이거나 수집하지 않는 분기의 조건은 충족으로 생략하지 않는다.
 
-[검증기](../../backend/src/main/java/com/toadzip/backend/basiccomparison/domain/ComparisonContentValidator.java)는
+[검증기](../../backend/src/main/java/com/toadzip/backend/eligibility/domain/EligibilityContentValidator.java)는
 같은 내용 안의 ID·참조·근거 쪽수·필수 안내 범위·금액·일정·지원 입력·소득표·지역을 확인한다.
 알 수 없는 요청 속성과 제외된 선정 규칙은 거부한다. 내용은 4 MiB 이하이고 조건 트리의 깊이·항목 수도 제한한다.
 구조가 유효한 REVIEWING 초안은 저장할 수 있지만 공개는 REVIEWED만 허용한다. 자동 검증이 원문 해석을 대신하지 않으므로
@@ -268,15 +268,15 @@ Java·Docker 준비 후 저장소 루트에서 실행한다. 테스트 DB는 Tes
 
 ```sh
 cd backend
-./gradlew test --tests 'com.toadzip.backend.basiccomparison.*'
+./gradlew test --tests 'com.toadzip.backend.eligibility.*'
 ./gradlew test --rerun check --build-cache
 ```
 
-[API 인수 테스트](../../backend/src/test/java/com/toadzip/backend/basiccomparison/controller/ComparisonQueryIntegrationTest.java)는
-실제 저장→공개→비교→요약, [프로필 테스트](../../backend/src/test/java/com/toadzip/backend/basiccomparison/controller/ComparisonProfileIntegrationTest.java)는
+[API 인수 테스트](../../backend/src/test/java/com/toadzip/backend/eligibility/controller/BasicComparisonQueryIntegrationTest.java)는
+실제 저장→공개→비교→요약, [프로필 테스트](../../backend/src/test/java/com/toadzip/backend/eligibility/controller/EligibilityProfileIntegrationTest.java)는
 인증·CSRF·회원 격리·버전 경합을 확인한다. 공개 실패 롤백·정정·동시성은
-[공개 테스트](../../backend/src/test/java/com/toadzip/backend/basiccomparison/controller/ComparisonManagementIntegrationTest.java),
-구 경로 중단과 구 데이터 비사용은 [전환 테스트](../../backend/src/test/java/com/toadzip/backend/basiccomparison/controller/ComparisonCutoverIntegrationTest.java)에서 확인한다.
+[공개 테스트](../../backend/src/test/java/com/toadzip/backend/eligibility/controller/EligibilityRuleSetIntegrationTest.java),
+구 경로 중단과 구 데이터 비사용은 [전환 테스트](../../backend/src/test/java/com/toadzip/backend/eligibility/controller/BasicComparisonCutoverIntegrationTest.java)에서 확인한다.
 구 마이그레이션 제약 검증도 보존한다.
 
 검토된 원문 전체를 자동 수집·구조화하는 기능은 없다. 관리자가 새 형식을 검토·공개해야 비교할 수 있다.
