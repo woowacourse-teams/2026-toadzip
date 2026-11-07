@@ -115,7 +115,7 @@ function renderDaegu(options: Parameters<typeof daegu>[0] = {}) {
 }
 
 it('모집수가 아직 PDF 값으로 정해지지 않았어도 대응의 PDF 합계는 PDF 값으로 세고, 나누기를 고르면 나눌 행의 모집수를 PDF 값으로 정한다', () => {
-  const { match } = renderDaegu({ unresolvedCount: true, lhSourceRow: true })
+  const { match } = renderDaegu({ unresolvedCount: true, sourceRow: true })
   expect(within(match()).getByRole('list', { name: 'PDF 행' }).nextElementSibling).toHaveTextContent('합계 240세대')
   const decision = within(match()).getByRole('group', { name: "LH 행 '공공임대 240세대' 대응" })
   const fix = within(decision).queryByRole('button', { name: 'PDF 모집수로 정하기' })
@@ -171,7 +171,7 @@ it('나누는 첫 행이 합친 모집수 240을 그대로 두면 두 번 센다
 })
 
 it('대응 확인 안내는 의심스러울 때만 까닭과 함께 보인다: AI 표시와 같은 곳이면 없고, 바꾸기로 다른 기존 행을 고르면 그 까닭을 보인다', () => {
-  const { placeOf } = renderDaegu({ lhSourceRow: true })
+  const { placeOf } = renderDaegu({ sourceRow: true })
   expect(screen.queryByText(/이 대응이 맞는지 확인하세요/)).not.toBeInTheDocument()
   placeOf(3)
   fireEvent.click(screen.getByRole('button', { name: '공급행 3 저장할 곳 바꾸기' }))

@@ -102,7 +102,7 @@ def test_lh_rows_are_sent_as_supply_row_frame_and_counts_are_checked():
 
 
 def test_unverified_lh_count_is_cleared_before_comparison():
-    job_input = {"lhSupplyRows": [{"typeName": "16A", "exclusiveArea": "16.37", "supplyArea": "27.6", "suppliedUnitCount": "80"}]}
+    job_input = {"sourceSupplyRows": [{"source": "LH", "typeName": "16A", "exclusiveArea": "16.37", "supplyArea": "27.6", "suppliedUnitCount": "80"}]}
 
     result = AnnouncementPdfExtractor(FakeModel()).extract(job(pdf(COVER, SUPPLY, RENT), job_input))
 
@@ -122,7 +122,7 @@ def split_row(housing_type, count, constructed, lh_row=1, subtypes=()):
 
 
 MERGED = "LH:P747:SUPPLY:0"
-MERGED_LH_INPUT = {"lhSupplyRows": [{"order": 0, "rowIdentifier": MERGED, "complexLabel": "대구테크노폴리스4", "typeName": "51", "exclusiveArea": "",
+MERGED_LH_INPUT = {"sourceSupplyRows": [{"source": "LH", "order": 0, "rowIdentifier": MERGED, "complexLabel": "대구테크노폴리스4", "typeName": "51", "exclusiveArea": "",
                                      "supplyArea": "", "suppliedUnitCount": "240", "totalUnitCount": "719"}]}
 
 
@@ -159,9 +159,9 @@ def test_split_rows_without_supported_source_are_unresolved_before_lh_comparison
 
 def test_lh_source_row_number_is_returned_as_that_rows_identifier():
     # 원천 순번이 1부터 시작하지 않아도(0번 행이 빠짐) 모델이 쓴 목록 번호를 그 행의 식별자로 돌려준다. 범위 밖 번호는 비운다.
-    job_input = {"lhSupplyRows": [
-        {"order": 1, "rowIdentifier": "LH:P:SUPPLY:1", "typeName": "51", "exclusiveArea": "", "supplyArea": "", "suppliedUnitCount": "200"},
-        {"order": 3, "rowIdentifier": "LH:P:SUPPLY:3", "typeName": "59", "exclusiveArea": "", "supplyArea": "", "suppliedUnitCount": "40"}]}
+    job_input = {"sourceSupplyRows": [
+        {"source": "LH", "order": 1, "rowIdentifier": "LH:P:SUPPLY:1", "typeName": "51", "exclusiveArea": "", "supplyArea": "", "suppliedUnitCount": "200"},
+        {"source": "LH", "order": 3, "rowIdentifier": "LH:P:SUPPLY:3", "typeName": "59", "exclusiveArea": "", "supplyArea": "", "suppliedUnitCount": "40"}]}
     extraction = dict(EXTRACTION, data=dict(EXTRACTION["data"], supplyRows=[
         split_row("059.9100A", 25, 183, lh_row=2), split_row("051.9800A", 200, 468, lh_row=1), split_row("059.9300B", 15, 68, lh_row=3)]),
         evidence=[])
@@ -195,7 +195,7 @@ def test_shared_count_for_several_types_stays_one_row_without_warning():
 def test_without_lh_rows_frame_is_not_sent():
     model = FakeModel()
 
-    AnnouncementPdfExtractor(model).extract(job(pdf(COVER, SUPPLY, RENT), {"lhSupplyRows": []}))
+    AnnouncementPdfExtractor(model).extract(job(pdf(COVER, SUPPLY, RENT), {"sourceSupplyRows": []}))
 
     prompt = stage_prompt(model, "supply")
     assert LH_FRAME not in prompt
@@ -379,7 +379,7 @@ def test_two_stage_extract_merges_fields_and_validates_row_ids_against_original_
         "notice": json.dumps(notice, ensure_ascii=False),
     })
 
-    job_input = {"lhSupplyRows": [{"typeName": "26A", "exclusiveArea": "26", "supplyArea": "", "suppliedUnitCount": "80"}]}
+    job_input = {"sourceSupplyRows": [{"source": "LH", "typeName": "26A", "exclusiveArea": "26", "supplyArea": "", "suppliedUnitCount": "80"}]}
     result = AnnouncementPdfExtractor(model).extract(job(structured_table_pdf(), job_input))
 
     tree = json.loads(result["json"])

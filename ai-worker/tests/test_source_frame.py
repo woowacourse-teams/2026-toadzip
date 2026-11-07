@@ -31,23 +31,6 @@ def test_input_example_gives_only_lh_rows_to_the_model_and_matches_gh_rows_by_co
     assert rows[0]["sourceRow"] == "GH:801:다산 센트럴파크6단지:36A"
 
 
-def test_job_queued_before_the_rename_still_reads_lh_rows_from_the_old_key():
-    # 배포 전에 넣은 작업은 input.lhSupplyRows(source 없음)로 온다.
-    frame = SourceFrame.read({"lhSupplyRows": [{"typeName": "51", "exclusiveArea": "", "supplyArea": "",
-                                                "suppliedUnitCount": "240", "rowIdentifier": "LH:P:SUPPLY:0"}]})
-
-    assert [(row.source, row.type_name, row.row_identifier) for row in frame.lh_rows] == [("LH", "51", "LH:P:SUPPLY:0")]
-
-
-def test_input_with_both_keys_reads_the_new_key_and_ignores_the_old_copy():
-    # 한 릴리스 동안 Spring은 옛 워커를 위해 LH 행을 옛 키에도 함께 쓴다. 새 워커는 새 키만 읽어 행이 두 번 들어가지 않는다.
-    lh = {"order": 0, "rowIdentifier": "LH:P:SUPPLY:0", "complexLabel": "A", "typeName": "51", "exclusiveArea": "",
-          "supplyArea": "", "suppliedUnitCount": "240", "totalUnitCount": ""}
-    frame = SourceFrame.read({"sourceSupplyRows": [dict(lh, source="LH")], "lhSupplyRows": [lh]})
-
-    assert [row.row_identifier for row in frame.lh_rows] == ["LH:P:SUPPLY:0"]
-
-
 def test_gh_rows_are_not_given_to_the_model():
     frame = SourceFrame.read({"sourceSupplyRows": [gh_row("GH:801:다산:36A", "다산", "36A 청년")]})
 

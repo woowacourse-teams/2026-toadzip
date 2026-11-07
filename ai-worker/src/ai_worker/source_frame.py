@@ -3,7 +3,6 @@
 
 LH 행은 공급 단계 모델에 틀로 주고, 모델이 쓴 목록 번호(1부터)를 그 행의 식별자로 바꾼다.
 GH 행은 모델에 주지 않는다. 묶은 공급행을 지구명·주택형으로 코드가 맞추고, 하나로 정할 수 없으면 비워 관리자가 확인하게 한다.
-배포 전에 넣은 작업은 옛 키(lhSupplyRows, LH 행만)로 온다. 두 키가 함께 오면(옛 워커 호환으로 Spring이 한 릴리스 동안 함께 씀) 새 키만 읽는다.
 """
 
 import re
@@ -35,8 +34,8 @@ class SourceSupplyRow:
     supplied_unit_count: str
 
     @classmethod
-    def of(cls, row: dict, source: str | None = None) -> "SourceSupplyRow":
-        return cls(source or row["source"], row.get("rowIdentifier"), row.get("complexLabel") or "", row["typeName"],
+    def of(cls, row: dict) -> "SourceSupplyRow":
+        return cls(row["source"], row.get("rowIdentifier"), row.get("complexLabel") or "", row["typeName"],
                    row.get("exclusiveArea") or "", row.get("supplyArea") or "", row.get("suppliedUnitCount") or "")
 
     def count(self) -> int | None:
@@ -55,10 +54,7 @@ class SourceFrame:
 
     @classmethod
     def read(cls, job_input: dict | None) -> "SourceFrame":
-        job_input = job_input or {}
-        if "sourceSupplyRows" in job_input:
-            return cls([SourceSupplyRow.of(row) for row in job_input["sourceSupplyRows"]])
-        return cls([SourceSupplyRow.of(row, _LH) for row in job_input.get("lhSupplyRows", [])])
+        return cls([SourceSupplyRow.of(row) for row in (job_input or {}).get("sourceSupplyRows", [])])
 
     @property
     def lh_rows(self) -> list[SourceSupplyRow]:

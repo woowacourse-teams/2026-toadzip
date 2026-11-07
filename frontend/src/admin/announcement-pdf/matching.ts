@@ -402,12 +402,9 @@ export function assignSplitDestinations(proposals: RowProposal[], include: (inde
   return changed
 }
 
-/**
- * 추출 행이 나온 원천 행의 식별자(AI 워커의 sourceRow). 기관 중립 이름으로 바꾸기 전에 저장된 결과는 lhSourceRow에 있다.
- * 식별자가 아닌 이전 결과(목록 번호)는 쓰지 않는다.
- */
+/** 추출 행이 나온 원천 행의 식별자(AI 워커의 sourceRow). 식별자가 아닌 이전 결과(목록 번호)는 쓰지 않는다. */
 export function sourceRowOf(row: Pick<Extraction['supplyRows'][number], 'values'>): string | undefined {
-  const value = row.values.sourceRow ?? row.values.lhSourceRow
+  const value = row.values.sourceRow
   return typeof value === 'string' ? value : undefined
 }
 

@@ -4,12 +4,12 @@
 Spring 테스트(`PdfExtractionContractTest`)와 워커 테스트가 같은 파일을 읽어 두 쪽 형식이 어긋나지 않게 한다.
 필드를 바꾸면 이 예시와 양쪽 코드를 함께 고친다.
 
-- `announcement-pdf-extraction/input.example.json`: 기관 공급 원천 행(`sourceSupplyRows`). 행마다 원천(`source`: `LH`·`GH`)과 공급 보정 작업실이 그 행을 찾는 식별자(`rowIdentifier`)를 담고, 값은 문자열이다(모르면 빈 문자열). LH 행은 LH 공급 API가 보낸 값 그대로, GH 행은 GH 공급행 틀의 값(지구명·주택형 이름·전용면적·세대수)이다. 원천이 없는 공고(SH 등)는 빈 목록이다. 예시는 두 원천의 행 모양을 함께 보이지만 실제 한 공고는 한 기관 원천만 가진다. 배포 전에 넣은 작업은 옛 키 `lhSupplyRows`(LH 행만, `source` 없음)로 올 수 있어 워커는 그 키도 읽는다. 이번 릴리스 동안 Spring은 옛 워커가 LH 틀을 잃지 않게 `sourceSupplyRows`의 LH 행을 옛 형식으로 `lhSupplyRows`에도 함께 쓰고, 새 워커는 `sourceSupplyRows`가 있으면 그것만 읽는다. 다음 릴리스에서 Spring의 `lhSupplyRows` 쓰기와 워커의 옛 키 읽기를 지운다.
+- `announcement-pdf-extraction/input.example.json`: 기관 공급 원천 행(`sourceSupplyRows`). 행마다 원천(`source`: `LH`·`GH`)과 공급 보정 작업실이 그 행을 찾는 식별자(`rowIdentifier`)를 담고, 값은 문자열이다(모르면 빈 문자열). LH 행은 LH 공급 API가 보낸 값 그대로, GH 행은 GH 공급행 틀의 값(지구명·주택형 이름·전용면적·세대수)이다. 원천이 없는 공고(SH 등)는 빈 목록이다. 예시는 두 원천의 행 모양을 함께 보이지만 실제 한 공고는 한 기관 원천만 가진다.
 - `announcement-pdf-extraction/result.example.json`: PDF 보정 화면이 읽는 추출 결과. `json`은 추출 JSON을 문자열로 담고, 근거 쪽 번호는 원본 PDF 기준이다.
 
 ### 공급행의 원천 행 (`data.supplyRows[n].sourceRow`)
 
-- 그 공급행이 나온 원천 행의 식별자(`input.sourceSupplyRows[].rowIdentifier`)다. 화면은 목록 위치가 아니라 이 식별자로 공급 보정 작업실의 행을 맞춘다. 이름을 바꾸기 전에 저장된 결과는 같은 값을 `lhSourceRow`에 담고 있어 화면이 그 필드도 읽는다.
+- 그 공급행이 나온 원천 행의 식별자(`input.sourceSupplyRows[].rowIdentifier`)다. 화면은 목록 위치가 아니라 이 식별자로 공급 보정 작업실의 행을 맞춘다.
 - LH: 식별자는 `LH:{panId}:SUPPLY:{order}`이고 공급 보정 작업실의 `lhSupplyRows[].rowIdentifier`와 같은 값이다. Spring은 작업실과 같은 LH 공급 원천(최신 공고목록 요청의 원천)으로 입력을 만든다. 모델은 프롬프트의 LH 행 목록 번호(1부터)를 쓰고, 워커가 결과를 쓰기 전에 그 번호를 그 행의 식별자로 바꾼다. 번호가 없거나 범위를 벗어나면 `null`이다. 식별자를 모르는 이전 결과(정수)는 화면이 LH 행에 맞추지 않는다.
 - GH: 식별자는 GH 공급행 틀의 행 키(`{공고 식별자}:{지구명}:{주택형 코드}`)이고 작업실 `rowSources`의 `GH_ANNOUNCEMENT` 원천 키와 같은 값이다. Spring은 제외하지 않은 틀 행만 담는다. GH 행은 모델에 주지 않고(공급표를 코드로 읽는 경로를 막지 않는다), 워커가 결과 공급행을 같은 지구명(공백 무시)·같은 주택형(틀 이름의 첫 낱말이나 이름 전체, 여럿이면 전용면적)인 틀 행과 맞춘다. 한 공급행에 한 틀 행, 한 틀 행에 한 공급행일 때만 채우고 그 밖에는 `null`이다. 화면은 그 틀 행을 이 공급행 값으로 고치도록 제안한다.
 - LH가 여러 주택형을 한 행으로 합쳐 보냈는데 PDF 공급 표가 주택형마다 이번 모집수를 따로 적으면, 공급행이 주택형마다 나뉘고 모두 같은 `sourceRow`를 쓴다. 건설호수만 주택형별로 있으면 나누지 않는다.
