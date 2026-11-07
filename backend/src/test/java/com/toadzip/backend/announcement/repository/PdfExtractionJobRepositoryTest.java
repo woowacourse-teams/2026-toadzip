@@ -66,11 +66,11 @@ class PdfExtractionJobRepositoryTest {
     void 입력_스냅숏은_문자열로_감싸지_않고_jsonb_객체로_저장한다() {
         // 문자열로 한 번 더 감싸면 워커가 input을 객체로 읽지 못한다.
         PdfExtractionJob job = jobs.saveAndFlush(PdfExtractionJob.requestedByAdmin(ANNOUNCEMENT, "admin",
-                PdfExtractionSource.of("a.pdf", new byte[] {1}), "{\"lhSupplyRows\":[]}",
+                PdfExtractionSource.of("a.pdf", new byte[] {1}), "{\"sourceSupplyRows\":[]}",
                 Instant.parse("2026-11-01T00:00:00Z")));
 
         Object[] stored = (Object[]) entityManager.createNativeQuery("""
-                SELECT jsonb_typeof(input), jsonb_typeof(input -> 'lhSupplyRows') FROM ai_jobs WHERE id = :id
+                SELECT jsonb_typeof(input), jsonb_typeof(input -> 'sourceSupplyRows') FROM ai_jobs WHERE id = :id
                 """).setParameter("id", job.getId()).getSingleResult();
 
         assertThat(stored).containsExactly("object", "array");

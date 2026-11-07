@@ -402,13 +402,20 @@ export function assignSplitDestinations(proposals: RowProposal[], include: (inde
   return changed
 }
 
+/** 추출 행이 나온 원천 행의 식별자(AI 워커의 sourceRow). 식별자가 아닌 이전 결과(목록 번호)는 쓰지 않는다. */
+export function sourceRowOf(row: Pick<Extraction['supplyRows'][number], 'values'>): string | undefined {
+  const value = row.values.sourceRow
+  return typeof value === 'string' ? value : undefined
+}
+
 /**
- * LH 공급 원본 행에 맞춰 저장 방식을 미리 고른다. 추출 행의 lhSourceRow(AI 워커가 돌려준 LH 행 식별자)를 lhSupplyRows[].rowIdentifier로 찾고,
- * 이 공고의 LH 행에 없는 식별자나 식별자가 아닌 이전 결과(목록 번호)는 쓰지 않는다. 같은 LH 통합행을 가리키는 행이 둘 이상이면 통합행 분리,
- * 공급행이 없는 LH 행이면 LH 행에 연결로 둔다. lhSourceRow가 없으면, 근거 없이 같은 단지의 통합행 하나에 몰린 행들의 모집수 합이
+ * 원천 행에 맞춰 저장 방식을 미리 고른다. 추출 행의 원천 행 식별자(sourceRowOf)가 LH 행 식별자면 lhSupplyRows[].rowIdentifier로 찾고,
+ * 이 공고의 LH 행에 없는 식별자는 쓰지 않는다. 같은 LH 통합행을 가리키는 행이 둘 이상이면 통합행 분리,
+ * 공급행이 없는 LH 행이면 LH 행에 연결로 둔다. 식별자가 GH 공급행 틀의 원천 키(rowSources의 GH_ANNOUNCEMENT)면 그 틀 행을 고친다.
+ * 식별자가 없으면, 근거 없이 같은 단지의 통합행 하나에 몰린 행들의 모집수 합이
  * 그 LH 행의 이번 공급 수와 같을 때만(240 = 200 + 25 + 15) 분리를 제안한다. 모두 운영자가 확인하게 한다.
  */
-export function proposePlacements(extraction: Extraction, proposals: RowProposal[], supply: Pick<SupplyWorkspace, 'lhSupplyRows' | 'rows'>, housing: HousingCandidates): RowProposal[] {
+export function proposePlacements(extraction: Extraction, proposals: RowProposal[], supply: Pick<SupplyWorkspace, 'lhSupplyRows' | 'rows' | 'rowSources'>, housing: HousingCandidates): RowProposal[] {
   const next = [...proposals], lhRows = supply.lhSupplyRows ?? []
   const splittable = new Set(splittableLhRows(supply).map(lh => lh.rowIdentifier))
   const unattached = new Set(attachableLhRows(supply).map(lh => lh.rowIdentifier))
@@ -423,8 +430,8 @@ export function proposePlacements(extraction: Extraction, proposals: RowProposal
     : { complexId: row.housingComplexId, candidates: housing[row.housingComplexId] ?? [] }
   const pointed = new Map<string, number[]>()
   extraction.supplyRows.forEach((row, index) => {
-    const identifier = row.values.lhSourceRow
-    const lh = typeof identifier === 'string' ? lhRows.find(item => item.rowIdentifier === identifier) : undefined
+    const identifier = sourceRowOf(row)
+    const lh = identifier ? lhRows.find(item => item.rowIdentifier === identifier) : undefined
     if (lh) pointed.set(lh.rowIdentifier, [...pointed.get(lh.rowIdentifier) ?? [], index])
   })
   for (const [identifier, indexes] of pointed) {
@@ -440,6 +447,14 @@ export function proposePlacements(extraction: Extraction, proposals: RowProposal
       join(indexes[0], { destination: lh.attachedRowKey, anchorKey: lh.attachedRowKey, ...typed(indexes[0], row) }, `AI가 ${label}에서 나온 행으로 표시했습니다`)
     }
   }
+  // 워커가 지구명·주택형으로 틀 행 하나에 하나만 맞춘 행이다. 표기·면적으로 다른 기존 행을 골랐거나 다른 행이 그 틀 행을 고르면 따르지 않는다.
+  const ghFrames = new Map((supply.rowSources ?? []).filter(link => link.category === 'GH_ANNOUNCEMENT').map(link => [link.sourceKey, link.rowKey]))
+  extraction.supplyRows.forEach((row, index) => {
+    const key = ghFrames.get(sourceRowOf(row) ?? ''), frame = supply.rows.find(item => item.key === key)
+    if (!frame || frame.excluded || !['', 'new', frame.key].includes(next[index].destination)
+      || next.some((proposal, at) => at !== index && proposal.destination === frame.key)) return
+    join(index, { destination: frame.key, anchorKey: frame.key, ...typed(index, frame) }, `AI가 GH 공급행 틀 '${frame.typeName}'(#${String(frame.id)})에서 나온 행으로 표시했습니다`)
+  })
   for (const lh of lhRows.filter(item => splittable.has(item.rowIdentifier) && item.householdCount != null && !pointed.has(item.rowIdentifier))) {
     const row = merged(lh)!
     const members = next.flatMap((proposal, index) => !decided.has(index) && !proposal.saveMode && (proposal.destination === row.key

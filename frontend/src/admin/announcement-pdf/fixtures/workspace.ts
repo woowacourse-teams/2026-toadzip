@@ -34,15 +34,15 @@ export function scenario(name: keyof typeof fixtures, extraction: unknown = fixt
 
 /**
  * 대구테크노폴리스4: LH가 세 주택형을 통합행 하나(#747, 모집 240, 면적 미확인)로 내렸고 공고문은 051.9800A 200 · 059.9100A 25 · 059.9300B 15로 적었다.
- * lhSourceRow가 true면 추출 행이 모두 통합 LH 행 식별자(LH:P:SUPPLY:1)를 가리키고, 배열이면 행마다 그 식별자를 가리킨다.
+ * sourceRow가 true면 추출 행이 모두 통합 LH 행 식별자(LH:P:SUPPLY:1)를 가리키고, 배열이면 행마다 그 식별자를 가리킨다.
  * unresolvedCount면 워커 이전 형식처럼 모집수를 '목록 모집수 240과 다름'으로 남긴다. unattached면 84 LH 행(LH:P:SUPPLY:2)에 공급행이 없다.
  * leadingLhRow면 통합 LH 행 앞에 다른 단지의 나눌 수 있는 LH 행(LH:P:SUPPLY:0, 공급행 #748)을 두어 목록 위치로 맞추면 틀린 행을 고르게 한다.
  * documentOwned면 공급정보가 공고문 소유라 작업실의 unattachedLhSupplyRows가 비어 있다.
  */
-export function daegu({ lhSourceRow = false as boolean | (string | undefined)[], unresolvedCount = false, unattached = false, leadingLhRow = false, documentOwned = false } = {}) {
-  const source = (index: number) => lhSourceRow === true ? 'LH:P:SUPPLY:1' : Array.isArray(lhSourceRow) ? lhSourceRow[index] : undefined
+export function daegu({ sourceRow = false as boolean | (string | undefined)[], unresolvedCount = false, unattached = false, leadingLhRow = false, documentOwned = false } = {}) {
+  const source = (index: number) => sourceRow === true ? 'LH:P:SUPPLY:1' : Array.isArray(sourceRow) ? sourceRow[index] : undefined
   const row = (name: string, area: number, count: number, index: number) => ({ complexReference: { sourceComplexName: '대구테크노폴리스4' }, sourceHousingTypeName: name,
-    expectedMoveInMonth: null, totalSupplyHouseholdCount: count, exclusiveArea: area, supplyArea: null, ...(source(index) ? { lhSourceRow: source(index) } : {}),
+    expectedMoveInMonth: null, totalSupplyHouseholdCount: count, exclusiveArea: area, supplyArea: null, ...(source(index) ? { sourceRow: source(index) } : {}),
     targets: [{ target: '일반', supplyRank: null, supplyHouseholdCount: null, reserveCount: null, rentalDeposit: 30000000, monthlyRent: 200000, convertedDeposit: null }] })
   const rows = [row('051.9800A', 51.98, 200, 0), row('059.9100A', 59.91, 25, 1), row('059.9300B', 59.93, 15, 2)]
   const extraction = { data: { announcement: {}, receptionPlace: {}, supplyRows: rows, schedules: [],
@@ -64,5 +64,31 @@ export function daegu({ lhSourceRow = false as boolean | (string | undefined)[],
       sourceIdentifier: 'daegu', supplyRows: [], housingTypes: [], announcements: [], schedules: [], scheduleReviewed: false } }
   const housing = { 41: [{ id: 501, name: '51A', exclusiveArea: 51.98, supplyArea: 72.1, householdCount: 468 }, { id: 502, name: '59A', exclusiveArea: 59.91, supplyArea: 80.2, householdCount: 120 },
     { id: 503, name: '59B', exclusiveArea: 59.93, supplyArea: 80.4, householdCount: 60 }], 42: [] }
+  return { review: createReview(read.value, workspace, housing), workspace, housing }
+}
+
+/**
+ * GH 수원 광교 지구: 정제가 GH 주택형마다 공급행 틀(#901 '36A 청년', #902 '36C 신혼부부')을 만들었고 면적은 아직 없다.
+ * 공고문은 36A 20 · 36C 10으로 적었다. 표기('36A' ↔ '36A 청년')와 면적으로는 틀 행을 고를 수 없다.
+ * sourceRow면 추출 행이 워커가 맞춘 GH 틀 행 키를 가리킨다.
+ */
+export function ghFrame({ sourceRow = false } = {}) {
+  const frame = (id: number, typeName: string, count: number) => ({ ...blankRow(id - 901), id, key: `row:${String(id)}`, complexName: '수원 광교', typeName, pnu: '4111710100',
+    category: 'RESUPPLY' as const, housingComplexId: 51, housingComplexName: '광교 행복주택', householdCount: count, areaOverride: false })
+  const row = (name: string, area: number, count: number, key: string) => ({ complexReference: { sourceComplexName: '수원 광교' }, sourceHousingTypeName: name,
+    expectedMoveInMonth: null, totalSupplyHouseholdCount: count, exclusiveArea: area, supplyArea: null, ...(sourceRow ? { sourceRow: key } : {}),
+    targets: [{ target: '청년', supplyRank: null, supplyHouseholdCount: null, reserveCount: null, rentalDeposit: 30000000, monthlyRent: 200000, convertedDeposit: null }] })
+  const rows = [row('36A', 36.7, 20, 'GH:801:수원 광교:36A'), row('36C', 36.83, 10, 'GH:801:수원 광교:36C')]
+  const extraction = { data: { announcement: {}, receptionPlace: {}, supplyRows: rows, schedules: [], unresolvedFields: [] },
+    sharedCounts: [], notApplicable: [], evidence: rows.map((item, index) => ({ path: `supplyRows[${index}]`, page: 2, quote: `${item.sourceHousingTypeName} ${item.totalSupplyHouseholdCount}` })) }
+  const read = readExtraction(JSON.stringify(extraction))
+  if (!read.ok) throw new Error(read.error)
+  const workspace: JsonWorkspace = { snapshotToken: 'current', events: [],
+    supply: { snapshotToken: 'supply', version: 1, rows: [frame(901, '36A 청년', 20), frame(902, '36C 신혼부부', 10)], sources: [], lhSupplyRows: [], unattachedLhSupplyRows: [],
+      rowSources: [{ rowKey: 'row:901', category: 'GH_ANNOUNCEMENT', sourceKey: 'GH:801:수원 광교:36A' }, { rowKey: 'row:902', category: 'GH_ANNOUNCEMENT', sourceKey: 'GH:801:수원 광교:36C' }] },
+    detail: { summary: { id: 31, name: 'GH 공고', subtitle: '', provider: 'GH', rental: 'HAPPY_HOUSING', deleted: false, modified: false, reviewRequired: false, updatedAt: null },
+      data: { name: 'GH 공고', rentalType: 'HAPPY_HOUSING', recruitmentType: 'RESERVE', agencyCode: 'GH', originalUrl: 'https://example.com/gh' },
+      sourceIdentifier: 'GH:801', supplyRows: [], housingTypes: [], announcements: [], schedules: [], scheduleReviewed: false } }
+  const housing = { 51: [{ id: 601, name: '36A', exclusiveArea: 36.7, supplyArea: 50.1, householdCount: 100 }, { id: 602, name: '36C', exclusiveArea: 36.83, supplyArea: 50.3, householdCount: 80 }] }
   return { review: createReview(read.value, workspace, housing), workspace, housing }
 }

@@ -289,6 +289,99 @@ class GhAnnouncementRefinementIntegrationTest {
     }
 
     @Test
+    void 공급행_틀에_원천_주택형의_전용면적을_적고_면적_보정은_켜지_않는다() {
+        collect(ROW);
+
+        refinement.refineAll();
+
+        var rows = supplyRows("GH:801");
+        assertThat(rows).extracting(row -> (BigDecimal) row.get("announcement_exclusive_area"))
+                .usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(new BigDecimal("33.71"), new BigDecimal("36.8"));
+        assertThat(rows).extracting(row -> row.get("area_override")).containsOnly(false);
+        assertThat(rows).extracting(row -> row.get("admin_modified")).containsOnly(false);
+    }
+
+    @Test
+    void 관리자가_손대지_않은_공고의_면적_없는_틀은_다시_정제하면_전용면적을_채운다() {
+        collect(ROW);
+        refinement.refineAll();
+        var ids = supplyRows("GH:801").stream().map(row -> row.get("id")).toList();
+        jdbc.update("""
+                UPDATE supply_rows SET announcement_exclusive_area = NULL, area_override = false WHERE announcement_id =
+                    (SELECT id FROM announcements WHERE source_announcement_identifier = 'GH:801')
+                """);
+
+        refinement.refineAll();
+
+        // 면적만 다르면 틀을 지우고 다시 만들지 않고 면적만 채운다. 행 ID가 바뀌면 작업실 초안이 낡은 것으로 보인다.
+        assertThat(supplyRows("GH:801")).extracting(row -> row.get("id")).containsExactlyElementsOf(ids);
+        assertThat(supplyRows("GH:801")).extracting(row -> (BigDecimal) row.get("announcement_exclusive_area"))
+                .usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(new BigDecimal("33.71"), new BigDecimal("36.8"));
+    }
+
+    @Test
+    void 관리자가_맡은_공고는_면적_없는_틀도_다시_쓰지_않는다() {
+        collect(ROW);
+        refinement.refineAll();
+        jdbc.update("""
+                UPDATE supply_rows SET announcement_exclusive_area = NULL, area_override = false WHERE announcement_id =
+                    (SELECT id FROM announcements WHERE source_announcement_identifier = 'GH:801')
+                """);
+        jdbc.update("UPDATE announcements SET admin_updated_at = now() WHERE source_announcement_identifier = 'GH:801'");
+
+        refinement.refineAll();
+
+        assertThat(supplyRows("GH:801")).extracting(row -> row.get("announcement_exclusive_area")).containsOnly((Object) null);
+        assertThat(jdbc.queryForObject("""
+                SELECT supply_recheck_required FROM announcements WHERE source_announcement_identifier = 'GH:801'
+                """, Boolean.class)).isFalse();
+    }
+
+    @Test
+    void 관리자가_손대지_않은_공고는_원천_전용면적이_바뀌면_틀을_원천에_맞춘다() {
+        collect(ROW);
+        refinement.refineAll();
+        var ids = supplyRows("GH:801").stream().map(row -> row.get("id")).toList();
+        changeExclusiveArea();
+
+        refinement.refineAll();
+
+        assertThat(supplyRows("GH:801")).extracting(row -> row.get("id")).containsExactlyElementsOf(ids);
+
+        assertThat(supplyRows("GH:801")).extracting(row -> (BigDecimal) row.get("announcement_exclusive_area"))
+                .usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(new BigDecimal("33.71"), new BigDecimal("36.9"));
+    }
+
+    @Test
+    void 관리자가_맡은_공고는_원천_전용면적만_바뀌면_틀을_두고_공급_재확인도_켜지_않는다() {
+        // 면적은 지문에 넣지 않는다. 넣으면 배포 뒤 관리자가 맡은 GH 공고가 원천이 그대로여도 모두 재확인 대상이 된다.
+        collect(ROW);
+        refinement.refineAll();
+        jdbc.update("UPDATE announcements SET admin_updated_at = now() WHERE source_announcement_identifier = 'GH:801'");
+        changeExclusiveArea();
+
+        refinement.refineAll();
+
+        assertThat(supplyRows("GH:801")).extracting(row -> (BigDecimal) row.get("announcement_exclusive_area"))
+                .usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(new BigDecimal("33.71"), new BigDecimal("36.8"));
+        assertThat(jdbc.queryForObject("""
+                SELECT supply_recheck_required FROM announcements WHERE source_announcement_identifier = 'GH:801'
+                """, Boolean.class)).isFalse();
+    }
+
+    private void changeExclusiveArea() {
+        int changed = jdbc.update("""
+                UPDATE gh_announcement_source SET districts = replace(districts, '"exclusiveArea":"36.8"',
+                    '"exclusiveArea":"36.9"') WHERE pbanc_no = '801'
+                """);
+        assertThat(changed).isOne();
+    }
+
+    @Test
     void 관리자가_PDF_보정을_한_공고는_원천_주택형이_바뀌어도_공급행_틀을_다시_쓰지_않는다() {
         collect(ROW);
         refinement.refineAll();
@@ -345,7 +438,8 @@ class GhAnnouncementRefinementIntegrationTest {
     private List<Map<String, Object>> supplyRows(String identifier) {
         return jdbc.queryForList("""
                 SELECT r.id, r.source_supply_row_identifier, r.source_housing_type_name, r.total_supply_household_count,
-                    r.housing_complex_id, r.housing_type_id, r.announcement_complex_id
+                    r.housing_complex_id, r.housing_type_id, r.announcement_complex_id, r.announcement_exclusive_area,
+                    r.area_override, r.admin_modified
                 FROM supply_rows r JOIN announcements a ON a.id = r.announcement_id
                 WHERE a.source_announcement_identifier = ? ORDER BY r.display_order
                 """, identifier);

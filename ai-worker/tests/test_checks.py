@@ -7,7 +7,7 @@ from ai_worker.extraction import PermanentError
 
 
 def row(housing_type="26A", common_area=13.5, supply_area=None, move_in=None, target="일반", count=None, lh_row=None):
-    return {"sourceHousingTypeName": housing_type, "lhSourceRow": lh_row, "expectedMoveInMonth": move_in,
+    return {"sourceHousingTypeName": housing_type, "sourceRow": lh_row, "expectedMoveInMonth": move_in,
             "commonArea": common_area, "supplyArea": supply_area, "totalSupplyHouseholdCount": count,
             "targets": [{"target": target}]}
 
@@ -140,7 +140,7 @@ def test_supply_row_without_valid_lh_row_number_is_warned(number):
     tree = response(rows=[row(count=20, lh_row=1), row(count=15, lh_row=2), row(count=5, lh_row=number)])
 
     assert review(tree, lh_types=["39", "46"], lh_counts=[20, 15]) == [
-        f"supplyRows[2].lhSourceRow: LH API 공급행 번호가 없거나 범위를 벗어남({number})",
+        f"supplyRows[2].sourceRow: LH API 공급행 번호가 없거나 범위를 벗어남({number})",
     ]
 
 
