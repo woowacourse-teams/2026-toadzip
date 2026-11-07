@@ -9,7 +9,9 @@
 | [수집·정제](ingest/README.md) | 공고·단지 원천 수집, 정제·연결과 실행 상태 |
 | [관리자](admin/README.md) | 데이터 조회·수정·비교·검토와 공고 JSON 등록 |
 | [공고](announcements/README.md) | 공고 조회수 집계와 중복·동시성·실패 처리 |
-| [기본 조건 비교](eligibility.md) | 개인 공고의 기본 비교·직접 확인 안내, v2 입력·공개·요약과 저장 ERD |
+| [신청자격 판정](eligibility-decisions.md) | 사용자 정보에 따른 공고별 신청자격 판정과 근거 제공, 최신성·재판정·새 지원 가능 안내 |
+| [신청자격 데이터 모델](eligibility-storage.md) | 공고·사용자·최신 결과의 테이블과 갱신 경계 |
+| [공통 입력·기존 기본 비교](eligibility.md) | 프로필·입력 카탈로그, 구조 공개와 기존 기본 비교·요약 API 계약 |
 | [검색·지도](search/README.md) | 통합·위치 검색, 지역 데이터·지도·거리뷰 |
 | [인증](authentication/README.md) | 소셜 로그인과 계정 생명주기 |
 | [알림](notifications/README.md) | 알림 설정·생성·전달과 알림함·웹 푸시 |
@@ -19,7 +21,3 @@
 ## 관련 문서
 
 구현 방식은 [개발 기준](../development/README.md), 실제 배포·점검·복구는 [운영](../operations/README.md)을 따른다.
-
-- [신청자격 데이터 모델](eligibility-storage.md): 공고·사용자·최신 결과의 테이블과 갱신 경계.
-
-- [신청자격 판정 API와 표시 계약](eligibility-decisions.md)

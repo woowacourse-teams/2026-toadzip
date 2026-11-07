@@ -35,7 +35,7 @@ PDF 추출(`POST /api/admin/announcements/{id}/pdf-extractions`, 공고 첨부�
 ## 공급정보 일괄 보정과 범위 검토
 
 - `/api/admin/announcements/{id}/supply-corrections`: GET 현재 공급행·대상·원천·소실 경고와 snapshotToken.
-- GET의 `rowSources`는 공급행이 기록한 원천행 `{rowKey, category, sourceKey}`이며 한 행에 여러 개일 수 있다. 응답 전용이며 보정 요청에는 포함하지 않는다.
+- GET의 `rowSources`는 공급행이 기록한 원천행 `{rowKey, category, sourceKey}`이며 한 행에 여러 개일 수 있다. GH 공고 정제가 만든 공급행 틀은 `GH_ANNOUNCEMENT`와 틀 행 키(`{공고 식별자}:{지구명}:{주택형 코드}`)를 준다. PDF 추출 결과의 `sourceRow`가 이 키라 화면이 그 틀 행을 고치도록 제안한다. 응답 전용이며 보정 요청에는 포함하지 않는다.
   - 마이홈(`MYHOME_ANNOUNCEMENT`)은 공급행이 기록한 원천 키를 그대로 준다.
   - LH(`LH_ANNOUNCEMENT_SUPPLY`)는 공급행이 `LH:{panId}:SUPPLY:{순번}`만 기록하므로, 원천 키 `{panId}:{요청 해시}:{순번}` 중 공고 번호와 순번이 같은 것이 하나일 때 그 키를 준다. 없으면 기록값을 그대로 줘서 찾을 수 없음을 알리고, 여러 개면 추정하지 않고 생략한다.
   - 관리자가 LH 공급 원본 한 행을 주택형별로 나눈 행(`LH_SPLIT`)은 나눈 LH 행 식별자 `LH:{panId}:SUPPLY:{순번}`을 준다. 같은 키를 가진 행들은 중복이 아니라 의도한 분리 형제다.

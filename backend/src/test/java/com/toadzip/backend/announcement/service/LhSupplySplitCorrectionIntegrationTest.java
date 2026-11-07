@@ -345,12 +345,13 @@ class LhSupplySplitCorrectionIntegrationTest {
         var input = extractionInputs.read(id);
 
         String second = LhSourceIdentifier.supply(PAN_ID, 1);
-        assertThat(input.lhSupplyRows()).extracting(PdfExtractionInput.LhSupplyRow::rowIdentifier,
-                PdfExtractionInput.LhSupplyRow::typeName, PdfExtractionInput.LhSupplyRow::suppliedUnitCount)
-                .containsExactly(tuple(MERGED, "공공임대", "240"), tuple(second, "059.9300B", "15"));
+        assertThat(input.sourceSupplyRows()).extracting(PdfExtractionInput.SourceSupplyRow::source,
+                PdfExtractionInput.SourceSupplyRow::rowIdentifier, PdfExtractionInput.SourceSupplyRow::typeName,
+                PdfExtractionInput.SourceSupplyRow::suppliedUnitCount)
+                .containsExactly(tuple("LH", MERGED, "공공임대", "240"), tuple("LH", second, "059.9300B", "15"));
         assertThat(supplyCorrections.workspace(id).lhSupplyRows()).extracting(SupplyCorrection.LhSupplyRow::rowIdentifier)
                 .containsExactly(MERGED, second);
-        assertThat(extractionInputs.read(-1L).lhSupplyRows()).isEmpty();
+        assertThat(extractionInputs.read(-1L).sourceSupplyRows()).isEmpty();
     }
 
     @Test

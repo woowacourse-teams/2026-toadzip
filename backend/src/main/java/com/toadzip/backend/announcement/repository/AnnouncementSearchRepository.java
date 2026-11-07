@@ -33,10 +33,48 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class AnnouncementSearchRepository {
 
+    private static final String ADMIN_COUNTS_SQL = """
+            WITH overview AS (
+                SELECT COALESCE(%s, 'UNKNOWN') AS application_status,
+                    CASE WHEN a.application_schedule_reviewed THEN NOT EXISTS (
+                        SELECT 1 FROM announcement_application_schedules s WHERE s.announcement_id = a.id)
+                    ELSE a.application_start_date IS NULL OR a.application_end_date IS NULL END AS schedule_missing,
+                    NOT EXISTS (SELECT 1 FROM supply_rows r
+                        WHERE r.announcement_id = a.id AND r.admin_excluded = false) AS supply_missing,
+                    a.release_status = 'UNCONFIRMED' AS unconfirmed
+                FROM announcements a WHERE a.admin_deleted = false
+            )
+            SELECT COUNT(*) FILTER (WHERE application_status = 'BEFORE_APPLICATION') AS upcoming,
+                COUNT(*) FILTER (WHERE application_status = 'APPLYING') AS applying,
+                COUNT(*) FILTER (WHERE application_status = 'CLOSED') AS closed,
+                COUNT(*) FILTER (WHERE application_status = 'CONDITIONAL') AS conditional,
+                COUNT(*) FILTER (WHERE application_status = 'CANCELLED') AS cancelled,
+                COUNT(*) FILTER (WHERE application_status = 'UNKNOWN') AS unknown,
+                COUNT(*) FILTER (WHERE schedule_missing OR supply_missing OR unconfirmed) AS attention,
+                COUNT(*) FILTER (WHERE schedule_missing) AS schedule_missing,
+                COUNT(*) FILTER (WHERE supply_missing) AS supply_missing,
+                COUNT(*) FILTER (WHERE unconfirmed) AS unconfirmed
+            FROM overview
+            """.formatted(ApplicationScheduleSql.status("a", null));
+
     private final EntityManager entityManager;
 
     public AnnouncementSearchRepository(EntityManager entityManager) {
         this.entityManager = entityManager;
+    }
+
+    public AdminCounts countForAdmin(LocalDate today) {
+        Tuple row = (Tuple) entityManager.createNativeQuery(ADMIN_COUNTS_SQL, Tuple.class)
+                .setParameter("today", today).getSingleResult();
+        return new AdminCounts(aggregateCount(row, "upcoming"), aggregateCount(row, "applying"),
+                aggregateCount(row, "closed"), aggregateCount(row, "conditional"), aggregateCount(row, "cancelled"),
+                aggregateCount(row, "unknown"), aggregateCount(row, "attention"),
+                aggregateCount(row, "schedule_missing"),
+                aggregateCount(row, "supply_missing"), aggregateCount(row, "unconfirmed"));
+    }
+
+    private long aggregateCount(Tuple row, String column) {
+        return row.get(column, Number.class).longValue();
     }
 
     public List<Announcement> findLatestLeaves(
@@ -491,5 +529,9 @@ public class AnnouncementSearchRepository {
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
         JpaExpression<T> expression = (JpaExpression<T>) path;
         return criteriaBuilder.cast(expression, String.class).in(storedValues);
+    }
+
+    public record AdminCounts(long upcoming, long applying, long closed, long conditional, long cancelled,
+            long unknown, long attention, long scheduleMissing, long supplyMissing, long unconfirmed) {
     }
 }

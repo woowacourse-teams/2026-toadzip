@@ -5,6 +5,24 @@
 공고 저장 구조는 [데이터 모델](eligibility-storage.md), 입력 계약은
 [프로필·입력 카탈로그](eligibility.md#현재-받는-정보)를 따른다.
 
+## 코드 명칭과 책임
+
+기능명과 패키지는 `eligibility`이며, 사용자 정보에 따른 공고별 신청자격 판정과 근거 제공을 담당한다.
+기본 조건 비교는 이 기능 안에 남아 있는 이전 비교 계약이다. [용어](../../GLOSSARY.md)에서 두 범위를 구분한다.
+
+| 책임 | 코드 명칭 |
+|---|---|
+| 공통 사용자 정보와 저장·입력 API | EligibilityProfile, StoredEligibilityProfile, EligibilityProfileService, EligibilityProfileController |
+| 구조화 공고의 조건·실제 경로·선택지 | EligibilityContent, EligibilityPath, ApplicationOption |
+| 사용자 입력과 비교하는 조건식·근거 | ProfileRule, ProfileRuleEvaluator, ProfileCheck |
+| 저장한 공고 조건의 초안·공개 관리 | StoredEligibilityRuleSet, EligibilityRuleSetService, EligibilityRuleSetController |
+| 실제 모집 선택지별 판정과 최신 결과 조회 | EligibilityEvaluator, EligibilityDecision, EligibilityQueryService, EligibilityController |
+| 기존 기본 조건 비교·요약 | BasicComparisonEvaluator, BasicComparisonResult, BasicComparisonQueryService, BasicComparisonController |
+
+공통 저장소·직렬화·요청·응답·예외 타입은 `Eligibility` 이름을 사용한다. 기존 비교의 상세·요약
+응답 타입은 BasicComparisonDetail / BasicComparisonSummary로 구분한다. DB 테이블명, 공개 API 경로,
+JSON 필드와 enum 값, `BASIC_COMPARISON_*` 오류코드, `comparison.recheck.*` 설정키는 호환성을 유지한다.
+
 ## 단건 조회
 
 `GET /api/v2/announcements/{announcementId}/eligibility?region=41465`
