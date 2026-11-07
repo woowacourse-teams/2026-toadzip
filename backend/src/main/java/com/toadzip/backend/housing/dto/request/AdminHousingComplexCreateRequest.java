@@ -25,7 +25,6 @@ public record AdminHousingComplexCreateRequest(
         @NotNull(message = "필수 값입니다.")
         @Valid
         AddressRequest address,
-        @NotNull(message = "필수 값입니다.")
         @PositiveOrZero(message = "0 이상이어야 합니다.")
         Integer totalHouseholdCount,
         // 입주 전 신규 단지는 준공일·난방·주택·복도유형·승강기를 아직 모를 수 있어 비워 둘 수 있다.

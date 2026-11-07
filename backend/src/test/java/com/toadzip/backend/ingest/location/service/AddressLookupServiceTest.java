@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.location.domain.JusoAddress;
 import com.toadzip.backend.ingest.location.domain.UtmKCoordinate;
 import com.toadzip.backend.ingest.location.exception.AddressLookupException;
@@ -18,7 +19,7 @@ import org.junit.jupiter.api.Test;
 class AddressLookupServiceTest {
 
     private final JusoAddressClient client = mock(JusoAddressClient.class);
-    private final AddressLookupService service = new AddressLookupService(client, new UtmKCoordinateConverter());
+    private final AddressLookupService service = new AddressLookupService(client, new UtmKCoordinateConverter(), mock(HousingComplexRepository.class));
 
     @Test
     void 검색_결과마다_PNU와_행정구역_코드와_WGS84_좌표를_채운다() {
@@ -41,6 +42,20 @@ class AddressLookupServiceTest {
         });
         assertThat(result.get(1).pnu()).isEqualTo("2823710100200030000");
         assertThat(result.get(1).latitude()).isNull();
+    }
+
+    @Test
+    void 검색어와_같은_도로명주소인_후보만_검색어_일치로_표시한다() {
+        var same = new JusoAddress("서울특별시 중구 세종대로 110 (태평로1가)", "서울특별시 중구 태평로1가 31", "1114010300",
+                "111403101001", false, 110, 0, false, 31, 0);
+        var neighbor = new JusoAddress("서울특별시 중구 세종대로 110-1", "서울특별시 중구 태평로1가 32", "1114010300",
+                "111403101001", false, 110, 1, false, 32, 0);
+        when(client.search("서울시 중구 세종대로 110", 5)).thenReturn(List.of(same, neighbor));
+        when(client.coordinate(any())).thenReturn(Optional.empty());
+
+        var result = service.lookup("서울시 중구 세종대로 110");
+
+        assertThat(result).extracting(candidate -> candidate.matchesKeyword()).containsExactly(true, false);
     }
 
     @Test

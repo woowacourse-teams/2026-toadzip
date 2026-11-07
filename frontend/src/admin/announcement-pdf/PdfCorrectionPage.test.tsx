@@ -782,7 +782,7 @@ it('공고에는 있지만 단지 DB에 없는 단지는 공고문 단지 개요
   expect(within(form).getByLabelText('주소(도로명 또는 지번)')).toHaveValue('전북특별자치도 익산시 목천동 1')
   expect(within(form).getByLabelText('전체 세대수')).toHaveValue(350)
   expect(within(form).getByLabelText('주차대수')).toHaveValue(200)
-  await waitFor(() => expect(lookup.lookupAddresses).toHaveBeenCalledWith('전북특별자치도 익산시 목천동 1', expect.any(AbortSignal)))
+  await waitFor(() => expect(lookup.lookupAddresses).toHaveBeenCalledWith('전북특별자치도 익산시 목천동 1', expect.any(AbortSignal), expect.any(String)))
   expect(within(form).getByRole('button', { name: '단지 등록하고 연결' })).toBeDisabled()
   for (const [label, value] of [['PNU', '4514011100100010000'], ['위도', '35.95'], ['경도', '126.95']]) {
     fireEvent.change(within(form).getByLabelText(label), { target: { value } })

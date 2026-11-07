@@ -342,3 +342,10 @@ def test_encrypted_pdf_is_permanent_error():
         pages.open_pdf(encrypted)
 
     assert error.value.code == pages.UNREADABLE_CODE
+
+
+def test_selects_a_separate_complex_overview_address_page_but_not_addressless_guidance():
+    overview = "단지 개요 건설위치 강원특별자치도 평창군 용평면 새이들길 23 전체 세대수 미확인"
+    guidance = "단지 개요와 단지주소는 원문에서 확인하세요."
+    selection = pages.select([COVER, SUPPLY, RENT, NOTICE, overview, guidance])
+    assert 5 in selection.pages and 6 not in selection.pages

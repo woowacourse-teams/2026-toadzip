@@ -288,6 +288,7 @@ def _compact_complexes(supply_rows: list[dict], groups: list[dict], selected: pa
     for name in names:
         row_ids = set()
         values = {"totalHouseholdCount": set(), "parkingCount": set()}
+        addresses: dict[str, str] = {}
         for index, group in enumerate(groups):
             if complex_key(group["complexName"]) != complex_key(name):
                 continue
@@ -298,7 +299,13 @@ def _compact_complexes(supply_rows: list[dict], groups: list[dict], selected: pa
                     parsed = _integer_cell(cells.get(field))
                     if parsed is not None:
                         values[field].add(parsed)
-        record = {"sourceComplexName": name, "address": None}
+                address = normalize_address(cells.get("address"))
+                if address:
+                    addresses.setdefault(address_key(address), address)
+        record = {"sourceComplexName": name, "address": next(iter(addresses.values())) if len(addresses) == 1 else None}
+        if len(addresses) > 1:
+            unresolved.append({"path": f"complexes[{len(complexes)}].address",
+                               "reason": "공급 표의 같은 단지 소재지가 서로 달라 미확인으로 남김"})
         for field, candidates in values.items():
             record[field] = next(iter(candidates)) if len(candidates) == 1 else None
             if len(candidates) > 1:
@@ -376,3 +383,41 @@ def add_complex_name(names: list[str], name: object) -> None:
 
 def complex_key(name: str) -> str:
     return re.sub(r"\s+", "", name)
+
+
+# 공고문은 시·도를 줄여 쓰거나 옛 이름으로 쓴다. 주소 검색 결과의 정식 이름과 같은 주소로 본다.
+_PROVINCE_ALIASES = (
+    ("서울특별시", ("서울시", "서울")), ("부산광역시", ("부산시", "부산")), ("대구광역시", ("대구시", "대구")),
+    ("인천광역시", ("인천시", "인천")), ("광주광역시", ("광주시",)), ("대전광역시", ("대전시", "대전")),
+    ("울산광역시", ("울산시", "울산")), ("세종특별자치시", ("세종시", "세종")), ("경기도", ("경기",)),
+    ("강원특별자치도", ("강원도", "강원")), ("충청북도", ("충북",)), ("충청남도", ("충남",)),
+    ("전북특별자치도", ("전라북도", "전북")), ("전라남도", ("전남",)), ("경상북도", ("경북",)),
+    ("경상남도", ("경남",)), ("제주특별자치도", ("제주도",)),
+)
+
+
+def normalize_address(value: object) -> str | None:
+    """표 칸의 단지 소재지를 대표 주소 하나로 줄인다. 괄호 속 동·단지명, "일원", "외 N필지", 둘째 번지부터는 뺀다."""
+    if not isinstance(value, str):
+        return None
+    text = re.sub(r"\s+", " ", value).strip()
+    # 칸 너비에서 잘려 닫는 괄호가 없는 꼬리도 괄호 속 동·단지명으로 본다.
+    text = re.sub(r"\([^)]*(?:\)|$)", " ", text)
+    text = re.sub(r"(\d)\s*[,·]\s*\d.*$", r"\1", text)
+    text = re.sub(r"\s*외\s*\d+\s*필지.*$|\s*일원.*$", "", text)
+    text = re.sub(r"(\d)\s*번지", r"\1", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    # 도로명+건물번호나 동·리+번지가 없으면 단지 위치로 검색할 수 없는 지구·블록명이다.
+    return text if re.search(r"[시도군구]\s", text + " ") and re.search(r"(?:로|길|동|리|가)\s*(?:산\s*)?\d", text) else None
+
+
+def address_key(address: str) -> str:
+    """같은 주소인지 비교하는 열쇠. 공백·괄호를 지우고 시·도 약칭을 정식 이름으로 맞춘다."""
+    text = re.sub(r"\([^)]*\)|\s+", "", address)
+    for official, aliases in _PROVINCE_ALIASES:
+        if text.startswith(official):
+            return text
+        for alias in aliases:
+            if text.startswith(alias) and not text.startswith(official):
+                return official + text[len(alias):]
+    return text

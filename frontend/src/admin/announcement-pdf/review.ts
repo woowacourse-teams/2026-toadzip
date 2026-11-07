@@ -530,6 +530,9 @@ export function assembledCount(row: RowReview): number | null {
 /** 미확정 공고의 공개 전 확인. 비어 있는 임대·모집 유형을 정하고, 단지를 확인했으면 이 보정과 함께 공개를 요청한다. */
 export type ReleaseChoice = { rentalType: string; recruitmentType: string; publish: boolean }
 export function assembleReview(review: Review, workspace: JsonWorkspace, evidence: { reason: string; sourceUrl: string; sourcePage: string | null }, release?: ReleaseChoice): JsonUpdateInput {
+  const unfinished = review.rows.findIndex(row => row.include && row.proposal.createdComplex)
+  if (unfinished >= 0) throw new ReviewError('단지는 등록됐지만 주택형·공급행 연결이 끝나지 않았습니다. 단지 정하기에서 이어서 연결하세요.', `row:${unfinished}`)
+
   const rows = structuredClone(workspace.supply.rows), taken = new Map<string, number>(), newGroups: NewSupplyGroup[] = []
   const housingTypeValues: HousingTypeValue[] = []
   for (const [index, entry] of review.rows.entries()) {
@@ -853,6 +856,7 @@ export function rebaseReview(previous: Review, workspace: JsonWorkspace, housing
       const candidates = housing[anchor?.housingComplexId ?? old.proposal.newComplex?.id ?? 0] ?? old.proposal.candidates ?? []
       row = createRowReview(next.extraction, index, { ...old.proposal, candidates, housingTypeId: candidates.some(type => type.id === old.proposal.housingTypeId) ? old.proposal.housingTypeId : null }, workspace)
     }
+    row.proposal = { ...row.proposal, createdComplex: old.proposal.createdComplex }
     row.include = old.include; row.reviewed = old.reviewed; row.newHousingType = old.newHousingType; row.cells = row.cells.map(retain)
     // 직접 고른 세부 타입 연결은 그 주택형이 아직 후보에 있으면 유지한다. 새 주택형 추가는 같은 면적 주택형이 여전히 없을 때만 유지한다.
     row.subtypes?.forEach((subtype, at) => {
@@ -891,6 +895,7 @@ export function rowStatus(row: RowReview, problem: PlacementProblem | undefined,
 /** 단지 DB에 연결되지 않은 공급행(새 행 또는 단지가 비어 있는 기존 행)인지. 단지를 정하면 newComplex가 생긴다. */
 export function needsComplex(row: RowReview, workspace: JsonWorkspace) {
   if (!row.include) return false
+  if (row.proposal.createdComplex) return true
   if (row.proposal.destination === 'new') return !row.proposal.anchorKey
   return workspace.supply.rows.find(item => item.key === row.proposal.destination)?.housingComplexId === null
 }

@@ -30,11 +30,11 @@ export function ComplexDecisions({ review, workspace, only, onChange }: { review
   </section>
 }
 
-/** 수집한 마이홈 공고 원천에서 이 단지의 개요를 꺼낸다. 같은 단지명이 없으면 공고의 첫 마이홈 원천을 쓴다. */
+/** 수집한 마이홈 공고 원천에서 이 단지의 개요를 꺼낸다. 같은 단지명이 없으면 다른 단지의 정보를 사용하지 않는다. */
 function myHomeOverview(workspace: JsonWorkspace, name: string): MyHomeComplexOverview | undefined {
   const raws = workspace.supply.sources.filter(source => source.category === 'MYHOME_ANNOUNCEMENT').flatMap(source => source.rows.map(row => row.raw))
     .filter((raw): raw is Record<string, unknown> => isRecord(raw))
-  const raw = raws.find(item => sameComplex(item.hsmp_nm, name)) ?? raws[0]
+  const raw = raws.find(item => sameComplex(item.hsmp_nm, name))
   if (!raw) return undefined
   const text = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : null
   const households = Number(text(raw.tot_hshld_co))
@@ -44,10 +44,13 @@ function myHomeOverview(workspace: JsonWorkspace, name: string): MyHomeComplexOv
 
 function ComplexDecision({ name, indexes, review, workspace, onChange }: { name: string; indexes: number[]; review: Review; workspace: JsonWorkspace; onChange: (review: Review) => void }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [registering, setRegistering] = useState(false)
+  // 같은 이름의 기존 단지가 없어 등록을 대신 열었다. 관리자가 '기존 단지에서 찾기'로 돌아가면 다시 열지 않는다.
+  const [autoOpened, setAutoOpened] = useState(false), autoOpenDone = useRef(false)
   const request = useRef<AbortController | null>(null)
   const latest = useRef(review); latest.current = review
   useEffect(() => () => request.current?.abort(), [])
   const overview = review.extraction.complexes.find(item => item.name === name)
+  const createdComplex = review.rows[indexes[0]].proposal.createdComplex
   const selected = review.rows[indexes[0]].proposal.newComplex
   const decided = indexes.every(index => review.rows[index].proposal.newComplex?.id === selected?.id) ? selected : undefined
   const types = indexes.map(index => review.extraction.supplyRows[index].typeName ?? `공급행 ${index + 1}`).join(' · ')
@@ -70,13 +73,18 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
       // 새로 등록한 단지는 공고문 주택형을 함께 만든다. 그래야 LH 원천행을 나눌 때 서로 다른 주택형으로 묶을 수 있다.
       const base = review.unaligned ?? review
       const pdfRows = created ? base.extraction.supplyRows.filter(row => row.complexName === name) : createTypes
-      if (pdfRows.length) await createPdfHousingTypes(id, pdfRows, (await getMatchingHousingTypes(id, controller.signal)).map(type => type.name), controller.signal)
+      if (pdfRows.length) await createPdfHousingTypes(id, pdfRows, await getMatchingHousingTypes(id, controller.signal), controller.signal)
       const [detail, candidates] = await Promise.all([getManagementDetail('complexes', String(id), controller.signal), getMatchingHousingTypes(id, controller.signal)])
       if (controller.signal.aborted) return
-      const current = latest.current
+      // 이 단지의 연결을 마치면 재정렬 기준 검토에도 미완료 표식을 남기지 않는다.
+      const complete = (input: Review): Review => ({ ...input,
+        rows: input.rows.map(row => row.proposal.createdComplex?.id === id ? { ...row, proposal: { ...row.proposal, createdComplex: undefined } } : row),
+        ...(input.unaligned ? { unaligned: complete(input.unaligned) } : {}) })
+      const current = complete(latest.current)
       const currentIndexes = current.rows.flatMap((_, index) => current.extraction.supplyRows[index].complexName === name ? [index] : [])
       if (currentIndexes.every(index => current.rows[index].proposal.newComplex?.id === id
         && JSON.stringify(current.rows[index].proposal.candidates) === JSON.stringify(candidates))) {
+        if (latest.current.rows.some(row => row.proposal.createdComplex?.id === id)) onChange(current)
         setRegistering(false); return
       }
       const aligned = alignSourceRows(current, workspace, name, { id, name: complexName }, candidates)
@@ -104,14 +112,14 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
           const { chosen, recommended, destination } = chooseRow(source, linked, used, picked.housingTypeId, false)
           if (chosen) used.add(chosen.key)
           const housingTypeId = picked.housingTypeId ?? chosen?.housingTypeId ?? null
-          const next = createRowReview(current.extraction, index, { ...old.proposal, destination,
+          const next = createRowReview(current.extraction, index, { ...old.proposal, createdComplex: undefined, destination,
             anchorKey: chosen?.key ?? linked[0].key, newComplex: undefined, complexId: id, candidates, recommended, housingTypeId,
             reason: `${complexName}에 이미 연결된 공급정보 중에서 추천했습니다. · ${picked.reason}`,
             needsConfirmation: !chosen || typeKey(chosen.typeName) !== typeKey(source.typeName) || housingTypeId === null }, workspace)
 
           return { ...next, include: old.include, reviewed: false, cells: next.cells.map(retain), targets: retainTargets(next) }
         }
-        const next = createRowReview(current.extraction, index, { ...old.proposal, complexId: id, candidates, housingTypeId: picked.housingTypeId, reason: picked.reason,
+        const next = createRowReview(current.extraction, index, { ...old.proposal, createdComplex: undefined, complexId: id, candidates, housingTypeId: picked.housingTypeId, reason: picked.reason,
           newComplex: { id, name: complexName, pnu, category: created ? 'NEW_SUPPLY' : old.proposal.newComplex?.category ?? 'RESUPPLY' } }, workspace)
 
         const newType = !source.subtypes.length && picked.housingTypeId === null && Boolean(missingHousingType(id, candidates, source.typeName ?? '', source.values.exclusiveArea, source.values.supplyArea)?.name)
@@ -123,6 +131,13 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
     } catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '단지를 불러오지 못했습니다.') }
     finally { if (!controller.signal.aborted) setBusy(false) }
   }
+  function registered(complex: { id: number; name: string }) {
+    const pending = { ...review, rows: review.rows.map((row, index) => indexes.includes(index)
+      ? { ...row, proposal: { ...row.proposal, createdComplex: complex } } : row) }
+    onChange(pending)
+    setRegistering(false)
+    void choose(complex.id, complex.name, true)
+  }
   return <div className={styles.complexDecision} role="group" aria-label={`PDF 단지 ${name || '단지명 없음'}`} data-decided={decided ? true : undefined}>
     <header><strong>{name || '단지명 없음'}</strong><span>{overview?.address ?? '주소 미확인'} · 공급행 {indexes.length}개 ({types})</span></header>
     {decided ? <p className={styles.decided}>연결 단지: {decided.name} · 같은 단지명의 공급행 {indexes.length}개에 연결했습니다.</p>
@@ -130,11 +145,19 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
     {missingTypes.length > 0 && decided && <div className={styles.pending}><p><strong>주택형 없음</strong> {missingLabels.join(' · ')} 주택형이 단지에 없습니다. 저장하면 새로 만들며, 공통 모집수로 묶으려면 먼저 추가하세요.</p>
       <Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => void choose(decided.id, decided.name, false, missingTypes)}>{`공고문 주택형 ${missingLabels.length}개 추가`}</Button></div>}
     {unmatched.length > 0 && <p className={styles.hint}>{`공고문에 대응하는 행이 없는 LH 원천행 ${unmatched.length}개(${unmatched.map(row => row.typeName).join(' · ')})는 그대로 둡니다.`}</p>}
-    <ComplexPicker disabled={busy} initialQuery={name} onSelect={item => void choose(item.id, item.name, false)} />
+    {!createdComplex && !registering && <ComplexPicker disabled={busy} initialQuery={name} onSelect={item => void choose(item.id, item.name, false)}
+      onInitialResults={items => { if (!items.length && !decided && !autoOpenDone.current) { autoOpenDone.current = true; setAutoOpened(true); setRegistering(true) } }} />}
     {error && <p role="alert" className={styles.error}>{error}</p>}
-    {registering
+    {createdComplex && <div className={styles.pending} role="status"><p>{`${createdComplex.name} 단지 등록 완료. 주택형·공급행 연결을 마치면 됩니다.`}</p>
+      <Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => void choose(createdComplex.id, createdComplex.name, true)}>{busy ? '주택형·공급행 연결 중…' : '등록한 단지에 이어서 연결'}</Button></div>}
+    {createdComplex && <details className={styles.registrationDetails}><summary>등록한 단지가 아니라 다른 단지에 연결</summary>
+      <ComplexPicker disabled={busy} initialQuery={name} onSelect={item => void choose(item.id, item.name, false)} /></details>}
+    {registering && !createdComplex && autoOpened && <p className={styles.hint}>같은 이름의 등록된 단지가 없어 새 단지 등록을 열었습니다. 이름이 다른 기존 단지라면 기존 단지에서 찾으세요.</p>}
+    {registering && !createdComplex && <Button data-design-system className={styles.quietButton} disabled={busy} onClick={() => { autoOpenDone.current = true; setAutoOpened(false); setRegistering(false) }}>기존 단지에서 찾기</Button>}
+    {registering && !createdComplex
       ? <NewComplexRegistration index={indexes[0]} defaultName={name} defaultAddress={overview?.address ?? ''} defaultPnu={sources[0]?.pnu ?? ''} myhome={myHomeOverview(workspace, name)} defaultHouseholds={overview?.totalHouseholdCount ?? null} defaultParking={overview?.parkingCount ?? null}
-        rentalType={String(workspace.detail.data.rentalType ?? '')} agencyCode={String(workspace.detail.data.agencyCode ?? '')} onCreated={complex => void choose(complex.id, complex.name, true)} />
-      : !decided && <Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => setRegistering(true)}>찾는 단지가 없으면 새 단지로 등록</Button>}
+        rentalType={String(workspace.detail.data.rentalType ?? '')} agencyCode={String(workspace.detail.data.agencyCode ?? '')} onCreated={registered}
+        onSelectExisting={complex => { setRegistering(false); void choose(complex.id, complex.name, false) }} />
+      : !decided && !createdComplex && <Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => setRegistering(true)}>찾는 단지가 없으면 새 단지로 등록</Button>}
   </div>
 }

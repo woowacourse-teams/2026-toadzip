@@ -80,3 +80,17 @@ def test_three_conflicting_complex_values_remain_unresolved():
     assert [item["path"] for item in tree["data"]["unresolvedFields"] if item["reason"] == reason] == [
         "complexes[0].address"]
     assert warnings == [f"complexes[0].address: {reason}"]
+
+
+def test_notice_address_with_lot_suffixes_is_the_same_as_the_supply_table_address():
+    supply = {"data": {"complexes": [{"sourceComplexName": "Alpha", "address": "서울특별시 중구 세종대로 110"}],
+                       "supplyRows": [{"complexReference": {"sourceComplexName": "Alpha"}, "targets": []}], "unresolvedFields": []},
+              "sharedCounts": [], "notApplicable": [], "evidence": [], "sourceRows": []}
+    notice = {"data": {"announcement": {}, "receptionPlace": {}, "schedules": [], "unresolvedFields": [],
+                       "complexes": [{"sourceComplexName": "Alpha", "address": "서울시 중구 세종대로 110 일원"}]},
+              "notApplicable": [], "evidence": []}
+
+    tree, warnings = merge.merge(supply, notice)
+
+    assert tree["data"]["complexes"][0]["address"] == "서울특별시 중구 세종대로 110"
+    assert warnings == []

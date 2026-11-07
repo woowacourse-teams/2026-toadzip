@@ -6,7 +6,7 @@ import java.time.LocalDate;
 public record AdminDataSummary(long id, String name, String subtitle, String provider, String rental,
         boolean deleted, boolean modified, boolean reviewRequired, Instant updatedAt,
         ComplexSummary complex, AnnouncementSummary announcement) {
-    public record ComplexSummary(String sourceIdentifier, LocalDate completionDate, int totalHouseholdCount,
+    public record ComplexSummary(String sourceIdentifier, LocalDate completionDate, Integer totalHouseholdCount,
             Integer totalParkingCount, String heatingType, String buildingType, String corridorType,
             Boolean hasElevator, Integer moveOutCountLastYear, String verificationStatus, int reviewedFieldCount) { }
 

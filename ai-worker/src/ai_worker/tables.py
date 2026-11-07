@@ -88,6 +88,9 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
         "supplyArea": lambda header: bool(re.search(r"공급면적", header)),
         "constructedHouseholdCount": lambda header: bool(re.search(r"건설(?:호수|세대수)|주택형별세대수", header)),
         "totalHouseholdCount": lambda header: bool(re.search(r"총세대수|전체세대수", header)),
+        # 단지 소재지 열. 접수처·견본주택 위치는 단지 주소가 아니다.
+        "address": lambda header: bool(re.search(r"소재지|건설위치|단지주소|단지위치|사업위치|공급위치|^위치$", header)
+            and not re.search(r"접수|문의|견본|홍보|모델", header)),
         "parkingCount": lambda header: bool(re.search(r"주차대수|주차호수", header)),
         "rentalDeposit": lambda header: bool(
             re.search(r"임대보증금", header) and not re.search(r"전환|증액|최소|최대", header)
@@ -110,6 +113,9 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
                 indexes.append(column)
         if len(indexes) == 1:
             columns[name] = indexes[0]
+    # 단지명(소재지)처럼 한 열이 단지명이면서 위치이면 주소로 쓰지 않는다.
+    if columns.get("address") is not None and columns.get("address") == columns.get("complexName"):
+        del columns["address"]
     detail = _target_detail_column(header_rows, columns)
     if detail is not None:
         columns["targetDetail"] = detail

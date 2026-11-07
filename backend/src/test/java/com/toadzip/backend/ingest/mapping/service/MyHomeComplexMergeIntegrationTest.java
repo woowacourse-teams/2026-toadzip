@@ -207,6 +207,16 @@ class MyHomeComplexMergeIntegrationTest {
     }
 
     @Test
+    void 세대수_미확인_단지가_섞이면_그룹을_일부만_병합_후보로_제시하지_않는다() throws Exception {
+        jdbc.sql("UPDATE housing_complexes SET total_household_count = NULL WHERE id = :id")
+                .param("id", ids.getFirst()).update();
+        mvc.perform(get(ENDPOINT + "/candidates").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+        assertThat(complexes.count()).isEqualTo(3);
+    }
+
+    @Test
     void 같은_이름과_PNU여도_확인하기_전에는_각_단지를_유지하고_후보만_보여준다() throws Exception {
         owned(ownership, mapping::mapAll);
         mvc.perform(get(ENDPOINT + "/candidates").with(user("admin").roles("ADMIN")))

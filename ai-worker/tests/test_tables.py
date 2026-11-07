@@ -70,3 +70,17 @@ def test_continued_table_rows_without_housing_type_are_not_counted(monkeypatch):
     continued = [RENT_CELLS[0], RENT_CELLS[1], [None, "고령자", "48000000\n, ,", None, None, "210000\n,", None]]
 
     assert found_on_page(monkeypatch, continued).rental_keys == set()
+
+
+def test_complex_location_column_is_mapped_as_address_but_reception_location_is_not():
+    located = [["단지명", "주택형", "공급대상", "모집호수", "단지 소재지"], ["Test", "26A", "청년", "20", "서울특별시 중구 세종대로 110"]]
+    reception = [["단지명", "주택형", "공급대상", "모집호수", "접수처 위치"], ["Test", "26A", "청년", "20", "서울특별시 강남구 테헤란로 1"]]
+
+    assert tables.SupplyTable.of(4, 1, located, None, False).columns["address"] == 4
+    assert "address" not in tables.SupplyTable.of(4, 1, reception, None, False).columns
+
+
+def test_complex_name_column_that_also_names_the_location_is_not_used_as_address():
+    rows = [["단지명(소재지)", "주택형", "공급대상", "모집호수"], ["Test(서울특별시 중구 세종대로 110)", "26A", "청년", "20"]]
+
+    assert "address" not in tables.SupplyTable.of(4, 1, rows, None, False).columns

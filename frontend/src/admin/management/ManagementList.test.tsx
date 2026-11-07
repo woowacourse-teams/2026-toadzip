@@ -148,6 +148,7 @@ it('검토 필터로 검색하고 페이지 이동과 상세 복귀 링크에 �
 it('새 요약 데이터는 검증하고 이전 응답의 누락 필드는 호환한다', () => {
   const detail = (summary: unknown) => ({ summary, sourceIdentifier: 'TEST', data: { version: 1 } })
   expect(parseManagementDetail(detail(complex)).summary.complex?.totalHouseholdCount).toBe(0)
+  expect(parseManagementDetail(detail({ ...complex, complex: { ...complex.complex, totalHouseholdCount: null } })).summary.complex?.totalHouseholdCount).toBeNull()
   expect(parseManagementDetail(detail(announcement)).summary.announcement?.postedDate).toBe('2026-10-01')
   expect(parseManagementDetail(detail(legacy)).summary.name).toBe('두꺼비 단지')
   for (const complexValue of [{ ...complex.complex, totalParkingCount: -1 }, { ...complex.complex, hasElevator: 'false' }, { ...complex.complex, totalHouseholdCount: '0' }, { ...complex.complex, completionDate: 2020 }]) {

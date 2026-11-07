@@ -252,3 +252,38 @@ def test_subtype_area_requires_matching_subtype_and_column(source_type, area, ex
     assert subtype['commonArea'] is None
     assert subtype['constructedHouseholdCount'] is None
     assert any('.subtypes[0].commonArea' in x['path'] for x in result['data']['unresolvedFields'])
+
+
+@pytest.mark.parametrize("cell, expected", [
+    ("서울특별시 중구 세종대로 110 (태평로1가)", "서울특별시 중구 세종대로 110"),
+    ("강원특별자치도 평창군 용평면 장평리 123-4번지 일원", "강원특별자치도 평창군 용평면 장평리 123-4"),
+    ("경기도 화성시 동탄면 영천리 12, 13 외 3필지", "경기도 화성시 동탄면 영천리 12"),
+    ("경기도\n화성시  동탄대로 5", "경기도 화성시 동탄대로 5"),
+    ("화성동탄2 A-3블록", None),
+    ("경기도 화성시 일원", None),
+    (None, None),
+])
+def test_supply_table_address_cell_becomes_one_representative_address(cell, expected):
+    assert supply_assembly.normalize_address(cell) == expected
+
+
+@pytest.mark.parametrize("left, right", [
+    ("서울시 중구 세종대로 110", "서울특별시 중구 세종대로 110"),
+    ("강원도 평창군 용평면 새이들길 23", "강원특별자치도 평창군 용평면 새이들길 23"),
+    ("전라북도 전주시 완산구 효자로 1", "전북특별자치도 전주시 완산구 효자로 1"),
+])
+def test_abbreviated_or_old_province_names_are_the_same_address(left, right):
+    assert supply_assembly.address_key(left) == supply_assembly.address_key(right)
+
+
+def test_jeju_city_address_is_not_read_as_a_province_abbreviation():
+    assert supply_assembly.address_key("제주시 연동 1") != supply_assembly.address_key("제주특별자치도 연동 1")
+
+
+def test_address_cut_off_inside_parentheses_by_the_cell_width_keeps_the_address_before_it():
+    assert supply_assembly.normalize_address("서울특별시 중구 세종대로 110(태평로1가") == "서울특별시 중구 세종대로 110"
+
+
+@pytest.mark.parametrize("cell", ["경기도 화성시 동탄2신도시 일원", "경기도 화성시 동탄2지구 A-62블록"])
+def test_district_or_block_names_without_a_lot_or_building_number_are_not_addresses(cell):
+    assert supply_assembly.normalize_address(cell) is None

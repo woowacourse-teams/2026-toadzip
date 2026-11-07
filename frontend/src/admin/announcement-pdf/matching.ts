@@ -19,6 +19,8 @@ export type RowProposal = {
   reason: string
   needsConfirmation: boolean
   sharedIndex: number | null
+  /** 단지 생성은 성공했지만 주택형 생성·공급행 연결을 마치지 못한 상태. 초안에도 보존한다. */
+  createdComplex?: { id: number; name: string }
   newComplex?: { id: number; name: string; pnu: string; category: CorrectionRow['category'] }
   /**
    * LH 공급 원본 행에 놓는 방식. SPLIT은 통합 LH 행을 주택형별로 나누고(분리 묶음의 첫 행이 통합행 destination을 이어받고 나머지는 'new'),

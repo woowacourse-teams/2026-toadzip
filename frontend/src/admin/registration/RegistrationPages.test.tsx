@@ -78,6 +78,17 @@ describe('분리된 단지·공고 등록 흐름', () => {
 
   })
 
+  it('전체 세대수를 비우면 0 대신 미확인으로 등록한다', async () => {
+    apiMocks.createHousingComplex.mockResolvedValue(housingResponse())
+    renderPages()
+    fillHousingForm()
+    change('전체 세대수', '')
+    expect(screen.getByLabelText('전체 세대수')).not.toBeRequired()
+    submitWithButton('단지 저장')
+    expect(apiMocks.createHousingComplex).toHaveBeenCalledWith(expect.objectContaining({ totalHouseholdCount: null }))
+    expect(await screen.findByRole('heading', { name: '등록한 단지 상세' })).toBeVisible()
+  })
+
   it('단지 저장 실패 시 입력값과 필드 오류를 유지한다', async () => {
     apiMocks.createHousingComplex.mockRejectedValue(
       new AdminRegistrationApiError(400, '요청값이 올바르지 않습니다.', {

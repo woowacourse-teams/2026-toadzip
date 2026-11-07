@@ -230,12 +230,22 @@
 
 .failureTargets { margin-top:var(--ds-space-2); padding:var(--ds-space-2) var(--ds-space-3); border-left:3px solid var(--ds-color-action); background:var(--ds-color-surface-subtle); font-size:var(--ds-text-caption); }
 .failureTargets ul { margin:var(--ds-space-1) 0 0; padding-left:var(--ds-space-4); }
-/* PDF 검토 안의 새 단지 등록: 짧은 입력은 두 칸씩, 주소는 한 줄 전체를 쓴다. */
-.newComplex { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--ds-space-2) var(--ds-space-3); margin:var(--ds-space-3) 0 0; padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); }
+/* 단지명 → 주소 확인 → 등록 순서. 좌표·선택 항목은 상세에서 보완한다. */
+.newComplex { display:grid; min-width:0; gap:var(--ds-space-2) var(--ds-space-3); margin:var(--ds-space-3) 0 0; padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); }
 .newComplex legend { padding:0 4px; font-weight:var(--ds-weight-strong); }
-.newComplex > p, .newComplex > button, .newComplex > label:nth-of-type(1), .newComplex > label:nth-of-type(2) { grid-column:1 / -1; }
+.newComplex > p { margin:0; }
 .newComplex label { display:grid; gap:2px; font-size:var(--ds-text-caption); }
-.newComplex > .addressSearch, .newComplex > .addressCandidates { grid-column:1 / -1; }
+.registrationDetails { min-width:0; border-top:1px solid var(--ds-color-divider); }
+.registrationDetails > summary { padding-block:var(--ds-space-3); cursor:pointer; font-size:var(--ds-text-caption); font-weight:500; }
+.registrationGrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--ds-space-3); padding-bottom:var(--ds-space-3); }
+.registrationGrid label { min-width:0; }
+.registrationGrid input { width:100%; box-sizing:border-box; min-width:0; }
+.registrationGrid .fullWidth { grid-column:1 / -1; }
+.addressStatus { display:grid; gap:var(--ds-space-1); padding:var(--ds-space-3); background:var(--ds-color-action-soft); overflow-wrap:anywhere; font-size:var(--ds-text-caption); }
+.addressStatus span { color:var(--ds-color-action); }
+.existingComplexes { display:grid; gap:var(--ds-space-2); width:100%; margin:0; padding:0; list-style:none; }
+.existingComplexes li { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:var(--ds-space-2); overflow-wrap:anywhere; }
+@container (max-width:420px) { .registrationGrid { grid-template-columns:minmax(0,1fr); } }
 .addressSearch { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--ds-space-2); align-items:end; }
 .addressCandidates { display:grid; margin:0; padding:0; list-style:none; border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); }
 .addressCandidates li + li { border-top:1px solid var(--ds-color-divider); }

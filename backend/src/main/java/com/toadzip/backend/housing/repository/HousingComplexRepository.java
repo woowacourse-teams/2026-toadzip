@@ -53,7 +53,17 @@ public interface HousingComplexRepository extends JpaRepository<HousingComplex, 
             SELECT complex
             FROM HousingComplex complex
             WHERE complex.adminDeleted = false AND complex.address.pnu = :pnu
-            ORDER BY complex.totalHouseholdCount DESC, complex.id
+            ORDER BY complex.totalHouseholdCount DESC NULLS LAST, complex.id
             """)
     List<HousingComplex> findAllByPnu(@Param("pnu") String pnu);
+
+    /** 같은 시도에서 도로명이 들어간 휴지통 밖 단지. 같은 건물번호인지는 호출한 쪽이 주소 키로 다시 확인한다. */
+    @Query("""
+            SELECT complex
+            FROM HousingComplex complex
+            WHERE complex.adminDeleted = false AND complex.address.provinceCode = :provinceCode
+              AND complex.address.roadAddress LIKE CONCAT('%', :road, '%')
+            ORDER BY complex.id
+            """)
+    List<HousingComplex> findAllActiveByRoadName(@Param("provinceCode") String provinceCode, @Param("road") String road);
 }

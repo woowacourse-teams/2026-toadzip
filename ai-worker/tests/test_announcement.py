@@ -683,3 +683,65 @@ def test_source_check_findings_reach_the_result_once():
         "complexes[0].address: 표·본문 단계의 값이 달라 미확인으로 남김",
         "announcement.name: 첨부한 쪽 범위를 벗어난 근거 쪽 번호(99)",
     ]
+
+
+def address_table_pdf(address_cells: list[str]):
+    document = pymupdf.open()
+    page = document.new_page()
+    page.insert_text((20, 20), "Sample Notice", fontname="korea", fontsize=9)
+    xs = [20, 90, 160, 230, 300, 380, 460, 575]
+    ys = [48 + 30 * index for index in range(len(address_cells) + 2)]
+    for x in xs:
+        page.draw_line((x, ys[0]), (x, ys[-1]))
+    for y in ys:
+        page.draw_line((xs[0], y), (xs[-1], y))
+    rows = [["단지명", "주택형", "공급대상", "모집호수", "임대보증금(천원)", "월임대료(원)", "소재지"]]
+    rows += [["Test", f"{26 + index}A", "청년", "20", "46,920", "178,670", cell] for index, cell in enumerate(address_cells)]
+    for row_index, row in enumerate(rows):
+        for column, value in enumerate(row):
+            page.insert_text((xs[column] + 2, ys[row_index] + 18), value, fontname="korea", fontsize=5)
+    return document.tobytes()
+
+
+def notice_with_address(address):
+    return json.dumps({"data": {
+        "announcement": {"name": "Sample Notice"}, "receptionPlace": {}, "schedules": [], "unresolvedFields": [],
+        "complexes": [{"sourceComplexName": "Test", "address": address, "totalHouseholdCount": None, "parkingCount": None}],
+    }, "notApplicable": [], "evidence": [{"path": "announcement.name", "page": 1, "quote": "Sample Notice"}]}, ensure_ascii=False)
+
+
+def test_complex_address_is_read_from_the_supply_table_by_code_and_matches_an_abbreviated_notice_address():
+    # 소재지 칸은 병합돼 첫 행에만 있고, 본문 단계는 시·도를 줄여 같은 주소를 낸다.
+    model = FakeModel(stage_contents={"notice": notice_with_address("서울시 중구 세종대로 110")})
+
+    result = AnnouncementPdfExtractor(model, FakeJudge()).extract(
+        job(address_table_pdf(["서울특별시 중구 세종대로 110(태평로1가) 일원", ""])))
+
+    tree = json.loads(result["json"])
+    assert tree["data"]["complexes"][0]["address"] == "서울특별시 중구 세종대로 110"
+    assert "complexes[0].address" not in {item["path"] for item in tree["data"]["unresolvedFields"]}
+    assert any(item["path"] == "complexes[0]" and item["page"] == 1 for item in tree["evidence"])
+    assert len(model.prompts) == 1
+
+
+def test_supply_table_address_differing_from_the_notice_address_stays_unresolved():
+    # 본문 단계가 접수처 주소를 단지 주소로 잘못 냈다면 어느 쪽도 고르지 않는다.
+    model = FakeModel(stage_contents={"notice": notice_with_address("서울특별시 강남구 테헤란로 1")})
+
+    result = AnnouncementPdfExtractor(model, FakeJudge()).extract(job(address_table_pdf(["서울특별시 중구 세종대로 110", ""])))
+
+    tree = json.loads(result["json"])
+    assert tree["data"]["complexes"][0]["address"] is None
+    assert "complexes[0].address" in {item["path"] for item in tree["data"]["unresolvedFields"]}
+
+
+def test_two_different_addresses_for_one_complex_in_the_supply_table_stay_unresolved():
+    model = FakeModel(stage_contents={"notice": notice_with_address(None)})
+
+    result = AnnouncementPdfExtractor(model, FakeJudge()).extract(
+        job(address_table_pdf(["서울특별시 중구 세종대로 110", "서울특별시 중구 을지로 12"])))
+
+    tree = json.loads(result["json"])
+    assert tree["data"]["complexes"][0]["address"] is None
+    assert any(item["path"] == "complexes[0].address" and "소재지" in item["reason"]
+               for item in tree["data"]["unresolvedFields"])

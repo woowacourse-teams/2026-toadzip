@@ -12,7 +12,7 @@ export type HousingComplexCreateRequest = {
     latitude: number
     longitude: number
   }
-  totalHouseholdCount: number
+  totalHouseholdCount: number | null
   /** 입주 전 신규 단지는 준공일·건물 정보를 아직 모를 수 있다. */
   completionDate: string | null
   heatingType: string | null

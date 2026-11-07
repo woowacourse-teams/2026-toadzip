@@ -38,7 +38,7 @@ export const complexSections: Section[] = [
     {name:'address.longitude',label:'경도',type:'number',required:true,min:-180,max:180,step:'0.000001'}]},
   {title:'주소 식별정보',fields:[{name:'address.pnu',label:'PNU'},{name:'address.legalDongCode',label:'법정동 코드',required:true},
     {name:'address.provinceCode',label:'시·도 코드',required:true},{name:'address.cityCountyDistrictCode',label:'시·군·구 코드',required:true}]},
-  {title:'시설정보', fields:[{name:'totalHouseholdCount',label:'전체 세대수',type:'number',min:0,required:true},
+  {title:'시설정보', fields:[{name:'totalHouseholdCount',label:'전체 세대수',type:'number',min:0},
     {name:'totalParkingCount',label:'주차대수',type:'number',min:0},{name:'moveOutCountLastYear',label:'최근 1년 퇴거자 수',type:'number',min:0},
     {name:'heatingType',label:'난방 유형',options:['INDIVIDUAL','CENTRAL','DISTRICT','ETC']},
     {name:'buildingType',label:'건물 유형',options:['APARTMENT','OFFICETEL','ETC']},
