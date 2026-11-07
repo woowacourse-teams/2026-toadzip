@@ -1,6 +1,6 @@
 import type { JsonWorkspace } from '../announcement-json/api'
 import type { CorrectionRow, LhSupplyRow } from '../supply/supplyCorrectionApi'
-import { attachableLhRows, equalArea, lhName, sameComplex, splittableLhRows, typeKey } from './matching'
+import { attachableLhRows, equalArea, lhName, sameComplex, sourceRowOf, splittableLhRows, typeKey } from './matching'
 import { assembledCount, complexGroups, placementMode, rowOfReviewId, undecidedComplex, type Review } from './review'
 
 /**
@@ -27,7 +27,7 @@ function lhOwners(review: Review, workspace: JsonWorkspace) {
   const attachable = new Set(attachableLhRows(workspace.supply).map(lh => lh.rowIdentifier))
   const referenced = (lh: LhSupplyRow, indexes: number[]) => indexes.some(index => {
     const proposal = review.rows[index].proposal
-    return [review.extraction.supplyRows[index].values.lhSourceRow, proposal.lhRow, proposal.proposedLhRow].includes(lh.rowIdentifier)
+    return [sourceRowOf(review.extraction.supplyRows[index]), proposal.lhRow, proposal.proposedLhRow].includes(lh.rowIdentifier)
   })
   const placed = (lh: LhSupplyRow, indexes: number[]) => {
     if (!lh.attachedRowKey) return false
@@ -59,13 +59,13 @@ export function complexCorrespondence(review: Review, workspace: JsonWorkspace, 
     const merged = workspace.supply.rows.find(row => row.key === lh.attachedRowKey)!
     const members = indexes.filter(index => {
       const proposal = review.rows[index].proposal
-      return [review.extraction.supplyRows[index].values.lhSourceRow, proposal.lhRow, proposal.proposedLhRow].includes(lh.rowIdentifier)
+      return [sourceRowOf(review.extraction.supplyRows[index]), proposal.lhRow, proposal.proposedLhRow].includes(lh.rowIdentifier)
         || proposal.destination === merged.key || !proposal.saveMode && ['', 'new'].includes(proposal.destination) && proposal.recommended.includes(merged.key)
     })
     if (members.length < 2) return []
     const counts = members.map(index => pdfCount(review, index))
     const sum = counts.every(count => count !== null) ? (counts as number[]).reduce((total, count) => total + count, 0) : null
-    const recommended = members.some(index => review.extraction.supplyRows[index].values.lhSourceRow === lh.rowIdentifier) || sum !== null && sum === lh.householdCount
+    const recommended = members.some(index => sourceRowOf(review.extraction.supplyRows[index]) === lh.rowIdentifier) || sum !== null && sum === lh.householdCount
     const included = members.filter(index => review.rows[index].include)
     const choice = included.some(index => review.rows[index].proposal.saveMode === 'SPLIT' && review.rows[index].proposal.lhRow === lh.rowIdentifier) ? 'split'
       : included.some(index => !review.rows[index].proposal.saveMode && review.rows[index].proposal.destination === merged.key) ? 'keep' : null
@@ -132,7 +132,7 @@ export function placementDoubt(review: Review, index: number, workspace: JsonWor
   const lhRows = workspace.supply.lhSupplyRows ?? [], mode = placementMode(proposal)
   const lh = proposal.saveMode ? lhRows.find(item => item.rowIdentifier === proposal.lhRow) : lhRows.find(item => item.attachedRowKey && item.attachedRowKey === proposal.destination)
   if (lh && proposal.saveMode && lh.householdCount === 0) return `LH 행 '${lhName(lh)}'의 이번 공급 수가 0세대입니다. 이 PDF 행이 그 LH 행에서 나온 것이 맞는지 공고문과 대조하세요.`
-  const marked = typeof source.values.lhSourceRow === 'string' ? lhRows.find(item => item.rowIdentifier === source.values.lhSourceRow) : undefined
+  const identifier = sourceRowOf(source), marked = identifier ? lhRows.find(item => item.rowIdentifier === identifier) : undefined
   if (marked && marked.rowIdentifier !== lh?.rowIdentifier) return `AI는 이 행을 LH 행 '${lhName(marked)}'에서 나온 행으로 봤지만, 지금은 ${lh ? `LH 행 '${lhName(lh)}'` : '다른 곳'}에 저장합니다.`
   const pdfArea = source.values.exclusiveArea
   if (mode === 'UPDATE' && typeof pdfArea === 'number') {

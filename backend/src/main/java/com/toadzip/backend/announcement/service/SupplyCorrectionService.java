@@ -155,7 +155,7 @@ public class SupplyCorrectionService {
     }
 
     /**
-     * 공급행이 기록한 원천행. 마이홈은 원천 키를 그대로 기록한다. LH는 "LH:{panId}:SUPPLY:{순번}"만 기록하므로
+     * 공급행이 기록한 원천행. 마이홈은 원천 키를 그대로 기록한다. GH 공급행 틀은 틀 행 키다. LH는 "LH:{panId}:SUPPLY:{순번}"만 기록하므로
      * 원천 키 "{panId}:{요청 해시}:{순번}" 중 공고 번호와 순번이 같은 것이 하나일 때만 대응한다.
      * 맞는 원천이 없으면 기록값을 그대로 돌려 찾을 수 없음을 알리고, 여러 개면 추정하지 않는다.
      */
@@ -179,6 +179,11 @@ public class SupplyCorrectionService {
                         candidates.isEmpty() ? recorded : candidates.getFirst()));
             }
         });
+        // GH 공급행 틀은 틀 행 키를 원천 키로 준다. PDF 추출 결과의 sourceRow가 이 키라 화면이 그 틀 행을 고친다.
+        if (row.ghFrameRow()) {
+            result.add(new SupplyCorrection.RowSource(key, IngestSourceCategory.GH_ANNOUNCEMENT.name(),
+                    row.getSourceSupplyRowIdentifier()));
+        }
         // 관리자가 LH 행 하나를 주택형별로 나눈 행은 그 LH 행 식별자를 준다. 같은 키의 형제행은 중복이 아니라 의도한 분리다.
         if (row.getLhSplitSourceIdentifier() != null) {
             result.add(new SupplyCorrection.RowSource(key, LH_SPLIT, row.getLhSplitSourceIdentifier()));

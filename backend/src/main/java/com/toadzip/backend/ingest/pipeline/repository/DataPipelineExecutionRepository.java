@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.pipeline.repository;
 
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
@@ -26,6 +27,11 @@ public interface DataPipelineExecutionRepository
     Optional<DataPipelineExecution> findFirstByTypeOrderByIdDesc(
             DataPipelineType type
     );
+
+    Optional<ExecutionSummary> findFirstByTypeInOrderByStartedAtDescIdDesc(Collection<DataPipelineType> types);
+
+    Optional<ExecutionSummary> findFirstByTypeInAndStatusAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(
+            Collection<DataPipelineType> types, DataPipelineExecutionStatus status);
 
     Optional<DataPipelineExecution> findByExecutionId(UUID executionId);
 
@@ -99,4 +105,13 @@ public interface DataPipelineExecutionRepository
             @Param("executionId") Long executionId,
             @Param("heartbeatAt") Instant heartbeatAt
     );
+
+    /** 단계별 결과 본문과 컬렉션 없이 실행 시각·상태만 조회한다. */
+    interface ExecutionSummary {
+        Instant getStartedAt();
+
+        Instant getFinishedAt();
+
+        DataPipelineExecutionStatus getStatus();
+    }
 }

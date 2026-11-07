@@ -29,8 +29,10 @@ class PdfExtractionContractTest {
     @Test
     void 작업_입력_스냅숏은_계약_예시와_같은_JSON으로_쓴다() throws Exception {
         var input = new PdfExtractionInput(
-                List.of(new PdfExtractionInput.LhSupplyRow(0, "LH:2015122300018207:SUPPLY:0", "인천부평(도시재생뉴딜) 행복주택", "16A(대학생/청년)",
-                        "16.37", "27.6384", "78", "78")));
+                List.of(new PdfExtractionInput.SourceSupplyRow("LH", 0, "LH:2015122300018207:SUPPLY:0", "인천부평(도시재생뉴딜) 행복주택",
+                        "16A(대학생/청년)", "16.37", "27.6384", "78", "78"),
+                        new PdfExtractionInput.SourceSupplyRow("GH", 1, "GH:801:다산 센트럴파크6단지:36A", "다산 센트럴파크6단지",
+                                "36A 청년", "36.8", "", "60", "")));
 
         assertThat(mapper.readTree(mapper.writeValueAsString(input)))
                 .isEqualTo(mapper.readTree(Files.readString(CONTRACT.resolve("input.example.json"))));

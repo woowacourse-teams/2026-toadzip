@@ -1,5 +1,5 @@
-from ai_worker import announcement, pages, supply_grouping
-from ai_worker.pages import SupplyTable
+from ai_worker import pages, supply_assembly, supply_grouping
+from ai_worker.tables import SupplyTable
 
 QUANTITY_HEADER = [
     ["단지명", "청약구분", "공급대상", "모집호수 예비자", "주거전용", "주거공용"],
@@ -12,16 +12,11 @@ RENT_HEADER = [
 def table(page, cells, header=QUANTITY_HEADER, ambiguous=False, inherit=None):
     """표 인식기처럼 병합 칸은 None, 빈칸은 ''로 준다. inherit가 있으면 머리글 없는 이어짐 표다."""
     rows = cells if inherit else [*header, *cells]
-    columns = inherit.columns if inherit else pages.table_field_columns(rows)
-    return SupplyTable(page, 1, rows, columns, ambiguous)
+    return SupplyTable.of(page, 1, rows, inherit.columns if inherit else None, ambiguous)
 
 
 def row_values(tables):
-    return {
-        pages.source_row_id(item.page, item.number, index + 1):
-            pages.table_row_field_values(item.cells, index, item.columns)
-        for item in tables for index in range(len(item.cells))
-    }
+    return {row.id: row.values for item in tables for row in item.rows}
 
 
 def assemble(tables, tableless_pages=()):
@@ -29,12 +24,13 @@ def assemble(tables, tableless_pages=()):
     grouped = supply_grouping.group(tables, values, list(tableless_pages))
     assert grouped is not None
     selected = pages.PromptPages(
-        text="", rental_rows=0, supply_text="", supply_pages=sorted({item.page for item in tables}),
+        rental_rows=0, supply_text="", supply_pages=sorted({item.page for item in tables}),
         supply_row_ids=frozenset(values), supply_row_text={key: "row" for key in values},
         notice_text="", notice_pages=[], complex_candidates=[], table_structure_fallback=False,
         ambiguous_supply_tables=False, supply_row_values=grouped.row_values,
     )
-    return grouped, announcement.compact_supply_tree(grouped.compact, selected)
+    tree, _ = supply_assembly.assemble(grouped.compact, selected)
+    return grouped, tree
 
 
 def targets(tree):

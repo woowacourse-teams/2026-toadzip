@@ -1,6 +1,6 @@
 """TypeSafe Jev에 공급표 수량 열이 무엇을 세는지 묻는다. 키와 응답 원문은 로그와 오류 문구에 남기지 않는다.
 
-판단은 Jev가, 그 판단을 쓸지는 코드(announcement)가 정한다. 질문 문구·선택지·기준값은 이 모듈에만 둔다.
+판단은 Jev가, 그 판단을 쓸지는 코드(supply_sources)가 정한다. 질문 문구·선택지·기준값은 이 모듈에만 둔다.
 GH·LH 표본 18개 열(고칠 때 보지 않은 9개 포함)에서 확률 0.7 이상이면서 틀린 답이 없었다.
 """
 
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from ai_worker.pages import SupplyTable
+from ai_worker.tables import SupplyTable
 
 BASE_URL = "https://api.typesafe.ai/v1"
 MODEL = "jev-1.14.0"

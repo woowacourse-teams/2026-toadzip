@@ -190,6 +190,23 @@ public class SupplyRow {
         adminModified = true;
     }
 
+    /**
+     * 기관 원천(GH 공급행 틀)이 준 주택형 전용면적을 공고 면적 칸에 적어 둔다. PDF 추출이 틀 행과 PDF 행을 맞출 때 읽는다.
+     * 면적 보정(areaOverride)은 켜지 않아 화면·공개 면적(effective*Area)은 그대로 연결 주택형을 따른다. 관리자 수정으로 보지 않는다.
+     */
+    public void recordSourceArea(BigDecimal exclusiveArea) {
+        if (exclusiveArea != null && exclusiveArea.signum() < 0) {
+            throw new IllegalArgumentException("면적은 음수일 수 없습니다.");
+        }
+        announcementExclusiveArea = exclusiveArea;
+    }
+
+    /** GH 공고 정제가 만든 공급행 틀이면 true다. 틀의 행 키는 `{공고 식별자}:{지구명}:{주택형 코드}`이고, 관리자가 추가한 행은 MANUAL: 키다. */
+    public boolean ghFrameRow() {
+        return announcement.origin() == AnnouncementOrigin.GH_SOURCE
+                && sourceSupplyRowIdentifier.startsWith(announcement.getSourceAnnouncementIdentifier() + ":");
+    }
+
     public void reorder(int order) {
         validateNonNegative(order, "표시 순서");
         displayOrder = order;
