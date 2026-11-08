@@ -75,11 +75,14 @@ class InitialRegistrationMigrationTest {
                         """);
                 ScriptUtils.executeSqlScript(connection, new ClassPathResource(
                         "db/migration/V20261108_01__initial_registration_locations.sql"));
+                ScriptUtils.executeSqlScript(connection, new ClassPathResource(
+                        "db/migration/V20261108_02__initial_registration_source_presence.sql"));
                 try (var rows = statement.executeQuery("SELECT * FROM initial_registration_targets")) {
                     assertThat(rows.next()).isTrue();
                     assertThat(rows.getString("road_address")).isEqualTo("원천 주소");
                     assertThat(rows.getString("status")).isEqualTo("COMPLETED");
                     assertThat(rows.getBigDecimal("prepared_latitude")).isNull();
+                    assertThat(rows.getBoolean("source_present")).isTrue();
                 }
                 assertThatThrownBy(() -> statement.execute("""
                         UPDATE initial_registration_targets SET prepared_address = '보완 주소',

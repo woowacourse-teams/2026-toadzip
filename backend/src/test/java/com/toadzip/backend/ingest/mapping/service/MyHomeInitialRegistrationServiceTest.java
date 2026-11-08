@@ -72,6 +72,7 @@ class MyHomeInitialRegistrationServiceTest {
         service.refresh();
         assertThat(target.getStatus()).isEqualTo(InitialRegistrationStatus.INFORMATION_REQUIRED);
         assertThat(target.getDetail()).contains("원천", "누락");
+        assertThat(target.isSourcePresent()).isFalse();
     }
 
     @Test

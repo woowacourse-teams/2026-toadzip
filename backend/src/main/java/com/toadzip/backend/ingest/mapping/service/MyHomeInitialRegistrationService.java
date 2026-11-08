@@ -122,12 +122,9 @@ public class MyHomeInitialRegistrationService {
 
     private void markMissing(String identifier, InitialRegistrationTarget target,
             Map<String, List<MyHomeComplexSourceView>> groups) {
-        if (groups.containsKey(identifier) || target.isCompleted()
-                || target.getStatus() == InitialRegistrationStatus.EXISTING) {
+        if (groups.containsKey(identifier)) {
             return;
         }
-        target.assess(target.getName(), target.getRoadAddress(), InitialRegistrationStatus.INFORMATION_REQUIRED,
-                "현재 수집 원천에서 찾을 수 없습니다. 원천 누락 또는 등록 대상 제외 여부를 확인하세요.",
-                target.getHousingComplexId(), clock.instant());
+        target.markSourceMissing(clock.instant());
     }
 }

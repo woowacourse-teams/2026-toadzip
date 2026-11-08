@@ -34,6 +34,8 @@ public class InitialRegistrationTarget {
     private Long housingComplexId;
     @Column(nullable = false)
     private Instant checkedAt;
+    @Column(nullable = false)
+    private boolean sourcePresent = true;
     @Embedded
     private InitialRegistrationLocation location;
 
@@ -57,6 +59,16 @@ public class InitialRegistrationTarget {
 
     public boolean isCompleted() {
         return status == InitialRegistrationStatus.COMPLETED;
+    }
+
+    public void markSourceMissing(Instant checkedAt) {
+        if (isCompleted() || status == InitialRegistrationStatus.EXISTING) {
+            return;
+        }
+        assess(name, roadAddress, InitialRegistrationStatus.INFORMATION_REQUIRED,
+                "현재 수집 원천에서 찾을 수 없습니다. 원천 누락 또는 등록 대상 제외 여부를 확인하세요.",
+                housingComplexId, checkedAt);
+        sourcePresent = false;
     }
 
     public void complete(long complexId, Instant completedAt) {
@@ -86,6 +98,7 @@ public class InitialRegistrationTarget {
         if (status == InitialRegistrationStatus.COMPLETED || status == InitialRegistrationStatus.FAILED) {
             throw new IllegalArgumentException("등록 결과는 준비 상태 확인으로 설정할 수 없습니다.");
         }
+        sourcePresent = true;
         this.name = name;
         this.roadAddress = roadAddress;
         this.checkedAt = checkedAt;

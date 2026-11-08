@@ -151,6 +151,62 @@ class LocationSummaryImportIntegrationTest {
     }
 
     @Test
+    void 원천이_사라지면_보완_목록과_집계에서_제외하고_재수집하면_다시_포함한다() {
+        registration.refresh();
+        String identifier = targets.findAll().getFirst().getSourceComplexIdentifier();
+
+        sourceRepository.deleteAll();
+        registration.refresh();
+
+        var missing = registration.findLocations(0, 20);
+        assertThat(missing.targets()).isEmpty();
+        assertThat(missing.totalElements()).isZero();
+        assertThat(missing.totalPages()).isZero();
+        assertThat(missing.counts().values()).allMatch(count -> count == 0L);
+        var retained = targets.findById(identifier).orElseThrow();
+        assertThat(retained.getStatus()).isEqualTo(InitialRegistrationStatus.INFORMATION_REQUIRED);
+        assertThat(retained.getDetail()).contains("현재 수집 원천에서 찾을 수 없습니다");
+        assertThat(retained.getLocation().getFailure()).isNotNull();
+
+        sourceRepository.save(source("서울특별시 종로구 테스트로 1 (테스트동)"));
+        registration.refresh();
+
+        var recollected = registration.findLocations(0, 20);
+        assertThat(recollected.targets()).singleElement()
+                .satisfies(target -> assertThat(target.sourceComplexIdentifier()).isEqualTo(identifier));
+        assertThat(recollected.counts()).containsEntry("ADDRESS_NOT_FOUND", 1L);
+    }
+
+    @Test
+    void 원천이_사라지면_준비_완료_집계에서도_제외하고_재수집하면_기존_관리자_보완값을_사용한다() {
+        registration.refresh();
+        String identifier = targets.findAll().getFirst().getSourceComplexIdentifier();
+        registration.supplementLocation(new InitialRegistrationLocationRequest(identifier,
+                "서울특별시 종로구 보완로 2", new BigDecimal("37.6"), new BigDecimal("127.1")), "test-admin");
+
+        sourceRepository.deleteAll();
+        registration.refresh();
+
+        assertThat(registration.findLocations(0, 20).counts()).containsEntry("READY", 0L);
+        var retained = targets.findById(identifier).orElseThrow();
+        assertThat(retained.getStatus()).isEqualTo(InitialRegistrationStatus.INFORMATION_REQUIRED);
+        assertThat(retained.getLocation().getAddress()).isEqualTo("서울특별시 종로구 보완로 2");
+        assertThat(retained.getLocation().getLatitude()).isEqualByComparingTo("37.6");
+        assertThat(retained.getLocation().getLongitude()).isEqualByComparingTo("127.1");
+        assertThat(retained.getLocation().getCheckedBy()).isEqualTo("test-admin");
+
+        sourceRepository.save(source("서울특별시 종로구 테스트로 1 (테스트동)"));
+        registration.refresh();
+
+        assertThat(registration.findLocations(0, 20).counts()).containsEntry("READY", 1L);
+        var restored = targets.findById(identifier).orElseThrow();
+        assertThat(restored.getStatus()).isEqualTo(InitialRegistrationStatus.READY);
+        assertThat(restored.getLocation().getAddress()).isEqualTo("서울특별시 종로구 보완로 2");
+        assertThat(restored.getLocation().getOrigin()).isEqualTo("ADMIN");
+        assertThat(restored.getLocation().getCheckedBy()).isEqualTo("test-admin");
+    }
+
+    @Test
     void 같은_전국_ZIP을_반복_적재하면_기존_행을_안전하게_교체한다() throws IOException {
         service.importMatches("first.zip", nationwideZip());
 

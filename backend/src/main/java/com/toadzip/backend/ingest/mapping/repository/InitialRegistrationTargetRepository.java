@@ -22,6 +22,7 @@ public interface InitialRegistrationTargetRepository extends JpaRepository<Initi
             WHERE target.status NOT IN (com.toadzip.backend.ingest.mapping.domain.InitialRegistrationStatus.EXISTING,
                 com.toadzip.backend.ingest.mapping.domain.InitialRegistrationStatus.COMPLETED)
                 AND target.housingComplexId IS NULL
+                AND target.sourcePresent = true
                 AND target.location.failure IS NOT NULL
             ORDER BY target.sourceComplexIdentifier
             """)
@@ -33,6 +34,7 @@ public interface InitialRegistrationTargetRepository extends JpaRepository<Initi
             WHERE target.status NOT IN (com.toadzip.backend.ingest.mapping.domain.InitialRegistrationStatus.EXISTING,
                 com.toadzip.backend.ingest.mapping.domain.InitialRegistrationStatus.COMPLETED)
                 AND target.housingComplexId IS NULL
+                AND target.sourcePresent = true
                 AND target.location.checkedAt IS NOT NULL
             GROUP BY target.location.failure
             """)
