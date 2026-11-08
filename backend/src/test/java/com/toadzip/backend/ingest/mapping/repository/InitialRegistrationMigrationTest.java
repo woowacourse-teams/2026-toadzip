@@ -61,6 +61,54 @@ class InitialRegistrationMigrationTest {
     }
 
     @Test
+    void 기존_원천과_완료_기록을_보존하며_보완_좌표의_완전성과_범위를_검증한다() throws Exception {
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("CREATE SCHEMA initial_registration_location_migration_test");
+            statement.execute("SET search_path TO initial_registration_location_migration_test");
+            try {
+                ScriptUtils.executeSqlScript(connection, new ClassPathResource(
+                        "db/migration/V20261105_02__initial_registration_targets.sql"));
+                statement.execute("""
+                        INSERT INTO initial_registration_targets
+                            (source_complex_identifier, road_address, status, detail, housing_complex_id, checked_at)
+                        VALUES ('1:HAPPY_HOUSING', '원천 주소', 'COMPLETED', '완료', 10, now())
+                        """);
+                ScriptUtils.executeSqlScript(connection, new ClassPathResource(
+                        "db/migration/V20261108_01__initial_registration_locations.sql"));
+                try (var rows = statement.executeQuery("SELECT * FROM initial_registration_targets")) {
+                    assertThat(rows.next()).isTrue();
+                    assertThat(rows.getString("road_address")).isEqualTo("원천 주소");
+                    assertThat(rows.getString("status")).isEqualTo("COMPLETED");
+                    assertThat(rows.getBigDecimal("prepared_latitude")).isNull();
+                }
+                assertThatThrownBy(() -> statement.execute("""
+                        UPDATE initial_registration_targets SET prepared_address = '보완 주소',
+                            prepared_latitude = 37.5, location_origin = 'ADMIN'
+                        """)).isInstanceOf(SQLException.class);
+                assertThatThrownBy(() -> statement.execute("""
+                        UPDATE initial_registration_targets SET prepared_address = '보완 주소',
+                            prepared_latitude = 91, prepared_longitude = 127, location_origin = 'ADMIN'
+                        """)).isInstanceOf(SQLException.class);
+                statement.execute("""
+                        UPDATE initial_registration_targets SET prepared_address = '보완 주소',
+                            prepared_latitude = 37.12345678, prepared_longitude = 127.12345678,
+                            location_origin = 'ADMIN', location_checked_at = now(), location_checked_by = 'admin'
+                        """);
+                try (var rows = statement.executeQuery("SELECT * FROM initial_registration_targets")) {
+                    assertThat(rows.next()).isTrue();
+                    assertThat(rows.getString("road_address")).isEqualTo("원천 주소");
+                    assertThat(rows.getBigDecimal("prepared_latitude")).isEqualByComparingTo("37.12345678");
+                    assertThat(rows.getLong("housing_complex_id")).isEqualTo(10);
+                }
+            }
+            finally {
+                statement.execute("RESET search_path");
+                statement.execute("DROP SCHEMA initial_registration_location_migration_test CASCADE");
+            }
+        }
+    }
+
+    @Test
     void 기존_완료_기록을_보존하며_긴_원천_단지명과_주소를_저장하도록_확장한다() throws Exception {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             statement.execute("CREATE SCHEMA initial_registration_text_migration_test");

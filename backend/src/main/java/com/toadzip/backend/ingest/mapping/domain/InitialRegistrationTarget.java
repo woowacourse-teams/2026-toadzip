@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.mapping.domain;
 import static lombok.AccessLevel.PROTECTED;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -33,6 +34,15 @@ public class InitialRegistrationTarget {
     private Long housingComplexId;
     @Column(nullable = false)
     private Instant checkedAt;
+    @Embedded
+    private InitialRegistrationLocation location;
+
+    public void prepareLocation(InitialRegistrationLocation location) {
+        if (isCompleted()) {
+            throw new IllegalStateException("등록 완료 대상은 보완할 수 없습니다.");
+        }
+        this.location = location;
+    }
 
     private InitialRegistrationTarget(String identifier) {
         if (identifier == null || identifier.isBlank()) {

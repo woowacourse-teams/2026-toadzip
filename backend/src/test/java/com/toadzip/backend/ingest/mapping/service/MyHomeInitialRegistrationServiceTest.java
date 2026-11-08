@@ -79,7 +79,8 @@ class MyHomeInitialRegistrationServiceTest {
     void 같은_단지의_주택형은_하나의_등록_대상으로_모으고_매입임대는_제외한다() {
         when(sources.findAll()).thenReturn(List.of(source("행복주택", "26A"), source("행복주택", "26B"),
                 source("매입임대", "매입임대")));
-        when(assessment.assess(any(), any(), any())).thenReturn(new MyHomeInitialRegistrationAssessment.Assessment(
+        when(assessment.assess(any(), any(), any(), any()))
+                .thenReturn(new MyHomeInitialRegistrationAssessment.Assessment(
                 InitialRegistrationStatus.LOCATION_REQUIRED, "좌표 필요", null));
         service.refresh();
         ArgumentCaptor<Iterable<InitialRegistrationTarget>> saved = ArgumentCaptor.forClass(Iterable.class);

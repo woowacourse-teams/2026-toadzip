@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -57,6 +58,23 @@ class MyHomeInitialRegistrationSecurityTest {
     @Test
     void 관리자도_CSRF_없이_상태를_갱신할_수_없다() throws Exception {
         mvc.perform(post(PATH + "/refresh").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void 관리자도_CSRF_없이는_주소_좌표를_보완할_수_없다() throws Exception {
+        mvc.perform(post(PATH + "/locations").with(user("admin").roles("ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void 일반_사용자는_주소_좌표를_보완할_수_없다() throws Exception {
+        when(users.existsById(1L)).thenReturn(true);
+        mvc.perform(post(PATH + "/locations").with(user("1").roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isForbidden());
         verifyNoInteractions(service);
     }
