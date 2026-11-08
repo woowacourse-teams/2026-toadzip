@@ -23,7 +23,8 @@
 - `eligibility`: 사용자 정보에 따른 공고별 신청자격 판정과 근거 제공
 - `interest`: 관심 조건 저장과 알림 요청
 
-신청자격 판정과 기본 조건 비교의 구분은 [용어](GLOSSARY.md)를 따른다.
+신청자격 판정과 기본 조건 비교의 구분은 [용어](GLOSSARY.md), 기능 계약은
+[신청자격 문서](docs/features/eligibility/README.md)를 따른다.
 
 ## 신뢰성 원칙
 

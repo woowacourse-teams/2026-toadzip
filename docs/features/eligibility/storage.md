@@ -1,11 +1,9 @@
 # 신청자격 판정의 데이터 모델과 갱신 경계
 
-공고에서 추출한 조건, 사용자가 입력한 정보, 사용자별 판정 결과를 연결하는 백엔드 설계다.
-공고의 실제 모집 선택지 중 하나라도 지원 가능하면 공고는 지원 가능이다. 확인된 미충족,
-수집 항목의 미입력, 미수집 필수 자격, 미수집 신청 제한 안내는 서로 다른 의미로 유지한다.
-
-기능 통합 대상은 `feat/562-basic-comparison-integration`이다. 프론트·공고 수집·기존 공통
-데이터는 보존한다. `develop`에서 최신 변경을 가져오지만 이 작업을 `develop`에 병합하지 않는다.
+공고 구조·사용자 입력·최신 완료 결과의 관계, 컬럼, 제약과 동시성 규칙을 설명한다.
+작성 계약은 [공고 구조화](authoring.md), 입력 의미는 [사용자 정보](profile.md),
+판정·표시는 [판정 계약](decisions.md), 배포 시 적용 순서는
+[DB 전환 절차](../../operations/database/eligibility-upgrade.md)를 따른다.
 
 ## 저장 경계와 선택 이유
 
@@ -13,6 +11,7 @@
 하나의 작성 단위다. 기존 `basic_comparison_rule_sets.content`의 타입이 정해진 JSONB를
 원본으로 유지하고, 모집 단위·경로·선택지·정확한 필수 자격은 관계형 행으로 함께 저장한다.
 관계형 행은 같은 트랜잭션에서만 다시 만들며 외부에서 따로 수정하는 API를 두지 않는다.
+이 투영은 DB 트리거가 아니라 저장 서비스가 수행한다. JSON만 갱신하는 writer를 혼용하면 일관성이 깨진다.
 
 이렇게 하면 조건식의 AND/OR와 공고별 예외, 보증금·월세 조합 등의 관계를 잃지 않으면서
 선택지·지역·탐색 분류에 대한 조회와 FK 검증을 할 수 있다. 조건식을 현재 사용자 입력에
@@ -48,8 +47,11 @@ erDiagram
     comparison_latest_results ||--o| comparison_discoveries : may_produce
 ```
 
-아래는 구현한 저장 계약이다. DDL은 `V20261106_03`(공고 관계), `V20261106_04`(입력 계약),
-`V20261106_05`(최신 결과·재판정)에 있다. 서비스 DB 적용 여부와 코드 구현 완료는 구분한다.
+DDL 원본은 [현재 내용·프로필](../../../backend/src/main/resources/db/migration/V20261106_01__basic_comparison_current_content.sql),
+[관계형 공고](../../../backend/src/main/resources/db/migration/V20261106_03__comparison_application_structure.sql),
+[입력 계약](../../../backend/src/main/resources/db/migration/V20261106_04__comparison_residence_profile.sql),
+[최신 결과·재판정](../../../backend/src/main/resources/db/migration/V20261106_05__eligibility_latest_results_and_rechecks.sql)이다.
+서비스 DB 적용 여부는 운영 환경에서 별도로 확인한다.
 
 ## 공고 구조화 테이블
 
@@ -70,37 +72,18 @@ erDiagram
 보존한다. `version`만으로 현재성을 판단하지 않고 재사용되지 않는 `id`도 비교한다.
 기존 Flyway 파일은 수정하지 않으며 새 마이그레이션으로 제약과 테이블을 추가한다.
 
-`content`의 필수 구조:
-
-| 항목 | 데이터와 관계 |
-|---|---|
-| metadata | 공고 기준일, 개인/기관 신청, 작성 범위, 검토 상태와 분류 근거 |
-| documents / evidences | 문서 ID·파일명·URL·해시·쪽수와 근거의 문서/쪽/위치. 같은 작성 단위 안에서 참조 |
-| commonChecks | 공고 전체 실제 신청 경로에 공통으로 적용되는 조건. 일부 단위 조건을 여기에 올리지 않음 |
-| supplyUnits | 신청 단위 ID·명칭·지역 코드와 소속 실제 단지/주택형 목록. 묶음 관계 유지 |
-| paths | 신청 경로 ID·사용자 표시명·조건식·필수 자격 ID 목록 |
-| options | 신청 단위 × 경로의 실제 모집 여부. 같은 조합은 한 번만 존재 |
-| qualifications | 정확한 자격명·법적 근거·요구 조건 원문·넓은 탐색 분류·근거 ID |
-| guidances | 적용 범위가 있는 미수집 신청 제한·절차·기타 직접 확인 안내. 필수 자격과 혼동하지 않음 |
-| quantities | 물량 종류·값·함께 공유하는 신청 단위/선택지 ID 목록. 여러 경로가 공유해도 한 물량 |
-| rentOffers / schedules | 적용 대상 설명, 금액 조합·전환 조건, 시간·장소·URL과 신청 단위/선택지·원문 근거 |
-
-물량·임대조건·일정의 `optionIds`는 같은 단위의 특정 경로만 대상으로 삼을 때 쓴다.
-`supplyUnitIds`의 모든 선택지와 `optionIds`의 합집합이 적용 범위이며 물량은 ID당 한 번만 센다.
-원문에 없는 경로별 배분은 만들지 않는다.
-
-조건은 항목명·검사 대상인 입력 코드·연산·기준값·적용 조건·근거를 갖는다. 조건의 역할은
-원문대로 구조화한다. 순위·배점·임대료용 조건을 신청자격의 필수 조건으로 바꾸지 않는다.
+`content` 내부 항목·적용 범위·조건 역할은 [구조화 계약](authoring.md#구조화-내용)을 따른다.
+JSON 원본과 관계형 투영은 같은 작성 단위이며 따로 갱신하지 않는다.
 
 ### 관계형 공고 행
 
-모든 행의 `rule_set_id`는 작성 단위 FK이며 삭제 시 연쇄 삭제한다. 공개본 삭제가
+모든 행은 직접 FK 또는 단위·경로·자격의 복합 FK로 작성 단위에 종속되며 삭제 시 연쇄 삭제한다. 공개본 삭제가
 사용자 최신 완료 결과까지 삭제하지 않도록 결과의 판정 기준 ID에는 이 삭제 FK를 걸지 않는다.
 
 | 테이블 | 컬럼 | 키·제약·이유 |
 |---|---|---|
 | `comparison_supply_units` | rule_set_id bigint, unit_key varchar(100), label varchar(300), region_codes text[], housing_types jsonb | PK(rule_set_id, unit_key). 지역 배열 GIN 인덱스. 주택 목록은 배열이며 원문의 여러 단지·주택형 관계를 보존 |
-| `comparison_paths` | rule_set_id bigint, path_key varchar(100), label varchar(300), kind varchar(30), checks jsonb | PK(rule_set_id, path_key). 조건 목록은 배열. APPLICATION은 실제 신청 경로, 기존 GENERAL·COMMON_ONLY는 이전 계약을 읽기 위한 구분 |
+| `comparison_paths` | rule_set_id bigint, path_key varchar(100), label varchar(300), kind varchar(30), checks jsonb | PK(rule_set_id, path_key). 조건 목록은 배열. APPLICATION은 실제 신청 경로, GENERAL·COMMON_ONLY도 이전 비교 계약의 작성·공개·읽기에 허용 |
 | `comparison_qualifications` | rule_set_id bigint, qualification_key varchar(100), exact_name varchar(300), legal_basis text, conditions_as_written text, categories text[], evidence_ids jsonb | PK(rule_set_id, qualification_key). 정확한 명칭·조건·근거 필수, categories GIN. 가족 형태와 법정 자격을 동일시하지 않음 |
 | `comparison_path_qualifications` | rule_set_id bigint, path_key varchar(100), qualification_key varchar(100) | 세 컬럼 PK, 경로·자격 각각 같은 rule_set의 복합 FK. 여러 대안 자격은 원문에 맞는 별도 경로로 표현 |
 | `comparison_options` | rule_set_id bigint, option_key varchar(100), unit_key varchar(100), path_key varchar(100), recruitment_status varchar(30) | PK(rule_set_id, option_key), UNIQUE(rule_set_id, unit_key, path_key), 같은 rule_set 단위·경로 FK |
@@ -125,16 +108,8 @@ erDiagram
 | profile | jsonb object | familyDetailsState와 항목별 PROVIDED/UNKNOWN/NOT_APPLICABLE 및 값 |
 | updated_at | timestamptz NOT NULL | 현재 입력의 저장 시각 |
 
-기존 본인·가족 입력의 형식을 재사용하되 Q5의 현재 지역 거주기간(완료 개월 수)과
-현재 거주 집 계약 종료일(날짜)을 추가한다. 입력 계약은 3이며 기존 2는 읽기 호환한다. 기간은 현재 집 거주기간이 아니며,
-공고마다 과거 지역을 추가로 질문하지 않는다. 계약 종료일은 미래일도 유효하다.
-기간 범위는 현재 거주지역 코드의 행정구역이며 0~1800 완료 개월 수다. 지역 변경 시 사용자가 함께 갱신한다.
-계약 종료일이 없는 거주는 NOT_APPLICABLE로 표현하며, 모르면 UNKNOWN이다.
-새 항목은 빈 값으로 둘 수 있고 해당 조건에 필요한 경우에만 입력 부족으로 표시한다.
-
-본인·세대 합계는 입력 코드와 도움말로 구분한다. 소득 없음은 0, 미입력은 UNKNOWN이다.
-가족 형태·검색 필터로 법정 필수 자격을 만들어 저장하지 않는다. 기존 사용자 입력에서
-수집하지 않는 자격은 공고의 qualifications에 남는다. 프로필 전체 이력은 추가하지 않는다.
+입력 계약은 3으로 저장하며 기존 계약 2는 읽을 수 있다. 프로필은 현재 값 한 벌만 유지한다.
+값·상태·전체 교체·거주 정보의 의미는 [사용자 입력 계약](profile.md)을 따른다.
 
 ## 최신 결과와 재판정 테이블
 
@@ -184,9 +159,8 @@ erDiagram
 | option_ids | 비어 있지 않은 jsonb array | 새로 지원 가능해진 실제 선택지 ID |
 | discovered_at / acknowledged_at | timestamptz, 확인 시각만 nullable | 발견 시점과 클라이언트의 확인 처리 시점 |
 
-같은 기준의 재시도는 event_id와 확인 상태를 보존한다. 미충족 뒤 다시 가능해지거나 다른
-선택지가 새로 가능해지면 새 event_id를 만든다. 공고별 평생 1회 정책이 아니다. 현재 기준과
-다르면 노출하지 않는다. 이는 화면 안내용 조회·확인 계약이며 외부 알림 발송 이력은 아니다.
+발견의 표시·확인 처리·재발견 의미는 [새 지원 가능 안내](decisions.md#저장-완료재판정-완료새-지원-가능-안내)를 따른다.
+이 테이블은 현재 발견의 최소 정보이며 외부 알림 발송 이력이 아니다.
 
 공통·경로 조건은 한 번 판독하고 선택지는 해당 판독을 참조한다. 공고 재판정의 한 묶음에서는
 구조화 내용과 소득표를 한 번 읽어 재사용하고, 반영 직전에는 식별값만 확인한다.
@@ -195,13 +169,13 @@ erDiagram
 
 ### 갱신과 복구
 
-현재 공고 기준은 정정 체인의 현재 게시물, 공개/취소 상태와 공개 rule set 식별값을 모두
-포함하는 generation으로 식별한다. 공개뿐 아니라 정정 연결·취소·공개 철회도 generation과
+현재 공고 기준은 generation과 정정 체인의 최신 게시물 ID·공개본 ID·공개 및 접수 상태·
+평가기 버전을 함께 비교해 식별한다. 공개뿐 아니라 정정 연결·취소·공개 철회도 generation과
 공고 재판정 필요 사실을 같은 트랜잭션에서 남긴다. 기존 변경 경로의 연결 누락을 감지하는
 대조 작업도 두며, 특정 사용자의 재입력이 있어야만 변경을 반영하는 구조를 피한다.
 
 
-1. 프로필 저장은 현재 값·버전과 재판정 필요 사실을 원자적으로 저장한다. 저장 완료를 먼저 응답한다.
+1. 프로필 저장 트랜잭션에 현재 값·버전과 재판정 요청을 함께 기록한다.
 2. 작업자는 기한이 지난 미완료 작업 또는 처리 시각이 된 작업을 잠금으로 선점한다. 긴 평가 중에는 DB 잠금을 유지하지 않는다.
 3. 저장한 입력·공고 기준으로 평가한 뒤 짧은 반영 트랜잭션에서 잠금/CAS로 현재 기준 확인과 결과·발견 저장을 원자화한다.
 4. 기준이 다르면 결과·발견을 반영하지 않고 현재 기준의 작업을 남긴다. 늦게 끝난 작업이 최신 작업보다 우선하지 않는다.
@@ -209,47 +183,8 @@ erDiagram
 6. 항목마다 결과 저장 뒤 커서를 기록한다. 요청 version/generation·claim token·lease가 맞을 때만 진행·완료를 갱신한다. 새 요청은 커서를 시작점으로 되돌리고 결과 저장 실패 시 커서를 진전시키지 않는다.
 7. 미시작·실패·lease 만료는 재선점할 수 있다. 재시도 간격에는 상한을 두되 필요 사실을 삭제하거나 사용자 재입력을 복구 조건으로 삼지 않는다.
 
-공고 정정 시 영향받는 선택지를 새 기준으로 판정하고 이전 기준의 안내는 보류한다.
-일부 취소는 해당 선택지에만 반영한다. 공고 전체 취소는 지원 가능 노출·대기 발송을 중단한다.
-현재 API는 이전 결과 본문을 숨기고 마지막 완료 시각·입력 버전만 반환한다. 처리 중을
-정보 부족이나 필수 자격 직접 확인으로 바꾸지 않는다.
-
-### 실행 설정과 처리 범위
-
-| 설정 | 기본값 | 의미 |
-|---|---|---|
-| comparison.recheck.enabled | true | 재판정 스케줄러 실행. false여도 필요 사실은 DB에 남음 |
-| comparison.recheck.poll-milliseconds | 1000 | 한 회차가 끝난 뒤 다음 회차까지의 간격 |
-| comparison.recheck.batch-size | 32 | 회차별 키 조회 수. 1~1000으로 제한 |
-| comparison.recheck.lease-seconds | 120 | 선점 유효 시간. 최소 1초 |
-
-회차마다 공고 기준 대조·회원 작업 한 묶음·공고 작업 한 묶음을 실행한다. 전용 단일 스레드
-스케줄러를 사용해 기존 공통 예약 작업과 분리한다. 여러 인스턴스는 SKIP LOCKED로 선점한다.
-실패 시 간격을 지수적으로 늘리되 300초를 상한으로 두고 요청을 버리지 않는다.
-대조 커서는 프로세스 재시작 시 처음부터 돌며, 실제 기준·작업 커서는 DB에 남아 복구된다.
-
-현재 재판정 대상은 공통 접수 상태의 APPLYING / BEFORE_APPLICATION / CONDITIONAL이다.
-취소·비공개·마감·은퇴 공고는 기존 결과가 있는 회원만 정리한다. 세부 모집 예정 정책과
-결과 보존 기간은 후속 결정이다. 결과 건수는 여전히 활성 회원 수 × 공고 수에 비례하므로
-운영 용량·대기 시간·처리량은 별도 부하 검증과 조정이 필요하다.
-
-## 검증과 전환
-
-공고 저장은 D05의 일반입주자 경로, D11의 정확한 법정 자격, D01의 서로 다른 지역의
-실제 모집 선택지를 포함한다. FK 교차 참조, 중복 선택지, 공개 실패 롤백, 기존 데이터
-투영, 프로필 충돌, 오래된 작업·중단 복구를 실제 격리 PostgreSQL에서 검증한다.
-
-기존 v2 경로를 소비하는 프론트 코드는 작업 시작 시 확인되지 않았다. 프론트팀이 연결할
-새 판정 API와 결과 형식은 [표시 계약](eligibility-decisions.md)에 문서화한다. 기존 공고·지도·알림·AI 추출 API를
-이 설계의 개편 대상과 섞지 않는다. 기존 마이그레이션과 구 데이터는 자동 삭제하지 않는다.
-공고 구조화 writer는 전환 동안 중단하고 새 writer와 마이그레이션을 함께 적용한다.
-v2 읽기 호환과 기존 행 투영을 검증한 뒤 관계형 조회를 사용한다. 구 writer를 계속 실행하며
-투영 일관성이 보장된다고 간주하지 않는다.
-
-검색·알림 전달 채널·상세 중복 정책, 모집 예정의 세부 범위와 결과 보존 기간, 부하 목표는
-기능 명세에서 남긴 후속 항목이다. 해당 선택이 필요한 단계에서 제안과 근거를 기록하며,
-미결을 이미 합의한 기능 동작으로 둔갑시키지 않는다.
-
+현재 처리 대상과 조회 시 최신성은 [판정 API](decisions.md#단건-조회)를 따른다.
+worker 설정·중단 복구·관측 절차는 [운영 문서](../../operations/database/eligibility-upgrade.md#재판정-처리와-관측)를 따른다.
 
 ### 최신 결과 구현의 잠금 경계
 
@@ -276,3 +211,16 @@ DB에서 거부한다. 초안·공개본의 참조 저장은 해당 기준표 �
 추가할 수 있게 했다. 정정표를 참조하는 새 구조를 공개해 재판정한다. 공고 날짜 경과와
 평가기 변경은 작은 묶음의 대조 작업으로 감지하며,
 같은 기준을 반복 확인한 것만으로 진행 중 커서·claim을 초기화하지 않는다.
+
+## 코드와 검증 진입점
+
+[구조 저장 서비스](../../../backend/src/main/java/com/toadzip/backend/eligibility/service/EligibilityRuleSetService.java)는
+작성 단위 검증과 JSON·관계형 투영의 트랜잭션을 소유한다.
+[재판정 서비스](../../../backend/src/main/java/com/toadzip/backend/eligibility/service/EligibilityRecheckWorker.java)는
+작업 순회와 평가·반영의 경계를 연결한다. 테이블을 추가하거나 잠금 순서를 바꿀 때 이 두 경계를 함께 검토한다.
+
+[구조 저장 테스트](../../../backend/src/test/java/com/toadzip/backend/eligibility/controller/EligibilityStructureStorageIntegrationTest.java)는
+투영·복합 FK·중복 조합을,
+[재판정 동시성 테스트](../../../backend/src/test/java/com/toadzip/backend/eligibility/controller/EligibilityRecheckConcurrencyTest.java)와
+[무결성 테스트](../../../backend/src/test/java/com/toadzip/backend/eligibility/controller/EligibilityRecheckIntegrityTest.java)는
+오래된 작업·정정 연결·소득 기준표 변경 경합을 다룬다. 실행 조건은 [검증 안내](overview.md#검증-범위)를 따른다.
