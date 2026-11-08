@@ -8,12 +8,19 @@ const preview = (before: CorrectionRow[], after: CorrectionRow[]) => ({ confirma
   supply: { confirmationToken: 's', before, after, warnings: [] } })
 const housing = { 41: [{ id: 501, name: '51A', exclusiveArea: 51.98, supplyArea: null }] }
 
-it('같은 주택형에 공급행이 둘 이상 연결되면 중복 확인으로 알리고, 추가·변경되는 임대조건을 모은다', () => {
+it('같은 주택형에 같은 신청형 공급행이 둘 이상 연결될 때만 중복 확인으로 알리고, 추가·변경되는 임대조건을 모은다', () => {
   const target = { ...blankTarget(0), id: 7, key: 't7', target: '일반', deposit: '1000', rent: '10' }
   const before = [{ ...row(747, 'row:747', '공공임대', 240, null), targets: [target] }]
   const after = [{ ...row(747, 'row:747', '051.9800A', 200, 501), targets: [{ ...target, deposit: '2000' }] }, { ...row(null, 'n1', '051.9800B', 40, 501), targets: [{ ...blankTarget(0), target: '청년', deposit: '500', rent: '5' }] }]
   const summary = summarizePreview(preview(before, after), housing)
-  expect(summary.complexes[0]).toMatchObject({ beforeTotal: 240, afterTotal: 240, duplicates: ['51A · 전용 51.98㎡에 공급행 2개(051.9800A, 051.9800B)가 연결됩니다.'] })
+  // 신청형이 다른 051.9800A·051.9800B가 같은 주택타입을 함께 가리키는 것은 정상이다.
+  expect(summary.complexes[0]).toMatchObject({ beforeTotal: 240, afterTotal: 240, duplicates: [] })
+  const duplicated = summarizePreview(preview(before, [...after, row(null, 'n2', '051.9800A(고령자)', 5, 501)]), housing)
+  expect(duplicated.complexes[0].duplicates).toEqual(['51A · 전용 51.98㎡에 같은 주택형(신청형) 공급행 2개(051.9800A, 051.9800A(고령자))가 연결됩니다.'])
+  // 이름을 바꾸지 않은 기존 행이 연결 주택타입 이름(51A)으로 보여도 서버가 준 신청형 이름으로 판단한다.
+  const sameName = [row(747, 'row:747', '51A', 200, 501), row(748, 'row:748', '51A', 40, 501)]
+  const touched = sameName.map(item => ({ ...item, householdCount: (item.householdCount ?? 0) + 1 }))
+  expect(summarizePreview(preview(sameName, touched), housing, { 'row:747': '051.9800A', 'row:748': '051.9800B' }).complexes[0].duplicates).toEqual([])
   expect(summary.complexes[0].after.map(item => item.change)).toEqual(['changed', 'new'])
   expect(summary.targets).toEqual([{ row: '051.9800A', kind: 'changed', detail: '일반 · 보증금 1,000원 → 2,000원' },
     { row: '051.9800B', kind: 'new', detail: '청년 · 보증금 500원 · 월 5원' }])

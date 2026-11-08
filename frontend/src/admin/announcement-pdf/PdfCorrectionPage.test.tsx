@@ -229,7 +229,7 @@ it.each(['공개 요청', '공급 유형', '모집 유형'])('미리보기 뒤 %
     recruitmentType: field === '모집 유형' ? 'NEW' : 'WAITLIST',
   }))
 })
-it('기존 행과 전용면적이 맞지 않는 PDF 행은 확인 없이 새 공급정보로 두고, 주택형을 비워 전용면적과 함께 보낸다', async () => {
+it('기존 행과 전용면적이 맞지 않는 PDF 행은 확인 없이 새 공급정보로 두고, 이름 형식만 다른 같은 면적 단지 주택타입(26)에 이어 보낸다', async () => {
   const extraction = structuredClone(fixtures.hansville.extraction)
   extraction.sharedCounts = []
   await open(JSON.stringify(extraction))
@@ -238,7 +238,7 @@ it('기존 행과 전용면적이 맞지 않는 PDF 행은 확인 없이 새 공
   fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
   await waitFor(() => expect(api.previewJsonUpdate).toHaveBeenCalled())
   const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
-  expect(input.correction.rows.filter(row => row.id === null).map(row => [row.typeName, row.housingTypeId, row.newHousingType, row.exclusiveArea])).toEqual([['26A', null, null, 26.5195], ['26B', null, null, 26.4673]])
+  expect(input.correction.rows.filter(row => row.id === null).map(row => [row.typeName, row.housingTypeId, row.newHousingType, row.exclusiveArea])).toEqual([['26A', 10353, null, 26.5195], ['26B', 10352, null, 26.4673]])
   for (const field of ['saveMode', 'lhSourceRowIdentifier', 'newGroups']) expect(JSON.stringify(input)).not.toContain(`"${field}"`)
 })
 it('AI 워커가 원문과 대조한 경고를 검토 화면의 검산 확인에도 보여 준다', async () => {
@@ -624,19 +624,19 @@ it('응답 준비로 돌아갔다 와도 같은 PDF·응답이면 검토하던 �
   expect(screen.queryByRole('region', { name: '적용 근거 입력' })).not.toBeInTheDocument()
 })
 
-it('단지에 같은 전용면적 주택형이 없으면 저장할 때 새로 만든다고 미리 알리고, 주택형을 비운 채 전용면적을 보낸다', async () => {
+it('단지에 같은 이름·같은 집 주택타입이 없으면 저장할 때 공고문 이름으로 새로 만든다고 미리 알리고 새 주택타입으로 보낸다', async () => {
   const extraction = structuredClone(fixtures.hansville.extraction)
   extraction.data.supplyRows[0].exclusiveArea = 99.1234
   extraction.sharedCounts = []
   await open(JSON.stringify(extraction))
   showRow(1)
   const block = screen.getByRole('region', { name: '공급행 1 검토' })
-  expect(block).toHaveTextContent('연결 주택타입: 이 단지에 전용 99.1234㎡ 주택타입이 없어 저장하면 새로 만듭니다.')
+  expect(block).toHaveTextContent("연결 주택타입: 이 단지에 '26A' 주택타입이 없어 저장하면 새로 만듭니다.")
   expect(within(block).queryByText('맞는 주택형 없음')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
   await waitFor(() => expect(api.previewJsonUpdate).toHaveBeenCalled())
   const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
-  expect(input.correction.rows.find(row => row.typeName === '26A')).toMatchObject({ housingComplexId: 3055, housingTypeId: null, newHousingType: null, exclusiveArea: 99.1234 })
+  expect(input.correction.rows.find(row => row.typeName === '26A')).toMatchObject({ housingComplexId: 3055, housingTypeId: null, newHousingType: { name: '26A', exclusiveArea: 99.1234 }, exclusiveArea: 99.1234 })
 })
 it('적용할 수 없는 값이 있으면 오류를 알리고 그 항목으로 이동한다', async () => {
   const scroll = vi.fn()
@@ -743,7 +743,7 @@ it('단지가 연결되지 않은 원천행은 단지를 고르면 전용면적�
   await waitFor(() => expect(api.previewJsonUpdate).toHaveBeenCalled())
   const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
   expect(input.correction.rows.map(row => [row.key === 'row:11' ? row.key : 'new', row.housingComplexId, row.housingTypeId, row.exclusiveArea]))
-    .toEqual([['row:11', 7, null, 26.5195], ['new', 7, null, 26.4673]])
+    .toEqual([['row:11', 7, 21, 26.5195], ['new', 7, null, 26.4673]])
 })
 it('세부 타입 묶음 행은 공급행 하나로 저장하고 행 모집수를 지키며 세부 타입 주택타입을 모두 그 행에 연결한다', async () => {
   await open(JSON.stringify(subtypeExtraction()))

@@ -1,9 +1,10 @@
 import type { ExtractedAnnouncement, HousingTypeValue, JsonObject, JsonUpdateInput, JsonWorkspace } from '../announcement-json/api'
 import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type LinkedHousingType } from '../supply/supplyCorrectionApi'
-import { evidenceFor, noteFor, type Evidence, type Extraction, type Subtype } from './extraction'
+import { evidenceFor, noteFor, text, type Evidence, type Extraction, type Subtype } from './extraction'
 import { createdTypeName, foldSameHousingType, renamedTypeName, withoutTrailingParentheses } from './subtypes'
-import { areaHousingType, sameArea } from './areas'
-import { areaValue, defaultTargetDestinations, missingHousingType, originalDate, pickSubtypes, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal, canonicalTarget, describeRow } from './matching'
+import { applicationTypeKey } from '../supply/applicationType'
+import { announcementHousingType, type AnnouncementType } from './areas'
+import { areaValue, defaultTargetDestinations, missingHousingType, originalDate, otherTypeNames, pickSubtypes, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal, canonicalTarget, describeRow } from './matching'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
@@ -31,10 +32,14 @@ export type RowReview = { proposal: RowProposal; include: boolean; reviewed: boo
   /** 주택형 기본 임대조건으로 쓸 대상 순번. null이면 지금 값 유지, 없으면 housingTypePrice가 정한 기본값 */
   priceTarget?: number | null
   /**
-   * 관리자가 전용면적이 다른 기존 행을 저장할 곳으로 골랐을 때 연결할 단지 주택타입. PDF 전용면적의 주택타입 ID, 단지에 없으면 'new'(저장할 때 새로 만듦).
-   * 전용면적을 PDF 값으로 반영하고 연결 주택타입 칸을 직접 고르지 않았을 때만 쓴다(relinkTarget).
+   * 저장할 곳의 지금 주택타입이 이 행의 공고문 주택타입 이름과 다를 때 다시 연결할 단지 주택타입. 이름이 같은 주택타입 ID, 단지에 없으면
+   * 'new'(저장할 때 새로 만듦). 전용면적을 PDF 값으로 반영하고 연결 주택타입 칸을 직접 고르지 않았을 때만 쓴다(relinkTarget).
    */
-  relinkTo?: number | 'new' }
+  relinkTo?: number | 'new'
+  /** 이 행이 연결할 단지 주택타입의 공고문 이름. PDF 주택타입 열의 이름, 없으면 공고 주택형(신청형)이다(housingTypeNameOf). */
+  housingTypeName?: string | null
+  /** 이 공고의 다른 공고문 주택타입(otherTypeNames). 그 이름이나 같은 면적이 있으면 이름 형식만 다른 단지 주택타입에 잇지 않는다. */
+  otherTypeNames?: AnnouncementType[] }
 export type ScheduleReview = { proposal: ScheduleProposal; include: boolean; reviewed: boolean; cells: Cell[] }
 export type Review = { extraction: Extraction; rows: RowReview[]; schedules: ScheduleReview[]; metadata: Cell[]; reception: Cell[]
   /** PDF 행이 가리키지 않아 그대로 둘 기존 공급행 중 관리자가 이번 보정에서 제외하기로 고른 행(leftoverRows). 지울 수 있는 행은 지운다. */
@@ -181,11 +186,19 @@ export function autoHousingType(row: RowReview) {
   const area = row.cells.find(cell => cell.field === 'exclusiveArea')
   return typeof savedValue(area!) === 'number' && Number(savedValue(area!)) > 0
 }
-/** 서버가 정할 주택형을 화면에서 미리 보인다(서버와 같은 규칙). 같은 면적 주택형이 없으면 null이다. 저장에는 쓰지 않는다. */
+/**
+ * 연결 주택형을 정하지 않은 행이 저장할 때 연결할 단지 주택타입. 공고문 주택타입 이름(housingTypeName, 없으면 공고 표기)이 같은 주택타입이고,
+ * 없으면 null이라 저장할 때 그 이름으로 새로 만든다(assembleReview). 단지 주택타입은 공고문 표기 이름으로 나누므로 면적이 같아도 이름이 다르면 잇지 않는다.
+ */
 export function expectedHousingType(row: RowReview) {
   if (!autoHousingType(row)) return null
   const value = (field: string) => { const cell = row.cells.find(item => item.field === field); return cell ? savedValue(cell) : null }
-  return areaHousingType(row.proposal.candidates, value('exclusiveArea'), typeof value('sourceHousingTypeName') === 'string' ? String(value('sourceHousingTypeName')) : null)
+  return announcementHousingType(row.proposal.candidates, housingTypeNameOf(row), value('exclusiveArea'), row.otherTypeNames)
+}
+/** 행이 연결할 단지 주택타입의 공고문 이름. PDF 주택타입 열 이름, 없으면 저장할 공고 표기의 첫 표기(신청자 표기 제외)다. */
+export function housingTypeNameOf(row: RowReview) {
+  const label = row.cells.find(item => item.field === 'sourceHousingTypeName'), shown = label ? savedValue(label) : null
+  return createdTypeName(row.housingTypeName ?? (typeof shown === 'string' ? shown : ''))
 }
 /** 세부 타입 묶음 행의 연결 주택형 칸은 대표 세부 타입의 주택형을 보여 주기만 한다. */
 function syncRepresentative(row: RowReview): RowReview {
@@ -225,15 +238,19 @@ export function createRowReview(extraction: Extraction, index: number, proposal:
   const before = current && merged !== null ? { ...current, householdCount: merged } : current
   const rowCells = cells(extraction, `supplyRows[${index}]`, rowFields, { ...source.values, housingTypeId }, before as unknown as JsonObject)
   const count = rowCells.find(cell => cell.field === 'totalSupplyHouseholdCount')!
-  // 관리자가 '바꾸기'로 전용면적이 다른 기존 행을 고르면 그 행의 지금 주택타입 대신 PDF 전용면적의 단지 주택타입에 연결하도록 PDF 추출값으로 둔다.
-  // 주택타입은 단지·전용면적으로 정하므로, 옛 주택타입에 PDF 값·가격을 덮어쓰지 않게 한다. 같은 면적 주택타입이 없으면 저장할 때 새로 만든다(newHousingType).
-  // 관리자는 연결 주택형 칸에서 기존 값 사용을 골라 지금 주택타입을 그대로 둘 수 있다.
+  // 저장할 곳의 지금 주택타입 이름이 이 행의 공고문 주택타입 이름과 다르면(55D-1 행이 같은 면적의 55C-1에 이어져 있으면) 이름이 같은 단지 주택타입에
+  // 다시 잇고, 없으면 저장할 때 그 이름으로 새로 만든다(newHousingType). 단지 주택타입은 공고문 표기 이름으로 나누므로 옛 주택타입에 PDF 값·가격을
+  // 덮어쓰지 않게 한다. 관리자는 연결 주택형 칸에서 기존 값 사용을 골라 지금 주택타입을 그대로 둘 수 있다.
   const area = source.values.exclusiveArea, now = proposal.candidates.find(type => type.id === current?.housingTypeId)
-  const relink = Boolean(proposal.automatic && current?.housingTypeId != null && !subtypes && areaValue(area) && !(now && sameArea(now.exclusiveArea, area)))
-  const target = relink ? areaHousingType(proposal.candidates, area, source.typeName) : null
+  const housingTypeName = text(source.values.houseTypeName) ?? null, typeNameForLink = createdTypeName(housingTypeName ?? source.typeName ?? '')
+  const others = otherTypeNames(extraction, index)
+  const linked = !subtypes && areaValue(area) && typeNameForLink ? announcementHousingType(proposal.candidates, typeNameForLink, area, others) : null
+  const relink = Boolean(current?.housingTypeId != null && !subtypes && areaValue(area) && typeNameForLink && (now ? linked?.id !== now.id : true))
+  const target = relink ? linked : null
   if (relink) {
     const type = rowCells.find(cell => cell.field === 'housingTypeId')!
-    const note = target ? `저장할 곳의 지금 주택타입과 전용면적이 달라 같은 전용면적의 '${target.name}'에 연결합니다.` : '저장할 곳의 지금 주택타입과 전용면적이 달라, 저장하면 이 전용면적의 주택타입을 새로 만들어 연결합니다.'
+    const note = target ? `저장할 곳의 지금 주택타입이 공고문 주택타입 '${typeNameForLink}'과 달라 '${target.name}'에 연결합니다.`
+      : `저장할 곳의 지금 주택타입이 공고문 주택타입 '${typeNameForLink}'과 달라(공고문이 그 주택타입을 따로 적었거나 같은 집을 찾지 못함), 저장하면 '${typeNameForLink}' 주택타입을 새로 만들어 연결합니다.`
     Object.assign(type, { note, extracted: { ...type.extracted, note } })
   }
   // 이미 저장된 공통 모집 묶음은 묶음이 모집수를 갖는다. 묶음의 행이 모두 이 공급행에 합쳐지면 묶음에서 빠져 이 행이 모집수를 갖는다.
@@ -246,7 +263,7 @@ export function createRowReview(extraction: Extraction, index: number, proposal:
     const note = '합쳐지는 옛 공급행 중 모집수를 모르는 행이 있어 합을 만들지 못했습니다. 모집수를 직접 입력하거나 지금 값을 그대로 둘지 정하세요.'
     Object.assign(count, { state: 'confirm', note, extracted: { ...count.extracted, state: 'confirm', note } })
   }
-  return syncRepresentative({ proposal, include: true, reviewed: false, key: current?.key ?? crypto.randomUUID(), cells: rowCells, subtypes, ...relink ? { relinkTo: target?.id ?? 'new' as const } : {},
+  return syncRepresentative({ proposal, include: true, reviewed: false, key: current?.key ?? crypto.randomUUID(), cells: rowCells, subtypes, housingTypeName, otherTypeNames: others, ...relink ? { relinkTo: target?.id ?? 'new' as const } : {},
     targets: source.targets.map((target, at) => ({ destination: targets[at], cells: cells(extraction, `supplyRows[${index}].targets[${at}]`, targetFields, target,
       current?.targets.find(item => (item.id ? String(item.id) : item.key) === targets[at]) as unknown as JsonObject) })) })
 }
@@ -275,8 +292,8 @@ export function reproposeRow(review: Review, index: number, proposal: RowProposa
   return { ...next, key, include: old.include, reviewed: false, cells: next.cells.map(retain), targets }
 }
 /**
- * fold가 true면 같은 PDF 단지에서 전용면적이 겹치거나 행 모집수를 함께 쓰는 공고문 행을 공급행 하나로 접는다(foldSameHousingType).
- * 이미 접은 검토를 다시 만들 때는 접지 않는다. 저장할 곳은 행마다 전용면적으로 정한다(proposeRows).
+ * fold가 true면 같은 PDF 단지에서 신청형이 같거나 행 모집수를 함께 쓰는 공고문 행을 공급행 하나로 접는다(foldSameHousingType).
+ * 이미 접은 검토를 다시 만들 때는 접지 않는다. 저장할 곳은 행마다 전용면적·신청형으로 정한다(proposeRows).
  */
 export function createReview(source: Extraction, workspace: JsonWorkspace, housing: HousingCandidates, fold = true): Review {
   const extraction = fold ? foldSameHousingType(source) : source
@@ -414,20 +431,22 @@ export function scheduleStorable(schedule: ScheduleReview) {
 /** 연결 주택형을 아직 정하지 못한 세부 타입 번호 */
 export function pendingSubtypes(row: RowReview) {
   if (!row.include) return []
-  const sameArea = sameAreaSubtypes(row)
+  const sameType = sameTypeSubtypes(row)
   // 단지를 정하기 전에 비어 있는 연결은 단지 정하기에서 함께 풀린다.
-  return (row.subtypes ?? []).flatMap((subtype, at) => subtype.choice === null && row.proposal.complexId !== null || sameArea.includes(at) ? [at] : [])
+  return (row.subtypes ?? []).flatMap((subtype, at) => subtype.choice === null && row.proposal.complexId !== null || sameType.includes(at) ? [at] : [])
 }
-export const sameAreaNote = '앞 세부 타입과 연결 주택형의 전용면적이 같습니다. 한 공급행에는 전용면적마다 주택형 하나만 연결할 수 있으니 하나를 \'연결 안 함\'으로 두세요.'
-/** 앞 세부 타입과 같은 전용면적의 주택형을 연결한 세부 타입 번호. 서버는 한 공급행에 전용면적마다 주택형 하나만 연결한다. */
-export function sameAreaSubtypes(row: RowReview): number[] {
-  const seen: number[] = []
+export const sameTypeNote = '앞 세부 타입과 같은 주택타입을 연결했습니다. 세부 타입마다 다른 주택타입을 연결하거나 하나를 \'연결 안 함\'으로 두세요.'
+/**
+ * 앞 세부 타입과 같은 주택타입(기존은 id, 새 주택타입은 이름)을 연결한 세부 타입 번호. 공고 신청형 한 행이 같은 면적의 여러 단지
+ * 주택타입(59A·59A1·59C)을 함께 모집할 수 있으므로 면적은 보지 않는다(서버 linkedTypes와 같은 기준).
+ */
+export function sameTypeSubtypes(row: RowReview): number[] {
+  const seen: string[] = []
   return (row.subtypes ?? []).flatMap((subtype, at) => {
-    const area = typeof subtype.choice === 'number' ? row.proposal.candidates.find(type => type.id === subtype.choice)?.exclusiveArea
-      : subtype.choice === 'new' ? subtype.exclusiveArea : null
-    if (typeof area !== 'number') return []
-    if (seen.some(value => sameArea(value, area))) return [at]
-    seen.push(area)
+    const key = typeof subtype.choice === 'number' ? `type:${subtype.choice}` : subtype.choice === 'new' ? `new:${applicationTypeKey(createdTypeName(subtype.name))}` : null
+    if (key === null) return []
+    if (seen.includes(key)) return [at]
+    seen.push(key)
     return []
   })
 }
@@ -560,7 +579,7 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
 
   const rows = structuredClone(workspace.supply.rows), taken = new Map<string, number>()
   const housingTypeValues: HousingTypeValue[] = [], deleted: string[] = []
-  // 같은 주택형의 옛 공급행과 관리자가 고른 남는 행은 제외하고, 관리자가 추가해 지울 수 있는 행은 지운다.
+  // 같은 신청형의 옛 공급행과 관리자가 고른 남는 행은 제외하고, 관리자가 추가해 지울 수 있는 행은 지운다.
   const supersede = (keys: string[] = []) => keys.forEach(key => {
     const row = rows.find(item => item.key === key)
     if (!row || row.excluded || deleted.includes(key) || taken.has(key)) return
@@ -592,6 +611,12 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
       const source = review.extraction.supplyRows[index], houseType = source.values.houseTypeName
       row.housingTypeId = null
       row.newHousingType = missingHousingType(row.housingComplexId, entry.proposal.candidates, createdTypeName(typeof houseType === 'string' ? houseType : source.typeName ?? row.typeName), row.exclusiveArea, row.supplyArea)
+    } else if (relinked === null && !entry.subtypes && autoHousingType(entry) && row.housingComplexId !== null && row.groupId === null
+      && !entry.cells.some(cell => cell.field === 'housingTypeId' && cell.selected && !cell.locked)) {
+      // 연결 주택형을 정하지 않은 행은 공고문 주택타입 이름으로 정해 보낸다. 서버가 면적으로 고르면 같은 면적의 다른 주택타입(55C-1)에 이어진다.
+      const expected = expectedHousingType(entry)
+      if (expected) row.housingTypeId = expected.id
+      else row.newHousingType = missingHousingType(row.housingComplexId, entry.proposal.candidates, housingTypeNameOf(entry), row.exclusiveArea, row.supplyArea)
     }
     if (existing && entry.proposal.supersedes?.length) {
       // PDF 모집수를 고르지 않았으면 합쳐지는 옛 공급행의 모집수까지 이 행이 갖는다(지금 값을 그 합으로 보인 칸과 같다).
@@ -685,7 +710,7 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
 }
 
 type TypeValueInput = { name: unknown; supplyArea: unknown; householdCount: unknown }
-type TypeAddress = Pick<HousingTypeValue, 'linkedHousingTypeId' | 'linkedNewHousingTypeArea'>
+type TypeAddress = Pick<HousingTypeValue, 'linkedHousingTypeId' | 'linkedNewHousingTypeArea' | 'linkedNewHousingTypeName'>
 /** 세부 타입이 없는 행의 주택형 값. 이름·공급면적은 관리자가 고른 값(현재값과 같은 값 포함)만 쓰고, 고르지 않은 값은 보내지 않는다. */
 function rowTypeValues(entry: RowReview, source: Extraction['supplyRows'][number]): TypeValueInput {
   const accepted = (field: string, extracted: unknown) => {
@@ -737,22 +762,20 @@ function subtypeLinks(entry: RowReview, index: number, row: CorrectionRow): { at
     if (subtype.choice === 'none') return null
     if (subtype.choice === 'new') {
       const created = missingHousingType(row.housingComplexId, entry.proposal.candidates, createdTypeName(subtype.name), subtype.exclusiveArea, subtype.supplyArea)
-      if (!created?.name) throw new ReviewError(`${label}: 세부 타입 ${subtype.name}은(는) 형명과 전용면적이 있고 단지에 같은 면적 주택형이 없어야 새 주택형으로 추가할 수 있습니다.`, `subtype:${index}:${at}`)
+      if (!created?.name) throw new ReviewError(`${label}: 세부 타입 ${subtype.name}은(는) 형명과 전용면적이 있고 단지에 같은 이름 주택형이 없어야 새 주택형으로 추가할 수 있습니다.`, `subtype:${index}:${at}`)
       return { newHousingType: created }
     }
     if (!entry.proposal.candidates.some(type => type.id === subtype.choice)) throw new ReviewError(`${label}: 세부 타입 ${subtype.name}의 연결 주택형이 선택한 단지에 없습니다.`, `subtype:${index}:${at}`)
     return { housingTypeId: subtype.choice }
   })
-  const chosen = links.flatMap(link => link?.housingTypeId ? [link.housingTypeId] : [])
-  if (new Set(chosen).size !== chosen.length) throw new ReviewError(`${label}: 세부 타입마다 다른 주택형을 연결하세요.`, `row:${index}`)
-  const [sameArea] = sameAreaSubtypes(entry)
-  if (sameArea !== undefined) throw new ReviewError(`${label}: 세부 타입 ${subtypes[sameArea].name}은(는) ${sameAreaNote}`, `subtype:${index}:${sameArea}`)
+  const [sameType] = sameTypeSubtypes(entry)
+  if (sameType !== undefined) throw new ReviewError(`${label}: 세부 타입 ${subtypes[sameType].name}은(는) ${sameTypeNote}`, `subtype:${index}:${sameType}`)
   const representative = representativeSubtype(entry), first = links[representative]
   if (!first) throw new ReviewError(`${label}: 세부 타입 하나 이상에 주택형을 연결하세요.`, `row:${index}`)
   row.housingTypeId = first.housingTypeId ?? null; row.newHousingType = first.newHousingType ?? null
   row.linkedHousingTypes = links.filter((link, at): link is LinkedHousingType => link !== null && at !== representative)
   return links.flatMap((link, at) => link === null ? [] : [{ at, address: at === representative ? {}
-    : link.housingTypeId ? { linkedHousingTypeId: link.housingTypeId } : { linkedNewHousingTypeArea: link.newHousingType!.exclusiveArea } }])
+    : link.housingTypeId ? { linkedHousingTypeId: link.housingTypeId } : { linkedNewHousingTypeArea: link.newHousingType!.exclusiveArea, linkedNewHousingTypeName: link.newHousingType!.name } }])
 }
 
 /**

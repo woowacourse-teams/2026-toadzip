@@ -1,3 +1,4 @@
+import { sameApplicationType } from './applicationType'
 import type { CorrectionRow, LhSupplyRow, SupplyWorkspace } from './supplyCorrectionApi'
 
 /** 같은 공고 단지·전용면적 공급행이 없어 어느 공급행에도 붙지 않은 LH 공급 원본 행. 세대수 검산용 정보이며 저장을 막지 않는다. */
@@ -34,10 +35,15 @@ function lhSourceRows(workspace: SupplyWorkspace, rows: CorrectionRow[]) {
   return rows.filter(row => lhRowKeys.has(row.key) && !deletable.has(row.key))
 }
 
-/** 같은 주택형에 연결된 후보가 하나면 그 행을 제안한다. 이름·면적만으로는 제안하지 않는다. */
+/**
+ * 같은 주택형에 연결된 후보가 하나면 그 행을 제안한다. 같은 주택형 후보가 여럿이면(신청형이 다른 55A1·55C) 신청형까지 같은 후보가
+ * 하나일 때만 제안한다. 이름·면적만으로는 제안하지 않는다.
+ */
 export function suggestedMergeTarget(candidates: CorrectionRow[], duplicate: CorrectionRow): CorrectionRow | null {
   const sameType = duplicate.housingTypeId === null ? [] : candidates.filter(row => row.housingTypeId === duplicate.housingTypeId)
-  return sameType.length === 1 ? sameType[0] : null
+  if (sameType.length === 1) return sameType[0]
+  const named = sameType.filter(row => sameApplicationType(row.typeName, duplicate.typeName))
+  return named.length === 1 ? named[0] : null
 }
 
 /** 펼침 행에 제외되지 않은 임대조건이 있으면 어느 조건을 남길지 관리자가 먼저 정리해야 한다. */

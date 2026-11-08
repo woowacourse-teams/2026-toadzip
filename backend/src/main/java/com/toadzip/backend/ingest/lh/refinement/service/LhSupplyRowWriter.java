@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.lh.refinement.service;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementComplex;
+import com.toadzip.backend.housing.domain.HousingTypeNames;
 import com.toadzip.backend.announcement.domain.LhSupplyMatchStatus;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
@@ -22,10 +23,9 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
@@ -33,8 +33,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * LH 공급을 (공고 단지, 전용면적) 공급행으로 쓴다({@link LhSourceIdentifier#lhOwnedAreaSupplyRow}). LH는 같은 주택형을 신청자 묶음마다
- * 여러 줄로 주므로 줄마다 공급행을 만들지 않고 대상으로 둔다. 대표 주택형은 연결 단지에서 {@link HousingTypeAreas#pick}으로 고르고,
+ * LH 공급을 (공고 단지, 주택형(신청형)) 공급행으로 쓴다({@link LhSourceIdentifier#lhOwnedSupplyRow}). LH는 같은 신청형을 신청자 묶음마다
+ * 여러 줄로 주므로("36형 일반(고령자)"·"36형 일반(청년)") 줄마다 공급행을 만들지 않고 대상으로 둔다. 같은 전용면적이어도 신청형이 다르면
+ * (55A1·55C(주거약자)) 공급행을 따로 두고 같은 단지 주택형을 함께 가리킨다({@link HousingTypeNames}).
+ * 대표 주택형은 연결 단지에서 {@link HousingTypeAreas#pick}으로 고르고,
  * 정제는 주택형을 만들지 않는다(LH 면적은 함께 모집하는 면적 중 하나라 PDF 보정이 확인할 때 만든다). 공고문 소유 공고는 공급행을
  * 만들거나 지우지 않고 비어 있는 공고 단지 참조만 채운다.
  */
@@ -44,15 +46,14 @@ class LhSupplyRowWriter {
 
     private static final String ALL = "전체";
     private static final int MAX_TYPE_NAME = 255;
-    private static final Pattern APPLICANT = Pattern.compile("\\(([^()]*)\\)\\s*$");
 
     private final SupplyRowRepository supplyRows;
     private final SupplyTargetRepository supplyTargets;
     private final HousingTypeRepository housingTypes;
 
     /**
-     * LH 원천 소유 공고의 공급행을 이번 LH 공급으로 맞추고 이 공고의 다른 공급행을 지운다. 공급행은 (공고 단지, 전용면적)마다 하나이고,
-     * 같은 면적의 LH 줄(신청자 묶음·같은 면적의 다른 형명)은 그 공급행의 대상이 된다. 면적이 없는 LH 줄만 형명마다 공급행을 둔다.
+     * LH 원천 소유 공고의 공급행을 이번 LH 공급으로 맞추고 이 공고의 다른 공급행을 지운다. 공급행은 (공고 단지, 신청형)마다 하나이고,
+     * 같은 신청형의 LH 줄(신청자 묶음)은 그 공급행의 대상이 된다. 공급행의 전용면적은 그 신청형의 첫 LH 줄 면적이다.
      */
     void writeLhOwned(Announcement announcement, List<SupplyLine> lines, Map<String, AnnouncementComplex> complexes,
             SupplyCategory category, Tally tally) {
@@ -65,7 +66,8 @@ class LhSupplyRowWriter {
             List<SupplyLine> members = group.getValue();
             SupplyLine first = members.getFirst();
             AnnouncementComplex complex = complexes.get(first.source().getComplexLabel());
-            BigDecimal area = area(first.source().getExclusiveArea());
+            BigDecimal area = members.stream().map(line -> area(line.source().getExclusiveArea())).filter(Objects::nonNull)
+                    .findFirst().orElse(null);
             String typeName = joinedTypeName(members);
             HousingType type = complex.linkedComplex() == null ? null : HousingTypeAreas.pick(typesByComplex
                     .computeIfAbsent(complex.linkedComplex().getId(), ignored -> housingTypes.findAllByHousingComplex(
@@ -84,27 +86,21 @@ class LhSupplyRowWriter {
         }
     }
 
-    /** LH 줄을 공급행 키별로 모은다. LH 순서대로 처음 나온 묶음이 앞선다. */
+    /** LH 줄을 공급행 키별로 모은다. LH 순서대로 처음 나온 묶음이 앞선다. 형명이 빈 줄은 줄마다 공급행을 둔다. */
     private static Map<String, List<SupplyLine>> groups(List<SupplyLine> lines, Map<String, AnnouncementComplex> complexes) {
         Map<String, List<SupplyLine>> groups = new LinkedHashMap<>();
-        Map<String, Integer> occurrences = new HashMap<>();
+        Map<Long, Integer> unnamed = new HashMap<>();
         for (SupplyLine line : lines) {
             AnnouncementComplex complex = complexes.get(line.source().getComplexLabel());
-            BigDecimal area = area(line.source().getExclusiveArea());
-            String key;
-            if (area != null) {
-                key = LhSourceIdentifier.lhOwnedAreaSupplyRow(complex.getId(), HousingTypeAreas.key(area));
-            } else {
-                String typeName = normalizedTypeName(line.source().getTypeName());
-                int occurrence = occurrences.merge(complex.getId() + ":" + typeName, 1, Integer::sum);
-                key = LhSourceIdentifier.lhOwnedSupplyRow(complex.getId(), typeName, occurrence);
-            }
+            String typeKey = HousingTypeNames.key(line.source().getTypeName());
+            int occurrence = typeKey.isEmpty() ? unnamed.merge(complex.getId(), 1, Integer::sum) : 1;
+            String key = LhSourceIdentifier.lhOwnedSupplyRow(complex.getId(), typeKey, occurrence);
             groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(line);
         }
         return groups;
     }
 
-    /** 원천 형명은 LH 형명 원문을 순서대로 잇는다. 같은 면적에 형명이 여럿이면 모두 보인다. */
+    /** 원천 형명은 LH 형명 원문을 순서대로 잇는다. 신청자 표기만 다른 형명이 여럿이면 모두 보인다. */
     private static String joinedTypeName(List<SupplyLine> members) {
         String joined = members.stream().map(line -> line.source().getTypeName().strip()).distinct()
                 .collect(Collectors.joining(" · "));
@@ -210,14 +206,14 @@ class LhSupplyRowWriter {
     }
 
     /**
-     * 대상 이름. LH 형명 끝 괄호의 신청자 표기("36형 일반(고령자)" → "고령자")를 쓴다. 괄호가 없으면 한 줄뿐인 공급행은 "전체",
+     * 대상 이름. LH 형명 끝의 신청자 표기("36형 일반(고령자)" → "고령자", "59A[청년]" → "청년")를 쓴다. 신청자 표기가 없으면 한 줄뿐인 공급행은 "전체",
      * 여러 줄이면 줄을 가를 수 있게 LH 형명 원문이다.
      */
     private static String targetLabel(SupplyLine line, int memberCount) {
         String typeName = line.source().getTypeName().strip();
-        Matcher applicant = APPLICANT.matcher(typeName);
-        if (applicant.find() && !applicant.group(1).isBlank()) {
-            return applicant.group(1).strip();
+        String applicant = HousingTypeNames.applicant(typeName);
+        if (!applicant.isEmpty()) {
+            return applicant;
         }
         return memberCount == 1 ? ALL : typeName;
     }
@@ -245,11 +241,6 @@ class LhSupplyRowWriter {
         catch (NumberFormatException unreadable) {
             return null;
         }
-    }
-
-    /** 공급행 키에 쓰는 주택형명. 앞뒤·연속 공백만 맞추고 표기는 바꾸지 않는다. */
-    private static String normalizedTypeName(String value) {
-        return value.strip().replaceAll("\\s+", " ");
     }
 
     record SupplyLine(LhAnnouncementSupplySourceView source, LhSupplyData data) {

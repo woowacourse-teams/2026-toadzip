@@ -8,10 +8,11 @@ export type JsonWorkspace = { snapshotToken: string; detail: ManagementDetailDat
 export type Selection = { inputIndex: number; existingId: number | null }
 /**
  * 공고문에서 읽은 공급행 주택형의 값. 저장하면 그 행이 고른 주택형에 반영한다. 연결 주소가 없으면 대표 주택형이고,
- * linkedHousingTypeId(기존)·linkedNewHousingTypeArea(새 주택형의 전용면적)는 그 행이 함께 모집하는 주택형 하나를 가리킨다.
+ * linkedHousingTypeId(기존)·linkedNewHousingTypeArea(새 주택형의 전용면적)는 그 행이 함께 모집하는 주택형 하나를 가리킨다. 같은 면적의 새 주택형이
+ * 여럿이면 linkedNewHousingTypeName(새 주택형 이름)으로 그중 하나를 가리킨다.
  */
 export type HousingTypeValue = { rowKey: string; name: string | null; supplyArea: number | null; householdCount: number | null; basicDeposit?: number | null; basicMonthlyRent?: number | null
-  linkedHousingTypeId?: number; linkedNewHousingTypeArea?: number }
+  linkedHousingTypeId?: number; linkedNewHousingTypeArea?: number; linkedNewHousingTypeName?: string }
 export type JsonUpdateInput = { snapshotToken: string; document: ExtractedAnnouncement; fields: string[]; schedules: Selection[]; attachments: Selection[]; correction: SupplyCorrectionInput; housingTypeValues?: HousingTypeValue[]; publish?: boolean }
 export type TypeValues = { name: string; supplyArea: number | null; householdCount: number | null; basicDeposit?: number | null; basicMonthlyRent?: number | null }
 /** housingTypeId가 null이면 이 저장에서 새로 만드는 주택형이다. */

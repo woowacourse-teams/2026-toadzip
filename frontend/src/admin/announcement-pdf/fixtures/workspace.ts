@@ -95,13 +95,14 @@ export function ghFrame({ sourceRow = false } = {}) {
  * 면적 없이 만들었다. 공고문은 세 청약구분을 같은 전용 24.97㎡로 적고 모집수는 대상별 예비자 수만 적었다.
  * 워커는 PDF 행마다 GH 틀 행을 하나씩 맞춘다(sourceRow).
  */
-export function ghSameArea() {
+/** GH 다산역A2의 같은 전용면적(24.97㎡) PDF 행 셋과 GH 틀 행 셋. names는 PDF 행의 주택형(신청형) 표기다. */
+export function ghSameArea(names: [string, string, string] = ['24ABC', '24B', '24C']) {
   const frame = (id: number, typeName: string, count: number) => ({ ...blankRow(id - 911), id, key: `row:${String(id)}`, complexName: '남양주 다산역A2 경기행복주택', typeName,
     pnu: '4136010100', category: 'RESUPPLY' as const, housingComplexId: 52, housingComplexName: '다산역A2', householdCount: count, areaOverride: false })
   const row = (name: string, target: string, reserve: number, code: string) => ({ complexReference: { sourceComplexName: '다산역 A2' }, sourceHousingTypeName: name,
     expectedMoveInMonth: null, totalSupplyHouseholdCount: null, exclusiveArea: 24.97, supplyArea: null, sourceRow: `GH:839:남양주 다산역A2 경기행복주택:${code}`,
     targets: [{ target, supplyRank: null, supplyHouseholdCount: null, reserveCount: reserve, rentalDeposit: 46920000, monthlyRent: 178670, convertedDeposit: null }] })
-  const rows = [row('24ABC', '청년', 20, '24A,B,C'), row('24B', '주거급여 수급자', 3, '24B'), row('24C', '고령자', 3, '24C')]
+  const rows = [row(names[0], '청년', 20, '24A,B,C'), row(names[1], '주거급여 수급자', 3, '24B'), row(names[2], '고령자', 3, '24C')]
   const extraction = { data: { announcement: {}, receptionPlace: {}, supplyRows: rows, schedules: [], unresolvedFields: [] },
     sharedCounts: [], notApplicable: [], evidence: rows.map((item, index) => ({ path: `supplyRows[${index}]`, page: 4, quote: `${item.sourceHousingTypeName} ${item.targets[0].target}` })) }
   const read = readExtraction(JSON.stringify(extraction))

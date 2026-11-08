@@ -128,11 +128,11 @@ it('전용면적을 모르는 LH 통합행은 PDF 행과 맞추지 않아 PDF �
   expect(within(leftovers).getByRole('button', { name: '#747 제외 취소' })).toHaveAttribute('aria-pressed', 'true')
 })
 
-it('주택형을 고르게 하지 않고 저장할 때 같은 단지·전용면적 주택형에 연결한다고 미리 알린다', () => {
+it('주택형을 고르게 하지 않고 저장할 때 공고문 주택타입으로 정한 단지 주택타입에 연결한다고 미리 알린다', () => {
   const { show } = renderDaegu()
   show(1)
   const row = screen.getByRole('region', { name: '공급행 1 검토' })
-  expect(row).toHaveTextContent("연결 주택타입: 저장하면 같은 전용면적의 '51A'(전용 51.98㎡)에 연결합니다.")
+  expect(row).toHaveTextContent("연결 주택타입: 저장하면 '51A'(전용 51.98㎡)에 연결합니다.")
   expect(row).not.toHaveTextContent('맞는 주택형 없음')
   expect(within(screen.getByRole('region', { name: '공급행 목록' })).getAllByRole('row').slice(2).map(item => item.children[4].textContent)).not.toContain('주택타입 미연결')
 })

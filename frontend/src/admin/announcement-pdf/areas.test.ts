@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { areaHousingType, areaKey, sameArea } from './areas'
+import { announcementHousingType, areaKey, namedHousingType, sameArea } from './areas'
 
 it('전용면적은 서버와 같이 소수 둘째 자리 HALF_UP으로 비교하고, 부동소수 곱셈으로 어긋나는 값도 십진 표기대로 반올림한다', () => {
   expect(areaKey(26.375)).toBe(2638)
@@ -13,10 +13,19 @@ it('전용면적은 서버와 같이 소수 둘째 자리 HALF_UP으로 비교�
   expect(areaKey(-1)).toBeNull()
 })
 
-it('같은 면적 주택형이 여럿이면 서버와 같이 이름이 같은 주택형, 없으면 먼저 만든 주택형을 고르고, 없으면 null이다', () => {
+it('단지 주택타입은 공고문 표기 이름으로 고르고 면적이 같아도 이름이 다르면 고르지 않는다(서버 HousingTypeAreas.named)', () => {
   const type = (id: number, name: string, exclusiveArea: number) => ({ id, name, exclusiveArea, supplyArea: null })
-  const types = [type(8576, '26B', 26.37), type(8575, '26', 26.37), type(8577, '31', 31.32)]
-  expect(areaHousingType(types, 26.3700, '26B 형')?.id).toBe(8576)
-  expect(areaHousingType(types, 26.37, '26C')?.id).toBe(8575)
-  expect(areaHousingType(types, 39.5, '39')).toBeNull()
+  const types = [type(8576, '55C-1', 55.98), type(8575, '26', 26.37), type(8578, '26', 26.4)]
+  expect(namedHousingType(types, '55D-1', 55.98)).toBeNull()
+  expect(namedHousingType(types, '055C-1형 (주거약자)', 55.98)?.id).toBe(8576)
+  // 이름이 같은 주택타입이 여럿이면 면적이 같은 것을 고른다.
+  expect(namedHousingType(types, '26', 26.4)?.id).toBe(8578)
+  expect(namedHousingType(types, '', 26.37)).toBeNull()
+})
+
+it('이름 형식만 다른 같은 집(단지 059.9100A ↔ 공고문 59A)은 같은 면적의 다른 공고문 주택타입(59C)이 있어도 이름으로 잇는다', () => {
+  const type = (id: number, name: string, exclusiveArea: number) => ({ id, name, exclusiveArea, supplyArea: null })
+  const types = [type(11, '059.9100A', 59.91)]
+  expect(announcementHousingType(types, '59A', 59.91, [{ name: '59C', exclusiveArea: 59.91 }])?.id).toBe(11)
+  expect(announcementHousingType(types, '59C', 59.91, [{ name: '59A', exclusiveArea: 59.91 }])).toBeNull()
 })

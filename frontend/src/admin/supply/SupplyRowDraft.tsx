@@ -1,3 +1,4 @@
+import { sameTypeName } from '../announcement-pdf/areas'
 import { useEffect, useRef, useState } from 'react'
 import { labels } from '../management/fields'
 import { ComplexPicker } from '../management/ComplexPicker'
@@ -157,7 +158,7 @@ const blankNewType: NewHousingType = { name: '', exclusiveArea: 0, supplyArea: n
 
 /**
  * 대표 주택형과 함께 모집하는 주택형(세부 타입 26B·26C) 목록. 고치면 고친 목록 전체를 보내고, 손대지 않으면 조회한 값을 그대로 둔다.
- * 한 행에는 전용면적마다 주택형 하나만 연결하므로 대표·이미 연결한 면적과 같은 주택형은 고를 수 없다.
+ * 공고 신청형 한 행은 같은 면적의 여러 단지 주택타입을 함께 모집할 수 있어, 대표·이미 연결한 주택형만 다시 고를 수 없다.
  */
 function LinkedHousingTypesDraft({ value, types, lookup, typesLoaded, shared, onLookup, onChange }: {
   value: CorrectionRow; types: MatchingHousingType[]; lookup: boolean; typesLoaded: boolean; shared: boolean
@@ -165,20 +166,21 @@ function LinkedHousingTypesDraft({ value, types, lookup, typesLoaded, shared, on
 }) {
   const [draft, setDraft] = useState<NewHousingType | null>(null)
   const links = value.linkedHousingTypes ?? []
-  const areaOf = (link: LinkedHousingType) => link.newHousingType?.exclusiveArea ?? types.find(type => type.id === link.housingTypeId)?.exclusiveArea
-  const usedAreas = [value.newHousingType?.exclusiveArea ?? types.find(type => type.id === value.housingTypeId)?.exclusiveArea, ...links.map(areaOf)]
-  const choices = types.filter(type => type.id !== value.housingTypeId && !usedAreas.includes(type.exclusiveArea))
+  // 공고 신청형 한 행은 같은 면적의 여러 단지 주택타입(59A·59A1·59C)을 함께 모집할 수 있다. 같은 주택타입(기존은 id, 새 주택타입은 이름)만 두 번 연결하지 않는다.
+  const usedIds = [value.housingTypeId, ...links.map(link => link.housingTypeId)].filter(id => id != null)
+  const newNames = [value.newHousingType, ...links.map(link => link.newHousingType)].flatMap(type => type ? [type.name] : [])
+  const choices = types.filter(type => !usedIds.includes(type.id))
   const label = (link: LinkedHousingType) => {
     if (link.newHousingType) return `${link.newHousingType.name} · 전용 ${link.newHousingType.exclusiveArea}㎡ · 새 주택형 생성 예정`
     const type = types.find(item => item.id === link.housingTypeId)
     return type ? `${type.name} · 전용 ${type.exclusiveArea}㎡ · #${type.id}` : `주택형 #${link.housingTypeId}`
   }
-  const draftConflict = draft && draft.exclusiveArea > 0 && (usedAreas.includes(draft.exclusiveArea) ? '대표나 이미 연결한 주택형과 전용면적이 같습니다.'
-    : types.some(type => type.exclusiveArea === draft.exclusiveArea) ? '이 단지에 같은 전용면적 주택형이 있습니다. 목록에서 고르세요.' : '')
+  const draftConflict = draft && draft.exclusiveArea > 0 && (newNames.some(name => sameTypeName(name, draft.name)) ? '대표나 이미 연결한 새 주택형과 이름이 같습니다.'
+    : types.some(type => sameTypeName(type.name, draft.name, type.exclusiveArea, draft.exclusiveArea)) ? '이 단지에 같은 이름의 주택형이 있습니다. 목록에서 고르세요.' : '')
   return <fieldset><legend>함께 모집하는 주택형</legend>
     {shared ? <p>공통 모집 묶음 행은 묶음의 행마다 주택형을 따로 연결하므로 함께 모집하는 주택형을 연결할 수 없습니다.</p> : <>
       <p className={styles.sourceName}>공고 한 행이 여러 전용면적(예: 26A·26B·26C)을 함께 모집할 때 대표 주택형 밖의 주택형을 연결합니다. 대표나 단지를 바꾸면 연결이 비워집니다.</p>
-      {links.length ? <ul>{links.map((link, index) => <li key={link.housingTypeId ?? `new:${link.newHousingType?.exclusiveArea}`}>{label(link)}{' '}
+      {links.length ? <ul>{links.map((link, index) => <li key={link.housingTypeId ?? `new:${link.newHousingType?.name}:${link.newHousingType?.exclusiveArea}`}>{label(link)}{' '}
         <button type="button" aria-label={`${label(link)} 빼기`} onClick={() => onChange(links.filter((_, at) => at !== index))}>빼기</button></li>)}</ul>
         : <p>대표 주택형만 연결되어 있습니다.</p>}
       {lookup ? <div className={styles.fields}>
@@ -191,7 +193,7 @@ function LinkedHousingTypesDraft({ value, types, lookup, typesLoaded, shared, on
         <label>새 주택형 전용면적 (㎡)<input type="number" min="0.0001" step="0.0001" value={draft.exclusiveArea || ''} onChange={event => setDraft({ ...draft, exclusiveArea: Number(event.target.value) })} /></label>
         <label>새 주택형 공급면적 (㎡)<input type="number" min="0" step="0.0001" value={draft.supplyArea ?? ''} onChange={event => setDraft({ ...draft, supplyArea: event.target.value === '' ? null : Number(event.target.value) })} /></label>
         {draftConflict && <p role="alert">{draftConflict}</p>}
-        {/* 단지 주택형을 불러와야 같은 전용면적 주택형이 있는지 확인할 수 있다. */}
+        {/* 단지 주택형을 불러와야 같은 이름 주택형이 있는지 확인할 수 있다(단지 주택타입은 공고문 표기 이름으로 나눈다). */}
         <div className={styles.actions}><button type="button" disabled={!typesLoaded || !draft.name.trim() || !(draft.exclusiveArea > 0) || !!draftConflict}
           onClick={() => { onChange(sortLinks([...links, { newHousingType: { ...draft, name: draft.name.trim() } }])); setDraft(null) }}>새 주택형 연결</button>
           <button type="button" onClick={() => setDraft(null)}>취소</button></div>

@@ -37,3 +37,8 @@ test('같은 면적의 다른 이름은 첫 형명으로 한 번만 생성한다
   await createPdfHousingTypes(3506, [row('26A', 26.12), row('26A(고령자)', 26.12)], [], new AbortController().signal)
   expect(mocks.requestManagementApi.mock.calls.map(call => call[2])).toEqual([expect.objectContaining({ name: '26A', exclusiveArea: 26.12 })])
 })
+
+test('같은 면적이어도 공고문이 따로 적은 주택타입(55C-1·55D-1)은 따로 만든다', async () => {
+  await createPdfHousingTypes(3508, [row('55C-1', 55.98), row('55D-1', 55.98)], [], new AbortController().signal)
+  expect(mocks.requestManagementApi.mock.calls.map(call => call[2].name)).toEqual(['55C-1', '55D-1'])
+})

@@ -111,7 +111,7 @@ class LhAnnouncementRefinementIntegrationTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void 공고목록에만_있는_공고를_만들고_주소가_같은_단지에_자동_연결해_전용면적마다_공급행을_만든다() {
+    void 공고목록에만_있는_공고를_만들고_주소가_같은_단지에_자동_연결해_신청형마다_공급행을_만든다() {
         publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
         details("P1", "동탄 행복주택 단지", ADDRESS);
         supplies("P1", supply("동탄 행복주택 단지", "59A(청년)", "59.9800", "10", "30000000", "200000"),
@@ -141,10 +141,10 @@ class LhAnnouncementRefinementIntegrationTest {
             assertThat(announcementComplex.linkedComplex().getId()).isEqualTo(complex.getId());
             List<SupplyRow> rows = supplyRows.findAllByAnnouncement(announcement);
             assertThat(rows).extracting(SupplyRow::getSourceSupplyRowIdentifier).containsExactlyInAnyOrder(
-                    "LHROW:" + announcementComplex.getId() + ":A59.98",
-                    "LHROW:" + announcementComplex.getId() + ":A46.00");
-            // 신청자 묶음으로 나뉜 LH 두 줄(청년·고령자)은 같은 전용면적이라 공급행 하나와 그 아래 대상 둘이 된다.
-            SupplyRow area59Row = rows.stream().filter(row -> row.getSourceSupplyRowIdentifier().endsWith(":A59.98"))
+                    "LHROW:" + announcementComplex.getId() + ":59a#1",
+                    "LHROW:" + announcementComplex.getId() + ":46a#1");
+            // 신청자 표기만 다른 LH 두 줄(59A(청년)·59A(고령자))은 같은 신청형이라 공급행 하나와 그 아래 대상 둘이 된다.
+            SupplyRow area59Row = rows.stream().filter(row -> row.getSourceSupplyRowIdentifier().endsWith(":59a#1"))
                     .findFirst().orElseThrow();
             assertThat(area59Row.getSourceHousingTypeName()).isEqualTo("59A(청년) · 59A(고령자)");
             assertThat(area59Row.getTotalSupplyHouseholdCount()).isEqualTo(14);
@@ -168,7 +168,7 @@ class LhAnnouncementRefinementIntegrationTest {
         });
         // 공고일이 7일 안인 새 공고만 새 공고 알림을 요청한다.
         verify(outbox).appendNewAnnouncement(any(Announcement.class));
-        // LH 행 수(3)와 공급행 수(2)가 달라도 모든 LH 행이 같은 면적 공급행에 붙어 '붙지 않은 LH 행'이 없다.
+        // LH 행 수(3)와 공급행 수(2)가 달라도 모든 LH 행이 같은 신청형 공급행에 붙어 '붙지 않은 LH 행'이 없다.
         boolean comparisonTables = ensureComparisonTables();
         try {
             var workspace = supplyCorrections.workspace(id);
@@ -200,14 +200,15 @@ class LhAnnouncementRefinementIntegrationTest {
     }
 
     @Test
-    void 같은_전용면적의_다른_형명은_공급행_하나로_두고_면적이_없는_LH_줄은_형명마다_공급행을_둔다() {
+    void 같은_전용면적이어도_신청형이_다르면_공급행을_따로_두고_같은_주택형을_가리킨다() {
         publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
         details("P1", "동탄 행복주택 단지", ADDRESS);
         supplies("P1", supply("동탄 행복주택 단지", "84.9600A", "84.9600", "16", "30000000", "200000"),
                 supply("동탄 행복주택 단지", "84.9600B", "84.96", "3", "30000000", "200000"),
                 supply("동탄 행복주택 단지", "아파트", "", "5", "", ""),
-                supply("동탄 행복주택 단지", "59A(고령자)", "59.98", "2", "", ""),
-                supply("동탄 행복주택 단지", "59B(고령자)", "59.98", "1", "", ""));
+                supply("동탄 행복주택 단지", "59A[청년]", "59.98", "2", "30000000", "200000"),
+                supply("동탄 행복주택 단지", "59A [주거급여수급자]", "59.98", "1", "30000000", "200000"),
+                supply("동탄 행복주택 단지", "59C(주거약자)", "59.98", "4", "30000000", "200000"));
 
         refinement.refineAll();
 
@@ -217,25 +218,26 @@ class LhAnnouncementRefinementIntegrationTest {
             List<SupplyRow> rows = supplyRows.findAllByAnnouncement(announcement);
             assertThat(rows).extracting(SupplyRow::getSourceSupplyRowIdentifier, SupplyRow::getSourceHousingTypeName,
                     SupplyRow::getTotalSupplyHouseholdCount).containsExactlyInAnyOrder(
-                    tuple("LHROW:" + complexId + ":A84.96", "84.9600A · 84.9600B", 19),
+                    tuple("LHROW:" + complexId + ":84.9600a#1", "84.9600A", 16),
+                    tuple("LHROW:" + complexId + ":84.9600b#1", "84.9600B", 3),
                     tuple("LHROW:" + complexId + ":아파트#1", "아파트", 5),
-                    tuple("LHROW:" + complexId + ":A59.98", "59A(고령자) · 59B(고령자)", 3));
-            SupplyRow area84 = rows.stream().filter(row -> row.getSourceSupplyRowIdentifier().endsWith(":A84.96"))
+                    tuple("LHROW:" + complexId + ":59a#1", "59A[청년] · 59A [주거급여수급자]", 3),
+                    tuple("LHROW:" + complexId + ":59c#1", "59C(주거약자)", 4));
+            // 신청형이 다른 같은 면적의 행은 모두 그 면적의 단지 주택형을 가리킨다.
+            assertThat(rows).filteredOn(row -> row.getSourceHousingTypeName().startsWith("84.9600"))
+                    .extracting(row -> row.getHousingType().getName()).containsExactly("84A", "84A");
+            assertThat(rows).filteredOn(row -> row.getSourceHousingTypeName().startsWith("59"))
+                    .extracting(row -> row.getHousingType().getId()).containsOnly(area59.getId());
+            // 신청자 표기([ ]도 신청자 표기다)만 다른 줄은 같은 신청형 공급행의 대상이고, 대상 이름은 그 신청자 표기다.
+            SupplyRow area59Row = rows.stream().filter(row -> row.getSourceSupplyRowIdentifier().endsWith(":59a#1"))
                     .findFirst().orElseThrow();
-            // 신청자 표기가 없는 줄은 LH 형명으로 대상을 가른다.
-            assertThat(supplyTargets.findAllBySupplyRow(area84)).extracting(SupplyTarget::getTarget)
-                    .containsExactly("84.9600A", "84.9600B");
-            assertThat(area84.getHousingType().getName()).isEqualTo("84A");
-            // 같은 면적에 신청자 표기가 같은 줄이 여럿이면 대상 이름을 LH 형명 원문으로 가른다.
-            SupplyRow area59Row = rows.stream().filter(row -> row.getSourceSupplyRowIdentifier().endsWith(":A59.98"))
-                    .findFirst().orElseThrow();
-            assertThat(supplyTargets.findAllBySupplyRow(area59Row)).extracting(SupplyTarget::getTarget)
-                    .containsExactly("59A(고령자)", "59B(고령자)");
+            assertThat(supplyTargets.findAllBySupplyRow(area59Row)).extracting(SupplyTarget::getTarget,
+                    SupplyTarget::getSupplyHouseholdCount).containsExactly(tuple("청년", 2), tuple("주거급여수급자", 1));
         });
     }
 
     @Test
-    void LH_한_줄마다_만든_옛_공급행은_다시_정제하면_전용면적_공급행으로_바뀐다() {
+    void LH_한_줄마다_만든_옛_공급행은_다시_정제하면_신청형_공급행으로_바뀐다() {
         publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
         details("P1", "동탄 행복주택 단지", ADDRESS);
         supplies("P1", supply("동탄 행복주택 단지", "59A(청년)", "59.9800", "10", "30000000", "200000"),
@@ -271,7 +273,7 @@ class LhAnnouncementRefinementIntegrationTest {
         inTransaction(() -> {
             var rows = supplyRows.findAllByAnnouncement(announcements.findById(id).orElseThrow());
             assertThat(rows).singleElement().satisfies(row -> {
-                assertThat(row.getSourceSupplyRowIdentifier()).isEqualTo("LHROW:" + complexId + ":A59.98");
+                assertThat(row.getSourceSupplyRowIdentifier()).isEqualTo("LHROW:" + complexId + ":59a#1");
                 assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(14);
                 assertThat(supplyTargets.findAllBySupplyRow(row)).extracting(SupplyTarget::getTarget)
                         .containsExactly("청년", "고령자");

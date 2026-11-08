@@ -2,9 +2,10 @@ import { isRecord } from '../management/managementContract'
 import type { JsonObject, JsonWorkspace } from '../announcement-json/api'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 import type { AnnouncementComplex, CorrectionRow, LhSupplyRow, SupplyWorkspace } from '../supply/supplyCorrectionApi'
-import { areaHousingType, areaKey, sameArea } from './areas'
+import { announcementHousingType, areaKey, sameArea, sameTypeName, type AnnouncementType } from './areas'
 import { evidenceFor, text, type ExtractedRow, type Extraction } from './extraction'
-import { pdfTypes } from './subtypes'
+import { sameApplicationType } from '../supply/applicationType'
+import { createdTypeName, pdfTypes } from './subtypes'
 
 export type HousingCandidates = Record<number, MatchingHousingType[]>
 /** 단지 ID별 표시 이름(단지명 · 임대유형) */
@@ -20,8 +21,8 @@ export type RowProposal = {
   needsConfirmation: boolean
   sharedIndex: number | null
   /**
-   * 저장할 곳과 같은 주택형(전용면적)을 가리키는 같은 공고 단지의 다른 기존 공급행. 신청자 구분마다 나뉘어 저장된 옛 공급행이라
-   * 저장하면 제외하고, 관리자가 추가해 지울 수 있는 행이면 지운다. 한 단지에서 공급행은 주택형마다 하나다.
+   * 저장할 곳과 같은 주택형(신청형)이고 같은 주택타입(전용면적)을 가리키는 같은 공고 단지의 다른 기존 공급행. 신청자 구분마다 나뉘어
+   * 저장된 옛 공급행이라 저장하면 제외하고, 관리자가 추가해 지울 수 있는 행이면 지운다. 한 단지에서 공급행은 신청형마다 하나다.
    */
   supersedes?: string[]
   /** 단지 생성은 성공했지만 주택형 생성·공급행 연결을 마치지 못한 상태. 초안에도 보존한다. */
@@ -108,10 +109,23 @@ export function normalizedName(value: unknown) {
   return (text(value) ?? '').normalize('NFKC').toLowerCase().replace(/형|[\s·,]/g, '')
 }
 
-/** 세부 타입 묶음 행의 세부 타입마다 연결할 단지 주택형. 서버와 같이 같은 전용면적 주택형 중 이름이 같은 것, 없으면 먼저 만든 것이다. */
+/**
+ * 이 공고의 같은 PDF 단지에서 다른 주택타입이 쓰는 공고문 이름(다른 행의 주택타입, 같은 행의 다른 세부 타입). 그 이름의 단지 주택타입은
+ * 이 행·세부 타입이 면적만 같다고 가져가지 않는다(announcementHousingType). subtype은 이 행의 세부 타입 번호이고, 없으면 행 전체다.
+ */
+export function otherTypeNames(extraction: Pick<Extraction, 'supplyRows'>, index: number, subtype?: number): AnnouncementType[] {
+  const complex = (row: ExtractedRow) => row.complexName?.trim() ?? ''
+  const row = extraction.supplyRows[index], own = createdTypeName(pdfTypes(row)[subtype ?? 0]?.name ?? row.typeName ?? '')
+  return extraction.supplyRows.flatMap((other, at) => complex(other) !== complex(row) ? []
+    : pdfTypes(other).filter((_, item) => at !== index || subtype !== undefined && item !== subtype)
+      .map(type => ({ name: createdTypeName(type.name), exclusiveArea: type.exclusiveArea })))
+    // 같은 주택타입을 신청자마다 나눠 적은 행(접지 않은 경우)은 다른 주택타입이 아니다.
+    .filter(type => type.name && !sameTypeName(type.name, own))
+}
+/** 세부 타입 묶음 행의 세부 타입마다 연결할 단지 주택형(announcementHousingType). 없으면 새로 만든다. 고를 수 있는 후보는 같은 면적이나 같은 이름의 주택형이다. */
 export function pickSubtypes(extraction: Extraction, index: number, allTypes: MatchingHousingType[]) {
-  return extraction.supplyRows[index].subtypes.map(type => ({ housingTypeId: areaHousingType(allTypes, type.exclusiveArea, type.name)?.id ?? null,
-    options: allTypes.filter(item => sameArea(item.exclusiveArea, type.exclusiveArea)) }))
+  return extraction.supplyRows[index].subtypes.map((type, at) => ({ housingTypeId: announcementHousingType(allTypes, createdTypeName(type.name), type.exclusiveArea, otherTypeNames(extraction, index, at))?.id ?? null,
+    options: allTypes.filter(item => sameArea(item.exclusiveArea, type.exclusiveArea) || sameTypeName(item.name, createdTypeName(type.name), item.exclusiveArea, type.exclusiveArea)) }))
 }
 
 /** 단지에 연결되지 않은 기존 공급행(최초 입주자 공고처럼 등록 단지가 없던 원천행). */
@@ -120,10 +134,13 @@ export function emptyRow(row: CorrectionRow) { return !row.excluded && row.housi
 /** 서버의 주택형 면적 형식(0 이상, 정수 6자리·소수 4자리까지) */
 export const areaValue = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 999999.9999
   && Math.abs(value * 10000 - Math.round(value * 10000)) < .00001
-/** 단지는 정했지만 그 단지에 이 전용면적의 주택형이 없으면 새로 만들 형명·면적을 돌려준다(세부 타입의 새 주택형). */
+/**
+ * 단지는 정했지만 그 단지에 이 이름의 주택타입이 없으면 새로 만들 형명·면적을 돌려준다. 단지 주택타입은 공고문 표기 이름으로 나누므로
+ * 같은 면적 주택타입이 있어도 이름이 다르면 만든다(서버 checkNewTypes와 같은 기준).
+ */
 export function missingHousingType(complexId: number | null, candidates: MatchingHousingType[], typeName: string, exclusiveArea: unknown, supplyArea: unknown) {
   // 새 주택형의 전용면적은 0보다 커야 한다. 공급면적은 형식이 맞지 않으면 비워 둔다.
-  if (complexId === null || !areaValue(exclusiveArea) || exclusiveArea === 0 || candidates.some(type => sameArea(type.exclusiveArea, exclusiveArea))) return null
+  if (complexId === null || !typeName.trim() || !areaValue(exclusiveArea) || exclusiveArea === 0 || candidates.some(type => sameTypeName(type.name, typeName, type.exclusiveArea, exclusiveArea))) return null
   return { name: typeName.trim(), exclusiveArea, supplyArea: areaValue(supplyArea) ? supplyArea : null }
 }
 
@@ -138,28 +155,51 @@ export function rowAreaKeys(row: CorrectionRow, types: MatchingHousingType[]) {
     ...(row.linkedHousingTypes ?? []).map(link => link.housingTypeId != null ? area(link.housingTypeId) : link.newHousingType?.exclusiveArea)]
   return new Set(values.map(areaKey).filter(key => key !== null))
 }
+/**
+ * 저장할 곳 고르기에 쓰는 기존 공급행. 고르기에만 쓰고 저장 값은 바꾸지 않는다.
+ * - 이름은 서버가 준 행의 신청형 이름(names: 공고 표기, 없으면 원천 형명)이다. 작업실 행 이름은 공고 표기가 없으면 연결 주택타입 이름이라
+ *   (84.9600A·84.9600B가 모두 84A) 신청형을 가리지 못한다. 서버의 같은 신청형 판정과 같은 이름이다.
+ * - 단지에 연결되지 않은 LH 원천 행은 주택형이 없어 전용면적이 비어 오므로, 그 행에 붙은 LH 줄의 전용면적을 그 행의 면적으로 본다.
+ */
+export function matchingRows(rows: CorrectionRow[], lhRows: LhSupplyRow[] = [], names: Record<string, string> = {}) {
+  return rows.map(row => {
+    const typeName = names[row.key] ?? row.typeName
+    const area = row.exclusiveArea ?? lhRows.map(lh => lh.attachedRowKey === row.key ? Number(lh.exclusiveArea) : NaN).find(value => Number.isFinite(value) && value > 0) ?? null
+    return area === row.exclusiveArea && typeName === row.typeName ? row : { ...row, exclusiveArea: area, typeName }
+  })
+}
 const byDisplayOrder = (left: CorrectionRow, right: CorrectionRow) => left.displayOrder - right.displayOrder || (left.key < right.key ? -1 : left.key > right.key ? 1 : 0)
 
-/** 기존 공급행이 PDF 행과 같은 단지 주택타입(전용면적, 소수 둘째 자리)을 가리키는지. 저장할 곳 고르기와 함께 제외할 옛 행이 같은 기준을 쓴다. */
+/** 기존 공급행이 PDF 행과 같은 단지 주택타입(전용면적, 소수 둘째 자리)을 가리키는지. 저장할 곳 후보를 좁힌다. */
 function sameHousingType(row: ExtractedRow, item: CorrectionRow, types: MatchingHousingType[]) {
   const areas = pdfAreaKeys(row)
   return [...rowAreaKeys(item, types)].some(key => areas.has(key))
 }
+/** 같은 PDF 단지의 다른 PDF 행. 저장할 곳을 고를 때 그 행들이 신청형으로 가리키는 기존 행을 남겨 두려고 넘긴다(chooseDestination). */
+export function otherPdfRows(extraction: Pick<Extraction, 'supplyRows'>, index: number) {
+  const complex = (row: ExtractedRow) => row.complexName?.trim() ?? ''
+  return extraction.supplyRows.filter((other, at) => at !== index && complex(other) === complex(extraction.supplyRows[index]))
+}
 /**
- * 같은 공고 단지의 기존 공급행 중 이 PDF 행을 저장할 행. 전용면적이 겹치는 행 중 표시 순서상 첫 행이고, 겹치는 나머지 행은
- * 신청자 구분마다 나뉘어 저장된 옛 공급행이라 저장하면 제외한다(supersedes). 다른 PDF 행이 고른 행(used)은 고르지 않는다.
+ * 같은 공고 단지의 기존 공급행 중 이 PDF 행을 저장할 행. 전용면적이 겹치는 행 중 신청형이 같은 행, 없으면 같은 PDF 단지의 다른 PDF 행
+ * (others)이 신청형으로 가리키지 않는 행 중 표시 순서상 첫 행이다. 신청형이 같은 나머지 행은 면적이 조금 달라도(59.92 ↔ 59.93) 신청자
+ * 구분마다 나뉘었거나 면적만 다르게 저장된 옛 공급행이라 저장하면 제외한다(supersedes). 서버가 한 단지에 같은 신청형 행을 하나만 두기 때문이다.
+ * 신청형이 다른 같은 면적 행(55A1 ↔ 55C)은 제외하지 않는다. 다른 PDF 행이 고른 행(used)은 고르지 않는다. related는 matchingRows를 거친 행이다.
  * 옛 공통 모집 묶음 행도 겹치면 제외하고, 묶음 전체가 이 행에 합쳐지면 저장할 행이 묶음에서 빠진다(leavesGroup). 겹치는 행이 없으면 마이홈 '아파트' 통합행 하나만 모집수로 이어받고,
  * 그 밖에는 새 공급행이다.
  */
-export function chooseDestination(row: ExtractedRow, related: CorrectionRow[], used: Set<string>, housing: HousingCandidates, count: number | null = null) {
+export function chooseDestination(row: ExtractedRow, related: CorrectionRow[], used: Set<string>, housing: HousingCandidates, count: number | null,
+  others: ExtractedRow[]) {
   const available = related.filter(item => !item.excluded && !used.has(item.key)).sort(byDisplayOrder)
-  // LH 공급 API는 참고만 하므로 LH 형명·면적으로 저장할 곳을 고르지 않는다. 면적이 조금 달라(59.92 ↔ 59.93) 겹치지 않으면 새 공급행을 추천하고,
-  // 관리자가 '바꾸기'로 기존 행을 고르거나 그 기존 행을 'PDF에 없는 기존 공급행'으로 제외한다.
+  // LH 공급 API는 참고만 하므로 면적이 조금 달라(59.92 ↔ 59.93) 겹치지 않는 행은 신청형이 같아도 고르지 않고 새 공급행을 추천한다.
   const overlapping = available.filter(item => sameHousingType(row, item, housing[item.housingComplexId ?? 0] ?? []))
   const legacyAggregate = !overlapping.length && available.length === 1 && normalizedName(available[0].typeName) === '아파트'
     && count !== null && available[0].householdCount === count
-  const chosen = overlapping[0] ?? (legacyAggregate ? available[0] : undefined)
-  return { chosen, legacy: !overlapping.length && legacyAggregate, superseded: overlapping.slice(1) }
+  const named = overlapping.filter(item => sameApplicationType(row.typeName, item.typeName))
+  const reserved = (item: CorrectionRow) => others.some(other => sameApplicationType(other.typeName, item.typeName))
+  const chosen = named[0] ?? overlapping.find(item => !reserved(item)) ?? (legacyAggregate ? available[0] : undefined)
+  const superseded = available.filter(item => item !== chosen && sameApplicationType(row.typeName, item.typeName))
+  return { chosen, legacy: !overlapping.length && legacyAggregate, superseded }
 }
 /**
  * 워커가 지구명·주택형으로 맞춘 GH 공급행 틀 행. GH는 청약구분·신청자마다 행을 나눠 두므로, 같은 전용면적이라 한 공급행으로 접힌
@@ -174,8 +214,8 @@ export function ghFrameReason(frame: CorrectionRow, merged: CorrectionRow[], row
 }
 /**
  * 관리자가 '바꾸기'에서 고른 저장할 곳(기존 공급행 키 또는 'new')으로 제안을 만든다. 추천을 고르면 자동 제안으로 되돌린다.
- * 서버는 한 단지에 주택형(전용면적)마다 공급행 하나만 두므로, 같은 단지에서 이 PDF 행과 전용면적이 겹치는 다른 기존 행은
- * 함께 제외한다(supersedes). 다른 PDF 행이 고르거나 제외할 행(used)은 건드리지 않는다.
+ * 서버는 한 단지에 주택형(신청형)마다 공급행 하나만 두므로, 같은 단지에서 이 PDF 행과 신청형이 같은 다른 기존 행은 함께 제외한다
+ * (supersedes). 다른 PDF 행이 고르거나 제외할 행(used)은 건드리지 않는다. rows는 matchingRows를 거친 행이다.
  */
 export function chosenProposal(row: ExtractedRow, proposal: RowProposal, key: string, rows: CorrectionRow[], used: ReadonlySet<string>, housing: HousingCandidates): RowProposal {
   const automatic = proposal.automatic ?? proposal
@@ -191,7 +231,7 @@ export function chosenProposal(row: ExtractedRow, proposal: RowProposal, key: st
   const complexId = picked?.housingComplexId ?? automatic.complexId
   const types = complexId === null ? [] : housing[complexId] ?? []
   const superseded = complexId === null ? [] : rows.filter(item => item.key !== key && !item.excluded && !used.has(item.key) && item.housingComplexId === complexId
-    && sameHousingType(row, item, types)).map(item => item.key)
+    && sameApplicationType(row.typeName, item.typeName)).map(item => item.key)
   const reason = [picked ? `관리자가 고른 기존 공급정보 '${describeRow(picked)}'을 고칩니다.` : '관리자가 새 공급정보로 추가하기로 했습니다.', supersedeNote(rows, superseded)].filter(Boolean).join(' ')
   return { ...proposal, destination: key, anchorKey: anchor?.key ?? '', complexId, candidates: picked?.housingComplexId != null || types.length ? types : automatic.candidates, reason, needsConfirmation: false,
     supersedes: superseded.length ? superseded : undefined, newComplex: picked?.housingComplexId != null ? undefined : automatic.newComplex, automatic }
@@ -215,7 +255,7 @@ export function describeRow(row: CorrectionRow, supply?: Pick<SupplyWorkspace, '
 }
 export function supersedeNote(rows: CorrectionRow[], keys: string[] = []) {
   const names = keys.flatMap(key => rows.filter(row => row.key === key)).map(row => `'${describeRow(row)}'`)
-  return names.length ? `같은 단지에서 같은 주택타입(전용면적)을 가리키는 기존 공급행 ${names.join(', ')}은 이 공급행에 합쳐지므로 저장하면 제외합니다(직접 추가한 행은 지웁니다). 한 단지에는 주택타입마다 공급행 하나만 둡니다.` : ''
+  return names.length ? `같은 단지에서 같은 주택형(신청형)을 가리키는 기존 공급행 ${names.join(', ')}은 이 공급행에 합쳐지므로 저장하면 제외합니다(직접 추가한 행은 지웁니다). 한 단지에는 신청형마다 공급행 하나만 둡니다.` : ''
 }
 const areaText = (row: ExtractedRow) => {
   const areas = pdfTypes(row).map(type => type.exclusiveArea).filter(area => area !== null)
@@ -225,16 +265,16 @@ const areaText = (row: ExtractedRow) => {
 export function destinationReason(row: ExtractedRow, chosen: CorrectionRow | undefined, legacy = false) {
   if (!chosen) return `${areaText(row)}와 같은 기존 공급정보가 없어 새로 추가합니다.`
   return legacy ? `기존 통합 공급정보 '${describeRow(chosen)}'의 모집수가 같아 그 행을 고칩니다.`
-    : `${areaText(row)}가 같은 기존 공급정보 '${describeRow(chosen)}'을 고칩니다.`
+    : `${sameApplicationType(row.typeName, chosen.typeName) ? '주택형(신청형)과 ' : ''}${areaText(row)}가 같은 기존 공급정보 '${describeRow(chosen)}'을 고칩니다.`
 }
 
 /**
  * PDF 행마다 저장할 곳을 정한다. GH 공급행 틀에서 나온 행(sourceRow)은 그 틀 행, 아니면 같은 공고 단지에서 전용면적이 겹치는
- * 기존 공급행(chooseDestination), 없으면 새 공급행이다. 단지는 PDF 단지명으로, 이름이 다르면 블록 번호·주소로 찾는다.
+ * 기존 공급행 중 신청형이 같은 행(chooseDestination), 없으면 새 공급행이다. 단지는 PDF 단지명으로, 이름이 다르면 블록 번호·주소로 찾는다.
  * LH 공급 원본 행은 공급행을 정하지 않는다. 주택형은 저장할 때 서버가 단지·전용면적으로 정하므로 고르게 하지 않는다.
  */
-export function proposeRows(extraction: Extraction, supply: Pick<SupplyWorkspace, 'rows' | 'rowSources'> & { announcementComplexes?: Pick<AnnouncementComplex, 'name' | 'roadAddress'>[]; lhSupplyRows?: LhSupplyRow[] }, housing: HousingCandidates): RowProposal[] {
-  const all = supply.rows, proposals: RowProposal[] = []
+export function proposeRows(extraction: Extraction, supply: Pick<SupplyWorkspace, 'rows' | 'rowSources' | 'applicationTypeNames'> & { announcementComplexes?: Pick<AnnouncementComplex, 'name' | 'roadAddress'>[]; lhSupplyRows?: LhSupplyRow[] }, housing: HousingCandidates): RowProposal[] {
+  const all = matchingRows(supply.rows, supply.lhSupplyRows, supply.applicationTypeNames), proposals: RowProposal[] = []
   // 단지가 연결되지 않은 기존 행은 단지를 정한 뒤 그 단지의 행으로 다시 맞춘다(proposeInComplex).
   const current = all.filter(item => !emptyRow(item) && !item.excluded)
   const names = [...new Set(all.filter(item => !item.excluded).map(item => item.complexName))]
@@ -265,7 +305,7 @@ export function proposeRows(extraction: Extraction, supply: Pick<SupplyWorkspace
       return
     }
     const { chosen, legacy, superseded } = complexId === null ? { chosen: undefined, legacy: false, superseded: [] }
-      : chooseDestination(row, related, used, housing, count)
+      : chooseDestination(row, related, used, housing, count, otherPdfRows(extraction, index))
     const blockNote = !sourceNames.length ? '' : source.certain ? `공고 단지 '${sourceNames[0]}'에 대응했습니다. `
       : `공고 단지 '${sourceNames[0]}'에 블록 번호나 주소 한쪽만 맞아 대응했습니다. 같은 단지인지 확인하세요. `
     proposals.push({ destination: chosen?.key ?? 'new', anchorKey: chosen?.key ?? (complexId === null ? '' : related[0]?.key ?? ''), complexId, candidates,
@@ -276,10 +316,13 @@ export function proposeRows(extraction: Extraction, supply: Pick<SupplyWorkspace
   return proposals
 }
 
-/** 단지에 연결되지 않은 LH·마이홈 원천행 중 이 공고문 단지명이 가리키는 공고 단지의 행. 블록 표기가 달라도 대응한다(sourceComplexNames). */
+/**
+ * 단지에 연결되지 않은 LH·마이홈 원천행 중 이 공고문 단지명이 가리키는 공고 단지의 행. 블록 표기가 달라도 대응한다(sourceComplexNames).
+ * 공급 표에 단지명이 없어 PDF 단지명이 비면 공고 단지가 하나뿐일 때 그 단지의 행이다(proposeRows와 같은 기준).
+ */
 export function emptySourceRows(workspace: JsonWorkspace, extraction: Extraction, complexName: string) {
-  const { names } = sourceComplexNames(extraction, complexName, [...new Set(workspace.supply.rows.filter(row => !row.excluded).map(row => row.complexName))],
-    workspace.supply.announcementComplexes)
+  const all = [...new Set(workspace.supply.rows.filter(row => !row.excluded).map(row => row.complexName))]
+  const names = !complexName.trim() && all.length === 1 ? all : sourceComplexNames(extraction, complexName, all, workspace.supply.announcementComplexes).names
   return workspace.supply.rows.filter(row => row.id !== null && !row.excluded && row.housingComplexId === null && row.groupId === null
     && names.includes(row.complexName))
 }

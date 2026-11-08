@@ -62,10 +62,10 @@ it('다른 PDF 행이 저장할 곳으로 쓰는 기존 공급정보는 고를 �
   expect(screen.getByRole('button', { name: /#747 · 공급행 1이 씀$/ })).toBeDisabled()
 })
 
-it('같은 단지에 전용면적이 같은 기존 행을 두고 새로 추가하면, 서버가 거절하지 않게 그 행을 함께 제외한다', () => {
-  // #748을 대구테크노폴리스4의 059.9100A 행으로 바꿔, 처음 자동 제안이 그 행을 고치게 한다.
+it('같은 단지에 신청형·전용면적이 같은 기존 행을 두고 새로 추가하면, 서버가 거절하지 않게 그 행을 함께 제외한다', () => {
+  // #748을 대구테크노폴리스4의 059.9100A(신청자 표기만 다른 옛 행)로 바꿔, 처음 자동 제안이 그 행을 고치게 한다.
   const { assembled, current } = renderChoosers(({ workspace, housing, review }) => {
-    Object.assign(workspace.supply.rows[1], { complexName: '대구테크노폴리스4', housingComplexId: 41, housingComplexName: '대구테크노폴리스4', typeName: '59A', exclusiveArea: 59.91 })
+    Object.assign(workspace.supply.rows[1], { complexName: '대구테크노폴리스4', housingComplexId: 41, housingComplexName: '대구테크노폴리스4', typeName: '059.9100A(우선)', exclusiveArea: 59.91 })
     return createReview(review.extraction, workspace, housing)
   })
   expect(current().rows[1].proposal.destination).toBe('row:748')
@@ -74,6 +74,17 @@ it('같은 단지에 전용면적이 같은 기존 행을 두고 새로 추가�
   const rows = assembled()
   expect(rows.find(row => row.id === 748)).toMatchObject({ excluded: true })
   expect(rows.filter(row => row.id === null && !row.excluded).map(row => row.exclusiveArea)).toEqual([51.98, 59.91, 59.93])
+})
+
+it('같은 주택타입을 가리키는 신청형이 다른 기존 행은 새로 추가해도 제외하지 않는다', () => {
+  // #748을 같은 59.91㎡의 다른 신청형 059.9100C(주거약자)로 둔다. 059.9100A를 새로 추가해도 두 행이 같은 주택타입을 함께 가리킨다.
+  const { assembled, current } = renderChoosers(({ workspace, housing, review }) => {
+    Object.assign(workspace.supply.rows[1], { complexName: '대구테크노폴리스4', housingComplexId: 41, housingComplexName: '대구테크노폴리스4', typeName: '059.9100C(주거약자)', exclusiveArea: 59.91 })
+    return createReview(review.extraction, workspace, housing)
+  })
+  fireEvent.click(within(openChooser(1)).getByRole('button', { name: /새 공급정보로 추가$/ }))
+  expect(current().rows[1].proposal).toMatchObject({ destination: 'new', supersedes: undefined })
+  expect(assembled().find(row => row.id === 748)).toMatchObject({ excluded: false })
 })
 
 it('다른 단지의 기존 공급정보를 고르면 그 단지의 주택형으로 저장한다', () => {
@@ -109,7 +120,7 @@ it('전용면적이 다른 기존 행을 고르면 그 행의 옛 주택형이 �
   pick748(0)
   // 지금 값은 #748의 39형(#504) 그대로 보이고, 저장하면 같은 면적의 51A(#501)에 연결한다고 알린다.
   expect(current().rows[0]).toMatchObject({ relinkTo: 501 })
-  expect(current().rows[0].cells.find(cell => cell.field === 'housingTypeId')).toMatchObject({ before: 504, note: "저장할 곳의 지금 주택타입과 전용면적이 달라 같은 전용면적의 '51A'에 연결합니다." })
+  expect(current().rows[0].cells.find(cell => cell.field === 'housingTypeId')).toMatchObject({ before: 504, note: "저장할 곳의 지금 주택타입이 공고문 주택타입 '051.9800A'과 달라 '51A'에 연결합니다." })
   const input = request()
   expect(input.correction.rows.find(row => row.id === 748)).toMatchObject({ housingTypeId: 501, newHousingType: null, exclusiveArea: 51.98, excluded: false })
   expect(input.housingTypeValues?.some(value => value.rowKey === 'row:748' && value.name === '39')).toBe(false)
@@ -136,13 +147,13 @@ it('초안을 다시 열면 고른 저장할 곳은 유지하고, 그 행이 제
 })
 
 /**
- * #748을 대구테크노폴리스4의 59A(전용 59.91) 공급행으로, #750을 같은 면적의 옛 공급행으로 두고, 다른 단지 행 #749를 더한다.
- * 059.9100A의 자동 제안은 #748을 고치고 #750을 함께 제외한다.
+ * #748을 대구테크노폴리스4의 059.9100A(전용 59.91) 공급행으로, #750을 신청자 구분만 다른 같은 신청형의 옛 공급행으로 두고,
+ * 다른 단지 행 #749를 더한다. 059.9100A의 자동 제안은 #748을 고치고 #750을 함께 제외한다.
  */
 function withSameArea({ workspace, housing, review }: ReturnType<typeof daegu>) {
   const rows = workspace.supply.rows, other = { ...rows[1], id: 749, key: 'row:749', displayOrder: 3 }
-  Object.assign(rows[1], { complexName: '대구테크노폴리스4', housingComplexId: 41, housingComplexName: '대구테크노폴리스4', typeName: '59A', exclusiveArea: 59.91 })
-  rows.push(other, { ...rows[1], id: 750, key: 'row:750', typeName: '59A 우선', displayOrder: 4 })
+  Object.assign(rows[1], { complexName: '대구테크노폴리스4', housingComplexId: 41, housingComplexName: '대구테크노폴리스4', typeName: '059.9100A', exclusiveArea: 59.91 })
+  rows.push(other, { ...rows[1], id: 750, key: 'row:750', typeName: '059.9100A(우선)', displayOrder: 4 })
   return createReview(review.extraction, workspace, housing)
 }
 
@@ -156,7 +167,7 @@ it('다른 단지 행을 거쳐 새로 추가로 바꾸면 새 행은 자동 제
   expect(screen.getByLabelText('공급행 2 저장할 곳')).toHaveTextContent('대구테크노폴리스4에 새 공급정보로 추가합니다.')
   const added = assembled().find(row => row.key === current().rows[1].key)
   expect(added).toMatchObject({ id: null, housingComplexId: 41, exclusiveArea: 59.91 })
-  // 같은 단지에서 같은 면적인 #748·#750은 함께 제외하고, 다른 단지 #749는 그대로 둔다.
+  // 같은 단지에서 신청형·면적이 같은 #748·#750은 함께 제외하고, 다른 단지 #749는 그대로 둔다.
   expect(assembled().filter(row => row.excluded).map(row => row.id)).toEqual([748, 750])
 })
 

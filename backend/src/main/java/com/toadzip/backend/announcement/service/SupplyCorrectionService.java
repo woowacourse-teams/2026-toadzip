@@ -7,6 +7,7 @@ import com.toadzip.backend.admin.quality.domain.QualityResource;
 import com.toadzip.backend.admin.quality.service.QualityComparisonService;
 import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.housing.domain.HousingTypeNames;
 import com.toadzip.backend.announcement.domain.SupplyCorrectionRecord;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
@@ -105,7 +106,8 @@ public class SupplyCorrectionService {
         var announcementComplexes = announcementComplexes(announcement, stored);
         var workspace = new SupplyCorrection.Workspace(hash(List.of(comparison.snapshotToken(), currentRows, announcementComplexes)),
                 announcement.getVersion(), currentRows, comparison.sources(), sourceStatus.missingWarnings(id),
-                rowSources, deletable, unattachedLhSupplyRows(announcement, lhSupplyRows), announcementComplexes, lhSupplyRows);
+                rowSources, deletable, unattachedLhSupplyRows(announcement, lhSupplyRows), announcementComplexes, lhSupplyRows,
+                applicationTypeNames(stored));
         var snapshot = new Snapshot(workspace, comparison, currentRows);
         if (log.isDebugEnabled()) {
             var parts = tokenParts(snapshot);
@@ -203,7 +205,7 @@ public class SupplyCorrectionService {
         var planned = plan(announcement, before.rows(), request.rows(), Set.copyOf(before.deletableRowKeys()),
                 request.deletedRowKeys());
         checkNewTypes(planned);
-        checkOneRowPerHousingType(before.rows(), planned, Set.copyOf(request.deletedRowKeys()));
+        checkOneRowPerApplicationType(announcement, before.rows(), planned, Set.copyOf(request.deletedRowKeys()));
         var warnings = new ArrayList<>(validateSchedulesAndCounts(id, planned));
         warnings.addAll(adminLinks.warnings(adminLinks.plan(announcement, before.rows(), planned)));
         if (same(before.rows(), planned)) {
@@ -385,8 +387,9 @@ public class SupplyCorrectionService {
     }
 
     /**
-     * 주택형을 정하지 않고 전용면적만 준 행은 서버가 단지 주택형을 정한다. 같은 면적 주택형이 있으면 {@link HousingTypeAreas#pick}으로
-     * 고르고, 없으면 그 행의 형명·면적으로 새 주택형을 만든다. 관리자가 주택형을 직접 고르지 않아도 되게 하고, 화면과 서버가
+     * 주택형을 정하지 않고 전용면적만 준 행은 서버가 단지 주택형을 정한다. 이름이 같은 주택형, 없으면 같은 면적 주택형이 하나뿐일 때
+     * 그것을 고르고({@link HousingTypeAreas#pick}), 없으면 그 행의 형명·면적으로 새 주택형을 만든다. PDF 보정은 화면이 공고문 주택타입
+     * 이름으로 정해 보내므로 이 경로를 쓰지 않는다. 관리자가 주택형을 직접 고르지 않아도 되게 하고, 화면과 서버가
      * 면적 반올림을 따로 계산해 어긋나지 않게 하려는 것이다. 미리보기 결과(after)에 정한 주택형이 담긴다.
      * 주택형이 있던 기존 행을 비워 보낸 요청은 관리자가 연결을 끊은 것이라 다시 채우지 않는다. 이번 저장에서 새로 넣거나 고친,
      * 제외하지 않은 행에만 적용한다.
@@ -411,7 +414,7 @@ public class SupplyCorrectionService {
      */
     private static String newTypeName(String typeName) {
         String first = typeName.split("[·]")[0].strip();
-        String core = first.replaceAll("\\s*\\([^()]*\\)\\s*$", "").strip();
+        String core = HousingTypeNames.withoutApplicant(first);
         return core.isEmpty() ? first : core;
     }
 
@@ -462,9 +465,8 @@ public class SupplyCorrectionService {
     }
 
     /**
-     * 대표와 함께 모집하는 주택형(대표 제외). 생략하면 {@link Row#withLinksFrom}으로 채운다.
-     * 한 행에는 전용면적마다 주택형 하나만 연결한다. 세부 타입은 전용면적마다 하나이고, 이 저장에서 만들 새 주택형과
-     * 그 공고 값(linkedNewHousingTypeArea)은 행 안에서 전용면적으로 찾기 때문이다.
+     * 대표와 함께 모집하는 주택형(대표 제외). 생략하면 {@link Row#withLinksFrom}으로 채운다. 공고 신청형 한 행이 같은 면적의 여러
+     * 단지 주택타입(59A·59A1·59C)을 함께 모집할 수 있으므로 면적은 막지 않고, 같은 주택형(기존은 id, 새 주택형은 이름)을 두 번 연결하지만 막는다.
      */
     private List<LinkedHousingType> linkedTypes(Row old, Row row, HousingComplex complex, HousingType representative) {
         if (row.linkedHousingTypes() == null) { return row.withLinksFrom(old).linkedHousingTypes(); }
@@ -475,17 +477,17 @@ public class SupplyCorrectionService {
         if (representative == null) {
             throw new IllegalArgumentException(row.typeName() + ": 대표 주택형을 정한 뒤 함께 모집하는 주택형을 연결하세요.");
         }
-        Set<BigDecimal> areas = new HashSet<>();
-        areas.add(HousingTypeAreas.key(representative.getExclusiveArea()));
+        Set<String> linked = new HashSet<>();
+        linked.add(representative.getId() != null ? "type:" + representative.getId() : "new:" + HousingTypeNames.key(representative.getName()));
         for (var link : row.linkedHousingTypes()) {
             if ((link.housingTypeId() == null) == (link.newHousingType() == null)) {
                 throw new IllegalArgumentException("함께 모집하는 주택형은 기존 주택형이나 새 주택형 중 하나로 지정하세요.");
             }
-            BigDecimal area = link.newHousingType() == null ? existingType(link.housingTypeId(), complex).getExclusiveArea()
-                    : link.newHousingType().exclusiveArea();
-            if (!areas.add(HousingTypeAreas.key(area))) {
-                throw new IllegalArgumentException(row.typeName() + ": 한 공급행에는 전용면적마다 주택형 하나만 연결하세요. "
-                        + "대표 주택형과 같은 주택형이나 면적도 연결할 수 없습니다.");
+            String key = link.newHousingType() == null ? "type:" + existingType(link.housingTypeId(), complex).getId()
+                    : "new:" + HousingTypeNames.key(link.newHousingType().name());
+            if (!linked.add(key)) {
+                throw new IllegalArgumentException(row.typeName() + ": 같은 주택형을 두 번 연결할 수 없습니다. "
+                        + "대표 주택형과 같은 주택형도 함께 모집하는 주택형으로 연결할 수 없습니다.");
             }
         }
         return row.withLinksFrom(old).linkedHousingTypes();
@@ -571,7 +573,7 @@ public class SupplyCorrectionService {
         for (var link : input.linkedHousingTypes()) {
             var value = link.newHousingType();
             linked.add(value == null ? existingType(link.housingTypeId(), complex) : newType(complex, input, value,
-                    identifier + ":" + HousingTypeAreas.key(value.exclusiveArea()).toPlainString(), createdTypes));
+                    identifier + ":" + HousingTypeNames.key(value.name()), createdTypes));
         }
         if (stored == null) {
             // 원천이 없는 직접 추가 행은 처음 입력한 표기를 원천 이름으로 남긴다.
@@ -605,7 +607,7 @@ public class SupplyCorrectionService {
         return stored;
     }
 
-    /** 한 저장에서 같은 단지·전용면적의 새 주택형은 대표든 함께 모집하는 주택형이든 행이 달라도 하나를 만들어 함께 쓴다. */
+    /** 한 저장에서 같은 단지·이름의 새 주택형은 대표든 함께 모집하는 주택형이든 행이 달라도 하나를 만들어 함께 쓴다(checkNewTypes가 면적이 같음을 확인한다). */
     private HousingType newType(HousingComplex complex, Row input, SupplyCorrection.NewType value, String identifier,
             Map<String, HousingType> createdTypes) {
         return createdTypes.computeIfAbsent(input.newHousingTypeKey(value), key -> types.save(HousingType.createFromAnnouncement(
@@ -640,20 +642,29 @@ public class SupplyCorrectionService {
     }
 
     /**
-     * 새 주택형은 단지에 같은 전용면적 주택형이 없을 때만 만든다. 있으면 그 주택형을 고르게 하고, 휴지통에 있으면
-     * 복구한 뒤 연결하게 한다. 같은 면적 주택형이 둘이 되면 공급행을 면적으로 맞출 수 없기 때문이다.
+     * 새 주택형은 단지에 이름이 같은 주택형({@link HousingTypeNames#sameType})이 없을 때만 만든다. 있으면 그 주택형을 고르게 하고,
+     * 휴지통에 있으면 복구한 뒤 연결하게 한다. 단지 주택타입은 공고문 표기 이름으로 나누므로 같은 면적 주택형이 있어도 이름이 다르면 만든다.
      */
     private void checkNewTypes(List<Row> planned) {
+        // 한 저장에서 이름이 같은 새 주택형은 하나만 만든다(newHousingTypeKey). 면적이 다르면 어느 면적인지 알 수 없어 거절한다.
+        Map<String, BigDecimal> areasByName = new HashMap<>();
         for (var row : planned) {
             if (row.housingComplexId() == null) { continue; }
             var created = new ArrayList<SupplyCorrection.NewType>();
             if (row.newHousingType() != null) { created.add(row.newHousingType()); }
             row.linkedHousingTypes().stream().map(LinkedHousingType::newHousingType).filter(Objects::nonNull).forEach(created::add);
+            if (created.stream().map(input -> HousingTypeNames.key(input.name())).distinct().count() < created.size()) {
+                throw new IllegalArgumentException(row.typeName() + ": 한 공급행에 이름이 같은 새 주택형을 둘 연결할 수 없습니다.");
+            }
             for (var input : created) {
-                var area = input.exclusiveArea();
+                var area = areasByName.putIfAbsent(row.newHousingTypeKey(input), HousingTypeAreas.key(input.exclusiveArea()));
+                if (area != null && area.compareTo(HousingTypeAreas.key(input.exclusiveArea())) != 0) {
+                    throw new IllegalArgumentException(row.typeName() + ": '" + input.name() + "' 새 주택형을 전용면적을 다르게 두 번 만들 수 없습니다. "
+                            + "이름이나 면적을 맞추세요.");
+                }
                 var same = types.findAllIncludingTrashByHousingComplexId(row.housingComplexId()).stream()
-                        .filter(type -> HousingTypeAreas.sameArea(type.getExclusiveArea(), area)).toList();
-                String label = row.typeName() + ": 전용 " + area.stripTrailingZeros().toPlainString() + "㎡ 주택형이 ";
+                        .filter(type -> HousingTypeNames.sameType(type.getName(), type.getExclusiveArea(), input.name(), input.exclusiveArea())).toList();
+                String label = row.typeName() + ": '" + input.name() + "' 주택형이 ";
                 if (same.stream().anyMatch(type -> !type.isAdminDeleted())) {
                     throw new IllegalArgumentException(label + "이 단지에 있습니다. 새로 만들지 말고 그 주택형을 선택하세요.");
                 }
@@ -665,40 +676,51 @@ public class SupplyCorrectionService {
     }
 
     /**
-     * 한 단지에서 공급행은 전용면적마다 하나다. 이번 저장에서 바꾸거나 새로 만든 행이 제외하지 않은 다른 행과 같은 주택형을
-     * 가리키면 거절한다. 다시 보정하지 않아 신청자 묶음마다 나뉜 채 남은 옛 공급행끼리는 손대지 않는 한 그대로 둔다.
+     * 한 단지에서 공급행은 주택형(신청형)마다 하나다. 이번 저장에서 바꾸거나 새로 만든 행이 제외하지 않은 다른 행과 같은 단지에서
+     * 신청형({@link HousingTypeNames})이 같으면 거절한다. 신청자 묶음마다 나뉜 옛 공급행이 남아 모집수가 두 번 세지지 않게 하려는 것이다.
+     * 같은 단지 주택타입을 신청형이 다른 여러 행(55A1·55C(주거약자))이 가리키는 것은 허용한다. 손대지 않은 옛 공급행끼리는 그대로 둔다.
      */
-    private void checkOneRowPerHousingType(List<Row> before, List<Row> planned, Set<String> deleted) {
+    private void checkOneRowPerApplicationType(Announcement announcement, List<Row> before, List<Row> planned, Set<String> deleted) {
         var beforeByKey = before.stream().collect(Collectors.toMap(Row::key, Function.identity()));
+        var stored = rows.findAllByAnnouncement(announcement).stream().collect(Collectors.toMap(SupplyRow::getId, Function.identity()));
         var active = planned.stream().filter(row -> !row.excluded() && !deleted.contains(row.key())).toList();
+        Map<String, Set<String>> keys = new HashMap<>();
+        active.forEach(row -> keys.put(row.key(), HousingTypeNames.keys(applicationTypeName(row, beforeByKey.get(row.key()), stored))));
         for (var row : active) {
             // 앞에 끼어든 행 때문에 표시 순서만 밀린 행은 손대지 않은 행이다.
-            if (row.id() != null && untouched(beforeByKey.get(row.key()), row)) { continue; }
-            var mine = typeKeys(row);
+            if (row.housingComplexId() == null || row.id() != null && untouched(beforeByKey.get(row.key()), row)) { continue; }
+            var mine = keys.get(row.key());
             for (var other : active) {
-                if (other == row) { continue; }
-                var shared = typeKeys(other).stream().filter(mine::contains).findFirst();
-                if (shared.isPresent()) {
-                    throw new IllegalArgumentException(row.typeName() + ": '" + other.typeName() + "' 공급행과 같은 주택형을 가리킵니다. "
-                            + "한 단지에서 공급행은 주택형(전용면적)마다 하나입니다. 한 행으로 합치고 나머지는 제외하거나 지우세요.");
+                if (other == row || !Objects.equals(other.housingComplexId(), row.housingComplexId())) { continue; }
+                if (keys.get(other.key()).stream().anyMatch(mine::contains)) {
+                    throw new IllegalArgumentException(row.typeName() + ": '" + other.typeName() + "' 공급행과 같은 주택형(신청형)입니다. "
+                            + "한 단지에서 공급행은 신청형마다 하나입니다. 한 행으로 합치고 나머지는 제외하거나 지우세요.");
                 }
             }
         }
     }
 
-    /** 행이 가리키는 주택형 키. 단지와 전용면적(소수 둘째 자리)이다. 같은 면적의 다른 이름 주택형(101A1·101A9)도 같은 키다. */
-    private Set<String> typeKeys(Row row) {
-        var keys = new HashSet<String>();
-        if (row.housingComplexId() == null) { return keys; }
-        var areas = new ArrayList<BigDecimal>();
-        if (row.housingTypeId() != null) { types.findById(row.housingTypeId()).ifPresent(type -> areas.add(type.getExclusiveArea())); }
-        if (row.newHousingType() != null) { areas.add(row.newHousingType().exclusiveArea()); }
-        for (var link : row.linkedHousingTypes()) {
-            if (link.housingTypeId() != null) { types.findById(link.housingTypeId()).ifPresent(type -> areas.add(type.getExclusiveArea())); }
-            if (link.newHousingType() != null) { areas.add(link.newHousingType().exclusiveArea()); }
-        }
-        areas.forEach(area -> keys.add(row.housingComplexId() + ":" + HousingTypeAreas.key(area).toPlainString()));
-        return keys;
+    /**
+     * 행의 신청형 이름. 작업실 행 이름(typeName)은 공고 표기가 없으면 연결 주택타입 이름이 되어(84.9600A·84.9600B가 모두 84A)
+     * 신청형을 가리지 못한다. 그래서 이름을 바꾸지 않은 기존 행은 저장된 공고 표기, 없으면 원천 형명을 쓰고, 새 행과 이름을 바꾼 행만
+     * 요청 이름을 쓴다.
+     */
+    private static String applicationTypeName(Row row, Row old, Map<Long, SupplyRow> stored) {
+        var saved = row.id() == null ? null : stored.get(row.id());
+        if (saved == null || old == null || !Objects.equals(old.typeName(), row.typeName())) { return row.typeName(); }
+        return applicationTypeName(saved);
+    }
+
+    /** 저장된 행의 신청형 이름. 공고 표기, 없으면 원천 형명이다. */
+    private static String applicationTypeName(SupplyRow row) {
+        return row.getAnnouncementHousingTypeName() != null ? row.getAnnouncementHousingTypeName() : row.getSourceHousingTypeName();
+    }
+
+    /** 작업실 행 키별 신청형 이름. 화면이 서버와 같은 기준으로 같은 신청형을 가린다. */
+    private static Map<String, String> applicationTypeNames(List<SupplyRow> stored) {
+        Map<String, String> names = new LinkedHashMap<>();
+        stored.forEach(row -> names.put(LhRowAttachments.key(row), applicationTypeName(row)));
+        return names;
     }
 
     private List<Object> candidateValues(List<Row> planned) {

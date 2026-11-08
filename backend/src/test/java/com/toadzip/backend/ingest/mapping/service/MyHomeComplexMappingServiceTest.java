@@ -145,6 +145,26 @@ class MyHomeComplexMappingServiceTest {
     }
 
     @Test
+    void 마이홈의_면적_숫자_형명은_같은_면적_관리자_주택타입이_여럿이어도_이름_형식만_다른_같은_집을_이어받고_새로_만들지_않는다() {
+        var admin = complexRepository.save(HousingComplex.create("관리자 등록 단지", HousingComplex.ADMIN_SOURCE_PREFIX + "test",
+                "NATIONAL_RENTAL", Address.create("서울특별시 종로구 테스트로 1",
+                        "1111010100100010000", "1111010100", "11", "11110", new BigDecimal("37.5"), new BigDecimal("126.9")),
+                350, "LH", null, null, null, null, null, null, null, null));
+        // PDF 보정은 같은 면적의 단지 주택타입 59A·59A1·59C를 따로 만든다.
+        var a = housingTypeRepository.save(HousingType.createFromMyHome(admin, HousingType.ADMIN_SOURCE_PREFIX + "59A", "59A", new BigDecimal("59.9100"), null));
+        housingTypeRepository.save(HousingType.createFromMyHome(admin, HousingType.ADMIN_SOURCE_PREFIX + "59A1", "59A1", new BigDecimal("59.9100"), null));
+        housingTypeRepository.save(HousingType.createFromMyHome(admin, HousingType.ADMIN_SOURCE_PREFIX + "59C", "59C", new BigDecimal("59.9100"), null));
+        sourceRepository.saveAll(List.of(source("059.9100A", "59.9100", "24.1000")));
+
+        service.mapAll();
+
+        // 공급행이 없는 관리자 주택형(59A1·59C)은 기존 규칙대로 원천에 없어 정리될 수 있다. 같은 집 059.9100A를 새로 만들지 않는 것이 이 테스트의 요점이다.
+        assertThat(housingTypeRepository.findAll()).extracting(HousingType::getName).contains("59A").doesNotContain("059.9100A");
+        assertThat(housingTypeRepository.findById(a.getId()).orElseThrow().getSourceHousingTypeIdentifier())
+                .doesNotStartWith(HousingType.ADMIN_SOURCE_PREFIX);
+    }
+
+    @Test
     void 마이홈에_없던_관리자_등록_단지는_마이홈_단지가_생기면_새로_만들지_않고_연결해_비워_둔_값만_채운다() {
         var admin = complexRepository.save(HousingComplex.create("관리자 등록 단지", HousingComplex.ADMIN_SOURCE_PREFIX + "test",
                 "NATIONAL_RENTAL", Address.create("서울특별시 종로구 테스트로 1",

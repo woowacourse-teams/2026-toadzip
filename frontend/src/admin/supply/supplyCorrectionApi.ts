@@ -42,7 +42,9 @@ export type LhSupplyRow = { rowIdentifier: string; complexLabel: string | null; 
  */
 export type ComplexLinkMethod = 'AUTO' | 'ADMIN' | 'MIGRATED'
 export type AnnouncementComplex = { id: number; name: string; roadAddress: string | null; housingComplexId: number | null; housingComplexName: string | null; linkMethod: ComplexLinkMethod | null; rowCount: number }
-export type SupplyWorkspace = { snapshotToken: string; version: number; rows: CorrectionRow[]; sources: CorrectionSource[]; sourceWarnings?: string[]; rowSources?: RowSource[]; deletableRowKeys?: string[]; lhSupplyRows?: LhSupplyRow[]; unattachedLhSupplyRows?: LhSupplyRow[]; announcementComplexes?: AnnouncementComplex[] }
+export type SupplyWorkspace = { snapshotToken: string; version: number; rows: CorrectionRow[]; sources: CorrectionSource[]; sourceWarnings?: string[]; rowSources?: RowSource[]; deletableRowKeys?: string[]; lhSupplyRows?: LhSupplyRow[]; unattachedLhSupplyRows?: LhSupplyRow[]; announcementComplexes?: AnnouncementComplex[]
+  /** 행 키별 주택형(신청형) 이름(공고 표기, 없으면 원천 형명). 행 이름(typeName)은 공고 표기가 없으면 연결 주택형 이름이라 신청형 판정에 이 값을 쓴다. */
+  applicationTypeNames?: Record<string, string> }
 /** 요청 행은 서버가 모르는 필드를 거절한다. 주택형을 비우고 전용면적만 준 단지 연결 행은 서버가 단지·전용면적으로 주택형을 정한다. */
 export type SupplyCorrectionInput = { operationId: string; snapshotToken: string; reason: string; sourceUrl: string; sourcePage: string | null; rows: CorrectionRow[]; deletedRowKeys?: string[] }
 /** after는 서버가 정한 주택형(housingTypeId 또는 newHousingType)이 담긴 저장 결과다. */
@@ -100,10 +102,11 @@ export function parseSupplyWorkspace(value: unknown): SupplyWorkspace {
   if (value.deletableRowKeys !== undefined && (!Array.isArray(value.deletableRowKeys) || !value.deletableRowKeys.every(item => typeof item === 'string'))) invalid()
   if (value.lhSupplyRows !== undefined && !lhRows(value.lhSupplyRows)) invalid()
   if (value.unattachedLhSupplyRows !== undefined && !lhRows(value.unattachedLhSupplyRows)) invalid()
+  if (value.applicationTypeNames !== undefined && (!isRecord(value.applicationTypeNames) || !Object.values(value.applicationTypeNames).every(item => typeof item === 'string'))) invalid()
   if (value.announcementComplexes !== undefined && (!Array.isArray(value.announcementComplexes) || !value.announcementComplexes.every(item => isRecord(item)
     && count(item.id) && item.id > 0 && typeof item.name === 'string' && nullableText(item.roadAddress) && nullableId(item.housingComplexId)
     && nullableText(item.housingComplexName) && [null, 'AUTO', 'ADMIN', 'MIGRATED'].includes(item.linkMethod as string | null) && count(item.rowCount)))) invalid()
-  return { announcementComplexes: (value.announcementComplexes ?? []) as AnnouncementComplex[], sourceWarnings: (value.sourceWarnings ?? []) as string[], rowSources: (value.rowSources ?? []) as RowSource[], deletableRowKeys: (value.deletableRowKeys ?? []) as string[], lhSupplyRows: (value.lhSupplyRows ?? []) as LhSupplyRow[], unattachedLhSupplyRows: (value.unattachedLhSupplyRows ?? []) as LhSupplyRow[], snapshotToken: value.snapshotToken,
+  return { announcementComplexes: (value.announcementComplexes ?? []) as AnnouncementComplex[], sourceWarnings: (value.sourceWarnings ?? []) as string[], rowSources: (value.rowSources ?? []) as RowSource[], deletableRowKeys: (value.deletableRowKeys ?? []) as string[], lhSupplyRows: (value.lhSupplyRows ?? []) as LhSupplyRow[], unattachedLhSupplyRows: (value.unattachedLhSupplyRows ?? []) as LhSupplyRow[], applicationTypeNames: (value.applicationTypeNames ?? {}) as Record<string, string>, snapshotToken: value.snapshotToken,
     version: value.version, rows: value.rows.map(row), sources: value.sources as CorrectionSource[] }
 }
 const path = (id: string) => `/api/admin/announcements/${encodeURIComponent(id)}/supply-corrections`

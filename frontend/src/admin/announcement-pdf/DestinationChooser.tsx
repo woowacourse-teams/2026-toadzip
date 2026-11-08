@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button } from '../../design-system/components/Button'
 import type { JsonWorkspace } from '../announcement-json/api'
 import type { CorrectionRow } from '../supply/supplyCorrectionApi'
-import { chosenProposal, describeRow, type HousingCandidates } from './matching'
+import { chosenProposal, describeRow, matchingRows, type HousingCandidates } from './matching'
 import { destinationSentence, reproposeRow, type Review, type RowReview } from './review'
 import styles from './PdfCorrection.module.css'
 
@@ -24,7 +24,7 @@ export function DestinationChooser({ review, index, workspace, housing, onChange
   const recommended = rows.find(item => item.key === recommendedKey)
   const found = query.trim() ? rows.filter(item => item.key !== recommendedKey && searchKey(rowText(item)).includes(searchKey(query))) : []
   function pick(key: string) {
-    const next = chosenProposal(review.extraction.supplyRows[index], proposal, key, workspace.supply.rows, new Set(owners.keys()), housing)
+    const next = chosenProposal(review.extraction.supplyRows[index], proposal, key, matchingRows(workspace.supply.rows, workspace.supply.lhSupplyRows, workspace.supply.applicationTypeNames), new Set(owners.keys()), housing)
     onChange({ ...reproposeRow(review, index, next, workspace), reviewed: true }); setOpen(false); setQuery('')
   }
   // 단지가 없는 기존 행은 단지 정하기에서 단지를 정해야 저장할 곳이 될 수 있다(단지 정하기가 저장할 곳을 다시 고른다).
@@ -46,7 +46,7 @@ export function DestinationChooser({ review, index, workspace, housing, onChange
         {found.map(item => option(item))}
         {!found.length && <li className={styles.hint}>찾는 기존 공급정보가 없습니다.</li>}
       </ul>}
-      <p className={styles.hint}>같은 단지에 이 행과 전용면적이 같은 다른 공급정보가 있으면, 한 단지에는 주택타입마다 공급행 하나만 두므로 저장할 때 함께 제외합니다.</p>
+      <p className={styles.hint}>같은 단지에 이 행과 주택형(신청형)·전용면적이 같은 다른 공급정보가 있으면, 한 단지에는 신청형마다 공급행 하나만 두므로 저장할 때 함께 제외합니다. 신청형이 다르면 같은 주택타입을 함께 가리켜도 그대로 둡니다.</p>
     </div>}
   </div>
 }

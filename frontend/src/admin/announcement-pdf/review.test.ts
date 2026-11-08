@@ -202,7 +202,7 @@ it('직접 수정에서 주택타입 미연결을 선택하면 기존 연결을 
   expect(assembleReview(review, workspace, evidence).correction.rows.find(item => item.key === existing.key)?.housingTypeId).toBeNull()
 })
 
-it('주택형이 없는 공급행은 확인 필요 없이 연결 주택타입을 비우고 전용면적을 보내 서버가 단지·전용면적으로 주택형을 정하게 한다', () => {
+it('주택형이 없는 공급행은 확인 필요 없이 공고문 주택타입 이름이 같은 단지 주택타입을 정해 보낸다', () => {
   const { review, workspace } = scenario('gwangju')
   // H-1BL 39(창업인)은 주택형이 없는 마이홈 통합행(#22)을 고친다. 단지에는 같은 면적 주택형 39(3039)가 있다.
   const row = review.rows[0]
@@ -211,7 +211,8 @@ it('주택형이 없는 공급행은 확인 필요 없이 연결 주택타입을
   expect(pendingItems(review, true, workspace).filter(item => rowOf(item.id) === 0)).toEqual([])
   expect(rowStatus(row, false).label).toBe('준비됨')
   const request = assembleReview(review, workspace, evidence)
-  expect(request.correction.rows.find(item => item.key === 'row:22')).toMatchObject({ housingTypeId: null, newHousingType: null, exclusiveArea: 39.78, housingComplexId: 962 })
+  // 공고문 39(창업인)의 주택타입 이름 39와 같은 단지 주택타입 39(3039)에 잇는다.
+  expect(request.correction.rows.find(item => item.key === 'row:22')).toMatchObject({ housingTypeId: 3039, newHousingType: null, exclusiveArea: 39.78, housingComplexId: 962 })
   // 공고 표기(신청형)는 단지 주택타입 이름으로 보내지 않는다.
   expect(request.housingTypeValues?.find(value => value.rowKey === 'row:22')).toMatchObject({ name: null })
   // 면적도 연결 주택타입도 없으면 서버가 정할 수 없어 주택타입 미연결로 알린다(저장은 막지 않는다).
@@ -336,13 +337,20 @@ it('서버가 칸 경로로 돌려준 기본정보·접수처 검증 메시지�
   expect(serverFieldError(review, '적용할 변경이 없습니다. 현재값과 다른 항목을 선택하세요.')).toBeNull()
 })
 
-it('세부 타입 둘이 같은 전용면적의 주택형을 연결하면 확인 필요로 잡고, 하나를 연결 안 함으로 두면 풀린다', () => {
+it('세부 타입 둘이 같은 주택형을 연결하면 확인 필요로 잡고, 같은 면적이어도 다른 주택타입이면 함께 연결한다', () => {
   const { review, workspace } = scenario('hansville')
   const row = review.rows[0]
   row.reviewed = true
+  // 같은 면적의 서로 다른 새 주택타입(26A·26B)은 신청형 한 행에 함께 연결한다.
   row.subtypes = row.subtypes!.map(subtype => ({ ...subtype, choice: 'new' as const, exclusiveArea: 77.7, options: [] }))
+  expect(pendingSubtypes(row)).toEqual([])
+  const sent = assembleReview(review, workspace, evidence).correction.rows[0]
+  expect([sent.newHousingType?.name, ...(sent.linkedHousingTypes ?? []).map(link => link.newHousingType?.name)]).toEqual(['26A', '26B'])
+  // 같은 기존 주택형을 두 세부 타입이 고르면 막는다.
+  const typeId = row.proposal.candidates[0].id
+  row.subtypes = row.subtypes.map(subtype => ({ ...subtype, choice: typeId }))
   expect(pendingSubtypes(row)).toEqual([1])
-  expect(() => assembleReview(review, workspace, evidence)).toThrow(expect.objectContaining({ reviewId: 'subtype:0:1', message: expect.stringContaining('전용면적마다 주택형 하나만') }))
+  expect(() => assembleReview(review, workspace, evidence)).toThrow(expect.objectContaining({ reviewId: 'subtype:0:1', message: expect.stringContaining('같은 주택타입을 연결') }))
   row.subtypes[1] = { ...row.subtypes[1], choice: 'none' }
   expect(pendingSubtypes(row)).toEqual([])
 })
@@ -478,10 +486,16 @@ it('PDF 주택타입이 하나뿐인 행은 공고 표기를 신청형 그대로
   const index = review.rows.findIndex(row => row.proposal.destination === 'row:22')
   expect(review.extraction.supplyRows[index].typeName).toBe(first.sourceHousingTypeName)
   expect(assembleReview(review, workspace, evidence).housingTypeValues?.find(value => value.rowKey === 'row:22')?.name).toBe('39A')
-  // 한 면적에 주택타입이 여럿(39A·39B)이면 이름을 바꾸지 않는다.
+  // 공고문 한 칸에 같은 면적 주택타입 여럿(39A·39B)을 적으면 공고 신청형 행은 하나로 두고 단지 주택타입은 따로 만들어 모두 그 행에 잇는다.
   extraction.data.supplyRows[0] = { ...first, subtypes: [{ name: '39A·39B', exclusiveArea: first.exclusiveArea, commonArea: null, supplyArea: null, constructedHouseholdCount: null }] }
   const several = scenario('gwangju', extraction)
-  expect(assembleReview(several.review, several.workspace, evidence).housingTypeValues?.find(value => value.rowKey === 'row:22')?.name ?? null).toBeNull()
+  const severalIndex = several.review.rows.findIndex(row => row.proposal.destination === 'row:22')
+  expect(several.review.extraction.supplyRows[severalIndex].subtypes.map(subtype => subtype.name)).toEqual(['39A', '39B'])
+  const request = assembleReview(several.review, several.workspace, evidence)
+  const saved = request.correction.rows.find(row => row.key === 'row:22')!
+  expect([saved.newHousingType?.name, ...(saved.linkedHousingTypes ?? []).map(link => link.newHousingType?.name)]).toEqual(['39A', '39B'])
+  expect(request.housingTypeValues?.filter(value => value.rowKey === 'row:22').map(value => value.linkedNewHousingTypeName ?? 'representative'))
+    .toEqual(['representative', '39B'])
 })
 
 it('세부 타입 이름이 신청형과 같으면 단지 주택타입 이름을 바꾸지 않고, 한 면적의 주택타입이 여럿이면 새로 만들 때 첫 표기를 쓴다', () => {
@@ -600,12 +614,15 @@ it('이전 PDF 보정에서 고른 주택타입 가격은 확인 필요로 남�
   expect(price()?.basicDeposit).toEqual(expect.any(Number))
 })
 
-it('409 뒤 저장 위치의 주택형이 바뀌었으면 고른 가격 대상을 풀어 새 주택형의 지금 값을 다시 확인한다', () => {
+it('409 뒤 저장 위치의 주택형이 바뀌어도 공고문 주택타입으로 정한 연결 주택형이 같으면 가격 대상을 유지하고, 연결 주택형을 직접 바꾸면 푼다', () => {
   const { review, workspace, housing } = scenario('gwangju')
   review.rows[1].priceTarget = 0
   expect(rebaseReview(review, workspace, housing).rows[1].priceTarget).toBe(0)
+  // 저장할 곳이 다른 주택형(26, 3033)에 이어져 있어도 이 행은 공고문 주택타입 16의 단지 주택타입에 다시 잇는다.
   const moved = { ...workspace, supply: { ...workspace.supply, rows: workspace.supply.rows.map(row => row.key === 'row:23' ? { ...row, housingTypeId: 3033 } : row) } }
-  expect(rebaseReview(review, moved, housing).rows[1].priceTarget).toBeUndefined()
+  const rebased = rebaseReview(review, moved, housing).rows[1]
+  expect(rebased.priceTarget).toBe(0)
+  expect(rebased.relinkTo).toEqual(expect.any(Number))
 })
 
 describe('주택형 기본 임대조건으로 쓸 공급대상', () => {
@@ -685,6 +702,37 @@ describe('공급행은 단지 × 전용면적 주택형 하나', () => {
     return parsed.value
   }
 
+  it('저장할 곳이 같은 면적의 다른 주택타입(55C-1)에 이어져 있으면 다시 보정할 때 공고문 이름(55D-1)으로 새로 만들어 다시 잇고, 55C-1 행은 그대로 둔다', () => {
+    const { workspace, housing } = scenario('gwangju')
+    // H-3BL의 36 행(#28)을 36C-1로 두고, 같은 면적 주택타입(36C-1)에 잘못 이어진 두 번째 행(#29, 36D-1)을 둔다.
+    const base = workspace.supply.rows.find(row => row.key === 'row:28')!
+    const complexId = base.housingComplexId!, typeId = housing[complexId].find(type => type.name === '36')!.id
+    workspace.supply.rows = [...workspace.supply.rows.map(row => row.key === base.key ? { ...row, typeName: '36C-1', housingTypeId: typeId, exclusiveArea: 36.72 } : row),
+      { ...base, id: 29, key: 'row:29', typeName: '36D-1', housingTypeId: typeId, exclusiveArea: 36.72, displayOrder: base.displayOrder + 1 }]
+    housing[complexId] = housing[complexId].map(type => type.id === typeId ? { ...type, name: '36C-1' } : type)
+    const review = createReview(extract([pdfRow('첨단H-3BL', '36C-1', 36.72, 10, [target('신혼부부')]), pdfRow('첨단H-3BL', '36D-1', 36.72, 20, [target('청년')])]), workspace, housing)
+    expect(review.rows.map(row => row.proposal.destination)).toEqual([base.key, 'row:29'])
+    expect(review.rows[1].relinkTo).toBe('new')
+    const rows = assembleReview(review, workspace, evidence).correction.rows
+    expect(rows.find(row => row.key === base.key)).toMatchObject({ housingTypeId: typeId, newHousingType: null })
+    expect(rows.find(row => row.key === 'row:29')).toMatchObject({ housingTypeId: null, newHousingType: { name: '36D-1', exclusiveArea: 36.72 } })
+  })
+
+  it('공고문이 같은 면적에 따로 적은 주택타입(36A·36B)은 이름 형식만 다른 단지 주택타입(36)에 함께 잇지 않고 이름별로 새로 만든다', () => {
+    const { workspace, housing } = scenario('gwangju')
+    const review = createReview(extract([pdfRow('첨단H-3BL', '36A', 36.72, 10, [target('신혼부부')]), pdfRow('첨단H-3BL', '36B', 36.72, 20, [target('청년')])]), workspace, housing)
+    const rows = assembleReview(review, workspace, evidence).correction.rows.filter(row => ['36A', '36B'].includes(row.typeName))
+    expect(rows.map(row => [row.typeName, row.housingTypeId, row.newHousingType?.name ?? null])).toEqual([['36A', null, '36A'], ['36B', null, '36B']])
+  })
+
+  it('면적이 같은 공고문 주택타입이 하나뿐이면 이름 형식만 다른 단지 주택타입(36)을 같은 집으로 보고 잇는다', () => {
+    const { workspace, housing } = scenario('gwangju')
+    const review = createReview(extract([pdfRow('첨단H-3BL', '36A', 36.72, 10, [target('신혼부부')])]), workspace, housing)
+    const row = assembleReview(review, workspace, evidence).correction.rows.find(item => item.typeName === '36A')!
+    expect(row.newHousingType).toBeNull()
+    expect(housing[row.housingComplexId!].find(type => type.id === row.housingTypeId)?.name).toBe('36')
+  })
+
   it('같은 면적에 신청자 구분마다 적은 PDF 행(36A형(고령자)·(신혼부부·한부모가족)·(청년))은 대상이 셋인 공급행 하나가 되고 모집수는 그 합이다', () => {
     const { workspace, housing } = scenario('gwangju')
     const extraction = extract([pdfRow('첨단H-3BL', '36A형(고령자)', 36.72, 10, [target('고령자')]), pdfRow('첨단H-3BL', '36A형(신혼부부·한부모가족)', 36.72, 20, [target('신혼부부·한부모가족')]),
@@ -743,11 +791,11 @@ describe('공급행은 단지 × 전용면적 주택형 하나', () => {
     expect(review.rows[0].proposal).toMatchObject({ destination: workspace.supply.rows[0].key, needsConfirmation: false })
   })
 
-  it('같은 면적의 다른 표기(26A·26B(주거약자))는 주택형 하나라 세부 타입 없이 공급행 하나로 접고 표기는 이어 적는다', () => {
+  it('같은 면적이어도 신청형이 다르면(26A·26B(주거약자)) 접지 않고, 신청자 표기만 다른 같은 신청형(26A·26A(고령자))만 공급행 하나로 접는다', () => {
     const folded = foldSameHousingType(extract([pdfRow('A단지', '26A', 26.0100, 3, [target('일반')]), pdfRow('A단지', '26B(주거약자)', 26.01, 2, [target('주거약자')]),
-      pdfRow('B단지', '26A', 26.01, 5, [target('일반')])]))
+      pdfRow('A단지', '26A [고령자]', 26.01, 4, [target('고령자')]), pdfRow('B단지', '26A', 26.01, 5, [target('일반')])]))
     expect(folded.supplyRows.map(row => [row.complexName, row.typeName, row.subtypes.length, row.values.exclusiveArea, row.values.totalSupplyHouseholdCount, row.targets.length]))
-      .toEqual([['A단지', '26A·26B', 0, 26.01, 5, 2], ['B단지', '26A', 0, 26.01, 5, 1]])
+      .toEqual([['A단지', '26A', 0, 26.01, 7, 2], ['A단지', '26B(주거약자)', 0, 26.01, 2, 1], ['B단지', '26A', 0, 26.01, 5, 1]])
   })
 
   it('같은 주택형을 신청자 구분마다 나눠 저장한 옛 공급행은 앞 행만 고치고 나머지는 안내와 함께 제외하며, 직접 추가한 행이면 지운다', () => {
@@ -820,8 +868,9 @@ describe('공급행은 단지 × 전용면적 주택형 하나', () => {
     const folded = foldSameHousingType(hansville(input => {
       input.sharedCounts = []
       input.data.supplyRows.forEach((row, at) => { row.totalSupplyHouseholdCount = [100, 70][at]; Object.assign((row.targets as Record<string, unknown>[])[0], { supplyHouseholdCount: [90, 60][at], reserveCount: [10, 10][at] }) })
-      // 두 행의 면적을 같게 해 행 모집수 공통값 없이 면적으로 접는다.
+      // 두 행을 신청자 표기만 다른 같은 신청형으로 둬 행 모집수 공통값 없이 신청형으로 접는다.
       input.data.supplyRows[1].exclusiveArea = input.data.supplyRows[0].exclusiveArea
+      input.data.supplyRows[1].sourceHousingTypeName = `${String(input.data.supplyRows[0].sourceHousingTypeName)}(고령자)`
     }))
     expect(folded.supplyRows.map(row => [row.values.totalSupplyHouseholdCount, row.targets[0].supplyHouseholdCount, row.targets[0].reserveCount])).toEqual([[170, 150, 20]])
   })
@@ -904,9 +953,20 @@ it('단지가 비어 있는 기존 공급행도 단지 정하기 안내와 같�
   expect(pendingItems(review, true, workspace).map(item => item.id)).toContain('row:0')
 })
 
-it('GH가 청약구분·신청자마다 나눈 같은 전용면적 행 셋은 PDF 공급행 하나로 고치고, 나머지는 합쳐 제외하며 모집수는 세 행의 합으로 저장한다', () => {
+it('GH의 같은 전용면적 행이라도 신청형이 다르면(24ABC·24B·24C) 각자의 GH 틀 행을 고치고 합치지 않는다', () => {
   const { review, workspace } = ghSameArea()
-  // 같은 면적 24.97㎡의 공고문 행 셋은 한 공급행이고, 워커가 행마다 맞춘 GH 틀 행 중 첫 행을 고친다.
+  expect(review.rows.map(row => [row.proposal.destination, row.proposal.supersedes, row.proposal.needsConfirmation]))
+    .toEqual([['row:911', undefined, false], ['row:912', undefined, false], ['row:913', undefined, false]])
+  const rows = assembleReview(review, workspace, evidence).correction.rows
+  expect(rows.filter(row => row.excluded)).toEqual([])
+  expect(rows.map(row => [row.id, row.householdCount, row.targets.map(target => [target.target, target.reserveCount])]))
+    .toEqual([[911, 20, [['청년', 20]]], [912, 3, [['주거급여 수급자', 3]]], [913, 3, [['고령자', 3]]]])
+})
+
+const sameApplicationType: [string, string, string] = ['24A(청년)', '24A(주거급여 수급자)', '24A(고령자)']
+it('GH가 신청자마다 나눈 같은 신청형 행 셋은 PDF 공급행 하나로 고치고, 나머지는 합쳐 제외하며 모집수는 세 행의 합으로 저장한다', () => {
+  const { review, workspace } = ghSameArea(sameApplicationType)
+  // 신청형 24A의 공고문 행 셋은 한 공급행이고, 워커가 행마다 맞춘 GH 틀 행 중 첫 행을 고친다.
   expect(review.rows.map(row => [row.proposal.destination, row.proposal.supersedes, row.proposal.needsConfirmation])).toEqual([['row:911', ['row:912', 'row:913'], false]])
   const count = review.rows[0].cells.find(cell => cell.field === 'totalSupplyHouseholdCount')!
   expect([count.before, count.selected]).toEqual([26, false])
@@ -917,7 +977,7 @@ it('GH가 청약구분·신청자마다 나눈 같은 전용면적 행 셋은 PD
 })
 
 it('합쳐지는 GH 행 중 모집수를 모르는 행이 있으면 합을 만들지 않고 모집수를 확인 필요로 둔다', () => {
-  const { read, workspace, housing } = ghSameArea()
+  const { read, workspace, housing } = ghSameArea(sameApplicationType)
   workspace.supply.rows[2].householdCount = null
   const review = createReview(read, workspace, housing)
   const count = review.rows[0].cells.find(cell => cell.field === 'totalSupplyHouseholdCount')!
@@ -926,7 +986,7 @@ it('합쳐지는 GH 행 중 모집수를 모르는 행이 있으면 합을 만�
 })
 
 it('PDF 모집수가 저장할 행의 지금 값과 같아도 합쳐지는 행의 합과 다르면 바뀜으로 고른다', () => {
-  const { read, workspace, housing } = ghSameArea()
+  const { read, workspace, housing } = ghSameArea(sameApplicationType)
   // 공고문 모집수 합은 20(14·3·3)이고, 저장할 행 #911의 지금 값도 20이다. 합쳐지는 행까지 더한 지금 값은 26이다.
   read.supplyRows.forEach((row, at) => { row.values.totalSupplyHouseholdCount = [14, 3, 3][at] })
   read.evidence.push({ path: 'supplyRows[0].totalSupplyHouseholdCount', page: 4, quote: '24ABC 청년' })
@@ -965,9 +1025,10 @@ it('대상 예비자 수만 여러 면적 행에 걸치면 행마다 모집수�
   const { read } = ghSameArea()
   read.supplyRows[1].values.exclusiveArea = 36.5
   const shared = { ...read, sharedCounts: [{ paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[1].targets[0].reserveCount'], count: 23, page: 4, quote: '24ABC 24B 23' }] }
-  expect(foldSameHousingType(shared).supplyRows.map(row => row.typeName)).toEqual(['24ABC·24B·24C'])
+  // 같은 면적이어도 신청형이 다른 24C는 접지 않는다.
+  expect(foldSameHousingType(shared).supplyRows.map(row => row.typeName)).toEqual(['24ABC·24B', '24C'])
   // 행마다 자기 모집수가 있으면 면적이 다른 행은 그대로 둔다(대상 수만 함께 쓴다).
   shared.supplyRows[0].values.totalSupplyHouseholdCount = 20
   shared.supplyRows[1].values.totalSupplyHouseholdCount = 3
-  expect(foldSameHousingType(shared).supplyRows.map(row => row.typeName)).toEqual(['24ABC·24C', '24B'])
+  expect(foldSameHousingType(shared).supplyRows.map(row => row.typeName)).toEqual(['24ABC', '24B', '24C'])
 })

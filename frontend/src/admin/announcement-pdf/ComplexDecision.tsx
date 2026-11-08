@@ -6,14 +6,14 @@ import { getManagementDetail } from '../management/api'
 import { isRecord } from '../management/managementContract'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
 import { needsComplex, reproposeRow, type Review } from './review'
-import { chooseDestination, destinationReason, emptySourceRows, ghFrameReason, ghFrameRows, sameComplex, supersedeNote, takenRows, type RowProposal } from './matching'
+import { chooseDestination, destinationReason, emptySourceRows, ghFrameReason, ghFrameRows, matchingRows, otherPdfRows, sameComplex, supersedeNote, takenRows, type RowProposal } from './matching'
 import { NewComplexRegistration, type MyHomeComplexOverview } from './NewComplexRegistration'
 import { createPdfHousingTypes } from './pdfHousingTypes'
 import styles from './PdfCorrection.module.css'
 
 /**
  * PDF 단지명마다 한 번 단지를 정한다. 새로 등록하면 공고문 주택형도 함께 만든다.
- * 단지를 정하면 그 단지에 연결된 공급행과 이 공고 단지의 단지 없는 원천행 중 전용면적이 겹치는 행에 PDF 공급행을 저장하고(chooseDestination),
+ * 단지를 정하면 그 단지에 연결된 공급행과 이 공고 단지의 단지 없는 원천행 중 전용면적이 겹치고 신청형이 같은 행에 PDF 공급행을 저장하고(chooseDestination),
  * 겹치는 행이 없으면 새 공급행으로 더한다. 주택형은 저장할 때 서버가 단지·전용면적으로 정한다.
  */
 export function ComplexDecisions({ review, workspace, only, onChange }: { review: Review; workspace: JsonWorkspace; onChange: (review: Review) => void
@@ -59,8 +59,8 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
     const controller = new AbortController(); request.current = controller
     setBusy(true); setError('')
     try {
-      // 새로 등록한 단지는 공고문 주택형을 함께 만든다.
-      const pdfRows = created ? review.extraction.supplyRows.filter(row => row.complexName === name) : []
+      // 새로 등록한 단지는 공고문 주택형을 함께 만든다. 공급 표에 단지명이 없는 PDF 행은 이름 없는 묶음('')으로 묶었다(ComplexDecisions).
+      const pdfRows = created ? review.extraction.supplyRows.filter(row => (row.complexName ?? '') === name) : []
       if (pdfRows.length) await createPdfHousingTypes(id, pdfRows, await getMatchingHousingTypes(id, controller.signal), controller.signal)
       const [detail, candidates] = await Promise.all([getManagementDetail('complexes', String(id), controller.signal), getMatchingHousingTypes(id, controller.signal)])
       if (controller.signal.aborted) return
@@ -68,16 +68,16 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
       const complete = (input: Review): Review => ({ ...input,
         rows: input.rows.map(row => row.proposal.createdComplex?.id === id ? { ...row, proposal: { ...row.proposal, createdComplex: undefined } } : row) })
       const current = complete(latest.current)
-      const currentIndexes = current.rows.flatMap((_, index) => current.extraction.supplyRows[index].complexName === name ? [index] : [])
+      const currentIndexes = current.rows.flatMap((_, index) => (current.extraction.supplyRows[index].complexName ?? '') === name ? [index] : [])
       if (currentIndexes.every(index => current.rows[index].proposal.newComplex?.id === id
         && JSON.stringify(current.rows[index].proposal.candidates) === JSON.stringify(candidates))) {
         if (latest.current.rows.some(row => row.proposal.createdComplex?.id === id)) onChange(current)
         setRegistering(false); return
       }
       const pnu = isRecord(detail.data.address) && typeof detail.data.address.pnu === 'string' ? detail.data.address.pnu : ''
-      // 고른 단지에 연결된 공급행과 이 공고 단지의 단지 없는 원천행에서 전용면적으로 저장할 곳을 다시 고른다. 다른 PDF 행이 고른 행은 빼고 고른다.
+      // 고른 단지에 연결된 공급행과 이 공고 단지의 단지 없는 원천행에서 전용면적·신청형으로 저장할 곳을 다시 고른다. 다른 PDF 행이 고른 행은 빼고 고른다.
       const linked = workspace.supply.rows.filter(item => !item.excluded && item.housingComplexId === id)
-      const related = [...linked, ...emptySourceRows(workspace, current.extraction, name)]
+      const related = matchingRows([...linked, ...emptySourceRows(workspace, current.extraction, name)], workspace.supply.lhSupplyRows, workspace.supply.applicationTypeNames)
       const proposals: Pick<RowProposal, 'destination' | 'supersedes'>[] = current.rows.flatMap((row, index) => currentIndexes.includes(index) ? [] : [row.proposal])
       const rows = current.rows.map((old, index) => {
         if (!currentIndexes.includes(index)) return old
@@ -85,7 +85,8 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
         // 처음 제안(proposeRows)과 같은 순서로 고른다: 워커가 맞춘 GH 틀 행, 그다음 전용면적.
         const used = takenRows(proposals), frames = ghFrameRows(source, workspace.supply, used)
         const { chosen, legacy, superseded } = frames.length ? { chosen: frames[0], legacy: false, superseded: frames.slice(1) }
-          : chooseDestination(source, related, used, { [id]: candidates }, typeof ownCount === 'number' ? ownCount : null)
+          : chooseDestination(source, related, used, { [id]: candidates }, typeof ownCount === 'number' ? ownCount : null,
+            otherPdfRows(current.extraction, index))
         const anchor = chosen ?? linked[0]
         // 단지에 연결된 행을 기준으로 삼으면 그 행의 단지를 쓰고, 단지 없는 원천행을 고치거나 기준 행이 없으면 고른 단지를 연결한다.
         const newComplex = anchor?.housingComplexId === id ? undefined : { id, name: complexName, pnu: chosen?.pnu || pnu,

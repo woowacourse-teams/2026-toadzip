@@ -14,7 +14,7 @@ import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.ComplexVerificationStatus;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
-import com.toadzip.backend.housing.domain.HousingTypeAreas;
+import com.toadzip.backend.housing.domain.HousingTypeNames;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexCreateRequest.AddressRequest;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexUpdateRequest;
@@ -176,8 +176,11 @@ public class AdminHousingComplexManagementService {
             throw new AdminDataConflictException("휴지통에서 복구한 뒤 주택형을 수정해 주세요.");
         }
         boolean areaChanged = type.getExclusiveArea() == null || type.getExclusiveArea().compareTo(request.exclusiveArea()) != 0;
-        // 면적을 바꾸지 않는 수정은 이미 같은 면적 주택형이 둘인 기존 단지에서도 막지 않는다.
-        if (areaChanged) { requireUniqueArea(id, typeId, request.exclusiveArea()); }
+        // 이름을 바꾸지 않는 수정은 이미 같은 이름 주택형이 둘인 기존 단지에서도 막지 않는다.
+        // 면적만 바꿔도 숫자 형명(059.9300A)이 다른 주택형(59A)과 같은 집이 될 수 있어 함께 본다.
+        if (areaChanged || !HousingTypeNames.sameType(type.getName(), type.getExclusiveArea(), request.name(), request.exclusiveArea())) {
+            requireUniqueName(id, typeId, request.name(), request.exclusiveArea());
+        }
         typeImpacts.check(id, typeId, request.impactToken(), areaChanged);
         String before = json.writeValueAsString(housingTypeData(type));
         type.reviseByAdmin(request.name(), request.exclusiveArea(), request.householdCount());
@@ -197,10 +200,7 @@ public class AdminHousingComplexManagementService {
             throw new AdminDataConflictException("휴지통에서 복구한 뒤 주택형을 추가해 주세요.");
         }
         String name = request.name().strip();
-        if (types.findAllByHousingComplex(complex).stream().anyMatch(type -> type.getName().equals(name))) {
-            throw new AdminDataConflictException("이 단지에 같은 이름의 주택형이 있습니다.");
-        }
-        requireUniqueArea(id, null, request.exclusiveArea());
+        requireUniqueName(id, null, name, request.exclusiveArea());
         String identifier = HousingType.ADMIN_SOURCE_PREFIX + UUID.randomUUID();
         var type = request.createdFromAnnouncement()
                 ? HousingType.createFromAnnouncement(complex, identifier, name, request.exclusiveArea(),
@@ -226,9 +226,9 @@ public class AdminHousingComplexManagementService {
         if (!restore && (rows.existsByHousingType(type) || matchDecisions.existsByHousingTypeId(typeId))) {
             throw new AdminDataConflictException("이 주택형에 연결된 공급정보가 있습니다. 공고의 공급정보에서 연결을 바꾼 뒤 삭제해 주세요.");
         }
-        if (restore && type.getExclusiveArea() != null && types.findAllIncludingTrashByHousingComplexId(id).stream()
-                .anyMatch(other -> !other.isAdminDeleted() && !other.getId().equals(typeId) && sameArea(other, type.getExclusiveArea()))) {
-            throw new AdminDataConflictException("이 단지에 같은 전용면적 주택형이 있어 복구할 수 없습니다. 그 주택형을 수정해 주세요.");
+        if (restore && types.findAllIncludingTrashByHousingComplexId(id).stream().anyMatch(other -> !other.isAdminDeleted()
+                && !other.getId().equals(typeId) && HousingTypeNames.sameType(other.getName(), other.getExclusiveArea(), type.getName(), type.getExclusiveArea()))) {
+            throw new AdminDataConflictException("이 단지에 같은 이름의 주택형이 있어 복구할 수 없습니다. 그 주택형을 수정해 주세요.");
         }
         String before = json.writeValueAsString(housingTypeData(type));
         if (restore) { type.restore(); }
@@ -242,22 +242,19 @@ public class AdminHousingComplexManagementService {
     }
 
     /**
-     * 공급행은 연결 단지에서 같은 전용면적 주택형을 찾아 맞추므로, 같은 면적 주택형은 단지에 하나만 둔다.
-     * 휴지통 주택형도 복구하면 겹치므로 함께 본다. exceptTypeId는 수정 중인 주택형 자신이다.
+     * 단지 주택타입은 공고문 표기 이름으로 나누므로(59B-1과 59D-1은 면적이 같아도 다르다), 같은 이름({@link HousingTypeNames#sameType})
+     * 주택형은 단지에 하나만 둔다. 휴지통 주택형도 복구하면 겹치므로 함께 본다. exceptTypeId는 수정 중인 주택형 자신이다.
      */
-    private void requireUniqueArea(long complexId, Long exceptTypeId, BigDecimal exclusiveArea) {
-        var sameArea = types.findAllIncludingTrashByHousingComplexId(complexId).stream()
-                .filter(type -> !type.getId().equals(exceptTypeId) && sameArea(type, exclusiveArea)).toList();
-        if (sameArea.stream().anyMatch(type -> !type.isAdminDeleted())) {
-            throw new AdminDataConflictException("이 단지에 같은 전용면적 주택형이 있습니다. 그 주택형을 수정해 주세요.");
+    private void requireUniqueName(long complexId, Long exceptTypeId, String name, BigDecimal exclusiveArea) {
+        var sameName = types.findAllIncludingTrashByHousingComplexId(complexId).stream()
+                .filter(type -> !type.getId().equals(exceptTypeId) && HousingTypeNames.sameType(type.getName(), type.getExclusiveArea(), name, exclusiveArea))
+                .toList();
+        if (sameName.stream().anyMatch(type -> !type.isAdminDeleted())) {
+            throw new AdminDataConflictException("이 단지에 같은 이름의 주택형이 있습니다.");
         }
-        if (!sameArea.isEmpty()) {
-            throw new AdminDataConflictException("휴지통에 같은 전용면적 주택형이 있습니다. 복구한 뒤 수정해 주세요.");
+        if (!sameName.isEmpty()) {
+            throw new AdminDataConflictException("휴지통에 같은 이름의 주택형이 있습니다. 복구한 뒤 수정해 주세요.");
         }
-    }
-
-    private static boolean sameArea(HousingType type, BigDecimal exclusiveArea) {
-        return HousingTypeAreas.sameArea(type.getExclusiveArea(), exclusiveArea);
     }
 
     private AdminHousingComplexDetail.HousingTypeItem housingTypeData(HousingType type) {

@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -165,6 +166,24 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
         var stored = entities.find(HousingType.class, type.getId());
         assertThat(stored.getName()).isEqualTo("36A");
         assertThat(stored.getTotalHouseholdCount()).isEqualTo(7);
+    }
+
+    @Test
+    void 공고_값의_이름이_같은_단지의_다른_주택형_이름이면_이름은_바꾸지_않고_나머지는_반영한다() throws Exception {
+        // 단지 주택타입은 이름으로 나누므로 이름을 바꿔 같은 이름 주택형이 둘이 되지 않게 한다.
+        entities.persist(HousingType.createFromMyHome(complex, "source-36b", "36B", new BigDecimal("36.91"), null));
+        entities.flush();
+        var request = request();
+        value(request, "row:" + row.getId(), "36b형", null, 120);
+
+        var preview = preview(request);
+        assertThat(preview.path("housingTypeWarnings").toString()).contains("같은 단지에 '36b형' 주택형이 있어 이름을 바꾸지 않습니다");
+        apply(request, preview).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+
+        var stored = entities.find(HousingType.class, type.getId());
+        assertThat(stored.getName()).isEqualTo("36");
+        assertThat(stored.getTotalHouseholdCount()).isEqualTo(120);
     }
 
     @Test
@@ -379,7 +398,7 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     }
 
     @Test
-    void 같은_전용면적_주택형이_있거나_휴지통에_있으면_새로_만들지_않는다() throws Exception {
+    void 같은_이름_주택형이_있거나_휴지통에_있으면_새로_만들지_않는다() throws Exception {
         var trashed = HousingType.createFromMyHome(complex, "source-59", "59", new BigDecimal("59.9"), null);
         entities.persist(trashed);
         trashed.moveToTrash();
@@ -394,7 +413,8 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("휴지통에 있습니다")));
 
-        ((ObjectNode) input.get("newHousingType")).put("exclusiveArea", new BigDecimal("36.9100"));
+        // 이름이 같은 주택형(36)이 단지에 있으면 면적이 달라도 새로 만들지 않는다.
+        ((ObjectNode) input.get("newHousingType")).put("name", "36형").put("exclusiveArea", new BigDecimal("36.9500"));
         mvc.perform(post(root() + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType("application/json").content(request.toString()))
                 .andExpect(status().isBadRequest())
@@ -426,6 +446,32 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
         var created = entities.find(SupplyRow.class, row.getId()).getHousingTypes().stream()
                 .filter(linked -> linked.getExclusiveArea().compareTo(new BigDecimal("59.9")) == 0).findFirst().orElseThrow();
         assertThat(created).extracting(HousingType::getName, HousingType::getTotalHouseholdCount).containsExactly("59A", 44);
+    }
+
+    @Test
+    void 같은_면적의_새_주택형_여럿에는_이름으로_공고_값을_따로_반영하고_이름이_없으면_거절한다() throws Exception {
+        var request = request();
+        String key = "row:" + row.getId();
+        var links = ((ObjectNode) request.path("correction").path("rows").get(0)).putArray("linkedHousingTypes");
+        links.addObject().putObject("newHousingType").put("name", "59A1").put("exclusiveArea", new BigDecimal("59.9"));
+        links.addObject().putObject("newHousingType").put("name", "59C").put("exclusiveArea", new BigDecimal("59.9"));
+        value(request, key, null, "81.1", 10).put("linkedNewHousingTypeArea", new BigDecimal("59.9"));
+
+        mvc.perform(post(root() + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType("application/json").content(request.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("linkedNewHousingTypeName")));
+
+        request.withArray("housingTypeValues").removeAll();
+        value(request, key, null, "81.1", 10).put("linkedNewHousingTypeArea", new BigDecimal("59.9")).put("linkedNewHousingTypeName", "59A1");
+        value(request, key, null, "82.2", 20).put("linkedNewHousingTypeArea", new BigDecimal("59.9")).put("linkedNewHousingTypeName", "59C");
+        var preview = preview(request);
+        apply(request, preview).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+        var created = entities.createQuery("SELECT t FROM HousingType t WHERE t.housingComplex.id = :complex AND t.name IN ('59A1', '59C') ORDER BY t.name",
+                HousingType.class).setParameter("complex", complex.getId()).getResultList();
+        assertThat(created).extracting(HousingType::getName, HousingType::getSupplyArea, HousingType::getTotalHouseholdCount)
+                .containsExactly(tuple("59A1", new BigDecimal("81.1000"), 10), tuple("59C", new BigDecimal("82.2000"), 20));
     }
 
     @Test

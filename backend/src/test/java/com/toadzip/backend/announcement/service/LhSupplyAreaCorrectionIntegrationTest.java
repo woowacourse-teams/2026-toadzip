@@ -156,21 +156,54 @@ class LhSupplyAreaCorrectionIntegrationTest {
     }
 
     @Test
-    void 같은_주택형을_가리키는_새_공급행은_거절하고_기존_행을_제외하면_저장한다() {
+    void 신청형이_다른_행은_같은_주택형을_함께_가리키고_같은_신청형의_새_행은_거절한다() {
         long id = refinedAnnouncement(supply("059.9100A", "59.9100", "25"), supply("059.9300B", "59.9300", "15"));
         var workspace = supplyCorrections.workspace(id);
         var existing = workspace.rows().stream().filter(row -> type5991.getId().equals(row.housingTypeId())).findFirst()
                 .orElseThrow();
-        var duplicate = edit(existing, null, "new-59", "059.9100A", type5991, 25);
         var rows = new ArrayList<>(workspace.rows());
-        rows.add(duplicate);
+        rows.add(edit(existing, null, "new-59", "59.9100A(고령자)", type5991, 25));
 
-        rejects(id, workspace, rows, "같은 주택형을 가리킵니다");
+        rejects(id, workspace, rows, "같은 주택형(신청형)입니다");
 
-        rows.replaceAll(row -> row.key().equals(existing.key()) ? excluded(row) : row);
+        rows.removeLast();
+        rows.add(edit(existing, null, "new-59c", "059.9100C(주거약자)", type5991, 4));
         applySupply(id, request(workspace, rows));
         assertThat(supplyCorrections.workspace(id).rows()).filteredOn(row -> !row.excluded())
-                .extracting(Row::housingTypeId).containsExactlyInAnyOrder(type5991.getId(), type5993.getId());
+                .extracting(Row::typeName, Row::housingTypeId).containsExactlyInAnyOrder(tuple("059.9100A", type5991.getId()),
+                        tuple("059.9100C(주거약자)", type5991.getId()), tuple("059.9300B", type5993.getId()));
+        // 같은 면적 공급행이 둘이어도 LH 줄은 신청형이 같은 행에만 붙고 모호하지 않다.
+        assertThat(supplyCorrections.workspace(id).lhSupplyRows()).filteredOn(lh -> lh.typeName().equals("059.9100A"))
+                .extracting(SupplyCorrection.LhSupplyRow::attachedRowKey, SupplyCorrection.LhSupplyRow::ambiguous)
+                .containsExactly(tuple(existing.key(), false));
+    }
+
+    @Test
+    void 정제가_같은_주택타입에_붙인_신청형이_다른_LH_행은_한_행만_고쳐도_저장되고_같은_신청형의_새_행은_거절한다() {
+        // 두 LH 행은 모두 주택타입 059.9100A(type5991)를 가리켜 작업실 이름이 둘 다 '059.9100A'로 보인다.
+        long id = refinedAnnouncement(supply("059.9100A", "59.9100", "25"), supply("059.9100C(주거약자)", "59.9100", "4"));
+        var workspace = supplyCorrections.workspace(id);
+        assertThat(workspace.rows()).extracting(Row::typeName, Row::housingTypeId)
+                .containsOnly(tuple("059.9100A", type5991.getId()));
+        var weak = workspace.rows().stream().filter(row -> row.householdCount() == 4).findFirst().orElseThrow();
+        var strong = workspace.rows().stream().filter(row -> row.householdCount() == 25).findFirst().orElseThrow();
+        // 작업실은 행 이름과 따로 행별 신청형 이름(원천 형명)을 준다. 화면은 이 이름으로 같은 신청형을 가린다.
+        assertThat(workspace.applicationTypeNames()).containsEntry(strong.key(), "059.9100A")
+                .containsEntry(weak.key(), "059.9100C(주거약자)");
+        // LH 줄은 각자 원천 형명이 같은 행에 모호하지 않게 붙는다.
+        assertThat(workspace.lhSupplyRows()).extracting(SupplyCorrection.LhSupplyRow::typeName,
+                SupplyCorrection.LhSupplyRow::attachedRowKey, SupplyCorrection.LhSupplyRow::ambiguous)
+                .containsExactlyInAnyOrder(tuple("059.9100A", strong.key(), false), tuple("059.9100C(주거약자)", weak.key(), false));
+
+        var duplicated = new ArrayList<>(workspace.rows());
+        duplicated.add(edit(strong, null, "new-59c", "059.9100C", type5991, 4));
+        rejects(id, workspace, duplicated, "같은 주택형(신청형)입니다");
+
+        var rows = workspace.rows().stream().map(row -> row.key().equals(weak.key())
+                ? edit(row, row.id(), row.key(), row.typeName(), type5991, 5) : row).toList();
+        applySupply(id, request(workspace, rows));
+        assertThat(jdbc.sql("SELECT total_supply_household_count FROM supply_rows WHERE id = :id").param("id", weak.id())
+                .query(Integer.class).single()).isEqualTo(5);
     }
 
     @Test
@@ -294,25 +327,34 @@ class LhSupplyAreaCorrectionIntegrationTest {
     }
 
     @Test
-    void 두_새_행이_같은_면적의_새_주택형을_가리키면_거절하고_겹치는_관리자_추가_행을_지우면_저장한다() {
+    void 신청형이_다른_두_새_행은_같은_면적이어도_이름별로_새_주택타입을_따로_만들고_같은_신청형_행은_관리자_추가_행을_지우면_저장한다() {
         long id = refinedAnnouncement(supply("059.9100A", "59.9100", "25"));
         var workspace = supplyCorrections.workspace(id);
         var base = workspace.rows().getFirst();
 
-        rejects(id, workspace, List.of(base, areaRow(base, "a", "84A", new BigDecimal("84.96"), 7, 1),
-                areaRow(base, "b", "84A-1", new BigDecimal("84.964"), 3, 2)), "같은 주택형을 가리킵니다");
-
-        applySupply(id, request(workspace, List.of(base, areaRow(base, "a", "84A", new BigDecimal("84.96"), 7, 1))));
+        applySupply(id, request(workspace, List.of(base, areaRow(base, "a", "84A", new BigDecimal("84.96"), 7, 1),
+                areaRow(base, "b", "84A-1", new BigDecimal("84.964"), 3, 2))));
         var saved = supplyCorrections.workspace(id);
+        // 단지 주택타입은 공고문 표기 이름으로 나눈다. 84A와 84A-1은 전용면적이 같아도 다른 주택타입이다.
+        assertThat(saved.rows()).filteredOn(row -> row.typeName().startsWith("84A")).extracting(Row::housingTypeId)
+                .doesNotContainNull().doesNotHaveDuplicates().hasSize(2);
+        assertThat(jdbc.sql("SELECT name FROM housing_types WHERE housing_complex_id = :complex AND exclusive_area BETWEEN 84.955 AND 84.965")
+                .param("complex", complex.getId()).query(String.class).list()).containsExactlyInAnyOrder("84A", "84A-1");
+
         var manual = saved.rows().stream().filter(row -> row.typeName().equals("84A")).findFirst().orElseThrow();
-        var replacement = areaRow(base, "c", "84A형", new BigDecimal("84.96"), 8, 2);
+        var replacement = areaRow(base, "c", "84A형", new BigDecimal("84.96"), 8, 3);
+        var duplicated = new ArrayList<>(saved.rows());
+        duplicated.add(replacement);
+        rejects(id, saved, duplicated, "같은 주택형(신청형)입니다");
+
         var rows = new ArrayList<>(saved.rows().stream().filter(row -> !row.key().equals(manual.key())).toList());
         rows.add(replacement);
         var request = new SupplyCorrection.Request(UUID.randomUUID(), saved.snapshotToken(), "공고문 공급 표 대조",
                 "https://apply.lh.or.kr/notice", "3", rows, List.of(manual.key()));
         var preview = supplyCorrections.preview(id, request);
         supplyCorrections.apply(id, new SupplyCorrection.Apply(request, preview.confirmationToken()), "operator");
-        assertThat(supplyCorrections.workspace(id).rows()).extracting(Row::typeName).containsExactlyInAnyOrder("059.9100A", "84A형");
+        assertThat(supplyCorrections.workspace(id).rows()).extracting(Row::typeName)
+                .containsExactlyInAnyOrder("059.9100A", "84A-1", "84A형");
     }
 
     @Test

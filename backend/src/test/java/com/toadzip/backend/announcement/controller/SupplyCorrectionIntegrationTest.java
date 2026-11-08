@@ -505,17 +505,18 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
-    void 같은_단지에서_두_공급행이_같은_주택형을_가리키면_거절하고_아무것도_저장하지_않는다() throws Exception {
+    void 같은_단지에서_두_공급행이_같은_신청형이면_거절하고_아무것도_저장하지_않는다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId();
         var request = request(id);
         var extra = request.get("rows").get(0).deepCopy();
-        ((ObjectNode) extra).putNull("id").put("key", "new-row").put("typeName", "26B").put("displayOrder", 1);
+        // 신청자 표기만 다른 행은 같은 신청형(26)이다.
+        ((ObjectNode) extra).putNull("id").put("key", "new-row").put("typeName", "26형(고령자)").put("displayOrder", 1);
         ((ObjectNode) extra.get("targets").get(0)).putNull("id").put("key", "new-target");
         ((ArrayNode) request.get("rows")).add(extra);
         mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType("application/json").content(json.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value(containsString("같은 주택형을 가리킵니다")));
+                .andExpect(jsonPath("$.message").value(containsString("같은 주택형(신청형)입니다")));
         assertThat(rows.findAllByAnnouncement(row.getAnnouncement())).hasSize(1);
     }
 
@@ -615,22 +616,52 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
-    void 다른_단지_주택형이나_면적이_겹치는_주택형은_함께_모집하는_주택형으로_연결하지_않는다() throws Exception {
+    void 다른_단지_주택형이나_같은_주택형은_함께_모집하는_주택형으로_연결하지_않는다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId();
         var otherComplexType = housingType(fixture(), "27", "27.1000");
-        var sameArea = housingType(row, "26B", "26.4673");
         rejectLinks(id, links -> links.addObject().put("housingTypeId", otherComplexType.getId()),
                 "선택한 단지에 속한 주택형을 선택하세요.");
-        rejectLinks(id, links -> links.addObject().put("housingTypeId", row.getHousingType().getId()), "전용면적마다");
-        rejectLinks(id, links -> links.addObject().put("housingTypeId", sameArea.getId()), "전용면적마다");
+        rejectLinks(id, links -> links.addObject().put("housingTypeId", row.getHousingType().getId()), "같은 주택형을 두 번");
+        // 공고 신청형 한 행은 같은 면적의 다른 단지 주택타입(59A·59A1)을 함께 모집할 수 있지만, 이름이 같은 새 주택형은 하나다.
         rejectLinks(id, links -> {
             links.addObject().putObject("newHousingType").put("name", "26C").put("exclusiveArea", new BigDecimal("26.9"));
-            links.addObject().putObject("newHousingType").put("name", "26D").put("exclusiveArea", new BigDecimal("26.90"));
-        }, "전용면적마다");
+            links.addObject().putObject("newHousingType").put("name", "26c형").put("exclusiveArea", new BigDecimal("26.90"));
+        }, "같은 주택형을 두 번");
+        // 단지 주택타입은 이름으로 나누므로, 이름이 같은 주택형이 단지에 있으면 새로 만들지 않고 그 주택형을 고르게 한다.
         housingType(row, "27", "27.5000");
-        rejectLinks(id, links -> links.addObject().putObject("newHousingType").put("name", "27A")
-                .put("exclusiveArea", new BigDecimal("27.5")), "이 단지에 있습니다");
+        rejectLinks(id, links -> links.addObject().putObject("newHousingType").put("name", "27형")
+                .put("exclusiveArea", new BigDecimal("27.6")), "이 단지에 있습니다");
         assertThat(linkedTypeIds(row.getId())).containsExactly(row.getHousingType().getId());
+    }
+
+    @Test
+    void 같은_면적의_다른_단지_주택타입을_함께_모집하는_주택형으로_연결하고_같은_이름_새_주택형을_면적만_다르게_두_번_만들지_않는다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        var sameArea = housingType(row, "26B", "26.4673");
+        var request = request(id);
+        var links = ((ObjectNode) request.get("rows").get(0)).putArray("linkedHousingTypes");
+        links.addObject().put("housingTypeId", sameArea.getId());
+        links.addObject().putObject("newHousingType").put("name", "26C").put("exclusiveArea", new BigDecimal("26.4673"));
+        var preview = preview(id, request);
+        apply(id, request, preview).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+        long created = jdbc.queryForObject("SELECT id FROM housing_types WHERE housing_complex_id = ? AND name = '26C'",
+                Long.class, row.getHousingComplex().getId());
+        assertThat(linkedTypeIds(row.getId())).containsExactlyInAnyOrder(row.getHousingType().getId(), sameArea.getId(), created);
+
+        // 다른 행이 같은 이름(26D)의 새 주택형을 면적만 다르게 만들면 어느 면적인지 알 수 없어 거절한다.
+        var second = request(id);
+        var first = (ObjectNode) second.get("rows").get(0);
+        first.putArray("linkedHousingTypes").addObject().putObject("newHousingType").put("name", "26D").put("exclusiveArea", new BigDecimal("30.1"));
+        var extra = first.deepCopy();
+        extra.putNull("id").put("key", "new-row").put("typeName", "30").put("displayOrder", 1).putNull("housingTypeId").putArray("linkedHousingTypes");
+        extra.putObject("newHousingType").put("name", "26D").put("exclusiveArea", new BigDecimal("30.2"));
+        ((ObjectNode) extra.get("targets").get(0)).putNull("id").put("key", "new-target");
+        ((ArrayNode) second.get("rows")).add(extra);
+        mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType("application/json").content(json.writeValueAsString(second)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("전용면적을 다르게 두 번")));
     }
 
     @Test

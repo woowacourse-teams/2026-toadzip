@@ -468,7 +468,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
           {section === 'supply' && !checked && <SupplyNavigator review={review} workspace={workspace} view={supplyView(review, selectedRow, filter, pending)} pending={pending}
             onSelectComplex={index => { selectRow(index); scrollReviewTop() }} onSelectRow={stepRow} onJump={goTo} />}
         </div>
-        {checked && <ApplySummaryPanel summary={summarizePreview(checked.preview, housing)} busy={busy} onApply={() => void confirmApply()} onBack={() => setChecked(null)} />}
+        {checked && <ApplySummaryPanel summary={summarizePreview(checked.preview, housing, workspace.supply.applicationTypeNames)} busy={busy} onApply={() => void confirmApply()} onBack={() => setChecked(null)} />}
         <fieldset disabled={busy || blocked} hidden={Boolean(checked)} className={styles.reviewFields}><div role="tabpanel" id="pdf-review-panel" aria-labelledby="pdf-review-tab-active">
           {section === 'supply' && <ReviewSupply savesHousingTypes={!supplyDraft} warnings={workerWarnings} editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} selected={selectedRow} onSelect={stepRow} onJump={goTo} />}
           {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.extraction.undatedSchedules.length > 0 && <p className={styles.hint}>날짜 없이 안내한 일정: {review.extraction.undatedSchedules.join(' · ')}</p>}<ReviewSchedules review={review} workspace={workspace} filter={filter} empty={empty} onChange={change} onEvidence={evidence} /></>}

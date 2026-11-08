@@ -8,9 +8,10 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * 공급행이 단지 주택형을 찾는 규칙. 주택형은 단지 안에서 전용면적(소수 둘째 자리)으로 정한다.
- * 마이홈이 수집한 단지에는 같은 면적 주택형이 여럿인 경우가 있어(101A1~A15가 모두 101.99㎡), 그때는 이름이 같은 주택형,
- * 없으면 가장 먼저 만든 주택형을 고른다. 같은 면적의 주택형은 실제로 같은 평면이 이름만 나뉜 것이라 어느 쪽에 붙여도 모집 정보가 틀리지 않는다.
+ * 공급행이 단지 주택타입을 찾는 규칙. 단지 주택타입은 공고문 표기 이름으로 나눈다(59B-1과 59D-1은 전용면적이 같아도 다르다).
+ * 이름이 같은 주택타입({@link HousingTypeNames#typeKey})을 먼저 찾고, 이름이 같은 것이 없을 때 같은 면적 주택타입이 하나뿐이면 그것에
+ * 임시로 잇는다({@link #pick}: LH 정제·관리자 단지 연결·면적만 준 편집표 행). 공고문(PDF) 보정은 화면이 공고문 주택타입 이름으로
+ * 연결할 주택타입이나 새 주택타입을 정해 보내 이 임시 연결을 바로잡는다.
  */
 public final class HousingTypeAreas {
 
@@ -28,23 +29,26 @@ public final class HousingTypeAreas {
         return left != null && right != null && key(left).compareTo(key(right)) == 0;
     }
 
-    /** 같은 면적 주택형 중 하나를 고른다. name은 공고 표기이며 없어도 된다. */
+    /**
+     * 공고문 확인 전 고르기. 이름이 같은 주택타입, 없으면 같은 면적 주택타입이 하나뿐일 때 그것이다. 같은 면적이 여럿이면 고르지 않는다.
+     * name은 원천 표기이며 없어도 된다.
+     */
     public static Optional<HousingType> pick(Collection<HousingType> types, BigDecimal exclusiveArea, String name) {
-        if (exclusiveArea == null) {
-            return Optional.empty();
+        var named = named(types, name, exclusiveArea);
+        if (named.isPresent() || exclusiveArea == null) {
+            return named;
         }
-        List<HousingType> sameArea = types.stream().filter(type -> sameArea(type.getExclusiveArea(), exclusiveArea))
-                .sorted(Comparator.comparing(HousingType::getId, Comparator.nullsLast(Comparator.naturalOrder())))
-                .toList();
-        String wanted = normalized(name);
-        return sameArea.stream().filter(type -> wanted != null && wanted.equals(normalized(type.getName()))).findFirst()
-                .or(() -> sameArea.stream().findFirst());
+        List<HousingType> sameArea = types.stream().filter(type -> sameArea(type.getExclusiveArea(), exclusiveArea)).toList();
+        return sameArea.size() == 1 ? Optional.of(sameArea.getFirst()) : Optional.empty();
     }
 
-    private static String normalized(String name) {
-        if (name == null || name.isBlank()) {
-            return null;
+    /** 이름이 같은 주택타입. 여럿이면 면적이 같은 것, 그다음 먼저 만든 것이다. 이름이 비면 없다. */
+    public static Optional<HousingType> named(Collection<HousingType> types, String name, BigDecimal exclusiveArea) {
+        if (HousingTypeNames.key(name).isEmpty()) {
+            return Optional.empty();
         }
-        return name.replaceAll("\\s+", "").replaceFirst("형$", "").toLowerCase();
+        return types.stream().filter(type -> HousingTypeNames.sameType(type.getName(), type.getExclusiveArea(), name, exclusiveArea))
+                .min(Comparator.comparing((HousingType type) -> !sameArea(type.getExclusiveArea(), exclusiveArea))
+                        .thenComparing(HousingType::getId, Comparator.nullsLast(Comparator.naturalOrder())));
     }
 }

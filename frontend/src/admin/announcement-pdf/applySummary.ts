@@ -1,6 +1,7 @@
 import type { JsonPreview, JsonUpdateInput, JsonWorkspace, TypeValues } from '../announcement-json/api'
 import type { CorrectionRow, CorrectionTarget, SupplyWorkspace } from '../supply/supplyCorrectionApi'
 import { labels } from '../management/fields'
+import { applicationTypeKey } from '../supply/applicationType'
 import type { HousingCandidates } from './matching'
 import { choices, metadataFields, receptionFields, shownDateTime } from './review'
 
@@ -76,10 +77,10 @@ function valueChanges(preview: JsonPreview) {
 const targetLabel = (target: CorrectionTarget) => `${target.target}${target.supplyRank ? ` ${target.supplyRank}` : ''} · 보증금 ${amount(target.deposit)} · 월 ${amount(target.rent)}`
 
 /**
- * 적용 전 요약. 서버 미리보기의 변경 전후 공급행을 단지별로 묶어 모집수 합계와 같은 주택형 중복을 보이고,
+ * 적용 전 요약. 서버 미리보기의 변경 전후 공급행을 단지별로 묶어 모집수 합계와 같은 주택타입·신청형 중복을 보이고,
  * 추가·변경되는 임대조건과 서버 경고를 함께 돌려준다. 변경 후 주택형은 서버가 단지·전용면적으로 정한 주택형이다.
  */
-export function summarizePreview(preview: JsonPreview, housing: HousingCandidates): ApplySummary {
+export function summarizePreview(preview: JsonPreview, housing: HousingCandidates, names: Record<string, string> = {}): ApplySummary {
   const supply = preview.supply
   const before = supply?.before ?? [], after = supply?.after ?? []
   const complexKey = (row: CorrectionRow) => row.housingComplexId === null ? `name:${row.complexName}` : `id:${row.housingComplexId}`
@@ -88,13 +89,20 @@ export function summarizePreview(preview: JsonPreview, housing: HousingCandidate
   const complexes = keys.map(key => {
     const old = before.filter(row => complexKey(row) === key), next = after.filter(row => complexKey(row) === key)
     const sample = next[0] ?? old[0]
-    const types = new Map<number, string[]>()
-    for (const row of next.filter(item => !item.excluded && item.housingTypeId !== null)) types.set(row.housingTypeId!, [...types.get(row.housingTypeId!) ?? [], row.typeName])
+    // 같은 주택타입을 신청형이 다른 여러 행(55A1·55C)이 가리키는 것은 정상이다. 이번에 추가하거나 고친 행 중 신청형까지 같은 행만 중복으로 보인다.
+    const types = new Map<string, { id: number; names: string[] }>()
+    const touched = (row: CorrectionRow) => { const previous = old.find(item => item.key === row.key); return !previous || comparable(previous) !== comparable(row) }
+    for (const row of next.filter(item => !item.excluded && item.housingTypeId !== null && touched(item))) {
+      // 서버처럼 이름을 바꾸지 않은 기존 행은 저장된 신청형 이름(names)으로 본다. 행 이름은 연결 주택타입 이름일 수 있다.
+      const previous = old.find(item => item.key === row.key)
+      const key = `${row.housingTypeId}:${applicationTypeKey(previous && previous.typeName === row.typeName ? names[row.key] ?? row.typeName : row.typeName)}`
+      types.set(key, { id: row.housingTypeId!, names: [...types.get(key)?.names ?? [], row.typeName] })
+    }
     return { name: sample.housingComplexName ?? sample.complexName, beforeTotal: total(old), afterTotal: total(next),
       before: old.map(row => summaryRow(row, 'same')),
       after: next.map(row => { const previous = old.find(item => item.key === row.key)
         return summaryRow(row, row.excluded && !previous?.excluded ? 'excluded' : !previous ? 'new' : comparable(previous) !== comparable(row) ? 'changed' : 'same') }),
-      duplicates: [...types].filter(([, names]) => names.length > 1).map(([id, names]) => `${typeLabel({ ...next[0], housingTypeId: id, newHousingType: null, linkedHousingTypes: [] }, housing).housingType}에 공급행 ${names.length}개(${names.join(', ')})가 연결됩니다.`) }
+      duplicates: [...types.values()].filter(({ names }) => names.length > 1).map(({ id, names }) => `${typeLabel({ ...next[0], housingTypeId: id, newHousingType: null, linkedHousingTypes: [] }, housing).housingType}에 같은 주택형(신청형) 공급행 ${names.length}개(${names.join(', ')})가 연결됩니다.`) }
   })
   const targets = after.flatMap(row => {
     const previous = before.find(item => item.key === row.key)

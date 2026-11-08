@@ -30,12 +30,24 @@ class HousingTypeAreasTest {
     }
 
     @Test
-    void 같은_면적_주택형이_여럿이고_이름이_다르면_가장_먼저_만든_주택형을_고른다() {
+    void 같은_면적_주택형이_여럿이고_이름이_다르면_고르지_않는다() {
         HousingType later = type(9L, "84B", "84.96");
         HousingType earlier = type(4L, "84E", "84.96");
 
-        assertEquals(earlier, HousingTypeAreas.pick(List.of(later, earlier), new BigDecimal("84.96"), "84.9600A")
-                .orElseThrow());
+        assertTrue(HousingTypeAreas.pick(List.of(later, earlier), new BigDecimal("84.96"), "84.9600A").isEmpty());
+    }
+
+    @Test
+    void 면적이_같아도_이름이_다르면_다른_주택타입이라_이름이_같은_것을_먼저_고르고_공고문_보정은_이름만_본다() {
+        HousingType c1 = type(1L, "55C-1", "55.98");
+        HousingType d1 = type(2L, "55D-1", "55.98");
+
+        assertEquals(d1, HousingTypeAreas.pick(List.of(c1, d1), new BigDecimal("55.98"), "55D-1").orElseThrow());
+        // 공고문 확인 전에는 이름이 없고 같은 면적 주택타입이 하나뿐이면 임시로 잇는다.
+        assertEquals(c1, HousingTypeAreas.pick(List.of(c1), new BigDecimal("55.98"), "55D-1").orElseThrow());
+        // 공고문 보정은 이름이 같은 것만 잇는다(없으면 새로 만든다).
+        assertTrue(HousingTypeAreas.named(List.of(c1), "55D-1", new BigDecimal("55.98")).isEmpty());
+        assertEquals(c1, HousingTypeAreas.named(List.of(c1), "055C-1 (주거약자)", null).orElseThrow());
     }
 
     @Test
@@ -50,8 +62,22 @@ class HousingTypeAreasTest {
     }
 
     @Test
-    void 면적이_없으면_고르지_않는다() {
-        assertTrue(HousingTypeAreas.pick(List.of(type(1L, "26", "26.37")), null, "26").isEmpty());
+    void 면적_숫자_형명은_면적이_같을_때만_공고문_표기와_같은_이름이다() {
+        HousingType a = type(1L, "59A", "59.91");
+        HousingType a1 = type(2L, "59A1", "59.93");
+
+        assertEquals(a, HousingTypeAreas.pick(List.of(a, a1), new BigDecimal("59.91"), "059.9100A").orElseThrow());
+        // 059.9300A는 59A와 숫자 형명만 맞춰 같아지지만 면적(59.93)이 달라 다른 집이다. 같은 면적의 59A1에 잇는다.
+        assertEquals(a1, HousingTypeAreas.pick(List.of(a, a1), new BigDecimal("59.93"), "059.9300A").orElseThrow());
+        assertTrue(HousingTypeAreas.named(List.of(a, a1), "059.9300A", new BigDecimal("59.93")).isEmpty());
+    }
+
+    @Test
+    void 면적이_없으면_이름이_같은_것만_고른다() {
+        HousingType type = type(1L, "26", "26.37");
+
+        assertEquals(type, HousingTypeAreas.pick(List.of(type), null, "26").orElseThrow());
+        assertTrue(HousingTypeAreas.pick(List.of(type), null, "27").isEmpty());
     }
 
     private HousingType type(long id, String name, String area) {

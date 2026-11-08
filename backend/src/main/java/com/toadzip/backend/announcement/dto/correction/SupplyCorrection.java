@@ -3,7 +3,7 @@ package com.toadzip.backend.announcement.dto.correction;
 import com.toadzip.backend.admin.quality.dto.QualityComparison.Source;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.dto.request.RejectUnknownJsonFields;
-import com.toadzip.backend.housing.domain.HousingTypeAreas;
+import com.toadzip.backend.housing.domain.HousingTypeNames;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
@@ -17,6 +17,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import java.time.YearMonth;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -27,9 +28,14 @@ public final class SupplyCorrection {
     /** unattachedLhSupplyRows는 LH 원천 소유 공고의 최신 LH 공급 원본 행 중 같은 전용면적 공급행이 없어 붙지 않은 행이다. 오류가 아니라 정보다. */
     /** announcementComplexes는 이 공고의 공고 단지다. 공급행의 complexName이 공고 단지 이름이고, PDF 단지를 주소로 대응할 때 쓴다. */
     /** lhSupplyRows는 소유와 관계없이 이 공고의 최신 LH 공급 원본 행 전체와 각 행이 붙은 공급행이다. 세대수 검산과 식별에만 쓴다. */
+    /**
+     * applicationTypeNames는 행 키별 주택형(신청형) 이름(공고 표기, 없으면 원천 형명)이다. 행 이름(typeName)은 공고 표기가 없으면 연결
+     * 주택형 이름이라 신청형을 가리지 못하므로, 화면은 이 이름으로 서버의 같은 신청형 판정과 같은 기준을 쓴다. 읽기 전용이다.
+     */
     public record Workspace(String snapshotToken, long version, List<Row> rows, List<Source> sources, List<String> sourceWarnings,
             List<RowSource> rowSources, List<String> deletableRowKeys, List<LhSupplyRow> unattachedLhSupplyRows,
-            List<AnnouncementComplexView> announcementComplexes, List<LhSupplyRow> lhSupplyRows) { }
+            List<AnnouncementComplexView> announcementComplexes, List<LhSupplyRow> lhSupplyRows,
+            Map<String, String> applicationTypeNames) { }
     /** linkMethod는 AUTO·ADMIN·MIGRATED, 연결이 없으면(휴지통 단지 포함) null이다. rowCount는 이 공고 단지의 제외하지 않은 공급행 수다. */
     public record AnnouncementComplexView(long id, String name, String roadAddress, Long housingComplexId, String housingComplexName,
             String linkMethod, int rowCount) { }
@@ -96,13 +102,16 @@ public final class SupplyCorrection {
             if (pnu != null && pnu.isBlank()) { pnu = null; }
         }
 
-        /** 새로 만들 주택형의 단지·전용면적 키. 한 저장에서 이 키가 같은 행들은 새 주택형 하나를 함께 쓴다. */
+        /**
+         * 새로 만들 주택형의 단지·이름 키. 한 저장에서 이 키가 같은 행들은 새 주택형 하나를 함께 쓴다. 단지 주택타입은 공고문 표기 이름으로
+         * 나누므로 같은 면적이어도 이름이 다르면(55C-1·55D-1) 따로 만든다.
+         */
         public String newHousingTypeKey() {
             return newHousingTypeKey(newHousingType);
         }
 
         public String newHousingTypeKey(NewType type) {
-            return housingComplexId + ":" + HousingTypeAreas.key(type.exclusiveArea()).toPlainString();
+            return housingComplexId + ":" + HousingTypeNames.key(type.name());
         }
 
         /**

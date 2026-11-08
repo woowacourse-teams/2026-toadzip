@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import type { JsonWorkspace } from '../announcement-json/api'
 import { type Evidence } from './extraction'
-import { needsComplex, chooseSubtype, sameAreaNote, sameAreaSubtypes, complexDecisionCount, housingTypePrice, pendingItems, linkedHousingType, linkedHousingTypeId, newRepresentative, editCell, representativeSubtype, pdfOrderChanges, pendingRow, pendingTarget, remapTarget, shown, shownMoney, assembledCount, autoHousingType, expectedHousingType, leftoverRows, savedValue, type Cell, type Review, type ReviewFilter, type RowReview, type SubtypeChoice } from './review'
+import { housingTypeNameOf, needsComplex, chooseSubtype, sameTypeNote, sameTypeSubtypes, complexDecisionCount, housingTypePrice, pendingItems, linkedHousingType, linkedHousingTypeId, newRepresentative, editCell, representativeSubtype, pdfOrderChanges, pendingRow, pendingTarget, remapTarget, shown, shownMoney, assembledCount, autoHousingType, expectedHousingType, leftoverRows, type Cell, type Review, type ReviewFilter, type RowReview, type SubtypeChoice } from './review'
 import { ComplexDecisions } from './ComplexDecision'
 import { DestinationChooser } from './DestinationChooser'
 import { lhCrossCheck, supersedeNote, type ComplexLabels, type HousingCandidates } from './matching'
@@ -105,7 +105,7 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
       const superseded = supersedeNote(workspace.supply.rows, row.proposal.supersedes)
       // LH 공급 원본 행은 저장할 곳과 같은 전용면적이라 붙은 줄을 검산 정보로만 보인다. 저장하면 함께 제외할 옛 행에 붙은 줄도 이 행의 몫이다.
       const lh = row.proposal.destination === 'new' ? null : lhCrossCheck(workspace.supply.lhSupplyRows ?? [], [row.proposal.destination, ...row.proposal.supersedes ?? []], assembledCount(row))
-      const area = row.cells.find(cell => cell.field === 'exclusiveArea'), expected = expectedHousingType(row)
+      const expected = expectedHousingType(row)
       return <section className={styles.supplyBlock} key={index} aria-label={`공급행 ${index + 1} 검토`} data-review-id={`row:${index}`} tabIndex={-1}>
         <header><h3>{`${index + 1}. ${source.typeName ?? '주택형 미확인'}`}</h3><div className={styles.actions}><Button data-design-system className={styles.quietButton} aria-expanded={panelOpen} onClick={() => setPanelOpen(open => !open)}>{panelOpen ? '단지 주택타입 닫기' : '단지 주택타입 보기'}</Button><label className={styles.inlineCheck}><input type="checkbox" checked={row.include} onChange={event => update(index, { ...row, include: event.target.checked, reviewed: true })} />공급행 {index + 1} 적용</label></div></header>
         {/* 편집 영역은 저장할 곳 → 값 비교 → 세부 타입 → 대상별 임대조건 → 주택형 가격 순서의 같은 모양 구역으로 나눈다. */}
@@ -129,10 +129,10 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
           <div className={styles.rowPart}><h4>값 비교</h4>
             {source.values.constructedHouseholdCount != null && <p className={styles.hint}>{`PDF 건설호수 ${String(source.values.constructedHouseholdCount)}세대`}</p>}
             {savesHousingTypes && typeof shownTypeName(row) === 'string' && <p className={styles.hint}>{`저장하면 이 공고의 주택형(신청형)을 '${String(shownTypeName(row))}'(으)로 표시합니다. 단지 주택타입 이름은 바꾸지 않습니다(세부 타입의 주택타입이 면적마다 하나일 때만 그 이름으로 바꿈).`}</p>}
-            {/* 주택형은 저장할 때 서버가 단지·전용면적으로 정한다. 화면은 같은 규칙으로 고를 주택형을 미리 알린다. */}
+            {/* 주택형은 공고문 주택타입 이름으로 정한다(expectedHousingType). 저장할 때 그 주택형을, 없으면 그 이름으로 새로 만들어 보낸다. */}
             {autoHousingType(row) && complexOf(row) !== null && <p className={styles.hint}>{expected
-              ? `연결 주택타입: 저장하면 같은 전용면적의 '${expected.name}'(전용 ${expected.exclusiveArea}㎡)에 연결합니다.`
-              : `연결 주택타입: 이 단지에 전용 ${String(savedValue(area!))}㎡ 주택타입이 없어 저장하면 새로 만듭니다.`}</p>}
+              ? `연결 주택타입: 저장하면 '${expected.name}'(전용 ${expected.exclusiveArea}㎡)에 연결합니다.`
+              : `연결 주택타입: 이 단지에 '${housingTypeNameOf(row)}' 주택타입이 없어 저장하면 새로 만듭니다.`}</p>}
             <ReviewCells housingTypes={row.proposal.candidates} otherHousingTypes={Object.values(housing).flat()} cells={row.cells} scope={`공급행 ${index + 1}`} filter={filter}
               onChange={cells => update(index, { ...row, cells,
                 ...(linkedHousingTypeId({ ...row, cells }) !== linkedHousingTypeId(row) ? { priceTarget: undefined } : {}) })} onEvidence={onEvidence} />
@@ -206,15 +206,15 @@ function SubtypeLinks({ row, index, update }: { row: RowReview; index: number; u
   const result = (choice: SubtypeChoice) => typeof choice === 'number' ? typeName(choice) : choice === 'new' ? '새 주택타입 추가' : choice === 'none' ? '연결 안 함'
     : row.proposal.complexId === null ? '단지를 정하면 연결합니다' : '연결할 주택타입을 고르세요'
   const count = row.cells.find(cell => cell.field === 'totalSupplyHouseholdCount')
-  const sameArea = sameAreaSubtypes(row)
+  const sameType = sameTypeSubtypes(row)
   return <section className={`${styles.rowPart} ${styles.subtypeLinks}`} aria-label={`공급행 ${index + 1} 세부 타입 연결`}>
     <h4>함께 모집하는 주택타입</h4>
     <p className={styles.hint}>{`모집수 ${shown(count?.mode === 'keep' ? count.before : count?.value)}세대는 이 공급행 하나에 두고, 세부 타입 주택타입을 모두 이 행에 연결합니다. 공통 모집수로 나누지 않습니다.`}</p>
     <ul>{row.subtypes.map((subtype, at) => {
-      const selectable = subtype.options.length > 1 || subtype.exclusiveArea === null || sameArea.includes(at)
+      const selectable = subtype.options.length > 1 || subtype.exclusiveArea === null || sameType.includes(at)
       const options = subtype.exclusiveArea === null ? candidates.map(type => type.id) : subtype.options
       const label = `${subtype.name} · 전용 ${subtype.exclusiveArea ?? '미확인'}㎡`
-      return <li key={at} data-review-id={`subtype:${index}:${at}`} tabIndex={-1} data-pending={subtype.choice === null || sameArea.includes(at) || undefined}>
+      return <li key={at} data-review-id={`subtype:${index}:${at}`} tabIndex={-1} data-pending={subtype.choice === null || sameType.includes(at) || undefined}>
         {selectable ? <label>{`${label} → `}<select aria-label={`공급행 ${index + 1} 세부 타입 ${subtype.name} 연결 주택타입`} value={subtype.choice === null ? '' : String(subtype.choice)}
           onChange={event => update(chooseSubtype(row, at, event.target.value === 'new' || event.target.value === 'none' ? event.target.value : Number(event.target.value)))}>
           {subtype.choice === null && <option value="" disabled>주택타입을 고르세요</option>}
@@ -224,7 +224,7 @@ function SubtypeLinks({ row, index, update }: { row: RowReview; index: number; u
         </select></label> : `${label} → ${result(subtype.choice)}`}
         {at === representative && <small className={styles.pendingDone}> 대표 주택타입</small>}
         {subtype.choice === null && <small className={styles.pendingLabel}>확인 필요 · {result(null)}</small>}
-        {sameArea.includes(at) && <small className={styles.pendingLabel}>확인 필요 · {sameAreaNote}</small>}
+        {sameType.includes(at) && <small className={styles.pendingLabel}>확인 필요 · {sameTypeNote}</small>}
       </li>
     })}</ul>
   </section>
