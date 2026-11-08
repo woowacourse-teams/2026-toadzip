@@ -2,17 +2,16 @@ package com.toadzip.backend.announcement.repository;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementReleaseStatus;
+import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.Lock;
-import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface AnnouncementRepository extends JpaRepository<Announcement, Long> {
-    @Query(value = """
-            SELECT c.* FROM announcements c
+    String ADMIN_SEARCH_FROM = " FROM announcements c " + """
             WHERE c.admin_deleted = :deleted
               AND (:review = false OR c.source_review_required = true)
               AND (:unconfirmed = false OR c.release_status = 'UNCONFIRMED')
@@ -26,12 +25,7 @@ public interface AnnouncementRepository extends JpaRepository<Announcement, Long
                       OR h.city_county_district_code = :region)))
               AND (:complexId = 0 OR EXISTS (SELECT 1 FROM supply_rows r
                   WHERE r.announcement_id = c.id AND r.housing_complex_id = :complexId))
-            ORDER BY c.created_at DESC NULLS LAST, c.id DESC
-            """, nativeQuery = true)
-    org.springframework.data.domain.Page<Announcement> searchAdmin(String keyword, String identifier, String provider, String providerLegacy,
-            String rental, String rentalLegacy, String region, boolean deleted, boolean review, boolean unconfirmed,
-            long complexId, org.springframework.data.domain.Pageable pageable);
-
+            """;
 
     Optional<Announcement> findBySourceAnnouncementIdentifier(String sourceAnnouncementIdentifier);
 
