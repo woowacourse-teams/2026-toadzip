@@ -93,7 +93,8 @@ it('주차대수는 비워 둘 수 있고, 공고문에 없는 주소·PNU·세�
   expect(within(form).getByLabelText('PNU')).toHaveValue('2823710100100650017')
   expect(within(form).getByLabelText('전체 세대수')).toHaveValue(350)
   expect(within(form).getByLabelText('주차대수')).toHaveValue(null)
-  expect(within(form).getByLabelText('공급유형')).toHaveValue('HAPPY_HOUSING')
+  // 공고에 공급유형이 있으면 고르게 하지 않는다.
+  expect(within(form).queryByLabelText('공급유형')).not.toBeInTheDocument()
   fireEvent.change(within(form).getByLabelText('위도'), { target: { value: '37.502996' } })
   fireEvent.change(within(form).getByLabelText('경도'), { target: { value: '126.719475' } })
   fireEvent.click(within(form).getByRole('button', { name: '단지 등록하고 연결' }))
@@ -278,4 +279,9 @@ it('공고에 공급유형이 없으면 고르기 전까지 등록을 막고, �
   fireEvent.click(within(form).getByRole('button', { name: '단지 등록하고 연결' }))
   await waitFor(() => expect(onCreated).toHaveBeenCalledWith({ id: 9001, name: '탑석 센트럴 자이' }))
   expect(registration.createHousingComplex).toHaveBeenCalledWith(expect.objectContaining({ rentalType: 'LONG_TERM_JEONSE', agencyCode: 'GH' }))
+})
+
+it('공고에 공급유형이 있으면(LH·GH) 고르게 하지 않고 그 공급유형으로 등록한다', () => {
+  render(<NewComplexRegistration index={0} defaultName="탑석 센트럴 자이" rentalType="LONG_TERM_JEONSE" agencyCode="GH" onSelectExisting={vi.fn()} onCreated={vi.fn()} />)
+  expect(within(screen.getByRole('group', { name: '공급행 1 새 단지 등록' })).queryByLabelText('공급유형')).not.toBeInTheDocument()
 })

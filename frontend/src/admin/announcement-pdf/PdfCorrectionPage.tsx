@@ -474,7 +474,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
           {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.extraction.undatedSchedules.length > 0 && <p className={styles.hint}>날짜 없이 안내한 일정: {review.extraction.undatedSchedules.join(' · ')}</p>}<ReviewSchedules review={review} workspace={workspace} filter={filter} empty={empty} onChange={change} onEvidence={evidence} /></>}
           {section === 'reception' && <><h2>접수처·기본정보</h2><p>{unconfirmed(workspace) ? '미확정 공고는 접수 시작일·접수 종료일·당첨자 발표일을 모두 채워야 저장됩니다. 공급·모집 유형은 공개 전 확인에서 선택하세요.' : '임대유형·모집유형·기관·공고명은 현재값을 유지합니다.'} 접수처는 한 곳만 저장할 수 있으므로 온라인·현장 병행 여부를 확인하세요.</p>{visibleIn(review.reception) && <h3>접수처</h3>}<ReviewCells cells={review.reception} scope="접수처" needs={fieldNeed} filter={filter} onChange={reception => change({ ...review, reception })} onEvidence={evidence} />{visibleIn(review.metadata) && <h3>공고 기본 일정</h3>}<ReviewCells cells={review.metadata} scope="기본정보" needs={fieldNeed} filter={filter} onChange={metadata => change({ ...review, metadata })} onEvidence={evidence} />{!visibleIn(review.reception) && !visibleIn(review.metadata) && <p className={styles.hint}>{empty}</p>}</>}
         </div></fieldset>
-        {!supplyDraft && unconfirmed(workspace) && <ReleaseCheck value={release} needs={fieldNeed} disabled={busy || blocked} onChange={setRelease} />}
+        {!supplyDraft && unconfirmed(workspace) && <ReleaseCheck value={release} current={{ rentalType: workspace!.detail.data.rentalType, recruitmentType: workspace!.detail.data.recruitmentType }} needs={fieldNeed} disabled={busy || blocked} onChange={setRelease} />}
       </div></div>
       {/* 화면에서 하단 버튼 위에 놓이므로 문서 순서도 버튼 앞에 둬 Tab 이동이 보이는 순서를 따른다. */}
       {/* 근거는 추출할 때 자동으로 채운다. 원문 URL이 없을 때처럼 저장을 막는 값만 직접 입력하게 한다. */}
@@ -544,11 +544,15 @@ function unconfirmed(workspace: JsonWorkspace | null) {
   return workspace?.detail.summary.announcement?.releaseStatus === 'UNCONFIRMED'
 }
 
-function ReleaseCheck({ value, needs, disabled, onChange }: { value: ReleaseChoice; needs: Map<string, string>; disabled: boolean; onChange: (next: ReleaseChoice) => void }) {
+/** '현재값 유지' 옵션 이름. 지금 값이 무엇인지 함께 보이고, 값이 없으면 골라야 한다고 알린다. */
+function keepLabel(current: unknown) {
+  return typeof current === 'string' && current ? `현재값 유지 (${labels[current] ?? current})` : '현재값 없음 · 고르세요'
+}
+function ReleaseCheck({ value, current, needs, disabled, onChange }: { value: ReleaseChoice; current: { rentalType: unknown; recruitmentType: unknown }; needs: Map<string, string>; disabled: boolean; onChange: (next: ReleaseChoice) => void }) {
   return <section className={styles.releaseCheck} aria-label="공개 전 확인"><h2>공개 전 확인</h2>
     <p className={styles.hint}>미확정 공고라 사용자에게 보이지 않습니다. 저장하려면 접수처·기본정보에서 접수 시작일·접수 종료일·당첨자 발표일을 채우고, 여기서 공급·모집 유형을 정해야 합니다. 공급행에 연결된 단지를 확인한 뒤 공개를 요청하세요. 공개하면 신규 공고 알림이 나갑니다.</p>
-    <label>공급 유형<select data-review-id="release:rentalType" aria-invalid={needs.has('release:rentalType')} title={needs.get('release:rentalType')} value={value.rentalType} disabled={disabled} onChange={event => onChange({ ...value, rentalType: event.target.value })}><option value="">현재값 유지</option>{rentals.map(type => <option key={type} value={type}>{labels[type] ?? type}</option>)}</select></label>
-    <label>모집 유형<select data-review-id="release:recruitmentType" aria-invalid={needs.has('release:recruitmentType')} title={needs.get('release:recruitmentType')} value={value.recruitmentType} disabled={disabled} onChange={event => onChange({ ...value, recruitmentType: event.target.value })}><option value="">현재값 유지</option>{['NEW', 'WAITLIST', 'ETC'].map(type => <option key={type} value={type}>{labels[type] ?? type}</option>)}</select></label>
+    <label>공급 유형<select data-review-id="release:rentalType" aria-invalid={needs.has('release:rentalType')} title={needs.get('release:rentalType')} value={value.rentalType} disabled={disabled} onChange={event => onChange({ ...value, rentalType: event.target.value })}><option value="">{keepLabel(current.rentalType)}</option>{rentals.map(type => <option key={type} value={type}>{labels[type] ?? type}</option>)}</select></label>
+    <label>모집 유형<select data-review-id="release:recruitmentType" aria-invalid={needs.has('release:recruitmentType')} title={needs.get('release:recruitmentType')} value={value.recruitmentType} disabled={disabled} onChange={event => onChange({ ...value, recruitmentType: event.target.value })}><option value="">{keepLabel(current.recruitmentType)}</option>{['NEW', 'WAITLIST', 'ETC'].map(type => <option key={type} value={type}>{labels[type] ?? type}</option>)}</select></label>
     <label className={styles.releaseConfirmation}><input type="checkbox" checked={value.publish} disabled={disabled} onChange={event => onChange({ ...value, publish: event.target.checked })} />단지를 확인했고 이 보정과 함께 공개합니다</label>
   </section>
 }

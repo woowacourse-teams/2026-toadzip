@@ -134,7 +134,8 @@ export function NewComplexRegistration({ index, defaultName, defaultAddress = ''
     <legend>새 단지로 등록</legend>
     <p className={styles.hint}>주소를 확인한 뒤 등록하세요. 전체 세대수·주차대수·준공일은 몰라도 등록할 수 있습니다.</p>
     <label>단지명<input value={values.name} maxLength={255} onChange={set('name')} /></label>
-    <label>공급유형<select value={type} onChange={event => setType(event.target.value)}><option value="">선택하세요</option>{rentals.map(item => <option key={item} value={item}>{labels[item] ?? item}</option>)}</select></label>
+    {/* 공급유형은 공고 값을 쓴다. 원천에 유형이 없는 공고(SH)처럼 비어 있을 때만 여기서 고른다. */}
+    {!rentalType && <label>공급유형<select value={type} onChange={event => setType(event.target.value)}><option value="">선택하세요</option>{rentals.map(item => <option key={item} value={item}>{labels[item] ?? item}</option>)}</select></label>}
     {myhome && (heatingType || buildingType) && <p className={styles.hint}>{`마이홈 공고 정보로 ${[myhome.heating, myhome.building].filter(Boolean).join(' · ')}을(를) 함께 저장합니다. 주차대수는 마이홈에도 없어 모르면 비워 두세요.`}</p>}
     <div className={styles.addressSearch}>
       <label>주소 검색<input value={keyword} maxLength={200} placeholder="공고문 단지 주소" onChange={event => {
