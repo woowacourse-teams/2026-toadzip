@@ -122,10 +122,12 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
         "target": lambda header: bool(re.search(r"공급대상|공급계층|청약대상|적용\s*구분", header)),
         "reserveCount": lambda header: bool(re.search(r"예비(?:입주자)?", header))
             and not re.search(r"잔여|기존|현재|대기", header),
-        "supplyHouseholdCount": lambda header: bool(re.search(r"당첨(?:자|인원|호수)", header)),
+        # 모집호수를 입주자·예비자로 나눈 표의 입주자 열도 당첨자 수다(예비입주자는 아니다). 모집수는 둘의 합이다(source_check).
+        "supplyHouseholdCount": lambda header: bool(re.search(r"당첨(?:자|인원|호수)|(?<!예비)입주자(?![가-힣])", header)),
         "totalSupplyHouseholdCount": lambda header: bool(
             re.search(r"모집\s*(?:호수|인원|세대수)", header)
-            and not re.search(r"예비|당첨|우선|일반", header)
+            # 모집호수 아래로 나뉜 입주자 하위 열("모집호수입주자")만 뺀다. 한 칸짜리 "입주자 모집호수"는 모집호수 열이다.
+            and not re.search(r"예비|당첨|우선|일반|모집\s*(?:호수|인원|세대수).*입주자", header)
         ),
         # 계약면적·주거 아래의 "전용" 하위 머리글도 주거전용이다(사천벌리1: 세대별 계약면적 > 전용·주거 공용). 공용 열은 아니다.
         "exclusiveArea": lambda header: bool(
@@ -161,6 +163,13 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
             indexes = _matching_columns(normalized_headers, lambda header: bool(_HOUSING_TYPE_FALLBACK.match(header)))
         if len(indexes) == 1:
             columns[name] = indexes[0]
+    # 하위 열 없는 모집호수 옆에 예비자 열이 따로 있으면 모집호수는 입주자(당첨자) 수다. 모집수는 둘의 합이라(사용자 결정)
+    # 당첨자 열로 두어 원문 대조·채움이 합을 쓰게 한다. 모집호수 계·합계 열은 이미 합이다.
+    # 머리글 줄 뒤에 데이터 줄 글자가 이어 붙을 수 있어(모집호수계13) 끝이 아니라 포함으로 본다.
+    total = columns.get("totalSupplyHouseholdCount")
+    if total is not None and "reserveCount" in columns and "supplyHouseholdCount" not in columns \
+            and "계" not in normalized_headers[total]:
+        columns["supplyHouseholdCount"] = columns.pop("totalSupplyHouseholdCount")
     # 단지명(소재지)처럼 한 열이 단지명이면서 위치이면 주소로 쓰지 않는다.
     if columns.get("address") is not None and columns.get("address") == columns.get("complexName"):
         del columns["address"]

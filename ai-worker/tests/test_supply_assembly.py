@@ -594,3 +594,193 @@ def test_subtypes_of_several_rows_of_one_housing_type_stay_one_per_exclusive_are
 
     assert [(item["name"], item["exclusiveArea"], item["commonArea"]) for item in row["subtypes"]] == [
         ("59A·59A1", 59.98, None), ("59C", 59.99, 21.5345)]
+
+
+# 다산진건 장기전세(GH 808)를 줄인 표. 주택형(신청형) 칸이 주택타입 행으로 병합되고, 모집호수를 계·입주자·예비자로 나눈다.
+# 대기 예비자는 기존 대기자라 모집수가 아니다.
+SPLIT_COUNT_TABLE = [
+    ["단지명", "주택형", "주택 타입", "주거 전용", "주거 공용", "임대보증금(천원)", "대기 예비자", "모집호수", None, None],
+    [None, None, None, None, None, None, None, "계", "입주자", "예비자"],
+    ["다산 진건 데시앙", "72", "72A", "72.98", "23.9", "269,680", "8", "13", "0", "13"],
+    [None, "84", "84A", "84.98", "25.90", "288,550", "6", "41", "0", "41"],
+    [None, None, "84B", "84.95", "27.27", "288,550", "14", "13", "0", "13"],
+]
+
+
+def table_pages(cells, page=5):
+    table = tables.SupplyTable.of(page, 1, cells, None, False)
+    rows = table.rows
+    return pages.PromptPages(
+        rental_rows=0, supply_text="table", supply_pages=[page], supply_row_ids=frozenset(row.id for row in rows),
+        supply_row_text={row.id: row.text for row in rows}, notice_text="body", notice_pages=[1],
+        complex_candidates=[], table_structure_fallback=False, ambiguous_supply_tables=False,
+        supply_row_values={row.id: row.values for row in rows},
+        supply_row_subtypes={row.id: row.subtypes for row in rows if row.subtypes}, supply_tables=[table],
+    )
+
+
+def assembled(selected, *items):
+    rows = [{"complexName": "다산 진건 데시앙", "target": "일반", **item} for item in items]
+    tree, _ = supply_assembly.assemble({"data": {"rows": rows}}, selected)
+    return tree["data"]["supplyRows"], tree["data"]["unresolvedFields"]
+
+
+@pytest.mark.parametrize("labels", [("72", "84", "84"), ("72A", "84A", "84B")])
+def test_rows_split_by_house_type_are_labeled_with_the_house_type_column(labels):
+    # 공급행을 주택타입 행마다 뽑으면 표기는 주택타입이다(사용자 결정). 모델이 주택형(84)을 써도 같은 행의 원문 칸이라 미확인으로 버리지 않는다.
+    # 72는 주택타입이 하나뿐이라 그 행만으로는 단위를 모르지만, 같은 표의 다른 공급행이 주택타입 단위라 72A다.
+    rows, unresolved = assembled(table_pages(SPLIT_COUNT_TABLE), *(
+        {"rowIds": [f"P5:T1:R{number}"], "housingType": label} for number, label in zip((3, 4, 5), labels)))
+
+    assert [row["sourceHousingTypeName"] for row in rows] == ["72A", "84A", "84B"]
+    assert [row["subtypes"] for row in rows] == [[], [], []]
+    # 모델이 빠뜨린 면적은 그 주택타입 행의 칸에서 읽는다. 주택형 칸이 시작하는 행(72A·84A)도 같다.
+    assert [row["exclusiveArea"] for row in rows] == [72.98, 84.98, 84.95]
+    assert not [item for item in unresolved if item["path"].endswith(".sourceHousingTypeName")]
+
+
+@pytest.mark.parametrize("label", ["84", "84A"])
+def test_rows_by_housing_type_are_labeled_with_the_housing_type_column(label):
+    # 주택형마다 뽑으면 표기는 주택형이고, 그 주택형 칸이 걸친 주택타입은 subtypes다.
+    rows, unresolved = assembled(table_pages(SPLIT_COUNT_TABLE),
+                                 {"rowIds": ["P5:T1:R3"], "housingType": "72"},
+                                 {"rowIds": ["P5:T1:R4", "P5:T1:R5"], "housingType": label})
+
+    assert [row["sourceHousingTypeName"] for row in rows] == ["72", "84"]
+    assert [[subtype["name"] for subtype in row["subtypes"]] for row in rows] == [["72A"], ["84A", "84B"]]
+    assert not [item for item in unresolved if item["path"].endswith(".sourceHousingTypeName")]
+    # 주택타입 하나뿐인 72는 그 행의 모집수다. 84는 수량이 주택타입 행마다라 한 행의 값을 84의 모집수로 쓰지 않는다.
+    assert [counts(row) for row in rows] == [(13, 13, 13), (None, None, None)]
+
+
+def test_housing_type_row_citing_only_its_first_house_type_row_does_not_take_that_rows_count():
+    rows, _ = assembled(table_pages(SPLIT_COUNT_TABLE), {"rowIds": ["P5:T1:R3"], "housingType": "72"},
+                        {"rowIds": ["P5:T1:R4"], "housingType": "84"})
+
+    assert rows[1]["sourceHousingTypeName"] == "84"
+    assert counts(rows[1]) == (None, None, None)
+
+
+def test_label_found_in_neither_housing_column_stays_unresolved():
+    rows, unresolved = assembled(table_pages(SPLIT_COUNT_TABLE), {"rowIds": ["P5:T1:R5"], "housingType": "85B"})
+
+    assert rows[0]["sourceHousingTypeName"] is None
+    assert {"path": "supplyRows[0].sourceHousingTypeName",
+            "reason": "추출한 값이 같은 의미의 원문 표 열에서 확인되지 않음"} in unresolved
+
+
+def counts(row):
+    return row["totalSupplyHouseholdCount"], row["targets"][0]["supplyHouseholdCount"], row["targets"][0]["reserveCount"]
+
+
+def test_recruitment_count_is_entrants_plus_reserves_and_reserve_count_stays_reserves():
+    # 입주자 0 + 예비자 13 = 계 13. 모집수는 그 합이고 reserveCount는 예비자 수 그대로다.
+    selected = table_pages(SPLIT_COUNT_TABLE)
+    rows, _ = assembled(selected, {"rowIds": ["P5:T1:R5"], "housingType": "84B", "totalSupplyHouseholdCount": 13,
+                                   "supplyHouseholdCount": 13, "reserveCount": 13})
+    assert counts(rows[0]) == (13, 13, 13)
+
+    # 입주자 수만(0) 낸 모집수는 원문 모집호수와 다르다.
+    rows, unresolved = assembled(selected, {"rowIds": ["P5:T1:R5"], "housingType": "84B",
+                                            "totalSupplyHouseholdCount": 0, "supplyHouseholdCount": 0})
+    assert counts(rows[0])[:2] == (None, None)
+    assert {item["path"] for item in unresolved} >= {
+        "supplyRows[0].totalSupplyHouseholdCount", "supplyRows[0].targets[0].supplyHouseholdCount"}
+
+
+def test_recruitment_count_missing_from_the_model_is_read_from_the_source_row():
+    # 작업 121: 모델이 수량을 모두 빠뜨렸다. 이 공급행만 가리키는 수량 행이 하나면 그 칸에서 읽는다.
+    rows, unresolved = assembled(table_pages(SPLIT_COUNT_TABLE),
+                                 *({"rowIds": [f"P5:T1:R{number}"], "housingType": label}
+                                   for number, label in ((3, "72A"), (4, "84A"), (5, "84B"))))
+
+    assert [counts(row) for row in rows] == [(13, 13, 13), (41, 41, 41), (13, 13, 13)]
+    assert not [item for item in unresolved if "Count" in item["path"]]
+
+
+@pytest.mark.parametrize("table", [
+    [["단지명", "주택형", "공급대상", "당첨자 수", "예비자"], ["Test", "26A", "청년", "2", "41"]],
+    # 하위 열 없는 모집호수 옆에 예비자 열이 따로 있으면 모집호수는 입주자 수다.
+    [["단지명", "주택형", "공급대상", "모집호수", "예비자"], ["Test", "26A", "청년", "2", "41"]],
+    # 모집호수를 입주자·예비자로만 나눈 표와, 계가 뒤에 있는 표. 모집호수 머리글은 맨 왼쪽 하위 열(입주자)에만 붙는다.
+    [["단지명", "주택형", "공급대상", "모집호수", None], [None, None, None, "입주자", "예비자"],
+     ["Test", "26A", "청년", "2", "41"]],
+    [["단지명", "주택형", "공급대상", "모집호수", None, None], [None, None, None, "입주자", "예비자", "계"],
+     ["Test", "26A", "청년", "2", "41", "43"]],
+])
+def test_recruitment_count_without_a_leading_total_column_is_entrants_plus_reserves(table):
+    selected = table_pages(table, page=1)
+    row_id = f"P1:T1:R{len(table)}"
+    item = {"rowIds": [row_id], "complexName": "Test", "housingType": "26A", "target": "청년"}
+
+    rows, _ = assembled(selected, {**item, "totalSupplyHouseholdCount": 43, "supplyHouseholdCount": 43,
+                                   "reserveCount": 41})
+    assert counts(rows[0]) == (43, 43, 41)
+    # 입주자 수만 낸 모집수는 원문과 다르다.
+    rows, unresolved = assembled(selected, {**item, "totalSupplyHouseholdCount": 2, "supplyHouseholdCount": 2})
+    assert counts(rows[0]) == (None, None, 41)
+    assert {"supplyRows[0].totalSupplyHouseholdCount", "supplyRows[0].targets[0].supplyHouseholdCount"} <= {
+        finding["path"] for finding in unresolved}
+    # 모델이 빠뜨리면 입주자와 예비자의 합으로 채운다.
+    rows, _ = assembled(selected, item)
+    assert counts(rows[0]) == (43, 43, 41)
+
+
+# 탑석센트럴자이(GH 845)를 줄인 표. 모집호수 칸이 세 주택형 행에 세로 병합된 공통 수량이다.
+SHARED_COUNT_TABLE = [
+    ["단지명", "주택형", "주거 전용", "대기 예비자", "모집호수", None, None],
+    [None, None, None, None, "계", "입주자", "예비자"],
+    ["탑석 센트럴 자이", "49A", "49.9285", "0", "70", "14", "56"],
+    [None, "49B", "49.9091", None, None, None, None],
+    [None, "49C", "49.9438", None, None, None, None],
+]
+
+
+def test_merged_recruitment_count_is_not_copied_into_each_row_it_covers():
+    selected = table_pages(SHARED_COUNT_TABLE, page=2)
+    items = [{"rowIds": [f"P2:T1:R{number}"], "complexName": "탑석 센트럴 자이", "housingType": label}
+             for number, label in ((3, "49A"), (4, "49B"), (5, "49C"))]
+
+    rows, _ = assembled(selected, *items)
+    assert [counts(row) for row in rows] == [(None, None, None)] * 3
+
+    # 한 공급행이 병합 칸이 덮는 행을 모두 가리키면 그 공급행의 수량이다.
+    rows, _ = assembled(selected, {"rowIds": ["P2:T1:R3", "P2:T1:R4", "P2:T1:R5"], "complexName": "탑석 센트럴 자이",
+                                   "housingType": "49A"})
+    assert counts(rows[0]) == (70, 70, 56)
+
+    # 여러 공급행이 같은 수량 행을 가리켜도 그 수량은 공통 수량이다.
+    rows, _ = assembled(selected, *({**item, "rowIds": ["P2:T1:R3", *item["rowIds"]]} for item in items[1:]))
+    assert [counts(row) for row in rows] == [(None, None, None)] * 2
+
+
+def test_shared_recruitment_count_written_as_the_sum_is_supported():
+    tree, _ = supply_assembly.assemble({"data": {"rows": [
+        {"rowIds": [f"P2:T1:R{number}"], "complexName": "탑석 센트럴 자이", "housingType": label, "target": "일반"}
+        for number, label in ((3, "49A"), (4, "49B"), (5, "49C"))]},
+        "sharedCounts": [{"rowIndexes": [0, 1, 2], "field": "supplyHouseholdCount", "count": 70, "rowIds": ["P2:T1:R3"]}]},
+        table_pages(SHARED_COUNT_TABLE, page=2))
+
+    assert [(item["paths"], item["count"]) for item in tree["sharedCounts"]] == [(
+        [f"supplyRows[{index}].targets[0].supplyHouseholdCount" for index in range(3)], 70)]
+
+
+def test_partly_merged_count_cells_are_not_copied_into_the_first_row():
+    # 당첨자 수는 행마다, 예비자만 세 행에 병합됐다. 첫 행에 예비자 56을 넣으면 공통 수량을 복제한다.
+    table = [["단지명", "주택형", "당첨자 수", "예비자"], ["Test", "49A", "5", "56"], [None, "49B", "4", None],
+             [None, "49C", "3", None]]
+    rows, _ = assembled(table_pages(table, page=2), *(
+        {"rowIds": [f"P2:T1:R{number}"], "complexName": "Test", "housingType": label}
+        for number, label in ((2, "49A"), (3, "49B"), (4, "49C"))))
+
+    assert [counts(row) for row in rows] == [(None, None, None)] * 3
+
+
+def test_target_values_without_a_target_name_keep_one_target():
+    # 대상 열이 없는 표에서 모델이 target을 빠뜨리고 예비자 수·보증금만 냈다. 대상을 버리면 그 값이 사라진다.
+    tree, _ = supply_assembly.assemble({"data": {"rows": [{
+        "rowIds": ["P5:T1:R5"], "complexName": "다산 진건 데시앙", "housingType": "84B", "reserveCount": 13,
+        "rentalDeposit": 288550000}]}}, table_pages(SPLIT_COUNT_TABLE))
+
+    target = tree["data"]["supplyRows"][0]["targets"][0]
+    assert (target["target"], target["reserveCount"], target["rentalDeposit"]) == ("전체", 13, 288550000)

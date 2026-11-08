@@ -194,7 +194,7 @@
                     "supplyHouseholdCount": {
                       "type": "integer",
                       "nullable": true,
-                      "description": "이번 공고의 대상별 당첨자 수"
+                      "description": "이번 공고의 대상별 모집수. 입주자(당첨자)와 예비자 수를 따로 적은 표는 그 합"
                     },
                     "reserveCount": {
                       "type": "integer",

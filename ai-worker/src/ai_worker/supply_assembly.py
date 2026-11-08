@@ -5,11 +5,13 @@
 """
 
 import re
+from dataclasses import dataclass
 
 from ai_worker import checks, pages, tables
 from ai_worker.checks import deduplicate
 from ai_worker.source_check import (
-    check_source_rows, normalize_source_text, numeric_cell_matches, source_row_map, source_texts, target_cells,
+    check_source_rows, count_cell, normalize_source_text, numeric_cell_matches, recruitment_count, source_cell_matches,
+    source_row_map, source_texts, target_cells,
 )
 
 
@@ -22,18 +24,25 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
     group_indexes: dict[tuple, int] = {}
     unresolved: list[dict] = []
     compact_paths: dict[int, tuple[int, int | None]] = {}
+    items = checks.objects(compact.get("data", {}).get("rows"))
+    per_house_type_tables = _per_house_type_tables(items, selected)
 
-    for item_index, item in enumerate(checks.objects(compact.get("data", {}).get("rows"))):
+    for item_index, item in enumerate(items):
         unresolved_start = len(unresolved)
-        row_ids = list(dict.fromkeys(value for value in item.get("rowIds", []) if isinstance(value, str))) \
-            if isinstance(item.get("rowIds"), list) else []
+        row_ids = _row_ids(item)
         complex_name = _compact_source_text(item.get("complexName"), "complexName", row_ids, selected,
                                             "supplyRows[__item__].complexReference.sourceComplexName", unresolved,
                                             missing_value="")
-        housing_type = _compact_source_text(item.get("housingType"), "housingType", row_ids, selected,
-                                            "supplyRows[__item__].sourceHousingTypeName", unresolved,
-                                            missing_value=None)
-        has_target = "target" in item
+        unit = _house_type_unit(row_ids, selected, per_house_type_tables)
+        if unit is None:
+            housing_type = _compact_source_text(item.get("housingType"), "housingType", row_ids, selected,
+                                                "supplyRows[__item__].sourceHousingTypeName", unresolved,
+                                                missing_value=None)
+        else:
+            housing_type = unit.label(item.get("housingType"), "supplyRows[__item__].sourceHousingTypeName", unresolved)
+        # 대상 열이 없는 표에서 모델이 target을 빠뜨려도 대상 값(예비자 수·보증금)이 있으면 대상 하나다. 버리면 그 값이 사라진다.
+        has_target = "target" in item or any(item.get(field) is not None
+                                             for field in (*_TARGET_VALUE_FIELDS, "applicationCondition"))
         target = _compact_source_text(item.get("target"), "target", row_ids, selected,
                                       "supplyRows[__item__].targets[__target__].target", unresolved,
                                       missing_value="", required=has_target) if has_target else None
@@ -172,8 +181,9 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
         else:
             compact_paths[item_index] = (group_index, None)
 
-    for group in groups:
+    for group_index, group in enumerate(groups):
         _area_from_source_cells(group, selected)
+        _counts_from_source_cells(group_index, group, groups, selected, unresolved, per_house_type_tables)
 
     supply_rows = []
     source_rows = []
@@ -238,8 +248,7 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
                     paths.append(f"supplyRows[{supply_index}].targets[{target_index}].{field}")
         paths = list(dict.fromkeys(paths))
         field_supported = count is not None and any(
-            numeric_cell_matches(count, selected.supply_row_values.get(row_id, {}).get(field, ""), field)
-            for row_id in row_ids
+            source_cell_matches(count, selected.supply_row_values.get(row_id, {}), field) for row_id in row_ids
         )
         if len(paths) < 2 or not field_supported:
             unresolved.extend({"path": path, "reason": "공통 수량을 같은 의미의 원문 표 열에서 확인하지 못함"}
@@ -281,6 +290,152 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
     for index, row in enumerate(supply_rows):
         _all_applicants_when_no_target_column(index, row, source_by_path, selected, tree["data"]["unresolvedFields"])
     return tree, warnings
+
+
+def _row_ids(item: dict) -> list[str]:
+    values = item.get("rowIds")
+    return list(dict.fromkeys(value for value in values if isinstance(value, str))) if isinstance(values, list) else []
+
+
+@dataclass(frozen=True)
+class _HouseTypeRow:
+    """주택형(신청형) 열과 주택타입 열이 따로 있는 공급표의 주택타입 행 하나. start는 그 주택형 칸이 시작하는 행이다."""
+
+    table: str
+    row_id: str
+    start: str
+    housing_type: str
+    house_type: str
+    # 그 주택형 칸이 걸친 주택타입 수
+    block_size: int
+
+    @property
+    def splits_block(self) -> bool:
+        """이 행 하나만 가리키면 주택타입 단위 공급행이 분명하다. 주택형 칸이 시작하는 행이나 주택타입이 하나뿐인 주택형은
+        주택형 단위 공급행도 그 행만 가리킬 수 있어 표 안 다른 공급행의 단위를 따른다."""
+        return self.block_size > 1 and self.start != self.row_id
+
+
+def _house_type_row(row_id: str, selected: pages.PromptPages) -> _HouseTypeRow | None:
+    house_type = selected.supply_row_values.get(row_id, {}).get("houseType")
+    match = re.fullmatch(r"(P\d+:T\d+):R(\d+)", row_id)
+    if not house_type or not house_type.strip() or not match:
+        return None
+    table, number = match.group(1), int(match.group(2))
+    # 주택형 칸은 아래 주택타입 행으로 병합돼 그 행들에는 값이 없다. 위로 올라가 값이 적힌 첫 행이 그 주택형 칸의 시작이다.
+    for above in range(number, 0, -1):
+        start = f"{table}:R{above}"
+        housing_type = selected.supply_row_values.get(start, {}).get("housingType")
+        if not housing_type:
+            continue
+        # 표가 그 주택형 칸에 묶은 주택타입(tables.TableSubtype)에 이 행이 있어야 같은 칸이다. 칸이 끝난 뒤의 행이 아니다.
+        names = [name for subtype in selected.supply_row_subtypes.get(start, ()) for name in subtype.name.split("·")]
+        if normalize_source_text(house_type) not in {normalize_source_text(name) for name in names}:
+            return None
+        return _HouseTypeRow(table, row_id, start, housing_type, house_type, len(names))
+    return None
+
+
+@dataclass(frozen=True)
+class _HouseTypeUnit:
+    """공급행 하나가 가리키는 주택형 칸 안의 주택타입 행들과, 그 행 단위에 맞는 표기(label)."""
+
+    rows: tuple[_HouseTypeRow, ...]
+    per_house_type: bool
+
+    def label(self, candidate: object, path: str, unresolved: list[dict]) -> str | None:
+        """주택타입마다 뽑은 공급행은 주택타입, 주택형마다 뽑은 공급행은 주택형 표기다(사용자 결정). 모델이 다른 열(주택형·주택타입)의
+        값을 썼어도 같은 행의 원문 칸이면 행 단위에 맞는 열의 값으로 바꾼다. 어느 칸에도 없는 값은 미확인이다."""
+        wanted = self.rows[0].house_type if self.per_house_type else self.rows[0].housing_type
+        accepted = {normalize_source_text(value) for row in self.rows for value in (row.housing_type, row.house_type)}
+        if isinstance(candidate, str) and candidate.strip() and normalize_source_text(candidate) not in accepted:
+            unresolved.append({"path": path, "reason": "추출한 값이 같은 의미의 원문 표 열에서 확인되지 않음"})
+            return None
+        return wanted
+
+
+def _house_type_unit(row_ids: list[str], selected: pages.PromptPages,
+                     per_house_type_tables: set[str]) -> _HouseTypeUnit | None:
+    """공급행이 주택형 칸 하나 안의 주택타입 행만 가리키면 그 행 단위. 주택타입 행 하나면 주택타입 단위이고, 여럿이면 주택형 단위다.
+    주택형 칸이 시작하는 행이나 주택타입이 하나뿐인 주택형(72 → 72A)은 어느 단위인지 그 행만으로 알 수 없어,
+    같은 표에서 주택타입 단위로 뽑은 다른 공급행이 있으면 주택타입 단위로 본다."""
+    rows = tuple(row for row_id in row_ids if (row := _house_type_row(row_id, selected)))
+    if not rows or len({row.start for row in rows}) != 1:
+        return None
+    single = len({normalize_source_text(row.house_type) for row in rows}) == 1
+    return _HouseTypeUnit(rows, single and (rows[0].splits_block or rows[0].table in per_house_type_tables))
+
+
+def _per_house_type_tables(items: list[dict], selected: pages.PromptPages) -> set[str]:
+    """주택타입 행 하나만 분명히 가리키는 공급행이 있는 표. 그 표의 공급행은 주택타입마다 뽑은 것이다."""
+    tables_ = set()
+    for item in items:
+        unit = _house_type_unit(_row_ids(item), selected, set())
+        if unit is not None and unit.per_house_type:
+            tables_.add(unit.rows[0].table)
+    return tables_
+
+
+def _counts_from_source_cells(index: int, group: dict, groups: list[dict], selected: pages.PromptPages,
+                              unresolved: list[dict], per_house_type_tables: set[str]) -> None:
+    """모델이 모집수·예비자 수를 빠뜨린 공급행은 그 행이 가리키는 원문 표의 수량 행이 하나로 정해지면 그 칸을 쓴다.
+    모집수는 입주자와 예비자를 합한 수다(사용자 결정). 모집호수 칸(입주자·예비자를 나눈 표의 '계')이 있으면 그 값,
+    없으면 당첨자 칸과 예비자 칸의 합이다. 다른 공급행도 가리키거나 이 공급행 밖의 행까지 병합된 수량 칸은 여러 공급행의
+    공통 수량이라 채우지 않는다(나누거나 복제하지 않는다). 모델이 낸 값은 바꾸지 않고 뒤의 원문 대조에 맡긴다.
+    주택타입이 여럿인 주택형을 한 공급행으로 뽑았으면 수량은 주택타입 행마다라 그중 한 행의 값은 그 공급행의 모집수가 아니다."""
+    unit = _house_type_unit(sorted(group["rowIds"]), selected, per_house_type_tables)
+    if unit is not None and not unit.per_house_type and unit.rows[0].block_size > 1:
+        return
+    count_rows = [row_id for row_id in sorted(group["rowIds"])
+                  if any(count_cell(selected.supply_row_values.get(row_id, {}).get(field)) is not None
+                         for field in _COUNT_FIELDS)]
+    if len(count_rows) != 1:
+        return
+    row_id = count_rows[0]
+    if any(row_id in other["rowIds"] for other in groups if other is not group) \
+            or not _merged_count_rows(row_id, selected) <= group["rowIds"]:
+        return
+    cells = selected.supply_row_values[row_id]
+    recruited, reserve = recruitment_count(cells), count_cell(cells.get("reserveCount"))
+    if recruited is not None and "totalSupplyHouseholdCount" not in group["rowValues"]:
+        group["rowValues"]["totalSupplyHouseholdCount"] = recruited
+    if len(group["targets"]) != 1:
+        return
+    target = group["targets"][0]
+    if target["supplyHouseholdCount"] is None and recruited is not None:
+        target["supplyHouseholdCount"] = recruited
+    if target["reserveCount"] is None and reserve is not None:
+        target["reserveCount"] = reserve
+        target["rowIds"].add(row_id)
+        unresolved[:] = [finding for finding in unresolved
+                         if finding["path"] != f"supplyRows[{index}].targets[0].reserveCount"]
+    if target["supplyHouseholdCount"] is not None:
+        target["rowIds"].add(row_id)
+
+
+_COUNT_FIELDS = ("totalSupplyHouseholdCount", "supplyHouseholdCount", "reserveCount")
+
+
+def _merged_count_rows(row_id: str, selected: pages.PromptPages) -> set[str]:
+    """그 행의 수량 칸과 세로 병합(None)으로 이어진 행들이다. 수량 열 하나라도 위 행에서 내려오거나 아래 행으로 이어지면
+    그 칸은 여러 행이 함께 쓰는 수량이다. 병합이 없으면 그 행 하나다."""
+    rows = {row_id}
+    for table in selected.supply_tables:
+        ids = [row.id for row in table.rows]
+        if row_id not in ids:
+            continue
+        index = ids.index(row_id)
+        for column in (table.columns[field] for field in _COUNT_FIELDS if field in table.columns):
+            def merged(at: int) -> bool:
+                return column < len(table.cells[at]) and table.cells[at][column] is None
+            start = index
+            while start > 0 and merged(start):
+                start -= 1
+            end = index
+            while end + 1 < len(ids) and merged(end + 1):
+                end += 1
+            rows.update(ids[start:end + 1])
+    return rows
 
 
 def _table_subtypes(row_ids: list[str], housing_type: str | None, selected: pages.PromptPages) -> list[tables.TableSubtype]:
@@ -334,7 +489,9 @@ def _area_from_source_cells(group: dict, selected: pages.PromptPages) -> None:
     for row_id in group["rowIds"]:
         values = selected.supply_row_values.get(row_id, {})
         # 단지명만 이어받으려고 가리킨 위 행처럼 다른 주택형이 적힌 행의 면적은 이 공급행의 면적이 아니다.
-        if wanted and values.get("housingType") and normalize_source_text(values["housingType"]) != wanted:
+        # 주택타입마다 뽑은 공급행(84A)은 그 행의 주택타입 칸이 표기와 같다.
+        if wanted and values.get("housingType") and normalize_source_text(values["housingType"]) != wanted \
+                and normalize_source_text(values.get("houseType", "")) != wanted:
             continue
         cell = values.get("exclusiveArea", "")
         try:
@@ -495,8 +652,7 @@ def _value_evidence(path: str, values: dict, fields: tuple[str, ...], row_ids: l
                                       selected.supply_row_target_values) for row_id in row_ids}
         ids = [row_id for row_id, cell in cells.items() if cell.get(field)]
         # 이름을 이어받으려고 넣은 다른 줄(예: 소득 없음 줄)도 같은 열에 값이 있어, 값이 실제로 맞는 줄을 먼저 쓴다.
-        matching = [row_id for row_id in ids if numeric_cell_matches(values[field], cells[row_id][field], field,
-                                                                      cells[row_id].get(f"{field}Unit"))]
+        matching = [row_id for row_id in row_ids if source_cell_matches(values[field], cells[row_id], field)]
         result.extend(_compact_evidence(f"{path}.{field}", matching or ids, selected)[:1])
     return result
 

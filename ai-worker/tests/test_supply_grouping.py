@@ -438,3 +438,32 @@ def test_code_grouped_housing_type_row_gets_subtypes_from_its_house_type_column(
     assert (row["sourceHousingTypeName"], row["exclusiveArea"]) == ("059.9000A", 59.98)
     assert [(item["name"], item["exclusiveArea"], item["commonArea"]) for item in row["subtypes"]] == [
         ("59A·59A1", 59.98, 21.5309), ("59C", 59.99, 21.5345)]
+
+
+def test_target_recruitment_count_is_winners_plus_reserves_of_the_same_rows():
+    # 모집수는 입주자(당첨자)와 예비자를 합한 수다(사용자 결정). 코드 경로도 당첨자 수만 쓰지 않는다.
+    header = [["단지명", "청약구분", "공급대상", "당첨자 수", "예비자", "주거전용", "주거공용"]]
+    _, tree = assemble([table(4, [["Alpha", "26A", "청년", "5", "15", "26.1", "13.0"]], header=header)])
+
+    target = tree["data"]["supplyRows"][0]["targets"][0]
+    assert (target["supplyHouseholdCount"], target["reserveCount"]) == (20, 15)
+    assert tree["data"]["supplyRows"][0]["totalSupplyHouseholdCount"] == 20
+    assert unresolved_paths(tree) == set()
+
+    # 예비자 칸만 두 대상에 병합되면 대상별 모집수를 정할 수 없다.
+    _, tree = assemble([table(4, [["Alpha", "26A", "청년", "5", "15", "26.1", "13.0"],
+                                  [None, None, "신혼부부", "4", None, None, None]], header=header)])
+    assert [target["supplyHouseholdCount"] for target in tree["data"]["supplyRows"][0]["targets"]] == [None, None]
+    assert {"supplyRows[0].targets[0].supplyHouseholdCount", "supplyRows[0].targets[1].supplyHouseholdCount"} \
+        <= unresolved_paths(tree)
+
+
+def test_recruitment_column_beside_a_separate_reserve_column_is_entrants():
+    # 모집호수(하위 열 없음) | 예비자: 모집호수는 입주자 수이고 모집수는 둘의 합이다(사용자 결정).
+    header = [["단지명", "청약구분", "공급대상", "모집호수", "예비자", "주거전용", "주거공용"]]
+    _, tree = assemble([table(4, [["Alpha", "26A", "청년", "2", "41", "26.1", "13.0"]], header=header)])
+
+    row = tree["data"]["supplyRows"][0]
+    assert (row["totalSupplyHouseholdCount"], row["targets"][0]["supplyHouseholdCount"],
+            row["targets"][0]["reserveCount"]) == (43, 43, 41)
+    assert unresolved_paths(tree) == set()

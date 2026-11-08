@@ -321,3 +321,12 @@ def test_table_without_a_house_type_column_has_no_subtypes():
 
     assert "houseType" not in table.columns
     assert all(row.subtypes == () for row in table.rows)
+
+
+def test_single_cell_entrant_recruitment_header_is_the_recruitment_column():
+    from ai_worker.tables import _table_field_columns
+    # 한 칸짜리 "입주자 모집호수"는 모집호수 열이고, 모집호수 아래로 나뉜 입주자 하위 열만 당첨자 열이다.
+    assert _table_field_columns([["단지명", "주택형", "입주자 모집호수"], ["A", "59", "10"]])["totalSupplyHouseholdCount"] == 2
+    split = _table_field_columns([["단지명", "주택형", "모집호수", None, None], [None, None, "계", "입주자", "예비자"],
+                                  ["A", "59", "13", "0", "13"]])
+    assert (split["totalSupplyHouseholdCount"], split["supplyHouseholdCount"], split["reserveCount"]) == (2, 3, 4)

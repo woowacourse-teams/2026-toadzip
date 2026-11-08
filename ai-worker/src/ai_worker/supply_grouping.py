@@ -179,6 +179,13 @@ def _assign_counts(quantities: list[_SourceRow], rows: list[dict], item_indexes:
                 for index in indexes:
                     rows[index]["unresolved"].append({"field": field_name, "reason": reason})
                 continue
+            if field_name == "supplyHouseholdCount":
+                count = _with_reserves(count, origin, members, quantities)
+                if count is None:
+                    for index in indexes:
+                        rows[index]["unresolved"].append(
+                            {"field": field_name, "reason": "당첨자 칸과 예비자 칸이 덮는 행이 달라 모집수를 정하지 못함"})
+                    continue
             if field_name == "totalSupplyHouseholdCount":
                 # 공급행 전체 모집수는 한 칸이 그 주택형의 모든 대상을 덮을 때만이다. 대상마다 따로 적힌 수는 합계가 아니다.
                 keys = {_supply_key(member) for member in members}
@@ -195,6 +202,25 @@ def _assign_counts(quantities: list[_SourceRow], rows: list[dict], item_indexes:
                 shared_counts.append({"rowIndexes": indexes, "field": field_name, "count": count,
                                       "rowIds": [origin.row_id]})
     return shared_counts
+
+
+def _with_reserves(winners: int, origin: _SourceRow, members: list[_SourceRow],
+                   quantities: list[_SourceRow]) -> int | None:
+    """대상 모집수는 입주자(당첨자)와 예비자를 합한 수다(사용자 결정). 당첨자 칸과 같은 행들을 덮는 예비자 칸이 있으면 더하고,
+    예비자 칸이 다른 행들을 덮으면(한쪽만 병합) 하나로 정하지 못한다(None)."""
+    if "reserveCount" not in origin.table.columns:
+        return winners
+    reserve_origins = {id(member.shared_from.get("reserveCount", member)): member.shared_from.get("reserveCount", member)
+                       for member in members}
+    present = [row for row in reserve_origins.values() if _present(row.cells.get("reserveCount"))]
+    if not present:
+        return winners
+    reserve = _number(present[0].cells.get("reserveCount"), "reserveCount", None)
+    covered = {id(quantity) for quantity in quantities if quantity.shared_from.get("reserveCount", quantity) is present[0]}
+    if len(present) != 1 or present[0] is not origin or covered != {id(member) for member in members} \
+            or reserve is None or "reserveCount" in origin.conflicts:
+        return None
+    return winners + reserve
 
 
 def _fill(item: dict, row: _SourceRow, names: tuple[str, ...], row_values: dict[str, dict[str, str]]) -> None:

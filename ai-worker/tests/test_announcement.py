@@ -738,8 +738,10 @@ SOURCE_CHECKED_TREE = {'data': {'announcement': {'name': 'Sample Notice'},
                           'supplyArea': None,
                           'constructedHouseholdCount': None,
                           'subtypes': [],
+                          # 모델이 빠뜨린 대상 모집수는 이 공급행만 가리키는 원문 행의 모집호수 칸에서 읽는다.
+                          # 모델이 낸 공급행 모집수(99)는 원문과 달라 비운다.
                           'targets': [{'target': '청년',
-                                       'supplyHouseholdCount': None,
+                                       'supplyHouseholdCount': 20,
                                        'reserveCount': None,
                                        'rentalDeposit': None,
                                        'monthlyRent': None,
