@@ -116,7 +116,7 @@ class AnnouncementReceptionPlacesMigrationTest {
 
     /** DO 블록($$)이 있어 문장을 나누지 않고 PostgreSQL 드라이버에 한 번에 보낸다. */
     private String migration() throws Exception {
-        try (var input = new ClassPathResource("db/migration/V20261108_02__announcement_reception_places.sql").getInputStream()) {
+        try (var input = new ClassPathResource("db/migration/V20261107_04__announcement_reception_places.sql").getInputStream()) {
             return new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
         }
     }

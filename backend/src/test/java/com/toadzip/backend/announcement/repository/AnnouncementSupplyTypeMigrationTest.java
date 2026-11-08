@@ -40,7 +40,7 @@ class AnnouncementSupplyTypeMigrationTest {
                         .isInstanceOf(SQLException.class);
 
                 ScriptUtils.executeSqlScript(connection, new ClassPathResource(
-                        "db/migration/V20261108_01__announcement_long_term_jeonse_supply_type.sql"));
+                        "db/migration/V20261107_03__announcement_long_term_jeonse_supply_type.sql"));
 
                 for (RentalType type : RentalType.values()) {
                     for (String value : type.storedValues()) {
