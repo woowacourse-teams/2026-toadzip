@@ -5,10 +5,9 @@ const definitions = {
   COLLECT_LH_LEASE_CATALOG: 'LH 임대 카탈로그 수집',
   MAP_MYHOME_COMPLEXES: '마이홈 단지 정제',
   ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS: 'LH 주택형 세대수 보강',
-  COLLECT_SH_ANNOUNCEMENTS: 'SH 공고 원천 수집',
-  COLLECT_GH_ANNOUNCEMENTS: 'GH 공고 원천 수집',
-  MAP_SH_ANNOUNCEMENTS: 'SH 공고 정제',
-  MAP_GH_ANNOUNCEMENTS: 'GH 공고 정제',
+  COLLECT_REFINE_SH_ANNOUNCEMENTS: 'SH 공고 수집·정제',
+  COLLECT_REFINE_GH_ANNOUNCEMENTS: 'GH 공고 수집·정제',
+  COLLECT_REFINE_LH_ANNOUNCEMENTS: 'LH 공고 수집·정제',
   COLLECT_LH_ANNOUNCEMENT_CATALOG: 'LH 공고 목록 수집',
   COLLECT_LH_ANNOUNCEMENT_SUPPLIES: 'LH 공고 공급 원본 수집',
   COLLECT_LH_ANNOUNCEMENT_DETAILS: 'LH 공고 상세 원본 수집',
@@ -17,6 +16,11 @@ const definitions = {
   COLLECT_MYHOME_ANNOUNCEMENTS: '마이홈 공고 수집',
   MAP_MYHOME_ANNOUNCEMENTS: '마이홈 공고 정제',
   ENRICH_LH_ANNOUNCEMENTS: 'LH 공고 상세·공급 정보 보강',
+  // SH·GH 공고 수집과 정제를 한 단계로 합치기 전의 두 단계다.
+  COLLECT_SH_ANNOUNCEMENTS: 'SH 공고 원천 수집',
+  COLLECT_GH_ANNOUNCEMENTS: 'GH 공고 원천 수집',
+  MAP_SH_ANNOUNCEMENTS: 'SH 공고 정제',
+  MAP_GH_ANNOUNCEMENTS: 'GH 공고 정제',
 } as const
 type Step = keyof typeof definitions
 const complexCollection: Step[] = ['COLLECT_MYHOME_COMPLEXES', 'COLLECT_LH_LEASE_CATALOG']
@@ -28,9 +32,9 @@ const sequences: Record<DataPipelineType, Step[]> = {
   COMPLEX_COLLECTION: complexCollection, COMPLEX_REFINEMENT: complexRefinement,
   COMPLEX_SYNC: [...complexCollection, ...complexRefinement],
   ANNOUNCEMENT_COLLECTION: announcementCollection, ANNOUNCEMENT_REFINEMENT: announcementRefinement,
-  ANNOUNCEMENT_SYNC: [...announcementCollection, ...announcementRefinement],
-  SH_ANNOUNCEMENT_COLLECTION: ['COLLECT_SH_ANNOUNCEMENTS', 'MAP_SH_ANNOUNCEMENTS'],
-  GH_ANNOUNCEMENT_COLLECTION: ['COLLECT_GH_ANNOUNCEMENTS', 'MAP_GH_ANNOUNCEMENTS'],
+  ANNOUNCEMENT_SYNC: ['COLLECT_LH_ANNOUNCEMENT_CATALOG', 'COLLECT_REFINE_LH_ANNOUNCEMENTS'],
+  SH_ANNOUNCEMENT_COLLECTION: ['COLLECT_REFINE_SH_ANNOUNCEMENTS'],
+  GH_ANNOUNCEMENT_COLLECTION: ['COLLECT_REFINE_GH_ANNOUNCEMENTS'],
   // 지원 종료한 마이홈 공고 단건 등록이다. 지난 실행 이력을 보여 주려고 단계 구성을 남긴다.
   ANNOUNCEMENT_REGISTRATION: ['COLLECT_MYHOME_ANNOUNCEMENTS', 'COLLECT_LH_ANNOUNCEMENT_SUPPLIES',
     'COLLECT_LH_ANNOUNCEMENT_DETAILS', 'MAP_MYHOME_ANNOUNCEMENTS'],
@@ -39,18 +43,27 @@ const sequences: Record<DataPipelineType, Step[]> = {
 const legacyAnnouncementRefinement: Step[] = ['MAP_MYHOME_ANNOUNCEMENTS', 'ENRICH_LH_ANNOUNCEMENTS']
 // 공고 수집에서 마이홈 공고 수집을 빼기 전의 실행 이력은 그 단계를 맨 앞에 보여 준다.
 const legacyAnnouncementCollection: Step = 'COLLECT_MYHOME_ANNOUNCEMENTS'
+// SH·GH 공고 수집과 정제를 한 단계로 합치기 전의 실행 이력은 그때 기록된 두 단계로 보여 준다.
+const legacyBoardSteps: Partial<Record<DataPipelineType, Step[]>> = {
+  SH_ANNOUNCEMENT_COLLECTION: ['COLLECT_SH_ANNOUNCEMENTS', 'MAP_SH_ANNOUNCEMENTS'],
+  GH_ANNOUNCEMENT_COLLECTION: ['COLLECT_GH_ANNOUNCEMENTS', 'MAP_GH_ANNOUNCEMENTS'],
+}
+// LH 공고 갱신이 목록 수집 뒤 공급·상세 수집과 전체 정제를 따로 하던 때의 실행 이력은 그때 기록된 단계로 보여 준다.
+const legacyAnnouncementSyncSteps: Step[] = ['COLLECT_LH_ANNOUNCEMENT_SUPPLIES', 'COLLECT_LH_ANNOUNCEMENT_DETAILS', 'MAP_LH_ANNOUNCEMENTS']
 function sequenceOf(execution: DataPipelineExecution): Step[] {
-  const steps = sequences[execution.type]
-  // 정제 연결 전 성공 이력에는 실제 수행한 수집만 보여 준다.
-  if ((execution.type === 'SH_ANNOUNCEMENT_COLLECTION' || execution.type === 'GH_ANNOUNCEMENT_COLLECTION')
-    && execution.status === 'COMPLETED' && execution.completedSteps.length === 1) {
-    return steps.slice(0, 1)
-  }
-  if (!steps.includes('COLLECT_LH_ANNOUNCEMENT_CATALOG') && !steps.includes('MAP_LH_ANNOUNCEMENTS')) return steps
   const recorded = new Set([...execution.completedSteps, execution.currentStepName, execution.failure?.stepName,
     ...execution.skippedSteps.map(item => item.stepName),
     ...[...execution.partiallyFailedSteps, ...(execution.completedStepResults ?? [])].flatMap(item => [item.step, item.stepName])])
   const wasRecorded = (step: Step) => recorded.has(step) || recorded.has(definitions[step])
+  const steps = execution.type === 'ANNOUNCEMENT_SYNC' && legacyAnnouncementSyncSteps.some(wasRecorded)
+    ? [...announcementCollection, ...announcementRefinement] : sequences[execution.type]
+  const legacyBoard = legacyBoardSteps[execution.type]
+  if (legacyBoard) {
+    if (!legacyBoard.some(wasRecorded)) return steps
+    // 정제 연결 전 성공 이력에는 실제 수행한 수집만 보여 준다.
+    return execution.status === 'COMPLETED' && execution.completedSteps.length === 1 ? legacyBoard.slice(0, 1) : legacyBoard
+  }
+  if (!steps.includes('COLLECT_LH_ANNOUNCEMENT_CATALOG') && !steps.includes('MAP_LH_ANNOUNCEMENTS')) return steps
   const collection = steps.includes('COLLECT_LH_ANNOUNCEMENT_CATALOG') && wasRecorded(legacyAnnouncementCollection)
     ? [legacyAnnouncementCollection, ...steps] : steps
   if (!steps.includes('MAP_LH_ANNOUNCEMENTS') || !legacyAnnouncementRefinement.some(wasRecorded)) return collection
