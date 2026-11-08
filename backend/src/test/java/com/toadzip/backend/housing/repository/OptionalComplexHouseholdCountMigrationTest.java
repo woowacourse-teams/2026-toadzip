@@ -28,7 +28,7 @@ class OptionalComplexHouseholdCountMigrationTest {
                     query.execute(insertComplex(3, "350"));
                 }
                 Flyway upgraded = Flyway.configure().dataSource(url(database), "toadzip_test", "toadzip_test")
-                        .locations("classpath:db/migration").target("20261106.01").load();
+                        .locations("classpath:db/migration").target("20261107.02").load();
                 upgraded.migrate();
                 upgraded.validate();
                 try (Connection connection = connect(database); Statement query = connection.createStatement()) {
