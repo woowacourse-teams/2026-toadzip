@@ -190,6 +190,11 @@ class LhSupplyAreaCorrectionIntegrationTest {
         // 작업실은 행 이름과 따로 행별 신청형 이름(원천 형명)을 준다. 화면은 이 이름으로 같은 신청형을 가린다.
         assertThat(workspace.applicationTypeNames()).containsEntry(strong.key(), "059.9100A")
                 .containsEntry(weak.key(), "059.9100C(주거약자)");
+        // 행 면적과 따로 원천 전용면적(LH 면적)을 준다. 주택형이 없는 행도 화면이 면적으로 저장할 곳을 고르게 한다.
+        assertThat(workspace.matchingAreas().get(weak.key())).isEqualByComparingTo("59.91");
+        // 정제가 매칭용으로 적어 둔 원천 면적(GH 공급행 틀의 공고 면적, 면적 보정은 꺼 둠)은 LH 면적보다 먼저 준다.
+        jdbc.sql("UPDATE supply_rows SET announcement_exclusive_area = 59.95, area_override = false WHERE id = :id").param("id", weak.id()).update();
+        assertThat(supplyCorrections.workspace(id).matchingAreas().get(weak.key())).isEqualByComparingTo("59.95");
         // LH 줄은 각자 원천 형명이 같은 행에 모호하지 않게 붙는다.
         assertThat(workspace.lhSupplyRows()).extracting(SupplyCorrection.LhSupplyRow::typeName,
                 SupplyCorrection.LhSupplyRow::attachedRowKey, SupplyCorrection.LhSupplyRow::ambiguous)

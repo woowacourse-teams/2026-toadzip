@@ -2,7 +2,7 @@ import type { ExtractedAnnouncement, HousingTypeValue, JsonObject, JsonUpdateInp
 import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type LinkedHousingType } from '../supply/supplyCorrectionApi'
 import { evidenceFor, noteFor, text, type Evidence, type Extraction, type Subtype } from './extraction'
 import { createdTypeName, foldSameHousingType, renamedTypeName, withoutTrailingParentheses } from './subtypes'
-import { applicationTypeKey } from '../supply/applicationType'
+import { applicationTypeKey, sameApplicationType } from '../supply/applicationType'
 import { announcementHousingType, type AnnouncementType } from './areas'
 import { areaValue, defaultTargetDestinations, missingHousingType, originalDate, otherTypeNames, pickSubtypes, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal, canonicalTarget, describeRow } from './matching'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
@@ -261,6 +261,14 @@ export function createRowReview(extraction: Extraction, index: number, proposal:
   // 합쳐지는 행의 모집수를 몰라 합을 만들지 못하면, 아는 행의 수를 조용히 버리지 않게 관리자가 모집수를 정하게 한다.
   if (current && !grouped && merging.length && merged === null && count.value === null) {
     const note = '합쳐지는 옛 공급행 중 모집수를 모르는 행이 있어 합을 만들지 못했습니다. 모집수를 직접 입력하거나 지금 값을 그대로 둘지 정하세요.'
+    Object.assign(count, { state: 'confirm', note, extracted: { ...count.extracted, state: 'confirm', note } })
+  }
+  // 신청형이 다른 기존 행(GH 틀 '49형')을 면적만으로 골랐는데 PDF 모집수가 없으면, 그 행의 모집수(49형 전체일 수 있음)가 이 신청형에
+  // 조용히 남지 않게 관리자가 모집수를 정하게 한다.
+  const currentName = current ? workspace.supply.applicationTypeNames?.[current.key] ?? current.typeName : null
+  if (current && !grouped && !merging.length && count.value === null && typeof count.before === 'number' && currentName !== null
+    && !sameApplicationType(source.typeName, currentName)) {
+    const note = `저장할 곳 '${currentName}'의 모집수 ${count.before}세대는 이 신청형만의 수가 아닐 수 있습니다. 모집수를 직접 입력하거나 지금 값을 그대로 둘지 정하세요.`
     Object.assign(count, { state: 'confirm', note, extracted: { ...count.extracted, state: 'confirm', note } })
   }
   return syncRepresentative({ proposal, include: true, reviewed: false, key: current?.key ?? crypto.randomUUID(), cells: rowCells, subtypes, housingTypeName, otherTypeNames: others, ...relink ? { relinkTo: target?.id ?? 'new' as const } : {},

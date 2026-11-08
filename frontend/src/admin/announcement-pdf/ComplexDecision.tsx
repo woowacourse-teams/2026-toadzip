@@ -77,7 +77,7 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
       const pnu = isRecord(detail.data.address) && typeof detail.data.address.pnu === 'string' ? detail.data.address.pnu : ''
       // 고른 단지에 연결된 공급행과 이 공고 단지의 단지 없는 원천행에서 전용면적·신청형으로 저장할 곳을 다시 고른다. 다른 PDF 행이 고른 행은 빼고 고른다.
       const linked = workspace.supply.rows.filter(item => !item.excluded && item.housingComplexId === id)
-      const related = matchingRows([...linked, ...emptySourceRows(workspace, current.extraction, name)], workspace.supply.lhSupplyRows, workspace.supply.applicationTypeNames)
+      const related = matchingRows([...linked, ...emptySourceRows(workspace, current.extraction, name)], workspace.supply.lhSupplyRows, workspace.supply.applicationTypeNames, workspace.supply.matchingAreas)
       const proposals: Pick<RowProposal, 'destination' | 'supersedes'>[] = current.rows.flatMap((row, index) => currentIndexes.includes(index) ? [] : [row.proposal])
       const rows = current.rows.map((old, index) => {
         if (!currentIndexes.includes(index)) return old

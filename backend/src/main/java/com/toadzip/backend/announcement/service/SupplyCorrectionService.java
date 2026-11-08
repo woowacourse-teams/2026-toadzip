@@ -107,7 +107,7 @@ public class SupplyCorrectionService {
         var workspace = new SupplyCorrection.Workspace(hash(List.of(comparison.snapshotToken(), currentRows, announcementComplexes)),
                 announcement.getVersion(), currentRows, comparison.sources(), sourceStatus.missingWarnings(id),
                 rowSources, deletable, unattachedLhSupplyRows(announcement, lhSupplyRows), announcementComplexes, lhSupplyRows,
-                applicationTypeNames(stored));
+                applicationTypeNames(stored), matchingAreas(stored));
         var snapshot = new Snapshot(workspace, comparison, currentRows);
         if (log.isDebugEnabled()) {
             var parts = tokenParts(snapshot);
@@ -714,6 +714,16 @@ public class SupplyCorrectionService {
     /** 저장된 행의 신청형 이름. 공고 표기, 없으면 원천 형명이다. */
     private static String applicationTypeName(SupplyRow row) {
         return row.getAnnouncementHousingTypeName() != null ? row.getAnnouncementHousingTypeName() : row.getSourceHousingTypeName();
+    }
+
+    /** 작업실 행 키별 원천 전용면적(공고 면적, 없으면 LH 면적). 주택형이 없어 행 면적이 비어도 화면이 면적으로 저장할 곳을 고르게 한다. */
+    private static Map<String, BigDecimal> matchingAreas(List<SupplyRow> stored) {
+        Map<String, BigDecimal> areas = new LinkedHashMap<>();
+        for (var row : stored) {
+            var area = row.getAnnouncementExclusiveArea() != null ? row.getAnnouncementExclusiveArea() : row.getLhExclusiveArea();
+            if (area != null) { areas.put(LhRowAttachments.key(row), area); }
+        }
+        return areas;
     }
 
     /** 작업실 행 키별 신청형 이름. 화면이 서버와 같은 기준으로 같은 신청형을 가린다. */

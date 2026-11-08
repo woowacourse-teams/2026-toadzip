@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../../design-system/components/Button'
+import { labels, rentals } from '../management/fields'
 import { AdminRegistrationApiError, createHousingComplex } from '../registration/api'
 import { rentalTypeOptions } from '../registration/registrationOptions'
 import { type AddressCandidate, type RegisteredComplex, lookupAddresses } from './addressLookupApi'
@@ -11,6 +12,7 @@ type Props = { index: number; defaultName: string; defaultAddress?: string; defa
   myhome?: MyHomeComplexOverview
   /** LH 원천행의 PNU. 같은 필지로 등록해야 다음 정제에서 원천행이 이 단지를 찾는다. */
   defaultPnu?: string
+  /** 공고의 공급유형. 원천이 주지 않아 비어 있으면(SH 등) 운영자가 이 폼에서 고른다. */
   rentalType: string; agencyCode: string; onCreated: (complex: { id: number; name: string }) => void
   /** 같은 주소에 이미 있는 단지를 골랐다. 새로 만들지 않고 그 단지에 연결한다. */
   onSelectExisting: (complex: { id: number; name: string }) => void }
@@ -40,7 +42,7 @@ export function NewComplexRegistration({ index, defaultName, defaultAddress = ''
   const lookupRequest = useRef<AbortController | null>(null)
   const [advanced, setAdvanced] = useState(false)
   const [addressStatus, setAddressStatus] = useState('')
-  const [busy, setBusy] = useState(false), [error, setError] = useState('')
+  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [type, setType] = useState(rentalType)
   const [keyword, setKeyword] = useState(initialAddress), [searching, setSearching] = useState(false)
   const [candidates, setCandidates] = useState<AddressCandidate[] | null>(null), [searchError, setSearchError] = useState('')
   // 고른 검색 결과의 행정구역 코드. 주소를 직접 고치면 그 주소의 코드가 아니므로 버린다.
@@ -59,7 +61,7 @@ export function NewComplexRegistration({ index, defaultName, defaultAddress = ''
   const pnu = values.pnu.trim()
   // PNU가 있으면 그 앞자리가 행정구역 코드다. PNU가 없을 때만 고른 검색 결과의 코드를 쓴다.
   const codes = PNU.test(pnu) ? { legalDongCode: pnu.slice(0, 10), provinceCode: pnu.slice(0, 2), cityCountyDistrictCode: pnu.slice(0, 5) } : regionCodes
-  const problem = !values.name.trim() ? '단지명을 입력하세요.' : !values.address.trim() ? '주소를 검색해 선택하거나 상세에서 직접 입력하세요.' : pnu && !PNU.test(pnu) ? 'PNU는 19자리 숫자로 입력하거나 비워 두세요.'
+  const problem = !values.name.trim() ? '단지명을 입력하세요.' : !type ? '공급유형을 고르세요.' : !values.address.trim() ? '주소를 검색해 선택하거나 상세에서 직접 입력하세요.' : pnu && !PNU.test(pnu) ? 'PNU는 19자리 숫자로 입력하거나 비워 두세요.'
     : !codes ? '행정구역 코드를 정하려면 주소 검색 결과를 고르거나 PNU를 입력하세요.'
     : !values.latitude || !values.longitude ? '이 주소는 검색 결과에 좌표가 없습니다. 주소 상세에서 위도·경도를 입력하세요.'
     : !Number.isFinite(Number(values.latitude)) || Math.abs(Number(values.latitude)) > 90 || !Number.isFinite(Number(values.longitude)) || Math.abs(Number(values.longitude)) > 180 ? '위도·경도 범위를 확인하세요.'
@@ -116,7 +118,7 @@ export function NewComplexRegistration({ index, defaultName, defaultAddress = ''
     if (problem || busy) return
     setBusy(true); setError('')
     try {
-      const created = await createHousingComplex({ name: values.name.trim(), rentalType, agencyCode,
+      const created = await createHousingComplex({ name: values.name.trim(), rentalType: type, agencyCode,
         address: { roadAddress: values.address.trim(), pnu: pnu || null, ...codes!, latitude: coordinate(Number(values.latitude)), longitude: coordinate(Number(values.longitude)) },
         totalHouseholdCount: values.households === '' ? null : Number(values.households), totalParkingCount: values.parking === '' ? null : Number(values.parking), completionDate: values.completionDate || null,
         heatingType, buildingType, corridorType: null, hasElevator: null, overviewImageUrl: null, moveOutCountLastYear: null })
@@ -132,6 +134,7 @@ export function NewComplexRegistration({ index, defaultName, defaultAddress = ''
     <legend>새 단지로 등록</legend>
     <p className={styles.hint}>주소를 확인한 뒤 등록하세요. 전체 세대수·주차대수·준공일은 몰라도 등록할 수 있습니다.</p>
     <label>단지명<input value={values.name} maxLength={255} onChange={set('name')} /></label>
+    <label>공급유형<select value={type} onChange={event => setType(event.target.value)}><option value="">선택하세요</option>{rentals.map(item => <option key={item} value={item}>{labels[item] ?? item}</option>)}</select></label>
     {myhome && (heatingType || buildingType) && <p className={styles.hint}>{`마이홈 공고 정보로 ${[myhome.heating, myhome.building].filter(Boolean).join(' · ')}을(를) 함께 저장합니다. 주차대수는 마이홈에도 없어 모르면 비워 두세요.`}</p>}
     <div className={styles.addressSearch}>
       <label>주소 검색<input value={keyword} maxLength={200} placeholder="공고문 단지 주소" onChange={event => {

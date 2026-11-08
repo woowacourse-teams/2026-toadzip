@@ -159,12 +159,13 @@ export function rowAreaKeys(row: CorrectionRow, types: MatchingHousingType[]) {
  * 저장할 곳 고르기에 쓰는 기존 공급행. 고르기에만 쓰고 저장 값은 바꾸지 않는다.
  * - 이름은 서버가 준 행의 신청형 이름(names: 공고 표기, 없으면 원천 형명)이다. 작업실 행 이름은 공고 표기가 없으면 연결 주택타입 이름이라
  *   (84.9600A·84.9600B가 모두 84A) 신청형을 가리지 못한다. 서버의 같은 신청형 판정과 같은 이름이다.
- * - 단지에 연결되지 않은 LH 원천 행은 주택형이 없어 전용면적이 비어 오므로, 그 행에 붙은 LH 줄의 전용면적을 그 행의 면적으로 본다.
+ * - 주택형이 없어 전용면적이 비어 오는 행(단지 미연결 LH 원천 행, GH 공급행 틀 '49형')은 서버가 준 원천 전용면적(areas), 없으면 그 행에
+ *   붙은 LH 줄의 전용면적을 그 행의 면적으로 본다.
  */
-export function matchingRows(rows: CorrectionRow[], lhRows: LhSupplyRow[] = [], names: Record<string, string> = {}) {
+export function matchingRows(rows: CorrectionRow[], lhRows: LhSupplyRow[] = [], names: Record<string, string> = {}, areas: Record<string, number> = {}) {
   return rows.map(row => {
     const typeName = names[row.key] ?? row.typeName
-    const area = row.exclusiveArea ?? lhRows.map(lh => lh.attachedRowKey === row.key ? Number(lh.exclusiveArea) : NaN).find(value => Number.isFinite(value) && value > 0) ?? null
+    const area = row.exclusiveArea ?? areas[row.key] ?? lhRows.map(lh => lh.attachedRowKey === row.key ? Number(lh.exclusiveArea) : NaN).find(value => Number.isFinite(value) && value > 0) ?? null
     return area === row.exclusiveArea && typeName === row.typeName ? row : { ...row, exclusiveArea: area, typeName }
   })
 }
@@ -273,8 +274,8 @@ export function destinationReason(row: ExtractedRow, chosen: CorrectionRow | und
  * 기존 공급행 중 신청형이 같은 행(chooseDestination), 없으면 새 공급행이다. 단지는 PDF 단지명으로, 이름이 다르면 블록 번호·주소로 찾는다.
  * LH 공급 원본 행은 공급행을 정하지 않는다. 주택형은 저장할 때 서버가 단지·전용면적으로 정하므로 고르게 하지 않는다.
  */
-export function proposeRows(extraction: Extraction, supply: Pick<SupplyWorkspace, 'rows' | 'rowSources' | 'applicationTypeNames'> & { announcementComplexes?: Pick<AnnouncementComplex, 'name' | 'roadAddress'>[]; lhSupplyRows?: LhSupplyRow[] }, housing: HousingCandidates): RowProposal[] {
-  const all = matchingRows(supply.rows, supply.lhSupplyRows, supply.applicationTypeNames), proposals: RowProposal[] = []
+export function proposeRows(extraction: Extraction, supply: Pick<SupplyWorkspace, 'rows' | 'rowSources' | 'applicationTypeNames' | 'matchingAreas'> & { announcementComplexes?: Pick<AnnouncementComplex, 'name' | 'roadAddress'>[]; lhSupplyRows?: LhSupplyRow[] }, housing: HousingCandidates): RowProposal[] {
+  const all = matchingRows(supply.rows, supply.lhSupplyRows, supply.applicationTypeNames, supply.matchingAreas), proposals: RowProposal[] = []
   // 단지가 연결되지 않은 기존 행은 단지를 정한 뒤 그 단지의 행으로 다시 맞춘다(proposeInComplex).
   const current = all.filter(item => !emptyRow(item) && !item.excluded)
   const names = [...new Set(all.filter(item => !item.excluded).map(item => item.complexName))]

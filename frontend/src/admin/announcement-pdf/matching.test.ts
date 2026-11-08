@@ -319,3 +319,15 @@ it('신청형이 같은데 면적만 조금 다른 기존 행(59.92 ↔ 59.93)�
   const pdf = { ...extraction, supplyRows: [{ ...extraction.supplyRows[2], values: { ...extraction.supplyRows[2].values, exclusiveArea: 59.93 } }] }
   expect(proposeRows(pdf, { rows: shown, announcementComplexes: complexes }, {})[0]).toMatchObject({ destination: 'new', supersedes: ['row:903'] })
 })
+
+it('GH 공급행 틀(49형)처럼 주택형이 없어 면적이 비어 온 행은 서버가 준 원천 전용면적으로 저장할 곳을 고른다(49A가 고치고 49B·49C는 새로 추가)', () => {
+  const complexName = '탑석 센트럴 자이'
+  const pdf = (name: string, area: number) => ({ complexReference: { sourceComplexName: complexName }, sourceHousingTypeName: name, exclusiveArea: area, supplyArea: null, totalSupplyHouseholdCount: null, expectedMoveInMonth: null, targets: [] })
+  const read = readExtraction(JSON.stringify({ data: { announcement: {}, receptionPlace: null, schedules: [], unresolvedFields: [], supplyRows: [pdf('49A', 49.9285), pdf('49B', 49.9091), pdf('49C', 49.9438)] }, notApplicable: [], evidence: [], sharedCounts: [] }))
+  if (!read.ok) throw new Error(read.error)
+  const frame = { ...blankRow(2755), id: 2755, key: 'row:2755', complexName, typeName: '49형', exclusiveArea: null, householdCount: 70, housingComplexId: 3600, housingTypeId: null }
+  const proposed = proposeRows(read.value, { rows: [frame], matchingAreas: { 'row:2755': 49.93 } }, { 3600: [] })
+  expect(proposed.map(item => item.destination)).toEqual(['row:2755', 'new', 'new'])
+  // 원천 면적을 모르면 고르지 못해 셋 다 새로 추가된다.
+  expect(proposeRows(read.value, { rows: [frame] }, { 3600: [] }).map(item => item.destination)).toEqual(['new', 'new', 'new'])
+})

@@ -582,6 +582,22 @@ public class Announcement {
         return true;
     }
 
+    /**
+     * 기관 게시판이 준 공급유형을 미확정 공고에 채운다. 관리자가 고치기 전까지는 원천을 따르고, 그 뒤나 공개된 공고는 덮지 않고
+     * 원천 값이 다르면 원천 검토 대상으로 표시한다. 원천 유형을 알 수 없으면(null) 있던 값을 지우지 않는다. 값을 바꿨으면 true다.
+     */
+    public boolean observeSourceSupplyType(RentalType sourceSupplyType) {
+        if (sourceSupplyType == null || sourceSupplyType == supplyType || adminDeleted) {
+            return false;
+        }
+        if (adminModified || isPublished()) {
+            sourceReviewRequired = true;
+            return false;
+        }
+        supplyType = sourceSupplyType;
+        return true;
+    }
+
     private LocalDate unlessReviewed(LocalDate source, LocalDate current) {
         if (applicationScheduleReviewed) {
             return current;

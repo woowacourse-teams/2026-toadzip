@@ -31,11 +31,13 @@ public final class SupplyCorrection {
     /**
      * applicationTypeNames는 행 키별 주택형(신청형) 이름(공고 표기, 없으면 원천 형명)이다. 행 이름(typeName)은 공고 표기가 없으면 연결
      * 주택형 이름이라 신청형을 가리지 못하므로, 화면은 이 이름으로 서버의 같은 신청형 판정과 같은 기준을 쓴다. 읽기 전용이다.
+     * matchingAreas는 행 키별 원천 전용면적(정제가 매칭용으로 적어 둔 공고·LH 면적)이다. 주택형이 없어 행 면적(exclusiveArea)이 비어도
+     * 화면이 저장할 곳을 면적으로 고를 수 있게 한다(GH 공급행 틀 '49형' 49.93㎡). 읽기 전용이다.
      */
     public record Workspace(String snapshotToken, long version, List<Row> rows, List<Source> sources, List<String> sourceWarnings,
             List<RowSource> rowSources, List<String> deletableRowKeys, List<LhSupplyRow> unattachedLhSupplyRows,
             List<AnnouncementComplexView> announcementComplexes, List<LhSupplyRow> lhSupplyRows,
-            Map<String, String> applicationTypeNames) { }
+            Map<String, String> applicationTypeNames, Map<String, BigDecimal> matchingAreas) { }
     /** linkMethod는 AUTO·ADMIN·MIGRATED, 연결이 없으면(휴지통 단지 포함) null이다. rowCount는 이 공고 단지의 제외하지 않은 공급행 수다. */
     public record AnnouncementComplexView(long id, String name, String roadAddress, Long housingComplexId, String housingComplexName,
             String linkMethod, int rowCount) { }

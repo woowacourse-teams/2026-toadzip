@@ -784,6 +784,14 @@ describe('공급행은 단지 × 전용면적 주택형 하나', () => {
     expect(saved.targets.map(item => item.target)).toContain('청년(소득 없음)')
   })
 
+  it('신청형이 다른 기존 행을 면적만으로 고치는데 PDF 모집수가 없으면 지금 모집수를 그대로 쓰지 않고 확인 필요로 둔다', () => {
+    const { workspace, housing } = scenario('gongju')
+    Object.assign(workspace.supply.rows[0], { exclusiveArea: 26.37, typeName: '26형 전체', householdCount: 70 })
+    const review = createReview(extract([pdfRow('', '26A', 26.37, null, [target('')])]), workspace, housing)
+    expect(review.rows[0].proposal.destination).toBe(workspace.supply.rows[0].key)
+    expect(review.rows[0].cells.find(cell => cell.field === 'totalSupplyHouseholdCount')).toMatchObject({ state: 'confirm', note: expect.stringContaining("'26형 전체'의 모집수 70세대") })
+  })
+
   it('공급 표에 단지명이 없어 PDF 단지명이 비어도 공고 단지가 하나뿐이면 그 단지의 같은 면적 공급행을 고친다', () => {
     const { workspace, housing } = scenario('gongju')
     workspace.supply.rows[0].exclusiveArea = 26.37

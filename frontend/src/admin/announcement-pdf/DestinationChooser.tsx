@@ -24,7 +24,7 @@ export function DestinationChooser({ review, index, workspace, housing, onChange
   const recommended = rows.find(item => item.key === recommendedKey)
   const found = query.trim() ? rows.filter(item => item.key !== recommendedKey && searchKey(rowText(item)).includes(searchKey(query))) : []
   function pick(key: string) {
-    const next = chosenProposal(review.extraction.supplyRows[index], proposal, key, matchingRows(workspace.supply.rows, workspace.supply.lhSupplyRows, workspace.supply.applicationTypeNames), new Set(owners.keys()), housing)
+    const next = chosenProposal(review.extraction.supplyRows[index], proposal, key, matchingRows(workspace.supply.rows, workspace.supply.lhSupplyRows, workspace.supply.applicationTypeNames, workspace.supply.matchingAreas), new Set(owners.keys()), housing)
     onChange({ ...reproposeRow(review, index, next, workspace), reviewed: true }); setOpen(false); setQuery('')
   }
   // 단지가 없는 기존 행은 단지 정하기에서 단지를 정해야 저장할 곳이 될 수 있다(단지 정하기가 저장할 곳을 다시 고른다).

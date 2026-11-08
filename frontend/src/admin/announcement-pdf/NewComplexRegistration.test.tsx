@@ -93,11 +93,12 @@ it('주차대수는 비워 둘 수 있고, 공고문에 없는 주소·PNU·세�
   expect(within(form).getByLabelText('PNU')).toHaveValue('2823710100100650017')
   expect(within(form).getByLabelText('전체 세대수')).toHaveValue(350)
   expect(within(form).getByLabelText('주차대수')).toHaveValue(null)
+  expect(within(form).getByLabelText('공급유형')).toHaveValue('HAPPY_HOUSING')
   fireEvent.change(within(form).getByLabelText('위도'), { target: { value: '37.502996' } })
   fireEvent.change(within(form).getByLabelText('경도'), { target: { value: '126.719475' } })
   fireEvent.click(within(form).getByRole('button', { name: '단지 등록하고 연결' }))
   await waitFor(() => expect(onCreated).toHaveBeenCalled())
-  expect(registration.createHousingComplex).toHaveBeenCalledWith(expect.objectContaining({ totalHouseholdCount: 350, totalParkingCount: null, heatingType: 'INDIVIDUAL', buildingType: 'APARTMENT' }))
+  expect(registration.createHousingComplex).toHaveBeenCalledWith(expect.objectContaining({ rentalType: 'HAPPY_HOUSING', agencyCode: 'LH', totalHouseholdCount: 350, totalParkingCount: null, heatingType: 'INDIVIDUAL', buildingType: 'APARTMENT' }))
 })
 
 it('지번을 모르면 PNU를 비워 두고 고른 주소 검색 결과의 행정구역 코드로 등록한다', async () => {
@@ -260,4 +261,21 @@ it('원천 필지를 함께 보내 그 필지의 등록 단지도 서버가 찾�
   lookup.lookupAddresses.mockResolvedValue([])
   render(<NewComplexRegistration index={0} defaultName="평창장평" defaultAddress={exactAddress.roadAddress} defaultPnu="5176035027100100000" rentalType="HAPPY_HOUSING" agencyCode="LH" onSelectExisting={vi.fn()} onCreated={vi.fn()} />)
   await waitFor(() => expect(lookup.lookupAddresses).toHaveBeenCalledWith(exactAddress.roadAddress, expect.anything(), '5176035027100100000'))
+})
+
+it('공고에 공급유형이 없으면 고르기 전까지 등록을 막고, 고른 공급유형으로 등록한다', async () => {
+  lookup.lookupAddresses.mockResolvedValue([{ roadAddress: '경기도 의정부시 용민로 10', jibunAddress: '경기도 의정부시 용현동 567', pnu: '4115010400105670000',
+    legalDongCode: '4115010400', provinceCode: '41', cityCountyDistrictCode: '41150', latitude: 37.75, longitude: 127.08 }])
+  registration.createHousingComplex.mockResolvedValue({ housingComplexId: 9001, name: '탑석 센트럴 자이' })
+  const onCreated = vi.fn()
+  render(<NewComplexRegistration index={0} defaultName="탑석 센트럴 자이" defaultHouseholds={70} rentalType="" agencyCode="GH" onSelectExisting={vi.fn()} onCreated={onCreated} />)
+  const form = screen.getByRole('group', { name: '공급행 1 새 단지 등록' })
+  search(form, '용민로 10')
+  fireEvent.click(await within(form).findByRole('button', { name: /용민로 10/ }))
+  expect(within(form).getByRole('button', { name: '단지 등록하고 연결' })).toBeDisabled()
+  expect(within(form).getByText('공급유형을 고르세요.')).toBeInTheDocument()
+  fireEvent.change(within(form).getByLabelText('공급유형'), { target: { value: 'LONG_TERM_JEONSE' } })
+  fireEvent.click(within(form).getByRole('button', { name: '단지 등록하고 연결' }))
+  await waitFor(() => expect(onCreated).toHaveBeenCalledWith({ id: 9001, name: '탑석 센트럴 자이' }))
+  expect(registration.createHousingComplex).toHaveBeenCalledWith(expect.objectContaining({ rentalType: 'LONG_TERM_JEONSE', agencyCode: 'GH' }))
 })
