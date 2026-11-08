@@ -19,7 +19,7 @@
 
 ## 구조화 내용
 
-내용의 필드·자료형 원본은
+내용의 필드와 자료형을 정의한 원본은
 [EligibilityContent](../../../backend/src/main/java/com/toadzip/backend/eligibility/domain/EligibilityContent.java)다.
 다음 항목을 하나의 작성 단위 안에서 연결한다.
 
@@ -76,7 +76,7 @@ guidance의 대상은 `ANNOUNCEMENT`, `PATH`, `UNIT`, `OPTION`이다. OPTION 대
 
 소득 조건은 실제 기준표 ID와 비율·가구원수 가산을 참조한다. 100% 금액에 적용 비율을 계산하고
 원 단위 HALF_UP으로 반올림한다. 공개 내용에서 참조하는 같은 ID의 기준표는 불변이다.
-정정은 새 ID의 표와 이를 참조하는 공개 내용으로 처리하며, 잠금 규칙은 [저장 설계](storage.md#최신-결과-구현의-잠금-경계)를 따른다.
+정정은 새 ID의 표와 이를 참조하는 공개 내용으로 처리하며 잠금 규칙은 [저장 설계](storage.md#최신-결과-구현의-잠금-경계)를 따른다.
 
 ## 관리자 API
 
