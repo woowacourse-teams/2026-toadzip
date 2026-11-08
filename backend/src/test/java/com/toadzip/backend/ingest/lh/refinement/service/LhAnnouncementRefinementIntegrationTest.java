@@ -322,6 +322,40 @@ class LhAnnouncementRefinementIntegrationTest {
     }
 
     @Test
+    void 정정공고_묶음이_원공고_묶음보다_먼저_끝나도_마무리에서_원공고에_잇고_공고_단지_연결을_이어받는다() {
+        publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(5));
+        details("P1", "동탄 행복주택 단지", ADDRESS);
+        supplies("P1", supply("동탄 행복주택 단지", "59A", "59.9800", "10", "30000000", "200000"));
+        publish("P0", "[정정공고] 동탄 행복주택 입주자 모집", today().minusDays(5));
+        details("P0", "동탄 행복주택 단지", "주소 없음");
+        supplies("P0", supply("동탄 행복주택 단지", "59A", "59.9800", "10", "30000000", "200000"));
+        var run = refinement.begin();
+
+        // 정정공고 묶음이 먼저 끝나면 이어 갈 원공고가 없다.
+        run.refineBundle(List.of("P0"), List.of(sourceKeyOf("P0")));
+        inTransaction(() -> assertThat(announcements.findAllByLhPanIdOrderByIdAsc("P0").getFirst()
+                .getPreviousAnnouncement()).isNull());
+        run.refineBundle(List.of("P1"), List.of(sourceKeyOf("P1")));
+        run.finish(java.time.Instant.MAX, List.of("P0", "P1"));
+
+        var report = run.report();
+        assertThat(report.linkedRevisionCount()).isOne();
+        assertThat(report.unlinkedRevisionCount()).isZero();
+        // 다시 정제한 정정공고를 공고 수로 두 번 세지 않는다.
+        assertThat(report.targetCount()).isEqualTo(2);
+        assertThat(report.createdAnnouncementCount()).isEqualTo(2);
+        assertThat(report.announcementComplexes().inherited()).isOne();
+        verify(outbox, times(1)).appendNewAnnouncement(any(Announcement.class));
+        inTransaction(() -> assertThat(announcements.findAllByLhPanIdOrderByIdAsc("P0").getFirst()
+                .getPreviousAnnouncement().getLhPanId()).isEqualTo("P1"));
+    }
+
+    private String sourceKeyOf(String panId) {
+        return jdbc.sql("SELECT source_key FROM lh_announcement_catalog_entries WHERE pan_id = ?").param(panId)
+                .query(String.class).single();
+    }
+
+    @Test
     void 관리자가_휴지통에_넣은_LH_공고는_되살리거나_새로_만들지_않는다() {
         computeInTransaction(() -> {
             Announcement trashed = announcements.save(Announcement.create("21026", null, null, "마이홈 공고",

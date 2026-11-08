@@ -62,7 +62,7 @@ class ShAnnouncementRefinementIntegrationTest {
         collect();
         long outboxBefore = count("notification_outbox_events");
 
-        assertThat(refinement.refineAll().created()).isOne();
+        assertThat(ShRefinementTestSupport.refineAll(refinement, sources).created()).isOne();
 
         Announcement announcement = sh100();
         assertThat(announcement.getReleaseStatus().name()).isEqualTo("UNCONFIRMED");
@@ -78,7 +78,7 @@ class ShAnnouncementRefinementIntegrationTest {
         assertThat(count("notification_outbox_events")).isEqualTo(outboxBefore);
 
         long version = announcement.getVersion();
-        var again = refinement.refineAll();
+        var again = ShRefinementTestSupport.refineAll(refinement, sources);
         assertThat(again.created() + again.updated()).isZero();
         assertThat(sh100().getVersion()).isEqualTo(version);
     }
@@ -88,17 +88,17 @@ class ShAnnouncementRefinementIntegrationTest {
         collect();
         setBody(SCHEDULE);
 
-        refinement.refineAll();
+        ShRefinementTestSupport.refineAll(refinement, sources);
         assertThat(sh100().getApplicationStartDate()).isEqualTo(LocalDate.of(2026, 9, 9));
         assertThat(sh100().getApplicationEndDate()).isEqualTo(LocalDate.of(2026, 9, 11));
         assertThat(sh100().getWinnerAnnouncementDate()).isEqualTo(LocalDate.of(2027, 1, 29));
 
         setBody(SCHEDULE.replace("2027.01.29.", "2027.02.05."));
-        assertThat(refinement.refineAll().updated()).isOne();
+        assertThat(ShRefinementTestSupport.refineAll(refinement, sources).updated()).isOne();
         assertThat(sh100().getWinnerAnnouncementDate()).isEqualTo(LocalDate.of(2027, 2, 5));
 
         setBody(SCHEDULE.replace("■ 당첨자발표: 2027.01.29.(금) 예정\n", ""));
-        refinement.refineAll();
+        ShRefinementTestSupport.refineAll(refinement, sources);
         assertThat(sh100().getWinnerAnnouncementDate()).isNull();
         assertThat(sh100().getApplicationStartDate()).isEqualTo(LocalDate.of(2026, 9, 9));
     }
@@ -107,12 +107,12 @@ class ShAnnouncementRefinementIntegrationTest {
     void 관리자가_고친_공고는_본문_일정과_제목으로_덮지_않고_원천_확인이_필요하다고_표시한다() {
         collect();
         setBody(SCHEDULE);
-        refinement.refineAll();
+        ShRefinementTestSupport.refineAll(refinement, sources);
         jdbc.update("UPDATE announcements SET admin_modified = true WHERE source_announcement_identifier = 'SH:100'");
 
         setBody(SCHEDULE.replace("2027.01.29.", "2027.02.05."));
         jdbc.update("UPDATE sh_announcement_source SET title = '[정정] 주택 입주자 모집' WHERE seq = '100'");
-        refinement.refineAll();
+        ShRefinementTestSupport.refineAll(refinement, sources);
 
         assertThat(sh100().getWinnerAnnouncementDate()).isEqualTo(LocalDate.of(2027, 1, 29));
         assertThat(sh100().getName()).isEqualTo("주택 입주자 모집");
@@ -123,13 +123,13 @@ class ShAnnouncementRefinementIntegrationTest {
     void 관리자가_일정을_확인한_공고나_공개된_공고는_본문_일정으로_덮지_않는다() {
         collect();
         setBody(SCHEDULE);
-        refinement.refineAll();
+        ShRefinementTestSupport.refineAll(refinement, sources);
         jdbc.update("""
                 UPDATE announcements SET application_schedule_reviewed = true
                 WHERE source_announcement_identifier = 'SH:100'
                 """);
         setBody(SCHEDULE.replace("2026. 9. 9.(수)", "2026. 9. 1.(화)"));
-        refinement.refineAll();
+        ShRefinementTestSupport.refineAll(refinement, sources);
         assertThat(sh100().getApplicationStartDate()).isEqualTo(LocalDate.of(2026, 9, 9));
         assertThat(sh100().isSourceReviewRequired()).isTrue();
 
@@ -139,7 +139,7 @@ class ShAnnouncementRefinementIntegrationTest {
                     supply_type = 'HAPPY_HOUSING', recruitment_type = 'NEW'
                 WHERE source_announcement_identifier = 'SH:100'
                 """);
-        refinement.refineAll();
+        ShRefinementTestSupport.refineAll(refinement, sources);
         assertThat(sh100().getApplicationStartDate()).isEqualTo(LocalDate.of(2026, 9, 9));
         assertThat(sh100().isSourceReviewRequired()).isTrue();
     }
@@ -148,14 +148,14 @@ class ShAnnouncementRefinementIntegrationTest {
     void 공개된_공고의_본문에서_일정을_못_읽으면_원천_확인이_필요하다고_보지_않는다() {
         collect();
         setBody(SCHEDULE);
-        refinement.refineAll();
+        ShRefinementTestSupport.refineAll(refinement, sources);
         jdbc.update("""
                 UPDATE announcements SET release_status = 'PUBLISHED', supply_type = 'HAPPY_HOUSING',
                     recruitment_type = 'NEW' WHERE source_announcement_identifier = 'SH:100'
                 """);
 
         setBody("입주자 모집 안내");
-        assertThat(refinement.refineAll().reviewRequired()).isZero();
+        assertThat(ShRefinementTestSupport.refineAll(refinement, sources).reviewRequired()).isZero();
 
         assertThat(sh100().isSourceReviewRequired()).isFalse();
         assertThat(sh100().getWinnerAnnouncementDate()).isEqualTo(LocalDate.of(2027, 1, 29));
@@ -164,11 +164,11 @@ class ShAnnouncementRefinementIntegrationTest {
     @Test
     void 휴지통에_넣은_공고는_다시_만들거나_바꾸지_않는다() {
         collect();
-        refinement.refineAll();
+        ShRefinementTestSupport.refineAll(refinement, sources);
         jdbc.update("UPDATE announcements SET admin_deleted = true WHERE source_announcement_identifier = 'SH:100'");
         setBody(SCHEDULE);
 
-        assertThat(refinement.refineAll().created()).isZero();
+        assertThat(ShRefinementTestSupport.refineAll(refinement, sources).created()).isZero();
         assertThat(count("announcements WHERE source_announcement_identifier = 'SH:100'")).isOne();
         assertThat(sh100().getApplicationStartDate()).isNull();
     }
@@ -181,7 +181,7 @@ class ShAnnouncementRefinementIntegrationTest {
                 SCHEDULE, "[]"));
         jdbc.update("UPDATE sh_announcement_source SET attachments = 'not json' WHERE seq = '100'");
 
-        var report = refinement.refineAll();
+        var report = ShRefinementTestSupport.refineAll(refinement, sources);
 
         assertThat(report.failed()).isOne();
         assertThat(report.created()).isOne();

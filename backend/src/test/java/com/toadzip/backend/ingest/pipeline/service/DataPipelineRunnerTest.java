@@ -27,9 +27,11 @@ import com.toadzip.backend.ingest.lh.collection.announcementcatalog.service.LhAn
 import com.toadzip.backend.ingest.lh.collection.leasecatalog.service.LhLeaseCatalogCollectionService;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.lh.refinement.dto.LhAnnouncementRefinementReport;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementSharedRequestCollector;
 import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
+import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
@@ -107,7 +109,8 @@ class DataPipelineRunnerTest {
                         shAnnouncementCollectionService,
                         ghAnnouncementCollectionService,
                         mock(ShAnnouncementRefinementService.class),
-                        mock(GhAnnouncementRefinementService.class)
+                        mock(GhAnnouncementRefinementService.class),
+                        mock(DataPipelineExecutionRepository.class)
                 ),
                 executionStateService,
                 meterRegistry
@@ -486,51 +489,49 @@ class DataPipelineRunnerTest {
     }
 
     @Test
-    void 공고_통합_실행은_TTL_생략만_있으면_정제를_이어간다() {
+    void 공고_통합_실행은_TTL_생략만_있으면_수집_묶음을_정제한다() {
         DataPipelineType type = DataPipelineType.fromPathValue("announcement-sync");
-        givenSuccessfulAnnouncementCollectionReports();
-        givenSuccessfulAnnouncementRefinementReports();
-        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY))
-                .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 0, 0, 0, 3, 0));
+        when(lhAnnouncementCatalogCollectionService.collect()).thenReturn(collectionReport("lh-announcement-catalog"));
+        var run = givenBundleCollection(
+                new ExternalDataCollectionReport("lh-announcement-supply", 0, 0, 0, 3, 0), collectionReport("lh-announcement-detail"));
 
         runner.run(type, executionId);
 
-        InOrder order = inOrder(lhAnnouncementCatalogCollectionService,
-                collectionService, lhAnnouncementRefinementService);
+        InOrder order = inOrder(lhAnnouncementCatalogCollectionService, collectionService, run);
         order.verify(lhAnnouncementCatalogCollectionService).collect();
-        order.verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
-        order.verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
-        order.verify(lhAnnouncementRefinementService).refineAll();
+        order.verify(collectionService).collectBundles(any());
+        order.verify(run).finish(any(), any());
+        verify(lhAnnouncementRefinementService, never()).refineAll();
+        verify(executionStateService).completeStep(eq(executionId),
+                eq(DataPipelineStep.COLLECT_REFINE_LH_ANNOUNCEMENTS), any());
     }
 
     @Test
-    void 통합_수집의_부분_실패는_후속_수집을_유지하고_자동_정제를_막는다() {
+    void 공고목록_부분_실패여도_수집_정제_단계는_이어_실행하고_실행은_부분_실패로_끝낸다() {
         DataPipelineType type = DataPipelineType.fromPathValue("announcement-sync");
-        givenSuccessfulAnnouncementCollectionReports();
         when(lhAnnouncementCatalogCollectionService.collect())
                 .thenReturn(new ExternalDataCollectionReport("lh-announcement-catalog", 1, 1, 1));
+        givenBundleCollection(collectionReport("lh-announcement-supply"), collectionReport("lh-announcement-detail"));
 
         assertThatThrownBy(() -> runner.run(type, executionId))
                 .isInstanceOf(DataPipelinePartialFailureException.class)
                 .extracting("step").isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
 
-        verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
-        verifyNoInteractions(lhAnnouncementRefinementService);
-        verify(executionStateService, never()).startStep(executionId, DataPipelineStep.MAP_LH_ANNOUNCEMENTS);
+        verify(collectionService).collectBundles(any());
     }
 
     @Test
-    void LH_호출_제한은_후속_외부_수집과_자동_정제를_모두_막는다() {
+    void 공고목록_수집이_호출_제한이면_수집_정제_단계를_건너뛴다() {
         DataPipelineType type = DataPipelineType.fromPathValue("announcement-sync");
-        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY))
-                .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 0, 1, 0, 0, 1));
+        when(lhAnnouncementCatalogCollectionService.collect())
+                .thenReturn(new ExternalDataCollectionReport("lh-announcement-catalog", 0, 1, 0, 0, 1));
 
         runner.run(type, executionId);
 
-        verify(collectionService, never()).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        verify(collectionService, never()).collectBundles(any());
         verifyNoInteractions(lhAnnouncementRefinementService);
         verify(executionStateService).skipStep(eq(executionId),
-                eq(DataPipelineStep.MAP_LH_ANNOUNCEMENTS), any(), eq("{}"));
+                eq(DataPipelineStep.COLLECT_REFINE_LH_ANNOUNCEMENTS), any(), eq("{}"));
     }
 
     @Test
@@ -564,6 +565,16 @@ class DataPipelineRunnerTest {
     }
 
     /** 단계 순서대로 각 단계 서비스가 돌려줄 보고서를 정하고 그 보고서를 같은 순서로 돌려준다. */
+    private LhAnnouncementRefinementService.Run givenBundleCollection(
+            ExternalDataCollectionReport supply, ExternalDataCollectionReport detail) {
+        var run = mock(LhAnnouncementRefinementService.Run.class);
+        when(run.report()).thenReturn(lhRefinementReport(Map.of(), 0));
+        when(lhAnnouncementRefinementService.begin()).thenReturn(run);
+        when(collectionService.collectBundles(any()))
+                .thenReturn(new LhAnnouncementSharedRequestCollector.BundleReport(supply, detail));
+        return run;
+    }
+
     private List<IngestStepReport> givenSuccessfulComplexCollectionReports() {
         var myHomeComplexes = new MyHomeComplexCollectionReport("myhome-complex", 1, 0, 1);
         var lhLeaseCatalog = collectionReport("lh-lease-catalog");
