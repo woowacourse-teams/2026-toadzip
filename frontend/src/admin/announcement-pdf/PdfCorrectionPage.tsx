@@ -17,8 +17,9 @@ import { useCorrectionDraft, type DraftStatus } from './useCorrectionDraft'
 import { evidenceContext, evidenceQuery, readExtraction, type Evidence } from './extraction'
 import { cancelExtraction, extractAnnouncementPdf, loadLatestExtraction, pdfFileProblem, pdfSha256, preferredPdf, type ExtractionState, type SavedExtraction } from './extractionApi'
 import { checkAnnouncement, type ComplexLabels, type HousingCandidates } from './matching'
-import { applicableCells, assembleReview, fieldNeeds, groupOf, pendingField, pendingJumpTarget, serverFieldError, serverFieldsError, rowPendingItems, rowOfReviewId, cellMatches, createReview, pendingChanges, pendingItems, rebaseReview, ReviewError, reviewSection, type Cell, type ReleaseChoice, type PendingChange, type Review, type ReviewFilter, type ReviewSection } from './review'
+import { applicableCells, assembleReview, fieldNeeds, groupOf, pendingField, pendingJumpTarget, serverFieldError, serverFieldsError, rowPendingItems, rowOfReviewId, cellMatches, createReview, pendingChanges, pendingItems, rebaseReview, receptionCells, upgradeDraftReview, ReviewError, reviewSection, type Cell, type ReleaseChoice, type PendingChange, type Review, type ReviewFilter, type ReviewSection } from './review'
 import { ReviewCells } from './ReviewCells'
+import { ReviewReception } from './ReviewReception'
 import { ReviewSupply } from './ReviewSupply'
 import { supplyView } from './supplyView'
 import { SupplyNavigator } from './SupplyNavigator'
@@ -203,7 +204,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     if (!storedDraft || !workspace) return
     const value = storedDraft.payload
     let next = value.review
-    try { if (storedDraft.stale) next = rebaseReview(value.review, workspace, housing) } catch { setDraftError('임시저장본을 최신 공고 값에 맞추지 못해 저장 당시 그대로 복원했습니다. 기존 값을 다시 확인하세요.') }
+    try { next = upgradeDraftReview(next, workspace); if (storedDraft.stale) next = rebaseReview(next, workspace, housing) } catch { setDraftError('임시저장본을 최신 공고 값에 맞추지 못해 저장 당시 그대로 복원했습니다. 기존 값을 다시 확인하세요.') }
     restoredText.current = value.text; setRestoredWarnings(value.warnings ?? [])
     setText(value.text); setReview(next); setReviewedWith(pdf ? `${pdf.url}\n${value.text}` : ''); setReason(value.reason); setSourceUrl(value.sourceUrl); setSourcePage(value.sourcePage)
     setSection(value.section); setSelectedRow(typeof value.selectedRow === 'number' && value.selectedRow >= 0 && value.selectedRow < next.rows.length ? value.selectedRow : 0); setFilter('all'); setPhase('review'); setError('')
@@ -350,7 +351,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   function start() {
     if (!parsed.ok || !workspace || !pdf) return
     if (review && reviewedWith === `${pdf.url}\n${text}`) { setPhase('review'); setError(''); return }
-    const extraction = supplyDraft ? { ...parsed.value, announcement: {}, receptionPlace: {}, schedules: [] } : parsed.value
+    const extraction = supplyDraft ? { ...parsed.value, announcement: {}, receptionPlaces: [], schedules: [] } : parsed.value
     const next = createReview(extraction, workspace, housing)
     setReview(next); setReviewedWith(`${pdf.url}\n${text}`); setReason(`${pdf.name} · AI 자동 추출 후 PDF와 대조`); setReasonInput(!validEvidenceUrl(sourceUrl.trim()))
     setSourcePage([...new Set(parsed.value.evidence.map(item => item.page))].sort((a, b) => a - b).join(', ').slice(0, 100))
@@ -472,7 +473,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
         <fieldset disabled={busy || blocked} hidden={Boolean(checked)} className={styles.reviewFields}><div role="tabpanel" id="pdf-review-panel" aria-labelledby="pdf-review-tab-active">
           {section === 'supply' && <ReviewSupply savesHousingTypes={!supplyDraft} warnings={workerWarnings} editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} selected={selectedRow} onSelect={stepRow} onJump={goTo} />}
           {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.extraction.undatedSchedules.length > 0 && <p className={styles.hint}>날짜 없이 안내한 일정: {review.extraction.undatedSchedules.join(' · ')}</p>}<ReviewSchedules review={review} workspace={workspace} filter={filter} empty={empty} onChange={change} onEvidence={evidence} /></>}
-          {section === 'reception' && <><h2>접수처·기본정보</h2><p>{unconfirmed(workspace) ? '미확정 공고는 접수 시작일·접수 종료일·당첨자 발표일을 모두 채워야 저장됩니다. 공급·모집 유형은 공개 전 확인에서 선택하세요.' : '임대유형·모집유형·기관·공고명은 현재값을 유지합니다.'} 접수처는 한 곳만 저장할 수 있으므로 온라인·현장 병행 여부를 확인하세요.</p>{visibleIn(review.reception) && <h3>접수처</h3>}<ReviewCells cells={review.reception} scope="접수처" needs={fieldNeed} filter={filter} onChange={reception => change({ ...review, reception })} onEvidence={evidence} />{visibleIn(review.metadata) && <h3>공고 기본 일정</h3>}<ReviewCells cells={review.metadata} scope="기본정보" needs={fieldNeed} filter={filter} onChange={metadata => change({ ...review, metadata })} onEvidence={evidence} />{!visibleIn(review.reception) && !visibleIn(review.metadata) && <p className={styles.hint}>{empty}</p>}</>}
+          {section === 'reception' && <><h2>접수처·기본정보</h2><p>{unconfirmed(workspace) ? '미확정 공고는 접수 시작일·접수 종료일·당첨자 발표일을 모두 채워야 저장됩니다. 공급·모집 유형은 공개 전 확인에서 선택하세요.' : '임대유형·모집유형·기관·공고명은 현재값을 유지합니다.'} 접수처는 인터넷 접수와 현장 접수처를 따로 저장합니다. PDF 접수처는 접수 방식과 이름이 같은 기존 접수처와 대조하고(아니면 새 접수처로 더함), PDF에 없는 기존 접수처는 빼기를 고르면 지웁니다.</p>{visibleIn(receptionCells(review.reception)) && <h3>접수처</h3>}<ReviewReception review={review} workspace={workspace} needs={fieldNeed} filter={filter} onChange={change} onEvidence={evidence} />{visibleIn(review.metadata) && <h3>공고 기본 일정</h3>}<ReviewCells cells={review.metadata} scope="기본정보" needs={fieldNeed} filter={filter} onChange={metadata => change({ ...review, metadata })} onEvidence={evidence} />{!visibleIn(receptionCells(review.reception)) && !visibleIn(review.metadata) && <p className={styles.hint}>{empty}</p>}</>}
         </div></fieldset>
         {!supplyDraft && unconfirmed(workspace) && <ReleaseCheck value={release} current={{ rentalType: workspace!.detail.data.rentalType, recruitmentType: workspace!.detail.data.recruitmentType }} needs={fieldNeed} disabled={busy || blocked} onChange={setRelease} />}
       </div></div>

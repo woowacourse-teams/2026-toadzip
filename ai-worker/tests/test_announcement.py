@@ -153,7 +153,7 @@ def test_a_stray_lh_row_number_from_the_model_is_not_kept():
         {"source": "LH", "order": 1, "rowIdentifier": "LH:P:SUPPLY:1", "typeName": "51", "exclusiveArea": "", "supplyArea": "", "suppliedUnitCount": "200"}]}
     compact = {"data": {"rows": [{"rowIds": ["P2:T1:R2"], "complexName": "Sample Complex", "housingType": "16A",
                                   "target": "청년", "lhSourceRow": 1, "sourceRow": 1}]}, "sharedCounts": []}
-    notice = {"data": {"announcement": {}, "receptionPlace": {}, "complexes": [], "schedules": [], "unresolvedFields": []},
+    notice = {"data": {"announcement": {}, "receptionPlaces": [], "complexes": [], "schedules": [], "unresolvedFields": []},
               "notApplicable": [], "evidence": []}
 
     result = AnnouncementPdfExtractor(StageReplyModel(compact, notice)).extract(job(pdf(COVER, SUPPLY, RENT), job_input))
@@ -365,7 +365,7 @@ def test_two_stage_extract_merges_fields_and_validates_row_ids_against_original_
         "data": {
             "announcement": {"name": "Sample Notice", "postedDate": None, "applicationStartDate": None,
                              "applicationEndDate": None, "winnerAnnouncementDate": None},
-            "receptionPlace": {"name": None, "method": None, "address": None, "contact": None, "url": None},
+            "receptionPlaces": [],
             "complexes": [{"sourceComplexName": "Test", "address": "Test Road", "totalHouseholdCount": 100,
                            "parkingCount": 30}],
             "schedules": [], "unresolvedFields": [],
@@ -402,7 +402,7 @@ def test_two_stage_extract_merges_fields_and_validates_row_ids_against_original_
 def test_supply_table_the_code_can_read_skips_the_supply_model_call():
     notice = {
         "data": {
-            "announcement": {"name": "Sample Notice"}, "receptionPlace": {},
+            "announcement": {"name": "Sample Notice"}, "receptionPlaces": [],
             "complexes": [{"sourceComplexName": "Test", "address": "Test Road", "totalHouseholdCount": 100,
                            "parkingCount": 30}],
             "schedules": [], "unresolvedFields": [],
@@ -469,7 +469,7 @@ def test_one_pdf_row_written_once_per_lh_row_comes_out_once(monkeypatch):
         {"rowIds": ["P2:T1:R4"], "housingType": "26", "target": "가군", "exclusiveArea": 26.37},
         {"rowIds": ["P2:T1:R4"], "housingType": "26A", "target": "나군", "exclusiveArea": 26.37},
     ]}, "sharedCounts": []}
-    notice = {"data": {"announcement": {}, "receptionPlace": {}, "complexes": [], "schedules": [], "unresolvedFields": []},
+    notice = {"data": {"announcement": {}, "receptionPlaces": [], "complexes": [], "schedules": [], "unresolvedFields": []},
               "notApplicable": [], "evidence": []}
 
     result = AnnouncementPdfExtractor(StageReplyModel(supply, notice)).extract(job(text_pdf(COVER, SUPPLY), job_input))
@@ -493,7 +493,7 @@ def test_targets_named_by_applicant_group_headers_of_the_rent_table_keep_their_n
         {"rowIds": ["P2:T1:R4", "P3:T1:R4"], "housingType": "26", "target": "나군", "reserveCount": 110,
          "rentalDeposit": 7648000, "monthlyRent": 115940},
     ]}, "sharedCounts": [{"rowIndexes": [0, 1], "field": "reserveCount", "count": 110, "rowIds": ["P2:T1:R4"]}]}
-    notice = {"data": {"announcement": {}, "receptionPlace": {}, "complexes": [], "schedules": [], "unresolvedFields": []},
+    notice = {"data": {"announcement": {}, "receptionPlaces": [], "complexes": [], "schedules": [], "unresolvedFields": []},
               "notApplicable": [], "evidence": []}
 
     result = AnnouncementPdfExtractor(StageReplyModel(supply, notice)).extract(job(text_pdf(COVER, SUPPLY, RENT), {}))
@@ -636,7 +636,7 @@ def test_winner_count_column_in_a_reserve_recruitment_notice_goes_to_the_model()
 def test_notice_note_path_written_with_empty_brackets_reaches_the_result_readable():
     notice = {
         "data": {
-            "announcement": {"name": "Sample Notice"}, "receptionPlace": {}, "complexes": [], "schedules": [],
+            "announcement": {"name": "Sample Notice"}, "receptionPlaces": [], "complexes": [], "schedules": [],
             "unresolvedFields": [{"path": "complexes[].parkingCount", "reason": "주차대수를 확인하지 못함"}],
         },
         "notApplicable": [], "evidence": [],
@@ -647,6 +647,49 @@ def test_notice_note_path_written_with_empty_brackets_reaches_the_result_readabl
 
     paths = [item["path"] for item in json.loads(result["json"])["data"]["unresolvedFields"]]
     assert "complexes[*].parkingCount" in paths and "complexes[].parkingCount" not in paths
+
+
+def test_several_reception_places_reach_the_result_in_notice_order():
+    # 인터넷 접수와 현장 접수처 여러 곳을 한 곳으로 줄이지 않고, 접수처마다의 근거·해당 없음 경로도 그대로 둔다.
+    places = [
+        {"name": "LH청약플러스", "method": "ONLINE", "address": None, "contact": "1600-1004",
+         "url": "https://apply.lh.or.kr", "guidance": "모바일 앱으로도 신청 가능"},
+        {"name": "Test 견본주택", "method": "VISIT", "address": "Test Road", "contact": "032-000-0000", "url": None,
+         "guidance": "고령자·장애인 등 인터넷 취약계층만 현장 접수"},
+        {"name": "거주지 관할 행정복지센터", "method": "VISIT", "address": None, "contact": None, "url": None,
+         "guidance": None},
+    ]
+    notice = {
+        "data": {"announcement": {"name": "Sample Notice"}, "receptionPlaces": places, "complexes": [],
+                 "schedules": [], "unresolvedFields": []},
+        "notApplicable": [{"path": "receptionPlaces[2].address", "reason": "신청자 거주지마다 다름"}],
+        "evidence": [{"path": f"receptionPlaces[{index}]", "page": 1, "quote": "Sample Notice"} for index in range(3)],
+    }
+    model = FakeModel(stage_contents={"notice": json.dumps(notice, ensure_ascii=False)})
+
+    result = AnnouncementPdfExtractor(model, FakeJudge()).extract(job(structured_table_pdf()))
+
+    tree = json.loads(result["json"])
+    assert tree["data"]["receptionPlaces"] == places
+    assert [item["path"] for item in tree["notApplicable"]] == ["receptionPlaces[2].address"]
+    assert [item["path"] for item in tree["evidence"] if item["path"].startswith("receptionPlaces")] == [
+        "receptionPlaces[0]", "receptionPlaces[1]", "receptionPlaces[2]"]
+    assert not any("receptionPlaces" in warning for warning in result["warnings"])
+
+
+@pytest.mark.parametrize("reception", [
+    {"receptionPlace": {"name": "LH청약플러스", "method": "ONLINE", "address": None, "contact": None, "url": None}},
+    {"receptionPlaces": {"name": "LH청약플러스", "method": "ONLINE", "address": None, "contact": None, "url": None,
+                         "guidance": None}},
+])
+def test_notice_reply_without_a_reception_place_list_is_rejected(reception):
+    notice = {"data": {"announcement": {"name": "Sample Notice"}, **reception, "complexes": [], "schedules": [],
+                       "unresolvedFields": []}, "notApplicable": [], "evidence": []}
+
+    with pytest.raises(PermanentError) as error:
+        AnnouncementPdfExtractor(StageReplyModel(None, notice), FakeJudge()).extract(job(structured_table_pdf()))
+
+    assert error.value.code == "MODEL_RESPONSE_INVALID"
 
 
 class StageReplyModel:
@@ -663,7 +706,7 @@ class StageReplyModel:
 # 공급행 근거 행 ID가 입력 표에 없고(공급행 0), 다른 공급행은 표와 다른 모집수(99)를 냈으며,
 # 본문 단계는 같은 단지의 주소를 둘로 내고 범위 밖 근거 쪽(99)을 쓴 공고의 추출 결과(검산을 두 번 하던 때 그대로).
 SOURCE_CHECKED_TREE = {'data': {'announcement': {'name': 'Sample Notice'},
-          'receptionPlace': {},
+          'receptionPlaces': [],
           'complexes': [{'sourceComplexName': 'Test',
                          'address': None,
                          'totalHouseholdCount': 100,
@@ -744,7 +787,7 @@ def test_source_check_findings_reach_the_result_once():
          "totalSupplyHouseholdCount": 99},
     ]}}
     notice = {
-        "data": {"announcement": {"name": "Sample Notice"}, "receptionPlace": {}, "schedules": [], "unresolvedFields": [],
+        "data": {"announcement": {"name": "Sample Notice"}, "receptionPlaces": [], "schedules": [], "unresolvedFields": [],
                  "complexes": [
                      {"sourceComplexName": "Test", "address": "A Road", "totalHouseholdCount": 100, "parkingCount": 30},
                      {"sourceComplexName": "Test", "address": "B Road", "totalHouseholdCount": 100, "parkingCount": 30}]},
@@ -787,7 +830,7 @@ def address_table_pdf(address_cells: list[str]):
 
 def notice_with_address(address):
     return json.dumps({"data": {
-        "announcement": {"name": "Sample Notice"}, "receptionPlace": {}, "schedules": [], "unresolvedFields": [],
+        "announcement": {"name": "Sample Notice"}, "receptionPlaces": [], "schedules": [], "unresolvedFields": [],
         "complexes": [{"sourceComplexName": "Test", "address": address, "totalHouseholdCount": None, "parkingCount": None}],
     }, "notApplicable": [], "evidence": [{"path": "announcement.name", "page": 1, "quote": "Sample Notice"}]}, ensure_ascii=False)
 

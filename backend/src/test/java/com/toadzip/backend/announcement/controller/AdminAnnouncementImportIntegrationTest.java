@@ -129,6 +129,10 @@ class AdminAnnouncementImportIntegrationTest {
         assertEquals(1, importRepository.count());
         assertEquals(1, notificationJdbc.queryForObject("SELECT count(*) FROM notification_outbox_events",
                 Integer.class));
+        // 접수처를 한 곳만 받던 예전 JSON의 receptionPlace는 첫 접수처로 저장한다.
+        assertEquals(java.util.List.of("0|LH 청약플러스|ONLINE|1600-1004"), notificationJdbc.queryForList(
+                "SELECT display_order || '|' || name || '|' || method || '|' || contact FROM announcement_reception_places",
+                String.class));
     }
 
     @Test

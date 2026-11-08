@@ -289,6 +289,7 @@ function decodeAnnouncementReceptionPlace(
       `${path}.phoneNumber`,
     ),
     url: nullableStringAt(recordField(place, 'url', path), `${path}.url`),
+    ...(place.guidance === undefined ? {} : { guidance: nullableStringAt(place.guidance, `${path}.guidance`) }),
   }
 }
 

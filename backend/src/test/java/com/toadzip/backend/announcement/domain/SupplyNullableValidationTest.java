@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
+import java.util.List;
 
 class SupplyNullableValidationTest {
 
@@ -184,7 +185,7 @@ class SupplyNullableValidationTest {
                 0L,
                 actualCompetitionRate,
                 predictedCompetitionRate,
-                ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", "https://apply.lh.or.kr")
+                List.of(ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", "https://apply.lh.or.kr"))
         );
     }
 }

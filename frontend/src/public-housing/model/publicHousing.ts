@@ -305,6 +305,8 @@ export interface RawAnnouncementReceptionPlace {
   readonly address: string | null
   readonly phoneNumber: string | null
   readonly url: string | null
+  /** 이 접수처의 안내 한 줄. 예전 응답·스냅샷에는 없다. */
+  readonly guidance?: string | null
 }
 
 export interface RawAnnouncementSchedule {

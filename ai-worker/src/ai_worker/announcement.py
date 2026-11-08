@@ -68,7 +68,7 @@ class AnnouncementPdfExtractor:
             notice_reply = notice_future.result()
         supply = source.read()
         notice_tree = checks.first_json_object(notice_reply.content, {
-            "announcement": dict, "receptionPlace": dict, "complexes": list, "schedules": list,
+            "announcement": dict, "receptionPlaces": list, "complexes": list, "schedules": list,
             "unresolvedFields": list,
         })
         warnings = [f"공급표·임대조건표 쪽을 찾지 못해 전체 {len(texts)}쪽을 보냈습니다."] if selection.whole_document else []

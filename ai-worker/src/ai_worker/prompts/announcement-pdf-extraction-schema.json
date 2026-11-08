@@ -35,43 +35,51 @@
             "winnerAnnouncementDate"
           ]
         },
-        "receptionPlace": {
-          "type": "object",
-          "properties": {
-            "name": {
-              "type": "string",
-              "nullable": true
+        "receptionPlaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "nullable": true
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "ONLINE",
+                  "VISIT",
+                  "MAIL",
+                  "ETC"
+                ],
+                "nullable": true
+              },
+              "address": {
+                "type": "string",
+                "nullable": true
+              },
+              "contact": {
+                "type": "string",
+                "nullable": true
+              },
+              "url": {
+                "type": "string",
+                "nullable": true
+              },
+              "guidance": {
+                "type": "string",
+                "nullable": true
+              }
             },
-            "method": {
-              "type": "string",
-              "enum": [
-                "ONLINE",
-                "VISIT",
-                "MAIL",
-                "ETC"
-              ],
-              "nullable": true
-            },
-            "address": {
-              "type": "string",
-              "nullable": true
-            },
-            "contact": {
-              "type": "string",
-              "nullable": true
-            },
-            "url": {
-              "type": "string",
-              "nullable": true
-            }
-          },
-          "required": [
-            "name",
-            "method",
-            "address",
-            "contact",
-            "url"
-          ]
+            "required": [
+              "name",
+              "method",
+              "address",
+              "contact",
+              "url",
+              "guidance"
+            ]
+          }
         },
         "complexes": {
           "type": "array",
@@ -291,7 +299,7 @@
       },
       "required": [
         "announcement",
-        "receptionPlace",
+        "receptionPlaces",
         "complexes",
         "supplyRows",
         "schedules",

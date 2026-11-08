@@ -1831,7 +1831,7 @@ class ComplexSummaryQueryRepositoryTest {
                 "https://example.com/announcements/" + suffix,
                 null,
                 0,
-                ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null)
+                List.of(ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null))
         );
         entityManager.persist(announcement);
         return announcement;
@@ -1898,7 +1898,7 @@ class ComplexSummaryQueryRepositoryTest {
                 "https://example.com/announcements/" + suffix,
                 null,
                 0,
-                ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null)
+                List.of(ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null))
         );
         entityManager.persist(announcement);
         return announcement;

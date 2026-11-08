@@ -30,7 +30,7 @@ def _notice_schema() -> str:
     root = schema["properties"]
     data = root["data"]
     data_properties = data["properties"]
-    data_names = ("announcement", "receptionPlace", "complexes", "schedules", "unresolvedFields")
+    data_names = ("announcement", "receptionPlaces", "complexes", "schedules", "unresolvedFields")
     root_names = ("notApplicable", "evidence")
     complex_fields = ("sourceComplexName", "address", "totalHouseholdCount", "parkingCount")
 

@@ -56,9 +56,9 @@ def test_remaps_evidence_and_shared_count_pages_to_original_pdf():
 
 
 def test_out_of_range_page_is_left_as_is_with_warning():
-    tree = response(evidence=[{"path": "receptionPlace", "page": 7, "quote": "x"}])
+    tree = response(evidence=[{"path": "receptionPlaces[1]", "page": 7, "quote": "x"}])
 
-    assert review(tree) == ["receptionPlace: 첨부한 쪽 범위를 벗어난 근거 쪽 번호(7)"]
+    assert review(tree) == ["receptionPlaces[1]: 첨부한 쪽 범위를 벗어난 근거 쪽 번호(7)"]
     assert tree["evidence"][0]["page"] == 7
 
 
@@ -277,8 +277,8 @@ def test_note_paths_are_made_readable_by_the_admin_screen():
         {"path": "data.complexes[0].주차대수", "reason": "b"},
         {"path": "schedules[1]", "reason": "c"},
         {"path": "!!!", "reason": "d"},
-    ]}, "notApplicable": [{"path": "$.receptionPlace.address", "reason": "e"},
-                          {"path": "receptionPlace.주소", "reason": "f"}, {"path": None, "reason": "g"}]}
+    ]}, "notApplicable": [{"path": "$.receptionPlaces[0].address", "reason": "e"},
+                          {"path": "receptionPlaces[1].주소", "reason": "f"}, {"path": None, "reason": "g"}]}
     warnings = []
 
     checks.normalize_note_paths(tree, warnings)
@@ -287,10 +287,10 @@ def test_note_paths_are_made_readable_by_the_admin_screen():
     assert [item["path"] for item in tree["data"]["unresolvedFields"]] == [
         "complexes[*].parkingCount", "complexes[0]", "schedules[1]"]
     # 해당 없음을 상위로 넓히면 그 아래 값이 모두 반영에서 빠지므로 줄이지 않고 뺀다.
-    assert [item["path"] for item in tree["notApplicable"]] == ["receptionPlace.address"]
+    assert [item["path"] for item in tree["notApplicable"]] == ["receptionPlaces[0].address"]
     assert warnings == [
         "unresolvedFields: 읽을 수 없는 경로 data.complexes[0].주차대수를 complexes[0]로 넓혔습니다.",
         "unresolvedFields: 경로를 읽을 수 없는 항목을 뺐습니다(!!!: d)",
-        "notApplicable: 경로를 읽을 수 없는 항목을 뺐습니다(receptionPlace.주소: f)",
+        "notApplicable: 경로를 읽을 수 없는 항목을 뺐습니다(receptionPlaces[1].주소: f)",
         "notApplicable: 경로를 읽을 수 없는 항목을 뺐습니다(None: g)",
     ]

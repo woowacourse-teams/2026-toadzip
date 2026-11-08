@@ -1,6 +1,6 @@
 import type { ExtractedAnnouncement, HousingTypeValue, JsonObject, JsonUpdateInput, JsonWorkspace } from '../announcement-json/api'
 import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type LinkedHousingType } from '../supply/supplyCorrectionApi'
-import { evidenceFor, noteFor, text, type Evidence, type Extraction, type Subtype } from './extraction'
+import { evidenceFor, normalizePath, noteFor, receptionPlacesOf, text, type Evidence, type Extraction, type Subtype } from './extraction'
 import { createdTypeName, foldSameHousingType, renamedTypeName, withoutTrailingParentheses } from './subtypes'
 import { applicationTypeKey, sameApplicationType } from '../supply/applicationType'
 import { announcementHousingType, type AnnouncementType } from './areas'
@@ -17,7 +17,12 @@ export const rowFields: FieldSpec[] = [['sourceHousingTypeName', '이 공고의 
 export const targetFields: FieldSpec[] = [['target', '공급 대상', 'text'], ['supplyHouseholdCount', '대상별 모집수', 'count', 'householdCount'], ['reserveCount', '예비자 수', 'count'], ['rentalDeposit', '보증금 (원)', 'money', 'deposit'], ['monthlyRent', '월 임대료 (원)', 'money', 'rent'], ['convertedDeposit', '전환보증금 (원)', 'money'], ['applicationCondition', '신청 조건', 'text', 'condition']]
 export const scheduleFields: FieldSpec[] = [['scheduleType', '일정 유형', 'scheduleType'], ['name', '일정명', 'text'], ['startAt', '시작 일시', 'datetime'], ['endAt', '종료 일시', 'datetime']]
 export const metadataFields: FieldSpec[] = [['postedDate', '공고일', 'date'], ['applicationStartDate', '접수 시작일', 'date'], ['applicationEndDate', '접수 종료일', 'date'], ['winnerAnnouncementDate', '당첨자 발표일', 'date']]
-export const receptionFields: FieldSpec[] = [['name', '접수처명', 'text'], ['method', '접수 방식', 'method'], ['address', '접수처 주소', 'text'], ['contact', '연락처', 'text'], ['url', '접수처 URL', 'url']]
+export const receptionFields: FieldSpec[] = [['name', '접수처명', 'text'], ['method', '접수 방식', 'method'], ['address', '접수처 주소', 'text'], ['contact', '연락처', 'text'], ['url', '접수처 URL', 'url'], ['guidance', '안내 문구', 'text']]
+/**
+ * 접수처 하나의 검토. 공고문에는 인터넷 접수와 현장 접수처 여러 곳이 함께 나온다. extracted는 PDF 접수처 순번(null이면 PDF에 없는 지금 접수처),
+ * existing은 짝지은 지금 접수처 순번(null이면 PDF에서 새로 더하는 접수처)이다. include가 false면 저장할 때 이 접수처를 뺀다.
+ */
+export type ReceptionReview = { extracted: number | null; existing: number | null; include: boolean; cells: Cell[] }
 export type TargetReview = { destination: string; cells: Cell[] }
 /** 세부 타입이 연결할 주택형. 기존 주택형 ID, PDF 형명·면적으로 만들 새 주택형('new'), 연결 안 함('none'), 아직 못 정함(null)이다. */
 export type SubtypeChoice = number | 'new' | 'none' | null
@@ -41,7 +46,7 @@ export type RowReview = { proposal: RowProposal; include: boolean; reviewed: boo
   /** 이 공고의 다른 공고문 주택타입(otherTypeNames). 그 이름이나 같은 면적이 있으면 이름 형식만 다른 단지 주택타입에 잇지 않는다. */
   otherTypeNames?: AnnouncementType[] }
 export type ScheduleReview = { proposal: ScheduleProposal; include: boolean; reviewed: boolean; cells: Cell[] }
-export type Review = { extraction: Extraction; rows: RowReview[]; schedules: ScheduleReview[]; metadata: Cell[]; reception: Cell[]
+export type Review = { extraction: Extraction; rows: RowReview[]; schedules: ScheduleReview[]; metadata: Cell[]; reception: ReceptionReview[]
   /** PDF 행이 가리키지 않아 그대로 둘 기존 공급행 중 관리자가 이번 보정에서 제외하기로 고른 행(leftoverRows). 지울 수 있는 행은 지운다. */
   excludedRows?: string[] }
 export const cellStates: Record<Cell['state'], string> = { confirm: '확인 필요', unresolved: '미확인 · 현재값 유지', notApplicable: '해당 없음', invalid: '형식 확인 필요', same: '같음', changed: '변경', new: '추가' }
@@ -113,7 +118,7 @@ function cells(extraction: Extraction, prefix: string, specs: FieldSpec[], sourc
     // 주택형 표기는 숫자 앞뒤의 0만 다르면(074.9900A ↔ 74.9900A) 같은 표기로 보고 기존 표기를 유지한다.
     const sameValue = JSON.stringify(value) === JSON.stringify(previous) || field === 'sourceHousingTypeName' && numberKey(value) === numberKey(previous)
     let state: Cell['state'] = unused || areaOnly || kind === 'housingType' && value === null ? 'notApplicable' : missing || value === null ? 'unresolved' : !validCellValue(kind, value) ? 'invalid' : sameValue ? 'same' : previous === null ? 'new' : 'changed'
-    const moreDetailed = typeof previous === 'string' && typeof value === 'string' && previous.length > value.length && previous.includes(value) && prefix === 'receptionPlace'
+    const moreDetailed = typeof previous === 'string' && typeof value === 'string' && previous.length > value.length && previous.includes(value) && prefix.startsWith('receptionPlaces[')
     const foreign = kind === 'text' ? foreignCharacters(value) : ''
     // 모델이 PDF 공급 표 대신 함께 보낸 LH 주택형 이름(24 → 24A)을 쓰기도 한다. 근거 인용에 없는 표기는 사람이 대조한다.
     // 하위 항목(임대조건 행)에서 빌려 온 근거에는 주택형이 원래 없으므로, 공급행 자기 근거나 이 칸의 근거일 때만 본다.
@@ -311,13 +316,52 @@ export function createReview(source: Extraction, workspace: JsonWorkspace, housi
   const posted = metadata.find(cell => cell.field === 'postedDate')
   if (posted?.state === 'changed' && typeof posted.value === 'string' && originalDate(posted.value, workspace.detail.data)) Object.assign(posted, { selected: false, mode: 'keep', note: '정정공고는 PDF에 원공고 공고일이 적혀 있을 수 있어 기존 공고일을 유지합니다. 정정공고 공고일이 맞는지 확인하세요.' })
   if (workspace.detail.scheduleReviewed) metadata.filter(cell => ['applicationStartDate', 'applicationEndDate'].includes(cell.field)).forEach(cell => { cell.locked = true; cell.selected = false; cell.mode = 'keep'; cell.note = '확인된 접수 기간은 접수 일정에서 수정하세요.' })
-  return { extraction, metadata, reception: cells(extraction, 'receptionPlace', receptionFields, extraction.receptionPlace, (workspace.detail.data.receptionPlace ?? {}) as JsonObject),
+  return { extraction, metadata, reception: receptionReviews(extraction, workspace),
     rows: proposals.map((proposal, index) => createRowReview(extraction, index, proposal, workspace)),
     schedules: proposeSchedules(extraction, workspace.events).map((proposal, index) => {
       const values = cells(extraction, `schedules[${index}]`, scheduleFields, extraction.schedules[index], workspace.events.find(event => event.id === proposal.existingIds[0])?.data)
       return { proposal, cells: values, reviewed: false, include: !proposal.needsConfirmation && values.every(cell => validCellValue(cell.kind, cell.value) && !['notApplicable', 'unresolved'].includes(cell.state)) }
     }) }
 }
+/** 이 공고에 지금 저장된 접수처(공고문 순서) */
+export function currentReceptionPlaces(workspace: JsonWorkspace): JsonObject[] {
+  const places = workspace.detail.data.receptionPlaces
+  return Array.isArray(places) ? places.filter(place => place !== null && typeof place === 'object' && !Array.isArray(place)) as JsonObject[] : []
+}
+const placeName = (value: unknown) => typeof value === 'string' ? value.replace(/\s+/g, '').toLowerCase() : ''
+/**
+ * PDF 접수처를 접수 방식과 이름이 같은 지금 접수처와 짝짓는다. 이름이 다른 접수처끼리 짝지으면 PDF에 없는 칸이 지금 접수처 값으로 남아
+ * 다른 접수처의 주소·연락처가 섞이므로, 짝이 없으면 새 접수처로 더한다. PDF에 없는 지금 접수처는 그대로 두되 관리자가 뺄 수 있다.
+ * 이름·방식을 읽지 못한 새 접수처는 기본으로 빼 둔다. 순서는 지금 접수처 순서를 지키고 새 접수처를 PDF 순서로 뒤에 붙인다.
+ */
+function receptionReviews(extraction: Extraction, workspace: JsonWorkspace): ReceptionReview[] {
+  const current = currentReceptionPlaces(workspace), used = new Set<number>()
+  const reviews: ReceptionReview[] = extraction.receptionPlaces.map((place, index) => {
+    const existing = current.findIndex((item, at) => !used.has(at) && item.method === place.method && placeName(item.name) !== '' && placeName(item.name) === placeName(place.name))
+    if (existing >= 0) used.add(existing)
+    const values = cells(extraction, `receptionPlaces[${index}]`, receptionFields, place, existing >= 0 ? current[existing] : {})
+    const readable = values.filter(cell => ['name', 'method'].includes(cell.field)).every(cell => validCellValue(cell.kind, cell.value) && !['notApplicable', 'unresolved', 'invalid'].includes(cell.state))
+    return { extracted: index, existing: existing >= 0 ? existing : null, include: existing >= 0 || readable, cells: values }
+  })
+  current.forEach((place, index) => {
+    if (!used.has(index)) reviews.push({ extracted: null, existing: index, include: true, cells: cells(extraction, `currentReceptionPlaces[${index}]`, receptionFields, {}, place) })
+  })
+  return reviews.sort((left, right) => (left.existing ?? current.length + (left.extracted ?? 0)) - (right.existing ?? current.length + (right.extracted ?? 0)))
+}
+/** 저장할 접수처(뺀 접수처 제외). 저장 목록과 서버 오류의 접수처 순번이 이 순서를 함께 쓴다. */
+export function savedReceptions(reception: ReceptionReview[]) { return reception.filter(entry => entry.include) }
+/** 저장할 접수처 칸. 뺀 접수처의 칸은 확인하지 않는다. */
+export function receptionCells(reception: ReceptionReview[]) { return savedReceptions(reception).flatMap(entry => entry.cells) }
+/** 저장할 접수처 목록. 지금 접수처에 고른 PDF 값을 덮는다. */
+function assembledReceptionPlaces(reception: ReceptionReview[], workspace: JsonWorkspace): JsonObject[] {
+  const current = currentReceptionPlaces(workspace)
+  return savedReceptions(reception).map(entry => {
+    const place: JsonObject = { ...receptionPlaceShape(), ...entry.existing === null ? {} : current[entry.existing] }
+    applyCells(place, entry.cells, receptionFields)
+    return place
+  })
+}
+const receptionPlaceShape = (place: JsonObject = {}): JsonObject => Object.fromEntries(receptionFields.map(([field]) => [field, place[field] ?? null]))
 function applyCells(target: JsonObject, values: Cell[], specs: FieldSpec[]) {
   const invalid = values.find(cell => !cell.locked && cell.mode === 'manual' && !validCellValue(cell.kind, cell.value))
   if (invalid) throw new ReviewError(`${invalid.label}의 직접 입력값을 확인하거나 기존 값 사용을 선택하세요.`, `cell:${invalid.path}`)
@@ -335,7 +379,7 @@ export class ReviewError extends Error {
 }
 export function reviewSection(reviewId: string): ReviewSection {
   if (reviewId.startsWith('schedule:') || reviewId.startsWith('cell:schedules[')) return 'schedule'
-  if (reviewId.startsWith('release:') || reviewId.startsWith('cell:announcement') || reviewId.startsWith('cell:receptionPlace')) return 'reception'
+  if (reviewId.startsWith('release:') || reviewId.startsWith('reception:') || reviewId.startsWith('cell:announcement') || reviewId.startsWith('cell:receptionPlaces[') || reviewId.startsWith('cell:currentReceptionPlaces[')) return 'reception'
   return 'supply'
 }
 /** 확인 항목 ID(row:2, cell:supplyRows[2].…, target:2:0, subtype:2:1, price:2)가 가리키는 공급행 번호. 공급행 밖이면 null */
@@ -383,9 +427,9 @@ export function savedValue(cell: Cell) { return cell.selected && !cell.locked ? 
 export function fieldNeeds({ reception, metadata }: Pick<Review, 'reception' | 'metadata'>, workspace?: JsonWorkspace, release?: ReleaseChoice): Map<string, string> {
   const saved = savedValue
   const needs = new Map<string, string>()
-  if (reception.some(cell => saved(cell) != null)) {
-    for (const cell of reception.filter(item => ['name', 'method'].includes(item.field) && !validCellValue(item.kind, saved(item)))) {
-      needs.set(cell.path, `접수처를 저장하려면 ${cell.label}이 필요합니다. 직접 입력하거나, 접수처를 바꾸지 않으려면 다른 접수처 항목을 비워 두세요.`)
+  for (const entry of savedReceptions(reception)) {
+    for (const cell of entry.cells.filter(item => ['name', 'method'].includes(item.field) && !validCellValue(item.kind, saved(item)))) {
+      needs.set(cell.path, `접수처를 저장하려면 ${cell.label}이 필요합니다. 직접 입력하거나 이 접수처를 빼세요.`)
     }
   }
   const start = metadata.find(cell => cell.field === 'applicationStartDate'), end = metadata.find(cell => cell.field === 'applicationEndDate')
@@ -419,12 +463,16 @@ export function serverFieldsError(review: Review, input: Pick<JsonUpdateInput, '
   })
   return { message: `서버가 요청값을 받지 않았습니다. ${lines.join(' / ')}`, reviewId }
 }
-/** 서버가 속성 경로로 돌려준 기본정보·접수처 검증 메시지("receptionPlace.name: 필수 값입니다.")를 화면 칸 이름과 위치로 바꾼다. */
+/**
+ * 서버가 속성 경로로 돌려준 기본정보·접수처 검증 메시지("receptionPlaces[1].name: 필수 값입니다.")를 화면 칸 이름과 위치로 바꾼다.
+ * 접수처 순번은 저장한 접수처(뺀 접수처 제외)의 순번이다.
+ */
 export function serverFieldError(review: Pick<Review, 'reception' | 'metadata'>, message: string) {
-  const match = /^([\w.]+): (.+?)(?: \/ |$)/.exec(message)
+  const match = /^([\w.[\]]+): (.+?)(?: \/ |$)/.exec(message)
   if (!match) return null
-  const path = match[1].startsWith('receptionPlace.') ? match[1] : `announcement.${match[1]}`
-  const cell = [...review.reception, ...review.metadata].find(item => item.path === path)
+  const place = /^receptionPlaces\[(\d+)\]\.(\w+)$/.exec(match[1])
+  const cell = place ? savedReceptions(review.reception)[Number(place[1])]?.cells.find(item => item.field === place[2])
+    : review.metadata.find(item => item.path === `announcement.${match[1]}`)
   return cell ? { message: `${cell.label}: ${match[2]}`, reviewId: `cell:${cell.path}` } : null
 }
 /** 적용하기로 한 일정이 확인 필요인지. 대응 확인이 남았거나, 저장할 유형·이름·시작·종료 중 빈 값이 있으면 확인 필요다. */
@@ -498,7 +546,7 @@ export function pendingItems(review: Review, savesHousingTypes = true, workspace
   })
   const needs = fieldNeeds(review, savesHousingTypes ? workspace : undefined, release)
   for (const path of needs.keys()) if (path.startsWith('release:')) items.push({ id: path, section: 'reception' })
-  for (const cell of [...review.reception, ...review.metadata].filter(cell => pendingField(cell, needs))) items.push({ id: `cell:${cell.path}`, section: 'reception' })
+  for (const cell of [...receptionCells(review.reception), ...review.metadata].filter(cell => pendingField(cell, needs))) items.push({ id: `cell:${cell.path}`, section: 'reception' })
   return items
 }
 /** 추출 응답의 한글 문장에 섞인 한자·가나·키릴 문자를 찾는다(生계 ↔ 생계). 보정 값으로 그대로 저장하지 않게 한다. */
@@ -513,7 +561,7 @@ export function areaOnlyTypeName(value: unknown) {
   // 정수만 있는 표기(26)는 흔한 주택형 이름이라 소수점이나 면적 단위가 있을 때만 면적으로 본다.
   return typeof value === 'string' && /^\d+(\.\d+\s*(㎡|m2)?|(\.\d+)?\s*(㎡|m2))$/.test(value.trim())
 }
-export function allCells(review: Review) { return [...review.metadata, ...review.reception, ...review.rows.flatMap(row => [...row.cells, ...row.targets.flatMap(target => target.cells)]), ...review.schedules.flatMap(schedule => schedule.cells)] }
+export function allCells(review: Review) { return [...review.metadata, ...review.reception.flatMap(entry => entry.cells), ...review.rows.flatMap(row => [...row.cells, ...row.targets.flatMap(target => target.cells)]), ...review.schedules.flatMap(schedule => schedule.cells)] }
 export type PendingChange = { section: '기본정보' | '접수처' | '공급정보' | '일정'; scope: string; cell: Cell }
 /** 저장하면 실제로 바뀌는 값만 영역별로 모은다. 하단의 반영 개수와 영역별 요약에 쓴다. */
 export function pendingChanges(review: Review): PendingChange[] {
@@ -522,7 +570,12 @@ export function pendingChanges(review: Review): PendingChange[] {
     cells.filter(changed).map(cell => ({ section, scope, cell }))
   return [
     ...list('기본정보', '공고', review.metadata),
-    ...list('접수처', '접수처', review.reception),
+    ...review.reception.flatMap((entry, index) => {
+      if (entry.include) return list('접수처', receptionName(review, index), entry.cells)
+      // 뺀 기존 접수처는 저장하면 지워지므로 바뀌는 값으로 센다.
+      const name = entry.cells.find(cell => cell.field === 'name')
+      return entry.existing !== null && name ? [{ section: '접수처' as const, scope: receptionName(review, index), cell: { ...name, label: '접수처 삭제', value: null, selected: true, locked: false } }] : []
+    }),
     ...review.rows.flatMap((row, index) => {
       if (!row.include) return []
       const source = review.extraction.supplyRows[index], scope = `공급행 ${index + 1} · ${source.complexName ?? '단지 미확인'} · ${source.typeName ?? '주택형 미확인'}`
@@ -534,9 +587,32 @@ export function pendingChanges(review: Review): PendingChange[] {
 }
 // 저장 위치는 원천 표기만으로 고르기 어려워 연결 단지·표시 이름·모집수·전용면적을 함께 보여 준다.
 export function applicableCells(review: Review) {
-  return [...review.metadata, ...review.reception,
+  return [...review.metadata, ...receptionCells(review.reception),
     ...review.rows.filter(row => row.include).flatMap(row => [...row.cells, ...row.targets.filter(target => target.destination !== 'exclude').flatMap(target => target.cells)]),
     ...review.schedules.filter(schedule => schedule.include).flatMap(schedule => schedule.cells)]
+}
+/** 운영자에게 보일 접수처 이름. 1부터 센 번호와 저장할 접수 방식이다. */
+export function receptionName(review: Pick<Review, 'reception'>, index: number) {
+  const method = review.reception[index]?.cells.find(cell => cell.field === 'method')
+  const label = choices.method.find(([key]) => key === (method ? savedValue(method) : null))?.[1]
+  return `접수처 ${index + 1}${label ? ` · ${label}` : ''}`
+}
+/**
+ * 접수처를 한 곳만 다루던 때 임시저장한 검토(reception이 칸 목록, extraction.receptionPlace 객체)를 지금 모양으로 읽는다.
+ * 그때 고른 칸 선택은 첫 접수처의 같은 칸에 옮긴다. 지금 모양이면 그대로 돌려준다.
+ */
+export function upgradeDraftReview(review: Review, workspace: JsonWorkspace): Review {
+  const legacy = review as unknown as { reception: unknown[]; extraction: Extraction & { receptionPlace?: unknown } }
+  if (Array.isArray(legacy.extraction.receptionPlaces) && legacy.reception.every(entry => entry !== null && typeof entry === 'object' && Array.isArray((entry as ReceptionReview).cells))) return review
+  const place = legacy.extraction.receptionPlace
+  // 예전 결과를 읽을 때와 같은 규칙(값이 하나라도 있으면 접수처 한 곳)으로 읽는다.
+  const renamed = <T extends { path: string }>(items: T[]) => items.map(item => ({ ...item, path: normalizePath(item.path) }))
+  const extraction: Extraction = { ...review.extraction, evidence: renamed(review.extraction.evidence), unresolved: renamed(review.extraction.unresolved), notApplicable: renamed(review.extraction.notApplicable),
+    receptionPlaces: receptionPlacesOf({ receptionPlace: place }) }
+  delete (extraction as { receptionPlace?: unknown }).receptionPlace
+  const old = new Map((legacy.reception as Cell[]).filter(cell => typeof cell?.path === 'string').map(cell => [normalizePath(cell.path), cell]))
+  const reception = receptionReviews(extraction, workspace).map(entry => ({ ...entry, cells: entry.cells.map(cell => preserveCellChoice(cell, old.get(cell.path))) }))
+  return { ...review, extraction, reception }
 }
 /** 운영자에게 보일 PDF 행 이름. 1부터 센 번호와 주택형 표기다. */
 export function rowName(review: Review, index: number) { return `공급행 ${index + 1}(${review.extraction.supplyRows[index]?.typeName ?? '주택형 미확인'})` }
@@ -685,9 +761,8 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
   applyCells(announcement, review.metadata, metadataFields)
   const [need] = fieldNeeds(review, release ? workspace : undefined, release)
   if (need) throw new ReviewError(need[1], need[0].startsWith('release:') ? need[0] : `cell:${need[0]}`)
-  const reception = { ...((workspace.detail.data.receptionPlace ?? {}) as JsonObject) }
-  applyCells(reception, review.reception, receptionFields)
-  const document: ExtractedAnnouncement = { schemaVersion: 'admin-announcement-import/v1', source: { originalUrl: workspace.detail.data.originalUrl, sourceDocumentId: workspace.detail.sourceIdentifier, extractedAt: new Date().toISOString() }, announcement, receptionPlace: reception, supplyRows: ordered.filter(row => review.rows.some(entry => entry.include && entry.key === row.key)).map(row => ({
+  const receptionPlaces = assembledReceptionPlaces(review.reception, workspace)
+  const document: ExtractedAnnouncement = { schemaVersion: 'admin-announcement-import/v1', source: { originalUrl: workspace.detail.data.originalUrl, sourceDocumentId: workspace.detail.sourceIdentifier, extractedAt: new Date().toISOString() }, announcement, receptionPlaces, supplyRows: ordered.filter(row => review.rows.some(entry => entry.include && entry.key === row.key)).map(row => ({
     complexReference: { sourceComplexName: row.complexName, pnu: row.pnu.trim() || null }, sourceHousingTypeName: row.typeName,
     expectedMoveInMonth: row.moveInMonth, supplyCategory: row.category, totalSupplyHouseholdCount: row.householdCount,
     exclusiveArea: row.exclusiveArea, supplyArea: row.supplyArea, targets: row.targets.filter(target => !target.excluded).map(target => ({
@@ -710,7 +785,8 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
       schedules.push({ inputIndex: document.schedules.length, existingId: id }); document.schedules.push(after)
     }
   }
-  const fields = [...review.metadata.filter(cell => cell.selected && !cell.locked).map(cell => cell.field), ...review.reception.filter(cell => cell.selected).map(cell => `receptionPlace.${cell.field}`)]
+  const fields = [...review.metadata.filter(cell => cell.selected && !cell.locked).map(cell => cell.field), 
+    ...JSON.stringify(receptionPlaces) === JSON.stringify(currentReceptionPlaces(workspace).map(place => receptionPlaceShape(place))) ? [] : ['receptionPlaces']]
   for (const field of ['rentalType', 'recruitmentType'] as const) {
     if (release?.[field]) { announcement[field] = release[field]; fields.push(field) }
   }
@@ -904,7 +980,12 @@ export function rebaseReview(previous: Review, workspace: JsonWorkspace, housing
   const next = createReview(previous.extraction, workspace, housing, false)
   const oldCells = new Map(allCells(previous).map(cell => [cell.path, cell]))
   function retain(cell: Cell): Cell { return preserveCellChoice(cell, oldCells.get(cell.path)) }
-  next.metadata = next.metadata.map(retain); next.reception = next.reception.map(retain)
+  next.metadata = next.metadata.map(retain)
+  // 빼기 선택은 같은 접수처에만 이어받는다. PDF 접수처는 PDF 순번, PDF에 없는 지금 접수처는 그때 본 이름·방식이 같아야 한다(순번은 그사이 바뀔 수 있다).
+  const identity = (entry: ReceptionReview) => entry.extracted !== null ? `pdf:${entry.extracted}`
+    : `current:${['name', 'method'].map(field => String(entry.cells.find(cell => cell.field === field)?.before ?? '')).join('|')}`
+  next.reception = next.reception.map(entry => ({ ...entry, cells: entry.cells.map(retain),
+    include: previous.reception.find(old => identity(old) === identity(entry))?.include ?? entry.include }))
   next.excludedRows = previous.excludedRows?.filter(key => workspace.supply.rows.some(row => row.key === key && !row.excluded))
   next.rows = next.rows.map((row, index) => {
     const old = previous.rows[index], anchor = workspace.supply.rows.find(item => item.key === old.proposal.anchorKey)

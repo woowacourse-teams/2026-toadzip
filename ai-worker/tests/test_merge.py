@@ -4,7 +4,7 @@ from ai_worker import merge
 def test_complex_paths_are_remapped_before_stage_evidence_is_combined():
     supply = {
         "data": {
-            "announcement": {}, "receptionPlace": {}, "schedules": [], "unresolvedFields": [
+            "announcement": {}, "receptionPlaces": [], "schedules": [], "unresolvedFields": [
                 {"path": "complexes[0].parkingCount", "reason": "공급 단계 확인 필요"}],
             "complexes": [{"sourceComplexName": "Alpha", "totalHouseholdCount": 100, "parkingCount": None}],
             "supplyRows": [{"complexReference": {"sourceComplexName": "Alpha"}, "targets": []}],
@@ -16,7 +16,7 @@ def test_complex_paths_are_remapped_before_stage_evidence_is_combined():
     }
     notice = {
         "data": {
-            "announcement": {"name": "Sample"}, "receptionPlace": {}, "schedules": [], "unresolvedFields": [
+            "announcement": {"name": "Sample"}, "receptionPlaces": [], "schedules": [], "unresolvedFields": [
                 {"path": "complexes[0].parkingCount", "reason": "본문 확인 필요"}],
             "complexes": [
                 {"sourceComplexName": "Beta", "address": "Beta Road", "totalHouseholdCount": 50, "parkingCount": 10},
@@ -50,7 +50,7 @@ def test_missing_complex_values_are_reported_as_unresolved():
         "sharedCounts": [], "notApplicable": [], "evidence": [], "sourceRows": [],
     }
     notice = {
-        "data": {"announcement": {}, "receptionPlace": {}, "complexes": [], "schedules": [], "unresolvedFields": []},
+        "data": {"announcement": {}, "receptionPlaces": [], "complexes": [], "schedules": [], "unresolvedFields": []},
         "notApplicable": [], "evidence": [],
     }
 
@@ -70,7 +70,7 @@ def test_three_conflicting_complex_values_remain_unresolved():
 
     supply = {"data": {"complexes": [], "supplyRows": [], "unresolvedFields": []},
               "sharedCounts": [], "notApplicable": [], "evidence": [], "sourceRows": []}
-    notice = {"data": {"announcement": {}, "receptionPlace": {}, "complexes": complexes, "schedules": [],
+    notice = {"data": {"announcement": {}, "receptionPlaces": [], "complexes": complexes, "schedules": [],
                        "unresolvedFields": []}, "notApplicable": [], "evidence": []}
 
     tree, warnings = merge.merge(supply, notice)
@@ -86,7 +86,7 @@ def test_notice_address_with_lot_suffixes_is_the_same_as_the_supply_table_addres
     supply = {"data": {"complexes": [{"sourceComplexName": "Alpha", "address": "서울특별시 중구 세종대로 110"}],
                        "supplyRows": [{"complexReference": {"sourceComplexName": "Alpha"}, "targets": []}], "unresolvedFields": []},
               "sharedCounts": [], "notApplicable": [], "evidence": [], "sourceRows": []}
-    notice = {"data": {"announcement": {}, "receptionPlace": {}, "schedules": [], "unresolvedFields": [],
+    notice = {"data": {"announcement": {}, "receptionPlaces": [], "schedules": [], "unresolvedFields": [],
                        "complexes": [{"sourceComplexName": "Alpha", "address": "서울시 중구 세종대로 110 일원"}]},
               "notApplicable": [], "evidence": []}
 

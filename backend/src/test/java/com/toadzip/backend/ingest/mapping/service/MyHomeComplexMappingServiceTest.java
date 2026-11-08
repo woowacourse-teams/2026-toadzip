@@ -1067,7 +1067,7 @@ class MyHomeComplexMappingServiceTest {
                 "https://example.com/announcements/1",
                 null,
                 0L,
-                ReceptionPlace.create("마이홈", "인터넷", null, "1600-1004", "https://example.com")
+                List.of(ReceptionPlace.create("마이홈", "인터넷", null, "1600-1004", "https://example.com"))
         );
     }
 

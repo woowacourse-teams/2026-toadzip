@@ -48,7 +48,7 @@ def merge(supply: dict, notice: dict) -> tuple[dict, list[str]]:
     tree = {
         "data": {
             "announcement": notice_data["announcement"],
-            "receptionPlace": notice_data["receptionPlace"],
+            "receptionPlaces": notice_data["receptionPlaces"],
             "complexes": complexes,
             "supplyRows": supply_rows,
             "schedules": notice_data["schedules"],

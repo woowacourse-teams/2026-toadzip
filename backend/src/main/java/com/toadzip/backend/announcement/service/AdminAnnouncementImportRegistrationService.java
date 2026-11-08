@@ -5,13 +5,13 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
-import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRegistrationRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRegistrationRequest.ComplexSelectionRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRequest.AttachmentRequest;
+import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRequest.ReceptionPlaceRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRequest.ScheduleRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRequest.SupplyRowRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRequest.SupplyTargetRequest;
@@ -185,13 +185,7 @@ public class AdminAnnouncementImportRegistrationService {
                 request.source().originalUrl(),
                 null,
                 0L,
-                ReceptionPlace.create(
-                        request.receptionPlace().name(),
-                        request.receptionPlace().method(),
-                        request.receptionPlace().address(),
-                        request.receptionPlace().contact(),
-                        request.receptionPlace().url()
-                )
+                request.receptionPlaces().stream().map(ReceptionPlaceRequest::toPlace).toList()
         );
     }
 

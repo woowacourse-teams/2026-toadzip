@@ -355,7 +355,7 @@ class AdminManagementIntegrationTest {
                 "recruitmentType":"NEW","agencyCode":"LH","postedDate":"2026-09-01",
                 "applicationStartDate":"2026-09-10","applicationEndDate":"2026-09-20",
                 "winnerAnnouncementDate":"2026-10-01","originalUrl":"https://example.com/notice",
-                "receptionPlace":{"name":"LH","method":"ONLINE","contact":"1600-1004"},
+                "receptionPlaces": [{"name":"LH","method":"ONLINE","contact":"1600-1004"}],
                 "supplyRow":{"sourceComplexName":"테스트 단지","sourceHousingTypeName":"36A",
                 "supplyPnu":"1114010100100010000","supplyCategory":"NEW_SUPPLY","totalSupplyHouseholdCount":5}}
                 """.formatted(complexId);
@@ -737,7 +737,7 @@ class AdminManagementIntegrationTest {
     @Test
     void 연락처가_미확인인_기존_공고도_수정하고_null을_보존한다() throws Exception {
         long id = createAnnouncement(createComplex());
-        entityManager.createNativeQuery("UPDATE announcements SET reception_contact = NULL WHERE id = :id")
+        entityManager.createNativeQuery("UPDATE announcement_reception_places SET contact = NULL WHERE announcement_id = :id")
                 .setParameter("id", id).executeUpdate();
         entityManager.clear();
         String path = "/api/admin/announcements/" + id;
@@ -747,12 +747,60 @@ class AdminManagementIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content(data.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.data.name").value("단지 탭에서 수정한 공고"))
-                .andExpect(jsonPath("$.data.data.receptionPlace.contact").isEmpty());
+                .andExpect(jsonPath("$.data.data.receptionPlaces[0].contact").isEmpty());
         var updated = (ObjectNode) getData(path).get("data");
-        ((ObjectNode) updated.get("receptionPlace")).put("name", " ");
+        ((ObjectNode) updated.get("receptionPlaces").get(0)).put("name", " ");
         mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(updated.toString()))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 공고_접수처는_보낸_목록_순서대로_저장하고_줄이거나_순서를_바꿔도_그대로_반영한다() throws Exception {
+        long id = createAnnouncement(createComplex());
+        String path = "/api/admin/announcements/" + id;
+        var data = (ObjectNode) getData(path).get("data");
+        var places = data.putArray("receptionPlaces");
+        places.addObject().put("name", "LH 청약플러스").put("method", "ONLINE").put("url", "https://apply.lh.or.kr");
+        places.addObject().put("name", "견본주택").put("method", "VISIT").put("address", "서울시 1")
+                .put("guidance", "인터넷 취약계층만 현장 접수");
+        places.addObject().put("name", "지역본부").put("method", "VISIT").put("contact", "02-000-0000");
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(data.toString()))
+                .andExpect(status().isOk());
+        assertThat(receptionRows(id)).containsExactly("0|LH 청약플러스|ONLINE|null", "1|견본주택|VISIT|인터넷 취약계층만 현장 접수",
+                "2|지역본부|VISIT|null");
+
+        var reordered = (ObjectNode) getData(path).get("data");
+        var kept = reordered.withArray("receptionPlaces");
+        var visit = kept.get(1).deepCopy();
+        kept.removeAll();
+        kept.add(visit);
+        kept.addObject().put("name", "LH 청약플러스").put("method", "ONLINE");
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(reordered.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.data.receptionPlaces.length()").value(2));
+        entityManager.clear();
+        assertThat(receptionRows(id)).containsExactly("0|견본주택|VISIT|인터넷 취약계층만 현장 접수", "1|LH 청약플러스|ONLINE|null");
+
+        // 배포 전에 열린 화면은 접수처 하나를 receptionPlace로 보낸다. 무시하고 지우지 않고 한 곳으로 읽는다.
+        var legacy = (ObjectNode) getData(path).get("data");
+        legacy.remove("receptionPlaces");
+        legacy.putObject("receptionPlace").put("name", "LH 청약센터").put("method", "ONLINE");
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(legacy.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.data.receptionPlace").doesNotExist());
+        entityManager.clear();
+        assertThat(receptionRows(id)).containsExactly("0|LH 청약센터|ONLINE|null");
+    }
+
+    private List<String> receptionRows(long id) {
+        return ((List<?>) entityManager.createNativeQuery("""
+                        SELECT display_order || '|' || name || '|' || method || '|' || COALESCE(guidance, 'null')
+                        FROM announcement_reception_places WHERE announcement_id = :id ORDER BY display_order
+                        """).setParameter("id", id).getResultList()).stream().map(String::valueOf).toList();
     }
 
     @Test

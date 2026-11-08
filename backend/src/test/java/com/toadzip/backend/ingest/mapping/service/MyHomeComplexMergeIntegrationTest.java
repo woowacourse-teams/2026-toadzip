@@ -796,7 +796,7 @@ class MyHomeComplexMergeIntegrationTest {
                 "merge-announcement", null, null, "통합 확인 공고", "원공고", "행복주택", "신규모집", "LH",
                 LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 10), LocalDate.of(2026, 9, 14),
                 LocalDate.of(2026, 10, 1), "https://apply.lh.or.kr/announcement", null, 0L,
-                ReceptionPlace.create("마이홈", "인터넷", null, "1600-1004", "https://apply.lh.or.kr")));
+                List.of(ReceptionPlace.create("마이홈", "인터넷", null, "1600-1004", "https://apply.lh.or.kr"))));
         User user = users.save(User.create("merge-test-user", LocalDateTime.of(2026, 9, 1, 0, 0)));
         for (long id : ids) {
             HousingComplex complex = complexes.findById(id).orElseThrow();

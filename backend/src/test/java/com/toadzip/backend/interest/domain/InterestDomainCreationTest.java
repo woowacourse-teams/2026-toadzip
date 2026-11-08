@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
+import java.util.List;
 
 class InterestDomainCreationTest {
 
@@ -106,7 +107,7 @@ class InterestDomainCreationTest {
                 "https://example.com/announcements/1",
                 null,
                 0L,
-                ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null)
+                List.of(ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null))
         );
     }
 

@@ -288,17 +288,21 @@ it('접수처가 없던 공고에 PDF가 접수처명 없이 연락처·방식�
   const { review, workspace } = scenario('gongju', extraction)
   review.rows[0].reviewed = true
   review.schedules.forEach(schedule => { schedule.reviewed = true })
-  const reception = () => review.reception.find(cell => cell.field === 'name')!
-  expect(review.reception.filter(cell => cell.selected).map(cell => cell.field)).toEqual(['method', 'contact'])
-  expect(pendingItems(review).map(item => item.id)).toContain('cell:receptionPlace.name')
-  expect(() => assembleReview(review, workspace, evidence)).toThrow(expect.objectContaining({ reviewId: 'cell:receptionPlace.name', message: expect.stringContaining('접수처명이 필요합니다') }))
-  const typed = review.reception.map(cell => cell.field === 'name' ? editCell(cell, 'LH 청약플러스') : cell)
-  expect(pendingItems({ ...review, reception: typed }).map(item => item.id)).not.toContain('cell:receptionPlace.name')
-  expect(assembleReview({ ...review, reception: typed }, workspace, evidence).document.receptionPlace).toMatchObject({ name: 'LH 청약플러스', method: 'VISIT', contact: '1600-1004' })
-  const skipped = review.reception.map(cell => cell.selected ? chooseCellValue(cell, 'keep') : cell)
-  expect(pendingItems({ ...review, reception: skipped }).map(item => item.id)).not.toContain('cell:receptionPlace.name')
-  expect(assembleReview({ ...review, reception: skipped }, workspace, evidence).fields.filter(field => field.startsWith('receptionPlace.'))).toEqual([])
-  expect(reception().before).toBeNull()
+  // 예전 응답의 접수처 객체 하나는 첫 접수처로 읽는다. 이름을 못 읽은 새 접수처는 기본으로 빼 두고, 저장하기로 하면 이름을 요구한다.
+  const [place] = review.reception
+  expect(place).toMatchObject({ extracted: 0, existing: null, include: false })
+  expect(place.cells.filter(cell => cell.selected).map(cell => cell.field)).toEqual(['method', 'contact'])
+  expect(pendingItems(review).map(item => item.id)).not.toContain('cell:receptionPlaces[0].name')
+  expect(assembleReview(review, workspace, evidence).fields).not.toContain('receptionPlaces')
+  const included = { ...review, reception: [{ ...place, include: true }] }
+  expect(pendingItems(included).map(item => item.id)).toContain('cell:receptionPlaces[0].name')
+  expect(() => assembleReview(included, workspace, evidence)).toThrow(expect.objectContaining({ reviewId: 'cell:receptionPlaces[0].name', message: expect.stringContaining('접수처명이 필요합니다') }))
+  const typed = { ...included, reception: [{ ...place, include: true, cells: place.cells.map(cell => cell.field === 'name' ? editCell(cell, 'LH 청약플러스') : cell) }] }
+  expect(pendingItems(typed).map(item => item.id)).not.toContain('cell:receptionPlaces[0].name')
+  const saved = assembleReview(typed, workspace, evidence)
+  expect(saved.fields).toContain('receptionPlaces')
+  expect(saved.document.receptionPlaces).toEqual([{ name: 'LH 청약플러스', method: 'VISIT', address: null, contact: '1600-1004', url: null, guidance: null }])
+  expect(place.cells.find(cell => cell.field === 'name')!.before).toBeNull()
 })
 
 it('저장된 일시(초까지)와 PDF·입력값(분까지)이 같은 시각이면 바뀐 값으로 보지 않는다', () => {
@@ -331,8 +335,10 @@ it('URL은 서버와 같이 소문자 http(s)://로 시작하고 공백이 없�
 
 it('서버가 칸 경로로 돌려준 기본정보·접수처 검증 메시지를 화면 칸 이름과 위치로 바꾼다', () => {
   const { review } = scenario('gongju')
-  expect(serverFieldError(review, 'receptionPlace.name: 필수 값입니다.')).toEqual({ message: '접수처명: 필수 값입니다.', reviewId: 'cell:receptionPlace.name' })
-  expect(serverFieldError(review, 'applicationEndDate: 필수 값입니다. / receptionPlace.name: 필수 값입니다.')).toEqual({ message: '접수 종료일: 필수 값입니다.', reviewId: 'cell:announcement.applicationEndDate' })
+  // 접수처 순번은 저장한 접수처의 순번이다. 뺀 접수처는 세지 않는다.
+  const reception = [{ ...review.reception[0], include: false }, { ...review.reception[0], extracted: 1, include: true, cells: review.reception[0].cells.map(cell => ({ ...cell, path: cell.path.replace('[0]', '[1]') })) }]
+  expect(serverFieldError({ ...review, reception }, 'receptionPlaces[0].name: 필수 값입니다.')).toEqual({ message: '접수처명: 필수 값입니다.', reviewId: 'cell:receptionPlaces[1].name' })
+  expect(serverFieldError(review, 'applicationEndDate: 필수 값입니다. / receptionPlaces[0].name: 필수 값입니다.')).toEqual({ message: '접수 종료일: 필수 값입니다.', reviewId: 'cell:announcement.applicationEndDate' })
   expect(serverFieldError(review, 'originalUrl: HTTP(S) URL이어야 합니다.')).toBeNull()
   expect(serverFieldError(review, '적용할 변경이 없습니다. 현재값과 다른 항목을 선택하세요.')).toBeNull()
 })
@@ -1039,4 +1045,97 @@ it('대상 예비자 수만 여러 면적 행에 걸치면 행마다 모집수�
   shared.supplyRows[0].values.totalSupplyHouseholdCount = 20
   shared.supplyRows[1].values.totalSupplyHouseholdCount = 3
   expect(foldSameHousingType(shared).supplyRows.map(row => row.typeName)).toEqual(['24ABC', '24B', '24C'])
+})
+
+describe('접수처 여러 곳', () => {
+  const online = { name: 'LH청약플러스', method: 'ONLINE', address: null, contact: '1600-1004', url: 'https://apply.lh.or.kr', guidance: '모바일 앱으로도 신청할 수 있습니다' }
+  const visitA = { name: '익산 견본주택', method: 'VISIT', address: '익산시 1', contact: '063-000-0001', url: null, guidance: '인터넷 취약계층만 현장 접수' }
+  const visitB = { name: '전주 지사', method: 'VISIT', address: '전주시 2', contact: '063-000-0002', url: null, guidance: null }
+  function withPlaces(stored: Record<string, unknown>[]) {
+    const extraction = structuredClone(fixtures.gongju.extraction) as unknown as { data: Record<string, unknown>; evidence: { path: string; page: number; quote: string }[] }
+    delete extraction.data.receptionPlace
+    extraction.data.receptionPlaces = [online, visitA, visitB]
+    // 공주 공고의 예전 접수처 안내(해당 없음·미확인)는 첫 접수처 경로로 읽히므로 이 시험에서는 걷어 낸다.
+    const notes = extraction as unknown as { notApplicable: { path: string }[]; data: { unresolvedFields: { path: string }[] } }
+    notes.notApplicable = notes.notApplicable.filter(item => !item.path.startsWith('receptionPlace'))
+    notes.data.unresolvedFields = notes.data.unresolvedFields.filter(item => !item.path.startsWith('receptionPlace'))
+    extraction.evidence = [...extraction.evidence.filter(item => !item.path.startsWith('receptionPlace')),
+      ...[0, 1, 2].map(index => ({ path: `receptionPlaces[${index}]`, page: 1, quote: `접수처 ${index}` }))]
+    const { review: base, workspace, housing } = scenario('gongju', extraction)
+    workspace.detail.data.receptionPlaces = stored as never
+    return { review: createReview(base.extraction, workspace, housing), workspace, housing }
+  }
+
+  it('PDF 접수처를 방식·이름이 같은 기존 접수처와 짝짓고, 지금 순서를 지키며 새 접수처는 뒤에 붙이고, 짝 없는 기존 접수처는 빼면 지운다', () => {
+    const storedOnline = { ...online, contact: '1600-0000', guidance: null }, mail = { name: '우편 접수', method: 'MAIL', address: '사서함 1', contact: null, url: null, guidance: null }
+    const { review, workspace } = withPlaces([mail, storedOnline])
+    expect(review.reception.map(entry => [entry.extracted, entry.existing, entry.include])).toEqual([[null, 0, true], [0, 1, true], [1, null, true], [2, null, true]])
+    const onlineCells = review.reception[1].cells
+    expect(onlineCells.filter(cell => cell.selected).map(cell => cell.field)).toEqual(['contact', 'guidance'])
+    const saved = assembleReview(review, workspace, evidence)
+    expect(saved.fields).toContain('receptionPlaces')
+    expect(saved.document.receptionPlaces).toEqual([mail, online, visitA, visitB])
+    // 우편 접수처를 빼면 지운다. 바뀐 값 목록에 접수처 삭제로 보인다.
+    const dropped = { ...review, reception: review.reception.map((entry, index) => index === 0 ? { ...entry, include: false } : entry) }
+    expect(assembleReview(dropped, workspace, evidence).document.receptionPlaces).toEqual([online, visitA, visitB])
+    expect(pendingChanges(dropped).filter(change => change.section === '접수처' && change.cell.label === '접수처 삭제')).toHaveLength(1)
+  })
+
+  it('방식은 같아도 이름이 다른 기존 접수처와는 짝짓지 않아 다른 접수처의 주소·연락처가 섞이지 않는다', () => {
+    const lh = { name: 'LH 접수처', method: 'VISIT', address: '충주시 2', contact: '043-000-0000', url: null, guidance: null }
+    const { review, workspace } = withPlaces([lh])
+    expect(review.reception.map(entry => [entry.extracted, entry.existing])).toEqual([[null, 0], [0, null], [1, null], [2, null]])
+    expect(assembleReview(review, workspace, evidence).document.receptionPlaces).toEqual([lh, online, visitA, visitB])
+  })
+
+  it('최신값으로 다시 비교해도 빼기 선택은 같은 접수처에만 남는다', () => {
+    const lh = { name: 'LH 접수처', method: 'VISIT', address: '충주시 2', contact: null, url: null, guidance: null }
+    const mail = { name: '우편 접수', method: 'MAIL', address: null, contact: null, url: null, guidance: null }
+    const { review, workspace, housing } = withPlaces([lh, mail])
+    const dropped = { ...review, reception: review.reception.map(entry => entry.existing === 0 ? { ...entry, include: false } : entry) }
+    // 그사이 LH 접수처가 지워져 우편 접수가 첫 번째가 됐다. 순번 0의 빼기가 우편 접수로 옮겨가면 안 된다.
+    const latest = { ...workspace, detail: { ...workspace.detail, data: { ...workspace.detail.data, receptionPlaces: [mail] as never } } }
+    const rebased = rebaseReview(dropped, latest, housing)
+    expect(rebased.reception.find(entry => entry.extracted === null)).toMatchObject({ existing: 0, include: true })
+    // 우편 접수를 뺐다면 순번이 1에서 0으로 바뀌어도 이름·방식으로 이어받아 계속 뺀다.
+    const mailDropped = { ...review, reception: review.reception.map(entry => entry.existing === 1 ? { ...entry, include: false } : entry) }
+    expect(rebaseReview(mailDropped, latest, housing).reception.find(entry => entry.extracted === null)).toMatchObject({ existing: 0, include: false })
+  })
+
+  it('접수처 원소 형식이 틀려도 공급행까지 버리지 않고 순번을 지켜 20곳까지 읽는다', () => {
+    const extraction = structuredClone(fixtures.gongju.extraction) as unknown as { data: Record<string, unknown> }
+    delete extraction.data.receptionPlace
+    extraction.data.receptionPlaces = ['잘못된 값', ...Array.from({ length: 22 }, (_, index) => ({ ...visitA, name: `현장 ${index}` }))]
+    const read = readExtraction(JSON.stringify(extraction))
+    // 잘못된 원소는 빈 접수처로 남아 뒤 접수처의 순번(근거·미확인 경로)이 밀리지 않는다.
+    expect(read.ok && read.value.receptionPlaces.map(place => place.name ?? null)).toEqual([null, ...Array.from({ length: 19 }, (_, index) => `현장 ${index}`)])
+    expect(read.ok && read.value.supplyRows.length).toBe(fixtures.gongju.extraction.data.supplyRows.length)
+
+    const withEvidence = { ...extraction, evidence: [...(fixtures.gongju.extraction.evidence as { path: string }[]).filter(item => !item.path.startsWith('receptionPlace')), { path: 'receptionPlaces[1]', page: 3, quote: '현장 0 접수' }] }
+    const { review } = scenario('gongju', withEvidence)
+    const first = review.reception.find(entry => entry.extracted === 1)!
+    expect(first.cells.find(cell => cell.field === 'name')?.evidence).toMatchObject({ page: 3 })
+    expect(review.reception.find(entry => entry.extracted === 0)).toMatchObject({ include: false })
+  })
+
+  it('PDF 접수처가 기존과 같으면 접수처를 바꾼 항목으로 보내지 않는다', () => {
+    const { review, workspace } = withPlaces([online, visitA, visitB])
+    expect(review.reception.every(entry => entry.cells.every(cell => !cell.selected))).toBe(true)
+    expect(assembleReview(review, workspace, evidence).fields).not.toContain('receptionPlaces')
+  })
+
+  it('접수처를 한 곳만 다루던 임시저장 검토를 첫 접수처로 읽고 그때 고른 칸 선택을 옮긴다', async () => {
+    const { upgradeDraftReview } = await import('./review')
+    const { review, workspace } = scenario('gongju')
+    const cells = review.reception[0].cells.map(cell => ({ ...cell, path: cell.path.replace('receptionPlaces[0]', 'receptionPlace') }))
+    const legacy = { ...review, reception: cells.map(cell => cell.field === 'name' ? editCell(cell, '직접 쓴 접수처') : cell),
+      extraction: { ...review.extraction, receptionPlace: fixtures.gongju.extraction.data.receptionPlace, receptionPlaces: undefined,
+        evidence: review.extraction.evidence.map(item => ({ ...item, path: item.path.replace('receptionPlaces[0]', 'receptionPlace') })) } } as unknown as typeof review
+    const upgraded = upgradeDraftReview(legacy, workspace)
+    expect(upgraded.extraction.receptionPlaces).toHaveLength(1)
+    expect(upgraded.reception).toHaveLength(1)
+    expect(upgraded.reception[0].cells.find(cell => cell.field === 'name')).toMatchObject({ path: 'receptionPlaces[0].name', mode: 'manual', value: '직접 쓴 접수처' })
+    expect(upgraded.extraction.evidence.some(item => item.path.startsWith('receptionPlace.') || item.path === 'receptionPlace')).toBe(false)
+    expect(upgradeDraftReview(upgraded, workspace)).toBe(upgraded)
+  })
 })

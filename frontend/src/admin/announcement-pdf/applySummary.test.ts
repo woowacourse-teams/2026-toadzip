@@ -42,12 +42,13 @@ it('주택형을 비워 보낸 행은 서버가 전용면적으로 정한 주택
 
 it('이미 처리했다는 응답에서 기본정보는 같아도 고른 일정이 최신값에 없으면 반영되지 않은 것으로 본다', () => {
   const schedule = { scheduleType: 'APPLICATION', name: '접수', startAt: '2026-10-27T10:00:00', endAt: '2026-10-29T17:00:00' }
-  const input = { fields: ['applicationStartDate', 'receptionPlace.name'], schedules: [{ inputIndex: 0, existingId: 14 }],
-    document: { announcement: { applicationStartDate: '2026-10-27' }, receptionPlace: { name: 'LH 청약플러스' }, schedules: [schedule] } } as unknown as Parameters<typeof documentReflected>[0]
-  const detail = { data: { applicationStartDate: '2026-10-27', receptionPlace: { name: 'LH 청약플러스' } } } as unknown as Parameters<typeof documentReflected>[1]['detail']
+  const places = [{ name: 'LH 청약플러스', method: 'ONLINE' }, { name: '견본주택', method: 'VISIT' }]
+  const input = { fields: ['applicationStartDate', 'receptionPlaces'], schedules: [{ inputIndex: 0, existingId: 14 }],
+    document: { announcement: { applicationStartDate: '2026-10-27' }, receptionPlaces: places, schedules: [schedule] } } as unknown as Parameters<typeof documentReflected>[0]
+  const detail = { data: { applicationStartDate: '2026-10-27', receptionPlaces: places } } as unknown as Parameters<typeof documentReflected>[1]['detail']
   expect(documentReflected(input, { detail, events: [{ id: 14, data: schedule, complexName: null }] })).toBe(true)
   expect(documentReflected(input, { detail, events: [{ id: 14, data: { ...schedule, name: '이전 접수' }, complexName: null }] })).toBe(false)
-  expect(documentReflected(input, { detail: { ...detail, data: { ...detail.data, receptionPlace: null } }, events: [{ id: 14, data: schedule, complexName: null }] })).toBe(false)
+  expect(documentReflected(input, { detail: { ...detail, data: { ...detail.data, receptionPlaces: places.slice(0, 1) } }, events: [{ id: 14, data: schedule, complexName: null }] })).toBe(false)
 })
 
 it('임대조건은 바뀐 항목만 변경 전후로 보이고, 전환보증금이나 모집수만 바뀌어도 변경으로 센다', () => {
@@ -62,11 +63,11 @@ it('임대조건은 바뀐 항목만 변경 전후로 보이고, 전환보증금
 it('적용 전 확인은 기본정보·접수처·일정·단지 주택타입 갱신을 개수가 아니라 변경 전후 값으로 보인다', () => {
   const schedule = { scheduleType: 'APPLICATION', name: '접수', startAt: '2026-10-20T10:00:00', endAt: '2026-10-22T17:00:00' }
   const summary = summarizePreview({ ...preview([], []), supply: null,
-    fields: [{ field: 'applicationStartDate', before: '2026-10-20', after: '2026-10-27' }, { field: 'receptionPlace.method', before: null, after: 'ONLINE' }, { field: 'rentalType', before: null, after: 'NATIONAL_RENTAL' }],
+    fields: [{ field: 'applicationStartDate', before: '2026-10-20', after: '2026-10-27' }, { field: 'receptionPlaces', before: [], after: [{ name: 'LH 청약플러스', method: 'ONLINE', address: null }, { name: '견본주택', method: 'VISIT', address: '강남구 1' }] }, { field: 'rentalType', before: null, after: 'NATIONAL_RENTAL' }],
     schedules: [{ inputIndex: 0, existingId: 14, before: schedule, after: { ...schedule, startAt: '2026-10-27T10:00:00' } }, { inputIndex: 1, existingId: null, before: null, after: { scheduleType: 'WINNER_ANNOUNCEMENT', name: '당첨자 발표', startAt: '2026-11-10T00:00:00', endAt: null } }],
     housingTypes: [{ rowKey: 'row:747', housingTypeId: 501, typeName: '51A', before: { name: '51A', supplyArea: 72.1, householdCount: 468, basicDeposit: 1000, basicMonthlyRent: 10 }, after: { name: '051.9800A', supplyArea: 72.1, householdCount: 468, basicDeposit: 2000, basicMonthlyRent: 10 } },
       { rowKey: 'n1', housingTypeId: null, typeName: '59B', before: null, after: { name: '59B', supplyArea: null, householdCount: 15 } }] }, housing)
-  expect(summary.fields).toEqual([{ label: '접수 시작일', before: '2026-10-20', after: '2026-10-27' }, { label: '접수 방식', before: '없음', after: '온라인' }, { label: '공급 유형', before: '없음', after: '국민임대' }])
+  expect(summary.fields).toEqual([{ label: '접수 시작일', before: '2026-10-20', after: '2026-10-27' }, { label: '접수처', before: '없음', after: 'LH 청약플러스(온라인) · 견본주택(방문) 강남구 1' }, { label: '공급 유형', before: '없음', after: '국민임대' }])
   expect(summary.schedules).toEqual([{ label: '접수', before: '2026-10-20 10:00 ~ 2026-10-22 17:00', after: '2026-10-27 10:00 ~ 2026-10-22 17:00' }, { label: '당첨자 발표', before: '새 일정', after: '2026-11-10' }])
   expect(summary.housingTypes).toEqual([{ label: '#501 「51A」', before: '이름 51A · 기본 보증금 1,000원', after: '이름 051.9800A · 기본 보증금 2,000원' },
     { label: '새 주택타입 「59B」', before: '없음', after: '이름 59B · 공급면적 없음 · 세대수 15' }])

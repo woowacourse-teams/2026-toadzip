@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { getManagementDetail, requestManagementApi, managementResourcePath, ManagementError } from './api'
 import { parseManagementDetail, type ManagementDetailData, type ManagementResource } from './managementContract'
-import { announcementSections, complexSections, display, formValues, valueAt } from './fields'
+import { announcementSections, complexSections, display, formValues, receptionPlaceErrors, receptionPlacesFrom, valueAt } from './fields'
 import { EditFields } from './EditFields'
+import { ReceptionPlacesEditor, ReceptionPlacesView } from './ReceptionPlaces'
 import { ComplexRelationsEditor } from './ComplexRelationsEditor'
 import { AnnouncementOwnership, ManagementStatus, PublicationType } from './ManagementStatus'
 import { ChangeHistory } from './ChangeHistory'
@@ -119,12 +120,15 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
         </fieldset></details> : null}</> : null}
       {section === 'info' && !editing ? <div className="admin-detail-sections">{sections.map(group => <section className="admin-detail-section" key={group.title}><h2>{group.title}</h2>
         <dl className={`admin-data-grid${group.fields.some(field => field.name === 'address.roadAddress') ? ' admin-location-grid' : ''}`}>{group.fields.map(field => <div key={field.name} data-field={field.name}><dt>{field.label}</dt><dd>{field.type === 'url'
-          ? <SourceUrl url={valueAt(value.data,field.name)} /> : display(valueAt(value.data,field.name))}</dd></div>)}</dl></section>)}</div> : null}
+          ? <SourceUrl url={valueAt(value.data,field.name)} /> : display(valueAt(value.data,field.name))}</dd></div>)}</dl></section>)}
+        {resource === 'announcements' ? <ReceptionPlacesView data={value.data} /> : null}</div> : null}
       {editing && section === 'info' ? <form ref={formRef} key={String(value.data.version)} onChange={() => setDirty(true)} onSubmit={event => {
         event.preventDefault();setBusy(true);setError('');setErrors({})
         const body = formValues(event.currentTarget,sections.flatMap(group => group.fields),value.data)
+        const reception = resource === 'announcements' ? receptionPlacesFrom(event.currentTarget) : null
+        if (reception) body.receptionPlaces = reception.places
         void requestManagementApi(`${managementResourcePath(resource)}/${id}`,'PUT',body).then(result => saved(parseManagementDetail(result))).catch(cause => {
-          setError(cause instanceof Error ? cause.message : '저장하지 못했습니다.');if(cause instanceof ManagementError) setErrors(cause.fields)
+          setError(cause instanceof Error ? cause.message : '저장하지 못했습니다.');if(cause instanceof ManagementError) setErrors(reception ? receptionPlaceErrors(cause.fields, reception.positions) : cause.fields)
         }).finally(() => setBusy(false))
       }}>
         {value.scheduleReviewed ? <p className="admin-warning">확인된 접수 기간입니다. 확정 접수 일정 관리에서 변경해 주세요.</p> : null}
@@ -137,6 +141,7 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
             setDirty(true)
           }} /> : null}
           <EditFields fields={group.fields} data={value.data} errors={errors} scheduleReviewed={value.scheduleReviewed} /></fieldset>)}
+        {resource === 'announcements' ? <ReceptionPlacesEditor data={value.data} errors={errors} disabled={busy} onChange={() => setDirty(true)} /> : null}
         <div className="admin-save-bar"><button className="admin-primary" disabled={busy}>{busy ? '저장 중…' : '변경사항 저장'}</button><button type="button" disabled={busy} onClick={() => {if(!dirty || window.confirm('변경사항을 버릴까요?')) {if (embedded) setAttempt(current => current + 1); else setEditing(false);setDirty(false);setError('')}}}>{embedded ? '변경 취소' : '취소'}</button></div></form> : null}
       {section === 'schedules' && resource === 'announcements' ? <ScheduleEditor key={String(value.data.version)} value={value} id={id} onSaved={saved} onBusyChange={setBusy} /> : null}
       {section === 'relations' ? resource === 'complexes' ? <ComplexRelationsEditor value={value} id={id} onSaved={saved} onBusyChange={setBusy} /> : <><h2>공급정보·단지 연결</h2>

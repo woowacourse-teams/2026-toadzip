@@ -3,7 +3,7 @@ import { isRecord, parseManagementDetail, type ManagementDetailData } from '../m
 import { parseSupplyPreview, parseSupplyWorkspace, type SupplyCorrectionInput, type SupplyPreview, type SupplyWorkspace } from '../supply/supplyCorrectionApi'
 
 export type JsonObject = Record<string, unknown>
-export type ExtractedAnnouncement = { schemaVersion: string; source: JsonObject; announcement: JsonObject; receptionPlace: JsonObject | null; supplyRows: JsonObject[]; schedules: JsonObject[]; attachments: JsonObject[]; unresolvedFields: JsonObject[] }
+export type ExtractedAnnouncement = { schemaVersion: string; source: JsonObject; announcement: JsonObject; receptionPlaces: JsonObject[]; supplyRows: JsonObject[]; schedules: JsonObject[]; attachments: JsonObject[]; unresolvedFields: JsonObject[] }
 export type JsonWorkspace = { snapshotToken: string; detail: ManagementDetailData; supply: SupplyWorkspace; events: { id: number; data: JsonObject; complexName: string | null }[] }
 export type Selection = { inputIndex: number; existingId: number | null }
 /**

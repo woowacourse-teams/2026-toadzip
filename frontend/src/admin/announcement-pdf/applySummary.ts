@@ -3,7 +3,7 @@ import type { CorrectionRow, CorrectionTarget, SupplyWorkspace } from '../supply
 import { labels } from '../management/fields'
 import { applicationTypeKey } from '../supply/applicationType'
 import type { HousingCandidates } from './matching'
-import { choices, metadataFields, receptionFields, shownDateTime } from './review'
+import { choices, metadataFields, shownDateTime } from './review'
 
 export type SummaryRow = { key: string; id: number | null; typeName: string; householdCount: number | null; housingType: string; linked: string[]
   change: 'same' | 'changed' | 'new' | 'excluded'; excluded: boolean }
@@ -47,12 +47,21 @@ const targetParts: [label: string, read: (target: CorrectionTarget) => string][]
 const typeParts: [key: keyof TypeValues, read: (values: TypeValues) => string][] = [['name', values => `이름 ${values.name}`],
   ['supplyArea', values => `공급면적 ${values.supplyArea == null ? '없음' : `${values.supplyArea}㎡`}`], ['householdCount', values => `세대수 ${values.householdCount ?? '없음'}`],
   ['basicDeposit', values => `기본 보증금 ${amount(values.basicDeposit)}`], ['basicMonthlyRent', values => `기본 월 임대료 ${amount(values.basicMonthlyRent)}`]]
-const fieldLabels: Record<string, string> = Object.fromEntries([...metadataFields.map(([field, label]) => [field, label]), ...receptionFields.map(([field, label]) => [`receptionPlace.${field}`, label]),
+const fieldLabels: Record<string, string> = Object.fromEntries([...metadataFields.map(([field, label]) => [field, label]), ['receptionPlaces', '접수처'],
   ['rentalType', '공급 유형'], ['recruitmentType', '모집 유형'], ['name', '공고명']])
 function fieldValue(field: string, value: unknown) {
   if (value === null || value === undefined || value === '') return '없음'
-  if (field === 'receptionPlace.method') return choices.method.find(([key]) => key === value)?.[1] ?? String(value)
+  if (field === 'receptionPlaces') return receptionSummary(value)
   return typeof value === 'string' && labels[value] ? labels[value] : shownDateTime(value)
+}
+/** 접수처 목록을 한 줄로: 이름(방식) · 주소. 비었으면 없음 */
+function receptionSummary(value: unknown) {
+  if (!Array.isArray(value) || !value.length) return '없음'
+  return value.map(place => {
+    const item = typeof place === 'object' && place !== null ? place as Record<string, unknown> : {}
+    const method = choices.method.find(([key]) => key === item.method)?.[1] ?? plain(item.method)
+    return `${plain(item.name)}(${method})${item.address ? ` ${String(item.address)}` : ''}`
+  }).join(' · ')
 }
 const scheduleRange = (value: Record<string, unknown>) => `${shownDateTime(value.startAt)}${value.endAt ? ` ~ ${shownDateTime(value.endAt)}` : ''}`
 const scheduleType = (value: unknown) => choices.scheduleType.find(([key]) => key === value)?.[1] ?? plain(value)
@@ -140,7 +149,7 @@ export function correctionReflected(intended: CorrectionRow[], latest: Pick<Supp
 export function documentReflected(input: Pick<JsonUpdateInput, 'document' | 'fields' | 'schedules'>, latest: Pick<JsonWorkspace, 'detail' | 'events'>) {
   const at = (root: unknown, path: string) => path.split('.').reduce<unknown>((node, key) => typeof node === 'object' && node !== null ? (node as Record<string, unknown>)[key] : undefined, root)
   const same = (left: unknown, right: unknown) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
-  const fields = input.fields.every(field => same(at(latest.detail.data, field), at(input.document, field.startsWith('receptionPlace.') ? field : `announcement.${field}`)))
+  const fields = input.fields.every(field => same(at(latest.detail.data, field), at(input.document, field === 'receptionPlaces' ? field : `announcement.${field}`)))
   const keys = ['scheduleType', 'name', 'startAt', 'endAt']
   const schedules = input.schedules.every(selection => latest.events.some(event => (selection.existingId === null || event.id === selection.existingId)
     && keys.every(key => same(event.data[key], input.document.schedules[selection.inputIndex]?.[key]))))

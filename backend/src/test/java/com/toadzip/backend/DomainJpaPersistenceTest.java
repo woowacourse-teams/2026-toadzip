@@ -49,6 +49,7 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.List;
 
 @Transactional
 @DataJpaTest(showSql = false)
@@ -75,12 +76,7 @@ class DomainJpaPersistenceTest {
             "previous_announcement_id",
             "correction_cancellation_reason",
             "actual_competition_rate",
-            "predicted_competition_rate",
-            "reception_place_name",
-            "reception_method",
-            "reception_address",
-            "reception_contact",
-            "reception_url"
+            "predicted_competition_rate"
     })
     void 공고의_선택_컬럼은_null을_허용한다(String columnName) {
         Object isNullable = entityManager.createNativeQuery(
@@ -350,7 +346,7 @@ class DomainJpaPersistenceTest {
                 () -> assertEquals(userId, foundFavoriteRegion.getUser().getId()),
                 () -> assertEquals("11", foundFavoriteRegion.getProvinceCode()),
                 () -> assertEquals("11140", foundFavoriteRegion.getCityCountyDistrictCode()),
-                () -> assertNotNull(foundCorrectedAnnouncement.getReceptionPlace())
+                () -> assertEquals(1, foundCorrectedAnnouncement.getReceptionPlaces().size())
         );
     }
 
@@ -374,7 +370,7 @@ class DomainJpaPersistenceTest {
                 100L,
                 new BigDecimal("1.2500"),
                 new BigDecimal("2.5000"),
-                ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", "https://apply.lh.or.kr")
+                List.of(ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", "https://apply.lh.or.kr"))
         );
         entityManager.persist(announcement);
 
@@ -428,7 +424,8 @@ class DomainJpaPersistenceTest {
 
         Object[] storedCodes = (Object[]) entityManager.createNativeQuery(
                         """
-                        SELECT status, supply_type, recruitment_type, provider, reception_method
+                        SELECT status, supply_type, recruitment_type, provider,
+                            (SELECT method FROM announcement_reception_places WHERE announcement_id = :announcementId)
                         FROM announcements
                         WHERE id = :announcementId
                         """
@@ -448,9 +445,14 @@ class DomainJpaPersistenceTest {
                         """
                         UPDATE announcements
                         SET status = '정정공고', supply_type = '행복주택', recruitment_type = '신규모집',
-                            provider = '한국토지주택공사', reception_method = '인터넷'
+                            provider = '한국토지주택공사'
                         WHERE id = :announcementId
                         """
+                )
+                .setParameter("announcementId", announcement.getId())
+                .executeUpdate();
+        entityManager.createNativeQuery(
+                        "UPDATE announcement_reception_places SET method = '인터넷' WHERE announcement_id = :announcementId"
                 )
                 .setParameter("announcementId", announcement.getId())
                 .executeUpdate();
@@ -477,7 +479,7 @@ class DomainJpaPersistenceTest {
                 () -> assertEquals(RentalType.HAPPY_HOUSING, foundAnnouncement.getSupplyType()),
                 () -> assertEquals(RecruitmentType.NEW, foundAnnouncement.getRecruitmentType()),
                 () -> assertEquals(AgencyCode.LH, foundAnnouncement.getProvider()),
-                () -> assertEquals(ReceptionMethod.ONLINE, foundAnnouncement.getReceptionPlace().getMethod()),
+                () -> assertEquals(ReceptionMethod.ONLINE, foundAnnouncement.getReceptionPlaces().getFirst().getMethod()),
                 () -> assertEquals(new BigDecimal("1.2500"), foundAnnouncement.getActualCompetitionRate()),
                 () -> assertEquals(new BigDecimal("2.5000"), foundAnnouncement.getPredictedCompetitionRate()),
                 () -> assertEquals(ScheduleType.APPLICATION, foundSchedule.getScheduleType()),
@@ -500,7 +502,6 @@ class DomainJpaPersistenceTest {
             "announcements, supply_type",
             "announcements, recruitment_type",
             "announcements, provider",
-            "announcements, reception_method",
             "announcement_schedules, schedule_type",
             "announcement_attachments, file_type",
             "supply_rows, supply_category"
@@ -649,13 +650,13 @@ class DomainJpaPersistenceTest {
                 "https://example.com/announcements/" + sourceAnnouncementIdentifier,
                 correctionCancellationReason,
                 100L,
-                ReceptionPlace.create(
+                List.of(ReceptionPlace.create(
                         "LH 청약센터",
                         "인터넷",
                         null,
                         "1600-1004",
                         "https://apply.lh.or.kr"
-                )
+                ))
         );
     }
 

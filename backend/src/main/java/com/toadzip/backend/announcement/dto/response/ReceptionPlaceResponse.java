@@ -7,6 +7,7 @@ public record ReceptionPlaceResponse(
         ReceptionMethod method,
         String address,
         String phoneNumber,
-        String url
+        String url,
+        String guidance
 ) {
 }

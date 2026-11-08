@@ -350,7 +350,7 @@ it('기다리는 동안 추출 취소를 누르면 서버에서 작업을 끝내
   expect(screen.getByText('추출하지 못했습니다')).toBeVisible()
 })
 it('서버가 칸 경로로 거절하면 화면 칸 이름으로 알리고 그 칸이 있는 접수처·기본정보로 옮긴다', async () => {
-  api.previewJsonUpdate.mockRejectedValue(new ManagementError('receptionPlace.name: 필수 값입니다.', 400, {}, 'INVALID_REQUEST'))
+  api.previewJsonUpdate.mockRejectedValue(new ManagementError('receptionPlaces[0].name: 필수 값입니다.', 400, {}, 'INVALID_REQUEST'))
   await open()
   fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('접수처명: 필수 값입니다.')
@@ -903,8 +903,7 @@ it('같은 보정 요청을 다시 보내 409(ADMIN_DATA_CONFLICT)를 받으면 
   api.loadJsonWorkspace.mockImplementation(async () => {
     const data = structuredClone(workspace.detail.data) as Record<string, unknown>
     for (const field of sent!.fields) {
-      const [head, tail] = field.split('.')
-      if (tail) data[head] = { ...(data[head] as object | null), [tail]: (sent!.document.receptionPlace as Record<string, unknown>)[tail] }
+      if (field === 'receptionPlaces') data[field] = sent!.document.receptionPlaces
       else data[field] = sent!.document.announcement[field]
     }
     const events = sent!.schedules.map((selection, at) => ({ id: selection.existingId ?? 9000 + at, data: sent!.document.schedules[selection.inputIndex], complexName: null }))

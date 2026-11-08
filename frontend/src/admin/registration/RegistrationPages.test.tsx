@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AdminRegistrationApiError,
@@ -131,13 +131,14 @@ describe('분리된 단지·공고 등록 흐름', () => {
       applicationEndDate: '2026-08-14',
       winnerAnnouncementDate: '2026-09-01',
       originalUrl: 'https://example.com/announcement',
-      receptionPlace: {
+      receptionPlaces: [{
         name: 'LH 청약센터',
         method: 'ONLINE',
         address: null,
         contact: '1600-1004',
         url: null,
-      },
+        guidance: null,
+      }],
       supplyRow: {
         sourceComplexName: '원문 두꺼비 단지',
         sourceHousingTypeName: '36A',
@@ -190,6 +191,47 @@ describe('분리된 단지·공고 등록 흐름', () => {
     })
 
     expect(screen.getByRole('button', { name: '단지 검색' })).toBeEnabled()
+  })
+
+  it('접수처를 공고문 순서대로 여러 곳 넣고, 삭제한 접수처는 빼고 보내며 오류는 그 접수처 칸에 붙인다', async () => {
+    apiMocks.createHousingComplex.mockResolvedValue(housingResponse())
+    apiMocks.createAnnouncement.mockRejectedValue(new AdminRegistrationApiError(400, '요청값이 올바르지 않습니다.', {
+      'receptionPlaces[1].url': 'HTTP(S) URL이어야 합니다.',
+    }))
+    renderPages()
+    fillHousingForm()
+    submitWithButton('단지 저장')
+    fireEvent.click(await screen.findByRole('link', { name: '이 단지에 공고 입력 →' }))
+    await screen.findByText(/선택 단지:/)
+    fillAnnouncementForm()
+    expect(screen.getByRole('button', { name: '접수처 1 삭제' })).toBeDisabled()
+    expect(screen.getByLabelText('접수처 연락처')).not.toBeRequired()
+
+    fireEvent.click(screen.getByRole('button', { name: '접수처 추가' }))
+    fireEvent.click(screen.getByRole('button', { name: '접수처 추가' }))
+    const second = screen.getByRole('group', { name: '접수처 2' })
+    expect(within(second).getByLabelText('접수 방식')).toHaveValue('VISIT')
+    fireEvent.change(within(second).getByLabelText('접수처명'), { target: { value: '지울 접수처' } })
+    const third = screen.getByRole('group', { name: '접수처 3' })
+    fireEvent.change(within(third).getByLabelText('접수처명'), { target: { value: '두꺼비 주거복지지사' } })
+    fireEvent.change(within(third).getByLabelText('접수처 주소'), { target: { value: '서울시 중구 세종대로 1' } })
+    fireEvent.change(within(third).getByLabelText('접수처 안내'), { target: { value: '인터넷 취약계층만 현장 접수' } })
+    fireEvent.click(within(second).getByRole('button', { name: '접수처 2 삭제' }))
+
+    const moved = screen.getByRole('group', { name: '접수처 2' })
+    expect(within(moved).getByLabelText('접수처명')).toHaveValue('두꺼비 주거복지지사')
+    expect(screen.queryByRole('group', { name: '접수처 3' })).not.toBeInTheDocument()
+    submitWithButton('공고 저장')
+
+    expect(apiMocks.createAnnouncement).toHaveBeenCalledWith(expect.objectContaining({
+      receptionPlaces: [
+        { name: 'LH 청약센터', method: 'ONLINE', address: null, contact: '1600-1004', url: null, guidance: null },
+        { name: '두꺼비 주거복지지사', method: 'VISIT', address: '서울시 중구 세종대로 1', contact: null, url: null, guidance: '인터넷 취약계층만 현장 접수' },
+      ],
+    }))
+    await screen.findByRole('alert')
+    expect(within(screen.getByRole('group', { name: '접수처 2' })).getByLabelText('접수처 URL')).toHaveAttribute('aria-invalid', 'true')
+    expect(within(screen.getByRole('group', { name: '접수처 1' })).getByLabelText('접수처 URL')).not.toHaveAttribute('aria-invalid')
   })
 
   it('공고 저장 실패 시 입력값을 유지한다', async () => {
