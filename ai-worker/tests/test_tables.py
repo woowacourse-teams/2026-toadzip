@@ -128,8 +128,116 @@ def test_common_area_sub_header_that_mentions_exclusive_is_not_the_exclusive_are
     # 다른 주택형 열이 있으면 "공급형"은 보지 않는다. 뒤에 다른 낱말이 붙은 머리글은 주택형 열이 아니다.
     (["공급형", "주택형", "모집호수"], 1),
     (["공급형별 임대보증금", "공급대상", "모집호수"], None),
+    # 합계 줄 표기가 이어 붙은 머리글은 주택형 열이지만 '계약면적'처럼 '계'로 시작하는 낱말이 붙으면 아니다.
+    (["공급형별총계", "공급대상", "모집호수"], 0),
+    (["공급형별계약면적", "공급대상", "모집호수"], None),
 ])
 def test_supply_type_header_is_the_housing_type_only_without_another_type_column(header, expected):
     columns = tables.SupplyTable.of(1, 1, [header, ["26", "청년", "20"]], None, False).columns
 
     assert columns.get("housingType") == expected
+
+
+# 사천벌리1 임대조건표(2쪽)를 PyMuPDF가 읽은 모양. 신청자 묶음(가군·나군)이 금액 열을 나눠 덮는 병합 머리글이다.
+SACHEON_RENT_CELLS = [
+    ["공급형별 (㎡)", "가군(생계·의료급여수급자 등)", None, None, None, "나군(일반 등)", None, None, None],
+    [None, "임대보증금(원)", None, None, "월 임대료 (원)", "임대보증금(원)", None, None, "월 임대료 (원)"],
+    [None, "계", "계약금 (계약 시)", "잔금 (입주 시)", None, "계", "계약금 (계약 시)", "잔금 (입주 시)", None],
+    ["26", "2,520,000", "126,000", "2,394,000", "50,160", "7,648,000", "382,400", "7,265,600", "115,940"],
+    ["31", "2,993,000", "149,650", "2,843,350", "59,570", "8,692,000", "434,600", "8,257,400", "127,970"],
+]
+
+
+def test_money_columns_split_by_applicant_group_headers_are_read_per_group():
+    row = tables.SupplyTable.of(2, 1, SACHEON_RENT_CELLS, None, False).rows[3]
+
+    # 표 전체로는 보증금·월임대료 열이 둘씩이라 정하지 않고, 묶음마다 계 열(계약금·잔금 아님)과 월임대료 열을 읽는다.
+    assert row.values == {"housingType": "26"}
+    assert row.target_values == {
+        "가군(생계·의료급여수급자 등)": {"rentalDeposit": "2,520,000", "rentalDepositUnit": "원",
+                                "monthlyRent": "50,160", "monthlyRentUnit": "원"},
+        "나군(일반 등)": {"rentalDeposit": "7,648,000", "rentalDepositUnit": "원",
+                     "monthlyRent": "115,940", "monthlyRentUnit": "원"},
+    }
+
+
+@pytest.mark.parametrize("rows", [
+    SACHEON_SUPPLY_CELLS,
+    # 기본·최대 전환 조건은 신청자 묶음이 아니다. 두 칸이 덮는 금액 필드가 다르다.
+    [["주택형", "기본 임대조건", None, "최대 전환 시", None],
+     [None, "임대보증금", "월임대료", "임대보증금", "월임대료"],
+     ["26A", "10,000,000", "100,000", "20,000,000", "50,000"]],
+    # 금액 머리글 자체가 병합된 표(임대보증금 > 계·계약금·잔금)도 묶음이 아니다.
+    [["주택형", "임대보증금", None, None, "월임대료"],
+     [None, "계", "계약금", "잔금", None],
+     ["26A", "10,000,000", "500,000", "9,500,000", "100,000"]],
+])
+def test_tables_without_applicant_group_headers_have_no_group_values(rows):
+    assert all(not row.target_values for row in tables.SupplyTable.of(1, 1, rows, None, False).rows)
+
+
+def test_block_column_is_the_complex_name():
+    # 화성동탄2 리츠 공급표는 단지명 대신 첫 열 머리글이 '블록'이고 값이 '동탄2 A40BL'이다.
+    rows = [
+        ["블록", "최초 입주지정기간 종료일", "주택형", "세대당 주택면적(㎡)", None, "건설호수", "모집자수"],
+        [None, None, None, "주거전용", "주거공용", None, None],
+        ["동탄2 A40BL", "2017.04.14", "074.9900A", "74.99", "23.6028", "272", "2"],
+    ]
+
+    values = tables.SupplyTable.of(4, 2, rows, None, False).rows[2].values
+
+    assert values["complexName"] == "동탄2 A40BL"
+    assert values["housingType"] == "074.9900A"
+
+
+def test_supply_type_header_followed_by_the_total_row_label_is_the_housing_type():
+    # 대구연호 통합공공임대: 머리글 '공급형별' 아래 첫 줄이 '총계'라 머리글이 "공급형별총계"로 이어진다.
+    rows = [
+        ["공급형별", "세대당 계약면적(㎡)", None, "공급호수"],
+        [None, "주거전용", "주거공용", None],
+        ["총계", None, None, "522"],
+        ["31A", "31.86", "12.10", "262"],
+    ]
+
+    values = tables.SupplyTable.of(4, 1, rows, None, False).rows[3].values
+
+    assert values["housingType"] == "31A"
+
+
+def test_merged_complex_cell_names_every_row_it_spans():
+    # 화성동탄2 리츠: 블록 칸이 세로로 병합돼 아래 행은 칸이 비어(None) 있다. 병합 칸은 위 행 값과 같은 칸이다.
+    rows = [
+        ["블록", "주택형", "주거전용", "건설호수"],
+        ["동탄2 A40BL", "074.9900A", "74.99", "272"],
+        [None, "084.9600A", "84.96", "300"],
+        ["동탄2 A50BL", "051.9900A", "51.99", "238"],
+        ["", "059.6900A", "59.69", "278"],
+    ]
+
+    table = tables.SupplyTable.of(4, 2, rows, None, False)
+
+    assert [row.values.get("complexName") for row in table.rows[1:]] == ["동탄2 A40BL", "동탄2 A40BL", "동탄2 A50BL", None]
+
+
+def test_supply_area_parent_header_over_exclusive_and_common_columns_is_not_the_supply_area():
+    rows = [
+        ["블록", "주택형", "세대당 주택면적(㎡)", None, "건설호수"],
+        [None, None, "공급면적", None, None],
+        [None, None, "주거전용", "주거공용", None],
+        ["동탄2 A40BL", "074.9900A", "74.99", "23.6028", "272"],
+    ]
+
+    table = tables.SupplyTable.of(4, 2, rows, None, False)
+
+    assert table.rows[3].values["exclusiveArea"] == "74.99"
+    assert "supplyArea" not in table.rows[3].values
+
+
+def test_application_category_column_of_a_permanent_rental_rent_table_is_the_target():
+    # 홍성 영구임대: 임대조건표의 대상 열 머리글이 '적용구분'이고 값이 「가」군·「나」군이다.
+    rows = [
+        ["단지명", "주택형", "적용구분", "임대보증금", "월임대료"],
+        ["도청이전신도시 RH10-2BL", "26", "「가」군", "2,669,000", "53,120"],
+    ]
+
+    assert tables.SupplyTable.of(1, 2, rows, None, False).rows[1].values["target"] == "「가」군"

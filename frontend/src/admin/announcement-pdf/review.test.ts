@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { scenario, separateHansville } from './fixtures/workspace'
+import { ghFrame, ghSameArea, scenario, separateHansville } from './fixtures/workspace'
 import fixtures from './fixtures/scenarios.json'
 import { readExtraction } from './extraction'
 import { blankTarget } from '../supply/supplyCorrectionApi'
@@ -671,6 +671,30 @@ describe('공급행은 단지 × 전용면적 주택형 하나', () => {
       linkedHousingTypes: [{ newHousingType: { name: '26B', exclusiveArea: 26.1, supplyArea: null } }, { newHousingType: { name: '26C', exclusiveArea: 26.7, supplyArea: null } }] })
   })
 
+  it('입주 예정월을 일까지 적은 공고문 값(2020.10.19)은 연월(2020-10)로 읽는다', () => {
+    const { workspace, housing } = scenario('gongju')
+    workspace.supply.rows[0].exclusiveArea = 26.37
+    const row = { ...pdfRow('', '26', 26.37, 5, [target('일반')]), expectedMoveInMonth: '2020.10.19' }
+    const cell = createReview(extract([row]), workspace, housing).rows[0].cells.find(item => item.field === 'expectedMoveInMonth')!
+    expect(cell).toMatchObject({ value: '2020-10' })
+    expect(cell.state).not.toBe('invalid')
+  })
+
+  it('소득 유무 표기가 다른 대상(청년(소득無))은 통일한 표기(청년(소득 없음))로 저장한다', () => {
+    const { workspace, housing } = scenario('gongju')
+    workspace.supply.rows[0].exclusiveArea = 26.37
+    const review = createReview(extract([pdfRow('', '26', 26.37, 5, [target('청년(소득無)')])]), workspace, housing)
+    const saved = assembleReview(review, workspace, evidence).correction.rows.find(row => row.key === workspace.supply.rows[0].key)!
+    expect(saved.targets.map(item => item.target)).toContain('청년(소득 없음)')
+  })
+
+  it('공급 표에 단지명이 없어 PDF 단지명이 비어도 공고 단지가 하나뿐이면 그 단지의 같은 면적 공급행을 고친다', () => {
+    const { workspace, housing } = scenario('gongju')
+    workspace.supply.rows[0].exclusiveArea = 26.37
+    const review = createReview(extract([pdfRow('', '26', 26.37, null, [target('')])]), workspace, housing)
+    expect(review.rows[0].proposal).toMatchObject({ destination: workspace.supply.rows[0].key, needsConfirmation: false })
+  })
+
   it('같은 면적의 다른 표기(26A·26B(주거약자))는 주택형 하나라 세부 타입 없이 공급행 하나로 접고 표기는 이어 적는다', () => {
     const folded = foldSameHousingType(extract([pdfRow('A단지', '26A', 26.0100, 3, [target('일반')]), pdfRow('A단지', '26B(주거약자)', 26.01, 2, [target('주거약자')]),
       pdfRow('B단지', '26A', 26.01, 5, [target('일반')])]))
@@ -830,4 +854,72 @@ it('단지가 비어 있는 기존 공급행도 단지 정하기 안내와 같�
   workspace.supply.rows.forEach(row => { row.housingComplexId = null })
   review.rows[0].reviewed = true
   expect(pendingItems(review, true, workspace).map(item => item.id)).toContain('row:0')
+})
+
+it('GH가 청약구분·신청자마다 나눈 같은 전용면적 행 셋은 PDF 공급행 하나로 고치고, 나머지는 합쳐 제외하며 모집수는 세 행의 합으로 저장한다', () => {
+  const { review, workspace } = ghSameArea()
+  // 같은 면적 24.97㎡의 공고문 행 셋은 한 공급행이고, 워커가 행마다 맞춘 GH 틀 행 중 첫 행을 고친다.
+  expect(review.rows.map(row => [row.proposal.destination, row.proposal.supersedes, row.proposal.needsConfirmation])).toEqual([['row:911', ['row:912', 'row:913'], false]])
+  const count = review.rows[0].cells.find(cell => cell.field === 'totalSupplyHouseholdCount')!
+  expect([count.before, count.selected]).toEqual([26, false])
+  const rows = assembleReview(review, workspace, evidence).correction.rows
+  expect(rows.find(row => row.id === 911)).toMatchObject({ householdCount: 26, excluded: false })
+  expect(rows.filter(row => row.excluded).map(row => row.id)).toEqual([912, 913])
+  expect(rows.find(row => row.id === 911)!.targets.map(target => [target.target, target.reserveCount])).toEqual([['청년', 20], ['주거급여 수급자', 3], ['고령자', 3]])
+})
+
+it('합쳐지는 GH 행 중 모집수를 모르는 행이 있으면 합을 만들지 않고 모집수를 확인 필요로 둔다', () => {
+  const { read, workspace, housing } = ghSameArea()
+  workspace.supply.rows[2].householdCount = null
+  const review = createReview(read, workspace, housing)
+  const count = review.rows[0].cells.find(cell => cell.field === 'totalSupplyHouseholdCount')!
+  expect([count.before, count.state]).toEqual([20, 'confirm'])
+  expect(pendingItems(review, true, workspace).some(item => JSON.stringify(item).includes(count.path))).toBe(true)
+})
+
+it('PDF 모집수가 저장할 행의 지금 값과 같아도 합쳐지는 행의 합과 다르면 바뀜으로 고른다', () => {
+  const { read, workspace, housing } = ghSameArea()
+  // 공고문 모집수 합은 20(14·3·3)이고, 저장할 행 #911의 지금 값도 20이다. 합쳐지는 행까지 더한 지금 값은 26이다.
+  read.supplyRows.forEach((row, at) => { row.values.totalSupplyHouseholdCount = [14, 3, 3][at] })
+  read.evidence.push({ path: 'supplyRows[0].totalSupplyHouseholdCount', page: 4, quote: '24ABC 청년' })
+  const review = createReview(read, workspace, housing)
+  const count = review.rows[0].cells.find(cell => cell.field === 'totalSupplyHouseholdCount')!
+  expect([count.before, count.value, count.state, count.selected]).toEqual([26, 20, 'changed', true])
+})
+
+describe('GH 공급행 틀', () => {
+  it('면적이 다른 두 PDF 행은 워커가 맞춘 각자의 틀 행을 확인 없이 고치고 합칠 행이 없다', () => {
+    const { review, workspace } = ghFrame({ sourceRow: true })
+    expect(review.rows.map(row => [row.proposal.destination, row.proposal.supersedes, row.proposal.needsConfirmation])).toEqual([['row:901', undefined, false], ['row:902', undefined, false]])
+    const rows = assembleReview(review, workspace, evidence).correction.rows
+    expect(rows.map(row => [row.id, row.householdCount, row.excluded])).toEqual([[901, 20, false], [902, 10, false]])
+  })
+
+  it('PDF 단지명이 틀 행의 단지와 다르면 틀 행을 고르되 확인을 받는다', () => {
+    const { read, workspace, housing } = ghFrame({ sourceRow: true })
+    read.supplyRows[0].complexName = '영통'
+    expect(createReview(read, workspace, housing).rows[0].proposal).toMatchObject({ destination: 'row:901', needsConfirmation: true })
+  })
+
+  it('작업실에 없는 틀 행 키와 다른 PDF 행이 이미 고른 틀 행은 쓰지 않는다', () => {
+    const { read, workspace, housing } = ghFrame({ sourceRow: true })
+    read.supplyRows[0].values.sourceRow = 'GH:801:수원 광교:없는형'
+    read.supplyRows[1].values.sourceRow = 'GH:801:수원 광교:36A'
+    const proposals = createReview(read, workspace, housing).rows.map(row => row.proposal.destination)
+    // 첫 행은 틀이 없어 면적으로 고르고(틀 행에는 면적이 없어 새 공급정보), 둘째 행은 #901 틀을 고른다.
+    expect(proposals).toEqual(['new', 'row:901'])
+    read.supplyRows[0].values.sourceRow = 'GH:801:수원 광교:36A'
+    expect(createReview(read, workspace, housing).rows.map(row => row.proposal.destination)).toEqual(['row:901', 'new'])
+  })
+})
+
+it('대상 예비자 수만 여러 면적 행에 걸치면 행마다 모집수가 없을 때만 한 공급행으로 접는다', () => {
+  const { read } = ghSameArea()
+  read.supplyRows[1].values.exclusiveArea = 36.5
+  const shared = { ...read, sharedCounts: [{ paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[1].targets[0].reserveCount'], count: 23, page: 4, quote: '24ABC 24B 23' }] }
+  expect(foldSameHousingType(shared).supplyRows.map(row => row.typeName)).toEqual(['24ABC·24B·24C'])
+  // 행마다 자기 모집수가 있으면 면적이 다른 행은 그대로 둔다(대상 수만 함께 쓴다).
+  shared.supplyRows[0].values.totalSupplyHouseholdCount = 20
+  shared.supplyRows[1].values.totalSupplyHouseholdCount = 3
+  expect(foldSameHousingType(shared).supplyRows.map(row => row.typeName)).toEqual(['24ABC·24C', '24B'])
 })

@@ -81,6 +81,7 @@ const targetKeys = ['target', 'rentalDeposit', 'monthlyRent', 'convertedDeposit'
 const sameTarget = (left: JsonObject, right: JsonObject) => targetKeys.every(field => JSON.stringify(left[field] ?? null) === JSON.stringify(right[field] ?? null))
 const sum = (values: unknown[]) => values.every(value => typeof value === 'number') ? (values as number[]).reduce((total, value) => total + value, 0) : null
 const rowTotal = /^supplyRows\[(\d+)\]\.totalSupplyHouseholdCount$/
+const rowOf = /^supplyRows\[(\d+)\]/
 const complexOf = (row: ExtractedRow) => row.complexName?.trim() || ''
 const typeFields: Record<string, string> = { '.sourceHousingTypeName': '.name', '.exclusiveArea': '.exclusiveArea', '.supplyArea': '.supplyArea', '.commonArea': '.supplyArea', '.constructedHouseholdCount': '.constructedHouseholdCount' }
 
@@ -100,9 +101,14 @@ export function foldSameHousingType(extraction: Extraction): Extraction {
   source.forEach((row, left) => source.forEach((other, right) => {
     if (left < right && complexOf(row) === complexOf(other) && [...areas[left]].some(key => areas[right].has(key))) join(left, right)
   }))
+  // 공고문이 여러 행에 걸쳐 한 번만 적은 모집수는 그 행들이 한 공급행이라는 뜻이다(면적이 달라도 세부 타입으로 접는다, 결정 1).
+  // 대상 예비자 수만 여러 행에 걸친 경우는 행마다 자기 모집수·대상 공급 수가 없을 때만이다(GH 예비자 모집). 따로 있으면 행은 그대로 둔다.
   for (const group of extraction.sharedCounts) {
-    const indexes = group.paths.map(path => rowTotal.exec(path)?.[1]).map(Number)
+    const indexes = [...new Set(group.paths.map(path => rowOf.exec(path)?.[1]).map(Number))]
     if (indexes.length < 2 || indexes.some(index => !Number.isInteger(index) || !source[index])) continue
+    const rowCount = group.paths.every(path => rowTotal.test(path))
+    if (!rowCount && indexes.some(index => typeof source[index].values.totalSupplyHouseholdCount === 'number'
+      || source[index].targets.some(target => typeof target.supplyHouseholdCount === 'number'))) continue
     if (indexes.every(index => complexOf(source[index]) === complexOf(source[indexes[0]]))) indexes.forEach(index => join(indexes[0], index))
   }
   const members = new Map<number, number[]>()
@@ -139,9 +145,11 @@ export function foldSameHousingType(extraction: Extraction): Extraction {
       constructedHouseholdCount: sum(counts) }))
     const names = [...new Set(indexes.map(index => withoutTrailingParentheses(source[index].typeName ?? '')).filter(Boolean))]
     const typeName = names.join('·') || null, single = subtypes.length === 1 ? subtypes[0] : null
+    // 접은 행마다 워커가 맞춘 원천 공급행 틀(GH)이 따로 있으면 모두 남겨, 저장할 때 한 행을 고치고 나머지는 합친다.
+    const sourceRows = [...new Set(indexes.map(index => source[index].values.sourceRow).filter((value): value is string => typeof value === 'string'))]
     indexes.forEach(index => { places[index].grouped = !single })
     rows.push({ ...first, typeName, subtypes: single ? [] : subtypes, targets,
-      values: { ...first.values, sourceHousingTypeName: typeName, totalSupplyHouseholdCount: foldedCount(extraction, indexes), commonArea: null,
+      values: { ...first.values, sourceRow: sourceRows[0] ?? null, sourceRows, sourceHousingTypeName: typeName, totalSupplyHouseholdCount: foldedCount(extraction, indexes), commonArea: null,
         exclusiveArea: single?.exclusiveArea ?? null, supplyArea: single?.supplyArea ?? null, constructedHouseholdCount: single?.constructedHouseholdCount ?? null } })
   }
   const remap = (path: string): string[] => {

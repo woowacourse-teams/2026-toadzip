@@ -9,7 +9,7 @@ import re
 from ai_worker import checks, pages
 from ai_worker.checks import deduplicate
 from ai_worker.source_check import (
-    check_source_rows, normalize_source_text, numeric_cell_matches, source_row_map, source_texts,
+    check_source_rows, normalize_source_text, numeric_cell_matches, source_row_map, source_texts, target_cells,
 )
 
 
@@ -82,11 +82,23 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
                 "constructedHouseholdCount": _compact_number(
                     subtype.get("constructedHouseholdCount"), "constructedHouseholdCount") if subtype_supported else None,
             }
-            subtype_index = next((i for i, value in enumerate(group["subtypes"])
-                                  if value["name"] == subtype_name), len(group["subtypes"]))
             subtype_rows = [selected.supply_row_values.get(row_id, {}) for row_id in row_ids
                             if normalize_source_text(selected.supply_row_values.get(row_id, {}).get("housingType", ""))
                             == normalize_source_text(subtype_name)]
+            labeled = _labeled_areas(row_ids, selected)
+            label = _subtype_label(subtype_name, housing_type)
+            if not subtype_rows and label in labeled:
+                # 공급표가 세부 주택형 면적을 한 칸에 "(A)36.02 (B)36.19"로 적은 행이다. 그 칸의 표시로 면적을 확인한다.
+                if clean_subtype["exclusiveArea"] is None:
+                    clean_subtype["exclusiveArea"] = labeled[label]
+                subtype_rows = [{"exclusiveArea": str(labeled[label])}]
+                # 모델이 세부 주택형을 A·B로만 적으면 행 형명의 숫자를 붙여 단지 주택형 이름(36A)으로 쓴다.
+                if re.fullmatch(r"[A-Za-z]", subtype_name):
+                    base = re.match(r"\s*(\d+)", housing_type or "")
+                    if base:
+                        subtype_name = clean_subtype["name"] = base.group(1) + subtype_name.upper()
+            subtype_index = next((i for i, value in enumerate(group["subtypes"])
+                                  if value["name"] == subtype_name), len(group["subtypes"]))
             for field in ("exclusiveArea", "commonArea", "constructedHouseholdCount"):
                 value = clean_subtype[field]
                 if value is not None and not any(
@@ -136,10 +148,29 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
                                    "reason": "이번 공고의 예비자 모집수를 표에서 확인하지 못함"})
             unresolved.extend({"path": f"supplyRows[{group_index}].targets[{target_index}].{finding['field']}",
                                "reason": finding["reason"]} for finding in findings if finding["field"] in target_values)
+            # 모델이 같은 표 행을 두 번 쓰면 값이 모두 같은 대상이 겹친다. 하나로 두고 원문 행만 합친다.
+            # 원문에서 확인하지 못해 비운 대상명은 모델이 쓴 이름(가군·나군)이 다르면 다른 대상이다.
+            identity = (_compact_string(item.get("target")),
+                        tuple(sorted((key, str(value)) for key, value in target_values.items() if key != "rowIds")))
+            identities = group.setdefault("targetIdentities", [])
+            same = identities.index(identity) if identity in identities else None
+            # 같은 표 행을 반복한 경우만 합친다. 원문 행이 다르면 이름·값이 같아도 다른 대상(다른 동·층)일 수 있다.
+            if same is not None and not group["targets"][same]["rowIds"] & target_values["rowIds"]:
+                same = None
+            if same is not None:
+                group["targets"][same]["rowIds"].update(target_values["rowIds"])
+                unresolved[unresolved_start:] = [finding for finding in unresolved[unresolved_start:]
+                                                  if f".targets[{target_index}]" not in finding["path"]]
+                compact_paths[item_index] = (group_index, same)
+                continue
             group["targets"].append(target_values)
+            identities.append(identity)
             compact_paths[item_index] = (group_index, target_index)
         else:
             compact_paths[item_index] = (group_index, None)
+
+    for group in groups:
+        _area_from_source_cells(group, selected)
 
     supply_rows = []
     source_rows = []
@@ -241,9 +272,92 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
     # 문자열·수치는 동일 의미의 머리글 열에서 확인할 수 있을 때만 유지한다.
     row_source_map = source_row_map(source_rows)
     warnings = check_source_rows(supply_rows, row_source_map, selected.supply_row_text, evidence,
-                                 tree["data"]["unresolvedFields"], selected.supply_row_values)
+                                 tree["data"]["unresolvedFields"], selected.supply_row_values,
+                                 selected.supply_row_target_values)
     tree["data"]["unresolvedFields"] = deduplicate(tree["data"]["unresolvedFields"])
+    for index, row in enumerate(supply_rows):
+        _all_applicants_when_no_target_column(index, row, source_by_path, selected, tree["data"]["unresolvedFields"])
     return tree, warnings
+
+
+_LABELED_AREA = re.compile(r"\(\s*([A-Za-z0-9]+)\s*\)\s*(\d+(?:\.\d+)?)")
+
+
+def _labeled_areas(row_ids: list[str], selected: pages.PromptPages) -> dict[str, float]:
+    """한 칸에 세부 주택형 면적을 "(A)36.02 (B)36.19"처럼 적은 전용면적 칸의 표시별 면적."""
+    areas: dict[str, float] = {}
+    for row_id in row_ids:
+        cell = selected.supply_row_values.get(row_id, {}).get("exclusiveArea", "")
+        for match in _LABELED_AREA.finditer(str(cell)):
+            areas[match.group(1).upper()] = float(match.group(2))
+    return areas
+
+
+def _subtype_label(name: str, housing_type: str | None) -> str:
+    """세부 주택형 이름의 면적 칸 표시. 36A·A·(A) 모두 A다."""
+    label = re.sub(r"[()\s]", "", name).upper()
+    base = re.match(r"\s*(\d+)", housing_type or "")
+    if base and label.startswith(base.group(1)) and len(label) > len(base.group(1)):
+        label = label[len(base.group(1)):]
+    return label
+
+
+def _area_from_source_cells(group: dict, selected: pages.PromptPages) -> None:
+    """모델이 전용면적을 빠뜨린 공급행은 그 행이 가리키는 원문 표 칸의 전용면적이 하나로 정해지면 그 값을 쓴다.
+    공급행을 (단지, 전용면적)으로 기존 공급행·주택형에 잇기 때문에 면적이 비면 관리자가 직접 맞춰야 한다.
+    세부 주택형 묶음 행과, 같은 행에서 값이 서로 달라 비운 면적(None)은 채우지 않는다."""
+    if group["subtypes"] or "exclusiveArea" in group["rowValues"]:
+        return
+    areas = set()
+    wanted = normalize_source_text(group["housingType"] or "")
+    for row_id in group["rowIds"]:
+        values = selected.supply_row_values.get(row_id, {})
+        # 단지명만 이어받으려고 가리킨 위 행처럼 다른 주택형이 적힌 행의 면적은 이 공급행의 면적이 아니다.
+        if wanted and values.get("housingType") and normalize_source_text(values["housingType"]) != wanted:
+            continue
+        cell = values.get("exclusiveArea", "")
+        try:
+            areas.add(float(str(cell).replace(",", "").strip()))
+        except ValueError:
+            continue
+    if not areas and group["housingType"]:
+        # 모델이 임대조건표 행만 가리키면 그 행에는 면적 칸이 없다. 공급표에서 형명이 같은 행의 면적이 하나면 그 값이다.
+        # 그 행 ID를 공급행 원문 행에 더해야 뒤의 원문 대조가 면적을 지우지 않는다.
+        found = {}
+        complex_name = normalize_source_text(group["complexName"] or "")
+        for row_id, values in selected.supply_row_values.items():
+            # 다단지 공고에서 다른 단지의 같은 형명 행 면적을 가져오지 않는다. 단지명 칸이 있는 행은 같은 단지만 본다.
+            if complex_name and values.get("complexName") and normalize_source_text(values["complexName"]) != complex_name:
+                continue
+            if normalize_source_text(values.get("housingType", "")) == wanted:
+                try:
+                    found[row_id] = float(str(values.get("exclusiveArea", "")).replace(",", "").strip())
+                except ValueError:
+                    continue
+        if len(set(found.values())) == 1:
+            group["rowIds"].update(found)
+            areas = set(found.values())
+    if len(areas) == 1:
+        group["rowValues"]["exclusiveArea"] = areas.pop()
+
+
+def _all_applicants_when_no_target_column(index: int, row: dict, source_by_path: dict[str, set[str]],
+                                          selected: pages.PromptPages, unresolved: list[dict]) -> None:
+    """공급표·임대조건표에 공급대상 열이 없는 행은 신청자 구분이 없는 행이다. 대상이 하나면 모델이 지어낸 이름(일반) 대신
+    LH 정제가 같은 행에 쓰는 '전체'로 두고 미확인으로 남기지 않는다. 대상 열이 있는데 확인하지 못한 이름은 그대로 비워 둔다.
+    원문 대조가 끝난 뒤에 정한다. '전체'는 원문 칸에 없는 값이라 대조하면 다시 지워지기 때문이다."""
+    if len(row["targets"]) != 1 or row["targets"][0]["target"]:
+        return
+    path = f"supplyRows[{index}].targets[0]"
+    row_ids = source_by_path.get(f"supplyRows[{index}]", set()) | source_by_path.get(path, set())
+    # 입력 표에 없는 행 ID만 가진 항목은 표 구조를 모르므로 대상 열이 없다고 볼 수 없다. 금액 열을 신청자 묶음(가군·나군)으로
+    # 나눈 표도 대상이 있는 표다.
+    if not row_ids or any(row_id not in selected.supply_row_values for row_id in row_ids) \
+            or any("target" in selected.supply_row_values[row_id] or selected.supply_row_target_values.get(row_id)
+                   for row_id in row_ids):
+        return
+    row["targets"][0]["target"] = "전체"
+    unresolved[:] = [finding for finding in unresolved if finding["path"] != f"{path}.target"]
 
 
 def _group_name(verified: str | None, candidate: object, field: str, row_ids: list[str],
@@ -264,7 +378,7 @@ def _group_name(verified: str | None, candidate: object, field: str, row_ids: li
 def _compact_source_text(candidate: object, field: str, row_ids: list[str], selected: pages.PromptPages,
                          path: str, unresolved: list[dict], missing_value: str | None,
                          required: bool = True) -> str | None:
-    source_values = source_texts(field, row_ids, selected.supply_row_values)
+    source_values = source_texts(field, row_ids, selected.supply_row_values, selected.supply_row_target_values)
     if isinstance(candidate, str) and candidate.strip():
         matched = next((value for value in source_values
                         if normalize_source_text(value) == normalize_source_text(candidate)), None)
@@ -356,7 +470,8 @@ def _value_evidence(path: str, values: dict, fields: tuple[str, ...], row_ids: l
     for field in fields:
         if values.get(field) is None:
             continue
-        cells = {row_id: selected.supply_row_values.get(row_id, {}) for row_id in row_ids}
+        cells = {row_id: target_cells(values.get("target"), row_id, selected.supply_row_values,
+                                      selected.supply_row_target_values) for row_id in row_ids}
         ids = [row_id for row_id, cell in cells.items() if cell.get(field)]
         # 이름을 이어받으려고 넣은 다른 줄(예: 소득 없음 줄)도 같은 열에 값이 있어, 값이 실제로 맞는 줄을 먼저 쓴다.
         matching = [row_id for row_id in ids if numeric_cell_matches(values[field], cells[row_id][field], field,
@@ -384,13 +499,32 @@ def _compact_evidence(path: str, row_ids: list[str], selected: pages.PromptPages
 
 
 def _normalize_source_display(value: str, field: str) -> str:
-    """PDF 줄바꿈 때문에 대상 이름 괄호 주변에 생긴 추출 공백만 정리한다."""
+    """PDF 줄바꿈 때문에 대상 이름 괄호 주변에 생긴 추출 공백을 정리하고, 소득 유무 표기를 하나로 맞춘다."""
     if field != "target":
         return value
     value = re.sub(r"\s+", " ", value).strip()
     value = re.sub(r"\s+\(", "(", value)
     value = re.sub(r"\(\s+", "(", value)
-    return re.sub(r"\s+\)", ")", value)
+    return canonical_target(re.sub(r"\s+\)", ")", value))
+
+
+_INCOME = re.compile(r"^(?P<base>.*?)[\s(]*소득\s*\(?\s*(?P<mark>無|有|없음|있음|무|유|×|✕|[xX]|○|◯|[oO])\s*\)?\s*\)?$")
+_INCOME_NONE = {"無", "없음", "무", "×", "✕", "x", "X"}
+
+
+def canonical_target(name: str) -> str:
+    """소득 유무로 나눈 공급대상 이름을 `청년(소득 없음)`·`청년(소득 있음)`으로 맞춘다(사용자 결정: 소득 유무로 나뉘면 대상이 둘).
+    공고마다 소득無·소득(×)·소득 X처럼 달라 단지에 쌓이는 대상 이름이 갈리기 때문이다. 다른 이름은 그대로 둔다."""
+    # 가운뎃점은 공고마다 다른 문자(·․‧・･ㆍ)와 띄어쓰기로 적어(신혼부부․ 한부모가족) 붙여 쓴 ·로 맞춘다.
+    name = re.sub(r"\s*[·․‧・･ㆍ]\s*", "·", name.strip())
+    # 영구임대 대상 표기도 공고마다 「가」군·가군으로 달라 낫표를 뗀다.
+    name = re.sub(r"[「」『』]", "", name)
+    match = _INCOME.match(name)
+    if not match:
+        return name
+    label = "소득 없음" if match["mark"] in _INCOME_NONE else "소득 있음"
+    base = match["base"].strip()
+    return f"{base}({label})" if base else label
 
 
 def add_complex_name(names: list[str], name: object) -> None:

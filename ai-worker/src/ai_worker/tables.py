@@ -5,7 +5,7 @@
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pymupdf
 
@@ -21,7 +21,9 @@ _AREA_CELL = re.compile(r"\d{2,3}\.\d{2,4}")
 _MONEY_CELL = re.compile(r"\d{1,3}(?:,\d{3})+")
 _TABLE_HEADER = re.compile(r"단지명|공급형|주택형|공급대상|공급계층|청약구분|전용|임대조건|임대보증금|월임대료")
 # 머리글 줄 뒤에 데이터 줄 글자(26·31)가 이어 붙을 수 있어 앞에서부터 보고, 뒤에 한글 낱말이 붙은 "공급형별 임대보증금" 같은 열은 뺀다.
-_HOUSING_TYPE_FALLBACK = re.compile(r"공급형별?(?:\([^)]*\))?(?![가-힣])")
+# 다만 합계 줄 표기(총계·합계·계)가 머리글에 이어 붙은 "공급형별총계"는 주택형 열이다(대구연호 통합공공임대).
+_HOUSING_TYPE_FALLBACK = re.compile(r"공급형별?(?:\([^)]*\))?(?:(?:총계|합계|소계|계)(?![가-힣])|(?![가-힣]))")
+_MONEY_FIELDS = ("rentalDeposit", "monthlyRent", "convertedDeposit")
 # 오른쪽 하위 열까지 덮는 병합 머리글. 하위 열 이름만으로는 뜻이 모호하다(최소·최대 보증금, 계약면적·주거 아래 전용).
 _PARENT_HEADER = re.compile(r"최소|최대|전환|증액|계약면적|^주거$")
 _TABLE_HEADER_CELL = re.compile(
@@ -39,6 +41,8 @@ class TableRow:
     text: str
     # 머리글에서 바로 확인한 필드별 원문 셀
     values: dict[str, str]
+    # 금액 열이 신청자 묶음(가군·나군) 머리글로 나뉜 표에서 묶음 이름별 금액 칸. 대상 이름이 묶음 이름이면 이 칸과 대조한다.
+    target_values: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -57,7 +61,7 @@ class SupplyTable:
         """셀에서 열 역할과 행 값을 읽어 공급표를 만든다. 머리글에서 열 역할을 찾지 못하면 inherited_columns를 쓴다."""
         columns = _table_field_columns(cells) or inherited_columns or {}
         rows = [TableRow(source_row_id(page, number, index), "\t".join(cell or "" for cell in row),
-                         _table_row_field_values(cells, index - 1, columns))
+                         _table_row_field_values(cells, index - 1, columns), _row_target_group_values(cells, index - 1))
                 for index, row in enumerate(cells, 1)]
         return cls(page, number, cells, columns, ambiguous, rows)
 
@@ -77,9 +81,11 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
     column_count = max((len(row) for row in rows), default=0)
     header_rows = rows[:min(row_index if row_index is not None else 6, 6)]
     fields = {
-        "complexName": lambda header: bool(re.search(r"단지명", header)),
+        # 리츠·통합공공임대 공급표는 단지명 대신 첫 열을 '블록'(동탄2 A40BL)이나 '단지'·'지구'로 둔다.
+        "complexName": lambda header: bool(re.search(r"단지명|^(?:블록|단지|지구)(?!.*(?:면적|형|호수))", header)),
         "housingType": lambda header: bool(re.search(r"청약구분|주택형|공급유형", header)),
-        "target": lambda header: bool(re.search(r"공급대상|공급계층|청약대상", header)),
+        # 영구임대 임대조건표는 대상 열을 '적용구분'(「가」군·「나」군)으로 둔다.
+        "target": lambda header: bool(re.search(r"공급대상|공급계층|청약대상|적용\s*구분", header)),
         "reserveCount": lambda header: bool(re.search(r"예비(?:입주자)?", header))
             and not re.search(r"잔여|기존|현재|대기", header),
         "supplyHouseholdCount": lambda header: bool(re.search(r"당첨(?:자|인원|호수)", header)),
@@ -93,7 +99,8 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
             or (re.search(r"(?:계약면적|주거).*전용", header) and not re.search(r"공용", header))
         ),
         "commonArea": lambda header: bool(re.search(r"주거공용", header)),
-        "supplyArea": lambda header: bool(re.search(r"공급면적", header)),
+        # "공급면적 > 주거전용·주거공용"처럼 공급면적이 상위 병합 머리글이면 하위 열은 전용·공용이지 공급면적 합이 아니다.
+        "supplyArea": lambda header: bool(re.search(r"공급면적", header) and not re.search(r"전용|공용", header)),
         "constructedHouseholdCount": lambda header: bool(re.search(r"건설(?:호수|세대수)|주택형별세대수", header)),
         "totalHouseholdCount": lambda header: bool(re.search(r"총세대수|전체세대수", header)),
         # 단지 소재지 열. 접수처·견본주택 위치는 단지 주소가 아니다.
@@ -171,21 +178,83 @@ def _table_row_field_values(rows: list[list[str | None]], row_index: int,
     if not rows or row_index < 0 or row_index >= len(rows):
         return {}
     row = rows[row_index]
-    nonempty = [cell for cell in row if cell and cell.strip()]
-    if nonempty and all(_TABLE_HEADER_CELL.search(_compact(cell)) for cell in nonempty):
+    if _is_header_row(row):
         return {}
     columns = _table_field_columns(rows, row_index)
     for name, column in (inherited_columns or {}).items():
         columns.setdefault(name, column)
     values = {name: row[column] for name, column in columns.items() if column < len(row) and row[column]}
-    headers = table_column_headers(rows[:min(row_index, 6)], max(map(len, rows)))
-    for field in ("rentalDeposit", "monthlyRent", "convertedDeposit"):
-        column = columns.get(field)
-        if column is not None and field in values:
+    # 단지명 칸이 세로로 병합되면 아래 행 칸은 None이다(실제 빈칸은 ''). 병합 칸은 위 행 값과 같은 칸이라 이어받는다.
+    column = columns.get("complexName")
+    if column is not None and "complexName" not in values and column < len(row) and row[column] is None:
+        merged = _merged_value_above(rows, row_index, column)
+        if merged:
+            values["complexName"] = merged
+    _add_money_units(values, columns, table_column_headers(rows[:min(row_index, 6)], max(map(len, rows))))
+    return values
+
+
+def _merged_value_above(rows: list[list[str | None]], row_index: int, column: int) -> str | None:
+    """세로 병합 칸의 값. 위로 올라가며 None이 아닌 첫 칸을 찾고, 머리글 줄이나 실제 빈칸을 만나면 값이 없다."""
+    for above in range(row_index - 1, -1, -1):
+        cell = rows[above][column] if column < len(rows[above]) else ""
+        if cell is None:
+            continue
+        if _is_header_row(rows[above]) or not cell.strip():
+            return None
+        return cell
+    return None
+
+
+def _is_header_row(row: list[str | None]) -> bool:
+    nonempty = [cell for cell in row if cell and cell.strip()]
+    return bool(nonempty) and all(_TABLE_HEADER_CELL.search(_compact(cell)) for cell in nonempty)
+
+
+def _add_money_units(values: dict[str, str], columns: dict[str, int], headers: list[str]) -> None:
+    for name in _MONEY_FIELDS:
+        column = columns.get(name)
+        if column is not None and name in values:
             unit = re.search(r"만원|천원|원", headers[column])
             if unit:
-                values[f"{field}Unit"] = unit.group()
-    return values
+                values[f"{name}Unit"] = unit.group()
+
+
+def _row_target_group_values(rows: list[list[str | None]], row_index: int) -> dict[str, dict[str, str]]:
+    """금액 열을 신청자 묶음(가군·나군, 우선·일반)으로 나눈 병합 머리글이 있으면 행의 묶음별 금액 칸을 읽는다.
+    같은 머리글 줄의 병합 칸 둘 이상이 저마다 같은 금액 필드를 한 열씩 덮을 때만 묶음으로 본다.
+    보증금은 묶음 안에서도 계 열만 임대보증금으로 읽힌다(계약금·잔금 열은 임대보증금 머리글이 아니다)."""
+    if row_index <= 0 or row_index >= len(rows) or _is_header_row(rows[row_index]):
+        return {}
+    row = rows[row_index]
+    header_rows = rows[:min(row_index, 6)]
+    column_count = max(map(len, rows))
+    for cells in header_rows:
+        groups = []
+        for start, label in enumerate(cells[:column_count]):
+            end = start + 1
+            while end < min(len(cells), column_count) and cells[end] is None:
+                end += 1
+            # 금액 머리글 자체가 병합된 칸(임대보증금 > 계·계약금·잔금)과 기본·최대 전환 같은 조건 구분은 신청자 묶음이 아니다.
+            if (not label or not label.strip() or end - start < 2
+                    or re.search(r"보증금|임대료", _compact(label)) or _PARENT_HEADER.search(_compact(label))):
+                continue
+            # 묶음이 덮는 열의 머리글만으로 묶음 안의 열 역할을 정한다.
+            sub_rows = [header[start:end] for header in header_rows]
+            columns = {name: start + column for name, column in _table_field_columns(sub_rows).items()
+                       if name in _MONEY_FIELDS}
+            if columns:
+                groups.append((_WHITESPACE.sub(" ", label).strip(), columns,
+                               [""] * start + table_column_headers(sub_rows, end - start)))
+        if len(groups) >= 2 and all(columns.keys() == groups[0][1].keys() for _, columns, _ in groups):
+            result = {}
+            for label, columns, headers in groups:
+                values = {name: row[column] for name, column in columns.items() if column < len(row) and row[column]}
+                _add_money_units(values, columns, headers)
+                if values:
+                    result[label] = values
+            return result
+    return {}
 
 
 @dataclass(frozen=True)

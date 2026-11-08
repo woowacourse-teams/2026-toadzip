@@ -86,7 +86,7 @@ const addressKey = (value: unknown) => (text(value) ?? '').normalize('NFKC').rep
  * PDF 단지명이 가리키는 원천 단지명(공고 단지 이름). 이름이 포함 관계면 그 이름들이다.
  * 이름으로 찾지 못하면 공고문 블록 번호(동탄2 A40BL ↔ 화성동탄2A-40(공임리츠) A-40)와 공고문 단지 주소 ↔ 공고 단지 주소로 찾는다.
  * 둘 다 있으면 둘이 함께 가리키는 공고 단지여야 하고, 후보가 하나일 때만 정한다.
- * certain은 이름이나 블록 번호·주소가 함께 맞았는지다. 한쪽만 맞았으면 화면에서 대응을 확인하게 한다.
+ * certain은 이름이나 블록 번호가 맞았는지다. 주소만 맞았으면 화면에서 대응을 확인하게 한다.
  */
 export function sourceComplexNames(extraction: Extraction, pdfName: string | null, names: string[], complexes: Pick<AnnouncementComplex, 'name' | 'roadAddress'>[] = []) {
   const byName = names.filter(name => sameComplex(pdfName, name))
@@ -95,7 +95,12 @@ export function sourceComplexNames(extraction: Extraction, pdfName: string | nul
   const byBlock = block ? names.filter(name => blockKey(name) === block) : []
   const byAddress = address ? names.filter(name => addressKey(complexes.find(item => item.name === name)?.roadAddress) === address) : []
   const matched = byBlock.length && byAddress.length ? byBlock.filter(name => byAddress.includes(name)) : byBlock.length ? byBlock : byAddress
-  return matched.length === 1 ? { names: matched, certain: byBlock.length > 0 && byAddress.length > 0 } : { names: [], certain: false }
+  // 블록 번호(A40)는 한 공고 안에서 단지를 가르는 번호라, 공고 단지 하나에만 맞으면 주소 표기가 달라도(지번·도로명) 그 단지다.
+  // 주소만 맞은 경우는 같은 주소에 단지가 여럿일 수 있어 확인하게 한다.
+  // 블록 번호를 뗀 PDF 이름의 나머지(동탄2)가 공고 단지 이름에도 있어야 한다. 여러 지구 공고에서 다른 지구의 같은 블록 번호에 붙지 않게.
+  const district = normalizedName((text(pdfName) ?? '').replace(/(?<![a-z])[a-z]-?\d{1,3}(?:bl|블록|블럭)?/gi, ''))
+  const sameDistrict = matched.length === 1 && (!district || normalizedName(matched[0]).includes(district))
+  return matched.length === 1 ? { names: matched, certain: byBlock.length > 0 && sameDistrict } : { names: [], certain: false }
 }
 export function normalizedName(value: unknown) {
   return (text(value) ?? '').normalize('NFKC').toLowerCase().replace(/형|[\s·,]/g, '')
@@ -139,13 +144,39 @@ const byDisplayOrder = (left: CorrectionRow, right: CorrectionRow) => left.displ
  * 옛 공통 모집 묶음 행도 겹치면 제외하고, 묶음 전체가 이 행에 합쳐지면 저장할 행이 묶음에서 빠진다(leavesGroup). 겹치는 행이 없으면 마이홈 '아파트' 통합행 하나만 모집수로 이어받고,
  * 그 밖에는 새 공급행이다.
  */
-export function chooseDestination(row: ExtractedRow, related: CorrectionRow[], used: Set<string>, housing: HousingCandidates, count: number | null = null) {
+export function chooseDestination(row: ExtractedRow, related: CorrectionRow[], used: Set<string>, housing: HousingCandidates, count: number | null = null,
+  lhTypeNames: ReadonlyMap<string, string[]> = new Map(), areaClaimed: ReadonlySet<string> = new Set()) {
   const available = related.filter(item => !item.excluded && !used.has(item.key)).sort(byDisplayOrder), areas = pdfAreaKeys(row)
   const overlapping = available.filter(item => [...rowAreaKeys(item, housing[item.housingComplexId ?? 0] ?? [])].some(key => areas.has(key)))
   const legacyAggregate = !overlapping.length && available.length === 1 && normalizedName(available[0].typeName) === '아파트'
     && count !== null && available[0].householdCount === count
-  const chosen = overlapping[0] ?? (legacyAggregate ? available[0] : undefined)
-  return { chosen, legacy: !overlapping.length && legacyAggregate, superseded: overlapping.slice(1) }
+  // LH 면적이 PDF와 조금 다르거나(59.92 ↔ 59.93) 대략값(84.0000)이면 면적이 겹치지 않는다. 면적이 겹치는 행이 없으면
+  // 같은 단지에서 형명이 같은 기존 행(074.0000B ↔ 74.0000B)이 하나일 때 그 행을 쓴다.
+  // 기존 행의 표시 이름은 단지 주택형 이름(59)이라, 그 행에 붙은 LH 줄의 형명(59.9000B)으로도 비교한다.
+  // 신청자 구분 괄호는 떼고 비교한다(36 A/B ↔ LH 36A/B(고령자)).
+  // 다른 PDF 행이 전용면적으로 가리키는 기존 행은 형명으로 가져가지 않는다(처리 순서에 따라 값이 엇갈려 저장되지 않게).
+  const core = (name: unknown) => typeKey(typeof name === 'string' ? name.replace(/\s*\([^()]*\)\s*$/, '') : name)
+  const byName = overlapping.length || !core(row.typeName) ? [] : available.filter(item => !areaClaimed.has(item.key)
+    && [item.typeName, ...lhTypeNames.get(item.key) ?? []].some(name => core(name) === core(row.typeName)))
+  const chosen = overlapping[0] ?? (byName.length === 1 ? byName[0] : legacyAggregate ? available[0] : undefined)
+  return { chosen, legacy: !overlapping.length && !byName.length && legacyAggregate, superseded: overlapping.slice(1),
+    byName: !overlapping.length && byName.length === 1 }
+}
+/** PDF 행 중 하나라도 전용면적으로 가리키는 기존 공급행. 형명으로 고를 때 빼서 처리 순서에 따라 값이 엇갈리지 않게 한다. */
+export function areaClaimedRows(extraction: Pick<Extraction, 'supplyRows'>, rows: CorrectionRow[], housing: HousingCandidates) {
+  const pdfAreas = new Set(extraction.supplyRows.flatMap(row => [...pdfAreaKeys(row)]))
+  return new Set(rows.filter(item => [...rowAreaKeys(item, housing[item.housingComplexId ?? 0] ?? [])].some(key => pdfAreas.has(key))).map(item => item.key))
+}
+/**
+ * 워커가 지구명·주택형으로 맞춘 GH 공급행 틀 행. GH는 청약구분·신청자마다 행을 나눠 두므로, 같은 전용면적이라 한 공급행으로 접힌
+ * PDF 행들의 틀 행 중 첫 행을 고치고 나머지는 이 공급행에 합친다(supersedes). 제외했거나 다른 PDF 행이 이미 고른 틀 행은 쓰지 않는다.
+ */
+export function ghFrameRows(row: Pick<ExtractedRow, 'values'>, supply: Pick<SupplyWorkspace, 'rows' | 'rowSources'>, used: ReadonlySet<string>) {
+  const frames = new Map((supply.rowSources ?? []).filter(link => link.category === 'GH_ANNOUNCEMENT').map(link => [link.sourceKey, link.rowKey]))
+  return sourceRowsOf(row).flatMap(id => supply.rows.filter(item => item.key === frames.get(id) && !item.excluded && !used.has(item.key)))
+}
+export function ghFrameReason(frame: CorrectionRow, merged: CorrectionRow[], rows: CorrectionRow[]) {
+  return [`GH 공급정보에서 지구·주택형이 같은 #${String(frame.id)}(${frame.typeName})을 고칩니다.`, supersedeNote(rows, merged.map(item => item.key))].filter(Boolean).join(' ')
 }
 /** 다른 PDF 행이 고르거나 제외할 기존 공급행 */
 export function takenRows(proposals: Pick<RowProposal, 'destination' | 'supersedes'>[]) {
@@ -172,16 +203,27 @@ export function destinationReason(row: ExtractedRow, chosen: CorrectionRow | und
  * 기존 공급행(chooseDestination), 없으면 새 공급행이다. 단지는 PDF 단지명으로, 이름이 다르면 블록 번호·주소로 찾는다.
  * LH 공급 원본 행은 공급행을 정하지 않는다. 주택형은 저장할 때 서버가 단지·전용면적으로 정하므로 고르게 하지 않는다.
  */
-export function proposeRows(extraction: Extraction, supply: Pick<SupplyWorkspace, 'rows' | 'rowSources'> & { announcementComplexes?: Pick<AnnouncementComplex, 'name' | 'roadAddress'>[] }, housing: HousingCandidates): RowProposal[] {
+/** 공급행 키별 그 행에 붙은 LH 줄의 형명. 기존 행 표시 이름이 단지 주택형 이름일 때 PDF 형명과 맞춰 볼 때 쓴다. */
+export function lhTypeNamesByRow(lhRows: LhSupplyRow[] = []) {
+  const names = new Map<string, string[]>()
+  for (const lh of lhRows) if (lh.attachedRowKey && lh.typeName) names.set(lh.attachedRowKey, [...names.get(lh.attachedRowKey) ?? [], lh.typeName])
+  return names
+}
+
+export function proposeRows(extraction: Extraction, supply: Pick<SupplyWorkspace, 'rows' | 'rowSources'> & { announcementComplexes?: Pick<AnnouncementComplex, 'name' | 'roadAddress'>[]; lhSupplyRows?: LhSupplyRow[] }, housing: HousingCandidates): RowProposal[] {
   const all = supply.rows, proposals: RowProposal[] = []
+  const lhTypeNames = lhTypeNamesByRow(supply.lhSupplyRows)
+  const areaClaimed = areaClaimedRows(extraction, all, housing)
   // 단지가 연결되지 않은 기존 행은 단지를 정한 뒤 그 단지의 행으로 다시 맞춘다(proposeInComplex).
   const current = all.filter(item => !emptyRow(item) && !item.excluded)
   const names = [...new Set(all.filter(item => !item.excluded).map(item => item.complexName))]
-  const ghFrames = new Map((supply.rowSources ?? []).filter(link => link.category === 'GH_ANNOUNCEMENT').map(link => [link.sourceKey, link.rowKey]))
   extraction.supplyRows.forEach((row, index) => {
     const used = takenRows(proposals)
     const named = current.filter(item => sameComplex(row.complexName, item.complexName) || sameComplex(row.complexName, item.housingComplexName))
-    const source = named.length ? { names: [], certain: true } : sourceComplexNames(extraction, row.complexName, names, supply.announcementComplexes), sourceNames = source.names
+    // 공급 표에 단지명 열이 없어 PDF 단지명이 비면(사천벌리1) 공고 단지가 하나뿐일 때 그 단지로 본다. 대조할 이름이 없어 고를 여지도 없다.
+    const onlyComplex = !row.complexName?.trim() && names.length === 1
+    const source = named.length ? { names: [], certain: true } : onlyComplex ? { names, certain: true }
+      : sourceComplexNames(extraction, row.complexName, names, supply.announcementComplexes), sourceNames = source.names
     const related = named.length ? named : current.filter(item => sourceNames.includes(item.complexName))
     const complexIds = [...new Set(related.map(item => item.housingComplexId).filter(id => id !== null))]
     const complexId = complexIds.length === 1 ? complexIds[0] : null
@@ -189,20 +231,27 @@ export function proposeRows(extraction: Extraction, supply: Pick<SupplyWorkspace
     const sharedIndex = extraction.sharedCounts.findIndex(group => group.paths.includes(`supplyRows[${index}].totalSupplyHouseholdCount`))
     const ownCount = row.values.totalSupplyHouseholdCount
     const count = sharedIndex >= 0 ? extraction.sharedCounts[sharedIndex].count : typeof ownCount === 'number' ? ownCount : null
-    // 워커가 지구명·주택형으로 틀 행 하나에 하나만 맞춘 GH 행이다. 다른 PDF 행이 이미 그 틀 행을 골랐으면 따르지 않는다.
-    const frame = all.find(item => item.key === ghFrames.get(sourceRowOf(row) ?? ''))
-    if (frame && !frame.excluded && !used.has(frame.key)) {
+    // 워커가 지구명·주택형으로 틀 행 하나에 하나만 맞춘 GH 행이다. GH는 청약구분·신청자마다 행을 나눠 두므로, 같은 전용면적이라
+    // 한 공급행으로 접힌 PDF 행들의 틀 행 중 첫 행을 고치고 나머지는 이 공급행에 합친다. 다른 PDF 행이 이미 고른 틀 행은 따르지 않는다.
+    // 틀 행과 PDF 단지명이 같은 단지를 가리키면 워커가 지구·주택형으로 맞춘 것이라 따로 확인을 받지 않는다.
+    const frames = ghFrameRows(row, supply, used)
+    if (frames.length) {
+      const [frame, ...merged] = frames
       proposals.push({ destination: frame.key, anchorKey: frame.key, complexId: frame.housingComplexId ?? complexId, candidates: housing[frame.housingComplexId ?? 0] ?? candidates,
-        reason: `AI가 GH 공급행 틀 '${frame.typeName}'(#${String(frame.id)})에서 나온 행으로 표시했습니다`, needsConfirmation: true, sharedIndex: sharedIndex < 0 ? null : sharedIndex })
+        reason: ghFrameReason(frame, merged, all),
+        needsConfirmation: !sameComplex(row.complexName, frame.complexName), sharedIndex: sharedIndex < 0 ? null : sharedIndex,
+        ...(merged.length ? { supersedes: merged.map(item => item.key) } : {}) })
       return
     }
-    const { chosen, legacy, superseded } = complexId === null ? { chosen: undefined, legacy: false, superseded: [] } : chooseDestination(row, related, used, housing, count)
+    const { chosen, legacy, superseded, byName } = complexId === null ? { chosen: undefined, legacy: false, superseded: [], byName: false }
+      : chooseDestination(row, related, used, housing, count, lhTypeNames, areaClaimed)
     const blockNote = !sourceNames.length ? '' : source.certain ? `공고 단지 '${sourceNames[0]}'에 대응했습니다. `
       : `공고 단지 '${sourceNames[0]}'에 블록 번호나 주소 한쪽만 맞아 대응했습니다. 같은 단지인지 확인하세요. `
     proposals.push({ destination: chosen?.key ?? 'new', anchorKey: chosen?.key ?? (complexId === null ? '' : related[0]?.key ?? ''), complexId, candidates,
       reason: complexId === null ? sourceNames.length ? `공고 단지 '${sourceNames[0]}'가 아직 단지에 연결되지 않았습니다. 단지 정하기에서 정하세요.` : '단지를 하나로 특정하지 못했습니다.'
-        : [blockNote + destinationReason(row, chosen, legacy), supersedeNote(all, superseded.map(item => item.key))].filter(Boolean).join(' '),
-      needsConfirmation: !source.certain, sharedIndex: sharedIndex < 0 ? null : sharedIndex, ...(superseded.length ? { supersedes: superseded.map(item => item.key) } : {}) })
+        : [blockNote + (byName && chosen ? `형명이 같은 기존 공급정보 #${String(chosen.id)}(${chosen.typeName})을 고칩니다. 전용면적이 PDF(${areaText(row)})와 달라 같은 주택형인지 확인하세요.`
+          : destinationReason(row, chosen, legacy)), supersedeNote(all, superseded.map(item => item.key))].filter(Boolean).join(' '),
+      needsConfirmation: !source.certain || byName, sharedIndex: sharedIndex < 0 ? null : sharedIndex, ...(superseded.length ? { supersedes: superseded.map(item => item.key) } : {}) })
   })
   return proposals
 }
@@ -267,13 +316,34 @@ export function proposeSchedules(extraction: Extraction, events: JsonWorkspace['
  * 이름이 유일하게 대응할 때만 기존 조건을 갱신한다. PDF 보정은 공급 순위를 가져오지 않아 순위로 가르지 않는다. 미저장 조건도 key로 대응한다.
  * 접은 행처럼 같은 이름의 PDF 대상이 둘이면 앞 대상이 기존 조건을 고치고 뒤 대상은 새 조건으로 더한다.
  */
+const income = /^(.*?)[\s(]*소득\s*\(?\s*(無|有|없음|있음|무|유|×|✕|[xX]|○|◯|[oO])\s*\)?\s*\)?$/
+/**
+ * 소득 유무로 나눈 공급대상 이름을 `청년(소득 없음)`·`청년(소득 있음)`으로 맞춘다. AI 워커(supply_assembly.canonical_target)와 같은 규칙이다.
+ * 예전에 저장된 `청년 소득(×)`·`청년(소득無)`도 같은 대상으로 잇기 위해 화면도 같은 규칙으로 비교한다.
+ */
+export function canonicalTarget(name: string) {
+  // 가운뎃점은 공고마다 다른 문자(·․‧・･ㆍ)와 띄어쓰기로 적어(신혼부부․ 한부모가족) 붙여 쓴 ·로 맞춘다.
+  // 영구임대 대상 표기도 공고마다 「가」군·가군으로 달라 낫표를 뗀다.
+  const compact = name.trim().replace(/\s*[·․‧・･ㆍ]\s*/g, '·').replace(/[「」『』]/g, '')
+  const match = income.exec(compact)
+  if (!match) return compact
+  const label = ['無', '없음', '무', '×', '✕', 'x', 'X'].includes(match[2]) ? '소득 없음' : '소득 있음'
+  const base = match[1].trim()
+  return base ? `${base}(${label})` : label
+}
+
 export function defaultTargetDestinations(input: JsonObject, row: CorrectionRow | undefined) {
-  const normalize = (value: unknown) => typeof value === 'string' ? value.normalize('NFKC').replace(/\s+/g, '').toLowerCase() : ''
+  const normalize = (value: unknown) => typeof value === 'string' ? canonicalTarget(value).normalize('NFKC').replace(/\s+/g, '').toLowerCase() : ''
+  // 공고문이 대상 설명 괄호를 달거나 빼도(가군 ↔ 가군 (생계·의료급여수급자 등)) 같은 대상이다. 괄호를 뗀 이름이 양쪽에서 하나씩일 때만 잇는다.
+  const core = (value: unknown) => normalize(value).replace(/\(.*$/, '')
   const targets = Array.isArray(input.targets) ? input.targets : [], used = new Set<string>()
-  return targets.map((value: unknown) => {
+  const pdfCores = targets.map(value => isRecord(value) ? core(value.target) : '')
+  return targets.map((value: unknown, at: number) => {
     if (!isRecord(value) || !normalize(value.target)) return ''
     if (!row) return 'new'
-    const matches = row.targets.filter(target => !target.excluded && normalize(target.target) === normalize(value.target))
+    const exact = row.targets.filter(target => !target.excluded && normalize(target.target) === normalize(value.target))
+    const byCore = row.targets.filter(target => !target.excluded && core(target.target) === pdfCores[at])
+    const matches = exact.length || byCore.length !== 1 || pdfCores.filter(item => item === pdfCores[at]).length !== 1 ? exact : byCore
     const destination = matches.length === 1 ? matches[0].id ? String(matches[0].id) : matches[0].key : matches.length === 0 ? 'new' : ''
     if (destination && destination !== 'new' && used.has(destination)) return 'new'
     used.add(destination)
@@ -285,4 +355,10 @@ export function defaultTargetDestinations(input: JsonObject, row: CorrectionRow 
 export function sourceRowOf(row: Pick<Extraction['supplyRows'][number], 'values'>): string | undefined {
   const value = row.values.sourceRow
   return typeof value === 'string' ? value : undefined
+}
+/** 접은 행이면 접힌 행마다의 원천 행 식별자(sourceRows), 아니면 sourceRow 하나 */
+export function sourceRowsOf(row: Pick<Extraction['supplyRows'][number], 'values'>): string[] {
+  const listed = Array.isArray(row.values.sourceRows) ? row.values.sourceRows.filter((value): value is string => typeof value === 'string') : []
+  const first = sourceRowOf(row)
+  return [...new Set([...first ? [first] : [], ...listed])]
 }

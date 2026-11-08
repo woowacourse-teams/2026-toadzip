@@ -18,6 +18,7 @@ log = logging.getLogger(__name__)
 
 KIND = "ANNOUNCEMENT_PDF_EXTRACTION"
 SUPPLY_TABLE_UNSTRUCTURED = "SUPPLY_TABLE_UNSTRUCTURED"
+PDF_TEXT_MISSING = "PDF_TEXT_MISSING"
 # 쪽 처리가 이만큼도 남기지 않으면 모델을 부르지 않는다. 쪽마다 확인해 남은 쪽을 읽지 않고 바로 실패로 끝낸다.
 # 모델 호출과 응답 뒤 검산을 위한 최소 시간 여유다.
 MIN_MODEL_TIME = 240
@@ -40,6 +41,13 @@ class AnnouncementPdfExtractor:
         document = pages.open_pdf(job.pdf)
         with document:
             texts = pages.page_texts(document, model_cutoff)
+            # 스캔본은 쪽마다 글자가 없어 표 칸을 읽을 수 없고, 값을 원문 칸과 대조할 수도 없다. 비용을 쓰기 전에 끝낸다.
+            if not any(text.strip() for text in texts):
+                raise PermanentError(
+                    PDF_TEXT_MISSING,
+                    "이미지로 된(스캔) PDF라 글자를 읽을 수 없어 자동 추출을 하지 않았습니다. "
+                    "공급정보 편집에서 직접 입력하거나 글자가 들어 있는 PDF로 다시 시도해 주세요.",
+                )
             selection = pages.select(texts)
             selected = pages.prompt_pages(document, selection.pages, model_cutoff)
         if selected.unstructured_supply_pages:

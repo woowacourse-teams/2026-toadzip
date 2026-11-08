@@ -674,13 +674,14 @@ it('대상들이 함께 쓰는 이번 예비자 모집수는 명 단위로 안�
   expect(screen.getByText('26A에서 일반 · 청년 대상이 함께 쓰는 예비자 모집수입니다. 대상별 예비자 수는 비워 둡니다.')).toBeVisible()
 })
 
-it('서로 다른 공급행의 대상들이 함께 쓰는 예비자 모집수는 각 공급행 이름과 함께 안내한다', async () => {
+it('서로 다른 면적 행의 대상들이 함께 쓰는 예비자 모집수는 그 행들을 한 공급행으로 접고 그 행 이름으로 안내한다', async () => {
   const extraction = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
   extraction.data.supplyRows[1].targets[0].rentalDeposit = 11100000
   extraction.sharedCounts = [{ paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[1].targets[0].reserveCount'], count: 20, page: 3, quote: '26A·26B 예비자 20' }]
   await open(JSON.stringify(extraction))
   fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
-  expect(screen.getByText('26A의 일반 대상과 26B의 일반 대상이 함께 쓰는 예비자 모집수입니다. 대상별 예비자 수는 비워 둡니다.')).toBeVisible()
+  // 공고문이 두 면적에 걸쳐 수를 한 번만 적었으면 두 면적은 공급행 하나의 세부 타입이다(결정 1).
+  expect(screen.getByText('26A·26B에서 일반 · 일반 대상이 함께 쓰는 예비자 모집수입니다. 대상별 예비자 수는 비워 둡니다.')).toBeVisible()
 })
 
 it('공고에는 있지만 단지 DB에 없는 단지는 공고문 단지 개요로 한 번 등록해 같은 단지 공급행 전체에 연결한다', async () => {

@@ -87,5 +87,32 @@ export function ghFrame({ sourceRow = false } = {}) {
       data: { name: 'GH 공고', rentalType: 'HAPPY_HOUSING', recruitmentType: 'RESERVE', agencyCode: 'GH', originalUrl: 'https://example.com/gh' },
       sourceIdentifier: 'GH:801', supplyRows: [], housingTypes: [], announcements: [], schedules: [], scheduleReviewed: false } }
   const housing = { 51: [{ id: 601, name: '36A', exclusiveArea: 36.7, supplyArea: 50.1, householdCount: 100 }, { id: 602, name: '36C', exclusiveArea: 36.83, supplyArea: 50.3, householdCount: 80 }] }
-  return { review: createReview(read.value, workspace, housing), workspace, housing }
+  return { read: read.value, review: createReview(read.value, workspace, housing), workspace, housing }
+}
+
+/**
+ * GH 다산역 A2 지구: GH 정제가 청약구분·신청자마다 공급행을 나눠(#911 '24A,B,C 청년' 20 · #912 '24B 주거급여수급자' 3 · #913 '24C 고령자' 3)
+ * 면적 없이 만들었다. 공고문은 세 청약구분을 같은 전용 24.97㎡로 적고 모집수는 대상별 예비자 수만 적었다.
+ * 워커는 PDF 행마다 GH 틀 행을 하나씩 맞춘다(sourceRow).
+ */
+export function ghSameArea() {
+  const frame = (id: number, typeName: string, count: number) => ({ ...blankRow(id - 911), id, key: `row:${String(id)}`, complexName: '남양주 다산역A2 경기행복주택', typeName,
+    pnu: '4136010100', category: 'RESUPPLY' as const, housingComplexId: 52, housingComplexName: '다산역A2', householdCount: count, areaOverride: false })
+  const row = (name: string, target: string, reserve: number, code: string) => ({ complexReference: { sourceComplexName: '다산역 A2' }, sourceHousingTypeName: name,
+    expectedMoveInMonth: null, totalSupplyHouseholdCount: null, exclusiveArea: 24.97, supplyArea: null, sourceRow: `GH:839:남양주 다산역A2 경기행복주택:${code}`,
+    targets: [{ target, supplyRank: null, supplyHouseholdCount: null, reserveCount: reserve, rentalDeposit: 46920000, monthlyRent: 178670, convertedDeposit: null }] })
+  const rows = [row('24ABC', '청년', 20, '24A,B,C'), row('24B', '주거급여 수급자', 3, '24B'), row('24C', '고령자', 3, '24C')]
+  const extraction = { data: { announcement: {}, receptionPlace: {}, supplyRows: rows, schedules: [], unresolvedFields: [] },
+    sharedCounts: [], notApplicable: [], evidence: rows.map((item, index) => ({ path: `supplyRows[${index}]`, page: 4, quote: `${item.sourceHousingTypeName} ${item.targets[0].target}` })) }
+  const read = readExtraction(JSON.stringify(extraction))
+  if (!read.ok) throw new Error(read.error)
+  const frames = [frame(911, '24A,B,C 청년', 20), frame(912, '24B 주거급여수급자', 3), frame(913, '24C 고령자', 3)]
+  const workspace: JsonWorkspace = { snapshotToken: 'current', events: [],
+    supply: { snapshotToken: 'supply', version: 1, rows: frames, sources: [], lhSupplyRows: [], unattachedLhSupplyRows: [],
+      rowSources: [['row:911', '24A,B,C'], ['row:912', '24B'], ['row:913', '24C']].map(([rowKey, code]) => ({ rowKey, category: 'GH_ANNOUNCEMENT', sourceKey: `GH:839:남양주 다산역A2 경기행복주택:${code}` })) },
+    detail: { summary: { id: 57, name: 'GH 공고', subtitle: '', provider: 'GH', rental: 'HAPPY_HOUSING', deleted: false, modified: false, reviewRequired: false, updatedAt: null },
+      data: { name: 'GH 공고', rentalType: 'HAPPY_HOUSING', recruitmentType: 'RESERVE', agencyCode: 'GH', originalUrl: 'https://example.com/gh' },
+      sourceIdentifier: 'GH:839', supplyRows: [], housingTypes: [], announcements: [], schedules: [], scheduleReviewed: false } }
+  const housing = { 52: [{ id: 611, name: '24A', exclusiveArea: 24.97, supplyArea: 40.34, householdCount: 300 }] }
+  return { read: read.value, review: createReview(read.value, workspace, housing), workspace, housing }
 }

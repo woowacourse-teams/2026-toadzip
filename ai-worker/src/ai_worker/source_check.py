@@ -22,8 +22,10 @@ def source_row_map(source_rows: object) -> dict[str, set[str]]:
 
 def check_source_rows(supply_rows: list[dict], source_rows: dict[str, set[str]], source_row_text: dict[str, str],
                       evidence: list[dict], unresolved: list[dict],
-                      source_row_values: dict[str, dict[str, str]] | None = None) -> list[str]:
+                      source_row_values: dict[str, dict[str, str]] | None = None,
+                      target_values: dict[str, dict[str, dict[str, str]]] | None = None) -> list[str]:
     """공급행·대상 경로마다 근거(행 ID·인용·쪽)를 원문 표 행에서 확인하고, 확인되면 값을 같은 의미의 원문 칸과 대조한다.
+    target_values는 금액 열이 신청자 묶음(가군·나군) 머리글로 나뉜 표의 행별 묶음 칸이다(target_cells).
     확인하지 못한 값은 비우고 unresolved에 사유를 남긴다. 경고는 근거를 확인하지 못한 경로마다 한 줄이고,
     값마다의 사유는 unresolved에만 있다."""
     warnings = []
@@ -49,8 +51,8 @@ def check_source_rows(supply_rows: list[dict], source_rows: dict[str, set[str]],
         )
         if supported and (not source_pages or evidence_page in source_pages):
             values = source_row_values or {}
-            _check_string_source_values(path, supply_rows, row_ids, values, unresolved)
-            _check_numeric_source_values(path, supply_rows, row_ids, values, unresolved)
+            _check_string_source_values(path, supply_rows, row_ids, values, unresolved, target_values)
+            _check_numeric_source_values(path, supply_rows, row_ids, values, unresolved, target_values)
             continue
         if not row_ids:
             reason = "원문 표 행 ID를 확인하지 못함"
@@ -71,7 +73,8 @@ def check_source_rows(supply_rows: list[dict], source_rows: dict[str, set[str]],
 
 def _check_numeric_source_values(path: str, rows: list[dict], row_ids: set[str],
                                  source_row_values: dict[str, dict[str, str]],
-                                 unresolved: list[dict]) -> None:
+                                 unresolved: list[dict],
+                                 target_values: dict[str, dict[str, dict[str, str]]] | None) -> None:
     """표 근거가 같은 의미의 머리글 열을 지지하지 않으면 수치 값을 미확인으로 낮춘다."""
     match = re.fullmatch(r"supplyRows\[(\d+)\](?:\.targets\[(\d+)\])?", path)
     if not match:
@@ -83,7 +86,7 @@ def _check_numeric_source_values(path: str, rows: list[dict], row_ids: set[str],
         value = values.get(field)
         if value is None:
             continue
-        cells = [source_row_values.get(row_id, {}) for row_id in row_ids]
+        cells = [target_cells(values.get("target"), row_id, source_row_values, target_values) for row_id in row_ids]
         if any(numeric_cell_matches(value, cell.get(field, ""), field, cell.get(f"{field}Unit"))
                for cell in cells):
             continue
@@ -95,14 +98,15 @@ def _check_numeric_source_values(path: str, rows: list[dict], row_ids: set[str],
 
 def _check_string_source_values(path: str, rows: list[dict], row_ids: set[str],
                                 source_row_values: dict[str, dict[str, str]],
-                                unresolved: list[dict]) -> None:
+                                unresolved: list[dict],
+                                target_values: dict[str, dict[str, dict[str, str]]] | None) -> None:
     """단지명·주택형·공급대상은 해당 의미의 원문 셀과 비교한다."""
     for values, field, source_field in _supply_string_fields_at_path(path, rows):
         value = values.get(field)
         if not isinstance(value, str) or not value:
             continue
         if any(normalize_source_text(cell) == normalize_source_text(value)
-               for cell in source_texts(source_field, row_ids, source_row_values)):
+               for cell in source_texts(source_field, row_ids, source_row_values, target_values)):
             continue
         values[field] = None if field == "sourceHousingTypeName" else ""
         field_path = f"{path}.complexReference.sourceComplexName" if field == "sourceComplexName" else f"{path}.{field}"
@@ -199,12 +203,33 @@ def numeric_cell_matches(value: object, cell: str, field: str, unit: str | None 
     return actual * scale == expected
 
 
-def source_texts(field: str, row_ids, row_values: dict[str, dict[str, str]]) -> list[str]:
+def source_texts(field: str, row_ids, row_values: dict[str, dict[str, str]],
+                 target_values: dict[str, dict[str, dict[str, str]]] | None = None) -> list[str]:
     """행 ID들의 같은 의미 원문 칸. 공급대상 머리글 아래 세부 구분 칸(소득 있음·없음)이 따로 있으면
-    공급대상은 둘을 합친 이름(청년(소득 없음))이다."""
+    공급대상은 둘을 합친 이름(청년(소득 없음))이다. 금액 열을 나눈 신청자 묶음 머리글(가군(생계·의료급여수급자 등))도
+    공급대상 이름이고, 괄호 설명을 뺀 이름(가군)으로도 쓴다."""
     values = [row_values.get(row_id, {}).get(field) for row_id in row_ids]
     texts = [value for value in values if isinstance(value, str) and value.strip()]
     if field == "target":
         details = [row_values.get(row_id, {}).get("targetDetail") for row_id in row_ids]
         texts += [f"{text}({detail})" for text in list(texts) for detail in details if detail]
+        texts += [name for row_id in row_ids for label in (target_values or {}).get(row_id, {})
+                  for name in _group_names(label)]
     return list(dict.fromkeys(texts))
+
+
+def target_cells(target: object, row_id: str, row_values: dict[str, dict[str, str]],
+                 target_values: dict[str, dict[str, dict[str, str]]] | None) -> dict[str, str]:
+    """대상과 대조할 행의 원문 칸. 대상 이름이 그 행의 신청자 묶음 이름이면 묶음 열의 금액 칸을 행 칸 위에 둔다."""
+    cells = row_values.get(row_id, {})
+    if not isinstance(target, str) or not normalize_source_text(target):
+        return cells
+    for label, group in (target_values or {}).get(row_id, {}).items():
+        if normalize_source_text(target) in {normalize_source_text(name) for name in _group_names(label)}:
+            return {**cells, **group}
+    return cells
+
+
+def _group_names(label: str) -> list[str]:
+    short = re.sub(r"\s*\(.*\)\s*$", "", label)
+    return [label, short] if short else [label]

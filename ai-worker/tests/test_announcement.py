@@ -261,6 +261,21 @@ def test_slow_pdf_fails_before_paid_call(monkeypatch):
     assert model.prompts == []
 
 
+def test_scanned_pdf_without_any_text_fails_before_paid_call():
+    # 광주두암4처럼 쪽마다 글자가 없는 스캔본은 표를 읽을 수 없어 모델을 부르지 않고 관리자에게 직접 입력하라고 알린다.
+    document = pymupdf.open()
+    for _ in range(3):
+        document.new_page().draw_rect(pymupdf.Rect(50, 50, 300, 300))
+    model = FakeModel()
+
+    with pytest.raises(PermanentError) as error:
+        AnnouncementPdfExtractor(model).extract(job(document.tobytes()))
+
+    assert error.value.code == "PDF_TEXT_MISSING"
+    assert "이미지" in str(error.value)
+    assert model.prompts == []
+
+
 def test_unstructured_supply_table_fails_before_paid_call(monkeypatch):
     class BrokenTable:
         def extract(self):
@@ -464,6 +479,31 @@ def test_one_pdf_row_written_once_per_lh_row_comes_out_once(monkeypatch):
     # 이 공급표에는 공급대상 열이 없어 대상 이름은 미확인이지만, 두 항목은 한 공급행의 대상 둘이다.
     assert len(row["targets"]) == 2
 
+
+
+def test_targets_named_by_applicant_group_headers_of_the_rent_table_keep_their_names_and_amounts(monkeypatch):
+    # 사천벌리1: 임대조건표의 가군·나군은 금액 열 위의 병합 머리글이다. 맞게 읽은 대상 이름과 금액이 모두 비워졌다.
+    from test_tables import SACHEON_RENT_CELLS, SACHEON_SUPPLY_CELLS
+    cells = {1: SACHEON_SUPPLY_CELLS, 2: SACHEON_RENT_CELLS}
+    monkeypatch.setattr(tables, "detected_tables", lambda page: (
+        [tables.DetectedTable(cells[page.number], tuple(page.rect))] if page.number in cells else [], False))
+    supply = {"data": {"rows": [
+        {"rowIds": ["P2:T1:R4", "P3:T1:R4"], "housingType": "26", "target": "가군", "reserveCount": 110,
+         "rentalDeposit": 2520000, "monthlyRent": 50160},
+        {"rowIds": ["P2:T1:R4", "P3:T1:R4"], "housingType": "26", "target": "나군", "reserveCount": 110,
+         "rentalDeposit": 7648000, "monthlyRent": 115940},
+    ]}, "sharedCounts": [{"rowIndexes": [0, 1], "field": "reserveCount", "count": 110, "rowIds": ["P2:T1:R4"]}]}
+    notice = {"data": {"announcement": {}, "receptionPlace": {}, "complexes": [], "schedules": [], "unresolvedFields": []},
+              "notApplicable": [], "evidence": []}
+
+    result = AnnouncementPdfExtractor(StageReplyModel(supply, notice)).extract(job(text_pdf(COVER, SUPPLY, RENT), {}))
+
+    tree = json.loads(result["json"])
+    [row] = tree["data"]["supplyRows"]
+    assert [(target["target"], target["rentalDeposit"], target["monthlyRent"]) for target in row["targets"]] == [
+        ("가군", 2520000, 50160), ("나군", 7648000, 115940)]
+    assert not any(".targets[" in finding["path"] for finding in tree["data"]["unresolvedFields"])
+    assert len(tree["sharedCounts"]) == 1
 
 def test_gh_frame_rows_keep_the_code_path_and_link_the_grouped_row_by_district_and_type():
     model = FakeModel()

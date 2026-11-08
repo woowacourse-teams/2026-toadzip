@@ -3,7 +3,7 @@ import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type Corre
 import { evidenceFor, noteFor, type Evidence, type Extraction, type Subtype } from './extraction'
 import { foldSameHousingType, withoutTrailingParentheses } from './subtypes'
 import { areaHousingType, sameArea } from './areas'
-import { areaValue, defaultTargetDestinations, missingHousingType, originalDate, pickSubtypes, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal } from './matching'
+import { areaValue, defaultTargetDestinations, missingHousingType, originalDate, pickSubtypes, proposeRows, proposeSchedules, type HousingCandidates, type RowProposal, type ScheduleProposal, canonicalTarget } from './matching'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
 
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
@@ -59,6 +59,11 @@ function normalized(kind: Kind, value: unknown): unknown {
   if (value === null || value === undefined || value === '') return null
   if (kind === 'money' && typeof value === 'number' && Number.isSafeInteger(value)) return String(value)
   if (typeof value !== 'string') return value
+  if (kind === 'month') {
+    // 공고문은 입주 연월을 2020.10이나 일까지 적은 2020.10.19로 쓴다. 연월로 읽을 수 있으면 YYYY-MM으로 맞춘다.
+    const month = /^(\d{4})\s*[.\-/년]\s*(\d{1,2})(?:\s*[.\-/월].*)?$/.exec(value.trim())
+    if (month && Number(month[2]) >= 1 && Number(month[2]) <= 12) return `${month[1]}-${month[2].padStart(2, '0')}`
+  }
   return kind === 'datetime' ? fullDateTime(value.trim()) : value.trim()
 }
 export function validCellValue(kind: Kind, value: unknown): boolean {
@@ -208,12 +213,23 @@ export function createRowReview(extraction: Extraction, index: number, proposal:
   const choice = subtypes?.[representativeOf(subtypes, current?.housingTypeId)]?.choice
   // 세부 타입이 없는 행은 연결 주택형을 비워 두고 서버가 단지·전용면적으로 정하게 한다(칸에서 직접 고를 수는 있다).
   const housingTypeId = subtypes && typeof choice === 'number' ? choice : null
-  const rowCells = cells(extraction, `supplyRows[${index}]`, rowFields, { ...source.values, housingTypeId }, current as unknown as JsonObject)
+  // 신청자 구분마다 나뉜 옛 공급행이 이 행에 합쳐지면, 지금 값은 합쳐지는 행들의 모집수 합이다. PDF 값과도 이 합으로 비교한다.
+  const grouped = Boolean(current?.groupId) && !leavesGroup(proposal, workspace)
+  const merging = (proposal.supersedes ?? []).flatMap(key => workspace.supply.rows.filter(row => row.key === key && !row.excluded))
+  const merged = current && !grouped ? mergedCount(current, proposal.supersedes, workspace.supply.rows) : null
+  const before = current && merged !== null ? { ...current, householdCount: merged } : current
+  const rowCells = cells(extraction, `supplyRows[${index}]`, rowFields, { ...source.values, housingTypeId }, before as unknown as JsonObject)
   const count = rowCells.find(cell => cell.field === 'totalSupplyHouseholdCount')!
   // 이미 저장된 공통 모집 묶음은 묶음이 모집수를 갖는다. 묶음의 행이 모두 이 공급행에 합쳐지면 묶음에서 빠져 이 행이 모집수를 갖는다.
   // 새 묶음은 만들지 않으므로 묶음 밖 공통 모집수는 행 모집수로 정하지 않는다.
-  if (current?.groupId && !leavesGroup(proposal, workspace)) { count.locked = true; count.selected = false; count.mode = 'keep'; count.note = '공통 모집수는 묶음에 한 번만 기록합니다.' }
+  if (grouped) { count.locked = true; count.selected = false; count.mode = 'keep'; count.note = '공통 모집수는 묶음에 한 번만 기록합니다.' }
   else if (proposal.sharedIndex !== null && count.value === null) Object.assign(count, { note: sharedCountNote, extracted: { ...count.extracted, note: sharedCountNote } })
+  if (merged !== null && merged !== current?.householdCount) count.note = [count.note, `합쳐지는 옛 공급행의 모집수를 더한 ${merged}세대를 지금 값으로 봅니다.`].filter(Boolean).join(' ')
+  // 합쳐지는 행의 모집수를 몰라 합을 만들지 못하면, 아는 행의 수를 조용히 버리지 않게 관리자가 모집수를 정하게 한다.
+  if (current && !grouped && merging.length && merged === null && count.value === null) {
+    const note = '합쳐지는 옛 공급행 중 모집수를 모르는 행이 있어 합을 만들지 못했습니다. 모집수를 직접 입력하거나 지금 값을 그대로 둘지 정하세요.'
+    Object.assign(count, { state: 'confirm', note, extracted: { ...count.extracted, state: 'confirm', note } })
+  }
   return syncRepresentative({ proposal, include: true, reviewed: false, key: current?.key ?? crypto.randomUUID(), cells: rowCells, subtypes,
     targets: source.targets.map((target, at) => ({ destination: targets[at], cells: cells(extraction, `supplyRows[${index}].targets[${at}]`, targetFields, target,
       current?.targets.find(item => (item.id ? String(item.id) : item.key) === targets[at]) as unknown as JsonObject) })) })
@@ -485,7 +501,14 @@ export function leftoverRows(review: Review, workspace: JsonWorkspace): Correcti
   }))
   return workspace.supply.rows.filter(row => row.id !== null && !row.excluded && row.groupId === null && complexes.has(row.complexName) && !taken.has(row.key))
 }
-/** 저장하면 이 행에 들어갈 모집수. 반영을 고른 칸은 그 값, 아니면 저장 위치의 지금 값이다. */
+/** 저장할 행과 합쳐지는(supersedes) 옛 공급행들의 모집수 합. 합쳐지는 행이 없거나 하나라도 모르면 null이다. */
+export function mergedCount(destination: CorrectionRow, supersedes: string[] = [], rows: CorrectionRow[]): number | null {
+  const merged = supersedes.flatMap(key => rows.filter(row => row.key === key && !row.excluded))
+  if (!merged.length) return null
+  const counts = [destination, ...merged].map(row => row.householdCount)
+  return counts.every(value => typeof value === 'number') ? (counts as number[]).reduce((total, value) => total + value, 0) : null
+}
+/** 저장하면 이 행에 들어갈 모집수. 반영을 고른 칸은 그 값, 아니면 저장 위치의 지금 값(합쳐지는 옛 행이 있으면 그 합)이다. */
 export function assembledCount(row: RowReview): number | null {
   const cell = row.cells.find(item => item.field === 'totalSupplyHouseholdCount')
   const value = cell?.selected && !cell.locked ? cell.value : cell?.before
@@ -524,6 +547,11 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
     // 옛 공통 모집 묶음이 이 공급행 하나로 합쳐지면 묶음에서 빠진다. 묶음의 다른 행은 supersedes로 제외한다.
     if (existing && leavesGroup(entry.proposal, workspace)) { row.groupId = null; row.sharedHouseholdCount = null }
     applyCells(row as unknown as JsonObject, entry.cells, rowFields)
+    if (existing && entry.proposal.supersedes?.length) {
+      // PDF 모집수를 고르지 않았으면 합쳐지는 옛 공급행의 모집수까지 이 행이 갖는다(지금 값을 그 합으로 보인 칸과 같다).
+      const count = entry.cells.find(cell => cell.field === 'totalSupplyHouseholdCount')
+      if (count && !count.selected && !count.locked && typeof count.before === 'number') row.householdCount = count.before
+    }
     const subtypes = entry.subtypes && subtypeLinks(entry, index, row)
     // 공고에 주택형 표기가 없으면 새 행은 연결한 단지 주택형 이름으로 표시한다.
     if (!row.typeName.trim()) row.typeName = entry.proposal.candidates.find(type => type.id === row.housingTypeId)?.name ?? ''
@@ -543,6 +571,8 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
       if (target.destination !== 'new' && !stored) throw new ReviewError('선택한 공급대상이 현재 행에 없습니다.', `row:${index}`)
       const next: CorrectionTarget = stored ?? blankTarget(row.targets.length)
       applyCells(next as unknown as JsonObject, target.cells, targetFields)
+      // 소득 유무 표기는 공고마다 달라(소득無·소득(×)) 단지에 쌓이는 대상 이름을 하나로 맞춘다.
+      if (next.target) next.target = canonicalTarget(next.target)
       if (!next.target?.trim()) throw new ReviewError(`${row.housingComplexName ?? row.complexName} ${rowName(review, index)} 조건 ${at + 1}: 공급 대상 이름을 입력하세요.`, `target:${index}:${at}`)
       if (!stored) row.targets.push(next)
     }

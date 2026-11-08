@@ -52,6 +52,8 @@ class _SourceRow:
     continuation_ids: list[str] = field(default_factory=list)
     # 병합으로 위 행과 함께 쓰는 수량: 필드 → 값이 적힌 행
     shared_from: dict[str, "_SourceRow"] = field(default_factory=dict)
+    # 병합된 면적 칸을 물려준 위 행. 원문 대조가 면적 값을 찾을 수 있게 rowIds에 넣는다.
+    area_ids: list[str] = field(default_factory=list)
     # 이어짐 줄에 다른 값이 있어 하나로 정할 수 없는 필드
     conflicts: set[str] = field(default_factory=set)
 
@@ -304,6 +306,7 @@ def _read_rows(tables: list[SupplyTable]) -> list[_SourceRow]:
             previous = rows[-1] if rows and rows[-1].table.columns == columns else None
             if previous is not None:
                 _share_merged_counts(row, previous, columns)
+                _share_merged_areas(row, previous, columns, next_page=previous.table is not table and index == start == 0)
             rows.append(row)
     return rows
 
@@ -319,6 +322,21 @@ def _share_merged_counts(row: _SourceRow, previous: _SourceRow, columns: dict[st
     for name in _COUNT_FIELDS:
         if name in columns and row.cells.get(name) is None:
             row.shared_from[name] = previous.shared_from.get(name, previous)
+
+
+def _share_merged_areas(row: _SourceRow, previous: _SourceRow, columns: dict[str, int], next_page: bool) -> None:
+    """병합된 면적 칸(None)은 위 행과 같은 면적이다. 쪽을 넘은 병합 칸은 머리글 없는 이어짐 표의 첫 행에서 빈칸('')으로
+    읽히므로 그 행의 면적 칸이 모두 비었을 때만 위 행 값을 쓴다(머리글이 다시 있는 새 표는 이어짐이 아니다). 면적 칸을 이어받지 않으면 단지명이 적힌 행의
+    다른 주택형 면적이 원문 대조에서 대신 쓰일 수 있다."""
+    names = [name for name in _AREA_FIELDS if name in columns]
+    if _compact(row.complex_name) != _compact(previous.complex_name):
+        return
+    blank_block = next_page and all(row.cells.get(name) in (None, "") for name in names)
+    for name in names:
+        cell = row.cells.get(name)
+        if (cell is None or blank_block) and _present(previous.cells.get(name)):
+            row.cells[name] = previous.cells[name]
+            row.area_ids = _unique([*row.area_ids, previous.row_id, *previous.area_ids])
 
 
 def _data_start(cells: list[list[str | None]], columns: dict[str, int]) -> int:
@@ -341,7 +359,7 @@ def _table_layout(header_rows: list[list[str | None]], columns: dict[str, int], 
 
 
 def _source_ids(row: _SourceRow) -> list[str]:
-    return _unique([row.row_id, *row.continuation_ids, *row.origin_ids])
+    return _unique([row.row_id, *row.continuation_ids, *row.origin_ids, *row.area_ids])
 
 
 def _supply_key(row: _SourceRow) -> tuple[str, str]:
