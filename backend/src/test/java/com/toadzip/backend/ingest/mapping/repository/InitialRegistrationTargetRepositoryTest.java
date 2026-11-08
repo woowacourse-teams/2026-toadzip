@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
+import com.toadzip.backend.ingest.mapping.domain.InitialRegistrationLocation;
 import com.toadzip.backend.ingest.mapping.domain.InitialRegistrationStatus;
 import com.toadzip.backend.ingest.mapping.domain.InitialRegistrationTarget;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink;
@@ -84,6 +86,35 @@ class InitialRegistrationTargetRepositoryTest {
             assertThat(count.getTotal()).isEqualTo(90);
         });
         assertThat(targets.findById("001:HAPPY_HOUSING").orElseThrow().getHousingComplexId()).isEqualTo(1);
+    }
+
+    @Test
+    void 보완_목록은_실패한_단지를_정렬해_페이지로_조회하고_집계는_전체를_반영한다() {
+        IntStream.rangeClosed(1, 25).forEach(index -> {
+            var target = InitialRegistrationTarget.create("%03d:HAPPY_HOUSING".formatted(index));
+            target.assess("주소 없는 단지", null, InitialRegistrationStatus.LOCATION_REQUIRED, "주소 없음", null, NOW);
+            target.prepareLocation(InitialRegistrationLocation.failed(null,
+                    RoadAddressGeocodingFailureReason.INVALID_ADDRESS, NOW));
+            entityManager.persist(target);
+        });
+        var completed = InitialRegistrationTarget.create("000:HAPPY_HOUSING");
+        completed.assess("완료 단지", "주소", InitialRegistrationStatus.READY, "준비됨", null, NOW);
+        completed.prepareLocation(InitialRegistrationLocation.failed(null,
+                RoadAddressGeocodingFailureReason.INVALID_ADDRESS, NOW));
+        completed.complete(1, NOW);
+        entityManager.persist(completed);
+        entityManager.flush();
+        entityManager.clear();
+
+        var page = targets.findLocationFailures(PageRequest.of(1, 20));
+        assertThat(page.getTotalElements()).isEqualTo(25);
+        assertThat(page.getContent()).extracting(InitialRegistrationTarget::getSourceComplexIdentifier)
+                .containsExactly("021:HAPPY_HOUSING", "022:HAPPY_HOUSING", "023:HAPPY_HOUSING",
+                        "024:HAPPY_HOUSING", "025:HAPPY_HOUSING");
+        assertThat(targets.countLocations()).singleElement().satisfies(count -> {
+            assertThat(count.getReason()).isEqualTo("INVALID_ADDRESS");
+            assertThat(count.getTotal()).isEqualTo(25);
+        });
     }
 
     @Test

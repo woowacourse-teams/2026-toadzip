@@ -27,6 +27,10 @@ final class LocationSummaryZipFixture {
         return zip(ENTRIES);
     }
 
+    static ByteArrayInputStream nationwideZipWithCoordinates(String x, String y) throws IOException {
+        return zip(ENTRIES, Set.of(), "테스트로", x, y);
+    }
+
     static ByteArrayInputStream nationwideZipWithoutTargetAddress() throws IOException {
         return zip(ENTRIES, Set.of(), "다른로");
     }
@@ -53,11 +57,16 @@ final class LocationSummaryZipFixture {
             Set<String> emptyEntries,
             String seoulRoadName
     ) throws IOException {
+        return zip(entries, emptyEntries, seoulRoadName, "953875.044172", "1951999.498732");
+    }
+
+    private static ByteArrayInputStream zip(Map<String, Province> entries, Set<String> emptyEntries,
+            String seoulRoadName, String x, String y) throws IOException {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(output)) {
             for (Map.Entry<String, Province> entry : entries.entrySet()) {
                 zip.putNextEntry(new ZipEntry(entry.getKey()));
-                writeEntry(zip, entry, emptyEntries, seoulRoadName);
+                writeEntry(zip, entry, emptyEntries, seoulRoadName, x, y);
                 zip.closeEntry();
             }
         }
@@ -68,16 +77,16 @@ final class LocationSummaryZipFixture {
             ZipOutputStream zip,
             Map.Entry<String, Province> entry,
             Set<String> emptyEntries,
-            String seoulRoadName
+            String seoulRoadName, String x, String y
     ) throws IOException {
         if (emptyEntries.contains(entry.getKey())) {
             return;
         }
         Province province = entry.getValue();
-        zip.write(row(province.code(), province.name(), seoulRoadName).getBytes(MS949));
+        zip.write(row(province.code(), province.name(), seoulRoadName, x, y).getBytes(MS949));
     }
 
-    private static String row(String provinceCode, String provinceName, String seoulRoadName) {
+    private static String row(String provinceCode, String provinceName, String seoulRoadName, String x, String y) {
         String districtCode = provinceCode + "000";
         String districtName = "테스트시";
         if (provinceCode.equals("11")) {
@@ -102,8 +111,8 @@ final class LocationSummaryZipFixture {
                 "시설",
                 "0",
                 "행정동",
-                "953875.044172",
-                "1951999.498732"
+                x,
+                y
         );
     }
 
