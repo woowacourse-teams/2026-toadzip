@@ -1,3 +1,4 @@
+import { ListFilters } from '../shared/ListFilters'
 import { Link, useSearchParams } from 'react-router'
 import { useEffect, useRef, useState } from 'react'
 import { collectionCause, failureTarget } from './failurePresentation'
@@ -33,7 +34,7 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
   const query = `${filterKey}/${page}/${revision}/${refreshToken}`
   const [loaded, setLoaded] = useState<{ query: string; filters: string; data: FailureReviewPageData } | null>(null)
   const [failure, setFailure] = useState<{ query: string; message: string } | null>(null)
-  const matching = loaded?.filters === filterKey ? loaded.data : null
+  const matching = loaded?.filters === filterKey && failure?.query !== query ? loaded.data : null
   const error = failure?.query === query ? failure.message : ''
   const pending = validQuery && !error && loaded?.query !== query
   const dialog = useRef<HTMLDialogElement>(null)
@@ -119,7 +120,14 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
   }
 
   function filter(key: string, value: string) {
-    setParams(current => { current.set(key,value); current.delete('page'); current.delete('failure'); current.delete('result'); return current })
+    setParams(current => {
+      if (value) current.set(key, value)
+      else current.delete(key)
+      current.delete('page')
+      current.delete('failure')
+      current.delete('result')
+      return current
+    })
   }
   function move(destination: number) {
     setParams(current => { current.set('page',String(destination)); return current })
@@ -127,38 +135,30 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
   const label = domain === 'complex' ? '단지' : '공고'
   const actionDisabled = retryDisabled || detailPending || Boolean(detailError)
   return <section className={styles.panel} aria-label={`${label} 오류 목록`}>
-    <form key={keyword} className={styles.search} onSubmit={event => {
-      event.preventDefault()
-      filter('keyword', String(new FormData(event.currentTarget).get('keyword') ?? '').trim())
-    }}>
-      <label>이름·원천 식별자<input name="keyword" defaultValue={keyword} maxLength={200} placeholder="단지명, 공고명, 마이홈 ID 또는 LH 공고 번호" /></label>
-      <button type="submit">오류 검색</button>
-      {keyword && <button type="button" onClick={() => filter('keyword', '')}>검색 초기화</button>}
-    </form>
-    {executionId && <div className={styles.executionFilter}>
-      <p>선택한 실행에서 마지막으로 발생한 오류만 표시합니다. <span>{executionId}</span></p>
-      <button type="button" onClick={() => setParams(current => { current.delete('executionId'); current.delete('page'); return current })}>실행 필터 해제</button>
-    </div>}
-    <div className={styles.filters}>
-      <label>문제 단계<select value={category} onChange={event => filter('category',event.target.value)}>
+    <ListFilters key={`${domain}:${keyword}`} keyword={keyword} searchLabel="이름·원천 식별자"
+      initiallyExpanded={category !== 'all'}
+      onSearch={value => filter('keyword', value)}
+      primary={<label>처리 상태<select value={status} onChange={event => filter('status', event.target.value)}>
+        <option value="PENDING">미해결</option><option value="RESOLVED">해결됨</option><option value="ALL">전체 이력</option>
+      </select></label>}
+      more={<label>문제 단계<select value={category} onChange={event => filter('category', event.target.value)}>
         {allowed.map(value => <option key={value} value={value}>{value === 'all' ? '전체 단계' : failureCategories[value].label}</option>)}
-      </select></label>
-      <label>처리 상태<select value={status} onChange={event => filter('status',event.target.value)}>
-        <option value="PENDING">미해결</option><option value="RESOLVED">해결됨</option><option value="ALL">전체 이력·건너뜀 포함</option>
-      </select></label>
-      <button type="button" disabled={pending} onClick={() => setRevision(value => value + 1)}>목록 새로고침</button>
-    </div>
+      </select></label>}
+      applied={[
+        ...(keyword ? [{ key: 'keyword', label: keyword }] : []),
+        ...(category !== 'all' ? [{ key: 'category', label: failureCategories[category].label }] : []),
+        ...(status !== 'PENDING' ? [{ key: 'status', label: status === 'RESOLVED' ? '해결됨' : '전체 이력' }] : []),
+        ...(executionId ? [{ key: 'executionId', label: '선택한 실행' }] : []),
+      ]}
+      onRemove={key => filter(key, '')} onReset={() => setParams({ domain })} />
+    {executionId && <details className={styles.executionFilter}><summary>실행 정보</summary>{executionId}</details>}
     {!validQuery ? <p role="alert">조회 조건이 올바르지 않습니다. <button type="button" onClick={() => setParams({domain})}>조회 조건 초기화</button></p> : null}
     {error ? <p role="alert">{error} <button type="button" onClick={() => setRevision(value => value + 1)}>다시 조회</button></p> : null}
     <div className={styles.results} aria-busy={pending}>
-      {!pending && !error && pdfGroups.size > 0 && <section className={styles.pdfGroups} aria-label="PDF로 보정할 공고">
-        <h3>이 페이지의 주택형 대응 오류</h3><p>같은 공고의 주택형 대응 오류를 묶었습니다. PDF로 보정하면 이 공고의 미해결 오류를 해결로 바꿉니다.</p>
-        {[...pdfGroups.entries()].map(([announcementId, rows]) => <div key={announcementId}><strong>{rows[0].product!.name}</strong><Link to={follow(`/admin/announcements/${announcementId}/pdf-correction?${pdfFailureParams(rows)}`, rows[0])}>PDF로 보정 · {rows.length}건</Link></div>)}
-      </section>}
       <div className={styles.summary}>
-        <span>{matching ? `총 ${matching.totalElements.toLocaleString()}건` : '오류 목록 조회'}
+        <span>{matching ? `총 ${matching.totalElements.toLocaleString()}건` : pending ? '조회 중' : ''}
           {matching && executionId ? ' · 실행 필터 적용' : ''}</span>
-        <span>최근 발생순</span>
+        <span>최근 발생순</span><button type="button" disabled={pending} onClick={() => setRevision(value => value + 1)}>목록 새로고침</button>
       </div>
       {pending ? <p role="status" className={styles.loading}>오류 목록을 불러오는 중입니다.</p> : null}
       <div className={styles.scroll} tabIndex={0} role="region" aria-label="실패 목록 가로 스크롤">
@@ -177,7 +177,11 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
                 <small>{failureCategories[row.category].label}{target.context ? ` · ${target.context}` : ''}</small></th>
               <td title={row.detail}>{reasonLabel(row)}</td>
               <td><span className={styles.status} data-status={row.status}>{statusLabel(row.status)}</span>{resolvedByLabel(row) && <small className={styles.resolvedBy}>{resolvedByLabel(row)}</small>}</td>
-              <td><button type="button" aria-label={`확인·처리: ${target.title}`} onClick={() => openSelection(row)}>확인·처리</button></td>
+              <td>{canCorrectPdf(row) && pdfGroups.get(row.product!.id)?.[0] === row && (pdfGroups.get(row.product!.id)?.length ?? 0) > 1 &&
+                <Link className={styles.pdfLink} to={follow(`/admin/announcements/${row.product!.id}/pdf-correction?${pdfFailureParams(pdfGroups.get(row.product!.id)!)}`, row)}>
+                  PDF로 보정 · {pdfGroups.get(row.product!.id)!.length}건
+                </Link>}
+                <button type="button" aria-label={`확인·처리: ${target.title}`} onClick={() => openSelection(row)}>확인·처리</button></td>
             </tr>
           })}</tbody>
         </table> : null}
