@@ -12,6 +12,8 @@ import static org.mockito.Mockito.when;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
+import com.toadzip.backend.ingest.refinement.service.BoardRevisionLinker;
+import com.toadzip.backend.ingest.refinement.service.SourceRefinementRunner;
 import com.toadzip.backend.ingest.sh.collection.domain.ShAnnouncementSource;
 import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementSourceRepository;
 import java.time.LocalDate;
@@ -29,11 +31,12 @@ class ShAnnouncementRefinementOwnershipTest {
         var refiner = mock(ShAnnouncementRefiner.class);
         var guard = mock(IngestWriteOwnershipGuard.class);
         var targets = List.of(source("1"), source("2"), source("3"));
-        when(sources.findAll()).thenReturn(targets);
+        when(sources.findAllBySeqIn(List.of("1", "2", "3"))).thenReturn(targets);
         doThrow(new IngestOwnershipLostException()).when(guard).verifyWrite();
-        var service = new ShAnnouncementRefinementService(sources, refiner, mock(PlatformTransactionManager.class), guard);
+        var service = new ShAnnouncementRefinementService(sources, refiner,
+                new SourceRefinementRunner(mock(PlatformTransactionManager.class), guard), mock(BoardRevisionLinker.class));
 
-        assertThatThrownBy(service::refineAll).isInstanceOf(IngestOwnershipLostException.class);
+        assertThatThrownBy(() -> service.begin().refinePage(List.of("1", "2", "3"))).isInstanceOf(IngestOwnershipLostException.class);
 
         verify(guard, times(1)).verifyWrite();
         verifyNoInteractions(refiner);

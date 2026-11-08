@@ -62,8 +62,17 @@ class DataPipelineTypeTest {
         assertThat(lhAnnouncementCollections).containsExactly(
                 DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
                 DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
-                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS,
+                DataPipelineStep.COLLECT_REFINE_LH_ANNOUNCEMENTS
         );
+    }
+
+    @Test
+    void SH_GH_공고_실행은_수집과_정제를_합친_한_단계로_구성한다() {
+        assertThat(DataPipelineType.SH_ANNOUNCEMENT_COLLECTION.steps())
+                .containsExactly(DataPipelineStep.COLLECT_REFINE_SH_ANNOUNCEMENTS);
+        assertThat(DataPipelineType.GH_ANNOUNCEMENT_COLLECTION.steps())
+                .containsExactly(DataPipelineStep.COLLECT_REFINE_GH_ANNOUNCEMENTS);
     }
 
     @ParameterizedTest
@@ -75,8 +84,8 @@ class DataPipelineTypeTest {
             "COMPLEX_SYNC, true",
             "ANNOUNCEMENT_SYNC, true",
             "ANNOUNCEMENT_REGISTRATION, true",
-            "SH_ANNOUNCEMENT_COLLECTION, true",
-            "GH_ANNOUNCEMENT_COLLECTION, true"
+            "SH_ANNOUNCEMENT_COLLECTION, false",
+            "GH_ANNOUNCEMENT_COLLECTION, false"
     })
     void 수집과_정제를_잇는_유형만_정제_단계에_수집_성공을_요구한다(DataPipelineType type, boolean required) {
         assertThat(type.requiresSuccessfulCollection(DataPipelineStep.MAP_LH_ANNOUNCEMENTS)).isEqualTo(required);
@@ -97,7 +106,10 @@ class DataPipelineTypeTest {
                 DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
                 DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
                 DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
-                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS,
+                DataPipelineStep.COLLECT_REFINE_SH_ANNOUNCEMENTS,
+                DataPipelineStep.COLLECT_REFINE_GH_ANNOUNCEMENTS,
+                DataPipelineStep.COLLECT_REFINE_LH_ANNOUNCEMENTS
         );
     }
 }

@@ -1,6 +1,6 @@
 import type { ManagementResource } from './managementContract'
 
-const filterKeys = ['keyword', 'region', 'provider', 'rental', 'deleted', 'review', 'unconfirmed', 'verification', 'complexId', 'page', 'failureReturnTo', 'workReturnTo']
+const filterKeys = ['keyword', 'region', 'provider', 'rental', 'deleted', 'review', 'unconfirmed', 'verification', 'complexId', 'recruiting', 'missingCoordinates', 'applicationStatus', 'attention', 'page', 'failureReturnTo', 'workReturnTo']
 
 export function managementListParams(params: URLSearchParams, resource: ManagementResource) {
   const returnTo = params.get('returnTo')

@@ -70,7 +70,7 @@ describe('데이터 실행 이력', () => {
       execution({ executionId: 'sync-1', type: 'ANNOUNCEMENT_SYNC', status: 'COMPLETED_WARNINGS', totalStepCount: 4,
         completedSteps: ['LH 공고 목록 수집', 'LH 공고 공급 원본 수집', 'LH 공고 상세 원본 수집'],
         partiallyFailedSteps: [{ step: 'MAP_LH_ANNOUNCEMENTS', stepName: 'LH 공고 정제', report: { failedSourceCount: 2 } }] }),
-      execution({ executionId: 'sync-0', type: 'ANNOUNCEMENT_SYNC', status: 'RUNNING', totalStepCount: 4,
+      execution({ executionId: 'sync-0', type: 'ANNOUNCEMENT_SYNC', status: 'RUNNING', totalStepCount: 2,
         currentStepName: 'LH 공고 목록 수집' }),
     ])
     render(<MemoryRouter><PipelineHistory domain="announcement" compact /></MemoryRouter>)
@@ -93,7 +93,7 @@ describe('데이터 실행 이력', () => {
     fireEvent.click(runningTrigger)
     const running = screen.getByRole('region', { name: '실행 상세' })
     expect(within(running).getByText(/선택 시점의 기록/)).toBeVisible()
-    expect(within(running).getByRole('list', { name: '실행 단계' }).children).toHaveLength(4)
+    expect(within(running).getByRole('list', { name: '실행 단계' }).children).toHaveLength(2)
     expect(within(running).getByRole('button', { name: 'LH 공고 목록 수집 진행' })).toBeVisible()
     expect(within(running).queryByRole('button', { name: /실행 중지/ })).not.toBeInTheDocument()
   })

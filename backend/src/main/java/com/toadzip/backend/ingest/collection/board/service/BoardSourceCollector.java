@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -58,15 +59,18 @@ public class BoardSourceCollector {
         this.refetchAfter = refetchAfter;
     }
 
-    /** lookbackDays가 0이면 게시일과 관계없이 모든 글을 본다. */
+    /**
+     * lookbackDays가 0이면 게시일과 관계없이 모든 글을 본다. 페이지를 처리할 때마다 listener에 그 페이지에서 고른 글을
+     * 넘기므로, 호출 제한으로 멈춰도 처리한 페이지까지는 listener가 이어받아 있다.
+     */
     public <E extends BoardEntry, S> ExternalDataCollectionReport collect(
-            BoardSource<E, S> board, int lookbackDays, Duration requestInterval
+            BoardSource<E, S> board, int lookbackDays, Duration requestInterval, BoardPageListener listener
     ) {
         LocalDate cutoff = LocalDate.MIN;
         if (lookbackDays > 0) {
             cutoff = LocalDate.now(clock.withZone(KOREA)).minusDays(lookbackDays);
         }
-        Run<E, S> run = new Run<>(board, new BoardRequests(board.source(), retryExecutor, requestInterval));
+        Run<E, S> run = new Run<>(board, new BoardRequests(board.source(), retryExecutor, requestInterval), listener);
         IngestExecutionScope.beginWork(board.agency() + " 공고 원천", board.unit(), -1);
         run.collect(cutoff);
         run.collectPending();
@@ -77,6 +81,7 @@ public class BoardSourceCollector {
 
         private final BoardSource<E, S> board;
         private final BoardRequests requests;
+        private final BoardPageListener listener;
         private final Set<String> seen = new HashSet<>();
         private int totalCount = -1;
         private final Set<String> attempted = new HashSet<>();
@@ -85,9 +90,10 @@ public class BoardSourceCollector {
         private int failed;
         private int skipped;
 
-        private Run(BoardSource<E, S> board, BoardRequests requests) {
+        private Run(BoardSource<E, S> board, BoardRequests requests, BoardPageListener listener) {
             this.board = board;
             this.requests = requests;
+            this.listener = listener;
         }
 
         private void collect(LocalDate cutoff) {
@@ -128,9 +134,11 @@ public class BoardSourceCollector {
                     pending.complete(board.source(), entry.key());
                 }
             }
+            List<String> handled = new ArrayList<>();
             for (E entry : selected) {
                 collectEntry(entry, skippable, page.page());
                 IngestExecutionScope.workCompleted();
+                handled.add(entry.key());
                 if (requests.halted()) {
                     log.warn("{} 공고 수집을 중단합니다: {}, 호출 {}회", board.agency(), requests.haltReason(),
                             requests.callCount());
@@ -139,22 +147,33 @@ public class BoardSourceCollector {
                         recordFailure(board.pageRequest(page.page()), new ExternalDataRequestException(board.agency()
                                 + " 호출 상한에 닿아 남은 글을 수집하지 않았습니다. 다시 실행하면 이어서 받습니다."));
                     }
+                    notifyCollected(handled);
                     return false;
                 }
             }
+            notifyCollected(handled);
             return true;
         }
 
+        private void notifyCollected(List<String> keys) {
+            if (!keys.isEmpty()) {
+                listener.collected(List.copyOf(keys));
+            }
+        }
+
         private void collectPending() {
+            List<String> handled = new ArrayList<>();
             for (var target : pending.find(board.source())) {
                 if (requests.halted()) {
-                    return;
+                    break;
                 }
                 if (!attempted.contains(target.getTargetKey())) {
                     collectDetail(pending.read(target, board.entryType()), target.getListPage());
                     IngestExecutionScope.workCompleted();
+                    handled.add(target.getTargetKey());
                 }
             }
+            notifyCollected(handled);
         }
 
         private void collectEntry(E entry, Set<String> skippable, int page) {

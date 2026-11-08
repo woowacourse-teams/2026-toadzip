@@ -26,6 +26,7 @@ import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -33,6 +34,9 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -47,6 +51,8 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 @Transactional(readOnly = true)
 public class AdminAnnouncementManagementService {
+    private final AnnouncementSearchRepository adminQueries;
+    private final Clock clock;
     private final AnnouncementRepository announcements;
     private final SupplyRowRepository rows;
     private final HousingComplexRepository complexes;
@@ -60,10 +66,13 @@ public class AdminAnnouncementManagementService {
     public AdminAnnouncementManagementService(AnnouncementRepository announcements, SupplyRowRepository rows,
             HousingComplexRepository complexes, HousingTypeRepository types,
             AdminDataChangeRepository changes, ObjectMapper json, AnnouncementApplicationScheduleRepository schedules,
-            SupplyTargetRepository targets, AnnouncementAttachmentRepository attachments) {
+            SupplyTargetRepository targets, AnnouncementAttachmentRepository attachments,
+            AnnouncementSearchRepository adminQueries, Clock clock) {
         this.announcements = announcements;
         this.rows = rows;
         this.complexes = complexes;
+        this.adminQueries = adminQueries;
+        this.clock = clock;
         this.types = types;
         this.changes = changes;
         this.json = json;
@@ -73,11 +82,22 @@ public class AdminAnnouncementManagementService {
     }
 
     public AdminPage<AdminDataSummary> search(AdminSearch search, long complexId) {
-        var page = announcements.searchAdmin(search.pattern(), search.identifier(), search.providerCode(), search.providerLegacy(),
-                search.rentalCode(), search.rentalLegacy(), search.regionCode(), search.deleted(), search.review(),
-                search.unconfirmed(), complexId, PageRequest.of(search.page(), search.pageSize()));
-        return new AdminPage<>(page.stream().map(this::summary).toList(), search.page(), page.hasNext(),
-                page.getTotalElements(), page.getTotalPages());
+        return search(search, complexId, "", "");
+    }
+
+    public AdminPage<AdminDataSummary> search(AdminSearch search, long complexId, String applicationStatus,
+            String attention) {
+        if (!List.of("", "BEFORE_APPLICATION", "APPLYING", "CLOSED", "CONDITIONAL", "CANCELLED", "UNKNOWN")
+                .contains(applicationStatus)
+                || !List.of("", "ANY", "SCHEDULE_MISSING", "SUPPLY_MISSING", "UNCONFIRMED").contains(attention)) {
+            throw new IllegalArgumentException("조회 조건이 올바르지 않습니다.");
+        }
+        LocalDate today = clock.instant().atZone(ZoneId.of("Asia/Seoul")).toLocalDate();
+        var page = adminQueries.searchAdmin(search, complexId, applicationStatus, attention, today);
+        var statuses = adminQueries.adminStatuses(page.stream().map(Announcement::getId).toList(), today).stream()
+                .collect(Collectors.toMap(AnnouncementSearchRepository.AdminStatus::id, value -> value));
+        return new AdminPage<>(page.stream().map(value -> summary(value, statuses.get(value.getId()))).toList(),
+                search.page(), page.hasNext(), page.getTotalElements(), page.getTotalPages());
     }
 
     public AdminAnnouncementDetail detail(long id) {
@@ -280,16 +300,30 @@ public class AdminAnnouncementManagementService {
     }
 
     private AdminDataSummary summary(Announcement announcement) {
+        return summary(announcement, null);
+    }
+
+    private AdminDataSummary summary(Announcement announcement, AnnouncementSearchRepository.AdminStatus status) {
+        LocalDate start = announcement.getApplicationStartDate();
+        LocalDate end = announcement.getApplicationEndDate();
+        String applicationStatus = null;
+        List<String> reasons = null;
+        if (status != null) {
+            start = status.startDate();
+            end = status.endDate();
+            applicationStatus = status.applicationStatus();
+            reasons = status.attentionReasons();
+        }
         return new AdminDataSummary(announcement.getId(), announcement.getName(),
                 announcement.getPostedDate().toString(), announcement.getProvider().name(),
                 enumName(announcement.getSupplyType()), announcement.isAdminDeleted(), announcement.isAdminModified(),
                 announcement.isSourceReviewRequired(), announcement.getAdminUpdatedAt(), null,
                 new AdminDataSummary.AnnouncementSummary(announcement.getSourceAnnouncementIdentifier(),
                         announcement.getOriginalUrl(), enumName(announcement.getRecruitmentType()),
-                        announcement.getPostedDate(), announcement.getApplicationStartDate(),
-                        announcement.getApplicationEndDate(), announcement.getWinnerAnnouncementDate(),
+                        announcement.getPostedDate(), start, end, announcement.getWinnerAnnouncementDate(),
                         announcement.getStatus().name(), announcement.origin().name(),
-                        announcement.getSupplyOwner().name(), announcement.getReleaseStatus().name()));
+                        announcement.getSupplyOwner().name(), announcement.getReleaseStatus().name(),
+                        applicationStatus, reasons));
     }
 
     private AdminAnnouncementUpdateRequest data(Announcement announcement) {

@@ -66,9 +66,15 @@ function remainingTime(work: DataPipelineWorkProgress, now: number): string {
 
 export function PipelineReport({ report }: { report: unknown }) {
   if (typeof report !== 'object' || report === null) return null
+  // 수집·정제를 합친 단계는 수집 수치와 정제 수치를 나눠 보여 준다.
+  const groups = ([['collection', '수집'], ['supply', '공급 수집'], ['detail', '상세 수집'], ['refinement', '정제']] as const)
+    .filter(([key]) => typeof (report as Record<string, unknown>)[key] === 'object' && (report as Record<string, unknown>)[key] !== null)
+  if (groups.some(([key]) => key === 'refinement')) {
+    return <>{groups.map(([key, title]) => <div key={key}><h5>{title}</h5><PipelineReport report={(report as Record<string, unknown>)[key]} /></div>)}</>
+  }
   const labels: Record<string, string> = {
     targetCount: '대상 공고', created: '신규 공고', updated: '갱신 공고', unchanged: '변경 없는 공고',
-    reviewRequired: '원천 검토 필요', trashed: '휴지통 공고', supplyRecheckRequired: '공급 재확인 필요', failed: '정제 실패',
+    reviewRequired: '원천 검토 필요', trashed: '휴지통 공고', supplyRecheckRequired: '공급 재확인 필요', revisionsLinked: '정정공고 연결', revisionsUnlinked: '원공고를 못 정한 정정공고', failed: '정제 실패',
     createdComplexCount: '신규 단지', updatedComplexCount: '갱신 단지', unchangedComplexCount: '변경 없는 단지',
     createdHousingTypeCount: '신규 주택형', createdAnnouncementCount: '신규 공고', updatedAnnouncementCount: '갱신 공고',
     unchangedAnnouncementCount: '변경 없는 공고', createdSupplyRowCount: '신규 공급행', updatedSupplyRowCount: '갱신 공급행',
