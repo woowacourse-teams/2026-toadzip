@@ -22,14 +22,17 @@ import com.toadzip.backend.housing.dto.request.AdminHousingTypeUpdateRequest;
 import com.toadzip.backend.housing.dto.response.AdminHousingComplexDetail;
 import com.toadzip.backend.housing.exception.AdminHousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.InvalidRegionCodeException;
+import com.toadzip.backend.housing.repository.ComplexSummaryQueryRepository;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingComplexReviewRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
-import java.math.BigDecimal;
 import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -40,6 +43,8 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 @Transactional(readOnly = true)
 public class AdminHousingComplexManagementService {
+    private final ComplexSummaryQueryRepository adminQueries;
+    private final Clock clock;
     private final HousingComplexRepository complexes;
     private final HousingTypeRepository types;
     private final SupplyRowRepository rows;
@@ -53,8 +58,11 @@ public class AdminHousingComplexManagementService {
     public AdminHousingComplexManagementService(HousingComplexRepository complexes, HousingTypeRepository types,
             SupplyRowRepository rows, AdminDataChangeRepository changes, RegionCodeResolver regions,
             ObjectMapper json, HousingComplexReviewRepository reviews, HousingTypeImpactService typeImpacts,
-            AnnouncementSupplyMatchDecisionRepository matchDecisions) {
+            AnnouncementSupplyMatchDecisionRepository matchDecisions,
+            ComplexSummaryQueryRepository adminQueries, Clock clock) {
         this.complexes = complexes;
+        this.adminQueries = adminQueries;
+        this.clock = clock;
         this.types = types;
         this.rows = rows;
         this.changes = changes;
@@ -70,13 +78,17 @@ public class AdminHousingComplexManagementService {
     }
 
     public AdminPage<AdminDataSummary> search(AdminSearch search, ComplexVerificationStatus verification) {
+        return search(search, verification, false, false);
+    }
+
+    public AdminPage<AdminDataSummary> search(AdminSearch search, ComplexVerificationStatus verification,
+            boolean recruiting, boolean missingCoordinates) {
         String verificationFilter = "";
         if (verification != null) {
             verificationFilter = verification.name();
         }
-        var page = complexes.searchAdmin(search.pattern(), search.identifier(), search.providerCode(), search.providerLegacy(),
-                search.rentalCode(), search.rentalLegacy(), search.regionCode(), search.deleted(), search.review(),
-                verificationFilter, PageRequest.of(search.page(), search.pageSize()));
+        var page = adminQueries.searchAdmin(search, verificationFilter, recruiting, missingCoordinates,
+                clock.instant().atZone(ZoneId.of("Asia/Seoul")).toLocalDate());
         var statuses = new HashMap<Long, HousingComplexReviewRepository.ReviewStatus>();
         if (!page.isEmpty()) {
             reviews.currentStatuses(page.stream().map(HousingComplex::getId).toList())
