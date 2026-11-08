@@ -220,7 +220,7 @@ describe('AI 추출 응답 읽기', () => {
       const value = read()
       expect(value.supplyRows.map(item => item.values.supplyArea)).toEqual([27.6384, null, 50])
       expect(noteFor(value.unresolved, 'supplyRows[1].subtypes[2].supplyArea')?.reason).toBe('공용면적 표기 없음')
-      expect(noteFor(value.notApplicable, 'supplyRows[1].exclusiveArea')?.reason).toContain('대표 주택형')
+      expect(noteFor(value.notApplicable, 'supplyRows[1].exclusiveArea')?.reason).toContain('대표 주택타입')
       expect(noteFor(value.notApplicable, 'supplyRows[2].targets[0].supplyRank')?.reason).toBe('순위 없음')
       expect(evidenceFor(value.evidence, 'supplyRows[1].subtypes[1].exclusiveArea')).toEqual({ path: 'supplyRows[1]', page: 3, quote: '26A/B/C 77' })
       expect(evidenceFor(value.evidence, 'supplyRows[2].exclusiveArea')?.page).toBe(4)
@@ -231,9 +231,9 @@ describe('AI 추출 응답 읽기', () => {
       expect(value.sharedCounts).toEqual([{ paths: ['supplyRows[1].totalSupplyHouseholdCount', 'supplyRows[2].totalSupplyHouseholdCount'], count: 92, page: 3, quote: '26·36 92' }])
     })
 
-    it('세부 타입이 하나뿐이면 그 형명·면적을 행 값으로 쓴다', () => {
+    it('세부 타입이 하나뿐이면 그 면적을 행 값으로 쓰되 공고 표기는 신청형 그대로 두고 주택타입 이름은 houseTypeName에 둔다', () => {
       const value = read({ data: { ...structuredClone(fixtures.hansville.extraction).data, supplyRows: [row('26', { subtypes: [{ name: '26A', exclusiveArea: 26.37, commonArea: 15.1, constructedHouseholdCount: 50 }] })] }, sharedCounts: [], evidence: [] })
-      expect(value.supplyRows.map(item => [item.typeName, item.values.exclusiveArea, item.values.supplyArea, item.values.constructedHouseholdCount, item.subtypes])).toEqual([['26A', 26.37, 41.47, 50, []]])
+      expect(value.supplyRows.map(item => [item.typeName, item.values.houseTypeName, item.values.exclusiveArea, item.values.supplyArea, item.values.constructedHouseholdCount, item.subtypes])).toEqual([['26', '26A', 26.37, 41.47, 50, []]])
     })
 
     it('건설호수·대상별 모집수 합계와 공급면적이 맞지 않으면 확인할 내용으로 알린다', () => {

@@ -11,7 +11,6 @@ import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
-import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest.ReceptionPlaceUpdateRequest;
@@ -169,15 +168,10 @@ public class AdminAnnouncementManagementService {
         var announcement = find(id);
         checkVersion(announcement, request.version());
         String before = json.writeValueAsString(data(announcement));
-        ReceptionPlace reception = null;
-        if (request.receptionPlace() != null) {
-            var place = request.receptionPlace();
-            reception = ReceptionPlace.create(place.name(), place.method(), place.address(), place.contact(), place.url());
-        }
         var incoming = Announcement.create(announcement.getSourceAnnouncementIdentifier(), null, null,
                 request.name(), AnnouncementPublicationType.ORIGINAL, request.rentalType(), request.recruitmentType(),
                 request.agencyCode(), request.postedDate(), request.applicationStartDate(), request.applicationEndDate(),
-                request.winnerAnnouncementDate(), request.originalUrl(), null, 0, reception);
+                request.winnerAnnouncementDate(), request.originalUrl(), null, 0, request.places());
         announcement.reviseByAdmin(incoming);
         announcements.flush();
         changes.save(new AdminDataChange("ANNOUNCEMENT", id, "UPDATE", actor, before,
@@ -327,12 +321,7 @@ public class AdminAnnouncementManagementService {
     }
 
     private AdminAnnouncementUpdateRequest data(Announcement announcement) {
-        ReceptionPlaceUpdateRequest reception = null;
-        if (announcement.getReceptionPlace() != null) {
-            var place = announcement.getReceptionPlace();
-            reception = new ReceptionPlaceUpdateRequest(place.getName(), place.getMethod(), place.getAddress(),
-                    place.getContact(), place.getUrl());
-        }
+        var reception = announcement.getReceptionPlaces().stream().map(ReceptionPlaceUpdateRequest::of).toList();
         return new AdminAnnouncementUpdateRequest(announcement.getVersion(), announcement.getName(),
                 announcement.getSupplyType(), announcement.getRecruitmentType(), announcement.getProvider(),
                 announcement.getPostedDate(), announcement.getApplicationStartDate(), announcement.getApplicationEndDate(),

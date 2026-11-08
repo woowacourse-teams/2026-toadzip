@@ -1,12 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getManagementPage } from './api'
 import { type ManagementSummary } from './managementContract'
 /** initialQuery를 주면 처음 열 때 그 이름으로 바로 검색해 후보를 보여 준다. */
-export function ComplexPicker({ onSelect, disabled = false, initialQuery = '' }: { onSelect: (item: ManagementSummary) => void; disabled?: boolean; initialQuery?: string }) {
+/** onInitialResults는 처음 검색한 결과를 알린다. 같은 이름의 단지가 없을 때 새 단지 등록을 바로 열 수 있게 한다. */
+export function ComplexPicker({ onSelect, disabled = false, initialQuery = '', onInitialResults }: { onSelect: (item: ManagementSummary) => void; disabled?: boolean; initialQuery?: string
+  onInitialResults?: (items: ManagementSummary[]) => void }) {
   const [query, setQuery] = useState(initialQuery)
   const [items, setItems] = useState<ManagementSummary[] | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // 처음 검색은 이름이 바뀔 때만 다시 한다. 알림 함수는 최신 것을 쓴다.
+  const reportInitial = useRef(onInitialResults); reportInitial.current = onInitialResults
   async function search() {
     setBusy(true); setError(''); setItems(null)
     try { setItems((await getManagementPage('complexes', new URLSearchParams({keyword:query, size:'20'}))).items) }
@@ -17,7 +21,10 @@ export function ComplexPicker({ onSelect, disabled = false, initialQuery = '' }:
     if (!initialQuery.trim()) return
     const controller = new AbortController()
     setBusy(true)
-    getManagementPage('complexes', new URLSearchParams({ keyword: initialQuery, size: '20' }), controller.signal).then(page => setItems(page.items), cause => {
+    getManagementPage('complexes', new URLSearchParams({ keyword: initialQuery, size: '20' }), controller.signal).then(page => {
+      if (controller.signal.aborted) return
+      setItems(page.items); reportInitial.current?.(page.items)
+    }, cause => {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '단지를 검색하지 못했습니다.')
     }).finally(() => { if (!controller.signal.aborted) setBusy(false) })
     return () => controller.abort()

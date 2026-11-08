@@ -23,7 +23,7 @@ public final class AnnouncementSupplyMatching {
     public record SplitRow(long id, String name, Long complexId, Long housingTypeId) { }
 
     public record ComplexOption(long id, String name, String roadAddress, String supplyType, String pnu,
-            int totalHouseholdCount, List<HousingTypeArea> housingTypes) {
+            Integer totalHouseholdCount, List<HousingTypeArea> housingTypes) {
     }
 
     public record HousingTypeArea(long id, String name, BigDecimal exclusiveArea) {

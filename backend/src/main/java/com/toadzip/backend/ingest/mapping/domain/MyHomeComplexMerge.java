@@ -127,7 +127,7 @@ public class MyHomeComplexMerge {
     /** 통합 대표 단지가 이어받을 수동 입력값이다. */
     public record ManualValues(String imageUrl, Integer moveOutCount) {
 
-        public void adoptInto(HousingComplex representative, int householdCount) {
+        public void adoptInto(HousingComplex representative, Integer householdCount) {
             representative.adoptVerifiedMerge(householdCount, imageUrl, moveOutCount);
         }
     }

@@ -63,7 +63,7 @@ def test_result_has_contract_keys_and_original_page_numbers():
     assert (result["pages"], result["totalPages"], result["usage"]) == (
         [1, 3, 4], 5, {key: value * 2 for key, value in USAGE.items()})
     tree = json.loads(result["json"])
-    # LH 행 없이 모델이 쓴 LH 행 번호는 가리킬 LH 행이 없어 비운다.
+    # 원천 행이 없는 공고는 sourceRow가 비어 있다.
     assert len(tree["data"]["supplyRows"]) == 1
     assert tree["data"]["supplyRows"][0]["sourceHousingTypeName"] is None
     assert tree["data"]["supplyRows"][0]["sourceRow"] is None
@@ -89,7 +89,7 @@ def test_result_has_contract_keys_and_original_page_numbers():
                for item in tree["data"]["unresolvedFields"])
 
 
-def test_lh_rows_are_sent_as_supply_row_frame_and_counts_are_checked():
+def test_lh_rows_are_sent_as_reference_list_and_do_not_fill_source_row():
     model = FakeModel()
     job_input = contract_example("input.example.json")
 
@@ -97,7 +97,10 @@ def test_lh_rows_are_sent_as_supply_row_frame_and_counts_are_checked():
 
     prompt = stage_prompt(model, "supply")
     assert LH_FRAME in prompt
-    assert "[LH 공급 API 행]\n1. 주택형=16A(대학생/청년) | 전용=16.37 | 공급=27.6384 | 모집수=78" in prompt
+    assert ("[LH 공급 API 행]\n- 단지=인천부평(도시재생뉴딜) 행복주택 | 주택형=16A(대학생/청년) | 전용=16.37 | 공급=27.6384 "
+            "| 모집수=78") in prompt
+    assert "lhSourceRow" not in prompt
+    assert [row["sourceRow"] for row in json.loads(result["json"])["data"]["supplyRows"]] == [None]
     assert any("LH API" in warning for warning in result["warnings"]) is False
 
 
@@ -112,12 +115,12 @@ def test_unverified_lh_count_is_cleared_before_comparison():
     assert "supplyRows[0].totalSupplyHouseholdCount" in {
         item["path"] for item in json.loads(result["json"])["data"]["unresolvedFields"]
     }
-    assert not any("모집수 80와 다름" in warning for warning in result["warnings"])
+    assert not any("모집수 합계 80와 다름" in warning for warning in result["warnings"])
 
 
-def split_row(housing_type, count, constructed, lh_row=1, subtypes=()):
+def split_row(housing_type, count, constructed, subtypes=()):
     return {"complexReference": {"sourceComplexName": "대구테크노폴리스4"}, "sourceHousingTypeName": housing_type,
-            "lhSourceRow": lh_row, "totalSupplyHouseholdCount": count, "constructedHouseholdCount": constructed,
+            "totalSupplyHouseholdCount": count, "constructedHouseholdCount": constructed,
             "subtypes": list(subtypes), "targets": [{"target": "일반", "supplyHouseholdCount": None}]}
 
 
@@ -126,52 +129,37 @@ MERGED_LH_INPUT = {"sourceSupplyRows": [{"source": "LH", "order": 0, "rowIdentif
                                      "supplyArea": "", "suppliedUnitCount": "240", "totalUnitCount": "719"}]}
 
 
-def test_merged_lh_row_split_by_pdf_housing_types_keeps_counts_and_source_row():
-    # LH는 모집 240 한 행만 보내고, 공급 표는 주택형마다 이번 모집수(200·25·15)를 따로 적는다. 건설호수(468·183·68)는 모집수가 아니다.
+def test_pdf_rows_stand_on_their_own_when_lh_merges_housing_types():
+    # LH는 모집 240 한 행만 보내고, 공급 표는 주택형마다 행을 둔다. 공급행은 PDF가 정하고 LH 행 식별자를 채우지 않는다.
     extraction = dict(EXTRACTION, data=dict(EXTRACTION["data"], supplyRows=[
         split_row("051.9800A", 200, 468), split_row("059.9100A", 25, 183), split_row("059.9300B", 15, 68)]), evidence=[])
     model = FakeModel(json.dumps(extraction, ensure_ascii=False))
 
     result = AnnouncementPdfExtractor(model).extract(job(pdf(COVER, SUPPLY, RENT), MERGED_LH_INPUT))
 
-    assert "[LH 공급 API 행]\n1. 주택형=51 | 전용= | 공급= | 모집수=240" in stage_prompt(model, "supply")
+    assert "[LH 공급 API 행]\n- 단지=대구테크노폴리스4 | 주택형=51 | 전용= | 공급= | 모집수=240" in stage_prompt(model, "supply")
     rows = json.loads(result["json"])["data"]["supplyRows"]
     assert [(row["sourceHousingTypeName"], row["sourceRow"], row["totalSupplyHouseholdCount"]) for row in rows] == [
-        (None, MERGED, None), (None, MERGED, None), (None, MERGED, None)]
+        (None, None, None), (None, None, None), (None, None, None)]
     assert any("같은 의미의 원문 표 열에서 확인되지 않음" in item["reason"]
                for item in json.loads(result["json"])["data"]["unresolvedFields"])
+    # 면적이 없는 LH 행은 맞댈 수 없어 조용히 넘긴다. LH 행 1줄과 PDF 공급행 3개가 달라도 오류가 아니다.
+    assert not any("LH API" in warning for warning in result["warnings"])
 
 
-def test_split_rows_without_supported_source_are_unresolved_before_lh_comparison():
-    extraction = dict(EXTRACTION, data=dict(EXTRACTION["data"], supplyRows=[
-        split_row("051.9800A", 200, 468), split_row("059.9100A", 25, 183)]), evidence=[])
-
-    result = AnnouncementPdfExtractor(FakeModel(json.dumps(extraction, ensure_ascii=False))).extract(
-        job(pdf(COVER, SUPPLY, RENT), MERGED_LH_INPUT))
-
-    tree = json.loads(result["json"])
-    assert [row["totalSupplyHouseholdCount"] for row in tree["data"]["supplyRows"]] == [None, None]
-    assert {item["path"] for item in tree["data"]["unresolvedFields"]} >= {
-        "supplyRows[0].totalSupplyHouseholdCount", "supplyRows[1].totalSupplyHouseholdCount",
-    }
-    assert not any("모집수 합계" in warning for warning in result["warnings"])
-
-
-def test_lh_source_row_number_is_returned_as_that_rows_identifier():
-    # 원천 순번이 1부터 시작하지 않아도(0번 행이 빠짐) 모델이 쓴 목록 번호를 그 행의 식별자로 돌려준다. 범위 밖 번호는 비운다.
+def test_a_stray_lh_row_number_from_the_model_is_not_kept():
+    # 모델이 예전처럼 LH 목록 번호를 써도 결과 공급행에 LH 행 식별자를 채우지 않는다.
     job_input = {"sourceSupplyRows": [
-        {"source": "LH", "order": 1, "rowIdentifier": "LH:P:SUPPLY:1", "typeName": "51", "exclusiveArea": "", "supplyArea": "", "suppliedUnitCount": "200"},
-        {"source": "LH", "order": 3, "rowIdentifier": "LH:P:SUPPLY:3", "typeName": "59", "exclusiveArea": "", "supplyArea": "", "suppliedUnitCount": "40"}]}
-    extraction = dict(EXTRACTION, data=dict(EXTRACTION["data"], supplyRows=[
-        split_row("059.9100A", 25, 183, lh_row=2), split_row("051.9800A", 200, 468, lh_row=1), split_row("059.9300B", 15, 68, lh_row=3)]),
-        evidence=[])
+        {"source": "LH", "order": 1, "rowIdentifier": "LH:P:SUPPLY:1", "typeName": "51", "exclusiveArea": "", "supplyArea": "", "suppliedUnitCount": "200"}]}
+    compact = {"data": {"rows": [{"rowIds": ["P2:T1:R2"], "complexName": "Sample Complex", "housingType": "16A",
+                                  "target": "청년", "lhSourceRow": 1, "sourceRow": 1}]}, "sharedCounts": []}
+    notice = {"data": {"announcement": {}, "receptionPlaces": [], "complexes": [], "schedules": [], "unresolvedFields": []},
+              "notApplicable": [], "evidence": []}
 
-    result = AnnouncementPdfExtractor(FakeModel(json.dumps(extraction, ensure_ascii=False))).extract(
-        job(pdf(COVER, SUPPLY, RENT), job_input))
+    result = AnnouncementPdfExtractor(StageReplyModel(compact, notice)).extract(job(pdf(COVER, SUPPLY, RENT), job_input))
 
-    rows = json.loads(result["json"])["data"]["supplyRows"]
-    assert [row["sourceRow"] for row in rows] == ["LH:P:SUPPLY:3", "LH:P:SUPPLY:1", None]
-    assert "supplyRows[2].sourceRow: LH API 공급행 번호가 없거나 범위를 벗어남(3)" in result["warnings"]
+    [row] = json.loads(result["json"])["data"]["supplyRows"]
+    assert (row["sourceHousingTypeName"], row["sourceRow"]) == ("16A", None)
 
 
 def test_shared_count_for_several_types_stays_one_row_without_warning():
@@ -185,7 +173,7 @@ def test_shared_count_for_several_types_stays_one_row_without_warning():
         job(pdf(COVER, SUPPLY, RENT), MERGED_LH_INPUT))
 
     [row] = json.loads(result["json"])["data"]["supplyRows"]
-    assert (row["sourceRow"], row["totalSupplyHouseholdCount"], len(row["subtypes"])) == (MERGED, None, 2)
+    assert (row["sourceRow"], row["totalSupplyHouseholdCount"], len(row["subtypes"])) == (None, None, 2)
     assert "supplyRows[0].totalSupplyHouseholdCount" in {
         item["path"] for item in json.loads(result["json"])["data"]["unresolvedFields"]
     }
@@ -273,6 +261,21 @@ def test_slow_pdf_fails_before_paid_call(monkeypatch):
     assert model.prompts == []
 
 
+def test_scanned_pdf_without_any_text_fails_before_paid_call():
+    # 광주두암4처럼 쪽마다 글자가 없는 스캔본은 표를 읽을 수 없어 모델을 부르지 않고 관리자에게 직접 입력하라고 알린다.
+    document = pymupdf.open()
+    for _ in range(3):
+        document.new_page().draw_rect(pymupdf.Rect(50, 50, 300, 300))
+    model = FakeModel()
+
+    with pytest.raises(PermanentError) as error:
+        AnnouncementPdfExtractor(model).extract(job(document.tobytes()))
+
+    assert error.value.code == "PDF_TEXT_MISSING"
+    assert "이미지" in str(error.value)
+    assert model.prompts == []
+
+
 def test_unstructured_supply_table_fails_before_paid_call(monkeypatch):
     class BrokenTable:
         def extract(self):
@@ -337,7 +340,7 @@ def test_two_stage_extract_merges_fields_and_validates_row_ids_against_original_
             "complexes": [{"sourceComplexName": "Test", "totalHouseholdCount": None, "parkingCount": None}],
             "supplyRows": [{
                 "complexReference": {"sourceComplexName": "Test"}, "sourceHousingTypeName": "26A",
-                "lhSourceRow": None, "expectedMoveInMonth": None, "totalSupplyHouseholdCount": 20,
+                "expectedMoveInMonth": None, "totalSupplyHouseholdCount": 20,
                 "exclusiveArea": None, "commonArea": None, "supplyArea": None,
                 "constructedHouseholdCount": None, "subtypes": [], "targets": [{
                     "target": "청년", "supplyHouseholdCount": None, "reserveCount": None,
@@ -358,12 +361,11 @@ def test_two_stage_extract_merges_fields_and_validates_row_ids_against_original_
             {"path": "supplyRows[0].targets[0]", "rowIds": ["P1:T1:R2"]},
         ],
     }
-    supply["data"]["supplyRows"][0]["lhSourceRow"] = 1
     notice = {
         "data": {
             "announcement": {"name": "Sample Notice", "postedDate": None, "applicationStartDate": None,
                              "applicationEndDate": None, "winnerAnnouncementDate": None},
-            "receptionPlace": {"name": None, "method": None, "address": None, "contact": None, "url": None},
+            "receptionPlaces": [],
             "complexes": [{"sourceComplexName": "Test", "address": "Test Road", "totalHouseholdCount": 100,
                            "parkingCount": 30}],
             "schedules": [], "unresolvedFields": [],
@@ -392,14 +394,15 @@ def test_two_stage_extract_merges_fields_and_validates_row_ids_against_original_
     }]
     assert tree["data"]["supplyRows"][0]["targets"][0]["rentalDeposit"] == 46920000
     assert tree["data"]["supplyRows"][0]["totalSupplyHouseholdCount"] == 20
-    assert "supplyRows[0].totalSupplyHouseholdCount: LH API 공급행 1 모집수 80와 다름(20)" in result["warnings"]
+    # PDF 공급행에 전용면적이 없어 LH 모집수와 맞대지 않는다.
+    assert not any("LH API" in warning for warning in result["warnings"])
     assert not any("원문 표 행 ID" in warning or "지정한 원문 표 행" in warning for warning in result["warnings"])
 
 
 def test_supply_table_the_code_can_read_skips_the_supply_model_call():
     notice = {
         "data": {
-            "announcement": {"name": "Sample Notice"}, "receptionPlace": {},
+            "announcement": {"name": "Sample Notice"}, "receptionPlaces": [],
             "complexes": [{"sourceComplexName": "Test", "address": "Test Road", "totalHouseholdCount": 100,
                            "parkingCount": 30}],
             "schedules": [], "unresolvedFields": [],
@@ -423,6 +426,85 @@ def test_supply_table_the_code_can_read_skips_the_supply_model_call():
     assert result["usage"] == USAGE
 
 
+def area_table_pdf():
+    document = pymupdf.open()
+    grid_page(document, [
+        ["단지명", "주택형", "공급대상", "모집호수", "주거전용", "주거공용"],
+        ["Test", "26A", "청년", "20", "26.37", "13.07"],
+    ]).insert_text((20, 30), "Sample Notice", fontname="korea", fontsize=8)
+    return document.tobytes()
+
+
+def test_lh_rows_keep_the_code_path_and_are_checked_by_area_against_the_pdf_row():
+    # LH가 같은 전용면적을 신청자 구분으로 두 줄(12+10) 보내도 공급행은 PDF 한 행이고, 모집수 합계만 맞대 경고한다.
+    model = FakeModel()
+    job_input = {"sourceSupplyRows": [
+        {"source": "LH", "order": 0, "rowIdentifier": "LH:P:SUPPLY:0", "complexLabel": "Test", "typeName": "26A(우선)",
+         "exclusiveArea": "26.3700", "supplyArea": "", "suppliedUnitCount": "12", "totalUnitCount": ""},
+        {"source": "LH", "order": 1, "rowIdentifier": "LH:P:SUPPLY:1", "complexLabel": "Test", "typeName": "26A(일반)",
+         "exclusiveArea": "26.37", "supplyArea": "", "suppliedUnitCount": "10", "totalUnitCount": ""}]}
+
+    result = AnnouncementPdfExtractor(model, FakeJudge()).extract(job(area_table_pdf(), job_input))
+
+    assert len(model.prompts) == 1 and "[추출 단계: 공고 본문]" in model.prompts[0]
+    [row] = json.loads(result["json"])["data"]["supplyRows"]
+    assert (row["sourceHousingTypeName"], row["exclusiveArea"], row["totalSupplyHouseholdCount"], row["sourceRow"]) == (
+        "26A", 26.37, 20, None)
+    assert [warning for warning in result["warnings"] if "LH API" in warning] == [
+        "supplyRows[0].totalSupplyHouseholdCount: 같은 전용면적(26.37) LH API 공급행 2줄의 모집수 합계 22와 다름(20)"]
+
+
+def test_one_pdf_row_written_once_per_lh_row_comes_out_once(monkeypatch):
+    # 사천벌리1: 공급표 머리글(공급형별·계약면적 > 전용)을 읽지 못해 주택형을 확인하지 못하면, 모델이 LH 행마다 같은 표 행을
+    # 따로 쓴 항목(LH 이름 26A를 옮긴 것 포함)이 공급행 두 개로 나왔다. 같은 표 행의 같은 주택형은 공급행 하나다.
+    from test_tables import SACHEON_SUPPLY_CELLS
+    monkeypatch.setattr(tables, "detected_tables", lambda page: (
+        [tables.DetectedTable(SACHEON_SUPPLY_CELLS, tuple(page.rect))] if page.number == 1 else [], False))
+    job_input = {"sourceSupplyRows": [
+        {"source": "LH", "order": 0, "rowIdentifier": "LH:P:SUPPLY:0", "complexLabel": "사천벌리1", "typeName": "26A",
+         "exclusiveArea": "26.37", "supplyArea": "", "suppliedUnitCount": "60", "totalUnitCount": ""},
+        {"source": "LH", "order": 1, "rowIdentifier": "LH:P:SUPPLY:1", "complexLabel": "사천벌리1", "typeName": "26",
+         "exclusiveArea": "26.37", "supplyArea": "", "suppliedUnitCount": "50", "totalUnitCount": ""}]}
+    supply = {"data": {"rows": [
+        {"rowIds": ["P2:T1:R4"], "housingType": "26", "target": "가군", "exclusiveArea": 26.37},
+        {"rowIds": ["P2:T1:R4"], "housingType": "26A", "target": "나군", "exclusiveArea": 26.37},
+    ]}, "sharedCounts": []}
+    notice = {"data": {"announcement": {}, "receptionPlaces": [], "complexes": [], "schedules": [], "unresolvedFields": []},
+              "notApplicable": [], "evidence": []}
+
+    result = AnnouncementPdfExtractor(StageReplyModel(supply, notice)).extract(job(text_pdf(COVER, SUPPLY), job_input))
+
+    [row] = json.loads(result["json"])["data"]["supplyRows"]
+    assert (row["sourceHousingTypeName"], row["exclusiveArea"], row["sourceRow"]) == ("26", 26.37, None)
+    # 이 공급표에는 공급대상 열이 없어 대상 이름은 미확인이지만, 두 항목은 한 공급행의 대상 둘이다.
+    assert len(row["targets"]) == 2
+
+
+
+def test_targets_named_by_applicant_group_headers_of_the_rent_table_keep_their_names_and_amounts(monkeypatch):
+    # 사천벌리1: 임대조건표의 가군·나군은 금액 열 위의 병합 머리글이다. 맞게 읽은 대상 이름과 금액이 모두 비워졌다.
+    from test_tables import SACHEON_RENT_CELLS, SACHEON_SUPPLY_CELLS
+    cells = {1: SACHEON_SUPPLY_CELLS, 2: SACHEON_RENT_CELLS}
+    monkeypatch.setattr(tables, "detected_tables", lambda page: (
+        [tables.DetectedTable(cells[page.number], tuple(page.rect))] if page.number in cells else [], False))
+    supply = {"data": {"rows": [
+        {"rowIds": ["P2:T1:R4", "P3:T1:R4"], "housingType": "26", "target": "가군", "reserveCount": 110,
+         "rentalDeposit": 2520000, "monthlyRent": 50160},
+        {"rowIds": ["P2:T1:R4", "P3:T1:R4"], "housingType": "26", "target": "나군", "reserveCount": 110,
+         "rentalDeposit": 7648000, "monthlyRent": 115940},
+    ]}, "sharedCounts": [{"rowIndexes": [0, 1], "field": "reserveCount", "count": 110, "rowIds": ["P2:T1:R4"]}]}
+    notice = {"data": {"announcement": {}, "receptionPlaces": [], "complexes": [], "schedules": [], "unresolvedFields": []},
+              "notApplicable": [], "evidence": []}
+
+    result = AnnouncementPdfExtractor(StageReplyModel(supply, notice)).extract(job(text_pdf(COVER, SUPPLY, RENT), {}))
+
+    tree = json.loads(result["json"])
+    [row] = tree["data"]["supplyRows"]
+    assert [(target["target"], target["rentalDeposit"], target["monthlyRent"]) for target in row["targets"]] == [
+        ("가군", 2520000, 50160), ("나군", 7648000, 115940)]
+    assert not any(".targets[" in finding["path"] for finding in tree["data"]["unresolvedFields"])
+    assert len(tree["sharedCounts"]) == 1
+
 def test_gh_frame_rows_keep_the_code_path_and_link_the_grouped_row_by_district_and_type():
     model = FakeModel()
     job_input = {"sourceSupplyRows": [
@@ -440,9 +522,9 @@ def test_gh_frame_rows_keep_the_code_path_and_link_the_grouped_row_by_district_a
 
 
 def test_gh_frame_is_not_sent_to_the_supply_model_and_a_model_row_number_is_not_kept():
-    # Jev가 수량 열을 확인하지 못해 공급표를 모델이 읽어도 GH 틀은 프롬프트에 넣지 않는다. 모델이 쓴 번호는 GH 행을 가리키지 않는다.
+    # Jev가 수량 열을 확인하지 못해 공급표를 모델이 읽어도 GH 틀은 프롬프트에 넣지 않고 코드가 맞춘다.
     supply = {"data": {"complexes": [], "unresolvedFields": [], "supplyRows": [{
-        "complexReference": {"sourceComplexName": "Test"}, "sourceHousingTypeName": "26A", "lhSourceRow": 1,
+        "complexReference": {"sourceComplexName": "Test"}, "sourceHousingTypeName": "26A",
         "totalSupplyHouseholdCount": 20, "subtypes": [], "targets": [{"target": "청년"}]}]},
         "sharedCounts": [], "notApplicable": [], "evidence": [],
         "sourceRows": [{"path": "supplyRows[0]", "rowIds": ["P1:T1:R2"]},
@@ -554,7 +636,7 @@ def test_winner_count_column_in_a_reserve_recruitment_notice_goes_to_the_model()
 def test_notice_note_path_written_with_empty_brackets_reaches_the_result_readable():
     notice = {
         "data": {
-            "announcement": {"name": "Sample Notice"}, "receptionPlace": {}, "complexes": [], "schedules": [],
+            "announcement": {"name": "Sample Notice"}, "receptionPlaces": [], "complexes": [], "schedules": [],
             "unresolvedFields": [{"path": "complexes[].parkingCount", "reason": "주차대수를 확인하지 못함"}],
         },
         "notApplicable": [], "evidence": [],
@@ -565,6 +647,49 @@ def test_notice_note_path_written_with_empty_brackets_reaches_the_result_readabl
 
     paths = [item["path"] for item in json.loads(result["json"])["data"]["unresolvedFields"]]
     assert "complexes[*].parkingCount" in paths and "complexes[].parkingCount" not in paths
+
+
+def test_several_reception_places_reach_the_result_in_notice_order():
+    # 인터넷 접수와 현장 접수처 여러 곳을 한 곳으로 줄이지 않고, 접수처마다의 근거·해당 없음 경로도 그대로 둔다.
+    places = [
+        {"name": "LH청약플러스", "method": "ONLINE", "address": None, "contact": "1600-1004",
+         "url": "https://apply.lh.or.kr", "guidance": "모바일 앱으로도 신청 가능"},
+        {"name": "Test 견본주택", "method": "VISIT", "address": "Test Road", "contact": "032-000-0000", "url": None,
+         "guidance": "고령자·장애인 등 인터넷 취약계층만 현장 접수"},
+        {"name": "거주지 관할 행정복지센터", "method": "VISIT", "address": None, "contact": None, "url": None,
+         "guidance": None},
+    ]
+    notice = {
+        "data": {"announcement": {"name": "Sample Notice"}, "receptionPlaces": places, "complexes": [],
+                 "schedules": [], "unresolvedFields": []},
+        "notApplicable": [{"path": "receptionPlaces[2].address", "reason": "신청자 거주지마다 다름"}],
+        "evidence": [{"path": f"receptionPlaces[{index}]", "page": 1, "quote": "Sample Notice"} for index in range(3)],
+    }
+    model = FakeModel(stage_contents={"notice": json.dumps(notice, ensure_ascii=False)})
+
+    result = AnnouncementPdfExtractor(model, FakeJudge()).extract(job(structured_table_pdf()))
+
+    tree = json.loads(result["json"])
+    assert tree["data"]["receptionPlaces"] == places
+    assert [item["path"] for item in tree["notApplicable"]] == ["receptionPlaces[2].address"]
+    assert [item["path"] for item in tree["evidence"] if item["path"].startswith("receptionPlaces")] == [
+        "receptionPlaces[0]", "receptionPlaces[1]", "receptionPlaces[2]"]
+    assert not any("receptionPlaces" in warning for warning in result["warnings"])
+
+
+@pytest.mark.parametrize("reception", [
+    {"receptionPlace": {"name": "LH청약플러스", "method": "ONLINE", "address": None, "contact": None, "url": None}},
+    {"receptionPlaces": {"name": "LH청약플러스", "method": "ONLINE", "address": None, "contact": None, "url": None,
+                         "guidance": None}},
+])
+def test_notice_reply_without_a_reception_place_list_is_rejected(reception):
+    notice = {"data": {"announcement": {"name": "Sample Notice"}, **reception, "complexes": [], "schedules": [],
+                       "unresolvedFields": []}, "notApplicable": [], "evidence": []}
+
+    with pytest.raises(PermanentError) as error:
+        AnnouncementPdfExtractor(StageReplyModel(None, notice), FakeJudge()).extract(job(structured_table_pdf()))
+
+    assert error.value.code == "MODEL_RESPONSE_INVALID"
 
 
 class StageReplyModel:
@@ -581,7 +706,7 @@ class StageReplyModel:
 # 공급행 근거 행 ID가 입력 표에 없고(공급행 0), 다른 공급행은 표와 다른 모집수(99)를 냈으며,
 # 본문 단계는 같은 단지의 주소를 둘로 내고 범위 밖 근거 쪽(99)을 쓴 공고의 추출 결과(검산을 두 번 하던 때 그대로).
 SOURCE_CHECKED_TREE = {'data': {'announcement': {'name': 'Sample Notice'},
-          'receptionPlace': {},
+          'receptionPlaces': [],
           'complexes': [{'sourceComplexName': 'Test',
                          'address': None,
                          'totalHouseholdCount': 100,
@@ -613,8 +738,10 @@ SOURCE_CHECKED_TREE = {'data': {'announcement': {'name': 'Sample Notice'},
                           'supplyArea': None,
                           'constructedHouseholdCount': None,
                           'subtypes': [],
+                          # 모델이 빠뜨린 대상 모집수는 이 공급행만 가리키는 원문 행의 모집호수 칸에서 읽는다.
+                          # 모델이 낸 공급행 모집수(99)는 원문과 달라 비운다.
                           'targets': [{'target': '청년',
-                                       'supplyHouseholdCount': None,
+                                       'supplyHouseholdCount': 20,
                                        'reserveCount': None,
                                        'rentalDeposit': None,
                                        'monthlyRent': None,
@@ -662,7 +789,7 @@ def test_source_check_findings_reach_the_result_once():
          "totalSupplyHouseholdCount": 99},
     ]}}
     notice = {
-        "data": {"announcement": {"name": "Sample Notice"}, "receptionPlace": {}, "schedules": [], "unresolvedFields": [],
+        "data": {"announcement": {"name": "Sample Notice"}, "receptionPlaces": [], "schedules": [], "unresolvedFields": [],
                  "complexes": [
                      {"sourceComplexName": "Test", "address": "A Road", "totalHouseholdCount": 100, "parkingCount": 30},
                      {"sourceComplexName": "Test", "address": "B Road", "totalHouseholdCount": 100, "parkingCount": 30}]},
@@ -683,3 +810,65 @@ def test_source_check_findings_reach_the_result_once():
         "complexes[0].address: 표·본문 단계의 값이 달라 미확인으로 남김",
         "announcement.name: 첨부한 쪽 범위를 벗어난 근거 쪽 번호(99)",
     ]
+
+
+def address_table_pdf(address_cells: list[str]):
+    document = pymupdf.open()
+    page = document.new_page()
+    page.insert_text((20, 20), "Sample Notice", fontname="korea", fontsize=9)
+    xs = [20, 90, 160, 230, 300, 380, 460, 575]
+    ys = [48 + 30 * index for index in range(len(address_cells) + 2)]
+    for x in xs:
+        page.draw_line((x, ys[0]), (x, ys[-1]))
+    for y in ys:
+        page.draw_line((xs[0], y), (xs[-1], y))
+    rows = [["단지명", "주택형", "공급대상", "모집호수", "임대보증금(천원)", "월임대료(원)", "소재지"]]
+    rows += [["Test", f"{26 + index}A", "청년", "20", "46,920", "178,670", cell] for index, cell in enumerate(address_cells)]
+    for row_index, row in enumerate(rows):
+        for column, value in enumerate(row):
+            page.insert_text((xs[column] + 2, ys[row_index] + 18), value, fontname="korea", fontsize=5)
+    return document.tobytes()
+
+
+def notice_with_address(address):
+    return json.dumps({"data": {
+        "announcement": {"name": "Sample Notice"}, "receptionPlaces": [], "schedules": [], "unresolvedFields": [],
+        "complexes": [{"sourceComplexName": "Test", "address": address, "totalHouseholdCount": None, "parkingCount": None}],
+    }, "notApplicable": [], "evidence": [{"path": "announcement.name", "page": 1, "quote": "Sample Notice"}]}, ensure_ascii=False)
+
+
+def test_complex_address_is_read_from_the_supply_table_by_code_and_matches_an_abbreviated_notice_address():
+    # 소재지 칸은 병합돼 첫 행에만 있고, 본문 단계는 시·도를 줄여 같은 주소를 낸다.
+    model = FakeModel(stage_contents={"notice": notice_with_address("서울시 중구 세종대로 110")})
+
+    result = AnnouncementPdfExtractor(model, FakeJudge()).extract(
+        job(address_table_pdf(["서울특별시 중구 세종대로 110(태평로1가) 일원", ""])))
+
+    tree = json.loads(result["json"])
+    assert tree["data"]["complexes"][0]["address"] == "서울특별시 중구 세종대로 110"
+    assert "complexes[0].address" not in {item["path"] for item in tree["data"]["unresolvedFields"]}
+    assert any(item["path"] == "complexes[0]" and item["page"] == 1 for item in tree["evidence"])
+    assert len(model.prompts) == 1
+
+
+def test_supply_table_address_differing_from_the_notice_address_stays_unresolved():
+    # 본문 단계가 접수처 주소를 단지 주소로 잘못 냈다면 어느 쪽도 고르지 않는다.
+    model = FakeModel(stage_contents={"notice": notice_with_address("서울특별시 강남구 테헤란로 1")})
+
+    result = AnnouncementPdfExtractor(model, FakeJudge()).extract(job(address_table_pdf(["서울특별시 중구 세종대로 110", ""])))
+
+    tree = json.loads(result["json"])
+    assert tree["data"]["complexes"][0]["address"] is None
+    assert "complexes[0].address" in {item["path"] for item in tree["data"]["unresolvedFields"]}
+
+
+def test_two_different_addresses_for_one_complex_in_the_supply_table_stay_unresolved():
+    model = FakeModel(stage_contents={"notice": notice_with_address(None)})
+
+    result = AnnouncementPdfExtractor(model, FakeJudge()).extract(
+        job(address_table_pdf(["서울특별시 중구 세종대로 110", "서울특별시 중구 을지로 12"])))
+
+    tree = json.loads(result["json"])
+    assert tree["data"]["complexes"][0]["address"] is None
+    assert any(item["path"] == "complexes[0].address" and "소재지" in item["reason"]
+               for item in tree["data"]["unresolvedFields"])

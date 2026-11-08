@@ -17,6 +17,7 @@ import java.time.YearMonth;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import java.util.List;
 
 class AnnouncementDomainCreationTest {
 
@@ -87,13 +88,13 @@ class AnnouncementDomainCreationTest {
                 "https://example.com/announcements/1",
                 null,
                 0L,
-                ReceptionPlace.create(
+                List.of(ReceptionPlace.create(
                         "LH 청약센터",
                         ReceptionMethod.ONLINE,
                         null,
                         "1600-1004",
                         "https://apply.lh.or.kr"
-                )
+                ))
         );
     }
 
@@ -122,7 +123,7 @@ class AnnouncementDomainCreationTest {
                 String.class,
                 String.class,
                 long.class,
-                ReceptionPlace.class
+                List.class
         );
 
         Announcement announcement = invoke(
@@ -142,7 +143,7 @@ class AnnouncementDomainCreationTest {
                 "https://example.com/announcements/2",
                 "접수일 변경",
                 100L,
-                receptionPlace
+                List.of(receptionPlace)
         );
 
         assertEquals("source-announcement-id-2", announcement.getSourceAnnouncementIdentifier());
@@ -160,7 +161,7 @@ class AnnouncementDomainCreationTest {
         assertEquals("https://example.com/announcements/2", announcement.getOriginalUrl());
         assertEquals("접수일 변경", announcement.getCorrectionCancellationReason());
         assertEquals(100L, announcement.getViewCount());
-        assertEquals(receptionPlace, announcement.getReceptionPlace());
+        assertEquals(List.of(receptionPlace), announcement.getReceptionPlaces());
     }
 
     @Test

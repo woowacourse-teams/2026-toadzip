@@ -100,7 +100,8 @@
 .editor :global(.management-detail-content) :global(.admin-data-grid) dd { font-size: var(--admin-text-body); font-weight: 500; line-height: 1.45; color: var(--ds-color-text); font-variant-numeric: tabular-nums; }
 /* 긴 값은 좁은 칸에서 여러 줄로 깨지지 않게 넓힌다. 이름은 한 줄 전체, 19자리 PNU·URL·원천 식별자는 두 칸을 쓴다. */
 .editor :global(.management-detail-content) :global(.admin-data-grid) > [data-field='name'] { grid-column: 1 / -1; }
-.editor :global(.management-detail-content) :global(.admin-data-grid) > :is([data-field='address.pnu'], [data-field='supplyPnu'], [data-field='originalUrl'], [data-field='receptionPlace.url'], [data-field='sourceIdentifier']) { grid-column: span 2; }
+.editor :global(.management-detail-content) :global(.admin-data-grid) > :is([data-field='address.pnu'], [data-field='supplyPnu'], [data-field='originalUrl'], [data-field='receptionPlaces.url'], [data-field='sourceIdentifier']) { grid-column: span 2; }
+.editor :global(.management-detail-content) :global(.admin-data-grid) > [data-field='receptionPlaces.guidance'] { grid-column: 1 / -1; }
 /* 긴 원문 URL은 한 줄로 줄여 세 줄을 차지하지 않게 한다. 주소 전체는 링크로 연다. */
 .editor :global(.management-detail-content) :global(.admin-data-grid) dd a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @container (max-width: 900px) {
@@ -143,7 +144,7 @@
 .editor :global(.registration-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 /* 입력 칸이 편집 영역 끝까지 늘어나지 않도록 폼 묶음 폭을 제한한다. */
 .editor fieldset:has(> :global(.registration-grid)) { max-width: 760px; }
-.editor :global(.registration-field):has([name="name"], [name="address.roadAddress"], [name="originalUrl"], [name="overviewImageUrl"], [name="receptionPlace.address"], input[type="url"]) { grid-column: 1 / -1; }
+.editor :global(.registration-field):has([name="name"], [name="address.roadAddress"], [name="originalUrl"], [name="overviewImageUrl"], [name^="receptionPlaces["][name$="].address"], [name^="receptionPlaces["][name$="].guidance"], input[type="url"]) { grid-column: 1 / -1; }
 .editor :global(.registration-field) label { display: block; font-size: 13px; font-weight: 600; color: var(--ds-color-label); }
 .editor :global(.registration-field) :global(.admin-required) { color: var(--ds-color-action); font-size: 10px; }
 .editor :global(.registration-submit) { position: sticky; bottom: 12px; z-index: 4; width: 100%; background: var(--ds-color-action); border-color: var(--ds-color-action); border-radius: var(--ds-radius-control); min-height: var(--admin-control-height, 36px); }

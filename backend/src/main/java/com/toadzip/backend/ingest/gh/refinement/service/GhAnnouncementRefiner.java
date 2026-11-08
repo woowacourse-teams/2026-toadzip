@@ -5,6 +5,7 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
+import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementSource;
 import com.toadzip.backend.ingest.refinement.domain.BoardRevisionName;
 import com.toadzip.backend.ingest.refinement.service.BoardRevisionLinker;
@@ -53,17 +54,18 @@ class GhAnnouncementRefiner {
         }
         else {
             announcement = existing.get();
-            outcome = update(announcement, source);
+            outcome = BoardRefinementOutcome.UNCHANGED;
         }
+        Optional<RentalType> supplyType = GhComplexIndex.rentalType(source.getSupplyType());
+        boolean reviewBefore = announcement.isSourceReviewRequired();
+        boolean changed = announcement.updateFromAgencySource(source.getTitle(), source.getPostedDate(),
+                source.getOriginalUrl());
+        changed |= announcement.observeSourceSupplyType(supplyType.orElse(null));
         LinkResult link = revisionLinker.link(announcement, BoardRevisionName::gh);
         attempt.recordLink(link);
-        if (link == LinkResult.LINKED && outcome == BoardRefinementOutcome.UNCHANGED) {
-            outcome = BoardRefinementOutcome.UPDATED;
-        }
         if (source.getDistricts() != null) {
             JsonNode districts = JSON.readTree(source.getDistricts());
-            Map<String, AnnouncementComplex> complexes = complexLinker.observe(announcement, districts,
-                    GhComplexIndex.rentalType(source.getSupplyType()), index);
+            Map<String, AnnouncementComplex> complexes = complexLinker.observe(announcement, districts, supplyType, index);
             if (supplyRowWriter.write(announcement, source.getTitle(), districts, complexes)) {
                 attempt.requireSupplyRecheck();
             }
@@ -71,15 +73,17 @@ class GhAnnouncementRefiner {
         if (source.getAttachments() != null) {
             attachmentWriter.write(announcement, attachments(JSON.readTree(source.getAttachments())));
         }
-        return outcome;
+        return outcome(outcome, changed || link == LinkResult.LINKED, !reviewBefore && announcement.isSourceReviewRequired());
     }
 
-    private BoardRefinementOutcome update(Announcement announcement, GhAnnouncementSource source) {
-        boolean reviewBefore = announcement.isSourceReviewRequired();
-        if (announcement.updateFromAgencySource(source.getTitle(), source.getPostedDate(), source.getOriginalUrl())) {
+    private static BoardRefinementOutcome outcome(BoardRefinementOutcome base, boolean changed, boolean reviewRequired) {
+        if (base == BoardRefinementOutcome.CREATED) {
+            return base;
+        }
+        if (changed) {
             return BoardRefinementOutcome.UPDATED;
         }
-        if (!reviewBefore && announcement.isSourceReviewRequired()) {
+        if (reviewRequired) {
             return BoardRefinementOutcome.REVIEW_REQUIRED;
         }
         return BoardRefinementOutcome.UNCHANGED;

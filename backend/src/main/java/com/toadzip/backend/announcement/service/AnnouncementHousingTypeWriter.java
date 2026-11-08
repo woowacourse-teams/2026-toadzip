@@ -11,6 +11,7 @@ import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrectio
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.NewType;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection.Row;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.HousingTypeNames;
 import com.toadzip.backend.housing.domain.HousingType.AnnouncementValues;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
@@ -67,6 +68,10 @@ public class AnnouncementHousingTypeWriter {
                 if (type.getHousingComplex().isAdminDeleted()) {
                     throw new IllegalArgumentException(row.typeName() + ": 휴지통 단지의 주택형에는 공고 값을 반영할 수 없습니다.");
                 }
+                if (takenName(type, incoming)) {
+                    warnings.add(type.getName() + ": 같은 단지에 '" + incoming.name() + "' 주택형이 있어 이름을 바꾸지 않습니다.");
+                    incoming = withoutName(incoming);
+                }
                 var after = type.afterAnnouncement(incoming, postedAt);
                 warnings.addAll(kept(type, incoming, after, postedAt));
                 if (!same(values(type.announcementValues()), values(after))) {
@@ -96,9 +101,10 @@ public class AnnouncementHousingTypeWriter {
         for (var target : targets(planned, values, new ArrayList<>())) {
             var type = target.housingTypeId() != null ? types.findById(target.housingTypeId()).orElseThrow()
                     : written.get(target.row().key()).getHousingTypes().stream()
-                            .filter(linked -> linked.getExclusiveArea().compareTo(target.created().exclusiveArea()) == 0)
+                            .filter(linked -> linked.getExclusiveArea().compareTo(target.created().exclusiveArea()) == 0
+                                    && HousingTypeNames.key(linked.getName()).equals(HousingTypeNames.key(target.created().name())))
                             .findFirst().orElseThrow();
-            targets.put(type, target.values());
+            targets.put(type, takenName(type, target.values()) ? withoutName(target.values()) : target.values());
         }
         var complexIds = new TreeSet<Long>();
         targets.keySet().forEach(type -> complexIds.add(type.getHousingComplex().getId()));
@@ -216,11 +222,19 @@ public class AnnouncementHousingTypeWriter {
         if (value.linkedHousingTypeId() != null && value.linkedNewHousingTypeArea() != null) {
             throw new IllegalArgumentException(row.typeName() + ": 주택형 공고 값은 함께 모집하는 기존 주택형이나 새 주택형 중 하나만 가리키세요.");
         }
-        return row.linkedHousingTypes().stream()
+        var matched = row.linkedHousingTypes().stream()
                 .filter(link -> value.linkedHousingTypeId() != null ? value.linkedHousingTypeId().equals(link.housingTypeId())
                         : link.newHousingType() != null
-                                && link.newHousingType().exclusiveArea().compareTo(value.linkedNewHousingTypeArea()) == 0)
-                .findFirst().map(link -> new Target(row, link.housingTypeId(), link.newHousingType(), null))
+                                && link.newHousingType().exclusiveArea().compareTo(value.linkedNewHousingTypeArea()) == 0
+                                && (value.linkedNewHousingTypeName() == null || HousingTypeNames.key(link.newHousingType().name())
+                                        .equals(HousingTypeNames.key(value.linkedNewHousingTypeName()))))
+                .toList();
+        // 한 행이 같은 면적 새 주택형을 여럿 만들면(59A1·59C) 이름 없이 면적만으로는 어느 것인지 정할 수 없다.
+        if (matched.size() > 1) {
+            throw new IllegalArgumentException(row.typeName() + ": 같은 면적의 새 주택형이 여럿이라 주택형 공고 값에 "
+                    + "linkedNewHousingTypeName(새 주택형 이름)을 함께 보내세요.");
+        }
+        return matched.stream().findFirst().map(link -> new Target(row, link.housingTypeId(), link.newHousingType(), null))
                 .orElseThrow(() -> new IllegalArgumentException(row.typeName() + ": 주택형 공고 값이 가리키는 주택형을 "
                         + "이 공급행이 함께 모집하지 않습니다."));
     }
@@ -238,6 +252,21 @@ public class AnnouncementHousingTypeWriter {
     /** 공고 게시일의 서울 자정. 게시일은 이 저장에서 고친 값을 쓴다. */
     private static Instant postedAt(LocalDate postedDate) {
         return postedDate.atStartOfDay(POSTED_DATE_ZONE).toInstant();
+    }
+
+    /**
+     * 공고 값의 이름이 같은 단지의 다른 주택형 이름({@link HousingTypeNames#sameType})과 같은지. 단지 주택타입은 이름으로 나누므로
+     * 이름을 바꿔 같은 이름 주택형이 둘이 되지 않게 이름만 반영하지 않는다.
+     */
+    private boolean takenName(HousingType type, AnnouncementValues values) {
+        String name = blankToNull(values.name());
+        if (name == null || HousingTypeNames.sameType(name, type.getExclusiveArea(), type.getName(), type.getExclusiveArea())) { return false; }
+        return types.findAllByHousingComplex(type.getHousingComplex()).stream()
+                .anyMatch(other -> !other.equals(type) && HousingTypeNames.sameType(other.getName(), other.getExclusiveArea(), name, type.getExclusiveArea()));
+    }
+
+    private static AnnouncementValues withoutName(AnnouncementValues values) {
+        return new AnnouncementValues(null, values.supplyArea(), values.householdCount(), values.basicDeposit(), values.basicMonthlyRent());
     }
 
     private static List<String> kept(HousingType type, AnnouncementValues incoming, AnnouncementValues after,

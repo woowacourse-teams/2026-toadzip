@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures;
 import com.toadzip.backend.ingest.collection.fixture.GhAnnouncementFixtures.Row;
@@ -95,6 +96,72 @@ class GhAnnouncementRefinementIntegrationTest {
         assertThat(announcements.findBySourceAnnouncementIdentifier("GH:801").orElseThrow().getVersion())
                 .isEqualTo(version);
         assertThat(count("announcement_attachments WHERE announcement_id = " + announcement.getId())).isOne();
+    }
+
+    @Test
+    void 게시판_공급유형을_공고_공급유형으로_채우고_비어_있던_기존_공고도_다시_정제하면_채운다() {
+        collect(new Row("803", "장기전세", "(의정부)탑석센트럴자이(49형) 장기전세주택 입주자 모집", "2026-07-12"));
+        GhRefinementTestSupport.refineAll(refinement, sources);
+        assertThat(announcements.findBySourceAnnouncementIdentifier("GH:803").orElseThrow().getSupplyType())
+                .isEqualTo(RentalType.LONG_TERM_JEONSE);
+
+        // 공급유형을 채우기 전에 만든 공고(supply_type 비어 있음)
+        jdbc.update("UPDATE announcements SET supply_type = NULL WHERE source_announcement_identifier = 'GH:803'");
+        assertThat(GhRefinementTestSupport.refineAll(refinement, sources).updated()).isOne();
+        assertThat(announcements.findBySourceAnnouncementIdentifier("GH:803").orElseThrow().getSupplyType())
+                .isEqualTo(RentalType.LONG_TERM_JEONSE);
+    }
+
+    @Test
+    void 관리자가_고친_공급유형은_게시판_값으로_덮지_않고_원천_확인이_필요하다고_표시한다() {
+        collect(ROW);
+        GhRefinementTestSupport.refineAll(refinement, sources);
+        jdbc.update("""
+                UPDATE announcements SET supply_type = 'HAPPY_HOUSING', admin_modified = true
+                WHERE source_announcement_identifier = 'GH:801'
+                """);
+
+        var report = GhRefinementTestSupport.refineAll(refinement, sources);
+
+        assertThat(report.reviewRequired()).isOne();
+        var announcement = announcements.findBySourceAnnouncementIdentifier("GH:801").orElseThrow();
+        assertThat(announcement.getSupplyType()).isEqualTo(RentalType.HAPPY_HOUSING);
+        assertThat(announcement.isSourceReviewRequired()).isTrue();
+    }
+
+    @Test
+    void 공개된_공고의_공급유형은_게시판_값으로_덮지_않고_원천_확인이_필요하다고_표시한다() {
+        collect(ROW);
+        GhRefinementTestSupport.refineAll(refinement, sources);
+        jdbc.update("""
+                UPDATE announcements SET release_status = 'PUBLISHED', supply_type = 'HAPPY_HOUSING',
+                    recruitment_type = 'NEW', application_start_date = DATE '2026-07-20',
+                    application_end_date = DATE '2026-07-22', winner_announcement_date = DATE '2026-09-01'
+                WHERE source_announcement_identifier = 'GH:801'
+                """);
+
+        var report = GhRefinementTestSupport.refineAll(refinement, sources);
+
+        assertThat(report.reviewRequired()).isOne();
+        var announcement = announcements.findBySourceAnnouncementIdentifier("GH:801").orElseThrow();
+        assertThat(announcement.getSupplyType()).isEqualTo(RentalType.HAPPY_HOUSING);
+        assertThat(announcement.isSourceReviewRequired()).isTrue();
+    }
+
+    @Test
+    void 게시판_공급유형을_알_수_없으면_있던_공급유형을_지우지_않고_확인_표시도_하지_않는다() {
+        collect(new Row("801", "매입임대", ROW.title(), ROW.postedDate()));
+        GhRefinementTestSupport.refineAll(refinement, sources);
+        assertThat(announcements.findBySourceAnnouncementIdentifier("GH:801").orElseThrow().getSupplyType()).isNull();
+        jdbc.update("UPDATE announcements SET supply_type = 'NATIONAL_RENTAL' WHERE source_announcement_identifier = 'GH:801'");
+
+        var report = GhRefinementTestSupport.refineAll(refinement, sources);
+
+        assertThat(report.updated()).isZero();
+        assertThat(report.reviewRequired()).isZero();
+        var announcement = announcements.findBySourceAnnouncementIdentifier("GH:801").orElseThrow();
+        assertThat(announcement.getSupplyType()).isEqualTo(RentalType.NATIONAL_RENTAL);
+        assertThat(announcement.isSourceReviewRequired()).isFalse();
     }
 
     @Test

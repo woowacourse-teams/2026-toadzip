@@ -232,7 +232,7 @@ public class ComplexDetailQueryRepository {
                 resultSet.getString("heating_type"),
                 resultSet.getString("corridor_type"),
                 resultSet.getObject("move_out_count_last_year", Integer.class),
-                resultSet.getInt("total_household_count"),
+                resultSet.getObject("total_household_count", Integer.class),
                 resultSet.getObject("total_parking_count", Integer.class),
                 resultSet.getObject("deposit_min", Long.class),
                 resultSet.getObject("deposit_max", Long.class),

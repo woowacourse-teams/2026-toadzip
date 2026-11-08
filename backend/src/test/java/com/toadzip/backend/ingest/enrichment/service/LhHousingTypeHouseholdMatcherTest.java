@@ -16,6 +16,15 @@ class LhHousingTypeHouseholdMatcherTest {
     private final LhHousingTypeHouseholdMatcher matcher = new LhHousingTypeHouseholdMatcher();
 
     @Test
+    void 전체_세대수_미확인_단지는_세대수_기반_자동매칭에서_제외한다() {
+        HousingComplex unknown = complex("강릉송정", "NATIONAL_RENTAL", null);
+        HousingComplex known = complex("강릉송정", "NATIONAL_RENTAL", 623);
+
+        assertThat(matcher.findMatches(List.of(unknown, known), source("강릉송정", "국민임대", 623)))
+                .containsExactly(known);
+    }
+
+    @Test
     void LH_이름이_마이홈_이름의_일부이면_매칭한다() {
         HousingComplex complex = complex("강릉송정주공아파트", "NATIONAL_RENTAL", 623);
         LhHousingTypeHouseholdSource source = source("강릉송정", "국민임대", 623);
@@ -105,7 +114,7 @@ class LhHousingTypeHouseholdMatcherTest {
         );
     }
 
-    private HousingComplex complex(String name, String supplyType, int householdCount) {
+    private HousingComplex complex(String name, String supplyType, Integer householdCount) {
         Address address = Address.create(
                 "강원특별자치도 강릉시 테스트로 1",
                 "4215010100100010000",

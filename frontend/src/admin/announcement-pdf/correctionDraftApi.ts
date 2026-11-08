@@ -6,14 +6,18 @@ import type { Review, ReviewSection } from './review'
 /** 초안을 만들 때의 공급행 요약. 복원할 때 지금 공급행과 비교해 무엇이 바뀌었는지 보여 준다. */
 export type DraftBaseRow = { key: string; id: number | null; label: string; householdCount: number | null; exclusiveArea: number | null; excluded: boolean }
 /**
- * 화면 작업 상태. review에 행 포함·제외, 칸마다 기존·추출·직접 입력 선택과 미완성 입력, 저장 방식(분리·연결·추가), 단지·주택형 연결,
+ * 화면 작업 상태. review에 행 포함·제외, 칸마다 기존·추출·직접 입력 선택과 미완성 입력, 저장할 곳, 단지·주택형 연결,
  * 일정·접수처 선택, 확인 진행이 모두 들어 있다. text는 추출 응답 원문, reason·sourceUrl·sourcePage는 적용 근거다.
+ * version 2부터 공급행은 단지 × 전용면적 주택형 하나다. 공급행을 LH 행 기준으로 나누던 version 1 초안은 이어 쓸 수 없다.
  */
-export type DraftPayload = { version: 1; text: string; review: Review; reason: string; sourceUrl: string; sourcePage: string; section: ReviewSection; pdfName: string; baseRows: DraftBaseRow[]
+export const draftVersion = 2
+export type DraftPayload = { version: typeof draftVersion; text: string; review: Review; reason: string; sourceUrl: string; sourcePage: string; section: ReviewSection; pdfName: string; baseRows: DraftBaseRow[]
   /** 추출할 때 AI 워커가 남긴 경고(LH 행 분리 등). 이 필드 전에 저장한 초안에는 없다. */
   warnings?: string[]
   /** 편집 영역에 보이던 공급행 번호. 이 행이 속한 단지 탭으로 복원한다. 이 필드 전에 저장한 초안에는 없다. */
   selectedRow?: number }
+/** 이전 방식(지금보다 낮은 version)으로 저장한 초안. 복원하지 않고 그 revision을 이어받아 덮어쓴다. */
+export type OutdatedDraft = { outdated: true; revision: number }
 export type CorrectionDraft = { payload: DraftPayload; revision: number; baseSnapshotToken: string; pdfSha256: string | null; extractionId: number | null; updatedAt: string; stale: boolean }
 export type DraftSaveInput = { expectedRevision: number | null; baseSnapshotToken: string; pdfSha256?: string; extractionId?: number; payload: DraftPayload }
 export const draftConflictCode = 'ANNOUNCEMENT_CORRECTION_DRAFT_CONFLICT'
@@ -23,18 +27,20 @@ function invalid(): never { throw new Error('임시저장 응답이 올바르지
 const positive = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0
 
 function payload(value: unknown): DraftPayload {
-  if (!isRecord(value) || value.version !== 1 || typeof value.text !== 'string' || !isRecord(value.review) || !Array.isArray(value.review.rows)
+  if (!isRecord(value) || value.version !== draftVersion || typeof value.text !== 'string' || !isRecord(value.review) || !Array.isArray(value.review.rows)
     || !Array.isArray(value.review.schedules) || !Array.isArray(value.baseRows) || typeof value.reason !== 'string' || typeof value.sourceUrl !== 'string'
     || value.warnings !== undefined && !(Array.isArray(value.warnings) && value.warnings.every(item => typeof item === 'string'))) invalid()
   return value as DraftPayload
 }
 
-/** 이 관리자의 초안. 없으면 null이다. stale은 초안을 만든 뒤 공고 작업 공간이 바뀌었다는 뜻이다. */
-export async function loadCorrectionDraft(id: string, signal?: AbortSignal): Promise<CorrectionDraft | null> {
+/** 이 관리자의 초안. 없으면 null, 이전 방식 초안이면 OutdatedDraft다. stale은 초안을 만든 뒤 공고 작업 공간이 바뀌었다는 뜻이다. */
+export async function loadCorrectionDraft(id: string, signal?: AbortSignal): Promise<CorrectionDraft | OutdatedDraft | null> {
   const value = await requestManagementApi(path(id), 'GET', undefined, signal)
   if (value === null) return null
   if (!isRecord(value) || !positive(value.revision) || typeof value.baseSnapshotToken !== 'string' || typeof value.updatedAt !== 'string' || typeof value.stale !== 'boolean'
     || value.pdfSha256 != null && typeof value.pdfSha256 !== 'string' || value.extractionId != null && !positive(value.extractionId)) invalid()
+  const version = isRecord(value.payload) ? value.payload.version : undefined
+  if (typeof version === 'number' && Number.isSafeInteger(version) && version < draftVersion) return { outdated: true, revision: value.revision }
   return { payload: payload(value.payload), revision: value.revision, baseSnapshotToken: value.baseSnapshotToken, pdfSha256: (value.pdfSha256 as string | null | undefined) ?? null,
     extractionId: (value.extractionId as number | null | undefined) ?? null, updatedAt: value.updatedAt, stale: value.stale }
 }

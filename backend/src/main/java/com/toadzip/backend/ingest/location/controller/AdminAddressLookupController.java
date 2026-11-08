@@ -27,11 +27,12 @@ public class AdminAddressLookupController {
     private final AddressLookupService service;
 
     @GetMapping
-    public ApiResponse<List<AddressCandidate>> lookup(@RequestParam String keyword) {
+    public ApiResponse<List<AddressCandidate>> lookup(@RequestParam String keyword,
+            @RequestParam(required = false) String sourcePnu) {
         if (keyword.isBlank() || keyword.length() > 200) {
             throw new AddressLookupException("검색어는 1~200자로 입력해 주세요.", false);
         }
-        return new ApiResponse<>(service.lookup(keyword));
+        return new ApiResponse<>(service.lookup(keyword, sourcePnu));
     }
 
     @ExceptionHandler(AddressLookupException.class)

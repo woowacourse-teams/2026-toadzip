@@ -119,7 +119,7 @@ class ComplexMergePreparation {
         catch (MyHomeComplexMappingRejectedException exception) {
             throw conflict(exception.getMessage());
         }
-        require(data.totalHouseholdCount() > 0 && data.totalHouseholdCount() == product.getTotalHouseholdCount()
+        require(data.totalHouseholdCount() > 0 && Objects.equals(data.totalHouseholdCount(), product.getTotalHouseholdCount())
                 && data.matchesVerifiedProduct(product),
                 "현재 원천과 제품의 단지 공통값 또는 세대수가 다릅니다.");
         List<Instant> times = rows.stream().map(MyHomeComplexSourceView::getCollectedAt).distinct().toList();

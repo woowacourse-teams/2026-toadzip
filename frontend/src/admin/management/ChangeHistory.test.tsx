@@ -116,7 +116,8 @@ it('PDF 보정 이력은 한 건에 주택형 표기·접수처·일정 변경�
   expect(within(supply).getByRole('row', { name: /이 공고의 주택형 표기 37.1300 26/ })).toBeInTheDocument()
   const other = screen.getByRole('region', { name: '저장한 기본정보·일정 보정' })
   expect(within(other).getByRole('heading', { name: '기본정보·접수처·일정 3개' })).toBeVisible()
-  expect(within(other).getByRole('row', { name: /접수처 연락처 .* 1600-1004/ })).toBeInTheDocument()
+  // 접수처를 한 곳만 저장하던 때의 이력은 접수처 1로 읽는다.
+  expect(within(other).getByRole('row', { name: /접수처 1 연락처 .* 1600-1004/ })).toBeInTheDocument()
   expect(within(other).getByRole('row', { name: '일정 #82 일정명 접수 현장 신청접수' })).toBeInTheDocument()
 })
 
@@ -135,6 +136,20 @@ it('PDF 보정 이력은 공급행 변경이 없으면 빈 표를 두지 않고 
   expect(screen.getByRole('row', { name: '일정 #258 (추가) 일정 유형 없음 서류 제출' })).toBeInTheDocument()
 })
 
+it('PDF 보정 이력은 접수처 목록을 순서대로 비교해 추가한 접수처를 따로 보여준다', async () => {
+  const online = { name: 'LH 청약플러스', method: 'ONLINE', address: null, contact: null, url: null, guidance: null }
+  vi.mocked(getManagementHistory).mockResolvedValue([{ id: 7, action: 'CORRECT_FROM_PDF', actor: '운영자', occurredAt: '2026-11-01T00:00:00Z',
+    beforeValue: JSON.stringify({ rows: [], detail: { data: { receptionPlaces: [online] } }, events: [] }),
+    afterValue: JSON.stringify({ rows: [], reason: '공고문 PDF와 대조', sources: [],
+      detail: { data: { receptionPlaces: [online, { ...online, name: '두꺼비 주거복지지사', method: 'VISIT', guidance: '인터넷 취약계층만 현장 접수' }] } }, events: [] }),
+  }])
+  render(<ChangeHistory resource="announcements" id="47" version={3} />)
+  fireEvent.click(await screen.findByRole('button', { name: /PDF로 공고 보정 · 운영자/ }))
+  const other = screen.getByRole('region', { name: '저장한 기본정보·일정 보정' })
+  expect(within(other).getByRole('row', { name: /^접수처 2 \(추가\) 접수처명 .*두꺼비 주거복지지사$/ })).toBeInTheDocument()
+  expect(within(other).queryByRole('row', { name: /^접수처 1 / })).not.toBeInTheDocument()
+})
+
 it('이전 JSON 갱신 이력도 변수명 대신 화면 이름으로 바뀐 값만 보여준다', async () => {
   const previous = { ...blankRow(0), id: 164, key: 'row:164', complexName: '사천벌리1', typeName: '37.1300' }
   vi.mocked(getManagementHistory).mockResolvedValue([{ id: 2, action: 'UPDATE_FROM_JSON', actor: 'root', occurredAt: '2026-10-22T00:00:00Z',
@@ -145,7 +160,41 @@ it('이전 JSON 갱신 이력도 변수명 대신 화면 이름으로 바뀐 값
   render(<ChangeHistory resource="announcements" id="47" version={3} />)
   fireEvent.click(await screen.findByRole('button', { name: /JSON으로 공고 갱신 · root/ }))
   const other = screen.getByRole('region', { name: '저장한 기본정보·일정 보정' })
-  expect(within(other).getAllByRole('row').slice(1).map(row => row.textContent)).toEqual(['접수처접수처명행정복지센터주민센터', '접수처연락처미확인1600-1004'])
+  expect(within(other).getAllByRole('row').slice(1).map(row => row.textContent)).toEqual(['접수처 1접수처명행정복지센터주민센터', '접수처 1연락처미확인1600-1004'])
   expect(screen.getByRole('row', { name: /이 공고의 주택형 표기 37.1300 26/ })).toBeInTheDocument()
   expect(screen.queryByText(/detail\.summary|rows\[0\]/)).not.toBeInTheDocument()
+})
+
+it('공고 수정 이력은 접수처 목록을 몇 번째 접수처인지와 함께 바뀐 칸만 보여준다', async () => {
+  const online = { name: 'LH 청약플러스', method: 'ONLINE', address: null, contact: null, url: null, guidance: null }
+  vi.mocked(getManagementHistory).mockResolvedValue([{ id: 3, action: 'UPDATE', actor: '운영자', occurredAt: '2026-11-01T00:00:00Z',
+    beforeValue: JSON.stringify({ version: 1, receptionPlaces: [online] }),
+    afterValue: JSON.stringify({ version: 2, receptionPlaces: [online, { name: '두꺼비 주거복지지사', method: 'VISIT', address: null, contact: null, url: null, guidance: '인터넷 취약계층만 현장 접수' }] }),
+  }])
+  render(<ChangeHistory resource="announcements" id="7" version={2} />)
+  fireEvent.click(await screen.findByRole('button', { name: /정보 수정 · 운영자/ }))
+  const rows = within(screen.getByRole('table', { name: '수정한 항목' })).getAllByRole('row').slice(1).map(row => row.textContent)
+  expect(rows).toContain('접수처 2 · 접수처명기록 없음두꺼비 주거복지지사')
+  expect(rows).toContain('접수처 2 · 접수 방식기록 없음방문 (VISIT)')
+  expect(rows).toContain('접수처 2 · 안내기록 없음인터넷 취약계층만 현장 접수')
+  expect(rows.some(row => row?.startsWith('접수처 1'))).toBe(false)
+})
+
+it('이전 한 곳짜리 접수처 이력은 접수처 1로 읽고, 새 목록 이력과 같은 칸으로 비교한다', async () => {
+  vi.mocked(getManagementHistory).mockResolvedValue([
+    { id: 2, action: 'UPDATE', actor: '운영자', occurredAt: '2026-10-01T00:00:00Z',
+      beforeValue: JSON.stringify({ receptionPlace: { name: '행정복지센터', method: 'VISIT', contact: null } }),
+      afterValue: JSON.stringify({ receptionPlace: { name: '주민센터', method: 'VISIT', contact: '1600-1004' } }) },
+    { id: 1, action: 'UPDATE', actor: '관리자', occurredAt: '2026-09-01T00:00:00Z',
+      beforeValue: JSON.stringify({ receptionPlace: { name: '주민센터', method: 'VISIT' } }),
+      afterValue: JSON.stringify({ receptionPlaces: [{ name: '주민센터', method: 'ONLINE' }] }) },
+  ])
+  render(<ChangeHistory resource="announcements" id="7" version={2} />)
+  fireEvent.click(await screen.findByRole('button', { name: /정보 수정 · 운영자/ }))
+  expect(within(screen.getByRole('table', { name: '수정한 항목' })).getAllByRole('row').slice(1).map(row => row.textContent))
+    .toEqual(['접수처 1 · 접수처명행정복지센터주민센터', '접수처 1 · 연락처값 없음 (null)1600-1004'])
+  fireEvent.click(screen.getByRole('button', { name: /정보 수정 · 운영자 .* 닫기/ }))
+  fireEvent.click(screen.getByRole('button', { name: /정보 수정 · 관리자/ }))
+  expect(within(screen.getByRole('table', { name: '수정한 항목' })).getAllByRole('row').slice(1).map(row => row.textContent))
+    .toEqual(['접수처 1 · 접수 방식방문 (VISIT)온라인 (ONLINE)'])
 })

@@ -21,25 +21,15 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
-import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
-import com.toadzip.backend.ingest.lh.collection.detail.domain.LhAnnouncementDetailSourceSnapshot;
-import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementCollectionProgressStore;
-import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver;
-import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceSnapshot;
-import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupplySourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,9 +41,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
@@ -72,128 +60,9 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Autowired private JdbcClient jdbc;
     @Autowired private MockMvc mvc;
     @Autowired private JsonMapper json;
-    @Autowired private LhAnnouncementCollectionCandidateResolver candidateResolver;
-    @Autowired private LhAnnouncementCollectionProgressStore progressStore;
     @Autowired private SupplyCorrectionSources correctionSources;
-    @Autowired private LhStorageFixtures lhStorage;
     private HousingComplex complex;
     private HousingType type;
-
-    @Test
-    void 공급_보정의_새_공통모집은_LH_공급으로_펼친_원천에서_그_LH_행_하나만_나눈다() throws Exception {
-        prepareHansville();
-        var first = types.findAll().stream().filter(value -> value.getExclusiveArea().compareTo(new BigDecimal("26.4673")) == 0)
-                .findFirst().orElseThrow();
-        var second = types.findAll().stream().filter(value -> value.getExclusiveArea().compareTo(new BigDecimal("26.5195")) == 0)
-                .findFirst().orElseThrow();
-        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate)
-                candidateResolver.resolve(sources.findAll().getFirst());
-        lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of(
-                lhSupplyRow(0, candidate.panId(), "26(청년)", "26.4673", "100"),
-                lhSupplyRow(1, candidate.panId(), "26A,B(고령자)", "26.5195", "50"),
-                lhSupplyRow(2, candidate.panId(), "26(신혼부부)", "26.5195", "20")));
-        registerFromSources();
-        // 마이홈 원천 한 행이 LH 공급 세 행으로 펼쳐진 공고다.
-        assertThat(supplies.findAll()).extracting(row -> row.getSourceHousingTypeName())
-                .containsExactlyInAnyOrder("26(청년)", "26A,B(고령자)", "26(신혼부부)");
-        // 공급 보정 작업실은 비교 검토 테이블을 읽는다. 이 테스트 스키마에는 없어 이 테스트 동안만 만든다.
-        boolean comparisonTables = jdbc.sql("SELECT to_regclass('admin_comparison_sources') IS NULL").query(Boolean.class).single();
-        if (comparisonTables) {
-            jdbc.sql(new String(new ClassPathResource("db/migration/V20261016_01__quality_comparison_workflow.sql")
-                    .getInputStream().readAllBytes(), StandardCharsets.UTF_8)).update();
-        }
-        try {
-        long id = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
-        String root = "/api/admin/announcements/" + id + "/supply-corrections";
-        var workspace = json.readTree(mvc.perform(get(root).with(user("admin").roles("ADMIN")))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
-        var rows = (ArrayNode) workspace.get("rows").deepCopy();
-        var original = (ObjectNode) StreamSupport.stream(rows.spliterator(), false)
-                .filter(row -> row.get("id").asLong() == supplies.findAll().stream()
-                        .filter(stored -> stored.getSourceHousingTypeName().equals("26A,B(고령자)")).findFirst().orElseThrow().getId())
-                .findFirst().orElseThrow();
-        original.put("housingTypeId", first.getId()).put("typeName", "26A").putNull("householdCount");
-        var added = original.deepCopy().putNull("id").put("key", UUID.randomUUID().toString())
-                .put("housingTypeId", second.getId()).put("typeName", "26B").put("displayOrder", 9);
-        added.putArray("targets");
-        rows.add(added);
-        var correction = json.createObjectNode().put("operationId", UUID.randomUUID().toString())
-                .put("snapshotToken", workspace.get("snapshotToken").asText()).put("reason", "공고문 4쪽 26A·26B 고령자 50세대")
-                .put("sourceUrl", "https://example.com/official.pdf").put("sourcePage", "4");
-        correction.set("rows", rows);
-        correction.putArray("newGroups").addObject().put("sourceRowId", original.get("id").asLong())
-                .put("sharedHouseholdCount", 50).putArray("rowKeys").add(original.get("key").asText()).add(added.get("key").asText());
-        var preview = json.readTree(mvc.perform(post(root + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
-                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(correction)))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
-        var body = json.createObjectNode().put("confirmationToken", preview.get("confirmationToken").asText());
-        body.set("correction", correction);
-        mvc.perform(post(root).with(user("admin").roles("ADMIN")).with(csrf())
-                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body))).andExpect(status().isOk());
-
-        assertThat(supplies.findAll()).extracting(row -> row.getAnnouncementHousingTypeName() == null
-                        ? row.getSourceHousingTypeName() : row.getAnnouncementHousingTypeName())
-                .containsExactlyInAnyOrder("26(청년)", "26A", "26B", "26(신혼부부)");
-        String key = rowQuery.rows(TARGET).get(1).rowIdentifier();
-        assertThat(jdbc.sql("SELECT source_row_identifier || '=' || shared_household_count || ':' || review_required"
-                + " FROM supply_row_groups").query(String.class).list()).containsExactly(key + "=50:false");
-        } finally {
-            if (comparisonTables) { jdbc.sql("DROP TABLE admin_comparison_checks, admin_comparison_sources").update(); }
-        }
-    }
-
-    private LhAnnouncementSupplySourceView lhSupplyRow(int order,
-            String panId, String typeName, String area, String supplied) {
-        return LhSourceViews.supply(order, panId,
-                new LhAnnouncementSupplySourceSnapshot(
-                        "익산한스빌", typeName, area, null, "529", supplied, "4076000", "72820"));
-    }
-
-    private JsonNode prepareHansville() throws Exception {
-        var fixture = json.readTree(new ClassPathResource("ingest/hansville-21395.json").getInputStream());
-        var notice = fixture.get("announcement");
-        var building = fixture.get("complex");
-        var apiTypes = fixture.get("api").get("complex").get("items");
-        var apiComplex = apiTypes.get(0);
-        sources.deleteAll();
-        types.deleteAll();
-        complexes.deleteAll();
-        complex = complexes.save(HousingComplex.createFromMyHome(building.get("name").asText(),
-                building.get("sourceIdentifier").asText(), "NATIONAL_RENTAL",
-                Address.create(apiComplex.get("rnAdres").asText(), apiComplex.get("pnu").asText(),
-                        apiComplex.get("pnu").asText().substring(0, 10), apiComplex.get("brtcCode").asText(),
-                        apiComplex.get("pnu").asText().substring(0, 5),
-                        fixture.get("reproduction").get("testOnlyCoordinates").get("latitude").decimalValue(),
-                        fixture.get("reproduction").get("testOnlyCoordinates").get("longitude").decimalValue()),
-                building.get("totalHouseholdCount").asInt(), "LH", null,
-                "INDIVIDUAL", "APARTMENT", "CORRIDOR", true, building.get("parkingCount").asInt()));
-        for (int index = 0; index < apiTypes.size(); index++) {
-            var row = apiTypes.get(index);
-            type = types.save(HousingType.createFromMyHome(complex, "30700120:fixture:" + index,
-                    row.get("styleNm").asText(), row.get("suplyPrvuseAr").decimalValue(), null));
-        }
-        var apiNotice = (ObjectNode) fixture.get("api")
-                .get("announcement").get("items").get(0).deepCopy();
-        // 공고 ID만 테스트용으로 격리하고 나머지는 실제 응답값을 유지한다.
-        apiNotice.put("pblancId", TARGET);
-        var snapshot = json.treeToValue(apiNotice,
-                MyHomeAnnouncementSourceSnapshot.class);
-        var source = MyHomeAnnouncementSourceView.read(null, 1, Instant.parse("2026-10-18T14:56:03Z"),
-                null, 0, true, snapshot);
-        sources.save(source);
-        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
-        // 공식 화면의 단지명·주소만 LH 상세 형식에 담는다. LH 공급 보강은 없는 상태로 재현한다.
-        lhStorage.replaceDetails(candidate.panId(), candidate.requestDescription(), List.of(LhSourceViews.detail(0, candidate.panId(),
-                new LhAnnouncementDetailSourceSnapshot(
-                "COMPLEX", notice.get("complexName").asText(), notice.get("roadAddress").asText(), null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null))));
-        lhStorage.replaceSupplies(candidate.panId(), candidate.requestDescription(), List.of());
-        for (var target : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
-            progressStore.save(target, TARGET, candidate.requestDescription(), candidate.panId());
-        }
-        return notice;
-    }
 
     @BeforeEach
     void setUp() {

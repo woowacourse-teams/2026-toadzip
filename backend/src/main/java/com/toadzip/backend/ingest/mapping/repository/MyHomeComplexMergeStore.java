@@ -241,6 +241,7 @@ public class MyHomeComplexMergeStore {
                 WHERE l.merge_id IS NULL AND c.provider = 'LH'
                 GROUP BY c.name, c.road_address, c.pnu, c.provider, c.supply_type
                 HAVING count(*) BETWEEN 2 AND 20 AND min(c.id) > :afterId
+                    AND count(c.total_household_count) = count(*)
                 ORDER BY min(c.id) LIMIT :size
                 """).param("afterId", afterId).param("size", size).query((row, number) ->
                         new ComplexMergeCandidateRow(

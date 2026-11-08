@@ -155,7 +155,7 @@ class AnnouncementComplexAdminLinkIntegrationTest {
         var request = request(id);
         select(rowOf(request, linkedRow), chosen.getId(), chosenType.getId());
         var extra = rowOf(request, linkedRow).deepCopy();
-        extra.putNull("id").put("key", UUID.randomUUID().toString()).put("typeName", "26B");
+        extra.putNull("id").put("key", UUID.randomUUID().toString()).put("typeName", "26B").putNull("housingTypeId").putNull("exclusiveArea");
         ((ArrayNode) request.get("rows")).add(extra);
 
         apply(id, request, preview(id, request)).andExpect(status().isOk());
@@ -249,7 +249,8 @@ class AnnouncementComplexAdminLinkIntegrationTest {
     }
 
     @Test
-    void 같은_전용면적_주택형이_둘이면_단지만_맞추고_주택형은_비워_둔다() throws Exception {
+    void 같은_전용면적_주택형이_둘이면_이름이_다를_때_먼저_만든_주택형에_붙인다() throws Exception {
+        // 마이홈 단지에는 같은 면적 주택형이 여럿인 경우가 있다. 관리자가 고르지 않아도 되도록 하나를 정한다.
         type(entities.find(HousingComplex.class, chosen.getId()), "36B", "36.9100");
         entities.flush();
         long id = announcement.getId();
@@ -261,7 +262,8 @@ class AnnouncementComplexAdminLinkIntegrationTest {
         var stored = jdbc.queryForMap("SELECT housing_complex_id, housing_type_id FROM supply_rows WHERE id = ?",
                 emptyRow.getId());
         assertThat(stored.get("housing_complex_id")).isEqualTo(chosen.getId());
-        assertThat(stored.get("housing_type_id")).isNull();
+        assertThat(stored.get("housing_type_id")).isEqualTo(jdbc.queryForObject(
+                "SELECT id FROM housing_types WHERE housing_complex_id = ? AND name = '36'", Long.class, chosen.getId()));
     }
 
     @Test
@@ -275,7 +277,7 @@ class AnnouncementComplexAdminLinkIntegrationTest {
         var request = request(id);
         select(rowOf(request, linkedRow), chosen.getId(), chosenType.getId());
         var extra = rowOf(request, linkedRow).deepCopy();
-        extra.putNull("id").put("key", UUID.randomUUID().toString()).put("typeName", "26B");
+        extra.putNull("id").put("key", UUID.randomUUID().toString()).put("typeName", "26B").putNull("housingTypeId").putNull("exclusiveArea");
         ((ArrayNode) request.get("rows")).add(extra);
 
         apply(id, request, preview(id, request)).andExpect(status().isOk());
@@ -296,11 +298,14 @@ class AnnouncementComplexAdminLinkIntegrationTest {
     }
 
     @Test
-    void 공고_단지를_다른_단지로_다시_연결하면_함께_모집하던_주택형은_빠지고_대표만_남는다() throws Exception {
+    void 공고_단지를_다른_단지로_다시_연결하면_함께_모집하던_주택형도_새_단지의_같은_면적_주택형으로_옮긴다() throws Exception {
         long id = announcement.getId();
         var joint = type(entities.find(HousingComplex.class, autoComplex.getId()), "36", "36.9100");
+        // 새 단지에 없는 면적의 함께 모집하던 주택형은 옮길 곳이 없어 빠진다.
+        var orphan = type(entities.find(HousingComplex.class, autoComplex.getId()), "44", "44.7000");
         entities.flush();
         jdbc.update("INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id) VALUES (?, ?)", linkedRow.getId(), joint.getId());
+        jdbc.update("INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id) VALUES (?, ?)", linkedRow.getId(), orphan.getId());
         entities.clear();
         var workspace = json.readTree(mvc.perform(get(root(id)).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
@@ -312,15 +317,17 @@ class AnnouncementComplexAdminLinkIntegrationTest {
                 .content(body.toString())).andExpect(status().isOk());
         entities.flush(); entities.clear();
 
+        long chosen36 = jdbc.queryForObject("SELECT id FROM housing_types WHERE housing_complex_id = ? AND name = '36'", Long.class,
+                chosen.getId());
         assertThat(jdbc.queryForList("SELECT housing_type_id FROM supply_row_housing_types WHERE supply_row_id = ?", Long.class,
-                linkedRow.getId())).containsExactly(chosenType.getId());
+                linkedRow.getId())).containsExactlyInAnyOrder(chosenType.getId(), chosen36);
         var before = json.readTree(jdbc.queryForObject("SELECT before_value FROM admin_data_changes WHERE resource_type = "
                 + "'ANNOUNCEMENT_COMPLEX' AND resource_id = ?", String.class, announcementComplex.getId()));
         var linkedBefore = new java.util.ArrayList<Long>();
         for (var row : before.get("rows")) {
             if (row.get("id").asLong() == linkedRow.getId()) { row.get("housingTypeIds").forEach(item -> linkedBefore.add(item.asLong())); }
         }
-        assertThat(linkedBefore).containsExactlyInAnyOrder(linkedRow.getHousingType().getId(), joint.getId());
+        assertThat(linkedBefore).containsExactlyInAnyOrder(linkedRow.getHousingType().getId(), joint.getId(), orphan.getId());
     }
 
     private HousingType type(HousingComplex complex, String name, String area) {

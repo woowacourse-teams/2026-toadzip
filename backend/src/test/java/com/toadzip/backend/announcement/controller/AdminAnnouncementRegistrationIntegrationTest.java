@@ -291,13 +291,13 @@ class AdminAnnouncementRegistrationIntegrationTest {
                   "applicationEndDate": "2026-08-14",
                   "winnerAnnouncementDate": "2026-09-01",
                   "originalUrl": "https://example.com/announcements/1",
-                  "receptionPlace": {
+                  "receptionPlaces": [{
                     "name": "LH 청약센터",
                     "method": "ONLINE",
                     "address": "서울특별시 중구 세종대로 110",
                     "contact": "1600-1004",
                     "url": "https://apply.lh.or.kr"
-                  },
+                  }],
                   "supplyRow": {
                     "sourceComplexName": "원문 두꺼비 행복주택",
                     "sourceHousingTypeName": "36A",

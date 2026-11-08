@@ -103,7 +103,9 @@ class LhAnnouncementRefiner {
         }
         Announcement announcement = existing.map(found -> adopt(found, values.get(), tally))
                 .orElseGet(() -> create(request.panId(), values.get(), tally));
-        announcement.enrichFromLh(request.panId(), data.correctionReason(), data.receptionPlace());
+        // LH 상세는 접수처를 한 곳만 준다.
+        announcement.enrichFromLh(request.panId(), data.correctionReason(),
+                data.receptionPlace() == null ? List.of() : List.of(data.receptionPlace()));
         scheduleWriter.write(announcement, data, null);
         linkRevision(announcement, tally);
         Map<String, AnnouncementComplex> complexes = complexLinker.observe(announcement, detailComplexes(details),

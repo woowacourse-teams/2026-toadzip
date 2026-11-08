@@ -1,6 +1,6 @@
 import type { JsonWorkspace } from '../announcement-json/api'
 import type { MatchingHousingType } from '../ingest/supplyMatchingApi'
-import { linkedHousingTypeId, pendingRow, type Review } from './review'
+import { expectedHousingType, linkedHousingTypeId, pendingRow, type Review } from './review'
 
 /**
  * 단지 주택형 하나를 이번 공고 기준으로 본 값. 건설호수·면적·기본 임대조건은 단지 정보(주택형 후보)이고,
@@ -15,7 +15,8 @@ export function complexTypeViews(complexId: number | null, review: Review, works
     const linked = rows.filter(row => row.housingTypeId === type.id || (row.linkedHousingTypes ?? []).some(link => link.housingTypeId === type.id))
     const counts = linked.map(row => row.groupId !== null ? row.sharedHouseholdCount : row.householdCount)
     const reserves = linked.flatMap(row => row.targets.filter(target => !target.excluded).map(target => target.reserveCount))
-    const extracted = review.rows.flatMap((row, index) => row.include && (linkedHousingTypeId(row) === type.id || row.subtypes?.some(subtype => subtype.choice === type.id)) ? [index] : [])
+    // 연결 주택형을 비운 행은 저장할 때 서버가 같은 전용면적 주택형에 연결한다.
+    const extracted = review.rows.flatMap((row, index) => row.include && ((linkedHousingTypeId(row) ?? expectedHousingType(row)?.id) === type.id || row.subtypes?.some(subtype => subtype.choice === type.id)) ? [index] : [])
     const badges: ComplexTypeView['badges'] = []
     if (!linked.length) badges.push('미연결')
     if (linked.length > 1 || extracted.length > 1) badges.push('중복 후보')

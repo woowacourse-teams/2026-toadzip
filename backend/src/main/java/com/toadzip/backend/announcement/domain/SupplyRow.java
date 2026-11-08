@@ -327,36 +327,27 @@ public class SupplyRow {
         adminModified = true;
     }
 
+    /**
+     * 옛 공통 모집 묶음에서 빠진다. 공급행이 주택형마다 하나가 된 뒤 다시 보정하면 묶음 대신 이 행 하나가 모집수와 대상을 갖는다.
+     * 묶음의 다른 행이 함께 빠지거나 제외되는지는 보정 서비스가 확인한다.
+     */
+    public void leaveGroupByAdmin() {
+        supplyGroup = null;
+        confirmedTargetFingerprint = null;
+        adminModified = true;
+    }
+
     /** 원천 분할 단지를 합쳐 같은 주택형의 소속 단지만 바뀐 경우 확인한 대상 지문을 다시 계산한다. */
     public void reconfirmTargetAfterComplexMove(String targetFingerprint) {
         confirmedTargetFingerprint = targetFingerprint;
     }
 
-    private String lhSourceSupplyRowIdentifier;
-
-    /** 관리자가 LH 공급 원본 한 행을 주택형별로 나눈 공급행이 가리키는 그 LH 행 식별자. 나누지 않은 행은 null이다. */
-    private String lhSplitSourceIdentifier;
-
     /**
-     * 관리자가 LH 공급 원본 한 행을 주택형별 공급행으로 나눈 행으로 기록한다. 통합행은 그 LH 행 대응을 유지한 채 첫 분리행이 되므로
-     * 다른 LH 행에 붙은 공급행은 나눌 수 없다.
+     * 이 공급행을 만든 첫 LH 공급 원천 행 식별자. LH 행이 붙는 공급행은 저장하지 않고 면적으로 계산하며(LhRowAttachments),
+     * 이 값은 면적이 없는 LH 줄의 공급행과 단지 연결 이행이 읽는다. 옛 분리 기능의 컬럼(lh_split_source_identifier)은 이전 배포와
+     * 함께 쓸 수 있게 DB에 남겨 두고 읽지 않는다.
      */
-    public void splitFromLhSource(String lhSupplyIdentifier) {
-        validateNotBlank(lhSupplyIdentifier, "분리 원천 LH 공급행 식별자");
-        if (lhSourceSupplyRowIdentifier != null && !lhSourceSupplyRowIdentifier.equals(lhSupplyIdentifier)) {
-            throw new IllegalArgumentException("다른 LH 공급 원본에 붙은 공급행은 이 LH 행으로 나눌 수 없습니다.");
-        }
-        lhSplitSourceIdentifier = lhSupplyIdentifier;
-    }
-
-    /** 아직 공급행이 되지 않은 LH 공급 원본 행에 관리자가 만든 공급행을 붙인다. 이미 다른 LH 행에 붙은 행은 옮기지 않는다. */
-    public void attachToLhSource(String lhSupplyIdentifier) {
-        validateNotBlank(lhSupplyIdentifier, "LH 공급행 식별자");
-        if (lhSourceSupplyRowIdentifier != null) {
-            throw new IllegalArgumentException("이미 LH 공급 원본에 붙은 공급행입니다.");
-        }
-        lhSourceSupplyRowIdentifier = lhSupplyIdentifier;
-    }
+    private String lhSourceSupplyRowIdentifier;
 
     @Column(nullable = false)
     private boolean lhTotalSupplyHouseholdCountOwned;
@@ -432,8 +423,8 @@ public class SupplyRow {
     }
 
     /**
-     * LH 공급 한 행으로 공급행을 만든다. 단지는 공고 단지의 연결 단지, 대표 주택형은 그 단지에서 LH 대표 전용면적과 면적이 같은 주택형이다.
-     * LH 원천 소유 공고에서만 쓴다.
+     * LH 공급의 (공고 단지, 전용면적) 묶음으로 공급행을 만든다. 단지는 공고 단지의 연결 단지, 대표 주택형은 그 단지에서 LH 전용면적과
+     * 같은 면적의 주택형이다. lhSourceSupplyRowIdentifier는 묶음의 첫 LH 줄이다. LH 원천 소유 공고에서만 쓴다.
      */
     public static SupplyRow createFromLh(Announcement announcement, AnnouncementComplex complex, HousingType type,
             String sourceSupplyRowIdentifier, String lhSourceSupplyRowIdentifier, int displayOrder, String typeName,
@@ -452,8 +443,8 @@ public class SupplyRow {
     }
 
     /**
-     * LH 원천 소유 공고의 공급행을 이번 LH 행으로 맞춘다. 관리자가 고친 행은 값을 두고 LH 원천 행과의 대응만 기록한다.
-     * 원천 순번이 바뀌어도 작업실이 이 행을 그 LH 행에 붙은 공급행으로 보게 하려는 것이다. 휴지통 공고는 바꾸지 않는다. 바뀌었으면 true다.
+     * LH 원천 소유 공고의 공급행을 이번 LH 묶음으로 맞춘다. 관리자가 고친 행은 값을 두고 첫 LH 줄 식별자만 옮긴다.
+     * 휴지통 공고는 바꾸지 않는다. 바뀌었으면 true다.
      */
     public boolean updateFromLh(SupplyRow incoming) {
         if (announcement.isAdminDeleted()) {

@@ -266,6 +266,37 @@ class AnnouncementJsonCorrectionIntegrationTest {
     }
 
     @Test
+    void 접수처를_고르면_화면이_보낸_접수처_목록으로_통째로_바꾸고_예전_미확인_경로가_있으면_거절한다() throws Exception {
+        var announcement = fixture();
+        long id = announcement.getId();
+        var request = request(id);
+        var document = (ObjectNode) request.get("document");
+        document.remove("receptionPlace");
+        var places = document.putArray("receptionPlaces");
+        places.addObject().put("name", "LH 청약플러스").put("method", "ONLINE").putNull("address").putNull("contact")
+                .put("url", "https://apply.lh.or.kr").put("guidance", "모바일 앱으로도 신청할 수 있습니다");
+        places.addObject().put("name", "행복주택 견본주택").put("method", "VISIT").put("address", "서울시 강남구 1")
+                .put("contact", "02-000-0000").putNull("url").put("guidance", "인터넷 취약계층만 현장 접수");
+        request.putArray("fields").add("receptionPlaces");
+        var preview = preview(id, request);
+        apply(id, request, preview.path("confirmationToken").asText()).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.detail.data.receptionPlaces.length()").value(2))
+                .andExpect(jsonPath("$.data.detail.data.receptionPlaces[1].guidance").value("인터넷 취약계층만 현장 접수"));
+        assertThat(jdbc.queryForList("SELECT method FROM announcement_reception_places WHERE announcement_id=? ORDER BY display_order",
+                String.class, id)).containsExactly("ONLINE", "VISIT");
+
+        // 예전 모양 document의 미확인 경로(receptionPlace.contact)도 첫 접수처 경로로 읽어 접수처 적용을 막는다.
+        var legacy = request(id);
+        ((ObjectNode) legacy.get("document")).withArray("unresolvedFields").addObject()
+                .put("path", "receptionPlace.contact").put("reason", "연락처를 확인하지 못함");
+        legacy.putArray("fields").add("receptionPlaces");
+        mvc.perform(post("/api/admin/announcements/" + id + "/json-corrections/preview")
+                .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
+                .content(legacy.toString())).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("receptionPlaces")));
+    }
+
+    @Test
     void 인증과_CSRF없이_기존_공고를_JSON으로_갱신하지_못한다() throws Exception {
         var announcement = fixture();
         mvc.perform(get("/api/admin/announcements/" + announcement.getId() + "/json-corrections"))

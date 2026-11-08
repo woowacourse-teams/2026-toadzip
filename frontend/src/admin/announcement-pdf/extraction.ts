@@ -9,11 +9,12 @@ export type Evidence = { path: string; page: number; quote: string }
 export type ExtractedComplex = { name: string; address: string | null; totalHouseholdCount: number | null; parkingCount: number | null }
 /** 세부 타입 묶음 행(26A/B/C)의 세부 타입 하나. 공급면적은 전용 + 공용으로 계산한 값이다. */
 export type Subtype = { name: string; exclusiveArea: number | null; supplyArea: number | null; constructedHouseholdCount: number | null }
-/** subtypes는 LH 한 행이 여러 전용면적을 함께 모집하는 묶음일 때만 둘 이상이고, 그 밖에는 비어 있다. */
+/** subtypes는 공급행 하나가 여러 전용면적을 모집수 하나로 함께 모집할 때만 둘 이상이고, 그 밖에는 비어 있다. */
 export type ExtractedRow = { complexName: string | null; typeName: string | null; values: JsonObject; targets: JsonObject[]; subtypes: Subtype[] }
 export type Extraction = {
   announcement: JsonObject
-  receptionPlace: JsonObject
+  /** 공고문 순서의 접수처(인터넷 접수, 현장 접수처 여러 곳). 접수처를 한 곳만 내던 예전 응답은 한 곳으로 읽는다. */
+  receptionPlaces: JsonObject[]
   complexes: ExtractedComplex[]
   supplyRows: ExtractedRow[]
   schedules: JsonObject[]
@@ -98,9 +99,9 @@ function extraction(value: unknown): Extraction | string {
     return '응답에 data 객체가 없습니다. 화면의 프롬프트로 받은 응답인지 확인해 주세요.'
   }
   const data = value.data
-  if (!isRecord(data.announcement) || !(isRecord(data.receptionPlace) || data.receptionPlace === null || data.receptionPlace === undefined)) {
-    return 'data.announcement 객체가 필요합니다.'
-  }
+  if (!isRecord(data.announcement)) return 'data.announcement 객체가 필요합니다.'
+  // 접수처 형식이 틀려도 공급행까지 버리지 않는다. 객체가 아닌 접수처는 빈 접수처로 두어 순번을 지키고 20곳까지만 읽는다(receptionPlacesOf).
+  if (data.receptionPlaces !== undefined && data.receptionPlaces !== null && !Array.isArray(data.receptionPlaces)) return 'data.receptionPlaces는 접수처 객체 배열이어야 합니다.'
   if (!Array.isArray(data.supplyRows) || !data.supplyRows.every(isRecord) || !Array.isArray(data.schedules) || !data.schedules.every(isRecord)) {
     return 'data.supplyRows와 data.schedules는 객체 배열이어야 합니다.'
   }
@@ -159,7 +160,7 @@ function extraction(value: unknown): Extraction | string {
   const read = readSubtypes(data.supplyRows, parsed)
   return {
     announcement: data.announcement,
-    receptionPlace: isRecord(data.receptionPlace) ? data.receptionPlace : {},
+    receptionPlaces: receptionPlacesOf(data),
     complexes,
     supplyRows: read.rows,
     schedules: data.schedules,
@@ -263,7 +264,17 @@ function sharedCountProblem(items: unknown, targetCounts: number[]): string | nu
 function count(value: unknown) { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null }
 function page(value: unknown) { return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : null }
 export function text(value: unknown): string | null { return typeof value === 'string' && value.trim() ? value.trim() : null }
-export function normalizePath(path: string) { return path.replace(/\\/g, '').replace(/^\$\.?/, '').replace(/^data\./, '').trim() }
+// 접수처를 한 곳만 내던 예전 응답의 경로(receptionPlace.address)는 첫 접수처 경로로 읽는다.
+export function normalizePath(path: string) { return path.replace(/\\/g, '').replace(/^\$\.?/, '').replace(/^data\./, '').trim().replace(/^receptionPlace(?=$|[.[])/, 'receptionPlaces[0]') }
+
+/**
+ * 응답의 접수처 목록(20곳까지). 객체가 아닌 원소는 빈 접수처로 두어 순번을 지킨다(근거·미확인 경로가 원래 순번을 가리킨다).
+ * 빈 접수처는 이름·방식을 읽지 못한 새 접수처라 기본으로 빠진다. 예전 응답의 접수처 객체는 값이 하나라도 있으면 접수처 한 곳이다.
+ */
+export function receptionPlacesOf(data: Record<string, unknown>): JsonObject[] {
+  if (Array.isArray(data.receptionPlaces)) return data.receptionPlaces.slice(0, 20).map(place => isRecord(place) ? place as JsonObject : {})
+  return isRecord(data.receptionPlace) && Object.values(data.receptionPlace).some(value => value !== null && value !== '') ? [data.receptionPlace as JsonObject] : []
+}
 function validPath(path: string) { return /^[A-Za-z][A-Za-z0-9]*(?:\[(?:\d+|\*)\]|\.[A-Za-z][A-Za-z0-9]*)*$/.test(path) }
 
 /** 경로 패턴의 `[*]`는 모든 순번에 맞는다. 패턴이 경로와 같거나 상위 경로이면 맞는 것으로 본다. */
@@ -308,7 +319,8 @@ export function evidenceContext(extraction: Pick<Extraction, 'supplyRows'>, path
   const row = match ? extraction.supplyRows[Number(match[1])] : undefined
   if (!row) return []
   const area = row.values.exclusiveArea
-  return [...new Set([row.typeName, ...row.subtypes.map(subtype => subtype.name), typeof area === 'number' ? String(area) : null].filter((item): item is string => Boolean(item?.trim())))]
+  // 접은 행의 표기(26A·26B)는 공고문에 표기마다 따로 있다.
+  return [...new Set([...row.typeName?.split('·') ?? [], ...row.subtypes.flatMap(subtype => subtype.name.split('·')), typeof area === 'number' ? String(area) : null].filter((item): item is string => Boolean(item?.trim())))]
 }
 
 /** 같은 경로 → 가까운 상위 경로 → 첫 하위 경로 순으로 근거를 찾는다. */
