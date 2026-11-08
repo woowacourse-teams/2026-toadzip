@@ -1,22 +1,24 @@
 package com.toadzip.backend.announcement.repository;
 
+import com.toadzip.backend.admin.dto.AdminSearch;
 import com.toadzip.backend.announcement.domain.Announcement;
-import com.toadzip.backend.announcement.domain.AnnouncementSort;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
-import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementReleaseStatus;
+import com.toadzip.backend.announcement.domain.AnnouncementSort;
+import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.global.persistence.LegacyStoredValue;
+import com.toadzip.backend.housing.domain.HousingComplex;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 import jakarta.persistence.Tuple;
-import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
-import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Order;
+import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
@@ -28,22 +30,24 @@ import java.util.Locale;
 import java.util.Set;
 import org.hibernate.query.criteria.HibernateCriteriaBuilder;
 import org.hibernate.query.criteria.JpaExpression;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class AnnouncementSearchRepository {
 
-    private static final String ADMIN_COUNTS_SQL = """
+    private static final String ADMIN_OVERVIEW_SQL = """
             WITH overview AS (
-                SELECT COALESCE(%s, 'UNKNOWN') AS application_status,
-                    CASE WHEN a.application_schedule_reviewed THEN NOT EXISTS (
-                        SELECT 1 FROM announcement_application_schedules s WHERE s.announcement_id = a.id)
-                    ELSE a.application_start_date IS NULL OR a.application_end_date IS NULL END AS schedule_missing,
-                    NOT EXISTS (SELECT 1 FROM supply_rows r
-                        WHERE r.announcement_id = a.id AND r.admin_excluded = false) AS supply_missing,
+                SELECT a.id, COALESCE(%s, 'UNKNOWN') AS application_status,
+                    %s AS schedule_missing, %s AS supply_missing,
                     a.release_status = 'UNCONFIRMED' AS unconfirmed
-                FROM announcements a WHERE a.admin_deleted = false
+                FROM announcements a
             )
+            """.formatted(ApplicationScheduleSql.status("a", null),
+                    AnnouncementAttentionSql.scheduleMissing("a"), AnnouncementAttentionSql.supplyMissing("a"));
+    private static final String ADMIN_COUNTS_SQL = ADMIN_OVERVIEW_SQL + """
             SELECT COUNT(*) FILTER (WHERE application_status = 'BEFORE_APPLICATION') AS upcoming,
                 COUNT(*) FILTER (WHERE application_status = 'APPLYING') AS applying,
                 COUNT(*) FILTER (WHERE application_status = 'CLOSED') AS closed,
@@ -54,13 +58,79 @@ public class AnnouncementSearchRepository {
                 COUNT(*) FILTER (WHERE schedule_missing) AS schedule_missing,
                 COUNT(*) FILTER (WHERE supply_missing) AS supply_missing,
                 COUNT(*) FILTER (WHERE unconfirmed) AS unconfirmed
-            FROM overview
-            """.formatted(ApplicationScheduleSql.status("a", null));
+            FROM overview o JOIN announcements a ON a.id = o.id WHERE a.admin_deleted = false
+            """;
 
     private final EntityManager entityManager;
 
     public AnnouncementSearchRepository(EntityManager entityManager) {
         this.entityManager = entityManager;
+    }
+
+    public Page<Announcement> searchAdmin(AdminSearch search, long complexId, String status, String attention,
+            LocalDate today) {
+        String where = AnnouncementRepository.ADMIN_SEARCH_FROM.replace(" FROM announcements c ",
+                " FROM announcements c JOIN overview o ON o.id = c.id ")
+                + " AND (:applicationStatus = '' OR o.application_status = :applicationStatus)"
+                + " AND (:attention = '' OR (:attention = 'ANY' AND (o.schedule_missing OR o.supply_missing"
+                + " OR o.unconfirmed)) OR (:attention = 'SCHEDULE_MISSING' AND o.schedule_missing)"
+                + " OR (:attention = 'SUPPLY_MISSING' AND o.supply_missing)"
+                + " OR (:attention = 'UNCONFIRMED' AND o.unconfirmed))";
+        Query count = bindAdmin(entityManager.createNativeQuery(ADMIN_OVERVIEW_SQL + "SELECT count(*)" + where),
+                search, complexId, status, attention, today);
+        Query query = bindAdmin(entityManager.createNativeQuery(ADMIN_OVERVIEW_SQL + "SELECT c.*" + where
+                + " ORDER BY c.created_at DESC NULLS LAST, c.id DESC", Announcement.class),
+                search, complexId, status, attention, today);
+        query.setFirstResult(search.page() * search.pageSize()).setMaxResults(search.pageSize());
+        @SuppressWarnings("unchecked")
+        List<Announcement> items = query.getResultList();
+        return new PageImpl<>(items, PageRequest.of(search.page(), search.pageSize()),
+                ((Number) count.getSingleResult()).longValue());
+    }
+
+    private Query bindAdmin(Query query, AdminSearch search, long complexId, String status, String attention,
+            LocalDate today) {
+        return query.setParameter("keyword", search.pattern()).setParameter("identifier", search.identifier())
+                .setParameter("provider", search.providerCode()).setParameter("providerLegacy", search.providerLegacy())
+                .setParameter("rental", search.rentalCode()).setParameter("rentalLegacy", search.rentalLegacy())
+                .setParameter("region", search.regionCode()).setParameter("deleted", search.deleted())
+                .setParameter("review", search.review()).setParameter("unconfirmed", search.unconfirmed())
+                .setParameter("complexId", complexId).setParameter("applicationStatus", status)
+                .setParameter("attention", attention).setParameter("today", today);
+    }
+
+    public record AdminStatus(long id, String applicationStatus, List<String> attentionReasons,
+            LocalDate startDate, LocalDate endDate) { }
+
+    public List<AdminStatus> adminStatuses(List<Long> ids, LocalDate today) {
+        if (ids.isEmpty()) { return List.of(); }
+        String sql = ADMIN_OVERVIEW_SQL + "SELECT o.*, application_period.start_date, application_period.end_date, "
+                + "a.application_schedule_reviewed, a.application_start_date, a.application_end_date"
+                + " FROM overview o JOIN announcements a ON a.id = o.id "
+                + ApplicationScheduleSql.displayPeriodJoin("a", null) + " WHERE o.id IN (:ids)";
+        @SuppressWarnings("unchecked")
+        List<Tuple> rows = entityManager.createNativeQuery(sql, Tuple.class)
+                .setParameter("today", today).setParameter("ids", ids).getResultList();
+        return rows.stream().map(row -> {
+            var reasons = new ArrayList<String>();
+            if (Boolean.TRUE.equals(row.get("schedule_missing"))) { reasons.add("SCHEDULE_MISSING"); }
+            if (Boolean.TRUE.equals(row.get("supply_missing"))) { reasons.add("SUPPLY_MISSING"); }
+            if (Boolean.TRUE.equals(row.get("unconfirmed"))) { reasons.add("UNCONFIRMED"); }
+            String start = "application_start_date";
+            String end = "application_end_date";
+            if (Boolean.TRUE.equals(row.get("application_schedule_reviewed"))) {
+                start = "start_date";
+                end = "end_date";
+            }
+            return new AdminStatus(((Number) row.get("id")).longValue(), row.get("application_status", String.class),
+                    List.copyOf(reasons), date(row.get(start)), date(row.get(end)));
+        }).toList();
+    }
+
+    private LocalDate date(Object value) {
+        if (value == null) { return null; }
+        if (value instanceof LocalDate date) { return date; }
+        return ((java.sql.Date) value).toLocalDate();
     }
 
     public AdminCounts countForAdmin(LocalDate today) {

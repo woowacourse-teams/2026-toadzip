@@ -1,3 +1,4 @@
+import { applicationStatuses, attentionReasons } from './listFilterLabels'
 import { Link, useMatch } from 'react-router'
 import type { ManagementResource, ManagementSummary } from './managementContract'
 import { labels } from './fields'
@@ -11,7 +12,6 @@ export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight 
   const selected = useMatch(`/admin/${resource}/:id`)?.params.id
   if (!items.length) return <div className={`admin-empty ${fixedHeight ? styles.fixedHeight : ''}`}>{trash ? <><h2>휴지통이 비어 있습니다.</h2><p>삭제한 {resource === 'complexes' ? '단지' : '공고'}는 여기에서 다시 복구할 수 있습니다.</p></> : <><h2>표시할 {resource === 'complexes' ? '단지' : '공고'}가 없습니다.</h2><p>검색 조건을 바꾸거나 새 데이터를 등록해 주세요.</p></>}</div>
   const columns: Column[] = [
-    ...(resource === 'complexes' ? [{ key: 'address.roadAddress', label: '도로명주소', read: (item: ManagementSummary) => item.subtitle }] : []),
     { key: 'agencyCode', label: '공급 기관', width: 80, read: item => item.provider },
     { key: 'rentalType', label: '공급 유형', width: 128, read: item => item.rental },
     ...(resource === 'complexes' ? [...complexColumns, { key: 'verificationStatus', label: '검토 상태', width: 112, read: () => null, kind: 'verification' as const }] : announcementColumns),
@@ -28,6 +28,10 @@ export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight 
       <tbody>{items.map(item => <tr key={item.id} data-selected={selected === String(item.id) || undefined} data-checked={selection?.ids.has(item.id) || undefined}>
         {selection && <td className={styles.check}><input type="checkbox" aria-label={`${item.name} 선택`} disabled={selection.disabled} checked={selection.ids.has(item.id)} onChange={() => toggle(item.id)} /></td>}
         <th scope="row">{onEdit ? <button type="button" data-admin-navigation disabled={editDisabled} className={styles.inlineEdit} aria-label={`${item.name} 수정`} title={item.name} onClick={() => onEdit(item)}>{item.name}</button> : <Link data-management-id={item.id} aria-current={selected === String(item.id) ? 'page' : undefined} title={item.name} to={`/admin/${resource}/${item.id}${inlineSearch !== undefined ? inlineSearch ? `?${inlineSearch}` : '' : returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`}>{item.name}</Link>}
+          {!compact && resource === 'complexes' && <span className={styles.rowSubtitle}>{item.subtitle}</span>}
+          {!compact && resource === 'announcements' && item.announcement?.attentionReasons && <div className={styles.rowMeta}>
+            {item.announcement.attentionReasons.filter(reason => reason !== 'UNCONFIRMED').map(reason => <span key={reason}>{attentionReasons[reason]}</span>)}
+          </div>}
           {compact ? <><span className={styles.rowSubtitle}>{item.subtitle}</span><div className={styles.rowMeta}><span>{labels[item.provider] ?? item.provider}</span><span>{labels[item.rental ?? ''] ?? item.rental}</span><ManagementStatus summary={item} />{resource === 'complexes' && <ComplexVerificationBadge status={item.complex?.verificationStatus ?? 'UNREVIEWED'} count={item.complex?.reviewedFieldCount} />}</div></> : null}
         </th>
         {columns.map(column => <td key={column.key} data-field={column.key} className={column.kind === 'number' ? styles.number : undefined}>
@@ -41,12 +45,21 @@ const complexColumns: Column[] = [
   { key: 'totalHouseholdCount', label: '세대수', width: 88, read: item => item.complex?.totalHouseholdCount, kind: 'number' },
 ]
 const announcementColumns: Column[] = [
-  { key: 'recruitmentType', label: '모집 유형', width: 96, read: item => item.announcement?.recruitmentType },
+  { key: 'applicationStatus', label: '접수 상태', width: 104, read: item => item.announcement?.applicationStatus ? applicationStatuses[item.announcement.applicationStatus] : null },
   { key: 'publicationType', label: '공고 구분', width: 80, read: () => null, kind: 'publication' },
   { key: 'postedDate', label: '게시일', width: 112, read: item => item.announcement ? item.announcement.postedDate : item.subtitle },
-  { key: 'applicationPeriod', label: '접수 기간', width: 196, read: item => item.announcement?.applicationStartDate ? `${item.announcement.applicationStartDate} ~ ${item.announcement.applicationEndDate}` : null },
+  { key: 'applicationPeriod', label: '접수 기간', width: 196, read: item => applicationPeriod(item) },
 ]
 function TextValue({ value }: { value: string | number | boolean | null | undefined }) {
   const text = value === null || value === undefined || value === '' ? '미확인' : labels[String(value)] ?? String(value)
   return <span className={styles.value} title={text}>{text}</span>
+}
+
+function applicationPeriod(item: ManagementSummary) {
+  const start = item.announcement?.applicationStartDate
+  const end = item.announcement?.applicationEndDate
+  if (start && end) return `${start} ~ ${end}`
+  if (start) return `${start}부터`
+  if (end) return `${end}까지`
+  return null
 }

@@ -266,8 +266,11 @@ public class Announcement {
         status = AnnouncementPublicationType.CORRECTION;
     }
 
-    /** LH 공고목록에는 정정·취소공고와 원공고를 잇는 값이 없어 정제가 공고명으로 찾은 원공고에 잇는다. 이미 이어진 공고는 바꾸지 않는다. */
-    public boolean linkLhRevision(Announcement previous, AnnouncementPublicationType revisionType) {
+    /**
+     * LH 공고목록과 SH·GH 게시판에는 정정·취소공고와 원공고를 잇는 값이 없어 정제가 공고명으로 찾은 원공고에 잇는다. 이미 이어졌거나
+     * 관리자가 손댄 공고는 바꾸지 않는다. 원공고가 LH 공고가 아니면 이전 LH 공고 ID는 비어 있다.
+     */
+    public boolean linkRevision(Announcement previous, AnnouncementPublicationType revisionType) {
         if (revisionType == AnnouncementPublicationType.ORIGINAL || previous == null || previous == this) {
             throw new IllegalArgumentException("정정·취소공고는 다른 이전 공고에만 이을 수 있습니다.");
         }
